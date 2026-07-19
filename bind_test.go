@@ -2950,3 +2950,75 @@ func Test_Bind_All_CustomPrecedence(t *testing.T) {
 	require.NoError(t, ctx2.Bind().All(req2))
 	require.Equal(t, "from_header", req2.Name)
 }
+// go test -run Test_Bind_All_CustomPrecedence_InvalidToken
+func Test_Bind_All_CustomPrecedence_InvalidToken(t *testing.T) {
+	t.Parallel()
+	app := New()
+
+	type InvalidPrecedenceReq struct {
+		BindingSource struct{} `binding_source:"query,invalid,cookie"`
+		Name          string   `query:"name"`
+	}
+
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(ctx)
+
+	req := new(InvalidPrecedenceReq)
+	err := ctx.Bind().All(req)
+	require.Error(t, err)
+	require.Equal(t, "unknown binding_source \"invalid\"", err.Error())
+}
+
+// go test -run Test_Bind_All_CustomPrecedence_OmittedSources
+func Test_Bind_All_CustomPrecedence_OmittedSources(t *testing.T) {
+	t.Parallel()
+	app := New()
+
+	type OmittedPrecedenceReq struct {
+		// Only query is bound. Headers and Body are ignored.
+		BindingSource struct{} `binding_source:"query"`
+		Name          string   `query:"name" header:"x-name" json:"name"`
+	}
+
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(ctx)
+
+	ctx.Request().Header.Set("x-name", "from_header")
+	ctx.Request().Header.SetContentType(MIMEApplicationJSON)
+	ctx.Request().SetBody([]byte(`{"name":"from_body"}`))
+
+	// Set an unrelated query param, meaning Name will not be found in query
+	ctx.Request().URI().SetQueryString("other=from_query")
+
+	req := new(OmittedPrecedenceReq)
+	require.NoError(t, ctx.Bind().All(req))
+
+	// Because query is the only bound source, and "name" wasn't in the query, Name should be empty
+	require.Empty(t, req.Name)
+
+	// Now set the query param
+	ctx.Request().URI().SetQueryString("name=from_query")
+	req2 := new(OmittedPrecedenceReq)
+	require.NoError(t, ctx.Bind().All(req2))
+	require.Equal(t, "from_query", req2.Name)
+}
+
+// go test -run Test_Bind_All_CustomPrecedence_Duplicates
+func Test_Bind_All_CustomPrecedence_Duplicates(t *testing.T) {
+	t.Parallel()
+	app := New()
+
+	type DuplicatePrecedenceReq struct {
+		BindingSource struct{} `binding_source:"query,query,header"`
+		Name          string   `query:"name" header:"x-name"`
+	}
+
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(ctx)
+
+	ctx.Request().Header.Set("x-name", "from_header")
+
+	req := new(DuplicatePrecedenceReq)
+	require.NoError(t, ctx.Bind().All(req))
+	require.Equal(t, "from_header", req.Name)
+}

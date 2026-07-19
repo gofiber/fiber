@@ -439,39 +439,53 @@ const (
 	sourceCookie
 )
 
+type cachedPrecedence struct {
+	err     error
+	sources []bindSource
+}
+
 var bindingPrecedenceCache sync.Map // map[reflect.Type][]bindSource
 
-func getBindingPrecedence(t reflect.Type) []bindSource {
+func getBindingPrecedence(t reflect.Type) ([]bindSource, error) {
 	if cached, ok := bindingPrecedenceCache.Load(t); ok {
-		if precedence, ok := cached.([]bindSource); ok {
-			return precedence
+		if cp, ok := cached.(cachedPrecedence); ok {
+			return cp.sources, cp.err
 		}
 	}
-
 	var precedence []bindSource
-	for i := 0; i < t.NumField(); i++ {
+	for i := range t.NumField() {
 		if tag := t.Field(i).Tag.Get("binding_source"); tag != "" {
 			parts := strings.SplitSeq(tag, ",")
 			for p := range parts {
-				switch strings.TrimSpace(p) {
+				sourceName := strings.TrimSpace(p)
+				var source bindSource
+				switch sourceName {
 				case "uri":
-					precedence = append(precedence, sourceURI)
+					source = sourceURI
 				case "body":
-					precedence = append(precedence, sourceBody)
+					source = sourceBody
 				case "query":
-					precedence = append(precedence, sourceQuery)
+					source = sourceQuery
 				case "header":
-					precedence = append(precedence, sourceHeader)
+					source = sourceHeader
 				case "cookie":
-					precedence = append(precedence, sourceCookie)
+					source = sourceCookie
+				default:
+					err := fmt.Errorf("unknown binding_source %q", sourceName)
+					bindingPrecedenceCache.Store(t, cachedPrecedence{err: err, sources: nil})
+					return nil, err
+				}
+
+				// check for duplicates
+				if !slices.Contains(precedence, source) {
+					precedence = append(precedence, source)
 				}
 			}
 			break
 		}
 	}
-
-	bindingPrecedenceCache.Store(t, precedence)
-	return precedence
+	bindingPrecedenceCache.Store(t, cachedPrecedence{err: nil, sources: precedence})
+	return precedence, nil
 }
 
 // All binds values from URI params, the request body, the query string,
@@ -486,7 +500,10 @@ func (b *Bind) All(out any) error {
 	outElem := outVal.Elem()
 
 	var sources []func(any) error
-	customPrecedence := getBindingPrecedence(outElem.Type())
+	customPrecedence, err := getBindingPrecedence(outElem.Type())
+	if err != nil {
+		return err
+	}
 
 	if len(customPrecedence) > 0 {
 		for _, source := range customPrecedence {
