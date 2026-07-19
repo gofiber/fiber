@@ -3042,3 +3042,42 @@ func Test_Bind_All_CustomPrecedence_MultipleTags(t *testing.T) {
 	require.Error(t, err)
 	require.Equal(t, "multiple binding_source tags found on struct MultipleTagsReq", err.Error())
 }
+
+// go test -v -run=^$ -bench=BenchmarkBind_All_CustomPrecedence -benchmem -count=4
+func BenchmarkBind_All_CustomPrecedence(b *testing.B) {
+	type User struct {
+		BindingSource struct{} `binding_source:"query,header,cookie,body,uri"`
+		SessionID string `json:"session_id" cookie:"session_id"`
+		Name      string `query:"name" json:"name" form:"name"`
+		Email     string `json:"email" form:"email"`
+		Role      string `header:"X-User-Role"`
+		ID        int    `uri:"id" query:"id" json:"id" form:"id"`
+	}
+
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+
+	config := &RequestConfig{
+		ContentType: MIMEApplicationJSON,
+		Body:        []byte(`{"name":"john", "email": "john@doe.com", "session_id": "abc1234", "id": 1}`),
+		Headers: map[string]string{
+			"X-User-Role": "admin",
+		},
+		Cookies: map[string]string{
+			"session_id": "abc123",
+		},
+		Query: "id=1&name=john",
+	}
+
+	bind := &Bind{
+		ctx: c,
+	}
+
+	for b.Loop() {
+		user := &User{}
+		config.ApplyTo(c)
+		if err := bind.All(user); err != nil {
+			b.Fatalf("unexpected error: %v", err)
+		}
+	}
+}
