@@ -2911,3 +2911,42 @@ func BenchmarkBind_All(b *testing.B) {
 		}
 	}
 }
+
+// go test -run Test_Bind_All_CustomPrecedence
+func Test_Bind_All_CustomPrecedence(t *testing.T) {
+	t.Parallel()
+	app := New()
+
+	type CustomPrecedenceReq struct {
+		BindingSource struct{} `binding_source:"query,header,cookie,body,uri"`
+		Name          string   `query:"name" header:"x-name" json:"name"`
+	}
+
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(ctx)
+
+	// Set data in query, header, and body.
+	// Since query is the first in our custom precedence, it should win.
+	ctx.Request().URI().SetQueryString("name=from_query")
+	ctx.Request().Header.Set("x-name", "from_header")
+	ctx.Request().Header.SetContentType(MIMEApplicationJSON)
+	ctx.Request().SetBody([]byte(`{"name":"from_body"}`))
+
+	req := new(CustomPrecedenceReq)
+	require.NoError(t, ctx.Bind().All(req))
+
+	// The query parameter should be used because it has the highest precedence.
+	require.Equal(t, "from_query", req.Name)
+
+	// Now try without query but with header and body. Header should win.
+	ctx2 := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(ctx2)
+
+	ctx2.Request().Header.Set("x-name", "from_header")
+	ctx2.Request().Header.SetContentType(MIMEApplicationJSON)
+	ctx2.Request().SetBody([]byte(`{"name":"from_body"}`))
+
+	req2 := new(CustomPrecedenceReq)
+	require.NoError(t, ctx2.Bind().All(req2))
+	require.Equal(t, "from_header", req2.Name)
+}

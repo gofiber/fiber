@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"reflect"
 	"slices"
+	"strings"
 	"sync"
 
 	"github.com/gofiber/fiber/v3/binder"
@@ -428,6 +429,51 @@ func (b *Bind) Body(out any) error {
 	return ErrUnprocessableEntity
 }
 
+type bindSource int
+
+const (
+	sourceURI bindSource = iota
+	sourceBody
+	sourceQuery
+	sourceHeader
+	sourceCookie
+)
+
+var bindingPrecedenceCache sync.Map // map[reflect.Type][]bindSource
+
+func getBindingPrecedence(t reflect.Type) []bindSource {
+	if cached, ok := bindingPrecedenceCache.Load(t); ok {
+		if precedence, ok := cached.([]bindSource); ok {
+			return precedence
+		}
+	}
+
+	var precedence []bindSource
+	for i := 0; i < t.NumField(); i++ {
+		if tag := t.Field(i).Tag.Get("binding_source"); tag != "" {
+			parts := strings.SplitSeq(tag, ",")
+			for p := range parts {
+				switch strings.TrimSpace(p) {
+				case "uri":
+					precedence = append(precedence, sourceURI)
+				case "body":
+					precedence = append(precedence, sourceBody)
+				case "query":
+					precedence = append(precedence, sourceQuery)
+				case "header":
+					precedence = append(precedence, sourceHeader)
+				case "cookie":
+					precedence = append(precedence, sourceCookie)
+				}
+			}
+			break
+		}
+	}
+
+	bindingPrecedenceCache.Store(t, precedence)
+	return precedence
+}
+
 // All binds values from URI params, the request body, the query string,
 // headers, and cookies into the provided struct in precedence order.
 // Returns *BindError on parse failure (manual mode) or *Error with status 400 (auto-handling mode).
@@ -439,18 +485,40 @@ func (b *Bind) All(out any) error {
 
 	outElem := outVal.Elem()
 
-	// Precedence: URL Params -> Body -> Query -> Headers -> Cookies
-	sources := []func(any) error{b.URI}
+	var sources []func(any) error
+	customPrecedence := getBindingPrecedence(outElem.Type())
 
-	// Check if both Body and Content-Type are set
-	if len(b.ctx.Request().Body()) > 0 && len(b.ctx.RequestCtx().Request.Header.ContentType()) > 0 {
-		sources = append(sources, b.Body)
+	if len(customPrecedence) > 0 {
+		for _, source := range customPrecedence {
+			switch source {
+			case sourceURI:
+				sources = append(sources, b.URI)
+			case sourceBody:
+				if len(b.ctx.Request().Body()) > 0 && len(b.ctx.RequestCtx().Request.Header.ContentType()) > 0 {
+					sources = append(sources, b.Body)
+				}
+			case sourceQuery:
+				sources = append(sources, b.Query)
+			case sourceHeader:
+				sources = append(sources, b.Header)
+			case sourceCookie:
+				sources = append(sources, b.Cookie)
+			}
+		}
+	} else {
+		// Precedence: URL Params -> Body -> Query -> Headers -> Cookies
+		sources = append(sources, b.URI)
+
+		// Check if both Body and Content-Type are set
+		if len(b.ctx.Request().Body()) > 0 && len(b.ctx.RequestCtx().Request.Header.ContentType()) > 0 {
+			sources = append(sources, b.Body)
+		}
+		sources = append(sources, b.Query, b.Header, b.Cookie)
 	}
-	sources = append(sources, b.Query, b.Header, b.Cookie)
+
 	prevSkip := b.shouldSkipValidation
 	b.shouldSkipValidation = true
 
-	// TODO: Support custom precedence with an optional binding_source tag
 	// TODO: Create WithOverrideEmptyValues
 	// Bind from each source, but only update unset fields
 	for _, bindFunc := range sources {
