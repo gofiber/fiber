@@ -2950,6 +2950,7 @@ func Test_Bind_All_CustomPrecedence(t *testing.T) {
 	require.NoError(t, ctx2.Bind().All(req2))
 	require.Equal(t, "from_header", req2.Name)
 }
+
 // go test -run Test_Bind_All_CustomPrecedence_InvalidToken
 func Test_Bind_All_CustomPrecedence_InvalidToken(t *testing.T) {
 	t.Parallel()
@@ -3021,4 +3022,23 @@ func Test_Bind_All_CustomPrecedence_Duplicates(t *testing.T) {
 	req := new(DuplicatePrecedenceReq)
 	require.NoError(t, ctx.Bind().All(req))
 	require.Equal(t, "from_header", req.Name)
+}
+
+// go test -run Test_Bind_All_CustomPrecedence_MultipleTags
+func Test_Bind_All_CustomPrecedence_MultipleTags(t *testing.T) {
+	t.Parallel()
+	app := New()
+
+	type MultipleTagsReq struct {
+		Field1 struct{} `binding_source:"query"`
+		Field2 struct{} `binding_source:"header"`
+	}
+
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(ctx)
+
+	req := new(MultipleTagsReq)
+	err := ctx.Bind().All(req)
+	require.Error(t, err)
+	require.Equal(t, "multiple binding_source tags found on struct MultipleTagsReq", err.Error())
 }

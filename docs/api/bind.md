@@ -95,6 +95,7 @@ app.Post("/users", func(c fiber.Ctx) error {
 ```
 
 > **Note:** For maximum performance, Fiber caches the precedence resolution per `reflect.Type` to reduce repeated parsing overhead.
+> Additionally, the `binding_source` tag must be placed on a **top-level** field of the struct (tags inside embedded structs are ignored), and a struct may only contain **one** `binding_source` tag.
 
 ### Body
 

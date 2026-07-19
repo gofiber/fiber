@@ -453,8 +453,16 @@ func getBindingPrecedence(t reflect.Type) ([]bindSource, error) {
 		}
 	}
 	var precedence []bindSource
+	var tagFound bool
 	for i := range t.NumField() {
 		if tag := t.Field(i).Tag.Get("binding_source"); tag != "" {
+			if tagFound {
+				err := fmt.Errorf("multiple binding_source tags found on struct %s", t.Name())
+				bindingPrecedenceCache.Store(t, cachedPrecedence{err: err, sources: nil})
+				return nil, err
+			}
+			tagFound = true
+
 			parts := strings.SplitSeq(tag, ",")
 			for p := range parts {
 				sourceName := strings.TrimSpace(p)
@@ -481,7 +489,6 @@ func getBindingPrecedence(t reflect.Type) ([]bindSource, error) {
 					precedence = append(precedence, source)
 				}
 			}
-			break
 		}
 	}
 	bindingPrecedenceCache.Store(t, cachedPrecedence{err: nil, sources: precedence})
