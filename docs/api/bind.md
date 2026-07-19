@@ -73,7 +73,7 @@ app.Post("/users", func(c fiber.Ctx) error {
 
 #### Custom Precedence
 
-By default, the `All` method binds data in the following precedence order: `URI params -> Body -> Query -> Headers -> Cookies`. 
+By default, the `All` method binds data in the following precedence order: `URI params -> Body -> Query -> Headers -> Cookies`.
 If you need to override this behavior, you can define a custom precedence order for your struct using the `binding_source` tag.
 
 ```go title="Example"
