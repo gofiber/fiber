@@ -71,6 +71,31 @@ app.Post("/users", func(c fiber.Ctx) error {
 })
 ```
 
+#### Custom Precedence
+
+By default, the `All` method binds data in the following precedence order: `URI params -> Body -> Query -> Headers -> Cookies`. 
+If you need to override this behavior, you can define a custom precedence order for your struct using the `binding_source` tag.
+
+```go title="Example"
+type CustomPrecedenceReq struct {
+    // Specify the priority for binding using the binding_source tag.
+    // In this example, query parameters take highest priority, followed by headers.
+    BindingSource struct{} `binding_source:"query,header,cookie,body,uri"`
+    Name          string   `query:"name" header:"x-name" json:"name"`
+}
+
+app.Post("/users", func(c fiber.Ctx) error {
+    req := new(CustomPrecedenceReq)
+    if err := c.Bind().All(req); err != nil {
+        return err
+    }
+    // req.Name will take the value from the query parameter if it exists, otherwise header, etc.
+    return c.JSON(req)
+})
+```
+
+> **Note:** For maximum performance, Fiber caches the precedence configuration per `reflect.Type`. This ensures the framework maintains zero-allocation efficiency on subsequent requests.
+
 ### Body
 
 Binds the request body to a struct.
