@@ -71,6 +71,38 @@ app.Post("/users", func(c fiber.Ctx) error {
 })
 ```
 
+#### Custom Precedence
+
+By default, the `All` method binds data in the following precedence order: `URI params -> Body -> Query -> Headers -> Cookies`.
+If you need to override this behavior, you can define a custom precedence order for your struct using the `binding_source` tag.
+
+```go title="Example"
+type CustomPrecedenceReq struct {
+    // Specify the priority for binding using the binding_source tag.
+    // In this example, query parameters take highest priority, followed by headers.
+    // The tag can be placed on any top-level field in the struct.
+    Name string `binding_source:"query,header,cookie,body,uri" query:"name" header:"x-name" json:"name"`
+}
+
+app.Post("/users", func(c fiber.Ctx) error {
+    req := new(CustomPrecedenceReq)
+    if err := c.Bind().All(req); err != nil {
+        return err
+    }
+    // req.Name will take the value from the query parameter if it exists, otherwise header, etc.
+    return c.JSON(req)
+})
+```
+
+:::info
+For maximum performance, Fiber caches the precedence resolution per `reflect.Type` to reduce repeated parsing overhead.
+Additionally, the `binding_source` tag must be placed on a **top-level** field of the struct (tags inside embedded structs are ignored), and a struct may only contain **one** `binding_source` tag.
+
+- **Partial Lists**: If you omit sources from the tag (e.g., `binding_source:"query"`), the omitted sources (body, header, etc.) will **not** be bound at all.
+- **Unrecognized Sources**: If an invalid source name is provided in the tag (e.g., `binding_source:"invalid"`), Fiber will return an error during binding.
+
+:::
+
 ### Body
 
 Binds the request body to a struct.
