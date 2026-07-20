@@ -100,6 +100,7 @@ Additionally, the `binding_source` tag must be placed on a **top-level** field o
 
 - **Partial Lists**: If you omit sources from the tag (e.g., `binding_source:"query"`), the omitted sources (body, header, etc.) will **not** be bound at all.
 - **Unrecognized Sources**: If an invalid source name is provided in the tag (e.g., `binding_source:"invalid"`), Fiber will return an error during binding.
+
 :::
 
 ### Body
