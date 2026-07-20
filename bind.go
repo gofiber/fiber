@@ -444,7 +444,7 @@ type cachedPrecedence struct {
 	sources []bindSource
 }
 
-var bindingPrecedenceCache sync.Map // map[reflect.Type][]bindSource
+var bindingPrecedenceCache sync.Map // map[reflect.Type]cachedPrecedence
 
 func getBindingPrecedence(t reflect.Type) ([]bindSource, error) {
 	if cached, ok := bindingPrecedenceCache.Load(t); ok {
@@ -466,6 +466,9 @@ func getBindingPrecedence(t reflect.Type) ([]bindSource, error) {
 			parts := strings.SplitSeq(tag, ",")
 			for p := range parts {
 				sourceName := strings.TrimSpace(p)
+				if sourceName == "" {
+					continue
+				}
 				var source bindSource
 				switch sourceName {
 				case "uri":
@@ -509,6 +512,9 @@ func (b *Bind) All(out any) error {
 	sources := make([]func(any) error, 0, 5)
 	customPrecedence, err := getBindingPrecedence(outElem.Type())
 	if err != nil {
+		// Note: A malformed binding_source tag is a programmer error, not a client error.
+		// Returning the raw error here bypasses b.returnErr, intentionally resulting in a 500
+		// rather than a 400 even in auto-handling mode.
 		return err
 	}
 

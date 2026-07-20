@@ -2921,7 +2921,7 @@ func Test_Bind_All_CustomPrecedence(t *testing.T) {
 		Name string `binding_source:"query,header,cookie,body,uri" query:"name" header:"x-name" cookie:"c-name" json:"name" uri:"name"`
 	}
 
-	ctx := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx)
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck,forcetypeassert // not needed
 	defer app.ReleaseCtx(ctx)
 
 	// Set data in query, header, cookie, body, and uri.
@@ -2939,7 +2939,7 @@ func Test_Bind_All_CustomPrecedence(t *testing.T) {
 	require.Equal(t, "from_query", req.Name)
 
 	// Now try without query. Header should win.
-	ctx2 := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx)
+	ctx2 := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck,forcetypeassert // not needed
 	defer app.ReleaseCtx(ctx2)
 	ctx2.Request().Header.Set("x-name", "from_header")
 	ctx2.Request().Header.SetCookie("c-name", "from_cookie")
@@ -2953,7 +2953,7 @@ func Test_Bind_All_CustomPrecedence(t *testing.T) {
 	require.Equal(t, "from_header", req2.Name)
 
 	// Now try without header. Cookie should win.
-	ctx3 := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx)
+	ctx3 := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck,forcetypeassert // not needed
 	defer app.ReleaseCtx(ctx3)
 	ctx3.Request().Header.SetCookie("c-name", "from_cookie")
 	ctx3.Request().Header.SetContentType(MIMEApplicationJSON)
@@ -2966,7 +2966,7 @@ func Test_Bind_All_CustomPrecedence(t *testing.T) {
 	require.Equal(t, "from_cookie", req3.Name)
 
 	// Now try without cookie. Body should win.
-	ctx4 := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx)
+	ctx4 := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck,forcetypeassert // not needed
 	defer app.ReleaseCtx(ctx4)
 	ctx4.Request().Header.SetContentType(MIMEApplicationJSON)
 	ctx4.Request().SetBody([]byte(`{"name":"from_body"}`))
@@ -2978,7 +2978,7 @@ func Test_Bind_All_CustomPrecedence(t *testing.T) {
 	require.Equal(t, "from_body", req4.Name)
 
 	// Now try without body. URI should win.
-	ctx5 := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx)
+	ctx5 := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck,forcetypeassert // not needed
 	defer app.ReleaseCtx(ctx5)
 	ctx5.route = &Route{Params: []string{"name"}}
 	ctx5.values = [maxParams]string{"from_uri"}
@@ -3003,8 +3003,7 @@ func Test_Bind_All_CustomPrecedence_InvalidToken(t *testing.T) {
 
 	req := new(InvalidPrecedenceReq)
 	err := ctx.Bind().All(req)
-	require.Error(t, err)
-	require.Equal(t, "unknown binding_source \"invalid\"", err.Error())
+	require.EqualError(t, err, `unknown binding_source "invalid"`)
 }
 
 // go test -run Test_Bind_All_CustomPrecedence_OmittedSources
@@ -3076,19 +3075,18 @@ func Test_Bind_All_CustomPrecedence_MultipleTags(t *testing.T) {
 
 	req := new(MultipleTagsReq)
 	err := ctx.Bind().All(req)
-	require.Error(t, err)
-	require.Equal(t, "multiple binding_source tags found on struct MultipleTagsReq", err.Error())
+	require.EqualError(t, err, "multiple binding_source tags found on struct MultipleTagsReq")
 }
 
 // go test -v -run=^$ -bench=BenchmarkBind_All_CustomPrecedence -benchmem -count=4
 func BenchmarkBind_All_CustomPrecedence(b *testing.B) {
 	type User struct {
 		BindingSource struct{} `binding_source:"query,header,cookie,body,uri"`
-		SessionID string `json:"session_id" cookie:"session_id"`
-		Name      string `query:"name" json:"name" form:"name"`
-		Email     string `json:"email" form:"email"`
-		Role      string `header:"X-User-Role"`
-		ID        int    `uri:"id" query:"id" json:"id" form:"id"`
+		SessionID     string   `json:"session_id" cookie:"session_id"`
+		Name          string   `query:"name" json:"name" form:"name"`
+		Email         string   `json:"email" form:"email"`
+		Role          string   `header:"X-User-Role"`
+		ID            int      `uri:"id" query:"id" json:"id" form:"id"`
 	}
 
 	app := New()
