@@ -4,8 +4,8 @@ github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/fxamacker/cbor/v2 v2.9.2 h1:X4Ksno9+x3cz0TZv69ec1hxP/+tymuR8PXQJyDwfh78=
 github.com/fxamacker/cbor/v2 v2.9.2/go.mod h1:vM4b+DJCtHn+zz7h3FFp/hDAI9WNWCsZj23V5ytsSxQ=
-github.com/gofiber/schema v1.8.2 h1:wq+LO2xEGlsqma/8Akp9PUebQ6vcsYmF0xYQ4F2ijvU=
-github.com/gofiber/schema v1.8.2/go.mod h1:iyAMJztdyky7Pk2U7bwUP3EHjzMqUNjZ/hglE0nYO/g=
+github.com/gofiber/schema v1.8.3 h1:06ZedxIYjngzc0095PYy7uWnFnbRflWFpikvZH61fDc=
+github.com/gofiber/schema v1.8.3/go.mod h1:jWnnZdhcW1mHyV+VnfRxKJDPNcepJsTZ9RIWxrr32Ng=
 github.com/gofiber/utils/v2 v2.2.0 h1:YSSmCzQponq/f9uSOg2HtXC5qK1Dmor0o6DqaQVz8GE=
 github.com/gofiber/utils/v2 v2.2.0/go.mod h1:Ieopk6sQh7rbhQ12aBNCJtJuG0gxAg0nz63sFCrrOmE=
 github.com/google/uuid v1.6.0 h1:NIvaJDMOsjHA8n1jAhLSgzrAzy1Hgr+hNrb57e+94F0=
