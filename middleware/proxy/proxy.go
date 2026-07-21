@@ -599,8 +599,18 @@ type urlRoundrobin struct {
 }
 
 func (r *urlRoundrobin) get() *url.URL {
-	index := r.next.Add(1) - 1
-	return r.pool[index%uint64(len(r.pool))]
+	poolSize := uint64(len(r.pool))
+	for {
+		next := r.next.Load()
+		index := next % poolSize
+		following := index + 1
+		if following == poolSize {
+			following = 0
+		}
+		if r.next.CompareAndSwap(next, following) {
+			return r.pool[index]
+		}
+	}
 }
 
 // BalancerForward Forward performs the given http request with round robin algorithm to server and fills the given http response.
