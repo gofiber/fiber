@@ -748,7 +748,12 @@ func getOffer(header []byte, isAccepted func(spec, offer string, specParams head
 			// Optimized quality parsing
 			qIndex := i + 3
 			if bytes.HasPrefix(accept[i:], semicolonQEquals) && bytes.IndexByte(accept[qIndex:], ';') == -1 {
-				if q, err := fasthttp.ParseUfloat(accept[qIndex:]); err == nil {
+				// A list element may be followed by optional whitespace before
+				// the comma (RFC 9110 §5.6.1.2), and forEachMediaRange only
+				// trims the leading side. Trim the trailing side here so the
+				// weight still parses; otherwise the error below is swallowed
+				// and an explicit q=0 rejection silently becomes q=1.
+				if q, err := fasthttp.ParseUfloat(utils.TrimSpace(accept[qIndex:])); err == nil {
 					quality = q
 				}
 			} else {
