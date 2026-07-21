@@ -9,6 +9,8 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -836,15 +838,43 @@ func Test_Security_BalancerForward_InvalidUpstreamPanicsAtConstruction(t *testin
 	})
 }
 
-// Test_Security_RoundRobin_WrapsAround covers the modulo wrap-around in
-// urlRoundrobin.get when current >= len(pool).
 func Test_Security_RoundRobin_WrapsAround(t *testing.T) {
 	t.Parallel()
 	a := &url.URL{Scheme: "http", Host: "a"}
 	b := &url.URL{Scheme: "http", Host: "b"}
-	r := &urlRoundrobin{pool: []*url.URL{a, b}, current: 5}
+	r := &urlRoundrobin{pool: []*url.URL{a, b}}
+	r.next.Store(5)
 	got := r.get()
 	require.Same(t, b, got, "5 %% 2 = 1 should select pool[1]")
+}
+
+func Test_Security_RoundRobin_ConcurrentSelection(t *testing.T) {
+	t.Parallel()
+	pool := []*url.URL{
+		{Scheme: "http", Host: "a"},
+		{Scheme: "http", Host: "b"},
+		{Scheme: "http", Host: "c"},
+	}
+	r := &urlRoundrobin{pool: pool}
+
+	var counts [3]atomic.Int32
+	var wg sync.WaitGroup
+	for range 300 {
+		wg.Go(func() {
+			selected := r.get()
+			for i, candidate := range pool {
+				if selected == candidate {
+					counts[i].Add(1)
+					return
+				}
+			}
+		})
+	}
+	wg.Wait()
+
+	for i := range counts {
+		require.Equal(t, int32(100), counts[i].Load())
+	}
 }
 
 // Test_Security_Balancer_PanicsOnInvalidUpstream covers the panic

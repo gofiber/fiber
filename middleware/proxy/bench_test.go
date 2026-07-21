@@ -63,6 +63,20 @@ func BenchmarkSchemeAllowed_EmptyAllowlist(b *testing.B) {
 	}
 }
 
+func BenchmarkURLRoundrobinGet(b *testing.B) {
+	r := &urlRoundrobin{pool: []*url.URL{
+		{Scheme: schemeHTTP, Host: "a.example"},
+		{Scheme: schemeHTTP, Host: "b.example"},
+		{Scheme: schemeHTTP, Host: "c.example"},
+	}}
+	b.ReportAllocs()
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			_ = r.get()
+		}
+	})
+}
+
 func BenchmarkValidateUpstream_IPLiteral(b *testing.B) {
 	policy := DefaultSecurityPolicy()
 	const addr = "http://203.0.113.5:8080/api/v1/widgets"
