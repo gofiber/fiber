@@ -601,9 +601,9 @@ func newGuardedClientDialerWithTimeout(orig fasthttp.DialFuncWithTimeout, dialDu
 // isBlockedIP reports whether ip falls inside a range that proxy
 // upstreams must not reach by default. Loopback, unspecified, RFC 1918
 // private, link-local (including the 169.254.169.254 cloud-metadata
-// address), multicast, and RFC 6598 CGNAT ranges are blocked. IPv4-compatible
-// and NAT64 IPv6 wrappers are unwrapped so a blocked IPv4 cannot be smuggled
-// past as an IPv6 literal.
+// address), multicast, and RFC 6598 CGNAT ranges are blocked. IPv4-compatible,
+// NAT64, 6to4, and Teredo IPv6 wrappers are unwrapped so a blocked IPv4 cannot
+// be smuggled past as an IPv6 literal.
 func isBlockedIP(ip net.IP) bool {
 	if ip == nil {
 		return true
@@ -616,20 +616,27 @@ func isBlockedIP(ip net.IP) bool {
 	if v4 := ip.To4(); v4 != nil && v4[0] == 100 && v4[1] >= 64 && v4[1] <= 127 {
 		return true
 	}
-	// Look through IPv4-compatible (::a.b.c.d) and NAT64 (64:ff9b::a.b.c.d)
-	// IPv6 wrappers to the embedded IPv4 and apply the same blocklist. Some
-	// stacks route these to the embedded address, so a private target could
-	// otherwise be reached via such a literal (the IPv4-mapped ::ffff:a.b.c.d
-	// form is already handled above because net.IP.To4 exposes it).
+	// Look through IPv4-compatible (::a.b.c.d), NAT64 (64:ff9b::a.b.c.d and
+	// the 64:ff9b:1::/48 local-use prefix), 6to4 (2002::/16), and Teredo
+	// (2001:0000::/32) IPv6 wrappers to the embedded IPv4 and apply the same
+	// blocklist. Some stacks route these to the embedded address, so a private
+	// target could otherwise be reached via such a literal (the IPv4-mapped
+	// ::ffff:a.b.c.d form is already handled above because net.IP.To4 exposes
+	// it).
 	if embedded := embeddedIPv4(ip); embedded != nil && isBlockedIP(embedded) {
 		return true
 	}
 	return false
 }
 
-// embeddedIPv4 returns the IPv4 address embedded in an IPv4-compatible IPv6
-// address (::a.b.c.d, RFC 4291) or a well-known-prefix NAT64 address
-// (64:ff9b::a.b.c.d, RFC 6052), or nil for anything else. The IPv4-mapped
+// embeddedIPv4 returns the IPv4 address embedded in an IPv6 transition
+// address, or nil for anything else. Recognized forms are the IPv4-compatible
+// address (::a.b.c.d, RFC 4291), the NAT64 well-known prefix
+// (64:ff9b::a.b.c.d, RFC 6052) and its local-use counterpart (64:ff9b:1::/48,
+// RFC 8215), 6to4 (2002::/16, RFC 3056), and Teredo (2001:0000::/32,
+// RFC 4380). Each embeds an IPv4 address inside a globally-routable IPv6
+// literal, so unwrapping them lets isBlockedIP apply the IPv4 blocklist and
+// stops a private target from being smuggled past the guard. The IPv4-mapped
 // form (::ffff:a.b.c.d) is deliberately excluded here: net.IP.To4 already
 // surfaces its IPv4, so isBlockedIP checks it directly.
 func embeddedIPv4(ip net.IP) net.IP {
@@ -637,10 +644,25 @@ func embeddedIPv4(ip net.IP) net.IP {
 	if ip16 == nil || ip.To4() != nil {
 		return nil
 	}
-	// NAT64 well-known prefix 64:ff9b::/96.
+	// NAT64 well-known prefix 64:ff9b::/96 (RFC 6052).
 	if ip16[0] == 0x00 && ip16[1] == 0x64 && ip16[2] == 0xff && ip16[3] == 0x9b &&
 		allZero(ip16[4:12]) {
 		return net.IPv4(ip16[12], ip16[13], ip16[14], ip16[15])
+	}
+	// NAT64 local-use prefix 64:ff9b:1::/48 (RFC 8215): the trailing 32 bits
+	// carry the embedded IPv4 address.
+	if ip16[0] == 0x00 && ip16[1] == 0x64 && ip16[2] == 0xff && ip16[3] == 0x9b &&
+		ip16[4] == 0x00 && ip16[5] == 0x01 {
+		return net.IPv4(ip16[12], ip16[13], ip16[14], ip16[15])
+	}
+	// 6to4 2002::/16 (RFC 3056): the IPv4 gateway sits in bytes [2:6].
+	if ip16[0] == 0x20 && ip16[1] == 0x02 {
+		return net.IPv4(ip16[2], ip16[3], ip16[4], ip16[5])
+	}
+	// Teredo 2001:0000::/32 (RFC 4380): the client IPv4 is stored in the
+	// trailing 32 bits, obfuscated by a bitwise NOT.
+	if ip16[0] == 0x20 && ip16[1] == 0x01 && ip16[2] == 0x00 && ip16[3] == 0x00 {
+		return net.IPv4(ip16[12]^0xff, ip16[13]^0xff, ip16[14]^0xff, ip16[15]^0xff)
 	}
 	// IPv4-compatible ::a.b.c.d (first 12 bytes zero). :: and ::1 have already
 	// been classified above, so treat any remaining all-zero-prefix address as

@@ -47,10 +47,19 @@ func Test_Security_IsBlockedIP(t *testing.T) {
 		"64:ff9b::7f00:1":      true, // NAT64 127.0.0.1
 		"64:ff9b::a00:1":       true, // NAT64 10.0.0.1
 		"64:ff9b::a9fe:a9fe":   true, // NAT64 169.254.169.254 (metadata)
+		"64:ff9b:1::a9fe:a9fe": true, // NAT64 local-use 169.254.169.254 (metadata)
+		"64:ff9b:1::a00:1":     true, // NAT64 local-use 10.0.0.1
+		"2002:a9fe:a9fe::":     true, // 6to4 169.254.169.254 (metadata)
+		"2002:a00:1::":         true, // 6to4 10.0.0.1
+		"2002:7f00:1::":        true, // 6to4 127.0.0.1
+		"2001::5601:5601":      true, // Teredo 169.254.169.254 (metadata, client bits inverted a9fe:a9fe)
+		"2001::f5ff:fffe":      true, // Teredo 10.0.0.1 (client bits inverted 0a00:0001)
 		"8.8.8.8":              false,
 		"1.1.1.1":              false,
 		"93.184.216.34":        false, // example.com
 		"64:ff9b::808:808":     false, // NAT64 8.8.8.8 (public → allowed)
+		"64:ff9b:1::808:808":   false, // NAT64 local-use 8.8.8.8 (public → allowed)
+		"2002:808:808::":       false, // 6to4 8.8.8.8 (public → allowed)
 		"2606:4700:4700::1111": false, // public IPv6 (Cloudflare)
 	}
 	for raw, blocked := range cases {
