@@ -31,36 +31,41 @@ func Test_Security_IsBlockedIP(t *testing.T) {
 	t.Parallel()
 
 	cases := map[string]bool{
-		"127.0.0.1":            true,
-		"::1":                  true,
-		"0.0.0.0":              true,
-		"10.0.0.1":             true,
-		"172.16.0.1":           true,
-		"192.168.1.1":          true,
-		"169.254.169.254":      true, // AWS metadata
-		"100.64.0.1":           true, // CGNAT
-		"224.0.0.1":            true, // multicast
-		"::ffff:127.0.0.1":     true, // IPv4-mapped loopback
-		"::ffff:10.0.0.1":      true, // IPv4-mapped private
-		"::127.0.0.1":          true, // IPv4-compatible loopback
-		"::10.0.0.1":           true, // IPv4-compatible private
-		"64:ff9b::7f00:1":      true, // NAT64 127.0.0.1
-		"64:ff9b::a00:1":       true, // NAT64 10.0.0.1
-		"64:ff9b::a9fe:a9fe":   true, // NAT64 169.254.169.254 (metadata)
-		"64:ff9b:1::a9fe:a9fe": true, // NAT64 local-use 169.254.169.254 (metadata)
-		"64:ff9b:1::a00:1":     true, // NAT64 local-use 10.0.0.1
-		"2002:a9fe:a9fe::":     true, // 6to4 169.254.169.254 (metadata)
-		"2002:a00:1::":         true, // 6to4 10.0.0.1
-		"2002:7f00:1::":        true, // 6to4 127.0.0.1
-		"2001::5601:5601":      true, // Teredo 169.254.169.254 (metadata, client bits inverted a9fe:a9fe)
-		"2001::f5ff:fffe":      true, // Teredo 10.0.0.1 (client bits inverted 0a00:0001)
-		"8.8.8.8":              false,
-		"1.1.1.1":              false,
-		"93.184.216.34":        false, // example.com
-		"64:ff9b::808:808":     false, // NAT64 8.8.8.8 (public → allowed)
-		"64:ff9b:1::808:808":   false, // NAT64 local-use 8.8.8.8 (public → allowed)
-		"2002:808:808::":       false, // 6to4 8.8.8.8 (public → allowed)
-		"2606:4700:4700::1111": false, // public IPv6 (Cloudflare)
+		"127.0.0.1":                true,
+		"::1":                      true,
+		"0.0.0.0":                  true,
+		"10.0.0.1":                 true,
+		"172.16.0.1":               true,
+		"192.168.1.1":              true,
+		"169.254.169.254":          true,  // AWS metadata
+		"100.64.0.1":               true,  // CGNAT
+		"224.0.0.1":                true,  // multicast
+		"::ffff:127.0.0.1":         true,  // IPv4-mapped loopback
+		"::ffff:10.0.0.1":          true,  // IPv4-mapped private
+		"::127.0.0.1":              true,  // IPv4-compatible loopback
+		"::10.0.0.1":               true,  // IPv4-compatible private
+		"64:ff9b::7f00:1":          true,  // NAT64 WKP 127.0.0.1
+		"64:ff9b::a00:1":           true,  // NAT64 WKP 10.0.0.1
+		"64:ff9b::a9fe:a9fe":       true,  // NAT64 WKP 169.254.169.254 (metadata)
+		"64:ff9b:1::a9fe:a9fe":     true,  // NAT64 local-use prefix (blocked wholesale, RFC 8215)
+		"64:ff9b:1::a00:1":         true,  // NAT64 local-use prefix (blocked wholesale)
+		"64:ff9b:1::808:808":       true,  // NAT64 local-use prefix (blocked wholesale even for public embed)
+		"2002:a9fe:a9fe::":         true,  // 6to4 (blocked wholesale, RFC 3056/7526)
+		"2002:a00:1::":             true,  // 6to4 (blocked wholesale)
+		"2002:7f00:1::":            true,  // 6to4 (blocked wholesale)
+		"2002:808:808::":           true,  // 6to4 (blocked wholesale even for public embed)
+		"2001::5601:5601":          true,  // Teredo (blocked wholesale, client field)
+		"2001::f5ff:fffe":          true,  // Teredo (blocked wholesale)
+		"2001:0:a00:1::":           true,  // Teredo (blocked wholesale, private server field bytes [4:8])
+		"2001::808:808":            true,  // Teredo (blocked wholesale even for public embed)
+		"2001:db8::5efe:a9fe:a9fe": true,  // ISATAP 169.254.169.254 (metadata)
+		"2001:db8::200:5efe:a00:1": true,  // ISATAP 10.0.0.1 (global-scope u/g bit)
+		"2001:db8::5efe:808:808":   false, // ISATAP 8.8.8.8 (public → allowed)
+		"8.8.8.8":                  false,
+		"1.1.1.1":                  false,
+		"93.184.216.34":            false, // example.com
+		"64:ff9b::808:808":         false, // NAT64 WKP 8.8.8.8 (public → allowed)
+		"2606:4700:4700::1111":     false, // public IPv6 (Cloudflare)
 	}
 	for raw, blocked := range cases {
 		t.Run(raw, func(t *testing.T) {
