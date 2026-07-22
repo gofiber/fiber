@@ -61,6 +61,10 @@ func Test_Security_IsBlockedIP(t *testing.T) {
 		"2001:db8::5efe:a9fe:a9fe": true,  // ISATAP 169.254.169.254 (metadata)
 		"2001:db8::200:5efe:a00:1": true,  // ISATAP 10.0.0.1 (global-scope u/g bit)
 		"2001:db8::5efe:808:808":   false, // ISATAP 8.8.8.8 (public → allowed)
+		"::ffff:0:7f00:1":          true,  // SIIT IPv4-translated 127.0.0.1
+		"::ffff:0:a00:1":           true,  // SIIT IPv4-translated 10.0.0.1
+		"::ffff:0:a9fe:a9fe":       true,  // SIIT IPv4-translated 169.254.169.254 (metadata)
+		"::ffff:0:808:808":         false, // SIIT IPv4-translated 8.8.8.8 (public → allowed)
 		"8.8.8.8":                  false,
 		"1.1.1.1":                  false,
 		"93.184.216.34":            false, // example.com

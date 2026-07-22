@@ -682,13 +682,15 @@ func isBlockedIPv6TransitionRange(ip net.IP) bool {
 //   - ISATAP (RFC 5214) — interface identifier 00-00-5E-FE or 02-00-5E-FE
 //     followed by the embedded IPv4 in the trailing 32 bits. The prefix is an
 //     ordinary global one, so there is no dedicated range to block wholesale.
+//   - SIIT IPv4-translated ::ffff:0:0/96 (RFC 2765) — 0xffff marker in bytes
+//     [8:10], zero in [10:12], embedded IPv4 in the trailing 32 bits.
 //   - IPv4-compatible ::a.b.c.d (RFC 4291) — trailing 32 bits.
 //
 // Deprecated tunneling / local-use ranges with operator-dependent embedding
 // offsets (6to4, Teredo, NAT64 local-use) are intentionally NOT unwrapped here;
 // isBlockedIPv6TransitionRange blocks them wholesale instead. The IPv4-mapped
-// form (::ffff:a.b.c.d) is also excluded: net.IP.To4 already surfaces its
-// IPv4, so isBlockedIP checks it directly.
+// form (::ffff:a.b.c.d, 0xffff marker in bytes [10:12]) is also excluded:
+// net.IP.To4 already surfaces its IPv4, so isBlockedIP checks it directly.
 func embeddedIPv4(ip net.IP) net.IP {
 	ip16 := ip.To16()
 	if ip16 == nil || ip.To4() != nil {
@@ -704,6 +706,15 @@ func embeddedIPv4(ip net.IP) net.IP {
 	// universal/local bit in ip16[8]) precedes the embedded IPv4.
 	if ip16[9] == 0x00 && ip16[10] == 0x5e && ip16[11] == 0xfe &&
 		(ip16[8] == 0x00 || ip16[8] == 0x02) {
+		return net.IPv4(ip16[12], ip16[13], ip16[14], ip16[15])
+	}
+	// SIIT IPv4-translated ::ffff:0:a.b.c.d (RFC 2765, prefix ::ffff:0:0/96):
+	// the 0xffff marker sits in bytes [8:10] with [10:12] zero, and the
+	// embedded IPv4 is the trailing 32 bits. This is distinct from the
+	// IPv4-mapped form (::ffff:a.b.c.d, marker in bytes [10:12]) that
+	// net.IP.To4 already exposes, so it is unwrapped here.
+	if allZero(ip16[:8]) && ip16[8] == 0xff && ip16[9] == 0xff &&
+		ip16[10] == 0x00 && ip16[11] == 0x00 {
 		return net.IPv4(ip16[12], ip16[13], ip16[14], ip16[15])
 	}
 	// IPv4-compatible ::a.b.c.d (first 12 bytes zero). :: and ::1 have already
