@@ -12,6 +12,8 @@ import (
 
 // sanitizeLog replaces ASCII control bytes (except tab) with spaces to prevent
 // log injection via user-controlled values such as path, headers, or body.
+// Tabs (0x09) are preserved to match the existing writeSanitized convention
+// in log/context.go; structured JSON consumers should apply their own escaping.
 func sanitizeLog(s string) string {
 	for i := 0; i < len(s); i++ {
 		b := s[i]
@@ -183,7 +185,7 @@ func createTagMap(cfg *Config) map[string]LogFunc {
 			return output.WriteString(sanitizeLog(strings.Join(reqHeaders, "&")))
 		},
 		TagQueryStringParams: func(output Buffer, c fiber.Ctx, _ *Data, _ string) (int, error) {
-			return output.WriteString(sanitizeLog(c.Request().URI().QueryArgs().String()))
+			return output.Write(sanitizeLogBytes(c.Request().URI().QueryString()))
 		},
 
 		TagBlack: func(output Buffer, c fiber.Ctx, _ *Data, _ string) (int, error) {
