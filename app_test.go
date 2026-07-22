@@ -1982,9 +1982,22 @@ func Benchmark_NewError_Parallel(b *testing.B) {
 // go test -run Test_NewError
 func Test_NewError(t *testing.T) {
 	t.Parallel()
-	e := NewError(StatusForbidden, "permission denied")
-	require.Equal(t, StatusForbidden, e.Code)
-	require.Equal(t, "permission denied", e.Message)
+
+	t.Run("custom message", func(t *testing.T) {
+		t.Parallel()
+
+		e := NewError(StatusForbidden, "permission denied")
+		require.Equal(t, StatusForbidden, e.Code)
+		require.Equal(t, "permission denied", e.Message)
+	})
+
+	t.Run("status message", func(t *testing.T) {
+		t.Parallel()
+
+		e := NewError(StatusForbidden)
+		require.Equal(t, StatusForbidden, e.Code)
+		require.Equal(t, "Forbidden", e.Message)
+	})
 }
 
 // go test -run Test_NewError_Format
