@@ -4510,7 +4510,12 @@ func Test_Ctx_Context(t *testing.T) {
 	t.Run("Nil_Context", func(t *testing.T) {
 		t.Parallel()
 		ctx := c.Context()
-		require.Equal(t, ctx, context.Background())
+
+		require.NotNil(t, ctx)
+		require.NoError(t, ctx.Err())
+
+		_, hasDeadline := ctx.Deadline()
+		require.False(t, hasDeadline)
 	})
 
 	t.Run("ValueContext", func(t *testing.T) {
@@ -10481,4 +10486,117 @@ func Benchmark_Ctx_OverrideParam(b *testing.B) {
 	for b.Loop() {
 		c.OverrideParam("name", "changed")
 	}
+}
+
+// go test -v -run=Test_Ctx_Context_Lazy_Initialization_Suite
+func Test_Ctx_Context_Lazy_Initialization_Suite(t *testing.T) {
+	app := New()
+
+	// Scenario with fake network connection
+	t.Run("Lazy_Initialization_With_Conn", func(t *testing.T) {
+		fctx := &fasthttp.RequestCtx{}
+		remoteAddr := &net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 8080}
+		fctx.Init(&fasthttp.Request{}, remoteAddr, nil)
+
+		ctx := app.AcquireCtx(fctx)
+		c, ok := ctx.(*DefaultCtx)
+		if !ok {
+			t.Fatal("AcquireCtx did not return *DefaultCtx")
+		}
+
+		if c.cancelFunc == nil {
+			t.Fatal("expected cancelFunc to be initialized")
+		}
+
+		goCtx := c.Context()
+		if goCtx == nil {
+			t.Fatal("expected Go context to be returned")
+		}
+		if c.cancelFunc != nil {
+			t.Error("expected cancelFunc to be nil after lazy initialization")
+		}
+
+		goCtx2 := c.Context()
+		if goCtx2 != goCtx {
+			t.Error("expected the same context instance on sequential calls")
+		}
+
+		app.ReleaseCtx(c)
+	})
+	// Scenario without fake network connection
+	t.Run("Lazy_Initialization_Without_Conn", func(t *testing.T) {
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+		c, ok := ctx.(*DefaultCtx)
+		if !ok {
+			t.Fatal("AcquireCtx did not return *DefaultCtx")
+		}
+
+		if c.cancelFunc == nil {
+			t.Fatal("expected cancelFunc to be initialized even without connection")
+		}
+
+		_ = c.Context()
+
+		if c.cancelFunc == nil {
+			t.Error("expected cancelFunc to remain non-nil when c.fasthttp.Conn() is nil")
+		}
+
+		app.ReleaseCtx(c)
+	})
+
+	// Scenario without .Context()
+	t.Run("Release_Without_Context_Access", func(t *testing.T) {
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+		c, ok := ctx.(*DefaultCtx)
+		if !ok {
+			t.Fatal("AcquireCtx did not return *DefaultCtx")
+		}
+
+		if c.cancelFunc == nil {
+			t.Fatal("expected cancelFunc to be initialized")
+		}
+
+		app.ReleaseCtx(c)
+
+		if c.cancelFunc != nil {
+			t.Error("expected cancelFunc to be cleared by release()")
+		}
+	})
+}
+
+// go test -v -run=Test_Ctx_Context_Cancel_On_Disconnect
+func Test_Ctx_Context_Cancel_On_Disconnect(t *testing.T) {
+	app := New()
+	fctx := &fasthttp.RequestCtx{}
+	netCtx, cancelNet := context.WithCancel(context.Background())
+
+	ctx := app.AcquireCtx(fctx)
+	c, ok := ctx.(*DefaultCtx)
+	if !ok {
+		t.Fatal("AcquireCtx did not return *DefaultCtx")
+	}
+
+	c.SetContext(netCtx)
+
+	goCtx := c.Context()
+
+	select {
+	case <-goCtx.Done():
+		t.Fatal("context should not be canceled yet")
+	default:
+	}
+
+	// close net connection
+	cancelNet()
+
+	select {
+	case <-goCtx.Done():
+		if !errors.Is(goCtx.Err(), context.Canceled) {
+			t.Errorf("expected context.Canceled, got %v", goCtx.Err())
+		}
+	case <-time.After(200 * time.Millisecond):
+		t.Fatal("expected Go context to be canceled after connection close")
+	}
+
+	app.ReleaseCtx(c)
 }
