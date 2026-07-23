@@ -527,7 +527,10 @@ func (r *DefaultReq) Fresh() bool {
 // requires recipients to accept the obsolete RFC 850 and ANSI C asctime()
 // formats in addition to the preferred IMF-fixdate; utils.ParseHTTPDate
 // covers all three with net/http.ParseTime semantics, taking an
-// allocation-free fast path for canonical IMF-fixdate input.
+// allocation-free fast path for canonical IMF-fixdate input. Unlike
+// net/http.ParseTime it also tolerates surrounding ASCII whitespace —
+// deliberate here, matching RFC 9110 §5.5's exclusion of leading and
+// trailing OWS from field values.
 func parseHTTPDate(date []byte) (time.Time, error) {
 	t, err := utils.ParseHTTPDate(date)
 	if err != nil {

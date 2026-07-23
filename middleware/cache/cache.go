@@ -750,7 +750,10 @@ func New(config ...Config) fiber.Handler {
 				expiration = secondsToDuration(respCacheControl.maxAge)
 				expirationSource = expirationSourceMaxAge
 			} else if expiresBytes := c.Response().Header.Peek(fiber.HeaderExpires); len(expiresBytes) > 0 {
-				expiresAt, err := fasthttp.ParseHTTPDate(expiresBytes)
+				// Same parser as the Date header (utils.go parseHTTPDate) so
+				// both share one acceptance set: IMF-fixdate plus the obsolete
+				// RFC 850 and asctime forms RFC 9110 §5.6.7 requires.
+				expiresAt, err := utils.ParseHTTPDate(expiresBytes)
 				if err != nil {
 					expiration = time.Nanosecond
 					expiresParseError = true

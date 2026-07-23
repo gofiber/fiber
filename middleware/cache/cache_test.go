@@ -2168,6 +2168,40 @@ func Test_CacheExpiresFutureAllowsCaching(t *testing.T) {
 	require.Equal(t, "expires1", string(body))
 }
 
+// Test_CacheExpiresObsoleteFormatAllowsCaching pins the RFC 9110 §5.6.7
+// acceptance set: a future Expires in the obsolete RFC 850 format is a valid
+// HTTP-date and must enable caching rather than hit the parse-error
+// (force-revalidate) path, consistently with how the Date header is parsed.
+func Test_CacheExpiresObsoleteFormatAllowsCaching(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Use(New(Config{
+		StoreResponseHeaders: true,
+	}))
+
+	var count int
+	app.Get("/", func(c fiber.Ctx) error {
+		count++
+		c.Set(fiber.HeaderExpires, time.Now().Add(30*time.Second).UTC().Format("Monday, 02-Jan-06 15:04:05 GMT"))
+		return c.SendString("expires" + strconv.Itoa(count))
+	})
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, cacheMiss, resp.Header.Get("X-Cache"))
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "expires1", string(body))
+
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, cacheHit, resp.Header.Get("X-Cache"))
+	body, err = io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "expires1", string(body))
+}
+
 func Test_CacheExpiresPastPreventsCaching(t *testing.T) {
 	t.Parallel()
 
