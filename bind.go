@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"reflect"
 	"slices"
+	"strings"
 	"sync"
 
 	"github.com/gofiber/fiber/v3/binder"
@@ -428,6 +429,75 @@ func (b *Bind) Body(out any) error {
 	return ErrUnprocessableEntity
 }
 
+type bindSource int
+
+const (
+	sourceURI bindSource = iota
+	sourceBody
+	sourceQuery
+	sourceHeader
+	sourceCookie
+)
+
+type cachedPrecedence struct {
+	err     error
+	sources []bindSource
+}
+
+var bindingPrecedenceCache sync.Map // map[reflect.Type]cachedPrecedence
+
+func getBindingPrecedence(t reflect.Type) ([]bindSource, error) {
+	if cached, ok := bindingPrecedenceCache.Load(t); ok {
+		if cp, ok := cached.(cachedPrecedence); ok {
+			return cp.sources, cp.err
+		}
+	}
+	var precedence []bindSource
+	var tagFound bool
+	for i := range t.NumField() {
+		if tag := t.Field(i).Tag.Get("binding_source"); tag != "" {
+			if tagFound {
+				err := fmt.Errorf("multiple binding_source tags found on struct %s", t.Name())
+				bindingPrecedenceCache.Store(t, cachedPrecedence{err: err, sources: nil})
+				return nil, err
+			}
+			tagFound = true
+
+			parts := strings.SplitSeq(tag, ",")
+			for p := range parts {
+				sourceName := strings.TrimSpace(p)
+				if sourceName == "" {
+					continue
+				}
+				var source bindSource
+				switch sourceName {
+				case "uri":
+					source = sourceURI
+				case "body":
+					source = sourceBody
+				case "query":
+					source = sourceQuery
+				case "header":
+					source = sourceHeader
+				case "cookie":
+					source = sourceCookie
+				default:
+					err := fmt.Errorf("unknown binding_source %q", sourceName)
+					bindingPrecedenceCache.Store(t, cachedPrecedence{err: err, sources: nil})
+					return nil, err
+				}
+
+				// check for duplicates
+				if !slices.Contains(precedence, source) {
+					precedence = append(precedence, source)
+				}
+			}
+		}
+	}
+	bindingPrecedenceCache.Store(t, cachedPrecedence{err: nil, sources: precedence})
+	return precedence, nil
+}
+
 // All binds values from URI params, the request body, the query string,
 // headers, and cookies into the provided struct in precedence order.
 // Returns *BindError on parse failure (manual mode) or *Error with status 400 (auto-handling mode).
@@ -439,18 +509,48 @@ func (b *Bind) All(out any) error {
 
 	outElem := outVal.Elem()
 
-	// Precedence: URL Params -> Body -> Query -> Headers -> Cookies
-	sources := []func(any) error{b.URI}
-
-	// Check if both Body and Content-Type are set
-	if len(b.ctx.Request().Body()) > 0 && len(b.ctx.RequestCtx().Request.Header.ContentType()) > 0 {
-		sources = append(sources, b.Body)
+	sources := make([]func(any) error, 0, 5)
+	customPrecedence, err := getBindingPrecedence(outElem.Type())
+	if err != nil {
+		// Note: A malformed binding_source tag is a programmer error, not a client error.
+		// Returning the raw error here bypasses b.returnErr, intentionally resulting in a 500
+		// rather than a 400 even in auto-handling mode.
+		return err
 	}
-	sources = append(sources, b.Query, b.Header, b.Cookie)
+
+	hasBody := len(b.ctx.Request().Body()) > 0 && len(b.ctx.RequestCtx().Request.Header.ContentType()) > 0
+
+	if len(customPrecedence) > 0 {
+		for _, source := range customPrecedence {
+			switch source {
+			case sourceURI:
+				sources = append(sources, b.URI)
+			case sourceBody:
+				if hasBody {
+					sources = append(sources, b.Body)
+				}
+			case sourceQuery:
+				sources = append(sources, b.Query)
+			case sourceHeader:
+				sources = append(sources, b.Header)
+			case sourceCookie:
+				sources = append(sources, b.Cookie)
+			}
+		}
+	} else {
+		// Precedence: URL Params -> Body -> Query -> Headers -> Cookies
+		sources = append(sources, b.URI)
+
+		// Check if both Body and Content-Type are set
+		if hasBody {
+			sources = append(sources, b.Body)
+		}
+		sources = append(sources, b.Query, b.Header, b.Cookie)
+	}
+
 	prevSkip := b.shouldSkipValidation
 	b.shouldSkipValidation = true
 
-	// TODO: Support custom precedence with an optional binding_source tag
 	// TODO: Create WithOverrideEmptyValues
 	// Bind from each source, but only update unset fields
 	for _, bindFunc := range sources {
