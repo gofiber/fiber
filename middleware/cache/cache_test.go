@@ -60,6 +60,14 @@ type failingCacheStorage struct {
 	mu   sync.RWMutex
 }
 
+type bodySnapshotBlockingStorage struct {
+	*failingCacheStorage
+	started chan struct{}
+	release chan struct{}
+	key     string
+	blocked atomic.Bool
+}
+
 type mutatingStorage struct {
 	data   map[string][]byte
 	mutate func(key string, value []byte) []byte
@@ -69,6 +77,15 @@ func newFailingCacheStorage() *failingCacheStorage {
 	return &failingCacheStorage{
 		data: make(map[string][]byte),
 		errs: make(map[string]error),
+	}
+}
+
+func newBodySnapshotBlockingStorage(key string) *bodySnapshotBlockingStorage {
+	return &bodySnapshotBlockingStorage{
+		failingCacheStorage: newFailingCacheStorage(),
+		key:                 key,
+		started:             make(chan struct{}),
+		release:             make(chan struct{}),
 	}
 }
 
@@ -144,6 +161,18 @@ func (s *failingCacheStorage) GetWithContext(_ context.Context, key string) ([]b
 }
 
 func (s *failingCacheStorage) Get(key string) ([]byte, error) {
+	return s.GetWithContext(context.Background(), key)
+}
+
+func (s *bodySnapshotBlockingStorage) GetWithContext(ctx context.Context, key string) ([]byte, error) {
+	if key == s.key && s.blocked.CompareAndSwap(false, true) {
+		close(s.started)
+		<-s.release
+	}
+	return s.failingCacheStorage.GetWithContext(ctx, key)
+}
+
+func (s *bodySnapshotBlockingStorage) Get(key string) ([]byte, error) {
 	return s.GetWithContext(context.Background(), key)
 }
 
@@ -1809,6 +1838,59 @@ func Test_CacheInvalidation(t *testing.T) {
 	require.NotEqual(t, body, bodyInvalidate)
 }
 
+func Test_CacheInvalidation_StorageRevalidationDeletesPersistedEntry(t *testing.T) {
+	t.Parallel()
+
+	storage := newFailingCacheStorage()
+	var handlerCalls atomic.Uint64
+	app := fiber.New()
+	app.Use(New(Config{
+		CacheInvalidator: func(c fiber.Ctx) bool {
+			return fiber.Query[bool](c, "invalidate")
+		},
+		Expiration: time.Hour,
+		KeyGenerator: func(c fiber.Ctx) string {
+			return c.Path()
+		},
+		Storage: storage,
+	}))
+
+	app.Get("/", func(c fiber.Ctx) error {
+		call := handlerCalls.Add(1)
+		if fiber.Query[bool](c, "invalidate") {
+			c.Set(fiber.HeaderCacheControl, "no-cache")
+			return c.SendString("uncacheable")
+		}
+		c.Set(fiber.HeaderCacheControl, "public, max-age=60, must-revalidate")
+		return c.SendString(fmt.Sprintf("cached-%d", call))
+	})
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, cacheMiss, resp.Header.Get("X-Cache"))
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.NoError(t, resp.Body.Close())
+	require.Equal(t, "cached-1", string(body))
+
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/?invalidate=true", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, cacheUnreachable, resp.Header.Get("X-Cache"))
+	body, err = io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.NoError(t, resp.Body.Close())
+	require.Equal(t, "uncacheable", string(body))
+
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, cacheMiss, resp.Header.Get("X-Cache"))
+	body, err = io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.NoError(t, resp.Body.Close())
+	require.Equal(t, "cached-3", string(body))
+	require.Equal(t, uint64(3), handlerCalls.Load())
+}
+
 func Test_CacheInvalidation_noCacheEntry(t *testing.T) {
 	t.Parallel()
 	t.Run("Cache Invalidator should not be called if no cache entry exist ", func(t *testing.T) {
@@ -2453,6 +2535,55 @@ func Test_CacheOnlyIfCachedStaleNotServed(t *testing.T) {
 	require.Equal(t, fiber.StatusGatewayTimeout, resp.StatusCode)
 	require.Equal(t, cacheUnreachable, resp.Header.Get("X-Cache"))
 	require.Equal(t, 1, count)
+}
+
+func Test_CacheOnlyIfCachedAuthNonShareableEntryDoesNotCallNext(t *testing.T) {
+	t.Parallel()
+
+	clock := newTestClock(time.Now().Truncate(time.Second))
+	storage := newFailingCacheStorage()
+	authHeader := "Bearer token"
+	authHash := sha256.Sum256([]byte(authHeader))
+	cacheKey := "GET|/|auth=" + hex.EncodeToString(authHash[:])
+	entry := &item{
+		body:         []byte("cached"),
+		ctype:        []byte(fiber.MIMETextPlainCharsetUTF8),
+		cacheControl: []byte("max-age=3600"),
+		date:         safeUnixSeconds(clock.Now()),
+		status:       fiber.StatusOK,
+		exp:          safeUnixSeconds(clock.Now().Add(time.Hour)),
+		ttl:          uint64(time.Hour.Seconds()),
+		heapidx:      -1,
+	}
+	rawEntry, err := entry.MarshalMsg(nil)
+	require.NoError(t, err)
+	storage.data[cacheKey] = rawEntry
+	storage.data[cacheKey+"_body"] = []byte("cached")
+
+	app := fiber.New()
+	app.Use(New(Config{
+		Expiration: time.Hour,
+		Storage:    storage,
+		clock:      clock.Now,
+		KeyGenerator: func(c fiber.Ctx) string {
+			return c.Path()
+		},
+	}))
+
+	var count int
+	app.Get("/", func(c fiber.Ctx) error {
+		count++
+		return c.SendString("next")
+	})
+
+	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+	req.Header.Set(fiber.HeaderAuthorization, authHeader)
+	req.Header.Set(fiber.HeaderCacheControl, "only-if-cached")
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusGatewayTimeout, resp.StatusCode)
+	require.Equal(t, cacheUnreachable, resp.Header.Get("X-Cache"))
+	require.Equal(t, 0, count)
 }
 
 func Test_CacheMaxStaleServesStaleResponse(t *testing.T) {
@@ -3453,6 +3584,61 @@ func Test_CachePrivateDirectiveInvalidatesExistingEntry(t *testing.T) {
 	require.Equal(t, "public", string(body))
 }
 
+func Test_CachePrivateEntryReplacementStoresPublicResponse(t *testing.T) {
+	t.Parallel()
+
+	clock := newTestClock(time.Now().Truncate(time.Second))
+	storage := newFailingCacheStorage()
+	cacheKey := "GET|/"
+	privateEntry := &item{
+		body:         []byte("private"),
+		ctype:        []byte(fiber.MIMETextPlainCharsetUTF8),
+		cacheControl: []byte("private, max-age=3600"),
+		date:         safeUnixSeconds(clock.Now()),
+		status:       fiber.StatusOK,
+		exp:          safeUnixSeconds(clock.Now().Add(time.Hour)),
+		ttl:          uint64(time.Hour.Seconds()),
+		private:      true,
+		heapidx:      -1,
+	}
+	rawEntry, err := privateEntry.MarshalMsg(nil)
+	require.NoError(t, err)
+	storage.data[cacheKey] = rawEntry
+	storage.data[cacheKey+"_body"] = []byte("private")
+
+	app := fiber.New()
+	app.Use(New(Config{
+		Expiration: time.Hour,
+		Storage:    storage,
+		clock:      clock.Now,
+		KeyGenerator: func(c fiber.Ctx) string {
+			return c.Path()
+		},
+	}))
+
+	var count int
+	app.Get("/", func(c fiber.Ctx) error {
+		count++
+		c.Set(fiber.HeaderCacheControl, "public, max-age=3600")
+		return c.SendString("public-" + strconv.Itoa(count))
+	})
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, cacheMiss, resp.Header.Get("X-Cache"))
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "public-1", string(body))
+
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, cacheHit, resp.Header.Get("X-Cache"))
+	body, err = io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "public-1", string(body))
+	require.Equal(t, 1, count)
+}
+
 func Test_CacheControlNotOverwritten(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
@@ -4102,6 +4288,321 @@ func Test_Cache_RevalidationWithMaxBytes(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, "cacheable", string(body3), "Old entry should still be cached")
 	})
+}
+
+func Test_Cache_RevalidationUncacheableResponseDeletesStaleEntry(t *testing.T) {
+	t.Parallel()
+
+	storage := newFailingCacheStorage()
+	clock := newTestClock(time.Unix(1_700_000_000, 0).UTC())
+	const cacheKey = "GET|/test|revalidate-no-cache"
+
+	storageHasKey := func(key string) bool {
+		storage.mu.RLock()
+		defer storage.mu.RUnlock()
+		_, ok := storage.data[key]
+		return ok
+	}
+
+	app := fiber.New()
+	app.Use(New(Config{
+		Expiration: 30 * time.Second,
+		KeyGenerator: func(c fiber.Ctx) string {
+			return c.Path() + "|revalidate-no-cache"
+		},
+		MaxBytes: 100,
+		Storage:  storage,
+		clock:    clock.Now,
+	}))
+
+	var count int
+	app.Get("/test", func(c fiber.Ctx) error {
+		count++
+		switch count {
+		case 1:
+			c.Set(fiber.HeaderCacheControl, "public, max-age=1, must-revalidate")
+			return c.SendString("cached-1")
+		case 2:
+			c.Set(fiber.HeaderCacheControl, "no-cache")
+			return c.SendString("uncacheable-2")
+		default:
+			c.Set(fiber.HeaderCacheControl, "public, max-age=60")
+			return c.SendString(fmt.Sprintf("fresh-%d", count))
+		}
+	})
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, cacheMiss, resp.Header.Get("X-Cache"))
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.NoError(t, resp.Body.Close())
+	require.Equal(t, "cached-1", string(body))
+	require.True(t, storageHasKey(cacheKey))
+	require.True(t, storageHasKey(cacheKey+"_body"))
+
+	clock.Add(2 * time.Second)
+
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/test", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, cacheUnreachable, resp.Header.Get("X-Cache"))
+	body, err = io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.NoError(t, resp.Body.Close())
+	require.Equal(t, "uncacheable-2", string(body))
+	require.False(t, storageHasKey(cacheKey))
+	require.False(t, storageHasKey(cacheKey+"_body"))
+
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/test", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, cacheMiss, resp.Header.Get("X-Cache"))
+	body, err = io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.NoError(t, resp.Body.Close())
+	require.Equal(t, "fresh-3", string(body))
+	require.True(t, storageHasKey(cacheKey))
+	require.True(t, storageHasKey(cacheKey+"_body"))
+}
+
+func Test_Cache_ConcurrentUncacheableRevalidationPreservesReplacement(t *testing.T) {
+	t.Parallel()
+
+	storage := newFailingCacheStorage()
+	clock := newTestClock(time.Unix(1_700_000_000, 0).UTC())
+
+	app := fiber.New()
+	app.Use(New(Config{
+		Expiration: time.Minute,
+		KeyGenerator: func(c fiber.Ctx) string {
+			return c.Path() + "|concurrent-revalidate"
+		},
+		MaxBytes: 100,
+		Storage:  storage,
+		clock:    clock.Now,
+	}))
+
+	slowStarted := make(chan struct{})
+	releaseSlow := make(chan struct{})
+	var slowStartedOnce sync.Once
+	var defaultCalls atomic.Uint64
+
+	app.Get("/test", func(c fiber.Ctx) error {
+		switch c.Get("X-Revalidate") {
+		case "slow":
+			slowStartedOnce.Do(func() {
+				close(slowStarted)
+			})
+			<-releaseSlow
+			c.Set(fiber.HeaderCacheControl, "no-cache")
+			return c.SendString("slow-uncacheable")
+		case "fast":
+			c.Set(fiber.HeaderCacheControl, "public, max-age=60")
+			return c.SendString("fresh-replacement")
+		default:
+			call := defaultCalls.Add(1)
+			c.Set(fiber.HeaderCacheControl, "public, max-age=1, must-revalidate")
+			return c.SendString(fmt.Sprintf("cached-%d", call))
+		}
+	})
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, cacheMiss, resp.Header.Get("X-Cache"))
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.NoError(t, resp.Body.Close())
+	require.Equal(t, "cached-1", string(body))
+
+	clock.Add(2 * time.Second)
+
+	slowErr := make(chan error, 1)
+	go func() {
+		req := httptest.NewRequest(fiber.MethodGet, "/test", http.NoBody)
+		req.Header.Set("X-Revalidate", "slow")
+		slowResp, slowTestErr := app.Test(req)
+		if slowTestErr != nil {
+			slowErr <- slowTestErr
+			return
+		}
+		_, readErr := io.ReadAll(slowResp.Body)
+		closeErr := slowResp.Body.Close()
+		slowErr <- errors.Join(readErr, closeErr)
+	}()
+
+	select {
+	case <-slowStarted:
+	case <-time.After(2 * time.Second):
+		t.Fatal("slow revalidation request did not reach handler")
+	}
+
+	fastReq := httptest.NewRequest(fiber.MethodGet, "/test", http.NoBody)
+	fastReq.Header.Set("X-Revalidate", "fast")
+	resp, err = app.Test(fastReq)
+	require.NoError(t, err)
+	require.Equal(t, cacheMiss, resp.Header.Get("X-Cache"))
+	body, err = io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.NoError(t, resp.Body.Close())
+	require.Equal(t, "fresh-replacement", string(body))
+
+	close(releaseSlow)
+	require.NoError(t, <-slowErr)
+
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/test", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, cacheHit, resp.Header.Get("X-Cache"))
+	body, err = io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.NoError(t, resp.Body.Close())
+	require.Equal(t, "fresh-replacement", string(body))
+	require.Equal(t, uint64(1), defaultCalls.Load())
+}
+
+func Test_Cache_ConcurrentUncacheableRevalidationComparesExternalBody(t *testing.T) {
+	t.Parallel()
+
+	const cacheKey = "GET|/test|concurrent-revalidate-body"
+	storage := newBodySnapshotBlockingStorage(cacheKey + "_body")
+	clock := newTestClock(time.Unix(1_700_000_000, 0).UTC())
+
+	app := fiber.New()
+	app.Use(New(Config{
+		Expiration: time.Minute,
+		KeyGenerator: func(c fiber.Ctx) string {
+			return c.Path() + "|concurrent-revalidate-body"
+		},
+		Storage: storage,
+		clock:   clock.Now,
+	}))
+
+	slowStarted := make(chan struct{})
+	releaseSlow := make(chan struct{})
+	var slowStartedOnce sync.Once
+	var defaultCalls atomic.Uint64
+
+	app.Get("/test", func(c fiber.Ctx) error {
+		switch c.Get("X-Revalidate") {
+		case "slow":
+			slowStartedOnce.Do(func() {
+				close(slowStarted)
+			})
+			<-releaseSlow
+			c.Set(fiber.HeaderCacheControl, "no-cache")
+			return c.SendString("slow-uncacheable")
+		case "fast":
+			c.Set(fiber.HeaderCacheControl, "public, max-age=60")
+			return c.SendString("fresh-replacement")
+		default:
+			call := defaultCalls.Add(1)
+			c.Set(fiber.HeaderCacheControl, "public, max-age=60")
+			return c.SendString(fmt.Sprintf("cached-%d", call))
+		}
+	})
+	app.Get("/other", func(c fiber.Ctx) error {
+		c.Set(fiber.HeaderCacheControl, "public, max-age=60")
+		return c.SendString("other")
+	})
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, cacheMiss, resp.Header.Get("X-Cache"))
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.NoError(t, resp.Body.Close())
+	require.Equal(t, "cached-1", string(body))
+
+	slowErr := make(chan error, 1)
+	go func() {
+		req := httptest.NewRequest(fiber.MethodGet, "/test", http.NoBody)
+		req.Header.Set(fiber.HeaderCacheControl, "max-age=0")
+		req.Header.Set("X-Revalidate", "slow")
+		slowResp, slowTestErr := app.Test(req)
+		if slowTestErr != nil {
+			slowErr <- slowTestErr
+			return
+		}
+		_, readErr := io.ReadAll(slowResp.Body)
+		closeErr := slowResp.Body.Close()
+		slowErr <- errors.Join(readErr, closeErr)
+	}()
+
+	select {
+	case <-storage.started:
+	case <-time.After(2 * time.Second):
+		t.Fatal("slow revalidation request did not start body snapshot")
+	}
+
+	otherErr := make(chan error, 1)
+	go func() {
+		otherResp, otherTestErr := app.Test(httptest.NewRequest(fiber.MethodGet, "/other", http.NoBody))
+		if otherTestErr != nil {
+			otherErr <- otherTestErr
+			return
+		}
+		otherBody, readErr := io.ReadAll(otherResp.Body)
+		closeErr := otherResp.Body.Close()
+		if readErr != nil || closeErr != nil {
+			otherErr <- errors.Join(readErr, closeErr)
+			return
+		}
+		if string(otherBody) != "other" {
+			otherErr <- fmt.Errorf("other body = %q, want other", string(otherBody))
+			return
+		}
+		otherErr <- nil
+	}()
+	select {
+	case otherTestErr := <-otherErr:
+		require.NoError(t, otherTestErr)
+	case <-time.After(2 * time.Second):
+		t.Fatal("unrelated cache request blocked behind revalidation body snapshot")
+	}
+
+	fastErr := make(chan error, 1)
+	fastReq := httptest.NewRequest(fiber.MethodGet, "/test", http.NoBody)
+	fastReq.Header.Set(fiber.HeaderCacheControl, "max-age=0")
+	fastReq.Header.Set("X-Revalidate", "fast")
+	go func() {
+		fastResp, fastTestErr := app.Test(fastReq)
+		if fastTestErr != nil {
+			fastErr <- fastTestErr
+			return
+		}
+		fastBody, readErr := io.ReadAll(fastResp.Body)
+		closeErr := fastResp.Body.Close()
+		if readErr != nil || closeErr != nil {
+			fastErr <- errors.Join(readErr, closeErr)
+			return
+		}
+		if fastResp.Header.Get("X-Cache") != cacheMiss {
+			fastErr <- fmt.Errorf("fast X-Cache = %q, want %q", fastResp.Header.Get("X-Cache"), cacheMiss)
+			return
+		}
+		if string(fastBody) != "fresh-replacement" {
+			fastErr <- fmt.Errorf("fast body = %q, want fresh-replacement", string(fastBody))
+			return
+		}
+		fastErr <- nil
+	}()
+
+	close(storage.release)
+	select {
+	case <-slowStarted:
+	case <-time.After(2 * time.Second):
+		t.Fatal("slow revalidation request did not reach handler")
+	}
+	require.NoError(t, <-fastErr)
+	close(releaseSlow)
+	require.NoError(t, <-slowErr)
+
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/test", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, cacheHit, resp.Header.Get("X-Cache"))
+	body, err = io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.NoError(t, resp.Body.Close())
+	require.Equal(t, "fresh-replacement", string(body))
+	require.Equal(t, uint64(1), defaultCalls.Load())
 }
 
 // Test_parseCacheControlDirectives_QuotedStrings tests RFC 9111 Section 5.2 compliance
