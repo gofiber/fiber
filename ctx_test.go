@@ -4348,6 +4348,25 @@ func Test_Ctx_Deadline(t *testing.T) {
 	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
 }
 
+// go test -run Test_Ctx_Deadline_Delegates
+func Test_Ctx_Deadline_Delegates(t *testing.T) {
+	t.Parallel()
+	app := New()
+	want := time.Now().Add(time.Hour)
+	app.Get("/test", func(c Ctx) error {
+		ctx, cancel := context.WithDeadline(context.Background(), want)
+		defer cancel()
+		c.SetContext(ctx)
+		deadline, ok := c.Deadline()
+		require.True(t, ok)
+		require.WithinDuration(t, want, deadline, time.Second)
+		return nil
+	})
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test", http.NoBody))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
+}
+
 // go test -run Test_Ctx_Done
 func Test_Ctx_Done(t *testing.T) {
 	t.Parallel()
@@ -4365,6 +4384,36 @@ func Test_Ctx_Done(t *testing.T) {
 	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
 }
 
+// go test -run Test_Ctx_Done_Delegates
+func Test_Ctx_Done_Delegates(t *testing.T) {
+	t.Parallel()
+	app := New()
+	app.Get("/test", func(c Ctx) error {
+		ctx, cancel := context.WithCancel(context.Background())
+		c.SetContext(ctx)
+
+		done := c.Done()
+		require.NotNil(t, done)
+		select {
+		case <-done:
+			t.Fatal("Done channel closed before cancellation")
+		default:
+		}
+
+		cancel()
+		select {
+		case <-done:
+		case <-time.After(time.Second):
+			t.Fatal("Done channel not closed after cancellation")
+		}
+		require.ErrorIs(t, c.Err(), context.Canceled)
+		return nil
+	})
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test", http.NoBody))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
+}
+
 // go test -run Test_Ctx_Err
 func Test_Ctx_Err(t *testing.T) {
 	t.Parallel()
@@ -4374,6 +4423,23 @@ func Test_Ctx_Err(t *testing.T) {
 	})
 	app.Get("/test", func(c Ctx) error {
 		require.NoError(t, c.Err())
+		return nil
+	})
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test", http.NoBody))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
+}
+
+// go test -run Test_Ctx_Err_Delegates
+func Test_Ctx_Err_Delegates(t *testing.T) {
+	t.Parallel()
+	app := New()
+	app.Get("/test", func(c Ctx) error {
+		ctx, cancel := context.WithCancel(context.Background())
+		c.SetContext(ctx)
+		require.NoError(t, c.Err())
+		cancel()
+		require.ErrorIs(t, c.Err(), context.Canceled)
 		return nil
 	})
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test", http.NoBody))

@@ -86,7 +86,7 @@ app.Get("/", func(c fiber.Ctx) error {
 
 ### context.Context
 
-`Ctx` implements `context.Context`. However due to [current limitations in how fasthttp](https://github.com/valyala/fasthttp/issues/965#issuecomment-777268945) works, `Deadline()`, `Done()` and `Err()` are no-ops. The `fiber.Ctx` instance is reused after the handler returns and must not be used for asynchronous operations once the handler has completed. Call [`Context`](#context) within the handler to obtain a `context.Context` that can be used outside the handler.
+`Ctx` implements `context.Context`. `Deadline()`, `Done()` and `Err()` delegate to the context set via [`SetContext`](#setcontext) (the same context returned by [`Context`](#context)). When no context has been set they fall back to `context.Background()`, so `Done()` returns `nil`, `Err()` returns `nil` and `Deadline()` reports no deadline. This means a cancelable context — such as the one installed by the [timeout middleware](./middleware/timeout.md) — propagates cancellation through `c.Done()`/`c.Err()`. The `fiber.Ctx` instance is reused after the handler returns and must not be used for asynchronous operations once the handler has completed. Call [`Context`](#context) within the handler to obtain a `context.Context` that can be used outside the handler.
 
 ```go title="Signature"
 func (c fiber.Ctx) Deadline() (deadline time.Time, ok bool)
