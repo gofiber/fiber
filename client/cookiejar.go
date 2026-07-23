@@ -491,7 +491,17 @@ func isIPLiteral(host string) bool {
 		host = host[1 : len(host)-1]
 	}
 
-	return net.ParseIP(host) != nil
+	// Equivalent to net.ParseIP(host) != nil: utils.ParseIPv4/ParseIPv6
+	// accept the same strings once zoned addresses (which net.ParseIP
+	// rejects) are screened out, without allocating on either outcome.
+	if strings.IndexByte(host, '%') >= 0 {
+		return false
+	}
+	if _, ok := utils.ParseIPv4(host); ok {
+		return true
+	}
+	_, ok := utils.ParseIPv6(host)
+	return ok
 }
 
 func isPublicSuffixDomain(domain string) bool {
