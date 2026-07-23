@@ -6,8 +6,6 @@ import (
 	"math"
 	"mime/multipart"
 	"net"
-	"net/http"
-	"net/netip"
 	"strings"
 	"time"
 
@@ -527,14 +525,11 @@ func (r *DefaultReq) Fresh() bool {
 
 // parseHTTPDate parses an HTTP-date field value. RFC 9110 Section 5.6.7
 // requires recipients to accept the obsolete RFC 850 and ANSI C asctime()
-// formats in addition to the preferred IMF-fixdate, so after the fast
-// IMF-fixdate path fails, fall back to net/http's ParseTime, which tries all
-// three formats.
+// formats in addition to the preferred IMF-fixdate; utils.ParseHTTPDate
+// covers all three with net/http.ParseTime semantics, taking an
+// allocation-free fast path for canonical IMF-fixdate input.
 func parseHTTPDate(date []byte) (time.Time, error) {
-	if t, err := fasthttp.ParseHTTPDate(date); err == nil {
-		return t, nil
-	}
-	t, err := http.ParseTime(string(date))
+	t, err := utils.ParseHTTPDate(date)
 	if err != nil {
 		// Callers only nil-check the error; skip wrapping to avoid an
 		// allocation for every malformed client-supplied date.
@@ -788,9 +783,13 @@ func (r *DefaultReq) hasTrustedProxyConfig() bool {
 func (r *DefaultReq) isTrustedProxyIP(ipStr string) bool {
 	cfg := r.c.app.config.TrustProxyConfig
 
-	ip, err := netip.ParseAddr(ipStr)
-	if err != nil {
-		return false
+	// utils.ParseIPv4/ParseIPv6 together accept exactly the strings
+	// netip.ParseAddr does, without allocating an error for invalid input.
+	ip, ok := utils.ParseIPv4(ipStr)
+	if !ok {
+		if ip, ok = utils.ParseIPv6(ipStr); !ok {
+			return false
+		}
 	}
 
 	if cfg.Loopback && ip.IsLoopback() {
