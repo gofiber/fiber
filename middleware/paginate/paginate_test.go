@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"testing"
 
 	"github.com/gofiber/fiber/v3"
@@ -229,6 +230,22 @@ func Test_PageInfoNextPageURLWithExistingQueryParams(t *testing.T) {
 	require.Contains(t, result, "filter=active")
 	require.Contains(t, result, "page=3")
 	require.Contains(t, result, "limit=10")
+}
+
+func Test_encodeQueryValues(t *testing.T) {
+	t.Parallel()
+
+	cases := []url.Values{
+		{},
+		{"a": {"1"}},
+		{"filter": {"active"}, "page": {"2"}, "limit": {"10"}},
+		{"q": {"a b+c&d=e", "second value"}, "sp ace": {"100%"}},
+		{"unicode": {"héllo wörld"}, "reserved": {";/?:@&=+$,#[]"}},
+		{"empty": {""}, "multi": {"", "x", ""}},
+	}
+	for _, q := range cases {
+		require.Equal(t, q.Encode(), encodeQueryValues(q))
+	}
 }
 
 func Test_PageInfoPreviousPageURLWithExistingQueryParams(t *testing.T) {

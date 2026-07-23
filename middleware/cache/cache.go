@@ -452,7 +452,7 @@ func New(config ...Config) fiber.Handler {
 					c.Response().Header.SetBytesV(fiber.HeaderETag, e.etag)
 				}
 				clampedDate := clampDateSeconds(e.date, ts)
-				dateValue := fasthttp.AppendHTTPDate(nil, secondsToTime(clampedDate))
+				dateValue := utils.AppendHTTPDate(nil, secondsToTime(clampedDate))
 				c.Response().Header.SetBytesV(fiber.HeaderDate, dateValue)
 				for i := range e.headers {
 					h := e.headers[i]
@@ -715,7 +715,7 @@ func New(config ...Config) fiber.Handler {
 		dateHeader := c.Response().Header.Peek(fiber.HeaderDate)
 		parsedDate, _ := parseHTTPDate(dateHeader)
 		e.date = clampDateSeconds(parsedDate, nowUnix)
-		dateBytes := fasthttp.AppendHTTPDate(nil, secondsToTime(e.date))
+		dateBytes := utils.AppendHTTPDate(nil, secondsToTime(e.date))
 		c.Response().Header.SetBytesV(fiber.HeaderDate, dateBytes)
 
 		// Store all response headers
