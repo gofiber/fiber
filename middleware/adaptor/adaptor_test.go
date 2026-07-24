@@ -1778,3 +1778,59 @@ func TestUnixSocketAdaptor(t *testing.T) {
 		t.Fatal("server shutdown timed out")
 	}
 }
+
+// Test_ResolveRemoteAddr_FastPathEquivalence pins the ip:port fast path to
+// net.ResolveTCPAddr: for every literal form the fast path accepts, both
+// must produce the same address, and inputs the fast path rejects must
+// still resolve identically through the fallback.
+func Test_ResolveRemoteAddr_FastPathEquivalence(t *testing.T) {
+	t.Parallel()
+
+	addrs := []string{
+		"1.2.3.4:6789",
+		"127.0.0.1:80",
+		"255.255.255.255:65535",
+		"[::1]:8080",
+		"[2001:db8::1]:443",
+		"[::ffff:1.2.3.4]:80",
+		"[fe80::1%eth0]:80",
+		"1.2.3.4:0",
+	}
+	for _, addr := range addrs {
+		got, err := resolveRemoteAddr(addr, nil)
+		require.NoError(t, err, "resolveRemoteAddr(%q)", addr)
+		want, err := net.ResolveTCPAddr("tcp", addr)
+		require.NoError(t, err, "ResolveTCPAddr(%q)", addr)
+		gotTCP, ok := got.(*net.TCPAddr)
+		require.True(t, ok, "resolveRemoteAddr(%q) type", addr)
+		require.True(t, want.IP.Equal(gotTCP.IP), "IP for %q: got %v want %v", addr, gotTCP.IP, want.IP)
+		require.Equal(t, want.Port, gotTCP.Port, "port for %q", addr)
+		require.Equal(t, want.Zone, gotTCP.Zone, "zone for %q", addr)
+		require.Equal(t, want.String(), gotTCP.String(), "String() for %q", addr)
+	}
+
+	// Rejected by the fast path, resolved by the fallback: identical results.
+	fallbackAddrs := []string{
+		"localhost:80",  // hostname
+		"1.2.3.4:0080",  // leading-zero port (fast path parses digits only, both accept)
+		"1.2.3.4",       // missing port -> :80 default via fallback
+		"01.2.3.4:80",   // leading-zero octet (rejected by ParseIPv4, accepted by resolver)
+		"1.2.3.4:99999", // port out of range -> error from both? fallback errors
+	}
+	for _, addr := range fallbackAddrs {
+		got, gotErr := resolveRemoteAddr(addr, nil)
+		want, wantErr := net.ResolveTCPAddr("tcp", addr)
+		if addr == "1.2.3.4" {
+			// resolveRemoteAddr appends :80 for missing ports; ResolveTCPAddr errors.
+			require.NoError(t, gotErr)
+			require.Equal(t, "1.2.3.4:80", got.String())
+			continue
+		}
+		if wantErr != nil {
+			require.Error(t, gotErr, "addr %q", addr)
+			continue
+		}
+		require.NoError(t, gotErr, "addr %q", addr)
+		require.Equal(t, want.String(), got.String(), "String() for %q", addr)
+	}
+}

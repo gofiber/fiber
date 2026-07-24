@@ -4,6 +4,10 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+
+	"github.com/valyala/fasthttp"
+
+	"github.com/gofiber/fiber/v3"
 )
 
 // FuzzValidateUpstream stresses the upstream URL parser with adversarial
@@ -131,7 +135,16 @@ func FuzzConnectionListedHeaders(f *testing.F) {
 	for _, s := range seeds {
 		f.Add(s)
 	}
-	f.Fuzz(func(_ *testing.T, v string) {
-		_ = connectionListedHeaders([][]byte{[]byte(v)})
+	f.Fuzz(func(t *testing.T, v string) {
+		// Exercise the parser against a real header so deletions during
+		// iteration are covered too, mirroring production use.
+		var req fasthttp.Request
+		req.Header.Set(fiber.HeaderConnection, v)
+		req.Header.Set("X-Foo", "1")
+		req.Header.Set("X-Bar", "2")
+		delConnectionListedHeaders(&req.Header, req.Header.PeekAll(fiber.HeaderConnection))
+		if t.Failed() {
+			t.Logf("input: %q", v)
+		}
 	})
 }
