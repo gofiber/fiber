@@ -322,6 +322,29 @@ func Test_CookieJar_HostPort(t *testing.T) {
 	require.Equal(t, "fasthttp.com", string(cookies[0].Domain()))
 }
 
+func Test_CookieJar_isIPLiteral(t *testing.T) {
+	t.Parallel()
+
+	// Pinned to net.ParseIP semantics: zoned addresses are rejected.
+	tests := []struct {
+		host string
+		want bool
+	}{
+		{"192.0.2.1", true},
+		{"::1", true},
+		{"[::1]", true},
+		{"::ffff:192.0.2.1", true},
+		{"fe80::1%eth0", false},
+		{"[fe80::1%eth0]", false},
+		{"example.com", false},
+		{"192.0.2.256", false},
+		{"", false},
+	}
+	for _, tt := range tests {
+		require.Equal(t, tt.want, isIPLiteral(tt.host), "isIPLiteral(%q)", tt.host)
+	}
+}
+
 func Test_CookieJar_Domain(t *testing.T) {
 	t.Parallel()
 

@@ -52,11 +52,24 @@ func (*noopConn) SetDeadline(time.Time) error      { return nil }
 func (*noopConn) SetReadDeadline(time.Time) error  { return nil }
 func (*noopConn) SetWriteDeadline(time.Time) error { return nil }
 
+// pooledCtx bundles the RequestCtx with its noopConn so one pool entry
+// serves both and no per-request conn allocation is needed. The conn
+// comes first to keep the struct's trailing pointer span minimal
+// (govet fieldalignment).
+type pooledCtx struct {
+	conn noopConn
+	fctx fasthttp.RequestCtx
+}
+
 var ctxPool = sync.Pool{
 	New: func() any {
-		return new(fasthttp.RequestCtx)
+		return new(pooledCtx)
 	},
 }
+
+// disabledLogger is shared: it is stateless, and reusing one value keeps
+// the logger interface conversion off the per-request path.
+var disabledLogger = &disableLogger{}
 
 // LocalContextKey is the key used to store the user's context.Context in the fasthttp request context.
 // Adapted http.Handler functions can retrieve this context using r.Context().Value(adaptor.LocalContextKey)
@@ -199,9 +212,16 @@ func HTTPMiddleware(mw func(http.Handler) http.Handler) fiber.Handler {
 
 			// Remove all cookies before setting, see https://github.com/valyala/fasthttp/pull/1864
 			c.Request().Header.DelAllCookies()
-			for key, val := range r.Header {
-				for _, v := range val {
-					c.Request().Header.Set(key, v)
+			for key, vals := range r.Header {
+				if len(vals) == 0 {
+					continue
+				}
+				// Set replaces whatever the key held on the fiber request,
+				// then Add appends the remaining values so multi-value
+				// headers survive instead of collapsing to the last value.
+				c.Request().Header.Set(key, vals[0])
+				for _, v := range vals[1:] {
+					c.Request().Header.Add(key, v)
 				}
 			}
 			CopyContextToFiberContext(r.Context(), c.RequestCtx())
@@ -237,6 +257,24 @@ func isUnixNetwork(network string) bool {
 	return network == "unix" || network == "unixgram" || network == "unixpacket"
 }
 
+// parseDecimalPort parses a purely numeric port string. Anything else —
+// signs, service names like "http", overflow — reports ok=false so the
+// caller falls back to net.ResolveTCPAddr, which handles the long tail.
+func parseDecimalPort(s string) (int, bool) {
+	if s == "" || len(s) > 5 {
+		return 0, false
+	}
+	port := 0
+	for i := 0; i < len(s); i++ {
+		d := s[i] - '0'
+		if d > 9 {
+			return 0, false
+		}
+		port = port*10 + int(d)
+	}
+	return port, port <= 65535
+}
+
 func resolveRemoteAddr(remoteAddr string, localAddr any) (net.Addr, error) {
 	if addr, ok := localAddr.(net.Addr); ok && isUnixNetwork(addr.Network()) {
 		return addr, nil
@@ -245,6 +283,23 @@ func resolveRemoteAddr(remoteAddr string, localAddr any) (net.Addr, error) {
 	// Validate input to prevent malformed addresses
 	if remoteAddr == "" {
 		return nil, ErrRemoteAddrEmpty
+	}
+
+	// Fast path: "ip:port" literals — the only form net/http servers set on
+	// Request.RemoteAddr — build the TCPAddr directly instead of going
+	// through net.ResolveTCPAddr's resolver machinery. Hostnames, service
+	// port names, and anything else fall through to the resolver below.
+	if host, portStr, err := net.SplitHostPort(remoteAddr); err == nil {
+		if port, ok := parseDecimalPort(portStr); ok {
+			if ip, ok := utils.ParseIPv4(host); ok {
+				a := ip.As4()
+				return &net.TCPAddr{IP: a[:], Port: port}, nil
+			}
+			if ip, ok := utils.ParseIPv6(host); ok {
+				a := ip.As16()
+				return &net.TCPAddr{IP: a[:], Port: port, Zone: ip.Zone()}, nil
+			}
+		}
 	}
 
 	resolved, err := net.ResolveTCPAddr("tcp", remoteAddr)
@@ -269,8 +324,29 @@ func resolveRemoteAddr(remoteAddr string, localAddr any) (net.Addr, error) {
 
 func handlerFunc(app *fiber.App, h ...fiber.Handler) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		req := fasthttp.AcquireRequest()
-		defer fasthttp.ReleaseRequest(req)
+		// New fasthttp Ctx from pool
+		pctx := ctxPool.Get().(*pooledCtx) //nolint:forcetypeassert,errcheck // not needed
+		fctx := &pctx.fctx
+		fctx.Response.Reset()
+		fctx.Request.Reset()
+		defer ctxPool.Put(pctx)
+
+		remoteAddr, err := resolveRemoteAddr(r.RemoteAddr, r.Context().Value(http.LocalAddrContextKey))
+		if err != nil {
+			remoteAddr = nil // Fallback to nil
+		}
+		pctx.conn.remoteAddr = remoteAddr
+
+		// Init2 mirrors fasthttp's RequestCtx.Init, but with a no-op
+		// connection instead of fasthttp's fakeAddrer, whose Write panics.
+		// Interim responses (e.g. SendEarlyHints' 103) are then silently
+		// discarded instead of panicking; the final response still reaches
+		// the client through the ResponseWriter copy-back below. Init2 only
+		// touches connection metadata and buffer-retention flags, so the
+		// request is built directly into fctx.Request afterwards — the same
+		// order fasthttp's Init uses, minus its full request copy.
+		fctx.Init2(&pctx.conn, disabledLogger, true)
+		req := &fctx.Request
 
 		// Convert net/http -> fasthttp request with size limit
 		maxBodySize := int64(app.Config().BodyLimit)
@@ -319,29 +395,21 @@ func handlerFunc(app *fiber.App, h ...fiber.Handler) http.HandlerFunc {
 		}
 		req.Header.SetProtocol(proto)
 
-		for key, val := range r.Header {
-			for _, v := range val {
-				req.Header.Set(key, v)
+		for key, vals := range r.Header {
+			if len(vals) == 0 {
+				continue
+			}
+			// Set replaces any value fasthttp derived while building the
+			// request, then Add appends the remaining values so multi-value
+			// headers (e.g. repeated X-Forwarded-For lines) survive instead
+			// of collapsing to the last value. fasthttp's Add keeps its own
+			// singleton semantics for Cookie/Content-Type/etc., which can
+			// only hold one value there by design.
+			req.Header.Set(key, vals[0])
+			for _, v := range vals[1:] {
+				req.Header.Add(key, v)
 			}
 		}
-
-		remoteAddr, err := resolveRemoteAddr(r.RemoteAddr, r.Context().Value(http.LocalAddrContextKey))
-		if err != nil {
-			remoteAddr = nil // Fallback to nil
-		}
-
-		// New fasthttp Ctx from pool
-		fctx := ctxPool.Get().(*fasthttp.RequestCtx) //nolint:forcetypeassert,errcheck // not needed
-		fctx.Response.Reset()
-		fctx.Request.Reset()
-		defer ctxPool.Put(fctx)
-		// Init2 + CopyTo mirror fasthttp's RequestCtx.Init, but with a no-op
-		// connection instead of fasthttp's fakeAddrer, whose Write panics.
-		// Interim responses (e.g. SendEarlyHints' 103) are then silently
-		// discarded instead of panicking; the final response still reaches
-		// the client through the ResponseWriter copy-back below.
-		fctx.Init2(&noopConn{remoteAddr: remoteAddr}, &disableLogger{}, true)
-		req.CopyTo(&fctx.Request)
 
 		if len(h) > 0 {
 			// New fiber Ctx

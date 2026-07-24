@@ -2957,6 +2957,7 @@ func Test_Ctx_Fresh_ObsoleteDateFormats(t *testing.T) {
 		"Wed, 21 Oct 2015 07:28:00 GMT",     // IMF-fixdate
 		"Wednesday, 21-Oct-15 07:28:00 GMT", // obsolete RFC 850 format
 		"Wed Oct 21 07:28:00 2015",          // ANSI C asctime() format
+		" Wed, 21 Oct 2015 07:28:00 GMT ",   // surrounding OWS tolerated (RFC 9110 §5.5)
 	} {
 		c := app.AcquireCtx(&fasthttp.RequestCtx{})
 		c.Request().Header.Set(HeaderIfModifiedSince, date)

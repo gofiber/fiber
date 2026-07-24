@@ -413,7 +413,11 @@ func followRedirects(cli *fasthttp.Client, req *fasthttp.Request, resp *fasthttp
 	currentURL := initialURL
 	currentHost := currentURL.Host
 	for redirects := 0; ; redirects++ {
-		req.SetRequestURI(currentURL.String())
+		// Rendered once per hop: SetRequestURI copies the bytes and
+		// resolveRedirect below needs the same string, so sharing it saves
+		// a URL.String() allocation on every redirect.
+		currentURLStr := currentURL.String()
+		req.SetRequestURI(currentURLStr)
 		// Re-apply the scheme each hop: SetRequestURI keeps the previous
 		// scheme when req.isTLS is set, so a redirect that changes scheme
 		// (HTTP→HTTPS upgrade, or HTTPS→HTTP when AllowHTTPSDowngrade is
@@ -434,7 +438,7 @@ func followRedirects(cli *fasthttp.Client, req *fasthttp.Request, resp *fasthttp
 		if len(location) == 0 {
 			return fasthttp.ErrMissingLocation
 		}
-		nextURL, err := resolveRedirect(currentURL.String(), location, policy)
+		nextURL, err := resolveRedirect(currentURLStr, location, policy)
 		if err != nil {
 			return err
 		}

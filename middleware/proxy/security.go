@@ -227,9 +227,7 @@ var hopByHopHeaders = []string{
 func stripHopByHopRequestHeaders(req *fasthttp.Request, except ...string) {
 	// Headers listed in Connection must be removed first so the
 	// listing is honored before the Connection field itself is dropped.
-	for _, name := range connectionListedHeaders(req.Header.PeekAll(fiber.HeaderConnection)) {
-		req.Header.Del(name)
-	}
+	delConnectionListedHeaders(&req.Header, req.Header.PeekAll(fiber.HeaderConnection))
 	for _, h := range hopByHopHeaders {
 		if containsFold(except, h) {
 			continue
@@ -241,9 +239,7 @@ func stripHopByHopRequestHeaders(req *fasthttp.Request, except ...string) {
 // stripHopByHopResponseHeaders applies the same filtering on the way
 // back, so upstream cannot leak connection-scoped state to the client.
 func stripHopByHopResponseHeaders(res *fasthttp.Response, except ...string) {
-	for _, name := range connectionListedHeaders(res.Header.PeekAll(fiber.HeaderConnection)) {
-		res.Header.Del(name)
-	}
+	delConnectionListedHeaders(&res.Header, res.Header.PeekAll(fiber.HeaderConnection))
 	for _, h := range hopByHopHeaders {
 		if containsFold(except, h) {
 			continue
@@ -261,22 +257,28 @@ func containsFold(haystack []string, needle string) bool {
 	return false
 }
 
-// connectionListedHeaders returns the comma-separated header names
-// listed inside one or more Connection header fields, per RFC 7230 §6.1.
-func connectionListedHeaders(values [][]byte) []string {
-	if len(values) == 0 {
-		return nil
-	}
-	var out []string
+// headerDeleter is the Del method shared by fasthttp's request and
+// response header types.
+type headerDeleter interface {
+	Del(key string)
+}
+
+// delConnectionListedHeaders deletes every comma-separated header name
+// listed inside one or more Connection header fields, per RFC 7230 §6.1,
+// without copying the values or collecting the names into a slice. The
+// names handed to Del alias the Connection value buffers; that is sound
+// because fasthttp's Del only re-slices the header's entry list — it never
+// rewrites other entries' key/value buffers — and Del does not retain the
+// name after returning.
+func delConnectionListedHeaders(h headerDeleter, values [][]byte) {
 	for _, v := range values {
-		for name := range strings.SplitSeq(string(v), ",") {
+		for name := range strings.SplitSeq(utils.UnsafeString(v), ",") {
 			name = utils.TrimSpace(name)
 			if name != "" {
-				out = append(out, name)
+				h.Del(name)
 			}
 		}
 	}
-	return out
 }
 
 // parseUpstream returns the parsed url.URL for raw. Hosts without an
