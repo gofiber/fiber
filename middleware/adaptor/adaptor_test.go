@@ -1901,10 +1901,12 @@ func Test_HTTPMiddleware_MultiValueHeaders(t *testing.T) {
 	app := fiber.New()
 	app.Use(HTTPMiddleware(mw))
 	var got []string
+	var emptyHeaderValues int
 	app.Get("/", func(c fiber.Ctx) error {
 		for _, v := range c.Request().Header.PeekAll("X-Multi") {
 			got = append(got, string(v))
 		}
+		emptyHeaderValues = len(c.Request().Header.PeekAll("X-Empty"))
 		return c.SendStatus(fiber.StatusOK)
 	})
 
@@ -1912,4 +1914,5 @@ func Test_HTTPMiddleware_MultiValueHeaders(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
 	require.Equal(t, []string{"one", "two"}, got)
+	require.Zero(t, emptyHeaderValues, "empty header value slices must not be copied")
 }
