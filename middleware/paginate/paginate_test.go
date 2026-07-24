@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"testing"
 
 	"github.com/gofiber/fiber/v3"
@@ -231,6 +232,22 @@ func Test_PageInfoNextPageURLWithExistingQueryParams(t *testing.T) {
 	require.Contains(t, result, "limit=10")
 }
 
+func Test_encodeQueryValues(t *testing.T) {
+	t.Parallel()
+
+	cases := []url.Values{
+		{},
+		{"a": {"1"}},
+		{"filter": {"active"}, "page": {"2"}, "limit": {"10"}},
+		{"q": {"a b+c&d=e", "second value"}, "sp ace": {"100%"}},
+		{"unicode": {"héllo wörld"}, "reserved": {";/?:@&=+$,#[]"}},
+		{"empty": {""}, "multi": {"", "x", ""}},
+	}
+	for _, q := range cases {
+		require.Equal(t, q.Encode(), encodeQueryValues(q))
+	}
+}
+
 func Test_PageInfoPreviousPageURLWithExistingQueryParams(t *testing.T) {
 	t.Parallel()
 
@@ -306,9 +323,9 @@ func Test_NextCursorURL(t *testing.T) {
 		p := &PageInfo{Limit: 20}
 		require.NoError(t, p.SetNextCursor(map[string]any{"id": float64(42)}))
 
-		url := p.NextCursorURL("https://example.com/users")
+		nextURL := p.NextCursorURL("https://example.com/users")
 		expected := fmt.Sprintf("https://example.com/users?cursor=%s&limit=20", p.NextCursor)
-		require.Equal(t, expected, url)
+		require.Equal(t, expected, nextURL)
 	})
 
 	t.Run("without HasMore", func(t *testing.T) {

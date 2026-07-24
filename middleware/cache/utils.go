@@ -90,7 +90,10 @@ func parseHTTPDate(dateBytes []byte) (uint64, bool) {
 	if len(dateBytes) == 0 {
 		return 0, false
 	}
-	parsedDate, err := fasthttp.ParseHTTPDate(dateBytes)
+	// utils.ParseHTTPDate matches net/http.ParseTime semantics: the fast
+	// scalar path covers IMF-fixdate and, per RFC 9110 §5.6.7, the obsolete
+	// RFC 850 and asctime formats are still accepted via the fallback.
+	parsedDate, err := utils.ParseHTTPDate(dateBytes)
 	if err != nil {
 		return 0, false
 	}

@@ -188,6 +188,8 @@ func Test_IsValidHostSyntax(t *testing.T) {
 		{name: "ipv6 literal", host: "::1", valid: true},
 		{name: "ipv6 full", host: "2001:db8::1", valid: true},
 		{name: "malformed ipv6", host: "::g", valid: false},
+		{name: "ipv4 mapped ipv6", host: "::ffff:192.0.2.1", valid: true},
+		{name: "zoned ipv6 rejected", host: "fe80::1%eth0", valid: false},
 		{name: "digit label", host: "1.example.com", valid: true},
 		{name: "leading hyphen label", host: "-bad.example.com", valid: false},
 		{name: "trailing hyphen label", host: "bad-.example.com", valid: false},

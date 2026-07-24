@@ -1778,3 +1778,141 @@ func TestUnixSocketAdaptor(t *testing.T) {
 		t.Fatal("server shutdown timed out")
 	}
 }
+
+// Test_ResolveRemoteAddr_FastPathEquivalence pins the ip:port fast path to
+// net.ResolveTCPAddr: for every literal form the fast path accepts, both
+// must produce the same address, and inputs the fast path rejects must
+// still resolve identically through the fallback.
+func Test_ResolveRemoteAddr_FastPathEquivalence(t *testing.T) {
+	t.Parallel()
+
+	addrs := []string{
+		"1.2.3.4:6789",
+		"127.0.0.1:80",
+		"255.255.255.255:65535",
+		"[::1]:8080",
+		"[2001:db8::1]:443",
+		"[::ffff:1.2.3.4]:80",
+		"[fe80::1%eth0]:80",
+		"1.2.3.4:0",
+	}
+	for _, addr := range addrs {
+		got, err := resolveRemoteAddr(addr, nil)
+		require.NoError(t, err, "resolveRemoteAddr(%q)", addr)
+		want, err := net.ResolveTCPAddr("tcp", addr)
+		require.NoError(t, err, "ResolveTCPAddr(%q)", addr)
+		gotTCP, ok := got.(*net.TCPAddr)
+		require.True(t, ok, "resolveRemoteAddr(%q) type", addr)
+		require.True(t, want.IP.Equal(gotTCP.IP), "IP for %q: got %v want %v", addr, gotTCP.IP, want.IP)
+		require.Equal(t, want.Port, gotTCP.Port, "port for %q", addr)
+		require.Equal(t, want.Zone, gotTCP.Zone, "zone for %q", addr)
+		require.Equal(t, want.String(), gotTCP.String(), "String() for %q", addr)
+	}
+
+	// Rejected by the fast path, resolved by the fallback: identical results.
+	fallbackAddrs := []string{
+		"localhost:80",   // hostname
+		"1.2.3.4:0080",   // leading-zero port (fast path parses digits only, both accept)
+		"1.2.3.4",        // missing port -> :80 default via fallback
+		"01.2.3.4:80",    // leading-zero octet (rejected by ParseIPv4, accepted by resolver)
+		"1.2.3.4:99999",  // port out of range -> error from both? fallback errors
+		"1.2.3.4:",       // empty port -> fast path rejects, resolver yields port 0
+		"1.2.3.4:123456", // six digits -> fast path length guard, resolver errors
+		"1.2.3.4:8a",     // non-digit port -> fast path rejects, resolver service lookup fails
+	}
+	for _, addr := range fallbackAddrs {
+		got, gotErr := resolveRemoteAddr(addr, nil)
+		want, wantErr := net.ResolveTCPAddr("tcp", addr)
+		if addr == "1.2.3.4" {
+			// resolveRemoteAddr appends :80 for missing ports; ResolveTCPAddr errors.
+			require.NoError(t, gotErr)
+			require.Equal(t, "1.2.3.4:80", got.String())
+			continue
+		}
+		if wantErr != nil {
+			require.Error(t, gotErr, "addr %q", addr)
+			continue
+		}
+		require.NoError(t, gotErr, "addr %q", addr)
+		require.Equal(t, want.String(), got.String(), "String() for %q", addr)
+	}
+}
+
+// Test_FiberHandlerFunc_MultiValueHeaders verifies repeated header lines on
+// the net/http request all reach the fiber handler instead of collapsing to
+// the last value.
+func Test_FiberHandlerFunc_MultiValueHeaders(t *testing.T) {
+	t.Parallel()
+
+	var got []string
+	h := FiberHandlerFunc(func(c fiber.Ctx) error {
+		for _, v := range c.Request().Header.PeekAll("X-Multi") {
+			got = append(got, string(v))
+		}
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	r := httptest.NewRequest(http.MethodGet, "/", http.NoBody)
+	r.Header.Add("X-Multi", "one")
+	r.Header.Add("X-Multi", "two")
+	r.Header.Add("X-Multi", "three")
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+
+	require.Equal(t, []string{"one", "two", "three"}, got)
+}
+
+// Test_FiberHandlerFunc_EmptyHeaderValues verifies a header key mapped to an
+// empty value slice is skipped instead of panicking or producing an empty
+// header.
+func Test_FiberHandlerFunc_EmptyHeaderValues(t *testing.T) {
+	t.Parallel()
+
+	var seen bool
+	h := FiberHandlerFunc(func(c fiber.Ctx) error {
+		seen = len(c.Request().Header.PeekAll("X-Empty")) > 0
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	r := httptest.NewRequest(http.MethodGet, "/", http.NoBody)
+	r.Header["X-Empty"] = []string{}
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+
+	require.Equal(t, http.StatusOK, w.Code)
+	require.False(t, seen)
+}
+
+// Test_HTTPMiddleware_MultiValueHeaders verifies multi-value headers added
+// by a wrapped net/http middleware survive the copy-back onto the fiber
+// request.
+func Test_HTTPMiddleware_MultiValueHeaders(t *testing.T) {
+	t.Parallel()
+
+	mw := func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			r.Header.Add("X-Multi", "one")
+			r.Header.Add("X-Multi", "two")
+			r.Header["X-Empty"] = nil // empty value slices must be skipped
+			next.ServeHTTP(w, r)
+		})
+	}
+
+	app := fiber.New()
+	app.Use(HTTPMiddleware(mw))
+	var got []string
+	var emptyHeaderValues int
+	app.Get("/", func(c fiber.Ctx) error {
+		for _, v := range c.Request().Header.PeekAll("X-Multi") {
+			got = append(got, string(v))
+		}
+		emptyHeaderValues = len(c.Request().Header.PeekAll("X-Empty"))
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	resp, err := app.Test(httptest.NewRequest(http.MethodGet, "/", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	require.Equal(t, []string{"one", "two"}, got)
+	require.Zero(t, emptyHeaderValues, "empty header value slices must not be copied")
+}
