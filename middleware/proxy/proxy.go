@@ -595,21 +595,22 @@ func DomainForward(hostname, addr string, clients ...*fasthttp.Client) fiber.Han
 type urlRoundrobin struct {
 	pool []*url.URL
 
-	current int
-	sync.Mutex
+	next atomic.Uint64
 }
 
 func (r *urlRoundrobin) get() *url.URL {
-	r.Lock()
-	defer r.Unlock()
-
-	if r.current >= len(r.pool) {
-		r.current %= len(r.pool)
+	poolSize := uint64(len(r.pool))
+	for {
+		next := r.next.Load()
+		index := next % poolSize
+		following := index + 1
+		if following == poolSize {
+			following = 0
+		}
+		if r.next.CompareAndSwap(next, following) {
+			return r.pool[index]
+		}
 	}
-
-	result := r.pool[r.current]
-	r.current++
-	return result
 }
 
 // BalancerForward Forward performs the given http request with round robin algorithm to server and fills the given http response.
