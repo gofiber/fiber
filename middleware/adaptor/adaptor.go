@@ -210,9 +210,16 @@ func HTTPMiddleware(mw func(http.Handler) http.Handler) fiber.Handler {
 
 			// Remove all cookies before setting, see https://github.com/valyala/fasthttp/pull/1864
 			c.Request().Header.DelAllCookies()
-			for key, val := range r.Header {
-				for _, v := range val {
-					c.Request().Header.Set(key, v)
+			for key, vals := range r.Header {
+				if len(vals) == 0 {
+					continue
+				}
+				// Set replaces whatever the key held on the fiber request,
+				// then Add appends the remaining values so multi-value
+				// headers survive instead of collapsing to the last value.
+				c.Request().Header.Set(key, vals[0])
+				for _, v := range vals[1:] {
+					c.Request().Header.Add(key, v)
 				}
 			}
 			CopyContextToFiberContext(r.Context(), c.RequestCtx())
@@ -386,9 +393,19 @@ func handlerFunc(app *fiber.App, h ...fiber.Handler) http.HandlerFunc {
 		}
 		req.Header.SetProtocol(proto)
 
-		for key, val := range r.Header {
-			for _, v := range val {
-				req.Header.Set(key, v)
+		for key, vals := range r.Header {
+			if len(vals) == 0 {
+				continue
+			}
+			// Set replaces any value fasthttp derived while building the
+			// request, then Add appends the remaining values so multi-value
+			// headers (e.g. repeated X-Forwarded-For lines) survive instead
+			// of collapsing to the last value. fasthttp's Add keeps its own
+			// singleton semantics for Cookie/Content-Type/etc., which can
+			// only hold one value there by design.
+			req.Header.Set(key, vals[0])
+			for _, v := range vals[1:] {
+				req.Header.Add(key, v)
 			}
 		}
 

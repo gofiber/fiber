@@ -1834,3 +1834,57 @@ func Test_ResolveRemoteAddr_FastPathEquivalence(t *testing.T) {
 		require.Equal(t, want.String(), got.String(), "String() for %q", addr)
 	}
 }
+
+// Test_FiberHandlerFunc_MultiValueHeaders verifies repeated header lines on
+// the net/http request all reach the fiber handler instead of collapsing to
+// the last value.
+func Test_FiberHandlerFunc_MultiValueHeaders(t *testing.T) {
+	t.Parallel()
+
+	var got []string
+	h := FiberHandlerFunc(func(c fiber.Ctx) error {
+		for _, v := range c.Request().Header.PeekAll("X-Multi") {
+			got = append(got, string(v))
+		}
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	r := httptest.NewRequest(http.MethodGet, "/", http.NoBody)
+	r.Header.Add("X-Multi", "one")
+	r.Header.Add("X-Multi", "two")
+	r.Header.Add("X-Multi", "three")
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+
+	require.Equal(t, []string{"one", "two", "three"}, got)
+}
+
+// Test_HTTPMiddleware_MultiValueHeaders verifies multi-value headers added
+// by a wrapped net/http middleware survive the copy-back onto the fiber
+// request.
+func Test_HTTPMiddleware_MultiValueHeaders(t *testing.T) {
+	t.Parallel()
+
+	mw := func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			r.Header.Add("X-Multi", "one")
+			r.Header.Add("X-Multi", "two")
+			next.ServeHTTP(w, r)
+		})
+	}
+
+	app := fiber.New()
+	app.Use(HTTPMiddleware(mw))
+	var got []string
+	app.Get("/", func(c fiber.Ctx) error {
+		for _, v := range c.Request().Header.PeekAll("X-Multi") {
+			got = append(got, string(v))
+		}
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	resp, err := app.Test(httptest.NewRequest(http.MethodGet, "/", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	require.Equal(t, []string{"one", "two"}, got)
+}
