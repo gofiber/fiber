@@ -2396,16 +2396,16 @@ func Benchmark_Client_Request_Send_ContextCancel(b *testing.B) {
 	app, ln, start := createHelperServer(b)
 
 	startedCh := make(chan struct{})
-	cancelledCh := make(chan struct{})
+	canceledCh := make(chan struct{})
 	errCh := make(chan error)
 	respCh := make(chan *Response)
 
 	app.Post("/", func(c fiber.Ctx) error {
 		startedCh <- struct{}{}
-		// Respond only after the benchmark loop has cancelled the context:
+		// Respond only after the benchmark loop has canceled the context:
 		// a fixed sleep loses the race on fast machines, letting the
 		// response beat the cancellation and fail the nil assertion below.
-		<-cancelledCh
+		<-canceledCh
 		time.Sleep(time.Millisecond) // margin for the watcher to observe Done
 		return c.Status(fiber.StatusOK).SendString("post")
 	})
@@ -2437,7 +2437,7 @@ func Benchmark_Client_Request_Send_ContextCancel(b *testing.B) {
 
 		<-startedCh // request is made, we can cancel the context now
 		cancel()
-		cancelledCh <- struct{}{} // context Done is closed; let the handler respond
+		canceledCh <- struct{}{} // context Done is closed; let the handler respond
 
 		require.Nil(b, <-respCh)
 		require.ErrorIs(b, <-errCh, ErrTimeoutOrCancel)
