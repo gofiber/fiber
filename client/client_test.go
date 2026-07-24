@@ -2402,11 +2402,11 @@ func Benchmark_Client_Request_Send_ContextCancel(b *testing.B) {
 
 	app.Post("/", func(c fiber.Ctx) error {
 		startedCh <- struct{}{}
-		// Respond only after the benchmark loop has canceled the context:
-		// a fixed sleep loses the race on fast machines, letting the
-		// response beat the cancellation and fail the nil assertion below.
+		// Hold the response until the loop has received Send's outcome:
+		// with the reply still pending, the client's response channel
+		// cannot be ready, so Send can only return through its
+		// ctx.Done() branch — no race against the reply.
 		<-canceledCh
-		time.Sleep(time.Millisecond) // margin for the watcher to observe Done
 		return c.Status(fiber.StatusOK).SendString("post")
 	})
 
@@ -2437,10 +2437,15 @@ func Benchmark_Client_Request_Send_ContextCancel(b *testing.B) {
 
 		<-startedCh // request is made, we can cancel the context now
 		cancel()
-		canceledCh <- struct{}{} // context Done is closed; let the handler respond
 
-		require.Nil(b, <-respCh)
-		require.ErrorIs(b, <-errCh, ErrTimeoutOrCancel)
+		// Send must return before the handler is released below, so these
+		// receives can only observe the cancellation outcome.
+		resp := <-respCh
+		err := <-errCh
+		canceledCh <- struct{}{} // release the handler; core's drainer reclaims the late response
+
+		require.Nil(b, resp)
+		require.ErrorIs(b, err, ErrTimeoutOrCancel)
 	}
 }
 
