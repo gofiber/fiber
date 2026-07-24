@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"reflect"
 	"strings"
+	"sync/atomic"
 
 	"github.com/gofiber/utils/v2"
 	utilsstrings "github.com/gofiber/utils/v2/strings"
@@ -263,6 +264,19 @@ type domainRouter struct {
 	app     *App
 	group   *Group // non-nil when created from a Group
 	matcher domainMatcher
+
+	// lastRegID identifies this domain router's most recent registration, so
+	// the documentation helpers below target it instead of the app-global
+	// latest route (which may belong to a different router). Accessed
+	// atomically.
+	lastRegID uint64
+}
+
+// pattern returns the canonical form of the domain pattern (lowercased
+// constant labels, ":param" markers preserved); it identifies the domain on
+// registered routes so same-path routes on different domains are never merged.
+func (d *domainRouter) pattern() string {
+	return strings.Join(d.matcher.parts, ".")
 }
 
 // Verify domainRouter implements Router at compile time.
@@ -380,7 +394,7 @@ func (d *domainRouter) Use(args ...any) Router {
 		}
 
 		wrapped := d.wrapHandlers(handlers)
-		d.app.register([]string{methodUse}, d.registerPath(prefix), d.registerGroup(), wrapped...)
+		atomic.StoreUint64(&d.lastRegID, d.app.register([]string{methodUse}, d.registerPath(prefix), d.registerGroup(), d.pattern(), wrapped...))
 	}
 
 	// Mark the underlying group so Name() can distinguish between
@@ -457,7 +471,7 @@ func (d *domainRouter) mount(prefix string, subApp *App) Router {
 	mountGroup := &Group{Prefix: mountPath, app: wrapperApp}
 
 	// Register the mount point - the routes will be expanded during startup
-	d.app.register([]string{methodUse}, mountPath, mountGroup)
+	atomic.StoreUint64(&d.lastRegID, d.app.register([]string{methodUse}, mountPath, mountGroup, d.pattern()))
 
 	// Execute onMount hooks
 	if err := subApp.hooks.executeOnMountHooks(d.app); err != nil {
@@ -538,7 +552,7 @@ func (d *domainRouter) Query(path string, handler any, handlers ...any) Router {
 func (d *domainRouter) Add(methods []string, path string, handler any, handlers ...any) Router {
 	converted := collectHandlers("domain", append([]any{handler}, handlers...)...)
 	wrapped := d.wrapHandlers(converted)
-	d.app.register(methods, d.registerPath(path), d.registerGroup(), wrapped...)
+	atomic.StoreUint64(&d.lastRegID, d.app.register(methods, d.registerPath(path), d.registerGroup(), d.pattern(), wrapped...))
 
 	// Mark the underlying group so Name() can distinguish between
 	// group-name-prefix calls (before routes) and route-name calls (after routes).
@@ -563,7 +577,7 @@ func (d *domainRouter) Group(prefix string, handlers ...any) Router {
 	if len(handlers) > 0 {
 		converted := collectHandlers("domain", handlers...)
 		wrapped := d.wrapHandlers(converted)
-		d.app.register([]string{methodUse}, fullPrefix, d.registerGroup(), wrapped...)
+		atomic.StoreUint64(&d.lastRegID, d.app.register([]string{methodUse}, fullPrefix, d.registerGroup(), d.pattern(), wrapped...))
 	}
 
 	// Create a new group on the app
@@ -626,11 +640,162 @@ func (d *domainRouter) Domain(host string) Router {
 	}
 }
 
+// Summary assigns a short summary to the most recently added route.
+func (d *domainRouter) Summary(sum string) Router {
+	d.app.applyToRegistration(atomic.LoadUint64(&d.lastRegID), docSetSummary(sum))
+	return d
+}
+
+// Description assigns a description to the most recently added route.
+func (d *domainRouter) Description(desc string) Router {
+	d.app.applyToRegistration(atomic.LoadUint64(&d.lastRegID), docSetDescription(desc))
+	return d
+}
+
+// Consumes assigns a request media type to the most recently added route.
+func (d *domainRouter) Consumes(typ string) Router {
+	d.app.applyToRegistration(atomic.LoadUint64(&d.lastRegID), docSetConsumes(typ))
+	return d
+}
+
+// Produces assigns a response media type to the most recently added route.
+func (d *domainRouter) Produces(typ string) Router {
+	d.app.applyToRegistration(atomic.LoadUint64(&d.lastRegID), docSetProduces(typ))
+	return d
+}
+
+// RequestBody documents the request payload for the most recently added route.
+func (d *domainRouter) RequestBody(description string, required bool, mediaTypes ...string) Router {
+	d.app.applyToRegistration(atomic.LoadUint64(&d.lastRegID), docRequestBodyWithExample(description, required, nil, "", nil, nil, mediaTypes...))
+	return d
+}
+
+// RequestBodyWithExample documents the request payload for the most recently added route with schema references and examples.
+func (d *domainRouter) RequestBodyWithExample(description string, required bool, schema map[string]any, schemaRef string, example any, examples map[string]any, mediaTypes ...string) Router {
+	d.app.applyToRegistration(atomic.LoadUint64(&d.lastRegID), docRequestBodyWithExample(description, required, schema, schemaRef, example, examples, mediaTypes...))
+	return d
+}
+
+// Parameter documents an input parameter for the most recently added route.
+func (d *domainRouter) Parameter(name, in string, required bool, schema map[string]any, description string) Router {
+	d.app.applyToRegistration(atomic.LoadUint64(&d.lastRegID), docAddParameter(RouteParameter{Name: name, In: in, Required: required, Schema: schema, Description: description}))
+	return d
+}
+
+// ParameterWithExample documents an input parameter for the most recently added route with schema references and examples.
+func (d *domainRouter) ParameterWithExample(name, in string, required bool, schema map[string]any, schemaRef, description string, example any, examples map[string]any) Router {
+	d.app.applyToRegistration(atomic.LoadUint64(&d.lastRegID), docAddParameter(RouteParameter{
+		Name:        name,
+		In:          in,
+		Required:    required,
+		Schema:      schema,
+		SchemaRef:   schemaRef,
+		Description: description,
+		Example:     example,
+		Examples:    examples,
+	}))
+	return d
+}
+
+// Response documents an HTTP response for the most recently added route.
+func (d *domainRouter) Response(status int, description string, mediaTypes ...string) Router {
+	d.app.applyToRegistration(atomic.LoadUint64(&d.lastRegID), docAddResponse(status, description, nil, "", nil, nil, mediaTypes...))
+	return d
+}
+
+// ResponseWithExample documents an HTTP response for the most recently added route with schema references and examples.
+func (d *domainRouter) ResponseWithExample(status int, description string, schema map[string]any, schemaRef string, example any, examples map[string]any, mediaTypes ...string) Router {
+	d.app.applyToRegistration(atomic.LoadUint64(&d.lastRegID), docAddResponse(status, description, schema, schemaRef, example, examples, mediaTypes...))
+	return d
+}
+
+// Tags assigns tags to the most recently added route.
+func (d *domainRouter) Tags(tags ...string) Router {
+	d.app.applyToRegistration(atomic.LoadUint64(&d.lastRegID), docSetTags(tags...))
+	return d
+}
+
+// Deprecated marks the most recently added route as deprecated.
+func (d *domainRouter) Deprecated() Router {
+	d.app.applyToRegistration(atomic.LoadUint64(&d.lastRegID), docSetDeprecated())
+	return d
+}
+
+// Security sets the OpenAPI security requirements for the most recently added
+// route on the domain router.
+func (d *domainRouter) Security(requirements ...map[string][]string) Router {
+	d.app.applyToRegistration(atomic.LoadUint64(&d.lastRegID), docSetSecurity(requirements...))
+	return d
+}
+
+// Hidden excludes the most recently added route on the domain router from the
+// generated OpenAPI specification.
+func (d *domainRouter) Hidden() Router {
+	d.app.applyToRegistration(atomic.LoadUint64(&d.lastRegID), docSetHidden())
+	return d
+}
+
+// ResponseHeader documents a response header for the most recently added route
+// on the domain router.
+func (d *domainRouter) ResponseHeader(status int, name, description string, schema map[string]any) Router {
+	d.app.applyToRegistration(atomic.LoadUint64(&d.lastRegID), docResponseHeader(status, name, description, schema))
+	return d
+}
+
+// AddParameter documents an input parameter on the most recently added route on
+// the domain router using the full RouteParameter.
+//
+//nolint:gocritic // hugeParam: by-value keeps the chainable route-helper API ergonomic.
+func (d *domainRouter) AddParameter(param RouteParameter) Router {
+	d.app.applyToRegistration(atomic.LoadUint64(&d.lastRegID), docAddParameter(param))
+	return d
+}
+
+// OperationExternalDocs sets the externalDocs of the most recently added route on
+// the domain router.
+func (d *domainRouter) OperationExternalDocs(description, url string) Router {
+	d.app.applyToRegistration(atomic.LoadUint64(&d.lastRegID), docOperationExternalDocs(description, url))
+	return d
+}
+
+// RequestBodyContent documents a per-media-type request body on the most recently
+// added route on the domain router.
+func (d *domainRouter) RequestBodyContent(description string, required bool, content map[string]RouteMediaType) Router {
+	d.app.applyToRegistration(atomic.LoadUint64(&d.lastRegID), docRequestBodyContent(description, required, content))
+	return d
+}
+
+// ResponseContent documents a per-media-type response on the most recently added
+// route on the domain router.
+func (d *domainRouter) ResponseContent(status int, description string, content map[string]RouteMediaType) Router {
+	d.app.applyToRegistration(atomic.LoadUint64(&d.lastRegID), docResponseContent(status, description, content))
+	return d
+}
+
+// ResponseLink documents a response link on the most recently added route on the
+// domain router.
+func (d *domainRouter) ResponseLink(status int, name string, link map[string]any) Router {
+	d.app.applyToRegistration(atomic.LoadUint64(&d.lastRegID), docResponseLink(status, name, link))
+	return d
+}
+
+// OperationExtension merges arbitrary operation-object fields on the most recently
+// added route on the domain router.
+func (d *domainRouter) OperationExtension(fields map[string]any) Router {
+	d.app.applyToRegistration(atomic.LoadUint64(&d.lastRegID), docOperationExtension(fields))
+	return d
+}
+
 // domainRegistering provides route registration helpers for a specific path
 // on a domain router, implementing the [Register] interface.
 type domainRegistering struct {
 	domain *domainRouter
 	path   string
+
+	// lastRegID identifies this chain's most recent registration, so the
+	// documentation helpers below target it instead of the app-global latest
+	// route. Accessed atomically.
+	lastRegID uint64
 }
 
 // Verify domainRegistering implements Register at compile time.
@@ -639,7 +804,7 @@ var _ Register = (*domainRegistering)(nil)
 func (r *domainRegistering) All(handler any, handlers ...any) Register {
 	converted := collectHandlers("domain", append([]any{handler}, handlers...)...)
 	wrapped := r.domain.wrapHandlers(converted)
-	r.domain.app.register([]string{methodUse}, r.path, r.domain.registerGroup(), wrapped...)
+	atomic.StoreUint64(&r.lastRegID, r.domain.app.register([]string{methodUse}, r.path, r.domain.registerGroup(), r.domain.pattern(), wrapped...))
 
 	return r
 }
@@ -687,7 +852,7 @@ func (r *domainRegistering) Query(handler any, handlers ...any) Register {
 func (r *domainRegistering) Add(methods []string, handler any, handlers ...any) Register {
 	converted := collectHandlers("domain", append([]any{handler}, handlers...)...)
 	wrapped := r.domain.wrapHandlers(converted)
-	r.domain.app.register(methods, r.path, r.domain.registerGroup(), wrapped...)
+	atomic.StoreUint64(&r.lastRegID, r.domain.app.register(methods, r.path, r.domain.registerGroup(), r.domain.pattern(), wrapped...))
 
 	return r
 }
@@ -697,4 +862,147 @@ func (r *domainRegistering) RouteChain(path string) Register {
 		domain: r.domain,
 		path:   getGroupPath(r.path, path),
 	}
+}
+
+// Name assigns a name to the most recently registered route.
+func (r *domainRegistering) Name(name string) Register {
+	r.domain.Name(name)
+	return r
+}
+
+// Summary assigns a short summary to the most recently registered route.
+func (r *domainRegistering) Summary(sum string) Register {
+	r.domain.app.applyToRegistration(atomic.LoadUint64(&r.lastRegID), docSetSummary(sum))
+	return r
+}
+
+// Description assigns a description to the most recently registered route.
+func (r *domainRegistering) Description(desc string) Register {
+	r.domain.app.applyToRegistration(atomic.LoadUint64(&r.lastRegID), docSetDescription(desc))
+	return r
+}
+
+// Consumes assigns a request media type to the most recently registered route.
+func (r *domainRegistering) Consumes(typ string) Register {
+	r.domain.app.applyToRegistration(atomic.LoadUint64(&r.lastRegID), docSetConsumes(typ))
+	return r
+}
+
+// Produces assigns a response media type to the most recently registered route.
+func (r *domainRegistering) Produces(typ string) Register {
+	r.domain.app.applyToRegistration(atomic.LoadUint64(&r.lastRegID), docSetProduces(typ))
+	return r
+}
+
+// RequestBody documents the request payload for the most recently registered route.
+func (r *domainRegistering) RequestBody(description string, required bool, mediaTypes ...string) Register {
+	r.domain.app.applyToRegistration(atomic.LoadUint64(&r.lastRegID), docRequestBodyWithExample(description, required, nil, "", nil, nil, mediaTypes...))
+	return r
+}
+
+// RequestBodyWithExample documents the request payload with schema references and examples.
+func (r *domainRegistering) RequestBodyWithExample(description string, required bool, schema map[string]any, schemaRef string, example any, examples map[string]any, mediaTypes ...string) Register {
+	r.domain.app.applyToRegistration(atomic.LoadUint64(&r.lastRegID), docRequestBodyWithExample(description, required, schema, schemaRef, example, examples, mediaTypes...))
+	return r
+}
+
+// Parameter documents an input parameter for the most recently registered route.
+func (r *domainRegistering) Parameter(name, in string, required bool, schema map[string]any, description string) Register {
+	r.domain.app.applyToRegistration(atomic.LoadUint64(&r.lastRegID), docAddParameter(RouteParameter{Name: name, In: in, Required: required, Schema: schema, Description: description}))
+	return r
+}
+
+// ParameterWithExample documents an input parameter, including schema references and examples.
+func (r *domainRegistering) ParameterWithExample(name, in string, required bool, schema map[string]any, schemaRef, description string, example any, examples map[string]any) Register {
+	r.domain.app.applyToRegistration(atomic.LoadUint64(&r.lastRegID), docAddParameter(RouteParameter{
+		Name:        name,
+		In:          in,
+		Required:    required,
+		Schema:      schema,
+		SchemaRef:   schemaRef,
+		Description: description,
+		Example:     example,
+		Examples:    examples,
+	}))
+	return r
+}
+
+// AddParameter documents an input parameter using the full RouteParameter.
+//
+//nolint:gocritic // hugeParam: by-value keeps the chainable route-helper API ergonomic.
+func (r *domainRegistering) AddParameter(param RouteParameter) Register {
+	r.domain.app.applyToRegistration(atomic.LoadUint64(&r.lastRegID), docAddParameter(param))
+	return r
+}
+
+// Response documents an HTTP response for the most recently registered route.
+func (r *domainRegistering) Response(status int, description string, mediaTypes ...string) Register {
+	r.domain.app.applyToRegistration(atomic.LoadUint64(&r.lastRegID), docAddResponse(status, description, nil, "", nil, nil, mediaTypes...))
+	return r
+}
+
+// ResponseWithExample documents an HTTP response with schema references and examples.
+func (r *domainRegistering) ResponseWithExample(status int, description string, schema map[string]any, schemaRef string, example any, examples map[string]any, mediaTypes ...string) Register {
+	r.domain.app.applyToRegistration(atomic.LoadUint64(&r.lastRegID), docAddResponse(status, description, schema, schemaRef, example, examples, mediaTypes...))
+	return r
+}
+
+// ResponseHeader documents a response header for the most recently registered route.
+func (r *domainRegistering) ResponseHeader(status int, name, description string, schema map[string]any) Register {
+	r.domain.app.applyToRegistration(atomic.LoadUint64(&r.lastRegID), docResponseHeader(status, name, description, schema))
+	return r
+}
+
+// ResponseContent documents a per-media-type response for the most recently registered route.
+func (r *domainRegistering) ResponseContent(status int, description string, content map[string]RouteMediaType) Register {
+	r.domain.app.applyToRegistration(atomic.LoadUint64(&r.lastRegID), docResponseContent(status, description, content))
+	return r
+}
+
+// ResponseLink documents a response link for the most recently registered route.
+func (r *domainRegistering) ResponseLink(status int, name string, link map[string]any) Register {
+	r.domain.app.applyToRegistration(atomic.LoadUint64(&r.lastRegID), docResponseLink(status, name, link))
+	return r
+}
+
+// RequestBodyContent documents a per-media-type request body for the most recently registered route.
+func (r *domainRegistering) RequestBodyContent(description string, required bool, content map[string]RouteMediaType) Register {
+	r.domain.app.applyToRegistration(atomic.LoadUint64(&r.lastRegID), docRequestBodyContent(description, required, content))
+	return r
+}
+
+// Tags assigns tags to the most recently registered route.
+func (r *domainRegistering) Tags(tags ...string) Register {
+	r.domain.app.applyToRegistration(atomic.LoadUint64(&r.lastRegID), docSetTags(tags...))
+	return r
+}
+
+// Deprecated marks the most recently registered route as deprecated.
+func (r *domainRegistering) Deprecated() Register {
+	r.domain.app.applyToRegistration(atomic.LoadUint64(&r.lastRegID), docSetDeprecated())
+	return r
+}
+
+// Security sets the OpenAPI security requirements for the most recently registered route.
+func (r *domainRegistering) Security(requirements ...map[string][]string) Register {
+	r.domain.app.applyToRegistration(atomic.LoadUint64(&r.lastRegID), docSetSecurity(requirements...))
+	return r
+}
+
+// Hidden excludes the most recently registered route from the generated OpenAPI specification.
+func (r *domainRegistering) Hidden() Register {
+	r.domain.app.applyToRegistration(atomic.LoadUint64(&r.lastRegID), docSetHidden())
+	return r
+}
+
+// OperationExternalDocs sets the externalDocs of the most recently registered operation.
+func (r *domainRegistering) OperationExternalDocs(description, url string) Register {
+	r.domain.app.applyToRegistration(atomic.LoadUint64(&r.lastRegID), docOperationExternalDocs(description, url))
+	return r
+}
+
+// OperationExtension merges arbitrary operation-object fields into the most recently registered operation.
+func (r *domainRegistering) OperationExtension(fields map[string]any) Register {
+	r.domain.app.applyToRegistration(atomic.LoadUint64(&r.lastRegID), docOperationExtension(fields))
+	return r
 }

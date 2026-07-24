@@ -54,6 +54,7 @@ Here's a quick overview of the changes in Fiber `v3`:
   - [KeyAuth](#keyauth)
   - [Logger](#logger)
   - [Monitor](#monitor)
+  - [OpenAPI](#openapi)
   - [Proxy](#proxy)
   - [Recover](#recover)
   - [Session](#session)
@@ -511,7 +512,11 @@ app := fiber.New(fiber.Config{DisableHeadAutoRegister: true})
 app.Get("/health", handler) // HEAD /health now returns 405 unless you add it manually.
 ```
 
-Auto-generated `HEAD` routes appear in tooling such as `app.Stack()` and cover the same routing scenarios as their `GET` counterparts, including groups, mounted apps, dynamic parameters, and static file handlers.
+Auto-generated `HEAD` routes appear in tooling such as `app.Stack()` and cover the same routing scenarios as their `GET` counterparts, including groups, mounted apps, dynamic parameters, and static file handlers. They deliberately carry no name or documentation metadata of their own (filter them via `Route.IsAutoHead()`).
+
+:::caution
+`Name()` (and the documentation helpers) now target only the routes created by the most recent registration. Naming a `GET` route no longer also names an **explicitly registered** `HEAD` route on the same path — name that route in its own registration chain instead.
+:::
 
 ### QUERY method (RFC 10008)
 
@@ -1727,6 +1732,10 @@ Deprecated fields `Duration`, `Store`, and `Key` have been removed in v3. Use `E
 ### Monitor
 
 Monitor middleware is migrated to the [Contrib package](https://github.com/gofiber/contrib/tree/main/monitor) with [PR #1172](https://github.com/gofiber/contrib/pull/1172).
+
+### OpenAPI
+
+Introduces an `openapi` middleware that inspects registered routes and serves a generated OpenAPI specification plus a Swagger UI page backed by that spec. The middleware supports both **OpenAPI 3.0.0 and 3.1.0** (default). Each operation includes a summary and a default response (typically `200`, or `204 No Content` for `DELETE` and `HEAD` operations, matching the middleware's behavior). Routes may attach descriptions, parameters, request bodies, and custom responses—alongside request/response media types—directly to route definitions. New helpers allow parameters, request bodies, and responses to include schema references and examples (including `$ref` targets under `components/schemas`), enabling richer generated documentation.
 
 ### Proxy
 

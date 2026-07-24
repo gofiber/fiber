@@ -5,6 +5,7 @@
 package fiber
 
 import (
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -14,6 +15,10 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
 )
+
+// errTestDomainHook is a sentinel error returned by hooks to assert that the
+// domain router propagates hook failures as panics.
+var errTestDomainHook = errors.New("domain hook failure")
 
 func Test_Domain_Basic(t *testing.T) {
 	t.Parallel()
@@ -241,6 +246,137 @@ func Test_Domain_WithMiddleware(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, StatusNotFound, resp.StatusCode)
 	require.Empty(t, resp.Header.Get("X-Domain"))
+}
+
+func Test_Domain_OpenAPI_Helpers(t *testing.T) {
+	t.Parallel()
+
+	t.Run("Summary", func(t *testing.T) {
+		t.Parallel()
+		app := New()
+		domain := app.Domain("api.example.com")
+		domain.Get("/users", testEmptyHandler).Summary("Get all users")
+		route := app.stack[app.methodInt(MethodGet)][0]
+		require.Equal(t, "Get all users", route.Summary)
+	})
+
+	t.Run("Description", func(t *testing.T) {
+		t.Parallel()
+		app := New()
+		domain := app.Domain("api.example.com")
+		domain.Get("/users", testEmptyHandler).Description("Retrieves all users")
+		route := app.stack[app.methodInt(MethodGet)][0]
+		require.Equal(t, "Retrieves all users", route.Description)
+	})
+
+	t.Run("Consumes", func(t *testing.T) {
+		t.Parallel()
+		app := New()
+		domain := app.Domain("api.example.com")
+		domain.Get("/users", testEmptyHandler).Consumes(MIMEApplicationJSON)
+		route := app.stack[app.methodInt(MethodGet)][0]
+		//nolint:testifylint // MIMEApplicationJSON is a MIME type string, not JSON payload
+		require.Equal(t, MIMEApplicationJSON, route.Consumes)
+	})
+
+	t.Run("Produces", func(t *testing.T) {
+		t.Parallel()
+		app := New()
+		domain := app.Domain("api.example.com")
+		domain.Get("/users", testEmptyHandler).Produces(MIMEApplicationXML)
+		route := app.stack[app.methodInt(MethodGet)][0]
+		require.Equal(t, MIMEApplicationXML, route.Produces)
+	})
+
+	t.Run("RequestBody", func(t *testing.T) {
+		t.Parallel()
+		app := New()
+		domain := app.Domain("api.example.com")
+		domain.Post("/users", testEmptyHandler).RequestBody("User", true, MIMEApplicationJSON)
+		route := app.stack[app.methodInt(MethodPost)][0]
+		require.NotNil(t, route.RequestBody)
+		require.Equal(t, []string{MIMEApplicationJSON}, route.RequestBody.MediaTypes)
+	})
+
+	t.Run("RequestBodyWithExample", func(t *testing.T) {
+		t.Parallel()
+		app := New()
+		domain := app.Domain("api.example.com")
+		domain.Post("/users", testEmptyHandler).
+			RequestBodyWithExample("User", true, map[string]any{"type": "object"}, "#/components/schemas/User", map[string]any{"name": "doe"}, map[string]any{"sample": map[string]any{"name": "john"}}, MIMEApplicationJSON)
+		route := app.stack[app.methodInt(MethodPost)][0]
+		require.NotNil(t, route.RequestBody)
+		require.Equal(t, "#/components/schemas/User", route.RequestBody.SchemaRef)
+		require.Equal(t, map[string]any{"$ref": "#/components/schemas/User"}, route.RequestBody.Schema)
+		require.Equal(t, map[string]any{"name": "doe"}, route.RequestBody.Example)
+	})
+
+	t.Run("Parameter", func(t *testing.T) {
+		t.Parallel()
+		app := New()
+		domain := app.Domain("api.example.com")
+		domain.Get("/users/:id", testEmptyHandler).Parameter("id", "path", false, map[string]any{"type": "integer"}, "identifier")
+		route := app.stack[app.methodInt(MethodGet)][0]
+		require.Len(t, route.Parameters, 1)
+		require.Equal(t, "id", route.Parameters[0].Name)
+		require.True(t, route.Parameters[0].Required)
+		require.Equal(t, "integer", route.Parameters[0].Schema["type"])
+	})
+
+	t.Run("ParameterWithExample", func(t *testing.T) {
+		t.Parallel()
+		app := New()
+		domain := app.Domain("api.example.com")
+		domain.Get("/users/:id", testEmptyHandler).
+			ParameterWithExample("id", "path", false, nil, "#/components/schemas/ID", "identifier", "123", map[string]any{"sample": "value"})
+		route := app.stack[app.methodInt(MethodGet)][0]
+		require.Len(t, route.Parameters, 1)
+		require.Equal(t, "#/components/schemas/ID", route.Parameters[0].SchemaRef)
+		require.Equal(t, "123", route.Parameters[0].Example)
+		require.Equal(t, map[string]any{"sample": "value"}, route.Parameters[0].Examples)
+	})
+
+	t.Run("Response", func(t *testing.T) {
+		t.Parallel()
+		app := New()
+		domain := app.Domain("api.example.com")
+		domain.Get("/users", testEmptyHandler).Response(StatusCreated, "Created", MIMEApplicationJSON)
+		route := app.stack[app.methodInt(MethodGet)][0]
+		require.Contains(t, route.Responses, "201")
+		require.Equal(t, []string{MIMEApplicationJSON}, route.Responses["201"].MediaTypes)
+	})
+
+	t.Run("ResponseWithExample", func(t *testing.T) {
+		t.Parallel()
+		app := New()
+		domain := app.Domain("api.example.com")
+		domain.Get("/users", testEmptyHandler).
+			ResponseWithExample(StatusCreated, "Created", nil, "#/components/schemas/User", map[string]any{"id": 1}, map[string]any{"sample": map[string]any{"id": 2}}, MIMEApplicationJSON)
+		route := app.stack[app.methodInt(MethodGet)][0]
+		resp := route.Responses["201"]
+		require.Equal(t, "#/components/schemas/User", resp.SchemaRef)
+		require.Equal(t, map[string]any{"$ref": "#/components/schemas/User"}, resp.Schema)
+		require.Equal(t, map[string]any{"id": 1}, resp.Example)
+		require.Equal(t, map[string]any{"sample": map[string]any{"id": 2}}, resp.Examples)
+	})
+
+	t.Run("Tags", func(t *testing.T) {
+		t.Parallel()
+		app := New()
+		domain := app.Domain("api.example.com")
+		domain.Get("/users", testEmptyHandler).Tags("users", "api")
+		route := app.stack[app.methodInt(MethodGet)][0]
+		require.Equal(t, []string{"users", "api"}, route.Tags)
+	})
+
+	t.Run("Deprecated", func(t *testing.T) {
+		t.Parallel()
+		app := New()
+		domain := app.Domain("api.example.com")
+		domain.Get("/users", testEmptyHandler).Deprecated()
+		route := app.stack[app.methodInt(MethodGet)][0]
+		require.True(t, route.Deprecated)
+	})
 }
 
 func Test_Domain_HTTPMethods(t *testing.T) {
@@ -1941,5 +2077,217 @@ func Test_Domain_Security_PatternLengthLimits(t *testing.T) {
 		require.NotPanics(t, func() {
 			parseDomainPattern(label63 + ".com")
 		})
+	})
+}
+
+// Test_Domain_OpenAPI_Helpers_Advanced covers the domainRouter documentation
+// helpers not exercised by Test_Domain_OpenAPI_Helpers.
+func Test_Domain_OpenAPI_Helpers_Advanced(t *testing.T) {
+	t.Parallel()
+
+	t.Run("Security", func(t *testing.T) {
+		t.Parallel()
+		app := New()
+		app.Domain("api.example.com").Get("/users", testEmptyHandler).
+			Security(map[string][]string{"bearerAuth": {}})
+		route := app.stack[app.methodInt(MethodGet)][0]
+		require.Len(t, route.Security, 1)
+		require.Contains(t, route.Security[0], "bearerAuth")
+	})
+
+	t.Run("Hidden", func(t *testing.T) {
+		t.Parallel()
+		app := New()
+		app.Domain("api.example.com").Get("/users", testEmptyHandler).Hidden()
+		route := app.stack[app.methodInt(MethodGet)][0]
+		require.True(t, route.IsHidden())
+	})
+
+	t.Run("ResponseHeader", func(t *testing.T) {
+		t.Parallel()
+		app := New()
+		app.Domain("api.example.com").Get("/users", testEmptyHandler).
+			ResponseHeader(StatusOK, "X-Rate-Limit", "requests per hour", map[string]any{"type": "integer"})
+		route := app.stack[app.methodInt(MethodGet)][0]
+		require.Contains(t, route.Responses["200"].Headers, "X-Rate-Limit")
+	})
+
+	t.Run("AddParameter", func(t *testing.T) {
+		t.Parallel()
+		app := New()
+		app.Domain("api.example.com").Get("/users", testEmptyHandler).
+			AddParameter(RouteParameter{Name: "limit", In: "query", Schema: map[string]any{"type": "integer"}})
+		route := app.stack[app.methodInt(MethodGet)][0]
+		require.Len(t, route.Parameters, 1)
+		require.Equal(t, "limit", route.Parameters[0].Name)
+		require.Equal(t, "query", route.Parameters[0].In)
+	})
+
+	t.Run("OperationExternalDocs", func(t *testing.T) {
+		t.Parallel()
+		app := New()
+		app.Domain("api.example.com").Get("/users", testEmptyHandler).
+			OperationExternalDocs("More info", "https://example.com/docs")
+		route := app.stack[app.methodInt(MethodGet)][0]
+		require.Equal(t, "https://example.com/docs", route.ExternalDocs["url"])
+		require.Equal(t, "More info", route.ExternalDocs["description"])
+	})
+
+	t.Run("RequestBodyContent", func(t *testing.T) {
+		t.Parallel()
+		app := New()
+		app.Domain("api.example.com").Post("/users", testEmptyHandler).
+			RequestBodyContent("User", true, map[string]RouteMediaType{
+				MIMEApplicationJSON: {Schema: map[string]any{"type": "object"}},
+			})
+		route := app.stack[app.methodInt(MethodPost)][0]
+		require.NotNil(t, route.RequestBody)
+		require.Contains(t, route.RequestBody.Content, MIMEApplicationJSON)
+	})
+
+	t.Run("ResponseContent", func(t *testing.T) {
+		t.Parallel()
+		app := New()
+		app.Domain("api.example.com").Get("/users", testEmptyHandler).
+			ResponseContent(StatusOK, "OK", map[string]RouteMediaType{
+				MIMEApplicationJSON: {Schema: map[string]any{"type": "array"}},
+			})
+		route := app.stack[app.methodInt(MethodGet)][0]
+		require.Contains(t, route.Responses["200"].Content, MIMEApplicationJSON)
+	})
+
+	t.Run("ResponseLink", func(t *testing.T) {
+		t.Parallel()
+		app := New()
+		app.Domain("api.example.com").Get("/users", testEmptyHandler).
+			ResponseLink(StatusOK, "self", map[string]any{"operationId": "getUsers"})
+		route := app.stack[app.methodInt(MethodGet)][0]
+		require.Contains(t, route.Responses["200"].Links, "self")
+	})
+
+	t.Run("OperationExtension", func(t *testing.T) {
+		t.Parallel()
+		app := New()
+		app.Domain("api.example.com").Get("/users", testEmptyHandler).
+			OperationExtension(map[string]any{"x-internal": true})
+		route := app.stack[app.methodInt(MethodGet)][0]
+		require.Equal(t, true, route.OperationExtensions["x-internal"])
+	})
+}
+
+// Test_Domain_RouteChain_OpenAPI_Helpers covers the documentation helpers on a
+// domain-scoped RouteChain (domainRegistering), which delegate to the same
+// route-metadata machinery for the chain's own registration.
+func Test_Domain_RouteChain_OpenAPI_Helpers(t *testing.T) {
+	t.Parallel()
+	app := New()
+	domain := app.Domain("api.example.com")
+
+	domain.RouteChain("/users").Post(testEmptyHandler).
+		Name("createUser").
+		Summary("Create a user").
+		Description("Creates a new user").
+		Consumes(MIMEApplicationJSON).
+		Produces(MIMEApplicationXML).
+		Parameter("trace", "header", false, nil, "trace id").
+		ParameterWithExample("lang", "query", false, nil, "", "language", "en", nil).
+		AddParameter(RouteParameter{Name: "verbose", In: "query", Schema: map[string]any{"type": "boolean"}}).
+		Response(StatusCreated, "Created", MIMEApplicationJSON).
+		ResponseWithExample(StatusAccepted, "Accepted", nil, "#/components/schemas/User", map[string]any{"id": 1}, nil, MIMEApplicationJSON).
+		ResponseHeader(StatusCreated, "Location", "resource url", nil).
+		ResponseContent(StatusOK, "OK", map[string]RouteMediaType{MIMEApplicationJSON: {Schema: map[string]any{"type": "object"}}}).
+		ResponseLink(StatusCreated, "self", map[string]any{"operationId": "createUser"}).
+		Tags("users", "write").
+		Deprecated().
+		Security(map[string][]string{"bearerAuth": {}}).
+		OperationExternalDocs("docs", "https://example.com/docs").
+		OperationExtension(map[string]any{"x-team": "core"})
+
+	post := app.stack[app.methodInt(MethodPost)][0]
+	require.Equal(t, "createUser", post.Name)
+	require.Equal(t, "Create a user", post.Summary)
+	require.Equal(t, "Creates a new user", post.Description)
+	//nolint:testifylint // MIME type string, not a JSON payload
+	require.Equal(t, MIMEApplicationJSON, post.Consumes)
+	require.Equal(t, MIMEApplicationXML, post.Produces)
+	require.Len(t, post.Parameters, 3)
+	require.Contains(t, post.Responses, "201")
+	require.Contains(t, post.Responses, "202")
+	require.Contains(t, post.Responses["201"].Headers, "Location")
+	require.Contains(t, post.Responses["200"].Content, MIMEApplicationJSON)
+	require.Contains(t, post.Responses["201"].Links, "self")
+	require.Equal(t, []string{"users", "write"}, post.Tags)
+	require.True(t, post.Deprecated)
+	require.Len(t, post.Security, 1)
+	require.Equal(t, "https://example.com/docs", post.ExternalDocs["url"])
+	require.Equal(t, "core", post.OperationExtensions["x-team"])
+
+	// Request-body variants overwrite one another, so exercise each on its own
+	// registration.
+	domain.RouteChain("/rb-plain").Put(testEmptyHandler).RequestBody("Body", true, MIMEApplicationJSON)
+	require.Equal(t, []string{MIMEApplicationJSON}, app.stack[app.methodInt(MethodPut)][0].RequestBody.MediaTypes)
+
+	domain.RouteChain("/rb-example").Patch(testEmptyHandler).
+		RequestBodyWithExample("Body", true, nil, "#/components/schemas/User", nil, nil, MIMEApplicationJSON)
+	require.Equal(t, "#/components/schemas/User", app.stack[app.methodInt(MethodPatch)][0].RequestBody.SchemaRef)
+
+	domain.RouteChain("/rb-content").Delete(testEmptyHandler).
+		RequestBodyContent("Body", true, map[string]RouteMediaType{MIMEApplicationJSON: {Schema: map[string]any{"type": "object"}}})
+	require.Contains(t, app.stack[app.methodInt(MethodDelete)][0].RequestBody.Content, MIMEApplicationJSON)
+
+	// Hidden on its own registration so it is the only route in its stack.
+	domain.RouteChain("/secret").Get(testEmptyHandler).Hidden()
+	require.True(t, app.stack[app.methodInt(MethodGet)][0].IsHidden())
+}
+
+// Test_Domain_Group_Use_EmptyHandlers exercises a domain group's prefix-only
+// Use (no handlers): the empty-handler wrap fast path and the group's
+// hasAnyRoute bookkeeping.
+func Test_Domain_Group_Use_EmptyHandlers(t *testing.T) {
+	t.Parallel()
+	app := New()
+	dg := app.Domain("api.example.com").Group("/api")
+	dg.Use("/sub") // prefix only, no handlers
+	dg.Get("/users", func(c Ctx) error { return c.SendString("ok") })
+
+	req := httptest.NewRequest(MethodGet, "/api/users", http.NoBody)
+	req.Host = "api.example.com"
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, StatusOK, resp.StatusCode)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "ok", string(body))
+}
+
+// Test_Domain_Use_InvalidHandler verifies Use panics on a non-handler argument.
+func Test_Domain_Use_InvalidHandler(t *testing.T) {
+	t.Parallel()
+	app := New()
+	require.Panics(t, func() {
+		app.Domain("api.example.com").Use(12345)
+	})
+}
+
+// Test_Domain_Group_HookError verifies domainRouter.Group panics when an
+// OnGroup hook returns an error.
+func Test_Domain_Group_HookError(t *testing.T) {
+	t.Parallel()
+	app := New()
+	app.Hooks().OnGroup(func(Group) error { return errTestDomainHook })
+	require.PanicsWithValue(t, errTestDomainHook, func() {
+		app.Domain("api.example.com").Group("/api")
+	})
+}
+
+// Test_Domain_Mount_HookError verifies mounting a sub-app on a domain panics
+// when the sub-app's OnMount hook returns an error.
+func Test_Domain_Mount_HookError(t *testing.T) {
+	t.Parallel()
+	app := New()
+	sub := New()
+	sub.Hooks().OnMount(func(*App) error { return errTestDomainHook })
+	require.PanicsWithValue(t, errTestDomainHook, func() {
+		app.Domain("api.example.com").Use("/api", sub)
 	})
 }

@@ -7,6 +7,7 @@ package fiber
 import (
 	"fmt"
 	"reflect"
+	"sync/atomic"
 )
 
 // Group represents a collection of routes that share middleware and a common
@@ -16,7 +17,14 @@ type Group struct {
 	parentGroup *Group
 	name        string
 
-	Prefix      string
+	Prefix string
+
+	// lastRegID identifies the group's most recent registration, so the
+	// documentation helpers below target it instead of the app-global latest
+	// route (which may belong to a different router). Accessed atomically;
+	// a plain uint64 keeps Group safely copyable for the group hooks.
+	lastRegID uint64
+
 	hasAnyRoute bool
 }
 
@@ -43,6 +51,152 @@ func (grp *Group) Name(name string) Router {
 	}
 	grp.app.mutex.Unlock()
 
+	return grp
+}
+
+// Summary assigns a short summary to the most recently added route in the group.
+func (grp *Group) Summary(sum string) Router {
+	grp.app.applyToRegistration(atomic.LoadUint64(&grp.lastRegID), docSetSummary(sum))
+	return grp
+}
+
+// Description assigns a description to the most recently added route in the group.
+func (grp *Group) Description(desc string) Router {
+	grp.app.applyToRegistration(atomic.LoadUint64(&grp.lastRegID), docSetDescription(desc))
+	return grp
+}
+
+// Consumes assigns a request media type to the most recently added route in the group.
+func (grp *Group) Consumes(typ string) Router {
+	grp.app.applyToRegistration(atomic.LoadUint64(&grp.lastRegID), docSetConsumes(typ))
+	return grp
+}
+
+// Produces assigns a response media type to the most recently added route in the group.
+func (grp *Group) Produces(typ string) Router {
+	grp.app.applyToRegistration(atomic.LoadUint64(&grp.lastRegID), docSetProduces(typ))
+	return grp
+}
+
+// RequestBody documents the request payload for the most recently added route in the group.
+func (grp *Group) RequestBody(description string, required bool, mediaTypes ...string) Router {
+	grp.app.applyToRegistration(atomic.LoadUint64(&grp.lastRegID), docRequestBodyWithExample(description, required, nil, "", nil, nil, mediaTypes...))
+	return grp
+}
+
+// RequestBodyWithExample documents the request payload for the most recently added route in the group with schema references and examples.
+func (grp *Group) RequestBodyWithExample(description string, required bool, schema map[string]any, schemaRef string, example any, examples map[string]any, mediaTypes ...string) Router {
+	grp.app.applyToRegistration(atomic.LoadUint64(&grp.lastRegID), docRequestBodyWithExample(description, required, schema, schemaRef, example, examples, mediaTypes...))
+	return grp
+}
+
+// Parameter documents an input parameter for the most recently added route in the group.
+func (grp *Group) Parameter(name, in string, required bool, schema map[string]any, description string) Router {
+	grp.app.applyToRegistration(atomic.LoadUint64(&grp.lastRegID), docAddParameter(RouteParameter{Name: name, In: in, Required: required, Schema: schema, Description: description}))
+	return grp
+}
+
+// ParameterWithExample documents an input parameter for the most recently added route in the group with schema references and examples.
+func (grp *Group) ParameterWithExample(name, in string, required bool, schema map[string]any, schemaRef, description string, example any, examples map[string]any) Router {
+	grp.app.applyToRegistration(atomic.LoadUint64(&grp.lastRegID), docAddParameter(RouteParameter{
+		Name:        name,
+		In:          in,
+		Required:    required,
+		Schema:      schema,
+		SchemaRef:   schemaRef,
+		Description: description,
+		Example:     example,
+		Examples:    examples,
+	}))
+	return grp
+}
+
+// Response documents an HTTP response for the most recently added route in the group.
+func (grp *Group) Response(status int, description string, mediaTypes ...string) Router {
+	grp.app.applyToRegistration(atomic.LoadUint64(&grp.lastRegID), docAddResponse(status, description, nil, "", nil, nil, mediaTypes...))
+	return grp
+}
+
+// ResponseWithExample documents an HTTP response for the most recently added route in the group with schema references and examples.
+func (grp *Group) ResponseWithExample(status int, description string, schema map[string]any, schemaRef string, example any, examples map[string]any, mediaTypes ...string) Router {
+	grp.app.applyToRegistration(atomic.LoadUint64(&grp.lastRegID), docAddResponse(status, description, schema, schemaRef, example, examples, mediaTypes...))
+	return grp
+}
+
+// Tags assigns tags to the most recently added route in the group.
+func (grp *Group) Tags(tags ...string) Router {
+	grp.app.applyToRegistration(atomic.LoadUint64(&grp.lastRegID), docSetTags(tags...))
+	return grp
+}
+
+// Deprecated marks the most recently added route in the group as deprecated.
+func (grp *Group) Deprecated() Router {
+	grp.app.applyToRegistration(atomic.LoadUint64(&grp.lastRegID), docSetDeprecated())
+	return grp
+}
+
+// Security sets the OpenAPI security requirements for the most recently added
+// route in the group.
+func (grp *Group) Security(requirements ...map[string][]string) Router {
+	grp.app.applyToRegistration(atomic.LoadUint64(&grp.lastRegID), docSetSecurity(requirements...))
+	return grp
+}
+
+// Hidden excludes the most recently added route in the group from the generated
+// OpenAPI specification.
+func (grp *Group) Hidden() Router {
+	grp.app.applyToRegistration(atomic.LoadUint64(&grp.lastRegID), docSetHidden())
+	return grp
+}
+
+// ResponseHeader documents a response header for the most recently added route
+// in the group.
+func (grp *Group) ResponseHeader(status int, name, description string, schema map[string]any) Router {
+	grp.app.applyToRegistration(atomic.LoadUint64(&grp.lastRegID), docResponseHeader(status, name, description, schema))
+	return grp
+}
+
+// AddParameter documents an input parameter on the most recently added route in
+// the group using the full RouteParameter.
+//
+//nolint:gocritic // hugeParam: by-value keeps the chainable route-helper API ergonomic.
+func (grp *Group) AddParameter(param RouteParameter) Router {
+	grp.app.applyToRegistration(atomic.LoadUint64(&grp.lastRegID), docAddParameter(param))
+	return grp
+}
+
+// OperationExternalDocs sets the externalDocs of the most recently added route in
+// the group.
+func (grp *Group) OperationExternalDocs(description, url string) Router {
+	grp.app.applyToRegistration(atomic.LoadUint64(&grp.lastRegID), docOperationExternalDocs(description, url))
+	return grp
+}
+
+// RequestBodyContent documents a per-media-type request body on the most recently
+// added route in the group.
+func (grp *Group) RequestBodyContent(description string, required bool, content map[string]RouteMediaType) Router {
+	grp.app.applyToRegistration(atomic.LoadUint64(&grp.lastRegID), docRequestBodyContent(description, required, content))
+	return grp
+}
+
+// ResponseContent documents a per-media-type response on the most recently added
+// route in the group.
+func (grp *Group) ResponseContent(status int, description string, content map[string]RouteMediaType) Router {
+	grp.app.applyToRegistration(atomic.LoadUint64(&grp.lastRegID), docResponseContent(status, description, content))
+	return grp
+}
+
+// ResponseLink documents a response link on the most recently added route in the
+// group.
+func (grp *Group) ResponseLink(status int, name string, link map[string]any) Router {
+	grp.app.applyToRegistration(atomic.LoadUint64(&grp.lastRegID), docResponseLink(status, name, link))
+	return grp
+}
+
+// OperationExtension merges arbitrary operation-object fields on the most recently
+// added route in the group.
+func (grp *Group) OperationExtension(fields map[string]any) Router {
+	grp.app.applyToRegistration(atomic.LoadUint64(&grp.lastRegID), docOperationExtension(fields))
 	return grp
 }
 
@@ -99,7 +253,7 @@ func (grp *Group) Use(args ...any) Router {
 			return grp.mount(prefix, subApp)
 		}
 
-		grp.app.register([]string{methodUse}, getGroupPath(grp.Prefix, prefix), grp, handlers...)
+		atomic.StoreUint64(&grp.lastRegID, grp.app.register([]string{methodUse}, getGroupPath(grp.Prefix, prefix), grp, "", handlers...))
 	}
 
 	if !grp.hasAnyRoute {
@@ -172,7 +326,7 @@ func (grp *Group) Query(path string, handler any, handlers ...any) Router {
 // The provided handlers are executed in order, starting with `handler` and then the variadic `handlers`.
 func (grp *Group) Add(methods []string, path string, handler any, handlers ...any) Router {
 	converted := collectHandlers("group", append([]any{handler}, handlers...)...)
-	grp.app.register(methods, getGroupPath(grp.Prefix, path), grp, converted...)
+	atomic.StoreUint64(&grp.lastRegID, grp.app.register(methods, getGroupPath(grp.Prefix, path), grp, "", converted...))
 	if !grp.hasAnyRoute {
 		grp.hasAnyRoute = true
 	}
@@ -194,7 +348,7 @@ func (grp *Group) Group(prefix string, handlers ...any) Router {
 	prefix = getGroupPath(grp.Prefix, prefix)
 	if len(handlers) > 0 {
 		converted := collectHandlers("group", handlers...)
-		grp.app.register([]string{methodUse}, prefix, grp, converted...)
+		atomic.StoreUint64(&grp.lastRegID, grp.app.register([]string{methodUse}, prefix, grp, "", converted...))
 	}
 
 	// Create new group
