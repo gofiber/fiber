@@ -323,9 +323,9 @@ func Test_NextCursorURL(t *testing.T) {
 		p := &PageInfo{Limit: 20}
 		require.NoError(t, p.SetNextCursor(map[string]any{"id": float64(42)}))
 
-		url := p.NextCursorURL("https://example.com/users")
+		nextURL := p.NextCursorURL("https://example.com/users")
 		expected := fmt.Sprintf("https://example.com/users?cursor=%s&limit=20", p.NextCursor)
-		require.Equal(t, expected, url)
+		require.Equal(t, expected, nextURL)
 	})
 
 	t.Run("without HasMore", func(t *testing.T) {

@@ -53,10 +53,12 @@ func (*noopConn) SetReadDeadline(time.Time) error  { return nil }
 func (*noopConn) SetWriteDeadline(time.Time) error { return nil }
 
 // pooledCtx bundles the RequestCtx with its noopConn so one pool entry
-// serves both and no per-request conn allocation is needed.
+// serves both and no per-request conn allocation is needed. The conn
+// comes first to keep the struct's trailing pointer span minimal
+// (govet fieldalignment).
 type pooledCtx struct {
-	fctx fasthttp.RequestCtx
 	conn noopConn
+	fctx fasthttp.RequestCtx
 }
 
 var ctxPool = sync.Pool{
@@ -259,7 +261,7 @@ func isUnixNetwork(network string) bool {
 // signs, service names like "http", overflow — reports ok=false so the
 // caller falls back to net.ResolveTCPAddr, which handles the long tail.
 func parseDecimalPort(s string) (int, bool) {
-	if len(s) == 0 || len(s) > 5 {
+	if s == "" || len(s) > 5 {
 		return 0, false
 	}
 	port := 0

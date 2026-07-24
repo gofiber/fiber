@@ -1811,11 +1811,14 @@ func Test_ResolveRemoteAddr_FastPathEquivalence(t *testing.T) {
 
 	// Rejected by the fast path, resolved by the fallback: identical results.
 	fallbackAddrs := []string{
-		"localhost:80",  // hostname
-		"1.2.3.4:0080",  // leading-zero port (fast path parses digits only, both accept)
-		"1.2.3.4",       // missing port -> :80 default via fallback
-		"01.2.3.4:80",   // leading-zero octet (rejected by ParseIPv4, accepted by resolver)
-		"1.2.3.4:99999", // port out of range -> error from both? fallback errors
+		"localhost:80",   // hostname
+		"1.2.3.4:0080",   // leading-zero port (fast path parses digits only, both accept)
+		"1.2.3.4",        // missing port -> :80 default via fallback
+		"01.2.3.4:80",    // leading-zero octet (rejected by ParseIPv4, accepted by resolver)
+		"1.2.3.4:99999",  // port out of range -> error from both? fallback errors
+		"1.2.3.4:",       // empty port -> fast path rejects, resolver yields port 0
+		"1.2.3.4:123456", // six digits -> fast path length guard, resolver errors
+		"1.2.3.4:8a",     // non-digit port -> fast path rejects, resolver service lookup fails
 	}
 	for _, addr := range fallbackAddrs {
 		got, gotErr := resolveRemoteAddr(addr, nil)
@@ -1859,6 +1862,27 @@ func Test_FiberHandlerFunc_MultiValueHeaders(t *testing.T) {
 	require.Equal(t, []string{"one", "two", "three"}, got)
 }
 
+// Test_FiberHandlerFunc_EmptyHeaderValues verifies a header key mapped to an
+// empty value slice is skipped instead of panicking or producing an empty
+// header.
+func Test_FiberHandlerFunc_EmptyHeaderValues(t *testing.T) {
+	t.Parallel()
+
+	var seen bool
+	h := FiberHandlerFunc(func(c fiber.Ctx) error {
+		seen = len(c.Request().Header.PeekAll("X-Empty")) > 0
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	r := httptest.NewRequest(http.MethodGet, "/", http.NoBody)
+	r.Header["X-Empty"] = []string{}
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+
+	require.Equal(t, http.StatusOK, w.Code)
+	require.False(t, seen)
+}
+
 // Test_HTTPMiddleware_MultiValueHeaders verifies multi-value headers added
 // by a wrapped net/http middleware survive the copy-back onto the fiber
 // request.
@@ -1869,6 +1893,7 @@ func Test_HTTPMiddleware_MultiValueHeaders(t *testing.T) {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			r.Header.Add("X-Multi", "one")
 			r.Header.Add("X-Multi", "two")
+			r.Header["X-Empty"] = nil // empty value slices must be skipped
 			next.ServeHTTP(w, r)
 		})
 	}
