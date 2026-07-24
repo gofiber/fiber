@@ -1987,6 +1987,13 @@ func Test_NewError(t *testing.T) {
 	require.Equal(t, "permission denied", e.Message)
 }
 
+func Test_NewError_DefaultMessage(t *testing.T) {
+	t.Parallel()
+	e := NewError(StatusForbidden)
+	require.Equal(t, StatusForbidden, e.Code)
+	require.Equal(t, "Forbidden", e.Message)
+}
+
 // go test -run Test_NewError_Format
 func Test_NewErrorf_Format(t *testing.T) {
 	t.Parallel()

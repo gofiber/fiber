@@ -1205,12 +1205,11 @@ func (e *Error) Error() string {
 
 // NewError creates a new Error instance with an optional message
 func NewError(code int, message ...string) *Error {
-	err := &Error{
-		Code:    code,
-		Message: utils.StatusMessage(code),
-	}
+	err := &Error{Code: code}
 	if len(message) > 0 {
 		err.Message = message[0]
+	} else {
+		err.Message = utils.StatusMessage(code)
 	}
 	return err
 }
