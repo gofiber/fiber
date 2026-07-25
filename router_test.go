@@ -3705,6 +3705,10 @@ func Test_Route_PrefixFilter_Differential(t *testing.T) {
 		"/api", "/foo/", "/:a", "/:b?", "/*", "/+", "/:a-:b", "/:f.:e?",
 		":tail", "/::c", "/:x:y", "/name\\:verb", "/:p/fixed", "/",
 		"/verylongconstantsegment",
+		// Escaped forms matter: register derives star/root from the
+		// escape-stripped path but Params from the escaped one, so these are
+		// the shapes where the two disagree.
+		"/\\*", "/\\+", "/\\:a", "/a\\*b",
 	}
 	patterns := make([]string, 0, len(segments)*(len(segments)+1))
 	for _, s1 := range segments {
@@ -3717,6 +3721,7 @@ func Test_Route_PrefixFilter_Differential(t *testing.T) {
 	pieces := []string{
 		"", "/a", "/a/b", "/a-b", "/a.b", "/x/y-z", "/api", "/api/", "/foo",
 		"/foo/", "/fixed", "/name:verb", "/verylongconstantsegment", "/",
+		"/*", "/+", "/a*b",
 	}
 	paths := make([]string, 0, len(pieces)*len(pieces))
 	for _, p1 := range pieces {
@@ -3725,33 +3730,58 @@ func Test_Route_PrefixFilter_Differential(t *testing.T) {
 		}
 	}
 
-	for _, pattern := range patterns {
-		parser := parseRoute(pattern, regexp.MustCompile)
-		route := &Route{
-			routeParser: parser,
-			Params:      parser.params,
-			path:        pattern,
-			Path:        pattern,
-			star:        pattern == "/*",
-			root:        pattern == "/",
-		}
-		route.buildPrefixFilter()
-
-		for _, use := range []bool{false, true} {
-			route.use = use
+	for _, use := range []bool{false, true} {
+		for _, route := range registerFilterRoutes(t, patterns, use) {
 			for _, path := range paths {
 				var params [maxParams]string
 				if !route.match(path, path, &params, strings.Count(path, "/")) {
 					continue
 				}
-				head := pathHeadWord(path)
-				if (head^route.prefix)&route.prefixMask != 0 {
+				if (pathHeadWord(path)^route.prefix)&route.prefixMask != 0 {
 					t.Fatalf("prefix filter rejected a matching route: pattern %q, path %q, use %v",
-						pattern, path, use)
+						route.Path, path, use)
 				}
 			}
 		}
 	}
+}
+
+// registerFilterRoutes registers patterns on a real App and returns the routes
+// the router will actually serve, tree built and prefix filters computed.
+//
+// The differential tests must not hand-build Route literals: register derives
+// path, Params, star and root from three different strings (raw, prettified and
+// escape-stripped), and a filter bug that only shows up when those disagree —
+// as the escaped-star case did — is invisible to a stand-in built from one.
+//
+//nolint:revive // flag-parameter: the two registration modes are the point of the helper
+func registerFilterRoutes(t *testing.T, patterns []string, use bool) []*Route {
+	t.Helper()
+
+	app := New()
+	handler := func(c Ctx) error { return c.Next() }
+	for _, pattern := range patterns {
+		func() {
+			// A few generated shapes are not registrable; they are not the
+			// subject of this test, so skip them rather than fail.
+			defer func() {
+				//nolint:errcheck // the panic value is irrelevant; skipping the pattern is the point
+				recover()
+			}()
+			if use {
+				app.Use(pattern, handler)
+			} else {
+				app.Get(pattern, handler)
+			}
+		}()
+	}
+	_ = app.RebuildTree()
+
+	method := app.methodInt(MethodGet)
+	require.NotEqual(t, -1, method)
+	routes := app.stack[method]
+	require.NotEmpty(t, routes, "no routes registered")
+	return routes
 }
 
 // Test_Route_PrefixFilter_Fixture proves the leading-byte filter agrees with
@@ -3760,30 +3790,36 @@ func Test_Route_PrefixFilter_Differential(t *testing.T) {
 // go test -race -run Test_Route_PrefixFilter_Fixture
 func Test_Route_PrefixFilter_Fixture(t *testing.T) {
 	t.Parallel()
+	patterns := make([]string, 0, len(routeTestCases))
 	for _, testCollection := range routeTestCases {
-		parser := parseRoute(testCollection.pattern, regexp.MustCompile)
-		route := &Route{
-			routeParser: parser,
-			Params:      parser.params,
-			path:        testCollection.pattern,
-			Path:        testCollection.pattern,
-			star:        testCollection.pattern == "/*",
-			root:        testCollection.pattern == "/",
-		}
-		route.buildPrefixFilter()
+		patterns = append(patterns, testCollection.pattern)
+	}
 
-		for _, c := range testCollection.testCases {
-			route.use = c.partialCheck
-			// Route.match is the oracle, not the fixture's expectation: the
-			// fixture records what getMatch returns, while match wraps it in
-			// the root/star/exact branches the filter has to stay behind.
-			var params [maxParams]string
-			if !route.match(c.url, c.url, &params, strings.Count(c.url, "/")) {
+	for _, use := range []bool{false, true} {
+		byPath := make(map[string]*Route)
+		for _, route := range registerFilterRoutes(t, patterns, use) {
+			byPath[route.Path] = route
+		}
+
+		for _, testCollection := range routeTestCases {
+			route, ok := byPath[testCollection.pattern]
+			if !ok {
 				continue
 			}
-			head := pathHeadWord(c.url)
-			require.Zero(t, (head^route.prefix)&route.prefixMask,
-				"prefix filter rejected a matching route: '%s', url: '%s'", testCollection.pattern, c.url)
+			for _, c := range testCollection.testCases {
+				if c.partialCheck != use {
+					continue
+				}
+				// Route.match is the oracle, not the fixture's expectation:
+				// the fixture records what getMatch returns, while match wraps
+				// it in the root/star/exact branches the filter stays behind.
+				var params [maxParams]string
+				if !route.match(c.url, c.url, &params, strings.Count(c.url, "/")) {
+					continue
+				}
+				require.Zero(t, (pathHeadWord(c.url)^route.prefix)&route.prefixMask,
+					"prefix filter rejected a matching route: '%s', url: '%s'", testCollection.pattern, c.url)
+			}
 		}
 	}
 }
@@ -3796,16 +3832,9 @@ func Test_Route_PrefixFilter_Rejects(t *testing.T) {
 	t.Parallel()
 
 	rejects := func(pattern, path string) bool {
-		parser := parseRoute(pattern, regexp.MustCompile)
-		route := &Route{
-			routeParser: parser,
-			Params:      parser.params,
-			path:        pattern,
-			Path:        pattern,
-			star:        pattern == "/*",
-		}
-		route.buildPrefixFilter()
-		return (pathHeadWord(path)^route.prefix)&route.prefixMask != 0
+		routes := registerFilterRoutes(t, []string{pattern}, false)
+		require.Len(t, routes, 1)
+		return (pathHeadWord(path)^routes[0].prefix)&routes[0].prefixMask != 0
 	}
 
 	require.True(t, rejects("/user/subscriptions/:owner", "/user/keys/1337"))
@@ -3815,4 +3844,36 @@ func Test_Route_PrefixFilter_Rejects(t *testing.T) {
 	// wildcards and leading parameters constrain nothing, so they must not filter
 	require.False(t, rejects("/*", "/anything/at/all"))
 	require.False(t, rejects("/:name", "/anything"))
+}
+
+// Test_Route_PrefixFilter_EscapedStar guards a routing regression the
+// leading-byte filter introduced: register derives star from the
+// escape-stripped path (isStar := pathClean == "/*") but Params from parsing
+// the escaped path, so `/\*` produces star=true with no params. Route.match
+// returns true unconditionally for a star route, so the filter must not
+// constrain it -- an earlier version only checked star inside the parametric
+// branch and 404'd every path that did not literally begin with "/*".
+// go test -race -run Test_Route_PrefixFilter_EscapedStar
+func Test_Route_PrefixFilter_EscapedStar(t *testing.T) {
+	t.Parallel()
+
+	for _, caseSensitive := range []bool{false, true} {
+		for _, use := range []bool{false, true} {
+			app := New(Config{CaseSensitive: caseSensitive})
+			handler := func(c Ctx) error { return c.SendString("ok") }
+			if use {
+				app.Use(`/\*`, handler)
+			} else {
+				app.Get(`/\*`, handler)
+			}
+
+			for _, path := range []string{"/*", "/foo", "/bar/baz", "/"} {
+				resp, err := app.Test(httptest.NewRequest(MethodGet, path, http.NoBody))
+				require.NoError(t, err)
+				require.Equal(t, StatusOK, resp.StatusCode,
+					"escaped star route must still match %q (caseSensitive=%v, use=%v)",
+					path, caseSensitive, use)
+			}
+		}
+	}
 }

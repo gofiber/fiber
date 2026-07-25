@@ -319,16 +319,22 @@ func pathHeadWord(s string) uint64 {
 //   - '*' matches every path, and a first segment that is itself a parameter
 //     constrains nothing, so both disable the filter
 //
+// The star check has to come first, before the parametric branch. star is
+// derived from the unescaped path (isStar in register), while Params comes from
+// parsing the escaped one, so a route registered as `/\*` arrives here with
+// star set and no params — and match returns true for it unconditionally.
+//
 // Anything that changes a route's path, params or parser must run this again;
 // buildTree does so for every registered route.
 func (r *Route) buildPrefixFilter() {
 	r.prefix, r.prefixMask = 0, 0
 
+	if r.star {
+		return
+	}
+
 	prefix := r.path
 	if len(r.Params) > 0 {
-		if r.star {
-			return
-		}
 		segs := r.routeParser.segs
 		if len(segs) == 0 || segs[0].IsParam {
 			return
@@ -775,12 +781,20 @@ func (app *App) addPrefixToRoute(prefix string, route *Route, regexHandler any, 
 	route.root = false
 	route.star = false
 	route.caseSensitive = app.config.CaseSensitive
+	// buildTree recomputes this for every route, but this function rewrites the
+	// path and parser a filter is derived from, so refresh it here too rather
+	// than depend on a caller marking the routes refreshed.
+	route.buildPrefixFilter()
 
 	return route
 }
 
 func (*App) copyRoute(route *Route) *Route {
 	return &Route{
+		// Leading-byte filter
+		prefix:     route.prefix,
+		prefixMask: route.prefixMask,
+
 		// Router booleans
 		use:           route.use,
 		mount:         route.mount,
