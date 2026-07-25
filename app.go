@@ -108,6 +108,9 @@ type App struct {
 	customBinders []CustomBinder
 	// Route stack divided by HTTP methods and route prefixes
 	treeStack []map[int][]*Route
+	// Request-time view of treeStack: one flat, open-addressed index per HTTP
+	// method, rebuilt with the tree (see routeTree in router.go)
+	treeIndex []routeTree
 	// Precomputed unmatched-route indexes, rebuilt with the tree (router_skip.go)
 	skip skipRouteIndex
 	// sendfilesMutex is a mutex used for sendfile operations
@@ -795,6 +798,7 @@ func New(config ...Config) *App {
 	// Create router stack
 	app.stack = make([][]*Route, len(app.config.RequestMethods))
 	app.treeStack = make([]map[int][]*Route, len(app.config.RequestMethods))
+	app.treeIndex = make([]routeTree, len(app.config.RequestMethods))
 
 	// Override colors
 	app.config.ColorScheme = defaultColors(&app.config.ColorScheme)

@@ -179,8 +179,8 @@ func Test_RouteParser_SlashBounds(t *testing.T) {
 	t.Parallel()
 	testCases := []struct {
 		pattern    string
-		minSlashes int
-		maxSlashes int
+		minSlashes int32
+		maxSlashes int32
 		maxBounded bool
 	}{
 		{pattern: "/", minSlashes: 0, maxSlashes: 1, maxBounded: true},

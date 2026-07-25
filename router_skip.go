@@ -175,14 +175,20 @@ func (app *App) resolveSkip(methodInt, treeHash, pathSlashes int, detectionPath,
 		return skipResult{decision: skipRunChain, matchIndex: -1}
 	}
 
+	// Only the candidate scans below need the leading-byte filter's request word.
+	head := pathHeadWord(detectionPath)
+
 	// Single bucket lookup; an unknown tree hash falls back to bucket 0 like next() does.
 	b, ok := skip.buckets[treeHash]
 	if !ok {
 		b = skip.zeroBucket
 	}
 
-	// Tier 2: scan this method's parametric candidates.
+	// Tier 2: scan this method's parametric candidates, leading-byte filter first.
 	for _, cand := range b.cands[methodInt] {
+		if (head^cand.route.prefix)&cand.route.prefixMask != 0 {
+			continue
+		}
 		if cand.route.match(detectionPath, path, values, pathSlashes) {
 			return skipResult{decision: skipRunChain, matchIndex: cand.idx}
 		}
@@ -204,6 +210,9 @@ func (app *App) resolveSkip(methodInt, treeHash, pathSlashes int, detectionPath,
 			continue
 		}
 		for _, cand := range b.cands[m] {
+			if (head^cand.route.prefix)&cand.route.prefixMask != 0 {
+				continue
+			}
 			if cand.route.match(detectionPath, path, values, pathSlashes) {
 				allow |= bit
 				break

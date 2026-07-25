@@ -3691,3 +3691,128 @@ func Benchmark_Router_HandlerCustom_NotFound(b *testing.B) {
 		appHandler(c)
 	}
 }
+
+// Test_Route_PrefixFilter_Differential generatively proves the leading-byte
+// filter App.next applies before Route.match is transparent: for every
+// generated pattern and path, a route the filter rejects must be a route
+// Route.match would have rejected anyway. The filter only ever gets to skip
+// work, never to change an outcome, so a false reject here is a routing bug.
+// go test -race -run Test_Route_PrefixFilter_Differential
+func Test_Route_PrefixFilter_Differential(t *testing.T) {
+	t.Parallel()
+
+	segments := []string{
+		"/api", "/foo/", "/:a", "/:b?", "/*", "/+", "/:a-:b", "/:f.:e?",
+		":tail", "/::c", "/:x:y", "/name\\:verb", "/:p/fixed", "/",
+		"/verylongconstantsegment",
+	}
+	patterns := make([]string, 0, len(segments)*(len(segments)+1))
+	for _, s1 := range segments {
+		patterns = append(patterns, s1)
+		for _, s2 := range segments {
+			patterns = append(patterns, s1+s2)
+		}
+	}
+
+	pieces := []string{
+		"", "/a", "/a/b", "/a-b", "/a.b", "/x/y-z", "/api", "/api/", "/foo",
+		"/foo/", "/fixed", "/name:verb", "/verylongconstantsegment", "/",
+	}
+	paths := make([]string, 0, len(pieces)*len(pieces))
+	for _, p1 := range pieces {
+		for _, p2 := range pieces {
+			paths = append(paths, p1+p2)
+		}
+	}
+
+	for _, pattern := range patterns {
+		parser := parseRoute(pattern, regexp.MustCompile)
+		route := &Route{
+			routeParser: parser,
+			Params:      parser.params,
+			path:        pattern,
+			Path:        pattern,
+			star:        pattern == "/*",
+			root:        pattern == "/",
+		}
+		route.buildPrefixFilter()
+
+		for _, use := range []bool{false, true} {
+			route.use = use
+			for _, path := range paths {
+				var params [maxParams]string
+				if !route.match(path, path, &params, strings.Count(path, "/")) {
+					continue
+				}
+				head := pathHeadWord(path)
+				if (head^route.prefix)&route.prefixMask != 0 {
+					t.Fatalf("prefix filter rejected a matching route: pattern %q, path %q, use %v",
+						pattern, path, use)
+				}
+			}
+		}
+	}
+}
+
+// Test_Route_PrefixFilter_Fixture proves the leading-byte filter agrees with
+// Route.match across the exhaustive path-matching fixture, which covers far
+// more pattern shapes than the generated set above.
+// go test -race -run Test_Route_PrefixFilter_Fixture
+func Test_Route_PrefixFilter_Fixture(t *testing.T) {
+	t.Parallel()
+	for _, testCollection := range routeTestCases {
+		parser := parseRoute(testCollection.pattern, regexp.MustCompile)
+		route := &Route{
+			routeParser: parser,
+			Params:      parser.params,
+			path:        testCollection.pattern,
+			Path:        testCollection.pattern,
+			star:        testCollection.pattern == "/*",
+			root:        testCollection.pattern == "/",
+		}
+		route.buildPrefixFilter()
+
+		for _, c := range testCollection.testCases {
+			route.use = c.partialCheck
+			// Route.match is the oracle, not the fixture's expectation: the
+			// fixture records what getMatch returns, while match wraps it in
+			// the root/star/exact branches the filter has to stay behind.
+			var params [maxParams]string
+			if !route.match(c.url, c.url, &params, strings.Count(c.url, "/")) {
+				continue
+			}
+			head := pathHeadWord(c.url)
+			require.Zero(t, (head^route.prefix)&route.prefixMask,
+				"prefix filter rejected a matching route: '%s', url: '%s'", testCollection.pattern, c.url)
+		}
+	}
+}
+
+// Test_Route_PrefixFilter_Rejects proves the filter is actually doing work:
+// routes whose leading constant bytes differ from the request must be skipped
+// without Route.match ever being consulted.
+// go test -race -run Test_Route_PrefixFilter_Rejects
+func Test_Route_PrefixFilter_Rejects(t *testing.T) {
+	t.Parallel()
+
+	rejects := func(pattern, path string) bool {
+		parser := parseRoute(pattern, regexp.MustCompile)
+		route := &Route{
+			routeParser: parser,
+			Params:      parser.params,
+			path:        pattern,
+			Path:        pattern,
+			star:        pattern == "/*",
+		}
+		route.buildPrefixFilter()
+		return (pathHeadWord(path)^route.prefix)&route.prefixMask != 0
+	}
+
+	require.True(t, rejects("/user/subscriptions/:owner", "/user/keys/1337"))
+	require.True(t, rejects("/user/keys/:id", "/user/emails"))
+	require.True(t, rejects("/repos/:owner", "/user/keys"))
+	require.False(t, rejects("/user/keys/:id", "/user/keys/1337"))
+	// wildcards and leading parameters constrain nothing, so they must not filter
+	require.False(t, rejects("/*", "/anything/at/all"))
+	require.False(t, rejects("/:name", "/anything"))
+}

@@ -19,15 +19,22 @@ import (
 	utilsstrings "github.com/gofiber/utils/v2/strings"
 )
 
-// routeParser holds the path segments and param names
+// routeParser holds the path segments and param names.
+//
+// The slash bounds lead the struct on purpose: Route.match consults them for
+// every parametric candidate it rejects, and Route embeds routeParser so that
+// they share a cache line with the other fields the router reads while
+// scanning. Keep them first when adding fields.
+//
+//nolint:govet // fieldalignment: the slash bounds lead deliberately, see above
 type routeParser struct {
+	minSlashes    int32           // minimum number of '/' a matching detection path can contain
+	maxSlashes    int32           // maximum number of '/' a matching detection path can contain; only valid when maxBounded is true
+	maxBounded    bool            // false when a parameter can swallow '/', making the maximum unknowable; false also disables the max check
 	segs          []*routeSegment // the parsed segments of the route
 	params        []string        // that parameter names the parsed route
 	wildCardCount int             // number of wildcard parameters, used internally to give the wildcard parameter its number
 	plusCount     int             // number of plus parameters, used internally to give the plus parameter its number
-	minSlashes    int             // minimum number of '/' a matching detection path can contain
-	maxSlashes    int             // maximum number of '/' a matching detection path can contain; only valid when maxBounded is true
-	maxBounded    bool            // false when a parameter can swallow '/', making the maximum unknowable; false also disables the max check
 }
 
 var routerParserPool = &sync.Pool{
@@ -303,9 +310,9 @@ func (parser *routeParser) computeSlashBounds() {
 			minSlashes--
 		}
 	}
-	parser.minSlashes = minSlashes
+	parser.minSlashes = int32(minSlashes)
 	if bounded {
-		parser.maxSlashes = maxSlashes
+		parser.maxSlashes = int32(maxSlashes)
 		parser.maxBounded = true
 	}
 }
