@@ -4,6 +4,10 @@
 
 package fiber
 
+import (
+	"strings"
+)
+
 // skipRouteIndex holds precomputed unmatched-route indexes, rebuilt by buildSkipIndexes with the route tree.
 type skipRouteIndex struct {
 	// staticMethods maps a static endpoint's path to a method bitmask; nil unless SkipUnmatchedRoutes is on
@@ -14,6 +18,10 @@ type skipRouteIndex struct {
 	zeroBucket *skipBucket
 	// routeMethods is a method bitmask with at least one non-use route; only valid when methodMaskValid
 	routeMethods uint64
+	// staticSlashes has a bit per '/' count present among staticMethods' keys, so
+	// resolveSkip can skip hashing the path when no static route could match it.
+	// Counts >= 64 set no bit; requests that long take the unconditional path.
+	staticSlashes uint64
 	// enabled gates the fast path: SkipUnmatchedRoutes is on and middleware is registered
 	// (without middleware next() already answers 404/405 cheaply)
 	enabled bool
@@ -116,6 +124,11 @@ func (idx *skipRouteIndex) buildLookahead(app *App) {
 				continue
 			}
 			static[route.path] |= bit
+			// These routes match by exact string compare, so a candidate
+			// detection path necessarily carries the same number of '/'.
+			if n := strings.Count(route.path, "/"); n < 64 {
+				idx.staticSlashes |= uint64(1) << n
+			}
 		}
 
 		// Candidates come from the final buckets (post bucket-0 replication) so idx lines up with next()'s scan.
@@ -168,7 +181,15 @@ func (idx *skipRouteIndex) buildLookahead(app *App) {
 func (app *App) resolveSkip(methodInt, treeHash, pathSlashes int, detectionPath, path string, values *[maxParams]string) skipResult {
 	skip := &app.skip
 	methodBit := uint64(1) << methodInt
-	staticMask := skip.staticMethods[detectionPath]
+
+	// Hashing detectionPath for the static index costs a pass over the whole
+	// path, and static endpoints match by exact compare, so a differing '/'
+	// count rules them all out before the map is touched. pathSlashes 0 means
+	// the count was never computed, which stands the filter down.
+	var staticMask uint64
+	if pathSlashes == 0 || pathSlashes >= 64 || skip.staticSlashes&(uint64(1)<<pathSlashes) != 0 {
+		staticMask = skip.staticMethods[detectionPath]
+	}
 
 	// Tier 1: a static endpoint matches this method.
 	if staticMask&methodBit != 0 {

@@ -3737,13 +3737,20 @@ func Test_Route_PrefixFilter_Differential(t *testing.T) {
 				if !route.match(path, path, &params, strings.Count(path, "/")) {
 					continue
 				}
-				if (pathHeadWord(path)^route.prefix)&route.prefixMask != 0 {
+				if routeFilterRejects(route, path) {
 					t.Fatalf("prefix filter rejected a matching route: pattern %q, path %q, use %v",
 						route.Path, path, use)
 				}
 			}
 		}
 	}
+}
+
+// routeFilterRejects mirrors the leading-byte reject the scan loops in
+// App.next, App.nextCustom and resolveSkip apply before calling Route.match.
+// The tests below assert it never rejects a route that Route.match accepts.
+func routeFilterRejects(route *Route, path string) bool {
+	return (pathHeadWord(path)^route.prefix)&route.prefixMask != 0
 }
 
 // registerFilterRoutes registers patterns on a real App and returns the routes
@@ -3817,7 +3824,7 @@ func Test_Route_PrefixFilter_Fixture(t *testing.T) {
 				if !route.match(c.url, c.url, &params, strings.Count(c.url, "/")) {
 					continue
 				}
-				require.Zero(t, (pathHeadWord(c.url)^route.prefix)&route.prefixMask,
+				require.False(t, routeFilterRejects(route, c.url),
 					"prefix filter rejected a matching route: '%s', url: '%s'", testCollection.pattern, c.url)
 			}
 		}
@@ -3834,7 +3841,7 @@ func Test_Route_PrefixFilter_Rejects(t *testing.T) {
 	rejects := func(pattern, path string) bool {
 		routes := registerFilterRoutes(t, []string{pattern}, false)
 		require.Len(t, routes, 1)
-		return (pathHeadWord(path)^routes[0].prefix)&routes[0].prefixMask != 0
+		return routeFilterRejects(routes[0], path)
 	}
 
 	require.True(t, rejects("/user/subscriptions/:owner", "/user/keys/1337"))
@@ -3874,6 +3881,47 @@ func Test_Route_PrefixFilter_EscapedStar(t *testing.T) {
 					"escaped star route must still match %q (caseSensitive=%v, use=%v)",
 					path, caseSensitive, use)
 			}
+		}
+	}
+}
+
+// Benchmark_Router_GitHub_API_Serial routes the whole fixture corpus once per
+// iteration on a single goroutine.
+//
+// The RunParallel variants above are the right shape for measuring contention
+// but are dominated by scheduler noise on small machines (±40% run to run
+// observed on 4 cores), which buries the few-percent deltas that route-scan
+// changes produce. This one is deterministic, so it is the benchmark to use
+// when comparing scan-side changes across builds, and it exercises the case
+// those changes target: a large route set where most candidates are rejected.
+// go test -run=^$ -bench=Benchmark_Router_GitHub_API_Serial -benchmem -count=6
+func Benchmark_Router_GitHub_API_Serial(b *testing.B) {
+	app := New()
+	registerDummyRoutes(app)
+	app.startupProcess()
+
+	// Fail loudly if the corpus stops matching, rather than silently
+	// benchmarking a router that answers 404 for everything.
+	c := &fasthttp.RequestCtx{}
+	for _, route := range routesFixture.TestRoutes {
+		c.Request.Header.SetMethod(route.Method)
+		c.URI().SetPath(route.Path)
+		ctx := acquireDefaultCtxForRouterBenchmark(b, app, c)
+		match, err := app.next(ctx)
+		app.ReleaseCtx(ctx)
+		require.NoError(b, err, "route: %s %s", route.Method, route.Path)
+		require.True(b, match, "route: %s %s", route.Method, route.Path)
+	}
+
+	b.ReportAllocs()
+	for b.Loop() {
+		for i := range routesFixture.TestRoutes {
+			c.Request.Header.SetMethod(routesFixture.TestRoutes[i].Method)
+			c.URI().SetPath(routesFixture.TestRoutes[i].Path)
+			ctx := acquireDefaultCtxForRouterBenchmark(b, app, c)
+			//nolint:errcheck // verified above; the loop measures the scan
+			_, _ = app.next(ctx)
+			app.ReleaseCtx(ctx)
 		}
 	}
 }
