@@ -941,7 +941,8 @@ func Test_RouteParser_ConstParamShape(t *testing.T) {
 		"/", "/const", "/*", "/+", "/api/*", "/api/+",
 		"/api/:a/:b",           // two params
 		"/api/:a/fixed",        // param not last
-		"/api/:a?",             // optional param
+		"/api/:a?",             // optional param (const carries the optional slash)
+		"/apix:a?",             // optional param with no optional slash on the const
 		"/api/:a<int>",         // constrained param
 		"/api/:a-:b",           // adjacent params
 		"/api/",                // no param at all

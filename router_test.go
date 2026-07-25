@@ -9,6 +9,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -3923,5 +3924,215 @@ func Benchmark_Router_GitHub_API_Serial(b *testing.B) {
 			_, _ = app.next(ctx)
 			app.ReleaseCtx(ctx)
 		}
+	}
+}
+
+// referenceEndpoint resolves a request the slow, obvious way: walk the method's
+// route stack in registration order and return the first endpoint whose
+// Route.match accepts, with every optimization the router layers on top of that
+// deliberately switched off.
+//
+//   - the tree buckets are bypassed by scanning app.stack directly
+//   - the leading-byte filter is bypassed by not applying it
+//   - the slash-count quick-reject is bypassed by passing an unknown count (0)
+//   - the "/const/:param" specialization is bypassed on a parser copy
+//
+// Each of those is only ever allowed to skip work, so the router must always
+// land on the same route with the same parameters as this does.
+//
+//nolint:gocritic // unnamedResult: the pair is documented above and named results trip nonamedreturns
+func referenceEndpoint(app *App, method int, detectionPath, path string) (*Route, [maxParams]string) {
+	for _, route := range app.stack[method] {
+		if route.use || route.mount {
+			continue
+		}
+
+		// Route is a value copy; routeParser is a value field and segs is only
+		// read, so clearing the specialization here cannot affect the real one.
+		ref := *route
+		ref.routeParser.constParam = false
+
+		var got [maxParams]string
+		if ref.match(detectionPath, path, &got, 0) {
+			return route, got
+		}
+	}
+	return nil, [maxParams]string{}
+}
+
+// Test_Router_ScanMatchesReference is the end-to-end guard for the router's
+// candidate scan. Across every routing-relevant config combination it drives
+// real requests through App.next and requires the resulting route and captured
+// parameters to equal what an unoptimized linear scan of the route stack picks.
+//
+// This is the property every scan-side optimization has to preserve, and it
+// covers them together rather than one at a time: bucket selection, the
+// leading-byte filter, the slash-count bounds and the "/const/:param"
+// specialization all have to agree with the obvious implementation. It replaces
+// a golden-file comparison, so it needs no regeneration when routes are added.
+// go test -race -run Test_Router_ScanMatchesReference
+func Test_Router_ScanMatchesReference(t *testing.T) {
+	t.Parallel()
+
+	patterns := []string{
+		"/", "/health", "/health/live", "/api", "/api/v1/status",
+		"/user/keys/:id", "/user/emails", "/user/following/:user",
+		"/repos/:owner/:repo", "/repos/:owner/:repo/issues",
+		"/repos/:owner/:repo/issues/:number", "/repos/:owner/:repo/stargazers",
+		"/api/v1/:resource", "/api/v1/:resource/:id", "/api/v1/:resource/:id/edit",
+		"/files/*", "/assets/+", "/mixed/:a-:b", "/dotted/:a.:b",
+		"/opt/:a?", "/opt/:a/:b?", "/num/:id<int>", "/word/:name<alpha>",
+		// Optional param whose constant does not end in '/', so the constant
+		// carries no optional slash: the one shape where the specialization
+		// gate's own optional-param check is what keeps it out.
+		"/optx:a?",
+		`/esc/\:literal`, `/esc/\*`, "/deep/:a/:b/:c/:d/:e",
+		"/CaseSensitive/Path", "/trailing/slash/", "/x/:y/fixedEnd",
+		// Registered last so they act as catch-alls: a filter that wrongly
+		// constrains a star route shows up here as an unexpected miss.
+		`/\*`, "/*",
+	}
+
+	paths := []string{
+		"/", "", "/health", "/health/", "/health/live", "/HEALTH",
+		"/api", "/api/v1/status", "/api/v1/things", "/api/v1/things/7",
+		"/api/v1/things/7/edit", "/user/keys/1337", "/user/emails",
+		"/user/following/octocat", "/repos/a/b", "/repos/a/b/issues",
+		"/repos/a/b/issues/42", "/repos/a/b/stargazers", "/repos/a",
+		"/files/any/deep/path", "/assets/x/y", "/mixed/p-q", "/dotted/p.q",
+		"/opt", "/opt/", "/opt/one", "/opt/one/two", "/num/123", "/num/abc",
+		"/optx", "/optxy", "/optx/z",
+		"/word/abc", "/word/123", "/esc/:literal", "/esc/*", "/esc/anything",
+		"/deep/1/2/3/4/5", "/CaseSensitive/Path", "/casesensitive/path",
+		"/trailing/slash", "/trailing/slash/", "/x/y/fixedEnd", "/x/y/z/fixedEnd",
+		"/nope", "/a/b/c/d/e/f/g",
+	}
+
+	for _, caseSensitive := range []bool{false, true} {
+		for _, strictRouting := range []bool{false, true} {
+			for _, skipUnmatched := range []bool{false, true} {
+				for _, withMiddleware := range []bool{false, true} {
+					cfg := Config{
+						CaseSensitive:       caseSensitive,
+						StrictRouting:       strictRouting,
+						SkipUnmatchedRoutes: skipUnmatched,
+					}
+					name := fmt.Sprintf("cs=%v/sr=%v/skip=%v/mw=%v",
+						caseSensitive, strictRouting, skipUnmatched, withMiddleware)
+
+					t.Run(name, func(t *testing.T) {
+						t.Parallel()
+						assertScanMatchesReference(t, &cfg, withMiddleware, patterns, paths)
+					})
+				}
+			}
+		}
+	}
+}
+
+//nolint:revive // flag-parameter: withMiddleware selects the app shape under test
+func assertScanMatchesReference(t *testing.T, cfg *Config, withMiddleware bool, patterns, paths []string) {
+	t.Helper()
+
+	app := New(*cfg)
+	if withMiddleware {
+		// Middleware changes which scan path App.next takes, and enables the
+		// SkipUnmatchedRoutes lookahead, so both shapes have to be covered.
+		app.Use(func(c Ctx) error { return c.Next() })
+	}
+	handler := func(c Ctx) error { return nil }
+	for _, pattern := range patterns {
+		func() {
+			//nolint:errcheck // an unregistrable pattern is not this test's subject
+			defer func() { recover() }()
+			app.Get(pattern, handler)
+		}()
+	}
+	app.startupProcess()
+
+	method := app.methodInt(MethodGet)
+	require.NotEqual(t, -1, method)
+
+	fctx := &fasthttp.RequestCtx{}
+	fctx.Request.Header.SetMethod(MethodGet)
+
+	for _, path := range paths {
+		fctx.URI().SetPath(path)
+
+		ctx, ok := app.AcquireCtx(fctx).(*DefaultCtx)
+		require.True(t, ok)
+
+		// Normalization is shared machinery, not something the scan optimizes,
+		// so the reference reads the same detection path the router does.
+		detectionPath := app.toString(ctx.detectionPath)
+		routePath := app.toString(ctx.path)
+		wantRoute, wantParams := referenceEndpoint(app, method, detectionPath, routePath)
+
+		_, err := app.next(ctx)
+		gotRoute, gotParams, matched := ctx.route, ctx.values, ctx.isMatched
+		app.ReleaseCtx(ctx)
+
+		if wantRoute == nil {
+			require.False(t, matched,
+				"router matched %q but the reference scan found nothing", path)
+			require.Error(t, err, "unmatched path %q should not route cleanly", path)
+			continue
+		}
+
+		require.True(t, matched, "reference scan matched %q via %q but the router did not",
+			path, wantRoute.Path)
+		require.Same(t, wantRoute, gotRoute,
+			"path %q: router chose %q, reference scan chose %q",
+			path, gotRoute.Path, wantRoute.Path)
+		require.Equal(t, wantParams[:len(wantRoute.Params)], gotParams[:len(wantRoute.Params)],
+			"path %q via %q: captured parameters diverged", path, wantRoute.Path)
+	}
+}
+
+// Test_ResolveSkip_StaticSlashGate covers the '/'-count gate that lets
+// resolveSkip skip hashing the detection path for the static endpoint index.
+// The gate is a pure filter over an exact-match lookup, so a wrong bit turns a
+// matching static route into a 404 -- silently, and only when
+// SkipUnmatchedRoutes and middleware are both on and some route has a
+// parameter, which is what makes the '/' census run in the first place.
+//
+// The routes here deliberately include no wildcard or root fallback: with one
+// present, tier 2 would rescue a botched tier 1 and hide the bug.
+// go test -race -run Test_ResolveSkip_StaticSlashGate
+func Test_ResolveSkip_StaticSlashGate(t *testing.T) {
+	t.Parallel()
+
+	statics := []string{
+		"/health",
+		"/api/status",
+		"/a/b/c/d",
+		"/one/two/three/four/five/six",
+	}
+
+	app := New(Config{SkipUnmatchedRoutes: true})
+	app.Use(func(c Ctx) error { return c.Next() })
+	for _, path := range statics {
+		app.Get(path, func(c Ctx) error { return c.SendString("ok") })
+	}
+	// A parametric route at a depth none of the statics share, so the slash
+	// census actually runs and the static bitmask is what decides tier 1.
+	app.Get("/params/:a/:b/:c/:d/:e/:f/:g", func(c Ctx) error { return c.SendString("param") })
+
+	for _, path := range statics {
+		resp, err := app.Test(httptest.NewRequest(MethodGet, path, http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, StatusOK, resp.StatusCode, "static route %q must still match", path)
+	}
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/params/1/2/3/4/5/6/7", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, StatusOK, resp.StatusCode, "parametric route must still match")
+
+	// Paths that share a '/' count with a registered static but nothing else,
+	// so a gate that is too permissive is not mistaken for a correct one.
+	for _, path := range []string{"/missing", "/api/missing", "/a/b/c/x", "/nope/nope"} {
+		resp, err := app.Test(httptest.NewRequest(MethodGet, path, http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, StatusNotFound, resp.StatusCode, "unmatched path %q must 404", path)
 	}
 }
