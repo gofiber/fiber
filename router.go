@@ -114,10 +114,16 @@ type routeTree struct {
 // whose low bits are just the third path byte, across the probe table.
 const routeTreeHashMul = 0x9E3779B1
 
-// buildRouteTree converts one method's tree-path buckets into a routeTree,
-// recycling prev's tables when they are still the right size.
-func buildRouteTree(buckets map[int][]*Route, prev *routeTree) routeTree {
-	tree := routeTree{globals: buckets[0]}
+// buildRouteTree converts one method's tree-path buckets into a routeTree.
+//
+// It returns a pointer, and allocates rather than recycling the previous
+// tables, so that publishing a rebuilt tree is a single pointer store. That
+// matters because RebuildTree may be called while requests are in flight: a
+// multi-word store lets a reader pair the new hash table with the old buckets,
+// and clearing tables in place lets one see an empty table and fall through to
+// the globals bucket. Both answer 404 for a route that exists.
+func buildRouteTree(buckets map[int][]*Route) *routeTree {
+	tree := &routeTree{globals: buckets[0]}
 
 	prefixed := len(buckets)
 	if _, ok := buckets[0]; ok {
@@ -134,17 +140,8 @@ func buildRouteTree(buckets map[int][]*Route, prev *routeTree) routeTree {
 		size *= 2
 	}
 
-	// Reuse the previous tables when the size still matches, the same way
-	// reuseRouteBucket recycles the route slices they point at, so a rebuild
-	// on an unchanged route set allocates nothing here.
-	if len(prev.hashes) == size {
-		tree.hashes, tree.buckets = prev.hashes, prev.buckets
-		clear(tree.hashes)
-		clear(tree.buckets)
-	} else {
-		tree.hashes = make([]int32, size)
-		tree.buckets = make([][]*Route, size)
-	}
+	tree.hashes = make([]int32, size)
+	tree.buckets = make([][]*Route, size)
 	tree.mask = uint32(size - 1) //nolint:gosec // G115 - size is a small power of two
 
 	for hash, routes := range buckets {
@@ -1184,7 +1181,7 @@ func (app *App) buildTree() *App {
 		}
 
 		app.treeStack[method] = tsMap
-		app.treeIndex[method] = buildRouteTree(tsMap, &app.treeIndex[method])
+		app.treeIndex[method] = buildRouteTree(tsMap)
 	}
 	app.hasParamRoutes = hasParamRoutes
 
