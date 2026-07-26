@@ -3751,7 +3751,7 @@ func Test_Route_PrefixFilter_Differential(t *testing.T) {
 // App.next, App.nextCustom and resolveSkip apply before calling Route.match.
 // The tests below assert it never rejects a route that Route.match accepts.
 func routeFilterRejects(route *Route, path string) bool {
-	return (pathHeadWord(path)^route.prefix)&route.prefixMask != 0
+	return route.prefixRejects(pathHeadWord(path))
 }
 
 // registerFilterRoutes registers patterns on a real App and returns the routes
@@ -4311,4 +4311,51 @@ func Test_RouteTree_SlotSpreadsAcrossLargeTables(t *testing.T) {
 			t.Fatalf("lookup returned the wrong bucket for hash %#x", hash)
 		}
 	}
+}
+
+// Test_Route_JSONFieldOrder pins the key order of Route's JSON.
+//
+// Route's field order is chosen for the router's scan, and encoding/json emits
+// keys in declaration order, so the two are coupled unless something breaks the
+// link. Reordering the struct for cache-line reasons already moved "params"
+// from last to first once, which is a silent change to what app.GetRoutes()
+// serializes. MarshalJSON decouples them; this test is what keeps it honest.
+// go test -race -run Test_Route_JSONFieldOrder
+func Test_Route_JSONFieldOrder(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	app.Get("/x/:id", func(Ctx) error { return nil }).Name("xr")
+	app.startupProcess()
+
+	var route Route
+	for _, r := range app.GetRoutes() {
+		if r.Method == MethodGet && r.Path == "/x/:id" {
+			route = r
+			break
+		}
+	}
+	require.Equal(t, "/x/:id", route.Path, "route not found")
+
+	const want = `{"method":"GET","name":"xr","path":"/x/:id","params":["id"]}`
+
+	encoded, err := json.Marshal(route)
+	require.NoError(t, err)
+	require.JSONEq(t, want, string(encoded))
+	// Exact string compare on purpose: key order is the whole assertion, and
+	// JSONEq is order-insensitive so it cannot express it.
+	//nolint:testifylint // encoded-compare: JSONEq would not catch a reorder
+	require.Equal(t, want, string(encoded), "Route's JSON key order changed")
+
+	// The same must hold through a pointer and through a slice, which is what
+	// app.GetRoutes() hands back.
+	encoded, err = json.Marshal(&route)
+	require.NoError(t, err)
+	//nolint:testifylint // encoded-compare: key order is the assertion
+	require.Equal(t, want, string(encoded), "Route's JSON key order changed via pointer")
+
+	encoded, err = json.Marshal([]Route{route})
+	require.NoError(t, err)
+	//nolint:testifylint // encoded-compare: key order is the assertion
+	require.Equal(t, "["+want+"]", string(encoded), "Route's JSON key order changed in a slice")
 }

@@ -5,6 +5,7 @@
 package fiber
 
 import (
+	"encoding/json"
 	"fmt"
 	"math/bits"
 	"slices"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/gofiber/utils/v2"
 	utilsstrings "github.com/gofiber/utils/v2/strings"
+	"github.com/gofiber/utils/v2/swar"
 	"github.com/valyala/bytebufferpool"
 	"github.com/valyala/fasthttp"
 )
@@ -86,6 +88,37 @@ type Route struct {
 	Path string `json:"path"` // Original registered route path
 }
 
+// routeJSON is Route's wire format. It exists so the JSON that app.GetRoutes()
+// produces does not depend on how Route orders its fields in memory: that order
+// is dictated by the router's candidate scan, and encoding/json emits keys in
+// declaration order, so without this a layout change silently reorders a public
+// payload. Moving Params to the front of Route for cache reasons did exactly
+// that once.
+type routeJSONView struct {
+	Method string   `json:"method"`
+	Name   string   `json:"name"`
+	Path   string   `json:"path"`
+	Params []string `json:"params"`
+}
+
+// MarshalJSON implements json.Marshaler, pinning the key order Route has always
+// emitted. The receiver is a value so that both Route and *Route marshal
+// through it.
+//
+//nolint:gocritic // hugeParam: a value receiver is required for Route values to use this
+func (r Route) MarshalJSON() ([]byte, error) {
+	encoded, err := json.Marshal(routeJSONView{
+		Method: r.Method,
+		Name:   r.Name,
+		Path:   r.Path,
+		Params: r.Params,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal route: %w", err)
+	}
+	return encoded, nil
+}
+
 var (
 	defaultGreedyParameterKeys    = []string{"*", "+"}
 	preferredPlusGreedyParameters = []string{"+", "*"}
@@ -130,13 +163,19 @@ const routeTreeHashMul = 0x9E3779B1
 // the index existed — so this restores the parity that assigning treeStack's
 // map pointer used to provide.
 //
-// It does not make RebuildTree safe against in-flight requests, and nothing
-// here should be read as claiming it does. buildTree still fills these trees
-// with buckets from reuseRouteBucket, which hands back the backing array the
-// currently published tree points at and appends over it, so a scan in progress
-// can still observe a bucket mid-rewrite and reach a route from a different
-// registration position. That aliasing predates the index and is unchanged.
-// RebuildTree's own doc states the real contract.
+// The buckets are freshly allocated too, for the same reason. buildTree used to
+// recycle the previous build's backing arrays, which the published tree still
+// pointed at, so a rebuild appended over the very slice a scan in progress was
+// iterating. Recycling saved allocations on a path that is explicitly not the
+// request path, and bought a hazard on one that is.
+//
+// None of this makes RebuildTree safe against in-flight requests, and nothing
+// here should be read as claiming it does: publishing the tree is still an
+// unsynchronized store, so a reader is not guaranteed to see a rebuild at all,
+// or to see one method's tree and another's from the same build. What it does
+// is keep a reader that misses the update on wholly intact old data instead of
+// on data being overwritten underneath it. RebuildTree's own doc states the
+// contract.
 func buildRouteTree(buckets map[int][]*Route) *routeTree {
 	tree := &routeTree{globals: buckets[0]}
 
@@ -309,14 +348,12 @@ func preferredGreedyParameters(paramName string) []string {
 	return defaultGreedyParameterKeys
 }
 
-// pathHeadWord packs the first eight bytes of a detection path into a
+// pathHeadWord packs the first swar.WordLen bytes of a detection path into a
 // little-endian word, zero-padded when the path is shorter, so a route's
 // precomputed prefix can be tested with a single masked compare.
 func pathHeadWord(s string) uint64 {
-	if len(s) >= 8 {
-		_ = s[7] // hint the bounds check out of the way so this folds into one load
-		return uint64(s[0]) | uint64(s[1])<<8 | uint64(s[2])<<16 | uint64(s[3])<<24 |
-			uint64(s[4])<<32 | uint64(s[5])<<40 | uint64(s[6])<<48 | uint64(s[7])<<56
+	if len(s) >= swar.WordLen {
+		return swar.Load8(s, 0)
 	}
 
 	var word uint64
@@ -383,18 +420,29 @@ func computePrefixFilter(r *Route) (word, mask uint64) {
 		}
 	}
 
-	if len(prefix) > 8 {
-		prefix = prefix[:8]
+	if len(prefix) > swar.WordLen {
+		prefix = prefix[:swar.WordLen]
 	}
 	if prefix == "" {
 		return 0, 0
 	}
 
 	mask = ^uint64(0)
-	if n := len(prefix); n < 8 {
+	if n := len(prefix); n < swar.WordLen {
 		mask = uint64(1)<<(8*n) - 1
 	}
 	return pathHeadWord(prefix), mask
+}
+
+// prefixRejects reports whether the leading bytes of a detection path, packed
+// by pathHeadWord, already rule this route out.
+//
+// This is the whole of the leading-byte filter, and it lives here rather than
+// inline at the scan sites so there is one copy to change and one copy for the
+// differential tests to guard. Six hand-written copies could drift from each
+// other, and a test asserting against a seventh would not notice.
+func (r *Route) prefixRejects(head uint64) bool {
+	return (head^r.prefix)&r.prefixMask != 0
 }
 
 func (r *Route) match(detectionPath, path string, params *[maxParams]string, pathSlashes int) bool {
@@ -472,7 +520,7 @@ func (app *App) next(c *DefaultCtx) (bool, error) {
 		route := tree[indexRoute]
 
 		// Reject on the leading path bytes before touching the rest of the route
-		if (head^route.prefix)&route.prefixMask != 0 {
+		if route.prefixRejects(head) {
 			continue
 		}
 
@@ -560,7 +608,7 @@ func (app *App) next(c *DefaultCtx) (bool, error) {
 			// Get *Route
 			route := tree[indexRoute]
 			// Skip use routes and routes the leading path bytes already rule out
-			if route.use || (head^route.prefix)&route.prefixMask != 0 {
+			if route.use || route.prefixRejects(head) {
 				continue
 			}
 			// Check if it matches the request path
@@ -605,7 +653,7 @@ func (app *App) nextCustom(c CustomCtx) (bool, error) {
 		route := tree[indexRoute]
 
 		// Reject on the leading path bytes before touching the rest of the route
-		if (head^route.prefix)&route.prefixMask != 0 {
+		if route.prefixRejects(head) {
 			continue
 		}
 
@@ -691,7 +739,7 @@ func (app *App) nextCustom(c CustomCtx) (bool, error) {
 			// Get *Route
 			route := tree[indexRoute]
 			// Skip use routes and routes the leading path bytes already rule out
-			if route.use || (head^route.prefix)&route.prefixMask != 0 {
+			if route.use || route.prefixRejects(head) {
 				continue
 			}
 			// Check if it matches the request path
@@ -1201,11 +1249,10 @@ func (app *App) buildTree() *App {
 			prefixCounts[treePaths[i]]++
 		}
 
-		prevBuckets := app.treeStack[method]
 		tsMap := make(map[int][]*Route, len(prefixCounts)+1)
-		tsMap[0] = reuseRouteBucket(prevBuckets, 0, globalCount)
+		tsMap[0] = make([]*Route, 0, globalCount)
 		for treePath, count := range prefixCounts {
-			tsMap[treePath] = reuseRouteBucket(prevBuckets, treePath, count+globalCount)
+			tsMap[treePath] = make([]*Route, 0, count+globalCount)
 		}
 
 		for i, route := range routes {
@@ -1231,11 +1278,4 @@ func (app *App) buildTree() *App {
 	// reset the flag and return
 	app.hasRoutesRefreshed = false
 	return app
-}
-
-func reuseRouteBucket(prev map[int][]*Route, key, capHint int) []*Route {
-	if bucket, ok := prev[key]; ok && cap(bucket) >= capHint {
-		return bucket[:0]
-	}
-	return make([]*Route, 0, capHint)
 }

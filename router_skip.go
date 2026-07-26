@@ -207,7 +207,7 @@ func (app *App) resolveSkip(methodInt, treeHash, pathSlashes int, detectionPath,
 
 	// Tier 2: scan this method's parametric candidates, leading-byte filter first.
 	for _, cand := range b.cands[methodInt] {
-		if (head^cand.route.prefix)&cand.route.prefixMask != 0 {
+		if cand.route.prefixRejects(head) {
 			continue
 		}
 		if cand.route.match(detectionPath, path, values, pathSlashes) {
@@ -231,7 +231,7 @@ func (app *App) resolveSkip(methodInt, treeHash, pathSlashes int, detectionPath,
 			continue
 		}
 		for _, cand := range b.cands[m] {
-			if (head^cand.route.prefix)&cand.route.prefixMask != 0 {
+			if cand.route.prefixRejects(head) {
 				continue
 			}
 			if cand.route.match(detectionPath, path, values, pathSlashes) {
