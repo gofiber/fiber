@@ -461,12 +461,12 @@ func resolveRemoteAddr(remoteAddr string, localAddr any) (net.Addr, error) {
 }
 
 func handlerFunc(app *fiber.App, h ...fiber.Handler) http.HandlerFunc {
-	// App.Config returns the config by value, so read the fields this
-	// handler needs once at construction instead of copying the whole
-	// struct on every request. Fiber only writes app.config in New.
-	cfg := app.Config()
-	maxBodySize := int64(cfg.BodyLimit)
-	errorHandler := cfg.ErrorHandler
+	// App.Config returns the config by value, so read the body limit once at
+	// construction instead of copying the whole 624-byte struct on every
+	// request. Fiber only writes app.config in New. The error handler is
+	// deliberately not cached: App.ErrorHandler resolves a mounted sub-app's
+	// handler from the request path, and that lookup belongs per request.
+	maxBodySize := int64(app.Config().BodyLimit)
 
 	return func(w http.ResponseWriter, r *http.Request) {
 		// New fasthttp Ctx from pool
@@ -576,7 +576,7 @@ func handlerFunc(app *fiber.App, h ...fiber.Handler) http.HandlerFunc {
 			// Execute fiber Ctx
 			err := h[0](ctx)
 			if err != nil {
-				_ = errorHandler(ctx, err) //nolint:errcheck // not needed
+				_ = app.ErrorHandler(ctx, err) //nolint:errcheck // not needed
 			}
 		} else {
 			// Execute fasthttp Ctx though app.Handler
