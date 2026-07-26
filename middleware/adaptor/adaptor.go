@@ -8,6 +8,7 @@ import (
 	"math"
 	"net"
 	"net/http"
+	"net/textproto"
 	"reflect"
 	"sync"
 	"time"
@@ -52,12 +53,36 @@ func (*noopConn) SetDeadline(time.Time) error      { return nil }
 func (*noopConn) SetReadDeadline(time.Time) error  { return nil }
 func (*noopConn) SetWriteDeadline(time.Time) error { return nil }
 
-// pooledCtx bundles the RequestCtx with its noopConn so one pool entry
-// serves both and no per-request conn allocation is needed. The conn
-// comes first to keep the struct's trailing pointer span minimal
+// tcpAddrScratch backs a reusable net.TCPAddr so the common "ip:port"
+// remote address form resolves without allocating. The IP array is inlined
+// so the net.IP slice handed to the TCPAddr points at scratch storage
+// instead of a fresh per-request allocation.
+type tcpAddrScratch struct {
+	addr net.TCPAddr
+	ip   [16]byte
+}
+
+// set fills the scratch TCPAddr with ip/port/zone and returns it. The
+// returned address is only valid for the lifetime of the request, the same
+// rule that already applies to the pooled RequestCtx it belongs to.
+func (s *tcpAddrScratch) set(ip []byte, port int, zone string) *net.TCPAddr {
+	n := copy(s.ip[:], ip)
+	s.addr.IP = s.ip[:n]
+	s.addr.Port = port
+	s.addr.Zone = zone
+	return &s.addr
+}
+
+// pooledCtx bundles the RequestCtx with the per-request scratch space it
+// needs — the noopConn handed to fasthttp, the remote address storage and
+// the io.LimitedReader used to bound the request body — so a single pool
+// entry serves them all and the request path stays allocation-free. The
+// conn comes first to keep the struct's trailing pointer span minimal
 // (govet fieldalignment).
 type pooledCtx struct {
 	conn noopConn
+	lr   io.LimitedReader
+	scr  tcpAddrScratch
 	fctx fasthttp.RequestCtx
 }
 
@@ -75,12 +100,119 @@ var disabledLogger = &disableLogger{}
 // Adapted http.Handler functions can retrieve this context using r.Context().Value(adaptor.LocalContextKey)
 var localContextKey = &struct{}{}
 
-const bufferSize = 32 * 1024
+const (
+	bufferSize = 32 * 1024
+
+	// maxHeaderScratch bounds the response-header staging buffers that are
+	// returned to the pool.
+	maxHeaderScratch = 16 * 1024
+)
 
 var bufferPool = sync.Pool{
 	New: func() any {
 		return new([bufferSize]byte)
 	},
+}
+
+// headerScratchPool holds the staging buffers used to pack response header
+// keys and values into a single string per response.
+var headerScratchPool = sync.Pool{
+	New: func() any {
+		b := make([]byte, 0, 512)
+		return &b
+	},
+}
+
+// copyBody streams src into dst using a pooled buffer. io.Copy would
+// allocate a fresh 32 KiB buffer on every call because neither an
+// io.LimitedReader nor fasthttp's body writer implements the
+// WriterTo/ReaderFrom shortcuts it looks for.
+func copyBody(dst io.Writer, src io.Reader) (int64, error) {
+	bufPtr, ok := bufferPool.Get().(*[bufferSize]byte)
+	if !ok {
+		panic(fmt.Errorf("failed to type-assert to *[%d]byte", bufferSize))
+	}
+	defer bufferPool.Put(bufPtr)
+
+	n, err := io.CopyBuffer(dst, src, bufPtr[:])
+	return n, err //nolint:wrapcheck // the caller maps this onto a status code
+}
+
+// copyResponseHeaders copies the fasthttp response headers onto the net/http
+// header map.
+//
+// A plain dst.Add(string(k), string(v)) loop allocates a string per key, a
+// string per value and a one-element slice per header. Instead every key and
+// value is packed into a single string that the map entries re-slice, and the
+// single-valued entries share one []string backing array, so the whole
+// copy-back costs two allocations no matter how many headers the response
+// carries.
+func copyResponseHeaders(dst http.Header, src *fasthttp.ResponseHeader) {
+	bufPtr, ok := headerScratchPool.Get().(*[]byte)
+	if !ok {
+		panic(errors.New("failed to type-assert to *[]byte"))
+	}
+
+	buf := (*bufPtr)[:0]
+	count := 0
+	for k, v := range src.All() {
+		buf = append(buf, k...)
+		buf = append(buf, v...)
+		count++
+	}
+
+	var packed string
+	if len(buf) > 0 {
+		packed = string(buf)
+	}
+
+	// Keep oversized scratch out of the pool so one huge response does not
+	// pin a large buffer for the lifetime of the process.
+	if cap(buf) <= maxHeaderScratch {
+		*bufPtr = buf
+		headerScratchPool.Put(bufPtr)
+	}
+
+	if count == 0 {
+		return
+	}
+
+	// Backing array for the single-valued entries, allocated on first use so
+	// a response whose headers all merge into existing entries pays nothing.
+	// Each entry gets a full slice expression so a later Add on it grows into
+	// a fresh array instead of overwriting the neighboring entry.
+	var vals []string
+
+	off := 0
+	for k, v := range src.All() {
+		// Defensive: both passes always see the same headers, but never
+		// slice out of range if that assumption is ever broken.
+		if off+len(k)+len(v) > len(packed) {
+			dst.Add(string(k), string(v))
+			continue
+		}
+
+		key := textproto.CanonicalMIMEHeaderKey(packed[off : off+len(k)])
+		off += len(k)
+		val := packed[off : off+len(v)]
+		off += len(v)
+
+		if existing, found := dst[key]; found {
+			dst[key] = append(existing, val)
+			continue
+		}
+
+		if vals == nil {
+			vals = make([]string, 0, count)
+		} else if len(vals) == cap(vals) {
+			dst[key] = []string{val}
+			continue
+		}
+
+		i := len(vals)
+		vals = append(vals, val)
+		dst[key] = vals[i : i+1 : i+1]
+	}
 }
 
 var (
@@ -205,13 +337,16 @@ func HTTPMiddleware(mw func(http.Handler) http.Handler) fiber.Handler {
 		var next bool
 		nextHandler := http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
 			next = true
-			c.Request().Header.SetMethod(r.Method)
-			c.Request().SetRequestURI(r.RequestURI)
-			c.Request().SetHost(r.Host)
-			c.Request().Header.SetHost(r.Host)
+
+			freq := c.Request()
+			fhdr := &freq.Header
+			fhdr.SetMethod(r.Method)
+			freq.SetRequestURI(r.RequestURI)
+			freq.SetHost(r.Host)
+			fhdr.SetHost(r.Host)
 
 			// Remove all cookies before setting, see https://github.com/valyala/fasthttp/pull/1864
-			c.Request().Header.DelAllCookies()
+			fhdr.DelAllCookies()
 			for key, vals := range r.Header {
 				if len(vals) == 0 {
 					continue
@@ -219,17 +354,18 @@ func HTTPMiddleware(mw func(http.Handler) http.Handler) fiber.Handler {
 				// Set replaces whatever the key held on the fiber request,
 				// then Add appends the remaining values so multi-value
 				// headers survive instead of collapsing to the last value.
-				c.Request().Header.Set(key, vals[0])
+				fhdr.Set(key, vals[0])
 				for _, v := range vals[1:] {
-					c.Request().Header.Add(key, v)
+					fhdr.Add(key, v)
 				}
 			}
 			CopyContextToFiberContext(r.Context(), c.RequestCtx())
 		})
 
-		if err := HTTPHandler(mw(nextHandler))(c); err != nil {
-			return err
-		}
+		// Call the fasthttp adaptor directly: HTTPHandler would wrap it in a
+		// second closure that has to be built on every request, and its
+		// error result is always nil.
+		fasthttpadaptor.NewFastHTTPHandler(mw(nextHandler))(c.RequestCtx())
 
 		if next {
 			return c.Next()
@@ -275,7 +411,11 @@ func parseDecimalPort(s string) (int, bool) {
 	return port, port <= 65535
 }
 
-func resolveRemoteAddr(remoteAddr string, localAddr any) (net.Addr, error) {
+// resolveRemoteAddr turns a net/http RemoteAddr into a net.Addr for the
+// fasthttp connection. scratch, when non-nil, supplies the storage for the
+// "ip:port" fast path so no address is allocated per request; pass nil to
+// get a freshly allocated address instead.
+func resolveRemoteAddr(remoteAddr string, localAddr any, scratch *tcpAddrScratch) (net.Addr, error) {
 	if addr, ok := localAddr.(net.Addr); ok && isUnixNetwork(addr.Network()) {
 		return addr, nil
 	}
@@ -293,10 +433,16 @@ func resolveRemoteAddr(remoteAddr string, localAddr any) (net.Addr, error) {
 		if port, ok := parseDecimalPort(portStr); ok {
 			if ip, ok := utils.ParseIPv4(host); ok {
 				a := ip.As4()
+				if scratch != nil {
+					return scratch.set(a[:], port, ""), nil
+				}
 				return &net.TCPAddr{IP: a[:], Port: port}, nil
 			}
 			if ip, ok := utils.ParseIPv6(host); ok {
 				a := ip.As16()
+				if scratch != nil {
+					return scratch.set(a[:], port, ip.Zone()), nil
+				}
 				return &net.TCPAddr{IP: a[:], Port: port, Zone: ip.Zone()}, nil
 			}
 		}
@@ -323,6 +469,13 @@ func resolveRemoteAddr(remoteAddr string, localAddr any) (net.Addr, error) {
 }
 
 func handlerFunc(app *fiber.App, h ...fiber.Handler) http.HandlerFunc {
+	// App.Config returns the config by value, so read the fields this
+	// handler needs once at construction instead of copying the whole
+	// struct on every request. Fiber only writes app.config in New.
+	cfg := app.Config()
+	maxBodySize := int64(cfg.BodyLimit)
+	errorHandler := cfg.ErrorHandler
+
 	return func(w http.ResponseWriter, r *http.Request) {
 		// New fasthttp Ctx from pool
 		pctx := ctxPool.Get().(*pooledCtx) //nolint:forcetypeassert,errcheck // not needed
@@ -331,7 +484,7 @@ func handlerFunc(app *fiber.App, h ...fiber.Handler) http.HandlerFunc {
 		fctx.Request.Reset()
 		defer ctxPool.Put(pctx)
 
-		remoteAddr, err := resolveRemoteAddr(r.RemoteAddr, r.Context().Value(http.LocalAddrContextKey))
+		remoteAddr, err := resolveRemoteAddr(r.RemoteAddr, r.Context().Value(http.LocalAddrContextKey), &pctx.scr)
 		if err != nil {
 			remoteAddr = nil // Fallback to nil
 		}
@@ -349,26 +502,38 @@ func handlerFunc(app *fiber.App, h ...fiber.Handler) http.HandlerFunc {
 		req := &fctx.Request
 
 		// Convert net/http -> fasthttp request with size limit
-		maxBodySize := int64(app.Config().BodyLimit)
 		if r.Body != nil {
 			if r.ContentLength > maxBodySize {
 				http.Error(w, utils.StatusMessage(fiber.StatusRequestEntityTooLarge), fiber.StatusRequestEntityTooLarge)
 				return
 			}
-			limit := maxBodySize
-			if limit < math.MaxInt64 {
-				limit++
-			}
-			limitedReader := io.LimitReader(r.Body, limit)
-			n, err := io.Copy(req.BodyWriter(), limitedReader)
-			if err != nil {
-				http.Error(w, utils.StatusMessage(fiber.StatusInternalServerError), fiber.StatusInternalServerError)
-				return
-			}
 
-			if n > maxBodySize {
-				http.Error(w, utils.StatusMessage(fiber.StatusRequestEntityTooLarge), fiber.StatusRequestEntityTooLarge)
-				return
+			var n int64
+			// http.NoBody never yields any bytes, so skip the copy machinery
+			// entirely for the (very common) bodyless request.
+			if r.Body != http.NoBody {
+				limit := maxBodySize
+				if limit < math.MaxInt64 {
+					limit++
+				}
+				// The LimitedReader lives in the pooled ctx and the copy
+				// buffer comes from the shared pool: io.Copy would otherwise
+				// allocate a fresh 32 KiB buffer on every single request.
+				pctx.lr.R = r.Body
+				pctx.lr.N = limit
+
+				var err error
+				n, err = copyBody(req.BodyWriter(), &pctx.lr)
+				pctx.lr.R = nil // don't keep the request body alive in the pool
+				if err != nil {
+					http.Error(w, utils.StatusMessage(fiber.StatusInternalServerError), fiber.StatusInternalServerError)
+					return
+				}
+
+				if n > maxBodySize {
+					http.Error(w, utils.StatusMessage(fiber.StatusRequestEntityTooLarge), fiber.StatusRequestEntityTooLarge)
+					return
+				}
 			}
 
 			req.Header.SetContentLength(int(n))
@@ -419,7 +584,7 @@ func handlerFunc(app *fiber.App, h ...fiber.Handler) http.HandlerFunc {
 			// Execute fiber Ctx
 			err := h[0](ctx)
 			if err != nil {
-				_ = app.Config().ErrorHandler(ctx, err) //nolint:errcheck // not needed
+				_ = errorHandler(ctx, err) //nolint:errcheck // not needed
 			}
 		} else {
 			// Execute fasthttp Ctx though app.Handler
@@ -427,9 +592,7 @@ func handlerFunc(app *fiber.App, h ...fiber.Handler) http.HandlerFunc {
 		}
 
 		// Convert fasthttp Ctx -> net/http
-		for k, v := range fctx.Response.Header.All() {
-			w.Header().Add(string(k), string(v))
-		}
+		copyResponseHeaders(w.Header(), &fctx.Response.Header)
 		w.WriteHeader(fctx.Response.StatusCode())
 
 		// Check if streaming is not possible or unnecessary.
