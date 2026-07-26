@@ -1562,7 +1562,7 @@ func Test_resolveRemoteAddr(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			addr, err := resolveRemoteAddr(tt.remoteAddr, tt.localAddr, nil)
+			addr, err := resolveRemoteAddr(tt.remoteAddr, tt.localAddr)
 
 			expectError := tt.expectedErr != nil || tt.errorContains != ""
 			if expectError {
@@ -1798,7 +1798,7 @@ func Test_ResolveRemoteAddr_FastPathEquivalence(t *testing.T) {
 		"1.2.3.4:0",
 	}
 	for _, addr := range addrs {
-		got, err := resolveRemoteAddr(addr, nil, nil)
+		got, err := resolveRemoteAddr(addr, nil)
 		require.NoError(t, err, "resolveRemoteAddr(%q)", addr)
 		want, err := net.ResolveTCPAddr("tcp", addr)
 		require.NoError(t, err, "ResolveTCPAddr(%q)", addr)
@@ -1822,7 +1822,7 @@ func Test_ResolveRemoteAddr_FastPathEquivalence(t *testing.T) {
 		"1.2.3.4:8a",     // non-digit port -> fast path rejects, resolver service lookup fails
 	}
 	for _, addr := range fallbackAddrs {
-		got, gotErr := resolveRemoteAddr(addr, nil, nil)
+		got, gotErr := resolveRemoteAddr(addr, nil)
 		want, wantErr := net.ResolveTCPAddr("tcp", addr)
 		if addr == "1.2.3.4" {
 			// resolveRemoteAddr appends :80 for missing ports; ResolveTCPAddr errors.
@@ -1988,13 +1988,16 @@ func Benchmark_FiberApp_Body(b *testing.B) {
 	handler := FiberApp(app)
 
 	body := make([]byte, 8*1024)
-	w := httptest.NewRecorder()
 
 	b.ReportAllocs()
 
 	for b.Loop() {
 		r := httptest.NewRequest(http.MethodPost, "/", bytes.NewReader(body))
 		r.RemoteAddr = expectedRemoteAddr
+		// A fresh recorder per iteration: reusing one accumulates the response
+		// headers and body across iterations, which both skews the numbers and
+		// hides the fresh-header path.
+		w := httptest.NewRecorder()
 		handler(w, r)
 	}
 }
@@ -2017,9 +2020,11 @@ func Benchmark_FiberApp_Parallel(b *testing.B) {
 	b.RunParallel(func(pb *testing.PB) {
 		r := httptest.NewRequest(http.MethodGet, "/foo/bar", http.NoBody)
 		r.RemoteAddr = expectedRemoteAddr
-		w := httptest.NewRecorder()
 
 		for pb.Next() {
+			// Fresh recorder per iteration, matching Benchmark_FiberApp so the
+			// two are directly comparable.
+			w := httptest.NewRecorder()
 			handler(w, r)
 		}
 	})
@@ -2125,26 +2130,22 @@ func Test_copyResponseHeaders(t *testing.T) {
 	})
 }
 
-func Test_resolveRemoteAddr_Scratch(t *testing.T) {
+func Test_resolveRemoteAddr_FastPath(t *testing.T) {
 	t.Parallel()
 
-	t.Run("ipv4 fast path uses the scratch address", func(t *testing.T) {
+	t.Run("ipv4", func(t *testing.T) {
 		t.Parallel()
 
-		var scratch tcpAddrScratch
-		addr, err := resolveRemoteAddr("1.2.3.4:6789", nil, &scratch)
+		addr, err := resolveRemoteAddr("1.2.3.4:6789", nil)
 		require.NoError(t, err)
-		require.Same(t, &scratch.addr, addr)
 		require.Equal(t, "1.2.3.4:6789", addr.String())
 	})
 
-	t.Run("ipv6 fast path keeps the zone", func(t *testing.T) {
+	t.Run("ipv6 keeps the zone", func(t *testing.T) {
 		t.Parallel()
 
-		var scratch tcpAddrScratch
-		addr, err := resolveRemoteAddr("[fe80::1%eth0]:6789", nil, &scratch)
+		addr, err := resolveRemoteAddr("[fe80::1%eth0]:6789", nil)
 		require.NoError(t, err)
-		require.Same(t, &scratch.addr, addr)
 
 		tcpAddr, ok := addr.(*net.TCPAddr)
 		require.True(t, ok)
@@ -2153,29 +2154,34 @@ func Test_resolveRemoteAddr_Scratch(t *testing.T) {
 		require.Equal(t, net.ParseIP("fe80::1"), tcpAddr.IP)
 	})
 
-	t.Run("reuse overwrites the previous address", func(t *testing.T) {
+	t.Run("each call returns an independent address", func(t *testing.T) {
 		t.Parallel()
 
-		var scratch tcpAddrScratch
-		_, err := resolveRemoteAddr("[fe80::1%eth0]:1", nil, &scratch)
+		first, err := resolveRemoteAddr("1.2.3.4:1111", nil)
+		require.NoError(t, err)
+		second, err := resolveRemoteAddr("5.6.7.8:2222", nil)
 		require.NoError(t, err)
 
-		addr, err := resolveRemoteAddr("5.6.7.8:2", nil, &scratch)
+		// Callers may hold on to a remote address past the request that
+		// produced it, so resolving another one must not disturb it.
+		require.NotSame(t, first, second)
+		require.Equal(t, "1.2.3.4:1111", first.String())
+		require.Equal(t, "5.6.7.8:2222", second.String())
+	})
+
+	t.Run("the IP slice cannot be appended into its backing buffer", func(t *testing.T) {
+		t.Parallel()
+
+		addr, err := resolveRemoteAddr("1.2.3.4:6789", nil)
 		require.NoError(t, err)
-		require.Equal(t, "5.6.7.8:2", addr.String())
 
 		tcpAddr, ok := addr.(*net.TCPAddr)
 		require.True(t, ok)
-		require.Empty(t, tcpAddr.Zone, "stale zone must not survive reuse")
-		require.Len(t, tcpAddr.IP, net.IPv4len)
-	})
+		require.Equal(t, len(tcpAddr.IP), cap(tcpAddr.IP))
 
-	t.Run("nil scratch still resolves", func(t *testing.T) {
-		t.Parallel()
-
-		addr, err := resolveRemoteAddr("1.2.3.4:6789", nil, nil)
-		require.NoError(t, err)
-		require.Equal(t, "1.2.3.4:6789", addr.String())
+		grown := append(tcpAddr.IP, 9) //nolint:gocritic // deliberately appending to a copy
+		require.Equal(t, net.IP{1, 2, 3, 4}, tcpAddr.IP)
+		require.Len(t, grown, net.IPv4len+1)
 	})
 }
 
@@ -2196,17 +2202,21 @@ func Test_FiberApp_NoBody(t *testing.T) {
 	require.Equal(t, "0", w.Body.String())
 }
 
-func Test_FiberApp_ReusesPooledRemoteAddr(t *testing.T) {
+func Test_FiberApp_RemoteAddrSurvivesPooling(t *testing.T) {
 	t.Parallel()
 
+	addrs := []string{"1.1.1.1:1111", "2.2.2.2:2222", "3.3.3.3:3333"}
+
+	var retained []net.Addr
 	app := fiber.New()
 	app.Get("/", func(c fiber.Ctx) error {
+		retained = append(retained, c.RequestCtx().RemoteAddr())
 		return c.SendString(c.IP())
 	})
 
 	handler := FiberApp(app)
 
-	for _, addr := range []string{"1.2.3.4:1111", "5.6.7.8:2222", "[fe80::1%eth0]:3333"} {
+	for _, addr := range addrs {
 		r := httptest.NewRequest(http.MethodGet, "/", http.NoBody)
 		r.RemoteAddr = addr
 		w := httptest.NewRecorder()
@@ -2214,10 +2224,13 @@ func Test_FiberApp_ReusesPooledRemoteAddr(t *testing.T) {
 
 		host, _, err := net.SplitHostPort(addr)
 		require.NoError(t, err)
-		host = strings.Trim(host, "[]")
-		if zone := strings.IndexByte(host, '%'); zone >= 0 {
-			host = host[:zone] // c.IP() reports the address without the zone
-		}
 		require.Equal(t, host, w.Body.String())
+	}
+
+	// The ctx pool recycles entries between requests; a remote address kept
+	// by the handler must still report the client it was resolved from.
+	require.Len(t, retained, len(addrs))
+	for i, addr := range addrs {
+		require.Equal(t, addr, retained[i].String())
 	}
 }

@@ -53,36 +53,38 @@ func (*noopConn) SetDeadline(time.Time) error      { return nil }
 func (*noopConn) SetReadDeadline(time.Time) error  { return nil }
 func (*noopConn) SetWriteDeadline(time.Time) error { return nil }
 
-// tcpAddrScratch backs a reusable net.TCPAddr so the common "ip:port"
-// remote address form resolves without allocating. The IP array is inlined
-// so the net.IP slice handed to the TCPAddr points at scratch storage
-// instead of a fresh per-request allocation.
-type tcpAddrScratch struct {
+// tcpAddrBuf co-locates a net.TCPAddr with the storage for its IP so the
+// common "ip:port" remote address form costs one allocation instead of two
+// (one for the address, one for the IP slice).
+//
+// The buffer is deliberately not pooled: RemoteAddr()/RemoteIP() hand this
+// value to user code, which may legitimately keep it past the handler — an
+// async access log, a connection registry — so every request gets its own.
+type tcpAddrBuf struct {
 	addr net.TCPAddr
 	ip   [16]byte
 }
 
-// set fills the scratch TCPAddr with ip/port/zone and returns it. The
-// returned address is only valid for the lifetime of the request, the same
-// rule that already applies to the pooled RequestCtx it belongs to.
-func (s *tcpAddrScratch) set(ip []byte, port int, zone string) *net.TCPAddr {
-	n := copy(s.ip[:], ip)
-	s.addr.IP = s.ip[:n]
-	s.addr.Port = port
-	s.addr.Zone = zone
-	return &s.addr
+// newTCPAddr returns a TCPAddr backed by inline IP storage. The IP slice is
+// capped at its length so appending to it allocates instead of writing into
+// the rest of the buffer.
+func newTCPAddr(ip []byte, port int, zone string) *net.TCPAddr {
+	buf := &tcpAddrBuf{}
+	n := copy(buf.ip[:], ip)
+	buf.addr.IP = buf.ip[:n:n]
+	buf.addr.Port = port
+	buf.addr.Zone = zone
+	return &buf.addr
 }
 
 // pooledCtx bundles the RequestCtx with the per-request scratch space it
-// needs — the noopConn handed to fasthttp, the remote address storage and
-// the io.LimitedReader used to bound the request body — so a single pool
-// entry serves them all and the request path stays allocation-free. The
-// conn comes first to keep the struct's trailing pointer span minimal
-// (govet fieldalignment).
+// needs — the noopConn handed to fasthttp and the io.LimitedReader used to
+// bound the request body — so a single pool entry serves them all and the
+// request path stays allocation-free. The conn comes first to keep the
+// struct's trailing pointer span minimal (govet fieldalignment).
 type pooledCtx struct {
 	conn noopConn
 	lr   io.LimitedReader
-	scr  tcpAddrScratch
 	fctx fasthttp.RequestCtx
 }
 
@@ -411,11 +413,7 @@ func parseDecimalPort(s string) (int, bool) {
 	return port, port <= 65535
 }
 
-// resolveRemoteAddr turns a net/http RemoteAddr into a net.Addr for the
-// fasthttp connection. scratch, when non-nil, supplies the storage for the
-// "ip:port" fast path so no address is allocated per request; pass nil to
-// get a freshly allocated address instead.
-func resolveRemoteAddr(remoteAddr string, localAddr any, scratch *tcpAddrScratch) (net.Addr, error) {
+func resolveRemoteAddr(remoteAddr string, localAddr any) (net.Addr, error) {
 	if addr, ok := localAddr.(net.Addr); ok && isUnixNetwork(addr.Network()) {
 		return addr, nil
 	}
@@ -433,17 +431,11 @@ func resolveRemoteAddr(remoteAddr string, localAddr any, scratch *tcpAddrScratch
 		if port, ok := parseDecimalPort(portStr); ok {
 			if ip, ok := utils.ParseIPv4(host); ok {
 				a := ip.As4()
-				if scratch != nil {
-					return scratch.set(a[:], port, ""), nil
-				}
-				return &net.TCPAddr{IP: a[:], Port: port}, nil
+				return newTCPAddr(a[:], port, ""), nil
 			}
 			if ip, ok := utils.ParseIPv6(host); ok {
 				a := ip.As16()
-				if scratch != nil {
-					return scratch.set(a[:], port, ip.Zone()), nil
-				}
-				return &net.TCPAddr{IP: a[:], Port: port, Zone: ip.Zone()}, nil
+				return newTCPAddr(a[:], port, ip.Zone()), nil
 			}
 		}
 	}
@@ -484,7 +476,7 @@ func handlerFunc(app *fiber.App, h ...fiber.Handler) http.HandlerFunc {
 		fctx.Request.Reset()
 		defer ctxPool.Put(pctx)
 
-		remoteAddr, err := resolveRemoteAddr(r.RemoteAddr, r.Context().Value(http.LocalAddrContextKey), &pctx.scr)
+		remoteAddr, err := resolveRemoteAddr(r.RemoteAddr, r.Context().Value(http.LocalAddrContextKey))
 		if err != nil {
 			remoteAddr = nil // Fallback to nil
 		}
