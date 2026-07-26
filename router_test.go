@@ -4196,3 +4196,119 @@ func Test_ResolveSkip_StaticSlashGate(t *testing.T) {
 		require.Equal(t, StatusNotFound, resp.StatusCode, "unmatched path %q must 404", path)
 	}
 }
+
+// Test_Route_PrefixFilter_NotStale proves every path that can produce or alter
+// a Route leaves its leading-byte filter consistent with the route's current
+// path, params and parser.
+//
+// The filter is computed where routes are built rather than in buildTree,
+// because buildTree writes to routes that in-flight requests are reading. That
+// trades a torn-read hazard for a staleness hazard, and this is what closes the
+// second one: it recomputes the filter for every registered route and requires
+// it to equal what is stored. A future in-place rewrite of a route's path that
+// forgets to refresh the filter fails here.
+// go test -race -run Test_Route_PrefixFilter_NotStale
+func Test_Route_PrefixFilter_NotStale(t *testing.T) {
+	t.Parallel()
+
+	assertFresh := func(t *testing.T, app *App, stage string) {
+		t.Helper()
+		checked := 0
+		for method, routes := range app.stack {
+			for _, route := range routes {
+				wantWord, wantMask := computePrefixFilter(route)
+				require.Equal(t, wantWord, route.prefix,
+					"%s: stale prefix on %s %q", stage, app.config.RequestMethods[method], route.Path)
+				require.Equal(t, wantMask, route.prefixMask,
+					"%s: stale prefixMask on %s %q", stage, app.config.RequestMethods[method], route.Path)
+				checked++
+			}
+		}
+		require.NotZero(t, checked, "%s: no routes to check", stage)
+	}
+
+	handler := func(c Ctx) error { return c.Next() }
+
+	// register, groups, and the auto-HEAD copyRoute path
+	app := New()
+	app.Get("/plain", handler)
+	app.Get("/plain/:id", handler)
+	app.Use("/mw", handler)
+	app.Get("/*", handler)
+	app.Get(`/\*`, handler)
+	group := app.Group("/grp", handler)
+	group.Get("/:x", handler)
+	group.Get("/nested/:y/end", handler)
+
+	// mounted sub-app: addPrefixToRoute rewrites path, parser, star and root
+	// in place, which is the only route mutation outside construction
+	sub := New()
+	sub.Get("/inner/:y", handler)
+	sub.Get("/*", handler)
+	sub.Use("/subuse", handler)
+	app.Use("/mounted", sub)
+
+	app.startupProcess()
+	assertFresh(t, app, "after startup")
+
+	// routes added and removed on a live app, the flow RebuildTree exists for
+	app.Get("/late/:id", handler)
+	app.RemoveRoute("/plain")
+	_ = app.RebuildTree()
+	assertFresh(t, app, "after runtime registration and RebuildTree")
+
+	// a second app with the opposite config, since the filter is derived from
+	// the case-folded and slash-trimmed forms
+	strict := New(Config{CaseSensitive: true, StrictRouting: true})
+	strict.Get("/Mixed/Case/:Id", handler)
+	strict.Get("/trailing/", handler)
+	strict.Use("/Pre", handler)
+	strict.startupProcess()
+	assertFresh(t, strict, "case-sensitive strict app")
+}
+
+// Test_RouteTree_SlotSpreadsAcrossLargeTables pins that the probe index is
+// taken from the high bits of the multiply, so it can address the whole table.
+//
+// Fibonacci hashing only works if the index comes off the top: the multiply
+// moves the entropy of a tree hash's low bytes upward, and a fixed shift bounds
+// the result by whatever it exposes regardless of how large the table is. With
+// a fixed >>16 every probe started below slot 65536, so a table sized past that
+// had an unreachable upper half and the lower half degraded into a linear scan
+// -- in exactly the large-route-set case the index exists to speed up.
+// go test -race -run Test_RouteTree_SlotSpreadsAcrossLargeTables
+func Test_RouteTree_SlotSpreadsAcrossLargeTables(t *testing.T) {
+	t.Parallel()
+
+	// Detection paths always begin with '/', so the first hash byte is fixed
+	// and the other two vary: 65536 distinct prefixes, sizing the table to
+	// 131072 slots -- just past where a 16-bit index runs out.
+	buckets := make(map[int][]*Route, 1<<16)
+	for b1 := range 256 {
+		for b2 := range 256 {
+			buckets[int('/')<<16|b1<<8|b2] = make([]*Route, 1)
+		}
+	}
+
+	tree := buildRouteTree(buckets)
+	require.Len(t, tree.hashes, 1<<17)
+
+	var maxSlot uint32
+	for hash := range buckets {
+		if s := tree.slot(hash); s > maxSlot {
+			maxSlot = s
+		}
+		require.Less(t, tree.slot(hash), uint32(len(tree.hashes)),
+			"slot out of range for hash %#x", hash)
+	}
+	require.Greater(t, maxSlot, uint32(len(tree.hashes)/2),
+		"probe starts never reach the upper half of the table")
+
+	// The table still resolves every key to its own bucket.
+	for hash, want := range buckets {
+		got := tree.lookup(hash)
+		if len(got) != 1 || &got[0] != &want[0] {
+			t.Fatalf("lookup returned the wrong bucket for hash %#x", hash)
+		}
+	}
+}

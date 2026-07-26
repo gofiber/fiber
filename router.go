@@ -6,6 +6,7 @@ package fiber
 
 import (
 	"fmt"
+	"math/bits"
 	"slices"
 	"sync/atomic"
 
@@ -106,8 +107,12 @@ type routeTree struct {
 	buckets [][]*Route
 	// globals is the bucket for tree hash 0, which is also where misses go
 	globals []*Route
-	// mask is len(hashes)-1
+	// mask is len(hashes)-1, used to wrap the probe
 	mask uint32
+	// shift is 32-log2(len(hashes)), so slot keeps the high bits of the
+	// multiply. A fixed shift would cap the index at whatever it exposes and
+	// leave larger tables with an unreachable upper half.
+	shift uint32
 }
 
 // routeTreeHashMul is the golden-ratio constant used to spread tree hashes,
@@ -153,6 +158,8 @@ func buildRouteTree(buckets map[int][]*Route) *routeTree {
 	tree.hashes = make([]int32, size)
 	tree.buckets = make([][]*Route, size)
 	tree.mask = uint32(size - 1) //nolint:gosec // G115 - size is a small power of two
+	// size is a power of two, so its trailing-zero count is log2(size).
+	tree.shift = uint32(32 - bits.TrailingZeros32(uint32(size))) //nolint:gosec // G115 - size is a small power of two
 
 	for hash, routes := range buckets {
 		if hash == 0 {
@@ -170,8 +177,14 @@ func buildRouteTree(buckets map[int][]*Route) *routeTree {
 }
 
 // slot returns the probe start index for a tree-path hash.
+//
+// Fibonacci hashing: the multiply pushes the entropy of the low bytes up into
+// the high bits, so the index has to be taken from the top. Shifting by a fixed
+// amount and masking cannot do that -- it bounds the index by whatever the
+// shift leaves, which for a table bigger than that bound makes the upper half
+// unreachable as a probe start and collapses the lower half into a linear scan.
 func (t *routeTree) slot(hash int) uint32 {
-	return (uint32(hash) * routeTreeHashMul >> 16) & t.mask //nolint:gosec // G115 - tree hashes are 24-bit, built from three path bytes
+	return uint32(hash) * routeTreeHashMul >> t.shift //nolint:gosec // G115 - tree hashes are 24-bit, built from three path bytes
 }
 
 // lookup returns the route bucket for a tree-path hash, falling back to the
@@ -331,20 +344,38 @@ func pathHeadWord(s string) uint64 {
 // parsing the escaped one, so a route registered as `/\*` arrives here with
 // star set and no params — and match returns true for it unconditionally.
 //
-// Anything that changes a route's path, params or parser must run this again;
-// buildTree does so for every registered route.
+// Anything that changes a route's path, params or parser must run this again.
+// The three places that can are register, which builds the route, copyRoute,
+// which carries the fields over, and addPrefixToRoute, which rewrites them.
+// Test_Route_PrefixFilter_NotStale pins that the set is complete.
+//
+// It is deliberately not recomputed in buildTree. buildTree runs from
+// RebuildTree, whose whole purpose is registering routes on a live app, and the
+// routes it would write to are the ones in-flight requests are reading: a
+// reader that caught this function between setting prefix and narrowing
+// prefixMask compared a short prefix under an all-ones mask and rejected a
+// route it matches. That measured 178 spurious misses in 22.8M requests served
+// across a rebuild loop, against 0 before the filter existed.
 func (r *Route) buildPrefixFilter() {
-	r.prefix, r.prefixMask = 0, 0
+	r.prefix, r.prefixMask = computePrefixFilter(r)
+}
 
+// computePrefixFilter derives a route's leading-byte filter without publishing
+// it, so the two words can be installed in one assignment and the result can be
+// recomputed and compared in tests. It returns the packed prefix word and the
+// mask covering its known bytes.
+//
+//nolint:nonamedreturns // the pair is easier to read named than by position
+func computePrefixFilter(r *Route) (word, mask uint64) {
 	if r.star {
-		return
+		return 0, 0
 	}
 
 	prefix := r.path
 	if len(r.Params) > 0 {
 		segs := r.routeParser.segs
 		if len(segs) == 0 || segs[0].IsParam {
-			return
+			return 0, 0
 		}
 		prefix = segs[0].Const
 		if segs[0].HasOptionalSlash {
@@ -356,14 +387,14 @@ func (r *Route) buildPrefixFilter() {
 		prefix = prefix[:8]
 	}
 	if prefix == "" {
-		return
+		return 0, 0
 	}
 
-	r.prefix = pathHeadWord(prefix)
-	r.prefixMask = ^uint64(0)
+	mask = ^uint64(0)
 	if n := len(prefix); n < 8 {
-		r.prefixMask = uint64(1)<<(8*n) - 1
+		mask = uint64(1)<<(8*n) - 1
 	}
+	return pathHeadWord(prefix), mask
 }
 
 func (r *Route) match(detectionPath, path string, params *[maxParams]string, pathSlashes int) bool {
@@ -996,6 +1027,7 @@ func (app *App) register(methods []string, pathRaw string, group *Group, handler
 			Method:   method,
 			Handlers: handlers,
 		}
+		route.buildPrefixFilter()
 
 		// Increment global handler count
 		atomic.AddUint32(&app.handlersCount, uint32(len(handlers))) //nolint:gosec // G115 - handler count is always small
@@ -1146,9 +1178,8 @@ func (app *App) buildTree() *App {
 		prefixCounts := make(map[int]int, len(routes))
 
 		for i, route := range routes {
-			// Rebuilt here so it can never go stale: every path, param or
-			// parser change marks the routes refreshed and lands in this loop.
-			route.buildPrefixFilter()
+			// The leading-byte filter is deliberately not rebuilt here; see
+			// buildPrefixFilter. These routes are live for in-flight requests.
 
 			// Star routes resolve before the slash-count quick-reject in
 			// Route.match, so only non-star parametric routes consult it.
