@@ -307,6 +307,16 @@ func Test_Utils_GetOffer_QualityZeroRejection(t *testing.T) {
 	require.Empty(t, getOffer([]byte("utf-8, utf-8;q=0"), acceptsOffer, "utf-8"))
 	require.Empty(t, getOffer([]byte("*, utf-8;q=0"), acceptsOffer, "utf-8"))
 	require.Equal(t, "iso-8859-1", getOffer([]byte("*, utf-8;q=0"), acceptsOffer, "utf-8", "iso-8859-1"))
+
+	// Optional whitespace may precede the list separator (RFC 9110 §5.6.1.2),
+	// so the weight is still the last thing in the element and must be honored.
+	require.Empty(t, getOffer([]byte("text/html;q=0 , text/plain"), acceptsOfferType, "text/html"))
+	require.Equal(t, "text/plain", getOffer([]byte("text/html;q=0 , text/plain"), acceptsOfferType, "text/html", "text/plain"))
+	require.Empty(t, getOffer([]byte("text/html;q=0\t, text/plain"), acceptsOfferType, "text/html"))
+	require.Equal(t, "deflate", getOffer([]byte("gzip;q=0 , deflate"), acceptsOffer, "gzip", "deflate"))
+	require.Empty(t, getOffer([]byte("en;q=0 , fr"), acceptsLanguageOfferBasic, "en"))
+	// The same whitespace must not distort ordering between positive weights.
+	require.Equal(t, "application/json", getOffer([]byte("text/plain;q=0.1 , application/json;q=0.9"), acceptsOfferType, "text/plain", "application/json"))
 }
 
 // go test -v -run=^$ -bench=Benchmark_Utils_GetOffer -benchmem -count=4

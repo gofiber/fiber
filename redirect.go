@@ -369,7 +369,7 @@ func (r *Redirect) Route(name string, config ...RedirectConfig) error {
 			// Escape the value so characters like &, =, # or + don't break the
 			// query string. Keys are left as-is to preserve the nested-key
 			// convention (e.g. `data[0][name]`) used elsewhere.
-			queryText.WriteString(url.QueryEscape(v))
+			queryText.B = utils.AppendQueryEscape(queryText.B, v)
 		}
 
 		return r.To(location + "?" + r.c.app.toString(queryText.Bytes()))
