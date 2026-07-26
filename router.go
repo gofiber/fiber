@@ -5,7 +5,6 @@
 package fiber
 
 import (
-	"encoding/json"
 	"fmt"
 	"math/bits"
 	"slices"
@@ -86,37 +85,6 @@ type Route struct {
 	Name   string `json:"name"`   // Route's name
 	//nolint:revive // Having both a Path (uppercase) and a path (lowercase) is fine
 	Path string `json:"path"` // Original registered route path
-}
-
-// routeJSON is Route's wire format. It exists so the JSON that app.GetRoutes()
-// produces does not depend on how Route orders its fields in memory: that order
-// is dictated by the router's candidate scan, and encoding/json emits keys in
-// declaration order, so without this a layout change silently reorders a public
-// payload. Moving Params to the front of Route for cache reasons did exactly
-// that once.
-type routeJSONView struct {
-	Method string   `json:"method"`
-	Name   string   `json:"name"`
-	Path   string   `json:"path"`
-	Params []string `json:"params"`
-}
-
-// MarshalJSON implements json.Marshaler, pinning the key order Route has always
-// emitted. The receiver is a value so that both Route and *Route marshal
-// through it.
-//
-//nolint:gocritic // hugeParam: a value receiver is required for Route values to use this
-func (r Route) MarshalJSON() ([]byte, error) {
-	encoded, err := json.Marshal(routeJSONView{
-		Method: r.Method,
-		Name:   r.Name,
-		Path:   r.Path,
-		Params: r.Params,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal route: %w", err)
-	}
-	return encoded, nil
 }
 
 var (
