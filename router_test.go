@@ -3932,13 +3932,21 @@ func Benchmark_Router_GitHub_API_Serial(b *testing.B) {
 // Route.match accepts, with every optimization the router layers on top of that
 // deliberately switched off.
 //
-//   - the tree buckets are bypassed by scanning app.stack directly
 //   - the leading-byte filter is bypassed by not applying it
 //   - the slash-count quick-reject is bypassed by passing an unknown count (0)
 //   - the "/const/:param" specialization is bypassed on a parser copy
 //
-// Each of those is only ever allowed to skip work, so the router must always
-// land on the same route with the same parameters as this does.
+// Those three may only ever skip work, so the router has to land on the same
+// route with the same parameters as this does.
+//
+// Bucket selection is bypassed too -- this walks app.stack rather than a tree
+// bucket -- but it does not belong on that list, because it is not purely
+// work-skipping: a route whose first constant segment is at least
+// maxDetectionPaths bytes is filed under a hashed bucket only, while a request
+// shorter than that hashes to 0 and scans globals, so the route is invisible to
+// the router but visible here. `/a/*` against `/a` is such a pair. That is
+// long-standing router behavior, not something this file's subject introduced,
+// so the corpus stays clear of the shape rather than asserting against it.
 //
 //nolint:gocritic // unnamedResult: the pair is documented above and named results trip nonamedreturns
 func referenceEndpoint(app *App, method int, detectionPath, path string) (*Route, [maxParams]string) {
@@ -3993,8 +4001,11 @@ func Test_Router_ScanMatchesReference(t *testing.T) {
 		`/\*`, "/*",
 	}
 
+	// No empty path: httptest.NewRequest rejects it, and fasthttp never yields
+	// one anyway. Route.match's empty-detection-path behavior is covered by
+	// Test_Route_PrefixFilter_Differential, which calls match directly.
 	paths := []string{
-		"/", "", "/health", "/health/", "/health/live", "/HEALTH",
+		"/", "/health", "/health/", "/health/live", "/HEALTH",
 		"/api", "/api/v1/status", "/api/v1/things", "/api/v1/things/7",
 		"/api/v1/things/7/edit", "/user/keys/1337", "/user/emails",
 		"/user/following/octocat", "/repos/a/b", "/repos/a/b/issues",
@@ -4031,23 +4042,53 @@ func Test_Router_ScanMatchesReference(t *testing.T) {
 }
 
 //nolint:revive // flag-parameter: withMiddleware selects the app shape under test
+//nolint:revive // flag-parameter: withMiddleware selects the app shape under test
 func assertScanMatchesReference(t *testing.T, cfg *Config, withMiddleware bool, patterns, paths []string) {
 	t.Helper()
 
 	app := New(*cfg)
 	if withMiddleware {
-		// Middleware changes which scan path App.next takes, and enables the
-		// SkipUnmatchedRoutes lookahead, so both shapes have to be covered.
+		// Middleware changes which scan path App.next takes, and it is what
+		// enables the SkipUnmatchedRoutes lookahead, so both shapes matter.
 		app.Use(func(c Ctx) error { return c.Next() })
 	}
-	handler := func(c Ctx) error { return nil }
+
+	// Requests run through the real handler rather than App.next directly, so
+	// the lookahead is live: resolveSkip is reached only from requestHandler,
+	// and firstMatchIndex is -1 straight out of Reset. Driving next() by hand
+	// left the SkipUnmatchedRoutes axis inert -- eight of the sixteen configs
+	// re-ran the other eight, and the prefix-filter rejects in resolveSkip and
+	// the firstMatchIndex fast path in next() went untouched, which are exactly
+	// the paths where a disagreement picks a wrong route rather than a slow one.
+	var (
+		hitRoute       *Route
+		hitParams      [maxParams]string
+		hitLookahead   int
+		sawLookahead   bool
+		registeredHits int
+	)
+	//nolint:unparam // must satisfy fiber.Handler; the recording is the point
+	handler := func(c Ctx) error {
+		defaultCtx, ok := c.(*DefaultCtx)
+		require.True(t, ok)
+		hitRoute = c.Route()
+		hitParams = defaultCtx.values
+		hitLookahead = defaultCtx.firstMatchIndex
+		if hitLookahead >= 0 {
+			sawLookahead = true
+		}
+		return nil
+	}
 	for _, pattern := range patterns {
 		func() {
 			//nolint:errcheck // an unregistrable pattern is not this test's subject
 			defer func() { recover() }()
 			app.Get(pattern, handler)
+			registeredHits++
 		}()
 	}
+	require.Equal(t, len(patterns), registeredHits,
+		"every pattern in the corpus must register; a silently dropped one shrinks the test")
 	app.startupProcess()
 
 	method := app.methodInt(MethodGet)
@@ -4057,36 +4098,55 @@ func assertScanMatchesReference(t *testing.T, cfg *Config, withMiddleware bool, 
 	fctx.Request.Header.SetMethod(MethodGet)
 
 	for _, path := range paths {
+		// The reference needs the detection path the router will derive.
+		// Normalization is shared machinery, not something the scan optimizes,
+		// so reading it from a real ctx is not begging the question.
 		fctx.URI().SetPath(path)
-
 		ctx, ok := app.AcquireCtx(fctx).(*DefaultCtx)
 		require.True(t, ok)
-
-		// Normalization is shared machinery, not something the scan optimizes,
-		// so the reference reads the same detection path the router does.
 		detectionPath := app.toString(ctx.detectionPath)
 		routePath := app.toString(ctx.path)
-		wantRoute, wantParams := referenceEndpoint(app, method, detectionPath, routePath)
-
-		_, err := app.next(ctx)
-		gotRoute, gotParams, matched := ctx.route, ctx.values, ctx.isMatched
 		app.ReleaseCtx(ctx)
 
+		wantRoute, wantParams := referenceEndpoint(app, method, detectionPath, routePath)
+
+		hitRoute, hitParams, hitLookahead = nil, [maxParams]string{}, -1
+		resp, err := app.Test(httptest.NewRequest(MethodGet, path, http.NoBody))
+		require.NoError(t, err)
+
 		if wantRoute == nil {
-			require.False(t, matched,
-				"router matched %q but the reference scan found nothing", path)
-			require.Error(t, err, "unmatched path %q should not route cleanly", path)
+			require.Nil(t, hitRoute,
+				"router matched %q via %q but the reference scan found nothing",
+				path, routeLabel(hitRoute))
+			require.NotEqual(t, StatusOK, resp.StatusCode,
+				"unmatched path %q should not answer 200", path)
 			continue
 		}
 
-		require.True(t, matched, "reference scan matched %q via %q but the router did not",
+		require.NotNil(t, hitRoute,
+			"reference scan matched %q via %q but the router ran no handler",
 			path, wantRoute.Path)
-		require.Same(t, wantRoute, gotRoute,
+		require.Same(t, wantRoute, hitRoute,
 			"path %q: router chose %q, reference scan chose %q",
-			path, gotRoute.Path, wantRoute.Path)
-		require.Equal(t, wantParams[:len(wantRoute.Params)], gotParams[:len(wantRoute.Params)],
+			path, routeLabel(hitRoute), wantRoute.Path)
+		require.Equal(t, wantParams[:len(wantRoute.Params)], hitParams[:len(wantRoute.Params)],
 			"path %q via %q: captured parameters diverged", path, wantRoute.Path)
 	}
+
+	// Pin the axis as live. Without this the test can quietly stop exercising
+	// the lookahead again and still pass every assertion above.
+	if withMiddleware && cfg.SkipUnmatchedRoutes {
+		require.True(t, sawLookahead,
+			"SkipUnmatchedRoutes lookahead never resolved an endpoint; the axis is inert again")
+	}
+}
+
+// routeLabel names a route for a failure message, tolerating nil.
+func routeLabel(r *Route) string {
+	if r == nil {
+		return "<none>"
+	}
+	return r.Path
 }
 
 // Test_ResolveSkip_StaticSlashGate covers the '/'-count gate that lets

@@ -117,11 +117,21 @@ const routeTreeHashMul = 0x9E3779B1
 // buildRouteTree converts one method's tree-path buckets into a routeTree.
 //
 // It returns a pointer, and allocates rather than recycling the previous
-// tables, so that publishing a rebuilt tree is a single pointer store. That
-// matters because RebuildTree may be called while requests are in flight: a
-// multi-word store lets a reader pair the new hash table with the old buckets,
-// and clearing tables in place lets one see an empty table and fall through to
-// the globals bucket. Both answer 404 for a route that exists.
+// tables, so that publishing a rebuilt tree is a single pointer store. Holding
+// the tree by value instead cost a five-word store, which let a reader pair the
+// new hash table with the old buckets; recycling the tables let a reader see a
+// cleared one and fall through to globals. Both were measurable — 24 wrong
+// answers in 20k requests served across a RebuildTree loop, against 0 before
+// the index existed — so this restores the parity that assigning treeStack's
+// map pointer used to provide.
+//
+// It does not make RebuildTree safe against in-flight requests, and nothing
+// here should be read as claiming it does. buildTree still fills these trees
+// with buckets from reuseRouteBucket, which hands back the backing array the
+// currently published tree points at and appends over it, so a scan in progress
+// can still observe a bucket mid-rewrite and reach a route from a different
+// registration position. That aliasing predates the index and is unchanged.
+// RebuildTree's own doc states the real contract.
 func buildRouteTree(buckets map[int][]*Route) *routeTree {
 	tree := &routeTree{globals: buckets[0]}
 
