@@ -544,8 +544,11 @@ func (o operation) MarshalJSON() ([]byte, error) {
 	// Sorted so the generated document is byte-stable across runs.
 	slices.Sort(keys)
 
-	out := make([]byte, 0, len(base)+len(keys)*32)
-	out = append(out, base[:len(base)-1]...) // everything but the closing brace
+	// Encode first and size the buffer by summing the parts, so the capacity is
+	// exact and the computation cannot overflow.
+	type extensionPair struct{ key, value []byte }
+	pairs := make([]extensionPair, 0, len(keys))
+	size := len(base)
 	for _, key := range keys {
 		encodedKey, kErr := json.Marshal(key)
 		if kErr != nil {
@@ -555,12 +558,19 @@ func (o operation) MarshalJSON() ([]byte, error) {
 		if vErr != nil {
 			return nil, fmt.Errorf("openapi: marshal operation extension %q: %w", key, vErr)
 		}
+		pairs = append(pairs, extensionPair{key: encodedKey, value: encodedValue})
+		size += len(encodedKey) + len(encodedValue) + 2 // ':' separator and ',' delimiter
+	}
+
+	out := make([]byte, 0, size)
+	out = append(out, base[:len(base)-1]...) // everything but the closing brace
+	for _, pair := range pairs {
 		if len(out) > 1 {
 			out = append(out, ',')
 		}
-		out = append(out, encodedKey...)
+		out = append(out, pair.key...)
 		out = append(out, ':')
-		out = append(out, encodedValue...)
+		out = append(out, pair.value...)
 	}
 	out = append(out, '}')
 	return out, nil

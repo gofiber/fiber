@@ -331,14 +331,22 @@ func (r Route) URL(params Map) (string, error) {
 //  2. Case-insensitive fallback picking the lexicographically-smallest matching key (when !caseSensitive)
 //  3. Greedy parameter fallback for wildcard (*) and plus (+) parameters
 func buildRouteURL(route *Route, params Map) (string, error) {
-	if len(route.routeParser.segs) == 0 {
-		return route.Path, nil
+	return buildRouteURLFrom(route.Path, &route.routeParser, route.caseSensitive, params)
+}
+
+// buildRouteURLFrom is buildRouteURL over the three fields it actually reads, so
+// callers on the request path can build a URL without materializing a Route.
+//
+//nolint:revive // flag-parameter: caseSensitive mirrors Route.caseSensitive, it selects a lookup rule rather than a branch of behavior.
+func buildRouteURLFrom(path string, parser *routeParser, caseSensitive bool, params Map) (string, error) {
+	if len(parser.segs) == 0 {
+		return path, nil
 	}
 
 	buf := bytebufferpool.Get()
 	defer bytebufferpool.Put(buf)
 
-	for _, segment := range route.routeParser.segs {
+	for _, segment := range parser.segs {
 		if !segment.IsParam {
 			_, err := buf.WriteString(segment.Const)
 			if err != nil {
@@ -353,7 +361,7 @@ func buildRouteURL(route *Route, params Map) (string, error) {
 		)
 
 		// Prefer an exact parameter name match
-		if val, found = params[segment.ParamName]; !found && !route.caseSensitive {
+		if val, found = params[segment.ParamName]; !found && !caseSensitive {
 			// Fall back to a case-insensitive match using a deterministic winner
 			var matchedKey string
 			foundMatch := false
@@ -1010,7 +1018,23 @@ func (app *App) addPrefixToRoute(prefix string, route *Route, regexHandler any, 
 }
 
 func (app *App) copyRoute(route *Route) *Route {
-	copied := app.copyRouteBase(route)
+	copied := app.copyRouteValue(route)
+	return &copied
+}
+
+// copyRouteValue is copyRoute without the heap allocation, for callers that
+// return the clone by value (GetRoute, GetRoutes). Building the clone in place
+// keeps a route lookup off the heap even though it still deep-copies.
+func (app *App) copyRouteValue(route *Route) Route {
+	copied := app.copyRouteBaseValue(route)
+
+	// An undocumented route — the common case on a route lookup — has nothing
+	// to deep-copy, so the base copy is already a complete one.
+	if route.RequestBody == nil && route.Parameters == nil && route.Responses == nil &&
+		route.Tags == nil && route.Security == nil && route.ExternalDocs == nil &&
+		route.OperationExtensions == nil {
+		return copied
+	}
 
 	copied.RequestBody = cloneRouteRequestBody(route.RequestBody)
 	copied.Parameters = cloneRouteParameters(route.Parameters)
@@ -1027,39 +1051,30 @@ func (app *App) copyRoute(route *Route) *Route {
 // clone of documentation maps/slices. Auto-generated HEAD twins use it because
 // their doc metadata is never read: the OpenAPI middleware excludes autoHead
 // routes and HEAD serves by re-running the copied GET handler stack.
-func (*App) copyRouteBase(route *Route) *Route {
-	return &Route{
-		// Leading-byte filter
-		prefix:     route.prefix,
-		prefixMask: route.prefixMask,
+func (app *App) copyRouteBase(route *Route) *Route {
+	copied := app.copyRouteBaseValue(route)
+	return &copied
+}
 
-		// Router booleans
-		use:           route.use,
-		mount:         route.mount,
-		star:          route.star,
-		root:          route.root,
-		autoHead:      route.autoHead,
-		caseSensitive: route.caseSensitive,
-		hidden:        route.hidden,
-		regID:         route.regID,
-		domain:        route.domain,
+// copyRouteBaseValue is copyRouteBase without the heap allocation.
+//
+// It copies the route wholesale and then clears exactly the fields a base copy
+// must not share — the group pointer and the documentation containers — which
+// is both equivalent to naming every field explicitly and markedly cheaper: a
+// single move instead of two dozen field writes, on a struct this large.
+func (*App) copyRouteBaseValue(route *Route) Route {
+	copied := *route
 
-		// Path data
-		path:        route.path,
-		routeParser: route.routeParser,
+	copied.group = nil
+	copied.RequestBody = nil
+	copied.Parameters = nil
+	copied.Responses = nil
+	copied.Tags = nil
+	copied.Security = nil
+	copied.ExternalDocs = nil
+	copied.OperationExtensions = nil
 
-		// Public data
-		Path:        route.Path,
-		Params:      route.Params,
-		Name:        route.Name,
-		Method:      route.Method,
-		Handlers:    route.Handlers,
-		Summary:     route.Summary,
-		Description: route.Description,
-		Consumes:    route.Consumes,
-		Produces:    route.Produces,
-		Deprecated:  route.Deprecated,
-	}
+	return copied
 }
 
 func cloneRouteSecurity(requirements []map[string][]string) []map[string][]string {
@@ -1549,7 +1564,7 @@ func (app *App) addRoute(method string, route *Route) {
 	// helpers, RemoveRoute, ...). The private snapshot keeps hook reads from
 	// racing concurrent documentation of the live route.
 	var hookRoute *Route
-	if !route.mount {
+	if !route.mount && len(app.hooks.onRoute) > 0 {
 		hookRoute = app.copyRoute(liveRoute)
 	}
 	app.mutex.Unlock()
@@ -1608,7 +1623,10 @@ func (app *App) ensureAutoHeadRoutesLocked() []*Route {
 		return nil
 	}
 
-	var twins []*Route
+	var (
+		twins []*Route
+		added bool
+	)
 
 	for _, route := range app.stack[getIndex] {
 		if route.mount || route.use {
@@ -1638,9 +1656,13 @@ func (app *App) ensureAutoHeadRoutesLocked() []*Route {
 		headStack = append(headStack, headRoute)
 		existing[route.path] = struct{}{}
 		app.hasRoutesRefreshed = true
+		added = true
 		// Snapshot for the onRoute hooks, which run after the lock is
-		// released and must not read the live route.
-		twins = append(twins, app.copyRoute(headRoute))
+		// released and must not read the live route. Nothing to snapshot when
+		// no hook will observe it.
+		if len(app.hooks.onRoute) > 0 {
+			twins = append(twins, app.copyRoute(headRoute))
+		}
 
 		atomic.AddUint32(&app.handlersCount, uint32(len(headRoute.Handlers))) //nolint:gosec // G115 - handler count is always small
 
@@ -1650,7 +1672,7 @@ func (app *App) ensureAutoHeadRoutesLocked() []*Route {
 		// it would re-document an arbitrary route.
 	}
 
-	if len(twins) > 0 {
+	if added {
 		app.stack[headIndex] = headStack
 		app.bumpRoutesRevision()
 	}

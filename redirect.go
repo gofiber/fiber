@@ -347,8 +347,7 @@ func (r *Redirect) Route(name string, config ...RedirectConfig) error {
 	}
 
 	// Get location from route name
-	route := r.c.App().GetRoute(name)
-	location, err := r.c.getLocationFromRoute(&route, cfg.Params)
+	location, err := r.c.App().routeURL(name, cfg.Params)
 	if err != nil {
 		return err
 	}

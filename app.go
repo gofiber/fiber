@@ -979,7 +979,7 @@ func (app *App) Name(name string) Router {
 	// RemoveRoute, ...). The private snapshot keeps hook reads from racing
 	// concurrent documentation of the live route.
 	var named *Route
-	if app.latestRoute != nil {
+	if app.latestRoute != nil && len(app.hooks.onName) > 0 {
 		named = app.copyRoute(app.latestRoute)
 	}
 	app.mutex.Unlock()
@@ -1544,7 +1544,7 @@ func (app *App) applyNameToRegistration(regID uint64, name string) {
 	var snapshot *Route
 	if applied {
 		app.bumpRoutesRevision()
-		if named != nil {
+		if named != nil && len(app.hooks.onName) > 0 {
 			// Snapshot under the lock; the hook runs without it and must not
 			// read the live route.
 			snapshot = app.copyRoute(named)
@@ -1632,12 +1632,43 @@ func (app *App) GetRoute(name string) Route {
 	for _, routes := range app.stack {
 		for _, route := range routes {
 			if route.Name == name {
-				return *app.copyRoute(route)
+				return app.copyRouteValue(route)
 			}
 		}
 	}
 
 	return Route{}
+}
+
+// routeURL builds the URL for the named route, reading only the routing data it
+// needs (path, parsed segments and case sensitivity) under the router lock.
+//
+// URL building never touches documentation metadata, so it must not pay for the
+// deep clone GetRoute performs, nor for a copy of the Route struct itself. An
+// unknown name leaves the path empty, which yields ("", nil) exactly as looking
+// the route up and building from the zero Route used to.
+func (app *App) routeURL(name string, params Map) (string, error) {
+	var (
+		path          string
+		parser        routeParser
+		caseSensitive bool
+	)
+
+	app.mutex.Lock()
+	for _, routes := range app.stack {
+		for _, route := range routes {
+			if route.Name == name {
+				path, parser, caseSensitive = route.Path, route.routeParser, route.caseSensitive
+				break
+			}
+		}
+		if path != "" {
+			break
+		}
+	}
+	app.mutex.Unlock()
+
+	return buildRouteURLFrom(path, &parser, caseSensitive, params)
 }
 
 // GetRoutes Get all routes. When filterUseOption equal to true, it will filter the routes registered by the middleware.
@@ -1658,7 +1689,7 @@ func (app *App) GetRoutes(filterUseOption ...bool) []Route {
 			if filterUse && route.use {
 				continue
 			}
-			rs = append(rs, *app.copyRoute(route))
+			rs = append(rs, app.copyRouteValue(route))
 		}
 	}
 	return rs
