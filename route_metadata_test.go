@@ -580,3 +580,149 @@ func Test_AutoHeadTwins_CarryNoDocumentation(t *testing.T) {
 	require.False(t, twin.Deprecated)
 	require.Empty(t, twin.Responses)
 }
+
+// Test_Hooks_OutsideRouterLock verifies hooks that inspect the app do not
+// deadlock against the router lock. GetRoutes/GetRoute and the documentation
+// helpers all take app.mutex, so every hook must fire with it released.
+func Test_Hooks_OutsideRouterLock(t *testing.T) {
+	t.Parallel()
+
+	runBounded := func(t *testing.T, name string, fn func()) {
+		t.Helper()
+		done := make(chan struct{})
+		go func() { defer close(done); fn() }()
+		select {
+		case <-done:
+		case <-time.After(5 * time.Second):
+			t.Fatalf("%s deadlocked on the router lock", name)
+		}
+	}
+
+	t.Run("OnGroupName", func(t *testing.T) {
+		t.Parallel()
+		app := New()
+		app.Hooks().OnGroupName(func(Group) error { _ = app.GetRoutes(); return nil })
+		runBounded(t, "OnGroupName", func() { app.Group("/x").Name("grp") })
+	})
+
+	t.Run("OnMountThroughDomain", func(t *testing.T) {
+		t.Parallel()
+		app := New()
+		sub := New()
+		sub.Get("/a", testHandlerOK)
+		sub.Hooks().OnMount(func(*App) error { _ = sub.GetRoutes(); return nil })
+		runBounded(t, "OnMount", func() { app.Domain("api.example.com").Use("/s", sub) })
+	})
+
+	t.Run("OnPreShutdown", func(t *testing.T) {
+		t.Parallel()
+		app := New()
+		app.Get("/a", testHandlerOK)
+		app.Hooks().OnPreShutdown(func() error { _ = app.GetRoutes(); return nil })
+
+		ln := fasthttputil.NewInmemoryListener()
+		go func() {
+			if err := app.Listener(ln, ListenConfig{DisableStartupMessage: true}); err != nil {
+				panic(err)
+			}
+		}()
+		time.Sleep(100 * time.Millisecond)
+		runBounded(t, "OnPreShutdown", func() { require.NoError(t, app.Shutdown()) })
+	})
+}
+
+// Test_DocMetadata_CyclicValueDoesNotCrash verifies a self-referential example
+// value cannot turn a route snapshot into an unrecoverable stack overflow.
+func Test_DocMetadata_CyclicValueDoesNotCrash(t *testing.T) {
+	t.Parallel()
+	cyclic := map[string]any{"k": 1}
+	cyclic["self"] = cyclic
+
+	app := New()
+	require.NotPanics(t, func() {
+		app.Get("/f", testHandlerOK).
+			ResponseWithExample(StatusOK, "ok", nil, "", cyclic, nil, MIMEApplicationJSON)
+		require.NotEmpty(t, app.GetRoutes())
+	})
+}
+
+// Test_ScopedName_TargetsOwnRegistration verifies Name is scoped like the other
+// documentation helpers: on a RouteChain, Group or Domain router it names that
+// router's own last registration, not whatever the app registered most recently.
+func Test_ScopedName_TargetsOwnRegistration(t *testing.T) {
+	t.Parallel()
+
+	t.Run("RouteChain", func(t *testing.T) {
+		t.Parallel()
+		app := New()
+		chain := app.RouteChain("/users")
+		chain.Get(testHandlerOK)
+		app.Get("/other", testHandlerOK)
+		chain.Name("listUsers").Summary("List users")
+
+		require.Equal(t, "listUsers", routesFor(app, "/users")[MethodGet].Name)
+		require.Equal(t, "List users", routesFor(app, "/users")[MethodGet].Summary)
+		require.Empty(t, routesFor(app, "/other")[MethodGet].Name)
+		require.Equal(t, "/users", app.GetRoute("listUsers").Path)
+	})
+
+	t.Run("Group", func(t *testing.T) {
+		t.Parallel()
+		app := New()
+		api := app.Group("/api")
+		api.Get("/a", testHandlerOK)
+		app.Get("/b", testHandlerOK)
+		api.Name("groupRoute")
+
+		require.Equal(t, "groupRoute", routesFor(app, "/api/a")[MethodGet].Name)
+		require.Empty(t, routesFor(app, "/b")[MethodGet].Name)
+	})
+
+	t.Run("Domain", func(t *testing.T) {
+		t.Parallel()
+		app := New()
+		d := app.Domain("api.example.com")
+		d.Get("/a", testHandlerOK)
+		app.Get("/b", testHandlerOK)
+		d.Name("domainRoute")
+
+		require.Equal(t, "domainRoute", routesFor(app, "/a")[MethodGet].Name)
+		require.Empty(t, routesFor(app, "/b")[MethodGet].Name)
+	})
+}
+
+// Test_ScopedHelpers_AfterMergedRegistration verifies a scoped helper still
+// reaches a registration that was compression-merged into the preceding stack
+// entry, even once later registrations moved the fast-path batch on.
+func Test_ScopedHelpers_AfterMergedRegistration(t *testing.T) {
+	t.Parallel()
+	app := New()
+	api := app.Group("/api")
+	api.Get("/users", testHandlerOK)
+	api.Get("/users", testHandlerOK) // merged into the entry above
+	app.Get("/health", testHandlerOK)
+
+	rev := app.RoutesRevision()
+	api.Summary("list users").Tags("users")
+
+	route := routesFor(app, "/api/users")[MethodGet]
+	require.Equal(t, "list users", route.Summary)
+	require.Equal(t, []string{"users"}, route.Tags)
+	require.Greater(t, app.RoutesRevision(), rev)
+}
+
+// Test_Group_SubGroupDoesNotStealParentCursor verifies creating a sub-group with
+// middleware leaves the parent group's helpers pointed at the parent's own last
+// route rather than the sub-group's Use registration.
+func Test_Group_SubGroupDoesNotStealParentCursor(t *testing.T) {
+	t.Parallel()
+	app := New()
+	v1 := app.Group("/v1")
+	v1.Get("/users", testHandlerOK)
+	v1.Group("/sub", func(c Ctx) error { return c.Next() })
+	v1.Summary("list users").Tags("users")
+
+	route := routesFor(app, "/v1/users")[MethodGet]
+	require.Equal(t, "list users", route.Summary)
+	require.Equal(t, []string{"users"}, route.Tags)
+}

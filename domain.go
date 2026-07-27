@@ -441,18 +441,24 @@ func (d *domainRouter) mount(prefix string, subApp *App) Router {
 
 	// Clone routes from the sub-app with domain-wrapped handlers.
 	// Lock the sub-app while reading to prevent data races with concurrent
-	// route registration.
-	subApp.mutex.Lock()
-	defer subApp.mutex.Unlock()
-	for m := range subApp.stack {
-		for _, route := range subApp.stack[m] {
-			clonedRoute := subApp.copyRoute(route)
-			if len(clonedRoute.Handlers) > 0 {
-				clonedRoute.Handlers = d.wrapHandlers(clonedRoute.Handlers)
+	// route registration. The lock is scoped to the copy alone: holding it
+	// across the registration below would take the parent's mutex while
+	// holding the child's — inverting the parent→child order that
+	// processSubAppsRoutes relies on — and would deadlock any onMount hook
+	// that inspects the sub-app.
+	func() {
+		subApp.mutex.Lock()
+		defer subApp.mutex.Unlock()
+		for m := range subApp.stack {
+			for _, route := range subApp.stack[m] {
+				clonedRoute := subApp.copyRoute(route)
+				if len(clonedRoute.Handlers) > 0 {
+					clonedRoute.Handlers = d.wrapHandlers(clonedRoute.Handlers)
+				}
+				wrapperApp.stack[m] = append(wrapperApp.stack[m], clonedRoute)
 			}
-			wrapperApp.stack[m] = append(wrapperApp.stack[m], clonedRoute)
 		}
-	}
+	}()
 
 	d.app.mutex.Lock()
 	// Support for configs of mounted-apps and sub-mounted-apps
@@ -622,11 +628,15 @@ func (d *domainRouter) Route(prefix string, fn func(router Router), name ...stri
 // When the domain router was created from a Group, this delegates to the
 // group's Name method so that group name prefixes are applied correctly.
 func (d *domainRouter) Name(name string) Router {
-	if d.group != nil {
+	// Before the first route, naming a group-backed domain router sets the
+	// group's name prefix (Group.Name's documented behavior). Afterwards it
+	// names this router's own most recent registration, like every other
+	// documentation helper here.
+	if d.group != nil && !d.group.hasAnyRoute {
 		d.group.Name(name)
-	} else {
-		d.app.Name(name)
+		return d
 	}
+	d.app.applyNameToRegistration(atomic.LoadUint64(&d.lastRegID), name)
 	return d
 }
 
@@ -866,7 +876,7 @@ func (r *domainRegistering) RouteChain(path string) Register {
 
 // Name assigns a name to the most recently registered route.
 func (r *domainRegistering) Name(name string) Register {
-	r.domain.Name(name)
+	r.domain.app.applyNameToRegistration(atomic.LoadUint64(&r.lastRegID), name)
 	return r
 }
 

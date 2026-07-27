@@ -2,11 +2,34 @@ package openapi
 
 import (
 	"encoding/json"
+	"reflect"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
 )
+
+// embedStruct builds a value of a struct type that embeds the given types plus
+// any extra fields.
+//
+// The type is assembled reflectively on purpose: these fixtures deliberately
+// create two embedded fields carrying the same json tag, which is the ambiguity
+// under test, but `go vet`'s structtag check rejects that shape in source and
+// would fail `make audit`. Building it at runtime keeps the behavior covered
+// without a statically duplicated tag.
+func embedStruct(embedded []any, extra ...reflect.StructField) any {
+	fields := make([]reflect.StructField, 0, len(embedded)+len(extra))
+	for _, value := range embedded {
+		typ := reflect.TypeOf(value)
+		fields = append(fields, reflect.StructField{
+			Name:      typ.Name(),
+			Type:      typ,
+			Anonymous: true,
+		})
+	}
+	fields = append(fields, extra...)
+	return reflect.New(reflect.StructOf(fields)).Elem().Interface()
+}
 
 // requireProps extracts the "properties" map from a schema, failing the test if
 // the type assertion is unsuccessful.
@@ -566,13 +589,10 @@ func Test_SchemaOf_ConflictingEmbeddedFieldsDropped(t *testing.T) {
 	type B2 struct {
 		X string `json:"x"`
 	}
-	type T struct { //nolint:govet // fieldalignment: embed order mirrors the documented scenario
-		Y string `json:"y"`
-		B1
-		B2 //nolint:govet // structtag: the duplicate json tag is the ambiguity under test
-	}
-
-	schema := SchemaOf(T{})
+	schema := SchemaOf(embedStruct(
+		[]any{B1{}, B2{}},
+		reflect.StructField{Name: "Y", Type: reflect.TypeFor[string](), Tag: `json:"y"`},
+	))
 	props := requireProps(t, schema)
 	require.NotContains(t, props, "x")
 	require.Contains(t, props, "y")
@@ -647,13 +667,8 @@ func Test_SchemaOf_TaggedFieldWinsConflict(t *testing.T) {
 	type E3 struct {
 		V bool `json:"v"` // no json tag name collision helper
 	}
-	type P1 struct {
-		E1
-		E3 //nolint:govet // structtag: the duplicate json tag is the ambiguity under test
-	}
-
 	// Two tagged candidates at the same depth: dropped.
-	props := requireProps(t, SchemaOf(P1{}))
+	props := requireProps(t, SchemaOf(embedStruct([]any{E1{}, E3{}})))
 	require.NotContains(t, props, "v")
 
 	type P2 struct { //nolint:govet // fieldalignment: embed order mirrors the documented scenario
@@ -707,13 +722,10 @@ func Test_SchemaOf_DiamondEmbeddingDropsAmbiguous(t *testing.T) {
 	type C struct {
 		D
 	}
-	type P struct {
-		B
-		C     //nolint:govet // structtag: the duplicate json tag is the ambiguity under test
-		Y int `json:"y"`
-	}
-
-	props := requireProps(t, SchemaOf(P{}))
+	props := requireProps(t, SchemaOf(embedStruct(
+		[]any{B{}, C{}},
+		reflect.StructField{Name: "Y", Type: reflect.TypeFor[int](), Tag: `json:"y"`},
+	)))
 	require.NotContains(t, props, "x")
 	require.Contains(t, props, "y")
 }

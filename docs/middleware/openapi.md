@@ -301,7 +301,9 @@ schemes: security device-authorization flow and `oauth2MetadataUrl`, XML
   type is invented: a request body appears only when `Consumes`/`RequestBody*` is
   set explicitly, and default responses carry a description only until
   `Produces`/`Response*` declares a media type. `Consumes`, `Produces` and
-  `RequestBody` panic on an invalid or empty media type.
+  `RequestBody` panic on an invalid media type; passing an empty string to
+  `Consumes`/`Produces` clears the route's media type, while `RequestBody`
+  requires at least one.
 - Each operation gets a unique `operationId`: routes documented with `Name` use
   that name; routes without one get an id generated from the method and path (for
   example `GET /users/{id}` → `getUsersId`). Collisions get a numeric suffix

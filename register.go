@@ -167,7 +167,7 @@ func (r *Registering) RouteChain(path string) Register {
 
 // Name assigns a name to the most recently registered route.
 func (r *Registering) Name(name string) Register {
-	r.app.Name(name)
+	r.app.applyNameToRegistration(atomic.LoadUint64(&r.lastRegID), name)
 	return r
 }
 

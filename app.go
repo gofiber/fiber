@@ -1248,7 +1248,7 @@ func docAddResponse(status int, description string, schema map[string]any, schem
 	} else if len(schema) > 0 {
 		resp.Schema = copyAnyMap(schema)
 	}
-	resp.Example = example
+	resp.Example = copyAnyValue(example)
 	resp.Examples = copyAnyMap(examples)
 
 	return func(route *Route) {
@@ -1433,13 +1433,15 @@ func docRequestBodyContent(description string, required bool, content map[string
 }
 
 func docResponseContent(status int, description string, content map[string]RouteMediaType) func(route *Route) {
-	if description == "" {
-		description = defaultResponseDescription(status)
-	}
 	key := responseKey(status)
 	return func(route *Route) {
 		resp := getOrCreateResponse(route, key, status)
-		resp.Description = description
+		// An empty description means "unspecified": keep whatever an earlier
+		// Response()/ResponseWithExample() call set rather than overwriting the
+		// author's text with the canned status message.
+		if description != "" {
+			resp.Description = description
+		}
 		resp.Content = cloneRouteMediaTypeMap(content)
 		route.Responses[key] = resp
 	}
@@ -1519,6 +1521,44 @@ func (app *App) applyToLatest(apply func(route *Route)) {
 // Registering, domainRouter) use it so their helpers document their own last
 // registration instead of the app-global one. A regID of 0 (no registration
 // yet) is a no-op.
+// applyNameToRegistration assigns a name to every route of the registration
+// identified by regID and fires the OnName hooks, mirroring App.Name but scoped
+// to one registration instead of the app-global latest one. A regID of 0 (no
+// registration yet) is a no-op.
+func (app *App) applyNameToRegistration(regID uint64, name string) {
+	if regID == 0 {
+		return
+	}
+
+	app.mutex.Lock()
+	var named *Route
+	applied := app.applyToRegIDLocked(regID, func(route *Route) {
+		route.Name = name
+		if route.group != nil {
+			route.Name = route.group.name + route.Name
+		}
+		if named == nil {
+			named = route
+		}
+	})
+	var snapshot *Route
+	if applied {
+		app.bumpRoutesRevision()
+		if named != nil {
+			// Snapshot under the lock; the hook runs without it and must not
+			// read the live route.
+			snapshot = app.copyRoute(named)
+		}
+	}
+	app.mutex.Unlock()
+
+	if snapshot != nil {
+		if err := app.hooks.executeOnNameHooks(snapshot); err != nil {
+			panic(err)
+		}
+	}
+}
+
 func (app *App) applyToRegistration(regID uint64, apply func(route *Route)) {
 	if regID == 0 || apply == nil {
 		return
@@ -1965,14 +2005,15 @@ func (app *App) ShutdownWithContext(ctx context.Context) error {
 	// finish would deadlock the shutdown.
 	app.mutex.Lock()
 	server := app.server
+	app.mutex.Unlock()
+
 	if server == nil {
-		app.mutex.Unlock()
 		return ErrNotRunning
 	}
 
-	// Execute the Shutdown hook
+	// Execute the Shutdown hook outside the lock: a hook is free to inspect the
+	// app (GetRoutes and the documentation helpers take the same mutex).
 	app.hooks.executeOnPreShutdownHooks()
-	app.mutex.Unlock()
 
 	var err error
 	// Use a closure so the hooks receive the final error; a plain

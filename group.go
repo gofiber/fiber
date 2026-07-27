@@ -34,7 +34,7 @@ type Group struct {
 // Otherwise, it'll set route name and OnName hook will be used.
 func (grp *Group) Name(name string) Router {
 	if grp.hasAnyRoute {
-		grp.app.Name(name)
+		grp.app.applyNameToRegistration(atomic.LoadUint64(&grp.lastRegID), name)
 
 		return grp
 	}
@@ -45,11 +45,14 @@ func (grp *Group) Name(name string) Router {
 	} else {
 		grp.name = name
 	}
+	snapshot := *grp
+	grp.app.mutex.Unlock()
 
-	if err := grp.app.hooks.executeOnGroupNameHooks(*grp); err != nil {
+	// Fire hooks after releasing the lock so they may safely call locking app
+	// methods (GetRoutes, documentation helpers, RemoveRoute, ...).
+	if err := grp.app.hooks.executeOnGroupNameHooks(snapshot); err != nil {
 		panic(err)
 	}
-	grp.app.mutex.Unlock()
 
 	return grp
 }
@@ -346,13 +349,16 @@ func (grp *Group) All(path string, handler any, handlers ...any) Router {
 //	api.Get("/users", handler)
 func (grp *Group) Group(prefix string, handlers ...any) Router {
 	prefix = getGroupPath(grp.Prefix, prefix)
-	if len(handlers) > 0 {
-		converted := collectHandlers("group", handlers...)
-		atomic.StoreUint64(&grp.lastRegID, grp.app.register([]string{methodUse}, prefix, grp, "", converted...))
-	}
 
 	// Create new group
 	newGrp := &Group{Prefix: prefix, app: grp.app, parentGroup: grp}
+	if len(handlers) > 0 {
+		converted := collectHandlers("group", handlers...)
+		// The middleware belongs to the sub-group, so record it there: writing
+		// it to the parent would retarget the parent's later documentation
+		// helpers at this Use route.
+		atomic.StoreUint64(&newGrp.lastRegID, grp.app.register([]string{methodUse}, prefix, grp, "", converted...))
+	}
 	if err := grp.app.hooks.executeOnGroupHooks(*newGrp); err != nil {
 		panic(err)
 	}

@@ -2,6 +2,7 @@ package openapi
 
 import (
 	"maps"
+	"slices"
 
 	"github.com/gofiber/fiber/v3"
 )
@@ -239,6 +240,56 @@ var ConfigDefault = Config{
 	OpenAPIVersion:             versionOpenAPI31,
 }
 
+// deepCopyAnyMap copies a raw OpenAPI object so nested maps and slices supplied
+// by the caller are not shared with the handler. Values of other types are
+// copied as-is; only containers can be mutated in place.
+func deepCopyAnyMap(src map[string]any) map[string]any {
+	if src == nil {
+		return nil
+	}
+	dst := make(map[string]any, len(src))
+	for key, value := range src {
+		dst[key] = deepCopyAnyValue(value)
+	}
+	return dst
+}
+
+func deepCopyAnyValue(src any) any {
+	switch value := src.(type) {
+	case map[string]any:
+		return deepCopyAnyMap(value)
+	case []any:
+		copied := make([]any, len(value))
+		for i := range value {
+			copied[i] = deepCopyAnyValue(value[i])
+		}
+		return copied
+	case []string:
+		return slices.Clone(value)
+	default:
+		return src
+	}
+}
+
+// cloneSecurityRequirements copies the requirement maps and their scope slices
+// so the served document never references the caller's live maps.
+func cloneSecurityRequirements(src []map[string][]string) []map[string][]string {
+	if src == nil {
+		return nil
+	}
+	cloned := make([]map[string][]string, len(src))
+	for i, requirement := range src {
+		entry := make(map[string][]string, len(requirement))
+		for scheme, scopes := range requirement {
+			copied := make([]string, len(scopes))
+			copy(copied, scopes)
+			entry[scheme] = copied
+		}
+		cloned[i] = entry
+	}
+	return cloned
+}
+
 func configDefault(config ...Config) Config {
 	if len(config) < 1 {
 		return ConfigDefault
@@ -276,17 +327,37 @@ func configDefault(config ...Config) Config {
 	if cfg.SwaggerStandalonePresetURL == "" {
 		cfg.SwaggerStandalonePresetURL = ConfigDefault.SwaggerStandalonePresetURL
 	}
-	if cfg.SwaggerOptions != nil {
-		cfg.SwaggerOptions = maps.Clone(cfg.SwaggerOptions)
+	// Detach every reference-typed field from the caller. The handler keeps this
+	// config for its lifetime and reads it while serving requests, so anything
+	// left aliased could be mutated concurrently by the caller — a data race,
+	// and for the map-valued fields an unrecoverable concurrent map access.
+	cfg.SwaggerOptions = deepCopyAnyMap(cfg.SwaggerOptions)
+	cfg.Components = deepCopyAnyMap(cfg.Components)
+	cfg.SecuritySchemes = deepCopyAnyMap(cfg.SecuritySchemes)
+	cfg.Webhooks = deepCopyAnyMap(cfg.Webhooks)
+	cfg.Servers = slices.Clone(cfg.Servers)
+	for i := range cfg.Servers {
+		cfg.Servers[i].Variables = maps.Clone(cfg.Servers[i].Variables)
 	}
-	if cfg.Components != nil {
-		cfg.Components = maps.Clone(cfg.Components)
+	cfg.Tags = slices.Clone(cfg.Tags)
+	for i := range cfg.Tags {
+		if cfg.Tags[i].ExternalDocs != nil {
+			docs := *cfg.Tags[i].ExternalDocs
+			cfg.Tags[i].ExternalDocs = &docs
+		}
 	}
-	if cfg.SecuritySchemes != nil {
-		cfg.SecuritySchemes = maps.Clone(cfg.SecuritySchemes)
+	cfg.Security = cloneSecurityRequirements(cfg.Security)
+	if cfg.Contact != nil {
+		contact := *cfg.Contact
+		cfg.Contact = &contact
 	}
-	if cfg.Webhooks != nil {
-		cfg.Webhooks = maps.Clone(cfg.Webhooks)
+	if cfg.License != nil {
+		license := *cfg.License
+		cfg.License = &license
+	}
+	if cfg.ExternalDocs != nil {
+		docs := *cfg.ExternalDocs
+		cfg.ExternalDocs = &docs
 	}
 	if cfg.OpenAPIVersion == "" {
 		cfg.OpenAPIVersion = ConfigDefault.OpenAPIVersion

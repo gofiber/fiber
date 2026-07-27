@@ -1174,35 +1174,58 @@ func cloneRouteResponses(responses map[string]RouteResponse) map[string]RouteRes
 	return cloned
 }
 
+// maxCopyDepth bounds the deep copy of route documentation metadata. Users can
+// store arbitrary values there, including self-referential ones; without a
+// bound such a value turns every GetRoutes call into an unrecoverable stack
+// overflow. Real documentation nests far shallower than this.
+const maxCopyDepth = 100
+
 func copyAnyMap(src map[string]any) map[string]any {
+	return copyAnyMapDepth(src, 0)
+}
+
+func copyAnyMapDepth(src map[string]any, depth int) map[string]any {
 	if len(src) == 0 {
 		return nil
 	}
+	if depth >= maxCopyDepth {
+		// Cyclic or pathologically deep metadata: stop copying rather than
+		// recursing until the goroutine stack dies. Sharing the reference is
+		// the lesser evil, and encoding/json reports the cycle itself.
+		return src
+	}
 	dst := make(map[string]any, len(src))
 	for key, value := range src {
-		dst[key] = copyAnyValue(value)
+		dst[key] = copyAnyValueDepth(value, depth+1)
 	}
 	return dst
 }
 
 func copyAnyValue(src any) any {
+	return copyAnyValueDepth(src, 0)
+}
+
+func copyAnyValueDepth(src any, depth int) any {
 	if src == nil {
 		return nil
+	}
+	if depth >= maxCopyDepth {
+		return src
 	}
 
 	switch value := src.(type) {
 	case map[string]any:
-		return copyAnyMap(value)
+		return copyAnyMapDepth(value, depth)
 	case []any:
 		copied := make([]any, len(value))
 		for i := range value {
-			copied[i] = copyAnyValue(value[i])
+			copied[i] = copyAnyValueDepth(value[i], depth+1)
 		}
 		return copied
 	case []map[string]any:
 		copied := make([]map[string]any, len(value))
 		for i := range value {
-			copied[i] = copyAnyMap(value[i])
+			copied[i] = copyAnyMapDepth(value[i], depth+1)
 		}
 		return copied
 	default:
@@ -1495,11 +1518,14 @@ func (app *App) addRoute(method string, route *Route) {
 		!route.mount && !app.stack[m][l-1].mount && app.stack[m][l-1].domain == route.domain {
 		preRoute := app.stack[m][l-1]
 		preRoute.Handlers = append(preRoute.Handlers, route.Handlers...)
-		// The merged entry keeps its own registration ID but joins the new
-		// registration's helper batch: consecutive same-path registrations
-		// share one stack entry, and its documentation deliberately belongs to
-		// the latest registration (chained .Name()/.Summary() on the newest
-		// Use()/route wins, matching Fiber's established naming behavior).
+		// Consecutive same-path registrations share one stack entry, and its
+		// documentation deliberately belongs to the latest registration
+		// (chained .Name()/.Summary() on the newest Use()/route wins, matching
+		// Fiber's established naming behavior). Restamping the entry keeps the
+		// registration-ID lookup agreeing with the batch fast path: without it
+		// a scoped helper called after an unrelated registration would scan for
+		// an ID no stack entry carries and silently document nothing.
+		preRoute.regID = route.regID
 		liveRoute = preRoute
 		app.latestBatch = append(app.latestBatch, preRoute)
 	} else {
@@ -1542,16 +1568,6 @@ func (app *App) resetBatchIfNewRegistrationLocked(regID uint64) {
 	if regID != app.latestBatchID {
 		app.latestBatchID = regID
 		app.latestBatch = app.latestBatch[:0]
-	}
-}
-
-// appendToCurrentBatchLocked adds route to the current registration batch only
-// when it belongs to the same registration; auto-HEAD twins created at startup
-// use it so twins of older registrations never clobber the batch. The caller
-// must hold app.mutex.
-func (app *App) appendToCurrentBatchLocked(regID uint64, route *Route) {
-	if regID != 0 && regID == app.latestBatchID {
-		app.latestBatch = append(app.latestBatch, route)
 	}
 }
 
@@ -1628,10 +1644,10 @@ func (app *App) ensureAutoHeadRoutesLocked() []*Route {
 
 		atomic.AddUint32(&app.handlersCount, uint32(len(headRoute.Handlers))) //nolint:gosec // G115 - handler count is always small
 
-		// The twin joins its GET origin's registration batch (shared regID)
-		// but deliberately does not become latestRoute: a stray helper called
-		// after startup must not re-document an arbitrary route.
-		app.appendToCurrentBatchLocked(headRoute.regID, headRoute)
+		// The twin deliberately stays out of the registration batch and never
+		// becomes latestRoute: it carries no documentation of its own (the
+		// fields were blanked above), and letting a post-startup helper reach
+		// it would re-document an arbitrary route.
 	}
 
 	if len(twins) > 0 {

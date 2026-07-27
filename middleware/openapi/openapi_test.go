@@ -14,6 +14,8 @@ import (
 )
 
 func Test_OpenAPI_Generate(t *testing.T) {
+	t.Parallel()
+
 	app := fiber.New()
 
 	app.Get("/users", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
@@ -41,6 +43,8 @@ func Test_OpenAPI_Generate(t *testing.T) {
 }
 
 func Test_OpenAPI_JSONEquality(t *testing.T) {
+	t.Parallel()
+
 	app := fiber.New()
 
 	app.Get("/users", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) }).
@@ -78,6 +82,8 @@ func Test_OpenAPI_JSONEquality(t *testing.T) {
 }
 
 func Test_OpenAPI_RawJSON(t *testing.T) {
+	t.Parallel()
+
 	app := fiber.New()
 
 	app.Get("/users", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) }).
@@ -115,6 +121,8 @@ func Test_OpenAPI_RawJSON(t *testing.T) {
 }
 
 func Test_OpenAPI_RawJSONFile(t *testing.T) {
+	t.Parallel()
+
 	app := fiber.New()
 
 	app.Get("/users", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) }).
@@ -137,6 +145,8 @@ func Test_OpenAPI_RawJSONFile(t *testing.T) {
 }
 
 func Test_OpenAPI_RouteHelperMetadata(t *testing.T) {
+	t.Parallel()
+
 	app := fiber.New()
 	app.Post("/users", func(c fiber.Ctx) error { return c.JSON(fiber.Map{"hello": "world"}) }).
 		Name("createUserCustom").
@@ -179,6 +189,8 @@ func Test_OpenAPI_RouteHelperMetadata(t *testing.T) {
 }
 
 func Test_OpenAPI_RouteMetadata(t *testing.T) {
+	t.Parallel()
+
 	app := fiber.New()
 	app.Get("/users", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) }).
 		Summary("List users").Description("User list").Produces(fiber.MIMEApplicationJSON).
@@ -208,6 +220,8 @@ func Test_OpenAPI_RouteMetadata(t *testing.T) {
 }
 
 func Test_OpenAPI_RouteRequestBodyAndResponses(t *testing.T) {
+	t.Parallel()
+
 	app := fiber.New()
 
 	app.Post("/users", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusCreated) }).
@@ -235,7 +249,10 @@ func Test_OpenAPI_RouteRequestBodyAndResponses(t *testing.T) {
 }
 
 func Test_OpenAPI_DefaultResponses(t *testing.T) {
+	t.Parallel()
+
 	t.Run("delete defaults to 204 with no content", func(t *testing.T) {
+		t.Parallel()
 		app := fiber.New()
 		app.Delete("/users/:id", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusNoContent) })
 
@@ -249,6 +266,7 @@ func Test_OpenAPI_DefaultResponses(t *testing.T) {
 	})
 
 	t.Run("post with explicit 201 does not add default 200", func(t *testing.T) {
+		t.Parallel()
 		app := fiber.New()
 		app.Post("/users", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusCreated) }).
 			Response(fiber.StatusCreated, "Created", fiber.MIMEApplicationJSON)
@@ -263,6 +281,7 @@ func Test_OpenAPI_DefaultResponses(t *testing.T) {
 	})
 
 	t.Run("non-200 responses remain untouched", func(t *testing.T) {
+		t.Parallel()
 		app := fiber.New()
 		app.Get("/users", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusNotFound) }).
 			Response(fiber.StatusNotFound, "Not Found", fiber.MIMETextPlain)
@@ -337,6 +356,8 @@ func getPaths(t *testing.T, app *fiber.App) map[string]map[string]any {
 }
 
 func Test_OpenAPI_Methods(t *testing.T) {
+	t.Parallel()
+
 	handler := func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) }
 
 	tests := []struct {
@@ -355,6 +376,7 @@ func Test_OpenAPI_Methods(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.method, func(t *testing.T) {
+			t.Parallel()
 			app := fiber.New()
 			tt.register(app)
 
@@ -367,6 +389,8 @@ func Test_OpenAPI_Methods(t *testing.T) {
 }
 
 func Test_OpenAPI_DifferentHandlers(t *testing.T) {
+	t.Parallel()
+
 	app := fiber.New()
 
 	app.Get("/string", func(c fiber.Ctx) error { return c.SendString("a") })
@@ -381,6 +405,8 @@ func Test_OpenAPI_DifferentHandlers(t *testing.T) {
 }
 
 func Test_OpenAPI_Params(t *testing.T) {
+	t.Parallel()
+
 	app := fiber.New()
 
 	app.Get("/users/:id", func(c fiber.Ctx) error { return c.SendString(c.Params("id")) }).
@@ -401,6 +427,8 @@ func Test_OpenAPI_Params(t *testing.T) {
 }
 
 func Test_OpenAPI_Groups(t *testing.T) {
+	t.Parallel()
+
 	app := fiber.New()
 
 	api := app.Group("/api")
@@ -416,6 +444,8 @@ func Test_OpenAPI_Groups(t *testing.T) {
 }
 
 func Test_OpenAPI_Groups_Metadata(t *testing.T) {
+	t.Parallel()
+
 	app := fiber.New()
 
 	api := app.Group("/api")
@@ -437,6 +467,8 @@ func Test_OpenAPI_Groups_Metadata(t *testing.T) {
 }
 
 func Test_OpenAPI_NoRoutes(t *testing.T) {
+	t.Parallel()
+
 	app := fiber.New()
 
 	paths := getPaths(t, app)
@@ -447,6 +479,8 @@ func Test_OpenAPI_NoRoutes(t *testing.T) {
 }
 
 func Test_OpenAPI_RootOnly(t *testing.T) {
+	t.Parallel()
+
 	app := fiber.New()
 
 	app.Get("/", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
@@ -458,6 +492,8 @@ func Test_OpenAPI_RootOnly(t *testing.T) {
 }
 
 func Test_OpenAPI_GroupMiddleware(t *testing.T) {
+	t.Parallel()
+
 	app := fiber.New()
 
 	api := app.Group("/api/v2")
@@ -509,6 +545,8 @@ func Test_OpenAPI_OnlyInterceptsGetAndHead(t *testing.T) {
 }
 
 func Test_OpenAPI_RootAndGroupSpecs(t *testing.T) {
+	t.Parallel()
+
 	app := fiber.New()
 
 	app.Use(New(Config{Title: "root"}))
@@ -535,6 +573,8 @@ func Test_OpenAPI_RootAndGroupSpecs(t *testing.T) {
 }
 
 func Test_OpenAPI_ConfigValues(t *testing.T) {
+	t.Parallel()
+
 	app := fiber.New()
 
 	app.Get("/users", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
@@ -722,6 +762,8 @@ func Test_OpenAPI_VersionInvalid(t *testing.T) {
 }
 
 func Test_OpenAPI_Next(t *testing.T) {
+	t.Parallel()
+
 	app := fiber.New()
 
 	app.Use(New(Config{Next: func(fiber.Ctx) bool { return true }}))
@@ -733,6 +775,8 @@ func Test_OpenAPI_Next(t *testing.T) {
 }
 
 func Test_OpenAPI_ConnectIgnored(t *testing.T) {
+	t.Parallel()
+
 	app := fiber.New()
 
 	app.Connect("/conn", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
@@ -742,6 +786,8 @@ func Test_OpenAPI_ConnectIgnored(t *testing.T) {
 }
 
 func Test_OpenAPI_MultipleParams(t *testing.T) {
+	t.Parallel()
+
 	app := fiber.New()
 
 	app.Get("/users/:uid/books/:bid", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
@@ -760,6 +806,8 @@ func Test_OpenAPI_MultipleParams(t *testing.T) {
 }
 
 func Test_OpenAPI_ConsumesProduces(t *testing.T) {
+	t.Parallel()
+
 	app := fiber.New()
 
 	app.Post("/users", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusCreated) }).
@@ -779,6 +827,8 @@ func Test_OpenAPI_ConsumesProduces(t *testing.T) {
 }
 
 func Test_OpenAPI_NoRequestBodyForGET(t *testing.T) {
+	t.Parallel()
+
 	app := fiber.New()
 
 	app.Get("/users", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
@@ -791,6 +841,8 @@ func Test_OpenAPI_NoRequestBodyForGET(t *testing.T) {
 // Test_OpenAPI_Cache verifies the spec is regenerated per request, so routes
 // added after the first request are reflected without a process restart.
 func Test_OpenAPI_Cache(t *testing.T) {
+	t.Parallel()
+
 	app := fiber.New()
 
 	app.Get("/first", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
@@ -2205,6 +2257,8 @@ func Test_OpenAPI_ExactRouteRegistration(t *testing.T) {
 // Test_OpenAPI_SpecReflectsRouteRemoval verifies the spec is not stale after a
 // route is removed and another added (same total route count).
 func Test_OpenAPI_SpecReflectsRouteRemoval(t *testing.T) {
+	t.Parallel()
+
 	app := fiber.New()
 	app.Get("/old", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
 	app.Use(New())

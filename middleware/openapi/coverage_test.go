@@ -258,19 +258,33 @@ func Test_SchemaOf_UnsupportedSliceAndMapElements(t *testing.T) {
 
 	type withUnsupported struct {
 		M  map[string]chan int `json:"m"`
+		OK string              `json:"ok"`
 		Ch []chan int          `json:"ch"`
 	}
 
+	// encoding/json fails outright on these values ("json: unsupported type:
+	// chan int"), so the fields are skipped rather than documented as an array
+	// or object the handler could never produce.
 	schema := SchemaOf(withUnsupported{})
 	props := requireMap(t, schema["properties"])
 
-	ch := requireProp(t, props, "ch")
-	require.Equal(t, "array", ch["type"])
-	require.Equal(t, map[string]any{}, ch["items"])
+	require.NotContains(t, props, "ch")
+	require.NotContains(t, props, "m")
+	require.Contains(t, props, "ok")
+}
 
-	m := requireProp(t, props, "m")
-	require.Equal(t, "object", m["type"])
-	require.Equal(t, map[string]any{}, m["additionalProperties"])
+func Test_SchemaOf_SelfReferentialTypes(t *testing.T) {
+	t.Parallel()
+
+	// Recursive slice, map and pointer types are legal Go; reflection must
+	// terminate on them instead of overflowing the stack.
+	type recMap map[string]recMap
+	type recSlice []recSlice
+
+	require.NotPanics(t, func() {
+		require.Equal(t, schemaTypeObject, SchemaOf(recMap{})[schemaKeyType])
+		require.Equal(t, "array", SchemaOf(recSlice{})["type"])
+	})
 }
 
 func Test_OpenAPI_SpecMarshalError(t *testing.T) {

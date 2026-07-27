@@ -86,11 +86,33 @@ func implementsMarshaler(t, iface reflect.Type) bool {
 	return t.Implements(iface) || reflect.PointerTo(t).Implements(iface)
 }
 
-// typeSchema builds the schema for a single type. visited tracks the struct
+// maxPointerDepth bounds pointer dereferencing so a self-referential pointer
+// type cannot spin forever.
+const maxPointerDepth = 32
+
+// markVisited records t as being expanded, allocating the set on first use, and
+// returns it so callers can pass it down the recursion.
+func markVisited(visited map[reflect.Type]bool, t reflect.Type) map[reflect.Type]bool {
+	if visited == nil {
+		visited = make(map[reflect.Type]bool)
+	}
+	visited[t] = true
+	return visited
+}
+
+// typeSchema builds the schema for a single type. visited tracks the composite
 // types currently on the recursion stack so that cyclic types terminate.
 func typeSchema(t reflect.Type, visited map[reflect.Type]bool) map[string]any {
-	for t.Kind() == reflect.Pointer {
+	// A self-referential pointer type (type P *P) never stops being a pointer,
+	// so bound the walk instead of dereferencing forever.
+	for range maxPointerDepth {
+		if t.Kind() != reflect.Pointer {
+			break
+		}
 		t = t.Elem()
+	}
+	if t.Kind() == reflect.Pointer {
+		return map[string]any{}
 	}
 
 	if t == timeType {
@@ -134,18 +156,35 @@ func typeSchema(t reflect.Type, visited map[reflect.Type]bool) map[string]any {
 		if t.Kind() == reflect.Slice && t.Elem().Kind() == reflect.Uint8 {
 			return map[string]any{schemaKeyType: schemaTypeString, schemaKeyFormat: "byte"}
 		}
+		// A recursive element type (type L []L) would expand forever.
+		if visited[t] {
+			return map[string]any{schemaKeyType: "array"}
+		}
+		visited = markVisited(visited, t)
 		items := typeSchema(t.Elem(), visited)
+		delete(visited, t)
 		if items == nil {
-			items = map[string]any{}
+			// The element has no JSON representation, so neither does the
+			// slice: encoding/json fails outright on such a value rather than
+			// emitting an array, and the caller skips the field.
+			return nil
 		}
 		return map[string]any{schemaKeyType: "array", "items": items}
 	case reflect.Map:
 		if t.Key().Kind() != reflect.String {
 			return map[string]any{schemaKeyType: schemaTypeObject}
 		}
+		// A recursive element type (type M map[string]M) would expand forever.
+		if visited[t] {
+			return map[string]any{schemaKeyType: schemaTypeObject}
+		}
+		visited = markVisited(visited, t)
 		additional := typeSchema(t.Elem(), visited)
+		delete(visited, t)
 		if additional == nil {
-			additional = map[string]any{}
+			// See the slice branch: an unmarshalable element makes the whole
+			// map unmarshalable.
+			return nil
 		}
 		return map[string]any{schemaKeyType: schemaTypeObject, "additionalProperties": additional}
 	case reflect.Struct:
