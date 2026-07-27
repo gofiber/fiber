@@ -19,15 +19,23 @@ import (
 	utilsstrings "github.com/gofiber/utils/v2/strings"
 )
 
-// routeParser holds the path segments and param names
+// routeParser holds the path segments and param names.
+//
+// The slash bounds lead the struct on purpose: Route.match consults them for
+// every parametric candidate it rejects, and Route embeds routeParser so that
+// they share a cache line with the other fields the router reads while
+// scanning. Keep them first when adding fields.
+//
+//nolint:govet // fieldalignment: the slash bounds lead deliberately, see above
 type routeParser struct {
+	minSlashes    int32           // minimum number of '/' a matching detection path can contain
+	maxSlashes    int32           // maximum number of '/' a matching detection path can contain; only valid when maxBounded is true
+	maxBounded    bool            // false when a parameter can swallow '/', making the maximum unknowable; false also disables the max check
+	constParam    bool            // route is exactly one const segment + one plain trailing param; see matchConstParam
 	segs          []*routeSegment // the parsed segments of the route
 	params        []string        // that parameter names the parsed route
 	wildCardCount int             // number of wildcard parameters, used internally to give the wildcard parameter its number
 	plusCount     int             // number of plus parameters, used internally to give the plus parameter its number
-	minSlashes    int             // minimum number of '/' a matching detection path can contain
-	maxSlashes    int             // maximum number of '/' a matching detection path can contain; only valid when maxBounded is true
-	maxBounded    bool            // false when a parameter can swallow '/', making the maximum unknowable; false also disables the max check
 }
 
 var routerParserPool = &sync.Pool{
@@ -242,6 +250,7 @@ func (parser *routeParser) reset() {
 	parser.minSlashes = 0
 	parser.maxSlashes = 0
 	parser.maxBounded = false
+	parser.constParam = false
 }
 
 // parseRoute analyzes the route and divides it into segments for constant areas and parameters,
@@ -266,6 +275,20 @@ func (parser *routeParser) parseRoute(pattern string, regexHandler any, customCo
 		parser.segs[len(parser.segs)-1].IsLast = true
 	}
 	parser.segs = addParameterMetaInfo(parser.segs)
+	parser.constParam = isConstParamShape(parser.segs)
+}
+
+// isConstParamShape reports whether segs is the "/const/:param" shape that
+// matchConstParam specializes: exactly one constant segment followed by one
+// plain trailing parameter. Every condition here is one the specialized body
+// assumes rather than re-checks, so keep the two in step.
+func isConstParamShape(segs []*routeSegment) bool {
+	if len(segs) != 2 {
+		return false
+	}
+	c, p := segs[0], segs[1]
+	return !c.IsParam && !c.HasOptionalSlash &&
+		p.IsParam && p.IsLast && !p.IsGreedy && !p.IsOptional && len(p.Constraints) == 0
 }
 
 // computeSlashBounds precomputes the minimum and maximum number of '/' bytes a
@@ -303,9 +326,9 @@ func (parser *routeParser) computeSlashBounds() {
 			minSlashes--
 		}
 	}
-	parser.minSlashes = minSlashes
+	parser.minSlashes = int32(minSlashes)
 	if bounded {
-		parser.maxSlashes = maxSlashes
+		parser.maxSlashes = int32(maxSlashes)
 		parser.maxBounded = true
 	}
 }
@@ -564,6 +587,10 @@ func hasPartialMatchBoundary(path string, matchedLength int) bool {
 
 // getMatch parses the passed url and tries to match it against the route segments and determine the parameter positions
 func (parser *routeParser) getMatch(detectionPath, path string, params *[maxParams]string, partialCheck bool) bool { //nolint:revive // Accepting a bool param is fine here
+	if parser.constParam {
+		return parser.matchConstParam(detectionPath, path, params, partialCheck)
+	}
+
 	originalDetectionPath := detectionPath
 	// offset indexes into the never-resliced path; it only advances by bytes consumed
 	// from detectionPath (never longer than path), so offset+i stays in bounds.
@@ -620,6 +647,51 @@ func (parser *routeParser) getMatch(detectionPath, path string, params *[maxPara
 	}
 
 	return true
+}
+
+// matchConstParam is getMatch specialized to the "/const/:param" shape, which
+// is what most REST endpoints look like ("/user/keys/:key_id"). It is a
+// straight-line rewrite of the generic segment walk for that shape, not a
+// different matcher: isConstParamShape gates on exactly the properties that
+// let each step below collapse.
+//
+// Walking the generic loop for two segments costs a pointer chase per segment,
+// the IsParam/IsOptional/IsLast branches, the constraint loop and the reslice
+// bookkeeping, all to reach the same three operations this does directly.
+func (parser *routeParser) matchConstParam(detectionPath, path string, params *[maxParams]string, partialCheck bool) bool { //nolint:revive // mirrors getMatch's signature
+	constSeg := parser.segs[0]
+
+	// Same guard as the generic const branch; HasOptionalSlash is excluded by
+	// the gate, so the trailing-slash-drop case cannot arise here.
+	n := constSeg.Length
+	if uint(n) > uint(len(detectionPath)) || detectionPath[:n] != constSeg.Const {
+		return false
+	}
+
+	// The parameter is last and non-greedy, so findParamLenForLastSegment would
+	// stop it at the next '/', or take the remainder when there is none.
+	rest := detectionPath[n:]
+	i := len(rest)
+	if idx := strings.IndexByte(rest, slashDelimiter); idx != -1 {
+		i = idx
+	}
+	// The gate excludes optional parameters, so an empty one is no match.
+	if i == 0 {
+		return false
+	}
+
+	// offset into path, never resliced, exactly as the generic loop tracks it
+	params[0] = path[n : n+i]
+
+	if i == len(rest) {
+		return true
+	}
+	// Leftover detection path: only prefix (use) routes may stop short, and
+	// only on a segment boundary.
+	if !partialCheck {
+		return false
+	}
+	return hasPartialMatchBoundary(detectionPath, n+i)
 }
 
 // findParamLen for the expressjs wildcard behavior (right to left greedy)
