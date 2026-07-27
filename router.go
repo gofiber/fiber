@@ -131,19 +131,13 @@ const routeTreeHashMul = 0x9E3779B1
 // the index existed — so this restores the parity that assigning treeStack's
 // map pointer used to provide.
 //
-// The buckets are freshly allocated too, for the same reason. buildTree used to
-// recycle the previous build's backing arrays, which the published tree still
-// pointed at, so a rebuild appended over the very slice a scan in progress was
-// iterating. Recycling saved allocations on a path that is explicitly not the
-// request path, and bought a hazard on one that is.
-//
-// None of this makes RebuildTree safe against in-flight requests, and nothing
-// here should be read as claiming it does: publishing the tree is still an
-// unsynchronized store, so a reader is not guaranteed to see a rebuild at all,
-// or to see one method's tree and another's from the same build. What it does
-// is keep a reader that misses the update on wholly intact old data instead of
-// on data being overwritten underneath it. RebuildTree's own doc states the
-// contract.
+// The buckets themselves are still recycled by reuseRouteBucket, so this does
+// not make RebuildTree safe against in-flight requests and nothing here should
+// be read as claiming it does. A rebuild appends over the backing array the
+// published tree points at, so a scan in progress can observe a bucket
+// mid-rewrite; publishing is also an unsynchronized store, so a reader is not
+// guaranteed to see a rebuild at all, or to see one method's tree and another's
+// from the same build. RebuildTree's own doc states the contract.
 func buildRouteTree(buckets map[int][]*Route) *routeTree {
 	tree := &routeTree{globals: buckets[0]}
 
@@ -1217,10 +1211,11 @@ func (app *App) buildTree() *App {
 			prefixCounts[treePaths[i]]++
 		}
 
+		prevBuckets := app.treeStack[method]
 		tsMap := make(map[int][]*Route, len(prefixCounts)+1)
-		tsMap[0] = make([]*Route, 0, globalCount)
+		tsMap[0] = reuseRouteBucket(prevBuckets, 0, globalCount)
 		for treePath, count := range prefixCounts {
-			tsMap[treePath] = make([]*Route, 0, count+globalCount)
+			tsMap[treePath] = reuseRouteBucket(prevBuckets, treePath, count+globalCount)
 		}
 
 		for i, route := range routes {
@@ -1246,4 +1241,11 @@ func (app *App) buildTree() *App {
 	// reset the flag and return
 	app.hasRoutesRefreshed = false
 	return app
+}
+
+func reuseRouteBucket(prev map[int][]*Route, key, capHint int) []*Route {
+	if bucket, ok := prev[key]; ok && cap(bucket) >= capHint {
+		return bucket[:0]
+	}
+	return make([]*Route, 0, capHint)
 }

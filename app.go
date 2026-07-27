@@ -106,7 +106,10 @@ type App struct {
 	sendfiles []*sendFileStore
 	// custom binders
 	customBinders []CustomBinder
-	// Route stack divided by HTTP methods and route prefixes
+	// Route stack divided by HTTP methods and route prefixes. Build-time only:
+	// requests go through treeIndex. It survives between rebuilds because
+	// reuseRouteBucket recycles the previous build's buckets out of it, and
+	// buildLookahead reads it to index the same buckets next() will scan.
 	treeStack []map[int][]*Route
 	// Request-time view of treeStack: one flat, open-addressed index per HTTP
 	// method, rebuilt with the tree (see routeTree in router.go). Held by

@@ -4312,3 +4312,40 @@ func Test_RouteTree_SlotSpreadsAcrossLargeTables(t *testing.T) {
 		}
 	}
 }
+
+// Test_Route_PrefixFilter_UnconstrainedShapes covers the guards in
+// computePrefixFilter that disable the filter when a route's first segment
+// constrains nothing.
+//
+// Neither shape is reachable through the public API -- register always forces a
+// leading '/', so a parsed route's first segment is a constant and its parser
+// is never empty -- but the guards are what make that an assumption rather than
+// a dependency, and a filter that stayed enabled for either would reject paths
+// the route matches.
+// go test -race -run Test_Route_PrefixFilter_UnconstrainedShapes
+func Test_Route_PrefixFilter_UnconstrainedShapes(t *testing.T) {
+	t.Parallel()
+
+	// A pattern whose very first segment is a parameter, which only parses
+	// this way without the leading slash register would add.
+	parser := parseRoute(":name", regexp.MustCompile)
+	require.NotEmpty(t, parser.segs)
+	require.True(t, parser.segs[0].IsParam, "expected a leading parameter segment")
+
+	leadingParam := &Route{routeParser: parser, Params: parser.params, path: ":name", Path: ":name"}
+	word, mask := computePrefixFilter(leadingParam)
+	require.Zero(t, mask, "a leading parameter must disable the filter")
+	require.Zero(t, word)
+
+	// A parametric route with no parsed segments at all.
+	empty := &Route{Params: []string{"x"}}
+	word, mask = computePrefixFilter(empty)
+	require.Zero(t, mask, "an empty parser must disable the filter")
+	require.Zero(t, word)
+
+	// A disabled filter must never reject, whatever the path.
+	for _, path := range []string{"", "/", "/anything", "/a/b/c"} {
+		require.False(t, routeFilterRejects(leadingParam, path), "path %q", path)
+		require.False(t, routeFilterRejects(empty, path), "path %q", path)
+	}
+}
