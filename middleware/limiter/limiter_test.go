@@ -1863,3 +1863,25 @@ func Test_Config_currentSecond_NegativeClock(t *testing.T) {
 	cfg.clock = func() time.Time { return time.Unix(42, 0) }
 	require.Equal(t, uint64(42), cfg.currentSecond())
 }
+
+// TestLimiterSlidingSubSecondExpiration is a regression test: a sub-second
+// ExpirationFunc truncated to 0 seconds via uint64(d.Seconds()), so the
+// sliding window weight became a division by zero (NaN rate) and every
+// request was rejected. The window must floor to 1 second: requests within
+// Max are admitted.
+func TestLimiterSlidingSubSecondExpiration(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Use(New(Config{
+		Max:               5,
+		LimiterMiddleware: SlidingWindow{},
+		ExpirationFunc:    func(fiber.Ctx) time.Duration { return 500 * time.Millisecond },
+	}))
+	app.Get("/", func(c fiber.Ctx) error { return c.SendString("Hello tester!") })
+
+	// Without the fix the very first request is wrongly rejected with 429.
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+}
