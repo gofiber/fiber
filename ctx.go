@@ -77,7 +77,6 @@ type DefaultCtx struct {
 	indexHandler           int                  // Index of the current handler
 	firstMatchIndex        int                  // Pre-resolved endpoint index from the SkipUnmatchedRoutes lookahead; -1 when unused
 	methodInt              int                  // HTTP method INT equivalent
-	userCtx                context.Context       // Snapshot of user-set context for Deadline/Done/Err; nil means not set
 	isAbandoned            atomic.Bool          // If true, ctx won't be pooled until ForceRelease is called
 	isMatched              bool                 // Non use route matched
 	shouldSkipNonUseRoutes bool                 // Skip non-use routes while iterating middleware
@@ -153,14 +152,23 @@ func (c *DefaultCtx) SetContext(ctx context.Context) {
 	}
 	c.fasthttp.SetUserValue(userContextKey, ctx)
 	c.isUserContextSet = true
-	c.userCtx = ctx
+}
+
+// userContext returns the user-set context without triggering a write-back.
+// Returns nil when no user context has been set.
+func (c *DefaultCtx) userContext() context.Context {
+	if c.fasthttp == nil {
+		return nil
+	}
+	ctx, _ := c.fasthttp.UserValue(userContextKey).(context.Context) //nolint:errcheck // type assertion to interface
+	return ctx
 }
 
 // Deadline returns the time when work done on behalf of this context
 // should be canceled. Deadline returns ok==false when no deadline is
 // set.
 func (c *DefaultCtx) Deadline() (time.Time, bool) {
-	if ctx := c.userCtx; ctx != nil {
+	if ctx := c.userContext(); ctx != nil {
 		return ctx.Deadline()
 	}
 	return time.Time{}, false
@@ -170,7 +178,7 @@ func (c *DefaultCtx) Deadline() (time.Time, bool) {
 // context should be canceled. Done may return nil if this context can
 // never be canceled.
 func (c *DefaultCtx) Done() <-chan struct{} {
-	if ctx := c.userCtx; ctx != nil {
+	if ctx := c.userContext(); ctx != nil {
 		return ctx.Done()
 	}
 	return nil
@@ -179,7 +187,7 @@ func (c *DefaultCtx) Done() <-chan struct{} {
 // Err returns nil if no user context has been set or if it has not been canceled yet.
 // After cancellation it returns the context's error.
 func (c *DefaultCtx) Err() error {
-	if ctx := c.userCtx; ctx != nil {
+	if ctx := c.userContext(); ctx != nil {
 		return ctx.Err() //nolint:wrapcheck // interface method must match context.Context signature
 	}
 	return nil
@@ -749,7 +757,6 @@ func (c *DefaultCtx) release() {
 			c.fasthttp.SetUserValue(userContextKey, nil)
 		}
 		c.isUserContextSet = false
-		c.userCtx = nil
 	}
 	c.route = nil
 	c.fasthttp = nil

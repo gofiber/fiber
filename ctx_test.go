@@ -4367,6 +4367,7 @@ func Test_Ctx_Done(t *testing.T) {
 
 		// With a cancellable context, Done should return a non-nil channel
 		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
 		c.SetContext(ctx)
 		done := c.Done()
 		require.NotNil(t, done)
