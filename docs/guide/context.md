@@ -57,7 +57,10 @@ app.Get("/job", func(c fiber.Ctx) error {
 ```
 
 You can customize the base context by calling `c.SetContext` before
-requesting it:
+requesting it. Only publish a context that outlives the handler: middleware
+running after it reads `Err()` from whatever `SetContext` stored last, so a
+context you cancel yourself with `defer cancel()` belongs directly in the call
+that needs it.
 
 ```go
 app.Get("/job", func(c fiber.Ctx) error {

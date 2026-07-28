@@ -103,10 +103,11 @@ func doSomething(ctx context.Context) {
 
 app.Get("/", func(c fiber.Ctx) error {
   doSomething(c)
+  return nil
 })
 ```
 
-Derive a child context from `c.Context()` and pass it directly to context-aware libraries. Do **not** store the derived context back with `SetContext` when the handler uses `defer cancel()`, because post-handler middleware (e.g. session save) would then see a cancelled context and silently drop writes:
+`SetContext` publishes a context for the rest of the request: downstream middleware and handlers read it through `Context()`, and `Deadline()`, `Done()` and `Err()` report it. Only publish a context that outlives your handler. One you cancel yourself with `defer cancel()` belongs directly in the call that needs it, because middleware running after the handler would otherwise observe it as canceled and silently drop its work, such as a session save:
 
 ```go title="Example"
 app.Get("/", func(c fiber.Ctx) error {

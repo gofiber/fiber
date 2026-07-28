@@ -4406,6 +4406,7 @@ func Test_Ctx_Err(t *testing.T) {
 
 		// After canceling a set context, Err should return context.Canceled
 		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
 		c.SetContext(ctx)
 		require.NoError(t, c.Err())
 		cancel()
