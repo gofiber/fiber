@@ -179,8 +179,8 @@ func Test_RouteParser_SlashBounds(t *testing.T) {
 	t.Parallel()
 	testCases := []struct {
 		pattern    string
-		minSlashes int
-		maxSlashes int
+		minSlashes int32
+		maxSlashes int32
 		maxBounded bool
 	}{
 		{pattern: "/", minSlashes: 0, maxSlashes: 1, maxBounded: true},
@@ -923,4 +923,121 @@ func Test_RoutePatternMatch_InvalidRegexHandlerPanics(t *testing.T) {
 	require.PanicsWithValue(t, "fiber: Config.RegexHandler must be a non-nil function", func() {
 		RoutePatternMatch("/api/123", "/api/:id<regex(\\d+)>", Config{RegexHandler: "invalid"})
 	})
+}
+
+// Test_RouteParser_ConstParamShape pins which patterns the "/const/:param"
+// specialization claims. A gate that silently stops firing turns the
+// specialization into dead code, and one that fires too widely is a
+// correctness bug, so both directions are asserted.
+// go test -race -run Test_RouteParser_ConstParamShape
+func Test_RouteParser_ConstParamShape(t *testing.T) {
+	t.Parallel()
+
+	specialized := []string{
+		"/user/keys/:key_id", "/api/v1/:param", "/:param", "/a/:b",
+		"/repos/:owner", "/x/:y",
+	}
+	generic := []string{
+		"/", "/const", "/*", "/+", "/api/*", "/api/+",
+		"/api/:a/:b",           // two params
+		"/api/:a/fixed",        // param not last
+		"/api/:a?",             // optional param (const carries the optional slash)
+		"/apix:a?",             // optional param with no optional slash on the const
+		"/api/:a<int>",         // constrained param
+		"/api/:a-:b",           // adjacent params
+		"/api/",                // no param at all
+		"/user/keys/:id/extra", // trailing const
+	}
+
+	for _, pattern := range specialized {
+		parser := parseRoute(pattern, regexp.MustCompile)
+		require.True(t, parser.constParam, "expected specialization for %q", pattern)
+	}
+	for _, pattern := range generic {
+		parser := parseRoute(pattern, regexp.MustCompile)
+		require.False(t, parser.constParam, "unexpected specialization for %q", pattern)
+	}
+}
+
+// Test_RouteParser_ConstParamDifferential proves matchConstParam is a pure
+// rewrite of the generic segment walk: for every specialized pattern and every
+// path, the specialized and generic matchers must agree on both the outcome
+// and the captured parameter. Running the two against each other is the whole
+// safety argument for the specialization.
+// go test -race -run Test_RouteParser_ConstParamDifferential
+func Test_RouteParser_ConstParamDifferential(t *testing.T) {
+	t.Parallel()
+
+	prefixes := []string{"/", "/a/", "/user/keys/", "/api/v1/", "/verylongprefix/"}
+	patterns := make([]string, 0, len(prefixes))
+	for _, p := range prefixes {
+		patterns = append(patterns, p+":id")
+	}
+
+	pieces := []string{
+		"", "/", "/a", "/a/", "/a/b", "/a/b/c", "/user", "/user/",
+		"/user/keys", "/user/keys/", "/user/keys/1337", "/user/keys/1337/x",
+		"/api", "/api/v1", "/api/v1/", "/api/v1/x", "/api/v1/x/y",
+		"/verylongprefix", "/verylongprefix/z", "/VERYLONGPREFIX/z",
+	}
+	paths := make([]string, 0, len(pieces)*len(pieces))
+	for _, p1 := range pieces {
+		for _, p2 := range pieces {
+			paths = append(paths, p1+p2)
+		}
+	}
+
+	for _, pattern := range patterns {
+		parser := parseRoute(pattern, regexp.MustCompile)
+		require.True(t, parser.constParam, "pattern %q lost its specialization", pattern)
+
+		// Same parser with the specialization switched off: segs is shared and
+		// read-only, so this exercises the generic walk over identical data.
+		fallback := parser
+		fallback.constParam = false
+
+		for _, path := range paths {
+			for _, partialCheck := range []bool{false, true} {
+				var got, want [maxParams]string
+				gotOK := parser.getMatch(path, path, &got, partialCheck)
+				wantOK := fallback.getMatch(path, path, &want, partialCheck)
+				require.Equal(t, wantOK, gotOK,
+					"outcome diverged: pattern %q, path %q, partialCheck %v", pattern, path, partialCheck)
+				if wantOK {
+					require.Equal(t, want[0], got[0],
+						"param diverged: pattern %q, path %q, partialCheck %v", pattern, path, partialCheck)
+				}
+			}
+		}
+	}
+}
+
+// Test_RouteParser_ConstParamFixture runs the specialization against the
+// exhaustive path-matching fixture, which covers pattern and URL shapes the
+// generated set above does not reach.
+// go test -race -run Test_RouteParser_ConstParamFixture
+func Test_RouteParser_ConstParamFixture(t *testing.T) {
+	t.Parallel()
+
+	checked := 0
+	for _, testCollection := range routeTestCases {
+		parser := parseRoute(testCollection.pattern, regexp.MustCompile)
+		if !parser.constParam {
+			continue
+		}
+		fallback := parser
+		fallback.constParam = false
+
+		for _, c := range testCollection.testCases {
+			var got, want [maxParams]string
+			gotOK := parser.getMatch(c.url, c.url, &got, c.partialCheck)
+			wantOK := fallback.getMatch(c.url, c.url, &want, c.partialCheck)
+			require.Equal(t, wantOK, gotOK, "route: '%s', url: '%s'", testCollection.pattern, c.url)
+			if wantOK {
+				require.Equal(t, want[0], got[0], "route: '%s', url: '%s'", testCollection.pattern, c.url)
+			}
+			checked++
+		}
+	}
+	require.NotZero(t, checked, "fixture exercised no specialized routes")
 }

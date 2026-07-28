@@ -9,6 +9,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -3689,5 +3690,662 @@ func Benchmark_Router_HandlerCustom_NotFound(b *testing.B) {
 	b.ResetTimer()
 	for b.Loop() {
 		appHandler(c)
+	}
+}
+
+// Test_Route_PrefixFilter_Differential generatively proves the leading-byte
+// filter App.next applies before Route.match is transparent: for every
+// generated pattern and path, a route the filter rejects must be a route
+// Route.match would have rejected anyway. The filter only ever gets to skip
+// work, never to change an outcome, so a false reject here is a routing bug.
+// go test -race -run Test_Route_PrefixFilter_Differential
+func Test_Route_PrefixFilter_Differential(t *testing.T) {
+	t.Parallel()
+
+	segments := []string{
+		"/api", "/foo/", "/:a", "/:b?", "/*", "/+", "/:a-:b", "/:f.:e?",
+		":tail", "/::c", "/:x:y", "/name\\:verb", "/:p/fixed", "/",
+		"/verylongconstantsegment",
+		// Escaped forms matter: register derives star/root from the
+		// escape-stripped path but Params from the escaped one, so these are
+		// the shapes where the two disagree.
+		"/\\*", "/\\+", "/\\:a", "/a\\*b",
+	}
+	patterns := make([]string, 0, len(segments)*(len(segments)+1))
+	for _, s1 := range segments {
+		patterns = append(patterns, s1)
+		for _, s2 := range segments {
+			patterns = append(patterns, s1+s2)
+		}
+	}
+
+	pieces := []string{
+		"", "/a", "/a/b", "/a-b", "/a.b", "/x/y-z", "/api", "/api/", "/foo",
+		"/foo/", "/fixed", "/name:verb", "/verylongconstantsegment", "/",
+		"/*", "/+", "/a*b",
+	}
+	paths := make([]string, 0, len(pieces)*len(pieces))
+	for _, p1 := range pieces {
+		for _, p2 := range pieces {
+			paths = append(paths, p1+p2)
+		}
+	}
+
+	for _, use := range []bool{false, true} {
+		for _, route := range registerFilterRoutes(t, patterns, use) {
+			for _, path := range paths {
+				var params [maxParams]string
+				if !route.match(path, path, &params, strings.Count(path, "/")) {
+					continue
+				}
+				if routeFilterRejects(route, path) {
+					t.Fatalf("prefix filter rejected a matching route: pattern %q, path %q, use %v",
+						route.Path, path, use)
+				}
+			}
+		}
+	}
+}
+
+// routeFilterRejects mirrors the leading-byte reject the scan loops in
+// App.next, App.nextCustom and resolveSkip apply before calling Route.match.
+// The tests below assert it never rejects a route that Route.match accepts.
+func routeFilterRejects(route *Route, path string) bool {
+	return route.prefixRejects(pathHeadWord(path))
+}
+
+// registerFilterRoutes registers patterns on a real App and returns the routes
+// the router will actually serve, tree built and prefix filters computed.
+//
+// The differential tests must not hand-build Route literals: register derives
+// path, Params, star and root from three different strings (raw, prettified and
+// escape-stripped), and a filter bug that only shows up when those disagree —
+// as the escaped-star case did — is invisible to a stand-in built from one.
+//
+//nolint:revive // flag-parameter: the two registration modes are the point of the helper
+func registerFilterRoutes(t *testing.T, patterns []string, use bool) []*Route {
+	t.Helper()
+
+	app := New()
+	handler := func(c Ctx) error { return c.Next() }
+	for _, pattern := range patterns {
+		func() {
+			// A few generated shapes are not registrable; they are not the
+			// subject of this test, so skip them rather than fail.
+			defer func() {
+				//nolint:errcheck // the panic value is irrelevant; skipping the pattern is the point
+				recover()
+			}()
+			if use {
+				app.Use(pattern, handler)
+			} else {
+				app.Get(pattern, handler)
+			}
+		}()
+	}
+	_ = app.RebuildTree()
+
+	method := app.methodInt(MethodGet)
+	require.NotEqual(t, -1, method)
+	routes := app.stack[method]
+	require.NotEmpty(t, routes, "no routes registered")
+	return routes
+}
+
+// Test_Route_PrefixFilter_Fixture proves the leading-byte filter agrees with
+// Route.match across the exhaustive path-matching fixture, which covers far
+// more pattern shapes than the generated set above.
+// go test -race -run Test_Route_PrefixFilter_Fixture
+func Test_Route_PrefixFilter_Fixture(t *testing.T) {
+	t.Parallel()
+	patterns := make([]string, 0, len(routeTestCases))
+	for _, testCollection := range routeTestCases {
+		patterns = append(patterns, testCollection.pattern)
+	}
+
+	for _, use := range []bool{false, true} {
+		byPath := make(map[string]*Route)
+		for _, route := range registerFilterRoutes(t, patterns, use) {
+			byPath[route.Path] = route
+		}
+
+		for _, testCollection := range routeTestCases {
+			route, ok := byPath[testCollection.pattern]
+			if !ok {
+				continue
+			}
+			for _, c := range testCollection.testCases {
+				if c.partialCheck != use {
+					continue
+				}
+				// Route.match is the oracle, not the fixture's expectation:
+				// the fixture records what getMatch returns, while match wraps
+				// it in the root/star/exact branches the filter stays behind.
+				var params [maxParams]string
+				if !route.match(c.url, c.url, &params, strings.Count(c.url, "/")) {
+					continue
+				}
+				require.False(t, routeFilterRejects(route, c.url),
+					"prefix filter rejected a matching route: '%s', url: '%s'", testCollection.pattern, c.url)
+			}
+		}
+	}
+}
+
+// Test_Route_PrefixFilter_Rejects proves the filter is actually doing work:
+// routes whose leading constant bytes differ from the request must be skipped
+// without Route.match ever being consulted.
+// go test -race -run Test_Route_PrefixFilter_Rejects
+func Test_Route_PrefixFilter_Rejects(t *testing.T) {
+	t.Parallel()
+
+	rejects := func(pattern, path string) bool {
+		routes := registerFilterRoutes(t, []string{pattern}, false)
+		require.Len(t, routes, 1)
+		return routeFilterRejects(routes[0], path)
+	}
+
+	require.True(t, rejects("/user/subscriptions/:owner", "/user/keys/1337"))
+	require.True(t, rejects("/user/keys/:id", "/user/emails"))
+	require.True(t, rejects("/repos/:owner", "/user/keys"))
+	require.False(t, rejects("/user/keys/:id", "/user/keys/1337"))
+	// wildcards and leading parameters constrain nothing, so they must not filter
+	require.False(t, rejects("/*", "/anything/at/all"))
+	require.False(t, rejects("/:name", "/anything"))
+}
+
+// Test_Route_PrefixFilter_EscapedStar guards a routing regression the
+// leading-byte filter introduced: register derives star from the
+// escape-stripped path (isStar := pathClean == "/*") but Params from parsing
+// the escaped path, so `/\*` produces star=true with no params. Route.match
+// returns true unconditionally for a star route, so the filter must not
+// constrain it -- an earlier version only checked star inside the parametric
+// branch and 404'd every path that did not literally begin with "/*".
+// go test -race -run Test_Route_PrefixFilter_EscapedStar
+func Test_Route_PrefixFilter_EscapedStar(t *testing.T) {
+	t.Parallel()
+
+	for _, caseSensitive := range []bool{false, true} {
+		for _, use := range []bool{false, true} {
+			app := New(Config{CaseSensitive: caseSensitive})
+			handler := func(c Ctx) error { return c.SendString("ok") }
+			if use {
+				app.Use(`/\*`, handler)
+			} else {
+				app.Get(`/\*`, handler)
+			}
+
+			for _, path := range []string{"/*", "/foo", "/bar/baz", "/"} {
+				resp, err := app.Test(httptest.NewRequest(MethodGet, path, http.NoBody))
+				require.NoError(t, err)
+				require.Equal(t, StatusOK, resp.StatusCode,
+					"escaped star route must still match %q (caseSensitive=%v, use=%v)",
+					path, caseSensitive, use)
+			}
+		}
+	}
+}
+
+// Benchmark_Router_GitHub_API_Serial routes the whole fixture corpus once per
+// iteration on a single goroutine.
+//
+// The RunParallel variants above are the right shape for measuring contention
+// but are dominated by scheduler noise on small machines (±40% run to run
+// observed on 4 cores), which buries the few-percent deltas that route-scan
+// changes produce. This one is deterministic, so it is the benchmark to use
+// when comparing scan-side changes across builds, and it exercises the case
+// those changes target: a large route set where most candidates are rejected.
+// go test -run=^$ -bench=Benchmark_Router_GitHub_API_Serial -benchmem -count=6
+func Benchmark_Router_GitHub_API_Serial(b *testing.B) {
+	app := New()
+	registerDummyRoutes(app)
+	app.startupProcess()
+
+	// Fail loudly if the corpus stops matching, rather than silently
+	// benchmarking a router that answers 404 for everything.
+	c := &fasthttp.RequestCtx{}
+	for _, route := range routesFixture.TestRoutes {
+		c.Request.Header.SetMethod(route.Method)
+		c.URI().SetPath(route.Path)
+		ctx := acquireDefaultCtxForRouterBenchmark(b, app, c)
+		match, err := app.next(ctx)
+		app.ReleaseCtx(ctx)
+		require.NoError(b, err, "route: %s %s", route.Method, route.Path)
+		require.True(b, match, "route: %s %s", route.Method, route.Path)
+	}
+
+	b.ReportAllocs()
+	for b.Loop() {
+		for i := range routesFixture.TestRoutes {
+			c.Request.Header.SetMethod(routesFixture.TestRoutes[i].Method)
+			c.URI().SetPath(routesFixture.TestRoutes[i].Path)
+			ctx := acquireDefaultCtxForRouterBenchmark(b, app, c)
+			//nolint:errcheck // verified above; the loop measures the scan
+			_, _ = app.next(ctx)
+			app.ReleaseCtx(ctx)
+		}
+	}
+}
+
+// referenceEndpoint resolves a request the slow, obvious way: walk the method's
+// route stack in registration order and return the first endpoint whose
+// Route.match accepts, with every optimization the router layers on top of that
+// deliberately switched off.
+//
+//   - the leading-byte filter is bypassed by not applying it
+//   - the slash-count quick-reject is bypassed by passing an unknown count (0)
+//   - the "/const/:param" specialization is bypassed on a parser copy
+//
+// Those three may only ever skip work, so the router has to land on the same
+// route with the same parameters as this does.
+//
+// Bucket selection is bypassed too -- this walks app.stack rather than a tree
+// bucket -- but it does not belong on that list, because it is not purely
+// work-skipping: a route whose first constant segment is at least
+// maxDetectionPaths bytes is filed under a hashed bucket only, while a request
+// shorter than that hashes to 0 and scans globals, so the route is invisible to
+// the router but visible here. `/a/*` against `/a` is such a pair. That is
+// long-standing router behavior, not something this file's subject introduced,
+// so the corpus stays clear of the shape rather than asserting against it.
+//
+//nolint:gocritic // unnamedResult: the pair is documented above and named results trip nonamedreturns
+func referenceEndpoint(app *App, method int, detectionPath, path string) (*Route, [maxParams]string) {
+	for _, route := range app.stack[method] {
+		if route.use || route.mount {
+			continue
+		}
+
+		// Route is a value copy; routeParser is a value field and segs is only
+		// read, so clearing the specialization here cannot affect the real one.
+		ref := *route
+		ref.routeParser.constParam = false
+
+		var got [maxParams]string
+		if ref.match(detectionPath, path, &got, 0) {
+			return route, got
+		}
+	}
+	return nil, [maxParams]string{}
+}
+
+// Test_Router_ScanMatchesReference is the end-to-end guard for the router's
+// candidate scan. Across every routing-relevant config combination it drives
+// real requests through App.next and requires the resulting route and captured
+// parameters to equal what an unoptimized linear scan of the route stack picks.
+//
+// This is the property every scan-side optimization has to preserve, and it
+// covers them together rather than one at a time: bucket selection, the
+// leading-byte filter, the slash-count bounds and the "/const/:param"
+// specialization all have to agree with the obvious implementation. It replaces
+// a golden-file comparison, so it needs no regeneration when routes are added.
+// go test -race -run Test_Router_ScanMatchesReference
+func Test_Router_ScanMatchesReference(t *testing.T) {
+	t.Parallel()
+
+	patterns := []string{
+		"/", "/health", "/health/live", "/api", "/api/v1/status",
+		"/user/keys/:id", "/user/emails", "/user/following/:user",
+		"/repos/:owner/:repo", "/repos/:owner/:repo/issues",
+		"/repos/:owner/:repo/issues/:number", "/repos/:owner/:repo/stargazers",
+		"/api/v1/:resource", "/api/v1/:resource/:id", "/api/v1/:resource/:id/edit",
+		"/files/*", "/assets/+", "/mixed/:a-:b", "/dotted/:a.:b",
+		"/opt/:a?", "/opt/:a/:b?", "/num/:id<int>", "/word/:name<alpha>",
+		// Optional param whose constant does not end in '/', so the constant
+		// carries no optional slash: the one shape where the specialization
+		// gate's own optional-param check is what keeps it out.
+		"/optx:a?",
+		`/esc/\:literal`, `/esc/\*`, "/deep/:a/:b/:c/:d/:e",
+		"/CaseSensitive/Path", "/trailing/slash/", "/x/:y/fixedEnd",
+		// Registered last so they act as catch-alls: a filter that wrongly
+		// constrains a star route shows up here as an unexpected miss.
+		`/\*`, "/*",
+	}
+
+	// No empty path: httptest.NewRequest rejects it, and fasthttp never yields
+	// one anyway. Route.match's empty-detection-path behavior is covered by
+	// Test_Route_PrefixFilter_Differential, which calls match directly.
+	paths := []string{
+		"/", "/health", "/health/", "/health/live", "/HEALTH",
+		"/api", "/api/v1/status", "/api/v1/things", "/api/v1/things/7",
+		"/api/v1/things/7/edit", "/user/keys/1337", "/user/emails",
+		"/user/following/octocat", "/repos/a/b", "/repos/a/b/issues",
+		"/repos/a/b/issues/42", "/repos/a/b/stargazers", "/repos/a",
+		"/files/any/deep/path", "/assets/x/y", "/mixed/p-q", "/dotted/p.q",
+		"/opt", "/opt/", "/opt/one", "/opt/one/two", "/num/123", "/num/abc",
+		"/optx", "/optxy", "/optx/z",
+		"/word/abc", "/word/123", "/esc/:literal", "/esc/*", "/esc/anything",
+		"/deep/1/2/3/4/5", "/CaseSensitive/Path", "/casesensitive/path",
+		"/trailing/slash", "/trailing/slash/", "/x/y/fixedEnd", "/x/y/z/fixedEnd",
+		"/nope", "/a/b/c/d/e/f/g",
+	}
+
+	for _, caseSensitive := range []bool{false, true} {
+		for _, strictRouting := range []bool{false, true} {
+			for _, skipUnmatched := range []bool{false, true} {
+				for _, withMiddleware := range []bool{false, true} {
+					cfg := Config{
+						CaseSensitive:       caseSensitive,
+						StrictRouting:       strictRouting,
+						SkipUnmatchedRoutes: skipUnmatched,
+					}
+					name := fmt.Sprintf("cs=%v/sr=%v/skip=%v/mw=%v",
+						caseSensitive, strictRouting, skipUnmatched, withMiddleware)
+
+					t.Run(name, func(t *testing.T) {
+						t.Parallel()
+						assertScanMatchesReference(t, &cfg, withMiddleware, patterns, paths)
+					})
+				}
+			}
+		}
+	}
+}
+
+//nolint:revive // flag-parameter: withMiddleware selects the app shape under test
+//nolint:revive // flag-parameter: withMiddleware selects the app shape under test
+func assertScanMatchesReference(t *testing.T, cfg *Config, withMiddleware bool, patterns, paths []string) {
+	t.Helper()
+
+	app := New(*cfg)
+	if withMiddleware {
+		// Middleware changes which scan path App.next takes, and it is what
+		// enables the SkipUnmatchedRoutes lookahead, so both shapes matter.
+		app.Use(func(c Ctx) error { return c.Next() })
+	}
+
+	// Requests run through the real handler rather than App.next directly, so
+	// the lookahead is live: resolveSkip is reached only from requestHandler,
+	// and firstMatchIndex is -1 straight out of Reset. Driving next() by hand
+	// left the SkipUnmatchedRoutes axis inert -- eight of the sixteen configs
+	// re-ran the other eight, and the prefix-filter rejects in resolveSkip and
+	// the firstMatchIndex fast path in next() went untouched, which are exactly
+	// the paths where a disagreement picks a wrong route rather than a slow one.
+	var (
+		hitRoute       *Route
+		hitParams      [maxParams]string
+		hitLookahead   int
+		sawLookahead   bool
+		registeredHits int
+	)
+	//nolint:unparam // must satisfy fiber.Handler; the recording is the point
+	handler := func(c Ctx) error {
+		defaultCtx, ok := c.(*DefaultCtx)
+		require.True(t, ok)
+		hitRoute = c.Route()
+		hitParams = defaultCtx.values
+		hitLookahead = defaultCtx.firstMatchIndex
+		if hitLookahead >= 0 {
+			sawLookahead = true
+		}
+		return nil
+	}
+	for _, pattern := range patterns {
+		func() {
+			//nolint:errcheck // an unregistrable pattern is not this test's subject
+			defer func() { recover() }()
+			app.Get(pattern, handler)
+			registeredHits++
+		}()
+	}
+	require.Equal(t, len(patterns), registeredHits,
+		"every pattern in the corpus must register; a silently dropped one shrinks the test")
+	app.startupProcess()
+
+	method := app.methodInt(MethodGet)
+	require.NotEqual(t, -1, method)
+
+	fctx := &fasthttp.RequestCtx{}
+	fctx.Request.Header.SetMethod(MethodGet)
+
+	for _, path := range paths {
+		// The reference needs the detection path the router will derive.
+		// Normalization is shared machinery, not something the scan optimizes,
+		// so reading it from a real ctx is not begging the question.
+		fctx.URI().SetPath(path)
+		ctx, ok := app.AcquireCtx(fctx).(*DefaultCtx)
+		require.True(t, ok)
+		detectionPath := app.toString(ctx.detectionPath)
+		routePath := app.toString(ctx.path)
+		app.ReleaseCtx(ctx)
+
+		wantRoute, wantParams := referenceEndpoint(app, method, detectionPath, routePath)
+
+		hitRoute, hitParams, hitLookahead = nil, [maxParams]string{}, -1
+		resp, err := app.Test(httptest.NewRequest(MethodGet, path, http.NoBody))
+		require.NoError(t, err)
+
+		if wantRoute == nil {
+			require.Nil(t, hitRoute,
+				"router matched %q via %q but the reference scan found nothing",
+				path, routeLabel(hitRoute))
+			require.NotEqual(t, StatusOK, resp.StatusCode,
+				"unmatched path %q should not answer 200", path)
+			continue
+		}
+
+		require.NotNil(t, hitRoute,
+			"reference scan matched %q via %q but the router ran no handler",
+			path, wantRoute.Path)
+		require.Same(t, wantRoute, hitRoute,
+			"path %q: router chose %q, reference scan chose %q",
+			path, routeLabel(hitRoute), wantRoute.Path)
+		require.Equal(t, wantParams[:len(wantRoute.Params)], hitParams[:len(wantRoute.Params)],
+			"path %q via %q: captured parameters diverged", path, wantRoute.Path)
+	}
+
+	// Pin the axis as live. Without this the test can quietly stop exercising
+	// the lookahead again and still pass every assertion above.
+	if withMiddleware && cfg.SkipUnmatchedRoutes {
+		require.True(t, sawLookahead,
+			"SkipUnmatchedRoutes lookahead never resolved an endpoint; the axis is inert again")
+	}
+}
+
+// routeLabel names a route for a failure message, tolerating nil.
+func routeLabel(r *Route) string {
+	if r == nil {
+		return "<none>"
+	}
+	return r.Path
+}
+
+// Test_ResolveSkip_StaticSlashGate covers the '/'-count gate that lets
+// resolveSkip skip hashing the detection path for the static endpoint index.
+// The gate is a pure filter over an exact-match lookup, so a wrong bit turns a
+// matching static route into a 404 -- silently, and only when
+// SkipUnmatchedRoutes and middleware are both on and some route has a
+// parameter, which is what makes the '/' census run in the first place.
+//
+// The routes here deliberately include no wildcard or root fallback: with one
+// present, tier 2 would rescue a botched tier 1 and hide the bug.
+// go test -race -run Test_ResolveSkip_StaticSlashGate
+func Test_ResolveSkip_StaticSlashGate(t *testing.T) {
+	t.Parallel()
+
+	statics := []string{
+		"/health",
+		"/api/status",
+		"/a/b/c/d",
+		"/one/two/three/four/five/six",
+	}
+
+	app := New(Config{SkipUnmatchedRoutes: true})
+	app.Use(func(c Ctx) error { return c.Next() })
+	for _, path := range statics {
+		app.Get(path, func(c Ctx) error { return c.SendString("ok") })
+	}
+	// A parametric route at a depth none of the statics share, so the slash
+	// census actually runs and the static bitmask is what decides tier 1.
+	app.Get("/params/:a/:b/:c/:d/:e/:f/:g", func(c Ctx) error { return c.SendString("param") })
+
+	for _, path := range statics {
+		resp, err := app.Test(httptest.NewRequest(MethodGet, path, http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, StatusOK, resp.StatusCode, "static route %q must still match", path)
+	}
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/params/1/2/3/4/5/6/7", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, StatusOK, resp.StatusCode, "parametric route must still match")
+
+	// Paths that share a '/' count with a registered static but nothing else,
+	// so a gate that is too permissive is not mistaken for a correct one.
+	for _, path := range []string{"/missing", "/api/missing", "/a/b/c/x", "/nope/nope"} {
+		resp, err := app.Test(httptest.NewRequest(MethodGet, path, http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, StatusNotFound, resp.StatusCode, "unmatched path %q must 404", path)
+	}
+}
+
+// Test_Route_PrefixFilter_NotStale proves every path that can produce or alter
+// a Route leaves its leading-byte filter consistent with the route's current
+// path, params and parser.
+//
+// The filter is computed where routes are built rather than in buildTree,
+// because buildTree writes to routes that in-flight requests are reading. That
+// trades a torn-read hazard for a staleness hazard, and this is what closes the
+// second one: it recomputes the filter for every registered route and requires
+// it to equal what is stored. A future in-place rewrite of a route's path that
+// forgets to refresh the filter fails here.
+// go test -race -run Test_Route_PrefixFilter_NotStale
+func Test_Route_PrefixFilter_NotStale(t *testing.T) {
+	t.Parallel()
+
+	assertFresh := func(t *testing.T, app *App, stage string) {
+		t.Helper()
+		checked := 0
+		for method, routes := range app.stack {
+			for _, route := range routes {
+				wantWord, wantMask := computePrefixFilter(route)
+				require.Equal(t, wantWord, route.prefix,
+					"%s: stale prefix on %s %q", stage, app.config.RequestMethods[method], route.Path)
+				require.Equal(t, wantMask, route.prefixMask,
+					"%s: stale prefixMask on %s %q", stage, app.config.RequestMethods[method], route.Path)
+				checked++
+			}
+		}
+		require.NotZero(t, checked, "%s: no routes to check", stage)
+	}
+
+	handler := func(c Ctx) error { return c.Next() }
+
+	// register, groups, and the auto-HEAD copyRoute path
+	app := New()
+	app.Get("/plain", handler)
+	app.Get("/plain/:id", handler)
+	app.Use("/mw", handler)
+	app.Get("/*", handler)
+	app.Get(`/\*`, handler)
+	group := app.Group("/grp", handler)
+	group.Get("/:x", handler)
+	group.Get("/nested/:y/end", handler)
+
+	// mounted sub-app: addPrefixToRoute rewrites path, parser, star and root
+	// in place, which is the only route mutation outside construction
+	sub := New()
+	sub.Get("/inner/:y", handler)
+	sub.Get("/*", handler)
+	sub.Use("/subuse", handler)
+	app.Use("/mounted", sub)
+
+	app.startupProcess()
+	assertFresh(t, app, "after startup")
+
+	// routes added and removed on a live app, the flow RebuildTree exists for
+	app.Get("/late/:id", handler)
+	app.RemoveRoute("/plain")
+	_ = app.RebuildTree()
+	assertFresh(t, app, "after runtime registration and RebuildTree")
+
+	// a second app with the opposite config, since the filter is derived from
+	// the case-folded and slash-trimmed forms
+	strict := New(Config{CaseSensitive: true, StrictRouting: true})
+	strict.Get("/Mixed/Case/:Id", handler)
+	strict.Get("/trailing/", handler)
+	strict.Use("/Pre", handler)
+	strict.startupProcess()
+	assertFresh(t, strict, "case-sensitive strict app")
+}
+
+// Test_RouteTree_SlotSpreadsAcrossLargeTables pins that the probe index is
+// taken from the high bits of the multiply, so it can address the whole table.
+//
+// Fibonacci hashing only works if the index comes off the top: the multiply
+// moves the entropy of a tree hash's low bytes upward, and a fixed shift bounds
+// the result by whatever it exposes regardless of how large the table is. With
+// a fixed >>16 every probe started below slot 65536, so a table sized past that
+// had an unreachable upper half and the lower half degraded into a linear scan
+// -- in exactly the large-route-set case the index exists to speed up.
+// go test -race -run Test_RouteTree_SlotSpreadsAcrossLargeTables
+func Test_RouteTree_SlotSpreadsAcrossLargeTables(t *testing.T) {
+	t.Parallel()
+
+	// Detection paths always begin with '/', so the first hash byte is fixed
+	// and the other two vary: 65536 distinct prefixes, sizing the table to
+	// 131072 slots -- just past where a 16-bit index runs out.
+	buckets := make(map[int][]*Route, 1<<16)
+	for b1 := range 256 {
+		for b2 := range 256 {
+			buckets[int('/')<<16|b1<<8|b2] = make([]*Route, 1)
+		}
+	}
+
+	tree := buildRouteTree(buckets)
+	require.Len(t, tree.hashes, 1<<17)
+
+	var maxSlot uint32
+	for hash := range buckets {
+		if s := tree.slot(hash); s > maxSlot {
+			maxSlot = s
+		}
+		require.Less(t, tree.slot(hash), uint32(len(tree.hashes)),
+			"slot out of range for hash %#x", hash)
+	}
+	require.Greater(t, maxSlot, uint32(len(tree.hashes)/2),
+		"probe starts never reach the upper half of the table")
+
+	// The table still resolves every key to its own bucket.
+	for hash, want := range buckets {
+		got := tree.lookup(hash)
+		if len(got) != 1 || &got[0] != &want[0] {
+			t.Fatalf("lookup returned the wrong bucket for hash %#x", hash)
+		}
+	}
+}
+
+// Test_Route_PrefixFilter_UnconstrainedShapes covers the guards in
+// computePrefixFilter that disable the filter when a route's first segment
+// constrains nothing.
+//
+// Neither shape is reachable through the public API -- register always forces a
+// leading '/', so a parsed route's first segment is a constant and its parser
+// is never empty -- but the guards are what make that an assumption rather than
+// a dependency, and a filter that stayed enabled for either would reject paths
+// the route matches.
+// go test -race -run Test_Route_PrefixFilter_UnconstrainedShapes
+func Test_Route_PrefixFilter_UnconstrainedShapes(t *testing.T) {
+	t.Parallel()
+
+	// A pattern whose very first segment is a parameter, which only parses
+	// this way without the leading slash register would add.
+	parser := parseRoute(":name", regexp.MustCompile)
+	require.NotEmpty(t, parser.segs)
+	require.True(t, parser.segs[0].IsParam, "expected a leading parameter segment")
+
+	leadingParam := &Route{routeParser: parser, Params: parser.params, path: ":name", Path: ":name"}
+	word, mask := computePrefixFilter(leadingParam)
+	require.Zero(t, mask, "a leading parameter must disable the filter")
+	require.Zero(t, word)
+
+	// A parametric route with no parsed segments at all.
+	empty := &Route{Params: []string{"x"}}
+	word, mask = computePrefixFilter(empty)
+	require.Zero(t, mask, "an empty parser must disable the filter")
+	require.Zero(t, word)
+
+	// A disabled filter must never reject, whatever the path.
+	for _, path := range []string{"", "/", "/anything", "/a/b/c"} {
+		require.False(t, routeFilterRejects(leadingParam, path), "path %q", path)
+		require.False(t, routeFilterRejects(empty, path), "path %q", path)
 	}
 }
