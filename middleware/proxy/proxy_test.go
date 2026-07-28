@@ -524,7 +524,7 @@ func Test_Proxy_With_Timeout(t *testing.T) {
 
 	b, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
-	require.Equal(t, "timeout", string(b))
+	require.Equal(t, fasthttp.ErrTimeout.Error(), string(b))
 }
 
 // go test -run Test_Proxy_Buffer_Size_Response
@@ -692,7 +692,7 @@ func Test_Proxy_DoRedirects_TooManyRedirects(t *testing.T) {
 	require.NoError(t, err1)
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
-	require.Equal(t, "too many redirects detected when doing the request", string(body))
+	require.Equal(t, fasthttp.ErrTooManyRedirects.Error(), string(body))
 	require.Equal(t, fiber.StatusInternalServerError, resp.StatusCode)
 	require.Equal(t, "/test", resp.Request.URL.String())
 }
@@ -742,7 +742,7 @@ func Test_Proxy_DoTimeout_Timeout(t *testing.T) {
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
 
-	require.Equal(t, "timeout", string(body))
+	require.Equal(t, fasthttp.ErrTimeout.Error(), string(body))
 	require.Equal(t, fiber.StatusInternalServerError, resp.StatusCode)
 	require.Equal(t, "/test", resp.Request.URL.String())
 }
