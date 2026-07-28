@@ -28,24 +28,20 @@ type Ctx interface {
 	Context() context.Context
 	// SetContext sets a context implementation by user.
 	SetContext(ctx context.Context)
-	// userContext returns the user-set context without triggering a write-back.
-	// Returns nil when no user context has been set.
-	userContext() context.Context
 	// Deadline returns the time when work done on behalf of this context
-	// should be canceled. Deadline returns ok==false when no deadline is
-	// set.
+	// should be canceled. Ctx carries no deadline, so ok is always false.
+	//
+	// Ctx satisfies context.Context as a context that can never be canceled: it is
+	// pooled and reused, so it cannot honor the stability and concurrency the
+	// interface requires. Pass Context() to anything that is cancellation-aware or
+	// that outlives the handler.
 	Deadline() (time.Time, bool)
 	// Done returns a channel that's closed when work done on behalf of this
-	// context should be canceled. Done returns nil when no user context has been
-	// set, meaning the request cannot be canceled through the Ctx.
-	//
-	// The channel follows the context most recently passed to SetContext and is
-	// therefore not stable across a mid-request swap. Pass Context() rather than
-	// the Ctx itself to anything that may outlive the handler.
+	// context should be canceled. Ctx can never be canceled, so Done always
+	// returns nil, which context.Context explicitly permits. See Deadline.
 	Done() <-chan struct{}
-	// Err returns nil if no user context has been set or if it has not been canceled yet.
-	// Once the context's Done channel is closed it returns a non-nil error:
-	// context.Canceled if canceled explicitly, or context.DeadlineExceeded if the deadline expired.
+	// Err returns nil until the Done channel is closed. Done is always nil here,
+	// so Err always returns nil. See Deadline.
 	Err() error
 	// Request return the *fasthttp.Request object
 	// This allows you to use all fasthttp request methods

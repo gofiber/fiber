@@ -154,49 +154,27 @@ func (c *DefaultCtx) SetContext(ctx context.Context) {
 	c.isUserContextSet = true
 }
 
-// userContext returns the user-set context without triggering a write-back.
-// Returns nil when no user context has been set.
-func (c *DefaultCtx) userContext() context.Context {
-	if c.fasthttp == nil {
-		return nil
-	}
-	if ctx, ok := c.fasthttp.UserValue(userContextKey).(context.Context); ok {
-		return ctx
-	}
-	return nil
-}
-
 // Deadline returns the time when work done on behalf of this context
-// should be canceled. Deadline returns ok==false when no deadline is
-// set.
-func (c *DefaultCtx) Deadline() (time.Time, bool) {
-	if ctx := c.userContext(); ctx != nil {
-		return ctx.Deadline()
-	}
+// should be canceled. Ctx carries no deadline, so ok is always false.
+//
+// Ctx satisfies context.Context as a context that can never be canceled: it is
+// pooled and reused, so it cannot honor the stability and concurrency the
+// interface requires. Pass Context() to anything that is cancellation-aware or
+// that outlives the handler.
+func (*DefaultCtx) Deadline() (time.Time, bool) {
 	return time.Time{}, false
 }
 
 // Done returns a channel that's closed when work done on behalf of this
-// context should be canceled. Done returns nil when no user context has been
-// set, meaning the request cannot be canceled through the Ctx.
-//
-// The channel follows the context most recently passed to SetContext and is
-// therefore not stable across a mid-request swap. Pass Context() rather than
-// the Ctx itself to anything that may outlive the handler.
-func (c *DefaultCtx) Done() <-chan struct{} {
-	if ctx := c.userContext(); ctx != nil {
-		return ctx.Done()
-	}
+// context should be canceled. Ctx can never be canceled, so Done always
+// returns nil, which context.Context explicitly permits. See Deadline.
+func (*DefaultCtx) Done() <-chan struct{} {
 	return nil
 }
 
-// Err returns nil if no user context has been set or if it has not been canceled yet.
-// Once the context's Done channel is closed it returns a non-nil error:
-// context.Canceled if canceled explicitly, or context.DeadlineExceeded if the deadline expired.
-func (c *DefaultCtx) Err() error {
-	if ctx := c.userContext(); ctx != nil {
-		return ctx.Err() //nolint:wrapcheck // interface method must match context.Context signature
-	}
+// Err returns nil until the Done channel is closed. Done is always nil here,
+// so Err always returns nil. See Deadline.
+func (*DefaultCtx) Err() error {
 	return nil
 }
 

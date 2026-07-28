@@ -1,7 +1,6 @@
 package idempotency
 
 import (
-	"context"
 	"fmt"
 	"slices"
 
@@ -176,10 +175,8 @@ func New(config ...Config) fiber.Handler {
 			return fmt.Errorf("failed to marshal response: %w", err)
 		}
 
-		// Store response.
-		// Use WithoutCancel because the store runs after c.Next() returns,
-		// and a handler's defer-cancel may have already fired by this point.
-		if err := cfg.Storage.SetWithContext(context.WithoutCancel(c), key, bs, cfg.Lifetime); err != nil {
+		// Store response
+		if err := cfg.Storage.SetWithContext(c, key, bs, cfg.Lifetime); err != nil {
 			return fmt.Errorf("failed to save response: %w", err)
 		}
 

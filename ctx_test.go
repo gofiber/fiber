@@ -4336,19 +4336,18 @@ func Test_Ctx_Deadline(t *testing.T) {
 	t.Parallel()
 	app := New()
 	app.Get("/test", func(c Ctx) error {
-		// Default context (context.Background) has no deadline
 		deadline, ok := c.Deadline()
 		require.Equal(t, time.Time{}, deadline)
 		require.False(t, ok)
 
-		// With a deadline context, Deadline should delegate
-		dl := time.Now().Add(1 * time.Hour)
-		ctx, cancel := context.WithDeadline(context.Background(), dl)
+		// A user context with a deadline does not change this: Ctx is pooled and
+		// can never be canceled, so it reports no deadline of its own.
+		ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(time.Hour))
 		defer cancel()
 		c.SetContext(ctx)
 		deadline, ok = c.Deadline()
-		require.True(t, ok)
-		require.Equal(t, dl, deadline)
+		require.Equal(t, time.Time{}, deadline)
+		require.False(t, ok)
 		return nil
 	})
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test", http.NoBody))
@@ -4360,40 +4359,23 @@ func Test_Ctx_Deadline(t *testing.T) {
 func Test_Ctx_Done(t *testing.T) {
 	t.Parallel()
 	app := New()
-	var testErr error
 	app.Get("/test", func(c Ctx) error {
-		// Default context (context.Background) Done returns nil
 		require.Nil(t, c.Done())
 
-		// With a cancellable context, Done should return a non-nil channel
+		// Ctx can never be canceled. A cancellable user context does not change
+		// that: a non-nil Done would make the stdlib retain the pooled Ctx in
+		// watcher goroutines that outlive the handler.
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 		c.SetContext(ctx)
-		done := c.Done()
-		require.NotNil(t, done)
-
-		// Channel should not be closed yet
-		select {
-		case <-done:
-			testErr = errors.New("Done channel should not be closed yet")
-			return nil
-		default:
-		}
-
-		// After cancel, channel should be closed
+		require.Nil(t, c.Done())
 		cancel()
-		select {
-		case <-done:
-		case <-time.After(100 * time.Millisecond):
-			testErr = errors.New("Done channel should be closed after cancel")
-			return nil
-		}
+		require.Nil(t, c.Done())
 		return nil
 	})
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test", http.NoBody))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
-	require.NoError(t, testErr)
 }
 
 // go test -run Test_Ctx_Err
@@ -4401,16 +4383,16 @@ func Test_Ctx_Err(t *testing.T) {
 	t.Parallel()
 	app := New()
 	app.Get("/test", func(c Ctx) error {
-		// Default context (context.Background) Err returns nil
 		require.NoError(t, c.Err())
 
-		// After canceling a set context, Err should return context.Canceled
+		// Err stays nil even after the user context is canceled, mirroring the
+		// nil Done. Read the cancellation from Context() instead.
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 		c.SetContext(ctx)
-		require.NoError(t, c.Err())
 		cancel()
-		require.ErrorIs(t, c.Err(), context.Canceled)
+		require.NoError(t, c.Err())
+		require.ErrorIs(t, c.Context().Err(), context.Canceled)
 		return nil
 	})
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test", http.NoBody))

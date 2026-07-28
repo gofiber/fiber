@@ -178,12 +178,8 @@ func (m *Middleware) initialize(c fiber.Ctx, cfg *Config) error {
 }
 
 // saveSession handles session saving and error management after the response.
-// It strips cancellation from the context because the save runs after the
-// handler returns, by which point a handler's own defer-cancel may have
-// already fired. Without this, storage implementations that gate writes on
-// ctx.Err() would silently drop the session data.
 func (m *Middleware) saveSession() {
-	if err := m.Session.saveSessionWithContext(context.WithoutCancel(m.resolveContext())); err != nil {
+	if err := m.Session.saveSessionWithContext(m.resolveContext()); err != nil {
 		if m.config.ErrorHandler != nil {
 			m.config.ErrorHandler(m.ctx, err)
 		} else {
