@@ -1,6 +1,7 @@
 package idempotency
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -509,4 +510,34 @@ func Test_New_SecondPassReadError(t *testing.T) {
 	resp, body := do(app, req)
 	require.Equal(t, fiber.StatusInternalServerError, resp.StatusCode)
 	require.Contains(t, body, "failed to write cached response while locked")
+}
+
+// The response is stored after the handler returns, so a handler's own deferred
+// cancel must not reach storage through Ctx.Err().
+func Test_Idempotency_Store_After_Handler_Cancel(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+	app.Use(New())
+
+	var calls int
+	app.Post("/", func(c fiber.Ctx) error {
+		ctx, cancel := context.WithTimeout(c.Context(), time.Hour)
+		defer cancel()
+		c.SetContext(ctx)
+
+		calls++
+		return c.SendString("response")
+	})
+
+	newReq := func() *http.Request {
+		req := httptest.NewRequest(fiber.MethodPost, "/", http.NoBody)
+		req.Header.Set(ConfigDefault.KeyHeader, validKey)
+		return req
+	}
+
+	_, body := do(app, newReq())
+	require.Equal(t, "response", body)
+	_, body = do(app, newReq())
+	require.Equal(t, "response", body)
+	require.Equal(t, 1, calls, "second request was not served from the idempotency cache")
 }
