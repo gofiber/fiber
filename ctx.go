@@ -160,8 +160,10 @@ func (c *DefaultCtx) userContext() context.Context {
 	if c.fasthttp == nil {
 		return nil
 	}
-	ctx, _ := c.fasthttp.UserValue(userContextKey).(context.Context) //nolint:errcheck // type assertion to interface
-	return ctx
+	if ctx, ok := c.fasthttp.UserValue(userContextKey).(context.Context); ok {
+		return ctx
+	}
+	return nil
 }
 
 // Deadline returns the time when work done on behalf of this context
