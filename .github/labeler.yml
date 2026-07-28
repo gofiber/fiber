@@ -1,13 +1,17 @@
 _extends: .github
+# The base branch decides for PRs, plain title matching hit Go module paths like "utils/v2".
+# Issues have no base branch, there a v2/v3 marker anywhere in the title or the version in the body decides.
 labels:
   - label: 'v3'
+    except:
+      baseBranch: '/^v2$/'
     matcher:
-      baseBranch: 'main'
-      title: '/(v3)/i'
+      baseBranch: '/^main$/'
+      title: '/(?<![\w/.-])v3\b/i'
       body: '/(v3)/i'
   - label: 'v2'
+    except:
+      baseBranch: '/^main$/'
     matcher:
-      baseBranch: 'v2'
-      title: '/(v2)/i'
-
-
+      baseBranch: '/^v2$/'
+      title: '/(?<![\w/.-])v2\b/i'
