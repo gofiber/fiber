@@ -27,5 +27,9 @@ jobs:
       # ~3 months of main pushes; also keeps benchmarks/data.js (~80 MB) below
       # GitHub's 100 MB per-file push limit.
       max-items-in-chart: 185
+      # the 54 _Parallel benchmarks were run and then dropped from the results;
+      # skipping them up front saves that time. filter-parallel stays as the guard
+      # that keeps them out of the chart history if this flag is ever lost.
+      go-test-flags: -skip _Parallel
       filter-parallel: true
       go-force-package-suffix: true
