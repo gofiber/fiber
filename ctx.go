@@ -172,7 +172,7 @@ func (c *DefaultCtx) Done() <-chan struct{} {
 
 // Err mirrors context.Err, returning nil until cancellation and then the terminal error value.
 func (c *DefaultCtx) Err() error {
-	return c.Context().Err()
+	return c.Context().Err() //nolint:wrapcheck // interface method must match context.Context signature
 }
 
 // Request return the *fasthttp.Request object

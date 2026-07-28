@@ -4399,7 +4399,7 @@ func Test_Ctx_Err(t *testing.T) {
 		// Default context (context.Background) Err returns nil
 		require.NoError(t, c.Err())
 
-		// After cancelling a set context, Err should return context.Canceled
+		// After canceling a set context, Err should return context.Canceled
 		ctx, cancel := context.WithCancel(context.Background())
 		c.SetContext(ctx)
 		require.NoError(t, c.Err())
