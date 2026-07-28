@@ -86,7 +86,7 @@ app.Get("/", func(c fiber.Ctx) error {
 
 ### context.Context
 
-`Ctx` implements `context.Context`. However due to [current limitations in how fasthttp](https://github.com/valyala/fasthttp/issues/965#issuecomment-777268945) works, `Deadline()`, `Done()` and `Err()` are no-ops. The `fiber.Ctx` instance is reused after the handler returns and must not be used for asynchronous operations once the handler has completed. Call [`Context`](#context) within the handler to obtain a `context.Context` that can be used outside the handler.
+`Ctx` implements `context.Context`. `Deadline()`, `Done()` and `Err()` delegate to the user context set via [`SetContext`](#setcontext). When no user context has been set, they return the same zero values as `context.Background()`. The `fiber.Ctx` instance is reused after the handler returns and must not be used for asynchronous operations once the handler has completed. Call [`Context`](#context) within the handler to obtain a `context.Context` that can be used outside the handler.
 
 ```go title="Signature"
 func (c fiber.Ctx) Deadline() (deadline time.Time, ok bool)
@@ -103,6 +103,19 @@ func doSomething(ctx context.Context) {
 
 app.Get("/", func(c fiber.Ctx) error {
   doSomething(c)
+})
+```
+
+Cancellation and deadlines propagate through the user context:
+
+```go title="Example"
+app.Get("/", func(c fiber.Ctx) error {
+  ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+  defer cancel()
+  c.SetContext(ctx)
+
+  // db driver will now respect the 5s timeout
+  return db.QueryContext(c, "SELECT ...")
 })
 ```
 
