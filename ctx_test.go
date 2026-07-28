@@ -4335,13 +4335,20 @@ func Test_Ctx_Locals(t *testing.T) {
 func Test_Ctx_Deadline(t *testing.T) {
 	t.Parallel()
 	app := New()
-	app.Use(func(c Ctx) error {
-		return c.Next()
-	})
 	app.Get("/test", func(c Ctx) error {
+		// Default context (context.Background) has no deadline
 		deadline, ok := c.Deadline()
 		require.Equal(t, time.Time{}, deadline)
 		require.False(t, ok)
+
+		// With a deadline context, Deadline should delegate
+		dl := time.Now().Add(1 * time.Hour)
+		ctx, cancel := context.WithDeadline(context.Background(), dl)
+		defer cancel()
+		c.SetContext(ctx)
+		deadline, ok = c.Deadline()
+		require.True(t, ok)
+		require.Equal(t, dl, deadline)
 		return nil
 	})
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test", http.NoBody))
@@ -4353,12 +4360,30 @@ func Test_Ctx_Deadline(t *testing.T) {
 func Test_Ctx_Done(t *testing.T) {
 	t.Parallel()
 	app := New()
-	app.Use(func(c Ctx) error {
-		return c.Next()
-	})
 	app.Get("/test", func(c Ctx) error {
-		var nilChan <-chan struct{}
-		require.Equal(t, nilChan, c.Done())
+		// Default context (context.Background) Done returns nil
+		require.Nil(t, c.Done())
+
+		// With a cancellable context, Done should return a non-nil channel
+		ctx, cancel := context.WithCancel(context.Background())
+		c.SetContext(ctx)
+		done := c.Done()
+		require.NotNil(t, done)
+
+		// Channel should not be closed yet
+		select {
+		case <-done:
+			t.Fatal("Done channel should not be closed yet")
+		default:
+		}
+
+		// After cancel, channel should be closed
+		cancel()
+		select {
+		case <-done:
+		case <-time.After(time.Second):
+			t.Fatal("Done channel should be closed after cancel")
+		}
 		return nil
 	})
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test", http.NoBody))
@@ -4370,11 +4395,16 @@ func Test_Ctx_Done(t *testing.T) {
 func Test_Ctx_Err(t *testing.T) {
 	t.Parallel()
 	app := New()
-	app.Use(func(c Ctx) error {
-		return c.Next()
-	})
 	app.Get("/test", func(c Ctx) error {
+		// Default context (context.Background) Err returns nil
 		require.NoError(t, c.Err())
+
+		// After cancelling a set context, Err should return context.Canceled
+		ctx, cancel := context.WithCancel(context.Background())
+		c.SetContext(ctx)
+		require.NoError(t, c.Err())
+		cancel()
+		require.ErrorIs(t, c.Err(), context.Canceled)
 		return nil
 	})
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test", http.NoBody))

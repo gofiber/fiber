@@ -157,11 +157,8 @@ func (c *DefaultCtx) SetContext(ctx context.Context) {
 // Deadline returns the time when work done on behalf of this context
 // should be canceled. Deadline returns ok==false when no deadline is
 // set. Successive calls to Deadline return the same results.
-//
-// Due to current limitations in how fasthttp works, Deadline operates as a nop.
-// See: https://github.com/valyala/fasthttp/issues/965#issuecomment-777268945
-func (*DefaultCtx) Deadline() (time.Time, bool) {
-	return time.Time{}, false
+func (c *DefaultCtx) Deadline() (time.Time, bool) {
+	return c.Context().Deadline()
 }
 
 // Done returns a channel that's closed when work done on behalf of this
@@ -169,19 +166,13 @@ func (*DefaultCtx) Deadline() (time.Time, bool) {
 // never be canceled. Successive calls to Done return the same value.
 // The close of the Done channel may happen asynchronously,
 // after the cancel function returns.
-//
-// Due to current limitations in how fasthttp works, Done operates as a nop.
-// See: https://github.com/valyala/fasthttp/issues/965#issuecomment-777268945
-func (*DefaultCtx) Done() <-chan struct{} {
-	return nil
+func (c *DefaultCtx) Done() <-chan struct{} {
+	return c.Context().Done()
 }
 
 // Err mirrors context.Err, returning nil until cancellation and then the terminal error value.
-//
-// Due to current limitations in how fasthttp works, Err operates as a nop.
-// See: https://github.com/valyala/fasthttp/issues/965#issuecomment-777268945
-func (*DefaultCtx) Err() error {
-	return nil
+func (c *DefaultCtx) Err() error {
+	return c.Context().Err()
 }
 
 // Request return the *fasthttp.Request object
