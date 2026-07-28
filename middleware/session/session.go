@@ -458,7 +458,7 @@ func (s *Session) getExtractorInfo() []extractors.Extractor {
 
 	extractor := s.config.Extractor
 	if len(extractor.Chain) > 0 {
-		var relevantExtractors []extractors.Extractor
+		relevantExtractors := make([]extractors.Extractor, 0, len(extractor.Chain))
 		for _, chainExtractor := range extractor.Chain {
 			if chainExtractor.Source == extractors.SourceCookie || chainExtractor.Source == extractors.SourceHeader {
 				relevantExtractors = append(relevantExtractors, chainExtractor)
