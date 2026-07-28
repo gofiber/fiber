@@ -18,8 +18,9 @@ Fiber's [`Ctx`](../api/ctx.md) implements Go's
 [`context.Context`](https://pkg.go.dev/context#Context) interface.
 You can pass `c` directly to functions that expect a `context.Context`
 without adapters.
-However, `fasthttp` doesn't support cancellation yet, so
-`Deadline`, `Done`, and `Err` are no-ops.
+When a user context has been set via `c.SetContext`, `Deadline`, `Done`, and
+`Err` delegate to that context. When no user context has been set, they return
+the same zero values as `context.Background()`.
 
 :::caution
 The `fiber.Ctx` instance is only valid within the lifetime of the handler.
@@ -98,8 +99,10 @@ app.Get("/raw", func(c fiber.Ctx) error {
 ```
 
 `fasthttpctx` enables `fasthttp` to satisfy the `context.Context` interface.
-`Deadline` always reports no deadline. `Done` closes only when the server
-shuts down, and `Err` then returns `context.Canceled`.
+At the `fasthttp.RequestCtx` level, `Deadline` always reports no deadline,
+`Done` closes only when the server shuts down, and `Err` then returns
+`context.Canceled`. Fiber's `Ctx`, however, delegates these methods to the
+user context set via `SetContext`.
 
 :::caution
 `Done` does not fire when an individual client disconnects. To stop a

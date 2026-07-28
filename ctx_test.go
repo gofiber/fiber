@@ -4360,6 +4360,7 @@ func Test_Ctx_Deadline(t *testing.T) {
 func Test_Ctx_Done(t *testing.T) {
 	t.Parallel()
 	app := New()
+	var testErr error
 	app.Get("/test", func(c Ctx) error {
 		// Default context (context.Background) Done returns nil
 		require.Nil(t, c.Done())
@@ -4373,7 +4374,8 @@ func Test_Ctx_Done(t *testing.T) {
 		// Channel should not be closed yet
 		select {
 		case <-done:
-			t.Fatal("Done channel should not be closed yet")
+			testErr = errors.New("Done channel should not be closed yet")
+			return nil
 		default:
 		}
 
@@ -4381,14 +4383,16 @@ func Test_Ctx_Done(t *testing.T) {
 		cancel()
 		select {
 		case <-done:
-		case <-time.After(time.Second):
-			t.Fatal("Done channel should be closed after cancel")
+		case <-time.After(100 * time.Millisecond):
+			testErr = errors.New("Done channel should be closed after cancel")
+			return nil
 		}
 		return nil
 	})
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test", http.NoBody))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
+	require.NoError(t, testErr)
 }
 
 // go test -run Test_Ctx_Err

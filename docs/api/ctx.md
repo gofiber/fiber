@@ -106,16 +106,22 @@ app.Get("/", func(c fiber.Ctx) error {
 })
 ```
 
-Cancellation and deadlines propagate through the user context:
+Cancellation and deadlines propagate through the user context. Pass the derived `ctx` (not `c`) to context-aware libraries to avoid retaining the pooled `fiber.Ctx`:
 
 ```go title="Example"
 app.Get("/", func(c fiber.Ctx) error {
-  ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+  ctx, cancel := context.WithTimeout(c.Context(), 5*time.Second)
   defer cancel()
   c.SetContext(ctx)
 
   // db driver will now respect the 5s timeout
-  return db.QueryContext(c, "SELECT ...")
+  rows, err := db.QueryContext(ctx, "SELECT ...")
+  if err != nil {
+    return err
+  }
+  defer rows.Close()
+  // ...
+  return nil
 })
 ```
 

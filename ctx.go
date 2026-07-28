@@ -77,6 +77,7 @@ type DefaultCtx struct {
 	indexHandler           int                  // Index of the current handler
 	firstMatchIndex        int                  // Pre-resolved endpoint index from the SkipUnmatchedRoutes lookahead; -1 when unused
 	methodInt              int                  // HTTP method INT equivalent
+	userCtx                context.Context       // Snapshot of user-set context for Deadline/Done/Err; nil means not set
 	isAbandoned            atomic.Bool          // If true, ctx won't be pooled until ForceRelease is called
 	isMatched              bool                 // Non use route matched
 	shouldSkipNonUseRoutes bool                 // Skip non-use routes while iterating middleware
@@ -152,27 +153,36 @@ func (c *DefaultCtx) SetContext(ctx context.Context) {
 	}
 	c.fasthttp.SetUserValue(userContextKey, ctx)
 	c.isUserContextSet = true
+	c.userCtx = ctx
 }
 
 // Deadline returns the time when work done on behalf of this context
 // should be canceled. Deadline returns ok==false when no deadline is
-// set. Successive calls to Deadline return the same results.
+// set.
 func (c *DefaultCtx) Deadline() (time.Time, bool) {
-	return c.Context().Deadline()
+	if ctx := c.userCtx; ctx != nil {
+		return ctx.Deadline()
+	}
+	return time.Time{}, false
 }
 
 // Done returns a channel that's closed when work done on behalf of this
 // context should be canceled. Done may return nil if this context can
-// never be canceled. Successive calls to Done return the same value.
-// The close of the Done channel may happen asynchronously,
-// after the cancel function returns.
+// never be canceled.
 func (c *DefaultCtx) Done() <-chan struct{} {
-	return c.Context().Done()
+	if ctx := c.userCtx; ctx != nil {
+		return ctx.Done()
+	}
+	return nil
 }
 
-// Err mirrors context.Err, returning nil until cancellation and then the terminal error value.
+// Err returns nil if no user context has been set or if it has not been canceled yet.
+// After cancellation it returns the context's error.
 func (c *DefaultCtx) Err() error {
-	return c.Context().Err() //nolint:wrapcheck // interface method must match context.Context signature
+	if ctx := c.userCtx; ctx != nil {
+		return ctx.Err() //nolint:wrapcheck // interface method must match context.Context signature
+	}
+	return nil
 }
 
 // Request return the *fasthttp.Request object
@@ -739,6 +749,7 @@ func (c *DefaultCtx) release() {
 			c.fasthttp.SetUserValue(userContextKey, nil)
 		}
 		c.isUserContextSet = false
+		c.userCtx = nil
 	}
 	c.route = nil
 	c.fasthttp = nil

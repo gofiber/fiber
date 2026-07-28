@@ -30,24 +30,14 @@ type Ctx interface {
 	SetContext(ctx context.Context)
 	// Deadline returns the time when work done on behalf of this context
 	// should be canceled. Deadline returns ok==false when no deadline is
-	// set. Successive calls to Deadline return the same results.
-	//
-	// Due to current limitations in how fasthttp works, Deadline operates as a nop.
-	// See: https://github.com/valyala/fasthttp/issues/965#issuecomment-777268945
+	// set.
 	Deadline() (time.Time, bool)
 	// Done returns a channel that's closed when work done on behalf of this
 	// context should be canceled. Done may return nil if this context can
-	// never be canceled. Successive calls to Done return the same value.
-	// The close of the Done channel may happen asynchronously,
-	// after the cancel function returns.
-	//
-	// Due to current limitations in how fasthttp works, Done operates as a nop.
-	// See: https://github.com/valyala/fasthttp/issues/965#issuecomment-777268945
+	// never be canceled.
 	Done() <-chan struct{}
-	// Err mirrors context.Err, returning nil until cancellation and then the terminal error value.
-	//
-	// Due to current limitations in how fasthttp works, Err operates as a nop.
-	// See: https://github.com/valyala/fasthttp/issues/965#issuecomment-777268945
+	// Err returns nil if no user context has been set or if it has not been canceled yet.
+	// After cancellation it returns the context's error.
 	Err() error
 	// Request return the *fasthttp.Request object
 	// This allows you to use all fasthttp request methods
