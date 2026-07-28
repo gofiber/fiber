@@ -106,15 +106,14 @@ app.Get("/", func(c fiber.Ctx) error {
 })
 ```
 
-Cancellation and deadlines propagate through the user context. Pass the derived `ctx` (not `c`) to context-aware libraries to avoid retaining the pooled `fiber.Ctx`:
+Derive a child context from `c.Context()` and pass it directly to context-aware libraries. Do **not** store the derived context back with `SetContext` when the handler uses `defer cancel()`, because post-handler middleware (e.g. session save) would then see a cancelled context and silently drop writes:
 
 ```go title="Example"
 app.Get("/", func(c fiber.Ctx) error {
   ctx, cancel := context.WithTimeout(c.Context(), 5*time.Second)
   defer cancel()
-  c.SetContext(ctx)
 
-  // db driver will now respect the 5s timeout
+  // Pass the derived ctx directly; the db driver respects the 5s timeout.
   rows, err := db.QueryContext(ctx, "SELECT ...")
   if err != nil {
     return err

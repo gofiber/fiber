@@ -28,6 +28,9 @@ type Ctx interface {
 	Context() context.Context
 	// SetContext sets a context implementation by user.
 	SetContext(ctx context.Context)
+	// userContext returns the user-set context without triggering a write-back.
+	// Returns nil when no user context has been set.
+	userContext() context.Context
 	// Deadline returns the time when work done on behalf of this context
 	// should be canceled. Deadline returns ok==false when no deadline is
 	// set.
@@ -35,10 +38,18 @@ type Ctx interface {
 	// Done returns a channel that's closed when work done on behalf of this
 	// context should be canceled. Done may return nil if this context can
 	// never be canceled.
+	//
+	// The result is cached on first call so that successive calls always return
+	// the same value, as required by the context.Context contract. This also
+	// keeps the associated context reachable after release(), preventing a
+	// nil-Err panic in propagateCancel goroutines that outlive the handler.
 	Done() <-chan struct{}
 	// Err returns nil if no user context has been set or if it has not been canceled yet.
-	// Once the context's Done channel is closed it returns a non-nil error:
-	// context.Canceled if canceled explicitly, or context.DeadlineExceeded if the deadline expired.
+	// After cancellation it returns the context's error.
+	//
+	// When Done() has been called and returned a non-nil channel, Err uses the
+	// same snapshotted context so the two methods stay consistent even after
+	// SetContext replaces the user context or release() nils the fasthttp pointer.
 	Err() error
 	// Request return the *fasthttp.Request object
 	// This allows you to use all fasthttp request methods

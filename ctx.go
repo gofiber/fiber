@@ -77,10 +77,13 @@ type DefaultCtx struct {
 	indexHandler           int                  // Index of the current handler
 	firstMatchIndex        int                  // Pre-resolved endpoint index from the SkipUnmatchedRoutes lookahead; -1 when unused
 	methodInt              int                  // HTTP method INT equivalent
-	isAbandoned            atomic.Bool          // If true, ctx won't be pooled until ForceRelease is called
-	isMatched              bool                 // Non use route matched
-	shouldSkipNonUseRoutes bool                 // Skip non-use routes while iterating middleware
-	isUserContextSet       bool                 // User context was stored in fasthttp user values
+	doneCtx                context.Context       // Snapshot of the context that produced doneChan
+	doneChan               <-chan struct{}        // Cached Done() result for stability across calls
+	isAbandoned            atomic.Bool           // If true, ctx won't be pooled until ForceRelease is called
+	isMatched              bool                  // Non use route matched
+	shouldSkipNonUseRoutes bool                  // Skip non-use routes while iterating middleware
+	isUserContextSet       bool                  // User context was stored in fasthttp user values
+	doneResolved           bool                  // Whether Done() has been called and the result cached
 }
 
 // TLSHandler hosts the callback hooks Fiber invokes while negotiating TLS
@@ -152,6 +155,11 @@ func (c *DefaultCtx) SetContext(ctx context.Context) {
 	}
 	c.fasthttp.SetUserValue(userContextKey, ctx)
 	c.isUserContextSet = true
+	// Allow the next Done() call to reflect the new context, but keep
+	// doneCtx so that Err() still returns the correct error for any
+	// goroutine that captured the previous Done() channel.
+	c.doneResolved = false
+	c.doneChan = nil
 }
 
 // userContext returns the user-set context without triggering a write-back.
@@ -179,16 +187,37 @@ func (c *DefaultCtx) Deadline() (time.Time, bool) {
 // Done returns a channel that's closed when work done on behalf of this
 // context should be canceled. Done may return nil if this context can
 // never be canceled.
+//
+// The result is cached on first call so that successive calls always return
+// the same value, as required by the context.Context contract. This also
+// keeps the associated context reachable after release(), preventing a
+// nil-Err panic in propagateCancel goroutines that outlive the handler.
 func (c *DefaultCtx) Done() <-chan struct{} {
+	if c.doneResolved {
+		return c.doneChan
+	}
+	c.doneResolved = true
 	if ctx := c.userContext(); ctx != nil {
-		return ctx.Done()
+		ch := ctx.Done()
+		c.doneChan = ch
+		if ch != nil {
+			c.doneCtx = ctx
+		}
+		return ch
 	}
 	return nil
 }
 
 // Err returns nil if no user context has been set or if it has not been canceled yet.
 // After cancellation it returns the context's error.
+//
+// When Done() has been called and returned a non-nil channel, Err uses the
+// same snapshotted context so the two methods stay consistent even after
+// SetContext replaces the user context or release() nils the fasthttp pointer.
 func (c *DefaultCtx) Err() error {
+	if c.doneCtx != nil {
+		return c.doneCtx.Err() //nolint:wrapcheck // interface method must match context.Context signature
+	}
 	if ctx := c.userContext(); ctx != nil {
 		return ctx.Err() //nolint:wrapcheck // interface method must match context.Context signature
 	}
@@ -730,6 +759,10 @@ func (c *DefaultCtx) configDependentPaths() {
 
 // Reset is a method to reset context fields by given request when to use server handlers.
 func (c *DefaultCtx) Reset(fctx *fasthttp.RequestCtx) {
+	// Clear Done()/Err() snapshot from the previous request
+	c.doneCtx = nil
+	c.doneChan = nil
+	c.doneResolved = false
 	// Reset route and handler index
 	c.indexRoute = -1
 	c.indexHandler = 0
