@@ -660,9 +660,9 @@ The `TypeConstraint` type, `Constraint.ID`, and `Constraint.RegexCompiler` field
 ### New Methods
 
 - **AutoFormat**: Similar to Express.js, automatically formats the response based on the request's `Accept` header.
-- **Deadline**: Delegates to the user context set via `SetContext` for `context.Context` compatibility.
-- **Done**: Delegates to the user context set via `SetContext` for `context.Context` compatibility.
-- **Err**: Delegates to the user context set via `SetContext` for `context.Context` compatibility.
+- **Deadline**: For implementing `context.Context`.
+- **Done**: For implementing `context.Context`.
+- **Err**: For implementing `context.Context`.
 - **Host**: Similar to Express.js, returns the host name of the request.
 - **Port**: Similar to Express.js, returns the port number of the request.
 - **IsProxyTrusted**: Checks the trustworthiness of the remote IP.
