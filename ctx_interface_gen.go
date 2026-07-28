@@ -37,7 +37,8 @@ type Ctx interface {
 	// never be canceled.
 	Done() <-chan struct{}
 	// Err returns nil if no user context has been set or if it has not been canceled yet.
-	// After cancellation it returns the context's error.
+	// Once the context's Done channel is closed it returns a non-nil error:
+	// context.Canceled if canceled explicitly, or context.DeadlineExceeded if the deadline expired.
 	Err() error
 	// Request return the *fasthttp.Request object
 	// This allows you to use all fasthttp request methods

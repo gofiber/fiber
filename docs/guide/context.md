@@ -105,9 +105,9 @@ At the `fasthttp.RequestCtx` level, `Deadline` always reports no deadline,
 user context set via `SetContext`.
 
 :::caution
-`Done` does not fire when an individual client disconnects. To stop a
-long-running handler at a deadline, wrap the request with
-`context.WithTimeout` as shown below.
+`fasthttp.RequestCtx.Done()` does not fire when an individual client
+disconnects. To stop a long-running handler at a deadline, wrap the request
+with `context.WithTimeout` as shown below.
 :::
 
 ## Context Helpers
