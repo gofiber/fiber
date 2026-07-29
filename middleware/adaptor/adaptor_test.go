@@ -14,6 +14,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -1776,5 +1777,460 @@ func TestUnixSocketAdaptor(t *testing.T) {
 	case <-done:
 	case <-time.After(5 * time.Second):
 		t.Fatal("server shutdown timed out")
+	}
+}
+
+// Test_ResolveRemoteAddr_FastPathEquivalence pins the ip:port fast path to
+// net.ResolveTCPAddr: for every literal form the fast path accepts, both
+// must produce the same address, and inputs the fast path rejects must
+// still resolve identically through the fallback.
+func Test_ResolveRemoteAddr_FastPathEquivalence(t *testing.T) {
+	t.Parallel()
+
+	addrs := []string{
+		"1.2.3.4:6789",
+		"127.0.0.1:80",
+		"255.255.255.255:65535",
+		"[::1]:8080",
+		"[2001:db8::1]:443",
+		"[::ffff:1.2.3.4]:80",
+		"[fe80::1%eth0]:80",
+		"1.2.3.4:0",
+	}
+	for _, addr := range addrs {
+		got, err := resolveRemoteAddr(addr, nil)
+		require.NoError(t, err, "resolveRemoteAddr(%q)", addr)
+		want, err := net.ResolveTCPAddr("tcp", addr)
+		require.NoError(t, err, "ResolveTCPAddr(%q)", addr)
+		gotTCP, ok := got.(*net.TCPAddr)
+		require.True(t, ok, "resolveRemoteAddr(%q) type", addr)
+		require.True(t, want.IP.Equal(gotTCP.IP), "IP for %q: got %v want %v", addr, gotTCP.IP, want.IP)
+		require.Equal(t, want.Port, gotTCP.Port, "port for %q", addr)
+		require.Equal(t, want.Zone, gotTCP.Zone, "zone for %q", addr)
+		require.Equal(t, want.String(), gotTCP.String(), "String() for %q", addr)
+	}
+
+	// Rejected by the fast path, resolved by the fallback: identical results.
+	fallbackAddrs := []string{
+		"localhost:80",   // hostname
+		"1.2.3.4:0080",   // leading-zero port (fast path parses digits only, both accept)
+		"1.2.3.4",        // missing port -> :80 default via fallback
+		"01.2.3.4:80",    // leading-zero octet (rejected by ParseIPv4, accepted by resolver)
+		"1.2.3.4:99999",  // port out of range -> error from both? fallback errors
+		"1.2.3.4:",       // empty port -> fast path rejects, resolver yields port 0
+		"1.2.3.4:123456", // six digits -> fast path length guard, resolver errors
+		"1.2.3.4:8a",     // non-digit port -> fast path rejects, resolver service lookup fails
+	}
+	for _, addr := range fallbackAddrs {
+		got, gotErr := resolveRemoteAddr(addr, nil)
+		want, wantErr := net.ResolveTCPAddr("tcp", addr)
+		if addr == "1.2.3.4" {
+			// resolveRemoteAddr appends :80 for missing ports; ResolveTCPAddr errors.
+			require.NoError(t, gotErr)
+			require.Equal(t, "1.2.3.4:80", got.String())
+			continue
+		}
+		if wantErr != nil {
+			require.Error(t, gotErr, "addr %q", addr)
+			continue
+		}
+		require.NoError(t, gotErr, "addr %q", addr)
+		require.Equal(t, want.String(), got.String(), "String() for %q", addr)
+	}
+}
+
+// Test_FiberHandlerFunc_MultiValueHeaders verifies repeated header lines on
+// the net/http request all reach the fiber handler instead of collapsing to
+// the last value.
+func Test_FiberHandlerFunc_MultiValueHeaders(t *testing.T) {
+	t.Parallel()
+
+	var got []string
+	h := FiberHandlerFunc(func(c fiber.Ctx) error {
+		for _, v := range c.Request().Header.PeekAll("X-Multi") {
+			got = append(got, string(v))
+		}
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	r := httptest.NewRequest(http.MethodGet, "/", http.NoBody)
+	r.Header.Add("X-Multi", "one")
+	r.Header.Add("X-Multi", "two")
+	r.Header.Add("X-Multi", "three")
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+
+	require.Equal(t, []string{"one", "two", "three"}, got)
+}
+
+// Test_FiberHandlerFunc_EmptyHeaderValues verifies a header key mapped to an
+// empty value slice is skipped instead of panicking or producing an empty
+// header.
+func Test_FiberHandlerFunc_EmptyHeaderValues(t *testing.T) {
+	t.Parallel()
+
+	var seen bool
+	h := FiberHandlerFunc(func(c fiber.Ctx) error {
+		seen = len(c.Request().Header.PeekAll("X-Empty")) > 0
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	r := httptest.NewRequest(http.MethodGet, "/", http.NoBody)
+	r.Header["X-Empty"] = []string{}
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+
+	require.Equal(t, http.StatusOK, w.Code)
+	require.False(t, seen)
+}
+
+// Test_HTTPMiddleware_MultiValueHeaders verifies multi-value headers added
+// by a wrapped net/http middleware survive the copy-back onto the fiber
+// request.
+func Test_HTTPMiddleware_MultiValueHeaders(t *testing.T) {
+	t.Parallel()
+
+	mw := func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			r.Header.Add("X-Multi", "one")
+			r.Header.Add("X-Multi", "two")
+			r.Header["X-Empty"] = nil // empty value slices must be skipped
+			next.ServeHTTP(w, r)
+		})
+	}
+
+	app := fiber.New()
+	app.Use(HTTPMiddleware(mw))
+	var got []string
+	var emptyHeaderValues int
+	app.Get("/", func(c fiber.Ctx) error {
+		for _, v := range c.Request().Header.PeekAll("X-Multi") {
+			got = append(got, string(v))
+		}
+		emptyHeaderValues = len(c.Request().Header.PeekAll("X-Empty"))
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	resp, err := app.Test(httptest.NewRequest(http.MethodGet, "/", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	require.Equal(t, []string{"one", "two"}, got)
+	require.Zero(t, emptyHeaderValues, "empty header value slices must not be copied")
+}
+
+// Benchmark_HTTPMiddleware measures the net/http middleware -> Fiber handler
+// bridge, including the request rewrite the bridge performs on every call.
+func Benchmark_HTTPMiddleware(b *testing.B) {
+	nethttpMW := func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			r.Header.Set("X-Middleware", "true")
+			next.ServeHTTP(w, r)
+		})
+	}
+
+	app := fiber.New()
+	app.Use(HTTPMiddleware(nethttpMW))
+	app.Post("/", func(c fiber.Ctx) error {
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	handler := app.Handler()
+
+	ctx := &fasthttp.RequestCtx{}
+
+	b.ReportAllocs()
+
+	for b.Loop() {
+		ctx.Request.Reset()
+		ctx.Response.Reset()
+		ctx.Request.Header.SetMethod(fiber.MethodPost)
+		ctx.Request.SetRequestURI("/")
+		ctx.Request.Header.Set("Foo", "bar")
+
+		handler(ctx)
+	}
+}
+
+// Benchmark_FiberApp exercises the net/http -> Fiber direction the way a real
+// net/http server does: a fresh response writer per request, a routed app, a
+// remote address to resolve and a handful of request and response headers.
+func Benchmark_FiberApp(b *testing.B) {
+	app := fiber.New()
+	app.Get("/foo/bar", func(c fiber.Ctx) error {
+		c.Set("X-Custom-One", "one")
+		c.Set("X-Custom-Two", "two")
+		return c.SendString("Hello, World!")
+	})
+
+	handler := FiberApp(app)
+
+	r := httptest.NewRequest(http.MethodGet, "/foo/bar", http.NoBody)
+	r.RemoteAddr = expectedRemoteAddr
+	r.Header.Set("Accept-Encoding", "gzip")
+	r.Header.Set("User-Agent", "fiber-bench")
+
+	b.ReportAllocs()
+
+	for b.Loop() {
+		w := httptest.NewRecorder()
+		handler(w, r)
+	}
+}
+
+// Benchmark_FiberApp_Body covers the request body copy path, which streams the
+// net/http body into the fasthttp request before the handler runs.
+func Benchmark_FiberApp_Body(b *testing.B) {
+	app := fiber.New()
+	app.Post("/", func(c fiber.Ctx) error {
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	handler := FiberApp(app)
+
+	body := make([]byte, 8*1024)
+
+	b.ReportAllocs()
+
+	for b.Loop() {
+		r := httptest.NewRequest(http.MethodPost, "/", bytes.NewReader(body))
+		r.RemoteAddr = expectedRemoteAddr
+		// A fresh recorder per iteration: reusing one accumulates the response
+		// headers and body across iterations, which both skews the numbers and
+		// hides the fresh-header path.
+		w := httptest.NewRecorder()
+		handler(w, r)
+	}
+}
+
+// Benchmark_FiberApp_Parallel measures how the net/http -> Fiber bridge scales
+// across cores.
+func Benchmark_FiberApp_Parallel(b *testing.B) {
+	app := fiber.New()
+	app.Get("/foo/bar", func(c fiber.Ctx) error {
+		c.Set("X-Custom-One", "one")
+		c.Set("X-Custom-Two", "two")
+		return c.SendString("Hello, World!")
+	})
+
+	handler := FiberApp(app)
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	b.RunParallel(func(pb *testing.PB) {
+		r := httptest.NewRequest(http.MethodGet, "/foo/bar", http.NoBody)
+		r.RemoteAddr = expectedRemoteAddr
+
+		for pb.Next() {
+			// Fresh recorder per iteration, matching Benchmark_FiberApp so the
+			// two are directly comparable.
+			w := httptest.NewRecorder()
+			handler(w, r)
+		}
+	})
+}
+
+func Test_copyResponseHeaders(t *testing.T) {
+	t.Parallel()
+
+	t.Run("packs keys and values without losing any", func(t *testing.T) {
+		t.Parallel()
+
+		var src fasthttp.ResponseHeader
+		src.SetContentType("text/plain")
+		src.Set("X-One", "1")
+		src.Add("X-Multi", "a")
+		src.Add("X-Multi", "b")
+		src.SetCookie(&fasthttp.Cookie{})
+
+		dst := make(http.Header)
+		copyResponseHeaders(dst, &src)
+
+		require.Equal(t, []string{"text/plain"}, dst["Content-Type"])
+		require.Equal(t, []string{"1"}, dst["X-One"])
+		require.Equal(t, []string{"a", "b"}, dst["X-Multi"])
+	})
+
+	t.Run("keys are canonicalized like Header.Add", func(t *testing.T) {
+		t.Parallel()
+
+		var src fasthttp.ResponseHeader
+		src.DisableNormalizing()
+		src.Set("x-lower-case", "value")
+
+		dst := make(http.Header)
+		copyResponseHeaders(dst, &src)
+
+		require.Equal(t, "value", dst.Get("X-Lower-Case"))
+	})
+
+	t.Run("appends to values already present on the destination", func(t *testing.T) {
+		t.Parallel()
+
+		var src fasthttp.ResponseHeader
+		src.Set("X-One", "from-fasthttp")
+
+		dst := make(http.Header)
+		dst.Add("X-One", "preexisting")
+		copyResponseHeaders(dst, &src)
+
+		require.Equal(t, []string{"preexisting", "from-fasthttp"}, dst["X-One"])
+	})
+
+	t.Run("entries sharing a backing array stay independent", func(t *testing.T) {
+		t.Parallel()
+
+		var src fasthttp.ResponseHeader
+		src.Set("X-One", "1")
+		src.Set("X-Two", "2")
+		src.Set("X-Three", "3")
+
+		dst := make(http.Header)
+		copyResponseHeaders(dst, &src)
+
+		// Growing one entry must not overwrite the neighboring entries even
+		// though they were carved out of a single []string allocation.
+		dst.Add("X-One", "extra")
+
+		require.Equal(t, []string{"1", "extra"}, dst["X-One"])
+		require.Equal(t, []string{"2"}, dst["X-Two"])
+		require.Equal(t, []string{"3"}, dst["X-Three"])
+	})
+
+	t.Run("empty header set leaves the destination untouched", func(t *testing.T) {
+		t.Parallel()
+
+		var src fasthttp.ResponseHeader
+		src.SetNoDefaultContentType(true)
+
+		dst := make(http.Header)
+		copyResponseHeaders(dst, &src)
+
+		require.Empty(t, dst)
+	})
+
+	t.Run("values do not alias the pooled scratch buffer", func(t *testing.T) {
+		t.Parallel()
+
+		var first fasthttp.ResponseHeader
+		first.SetNoDefaultContentType(true)
+		first.Set("X-Value", strings.Repeat("a", 64))
+
+		dst := make(http.Header)
+		copyResponseHeaders(dst, &first)
+
+		// A second copy reuses the pooled staging buffer; the strings handed
+		// to the first destination must not change underneath it.
+		var second fasthttp.ResponseHeader
+		second.SetNoDefaultContentType(true)
+		second.Set("X-Value", strings.Repeat("b", 64))
+		copyResponseHeaders(make(http.Header), &second)
+
+		require.Equal(t, strings.Repeat("a", 64), dst.Get("X-Value"))
+	})
+}
+
+func Test_resolveRemoteAddr_FastPath(t *testing.T) {
+	t.Parallel()
+
+	t.Run("ipv4", func(t *testing.T) {
+		t.Parallel()
+
+		addr, err := resolveRemoteAddr("1.2.3.4:6789", nil)
+		require.NoError(t, err)
+		require.Equal(t, "1.2.3.4:6789", addr.String())
+	})
+
+	t.Run("ipv6 keeps the zone", func(t *testing.T) {
+		t.Parallel()
+
+		addr, err := resolveRemoteAddr("[fe80::1%eth0]:6789", nil)
+		require.NoError(t, err)
+
+		tcpAddr, ok := addr.(*net.TCPAddr)
+		require.True(t, ok)
+		require.Equal(t, "eth0", tcpAddr.Zone)
+		require.Equal(t, 6789, tcpAddr.Port)
+		require.Equal(t, net.ParseIP("fe80::1"), tcpAddr.IP)
+	})
+
+	t.Run("each call returns an independent address", func(t *testing.T) {
+		t.Parallel()
+
+		first, err := resolveRemoteAddr("1.2.3.4:1111", nil)
+		require.NoError(t, err)
+		second, err := resolveRemoteAddr("5.6.7.8:2222", nil)
+		require.NoError(t, err)
+
+		// Callers may hold on to a remote address past the request that
+		// produced it, so resolving another one must not disturb it.
+		require.NotSame(t, first, second)
+		require.Equal(t, "1.2.3.4:1111", first.String())
+		require.Equal(t, "5.6.7.8:2222", second.String())
+	})
+
+	t.Run("the IP slice cannot be appended into its backing buffer", func(t *testing.T) {
+		t.Parallel()
+
+		addr, err := resolveRemoteAddr("1.2.3.4:6789", nil)
+		require.NoError(t, err)
+
+		tcpAddr, ok := addr.(*net.TCPAddr)
+		require.True(t, ok)
+		require.Equal(t, len(tcpAddr.IP), cap(tcpAddr.IP))
+
+		grown := append(tcpAddr.IP, 9) //nolint:gocritic // deliberately appending to a copy
+		require.Equal(t, net.IP{1, 2, 3, 4}, tcpAddr.IP)
+		require.Len(t, grown, net.IPv4len+1)
+	})
+}
+
+func Test_FiberApp_NoBody(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Post("/", func(c fiber.Ctx) error {
+		require.Empty(t, c.Body())
+		return c.SendString(strconv.Itoa(c.Request().Header.ContentLength()))
+	})
+
+	r := httptest.NewRequest(http.MethodPost, "/", http.NoBody)
+	w := httptest.NewRecorder()
+	FiberApp(app)(w, r)
+
+	require.Equal(t, fiber.StatusOK, w.Code)
+	require.Equal(t, "0", w.Body.String())
+}
+
+func Test_FiberApp_RemoteAddrSurvivesPooling(t *testing.T) {
+	t.Parallel()
+
+	addrs := []string{"1.1.1.1:1111", "2.2.2.2:2222", "3.3.3.3:3333"}
+
+	var retained []net.Addr
+	app := fiber.New()
+	app.Get("/", func(c fiber.Ctx) error {
+		retained = append(retained, c.RequestCtx().RemoteAddr())
+		return c.SendString(c.IP())
+	})
+
+	handler := FiberApp(app)
+
+	for _, addr := range addrs {
+		r := httptest.NewRequest(http.MethodGet, "/", http.NoBody)
+		r.RemoteAddr = addr
+		w := httptest.NewRecorder()
+		handler(w, r)
+
+		host, _, err := net.SplitHostPort(addr)
+		require.NoError(t, err)
+		require.Equal(t, host, w.Body.String())
+	}
+
+	// The ctx pool recycles entries between requests; a remote address kept
+	// by the handler must still report the client it was resolved from.
+	require.Len(t, retained, len(addrs))
+	for i, addr := range addrs {
+		require.Equal(t, addr, retained[i].String())
 	}
 }

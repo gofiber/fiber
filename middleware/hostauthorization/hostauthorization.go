@@ -196,11 +196,16 @@ func isValidHostSyntax(host string) bool {
 		return false
 	}
 
-	// A colon only appears in IPv6 literals; validate those via net.ParseIP.
-	// DNS names and IPv4 literals are accepted by the label scan below, which
-	// runs on the hot path of every request and avoids allocating.
+	// A colon only appears in IPv6 literals; validate those with
+	// utils.ParseIPv6. Screening out zoned addresses first makes the
+	// acceptance identical to net.ParseIP (netip.ParseAddr minus zones)
+	// without its net.IP slice allocation on this per-request path.
 	if strings.IndexByte(host, ':') >= 0 {
-		return net.ParseIP(host) != nil
+		if strings.IndexByte(host, '%') >= 0 {
+			return false
+		}
+		_, ok := utils.ParseIPv6(host)
+		return ok
 	}
 
 	// Validate dotted DNS labels in a single pass without allocating.

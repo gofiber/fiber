@@ -20,7 +20,7 @@ permissions:
 
 jobs:
   govulncheck-check:
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 15
     env:
       GO111MODULE: on

@@ -54,6 +54,11 @@
     </picture>
   </a>
 </p>
+<p align="center">
+  <a href="https://blacksmith.sh/?utm_source=gofiber&utm_medium=sponsor&utm_content=readme">
+    <img width="280" height="96" alt="Blacksmith" src="https://raw.githubusercontent.com/gofiber/.github/main/assets/sponsors/blacksmith.png">
+  </a>
+</p>
 
 ---
 <!-- skip-docs -->
@@ -846,14 +851,16 @@ Fiber is an open-source project that runs on donations to pay the bills, e.g., o
 
 ## 💻 Code Contributors
 
-<img src="https://opencollective.com/fiber/contributors.svg?width=890&button=false" alt="Code Contributors" style="max-width:100%;">
+<a href="https://github.com/gofiber/fiber/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=gofiber/fiber" alt="Code Contributors" style="max-width:100%;">
+</a>
 
 ## ⭐️ Stargazers
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=gofiber/fiber&type=Date&theme=dark" />
-  <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=gofiber/fiber&type=Date" />
-  <img src="https://api.star-history.com/svg?repos=gofiber/fiber&type=Date" />
+  <source media="(prefers-color-scheme: dark)" srcset="https://next.ossinsight.io/widgets/official/analyze-repo-stars-history/thumbnail.png?repo_id=234231371&image_size=auto&color_scheme=dark" />
+  <source media="(prefers-color-scheme: light)" srcset="https://next.ossinsight.io/widgets/official/analyze-repo-stars-history/thumbnail.png?repo_id=234231371&image_size=auto&color_scheme=light" />
+  <img src="https://next.ossinsight.io/widgets/official/analyze-repo-stars-history/thumbnail.png?repo_id=234231371&image_size=auto&color_scheme=light" alt="Stargazers over time" />
 </picture>
 
 ## 🧾 License

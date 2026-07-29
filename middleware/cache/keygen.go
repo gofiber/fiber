@@ -152,18 +152,19 @@ func appendCanonicalQueryString(dst []byte, uri *fasthttp.URI) []byte {
 				buf = append(buf, '&')
 			}
 
-			escapedKey := url.QueryEscape(key)
-			escapedValue := url.QueryEscape(value)
+			// Escape straight into the pooled buffer to skip the intermediate
+			// strings url.QueryEscape would allocate per key and value.
+			buf = utils.AppendQueryEscape(buf, key)
+			buf = append(buf, '=')
+			buf = utils.AppendQueryEscape(buf, value)
 
-			// Check buffer size before appending to prevent unbounded growth
-			if len(buf)+len(escapedKey)+len(escapedValue)+2 > maxQueryBufferSize {
+			// Check buffer size to prevent unbounded growth. Equivalent to the
+			// pre-append check len(prev)+len(key)+len(value)+2 > max: the pair
+			// plus '=' is already appended, leaving only the +1 slack.
+			if len(buf)+1 > maxQueryBufferSize {
 				releaseKeyBuffer(bufPtr, buf)
 				return appendBoundKeySegment(dst, escapeKeyDelimiters(query))
 			}
-
-			buf = append(buf, escapedKey...)
-			buf = append(buf, '=')
-			buf = append(buf, escapedValue...)
 		}
 	}
 

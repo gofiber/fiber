@@ -2957,6 +2957,7 @@ func Test_Ctx_Fresh_ObsoleteDateFormats(t *testing.T) {
 		"Wed, 21 Oct 2015 07:28:00 GMT",     // IMF-fixdate
 		"Wednesday, 21-Oct-15 07:28:00 GMT", // obsolete RFC 850 format
 		"Wed Oct 21 07:28:00 2015",          // ANSI C asctime() format
+		" Wed, 21 Oct 2015 07:28:00 GMT ",   // surrounding OWS tolerated (RFC 9110 §5.5)
 	} {
 		c := app.AcquireCtx(&fasthttp.RequestCtx{})
 		c.Request().Header.Set(HeaderIfModifiedSince, date)
@@ -4334,11 +4335,17 @@ func Test_Ctx_Locals(t *testing.T) {
 func Test_Ctx_Deadline(t *testing.T) {
 	t.Parallel()
 	app := New()
-	app.Use(func(c Ctx) error {
-		return c.Next()
-	})
 	app.Get("/test", func(c Ctx) error {
 		deadline, ok := c.Deadline()
+		require.Equal(t, time.Time{}, deadline)
+		require.False(t, ok)
+
+		// A user context with a deadline does not change this: Ctx is pooled and
+		// can never be canceled, so it reports no deadline of its own.
+		ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(time.Hour))
+		defer cancel()
+		c.SetContext(ctx)
+		deadline, ok = c.Deadline()
 		require.Equal(t, time.Time{}, deadline)
 		require.False(t, ok)
 		return nil
@@ -4352,12 +4359,18 @@ func Test_Ctx_Deadline(t *testing.T) {
 func Test_Ctx_Done(t *testing.T) {
 	t.Parallel()
 	app := New()
-	app.Use(func(c Ctx) error {
-		return c.Next()
-	})
 	app.Get("/test", func(c Ctx) error {
-		var nilChan <-chan struct{}
-		require.Equal(t, nilChan, c.Done())
+		require.Nil(t, c.Done())
+
+		// Ctx can never be canceled. A cancellable user context does not change
+		// that: a non-nil Done would make the stdlib retain the pooled Ctx in
+		// watcher goroutines that outlive the handler.
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		c.SetContext(ctx)
+		require.Nil(t, c.Done())
+		cancel()
+		require.Nil(t, c.Done())
 		return nil
 	})
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test", http.NoBody))
@@ -4369,11 +4382,17 @@ func Test_Ctx_Done(t *testing.T) {
 func Test_Ctx_Err(t *testing.T) {
 	t.Parallel()
 	app := New()
-	app.Use(func(c Ctx) error {
-		return c.Next()
-	})
 	app.Get("/test", func(c Ctx) error {
 		require.NoError(t, c.Err())
+
+		// Err stays nil even after the user context is canceled, mirroring the
+		// nil Done. Read the cancellation from Context() instead.
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		c.SetContext(ctx)
+		cancel()
+		require.NoError(t, c.Err())
+		require.ErrorIs(t, c.Context().Err(), context.Canceled)
 		return nil
 	})
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test", http.NoBody))
