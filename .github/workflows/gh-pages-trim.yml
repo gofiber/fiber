@@ -1,0 +1,25 @@
+name: Trim gh-pages history
+
+on:
+  schedule:
+    - cron: '20 3 1 * *'
+  workflow_dispatch:
+    inputs:
+      retention:
+        description: 'Oldest commit to keep'
+        required: false
+        default: '2 months ago'
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  trim:
+    uses: gofiber/.github/.github/workflows/gh-pages-trim.yml@main
+    with:
+      # gh-pages is 43 MB of the 82 MB full clone, but at ~3 commits/day it only
+      # reaches back to 2026-06-17: nothing here is older than two months, so this
+      # window drops nothing and settles at ~60 MB. '14 days ago' would cut 92 of
+      # the 125 commits and is what actually shrinks this repo.
+      retention: ${{ inputs.retention || '2 months ago' }}
