@@ -1881,7 +1881,7 @@ func TestLimiterSlidingSubSecondExpiration(t *testing.T) {
 	app.Get("/", func(c fiber.Ctx) error { return c.SendString("Hello tester!") })
 
 	// Without the fix the very first request is wrongly rejected with 429.
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
 }
