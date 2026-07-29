@@ -3984,12 +3984,13 @@ func Test_Ctx_IP_ProxyHeader_RepeatedFieldLines_Wire(t *testing.T) {
 		return c.SendString(c.IP())
 	})
 
-	req := httptest.NewRequest(MethodGet, "/", nil)
+	req := httptest.NewRequest(MethodGet, "/", http.NoBody)
 	req.Header.Add(HeaderXForwardedFor, "9.9.9.9")
 	req.Header.Add(HeaderXForwardedFor, "198.51.100.77, 0.0.0.0")
 
 	resp, err := app.Test(req)
 	require.NoError(t, err)
+	defer func() { require.NoError(t, resp.Body.Close()) }()
 
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
