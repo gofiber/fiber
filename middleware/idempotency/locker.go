@@ -10,43 +10,58 @@ type Locker interface {
 	Unlock(key string) error
 }
 
+type countedLock struct {
+	mu     sync.Mutex
+	locked int
+}
+
 type MemoryLock struct {
 	mu sync.Mutex
 
-	keys map[string]*sync.Mutex
+	keys map[string]*countedLock
 }
 
 func (l *MemoryLock) Lock(key string) error {
 	l.mu.Lock()
-	mu, ok := l.keys[key]
+	lock, ok := l.keys[key]
 	if !ok {
-		mu = new(sync.Mutex)
-		l.keys[key] = mu
+		lock = new(countedLock)
+		l.keys[key] = lock
 	}
+	lock.locked++
 	l.mu.Unlock()
 
-	mu.Lock()
+	lock.mu.Lock()
 
 	return nil
 }
 
 func (l *MemoryLock) Unlock(key string) error {
 	l.mu.Lock()
-	mu, ok := l.keys[key]
-	l.mu.Unlock()
+	lock, ok := l.keys[key]
 	if !ok {
 		// This happens if we try to unlock an unknown key
+		l.mu.Unlock()
 		return nil
 	}
+	l.mu.Unlock()
 
-	mu.Unlock()
+	lock.mu.Unlock()
+
+	l.mu.Lock()
+	lock.locked--
+	if lock.locked <= 0 {
+		// No waiters left, so drop the entry instead of leaking one mutex per key
+		delete(l.keys, key)
+	}
+	l.mu.Unlock()
 
 	return nil
 }
 
 func NewMemoryLock() *MemoryLock {
 	return &MemoryLock{
-		keys: make(map[string]*sync.Mutex),
+		keys: make(map[string]*countedLock),
 	}
 }
 
