@@ -614,6 +614,12 @@ func peekJoinedRequestHeader(h *fasthttp.RequestHeader, key string) []byte {
 	// VisitAll (not the replacement All) keeps this zero-alloc: All returns
 	// an iterator closure that escapes to the heap on every call. The SA1019
 	// deprecation is suppressed for helpers.go in .golangci.yml.
+	//
+	// VisitAllInOrder is deliberately not used: it reparses rawHeaders, which
+	// only holds headers read off the wire, so headers set programmatically
+	// (e.g. by net/http adaptors) would be missed entirely. VisitAll already
+	// preserves the relative order of repeated field lines sharing a key,
+	// which is all this helper needs; it only reorders across distinct keys.
 	h.VisitAll(j.visit)
 	return j.combined
 }
