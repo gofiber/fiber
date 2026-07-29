@@ -3946,6 +3946,26 @@ func Test_Ctx_IP_ProxyHeader_NoTrustedProxies(t *testing.T) {
 	require.Equal(t, "203.0.113.50", c.extractIPFromHeader(HeaderXForwardedFor))
 }
 
+func Test_Ctx_IP_ProxyHeader_RepeatedFieldLines(t *testing.T) {
+	t.Parallel()
+
+	app := New(Config{
+		ProxyHeader:        HeaderXForwardedFor,
+		TrustProxy:         true,
+		EnableIPValidation: true,
+		TrustProxyConfig: TrustProxyConfig{
+			Proxies: []string{"127.0.0.1"},
+		},
+	})
+	fastCtx := &fasthttp.RequestCtx{}
+	fastCtx.SetRemoteAddr(&net.TCPAddr{IP: net.ParseIP("127.0.0.1")})
+	c := app.AcquireCtx(fastCtx)
+	c.Request().Header.Add(HeaderXForwardedFor, "9.9.9.9")
+	c.Request().Header.Add(HeaderXForwardedFor, "198.51.100.77, 127.0.0.1")
+
+	require.Equal(t, "198.51.100.77", c.IP())
+}
+
 func Test_Ctx_IP_ProxyHeader_InvalidIPs(t *testing.T) {
 	t.Parallel()
 	app := New(Config{

@@ -166,7 +166,7 @@ func (r *DefaultReq) Body() []byte {
 
 	// Get Content-Encoding header. Multiple field lines form one combined
 	// list (RFC 9110 Section 5.2), so join them before splitting.
-	encodedBytes, _ := peekJoinedRequestHeader(&request.Header, HeaderContentEncoding)
+	encodedBytes := peekJoinedRequestHeader(&request.Header, HeaderContentEncoding)
 	headerEncoding = utils.UnsafeString(utilsbytes.UnsafeToLower(encodedBytes))
 
 	// Split and get the encodings list, in order to attend the
@@ -649,7 +649,7 @@ func (r *DefaultReq) IP() string {
 func (r *DefaultReq) extractIPsFromHeader(header string) []string {
 	// TODO: Reuse the c.extractIPFromHeader func somehow in here
 
-	headerValue := r.Get(header)
+	headerValue := proxyHeaderValue(r, header)
 
 	// We can't know how many IPs we will return, but we will try to guess with this constant division.
 	// Counting ',' makes function slower for about 50ns in general case.
@@ -713,10 +713,10 @@ func (r *DefaultReq) extractIPFromHeader(header string) string {
 	app := r.c.app
 
 	if !app.config.EnableIPValidation {
-		return r.Get(header)
+		return proxyHeaderValue(r, header)
 	}
 
-	headerValue := r.Get(header)
+	headerValue := proxyHeaderValue(r, header)
 	hasTrustedProxyConfig := r.hasTrustedProxyConfig()
 	if !hasTrustedProxyConfig {
 		start := 0
@@ -766,6 +766,14 @@ func (r *DefaultReq) extractIPFromHeader(header string) string {
 		return ip.String()
 	}
 	return ""
+}
+
+// proxyHeaderValue combines repeated proxy header field lines as required by
+// RFC 9110 Section 5.2. This ensures security-sensitive IP extraction sees the
+// complete chain when an adapter or proxy preserves separate field lines.
+func proxyHeaderValue(r *DefaultReq, header string) string {
+	value := peekJoinedRequestHeader(&r.c.fasthttp.Request.Header, header)
+	return r.c.app.toString(value)
 }
 
 func isValidProxyIP(ipStr string) bool {

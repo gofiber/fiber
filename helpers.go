@@ -606,16 +606,16 @@ func (j *joinedHeaderValue) visit(k, v []byte) {
 }
 
 // peekJoinedRequestHeader returns the combined value of every field line for
-// key in a single pass over the request headers, plus whether the field
-// occurred on more than one line. Unlike PeekAll it performs no per-call key
-// normalization. Concrete (non-generic) so the visitor stays on the stack.
-func peekJoinedRequestHeader(h *fasthttp.RequestHeader, key string) ([]byte, bool) {
+// key in a single pass over the request headers. Unlike PeekAll it performs no
+// per-call key normalization. Concrete (non-generic) so the visitor stays on
+// the stack.
+func peekJoinedRequestHeader(h *fasthttp.RequestHeader, key string) []byte {
 	j := joinedHeaderValue{key: key}
 	// VisitAll (not the replacement All) keeps this zero-alloc: All returns
 	// an iterator closure that escapes to the heap on every call. The SA1019
 	// deprecation is suppressed for helpers.go in .golangci.yml.
 	h.VisitAll(j.visit)
-	return j.combined, j.multi
+	return j.combined
 }
 
 // peekJoinedResponseHeader is peekJoinedRequestHeader for response headers.
