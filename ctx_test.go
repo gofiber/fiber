@@ -3946,6 +3946,57 @@ func Test_Ctx_IP_ProxyHeader_NoTrustedProxies(t *testing.T) {
 	require.Equal(t, "203.0.113.50", c.extractIPFromHeader(HeaderXForwardedFor))
 }
 
+func Test_Ctx_IP_ProxyHeader_RepeatedFieldLines(t *testing.T) {
+	t.Parallel()
+
+	app := New(Config{
+		ProxyHeader:        HeaderXForwardedFor,
+		TrustProxy:         true,
+		EnableIPValidation: true,
+		TrustProxyConfig: TrustProxyConfig{
+			Proxies: []string{"127.0.0.1"},
+		},
+	})
+	fastCtx := &fasthttp.RequestCtx{}
+	fastCtx.SetRemoteAddr(&net.TCPAddr{IP: net.ParseIP("127.0.0.1")})
+	c := app.AcquireCtx(fastCtx)
+	defer app.ReleaseCtx(c)
+	c.Request().Header.Add(HeaderXForwardedFor, "9.9.9.9")
+	c.Request().Header.Add(HeaderXForwardedFor, "198.51.100.77, 127.0.0.1")
+
+	require.Equal(t, "198.51.100.77", c.IP())
+}
+
+// Repeated field lines must also be combined when the request is parsed off
+// the wire, not just when the headers are set programmatically.
+func Test_Ctx_IP_ProxyHeader_RepeatedFieldLines_Wire(t *testing.T) {
+	t.Parallel()
+
+	app := New(Config{
+		ProxyHeader:        HeaderXForwardedFor,
+		TrustProxy:         true,
+		EnableIPValidation: true,
+		TrustProxyConfig: TrustProxyConfig{
+			Proxies: []string{"0.0.0.0"},
+		},
+	})
+	app.Get("/", func(c Ctx) error {
+		return c.SendString(c.IP())
+	})
+
+	req := httptest.NewRequest(MethodGet, "/", http.NoBody)
+	req.Header.Add(HeaderXForwardedFor, "9.9.9.9")
+	req.Header.Add(HeaderXForwardedFor, "198.51.100.77, 0.0.0.0")
+
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	defer func() { require.NoError(t, resp.Body.Close()) }()
+
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "198.51.100.77", string(body))
+}
+
 func Test_Ctx_IP_ProxyHeader_InvalidIPs(t *testing.T) {
 	t.Parallel()
 	app := New(Config{
