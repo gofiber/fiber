@@ -1866,3 +1866,49 @@ func Test_Config_currentSecond_NegativeClock(t *testing.T) {
 	cfg.clock = func() time.Time { return time.Unix(42, 0) }
 	require.Equal(t, uint64(42), cfg.currentSecond())
 }
+
+// go test -run TestLimiterSlidingSubSecondExpiration -race -v
+func TestLimiterSlidingSubSecondExpiration(t *testing.T) {
+	t.Parallel()
+	// The 0-second window made the sliding weight a division by zero, so the
+	// rate was garbage and requests within Max were rejected.
+	assertSubSecondWindowIsFloored(t, SlidingWindow{})
+}
+
+// go test -run TestLimiterFixedSubSecondExpiration -race -v
+func TestLimiterFixedSubSecondExpiration(t *testing.T) {
+	t.Parallel()
+	// The same 0-second window rotated on every request, so the fixed window
+	// kept resetting its counter and admitted unlimited traffic.
+	assertSubSecondWindowIsFloored(t, FixedWindow{})
+}
+
+// assertSubSecondWindowIsFloored drives a limiter whose ExpirationFunc returns
+// less than a second. The reset header pins the floored window length, which is
+// what fails on every architecture: an unfloored window turns the rate into
+// int(NaN), and that saturates to 0 on arm64 but wraps to MinInt64 on amd64.
+func assertSubSecondWindowIsFloored(t *testing.T, strategy Handler) {
+	t.Helper()
+
+	clock := newTestClock(time.Now().Truncate(time.Second))
+	app := fiber.New()
+	app.Use(New(Config{
+		Max:               5,
+		ExpirationFunc:    func(fiber.Ctx) time.Duration { return 500 * time.Millisecond },
+		clock:             clock.Now,
+		LimiterMiddleware: strategy,
+	}))
+	app.Get("/", func(c fiber.Ctx) error { return c.SendString("Hello tester!") })
+
+	for i := 1; i <= 5; i++ {
+		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, fiber.StatusOK, resp.StatusCode, "request %d", i)
+		require.Equal(t, "1", resp.Header.Get(xRateLimitReset), "request %d", i)
+	}
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusTooManyRequests, resp.StatusCode)
+	require.Equal(t, "1", resp.Header.Get(fiber.HeaderRetryAfter))
+}

@@ -10062,6 +10062,10 @@ func Test_Ctx_ForceReleaseClearsAbandon(t *testing.T) {
 }
 
 // go test -v -run=^$ -bench=Benchmark_Ctx_IsProxyTrusted -benchmem -count=4
+//
+// The b.RunParallel cases must keep the "_Parallel" in their names: CI drops
+// results matching Benchmark.*_Parallel before comparing, and at a few ns/op
+// these measure available cores rather than the code.
 func Benchmark_Ctx_IsProxyTrusted(b *testing.B) {
 	// Scenario without trusted proxy check
 	b.Run("NoProxyCheck", func(b *testing.B) {
@@ -10076,7 +10080,7 @@ func Benchmark_Ctx_IsProxyTrusted(b *testing.B) {
 	})
 
 	// Scenario without trusted proxy check in parallel
-	b.Run("NoProxyCheckParallel", func(b *testing.B) {
+	b.Run("NoProxyCheck_Parallel", func(b *testing.B) {
 		app := New()
 		b.ReportAllocs()
 		b.ResetTimer()
@@ -10106,7 +10110,7 @@ func Benchmark_Ctx_IsProxyTrusted(b *testing.B) {
 	})
 
 	// Scenario with trusted proxy check simple in parallel
-	b.Run("WithProxyCheckSimpleParallel", func(b *testing.B) {
+	b.Run("WithProxyCheckSimple_Parallel", func(b *testing.B) {
 		app := New(Config{
 			TrustProxy: true,
 		})
@@ -10142,7 +10146,7 @@ func Benchmark_Ctx_IsProxyTrusted(b *testing.B) {
 	})
 
 	// Scenario with trusted proxy check in parallel
-	b.Run("WithProxyCheckParallel", func(b *testing.B) {
+	b.Run("WithProxyCheck_Parallel", func(b *testing.B) {
 		app := New(Config{
 			TrustProxy: true,
 			TrustProxyConfig: TrustProxyConfig{
@@ -10200,7 +10204,7 @@ func Benchmark_Ctx_IsProxyTrusted(b *testing.B) {
 	})
 
 	// Scenario with trusted proxy check allow private in parallel
-	b.Run("WithProxyCheckAllowPrivateParallel", func(b *testing.B) {
+	b.Run("WithProxyCheckAllowPrivate_Parallel", func(b *testing.B) {
 		app := New(Config{
 			TrustProxy: true,
 			TrustProxyConfig: TrustProxyConfig{
@@ -10239,7 +10243,7 @@ func Benchmark_Ctx_IsProxyTrusted(b *testing.B) {
 	})
 
 	// Scenario with trusted proxy check allow private as subnets in parallel
-	b.Run("WithProxyCheckAllowPrivateAsSubnetsParallel", func(b *testing.B) {
+	b.Run("WithProxyCheckAllowPrivateAsSubnets_Parallel", func(b *testing.B) {
 		app := New(Config{
 			TrustProxy: true,
 			TrustProxyConfig: TrustProxyConfig{
@@ -10280,7 +10284,7 @@ func Benchmark_Ctx_IsProxyTrusted(b *testing.B) {
 	})
 
 	// Scenario with trusted proxy check allow private, loopback, and link-local in parallel
-	b.Run("WithProxyCheckAllowAllParallel", func(b *testing.B) {
+	b.Run("WithProxyCheckAllowAll_Parallel", func(b *testing.B) {
 		app := New(Config{
 			TrustProxy: true,
 			TrustProxyConfig: TrustProxyConfig{
@@ -10334,7 +10338,7 @@ func Benchmark_Ctx_IsProxyTrusted(b *testing.B) {
 	})
 
 	// Scenario with trusted proxy check allow private, loopback, and link-local as subnets in parallel
-	b.Run("WithProxyCheckAllowAllowAllAsSubnetsParallel", func(b *testing.B) {
+	b.Run("WithProxyCheckAllowAllowAllAsSubnets_Parallel", func(b *testing.B) {
 		app := New(Config{
 			TrustProxy: true,
 			TrustProxyConfig: TrustProxyConfig{
@@ -10385,7 +10389,7 @@ func Benchmark_Ctx_IsProxyTrusted(b *testing.B) {
 	})
 
 	// Scenario with trusted proxy check with subnet in parallel
-	b.Run("WithProxyCheckParallelSubnet", func(b *testing.B) {
+	b.Run("WithProxyCheck_ParallelSubnet", func(b *testing.B) {
 		app := New(Config{
 			TrustProxy: true,
 			TrustProxyConfig: TrustProxyConfig{
@@ -10424,7 +10428,7 @@ func Benchmark_Ctx_IsProxyTrusted(b *testing.B) {
 	})
 
 	// Scenario with trusted proxy check with multiple subnet in parallel
-	b.Run("WithProxyCheckParallelMultipleSubnet", func(b *testing.B) {
+	b.Run("WithProxyCheck_ParallelMultipleSubnet", func(b *testing.B) {
 		app := New(Config{
 			TrustProxy: true,
 			TrustProxyConfig: TrustProxyConfig{
@@ -10473,7 +10477,7 @@ func Benchmark_Ctx_IsProxyTrusted(b *testing.B) {
 	})
 
 	// Scenario with trusted proxy check with all subnets in parallel
-	b.Run("WithProxyCheckParallelAllSubnets", func(b *testing.B) {
+	b.Run("WithProxyCheck_ParallelAllSubnets", func(b *testing.B) {
 		app := New(Config{
 			TrustProxy: true,
 			TrustProxyConfig: TrustProxyConfig{
