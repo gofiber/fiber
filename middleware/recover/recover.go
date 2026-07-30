@@ -8,8 +8,10 @@ import (
 	"github.com/gofiber/fiber/v3"
 )
 
+// Must not start with "panic: ": the panic was recovered, and that exact prefix
+// makes gotestsum treat the whole run as crashed and skip --rerun-fails.
 func defaultStackTraceHandler(_ fiber.Ctx, e any) {
-	fmt.Fprintf(os.Stderr, "panic: %v\n\n%s\n", e, debug.Stack())
+	fmt.Fprintf(os.Stderr, "recovered panic: %v\n\n%s\n", e, debug.Stack())
 }
 
 // DefaultPanicHandler returns r directly if it's an error, and creates a new one with the %v verb otherwise.

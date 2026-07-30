@@ -3,8 +3,11 @@ package recover //nolint:predeclared // TODO: Rename to some non-builtin
 import (
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"strings"
 	"testing"
 
 	"github.com/gofiber/fiber/v3"
@@ -103,4 +106,26 @@ func Test_Recover_EnableStackTrace(t *testing.T) {
 	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/panic", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusInternalServerError, resp.StatusCode)
+}
+
+// Not parallel: swaps os.Stderr to capture what the default handler writes.
+func Test_Recover_DefaultStackTraceHandlerOutput(t *testing.T) {
+	r, w, err := os.Pipe()
+	require.NoError(t, err)
+
+	orig := os.Stderr
+	os.Stderr = w
+	defaultStackTraceHandler(nil, "Hi, I'm an error!")
+	os.Stderr = orig
+	require.NoError(t, w.Close())
+
+	out, err := io.ReadAll(r)
+	require.NoError(t, err)
+	require.NoError(t, r.Close())
+
+	require.Contains(t, string(out), "recovered panic: Hi, I'm an error!")
+	require.Contains(t, string(out), "goroutine")
+	// gotestsum reads a leading "panic: " as a crashed run and then skips
+	// --rerun-fails for every package, so the recovered panic must not use it.
+	require.False(t, strings.HasPrefix(string(out), "panic: "), "output must not look like a fatal panic")
 }
