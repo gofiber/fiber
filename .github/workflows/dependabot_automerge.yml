@@ -35,7 +35,13 @@ jobs:
         if: ${{steps.metadata.outputs.update-type == 'version-update:semver-minor' || steps.metadata.outputs.update-type == 'version-update:semver-patch'}}
         run: |
           gh pr review --approve "$PR_URL"
-          gh pr merge --auto --merge "$PR_URL"
+          n=0
+          until gh pr merge --auto --merge "$PR_URL"; do
+            n=$((n + 1))
+            [ "$n" -ge 5 ] && exit 1
+            echo "merge failed (likely base branch race), retrying in 10s..."
+            sleep 10
+          done
         env:
           PR_URL: ${{github.event.pull_request.html_url}}
           GITHUB_TOKEN: ${{secrets.PR_TOKEN}}
