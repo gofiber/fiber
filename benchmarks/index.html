@@ -387,9 +387,7 @@
   </div>
 
   <footer>
-    Data collected by
-    <a rel="noopener" href="https://github.com/marketplace/actions/continuous-benchmark">github-action-benchmark</a>
-    &middot; page maintained in
+    Data collected by the shared benchmark workflow &middot; page maintained in
     <a rel="noopener" href="https://github.com/gofiber/.github">gofiber/.github</a>
   </footer>
 
@@ -470,6 +468,9 @@
             sha: c.id ? String(c.id).slice(0, 7) : '',
             url: c.url || '',
             msg: c.message ? String(c.message).split('\n')[0] : '',
+            // v2 data records the CPU per run; a model change is where the
+            // unexplained chart jumps used to come from
+            cpu: c.cpu || '',
           };
         });
 
@@ -534,11 +535,33 @@
       return model;
     }
 
+    // v2 data.js is columnar (every series name once, values as a matrix), about
+    // 40x smaller than the per-run format github-action-benchmark wrote. It is
+    // expanded back to that shape here, so the model builder and the JSON
+    // download keep working on the format they always knew - and repos that
+    // have not republished since the switch still load through the legacy path.
+    function expandData(data) {
+      if (!data || data.version !== 2) return data;
+      const entries = (data.runs || []).map(function (run, i) {
+        const benches = [];
+        for (let n = 0; n < data.names.length; n++) {
+          const value = data.values[n][i];
+          if (value == null) continue;
+          benches.push({ name: data.names[n], value: value, unit: data.units[n] });
+        }
+        return {
+          commit: { id: run.id, timestamp: run.timestamp, url: run.url, message: run.message, cpu: run.cpu },
+          benches: benches,
+        };
+      });
+      return { lastUpdate: data.lastUpdate, repoUrl: data.repoUrl, entries: { Benchmark: entries } };
+    }
+
     function parseDataJs(text) {
       const start = text.indexOf('{');
       const end = text.lastIndexOf('}');
       if (start < 0 || end <= start) throw new Error('unexpected data.js format');
-      return JSON.parse(text.slice(start, end + 1));
+      return expandData(JSON.parse(text.slice(start, end + 1)));
     }
 
     // Every Go benchmark function starts with "Benchmark"; drop the noise for display.
@@ -660,7 +683,7 @@
     }
 
     if (typeof module !== 'undefined' && module.exports) {
-      module.exports = { parseName: parseName, shortPkg: shortPkg, buildModel: buildModel, parseDataJs: parseDataJs, cardMatches: cardMatches, sortMetrics: sortMetrics, seriesDelta: seriesDelta, cardDelta: cardDelta, displayName: displayName, compareKey: compareKey, buildCompareModel: buildCompareModel };
+      module.exports = { parseName: parseName, shortPkg: shortPkg, buildModel: buildModel, parseDataJs: parseDataJs, expandData: expandData, cardMatches: cardMatches, sortMetrics: sortMetrics, seriesDelta: seriesDelta, cardDelta: cardDelta, displayName: displayName, compareKey: compareKey, buildCompareModel: buildCompareModel };
     }
   </script>
 
@@ -763,7 +786,7 @@
           const script = document.createElement('script');
           script.src = 'data.js';
           script.onload = function () {
-            if (window.BENCHMARK_DATA) resolve(window.BENCHMARK_DATA);
+            if (window.BENCHMARK_DATA) resolve(expandData(window.BENCHMARK_DATA));
             else reject(new Error('data.js did not define BENCHMARK_DATA'));
           };
           script.onerror = function () { reject(new Error('failed to load data.js')); };
@@ -1057,6 +1080,7 @@
                     const run = runs[items[0].dataIndex] || {};
                     const lines = [run.date + '  ' + run.sha];
                     if (run.msg) lines.push(run.msg.slice(0, 60));
+                    if (run.cpu) lines.push(run.cpu);
                     return lines;
                   },
                   label: function (item) {
