@@ -153,16 +153,17 @@ func configDefault(config ...Config) Config {
 	return cfg
 }
 
-// resolveExpiration normalizes a per-request expiration. Window accounting is
-// whole-second, so a positive sub-second value is floored to 1s instead of
-// truncating to a 0-second window (NaN rate in sliding, no limiting in fixed).
-func resolveExpiration(d time.Duration) (time.Duration, uint64) {
+// windowSeconds turns a per-request expiration into the whole-second window used
+// for accounting. A positive sub-second value floors to 1s instead of truncating
+// to a 0-second window (NaN rate in sliding, no limiting at all in fixed).
+func windowSeconds(d time.Duration) uint64 {
 	if d <= 0 {
 		d = ConfigDefault.Expiration
-	} else if d < time.Second {
-		d = time.Second
 	}
-	return d, uint64(d.Seconds())
+	if sec := uint64(d.Seconds()); sec > 0 {
+		return sec
+	}
+	return 1
 }
 
 // currentSecond returns the current Unix time in whole seconds used for window
