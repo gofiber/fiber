@@ -10,6 +10,7 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/extractors"
+	"github.com/gofiber/fiber/v3/internal/clocktest"
 	"github.com/gofiber/fiber/v3/internal/storage/memory"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
@@ -891,9 +892,9 @@ func Test_Session_Save_IdleTimeout(t *testing.T) {
 		name := sess.Get("name")
 		require.Equal(t, "john", name, "session should contain the saved value before expiration")
 
-		// just to make sure the session has been expired
-		// Add extra buffer time to ensure expiration is processed
-		time.Sleep(sessionDuration + (100 * time.Millisecond))
+		// Wait on the cached clock the storage compares against, not just the
+		// wall clock, or a late timestamp updater keeps the session alive.
+		clocktest.SleepPast(sessionDuration)
 
 		sess.Release()
 
@@ -1769,8 +1770,10 @@ func Test_Session_Fresh_Flag_Bug(t *testing.T) {
 func Test_Session_CSRF_Scenario(t *testing.T) {
 	t.Parallel()
 
+	const idleTimeout = 2 * time.Second // Longer timeout to ensure session persists
+
 	store := NewStore(Config{
-		IdleTimeout: 2 * time.Second, // Longer timeout to ensure session persists
+		IdleTimeout: idleTimeout,
 	})
 	app := fiber.New()
 
@@ -1805,8 +1808,8 @@ func Test_Session_CSRF_Scenario(t *testing.T) {
 	sess2.Release()
 	app.ReleaseCtx(ctx2)
 
-	// Wait for session to expire
-	time.Sleep(2200 * time.Millisecond)
+	// Wait for session to expire on the cached clock the storage compares against
+	clocktest.SleepPast(idleTimeout)
 
 	// Simulate: POST request with expired session
 	// This is the scenario the user reported - session data is gone

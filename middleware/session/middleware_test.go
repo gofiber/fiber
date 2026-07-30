@@ -16,6 +16,7 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/extractors"
+	"github.com/gofiber/fiber/v3/internal/clocktest"
 	"github.com/gofiber/fiber/v3/internal/loggertest"
 	fiberlog "github.com/gofiber/fiber/v3/log"
 	"github.com/gofiber/fiber/v3/middleware/logger"
@@ -480,11 +481,13 @@ func Test_Session_WithConfig(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
 
+	const idleTimeout = 1 * time.Second
+
 	app.Use(New(Config{
 		Next: func(c fiber.Ctx) bool {
 			return c.Get("key") == "value"
 		},
-		IdleTimeout: 1 * time.Second,
+		IdleTimeout: idleTimeout,
 		Extractor:   extractors.FromCookie("session_id_test"),
 		KeyGenerator: func() string {
 			return "test"
@@ -573,8 +576,8 @@ func Test_Session_WithConfig(t *testing.T) {
 	h(ctx)
 	require.Equal(t, fiber.StatusInternalServerError, ctx.Response.StatusCode())
 
-	// Test idle timeout
-	time.Sleep(1200 * time.Millisecond)
+	// Test idle timeout, waiting on the cached clock the storage compares against
+	clocktest.SleepPast(idleTimeout)
 	ctx = &fasthttp.RequestCtx{}
 	ctx.Request.Header.SetMethod(fiber.MethodGet)
 	ctx.Request.Header.SetCookie("session_id_test", token)
