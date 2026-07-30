@@ -917,6 +917,36 @@ func Test_RegexHandler_NilReturnPanics(t *testing.T) {
 }
 
 // Test_RoutePatternMatch_InvalidRegexHandlerPanics verifies RoutePatternMatch also validates RegexHandler configuration.
+// Test_RoutePatternMatch_NormalizesInputs covers the guards that run before any
+// parsing: an empty path and an empty or slash-less pattern are all coerced to
+// the forms the router itself registers, so callers do not have to pre-normalize.
+func Test_RoutePatternMatch_NormalizesInputs(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name    string
+		path    string
+		pattern string
+		want    bool
+	}{
+		{name: "empty pattern becomes root", path: "/", pattern: "", want: true},
+		{name: "empty pattern does not match a child", path: "/a", pattern: "", want: false},
+		{name: "empty path becomes root", path: "", pattern: "/", want: true},
+		{name: "both empty", path: "", pattern: "", want: true},
+		{name: "pattern gains a leading slash", path: "/a", pattern: "a", want: true},
+		{name: "slash-less pattern with a param", path: "/1", pattern: ":id", want: true},
+		{name: "slash-less pattern that should not match", path: "/b", pattern: "a", want: false},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, tc.want, RoutePatternMatch(tc.path, tc.pattern),
+				"path=%q pattern=%q", tc.path, tc.pattern)
+		})
+	}
+}
+
 func Test_RoutePatternMatch_InvalidRegexHandlerPanics(t *testing.T) {
 	t.Parallel()
 
@@ -1040,4 +1070,65 @@ func Test_RouteParser_ConstParamFixture(t *testing.T) {
 		}
 	}
 	require.NotZero(t, checked, "fixture exercised no specialized routes")
+}
+
+// Test_RoutePatternMatch_MatchesRouter is a differential test: RoutePatternMatch
+// documents itself as "see logic in (*Route).match and (*App).register", so for
+// every pattern/path/config combination it must agree with what the router
+// actually does. It caught RoutePatternMatch trimming trailing slashes from the
+// pattern but not from the path.
+func Test_RoutePatternMatch_MatchesRouter(t *testing.T) {
+	t.Parallel()
+
+	patterns := []string{
+		"/", "/a", "/a/b", "/:id", "/a/:id", "/a/:id?", "/a/*", "/*", "/+",
+		"/a/+", "/:a/:b", "/a-:b", "/a.:b", "/:a?/b", "/api/v1/:id/x",
+		"/a/*/b", "/:id<int>", "/:id<minLen(3)>", "/a/:b?/c", "/ab/*",
+		// Case-sensitive constraints: these are evaluated against the value
+		// getMatch slices out of the untouched path, not the detection path.
+		"/:id<regex(^[a-z]+$)>", "/:id<regex(^[A-Z]+$)>", "/:id<regex(^[^a-z]+$)>",
+		"/user/:n<regex(^[A-Z][a-z]+$)>",
+		// Escaped specials: register strips the escapes before deriving the
+		// root/star flags, so the helper has to as well.
+		`/\*`, `/\:id`, `/a\-b`,
+	}
+	paths := []string{
+		"/", "/a", "/a/", "/a/b", "/a/b/", "/1", "/a/1", "/a/b/c",
+		"/a-b", "/a.b", "/b", "/api/v1/9/x", "/a/x/b", "/abc", "/ab",
+		"/a/b/c/d", "//", "/a//b", "/ab/", "/A", "/A/",
+		"/ABC", "/Abc", "/user/John", "/a%2Fb", "/a%20b", "/a%41b",
+	}
+	configs := []Config{
+		{},
+		{StrictRouting: true},
+		{CaseSensitive: true},
+		{StrictRouting: true, CaseSensitive: true},
+		{UnescapePath: true},
+		{UnescapePath: true, CaseSensitive: true},
+		{UnescapePath: true, StrictRouting: true},
+	}
+
+	for _, cfg := range configs {
+		name := fmt.Sprintf("strict=%v/casesensitive=%v/unescape=%v",
+			cfg.StrictRouting, cfg.CaseSensitive, cfg.UnescapePath)
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			for _, pattern := range patterns {
+				for _, path := range paths {
+					app := New(cfg)
+					matched := false
+					app.Get(pattern, func(_ Ctx) error {
+						matched = true
+						return nil
+					})
+
+					_, err := app.Test(httptest.NewRequest(MethodGet, path, http.NoBody))
+					require.NoError(t, err)
+
+					require.Equal(t, matched, RoutePatternMatch(path, pattern, cfg),
+						"pattern=%q path=%q", pattern, path)
+				}
+			}
+		})
+	}
 }

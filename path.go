@@ -17,6 +17,7 @@ import (
 	"github.com/gofiber/utils/v2"
 	utilsbytes "github.com/gofiber/utils/v2/bytes"
 	utilsstrings "github.com/gofiber/utils/v2/strings"
+	"github.com/valyala/fasthttp"
 )
 
 // routeParser holds the path segments and param names.
@@ -209,14 +210,27 @@ func RoutePatternMatch(path, pattern string, cfg ...Config) bool {
 
 	patternPretty := []byte(pattern)
 
-	// Case-sensitive routing, all to lowercase
+	// Mirror DefaultCtx.configDependentPaths: the router derives a separate
+	// detection path (percent-decoded when UnescapePath is set, lowercased when
+	// CaseSensitive is off, trailing slashes stripped when StrictRouting is
+	// off) and keeps c.path untouched. getMatch takes both — the detection path
+	// to match against and the untouched path to slice parameter values out of
+	// — so constraints see the same bytes here as they do in the router.
+	if config.UnescapePath {
+		path = utils.UnsafeString(fasthttp.AppendUnquotedArg(nil, utils.UnsafeBytes(path)))
+	}
+
+	detectionPath := path
 	if !config.CaseSensitive {
 		patternPretty = utilsbytes.UnsafeToLower(patternPretty)
-		path = utilsstrings.ToLower(path)
+		detectionPath = utilsstrings.ToLower(detectionPath)
 	}
 	// Strict routing, remove trailing slashes
 	if !config.StrictRouting && len(patternPretty) > 1 {
 		patternPretty = utils.TrimRight(patternPretty, '/')
+	}
+	if !config.StrictRouting && len(detectionPath) > 1 {
+		detectionPath = utils.TrimRight(detectionPath, '/')
 	}
 
 	parser, _ := routerParserPool.Get().(*routeParser) //nolint:errcheck // only contains routeParser
@@ -225,21 +239,24 @@ func RoutePatternMatch(path, pattern string, cfg ...Config) bool {
 	parser.parseRoute(patternStr, config.RegexHandler)
 	defer routerParserPool.Put(parser)
 
-	// '*' wildcard matches any path
-	if (patternStr == "/" && path == "/") || patternStr == "/*" {
+	// '*' wildcard matches any path. App.register derives the root/star flags
+	// from the escape-stripped pattern, so compare against that form: "/\*" is
+	// an escaped literal here but registers as a star route.
+	patternClean := RemoveEscapeChar(patternStr)
+	if (patternClean == "/" && detectionPath == "/") || patternClean == "/*" {
 		return true
 	}
 
 	// Does this route have parameters
 	if len(parser.params) > 0 {
-		if match := parser.getMatch(path, path, &ctxParams, false); match {
+		if match := parser.getMatch(detectionPath, path, &ctxParams, false); match {
 			return true
 		}
 	}
 	// Check for a simple match
 	patternPretty = RemoveEscapeCharBytes(patternPretty)
 
-	return string(patternPretty) == path
+	return string(patternPretty) == detectionPath
 }
 
 func (parser *routeParser) reset() {
