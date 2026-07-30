@@ -54,6 +54,20 @@ func (c *testClock) Add(d time.Duration) {
 	c.now = c.now.Add(d)
 }
 
+// tickingClock advances a second on every read, so any clock read the store
+// phase performs after the Date header was stamped surfaces as phantom age.
+type tickingClock struct {
+	now time.Time
+	mu  sync.Mutex
+}
+
+func (c *tickingClock) Now() time.Time {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.now = c.now.Add(time.Second)
+	return c.now
+}
+
 type failingCacheStorage struct {
 	data map[string][]byte
 	errs map[string]error
@@ -2354,6 +2368,44 @@ func Test_CacheInvalidExpiresStoredAsStale(t *testing.T) {
 	require.Equal(t, "body3", string(body))
 	require.Contains(t, storage.data, expectedKey)
 	require.Contains(t, storage.data, expectedKey+"_body")
+}
+
+func Test_CacheStoreDoesNotAgeItsOwnResponse(t *testing.T) {
+	t.Parallel()
+
+	// A response fiber just generated has age 0, so a one-second lifetime has to
+	// survive the store phase no matter how much time passes inside it.
+	clock := &tickingClock{now: time.Now().Truncate(time.Second)}
+	app := fiber.New()
+	app.Use(New(Config{clock: clock.Now}))
+
+	app.Get("/", func(c fiber.Ctx) error {
+		c.Set(fiber.HeaderCacheControl, "max-age=1")
+		return c.SendString("cached")
+	})
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, cacheMiss, resp.Header.Get("X-Cache"))
+}
+
+func Test_CacheStoreExpiresAnchoredToDate(t *testing.T) {
+	t.Parallel()
+
+	// An Expires lifetime must be measured from the instant the Date header is
+	// anchored to, or clock reads inside the store phase consume it.
+	clock := &tickingClock{now: time.Now().Truncate(time.Second)}
+	app := fiber.New()
+	app.Use(New(Config{clock: clock.Now}))
+
+	app.Get("/", func(c fiber.Ctx) error {
+		c.Set(fiber.HeaderExpires, clock.Now().Add(2*time.Second).UTC().Format(http.TimeFormat))
+		return c.SendString("cached")
+	})
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, cacheMiss, resp.Header.Get("X-Cache"))
 }
 
 func Test_CacheSMaxAgeOverridesMaxAgeWhenShorter(t *testing.T) {
