@@ -225,3 +225,24 @@ func Test_Pprof_Next_WithPrefix(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 404, resp.StatusCode)
 }
+
+// Test_Pprof_Sibling_Prefix_Path ensures a route that merely starts with the
+// same characters as /debug/pprof is not swallowed by the middleware.
+func Test_Pprof_Sibling_Prefix_Path(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+
+	app.Use(New())
+
+	app.Get("/debug/pprofiler", func(c fiber.Ctx) error {
+		return c.SendString("app route")
+	})
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/debug/pprofiler", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "app route", string(body))
+}
