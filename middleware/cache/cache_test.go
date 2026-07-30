@@ -2562,7 +2562,10 @@ func Test_CacheMaxStaleRespectsProxyRevalidateSharedAuth(t *testing.T) {
 	var count int
 	app.Get("/", func(c fiber.Ctx) error {
 		count++
-		c.Set(fiber.HeaderCacheControl, "s-maxage=1, proxy-revalidate")
+		// s-maxage=2, not 1: the store phase reads cfg.now() twice and charges the
+		// whole second in between as apparent age, so a one-second lifetime can be
+		// consumed entirely and the entry reported unreachable instead of cached.
+		c.Set(fiber.HeaderCacheControl, "s-maxage=2, proxy-revalidate")
 		return c.SendString(strconv.Itoa(count))
 	})
 
@@ -2573,7 +2576,7 @@ func Test_CacheMaxStaleRespectsProxyRevalidateSharedAuth(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, cacheMiss, resp.Header.Get("X-Cache"))
 
-	time.Sleep(1500 * time.Millisecond)
+	time.Sleep(2500 * time.Millisecond)
 
 	req = httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	req.Header.Set(fiber.HeaderAuthorization, "Bearer abc")

@@ -17,6 +17,7 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/extractors"
+	"github.com/gofiber/fiber/v3/internal/clocktest"
 	"github.com/gofiber/fiber/v3/internal/loggertest"
 	"github.com/gofiber/fiber/v3/internal/redact"
 	fiberlog "github.com/gofiber/fiber/v3/log"
@@ -417,8 +418,10 @@ func Test_CSRF_ExpiredToken(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
 
+	const idleTimeout = 1 * time.Second
+
 	app.Use(New(Config{
-		IdleTimeout: 1 * time.Second,
+		IdleTimeout: idleTimeout,
 	}))
 
 	app.Post("/", func(c fiber.Ctx) error {
@@ -443,8 +446,8 @@ func Test_CSRF_ExpiredToken(t *testing.T) {
 	h(ctx)
 	require.Equal(t, 200, ctx.Response.StatusCode())
 
-	// Wait for the token to expire
-	time.Sleep(1250 * time.Millisecond)
+	// Wait for the token to expire on the cached clock the storage compares against
+	clocktest.SleepPast(t, idleTimeout)
 
 	// Expired CSRF token
 	ctx.Request.Reset()
@@ -520,7 +523,7 @@ func Test_CSRF_ExpiredToken_WithSession(t *testing.T) {
 	h(ctx)
 	require.Equal(t, 200, ctx.Response.StatusCode())
 
-	// Wait for the token to expire
+	// Wait for the token to expire (session-backed tokens carry a real-clock expiry)
 	time.Sleep(1*time.Second + 100*time.Millisecond)
 
 	// Expired CSRF token
