@@ -2692,6 +2692,22 @@ import "github.com/gofiber/fiber/v3/client"
 | With Struct | - | `c.SetCookiesWithStruct(v)` | `req.SetCookiesWithStruct(v)` |
 | Cookie Jar | - | `c.SetCookieJar(jar)` | - |
 
+:::caution Cookie jar path scoping
+`CookieJar.Set(uri, cookies...)` scopes a cookie that carries no usable `Path` attribute to the request URI's [RFC 6265 §5.1.4](https://datatracker.ietf.org/doc/html/rfc6265#section-5.1.4) default-path, matching how a `Set-Cookie` received for that URI is stored. A cookie set against `/a/b` with no `Path` is scoped to `/a`, not to the whole host, so it is no longer sent to `/other`.
+
+Set `Path` explicitly to keep a cookie host-wide:
+
+```go
+c := fasthttp.AcquireCookie()
+c.SetKey("session")
+c.SetValue(token)
+c.SetPath("/") // without this, the scope comes from uri's directory
+jar.Set(uri, c)
+```
+
+`SetByHost`, `SetKeyValue` and `SetKeyValueBytes` take no URI, so they have no request path to derive a scope from and continue to store such cookies at `/`.
+:::
+
 ##### Query Parameters
 
 | Description | v2 | v3 (Client) | v3 (Request) |

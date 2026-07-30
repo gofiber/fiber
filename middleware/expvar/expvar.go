@@ -19,16 +19,21 @@ func New(config ...Config) fiber.Handler {
 			return c.Next()
 		}
 
+		const prefix = "/debug/vars"
+
 		path := c.Path()
-		// We are only interested in /debug/vars routes
-		if len(path) < 11 || !strings.HasPrefix(path, "/debug/vars") {
-			return c.Next()
-		}
-		if path == "/debug/vars" {
+		if path == prefix {
 			expvarhandler.ExpvarHandler(c.RequestCtx())
 			return nil
 		}
 
-		return c.Redirect().To("/debug/vars")
+		// Only /debug/vars and paths beneath it belong to this middleware.
+		// Matching on the bare prefix would also swallow sibling routes that
+		// merely start with the same characters, e.g. /debug/varsdump.
+		if !strings.HasPrefix(path, prefix+"/") {
+			return c.Next()
+		}
+
+		return c.Redirect().To(prefix)
 	}
 }

@@ -117,7 +117,9 @@ type chainGuardKey struct {
 //
 // RFC Compliance:
 //   - Follows RFC 9110 Section 11.6.2 for Authorization header format
-//   - Enforces 1*SP (one or more spaces) between auth-scheme and credentials
+//   - Requires exactly one SP between auth-scheme and credentials. RFC 9110
+//     permits 1*SP, but a single space is what clients send in practice and
+//     the stricter rule keeps the parse unambiguous.
 //   - Implements RFC 7235 token68 character validation for extracted tokens
 //   - Case-insensitive auth scheme matching per HTTP standards
 //

@@ -17,7 +17,10 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-var ErrInvalidSHA256PasswordLength = errors.New("decode SHA256 password: invalid length")
+var (
+	ErrInvalidSHA256PasswordLength = errors.New("decode SHA256 password: invalid length")
+	ErrInvalidSHA512PasswordLength = errors.New("decode SHA512 password: invalid length")
+)
 
 // fallbackDummySHA512 is SHA-512("fiber-basicauth-dummy"), used as a
 // constant-time comparison target when no users are configured.
@@ -269,6 +272,12 @@ func parseHashedPassword(h string) (passwordVerifier, error) {
 		if err != nil {
 			return nil, fmt.Errorf("decode SHA512 password: %w", err)
 		}
+		// A digest of the wrong size can never equal a SHA-512 sum, so
+		// accepting it would silently reject every password for this user.
+		// Report it instead, which surfaces as a panic at startup.
+		if len(b) != sha512.Size {
+			return nil, ErrInvalidSHA512PasswordLength
+		}
 		return func(p string) bool {
 			sum := sha512.Sum512([]byte(p))
 			return subtle.ConstantTimeCompare(sum[:], b) == 1
@@ -277,6 +286,9 @@ func parseHashedPassword(h string) (passwordVerifier, error) {
 		b, err := base64.StdEncoding.DecodeString(h[len("{SHA256}"):])
 		if err != nil {
 			return nil, fmt.Errorf("decode SHA256 password: %w", err)
+		}
+		if len(b) != sha256.Size {
+			return nil, ErrInvalidSHA256PasswordLength
 		}
 		return func(p string) bool {
 			sum := sha256.Sum256([]byte(p))

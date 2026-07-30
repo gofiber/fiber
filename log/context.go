@@ -9,7 +9,6 @@ import (
 
 	"github.com/gofiber/fiber/v3/internal/contextvalue"
 	"github.com/gofiber/fiber/v3/internal/logtemplate"
-	"github.com/gofiber/utils/v2/swar"
 )
 
 // TagContextValue reads a value from the bound context-like value using the tag parameter as the key.
@@ -207,85 +206,14 @@ func defaultContextValueTag(output Buffer, ctx any, _ *ContextData, extraParam s
 }
 
 // writeSanitized writes p to output with ASCII control bytes replaced by
-// spaces. Tabs are preserved. Clean inputs (the common case) forward
-// directly to output.Write with no allocation; dirty inputs are scrubbed
-// into a copy starting at the first control byte.
+// spaces. Tabs are preserved. See logtemplate.WriteSanitized.
 func writeSanitized(output Buffer, p []byte) (int, error) {
-	idx := indexControlByte(p)
-	if idx == -1 {
-		return output.Write(p)
-	}
-	return output.Write(scrubControls(p, idx))
+	return logtemplate.WriteSanitized(output, p)
 }
 
-// writeSanitizedString is writeSanitized for strings, keeping the clean
-// fast path on output.WriteString.
+// writeSanitizedString is writeSanitized for strings.
 func writeSanitizedString(output Buffer, s string) (int, error) {
-	idx := indexControlByte(s)
-	if idx == -1 {
-		return output.WriteString(s)
-	}
-	return output.Write(scrubControls(s, idx))
-}
-
-// scrubControls returns a copy of s with every byte isControlByte matches
-// replaced by a space. idx is the index of the first such byte, so the
-// scan starts there and the clean prefix is copied untouched.
-func scrubControls[S ~string | ~[]byte](s S, idx int) []byte {
-	scrubbed := make([]byte, len(s))
-	copy(scrubbed, s)
-	for i := idx; i < len(scrubbed); i++ {
-		if isControlByte(scrubbed[i]) {
-			scrubbed[i] = ' '
-		}
-	}
-	return scrubbed
-}
-
-// indexControlByte returns the index of the first byte isControlByte matches,
-// or -1 if none is present. It scans eight bytes at a time; inputs of 8+
-// bytes finish with one overlapping word, shorter ones byte-wise.
-func indexControlByte[S ~string | ~[]byte](s S) int {
-	n := len(s)
-	i := 0
-	for ; i+swar.WordLen <= n; i += swar.WordLen {
-		if m := controlScrubMask(swar.Load8(s, i)); m != 0 {
-			return i + swar.FirstLane(m)
-		}
-	}
-	if i == n {
-		return -1
-	}
-	if n >= swar.WordLen {
-		if m := controlScrubMask(swar.Load8(s, n-swar.WordLen)); m != 0 {
-			return n - swar.WordLen + swar.FirstLane(m)
-		}
-		return -1
-	}
-	for ; i < n; i++ {
-		if isControlByte(s[i]) {
-			return i
-		}
-	}
-	return -1
-}
-
-// controlScrubMask marks the lanes of w holding bytes isControlByte matches:
-// C0 controls except HTAB, plus DEL. Bytes >= 0x80 are never marked.
-func controlScrubMask(w uint64) uint64 {
-	return (swar.MatchRangeMask(w, 0x00, 0x1f) &^ swar.MatchByteMask(w, '\t')) | swar.MatchByteMask(w, 0x7f)
-}
-
-// isControlByte reports whether b is an ASCII control byte that must not pass
-// through to a log line. Tab is preserved because operators frequently use it
-// for delimiting structured fields. CR, LF, NUL, and the other C0/DEL bytes
-// are replaced — they are the bytes attackers use to forge log lines or
-// corrupt terminal output via ANSI escape sequences.
-func isControlByte(b byte) bool {
-	if b == '\t' {
-		return false
-	}
-	return b < 0x20 || b == 0x7f
+	return logtemplate.WriteSanitizedString(output, s)
 }
 
 func emptyContextTag(_ Buffer, _ any, _ *ContextData, _ string) (int, error) {

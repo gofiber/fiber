@@ -149,6 +149,8 @@ Auto-registered tags are access-log tags for `middleware/logger`. The same names
 
 Third-party middleware can expose logger tags with `logger.RegisterTag` or `logger.MustRegisterTag`. Use `sync.Once` so the tag is registered once even when the middleware is initialized multiple times.
 
+A tag you register replaces the built-in renderer, so it does not inherit the [control-character scrubbing](#control-character-sanitization) the built-in tags apply. Wrap request-derived values in `logger.SanitizeValue`.
+
 ```go
 package tenantmw
 
@@ -189,7 +191,7 @@ app.Use(logger.New(logger.Config{
 }))
 ```
 
-Use `Config.CustomTags` when one logger instance needs a local override without changing the global tag registration:
+Use `Config.CustomTags` when one logger instance needs a local override without changing the global tag registration. These also bypass the built-in [control-character scrubbing](#control-character-sanitization) — wrap request-derived values in `logger.SanitizeValue`:
 
 ```go
 app.Use(logger.New(logger.Config{
@@ -297,6 +299,37 @@ Logger provides predefined formats that you can use by name or directly by speci
 `${bytesSent}` returns the value of the `Content-Length` response header. If the header is missing or the response is streaming (e.g., chunked encoding), the value will be `-1`. Fiber does not calculate the actual response body size for performance reasons.
 :::
 
+## Control-Character Sanitization
+
+Values that come from the request are scrubbed before they reach the log stream: every ASCII control byte (C0 and DEL) is replaced with a space, and horizontal tab is preserved. Without this, a percent-decoded query parameter, form field, or request body containing `\r\n` could forge additional access-log lines and corrupt an audit trail.
+
+Scrubbing covers the default format as well as these tags:
+
+`${path}` `${url}` `${ua}` `${referer}` `${ip}` `${ips}` `${host}` `${scheme}` `${route}` `${body}` `${resBody}` `${reqHeaders}` `${queryParams}` `${error}` `${reqHeader:}` `${respHeader:}` `${query:}` `${form:}` `${cookie:}` `${locals:}`
+
+Tags whose values the framework controls — `${status}`, `${method}`, `${protocol}`, `${port}`, `${latency}`, `${pid}`, `${time}`, `${bytesSent}`, `${bytesReceived}` and the color tags — are written unchanged. `${method}` and `${protocol}` come from the request line, which fasthttp rejects outright if it holds a control byte.
+
+Only ASCII controls are replaced. Bytes at or above `0x80` pass through untouched, so C1 controls (U+0080–U+009F, including NEL U+0085, which some log pipelines treat as a line break) survive scrubbing. Handle those yourself if your values can carry them.
+
+:::caution
+Four paths bypass the built-in scrubbing, because each one replaces the renderer rather than wrapping it:
+
+- `Config.CustomTags`
+- `RegisterTag` / `MustRegisterTag`
+- `RegisterContextTag`
+- `Config.LoggerFunc`, which replaces the rendering pipeline wholesale
+
+Anything request-derived that you write from one of these needs scrubbing. Use `logger.SanitizeValue`, which applies exactly what the built-in tags apply:
+
+```go
+logger.MustRegisterTag("tenant", func(output logger.Buffer, c fiber.Ctx, _ *logger.Data, _ string) (int, error) {
+    return output.WriteString(logger.SanitizeValue(c.Get("X-Tenant-ID")))
+})
+```
+
+Fiber's own context tags — `${username}`, `${api-key}`, `${csrf-token}`, `${requestid}`, `${session-id}` — are safe because the middleware behind each one validates or redacts at the source, not because `RegisterContextTag` scrubs.
+:::
+
 ## Constants
 
 ```go
@@ -306,6 +339,7 @@ const (
     TagTime              = "time"
     TagReferer           = "referer"
     TagProtocol          = "protocol"
+    TagScheme            = "scheme"
     TagPort              = "port"
     TagIP                = "ip"
     TagIPs               = "ips"

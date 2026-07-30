@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/gofiber/utils/v2"
-	utilsbytes "github.com/gofiber/utils/v2/bytes"
 	utilsstrings "github.com/gofiber/utils/v2/strings"
 	"github.com/valyala/bytebufferpool"
 	"github.com/valyala/fasthttp"
@@ -166,8 +165,15 @@ func (r *DefaultReq) Body() []byte {
 
 	// Get Content-Encoding header. Multiple field lines form one combined
 	// list (RFC 9110 Section 5.2), so join them before splitting.
+	// The single-line result aliases the header storage, so fold into a new
+	// string rather than rewriting the request's own bytes. utilsstrings.ToLower
+	// returns its input unchanged when there is no uppercase byte, which every
+	// real value ("gzip", "br", "deflate", "identity") satisfies — so the common
+	// path stays allocation-free. A stack scratch buffer is not an option here:
+	// the substrings flow into encodingOrder and on into tryDecodeBodyInOrder,
+	// which forces the array to the heap on every call.
 	encodedBytes := peekJoinedRequestHeader(&request.Header, HeaderContentEncoding)
-	headerEncoding = utils.UnsafeString(utilsbytes.UnsafeToLower(encodedBytes))
+	headerEncoding = utilsstrings.ToLower(utils.UnsafeString(encodedBytes))
 
 	// Split and get the encodings list, in order to attend the
 	// rule defined at: https://www.rfc-editor.org/rfc/rfc9110#section-8.4-5

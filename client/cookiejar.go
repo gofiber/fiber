@@ -3,7 +3,9 @@ package client
 
 import (
 	"bytes"
+	"cmp"
 	"net"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -15,7 +17,49 @@ import (
 	"golang.org/x/net/publicsuffix"
 )
 
-const maxCookieJarHosts = 1024
+const (
+	maxCookieJarHosts = 1024
+
+	// maxCookiesPerHost bounds the cookies stored under one storage key.
+	// Scoping path-less cookies to their default-path (RFC 6265 Section
+	// 5.1.4) means one origin can mint a distinct entry per directory it
+	// serves, so the per-host count needs its own ceiling — the host cap
+	// alone no longer bounds the jar. RFC 6265 Section 5.3 suggests evicting
+	// when a domain exceeds a limit; 64 is comfortably above what real sites
+	// use.
+	maxCookiesPerHost = 64
+
+	// maxCookiesPerRequest bounds how many cookies one request may carry. The
+	// per-key cap alone does not bound this: a host-only cookie and one
+	// Domain= cookie per parent label are stored under different keys and all
+	// domain-match the same request, so a host deep in a DNS tree can multiply
+	// its allowance by its label count and inflate the Cookie header it makes
+	// the client send. RFC 6265 Section 5.3 asks for at least 50 cookies per
+	// domain; this sits above that floor, and the most specific cookies are
+	// kept because the list is already sorted longest-path-first.
+	//
+	// It is applied in dumpCookiesToReq rather than in cookiesForRequest: the
+	// limit is about what goes on the wire, and cookiesForRequest also backs the
+	// exported Get, which promises every stored cookie matching the URI.
+	maxCookiesPerRequest = 64
+
+	// defaultCookiePathStr is the path assumed for a cookie that carries no
+	// usable Path attribute and for a request with no path
+	// (RFC 6265 Section 5.1.4).
+	defaultCookiePathStr = "/"
+)
+
+// defaultCookiePath is the byte form of defaultCookiePathStr. Every use is
+// read-only — it is only ever compared against or copied out of — so the one
+// shared backing array is safe and avoids a per-call []byte conversion, which
+// escapes to the heap on this path.
+var defaultCookiePath = []byte(defaultCookiePathStr)
+
+// Replacement pair for escapePercent, hoisted so it is not rebuilt per call.
+var (
+	percentByte    = []byte("%")
+	percentEscaped = []byte("%25")
+)
 
 var cookieJarPool = sync.Pool{
 	New: func() any {
@@ -49,11 +93,27 @@ type CookieJar struct {
 	// If release logic is re-enabled for these entries, iterate as storedCookie
 	// values and call fasthttp.ReleaseCookie(stored.cookie) on the wrapped cookie.
 	hostCookies map[string][]storedCookie
+	seq         uint64
 	mu          sync.Mutex
 }
 
+// nextSeqLocked returns the next write sequence number.
+func (cj *CookieJar) nextSeqLocked() uint64 {
+	cj.seq++
+	return cj.seq
+}
+
 type storedCookie struct {
-	cookie     *fasthttp.Cookie
+	cookie *fasthttp.Cookie
+	// seq is the jar-wide sequence number of the write that last stored this
+	// cookie. It orders equal-length paths deterministically in
+	// cookiesForRequest (RFC 6265 Section 5.4 breaks such ties by creation
+	// time; sorting by last write matches that for cookies that are never
+	// rewritten, which is the common case) and picks the eviction victim in
+	// enforceHostCookieLimitLocked. Refreshing it on every write is what keeps
+	// a session cookie the server re-sends on each response from aging out
+	// behind a flood of one-off cookies.
+	seq        uint64
 	isHostOnly bool
 }
 
@@ -134,7 +194,7 @@ func (cj *CookieJar) cookiesForRequest(host string, path []byte, secure bool) []
 
 	host = utilsstrings.ToLower(host)
 	now := time.Now()
-	var matched []*fasthttp.Cookie
+	var matched []matchedCookie
 
 	for domain, cookies := range cj.hostCookies {
 		if len(cookies) == 0 {
@@ -164,7 +224,7 @@ func (cj *CookieJar) cookiesForRequest(host string, path []byte, secure bool) []
 			}
 			nc := fasthttp.AcquireCookie()
 			nc.CopyTo(c)
-			matched = append(matched, nc)
+			matched = append(matched, matchedCookie{cookie: nc, seq: sc.seq})
 		}
 		if len(kept) == 0 {
 			delete(cj.hostCookies, domain)
@@ -173,25 +233,70 @@ func (cj *CookieJar) cookiesForRequest(host string, path []byte, secure bool) []
 		}
 	}
 
-	return matched
+	// RFC 6265 Section 5.4 step 2: cookies with a longer path sort first,
+	// ties broken by creation order. Both halves matter — matched is assembled
+	// by ranging over hostCookies, so without an explicit tiebreak two
+	// equal-length paths stored under different keys (a host-only cookie and a
+	// Domain= cookie of the same name) would order randomly and the value put
+	// on the wire would change run to run.
+	if len(matched) > 1 {
+		slices.SortStableFunc(matched, func(a, b matchedCookie) int {
+			if d := len(b.cookie.Path()) - len(a.cookie.Path()); d != 0 {
+				return d
+			}
+			return cmp.Compare(a.seq, b.seq)
+		})
+	}
+
+	out := make([]*fasthttp.Cookie, len(matched))
+	for i, m := range matched {
+		out[i] = m.cookie
+	}
+	return out
 }
 
-// Set stores the given cookies for the specified URI host. If a cookie key already exists,
-// it will be replaced by the new cookie value.
+// matchedCookie pairs a cookie copy with the write sequence of the entry it
+// came from, so cookiesForRequest can order equal-length paths deterministically.
+type matchedCookie struct {
+	cookie *fasthttp.Cookie
+	seq    uint64
+}
+
+// Set stores the given cookies for the specified URI host. A stored cookie is
+// replaced only when it matches on both key and normalized path within the same
+// storage scope; cookies sharing a key at different paths coexist, and the most
+// specific one is sent first (RFC 6265 Section 5.4).
+//
+// A cookie with no usable Path attribute is scoped to the URI's default-path
+// (RFC 6265 Section 5.1.4), the same rule applied to a Set-Cookie received for
+// that URI: cookies set against "/a/b" are scoped to "/a", not to the whole
+// host. Set an explicit Path on the cookie to widen it.
 //
 // CookieJar stores copies of the provided cookies, so they may be safely released after use.
 func (cj *CookieJar) Set(uri *fasthttp.URI, cookies ...*fasthttp.Cookie) {
 	if uri == nil {
 		return
 	}
-	cj.SetByHost(uri.Host(), cookies...)
+	cj.setByHostAndPath(uri.Host(), uri.Path(), cookies...)
 }
 
-// SetByHost stores the given cookies for the specified host. If a cookie key already exists,
-// it will be replaced by the new cookie value.
+// SetByHost stores the given cookies for the specified host. A stored cookie is
+// replaced only when it matches on both key and normalized path within the same
+// storage scope; cookies sharing a key at different paths coexist.
+//
+// There is no request path to derive a default-path from, so a cookie with no
+// usable Path attribute is scoped to "/". Use Set when a URI is available and
+// the RFC 6265 Section 5.1.4 scoping is wanted.
 //
 // CookieJar stores copies of the provided cookies, so they may be safely released after use.
 func (cj *CookieJar) SetByHost(host []byte, cookies ...*fasthttp.Cookie) {
+	cj.setByHostAndPath(host, nil, cookies...)
+}
+
+// setByHostAndPath backs Set and SetByHost. requestPath is the path of the URI
+// the cookies were set against, used to derive the default-path for cookies
+// that carry no usable Path attribute; a nil requestPath yields "/".
+func (cj *CookieJar) setByHostAndPath(host, requestPath []byte, cookies ...*fasthttp.Cookie) {
 	hostStr := utils.UnsafeString(host)
 	if h, _, err := net.SplitHostPort(hostStr); err == nil {
 		hostStr = h
@@ -206,14 +311,27 @@ func (cj *CookieJar) SetByHost(host []byte, cookies ...*fasthttp.Cookie) {
 		cj.hostCookies = make(map[string][]storedCookie)
 	}
 
+	// One scratch cookie for the whole call, used only to learn what path
+	// fasthttp will actually persist. Acquired outside the loop so a caller
+	// passing many cookies still pays a single pooled get.
+	scratch := fasthttp.AcquireCookie()
+	defer fasthttp.ReleaseCookie(scratch)
+
+	defaultPath := defaultCookiePathFor(requestPath)
+
 	for _, cookie := range cookies {
-		domain := utils.TrimLeft(cookie.Domain(), '.')
-		utilsbytes.UnsafeToLower(domain)
+		// Fold with utilsstrings.ToLower rather than in place: the cookie
+		// belongs to the caller, and the jar documents that it only stores
+		// copies. ToLower returns its input unchanged when there is nothing to
+		// fold, so `domain` may alias the caller's cookie buffer — every
+		// retained use below copies (utils.CopyString for the map key,
+		// Cookie.SetDomain for the stored value), and it must stay that way.
+		domain := utilsstrings.ToLower(utils.UnsafeString(utils.TrimLeft(cookie.Domain(), '.')))
 		key := hostKey
 		storedDomain := hostStr
-		isHostOnly := len(domain) == 0
+		isHostOnly := domain == ""
 		if !isHostOnly {
-			acceptance := acceptCookieDomain(hostStr, utils.UnsafeString(domain))
+			acceptance := acceptCookieDomain(hostStr, domain)
 			if !acceptance.isOk {
 				continue
 			}
@@ -227,21 +345,53 @@ func (cj *CookieJar) SetByHost(host []byte, cookies ...*fasthttp.Cookie) {
 		cj.ensureHostCapacityLocked(key, time.Now())
 		hostCookies := cj.hostCookies[key]
 
-		existing := searchCookieByKeyAndPath(cookie.Key(), cookie.Path(), hostCookies)
+		// Normalize the path up front so an entry stored through this API is
+		// identified — and ordered — exactly like one parsed from a response.
+		// Storing "" verbatim would make searchCookieByKeyAndPath miss the
+		// response-stored twin (breaking this method's documented replace
+		// semantics) and would always lose the specificity sort.
+		//
+		// A missing Path — or one that does not begin with '/', which fasthttp's
+		// ParseBytes stores verbatim — falls back to the caller's default-path,
+		// matching parseCookiesFromResp (RFC 6265 Sections 5.1.4 and 5.2.4).
+		rawPath := cookie.Path()
+		if len(rawPath) == 0 || rawPath[0] != '/' {
+			rawPath = defaultPath
+		}
+
+		// Search on the path the entry will actually carry, not the one the
+		// caller handed us. SetPathBytes runs the value through normalizePath,
+		// which percent-decodes and rewrites ';', so for a cookie built by
+		// ParseBytes the two can differ. Looking up the raw form would miss the
+		// entry an earlier identical call created and append a duplicate
+		// instead of replacing it, consuming per-host slots until eviction drops
+		// a legitimate cookie. setDefaultCookiePath applies the same
+		// escape-and-verify round trip used for response-parsed cookies, so
+		// both entry points agree on the stored form.
+		setDefaultCookiePath(scratch, rawPath)
+		lookupPath := scratch.Path()
+
+		seq := cj.nextSeqLocked()
+		existing := searchCookieByKeyAndPath(cookie.Key(), lookupPath, hostCookies)
 		if existing == nil {
 			existing = fasthttp.AcquireCookie()
-			hostCookies = append(hostCookies, storedCookie{cookie: existing, isHostOnly: isHostOnly})
+			hostCookies = append(hostCookies, storedCookie{cookie: existing, seq: seq, isHostOnly: isHostOnly})
 		} else {
 			for i := range hostCookies {
 				if hostCookies[i].cookie == existing {
 					hostCookies[i].isHostOnly = isHostOnly
+					hostCookies[i].seq = seq
 					break
 				}
 			}
 		}
 		existing.CopyTo(cookie)
+		// Store through the same setter the lookup path came out of, so the
+		// entry carries exactly the bytes the next lookup will search for.
+		setDefaultCookiePath(existing, lookupPath)
 		existing.SetDomain(storedDomain)
 		cj.hostCookies[key] = hostCookies
+		cj.enforceHostCookieLimitLocked(key)
 	}
 }
 
@@ -270,18 +420,99 @@ func (cj *CookieJar) SetKeyValueBytes(host string, key, value []byte) {
 }
 
 // dumpCookiesToReq writes the stored cookies to the given request.
+//
+// cookiesForRequest returns them in RFC 6265 Section 5.4 order (longest path
+// first). fasthttp keys request cookies by name and cannot represent the same
+// name twice, so where several stored cookies share a name only the first —
+// the most specific — is written; writing them all would let the least
+// specific overwrite the most specific.
 func (cj *CookieJar) dumpCookiesToReq(req *fasthttp.Request) {
 	uri := req.URI()
 	secure := bytes.Equal(uri.Scheme(), httpsScheme)
 	cookies := cj.getByHostAndPath(uri.Host(), uri.Path(), secure)
+
+	// Bound what reaches the wire (see maxCookiesPerRequest). Truncating here
+	// rather than in cookiesForRequest keeps the cap off Get, which promises
+	// every stored cookie matching the URI. The list is already sorted
+	// longest-path-first, so the cookies dropped are the least specific.
+	writable := cookies
+	if len(writable) > maxCookiesPerRequest {
+		writable = writable[:maxCookiesPerRequest]
+	}
+
+	for i, cookie := range writable {
+		// Linear scan rather than a set: the list is bounded by
+		// maxCookiesPerRequest and is typically a handful, so this stays
+		// allocation-free where a map would cost one alloc per request.
+		if !containsCookieName(writable[:i], cookie.Key()) {
+			req.Header.SetCookieBytesKV(cookie.Key(), cookie.Value())
+		}
+	}
+
+	// Release only after the scan: ReleaseCookie resets the cookie, so
+	// freeing as we go would blank the names the dedupe compares against and
+	// let a less specific cookie overwrite a more specific one.
 	for _, cookie := range cookies {
-		req.Header.SetCookieBytesKV(cookie.Key(), cookie.Value())
 		fasthttp.ReleaseCookie(cookie)
 	}
 }
 
+// containsCookieName reports whether any cookie in cookies carries name.
+func containsCookieName(cookies []*fasthttp.Cookie, name []byte) bool {
+	for _, c := range cookies {
+		if bytes.Equal(c.Key(), name) {
+			return true
+		}
+	}
+	return false
+}
+
+// defaultCookiePathFor implements the RFC 6265 Section 5.1.4 default-path
+// algorithm. A cookie that arrives without a Path attribute is scoped to the
+// directory of the request that set it, not to the whole host: a Set-Cookie on
+// "/a/b" defaults to "/a", so the cookie is not returned for "/".
+func defaultCookiePathFor(requestPath []byte) []byte {
+	if len(requestPath) == 0 || requestPath[0] != '/' {
+		return defaultCookiePath
+	}
+	i := bytes.LastIndexByte(requestPath, '/')
+	if i <= 0 {
+		return defaultCookiePath
+	}
+	return requestPath[:i]
+}
+
+// setDefaultCookiePath stores path as c's Path attribute.
+//
+// fasthttp's Cookie.SetPathBytes runs the value through normalizePath, which
+// percent-decodes it and turns ';' into a space. The path handed to us came
+// from URI.Path(), which fasthttp has already decoded once, so setting it
+// naively decodes twice: a request for "/a%2541b/c" would store the scope
+// "/aAb" and the cookie could never be sent again, not even to the URL that
+// set it. Escaping '%' survives the second decode; if the value still does not
+// round-trip (a path containing ';', which normalizePath rewrites
+// unconditionally), fall back to leaving the scope at "/" — broader than the
+// RFC prescribes, but the cookie stays usable instead of being silently lost.
+func setDefaultCookiePath(c *fasthttp.Cookie, path []byte) {
+	c.SetPathBytes(escapePercent(path))
+	if !bytes.Equal(c.Path(), path) {
+		c.SetPathBytes(defaultCookiePath)
+	}
+}
+
+// escapePercent returns p with every '%' rewritten as "%25", so one round of
+// percent-decoding reproduces p exactly. It returns p unchanged when there is
+// nothing to escape, keeping the common path allocation-free (bytes.ReplaceAll
+// copies even when it replaces nothing).
+func escapePercent(p []byte) []byte {
+	if bytes.IndexByte(p, '%') == -1 {
+		return p
+	}
+	return bytes.ReplaceAll(p, percentByte, percentEscaped)
+}
+
 // parseCookiesFromResp parses the cookies from the response and stores them for the specified host and path.
-func (cj *CookieJar) parseCookiesFromResp(host, _ []byte, resp *fasthttp.Response) {
+func (cj *CookieJar) parseCookiesFromResp(host, path []byte, resp *fasthttp.Response) {
 	hostStr := utils.UnsafeString(host)
 	if h, _, err := net.SplitHostPort(hostStr); err == nil {
 		hostStr = h
@@ -297,9 +528,20 @@ func (cj *CookieJar) parseCookiesFromResp(host, _ []byte, resp *fasthttp.Respons
 	}
 
 	now := time.Now()
+	defaultPath := defaultCookiePathFor(path)
 	for _, value := range resp.Header.Cookies() {
 		tmp := fasthttp.AcquireCookie()
 		_ = tmp.ParseBytes(value) //nolint:errcheck // ignore error
+
+		// A Set-Cookie whose Path attribute is missing — or does not begin
+		// with '/', which fasthttp's ParseBytes stores verbatim — is scoped to
+		// the request's directory, not to the whole host
+		// (RFC 6265 Sections 5.1.4 and 5.2.4). Without the second half a
+		// relative "Path=admin" would be stored as-is and could never match a
+		// request path, permanently occupying one of the per-host slots.
+		if p := tmp.Path(); len(p) == 0 || p[0] != '/' {
+			setDefaultCookiePath(tmp, defaultPath)
+		}
 
 		domainBytes := utils.TrimLeft(tmp.Domain(), '.')
 		utilsbytes.UnsafeToLower(domainBytes)
@@ -325,14 +567,16 @@ func (cj *CookieJar) parseCookiesFromResp(host, _ []byte, resp *fasthttp.Respons
 
 		cj.ensureHostCapacityLocked(key, now)
 		cookies := cj.hostCookies[key]
+		seq := cj.nextSeqLocked()
 		c := searchCookieByKeyAndPath(tmp.Key(), tmp.Path(), cookies)
 		if c == nil {
 			c = fasthttp.AcquireCookie()
-			cookies = append(cookies, storedCookie{cookie: c, isHostOnly: isHostOnly})
+			cookies = append(cookies, storedCookie{cookie: c, seq: seq, isHostOnly: isHostOnly})
 		} else {
 			for i := range cookies {
 				if cookies[i].cookie == c {
 					cookies[i].isHostOnly = isHostOnly
+					cookies[i].seq = seq
 					break
 				}
 			}
@@ -341,6 +585,7 @@ func (cj *CookieJar) parseCookiesFromResp(host, _ []byte, resp *fasthttp.Respons
 		c.CopyTo(tmp)
 		if c.Expire().Equal(fasthttp.CookieExpireUnlimited) || c.Expire().After(now) {
 			cj.hostCookies[key] = cookies
+			cj.enforceHostCookieLimitLocked(key)
 		} else {
 			kept := cookies[:0]
 			for _, v := range cookies {
@@ -353,6 +598,58 @@ func (cj *CookieJar) parseCookiesFromResp(host, _ []byte, resp *fasthttp.Respons
 		}
 		fasthttp.ReleaseCookie(tmp)
 	}
+}
+
+// enforceHostCookieLimitLocked bounds the cookies stored under one key. It
+// drops expired entries first and then the least recently written ones.
+//
+// Recency, not creation order, is the eviction key (RFC 6265 Section 5.3 step
+// 12 asks for least-recently-used): storedCookie.seq is refreshed on every
+// write, so a session cookie the server re-sends on each response survives a
+// flood of one-off cookies from other directories, which is exactly the
+// pressure default-path scoping creates.
+func (cj *CookieJar) enforceHostCookieLimitLocked(key string) {
+	cookies := cj.hostCookies[key]
+	if len(cookies) <= maxCookiesPerHost {
+		return
+	}
+
+	now := time.Now()
+	kept := cookies[:0]
+	for _, sc := range cookies {
+		if !sc.cookie.Expire().Equal(fasthttp.CookieExpireUnlimited) && sc.cookie.Expire().Before(now) {
+			fasthttp.ReleaseCookie(sc.cookie)
+			continue
+		}
+		kept = append(kept, sc)
+	}
+
+	if overflow := len(kept) - maxCookiesPerHost; overflow > 0 {
+		// Order by seq only to pick victims, then restore insertion order so
+		// nothing else observes a reshuffle.
+		byRecency := slices.Clone(kept)
+		slices.SortFunc(byRecency, func(a, b storedCookie) int { return cmp.Compare(a.seq, b.seq) })
+		evicted := byRecency[:overflow]
+		releaseStoredCookies(evicted)
+		kept = slices.DeleteFunc(kept, func(sc storedCookie) bool {
+			return slices.ContainsFunc(evicted, func(e storedCookie) bool { return e.cookie == sc.cookie })
+		})
+	}
+
+	if len(kept) == 0 {
+		delete(cj.hostCookies, key)
+		return
+	}
+	clearVacated(cookies, kept)
+	cj.hostCookies[key] = kept
+}
+
+// clearVacated zeroes the slots compaction left behind. kept aliases the front
+// of original, so without this the tail still holds pointers to cookies that
+// were handed back to fasthttp's pool — reachable from the jar's map, which
+// keeps them alive and defeats the pool's GC handoff.
+func clearVacated(original, kept []storedCookie) {
+	clear(original[len(kept):])
 }
 
 // ensureHostCapacityLocked bounds the number of stored hosts by evicting
@@ -414,27 +711,42 @@ func (cj *CookieJar) Release() {
 	cj.hostCookies = nil
 }
 
-// searchCookieByKeyAndPath looks up a cookie by its key and path from the provided slice of cookies.
+// searchCookieByKeyAndPath looks up the stored cookie that a newly received
+// cookie replaces. RFC 6265 Section 5.3 step 11 identifies a cookie by the
+// triple (name, domain, path), and the caller has already selected the entry
+// list for the domain — so the path must be *equal*, not merely path-matching.
+// Using pathMatch here would let "a=2; Path=/admin" overwrite an existing
+// "a=1; Path=/" instead of storing both.
 func searchCookieByKeyAndPath(key, path []byte, cookies []storedCookie) *fasthttp.Cookie {
 	for _, sc := range cookies {
 		c := sc.cookie
-		if bytes.Equal(key, c.Key()) {
-			if pathMatch(path, c.Path()) {
-				return c
-			}
+		if bytes.Equal(key, c.Key()) && samePath(path, c.Path()) {
+			return c
 		}
 	}
 	return nil
+}
+
+// samePath compares two cookie paths, treating an empty path as the default
+// "/" the same way pathMatch does.
+func samePath(a, b []byte) bool {
+	if len(a) == 0 {
+		a = defaultCookiePath
+	}
+	if len(b) == 0 {
+		b = defaultCookiePath
+	}
+	return bytes.Equal(a, b)
 }
 
 // pathMatch determines whether the request path matches the cookie path
 // according to RFC 6265 section 5.1.4.
 func pathMatch(reqPath, cookiePath []byte) bool {
 	if len(reqPath) == 0 {
-		reqPath = []byte("/")
+		reqPath = defaultCookiePath
 	}
 	if len(cookiePath) == 0 {
-		cookiePath = []byte("/")
+		cookiePath = defaultCookiePath
 	}
 	if bytes.Equal(reqPath, cookiePath) {
 		return true

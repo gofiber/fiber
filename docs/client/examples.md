@@ -228,6 +228,26 @@ func main() {
 
 The client can store and reuse cookies between requests by attaching a cookie jar.
 
+The jar follows RFC 6265 for storage and retrieval:
+
+- A `Set-Cookie` without a `Path` attribute is scoped to the **directory** of
+  the request that set it, not to the whole host. A cookie set by a response to
+  `/api/login` defaults to `Path=/api` and is not sent to `/`. Send an explicit
+  `Path=/` to scope it host-wide.
+- Cookies are identified by the triple (name, domain, path), so the same name
+  can be stored at several paths at once. When more than one applies to a
+  request, the one with the longest path wins.
+- Storage is bounded: at most 1024 storage keys, and at most 64 cookies per
+  key. A host-only cookie and a `Domain=` cookie are stored under different
+  keys, so a single host can occupy more than one. When a key is full the jar
+  drops expired entries first, then the least recently written — a session
+  cookie the server re-sends on each response is not evicted by a flood of
+  one-off cookies. A single request carries at most 64 cookies, the most
+  specific first, so a host cannot inflate the `Cookie` header by spreading
+  cookies across the `Domain=` keys of its parent labels.
+- Cookies are attached once per request, before any redirect is followed, so a
+  redirect chain carries the cookies selected for the original URL.
+
 ### Request
 
 ```go
