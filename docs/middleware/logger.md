@@ -297,6 +297,33 @@ Logger provides predefined formats that you can use by name or directly by speci
 `${bytesSent}` returns the value of the `Content-Length` response header. If the header is missing or the response is streaming (e.g., chunked encoding), the value will be `-1`. Fiber does not calculate the actual response body size for performance reasons.
 :::
 
+## Control-character sanitization
+
+Values that come from the request are scrubbed before they reach the log
+stream: every ASCII control byte (C0 and DEL) is replaced with a space, and
+horizontal tab is preserved. Without this, a percent-decoded query parameter,
+form field, or request body containing `\r\n` could forge additional access-log
+lines and corrupt an audit trail.
+
+Scrubbing covers the default format as well as these tags:
+
+`${path}` `${url}` `${ua}` `${referer}` `${ip}` `${ips}` `${host}` `${scheme}`
+`${route}` `${body}` `${resBody}` `${reqHeaders}` `${queryParams}` `${error}`
+`${reqHeader:}` `${respHeader:}` `${query:}` `${form:}` `${cookie:}`
+`${locals:}`
+
+Tags whose values the framework controls — `${status}`, `${method}`,
+`${protocol}`, `${port}`, `${latency}`, `${pid}`, `${time}`, `${bytesSent}`,
+`${bytesReceived}` and the color tags — are written unchanged. `${method}` and
+`${protocol}` come from the request line, which fasthttp rejects outright if it
+holds a control byte.
+
+:::caution
+Tags you supply through `Config.CustomTags` or `RegisterTag` are **not**
+scrubbed; they replace the built-in renderer entirely. Sanitize any
+request-derived value you write from a custom tag.
+:::
+
 ## Constants
 
 ```go
