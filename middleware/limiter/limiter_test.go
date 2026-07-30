@@ -126,7 +126,7 @@ func sleepForRetryAfter(t *testing.T, resp *http.Response) {
 
 	// Window accounting reads the cached second clock, so wall time alone is not
 	// enough: a late timestamp updater keeps the old window current.
-	clocktest.SleepPast(delay)
+	clocktest.SleepPast(t, delay)
 }
 
 func newContextRecorderLimiterStorage() *contextRecorderLimiterStorage {

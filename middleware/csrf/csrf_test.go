@@ -447,7 +447,7 @@ func Test_CSRF_ExpiredToken(t *testing.T) {
 	require.Equal(t, 200, ctx.Response.StatusCode())
 
 	// Wait for the token to expire on the cached clock the storage compares against
-	clocktest.SleepPast(idleTimeout)
+	clocktest.SleepPast(t, idleTimeout)
 
 	// Expired CSRF token
 	ctx.Request.Reset()

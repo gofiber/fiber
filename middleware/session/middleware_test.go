@@ -577,7 +577,7 @@ func Test_Session_WithConfig(t *testing.T) {
 	require.Equal(t, fiber.StatusInternalServerError, ctx.Response.StatusCode())
 
 	// Test idle timeout, waiting on the cached clock the storage compares against
-	clocktest.SleepPast(idleTimeout)
+	clocktest.SleepPast(t, idleTimeout)
 	ctx = &fasthttp.RequestCtx{}
 	ctx.Request.Header.SetMethod(fiber.MethodGet)
 	ctx.Request.Header.SetCookie("session_id_test", token)

@@ -115,8 +115,9 @@ func Test_Recover_DefaultStackTraceHandlerOutput(t *testing.T) {
 
 	orig := os.Stderr
 	os.Stderr = w
+	defer func() { os.Stderr = orig }()
+
 	defaultStackTraceHandler(nil, "Hi, I'm an error!")
-	os.Stderr = orig
 	require.NoError(t, w.Close())
 
 	out, err := io.ReadAll(r)

@@ -894,7 +894,7 @@ func Test_Session_Save_IdleTimeout(t *testing.T) {
 
 		// Wait on the cached clock the storage compares against, not just the
 		// wall clock, or a late timestamp updater keeps the session alive.
-		clocktest.SleepPast(sessionDuration)
+		clocktest.SleepPast(t, sessionDuration)
 
 		sess.Release()
 
@@ -1809,7 +1809,7 @@ func Test_Session_CSRF_Scenario(t *testing.T) {
 	app.ReleaseCtx(ctx2)
 
 	// Wait for session to expire on the cached clock the storage compares against
-	clocktest.SleepPast(idleTimeout)
+	clocktest.SleepPast(t, idleTimeout)
 
 	// Simulate: POST request with expired session
 	// This is the scenario the user reported - session data is gone
