@@ -33,7 +33,8 @@ type Config struct {
 	MaxFunc func(c fiber.Ctx) int
 
 	// A function to dynamically calculate the expiration time for rate limiter entries.
-	// Window accounting is whole-second, so values below one second are floored to one second.
+	// Window accounting is whole-second, so a positive value below one second is floored to
+	// one second. A zero or negative value falls back to the default expiration.
 	//
 	// Default: A function that returns the static `Expiration` value from the config.
 	ExpirationFunc func(c fiber.Ctx) time.Duration
