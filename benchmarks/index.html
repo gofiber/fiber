@@ -339,8 +339,9 @@
   </style>
 </head>
 <!-- data-layout is patched to "single" or "multi" by the benchmark-pages sync
-     step; "auto" (local previews) probes folders.json and falls back to data.js -->
-<body data-layout="single">
+     step, data-version to a hash of the data so a republished data.js is not
+     served from the CDN cache; "auto"/"" (local previews) probe and go unversioned -->
+<body data-layout="single" data-version="b15e03f06de9">
   <header class="page">
     <h1>Benchmarks</h1>
     <span class="meta"><a id="repo-link" rel="noopener" href="#">repository</a></span>
@@ -797,22 +798,33 @@
       async function loadSources() {
         const detail = $('status-detail');
         const layout = (document.body.dataset && document.body.dataset.layout) || 'auto';
+        // baked in by the sync step; busts the Pages CDN cache after a publish
+        const version = (document.body.dataset && document.body.dataset.version) || '';
+        const versioned = function (url) { return version ? url + '?v=' + version : url; };
         let folders = null;
         if (layout !== 'single') {
           try {
-            const res = await fetch('folders.json');
+            const res = await fetch(versioned('folders.json'));
             if (res.ok) {
               const list = await res.json();
               // an existing but empty folders.json means "no packages yet",
               // not "single data.js layout"
-              if (Array.isArray(list)) folders = list;
+              if (Array.isArray(list)) {
+                // pre-hash format: names only, bust with the global version
+                folders = list.map(function (name) { return { name: name, version: version }; });
+              } else if (list && typeof list === 'object') {
+                // folder -> hash of its own data.js: unchanged packages stay cached
+                folders = Object.keys(list).sort().map(function (name) {
+                  return { name: name, version: list[name] || '' };
+                });
+              }
             }
           } catch (err) { /* single data.js layout */ }
         }
 
         if (!folders) {
           try {
-            const text = await fetchText('data.js', function (bytes) {
+            const text = await fetchText(versioned('data.js'), function (bytes) {
               detail.textContent = (bytes / 1048576).toFixed(1) + ' MB received';
             });
             return [{ label: null, data: parseDataJs(text) }];
@@ -830,8 +842,9 @@
             const folder = queue.shift();
             if (!folder) return;
             try {
-              const text = await fetchText(folder + '/data.js');
-              sources.push({ label: folder, data: parseDataJs(text) });
+              const url = folder.name + '/data.js' + (folder.version ? '?v=' + folder.version : '');
+              const text = await fetchText(url);
+              sources.push({ label: folder.name, data: parseDataJs(text) });
             } catch (err) { /* folder without data yet */ }
             done++;
             detail.textContent = done + ' / ' + folders.length + ' packages loaded';
