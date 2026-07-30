@@ -208,7 +208,7 @@ func Test_Redirect_Back(t *testing.T) {
 
 	err = c.Redirect().Back()
 	require.Equal(t, 500, c.Response().StatusCode())
-	require.ErrorAs(t, err, &ErrRedirectBackNoFallback)
+	require.ErrorIs(t, err, ErrRedirectBackNoFallback)
 }
 
 // go test -run Test_Redirect_Back_WithFlashMessages
