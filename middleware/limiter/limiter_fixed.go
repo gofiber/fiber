@@ -3,6 +3,7 @@ package limiter
 import (
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/utils/v2"
@@ -43,6 +44,13 @@ func (FixedWindow) New(cfg *Config) fiber.Handler {
 			expirationDuration = ConfigDefault.Expiration
 		}
 		expiration := uint64(expirationDuration.Seconds())
+		if expiration == 0 {
+			// Floor sub-second durations to 1 s: a zero-width window resets on every
+			// request (making the limiter unable to accumulate hits), and a sub-second
+			// storage TTL evicts the entry before the next request arrives.
+			expiration = 1
+			expirationDuration = time.Second
+		}
 
 		// Get key from request
 		key := cfg.KeyGenerator(c)
