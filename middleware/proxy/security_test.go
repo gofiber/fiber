@@ -9,6 +9,8 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -854,15 +856,61 @@ func Test_Security_BalancerForward_InvalidUpstreamPanicsAtConstruction(t *testin
 	})
 }
 
-// Test_Security_RoundRobin_WrapsAround covers the modulo wrap-around in
-// urlRoundrobin.get when current >= len(pool).
+// Test_Security_RoundRobin_WrapsAround covers both the normal cyclic
+// selection and recovery from a counter value near the uint64 limit.
 func Test_Security_RoundRobin_WrapsAround(t *testing.T) {
 	t.Parallel()
-	a := &url.URL{Scheme: "http", Host: "a"}
-	b := &url.URL{Scheme: "http", Host: "b"}
-	r := &urlRoundrobin{pool: []*url.URL{a, b}, current: 5}
-	got := r.get()
-	require.Same(t, b, got, "5 %% 2 = 1 should select pool[1]")
+	a := &url.URL{Scheme: schemeHTTP, Host: "a"}
+	b := &url.URL{Scheme: schemeHTTP, Host: "b"}
+	c := &url.URL{Scheme: schemeHTTP, Host: "c"}
+
+	t.Run("current index", func(t *testing.T) {
+		t.Parallel()
+
+		r := &urlRoundrobin{pool: []*url.URL{a, b}}
+		r.next.Store(5)
+		require.Same(t, b, r.get(), "5 %% 2 should select pool[1]")
+		require.Same(t, a, r.get())
+	})
+
+	t.Run("counter limit", func(t *testing.T) {
+		t.Parallel()
+
+		r := &urlRoundrobin{pool: []*url.URL{a, b, c}}
+		r.next.Store(^uint64(0) - 1)
+		require.Same(t, c, r.get())
+		require.Same(t, a, r.get())
+		require.Same(t, b, r.get())
+	})
+}
+
+func Test_Security_RoundRobin_ConcurrentSelection(t *testing.T) {
+	t.Parallel()
+	pool := []*url.URL{
+		{Scheme: schemeHTTP, Host: "a"},
+		{Scheme: schemeHTTP, Host: "b"},
+		{Scheme: schemeHTTP, Host: "c"},
+	}
+	r := &urlRoundrobin{pool: pool}
+
+	var counts [3]atomic.Int32
+	var wg sync.WaitGroup
+	for range 300 {
+		wg.Go(func() {
+			selected := r.get()
+			for i, candidate := range pool {
+				if selected == candidate {
+					counts[i].Add(1)
+					return
+				}
+			}
+		})
+	}
+	wg.Wait()
+
+	for i := range counts {
+		require.Equal(t, int32(100), counts[i].Load())
+	}
 }
 
 // Test_Security_Balancer_PanicsOnInvalidUpstream covers the panic

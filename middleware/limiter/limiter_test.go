@@ -16,6 +16,7 @@ import (
 	"github.com/valyala/fasthttp"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/clocktest"
 	"github.com/gofiber/fiber/v3/internal/storage/memory"
 )
 
@@ -123,7 +124,9 @@ func sleepForRetryAfter(t *testing.T, resp *http.Response) {
 		delay = minDelay
 	}
 
-	time.Sleep(delay + 500*time.Millisecond)
+	// Window accounting reads the cached second clock, so wall time alone is not
+	// enough: a late timestamp updater keeps the old window current.
+	clocktest.SleepPast(t, delay)
 }
 
 func newContextRecorderLimiterStorage() *contextRecorderLimiterStorage {

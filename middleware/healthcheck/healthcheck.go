@@ -20,7 +20,7 @@ func New(config ...Config) fiber.Handler {
 			return c.Next()
 		}
 
-		if c.Method() != fiber.MethodGet {
+		if c.Method() != fiber.MethodGet && c.Method() != fiber.MethodHead {
 			return c.Next()
 		}
 
