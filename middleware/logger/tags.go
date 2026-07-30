@@ -10,8 +10,12 @@ import (
 	"github.com/gofiber/fiber/v3"
 )
 
-// sanitizeLog replaces ASCII control bytes (except tab) with spaces to prevent
-// log injection via user-controlled values such as path, headers, or body.
+// sanitizeLog replaces ASCII control bytes (except horizontal tab) with a
+// space to prevent log injection / CRLF attacks via user-controlled values
+// such as paths, headers, query parameters, and request/response bodies.
+// The replacement strategy is intentionally simple: one bad byte → one space,
+// preserving field widths and avoiding multi-byte expansion.
+// Clean inputs are returned as-is with zero allocations.
 func sanitizeLog(s string) string {
 	for i := 0; i < len(s); i++ {
 		b := s[i]
@@ -28,18 +32,13 @@ func sanitizeLog(s string) string {
 	return s
 }
 
-// sanitizeLogBytes is sanitizeLog for []byte inputs.
+// sanitizeLogBytes is the []byte variant of sanitizeLog.
+// The original slice is never modified; a new slice is returned only when
+// a control byte is found. Clean inputs are returned as-is (zero allocation).
 func sanitizeLogBytes(b []byte) []byte {
-	for i, v := range b {
+	for _, v := range b {
 		if v != '\t' && (v < 0x20 || v == 0x7f) {
-			out := make([]byte, len(b))
-			copy(out, b)
-			for j := i; j < len(out); j++ {
-				if out[j] != '\t' && (out[j] < 0x20 || out[j] == 0x7f) {
-					out[j] = ' '
-				}
-			}
-			return out
+			return []byte(sanitizeLog(string(b)))
 		}
 	}
 	return b
@@ -183,7 +182,7 @@ func createTagMap(cfg *Config) map[string]LogFunc {
 			return output.WriteString(sanitizeLog(strings.Join(reqHeaders, "&")))
 		},
 		TagQueryStringParams: func(output Buffer, c fiber.Ctx, _ *Data, _ string) (int, error) {
-			return output.WriteString(sanitizeLog(c.Request().URI().QueryArgs().String()))
+			return output.WriteString(sanitizeLog(string(c.Request().URI().QueryString())))
 		},
 
 		TagBlack: func(output Buffer, c fiber.Ctx, _ *Data, _ string) (int, error) {
@@ -217,9 +216,9 @@ func createTagMap(cfg *Config) map[string]LogFunc {
 			if data.ChainErr != nil {
 				if cfg.areColorsEnabled {
 					colors := c.App().Config().ColorScheme
-					return fmt.Fprintf(output, "%s%s%s", colors.Red, data.ChainErr.Error(), colors.Reset)
+					return fmt.Fprintf(output, "%s%s%s", colors.Red, sanitizeLog(data.ChainErr.Error()), colors.Reset)
 				}
-				return output.WriteString(data.ChainErr.Error())
+				return output.WriteString(sanitizeLog(data.ChainErr.Error()))
 			}
 			return output.WriteString("-")
 		},

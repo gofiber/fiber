@@ -2,6 +2,7 @@ package logger
 
 import (
 	"bytes"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -201,4 +202,161 @@ func Test_Logger_New_TimeDoneUpdater(t *testing.T) {
 	require.NotEmpty(t, rendered)
 	_, parseErr := time.Parse(time.RFC3339Nano, rendered)
 	require.NoError(t, parseErr)
+}
+
+func Test_sanitizeLog(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected string
+	}{
+		{"", ""},
+		{"hello", "hello"},
+		{"hello\nworld", "hello world"},
+		{"hello\rworld", "hello world"},
+		{"hello\x00world", "hello world"},
+		{"\x1b[31mred\x1b[0m", " [31mred [0m"},
+		{"tab\there", "tab\there"}, // tab is preserved
+		{"clean string", "clean string"},
+		{"\x7fdelete", " delete"},
+	}
+	for _, tt := range tests {
+		require.Equal(t, tt.expected, sanitizeLog(tt.input), "input: %q", tt.input)
+	}
+}
+
+func Test_sanitizeLogBytes(t *testing.T) {
+	tests := []struct {
+		input    []byte
+		expected []byte
+	}{
+		{[]byte(""), []byte("")},
+		{[]byte("hello"), []byte("hello")},
+		{[]byte("hello\nworld"), []byte("hello world")},
+		{[]byte("hello\x00world"), []byte("hello world")},
+		{[]byte("tab\there"), []byte("tab\there")}, // tab is preserved
+		{[]byte("\x7fdelete"), []byte(" delete")},
+	}
+	for _, tt := range tests {
+		original := make([]byte, len(tt.input))
+		copy(original, tt.input)
+		result := sanitizeLogBytes(tt.input)
+		require.Equal(t, tt.expected, result, "input: %q", tt.input)
+		require.Equal(t, original, tt.input, "original should not be mutated")
+	}
+}
+
+func Test_sanitizeLog_ZeroAllocOnCleanInput(t *testing.T) {
+	input := "GET /health?check=true HTTP/1.1"
+	allocs := testing.AllocsPerRun(100, func() {
+		sanitizeLog(input)
+	})
+	require.Equal(t, float64(0), allocs, "sanitizeLog must not allocate on clean input")
+}
+
+func Test_sanitizeLogBytes_ZeroAllocOnCleanInput(t *testing.T) {
+	input := []byte("GET /health?check=true HTTP/1.1")
+	allocs := testing.AllocsPerRun(100, func() {
+		sanitizeLogBytes(input)
+	})
+	require.Equal(t, float64(0), allocs, "sanitizeLogBytes must not allocate on clean input")
+}
+
+func Test_Logger_HeaderInjectionPrevented(t *testing.T) {
+	app := fiber.New()
+	var buf bytes.Buffer
+	app.Use(New(Config{
+		Format: "${reqHeader:X-Evil}\n",
+		Stream: &buf,
+	}))
+	app.Get("/", func(c fiber.Ctx) error { return c.SendStatus(200) })
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.Header.Set("X-Evil", "value\ninjected-header: evil")
+	_, err := app.Test(req)
+	require.NoError(t, err)
+	require.Contains(t, buf.String(), "value injected-header: evil")
+}
+
+func Test_Logger_QueryInjectionPrevented(t *testing.T) {
+	app := fiber.New()
+	var buf bytes.Buffer
+	app.Use(New(Config{
+		Format: "${query:foo}\n",
+		Stream: &buf,
+	}))
+	app.Get("/", func(c fiber.Ctx) error { return c.SendStatus(200) })
+
+	// Fiber decodes %0a in query param values to a raw newline.
+	req := httptest.NewRequest(http.MethodGet, "/?foo=bar%0ainjected", nil)
+	_, err := app.Test(req)
+	require.NoError(t, err)
+	require.Contains(t, buf.String(), "bar injected")
+}
+
+func Test_Logger_PathInjectionPrevented(t *testing.T) {
+	app := fiber.New()
+	var buf bytes.Buffer
+	app.Use(New(Config{
+		Format: "${path}\n",
+		Stream: &buf,
+	}))
+	app.Get("/*", func(c fiber.Ctx) error { return c.SendStatus(200) })
+
+	// Fiber does NOT decode %0a in c.Path() — it stays percent-encoded.
+	// The sanitizer must not break the encoded form.
+	req := httptest.NewRequest(http.MethodGet, "/safe%0apath", nil)
+	_, err := app.Test(req)
+	require.NoError(t, err)
+	logged := buf.String()
+	require.NotContains(t, logged, "\n\n", "raw newline must not appear in log")
+	require.Contains(t, logged, "/safe%0apath", "percent-encoded form must be preserved")
+}
+
+func Test_Logger_BodyInjectionPrevented(t *testing.T) {
+	app := fiber.New()
+	var buf bytes.Buffer
+	app.Use(New(Config{
+		Format: "${body}\n",
+		Stream: &buf,
+	}))
+	app.Post("/", func(c fiber.Ctx) error { return c.SendStatus(200) })
+
+	req := httptest.NewRequest(http.MethodPost, "/", strings.NewReader("hello\ninjected"))
+	req.Header.Set("Content-Type", "text/plain")
+	_, err := app.Test(req)
+	require.NoError(t, err)
+	require.Contains(t, buf.String(), "hello injected")
+}
+
+func Test_Logger_ErrorInjectionPrevented(t *testing.T) {
+	app := fiber.New()
+	var buf bytes.Buffer
+	app.Use(New(Config{
+		Format: "${error}\n",
+		Stream: &buf,
+	}))
+	app.Get("/", func(c fiber.Ctx) error {
+		return errors.New("bad input\ninjected-log: evil")
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	_, err := app.Test(req)
+	require.NoError(t, err)
+	require.Contains(t, buf.String(), "bad input injected-log: evil")
+}
+
+func Benchmark_sanitizeLog_Clean(b *testing.B) {
+	input := "GET /api/v1/users?page=1&limit=10 HTTP/1.1"
+	b.ReportAllocs()
+	for b.Loop() {
+		sanitizeLog(input)
+	}
+}
+
+func Benchmark_sanitizeLog_Dirty(b *testing.B) {
+	input := "GET /api/v1/users?page=1\nX-Injected: evil HTTP/1.1"
+	b.ReportAllocs()
+	for b.Loop() {
+		sanitizeLog(input)
+	}
 }
