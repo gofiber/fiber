@@ -434,6 +434,11 @@ type Ctx interface {
 	// If no key is provided it expires all cookies that came with the request.
 	ClearCookie(key ...string)
 	// Cookie sets a cookie by passing a cookie struct.
+	//
+	// The argument is treated as read-only: the normalization this method applies
+	// (default Path, SessionOnly, and the Secure implied by SameSite=None or
+	// Partitioned) happens on a local copy, so a caller may reuse the same *Cookie
+	// template across requests.
 	Cookie(cookie *Cookie)
 	// Download transfers the file from path as an attachment.
 	// Typically, browsers will prompt the user for download.

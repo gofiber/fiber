@@ -24,9 +24,8 @@ jobs:
   benchmark:
     uses: gofiber/.github/.github/workflows/benchmark.yml@main
     with:
-      # ~3 months of main pushes; also keeps benchmarks/data.js (~80 MB) below
-      # GitHub's 100 MB per-file push limit.
-      max-items-in-chart: 185
+      # ~9 months of main pushes; the columnar data.js keeps this at a few MB
+      max-items-in-chart: 555
       # ~15 min of benchmark time against ~20s of compile, so this scales close to
       # linearly. The shards are merged before anything is compared or published.
       shards: 6

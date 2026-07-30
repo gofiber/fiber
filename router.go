@@ -1730,7 +1730,8 @@ func (app *App) buildTree() *App {
 				hasParamRoutes = true
 			}
 
-			if len(route.routeParser.segs) > 0 && len(route.routeParser.segs[0].Const) >= maxDetectionPaths {
+			if len(route.routeParser.segs) > 0 && len(route.routeParser.segs[0].Const) >= maxDetectionPaths &&
+				!dropsOptionalSlashBelowTreeHash(route.routeParser.segs[0]) {
 				treePaths[i] = int(route.routeParser.segs[0].Const[0])<<16 |
 					int(route.routeParser.segs[0].Const[1])<<8 |
 					int(route.routeParser.segs[0].Const[2])
@@ -1774,6 +1775,20 @@ func (app *App) buildTree() *App {
 	// reset the flag and return
 	app.hasRoutesRefreshed = false
 	return app
+}
+
+// dropsOptionalSlashBelowTreeHash reports whether a route's leading constant
+// segment can match a detection path too short to carry a tree hash.
+//
+// getMatch lets a segment with HasOptionalSlash match one byte less than its
+// Const (the trailing '/' is optional), so "/a/" also matches "/a". A
+// detection path shorter than maxDetectionPaths always hashes to 0, so a route
+// bucketed under the hash of its full Const would be invisible to that
+// request: next() would scan bucket 0 and never see it. Consts longer than
+// maxDetectionPaths are unaffected — dropping the final '/' leaves the first
+// three bytes, and therefore the hash, unchanged.
+func dropsOptionalSlashBelowTreeHash(seg *routeSegment) bool {
+	return seg.HasOptionalSlash && len(seg.Const) == maxDetectionPaths
 }
 
 func reuseRouteBucket(prev map[int][]*Route, key, capHint int) []*Route {

@@ -102,3 +102,24 @@ func Test_Expvar_Next(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 404, resp.StatusCode)
 }
+
+// Test_Expvar_Sibling_Prefix_Path ensures a route that merely starts with the
+// same characters as /debug/vars is not swallowed by the middleware.
+func Test_Expvar_Sibling_Prefix_Path(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+
+	app.Use(New())
+
+	app.Get("/debug/varsdump", func(c fiber.Ctx) error {
+		return c.SendString("app route")
+	})
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/debug/varsdump", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "app route", string(body))
+}

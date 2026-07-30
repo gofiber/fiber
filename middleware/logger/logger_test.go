@@ -14,6 +14,7 @@ import (
 	"regexp"
 	"runtime"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -1740,4 +1741,290 @@ func Benchmark_Logger_Parallel(b *testing.B) {
 		})
 		benchmarkSetupParallel(bb, app, "/")
 	})
+}
+
+// failingBuffer is a Buffer whose WriteString starts failing after failAfter
+// successful calls, so the error paths of writeSanitizedColored can be reached
+// without a real failing sink.
+type failingBuffer struct {
+	*bytebufferpool.ByteBuffer
+	failAfter int
+	calls     int
+}
+
+var errWriteFailed = errors.New("write failed")
+
+func (b *failingBuffer) WriteString(s string) (int, error) {
+	if b.calls >= b.failAfter {
+		return 0, errWriteFailed
+	}
+	b.calls++
+	n, err := b.ByteBuffer.WriteString(s)
+	if err != nil {
+		return n, fmt.Errorf("failingBuffer write string: %w", err)
+	}
+	return n, nil
+}
+
+func (b *failingBuffer) Write(p []byte) (int, error) {
+	if b.calls >= b.failAfter {
+		return 0, errWriteFailed
+	}
+	b.calls++
+	n, err := b.ByteBuffer.Write(p)
+	if err != nil {
+		return n, fmt.Errorf("failingBuffer write: %w", err)
+	}
+	return n, nil
+}
+
+// Test_writeSanitizedColored_PropagatesWriteErrors pins the short-circuits in
+// writeSanitizedColored. A sink that fails partway must stop the sequence and
+// surface the error rather than writing a reset escape with no matching color
+// (or silently dropping the failure), and the byte count returned must reflect
+// only what actually reached the sink.
+func Test_writeSanitizedColored_PropagatesWriteErrors(t *testing.T) {
+	t.Parallel()
+
+	const color, value, reset = "<c>", "va\nlue", "<r>"
+
+	t.Run("color write fails", func(t *testing.T) {
+		t.Parallel()
+
+		buf := &failingBuffer{ByteBuffer: bytebufferpool.Get(), failAfter: 0}
+		defer bytebufferpool.Put(buf.ByteBuffer)
+
+		n, err := writeSanitizedColored(buf, color, value, reset)
+		require.ErrorIs(t, err, errWriteFailed)
+		require.Zero(t, n)
+		require.Empty(t, buf.String(), "nothing may reach the sink once the color fails")
+	})
+
+	t.Run("value write fails", func(t *testing.T) {
+		t.Parallel()
+
+		buf := &failingBuffer{ByteBuffer: bytebufferpool.Get(), failAfter: 1}
+		defer bytebufferpool.Put(buf.ByteBuffer)
+
+		n, err := writeSanitizedColored(buf, color, value, reset)
+		require.ErrorIs(t, err, errWriteFailed)
+		require.Equal(t, len(color), n, "only the color made it out")
+		require.Equal(t, color, buf.String(), "the reset must not be written after a failure")
+	})
+
+	t.Run("reset write fails", func(t *testing.T) {
+		t.Parallel()
+
+		buf := &failingBuffer{ByteBuffer: bytebufferpool.Get(), failAfter: 2}
+		defer bytebufferpool.Put(buf.ByteBuffer)
+
+		n, err := writeSanitizedColored(buf, color, value, reset)
+		require.ErrorIs(t, err, errWriteFailed)
+		require.Equal(t, len(color)+len(value), n, "the color and value made it out, the reset did not")
+		require.Equal(t, "<c>va lue", buf.String())
+	})
+
+	t.Run("all writes succeed", func(t *testing.T) {
+		t.Parallel()
+
+		buf := &failingBuffer{ByteBuffer: bytebufferpool.Get(), failAfter: 99}
+		defer bytebufferpool.Put(buf.ByteBuffer)
+
+		n, err := writeSanitizedColored(buf, color, value, reset)
+		require.NoError(t, err)
+		require.Equal(t, len(color)+len(value)+len(reset), n)
+		require.Equal(t, "<c>va lue<r>", buf.String(),
+			"the value is scrubbed but the color escapes pass through verbatim")
+	})
+}
+
+// Test_Logger_SanitizesLocalsByType covers each arm of ${locals:}'s type
+// switch. The []byte arm has its own scrubbing call, so a []byte local carrying
+// CR/LF must be scrubbed just like the string one — otherwise a handler
+// stashing raw request bytes in Locals would reopen the injection this scrubs.
+func Test_Logger_SanitizesLocalsByType(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		value    any
+		name     string
+		expected string
+	}{
+		{name: "bytes", value: []byte("a\r\nb"), expected: "a  b"},
+		{name: "string", value: "a\r\nb", expected: "a  b"},
+		{name: "nil", value: nil, expected: ""},
+		{name: "other", value: struct{ V string }{"a\r\nb"}, expected: "{a  b}"},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			buf := bytebufferpool.Get()
+			defer bytebufferpool.Put(buf)
+
+			app := fiber.New()
+			app.Use(New(Config{Format: "${locals:demo}", Stream: buf}))
+			app.Get("/", func(c fiber.Ctx) error {
+				if tc.value != nil {
+					c.Locals("demo", tc.value)
+				}
+				return c.SendStatus(fiber.StatusOK)
+			})
+
+			resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+			require.NoError(t, err)
+			require.Equal(t, fiber.StatusOK, resp.StatusCode)
+			require.Equal(t, tc.expected, buf.String())
+		})
+	}
+}
+
+// Test_Logger_SanitizesControlBytes ensures user-controlled values cannot
+// inject CR/LF (or other C0/DEL bytes) into a log line and forge log entries.
+// See https://github.com/gofiber/fiber/issues/4341.
+func Test_Logger_SanitizesControlBytes(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		format   string
+		build    func() *http.Request
+		expected string
+	}{
+		{
+			name:   "query",
+			format: "${query:q}",
+			build: func() *http.Request {
+				return httptest.NewRequest(fiber.MethodGet, "/?q=a%0d%0a200+GET+/legit", http.NoBody)
+			},
+			expected: "a  200 GET /legit",
+		},
+		{
+			name:   "body",
+			format: "${body}",
+			build: func() *http.Request {
+				req := httptest.NewRequest(fiber.MethodPost, "/", strings.NewReader("a\r\nb\x00c"))
+				req.Header.Set(fiber.HeaderContentType, fiber.MIMETextPlain)
+				return req
+			},
+			expected: "a  b c",
+		},
+		{
+			name:   "tab is preserved",
+			format: "${query:q}",
+			build: func() *http.Request {
+				return httptest.NewRequest(fiber.MethodGet, "/?q=a%09b", http.NoBody)
+			},
+			expected: "a\tb",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			buf := bytebufferpool.Get()
+			defer bytebufferpool.Put(buf)
+
+			app := fiber.New()
+			app.Use(New(Config{Format: tt.format, Stream: buf}))
+			app.Add([]string{fiber.MethodGet, fiber.MethodPost}, "/", func(c fiber.Ctx) error {
+				return c.SendString("ok")
+			})
+
+			_, err := app.Test(tt.build())
+			require.NoError(t, err)
+			require.Equal(t, tt.expected, buf.String())
+		})
+	}
+}
+
+// Test_Logger_SanitizesPath covers the decoded-path case: with UnescapePath
+// enabled c.Path() carries the percent-decoded bytes, so ${path} would
+// otherwise emit raw CRLF.
+func Test_Logger_SanitizesPath(t *testing.T) {
+	t.Parallel()
+
+	buf := bytebufferpool.Get()
+	defer bytebufferpool.Put(buf)
+
+	app := fiber.New(fiber.Config{UnescapePath: true})
+	app.Use(New(Config{Format: "${path}", Stream: buf}))
+
+	_, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/admin%0d%0a200", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, "/admin  200", buf.String())
+}
+
+// Test_Logger_DefaultFormat_SanitizesControlBytes covers the default logger
+// configuration, which takes defaultLoggerInstance's hand-written fast path
+// instead of the tag map. Without scrubbing there, plain logger.New() — by far
+// the most common setup — still lets a request forge extra log lines (#4341).
+func Test_Logger_DefaultFormat_SanitizesControlBytes(t *testing.T) {
+	t.Parallel()
+
+	for _, colors := range []bool{false, true} {
+		t.Run(fmt.Sprintf("colors=%v", colors), func(t *testing.T) {
+			t.Parallel()
+
+			buf := bytebufferpool.Get()
+			defer bytebufferpool.Put(buf)
+
+			app := fiber.New(fiber.Config{UnescapePath: true})
+			cfg := Config{Stream: buf}
+			if colors {
+				cfg.ForceColors = true
+			} else {
+				cfg.DisableColors = true
+			}
+			app.Use(New(cfg))
+			app.Get("/*", func(_ fiber.Ctx) error {
+				return errors.New("boom\r\nFORGED-ERROR-LINE")
+			})
+
+			_, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/admin%0d%0aFORGED-PATH-LINE", http.NoBody))
+			require.NoError(t, err)
+
+			out := buf.String()
+			require.NotContains(t, out, "\r")
+			require.Equal(t, 1, strings.Count(out, "\n"), "log entry must stay on one line: %q", out)
+			require.Contains(t, out, "FORGED-PATH-LINE")
+			require.Contains(t, out, "FORGED-ERROR-LINE")
+		})
+	}
+}
+
+// Test_SanitizeValue covers the exported helper the docs point custom tags,
+// context tags and LoggerFunc implementations at. It has to apply exactly what
+// the built-in tags apply, or the guidance is wrong.
+func Test_SanitizeValue(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{name: "clean passes through", in: "plain-value", want: "plain-value"},
+		{name: "empty", in: "", want: ""},
+		{name: "CRLF is neutralized", in: "a\r\nb", want: "a  b"},
+		{name: "tab is preserved", in: "a\tb", want: "a\tb"},
+		{name: "NUL and DEL", in: "a\x00b\x7fc", want: "a b c"},
+		{name: "escape sequence", in: "a\x1b[31mb", want: "a [31mb"},
+		// Documented limitation: only ASCII controls are replaced, so C1
+		// controls (including NEL U+0085) survive.
+		{name: "C1 NEL passes through", in: "a\u0085b", want: "a\u0085b"},
+		{name: "multibyte is untouched", in: "h\u00e9llo", want: "h\u00e9llo"},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, tc.want, SanitizeValue(tc.in))
+			// The exported helper must not diverge from the internal one the
+			// built-in tags use.
+			require.Equal(t, sanitizeLogValue(tc.in), SanitizeValue(tc.in))
+		})
+	}
 }

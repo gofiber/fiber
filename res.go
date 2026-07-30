@@ -306,50 +306,57 @@ func (r *DefaultRes) RequestCtx() *fasthttp.RequestCtx {
 }
 
 // Cookie sets a cookie by passing a cookie struct.
+//
+// The argument is treated as read-only: the normalization this method applies
+// (default Path, SessionOnly, and the Secure implied by SameSite=None or
+// Partitioned) happens on a local copy, so a caller may reuse the same *Cookie
+// template across requests.
 func (r *DefaultRes) Cookie(cookie *Cookie) {
-	if cookie.Path == "" {
-		cookie.Path = "/"
+	c := *cookie
+
+	if c.Path == "" {
+		c.Path = "/"
 	}
 
-	if cookie.SessionOnly {
-		cookie.MaxAge = 0
-		cookie.Expires = time.Time{}
+	if c.SessionOnly {
+		c.MaxAge = 0
+		c.Expires = time.Time{}
 	}
 
 	var sameSite http.SameSite
 
 	switch {
-	case utils.EqualFold(cookie.SameSite, CookieSameSiteStrictMode):
+	case utils.EqualFold(c.SameSite, CookieSameSiteStrictMode):
 		sameSite = http.SameSiteStrictMode
-	case utils.EqualFold(cookie.SameSite, CookieSameSiteNoneMode):
+	case utils.EqualFold(c.SameSite, CookieSameSiteNoneMode):
 		sameSite = http.SameSiteNoneMode
 		// SameSite=None requires Secure=true per RFC and browser requirements
-		cookie.Secure = true
-	case utils.EqualFold(cookie.SameSite, CookieSameSiteDisabled):
+		c.Secure = true
+	case utils.EqualFold(c.SameSite, CookieSameSiteDisabled):
 		sameSite = 0
-	case utils.EqualFold(cookie.SameSite, CookieSameSiteLaxMode):
+	case utils.EqualFold(c.SameSite, CookieSameSiteLaxMode):
 		sameSite = http.SameSiteLaxMode
 	default:
 		sameSite = http.SameSiteLaxMode
 	}
 
 	// Partitioned requires Secure=true per CHIPS spec
-	if cookie.Partitioned {
-		cookie.Secure = true
+	if c.Partitioned {
+		c.Secure = true
 	}
 
 	// create/validate cookie using net/http
 	hc := &http.Cookie{ //nolint:gosec // G124: http.Cookie missing or has insecure Secure, HttpOnly, or SameSite attribute
-		Name:        cookie.Name,
-		Value:       cookie.Value,
-		Path:        cookie.Path,
-		Domain:      cookie.Domain,
-		Expires:     cookie.Expires,
-		MaxAge:      cookie.MaxAge,
-		Secure:      cookie.Secure,
-		HttpOnly:    cookie.HTTPOnly,
+		Name:        c.Name,
+		Value:       c.Value,
+		Path:        c.Path,
+		Domain:      c.Domain,
+		Expires:     c.Expires,
+		MaxAge:      c.MaxAge,
+		Secure:      c.Secure,
+		HttpOnly:    c.HTTPOnly,
 		SameSite:    sameSite,
-		Partitioned: cookie.Partitioned,
+		Partitioned: c.Partitioned,
 	}
 
 	if err := hc.Valid(); err != nil {
@@ -364,7 +371,7 @@ func (r *DefaultRes) Cookie(cookie *Cookie) {
 	fcookie.SetPath(hc.Path)
 	fcookie.SetDomain(hc.Domain)
 
-	if !cookie.SessionOnly {
+	if !c.SessionOnly {
 		fcookie.SetMaxAge(hc.MaxAge)
 		fcookie.SetExpire(hc.Expires)
 	}
