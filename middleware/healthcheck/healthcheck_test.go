@@ -163,6 +163,35 @@ func Test_HealthCheck_Custom_Nested(t *testing.T) {
 	shouldGiveOK(t, app, "/probe/ready/")
 }
 
+func Test_HealthCheck_Head(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Get(LivenessEndpoint, New())
+	app.Get(ReadinessEndpoint, New(Config{
+		Probe: func(_ fiber.Ctx) bool {
+			return false
+		},
+	}))
+
+	// HEAD must mirror the GET status (RFC 9110 9.3.2) with an empty body
+	for _, tc := range []struct {
+		path   string
+		status int
+	}{
+		{path: LivenessEndpoint, status: fiber.StatusOK},
+		{path: ReadinessEndpoint, status: fiber.StatusServiceUnavailable},
+	} {
+		resp, err := app.Test(httptest.NewRequest(fiber.MethodHead, tc.path, http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, tc.status, resp.StatusCode, "path: "+tc.path)
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		require.NoError(t, resp.Body.Close())
+		require.Empty(t, body)
+	}
+}
+
 func Test_HealthCheck_Next(t *testing.T) {
 	t.Parallel()
 
