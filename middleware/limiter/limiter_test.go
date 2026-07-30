@@ -1863,3 +1863,36 @@ func Test_Config_currentSecond_NegativeClock(t *testing.T) {
 	cfg.clock = func() time.Time { return time.Unix(42, 0) }
 	require.Equal(t, uint64(42), cfg.currentSecond())
 }
+
+// Test_Limiter_Fixed_SubSecondExpiration verifies that a sub-second ExpirationFunc
+// does not truncate to zero, which would cause e.exp = ts+0 = ts and reset the
+// window on every request — making the limiter never accumulate hits.
+func Test_Limiter_Fixed_SubSecondExpiration(t *testing.T) {
+	t.Parallel()
+
+	clock := newTestClock(time.Now().Truncate(time.Second))
+	app := fiber.New()
+	app.Use(New(Config{
+		Max:               3,
+		LimiterMiddleware: FixedWindow{},
+		clock:             clock.Now,
+		ExpirationFunc: func(_ fiber.Ctx) time.Duration {
+			return 500 * time.Millisecond // sub-second: truncates to 0 without the fix
+		},
+	}))
+	app.Get("/", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
+
+	// First 3 requests must succeed
+	for i := range 3 {
+		req := httptest.NewRequest(http.MethodGet, "/", nil)
+		resp, err := app.Test(req)
+		require.NoError(t, err)
+		require.Equal(t, fiber.StatusOK, resp.StatusCode, "request %d should be allowed", i+1)
+	}
+
+	// 4th request must be rate-limited
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusTooManyRequests, resp.StatusCode, "4th request should be rate-limited")
+}
