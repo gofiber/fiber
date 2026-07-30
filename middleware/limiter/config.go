@@ -32,7 +32,8 @@ type Config struct {
 	// }
 	MaxFunc func(c fiber.Ctx) int
 
-	// A function to dynamically calculate the expiration time for rate limiter entries
+	// A function to dynamically calculate the expiration time for rate limiter entries.
+	// Window accounting is whole-second, so values below one second are floored to one second.
 	//
 	// Default: A function that returns the static `Expiration` value from the config.
 	ExpirationFunc func(c fiber.Ctx) time.Duration
@@ -150,6 +151,18 @@ func configDefault(config ...Config) Config {
 		}
 	}
 	return cfg
+}
+
+// resolveExpiration normalizes a per-request expiration. Window accounting is
+// whole-second, so a positive sub-second value is floored to 1s instead of
+// truncating to a 0-second window (NaN rate in sliding, no limiting in fixed).
+func resolveExpiration(d time.Duration) (time.Duration, uint64) {
+	if d <= 0 {
+		d = ConfigDefault.Expiration
+	} else if d < time.Second {
+		d = time.Second
+	}
+	return d, uint64(d.Seconds())
 }
 
 // currentSecond returns the current Unix time in whole seconds used for window

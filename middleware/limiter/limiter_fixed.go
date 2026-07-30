@@ -38,11 +38,7 @@ func (FixedWindow) New(cfg *Config) fiber.Handler {
 		}
 
 		// Generate expiration from generator
-		expirationDuration := cfg.ExpirationFunc(c)
-		if expirationDuration <= 0 {
-			expirationDuration = ConfigDefault.Expiration
-		}
-		expiration := uint64(expirationDuration.Seconds())
+		expirationDuration, expiration := resolveExpiration(cfg.ExpirationFunc(c))
 
 		// Get key from request
 		key := cfg.KeyGenerator(c)

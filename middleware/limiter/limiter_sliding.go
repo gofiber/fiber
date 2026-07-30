@@ -40,17 +40,7 @@ func (SlidingWindow) New(cfg *Config) fiber.Handler {
 		}
 
 		// Generate expiration from generator
-		expirationDuration := cfg.ExpirationFunc(c)
-		if expirationDuration <= 0 {
-			expirationDuration = ConfigDefault.Expiration
-		}
-		expiration := uint64(expirationDuration.Seconds())
-		// Sub-second expirations truncate to 0 seconds, which would make the
-		// window weight a division by zero (NaN rate -> every request is
-		// rejected). Floor the window to 1 second.
-		if expiration == 0 {
-			expiration = 1
-		}
+		_, expiration := resolveExpiration(cfg.ExpirationFunc(c))
 
 		// Get key from request
 		key := cfg.KeyGenerator(c)
