@@ -173,6 +173,7 @@ func Test_HealthCheck_Head(t *testing.T) {
 			return false
 		},
 	}))
+	app.All("/healthz", New())
 
 	// HEAD must mirror the GET status (RFC 9110 9.3.2) with an empty body
 	for _, tc := range []struct {
@@ -182,14 +183,30 @@ func Test_HealthCheck_Head(t *testing.T) {
 		{path: LivenessEndpoint, status: fiber.StatusOK},
 		{path: ReadinessEndpoint, status: fiber.StatusServiceUnavailable},
 	} {
+		getResp, err := app.Test(httptest.NewRequest(fiber.MethodGet, tc.path, http.NoBody))
+		require.NoError(t, err)
+		require.NoError(t, getResp.Body.Close())
+		require.Equal(t, tc.status, getResp.StatusCode, "path: "+tc.path)
+
 		resp, err := app.Test(httptest.NewRequest(fiber.MethodHead, tc.path, http.NoBody))
 		require.NoError(t, err)
-		require.Equal(t, tc.status, resp.StatusCode, "path: "+tc.path)
+		require.Equal(t, getResp.StatusCode, resp.StatusCode, "path: "+tc.path)
+		// Date is left out, fasthttp refreshes its cached value once per second
+		for _, name := range []string{fiber.HeaderContentType, fiber.HeaderContentLength} {
+			require.Equal(t, getResp.Header.Get(name), resp.Header.Get(name), "path: "+tc.path+" header: "+name)
+		}
+
 		body, err := io.ReadAll(resp.Body)
 		require.NoError(t, err)
 		require.NoError(t, resp.Body.Close())
 		require.Empty(t, body)
 	}
+
+	// Everything but GET and HEAD keeps falling through to the next handler
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodPost, "/healthz", http.NoBody))
+	require.NoError(t, err)
+	require.NoError(t, resp.Body.Close())
+	require.Equal(t, fiber.StatusNotFound, resp.StatusCode)
 }
 
 func Test_HealthCheck_Next(t *testing.T) {
