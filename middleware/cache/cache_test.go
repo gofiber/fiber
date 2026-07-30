@@ -2389,6 +2389,25 @@ func Test_CacheStoreDoesNotAgeItsOwnResponse(t *testing.T) {
 	require.Equal(t, cacheMiss, resp.Header.Get("X-Cache"))
 }
 
+func Test_CacheStoreExpiresAnchoredToDate(t *testing.T) {
+	t.Parallel()
+
+	// An Expires lifetime must be measured from the instant the Date header is
+	// anchored to, or clock reads inside the store phase consume it.
+	clock := &tickingClock{now: time.Now().Truncate(time.Second)}
+	app := fiber.New()
+	app.Use(New(Config{clock: clock.Now}))
+
+	app.Get("/", func(c fiber.Ctx) error {
+		c.Set(fiber.HeaderExpires, clock.Now().Add(2*time.Second).UTC().Format(http.TimeFormat))
+		return c.SendString("cached")
+	})
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, cacheMiss, resp.Header.Get("X-Cache"))
+}
+
 func Test_CacheSMaxAgeOverridesMaxAgeWhenShorter(t *testing.T) {
 	t.Parallel()
 

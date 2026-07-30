@@ -758,7 +758,9 @@ func New(config ...Config) fiber.Handler {
 					expiration = time.Nanosecond
 					expiresParseError = true
 				} else {
-					expiration = expiresAt.Sub(cfg.now())
+					// Measured from the receipt timestamp, not a fresh read, so the
+					// lifetime stays anchored to the same instant as Date and e.exp
+					expiration = expiresAt.Sub(now)
 				}
 				expirationSource = expirationSourceExpires
 			}
@@ -781,8 +783,8 @@ func New(config ...Config) fiber.Handler {
 			return nil
 		}
 
-		// Reuse the timestamp the Date header was stamped with: reading the clock
-		// again here charges fiber's own processing time to the response as age
+		// Reuse the receipt timestamp the Date header was clamped against: a
+		// fresh read here charges Fiber's own processing time to the response as age
 		responseTS := nowUnix
 
 		maxAgeSeconds := uint64(time.Duration(math.MaxInt64) / time.Second)
