@@ -126,6 +126,27 @@ func writeSanitizedColored(output Buffer, color, value, reset string) (int, erro
 	return n + m, err
 }
 
+// SanitizeValue returns s with ASCII control bytes replaced by spaces,
+// preserving horizontal tab. It is the same scrubbing the built-in tags apply
+// to request-derived values, exported so that code taking one of the paths
+// that bypasses those tags can apply it too:
+//
+//   - a tag registered with RegisterTag, MustRegisterTag or RegisterContextTag
+//   - an entry in Config.CustomTags
+//   - a Config.LoggerFunc, which replaces the whole rendering pipeline
+//
+// Any of those can write a value that reached the handler percent-decoded — a
+// query parameter, a form field, a header — and an unscrubbed CR/LF there
+// forges an extra access-log line.
+//
+// Clean input, the overwhelmingly common case, is returned unchanged with no
+// allocation. Only ASCII controls are replaced; bytes at or above 0x80 pass
+// through, so a value that may carry C1 controls (U+0080–U+009F, including
+// NEL U+0085) needs its own handling.
+func SanitizeValue(s string) string {
+	return sanitizeLogValue(s)
+}
+
 // sanitizeLogValue returns s with ASCII control bytes replaced by spaces
 // (tabs preserved). It is the string-returning counterpart of
 // writeSanitizedString, for the default-format writer, which composes its line

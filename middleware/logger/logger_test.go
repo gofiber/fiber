@@ -1994,3 +1994,37 @@ func Test_Logger_DefaultFormat_SanitizesControlBytes(t *testing.T) {
 		})
 	}
 }
+
+// Test_SanitizeValue covers the exported helper the docs point custom tags,
+// context tags and LoggerFunc implementations at. It has to apply exactly what
+// the built-in tags apply, or the guidance is wrong.
+func Test_SanitizeValue(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{name: "clean passes through", in: "plain-value", want: "plain-value"},
+		{name: "empty", in: "", want: ""},
+		{name: "CRLF is neutralized", in: "a\r\nb", want: "a  b"},
+		{name: "tab is preserved", in: "a\tb", want: "a\tb"},
+		{name: "NUL and DEL", in: "a\x00b\x7fc", want: "a b c"},
+		{name: "escape sequence", in: "a\x1b[31mb", want: "a [31mb"},
+		// Documented limitation: only ASCII controls are replaced, so C1
+		// controls (including NEL U+0085) survive.
+		{name: "C1 NEL passes through", in: "a\u0085b", want: "a\u0085b"},
+		{name: "multibyte is untouched", in: "h\u00e9llo", want: "h\u00e9llo"},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, tc.want, SanitizeValue(tc.in))
+			// The exported helper must not diverge from the internal one the
+			// built-in tags use.
+			require.Equal(t, sanitizeLogValue(tc.in), SanitizeValue(tc.in))
+		})
+	}
+}
