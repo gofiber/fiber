@@ -29,25 +29,19 @@ type Ctx interface {
 	// SetContext sets a context implementation by user.
 	SetContext(ctx context.Context)
 	// Deadline returns the time when work done on behalf of this context
-	// should be canceled. Deadline returns ok==false when no deadline is
-	// set. Successive calls to Deadline return the same results.
+	// should be canceled. Ctx carries no deadline, so ok is always false.
 	//
-	// Due to current limitations in how fasthttp works, Deadline operates as a nop.
-	// See: https://github.com/valyala/fasthttp/issues/965#issuecomment-777268945
+	// Ctx satisfies context.Context as a context that can never be canceled: it is
+	// pooled and reused, so it cannot honor the stability and concurrency the
+	// interface requires. Pass Context() to anything that is cancellation-aware or
+	// that outlives the handler.
 	Deadline() (time.Time, bool)
 	// Done returns a channel that's closed when work done on behalf of this
-	// context should be canceled. Done may return nil if this context can
-	// never be canceled. Successive calls to Done return the same value.
-	// The close of the Done channel may happen asynchronously,
-	// after the cancel function returns.
-	//
-	// Due to current limitations in how fasthttp works, Done operates as a nop.
-	// See: https://github.com/valyala/fasthttp/issues/965#issuecomment-777268945
+	// context should be canceled. Ctx can never be canceled, so Done always
+	// returns nil, which context.Context explicitly permits. See Deadline.
 	Done() <-chan struct{}
-	// Err mirrors context.Err, returning nil until cancellation and then the terminal error value.
-	//
-	// Due to current limitations in how fasthttp works, Err operates as a nop.
-	// See: https://github.com/valyala/fasthttp/issues/965#issuecomment-777268945
+	// Err returns nil until the Done channel is closed. Done is always nil here,
+	// so Err always returns nil. See Deadline.
 	Err() error
 	// Request return the *fasthttp.Request object
 	// This allows you to use all fasthttp request methods

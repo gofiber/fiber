@@ -17,9 +17,10 @@ import TabItem from '@theme/TabItem';
 Fiber's [`Ctx`](../api/ctx.md) implements Go's
 [`context.Context`](https://pkg.go.dev/context#Context) interface.
 You can pass `c` directly to functions that expect a `context.Context`
-without adapters.
-However, `fasthttp` doesn't support cancellation yet, so
-`Deadline`, `Done`, and `Err` are no-ops.
+without adapters, but only to read values from it. `Ctx` is a context that can
+never be canceled: `Deadline`, `Done`, and `Err` always report no deadline,
+`nil`, and `nil`, whatever you set with `c.SetContext`. For cancellation and
+deadlines, use `c.Context()`.
 
 :::caution
 The `fiber.Ctx` instance is only valid within the lifetime of the handler.
@@ -56,7 +57,8 @@ app.Get("/job", func(c fiber.Ctx) error {
 ```
 
 You can customize the base context by calling `c.SetContext` before
-requesting it:
+requesting it. This changes what `c.Context()` returns for the rest of the
+request; it does not make `c` itself cancelable.
 
 ```go
 app.Get("/job", func(c fiber.Ctx) error {
@@ -99,11 +101,12 @@ app.Get("/raw", func(c fiber.Ctx) error {
 
 `fasthttpctx` enables `fasthttp` to satisfy the `context.Context` interface.
 `Deadline` always reports no deadline. `Done` closes only when the server
-shuts down, and `Err` then returns `context.Canceled`.
+shuts down, and `Err` then returns `context.Canceled`. Note that this is the
+`fasthttp.RequestCtx`, not Fiber's `Ctx`, whose `Done` is always `nil`.
 
 :::caution
 `Done` does not fire when an individual client disconnects. To stop a
-long-running handler at a deadline, wrap the request with
+long-running handler at a deadline, wrap `c.Context()` with
 `context.WithTimeout` as shown below.
 :::
 
@@ -197,13 +200,14 @@ app.Get("/", func(c fiber.Ctx) error {
 
 ## Using `context.WithValue` and Friends
 
-Since `fiber.Ctx` conforms to `context.Context`, standard helpers such as
-`context.WithValue`, `context.WithTimeout`, or `context.WithCancel`
-can wrap the request context when needed.
+Standard helpers such as `context.WithValue`, `context.WithTimeout`, or
+`context.WithCancel` can wrap the request context when needed. Derive them
+from `c.Context()`, not from `c`: `c` can never be canceled, so a context
+derived from it would never inherit a deadline or a cancellation.
 
 ```go
 app.Get("/job", func(c fiber.Ctx) error {
-    ctx, cancel := context.WithTimeout(c, 5*time.Second)
+    ctx, cancel := context.WithTimeout(c.Context(), 5*time.Second)
     defer cancel()
 
     // pass ctx to async operations that honor cancellation

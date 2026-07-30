@@ -86,7 +86,7 @@ app.Get("/", func(c fiber.Ctx) error {
 
 ### context.Context
 
-`Ctx` implements `context.Context`. However due to [current limitations in how fasthttp](https://github.com/valyala/fasthttp/issues/965#issuecomment-777268945) works, `Deadline()`, `Done()` and `Err()` are no-ops. The `fiber.Ctx` instance is reused after the handler returns and must not be used for asynchronous operations once the handler has completed. Call [`Context`](#context) within the handler to obtain a `context.Context` that can be used outside the handler.
+`Ctx` implements `context.Context`, but as a context that can never be canceled: `Deadline()` reports no deadline, `Done()` returns `nil` and `Err()` returns `nil`, regardless of what you pass to [`SetContext`](#setcontext). The `fiber.Ctx` instance is pooled and reused after the handler returns, which is why it cannot carry cancellation of its own. Call [`Context`](#context) within the handler to obtain a real `context.Context`, and pass that to anything that is cancellation-aware or that outlives the handler.
 
 ```go title="Signature"
 func (c fiber.Ctx) Deadline() (deadline time.Time, ok bool)
@@ -103,8 +103,31 @@ func doSomething(ctx context.Context) {
 
 app.Get("/", func(c fiber.Ctx) error {
   doSomething(c)
+  return nil
 })
 ```
+
+:::caution
+Passing `c` satisfies the compiler but carries no cancellation, so a call that honors `context.Context` will never be interrupted. Derive from [`Context`](#context) and pass that instead:
+:::
+
+```go title="Example"
+app.Get("/", func(c fiber.Ctx) error {
+  ctx, cancel := context.WithTimeout(c.Context(), 5*time.Second)
+  defer cancel()
+
+  // The driver respects the 5s timeout. Passing c would never time out.
+  rows, err := db.QueryContext(ctx, "SELECT ...")
+  if err != nil {
+    return err
+  }
+  defer rows.Close()
+  // ...
+  return nil
+})
+```
+
+[`SetContext`](#setcontext) replaces what `Context()` returns for the rest of the request, so downstream middleware and handlers observe it. It does not make `c` itself cancelable.
 
 #### Value
 
