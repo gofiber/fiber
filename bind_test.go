@@ -3040,6 +3040,29 @@ func Test_Bind_All_CustomPrecedence_OmittedSources(t *testing.T) {
 	require.Equal(t, "from_query", req2.Name)
 }
 
+// go test -run Test_Bind_All_CustomPrecedence_DoesNotReadOmittedBody
+func Test_Bind_All_CustomPrecedence_DoesNotReadOmittedBody(t *testing.T) {
+	t.Parallel()
+	app := New()
+
+	type QueryOnlyReq struct {
+		BindingSource struct{} `binding_source:"query"`
+		Name          string   `query:"name"`
+	}
+
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(ctx)
+
+	ctx.Request().Header.SetContentType(MIMEApplicationJSON)
+	ctx.Request().SetBodyStream(bytes.NewBufferString(`{"name":"from_body"}`), -1)
+	ctx.Request().URI().SetQueryString("name=from_query")
+
+	req := new(QueryOnlyReq)
+	require.NoError(t, ctx.Bind().All(req))
+	require.Equal(t, "from_query", req.Name)
+	require.True(t, ctx.Request().IsBodyStream(), "query-only binding must not consume the request body stream")
+}
+
 // go test -run Test_Bind_All_CustomPrecedence_Duplicates
 func Test_Bind_All_CustomPrecedence_Duplicates(t *testing.T) {
 	t.Parallel()

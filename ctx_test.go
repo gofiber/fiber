@@ -3946,6 +3946,57 @@ func Test_Ctx_IP_ProxyHeader_NoTrustedProxies(t *testing.T) {
 	require.Equal(t, "203.0.113.50", c.extractIPFromHeader(HeaderXForwardedFor))
 }
 
+func Test_Ctx_IP_ProxyHeader_RepeatedFieldLines(t *testing.T) {
+	t.Parallel()
+
+	app := New(Config{
+		ProxyHeader:        HeaderXForwardedFor,
+		TrustProxy:         true,
+		EnableIPValidation: true,
+		TrustProxyConfig: TrustProxyConfig{
+			Proxies: []string{"127.0.0.1"},
+		},
+	})
+	fastCtx := &fasthttp.RequestCtx{}
+	fastCtx.SetRemoteAddr(&net.TCPAddr{IP: net.ParseIP("127.0.0.1")})
+	c := app.AcquireCtx(fastCtx)
+	defer app.ReleaseCtx(c)
+	c.Request().Header.Add(HeaderXForwardedFor, "9.9.9.9")
+	c.Request().Header.Add(HeaderXForwardedFor, "198.51.100.77, 127.0.0.1")
+
+	require.Equal(t, "198.51.100.77", c.IP())
+}
+
+// Repeated field lines must also be combined when the request is parsed off
+// the wire, not just when the headers are set programmatically.
+func Test_Ctx_IP_ProxyHeader_RepeatedFieldLines_Wire(t *testing.T) {
+	t.Parallel()
+
+	app := New(Config{
+		ProxyHeader:        HeaderXForwardedFor,
+		TrustProxy:         true,
+		EnableIPValidation: true,
+		TrustProxyConfig: TrustProxyConfig{
+			Proxies: []string{"0.0.0.0"},
+		},
+	})
+	app.Get("/", func(c Ctx) error {
+		return c.SendString(c.IP())
+	})
+
+	req := httptest.NewRequest(MethodGet, "/", http.NoBody)
+	req.Header.Add(HeaderXForwardedFor, "9.9.9.9")
+	req.Header.Add(HeaderXForwardedFor, "198.51.100.77, 0.0.0.0")
+
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	defer func() { require.NoError(t, resp.Body.Close()) }()
+
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "198.51.100.77", string(body))
+}
+
 func Test_Ctx_IP_ProxyHeader_InvalidIPs(t *testing.T) {
 	t.Parallel()
 	app := New(Config{
@@ -4335,11 +4386,17 @@ func Test_Ctx_Locals(t *testing.T) {
 func Test_Ctx_Deadline(t *testing.T) {
 	t.Parallel()
 	app := New()
-	app.Use(func(c Ctx) error {
-		return c.Next()
-	})
 	app.Get("/test", func(c Ctx) error {
 		deadline, ok := c.Deadline()
+		require.Equal(t, time.Time{}, deadline)
+		require.False(t, ok)
+
+		// A user context with a deadline does not change this: Ctx is pooled and
+		// can never be canceled, so it reports no deadline of its own.
+		ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(time.Hour))
+		defer cancel()
+		c.SetContext(ctx)
+		deadline, ok = c.Deadline()
 		require.Equal(t, time.Time{}, deadline)
 		require.False(t, ok)
 		return nil
@@ -4353,12 +4410,18 @@ func Test_Ctx_Deadline(t *testing.T) {
 func Test_Ctx_Done(t *testing.T) {
 	t.Parallel()
 	app := New()
-	app.Use(func(c Ctx) error {
-		return c.Next()
-	})
 	app.Get("/test", func(c Ctx) error {
-		var nilChan <-chan struct{}
-		require.Equal(t, nilChan, c.Done())
+		require.Nil(t, c.Done())
+
+		// Ctx can never be canceled. A cancellable user context does not change
+		// that: a non-nil Done would make the stdlib retain the pooled Ctx in
+		// watcher goroutines that outlive the handler.
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		c.SetContext(ctx)
+		require.Nil(t, c.Done())
+		cancel()
+		require.Nil(t, c.Done())
 		return nil
 	})
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test", http.NoBody))
@@ -4370,11 +4433,17 @@ func Test_Ctx_Done(t *testing.T) {
 func Test_Ctx_Err(t *testing.T) {
 	t.Parallel()
 	app := New()
-	app.Use(func(c Ctx) error {
-		return c.Next()
-	})
 	app.Get("/test", func(c Ctx) error {
 		require.NoError(t, c.Err())
+
+		// Err stays nil even after the user context is canceled, mirroring the
+		// nil Done. Read the cancellation from Context() instead.
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		c.SetContext(ctx)
+		cancel()
+		require.NoError(t, c.Err())
+		require.ErrorIs(t, c.Context().Err(), context.Canceled)
 		return nil
 	})
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test", http.NoBody))
@@ -9993,6 +10062,10 @@ func Test_Ctx_ForceReleaseClearsAbandon(t *testing.T) {
 }
 
 // go test -v -run=^$ -bench=Benchmark_Ctx_IsProxyTrusted -benchmem -count=4
+//
+// The b.RunParallel cases must keep the "_Parallel" in their names: CI drops
+// results matching Benchmark.*_Parallel before comparing, and at a few ns/op
+// these measure available cores rather than the code.
 func Benchmark_Ctx_IsProxyTrusted(b *testing.B) {
 	// Scenario without trusted proxy check
 	b.Run("NoProxyCheck", func(b *testing.B) {
@@ -10007,7 +10080,7 @@ func Benchmark_Ctx_IsProxyTrusted(b *testing.B) {
 	})
 
 	// Scenario without trusted proxy check in parallel
-	b.Run("NoProxyCheckParallel", func(b *testing.B) {
+	b.Run("NoProxyCheck_Parallel", func(b *testing.B) {
 		app := New()
 		b.ReportAllocs()
 		b.ResetTimer()
@@ -10037,7 +10110,7 @@ func Benchmark_Ctx_IsProxyTrusted(b *testing.B) {
 	})
 
 	// Scenario with trusted proxy check simple in parallel
-	b.Run("WithProxyCheckSimpleParallel", func(b *testing.B) {
+	b.Run("WithProxyCheckSimple_Parallel", func(b *testing.B) {
 		app := New(Config{
 			TrustProxy: true,
 		})
@@ -10073,7 +10146,7 @@ func Benchmark_Ctx_IsProxyTrusted(b *testing.B) {
 	})
 
 	// Scenario with trusted proxy check in parallel
-	b.Run("WithProxyCheckParallel", func(b *testing.B) {
+	b.Run("WithProxyCheck_Parallel", func(b *testing.B) {
 		app := New(Config{
 			TrustProxy: true,
 			TrustProxyConfig: TrustProxyConfig{
@@ -10131,7 +10204,7 @@ func Benchmark_Ctx_IsProxyTrusted(b *testing.B) {
 	})
 
 	// Scenario with trusted proxy check allow private in parallel
-	b.Run("WithProxyCheckAllowPrivateParallel", func(b *testing.B) {
+	b.Run("WithProxyCheckAllowPrivate_Parallel", func(b *testing.B) {
 		app := New(Config{
 			TrustProxy: true,
 			TrustProxyConfig: TrustProxyConfig{
@@ -10170,7 +10243,7 @@ func Benchmark_Ctx_IsProxyTrusted(b *testing.B) {
 	})
 
 	// Scenario with trusted proxy check allow private as subnets in parallel
-	b.Run("WithProxyCheckAllowPrivateAsSubnetsParallel", func(b *testing.B) {
+	b.Run("WithProxyCheckAllowPrivateAsSubnets_Parallel", func(b *testing.B) {
 		app := New(Config{
 			TrustProxy: true,
 			TrustProxyConfig: TrustProxyConfig{
@@ -10211,7 +10284,7 @@ func Benchmark_Ctx_IsProxyTrusted(b *testing.B) {
 	})
 
 	// Scenario with trusted proxy check allow private, loopback, and link-local in parallel
-	b.Run("WithProxyCheckAllowAllParallel", func(b *testing.B) {
+	b.Run("WithProxyCheckAllowAll_Parallel", func(b *testing.B) {
 		app := New(Config{
 			TrustProxy: true,
 			TrustProxyConfig: TrustProxyConfig{
@@ -10265,7 +10338,7 @@ func Benchmark_Ctx_IsProxyTrusted(b *testing.B) {
 	})
 
 	// Scenario with trusted proxy check allow private, loopback, and link-local as subnets in parallel
-	b.Run("WithProxyCheckAllowAllowAllAsSubnetsParallel", func(b *testing.B) {
+	b.Run("WithProxyCheckAllowAllowAllAsSubnets_Parallel", func(b *testing.B) {
 		app := New(Config{
 			TrustProxy: true,
 			TrustProxyConfig: TrustProxyConfig{
@@ -10316,7 +10389,7 @@ func Benchmark_Ctx_IsProxyTrusted(b *testing.B) {
 	})
 
 	// Scenario with trusted proxy check with subnet in parallel
-	b.Run("WithProxyCheckParallelSubnet", func(b *testing.B) {
+	b.Run("WithProxyCheck_ParallelSubnet", func(b *testing.B) {
 		app := New(Config{
 			TrustProxy: true,
 			TrustProxyConfig: TrustProxyConfig{
@@ -10355,7 +10428,7 @@ func Benchmark_Ctx_IsProxyTrusted(b *testing.B) {
 	})
 
 	// Scenario with trusted proxy check with multiple subnet in parallel
-	b.Run("WithProxyCheckParallelMultipleSubnet", func(b *testing.B) {
+	b.Run("WithProxyCheck_ParallelMultipleSubnet", func(b *testing.B) {
 		app := New(Config{
 			TrustProxy: true,
 			TrustProxyConfig: TrustProxyConfig{
@@ -10404,7 +10477,7 @@ func Benchmark_Ctx_IsProxyTrusted(b *testing.B) {
 	})
 
 	// Scenario with trusted proxy check with all subnets in parallel
-	b.Run("WithProxyCheckParallelAllSubnets", func(b *testing.B) {
+	b.Run("WithProxyCheck_ParallelAllSubnets", func(b *testing.B) {
 		app := New(Config{
 			TrustProxy: true,
 			TrustProxyConfig: TrustProxyConfig{

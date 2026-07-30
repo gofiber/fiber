@@ -518,15 +518,13 @@ func (b *Bind) All(out any) error {
 		return err
 	}
 
-	hasBody := len(b.ctx.Request().Body()) > 0 && len(b.ctx.RequestCtx().Request.Header.ContentType()) > 0
-
 	if len(customPrecedence) > 0 {
 		for _, source := range customPrecedence {
 			switch source {
 			case sourceURI:
 				sources = append(sources, b.URI)
 			case sourceBody:
-				if hasBody {
+				if len(b.ctx.Request().Body()) > 0 && len(b.ctx.RequestCtx().Request.Header.ContentType()) > 0 {
 					sources = append(sources, b.Body)
 				}
 			case sourceQuery:
@@ -542,7 +540,7 @@ func (b *Bind) All(out any) error {
 		sources = append(sources, b.URI)
 
 		// Check if both Body and Content-Type are set
-		if hasBody {
+		if len(b.ctx.Request().Body()) > 0 && len(b.ctx.RequestCtx().Request.Header.ContentType()) > 0 {
 			sources = append(sources, b.Body)
 		}
 		sources = append(sources, b.Query, b.Header, b.Cookie)

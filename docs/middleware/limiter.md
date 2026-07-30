@@ -110,6 +110,8 @@ app.Use(limiter.New(limiter.Config{
 
 You can also calculate the expiration dynamically using the `ExpirationFunc` parameter. It receives the request context and allows you to set a different expiration window for each request.
 
+Window accounting is whole-second, so a positive duration below one second is treated as a one-second window. A zero or negative duration falls back to the default expiration.
+
 Example:
 
 ```go
@@ -130,7 +132,7 @@ app.Use(limiter.New(limiter.Config{
 | MaxFunc                | `func(fiber.Ctx) int`     | Function that calculates the maximum number of recent connections within `Expiration` seconds before sending a 429 response. | A function that returns `cfg.Max`    |
 | KeyGenerator           | `func(fiber.Ctx) string` | Function to generate custom keys; uses `c.IP()` by default.                 | A function using `c.IP()` as the default   |
 | Expiration             | `time.Duration`           | Duration to keep request records in memory.                   | 1 * time.Minute                          |
-| ExpirationFunc         | `func(fiber.Ctx) time.Duration` | Function that calculates the expiration duration dynamically. | A function that returns `cfg.Expiration` |
+| ExpirationFunc         | `func(fiber.Ctx) time.Duration` | Function that calculates the expiration duration dynamically. Positive values below one second are floored to one second; non-positive values fall back to the default expiration. | A function that returns `cfg.Expiration` |
 | LimitReached           | `fiber.Handler`           | Called when a request exceeds the limit.                                       | A function sending a 429 response          |
 | SkipFailedRequests     | `bool`                    | When set to `true`, requests with status code ≥ 400 aren't counted.                         | false                                    |
 | SkipSuccessfulRequests | `bool`                    | When set to `true`, requests with status code < 400 aren't counted.                          | false                                    |
