@@ -71,6 +71,13 @@ hashing algorithm from a prefix:
 If no prefix is present, the value is interpreted as a SHA-256 digest encoded in
 hex or base64. Plaintext passwords are rejected.
 
+The decoded digest must be exactly the size of the named algorithm — 32 bytes
+for SHA-256, 64 bytes for SHA-512. A digest of any other length could never
+match a password, so it is rejected at startup: `New()` panics with
+`ErrInvalidSHA256PasswordLength` or `ErrInvalidSHA512PasswordLength` rather than
+starting with an account that can never authenticate. The most common cause is
+a truncated copy/paste, or a SHA-256 digest stored under the `{SHA512}` prefix.
+
 #### Generating SHA-256 and SHA-512 passwords
 
 Create a digest, encode it in base64, and prefix it with `{SHA256}` or

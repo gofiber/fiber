@@ -800,3 +800,58 @@ func Benchmark_containsCTL(b *testing.B) {
 	}
 	_ = got
 }
+
+// Test_BasicAuth_RejectsWrongDigestLength ensures a prefixed hash whose
+// decoded digest has the wrong size is rejected at construction time instead
+// of being accepted as a verifier that can never match.
+func Test_BasicAuth_RejectsWrongDigestLength(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		wantErr error
+		name    string
+		hash    string
+	}{
+		{
+			name:    "sha256 too short",
+			hash:    "{SHA256}" + base64.StdEncoding.EncodeToString([]byte("short")),
+			wantErr: ErrInvalidSHA256PasswordLength,
+		},
+		{
+			name:    "sha512 too short",
+			hash:    "{SHA512}" + base64.StdEncoding.EncodeToString([]byte("short")),
+			wantErr: ErrInvalidSHA512PasswordLength,
+		},
+		{
+			name:    "sha512 holds a sha256 digest",
+			hash:    "{SHA512}" + base64.StdEncoding.EncodeToString(sha256Sum("hello")),
+			wantErr: ErrInvalidSHA512PasswordLength,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			_, _, err := buildVerifiers(map[string]string{"john": tt.hash})
+			require.ErrorIs(t, err, tt.wantErr)
+		})
+	}
+
+	// A correctly sized digest still builds and verifies.
+	verifiers, _, err := buildVerifiers(map[string]string{
+		"john": "{SHA512}" + base64.StdEncoding.EncodeToString(sha512Sum("doe")),
+	})
+	require.NoError(t, err)
+	require.True(t, verifiers["john"]("doe"))
+	require.False(t, verifiers["john"]("nope"))
+}
+
+func sha256Sum(s string) []byte {
+	sum := sha256.Sum256([]byte(s))
+	return sum[:]
+}
+
+func sha512Sum(s string) []byte {
+	sum := sha512.Sum512([]byte(s))
+	return sum[:]
+}
