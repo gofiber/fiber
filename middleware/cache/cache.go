@@ -781,8 +781,9 @@ func New(config ...Config) fiber.Handler {
 			return nil
 		}
 
-		ts = safeUnixSeconds(cfg.now())
-		responseTS := max(ts, nowUnix)
+		// Reuse the timestamp the Date header was stamped with: reading the clock
+		// again here charges fiber's own processing time to the response as age
+		responseTS := nowUnix
 
 		maxAgeSeconds := uint64(time.Duration(math.MaxInt64) / time.Second)
 		var ageDuration time.Duration
@@ -818,7 +819,7 @@ func New(config ...Config) fiber.Handler {
 		e.exp = responseTS + uint64(remainingExpiration.Seconds())
 		e.ttl = uint64(expiration.Seconds())
 		if expiresParseError {
-			e.exp = ts + 1
+			e.exp = responseTS + 1
 		}
 
 		// Store entry in heap (space already reserved in eviction phase)
