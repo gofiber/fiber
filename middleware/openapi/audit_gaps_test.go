@@ -283,3 +283,24 @@ func Test_OpenAPI_ConstraintSchemaOptionalParameter(t *testing.T) {
 	bare := requireMap(t, requireMap(t, paths["/pages"])["get"])
 	require.NotContains(t, bare, "parameters")
 }
+
+// Test_OpenAPI_EscapedConstraintDelimiter asserts that an escaped '>' inside a
+// constraint does not close the span early, which used to leak the rest of the
+// constraint text into the generated path.
+func Test_OpenAPI_EscapedConstraintDelimiter(t *testing.T) {
+	t.Parallel()
+
+	spec := fetchSpecWithConfig(t, Config{}, func(app *fiber.App) {
+		app.Get(`/a/:v<regex(^a\>b$)>/tail`, func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
+	})
+
+	paths := requireMap(t, spec["paths"])
+	require.Contains(t, paths, "/a/{v}/tail")
+	require.Len(t, paths, 1)
+
+	op := requireMap(t, requireMap(t, paths["/a/{v}/tail"])["get"])
+	params, ok := op["parameters"].([]any)
+	require.True(t, ok)
+	require.Len(t, params, 1)
+	require.Equal(t, "v", requireMap(t, params[0])["name"])
+}

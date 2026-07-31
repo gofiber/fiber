@@ -1301,26 +1301,7 @@ func buildOpenAPIPathVariants(fiberPath string, params []string) []pathVariant {
 
 				var rawConstraints string
 				if i < length && fiberPath[i] == '<' {
-					depth := 1
-					i++
-					constraintStart := i
-					for i < length && depth > 0 {
-						switch fiberPath[i] {
-						case '<':
-							depth++
-						case '>':
-							depth--
-						default:
-						}
-						i++
-					}
-					// Drop the closing '>' when the span was actually closed; an
-					// unterminated span runs to the end of the pattern.
-					constraintEnd := i
-					if depth == 0 {
-						constraintEnd--
-					}
-					rawConstraints = fiberPath[constraintStart:constraintEnd]
+					rawConstraints, i = scanConstraintSpan(fiberPath, i)
 				}
 
 				isOptional := i < length && fiberPath[i] == '?'

@@ -16,12 +16,46 @@ import (
 // from its first non-escaped '(' to its last ')', and arguments are separated by
 // non-escaped ','.
 const (
+	constraintSpanStart     = '<'
+	constraintSpanEnd       = '>'
 	constraintSeparator     = ';'
 	constraintArgsStart     = '('
 	constraintArgsEnd       = ')'
 	constraintArgsSeparator = ','
 	constraintEscapeChar    = '\\'
 )
+
+// scanConstraintSpan reads the "<...>" span that starts at open in pattern and
+// returns its inner text plus the index just past the span. Nested '<'/'>' pairs
+// are tracked so a constraint argument may contain them, and a delimiter
+// preceded by the escape character is a literal — matching path.go, which would
+// otherwise disagree with us about where the parameter ends.
+//
+//nolint:nonamedreturns // gocritic requires names here to tell the two results apart
+func scanConstraintSpan(pattern string, open int) (raw string, next int) {
+	i := open + 1
+	start := i
+	depth := 1
+	for i < len(pattern) && depth > 0 {
+		if i == start || pattern[i-1] != constraintEscapeChar {
+			switch pattern[i] {
+			case constraintSpanStart:
+				depth++
+			case constraintSpanEnd:
+				depth--
+			default:
+			}
+		}
+		i++
+	}
+	// Drop the closing '>' when the span was actually closed; an unterminated
+	// span runs to the end of the pattern.
+	end := i
+	if depth == 0 {
+		end--
+	}
+	return pattern[start:end], i
+}
 
 // pathParamSchema derives a parameter schema from a route pattern's constraint
 // span. An empty or unrecognized span yields the default string schema, so an
