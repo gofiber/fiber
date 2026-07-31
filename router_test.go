@@ -4313,6 +4313,70 @@ func Test_RouteTree_SlotSpreadsAcrossLargeTables(t *testing.T) {
 	}
 }
 
+// Test_RebuildTree_PreservesPublishedBuckets ensures rebuilding cannot rewrite
+// the backing arrays that an in-flight request may still be scanning.
+func Test_RebuildTree_PreservesPublishedBuckets(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	app.Get("/aa/first", testEmptyHandler)
+	app.Get("/aa/removed", testEmptyHandler)
+	app.Get("/aa/last", testEmptyHandler)
+	app.startupProcess()
+
+	method := app.methodInt(MethodGet)
+	treeHash := int('/')<<16 | int('a')<<8 | int('a')
+	published := app.treeIndex[method].lookup(treeHash)
+	require.Equal(t, []string{"/aa/first", "/aa/removed", "/aa/last"}, routeTreePaths(published))
+	want := append([]*Route(nil), published...)
+
+	app.RemoveRoute("/aa/removed", MethodGet)
+	app.RebuildTree()
+
+	// The bucket the previous build published is what an in-flight request may
+	// still be scanning, so the rebuild must not have written through it.
+	require.Equal(t, want, published)
+
+	// The rebuild must still take effect: the new bucket drops the route.
+	rebuilt := app.treeIndex[method].lookup(treeHash)
+	require.Equal(t, []string{"/aa/first", "/aa/last"}, routeTreePaths(rebuilt))
+}
+
+// Test_BuildTree_BucketsAreExactlyFull guards the invariant the shared bucket
+// arena rests on: every bucket's cap is exactly what buildTree appends to it.
+// Slack would leave a bucket able to grow into the neighboring window, which
+// is the cross-bucket write the fresh-arena rule exists to prevent.
+func Test_BuildTree_BucketsAreExactlyFull(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	app.Use("/", testEmptyHandler)
+	app.Get("/aa/first", testEmptyHandler)
+	app.Get("/aa/second", testEmptyHandler)
+	app.Get("/bb/only", testEmptyHandler)
+	app.Post("/aa/first", testEmptyHandler)
+	app.Get("/x", testEmptyHandler)
+	app.startupProcess()
+
+	for method, buckets := range app.treeStack {
+		for treeHash, bucket := range buckets {
+			require.Equal(t, len(bucket), cap(bucket),
+				"method %d bucket %d: cap must equal len so appends cannot cross into the next bucket",
+				method, treeHash)
+		}
+	}
+}
+
+// routeTreePaths returns the normalized paths of a tree bucket's routes, so
+// assertions report path names instead of route pointers.
+func routeTreePaths(routes []*Route) []string {
+	paths := make([]string, len(routes))
+	for i, route := range routes {
+		paths[i] = route.path
+	}
+	return paths
+}
+
 // Test_Route_PrefixFilter_UnconstrainedShapes covers the guards in
 // computePrefixFilter that disable the filter when a route's first segment
 // constrains nothing.
