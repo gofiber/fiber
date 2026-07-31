@@ -2234,3 +2234,58 @@ func Test_FiberApp_RemoteAddrSurvivesPooling(t *testing.T) {
 		require.Equal(t, addr, retained[i].String())
 	}
 }
+
+// Test_HTTPMiddleware_PropagatesHeaderRemoval asserts that a header the wrapped
+// net/http middleware deletes stays deleted for the fiber handler. Copying only
+// what r.Header still holds would leave the original value in place, silently
+// defeating middleware whose purpose is to strip a header.
+func Test_HTTPMiddleware_PropagatesHeaderRemoval(t *testing.T) {
+	t.Parallel()
+
+	type seen struct {
+		forwardedFor  string
+		authorization string
+		kept          string
+		contentType   string
+		body          string
+	}
+
+	var got seen
+
+	app := fiber.New()
+	app.Use(HTTPMiddleware(func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			r.Header.Del("X-Forwarded-For")
+			r.Header.Del(fiber.HeaderAuthorization)
+			next.ServeHTTP(w, r)
+		})
+	}))
+	app.Post("/", func(c fiber.Ctx) error {
+		got = seen{
+			forwardedFor:  c.Get("X-Forwarded-For"),
+			authorization: c.Get(fiber.HeaderAuthorization),
+			kept:          c.Get("X-Kept"),
+			contentType:   c.Get(fiber.HeaderContentType),
+			body:          string(c.Body()),
+		}
+		return c.SendString("ok")
+	})
+
+	req := httptest.NewRequest(fiber.MethodPost, "/", strings.NewReader("a=1"))
+	req.Header.Set(fiber.HeaderContentType, "application/x-www-form-urlencoded")
+	req.Header.Set("X-Forwarded-For", "1.2.3.4")
+	req.Header.Set(fiber.HeaderAuthorization, "Bearer secret")
+	req.Header.Set("X-Kept", "still here")
+
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+
+	require.Empty(t, got.forwardedFor)
+	require.Empty(t, got.authorization)
+	// Headers the middleware left alone survive, and the framing headers it
+	// never touches must not be collateral damage.
+	require.Equal(t, "still here", got.kept)
+	require.Equal(t, "application/x-www-form-urlencoded", got.contentType)
+	require.Equal(t, "a=1", got.body)
+}

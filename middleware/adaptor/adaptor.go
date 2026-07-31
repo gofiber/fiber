@@ -333,6 +333,61 @@ func CopyContextToFiberContext(src any, requestContext *fasthttp.RequestCtx) {
 	}
 }
 
+// framingHeaders describe how the message itself is delimited and addressed
+// rather than what it carries. dropRemovedHeaders leaves them alone: the
+// wrapped middleware works on a converted copy of the request, so a framing
+// header missing from that copy says nothing about the original, and clearing
+// one would corrupt the body the fiber handler goes on to read. Host is also
+// restored explicitly by the caller from r.Host.
+var framingHeaders = [...]string{
+	fiber.HeaderHost,
+	fiber.HeaderContentLength,
+	fiber.HeaderTransferEncoding,
+	fiber.HeaderConnection,
+}
+
+// dropRemovedHeaders deletes from the fiber request every header the wrapped
+// net/http middleware no longer carries.
+//
+// Copying r.Header over the fiber request propagates additions and changes but
+// not removals, which silently defeats middleware whose whole job is to strip a
+// header — a spoofable X-Forwarded-For, an Authorization it has already
+// consumed. Such a header would reappear for the fiber handler and for every
+// later fiber middleware.
+//
+// Keys are collected before anything is deleted, since fasthttp's iterator
+// walks the header storage the deletes rewrite.
+func dropRemovedHeaders(fhdr *fasthttp.RequestHeader, kept http.Header) {
+	var removed []string
+	for key := range fhdr.All() {
+		name := utils.UnsafeString(key)
+		if isFramingHeader(name) {
+			continue
+		}
+		// fasthttp and net/http agree on canonical header casing, and
+		// http.Header.Add canonicalizes whatever the adaptor handed it, so the
+		// canonical form is the right lookup key even when the app disabled
+		// fiber's own header normalization.
+		if _, ok := kept[textproto.CanonicalMIMEHeaderKey(name)]; ok {
+			continue
+		}
+		removed = append(removed, string(key))
+	}
+
+	for _, name := range removed {
+		fhdr.Del(name)
+	}
+}
+
+func isFramingHeader(name string) bool {
+	for _, h := range framingHeaders {
+		if utils.EqualFold(name, h) {
+			return true
+		}
+	}
+	return false
+}
+
 // HTTPMiddleware wraps net/http middleware to fiber middleware
 func HTTPMiddleware(mw func(http.Handler) http.Handler) fiber.Handler {
 	return func(c fiber.Ctx) error {
@@ -349,6 +404,7 @@ func HTTPMiddleware(mw func(http.Handler) http.Handler) fiber.Handler {
 
 			// Remove all cookies before setting, see https://github.com/valyala/fasthttp/pull/1864
 			fhdr.DelAllCookies()
+			dropRemovedHeaders(fhdr, r.Header)
 			for key, vals := range r.Header {
 				if len(vals) == 0 {
 					continue
