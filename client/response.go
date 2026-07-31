@@ -22,6 +22,13 @@ type Response struct {
 
 	RawResponse *fasthttp.Response
 	cookie      []*fasthttp.Cookie
+
+	// respondedURI is the URI the response was actually served from. After a
+	// redirect it is the final hop, not the URI the caller asked for, and
+	// cookie storage has to follow it: crediting a redirect target's
+	// Set-Cookie to the original host would let that target plant cookies for
+	// an origin it does not control.
+	respondedURI fasthttp.URI
 }
 
 // setClient sets the client instance in the response. The client object is used by core functionalities.
@@ -32,6 +39,25 @@ func (r *Response) setClient(c *Client) {
 // setRequest sets the request object in the response. The request is released when Response.Close is called.
 func (r *Response) setRequest(req *Request) {
 	r.request = req
+}
+
+// setRespondedURI records the URI the response was served from. The value is
+// deep-copied, so it stays valid after the caller releases its request.
+func (r *Response) setRespondedURI(uri *fasthttp.URI) {
+	if uri == nil {
+		return
+	}
+	uri.CopyTo(&r.respondedURI)
+}
+
+// respondedURIOr returns the URI the response was served from, falling back to
+// fallback when it was not recorded — a Response assembled outside the normal
+// execution path.
+func (r *Response) respondedURIOr(fallback *fasthttp.URI) *fasthttp.URI {
+	if len(r.respondedURI.Host()) == 0 {
+		return fallback
+	}
+	return &r.respondedURI
 }
 
 // Status returns the HTTP status message of the executed request.
@@ -193,6 +219,7 @@ func (r *Response) Save(v any) error {
 func (r *Response) Reset() {
 	r.client = nil
 	r.request = nil
+	r.respondedURI.Reset()
 
 	for len(r.cookie) != 0 {
 		t := r.cookie[0]

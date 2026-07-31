@@ -1201,3 +1201,63 @@ func Benchmark_Redirect_OldInput(b *testing.B) {
 		Value: "tom",
 	}, input)
 }
+
+// go test -run Test_Redirect_FlashCookie_Attributes
+func Test_Redirect_FlashCookie_Attributes(t *testing.T) {
+	t.Parallel()
+
+	// The flash payload is hex-encoded, not encrypted, and WithInput copies the
+	// whole submitted form into it — including whatever the user typed into a
+	// password field. It is only ever read back on the server, so it must not be
+	// reachable from document.cookie, and must not travel in the clear when the
+	// request that produced it was served over TLS.
+	newApp := func() *App {
+		app := New(Config{
+			TrustProxy: true,
+			TrustProxyConfig: TrustProxyConfig{
+				Proxies: []string{"0.0.0.0"},
+			},
+		})
+		app.Post("/login", func(c Ctx) error {
+			return c.Redirect().With("error", "bad credentials").WithInput().To("/login")
+		})
+		return app
+	}
+
+	post := func(t *testing.T, app *App, scheme string) string {
+		t.Helper()
+
+		req := httptest.NewRequest(MethodPost, "/login", strings.NewReader("user=alice&password=hunter2"))
+		req.Header.Set(HeaderContentType, MIMEApplicationForm)
+		if scheme != "" {
+			req.Header.Set(HeaderXForwardedProto, scheme)
+		}
+		resp, err := app.Test(req)
+		require.NoError(t, err)
+
+		for _, cookie := range resp.Header.Values(HeaderSetCookie) {
+			if strings.HasPrefix(cookie, FlashCookieName+"=") {
+				return cookie
+			}
+		}
+		t.Fatalf("no %s cookie in response", FlashCookieName)
+		return ""
+	}
+
+	t.Run("plain http", func(t *testing.T) {
+		t.Parallel()
+
+		cookie := post(t, newApp(), "")
+		require.Contains(t, cookie, "HttpOnly")
+		// Secure would make the browser drop the cookie on a plaintext request.
+		require.NotContains(t, cookie, "secure")
+	})
+
+	t.Run("forwarded https", func(t *testing.T) {
+		t.Parallel()
+
+		cookie := post(t, newApp(), "https")
+		require.Contains(t, cookie, "HttpOnly")
+		require.Contains(t, cookie, "secure")
+	})
+}

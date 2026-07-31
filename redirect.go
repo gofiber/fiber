@@ -502,15 +502,23 @@ func (r *Redirect) parseAndClearFlashMessages() {
 	}
 
 	r.c.Cookie(&Cookie{
-		Name:   FlashCookieName,
-		Value:  "",
-		Path:   "/",
-		MaxAge: -1,
+		Name:     FlashCookieName,
+		Value:    "",
+		Path:     "/",
+		MaxAge:   -1,
+		HTTPOnly: true,
+		Secure:   r.c.Secure(),
 	})
 }
 
 // processFlashMessages is a helper function to process flash messages and old input data
-// and set them as cookies
+// and set them as cookies.
+//
+// The payload is hex-encoded, not encrypted or signed, and WithInput copies the
+// whole submitted form into it — a rejected login carries the password the user
+// just typed. It is read back only by parseAndClearFlashMessages, so the cookie
+// is marked HTTPOnly to keep it out of document.cookie, and Secure whenever the
+// request itself arrived over TLS so it is never replayed in the clear.
 func (r *Redirect) processFlashMessages() {
 	if len(r.messages) == 0 {
 		return
@@ -528,5 +536,7 @@ func (r *Redirect) processFlashMessages() {
 		Name:        FlashCookieName,
 		Value:       r.c.app.toString(dst),
 		SessionOnly: true,
+		HTTPOnly:    true,
+		Secure:      r.c.Secure(),
 	})
 }
