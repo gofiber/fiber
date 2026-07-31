@@ -496,6 +496,15 @@ func (r *Redirect) parseAndClearFlashMessages() {
 		return
 	}
 
+	// UnmarshalMsg re-slices this capacity rather than allocating, and the
+	// generated per-message decoder assigns only the fields the message
+	// carries. A message encoded as an empty map therefore keeps whatever the
+	// slot already held, so the destination has to arrive zeroed. release()
+	// zeroes it before pooling for exactly this reason; do it here too so the
+	// guarantee holds at the point that depends on it.
+	clear(r.c.flashMessages[:cap(r.c.flashMessages)])
+	r.c.flashMessages = r.c.flashMessages[:0]
+
 	_, err = r.c.flashMessages.UnmarshalMsg(cookieValue)
 	if err != nil {
 		return

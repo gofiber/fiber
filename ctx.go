@@ -749,6 +749,14 @@ func (c *DefaultCtx) release() {
 		ReleaseBind(c.bind)
 		c.bind = nil
 	}
+	// Zero the whole backing array, not just the live prefix, before this ctx
+	// goes back to the pool. redirectionMsgs.UnmarshalMsg re-slices this
+	// capacity for the next request that carries a flash cookie, and
+	// redirectionMsg.UnmarshalMsg assigns only the fields a message actually
+	// carries — so a cookie decoding to empty maps would otherwise hand the
+	// next request whatever this one left here, which for WithInput is the
+	// entire submitted form.
+	clear(c.flashMessages[:cap(c.flashMessages)])
 	c.flashMessages = c.flashMessages[:0]
 	// Clear viewBindMap by deleting all keys (reuse underlying map if possible)
 	if c.viewBindMap != nil {

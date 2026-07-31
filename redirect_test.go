@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"io"
 	"mime/multipart"
 	"net/http"
@@ -1260,4 +1261,64 @@ func Test_Redirect_FlashCookie_Attributes(t *testing.T) {
 		require.Contains(t, cookie, "HttpOnly")
 		require.Contains(t, cookie, "secure")
 	})
+}
+
+// go test -run Test_Redirect_FlashMessages_NoCrossRequestLeak
+func Test_Redirect_FlashMessages_NoCrossRequestLeak(t *testing.T) {
+	// Not parallel: the point is to reuse one pooled context across two
+	// sequential requests.
+	app := New()
+
+	app.Get("/read", func(c Ctx) error {
+		var sb strings.Builder
+		for _, m := range c.Redirect().Messages() {
+			sb.WriteString("MSG:" + m.Key + "=" + m.Value + ";")
+		}
+		for _, in := range c.Redirect().OldInputs() {
+			sb.WriteString("OLD:" + in.Key + "=" + in.Value + ";")
+		}
+		return c.SendString(sb.String())
+	})
+	// Deliberately does not consume the flash messages, so they are still in
+	// the context's slice when it is released back to the pool.
+	app.Get("/ignore", func(c Ctx) error { return c.SendString("ok") })
+
+	victim := redirectionMsgs{
+		{key: "user", value: "alice", isOldInput: true},
+		{key: "password", value: "hunter2", isOldInput: true},
+		{key: "error", value: "bad credentials"},
+	}
+	raw, err := victim.MarshalMsg(nil)
+	require.NoError(t, err)
+
+	get := func(t *testing.T, path, flashCookie string) string {
+		t.Helper()
+
+		req := httptest.NewRequest(MethodGet, path, nil)
+		if flashCookie != "" {
+			req.Header.Set(HeaderCookie, FlashCookieName+"="+flashCookie)
+		}
+		resp, err := app.Test(req)
+		require.NoError(t, err)
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		return string(body)
+	}
+
+	// One request carries real flash data and leaves it unread.
+	require.Equal(t, "ok", get(t, "/ignore", hex.EncodeToString(raw)))
+
+	// The next request asks for N messages encoded as empty msgp maps (0x9N
+	// fixarray of 0x80 fixmaps). Those decode to zero values; if the pooled
+	// slice were reused without being cleared, the fields absent from each map
+	// would come back holding the previous request's data instead.
+	for n := 1; n <= 4; n++ {
+		payload := fmt.Sprintf("9%d%s", n, strings.Repeat("80", n))
+
+		body := get(t, "/read", payload)
+		require.NotContains(t, body, "alice")
+		require.NotContains(t, body, "hunter2")
+		require.NotContains(t, body, "bad credentials")
+		require.Equal(t, strings.Repeat("MSG:=;", n), body)
+	}
 }
