@@ -626,15 +626,26 @@ func (r *DefaultRes) CBOR(data any, ctype ...string) error {
 // JSONP sends a JSON response with JSONP support.
 // This method is identical to JSON, except that it opts-in to JSONP callback support.
 // By default, the callback name is simply callback.
+//
+// The callback name is reduced to a JavaScript member expression: everything
+// outside [A-Za-z0-9_$.[]] is dropped. Callers routinely take the name straight
+// from the query string, which is what JSONP is for, and the name lands
+// verbatim in a same-origin text/javascript body — so an unfiltered one would
+// let a request supply arbitrary script for the app's own origin.
 func (r *DefaultRes) JSONP(data any, callback ...string) error {
 	raw, err := r.c.app.config.JSONEncoder(data)
 	if err != nil {
 		return err
 	}
 
-	cb := "callback"
+	cb := defaultJSONPCallback
 	if len(callback) > 0 {
-		cb = callback[0]
+		cb = sanitizeJSONPCallback(callback[0])
+		if cb == "" {
+			// Nothing usable survived; fall back rather than emit a bare
+			// "(data);" expression that invokes nothing.
+			cb = defaultJSONPCallback
+		}
 	}
 
 	// Build JSONP response: callback(data);
@@ -651,6 +662,44 @@ func (r *DefaultRes) JSONP(data any, callback ...string) error {
 	r.c.fasthttp.Response.SetBody(buf.Bytes())
 	bytebufferpool.Put(buf)
 	return nil
+}
+
+const defaultJSONPCallback = "callback"
+
+// isJSONPCallbackByte reports whether b may appear in a JSONP callback name.
+// The set spells a JavaScript member expression — identifiers, property
+// access, bracket indexing — and admits nothing that could open a string, a
+// comment, or a new statement, so the emitted body can only ever call
+// something the including page already has.
+func isJSONPCallbackByte(b byte) bool {
+	return (b >= 'a' && b <= 'z') || (b >= 'A' && b <= 'Z') ||
+		(b >= '0' && b <= '9') ||
+		b == '_' || b == '$' || b == '.' || b == '[' || b == ']'
+}
+
+// sanitizeJSONPCallback drops every byte isJSONPCallbackByte rejects, matching
+// how Express and Django filter the same value. Names already in that set —
+// "cb", "window.cb", "ns.cb[0]", "$.jsonp_1" — are returned unchanged and cost
+// no allocation.
+func sanitizeJSONPCallback(cb string) string {
+	i := 0
+	for ; i < len(cb); i++ {
+		if !isJSONPCallbackByte(cb[i]) {
+			break
+		}
+	}
+	if i == len(cb) {
+		return cb
+	}
+
+	out := make([]byte, i, len(cb))
+	copy(out, cb[:i])
+	for ; i < len(cb); i++ {
+		if isJSONPCallbackByte(cb[i]) {
+			out = append(out, cb[i])
+		}
+	}
+	return string(out)
 }
 
 // XML converts any interface or string to XML.

@@ -7866,6 +7866,53 @@ func Test_Ctx_JSONP(t *testing.T) {
 	})
 }
 
+// go test -run Test_Ctx_JSONP_SanitizesCallback
+func Test_Ctx_JSONP_SanitizesCallback(t *testing.T) {
+	t.Parallel()
+
+	// The callback name is emitted verbatim into a same-origin
+	// text/javascript body, and JSONP callers take it from the query string by
+	// design, so anything that could open a statement, a string, or a comment
+	// has to be stripped before it gets there.
+	tests := []struct {
+		name     string
+		callback string
+		expected string
+	}{
+		{name: "statement injection", callback: "alert(1);//", expected: "alert1"},
+		{name: "markup injection", callback: "</script><img src=x onerror=alert(1)>", expected: "scriptimgsrcxonerroralert1"},
+		{name: "eval payload", callback: "eval(atob('YWxlcnQoMSk='));x", expected: "evalatobYWxlcnQoMSkx"},
+		{name: "newline", callback: "cb\nalert(1)", expected: "cbalert1"},
+		{name: "quote", callback: `cb"+alert(1)+"`, expected: "cbalert1"},
+
+		// Legitimate member expressions must survive untouched.
+		{name: "plain identifier", callback: "cb", expected: "cb"},
+		{name: "property access", callback: "window.cb", expected: "window.cb"},
+		{name: "bracket index", callback: "ns.cb[0]", expected: "ns.cb[0]"},
+		{name: "dollar and underscore", callback: "$.jsonp_1", expected: "$.jsonp_1"},
+
+		// Nothing usable left: fall back rather than emit "(data);", which
+		// would call nothing at all.
+		{name: "fully stripped", callback: "()+-;", expected: "callback"},
+		{name: "empty", callback: "", expected: "callback"},
+	}
+
+	app := New()
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			c := app.AcquireCtx(&fasthttp.RequestCtx{})
+			defer app.ReleaseCtx(c)
+
+			require.NoError(t, c.JSONP(Map{"a": 1}, tc.callback))
+			require.Equal(t, tc.expected+`({"a":1});`, string(c.Response().Body()))
+			require.Equal(t, "text/javascript; charset=utf-8", string(c.Response().Header.Peek(HeaderContentType)))
+			require.Equal(t, "nosniff", string(c.Response().Header.Peek(HeaderXContentTypeOptions)))
+		})
+	}
+}
+
 // go test -v  -run=^$ -bench=Benchmark_Ctx_JSONP -benchmem -count=4
 func Benchmark_Ctx_JSONP(b *testing.B) {
 	app := New()

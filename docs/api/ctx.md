@@ -2498,6 +2498,8 @@ Sends a JSON response with JSONP support. This method is identical to [JSON](ctx
 
 Override this by passing a **named string** in the method.
 
+The callback name is reduced to a JavaScript member expression: every character outside `[A-Za-z0-9_$.[]]` is dropped, so names like `window.cb`, `ns.cb[0]`, and `$.jsonp_1` pass through unchanged. Because the name is written straight into a same-origin `text/javascript` body — and JSONP callers normally take it from the query string — leaving it unfiltered would let a request supply arbitrary script for your own origin. If nothing survives filtering, the default `callback` is used.
+
 ```go title="Signature"
 func (c fiber.Ctx) JSONP(data any, callback ...string) error
 ```
