@@ -1216,7 +1216,7 @@ func (app *App) buildTree() *App {
 		//
 		// Each bucket is a three-index slice whose cap is exactly what the
 		// append loop below puts in it, so a bucket cannot reach its
-		// neighbour: appending past that cap reallocates instead of writing
+		// neighbor: appending past that cap reallocates instead of writing
 		// into the next window.
 		total := globalCount
 		for _, count := range prefixCounts {

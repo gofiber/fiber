@@ -4344,7 +4344,7 @@ func Test_RebuildTree_PreservesPublishedBuckets(t *testing.T) {
 
 // Test_BuildTree_BucketsAreExactlyFull guards the invariant the shared bucket
 // arena rests on: every bucket's cap is exactly what buildTree appends to it.
-// Slack would leave a bucket able to grow into the neighbouring window, which
+// Slack would leave a bucket able to grow into the neighboring window, which
 // is the cross-bucket write the fresh-arena rule exists to prevent.
 func Test_BuildTree_BucketsAreExactlyFull(t *testing.T) {
 	t.Parallel()
