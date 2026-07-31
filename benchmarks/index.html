@@ -341,7 +341,7 @@
 <!-- data-layout is patched to "single" or "multi" by the benchmark-pages sync
      step, data-version to a hash of the data so a republished data.js is not
      served from the CDN cache; "auto"/"" (local previews) probe and go unversioned -->
-<body data-layout="single" data-version="108edb9c867b">
+<body data-layout="single" data-version="246081e810b2">
   <header class="page">
     <h1>Benchmarks</h1>
     <span class="meta"><a id="repo-link" rel="noopener" href="#">repository</a></span>
@@ -575,9 +575,21 @@
       return metric === 'MB/s';
     }
 
+    // B/op and allocs/op are rounded integers: a benchmark allocating ~1 byte per
+    // op flips between 0 and 1 on iteration luck, which would read as a ±100%
+    // mover. Skip only the flip zone: byte moves under one real allocation (Go's
+    // smallest is 8) and the 0/1 allocs zone; a real new allocation moves B/op
+    // by >= 8 too and stays visible. The ns/op entry is different in kind: it
+    // damps sub-nanosecond alignment wobble, mirroring the report's alert-min-ns.
+    const MIN_METRIC_DELTA = { 'ns/op': 1, 'B/op': 8 };
+    function quantizationNoise(metric, a, b) {
+      if (metric === 'allocs/op') return Math.max(a, b) <= 1;
+      return Math.abs(a - b) < (MIN_METRIC_DELTA[metric] || 0);
+    }
+
     // Latest value vs the median of up to 10 previous runs. The median damps
     // single-run benchmark noise that a plain last-vs-previous compare amplifies.
-    function seriesDelta(arr, first, last) {
+    function seriesDelta(arr, first, last, metric) {
       let latestIdx = -1;
       for (let i = last; i >= first; i--) {
         if (arr[i] != null) { latestIdx = i; break; }
@@ -592,6 +604,7 @@
       const mid = prior.length >> 1;
       const median = prior.length % 2 ? prior[mid] : (prior[mid - 1] + prior[mid]) / 2;
       if (!median) return null;
+      if (quantizationNoise(metric, arr[latestIdx], median)) return null;
       return { pct: ((arr[latestIdx] - median) / median) * 100, latest: arr[latestIdx], baseline: median };
     }
 
@@ -604,7 +617,7 @@
         // comparison variants carry their own run window (one per package)
         const first = variant.first !== undefined ? variant.first : card.first;
         const last = variant.last !== undefined ? variant.last : card.last;
-        const delta = seriesDelta(arr, first, last);
+        const delta = seriesDelta(arr, first, last, metric);
         if (delta && (!worst || Math.abs(delta.pct) > Math.abs(worst.pct))) {
           worst = delta;
           worst.variant = variant.name;
