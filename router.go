@@ -1209,10 +1209,28 @@ func (app *App) buildTree() *App {
 			prefixCounts[treePaths[i]]++
 		}
 
+		// Carve this build's buckets out of one allocation. The arena is fresh
+		// per build, so a published bucket is never written through; a bucket
+		// per make() would give the same guarantee, but one allocation keeps a
+		// rebuild's alloc count flat as routes are added.
+		//
+		// Each bucket is a three-index slice whose cap is exactly what the
+		// append loop below puts in it, so a bucket cannot reach its
+		// neighbour: appending past that cap reallocates instead of writing
+		// into the next window.
+		total := globalCount
+		for _, count := range prefixCounts {
+			total += count + globalCount
+		}
+		arena := make([]*Route, total)
+
 		tsMap := make(map[int][]*Route, len(prefixCounts)+1)
-		tsMap[0] = make([]*Route, 0, globalCount)
+		tsMap[0] = arena[0:0:globalCount]
+		off := globalCount
 		for treePath, count := range prefixCounts {
-			tsMap[treePath] = make([]*Route, 0, count+globalCount)
+			end := off + count + globalCount
+			tsMap[treePath] = arena[off:off:end]
+			off = end
 		}
 
 		for i, route := range routes {

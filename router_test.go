@@ -4342,6 +4342,31 @@ func Test_RebuildTree_PreservesPublishedBuckets(t *testing.T) {
 	require.Equal(t, []string{"/aa/first", "/aa/last"}, routeTreePaths(rebuilt))
 }
 
+// Test_BuildTree_BucketsAreExactlyFull guards the invariant the shared bucket
+// arena rests on: every bucket's cap is exactly what buildTree appends to it.
+// Slack would leave a bucket able to grow into the neighbouring window, which
+// is the cross-bucket write the fresh-arena rule exists to prevent.
+func Test_BuildTree_BucketsAreExactlyFull(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	app.Use("/", testEmptyHandler)
+	app.Get("/aa/first", testEmptyHandler)
+	app.Get("/aa/second", testEmptyHandler)
+	app.Get("/bb/only", testEmptyHandler)
+	app.Post("/aa/first", testEmptyHandler)
+	app.Get("/x", testEmptyHandler)
+	app.startupProcess()
+
+	for method, buckets := range app.treeStack {
+		for treeHash, bucket := range buckets {
+			require.Equal(t, len(bucket), cap(bucket),
+				"method %d bucket %d: cap must equal len so appends cannot cross into the next bucket",
+				method, treeHash)
+		}
+	}
+}
+
 // routeTreePaths returns the normalized paths of a tree bucket's routes, so
 // assertions report path names instead of route pointers.
 func routeTreePaths(routes []*Route) []string {
