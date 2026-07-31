@@ -189,7 +189,7 @@ app.Use("/openai", aigateway.New(aigateway.Config{
 
 ### Circuit breaker
 
-With `BreakerThreshold` set, an upstream that fails that many consecutive attempts (network errors or retryable statuses) is skipped for `BreakerCooldown` instead of being retried on every request — traffic goes straight to the healthy fallbacks. After the cooldown the upstream is probed again: one success closes the breaker, another failure reopens it. If *every* upstream's breaker is open, the chain is tried anyway rather than failing outright:
+With `BreakerThreshold` set, an upstream that fails that many consecutive *requests* (network errors or retryable statuses) is skipped for `BreakerCooldown` instead of being retried on every request — traffic goes straight to the healthy fallbacks. The retries of one request count as a single verdict, so a mount with `Retry.Attempts >= BreakerThreshold` cannot trip its own breaker; a `429` never counts at all, since a throttled key means the upstream is healthy. After the cooldown the upstream is probed again: one success closes the breaker, another failure reopens it. If *every* upstream's breaker is open, the chain is tried anyway rather than failing outright:
 
 ```go
 app.Use("/openai", aigateway.New(aigateway.Config{
@@ -248,7 +248,9 @@ Details and limitations:
 
 ### Quotas and budgets
 
-Post-paid, fixed-window quotas per identity — the `KeyPolicy.Tenant` when the policy names one, else the client key. A request is rejected with `429` (and a `Retry-After` for the window remainder) when its identity's window totals already reached the limit; the actual token count and cost are committed after the response, so a burst of in-flight requests can overshoot by the requests already admitted:
+Post-paid, fixed-window quotas per identity — the `KeyPolicy.Tenant` when the policy names one, else the client key. A request is rejected with `429` (and a `Retry-After` for the window remainder) when its identity's window totals already reached the limit; the actual token count and cost are committed after the response, so a burst of in-flight requests can overshoot by the requests already admitted.
+
+Because metering is post-paid it can only charge what the upstream reports, and an OpenAI-dialect stream reports nothing unless asked — so while a quota is configured, an OpenAI-dialect `"stream": true` request gets `stream_options: {"include_usage": true}` added on the client's behalf (a client that sets `stream_options` itself is never overridden). The upstream then ends the stream with an extra usage-only chunk, which is standard OpenAI behavior and is relayed as-is.
 
 ```go
 app.Use("/openai", aigateway.New(aigateway.Config{
@@ -460,7 +462,7 @@ The middleware registers three custom [logger](./logger.md) tags: `ai-key` (reda
 | HeaderTimeout         | `time.Duration`                         | Per-attempt bound from dialing through receiving the response headers (also covers sending the request body). Does not cap streaming bodies. | `30 * time.Second`                                                     |
 | StreamIdleTimeout     | `time.Duration`                         | Aborts a streaming response when no bytes arrive for this long. Idle timeout, not a total cap.                                          | `90 * time.Second`                                                         |
 | MaxResponseSize       | `int64`                                 | Cap on bytes read from an upstream response. `0` disables the cap.                                                                      | `0`                                                                        |
-| BreakerThreshold      | `int`                                   | Consecutive failed attempts that open an upstream's circuit breaker (it is then skipped for `BreakerCooldown`). `0` disables the breaker. | `0`                                                                        |
+| BreakerThreshold      | `int`                                   | Consecutive failed requests that open an upstream's circuit breaker (it is then skipped for `BreakerCooldown`); `429` responses do not count. `0` disables the breaker. | `0`                                                                        |
 | BreakerCooldown       | `time.Duration`                         | How long an opened breaker skips its upstream before probing it again.                                                                  | `30 * time.Second`                                                         |
 | ForwardClientKey      | `bool`                                  | Relay the client's own credential upstream instead of injecting `Upstream.Key`.                                                         | `false`                                                                    |
 | AllowClientKeyMissing | `bool`                                  | Permit requests without a client credential (unified-key mode only).                                                                    | `false`                                                                    |

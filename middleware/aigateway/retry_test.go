@@ -193,7 +193,7 @@ func Test_AIGateway_BadRequestNotRetried(t *testing.T) {
 	require.EqualValues(t, 1, calls.Load())
 }
 
-func Test_AIGateway_RetryAfterAboveCapSkipsWait(t *testing.T) {
+func Test_AIGateway_RetryAfterAboveCapClamped(t *testing.T) {
 	t.Parallel()
 
 	var calls atomic.Int32
@@ -217,8 +217,12 @@ func Test_AIGateway_RetryAfterAboveCapSkipsWait(t *testing.T) {
 	require.Equal(t, fiber.StatusOK, status)
 	require.Equal(t, "ok", body)
 	require.EqualValues(t, 2, calls.Load())
-	// A 30s Retry-After above the cap must not be honored.
-	require.Less(t, time.Since(start), 5*time.Second)
+	// A 30s Retry-After above the cap is clamped to MaxBackoff — neither
+	// honored in full nor dropped for an immediate retry, which would make
+	// honoring Retry-After more aggressive than ignoring it.
+	elapsed := time.Since(start)
+	require.Less(t, elapsed, 5*time.Second)
+	require.GreaterOrEqual(t, elapsed, 100*time.Millisecond)
 }
 
 func Test_RetryAfterParsing(t *testing.T) {

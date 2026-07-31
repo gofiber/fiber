@@ -55,8 +55,17 @@ func New(config ...Config) fiber.Handler {
 		clientDialect := chatDialectForPath(decodePath(strippedPath))
 		fiber.StoreInContext(c, dialectKey, clientDialect)
 
-		// Extract and validate the client credential.
+		// Extract and validate the client credential. A custom extractor may
+		// report a missing credential either as ErrNotFound (what the built-in
+		// ones do) or as an empty string with a nil error; both mean "no
+		// credential presented", and neither may skip the validator, the policy
+		// resolver, or quota admission below — those all hang off a non-empty
+		// key, so an empty one would otherwise relay with the operator's
+		// upstream key, unauthenticated and unmetered.
 		key, err := cfg.KeyExtractor.Extract(c)
+		if err == nil && key == "" {
+			err = extractors.ErrNotFound
+		}
 		if err != nil {
 			if !errors.Is(err, extractors.ErrNotFound) || !cfg.AllowClientKeyMissing {
 				return sendError(c, fiber.StatusUnauthorized, "missing or invalid API key", "authentication_error")
@@ -190,6 +199,18 @@ func New(config ...Config) fiber.Handler {
 					c.Set(fiber.HeaderRetryAfter, strconv.Itoa(quotaRetryAfter(cfg.QuotaWindow)))
 					return sendError(c, fiber.StatusTooManyRequests, "quota exceeded for this API key", "rate_limit_error")
 				}
+				// Post-paid metering only works if the upstream reports usage.
+				// An OpenAI-dialect stream reports none unless the client asked
+				// for it, which would let `"stream": true` silently bypass the
+				// quota entirely, so ask on the client's behalf. The extra
+				// trailing usage chunk is standard OpenAI stream behavior.
+				if clientDialect == DialectOpenAI && jsonBody != nil {
+					if newBody, uerr := requestStreamUsage(c, jsonBody); uerr == nil && newBody != nil {
+						c.Request().SetBodyRaw(newBody)
+						c.Request().Header.Del(fiber.HeaderContentEncoding)
+						jsonBody = newBody
+					}
+				}
 			} else {
 				// Exempt identity: skip the commit as well.
 				quotaID = ""
@@ -210,18 +231,21 @@ func New(config ...Config) fiber.Handler {
 			RequestBytes: int64(len(c.BodyRaw())),
 		}
 		if policy != nil {
-			// Tenant comes from the resolver, not the pooled ctx buffers, so
-			// it needs no copy for the async streaming path.
-			ev.Tenant = policy.Tenant
+			// A PolicyResolver commonly derives the tenant from the request
+			// (c.Get("X-Tenant-ID")), which with the default Immutable:false
+			// aliases the pooled header buffer — so copy it like the fields
+			// above rather than trusting the resolver to return owned memory.
+			ev.Tenant = utils.CopyString(policy.Tenant)
 		}
 		// The quota commit runs on the async streaming path, so the identity
-		// must be owned memory: the tenant is resolver-owned, but the raw key
-		// aliases pooled ctx buffers — use the owned ClientKey copy for it.
+		// must be owned memory: both candidates (the raw key and the resolver's
+		// tenant) can alias pooled ctx buffers, so reuse the owned copies made
+		// above rather than the originals.
 		if quotaID != "" {
 			if quotaID == key {
 				ev.quotaID = ev.ClientKey
 			} else {
-				ev.quotaID = quotaID
+				ev.quotaID = ev.Tenant
 			}
 		}
 
@@ -240,7 +264,10 @@ func New(config ...Config) fiber.Handler {
 			if ev.Attempts == 0 && len(ev.SkippedUpstreams) == 0 && errors.Is(sendErr, errUntranslatable) {
 				return sendError(c, fiber.StatusBadRequest, sendErr.Error(), "invalid_request_error")
 			}
-			return fiber.ErrBadGateway
+			// Shape the most common gateway failure like every other one: a
+			// bare fiber.ErrBadGateway would reach the client as text/plain,
+			// which an OpenAI/Anthropic SDK cannot parse as an error envelope.
+			return sendError(c, fiber.StatusBadGateway, "no upstream could serve the request", "api_error")
 		}
 		fiber.StoreInContext(c, providerKey, ev.Provider)
 

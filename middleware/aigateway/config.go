@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/url"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -155,8 +156,7 @@ type RetryConfig struct {
 	Backoff time.Duration
 
 	// MaxBackoff caps the computed backoff and honored Retry-After values.
-	// A Retry-After above the cap skips the wait and moves straight to the
-	// next attempt or upstream.
+	// A Retry-After above the cap is clamped to it.
 	//
 	// Optional. Default: 2 * time.Second
 	MaxBackoff time.Duration
@@ -475,6 +475,11 @@ func configDefault(config ...Config) Config {
 		panic("fiber: aigateway middleware requires at least one upstream")
 	}
 	cfg := config[0]
+	// Config is copied by value but Upstreams is a slice header sharing the
+	// caller's backing array, and the normalization below writes through it
+	// (URL trimming, Auth defaulting, Weight). Clone so New() never mutates a
+	// slice the application still holds — or that a second mount reuses.
+	cfg.Upstreams = slices.Clone(cfg.Upstreams)
 
 	for i := range cfg.Upstreams {
 		up := &cfg.Upstreams[i]

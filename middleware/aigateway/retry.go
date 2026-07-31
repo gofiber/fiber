@@ -3,6 +3,7 @@ package aigateway
 import (
 	"errors"
 	"fmt"
+	"math"
 	"net/http"
 	"strconv"
 	"time"
@@ -48,6 +49,13 @@ func retryAfter(resp *client.Response) (time.Duration, bool) {
 	if secs, err := strconv.Atoi(val); err == nil {
 		if secs < 0 {
 			return 0, false
+		}
+		// A huge delta-seconds value would overflow time.Duration and wrap
+		// negative, which the caller reads as "no wait". Saturate instead; the
+		// caller clamps to MaxBackoff anyway. The comparison is done in int64
+		// so the bound does not overflow int on 32-bit builds.
+		if int64(secs) > int64(math.MaxInt64)/int64(time.Second) {
+			return time.Duration(math.MaxInt64), true
 		}
 		return time.Duration(secs) * time.Second, true
 	}
@@ -147,6 +155,12 @@ func sendWithRetry(c fiber.Ctx, cfg *Config, strippedPath, key string, clientD D
 		// previous upstream can never govern the current one.
 		var curResp *client.Response
 
+		// The breaker counts consecutive failed REQUESTS, not attempts: the
+		// retries of one request are one verdict on this upstream, so a
+		// request configured with Retry.Attempts >= BreakerThreshold cannot
+		// trip the breaker by itself.
+		upstreamFailed := false
+
 		for attempt := 1; attempt <= cfg.Retry.Attempts; attempt++ {
 			if attempt > 1 {
 				// Same-upstream retry: back off first. Failover to the next
@@ -177,9 +191,7 @@ func sendWithRetry(c fiber.Ctx, cfg *Config, strippedPath, key string, clientD D
 				// this upstream's backoff basis.
 				upstreamErr = err
 				curResp = nil
-				if brk != nil {
-					brk.recordFailure(cfg.BreakerThreshold, cfg.BreakerCooldown)
-				}
+				upstreamFailed = true
 				continue
 			}
 			if !isRetryableStatus(resp.StatusCode()) {
@@ -193,8 +205,11 @@ func sendWithRetry(c fiber.Ctx, cfg *Config, strippedPath, key string, clientD D
 				}
 				return relayTarget{resp: resp, up: up, opts: opts}, nil
 			}
-			if brk != nil {
-				brk.recordFailure(cfg.BreakerThreshold, cfg.BreakerCooldown)
+			if resp.StatusCode() != fiber.StatusTooManyRequests {
+				// 429 means the upstream is healthy and throttling this key;
+				// opening the shared breaker on it would evict a working
+				// provider for every other tenant on the mount.
+				upstreamFailed = true
 			}
 			// Retryable response: it becomes both the backoff basis and the
 			// candidate for verbatim relay on exhaustion. Free any older held
@@ -207,9 +222,18 @@ func sendWithRetry(c fiber.Ctx, cfg *Config, strippedPath, key string, clientD D
 			lastOpts = opts
 			curResp = resp
 		}
+
+		if brk != nil && upstreamFailed {
+			brk.recordFailure(cfg.BreakerThreshold, cfg.BreakerCooldown)
+		}
 	}
 
 	if lastResp != nil {
+		// ev.Provider tracked the last upstream ATTEMPTED; the response being
+		// relayed came from lastUp, which may be an earlier one.
+		if lastUp != nil {
+			ev.Provider = lastUp.Name
+		}
 		return relayTarget{resp: lastResp, up: lastUp, opts: lastOpts}, nil
 	}
 	lastErr := upstreamErr
@@ -223,7 +247,7 @@ func sendWithRetry(c fiber.Ctx, cfg *Config, strippedPath, key string, clientD D
 }
 
 // waitBeforeRetry sleeps for the backoff computed from the previous failure.
-// A Retry-After above cfg.Retry.MaxBackoff skips the wait entirely. It
+// A Retry-After above cfg.Retry.MaxBackoff is clamped to MaxBackoff. It
 // returns false when the client disconnected while waiting.
 func waitBeforeRetry(c fiber.Ctx, cfg *Config, attempt int, curResp *client.Response) bool {
 	// attempt is the upcoming try (2..N): the first retry waits Backoff,
@@ -234,10 +258,10 @@ func waitBeforeRetry(c fiber.Ctx, cfg *Config, attempt int, curResp *client.Resp
 	}
 	if curResp != nil {
 		if ra, ok := retryAfter(curResp); ok {
-			if ra > cfg.Retry.MaxBackoff {
-				return true
-			}
-			delay = ra
+			// Clamp rather than skip: returning early here would retry the
+			// upstream immediately, making a gateway that honors Retry-After
+			// strictly more aggressive than one that ignores it.
+			delay = min(ra, cfg.Retry.MaxBackoff)
 		}
 	}
 	if delay <= 0 {

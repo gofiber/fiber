@@ -76,10 +76,13 @@ func (s *memoryQuotaStore) Peek(identity string, window time.Duration) (int64, f
 
 //nolint:gocritic // results documented on the interface; naming them would violate nonamedreturns
 func (s *memoryQuotaStore) Add(identity string, window time.Duration, tokens int64, cost float64) (int64, float64, error) {
-	now := time.Now()
-	start := windowStart(now, window)
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	// Read the clock under the lock: a caller that blocked on mu across a
+	// window boundary would otherwise carry a stale start and roll the bucket
+	// backwards, discarding everything already committed in the new window.
+	now := time.Now()
+	start := windowStart(now, window)
 
 	s.sweep(now, window)
 
@@ -87,8 +90,9 @@ func (s *memoryQuotaStore) Add(identity string, window time.Duration, tokens int
 	if !ok {
 		b = &quotaBucket{start: start}
 		s.buckets[identity] = b
-	} else if !b.start.Equal(start) {
-		// The window rolled over: reset in place.
+	} else if b.start.Before(start) {
+		// The window rolled over: reset in place. Only ever roll forward, so a
+		// delayed writer cannot resurrect a past window.
 		b.start = start
 		b.tokens = 0
 		b.cost = 0

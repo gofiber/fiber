@@ -61,9 +61,14 @@ func New(config ...Config) fiber.Handler {
 			return err
 		}
 
-		// Never generate ETags for Server-Sent Events: hashing the body would
-		// materialize the stream and break real-time delivery.
-		if isEventStream(c) {
+		// Never generate ETags for a streamed body: c.Response().Body() drains
+		// the stream into memory to hash it, which breaks real-time delivery
+		// (SSE, NDJSON, chunked relays) and buffers an unbounded amount for a
+		// long-lived stream. Testing the stream itself rather than a
+		// Content-Type allow-list covers every streaming media type, not just
+		// Server-Sent Events; the Content-Type check still handles an SSE
+		// response written eagerly rather than as a stream.
+		if c.Response().IsBodyStream() || isEventStream(c) {
 			return nil
 		}
 

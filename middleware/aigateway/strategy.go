@@ -72,7 +72,13 @@ func orderWeighted(cfg *Config, idxs []int) {
 		}
 		r -= w
 	}
-	idxs[0], idxs[pick] = idxs[pick], idxs[0]
+	// Rotate the winner to the front rather than swapping it with idxs[0]: a
+	// swap would drop the old head into position pick, so the tail would no
+	// longer be in ascending index order and the stable sort below could not
+	// preserve chain order for equal weights.
+	winner := idxs[pick]
+	copy(idxs[1:pick+1], idxs[:pick])
+	idxs[0] = winner
 
 	// rest starts in ascending index order, so a stable sort by descending
 	// weight leaves equal weights in index order.

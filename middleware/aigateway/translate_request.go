@@ -327,10 +327,19 @@ func translateRequestO2A(jsonBody []byte, dec utils.JSONUnmarshal, enc utils.JSO
 		if t.Type != toolTypeFunction || t.Function == nil {
 			return nil, streamOpts{}, untranslatable("tool type " + t.Type + " has no Anthropic equivalent")
 		}
+		// "parameters" is optional in OpenAI's tool shape but "input_schema" is
+		// required by the Anthropic Messages API, and antTool.InputSchema is
+		// omitempty — without this default a no-argument function translates to
+		// a tool with no schema and Anthropic answers 400. Mirrors the A2O
+		// default below.
+		schema := t.Function.Parameters
+		if len(schema) == 0 {
+			schema = json.RawMessage(`{"type":"object"}`)
+		}
 		out.Tools = append(out.Tools, antTool{
 			Name:        t.Function.Name,
 			Description: t.Function.Description,
-			InputSchema: t.Function.Parameters,
+			InputSchema: schema,
 		})
 	}
 	if len(in.ToolChoice) > 0 {
@@ -340,12 +349,18 @@ func translateRequestO2A(jsonBody []byte, dec utils.JSONUnmarshal, enc utils.JSO
 		}
 		out.ToolChoice = tc
 	}
-	if in.ParallelToolCalls != nil && !*in.ParallelToolCalls {
+	// disable_parallel_tool_use only exists on Anthropic's auto/any/tool
+	// choices: stamping it onto {"type":"none"} — or synthesizing a tool_choice
+	// for a request that declares no tools — makes the Messages API reject the
+	// request with "Extra inputs are not permitted".
+	if in.ParallelToolCalls != nil && !*in.ParallelToolCalls && len(out.Tools) > 0 {
 		if out.ToolChoice == nil {
 			out.ToolChoice = &antToolChoice{Type: choiceAuto}
 		}
-		disable := true
-		out.ToolChoice.DisableParallelToolUse = &disable
+		if out.ToolChoice.Type != choiceNone {
+			disable := true
+			out.ToolChoice.DisableParallelToolUse = &disable
+		}
 	}
 
 	body, err := enc(out)

@@ -31,15 +31,23 @@ type RelayResponse struct {
 
 	// Status is the response status relayed to the client. It starts as the
 	// upstream's status; UsageEvent.StatusCode keeps reporting the upstream
-	// value even when a hook changes this.
+	// value even when a hook changes this. A value outside 100-599 (such as
+	// the zero left by rebuilding this struct) is ignored and the upstream's
+	// status is relayed instead.
 	Status int
 }
 
 // hookStatus maps an OnRequest hook error to a response status: a
 // *fiber.Error chooses its own code, anything else is a 403 policy veto.
+//
+// The code is range-checked because a hook that builds its error as a struct
+// literal (&fiber.Error{Message: ...}) leaves Code at zero, and fasthttp maps a
+// zero status to 200 — which would relay a policy veto to the client as a
+// successful completion. Anything outside the valid HTTP status range falls
+// back to the 403 veto.
 func hookStatus(err error) int {
 	var fe *fiber.Error
-	if errors.As(err, &fe) {
+	if errors.As(err, &fe) && fe.Code >= 100 && fe.Code <= 599 {
 		return fe.Code
 	}
 	return fiber.StatusForbidden

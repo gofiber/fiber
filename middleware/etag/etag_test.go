@@ -85,6 +85,40 @@ func Test_ETag_SSE_Stream(t *testing.T) {
 	require.Empty(t, string(fctx.Response.Header.Peek(fiber.HeaderETag)))
 }
 
+// go test -run Test_ETag_NonSSEStream
+// Any streamed body must pass through untouched, not just SSE: hashing it means
+// draining the stream into memory, which buffers an unbounded response and
+// breaks real-time delivery for NDJSON, chunked relays and SendStreamWriter.
+func Test_ETag_NonSSEStream(t *testing.T) {
+	t.Parallel()
+
+	for _, ct := range []string{
+		"application/x-ndjson",
+		"application/octet-stream",
+		"text/plain; charset=utf-8",
+	} {
+		app := fiber.New()
+		app.Use(New())
+
+		stream := &failOnReadStream{}
+		app.Get("/", func(c fiber.Ctx) error {
+			c.Set(fiber.HeaderContentType, ct)
+			c.Status(fiber.StatusOK)
+			c.Response().SetBodyStream(stream, -1)
+			return nil
+		})
+
+		fctx := &fasthttp.RequestCtx{}
+		fctx.Request.Header.SetMethod(fiber.MethodGet)
+		fctx.Request.SetRequestURI("/")
+		app.Handler()(fctx)
+
+		require.True(t, fctx.Response.IsBodyStream(), "content type %q", ct)
+		require.Zero(t, stream.readCalls, "content type %q", ct)
+		require.Empty(t, string(fctx.Response.Header.Peek(fiber.HeaderETag)), "content type %q", ct)
+	}
+}
+
 // go test -run Test_ETag_SkipError
 func Test_ETag_SkipError(t *testing.T) {
 	t.Parallel()

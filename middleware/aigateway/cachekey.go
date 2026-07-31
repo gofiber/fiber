@@ -12,9 +12,10 @@ import (
 
 // CacheKeyGenerator returns a KeyGenerator for the cache middleware that
 // makes LLM POST requests cacheable: the key is a SHA-256 over the request
-// path, query string, body, and the client credential, so identical prompts
-// hit the cache while different clients, bodies, or endpoints never share an
-// entry. Mount cache.New *before* the gateway:
+// path, query string, body, the client credential, and the Accept and
+// Accept-Encoding headers, so identical prompts hit the cache while different
+// clients, bodies, endpoints, or content negotiations never share an entry.
+// Mount cache.New *before* the gateway:
 //
 //	app.Use(cache.New(cache.Config{
 //	    Methods:      []string{fiber.MethodPost},
@@ -44,13 +45,21 @@ func CacheKeyGenerator(extractor ...extractors.Extractor) func(fiber.Ctx) string
 			key = ""
 		}
 		h := sha256.New()
-		_, _ = h.Write([]byte(c.Path()))                   //nolint:errcheck // sha256 never errors
-		_, _ = h.Write([]byte{0})                          //nolint:errcheck // sha256 never errors
-		_, _ = h.Write(c.RequestCtx().URI().QueryString()) //nolint:errcheck // sha256 never errors
-		_, _ = h.Write([]byte{0})                          //nolint:errcheck // sha256 never errors
-		_, _ = h.Write(c.BodyRaw())                        //nolint:errcheck // sha256 never errors
-		_, _ = h.Write([]byte{0})                          //nolint:errcheck // sha256 never errors
-		_, _ = h.Write([]byte(key))                        //nolint:errcheck // sha256 never errors
+		// Installing a KeyGenerator replaces the cache middleware's default,
+		// which is what partitions entries by Accept/Accept-Encoding — without
+		// them a gzip-encoded entry could be replayed to a client that asked
+		// for identity, so fold them in here.
+		_, _ = h.Write([]byte(c.Get(fiber.HeaderAccept)))         //nolint:errcheck // sha256 never errors
+		_, _ = h.Write([]byte{0})                                 //nolint:errcheck // sha256 never errors
+		_, _ = h.Write([]byte(c.Get(fiber.HeaderAcceptEncoding))) //nolint:errcheck // sha256 never errors
+		_, _ = h.Write([]byte{0})                                 //nolint:errcheck // sha256 never errors
+		_, _ = h.Write([]byte(c.Path()))                          //nolint:errcheck // sha256 never errors
+		_, _ = h.Write([]byte{0})                                 //nolint:errcheck // sha256 never errors
+		_, _ = h.Write(c.RequestCtx().URI().QueryString())        //nolint:errcheck // sha256 never errors
+		_, _ = h.Write([]byte{0})                                 //nolint:errcheck // sha256 never errors
+		_, _ = h.Write(c.BodyRaw())                               //nolint:errcheck // sha256 never errors
+		_, _ = h.Write([]byte{0})                                 //nolint:errcheck // sha256 never errors
+		_, _ = h.Write([]byte(key))                               //nolint:errcheck // sha256 never errors
 		return hex.EncodeToString(h.Sum(nil))
 	}
 }

@@ -3,6 +3,7 @@ package aigateway
 import (
 	"bufio"
 	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -52,6 +53,7 @@ func writeSSEKeepalive(w *bufio.Writer) error {
 type streamTranscoder interface {
 	feed(w *bufio.Writer, chunk []byte) error
 	finish(w *bufio.Writer) error
+	abort(w *bufio.Writer, cause error) error
 	usage() *Usage
 }
 
@@ -180,8 +182,8 @@ func writeSSE(w *bufio.Writer, eventName string, data []byte) error {
 // Typed payloads for emitted Anthropic events (avoids per-event map literals).
 type antEventPayload struct {
 	Message      *antStartMessage `json:"message,omitempty"`
-	ContentBlock *antStartBlock   `json:"content_block,omitempty"`
-	Delta        any              `json:"delta,omitempty"` // *antEventDelta or *antMsgDelta
+	ContentBlock any              `json:"content_block,omitempty"` // *antStartBlock or *antStartToolBlock
+	Delta        any              `json:"delta,omitempty"`         // *antEventDelta or *antMsgDelta
 	Usage        *antEventUsage   `json:"usage,omitempty"`
 	Index        *int             `json:"index,omitempty"`
 	Type         string           `json:"type"`
@@ -211,11 +213,18 @@ type antStartMessage struct {
 }
 
 type antStartBlock struct {
-	Input map[string]any `json:"input,omitempty"`
-	Text  *string        `json:"text,omitempty"`
-	Type  string         `json:"type"`
-	ID    string         `json:"id,omitempty"`
-	Name  string         `json:"name,omitempty"`
+	Text *string `json:"text,omitempty"`
+	Type string  `json:"type"`
+}
+
+// antStartToolBlock is the content_block of a tool_use content_block_start.
+// Anthropic's ToolUseBlock schema requires id, name and input, so none of
+// them may be omitted — an empty input is emitted as {} rather than dropped.
+type antStartToolBlock struct {
+	Type  string          `json:"type"`
+	ID    string          `json:"id"`
+	Name  string          `json:"name"`
+	Input json.RawMessage `json:"input"`
 }
 
 type antEventDelta struct {
@@ -353,6 +362,17 @@ func (t *a2oTranscoder) finish(w *bufio.Writer) error {
 		return err
 	}
 	return errStreamTruncated
+}
+
+// abort tells the client why the gateway is ending the stream early (idle
+// timeout, size cap, an undecodable upstream event) instead of just dropping
+// the connection, and terminates the stream in the client's dialect.
+func (t *a2oTranscoder) abort(w *bufio.Writer, cause error) error {
+	if t.done {
+		return nil
+	}
+	t.done = true
+	return t.emitErrorAndDone(w, "", cause.Error())
 }
 
 func (t *a2oTranscoder) emit(w *bufio.Writer, delta *oaiChunkDelta, finish *string) error {
@@ -553,11 +573,29 @@ func (t *o2aTranscoder) finish(w *bufio.Writer) error {
 	if t.done {
 		return nil
 	}
+	if t.started && t.finishReason != "" {
+		// The upstream signaled completion with a finish_reason but omitted
+		// the [DONE] sentinel (llama.cpp's server, Ollama's OpenAI shim and
+		// several vLLM/Bedrock proxies do this). The message IS complete, so
+		// terminate normally instead of reporting a truncation.
+		return t.terminate(w)
+	}
 	t.done = true
 	if err := t.emitError(w, "", errStreamTruncated.Error()); err != nil {
 		return err
 	}
 	return errStreamTruncated
+}
+
+// abort tells the client why the gateway is ending the stream early (idle
+// timeout, size cap, an undecodable upstream event) instead of just dropping
+// the connection, and terminates the stream in the client's dialect.
+func (t *o2aTranscoder) abort(w *bufio.Writer, cause error) error {
+	if t.done {
+		return nil
+	}
+	t.done = true
+	return t.emitError(w, "", cause.Error())
 }
 
 func (t *o2aTranscoder) emitEvent(w *bufio.Writer, name string, payload any) error {
@@ -710,7 +748,10 @@ func (t *o2aTranscoder) event(w *bufio.Writer, ev *sseEvent) error {
 		// A new tool call is signaled by a changed index — or, for upstreams
 		// that omit indexes, by a DIFFERENT tool-call id at the same index.
 		// An id arriving on a later delta of the same call (open block still
-		// has no id) is adopted below, not treated as a new call.
+		// has no id) is adopted below, not treated as a new call. Anthropic
+		// content blocks are strictly sequential, so an upstream that
+		// interleaves deltas for several tool indexes (OpenAI itself streams
+		// them contiguously) would have each interruption start a new block.
 		if t.openBlock != openBlockTool || td.Index != t.curToolIdx ||
 			(td.ID != "" && t.curToolID != "" && td.ID != t.curToolID) {
 			if err := t.closeBlock(w); err != nil {
@@ -725,8 +766,8 @@ func (t *o2aTranscoder) event(w *bufio.Writer, ev *sseEvent) error {
 			if err := t.emitEvent(w, evtContentBlockStart, &antEventPayload{
 				Type:  evtContentBlockStart,
 				Index: &idx,
-				ContentBlock: &antStartBlock{
-					Type: blockToolUse, ID: id, Name: name, Input: map[string]any{},
+				ContentBlock: &antStartToolBlock{
+					Type: blockToolUse, ID: id, Name: name, Input: json.RawMessage("{}"),
 				},
 			}); err != nil {
 				return err

@@ -173,7 +173,13 @@ func relayBuffered(c fiber.Ctx, cfg *Config, resp *client.Response, ev *UsageEve
 			return fiber.ErrBadGateway
 		}
 		body = r.Body
-		status = r.Status
+		// Range-check like hookStatus: a hook that rebuilds RelayResponse
+		// without carrying Status forward leaves it at zero, which fasthttp
+		// renders as 200 — silently turning an upstream 429/500 into a
+		// success. An unusable status keeps the upstream's own.
+		if r.Status >= 100 && r.Status <= 599 {
+			status = r.Status
+		}
 		ev.ResponseBytes = int64(len(body))
 	}
 
@@ -335,6 +341,7 @@ func relayStream(c fiber.Ctx, cfg *Config, resp *client.Response, ev *UsageEvent
 		}
 
 		tail := &usageTail{}
+		upstreamEOF := false
 	loop:
 		for {
 			select {
@@ -346,14 +353,10 @@ func relayStream(c fiber.Ctx, cfg *Config, resp *client.Response, ev *UsageEvent
 					idleTimer.Reset(idle)
 				}
 				if chunk.err != nil {
-					if !errors.Is(chunk.err, io.EOF) {
+					if errors.Is(chunk.err, io.EOF) {
+						upstreamEOF = true
+					} else {
 						ev.Err = chunk.err
-					} else if ferr := finishTranscode(w, tc); ferr != nil {
-						// Clean upstream EOF without its terminator: the
-						// transcoder informed the client and returned
-						// errStreamTruncated, which must reach the usage
-						// event so truncations are observable.
-						ev.Err = ferr
 					}
 					break loop
 				}
@@ -396,6 +399,15 @@ func relayStream(c fiber.Ctx, cfg *Config, resp *client.Response, ev *UsageEvent
 				ev.Err = errStreamIdleTimeout
 				break loop
 			}
+		}
+
+		// Terminate the translated stream in the client's dialect however the
+		// loop ended: a clean EOF lets the transcoder emit its terminator (or
+		// report a truncation), and every gateway-side abort — size cap, idle
+		// timeout, an undecodable upstream event — tells the client why rather
+		// than dropping the connection mid-message.
+		if ferr := finishTranscode(w, tc, upstreamEOF, ev.Err); ferr != nil && ev.Err == nil {
+			ev.Err = ferr
 		}
 
 		if tc != nil {
@@ -456,14 +468,24 @@ func readStream(stream io.Reader, resp *client.Response, chunks chan<- streamChu
 }
 
 // finishTranscode lets a transcoder emit the terminal events its client
-// dialect requires on a clean upstream EOF, flushing them out. It returns the
-// transcoder's error — errStreamTruncated when the upstream never sent its
-// terminator — or nil for verbatim relays and cleanly-terminated streams.
-func finishTranscode(w *bufio.Writer, tc streamTranscoder) error {
+// dialect requires, flushing them out. On a clean upstream EOF that is the
+// dialect terminator (or errStreamTruncated when the upstream never sent its
+// own); otherwise the client is told why the gateway ended the stream. It
+// returns nil for verbatim relays, cleanly-terminated streams, and when the
+// loop ended for a reason the client cannot be told about (a failed write).
+func finishTranscode(w *bufio.Writer, tc streamTranscoder, upstreamEOF bool, cause error) error {
 	if tc == nil {
 		return nil
 	}
-	err := tc.finish(w)
+	var err error
+	switch {
+	case upstreamEOF:
+		err = tc.finish(w)
+	case cause != nil:
+		err = tc.abort(w, cause)
+	default:
+		return nil
+	}
 	_ = w.Flush() //nolint:errcheck // stream is ending either way
 	return err
 }
