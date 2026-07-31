@@ -385,7 +385,14 @@ func hostnameWithoutPort(host string) string {
 	if i := strings.LastIndexByte(host, ':'); i >= 0 && strings.IndexByte(host[i:], ']') < 0 {
 		host = host[:i]
 	}
-	return strings.Trim(host, "[]")
+	// Unwrap exactly one matched pair, not every bracket on either end
+	// (strings.Trim would turn "[[x]]" into "x"). The result feeds the
+	// same-origin and suffix tests in trustedRedirectTarget, so two spellings
+	// must never fold to one name.
+	if len(host) >= 2 && host[0] == '[' && host[len(host)-1] == ']' {
+		host = host[1 : len(host)-1]
+	}
+	return host
 }
 
 // trustedRedirectTarget reports whether credentials issued for initialHostname
@@ -396,6 +403,13 @@ func trustedRedirectTarget(host, initialHostname string) bool {
 	target := hostnameWithoutPort(host)
 	if utils.EqualFold(target, initialHostname) {
 		return true
+	}
+	// With no initial hostname there is no origin for the target to be a
+	// subdomain of, and the suffix test below would degenerate: every host is a
+	// suffix match for "", so any name ending in '.' ("evil.com.") would come
+	// back trusted and keep the credentials.
+	if initialHostname == "" {
+		return false
 	}
 	return len(target) > len(initialHostname) &&
 		target[len(target)-len(initialHostname)-1] == '.' &&

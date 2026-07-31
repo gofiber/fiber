@@ -427,15 +427,23 @@ func HTTPMiddleware(mw func(http.Handler) http.Handler) fiber.Handler {
 
 			freq := c.Request()
 			fhdr := &freq.Header
+
+			// Snapshot before mutating: fasthttpadaptor fills r.Header with
+			// b2s views into fhdr's own storage, so every Set, Del or SetHost
+			// below rewrites the bytes the remaining entries point at. The
+			// method/URI/host writes are ordered after this for the same
+			// reason. They happen to be safe today — each one copies a value
+			// that aliases the very field it writes back to, and none of them
+			// touch the key/value store the general headers live in — but that
+			// is a property of fasthttp's current internals, not something this
+			// package can rely on. Taking the snapshot first makes the code
+			// hold the invariant its own comment states.
+			pairs := snapshotHeaders(r.Header)
+
 			fhdr.SetMethod(r.Method)
 			freq.SetRequestURI(r.RequestURI)
 			freq.SetHost(r.Host)
 			fhdr.SetHost(r.Host)
-
-			// Snapshot before mutating: fasthttpadaptor fills r.Header with
-			// b2s views into fhdr's own storage, so every Set, Del or SetHost
-			// below rewrites the bytes the remaining entries point at.
-			pairs := snapshotHeaders(r.Header)
 
 			// Remove all cookies before setting, see https://github.com/valyala/fasthttp/pull/1864
 			fhdr.DelAllCookies()

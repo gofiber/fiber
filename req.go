@@ -418,6 +418,14 @@ func (r *DefaultReq) FormFile(key string) (*multipart.FileHeader, error) {
 // When the request is a multipart form, it is parsed using the application's
 // BodyLimit so the configured limit is consistently enforced.
 func (r *DefaultReq) FormValue(key string, defaultValue ...string) string {
+	// fasthttp's PostArgs and MultipartForm locate the urlencoded body and the
+	// multipart boundary with case-sensitive comparisons, so a legal
+	// "Application/X-WWW-Form-Urlencoded" or "Multipart/Form-Data" reaching this
+	// accessor would otherwise yield nothing. Bind and Redirect.WithInput
+	// normalize for the same reason; doing it here too means a handler does not
+	// have to call one of those first to get its own form back.
+	normalizeContentTypeMediaType(&r.c.fasthttp.Request.Header)
+
 	if r.c.IsMultipart() {
 		// For multipart requests, parse the form using the application's BodyLimit.
 		// fasthttp's FormValue would otherwise re-parse with its default 8 MiB limit,
@@ -962,6 +970,12 @@ func currentMethod(c *DefaultCtx) string {
 // MultipartForm parse form entries from binary.
 // This returns a map[string][]string, so given a key, the value will be a string slice.
 func (r *DefaultReq) MultipartForm() (*multipart.Form, error) {
+	// fasthttp matches both "multipart/form-data" and the "boundary=" parameter
+	// name case-sensitively, so fold them first (see
+	// mediatype.NormalizeRequestContentType). FormFile and SaveFile reach the
+	// parser through here, so this covers them too.
+	normalizeContentTypeMediaType(&r.c.fasthttp.Request.Header)
+
 	return r.c.fasthttp.MultipartFormWithLimit(r.c.app.config.BodyLimit)
 }
 

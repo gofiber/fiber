@@ -718,26 +718,36 @@ func isJSONPMemberExpression(cb string) bool {
 	}
 
 	depth := 0
-	atStart := true // expecting the first byte of an identifier
+	atStart := true     // expecting the first byte of an identifier
+	afterClose := false // a ']' just closed an index
 	for i := 0; i < len(cb); i++ {
 		switch c := cb[i]; c {
 		case '.':
 			if atStart {
 				return false
 			}
-			atStart = true
+			atStart, afterClose = true, false
 		case '[':
 			if atStart {
 				return false
 			}
 			depth++
-			atStart = true
+			atStart, afterClose = true, false
 		case ']':
 			if atStart || depth == 0 {
 				return false
 			}
 			depth--
+			afterClose = true
 		default:
+			// Only '.', '[' or another ']' may follow a closing bracket, so
+			// "cb[0]x" is not a member expression. Without this the state
+			// machine would accept it and emit a body that does not parse —
+			// and would silently become unsound if the byte set below it ever
+			// grew to cover quoted keys.
+			if afterClose {
+				return false
+			}
 			// An identifier may not start with a digit, but a bracket index
 			// legitimately is one ("ns.cb[0]").
 			if atStart && depth == 0 && c >= '0' && c <= '9' {

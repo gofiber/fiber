@@ -381,6 +381,74 @@ func Test_Proxy_Forward(t *testing.T) {
 	require.Equal(t, "forwarded", string(b))
 }
 
+// go test -run Test_Proxy_Forward_ReplacesClientSuppliedRealIP
+func Test_Proxy_Forward_ReplacesClientSuppliedRealIP(t *testing.T) {
+	t.Parallel()
+
+	// The forwarders overwrite X-Real-IP so the upstream can attribute the
+	// request to the peer Fiber actually saw. Header.Set replaces the first
+	// field line with a given name and leaves any others in place, so a client
+	// that sends the header twice used to keep one of its own values on the
+	// wire — and the upstream, which may read the last line or join the pair
+	// per RFC 9110 Section 5.2, would attribute the request to an address the
+	// client chose.
+	for _, tc := range []struct {
+		handler func(addr string) fiber.Handler
+		name    string
+	}{
+		{
+			name:    "Forward",
+			handler: func(addr string) fiber.Handler { return Forward("http://" + addr) },
+		},
+		{
+			name: "DomainForward",
+			handler: func(addr string) fiber.Handler {
+				return DomainForward("example.com", "http://"+addr)
+			},
+		},
+		{
+			name: "BalancerForward",
+			handler: func(addr string) fiber.Handler {
+				return BalancerForward([]string{"http://" + addr})
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			_, addr := createProxyTestServerIPv4(t, func(c fiber.Ctx) error {
+				seen := c.Request().Header.PeekAll("X-Real-IP")
+				out := make([]string, 0, len(seen))
+				for _, v := range seen {
+					out = append(out, string(v))
+				}
+				return c.SendString(strings.Join(out, "|"))
+			})
+
+			app := fiber.New()
+			app.Use(tc.handler(addr))
+
+			req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+			req.Host = "example.com"
+			req.Header.Add("X-Real-IP", "7.7.7.7")
+			req.Header.Add("X-Real-IP", "8.8.8.8")
+
+			resp, err := app.Test(req)
+			require.NoError(t, err)
+			require.Equal(t, fiber.StatusOK, resp.StatusCode)
+
+			b, err := io.ReadAll(resp.Body)
+			require.NoError(t, err)
+
+			got := string(b)
+			require.NotContains(t, got, "7.7.7.7", "client-supplied X-Real-IP reached the upstream")
+			require.NotContains(t, got, "8.8.8.8", "client-supplied X-Real-IP reached the upstream")
+			require.NotContains(t, got, "|", "more than one X-Real-IP field line reached the upstream")
+			require.NotEmpty(t, got)
+		})
+	}
+}
+
 // go test -run Test_Proxy_Forward_WithClient_TLSConfig
 func Test_Proxy_Forward_WithClient_TLSConfig(t *testing.T) {
 	restoreGlobalProxyClient(t)

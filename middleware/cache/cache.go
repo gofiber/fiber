@@ -79,9 +79,14 @@ var ignoreHeaders = map[string]struct{}{
 	// Set-Cookie captured from one response would hand that client's session
 	// to all the others. It still reaches the client that caused the miss;
 	// only the stored copy is dropped.
-	"Set-Cookie":        {},
-	"TE":                {},
-	"Trailers":          {},
+	"Set-Cookie": {},
+	"TE":         {},
+	// "Trailer", not "Trailers": the hop-by-hop header is Trailer
+	// (RFC 9110 Section 6.6.2) — "trailers" is a TE token and never appears as a
+	// response header key, so the old spelling matched nothing and let a
+	// Trailer field describing one connection's chunked framing be replayed to
+	// every later hit.
+	"Trailer":           {},
 	"Transfer-Encoding": {},
 	"Upgrade":           {},
 }
@@ -461,7 +466,27 @@ func New(config ...Config) fiber.Handler {
 				c.Response().Header.SetBytesV(fiber.HeaderDate, dateValue)
 				for i := range e.headers {
 					h := e.headers[i]
-					c.Response().Header.SetBytesKV(h.key, h.value)
+					// Header.All() yields one entry per field line, so a
+					// response that sent a name twice is stored twice. Replaying
+					// every entry with Set collapses the pair: Set overwrites the
+					// first matching line and leaves the rest, so
+					//
+					//	Vary: Cookie
+					//	Vary: Accept-Encoding
+					//
+					// comes back out of the cache varying only on
+					// Accept-Encoding — enough for a downstream shared cache to
+					// start serving one user's response to another — and two
+					// Content-Security-Policy lines, which a browser enforces as
+					// the intersection of both, come back as whichever one is
+					// weaker on its own. Set on a name's first occurrence, so the
+					// values written above still lose to the stored ones exactly
+					// as before, and append from there.
+					if headerSeenEarlier(e.headers[:i], h.key) {
+						c.Response().Header.AddBytesKV(h.key, h.value)
+					} else {
+						c.Response().Header.SetBytesKV(h.key, h.value)
+					}
 				}
 				// Set Cache-Control header if not disabled and not already set
 				if !cfg.DisableCacheControl && len(c.Response().Header.Peek(fiber.HeaderCacheControl)) == 0 {

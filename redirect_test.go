@@ -717,8 +717,35 @@ func Test_Redirect_parseAndClearFlashMessages_InvalidHex(t *testing.T) {
 	// Verify that no flash messages are processed (should be empty)
 	require.Empty(t, r.messages)
 
+	// The cookie is expired even though hex decoding failed. A value this
+	// application cannot decode is one it will never decode, so leaving it in
+	// place would mean re-running hex and msgp over attacker-controlled bytes
+	// on every subsequent request for as long as the browser kept sending it.
+	assertFlashCookieCleared(t, string(c.Response().Header.Peek(HeaderSetCookie)))
+
 	// Release redirect
 	ReleaseRedirect(r)
+}
+
+// Test_Redirect_release_ZeroesMessages asserts that a *Redirect handed back to
+// the pool does not carry the submitted form with it. WithInput copies the
+// whole request body into r.messages — a rejected login puts the password the
+// user just typed in there — and truncating to [:0] leaves those strings
+// reachable from the backing array for the life of the process.
+func Test_Redirect_release_ZeroesMessages(t *testing.T) {
+	t.Parallel()
+
+	r := AcquireRedirect()
+	r.With("password", "hunter2")
+	r.With("token", "s3cr3t")
+	require.Len(t, r.messages, 2)
+
+	full := r.messages[:cap(r.messages)]
+	r.release()
+
+	for i := range full {
+		require.Equal(t, redirectionMsg{}, full[i], "index %d survived release", i)
+	}
 }
 
 func Test_Redirect_Messages_ClearsFlashMessages(t *testing.T) {

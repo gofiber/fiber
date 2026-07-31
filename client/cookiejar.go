@@ -177,6 +177,7 @@ func (cj *CookieJar) getCookiesByHost(host string) []*fasthttp.Cookie {
 	if len(kept) == 0 {
 		delete(cj.hostCookies, host)
 	} else {
+		clearVacated(stored, kept)
 		cj.hostCookies[host] = kept
 	}
 
@@ -229,6 +230,7 @@ func (cj *CookieJar) cookiesForRequest(host string, path []byte, secure bool) []
 		if len(kept) == 0 {
 			delete(cj.hostCookies, domain)
 		} else {
+			clearVacated(cookies, kept)
 			cj.hostCookies[domain] = kept
 		}
 	}
@@ -593,7 +595,12 @@ func (cj *CookieJar) parseCookiesFromResp(host, path []byte, resp *fasthttp.Resp
 					kept = append(kept, v)
 				}
 			}
-			cj.hostCookies[key] = kept
+			if len(kept) == 0 {
+				delete(cj.hostCookies, key)
+			} else {
+				clearVacated(cookies, kept)
+				cj.hostCookies[key] = kept
+			}
 			fasthttp.ReleaseCookie(c)
 		}
 		fasthttp.ReleaseCookie(tmp)
@@ -675,6 +682,7 @@ func (cj *CookieJar) ensureHostCapacityLocked(key string, now time.Time) {
 			}
 			continue
 		}
+		clearVacated(cookies, kept)
 		cj.hostCookies[host] = kept
 	}
 

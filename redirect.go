@@ -126,6 +126,14 @@ func ReleaseRedirect(r *Redirect) {
 
 func (r *Redirect) release() {
 	r.status = StatusSeeOther
+	// Zero before truncating. WithInput copies the whole request body into
+	// these entries — passwords, tokens, anything the form carried — and a
+	// bare r.messages[:0] leaves those strings reachable from the backing
+	// array, so the pooled *Redirect keeps them alive for as long as the
+	// process runs. Nothing re-slices past len, so this is retention rather
+	// than a cross-request read, but there is no reason to hold a credential
+	// after the redirect that carried it has been written.
+	clear(r.messages[:cap(r.messages)])
 	r.messages = r.messages[:0]
 	r.c = nil
 }
@@ -519,12 +527,6 @@ func normalizeRefererURL(location string) string {
 
 // parseAndClearFlashMessages is a method to get flash messages before they are getting removed
 func (r *Redirect) parseAndClearFlashMessages() {
-	// parse flash messages
-	cookieValue, err := hex.DecodeString(r.c.Cookies(FlashCookieName))
-	if err != nil {
-		return
-	}
-
 	// UnmarshalMsg re-slices this capacity rather than allocating, and the
 	// generated per-message decoder assigns only the fields the message
 	// carries. A message encoded as an empty map therefore keeps whatever the
@@ -534,14 +536,22 @@ func (r *Redirect) parseAndClearFlashMessages() {
 	clear(r.c.flashMessages[:cap(r.c.flashMessages)])
 	r.c.flashMessages = r.c.flashMessages[:0]
 
-	if _, err = r.c.flashMessages.UnmarshalMsg(cookieValue); err != nil {
-		// UnmarshalMsg re-slices to the length the payload declared before it
-		// decodes any element, so a failure partway leaves the slice holding
-		// zero-valued entries. Drop them, and still expire the cookie below —
-		// otherwise a malformed value sticks and is re-parsed on every request.
-		r.c.flashMessages = r.c.flashMessages[:0]
+	// parse flash messages
+	if cookieValue, err := hex.DecodeString(r.c.Cookies(FlashCookieName)); err == nil {
+		if _, err := r.c.flashMessages.UnmarshalMsg(cookieValue); err != nil {
+			// UnmarshalMsg re-slices to the length the payload declared before
+			// it decodes any element, so a failure partway leaves the slice
+			// holding zero-valued entries. Drop them.
+			r.c.flashMessages = r.c.flashMessages[:0]
+		}
 	}
 
+	// Expire the cookie whatever the payload turned out to be — including the
+	// hex-decode failure above, which used to return before reaching here. A
+	// value this application cannot decode is one it will never decode, so
+	// leaving it in place only means re-running hex and msgp over
+	// attacker-controlled bytes on every subsequent request, for as long as
+	// the browser keeps sending it.
 	r.c.Cookie(&Cookie{
 		Name:     FlashCookieName,
 		Value:    "",

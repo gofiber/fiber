@@ -86,6 +86,20 @@ func lookupCachedHeader(headers []cachedHeader, name string) ([]byte, bool) {
 	return nil, false
 }
 
+// headerSeenEarlier reports whether key already appears among the entries
+// preceding it, so the restore loop can tell a name's first stored field line
+// from its duplicates. Field names are case-insensitive (RFC 9110 Section 5.1)
+// and a response header can reach the store unnormalized, so compare folded.
+func headerSeenEarlier(earlier []cachedHeader, key []byte) bool {
+	name := utils.UnsafeString(key)
+	for i := range earlier {
+		if utils.EqualFold(utils.UnsafeString(earlier[i].key), name) {
+			return true
+		}
+	}
+	return false
+}
+
 func parseHTTPDate(dateBytes []byte) (uint64, bool) {
 	if len(dateBytes) == 0 {
 		return 0, false

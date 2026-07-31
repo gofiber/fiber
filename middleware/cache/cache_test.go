@@ -1684,6 +1684,51 @@ func Test_StoreResponseHeaders_DropsSetCookie(t *testing.T) {
 	require.Equal(t, "foobar", resp.Header.Get("X-Foobar"))
 }
 
+// Test_StoreResponseHeaders_KeepsRepeatedFieldLines asserts that a header sent
+// on more than one field line comes back off a cache hit intact.
+//
+// The restore loop used to replay every stored entry with Set, which overwrites
+// the first matching line and leaves the rest — so a name sent twice collapsed
+// to its last value. Two of the headers below are why that matters: a Vary that
+// loses "Cookie" lets a downstream shared cache serve one user's response to
+// another, and a Content-Security-Policy that loses a line drops from the
+// intersection of both policies (what a browser actually enforces) to whichever
+// one is weaker on its own.
+func Test_StoreResponseHeaders_KeepsRepeatedFieldLines(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Use(New(Config{
+		StoreResponseHeaders: true,
+	}))
+
+	app.Get("/", func(c fiber.Ctx) error {
+		c.Response().Header.Add("Vary", "Cookie")
+		c.Response().Header.Add("Vary", "Accept-Encoding")
+		c.Response().Header.Add("Content-Security-Policy", "default-src 'none'")
+		c.Response().Header.Add("Content-Security-Policy", "script-src 'self'")
+		c.Response().Header.Add("X-Single", "only")
+		return c.SendString("hi")
+	})
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, cacheMiss, resp.Header.Get("X-Cache"))
+	require.Equal(t, []string{"Cookie", "Accept-Encoding"}, resp.Header.Values("Vary"))
+
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, cacheHit, resp.Header.Get("X-Cache"))
+	require.Equal(t, []string{"Cookie", "Accept-Encoding"}, resp.Header.Values("Vary"))
+	require.Equal(t,
+		[]string{"default-src 'none'", "script-src 'self'"},
+		resp.Header.Values("Content-Security-Policy"),
+	)
+	// A name sent once is still restored once, so the fix did not turn Set into
+	// an unconditional Add.
+	require.Equal(t, []string{"only"}, resp.Header.Values("X-Single"))
+}
+
 func Test_CacheHeader(t *testing.T) {
 	t.Parallel()
 

@@ -360,6 +360,46 @@ func TestComposeRedirectURL_RejectsHTTPSDowngrade(t *testing.T) {
 	require.Equal(t, "other.example", host)
 }
 
+// TestTrustedRedirectTarget_NoInitialHostname pins the degenerate case: with no
+// initial hostname there is no origin for the target to be a subdomain of, and
+// every host is a suffix match for the empty string — so the subdomain test has
+// to be skipped entirely rather than letting a trailing dot pass for one.
+func TestTrustedRedirectTarget_NoInitialHostname(t *testing.T) {
+	t.Parallel()
+
+	require.False(t, trustedRedirectTarget("evil.com.", ""))
+	require.False(t, trustedRedirectTarget("evil.com", ""))
+	require.False(t, trustedRedirectTarget(".", ""))
+	// Both empty is not a host change, so credentials still apply.
+	require.True(t, trustedRedirectTarget("", ""))
+}
+
+// TestHostnameWithoutPort covers the host normalization the credential checks
+// are built on. Its output feeds the same-origin and suffix tests in
+// trustedRedirectTarget, so two different spellings must never fold to the same
+// name — hence unwrapping exactly one matched bracket pair rather than trimming
+// every bracket off both ends.
+func TestHostnameWithoutPort(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct{ in, want string }{
+		{"example.com", "example.com"},
+		{"example.com:8080", "example.com"},
+		{"[::1]", "::1"},
+		{"[::1]:8080", "::1"},
+		{"[2001:db8::1]:443", "2001:db8::1"},
+		{"", ""},
+		{":8080", ""},
+		// Not a bracketed literal: one stray bracket is left where it is
+		// rather than silently folded away.
+		{"[[x]]", "[x]"},
+		{"[x", "[x"},
+		{"x]", "x]"},
+	} {
+		require.Equal(t, tc.want, hostnameWithoutPort(tc.in), "input %q", tc.in)
+	}
+}
+
 // TestDoRedirectsWithClient_StripsCredentialsCrossHost verifies that
 // origin-scoped credentials are dropped as soon as a redirect leaves the host
 // they were issued for, and survive redirects that stay on it.

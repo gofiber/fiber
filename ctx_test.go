@@ -2732,6 +2732,45 @@ func Test_Ctx_FormValue_NonMultipart(t *testing.T) {
 	require.Equal(t, "fallback", c.FormValue("missing", "fallback"))
 }
 
+// Test_Ctx_Form_MixedCaseContentType asserts that Ctx's own form accessors
+// accept the media type and parameter names in any case (RFC 9110 Sections
+// 8.3.1 and 5.6.6). fasthttp matches both case-sensitively, so without the
+// normalization these return nothing at all — and a handler should not have to
+// call Bind first to get its own form back.
+func Test_Ctx_Form_MixedCaseContentType(t *testing.T) {
+	t.Parallel()
+
+	t.Run("urlencoded", func(t *testing.T) {
+		t.Parallel()
+
+		app := New()
+		c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck,forcetypeassert // not needed
+
+		c.Request().Header.SetMethod(MethodPost)
+		c.Request().Header.Set(HeaderContentType, "Application/X-WWW-Form-Urlencoded")
+		c.Request().SetBodyString("name=carol")
+
+		require.Equal(t, "carol", c.FormValue("name"))
+	})
+
+	t.Run("multipart", func(t *testing.T) {
+		t.Parallel()
+
+		app := New()
+		c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck,forcetypeassert // not needed
+
+		// The boundary parameter *name* is folded, its value is not.
+		c.Request().Header.SetMethod(MethodPost)
+		c.Request().Header.Set(HeaderContentType, `Multipart/Form-Data; BOUNDARY=AbC`)
+		c.Request().SetBodyString("--AbC\r\nContent-Disposition: form-data; name=\"name\"\r\n\r\ncarol\r\n--AbC--\r\n")
+
+		form, err := c.MultipartForm()
+		require.NoError(t, err)
+		require.Equal(t, []string{"carol"}, form.Value["name"])
+		require.Equal(t, "carol", c.FormValue("name"))
+	})
+}
+
 func Benchmark_Ctx_Fresh_StaleEtag(b *testing.B) {
 	app := New()
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
@@ -7900,6 +7939,14 @@ func Test_Ctx_JSONP_SanitizesCallback(t *testing.T) {
 		{name: "unbalanced bracket", callback: "a[", expected: "callback"},
 		{name: "empty index", callback: "a[]", expected: "callback"},
 		{name: "empty label", callback: "a..b", expected: "callback"},
+
+		// An identifier may not resume straight after a closing bracket; only
+		// '.', '[' or another ']' may follow one.
+		{name: "identifier after index", callback: "cb[0]x", expected: "callback"},
+		{name: "digit after index", callback: "cb[0]1", expected: "callback"},
+		{name: "index after index", callback: "cb[0][1]", expected: "cb[0][1]"},
+		{name: "property after index", callback: "cb[0].x", expected: "cb[0].x"},
+		{name: "nested index", callback: "a[b[0]]", expected: "a[b[0]]"},
 	}
 
 	app := New()

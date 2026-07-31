@@ -234,6 +234,25 @@ func WithClient(cli *fasthttp.Client) {
 	client.Store(cli)
 }
 
+// setRealIP replaces every inbound X-Real-IP field line with the peer address
+// Fiber derived for this request.
+//
+// Header.Set alone is not enough: it overwrites the first field line with that
+// name and leaves the rest in place, so a client that sends the header twice
+// keeps one of its own values on the wire. The upstream then sees
+//
+//	X-Real-IP: <trusted>
+//	X-Real-IP: <attacker>
+//
+// and whichever line it reads — many servers take the last, and RFC 9110
+// Section 5.2 says a recipient may join duplicates into a comma-separated list
+// — the client got to influence the address the upstream attributes the
+// request to. Delete first so exactly one line survives.
+func setRealIP(c fiber.Ctx) {
+	c.Request().Header.Del("X-Real-IP")
+	c.Request().Header.Set("X-Real-IP", c.IP())
+}
+
 // Forward performs the given http request and fills the given http response.
 // This method will return a fiber.Handler
 //
@@ -244,7 +263,7 @@ func WithClient(cli *fasthttp.Client) {
 // a private one between validation and connection.
 func Forward(addr string, clients ...*fasthttp.Client) fiber.Handler {
 	return func(c fiber.Ctx) error {
-		c.Request().Header.Set("X-Real-IP", c.IP())
+		setRealIP(c)
 		return Do(c, addr, clients...)
 	}
 }
@@ -585,7 +604,7 @@ func DomainForward(hostname, addr string, clients ...*fasthttp.Client) fiber.Han
 		if !utils.EqualFold(host, hostname) {
 			return nil
 		}
-		c.Request().Header.Set("X-Real-IP", c.IP())
+		setRealIP(c)
 		return doActionWithPolicy(c, joinUpstreamPath(base, c.OriginalURL()), currentSecurityPolicy(),
 			func(cli *fasthttp.Client, req *fasthttp.Request, resp *fasthttp.Response, _ *url.URL) error {
 				return cli.Do(req, resp)
@@ -644,7 +663,7 @@ func BalancerForward(servers []string, clients ...*fasthttp.Client) fiber.Handle
 	r := &urlRoundrobin{pool: bases}
 	return func(c fiber.Ctx) error {
 		base := r.get()
-		c.Request().Header.Set("X-Real-IP", c.IP())
+		setRealIP(c)
 		return doActionWithPolicy(c, joinUpstreamPath(base, c.OriginalURL()), currentSecurityPolicy(),
 			func(cli *fasthttp.Client, req *fasthttp.Request, resp *fasthttp.Response, _ *url.URL) error {
 				return cli.Do(req, resp)

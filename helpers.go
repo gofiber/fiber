@@ -27,6 +27,7 @@ import (
 	"github.com/gofiber/utils/v2/swar"
 
 	"github.com/gofiber/fiber/v3/internal/contextvalue"
+	"github.com/gofiber/fiber/v3/internal/mediatype"
 	"github.com/gofiber/fiber/v3/log"
 
 	"github.com/valyala/bytebufferpool"
@@ -284,65 +285,10 @@ func appendLowerASCII(dst, src []byte) []byte {
 
 // normalizeContentTypeMediaType lowercases the case-insensitive parts of a
 // request's Content-Type in place and returns the full header value.
-//
-// The fold has to land on the request's own bytes rather than on a copy:
-// fasthttp locates the multipart boundary and the urlencoded form body with
-// case-sensitive comparisons (Request.MultipartFormBoundary matches a
-// lowercase "boundary=", Request.PostArgs a lowercase media type), as does
-// binder.FormBinding — so a perfectly legal "Multipart/Form-Data" or
-// "BOUNDARY=" would otherwise parse as an empty form.
-//
-// Both the media type and the parameter *names* are case-insensitive
-// (RFC 9110 Sections 8.3.1 and 5.6.6) and are folded. Parameter *values* are
-// left untouched: a multipart boundary is case-sensitive, and folding it
-// detaches the header from the body it describes.
+// See mediatype.NormalizeRequestContentType for why the fold has to land on the
+// request's own bytes and why parameter values are left alone.
 func normalizeContentTypeMediaType(h *fasthttp.RequestHeader) []byte {
-	ct := h.ContentType()
-
-	i := bytes.IndexByte(ct, ';')
-	if i == -1 {
-		utilsbytes.UnsafeToLower(ct)
-		return ct
-	}
-	utilsbytes.UnsafeToLower(ct[:i])
-
-	for i < len(ct) {
-		i++ // step over the ';'
-		for i < len(ct) && (ct[i] == ' ' || ct[i] == '\t') {
-			i++
-		}
-
-		nameStart := i
-		for i < len(ct) && ct[i] != '=' && ct[i] != ';' {
-			i++
-		}
-		utilsbytes.UnsafeToLower(ct[nameStart:i])
-		if i >= len(ct) || ct[i] == ';' {
-			continue
-		}
-
-		// Step over the value without touching it. A quoted-string may
-		// contain ';' (RFC 9110 Section 5.6.6), so it has to be consumed as a
-		// unit or the next parameter name would be mislocated.
-		i++ // step over the '='
-		if i < len(ct) && ct[i] == '"' {
-			i++
-			for i < len(ct) && ct[i] != '"' {
-				if ct[i] == '\\' && i+1 < len(ct) {
-					i++
-				}
-				i++
-			}
-			if i < len(ct) {
-				i++ // closing quote
-			}
-		}
-		for i < len(ct) && ct[i] != ';' {
-			i++
-		}
-	}
-
-	return ct
+	return mediatype.NormalizeRequestContentType(h)
 }
 
 // defaultString returns the value or a default value if it is set
