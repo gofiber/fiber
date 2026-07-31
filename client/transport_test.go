@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/gofiber/fiber/v3"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
 )
@@ -330,23 +331,162 @@ func TestDoRedirectsWithClientBranches(t *testing.T) {
 // and credentials never leave the TLS boundary.
 func TestComposeRedirectURL_RejectsHTTPSDowngrade(t *testing.T) {
 	t.Parallel()
-	_, err := composeRedirectURL("https://example.com/login", []byte("http://example.com/after"), false)
+	_, _, err := composeRedirectURL("https://example.com/login", []byte("http://example.com/after"), false)
 	require.ErrorIs(t, err, ErrRedirectDowngrade)
 
 	// Same-origin HTTP→HTTP is fine.
-	out, err := composeRedirectURL("http://example.com/a", []byte("http://example.com/b"), false)
+	out, host, err := composeRedirectURL("http://example.com/a", []byte("http://example.com/b"), false)
 	require.NoError(t, err)
 	require.Equal(t, "http://example.com/b", out)
+	require.Equal(t, "example.com", host)
 
 	// HTTPS→HTTPS is fine.
-	out, err = composeRedirectURL("https://example.com/a", []byte("https://example.com/b"), false)
+	out, host, err = composeRedirectURL("https://example.com/a", []byte("https://example.com/b"), false)
 	require.NoError(t, err)
 	require.Equal(t, "https://example.com/b", out)
+	require.Equal(t, "example.com", host)
 
 	// HTTP→HTTPS upgrade is fine.
-	out, err = composeRedirectURL("http://example.com/a", []byte("https://example.com/b"), false)
+	out, host, err = composeRedirectURL("http://example.com/a", []byte("https://example.com/b"), false)
 	require.NoError(t, err)
 	require.Equal(t, "https://example.com/b", out)
+	require.Equal(t, "example.com", host)
+
+	// A cross-host redirect reports the new host so the caller can drop
+	// origin-scoped credentials.
+	out, host, err = composeRedirectURL("http://example.com/a", []byte("http://other.example/b"), false)
+	require.NoError(t, err)
+	require.Equal(t, "http://other.example/b", out)
+	require.Equal(t, "other.example", host)
+}
+
+// TestDoRedirectsWithClient_StripsCredentialsCrossHost verifies that
+// origin-scoped credentials are dropped as soon as a redirect leaves the host
+// they were issued for, and survive redirects that stay on it.
+func TestDoRedirectsWithClient_StripsCredentialsCrossHost(t *testing.T) {
+	t.Parallel()
+
+	newReq := func() *fasthttp.Request {
+		req := fasthttp.AcquireRequest()
+		req.SetRequestURI("http://example.com/start")
+		req.Header.Set(fasthttp.HeaderAuthorization, "Bearer secret")
+		req.Header.Set(fasthttp.HeaderProxyAuthorization, "Basic secret")
+		req.Header.Set(fasthttp.HeaderCookie, "session=secret")
+		return req
+	}
+
+	t.Run("same host keeps credentials", func(t *testing.T) {
+		t.Parallel()
+
+		req := newReq()
+		defer fasthttp.ReleaseRequest(req)
+		resp := fasthttp.AcquireResponse()
+		defer fasthttp.ReleaseResponse(resp)
+
+		client := &stubRedirectClient{calls: []stubRedirectCall{
+			{status: ptrInt(fasthttp.StatusFound), location: ptrString("http://example.com/next")},
+			{status: ptrInt(fasthttp.StatusOK)},
+		}}
+		require.NoError(t, doRedirectsWithClient(req, resp, 5, client))
+		require.Equal(t, "Bearer secret", string(req.Header.Peek(fasthttp.HeaderAuthorization)))
+		require.Equal(t, "Basic secret", string(req.Header.Peek(fasthttp.HeaderProxyAuthorization)))
+		require.Equal(t, "session=secret", string(req.Header.Peek(fasthttp.HeaderCookie)))
+	})
+
+	t.Run("cross host drops credentials", func(t *testing.T) {
+		t.Parallel()
+
+		req := newReq()
+		defer fasthttp.ReleaseRequest(req)
+		resp := fasthttp.AcquireResponse()
+		defer fasthttp.ReleaseResponse(resp)
+
+		client := &stubRedirectClient{calls: []stubRedirectCall{
+			{status: ptrInt(fasthttp.StatusFound), location: ptrString("http://attacker.example/collect")},
+			{status: ptrInt(fasthttp.StatusOK)},
+		}}
+		require.NoError(t, doRedirectsWithClient(req, resp, 5, client))
+		require.Equal(t, "http://attacker.example/collect", req.URI().String())
+		require.Empty(t, req.Header.Peek(fasthttp.HeaderAuthorization))
+		require.Empty(t, req.Header.Peek(fasthttp.HeaderProxyAuthorization))
+		require.Empty(t, req.Header.Peek(fasthttp.HeaderCookie))
+	})
+}
+
+// TestDoRedirectsWithClient_ValidatesTargets covers the target validation that
+// every transport now shares through doRedirectsWithClient.
+func TestDoRedirectsWithClient_ValidatesTargets(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name     string
+		base     string
+		location string
+		wantErr  error
+	}{
+		{name: "https downgrade", base: "https://example.com/login", location: "http://example.com/after", wantErr: ErrRedirectDowngrade},
+		{name: "foreign scheme", base: "http://example.com/a", location: "ftp://example.com/b", wantErr: fasthttp.ErrorInvalidURI},
+		{name: "control character", base: "http://example.com/a", location: "/b\x00c", wantErr: fasthttp.ErrorInvalidURI},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			req := fasthttp.AcquireRequest()
+			defer fasthttp.ReleaseRequest(req)
+			resp := fasthttp.AcquireResponse()
+			defer fasthttp.ReleaseResponse(resp)
+
+			req.SetRequestURI(tc.base)
+			client := &stubRedirectClient{calls: []stubRedirectCall{
+				{status: ptrInt(fasthttp.StatusFound), location: ptrString(tc.location)},
+			}}
+			require.ErrorIs(t, doRedirectsWithClient(req, resp, 5, client), tc.wantErr)
+		})
+	}
+}
+
+// TestClient_DoRedirects_StripsCredentialsCrossHost exercises the default
+// transport end to end: the redirect validation must apply to the client
+// callers actually get from New(), not only to the load-balanced transport.
+func TestClient_DoRedirects_StripsCredentialsCrossHost(t *testing.T) {
+	t.Parallel()
+
+	server := startTestServer(t, func(app *fiber.App) {
+		app.Get("/start", func(c fiber.Ctx) error {
+			return c.Redirect().Status(fiber.StatusFound).To("http://attacker.example/collect")
+		})
+		app.Get("/same-host", func(c fiber.Ctx) error {
+			return c.Redirect().Status(fiber.StatusFound).To("http://example.com/collect")
+		})
+		app.Get("/collect", func(c fiber.Ctx) error {
+			return c.SendString(c.Get(fiber.HeaderAuthorization) + "|" + c.Get(fiber.HeaderCookie))
+		})
+	})
+	defer server.stop()
+
+	client := New().SetDial(server.dial())
+	credentials := Config{
+		Header:       map[string]string{fiber.HeaderAuthorization: "Bearer secret"},
+		Cookie:       map[string]string{"session": "secret"},
+		MaxRedirects: 5,
+	}
+
+	// Control: a redirect that stays on the issuing host carries them through,
+	// so the cross-host assertion below cannot pass vacuously.
+	sameHost, err := client.Get("http://example.com/same-host", credentials)
+	require.NoError(t, err)
+	defer sameHost.Close()
+	require.Equal(t, fiber.StatusOK, sameHost.StatusCode())
+	require.Equal(t, "Bearer secret|session=secret", sameHost.String())
+
+	resp, err := client.Get("http://example.com/start", credentials)
+	require.NoError(t, err)
+	defer resp.Close()
+
+	require.Equal(t, fiber.StatusOK, resp.StatusCode())
+	require.Equal(t, "|", resp.String())
 }
 
 func TestDoRedirectsWithClientDefaultLimit(t *testing.T) {

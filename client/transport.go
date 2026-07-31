@@ -59,8 +59,12 @@ func (s *standardClientTransport) DoDeadline(req *fasthttp.Request, resp *fastht
 	return s.client.DoDeadline(req, resp, deadline)
 }
 
+// DoRedirects proxies redirect handling through doRedirectsWithClient so every
+// transport applies the same target validation — scheme allowlist, HTTPS
+// downgrade refusal, and cross-host credential stripping — instead of the
+// unvalidated loop fasthttp.Client.DoRedirects would run.
 func (s *standardClientTransport) DoRedirects(req *fasthttp.Request, resp *fasthttp.Response, maxRedirects int) error {
-	return s.client.DoRedirects(req, resp, maxRedirects)
+	return doRedirectsWithClient(req, resp, maxRedirects, s.client)
 }
 
 func (s *standardClientTransport) CloseIdleConnections() {
@@ -113,8 +117,11 @@ func (h *hostClientTransport) DoDeadline(req *fasthttp.Request, resp *fasthttp.R
 	return h.client.DoDeadline(req, resp, deadline)
 }
 
+// DoRedirects proxies redirect handling through doRedirectsWithClient for the
+// same reason as standardClientTransport.DoRedirects: the validation must not
+// depend on which transport the caller happened to configure.
 func (h *hostClientTransport) DoRedirects(req *fasthttp.Request, resp *fasthttp.Response, maxRedirects int) error {
-	return h.client.DoRedirects(req, resp, maxRedirects)
+	return doRedirectsWithClient(req, resp, maxRedirects, h.client)
 }
 
 func (h *hostClientTransport) CloseIdleConnections() {
@@ -298,6 +305,7 @@ type redirectClient interface {
 // for negative values, and validates redirect targets before following them.
 func doRedirectsWithClient(req *fasthttp.Request, resp *fasthttp.Response, maxRedirects int, client redirectClient) error {
 	currentURL := req.URI().String()
+	currentHost := string(req.URI().Host())
 	redirects := 0
 	singleRequestOnly := maxRedirects <= 0
 
@@ -332,7 +340,7 @@ func doRedirectsWithClient(req *fasthttp.Request, resp *fasthttp.Response, maxRe
 			return fasthttp.ErrMissingLocation
 		}
 
-		nextURL, err := composeRedirectURL(currentURL, location, req.DisableRedirectPathNormalizing)
+		nextURL, nextHost, err := composeRedirectURL(currentURL, location, req.DisableRedirectPathNormalizing)
 		if err != nil {
 			return err
 		}
@@ -344,7 +352,26 @@ func doRedirectsWithClient(req *fasthttp.Request, resp *fasthttp.Response, maxRe
 			req.Header.Del(fasthttp.HeaderContentType)
 			req.Header.Del(fasthttp.HeaderContentLength)
 		}
+
+		// Credentials are bound to the origin they were issued for, so drop
+		// them when the redirect crosses to a different host rather than
+		// handing them to a third party (RFC 9110 §15.4; matches browser and
+		// net/http behavior).
+		if !utils.EqualFold(nextHost, currentHost) {
+			for _, h := range crossHostSensitiveHeaders {
+				req.Header.Del(h)
+			}
+			currentHost = nextHost
+		}
 	}
+}
+
+// crossHostSensitiveHeaders lists the headers that carry credentials scoped to
+// a single origin and must not survive a redirect to a different host.
+var crossHostSensitiveHeaders = []string{
+	fasthttp.HeaderAuthorization,
+	fasthttp.HeaderProxyAuthorization,
+	fasthttp.HeaderCookie,
 }
 
 // composeRedirectURL resolves a redirect target relative to the current request
@@ -352,10 +379,14 @@ func doRedirectsWithClient(req *fasthttp.Request, resp *fasthttp.Response, maxRe
 // restricting schemes to HTTP/S so caller-provided Location headers cannot
 // trigger arbitrary transports. Redirects from HTTPS to plaintext HTTP are
 // rejected to prevent credentials from leaking after a TLS handshake.
-func composeRedirectURL(base string, location []byte, disablePathNormalizing bool) (string, error) {
+//
+// It returns the resolved URL along with its host, which the caller compares
+// against the previous hop to decide whether origin-scoped credentials still
+// apply.
+func composeRedirectURL(base string, location []byte, disablePathNormalizing bool) (redirectURL, host string, err error) { //nolint:nonamedreturns // names document the two string results
 	for _, b := range location {
 		if b < 0x20 || b == 0x7f {
-			return "", fasthttp.ErrorInvalidURI
+			return "", "", fasthttp.ErrorInvalidURI
 		}
 	}
 
@@ -369,16 +400,16 @@ func composeRedirectURL(base string, location []byte, disablePathNormalizing boo
 
 	scheme := uri.Scheme()
 	if len(scheme) > 0 && !utils.EqualFold(scheme, httpScheme) && !utils.EqualFold(scheme, httpsScheme) {
-		return "", fasthttp.ErrorInvalidURI
+		return "", "", fasthttp.ErrorInvalidURI
 	}
 
 	if len(scheme) > 0 && len(uri.Host()) == 0 {
-		return "", fasthttp.ErrorInvalidURI
+		return "", "", fasthttp.ErrorInvalidURI
 	}
 
 	if wasHTTPS && utils.EqualFold(scheme, httpScheme) {
-		return "", ErrRedirectDowngrade
+		return "", "", ErrRedirectDowngrade
 	}
 
-	return uri.String(), nil
+	return uri.String(), string(uri.Host()), nil
 }
