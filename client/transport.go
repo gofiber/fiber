@@ -5,6 +5,7 @@ package client
 
 import (
 	"crypto/tls"
+	"strings"
 	"time"
 
 	"github.com/gofiber/utils/v2"
@@ -59,12 +60,13 @@ func (s *standardClientTransport) DoDeadline(req *fasthttp.Request, resp *fastht
 	return s.client.DoDeadline(req, resp, deadline)
 }
 
-// DoRedirects proxies redirect handling through doRedirectsWithClient so every
-// transport applies the same target validation — scheme allowlist, HTTPS
-// downgrade refusal, and cross-host credential stripping — instead of the
-// unvalidated loop fasthttp.Client.DoRedirects would run.
+// DoRedirects delegates to fasthttp, whose redirect loop resolves relative
+// Location values, applies RFC 9110 §15.4.4 to 303 responses for every method,
+// and strips credentials on redirects away from the initial host. Routing this
+// through doRedirectsWithClient instead would substitute a narrower
+// reimplementation of all three.
 func (s *standardClientTransport) DoRedirects(req *fasthttp.Request, resp *fasthttp.Response, maxRedirects int) error {
-	return doRedirectsWithClient(req, resp, maxRedirects, s.client)
+	return s.client.DoRedirects(req, resp, maxRedirects)
 }
 
 func (s *standardClientTransport) CloseIdleConnections() {
@@ -117,11 +119,10 @@ func (h *hostClientTransport) DoDeadline(req *fasthttp.Request, resp *fasthttp.R
 	return h.client.DoDeadline(req, resp, deadline)
 }
 
-// DoRedirects proxies redirect handling through doRedirectsWithClient for the
-// same reason as standardClientTransport.DoRedirects: the validation must not
-// depend on which transport the caller happened to configure.
+// DoRedirects delegates to fasthttp for the same reasons as
+// standardClientTransport.DoRedirects.
 func (h *hostClientTransport) DoRedirects(req *fasthttp.Request, resp *fasthttp.Response, maxRedirects int) error {
-	return doRedirectsWithClient(req, resp, maxRedirects, h.client)
+	return h.client.DoRedirects(req, resp, maxRedirects)
 }
 
 func (h *hostClientTransport) CloseIdleConnections() {
@@ -305,7 +306,7 @@ type redirectClient interface {
 // for negative values, and validates redirect targets before following them.
 func doRedirectsWithClient(req *fasthttp.Request, resp *fasthttp.Response, maxRedirects int, client redirectClient) error {
 	currentURL := req.URI().String()
-	currentHost := string(req.URI().Host())
+	initialHostname := hostnameWithoutPort(string(req.URI().Host()))
 	redirects := 0
 	singleRequestOnly := maxRedirects <= 0
 
@@ -353,25 +354,52 @@ func doRedirectsWithClient(req *fasthttp.Request, resp *fasthttp.Response, maxRe
 			req.Header.Del(fasthttp.HeaderContentLength)
 		}
 
-		// Credentials are bound to the origin they were issued for, so drop
-		// them when the redirect crosses to a different host rather than
-		// handing them to a third party (RFC 9110 §15.4; matches browser and
-		// net/http behavior).
-		if !utils.EqualFold(nextHost, currentHost) {
+		// Credentials are scoped to the origin that issued them, so drop them
+		// once the chain leaves it. The trust boundary is net/http's, which
+		// fasthttp's own loop also implements: measured against the *initial*
+		// host rather than the previous hop, ignoring the port, and treating a
+		// subdomain of it as still trusted.
+		if !trustedRedirectTarget(nextHost, initialHostname) {
 			for _, h := range crossHostSensitiveHeaders {
 				req.Header.Del(h)
 			}
-			currentHost = nextHost
 		}
 	}
 }
 
 // crossHostSensitiveHeaders lists the headers that carry credentials scoped to
-// a single origin and must not survive a redirect to a different host.
+// a single origin and must not survive a redirect to an untrusted host. The set
+// matches the one fasthttp deletes, which in turn matches net/http.
 var crossHostSensitiveHeaders = []string{
 	fasthttp.HeaderAuthorization,
 	fasthttp.HeaderProxyAuthorization,
+	fasthttp.HeaderProxyAuthenticate,
+	fasthttp.HeaderWWWAuthenticate,
 	fasthttp.HeaderCookie,
+	"Cookie2",
+}
+
+// hostnameWithoutPort strips the port from a host[:port] value, leaving a
+// bracketed IPv6 literal's own colons alone.
+func hostnameWithoutPort(host string) string {
+	if i := strings.LastIndexByte(host, ':'); i >= 0 && strings.IndexByte(host[i:], ']') < 0 {
+		host = host[:i]
+	}
+	return strings.Trim(host, "[]")
+}
+
+// trustedRedirectTarget reports whether credentials issued for initialHostname
+// may still be sent to host, which may carry a port. The target is trusted when
+// it is the initial host or a subdomain of it — the rule net/http documents for
+// forwarding sensitive headers across redirects.
+func trustedRedirectTarget(host, initialHostname string) bool {
+	target := hostnameWithoutPort(host)
+	if utils.EqualFold(target, initialHostname) {
+		return true
+	}
+	return len(target) > len(initialHostname) &&
+		target[len(target)-len(initialHostname)-1] == '.' &&
+		utils.HasSuffixFold(target, initialHostname)
 }
 
 // composeRedirectURL resolves a redirect target relative to the current request

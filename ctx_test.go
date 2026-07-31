@@ -7891,10 +7891,15 @@ func Test_Ctx_JSONP_SanitizesCallback(t *testing.T) {
 		{name: "bracket index", callback: "ns.cb[0]", expected: "ns.cb[0]"},
 		{name: "dollar and underscore", callback: "$.jsonp_1", expected: "$.jsonp_1"},
 
-		// Nothing usable left: fall back rather than emit "(data);", which
-		// would call nothing at all.
+		// Nothing callable left: fall back rather than emit a body that throws.
 		{name: "fully stripped", callback: "()+-;", expected: "callback"},
 		{name: "empty", callback: "", expected: "callback"},
+		{name: "bare number", callback: "123", expected: "callback"},
+		{name: "leading digit", callback: "0.0", expected: "callback"},
+		{name: "dots only", callback: "...", expected: "callback"},
+		{name: "unbalanced bracket", callback: "a[", expected: "callback"},
+		{name: "empty index", callback: "a[]", expected: "callback"},
+		{name: "empty label", callback: "a..b", expected: "callback"},
 	}
 
 	app := New()

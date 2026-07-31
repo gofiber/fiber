@@ -353,8 +353,8 @@ func parserResponseCookie(c *Client, resp *Response, req *Request) error {
 	// the final response reaches this hook. That loses a cookie set alongside a
 	// redirect, but never misfiles one.
 	if c.cookieJar != nil {
-		uri := resp.respondedURIOr(req.RawRequest.URI())
-		c.cookieJar.parseCookiesFromResp(uri.Host(), uri.Path(), resp.RawResponse)
+		host, path := resp.respondedOrigin(req.RawRequest.URI())
+		c.cookieJar.parseCookiesFromResp(host, path, resp.RawResponse)
 	}
 
 	return nil

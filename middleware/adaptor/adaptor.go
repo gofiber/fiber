@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/textproto"
 	"reflect"
+	"strings"
 	"sync"
 	"time"
 	"unsafe"
@@ -346,29 +347,58 @@ var framingHeaders = [...]string{
 	fiber.HeaderConnection,
 }
 
-// dropRemovedHeaders deletes from the fiber request every header the wrapped
-// net/http middleware no longer carries.
+// headerPair is one owned copy of a header line taken from the converted
+// net/http request.
+type headerPair struct {
+	key   string
+	value string
+}
+
+// snapshotHeaders copies the non-framing headers of the converted request into
+// owned strings.
 //
-// Copying r.Header over the fiber request propagates additions and changes but
-// not removals, which silently defeats middleware whose whole job is to strip a
-// header — a spoofable X-Forwarded-For, an Authorization it has already
-// consumed. Such a header would reappear for the fiber handler and for every
-// later fiber middleware.
+// fasthttpadaptor builds http.Request.Header with b2s (fasthttpadaptor's
+// request.go), so its keys and values are unsafe views into the very buffers
+// the fiber request header owns. Writing back in place therefore corrupts the
+// data still being read: a plain Set-then-Add copy duplicated the last value of
+// every multi-valued header, and SetHost spliced whatever r.Header["Host"]
+// pointed at. Materializing first removes the aliasing entirely.
+//
+// Framing and identity headers are dropped here rather than copied back: they
+// describe the original message, not the converted copy, and Host is restored
+// separately from r.Host.
+func snapshotHeaders(h http.Header) []headerPair {
+	pairs := make([]headerPair, 0, len(h))
+	for key, vals := range h {
+		if isFramingHeader(key) {
+			continue
+		}
+		ownedKey := strings.Clone(key)
+		for _, v := range vals {
+			pairs = append(pairs, headerPair{key: ownedKey, value: strings.Clone(v)})
+		}
+	}
+	return pairs
+}
+
+// clearCopiedHeaders deletes every non-framing header from the fiber request so
+// the copy that follows rebuilds the set exactly as the wrapped net/http
+// middleware left it.
+//
+// Copying with Set-then-Add cannot do that. fasthttp's Set replaces only the
+// first entry with a given name, so a middleware that collapses a multi-valued
+// header — `r.Header.Set("X-Forwarded-For", sanitized)` — left the remaining
+// original values in place, and a middleware that changed nothing at all
+// duplicated the last value of every multi-valued header. Removals were not
+// propagated either, in any of net/http's spellings: Del, assigning nil, or
+// filtering the slice to empty.
 //
 // Keys are collected before anything is deleted, since fasthttp's iterator
 // walks the header storage the deletes rewrite.
-func dropRemovedHeaders(fhdr *fasthttp.RequestHeader, kept http.Header) {
+func clearCopiedHeaders(fhdr *fasthttp.RequestHeader) {
 	var removed []string
 	for key := range fhdr.All() {
-		name := utils.UnsafeString(key)
-		if isFramingHeader(name) {
-			continue
-		}
-		// fasthttp and net/http agree on canonical header casing, and
-		// http.Header.Add canonicalizes whatever the adaptor handed it, so the
-		// canonical form is the right lookup key even when the app disabled
-		// fiber's own header normalization.
-		if _, ok := kept[textproto.CanonicalMIMEHeaderKey(name)]; ok {
+		if isFramingHeader(utils.UnsafeString(key)) {
 			continue
 		}
 		removed = append(removed, string(key))
@@ -402,20 +432,16 @@ func HTTPMiddleware(mw func(http.Handler) http.Handler) fiber.Handler {
 			freq.SetHost(r.Host)
 			fhdr.SetHost(r.Host)
 
+			// Snapshot before mutating: fasthttpadaptor fills r.Header with
+			// b2s views into fhdr's own storage, so every Set, Del or SetHost
+			// below rewrites the bytes the remaining entries point at.
+			pairs := snapshotHeaders(r.Header)
+
 			// Remove all cookies before setting, see https://github.com/valyala/fasthttp/pull/1864
 			fhdr.DelAllCookies()
-			dropRemovedHeaders(fhdr, r.Header)
-			for key, vals := range r.Header {
-				if len(vals) == 0 {
-					continue
-				}
-				// Set replaces whatever the key held on the fiber request,
-				// then Add appends the remaining values so multi-value
-				// headers survive instead of collapsing to the last value.
-				fhdr.Set(key, vals[0])
-				for _, v := range vals[1:] {
-					fhdr.Add(key, v)
-				}
+			clearCopiedHeaders(fhdr)
+			for _, p := range pairs {
+				fhdr.Add(p.key, p.value)
 			}
 			CopyContextToFiberContext(r.Context(), c.RequestCtx())
 		})

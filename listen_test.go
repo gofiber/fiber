@@ -662,6 +662,34 @@ func Test_Listen_TLSConfig_NoWarningWhenAlone(t *testing.T) {
 	require.NotContains(t, buf.String(), "supersedes")
 }
 
+// go test -run Test_Listener_WarnsIgnoredTLSFields
+func Test_Listener_WarnsIgnoredTLSFields(t *testing.T) {
+	// Not parallel: swaps the package-level log output.
+	var buf bytes.Buffer
+	fiberlog.SetOutput(&buf)
+	t.Cleanup(func() { fiberlog.SetOutput(os.Stderr) })
+
+	ln, err := net.Listen(NetworkTCP4, "127.0.0.1:0")
+	require.NoError(t, err)
+
+	app := New()
+	go func() {
+		time.Sleep(500 * time.Millisecond)
+		assert.NoError(t, app.Shutdown())
+	}()
+
+	// Listener serves ln untouched, so mTLS here is silently absent unless the
+	// caller wrapped the listener themselves.
+	require.NoError(t, app.Listener(ln, ListenConfig{
+		DisableStartupMessage: true,
+		CertClientFile:        "./.github/testdata/ca-chain.cert.pem",
+	}))
+
+	out := buf.String()
+	require.Contains(t, out, "CertClientFile is ignored")
+	require.Contains(t, out, "no client certificate will be required")
+}
+
 // go test -run Test_Listen_AutoCert_Conflicts
 func Test_Listen_AutoCert_Conflicts(t *testing.T) {
 	t.Parallel()

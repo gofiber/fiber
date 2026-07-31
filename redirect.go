@@ -460,29 +460,58 @@ func (r *Redirect) sameOriginReferer(location string) (string, bool) {
 // controls and spaces, drop every ASCII tab and newline, fold backslashes onto
 // forward slashes, and collapse a leading run of slashes to the two that begin
 // an authority.
+//
+// The backslash fold stops at the first "?" or "#". The parser substitutes "\\"
+// for "/" only while it is reading the scheme, authority and path of a special
+// URL; in the query and fragment states a backslash is an ordinary code point,
+// so folding there would rewrite a query the user is entitled to be sent back
+// to. Tab and newline removal, by contrast, is applied to the whole input
+// before parsing begins.
+//
+// The scan is byte-wise on purpose: mapping runes would re-encode any invalid
+// UTF-8 byte in the referer as U+FFFD, corrupting a path or query that
+// normalization was never asked to touch.
 func normalizeRefererURL(location string) string {
 	location = strings.TrimFunc(location, func(c rune) bool { return c <= ' ' })
-	if strings.ContainsAny(location, "\t\n\r\\") {
-		location = strings.Map(func(c rune) rune {
-			switch c {
-			case '\t', '\n', '\r':
-				return -1
-			case '\\':
-				return '/'
-			default:
-				return c
+
+	var b []byte
+	inPath := true
+	for i := 0; i < len(location); i++ {
+		c := location[i]
+		switch {
+		case c == '\t' || c == '\n' || c == '\r':
+			if b == nil {
+				b = append(make([]byte, 0, len(location)), location[:i]...)
 			}
-		}, location)
+			continue
+		case c == '?' || c == '#':
+			inPath = false
+		case c == '\\' && inPath:
+			if b == nil {
+				b = append(make([]byte, 0, len(location)), location[:i]...)
+			}
+			b = append(b, '/')
+			continue
+		}
+		if b != nil {
+			b = append(b, c)
+		}
+	}
+	if b != nil {
+		location = string(b)
 	}
 
 	// "///evil.com" reaches the same authority state as "//evil.com", so keep
 	// at most the two slashes that introduce it.
 	if strings.HasPrefix(location, "//") {
-		trimmed := utils.TrimLeft(location, '/')
-		if trimmed == "" {
+		n := 0
+		for n < len(location) && location[n] == '/' {
+			n++
+		}
+		if n == len(location) {
 			return "/"
 		}
-		location = "//" + trimmed
+		location = location[n-2:]
 	}
 
 	return location
@@ -505,9 +534,12 @@ func (r *Redirect) parseAndClearFlashMessages() {
 	clear(r.c.flashMessages[:cap(r.c.flashMessages)])
 	r.c.flashMessages = r.c.flashMessages[:0]
 
-	_, err = r.c.flashMessages.UnmarshalMsg(cookieValue)
-	if err != nil {
-		return
+	if _, err = r.c.flashMessages.UnmarshalMsg(cookieValue); err != nil {
+		// UnmarshalMsg re-slices to the length the payload declared before it
+		// decodes any element, so a failure partway leaves the slice holding
+		// zero-valued entries. Drop them, and still expire the cookie below —
+		// otherwise a malformed value sticks and is re-parsed on every request.
+		r.c.flashMessages = r.c.flashMessages[:0]
 	}
 
 	r.c.Cookie(&Cookie{

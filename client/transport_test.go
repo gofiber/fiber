@@ -375,6 +375,38 @@ func TestDoRedirectsWithClient_StripsCredentialsCrossHost(t *testing.T) {
 		return req
 	}
 
+	t.Run("subdomain of the initial host keeps credentials", func(t *testing.T) {
+		t.Parallel()
+
+		req := newReq()
+		defer fasthttp.ReleaseRequest(req)
+		resp := fasthttp.AcquireResponse()
+		defer fasthttp.ReleaseResponse(resp)
+
+		client := &stubRedirectClient{calls: []stubRedirectCall{
+			{status: ptrInt(fasthttp.StatusFound), location: ptrString("http://www.example.com/next")},
+			{status: ptrInt(fasthttp.StatusOK)},
+		}}
+		require.NoError(t, doRedirectsWithClient(req, resp, 5, client))
+		require.Equal(t, "Bearer secret", string(req.Header.Peek(fasthttp.HeaderAuthorization)))
+	})
+
+	t.Run("explicit default port keeps credentials", func(t *testing.T) {
+		t.Parallel()
+
+		req := newReq()
+		defer fasthttp.ReleaseRequest(req)
+		resp := fasthttp.AcquireResponse()
+		defer fasthttp.ReleaseResponse(resp)
+
+		client := &stubRedirectClient{calls: []stubRedirectCall{
+			{status: ptrInt(fasthttp.StatusFound), location: ptrString("http://example.com:80/next")},
+			{status: ptrInt(fasthttp.StatusOK)},
+		}}
+		require.NoError(t, doRedirectsWithClient(req, resp, 5, client))
+		require.Equal(t, "Bearer secret", string(req.Header.Peek(fasthttp.HeaderAuthorization)))
+	})
+
 	t.Run("same host keeps credentials", func(t *testing.T) {
 		t.Parallel()
 
@@ -419,10 +451,10 @@ func TestDoRedirectsWithClient_ValidatesTargets(t *testing.T) {
 	t.Parallel()
 
 	cases := []struct {
+		wantErr  error
 		name     string
 		base     string
 		location string
-		wantErr  error
 	}{
 		{name: "https downgrade", base: "https://example.com/login", location: "http://example.com/after", wantErr: ErrRedirectDowngrade},
 		{name: "foreign scheme", base: "http://example.com/a", location: "ftp://example.com/b", wantErr: fasthttp.ErrorInvalidURI},

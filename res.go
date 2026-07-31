@@ -640,11 +640,8 @@ func (r *DefaultRes) JSONP(data any, callback ...string) error {
 
 	cb := defaultJSONPCallback
 	if len(callback) > 0 {
-		cb = sanitizeJSONPCallback(callback[0])
-		if cb == "" {
-			// Nothing usable survived; fall back rather than emit a bare
-			// "(data);" expression that invokes nothing.
-			cb = defaultJSONPCallback
+		if sanitized := sanitizeJSONPCallback(callback[0]); sanitized != "" {
+			cb = sanitized
 		}
 	}
 
@@ -678,9 +675,16 @@ func isJSONPCallbackByte(b byte) bool {
 }
 
 // sanitizeJSONPCallback drops every byte isJSONPCallbackByte rejects, matching
-// how Express and Django filter the same value. Names already in that set —
-// "cb", "window.cb", "ns.cb[0]", "$.jsonp_1" — are returned unchanged and cost
-// no allocation.
+// how Express and Django filter the same value, then requires the result to
+// actually look like a member expression. It returns "" when nothing usable is
+// left, which the caller turns into the default name.
+//
+// Filtering alone is enough for safety — no byte that could open a statement, a
+// string or a comment survives it — but not for correctness: "1.2.3", "...",
+// "[]" and "a[" are all made of allowed bytes and all emit a body that throws
+// in the browser instead of calling anything. Names already valid ("cb",
+// "window.cb", "ns.cb[0]", "$.jsonp_1") are returned unchanged and cost no
+// allocation.
 func sanitizeJSONPCallback(cb string) string {
 	i := 0
 	for ; i < len(cb); i++ {
@@ -688,18 +692,61 @@ func sanitizeJSONPCallback(cb string) string {
 			break
 		}
 	}
-	if i == len(cb) {
-		return cb
+
+	if i != len(cb) {
+		out := make([]byte, i, len(cb))
+		copy(out, cb[:i])
+		for ; i < len(cb); i++ {
+			if isJSONPCallbackByte(cb[i]) {
+				out = append(out, cb[i])
+			}
+		}
+		cb = utils.UnsafeString(out)
 	}
 
-	out := make([]byte, i, len(cb))
-	copy(out, cb[:i])
-	for ; i < len(cb); i++ {
-		if isJSONPCallbackByte(cb[i]) {
-			out = append(out, cb[i])
+	if !isJSONPMemberExpression(cb) {
+		return ""
+	}
+	return cb
+}
+
+// isJSONPMemberExpression reports whether cb is a dotted chain of identifiers
+// with optional bracket indexing — the shape a JSONP body may legally call.
+func isJSONPMemberExpression(cb string) bool {
+	if cb == "" {
+		return false
+	}
+
+	depth := 0
+	atStart := true // expecting the first byte of an identifier
+	for i := 0; i < len(cb); i++ {
+		switch c := cb[i]; c {
+		case '.':
+			if atStart {
+				return false
+			}
+			atStart = true
+		case '[':
+			if atStart {
+				return false
+			}
+			depth++
+			atStart = true
+		case ']':
+			if atStart || depth == 0 {
+				return false
+			}
+			depth--
+		default:
+			// An identifier may not start with a digit, but a bracket index
+			// legitimately is one ("ns.cb[0]").
+			if atStart && depth == 0 && c >= '0' && c <= '9' {
+				return false
+			}
+			atStart = false
 		}
 	}
-	return string(out)
+	return depth == 0 && !atStart
 }
 
 // XML converts any interface or string to XML.

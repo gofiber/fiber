@@ -397,6 +397,15 @@ func Test_Redirect_Back_NormalizesSameOriginReferer(t *testing.T) {
 		{referer: `/a\b`, expected: `/a/b`},
 		{referer: `http://example.com\@evil.com`, expected: `http://example.com/@evil.com`},
 		{referer: "/back\t", expected: `/back`},
+
+		// The backslash fold belongs to the path; WHATWG treats "\\" as an
+		// ordinary character in the query and fragment, so rewriting it there
+		// would send the user back to a different query than they came from.
+		{referer: `/search?q=a\b`, expected: `/search?q=a\b`},
+		{referer: `/p?path=C:\Users\me`, expected: `/p?path=C:\Users\me`},
+		{referer: `/docs#a\b`, expected: `/docs#a\b`},
+		// Invalid UTF-8 must survive byte-for-byte rather than becoming U+FFFD.
+		{referer: "/back?x=caf\xe9\\y", expected: "/back?x=caf\xe9\\y"},
 	}
 
 	app := New()
@@ -1272,10 +1281,10 @@ func Test_Redirect_FlashMessages_NoCrossRequestLeak(t *testing.T) {
 	app.Get("/read", func(c Ctx) error {
 		var sb strings.Builder
 		for _, m := range c.Redirect().Messages() {
-			sb.WriteString("MSG:" + m.Key + "=" + m.Value + ";")
+			sb.WriteString("MSG:" + m.Key + "=" + m.Value + ";") //nolint:errcheck // strings.Builder writes never fail
 		}
 		for _, in := range c.Redirect().OldInputs() {
-			sb.WriteString("OLD:" + in.Key + "=" + in.Value + ";")
+			sb.WriteString("OLD:" + in.Key + "=" + in.Value + ";") //nolint:errcheck // strings.Builder writes never fail
 		}
 		return c.SendString(sb.String())
 	})
@@ -1294,7 +1303,7 @@ func Test_Redirect_FlashMessages_NoCrossRequestLeak(t *testing.T) {
 	get := func(t *testing.T, path, flashCookie string) string {
 		t.Helper()
 
-		req := httptest.NewRequest(MethodGet, path, nil)
+		req := httptest.NewRequest(MethodGet, path, http.NoBody)
 		if flashCookie != "" {
 			req.Header.Set(HeaderCookie, FlashCookieName+"="+flashCookie)
 		}
