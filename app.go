@@ -108,7 +108,6 @@ type App struct {
 	customBinders []CustomBinder
 	// Route stack divided by HTTP methods and route prefixes. Build-time only:
 	// requests go through treeIndex. It survives between rebuilds because
-	// reuseRouteBucket recycles the previous build's buckets out of it, and
 	// buildLookahead reads it to index the same buckets next() will scan.
 	treeStack []map[int][]*Route
 	// Request-time view of treeStack: one flat, open-addressed index per HTTP

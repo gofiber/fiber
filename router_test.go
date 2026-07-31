@@ -4313,6 +4313,29 @@ func Test_RouteTree_SlotSpreadsAcrossLargeTables(t *testing.T) {
 	}
 }
 
+// Test_RebuildTree_PreservesPublishedBuckets ensures rebuilding cannot rewrite
+// the backing arrays that an in-flight request may still be scanning.
+func Test_RebuildTree_PreservesPublishedBuckets(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	app.Get("/aa/first", testEmptyHandler)
+	app.Get("/aa/removed", testEmptyHandler)
+	app.Get("/aa/last", testEmptyHandler)
+	app.startupProcess()
+
+	method := app.methodInt(MethodGet)
+	treeHash := int('/')<<16 | int('a')<<8 | int('a')
+	published := app.treeIndex[method].lookup(treeHash)
+	want := append([]*Route(nil), published...)
+	require.NotEmpty(t, published)
+
+	app.RemoveRoute("/aa/removed", MethodGet)
+	app.RebuildTree()
+
+	require.Equal(t, want, published)
+}
+
 // Test_Route_PrefixFilter_UnconstrainedShapes covers the guards in
 // computePrefixFilter that disable the filter when a route's first segment
 // constrains nothing.
