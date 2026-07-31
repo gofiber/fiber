@@ -151,6 +151,23 @@ func validateParameters(t *testing.T, method, pathKey string, op map[string]any)
 		require.Falsef(t, dup, "%s %s duplicate parameter %s", method, pathKey, key)
 		seen[key] = struct{}{}
 
+		// A Parameter Object must carry exactly one of "schema" or "content",
+		// and a content map is restricted to a single media type entry.
+		_, hasSchema := param["schema"]
+		rawContent, hasContent := param["content"]
+		require.NotEqualf(t, hasSchema, hasContent,
+			"%s %s parameter %q must have exactly one of schema/content", method, pathKey, name)
+		if hasContent {
+			content, ok := rawContent.(map[string]any)
+			require.Truef(t, ok && len(content) == 1,
+				"%s %s parameter %q content must hold exactly one media type", method, pathKey, name)
+		}
+		// The 3.2 "querystring" location is only describable via content.
+		if in == "querystring" {
+			require.Truef(t, hasContent,
+				"%s %s querystring parameter %q must use content", method, pathKey, name)
+		}
+
 		if in == "path" {
 			required, ok := param["required"].(bool)
 			require.Truef(t, ok && required, "%s %s path parameter %q must be required", method, pathKey, name)

@@ -180,6 +180,38 @@ app.Get("/items", listItems).
     })
 ```
 
+### Path parameter constraints
+
+Path parameters are derived from the route pattern, and a
+[route constraint](../guide/routing.md#constraints) narrows the generated schema
+automatically — no `AddParameter` call needed:
+
+```go
+app.Get("/users/:id<int>", getUser)                  // {"type": "integer"}
+app.Get("/orders/:ref<guid>", getOrder)              // {"type": "string", "format": "uuid"}
+app.Get("/pages/:n<range(1,10)>", getPage)           // {"type": "integer", "minimum": 1, "maximum": 10}
+```
+
+| Constraint | Generated schema |
+| --- | --- |
+| `int` | `{"type": "integer"}` |
+| `bool` | `{"type": "boolean"}` |
+| `float` | `{"type": "number"}` |
+| `alpha` | `{"type": "string"}` |
+| `guid` | `{"type": "string", "format": "uuid"}` |
+| `datetime(layout)` | `{"type": "string"}`, plus `format` for the `date`, `time` and `date-time` layouts |
+| `regex(p)` | `{"type": "string", "pattern": "p"}` |
+| `minLen(n)` / `maxLen(n)` / `len(n)` / `betweenLen(a,b)` | `{"type": "string"}` with `minLength` / `maxLength` |
+| `min(n)` / `max(n)` / `range(a,b)` | `{"type": "integer"}` with `minimum` / `maximum` |
+
+Chained constraints (`:id<int;min(5)>`) are merged, with the first constraint that
+sets a keyword keeping it. A custom or unrecognized constraint leaves the default
+`{"type": "string"}` rather than guessing, and an explicit `AddParameter` for the
+same name always wins over the derived schema.
+
+`alpha` accepts any Unicode letter at runtime, so no `pattern` is emitted: an
+ASCII-only pattern would document the route as stricter than it is.
+
 ### Response headers
 
 `ResponseHeader(status, name, description, schema)` documents a response header
@@ -218,6 +250,22 @@ app.Post("/users", createUser).
     }).
     ResponseContent(fiber.StatusCreated, "Created", map[string]fiber.RouteMediaType{
         fiber.MIMEApplicationJSON: {Schema: openapi.SchemaOf(User{})},
+    })
+```
+
+`RouteParameter.Content` does the same for a parameter whose value is not a plain
+scalar — for example a JSON-encoded query parameter. A Parameter Object carries
+either `schema` or `content` and never both, so setting `Content` discards any
+`Schema`/`SchemaRef` on the same parameter:
+
+```go
+app.Get("/users", listUsers).
+    AddParameter(fiber.RouteParameter{
+        Name: "filter",
+        In:   "query",
+        Content: map[string]fiber.RouteMediaType{
+            fiber.MIMEApplicationJSON: {Schema: openapi.SchemaOf(Filter{})},
+        },
     })
 ```
 
@@ -277,13 +325,28 @@ app.Use(openapi.New(openapi.Config{
 }))
 ```
 
-A parameter may also use the 3.2 `querystring` location (which pairs with
-`content` rather than `schema`) via `AddParameter`:
+A parameter may also use the 3.2 `querystring` location, which describes the whole
+query string as a single value. That location is only valid with `content`, so the
+middleware wraps whatever `Schema` you supply (defaulting to `{"type": "string"}`)
+into an `application/x-www-form-urlencoded` entry. Set `Content` explicitly to pick
+a different media type:
 
 ```go
 app.Get("/search", searchHandler).
     AddParameter(fiber.RouteParameter{Name: "q", In: "querystring", Schema: map[string]any{"type": "string"}})
+
+app.Get("/report", reportHandler).
+    AddParameter(fiber.RouteParameter{
+        Name: "q",
+        In:   "querystring",
+        Content: map[string]fiber.RouteMediaType{
+            fiber.MIMEApplicationJSON: {Schema: map[string]any{"type": "object"}},
+        },
+    })
 ```
+
+`querystring` parameters are dropped from the document when `OpenAPIVersion` is
+below `"3.2.0"`, where the location does not exist.
 
 Other 3.2 additions live inside objects the middleware passes through as raw maps,
 so they need no special API — supply them via `Components` / schemas / security
@@ -478,8 +541,11 @@ are skipped.
 
 ### Struct field tags
 
-- **`json:"name"`** — sets the property name; `json:"-"` skips the field
-- **`json:",omitempty"`** — makes the field optional (not in `required`)
+- **`json:"name"`** — sets the property name; `json:"-"` skips the field. A name
+  `encoding/json` rejects (one containing a backslash or a quote) is ignored here
+  too, so the schema always matches the wire format
+- **`json:",omitempty"`** and **`json:",omitzero"`** — make the field optional
+  (not in `required`)
 - **`openapi:"description:text"`** — sets the property description
 - **`openapi:"example:value"`** — sets the property example (auto-converted to the correct type)
 - **`openapi:"format:fmt"`** — sets the format (e.g., `email`, `uuid`, `date-time`)

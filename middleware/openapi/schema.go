@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/gofiber/utils/v2"
 )
@@ -37,7 +38,8 @@ import (
 //
 // Struct field tags:
 //   - `json:"name"` sets the property name; `json:"-"` skips the field
-//   - `json:",omitempty"` makes the field optional (not added to required)
+//   - `json:",omitempty"` and `json:",omitzero"` make the field optional (not
+//     added to required)
 //   - `openapi:"description:text"` sets the property description
 //   - `openapi:"example:value"` sets the property example
 //   - `openapi:"format:fmt"` overrides the format (e.g., "email", "uuid")
@@ -377,11 +379,18 @@ func parseJSONTag(field *reflect.StructField) jsonTagInfo {
 	if tag == "-" {
 		return jsonTagInfo{skip: true}
 	}
-	parts := strings.Split(tag, ",")
-	info := jsonTagInfo{name: parts[0]}
-	for _, opt := range parts[1:] {
+	name, opts, _ := strings.Cut(tag, ",")
+	// encoding/json ignores a tag name containing reserved characters and falls
+	// back to the Go field name; mirror that so the schema matches the wire format.
+	if !isValidJSONTagName(name) {
+		name = ""
+	}
+	info := jsonTagInfo{name: name}
+	for opts != "" {
+		var opt string
+		opt, opts, _ = strings.Cut(opts, ",")
 		switch opt {
-		case "omitempty":
+		case "omitempty", "omitzero":
 			info.omit = true
 		case "string":
 			info.asString = true
@@ -389,6 +398,26 @@ func parseJSONTag(field *reflect.StructField) jsonTagInfo {
 		}
 	}
 	return info
+}
+
+// isValidJSONTagName reports whether name is accepted as a json tag name by
+// encoding/json. It mirrors the encoding/json isValidTag rules: any letter or
+// digit is allowed, plus the listed punctuation; backslash and quote are
+// reserved. An empty name is not a rename, so it is reported as invalid and the
+// caller falls back to the field name either way.
+func isValidJSONTagName(name string) bool {
+	if name == "" {
+		return false
+	}
+	for _, c := range name {
+		switch {
+		case strings.ContainsRune("!#$%&()*+-./:;<=>?@[]^_{|}~ ", c):
+			// Reserved punctuation is allowed inside a tag name.
+		case !unicode.IsLetter(c) && !unicode.IsDigit(c):
+			return false
+		}
+	}
+	return true
 }
 
 // openapiDirectiveRe locates the start of each recognized openapi tag directive.

@@ -500,7 +500,9 @@ type operation struct {
 
 	OperationID string `json:"operationId,omitempty"` //nolint:tagliatelle // OpenAPI spec uses camelCase
 	Summary     string `json:"summary"`
-	Description string `json:"description"`
+	// description is optional in the Operation Object, so an undocumented
+	// operation omits the key instead of emitting an empty string.
+	Description string `json:"description,omitempty"`
 
 	Parameters []parameter           `json:"parameters,omitempty"`
 	Tags       []string              `json:"tags,omitempty"`
@@ -584,18 +586,19 @@ type response struct {
 }
 
 type parameter struct {
-	Schema          map[string]any `json:"schema,omitempty"`
-	Example         any            `json:"example,omitempty"`
-	Examples        map[string]any `json:"examples,omitempty"`
-	Explode         *bool          `json:"explode,omitempty"`
-	Description     string         `json:"description,omitempty"`
-	Name            string         `json:"name"`
-	In              string         `json:"in"`
-	Style           string         `json:"style,omitempty"`
-	Required        bool           `json:"required"`
-	Deprecated      bool           `json:"deprecated,omitempty"`
-	AllowEmptyValue bool           `json:"allowEmptyValue,omitempty"` //nolint:tagliatelle // OpenAPI spec uses camelCase
-	AllowReserved   bool           `json:"allowReserved,omitempty"`   //nolint:tagliatelle // OpenAPI spec uses camelCase
+	Schema          map[string]any            `json:"schema,omitempty"`
+	Content         map[string]map[string]any `json:"content,omitempty"`
+	Example         any                       `json:"example,omitempty"`
+	Examples        map[string]any            `json:"examples,omitempty"`
+	Explode         *bool                     `json:"explode,omitempty"`
+	Description     string                    `json:"description,omitempty"`
+	Name            string                    `json:"name"`
+	In              string                    `json:"in"`
+	Style           string                    `json:"style,omitempty"`
+	Required        bool                      `json:"required"`
+	Deprecated      bool                      `json:"deprecated,omitempty"`
+	AllowEmptyValue bool                      `json:"allowEmptyValue,omitempty"` //nolint:tagliatelle // OpenAPI spec uses camelCase
+	AllowReserved   bool                      `json:"allowReserved,omitempty"`   //nolint:tagliatelle // OpenAPI spec uses camelCase
 }
 
 type requestBody struct {
@@ -606,6 +609,9 @@ type requestBody struct {
 
 type pathVariant struct {
 	PathParamAliases map[string]string
+	// ParamConstraints maps an emitted path parameter name to the raw text of
+	// its route-pattern "<...>" constraint span, when it had one.
+	ParamConstraints map[string]string
 	Path             string
 	ParamNames       []string
 }
@@ -619,6 +625,13 @@ const wildcardParamName = "wildcard"
 
 const (
 	paramLocationPath = "path"
+	// paramLocationQuerystring is the OpenAPI 3.2 location that describes the
+	// entire query string as one value. It must be paired with "content".
+	paramLocationQuerystring = "querystring"
+	// querystringMediaType is the media type used to wrap a querystring
+	// parameter's schema when the author supplied no explicit content map.
+	querystringMediaType = "application/x-www-form-urlencoded"
+
 	schemaKeyType     = "type"
 	schemaKeyFormat   = "format"
 	schemaTypeString  = "string"
@@ -763,7 +776,10 @@ func generateSpec(routes []fiber.Route, cfg *Config) openAPISpec {
 					Name:     p,
 					In:       paramLocationPath,
 					Required: true,
-					Schema:   map[string]any{schemaKeyType: schemaTypeString},
+					// A "<...>" constraint in the route pattern narrows the
+					// values the router accepts, so the schema reflects it
+					// instead of typing every path parameter as a string.
+					Schema: pathParamSchema(variant.ParamConstraints[p]),
 				}
 				params = append(params, param)
 				paramIndex[param.In+":"+param.Name] = len(params) - 1
@@ -942,7 +958,7 @@ func buildComponents(cfg *Config) map[string]any {
 // "querystring" location, returning the input slice unchanged when none match.
 func dropQuerystringParameters(extras []fiber.RouteParameter) []fiber.RouteParameter {
 	isQuerystring := func(in string) bool {
-		return utils.EqualFold(utils.TrimSpace(in), "querystring")
+		return utils.EqualFold(utils.TrimSpace(in), paramLocationQuerystring)
 	}
 	for i := range extras {
 		if !isQuerystring(extras[i].In) {
@@ -973,12 +989,6 @@ func mergeRouteParameters(params []parameter, index map[string]int, extras []fib
 		if location == "" {
 			location = "query"
 		}
-		// OpenAPI 3.2 querystring parameters are described via content rather
-		// than schema, so no default schema type is injected for them.
-		defaultType := schemaTypeString
-		if location == "querystring" {
-			defaultType = ""
-		}
 		// OpenAPI spec: "example" and "examples" are mutually exclusive.
 		// Prefer "examples" when both are provided.
 		var paramExample any
@@ -993,13 +1003,36 @@ func mergeRouteParameters(params []parameter, index map[string]int, extras []fib
 			In:              location,
 			Description:     extra.Description,
 			Required:        extra.Required,
-			Schema:          schemaFrom(extra.Schema, extra.SchemaRef, defaultType),
 			Example:         paramExample,
 			Examples:        paramExamples,
 			Deprecated:      extra.Deprecated,
 			Style:           extra.Style,
 			AllowEmptyValue: extra.AllowEmptyValue,
 			AllowReserved:   extra.AllowReserved,
+		}
+		// A Parameter Object describes its value either with "schema" or with
+		// "content", never both and never neither.
+		switch content := routeMediaTypeContent(extra.Content); {
+		case content != nil:
+			param.Content = content
+			// "example"/"examples" belong to the media type object when content
+			// is used, so they are not repeated at the parameter level.
+			param.Example = nil
+			param.Examples = nil
+		case location == paramLocationQuerystring:
+			// The OpenAPI 3.2 "querystring" location must be described with
+			// content, so wrap whatever schema was supplied into a single
+			// entry rather than emitting a parameter with neither key.
+			param.Content = map[string]map[string]any{
+				querystringMediaType: contentEntry(
+					schemaFrom(extra.Schema, extra.SchemaRef, schemaTypeString),
+					"", paramExample, paramExamples,
+				),
+			}
+			param.Example = nil
+			param.Examples = nil
+		default:
+			param.Schema = schemaFrom(extra.Schema, extra.SchemaRef, schemaTypeString)
 		}
 		if extra.Explode != nil {
 			explode := *extra.Explode
@@ -1222,18 +1255,22 @@ func defaultResponseForMethod(method, mediaType string) (string, response) {
 // pathState carries the in-progress OpenAPI path while walking a Fiber route
 // pattern; optional parameters fork the walk into include/exclude branches.
 type pathState struct {
-	aliases  map[string]string
-	path     string
-	params   []string
-	paramIdx int
+	aliases map[string]string
+	// constraints maps an emitted parameter name to the raw text of its
+	// "<...>" span, which types the generated schema.
+	constraints map[string]string
+	path        string
+	params      []string
+	paramIdx    int
 }
 
 func (s pathState) clone() pathState {
 	return pathState{
-		path:     s.path,
-		params:   append([]string(nil), s.params...),
-		aliases:  maps.Clone(s.aliases),
-		paramIdx: s.paramIdx,
+		path:        s.path,
+		params:      append([]string(nil), s.params...),
+		aliases:     maps.Clone(s.aliases),
+		constraints: maps.Clone(s.constraints),
+		paramIdx:    s.paramIdx,
 	}
 }
 
@@ -1262,9 +1299,11 @@ func buildOpenAPIPathVariants(fiberPath string, params []string) []pathVariant {
 				}
 				tokenName := fiberPath[tokenStart:i]
 
+				var rawConstraints string
 				if i < length && fiberPath[i] == '<' {
 					depth := 1
 					i++
+					constraintStart := i
 					for i < length && depth > 0 {
 						switch fiberPath[i] {
 						case '<':
@@ -1275,6 +1314,13 @@ func buildOpenAPIPathVariants(fiberPath string, params []string) []pathVariant {
 						}
 						i++
 					}
+					// Drop the closing '>' when the span was actually closed; an
+					// unterminated span runs to the end of the pattern.
+					constraintEnd := i
+					if depth == 0 {
+						constraintEnd--
+					}
+					rawConstraints = fiberPath[constraintStart:constraintEnd]
 				}
 
 				isOptional := i < length && fiberPath[i] == '?'
@@ -1290,6 +1336,12 @@ func buildOpenAPIPathVariants(fiberPath string, params []string) []pathVariant {
 				includeState.aliases[resolved.raw] = name
 				if tokenName != "" {
 					includeState.aliases[tokenName] = name
+				}
+				if rawConstraints != "" {
+					if includeState.constraints == nil {
+						includeState.constraints = make(map[string]string, 1)
+					}
+					includeState.constraints[name] = rawConstraints
 				}
 				includeState.paramIdx++
 
@@ -1350,6 +1402,7 @@ func buildOpenAPIPathVariants(fiberPath string, params []string) []pathVariant {
 			Path:             finalPath,
 			ParamNames:       append([]string(nil), current.params...),
 			PathParamAliases: current.aliases,
+			ParamConstraints: current.constraints,
 		})
 	}
 

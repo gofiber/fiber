@@ -2190,7 +2190,13 @@ func Test_OpenAPI_QueryStringParameterLocation(t *testing.T) {
 	op := requireMap(t, requireMap(t, requireMap(t, spec["paths"])["/search"])["get"])
 	params, ok := op["parameters"].([]any)
 	require.True(t, ok)
-	require.Equal(t, "querystring", requireMap(t, params[0])["in"])
+	param := requireMap(t, params[0])
+	require.Equal(t, "querystring", param["in"])
+	// A querystring parameter is described via content, never via schema.
+	require.NotContains(t, param, "schema")
+	content := requireMap(t, param["content"])
+	entry := requireMap(t, content["application/x-www-form-urlencoded"])
+	require.Equal(t, map[string]any{"type": "string"}, requireMap(t, entry["schema"]))
 
 	// For earlier versions the parameter would make the document invalid and
 	// must be dropped.

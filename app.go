@@ -1135,11 +1135,17 @@ func docAddParameter(param RouteParameter) func(route *Route) {
 	// Normalize the schema into a fresh map so the caller's map is never
 	// mutated; the per-route copies below keep routes from aliasing each other.
 	switch {
+	case len(param.Content) > 0:
+		// A Parameter Object carries either a schema or a content map, never
+		// both, so an explicit content map wins over any schema the caller set.
+		param.Schema = nil
+		param.SchemaRef = ""
 	case param.SchemaRef != "":
 		param.Schema = map[string]any{openapiRefKey: param.SchemaRef}
 	case location == "querystring":
 		// OpenAPI 3.2 querystring parameters are described via content rather
-		// than schema, so no default schema is injected.
+		// than schema, so no default schema is injected; the middleware wraps
+		// whatever schema the caller supplied into a content entry.
 		param.Schema = copyAnyMap(param.Schema)
 	default:
 		schema := copyAnyMap(param.Schema)
@@ -1160,6 +1166,7 @@ func docAddParameter(param RouteParameter) func(route *Route) {
 		paramCopy := param
 		paramCopy.Schema = copyAnyMap(param.Schema)
 		paramCopy.Examples = copyAnyMap(param.Examples)
+		paramCopy.Content = cloneRouteMediaTypeMap(param.Content)
 		if param.Explode != nil {
 			explode := *param.Explode
 			paramCopy.Explode = &explode
@@ -1170,7 +1177,9 @@ func docAddParameter(param RouteParameter) func(route *Route) {
 
 // AddParameter documents an input parameter using the full RouteParameter,
 // exposing advanced fields (deprecated, style, explode, allowEmptyValue,
-// allowReserved) in addition to the basics.
+// allowReserved, content) in addition to the basics. Setting Content describes
+// the parameter by media type instead of by schema, which is the only valid
+// form for the OpenAPI 3.2 "querystring" location.
 //
 //nolint:gocritic // hugeParam: by-value keeps the chainable route-helper API ergonomic.
 func (app *App) AddParameter(param RouteParameter) Router {

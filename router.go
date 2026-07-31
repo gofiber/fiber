@@ -434,20 +434,26 @@ func (r *Route) IsHidden() bool {
 }
 
 // RouteParameter describes an input captured by a route.
+//
+// A parameter is described either by Schema/SchemaRef or by Content, never by
+// both: setting Content takes precedence and suppresses the schema, matching the
+// OpenAPI rule that a Parameter Object carries exactly one of them. Content is
+// the only valid form for the OpenAPI 3.2 "querystring" location.
 type RouteParameter struct {
-	Schema          map[string]any `json:"schema"`
-	SchemaRef       string         `json:"schemaRef,omitempty"` //nolint:tagliatelle // OpenAPI spec uses camelCase
-	Example         any            `json:"example,omitempty"`
-	Examples        map[string]any `json:"examples,omitempty"`
-	Explode         *bool          `json:"explode,omitempty"`
-	Description     string         `json:"description"`
-	Name            string         `json:"name"`
-	In              string         `json:"in"`
-	Style           string         `json:"style,omitempty"`
-	Required        bool           `json:"required"`
-	Deprecated      bool           `json:"deprecated,omitempty"`
-	AllowEmptyValue bool           `json:"allowEmptyValue,omitempty"` //nolint:tagliatelle // OpenAPI spec uses camelCase
-	AllowReserved   bool           `json:"allowReserved,omitempty"`   //nolint:tagliatelle // OpenAPI spec uses camelCase
+	Schema          map[string]any            `json:"schema"`
+	Content         map[string]RouteMediaType `json:"content,omitempty"`
+	SchemaRef       string                    `json:"schemaRef,omitempty"` //nolint:tagliatelle // OpenAPI spec uses camelCase
+	Example         any                       `json:"example,omitempty"`
+	Examples        map[string]any            `json:"examples,omitempty"`
+	Explode         *bool                     `json:"explode,omitempty"`
+	Description     string                    `json:"description"`
+	Name            string                    `json:"name"`
+	In              string                    `json:"in"`
+	Style           string                    `json:"style,omitempty"`
+	Required        bool                      `json:"required"`
+	Deprecated      bool                      `json:"deprecated,omitempty"`
+	AllowEmptyValue bool                      `json:"allowEmptyValue,omitempty"` //nolint:tagliatelle // OpenAPI spec uses camelCase
+	AllowReserved   bool                      `json:"allowReserved,omitempty"`   //nolint:tagliatelle // OpenAPI spec uses camelCase
 }
 
 // RouteMediaType describes a single media type entry, allowing a different
@@ -1156,6 +1162,7 @@ func cloneRouteParameters(params []RouteParameter) []RouteParameter {
 			SchemaRef:       p.SchemaRef,
 			Examples:        copyAnyMap(p.Examples),
 			Example:         copyAnyValue(p.Example),
+			Content:         cloneRouteMediaTypeMap(p.Content),
 		}
 		if p.Explode != nil {
 			explode := *p.Explode

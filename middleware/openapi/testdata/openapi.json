@@ -9,7 +9,6 @@
       "get": {
         "operationId": "listUsers",
         "summary": "GET /users",
-        "description": "",
         "responses": {
           "200": {
             "description": "OK",
