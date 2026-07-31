@@ -304,3 +304,45 @@ func Test_OpenAPI_EscapedConstraintDelimiter(t *testing.T) {
 	require.Len(t, params, 1)
 	require.Equal(t, "v", requireMap(t, params[0])["name"])
 }
+
+// Test_OpenAPI_SelfHostedSwaggerAssets locks the behavior the offline section of
+// the documentation describes: overriding all three asset URLs leaves the page
+// with no outbound requests, while an empty value selects the CDN default rather
+// than omitting the script.
+func Test_OpenAPI_SelfHostedSwaggerAssets(t *testing.T) {
+	t.Parallel()
+
+	t.Run("all three overridden leaves no external URL", func(t *testing.T) {
+		t.Parallel()
+
+		app := fiber.New()
+		app.Get("/x", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
+		app.Use(New(Config{
+			SwaggerCSSURL:              "/swagger-ui/swagger-ui.css",
+			SwaggerBundleURL:           "/swagger-ui/swagger-ui-bundle.js",
+			SwaggerStandalonePresetURL: "/swagger-ui/swagger-ui-standalone-preset.js",
+		}))
+
+		status, body := specBodyOf(t, app, "/swagger")
+		require.Equal(t, fiber.StatusOK, status)
+		require.NotContains(t, body, "://")
+		require.Contains(t, body, `href="/swagger-ui/swagger-ui.css"`)
+		require.Contains(t, body, `src="/swagger-ui/swagger-ui-bundle.js"`)
+		require.Contains(t, body, `src="/swagger-ui/swagger-ui-standalone-preset.js"`)
+	})
+
+	t.Run("an omitted asset URL falls back to the default", func(t *testing.T) {
+		t.Parallel()
+
+		app := fiber.New()
+		app.Get("/x", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
+		app.Use(New(Config{
+			SwaggerCSSURL:    "/swagger-ui/swagger-ui.css",
+			SwaggerBundleURL: "/swagger-ui/swagger-ui-bundle.js",
+			// Left empty on purpose: this is the offline footgun.
+		}))
+
+		_, body := specBodyOf(t, app, "/swagger")
+		require.Contains(t, body, ConfigDefault.SwaggerStandalonePresetURL)
+	})
+}

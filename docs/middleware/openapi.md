@@ -108,16 +108,149 @@ Change the spec/UI paths and the CDN asset URLs, and pass extra options to the
 
 ```go
 app.Use(openapi.New(openapi.Config{
-    Path:             "/spec.json",
-    UIPath:           "/docs",
-    SwaggerCSSURL:    "https://cdn.example.com/swagger-ui.css",
-    SwaggerBundleURL: "https://cdn.example.com/swagger-ui-bundle.js",
+    Path:                       "/spec.json",
+    UIPath:                     "/docs",
+    SwaggerCSSURL:              "https://cdn.example.com/swagger-ui.css",
+    SwaggerBundleURL:           "https://cdn.example.com/swagger-ui-bundle.js",
+    SwaggerStandalonePresetURL: "https://cdn.example.com/swagger-ui-standalone-preset.js",
     SwaggerOptions: map[string]any{
         "docExpansion": "list",
         "deepLinking":  true,
     },
 }))
 ```
+
+Any asset URL you leave unset keeps its `unpkg.com` default; see
+[Offline and air-gapped deployments](#offline-and-air-gapped-deployments) to
+serve all three yourself.
+
+### Offline and air-gapped deployments
+
+The generated specification is served by the middleware itself and never leaves
+your process. The Swagger UI **page**, however, is plain HTML that tells the
+browser to fetch three assets, and by default those point at the `unpkg.com` CDN:
+
+| Config field                 | Asset                            |
+|:-----------------------------|:---------------------------------|
+| `SwaggerCSSURL`              | `swagger-ui.css`                 |
+| `SwaggerBundleURL`           | `swagger-ui-bundle.js`           |
+| `SwaggerStandalonePresetURL` | `swagger-ui-standalone-preset.js` |
+
+In an air-gapped network, behind a proxy, or under a strict `Content-Security-Policy`,
+those requests fail and the UI renders as a blank page. Vendor the assets and point
+all three fields at your own URLs.
+
+:::caution Override all three
+An empty string means "use the default", not "disable". Overriding only
+`SwaggerCSSURL` and `SwaggerBundleURL` leaves `SwaggerStandalonePresetURL`
+pointing at the CDN, and the page still makes one outbound request. Set every
+field you do not want fetched from `unpkg.com`.
+:::
+
+#### 1. Vendor the assets
+
+Pin the same version the middleware defaults to, so the UI you test is the UI you
+ship:
+
+```bash
+mkdir -p public/swagger-ui
+npm pack swagger-ui-dist@5.32.6
+tar -xzf swagger-ui-dist-5.32.6.tgz
+cp package/swagger-ui.css \
+   package/swagger-ui-bundle.js \
+   package/swagger-ui-standalone-preset.js \
+   public/swagger-ui/
+```
+
+Copy the matching `*.js.map` files too if you want source maps in devtools; the
+UI works without them.
+
+#### 2. Serve them and point the config at them
+
+This is the complete program — one binary, no network access required at runtime:
+
+```go
+package main
+
+import (
+    "embed"
+    "io/fs"
+    "log"
+
+    "github.com/gofiber/fiber/v3"
+    "github.com/gofiber/fiber/v3/middleware/openapi"
+    "github.com/gofiber/fiber/v3/middleware/static"
+)
+
+// The assets are compiled into the binary, so there is nothing to deploy
+// alongside it.
+//
+//go:embed public/swagger-ui
+var swaggerAssets embed.FS
+
+type User struct {
+    ID   int    `json:"id"`
+    Name string `json:"name"`
+}
+
+func main() {
+    // embed.FS keeps the full "public/swagger-ui" path from the directive
+    // above; fs.Sub strips it so the files sit at the root of the served FS.
+    assets, err := fs.Sub(swaggerAssets, "public/swagger-ui")
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    app := fiber.New()
+
+    app.Get("/users/:id<int>", func(c fiber.Ctx) error {
+        return c.JSON(User{ID: 1, Name: "alice"})
+    }).
+        Summary("Get user").
+        ResponseWithExample(
+            fiber.StatusOK, "OK",
+            openapi.SchemaOf(User{}), "", nil, nil,
+            fiber.MIMEApplicationJSON,
+        )
+
+    // Serve the vendored assets at /swagger-ui/*.
+    app.Use("/swagger-ui", static.New("", static.Config{FS: assets}))
+
+    app.Use(openapi.New(openapi.Config{
+        Title:   "My API",
+        Version: "1.0.0",
+        // All three, or the page still reaches for the CDN.
+        SwaggerCSSURL:              "/swagger-ui/swagger-ui.css",
+        SwaggerBundleURL:           "/swagger-ui/swagger-ui-bundle.js",
+        SwaggerStandalonePresetURL: "/swagger-ui/swagger-ui-standalone-preset.js",
+    }))
+
+    log.Fatal(app.Listen(":3000"))
+}
+```
+
+To ship the assets as files on disk instead of embedding them, swap the static
+registration for a directory and drop the `embed`/`fs.Sub` plumbing:
+
+```go
+app.Use("/swagger-ui", static.New("./public/swagger-ui"))
+```
+
+#### 3. Verify nothing escapes
+
+```bash
+curl -s http://localhost:3000/swagger | grep -o 'https\?://[^"]*'
+```
+
+The command should print nothing. Any URL it does print is still being fetched
+from the internet.
+
+:::note Cross-origin assets
+The generated `<script>` tags carry `crossorigin="anonymous"`. Assets served from
+the same origin as the app — as above — are unaffected. If you host them on a
+separate origin (an internal CDN, a different port), that origin must send
+`Access-Control-Allow-Origin`, or the browser will refuse the scripts.
+:::
 
 ### Document a route
 
@@ -359,8 +492,8 @@ schemes: security device-authorization flow and `oauth2MetadataUrl`, XML
 - If a route declares no responses, a sensible default is added: `200 OK` for most
   methods and `204 No Content` for `DELETE` and `HEAD`. Declaring any response via
   the helpers disables the automatic default.
-- Operations without metadata default to a summary of `"METHOD /path"`, an empty
-  description, no tags and not deprecated. No request body or response content
+- Operations without metadata default to a summary of `"METHOD /path"`, no
+  `description` key at all, no tags and not deprecated. No request body or response content
   type is invented: a request body appears only when `Consumes`/`RequestBody*` is
   set explicitly, and default responses carry a description only until
   `Produces`/`Response*` declares a media type. `Consumes`, `Produces` and
@@ -422,7 +555,7 @@ schemes: security device-authorization flow and `oauth2MetadataUrl`, XML
 | UIPath         | `string`                | Path is the route where the Swagger UI page will be served.     | `"/swagger"` |
 | SwaggerCSSURL  | `string`                | Stylesheet URL used by the generated Swagger UI page.           | `"https://unpkg.com/swagger-ui-dist@5.32.6/swagger-ui.css"` |
 | SwaggerBundleURL | `string`              | Script URL used by the generated Swagger UI page.               | `"https://unpkg.com/swagger-ui-dist@5.32.6/swagger-ui-bundle.js"` |
-| SwaggerStandalonePresetURL | `string`    | Standalone preset script URL; when set the UI uses `StandaloneLayout` (top bar with the Authorize button). | `"https://unpkg.com/swagger-ui-dist@5.32.6/swagger-ui-standalone-preset.js"` |
+| SwaggerStandalonePresetURL | `string`    | Standalone preset script URL, giving the UI its `StandaloneLayout` (top bar with the Authorize button). Always loaded — an empty value selects the default rather than omitting the script. | `"https://unpkg.com/swagger-ui-dist@5.32.6/swagger-ui-standalone-preset.js"` |
 | SwaggerOptions | `map[string]any`        | Additional options merged into the generated `SwaggerUIBundle` call. | `nil` |
 | OpenAPIVersion | `string`                | OpenAPI specification version to generate (`"3.0.0"`, `"3.1.0"` or `"3.2.0"`) | `"3.1.0"`     |
 | Components     | `map[string]any`        | Reusable OpenAPI component definitions (schemas, responses, etc.) emitted under `"components"`. | `nil` |
@@ -470,17 +603,13 @@ var ConfigDefault = Config{
     SwaggerStandalonePresetURL: "https://unpkg.com/swagger-ui-dist@5.32.6/swagger-ui-standalone-preset.js",
     SwaggerOptions:             nil,
     OpenAPIVersion:             "3.1.0",
-    Components:                 nil,
 }
 ```
 
-:::note Offline / self-hosted Swagger UI
-By default the Swagger UI page loads its assets from the `unpkg.com` CDN, which
-requires outbound internet access from the browser. For offline, air-gapped, or
-strict-CSP deployments, host the `swagger-ui` assets yourself and point
-`SwaggerCSSURL`, `SwaggerBundleURL`, and `SwaggerStandalonePresetURL` at your own
-URLs.
-:::
+Every field left at its zero value falls back to the entry above, so an empty
+string never means "disable" — see
+[Offline and air-gapped deployments](#offline-and-air-gapped-deployments) for what
+that implies when replacing the CDN URLs.
 
 Schema references (`SchemaRef`) are emitted as `$ref` entries in the generated JSON and can point to components such as `#/components/schemas/User`. To make these references resolve correctly, provide the corresponding definitions via the `Components` config field. `Example` and `Examples` follow the OpenAPI specification's mutual exclusivity rule: when both are provided, `Examples` takes precedence and `Example` is omitted.
 

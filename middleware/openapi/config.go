@@ -163,9 +163,11 @@ type Config struct {
 	OpenAPIVersion string
 
 	// SwaggerStandalonePresetURL is the standalone preset script URL used by the
-	// generated Swagger UI page. When non-empty, the page loads it and renders
-	// with the "StandaloneLayout" (top bar with the Authorize button). Like the
-	// other Swagger asset URLs it can be overridden to self-host the assets.
+	// generated Swagger UI page, which renders with the "StandaloneLayout" (top
+	// bar with the Authorize button). Like the other Swagger asset URLs it can
+	// be overridden to self-host the assets; an empty value selects the default
+	// rather than omitting the script, so offline deployments must point this
+	// at their own copy just like SwaggerCSSURL and SwaggerBundleURL.
 	//
 	// Optional. Default: "https://unpkg.com/swagger-ui-dist@5.32.6/swagger-ui-standalone-preset.js"
 	SwaggerStandalonePresetURL string
