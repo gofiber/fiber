@@ -726,3 +726,104 @@ func Test_Group_SubGroupDoesNotStealParentCursor(t *testing.T) {
 	require.Equal(t, "list users", route.Summary)
 	require.Equal(t, []string{"users"}, route.Tags)
 }
+
+// Test_AddParameter_SchemaSelection covers how docAddParameter decides between a
+// content map, a schema reference, the querystring location and a plain schema.
+func Test_AddParameter_SchemaSelection(t *testing.T) {
+	t.Parallel()
+
+	t.Run("content wins over schema", func(t *testing.T) {
+		t.Parallel()
+		app := New()
+		app.Get("/content", testHandlerOK).AddParameter(RouteParameter{
+			Name:      "filter",
+			In:        "query",
+			Schema:    map[string]any{"type": "string"},
+			SchemaRef: "#/components/schemas/Filter",
+			Content: map[string]RouteMediaType{
+				MIMEApplicationJSON: {Schema: map[string]any{"type": "object"}},
+			},
+		})
+
+		param := routesFor(app, "/content")[MethodGet].Parameters[0]
+		require.Nil(t, param.Schema)
+		require.Empty(t, param.SchemaRef)
+		require.Equal(t, map[string]any{"type": "object"}, param.Content[MIMEApplicationJSON].Schema)
+	})
+
+	t.Run("schema ref becomes a ref schema", func(t *testing.T) {
+		t.Parallel()
+		app := New()
+		app.Get("/ref", testHandlerOK).AddParameter(RouteParameter{
+			Name:      "id",
+			In:        "query",
+			SchemaRef: "#/components/schemas/ID",
+		})
+
+		param := routesFor(app, "/ref")[MethodGet].Parameters[0]
+		require.Equal(t, map[string]any{"$ref": "#/components/schemas/ID"}, param.Schema)
+	})
+
+	t.Run("querystring gets no default schema", func(t *testing.T) {
+		t.Parallel()
+		app := New()
+		app.Get("/qs", testHandlerOK).
+			AddParameter(RouteParameter{Name: "q", In: "querystring"})
+
+		param := routesFor(app, "/qs")[MethodGet].Parameters[0]
+		require.Equal(t, "querystring", param.In)
+		require.Nil(t, param.Schema)
+	})
+
+	t.Run("other locations get a default string schema", func(t *testing.T) {
+		t.Parallel()
+		app := New()
+		app.Get("/plain", testHandlerOK).
+			AddParameter(RouteParameter{Name: "q", In: "query"})
+
+		param := routesFor(app, "/plain")[MethodGet].Parameters[0]
+		require.Equal(t, map[string]any{"type": "string"}, param.Schema)
+	})
+
+	t.Run("path location is forced required", func(t *testing.T) {
+		t.Parallel()
+		app := New()
+		app.Get("/items/:id", testHandlerOK).
+			AddParameter(RouteParameter{Name: "id", In: "path"})
+
+		param := routesFor(app, "/items/:id")[MethodGet].Parameters[0]
+		require.True(t, param.Required)
+	})
+
+	t.Run("explode is copied rather than aliased", func(t *testing.T) {
+		t.Parallel()
+		explode := true
+		app := New()
+		app.Get("/explode", testHandlerOK).
+			AddParameter(RouteParameter{Name: "ids", In: "query", Explode: &explode})
+
+		param := routesFor(app, "/explode")[MethodGet].Parameters[0]
+		require.NotNil(t, param.Explode)
+		require.True(t, *param.Explode)
+		// The route must not share the caller's pointer.
+		explode = false
+		param = routesFor(app, "/explode")[MethodGet].Parameters[0]
+		require.True(t, *param.Explode)
+	})
+
+	t.Run("empty name panics", func(t *testing.T) {
+		t.Parallel()
+		app := New()
+		require.Panics(t, func() {
+			app.Get("/panic", testHandlerOK).AddParameter(RouteParameter{Name: "  ", In: "query"})
+		})
+	})
+
+	t.Run("invalid location panics", func(t *testing.T) {
+		t.Parallel()
+		app := New()
+		require.Panics(t, func() {
+			app.Get("/panic2", testHandlerOK).AddParameter(RouteParameter{Name: "x", In: "body"})
+		})
+	})
+}
