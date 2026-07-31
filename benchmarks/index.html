@@ -1,0 +1,1702 @@
+<!DOCTYPE html>
+<!-- Shared gofiber benchmark page. Canonical copy: gofiber/.github/.github/actions/benchmark-pages/index.html
+     Deployed to every repo's gh-pages by the benchmark-pages action; local edits are overwritten. -->
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <!-- inline icon: keeps browsers from requesting a nonexistent /favicon.ico -->
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📊</text></svg>" />
+  <title>Benchmarks</title>
+  <style>
+    :root {
+      --page: #f9f9f7;
+      --surface: #fcfcfb;
+      --ink: #0b0b0b;
+      --ink-2: #52514e;
+      --muted: #898781;
+      --grid: #e1e0d9;
+      --baseline: #c3c2b7;
+      --border: rgba(11, 11, 11, 0.1);
+      --accent: #2a78d6;
+      --seg-active-bg: #1c5cab;
+      --seg-active-fg: #ffffff;
+      --delta-good: #006300;
+      --delta-bad: #d03b3b;
+      --series-1: #2a78d6;
+      --series-2: #1baf7a;
+      --series-3: #eda100;
+      --series-4: #008300;
+      --series-5: #4a3aa7;
+      --series-6: #e34948;
+      --series-7: #e87ba4;
+      --series-8: #eb6834;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --page: #0d0d0d;
+        --surface: #1a1a19;
+        --ink: #ffffff;
+        --ink-2: #c3c2b7;
+        --muted: #898781;
+        --grid: #2c2c2a;
+        --baseline: #383835;
+        --border: rgba(255, 255, 255, 0.1);
+        --accent: #3987e5;
+        --seg-active-bg: #3987e5;
+        --seg-active-fg: #0b0b0b;
+        --delta-good: #0ca30c;
+        --delta-bad: #d03b3b;
+        --series-1: #3987e5;
+        --series-2: #199e70;
+        --series-3: #c98500;
+        --series-4: #008300;
+        --series-5: #9085e9;
+        --series-6: #e66767;
+        --series-7: #d55181;
+        --series-8: #d95926;
+      }
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--page);
+      color: var(--ink);
+      font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif;
+    }
+    a { color: var(--accent); }
+    header.page {
+      padding: 16px 20px 4px;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: baseline;
+      gap: 6px 16px;
+    }
+    header.page h1 { font-size: 20px; margin: 0; }
+    header.page .meta { color: var(--ink-2); font-size: 13px; }
+    #toolbar {
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 20px;
+      background: var(--page);
+      background: color-mix(in srgb, var(--page) 88%, transparent);
+      backdrop-filter: blur(6px);
+      border-bottom: 1px solid var(--grid);
+    }
+    #toolbar[hidden] { display: none; }
+    #toolbar input[type="search"], #toolbar select {
+      font: inherit;
+      color: var(--ink);
+      background: var(--surface);
+      border: 1px solid var(--baseline);
+      border-radius: 6px;
+      padding: 6px 10px;
+    }
+    #toolbar input[type="search"] { flex: 1 1 180px; min-width: 140px; }
+    #toolbar select { max-width: 220px; }
+    .seg { display: inline-flex; border: 1px solid var(--baseline); border-radius: 6px; overflow: hidden; }
+    .seg button {
+      font: inherit;
+      font-size: 13px;
+      border: 0;
+      background: var(--surface);
+      color: var(--ink-2);
+      padding: 6px 10px;
+      cursor: pointer;
+    }
+    .seg button + button { border-left: 1px solid var(--baseline); }
+    .seg button[aria-pressed="true"] { background: var(--seg-active-bg); color: var(--seg-active-fg); }
+    .tool-btn {
+      font: inherit;
+      font-size: 13px;
+      background: var(--surface);
+      color: var(--ink-2);
+      border: 1px solid var(--baseline);
+      border-radius: 6px;
+      padding: 6px 10px;
+      cursor: pointer;
+    }
+    .tool-btn:hover, .seg button:hover { color: var(--ink); }
+    .tool-btn[aria-pressed="true"] {
+      background: var(--seg-active-bg);
+      color: var(--seg-active-fg);
+      border-color: var(--seg-active-bg);
+    }
+    #status { padding: 48px 20px; text-align: center; color: var(--ink-2); }
+    #status .bar {
+      width: min(320px, 80%);
+      height: 4px;
+      margin: 14px auto 0;
+      border-radius: 2px;
+      background: var(--grid);
+      overflow: hidden;
+      position: relative;
+    }
+    #status .bar::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      width: 40%;
+      border-radius: 2px;
+      background: var(--accent);
+      animation: slide 1.2s ease-in-out infinite alternate;
+    }
+    @keyframes slide { from { transform: translateX(-30%); } to { transform: translateX(220%); } }
+    @media (prefers-reduced-motion: reduce) { #status .bar::after { animation: none; } }
+    main { padding: 8px 20px 40px; }
+    details.pkg { margin: 14px 0; }
+    details.pkg > summary {
+      cursor: pointer;
+      font-size: 15px;
+      font-weight: 600;
+      padding: 8px 10px;
+      border-radius: 6px;
+      list-style-position: inside;
+    }
+    details.pkg > summary:hover { background: var(--surface); }
+    details.pkg > summary .count { color: var(--muted); font-weight: 400; font-size: 13px; }
+    .delta { font-size: 11px; font-weight: 600; color: var(--muted); white-space: nowrap; }
+    .delta.bad { color: var(--delta-bad); }
+    .delta.good { color: var(--delta-good); }
+    #movers {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 12px;
+      margin: 14px 0;
+    }
+    .mover-col {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px 12px;
+      min-width: 0;
+    }
+    .mover-col h4 {
+      margin: 0 0 6px;
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--ink-2);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    button.mover {
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+      width: 100%;
+      background: none;
+      border: 0;
+      border-radius: 4px;
+      padding: 4px 4px;
+      font: inherit;
+      font-size: 12px;
+      color: var(--ink);
+      cursor: pointer;
+      text-align: left;
+      min-width: 0;
+    }
+    button.mover:hover { background: var(--page); }
+    button.mover .delta { flex: none; min-width: 52px; }
+    button.mover .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    button.mover .pkg { color: var(--muted); font-size: 11px; margin-left: auto; flex: none; }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(330px, 1fr));
+      gap: 12px;
+      padding-top: 10px;
+    }
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px 12px 6px;
+      min-width: 0;
+    }
+    .card h3 {
+      margin: 0 0 2px;
+      font-size: 13px;
+      font-weight: 600;
+      word-break: break-word;
+      display: flex;
+      gap: 8px;
+      align-items: baseline;
+    }
+    .card h3 .name { flex: 1 1 auto; min-width: 0; }
+    .card h3 .delta { flex: none; }
+    .card h3 .tbl-btn {
+      font: inherit;
+      font-size: 11px;
+      font-weight: 400;
+      color: var(--muted);
+      background: none;
+      border: 1px solid var(--grid);
+      border-radius: 4px;
+      padding: 1px 6px;
+      cursor: pointer;
+      flex: none;
+    }
+    .card h3 .tbl-btn:hover { color: var(--ink); }
+    .card .sub { color: var(--muted); font-size: 11px; margin: 0 0 6px; }
+    .chart-box { position: relative; height: 200px; }
+    .chart-box.tall { height: 230px; }
+    .tbl-wrap { overflow-x: auto; }
+    .card table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+      margin: 6px 0;
+      font-variant-numeric: tabular-nums;
+    }
+    .card table th, .card table td {
+      text-align: right;
+      padding: 3px 6px;
+      border-bottom: 1px solid var(--grid);
+      color: var(--ink-2);
+      white-space: nowrap;
+    }
+    .card table th:first-child, .card table td:first-child { text-align: left; color: var(--ink); }
+    .card table thead th { color: var(--ink); position: relative; }
+    .key {
+      display: inline-block;
+      width: 12px;
+      height: 3px;
+      border-radius: 2px;
+      vertical-align: middle;
+      margin-right: 4px;
+    }
+    footer {
+      padding: 16px 20px 32px;
+      color: var(--muted);
+      font-size: 12px;
+      border-top: 1px solid var(--grid);
+    }
+    #lightbox {
+      position: fixed;
+      inset: 0;
+      z-index: 100;
+      background: var(--page);
+      display: flex;
+      flex-direction: column;
+      padding: 12px 20px 20px;
+    }
+    #lightbox[hidden] { display: none; }
+    .lb-head {
+      display: flex;
+      align-items: baseline;
+      gap: 8px 12px;
+      flex-wrap: wrap;
+    }
+    .lb-head h2 {
+      font-size: 16px;
+      margin: 0;
+      word-break: break-word;
+      flex: 1 1 auto;
+      min-width: 0;
+    }
+    .lb-head .sub { color: var(--muted); font-size: 12px; }
+    .lb-head .tool-btn { min-width: 40px; }
+    .lb-chart {
+      flex: 1 1 auto;
+      min-height: 0;
+      margin-top: 10px;
+      display: grid;
+      gap: 12px;
+      grid-template-columns: 1fr;
+    }
+    .lb-chart.cols-2 { grid-template-columns: 1fr 1fr; }
+    .lb-chart.cols-4 { grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; }
+    .lb-cell {
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+      min-width: 0;
+    }
+    .lb-cell .cap {
+      font-size: 12px;
+      font-weight: 600;
+      margin: 0 0 4px;
+      display: flex;
+      gap: 8px;
+      align-items: baseline;
+    }
+    .lb-cell .cap .pkg { color: var(--muted); font-weight: 400; font-size: 11px; }
+    .lb-cell .holder { flex: 1 1 auto; position: relative; min-height: 0; }
+    @media (max-width: 560px) {
+      #lightbox { padding: 10px 12px 14px; }
+      .lb-chart { overflow-y: auto; }
+      .lb-chart.cols-2, .lb-chart.cols-4 { grid-template-columns: 1fr; grid-template-rows: none; }
+      .lb-chart.cols-2 .lb-cell, .lb-chart.cols-4 .lb-cell { min-height: 45vh; }
+    }
+    @media (max-width: 560px) {
+      header.page, #toolbar, main, footer { padding-left: 12px; padding-right: 12px; }
+      .grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<!-- data-layout is patched to "single" or "multi" by the benchmark-pages sync
+     step, data-version to a hash of the data so a republished data.js is not
+     served from the CDN cache; "auto"/"" (local previews) probe and go unversioned -->
+<body data-layout="single" data-version="c417b3438dcd">
+  <header class="page">
+    <h1>Benchmarks</h1>
+    <span class="meta"><a id="repo-link" rel="noopener" href="#">repository</a></span>
+    <span class="meta" id="summary-line"></span>
+  </header>
+
+  <div id="toolbar" hidden>
+    <input id="search" type="search" placeholder="Filter benchmarks&hellip;" aria-label="Filter benchmarks" />
+    <select id="pkg-select" aria-label="Package"></select>
+    <button class="tool-btn" id="view-toggle" aria-pressed="false">Compare packages</button>
+    <span class="seg" id="metric-seg" role="group" aria-label="Metric"></span>
+    <span class="seg" id="range-seg" role="group" aria-label="Time range"></span>
+    <select id="sort-select" aria-label="Sort">
+      <option value="name">Sort: name</option>
+      <option value="change">Sort: change</option>
+    </select>
+    <button class="tool-btn" id="toggle-all">Expand all</button>
+    <button class="tool-btn" id="download" title="Download data as JSON" aria-label="Download data as JSON">&#10515; JSON</button>
+  </div>
+
+  <div id="status" role="status">
+    Loading benchmark data&hellip;
+    <div id="status-detail" class="meta"></div>
+    <div class="bar"></div>
+  </div>
+
+  <main id="main" hidden></main>
+
+  <div id="lightbox" hidden role="dialog" aria-modal="true" aria-label="Enlarged benchmark chart">
+    <div class="lb-head">
+      <h2 id="lb-title"></h2>
+      <span class="sub" id="lb-sub"></span>
+      <span class="seg" id="lb-metric" role="group" aria-label="Metric"></span>
+      <span class="seg" id="lb-count" role="group" aria-label="Charts per view">
+        <button aria-pressed="true">1</button>
+        <button aria-pressed="false">2</button>
+        <button aria-pressed="false">4</button>
+      </span>
+      <button class="tool-btn" id="lb-prev" aria-label="Previous charts">&lsaquo;</button>
+      <button class="tool-btn" id="lb-next" aria-label="Next charts">&rsaquo;</button>
+      <button class="tool-btn" id="lb-close" aria-label="Close enlarged chart">&times;</button>
+    </div>
+    <div class="lb-chart" id="lb-chart"></div>
+  </div>
+
+  <footer>
+    Data collected by the shared benchmark workflow &middot; page maintained in
+    <a rel="noopener" href="https://github.com/gofiber/.github">gofiber/.github</a>
+  </footer>
+
+  <script>
+    /* ---------- pure data logic (kept DOM-free so it can be tested in node) ---------- */
+    'use strict';
+
+    // "Benchmark_Foo/case-1 (github.com/gofiber/fiber/v3) - ns/op"
+    //   -> { base: "Benchmark_Foo", variant: "case-1", pkg: "github.com/...", metric: "ns/op" }
+    function parseName(name) {
+      let rest = String(name);
+      let metric = null;
+      const m = rest.match(/ - ([^ ]*\/[^ ]*)$/);
+      if (m) {
+        metric = m[1];
+        rest = rest.slice(0, m.index);
+      }
+      let pkg = null;
+      const p = rest.match(/ \(([^()]+)\)$/);
+      if (p) {
+        pkg = p[1];
+        rest = rest.slice(0, p.index);
+      }
+      const slash = rest.indexOf('/');
+      return {
+        base: slash === -1 ? rest : rest.slice(0, slash),
+        variant: slash === -1 ? '' : rest.slice(slash + 1),
+        pkg: pkg,
+        metric: metric,
+      };
+    }
+
+    function shortPkg(pkg, repoName) {
+      if (!pkg) return '';
+      let s = pkg.replace(/^github\.com\/gofiber\//, '');
+      if (repoName && s.startsWith(repoName + '/')) s = s.slice(repoName.length + 1);
+      if (repoName && s === repoName) s = '';
+      return s;
+    }
+
+    const METRIC_ORDER = ['ns/op', 'B/op', 'allocs/op', 'MB/s'];
+
+    function sortMetrics(set) {
+      return Array.from(set).sort(function (a, b) {
+        const ia = METRIC_ORDER.indexOf(a);
+        const ib = METRIC_ORDER.indexOf(b);
+        return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib) || a.localeCompare(b);
+      });
+    }
+
+    // sources: [{ label: folderName|null, data: BENCHMARK_DATA }]
+    // Returns { sections, metrics, repoUrl, lastUpdate, totalRuns, totalBenches }.
+    // A card is one Go benchmark; its variants are the sub-benchmarks, and each
+    // variant holds one value series per metric, aligned with source.runs.
+    function buildModel(sources) {
+      const sections = new Map();
+      const metrics = new Set();
+      let repoUrl = '';
+      let lastUpdate = 0;
+      let totalRuns = 0;
+      const model = { sections: sections, metrics: [], repoUrl: '', lastUpdate: 0, totalRuns: 0, totalBenches: 0 };
+
+      for (const src of sources) {
+        const data = src.data || {};
+        if (!repoUrl && data.repoUrl) repoUrl = data.repoUrl;
+        if (data.lastUpdate) lastUpdate = Math.max(lastUpdate, data.lastUpdate);
+        const suites = data.entries ? Object.values(data.entries) : [];
+        const entries = suites.length ? suites[0] : [];
+        if (!entries.length) continue;
+        totalRuns = Math.max(totalRuns, entries.length);
+        const repoName = repoUrl ? repoUrl.replace(/\/+$/, '').split('/').pop() : '';
+
+        const runs = entries.map(function (e) {
+          const c = e.commit || {};
+          return {
+            date: c.timestamp ? String(c.timestamp).slice(0, 10) : '',
+            ts: c.timestamp || '',
+            sha: c.id ? String(c.id).slice(0, 7) : '',
+            url: c.url || '',
+            msg: c.message ? String(c.message).split('\n')[0] : '',
+            // v2 data records the CPU per run; a model change is where the
+            // unexplained chart jumps used to come from
+            cpu: c.cpu || '',
+          };
+        });
+
+        const allNames = new Set();
+        for (const e of entries) {
+          for (const b of e.benches || []) allNames.add(b.name);
+        }
+
+        for (let i = 0; i < entries.length; i++) {
+          for (const b of entries[i].benches || []) {
+            const parsed = parseName(b.name);
+            let metric = parsed.metric;
+            if (!metric) {
+              // The go extractor emits the plain entry twice: once bare and once
+              // with an explicit " - ns/op" suffix. Skip the bare duplicate.
+              if (allNames.has(b.name + ' - ns/op')) continue;
+              metric = String(b.unit || 'ns/op').split(/\s/)[0];
+            }
+            const sectionLabel = src.label || shortPkg(parsed.pkg, repoName) || 'other';
+            let section = sections.get(sectionLabel);
+            if (!section) {
+              section = { label: sectionLabel, cards: new Map() };
+              sections.set(sectionLabel, section);
+            }
+            const cardKey = (parsed.pkg || '') + '|' + parsed.base;
+            let card = section.cards.get(cardKey);
+            if (!card) {
+              // first/last mark the run window that actually has data, so charts of
+              // renamed or removed benchmarks do not render mostly-empty axes.
+              card = { base: parsed.base, pkg: parsed.pkg, section: sectionLabel, runs: runs, variants: new Map(), first: i, last: i };
+              section.cards.set(cardKey, card);
+            }
+            if (i < card.first) card.first = i;
+            if (i > card.last) card.last = i;
+            let variant = card.variants.get(parsed.variant);
+            if (!variant) {
+              // slot fixes the variant's color for good: it must not shift when a
+              // metric filter hides sibling variants (color follows the entity)
+              variant = { name: parsed.variant, series: new Map(), slot: card.variants.size };
+              card.variants.set(parsed.variant, variant);
+            }
+            let arr = variant.series.get(metric);
+            if (!arr) {
+              arr = new Array(entries.length).fill(null);
+              variant.series.set(metric, arr);
+            }
+            arr[i] = b.value;
+            metrics.add(metric);
+          }
+        }
+      }
+
+      let totalBenches = 0;
+      for (const section of sections.values()) {
+        for (const card of section.cards.values()) totalBenches += card.variants.size;
+      }
+      model.metrics = sortMetrics(metrics);
+      model.repoUrl = repoUrl;
+      model.lastUpdate = lastUpdate;
+      model.totalRuns = totalRuns;
+      model.totalBenches = totalBenches;
+      return model;
+    }
+
+    // v2 data.js is columnar (every series name once, values as a matrix), about
+    // 40x smaller than the per-run format github-action-benchmark wrote. It is
+    // expanded back to that shape here, so the model builder and the JSON
+    // download keep working on the format they always knew - and repos that
+    // have not republished since the switch still load through the legacy path.
+    function expandData(data) {
+      if (!data || data.version !== 2) return data;
+      const entries = (data.runs || []).map(function (run, i) {
+        const benches = [];
+        for (let n = 0; n < data.names.length; n++) {
+          const value = data.values[n][i];
+          if (value == null) continue;
+          benches.push({ name: data.names[n], value: value, unit: data.units[n] });
+        }
+        return {
+          commit: { id: run.id, timestamp: run.timestamp, url: run.url, message: run.message, cpu: run.cpu },
+          benches: benches,
+        };
+      });
+      return { lastUpdate: data.lastUpdate, repoUrl: data.repoUrl, entries: { Benchmark: entries } };
+    }
+
+    function parseDataJs(text) {
+      const start = text.indexOf('{');
+      const end = text.lastIndexOf('}');
+      if (start < 0 || end <= start) throw new Error('unexpected data.js format');
+      return expandData(JSON.parse(text.slice(start, end + 1)));
+    }
+
+    // Every Go benchmark function starts with "Benchmark"; drop the noise for display.
+    function displayName(base) {
+      return String(base).replace(/^Benchmark_?/, '') || base;
+    }
+
+    // For every metric except throughput, a higher value is a regression.
+    function higherIsBetter(metric) {
+      return metric === 'MB/s';
+    }
+
+    // B/op and allocs/op are rounded integers: a benchmark allocating ~1 byte per
+    // op flips between 0 and 1 on iteration luck, which would read as a ±100%
+    // mover. Skip only the flip zone: byte moves under one real allocation (Go's
+    // smallest is 8) and the 0/1 allocs zone; a real new allocation moves B/op
+    // by >= 8 too and stays visible. The ns/op entry is different in kind: it
+    // damps sub-nanosecond alignment wobble, mirroring the report's alert-min-ns.
+    const MIN_METRIC_DELTA = { 'ns/op': 1, 'B/op': 8 };
+    function quantizationNoise(metric, a, b) {
+      if (metric === 'allocs/op') return Math.max(a, b) <= 1;
+      return Math.abs(a - b) < (MIN_METRIC_DELTA[metric] || 0);
+    }
+
+    // Latest value vs the median of up to 10 previous runs. The median damps
+    // single-run benchmark noise that a plain last-vs-previous compare amplifies.
+    function seriesDelta(arr, first, last, metric) {
+      let latestIdx = -1;
+      for (let i = last; i >= first; i--) {
+        if (arr[i] != null) { latestIdx = i; break; }
+      }
+      if (latestIdx < 0) return null;
+      const prior = [];
+      for (let i = latestIdx - 1; i >= first && prior.length < 10; i--) {
+        if (arr[i] != null) prior.push(arr[i]);
+      }
+      if (!prior.length) return null;
+      prior.sort(function (a, b) { return a - b; });
+      const mid = prior.length >> 1;
+      const median = prior.length % 2 ? prior[mid] : (prior[mid - 1] + prior[mid]) / 2;
+      if (!median) return null;
+      if (quantizationNoise(metric, arr[latestIdx], median)) return null;
+      return { pct: ((arr[latestIdx] - median) / median) * 100, latest: arr[latestIdx], baseline: median };
+    }
+
+    // The card's most significant recent change across its variants.
+    function cardDelta(card, metric) {
+      let worst = null;
+      for (const variant of card.variants.values()) {
+        const arr = variant.series.get(metric);
+        if (!arr) continue;
+        // comparison variants carry their own run window (one per package)
+        const first = variant.first !== undefined ? variant.first : card.first;
+        const last = variant.last !== undefined ? variant.last : card.last;
+        const delta = seriesDelta(arr, first, last, metric);
+        if (delta && (!worst || Math.abs(delta.pct) > Math.abs(worst.pct))) {
+          worst = delta;
+          worst.variant = variant.name;
+        }
+      }
+      if (worst) worst.regression = higherIsBetter(metric) ? worst.pct < 0 : worst.pct > 0;
+      return worst;
+    }
+
+    function normToken(value) {
+      return String(value).toLowerCase().replace(/[^a-z0-9]/g, '');
+    }
+
+    // "Benchmark_Redis_Set" in section "redis" -> "Set";
+    // "Benchmark_Ace" in section "ace/v3" -> "" (the variant becomes the key).
+    function compareKey(base, sectionLabel) {
+      const parts = displayName(base).split('_');
+      const sec = normToken(String(sectionLabel).split('/')[0]);
+      if (sec && parts.length && normToken(parts[0]) === sec) parts.shift();
+      return parts.join('_');
+    }
+
+    // Cross-package view: one card per operation/scenario, one series per
+    // package, so sub packages can be compared against each other. Keys merge
+    // case- and underscore-insensitively (SetAndDelete == Set_And_Delete).
+    function buildCompareModel(model) {
+      const cards = new Map();
+      const byNorm = new Map();
+      for (const section of model.sections.values()) {
+        if (section.label === 'other') continue;
+        for (const card of section.cards.values()) {
+          for (const variant of card.variants.values()) {
+            const op = compareKey(card.base, section.label);
+            const rawKey = op && variant.name ? op + '/' + variant.name
+              : (op || variant.name || displayName(card.base));
+            const norm = normToken(rawKey);
+            const key = byNorm.get(norm) || rawKey;
+            if (!byNorm.has(norm)) byNorm.set(norm, rawKey);
+            let compare = cards.get(key);
+            if (!compare) {
+              compare = { base: key, pkg: null, section: 'comparison', compare: true, first: 0, last: 0, variants: new Map() };
+              cards.set(key, compare);
+            }
+            if (!compare.variants.has(section.label)) {
+              compare.variants.set(section.label, {
+                name: section.label,
+                slot: compare.variants.size,
+                series: variant.series,
+                runs: card.runs,
+                first: card.first,
+                last: card.last,
+              });
+            }
+          }
+        }
+      }
+      for (const [key, card] of cards) {
+        if (card.variants.size < 2) cards.delete(key);
+      }
+      return cards;
+    }
+
+    function cardMatches(card, query, metric) {
+      let hasMetric = false;
+      for (const variant of card.variants.values()) {
+        if (variant.series.has(metric)) { hasMetric = true; break; }
+      }
+      if (!hasMetric) return false;
+      if (!query) return true;
+      const q = query.toLowerCase();
+      if (card.base.toLowerCase().includes(q)) return true;
+      if (card.pkg && card.pkg.toLowerCase().includes(q)) return true;
+      for (const variant of card.variants.keys()) {
+        if (variant.toLowerCase().includes(q)) return true;
+      }
+      return false;
+    }
+
+    if (typeof module !== 'undefined' && module.exports) {
+      module.exports = { parseName: parseName, shortPkg: shortPkg, buildModel: buildModel, parseDataJs: parseDataJs, expandData: expandData, cardMatches: cardMatches, sortMetrics: sortMetrics, seriesDelta: seriesDelta, cardDelta: cardDelta, displayName: displayName, compareKey: compareKey, buildCompareModel: buildCompareModel };
+    }
+  </script>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.9/dist/chart.umd.min.js"
+          integrity="sha384-b0GXujLkk9eYYSmcSfoyZbfyElGAQnDyY0skCHSG6w3JgTMFnz11ggrTAr7seu9f" crossorigin="anonymous"></script>
+
+  <script>
+    /* ---------- UI ---------- */
+    'use strict';
+    if (typeof window !== 'undefined' && typeof Chart !== 'undefined') (function () {
+      // One chart per benchmark regardless of series count (user preference over
+      // 8-slot small multiples): hues repeat past the 8 palette slots and these
+      // dash patterns keep repeated hues distinguishable.
+      const SERIES_DASHES = [[], [6, 3], [2, 2], [8, 2, 2, 2]];
+      const MOVER_THRESHOLD = 3; // percent change below which a delta is considered noise
+      const state = { q: '', pkg: 'all', metric: 'ns/op', sort: 'name', range: 'all', view: 'cards' };
+      let model = null;
+      const liveCharts = new Map(); // canvas -> Chart
+
+      const $ = function (id) { return document.getElementById(id); };
+      function el(tag, attrs, children) {
+        const node = document.createElement(tag);
+        if (attrs) {
+          for (const k of Object.keys(attrs)) {
+            if (k === 'text') node.textContent = attrs[k];
+            else if (k === 'dataset') Object.assign(node.dataset, attrs[k]);
+            else node.setAttribute(k, attrs[k]);
+          }
+        }
+        for (const child of children || []) node.appendChild(child);
+        return node;
+      }
+
+      function cssVars() {
+        const cs = getComputedStyle(document.documentElement);
+        const v = function (name) { return cs.getPropertyValue(name).trim(); };
+        return {
+          series: [1, 2, 3, 4, 5, 6, 7, 8].map(function (i) { return v('--series-' + i); }),
+          ink: v('--ink'), ink2: v('--ink-2'), muted: v('--muted'),
+          grid: v('--grid'), baseline: v('--baseline'), surface: v('--surface'),
+        };
+      }
+
+      const fmtFull = new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 });
+      const fmtAxis = new Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 1 });
+
+      /* ----- state <-> URL hash ----- */
+      function readHash() {
+        const params = new URLSearchParams(location.hash.replace(/^#/, ''));
+        state.q = params.get('q') || '';
+        state.pkg = params.get('package') || 'all';
+        state.metric = params.get('metric') || 'ns/op';
+        state.sort = params.get('sort') || 'name';
+        state.range = params.get('range') || 'all';
+        state.view = params.get('view') || 'cards';
+      }
+
+      function clampState() {
+        if (!model) return;
+        if (state.pkg !== 'all' && !model.sections.has(state.pkg)) state.pkg = 'all';
+        if (!model.metrics.includes(state.metric)) state.metric = model.metrics[0] || 'ns/op';
+        if (state.sort !== 'name' && state.sort !== 'change') state.sort = 'name';
+        if (state.range !== '10' && state.range !== '30' && state.range !== '90' && state.range !== 'all') state.range = 'all';
+        if (state.view !== 'compare') state.view = 'cards';
+        if (state.view === 'compare' && model.sections.size < 2) state.view = 'cards';
+      }
+      function writeHash() {
+        const params = new URLSearchParams();
+        if (state.q) params.set('q', state.q);
+        if (state.pkg !== 'all') params.set('package', state.pkg);
+        if (state.metric !== 'ns/op') params.set('metric', state.metric);
+        if (state.sort !== 'name') params.set('sort', state.sort);
+        if (state.range !== 'all') params.set('range', state.range);
+        if (state.view === 'compare') params.set('view', 'compare');
+        const hash = params.toString();
+        history.replaceState(null, '', hash ? '#' + hash : location.pathname + location.search);
+      }
+
+      /* ----- data loading ----- */
+      async function fetchText(url, onBytes) {
+        const res = await fetch(url);
+        if (!res.ok) throw new Error(url + ' -> HTTP ' + res.status);
+        if (!res.body || !res.body.getReader) return res.text();
+        const reader = res.body.getReader();
+        const chunks = [];
+        let received = 0;
+        for (;;) {
+          const step = await reader.read();
+          if (step.done) break;
+          chunks.push(step.value);
+          received += step.value.length;
+          if (onBytes) onBytes(received);
+        }
+        return new Blob(chunks).text();
+      }
+
+      function loadViaScriptTag() {
+        // Fallback when fetch() is unavailable for the data (e.g. file:// preview).
+        return new Promise(function (resolve, reject) {
+          const script = document.createElement('script');
+          script.src = 'data.js';
+          script.onload = function () {
+            if (window.BENCHMARK_DATA) resolve(expandData(window.BENCHMARK_DATA));
+            else reject(new Error('data.js did not define BENCHMARK_DATA'));
+          };
+          script.onerror = function () { reject(new Error('failed to load data.js')); };
+          document.head.appendChild(script);
+        });
+      }
+
+      async function loadSources() {
+        const detail = $('status-detail');
+        const layout = (document.body.dataset && document.body.dataset.layout) || 'auto';
+        // baked in by the sync step; busts the Pages CDN cache after a publish
+        const version = (document.body.dataset && document.body.dataset.version) || '';
+        const versioned = function (url) { return version ? url + '?v=' + version : url; };
+        let folders = null;
+        if (layout !== 'single') {
+          try {
+            const res = await fetch(versioned('folders.json'));
+            if (res.ok) {
+              const list = await res.json();
+              // an existing but empty folders.json means "no packages yet",
+              // not "single data.js layout"
+              if (Array.isArray(list)) {
+                // pre-hash format: names only, bust with the global version
+                folders = list.map(function (name) { return { name: name, version: version }; });
+              } else if (list && typeof list === 'object') {
+                // folder -> hash of its own data.js: unchanged packages stay cached
+                folders = Object.keys(list).sort().map(function (name) {
+                  return { name: name, version: list[name] || '' };
+                });
+              }
+            }
+          } catch (err) { /* single data.js layout */ }
+        }
+
+        if (!folders) {
+          try {
+            const text = await fetchText(versioned('data.js'), function (bytes) {
+              detail.textContent = (bytes / 1048576).toFixed(1) + ' MB received';
+            });
+            return [{ label: null, data: parseDataJs(text) }];
+          } catch (err) {
+            return [{ label: null, data: await loadViaScriptTag() }];
+          }
+        }
+        if (!folders.length) return [];
+
+        const sources = [];
+        let done = 0;
+        const queue = folders.slice();
+        const workers = new Array(Math.min(6, queue.length)).fill(null).map(async function () {
+          for (;;) {
+            const folder = queue.shift();
+            if (!folder) return;
+            try {
+              const url = folder.name + '/data.js' + (folder.version ? '?v=' + folder.version : '');
+              const text = await fetchText(url);
+              sources.push({ label: folder.name, data: parseDataJs(text) });
+            } catch (err) { /* folder without data yet */ }
+            done++;
+            detail.textContent = done + ' / ' + folders.length + ' packages loaded';
+          }
+        });
+        await Promise.all(workers);
+        sources.sort(function (a, b) { return String(a.label).localeCompare(String(b.label)); });
+        return sources;
+      }
+
+      /* ----- chart rendering ----- */
+      function chunkVariants(card, metric) {
+        const variants = Array.from(card.variants.values()).filter(function (variant) {
+          return variant.series.has(metric);
+        });
+        return variants.length ? [variants] : [];
+      }
+
+      function seriesStyle(vars, slot) {
+        return {
+          color: vars.series[slot % vars.series.length],
+          dash: SERIES_DASHES[Math.floor(slot / vars.series.length) % SERIES_DASHES.length],
+        };
+      }
+
+      const crosshair = {
+        id: 'crosshair',
+        afterDraw: function (chart) {
+          const tooltip = chart.tooltip;
+          if (!tooltip || !tooltip.opacity || tooltip.caretX == null) return;
+          const ctx = chart.ctx;
+          ctx.save();
+          ctx.strokeStyle = chart.$vars.baseline;
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.moveTo(tooltip.caretX, chart.chartArea.top);
+          ctx.lineTo(tooltip.caretX, chart.chartArea.bottom);
+          ctx.stroke();
+          ctx.restore();
+        },
+      };
+
+      // Comparison cards overlay one series per package. The packages publish on
+      // their own commit timelines, so the series are aligned at their latest
+      // run; each tooltip row carries the commit date of its own package.
+      function createCompareChart(canvas, card, variants, vars, metric) {
+        const tails = [];
+        for (const variant of variants) {
+          const arr = variant.series.get(metric);
+          let first = variant.first;
+          let last = variant.last;
+          while (first <= last && arr[first] == null) first++;
+          while (last >= first && arr[last] == null) last--;
+          if (first > last) { first = variant.first; last = variant.last; }
+          if (state.range !== 'all') {
+            const lastTs = Date.parse(variant.runs[last].ts || variant.runs[last].date);
+            if (!Number.isNaN(lastTs)) {
+              const cutoff = lastTs - Number(state.range) * 86400000;
+              while (first < last) {
+                const ts = Date.parse(variant.runs[first].ts || variant.runs[first].date);
+                if (!Number.isNaN(ts) && ts >= cutoff) break;
+                first++;
+              }
+            }
+          }
+          tails.push({ variant: variant, values: arr.slice(first, last + 1), runs: variant.runs.slice(first, last + 1) });
+        }
+        const maxLen = Math.max(1, ...tails.map(function (t) { return t.values.length; }));
+        const sameTimeline = tails.every(function (t) {
+          return t.values.length === maxLen && t.runs[0] && tails[0].runs[0] && t.runs[0].sha === tails[0].runs[0].sha;
+        });
+        const longest = tails.find(function (t) { return t.values.length === maxLen; });
+        const labels = sameTimeline
+          ? longest.runs.map(function (r) { return r.date; })
+          : longest.runs.map(function (r, i) { return String(i - maxLen + 1); });
+        const runFor = function (datasetIndex, idx) {
+          const tail = tails[datasetIndex];
+          const offset = maxLen - tail.values.length;
+          return idx >= offset ? tail.runs[idx - offset] : null;
+        };
+        const datasets = tails.map(function (tail) {
+          const style = seriesStyle(vars, tail.variant.slot);
+          return {
+            label: tail.variant.name,
+            data: new Array(maxLen - tail.values.length).fill(null).concat(tail.values),
+            borderColor: style.color,
+            backgroundColor: style.color,
+            borderDash: style.dash,
+            borderWidth: 2,
+            borderJoinStyle: 'round',
+            borderCapStyle: 'round',
+            pointRadius: 0,
+            pointHitRadius: 12,
+            pointHoverRadius: 5,
+            pointHoverBorderColor: vars.surface,
+            pointHoverBorderWidth: 2,
+            spanGaps: true,
+          };
+        });
+        const chart = new Chart(canvas, {
+          type: 'line',
+          data: { labels: labels, datasets: datasets },
+          options: {
+            animation: false,
+            normalized: true,
+            resizeDelay: 120,
+            maintainAspectRatio: false,
+            interaction: { mode: 'index', intersect: false },
+            scales: {
+              x: {
+                grid: { display: false },
+                border: { color: vars.baseline },
+                ticks: { color: vars.muted, maxRotation: 0, autoSkip: true, maxTicksLimit: 5, font: { size: 10 } },
+              },
+              y: {
+                grid: { color: vars.grid },
+                border: { display: false },
+                ticks: { color: vars.muted, maxTicksLimit: 5, font: { size: 10 }, callback: function (value) { return fmtAxis.format(value); } },
+              },
+            },
+            plugins: {
+              legend: { display: true, position: 'bottom', labels: { color: vars.ink2, boxWidth: 14, boxHeight: 2, font: { size: 11 } } },
+              tooltip: {
+                displayColors: true,
+                boxWidth: 10,
+                boxHeight: 2,
+                callbacks: {
+                  title: function (items) {
+                    if (!items.length) return '';
+                    return sameTimeline ? labels[items[0].dataIndex] : 'aligned run ' + labels[items[0].dataIndex];
+                  },
+                  label: function (item) {
+                    const run = runFor(item.datasetIndex, item.dataIndex);
+                    return ' ' + fmtFull.format(item.parsed.y) + ' ' + metric + '  ' + item.dataset.label +
+                      (run ? ' · ' + run.date + ' ' + run.sha : '');
+                  },
+                },
+              },
+            },
+            onClick: function (event, elements) {
+              if (!elements.length) return;
+              const run = runFor(elements[0].datasetIndex, elements[0].index);
+              if (run && run.url) window.open(run.url, '_blank', 'noopener');
+            },
+          },
+          plugins: [crosshair],
+        });
+        chart.$vars = vars;
+        return chart;
+      }
+
+      function createChart(canvas, card, variants) {
+        const vars = cssVars();
+        const metric = state.metric;
+        if (card.compare) return createCompareChart(canvas, card, variants, vars, metric);
+        // Trim the axis to the run window that has data for THIS chunk, so a
+        // chart of recently added variants does not render a mostly empty axis.
+        let first = Infinity;
+        let last = -Infinity;
+        for (const variant of variants) {
+          const arr = variant.series.get(metric);
+          for (let i = card.first; i <= card.last; i++) {
+            if (arr[i] != null) { if (i < first) first = i; break; }
+          }
+          for (let i = card.last; i >= card.first; i--) {
+            if (arr[i] != null) { if (i > last) last = i; break; }
+          }
+        }
+        if (!(first <= last)) { first = card.first; last = card.last; }
+        if (state.range !== 'all') {
+          const lastTs = Date.parse(card.runs[last].ts || card.runs[last].date);
+          if (!Number.isNaN(lastTs)) {
+            const cutoff = lastTs - Number(state.range) * 86400000;
+            while (first < last) {
+              const ts = Date.parse(card.runs[first].ts || card.runs[first].date);
+              if (!Number.isNaN(ts) && ts >= cutoff) break;
+              first++;
+            }
+          }
+        }
+        const runs = card.runs.slice(first, last + 1);
+        const datasets = variants.map(function (variant) {
+          const style = seriesStyle(vars, variant.slot);
+          return {
+            label: variant.name || 'default',
+            data: variant.series.get(metric).slice(first, last + 1),
+            borderColor: style.color,
+            backgroundColor: style.color,
+            borderDash: style.dash,
+            borderWidth: 2,
+            borderJoinStyle: 'round',
+            borderCapStyle: 'round',
+            pointRadius: 0,
+            pointHitRadius: 12,
+            pointHoverRadius: 5,
+            pointHoverBorderColor: vars.surface,
+            pointHoverBorderWidth: 2,
+            spanGaps: true,
+          };
+        });
+        const chart = new Chart(canvas, {
+          type: 'line',
+          data: { labels: runs.map(function (r) { return r.date; }), datasets: datasets },
+          options: {
+            animation: false,
+            normalized: true,
+            resizeDelay: 120,
+            maintainAspectRatio: false,
+            interaction: { mode: 'index', intersect: false },
+            scales: {
+              x: {
+                grid: { display: false },
+                border: { color: vars.baseline },
+                ticks: { color: vars.muted, maxRotation: 0, autoSkip: true, maxTicksLimit: 5, font: { size: 10 } },
+              },
+              y: {
+                grid: { color: vars.grid },
+                border: { display: false },
+                ticks: {
+                  color: vars.muted,
+                  maxTicksLimit: 5,
+                  font: { size: 10 },
+                  callback: function (value) { return fmtAxis.format(value); },
+                },
+              },
+            },
+            plugins: {
+              legend: {
+                display: datasets.length > 1,
+                position: 'bottom',
+                labels: {
+                  color: vars.ink2,
+                  boxWidth: 14,
+                  boxHeight: 2,
+                  font: { size: 11 },
+                },
+              },
+              tooltip: {
+                displayColors: true,
+                boxWidth: 10,
+                boxHeight: 2,
+                usePointStyle: false,
+                callbacks: {
+                  title: function (items) {
+                    if (!items.length) return '';
+                    const run = runs[items[0].dataIndex] || {};
+                    const lines = [run.date + '  ' + run.sha];
+                    if (run.msg) lines.push(run.msg.slice(0, 60));
+                    if (run.cpu) lines.push(run.cpu);
+                    return lines;
+                  },
+                  label: function (item) {
+                    return ' ' + fmtFull.format(item.parsed.y) + ' ' + metric +
+                      (datasets.length > 1 ? '  ' + item.dataset.label : '');
+                  },
+                },
+              },
+            },
+            onClick: function (event, elements) {
+              if (!elements.length) return;
+              const run = runs[elements[0].index];
+              if (run && run.url) window.open(run.url, '_blank', 'noopener');
+            },
+          },
+          plugins: [crosshair],
+        });
+        chart.$vars = vars;
+        return chart;
+      }
+
+      const observer = new IntersectionObserver(function (entries) {
+        for (const entry of entries) {
+          const box = entry.target;
+          if (entry.isIntersecting) {
+            if (!liveCharts.has(box)) {
+              const canvas = document.createElement('canvas');
+              canvas.setAttribute('role', 'img');
+              canvas.setAttribute('aria-label', box.$label);
+              box.appendChild(canvas);
+              liveCharts.set(box, createChart(canvas, box.$card, box.$variants));
+            }
+          } else if (liveCharts.has(box)) {
+            liveCharts.get(box).destroy();
+            liveCharts.delete(box);
+            box.replaceChildren();
+          }
+        }
+      }, { rootMargin: '400px 0px' });
+
+      function destroyAllCharts() {
+        for (const pair of liveCharts) {
+          pair[1].destroy();
+          pair[0].replaceChildren();
+        }
+        liveCharts.clear();
+        observer.disconnect();
+      }
+
+      /* ----- lightbox (enlarged charts with prev/next, 1/2/4 layout, metric switch) ----- */
+      const lightbox = { boxes: [], index: -1, charts: [], count: 1, opener: null, dirty: false };
+
+      function destroyLightboxCharts() {
+        for (const chart of lightbox.charts) chart.destroy();
+        lightbox.charts = [];
+        $('lb-chart').replaceChildren();
+      }
+
+      // The page boxes were chunked for the metric active at render time; the
+      // lightbox re-derives its chunk so its own metric switch stays correct.
+      function lightboxVariants(box, metric) {
+        return Array.from(box.$card.variants.values()).filter(function (variant) {
+          return variant.series.has(metric);
+        });
+      }
+
+      function showLightboxCharts() {
+        const total = lightbox.boxes.length;
+        if (!total) return;
+        const count = Math.min(lightbox.count, total);
+        const start = lightbox.index;
+        destroyLightboxCharts();
+        const holder = $('lb-chart');
+        holder.className = 'lb-chart' + (count > 1 ? ' cols-' + (count === 2 ? '2' : '4') : '');
+        let firstVariantCount = 0;
+        for (let i = 0; i < count; i++) {
+          const box = lightbox.boxes[(start + i) % total];
+          const card = box.$card;
+          const variants = lightboxVariants(box, state.metric);
+          if (i === 0) firstVariantCount = variants.length;
+          const cap = el('p', { class: 'cap' }, [el('span', { text: displayName(card.base) })]);
+          if (card.pkg) cap.appendChild(el('span', { class: 'pkg', text: card.pkg }));
+          const chartHolder = el('div', { class: 'holder' }, []);
+          holder.appendChild(el('div', { class: 'lb-cell' }, count > 1 ? [cap, chartHolder] : [chartHolder]));
+          if (!variants.length) {
+            chartHolder.appendChild(el('p', { class: 'sub', text: 'No ' + state.metric + ' data for this chart.' }));
+            continue;
+          }
+          const canvas = document.createElement('canvas');
+          canvas.setAttribute('role', 'img');
+          canvas.setAttribute('aria-label', box.$label);
+          chartHolder.appendChild(canvas);
+          lightbox.charts.push(createChart(canvas, card, variants));
+        }
+        const first = lightbox.boxes[start % total];
+        if (count === 1) {
+          $('lb-title').textContent = displayName(first.$card.base);
+          $('lb-sub').textContent = (first.$card.pkg ? first.$card.pkg + ' · ' : '') +
+            firstVariantCount + ' series · ' + state.metric + ' · ' +
+            (start + 1) + ' / ' + total;
+        } else {
+          $('lb-title').textContent = 'Benchmarks';
+          $('lb-sub').textContent = state.metric + ' · ' +
+            (start + 1) + '-' + (((start + count - 1) % total) + 1) + ' / ' + total;
+        }
+      }
+
+      function syncMetricSegs() {
+        for (const b of $('metric-seg').children) {
+          b.setAttribute('aria-pressed', String(b.textContent === state.metric));
+        }
+        for (const b of $('lb-metric').children) {
+          b.setAttribute('aria-pressed', String(b.textContent === state.metric));
+        }
+      }
+
+      function openLightbox(box, opener) {
+        lightbox.boxes = Array.from(document.querySelectorAll('.chart-box'));
+        lightbox.index = Math.max(0, lightbox.boxes.indexOf(box));
+        lightbox.opener = opener || null;
+        lightbox.dirty = false;
+        const seg = $('lb-metric');
+        seg.replaceChildren();
+        for (const metric of model.metrics) {
+          const btn = el('button', { text: metric, 'aria-pressed': String(metric === state.metric) });
+          btn.addEventListener('click', function () {
+            if (state.metric === metric) return;
+            state.metric = metric;
+            lightbox.dirty = true;
+            syncMetricSegs();
+            writeHash();
+            showLightboxCharts();
+          });
+          seg.appendChild(btn);
+        }
+        $('lightbox').hidden = false;
+        document.body.style.overflow = 'hidden';
+        showLightboxCharts();
+        $('lb-close').focus();
+      }
+
+      function closeLightbox() {
+        if ($('lightbox').hidden) return;
+        destroyLightboxCharts();
+        $('lightbox').hidden = true;
+        document.body.style.overflow = '';
+        if (lightbox.opener && lightbox.opener.isConnected) lightbox.opener.focus();
+        if (lightbox.dirty) {
+          // the metric changed inside the lightbox; bring the page up to date
+          lightbox.dirty = false;
+          renderSections();
+        }
+      }
+
+      function stepLightbox(direction) {
+        const total = lightbox.boxes.length;
+        if (!total) return;
+        const step = Math.min(lightbox.count, total);
+        lightbox.index = ((lightbox.index + direction * step) % total + total) % total;
+        showLightboxCharts();
+      }
+
+      /* ----- card / section rendering ----- */
+      function renderTable(card, container) {
+        const metric = state.metric;
+        const variants = [];
+        for (const variant of card.variants.values()) {
+          if (variant.series.has(metric)) variants.push(variant);
+        }
+        const vars = cssVars();
+        if (card.compare) {
+          renderCompareTable(card, container, variants, vars, metric);
+          return;
+        }
+        const table = el('table', null, []);
+        const headRow = el('tr', null, [el('th', { text: 'commit' })]);
+        variants.forEach(function (variant) {
+          const th = el('th', null, []);
+          if (variants.length > 1) {
+            const key = el('span', { class: 'key' }, []);
+            key.style.background = vars.series[variant.slot % vars.series.length];
+            th.appendChild(key);
+          }
+          th.appendChild(document.createTextNode(variant.name || 'default'));
+          headRow.appendChild(th);
+        });
+        table.appendChild(el('thead', null, [headRow]));
+        const body = el('tbody', null, []);
+        const first = Math.max(card.first, card.last - 14);
+        for (let i = card.last; i >= first; i--) {
+          const run = card.runs[i];
+          const commitCell = el('td', { text: run.date + ' ' }, []);
+          if (run.url) {
+            commitCell.appendChild(el('a', { href: run.url, rel: 'noopener', target: '_blank', text: run.sha }));
+          } else {
+            commitCell.appendChild(document.createTextNode(run.sha));
+          }
+          const row = el('tr', null, [commitCell]);
+          for (const variant of variants) {
+            const value = variant.series.get(metric)[i];
+            row.appendChild(el('td', { text: value == null ? '' : fmtFull.format(value) }));
+          }
+          body.appendChild(row);
+        }
+        table.appendChild(body);
+        container.replaceChildren(table);
+      }
+
+      function fmtPct(pct) {
+        return (pct > 0 ? '+' : '') + pct.toFixed(1) + '%';
+      }
+
+      function deltaBadge(delta, metric) {
+        const cls = Math.abs(delta.pct) < MOVER_THRESHOLD ? '' : (delta.regression ? ' bad' : ' good');
+        return el('span', {
+          class: 'delta' + cls,
+          text: fmtPct(delta.pct),
+          title: 'latest ' + fmtFull.format(delta.latest) + ' ' + metric + ' vs median ' +
+            fmtFull.format(delta.baseline) + ' of the previous runs' +
+            (delta.variant ? ' (' + delta.variant + ')' : ''),
+        });
+      }
+
+      // Comparison table: the packages have separate commit timelines, so rows
+      // are aligned at the latest run of each package ("0" = latest).
+      function renderCompareTable(card, container, variants, vars, metric) {
+        const table = el('table', null, []);
+        const headRow = el('tr', null, [el('th', { text: 'run' })]);
+        const tails = variants.map(function (variant) {
+          const arr = variant.series.get(metric);
+          let last = variant.last;
+          while (last >= variant.first && arr[last] == null) last--;
+          if (last < variant.first) last = variant.last;
+          const th = el('th', null, []);
+          const key = el('span', { class: 'key' }, []);
+          key.style.background = vars.series[variant.slot % vars.series.length];
+          th.appendChild(key);
+          th.appendChild(document.createTextNode(variant.name));
+          headRow.appendChild(th);
+          return { arr: arr, last: last, first: variant.first };
+        });
+        table.appendChild(el('thead', null, [headRow]));
+        const body = el('tbody', null, []);
+        for (let back = 0; back < 15; back++) {
+          const row = el('tr', null, [el('td', { text: back === 0 ? 'latest' : '-' + back })]);
+          let any = false;
+          for (const tail of tails) {
+            const idx = tail.last - back;
+            const value = idx >= tail.first ? tail.arr[idx] : null;
+            if (value != null) any = true;
+            row.appendChild(el('td', { text: value == null ? '' : fmtFull.format(value) }));
+          }
+          if (!any) break;
+          body.appendChild(row);
+        }
+        table.appendChild(body);
+        container.replaceChildren(table);
+      }
+
+      function renderCard(card, delta) {
+        const chunks = chunkVariants(card, state.metric);
+        const title = el('h3', null, []);
+        title.appendChild(el('span', { class: 'name', text: displayName(card.base) }, []));
+        if (delta) title.appendChild(deltaBadge(delta, state.metric));
+        const zoomBtn = el('button', { class: 'tbl-btn zoom', text: '⤢', 'aria-label': 'Enlarge chart for ' + displayName(card.base) });
+        title.appendChild(zoomBtn);
+        const tblBtn = el('button', { class: 'tbl-btn', text: 'table', 'aria-label': 'Toggle data table for ' + displayName(card.base) });
+        title.appendChild(tblBtn);
+        const node = el('div', { class: 'card' }, [title]);
+        const variantCount = chunks.reduce(function (n, c) { return n + c.length; }, 0);
+        const sub = card.pkg ? card.pkg + ' · ' : '';
+        node.appendChild(el('p', { class: 'sub', text: card.compare ? variantCount + ' packages' : sub + variantCount + ' series' }));
+        const tableWrap = el('div', { class: 'tbl-wrap', hidden: '' }, []);
+        node.appendChild(tableWrap);
+        tblBtn.addEventListener('click', function () {
+          if (tableWrap.hidden) {
+            renderTable(card, tableWrap);
+            tableWrap.hidden = false;
+          } else {
+            tableWrap.hidden = true;
+            tableWrap.replaceChildren();
+          }
+        });
+        chunks.forEach(function (chunk) {
+          const box = el('div', { class: 'chart-box' }, []);
+          box.$card = card;
+          box.$variants = chunk;
+          // room for the legend, which wraps with many series
+          box.style.height = Math.min(430, 200 + (chunk.length > 1 ? Math.ceil(chunk.length / 3) * 16 : 0)) + 'px';
+          box.$label = displayName(card.base) + ' benchmark trend';
+          node.appendChild(box);
+          observer.observe(box);
+        });
+        zoomBtn.addEventListener('click', function () {
+          openLightbox(node.querySelector('.chart-box'), zoomBtn);
+        });
+        return node;
+      }
+
+      function sortedSections() {
+        return Array.from(model.sections.values()).sort(function (a, b) {
+          // 'other' collects legacy series without a package suffix; keep it last
+          if (a.label === 'other' && b.label !== 'other') return 1;
+          if (b.label === 'other' && a.label !== 'other') return -1;
+          return a.label.localeCompare(b.label);
+        });
+      }
+
+      function renderMovers(visible, deltas) {
+        const movers = [];
+        for (const entry of visible) {
+          for (const card of entry.cards) {
+            const delta = deltas.get(card);
+            if (delta && Math.abs(delta.pct) >= MOVER_THRESHOLD) movers.push({ card: card, delta: delta });
+          }
+        }
+        const container = el('section', { id: 'movers' }, []);
+        movers.sort(function (a, b) { return Math.abs(b.delta.pct) - Math.abs(a.delta.pct); });
+        const groups = [
+          { title: 'Regressions (' + state.metric + ')', items: movers.filter(function (m) { return m.delta.regression; }).slice(0, 5) },
+          { title: 'Improvements (' + state.metric + ')', items: movers.filter(function (m) { return !m.delta.regression; }).slice(0, 5) },
+        ];
+        for (const group of groups) {
+          if (!group.items.length) continue;
+          const col = el('div', { class: 'mover-col' }, [el('h4', { text: group.title }, [])]);
+          for (const item of group.items) {
+            const btn = el('button', { class: 'mover', type: 'button', title: 'Show ' + displayName(item.card.base) }, [
+              deltaBadge(item.delta, state.metric),
+              el('span', { class: 'name', text: displayName(item.card.base) }),
+              el('span', { class: 'pkg', text: item.card.section === 'other' || item.card.compare ? '' : item.card.section }),
+            ]);
+            btn.addEventListener('click', function () {
+              state.q = displayName(item.card.base);
+              $('search').value = state.q;
+              writeHash();
+              renderSections();
+              window.scrollTo({ top: 0 });
+            });
+            col.appendChild(btn);
+          }
+          container.appendChild(col);
+        }
+        if (!container.childElementCount) container.hidden = true;
+        return container;
+      }
+
+      function renderSections() {
+        closeLightbox();
+        destroyAllCharts();
+        const main = $('main');
+        main.replaceChildren();
+        const searching = state.q !== '';
+        const compareMode = state.view === 'compare';
+        $('pkg-select').disabled = compareMode;
+        if (compareMode && !model.$compare) {
+          model.$compare = { label: 'package comparison', cards: buildCompareModel(model) };
+        }
+        const sectionList = compareMode ? [model.$compare] : sortedSections();
+        const deltas = new Map();
+        const visible = [];
+        for (const section of sectionList) {
+          if (!compareMode && state.pkg !== 'all' && section.label !== state.pkg) continue;
+          const cards = [];
+          for (const card of section.cards.values()) {
+            if (cardMatches(card, state.q, state.metric)) cards.push(card);
+          }
+          if (!cards.length) continue;
+          for (const card of cards) deltas.set(card, cardDelta(card, state.metric));
+          if (state.sort === 'change') {
+            cards.sort(function (a, b) {
+              return Math.abs((deltas.get(b) || { pct: 0 }).pct) - Math.abs((deltas.get(a) || { pct: 0 }).pct);
+            });
+          } else {
+            cards.sort(function (a, b) { return displayName(a.base).localeCompare(displayName(b.base)); });
+          }
+          visible.push({ section: section, cards: cards });
+        }
+
+        if (!searching) main.appendChild(renderMovers(visible, deltas));
+
+        let shown = 0;
+        let sections = 0;
+        for (const entry of visible) {
+          shown += entry.cards.length;
+          const grid = el('div', { class: 'grid' }, entry.cards.map(function (card) {
+            return renderCard(card, deltas.get(card));
+          }));
+          const summary = el('summary', null, [
+            el('span', { text: entry.section.label + ' ' }),
+            el('span', { class: 'count', text: '(' + entry.cards.length + ')' }),
+          ]);
+          let worst = null;
+          for (const card of entry.cards) {
+            const delta = deltas.get(card);
+            if (delta && delta.regression && Math.abs(delta.pct) >= MOVER_THRESHOLD &&
+                (!worst || Math.abs(delta.pct) > Math.abs(worst.pct))) {
+              worst = delta;
+            }
+          }
+          if (worst) {
+            summary.appendChild(document.createTextNode(' '));
+            summary.appendChild(el('span', { class: 'delta bad', text: fmtPct(worst.pct) }));
+          }
+          const details = el('details', { class: 'pkg' }, [summary, grid]);
+          const single = model.sections.size === 1 || state.pkg !== 'all';
+          if (single || searching || sections === 0) details.setAttribute('open', '');
+          main.appendChild(details);
+          sections++;
+        }
+        if (!shown) {
+          main.appendChild(el('p', { class: 'sub', text: 'No benchmarks match the current filter.' }));
+        }
+        updateToggleAll();
+      }
+
+      /* ----- toolbar ----- */
+      function updateToggleAll() {
+        const all = document.querySelectorAll('details.pkg');
+        let open = 0;
+        for (const d of all) if (d.open) open++;
+        $('toggle-all').textContent = open > all.length / 2 ? 'Collapse all' : 'Expand all';
+      }
+
+      function buildToolbar() {
+        clampState();
+        const search = $('search');
+        search.value = state.q;
+        let timer = null;
+        search.addEventListener('input', function () {
+          clearTimeout(timer);
+          timer = setTimeout(function () {
+            state.q = search.value.trim();
+            writeHash();
+            renderSections();
+          }, 150);
+        });
+
+        const select = $('pkg-select');
+        select.replaceChildren(el('option', { value: 'all', text: 'All packages (' + model.sections.size + ')' }));
+        for (const section of sortedSections()) {
+          select.appendChild(el('option', { value: section.label, text: section.label }));
+        }
+        if (model.sections.size < 2) select.hidden = true;
+        select.value = state.pkg;
+        select.addEventListener('change', function () {
+          state.pkg = select.value;
+          writeHash();
+          renderSections();
+        });
+
+        const seg = $('metric-seg');
+        seg.replaceChildren();
+        for (const metric of model.metrics) {
+          const btn = el('button', { text: metric, 'aria-pressed': String(metric === state.metric) });
+          btn.addEventListener('click', function () {
+            if (state.metric === metric) return;
+            state.metric = metric;
+            for (const b of seg.children) b.setAttribute('aria-pressed', String(b.textContent === metric));
+            writeHash();
+            renderSections();
+          });
+          seg.appendChild(btn);
+        }
+
+        const rangeSeg = $('range-seg');
+        rangeSeg.replaceChildren();
+        [['10', '10d'], ['30', '30d'], ['90', '90d'], ['all', 'all']].forEach(function (pair) {
+          const btn = el('button', { text: pair[1], 'aria-pressed': String(state.range === pair[0]) });
+          btn.addEventListener('click', function () {
+            if (state.range === pair[0]) return;
+            state.range = pair[0];
+            for (const b of rangeSeg.children) b.setAttribute('aria-pressed', String(b === btn));
+            writeHash();
+            renderSections();
+          });
+          rangeSeg.appendChild(btn);
+        });
+
+        const sortSelect = $('sort-select');
+        sortSelect.value = state.sort;
+        sortSelect.addEventListener('change', function () {
+          state.sort = sortSelect.value;
+          writeHash();
+          renderSections();
+        });
+
+        const viewToggle = $('view-toggle');
+        if (model.sections.size < 2) viewToggle.hidden = true;
+        viewToggle.setAttribute('aria-pressed', String(state.view === 'compare'));
+        viewToggle.addEventListener('click', function () {
+          state.view = state.view === 'compare' ? 'cards' : 'compare';
+          viewToggle.setAttribute('aria-pressed', String(state.view === 'compare'));
+          writeHash();
+          renderSections();
+        });
+
+        $('toggle-all').addEventListener('click', function () {
+          const all = document.querySelectorAll('details.pkg');
+          let open = 0;
+          for (const d of all) if (d.open) open++;
+          const target = !(open > all.length / 2);
+          for (const d of all) d.open = target;
+          updateToggleAll();
+        });
+        $('main').addEventListener('toggle', updateToggleAll, true);
+
+        $('download').addEventListener('click', function () {
+          const payload = model.$sources.length === 1 && model.$sources[0].label === null
+            ? model.$sources[0].data
+            : model.$sources.map(function (s) { return { package: s.label, data: s.data }; });
+          const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+          const link = document.createElement('a');
+          link.href = URL.createObjectURL(blob);
+          link.download = 'benchmark-data.json';
+          link.click();
+          URL.revokeObjectURL(link.href);
+        });
+      }
+
+      /* ----- boot ----- */
+      async function boot() {
+        readHash();
+        try {
+          const sources = await loadSources();
+          model = buildModel(sources);
+          model.$sources = sources;
+        } catch (err) {
+          $('status').textContent = 'Failed to load benchmark data: ' + err.message;
+          return;
+        }
+        if (!model.totalBenches) {
+          $('status').textContent = 'No benchmark data found yet.';
+          return;
+        }
+        document.title = (model.repoUrl ? model.repoUrl.split('/').slice(-2).join('/') + ' ' : '') + 'benchmarks';
+        const repoLink = $('repo-link');
+        repoLink.href = model.repoUrl || '#';
+        repoLink.textContent = model.repoUrl ? model.repoUrl.replace(/^https?:\/\//, '') : 'repository';
+        $('summary-line').textContent = model.totalBenches + ' series · ' + model.totalRuns + ' runs · updated ' +
+          (model.lastUpdate ? new Date(model.lastUpdate).toISOString().slice(0, 10) : 'n/a');
+
+        $('status').hidden = true;
+        $('toolbar').hidden = false;
+        $('main').hidden = false;
+        buildToolbar();
+
+        $('lb-close').addEventListener('click', closeLightbox);
+        $('lb-prev').addEventListener('click', function () { stepLightbox(-1); });
+        $('lb-next').addEventListener('click', function () { stepLightbox(1); });
+        for (const btn of $('lb-count').children) {
+          btn.addEventListener('click', function () {
+            const count = Number(btn.textContent);
+            if (lightbox.count === count) return;
+            lightbox.count = count;
+            for (const b of $('lb-count').children) b.setAttribute('aria-pressed', String(b === btn));
+            if (!$('lightbox').hidden) showLightboxCharts();
+          });
+        }
+        document.addEventListener('keydown', function (event) {
+          if ($('lightbox').hidden) return;
+          if (event.key === 'Escape') closeLightbox();
+          else if (event.key === 'ArrowLeft') stepLightbox(-1);
+          else if (event.key === 'ArrowRight') stepLightbox(1);
+        });
+
+        renderSections();
+
+        window.addEventListener('hashchange', function () {
+          readHash();
+          clampState();
+          $('pkg-select').value = state.pkg;
+          $('search').value = state.q;
+          $('sort-select').value = state.sort;
+          for (const b of $('metric-seg').children) {
+            b.setAttribute('aria-pressed', String(b.textContent === state.metric));
+          }
+          const rangeLabel = state.range === 'all' ? 'all' : state.range + 'd';
+          for (const b of $('range-seg').children) {
+            b.setAttribute('aria-pressed', String(b.textContent === rangeLabel));
+          }
+          $('view-toggle').setAttribute('aria-pressed', String(state.view === 'compare'));
+          renderSections();
+        });
+        if (window.matchMedia) {
+          window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', renderSections);
+        }
+      }
+
+      boot();
+    })();
+  </script>
+</body>
+</html>
