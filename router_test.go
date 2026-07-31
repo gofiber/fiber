@@ -4327,13 +4327,29 @@ func Test_RebuildTree_PreservesPublishedBuckets(t *testing.T) {
 	method := app.methodInt(MethodGet)
 	treeHash := int('/')<<16 | int('a')<<8 | int('a')
 	published := app.treeIndex[method].lookup(treeHash)
+	require.Equal(t, []string{"/aa/first", "/aa/removed", "/aa/last"}, routeTreePaths(published))
 	want := append([]*Route(nil), published...)
-	require.NotEmpty(t, published)
 
 	app.RemoveRoute("/aa/removed", MethodGet)
 	app.RebuildTree()
 
+	// The bucket the previous build published is what an in-flight request may
+	// still be scanning, so the rebuild must not have written through it.
 	require.Equal(t, want, published)
+
+	// The rebuild must still take effect: the new bucket drops the route.
+	rebuilt := app.treeIndex[method].lookup(treeHash)
+	require.Equal(t, []string{"/aa/first", "/aa/last"}, routeTreePaths(rebuilt))
+}
+
+// routeTreePaths returns the normalized paths of a tree bucket's routes, so
+// assertions report path names instead of route pointers.
+func routeTreePaths(routes []*Route) []string {
+	paths := make([]string, len(routes))
+	for i, route := range routes {
+		paths[i] = route.path
+	}
+	return paths
 }
 
 // Test_Route_PrefixFilter_UnconstrainedShapes covers the guards in
