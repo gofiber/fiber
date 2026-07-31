@@ -55,11 +55,20 @@ type ListenConfig struct {
 
 	// TLSConfigFunc allows customizing tls.Config as you want.
 	//
+	// Ignored when TLSConfig is set: configure that tls.Config directly instead.
+	//
 	// Default: nil
 	TLSConfigFunc func(tlsConfig *tls.Config) `json:"tls_config_func"`
 
-	// TLSConfig allows providing a tls.Config used as the base for TLS settings.
-	// This enables external certificate providers via GetCertificate.
+	// TLSConfig is served as-is, enabling external certificate providers via
+	// GetCertificate.
+	//
+	// It replaces the other TLS settings rather than seeding them: CertFile,
+	// CertKeyFile, CertClientFile, AutoCertManager, TLSConfigFunc and
+	// TLSMinVersion are all ignored while it is set, and a warning is logged for
+	// each one supplied alongside it. In particular there is no mutual TLS
+	// unless the tls.Config itself sets ClientAuth and ClientCAs — setting
+	// CertClientFile does not add it.
 	//
 	// Default: nil
 	TLSConfig *tls.Config `json:"tls_config"`
@@ -98,8 +107,12 @@ type ListenConfig struct {
 	// Default : ""
 	CertKeyFile string `json:"cert_key_file"`
 
-	// CertClientFile is a path of client certificate.
-	// If you want to use mTLS, you have to enter this field.
+	// CertClientFile is a path of the CA bundle used to verify client
+	// certificates. Setting it requires and verifies a client certificate, which
+	// is how ListenConfig asks for mTLS.
+	//
+	// Ignored when TLSConfig is set, in which case no client certificate is
+	// required at all; set ClientAuth and ClientCAs on that tls.Config instead.
 	//
 	// Default : ""
 	CertClientFile string `json:"cert_client_file"`
@@ -131,6 +144,8 @@ type ListenConfig struct {
 	UnixSocketFileMode os.FileMode `json:"unix_socket_file_mode"`
 
 	// TLSMinVersion allows to set TLS minimum version.
+	//
+	// Ignored when TLSConfig is set: set MinVersion on that tls.Config instead.
 	//
 	// Default: tls.VersionTLS12
 	// WARNING: TLS1.0 and TLS1.1 versions are not supported.
@@ -204,6 +219,7 @@ func (app *App) Listen(addr string, config ...ListenConfig) error {
 	var tlsHandler *TLSHandler
 	if cfg.TLSConfig != nil {
 		tlsConfig = cfg.TLSConfig.Clone()
+		warnSupersededTLSFields(&cfg)
 	} else {
 		switch {
 		case cfg.AutoCertManager != nil && (cfg.CertFile != "" || cfg.CertKeyFile != ""):
@@ -297,6 +313,37 @@ func (app *App) Listen(addr string, config ...ListenConfig) error {
 
 	served = true
 	return app.server.Serve(ln)
+}
+
+// warnSupersededTLSFields logs the ListenConfig TLS fields that a supplied
+// TLSConfig supersedes.
+//
+// TLSConfig replaces the other TLS settings rather than seeding them, so every
+// one of these is dropped without a word. CertClientFile is the field where
+// silence is dangerous: it is the only way ListenConfig asks for mutual TLS, so
+// a deployment that set it and also handed Fiber a TLSConfig — the documented
+// way to plug in an external certificate provider — comes up serving every
+// client, demanding no certificate from any of them. Say so at startup rather
+// than let that pass for a working mTLS listener.
+func warnSupersededTLSFields(cfg *ListenConfig) {
+	if cfg.CertClientFile != "" {
+		log.Warn("[Listen] TLSConfig supersedes CertClientFile: no client certificate will be required. " +
+			"Set ClientAuth and ClientCAs on TLSConfig to require one.")
+	}
+
+	var ignored []string
+	if cfg.CertFile != "" || cfg.CertKeyFile != "" {
+		ignored = append(ignored, "CertFile/CertKeyFile")
+	}
+	if cfg.AutoCertManager != nil {
+		ignored = append(ignored, "AutoCertManager")
+	}
+	if cfg.TLSConfigFunc != nil {
+		ignored = append(ignored, "TLSConfigFunc")
+	}
+	if len(ignored) > 0 {
+		log.Warnf("[Listen] TLSConfig supersedes %s.", strings.Join(ignored, ", "))
+	}
 }
 
 func applyClientCert(tlsConfig *tls.Config, certClientFile string) error {

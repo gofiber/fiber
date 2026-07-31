@@ -15,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	fiberlog "github.com/gofiber/fiber/v3/log"
 	"github.com/gofiber/utils/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -597,6 +598,68 @@ func Test_Listen_TLSConfig_WithTLSConfigFunc(t *testing.T) {
 	}))
 
 	require.False(t, calledTLSConfigFunc)
+}
+
+// go test -run Test_Listen_TLSConfig_WarnsSupersededFields
+func Test_Listen_TLSConfig_WarnsSupersededFields(t *testing.T) {
+	// Not parallel: swaps the package-level log output.
+	cert, err := tls.LoadX509KeyPair("./.github/testdata/ssl.pem", "./.github/testdata/ssl.key")
+	require.NoError(t, err)
+
+	var buf bytes.Buffer
+	fiberlog.SetOutput(&buf)
+	t.Cleanup(func() { fiberlog.SetOutput(os.Stderr) })
+
+	app := New()
+	go func() {
+		time.Sleep(500 * time.Millisecond)
+		assert.NoError(t, app.Shutdown())
+	}()
+
+	require.NoError(t, app.Listen(":0", ListenConfig{
+		DisableStartupMessage: true,
+		TLSConfig: &tls.Config{
+			MinVersion:   tls.VersionTLS12,
+			Certificates: []tls.Certificate{cert},
+		},
+		// Superseded by TLSConfig. CertClientFile is the one that matters: a
+		// listener that silently drops it serves every client without asking
+		// for a certificate, which reads as working mTLS until someone checks.
+		CertClientFile: "./.github/testdata/ca-chain.cert.pem",
+		TLSConfigFunc:  func(*tls.Config) {},
+	}))
+
+	out := buf.String()
+	require.Contains(t, out, "CertClientFile")
+	require.Contains(t, out, "no client certificate will be required")
+	require.Contains(t, out, "TLSConfigFunc")
+}
+
+// go test -run Test_Listen_TLSConfig_NoWarningWhenAlone
+func Test_Listen_TLSConfig_NoWarningWhenAlone(t *testing.T) {
+	// Not parallel: swaps the package-level log output.
+	cert, err := tls.LoadX509KeyPair("./.github/testdata/ssl.pem", "./.github/testdata/ssl.key")
+	require.NoError(t, err)
+
+	var buf bytes.Buffer
+	fiberlog.SetOutput(&buf)
+	t.Cleanup(func() { fiberlog.SetOutput(os.Stderr) })
+
+	app := New()
+	go func() {
+		time.Sleep(500 * time.Millisecond)
+		assert.NoError(t, app.Shutdown())
+	}()
+
+	require.NoError(t, app.Listen(":0", ListenConfig{
+		DisableStartupMessage: true,
+		TLSConfig: &tls.Config{
+			MinVersion:   tls.VersionTLS12,
+			Certificates: []tls.Certificate{cert},
+		},
+	}))
+
+	require.NotContains(t, buf.String(), "supersedes")
 }
 
 // go test -run Test_Listen_AutoCert_Conflicts
