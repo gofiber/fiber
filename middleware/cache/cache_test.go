@@ -1653,6 +1653,37 @@ func Test_AdditionalE2EResponseHeaders(t *testing.T) {
 	require.Equal(t, "foobar", resp.Header.Get("X-Foobar"))
 }
 
+// Test_StoreResponseHeaders_DropsSetCookie asserts that a Set-Cookie produced
+// on a cache miss reaches the client that caused it but is not stored, so the
+// entry cannot hand that client's session to everyone who hits it later.
+func Test_StoreResponseHeaders_DropsSetCookie(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Use(New(Config{
+		StoreResponseHeaders: true,
+	}))
+
+	app.Get("/", func(c fiber.Ctx) error {
+		c.Cookie(&fiber.Cookie{Name: "session", Value: "first-client-secret"})
+		c.Response().Header.Add("X-Foobar", "foobar")
+		return c.SendString("hi")
+	})
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, cacheMiss, resp.Header.Get("X-Cache"))
+	require.Contains(t, resp.Header.Get("Set-Cookie"), "session=first-client-secret")
+
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, cacheHit, resp.Header.Get("X-Cache"))
+	require.Empty(t, resp.Header.Values("Set-Cookie"))
+	// Other stored headers still come back, so the assertion above is about
+	// Set-Cookie specifically and not about header storage being off.
+	require.Equal(t, "foobar", resp.Header.Get("X-Foobar"))
+}
+
 func Test_CacheHeader(t *testing.T) {
 	t.Parallel()
 

@@ -75,10 +75,15 @@ var ignoreHeaders = map[string]struct{}{
 	"Keep-Alive":          {},
 	"Proxy-Authenticate":  {},
 	"Proxy-Authorization": {},
-	"TE":                  {},
-	"Trailers":            {},
-	"Transfer-Encoding":   {},
-	"Upgrade":             {},
+	// A cache entry is served to every client that matches its key, so a
+	// Set-Cookie captured from one response would hand that client's session
+	// to all the others. It still reaches the client that caused the miss;
+	// only the stored copy is dropped.
+	"Set-Cookie":        {},
+	"TE":                {},
+	"Trailers":          {},
+	"Transfer-Encoding": {},
+	"Upgrade":           {},
 }
 
 var cacheableStatusCodes = map[int]struct{}{
