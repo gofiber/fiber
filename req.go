@@ -1048,21 +1048,43 @@ func (r *DefaultReq) Scheme() string {
 				utils.EqualFold(key, xForwardedProtocolBytes) {
 				v := app.toString(val)
 				if before, _, found := strings.Cut(v, ","); found {
-					scheme = utils.TrimSpace(before)
-				} else {
-					scheme = utils.TrimSpace(v)
+					v = before
+				}
+				if forwarded, ok := forwardedScheme(v); ok {
+					scheme = forwarded
 				}
 			} else if utils.EqualFold(key, xForwardedSslBytes) && utils.EqualFold(val, onBytes) {
 				scheme = schemeHTTPS
 			}
 
 		case utils.EqualFold(key, xURLSchemeBytes):
-			scheme = utils.TrimSpace(app.toString(val))
+			if forwarded, ok := forwardedScheme(app.toString(val)); ok {
+				scheme = forwarded
+			}
 		default:
 			continue
 		}
 	}
-	return utilsstrings.ToLower(utils.TrimSpace(scheme))
+	return scheme
+}
+
+// forwardedScheme canonicalizes a scheme announced by a proxy header. Only
+// "http" and "https" are accepted: the value reaches callers that splice it
+// into a URL (BaseURL) or compare it for origin equality (CSRF, Redirect.Back),
+// so a header naming any other scheme — "javascript" included — must not become
+// the request's scheme. Rejecting it leaves the previously determined scheme in
+// place instead, which is the connection's own scheme unless another proxy
+// header already supplied a valid one.
+func forwardedScheme(value string) (string, bool) {
+	value = utils.TrimSpace(value)
+	switch {
+	case utils.EqualFold(value, schemeHTTPS):
+		return schemeHTTPS, true
+	case utils.EqualFold(value, schemeHTTP):
+		return schemeHTTP, true
+	default:
+		return "", false
+	}
 }
 
 // Protocol returns the HTTP protocol of request: HTTP/1.1 and HTTP/2.

@@ -5350,6 +5350,45 @@ func Test_Ctx_Scheme_HeaderNormalization(t *testing.T) {
 	c.Request().Header.Reset()
 }
 
+// go test -run Test_Ctx_Scheme_RejectsForeignSchemes
+func Test_Ctx_Scheme_RejectsForeignSchemes(t *testing.T) {
+	t.Parallel()
+
+	app := New(Config{
+		TrustProxy: true,
+		TrustProxyConfig: TrustProxyConfig{
+			Proxies: []string{"0.0.0.0"},
+		},
+	})
+
+	freq := &fasthttp.RequestCtx{}
+	freq.SetRemoteAddr(net.Addr(&net.TCPAddr{IP: net.ParseIP("0.0.0.0")}))
+
+	c := app.AcquireCtx(freq)
+
+	// A scheme Fiber does not serve must never reach BaseURL or the
+	// same-origin comparisons that consume Scheme.
+	for _, header := range []string{HeaderXForwardedProto, HeaderXForwardedProtocol, HeaderXUrlScheme} {
+		for _, value := range []string{"javascript", "ftp", "data", "HTTPS evil", ""} {
+			c.Request().Header.Set(header, value)
+			require.Equal(t, schemeHTTP, c.Scheme(), "%s: %q", header, value)
+			c.Request().Header.Reset()
+		}
+	}
+
+	// A rejected value must not clobber a valid one supplied by another header.
+	c.Request().Header.Set(HeaderXForwardedProto, schemeHTTPS)
+	c.Request().Header.Set(HeaderXUrlScheme, "javascript")
+	require.Equal(t, schemeHTTPS, c.Scheme())
+	c.Request().Header.Reset()
+
+	// BaseURL is the reason this matters: a foreign scheme spliced in here
+	// yields a URL an application may hand to a browser.
+	c.Request().URI().SetHost("example.com")
+	c.Request().Header.Set(HeaderXForwardedProto, "javascript")
+	require.Equal(t, "http://example.com", c.BaseURL())
+}
+
 // go test -v -run=^$ -bench=Benchmark_Ctx_Scheme -benchmem -count=4
 func Benchmark_Ctx_Scheme(b *testing.B) {
 	app := New()
