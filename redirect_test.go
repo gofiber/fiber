@@ -341,6 +341,81 @@ func Test_Redirect_Back_WithCrossOriginReferer(t *testing.T) {
 	require.Equal(t, "/", string(c.Response().Header.Peek(HeaderLocation)))
 }
 
+// go test -run Test_Redirect_Back_RejectsBrowserNormalizedReferer
+func Test_Redirect_Back_RejectsBrowserNormalizedReferer(t *testing.T) {
+	t.Parallel()
+
+	// Referer values that net/url reports as ordinary relative paths but that a
+	// browser resolves to another origin, because it folds backslashes onto
+	// forward slashes, drops ASCII tab/newline, and treats any leading run of
+	// slashes as the start of an authority.
+	crossOrigin := []string{
+		`/\evil.com`,
+		`/\/evil.com`,
+		`\\evil.com`,
+		`\/evil.com`,
+		"/\t/evil.com",
+		"\t//evil.com",
+		` //evil.com`,
+		`///evil.com`,
+		`/////evil.com`,
+		`https:///evil.com`,
+	}
+
+	app := New()
+	for _, referer := range crossOrigin {
+		t.Run(referer, func(t *testing.T) {
+			t.Parallel()
+
+			c := app.AcquireCtx(&fasthttp.RequestCtx{})
+			defer app.ReleaseCtx(c)
+
+			c.Request().Header.Set(HeaderReferer, referer)
+			c.Request().URI().SetHost("example.com")
+
+			require.NoError(t, c.Redirect().Back("/fallback"))
+			require.Equal(t, StatusSeeOther, c.Response().StatusCode())
+			require.Equal(t, "/fallback", string(c.Response().Header.Peek(HeaderLocation)))
+		})
+	}
+}
+
+// go test -run Test_Redirect_Back_NormalizesSameOriginReferer
+func Test_Redirect_Back_NormalizesSameOriginReferer(t *testing.T) {
+	t.Parallel()
+
+	// Same-origin referers are redirected to in their browser-normalized form so
+	// clients that do not fold backslashes cannot resolve a different origin
+	// than the one that was validated.
+	tests := []struct {
+		referer  string
+		expected string
+	}{
+		{referer: `/back`, expected: `/back`},
+		{referer: `back`, expected: `back`},
+		{referer: `/a\b`, expected: `/a/b`},
+		{referer: `http://example.com\@evil.com`, expected: `http://example.com/@evil.com`},
+		{referer: "/back\t", expected: `/back`},
+	}
+
+	app := New()
+	for _, tc := range tests {
+		t.Run(tc.referer, func(t *testing.T) {
+			t.Parallel()
+
+			c := app.AcquireCtx(&fasthttp.RequestCtx{})
+			defer app.ReleaseCtx(c)
+
+			c.Request().Header.Set(HeaderReferer, tc.referer)
+			c.Request().URI().SetHost("example.com")
+
+			require.NoError(t, c.Redirect().Back("/fallback"))
+			require.Equal(t, StatusSeeOther, c.Response().StatusCode())
+			require.Equal(t, tc.expected, string(c.Response().Header.Peek(HeaderLocation)))
+		})
+	}
+}
+
 // go test -run Test_Redirect_Route_WithFlashMessages
 func Test_Redirect_Route_WithFlashMessages(t *testing.T) {
 	t.Parallel()

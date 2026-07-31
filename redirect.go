@@ -384,12 +384,14 @@ func (r *Redirect) Route(name string, config ...RedirectConfig) error {
 func (r *Redirect) Back(fallback ...string) error {
 	location := r.c.Get(HeaderReferer)
 	if location != "" {
-		if !strings.HasPrefix(location, "/") || strings.HasPrefix(location, "//") {
-			parsed, err := url.Parse(location)
-			if err != nil || (parsed.Scheme != "" && parsed.Host == "") || (parsed.Host != "" && !schemehost.Match(parsed.Scheme, parsed.Host, r.c.Scheme(), r.c.Host())) {
-				location = "" // Reject invalid or cross-origin referrers
-			}
+		// Reject invalid or cross-origin referrers, and redirect to the
+		// normalized form so every client resolves it the same way the
+		// same-origin check did.
+		normalized, ok := r.sameOriginReferer(location)
+		if !ok {
+			normalized = ""
 		}
+		location = normalized
 	}
 
 	if location == "" {
@@ -404,6 +406,86 @@ func (r *Redirect) Back(fallback ...string) error {
 	}
 
 	return r.To(location)
+}
+
+// sameOriginReferer reports whether the Referer value resolves back to the
+// origin currently being served, and returns the normalized form that is safe
+// to echo in a Location header.
+//
+// The value is normalized the way a browser normalizes a URL before resolving
+// it, because that — not net/url — decides where the redirect actually lands:
+//
+//   - Leading and trailing C0 controls and spaces are stripped, and ASCII tab
+//     and newline are removed everywhere, so " //evil.com" and "/\t/evil.com"
+//     are not mistaken for paths.
+//   - Backslashes are equivalent to forward slashes in http(s) URLs, so
+//     "/\evil.com" and "\\evil.com" are network-path references to another
+//     host even though net/url reports them as ordinary relative paths.
+//   - A leading run of more than two slashes still starts an authority, so
+//     "///evil.com" is cross-origin even though net/url reports it as a path.
+//
+// Anything that still carries an authority after normalization must match the
+// current scheme and host; a scheme without an authority (e.g.
+// "javascript:alert(1)") is always rejected.
+func (r *Redirect) sameOriginReferer(location string) (string, bool) {
+	// The normalized value is what gets redirected to, so a client that does
+	// not apply these rules itself cannot resolve a different origin than the
+	// one validated here.
+	location = normalizeRefererURL(location)
+	if location == "" {
+		return "", false
+	}
+
+	// An absolute path stays on the current origin, but "//host" is a
+	// network-path reference that switches to another one.
+	if location[0] == '/' && !strings.HasPrefix(location, "//") {
+		return location, true
+	}
+
+	parsed, err := url.Parse(location)
+	if err != nil {
+		return "", false
+	}
+	if parsed.Host == "" {
+		// A scheme with no authority ("javascript:", "mailto:", ...) is not a
+		// same-origin document reference; anything else is a relative path.
+		return location, parsed.Scheme == ""
+	}
+
+	return location, schemehost.Match(parsed.Scheme, parsed.Host, r.c.Scheme(), r.c.Host())
+}
+
+// normalizeRefererURL applies the parts of the WHATWG URL Standard's basic URL
+// parser that decide which origin a Referer resolves to: strip surrounding C0
+// controls and spaces, drop every ASCII tab and newline, fold backslashes onto
+// forward slashes, and collapse a leading run of slashes to the two that begin
+// an authority.
+func normalizeRefererURL(location string) string {
+	location = strings.TrimFunc(location, func(c rune) bool { return c <= ' ' })
+	if strings.ContainsAny(location, "\t\n\r\\") {
+		location = strings.Map(func(c rune) rune {
+			switch c {
+			case '\t', '\n', '\r':
+				return -1
+			case '\\':
+				return '/'
+			default:
+				return c
+			}
+		}, location)
+	}
+
+	// "///evil.com" reaches the same authority state as "//evil.com", so keep
+	// at most the two slashes that introduce it.
+	if strings.HasPrefix(location, "//") {
+		trimmed := utils.TrimLeft(location, '/')
+		if trimmed == "" {
+			return "/"
+		}
+		location = "//" + trimmed
+	}
+
+	return location
 }
 
 // parseAndClearFlashMessages is a method to get flash messages before they are getting removed
