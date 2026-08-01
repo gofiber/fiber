@@ -343,6 +343,52 @@ func Test_Redirect_Back_WithCrossOriginReferer(t *testing.T) {
 }
 
 // go test -run Test_Redirect_Back_RejectsBrowserNormalizedReferer
+// Test_Redirect_Back_RejectsEmptyAuthorityReferer covers a network-path
+// reference whose authority came out empty.
+//
+// "//?x", "//#f" and "//@" reach net/url with an empty Host and no scheme, so
+// the relative-path branch called them same-origin — a different question than
+// the one asked. They name no origin at all, and the Location they produced is
+// one no client can resolve: a browser fails to parse "//?x" against its base
+// rather than going anywhere. Fall back instead of emitting a dead redirect.
+func Test_Redirect_Back_RejectsEmptyAuthorityReferer(t *testing.T) {
+	t.Parallel()
+
+	for _, referer := range []string{"//?x", "//#f", "//@"} {
+		t.Run(referer, func(t *testing.T) {
+			t.Parallel()
+
+			app := New()
+			app.Get("/back", func(c Ctx) error { return c.Redirect().Back("/fallback") })
+
+			req := httptest.NewRequest(MethodGet, "/back", http.NoBody)
+			req.Host = "victim.test"
+			req.Header.Set(HeaderReferer, referer)
+			resp, err := app.Test(req)
+			require.NoError(t, err)
+			require.Equal(t, "/fallback", resp.Header.Get(HeaderLocation))
+		})
+	}
+
+	// A reference that is only slashes normalizes to a plain absolute path and
+	// really is this origin, so it is still honored.
+	for _, referer := range []string{"//", "///"} {
+		t.Run(referer, func(t *testing.T) {
+			t.Parallel()
+
+			app := New()
+			app.Get("/back", func(c Ctx) error { return c.Redirect().Back("/fallback") })
+
+			req := httptest.NewRequest(MethodGet, "/back", http.NoBody)
+			req.Host = "victim.test"
+			req.Header.Set(HeaderReferer, referer)
+			resp, err := app.Test(req)
+			require.NoError(t, err)
+			require.Equal(t, "/", resp.Header.Get(HeaderLocation))
+		})
+	}
+}
+
 func Test_Redirect_Back_RejectsBrowserNormalizedReferer(t *testing.T) {
 	t.Parallel()
 

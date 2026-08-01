@@ -453,7 +453,15 @@ func (r *Redirect) sameOriginReferer(location string) (string, bool) {
 	if parsed.Host == "" {
 		// A scheme with no authority ("javascript:", "mailto:", ...) is not a
 		// same-origin document reference; anything else is a relative path.
-		return location, parsed.Scheme == ""
+		//
+		// Except a network-path reference whose authority came out empty:
+		// "//?x", "//#f" and "//@" name no origin at all, so calling them
+		// same-origin was answering a different question than the one asked,
+		// and the Location they produced is one no client can resolve — a
+		// browser fails to parse it rather than going anywhere. The forms that
+		// are merely slashes, "//" and "///", normalized to "/" further up and
+		// are genuinely this origin.
+		return location, parsed.Scheme == "" && !strings.HasPrefix(location, "//")
 	}
 
 	return location, schemehost.Match(parsed.Scheme, parsed.Host, r.c.Scheme(), r.c.Host())
