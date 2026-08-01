@@ -880,6 +880,14 @@ func Test_PinsHost(t *testing.T) {
 		{"[zzz1]", false},
 		{"[evil.com1]", false},
 		{"[a b]", false},
+		// Brackets hold an IPv6 address only, so an IPv4 one is no host there
+		// however well it parses alone — but the IPv4-mapped IPv6 spelling is.
+		{"[127.0.0.1]", false},
+		{"[1.2.3.4]", false},
+		{"[::ffff:127.0.0.1]", true},
+		{"[0:0:0:0:0:0:0:1]", true},
+		// A zone ID is not accepted in a URL host, by this or by the parser.
+		{"[fe80::1%25eth0]", false},
 		// Whitespace is not host text: the parser deletes a tab outright and
 		// percent-encodes a space into a host that fails to parse.
 		{" ", false},

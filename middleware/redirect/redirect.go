@@ -665,7 +665,14 @@ func pinsHost(literal string) bool {
 		// redirected to a location no client could follow. Ask whether it
 		// parses rather than whether it looks like it might: "[zzz1]" and
 		// "[evil.com1]" hold hex digits and are not addresses.
-		return net.ParseIP(literal[j+1:i]) != nil
+		//
+		// Brackets hold an IPv6 address only, so "[127.0.0.1]" is not a host
+		// however well it parses on its own. The colon test is what separates
+		// the two spellings — an address written as IPv4 has none, and one
+		// written as IPv6 always has — since ParseIP alone accepts both, and
+		// To4 would reject "[::ffff:127.0.0.1]", which is a legal host.
+		inner := literal[j+1 : i]
+		return strings.IndexByte(inner, ':') >= 0 && net.ParseIP(inner) != nil
 	}
 	if i := strings.IndexByte(literal, ':'); i >= 0 {
 		literal = literal[:i]
