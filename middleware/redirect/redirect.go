@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/log"
@@ -807,7 +808,18 @@ func pinsHost(literal string, openLeft bool) bool {
 	// "https://evil.com\u00ad" from a captured "evil.com" — which a browser
 	// reads as evil.com. Anything the mapping refuses outright pins nothing
 	// either, since it cannot become a host at all.
-	mapped, err := hostMapping.ToUnicode(percentDecode(literal))
+	//
+	// Invalid UTF-8 is not one of the things it refuses — it substitutes
+	// U+FFFD and returns no error — so rule it out first. A browser rejects
+	// U+FFFD in a host anyway, but the bytes reach that point through a
+	// decoding this guard does not model, and a lead byte the value supplies
+	// could pair with a continuation byte here.
+	decoded := percentDecode(literal)
+	if !utf8.ValidString(decoded) {
+		return false
+	}
+
+	mapped, err := hostMapping.ToUnicode(decoded)
 	if err != nil {
 		return false
 	}

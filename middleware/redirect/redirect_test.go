@@ -955,6 +955,12 @@ func Test_PinsHost(t *testing.T) {
 		{"xcafe", false},
 		// Not every dotless label is one: these hold something that is not a
 		// hex digit, so no prefix makes them a number.
+		// Invalid UTF-8 is not host text: the mapping turns it into U+FFFD,
+		// which no client accepts in a host.
+		{"\xff.example.com", false},
+		{"%FF.example.com", false},
+		{"\xed\xa0\x80.example.com", false},
+
 		{"cdn", true},
 		{"xyz", true},
 		{"tenant-", true},
