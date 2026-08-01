@@ -212,10 +212,10 @@ func New(config ...Config) fiber.Handler {
 	// Return new handler
 	return func(c fiber.Ctx) error {
 		hasAuthorization := len(c.Request().Header.Peek(fiber.HeaderAuthorization)) > 0
-		reqCacheControl := c.Request().Header.Peek(fiber.HeaderCacheControl)
+		reqCacheControl := joinedHeader(&c.Request().Header, fiber.HeaderCacheControl)
 		reqDirectives := parseRequestCacheControl(reqCacheControl)
 		if !reqDirectives.noCache {
-			reqPragma := utils.UnsafeString(c.Request().Header.Peek(fiber.HeaderPragma))
+			reqPragma := utils.UnsafeString(joinedHeader(&c.Request().Header, fiber.HeaderPragma))
 			if hasDirective(reqPragma, noCache) {
 				reqDirectives.noCache = true
 			}
@@ -544,9 +544,9 @@ func New(config ...Config) fiber.Handler {
 			return err
 		}
 
-		cacheControlBytes := c.Response().Header.Peek(fiber.HeaderCacheControl)
+		cacheControlBytes := joinedHeader(&c.Response().Header, fiber.HeaderCacheControl)
 		respCacheControl := parseResponseCacheControl(cacheControlBytes)
-		varyHeader := utils.UnsafeString(c.Response().Header.Peek(fiber.HeaderVary))
+		varyHeader := utils.UnsafeString(joinedHeader(&c.Response().Header, fiber.HeaderVary))
 		hasPrivate := respCacheControl.hasPrivate
 		hasNoCache := respCacheControl.hasNoCache
 		varyNames, varyHasStar := parseVary(varyHeader)

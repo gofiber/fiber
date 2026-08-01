@@ -86,6 +86,55 @@ func lookupCachedHeader(headers []cachedHeader, name string) ([]byte, bool) {
 	return nil, false
 }
 
+// headerPeeker is the part of fasthttp's request and response headers this
+// package needs to read every field line of a name.
+type headerPeeker interface {
+	PeekAll(key string) [][]byte
+}
+
+// joinedHeader returns every field line for key, joined with ", ".
+//
+// A recipient may combine repeated field lines into exactly that form
+// (RFC 9110 Section 5.2), and the decisions built on Cache-Control, Pragma and
+// Vary have to see all of them: a "no-store" or a "Vary: *" on a second line
+// binds just as much as one on the first, and a Vary naming a header the
+// response actually differs by is what keeps one client's response off another
+// client's request. Peek returns only the first line, so any of those on a
+// later line was silently dropped and the response cached as if it had never
+// been sent — which is how a response that declared
+//
+//	Vary: Accept-Encoding
+//	Vary: X-Tenant
+//
+// came to be served across tenants.
+//
+// The single-line case — every response that does not go out of its way to use
+// Header.Add — returns the header's own bytes and allocates nothing. The
+// returned slice stays valid across later PeekAll calls: those reuse the
+// header's scratch slice of slice headers, not the value bytes it points at.
+func joinedHeader(h headerPeeker, key string) []byte {
+	values := h.PeekAll(key)
+	switch len(values) {
+	case 0:
+		return nil
+	case 1:
+		return values[0]
+	}
+
+	n := 0
+	for _, v := range values {
+		n += len(v) + 2
+	}
+	joined := make([]byte, 0, n)
+	for i, v := range values {
+		if i > 0 {
+			joined = append(joined, ',', ' ')
+		}
+		joined = append(joined, v...)
+	}
+	return joined
+}
+
 // headerSeenEarlier reports whether key already appears among the entries
 // preceding it, so the restore loop can tell a name's first stored field line
 // from its duplicates. Field names are case-insensitive (RFC 9110 Section 5.1)

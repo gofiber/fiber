@@ -505,6 +505,120 @@ func Test_Cache_Security_KeyHeaderRepeatedFieldLines(t *testing.T) {
 	require.Equal(t, "tenant:public;", body)
 }
 
+// Test_Cache_Security_MultiLineResponseHeaders asserts that the directives
+// deciding cacheability are read from every field line, not just the first.
+//
+// Repeated field lines are equivalent to the comma-joined form on the wire
+// (RFC 9110 Section 5.2), so a "Vary: X-Tenant", a "Vary: *" or a
+// "Cache-Control: no-store" on a second line binds exactly as much as one on
+// the first. Reading only the first line dropped them: the Vary case served one
+// tenant's response to another, and the other two cached a response the origin
+// had said not to store.
+func Test_Cache_Security_MultiLineResponseHeaders(t *testing.T) {
+	t.Parallel()
+
+	newApp := func(decorate func(c fiber.Ctx)) *fiber.App {
+		app := fiber.New()
+		app.Use(New(Config{Expiration: time.Hour}))
+		app.Get("/", func(c fiber.Ctx) error {
+			decorate(c)
+			return c.SendString("tenant:" + c.Get("X-Tenant"))
+		})
+		return app
+	}
+
+	do := func(app *fiber.App, tenant string) (body, cacheStatus string) { //nolint:nonamedreturns // names document the pair
+		req := fasthttp.AcquireRequest()
+		defer fasthttp.ReleaseRequest(req)
+		req.Header.SetMethod(fiber.MethodGet)
+		req.SetRequestURI("/")
+		req.SetHost("example.com")
+		req.Header.Set("X-Tenant", tenant)
+		fctx := &fasthttp.RequestCtx{}
+		fctx.Init(req, nil, nil)
+		app.Handler()(fctx)
+		return string(fctx.Response.Body()), string(fctx.Response.Header.Peek("X-Cache"))
+	}
+
+	t.Run("vary on a later line still partitions", func(t *testing.T) {
+		t.Parallel()
+
+		app := newApp(func(c fiber.Ctx) {
+			c.Response().Header.Add(fiber.HeaderVary, fiber.HeaderAcceptEncoding)
+			c.Response().Header.Add(fiber.HeaderVary, "X-Tenant")
+		})
+
+		body, status := do(app, "acme")
+		require.Equal(t, cacheMiss, status)
+		require.Equal(t, "tenant:acme", body)
+
+		body, status = do(app, "globex")
+		require.Equal(t, cacheMiss, status, "a different X-Tenant must not hit acme's entry")
+		require.Equal(t, "tenant:globex", body)
+
+		// Each tenant still caches on its own key.
+		body, status = do(app, "acme")
+		require.Equal(t, cacheHit, status)
+		require.Equal(t, "tenant:acme", body)
+	})
+
+	t.Run("vary star on a later line blocks caching", func(t *testing.T) {
+		t.Parallel()
+
+		app := newApp(func(c fiber.Ctx) {
+			c.Response().Header.Add(fiber.HeaderVary, fiber.HeaderAcceptEncoding)
+			c.Response().Header.Add(fiber.HeaderVary, "*")
+		})
+
+		_, status := do(app, "acme")
+		require.Equal(t, cacheUnreachable, status)
+		body, status := do(app, "globex")
+		require.Equal(t, cacheUnreachable, status)
+		require.Equal(t, "tenant:globex", body)
+	})
+
+	t.Run("no-store on a later line blocks caching", func(t *testing.T) {
+		t.Parallel()
+
+		app := newApp(func(c fiber.Ctx) {
+			c.Response().Header.Add(fiber.HeaderCacheControl, "max-age=600")
+			c.Response().Header.Add(fiber.HeaderCacheControl, "no-store")
+		})
+
+		_, status := do(app, "acme")
+		require.Equal(t, cacheUnreachable, status)
+		body, status := do(app, "globex")
+		require.Equal(t, cacheUnreachable, status)
+		require.Equal(t, "tenant:globex", body)
+	})
+}
+
+// Test_JoinedHeader covers the field-line joiner the cacheability checks read
+// through, including that a value returned for one name survives the PeekAll
+// calls made for the next — those reuse the header's slice-header scratch, not
+// the value bytes it points at.
+func Test_JoinedHeader(t *testing.T) {
+	t.Parallel()
+
+	var h fasthttp.ResponseHeader
+	require.Nil(t, joinedHeader(&h, fiber.HeaderVary), "absent header")
+
+	h.Add(fiber.HeaderCacheControl, "no-store")
+	h.Add(fiber.HeaderVary, fiber.HeaderAcceptEncoding)
+	h.Add(fiber.HeaderVary, "X-Tenant")
+
+	cacheControl := joinedHeader(&h, fiber.HeaderCacheControl)
+	require.Equal(t, "no-store", string(cacheControl))
+
+	require.Equal(t, "Accept-Encoding, X-Tenant", string(joinedHeader(&h, fiber.HeaderVary)))
+	require.Equal(t, "no-store", string(cacheControl), "an earlier result must survive a later PeekAll")
+
+	var req fasthttp.RequestHeader
+	req.Add(fiber.HeaderCacheControl, "max-age=0")
+	req.Add(fiber.HeaderCacheControl, "no-store")
+	require.Equal(t, "max-age=0, no-store", string(joinedHeader(&req, fiber.HeaderCacheControl)))
+}
+
 // Test_Cache_Security_BackslashEscaping tests that backslashes are properly escaped
 func Test_Cache_Security_BackslashEscaping(t *testing.T) {
 	t.Parallel()
