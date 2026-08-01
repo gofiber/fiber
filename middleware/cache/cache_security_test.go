@@ -1,6 +1,7 @@
 package cache
 
 import (
+	"bufio"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
@@ -617,6 +618,68 @@ func Test_JoinedHeader(t *testing.T) {
 	req.Add(fiber.HeaderCacheControl, "max-age=0")
 	req.Add(fiber.HeaderCacheControl, "no-store")
 	require.Equal(t, "max-age=0,no-store", string(joinedHeader(&req, fiber.HeaderCacheControl)))
+}
+
+// Test_Cache_Security_CookieKeyedOnEveryFieldLine asserts that a Cookie
+// arriving on more than one field line is keyed on in full.
+//
+// fasthttp answers Cookie from its own store, and what it reports depends on
+// whether that store has been collected: uncollected, Peek returns only the
+// first field line and PeekAll returns them unmerged; collected, both return one
+// merged entry. Reading either directly let a request sending
+//
+//	Cookie: a=1
+//	Cookie: session=<someone>
+//
+// key like one sending just "a=1", so the second client was served the first
+// one's page.
+func Test_Cache_Security_CookieKeyedOnEveryFieldLine(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Use(New(Config{Expiration: time.Hour, KeyHeaders: []string{"Cookie"}}))
+	app.Get("/", func(c fiber.Ctx) error {
+		return c.SendString("page-for:" + c.Cookies("session"))
+	})
+
+	do := func(lines ...string) (body, cacheStatus string) { //nolint:nonamedreturns // names document the pair
+		raw := "GET / HTTP/1.1\r\nHost: example.com\r\n"
+		for _, l := range lines {
+			raw += "Cookie: " + l + "\r\n"
+		}
+		raw += "\r\n"
+
+		req := fasthttp.AcquireRequest()
+		defer fasthttp.ReleaseRequest(req)
+		require.NoError(t, req.Read(bufio.NewReader(strings.NewReader(raw))))
+
+		fctx := &fasthttp.RequestCtx{}
+		fctx.Init(req, nil, nil)
+		app.Handler()(fctx)
+		return string(fctx.Response.Body()), string(fctx.Response.Header.Peek("X-Cache"))
+	}
+
+	body, status := do("a=1", "session=attacker")
+	require.Equal(t, cacheMiss, status)
+	require.Equal(t, "page-for:attacker", body)
+
+	body, status = do("a=1")
+	require.Equal(t, cacheMiss, status, "a request without the session cookie must not hit that entry")
+	require.Equal(t, "page-for:", body)
+
+	body, status = do("a=1", "session=victim")
+	require.Equal(t, cacheMiss, status, "a different session must not hit the attacker's entry")
+	require.Equal(t, "page-for:victim", body)
+
+	// Each variant still caches on its own key, and the key does not depend on
+	// whether the handler happened to read a cookie first.
+	body, status = do("a=1", "session=attacker")
+	require.Equal(t, cacheHit, status)
+	require.Equal(t, "page-for:attacker", body)
+
+	body, status = do("a=1", "session=victim")
+	require.Equal(t, cacheHit, status)
+	require.Equal(t, "page-for:victim", body)
 }
 
 // Test_Cache_Security_BackslashEscaping tests that backslashes are properly escaped

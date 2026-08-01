@@ -475,6 +475,89 @@ func Test_Redirect_CaptureBoundedByTheTarget(t *testing.T) {
 // to the request. "https:$1" is the awkward one: it names no authority for the
 // chunk check to guard and no origin for keepSameOrigin to hold it to, yet a
 // captured "//evil.com" still composes "https://evil.com".
+// Test_Redirect_CaptureClosingTheHost covers the two ways a capture can end up
+// naming the host even though it is not the last chunk of the target's
+// authority.
+//
+// A trailing token that resolves to empty contributes nothing, so the one
+// before it closes the host; and a literal made only of the separators that may
+// trail a hostname pins nothing, since "evil.com." is the same host as
+// "evil.com" with the DNS root spelled out. Judging each token by its position
+// alone let "https://$1$2" with an empty $2 treat $1 as an interior label, and
+// the request named the host outright.
+func Test_Redirect_CaptureClosingTheHost(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		pattern string
+		target  string
+		request string
+		want    string // "" means the rule must not fire
+	}{
+		{"empty trailing capture", "/a/*x*", "https://$1$2", "/a/evil.comx", ""},
+		{"empty trailing capture after a dot", "/a/*x*", "https://$1.$2", "/a/evil.comx", ""},
+
+		// An empty trailing capture is fine where the author's own text still
+		// closes the host.
+		{"author text closes the host", "/a/*x*", "https://$1.assets.example.com$2", "/a/tenantx", "https://tenant.assets.example.com"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			app := fiber.New()
+			app.Use(New(Config{
+				Rules:      map[string]string{tc.pattern: tc.target},
+				StatusCode: fiber.StatusFound,
+			}))
+			app.Get("/*", func(c fiber.Ctx) error { return c.SendString("fell through") })
+
+			req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, tc.request, http.NoBody)
+			require.NoError(t, err)
+			resp, err := app.Test(req)
+			require.NoError(t, err)
+
+			if tc.want == "" {
+				require.Equal(t, fiber.StatusOK, resp.StatusCode, "the rule must not fire")
+				require.Empty(t, resp.Header.Get("Location"))
+				return
+			}
+			require.Equal(t, fiber.StatusFound, resp.StatusCode)
+			require.Equal(t, tc.want, resp.Header.Get("Location"))
+		})
+	}
+}
+
+// Test_Redirect_TenthCaptureInAuthority pins that the guard judges what the
+// Replacer will actually splice in.
+//
+// strings.Replacer matches its patterns in the order they were given, so "$10"
+// is consumed as "$1" followed by a literal "0". Resolving the token by index
+// instead checked the tenth capture while the first was the one reaching the
+// host, and a rule with ten or more wildcards was an open redirect straight
+// past the guard.
+func Test_Redirect_TenthCaptureInAuthority(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Use(New(Config{
+		Rules:      map[string]string{"/t/*/*/*/*/*/*/*/*/*/*": "https://$10.cdn.example.com/"},
+		StatusCode: fiber.StatusFound,
+	}))
+	app.Get("/*", func(c fiber.Ctx) error { return c.SendString("fell through") })
+
+	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet,
+		"/t/evil.com/x/b/c/d/e/f/g/h/i/tenant", http.NoBody)
+	require.NoError(t, err)
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+
+	require.Equal(t, fiber.StatusOK, resp.StatusCode, "the rule must not fire")
+	require.Empty(t, resp.Header.Get("Location"))
+}
+
 func Test_TargetLetsRequestPickHost(t *testing.T) {
 	t.Parallel()
 

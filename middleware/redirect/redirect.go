@@ -81,7 +81,7 @@ func New(config ...Config) fiber.Handler {
 		}
 		// Rewrite
 		for k, rule := range cfg.rulesRegex {
-			replacer, values := captureTokens(k, c.Path())
+			replacer := captureTokens(k, c.Path())
 			if replacer == nil {
 				continue
 			}
@@ -91,7 +91,7 @@ func New(config ...Config) fiber.Handler {
 			// tenant — and the author means $1 to be a label, not a whole URL.
 			// Refuse the rule when a value would move the host, rather than
 			// guess what the author meant; the request falls through to the app.
-			if !authorityHolds(rule.authorityChunks, values) {
+			if !authorityHolds(rule.authorityChunks, replacer) {
 				continue
 			}
 
@@ -230,23 +230,32 @@ func authorityChunks(target string) []authorityChunk {
 //     already decided by then.
 //   - It is the whole authority ("https://$1"): the author handed over the
 //     destination deliberately, so nothing is checked. New warns about it.
-func authorityHolds(chunks []authorityChunk, values []string) bool {
+func authorityHolds(chunks []authorityChunk, replacer *strings.Replacer) bool {
 	if len(chunks) <= 1 {
 		return true
 	}
 
+	// Through the Replacer, not by indexing the captures: the Replacer is what
+	// composes the location, and it matches its patterns in the order they were
+	// given, so "$10" is consumed as "$1" followed by a literal "0". Indexing
+	// would have judged the tenth capture while the first was the one actually
+	// spliced into the host.
+	values := make([]string, len(chunks))
+	for i, chunk := range chunks {
+		if chunk.placeholder {
+			values[i] = replacer.Replace(chunk.text)
+		} else {
+			values[i] = chunk.text
+		}
+	}
+
+	closing := closesAuthority(chunks, values)
 	for i, chunk := range chunks {
 		if !chunk.placeholder {
 			continue
 		}
-		value, ok := captureValue(chunk.text, values)
-		if !ok {
-			// A token the pattern has no group for stays literal in the
-			// location, so it cannot carry anything from the request.
-			continue
-		}
-		if i == len(chunks)-1 {
-			switch {
+		if i == closing {
+			switch value := values[i]; {
 			case value == "":
 			case strings.IndexByte(`/\?#`, value[0]) >= 0:
 				// Opens the next component, so the authority ended at the
@@ -260,11 +269,37 @@ func authorityHolds(chunks []authorityChunk, values []string) bool {
 			}
 			continue
 		}
-		if strings.ContainsAny(value, `/\?#@:`) {
+		if strings.ContainsAny(values[i], `/\?#@:`) {
 			return false
 		}
 	}
 	return true
+}
+
+// closesAuthority returns the index of the chunk that actually ends the host
+// once the values are in, or -1 when the author's own text does.
+//
+// It is not simply the last chunk. A trailing token that resolves to the empty
+// string contributes nothing, so whatever precedes it becomes the end — and a
+// literal made only of the separators that can trail a hostname does not pin
+// anything either, since "evil.com." is the same host as "evil.com" with the
+// DNS root spelled out. Without walking back through both, "https://$1$2" with
+// an empty $2 would leave $1 judged as an interior label and let the request
+// name the host outright.
+func closesAuthority(chunks []authorityChunk, values []string) int {
+	for i := len(chunks) - 1; i >= 0; i-- {
+		if chunks[i].placeholder {
+			if values[i] == "" {
+				continue // contributes nothing; look further back
+			}
+			return i
+		}
+		if strings.Trim(chunks[i].text, ".") == "" {
+			continue // only trailing separators; pins no domain
+		}
+		return -1 // author text closes the host
+	}
+	return -1
 }
 
 // targetLetsRequestPickHost reports whether the request, not the author, decides
@@ -371,24 +406,22 @@ func asBrowserReads(location string) string {
 }
 
 // https://github.com/labstack/echo/blob/master/middleware/rewrite.go
-// It also returns the captured values themselves, so authorityHolds can judge
-// one without running the Replacer over its token a second time.
-func captureTokens(pattern *regexp.Regexp, input string) (replacer *strings.Replacer, values []string) { //nolint:nonamedreturns // the pair is a replacer and the values behind it; names say which is which
+func captureTokens(pattern *regexp.Regexp, input string) *strings.Replacer {
 	if len(input) > 1 {
 		input = utils.TrimRight(input, '/')
 	}
 	groups := pattern.FindAllStringSubmatch(input, -1)
 	if groups == nil {
-		return nil, nil
+		return nil
 	}
-	values = groups[0][1:]
+	values := groups[0][1:]
 	replace := make([]string, 2*len(values))
 	for i, v := range values {
 		j := 2 * i
 		replace[j] = "$" + strconv.Itoa(i+1)
 		replace[j+1] = v
 	}
-	return strings.NewReplacer(replace...), values
+	return strings.NewReplacer(replace...)
 }
 
 // isAllDigits reports whether s is a non-empty run of ASCII digits.
@@ -422,14 +455,4 @@ func authorityEndsInOpenCapture(chunks []authorityChunk) bool {
 		return false
 	}
 	return !strings.HasSuffix(chunks[last-1].text, ":")
-}
-
-// captureValue returns the value a "$N" token stands for, or false when the
-// pattern captured no such group and the token is left as written.
-func captureValue(token string, values []string) (string, bool) {
-	n, err := strconv.Atoi(token[1:]) // token is "$" followed by digits
-	if err != nil || n < 1 || n > len(values) {
-		return "", false
-	}
-	return values[n-1], true
 }

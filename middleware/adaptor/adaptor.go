@@ -412,7 +412,10 @@ func snapshotHeaders(h http.Header) []headerPair {
 // Keys are collected before anything is deleted, since fasthttp's iterator
 // walks the header storage the deletes rewrite.
 func clearCopiedHeaders(fhdr *fasthttp.RequestHeader) {
-	removed := make([]string, 0, fhdr.Len())
+	// Not sized from fhdr.Len(): that counts by walking every header, so
+	// pre-sizing would traverse them twice — and the walk also collects the
+	// cookie store and re-serializes it, on a per-request path.
+	var removed []string
 	for key := range fhdr.All() {
 		if isFramingHeader(utils.UnsafeString(key)) {
 			continue

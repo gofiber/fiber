@@ -111,29 +111,26 @@ func responseSetsCookie(h *fasthttp.ResponseHeader) bool {
 // keyFieldLines returns the field lines of name to key a cache entry on.
 //
 // PeekAll is what makes a name arriving on several lines key differently from
-// one that arrived on a single line — except for the two names fasthttp answers
-// from its own stores. RequestHeader.PeekAll special-cases Cookie and Trailer,
-// and what it reports for those depends on whether fasthttp has collected them
-// yet: before collection it hands back the raw field lines, after it hands back
-// exactly one re-serialized entry (empty when there is nothing to report, and
-// "a=1; b=2" for what arrived as "a=1;b=2"). Whether collection has happened
-// depends on which middleware ran first, so keying on PeekAll would let the same
-// request on the wire land in two partitions — and a Vary: Cookie route, whose
-// lookup runs before the handler and whose store runs after, would miss on every
-// second request and strand a duplicate entry each time.
+// one that arrived on a single line — except for Cookie, which fasthttp answers
+// from its own store. What it reports there depends on whether that store has
+// been collected yet: before collection the raw field lines, after collection
+// one merged, re-serialized entry. Whether collection has happened depends on
+// which middleware ran first, so reading either accessor directly lets the same
+// request on the wire key two different ways: a Vary: Cookie route, whose
+// lookup runs before the handler and whose store runs after, misses on every
+// second request and strands a duplicate entry each time.
 //
-// Peek is stable across both states for those names, and no information is lost:
-// fasthttp merges repeated Cookie lines on parse, so there is only ever one
-// value to report.
+// Force the collection so the merged form is what gets keyed, always. It is the
+// only representation both states agree on — Peek is no better than PeekAll
+// here, since uncollected it reports just the first field line and would drop a
+// "Cookie: session=..." sent on a second one out of the key entirely, letting
+// two clients with different sessions share an entry. Collecting is idempotent
+// and is what any cookie read in the handler would do anyway.
 func keyFieldLines(h *fasthttp.RequestHeader, name string) [][]byte {
-	if !utils.EqualFold(name, fiber.HeaderCookie) && !utils.EqualFold(name, fiber.HeaderTrailer) {
-		return h.PeekAll(name)
+	if utils.EqualFold(name, fiber.HeaderCookie) {
+		h.Cookie("") // collectCookies; the lookup itself is expected to miss
 	}
-
-	if v := h.Peek(name); len(v) > 0 {
-		return [][]byte{v}
-	}
-	return nil
+	return h.PeekAll(name)
 }
 
 // headerPeeker is the part of fasthttp's request and response headers this
