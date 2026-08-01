@@ -2,6 +2,7 @@ package cache
 
 import (
 	"crypto/sha256"
+	"encoding/binary"
 	"encoding/hex"
 	"net/url"
 	"sort"
@@ -198,6 +199,24 @@ func appendCanonicalHeaderSubset(dst []byte, header *fasthttp.RequestHeader, nam
 		// the separator. Escaping guarantees no value holds a raw '|', so the
 		// separator below is unambiguous.
 		dst = strconv.AppendInt(dst, int64(len(values)), 10)
+
+		// appendBoundKeySegment bounds each value, but nothing bounds how many
+		// there are, and a client may repeat a header as often as the read
+		// buffer allows. Left alone, a few hundred field lines would build a
+		// multi-kilobyte key that is then concatenated into the manifest and
+		// body keys and used as a map key in the store — so hold the whole
+		// dimension to the same per-dimension bound the rest of this file keeps,
+		// hashing it once past that point. The hash covers the raw lines, which
+		// the verbatim form never is, so the two cannot collide.
+		total := 0
+		for _, value := range values {
+			total += len(value) + 1
+		}
+		if total > maxKeyDimensionSegmentLength {
+			dst = appendHashedKeySegment(dst, joinKeyHeaderValues(values))
+			continue
+		}
+
 		for _, value := range values {
 			dst = append(dst, '|')
 			// Escape value to prevent delimiter injection
@@ -206,6 +225,22 @@ func appendCanonicalHeaderSubset(dst []byte, header *fasthttp.RequestHeader, nam
 	}
 
 	return dst
+}
+
+// joinKeyHeaderValues concatenates field lines with a length prefix each, so
+// the digest taken over the result distinguishes value lists that a plain
+// concatenation would not (["ab"] from ["a","b"]).
+func joinKeyHeaderValues(values [][]byte) []byte {
+	n := 0
+	for _, v := range values {
+		n += len(v) + binary.MaxVarintLen64
+	}
+	joined := make([]byte, 0, n)
+	for _, v := range values {
+		joined = binary.AppendUvarint(joined, uint64(len(v)))
+		joined = append(joined, v...)
+	}
+	return joined
 }
 
 func appendCanonicalCookieSubset(dst []byte, c fiber.Ctx, names []string) []byte {

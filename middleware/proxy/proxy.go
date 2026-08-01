@@ -254,8 +254,11 @@ func setRealIP(c fiber.Ctx) {
 	// being replaced, and deleting first would hand the upstream an empty
 	// value instead of the client address.
 	ip := c.IP()
+	// Del then Add, not Del then Set: after the Del there is no field line left
+	// to replace, so Set would only fall through to an append anyway. Add says
+	// what is meant — exactly one line, the one written here.
 	c.Request().Header.Del("X-Real-IP")
-	c.Request().Header.Set("X-Real-IP", ip)
+	c.Request().Header.Add("X-Real-IP", ip)
 }
 
 // Forward performs the given http request and fills the given http response.

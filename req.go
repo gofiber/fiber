@@ -426,7 +426,14 @@ func (r *DefaultReq) FormValue(key string, defaultValue ...string) string {
 	// accessor would otherwise yield nothing. Bind and Redirect.WithInput
 	// normalize for the same reason; doing it here too means a handler does not
 	// have to call one of those first to get its own form back.
-	mediatype.NormalizeRequestContentType(&r.c.fasthttp.Request.Header)
+	//
+	// Guarded, because the fold lands on the request's own bytes: normalizing
+	// unconditionally would rewrite a JSON request's Content-Type underneath a
+	// caller still holding what c.Get(HeaderContentType) returned, which is a
+	// view into exactly those bytes unless Immutable is set.
+	if isFormContentType(r.c.fasthttp.Request.Header.ContentType()) {
+		mediatype.NormalizeRequestContentType(&r.c.fasthttp.Request.Header)
+	}
 
 	if r.c.IsMultipart() {
 		// For multipart requests, parse the form using the application's BodyLimit.
@@ -975,8 +982,12 @@ func (r *DefaultReq) MultipartForm() (*multipart.Form, error) {
 	// fasthttp matches both "multipart/form-data" and the "boundary=" parameter
 	// name case-sensitively, so fold them first (see
 	// mediatype.NormalizeRequestContentType). FormFile and SaveFile reach the
-	// parser through here, so this covers them too.
-	mediatype.NormalizeRequestContentType(&r.c.fasthttp.Request.Header)
+	// parser through here, so this covers them too. Guarded like FormValue: the
+	// fold rewrites the request's own bytes, so it must not touch a
+	// Content-Type the parser was never going to look at.
+	if isFormContentType(r.c.fasthttp.Request.Header.ContentType()) {
+		mediatype.NormalizeRequestContentType(&r.c.fasthttp.Request.Header)
+	}
 
 	return r.c.fasthttp.MultipartFormWithLimit(r.c.app.config.BodyLimit)
 }

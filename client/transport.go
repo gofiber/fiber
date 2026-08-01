@@ -65,6 +65,11 @@ func (s *standardClientTransport) DoDeadline(req *fasthttp.Request, resp *fastht
 // and strips credentials on redirects away from the initial host. Routing this
 // through doRedirectsWithClient instead would substitute a narrower
 // reimplementation of all three.
+//
+// The trade is that the scheme checks doRedirectsWithClient makes — refusing an
+// HTTPS-to-HTTP downgrade and any non-http(s) target — do not apply here.
+// fasthttp follows a downgrade the way net/http does, keeping credentials
+// because the host is unchanged; see ErrRedirectDowngrade.
 func (s *standardClientTransport) DoRedirects(req *fasthttp.Request, resp *fasthttp.Response, maxRedirects int) error {
 	return s.client.DoRedirects(req, resp, maxRedirects)
 }
@@ -418,8 +423,16 @@ func dropRequestBody(req *fasthttp.Request) {
 // hostnameWithoutPort strips the port from a host[:port] value, leaving a
 // bracketed IPv6 literal's own colons alone.
 func hostnameWithoutPort(host string) string {
-	if i := strings.LastIndexByte(host, ':'); i >= 0 && strings.IndexByte(host[i:], ']') < 0 {
-		host = host[:i]
+	// Only an unbracketed host can carry a bare "host:port", and such a host
+	// has at most one colon. More than one and no brackets means an IPv6
+	// literal written without them, where the last colon is part of the
+	// address: truncating there would fold "fe80::1" and "fe80::2" to the same
+	// "fe80:", and trustedRedirectTarget would then call a hop between them
+	// same-origin and keep the credentials.
+	if strings.HasPrefix(host, "[") || strings.Count(host, ":") <= 1 {
+		if i := strings.LastIndexByte(host, ':'); i >= 0 && strings.IndexByte(host[i:], ']') < 0 {
+			host = host[:i]
+		}
 	}
 	// Unwrap exactly one matched pair, not every bracket on either end
 	// (strings.Trim would turn "[[x]]" into "x"). The result feeds the

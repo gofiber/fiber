@@ -267,6 +267,91 @@ func Test_Redirect_SameOriginTargets_Unescaped(t *testing.T) {
 	}
 }
 
+// Test_Redirect_CaptureInsideAuthority asserts that a capture spliced into the
+// target's own authority cannot cut that authority short and pick a different
+// host.
+//
+// A target like "https://$1.assets.example.com/" is a plausible way to route
+// per tenant, and the author means $1 to be a label. A capture holding
+// "evil.com/x" composed "https://evil.com/x.assets.example.com/", whose
+// authority ends at that slash — so the browser went to evil.com.
+func Test_Redirect_CaptureInsideAuthority(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		target  string
+		request string
+		want    string // "" means the rule must not fire
+	}{
+		{"slash escapes the label", "https://$1.assets.example.com/", "/cdn/evil.com/x", ""},
+		{"slash escapes a mid-authority label", "https://assets.$1.com", "/cdn/evil.com/x", ""},
+		{"protocol relative target", "//$1.assets.example.com/", "/cdn/evil.com/x", ""},
+		{"question mark escapes", "https://$1.assets.example.com/", "/cdn/evil.com%3Fa", ""},
+
+		// A clean label still composes.
+		{"clean label", "https://$1.assets.example.com/", "/cdn/images", "https://images.assets.example.com/"},
+		{"clean label protocol relative", "//$1.assets.example.com/", "/cdn/images", "//images.assets.example.com/"},
+
+		// A capture in the path may hold slashes freely — it cannot reach the
+		// authority, which the target fixed.
+		{"path capture keeps slashes", "https://cdn.example.com/$1", "/cdn/a/b/c", "https://cdn.example.com/a/b/c"},
+		{"path capture with a host-like value", "https://cdn.example.com/$1", "/cdn/evil.com/x", "https://cdn.example.com/evil.com/x"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			app := fiber.New(fiber.Config{UnescapePath: true})
+			app.Use(New(Config{
+				Rules:      map[string]string{"/cdn/*": tc.target},
+				StatusCode: fiber.StatusFound,
+			}))
+			app.Get("/*", func(c fiber.Ctx) error { return c.SendString("fell through") })
+
+			req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, tc.request, http.NoBody)
+			require.NoError(t, err)
+			resp, err := app.Test(req)
+			require.NoError(t, err)
+
+			if tc.want == "" {
+				require.Equal(t, fiber.StatusOK, resp.StatusCode, "the rule must not fire")
+				require.Empty(t, resp.Header.Get("Location"))
+				return
+			}
+			require.Equal(t, fiber.StatusFound, resp.StatusCode)
+			require.Equal(t, tc.want, resp.Header.Get("Location"))
+		})
+	}
+}
+
+func Test_AuthoritySpan(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		in         string
+		start, end int
+	}{
+		{"https://cdn.example.com/$1", 8, 23},
+		{"https://$1.example.com", 8, 22},
+		{"//cdn.example.com/a", 2, 17},
+		{"//cdn.example.com", 2, 17},
+		{"https://cdn.example.com", 8, 23},
+		{"https://cdn.example.com?q=1", 8, 23},
+		{`https://cdn.example.com\x`, 8, 23},
+		// No authority: a path-only target, or a scheme with no "//".
+		{"/$1", 0, 0},
+		{"$1", 0, 0},
+		{"mailto:someone@example.com", 0, 0},
+		{"", 0, 0},
+	} {
+		start, end := authoritySpan(tc.in)
+		require.Equal(t, tc.start, start, "start for %q", tc.in)
+		require.Equal(t, tc.end, end, "end for %q", tc.in)
+	}
+}
+
 func Test_AsBrowserReads(t *testing.T) {
 	t.Parallel()
 

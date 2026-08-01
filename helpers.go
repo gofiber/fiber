@@ -1366,3 +1366,17 @@ type GenericTypeIntegerUnsigned interface {
 type GenericTypeFloat interface {
 	float32 | float64
 }
+
+// isFormContentType reports whether ct names one of the two media types the
+// form parsers handle. Media types are case-insensitive (RFC 9110 Section
+// 8.3.1), so compare folded, and ignore any parameters — the boundary of a
+// multipart type is not part of the name.
+func isFormContentType(ct []byte) bool {
+	if i := bytes.IndexByte(ct, ';'); i >= 0 {
+		ct = ct[:i]
+	}
+	ct = bytes.TrimRight(ct, " \t")
+
+	name := utils.UnsafeString(ct)
+	return utils.EqualFold(name, MIMEApplicationForm) || utils.EqualFold(name, MIMEMultipartForm)
+}

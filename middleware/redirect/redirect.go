@@ -13,6 +13,11 @@ import (
 // once at construction, of whether that target picks its own destination.
 type compiledRule struct {
 	target string
+	// authorityStart and authorityEnd bound the target's own authority — the
+	// span that decides which host the redirect reaches. Both are 0 when the
+	// target names no authority.
+	authorityStart int
+	authorityEnd   int
 	// sameOrigin is set when the target names no authority of its own. The "$N"
 	// values spliced into such a target come from the request path, so they must
 	// not be able to introduce one.
@@ -32,9 +37,12 @@ func New(config ...Config) fiber.Handler {
 		// rule whose path it only happens to end with (e.g. "/old" would also
 		// redirect "/very/old"). See issue #4476.
 		pattern = "^" + pattern + "$"
+		start, end := authoritySpan(v)
 		cfg.rulesRegex[regexp.MustCompile(pattern)] = compiledRule{
-			target:     v,
-			sameOrigin: !targetNamesAuthority(v),
+			target:         v,
+			authorityStart: start,
+			authorityEnd:   end,
+			sameOrigin:     !targetNamesAuthority(v),
 		}
 	}
 
@@ -47,22 +55,43 @@ func New(config ...Config) fiber.Handler {
 		// Rewrite
 		for k, rule := range cfg.rulesRegex {
 			replacer := captureTokens(k, c.Path())
-			if replacer != nil {
-				// Normalize on every branch, not just the guarded one. The
-				// bytes asBrowserReads removes are never meaningful in a URL
-				// and the client drops them anyway, so an author-configured
-				// absolute target loses nothing — and the guard below then
-				// always runs on the location as it will actually be read.
-				location := asBrowserReads(replacer.Replace(rule.target))
-				if rule.sameOrigin {
-					location = keepSameOrigin(location)
-				}
-				queryString := utils.UnsafeString(c.RequestCtx().QueryArgs().QueryString())
-				if queryString != "" {
-					location += "?" + queryString
-				}
-				return c.Redirect().Status(cfg.StatusCode).To(location)
+			if replacer == nil {
+				continue
 			}
+
+			// Substitute the target's own authority separately from the rest.
+			// A target may put a capture inside it — "https://$1.cdn.example.com"
+			// is a plausible way to route per tenant — and the author means $1
+			// to be a label, not a whole URL. A capture holding "evil.com/x"
+			// composes "https://evil.com/x.cdn.example.com", whose authority
+			// ends at that slash: the browser goes to evil.com.
+			//
+			// The template's authority span contains none of the four bytes
+			// that end an authority, by definition of where it ends, so any
+			// that show up after substitution came from a capture and would cut
+			// the authority short. Refuse the rule rather than guess what the
+			// author meant; the request falls through to the app.
+			authority := replacer.Replace(rule.target[rule.authorityStart:rule.authorityEnd])
+			if strings.ContainsAny(authority, `/\?#`) {
+				continue
+			}
+			location := asBrowserReads(
+				rule.target[:rule.authorityStart] + authority + replacer.Replace(rule.target[rule.authorityEnd:]),
+			)
+
+			// Normalize on every branch, not just the guarded one. The bytes
+			// asBrowserReads removes are never meaningful in a URL and the
+			// client drops them anyway, so an author-configured absolute target
+			// loses nothing — and the guard below then always runs on the
+			// location as it will actually be read.
+			if rule.sameOrigin {
+				location = keepSameOrigin(location)
+			}
+			queryString := utils.UnsafeString(c.RequestCtx().QueryArgs().QueryString())
+			if queryString != "" {
+				location += "?" + queryString
+			}
+			return c.Redirect().Status(cfg.StatusCode).To(location)
 		}
 		return c.Next()
 	}
@@ -97,6 +126,31 @@ func schemeEnd(s string) int {
 // left alone.
 func targetNamesAuthority(target string) bool {
 	return strings.HasPrefix(target, "//") || schemeEnd(target) > 0
+}
+
+// authoritySpan returns the byte range of target's own authority, or 0, 0 when
+// target names none.
+//
+// An authority runs from the "//" that opens it to the first byte that ends it:
+// "/", "?" or "#" per RFC 3986, plus "\" because the WHATWG URL parser treats a
+// backslash there as a slash. A scheme with no "//" after it — "mailto:x" — has
+// no authority at all, and neither does a path-only target.
+func authoritySpan(target string) (start, end int) { //nolint:nonamedreturns // the pair is a range; names say which is which
+	switch {
+	case strings.HasPrefix(target, "//"):
+		start = 2
+	default:
+		i := schemeEnd(target)
+		if i <= 0 || !strings.HasPrefix(target[i+1:], "//") {
+			return 0, 0
+		}
+		start = i + 3
+	}
+
+	if offset := strings.IndexAny(target[start:], `/\?#`); offset >= 0 {
+		return start, start + offset
+	}
+	return start, len(target)
 }
 
 // keepSameOrigin strips an authority that the captured path segments introduced

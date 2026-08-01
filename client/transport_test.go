@@ -449,6 +449,12 @@ func TestHostnameWithoutPort(t *testing.T) {
 		{"[2001:db8::1]:443", "2001:db8::1"},
 		{"", ""},
 		{":8080", ""},
+		// An IPv6 literal written without brackets: the last colon belongs to
+		// the address, not to a port. Truncating there would fold distinct
+		// hosts onto one name.
+		{"fe80::1", "fe80::1"},
+		{"fe80::2", "fe80::2"},
+		{"2001:db8::1", "2001:db8::1"},
 		// Not a bracketed literal: one stray bracket is left where it is
 		// rather than silently folded away.
 		{"[[x]]", "[x]"},

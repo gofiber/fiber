@@ -124,7 +124,7 @@ func createTagMap(cfg *Config) map[string]LogFunc {
 						return n, err
 					}
 				}
-				m, err := writeSanitizedString(output, string(v))
+				m, err := writeSanitized(output, v)
 				n += m
 				if err != nil {
 					return n, err

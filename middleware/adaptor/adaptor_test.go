@@ -2300,7 +2300,7 @@ func Test_HTTPMiddleware_PropagatesHeaderRemoval(t *testing.T) {
 func Test_HTTPMiddleware_HeaderFidelity(t *testing.T) {
 	t.Parallel()
 
-	forwardedFor := func(t *testing.T, mw func(http.Handler) http.Handler, hostRewrite string) ([]string, string, string) {
+	forwardedFor := func(t *testing.T, mw func(http.Handler) http.Handler) ([]string, string, string) {
 		t.Helper()
 
 		var (
@@ -2322,7 +2322,6 @@ func Test_HTTPMiddleware_HeaderFidelity(t *testing.T) {
 		req.Host = "original.example"
 		req.Header.Add("X-Forwarded-For", "1.1.1.1")
 		req.Header.Add("X-Forwarded-For", "2.2.2.2")
-		_ = hostRewrite
 
 		resp, err := app.Test(req)
 		require.NoError(t, err)
@@ -2333,7 +2332,7 @@ func Test_HTTPMiddleware_HeaderFidelity(t *testing.T) {
 	t.Run("pass-through preserves every value exactly once", func(t *testing.T) {
 		t.Parallel()
 
-		got, _, _ := forwardedFor(t, func(next http.Handler) http.Handler { return next }, "")
+		got, _, _ := forwardedFor(t, func(next http.Handler) http.Handler { return next })
 		require.Equal(t, []string{"1.1.1.1", "2.2.2.2"}, got)
 	})
 
@@ -2345,7 +2344,7 @@ func Test_HTTPMiddleware_HeaderFidelity(t *testing.T) {
 				r.Header.Set("X-Forwarded-For", "9.9.9.9")
 				next.ServeHTTP(w, r)
 			})
-		}, "")
+		})
 		// Leaving "2.2.2.2" behind would hand the spoofed value straight to
 		// c.IPs() and the TrustProxy chain walk.
 		require.Equal(t, []string{"9.9.9.9"}, got)
@@ -2359,7 +2358,7 @@ func Test_HTTPMiddleware_HeaderFidelity(t *testing.T) {
 				r.Header["X-Forwarded-For"] = nil
 				next.ServeHTTP(w, r)
 			})
-		}, "")
+		})
 		require.Empty(t, got)
 	})
 
@@ -2371,7 +2370,7 @@ func Test_HTTPMiddleware_HeaderFidelity(t *testing.T) {
 				r.Host = "internal.svc"
 				next.ServeHTTP(w, r)
 			})
-		}, "internal.svc")
+		})
 		require.Equal(t, "internal.svc", uriHost)
 		require.Equal(t, "internal.svc", hdrHost)
 	})

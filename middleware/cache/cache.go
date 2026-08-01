@@ -211,7 +211,13 @@ func New(config ...Config) fiber.Handler {
 
 	// Return new handler
 	return func(c fiber.Ctx) error {
-		hasAuthorization := len(c.Request().Header.Peek(fiber.HeaderAuthorization)) > 0
+		// Every field line, for the same reason the key headers and Vary read
+		// them all: two requests whose Authorization differs only past the
+		// first line would otherwise hash the same and share one |auth=
+		// partition, so a shared-cacheable response stored for one credential
+		// set would be served to the other.
+		authorization := joinedHeader(&c.Request().Header, fiber.HeaderAuthorization)
+		hasAuthorization := len(authorization) > 0
 		reqCacheControl := joinedHeader(&c.Request().Header, fiber.HeaderCacheControl)
 		reqDirectives := parseRequestCacheControl(reqCacheControl)
 		if !reqDirectives.noCache {
@@ -238,7 +244,7 @@ func New(config ...Config) fiber.Handler {
 		baseKey := requestMethod + "|" + cfg.KeyGenerator(c)
 		manifestKey := baseKey + "|vary"
 		if hasAuthorization {
-			authHash := hashAuthorization(c.Request().Header.Peek(fiber.HeaderAuthorization))
+			authHash := hashAuthorization(authorization)
 			baseKey += "|auth=" + authHash
 			manifestKey = baseKey + "|vary"
 		}
