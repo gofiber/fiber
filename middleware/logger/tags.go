@@ -108,7 +108,29 @@ func createTagMap(cfg *Config) map[string]LogFunc {
 			return writeSanitizedString(output, c.IP())
 		},
 		TagIPs: func(output Buffer, c fiber.Ctx, _ *Data, _ string) (int, error) {
-			return writeSanitizedString(output, c.Get(fiber.HeaderXForwardedFor))
+			// Every field line, which is what c.IP() and c.IPs() parse. A
+			// recipient may combine repeated field lines into the comma-joined
+			// form (RFC 9110 Section 5.2), and the proxy-header accessors do
+			// exactly that — so reading only the first here would log a shorter
+			// chain than the one the framework keyed its trust decisions on,
+			// and the access log would not explain what was enforced.
+			values := c.Request().Header.PeekAll(fiber.HeaderXForwardedFor)
+			n := 0
+			for i, v := range values {
+				if i > 0 {
+					m, err := output.WriteString(", ")
+					n += m
+					if err != nil {
+						return n, err
+					}
+				}
+				m, err := writeSanitizedString(output, string(v))
+				n += m
+				if err != nil {
+					return n, err
+				}
+			}
+			return n, nil
 		},
 		TagHost: func(output Buffer, c fiber.Ctx, _ *Data, _ string) (int, error) {
 			return writeSanitizedString(output, c.Hostname())

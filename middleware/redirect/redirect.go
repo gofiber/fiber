@@ -48,7 +48,12 @@ func New(config ...Config) fiber.Handler {
 		for k, rule := range cfg.rulesRegex {
 			replacer := captureTokens(k, c.Path())
 			if replacer != nil {
-				location := replacer.Replace(rule.target)
+				// Normalize on every branch, not just the guarded one. The
+				// bytes asBrowserReads removes are never meaningful in a URL
+				// and the client drops them anyway, so an author-configured
+				// absolute target loses nothing — and the guard below then
+				// always runs on the location as it will actually be read.
+				location := asBrowserReads(replacer.Replace(rule.target))
 				if rule.sameOrigin {
 					location = keepSameOrigin(location)
 				}
@@ -104,9 +109,10 @@ func targetNamesAuthority(target string) bool {
 // browser follows to evil.com — and "/redirect/*" -> "$1" turns
 // "/redirect/https://evil.com" into an outright absolute redirect. An author
 // who wrote a path-only target did not ask for either.
+// It expects a location that has already been through asBrowserReads, so the
+// checks below run on the bytes the client will act on rather than on the bytes
+// as composed.
 func keepSameOrigin(location string) string {
-	location = asBrowserReads(location)
-
 	if schemeEnd(location) > 0 {
 		// Root it so what the capture supplied is read as a path on this
 		// origin rather than as a destination of its own.

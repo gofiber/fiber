@@ -16,6 +16,7 @@ import (
 	"github.com/valyala/fasthttp"
 
 	"github.com/gofiber/fiber/v3/binder"
+	"github.com/gofiber/fiber/v3/internal/mediatype"
 	"github.com/gofiber/fiber/v3/internal/schemehost"
 )
 
@@ -200,8 +201,8 @@ func (r *Redirect) With(key, value string, level ...uint8) *Redirect {
 // You can get them by using: Redirect().OldInputs(), Redirect().OldInput()
 func (r *Redirect) WithInput() *Redirect {
 	// Get content-type, folding only the media type so the case-sensitive
-	// multipart boundary survives (see normalizeContentTypeMediaType).
-	raw := utils.UnsafeString(normalizeContentTypeMediaType(&r.c.RequestCtx().Request.Header))
+	// multipart boundary survives (see mediatype.NormalizeRequestContentType).
+	raw := utils.UnsafeString(mediatype.NormalizeRequestContentType(&r.c.RequestCtx().Request.Header))
 	ctype := binder.FilterFlags(utils.ParseVendorSpecificContentType(raw))
 
 	oldInput := acquireOldInput()

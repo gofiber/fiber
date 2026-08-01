@@ -14,6 +14,8 @@ import (
 	"github.com/valyala/bytebufferpool"
 	"github.com/valyala/fasthttp"
 	"golang.org/x/net/idna"
+
+	"github.com/gofiber/fiber/v3/internal/mediatype"
 )
 
 // Pre-allocated byte slices for common header comparisons to avoid allocations
@@ -424,7 +426,7 @@ func (r *DefaultReq) FormValue(key string, defaultValue ...string) string {
 	// accessor would otherwise yield nothing. Bind and Redirect.WithInput
 	// normalize for the same reason; doing it here too means a handler does not
 	// have to call one of those first to get its own form back.
-	normalizeContentTypeMediaType(&r.c.fasthttp.Request.Header)
+	mediatype.NormalizeRequestContentType(&r.c.fasthttp.Request.Header)
 
 	if r.c.IsMultipart() {
 		// For multipart requests, parse the form using the application's BodyLimit.
@@ -974,7 +976,7 @@ func (r *DefaultReq) MultipartForm() (*multipart.Form, error) {
 	// name case-sensitively, so fold them first (see
 	// mediatype.NormalizeRequestContentType). FormFile and SaveFile reach the
 	// parser through here, so this covers them too.
-	normalizeContentTypeMediaType(&r.c.fasthttp.Request.Header)
+	mediatype.NormalizeRequestContentType(&r.c.fasthttp.Request.Header)
 
 	return r.c.fasthttp.MultipartFormWithLimit(r.c.app.config.BodyLimit)
 }

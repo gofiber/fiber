@@ -249,8 +249,13 @@ func WithClient(cli *fasthttp.Client) {
 // — the client got to influence the address the upstream attributes the
 // request to. Delete first so exactly one line survives.
 func setRealIP(c fiber.Ctx) {
+	// Resolve the address before deleting anything: with
+	// Config.ProxyHeader set to "X-Real-IP", c.IP() reads the very header
+	// being replaced, and deleting first would hand the upstream an empty
+	// value instead of the client address.
+	ip := c.IP()
 	c.Request().Header.Del("X-Real-IP")
-	c.Request().Header.Set("X-Real-IP", c.IP())
+	c.Request().Header.Set("X-Real-IP", ip)
 }
 
 // Forward performs the given http request and fills the given http response.

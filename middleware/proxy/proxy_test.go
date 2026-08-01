@@ -449,6 +449,43 @@ func Test_Proxy_Forward_ReplacesClientSuppliedRealIP(t *testing.T) {
 	}
 }
 
+// Test_Proxy_Forward_RealIPFromProxyHeader pins that replacing X-Real-IP does
+// not destroy the value it is derived from.
+//
+// With Config.ProxyHeader set to "X-Real-IP", c.IP() reads that very header, so
+// deleting it before resolving the address left the upstream with an empty
+// X-Real-IP instead of the client's.
+func Test_Proxy_Forward_RealIPFromProxyHeader(t *testing.T) {
+	t.Parallel()
+
+	_, addr := createProxyTestServerIPv4(t, func(c fiber.Ctx) error {
+		seen := c.Request().Header.PeekAll("X-Real-IP")
+		out := make([]string, 0, len(seen))
+		for _, v := range seen {
+			out = append(out, string(v))
+		}
+		return c.SendString(strings.Join(out, "|"))
+	})
+
+	app := fiber.New(fiber.Config{
+		TrustProxy:       true,
+		TrustProxyConfig: fiber.TrustProxyConfig{Proxies: []string{"0.0.0.0/0"}},
+		ProxyHeader:      "X-Real-IP",
+	})
+	app.Use(Forward("http://" + addr))
+
+	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+	req.Header.Set("X-Real-IP", "203.0.113.9")
+
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+
+	b, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "203.0.113.9", string(b))
+}
+
 // go test -run Test_Proxy_Forward_WithClient_TLSConfig
 func Test_Proxy_Forward_WithClient_TLSConfig(t *testing.T) {
 	restoreGlobalProxyClient(t)

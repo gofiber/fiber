@@ -27,7 +27,6 @@ import (
 	"github.com/gofiber/utils/v2/swar"
 
 	"github.com/gofiber/fiber/v3/internal/contextvalue"
-	"github.com/gofiber/fiber/v3/internal/mediatype"
 	"github.com/gofiber/fiber/v3/log"
 
 	"github.com/valyala/bytebufferpool"
@@ -281,14 +280,6 @@ func appendLowerASCII(dst, src []byte) []byte {
 		dst[i] = c
 	}
 	return dst
-}
-
-// normalizeContentTypeMediaType lowercases the case-insensitive parts of a
-// request's Content-Type in place and returns the full header value.
-// See mediatype.NormalizeRequestContentType for why the fold has to land on the
-// request's own bytes and why parameter values are left alone.
-func normalizeContentTypeMediaType(h *fasthttp.RequestHeader) []byte {
-	return mediatype.NormalizeRequestContentType(h)
 }
 
 // defaultString returns the value or a default value if it is set

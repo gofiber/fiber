@@ -19,6 +19,8 @@ import (
 	"github.com/gofiber/utils/v2"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
+
+	"github.com/gofiber/fiber/v3/internal/mediatype"
 )
 
 func Test_Utils_GetOffer(t *testing.T) {
@@ -1930,12 +1932,12 @@ func Test_appendLowerASCII(t *testing.T) {
 	}
 }
 
-// Test_normalizeContentTypeMediaType pins the RFC 9110 case rules the
+// Test_NormalizeRequestContentType pins the RFC 9110 case rules the
 // Content-Type normalizer implements: the media type (Section 8.3.1) and each
 // parameter name (Section 5.6.6) are case-insensitive and get folded, while
 // parameter values are left byte-for-byte alone. Folding a value would corrupt
 // a multipart boundary, which is case-sensitive.
-func Test_normalizeContentTypeMediaType(t *testing.T) {
+func Test_NormalizeRequestContentType(t *testing.T) {
 	t.Parallel()
 
 	testCases := []struct {
@@ -2003,7 +2005,7 @@ func Test_normalizeContentTypeMediaType(t *testing.T) {
 			h := &fasthttp.RequestHeader{}
 			h.SetContentType(tc.in)
 
-			require.Equal(t, tc.want, string(normalizeContentTypeMediaType(h)))
+			require.Equal(t, tc.want, string(mediatype.NormalizeRequestContentType(h)))
 			// The fold is in place, so the header itself must now read back
 			// normalized — that is what makes fasthttp's case-sensitive
 			// multipart lookups work.

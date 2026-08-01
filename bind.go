@@ -10,6 +10,7 @@ import (
 	"sync"
 
 	"github.com/gofiber/fiber/v3/binder"
+	"github.com/gofiber/fiber/v3/internal/mediatype"
 	"github.com/gofiber/fiber/v3/internal/nilerror"
 	"github.com/gofiber/schema"
 	"github.com/gofiber/utils/v2"
@@ -400,8 +401,8 @@ func (b *Bind) MsgPack(out any) error {
 // If there is no custom binder for mime type of body, it will return a ErrUnprocessableEntity error.
 func (b *Bind) Body(out any) error {
 	// Get content-type, folding only the media type so the case-sensitive
-	// multipart boundary survives (see normalizeContentTypeMediaType).
-	raw := utils.UnsafeString(normalizeContentTypeMediaType(&b.ctx.RequestCtx().Request.Header))
+	// multipart boundary survives (see mediatype.NormalizeRequestContentType).
+	raw := utils.UnsafeString(mediatype.NormalizeRequestContentType(&b.ctx.RequestCtx().Request.Header))
 	ctype := binder.FilterFlags(utils.ParseVendorSpecificContentType(raw))
 
 	// Check custom binders
