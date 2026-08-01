@@ -840,6 +840,8 @@ func Test_TargetLetsRequestPickHost(t *testing.T) {
 func Test_PinsHost(t *testing.T) {
 	t.Parallel()
 
+	// wantClosed is the answer when a label separator, an "@" or the start of
+	// the authority stands between the capture and this literal.
 	for _, tc := range []struct {
 		literal string
 		want    bool
@@ -866,6 +868,9 @@ func Test_PinsHost(t *testing.T) {
 		{"[::", false},
 		{"[abc", false},
 		{"[fe80", false},
+		// Decided by the fragment rule alone: with a dot of its own it is not
+		// dotless, and it holds no hex tail, so nothing else would refuse it.
+		{"[example.com", false},
 
 		{"", false},
 		{":8080", false},
@@ -935,9 +940,10 @@ func Test_PinsHost(t *testing.T) {
 		// separates it from whatever came before.
 		{"%41", false},
 		{"%41.example.com", true},
-		// A stray "%" is literal to the parser, not an error.
-		{"100%", true},
-		{"a%zz", true},
+		// A stray "%" is literal to the parser, not an error — though dotless,
+		// so nothing here pins on its own account.
+		{"100%", false},
+		{"a%zz", false},
 		// A host whose last label reads as a number is an IPv4 address, where
 		// the author's trailing text is the low octets and the request supplies
 		// the network. Only a complete address pins one.
@@ -961,9 +967,13 @@ func Test_PinsHost(t *testing.T) {
 		{"%FF.example.com", false},
 		{"\xed\xa0\x80.example.com", false},
 
-		{"cdn", true},
-		{"xyz", true},
-		{"tenant-", true},
+		// Nor does any other dotless tail: the head the capture supplies can
+		// simply end with a dot, leaving the author's text a bare final label —
+		// "https://$1xyz" reached evil.xyz from a captured "evil.".
+		{"cdn", false},
+		{"xyz", false},
+		{"tenant-", false},
+		{"com", false},
 		// A leading "." closes the label, so an all-hex suffix is a suffix —
 		// ".de" pins Germany the way ".example.com" pins that domain.
 		{".de", true},
@@ -987,6 +997,29 @@ func Test_PinsHost(t *testing.T) {
 		{":db8::1]", false},
 	} {
 		require.Equal(t, tc.want, pinsHost(tc.literal, true), "literal %q", tc.literal)
+	}
+
+	// The closed-on-the-left branch: a dotless tail the capture cannot reach
+	// pins the host, which is what keeps "https://[$1]@x" and
+	// "https://cdn$1.example.com" compiling.
+	for _, tc := range []struct {
+		literal string
+		want    bool
+	}{
+		{"cdn", true},
+		{"xyz", true},
+		{"cafe", true},
+		{"x", true},
+		{"tenant-", true},
+		{"example.com", true},
+
+		{"", false},
+		{".", false},
+		{"1", false},   // a bare number is an address, not a name
+		{"0x1", false}, // and so is the hex spelling
+		{"[example.com", false},
+	} {
+		require.Equal(t, tc.want, pinsHost(tc.literal, false), "literal %q closed on the left", tc.literal)
 	}
 }
 
@@ -1489,9 +1522,9 @@ func Test_Redirect_CompleteAddressStillPins(t *testing.T) {
 	}
 }
 
-// Test_Redirect_AbsorbableTailPinsNoHost covers a literal with no dot of its
-// own: it sits inside a label the capture opens on the left, so what the author
-// wrote is only that label's tail.
+// Test_Redirect_DotlessTailPinsNoHost covers a literal with no dot of its own:
+// it sits inside a label the capture opens on the left, so what the author
+// wrote is only that label's tail and the request decides what the label is.
 //
 // Two tails let the request take the whole label. A tail of hex digits becomes
 // a number once the value supplies "0x" — "https://$1cafe" reached
@@ -1501,7 +1534,7 @@ func Test_Redirect_CompleteAddressStillPins(t *testing.T) {
 // trailing dot pins nothing. That second shape is pinned by the "E" row of
 // Test_PinsHost rather than here, since net/http will not build a request
 // carrying the dangling escape it needs.
-func Test_Redirect_AbsorbableTailPinsNoHost(t *testing.T) {
+func Test_Redirect_DotlessTailPinsNoHost(t *testing.T) {
 	t.Parallel()
 
 	for _, tc := range []struct{ target, request string }{
@@ -1509,6 +1542,11 @@ func Test_Redirect_AbsorbableTailPinsNoHost(t *testing.T) {
 		{"https://$1x", "/r/10.0.0"},
 		{"https://$1cafe", "/r/0x"},
 		{"https://$1beef", "/r/0x"},
+		// The head can simply end with a dot, which pins nothing at all: the
+		// author's text becomes a bare final label of the request's choosing.
+		{"https://$1xyz", "/r/evil."},
+		{"https://$1com", "/r/evil."},
+		{"https://$1io", "/r/evil."},
 	} {
 		t.Run(tc.target+" "+tc.request, func(t *testing.T) {
 			t.Parallel()

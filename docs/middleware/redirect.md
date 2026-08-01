@@ -103,7 +103,7 @@ host text, so these are the same case and are refused too:
 | `"https://\t$1"` | A tab, LF or CR is deleted by the URL parser before it reads the host, so it pins nothing that survives. |
 | `"https://$1\u00ad"` | Same for the code points UTS #46 mapping deletes — soft hyphen, zero-width space, BOM — and for those it folds onto a plain `.`, such as the ideographic full stop. Percent-escaped spellings such as `%2E` and `%C2%AD` count too, since the parser decodes a host before reading it. |
 | `"https://$1.1"`, `"https://$1.0x1"` | A host whose last label reads as a number is parsed as an IPv4 address, so the author's trailing text is the low octets and the request supplies the network — `/r/127.0.0` would reach `127.0.0.1`. A complete address is fine: `"https://127.0.0.1:$1"` pins the host and captures the port. |
-| `"https://$1cafe"`, `"https://$1x"` | With no dot of its own the text sits inside a label the capture opens, so a tail of hex digits becomes a number as soon as the request supplies `0x`. Give it a dot — `"https://$1.cafe.example.com"` — or write a tail that is not all hex. |
+| `"https://$1xyz"`, `"https://$1cafe"` | With no dot of its own the text sits inside a label the capture opens, so it is a label's tail and not a label. The request decides what the label becomes: `/r/evil.` reaches `evil.xyz`, and `/r/0x` reaches `0.0.202.254`. Give it a dot — `"https://$1.xyz"` pins that suffix, `"https://$1.cdn.example.com"` that domain. |
 
 Note that `"https://$1@example.com"` is fine — there the author's host follows
 the `@` and the capture is only userinfo — as are `"https://cdn.example.com:$1"`
