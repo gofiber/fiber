@@ -189,8 +189,11 @@ func appendCanonicalHeaderSubset(dst []byte, header *fasthttp.RequestHeader, nam
 		// the wire (RFC 9110 Section 5.2) — but Peek returns only the first, so
 		// a request sending a key header twice keyed identically to one sending
 		// just that first value and was served its cached response. PeekAll
-		// reuses the header's own scratch slice, so this costs no allocation;
-		// the values are consumed before the next call to it.
+		// reuses the header's own scratch slice for ordinary names, so those
+		// cost no allocation; the values are consumed before the next call to
+		// it. Cookie and Trailer are the exception — fasthttp re-serializes
+		// those from its own stores into a fresh buffer per call — so naming
+		// either in KeyHeaders allocates once per request.
 		values := header.PeekAll(name)
 
 		// The count keeps the framing injective. Without it an absent header

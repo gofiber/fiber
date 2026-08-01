@@ -215,13 +215,7 @@ func New(config ...Config) fiber.Handler {
 
 	// Return new handler
 	return func(c fiber.Ctx) error {
-		// Every field line, for the same reason the key headers and Vary read
-		// them all: two requests whose Authorization differs only past the
-		// first line would otherwise hash the same and share one |auth=
-		// partition, so a shared-cacheable response stored for one credential
-		// set would be served to the other.
-		authorization := joinedHeader(&c.Request().Header, fiber.HeaderAuthorization)
-		hasAuthorization := len(authorization) > 0
+		hasAuthorization := len(c.Request().Header.Peek(fiber.HeaderAuthorization)) > 0
 		reqCacheControl := joinedHeader(&c.Request().Header, fiber.HeaderCacheControl)
 		reqDirectives := parseRequestCacheControl(reqCacheControl)
 		if !reqDirectives.noCache {
@@ -248,7 +242,17 @@ func New(config ...Config) fiber.Handler {
 		baseKey := requestMethod + "|" + cfg.KeyGenerator(c)
 		manifestKey := baseKey + "|vary"
 		if hasAuthorization {
-			authHash := hashAuthorization(authorization)
+			// Read at the point of use, not at the top of the handler: the
+			// single-line result aliases the header's own storage, and
+			// cfg.KeyGenerator above is user code that may add or delete
+			// headers, which lets fasthttp recycle the slot it points at.
+			//
+			// Every field line, for the same reason the key headers and Vary
+			// read them all: two requests whose Authorization differs only past
+			// the first line would otherwise hash the same and share one |auth=
+			// partition, so a shared-cacheable response stored for one
+			// credential set would be served to the other.
+			authHash := hashAuthorization(joinedHeader(&c.Request().Header, fiber.HeaderAuthorization))
 			baseKey += "|auth=" + authHash
 			manifestKey = baseKey + "|vary"
 		}
@@ -556,6 +560,15 @@ func New(config ...Config) fiber.Handler {
 			return err
 		}
 
+		markUnreachable := func() {
+			// manager.release is a no-op for in-memory storage, so no guard.
+			if e != nil {
+				manager.release(e)
+				e = nil
+			}
+			c.Set(cfg.CacheHeader, cacheUnreachable)
+		}
+
 		cacheControlBytes := joinedHeader(&c.Response().Header, fiber.HeaderCacheControl)
 		respCacheControl := parseResponseCacheControl(cacheControlBytes)
 		varyHeader := utils.UnsafeString(joinedHeader(&c.Response().Header, fiber.HeaderVary))
@@ -565,7 +578,7 @@ func New(config ...Config) fiber.Handler {
 
 		// Respect server cache-control: no-store
 		if respCacheControl.hasNoStore {
-			c.Set(cfg.CacheHeader, cacheUnreachable)
+			markUnreachable()
 			return nil
 		}
 
@@ -613,15 +626,6 @@ func New(config ...Config) fiber.Handler {
 		// still held from the lookup. Each decision below is a decision not to
 		// store, so the copy unmarshalled from external storage has no further
 		// use and would otherwise be dropped instead of returned to the pool.
-		markUnreachable := func() {
-			// manager.release is a no-op for in-memory storage, so no guard.
-			if e != nil {
-				manager.release(e)
-				e = nil
-			}
-			c.Set(cfg.CacheHeader, cacheUnreachable)
-		}
-
 		isSharedCacheAllowed := allowsSharedCacheDirectives(respCacheControl)
 		if hasAuthorization && !isSharedCacheAllowed {
 			markUnreachable()

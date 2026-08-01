@@ -72,8 +72,18 @@ When a redirect crosses to a **different host**, `DoRedirects` strips the `Autho
 If you're using `Balancer` with the `Config` struct, you can replicate the protection in `ModifyRequest`. When using `Do`, `DoRedirects`, `DoDeadline`, or `DoTimeout` directly, the `X-Real-IP` header is not set automatically — set it manually if needed:
 
 ```go
-c.Request().Header.Set("X-Real-IP", c.IP())
+ip := c.IP()
+c.Request().Header.Del("X-Real-IP")
+c.Request().Header.Add("X-Real-IP", ip)
 ```
+
+`Set` alone is not enough here. It replaces the first field line with that name
+and leaves any others in place, so a client that sends `X-Real-IP` twice keeps
+one of its own values on the wire, and the upstream — which may read the last
+line, or join the pair per RFC 9110 §5.2 — attributes the request to an address
+the client chose. Delete first so exactly one line survives. Resolve `c.IP()`
+before the delete as well: with `Config.ProxyHeader` set to `X-Real-IP`, `c.IP()`
+reads the very header being replaced.
 
 ### Path concatenation safety
 

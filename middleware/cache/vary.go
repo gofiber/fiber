@@ -72,8 +72,12 @@ func makeBuildVaryKeyFunc(hexBufPool *sync.Pool) func([]string, *fasthttp.Reques
 			// stored for the first is then served to the second, which is the
 			// exact cross-request mixing Vary exists to prevent.
 			//
-			// PeekAll reuses the header's own scratch slice, so this costs no
-			// allocation; the values are consumed before the next call to it.
+			// PeekAll reuses the header's own scratch slice for ordinary names,
+			// so those cost no allocation; the values are consumed before the
+			// next call to it. Cookie and Trailer are the exception — fasthttp
+			// re-serializes those from its own stores into a fresh buffer per
+			// call — so a "Vary: Cookie" response pays for that twice per
+			// request, once at lookup and once at store.
 			values := hdr.PeekAll(name)
 			_, _ = sum.Write(binary.AppendUvarint(lenBuf[:0], uint64(len(values)))) //nolint:errcheck // hash.Hash.Write for std hashes never errors
 			for _, v := range values {

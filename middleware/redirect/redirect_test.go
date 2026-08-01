@@ -427,6 +427,13 @@ func Test_Redirect_CaptureBoundedByTheTarget(t *testing.T) {
 		// The value is still part of the authority, so it may not restructure it.
 		{"at sign in a port", "https://cdn.example.com:$1/health", "/t/80@evil.com", ""},
 		{"slash in a host prefix", "https://tenant-$1/app", "/t/evil.com%2Fx", ""},
+
+		// A token right after the port colon ends the target, but a port cannot
+		// extend a host and the URL parser rejects a non-numeric one outright,
+		// so a digit run is honored.
+		{"port at the end of the target", "https://cdn.example.com:$1", "/t/8080", "https://cdn.example.com:8080"},
+		{"non-numeric port", "https://cdn.example.com:$1", "/t/80@evil.com", ""},
+		{"port extended into a host", "https://cdn.example.com:$1", "/t/8080.evil.com", ""},
 	}
 
 	for _, tc := range tests {

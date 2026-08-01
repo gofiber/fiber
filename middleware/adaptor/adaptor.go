@@ -376,7 +376,15 @@ type headerPair struct {
 // describe the original message, not the converted copy, and Host is restored
 // separately from r.Host.
 func snapshotHeaders(h http.Header) []headerPair {
-	pairs := make([]headerPair, 0, len(h))
+	// One entry per field line, not per name: sizing by len(h) regrows the
+	// slice for every multi-valued header, which is exactly what the headers
+	// worth snapshotting (X-Forwarded-For, Accept, Cookie) tend to be.
+	lines := 0
+	for _, vals := range h {
+		lines += len(vals)
+	}
+
+	pairs := make([]headerPair, 0, lines)
 	for key, vals := range h {
 		if isFramingHeader(key) {
 			continue
@@ -404,7 +412,7 @@ func snapshotHeaders(h http.Header) []headerPair {
 // Keys are collected before anything is deleted, since fasthttp's iterator
 // walks the header storage the deletes rewrite.
 func clearCopiedHeaders(fhdr *fasthttp.RequestHeader) {
-	var removed []string
+	removed := make([]string, 0, fhdr.Len())
 	for key := range fhdr.All() {
 		if isFramingHeader(utils.UnsafeString(key)) {
 			continue

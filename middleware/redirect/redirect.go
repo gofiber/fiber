@@ -51,7 +51,10 @@ func New(config ...Config) fiber.Handler {
 		// redirect "/very/old"). See issue #4476.
 		pattern = "^" + pattern + "$"
 		chunks := authorityChunks(v)
-		if targetLetsRequestPickHost(v, chunks) {
+		_, authorityEnd := authoritySpan(v)
+
+		switch {
+		case targetLetsRequestPickHost(v, chunks):
 			// The request picks the host this redirects to. That is an open
 			// redirect by construction — nothing here can distinguish the
 			// intended destination from an attacker's — and it is only reachable
@@ -59,9 +62,16 @@ func New(config ...Config) fiber.Handler {
 			// silently refusing to honor the rule at request time.
 			log.Warnf("[REDIRECT] rule %q sends the client to a host taken from the request path; "+
 				"anyone who can shape the path can choose the redirect target", k)
+		case authorityEndsInOpenCapture(chunks, authorityEnd == len(v)):
+			// The target's host ends in a capture with nothing pinned after it,
+			// so a value like ".evil.com" would extend the host into a domain
+			// the author does not control. Such a value is refused per request,
+			// which without this would look like the rule quietly not firing.
+			log.Warnf("[REDIRECT] rule %q ends in a capture inside its host, so only a value that cannot "+
+				"extend that host is honored — one opening a path, query or fragment. Pin what follows the "+
+				"capture in the target to redirect on every value", k)
 		}
 
-		_, authorityEnd := authoritySpan(v)
 		cfg.rulesRegex[regexp.MustCompile(pattern)] = compiledRule{
 			target:              v,
 			authorityChunks:     chunks,
@@ -235,7 +245,16 @@ func authorityHolds(chunks []authorityChunk, endsTarget bool, replacer *strings.
 		}
 		value := replacer.Replace(chunk.text)
 		if endsTarget && i == len(chunks)-1 {
-			if value != "" && strings.IndexByte(`/\?#`, value[0]) < 0 {
+			switch {
+			case value == "":
+			case strings.IndexByte(`/\?#`, value[0]) >= 0:
+				// Opens the next component, so the authority ended at the
+				// author's own text.
+			case i > 0 && strings.HasSuffix(chunks[i-1].text, ":") && isAllDigits(value):
+				// A port. The author wrote the colon, and the URL parser rejects
+				// a port holding anything but digits outright, so digits are the
+				// only value that can be what they meant.
+			default:
 				return false
 			}
 			continue
@@ -367,4 +386,35 @@ func captureTokens(pattern *regexp.Regexp, input string) *strings.Replacer {
 		replace[j+1] = v
 	}
 	return strings.NewReplacer(replace...)
+}
+
+// isAllDigits reports whether s is a non-empty run of ASCII digits.
+func isAllDigits(s string) bool {
+	if s == "" {
+		return false
+	}
+	for i := 0; i < len(s); i++ {
+		if s[i] < '0' || s[i] > '9' {
+			return false
+		}
+	}
+	return true
+}
+
+// authorityEndsInOpenCapture reports whether a target's host ends in a capture
+// with nothing pinned after it, so a value can extend that host into a domain
+// the author does not control.
+//
+// A capture right after the port colon does not count: a port cannot extend a
+// host, and authorityHolds accepts a digit run there, so the rule still fires
+// for every value that could have been meant.
+func authorityEndsInOpenCapture(chunks []authorityChunk, endsTarget bool) bool {
+	if !endsTarget || len(chunks) == 0 {
+		return false
+	}
+	last := len(chunks) - 1
+	if !chunks[last].placeholder {
+		return false
+	}
+	return last == 0 || !strings.HasSuffix(chunks[last-1].text, ":")
 }
