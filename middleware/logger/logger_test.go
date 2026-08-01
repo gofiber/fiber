@@ -2058,6 +2058,63 @@ func Test_Logger_IPs_RepeatedFieldLines(t *testing.T) {
 	fctx.Init(req, nil, nil)
 	app.Handler()(fctx)
 
-	require.Equal(t, "1.1.1.1,2.2.2.2, 3.3.3.3", buf.String(),
-		"every field line must be logged, joined the way the proxy-header accessors combine them")
+	require.Equal(t, "1.1.1.1,2.2.2.2,3.3.3.3", buf.String(),
+		"every field line must be logged, as the chain the framework parsed")
+}
+
+// Test_Logger_IPs_WithoutHeaderNormalizing asserts the tag logs the chain the
+// framework acted on, whatever case the field name arrived in.
+//
+// Reading the header here rather than asking c.IPs() meant reading it a second
+// way, and PeekAll compares stored names byte for byte — so under
+// DisableHeaderNormalizing a lower-case "x-forwarded-for:" matched nothing and
+// the tag logged an empty chain, while c.IPs() went on parsing it and the trust
+// decisions went on using it.
+func Test_Logger_IPs_WithoutHeaderNormalizing(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name    string
+		lines   []string
+		disable bool
+	}{
+		{"normalized, one line", []string{"X-Forwarded-For: 1.1.1.1, 2.2.2.2"}, false},
+		{"raw, lower-case name", []string{"x-forwarded-for: 1.1.1.1, 2.2.2.2"}, true},
+		{"normalized, two lines", []string{"X-Forwarded-For: 1.1.1.1", "X-Forwarded-For: 2.2.2.2"}, false},
+		{"raw, mixed-case names", []string{"x-forwarded-for: 1.1.1.1", "X-Forwarded-For: 2.2.2.2"}, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			buf := bytebufferpool.Get()
+			defer bytebufferpool.Put(buf)
+
+			app := fiber.New(fiber.Config{
+				TrustProxy:               true,
+				DisableHeaderNormalizing: tc.disable,
+			})
+			app.Use(New(Config{Format: "${ips}", Stream: buf}))
+			app.Get("/", func(c fiber.Ctx) error { return c.SendString("hi") })
+
+			parts := []string{"GET / HTTP/1.1\r\nHost: example.com\r\n"}
+			for _, l := range tc.lines {
+				parts = append(parts, l+"\r\n")
+			}
+			raw := strings.Join(append(parts, "\r\n"), "")
+
+			req := fasthttp.AcquireRequest()
+			defer fasthttp.ReleaseRequest(req)
+			if tc.disable {
+				req.Header.DisableNormalizing()
+			}
+			require.NoError(t, req.Read(bufio.NewReader(strings.NewReader(raw))))
+
+			fctx := &fasthttp.RequestCtx{}
+			fctx.Init(req, nil, nil)
+			app.Handler()(fctx)
+
+			require.Equal(t, "1.1.1.1,2.2.2.2", buf.String(),
+				"the log must show the chain the trust decisions used")
+		})
+	}
 }

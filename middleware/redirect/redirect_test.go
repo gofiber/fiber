@@ -785,8 +785,18 @@ func Test_TargetLetsRequestPickHost(t *testing.T) {
 		{"ftp:$1", true},
 		{"WS:$1", true},
 		{"FTP:$1", true},
-		// file takes no host that way, so nothing there is hijackable.
-		{"file:$1", false},
+		// file has no missing-solidus reading, but a captured "//evil.com" opens
+		// an authority for it like any other scheme.
+		{"file:$1", true},
+		// Any scheme at all: "//" is what opens the authority, so which scheme
+		// it is does not enter into it.
+		{"mailto:$1", true},
+		{"myapp:$1", true},
+		{"custom:$1", true},
+		// Author text between the colon and the capture leaves no authority for
+		// the value to open, or one the author already filled in.
+		{"myapp:fixed/$1", false},
+		{"https:fixed/$1", false},
 		// Nothing beside the capture is host text: a port, a captured port, a
 		// second capture and a trailing dot all pin nothing, so the value names
 		// the host on its own.
@@ -811,8 +821,8 @@ func Test_TargetLetsRequestPickHost(t *testing.T) {
 		// A scheme with no authority syntax has no host to hijack, so it is not
 		// refused — dropping it would kill a working rule and the warning would
 		// say something untrue about it.
-		{"mailto:$1", false},
 		{"mailto:$1@example.com", false},
+		{"myapp:$1@example.com", false},
 
 		{"https://$1.example.com", false},
 		{"https://cdn.example.com$1", false},

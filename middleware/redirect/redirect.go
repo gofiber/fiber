@@ -422,19 +422,44 @@ func targetLetsRequestPickHost(target string, chunks []authorityChunk) bool {
 		return true
 	}
 
-	// No authority span. Only a scheme the client navigates by can still reach a
-	// host of the request's choosing — "https:$1" with a value of "//evil.com"
-	// composes "https://evil.com". A scheme with no authority syntax at all,
-	// "mailto:$1@example.com", has no host to hijack, and refusing it would drop
-	// a working rule while telling the author something untrue about it.
+	// No authority span, so the only way a value reaches a host is by opening
+	// one itself, and it can only do that from immediately after the scheme's
+	// colon. What matters there is not which scheme it is: "//" opens an
+	// authority for every scheme, so "mailto:$1", "myapp:$1" and "custom:$1"
+	// all composed a host of the request's choosing from a captured
+	// "//evil.com". For the special schemes the parser does not even need the
+	// slashes — "https:evil.com" is https://evil.com — but either way the
+	// capture has to sit at the front to do it.
+	//
+	// Author text between the colon and the capture settles it: "myapp:fixed/$1"
+	// opens no authority at all, and "https:fixed/$1" opens one the author
+	// filled in. And a capture at the front is still safe where the author wrote
+	// host text after it, which is what "mailto:$1@example.com" does — the
+	// parser reads example.com as the host and the capture as userinfo.
 	i := schemeEnd(target)
 	if i <= 0 || strings.HasPrefix(target[i+1:], "//") {
 		return false
 	}
-	if !isSpecialScheme(target[:i]) {
+	rest := target[i+1:]
+	j := placeholderEnd(rest)
+	if j < 0 {
 		return false
 	}
-	return containsPlaceholder(target[i+1:])
+	return !pinsHost(rest[j:], true)
+}
+
+// placeholderEnd returns the index just past a "$N" token at the start of s, or
+// -1 when s does not begin with one. All the digits are taken, which is the
+// widest reading of the token and so the least text credited to the author.
+func placeholderEnd(s string) int {
+	if len(s) < 2 || s[0] != '$' || s[1] < '0' || s[1] > '9' {
+		return -1
+	}
+	i := 1
+	for i < len(s) && s[i] >= '0' && s[i] <= '9' {
+		i++
+	}
+	return i
 }
 
 // captureInBrackets reports whether a "$N" token falls inside the brackets of
@@ -502,36 +527,6 @@ func captureInBrackets(target string) bool {
 			if depth > 0 && i+1 < len(authority) && authority[i+1] >= '0' && authority[i+1] <= '9' {
 				return true
 			}
-		}
-	}
-	return false
-}
-
-// isSpecialScheme reports whether the URL parser gives this scheme an authority
-// even where the author wrote no "//".
-//
-// The WHATWG special schemes are http, https, ws, wss, ftp and file, and for
-// all but file the parser's missing-solidus step reads what follows the colon
-// as a host: "ws:evil.com" is ws://evil.com, so a capture there names the host
-// without needing to supply a single slash. file is left out because it takes
-// no host that way — "file:evil.com" has an empty one.
-func isSpecialScheme(scheme string) bool {
-	switch {
-	case utils.EqualFold(scheme, "http"), utils.EqualFold(scheme, "https"):
-		return true
-	case utils.EqualFold(scheme, "ws"), utils.EqualFold(scheme, "wss"):
-		return true
-	case utils.EqualFold(scheme, "ftp"):
-		return true
-	}
-	return false
-}
-
-// containsPlaceholder reports whether s holds a "$N" token.
-func containsPlaceholder(s string) bool {
-	for i := 0; i+1 < len(s); i++ {
-		if s[i] == '$' && s[i+1] >= '0' && s[i+1] <= '9' {
-			return true
 		}
 	}
 	return false

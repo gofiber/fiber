@@ -150,12 +150,18 @@ this middleware** before reaching the rest of the stack. With
 `{"/go/*": "https://$1", "/*": "/home"}`, a request for `/go/evil.com` is
 redirected to `/home` by the catch-all.
 
-This check covers every scheme the URL parser gives an authority to — `http`,
-`https`, `ws`, `wss` and `ftp`. For all of them a capture straight after the
-colon names the host outright, without needing a slash of its own, because the
-parser reads `"ws:evil.com"` as `ws://evil.com`. `file:` is excluded because it
-takes no host that way, and a scheme it does not recognise, `"mailto:$1@x"`,
-has none to take.
+This applies to every scheme, not only the ones a browser navigates by. A `//`
+opens an authority whatever the scheme is, so `"mailto:$1"`, `"myapp:$1"` and
+any custom or deep-link scheme hand the host to a captured `//evil.com` exactly
+as `"https:$1"` does; for `http`, `https`, `ws`, `wss` and `ftp` the parser does
+not even need the slashes, reading `"ws:evil.com"` as `ws://evil.com`.
+
+What decides it is where the capture sits, not which scheme precedes it. A
+capture straight after the colon can open an authority; one with the author's
+text in front of it cannot, so `"myapp:fixed/$1"` and `"https:fixed/$1"` are
+fine. And a capture at the front is fine where the author wrote host text after
+it — in `"mailto:$1@example.com"` the parser reads `example.com` as the host and
+the capture as userinfo.
 
 ::::
 

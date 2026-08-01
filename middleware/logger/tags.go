@@ -108,17 +108,22 @@ func createTagMap(cfg *Config) map[string]LogFunc {
 			return writeSanitizedString(output, c.IP())
 		},
 		TagIPs: func(output Buffer, c fiber.Ctx, _ *Data, _ string) (int, error) {
-			// Every field line, which is what c.IP() and c.IPs() parse. A
-			// recipient may combine repeated field lines into the comma-joined
-			// form (RFC 9110 Section 5.2), and the proxy-header accessors do
-			// exactly that — so reading only the first here would log a shorter
-			// chain than the one the framework keyed its trust decisions on,
-			// and the access log would not explain what was enforced. The bare
-			// comma below matches how proxyHeaderValue combines them, so the
-			// logged value is what c.IP() and c.IPs() actually parsed.
-			values := c.Request().Header.PeekAll(fiber.HeaderXForwardedFor)
+			// Log the chain the framework parsed, by asking it. Reading the
+			// header here instead meant reading it a second way: PeekAll
+			// compares stored names byte for byte, so under
+			// DisableHeaderNormalizing an "x-forwarded-for:" sent in lower case
+			// matched nothing and this logged an empty chain — while c.IPs()
+			// went on parsing it and the trust decisions went on using it.
+			// An access log that cannot show what was enforced is worse than
+			// one that is merely terse.
+			//
+			// c.IPs() also splits and trims, so the entries are the ones the
+			// framework acted on rather than the raw field lines: repeated
+			// lines and a single comma-joined line log identically, which is
+			// what RFC 9110 Section 5.2 says they are.
+			ips := c.IPs()
 			n := 0
-			for i, v := range values {
+			for i, ip := range ips {
 				if i > 0 {
 					m, err := output.WriteString(",")
 					n += m
@@ -126,7 +131,7 @@ func createTagMap(cfg *Config) map[string]LogFunc {
 						return n, err
 					}
 				}
-				m, err := writeSanitized(output, v)
+				m, err := writeSanitizedString(output, ip)
 				n += m
 				if err != nil {
 					return n, err
