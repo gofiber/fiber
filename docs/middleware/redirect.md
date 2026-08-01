@@ -103,11 +103,26 @@ host text, so these are the same case and are refused too:
 | `"https://\t$1"` | A tab, LF or CR is deleted by the URL parser before it reads the host, so it pins nothing that survives. |
 | `"https://$1\u00ad"` | Same for the code points UTS #46 mapping deletes — soft hyphen, zero-width space, BOM — and for those it folds onto a plain `.`, such as the ideographic full stop. Percent-escaped spellings such as `%2E` and `%C2%AD` count too, since the parser decodes a host before reading it. |
 | `"https://$1.1"`, `"https://$1.0x1"` | A host whose last label reads as a number is parsed as an IPv4 address, so the author's trailing text is the low octets and the request supplies the network — `/r/127.0.0` would reach `127.0.0.1`. A complete address is fine: `"https://127.0.0.1:$1"` pins the host and captures the port. |
-| `"https://$1xyz"`, `"https://$1cafe"` | With no dot of its own the text sits inside a label the capture opens, so it is a label's tail and not a label. The request decides what the label becomes: `/r/evil.` reaches `evil.xyz`, and `/r/0x` reaches `0.0.202.254`. Give it a dot — `"https://$1.xyz"` pins that suffix, `"https://$1.cdn.example.com"` that domain. |
+| `"https://$1xyz"`, `"https://$1cafe"` | With no dot of its own the text sits inside a label the capture opens, so it is a label's tail and not a label. The request decides what the label becomes: `/r/evil.` reaches `evil.xyz`, and `/r/0x` reaches `0.0.202.254`. Give it a dot — `"https://$1.cdn.example.com"` pins that domain. |
 
 Note that `"https://$1@example.com"` is fine — there the author's host follows
 the `@` and the capture is only userinfo — as are `"https://cdn.example.com:$1"`
 and `"https://tenant-$1.example.com"`.
+
+:::danger Pin a domain you control, not just a suffix
+
+These checks ask whether the *author* wrote the host, not whether the host is
+one you own. `"https://$1.com"` and `"https://$1.xyz"` pass — the capture is a
+label under a suffix the target names — but anyone can register a name under
+`.com` or `.xyz`, so `/go/evil` still reaches `evil.com`. The same goes for a
+suffix shared with other tenants.
+
+Fiber has no list of public suffixes and cannot tell `"$1.com"` from
+`"$1.example.com"`. Pin enough of the host that every name below it is yours,
+and where the set of destinations is known, prefer matching the capture against
+an allowlist in your own handler over interpolating it into a host at all.
+
+:::
 
 A capture inside the brackets of an IPv6 literal is refused separately, and for
 its own reason — one side of it genuinely does pin a host, so the rules above do
