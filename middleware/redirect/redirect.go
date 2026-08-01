@@ -629,6 +629,55 @@ func hostPinnedBefore(chunks []authorityChunk, i int) bool {
 	return false
 }
 
+// percentDecode decodes the valid "%XX" escapes in s and passes anything else
+// through untouched, the way a URL parser decodes a host before reading it.
+//
+// Without it the escape counted as host text of the author's while the client
+// saw whatever it stands for: "https://$1%2E" pinned a host on three characters
+// that decode to the bare "." this guard already knows pins nothing, and
+// "https://$1%C2%AD" on a soft hyphen that the mapping then deletes. Both
+// composed a location a browser resolves to the captured host alone.
+//
+// A stray "%" is left as-is rather than treated as an error, since that is what
+// the parser does with it, and returning the raw string on the first bad escape
+// would keep exactly the text this is meant to remove.
+func percentDecode(s string) string {
+	i := strings.IndexByte(s, '%')
+	if i < 0 {
+		return s
+	}
+
+	decoded := make([]byte, 0, len(s))
+	decoded = append(decoded, s[:i]...)
+	for ; i < len(s); i++ {
+		if s[i] != '%' || i+2 >= len(s) {
+			decoded = append(decoded, s[i])
+			continue
+		}
+		hi, lo := unhex(s[i+1]), unhex(s[i+2])
+		if hi < 0 || lo < 0 {
+			decoded = append(decoded, s[i])
+			continue
+		}
+		decoded = append(decoded, byte(hi<<4|lo))
+		i += 2
+	}
+	return string(decoded)
+}
+
+// unhex returns the value of a hex digit, or -1.
+func unhex(c byte) int {
+	switch {
+	case c >= '0' && c <= '9':
+		return int(c - '0')
+	case c >= 'a' && c <= 'f':
+		return int(c-'a') + 10
+	case c >= 'A' && c <= 'F':
+		return int(c-'A') + 10
+	}
+	return -1
+}
+
 // hostMapping applies the same UTS #46 mapping a URL parser applies to a domain
 // before reading it. The validation options are off because the question here
 // is only what text survives, not whether the whole authority is well formed.
@@ -703,7 +752,7 @@ func pinsHost(literal string) bool {
 	// "https://evil.com\u00ad" from a captured "evil.com" — which a browser
 	// reads as evil.com. Anything the mapping refuses outright pins nothing
 	// either, since it cannot become a host at all.
-	mapped, err := hostMapping.ToUnicode(literal)
+	mapped, err := hostMapping.ToUnicode(percentDecode(literal))
 	if err != nil {
 		return false
 	}

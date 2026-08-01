@@ -920,6 +920,17 @@ func Test_PinsHost(t *testing.T) {
 		{"\x01", false},
 		{"\x1f", false},
 		{"\x7f", false},
+		// The parser percent-decodes a host before reading it, so an escape
+		// pins only what it stands for.
+		{"%2E", false},       // "."
+		{"%2e", false},       // same, lowercased
+		{"%C2%AD", false},    // soft hyphen
+		{"%E3%80%82", false}, // ideographic full stop
+		{"%EF%BB%BF", false}, // BOM
+		{"%41", true},        // "A" really is host text
+		// A stray "%" is literal to the parser, not an error.
+		{"100%", true},
+		{"a%zz", true},
 		// An internationalized label is host text, in either spelling.
 		{"\u4f8b\u3048.jp", true},
 		{"xn--r8jz45g.jp", true},
@@ -1332,4 +1343,39 @@ func Test_Redirect_ControlCharacterPinsNoHost(t *testing.T) {
 			require.Empty(t, resp.Header.Get("Location"))
 		})
 	}
+}
+
+// Test_Redirect_PercentEscapePinsOnlyWhatItDecodesTo covers the escaped
+// spelling of the same idea: a URL parser percent-decodes a host before it maps
+// or reads it, so "%2E" is the "." this guard already knows pins nothing, and
+// "%C2%AD" is a soft hyphen the mapping deletes. Judging the escape as written
+// let three ordinary characters stand in for a host.
+func Test_Redirect_PercentEscapePinsOnlyWhatItDecodesTo(t *testing.T) {
+	t.Parallel()
+
+	for _, suffix := range []string{"%2E", "%2e", "%C2%AD", "%E3%80%82", "%EF%BB%BF"} {
+		t.Run(suffix, func(t *testing.T) {
+			t.Parallel()
+
+			app := fiber.New()
+			app.Use(New(Config{Rules: map[string]string{"/r/*": "https://$1" + suffix}}))
+			app.Use(func(c fiber.Ctx) error { return c.SendString("fell through") })
+
+			req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/r/evil.com", http.NoBody)
+			require.NoError(t, err)
+			resp, err := app.Test(req)
+			require.NoError(t, err)
+			require.Equal(t, fiber.StatusOK, resp.StatusCode, "the rule must be refused at startup")
+			require.Empty(t, resp.Header.Get("Location"))
+		})
+	}
+
+	// An escape that decodes to real host text still pins one.
+	app := fiber.New()
+	app.Use(New(Config{Rules: map[string]string{"/r/*": "https://$1%41.example.com"}}))
+	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/r/t", http.NoBody)
+	require.NoError(t, err)
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, "https://t%41.example.com", resp.Header.Get("Location"))
 }
