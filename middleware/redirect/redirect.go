@@ -854,7 +854,14 @@ func pinsHost(literal string, openLeft bool) bool {
 	// 127.0.0.0. The same tails finish a percent-escape the value left open:
 	// "https://$1E" composed "https://evil.com%2E" from "evil.com%2", which
 	// decodes to the trailing dot that pins nothing.
-	if openLeft && strings.IndexByte(trimmed, '.') < 0 && absorbableTail(trimmed) {
+	// Judged before the trim, since it is the literal's own leading "." that
+	// closes the label against whatever the capture supplies — "$1.de" pins the
+	// German suffix exactly as "$1.example.com" pins that domain, and trimming
+	// it away first made every all-hex TLD look absorbable.
+	if strings.HasPrefix(mapped, ".") {
+		openLeft = false
+	}
+	if openLeft && absorbableTail(trimmed) {
 		return false
 	}
 

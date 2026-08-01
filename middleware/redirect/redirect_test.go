@@ -964,6 +964,14 @@ func Test_PinsHost(t *testing.T) {
 		{"cdn", true},
 		{"xyz", true},
 		{"tenant-", true},
+		// A leading "." closes the label, so an all-hex suffix is a suffix —
+		// ".de" pins Germany the way ".example.com" pins that domain.
+		{".de", true},
+		{".be", true},
+		{".cc", true},
+		{".ad", true},
+		{".cafe", true},
+		{".e", true},
 		{"127.0.0.1", true},
 		{"10.0.0.1", true},
 		// A name is still a name, whatever letters it is made of.
@@ -1530,6 +1538,8 @@ func Test_Redirect_ClosedLabelStillPins(t *testing.T) {
 		{"https://$1@example.com/", "/r/user", "https://user@example.com/"},
 		{"https://$1.example.com", "/r/tenant", "https://tenant.example.com"},
 		{"https://$1cdn.example.com", "/r/a", "https://acdn.example.com"},
+		{"https://$1.de", "/r/shop", "https://shop.de"},
+		{"https://$1.cafe", "/r/shop", "https://shop.cafe"},
 		{"https://$1xyz.example.com", "/r/a", "https://axyz.example.com"},
 	} {
 		t.Run(tc.target, func(t *testing.T) {
