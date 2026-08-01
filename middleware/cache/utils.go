@@ -137,9 +137,15 @@ func keyFieldLines(h *fasthttp.RequestHeader, name string) [][]byte {
 		// built twice — once to look an entry up before the handler runs, once
 		// to store it after — and the form accessors lowercase this header in
 		// place in between, so the two saw different bytes and the entry landed
-		// under a key no lookup would produce. Folding first makes both sides
-		// agree, and on a form request it is the value the handler works from
-		// anyway.
+		// under a key no lookup would produce.
+		//
+		// Note this is a write, on a path that otherwise only reads. Where the
+		// lookup builds a key — so from the second request on, once a Vary
+		// manifest exists — the handler sees the folded value whether or not it
+		// asks for a form value. That is the value it would get from FormValue
+		// or MultipartForm anyway, and the boundary keeps its case, so only a
+		// handler comparing the media type case-sensitively can tell. IsForm
+		// gates it, so nothing else is touched.
 		mediatype.NormalizeRequestContentType(h)
 	}
 	return h.PeekAll(name)
