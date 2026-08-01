@@ -1,7 +1,9 @@
 package redirect
 
 import (
+	"maps"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -20,17 +22,13 @@ type authorityChunk struct {
 // compiledRule is one configured rule with its target and the decision, made
 // once at construction, of whether that target picks its own destination.
 type compiledRule struct {
-	target string
+	pattern *regexp.Regexp
+	target  string
 	// authorityChunks splits the target's own authority — the span that decides
 	// which host the redirect reaches — into literal text and "$N" tokens, so
 	// each substituted value can be judged by where it lands. Empty when the
 	// authority holds no placeholder and so cannot be moved by a request.
 	authorityChunks []authorityChunk
-	// letsRequestPickHost is set when the target hands the whole destination to
-	// the request ("https://$1", "//$1", "https:$1"). Nothing can tell the
-	// intended host from an attacker's there, so the rule is refused outright
-	// and New says why at startup.
-	letsRequestPickHost bool
 	// sameOrigin is set when the target names no authority of its own. The "$N"
 	// values spliced into such a target come from the request path, so they must
 	// not be able to introduce one.
@@ -41,9 +39,13 @@ type compiledRule struct {
 func New(config ...Config) fiber.Handler {
 	cfg := configDefault(config...)
 
-	// Initialize
-	cfg.rulesRegex = map[*regexp.Regexp]compiledRule{}
-	for k, v := range cfg.Rules {
+	// Initialize. The rules are walked in sorted order rather than the map's:
+	// two patterns can match the same path, and with a map range the winner —
+	// and now, since a rule can be refused and fall through to the next, whether
+	// there is a redirect at all — changed from run to run.
+	cfg.rulesRegex = cfg.rulesRegex[:0]
+	for _, k := range slices.Sorted(maps.Keys(cfg.Rules)) {
+		v := cfg.Rules[k]
 		pattern := strings.ReplaceAll(k, "*", "(.*)")
 		// Anchor both ends so a rule matches the whole path. Without the leading
 		// "^" the pattern matches any suffix, so a request can be redirected by a
@@ -73,12 +75,19 @@ func New(config ...Config) fiber.Handler {
 				"capture in the target to redirect on every value", k)
 		}
 
-		cfg.rulesRegex[regexp.MustCompile(pattern)] = compiledRule{
-			target:              v,
-			authorityChunks:     chunks,
-			letsRequestPickHost: letsRequestPickHost,
-			sameOrigin:          !targetNamesAuthority(v),
+		if letsRequestPickHost {
+			// Not compiled at all, so "never fires" is structural rather than a
+			// flag a later edit could forget to test — and the request path is
+			// not matched against a pattern whose result is thrown away.
+			continue
 		}
+
+		cfg.rulesRegex = append(cfg.rulesRegex, compiledRule{
+			pattern:         regexp.MustCompile(pattern),
+			target:          v,
+			authorityChunks: chunks,
+			sameOrigin:      !targetNamesAuthority(v),
+		})
 	}
 
 	// Middleware function
@@ -88,8 +97,8 @@ func New(config ...Config) fiber.Handler {
 			return c.Next()
 		}
 		// Rewrite
-		for k, rule := range cfg.rulesRegex {
-			replacer := captureTokens(k, c.Path())
+		for _, rule := range cfg.rulesRegex {
+			replacer := captureTokens(rule.pattern, c.Path())
 			if replacer == nil {
 				continue
 			}
@@ -99,7 +108,7 @@ func New(config ...Config) fiber.Handler {
 			// tenant — and the author means $1 to be a label, not a whole URL.
 			// Refuse the rule when a value would move the host, rather than
 			// guess what the author meant; the request falls through to the app.
-			if rule.letsRequestPickHost || !authorityHolds(rule.authorityChunks, replacer) {
+			if !authorityHolds(rule.authorityChunks, replacer) {
 				continue
 			}
 
@@ -160,6 +169,13 @@ func targetNamesAuthority(target string) bool {
 // "/", "?" or "#" per RFC 3986, plus "\" because the WHATWG URL parser treats a
 // backslash there as a slash. A scheme with no "//" after it — "mailto:x" — has
 // no authority at all, and neither does a path-only target.
+//
+// Any further slashes right after the opening pair belong to neither: the
+// parser's special-authority-ignore-slashes state skips the whole run before it
+// starts reading the host. Stopping the span at the first of them instead made
+// "///$1" look like a target with an empty authority — no chunks to guard, and
+// still "absolute" enough to skip keepSameOrigin — while the browser read
+// "///evil.com" as evil.com.
 func authoritySpan(target string) (start, end int) { //nolint:nonamedreturns // the pair is a range; names say which is which
 	switch {
 	case strings.HasPrefix(target, "//"):
@@ -170,6 +186,10 @@ func authoritySpan(target string) (start, end int) { //nolint:nonamedreturns // 
 			return 0, 0
 		}
 		start = i + 3
+	}
+
+	for start < len(target) && (target[start] == '/' || target[start] == '\\') {
+		start++
 	}
 
 	if offset := strings.IndexAny(target[start:], `/\?#`); offset >= 0 {

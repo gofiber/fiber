@@ -563,6 +563,101 @@ func Test_Redirect_TenthCaptureInAuthority(t *testing.T) {
 	require.Empty(t, resp.Header.Get("Location"))
 }
 
+// Test_Redirect_ExtraSlashesBeforeTheCapture covers targets that open their
+// authority with more than two slashes.
+//
+// The URL parser's special-authority-ignore-slashes state skips the whole run
+// before it reads the host, so "///evil.com" is evil.com. Stopping the authority
+// span at the first of those slashes instead made such a target look like it had
+// an empty authority: no chunks for the guard to walk, and still "absolute"
+// enough that the same-origin fallback was skipped too.
+func Test_Redirect_ExtraSlashesBeforeTheCapture(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		target  string
+		request string
+		want    string // "" means the rule must not fire
+	}{
+		{"three slashes", "///$1", "/go/evil.com", ""},
+		{"four slashes", "////$1", "/go/evil.com", ""},
+		{"slash then backslash", `//\$1`, "/go/evil.com", ""},
+		{"scheme with three slashes", "https:///$1", "/go/evil.com", ""},
+		{"scheme then backslash", `https://\$1`, "/go/evil.com", ""},
+
+		// A host the author wrote after the run is still their choice, and the
+		// capture only reaches the path.
+		{"fixed host after the run", "///static/$1", "/go/x", "///static/x"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			app := fiber.New()
+			app.Use(New(Config{
+				Rules:      map[string]string{"/go/*": tc.target},
+				StatusCode: fiber.StatusFound,
+			}))
+			app.Get("/*", func(c fiber.Ctx) error { return c.SendString("fell through") })
+
+			req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, tc.request, http.NoBody)
+			require.NoError(t, err)
+			resp, err := app.Test(req)
+			require.NoError(t, err)
+
+			if tc.want == "" {
+				require.Equal(t, fiber.StatusOK, resp.StatusCode, "the rule must not fire")
+				require.Empty(t, resp.Header.Get("Location"))
+				return
+			}
+			require.Equal(t, fiber.StatusFound, resp.StatusCode)
+			require.Equal(t, tc.want, resp.Header.Get("Location"))
+		})
+	}
+}
+
+// Test_Redirect_OverlappingRulesAreDeterministic pins that two patterns matching
+// the same path resolve the same way on every run.
+//
+// The rules used to be held in a map and walked in its randomized order, so the
+// winner changed run to run — and once a rule could be refused and fall through
+// to the next, so did whether there was a redirect at all.
+func Test_Redirect_OverlappingRulesAreDeterministic(t *testing.T) {
+	t.Parallel()
+
+	build := func() *fiber.App {
+		app := fiber.New()
+		app.Use(New(Config{
+			Rules: map[string]string{
+				"/cdn/*":  "/first/$1",
+				"/cdn/*x": "/second/$1",
+			},
+			StatusCode: fiber.StatusFound,
+		}))
+		app.Get("/*", func(c fiber.Ctx) error { return c.SendString("fell through") })
+		return app
+	}
+
+	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/cdn/ax", http.NoBody)
+	require.NoError(t, err)
+	resp, err := build().Test(req)
+	require.NoError(t, err)
+	first := resp.Header.Get("Location")
+	require.NotEmpty(t, first)
+
+	// Rebuilding the middleware re-walks the rules map, which is where the
+	// randomization came from.
+	for range 20 {
+		req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/cdn/ax", http.NoBody)
+		require.NoError(t, err)
+		resp, err := build().Test(req)
+		require.NoError(t, err)
+		require.Equal(t, first, resp.Header.Get("Location"))
+	}
+}
+
 func Test_TargetLetsRequestPickHost(t *testing.T) {
 	t.Parallel()
 

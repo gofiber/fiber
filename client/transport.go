@@ -459,6 +459,14 @@ func trustedRedirectTarget(host, initialHostname string) bool {
 	if initialHostname == "" {
 		return false
 	}
+	// The same bail-out net/http's isDomainOrSubdomain makes, and for the same
+	// reason: a ':' or '%' means this is not a hostname, and running the suffix
+	// test anyway matches inside an IPv6 zone identifier. "[::1%.example.com]"
+	// would come back a subdomain of example.com and carry the Authorization
+	// and Cookie headers to a loopback service.
+	if strings.ContainsAny(target, ":%") {
+		return false
+	}
 	return len(target) > len(initialHostname) &&
 		target[len(target)-len(initialHostname)-1] == '.' &&
 		utils.HasSuffixFold(target, initialHostname)
