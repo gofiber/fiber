@@ -476,10 +476,6 @@ func Test_Redirect_CaptureBoundedByTheTarget(t *testing.T) {
 	}
 }
 
-// Test_TargetLetsRequestPickHost pins which target shapes hand the destination
-// to the request. "https:$1" is the awkward one: it names no authority for the
-// chunk check to guard and no origin for keepSameOrigin to hold it to, yet a
-// captured "//evil.com" still composes "https://evil.com".
 // Test_Redirect_CaptureClosingTheHost covers the two ways a capture can end up
 // naming the host even though it is not the last chunk of the target's
 // authority.
@@ -741,6 +737,15 @@ func Test_Redirect_MoreSpecificRuleWins(t *testing.T) {
 	require.Equal(t, "/home", resp.Header.Get("Location"))
 }
 
+// Test_TargetLetsRequestPickHost pins which target shapes hand the destination
+// to the request. "https:$1" is the awkward one: it names no authority for the
+// chunk check to guard and no origin for keepSameOrigin to hold it to, yet a
+// captured "//evil.com" still composes "https://evil.com".
+//
+// The shapes that pin only a port, a trailing dot or userinfo belong here too.
+// authorityHolds refuses every value for them, so before they were listed the
+// rule compiled, matched each request, was refused, and fell through — while
+// warning that values opening a path or query were honored, when none were.
 func Test_TargetLetsRequestPickHost(t *testing.T) {
 	t.Parallel()
 
@@ -751,6 +756,19 @@ func Test_TargetLetsRequestPickHost(t *testing.T) {
 		{"https://$1", true},
 		{"//$1", true},
 		{"https:$1", true},
+		// Nothing beside the capture is host text: a port, a captured port, a
+		// second capture and a trailing dot all pin nothing, so the value names
+		// the host on its own.
+		{"https://$1:8080", true},
+		{"https://$1:8080/health", true},
+		{"https://$1:$2", true},
+		{"https://$1$2", true},
+		{"//$1.", true},
+		{"//.$1", true},
+		// Text before an "@" is a username, not a host.
+		{"https://example.com@$1", true},
+		{"https://user:pw@$1", true},
+
 		// A scheme with no authority syntax has no host to hijack, so it is not
 		// refused — dropping it would kill a working rule and the warning would
 		// say something untrue about it.
@@ -760,12 +778,46 @@ func Test_TargetLetsRequestPickHost(t *testing.T) {
 		{"https://$1.example.com", false},
 		{"https://cdn.example.com$1", false},
 		{"https://cdn.example.com/$1", false},
+		// The author's host text can sit either side of the capture, and a
+		// captured port leaves it theirs.
+		{"https://$1@example.com", false},
+		{"https://cdn.example.com:$1", false},
+		{"https://tenant-$1.example.com", false},
 		{"/$1", false},
 		{"$1", false},
 		{"https://cdn.example.com", false},
 		{"mailto:someone@example.com", false},
 	} {
 		require.Equal(t, tc.want, targetLetsRequestPickHost(tc.target, authorityChunks(tc.target)), "target %q", tc.target)
+	}
+}
+
+// Test_PinsHost pins the three things that are not author-written host text: a
+// port, the separators that may trail a hostname, and userinfo.
+func Test_PinsHost(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		literal string
+		want    bool
+	}{
+		{"cdn.example.com", true},
+		{"cdn.example.com:", true},
+		{"cdn.example.com:8080", true},
+		{".example.com", true},
+		{"@example.com", true},
+		{"user:pw@example.com", true},
+
+		{"", false},
+		{":8080", false},
+		{".", false},
+		{"..", false},
+		// Everything through the last "@" is userinfo, so nothing is left.
+		{"example.com@", false},
+		{"user:pw@", false},
+		{"example.com@:8080", false},
+	} {
+		require.Equal(t, tc.want, pinsHost(tc.literal), "literal %q", tc.literal)
 	}
 }
 

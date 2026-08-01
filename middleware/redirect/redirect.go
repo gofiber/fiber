@@ -57,7 +57,6 @@ func New(config ...Config) fiber.Handler {
 		return cmp.Compare(a, b)
 	})
 
-	cfg.rulesRegex = cfg.rulesRegex[:0]
 	for _, k := range keys {
 		v := cfg.Rules[k]
 		pattern := strings.ReplaceAll(k, "*", "(.*)")
@@ -335,17 +334,32 @@ func hostPinnedAfter(chunks []authorityChunk, i int) bool {
 // targetLetsRequestPickHost reports whether the request, not the author, decides
 // the host a target reaches.
 //
-// Two spellings do that. "https://$1" and "//$1" hand over the whole authority.
-// "https:$1" has no "//" at all, so it names no authority for authorityChunks to
-// guard and no origin for keepSameOrigin to hold it to — yet a value of
-// "//evil.com" still composes "https://evil.com". Both are open redirects the
-// author wrote deliberately, and both are worth saying out loud once.
+// An authority that holds a capture and no host text of the author's hands the
+// host over whole. "https://$1" and "//$1" are the plain spellings, but a
+// capture followed by nothing that pins a host does the same: "https://$1:8080"
+// pins a port and "//$1." a trailing dot, and neither is a host. This is the
+// static half of the question authorityHolds asks per value, so the two agree
+// by construction — every value it would refuse belongs to a rule refused here
+// first.
+//
+// "https:$1" has no "//" at all, so it names no authority for authorityChunks
+// to guard and no origin for keepSameOrigin to hold it to — yet a value of
+// "//evil.com" still composes "https://evil.com".
 func targetLetsRequestPickHost(target string, chunks []authorityChunk) bool {
-	if len(chunks) == 1 && chunks[0].placeholder {
-		return true
-	}
 	if chunks != nil {
-		return false
+		holdsCapture := false
+		for _, chunk := range chunks {
+			switch {
+			case chunk.placeholder:
+				holdsCapture = true
+			case pinsHost(chunk.text):
+				// The author wrote host text somewhere in the authority, so the
+				// host is theirs and authorityHolds judges the captures around
+				// it per value.
+				return false
+			}
+		}
+		return holdsCapture
 	}
 
 	// No authority span. Only a scheme the client navigates by can still reach a
@@ -518,13 +532,18 @@ func hostPinnedBefore(chunks []authorityChunk, i int) bool {
 // pinsHost reports whether a literal chunk of a target's authority actually
 // fixes part of the host.
 //
-// Only what precedes the port colon counts, and only once the separators that
-// may trail a hostname are stripped. ":8080" pins nothing — "evil.com:8080" is
-// still evil.com — and neither does a lone ".", since "evil.com." is "evil.com"
-// with the DNS root spelled out. Treating either as author-written host text
-// left the capture beside it judged as an interior label, and the request named
-// the host.
+// Only what follows the last "@" and precedes the port colon counts, and only
+// once the separators that may trail a hostname are stripped. ":8080" pins
+// nothing — "evil.com:8080" is still evil.com — and neither does a lone ".",
+// since "evil.com." is "evil.com" with the DNS root spelled out. Text before an
+// "@" is userinfo, not host: "https://example.com@$1" reads example.com as a
+// username and leaves the host to the capture. Treating any of them as
+// author-written host text left the capture beside it judged as an interior
+// label, and the request named the host.
 func pinsHost(literal string) bool {
+	if i := strings.LastIndexByte(literal, '@'); i >= 0 {
+		literal = literal[i+1:]
+	}
 	if i := strings.IndexByte(literal, ':'); i >= 0 {
 		literal = literal[:i]
 	}

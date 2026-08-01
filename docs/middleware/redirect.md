@@ -91,9 +91,24 @@ chooses where the client lands. **Such a rule never fires**, and Fiber logs a
 warning naming it at startup, since there is no way to tell the intended host
 from an attacker's. Pin the host in the target instead.
 
-The same applies where only separators precede the capture, as in `"//$1."` —
-`"///evil.com."` is read host-first by the URL parser, so nothing there pins a
-host either.
+A capture hands over the host whenever nothing beside it in the authority is
+host text, so these are the same case and are refused too:
+
+| Target | Why it pins no host |
+| --- | --- |
+| `"https://$1:8080"`, `"https://$1:$2"` | A port is not a host — `evil.com:8080` is still `evil.com`. |
+| `"//$1."`, `"//.$1"` | `"///evil.com."` is read host-first by the URL parser; `evil.com.` is `evil.com` with the DNS root spelled out. |
+| `"https://$1$2"` | A second capture pins nothing an attacker does not also supply. |
+| `"https://example.com@$1"` | Everything before an `@` is a username, so the host is still the capture's. |
+
+Note that `"https://$1@example.com"` is fine — there the author's host follows
+the `@` and the capture is only userinfo — as are `"https://cdn.example.com:$1"`
+and `"https://tenant-$1.example.com"`.
+
+A refused rule is dropped, so the request continues to the **remaining rules of
+this middleware** before reaching the rest of the stack. With
+`{"/go/*": "https://$1", "/*": "/home"}`, a request for `/go/evil.com` is
+redirected to `/home` by the catch-all.
 
 This check covers the schemes a client navigates by. A scheme-only target in
 some other scheme, `"/go/*": "ws:$1"`, still composes `ws://evil.com` from a
