@@ -856,7 +856,12 @@ func pinsHost(literal string, openLeft bool) bool {
 		last = trimmed[i+1:]
 	}
 	if isIPv4Number(last) {
-		return net.ParseIP(trimmed) != nil
+		// An address pins a host only where the capture cannot reach its first
+		// octet, which is the network. Open on the left it can: with the
+		// literal "%3110.0.0.1" — a "1" the client only sees after decoding, so
+		// chunking does not split it off — a captured "0" composes
+		// "0%3110.0.0.1", which reads as octal 0127 and lands on 72.0.0.1.
+		return !openLeft && net.ParseIP(trimmed) != nil
 	}
 	return true
 }

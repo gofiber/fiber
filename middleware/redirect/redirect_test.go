@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/gofiber/fiber/v3"
@@ -411,6 +412,19 @@ func Test_AuthorityChunks(t *testing.T) {
 		{text: "$1", placeholder: true},
 		{text: ":8080"},
 	}, authorityChunks("https://$1:8080"))
+
+	// A literal between two captures is open on the left, unlike one that
+	// starts the authority — the only place that distinction is made.
+	require.Equal(t, []authorityChunk{
+		{text: "$1", placeholder: true},
+		{text: "xyz:"},
+		{text: "$2", placeholder: true},
+	}, authorityChunks("https://$1xyz:$2"))
+
+	require.Equal(t, []authorityChunk{
+		{text: "xyz.example.com", pins: true},
+		{text: "$1", placeholder: true},
+	}, authorityChunks("https://xyz.example.com$1"))
 
 	// A target that is nothing but the token: the author picked the
 	// destination outright, and authorityHolds leaves it alone.
@@ -959,8 +973,6 @@ func Test_PinsHost(t *testing.T) {
 		{"ad", false},
 		{"x", false},
 		{"xcafe", false},
-		// Not every dotless label is one: these hold something that is not a
-		// hex digit, so no prefix makes them a number.
 		// Invalid UTF-8 is not host text: the mapping turns it into U+FFFD,
 		// which no client accepts in a host.
 		{"\xff.example.com", false},
@@ -974,6 +986,10 @@ func Test_PinsHost(t *testing.T) {
 		{"xyz", false},
 		{"tenant-", false},
 		{"com", false},
+		// A trailing dot is not a label separator against what precedes it, and
+		// the trim takes it off, so these are dotless too.
+		{"xyz.", false},
+		{"com.", false},
 		// A leading "." closes the label, so an all-hex suffix is a suffix —
 		// ".de" pins Germany the way ".example.com" pins that domain.
 		{".de", true},
@@ -982,8 +998,10 @@ func Test_PinsHost(t *testing.T) {
 		{".ad", true},
 		{".cafe", true},
 		{".e", true},
-		{"127.0.0.1", true},
-		{"10.0.0.1", true},
+		// Even a whole address: open on the left the capture reaches its first
+		// octet, which is the network.
+		{"127.0.0.1", false},
+		{"10.0.0.1", false},
 		// A name is still a name, whatever letters it is made of.
 		{"abc.def", true},
 		{".example.com", true},
@@ -1012,6 +1030,9 @@ func Test_PinsHost(t *testing.T) {
 		{"x", true},
 		{"tenant-", true},
 		{"example.com", true},
+		{"xyz.", true},
+		{"127.0.0.1", true}, // the author wrote the whole address
+		{"10.0.0.1", true},
 
 		{"", false},
 		{".", false},
@@ -1547,12 +1568,25 @@ func Test_Redirect_DotlessTailPinsNoHost(t *testing.T) {
 		{"https://$1xyz", "/r/evil."},
 		{"https://$1com", "/r/evil."},
 		{"https://$1io", "/r/evil."},
+		// The literal sits between two captures, the one place a literal is
+		// open on the left without starting the authority.
+		{"https://$1xyz:$2", "/r/evil./8080"},
+		{"https://$1cafe:$2", "/r/0x/8080"},
+		// Its only dot is trailing, and a trailing dot separates nothing from
+		// what precedes it.
+		{"https://$1xyz.", "/r/evil."},
+		{"https://$1com.", "/r/evil."},
 	} {
 		t.Run(tc.target+" "+tc.request, func(t *testing.T) {
 			t.Parallel()
 
+			rule := "/r/*"
+			if strings.Count(tc.request, "/") > 2 {
+				rule = "/r/*/*"
+			}
+
 			app := fiber.New()
-			app.Use(New(Config{Rules: map[string]string{"/r/*": tc.target}}))
+			app.Use(New(Config{Rules: map[string]string{rule: tc.target}}))
 			app.Use(func(c fiber.Ctx) error { return c.SendString("fell through") })
 
 			req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, tc.request, http.NoBody)
