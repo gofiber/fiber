@@ -736,9 +736,13 @@ var hostMapping = idna.New(
 // the shape. Every value authorityHolds then accepts either ends the authority
 // before that "@" or leaves the host empty, so nothing escapes, but the model
 // is per chunk rather than per authority.
-// authority, which the caller alone knows; it selects no mode of operation.
 //
-//nolint:revive // flag-parameter: openLeft says where the literal sits in the
+// openLeft says where the literal sits in that authority, which only the caller
+// knows: a capture can reach a literal it precedes, and cannot reach one that
+// opens the authority or follows an "@". It selects no mode of operation, so
+// the flag-parameter check below is answered rather than obeyed.
+//
+//nolint:revive // flag-parameter: openLeft is a position, not a mode
 func pinsHost(literal string, openLeft bool) bool {
 	if i := strings.LastIndexByte(literal, '@'); i >= 0 {
 		literal = literal[i+1:]

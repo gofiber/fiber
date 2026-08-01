@@ -139,8 +139,9 @@ func keyFieldLines(h *fasthttp.RequestHeader, name string) [][]byte {
 		// place in between, so the two saw different bytes and the entry landed
 		// under a key no lookup would produce.
 		//
-		// Note this is a write, on a path that otherwise only reads. Where the
-		// lookup builds a key — so from the second request on, once a Vary
+		// Note this is a write, on a path that otherwise only reads. Wherever a
+		// key is built before the handler runs — every request when KeyHeaders
+		// names Content-Type, and from the second request on for Vary, once a
 		// manifest exists — the handler sees the folded value whether or not it
 		// asks for a form value. That is the value it would get from FormValue
 		// or MultipartForm anyway, and the boundary keeps its case, so only a
@@ -148,7 +149,30 @@ func keyFieldLines(h *fasthttp.RequestHeader, name string) [][]byte {
 		// gates it, so nothing else is touched.
 		mediatype.NormalizeRequestContentType(h)
 	}
-	return h.PeekAll(name)
+
+	if values := h.PeekAll(name); len(values) > 0 {
+		return values
+	}
+
+	// PeekAll compares stored keys byte for byte. That is enough while fasthttp
+	// normalizes them, but under DisableHeaderNormalizing the store keeps the
+	// spelling the client sent — and the names reaching here are lower-cased,
+	// from parseVary or from KeyHeaders. Every lookup then missed, so the
+	// dimension dropped out of the key without saying so: with
+	// "Vary: Content-Type" and normalizing off, a request sending
+	// application/json was served the entry stored for a form.
+	//
+	// Field names are case-insensitive (RFC 9110 Section 5.1), so match them
+	// that way. Only reached when the byte-for-byte lookup found nothing, which
+	// for a normalizing header means the field is absent and the walk finds
+	// nothing either.
+	var values [][]byte
+	for k, v := range h.All() {
+		if utils.EqualFold(utils.UnsafeString(k), name) {
+			values = append(values, v)
+		}
+	}
+	return values
 }
 
 // headerPeeker is the part of fasthttp's request and response headers this

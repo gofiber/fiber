@@ -184,9 +184,12 @@ by design — use `KeyCookies` or `Vary: Cookie` to key those apart.
 A request `Content-Type` naming a form is folded to lower case before it is used
 in the cache key, so the key is the same whether it is built before or after the
 handler runs — the form accessors fold that header in place, and without this
-the entry would be stored under a key no lookup produces. A handler on such a
-route therefore sees the folded media type even if it never reads a form value;
-the boundary keeps its case, and a non-form `Content-Type` is left alone.
+the entry would be stored under a key no lookup produces.
+
+A handler on such a route therefore sees the folded media type even if it never
+reads a form value: on every request when `KeyHeaders` names `Content-Type`, and
+from the second request on when only `Vary` does. The boundary keeps its case,
+and a non-form `Content-Type` is left alone.
 
 ## Config
 

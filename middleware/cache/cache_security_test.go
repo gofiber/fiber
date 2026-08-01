@@ -1288,3 +1288,93 @@ func Test_VaryContentType_KeyIsStableAcrossTheFormFold(t *testing.T) {
 		})
 	}
 }
+
+// Test_Vary_PartitionsWithoutHeaderNormalizing asserts a Vary'd dimension keys
+// the same whether or not fasthttp normalizes header names.
+//
+// PeekAll compares stored keys byte for byte. With DisableHeaderNormalizing the
+// store keeps the spelling the client sent, while the names reaching the key
+// come lower-cased from parseVary — so every lookup missed and the dimension
+// dropped out of the key silently. A request sending application/json was then
+// served the entry stored for a form.
+func Test_Vary_PartitionsWithoutHeaderNormalizing(t *testing.T) {
+	t.Parallel()
+
+	for _, disable := range []bool{false, true} {
+		t.Run(fmt.Sprintf("DisableHeaderNormalizing=%v", disable), func(t *testing.T) {
+			t.Parallel()
+
+			app := fiber.New(fiber.Config{DisableHeaderNormalizing: disable})
+			app.Use(New(Config{
+				Expiration: time.Hour,
+				Methods:    []string{fiber.MethodGet, fiber.MethodPost},
+			}))
+			app.Post("/", func(c fiber.Ctx) error {
+				c.Response().Header.Set(fiber.HeaderVary, fiber.HeaderContentType)
+				return c.SendString("body-for:" + c.Get(fiber.HeaderContentType))
+			})
+
+			do := func(ct string) (string, string) {
+				req := httptest.NewRequest(fiber.MethodPost, "/", strings.NewReader("a=1"))
+				req.Header.Set(fiber.HeaderContentType, ct)
+				resp, err := app.Test(req)
+				require.NoError(t, err)
+				body, err := io.ReadAll(resp.Body)
+				require.NoError(t, err)
+				return string(body), resp.Header.Get("X-Cache")
+			}
+
+			body, status := do("application/x-www-form-urlencoded")
+			require.Equal(t, cacheMiss, status)
+			require.Equal(t, "body-for:application/x-www-form-urlencoded", body)
+
+			body, status = do("application/json")
+			require.Equal(t, cacheMiss, status, "a different Content-Type must not hit the form entry")
+			require.Equal(t, "body-for:application/json", body)
+
+			body, status = do("application/json")
+			require.Equal(t, cacheHit, status)
+			require.Equal(t, "body-for:application/json", body)
+		})
+	}
+}
+
+// Test_KeyHeaders_PartitionWithoutHeaderNormalizing is the same property for a
+// dimension named by KeyHeaders rather than by the response's Vary.
+func Test_KeyHeaders_PartitionWithoutHeaderNormalizing(t *testing.T) {
+	t.Parallel()
+
+	for _, disable := range []bool{false, true} {
+		t.Run(fmt.Sprintf("DisableHeaderNormalizing=%v", disable), func(t *testing.T) {
+			t.Parallel()
+
+			app := fiber.New(fiber.Config{DisableHeaderNormalizing: disable})
+			app.Use(New(Config{Expiration: time.Hour, KeyHeaders: []string{"X-Tenant"}}))
+			app.Get("/", func(c fiber.Ctx) error {
+				return c.SendString("body-for:" + c.Get("X-Tenant"))
+			})
+
+			do := func(tenant string) (string, string) {
+				req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+				req.Header.Set("X-Tenant", tenant)
+				resp, err := app.Test(req)
+				require.NoError(t, err)
+				body, err := io.ReadAll(resp.Body)
+				require.NoError(t, err)
+				return string(body), resp.Header.Get("X-Cache")
+			}
+
+			body, status := do("acme")
+			require.Equal(t, cacheMiss, status)
+			require.Equal(t, "body-for:acme", body)
+
+			body, status = do("beta")
+			require.Equal(t, cacheMiss, status, "a different tenant must not hit the first one's entry")
+			require.Equal(t, "body-for:beta", body)
+
+			body, status = do("acme")
+			require.Equal(t, cacheHit, status)
+			require.Equal(t, "body-for:acme", body)
+		})
+	}
+}
