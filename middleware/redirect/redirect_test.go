@@ -218,6 +218,73 @@ func Test_Redirect_SameOriginTargets(t *testing.T) {
 	}
 }
 
+// Test_Redirect_SameOriginTargets_Unescaped covers the same guard when
+// UnescapePath decodes the capture before it is spliced in.
+//
+// Two rewrites reach a Location before anything navigates: a recipient strips
+// leading and trailing whitespace from the field value (RFC 9110 Section 5.5),
+// and the WHATWG URL parser removes every ASCII tab, LF and CR before parsing.
+// Checking the composed bytes alone missed both, so " //evil.com" and
+// "/\t/evil.com" still reached evil.com.
+func Test_Redirect_SameOriginTargets_Unescaped(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		pattern string
+		target  string
+		request string
+		want    string
+	}{
+		{"leading space", "/r/*", "$1", "/r/%20//evil.com", "/evil.com"},
+		{"leading tab", "/r/*", "$1", "/r/%09//evil.com", "/evil.com"},
+		{"tab before scheme", "/r/*", "$1", "/r/%09https://evil.com", "/https://evil.com"},
+		{"interior tab", "/api/*", "/$1", "/api/%09/evil.com", "/evil.com"},
+
+		// A space is not removed by the URL parser — it gets percent-encoded —
+		// so an interior one cannot form an authority and is left alone.
+		{"interior space", "/api/*", "/$1", "/api/%20/evil.com", "/ /evil.com"},
+		{"ordinary capture", "/api/*", "/$1", "/api/users", "/users"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			app := fiber.New(fiber.Config{UnescapePath: true})
+			app.Use(New(Config{
+				Rules:      map[string]string{tc.pattern: tc.target},
+				StatusCode: fiber.StatusFound,
+			}))
+
+			req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, tc.request, http.NoBody)
+			require.NoError(t, err)
+			resp, err := app.Test(req)
+			require.NoError(t, err)
+			require.Equal(t, fiber.StatusFound, resp.StatusCode)
+			require.Equal(t, tc.want, resp.Header.Get("Location"))
+		})
+	}
+}
+
+func Test_AsBrowserReads(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct{ in, want string }{
+		{" //evil.com", "//evil.com"},
+		{"/\t/evil.com", "//evil.com"},
+		{"/\r\n/evil.com", "//evil.com"},
+		{"\t\t//evil.com", "//evil.com"},
+		{"/a/b  ", "/a/b"},
+		{"/ /evil.com", "/ /evil.com"}, // an interior space survives
+		{"/clean/path", "/clean/path"},
+		{"", ""},
+		{" \t ", ""},
+	} {
+		require.Equal(t, tc.want, asBrowserReads(tc.in), "input %q", tc.in)
+	}
+}
+
 func Test_Redirect_SameOriginTargets_QueryPreserved(t *testing.T) {
 	t.Parallel()
 

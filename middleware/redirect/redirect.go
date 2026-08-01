@@ -105,6 +105,8 @@ func targetNamesAuthority(target string) bool {
 // "/redirect/https://evil.com" into an outright absolute redirect. An author
 // who wrote a path-only target did not ask for either.
 func keepSameOrigin(location string) string {
+	location = asBrowserReads(location)
+
 	if schemeEnd(location) > 0 {
 		// Root it so what the capture supplied is read as a path on this
 		// origin rather than as a destination of its own.
@@ -123,6 +125,40 @@ func keepSameOrigin(location string) string {
 	// so a browser reaches evil.com from "/\evil.com" exactly as it does from
 	// "//evil.com".
 	return "/" + location[n:]
+}
+
+// asBrowserReads returns location as the client will actually see it, so the
+// checks above run on that rather than on the bytes as composed.
+//
+// Two rewrites happen to a Location before anything navigates. A recipient
+// strips leading and trailing optional whitespace from a field value
+// (RFC 9110 Section 5.5), and the WHATWG URL parser removes every ASCII tab,
+// LF and CR anywhere in the input before it parses. Skipping them leaves the
+// same normalization mismatch this guard exists to close: with UnescapePath
+// enabled, "/r/%20//evil.com" under the rule "$1" composes " //evil.com",
+// whose leading slash run the guard never sees, and "/api/%09/evil.com" under
+// "/$1" composes "/\t/evil.com", which the parser turns back into
+// "//evil.com". Both reach evil.com. Ordinary spaces are left alone — the
+// parser percent-encodes them rather than removing them, so an interior one
+// cannot form an authority.
+func asBrowserReads(location string) string {
+	var b []byte
+	for i := 0; i < len(location); i++ {
+		switch c := location[i]; c {
+		case '\t', '\n', '\r':
+			if b == nil {
+				b = append(make([]byte, 0, len(location)), location[:i]...)
+			}
+		default:
+			if b != nil {
+				b = append(b, c)
+			}
+		}
+	}
+	if b != nil {
+		location = string(b)
+	}
+	return strings.TrimFunc(location, func(r rune) bool { return r <= ' ' })
 }
 
 // https://github.com/labstack/echo/blob/master/middleware/rewrite.go

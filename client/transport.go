@@ -347,11 +347,31 @@ func doRedirectsWithClient(req *fasthttp.Request, resp *fasthttp.Response, maxRe
 		}
 		currentURL = nextURL
 
-		if req.Header.IsPost() && (statusCode == fasthttp.StatusMovedPermanently || statusCode == fasthttp.StatusFound || statusCode == fasthttp.StatusSeeOther) {
+		switch {
+		case statusCode == fasthttp.StatusSeeOther:
+			// RFC 9110 Section 15.4.4: a 303 sends the user agent to the new
+			// URI with GET regardless of the original method, and without the
+			// original body. That covers every method, not just POST — Fiber's
+			// client drives QUERY requests through this loop as well
+			// (client/core.go), and one that kept its method would replay its
+			// body to the redirect target, which may be a different host than
+			// the one the caller addressed.
+			if !req.Header.IsGet() && !req.Header.IsHead() {
+				req.Header.SetMethod(fasthttp.MethodGet)
+			}
+			dropRequestBody(req)
+		case req.Header.IsPost() && (statusCode == fasthttp.StatusMovedPermanently || statusCode == fasthttp.StatusFound):
+			// RFC 9110 Sections 15.4.2/15.4.3: for historical reasons a user
+			// agent may change POST to GET on a 301 or 302.
 			req.Header.SetMethod(fasthttp.MethodGet)
-			req.SetBody(nil)
-			req.Header.Del(fasthttp.HeaderContentType)
-			req.Header.Del(fasthttp.HeaderContentLength)
+			// The body goes with the method. net/http drops it for 301, 302 and
+			// 303 alike (Client.redirectBehavior), and this loop already follows
+			// net/http for the credential boundary below; carrying a POST body
+			// on a request now labeled GET would replay it to the new location,
+			// possibly on another host, under a method that does not describe
+			// it. fasthttp's loop leaves it in place here — this is the one
+			// place the two deliberately differ.
+			dropRequestBody(req)
 		}
 
 		// Credentials are scoped to the origin that issued them, so drop them
@@ -377,6 +397,22 @@ var crossHostSensitiveHeaders = []string{
 	fasthttp.HeaderWWWAuthenticate,
 	fasthttp.HeaderCookie,
 	"Cookie2",
+}
+
+// dropRequestBody removes a request's body and everything that frames or
+// describes it, so the next hop carries none of it.
+//
+// Per RFC 9112 a body is signaled by Content-Length or Transfer-Encoding, and a
+// Trailer field only applies to a chunked one, so all of them go with the body.
+// PostArgs is reset last: it is parsed lazily from the body, and a copy already
+// parsed from the old one would otherwise be re-serialized on the next write.
+func dropRequestBody(req *fasthttp.Request) {
+	req.Header.Del(fasthttp.HeaderContentLength)
+	req.Header.Del(fasthttp.HeaderContentType)
+	req.Header.Del(fasthttp.HeaderTransferEncoding)
+	req.Header.Del(fasthttp.HeaderTrailer)
+	req.ResetBody()
+	req.PostArgs().Reset()
 }
 
 // hostnameWithoutPort strips the port from a host[:port] value, leaving a

@@ -321,6 +321,12 @@ func (cj *CookieJar) setByHostAndPath(host, requestPath []byte, cookies ...*fast
 
 	defaultPath := defaultCookiePathFor(requestPath)
 
+	// One clock reading for the whole call, as parseCookiesFromResp already
+	// does. The capacity sweep below runs per cookie — each may land under a
+	// different key — and taking a fresh time.Now() inside it bought nothing
+	// but a syscall per cookie while cj.mu is held.
+	now := time.Now()
+
 	for _, cookie := range cookies {
 		// Fold with utilsstrings.ToLower rather than in place: the cookie
 		// belongs to the caller, and the jar documents that it only stores
@@ -344,7 +350,7 @@ func (cj *CookieJar) setByHostAndPath(host, requestPath []byte, cookies ...*fast
 			}
 		}
 
-		cj.ensureHostCapacityLocked(key, time.Now())
+		cj.ensureHostCapacityLocked(key, now)
 		hostCookies := cj.hostCookies[key]
 
 		// Normalize the path up front so an entry stored through this API is

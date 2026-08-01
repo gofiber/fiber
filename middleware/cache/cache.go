@@ -464,29 +464,31 @@ func New(config ...Config) fiber.Handler {
 				clampedDate := clampDateSeconds(e.date, ts)
 				dateValue := utils.AppendHTTPDate(nil, secondsToTime(clampedDate))
 				c.Response().Header.SetBytesV(fiber.HeaderDate, dateValue)
+				// Header.All() yields one entry per field line, so a response
+				// that sent a name twice is stored twice. Replaying the entries
+				// with Set collapses the pair — Set overwrites the first
+				// matching line and leaves the rest — so
+				//
+				//	Vary: Cookie
+				//	Vary: Accept-Encoding
+				//
+				// came back out of the cache varying only on Accept-Encoding,
+				// enough for a downstream shared cache to start serving one
+				// user's response to another, and two Content-Security-Policy
+				// lines, which a browser enforces as the intersection of both,
+				// came back as whichever one is weaker alone.
+				//
+				// Clear every stored name first, then append the lines in
+				// order. Two passes rather than a per-entry "have I seen this
+				// name" scan, which would be quadratic on the hit path. Nothing
+				// written above is at risk: those names — Content-Type,
+				// Content-Encoding, Cache-Control, Expires, ETag, Date — are all
+				// in ignoreHeaders and so are never among the stored entries.
 				for i := range e.headers {
-					h := e.headers[i]
-					// Header.All() yields one entry per field line, so a
-					// response that sent a name twice is stored twice. Replaying
-					// every entry with Set collapses the pair: Set overwrites the
-					// first matching line and leaves the rest, so
-					//
-					//	Vary: Cookie
-					//	Vary: Accept-Encoding
-					//
-					// comes back out of the cache varying only on
-					// Accept-Encoding — enough for a downstream shared cache to
-					// start serving one user's response to another — and two
-					// Content-Security-Policy lines, which a browser enforces as
-					// the intersection of both, come back as whichever one is
-					// weaker on its own. Set on a name's first occurrence, so the
-					// values written above still lose to the stored ones exactly
-					// as before, and append from there.
-					if headerSeenEarlier(e.headers[:i], h.key) {
-						c.Response().Header.AddBytesKV(h.key, h.value)
-					} else {
-						c.Response().Header.SetBytesKV(h.key, h.value)
-					}
+					c.Response().Header.DelBytes(e.headers[i].key)
+				}
+				for i := range e.headers {
+					c.Response().Header.AddBytesKV(e.headers[i].key, e.headers[i].value)
 				}
 				// Set Cache-Control header if not disabled and not already set
 				if !cfg.DisableCacheControl && len(c.Response().Header.Peek(fiber.HeaderCacheControl)) == 0 {

@@ -335,11 +335,19 @@ func CopyContextToFiberContext(src any, requestContext *fasthttp.RequestCtx) {
 }
 
 // framingHeaders describe how the message itself is delimited and addressed
-// rather than what it carries. dropRemovedHeaders leaves them alone: the
-// wrapped middleware works on a converted copy of the request, so a framing
-// header missing from that copy says nothing about the original, and clearing
-// one would corrupt the body the fiber handler goes on to read. Host is also
-// restored explicitly by the caller from r.Host.
+// rather than what it carries. They are excluded from both the snapshot and the
+// clear: the wrapped middleware works on a converted copy of the request, so a
+// framing header missing from that copy says nothing about the original, and
+// clearing one would corrupt the body the fiber handler goes on to read. Host
+// is also restored explicitly by the caller from r.Host.
+//
+// The cost is that a wrapped middleware cannot change them either — a
+// Header.Set("Connection", ...) is dropped along with a Header.Del. That is the
+// deliberate trade: these headers frame the fiber request that is still being
+// read, not the converted copy, and Transfer-Encoding could not round-trip in
+// any case because fasthttpadaptor routes it to http.Request.TransferEncoding
+// rather than to Header. Middleware that needs to influence framing should do
+// so on the fiber side.
 var framingHeaders = [...]string{
 	fiber.HeaderHost,
 	fiber.HeaderContentLength,
