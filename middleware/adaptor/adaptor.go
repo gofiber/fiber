@@ -422,9 +422,10 @@ func clearCopiedHeaders(fhdr *fasthttp.RequestHeader) {
 		if isFramingHeader(name) {
 			continue
 		}
-		// All() yields a field line at a time, so a repeated header arrives
-		// once per line. Del removes every line at once, so the duplicates
-		// would only re-scan the list for a name already gone.
+		// All() yields most repeated headers a field line at a time — Cookie is
+		// the exception, arriving once from the merged store however many lines
+		// were sent. Del removes every line at once, so the duplicates would
+		// only re-scan the list for a name already gone.
 		if slices.Contains(removed, name) {
 			continue
 		}

@@ -768,6 +768,10 @@ func Test_TargetLetsRequestPickHost(t *testing.T) {
 		// Text before an "@" is a username, not a host.
 		{"https://example.com@$1", true},
 		{"https://user:pw@$1", true},
+		// The brackets around an IPv6 literal pin nothing either, so the
+		// address is the request's to name.
+		{"https://[$1]", true},
+		{"https://[$1]:8080/", true},
 
 		// A scheme with no authority syntax has no host to hijack, so it is not
 		// refused — dropping it would kill a working rule and the warning would
@@ -783,6 +787,10 @@ func Test_TargetLetsRequestPickHost(t *testing.T) {
 		{"https://$1@example.com", false},
 		{"https://cdn.example.com:$1", false},
 		{"https://tenant-$1.example.com", false},
+		// A bracketed literal the author wrote in full still pins the host, so
+		// a captured port beside it is theirs to allow.
+		{"https://[::1]:$1", false},
+		{"https://[::1]:8080/$1", false},
 		{"/$1", false},
 		{"$1", false},
 		{"https://cdn.example.com", false},
@@ -808,14 +816,27 @@ func Test_PinsHost(t *testing.T) {
 		{"@example.com", true},
 		{"user:pw@example.com", true},
 
+		// An IPv6 literal's own colons sit inside the brackets, so the port is
+		// what follows the closing one.
+		{"[::1]", true},
+		{"[::1]:", true},
+		{"[::1]:8080", true},
+		{"[2001:db8::1]", true},
+
 		{"", false},
 		{":8080", false},
 		{".", false},
 		{"..", false},
+		{"::", false},
 		// Everything through the last "@" is userinfo, so nothing is left.
 		{"example.com@", false},
 		{"user:pw@", false},
 		{"example.com@:8080", false},
+		// The brackets around an IPv6 literal are punctuation, so a target of
+		// "https://[$1]:8080" pins no more of the host than "https://$1:8080".
+		{"[", false},
+		{"]", false},
+		{"]:8080", false},
 	} {
 		require.Equal(t, tc.want, pinsHost(tc.literal), "literal %q", tc.literal)
 	}

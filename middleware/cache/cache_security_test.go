@@ -997,7 +997,7 @@ func Test_VaryCookie_KeyIsStableAcrossCookieCollection(t *testing.T) {
 		return c.SendString("page-for:" + c.Cookies("session"))
 	})
 
-	do := func(lines ...string) string {
+	do := func(lines ...string) (string, string) {
 		raw := "GET / HTTP/1.1\r\nHost: example.com\r\n"
 		for _, l := range lines {
 			raw += "Cookie: " + l + "\r\n"
@@ -1011,13 +1011,28 @@ func Test_VaryCookie_KeyIsStableAcrossCookieCollection(t *testing.T) {
 		fctx := &fasthttp.RequestCtx{}
 		fctx.Init(req, nil, nil)
 		app.Handler()(fctx)
-		return string(fctx.Response.Header.Peek("X-Cache"))
+		return string(fctx.Response.Body()), string(fctx.Response.Header.Peek("X-Cache"))
 	}
 
-	require.Equal(t, cacheMiss, do("a=1", "session=alice"))
-	require.Equal(t, cacheHit, do("a=1", "session=alice"),
+	body, status := do("a=1", "session=alice")
+	require.Equal(t, cacheMiss, status)
+	require.Equal(t, "page-for:alice", body)
+
+	body, status = do("a=1", "session=alice")
+	require.Equal(t, cacheHit, status,
 		"the store key and the lookup key must agree across cookie collection")
-	require.Equal(t, cacheHit, do("a=1", "session=alice"))
+	require.Equal(t, "page-for:alice", body)
+
+	// Stability must not have come from keying everything alike: a different
+	// session still parts company, and the merged single-line spelling of the
+	// same cookies reaches the entry the two lines stored.
+	body, status = do("a=1", "session=bob")
+	require.Equal(t, cacheMiss, status)
+	require.Equal(t, "page-for:bob", body)
+
+	body, status = do("a=1; session=alice")
+	require.Equal(t, cacheHit, status)
+	require.Equal(t, "page-for:alice", body)
 }
 
 // Test_Authorization_SecondFieldLine asserts a credential is seen wherever it
@@ -1073,7 +1088,11 @@ func Test_AuthorizationHash_CoversEveryFieldLine(t *testing.T) {
 		// Opt in to shared caching so an authorized response is stored at all,
 		// which is what lets the key partition be observed.
 		c.Set(fiber.HeaderCacheControl, "public")
-		return c.SendString("body for:" + string(c.Request().Header.PeekAll(fiber.HeaderAuthorization)[1]))
+		// Echo the last field line so the body shows which principal the
+		// handler ran for. Indexed defensively: a single-line case added later
+		// should fail the assertion, not panic here.
+		lines := c.Request().Header.PeekAll(fiber.HeaderAuthorization)
+		return c.SendString("body for:" + string(lines[len(lines)-1]))
 	})
 
 	do := func(lines ...string) (string, string) {

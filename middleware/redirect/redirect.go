@@ -346,20 +346,18 @@ func hostPinnedAfter(chunks []authorityChunk, i int) bool {
 // to guard and no origin for keepSameOrigin to hold it to — yet a value of
 // "//evil.com" still composes "https://evil.com".
 func targetLetsRequestPickHost(target string, chunks []authorityChunk) bool {
+	// A non-nil chunk list always holds a capture — authorityChunks returns nil
+	// unless it appended one — so the only question left is whether the author
+	// wrote any host text of their own alongside it.
 	if chunks != nil {
-		holdsCapture := false
 		for _, chunk := range chunks {
-			switch {
-			case chunk.placeholder:
-				holdsCapture = true
-			case pinsHost(chunk.text):
-				// The author wrote host text somewhere in the authority, so the
-				// host is theirs and authorityHolds judges the captures around
-				// it per value.
+			if !chunk.placeholder && pinsHost(chunk.text) {
+				// The host is theirs, and authorityHolds judges the captures
+				// around it per value.
 				return false
 			}
 		}
-		return holdsCapture
+		return true
 	}
 
 	// No authority span. Only a scheme the client navigates by can still reach a
@@ -533,21 +531,34 @@ func hostPinnedBefore(chunks []authorityChunk, i int) bool {
 // fixes part of the host.
 //
 // Only what follows the last "@" and precedes the port colon counts, and only
-// once the separators that may trail a hostname are stripped. ":8080" pins
+// once the punctuation that may surround a hostname is stripped. ":8080" pins
 // nothing — "evil.com:8080" is still evil.com — and neither does a lone ".",
 // since "evil.com." is "evil.com" with the DNS root spelled out. Text before an
 // "@" is userinfo, not host: "https://example.com@$1" reads example.com as a
-// username and leaves the host to the capture. Treating any of them as
-// author-written host text left the capture beside it judged as an interior
-// label, and the request named the host.
+// username and leaves the host to the capture. Nor do the brackets around an
+// IPv6 literal, so "https://[$1]:8080" hands over the address the same way
+// "https://$1:8080" hands over the name. Treating any of them as author-written
+// host text left the capture beside it judged as an interior label, and the
+// request named the host.
+//
+// The "@" is read within this chunk. A capture can split an authority so that
+// its real last "@" falls in a later chunk, which makes a literal here score as
+// host text when the URL parser reads it as userinfo — "https://a.com$1@$2" is
+// the shape. Every value authorityHolds then accepts either ends the authority
+// before that "@" or leaves the host empty, so nothing escapes, but the model
+// is per chunk rather than per authority.
 func pinsHost(literal string) bool {
 	if i := strings.LastIndexByte(literal, '@'); i >= 0 {
 		literal = literal[i+1:]
 	}
-	if i := strings.IndexByte(literal, ':'); i >= 0 {
+	// An IPv6 literal carries colons of its own, so the port colon is the one
+	// past the closing bracket rather than the first.
+	if i := strings.IndexByte(literal, ']'); i >= 0 {
+		literal = literal[:i]
+	} else if i := strings.IndexByte(literal, ':'); i >= 0 {
 		literal = literal[:i]
 	}
-	return strings.Trim(literal, ".") != ""
+	return strings.Trim(literal, ".[:") != ""
 }
 
 // literalPrefixLen returns how much of a rule's path is pinned before its first
