@@ -335,6 +335,26 @@ func Test_allowsSharedCacheDirectives(t *testing.T) {
 	require.False(t, allowsSharedCacheDirectives(responseCacheControl{}))
 }
 
+func Test_allowsSharedCacheStorage(t *testing.T) {
+	t.Parallel()
+
+	require.True(t, allowsSharedCacheStorage(responseCacheControl{hasPublic: true}))
+	require.True(t, allowsSharedCacheStorage(responseCacheControl{sMaxAgeSet: true}))
+	require.False(t, allowsSharedCacheStorage(responseCacheControl{}))
+
+	// The revalidate directives part company with allowsSharedCacheDirectives:
+	// they say when a stale entry may be reused, not that the body is
+	// impersonal, and this middleware never revalidates.
+	require.False(t, allowsSharedCacheStorage(responseCacheControl{mustRevalidate: true}))
+	require.False(t, allowsSharedCacheStorage(responseCacheControl{proxyRevalidate: true}))
+
+	// private wins over an accompanying opt-in. The store path rejects private
+	// well before the cookie gate, so this is the predicate holding its own
+	// contract rather than a reachable branch.
+	require.False(t, allowsSharedCacheStorage(responseCacheControl{hasPrivate: true, hasPublic: true}))
+	require.False(t, allowsSharedCacheStorage(responseCacheControl{hasPrivate: true, sMaxAgeSet: true}))
+}
+
 func Test_secondsConversions_Overflow(t *testing.T) {
 	t.Parallel()
 

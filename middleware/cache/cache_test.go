@@ -1756,6 +1756,11 @@ func Test_SetCookieResponseSharedCacheOptIn(t *testing.T) {
 			resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 			require.NoError(t, err)
 			require.Equal(t, cacheMiss, resp.Header.Get("X-Cache"))
+			// Without this the test passes vacuously: a response carrying no
+			// cookie is stored anyway, so the assertions below would not
+			// distinguish "the opt-in beat the cookie gate" from "there was no
+			// cookie to gate".
+			require.Contains(t, resp.Header.Get("Set-Cookie"), "session=shared")
 
 			resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 			require.NoError(t, err)
@@ -1763,6 +1768,44 @@ func Test_SetCookieResponseSharedCacheOptIn(t *testing.T) {
 			require.Empty(t, resp.Header.Values("Set-Cookie"), "the stored entry must not replay the cookie")
 		})
 	}
+}
+
+// Test_SetCookieFromInnerMiddlewareIsSeen pins the ordering the cookie gate can
+// actually enforce: a middleware that writes its cookie on the way out is seen
+// when it sits inside the cache, because its post-Next work has already run by
+// the time the store decision is made.
+//
+// The reverse order is a hazard the gate cannot see. With the cookie-writing
+// middleware outside, its post-Next work runs after the cache has stored, so
+// the entry is kept and the next client reads the first one's body. Nothing
+// here can detect that — the response the cache inspects genuinely has no
+// cookie on it yet — so it is documented as an ordering requirement in
+// docs/middleware/cache.md rather than asserted as behavior.
+func Test_SetCookieFromInnerMiddlewareIsSeen(t *testing.T) {
+	t.Parallel()
+
+	var calls int
+	app := fiber.New()
+	app.Use(New())
+	app.Use(func(c fiber.Ctx) error {
+		err := c.Next()
+		c.Cookie(&fiber.Cookie{Name: "session", Value: fmt.Sprintf("secret-%d", calls)})
+		return err
+	})
+	app.Get("/", func(c fiber.Ctx) error {
+		calls++
+		return c.SendString(fmt.Sprintf("page-for-client-%d", calls))
+	})
+
+	for i := 1; i <= 2; i++ {
+		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, cacheUnreachable, resp.Header.Get("X-Cache"))
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		require.Equal(t, fmt.Sprintf("page-for-client-%d", i), string(body))
+	}
+	require.Equal(t, 2, calls, "the handler must run for both clients")
 }
 
 // Test_StoreResponseHeaders_DropsSetCookie covers the opt-in path: a route that

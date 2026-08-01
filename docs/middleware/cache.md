@@ -153,6 +153,32 @@ routes stop being cached — that is the point, since those responses are
 per-client. Set the cookie only where it changes, or mark the genuinely public
 routes `public`.
 
+:::caution Register the cache outside any middleware that writes cookies
+
+The check above reads the response as it stands when the cache decides to store
+it, which is the moment `c.Next()` returns to the cache middleware. A middleware
+registered **outside** the cache does its post-`c.Next()` work later, so a cookie
+it writes then is not there to be seen — the entry is stored and the next client
+reads the first one's body.
+
+Fiber's own [session](./session.md) middleware writes its cookie exactly that
+way, so the order matters:
+
+```go
+app.Use(cache.New())    // correct: the cookie is written before the cache decides
+app.Use(session.New())
+
+app.Use(session.New())  // leaks: the cookie is written after the cache stored
+app.Use(cache.New())
+```
+
+The same applies to any handler wrapper of the form
+`err := c.Next(); c.Cookie(...); return err`. Note also that a response
+personalized from a **request** cookie without setting one is cached and shared
+by design — use `KeyCookies` or `Vary: Cookie` to key those apart.
+
+:::
+
 ## Config
 
 | Property             | Type                                           | Description                                                                                                                                                                                                                                                                                                    | Default                                                          |
