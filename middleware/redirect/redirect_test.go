@@ -913,6 +913,13 @@ func Test_PinsHost(t *testing.T) {
 		{"\uff0e", false}, // fullwidth full stop
 		{"\uff61", false}, // halfwidth ideographic full stop
 		{"\u00ad\u200b", false},
+		// A control character is stripped from either end of the whole input
+		// before the parser reads anything, and is forbidden in a host in the
+		// middle, so it pins nothing wherever it sits.
+		{"\x00", false},
+		{"\x01", false},
+		{"\x1f", false},
+		{"\x7f", false},
 		// An internationalized label is host text, in either spelling.
 		{"\u4f8b\u3048.jp", true},
 		{"xn--r8jz45g.jp", true},
@@ -1294,6 +1301,35 @@ func Test_Redirect_InternationalizedHostsStillPin(t *testing.T) {
 			resp, err := app.Test(req)
 			require.NoError(t, err)
 			require.Equal(t, tc.want, resp.Header.Get("Location"))
+		})
+	}
+}
+
+// Test_Redirect_ControlCharacterPinsNoHost pins the other half of what a client
+// removes before reading a host.
+//
+// The parser strips a leading or trailing run of controls and spaces from the
+// whole input before parsing, and asBrowserReads does the same to the composed
+// location. So a control character in the target pinned a host that was gone by
+// the time the client saw it: with an empty second capture the rule below
+// composed "https://evil.com\x01" and shipped "https://evil.com".
+func Test_Redirect_ControlCharacterPinsNoHost(t *testing.T) {
+	t.Parallel()
+
+	for _, sep := range []string{"\x00", "\x01", "\x1f", "\x7f"} {
+		t.Run(strconv.QuoteToASCII(sep), func(t *testing.T) {
+			t.Parallel()
+
+			app := fiber.New()
+			app.Use(New(Config{Rules: map[string]string{"/r/*x*": "https://$1" + sep + "$2"}}))
+			app.Use(func(c fiber.Ctx) error { return c.SendString("fell through") })
+
+			req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/r/evil.comx", http.NoBody)
+			require.NoError(t, err)
+			resp, err := app.Test(req)
+			require.NoError(t, err)
+			require.Equal(t, fiber.StatusOK, resp.StatusCode, "the rule must be refused at startup")
+			require.Empty(t, resp.Header.Get("Location"))
 		})
 	}
 }

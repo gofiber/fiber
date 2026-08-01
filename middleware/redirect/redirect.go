@@ -708,9 +708,17 @@ func pinsHost(literal string) bool {
 		return false
 	}
 
-	// Whitespace pins nothing either: the parser either deletes it outright or
-	// percent-encodes it into a host that fails to parse.
-	return strings.Trim(mapped, ".[: \t\n\r\v\f") != ""
+	// Nor does anything at or below a space, nor DEL. The parser strips a
+	// leading or trailing run of them from the whole input before it reads
+	// anything, and asBrowserReads does the same to the composed location — so
+	// a control character in the target pinned a host that was gone by the time
+	// the client saw it. "https://$1\x01$2" composed "https://evil.com\x01"
+	// from a captured "evil.com" and an empty second capture, and shipped
+	// "https://evil.com". One in the middle is a forbidden domain code point
+	// instead, so it pins no host either way.
+	return strings.TrimFunc(mapped, func(r rune) bool {
+		return r <= ' ' || r == 0x7f || strings.ContainsRune(".[:", r)
+	}) != ""
 }
 
 // literalPrefixLen returns how much of a rule's path is pinned before its first
