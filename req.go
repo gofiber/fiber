@@ -431,7 +431,7 @@ func (r *DefaultReq) FormValue(key string, defaultValue ...string) string {
 	// unconditionally would rewrite a JSON request's Content-Type underneath a
 	// caller still holding what c.Get(HeaderContentType) returned, which is a
 	// view into exactly those bytes unless Immutable is set.
-	if isFormContentType(r.c.fasthttp.Request.Header.ContentType()) {
+	if mediatype.IsForm(r.c.fasthttp.Request.Header.ContentType()) {
 		mediatype.NormalizeRequestContentType(&r.c.fasthttp.Request.Header)
 	}
 
@@ -985,7 +985,7 @@ func (r *DefaultReq) MultipartForm() (*multipart.Form, error) {
 	// parser through here, so this covers them too. Guarded like FormValue: the
 	// fold rewrites the request's own bytes, so it must not touch a
 	// Content-Type the parser was never going to look at.
-	if isFormContentType(r.c.fasthttp.Request.Header.ContentType()) {
+	if mediatype.IsForm(r.c.fasthttp.Request.Header.ContentType()) {
 		mediatype.NormalizeRequestContentType(&r.c.fasthttp.Request.Header)
 	}
 

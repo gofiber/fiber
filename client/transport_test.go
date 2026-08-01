@@ -276,6 +276,7 @@ func TestDoRedirectsWithClient_DropsBodyForAnyMethod(t *testing.T) {
 				req.SetRequestURI("http://example.com/start")
 				req.Header.SetMethod(method)
 				req.Header.SetContentType("application/json")
+				req.Header.Set(fasthttp.HeaderContentEncoding, "gzip")
 				req.Header.Set(fasthttp.HeaderTrailer, "X-Checksum")
 				req.SetBodyString(`{"q":"secret"}`)
 
@@ -288,6 +289,7 @@ func TestDoRedirectsWithClient_DropsBodyForAnyMethod(t *testing.T) {
 				require.Equal(t, fasthttp.MethodGet, string(req.Header.Method()))
 				require.Empty(t, req.Body(), "the body must not reach the redirect target")
 				require.Empty(t, req.Header.ContentType())
+				require.Empty(t, req.Header.Peek(fasthttp.HeaderContentEncoding), "a coding without a body to decode")
 				require.Empty(t, req.Header.Peek(fasthttp.HeaderTrailer), "a Trailer only frames a body that is gone")
 				require.Empty(t, req.Header.Peek(fasthttp.HeaderTransferEncoding))
 			})

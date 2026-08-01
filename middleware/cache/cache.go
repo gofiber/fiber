@@ -615,6 +615,22 @@ func New(config ...Config) fiber.Handler {
 			return nil
 		}
 
+		// A stored entry is served to every client whose request matches its
+		// key, so a response that sets a cookie has personalized itself for the
+		// one client that caused this miss. Keeping the Set-Cookie out of the
+		// stored headers is not enough — the body is the payload, and replaying
+		// it hands that client's page to everyone who hits the entry later.
+		//
+		// Refuse to store unless the response says outright that a shared cache
+		// may, which is the same escape hatch RFC 9111 Section 3.5 gives a
+		// response to an authorized request. A route that genuinely wants both
+		// a cookie and shared caching can say so with "Cache-Control: public"
+		// or an s-maxage.
+		if !isSharedCacheAllowed && responseSetsCookie(&c.Response().Header) {
+			c.Set(cfg.CacheHeader, cacheUnreachable)
+			return nil
+		}
+
 		sharedCacheMode := !hasAuthorization || isSharedCacheAllowed
 
 		// Don't cache response if status code is not cacheable

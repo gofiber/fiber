@@ -1653,9 +1653,48 @@ func Test_AdditionalE2EResponseHeaders(t *testing.T) {
 	require.Equal(t, "foobar", resp.Header.Get("X-Foobar"))
 }
 
-// Test_StoreResponseHeaders_DropsSetCookie asserts that a Set-Cookie produced
-// on a cache miss reaches the client that caused it but is not stored, so the
-// entry cannot hand that client's session to everyone who hits it later.
+// Test_SetCookieResponseIsNotStored asserts that a response handing the client
+// a cookie is not stored at all.
+//
+// The entry would be served to every client whose request matches its key, and
+// a response that sets a cookie has personalized itself for the one client that
+// caused the miss. Keeping Set-Cookie out of the stored headers is not enough —
+// the body is the payload, so the second client below would read the first
+// one's page.
+func Test_SetCookieResponseIsNotStored(t *testing.T) {
+	t.Parallel()
+
+	var calls int
+	app := fiber.New()
+	app.Use(New(Config{StoreResponseHeaders: true}))
+	app.Get("/", func(c fiber.Ctx) error {
+		calls++
+		c.Cookie(&fiber.Cookie{Name: "session", Value: fmt.Sprintf("secret-%d", calls)})
+		return c.SendString(fmt.Sprintf("page-for-client-%d", calls))
+	})
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, cacheUnreachable, resp.Header.Get("X-Cache"))
+	require.Contains(t, resp.Header.Get("Set-Cookie"), "session=secret-1")
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "page-for-client-1", string(body))
+
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, cacheUnreachable, resp.Header.Get("X-Cache"))
+	require.Contains(t, resp.Header.Get("Set-Cookie"), "session=secret-2")
+	body, err = io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "page-for-client-2", string(body), "the second client must not read the first one's page")
+	require.Equal(t, 2, calls, "the handler must run for both clients")
+}
+
+// Test_StoreResponseHeaders_DropsSetCookie covers the opt-in path: a route that
+// says a shared cache may store the response is taken at its word, and then the
+// stored copy still leaves Set-Cookie out so the entry cannot hand the first
+// client's session to the rest.
 func Test_StoreResponseHeaders_DropsSetCookie(t *testing.T) {
 	t.Parallel()
 
@@ -1665,6 +1704,7 @@ func Test_StoreResponseHeaders_DropsSetCookie(t *testing.T) {
 	}))
 
 	app.Get("/", func(c fiber.Ctx) error {
+		c.Set(fiber.HeaderCacheControl, "public, max-age=60")
 		c.Cookie(&fiber.Cookie{Name: "session", Value: "first-client-secret"})
 		c.Response().Header.Add("X-Foobar", "foobar")
 		return c.SendString("hi")

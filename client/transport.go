@@ -404,11 +404,15 @@ var crossHostSensitiveHeaders = []string{
 //
 // Per RFC 9112 a body is signaled by Content-Length or Transfer-Encoding, and a
 // Trailer field only applies to a chunked one, so all of them go with the body.
-// PostArgs is reset last: it is parsed lazily from the body, and a copy already
-// parsed from the old one would otherwise be re-serialized on the next write.
+// Content-Type and Content-Encoding describe a body that is no longer there —
+// leaving the latter behind sends a GET announcing a content coding with
+// nothing to decode, which a strict origin is entitled to reject. PostArgs is
+// reset last: it is parsed lazily from the body, and a copy already parsed from
+// the old one would otherwise be re-serialized on the next write.
 func dropRequestBody(req *fasthttp.Request) {
 	req.Header.Del(fasthttp.HeaderContentLength)
 	req.Header.Del(fasthttp.HeaderContentType)
+	req.Header.Del(fasthttp.HeaderContentEncoding)
 	req.Header.Del(fasthttp.HeaderTransferEncoding)
 	req.Header.Del(fasthttp.HeaderTrailer)
 	req.ResetBody()

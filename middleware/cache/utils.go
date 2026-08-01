@@ -86,6 +86,28 @@ func lookupCachedHeader(headers []cachedHeader, name string) ([]byte, bool) {
 	return nil, false
 }
 
+// setCookie2 is the obsolete RFC 2965 spelling of Set-Cookie. fasthttp keeps it
+// as an ordinary field rather than in its cookie store, so it has to be looked
+// up separately.
+const setCookie2 = "Set-Cookie2"
+
+// responseSetsCookie reports whether the response hands a cookie to the client
+// that caused this miss.
+func responseSetsCookie(h *fasthttp.ResponseHeader) bool {
+	for range h.Cookies() {
+		return true
+	}
+	// Not PeekAll(Set-Cookie): fasthttp answers that from its cookie store and
+	// returns a single empty entry when there is none, so a length test on it
+	// reports a cookie that was never set.
+	for _, v := range h.PeekAll(setCookie2) {
+		if len(v) > 0 {
+			return true
+		}
+	}
+	return false
+}
+
 // headerPeeker is the part of fasthttp's request and response headers this
 // package needs to read every field line of a name.
 type headerPeeker interface {

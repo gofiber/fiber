@@ -1890,6 +1890,19 @@ Contains the request protocol string: `http` or `https` for TLS requests.
 Please use [`Config.TrustProxy`](fiber.md#trustproxy) to prevent header spoofing if your app is behind a proxy.
 :::
 
+:::note
+
+Only `http` and `https` are ever returned. When the proxy is trusted, the
+forwarding headers (`X-Forwarded-Proto`, `X-Forwarded-Protocol`,
+`X-Forwarded-Ssl`, `X-Url-Scheme`) are read, but a value naming anything else is
+ignored rather than passed through — the result is spliced into
+[`BaseURL`](#baseurl) and compared for origin equality by CSRF and
+`Redirect().Back()`, so a header announcing, say, `javascript` must not become
+part of a URL. A proxy that terminates a different protocol should send the
+scheme the client used to reach it.
+
+:::
+
 ```go title="Signature"
 func (c fiber.Ctx) Scheme() string
 ```

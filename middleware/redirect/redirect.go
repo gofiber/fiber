@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/log"
 	"github.com/gofiber/utils/v2"
 )
 
@@ -44,9 +45,21 @@ func New(config ...Config) fiber.Handler {
 		// rule whose path it only happens to end with (e.g. "/old" would also
 		// redirect "/very/old"). See issue #4476.
 		pattern = "^" + pattern + "$"
+		chunks := authorityChunks(v)
+		if len(chunks) == 1 && chunks[0].placeholder {
+			// The whole authority is a capture, so the request picks the host
+			// this redirects to. That is an open redirect by construction —
+			// nothing here can distinguish the intended destination from an
+			// attacker's — and it is only reachable because the author wrote it,
+			// so say so once at startup rather than silently refusing to honor
+			// the rule at request time.
+			log.Warnf("[REDIRECT] rule %q sends the client to a host taken from the request path; "+
+				"anyone who can shape the path can choose the redirect target", k)
+		}
+
 		cfg.rulesRegex[regexp.MustCompile(pattern)] = compiledRule{
 			target:          v,
-			authorityChunks: authorityChunks(v),
+			authorityChunks: chunks,
 			sameOrigin:      !targetNamesAuthority(v),
 		}
 	}
