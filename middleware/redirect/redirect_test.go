@@ -4,7 +4,6 @@ import (
 	"context"
 	"net/http"
 	"strconv"
-	"strings"
 	"testing"
 
 	"github.com/gofiber/fiber/v3"
@@ -1039,6 +1038,27 @@ func Test_PinsHost(t *testing.T) {
 		{"1", false},   // a bare number is an address, not a name
 		{"0x1", false}, // and so is the hex spelling
 		{"[example.com", false},
+		// Closed on the left the dotless rule no longer stands in front of the
+		// decode, map and trim steps, so this is where each answers for itself:
+		// a code point the mapping deletes, ones the trim drops, and delimiters
+		// that only appear once the escape is decoded.
+		{"\u00ad", false},
+		{"\u200b", false},
+		{"\u3002example.com", true}, // folds to ".example.com"
+		{"\x7f", false},
+		{" ", false},
+		{"[", false},
+		{":", false},
+		{"%7F", false},
+		{"%2E", false},
+		{"%3A", false},
+		{"%5B", false},
+		// The trim has to run on the front too: keeping the space leaves a
+		// last label of " 1", which reads as no number, and the address check
+		// never runs on what is really the address 1.
+		{" 1", false},
+		{"%201", false},
+		{"%3A0x", false},
 	} {
 		require.Equal(t, tc.want, pinsHost(tc.literal, false), "literal %q closed on the left", tc.literal)
 	}
@@ -1558,35 +1578,35 @@ func Test_Redirect_CompleteAddressStillPins(t *testing.T) {
 func Test_Redirect_DotlessTailPinsNoHost(t *testing.T) {
 	t.Parallel()
 
-	for _, tc := range []struct{ target, request string }{
-		{"https://$1x", "/r/127.0.0"},
-		{"https://$1x", "/r/10.0.0"},
-		{"https://$1cafe", "/r/0x"},
-		{"https://$1beef", "/r/0x"},
+	for _, tc := range []struct{ rule, target, request string }{
+		{"/r/*", "https://$1x", "/r/127.0.0"},
+		{"/r/*", "https://$1x", "/r/10.0.0"},
+		{"/r/*", "https://$1cafe", "/r/0x"},
+		{"/r/*", "https://$1beef", "/r/0x"},
 		// The head can simply end with a dot, which pins nothing at all: the
 		// author's text becomes a bare final label of the request's choosing.
-		{"https://$1xyz", "/r/evil."},
-		{"https://$1com", "/r/evil."},
-		{"https://$1io", "/r/evil."},
+		{"/r/*", "https://$1xyz", "/r/evil."},
+		{"/r/*", "https://$1com", "/r/evil."},
+		{"/r/*", "https://$1io", "/r/evil."},
 		// The literal sits between two captures, the one place a literal is
 		// open on the left without starting the authority.
-		{"https://$1xyz:$2", "/r/evil./8080"},
-		{"https://$1cafe:$2", "/r/0x/8080"},
+		{"/r/*/*", "https://$1xyz:$2", "/r/evil./8080"},
+		{"/r/*/*", "https://$1cafe:$2", "/r/0x/8080"},
 		// Its only dot is trailing, and a trailing dot separates nothing from
 		// what precedes it.
-		{"https://$1xyz.", "/r/evil."},
-		{"https://$1com.", "/r/evil."},
+		{"/r/*", "https://$1xyz.", "/r/evil."},
+		{"/r/*", "https://$1com.", "/r/evil."},
+		// The address rule only sees these once the port is cut off and the
+		// last label is taken after the trim; skipping either step let them
+		// compile and reach 8.0.0.1 from a captured "0".
+		{"/r/*", "https://$110.0.0.1:8080", "/r/0"},
+		{"/r/*", "https://$110.0.0.1.", "/r/0"},
 	} {
 		t.Run(tc.target+" "+tc.request, func(t *testing.T) {
 			t.Parallel()
 
-			rule := "/r/*"
-			if strings.Count(tc.request, "/") > 2 {
-				rule = "/r/*/*"
-			}
-
 			app := fiber.New()
-			app.Use(New(Config{Rules: map[string]string{rule: tc.target}}))
+			app.Use(New(Config{Rules: map[string]string{tc.rule: tc.target}}))
 			app.Use(func(c fiber.Ctx) error { return c.SendString("fell through") })
 
 			req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, tc.request, http.NoBody)
