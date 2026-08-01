@@ -268,7 +268,7 @@ func TestCacheStorageGetError(t *testing.T) {
 	t.Parallel()
 
 	storage := newFailingCacheStorage()
-	storage.errs["get|GET|/|q=|h=accept:|accept-encoding:|accept-language:"] = errors.New("boom")
+	storage.errs["get|GET|/|q=|h=accept:0|accept-encoding:0|accept-language:0"] = errors.New("boom")
 
 	var captured error
 	app := fiber.New(fiber.Config{
@@ -294,7 +294,7 @@ func TestCacheStorageSetError(t *testing.T) {
 	t.Parallel()
 
 	storage := newFailingCacheStorage()
-	storage.errs["set|GET|/|q=|h=accept:|accept-encoding:|accept-language:_body"] = errors.New("boom")
+	storage.errs["set|GET|/|q=|h=accept:0|accept-encoding:0|accept-language:0_body"] = errors.New("boom")
 
 	var captured error
 	app := fiber.New(fiber.Config{
@@ -320,14 +320,14 @@ func TestCacheStorageDeleteError(t *testing.T) {
 	t.Parallel()
 
 	storage := newFailingCacheStorage()
-	storage.errs["del|GET|/|q=|h=accept:|accept-encoding:|accept-language:"] = errors.New("boom")
+	storage.errs["del|GET|/|q=|h=accept:0|accept-encoding:0|accept-language:0"] = errors.New("boom")
 
 	// Use an obviously expired timestamp without relying on time-based conversions
 	expired := &item{exp: 1}
 	raw, err := expired.MarshalMsg(nil)
 	require.NoError(t, err)
 
-	storage.data["GET|/|q=|h=accept:|accept-encoding:|accept-language:"] = raw
+	storage.data["GET|/|q=|h=accept:0|accept-encoding:0|accept-language:0"] = raw
 
 	var captured error
 	app := fiber.New(fiber.Config{
@@ -409,8 +409,8 @@ func TestCacheEvictionPropagatesRequestContextToDelete(t *testing.T) {
 	}
 
 	require.ElementsMatch(t, []string{
-		"GET|/first|q=|h=accept:|accept-encoding:|accept-language:",
-		"GET|/first|q=|h=accept:|accept-encoding:|accept-language:_body",
+		"GET|/first|q=|h=accept:0|accept-encoding:0|accept-language:0",
+		"GET|/first|q=|h=accept:0|accept-encoding:0|accept-language:0_body",
 	}, keys)
 }
 
@@ -418,7 +418,7 @@ func TestCacheCleanupPropagatesRequestContextToDelete(t *testing.T) {
 	t.Parallel()
 
 	storage := newContextRecorderStorage()
-	storage.errs["set|GET|/|q=|h=accept:|accept-encoding:|accept-language:"] = errors.New("boom")
+	storage.errs["set|GET|/|q=|h=accept:0|accept-encoding:0|accept-language:0"] = errors.New("boom")
 
 	var captured error
 	app := fiber.New(fiber.Config{
@@ -447,7 +447,7 @@ func TestCacheCleanupPropagatesRequestContextToDelete(t *testing.T) {
 
 	records := storage.recordedDeletes()
 	require.Len(t, records, 1)
-	require.Equal(t, "GET|/|q=|h=accept:|accept-encoding:|accept-language:_body", records[0].key)
+	require.Equal(t, "GET|/|q=|h=accept:0|accept-encoding:0|accept-language:0_body", records[0].key)
 	require.Equal(t, "cleanup", records[0].value)
 	require.True(t, records[0].canceled)
 }
@@ -499,8 +499,8 @@ func TestCacheStorageOperationsObserveRequestContext(t *testing.T) {
 	require.Len(t, setRecords, 2)
 	for _, rec := range setRecords {
 		require.Contains(t, []string{
-			"GET|/cache|q=|h=accept:|accept-encoding:|accept-language:",
-			"GET|/cache|q=|h=accept:|accept-encoding:|accept-language:_body",
+			"GET|/cache|q=|h=accept:0|accept-encoding:0|accept-language:0",
+			"GET|/cache|q=|h=accept:0|accept-encoding:0|accept-language:0_body",
 		}, rec.key)
 		require.Equal(t, "store", rec.value)
 		require.True(t, rec.canceled)
@@ -515,11 +515,11 @@ func TestCacheStorageOperationsObserveRequestContext(t *testing.T) {
 			continue
 		}
 
-		if rec.key == "GET|/cache|q=|h=accept:|accept-encoding:|accept-language:" {
+		if rec.key == "GET|/cache|q=|h=accept:0|accept-encoding:0|accept-language:0" {
 			require.True(t, rec.canceled)
 			fetchEntry = true
 		}
-		if rec.key == "GET|/cache|q=|h=accept:|accept-encoding:|accept-language:_body" {
+		if rec.key == "GET|/cache|q=|h=accept:0|accept-encoding:0|accept-language:0_body" {
 			require.True(t, rec.canceled)
 			fetchBody = true
 		}

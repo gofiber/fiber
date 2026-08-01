@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"net/url"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -181,10 +182,27 @@ func appendCanonicalHeaderSubset(dst []byte, header *fasthttp.RequestHeader, nam
 		// Escape name (though names are normalized and trusted)
 		dst = append(dst, escapeKeyDelimiters(name)...)
 		dst = append(dst, ':')
-		headerValue := header.Peek(name)
-		// Escape value to prevent delimiter injection
-		escapedValue := escapeKeyDelimiters(utils.UnsafeString(headerValue))
-		dst = appendBoundKeySegment(dst, escapedValue)
+
+		// Every field line, not just the first. A name may arrive on more than
+		// one line, and the split form is equivalent to the comma-joined one on
+		// the wire (RFC 9110 Section 5.2) — but Peek returns only the first, so
+		// a request sending a key header twice keyed identically to one sending
+		// just that first value and was served its cached response. PeekAll
+		// reuses the header's own scratch slice, so this costs no allocation;
+		// the values are consumed before the next call to it.
+		values := header.PeekAll(name)
+
+		// The count keeps the framing injective. Without it an absent header
+		// and one present with an empty value both emit nothing, and a list of
+		// values could not be told from a single value that happened to contain
+		// the separator. Escaping guarantees no value holds a raw '|', so the
+		// separator below is unambiguous.
+		dst = strconv.AppendInt(dst, int64(len(values)), 10)
+		for _, value := range values {
+			dst = append(dst, '|')
+			// Escape value to prevent delimiter injection
+			dst = appendBoundKeySegment(dst, escapeKeyDelimiters(utils.UnsafeString(value)))
+		}
 	}
 
 	return dst

@@ -15,6 +15,7 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/stretchr/testify/require"
+	"github.com/valyala/fasthttp"
 )
 
 // Test_Cache_Security_DoS_ExcessiveQueryParams tests protection against DoS via excessive query parameters
@@ -439,6 +440,69 @@ func Test_Cache_Security_MultiDimensionInjection(t *testing.T) {
 
 	// Each test case should create a distinct cache entry (no collisions)
 	require.Equal(t, len(testCases), count, "All test cases should create distinct cache entries")
+}
+
+// Test_Cache_Security_KeyHeaderRepeatedFieldLines asserts that every field line
+// of a key header reaches the cache key.
+//
+// A name may arrive on more than one line, and that is equivalent to the
+// comma-joined form on the wire (RFC 9110 Section 5.2). The key used to hash
+// only the first line, so a request sending the header twice keyed identically
+// to one sending just that first value — and got served its cached response.
+func Test_Cache_Security_KeyHeaderRepeatedFieldLines(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Use(New(Config{
+		Expiration: 1 * time.Hour,
+		KeyHeaders: []string{"X-Tenant"},
+	}))
+	app.Get("/", func(c fiber.Ctx) error {
+		out := ""
+		for _, v := range c.Request().Header.PeekAll("X-Tenant") {
+			out += string(v) + ";"
+		}
+		return c.SendString("tenant:" + out)
+	})
+
+	do := func(lines ...string) (body, cacheStatus string) { //nolint:nonamedreturns // names document the pair
+		req := fasthttp.AcquireRequest()
+		defer fasthttp.ReleaseRequest(req)
+		req.Header.SetMethod(fiber.MethodGet)
+		req.SetRequestURI("/")
+		req.SetHost("example.com")
+		for _, l := range lines {
+			req.Header.Add("X-Tenant", l)
+		}
+		fctx := &fasthttp.RequestCtx{}
+		fctx.Init(req, nil, nil)
+		app.Handler()(fctx)
+		return string(fctx.Response.Body()), string(fctx.Response.Header.Peek("X-Cache"))
+	}
+
+	body, status := do("public", "acme-private")
+	require.Equal(t, cacheMiss, status)
+	require.Equal(t, "tenant:public;acme-private;", body)
+
+	body, status = do("public")
+	require.Equal(t, cacheMiss, status, "the single-line request must not hit the two-line entry")
+	require.Equal(t, "tenant:public;", body)
+
+	// The header being absent is also its own variant, not the same as one
+	// present with an empty value.
+	_, status = do()
+	require.Equal(t, cacheMiss, status)
+	_, status = do("")
+	require.Equal(t, cacheMiss, status, "an empty value must not key like an absent header")
+
+	// Each variant still caches on its own key.
+	body, status = do("public", "acme-private")
+	require.Equal(t, cacheHit, status)
+	require.Equal(t, "tenant:public;acme-private;", body)
+
+	body, status = do("public")
+	require.Equal(t, cacheHit, status)
+	require.Equal(t, "tenant:public;", body)
 }
 
 // Test_Cache_Security_BackslashEscaping tests that backslashes are properly escaped
