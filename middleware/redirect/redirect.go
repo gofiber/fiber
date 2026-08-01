@@ -262,7 +262,9 @@ func authorityChunks(target string) []authorityChunk {
 		}
 		if i > literal {
 			text := authority[literal:i]
-			chunks = append(chunks, authorityChunk{text: text, pins: pinsHost(text)})
+			// A literal only has a capture on its left once one has been
+			// appended; the authority's first chunk opens the host itself.
+			chunks = append(chunks, authorityChunk{text: text, pins: pinsHost(text, len(chunks) > 0)})
 		}
 		chunks = append(chunks, authorityChunk{text: authority[i:j], placeholder: true})
 		literal = j
@@ -273,7 +275,7 @@ func authorityChunks(target string) []authorityChunk {
 	}
 	if literal < len(authority) {
 		text := authority[literal:]
-		chunks = append(chunks, authorityChunk{text: text, pins: pinsHost(text)})
+		chunks = append(chunks, authorityChunk{text: text, pins: pinsHost(text, true)})
 	}
 	return chunks
 }
@@ -629,6 +631,25 @@ func hostPinnedBefore(chunks []authorityChunk, i int) bool {
 	return false
 }
 
+// absorbableTail reports whether what the capture supplies could take this
+// literal into itself — as the rest of a hex number, or as the rest of a
+// percent-escape. Either way the author pinned nothing the client keeps.
+func absorbableTail(label string) bool {
+	if label == "" {
+		return true
+	}
+	// A leading "x" needs only a "0" in front of it to open a hex number.
+	if label[0] == 'x' || label[0] == 'X' {
+		label = label[1:]
+	}
+	for i := 0; i < len(label); i++ {
+		if unhex(label[i]) < 0 {
+			return false
+		}
+	}
+	return true
+}
+
 // isIPv4Number reports whether a host label is read as a number by the IPv4
 // address parser, which is what makes the whole host an address rather than a
 // name. Decimal, and the hex the parser also accepts.
@@ -732,9 +753,12 @@ var hostMapping = idna.New(
 // the shape. Every value authorityHolds then accepts either ends the authority
 // before that "@" or leaves the host empty, so nothing escapes, but the model
 // is per chunk rather than per authority.
-func pinsHost(literal string) bool {
+func pinsHost(literal string, openLeft bool) bool {
 	if i := strings.LastIndexByte(literal, '@'); i >= 0 {
 		literal = literal[i+1:]
+		// The "@" is where the host starts, so whatever a capture put before it
+		// is userinfo and cannot reach into the label that follows.
+		openLeft = false
 	}
 	// An IPv6 literal carries colons of its own, so the port colon is the one
 	// past the closing bracket rather than the first.
@@ -810,6 +834,18 @@ func pinsHost(literal string) bool {
 	// composed "https://127.0.0.1" from a captured "127.0.0"; "https://$1.0x1"
 	// did the same, since the IPv4 parser reads hex. Only a complete address
 	// pins a host that way.
+	// With no dot of its own the literal sits inside a label the capture opens
+	// on the left, so what the author wrote is only that label's tail — and two
+	// tails let the request make the whole label something else. A tail of hex
+	// digits becomes a number once the value supplies "0x", so "https://$1cafe"
+	// reached 0.0.202.254 and "https://$1x" turned a captured "127.0.0" into
+	// 127.0.0.0. The same tails finish a percent-escape the value left open:
+	// "https://$1E" composed "https://evil.com%2E" from "evil.com%2", which
+	// decodes to the trailing dot that pins nothing.
+	if openLeft && strings.IndexByte(trimmed, '.') < 0 && absorbableTail(trimmed) {
+		return false
+	}
+
 	last := trimmed
 	if i := strings.LastIndexByte(trimmed, '.'); i >= 0 {
 		last = trimmed[i+1:]

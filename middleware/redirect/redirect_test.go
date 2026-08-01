@@ -930,7 +930,11 @@ func Test_PinsHost(t *testing.T) {
 		{"%C2%AD", false},    // soft hyphen
 		{"%E3%80%82", false}, // ideographic full stop
 		{"%EF%BB%BF", false}, // BOM
-		{"%41", true},        // "A" really is host text
+		// "A" is host text, but alone it is a hex tail a capture can turn into
+		// a number by supplying "0x" — so it pins only where a label already
+		// separates it from whatever came before.
+		{"%41", false},
+		{"%41.example.com", true},
 		// A stray "%" is literal to the parser, not an error.
 		{"100%", true},
 		{"a%zz", true},
@@ -941,6 +945,19 @@ func Test_PinsHost(t *testing.T) {
 		{".0", false},
 		{".0.0.1", false},
 		{".0x1", false},
+		// A hex tail is one a capture can open a number with, by supplying the
+		// "0x" — or finish a percent-escape it left dangling.
+		{"cafe", false},
+		{"beef", false},
+		{"e", false},
+		{"ad", false},
+		{"x", false},
+		{"xcafe", false},
+		// Not every dotless label is one: these hold something that is not a
+		// hex digit, so no prefix makes them a number.
+		{"cdn", true},
+		{"xyz", true},
+		{"tenant-", true},
 		{"127.0.0.1", true},
 		{"10.0.0.1", true},
 		// A name is still a name, whatever letters it is made of.
@@ -955,7 +972,7 @@ func Test_PinsHost(t *testing.T) {
 		{"::1]", false},
 		{":db8::1]", false},
 	} {
-		require.Equal(t, tc.want, pinsHost(tc.literal), "literal %q", tc.literal)
+		require.Equal(t, tc.want, pinsHost(tc.literal, true), "literal %q", tc.literal)
 	}
 }
 
@@ -1442,6 +1459,72 @@ func Test_Redirect_CompleteAddressStillPins(t *testing.T) {
 		{"https://10.0.0.1/$1", "/r/a", "https://10.0.0.1/a"},
 		{"https://$1.example.com", "/r/tenant", "https://tenant.example.com"},
 		{"https://$1.abc.def", "/r/a", "https://a.abc.def"},
+	} {
+		t.Run(tc.target, func(t *testing.T) {
+			t.Parallel()
+
+			app := fiber.New()
+			app.Use(New(Config{Rules: map[string]string{"/r/*": tc.target}}))
+
+			req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, tc.request, http.NoBody)
+			require.NoError(t, err)
+			resp, err := app.Test(req)
+			require.NoError(t, err)
+			require.Equal(t, tc.want, resp.Header.Get("Location"))
+		})
+	}
+}
+
+// Test_Redirect_AbsorbableTailPinsNoHost covers a literal with no dot of its
+// own: it sits inside a label the capture opens on the left, so what the author
+// wrote is only that label's tail.
+//
+// Two tails let the request take the whole label. A tail of hex digits becomes
+// a number once the value supplies "0x" — "https://$1cafe" reached
+// 0.0.202.254, and "https://$1x" turned a captured "127.0.0" into 127.0.0.0 —
+// and the same tails finish a percent-escape the value left open, so
+// "https://$1E" composed "https://evil.com%2E" from "evil.com%2", whose
+// trailing dot pins nothing. That second shape is pinned by the "E" row of
+// Test_PinsHost rather than here, since net/http will not build a request
+// carrying the dangling escape it needs.
+func Test_Redirect_AbsorbableTailPinsNoHost(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct{ target, request string }{
+		{"https://$1x", "/r/127.0.0"},
+		{"https://$1x", "/r/10.0.0"},
+		{"https://$1cafe", "/r/0x"},
+		{"https://$1beef", "/r/0x"},
+	} {
+		t.Run(tc.target+" "+tc.request, func(t *testing.T) {
+			t.Parallel()
+
+			app := fiber.New()
+			app.Use(New(Config{Rules: map[string]string{"/r/*": tc.target}}))
+			app.Use(func(c fiber.Ctx) error { return c.SendString("fell through") })
+
+			req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, tc.request, http.NoBody)
+			require.NoError(t, err)
+			resp, err := app.Test(req)
+			require.NoError(t, err)
+			require.Equal(t, fiber.StatusOK, resp.StatusCode, "the rule must be refused at startup")
+			require.Empty(t, resp.Header.Get("Location"))
+		})
+	}
+}
+
+// Test_Redirect_ClosedLabelStillPins is the other half: a literal a capture
+// cannot reach into still pins the host. An "@" starts the host, so the capture
+// before it is only userinfo; a dot of the literal's own separates the label;
+// and a tail holding a non-hex byte is one no prefix turns into a number.
+func Test_Redirect_ClosedLabelStillPins(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct{ target, request, want string }{
+		{"https://$1@example.com/", "/r/user", "https://user@example.com/"},
+		{"https://$1.example.com", "/r/tenant", "https://tenant.example.com"},
+		{"https://$1cdn.example.com", "/r/a", "https://acdn.example.com"},
+		{"https://$1xyz.example.com", "/r/a", "https://axyz.example.com"},
 	} {
 		t.Run(tc.target, func(t *testing.T) {
 			t.Parallel()
