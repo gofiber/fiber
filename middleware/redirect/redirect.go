@@ -1,6 +1,7 @@
 package redirect
 
 import (
+	"cmp"
 	"maps"
 	"regexp"
 	"slices"
@@ -39,12 +40,25 @@ type compiledRule struct {
 func New(config ...Config) fiber.Handler {
 	cfg := configDefault(config...)
 
-	// Initialize. The rules are walked in sorted order rather than the map's:
+	// Initialize. The rules are walked in a fixed order rather than the map's:
 	// two patterns can match the same path, and with a map range the winner —
 	// and now, since a rule can be refused and fall through to the next, whether
 	// there is a redirect at all — changed from run to run.
+	//
+	// Most specific first, measured by how much of the path a rule pins before
+	// its first wildcard. Plain lexicographic order would sort "/*" ahead of
+	// "/old/*" and let the catch-all shadow it on every request; ties fall back
+	// to the key so the order stays total.
+	keys := slices.Collect(maps.Keys(cfg.Rules))
+	slices.SortFunc(keys, func(a, b string) int {
+		if d := cmp.Compare(literalPrefixLen(b), literalPrefixLen(a)); d != 0 {
+			return d
+		}
+		return cmp.Compare(a, b)
+	})
+
 	cfg.rulesRegex = cfg.rulesRegex[:0]
-	for _, k := range slices.Sorted(maps.Keys(cfg.Rules)) {
+	for _, k := range keys {
 		v := cfg.Rules[k]
 		pattern := strings.ReplaceAll(k, "*", "(.*)")
 		// Anchor both ends so a rule matches the whole path. Without the leading
@@ -260,74 +274,62 @@ func authorityChunks(target string) []authorityChunk {
 // A target whose authority is nothing but a capture never reaches here: New
 // marks it letsRequestPickHost and the rule is refused outright.
 func authorityHolds(chunks []authorityChunk, replacer *strings.Replacer) bool {
-	// Through the Replacer, not by indexing the captures: the Replacer is what
-	// composes the location, and it matches its patterns in the order they were
-	// given, so "$10" is consumed as "$1" followed by a literal "0". Indexing
-	// would have judged the tenth capture while the first was the one actually
-	// spliced into the host.
-	values := make([]string, len(chunks))
-	for i, chunk := range chunks {
-		if chunk.placeholder {
-			values[i] = replacer.Replace(chunk.text)
-		} else {
-			values[i] = chunk.text
-		}
-	}
-
-	closing := closesAuthority(chunks, values)
 	for i, chunk := range chunks {
 		if !chunk.placeholder {
 			continue
 		}
-		if i == closing {
-			switch value := values[i]; {
-			case value == "":
-			case strings.IndexByte(`/\?#`, value[0]) >= 0 && hostPinnedBefore(chunks, i):
-				// Opens the next component, so the authority ended at the host
-				// the author wrote. Only where they wrote one: with nothing but
-				// separators ahead of it, "//$1." composing "///evil.com." does
-				// not end an authority at all — the WHATWG parser skips every
-				// leading slash and reads the rest as the host.
-			case i > 0 && strings.HasSuffix(chunks[i-1].text, ":") && isAllDigits(value):
-				// A port. The author wrote the colon, and the URL parser rejects
-				// a port holding anything but digits outright, so digits are the
-				// only value that can be what they meant.
-			default:
+		// Through the Replacer, not by indexing the captures: the Replacer is
+		// what composes the location, and it matches its patterns in the order
+		// they were given, so "$10" is consumed as "$1" followed by a literal
+		// "0". Indexing would have judged the tenth capture while the first was
+		// the one actually spliced into the host.
+		value := replacer.Replace(chunk.text)
+
+		if hostPinnedAfter(chunks, i) {
+			// The author closed the host past this token, so the value is a
+			// label inside it and only has to stay one.
+			if strings.ContainsAny(value, `/\?#@:`) {
 				return false
 			}
 			continue
 		}
-		if strings.ContainsAny(values[i], `/\?#@:`) {
+
+		// Nothing the author wrote closes the host after this token, so any
+		// value that does not open the next component extends it into a domain
+		// they do not control: "evil.com" composes "example.comevil.com", which
+		// someone can register.
+		switch {
+		case value == "":
+		case strings.IndexByte(`/\?#`, value[0]) >= 0 && hostPinnedBefore(chunks, i):
+			// Opens the next component, so the authority ended at the host the
+			// author wrote. Only where they wrote one: with nothing but
+			// separators ahead of it, "//$1." composing "///evil.com." does not
+			// end an authority at all — the parser skips every leading slash and
+			// reads the rest as the host.
+		case i > 0 && strings.HasSuffix(chunks[i-1].text, ":") && isAllDigits(value):
+			// A port. The author wrote the colon, and the URL parser rejects a
+			// port holding anything but digits outright, so digits are the only
+			// value that can be what they meant.
+		default:
 			return false
 		}
 	}
 	return true
 }
 
-// closesAuthority returns the index of the chunk that actually ends the host
-// once the values are in, or -1 when the author's own text does.
+// hostPinnedAfter reports whether the author wrote host text past the chunk at
+// index i, so that a value there lands inside a host they closed themselves.
 //
-// It is not simply the last chunk. A trailing token that resolves to the empty
-// string contributes nothing, so whatever precedes it becomes the end — and a
-// literal made only of the separators that can trail a hostname does not pin
-// anything either, since "evil.com." is the same host as "evil.com" with the
-// DNS root spelled out. Without walking back through both, "https://$1$2" with
-// an empty $2 would leave $1 judged as an interior label and let the request
-// name the host outright.
-func closesAuthority(chunks []authorityChunk, values []string) int {
-	for i := len(chunks) - 1; i >= 0; i-- {
-		if chunks[i].placeholder {
-			if values[i] == "" {
-				continue // contributes nothing; look further back
-			}
-			return i
+// A port does not close a host and neither do the separators that may trail
+// one, which is why "https://$1:$2" and "https://$1:8080" leave $1 free to name
+// the host outright: ":443" and ":8080" pin nothing.
+func hostPinnedAfter(chunks []authorityChunk, i int) bool {
+	for j := i + 1; j < len(chunks); j++ {
+		if !chunks[j].placeholder && pinsHost(chunks[j].text) {
+			return true
 		}
-		if strings.Trim(chunks[i].text, ".") == "" {
-			continue // only trailing separators; pins no domain
-		}
-		return -1 // author text closes the host
 	}
-	return -1
+	return false
 }
 
 // targetLetsRequestPickHost reports whether the request, not the author, decides
@@ -346,10 +348,16 @@ func targetLetsRequestPickHost(target string, chunks []authorityChunk) bool {
 		return false
 	}
 
-	// No authority span. Only a scheme with nothing but the request after it
-	// can still reach a host of the request's choosing.
+	// No authority span. Only a scheme the client navigates by can still reach a
+	// host of the request's choosing — "https:$1" with a value of "//evil.com"
+	// composes "https://evil.com". A scheme with no authority syntax at all,
+	// "mailto:$1@example.com", has no host to hijack, and refusing it would drop
+	// a working rule while telling the author something untrue about it.
 	i := schemeEnd(target)
 	if i <= 0 || strings.HasPrefix(target[i+1:], "//") {
+		return false
+	}
+	if !utils.EqualFold(target[:i], "http") && !utils.EqualFold(target[:i], "https") {
 		return false
 	}
 	return containsPlaceholder(target[i+1:])
@@ -469,21 +477,20 @@ func isAllDigits(s string) bool {
 // capture rather than by anything the author wrote, so a value can extend it
 // into a domain they do not control.
 //
-// It mirrors closesAuthority, minus the values it does not have yet: walk back
-// past literals that are only the separators which may trail a hostname, since
-// "evil.com." is "evil.com" with the DNS root spelled out and pins nothing. A
-// capture right after the port colon does not count — a port cannot extend a
-// host, and authorityHolds accepts a digit run there, so the rule still fires
-// for every value that could have been meant.
+// It is the static half of what authorityHolds decides per request: a token
+// with no host-pinning literal after it. A token right after the port colon
+// does not count — a port cannot extend a host, and authorityHolds accepts a
+// digit run there, so the rule still fires for every value that could have been
+// meant.
 func authorityEndsInOpenCapture(chunks []authorityChunk) bool {
-	for i := len(chunks) - 1; i >= 0; i-- {
-		if !chunks[i].placeholder {
-			if strings.Trim(chunks[i].text, ".") == "" {
-				continue
-			}
-			return false // author text closes the host
+	for i, chunk := range chunks {
+		if !chunk.placeholder || hostPinnedAfter(chunks, i) {
+			continue
 		}
-		return i == 0 || !strings.HasSuffix(chunks[i-1].text, ":") || chunks[i-1].placeholder
+		if i > 0 && strings.HasSuffix(chunks[i-1].text, ":") && !chunks[i-1].placeholder {
+			continue // a port position
+		}
+		return true
 	}
 	return false
 }
@@ -501,9 +508,34 @@ func hostPinnedBefore(chunks []authorityChunk, i int) bool {
 		if chunks[j].placeholder {
 			continue
 		}
-		if strings.Trim(chunks[j].text, ".:") != "" {
+		if pinsHost(chunks[j].text) {
 			return true
 		}
 	}
 	return false
+}
+
+// pinsHost reports whether a literal chunk of a target's authority actually
+// fixes part of the host.
+//
+// Only what precedes the port colon counts, and only once the separators that
+// may trail a hostname are stripped. ":8080" pins nothing — "evil.com:8080" is
+// still evil.com — and neither does a lone ".", since "evil.com." is "evil.com"
+// with the DNS root spelled out. Treating either as author-written host text
+// left the capture beside it judged as an interior label, and the request named
+// the host.
+func pinsHost(literal string) bool {
+	if i := strings.IndexByte(literal, ':'); i >= 0 {
+		literal = literal[:i]
+	}
+	return strings.Trim(literal, ".") != ""
+}
+
+// literalPrefixLen returns how much of a rule's path is pinned before its first
+// wildcard, which is what makes one rule more specific than another it overlaps.
+func literalPrefixLen(rule string) int {
+	if i := strings.IndexByte(rule, '*'); i >= 0 {
+		return i
+	}
+	return len(rule)
 }

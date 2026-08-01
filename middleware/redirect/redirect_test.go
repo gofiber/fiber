@@ -658,6 +658,89 @@ func Test_Redirect_OverlappingRulesAreDeterministic(t *testing.T) {
 	}
 }
 
+// Test_Redirect_PortDoesNotPinTheHost covers a capture followed only by a port.
+//
+// A port closes nothing: "evil.com:8080" is still evil.com. Counting the
+// literal ":8080" as author-written host text left the capture beside it judged
+// as a harmless interior label, and the request named the host outright.
+func Test_Redirect_PortDoesNotPinTheHost(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		pattern string
+		target  string
+		request string
+		want    string // "" means the rule must not fire
+	}{
+		{"literal port after a capture", "/p/*", "https://$1:8080", "/p/evil.com", ""},
+		{"protocol relative with a port", "/p/*", "//$1:8080", "/p/evil.com", ""},
+		{"captured host and port", "/p/*/*", "https://$1:$2", "/p/evil.com/443", ""},
+
+		// A host the author actually wrote still pins, port or no port.
+		{"port after author host text", "/p/*", "https://$1.cdn.example.com:8080", "/p/images", "https://images.cdn.example.com:8080"},
+		{"captured port only", "/p/*", "https://cdn.example.com:$1", "/p/8080", "https://cdn.example.com:8080"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			app := fiber.New()
+			app.Use(New(Config{
+				Rules:      map[string]string{tc.pattern: tc.target},
+				StatusCode: fiber.StatusFound,
+			}))
+			app.Get("/*", func(c fiber.Ctx) error { return c.SendString("fell through") })
+
+			req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, tc.request, http.NoBody)
+			require.NoError(t, err)
+			resp, err := app.Test(req)
+			require.NoError(t, err)
+
+			if tc.want == "" {
+				require.Equal(t, fiber.StatusOK, resp.StatusCode, "the rule must not fire")
+				require.Empty(t, resp.Header.Get("Location"))
+				return
+			}
+			require.Equal(t, fiber.StatusFound, resp.StatusCode)
+			require.Equal(t, tc.want, resp.Header.Get("Location"))
+		})
+	}
+}
+
+// Test_Redirect_MoreSpecificRuleWins pins that a rule pinning more of the path
+// is evaluated before one that pins less.
+//
+// Ordering the rules made evaluation deterministic, but plain lexicographic
+// order sorts "/*" ahead of "/old/*", so the catch-all would shadow the
+// specific rule on every request instead of half the time.
+func Test_Redirect_MoreSpecificRuleWins(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Use(New(Config{
+		Rules: map[string]string{
+			"/*":     "/home",
+			"/old/*": "/new/$1",
+		},
+		StatusCode: fiber.StatusFound,
+	}))
+
+	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/old/thing", http.NoBody)
+	require.NoError(t, err)
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, "/new/thing", resp.Header.Get("Location"))
+
+	// The catch-all still covers everything the specific rule does not.
+	req, err = http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/other", http.NoBody)
+	require.NoError(t, err)
+	resp, err = app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, "/home", resp.Header.Get("Location"))
+}
+
 func Test_TargetLetsRequestPickHost(t *testing.T) {
 	t.Parallel()
 
@@ -668,7 +751,11 @@ func Test_TargetLetsRequestPickHost(t *testing.T) {
 		{"https://$1", true},
 		{"//$1", true},
 		{"https:$1", true},
-		{"mailto:$1", true},
+		// A scheme with no authority syntax has no host to hijack, so it is not
+		// refused — dropping it would kill a working rule and the warning would
+		// say something untrue about it.
+		{"mailto:$1", false},
+		{"mailto:$1@example.com", false},
 
 		{"https://$1.example.com", false},
 		{"https://cdn.example.com$1", false},

@@ -215,7 +215,18 @@ func New(config ...Config) fiber.Handler {
 
 	// Return new handler
 	return func(c fiber.Ctx) error {
-		hasAuthorization := len(c.Request().Header.Peek(fiber.HeaderAuthorization)) > 0
+		// Every field line, like the hash below: a request whose first
+		// Authorization line is empty and whose second carries the credential
+		// would otherwise be taken for anonymous, keyed with anonymous traffic
+		// and served to it. Only lengths are read here, so nothing outlives the
+		// user-supplied KeyGenerator that runs next.
+		hasAuthorization := false
+		for _, v := range c.Request().Header.PeekAll(fiber.HeaderAuthorization) {
+			if len(v) > 0 {
+				hasAuthorization = true
+				break
+			}
+		}
 		reqCacheControl := joinedHeader(&c.Request().Header, fiber.HeaderCacheControl)
 		reqDirectives := parseRequestCacheControl(reqCacheControl)
 		if !reqDirectives.noCache {
@@ -499,9 +510,23 @@ func New(config ...Config) fiber.Handler {
 				// Content-Encoding, Cache-Control, Expires, ETag, Date — are all
 				// in ignoreHeaders and so are never among the stored entries.
 				for i := range e.headers {
+					if _, skip := ignoreHeaders[string(e.headers[i].key)]; skip {
+						// An entry stored before Set-Cookie joined ignoreHeaders
+						// still carries one, and nothing versions the serialized
+						// form. Replaying it is worse than it looks: DelBytes on
+						// Set-Cookie clears fasthttp's whole cookie store, wiping
+						// the session an outer middleware just set on this very
+						// response, and then re-installs another client's. Re-read
+						// the list on the way out so an upgrade cannot resurrect
+						// anything it now excludes.
+						continue
+					}
 					c.Response().Header.DelBytes(e.headers[i].key)
 				}
 				for i := range e.headers {
+					if _, skip := ignoreHeaders[string(e.headers[i].key)]; skip {
+						continue
+					}
 					c.Response().Header.AddBytesKV(e.headers[i].key, e.headers[i].value)
 				}
 				// Set Cache-Control header if not disabled and not already set
