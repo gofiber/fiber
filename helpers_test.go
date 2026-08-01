@@ -19,8 +19,6 @@ import (
 	"github.com/gofiber/utils/v2"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
-
-	"github.com/gofiber/fiber/v3/internal/mediatype"
 )
 
 func Test_Utils_GetOffer(t *testing.T) {
@@ -1928,93 +1926,6 @@ func Test_appendLowerASCII(t *testing.T) {
 			if tc.in != "" {
 				require.Equal(t, 128, cap(got), "reused buffer must not be reallocated")
 			}
-		})
-	}
-}
-
-// Test_NormalizeRequestContentType pins the RFC 9110 case rules the
-// Content-Type normalizer implements: the media type (Section 8.3.1) and each
-// parameter name (Section 5.6.6) are case-insensitive and get folded, while
-// parameter values are left byte-for-byte alone. Folding a value would corrupt
-// a multipart boundary, which is case-sensitive.
-func Test_NormalizeRequestContentType(t *testing.T) {
-	t.Parallel()
-
-	testCases := []struct {
-		name string
-		in   string
-		want string
-	}{
-		{name: "no parameters", in: "Application/JSON", want: "application/json"},
-		{name: "already lower", in: "application/json", want: "application/json"},
-		{name: "empty", in: "", want: ""},
-		{
-			name: "parameter name folded, value preserved",
-			in:   "Multipart/Form-Data; BOUNDARY=AbC123",
-			want: "multipart/form-data; boundary=AbC123",
-		},
-		{
-			name: "whitespace after the semicolon",
-			in:   "Text/Plain;\t CHARSET=UTF-8",
-			want: "text/plain;\t charset=UTF-8",
-		},
-		{
-			name: "several parameters",
-			in:   "Text/Plain; CHARSET=UTF-8; Format=Flowed",
-			want: "text/plain; charset=UTF-8; format=Flowed",
-		},
-		{
-			// A quoted-string may itself contain ';', so it must be consumed as
-			// a unit or the next parameter name would be mislocated.
-			name: "semicolon inside a quoted value",
-			in:   `Text/Plain; NAME="a;B"; Charset=UTF-8`,
-			want: `text/plain; name="a;B"; charset=UTF-8`,
-		},
-		{
-			// A backslash is deliberately not an escape here. fasthttp's own
-			// boundary scanner splits the parameter list on ';' with no quoting
-			// rules at all, so honoring quoted-pair would only create inputs the
-			// two disagree about: the quoted string ends at the first '"'
-			// either way, and what follows is read as the next parameter.
-			name: "backslash is not an escape",
-			in:   `Text/Plain; NAME="a\"; B"; Charset=UTF-8`,
-			want: `text/plain; name="a\"; b"; charset=UTF-8`,
-		},
-		{
-			name: "unterminated quoted value",
-			in:   `Text/Plain; NAME="abc`,
-			want: `text/plain; name="abc`,
-		},
-		{
-			// A bare parameter with no '=' must not swallow what follows it.
-			name: "valueless parameter",
-			in:   "Text/Plain; FLAG; CHARSET=UTF-8",
-			want: "text/plain; flag; charset=UTF-8",
-		},
-		{
-			name: "trailing semicolon",
-			in:   "Text/Plain;",
-			want: "text/plain;",
-		},
-		{
-			name: "empty parameter between semicolons",
-			in:   "Text/Plain;; CHARSET=UTF-8",
-			want: "text/plain;; charset=UTF-8",
-		},
-	}
-
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-
-			h := &fasthttp.RequestHeader{}
-			h.SetContentType(tc.in)
-
-			require.Equal(t, tc.want, string(mediatype.NormalizeRequestContentType(h)))
-			// The fold is in place, so the header itself must now read back
-			// normalized — that is what makes fasthttp's case-sensitive
-			// multipart lookups work.
-			require.Equal(t, tc.want, string(h.ContentType()))
 		})
 	}
 }

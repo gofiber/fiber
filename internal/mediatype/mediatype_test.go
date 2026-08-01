@@ -27,6 +27,8 @@ func Test_NormalizeRequestContentType(t *testing.T) {
 		{"several parameters", "TEXT/Plain; Charset=UTF-8; Format=Flowed", "text/plain; charset=UTF-8; format=Flowed"},
 		{"no space after semicolon", "Text/HTML;Charset=UTF-8", "text/html;charset=UTF-8"},
 		{"tab after semicolon", "Text/HTML;\tCharset=UTF-8", "text/html;\tcharset=UTF-8"},
+		{"tab and space after semicolon", "Text/Plain;\t CHARSET=UTF-8", "text/plain;\t charset=UTF-8"},
+		{"empty parameter between semicolons", "Text/Plain;; CHARSET=UTF-8", "text/plain;; charset=UTF-8"},
 		{"quoted value holding a semicolon", `Multipart/Form-Data; Boundary="a;B"; Name=X`, `multipart/form-data; boundary="a;B"; name=X`},
 		{"parameter with no value", "Text/Plain; Flag; Charset=x", "text/plain; flag; charset=x"},
 		{"trailing semicolon", "Text/Plain;", "text/plain;"},

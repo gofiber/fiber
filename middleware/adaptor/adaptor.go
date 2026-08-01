@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/textproto"
 	"reflect"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -417,7 +418,14 @@ func clearCopiedHeaders(fhdr *fasthttp.RequestHeader) {
 	// cookie store and re-serializes it, on a per-request path.
 	var removed []string
 	for key := range fhdr.All() {
-		if isFramingHeader(utils.UnsafeString(key)) {
+		name := utils.UnsafeString(key)
+		if isFramingHeader(name) {
+			continue
+		}
+		// All() yields a field line at a time, so a repeated header arrives
+		// once per line. Del removes every line at once, so the duplicates
+		// would only re-scan the list for a name already gone.
+		if slices.Contains(removed, name) {
 			continue
 		}
 		removed = append(removed, string(key))

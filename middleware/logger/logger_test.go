@@ -2028,3 +2028,36 @@ func Test_SanitizeValue(t *testing.T) {
 		})
 	}
 }
+
+// Test_Logger_IPs_RepeatedFieldLines asserts ${ips} logs every X-Forwarded-For
+// field line, not just the first.
+//
+// A recipient may combine repeated field lines into the comma-joined form (RFC
+// 9110 §5.2), and Fiber's proxy-header accessors do exactly that — so reading
+// only the first here logged a shorter chain than the one c.IP() and c.IPs()
+// parsed, and the access log did not explain what was actually enforced.
+func Test_Logger_IPs_RepeatedFieldLines(t *testing.T) {
+	t.Parallel()
+
+	buf := bytebufferpool.Get()
+	defer bytebufferpool.Put(buf)
+
+	app := fiber.New(fiber.Config{TrustProxy: true})
+	app.Use(New(Config{Format: "${ips}", Stream: buf}))
+	app.Get("/", func(c fiber.Ctx) error { return c.SendString("hi") })
+
+	raw := "GET / HTTP/1.1\r\nHost: example.com\r\n" +
+		"X-Forwarded-For: 1.1.1.1\r\n" +
+		"X-Forwarded-For: 2.2.2.2, 3.3.3.3\r\n\r\n"
+
+	req := fasthttp.AcquireRequest()
+	defer fasthttp.ReleaseRequest(req)
+	require.NoError(t, req.Read(bufio.NewReader(strings.NewReader(raw))))
+
+	fctx := &fasthttp.RequestCtx{}
+	fctx.Init(req, nil, nil)
+	app.Handler()(fctx)
+
+	require.Equal(t, "1.1.1.1,2.2.2.2, 3.3.3.3", buf.String(),
+		"every field line must be logged, joined the way the proxy-header accessors combine them")
+}

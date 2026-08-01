@@ -272,6 +272,9 @@ func allowsSharedCacheDirectives(cc responseCacheControl) bool {
 // shared cache may store this response. Both are directives only a shared cache
 // acts on, so neither is written by accident.
 func allowsSharedCacheStorage(cc responseCacheControl) bool {
+	// The store path rejects private well before reaching the cookie gate, so
+	// this arm is the predicate holding its own contract for a reader who meets
+	// it standalone, not a branch the caller needs.
 	if cc.hasPrivate {
 		return false
 	}

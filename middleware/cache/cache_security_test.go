@@ -974,3 +974,248 @@ func Test_Cache_Security_QueryBody_CannotInjectAuthorizationSuffix(t *testing.T)
 	require.Equal(t, "handler auth=", string(body))
 	require.Equal(t, int32(2), count.Load())
 }
+
+// Test_VaryCookie_KeyIsStableAcrossCookieCollection pins the reason
+// keyFieldLines forces fasthttp's lazy cookie collection before reading the
+// field lines.
+//
+// The Vary key is built twice per miss: once before the handler runs, and once
+// after, to store under. A handler that reads a cookie triggers collection in
+// between, and collection re-serializes every Cookie line into a single merged
+// entry. Peeking the raw lines on one side of that and the merged entry on the
+// other made the two keys differ, so the entry was stored under a key no lookup
+// would ever produce — every request missed, and each one stranded another
+// entry.
+func Test_VaryCookie_KeyIsStableAcrossCookieCollection(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Use(New(Config{Expiration: time.Hour}))
+	app.Get("/", func(c fiber.Ctx) error {
+		c.Response().Header.Set(fiber.HeaderVary, fiber.HeaderCookie)
+		// Reading a cookie is what forces collection mid-request.
+		return c.SendString("page-for:" + c.Cookies("session"))
+	})
+
+	do := func(lines ...string) string {
+		raw := "GET / HTTP/1.1\r\nHost: example.com\r\n"
+		for _, l := range lines {
+			raw += "Cookie: " + l + "\r\n"
+		}
+		raw += "\r\n"
+
+		req := fasthttp.AcquireRequest()
+		defer fasthttp.ReleaseRequest(req)
+		require.NoError(t, req.Read(bufio.NewReader(strings.NewReader(raw))))
+
+		fctx := &fasthttp.RequestCtx{}
+		fctx.Init(req, nil, nil)
+		app.Handler()(fctx)
+		return string(fctx.Response.Header.Peek("X-Cache"))
+	}
+
+	require.Equal(t, cacheMiss, do("a=1", "session=alice"))
+	require.Equal(t, cacheHit, do("a=1", "session=alice"),
+		"the store key and the lookup key must agree across cookie collection")
+	require.Equal(t, cacheHit, do("a=1", "session=alice"))
+}
+
+// Test_Authorization_SecondFieldLine asserts a credential is seen wherever it
+// sits among the Authorization field lines. Peek returns only the first, so a
+// scan of it alone read an empty first line as "no credential" — and the
+// request would then have been keyed and served as anonymous, handing it
+// whatever the anonymous entry held.
+func Test_Authorization_SecondFieldLine(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Use(New(Config{Expiration: time.Hour}))
+	app.Get("/", func(c fiber.Ctx) error { return c.SendString("anonymous body") })
+
+	do := func(lines ...string) string {
+		raw := "GET / HTTP/1.1\r\nHost: example.com\r\n"
+		for _, l := range lines {
+			raw += "Authorization: " + l + "\r\n"
+		}
+		raw += "\r\n"
+
+		req := fasthttp.AcquireRequest()
+		defer fasthttp.ReleaseRequest(req)
+		require.NoError(t, req.Read(bufio.NewReader(strings.NewReader(raw))))
+
+		fctx := &fasthttp.RequestCtx{}
+		fctx.Init(req, nil, nil)
+		app.Handler()(fctx)
+		return string(fctx.Response.Header.Peek("X-Cache"))
+	}
+
+	// Prime an anonymous entry.
+	require.Equal(t, cacheMiss, do())
+	require.Equal(t, cacheHit, do())
+
+	// The credential is on the second line. Since this response permits no
+	// shared caching, carrying one means the entry is refused outright — which
+	// only happens if the scan looked past the empty first line.
+	require.Equal(t, cacheUnreachable, do("", "Bearer alice"),
+		"a credential on a later field line must not be read as anonymous")
+}
+
+// Test_AuthorizationHash_CoversEveryFieldLine asserts the value hashed into the
+// key is the whole comma-joined credential. Hashing only the first field line
+// put two principals that share it in the same partition, so one read the
+// other's response.
+func Test_AuthorizationHash_CoversEveryFieldLine(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Use(New(Config{Expiration: time.Hour}))
+	app.Get("/", func(c fiber.Ctx) error {
+		// Opt in to shared caching so an authorized response is stored at all,
+		// which is what lets the key partition be observed.
+		c.Set(fiber.HeaderCacheControl, "public")
+		return c.SendString("body for:" + string(c.Request().Header.PeekAll(fiber.HeaderAuthorization)[1]))
+	})
+
+	do := func(lines ...string) (string, string) {
+		raw := "GET / HTTP/1.1\r\nHost: example.com\r\n"
+		for _, l := range lines {
+			raw += "Authorization: " + l + "\r\n"
+		}
+		raw += "\r\n"
+
+		req := fasthttp.AcquireRequest()
+		defer fasthttp.ReleaseRequest(req)
+		require.NoError(t, req.Read(bufio.NewReader(strings.NewReader(raw))))
+
+		fctx := &fasthttp.RequestCtx{}
+		fctx.Init(req, nil, nil)
+		app.Handler()(fctx)
+		return string(fctx.Response.Body()), string(fctx.Response.Header.Peek("X-Cache"))
+	}
+
+	// Both principals share the first field line and differ only on the second.
+	body, status := do("Bearer shared", "Bearer alice")
+	require.Equal(t, cacheMiss, status)
+	require.Equal(t, "body for:Bearer alice", body)
+
+	body, status = do("Bearer shared", "Bearer alice")
+	require.Equal(t, cacheHit, status)
+	require.Equal(t, "body for:Bearer alice", body)
+
+	body, status = do("Bearer shared", "Bearer bob")
+	require.Equal(t, cacheMiss, status,
+		"principals differing only on a later field line must not share a partition")
+	require.Equal(t, "body for:Bearer bob", body)
+}
+
+// Test_RequestPragma_SecondFieldLine asserts the RFC 9111 §5.4 no-cache
+// fallback is honored on a repeated Pragma line, not only the first.
+func Test_RequestPragma_SecondFieldLine(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Use(New(Config{Expiration: time.Hour}))
+	app.Get("/", func(c fiber.Ctx) error { return c.SendString("body") })
+
+	do := func(lines ...string) string {
+		raw := "GET / HTTP/1.1\r\nHost: example.com\r\n"
+		for _, l := range lines {
+			raw += "Pragma: " + l + "\r\n"
+		}
+		raw += "\r\n"
+
+		req := fasthttp.AcquireRequest()
+		defer fasthttp.ReleaseRequest(req)
+		require.NoError(t, req.Read(bufio.NewReader(strings.NewReader(raw))))
+
+		fctx := &fasthttp.RequestCtx{}
+		fctx.Init(req, nil, nil)
+		app.Handler()(fctx)
+		return string(fctx.Response.Header.Peek("X-Cache"))
+	}
+
+	require.Equal(t, cacheMiss, do())
+	require.Equal(t, cacheHit, do())
+	require.Equal(t, cacheMiss, do("token", "no-cache"),
+		"no-cache on a later Pragma line must still force revalidation")
+}
+
+// Test_StoreResponseHeaders_DropsTrailer pins the hop-by-hop header's real
+// name. The list said "Trailers", which is not a header, so the actual Trailer
+// field was stored and replayed — announcing to every later client a trailer
+// that only the connection it came from ever sent.
+func Test_StoreResponseHeaders_DropsTrailer(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Use(New(Config{Expiration: time.Hour, StoreResponseHeaders: true}))
+	app.Get("/", func(c fiber.Ctx) error {
+		c.Response().Header.Set("Trailer", "Expires")
+		c.Response().Header.Set("X-Keep", "kept")
+		return c.SendString("hi")
+	})
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, cacheMiss, resp.Header.Get("X-Cache"))
+
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, cacheHit, resp.Header.Get("X-Cache"))
+	require.Empty(t, resp.Header.Values("Trailer"))
+	// A stored header that is not hop-by-hop still comes back, so the assertion
+	// above is about Trailer and not about header storage being off.
+	require.Equal(t, "kept", resp.Header.Get("X-Keep"))
+}
+
+// Test_SetCookie2ResponseIsNotStored covers the obsolete RFC 2965 spelling.
+// fasthttp does not route it into its cookie store, so h.Cookies() alone does
+// not see it and the response would have been stored and shared.
+func Test_SetCookie2ResponseIsNotStored(t *testing.T) {
+	t.Parallel()
+
+	var calls int32
+	app := fiber.New()
+	app.Use(New(Config{Expiration: time.Hour}))
+	app.Get("/", func(c fiber.Ctx) error {
+		n := atomic.AddInt32(&calls, 1)
+		c.Response().Header.Set("Set-Cookie2", fmt.Sprintf(`session="secret-%d"; Version="1"`, n))
+		return c.SendString(fmt.Sprintf("page-for-client-%d", n))
+	})
+
+	for i := 1; i <= 2; i++ {
+		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, cacheUnreachable, resp.Header.Get("X-Cache"))
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		require.Equal(t, fmt.Sprintf("page-for-client-%d", i), string(body))
+	}
+	require.Equal(t, int32(2), atomic.LoadInt32(&calls))
+}
+
+// Test_joinKeyHeaderValues_Framing asserts the length prefixes keep the join
+// injective. It is what stops two different field-line splits of the same bytes
+// from digesting alike once a dimension is too long to store verbatim, and a
+// plain concatenation would collide on the first pair below.
+func Test_joinKeyHeaderValues_Framing(t *testing.T) {
+	t.Parallel()
+
+	join := func(values ...string) string {
+		b := make([][]byte, len(values))
+		for i, v := range values {
+			b[i] = []byte(v)
+		}
+		return string(joinKeyHeaderValues(b))
+	}
+
+	require.NotEqual(t, join("ab"), join("a", "b"))
+	require.NotEqual(t, join("a", "bc"), join("ab", "c"))
+	require.NotEqual(t, join(""), join(), "absent and present-empty are different")
+	require.NotEqual(t, join("", ""), join(""))
+	// A value that spells its own framing cannot forge a boundary.
+	require.NotEqual(t, join("\x01a\x01b"), join("a", "b"))
+	// The encoding itself: a uvarint length before each value, which is what
+	// makes the boundaries readable and so the join injective.
+	require.Equal(t, "\x01a\x01b", join("a", "b"))
+}
