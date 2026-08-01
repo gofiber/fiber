@@ -1378,3 +1378,36 @@ func Test_KeyHeaders_PartitionWithoutHeaderNormalizing(t *testing.T) {
 		})
 	}
 }
+
+// Test_CachedRedirectKeepsItsLocation asserts a cached 3xx is replayed with
+// somewhere to go.
+//
+// 300 and 301 are cacheable statuses, but with the default
+// StoreResponseHeaders:false only the body, status, Content-Type and
+// Content-Encoding were kept — so the first client got "301 Location: /new" and
+// every client after it a bare 301 it could not follow.
+func Test_CachedRedirectKeepsItsLocation(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Use(New(Config{Expiration: time.Hour}))
+	app.Get("/old", func(c fiber.Ctx) error {
+		c.Set("X-Extra", "not-stored")
+		return c.Redirect().Status(fiber.StatusMovedPermanently).To("/new")
+	})
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/old", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, cacheMiss, resp.Header.Get("X-Cache"))
+	require.Equal(t, fiber.StatusMovedPermanently, resp.StatusCode)
+	require.Equal(t, "/new", resp.Header.Get("Location"))
+
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/old", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, cacheHit, resp.Header.Get("X-Cache"))
+	require.Equal(t, fiber.StatusMovedPermanently, resp.StatusCode)
+	require.Equal(t, "/new", resp.Header.Get("Location"), "a cached redirect must keep its destination")
+	// Only the destination is kept, not response headers at large — that is
+	// still what StoreResponseHeaders is for.
+	require.Empty(t, resp.Header.Get("X-Extra"))
+}

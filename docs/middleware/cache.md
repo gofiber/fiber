@@ -124,6 +124,13 @@ Cache lookup/storage is applied only for `GET` and `HEAD` requests by default. O
 
 If a response sets `Vary`, request lookup/storage is also partitioned by those header values unless `DisableVaryHeaders` is `true`. Responses with `Vary: *` remain uncacheable.
 
+### Cached redirects
+
+`300` and `301` are cacheable statuses, so a redirect can be served from the
+cache. Its `Location` is kept with the entry even when `StoreResponseHeaders` is
+off, since the status means nothing without it — the same reason `Content-Type`
+is always kept. No other response header is stored on that path.
+
 ### Responses that are never stored
 
 One entry is served to every client whose request matches its key, so a response

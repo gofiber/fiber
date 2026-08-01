@@ -845,6 +845,21 @@ func New(config ...Config) fiber.Handler {
 					value: utils.CopyBytes(value),
 				})
 			}
+		} else {
+			// Keep the destination of a redirect even when headers are not
+			// stored. 300 and 301 are cacheable statuses, so without this a hit
+			// replayed the status and nothing to follow it to: the first client
+			// got "301 Location: /new" and every one after it a bare 301. The
+			// status is meaningless on its own, in the way a body is meaningless
+			// without its Content-Type — which is why that one is always kept
+			// too.
+			e.headers = e.headers[:0]
+			if location := c.Response().Header.Peek(fiber.HeaderLocation); len(location) > 0 {
+				e.headers = append(e.headers, cachedHeader{
+					key:   utils.CopyBytes(utils.UnsafeBytes(fiber.HeaderLocation)),
+					value: utils.CopyBytes(location),
+				})
+			}
 		}
 
 		expirationSource := expirationSourceConfig
