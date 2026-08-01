@@ -503,10 +503,17 @@ func defaultCookiePathFor(requestPath []byte) []byte {
 // from URI.Path(), which fasthttp has already decoded once, so setting it
 // naively decodes twice: a request for "/a%2541b/c" would store the scope
 // "/aAb" and the cookie could never be sent again, not even to the URL that
-// set it. Escaping '%' survives the second decode; if the value still does not
-// round-trip (a path containing ';', which normalizePath rewrites
-// unconditionally), fall back to leaving the scope at "/" — broader than the
-// RFC prescribes, but the cookie stays usable instead of being silently lost.
+// set it. Escaping '%' survives the second decode.
+//
+// A path holding ';' cannot round-trip at all — normalizePath rewrites it to a
+// space whether it arrives raw or as "%3B" — so those fall back to "/". That is
+// deliberately the wider of the two options: the alternative is a scope the
+// cookie can never match, which loses it silently on the URL that set it. It
+// widens the cookie only across paths of the same host, and RFC 6265 Section
+// 8.5 is explicit that the path attribute is not a security boundary — a
+// document on one path can read another path's cookies through the DOM
+// regardless. Narrowing this properly means storing the scope beside the cookie
+// rather than inside fasthttp's normalizing Path field.
 func setDefaultCookiePath(c *fasthttp.Cookie, path []byte) {
 	c.SetPathBytes(escapePercent(path))
 	if !bytes.Equal(c.Path(), path) {

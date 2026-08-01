@@ -386,23 +386,23 @@ func Test_AuthorityChunks(t *testing.T) {
 	require.Equal(t, []authorityChunk{
 		{text: "$1", placeholder: true},
 		{text: ".assets.example.com"},
-	}, chunksOf("https://$1.assets.example.com/x"))
+	}, authorityChunks("https://$1.assets.example.com/x"))
 
 	require.Equal(t, []authorityChunk{
 		{text: "cdn.example.com"},
 		{text: "$1", placeholder: true},
-	}, chunksOf("https://cdn.example.com$1"))
+	}, authorityChunks("https://cdn.example.com$1"))
 
 	require.Equal(t, []authorityChunk{
 		{text: "assets."},
 		{text: "$1", placeholder: true},
 		{text: ".com"},
-	}, chunksOf("https://assets.$1.com"))
+	}, authorityChunks("https://assets.$1.com"))
 
 	// A target that is nothing but the token: the author picked the
 	// destination outright, and authorityHolds leaves it alone.
-	require.Equal(t, []authorityChunk{{text: "$1", placeholder: true}}, chunksOf("https://$1"))
-	require.Equal(t, []authorityChunk{{text: "$12", placeholder: true}}, chunksOf("//$12"))
+	require.Equal(t, []authorityChunk{{text: "$1", placeholder: true}}, authorityChunks("https://$1"))
+	require.Equal(t, []authorityChunk{{text: "$12", placeholder: true}}, authorityChunks("//$12"))
 }
 
 // Test_Redirect_CaptureBoundedByTheTarget covers a token that closes the
@@ -422,11 +422,19 @@ func Test_Redirect_CaptureBoundedByTheTarget(t *testing.T) {
 		want    string // "" means the rule must not fire
 	}{
 		{"port", "https://cdn.example.com:$1/health", "/t/8080", "https://cdn.example.com:8080/health"},
-		{"host prefix", "https://tenant-$1/app", "/t/acme", "https://tenant-acme/app"},
 
 		// The value is still part of the authority, so it may not restructure it.
 		{"at sign in a port", "https://cdn.example.com:$1/health", "/t/80@evil.com", ""},
+
+		// A capture that ends the host is refused even where the target
+		// continues past it: "evil.com" would compose "example.comevil.com",
+		// a domain someone can register. What follows in the target makes no
+		// difference, because the host is already decided by then.
+		{"host extended before a path", "https://example.com$1/health", "/t/evil.com", ""},
+		{"host prefix with a path after", "https://tenant-$1/app", "/t/evil.com", ""},
 		{"slash in a host prefix", "https://tenant-$1/app", "/t/evil.com%2Fx", ""},
+		// Opening a path closes the host at the author's own text.
+		{"capture opens a path", "https://example.com$1/health", "/t/%2Ffoo", "https://example.com/foo/health"},
 
 		// A token right after the port colon ends the target, but a port cannot
 		// extend a host and the URL parser rejects a non-numeric one outright,
@@ -487,7 +495,7 @@ func Test_TargetLetsRequestPickHost(t *testing.T) {
 		{"https://cdn.example.com", false},
 		{"mailto:someone@example.com", false},
 	} {
-		require.Equal(t, tc.want, targetLetsRequestPickHost(tc.target, chunksOf(tc.target)), "target %q", tc.target)
+		require.Equal(t, tc.want, targetLetsRequestPickHost(tc.target, authorityChunks(tc.target)), "target %q", tc.target)
 	}
 }
 
@@ -734,14 +742,7 @@ func Test_RegexRules(t *testing.T) {
 	})
 }
 
-// chunksOf drops authorityChunks' second result, which the tests below assert
-// separately through Test_AuthoritySpan.
-func chunksOf(target string) []authorityChunk {
-	chunks, _ := authorityChunks(target)
-	return chunks
-}
-
 func requireNoAuthorityChunks(t *testing.T, target, msg string) {
 	t.Helper()
-	require.Nil(t, chunksOf(target), msg)
+	require.Nil(t, authorityChunks(target), msg)
 }

@@ -1971,9 +1971,14 @@ func Test_NormalizeRequestContentType(t *testing.T) {
 			want: `text/plain; name="a;B"; charset=UTF-8`,
 		},
 		{
-			name: "escaped quote inside a quoted value",
+			// A backslash is deliberately not an escape here. fasthttp's own
+			// boundary scanner splits the parameter list on ';' with no quoting
+			// rules at all, so honoring quoted-pair would only create inputs the
+			// two disagree about: the quoted string ends at the first '"'
+			// either way, and what follows is read as the next parameter.
+			name: "backslash is not an escape",
 			in:   `Text/Plain; NAME="a\"; B"; Charset=UTF-8`,
-			want: `text/plain; name="a\"; B"; charset=UTF-8`,
+			want: `text/plain; name="a\"; b"; charset=UTF-8`,
 		},
 		{
 			name: "unterminated quoted value",

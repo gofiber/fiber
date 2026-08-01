@@ -26,11 +26,6 @@ type compiledRule struct {
 	// each substituted value can be judged by where it lands. Empty when the
 	// authority holds no placeholder and so cannot be moved by a request.
 	authorityChunks []authorityChunk
-	// authorityEndsTarget is set when the authority runs to the end of the
-	// target, so a token closing it has nothing after it and may open the next
-	// component itself. Where author text follows ("https://host:$1/health")
-	// the token is bounded and only gets the stricter content check.
-	authorityEndsTarget bool
 	// sameOrigin is set when the target names no authority of its own. The "$N"
 	// values spliced into such a target come from the request path, so they must
 	// not be able to introduce one.
@@ -50,7 +45,7 @@ func New(config ...Config) fiber.Handler {
 		// rule whose path it only happens to end with (e.g. "/old" would also
 		// redirect "/very/old"). See issue #4476.
 		pattern = "^" + pattern + "$"
-		chunks, authorityEnd := authorityChunks(v)
+		chunks := authorityChunks(v)
 
 		switch {
 		case targetLetsRequestPickHost(v, chunks):
@@ -61,7 +56,7 @@ func New(config ...Config) fiber.Handler {
 			// silently refusing to honor the rule at request time.
 			log.Warnf("[REDIRECT] rule %q sends the client to a host taken from the request path; "+
 				"anyone who can shape the path can choose the redirect target", k)
-		case authorityEndsInOpenCapture(chunks, authorityEnd == len(v)):
+		case authorityEndsInOpenCapture(chunks):
 			// The target's host ends in a capture with nothing pinned after it,
 			// so a value like ".evil.com" would extend the host into a domain
 			// the author does not control. Such a value is refused per request,
@@ -72,10 +67,9 @@ func New(config ...Config) fiber.Handler {
 		}
 
 		cfg.rulesRegex[regexp.MustCompile(pattern)] = compiledRule{
-			target:              v,
-			authorityChunks:     chunks,
-			authorityEndsTarget: authorityEnd == len(v),
-			sameOrigin:          !targetNamesAuthority(v),
+			target:          v,
+			authorityChunks: chunks,
+			sameOrigin:      !targetNamesAuthority(v),
 		}
 	}
 
@@ -97,7 +91,7 @@ func New(config ...Config) fiber.Handler {
 			// tenant — and the author means $1 to be a label, not a whole URL.
 			// Refuse the rule when a value would move the host, rather than
 			// guess what the author meant; the request falls through to the app.
-			if !authorityHolds(rule.authorityChunks, rule.authorityEndsTarget, values) {
+			if !authorityHolds(rule.authorityChunks, values) {
 				continue
 			}
 
@@ -179,12 +173,11 @@ func authoritySpan(target string) (start, end int) { //nolint:nonamedreturns // 
 // authorityChunks splits target's own authority into literal text and "$N"
 // tokens. It returns nil when the authority holds no token, which is the common
 // case and means no request can move the host.
-// It also returns where that authority ends, so the caller does not recompute
-// the span and the two cannot drift apart.
-func authorityChunks(target string) (chunks []authorityChunk, authorityEnd int) { //nolint:nonamedreturns // the pair is a value and the offset it came from; names say which is which
+func authorityChunks(target string) []authorityChunk {
 	start, end := authoritySpan(target)
 	authority := target[start:end]
 
+	var chunks []authorityChunk
 	literal := 0
 	for i := 0; i < len(authority); {
 		if authority[i] != '$' {
@@ -207,12 +200,12 @@ func authorityChunks(target string) (chunks []authorityChunk, authorityEnd int) 
 		i = j
 	}
 	if chunks == nil {
-		return nil, end
+		return nil
 	}
 	if literal < len(authority) {
 		chunks = append(chunks, authorityChunk{text: authority[literal:]})
 	}
-	return chunks, end
+	return chunks
 }
 
 // authorityHolds reports whether the values about to be substituted leave the
@@ -220,21 +213,24 @@ func authorityChunks(target string) (chunks []authorityChunk, authorityEnd int) 
 //
 // Where a token sits decides what it may contain:
 //
-//   - Something in the target follows it — more authority
-//     ("https://$1.cdn.example.com") or a path ("https://cdn.example.com:$1/health").
-//     Either way the value is bounded and becomes part of the authority, so it
-//     must not carry a byte that ends the authority ("/", "\", "?", "#"),
-//     starts a new host by making everything before it userinfo ("@"), or opens
-//     a port (":"). Without that check a value of "evil.com/x" composes
+//   - More authority follows it ("https://$1.cdn.example.com"): the author
+//     pinned the end of the host, so the value is a label inside it and must not
+//     carry a byte that ends the authority ("/", "\", "?", "#"), starts a new
+//     host by making everything before it userinfo ("@"), or opens a port (":").
+//     Without that check a value of "evil.com/x" composes
 //     "https://evil.com/x.cdn.example.com", whose authority stops at the slash —
 //     the browser goes to evil.com.
-//   - It ends the target ("https://cdn.example.com$1"): the author left the rest
-//     of the URL to the request, so the value must open the next component —
-//     "/", "\", "?" or "#" — or be empty. Anything else extends the host the
-//     author wrote, and "@evil.com" would turn all of it into userinfo.
+//   - It ends the authority ("https://cdn.example.com$1", and equally
+//     "https://example.com$1/health"): nothing the author wrote closes the host,
+//     so any value that does not open the next component extends it into a
+//     domain they do not control — "evil.com" composes "example.comevil.com",
+//     which someone can register. The value must open a component — "/", "\",
+//     "?" or "#" — or be empty, or be a port where the author wrote the colon.
+//     What follows the authority in the target makes no difference: the host is
+//     already decided by then.
 //   - It is the whole authority ("https://$1"): the author handed over the
 //     destination deliberately, so nothing is checked. New warns about it.
-func authorityHolds(chunks []authorityChunk, endsTarget bool, values []string) bool {
+func authorityHolds(chunks []authorityChunk, values []string) bool {
 	if len(chunks) <= 1 {
 		return true
 	}
@@ -249,7 +245,7 @@ func authorityHolds(chunks []authorityChunk, endsTarget bool, values []string) b
 			// location, so it cannot carry anything from the request.
 			continue
 		}
-		if endsTarget && i == len(chunks)-1 {
+		if i == len(chunks)-1 {
 			switch {
 			case value == "":
 			case strings.IndexByte(`/\?#`, value[0]) >= 0:
@@ -415,8 +411,8 @@ func isAllDigits(s string) bool {
 // A capture right after the port colon does not count: a port cannot extend a
 // host, and authorityHolds accepts a digit run there, so the rule still fires
 // for every value that could have been meant.
-func authorityEndsInOpenCapture(chunks []authorityChunk, endsTarget bool) bool {
-	if !endsTarget || len(chunks) == 0 {
+func authorityEndsInOpenCapture(chunks []authorityChunk) bool {
+	if len(chunks) == 0 {
 		return false
 	}
 	last := len(chunks) - 1

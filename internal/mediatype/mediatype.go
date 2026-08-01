@@ -69,13 +69,19 @@ func NormalizeRequestContentType(h *fasthttp.RequestHeader) []byte {
 		// Step over the value without touching it. A quoted-string may
 		// contain ';' (RFC 9110 Section 5.6.6), so it has to be consumed as a
 		// unit or the next parameter name would be mislocated.
+		//
+		// A backslash is not treated as an escape, even though RFC 9110 allows
+		// quoted-pair. fasthttp's own boundary scanner splits the parameter list
+		// on ';' with no quoting rules whatsoever, so honoring an escape here
+		// only creates inputs the two disagree about: an unterminated `\"` would
+		// swallow the rest of the list and leave a later "BOUNDARY=" unfolded,
+		// while fasthttp went on to look for it. Ending the string at the first
+		// unescaped-or-not quote keeps this scanner no more permissive than the
+		// parser it exists to feed.
 		i++ // step over the '='
 		if i < len(ct) && ct[i] == '"' {
 			i++
 			for i < len(ct) && ct[i] != '"' {
-				if ct[i] == '\\' && i+1 < len(ct) {
-					i++
-				}
 				i++
 			}
 			if i < len(ct) {

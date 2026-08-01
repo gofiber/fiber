@@ -108,29 +108,32 @@ func responseSetsCookie(h *fasthttp.ResponseHeader) bool {
 	return false
 }
 
-// stableFieldLines drops the lone empty entry fasthttp reports for a name it
-// answers from one of its own stores once that store has been collected.
+// keyFieldLines returns the field lines of name to key a cache entry on.
 //
-// RequestHeader.PeekAll special-cases Cookie and Trailer: before collection it
-// reports the raw field lines — none at all when the header was absent — and
-// after it always reports exactly one entry, empty when there is nothing to
-// report. Whether collection has happened depends on what other middleware ran
-// first, so without this the same request on the wire keys two different ways.
-// A request that reached c.Cookies() through a session or CSRF middleware would
-// land in a different cache partition from one that did not, and a Vary: Cookie
-// route would miss on every second request and store a duplicate entry each
-// time.
+// PeekAll is what makes a name arriving on several lines key differently from
+// one that arrived on a single line — except for the two names fasthttp answers
+// from its own stores. RequestHeader.PeekAll special-cases Cookie and Trailer,
+// and what it reports for those depends on whether fasthttp has collected them
+// yet: before collection it hands back the raw field lines, after it hands back
+// exactly one re-serialized entry (empty when there is nothing to report, and
+// "a=1; b=2" for what arrived as "a=1;b=2"). Whether collection has happened
+// depends on which middleware ran first, so keying on PeekAll would let the same
+// request on the wire land in two partitions — and a Vary: Cookie route, whose
+// lookup runs before the handler and whose store runs after, would miss on every
+// second request and strand a duplicate entry each time.
 //
-// Only these names are folded, so an ordinary header present with an empty
-// value still keys differently from one that is absent.
-func stableFieldLines(name string, values [][]byte) [][]byte {
-	if len(values) != 1 || len(values[0]) != 0 {
-		return values
+// Peek is stable across both states for those names, and no information is lost:
+// fasthttp merges repeated Cookie lines on parse, so there is only ever one
+// value to report.
+func keyFieldLines(h *fasthttp.RequestHeader, name string) [][]byte {
+	if !utils.EqualFold(name, fiber.HeaderCookie) && !utils.EqualFold(name, fiber.HeaderTrailer) {
+		return h.PeekAll(name)
 	}
-	if utils.EqualFold(name, fiber.HeaderCookie) || utils.EqualFold(name, fiber.HeaderTrailer) {
-		return nil
+
+	if v := h.Peek(name); len(v) > 0 {
+		return [][]byte{v}
 	}
-	return values
+	return nil
 }
 
 // headerPeeker is the part of fasthttp's request and response headers this
