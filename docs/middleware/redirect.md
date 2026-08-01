@@ -150,10 +150,12 @@ this middleware** before reaching the rest of the stack. With
 `{"/go/*": "https://$1", "/*": "/home"}`, a request for `/go/evil.com` is
 redirected to `/home` by the catch-all.
 
-This check covers the schemes a client navigates by. A scheme-only target in
-some other scheme, `"/go/*": "ws:$1"`, still composes `ws://evil.com` from a
-captured `//evil.com`, and is neither refused nor warned about — such a
-`Location` is not followed as a top-level navigation, but do not write one.
+This check covers every scheme the URL parser gives an authority to — `http`,
+`https`, `ws`, `wss` and `ftp`. For all of them a capture straight after the
+colon names the host outright, without needing a slash of its own, because the
+parser reads `"ws:evil.com"` as `ws://evil.com`. `file:` is excluded because it
+takes no host that way, and a scheme it does not recognise, `"mailto:$1@x"`,
+has none to take.
 
 ::::
 

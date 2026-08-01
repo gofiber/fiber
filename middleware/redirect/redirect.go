@@ -404,7 +404,7 @@ func targetLetsRequestPickHost(target string, chunks []authorityChunk) bool {
 	if i <= 0 || strings.HasPrefix(target[i+1:], "//") {
 		return false
 	}
-	if !utils.EqualFold(target[:i], "http") && !utils.EqualFold(target[:i], "https") {
+	if !isSpecialScheme(target[:i]) {
 		return false
 	}
 	return containsPlaceholder(target[i+1:])
@@ -476,6 +476,26 @@ func captureInBrackets(target string) bool {
 				return true
 			}
 		}
+	}
+	return false
+}
+
+// isSpecialScheme reports whether the URL parser gives this scheme an authority
+// even where the author wrote no "//".
+//
+// The WHATWG special schemes are http, https, ws, wss, ftp and file, and for
+// all but file the parser's missing-solidus step reads what follows the colon
+// as a host: "ws:evil.com" is ws://evil.com, so a capture there names the host
+// without needing to supply a single slash. file is left out because it takes
+// no host that way — "file:evil.com" has an empty one.
+func isSpecialScheme(scheme string) bool {
+	switch {
+	case utils.EqualFold(scheme, "http"), utils.EqualFold(scheme, "https"):
+		return true
+	case utils.EqualFold(scheme, "ws"), utils.EqualFold(scheme, "wss"):
+		return true
+	case utils.EqualFold(scheme, "ftp"):
+		return true
 	}
 	return false
 }

@@ -777,6 +777,16 @@ func Test_TargetLetsRequestPickHost(t *testing.T) {
 		{"https://$1", true},
 		{"//$1", true},
 		{"https:$1", true},
+		// The parser's missing-solidus step gives every special scheme but file
+		// an authority, so a capture after the colon names the host with no
+		// slash of its own: "ws:evil.com" is ws://evil.com.
+		{"ws:$1", true},
+		{"wss:$1", true},
+		{"ftp:$1", true},
+		{"WS:$1", true},
+		{"FTP:$1", true},
+		// file takes no host that way, so nothing there is hijackable.
+		{"file:$1", false},
 		// Nothing beside the capture is host text: a port, a captured port, a
 		// second capture and a trailing dot all pin nothing, so the value names
 		// the host on its own.
