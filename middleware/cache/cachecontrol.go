@@ -250,3 +250,30 @@ func allowsSharedCacheDirectives(cc responseCacheControl) bool {
 	// an Expires header alone MUST NOT allow sharing when Authorization is present.
 	return false
 }
+
+// allowsSharedCacheStorage reports whether a response says outright that a
+// shared cache may hold it.
+//
+// Deliberately stricter than allowsSharedCacheDirectives. That one answers RFC
+// 9111 §3.5's question — may a response to an authorized request be reused —
+// and the RFC answers it with must-revalidate, public and s-maxage, because a
+// cache honoring must-revalidate returns to the origin once the entry goes
+// stale and the origin re-checks the credential.
+//
+// A response that sets a cookie asks a different question, and must-revalidate
+// is not an answer to it: the directive governs when a stale entry may be
+// reused, not whether the entry is impersonal, and an author writes it on a
+// personalized page precisely to keep that page fresh. This middleware also
+// never revalidates — it serves the stored body for the whole configured
+// expiration without consulting the handler again — so the bargain the RFC's
+// allowance rests on is not one it can keep.
+//
+// public and s-maxage state the thing actually being relied on here, that a
+// shared cache may store this response. Both are directives only a shared cache
+// acts on, so neither is written by accident.
+func allowsSharedCacheStorage(cc responseCacheControl) bool {
+	if cc.hasPrivate {
+		return false
+	}
+	return cc.hasPublic || cc.sMaxAgeSet
+}

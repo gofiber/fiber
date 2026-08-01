@@ -664,11 +664,14 @@ func New(config ...Config) fiber.Handler {
 		// it hands that client's page to everyone who hits the entry later.
 		//
 		// Refuse to store unless the response says outright that a shared cache
-		// may, which is the same escape hatch RFC 9111 Section 3.5 gives a
-		// response to an authorized request. A route that genuinely wants both
-		// a cookie and shared caching can say so with "Cache-Control: public"
-		// or an s-maxage.
-		if !isSharedCacheAllowed && responseSetsCookie(&c.Response().Header) {
+		// may hold it. That is a stricter test than the one above: RFC 9111
+		// Section 3.5 lets must-revalidate carry a response to an authorized
+		// request because a revalidating cache re-checks the credential at the
+		// origin, but this middleware never revalidates, and the directive says
+		// nothing about whether the body is personalized. A route that genuinely
+		// wants both a cookie and shared caching can say so with
+		// "Cache-Control: public" or an s-maxage.
+		if !allowsSharedCacheStorage(respCacheControl) && responseSetsCookie(&c.Response().Header) {
 			markUnreachable()
 			return nil
 		}

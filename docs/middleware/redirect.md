@@ -95,6 +95,11 @@ The same applies where only separators precede the capture, as in `"//$1."` —
 `"///evil.com."` is read host-first by the URL parser, so nothing there pins a
 host either.
 
+This check covers the schemes a client navigates by. A scheme-only target in
+some other scheme, `"/go/*": "ws:$1"`, still composes `ws://evil.com` from a
+captured `//evil.com`, and is neither refused nor warned about — such a
+`Location` is not followed as a top-level navigation, but do not write one.
+
 :::
 
 ## Default Config

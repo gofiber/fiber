@@ -140,11 +140,18 @@ that identifies a single client is not stored at all:
 - **`Cache-Control: no-store`, `private`, `no-cache`, or `Vary: *`.**
 
 A route that genuinely wants both a cookie and a shared entry can say so with
-`Cache-Control: public` or an `s-maxage`, which is the same opt-in that lifts
-the `Authorization` restriction. Applications that refresh a session cookie on
-every response will find that most routes stop being cached — that is the point,
-since those responses are per-client. Set the cookie only where it changes, or
-mark the genuinely public routes `public`.
+`Cache-Control: public` or an `s-maxage` — directives only a shared cache acts
+on, so neither is written by accident. `must-revalidate` and `proxy-revalidate`
+do **not** lift the cookie restriction, even though RFC 9111 §3.5 accepts
+`must-revalidate` for the `Authorization` case: that allowance holds because a
+revalidating cache returns to the origin and the origin re-checks the
+credential, and this middleware never revalidates — it serves the stored body
+for the whole configured `Expiration`.
+
+Applications that refresh a session cookie on every response will find that most
+routes stop being cached — that is the point, since those responses are
+per-client. Set the cookie only where it changes, or mark the genuinely public
+routes `public`.
 
 ## Config
 

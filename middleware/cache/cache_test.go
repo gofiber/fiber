@@ -1691,6 +1691,80 @@ func Test_SetCookieResponseIsNotStored(t *testing.T) {
 	require.Equal(t, 2, calls, "the handler must run for both clients")
 }
 
+// Test_SetCookieResponseRevalidateDirectivesAreNotConsent asserts that
+// must-revalidate and proxy-revalidate do not buy a cookie-setting response a
+// place in the store.
+//
+// RFC 9111 §3.5 lets must-revalidate carry a response to an authorized request,
+// because a cache honoring it goes back to the origin once the entry is stale
+// and the origin re-checks the credential. Neither half of that holds here: the
+// directive says when a stale entry may be reused, not that the body is
+// impersonal, and this middleware never revalidates — it serves the stored body
+// for the whole configured expiration. Reusing the authorization test for the
+// cookie gate therefore handed the first client's page to the second.
+func Test_SetCookieResponseRevalidateDirectivesAreNotConsent(t *testing.T) {
+	t.Parallel()
+
+	for _, directive := range []string{"must-revalidate", "proxy-revalidate"} {
+		t.Run(directive, func(t *testing.T) {
+			t.Parallel()
+
+			var calls int
+			app := fiber.New()
+			app.Use(New(Config{StoreResponseHeaders: true}))
+			app.Get("/", func(c fiber.Ctx) error {
+				calls++
+				c.Set(fiber.HeaderCacheControl, directive)
+				c.Cookie(&fiber.Cookie{Name: "session", Value: fmt.Sprintf("secret-%d", calls)})
+				return c.SendString(fmt.Sprintf("page-for-client-%d", calls))
+			})
+
+			resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+			require.NoError(t, err)
+			require.Equal(t, cacheUnreachable, resp.Header.Get("X-Cache"))
+
+			resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+			require.NoError(t, err)
+			require.Equal(t, cacheUnreachable, resp.Header.Get("X-Cache"))
+			body, err := io.ReadAll(resp.Body)
+			require.NoError(t, err)
+			require.Equal(t, "page-for-client-2", string(body), "the second client must not read the first one's page")
+			require.Equal(t, 2, calls, "the handler must run for both clients")
+		})
+	}
+}
+
+// Test_SetCookieResponseSharedCacheOptIn asserts the escape hatch still works:
+// a response that says outright a shared cache may hold it is taken at its
+// word, so the gate above is about the revalidate directives specifically and
+// not a blanket refusal of every cookie-setting response.
+func Test_SetCookieResponseSharedCacheOptIn(t *testing.T) {
+	t.Parallel()
+
+	for _, directive := range []string{"public", "s-maxage=60"} {
+		t.Run(directive, func(t *testing.T) {
+			t.Parallel()
+
+			app := fiber.New()
+			app.Use(New(Config{StoreResponseHeaders: true}))
+			app.Get("/", func(c fiber.Ctx) error {
+				c.Set(fiber.HeaderCacheControl, directive)
+				c.Cookie(&fiber.Cookie{Name: "session", Value: "shared"})
+				return c.SendString("hi")
+			})
+
+			resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+			require.NoError(t, err)
+			require.Equal(t, cacheMiss, resp.Header.Get("X-Cache"))
+
+			resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+			require.NoError(t, err)
+			require.Equal(t, cacheHit, resp.Header.Get("X-Cache"))
+			require.Empty(t, resp.Header.Values("Set-Cookie"), "the stored entry must not replay the cookie")
+		})
+	}
+}
+
 // Test_StoreResponseHeaders_DropsSetCookie covers the opt-in path: a route that
 // says a shared cache may store the response is taken at its word, and then the
 // stored copy still leaves Set-Cookie out so the entry cannot hand the first
