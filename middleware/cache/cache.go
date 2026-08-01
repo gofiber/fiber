@@ -761,6 +761,14 @@ func New(config ...Config) fiber.Handler {
 			}
 		}
 
+		// Hand back whatever the lookup left holding before overwriting it. A
+		// stale entry survives to here whenever the request said no-cache or the
+		// entry carried no expiry, and dropping it would lose one pooled item
+		// per such request — the same leak markUnreachable closes on the paths
+		// that decide not to store at all.
+		if e != nil {
+			manager.release(e)
+		}
 		e = manager.acquire()
 		// Cache response
 		e.body = utils.CopyBytes(c.Response().Body())

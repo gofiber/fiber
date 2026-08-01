@@ -50,8 +50,7 @@ func New(config ...Config) fiber.Handler {
 		// rule whose path it only happens to end with (e.g. "/old" would also
 		// redirect "/very/old"). See issue #4476.
 		pattern = "^" + pattern + "$"
-		chunks := authorityChunks(v)
-		_, authorityEnd := authoritySpan(v)
+		chunks, authorityEnd := authorityChunks(v)
 
 		switch {
 		case targetLetsRequestPickHost(v, chunks):
@@ -88,7 +87,7 @@ func New(config ...Config) fiber.Handler {
 		}
 		// Rewrite
 		for k, rule := range cfg.rulesRegex {
-			replacer := captureTokens(k, c.Path())
+			replacer, values := captureTokens(k, c.Path())
 			if replacer == nil {
 				continue
 			}
@@ -98,7 +97,7 @@ func New(config ...Config) fiber.Handler {
 			// tenant — and the author means $1 to be a label, not a whole URL.
 			// Refuse the rule when a value would move the host, rather than
 			// guess what the author meant; the request falls through to the app.
-			if !authorityHolds(rule.authorityChunks, rule.authorityEndsTarget, replacer) {
+			if !authorityHolds(rule.authorityChunks, rule.authorityEndsTarget, values) {
 				continue
 			}
 
@@ -180,11 +179,12 @@ func authoritySpan(target string) (start, end int) { //nolint:nonamedreturns // 
 // authorityChunks splits target's own authority into literal text and "$N"
 // tokens. It returns nil when the authority holds no token, which is the common
 // case and means no request can move the host.
-func authorityChunks(target string) []authorityChunk {
+// It also returns where that authority ends, so the caller does not recompute
+// the span and the two cannot drift apart.
+func authorityChunks(target string) (chunks []authorityChunk, authorityEnd int) { //nolint:nonamedreturns // the pair is a value and the offset it came from; names say which is which
 	start, end := authoritySpan(target)
 	authority := target[start:end]
 
-	var chunks []authorityChunk
 	literal := 0
 	for i := 0; i < len(authority); {
 		if authority[i] != '$' {
@@ -207,12 +207,12 @@ func authorityChunks(target string) []authorityChunk {
 		i = j
 	}
 	if chunks == nil {
-		return nil
+		return nil, end
 	}
 	if literal < len(authority) {
 		chunks = append(chunks, authorityChunk{text: authority[literal:]})
 	}
-	return chunks
+	return chunks, end
 }
 
 // authorityHolds reports whether the values about to be substituted leave the
@@ -234,7 +234,7 @@ func authorityChunks(target string) []authorityChunk {
 //     author wrote, and "@evil.com" would turn all of it into userinfo.
 //   - It is the whole authority ("https://$1"): the author handed over the
 //     destination deliberately, so nothing is checked. New warns about it.
-func authorityHolds(chunks []authorityChunk, endsTarget bool, replacer *strings.Replacer) bool {
+func authorityHolds(chunks []authorityChunk, endsTarget bool, values []string) bool {
 	if len(chunks) <= 1 {
 		return true
 	}
@@ -243,7 +243,12 @@ func authorityHolds(chunks []authorityChunk, endsTarget bool, replacer *strings.
 		if !chunk.placeholder {
 			continue
 		}
-		value := replacer.Replace(chunk.text)
+		value, ok := captureValue(chunk.text, values)
+		if !ok {
+			// A token the pattern has no group for stays literal in the
+			// location, so it cannot carry anything from the request.
+			continue
+		}
 		if endsTarget && i == len(chunks)-1 {
 			switch {
 			case value == "":
@@ -370,22 +375,24 @@ func asBrowserReads(location string) string {
 }
 
 // https://github.com/labstack/echo/blob/master/middleware/rewrite.go
-func captureTokens(pattern *regexp.Regexp, input string) *strings.Replacer {
+// It also returns the captured values themselves, so authorityHolds can judge
+// one without running the Replacer over its token a second time.
+func captureTokens(pattern *regexp.Regexp, input string) (replacer *strings.Replacer, values []string) { //nolint:nonamedreturns // the pair is a replacer and the values behind it; names say which is which
 	if len(input) > 1 {
 		input = utils.TrimRight(input, '/')
 	}
 	groups := pattern.FindAllStringSubmatch(input, -1)
 	if groups == nil {
-		return nil
+		return nil, nil
 	}
-	values := groups[0][1:]
+	values = groups[0][1:]
 	replace := make([]string, 2*len(values))
 	for i, v := range values {
 		j := 2 * i
 		replace[j] = "$" + strconv.Itoa(i+1)
 		replace[j+1] = v
 	}
-	return strings.NewReplacer(replace...)
+	return strings.NewReplacer(replace...), values
 }
 
 // isAllDigits reports whether s is a non-empty run of ASCII digits.
@@ -413,8 +420,20 @@ func authorityEndsInOpenCapture(chunks []authorityChunk, endsTarget bool) bool {
 		return false
 	}
 	last := len(chunks) - 1
-	if !chunks[last].placeholder {
+	if last == 0 || !chunks[last].placeholder {
+		// A single-chunk authority is the whole-authority-is-a-capture shape,
+		// which targetLetsRequestPickHost has already reported.
 		return false
 	}
-	return last == 0 || !strings.HasSuffix(chunks[last-1].text, ":")
+	return !strings.HasSuffix(chunks[last-1].text, ":")
+}
+
+// captureValue returns the value a "$N" token stands for, or false when the
+// pattern captured no such group and the token is left as written.
+func captureValue(token string, values []string) (string, bool) {
+	n, err := strconv.Atoi(token[1:]) // token is "$" followed by digits
+	if err != nil || n < 1 || n > len(values) {
+		return "", false
+	}
+	return values[n-1], true
 }

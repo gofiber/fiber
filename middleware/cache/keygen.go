@@ -194,7 +194,7 @@ func appendCanonicalHeaderSubset(dst []byte, header *fasthttp.RequestHeader, nam
 		// it. Cookie and Trailer are the exception — fasthttp re-serializes
 		// those from its own stores into a fresh buffer per call — so naming
 		// either in KeyHeaders allocates once per request.
-		values := header.PeekAll(name)
+		values := stableFieldLines(name, header.PeekAll(name))
 
 		// The count keeps the framing injective. Without it an absent header
 		// and one present with an empty value both emit nothing, and a list of

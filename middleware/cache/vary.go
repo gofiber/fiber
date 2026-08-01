@@ -78,7 +78,7 @@ func makeBuildVaryKeyFunc(hexBufPool *sync.Pool) func([]string, *fasthttp.Reques
 			// re-serializes those from its own stores into a fresh buffer per
 			// call — so a "Vary: Cookie" response pays for that twice per
 			// request, once at lookup and once at store.
-			values := hdr.PeekAll(name)
+			values := stableFieldLines(name, hdr.PeekAll(name))
 			_, _ = sum.Write(binary.AppendUvarint(lenBuf[:0], uint64(len(values)))) //nolint:errcheck // hash.Hash.Write for std hashes never errors
 			for _, v := range values {
 				// Length-prefixed so the framing stays injective: without it

@@ -108,6 +108,31 @@ func responseSetsCookie(h *fasthttp.ResponseHeader) bool {
 	return false
 }
 
+// stableFieldLines drops the lone empty entry fasthttp reports for a name it
+// answers from one of its own stores once that store has been collected.
+//
+// RequestHeader.PeekAll special-cases Cookie and Trailer: before collection it
+// reports the raw field lines — none at all when the header was absent — and
+// after it always reports exactly one entry, empty when there is nothing to
+// report. Whether collection has happened depends on what other middleware ran
+// first, so without this the same request on the wire keys two different ways.
+// A request that reached c.Cookies() through a session or CSRF middleware would
+// land in a different cache partition from one that did not, and a Vary: Cookie
+// route would miss on every second request and store a duplicate entry each
+// time.
+//
+// Only these names are folded, so an ordinary header present with an empty
+// value still keys differently from one that is absent.
+func stableFieldLines(name string, values [][]byte) [][]byte {
+	if len(values) != 1 || len(values[0]) != 0 {
+		return values
+	}
+	if utils.EqualFold(name, fiber.HeaderCookie) || utils.EqualFold(name, fiber.HeaderTrailer) {
+		return nil
+	}
+	return values
+}
+
 // headerPeeker is the part of fasthttp's request and response headers this
 // package needs to read every field line of a name.
 type headerPeeker interface {

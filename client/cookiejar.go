@@ -250,6 +250,12 @@ func (cj *CookieJar) cookiesForRequest(host string, path []byte, secure bool) []
 		})
 	}
 
+	if len(matched) == 0 {
+		// Get documents a nil result when nothing matches, and a caller may be
+		// testing for exactly that; make([]T, 0) is not nil.
+		return nil
+	}
+
 	out := make([]*fasthttp.Cookie, len(matched))
 	for i, m := range matched {
 		out[i] = m.cookie

@@ -629,6 +629,12 @@ type urlRoundrobin struct {
 	next atomic.Uint64
 }
 
+// Compare-and-swap rather than a bare Add: the counter holds the next index
+// already reduced into the pool, so the sequence stays a strict round-robin
+// even where the counter would otherwise wrap mid-cycle. The modulo is not
+// redundant with that — it also reduces a value the counter did not produce
+// itself, which is what makes a freshly stored or externally set counter land
+// in range.
 func (r *urlRoundrobin) get() *url.URL {
 	poolSize := uint64(len(r.pool))
 	for {

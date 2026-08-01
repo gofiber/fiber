@@ -378,31 +378,31 @@ func Test_Redirect_CaptureEndingTheAuthority(t *testing.T) {
 func Test_AuthorityChunks(t *testing.T) {
 	t.Parallel()
 
-	require.Nil(t, authorityChunks("https://cdn.example.com/$1"), "no token in the authority")
-	require.Nil(t, authorityChunks("/$1"), "no authority at all")
-	require.Nil(t, authorityChunks("mailto:$1"), "a scheme with no // has no authority")
-	require.Nil(t, authorityChunks("https://cost$.example.com/"), "a bare $ is literal text")
+	requireNoAuthorityChunks(t, "https://cdn.example.com/$1", "no token in the authority")
+	requireNoAuthorityChunks(t, "/$1", "no authority at all")
+	requireNoAuthorityChunks(t, "mailto:$1", "a scheme with no // has no authority")
+	requireNoAuthorityChunks(t, "https://cost$.example.com/", "a bare $ is literal text")
 
 	require.Equal(t, []authorityChunk{
 		{text: "$1", placeholder: true},
 		{text: ".assets.example.com"},
-	}, authorityChunks("https://$1.assets.example.com/x"))
+	}, chunksOf("https://$1.assets.example.com/x"))
 
 	require.Equal(t, []authorityChunk{
 		{text: "cdn.example.com"},
 		{text: "$1", placeholder: true},
-	}, authorityChunks("https://cdn.example.com$1"))
+	}, chunksOf("https://cdn.example.com$1"))
 
 	require.Equal(t, []authorityChunk{
 		{text: "assets."},
 		{text: "$1", placeholder: true},
 		{text: ".com"},
-	}, authorityChunks("https://assets.$1.com"))
+	}, chunksOf("https://assets.$1.com"))
 
 	// A target that is nothing but the token: the author picked the
 	// destination outright, and authorityHolds leaves it alone.
-	require.Equal(t, []authorityChunk{{text: "$1", placeholder: true}}, authorityChunks("https://$1"))
-	require.Equal(t, []authorityChunk{{text: "$12", placeholder: true}}, authorityChunks("//$12"))
+	require.Equal(t, []authorityChunk{{text: "$1", placeholder: true}}, chunksOf("https://$1"))
+	require.Equal(t, []authorityChunk{{text: "$12", placeholder: true}}, chunksOf("//$12"))
 }
 
 // Test_Redirect_CaptureBoundedByTheTarget covers a token that closes the
@@ -487,7 +487,7 @@ func Test_TargetLetsRequestPickHost(t *testing.T) {
 		{"https://cdn.example.com", false},
 		{"mailto:someone@example.com", false},
 	} {
-		require.Equal(t, tc.want, targetLetsRequestPickHost(tc.target, authorityChunks(tc.target)), "target %q", tc.target)
+		require.Equal(t, tc.want, targetLetsRequestPickHost(tc.target, chunksOf(tc.target)), "target %q", tc.target)
 	}
 }
 
@@ -732,4 +732,16 @@ func Test_RegexRules(t *testing.T) {
 			StatusCode: fiber.StatusMovedPermanently,
 		}))
 	})
+}
+
+// chunksOf drops authorityChunks' second result, which the tests below assert
+// separately through Test_AuthoritySpan.
+func chunksOf(target string) []authorityChunk {
+	chunks, _ := authorityChunks(target)
+	return chunks
+}
+
+func requireNoAuthorityChunks(t *testing.T, target, msg string) {
+	t.Helper()
+	require.Nil(t, chunksOf(target), msg)
 }
