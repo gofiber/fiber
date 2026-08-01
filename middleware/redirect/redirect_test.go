@@ -805,6 +805,19 @@ func Test_TargetLetsRequestPickHost(t *testing.T) {
 		// Empty brackets pin no host, so the capture names it outright.
 		{"https://[]$1", true},
 		{"https://[:]:$1", true},
+		// Only an "@" outside the brackets ends the userinfo. One inside them
+		// is no delimiter to the URL parser either, so the brackets still hold
+		// the host and a capture among them still chooses the address.
+		{"https://[$1@::1]", true},
+		{"https://[2001:db8::$1@a]", true},
+		{"https://x@y@[$1::1]", true},
+		// Past the closing bracket the "@" does end the userinfo, so these name
+		// the host after it and the capture only reaches userinfo.
+		{"https://[$1]@x", false},
+		{"https://[$1::1]@a", false},
+		{"https://$1@[::1]", false},
+		// Whereas here the capture is the host.
+		{"https://[::1]@$1", true},
 		{"/$1", false},
 		{"$1", false},
 		{"https://cdn.example.com", false},

@@ -412,14 +412,34 @@ func captureInBrackets(target string) bool {
 	// delimiter. Counting one there raised the depth for the rest of the scan
 	// and dropped rules whose host the author had pinned outright, telling them
 	// the request chose it.
-	if i := strings.LastIndexByte(authority, '@'); i >= 0 {
-		authority = authority[i+1:]
+	//
+	// Only an "@" outside the brackets ends the userinfo, though. One inside
+	// them is not a delimiter to the URL parser either — it rejects the whole
+	// authority — so reading it as one would look past the brackets that really
+	// do hold the host and let a capture inside them through.
+	depth, userinfoEnd := 0, -1
+	for i := 0; i < len(authority); i++ {
+		switch authority[i] {
+		case '[':
+			depth++
+		case ']':
+			if depth > 0 {
+				depth--
+			}
+		case '@':
+			if depth == 0 {
+				userinfoEnd = i
+			}
+		}
+	}
+	if userinfoEnd >= 0 {
+		authority = authority[userinfoEnd+1:]
 	}
 	if !strings.HasPrefix(authority, "[") {
 		return false
 	}
 
-	depth := 0
+	depth = 0
 	for i := 0; i < len(authority); i++ {
 		switch authority[i] {
 		case '[':
