@@ -164,6 +164,101 @@ func Test_Redirect_StartAnchor(t *testing.T) {
 	require.Empty(t, resp.Header.Get("Location"))
 }
 
+// Test_Redirect_SameOriginTargets verifies that captured path segments cannot
+// turn a path-only target into a redirect off this origin.
+//
+// The path arrives with its slash runs intact, so the documented rule
+// "/api/*" -> "/$1" composed "Location: //evil.com" from a request for
+// "/api//evil.com" — a network-path reference the browser follows to evil.com —
+// and "/redirect/*" -> "$1" composed an outright absolute redirect from
+// "/redirect/https://evil.com".
+func Test_Redirect_SameOriginTargets(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		pattern string
+		target  string
+		request string
+		want    string
+	}{
+		{"protocol relative", "/api/*", "/$1", "/api//evil.com", "/evil.com"},
+		{"long slash run", "/redirect/*", "$1", "/redirect///evil.com", "/evil.com"},
+		{"absolute url", "/redirect/*", "$1", "/redirect/https://evil.com", "/https://evil.com"},
+		{"non fetch scheme", "/redirect/*", "$1", "/redirect/javascript:x", "/javascript:x"},
+
+		// Same-origin composition is untouched.
+		{"ordinary capture", "/api/*", "/$1", "/api/users", "/users"},
+		{"capture below a prefix", "/old/*", "/new/$1", "/old//evil.com", "/new//evil.com"},
+		{"relative reference", "/g", "google.com", "/g", "google.com"},
+
+		// A target that names its own authority is the author's call, so it is
+		// left exactly as configured.
+		{"absolute target", "/ext/*", "https://cdn.example.com/$1", "/ext/a", "https://cdn.example.com/a"},
+		{"protocol relative target", "/pr/*", "//cdn.example.com/$1", "/pr/a", "//cdn.example.com/a"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			app := fiber.New()
+			app.Use(New(Config{
+				Rules:      map[string]string{tc.pattern: tc.target},
+				StatusCode: fiber.StatusFound,
+			}))
+
+			req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, tc.request, http.NoBody)
+			require.NoError(t, err)
+			resp, err := app.Test(req)
+			require.NoError(t, err)
+			require.Equal(t, fiber.StatusFound, resp.StatusCode)
+			require.Equal(t, tc.want, resp.Header.Get("Location"))
+		})
+	}
+}
+
+func Test_Redirect_SameOriginTargets_QueryPreserved(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Use(New(Config{
+		Rules:      map[string]string{"/api/*": "/$1"},
+		StatusCode: fiber.StatusFound,
+	}))
+
+	// The query is appended after the location is made same-origin, so it
+	// survives the collapse untouched.
+	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/api//evil.com?a=1&b=2", http.NoBody)
+	require.NoError(t, err)
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, "/evil.com?a=1&b=2", resp.Header.Get("Location"))
+}
+
+func Test_SchemeEnd(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		in   string
+		want int
+	}{
+		{"https://evil.com", 5},
+		{"javascript:x", 10},
+		{"a:", 1},
+		{"h+t-t.p1://x", 8},
+		{"", -1},
+		{":", -1},          // a scheme cannot be empty
+		{"1http://x", -1},  // nor start with a digit
+		{"/https://x", -1}, // already rooted, so not a scheme
+		{"//evil.com", -1},
+		{"google.com", -1}, // no colon at all
+		{"/a/b?x=1:2", -1}, // the colon is past the path separator
+	} {
+		require.Equal(t, tc.want, schemeEnd(tc.in), "input %q", tc.in)
+	}
+}
+
 func Test_Next(t *testing.T) {
 	// Case 1 : Next function always returns true
 	app := *fiber.New()

@@ -3,6 +3,7 @@ package cache
 import (
 	"context"
 	"crypto/sha256"
+	"encoding/binary"
 	"encoding/hex"
 	"errors"
 	"sort"
@@ -51,11 +52,36 @@ func parseVary(vary string) ([]string, bool) {
 func makeBuildVaryKeyFunc(hexBufPool *sync.Pool) func([]string, *fasthttp.RequestHeader) string {
 	return func(names []string, hdr *fasthttp.RequestHeader) string {
 		sum := sha256.New()
+		var lenBuf [binary.MaxVarintLen64]byte
+		writeLen := func(n int) {
+			_, _ = sum.Write(binary.AppendUvarint(lenBuf[:0], uint64(n))) //nolint:errcheck,gosec // hash.Hash.Write for std hashes never errors; n is a length
+		}
 		for _, name := range names {
+			writeLen(len(name))
 			_, _ = sum.Write(utils.UnsafeBytes(name)) //nolint:errcheck // hash.Hash.Write for std hashes never errors
-			_, _ = sum.Write([]byte{0})               //nolint:errcheck // hash.Hash.Write for std hashes never errors
-			_, _ = sum.Write(hdr.Peek(name))          //nolint:errcheck // hash.Hash.Write for std hashes never errors
-			_, _ = sum.Write([]byte{0})               //nolint:errcheck // hash.Hash.Write for std hashes never errors
+
+			// Every field line, not just the first. A name may arrive on more
+			// than one line, and the two forms are equivalent on the wire
+			// (RFC 9110 Section 5.2) — but Peek returns only the first, so a
+			// request carrying
+			//
+			//	X-Tenant: public
+			//	X-Tenant: acme-private
+			//
+			// hashed to the same key as one carrying just "public". The entry
+			// stored for the first is then served to the second, which is the
+			// exact cross-request mixing Vary exists to prevent.
+			//
+			// PeekAll reuses the header's own scratch slice, so this costs no
+			// allocation; the values are consumed before the next call to it.
+			values := hdr.PeekAll(name)
+			writeLen(len(values))
+			for _, v := range values {
+				// Length-prefixed so the framing stays injective: without it
+				// two lines "a" and "b" would hash like a single line "a\x00b".
+				writeLen(len(v))
+				_, _ = sum.Write(v) //nolint:errcheck // hash.Hash.Write for std hashes never errors
+			}
 		}
 
 		var hashBytes [sha256.Size]byte

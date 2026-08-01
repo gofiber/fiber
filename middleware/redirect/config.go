@@ -21,7 +21,7 @@ type Config struct {
 	// "/users/*/orders/*": "/user/$1/order/$2",
 	Rules map[string]string
 
-	rulesRegex map[*regexp.Regexp]string
+	rulesRegex map[*regexp.Regexp]compiledRule
 
 	// The status code when redirecting
 	// This is ignored if Redirect is disabled
