@@ -641,7 +641,7 @@ func isIPv4Number(label string) bool {
 	}
 	if len(label) >= 2 && label[0] == '0' && (label[1] == 'x' || label[1] == 'X') {
 		for i := 2; i < len(label); i++ {
-			if unhex(label[i]) < 0 {
+			if _, ok := unhex(label[i]); !ok {
 				return false
 			}
 		}
@@ -680,28 +680,29 @@ func percentDecode(s string) string {
 			decoded = append(decoded, s[i])
 			continue
 		}
-		hi, lo := unhex(s[i+1]), unhex(s[i+2])
-		if hi < 0 || lo < 0 {
+		hi, hiOK := unhex(s[i+1])
+		lo, loOK := unhex(s[i+2])
+		if !hiOK || !loOK {
 			decoded = append(decoded, s[i])
 			continue
 		}
-		decoded = append(decoded, byte(hi<<4|lo))
+		decoded = append(decoded, hi<<4|lo)
 		i += 2
 	}
 	return string(decoded)
 }
 
-// unhex returns the value of a hex digit, or -1.
-func unhex(c byte) int {
+// unhex returns the value of a hex digit, and whether it was one.
+func unhex(c byte) (byte, bool) {
 	switch {
 	case c >= '0' && c <= '9':
-		return int(c - '0')
+		return c - '0', true
 	case c >= 'a' && c <= 'f':
-		return int(c-'a') + 10
+		return c - 'a' + 10, true
 	case c >= 'A' && c <= 'F':
-		return int(c-'A') + 10
+		return c - 'A' + 10, true
 	}
-	return -1
+	return 0, false
 }
 
 // hostMapping applies the same UTS #46 mapping a URL parser applies to a domain
@@ -735,6 +736,9 @@ var hostMapping = idna.New(
 // the shape. Every value authorityHolds then accepts either ends the authority
 // before that "@" or leaves the host empty, so nothing escapes, but the model
 // is per chunk rather than per authority.
+// authority, which the caller alone knows; it selects no mode of operation.
+//
+//nolint:revive // flag-parameter: openLeft says where the literal sits in the
 func pinsHost(literal string, openLeft bool) bool {
 	if i := strings.LastIndexByte(literal, '@'); i >= 0 {
 		literal = literal[i+1:]

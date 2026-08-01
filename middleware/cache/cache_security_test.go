@@ -459,11 +459,12 @@ func Test_Cache_Security_KeyHeaderRepeatedFieldLines(t *testing.T) {
 		KeyHeaders: []string{"X-Tenant"},
 	}))
 	app.Get("/", func(c fiber.Ctx) error {
-		out := ""
-		for _, v := range c.Request().Header.PeekAll("X-Tenant") {
-			out += string(v) + ";"
+		values := c.Request().Header.PeekAll("X-Tenant")
+		parts := make([]string, 0, len(values))
+		for _, v := range values {
+			parts = append(parts, string(v)+";")
 		}
-		return c.SendString("tenant:" + out)
+		return c.SendString("tenant:" + strings.Join(parts, ""))
 	})
 
 	do := func(lines ...string) (body, cacheStatus string) { //nolint:nonamedreturns // names document the pair
@@ -643,11 +644,11 @@ func Test_Cache_Security_CookieKeyedOnEveryFieldLine(t *testing.T) {
 	})
 
 	do := func(lines ...string) (body, cacheStatus string) { //nolint:nonamedreturns // names document the pair
-		raw := "GET / HTTP/1.1\r\nHost: example.com\r\n"
+		parts := []string{"GET / HTTP/1.1\r\nHost: example.com\r\n"}
 		for _, l := range lines {
-			raw += "Cookie: " + l + "\r\n"
+			parts = append(parts, "Cookie: "+l+"\r\n")
 		}
-		raw += "\r\n"
+		raw := strings.Join(append(parts, "\r\n"), "")
 
 		req := fasthttp.AcquireRequest()
 		defer fasthttp.ReleaseRequest(req)
@@ -998,11 +999,11 @@ func Test_VaryCookie_KeyIsStableAcrossCookieCollection(t *testing.T) {
 	})
 
 	do := func(lines ...string) (string, string) {
-		raw := "GET / HTTP/1.1\r\nHost: example.com\r\n"
+		parts := []string{"GET / HTTP/1.1\r\nHost: example.com\r\n"}
 		for _, l := range lines {
-			raw += "Cookie: " + l + "\r\n"
+			parts = append(parts, "Cookie: "+l+"\r\n")
 		}
-		raw += "\r\n"
+		raw := strings.Join(append(parts, "\r\n"), "")
 
 		req := fasthttp.AcquireRequest()
 		defer fasthttp.ReleaseRequest(req)
@@ -1048,11 +1049,11 @@ func Test_Authorization_SecondFieldLine(t *testing.T) {
 	app.Get("/", func(c fiber.Ctx) error { return c.SendString("anonymous body") })
 
 	do := func(lines ...string) string {
-		raw := "GET / HTTP/1.1\r\nHost: example.com\r\n"
+		parts := []string{"GET / HTTP/1.1\r\nHost: example.com\r\n"}
 		for _, l := range lines {
-			raw += "Authorization: " + l + "\r\n"
+			parts = append(parts, "Authorization: "+l+"\r\n")
 		}
-		raw += "\r\n"
+		raw := strings.Join(append(parts, "\r\n"), "")
 
 		req := fasthttp.AcquireRequest()
 		defer fasthttp.ReleaseRequest(req)
@@ -1096,11 +1097,11 @@ func Test_AuthorizationHash_CoversEveryFieldLine(t *testing.T) {
 	})
 
 	do := func(lines ...string) (string, string) {
-		raw := "GET / HTTP/1.1\r\nHost: example.com\r\n"
+		parts := []string{"GET / HTTP/1.1\r\nHost: example.com\r\n"}
 		for _, l := range lines {
-			raw += "Authorization: " + l + "\r\n"
+			parts = append(parts, "Authorization: "+l+"\r\n")
 		}
-		raw += "\r\n"
+		raw := strings.Join(append(parts, "\r\n"), "")
 
 		req := fasthttp.AcquireRequest()
 		defer fasthttp.ReleaseRequest(req)
@@ -1137,11 +1138,11 @@ func Test_RequestPragma_SecondFieldLine(t *testing.T) {
 	app.Get("/", func(c fiber.Ctx) error { return c.SendString("body") })
 
 	do := func(lines ...string) string {
-		raw := "GET / HTTP/1.1\r\nHost: example.com\r\n"
+		parts := []string{"GET / HTTP/1.1\r\nHost: example.com\r\n"}
 		for _, l := range lines {
-			raw += "Pragma: " + l + "\r\n"
+			parts = append(parts, "Pragma: "+l+"\r\n")
 		}
-		raw += "\r\n"
+		raw := strings.Join(append(parts, "\r\n"), "")
 
 		req := fasthttp.AcquireRequest()
 		defer fasthttp.ReleaseRequest(req)
@@ -1193,11 +1194,11 @@ func Test_StoreResponseHeaders_DropsTrailer(t *testing.T) {
 func Test_SetCookie2ResponseIsNotStored(t *testing.T) {
 	t.Parallel()
 
-	var calls int32
+	var calls atomic.Int32
 	app := fiber.New()
 	app.Use(New(Config{Expiration: time.Hour}))
 	app.Get("/", func(c fiber.Ctx) error {
-		n := atomic.AddInt32(&calls, 1)
+		n := calls.Add(1)
 		c.Response().Header.Set("Set-Cookie2", fmt.Sprintf(`session="secret-%d"; Version="1"`, n))
 		return c.SendString(fmt.Sprintf("page-for-client-%d", n))
 	})
@@ -1210,7 +1211,7 @@ func Test_SetCookie2ResponseIsNotStored(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, fmt.Sprintf("page-for-client-%d", i), string(body))
 	}
-	require.Equal(t, int32(2), atomic.LoadInt32(&calls))
+	require.Equal(t, int32(2), calls.Load())
 }
 
 // Test_joinKeyHeaderValues_Framing asserts the length prefixes keep the join

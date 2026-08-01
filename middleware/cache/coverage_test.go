@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"math"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -559,6 +560,12 @@ func Test_makeBuildVaryKeyFunc_RepeatedFieldLines(t *testing.T) {
 	// The framing is injective: two lines must not hash like one joined line.
 	require.NotEqual(t, both, key("publicacme-private"))
 	require.NotEqual(t, both, key("public,acme-private"))
+	// And the per-value length prefix is what makes it so. The assertions above
+	// differ in how many lines there are, which is hashed on its own, so they
+	// hold even without the prefix; these two split the same bytes the same
+	// number of ways and collide without it.
+	require.NotEqual(t, key("ab", "c"), key("a", "bc"))
+	require.NotEqual(t, key("a", "bb", "c"), key("aa", "b", "c"))
 	// Same input, same key.
 	require.Equal(t, both, key("public", "acme-private"))
 }
@@ -573,11 +580,12 @@ func Test_Cache_VaryRepeatedFieldLines(t *testing.T) {
 	app.Use(New(Config{Expiration: time.Minute}))
 	app.Get("/", func(c fiber.Ctx) error {
 		c.Set("Vary", "X-Tenant")
-		out := ""
-		for _, v := range c.Request().Header.PeekAll("X-Tenant") {
-			out += string(v) + ";"
+		values := c.Request().Header.PeekAll("X-Tenant")
+		parts := make([]string, 0, len(values))
+		for _, v := range values {
+			parts = append(parts, string(v)+";")
 		}
-		return c.SendString("tenant:" + out)
+		return c.SendString("tenant:" + strings.Join(parts, ""))
 	})
 
 	do := func(lines ...string) (body, cacheStatus string) { //nolint:nonamedreturns // names document the pair
