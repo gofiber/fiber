@@ -350,6 +350,9 @@ func targetLetsRequestPickHost(target string, chunks []authorityChunk) bool {
 	// unless it appended one — so the only question left is whether the author
 	// wrote any host text of their own alongside it.
 	if chunks != nil {
+		if captureInBrackets(target) {
+			return true
+		}
 		for _, chunk := range chunks {
 			if !chunk.placeholder && pinsHost(chunk.text) {
 				// The host is theirs, and authorityHolds judges the captures
@@ -373,6 +376,44 @@ func targetLetsRequestPickHost(target string, chunks []authorityChunk) bool {
 		return false
 	}
 	return containsPlaceholder(target[i+1:])
+}
+
+// captureInBrackets reports whether a "$N" token falls inside the brackets of
+// an IPv6 literal in the target's authority.
+//
+// Everywhere else the author's host text sits after the capture, because a DNS
+// name is written least significant label first: "$1.example.com" stays under
+// example.com whatever the request supplies. A bracketed address reverses that
+// — it is written most significant group first, so there the text before the
+// capture is what pins where the redirect lands.
+//
+// Rather than carry a second and opposite reading of the same question, refuse
+// the shape. Both halves of it were wrong when judged by the ordinary rule:
+// "https://[$1::1]" let the request choose the routing prefix and reach
+// loopback or link-local, and "https://[2001:db8::$1]" — where the author did
+// pin the network — redirected only for a value that happened to be all
+// digits, silently dropping every hex group. An author who wants either can
+// write the address in full and capture the port.
+func captureInBrackets(target string) bool {
+	start, end := authoritySpan(target)
+	authority := target[start:end]
+
+	depth := 0
+	for i := 0; i < len(authority); i++ {
+		switch authority[i] {
+		case '[':
+			depth++
+		case ']':
+			if depth > 0 {
+				depth--
+			}
+		case '$':
+			if depth > 0 && i+1 < len(authority) && authority[i+1] >= '0' && authority[i+1] <= '9' {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // containsPlaceholder reports whether s holds a "$N" token.
@@ -554,8 +595,15 @@ func pinsHost(literal string) bool {
 	// An IPv6 literal carries colons of its own, so the port colon is the one
 	// past the closing bracket rather than the first.
 	if i := strings.IndexByte(literal, ']'); i >= 0 {
-		literal = literal[:i]
-	} else if i := strings.IndexByte(literal, ':'); i >= 0 {
+		// A closing bracket with no opener in this chunk means a capture split
+		// the address, and what stands here is its tail. The tail of an IPv6
+		// literal is the low bits, not the network it routes to: "::1]" in
+		// "https://[$1::1]" leaves the leading group — the routing prefix — to
+		// the request, which is the whole address as far as where it lands.
+		// With an opener the author wrote a complete address, brackets and all.
+		return strings.IndexByte(literal[:i], '[') >= 0
+	}
+	if i := strings.IndexByte(literal, ':'); i >= 0 {
 		literal = literal[:i]
 	}
 	return strings.Trim(literal, ".[:") != ""

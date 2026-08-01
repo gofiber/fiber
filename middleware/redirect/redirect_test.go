@@ -768,10 +768,14 @@ func Test_TargetLetsRequestPickHost(t *testing.T) {
 		// Text before an "@" is a username, not a host.
 		{"https://example.com@$1", true},
 		{"https://user:pw@$1", true},
-		// The brackets around an IPv6 literal pin nothing either, so the
-		// address is the request's to name.
+		// A capture inside the brackets is refused whichever side the author
+		// wrote: a bracketed address runs most significant group first, so the
+		// ordinary "text after the capture pins it" reading is backwards there.
 		{"https://[$1]", true},
 		{"https://[$1]:8080/", true},
+		{"https://[$1::1]", true},
+		{"https://[2001:db8::$1]", true},
+		{"https://[2001:db8::$1]:8080", true},
 
 		// A scheme with no authority syntax has no host to hijack, so it is not
 		// refused — dropping it would kill a working rule and the warning would
@@ -791,6 +795,8 @@ func Test_TargetLetsRequestPickHost(t *testing.T) {
 		// a captured port beside it is theirs to allow.
 		{"https://[::1]:$1", false},
 		{"https://[::1]:8080/$1", false},
+		{"https://[::]:$1", false},
+		{"https://[2001:db8::1]:$2/$1", false},
 		{"/$1", false},
 		{"$1", false},
 		{"https://cdn.example.com", false},
@@ -822,6 +828,12 @@ func Test_PinsHost(t *testing.T) {
 		{"[::1]:", true},
 		{"[::1]:8080", true},
 		{"[2001:db8::1]", true},
+		// The unspecified address is still a complete one the author wrote.
+		{"[::]", true},
+		{"[::]:", true},
+		// An opener with no closer yet: the author has written address text, and
+		// the port colon is not among these colons.
+		{"[2001:db8::", true},
 
 		{"", false},
 		{":8080", false},
@@ -837,6 +849,10 @@ func Test_PinsHost(t *testing.T) {
 		{"[", false},
 		{"]", false},
 		{"]:8080", false},
+		// A closer with no opener is the tail of an address a capture split,
+		// and an IPv6 tail is the low bits, not the network it routes to.
+		{"::1]", false},
+		{":db8::1]", false},
 	} {
 		require.Equal(t, tc.want, pinsHost(tc.literal), "literal %q", tc.literal)
 	}

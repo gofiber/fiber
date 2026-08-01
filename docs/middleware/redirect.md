@@ -100,10 +100,21 @@ host text, so these are the same case and are refused too:
 | `"//$1."`, `"//.$1"` | `"///evil.com."` is read host-first by the URL parser; `evil.com.` is `evil.com` with the DNS root spelled out. |
 | `"https://$1$2"` | A second capture pins nothing an attacker does not also supply. |
 | `"https://example.com@$1"` | Everything before an `@` is a username, so the host is still the capture's. |
+| `"https://[$1::1]"`, `"https://[2001:db8::$1]"` | A capture anywhere inside the brackets of an IPv6 literal. |
 
 Note that `"https://$1@example.com"` is fine — there the author's host follows
 the `@` and the capture is only userinfo — as are `"https://cdn.example.com:$1"`
 and `"https://tenant-$1.example.com"`.
+
+A capture inside an IPv6 literal is refused whichever side of it the author
+wrote. Elsewhere the host text that pins a target sits *after* the capture,
+because a DNS name runs least-significant label first: `"https://$1.example.com"`
+stays under `example.com` whatever arrives. A bracketed address runs the other
+way round, most-significant group first, so `"https://[$1::1]"` leaves the
+routing prefix to the request — enough to reach loopback or a link-local
+address. Rather than apply a second and opposite rule inside brackets, Fiber
+refuses the shape: write the address in full and capture the port, as in
+`"https://[2001:db8::1]:$1"`.
 
 A refused rule is dropped, so the request continues to the **remaining rules of
 this middleware** before reaching the rest of the stack. With
