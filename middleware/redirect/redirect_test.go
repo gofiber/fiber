@@ -306,9 +306,14 @@ func Test_Redirect_CaptureInsideAuthority(t *testing.T) {
 		{"path capture keeps slashes", "https://cdn.example.com/$1", "/cdn/a/b/c", "https://cdn.example.com/a/b/c"},
 		{"path capture with a host-like value", "https://cdn.example.com/$1", "/cdn/evil.com/x", "https://cdn.example.com/evil.com/x"},
 
-		// A target handing the whole authority to the capture is the author
-		// choosing that destination outright, so it is left alone.
-		{"whole authority is the capture", "https://$1", "/cdn/anything/x", "https://anything/x"},
+		// A target handing the whole authority to the capture would let the
+		// request choose the host, so the rule never fires. New warns why.
+		{"whole authority is the capture", "https://$1", "/cdn/anything/x", ""},
+		{"protocol relative whole authority", "//$1", "/cdn/anything", ""},
+		{"scheme with no authority", "https:$1", "/cdn//evil.com", ""},
+		// Separators alone pin nothing, so a value opening a path does not end
+		// an authority the author never wrote: "///evil.com." is read host-first.
+		{"separator only before the capture", "//$1.", "/cdn/evil.com", ""},
 	}
 
 	for _, tc := range tests {

@@ -85,11 +85,15 @@ one that extends the host where the target ends in `$N`
 
 :::caution
 
-A target that is nothing but a capture — `"/go/*": "https://$1"` — hands the
-destination to the request, which is an open redirect: anyone able to shape the
-path chooses where the client lands. Fiber logs a warning for such a rule at
-startup and otherwise leaves it alone, since there is no way to tell the
-intended host from an attacker's. Pin the host in the target instead.
+A target that hands the whole host to the request — `"/go/*": "https://$1"`,
+`"//$1"`, or `"https:$1"` — is an open redirect: anyone able to shape the path
+chooses where the client lands. **Such a rule never fires**, and Fiber logs a
+warning naming it at startup, since there is no way to tell the intended host
+from an attacker's. Pin the host in the target instead.
+
+The same applies where only separators precede the capture, as in `"//$1."` —
+`"///evil.com."` is read host-first by the URL parser, so nothing there pins a
+host either.
 
 :::
 

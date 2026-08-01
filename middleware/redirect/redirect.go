@@ -26,6 +26,11 @@ type compiledRule struct {
 	// each substituted value can be judged by where it lands. Empty when the
 	// authority holds no placeholder and so cannot be moved by a request.
 	authorityChunks []authorityChunk
+	// letsRequestPickHost is set when the target hands the whole destination to
+	// the request ("https://$1", "//$1", "https:$1"). Nothing can tell the
+	// intended host from an attacker's there, so the rule is refused outright
+	// and New says why at startup.
+	letsRequestPickHost bool
 	// sameOrigin is set when the target names no authority of its own. The "$N"
 	// values spliced into such a target come from the request path, so they must
 	// not be able to introduce one.
@@ -47,15 +52,17 @@ func New(config ...Config) fiber.Handler {
 		pattern = "^" + pattern + "$"
 		chunks := authorityChunks(v)
 
+		letsRequestPickHost := targetLetsRequestPickHost(v, chunks)
+
 		switch {
-		case targetLetsRequestPickHost(v, chunks):
-			// The request picks the host this redirects to. That is an open
-			// redirect by construction — nothing here can distinguish the
-			// intended destination from an attacker's — and it is only reachable
-			// because the author wrote it, so say so once at startup rather than
-			// silently refusing to honor the rule at request time.
-			log.Warnf("[REDIRECT] rule %q sends the client to a host taken from the request path; "+
-				"anyone who can shape the path can choose the redirect target", k)
+		case letsRequestPickHost:
+			// The request would pick the host this redirects to. That is an open
+			// redirect by construction — nothing here can tell the intended
+			// destination from an attacker's — so the rule never fires, and this
+			// says why, since the alternative is a rule that silently does
+			// nothing.
+			log.Warnf("[REDIRECT] rule %q is ignored: its target takes the redirect host from the request path, "+
+				"so anyone who can shape the path would choose where the client lands. Pin the host in the target", k)
 		case authorityEndsInOpenCapture(chunks):
 			// The target's host ends in a capture with nothing pinned after it,
 			// so a value like ".evil.com" would extend the host into a domain
@@ -67,9 +74,10 @@ func New(config ...Config) fiber.Handler {
 		}
 
 		cfg.rulesRegex[regexp.MustCompile(pattern)] = compiledRule{
-			target:          v,
-			authorityChunks: chunks,
-			sameOrigin:      !targetNamesAuthority(v),
+			target:              v,
+			authorityChunks:     chunks,
+			letsRequestPickHost: letsRequestPickHost,
+			sameOrigin:          !targetNamesAuthority(v),
 		}
 	}
 
@@ -91,7 +99,7 @@ func New(config ...Config) fiber.Handler {
 			// tenant — and the author means $1 to be a label, not a whole URL.
 			// Refuse the rule when a value would move the host, rather than
 			// guess what the author meant; the request falls through to the app.
-			if !authorityHolds(rule.authorityChunks, replacer) {
+			if rule.letsRequestPickHost || !authorityHolds(rule.authorityChunks, replacer) {
 				continue
 			}
 
@@ -228,13 +236,10 @@ func authorityChunks(target string) []authorityChunk {
 //     "?" or "#" — or be empty, or be a port where the author wrote the colon.
 //     What follows the authority in the target makes no difference: the host is
 //     already decided by then.
-//   - It is the whole authority ("https://$1"): the author handed over the
-//     destination deliberately, so nothing is checked. New warns about it.
+//
+// A target whose authority is nothing but a capture never reaches here: New
+// marks it letsRequestPickHost and the rule is refused outright.
 func authorityHolds(chunks []authorityChunk, replacer *strings.Replacer) bool {
-	if len(chunks) <= 1 {
-		return true
-	}
-
 	// Through the Replacer, not by indexing the captures: the Replacer is what
 	// composes the location, and it matches its patterns in the order they were
 	// given, so "$10" is consumed as "$1" followed by a literal "0". Indexing
@@ -257,9 +262,12 @@ func authorityHolds(chunks []authorityChunk, replacer *strings.Replacer) bool {
 		if i == closing {
 			switch value := values[i]; {
 			case value == "":
-			case strings.IndexByte(`/\?#`, value[0]) >= 0:
-				// Opens the next component, so the authority ended at the
-				// author's own text.
+			case strings.IndexByte(`/\?#`, value[0]) >= 0 && hostPinnedBefore(chunks, i):
+				// Opens the next component, so the authority ended at the host
+				// the author wrote. Only where they wrote one: with nothing but
+				// separators ahead of it, "//$1." composing "///evil.com." does
+				// not end an authority at all — the WHATWG parser skips every
+				// leading slash and reads the rest as the host.
 			case i > 0 && strings.HasSuffix(chunks[i-1].text, ":") && isAllDigits(value):
 				// A port. The author wrote the colon, and the URL parser rejects
 				// a port holding anything but digits outright, so digits are the
@@ -437,22 +445,45 @@ func isAllDigits(s string) bool {
 	return true
 }
 
-// authorityEndsInOpenCapture reports whether a target's host ends in a capture
-// with nothing pinned after it, so a value can extend that host into a domain
-// the author does not control.
+// authorityEndsInOpenCapture reports whether a target's host is closed by a
+// capture rather than by anything the author wrote, so a value can extend it
+// into a domain they do not control.
 //
-// A capture right after the port colon does not count: a port cannot extend a
+// It mirrors closesAuthority, minus the values it does not have yet: walk back
+// past literals that are only the separators which may trail a hostname, since
+// "evil.com." is "evil.com" with the DNS root spelled out and pins nothing. A
+// capture right after the port colon does not count — a port cannot extend a
 // host, and authorityHolds accepts a digit run there, so the rule still fires
 // for every value that could have been meant.
 func authorityEndsInOpenCapture(chunks []authorityChunk) bool {
-	if len(chunks) == 0 {
-		return false
+	for i := len(chunks) - 1; i >= 0; i-- {
+		if !chunks[i].placeholder {
+			if strings.Trim(chunks[i].text, ".") == "" {
+				continue
+			}
+			return false // author text closes the host
+		}
+		return i == 0 || !strings.HasSuffix(chunks[i-1].text, ":") || chunks[i-1].placeholder
 	}
-	last := len(chunks) - 1
-	if last == 0 || !chunks[last].placeholder {
-		// A single-chunk authority is the whole-authority-is-a-capture shape,
-		// which targetLetsRequestPickHost has already reported.
-		return false
+	return false
+}
+
+// hostPinnedBefore reports whether the author wrote host text ahead of the
+// chunk at index i, so that a value opening the next component really does
+// leave that text as the host.
+//
+// Separators alone do not count. "//$1." puts nothing but a dot before the end
+// of the authority, so a value of "/evil.com" composes "///evil.com." — three
+// slashes the WHATWG parser skips on its way to reading "evil.com." as the
+// host, rather than a path hanging off a host the author chose.
+func hostPinnedBefore(chunks []authorityChunk, i int) bool {
+	for j := range i {
+		if chunks[j].placeholder {
+			continue
+		}
+		if strings.Trim(chunks[j].text, ".:") != "" {
+			return true
+		}
 	}
-	return !strings.HasSuffix(chunks[last-1].text, ":")
+	return false
 }
