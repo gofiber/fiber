@@ -1411,3 +1411,90 @@ func Test_CachedRedirectKeepsItsLocation(t *testing.T) {
 	// still what StoreResponseHeaders is for.
 	require.Empty(t, resp.Header.Get("X-Extra"))
 }
+
+// Test_Authorization_DetectedWithoutHeaderNormalizing asserts a credential is
+// seen whatever case its field name arrived in.
+//
+// hasAuthorization and the auth hash read the header by its canonical name,
+// which fasthttp answers only while it normalizes what it stored. With
+// DisableHeaderNormalizing an "authorization:" sent in lower case matched
+// nothing, so the request read as anonymous: its response was stored in the
+// anonymous partition and replayed to the next client that asked, bearer token
+// and all.
+func Test_Authorization_DetectedWithoutHeaderNormalizing(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New(fiber.Config{DisableHeaderNormalizing: true})
+	app.Use(New(Config{Expiration: time.Hour}))
+	app.Get("/", func(c fiber.Ctx) error {
+		// With normalizing off a handler reads the name as it arrived.
+		if tok := c.Get("authorization"); tok != "" {
+			return c.SendString("PRIVATE for " + tok)
+		}
+		return c.SendString("PUBLIC")
+	})
+
+	do := func(header string) (string, string) {
+		raw := "GET / HTTP/1.1\r\nHost: example.com\r\n"
+		if header != "" {
+			raw += header + "\r\n"
+		}
+		raw += "\r\n"
+
+		req := fasthttp.AcquireRequest()
+		defer fasthttp.ReleaseRequest(req)
+		req.Header.DisableNormalizing()
+		require.NoError(t, req.Read(bufio.NewReader(strings.NewReader(raw))))
+
+		fctx := &fasthttp.RequestCtx{}
+		fctx.Init(req, nil, nil)
+		app.Handler()(fctx)
+		return string(fctx.Response.Body()), string(fctx.Response.Header.Peek("X-Cache"))
+	}
+
+	body, status := do("authorization: Bearer alice-secret")
+	require.Equal(t, cacheUnreachable, status, "an authorized response must not enter the shared store")
+	require.Equal(t, "PRIVATE for Bearer alice-secret", body)
+
+	body, status = do("")
+	require.Equal(t, cacheMiss, status)
+	require.Equal(t, "PUBLIC", body, "an anonymous request must not be served the authorized response")
+
+	body, status = do("")
+	require.Equal(t, cacheHit, status)
+	require.Equal(t, "PUBLIC", body)
+}
+
+// Test_RequestDirectives_HonoredWithoutHeaderNormalizing covers the same
+// lookup for the request directives, which are read the same way: a lower-case
+// "cache-control: no-store" was ignored outright.
+func Test_RequestDirectives_HonoredWithoutHeaderNormalizing(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New(fiber.Config{DisableHeaderNormalizing: true})
+	app.Use(New(Config{Expiration: time.Hour}))
+	app.Get("/", func(c fiber.Ctx) error { return c.SendString("body") })
+
+	do := func(header string) string {
+		raw := "GET / HTTP/1.1\r\nHost: example.com\r\n"
+		if header != "" {
+			raw += header + "\r\n"
+		}
+		raw += "\r\n"
+
+		req := fasthttp.AcquireRequest()
+		defer fasthttp.ReleaseRequest(req)
+		req.Header.DisableNormalizing()
+		require.NoError(t, req.Read(bufio.NewReader(strings.NewReader(raw))))
+
+		fctx := &fasthttp.RequestCtx{}
+		fctx.Init(req, nil, nil)
+		app.Handler()(fctx)
+		return string(fctx.Response.Header.Peek("X-Cache"))
+	}
+
+	require.Equal(t, cacheMiss, do(""))
+	require.Equal(t, cacheHit, do(""))
+	require.Empty(t, do("cache-control: no-store"), "no-store must be honored whatever case it arrived in")
+	require.Equal(t, cacheMiss, do("cache-control: no-cache"), "no-cache must force revalidation")
+}

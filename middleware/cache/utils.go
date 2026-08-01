@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"iter"
 	"math"
 	"sync"
 	"time"
@@ -150,22 +151,30 @@ func keyFieldLines(h *fasthttp.RequestHeader, name string) [][]byte {
 		mediatype.NormalizeRequestContentType(h)
 	}
 
+	return fieldLines(h, name)
+}
+
+// fieldLines returns every field line stored under name, matching the name the
+// way a recipient must.
+//
+// PeekAll compares stored keys byte for byte. That is enough while fasthttp
+// normalizes them, but under DisableHeaderNormalizing the store keeps the
+// spelling the client sent, and the names asked for here are written out in
+// canonical or lower case by whoever calls. Every lookup then missed, and a
+// header nobody can find is a header that is not there: a Vary dimension
+// dropped silently out of the key, and — worse — an "authorization:" sent in
+// lower case read as no credential at all, so the response to it was stored as
+// anonymous and replayed to everyone.
+//
+// Field names are case-insensitive (RFC 9110 Section 5.1), so match them that
+// way. Only reached when the byte-for-byte lookup found nothing, which for a
+// normalizing header means the field is absent and the walk finds nothing
+// either.
+func fieldLines(h headerPeeker, name string) [][]byte {
 	if values := h.PeekAll(name); len(values) > 0 {
 		return values
 	}
 
-	// PeekAll compares stored keys byte for byte. That is enough while fasthttp
-	// normalizes them, but under DisableHeaderNormalizing the store keeps the
-	// spelling the client sent — and the names reaching here are lower-cased,
-	// from parseVary or from KeyHeaders. Every lookup then missed, so the
-	// dimension dropped out of the key without saying so: with
-	// "Vary: Content-Type" and normalizing off, a request sending
-	// application/json was served the entry stored for a form.
-	//
-	// Field names are case-insensitive (RFC 9110 Section 5.1), so match them
-	// that way. Only reached when the byte-for-byte lookup found nothing, which
-	// for a normalizing header means the field is absent and the walk finds
-	// nothing either.
 	var values [][]byte
 	for k, v := range h.All() {
 		if utils.EqualFold(utils.UnsafeString(k), name) {
@@ -179,6 +188,7 @@ func keyFieldLines(h *fasthttp.RequestHeader, name string) [][]byte {
 // package needs to read every field line of a name.
 type headerPeeker interface {
 	PeekAll(key string) [][]byte
+	All() iter.Seq2[[]byte, []byte]
 }
 
 // joinedHeader returns every field line for key, comma-joined.
@@ -202,7 +212,7 @@ type headerPeeker interface {
 // returned slice stays valid across later PeekAll calls: those reuse the
 // header's scratch slice of slice headers, not the value bytes it points at.
 func joinedHeader(h headerPeeker, key string) []byte {
-	values := h.PeekAll(key)
+	values := fieldLines(h, key)
 	switch len(values) {
 	case 0:
 		return nil

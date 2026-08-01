@@ -221,7 +221,7 @@ func New(config ...Config) fiber.Handler {
 		// and served to it. Only lengths are read here, so nothing outlives the
 		// user-supplied KeyGenerator that runs next.
 		hasAuthorization := false
-		for _, v := range c.Request().Header.PeekAll(fiber.HeaderAuthorization) {
+		for _, v := range fieldLines(&c.Request().Header, fiber.HeaderAuthorization) {
 			if len(v) > 0 {
 				hasAuthorization = true
 				break
