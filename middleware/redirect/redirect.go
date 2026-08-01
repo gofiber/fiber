@@ -70,6 +70,15 @@ func New(config ...Config) fiber.Handler {
 		letsRequestPickHost := targetLetsRequestPickHost(v, chunks)
 
 		switch {
+		case captureInBrackets(v):
+			// Refused like the rest, but not for their reason: the author may
+			// well have pinned the network here, as "https://[2001:db8::$1]"
+			// does. Saying they handed the host over would be untrue, and the
+			// escape hatch is a different one.
+			log.Warnf("[REDIRECT] rule %q is ignored: its target captures inside the brackets of an IPv6 "+
+				"literal, where the address is written most significant group first, so what the request "+
+				"supplies decides the network reached rather than a label within it. Write the address in "+
+				"full and capture the port instead", k)
 		case letsRequestPickHost:
 			// The request would pick the host this redirects to. That is an open
 			// redirect by construction — nothing here can tell the intended
@@ -398,6 +407,18 @@ func captureInBrackets(target string) bool {
 	start, end := authoritySpan(target)
 	authority := target[start:end]
 
+	// Everything through the last "@" is userinfo, where a bracket is an
+	// ordinary character the parser percent-encodes rather than a host
+	// delimiter. Counting one there raised the depth for the rest of the scan
+	// and dropped rules whose host the author had pinned outright, telling them
+	// the request chose it.
+	if i := strings.LastIndexByte(authority, '@'); i >= 0 {
+		authority = authority[i+1:]
+	}
+	if !strings.HasPrefix(authority, "[") {
+		return false
+	}
+
 	depth := 0
 	for i := 0; i < len(authority); i++ {
 		switch authority[i] {
@@ -600,8 +621,18 @@ func pinsHost(literal string) bool {
 		// literal is the low bits, not the network it routes to: "::1]" in
 		// "https://[$1::1]" leaves the leading group — the routing prefix — to
 		// the request, which is the whole address as far as where it lands.
-		// With an opener the author wrote a complete address, brackets and all.
-		return strings.IndexByte(literal[:i], '[') >= 0
+		j := strings.IndexByte(literal[:i], '[')
+		if j < 0 {
+			return false
+		}
+		// With an opener the author wrote an address, brackets and all — but
+		// only if they wrote one. Empty or punctuation-only brackets pin no
+		// host and compose nothing a client can parse, so counting them as
+		// author-written text bought a rule that matched every request and
+		// redirected to a location no client could follow. "::" is the
+		// unspecified address and the one spelling holding no hex digit.
+		inner := literal[j+1 : i]
+		return inner == "::" || strings.ContainsAny(inner, "0123456789abcdefABCDEF")
 	}
 	if i := strings.IndexByte(literal, ':'); i >= 0 {
 		literal = literal[:i]

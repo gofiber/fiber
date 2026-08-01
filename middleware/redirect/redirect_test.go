@@ -797,6 +797,14 @@ func Test_TargetLetsRequestPickHost(t *testing.T) {
 		{"https://[::1]:8080/$1", false},
 		{"https://[::]:$1", false},
 		{"https://[2001:db8::1]:$2/$1", false},
+		// A bracket in userinfo is an ordinary character, not a host delimiter,
+		// so it does not make the capture beside it interior to an address.
+		{"https://[$1]@example.com", false},
+		{"https://us[er@$1.example.com", false},
+		{"https://us[er@example.com:$1", false},
+		// Empty brackets pin no host, so the capture names it outright.
+		{"https://[]$1", true},
+		{"https://[:]:$1", true},
 		{"/$1", false},
 		{"$1", false},
 		{"https://cdn.example.com", false},
@@ -849,6 +857,12 @@ func Test_PinsHost(t *testing.T) {
 		{"[", false},
 		{"]", false},
 		{"]:8080", false},
+		// Brackets holding no address pin nothing. Counting them bought a rule
+		// that matched every request and composed a location no client parses.
+		{"[]", false},
+		{"[:]", false},
+		{"[.]", false},
+		{"[[]", false},
 		// A closer with no opener is the tail of an address a capture split,
 		// and an IPv6 tail is the low bits, not the network it routes to.
 		{"::1]", false},

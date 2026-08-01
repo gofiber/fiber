@@ -100,21 +100,31 @@ host text, so these are the same case and are refused too:
 | `"//$1."`, `"//.$1"` | `"///evil.com."` is read host-first by the URL parser; `evil.com.` is `evil.com` with the DNS root spelled out. |
 | `"https://$1$2"` | A second capture pins nothing an attacker does not also supply. |
 | `"https://example.com@$1"` | Everything before an `@` is a username, so the host is still the capture's. |
-| `"https://[$1::1]"`, `"https://[2001:db8::$1]"` | A capture anywhere inside the brackets of an IPv6 literal. |
 
 Note that `"https://$1@example.com"` is fine — there the author's host follows
 the `@` and the capture is only userinfo — as are `"https://cdn.example.com:$1"`
 and `"https://tenant-$1.example.com"`.
 
-A capture inside an IPv6 literal is refused whichever side of it the author
-wrote. Elsewhere the host text that pins a target sits *after* the capture,
-because a DNS name runs least-significant label first: `"https://$1.example.com"`
-stays under `example.com` whatever arrives. A bracketed address runs the other
-way round, most-significant group first, so `"https://[$1::1]"` leaves the
-routing prefix to the request — enough to reach loopback or a link-local
-address. Rather than apply a second and opposite rule inside brackets, Fiber
-refuses the shape: write the address in full and capture the port, as in
-`"https://[2001:db8::1]:$1"`.
+A capture inside the brackets of an IPv6 literal is refused separately, and for
+its own reason — one side of it genuinely does pin a host, so the rules above do
+not decide the case.
+
+A DNS name is written least-significant label first, so either side of a capture
+can pin it: `"https://$1.example.com"` stays under `example.com`, and
+`"https://cdn.example.com$1"` stays on `cdn.example.com`. A bracketed address is
+written the other way round, most-significant group first. There
+`"https://[$1::1]"` leaves the routing prefix to the request — enough to reach
+loopback or a link-local address — while `"https://[2001:db8::$1]"` really does
+pin the network and only lets the request choose the last group.
+
+Deciding those two apart needs a rule that is the reverse of the one used
+everywhere else, so rather than keep two opposite readings in step Fiber refuses
+both and logs a warning saying which case it is. Write the address in full and
+capture the port instead:
+
+```go
+"/r/*": "https://[2001:db8::1]:$1",  // fine
+```
 
 A refused rule is dropped, so the request continues to the **remaining rules of
 this middleware** before reaching the rest of the stack. With
