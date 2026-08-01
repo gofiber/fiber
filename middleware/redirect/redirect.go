@@ -9,15 +9,22 @@ import (
 	"github.com/gofiber/utils/v2"
 )
 
+// authorityChunk is one piece of a target's own authority: either literal text
+// the author wrote or a "$N" token the request fills in.
+type authorityChunk struct {
+	text        string // literal text, or the token itself for a placeholder
+	placeholder bool
+}
+
 // compiledRule is one configured rule with its target and the decision, made
 // once at construction, of whether that target picks its own destination.
 type compiledRule struct {
 	target string
-	// authorityStart and authorityEnd bound the target's own authority — the
-	// span that decides which host the redirect reaches. Both are 0 when the
-	// target names no authority.
-	authorityStart int
-	authorityEnd   int
+	// authorityChunks splits the target's own authority — the span that decides
+	// which host the redirect reaches — into literal text and "$N" tokens, so
+	// each substituted value can be judged by where it lands. Empty when the
+	// authority holds no placeholder and so cannot be moved by a request.
+	authorityChunks []authorityChunk
 	// sameOrigin is set when the target names no authority of its own. The "$N"
 	// values spliced into such a target come from the request path, so they must
 	// not be able to introduce one.
@@ -37,12 +44,10 @@ func New(config ...Config) fiber.Handler {
 		// rule whose path it only happens to end with (e.g. "/old" would also
 		// redirect "/very/old"). See issue #4476.
 		pattern = "^" + pattern + "$"
-		start, end := authoritySpan(v)
 		cfg.rulesRegex[regexp.MustCompile(pattern)] = compiledRule{
-			target:         v,
-			authorityStart: start,
-			authorityEnd:   end,
-			sameOrigin:     !targetNamesAuthority(v),
+			target:          v,
+			authorityChunks: authorityChunks(v),
+			sameOrigin:      !targetNamesAuthority(v),
 		}
 	}
 
@@ -59,31 +64,21 @@ func New(config ...Config) fiber.Handler {
 				continue
 			}
 
-			// Substitute the target's own authority separately from the rest.
-			// A target may put a capture inside it — "https://$1.cdn.example.com"
-			// is a plausible way to route per tenant — and the author means $1
-			// to be a label, not a whole URL. A capture holding "evil.com/x"
-			// composes "https://evil.com/x.cdn.example.com", whose authority
-			// ends at that slash: the browser goes to evil.com.
-			//
-			// The template's authority span contains none of the four bytes
-			// that end an authority, by definition of where it ends, so any
-			// that show up after substitution came from a capture and would cut
-			// the authority short. Refuse the rule rather than guess what the
-			// author meant; the request falls through to the app.
-			authority := replacer.Replace(rule.target[rule.authorityStart:rule.authorityEnd])
-			if strings.ContainsAny(authority, `/\?#`) {
+			// A target may put a capture inside its own authority —
+			// "https://$1.cdn.example.com" is a plausible way to route per
+			// tenant — and the author means $1 to be a label, not a whole URL.
+			// Refuse the rule when a value would move the host, rather than
+			// guess what the author meant; the request falls through to the app.
+			if !authorityHolds(rule.authorityChunks, replacer) {
 				continue
 			}
-			location := asBrowserReads(
-				rule.target[:rule.authorityStart] + authority + replacer.Replace(rule.target[rule.authorityEnd:]),
-			)
 
 			// Normalize on every branch, not just the guarded one. The bytes
 			// asBrowserReads removes are never meaningful in a URL and the
 			// client drops them anyway, so an author-configured absolute target
 			// loses nothing — and the guard below then always runs on the
 			// location as it will actually be read.
+			location := asBrowserReads(replacer.Replace(rule.target))
 			if rule.sameOrigin {
 				location = keepSameOrigin(location)
 			}
@@ -151,6 +146,85 @@ func authoritySpan(target string) (start, end int) { //nolint:nonamedreturns // 
 		return start, start + offset
 	}
 	return start, len(target)
+}
+
+// authorityChunks splits target's own authority into literal text and "$N"
+// tokens. It returns nil when the authority holds no token, which is the common
+// case and means no request can move the host.
+func authorityChunks(target string) []authorityChunk {
+	start, end := authoritySpan(target)
+	authority := target[start:end]
+
+	var chunks []authorityChunk
+	literal := 0
+	for i := 0; i < len(authority); {
+		if authority[i] != '$' {
+			i++
+			continue
+		}
+		j := i + 1
+		for j < len(authority) && authority[j] >= '0' && authority[j] <= '9' {
+			j++
+		}
+		if j == i+1 { // a bare '$' is literal text
+			i++
+			continue
+		}
+		if i > literal {
+			chunks = append(chunks, authorityChunk{text: authority[literal:i]})
+		}
+		chunks = append(chunks, authorityChunk{text: authority[i:j], placeholder: true})
+		literal = j
+		i = j
+	}
+	if chunks == nil {
+		return nil
+	}
+	if literal < len(authority) {
+		chunks = append(chunks, authorityChunk{text: authority[literal:]})
+	}
+	return chunks
+}
+
+// authorityHolds reports whether the values about to be substituted leave the
+// target's authority naming the host the author wrote.
+//
+// Where a token sits decides what it may contain:
+//
+//   - Author text follows it ("https://$1.cdn.example.com"): the value becomes
+//     part of the host, so it must not carry a byte that ends the authority
+//     ("/", "\", "?", "#"), starts a new host by making everything before it
+//     userinfo ("@"), or opens a port (":"). Without that check a value of
+//     "evil.com/x" composes "https://evil.com/x.cdn.example.com", whose
+//     authority stops at the slash — the browser goes to evil.com.
+//   - It ends the authority ("https://cdn.example.com$1"): the author left the
+//     rest of the URL to the request, so the value must start the next
+//     component — "/", "\", "?" or "#" — or be empty. Anything else extends
+//     the host the author wrote, and "@evil.com" would turn all of it into
+//     userinfo.
+//   - It is the whole authority ("https://$1"): the author handed over the
+//     destination deliberately, so nothing is checked.
+func authorityHolds(chunks []authorityChunk, replacer *strings.Replacer) bool {
+	if len(chunks) <= 1 {
+		return true
+	}
+
+	for i, chunk := range chunks {
+		if !chunk.placeholder {
+			continue
+		}
+		value := replacer.Replace(chunk.text)
+		if i == len(chunks)-1 {
+			if value != "" && strings.IndexByte(`/\?#`, value[0]) < 0 {
+				return false
+			}
+			continue
+		}
+		if strings.ContainsAny(value, `/\?#@:`) {
+			return false
+		}
+	}
+	return true
 }
 
 // keepSameOrigin strips an authority that the captured path segments introduced

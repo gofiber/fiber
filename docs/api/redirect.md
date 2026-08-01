@@ -95,6 +95,19 @@ Redirects to the referer. If it's missing, fall back to the provided URL. You ca
 If unspecified, status defaults to **303 See Other**.
 :::
 
+:::note
+
+The referer is only used when it is same-origin with the current request, and
+the value sent in `Location` is a normalized form of it, not the raw header.
+The check reads the referer the way a browser does — folding backslashes,
+dropping ASCII tab, CR and LF, and collapsing a leading run of slashes — so a
+value like `/\evil.com`, which a browser resolves to `//evil.com`, is not
+mistaken for a local path. A referer that is missing, cross-origin, or
+unparseable falls back to the provided URL, and `Back` returns an error if
+there is no fallback.
+
+:::
+
 ```go title="Signature"
 func (r *Redirect) Back(fallback string) error
 ```
@@ -243,6 +256,16 @@ app.Get("/", func(c fiber.Ctx) error {
 Send input data with `WithInput`, which stores them in a cookie.
 
 It captures form, multipart, or query data depending on the request content type.
+
+:::caution
+
+`WithInput` copies the whole submitted body into the `fiber_flash` cookie — a
+rejected login carries the password the user just typed. The payload is
+hex-encoded, not encrypted or signed, so anything sensitive in the request goes
+back to the browser as a cookie value. Prefer `With` for the specific fields you
+need to carry across the redirect.
+
+:::
 
 ```go title="Signature"
 func (r *Redirect) WithInput() *Redirect

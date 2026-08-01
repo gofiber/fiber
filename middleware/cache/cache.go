@@ -78,9 +78,13 @@ var ignoreHeaders = map[string]struct{}{
 	// A cache entry is served to every client that matches its key, so a
 	// Set-Cookie captured from one response would hand that client's session
 	// to all the others. It still reaches the client that caused the miss;
-	// only the stored copy is dropped.
-	"Set-Cookie": {},
-	"TE":         {},
+	// only the stored copy is dropped. Set-Cookie2 is the obsolete RFC 2965
+	// spelling and leaks exactly the same way, so it is dropped alongside —
+	// the client's crossHostSensitiveHeaders list strips its request-side
+	// counterpart, Cookie2, for the same reason.
+	"Set-Cookie":  {},
+	"Set-Cookie2": {},
+	"TE":          {},
 	// "Trailer", not "Trailers": the hop-by-hop header is Trailer
 	// (RFC 9110 Section 6.6.2) — "trailers" is a TE token and never appears as a
 	// response header key, so the old spelling matched nothing and let a

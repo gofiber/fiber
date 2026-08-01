@@ -349,8 +349,10 @@ func (b *Bind) XML(out any) error {
 func (b *Bind) Form(out any) error {
 	// The Content-Type is deliberately not normalized here. FormBinding.Bind
 	// opens by doing it itself — callers reaching the binder directly bypass
-	// this method entirely — so repeating it would re-scan and re-fold the same
-	// header, quoted parameter values included, on every form bind.
+	// this method entirely — so a fold here would be a second pass over the
+	// same header. Body still folds before dispatching, because it has to read
+	// the media type to pick a binder at all; that leaves one redundant scan on
+	// the Body path, which is the price of the binder standing alone.
 	bind := binder.GetFromThePool[*binder.FormBinding](&binder.FormBinderPool)
 	bind.EnableSplitting = b.ctx.App().config.EnableSplittingOnParsers
 	bind.MaxBodySize = b.ctx.App().config.BodyLimit

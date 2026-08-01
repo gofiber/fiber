@@ -352,31 +352,26 @@ func doRedirectsWithClient(req *fasthttp.Request, resp *fasthttp.Response, maxRe
 		}
 		currentURL = nextURL
 
-		switch {
-		case statusCode == fasthttp.StatusSeeOther:
-			// RFC 9110 Section 15.4.4: a 303 sends the user agent to the new
-			// URI with GET regardless of the original method, and without the
-			// original body. That covers every method, not just POST — Fiber's
-			// client drives QUERY requests through this loop as well
-			// (client/core.go), and one that kept its method would replay its
-			// body to the redirect target, which may be a different host than
-			// the one the caller addressed.
+		// 301, 302 and 303 all turn a method that carries a body into a GET, and
+		// the body goes with it. That is net/http's redirectBehavior, which this
+		// loop already follows for the credential boundary below, and it covers
+		// every method rather than just POST: Fiber's client drives QUERY
+		// requests through here as well (client/core.go), and one that kept its
+		// method would replay its body to the redirect target — possibly a
+		// different host than the caller addressed — under a method that no
+		// longer describes it. RFC 9110 Section 15.4.4 requires the change for
+		// 303; Sections 15.4.2 and 15.4.3 permit it for 301 and 302.
+		//
+		// fasthttp's own loop stops short of this for 301 and 302, changing only
+		// POST and keeping the body. That is the one place the two deliberately
+		// differ. 307 and 308 are untouched by design: they exist precisely to
+		// preserve the method and body.
+		switch statusCode {
+		case fasthttp.StatusMovedPermanently, fasthttp.StatusFound, fasthttp.StatusSeeOther:
 			if !req.Header.IsGet() && !req.Header.IsHead() {
 				req.Header.SetMethod(fasthttp.MethodGet)
+				dropRequestBody(req)
 			}
-			dropRequestBody(req)
-		case req.Header.IsPost() && (statusCode == fasthttp.StatusMovedPermanently || statusCode == fasthttp.StatusFound):
-			// RFC 9110 Sections 15.4.2/15.4.3: for historical reasons a user
-			// agent may change POST to GET on a 301 or 302.
-			req.Header.SetMethod(fasthttp.MethodGet)
-			// The body goes with the method. net/http drops it for 301, 302 and
-			// 303 alike (Client.redirectBehavior), and this loop already follows
-			// net/http for the credential boundary below; carrying a POST body
-			// on a request now labeled GET would replay it to the new location,
-			// possibly on another host, under a method that does not describe
-			// it. fasthttp's loop leaves it in place here — this is the one
-			// place the two deliberately differ.
-			dropRequestBody(req)
 		}
 
 		// Credentials are scoped to the origin that issued them, so drop them

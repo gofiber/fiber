@@ -1,6 +1,7 @@
 package binder
 
 import (
+	"bytes"
 	"mime/multipart"
 	"sync"
 
@@ -10,6 +11,10 @@ import (
 )
 
 const MIMEMultipartForm string = "multipart/form-data"
+
+// mimeApplicationForm mirrors fiber.MIMEApplicationForm. It is duplicated
+// rather than imported because package fiber imports this one.
+const mimeApplicationForm string = "application/x-www-form-urlencoded"
 
 var (
 	dataMapPool = sync.Pool{
@@ -48,7 +53,14 @@ func (b *FormBinding) Bind(req *fasthttp.Request, out any) error {
 	// name case-sensitively, so a legal "Multipart/Form-Data" would still bind
 	// nothing (or fail outright once the comparison routed it to bindMultipart).
 	// Fold the case-insensitive parts first, then compare.
-	mediatype.NormalizeRequestContentType(&req.Header)
+	//
+	// Guarded on the media type actually being a form, because the fold lands
+	// on the request's own bytes: running it on, say, a JSON request would
+	// rewrite a header the caller may still be holding a view into, to no
+	// purpose — neither parser below is going to look at it.
+	if isFormMediaType(req.Header.ContentType()) {
+		mediatype.NormalizeRequestContentType(&req.Header)
+	}
 
 	// Handle multipart form. Media types are case-insensitive
 	// (RFC 9110 Section 8.3.1), so compare accordingly.
@@ -146,4 +158,18 @@ func clearDataMap(m map[string][]string) {
 
 func clearFileHeaderMap(m map[string][]*multipart.FileHeader) {
 	clear(m)
+}
+
+// isFormMediaType reports whether ct names one of the two media types the form
+// parsers handle. Media types are case-insensitive (RFC 9110 Section 8.3.1), so
+// compare folded, and ignore any parameters — a multipart boundary is not part
+// of the name.
+func isFormMediaType(ct []byte) bool {
+	if i := bytes.IndexByte(ct, ';'); i >= 0 {
+		ct = ct[:i]
+	}
+	ct = bytes.TrimRight(ct, " \t")
+
+	name := utils.UnsafeString(ct)
+	return utils.EqualFold(name, mimeApplicationForm) || utils.EqualFold(name, MIMEMultipartForm)
 }

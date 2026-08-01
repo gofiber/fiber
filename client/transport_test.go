@@ -4,6 +4,7 @@ import (
 	"crypto/tls"
 	"errors"
 	"net"
+	"strconv"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -251,18 +252,51 @@ func TestWalkBalancingClientWithBreak(t *testing.T) {
 	}))
 }
 
-// TestDoRedirectsWithClient_SeeOtherDropsBodyForAnyMethod pins RFC 9110
-// Section 15.4.4 for every method, not just POST.
+// TestDoRedirectsWithClient_DropsBodyForAnyMethod pins net/http's
+// redirectBehavior: 301, 302 and 303 all turn a body-carrying method into GET
+// and drop the body, for every method rather than just POST.
 //
 // Fiber's client drives QUERY requests through this loop too (client/core.go),
-// and the 303 branch used to be gated on IsPost — so a QUERY kept its method
-// and its body across the redirect and replayed that body to the new location,
+// and both branches used to be gated on IsPost — so a QUERY kept its method and
+// its body across the redirect and replayed that body to the new location,
 // which may be a different host than the caller addressed.
-func TestDoRedirectsWithClient_SeeOtherDropsBodyForAnyMethod(t *testing.T) {
+func TestDoRedirectsWithClient_DropsBodyForAnyMethod(t *testing.T) {
 	t.Parallel()
 
-	for _, method := range []string{fasthttp.MethodPost, fasthttp.MethodPut, fasthttp.MethodPatch, fasthttp.MethodDelete, "QUERY"} {
-		t.Run(method, func(t *testing.T) {
+	for _, status := range []int{fasthttp.StatusMovedPermanently, fasthttp.StatusFound, fasthttp.StatusSeeOther} {
+		for _, method := range []string{fasthttp.MethodPost, fasthttp.MethodPut, fasthttp.MethodPatch, fasthttp.MethodDelete, "QUERY"} {
+			t.Run(strconv.Itoa(status)+"/"+method, func(t *testing.T) {
+				t.Parallel()
+
+				req := fasthttp.AcquireRequest()
+				resp := fasthttp.AcquireResponse()
+				defer fasthttp.ReleaseRequest(req)
+				defer fasthttp.ReleaseResponse(resp)
+
+				req.SetRequestURI("http://example.com/start")
+				req.Header.SetMethod(method)
+				req.Header.SetContentType("application/json")
+				req.Header.Set(fasthttp.HeaderTrailer, "X-Checksum")
+				req.SetBodyString(`{"q":"secret"}`)
+
+				client := &stubRedirectClient{calls: []stubRedirectCall{
+					{status: ptrInt(status), location: ptrString("http://other.example/next")},
+					{status: ptrInt(fasthttp.StatusOK)},
+				}}
+				require.NoError(t, doRedirectsWithClient(req, resp, -1, client))
+
+				require.Equal(t, fasthttp.MethodGet, string(req.Header.Method()))
+				require.Empty(t, req.Body(), "the body must not reach the redirect target")
+				require.Empty(t, req.Header.ContentType())
+				require.Empty(t, req.Header.Peek(fasthttp.HeaderTrailer), "a Trailer only frames a body that is gone")
+				require.Empty(t, req.Header.Peek(fasthttp.HeaderTransferEncoding))
+			})
+		}
+	}
+
+	// 307 and 308 exist to preserve the method and body, so they are untouched.
+	for _, status := range []int{fasthttp.StatusTemporaryRedirect, fasthttp.StatusPermanentRedirect} {
+		t.Run(strconv.Itoa(status)+"/preserved", func(t *testing.T) {
 			t.Parallel()
 
 			req := fasthttp.AcquireRequest()
@@ -271,22 +305,18 @@ func TestDoRedirectsWithClient_SeeOtherDropsBodyForAnyMethod(t *testing.T) {
 			defer fasthttp.ReleaseResponse(resp)
 
 			req.SetRequestURI("http://example.com/start")
-			req.Header.SetMethod(method)
+			req.Header.SetMethod(fasthttp.MethodPost)
 			req.Header.SetContentType("application/json")
-			req.Header.Set(fasthttp.HeaderTrailer, "X-Checksum")
-			req.SetBodyString(`{"q":"secret"}`)
+			req.SetBodyString("body-must-survive")
 
 			client := &stubRedirectClient{calls: []stubRedirectCall{
-				{status: ptrInt(fasthttp.StatusSeeOther), location: ptrString("http://other.example/next")},
+				{status: ptrInt(status), location: ptrString("/next")},
 				{status: ptrInt(fasthttp.StatusOK)},
 			}}
 			require.NoError(t, doRedirectsWithClient(req, resp, -1, client))
 
-			require.Equal(t, fasthttp.MethodGet, string(req.Header.Method()))
-			require.Empty(t, req.Body(), "the body must not reach the redirect target")
-			require.Empty(t, req.Header.ContentType())
-			require.Empty(t, req.Header.Peek(fasthttp.HeaderTrailer), "a Trailer only frames a body that is gone")
-			require.Empty(t, req.Header.Peek(fasthttp.HeaderTransferEncoding))
+			require.Equal(t, fasthttp.MethodPost, string(req.Header.Method()))
+			require.Equal(t, "body-must-survive", string(req.Body()))
 		})
 	}
 

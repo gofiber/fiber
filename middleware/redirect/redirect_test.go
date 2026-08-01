@@ -289,6 +289,14 @@ func Test_Redirect_CaptureInsideAuthority(t *testing.T) {
 		{"protocol relative target", "//$1.assets.example.com/", "/cdn/evil.com/x", ""},
 		{"question mark escapes", "https://$1.assets.example.com/", "/cdn/evil.com%3Fa", ""},
 
+		// An "@" makes everything before it userinfo, so the host becomes the
+		// capture's — no authority-ending byte required.
+		{"at sign makes the host userinfo", "https://$1.assets.example.com/", "/cdn/a@evil.com", ""},
+		{"at sign at the end of the authority", "https://cdn.example.com$1", "/cdn/@evil.com", ""},
+		// A capture that does not open a new component extends the host the
+		// author wrote.
+		{"bare value extends the host", "https://cdn.example.com$1", "/cdn/x", ""},
+
 		// A clean label still composes.
 		{"clean label", "https://$1.assets.example.com/", "/cdn/images", "https://images.assets.example.com/"},
 		{"clean label protocol relative", "//$1.assets.example.com/", "/cdn/images", "//images.assets.example.com/"},
@@ -297,6 +305,10 @@ func Test_Redirect_CaptureInsideAuthority(t *testing.T) {
 		// authority, which the target fixed.
 		{"path capture keeps slashes", "https://cdn.example.com/$1", "/cdn/a/b/c", "https://cdn.example.com/a/b/c"},
 		{"path capture with a host-like value", "https://cdn.example.com/$1", "/cdn/evil.com/x", "https://cdn.example.com/evil.com/x"},
+
+		// A target handing the whole authority to the capture is the author
+		// choosing that destination outright, so it is left alone.
+		{"whole authority is the capture", "https://$1", "/cdn/anything/x", "https://anything/x"},
 	}
 
 	for _, tc := range tests {
@@ -324,6 +336,73 @@ func Test_Redirect_CaptureInsideAuthority(t *testing.T) {
 			require.Equal(t, tc.want, resp.Header.Get("Location"))
 		})
 	}
+}
+
+// Test_Redirect_CaptureEndingTheAuthority covers a target whose placeholder
+// ends its authority, which is a natural way to keep the request's own path:
+// the capture must open a new component rather than extend the host.
+func Test_Redirect_CaptureEndingTheAuthority(t *testing.T) {
+	t.Parallel()
+
+	// "/cdn*" leaves the leading slash in the capture, so $1 supplies the path.
+	app := fiber.New()
+	app.Use(New(Config{
+		Rules:      map[string]string{"/cdn*": "https://cdn.example.com$1"},
+		StatusCode: fiber.StatusFound,
+	}))
+	app.Get("/*", func(c fiber.Ctx) error { return c.SendString("fell through") })
+
+	get := func(target string) (int, string) {
+		req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, target, http.NoBody)
+		require.NoError(t, err)
+		resp, err := app.Test(req)
+		require.NoError(t, err)
+		return resp.StatusCode, resp.Header.Get("Location")
+	}
+
+	status, location := get("/cdn/foo.png")
+	require.Equal(t, fiber.StatusFound, status, "a capture that opens a path must still redirect")
+	require.Equal(t, "https://cdn.example.com/foo.png", location)
+
+	status, location = get("/cdn/a/b/c")
+	require.Equal(t, fiber.StatusFound, status)
+	require.Equal(t, "https://cdn.example.com/a/b/c", location)
+
+	// The capture carries the '@' into the path, past the authority, so the
+	// host is still the author's.
+	status, location = get("/cdn/@evil.com")
+	require.Equal(t, fiber.StatusFound, status)
+	require.Equal(t, "https://cdn.example.com/@evil.com", location)
+}
+
+func Test_AuthorityChunks(t *testing.T) {
+	t.Parallel()
+
+	require.Nil(t, authorityChunks("https://cdn.example.com/$1"), "no token in the authority")
+	require.Nil(t, authorityChunks("/$1"), "no authority at all")
+	require.Nil(t, authorityChunks("mailto:$1"), "a scheme with no // has no authority")
+	require.Nil(t, authorityChunks("https://cost$.example.com/"), "a bare $ is literal text")
+
+	require.Equal(t, []authorityChunk{
+		{text: "$1", placeholder: true},
+		{text: ".assets.example.com"},
+	}, authorityChunks("https://$1.assets.example.com/x"))
+
+	require.Equal(t, []authorityChunk{
+		{text: "cdn.example.com"},
+		{text: "$1", placeholder: true},
+	}, authorityChunks("https://cdn.example.com$1"))
+
+	require.Equal(t, []authorityChunk{
+		{text: "assets."},
+		{text: "$1", placeholder: true},
+		{text: ".com"},
+	}, authorityChunks("https://assets.$1.com"))
+
+	// A target that is nothing but the token: the author picked the
+	// destination outright, and authorityHolds leaves it alone.
+	require.Equal(t, []authorityChunk{{text: "$1", placeholder: true}}, authorityChunks("https://$1"))
+	require.Equal(t, []authorityChunk{{text: "$12", placeholder: true}}, authorityChunks("//$12"))
 }
 
 func Test_AuthoritySpan(t *testing.T) {
