@@ -524,10 +524,10 @@ func Test_makeBuildVaryKeyFunc(t *testing.T) {
 	hdr.Set("Accept", "application/json")
 	hdr.Set("Accept-Encoding", "gzip")
 
-	key := fn([]string{"accept", "accept-encoding"}, &hdr)
+	key := fn([]string{"accept", "accept-encoding"}, &hdr, true)
 	require.Contains(t, key, "|vary|")
 	// Deterministic for the same inputs (also exercises the pooled buffer path).
-	require.Equal(t, key, fn([]string{"accept", "accept-encoding"}, &hdr))
+	require.Equal(t, key, fn([]string{"accept", "accept-encoding"}, &hdr, true))
 }
 
 // Test_makeBuildVaryKeyFunc_RepeatedFieldLines pins that every field line of a
@@ -548,7 +548,7 @@ func Test_makeBuildVaryKeyFunc_RepeatedFieldLines(t *testing.T) {
 		for _, v := range values {
 			hdr.Add("X-Tenant", v)
 		}
-		return fn([]string{"x-tenant"}, &hdr)
+		return fn([]string{"x-tenant"}, &hdr, true)
 	}
 
 	both := key("public", "acme-private")

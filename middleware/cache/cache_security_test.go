@@ -603,22 +603,22 @@ func Test_JoinedHeader(t *testing.T) {
 	t.Parallel()
 
 	var h fasthttp.ResponseHeader
-	require.Nil(t, joinedHeader(&h, fiber.HeaderVary), "absent header")
+	require.Nil(t, joinedHeader(&h, fiber.HeaderVary, true), "absent header")
 
 	h.Add(fiber.HeaderCacheControl, "no-store")
 	h.Add(fiber.HeaderVary, fiber.HeaderAcceptEncoding)
 	h.Add(fiber.HeaderVary, "X-Tenant")
 
-	cacheControl := joinedHeader(&h, fiber.HeaderCacheControl)
+	cacheControl := joinedHeader(&h, fiber.HeaderCacheControl, true)
 	require.Equal(t, "no-store", string(cacheControl))
 
-	require.Equal(t, "Accept-Encoding,X-Tenant", string(joinedHeader(&h, fiber.HeaderVary)))
+	require.Equal(t, "Accept-Encoding,X-Tenant", string(joinedHeader(&h, fiber.HeaderVary, true)))
 	require.Equal(t, "no-store", string(cacheControl), "an earlier result must survive a later PeekAll")
 
 	var req fasthttp.RequestHeader
 	req.Add(fiber.HeaderCacheControl, "max-age=0")
 	req.Add(fiber.HeaderCacheControl, "no-store")
-	require.Equal(t, "max-age=0,no-store", string(joinedHeader(&req, fiber.HeaderCacheControl)))
+	require.Equal(t, "max-age=0,no-store", string(joinedHeader(&req, fiber.HeaderCacheControl, true)))
 }
 
 // Test_Cache_Security_CookieKeyedOnEveryFieldLine asserts that a Cookie
@@ -1497,4 +1497,58 @@ func Test_RequestDirectives_HonoredWithoutHeaderNormalizing(t *testing.T) {
 	require.Equal(t, cacheHit, do(""))
 	require.Empty(t, do("cache-control: no-store"), "no-store must be honored whatever case it arrived in")
 	require.Equal(t, cacheMiss, do("cache-control: no-cache"), "no-cache must force revalidation")
+}
+
+// Test_Authorization_MixedCaseFieldLines closes the other half of the
+// case-insensitive lookup.
+//
+// Falling back to a case-insensitive walk only when the byte-for-byte lookup
+// came back empty was not enough: with DisableHeaderNormalizing a request can
+// send both spellings, and an empty canonical "Authorization:" line satisfies
+// the fast path, so the credential on the lowercase line beside it was never
+// looked at. The request read as anonymous and its private response was stored
+// in the anonymous partition.
+func Test_Authorization_MixedCaseFieldLines(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New(fiber.Config{DisableHeaderNormalizing: true})
+	app.Use(New(Config{Expiration: time.Hour}))
+	app.Get("/", func(c fiber.Ctx) error {
+		tok := c.Get("Authorization")
+		if tok == "" {
+			tok = c.Get("authorization")
+		}
+		if tok == "" {
+			return c.SendString("PUBLIC")
+		}
+		return c.SendString("PRIVATE for " + tok)
+	})
+
+	do := func(lines ...string) (string, string) {
+		parts := []string{"GET / HTTP/1.1\r\nHost: example.com\r\n"}
+		for _, l := range lines {
+			parts = append(parts, l+"\r\n")
+		}
+		raw := strings.Join(append(parts, "\r\n"), "")
+
+		req := fasthttp.AcquireRequest()
+		defer fasthttp.ReleaseRequest(req)
+		req.Header.DisableNormalizing()
+		require.NoError(t, req.Read(bufio.NewReader(strings.NewReader(raw))))
+
+		fctx := &fasthttp.RequestCtx{}
+		fctx.Init(req, nil, nil)
+		app.Handler()(fctx)
+		return string(fctx.Response.Body()), string(fctx.Response.Header.Peek("X-Cache"))
+	}
+
+	// The canonical line is present but empty, so the byte-for-byte lookup
+	// succeeds and would have stopped there.
+	body, status := do("Authorization:", "authorization: Bearer alice")
+	require.Equal(t, cacheUnreachable, status, "the credential on the second spelling must still be seen")
+	require.Equal(t, "PRIVATE for Bearer alice", body)
+
+	body, status = do()
+	require.Equal(t, cacheMiss, status)
+	require.Equal(t, "PUBLIC", body, "an anonymous request must not be served the authorized response")
 }

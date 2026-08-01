@@ -220,17 +220,21 @@ func New(config ...Config) fiber.Handler {
 		// would otherwise be taken for anonymous, keyed with anonymous traffic
 		// and served to it. Only lengths are read here, so nothing outlives the
 		// user-supplied KeyGenerator that runs next.
+		// Whether a byte-for-byte header lookup is complete for this request.
+		// Read once: it is app config, fixed for the life of the handler.
+		canonical := headerNamesAreCanonical(c)
+
 		hasAuthorization := false
-		for _, v := range fieldLines(&c.Request().Header, fiber.HeaderAuthorization) {
+		for _, v := range fieldLines(&c.Request().Header, fiber.HeaderAuthorization, canonical) {
 			if len(v) > 0 {
 				hasAuthorization = true
 				break
 			}
 		}
-		reqCacheControl := joinedHeader(&c.Request().Header, fiber.HeaderCacheControl)
+		reqCacheControl := joinedHeader(&c.Request().Header, fiber.HeaderCacheControl, canonical)
 		reqDirectives := parseRequestCacheControl(reqCacheControl)
 		if !reqDirectives.noCache {
-			reqPragma := utils.UnsafeString(joinedHeader(&c.Request().Header, fiber.HeaderPragma))
+			reqPragma := utils.UnsafeString(joinedHeader(&c.Request().Header, fiber.HeaderPragma, canonical))
 			if hasDirective(reqPragma, noCache) {
 				reqDirectives.noCache = true
 			}
@@ -263,7 +267,7 @@ func New(config ...Config) fiber.Handler {
 			// the first line would otherwise hash the same and share one |auth=
 			// partition, so a shared-cacheable response stored for one
 			// credential set would be served to the other.
-			authHash := hashAuthorization(joinedHeader(&c.Request().Header, fiber.HeaderAuthorization))
+			authHash := hashAuthorization(joinedHeader(&c.Request().Header, fiber.HeaderAuthorization, canonical))
 			baseKey += "|auth=" + authHash
 			manifestKey = baseKey + "|vary"
 		}
@@ -280,7 +284,7 @@ func New(config ...Config) fiber.Handler {
 				return err
 			}
 			if len(varyNames) > 0 {
-				key += buildVaryKey(varyNames, &c.Request().Header)
+				key += buildVaryKey(varyNames, &c.Request().Header, canonical)
 			}
 		}
 
@@ -594,9 +598,9 @@ func New(config ...Config) fiber.Handler {
 			c.Set(cfg.CacheHeader, cacheUnreachable)
 		}
 
-		cacheControlBytes := joinedHeader(&c.Response().Header, fiber.HeaderCacheControl)
+		cacheControlBytes := joinedHeader(&c.Response().Header, fiber.HeaderCacheControl, canonical)
 		respCacheControl := parseResponseCacheControl(cacheControlBytes)
-		varyHeader := utils.UnsafeString(joinedHeader(&c.Response().Header, fiber.HeaderVary))
+		varyHeader := utils.UnsafeString(joinedHeader(&c.Response().Header, fiber.HeaderVary, canonical))
 		hasPrivate := respCacheControl.hasPrivate
 		hasNoCache := respCacheControl.hasNoCache
 		varyNames, varyHasStar := parseVary(varyHeader)
@@ -639,7 +643,7 @@ func New(config ...Config) fiber.Handler {
 		shouldStoreVaryManifest := !cfg.DisableVaryHeaders && len(varyNames) > 0
 		if !cfg.DisableVaryHeaders && len(varyNames) > 0 {
 			if key == baseKey {
-				key += buildVaryKey(varyNames, &c.Request().Header)
+				key += buildVaryKey(varyNames, &c.Request().Header, canonical)
 			}
 		} else if !cfg.DisableVaryHeaders && hasVaryManifest {
 			if err := manager.del(reqCtx, manifestKey); err != nil {

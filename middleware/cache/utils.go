@@ -128,7 +128,7 @@ func responseSetsCookie(h *fasthttp.ResponseHeader) bool {
 // "Cookie: session=..." sent on a second one out of the key entirely, letting
 // two clients with different sessions share an entry. Collecting is idempotent
 // and is what any cookie read in the handler would do anyway.
-func keyFieldLines(h *fasthttp.RequestHeader, name string) [][]byte {
+func keyFieldLines(h *fasthttp.RequestHeader, name string, normalized bool) [][]byte {
 	switch {
 	case utils.EqualFold(name, fiber.HeaderCookie):
 		h.Cookie("") // collectCookies; the lookup itself is expected to miss
@@ -151,7 +151,18 @@ func keyFieldLines(h *fasthttp.RequestHeader, name string) [][]byte {
 		mediatype.NormalizeRequestContentType(h)
 	}
 
-	return fieldLines(h, name)
+	return fieldLines(h, name, normalized)
+}
+
+// headerNamesAreCanonical reports whether fasthttp normalized this request's
+// header names, which decides whether a byte-for-byte lookup finds all of them.
+//
+// fasthttp keeps the answer private, so take it from the app config that set
+// it. Getting this wrong in the safe direction only costs a walk; wrong the
+// other way loses field lines, which for Authorization means reading a request
+// as anonymous.
+func headerNamesAreCanonical(c fiber.Ctx) bool {
+	return !c.App().Config().DisableHeaderNormalizing
 }
 
 // fieldLines returns every field line stored under name, matching the name the
@@ -170,9 +181,15 @@ func keyFieldLines(h *fasthttp.RequestHeader, name string) [][]byte {
 // way. Only reached when the byte-for-byte lookup found nothing, which for a
 // normalizing header means the field is absent and the walk finds nothing
 // either.
-func fieldLines(h headerPeeker, name string) [][]byte {
-	if values := h.PeekAll(name); len(values) > 0 {
-		return values
+// header store that only the caller can know, not a mode of operation.
+//
+//nolint:revive // flag-parameter: normalized is a property of the request's
+func fieldLines(h headerPeeker, name string, normalized bool) [][]byte {
+	if normalized {
+		// fasthttp canonicalized every stored key, so a byte-for-byte lookup
+		// finds all of them and PeekAll hands back the header's own slice
+		// without allocating.
+		return h.PeekAll(name)
 	}
 
 	var values [][]byte
@@ -211,8 +228,8 @@ type headerPeeker interface {
 // Header.Add — returns the header's own bytes and allocates nothing. The
 // returned slice stays valid across later PeekAll calls: those reuse the
 // header's scratch slice of slice headers, not the value bytes it points at.
-func joinedHeader(h headerPeeker, key string) []byte {
-	values := fieldLines(h, key)
+func joinedHeader(h headerPeeker, key string, normalized bool) []byte {
+	values := fieldLines(h, key, normalized)
 	switch len(values) {
 	case 0:
 		return nil

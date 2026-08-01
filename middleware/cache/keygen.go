@@ -60,7 +60,7 @@ func defaultKeyGenerator(c fiber.Ctx, cfg *Config) string {
 
 	if len(cfg.KeyHeaders) > 0 {
 		buf = append(buf, '|', 'h', '=')
-		buf = appendCanonicalHeaderSubset(buf, &c.Request().Header, cfg.KeyHeaders)
+		buf = appendCanonicalHeaderSubset(buf, &c.Request().Header, cfg.KeyHeaders, headerNamesAreCanonical(c))
 	}
 
 	if len(cfg.KeyCookies) > 0 {
@@ -175,7 +175,7 @@ func appendCanonicalQueryString(dst []byte, uri *fasthttp.URI) []byte {
 	return dst
 }
 
-func appendCanonicalHeaderSubset(dst []byte, header *fasthttp.RequestHeader, names []string) []byte {
+func appendCanonicalHeaderSubset(dst []byte, header *fasthttp.RequestHeader, names []string, normalized bool) []byte {
 	for idx, name := range names {
 		if idx > 0 {
 			dst = append(dst, '|')
@@ -194,7 +194,7 @@ func appendCanonicalHeaderSubset(dst []byte, header *fasthttp.RequestHeader, nam
 		// it. Cookie and Trailer are the exception — fasthttp re-serializes
 		// those from its own stores into a fresh buffer per call — so naming
 		// either in KeyHeaders allocates once per request.
-		values := keyFieldLines(header, name)
+		values := keyFieldLines(header, name, normalized)
 
 		// The count keeps the framing injective. Without it an absent header
 		// and one present with an empty value both emit nothing, and a list of

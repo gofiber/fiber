@@ -49,8 +49,8 @@ func parseVary(vary string) ([]string, bool) {
 	return names, false
 }
 
-func makeBuildVaryKeyFunc(hexBufPool *sync.Pool) func([]string, *fasthttp.RequestHeader) string {
-	return func(names []string, hdr *fasthttp.RequestHeader) string {
+func makeBuildVaryKeyFunc(hexBufPool *sync.Pool) func([]string, *fasthttp.RequestHeader, bool) string {
+	return func(names []string, hdr *fasthttp.RequestHeader, normalized bool) string {
 		sum := sha256.New()
 		// Written inline rather than through a closure: capturing lenBuf would
 		// force the array to the heap, adding two allocations to every request
@@ -78,7 +78,7 @@ func makeBuildVaryKeyFunc(hexBufPool *sync.Pool) func([]string, *fasthttp.Reques
 			// re-serializes those from its own stores into a fresh buffer per
 			// call — so a "Vary: Cookie" response pays for that twice per
 			// request, once at lookup and once at store.
-			values := keyFieldLines(hdr, name)
+			values := keyFieldLines(hdr, name, normalized)
 			_, _ = sum.Write(binary.AppendUvarint(lenBuf[:0], uint64(len(values)))) //nolint:errcheck // hash.Hash.Write for std hashes never errors
 			for _, v := range values {
 				// Length-prefixed so the framing stays injective: without it
