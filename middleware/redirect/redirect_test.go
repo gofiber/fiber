@@ -860,9 +860,12 @@ func Test_PinsHost(t *testing.T) {
 		// The unspecified address is still a complete one the author wrote.
 		{"[::]", true},
 		{"[::]:", true},
-		// An opener with no closer yet: the author has written address text, and
-		// the port colon is not among these colons.
-		{"[2001:db8::", true},
+		// An opener with no closer is a fragment of an address some capture
+		// split, so it pins nothing on its own — the mirror of "::1]" above.
+		{"[2001:db8::", false},
+		{"[::", false},
+		{"[abc", false},
+		{"[fe80", false},
 
 		{"", false},
 		{":8080", false},
@@ -931,6 +934,19 @@ func Test_PinsHost(t *testing.T) {
 		// A stray "%" is literal to the parser, not an error.
 		{"100%", true},
 		{"a%zz", true},
+		// A host whose last label reads as a number is an IPv4 address, where
+		// the author's trailing text is the low octets and the request supplies
+		// the network. Only a complete address pins one.
+		{".1", false},
+		{".0", false},
+		{".0.0.1", false},
+		{".0x1", false},
+		{"127.0.0.1", true},
+		{"10.0.0.1", true},
+		// A name is still a name, whatever letters it is made of.
+		{"abc.def", true},
+		{".example.com", true},
+		{"example1.com", true},
 		// An internationalized label is host text, in either spelling.
 		{"\u4f8b\u3048.jp", true},
 		{"xn--r8jz45g.jp", true},
@@ -1378,4 +1394,66 @@ func Test_Redirect_PercentEscapePinsOnlyWhatItDecodesTo(t *testing.T) {
 	resp, err := app.Test(req)
 	require.NoError(t, err)
 	require.Equal(t, "https://t%41.example.com", resp.Header.Get("Location"))
+}
+
+// Test_Redirect_NumericSuffixPinsNoHost covers the IPv4 reading of the same
+// inversion that makes a capture inside an IPv6 literal unjudgeable.
+//
+// A host whose last label reads as a number is parsed as an IPv4 address, so
+// the author's trailing text is the low octets and the capture supplies the
+// network. "https://$1.1" looks like a pinned suffix and composed
+// "https://127.0.0.1" from a captured "127.0.0" — loopback, and 169.254.169.254
+// or a private range just as easily. The IPv4 parser reads hex too, so
+// "https://$1.0x1" did the same.
+func Test_Redirect_NumericSuffixPinsNoHost(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct{ target, request string }{
+		{"https://$1.1", "/r/127.0.0"},
+		{"https://$1.0x1", "/r/127.0.0"},
+		{"https://$1.0.0.1", "/r/127"},
+		{"https://$1.0", "/r/127.0.0"},
+	} {
+		t.Run(tc.target, func(t *testing.T) {
+			t.Parallel()
+
+			app := fiber.New()
+			app.Use(New(Config{Rules: map[string]string{"/r/*": tc.target}}))
+			app.Use(func(c fiber.Ctx) error { return c.SendString("fell through") })
+
+			req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, tc.request, http.NoBody)
+			require.NoError(t, err)
+			resp, err := app.Test(req)
+			require.NoError(t, err)
+			require.Equal(t, fiber.StatusOK, resp.StatusCode, "the rule must be refused at startup")
+			require.Empty(t, resp.Header.Get("Location"))
+		})
+	}
+}
+
+// Test_Redirect_CompleteAddressStillPins is the other half: an address the
+// author wrote in full is theirs, so a capture beside it is only a port or a
+// path.
+func Test_Redirect_CompleteAddressStillPins(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct{ target, request, want string }{
+		{"https://127.0.0.1:$1", "/r/8080", "https://127.0.0.1:8080"},
+		{"https://10.0.0.1/$1", "/r/a", "https://10.0.0.1/a"},
+		{"https://$1.example.com", "/r/tenant", "https://tenant.example.com"},
+		{"https://$1.abc.def", "/r/a", "https://a.abc.def"},
+	} {
+		t.Run(tc.target, func(t *testing.T) {
+			t.Parallel()
+
+			app := fiber.New()
+			app.Use(New(Config{Rules: map[string]string{"/r/*": tc.target}}))
+
+			req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, tc.request, http.NoBody)
+			require.NoError(t, err)
+			resp, err := app.Test(req)
+			require.NoError(t, err)
+			require.Equal(t, tc.want, resp.Header.Get("Location"))
+		})
+	}
 }

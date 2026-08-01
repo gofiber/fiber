@@ -629,6 +629,29 @@ func hostPinnedBefore(chunks []authorityChunk, i int) bool {
 	return false
 }
 
+// isIPv4Number reports whether a host label is read as a number by the IPv4
+// address parser, which is what makes the whole host an address rather than a
+// name. Decimal, and the hex the parser also accepts.
+func isIPv4Number(label string) bool {
+	if label == "" {
+		return false
+	}
+	if len(label) >= 2 && label[0] == '0' && (label[1] == 'x' || label[1] == 'X') {
+		for i := 2; i < len(label); i++ {
+			if unhex(label[i]) < 0 {
+				return false
+			}
+		}
+		return true
+	}
+	for i := 0; i < len(label); i++ {
+		if label[i] < '0' || label[i] > '9' {
+			return false
+		}
+	}
+	return true
+}
+
 // percentDecode decodes the valid "%XX" escapes in s and passes anything else
 // through untouched, the way a URL parser decodes a host before reading it.
 //
@@ -741,6 +764,14 @@ func pinsHost(literal string) bool {
 		inner := literal[j+1 : i]
 		return strings.IndexByte(inner, ':') >= 0 && net.ParseIP(inner) != nil
 	}
+	if strings.IndexByte(literal, '[') >= 0 {
+		// An opener with no closer is the other half of the case above: the
+		// author wrote the leading groups of an address a capture split, and a
+		// fragment pins no host on its own. captureInBrackets refuses such a
+		// target outright, so this only keeps the two answers consistent.
+		return false
+	}
+
 	if i := strings.IndexByte(literal, ':'); i >= 0 {
 		literal = literal[:i]
 	}
@@ -765,9 +796,28 @@ func pinsHost(literal string) bool {
 	// from a captured "evil.com" and an empty second capture, and shipped
 	// "https://evil.com". One in the middle is a forbidden domain code point
 	// instead, so it pins no host either way.
-	return strings.TrimFunc(mapped, func(r rune) bool {
+	trimmed := strings.TrimFunc(mapped, func(r rune) bool {
 		return r <= ' ' || r == 0x7f || strings.ContainsRune(".[:", r)
-	}) != ""
+	})
+	if trimmed == "" {
+		return false
+	}
+
+	// A host whose last label reads as a number is parsed as an IPv4 address,
+	// and there the author's trailing text is the low octets — the request
+	// supplies the network, the same inversion that makes a capture inside an
+	// IPv6 literal unjudgeable. "https://$1.1" looks like a pinned suffix and
+	// composed "https://127.0.0.1" from a captured "127.0.0"; "https://$1.0x1"
+	// did the same, since the IPv4 parser reads hex. Only a complete address
+	// pins a host that way.
+	last := trimmed
+	if i := strings.LastIndexByte(trimmed, '.'); i >= 0 {
+		last = trimmed[i+1:]
+	}
+	if isIPv4Number(last) {
+		return net.ParseIP(trimmed) != nil
+	}
+	return true
 }
 
 // literalPrefixLen returns how much of a rule's path is pinned before its first

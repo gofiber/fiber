@@ -101,7 +101,8 @@ host text, so these are the same case and are refused too:
 | `"https://$1$2"` | A second capture pins nothing an attacker does not also supply. |
 | `"https://example.com@$1"` | Everything before an `@` is a username, so the host is still the capture's. |
 | `"https://\t$1"` | A tab, LF or CR is deleted by the URL parser before it reads the host, so it pins nothing that survives. |
-| `"https://$1\u00ad"` | Same for the code points UTS #46 mapping deletes — soft hyphen, zero-width space, BOM — and for those it folds onto a plain `.`, such as the ideographic full stop. |
+| `"https://$1\u00ad"` | Same for the code points UTS #46 mapping deletes — soft hyphen, zero-width space, BOM — and for those it folds onto a plain `.`, such as the ideographic full stop. Percent-escaped spellings such as `%2E` and `%C2%AD` count too, since the parser decodes a host before reading it. |
+| `"https://$1.1"`, `"https://$1.0x1"` | A host whose last label reads as a number is parsed as an IPv4 address, so the author's trailing text is the low octets and the request supplies the network — `/r/127.0.0` would reach `127.0.0.1`. A complete address is fine: `"https://127.0.0.1:$1"` pins the host and captures the port. |
 
 Note that `"https://$1@example.com"` is fine — there the author's host follows
 the `@` and the capture is only userinfo — as are `"https://cdn.example.com:$1"`
