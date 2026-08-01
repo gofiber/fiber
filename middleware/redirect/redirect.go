@@ -26,6 +26,11 @@ type compiledRule struct {
 	// each substituted value can be judged by where it lands. Empty when the
 	// authority holds no placeholder and so cannot be moved by a request.
 	authorityChunks []authorityChunk
+	// authorityEndsTarget is set when the authority runs to the end of the
+	// target, so a token closing it has nothing after it and may open the next
+	// component itself. Where author text follows ("https://host:$1/health")
+	// the token is bounded and only gets the stricter content check.
+	authorityEndsTarget bool
 	// sameOrigin is set when the target names no authority of its own. The "$N"
 	// values spliced into such a target come from the request path, so they must
 	// not be able to introduce one.
@@ -46,21 +51,22 @@ func New(config ...Config) fiber.Handler {
 		// redirect "/very/old"). See issue #4476.
 		pattern = "^" + pattern + "$"
 		chunks := authorityChunks(v)
-		if len(chunks) == 1 && chunks[0].placeholder {
-			// The whole authority is a capture, so the request picks the host
-			// this redirects to. That is an open redirect by construction —
-			// nothing here can distinguish the intended destination from an
-			// attacker's — and it is only reachable because the author wrote it,
-			// so say so once at startup rather than silently refusing to honor
-			// the rule at request time.
+		if targetLetsRequestPickHost(v, chunks) {
+			// The request picks the host this redirects to. That is an open
+			// redirect by construction — nothing here can distinguish the
+			// intended destination from an attacker's — and it is only reachable
+			// because the author wrote it, so say so once at startup rather than
+			// silently refusing to honor the rule at request time.
 			log.Warnf("[REDIRECT] rule %q sends the client to a host taken from the request path; "+
 				"anyone who can shape the path can choose the redirect target", k)
 		}
 
+		_, authorityEnd := authoritySpan(v)
 		cfg.rulesRegex[regexp.MustCompile(pattern)] = compiledRule{
-			target:          v,
-			authorityChunks: chunks,
-			sameOrigin:      !targetNamesAuthority(v),
+			target:              v,
+			authorityChunks:     chunks,
+			authorityEndsTarget: authorityEnd == len(v),
+			sameOrigin:          !targetNamesAuthority(v),
 		}
 	}
 
@@ -82,7 +88,7 @@ func New(config ...Config) fiber.Handler {
 			// tenant — and the author means $1 to be a label, not a whole URL.
 			// Refuse the rule when a value would move the host, rather than
 			// guess what the author meant; the request falls through to the app.
-			if !authorityHolds(rule.authorityChunks, replacer) {
+			if !authorityHolds(rule.authorityChunks, rule.authorityEndsTarget, replacer) {
 				continue
 			}
 
@@ -204,20 +210,21 @@ func authorityChunks(target string) []authorityChunk {
 //
 // Where a token sits decides what it may contain:
 //
-//   - Author text follows it ("https://$1.cdn.example.com"): the value becomes
-//     part of the host, so it must not carry a byte that ends the authority
-//     ("/", "\", "?", "#"), starts a new host by making everything before it
-//     userinfo ("@"), or opens a port (":"). Without that check a value of
-//     "evil.com/x" composes "https://evil.com/x.cdn.example.com", whose
-//     authority stops at the slash — the browser goes to evil.com.
-//   - It ends the authority ("https://cdn.example.com$1"): the author left the
-//     rest of the URL to the request, so the value must start the next
-//     component — "/", "\", "?" or "#" — or be empty. Anything else extends
-//     the host the author wrote, and "@evil.com" would turn all of it into
-//     userinfo.
+//   - Something in the target follows it — more authority
+//     ("https://$1.cdn.example.com") or a path ("https://cdn.example.com:$1/health").
+//     Either way the value is bounded and becomes part of the authority, so it
+//     must not carry a byte that ends the authority ("/", "\", "?", "#"),
+//     starts a new host by making everything before it userinfo ("@"), or opens
+//     a port (":"). Without that check a value of "evil.com/x" composes
+//     "https://evil.com/x.cdn.example.com", whose authority stops at the slash —
+//     the browser goes to evil.com.
+//   - It ends the target ("https://cdn.example.com$1"): the author left the rest
+//     of the URL to the request, so the value must open the next component —
+//     "/", "\", "?" or "#" — or be empty. Anything else extends the host the
+//     author wrote, and "@evil.com" would turn all of it into userinfo.
 //   - It is the whole authority ("https://$1"): the author handed over the
-//     destination deliberately, so nothing is checked.
-func authorityHolds(chunks []authorityChunk, replacer *strings.Replacer) bool {
+//     destination deliberately, so nothing is checked. New warns about it.
+func authorityHolds(chunks []authorityChunk, endsTarget bool, replacer *strings.Replacer) bool {
 	if len(chunks) <= 1 {
 		return true
 	}
@@ -227,7 +234,7 @@ func authorityHolds(chunks []authorityChunk, replacer *strings.Replacer) bool {
 			continue
 		}
 		value := replacer.Replace(chunk.text)
-		if i == len(chunks)-1 {
+		if endsTarget && i == len(chunks)-1 {
 			if value != "" && strings.IndexByte(`/\?#`, value[0]) < 0 {
 				return false
 			}
@@ -238,6 +245,41 @@ func authorityHolds(chunks []authorityChunk, replacer *strings.Replacer) bool {
 		}
 	}
 	return true
+}
+
+// targetLetsRequestPickHost reports whether the request, not the author, decides
+// the host a target reaches.
+//
+// Two spellings do that. "https://$1" and "//$1" hand over the whole authority.
+// "https:$1" has no "//" at all, so it names no authority for authorityChunks to
+// guard and no origin for keepSameOrigin to hold it to — yet a value of
+// "//evil.com" still composes "https://evil.com". Both are open redirects the
+// author wrote deliberately, and both are worth saying out loud once.
+func targetLetsRequestPickHost(target string, chunks []authorityChunk) bool {
+	if len(chunks) == 1 && chunks[0].placeholder {
+		return true
+	}
+	if chunks != nil {
+		return false
+	}
+
+	// No authority span. Only a scheme with nothing but the request after it
+	// can still reach a host of the request's choosing.
+	i := schemeEnd(target)
+	if i <= 0 || strings.HasPrefix(target[i+1:], "//") {
+		return false
+	}
+	return containsPlaceholder(target[i+1:])
+}
+
+// containsPlaceholder reports whether s holds a "$N" token.
+func containsPlaceholder(s string) bool {
+	for i := 0; i+1 < len(s); i++ {
+		if s[i] == '$' && s[i+1] >= '0' && s[i+1] <= '9' {
+			return true
+		}
+	}
+	return false
 }
 
 // keepSameOrigin strips an authority that the captured path segments introduced

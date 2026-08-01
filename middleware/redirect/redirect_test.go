@@ -405,6 +405,85 @@ func Test_AuthorityChunks(t *testing.T) {
 	require.Equal(t, []authorityChunk{{text: "$12", placeholder: true}}, authorityChunks("//$12"))
 }
 
+// Test_Redirect_CaptureBoundedByTheTarget covers a token that closes the
+// authority but not the target — a port, or a host prefix with a path after it.
+//
+// Such a token is bounded by the author's own text, so it takes the content
+// check rather than the "must open the next component" rule. Treating it like a
+// token at the end of the target made every real value fail that rule, and the
+// affected rules silently stopped redirecting.
+func Test_Redirect_CaptureBoundedByTheTarget(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		target  string
+		request string
+		want    string // "" means the rule must not fire
+	}{
+		{"port", "https://cdn.example.com:$1/health", "/t/8080", "https://cdn.example.com:8080/health"},
+		{"host prefix", "https://tenant-$1/app", "/t/acme", "https://tenant-acme/app"},
+
+		// The value is still part of the authority, so it may not restructure it.
+		{"at sign in a port", "https://cdn.example.com:$1/health", "/t/80@evil.com", ""},
+		{"slash in a host prefix", "https://tenant-$1/app", "/t/evil.com%2Fx", ""},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			app := fiber.New(fiber.Config{UnescapePath: true})
+			app.Use(New(Config{
+				Rules:      map[string]string{"/t/*": tc.target},
+				StatusCode: fiber.StatusFound,
+			}))
+			app.Get("/*", func(c fiber.Ctx) error { return c.SendString("fell through") })
+
+			req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, tc.request, http.NoBody)
+			require.NoError(t, err)
+			resp, err := app.Test(req)
+			require.NoError(t, err)
+
+			if tc.want == "" {
+				require.Equal(t, fiber.StatusOK, resp.StatusCode, "the rule must not fire")
+				require.Empty(t, resp.Header.Get("Location"))
+				return
+			}
+			require.Equal(t, fiber.StatusFound, resp.StatusCode)
+			require.Equal(t, tc.want, resp.Header.Get("Location"))
+		})
+	}
+}
+
+// Test_TargetLetsRequestPickHost pins which target shapes hand the destination
+// to the request. "https:$1" is the awkward one: it names no authority for the
+// chunk check to guard and no origin for keepSameOrigin to hold it to, yet a
+// captured "//evil.com" still composes "https://evil.com".
+func Test_TargetLetsRequestPickHost(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		target string
+		want   bool
+	}{
+		{"https://$1", true},
+		{"//$1", true},
+		{"https:$1", true},
+		{"mailto:$1", true},
+
+		{"https://$1.example.com", false},
+		{"https://cdn.example.com$1", false},
+		{"https://cdn.example.com/$1", false},
+		{"/$1", false},
+		{"$1", false},
+		{"https://cdn.example.com", false},
+		{"mailto:someone@example.com", false},
+	} {
+		require.Equal(t, tc.want, targetLetsRequestPickHost(tc.target, authorityChunks(tc.target)), "target %q", tc.target)
+	}
+}
+
 func Test_AuthoritySpan(t *testing.T) {
 	t.Parallel()
 

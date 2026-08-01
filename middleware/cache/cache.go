@@ -609,9 +609,22 @@ func New(config ...Config) fiber.Handler {
 			}
 		}
 
+		// unreachable marks the response uncacheable and hands back any entry
+		// still held from the lookup. Each decision below is a decision not to
+		// store, so the copy unmarshalled from external storage has no further
+		// use and would otherwise be dropped instead of returned to the pool.
+		markUnreachable := func() {
+			// manager.release is a no-op for in-memory storage, so no guard.
+			if e != nil {
+				manager.release(e)
+				e = nil
+			}
+			c.Set(cfg.CacheHeader, cacheUnreachable)
+		}
+
 		isSharedCacheAllowed := allowsSharedCacheDirectives(respCacheControl)
 		if hasAuthorization && !isSharedCacheAllowed {
-			c.Set(cfg.CacheHeader, cacheUnreachable)
+			markUnreachable()
 			return nil
 		}
 
@@ -627,7 +640,7 @@ func New(config ...Config) fiber.Handler {
 		// a cookie and shared caching can say so with "Cache-Control: public"
 		// or an s-maxage.
 		if !isSharedCacheAllowed && responseSetsCookie(&c.Response().Header) {
-			c.Set(cfg.CacheHeader, cacheUnreachable)
+			markUnreachable()
 			return nil
 		}
 
@@ -635,20 +648,20 @@ func New(config ...Config) fiber.Handler {
 
 		// Don't cache response if status code is not cacheable
 		if _, ok := cacheableStatusCodes[c.Response().StatusCode()]; !ok {
-			c.Set(cfg.CacheHeader, cacheUnreachable)
+			markUnreachable()
 			return nil
 		}
 
 		// Don't cache response if Next returns true
 		if cfg.Next != nil && cfg.Next(c) {
-			c.Set(cfg.CacheHeader, cacheUnreachable)
+			markUnreachable()
 			return nil
 		}
 
 		// Don't try to cache if body won't fit into cache
 		bodySize := uint(len(c.Response().Body()))
 		if cfg.MaxBytes > 0 && bodySize > cfg.MaxBytes {
-			c.Set(cfg.CacheHeader, cacheUnreachable)
+			markUnreachable()
 			return nil
 		}
 
@@ -837,7 +850,7 @@ func New(config ...Config) fiber.Handler {
 		}
 
 		if expiration <= 0 && !expiresParseError {
-			c.Set(cfg.CacheHeader, cacheUnreachable)
+			markUnreachable()
 			return nil
 		}
 
@@ -864,7 +877,7 @@ func New(config ...Config) fiber.Handler {
 		remainingExpiration := expiration - ageDuration
 		if remainingExpiration <= 0 {
 			if expirationSource != expirationSourceExpires {
-				c.Set(cfg.CacheHeader, cacheUnreachable)
+				markUnreachable()
 				return nil
 			}
 			remainingExpiration = 0

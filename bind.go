@@ -10,10 +10,8 @@ import (
 	"sync"
 
 	"github.com/gofiber/fiber/v3/binder"
-	"github.com/gofiber/fiber/v3/internal/mediatype"
 	"github.com/gofiber/fiber/v3/internal/nilerror"
 	"github.com/gofiber/schema"
-	"github.com/gofiber/utils/v2"
 )
 
 // CustomBinder An interface to register custom binders.
@@ -402,10 +400,7 @@ func (b *Bind) MsgPack(out any) error {
 // If none of the content types above are matched, it'll take a look custom binders by checking the MIMETypes() method of custom binder.
 // If there is no custom binder for mime type of body, it will return a ErrUnprocessableEntity error.
 func (b *Bind) Body(out any) error {
-	// Get content-type, folding only the media type so the case-sensitive
-	// multipart boundary survives (see mediatype.NormalizeRequestContentType).
-	raw := utils.UnsafeString(mediatype.NormalizeRequestContentType(&b.ctx.RequestCtx().Request.Header))
-	ctype := binder.FilterFlags(utils.ParseVendorSpecificContentType(raw))
+	ctype := bindMediaType(&b.ctx.RequestCtx().Request.Header)
 
 	// Check custom binders
 	binders := b.ctx.App().customBinders

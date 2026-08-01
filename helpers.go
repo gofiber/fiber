@@ -24,9 +24,12 @@ import (
 
 	"github.com/gofiber/utils/v2"
 	utilsbytes "github.com/gofiber/utils/v2/bytes"
+	utilsstrings "github.com/gofiber/utils/v2/strings"
 	"github.com/gofiber/utils/v2/swar"
 
+	"github.com/gofiber/fiber/v3/binder"
 	"github.com/gofiber/fiber/v3/internal/contextvalue"
+	"github.com/gofiber/fiber/v3/internal/mediatype"
 	"github.com/gofiber/fiber/v3/log"
 
 	"github.com/valyala/bytebufferpool"
@@ -1365,4 +1368,26 @@ type GenericTypeIntegerUnsigned interface {
 // GenericTypeFloat is the union of supported floating-point types.
 type GenericTypeFloat interface {
 	float32 | float64
+}
+
+// bindMediaType returns the request's media type, lowered so it can be compared
+// against the MIME constants.
+//
+// The request's own bytes are folded only for a form. That is the one case
+// where it has to happen in place: fasthttp's form and multipart parsers match
+// the media type and the "boundary=" parameter name case-sensitively, so they
+// need the header itself changed. Anything else is compared on a lowered copy,
+// leaving the header alone — a caller may still be holding what
+// c.Get(HeaderContentType) returned, which is a view into those same bytes
+// unless Immutable is set.
+func bindMediaType(h *fasthttp.RequestHeader) string {
+	if mediatype.IsForm(h.ContentType()) {
+		raw := utils.UnsafeString(mediatype.NormalizeRequestContentType(h))
+		return binder.FilterFlags(utils.ParseVendorSpecificContentType(raw))
+	}
+
+	// ToLower returns its input unchanged when there is nothing to fold, so the
+	// common path costs no allocation.
+	lowered := utilsstrings.ToLower(utils.UnsafeString(h.ContentType()))
+	return binder.FilterFlags(utils.ParseVendorSpecificContentType(lowered))
 }

@@ -113,12 +113,14 @@ func createTagMap(cfg *Config) map[string]LogFunc {
 			// form (RFC 9110 Section 5.2), and the proxy-header accessors do
 			// exactly that — so reading only the first here would log a shorter
 			// chain than the one the framework keyed its trust decisions on,
-			// and the access log would not explain what was enforced.
+			// and the access log would not explain what was enforced. The bare
+			// comma below matches how proxyHeaderValue combines them, so the
+			// logged value is what c.IP() and c.IPs() actually parsed.
 			values := c.Request().Header.PeekAll(fiber.HeaderXForwardedFor)
 			n := 0
 			for i, v := range values {
 				if i > 0 {
-					m, err := output.WriteString(", ")
+					m, err := output.WriteString(",")
 					n += m
 					if err != nil {
 						return n, err

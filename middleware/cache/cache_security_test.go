@@ -610,13 +610,13 @@ func Test_JoinedHeader(t *testing.T) {
 	cacheControl := joinedHeader(&h, fiber.HeaderCacheControl)
 	require.Equal(t, "no-store", string(cacheControl))
 
-	require.Equal(t, "Accept-Encoding, X-Tenant", string(joinedHeader(&h, fiber.HeaderVary)))
+	require.Equal(t, "Accept-Encoding,X-Tenant", string(joinedHeader(&h, fiber.HeaderVary)))
 	require.Equal(t, "no-store", string(cacheControl), "an earlier result must survive a later PeekAll")
 
 	var req fasthttp.RequestHeader
 	req.Add(fiber.HeaderCacheControl, "max-age=0")
 	req.Add(fiber.HeaderCacheControl, "no-store")
-	require.Equal(t, "max-age=0, no-store", string(joinedHeader(&req, fiber.HeaderCacheControl)))
+	require.Equal(t, "max-age=0,no-store", string(joinedHeader(&req, fiber.HeaderCacheControl)))
 }
 
 // Test_Cache_Security_BackslashEscaping tests that backslashes are properly escaped

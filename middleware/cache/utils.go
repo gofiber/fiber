@@ -114,7 +114,7 @@ type headerPeeker interface {
 	PeekAll(key string) [][]byte
 }
 
-// joinedHeader returns every field line for key, joined with ", ".
+// joinedHeader returns every field line for key, comma-joined.
 //
 // A recipient may combine repeated field lines into exactly that form
 // (RFC 9110 Section 5.2), and the decisions built on Cache-Control, Pragma and
@@ -145,12 +145,14 @@ func joinedHeader(h headerPeeker, key string) []byte {
 
 	n := 0
 	for _, v := range values {
-		n += len(v) + 2
+		n += len(v) + 1
 	}
 	joined := make([]byte, 0, n)
 	for i, v := range values {
 		if i > 0 {
-			joined = append(joined, ',', ' ')
+			// A bare comma, matching package fiber's own field-line joiner, so
+			// the two render a combined value identically.
+			joined = append(joined, ',')
 		}
 		joined = append(joined, v...)
 	}

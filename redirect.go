@@ -15,8 +15,6 @@ import (
 	"github.com/valyala/bytebufferpool"
 	"github.com/valyala/fasthttp"
 
-	"github.com/gofiber/fiber/v3/binder"
-	"github.com/gofiber/fiber/v3/internal/mediatype"
 	"github.com/gofiber/fiber/v3/internal/schemehost"
 )
 
@@ -200,10 +198,7 @@ func (r *Redirect) With(key, value string, level ...uint8) *Redirect {
 // This method can send form, multipart form, query data to redirected route.
 // You can get them by using: Redirect().OldInputs(), Redirect().OldInput()
 func (r *Redirect) WithInput() *Redirect {
-	// Get content-type, folding only the media type so the case-sensitive
-	// multipart boundary survives (see mediatype.NormalizeRequestContentType).
-	raw := utils.UnsafeString(mediatype.NormalizeRequestContentType(&r.c.RequestCtx().Request.Header))
-	ctype := binder.FilterFlags(utils.ParseVendorSpecificContentType(raw))
+	ctype := bindMediaType(&r.c.RequestCtx().Request.Header)
 
 	oldInput := acquireOldInput()
 	defer releaseOldInput(oldInput)

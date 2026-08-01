@@ -124,6 +124,28 @@ Cache lookup/storage is applied only for `GET` and `HEAD` requests by default. O
 
 If a response sets `Vary`, request lookup/storage is also partitioned by those header values unless `DisableVaryHeaders` is `true`. Responses with `Vary: *` remain uncacheable.
 
+### Responses that are never stored
+
+One entry is served to every client whose request matches its key, so a response
+that identifies a single client is not stored at all:
+
+- **A response that sets a cookie.** `Set-Cookie` means the response has been
+  personalized for the client that caused the miss, and the body — not just the
+  header — is what would be replayed to everyone else. The response still
+  reaches that client normally; only the entry is skipped, and `X-Cache` reads
+  `unreachable`.
+- **A response to a request carrying `Authorization`,** unless the response
+  permits shared caching, per
+  [RFC 9111 §3.5](https://www.rfc-editor.org/rfc/rfc9111.html#section-3.5).
+- **`Cache-Control: no-store`, `private`, `no-cache`, or `Vary: *`.**
+
+A route that genuinely wants both a cookie and a shared entry can say so with
+`Cache-Control: public` or an `s-maxage`, which is the same opt-in that lifts
+the `Authorization` restriction. Applications that refresh a session cookie on
+every response will find that most routes stop being cached — that is the point,
+since those responses are per-client. Set the cookie only where it changes, or
+mark the genuinely public routes `public`.
+
 ## Config
 
 | Property             | Type                                           | Description                                                                                                                                                                                                                                                                                                    | Default                                                          |
