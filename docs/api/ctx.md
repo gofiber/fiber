@@ -1018,6 +1018,15 @@ app.Post("/", func(c fiber.Ctx) error {
 
 Form values can be retrieved by name, the **first** value for the given key is returned.
 
+:::caution
+
+On a form request this lowercases the case-insensitive parts of the request's
+own `Content-Type`, so a value obtained earlier from `Get(HeaderContentType)` —
+which aliases those bytes unless [Immutable](./fiber.md#immutable) is set — can
+change during the call. Copy it first if you need it to outlive one.
+
+:::
+
 ```go title="Signature"
 func (c fiber.Ctx) FormValue(key string, defaultValue ...string) string
 ```
@@ -1427,6 +1436,15 @@ app.Post("/override", func(c fiber.Ctx) error {
 ### MultipartForm
 
 To access multipart form entries, you can parse the binary with `MultipartForm()`. This returns a `*multipart.Form`, allowing you to access form values and files. Parsing is bounded by the app [BodyLimit](./fiber.md#bodylimit).
+
+:::caution
+
+On a form request this lowercases the case-insensitive parts of the request's
+own `Content-Type`, so a value obtained earlier from `Get(HeaderContentType)` —
+which aliases those bytes unless [Immutable](./fiber.md#immutable) is set — can
+change during the call. Copy it first if you need it to outlive one.
+
+:::
 
 ```go title="Signature"
 func (c fiber.Ctx) MultipartForm() (*multipart.Form, error)

@@ -1239,3 +1239,52 @@ func Test_joinKeyHeaderValues_Framing(t *testing.T) {
 	// makes the boundaries readable and so the join injective.
 	require.Equal(t, "\x01a\x01b", join("a", "b"))
 }
+
+// Test_VaryContentType_KeyIsStableAcrossTheFormFold pins that a Vary'd
+// Content-Type keys the same before and after the handler runs.
+//
+// The key is built twice per miss — once to look an entry up, once to store it
+// — and the form accessors lowercase the request's own Content-Type in place in
+// between. Reading whatever spelling arrived on one side and the folded value
+// on the other stored each entry under a key no lookup would produce, so a
+// route with "Vary: Content-Type" missed on every second request and stranded
+// an entry each time.
+func Test_VaryContentType_KeyIsStableAcrossTheFormFold(t *testing.T) {
+	t.Parallel()
+
+	for _, spelling := range []string{
+		"Application/X-WWW-Form-Urlencoded",
+		"application/x-www-form-urlencoded",
+		"Multipart/Form-Data; BOUNDARY=AbC",
+	} {
+		t.Run(spelling, func(t *testing.T) {
+			t.Parallel()
+
+			var calls atomic.Int32
+			app := fiber.New()
+			app.Use(New(Config{
+				Expiration: time.Hour,
+				Methods:    []string{fiber.MethodGet, fiber.MethodPost},
+			}))
+			app.Post("/", func(c fiber.Ctx) error {
+				calls.Add(1)
+				c.Response().Header.Set(fiber.HeaderVary, fiber.HeaderContentType)
+				// Reading a form value is what folds the header mid-request.
+				return c.SendString("v=" + c.FormValue("a"))
+			})
+
+			do := func() string {
+				req := httptest.NewRequest(fiber.MethodPost, "/", strings.NewReader("a=1"))
+				req.Header.Set(fiber.HeaderContentType, spelling)
+				resp, err := app.Test(req)
+				require.NoError(t, err)
+				return resp.Header.Get("X-Cache")
+			}
+
+			require.Equal(t, cacheMiss, do())
+			require.Equal(t, cacheHit, do(), "the store key and the lookup key must agree across the fold")
+			require.Equal(t, cacheHit, do())
+			require.Equal(t, int32(1), calls.Load())
+		})
+	}
+}

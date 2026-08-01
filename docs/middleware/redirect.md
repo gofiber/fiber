@@ -76,14 +76,14 @@ redirects wherever it says. A `$N` after the host may hold anything, including
 slashes; it can only add to the path.
 
 **A target with a `$N` inside its host** — `"/cdn/*": "https://$1.cdn.example.com/"` —
-means the capture to be a label. The rule is skipped, and the request falls
+means the capture to be a label of that host. The rule is skipped, and the request falls
 through to the rest of the stack, whenever the captured value would move the
 host instead: one containing `/`, `\`, `?`, `#`, `@` or `:` in that position, or
 one that extends the host where the target ends in `$N`
 (`"https://cdn.example.com$1"` accepts `/foo.png`, which starts a path, but not
 `foo.png` or `@evil.com`).
 
-:::caution
+::::caution
 
 A target that hands the whole host to the request — `"/go/*": "https://$1"`,
 `"//$1"`, or `"https:$1"` — is an open redirect: anyone able to shape the path
@@ -155,7 +155,7 @@ some other scheme, `"/go/*": "ws:$1"`, still composes `ws://evil.com` from a
 captured `//evil.com`, and is neither refused nor warned about — such a
 `Location` is not followed as a top-level navigation, but do not write one.
 
-:::
+::::
 
 ## Default Config
 

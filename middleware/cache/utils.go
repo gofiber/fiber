@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/mediatype"
 	"github.com/gofiber/utils/v2"
 	"github.com/valyala/fasthttp"
 )
@@ -127,8 +128,19 @@ func responseSetsCookie(h *fasthttp.ResponseHeader) bool {
 // two clients with different sessions share an entry. Collecting is idempotent
 // and is what any cookie read in the handler would do anyway.
 func keyFieldLines(h *fasthttp.RequestHeader, name string) [][]byte {
-	if utils.EqualFold(name, fiber.HeaderCookie) {
+	switch {
+	case utils.EqualFold(name, fiber.HeaderCookie):
 		h.Cookie("") // collectCookies; the lookup itself is expected to miss
+
+	case utils.EqualFold(name, fiber.HeaderContentType) && mediatype.IsForm(h.ContentType()):
+		// Fold it here rather than read whatever spelling arrived. The key is
+		// built twice — once to look an entry up before the handler runs, once
+		// to store it after — and the form accessors lowercase this header in
+		// place in between, so the two saw different bytes and the entry landed
+		// under a key no lookup would produce. Folding first makes both sides
+		// agree, and on a form request it is the value the handler works from
+		// anyway.
+		mediatype.NormalizeRequestContentType(h)
 	}
 	return h.PeekAll(name)
 }
