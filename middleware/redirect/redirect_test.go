@@ -876,6 +876,16 @@ func Test_PinsHost(t *testing.T) {
 		{"[:]", false},
 		{"[.]", false},
 		{"[[]", false},
+		// Holding a hex digit is not the same as being an address.
+		{"[zzz1]", false},
+		{"[evil.com1]", false},
+		{"[a b]", false},
+		// Whitespace is not host text: the parser deletes a tab outright and
+		// percent-encodes a space into a host that fails to parse.
+		{" ", false},
+		{"\t", false},
+		{"\n", false},
+		{" \t ", false},
 		// A closer with no opener is the tail of an address a capture split,
 		// and an IPv6 tail is the low bits, not the network it routes to.
 		{"::1]", false},
@@ -1131,4 +1141,75 @@ func Test_RegexRules(t *testing.T) {
 func requireNoAuthorityChunks(t *testing.T, target, msg string) {
 	t.Helper()
 	require.Nil(t, authorityChunks(target), msg)
+}
+
+// Test_Redirect_TargetIsReadAsTheClientWillRead pins that the guard judges the
+// target the URL parser will see, not the bytes as configured.
+//
+// The parser deletes every tab, LF and CR before parsing. Reading the target
+// as written scored one of them as author-written host text that then vanished
+// on the way out, so "https://\t$1" passed as a target naming its own host and
+// a captured "/evil.com" composed "https:///evil.com" — evil.com to a browser,
+// with no startup warning. A tab also defeated the leading-slash skip in
+// authoritySpan, leaving the authority of "https://\t/[$1::1]" unguarded
+// entirely, which reached "[beef::1]" and "[::ffff:127.0.0.1]".
+func Test_Redirect_TargetIsReadAsTheClientWillRead(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name    string
+		target  string
+		request string
+	}{
+		{"tab before the host", "https://\t$1", "/r/%2Fevil.com"},
+		{"newline before the host", "https://\n$1", "/r/%2Fevil.com"},
+		{"carriage return before the host", "https://\r$1", "/r/%2Fevil.com"},
+		{"protocol relative", "//\t$1", "/r/%2Fevil.com"},
+		{"tab defeating the slash skip", "https://\t/$1", "/r/evil.com"},
+		{"tab hiding a bracketed capture", "https://\t/[$1::1]", "/r/beef"},
+		{"tab before a bracketed capture", "https://\t[2001:db8::$1]", "/r/8080"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			app := fiber.New(fiber.Config{UnescapePath: true})
+			app.Use(New(Config{Rules: map[string]string{"/r/*": tc.target}}))
+			app.Get("/r/*", func(c fiber.Ctx) error { return c.SendString("fell through") })
+
+			req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, tc.request, http.NoBody)
+			require.NoError(t, err)
+			resp, err := app.Test(req)
+			require.NoError(t, err)
+			require.Equal(t, fiber.StatusOK, resp.StatusCode, "the rule must be refused at startup")
+			require.Empty(t, resp.Header.Get("Location"))
+		})
+	}
+}
+
+// Test_Redirect_TargetWhitespaceLeavesWorkingRulesAlone is the other half: the
+// normalization above must not disturb a target that never had any.
+func Test_Redirect_TargetWhitespaceLeavesWorkingRulesAlone(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		target, request, want string
+	}{
+		{"https://cdn.example.com/$1", "/r/a", "https://cdn.example.com/a"},
+		{"https://$1.example.com/", "/r/tenant", "https://tenant.example.com/"},
+		{"https://[::1]:$1/health", "/r/8080", "https://[::1]:8080/health"},
+		{"/new/$1", "/r/a", "/new/a"},
+	} {
+		t.Run(tc.target, func(t *testing.T) {
+			t.Parallel()
+
+			app := fiber.New()
+			app.Use(New(Config{Rules: map[string]string{"/r/*": tc.target}}))
+
+			req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, tc.request, http.NoBody)
+			require.NoError(t, err)
+			resp, err := app.Test(req)
+			require.NoError(t, err)
+			require.Equal(t, tc.want, resp.Header.Get("Location"))
+		})
+	}
 }

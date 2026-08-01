@@ -100,6 +100,7 @@ host text, so these are the same case and are refused too:
 | `"//$1."`, `"//.$1"` | `"///evil.com."` is read host-first by the URL parser; `evil.com.` is `evil.com` with the DNS root spelled out. |
 | `"https://$1$2"` | A second capture pins nothing an attacker does not also supply. |
 | `"https://example.com@$1"` | Everything before an `@` is a username, so the host is still the capture's. |
+| `"https://\t$1"` | A tab, LF or CR is deleted by the URL parser before it reads the host, so it pins nothing that survives. |
 
 Note that `"https://$1@example.com"` is fine — there the author's host follows
 the `@` and the capture is only userinfo — as are `"https://cdn.example.com:$1"`

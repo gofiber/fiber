@@ -3,6 +3,7 @@ package redirect
 import (
 	"cmp"
 	"maps"
+	"net"
 	"regexp"
 	"slices"
 	"strconv"
@@ -58,7 +59,18 @@ func New(config ...Config) fiber.Handler {
 	})
 
 	for _, k := range keys {
-		v := cfg.Rules[k]
+		// Read the target the way the client will, before deciding anything
+		// about it. The URL parser deletes every tab, LF and CR before it
+		// parses, and the guard below was reading the bytes as written — so a
+		// tab was scored as author-written host text that then vanished on the
+		// way to the client. "https://\t$1" passed as a target naming its own
+		// host, and a captured "/evil.com" composed "https:///evil.com", which
+		// a browser reads as evil.com. A tab also defeated the leading-slash
+		// skip in authoritySpan, leaving "https://\t/[$1::1]" with no authority
+		// to guard at all. Normalizing here closes both, and composing from
+		// these bytes changes no Location, since the same pass runs on the
+		// composed value anyway.
+		v := asBrowserReads(cfg.Rules[k])
 		pattern := strings.ReplaceAll(k, "*", "(.*)")
 		// Anchor both ends so a rule matches the whole path. Without the leading
 		// "^" the pattern matches any suffix, so a request can be redirected by a
@@ -73,12 +85,13 @@ func New(config ...Config) fiber.Handler {
 		case captureInBrackets(v):
 			// Refused like the rest, but not for their reason: the author may
 			// well have pinned the network here, as "https://[2001:db8::$1]"
-			// does. Saying they handed the host over would be untrue, and the
+			// does, and only "https://[$1::1]" hands it over. Claiming either
+			// way would be untrue of half the rules that reach this, and the
 			// escape hatch is a different one.
 			log.Warnf("[REDIRECT] rule %q is ignored: its target captures inside the brackets of an IPv6 "+
-				"literal, where the address is written most significant group first, so what the request "+
-				"supplies decides the network reached rather than a label within it. Write the address in "+
-				"full and capture the port instead", k)
+				"literal, which is written most significant group first — so whether the capture picks the "+
+				"network or only a group within it depends on where it sits, and Fiber does not tell the two "+
+				"apart. Write the address in full and capture the port instead", k)
 		case letsRequestPickHost:
 			// The request would pick the host this redirects to. That is an open
 			// redirect by construction — nothing here can tell the intended
@@ -646,18 +659,20 @@ func pinsHost(literal string) bool {
 			return false
 		}
 		// With an opener the author wrote an address, brackets and all — but
-		// only if they wrote one. Empty or punctuation-only brackets pin no
-		// host and compose nothing a client can parse, so counting them as
+		// only if they wrote one. Brackets holding anything else pin no host
+		// and compose nothing a client can parse, so counting them as
 		// author-written text bought a rule that matched every request and
-		// redirected to a location no client could follow. "::" is the
-		// unspecified address and the one spelling holding no hex digit.
-		inner := literal[j+1 : i]
-		return inner == "::" || strings.ContainsAny(inner, "0123456789abcdefABCDEF")
+		// redirected to a location no client could follow. Ask whether it
+		// parses rather than whether it looks like it might: "[zzz1]" and
+		// "[evil.com1]" hold hex digits and are not addresses.
+		return net.ParseIP(literal[j+1:i]) != nil
 	}
 	if i := strings.IndexByte(literal, ':'); i >= 0 {
 		literal = literal[:i]
 	}
-	return strings.Trim(literal, ".[:") != ""
+	// Whitespace pins nothing: the parser either deletes it outright or
+	// percent-encodes it into a host that fails to parse.
+	return strings.Trim(literal, ".[: \t\n\r\v\f") != ""
 }
 
 // literalPrefixLen returns how much of a rule's path is pinned before its first
