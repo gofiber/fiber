@@ -12,6 +12,7 @@ import (
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/log"
 	"github.com/gofiber/utils/v2"
+	"golang.org/x/net/idna"
 )
 
 // authorityChunk is one piece of a target's own authority: either literal text
@@ -19,6 +20,10 @@ import (
 type authorityChunk struct {
 	text        string // literal text, or the token itself for a placeholder
 	placeholder bool
+	// pins records whether this literal is author-written host text. Answered
+	// once here because pinsHost maps the text the way a URL parser does, which
+	// is too much work to repeat for every chunk on every request.
+	pins bool
 }
 
 // compiledRule is one configured rule with its target and the decision, made
@@ -256,7 +261,8 @@ func authorityChunks(target string) []authorityChunk {
 			continue
 		}
 		if i > literal {
-			chunks = append(chunks, authorityChunk{text: authority[literal:i]})
+			text := authority[literal:i]
+			chunks = append(chunks, authorityChunk{text: text, pins: pinsHost(text)})
 		}
 		chunks = append(chunks, authorityChunk{text: authority[i:j], placeholder: true})
 		literal = j
@@ -266,7 +272,8 @@ func authorityChunks(target string) []authorityChunk {
 		return nil
 	}
 	if literal < len(authority) {
-		chunks = append(chunks, authorityChunk{text: authority[literal:]})
+		text := authority[literal:]
+		chunks = append(chunks, authorityChunk{text: text, pins: pinsHost(text)})
 	}
 	return chunks
 }
@@ -346,7 +353,7 @@ func authorityHolds(chunks []authorityChunk, replacer *strings.Replacer) bool {
 // the host outright: ":443" and ":8080" pin nothing.
 func hostPinnedAfter(chunks []authorityChunk, i int) bool {
 	for j := i + 1; j < len(chunks); j++ {
-		if !chunks[j].placeholder && pinsHost(chunks[j].text) {
+		if !chunks[j].placeholder && chunks[j].pins {
 			return true
 		}
 	}
@@ -376,7 +383,7 @@ func targetLetsRequestPickHost(target string, chunks []authorityChunk) bool {
 			return true
 		}
 		for _, chunk := range chunks {
-			if !chunk.placeholder && pinsHost(chunk.text) {
+			if !chunk.placeholder && chunk.pins {
 				// The host is theirs, and authorityHolds judges the captures
 				// around it per value.
 				return false
@@ -615,12 +622,23 @@ func hostPinnedBefore(chunks []authorityChunk, i int) bool {
 		if chunks[j].placeholder {
 			continue
 		}
-		if pinsHost(chunks[j].text) {
+		if chunks[j].pins {
 			return true
 		}
 	}
 	return false
 }
+
+// hostMapping applies the same UTS #46 mapping a URL parser applies to a domain
+// before reading it. The validation options are off because the question here
+// is only what text survives, not whether the whole authority is well formed.
+var hostMapping = idna.New(
+	idna.MapForLookup(),
+	idna.Transitional(false),
+	idna.StrictDomainName(false),
+	idna.ValidateLabels(false),
+	idna.VerifyDNSLength(false),
+)
 
 // pinsHost reports whether a literal chunk of a target's authority actually
 // fixes part of the host.
@@ -677,9 +695,22 @@ func pinsHost(literal string) bool {
 	if i := strings.IndexByte(literal, ':'); i >= 0 {
 		literal = literal[:i]
 	}
-	// Whitespace pins nothing: the parser either deletes it outright or
+	// Read what is left the way the parser reads a host. UTS #46 mapping — the
+	// first thing done to a domain before anything looks at it — deletes some
+	// 270 code points outright and folds three more onto a plain ".", and this
+	// trim only knew about ASCII. So "https://$1\u00ad" scored the soft hyphen
+	// as author-written host text, compiled without a warning, and composed
+	// "https://evil.com\u00ad" from a captured "evil.com" — which a browser
+	// reads as evil.com. Anything the mapping refuses outright pins nothing
+	// either, since it cannot become a host at all.
+	mapped, err := hostMapping.ToUnicode(literal)
+	if err != nil {
+		return false
+	}
+
+	// Whitespace pins nothing either: the parser either deletes it outright or
 	// percent-encodes it into a host that fails to parse.
-	return strings.Trim(literal, ".[: \t\n\r\v\f") != ""
+	return strings.Trim(mapped, ".[: \t\n\r\v\f") != ""
 }
 
 // literalPrefixLen returns how much of a rule's path is pinned before its first

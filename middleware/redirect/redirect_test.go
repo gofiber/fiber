@@ -3,6 +3,7 @@ package redirect
 import (
 	"context"
 	"net/http"
+	"strconv"
 	"testing"
 
 	"github.com/gofiber/fiber/v3"
@@ -388,21 +389,28 @@ func Test_AuthorityChunks(t *testing.T) {
 	requireNoAuthorityChunks(t, "mailto:$1", "a scheme with no // has no authority")
 	requireNoAuthorityChunks(t, "https://cost$.example.com/", "a bare $ is literal text")
 
+	// pins is answered once here, so it is part of what the split produces.
 	require.Equal(t, []authorityChunk{
 		{text: "$1", placeholder: true},
-		{text: ".assets.example.com"},
+		{text: ".assets.example.com", pins: true},
 	}, authorityChunks("https://$1.assets.example.com/x"))
 
 	require.Equal(t, []authorityChunk{
-		{text: "cdn.example.com"},
+		{text: "cdn.example.com", pins: true},
 		{text: "$1", placeholder: true},
 	}, authorityChunks("https://cdn.example.com$1"))
 
 	require.Equal(t, []authorityChunk{
-		{text: "assets."},
+		{text: "assets.", pins: true},
 		{text: "$1", placeholder: true},
-		{text: ".com"},
+		{text: ".com", pins: true},
 	}, authorityChunks("https://assets.$1.com"))
+
+	// And a literal that pins nothing is recorded as such.
+	require.Equal(t, []authorityChunk{
+		{text: "$1", placeholder: true},
+		{text: ":8080"},
+	}, authorityChunks("https://$1:8080"))
 
 	// A target that is nothing but the token: the author picked the
 	// destination outright, and authorityHolds leaves it alone.
@@ -894,6 +902,20 @@ func Test_PinsHost(t *testing.T) {
 		{"\t", false},
 		{"\n", false},
 		{" \t ", false},
+		// Nor is anything UTS #46 mapping deletes before a host is read, nor
+		// the code points it folds onto a plain ".", which pins nothing either.
+		{"\u00ad", false}, // soft hyphen
+		{"\ufeff", false}, // zero width no-break space
+		{"\u200b", false}, // zero width space
+		{"\u2060", false}, // word joiner
+		{"\ufe0f", false}, // variation selector
+		{"\u3002", false}, // ideographic full stop
+		{"\uff0e", false}, // fullwidth full stop
+		{"\uff61", false}, // halfwidth ideographic full stop
+		{"\u00ad\u200b", false},
+		// An internationalized label is host text, in either spelling.
+		{"\u4f8b\u3048.jp", true},
+		{"xn--r8jz45g.jp", true},
 		// A closer with no opener is the tail of an address a capture split,
 		// and an IPv6 tail is the low bits, not the network it routes to.
 		{"::1]", false},
@@ -1214,6 +1236,60 @@ func Test_Redirect_TargetWhitespaceLeavesWorkingRulesAlone(t *testing.T) {
 			app.Use(New(Config{Rules: map[string]string{"/r/*": tc.target}}))
 
 			req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, tc.request, http.NoBody)
+			require.NoError(t, err)
+			resp, err := app.Test(req)
+			require.NoError(t, err)
+			require.Equal(t, tc.want, resp.Header.Get("Location"))
+		})
+	}
+}
+
+// Test_Redirect_HostTextTheParserDeletes pins that a target cannot be made to
+// look host-pinned with characters a URL parser drops before it reads the host.
+//
+// UTS #46 mapping runs on a domain before anything looks at it: it deletes some
+// 270 code points outright and folds three more onto a plain ".". Judging the
+// literal on its bytes let an invisible one stand in for a host — so
+// "https://$1\u00ad" compiled with no warning, and a captured "evil.com"
+// composed "https://evil.com\u00ad", which a browser resolves to evil.com.
+func Test_Redirect_HostTextTheParserDeletes(t *testing.T) {
+	t.Parallel()
+
+	for _, suffix := range []string{"\u00ad", "\ufeff", "\u200b", "\u2060", "\ufe0f", "\u3002", "\uff0e", "\uff61"} {
+		t.Run(strconv.QuoteToASCII(suffix), func(t *testing.T) {
+			t.Parallel()
+
+			app := fiber.New()
+			app.Use(New(Config{Rules: map[string]string{"/r/*": "https://$1" + suffix}}))
+			app.Get("/r/*", func(c fiber.Ctx) error { return c.SendString("fell through") })
+
+			req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/r/evil.com", http.NoBody)
+			require.NoError(t, err)
+			resp, err := app.Test(req)
+			require.NoError(t, err)
+			require.Equal(t, fiber.StatusOK, resp.StatusCode, "the rule must be refused at startup")
+			require.Empty(t, resp.Header.Get("Location"))
+		})
+	}
+}
+
+// Test_Redirect_InternationalizedHostsStillPin is the other half: mapping the
+// literal must not cost a rule whose host is written in a non-ASCII script.
+func Test_Redirect_InternationalizedHostsStillPin(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct{ target, want string }{
+		{"https://$1.\u4f8b\u3048.jp/", "https://t.\u4f8b\u3048.jp/"},
+		{"https://$1.xn--r8jz45g.jp/", "https://t.xn--r8jz45g.jp/"},
+		{"https://$1.example.com/", "https://t.example.com/"},
+	} {
+		t.Run(tc.target, func(t *testing.T) {
+			t.Parallel()
+
+			app := fiber.New()
+			app.Use(New(Config{Rules: map[string]string{"/r/*": tc.target}}))
+
+			req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/r/t", http.NoBody)
 			require.NoError(t, err)
 			resp, err := app.Test(req)
 			require.NoError(t, err)
