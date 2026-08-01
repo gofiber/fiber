@@ -162,14 +162,41 @@ func New(config ...Config) fiber.Handler {
 			if rule.sameOrigin {
 				location = keepSameOrigin(location)
 			}
-			queryString := utils.UnsafeString(c.RequestCtx().QueryArgs().QueryString())
-			if queryString != "" {
-				location += "?" + queryString
-			}
+			location = withRequestQuery(location, utils.UnsafeString(c.RequestCtx().QueryArgs().QueryString()))
 			return c.Redirect().Status(cfg.StatusCode).To(location)
 		}
 		return c.Next()
 	}
+}
+
+// withRequestQuery carries the request's query string onto the composed
+// location.
+//
+// Appending "?" + query was right only for a target holding neither a query nor
+// a fragment. A target with its own query got a second "?", which the URL
+// parser reads as one query string — "/new?from=old" plus "bar=2" became
+// "from=old?bar=2", a single parameter, so the request's own query was folded
+// into the target's value rather than added beside it. A target with a fragment
+// got the query after the "#", where a parser reads it as part of the fragment
+// and the query is lost outright.
+//
+// Merge into whatever query the target already has, and put it before the
+// fragment, which is where a query belongs.
+func withRequestQuery(location, query string) string {
+	if query == "" {
+		return location
+	}
+
+	fragment := ""
+	if i := strings.IndexByte(location, '#'); i >= 0 {
+		location, fragment = location[:i], location[i:]
+	}
+
+	separator := "?"
+	if strings.IndexByte(location, '?') >= 0 {
+		separator = "&"
+	}
+	return location + separator + query + fragment
 }
 
 // schemeEnd returns the index of the ':' that ends an RFC 3986 scheme at the

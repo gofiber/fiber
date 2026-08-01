@@ -1658,3 +1658,41 @@ func Test_Redirect_ClosedLabelStillPins(t *testing.T) {
 		})
 	}
 }
+
+// Test_Redirect_CarriesQueryOntoTargetsOwnQuery pins how the request's query
+// string joins a target that already has one, or a fragment.
+//
+// Appending "?" + query was right only for a target holding neither. A target
+// with its own query got a second "?", which a URL parser reads as one query
+// string — "/new?from=old" plus "bar=2" became the single parameter
+// "from=old?bar=2" — and a target with a fragment got the query after the "#",
+// where it is read as part of the fragment and the request's query is lost.
+func Test_Redirect_CarriesQueryOntoTargetsOwnQuery(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct{ target, request, want string }{
+		{"/new?from=old", "/old?bar=2", "/new?from=old&bar=2"},
+		{"/new#frag", "/old?bar=2", "/new?bar=2#frag"},
+		{"/new?from=old#frag", "/old?bar=2", "/new?from=old&bar=2#frag"},
+		{"https://cdn.example.com/p?a=1", "/old?b=2", "https://cdn.example.com/p?a=1&b=2"},
+
+		// Unchanged where there was nothing to merge.
+		{"/new", "/old?bar=2", "/new?bar=2"},
+		{"/new?from=old", "/old", "/new?from=old"},
+		{"/new#frag", "/old", "/new#frag"},
+		{"/new", "/old", "/new"},
+	} {
+		t.Run(tc.target+" "+tc.request, func(t *testing.T) {
+			t.Parallel()
+
+			app := fiber.New()
+			app.Use(New(Config{Rules: map[string]string{"/old": tc.target}}))
+
+			req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, tc.request, http.NoBody)
+			require.NoError(t, err)
+			resp, err := app.Test(req)
+			require.NoError(t, err)
+			require.Equal(t, tc.want, resp.Header.Get("Location"))
+		})
+	}
+}
