@@ -140,6 +140,132 @@ func Test_Redirect_Route_WithQueries_SpecialChars(t *testing.T) {
 	require.Equal(t, url.Values{"q": []string{"a&b=c"}}, location.Query())
 }
 
+// go test -run Test_Redirect_Route_ParamCannotMoveTheQuery
+func Test_Redirect_Route_ParamCannotMoveTheQuery(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		param string
+		want  string
+	}{
+		{
+			name:  "plain",
+			param: "fiber",
+			want:  "/user/fiber?q=1",
+		},
+		{
+			// A second "?" reads as one query string, so appending it folded
+			// q=1 into the earlier parameter's value instead of adding it.
+			name:  "param opens a query",
+			param: "a?b=2",
+			want:  "/user/a?b=2&q=1",
+		},
+		{
+			// Everything after "#" is a fragment, which the client never
+			// sends, so appending the query there dropped it outright.
+			name:  "param opens a fragment",
+			param: "a#b",
+			want:  "/user/a?q=1#b",
+		},
+		{
+			name:  "param opens both",
+			param: "a?b=2#c",
+			want:  "/user/a?b=2&q=1#c",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			app := New()
+			app.Get("/user/:name", func(c Ctx) error {
+				return c.JSON(c.Params("name"))
+			}).Name("user")
+			c := app.AcquireCtx(&fasthttp.RequestCtx{})
+
+			err := c.Redirect().Route("user", RedirectConfig{
+				Params:  Map{"name": tc.param},
+				Queries: map[string]string{"q": "1"},
+			})
+			require.NoError(t, err)
+			require.Equal(t, tc.want, string(c.Response().Header.Peek(HeaderLocation)))
+		})
+	}
+}
+
+// go test -run Test_Redirect_Route_ParamCannotLeaveTheOrigin
+func Test_Redirect_Route_ParamCannotLeaveTheOrigin(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		param string
+		want  string
+	}{
+		{
+			name:  "plain",
+			param: "docs/index.html",
+			want:  "/docs/index.html",
+		},
+		{
+			// "//evil.com" is a network-path reference: the browser reads
+			// evil.com as the host and never comes back to this origin.
+			name:  "leading slash",
+			param: "/evil.com",
+			want:  "/evil.com",
+		},
+		{
+			name:  "leading slash run",
+			param: "//evil.com",
+			want:  "/evil.com",
+		},
+		{
+			// The WHATWG URL parser folds a backslash to a slash here, so this
+			// reaches evil.com exactly as "//evil.com" does.
+			name:  "leading backslash",
+			param: `\evil.com`,
+			want:  "/evil.com",
+		},
+		{
+			name:  "mixed slash run",
+			param: `/\/evil.com`,
+			want:  "/evil.com",
+		},
+		{
+			// Tab, LF and CR are removed before the URL is parsed, so a leading
+			// one hides the slash run that follows it.
+			name:  "tab before the slash",
+			param: "\t/evil.com",
+			want:  "/evil.com",
+		},
+		{
+			// A scheme cannot start here — the route is rooted at "/" — so this
+			// stays the path segment the route asked for.
+			name:  "absolute URL is a path segment",
+			param: "https://evil.com",
+			want:  "/https://evil.com",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			app := New()
+			app.Get("/*", func(c Ctx) error {
+				return c.JSON(c.Params("*"))
+			}).Name("wildcard")
+			c := app.AcquireCtx(&fasthttp.RequestCtx{})
+
+			err := c.Redirect().Route("wildcard", RedirectConfig{
+				Params: Map{"*": tc.param},
+			})
+			require.NoError(t, err)
+			require.Equal(t, tc.want, string(c.Response().Header.Peek(HeaderLocation)))
+		})
+	}
+}
+
 // go test -run Test_Redirect_Route_WithOptionalParams
 func Test_Redirect_Route_WithOptionalParams(t *testing.T) {
 	t.Parallel()

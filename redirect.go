@@ -357,6 +357,12 @@ func (r *Redirect) Route(name string, config ...RedirectConfig) error {
 		return err
 	}
 
+	// The route path is the author's, but the values spliced into its
+	// parameters are the caller's, and in practice those often carry request
+	// data. Hold the composed location to what naming a route in this app can
+	// mean before anything else is added to it.
+	location = asRoutePath(location)
+
 	// Check queries
 	if len(cfg.Queries) > 0 {
 		queryText := bytebufferpool.Get()
@@ -376,10 +382,83 @@ func (r *Redirect) Route(name string, config ...RedirectConfig) error {
 			queryText.B = utils.AppendQueryEscape(queryText.B, v)
 		}
 
-		return r.To(location + "?" + r.c.app.toString(queryText.Bytes()))
+		location = withQuery(location, r.c.app.toString(queryText.Bytes()))
 	}
 
 	return r.To(location)
+}
+
+// asRoutePath returns the URL composed for a named route as what it can only
+// be: a path on the origin now being served.
+//
+// Every route is registered under "/", so the path a route builds starts there
+// too — but only the constant parts of it are the author's. A parameter value
+// is whatever the caller passed in Params, and it is spliced in raw, so where
+// the route is "/*" that single leading slash is all that separates the value
+// from the start of the location. A value of "/evil.com" then composes
+// "//evil.com", a network-path reference the browser resolves to another
+// origin, and "\evil.com" composes "/\evil.com", which the WHATWG URL parser
+// folds to the same thing. An author asking for the URL of a route in this
+// application asked for neither.
+//
+// The parser also removes every ASCII tab, LF and CR before it reads a URL, so
+// those come out first — otherwise "\t/evil.com" composes "/\t/evil.com", whose
+// leading slash run is two by the time anything navigates. Removing them
+// changes no location a client could tell apart, since it drops them itself.
+func asRoutePath(location string) string {
+	var b []byte
+	for i := 0; i < len(location); i++ {
+		switch c := location[i]; c {
+		case '\t', '\n', '\r':
+			if b == nil {
+				b = append(make([]byte, 0, len(location)), location[:i]...)
+			}
+		default:
+			if b != nil {
+				b = append(b, c)
+			}
+		}
+	}
+	if b != nil {
+		location = string(b)
+	}
+
+	n := 0
+	for n < len(location) && (location[n] == '/' || location[n] == '\\') {
+		n++
+	}
+	if n == 1 && location[0] == '/' {
+		return location
+	}
+	// Collapse the run to the single slash the route is rooted at. Backslashes
+	// count as slashes here because the parser folds them in this position.
+	return "/" + location[n:]
+}
+
+// withQuery adds query to location, merging it into whatever query location
+// already carries and keeping it ahead of any fragment.
+//
+// Appending "?" + query is right only for a location holding neither. A route
+// path is written without either, but a parameter value spliced into it may
+// hold both: with a "?" already present the client reads one query string, so
+// the added parameters are folded into the earlier one's value instead of
+// standing beside it, and after a "#" they land inside the fragment, which is
+// never sent to the server at all.
+func withQuery(location, query string) string {
+	if query == "" {
+		return location
+	}
+
+	fragment := ""
+	if i := strings.IndexByte(location, '#'); i >= 0 {
+		location, fragment = location[:i], location[i:]
+	}
+
+	separator := "?"
+	if strings.IndexByte(location, '?') >= 0 {
+		separator = "&"
+	}
+	return location + separator + query + fragment
 }
 
 // Back redirect to the URL to referer.
