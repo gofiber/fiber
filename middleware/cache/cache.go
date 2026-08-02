@@ -675,7 +675,7 @@ func New(config ...Config) fiber.Handler {
 		// nothing about whether the body is personalized. A route that genuinely
 		// wants both a cookie and shared caching can say so with
 		// "Cache-Control: public" or an s-maxage.
-		if !allowsSharedCacheStorage(respCacheControl) && responseSetsCookie(&c.Response().Header) {
+		if !allowsSharedCacheStorage(respCacheControl) && responseSetsCookie(&c.Response().Header, canonical) {
 			markUnreachable()
 			return nil
 		}

@@ -142,7 +142,7 @@ func FuzzConnectionListedHeaders(f *testing.F) {
 		req.Header.Set(fiber.HeaderConnection, v)
 		req.Header.Set("X-Foo", "1")
 		req.Header.Set("X-Bar", "2")
-		delConnectionListedHeaders(&req.Header, req.Header.PeekAll(fiber.HeaderConnection))
+		delConnectionListedHeaders(&req.Header, req.Header.PeekAll(fiber.HeaderConnection), true)
 		if t.Failed() {
 			t.Logf("input: %q", v)
 		}

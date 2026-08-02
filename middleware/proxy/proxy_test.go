@@ -1,6 +1,7 @@
 package proxy
 
 import (
+	"bufio"
 	"crypto/tls"
 	"io"
 	"net"
@@ -13,6 +14,7 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	clientpkg "github.com/gofiber/fiber/v3/client"
+	"github.com/gofiber/utils/v2"
 	"github.com/stretchr/testify/require"
 
 	"github.com/gofiber/fiber/v3/internal/tlstest"
@@ -1354,4 +1356,169 @@ func Test_Proxy_DomainForward_HostMatchIsCaseInsensitive(t *testing.T) {
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
 	require.Equal(t, "proxied", string(body), "mixed-case Host must still be proxied")
+}
+
+// sendRawUnnormalized drives one request whose header names are kept exactly as
+// written, the way a front end translating HTTP/2 down to HTTP/1.1 leaves them,
+// and returns the response body.
+func sendRawUnnormalized(t *testing.T, app *fiber.App, raw string) string {
+	t.Helper()
+
+	req := fasthttp.AcquireRequest()
+	defer fasthttp.ReleaseRequest(req)
+	req.Header.DisableNormalizing()
+	require.NoError(t, req.Read(bufio.NewReader(strings.NewReader(raw))))
+
+	fctx := &fasthttp.RequestCtx{}
+	fctx.Init(req, nil, nil)
+	app.Handler()(fctx)
+
+	return string(fctx.Response.Body())
+}
+
+// matchingFieldLines reports every field line whose name matches one of names,
+// in the spelling the header store holds.
+func matchingFieldLines(c fiber.Ctx, names ...string) []string {
+	var found []string
+	for k, v := range c.Request().Header.All() {
+		for _, name := range names {
+			if utils.EqualFold(utils.UnsafeString(k), name) {
+				found = append(found, string(k)+"="+string(v))
+			}
+		}
+	}
+	return found
+}
+
+// Test_Proxy_HopByHopHeadersStrippedWhateverTheirCase checks that the RFC 7230
+// Section 6.1 strip holds for a peer that spells the names in lower case, which
+// is what HTTP/2 and HTTP/3 require on the wire.
+//
+// Del matches the stored key byte for byte, so under DisableHeaderNormalizing
+// it removed nothing: the hop-by-hop headers reached the upstream, and so did a
+// field named in Connection, which is a peer smuggling a connection-scoped
+// header through an intermediary required to drop it.
+func Test_Proxy_HopByHopHeadersStrippedWhateverTheirCase(t *testing.T) {
+	t.Parallel()
+
+	seen := make(chan []string, 1)
+	_, addr := createProxyTestServerIPv4(t, func(c fiber.Ctx) error {
+		seen <- matchingFieldLines(c, "Upgrade", "TE", "Keep-Alive", "Connection", "X-Smuggled")
+		return c.SendString("upstream")
+	})
+
+	app := fiber.New(fiber.Config{DisableHeaderNormalizing: true})
+	app.Use(Forward("http://" + addr))
+
+	body := sendRawUnnormalized(t, app, "GET / HTTP/1.1\r\nHost: front\r\n"+
+		"connection: x-smuggled\r\n"+
+		"x-smuggled: through-the-proxy\r\n"+
+		"upgrade: websocket\r\n"+
+		"te: trailers\r\n"+
+		"keep-alive: timeout=5\r\n\r\n")
+	require.Equal(t, "upstream", body)
+
+	require.Empty(t, <-seen, "no hop-by-hop or Connection-listed header may reach the upstream")
+}
+
+// Test_Proxy_RealIPReplacedWhateverTheirCase checks that the client cannot keep
+// a claim of its own beside the address this hop writes.
+func Test_Proxy_RealIPReplacedWhateverTheirCase(t *testing.T) {
+	t.Parallel()
+
+	seen := make(chan []string, 1)
+	_, addr := createProxyTestServerIPv4(t, func(c fiber.Ctx) error {
+		seen <- matchingFieldLines(c, realIPHeader)
+		return c.SendString("upstream")
+	})
+
+	app := fiber.New(fiber.Config{DisableHeaderNormalizing: true})
+	app.Use(Forward("http://" + addr))
+
+	body := sendRawUnnormalized(t, app, "GET / HTTP/1.1\r\nHost: front\r\n"+
+		"x-real-ip: 6.6.6.6\r\n"+
+		"X-Real-IP: 7.7.7.7\r\n\r\n")
+	require.Equal(t, "upstream", body)
+
+	lines := <-seen
+	require.Len(t, lines, 1, "exactly one X-Real-IP reaches the upstream: %v", lines)
+	require.NotContains(t, lines[0], "6.6.6.6")
+	require.NotContains(t, lines[0], "7.7.7.7")
+}
+
+// Test_Proxy_CrossHostCredentialsStrippedWhateverTheirCase checks that a
+// redirect leaving the host the caller addressed does not carry the caller's
+// credentials to wherever it points.
+func Test_Proxy_CrossHostCredentialsStrippedWhateverTheirCase(t *testing.T) {
+	t.Parallel()
+
+	seen := make(chan []string, 1)
+	_, finalAddr := createProxyTestServerIPv4(t, func(c fiber.Ctx) error {
+		seen <- matchingFieldLines(c, fiber.HeaderAuthorization, fiber.HeaderCookie)
+		return c.SendString("final")
+	})
+
+	// A second host, so the redirect crosses the origin the caller addressed.
+	// 127.0.0.2 and 127.0.0.1 are both loopback but are different hosts.
+	_, redirectAddr := createProxyTestServer(t, func(c fiber.Ctx) error {
+		c.Location("http://" + finalAddr + "/")
+		return c.SendStatus(fiber.StatusFound)
+	}, fiber.NetworkTCP4, "127.0.0.2:0")
+
+	app := fiber.New(fiber.Config{DisableHeaderNormalizing: true})
+	app.Use(func(c fiber.Ctx) error {
+		return DoRedirects(c, "http://"+redirectAddr, 3)
+	})
+
+	body := sendRawUnnormalized(t, app, "GET / HTTP/1.1\r\nHost: front\r\n"+
+		"authorization: Bearer caller-token\r\n"+
+		"cookie: session=caller\r\n\r\n")
+	require.Equal(t, "final", body)
+
+	require.Empty(t, <-seen, "credentials must not follow a redirect off the host they were sent to")
+}
+
+// Test_Proxy_CrossHostStripsEveryCredentialHeader checks that the set dropped
+// on a redirect off the addressed host is the one the client package drops:
+// Cookie2 carries a session exactly as Cookie does, and a list that covers one
+// but not the other leaks through the gap.
+func Test_Proxy_CrossHostStripsEveryCredentialHeader(t *testing.T) {
+	t.Parallel()
+
+	seen := make(chan []string, 1)
+	_, finalAddr := createProxyTestServerIPv4(t, func(c fiber.Ctx) error {
+		seen <- matchingFieldLines(c,
+			fiber.HeaderAuthorization,
+			fiber.HeaderProxyAuthorization,
+			fiber.HeaderProxyAuthenticate,
+			fiber.HeaderWWWAuthenticate,
+			fiber.HeaderCookie,
+			"Cookie2",
+		)
+		return c.SendString("final")
+	})
+
+	_, redirectAddr := createProxyTestServer(t, func(c fiber.Ctx) error {
+		c.Location("http://" + finalAddr + "/")
+		return c.SendStatus(fiber.StatusFound)
+	}, fiber.NetworkTCP4, "127.0.0.2:0")
+
+	app := fiber.New()
+	app.Use(func(c fiber.Ctx) error {
+		return DoRedirects(c, "http://"+redirectAddr, 3)
+	})
+
+	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+	req.Header.Set(fiber.HeaderAuthorization, "Bearer caller-token")
+	req.Header.Set(fiber.HeaderProxyAuthorization, "Basic proxy")
+	req.Header.Set(fiber.HeaderProxyAuthenticate, "Basic realm=x")
+	req.Header.Set(fiber.HeaderWWWAuthenticate, "Basic realm=y")
+	req.Header.Set(fiber.HeaderCookie, "session=caller")
+	req.Header.Set("Cookie2", `$Version="1"`)
+
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+
+	require.Empty(t, <-seen, "no credential header may follow a redirect off the addressed host")
 }

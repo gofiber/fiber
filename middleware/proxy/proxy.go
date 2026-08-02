@@ -80,12 +80,13 @@ func Balancer(config ...Config) fiber.Handler {
 		// Set request and response
 		req := c.Request()
 		res := c.Response()
+		normalized := headerNamesAreCanonical(c)
 
 		if !policy.KeepHopByHopHeaders {
 			if cfg.KeepConnectionHeader {
-				stripHopByHopRequestHeaders(req, fiber.HeaderConnection)
+				stripHopByHopRequestHeaders(req, normalized, fiber.HeaderConnection)
 			} else {
-				stripHopByHopRequestHeaders(req)
+				stripHopByHopRequestHeaders(req, normalized)
 			}
 		}
 
@@ -114,9 +115,9 @@ func Balancer(config ...Config) fiber.Handler {
 
 		if !policy.KeepHopByHopHeaders {
 			if cfg.KeepConnectionHeader {
-				stripHopByHopResponseHeaders(res, fiber.HeaderConnection)
+				stripHopByHopResponseHeaders(res, normalized, fiber.HeaderConnection)
 			} else {
-				stripHopByHopResponseHeaders(res)
+				stripHopByHopResponseHeaders(res, normalized)
 			}
 		}
 
@@ -234,6 +235,21 @@ func WithClient(cli *fasthttp.Client) {
 	client.Store(cli)
 }
 
+// headerNamesAreCanonical reports whether fasthttp normalized this request's
+// header names, which decides whether a byte-for-byte lookup finds all of them.
+//
+// fasthttp keeps the answer private, so take it from the app config that set
+// it. Getting this wrong in the safe direction only costs a walk; wrong the
+// other way leaves a sanitizer removing nothing.
+func headerNamesAreCanonical(c fiber.Ctx) bool {
+	return !c.App().Config().DisableHeaderNormalizing
+}
+
+// realIPHeader is the field the proxy overwrites with the peer address Fiber
+// derived, so an upstream reading it sees this hop's view rather than the
+// client's claim.
+const realIPHeader = "X-Real-IP"
+
 // setRealIP replaces every inbound X-Real-IP field line with the peer address
 // Fiber derived for this request.
 //
@@ -256,9 +272,11 @@ func setRealIP(c fiber.Ctx) {
 	ip := c.IP()
 	// Del then Add, not Del then Set: after the Del there is no field line left
 	// to replace, so Set would only fall through to an append anyway. Add says
-	// what is meant — exactly one line, the one written here.
-	c.Request().Header.Del("X-Real-IP")
-	c.Request().Header.Add("X-Real-IP", ip)
+	// what is meant — exactly one line, the one written here. delField rather
+	// than Del so a client that spelled the name differently does not keep a
+	// line of its own beside it; see delField.
+	delField(&c.Request().Header, realIPHeader, headerNamesAreCanonical(c))
+	c.Request().Header.Add(realIPHeader, ip)
 }
 
 // Forward performs the given http request and fills the given http response.
@@ -313,8 +331,9 @@ func Do(c fiber.Ctx, addr string, clients ...*fasthttp.Client) error {
 // cannot be rebound to a private IP between validation and connection.
 func DoRedirects(c fiber.Ctx, addr string, maxRedirectsCount int, clients ...*fasthttp.Client) error {
 	policy := currentSecurityPolicy()
+	normalized := headerNamesAreCanonical(c)
 	return doActionWithPolicy(c, addr, policy, func(cli *fasthttp.Client, req *fasthttp.Request, resp *fasthttp.Response, u *url.URL) error {
-		return followRedirects(cli, req, resp, maxRedirectsCount, u, policy)
+		return followRedirects(cli, req, resp, maxRedirectsCount, u, policy, normalized)
 	}, clients...)
 }
 
@@ -395,6 +414,7 @@ func doActionWithPolicy(
 
 	req := c.Request()
 	res := c.Response()
+	normalized := headerNamesAreCanonical(c)
 	originalURL := utils.CopyString(c.OriginalURL())
 	defer req.SetRequestURI(originalURL)
 
@@ -407,7 +427,7 @@ func doActionWithPolicy(
 	req.URI().SetScheme(u.Scheme)
 
 	if !policy.KeepHopByHopHeaders {
-		stripHopByHopRequestHeaders(req)
+		stripHopByHopRequestHeaders(req, normalized)
 	}
 	// The upstream connection speaks HTTP/1.1: reset a protocol token
 	// inherited from the inbound request (e.g. "HTTP/2" propagated by the
@@ -417,7 +437,7 @@ func doActionWithPolicy(
 		return err
 	}
 	if !policy.KeepHopByHopHeaders {
-		stripHopByHopResponseHeaders(res)
+		stripHopByHopResponseHeaders(res, normalized)
 	}
 	return nil
 }
@@ -433,7 +453,7 @@ func doActionWithPolicy(
 // guaranteeing every SetRequestURI is fed a string from a
 // validateUpstream output — the property CodeQL's go/request-forgery
 // query needs to see.
-func followRedirects(cli *fasthttp.Client, req *fasthttp.Request, resp *fasthttp.Response, maxRedirects int, initialURL *url.URL, policy SecurityPolicy) error {
+func followRedirects(cli *fasthttp.Client, req *fasthttp.Request, resp *fasthttp.Response, maxRedirects int, initialURL *url.URL, policy SecurityPolicy, normalized bool) error { //nolint:revive // flag-parameter: normalized is a property of the header store
 	if maxRedirects < 0 {
 		maxRedirects = 0
 	}
@@ -480,7 +500,7 @@ func followRedirects(cli *fasthttp.Client, req *fasthttp.Request, resp *fasthttp
 		// secrets bound to the original origin are not leaked to a third
 		// party (RFC 9110 §15.4 advisory; matches browser behavior).
 		if !utils.EqualFold(nextURL.Host, currentHost) {
-			stripCrossHostHeaders(req)
+			stripCrossHostHeaders(req, normalized)
 			currentHost = nextURL.Host
 		}
 		currentURL = nextURL
@@ -489,15 +509,25 @@ func followRedirects(cli *fasthttp.Client, req *fasthttp.Request, resp *fasthttp
 
 // crossHostSensitiveHeaders lists headers that carry credentials bound to
 // a specific origin and must not survive a redirect to a different host.
+//
+// The set matches the one the client package strips, which in turn matches
+// net/http. Cookie2 is the obsolete RFC 2965 spelling of Cookie and carries a
+// session exactly as it does; the two Authenticate headers are challenges
+// rather than credentials, but a peer that echoes one back is describing the
+// origin that issued it, and both lists are easier to trust when they are the
+// same list.
 var crossHostSensitiveHeaders = []string{
 	fiber.HeaderAuthorization,
 	fiber.HeaderProxyAuthorization,
+	fiber.HeaderProxyAuthenticate,
+	fiber.HeaderWWWAuthenticate,
 	fiber.HeaderCookie,
+	"Cookie2",
 }
 
-func stripCrossHostHeaders(req *fasthttp.Request) {
+func stripCrossHostHeaders(req *fasthttp.Request, normalized bool) { //nolint:revive // flag-parameter: normalized is a property of the header store
 	for _, h := range crossHostSensitiveHeaders {
-		req.Header.Del(h)
+		delField(&req.Header, h, normalized)
 	}
 }
 

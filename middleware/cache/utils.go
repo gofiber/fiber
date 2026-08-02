@@ -96,14 +96,19 @@ const setCookie2 = "Set-Cookie2"
 
 // responseSetsCookie reports whether the response hands a cookie to the client
 // that caused this miss.
-func responseSetsCookie(h *fasthttp.ResponseHeader) bool {
+func responseSetsCookie(h *fasthttp.ResponseHeader, normalized bool) bool { //nolint:revive // flag-parameter: normalized is a property of the header store
 	for range h.Cookies() {
 		return true
 	}
 	// Not PeekAll(Set-Cookie): fasthttp answers that from its cookie store and
 	// returns a single empty entry when there is none, so a length test on it
 	// reports a cookie that was never set.
-	for _, v := range h.PeekAll(setCookie2) {
+	//
+	// Set-Cookie2 has no store of its own, so unlike Set-Cookie it is found
+	// only under the spelling the handler wrote: fieldLines rather than
+	// PeekAll, or a lower-case one walked past this guard and the personalized
+	// response it names was stored and replayed to every later client.
+	for _, v := range fieldLines(h, setCookie2, normalized) {
 		if len(v) > 0 {
 			return true
 		}

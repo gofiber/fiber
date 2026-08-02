@@ -1728,3 +1728,40 @@ func Test_Cache_OuterMiddlewareHeaderNamesAreNotDuplicated(t *testing.T) {
 		})
 	}
 }
+
+// Test_Cache_SetCookie2IsSeenWhateverItsCase checks the second cookie header
+// against the same standard as the first.
+//
+// Set-Cookie has a store of its own in fasthttp, which every spelling is routed
+// into, so the guard found it either way. Set-Cookie2 — the obsolete RFC 2965
+// spelling, which hands the client a session just the same — is an ordinary
+// field, so a byte-for-byte lookup found only the canonical one. A handler
+// writing it in lower case had a personalized response stored and replayed to
+// every later client whose request matched the key.
+func Test_Cache_SetCookie2IsSeenWhateverItsCase(t *testing.T) {
+	t.Parallel()
+
+	for _, name := range []string{"Set-Cookie2", "set-cookie2"} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			app := fiber.New(fiber.Config{DisableHeaderNormalizing: true})
+			app.Use(New(Config{Expiration: time.Minute}))
+
+			var n atomic.Int64
+			app.Get("/", func(c fiber.Ctx) error {
+				id := n.Add(1)
+				c.Response().Header.Set(name, fmt.Sprintf("session=client-%d; Version=1", id))
+				return c.SendString(fmt.Sprintf("private to client-%d", id))
+			})
+
+			for range 2 {
+				resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+				require.NoError(t, err)
+				require.Equal(t, cacheUnreachable, resp.Header.Get("X-Cache"),
+					"a response naming a cookie is never stored")
+			}
+			require.Equal(t, int64(2), n.Load(), "each client must reach the handler")
+		})
+	}
+}
