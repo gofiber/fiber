@@ -343,7 +343,7 @@ func authorityHolds(chunks []authorityChunk, replacer *strings.Replacer) bool {
 		// the one actually spliced into the host.
 		value := replacer.Replace(chunk.text)
 
-		if hostPinnedAfter(chunks, i) {
+		if hostPins(chunks[i+1:]) {
 			// The author closed the host past this token, so the value is a
 			// label inside it and only has to stay one.
 			if strings.ContainsAny(value, `/\?#@:`) {
@@ -358,7 +358,7 @@ func authorityHolds(chunks []authorityChunk, replacer *strings.Replacer) bool {
 		// someone can register.
 		switch {
 		case value == "":
-		case strings.IndexByte(`/\?#`, value[0]) >= 0 && hostPinnedBefore(chunks, i):
+		case strings.IndexByte(`/\?#`, value[0]) >= 0 && hostPins(chunks[:i]):
 			// Opens the next component, so the authority ended at the host the
 			// author wrote. Only where they wrote one: with nothing but
 			// separators ahead of it, "//$1." composing "///evil.com." does not
@@ -375,15 +375,22 @@ func authorityHolds(chunks []authorityChunk, replacer *strings.Replacer) bool {
 	return true
 }
 
-// hostPinnedAfter reports whether the author wrote host text past the chunk at
-// index i, so that a value there lands inside a host they closed themselves.
+// hostPins reports whether the author wrote host text among these chunks, which
+// is asked of the chunks on one side of a capture or the other.
 //
-// A port does not close a host and neither do the separators that may trail
-// one, which is why "https://$1:$2" and "https://$1:8080" leave $1 free to name
-// the host outright: ":443" and ":8080" pin nothing.
-func hostPinnedAfter(chunks []authorityChunk, i int) bool {
-	for j := i + 1; j < len(chunks); j++ {
-		if !chunks[j].placeholder && chunks[j].pins {
+// Ahead of a capture, it is what makes a value opening the next component leave
+// the author's text as the host: "//$1." puts nothing but a dot before the end
+// of the authority, so a value of "/evil.com" composes "///evil.com." — three
+// slashes the WHATWG parser skips on its way to reading "evil.com." as the
+// host, rather than a path hanging off a host the author chose.
+//
+// Past a capture, it is what makes the value land inside a host the author
+// closed themselves. A port does not close a host and neither do the separators
+// that may trail one, which is why "https://$1:$2" and "https://$1:8080" leave
+// $1 free to name the host outright: ":443" and ":8080" pin nothing.
+func hostPins(chunks []authorityChunk) bool {
+	for _, chunk := range chunks {
+		if !chunk.placeholder && chunk.pins {
 			return true
 		}
 	}
@@ -643,33 +650,13 @@ func isAllDigits(s string) bool {
 // meant.
 func authorityEndsInOpenCapture(chunks []authorityChunk) bool {
 	for i, chunk := range chunks {
-		if !chunk.placeholder || hostPinnedAfter(chunks, i) {
+		if !chunk.placeholder || hostPins(chunks[i+1:]) {
 			continue
 		}
 		if i > 0 && strings.HasSuffix(chunks[i-1].text, ":") && !chunks[i-1].placeholder {
 			continue // a port position
 		}
 		return true
-	}
-	return false
-}
-
-// hostPinnedBefore reports whether the author wrote host text ahead of the
-// chunk at index i, so that a value opening the next component really does
-// leave that text as the host.
-//
-// Separators alone do not count. "//$1." puts nothing but a dot before the end
-// of the authority, so a value of "/evil.com" composes "///evil.com." — three
-// slashes the WHATWG parser skips on its way to reading "evil.com." as the
-// host, rather than a path hanging off a host the author chose.
-func hostPinnedBefore(chunks []authorityChunk, i int) bool {
-	for j := range i {
-		if chunks[j].placeholder {
-			continue
-		}
-		if chunks[j].pins {
-			return true
-		}
 	}
 	return false
 }
