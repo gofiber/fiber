@@ -267,6 +267,20 @@ app.Get("/test", func(c fiber.Ctx) error {
 // /test returns "/user/1"
 ```
 
+:::note
+A named route belongs to this application, so what comes back is always a path
+on this origin: a `params` value that would open an authority — `"/evil.com"`
+or `"\evil.com"` under a `/*` route — is kept as the path segment the route
+asked for. [`Route.URL`](./app.md#url) and
+[`Redirect().Route`](./redirect.md#route) return the same answer for the same
+input, so it does not matter which one puts it in a `Location` header or an
+`href`.
+
+The values themselves are still written into the path as given. Where they come
+from the request, escape them with [`url.PathEscape`](https://pkg.go.dev/net/url#PathEscape)
+if the route expects one segment per parameter.
+:::
+
 ### HasBody
 
 Returns `true` if the incoming request contains a body or a `Content-Length` header greater than zero.

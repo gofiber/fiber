@@ -262,6 +262,17 @@ func Test_Redirect_Route_ParamCannotLeaveTheOrigin(t *testing.T) {
 			})
 			require.NoError(t, err)
 			require.Equal(t, tc.want, string(c.Response().Header.Peek(HeaderLocation)))
+
+			// The same question asked the other two ways. A caller who puts
+			// either answer in a Location header or an href reaches the same
+			// place, so all three have to agree.
+			fromRoute, err := app.GetRoute("wildcard").URL(Map{"*": tc.param})
+			require.NoError(t, err)
+			require.Equal(t, tc.want, fromRoute, "Route.URL")
+
+			fromCtx, err := c.GetRouteURL("wildcard", Map{"*": tc.param})
+			require.NoError(t, err)
+			require.Equal(t, tc.want, fromCtx, "GetRouteURL")
 		})
 	}
 }
