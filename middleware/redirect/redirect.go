@@ -453,14 +453,9 @@ func targetLetsRequestPickHost(target string, chunks []authorityChunk) bool {
 		if captureInBrackets(target) {
 			return true
 		}
-		for _, chunk := range chunks {
-			if !chunk.placeholder && chunk.pins {
-				// The host is theirs, and authorityHolds judges the captures
-				// around it per value.
-				return false
-			}
-		}
-		return true
+		// Anywhere in the authority: the host is theirs, and authorityHolds
+		// judges the captures around it per value.
+		return !hostPins(chunks)
 	}
 
 	// No authority span, so the only way a value reaches a host is by opening

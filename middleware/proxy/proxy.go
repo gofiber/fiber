@@ -13,6 +13,7 @@ import (
 	"github.com/gofiber/utils/v2/swar"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/crosshost"
 
 	"github.com/valyala/fasthttp"
 )
@@ -507,26 +508,8 @@ func followRedirects(cli *fasthttp.Client, req *fasthttp.Request, resp *fasthttp
 	}
 }
 
-// crossHostSensitiveHeaders lists headers that carry credentials bound to
-// a specific origin and must not survive a redirect to a different host.
-//
-// The set matches the one the client package strips, which in turn matches
-// net/http. Cookie2 is the obsolete RFC 2965 spelling of Cookie and carries a
-// session exactly as it does; the two Authenticate headers are challenges
-// rather than credentials, but a peer that echoes one back is describing the
-// origin that issued it, and both lists are easier to trust when they are the
-// same list.
-var crossHostSensitiveHeaders = []string{
-	fiber.HeaderAuthorization,
-	fiber.HeaderProxyAuthorization,
-	fiber.HeaderProxyAuthenticate,
-	fiber.HeaderWWWAuthenticate,
-	fiber.HeaderCookie,
-	"Cookie2",
-}
-
 func stripCrossHostHeaders(req *fasthttp.Request, normalized bool) { //nolint:revive // flag-parameter: normalized is a property of the header store
-	for _, h := range crossHostSensitiveHeaders {
+	for _, h := range crosshost.SensitiveHeaders {
 		delField(&req.Header, h, normalized)
 	}
 }

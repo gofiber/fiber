@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/gofiber/fiber/v3/internal/crosshost"
 	"github.com/gofiber/utils/v2"
 	"github.com/valyala/fasthttp"
 )
@@ -380,23 +381,11 @@ func doRedirectsWithClient(req *fasthttp.Request, resp *fasthttp.Response, maxRe
 		// host rather than the previous hop, ignoring the port, and treating a
 		// subdomain of it as still trusted.
 		if !trustedRedirectTarget(nextHost, initialHostname) {
-			for _, h := range crossHostSensitiveHeaders {
+			for _, h := range crosshost.SensitiveHeaders {
 				req.Header.Del(h)
 			}
 		}
 	}
-}
-
-// crossHostSensitiveHeaders lists the headers that carry credentials scoped to
-// a single origin and must not survive a redirect to an untrusted host. The set
-// matches the one fasthttp deletes, which in turn matches net/http.
-var crossHostSensitiveHeaders = []string{
-	fasthttp.HeaderAuthorization,
-	fasthttp.HeaderProxyAuthorization,
-	fasthttp.HeaderProxyAuthenticate,
-	fasthttp.HeaderWWWAuthenticate,
-	fasthttp.HeaderCookie,
-	"Cookie2",
 }
 
 // dropRequestBody removes a request's body and everything that frames or
