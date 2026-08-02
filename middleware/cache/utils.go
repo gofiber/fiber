@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"iter"
 	"math"
+	"strings"
 	"sync"
 	"time"
 
@@ -204,8 +205,106 @@ func fieldLines(h headerPeeker, name string, normalized bool) [][]byte {
 // headerPeeker is the part of fasthttp's request and response headers this
 // package needs to read every field line of a name.
 type headerPeeker interface {
+	Peek(key string) []byte
 	PeekAll(key string) [][]byte
 	All() iter.Seq2[[]byte, []byte]
+}
+
+// firstFieldLine returns the first field line stored under name, which is what
+// Peek reports once fasthttp has canonicalized the stored key.
+//
+// Under DisableHeaderNormalizing it has not, and Peek falls through to a
+// byte-for-byte scan of the general header store, so a handler writing
+// "cache-control" or "expires" in lower case stored a field this package then
+// could not see. Every consequence of that is the same shape: the value goes
+// unread where it should decide something, and a second line of the same field
+// is written beside it because nothing reported the first.
+//
+// The names fasthttp keeps in a slot of their own — Content-Type,
+// Content-Encoding, Server, Set-Cookie, Trailer, Content-Length — are not
+// affected either way. Peek answers those from the slot, and every spelling is
+// routed into it on the way in, so they need no help here.
+func firstFieldLine(h headerPeeker, name string, normalized bool) []byte { //nolint:revive // flag-parameter: normalized is a property of the header store
+	if normalized {
+		return h.Peek(name)
+	}
+
+	for k, v := range h.All() {
+		if utils.EqualFold(utils.UnsafeString(k), name) {
+			return v
+		}
+	}
+	return nil
+}
+
+// setFieldLine writes value as the field line for name, replacing whichever
+// spelling of it the response already carries.
+//
+// Set matches the stored key byte for byte, so under DisableHeaderNormalizing
+// it leaves a differently-spelled line of the same field untouched and the
+// response goes out carrying both. Nothing reconciles two Age or two Date
+// lines: a downstream cache reads one of them, and which one it reads decides
+// how old it believes the response to be.
+func setFieldLine(h *fasthttp.ResponseHeader, name string, value []byte, normalized bool) { //nolint:revive // flag-parameter: normalized is a property of the header store
+	if !normalized {
+		for k := range h.All() {
+			if ks := utils.UnsafeString(k); ks != name && utils.EqualFold(ks, name) {
+				// Write through the spelling already there rather than
+				// deleting it: Del is byte-exact too, and removing an entry
+				// while ranging over the store it belongs to is not safe.
+				h.SetBytesKV(k, value)
+				return
+			}
+		}
+	}
+
+	h.SetBytesV(name, value)
+}
+
+// ignoredHeaderNames is ignoreHeaders keyed the way a field name has to be
+// matched, since the spellings reaching isIgnoredHeader are the ones a handler
+// chose rather than the ones fasthttp canonicalized.
+var ignoredHeaderNames = func() map[string]struct{} {
+	folded := make(map[string]struct{}, len(ignoreHeaders))
+	for name := range ignoreHeaders {
+		folded[strings.ToLower(name)] = struct{}{}
+	}
+	return folded
+}()
+
+// maxIgnoredHeaderLen is the longest name in ignoredHeaderNames. Anything
+// longer cannot be one of them, so it never needs folding.
+const maxIgnoredHeaderLen = 32
+
+// isIgnoredHeader reports whether key names a field this cache must not carry
+// between requests.
+//
+// Field names are case-insensitive (RFC 9110 Section 5.1) and these are matched
+// against keys the response stored, which under DisableHeaderNormalizing are
+// whatever spelling the handler used. A byte-for-byte lookup missed those, so a
+// handler writing "cache-control" or "age" in lower case had it kept in the
+// entry and replayed beside the copy this package writes from the entry's own
+// fields — two Cache-Control lines on every hit, one of them the "public" that
+// gets synthesized precisely because the other was invisible. A shared cache
+// downstream then has explicit permission to store and share a response whose
+// origin never granted it.
+func isIgnoredHeader(key []byte) bool {
+	if len(key) > maxIgnoredHeaderLen {
+		return false
+	}
+
+	var buf [maxIgnoredHeaderLen]byte
+	lower := buf[:len(key)]
+	for i := range key {
+		c := key[i]
+		if c >= 'A' && c <= 'Z' {
+			c += 'a' - 'A'
+		}
+		lower[i] = c
+	}
+
+	_, ok := ignoredHeaderNames[string(lower)]
+	return ok
 }
 
 // joinedHeader returns every field line for key, comma-joined.

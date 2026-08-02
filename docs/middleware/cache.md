@@ -131,6 +131,17 @@ cache. Its `Location` is kept with the entry even when `StoreResponseHeaders` is
 off, since the status means nothing without it — the same reason `Content-Type`
 is always kept. No other response header is stored on that path.
 
+### Header names
+
+Response field names are matched case-insensitively, as
+[RFC 9110 §5.1](https://www.rfc-editor.org/rfc/rfc9110.html#section-5.1)
+requires, so a handler is free to write `cache-control` or `expires` in lower
+case under
+[`DisableHeaderNormalizing`](../api/fiber.md#config). Those values decide what
+they would decide either way, and the fields this middleware writes itself —
+`Cache-Control`, `Age`, `Date`, `ETag`, `Expires` — replace whatever spelling
+the response already carries rather than being added beside it.
+
 ### Responses that are never stored
 
 One entry is served to every client whose request matches its key, so a response

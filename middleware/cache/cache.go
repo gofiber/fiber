@@ -482,17 +482,17 @@ func New(config ...Config) fiber.Handler {
 					c.Response().Header.SetBytesV(fiber.HeaderContentEncoding, e.cencoding)
 				}
 				if len(e.cacheControl) > 0 {
-					c.Response().Header.SetBytesV(fiber.HeaderCacheControl, e.cacheControl)
+					setFieldLine(&c.Response().Header, fiber.HeaderCacheControl, e.cacheControl, canonical)
 				}
 				if len(e.expires) > 0 {
-					c.Response().Header.SetBytesV(fiber.HeaderExpires, e.expires)
+					setFieldLine(&c.Response().Header, fiber.HeaderExpires, e.expires, canonical)
 				}
 				if len(e.etag) > 0 {
-					c.Response().Header.SetBytesV(fiber.HeaderETag, e.etag)
+					setFieldLine(&c.Response().Header, fiber.HeaderETag, e.etag, canonical)
 				}
 				clampedDate := clampDateSeconds(e.date, ts)
 				dateValue := utils.AppendHTTPDate(nil, secondsToTime(clampedDate))
-				c.Response().Header.SetBytesV(fiber.HeaderDate, dateValue)
+				setFieldLine(&c.Response().Header, fiber.HeaderDate, dateValue, canonical)
 				// Header.All() yields one entry per field line, so a response
 				// that sent a name twice is stored twice. Replaying the entries
 				// with Set collapses the pair — Set overwrites the first
@@ -514,7 +514,7 @@ func New(config ...Config) fiber.Handler {
 				// Content-Encoding, Cache-Control, Expires, ETag, Date — are all
 				// in ignoreHeaders and so are never among the stored entries.
 				for i := range e.headers {
-					if _, skip := ignoreHeaders[string(e.headers[i].key)]; skip {
+					if isIgnoredHeader(e.headers[i].key) {
 						// An entry stored before Set-Cookie joined ignoreHeaders
 						// still carries one, and nothing versions the serialized
 						// form. Replaying it is worse than it looks: DelBytes on
@@ -528,13 +528,13 @@ func New(config ...Config) fiber.Handler {
 					c.Response().Header.DelBytes(e.headers[i].key)
 				}
 				for i := range e.headers {
-					if _, skip := ignoreHeaders[string(e.headers[i].key)]; skip {
+					if isIgnoredHeader(e.headers[i].key) {
 						continue
 					}
 					c.Response().Header.AddBytesKV(e.headers[i].key, e.headers[i].value)
 				}
 				// Set Cache-Control header if not disabled and not already set
-				if !cfg.DisableCacheControl && len(c.Response().Header.Peek(fiber.HeaderCacheControl)) == 0 {
+				if !cfg.DisableCacheControl && len(firstFieldLine(&c.Response().Header, fiber.HeaderCacheControl, canonical)) == 0 {
 					remaining := uint64(0)
 					if e.exp > ts {
 						remaining = e.exp - ts
@@ -548,7 +548,7 @@ func New(config ...Config) fiber.Handler {
 
 				// RFC-compliant Age header (RFC 9111)
 				age := utils.FormatUint(ageSeconds)
-				c.Response().Header.Set(fiber.HeaderAge, age)
+				setFieldLine(&c.Response().Header, fiber.HeaderAge, utils.UnsafeBytes(age), canonical)
 				appendWarningHeaders(&c.Response().Header, servedStale, isHeuristicFreshness(e, &cfg, entryAge))
 
 				c.Set(cfg.CacheHeader, cacheHit)
@@ -809,29 +809,29 @@ func New(config ...Config) fiber.Handler {
 		e.cencoding = utils.CopyBytes(c.Response().Header.Peek(fiber.HeaderContentEncoding))
 		e.private = false
 		e.cacheControl = utils.CopyBytes(cacheControlBytes)
-		e.expires = utils.CopyBytes(c.Response().Header.Peek(fiber.HeaderExpires))
-		e.etag = utils.CopyBytes(c.Response().Header.Peek(fiber.HeaderETag))
+		e.expires = utils.CopyBytes(firstFieldLine(&c.Response().Header, fiber.HeaderExpires, canonical))
+		e.etag = utils.CopyBytes(firstFieldLine(&c.Response().Header, fiber.HeaderETag, canonical))
 		e.date = 0
 
 		ageVal := uint64(0)
-		if b := c.Response().Header.Peek(fiber.HeaderAge); len(b) > 0 {
+		if b := firstFieldLine(&c.Response().Header, fiber.HeaderAge, canonical); len(b) > 0 {
 			if v, err := fasthttp.ParseUint(b); err == nil {
 				if v >= 0 {
 					ageVal = uint64(v)
 				}
 			}
 		} else {
-			c.Response().Header.Set(fiber.HeaderAge, "0")
+			setFieldLine(&c.Response().Header, fiber.HeaderAge, []byte("0"), canonical)
 		}
 		e.age = ageVal
 		e.shareable = isSharedCacheAllowed
 		now := cfg.now().UTC()
 		nowUnix := safeUnixSeconds(now)
-		dateHeader := c.Response().Header.Peek(fiber.HeaderDate)
+		dateHeader := firstFieldLine(&c.Response().Header, fiber.HeaderDate, canonical)
 		parsedDate, _ := parseHTTPDate(dateHeader)
 		e.date = clampDateSeconds(parsedDate, nowUnix)
 		dateBytes := utils.AppendHTTPDate(nil, secondsToTime(e.date))
-		c.Response().Header.SetBytesV(fiber.HeaderDate, dateBytes)
+		setFieldLine(&c.Response().Header, fiber.HeaderDate, dateBytes, canonical)
 
 		// Store all response headers
 		// (more: https://datatracker.ietf.org/doc/html/rfc2616#section-13.5.1)
@@ -839,13 +839,12 @@ func New(config ...Config) fiber.Handler {
 			allHeaders := c.Response().Header.All()
 			e.headers = e.headers[:0]
 			for key, value := range allHeaders {
-				keyStr := string(key)
-				if _, ok := ignoreHeaders[keyStr]; ok {
+				if isIgnoredHeader(key) {
 					continue
 				}
 
 				e.headers = append(e.headers, cachedHeader{
-					key:   utils.CopyBytes(utils.UnsafeBytes(keyStr)),
+					key:   utils.CopyBytes(key),
 					value: utils.CopyBytes(value),
 				})
 			}
@@ -858,7 +857,7 @@ func New(config ...Config) fiber.Handler {
 			// without its Content-Type — which is why that one is always kept
 			// too.
 			e.headers = e.headers[:0]
-			if location := c.Response().Header.Peek(fiber.HeaderLocation); len(location) > 0 {
+			if location := firstFieldLine(&c.Response().Header, fiber.HeaderLocation, canonical); len(location) > 0 {
 				e.headers = append(e.headers, cachedHeader{
 					key:   utils.CopyBytes(utils.UnsafeBytes(fiber.HeaderLocation)),
 					value: utils.CopyBytes(location),
@@ -879,7 +878,7 @@ func New(config ...Config) fiber.Handler {
 			if respCacheControl.maxAgeSet {
 				expiration = secondsToDuration(respCacheControl.maxAge)
 				expirationSource = expirationSourceMaxAge
-			} else if expiresBytes := c.Response().Header.Peek(fiber.HeaderExpires); len(expiresBytes) > 0 {
+			} else if expiresBytes := firstFieldLine(&c.Response().Header, fiber.HeaderExpires, canonical); len(expiresBytes) > 0 {
 				// Same parser as the Date header (utils.go parseHTTPDate) so
 				// both share one acceptance set: IMF-fixdate plus the obsolete
 				// RFC 850 and asctime forms RFC 9110 §5.6.7 requires.

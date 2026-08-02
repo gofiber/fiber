@@ -1552,3 +1552,179 @@ func Test_Authorization_MixedCaseFieldLines(t *testing.T) {
 	require.Equal(t, cacheMiss, status)
 	require.Equal(t, "PUBLIC", body, "an anonymous request must not be served the authorized response")
 }
+
+// Test_Cache_NonCanonicalResponseNamesAreNotDuplicated checks that the fields
+// this middleware writes from an entry are not emitted a second time beside the
+// spelling the handler chose for them.
+//
+// Under DisableHeaderNormalizing the stored key is whatever the handler wrote,
+// so a byte-for-byte lookup found neither the value to honor nor the line to
+// replace. Every field then went out twice, and the second Cache-Control was
+// the "public" this middleware synthesizes on a hit when it believes the
+// response carries none — telling a downstream shared cache it may store and
+// share a response whose origin never said so.
+func Test_Cache_NonCanonicalResponseNamesAreNotDuplicated(t *testing.T) {
+	t.Parallel()
+
+	for _, normalize := range []bool{true, false} {
+		t.Run(fmt.Sprintf("normalize=%v", normalize), func(t *testing.T) {
+			t.Parallel()
+
+			app := fiber.New(fiber.Config{DisableHeaderNormalizing: !normalize})
+			app.Use(New(Config{StoreResponseHeaders: true, Expiration: time.Minute}))
+			app.Get("/", func(c fiber.Ctx) error {
+				// Lower case throughout, which is legal on the wire and is what
+				// DisableHeaderNormalizing preserves.
+				c.Response().Header.Set("cache-control", "max-age=60")
+				c.Response().Header.Set("age", "0")
+				c.Response().Header.Set("etag", `"v1"`)
+				c.Response().Header.Set("expires", "Wed, 21 Oct 2099 07:28:00 GMT")
+				c.Response().Header.Set("date", "Wed, 21 Oct 2020 07:28:00 GMT")
+				return c.SendString("body")
+			})
+
+			single := []string{
+				fiber.HeaderCacheControl,
+				fiber.HeaderAge,
+				fiber.HeaderETag,
+				fiber.HeaderExpires,
+				fiber.HeaderDate,
+			}
+
+			for _, want := range []string{cacheMiss, cacheHit} {
+				resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+				require.NoError(t, err)
+				require.Equal(t, want, resp.Header.Get("X-Cache"))
+
+				for _, name := range single {
+					require.Len(t, resp.Header.Values(name), 1,
+						"%s must be sent on exactly one field line (%s): %v",
+						name, want, resp.Header.Values(name))
+				}
+
+				// The origin said max-age, never public. Synthesizing one is
+				// what lifts RFC 9111 Section 3.5 for a downstream shared cache.
+				require.NotContains(t, resp.Header.Get(fiber.HeaderCacheControl), "public",
+					"the handler's Cache-Control must be the one that goes out (%s)", want)
+			}
+		})
+	}
+}
+
+// Test_Cache_NonCanonicalResponseNamesAreHonored checks that the values behind
+// those spellings still decide what they are supposed to decide, whichever
+// spelling the handler used.
+func Test_Cache_NonCanonicalResponseNamesAreHonored(t *testing.T) {
+	t.Parallel()
+
+	// Each case asserts the same outcome under both header-name settings: the
+	// spelling a handler picks is not allowed to change what the cache does.
+	tests := []struct {
+		handler  fiber.Handler
+		assert   func(t *testing.T, resp *http.Response)
+		name     string
+		statuses []string
+	}{
+		{
+			name: "a cached redirect keeps its destination",
+			handler: func(c fiber.Ctx) error {
+				c.Status(fiber.StatusMovedPermanently)
+				c.Response().Header.Set("location", "/new")
+				return nil
+			},
+			statuses: []string{cacheMiss, cacheHit},
+			assert: func(t *testing.T, resp *http.Response) {
+				t.Helper()
+				require.Equal(t, fiber.StatusMovedPermanently, resp.StatusCode)
+				require.Equal(t, "/new", resp.Header.Get(fiber.HeaderLocation))
+			},
+		},
+		{
+			// Stale on arrival, so there is nothing worth storing. Missing the
+			// header meant storing it for the configured minute instead.
+			name: "an Expires in the past is not stored",
+			handler: func(c fiber.Ctx) error {
+				c.Response().Header.Set("expires", "Wed, 21 Oct 2020 07:28:00 GMT")
+				return c.SendString("body")
+			},
+			statuses: []string{cacheUnreachable, cacheUnreachable},
+			assert: func(t *testing.T, resp *http.Response) {
+				t.Helper()
+				require.Equal(t, "Wed, 21 Oct 2020 07:28:00 GMT", resp.Header.Get(fiber.HeaderExpires))
+			},
+		},
+		{
+			// no-store is a refusal to keep the response at all.
+			name: "no-store is obeyed",
+			handler: func(c fiber.Ctx) error {
+				c.Response().Header.Set("cache-control", "no-store")
+				return c.SendString("body")
+			},
+			statuses: []string{cacheUnreachable, cacheUnreachable},
+			assert:   func(_ *testing.T, _ *http.Response) {},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			for _, normalize := range []bool{true, false} {
+				app := fiber.New(fiber.Config{DisableHeaderNormalizing: !normalize})
+				app.Use(New(Config{StoreResponseHeaders: true, Expiration: time.Minute}))
+				app.Get("/", tc.handler)
+
+				for _, want := range tc.statuses {
+					resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+					require.NoError(t, err)
+					require.Equal(t, want, resp.Header.Get("X-Cache"), "normalize=%v", normalize)
+					tc.assert(t, resp)
+				}
+			}
+		})
+	}
+}
+
+// Test_Cache_OuterMiddlewareHeaderNamesAreNotDuplicated covers the other side
+// of the same lookup: a middleware that runs before this one has already
+// written to the response by the time a hit is served, so the fields replayed
+// from the entry are written over lines that are there in whatever spelling
+// that middleware chose.
+//
+// Set matches the key byte for byte, so under DisableHeaderNormalizing it
+// appended rather than replaced and the response went out with both — the
+// stored value and a stale copy of the same field, with nothing to say which
+// one a recipient should read.
+func Test_Cache_OuterMiddlewareHeaderNamesAreNotDuplicated(t *testing.T) {
+	t.Parallel()
+
+	for _, normalize := range []bool{true, false} {
+		t.Run(fmt.Sprintf("normalize=%v", normalize), func(t *testing.T) {
+			t.Parallel()
+
+			app := fiber.New(fiber.Config{DisableHeaderNormalizing: !normalize})
+			app.Use(func(c fiber.Ctx) error {
+				c.Response().Header.Set("cache-control", "max-age=5")
+				c.Response().Header.Set("etag", `"outer"`)
+				c.Response().Header.Set("expires", "Wed, 21 Oct 2099 07:28:00 GMT")
+				return c.Next()
+			})
+			app.Use(New(Config{StoreResponseHeaders: true, Expiration: time.Minute}))
+			app.Get("/", func(c fiber.Ctx) error {
+				return c.SendString("body")
+			})
+
+			for _, want := range []string{cacheMiss, cacheHit} {
+				resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+				require.NoError(t, err)
+				require.Equal(t, want, resp.Header.Get("X-Cache"))
+
+				for _, name := range []string{fiber.HeaderCacheControl, fiber.HeaderETag, fiber.HeaderExpires} {
+					require.Len(t, resp.Header.Values(name), 1,
+						"%s must be sent on exactly one field line (%s): %v",
+						name, want, resp.Header.Values(name))
+				}
+			}
+		})
+	}
+}
