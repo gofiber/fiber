@@ -827,6 +827,21 @@ func Test_TargetLetsRequestPickHost(t *testing.T) {
 		{"https://$1.example.com", false},
 		{"https://cdn.example.com$1", false},
 		{"https://cdn.example.com/$1", false},
+		// The same rules spelled without the "//". A special scheme reaches the
+		// authority state either way, so the two spellings have to be read the
+		// same: the capture here is a label under the author's host, and it is
+		// authorityHolds that judges each value for it.
+		{"https:$1.example.com", false},
+		{"https:cdn.example.com$1", false},
+		{"https:cdn.$1.com", false},
+		{"ws:$1.example.com", false},
+		{"ftp:cdn.example.com$1", false},
+		{"HTTPS:$1.example.com", false},
+		// And where nothing but a port or a dot sits beside it, refused in
+		// either spelling.
+		{"https:$1:8080", true},
+		{"ws:$1.", true},
+		{"https:example.com@$1", true},
 		// The author's host text can sit either side of the capture, and a
 		// captured port leaves it theirs.
 		{"https://$1@example.com", false},
@@ -1703,6 +1718,107 @@ func Test_Redirect_CarriesQueryOntoTargetsOwnQuery(t *testing.T) {
 			resp, err := app.Test(req)
 			require.NoError(t, err)
 			require.Equal(t, tc.want, resp.Header.Get("Location"))
+		})
+	}
+}
+
+// Test_Redirect_NoSlashSpecialSchemeAuthorityIsGuarded pins that a target
+// naming its host without the "//" is held to the same rules as one that writes
+// them.
+//
+// A special scheme reaches the authority state either way — "https:host" and
+// "https://host" name the same host — but authoritySpan looked for the slashes,
+// so the no-slash spelling had no authority for the chunk checks to guard and
+// no value was ever refused. "https:cdn.example.com$1" composed
+// "https:cdn.example.com@evil.com", where everything before the "@" is userinfo
+// and evil.com is the host the client reaches.
+func Test_Redirect_NoSlashSpecialSchemeAuthorityIsGuarded(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		target string
+		path   string
+		want   string
+	}{
+		{
+			name:   "an @ makes the author's host userinfo",
+			target: "https:cdn.example.com$1",
+			path:   "/r/@evil.com",
+			want:   "",
+		},
+		{
+			name:   "a leading dot extends the host into another domain",
+			target: "https:cdn.example.com$1",
+			path:   "/r/.evil.com",
+			want:   "",
+		},
+		{
+			name:   "ws is special too",
+			target: "ws:cdn.example.com$1",
+			path:   "/r/@evil.com",
+			want:   "",
+		},
+		{
+			name:   "ftp is special too",
+			target: "ftp:cdn.example.com$1",
+			path:   "/r/@evil.com",
+			want:   "",
+		},
+		{
+			// The scheme is case-insensitive, so the reading does not change.
+			name:   "the scheme's own case does not matter",
+			target: "HTTPS:cdn.example.com$1",
+			path:   "/r/@evil.com",
+			want:   "",
+		},
+		{
+			// A label under the author's host is what the rule is for.
+			name:   "an interior label still redirects",
+			target: "https:$1.example.com",
+			path:   "/r/tenant",
+			want:   "https:tenant.example.com",
+		},
+		{
+			name:   "a capture between two literals still redirects",
+			target: "https:cdn.$1.com",
+			path:   "/r/example",
+			want:   "https:cdn.example.com",
+		},
+		{
+			// The "/" ends the authority, so the capture is a path segment and
+			// an "@" in it reaches no host.
+			name:   "past the first slash the capture is a path",
+			target: "https:cdn.example.com/$1",
+			path:   "/r/@evil.com",
+			want:   "https:cdn.example.com/@evil.com",
+		},
+		{
+			// mailto is not special: with no "//" it has no authority at all,
+			// so the capture is an addressee and the author's host follows it.
+			name:   "a scheme that is not special has no implied authority",
+			target: "mailto:$1@example.com",
+			path:   "/r/user",
+			want:   "mailto:user@example.com",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			app := fiber.New()
+			app.Use(New(Config{Rules: map[string]string{"/r/*": tc.target}, StatusCode: fiber.StatusFound}))
+			app.Use(func(c fiber.Ctx) error { return c.SendString("fell through") })
+
+			req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, tc.path, http.NoBody)
+			require.NoError(t, err)
+			resp, err := app.Test(req)
+			require.NoError(t, err)
+			require.Equal(t, tc.want, resp.Header.Get("Location"))
+			if tc.want == "" {
+				require.Equal(t, fiber.StatusOK, resp.StatusCode, "a refused value falls through")
+			}
 		})
 	}
 }

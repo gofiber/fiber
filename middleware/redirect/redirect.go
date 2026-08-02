@@ -244,16 +244,30 @@ func targetNamesAuthority(target string) bool {
 // "///$1" look like a target with an empty authority — no chunks to guard, and
 // still "absolute" enough to skip keepSameOrigin — while the browser read
 // "///evil.com" as evil.com.
+//
+// A special scheme does not need the "//" at all: its own state in the parser
+// goes to the authority whether or not the slashes are there, so "https:host"
+// and "https://host" name the same host. Requiring them here left the same rule
+// guarded in one spelling and not the other — "https://cdn.example.com$1" was
+// refused a value of "@evil.com", while "https:cdn.example.com$1" composed
+// "https:cdn.example.com@evil.com", where everything before the "@" is userinfo
+// and the host is the request's.
 func authoritySpan(target string) (start, end int) { //nolint:nonamedreturns // the pair is a range; names say which is which
 	switch {
 	case strings.HasPrefix(target, "//"):
 		start = 2
 	default:
 		i := schemeEnd(target)
-		if i <= 0 || !strings.HasPrefix(target[i+1:], "//") {
+		switch {
+		case i <= 0:
+			return 0, 0
+		case strings.HasPrefix(target[i+1:], "//"):
+			start = i + 3
+		case isSpecialScheme(target[:i]):
+			start = i + 1
+		default:
 			return 0, 0
 		}
-		start = i + 3
 	}
 
 	for start < len(target) && (target[start] == '/' || target[start] == '\\') {
@@ -264,6 +278,26 @@ func authoritySpan(target string) (start, end int) { //nolint:nonamedreturns // 
 		return start, start + offset
 	}
 	return start, len(target)
+}
+
+// specialSchemes are the schemes the WHATWG URL Standard calls special. The
+// parser reaches the authority state for these with or without the "//" that
+// every other scheme needs, and it is the only list where that is true.
+var specialSchemes = map[string]struct{}{
+	"http":  {},
+	"https": {},
+	"ws":    {},
+	"wss":   {},
+	"ftp":   {},
+	"file":  {},
+}
+
+// isSpecialScheme reports whether scheme is one of them. A scheme is
+// case-insensitive (RFC 3986 Section 3.1), so "HTTPS:host" reaches the host the
+// same way "https:host" does.
+func isSpecialScheme(scheme string) bool {
+	_, ok := specialSchemes[strings.ToLower(scheme)]
+	return ok
 }
 
 // authorityChunks splits target's own authority into literal text and "$N"

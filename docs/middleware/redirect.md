@@ -156,12 +156,20 @@ any custom or deep-link scheme hand the host to a captured `//evil.com` exactly
 as `"https:$1"` does; for `http`, `https`, `ws`, `wss` and `ftp` the parser does
 not even need the slashes, reading `"ws:evil.com"` as `ws://evil.com`.
 
-What decides it is where the capture sits, not which scheme precedes it. A
-capture straight after the colon can open an authority; one with the author's
-text in front of it cannot, so `"myapp:fixed/$1"` and `"https:fixed/$1"` are
-fine. And a capture at the front is fine where the author wrote host text after
-it — in `"mailto:$1@example.com"` the parser reads `example.com` as the host and
-the capture as userinfo.
+Because those schemes reach a host without the slashes, a target that writes
+one without them names an authority all the same, and every rule above applies
+to it unchanged: `"https:cdn.example.com$1"` is read exactly as
+`"https://cdn.example.com$1"` — so it too refuses a capture that would turn the
+author's host into userinfo (`/r/@evil.com`) or extend it into another domain
+(`/r/.evil.com`).
+
+What decides it otherwise is where the capture sits, not which scheme precedes
+it. A capture with the author's text in front of it opens no authority, so
+`"myapp:fixed/$1"` and `"https:fixed/$1"` are fine. And a capture at the front
+is fine where the author wrote host text after it — in
+`"mailto:$1@example.com"` the parser reads `example.com` as the host and the
+capture as userinfo. `mailto` is not one of the special schemes, so without a
+`//` it has no authority at all.
 
 ::::
 
