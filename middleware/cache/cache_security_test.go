@@ -1892,3 +1892,28 @@ func Test_Cache_CookieKeyedEntriesStayPerSession(t *testing.T) {
 		}
 	}
 }
+
+// Test_Cache_LongHeaderNameIsNotIgnored covers the length guard on the
+// ignore-list lookup. No name this middleware refuses to carry between
+// requests is anywhere near that long, so a longer one is by definition not
+// one of them and must be stored and replayed like any other.
+func Test_Cache_LongHeaderNameIsNotIgnored(t *testing.T) {
+	t.Parallel()
+
+	long := "X-" + strings.Repeat("a", maxIgnoredHeaderLen)
+	require.Greater(t, len(long), maxIgnoredHeaderLen)
+
+	app := fiber.New()
+	app.Use(New(Config{StoreResponseHeaders: true, Expiration: time.Minute}))
+	app.Get("/", func(c fiber.Ctx) error {
+		c.Set(long, "kept")
+		return c.SendString("body")
+	})
+
+	for _, want := range []string{cacheMiss, cacheHit} {
+		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, want, resp.Header.Get("X-Cache"))
+		require.Equal(t, "kept", resp.Header.Get(long), "a name too long to be on the list is carried (%s)", want)
+	}
+}

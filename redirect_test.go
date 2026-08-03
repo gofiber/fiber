@@ -1571,3 +1571,119 @@ func Test_Redirect_Back_IgnoresHeaderNameCase(t *testing.T) {
 		})
 	}
 }
+
+// go test -run Test_Redirect_Back_RejectsUnusableReferers
+//
+// Every referer that cannot be resolved back to this origin falls back rather
+// than being echoed into Location. These are the shapes that fail before the
+// same-origin comparison is even reached: one that normalizes away to nothing,
+// and one the URL parser refuses.
+func Test_Redirect_Back_RejectsUnusableReferers(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		referer string
+	}{
+		{name: "empty", referer: ""},
+		// Leading and trailing C0 controls and spaces are stripped before
+		// anything else, so these name no location at all.
+		{name: "only spaces", referer: " "},
+		{name: "only controls", referer: "\t\n "},
+		// url.Parse refuses these outright.
+		{name: "bad percent escape", referer: "%zz"},
+		{name: "control byte", referer: "http://a\x7fb"},
+		{name: "space in the scheme", referer: "ht tp://x"},
+		{name: "no scheme before the colon", referer: "://x"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			app := New()
+			c := app.AcquireCtx(&fasthttp.RequestCtx{})
+			defer app.ReleaseCtx(c)
+
+			if tc.referer != "" {
+				c.Request().Header.Set(HeaderReferer, tc.referer)
+			}
+
+			require.NoError(t, c.Redirect().Back("/fallback"))
+			require.Equal(t, "/fallback", string(c.Response().Header.Peek(HeaderLocation)))
+		})
+	}
+
+	t.Run("no referer at all, with names left as sent", func(t *testing.T) {
+		t.Parallel()
+
+		// The walk that matches the name case-insensitively finds nothing here,
+		// which is the same answer as the byte-for-byte lookup.
+		app := New(Config{DisableHeaderNormalizing: true})
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		defer app.ReleaseCtx(c)
+
+		c.Request().Header.DisableNormalizing()
+		c.Request().Header.Set("X-Not-A-Referer", "/nope")
+
+		require.NoError(t, c.Redirect().Back("/fallback"))
+		require.Equal(t, "/fallback", string(c.Response().Header.Peek(HeaderLocation)))
+	})
+
+	t.Run("no referer and no fallback is an error", func(t *testing.T) {
+		t.Parallel()
+
+		app := New()
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		defer app.ReleaseCtx(c)
+
+		require.ErrorIs(t, c.Redirect().Back(), ErrRedirectBackNoFallback)
+	})
+}
+
+// Test_Redirect_parseAndClearFlashMessages_UndecodablePayload covers a cookie
+// that decodes as hex but is not what this application wrote.
+//
+// UnmarshalMsg re-slices to the length the payload declares before it decodes
+// any element, so a failure partway leaves the slice holding zero-valued
+// entries. Reading those back would hand the handler empty messages nobody set,
+// which is why the slice is dropped rather than kept at whatever length the
+// payload claimed.
+func Test_Redirect_parseAndClearFlashMessages_UndecodablePayload(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		payload []byte
+	}{
+		// An array header claiming four elements, and then nothing.
+		{name: "truncated after the count", payload: []byte{0x94}},
+		// A byte message-pack never assigns.
+		{name: "never a valid type", payload: []byte{0xc1, 0xc1}},
+		// A long claimed length with no elements behind it, which is the shape
+		// that leaves the most zero-valued entries.
+		{name: "claims more than it carries", payload: []byte{0xdc, 0x01, 0x00}},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			app := New()
+			c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck,forcetypeassert // not needed
+			defer app.ReleaseCtx(c)
+
+			r := AcquireRedirect()
+			r.c = c
+			defer ReleaseRedirect(r)
+
+			c.Request().Header.SetCookie(FlashCookieName, hex.EncodeToString(tc.payload))
+
+			r.parseAndClearFlashMessages()
+
+			require.Empty(t, r.messages)
+			require.Empty(t, c.flashMessages, "a payload that failed to decode leaves nothing behind")
+			assertFlashCookieCleared(t, c.GetRespHeader(HeaderSetCookie))
+		})
+	}
+}
