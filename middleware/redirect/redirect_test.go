@@ -1822,3 +1822,71 @@ func Test_Redirect_NoSlashSpecialSchemeAuthorityIsGuarded(t *testing.T) {
 		})
 	}
 }
+
+// Test_Redirect_RuleOrderIsBySpecificity pins the order overlapping rules are
+// tried in. A map range gave no order at all, so which rule won changed run to
+// run; ordering by the literal prefix alone fixed the "/*" versus "/old/*" case
+// but left two rules that pin the same prefix tied, and the lexicographic
+// fallback then put the broader one first — where it matches everything the
+// narrower one would, leaving that rule dead.
+func Test_Redirect_RuleOrderIsBySpecificity(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		rules map[string]string
+		path  string
+		want  string
+	}{
+		{
+			// Same prefix, so only what each pins past the wildcard separates
+			// them.
+			name:  "a suffix past the wildcard is more specific",
+			rules: map[string]string{"/cdn/*": "/broad", "/cdn/*x": "/narrow"},
+			path:  "/cdn/foox",
+			want:  "/narrow",
+		},
+		{
+			name:  "and the broader rule still takes what the narrower does not",
+			rules: map[string]string{"/cdn/*": "/broad", "/cdn/*x": "/narrow"},
+			path:  "/cdn/foo",
+			want:  "/broad",
+		},
+		{
+			name:  "an extension is a suffix like any other",
+			rules: map[string]string{"/p/*": "/any", "/p/*.png": "/img"},
+			path:  "/p/q.png",
+			want:  "/img",
+		},
+		{
+			// The prefix comparison still decides first: an anchored prefix is
+			// the stronger claim, so the catch-all does not shadow this.
+			name:  "a longer prefix outranks a longer total",
+			rules: map[string]string{"/*": "/catchall", "/old/*": "/new"},
+			path:  "/old/z",
+			want:  "/new",
+		},
+		{
+			name:  "a deeper prefix wins too",
+			rules: map[string]string{"/a/*": "/one", "/a/b/*": "/two"},
+			path:  "/a/b/c",
+			want:  "/two",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			app := fiber.New()
+			app.Use(New(Config{Rules: tc.rules, StatusCode: fiber.StatusFound}))
+			app.Use(func(c fiber.Ctx) error { return c.SendString("fell through") })
+
+			req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, tc.path, http.NoBody)
+			require.NoError(t, err)
+			resp, err := app.Test(req)
+			require.NoError(t, err)
+			require.Equal(t, tc.want, resp.Header.Get("Location"))
+		})
+	}
+}

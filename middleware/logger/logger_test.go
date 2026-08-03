@@ -2118,3 +2118,33 @@ func Test_Logger_IPs_WithoutHeaderNormalizing(t *testing.T) {
 		})
 	}
 }
+
+// Test_Logger_RegisterContextTag_Sanitizes pins that a value rendered by a
+// registered context tag cannot close the log line it is written on.
+//
+// Every built-in tag passes through the sanitizer; this path did not, so a CR
+// or LF in whatever the application pulled out of the context — in practice
+// request data — started a second entry the reader has no way to tell from a
+// real one.
+func Test_Logger_RegisterContextTag_Sanitizes(t *testing.T) {
+	RegisterContextTag("sanitize-probe", func(_ any) string {
+		return "before\r\nGET /forged HTTP/1.1\nafter"
+	})
+
+	var buf bytes.Buffer
+	app := fiber.New()
+	app.Use(New(Config{
+		Format: "${sanitize-probe}\n",
+		Stream: &buf,
+	}))
+	app.Get("/", func(c fiber.Ctx) error { return c.SendString("ok") })
+
+	_, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+	require.NoError(t, err)
+
+	line := buf.String()
+	require.NotContains(t, line, "\r", "a CR must not reach the log")
+	require.Equal(t, 1, strings.Count(line, "\n"), "the entry must occupy one line: %q", line)
+	require.Contains(t, line, "before")
+	require.Contains(t, line, "after")
+}

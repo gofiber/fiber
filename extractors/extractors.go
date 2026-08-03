@@ -30,6 +30,7 @@ import (
 	"net/url"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/headerlookup"
 	"github.com/gofiber/utils/v2"
 )
 
@@ -344,7 +345,11 @@ func FromForm(param string) Extractor {
 func FromHeader(header string) Extractor {
 	return Extractor{
 		Extract: func(c fiber.Ctx) (string, error) {
-			value := c.Get(header)
+			// Not Ctx.Get: it compares the stored key byte for byte, so under
+			// DisableHeaderNormalizing a token sent under the lower-case name
+			// that HTTP/2 and HTTP/3 put on the wire was not found, and the
+			// request refused for carrying no token when it carried one.
+			value := headerlookup.Value(c, header)
 			if value == "" {
 				return "", ErrNotFound
 			}

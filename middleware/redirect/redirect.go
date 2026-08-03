@@ -52,13 +52,23 @@ func New(config ...Config) fiber.Handler {
 	// and now, since a rule can be refused and fall through to the next, whether
 	// there is a redirect at all — changed from run to run.
 	//
-	// Most specific first, measured by how much of the path a rule pins before
-	// its first wildcard. Plain lexicographic order would sort "/*" ahead of
-	// "/old/*" and let the catch-all shadow it on every request; ties fall back
-	// to the key so the order stays total.
+	// Most specific first. Plain lexicographic order would sort "/*" ahead of
+	// "/old/*" and let the catch-all shadow it on every request.
+	//
+	// Specificity is read in two steps, because one measure does not order these
+	// rules on its own. How much a rule pins before its first wildcard comes
+	// first: an anchored prefix is the stronger claim, so "/old/*" outranks "/*".
+	// Where two rules pin the same prefix that is a tie — "/cdn/*" and "/cdn/*x"
+	// both stop at "/cdn/" — and the total pinned length separates them, so the
+	// rule that also pins an "x" past the wildcard is tried first rather than
+	// being left dead behind the broader one. Ties beyond that fall back to the
+	// key so the order stays total.
 	keys := slices.Collect(maps.Keys(cfg.Rules))
 	slices.SortFunc(keys, func(a, b string) int {
 		if d := cmp.Compare(literalPrefixLen(b), literalPrefixLen(a)); d != 0 {
+			return d
+		}
+		if d := cmp.Compare(literalLen(b), literalLen(a)); d != 0 {
 			return d
 		}
 		return cmp.Compare(a, b)
@@ -939,4 +949,15 @@ func literalPrefixLen(rule string) int {
 		return i
 	}
 	return len(rule)
+}
+
+// literalLen returns how much of a rule's path is pinned in total, which is what
+// separates two rules whose wildcards start at the same place.
+//
+// The prefix alone cannot: "/cdn/*" and "/cdn/*x" both pin "/cdn/", so ordering
+// them by prefix is a tie, and the lexicographic fallback put the broader rule
+// first — where it matches everything the narrower one would, leaving "/cdn/*x"
+// dead. What "x" pins is real, it just sits on the far side of the wildcard.
+func literalLen(rule string) int {
+	return len(rule) - strings.Count(rule, "*")
 }

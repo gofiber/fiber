@@ -252,14 +252,24 @@ func firstFieldLine(h headerPeeker, name string, normalized bool) []byte { //nol
 // how old it believes the response to be.
 func setFieldLine(h *fasthttp.ResponseHeader, name string, value []byte, normalized bool) { //nolint:revive // flag-parameter: normalized is a property of the header store
 	if !normalized {
+		// Every other spelling, not just the first one found. Writing through
+		// the first and stopping there left any remaining spelling untouched,
+		// so a response already carrying both "Date" and "date" — one from an
+		// outer middleware, one from the handler — went out with the stale one
+		// beside the value written here, which is the pair this exists to
+		// prevent.
+		//
+		// Collected before anything is deleted: Del is byte-exact too, and
+		// removing an entry while ranging over the store it belongs to is not
+		// safe.
+		var others []string
 		for k := range h.All() {
 			if ks := utils.UnsafeString(k); ks != name && utils.EqualFold(ks, name) {
-				// Write through the spelling already there rather than
-				// deleting it: Del is byte-exact too, and removing an entry
-				// while ranging over the store it belongs to is not safe.
-				h.SetBytesKV(k, value)
-				return
+				others = append(others, string(k))
 			}
+		}
+		for _, k := range others {
+			h.Del(k)
 		}
 	}
 

@@ -1765,3 +1765,54 @@ func Test_Cache_SetCookie2IsSeenWhateverItsCase(t *testing.T) {
 		})
 	}
 }
+
+// Test_Cache_EveryStaleSpellingIsReplaced covers a response that already
+// carries two spellings of a field this middleware writes.
+//
+// Writing through the first one found and stopping there left the other in
+// place, so the value written here went out beside a stale copy of the same
+// field — the pair the write exists to prevent, reached by a response that had
+// already been touched twice before the cache saw it.
+func Test_Cache_EveryStaleSpellingIsReplaced(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New(fiber.Config{DisableHeaderNormalizing: true})
+	// Two middlewares ahead of the cache, each choosing its own spelling.
+	// Three spellings of each field: the canonical one SetBytesV replaces on its
+	// own, plus two more that only the scan can reach. One is what a loop that
+	// stops at the first match leaves behind.
+	app.Use(func(c fiber.Ctx) error {
+		c.Response().Header.Set("cache-control", "max-age=5")
+		c.Response().Header.Set("etag", `"lower"`)
+		return c.Next()
+	})
+	app.Use(func(c fiber.Ctx) error {
+		c.Response().Header.Add("CACHE-CONTROL", "max-age=7")
+		c.Response().Header.Add("ETAG", `"upper"`)
+		return c.Next()
+	})
+	app.Use(func(c fiber.Ctx) error {
+		c.Response().Header.Add(fiber.HeaderCacheControl, "max-age=6")
+		c.Response().Header.Add(fiber.HeaderETag, `"canonical"`)
+		return c.Next()
+	})
+	app.Use(New(Config{StoreResponseHeaders: true, Expiration: time.Minute}))
+	app.Get("/", func(c fiber.Ctx) error { return c.SendString("body") })
+
+	// The miss carries both lines because both middlewares wrote one and the
+	// cache writes neither on that path — their business, not this one's.
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, cacheMiss, resp.Header.Get("X-Cache"))
+
+	// The hit is where this middleware writes them from the entry, and there it
+	// owns the field: one line, whatever spellings it had to replace.
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, cacheHit, resp.Header.Get("X-Cache"))
+
+	for _, name := range []string{fiber.HeaderCacheControl, fiber.HeaderETag} {
+		require.Len(t, resp.Header.Values(name), 1,
+			"%s must be sent on exactly one field line: %v", name, resp.Header.Values(name))
+	}
+}
