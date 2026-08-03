@@ -1816,3 +1816,79 @@ func Test_Cache_EveryStaleSpellingIsReplaced(t *testing.T) {
 			"%s must be sent on exactly one field line: %v", name, resp.Header.Values(name))
 	}
 }
+
+// Test_Cache_CookieKeyedEntriesStayPerSession pins that a cache keyed on Cookie
+// keeps one entry per session whatever the header-name setting is.
+//
+// The Cookie dimension is read after forcing fasthttp's cookie collection,
+// which moves the field lines out of the general header store — so a
+// case-insensitive walk of that store finds nothing there. It finds them all
+// the same, because the iterator yields the collected cookies separately under
+// the canonical name. Were that not so, every request would hash an empty
+// Cookie dimension and distinct sessions would collapse onto one key, which is
+// one client's private response served to another.
+func Test_Cache_CookieKeyedEntriesStayPerSession(t *testing.T) {
+	t.Parallel()
+
+	for _, mode := range []string{"KeyHeaders", "Vary"} {
+		for _, normalize := range []bool{true, false} {
+			t.Run(fmt.Sprintf("%s/normalize=%v", mode, normalize), func(t *testing.T) {
+				t.Parallel()
+
+				cfg := Config{Expiration: time.Minute}
+				if mode == "KeyHeaders" {
+					cfg.KeyHeaders = []string{fiber.HeaderCookie}
+				}
+
+				app := fiber.New(fiber.Config{DisableHeaderNormalizing: !normalize})
+				app.Use(New(cfg))
+				app.Get("/", func(c fiber.Ctx) error {
+					if mode == "Vary" {
+						c.Set(fiber.HeaderVary, fiber.HeaderCookie)
+					}
+					return c.SendString("private to " + c.Cookies("sess"))
+				})
+				h := app.Handler()
+
+				do := func(cookieHeader, session string) (string, string) {
+					req := fasthttp.AcquireRequest()
+					defer fasthttp.ReleaseRequest(req)
+					if !normalize {
+						req.Header.DisableNormalizing()
+					}
+					req.Header.SetMethod(fiber.MethodGet)
+					req.SetRequestURI("/")
+					req.Header.SetHost("example.com")
+					req.Header.Set(cookieHeader, "sess="+session)
+
+					ctx := &fasthttp.RequestCtx{}
+					ctx.Init(req, nil, nil)
+					h(ctx)
+					return string(ctx.Response.Body()), string(ctx.Response.Header.Peek("X-Cache"))
+				}
+
+				// alice populates an entry and then reads her own back, so a
+				// miss below means a different key rather than an uncacheable
+				// response.
+				_, _ = do(fiber.HeaderCookie, "alice")
+				body, status := do(fiber.HeaderCookie, "alice")
+				require.Equal(t, cacheHit, status)
+				require.Equal(t, "private to alice", body)
+
+				body, status = do(fiber.HeaderCookie, "bob")
+				require.Equal(t, cacheMiss, status, "bob must not land on alice's entry")
+				require.Equal(t, "private to bob", body)
+
+				// And the same when the name arrives in lower case, which is
+				// what HTTP/2 and HTTP/3 put on the wire.
+				body, status = do("cookie", "carol")
+				require.Equal(t, cacheMiss, status, "carol must not land on an earlier session's entry")
+				require.Equal(t, "private to carol", body)
+
+				body, status = do("cookie", "carol")
+				require.Equal(t, cacheHit, status)
+				require.Equal(t, "private to carol", body)
+			})
+		}
+	}
+}

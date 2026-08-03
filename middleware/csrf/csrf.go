@@ -139,7 +139,10 @@ func New(config ...Config) fiber.Handler {
 		default:
 			// Assume that anything not defined as 'safe' by RFC7231 needs protection
 
-			// Evaluate Sec-Fetch-Site to reject cross-site requests earlier when available.
+			// Reject a Sec-Fetch-Site the browser would never have sent. It
+			// does not decide cross-site on its own: "cross-site" is a value a
+			// browser really does send for a request to a trusted origin, and
+			// only originMatchesHost knows which origins those are.
 			if err := validateSecFetchSite(c); err != nil {
 				return cfg.ErrorHandler(c, err)
 			}
@@ -341,6 +344,15 @@ func (handler *Handler) DeleteToken(c fiber.Ctx) error {
 	return nil
 }
 
+// validateSecFetchSite rejects a Sec-Fetch-Site header carrying anything but
+// one of the four values the Fetch standard defines.
+//
+// It does not reject "cross-site". That value is what a browser sends for a
+// legitimate request to an origin the application listed in TrustedOrigins, so
+// refusing it here would make that setting unusable — and refusing it where
+// there are no trusted origins buys nothing, since originMatchesHost has no way
+// to allow such a request either. What is left for this to catch is a value no
+// browser produces, which means the header was written by something else.
 func validateSecFetchSite(c fiber.Ctx) error {
 	secFetchSite := utils.Trim(headerlookup.Value(c, fiber.HeaderSecFetchSite), ' ')
 

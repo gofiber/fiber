@@ -3397,3 +3397,61 @@ func Test_CSRF_OriginCheckIgnoresHeaderNameCase(t *testing.T) {
 		})
 	}
 }
+
+// Test_CSRF_TrustedOriginIsAllowedWhenCrossSite pins that Sec-Fetch-Site does
+// not decide cross-site on its own.
+//
+// "cross-site" is exactly what a browser sends for a legitimate request to an
+// origin the application trusts, so rejecting it in the header check would make
+// TrustedOrigins unusable; the decision belongs to the origin check, which
+// knows which origins those are.
+func Test_CSRF_TrustedOriginIsAllowedWhenCrossSite(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Use(New(Config{TrustedOrigins: []string{"http://partner.com"}}))
+	app.Get("/", func(c fiber.Ctx) error { return c.SendString(TokenFromContext(c)) })
+	app.Post("/", func(c fiber.Ctx) error { return c.SendString("accepted") })
+	h := app.Handler()
+
+	get := fasthttp.AcquireRequest()
+	defer fasthttp.ReleaseRequest(get)
+	get.Header.SetMethod(fiber.MethodGet)
+	get.SetRequestURI("/")
+	get.Header.SetHost("example.com")
+	gctx := &fasthttp.RequestCtx{}
+	gctx.Init(get, nil, nil)
+	h(gctx)
+
+	token := string(gctx.Response.Body())
+	require.NotEmpty(t, token)
+	cookie, _, _ := strings.Cut(string(gctx.Response.Header.Peek(fiber.HeaderSetCookie)), ";")
+	require.NotEmpty(t, cookie)
+
+	post := func(origin, secFetchSite string) int {
+		req := fasthttp.AcquireRequest()
+		defer fasthttp.ReleaseRequest(req)
+		req.Header.SetMethod(fiber.MethodPost)
+		req.SetRequestURI("/")
+		req.Header.SetHost("example.com")
+		req.Header.Set(fiber.HeaderCookie, cookie)
+		req.Header.Set(HeaderName, token)
+		req.Header.Set(fiber.HeaderOrigin, origin)
+		if secFetchSite != "" {
+			req.Header.Set(fiber.HeaderSecFetchSite, secFetchSite)
+		}
+		ctx := &fasthttp.RequestCtx{}
+		ctx.Init(req, nil, nil)
+		h(ctx)
+		return ctx.Response.StatusCode()
+	}
+
+	require.Equal(t, fiber.StatusOK, post("http://partner.com", "cross-site"),
+		"a trusted origin is allowed even though the browser calls it cross-site")
+	require.Equal(t, fiber.StatusOK, post("http://example.com", "same-origin"))
+
+	// The origin check is still what refuses an untrusted one.
+	require.Equal(t, fiber.StatusForbidden, post("http://evil.com", "cross-site"))
+	// And a value no browser produces is refused by the header check itself.
+	require.Equal(t, fiber.StatusForbidden, post("http://partner.com", "not-a-real-value"))
+}
