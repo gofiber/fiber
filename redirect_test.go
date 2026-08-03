@@ -1572,13 +1572,13 @@ func Test_Redirect_Back_IgnoresHeaderNameCase(t *testing.T) {
 	}
 }
 
-// go test -run Test_Redirect_Back_RejectsUnusableReferers
+// go test -run Test_Redirect_Back_RejectsAnUnusableReferer
 //
 // Every referer that cannot be resolved back to this origin falls back rather
 // than being echoed into Location. These are the shapes that fail before the
 // same-origin comparison is even reached: one that normalizes away to nothing,
 // and one the URL parser refuses.
-func Test_Redirect_Back_RejectsUnusableReferers(t *testing.T) {
+func Test_Redirect_Back_RejectsAnUnusableReferer(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
