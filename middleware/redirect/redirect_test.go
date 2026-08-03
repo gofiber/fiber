@@ -1890,3 +1890,35 @@ func Test_Redirect_RuleOrderIsBySpecificity(t *testing.T) {
 		})
 	}
 }
+
+// Test_LiteralLengths pins how a rule's pinned length is measured, which is
+// what orders two rules that overlap.
+func Test_LiteralLengths(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		rule      string
+		prefixLen int
+		totalLen  int
+	}{
+		// No wildcard at all: the whole rule is pinned.
+		{rule: "/exact", prefixLen: 6, totalLen: 6},
+		{rule: "/", prefixLen: 1, totalLen: 1},
+		{rule: "", prefixLen: 0, totalLen: 0},
+		// The prefix stops at the first wildcard; the total counts what
+		// follows it too.
+		{rule: "/cdn/*", prefixLen: 5, totalLen: 5},
+		{rule: "/cdn/*x", prefixLen: 5, totalLen: 6},
+		{rule: "/p/*.png", prefixLen: 3, totalLen: 7},
+		{rule: "*", prefixLen: 0, totalLen: 0},
+		{rule: "/a/*/b/*", prefixLen: 3, totalLen: 6},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.rule, func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, tc.prefixLen, literalPrefixLen(tc.rule), "literalPrefixLen")
+			require.Equal(t, tc.totalLen, literalLen(tc.rule), "literalLen")
+		})
+	}
+}

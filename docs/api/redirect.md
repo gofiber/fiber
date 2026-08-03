@@ -119,7 +119,7 @@ The check reads the referer the way a browser does — folding backslashes,
 dropping ASCII tab, CR and LF, and collapsing a leading run of slashes — so a
 value like `/\evil.com`, which a browser resolves to `//evil.com`, is not
 mistaken for a local path. A referer that is missing, cross-origin, or
-unparseable falls back to the provided URL, and `Back` returns an error if
+unparsable falls back to the provided URL, and `Back` returns an error if
 there is no fallback.
 
 :::

@@ -1376,6 +1376,20 @@ func sendRawUnnormalized(t *testing.T, app *fiber.App, raw string) string {
 	return string(fctx.Response.Body())
 }
 
+// loopbackAlias returns addr with its host rewritten to "localhost", naming the
+// same listener under a different authority.
+//
+// A cross-host redirect is decided by comparing the authority as written, not
+// by where it resolves, so this is enough to make the hop cross an origin
+// without binding a second loopback address.
+func loopbackAlias(t *testing.T, addr string) string {
+	t.Helper()
+
+	_, port, err := net.SplitHostPort(addr)
+	require.NoError(t, err)
+	return net.JoinHostPort("localhost", port)
+}
+
 // matchingFieldLines reports every field line whose name matches one of names,
 // in the spelling the header store holds.
 func matchingFieldLines(c fiber.Ctx, names ...string) []string {
@@ -1458,12 +1472,14 @@ func Test_Proxy_CrossHostCredentialsStrippedWhateverTheirCase(t *testing.T) {
 		return c.SendString("final")
 	})
 
-	// A second host, so the redirect crosses the origin the caller addressed.
-	// 127.0.0.2 and 127.0.0.1 are both loopback but are different hosts.
-	_, redirectAddr := createProxyTestServer(t, func(c fiber.Ctx) error {
-		c.Location("http://" + finalAddr + "/")
+	// The redirect has to cross to a different host, and that is decided by
+	// comparing the authority as written rather than where it resolves — so
+	// name the same listener "localhost" instead of binding a second loopback
+	// address. 127.0.0.2 is bound by default only on Linux.
+	_, redirectAddr := createProxyTestServerIPv4(t, func(c fiber.Ctx) error {
+		c.Location("http://" + loopbackAlias(t, finalAddr) + "/")
 		return c.SendStatus(fiber.StatusFound)
-	}, fiber.NetworkTCP4, "127.0.0.2:0")
+	})
 
 	app := fiber.New(fiber.Config{DisableHeaderNormalizing: true})
 	app.Use(func(c fiber.Ctx) error {
@@ -1498,10 +1514,10 @@ func Test_Proxy_CrossHostStripsEveryCredentialHeader(t *testing.T) {
 		return c.SendString("final")
 	})
 
-	_, redirectAddr := createProxyTestServer(t, func(c fiber.Ctx) error {
-		c.Location("http://" + finalAddr + "/")
+	_, redirectAddr := createProxyTestServerIPv4(t, func(c fiber.Ctx) error {
+		c.Location("http://" + loopbackAlias(t, finalAddr) + "/")
 		return c.SendStatus(fiber.StatusFound)
-	}, fiber.NetworkTCP4, "127.0.0.2:0")
+	})
 
 	app := fiber.New()
 	app.Use(func(c fiber.Ctx) error {

@@ -2148,3 +2148,77 @@ func Test_Logger_RegisterContextTag_Sanitizes(t *testing.T) {
 	require.Contains(t, line, "before")
 	require.Contains(t, line, "after")
 }
+
+// Test_TagIPs_PropagatesWriteErrors pins the short-circuits in the ${ips} tag.
+// A sink that fails partway must stop and surface the error rather than
+// carrying on, and the count returned must reflect only what reached the sink.
+func Test_TagIPs_PropagatesWriteErrors(t *testing.T) {
+	t.Parallel()
+
+	// A trusted proxy, so c.IPs() returns the forwarded chain rather than
+	// nothing at all — the tag needs more than one entry to reach the
+	// separator between them.
+	app := fiber.New(fiber.Config{
+		TrustProxy:       true,
+		TrustProxyConfig: fiber.TrustProxyConfig{Loopback: true},
+	})
+	tag := createTagMap(&ConfigDefault)[TagIPs]
+
+	withChain := func(t *testing.T, chain string) fiber.Ctx {
+		t.Helper()
+		fctx := &fasthttp.RequestCtx{}
+		fctx.Request.Header.SetMethod(fiber.MethodGet)
+		fctx.Request.SetRequestURI("/")
+		fctx.Request.Header.Set(fiber.HeaderXForwardedFor, chain)
+		c := app.AcquireCtx(fctx)
+		t.Cleanup(func() { app.ReleaseCtx(c) })
+		return c
+	}
+
+	t.Run("the whole chain is written", func(t *testing.T) {
+		t.Parallel()
+
+		buf := bytebufferpool.Get()
+		defer bytebufferpool.Put(buf)
+
+		n, err := tag(buf, withChain(t, "1.1.1.1, 2.2.2.2"), nil, "")
+		require.NoError(t, err)
+		require.Equal(t, "1.1.1.1,2.2.2.2", buf.String())
+		require.Equal(t, len(buf.String()), n)
+	})
+
+	t.Run("the first entry fails", func(t *testing.T) {
+		t.Parallel()
+
+		buf := &failingBuffer{ByteBuffer: bytebufferpool.Get(), failAfter: 0}
+		defer bytebufferpool.Put(buf.ByteBuffer)
+
+		n, err := tag(buf, withChain(t, "1.1.1.1, 2.2.2.2"), nil, "")
+		require.ErrorIs(t, err, errWriteFailed)
+		require.Zero(t, n)
+	})
+
+	t.Run("the separator fails", func(t *testing.T) {
+		t.Parallel()
+
+		// One successful write for the first address, then the "," fails.
+		buf := &failingBuffer{ByteBuffer: bytebufferpool.Get(), failAfter: 1}
+		defer bytebufferpool.Put(buf.ByteBuffer)
+
+		n, err := tag(buf, withChain(t, "1.1.1.1, 2.2.2.2"), nil, "")
+		require.ErrorIs(t, err, errWriteFailed)
+		require.Equal(t, len("1.1.1.1"), n, "only the first address reached the sink")
+	})
+
+	t.Run("the second entry fails", func(t *testing.T) {
+		t.Parallel()
+
+		// The first address and the separator succeed; the second fails.
+		buf := &failingBuffer{ByteBuffer: bytebufferpool.Get(), failAfter: 2}
+		defer bytebufferpool.Put(buf.ByteBuffer)
+
+		n, err := tag(buf, withChain(t, "1.1.1.1, 2.2.2.2"), nil, "")
+		require.ErrorIs(t, err, errWriteFailed)
+		require.Equal(t, len("1.1.1.1,"), n)
+	})
+}

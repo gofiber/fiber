@@ -1206,3 +1206,152 @@ func captureOutput(f func()) string {
 func emptyHandler(_ Ctx) error {
 	return nil
 }
+
+// go test -run Test_WarnIgnoredTLSFieldsOnListener_Branches
+//
+// Listener serves the listener it is handed, so every TLS field in the config
+// is dropped. The end-to-end tests above cover CertClientFile, which returns
+// before the rest; this drives the remaining fields, the singular/plural
+// wording, and the two suffixes — a plain listener is not serving TLS at all,
+// which is worth saying, and a TLS one already is.
+func Test_WarnIgnoredTLSFieldsOnListener_Branches(t *testing.T) {
+	// Not parallel: swaps the package-level log output.
+	cert, err := tls.LoadX509KeyPair("./.github/testdata/ssl.pem", "./.github/testdata/ssl.key")
+	require.NoError(t, err)
+
+	plain, err := net.Listen(NetworkTCP4, "127.0.0.1:0")
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = plain.Close() }) //nolint:errcheck // closing a test listener
+
+	secure, err := net.Listen(NetworkTCP4, "127.0.0.1:0")
+	require.NoError(t, err)
+	tlsLn := tls.NewListener(secure, &tls.Config{
+		MinVersion:   tls.VersionTLS12,
+		Certificates: []tls.Certificate{cert},
+	})
+	t.Cleanup(func() { _ = tlsLn.Close() }) //nolint:errcheck // closing a test listener
+
+	tests := []struct {
+		listener net.Listener
+		contains []string
+		absent   []string
+		name     string
+		cfg      ListenConfig
+	}{
+		{
+			name:     "nothing to report",
+			cfg:      ListenConfig{},
+			listener: plain,
+			absent:   []string{"ignored"},
+		},
+		{
+			name:     "one field reads singular",
+			cfg:      ListenConfig{TLSConfig: &tls.Config{MinVersion: tls.VersionTLS12}},
+			listener: tlsLn,
+			contains: []string{"TLSConfig", "is ignored."},
+			absent:   []string{"not serving TLS"},
+		},
+		{
+			// A plain listener is not serving TLS at all, which is the more
+			// surprising half and is said outright.
+			name:     "a plain listener says so",
+			cfg:      ListenConfig{TLSConfig: &tls.Config{MinVersion: tls.VersionTLS12}},
+			listener: plain,
+			contains: []string{"TLSConfig", "is ignored", "this listener is not serving TLS"},
+		},
+		{
+			name: "several fields read plural",
+			cfg: ListenConfig{
+				CertFile:      "./.github/testdata/ssl.pem",
+				CertKeyFile:   "./.github/testdata/ssl.key",
+				TLSConfigFunc: func(*tls.Config) {},
+			},
+			listener: plain,
+			contains: []string{"CertFile/CertKeyFile", "TLSConfigFunc", "are ignored"},
+		},
+		{
+			name:     "the certificate manager counts too",
+			cfg:      ListenConfig{AutoCertManager: &autocert.Manager{}},
+			listener: plain,
+			contains: []string{"AutoCertManager", "is ignored"},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			fiberlog.SetOutput(&buf)
+			t.Cleanup(func() { fiberlog.SetOutput(os.Stderr) })
+
+			cfg := tc.cfg
+			warnIgnoredTLSFieldsOnListener(&cfg, tc.listener)
+
+			out := buf.String()
+			for _, want := range tc.contains {
+				require.Contains(t, out, want)
+			}
+			for _, unwanted := range tc.absent {
+				require.NotContains(t, out, unwanted)
+			}
+		})
+	}
+}
+
+// go test -run Test_WarnSupersededTLSFields_Branches
+//
+// TLSConfig replaces the other TLS settings rather than seeding them, so each
+// one it displaces is named. The end-to-end test above covers the pair a real
+// deployment hits; this drives the two that are otherwise unreached.
+func Test_WarnSupersededTLSFields_Branches(t *testing.T) {
+	// Not parallel: swaps the package-level log output.
+	tests := []struct {
+		name     string
+		contains []string
+		absent   []string
+		cfg      ListenConfig
+	}{
+		{
+			name:   "nothing to report",
+			cfg:    ListenConfig{},
+			absent: []string{"supersedes"},
+		},
+		{
+			name:     "certificate files",
+			cfg:      ListenConfig{CertFile: "./.github/testdata/ssl.pem"},
+			contains: []string{"supersedes CertFile/CertKeyFile"},
+		},
+		{
+			name:     "certificate manager",
+			cfg:      ListenConfig{AutoCertManager: &autocert.Manager{}},
+			contains: []string{"supersedes AutoCertManager"},
+		},
+		{
+			name: "all of them at once",
+			cfg: ListenConfig{
+				CertKeyFile:     "./.github/testdata/ssl.key",
+				AutoCertManager: &autocert.Manager{},
+				TLSConfigFunc:   func(*tls.Config) {},
+			},
+			contains: []string{"CertFile/CertKeyFile", "AutoCertManager", "TLSConfigFunc"},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			fiberlog.SetOutput(&buf)
+			t.Cleanup(func() { fiberlog.SetOutput(os.Stderr) })
+
+			cfg := tc.cfg
+			warnSupersededTLSFields(&cfg)
+
+			out := buf.String()
+			for _, want := range tc.contains {
+				require.Contains(t, out, want)
+			}
+			for _, unwanted := range tc.absent {
+				require.NotContains(t, out, unwanted)
+			}
+		})
+	}
+}

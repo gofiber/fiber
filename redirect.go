@@ -377,43 +377,52 @@ func (r *Redirect) Route(name string, config ...RedirectConfig) error {
 			queryText.B = utils.AppendQueryEscape(queryText.B, v)
 		}
 
-		location = withQuery(location, r.c.app.toString(queryText.Bytes()))
+		// Concatenated here rather than inside a helper: the result is handed
+		// straight to To, which copies it into the header, so escape analysis
+		// can build it on the stack. Returning it from a function instead cost
+		// an allocation per redirect.
+		query := r.c.app.toString(queryText.Bytes())
+		separator, fragment := queryMergePoint(location)
+		if fragment < 0 {
+			return r.To(location + separator + query)
+		}
+		return r.To(location[:fragment] + separator + query + location[fragment:])
 	}
 
 	return r.To(location)
 }
 
-// withQuery adds query to location, merging it into whatever query location
-// already carries and keeping it ahead of any fragment.
+// queryMergePoint says where a query belongs in location: the separator that
+// introduces it, and the index the fragment starts at, or -1 when there is
+// none.
 //
-// Appending "?" + query is right only for a location holding neither. A route
-// path is written without either, but a parameter value spliced into it may
-// hold both: with a "?" already present the client reads one query string, so
-// the added parameters are folded into the earlier one's value instead of
-// standing beside it, and after a "#" they land inside the fragment, which is
-// never sent to the server at all.
-func withQuery(location, query string) string {
-	if query == "" {
-		return location
-	}
+// Appending "?" + query is right only for a location holding neither a query
+// nor a fragment. A route path is written without either, but a parameter value
+// spliced into it may hold both: with a "?" already present the client reads
+// one query string, so the added parameters are folded into the earlier one's
+// value instead of standing beside it, and after a "#" they land inside the
+// fragment, which is never sent to the server at all.
+//
+// It returns the two positions rather than the finished string so the caller
+// can concatenate where the result is used; see the call site.
+func queryMergePoint(location string) (separator string, fragment int) { //nolint:nonamedreturns // the two results are easy to swap without names
+	fragment = strings.IndexByte(location, '#')
 
-	fragment := ""
-	if i := strings.IndexByte(location, '#'); i >= 0 {
-		location, fragment = location[:i], location[i:]
+	query := location
+	if fragment >= 0 {
+		query = location[:fragment]
 	}
-
-	separator := "?"
-	if strings.IndexByte(location, '?') >= 0 {
-		separator = "&"
+	if strings.IndexByte(query, '?') >= 0 {
+		return "&", fragment
 	}
-	return location + separator + query + fragment
+	return "?", fragment
 }
 
 // Back redirect to the URL to referer.
 // It validates that the Referer is same-origin to prevent open redirect attacks.
 // If the Referer is missing, invalid, or cross-origin, the fallback URL is used.
 func (r *Redirect) Back(fallback ...string) error {
-	location := r.c.Get(HeaderReferer)
+	location := r.refererHeader()
 	if location != "" {
 		// Reject invalid or cross-origin referrers, and redirect to the
 		// normalized form so every client resolves it the same way the
@@ -437,6 +446,37 @@ func (r *Redirect) Back(fallback ...string) error {
 	}
 
 	return r.To(location)
+}
+
+// refererHeader returns the Referer, matching the field name the way a
+// recipient must (RFC 9110 Section 5.1).
+//
+// Ctx.Get compares the stored key byte for byte, which finds the header only
+// while fasthttp has canonicalized it. Under DisableHeaderNormalizing the store
+// keeps the spelling the client sent, and lower case is what HTTP/2 and HTTP/3
+// require on the wire — so a "referer:" from a client behind such a front end
+// read as no referer at all and Back always went to the fallback.
+//
+// internal/headerlookup does this for the middleware packages, but it takes a
+// fiber.Ctx and so imports this one; the same read has to be spelled out here
+// rather than shared.
+//
+// The byte-for-byte lookup runs first, so nothing is walked in the normalizing
+// case, which is the default.
+func (r *Redirect) refererHeader() string {
+	if v := r.c.Get(HeaderReferer); v != "" {
+		return v
+	}
+	if !r.c.app.config.DisableHeaderNormalizing {
+		return ""
+	}
+
+	for k, v := range r.c.fasthttp.Request.Header.All() {
+		if utils.EqualFold(utils.UnsafeString(k), HeaderReferer) {
+			return r.c.app.toString(v)
+		}
+	}
+	return ""
 }
 
 // sameOriginReferer reports whether the Referer value resolves back to the

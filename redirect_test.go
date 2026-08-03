@@ -568,8 +568,8 @@ func Test_Redirect_Back_RejectsBrowserNormalizedReferer(t *testing.T) {
 func Test_Redirect_Back_NormalizesSameOriginReferer(t *testing.T) {
 	t.Parallel()
 
-	// Same-origin referers are redirected to in their browser-normalized form so
-	// clients that do not fold backslashes cannot resolve a different origin
+	// A same-origin referer is redirected to in its browser-normalized form, so
+	// a client that does not fold backslashes cannot resolve a different origin
 	// than the one that was validated.
 	tests := []struct {
 		referer  string
@@ -1539,5 +1539,35 @@ func Test_Redirect_FlashMessages_NoCrossRequestLeak(t *testing.T) {
 		require.NotContains(t, body, "hunter2")
 		require.NotContains(t, body, "bad credentials")
 		require.Equal(t, strings.Repeat("MSG:=;", n), body)
+	}
+}
+
+// go test -run Test_Redirect_Back_IgnoresHeaderNameCase
+//
+// Ctx.Get compares the stored key byte for byte, so under
+// DisableHeaderNormalizing a "referer:" from a client behind an HTTP/2 or
+// HTTP/3 front end — where lower case is what the wire carries — read as no
+// referer at all, and Back went to the fallback instead of back.
+func Test_Redirect_Back_IgnoresHeaderNameCase(t *testing.T) {
+	t.Parallel()
+
+	for _, normalize := range []bool{true, false} {
+		t.Run(fmt.Sprintf("normalize=%v", normalize), func(t *testing.T) {
+			t.Parallel()
+
+			for _, sent := range []string{"Referer", "referer", "REFERER"} {
+				app := New(Config{DisableHeaderNormalizing: !normalize})
+				c := app.AcquireCtx(&fasthttp.RequestCtx{})
+				if !normalize {
+					c.Request().Header.DisableNormalizing()
+				}
+				c.Request().Header.Set(sent, "/previous")
+
+				require.NoError(t, c.Redirect().Back("/fallback"))
+				require.Equal(t, "/previous", string(c.Response().Header.Peek(HeaderLocation)),
+					"sent as %q", sent)
+				app.ReleaseCtx(c)
+			}
+		})
 	}
 }

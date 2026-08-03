@@ -17,6 +17,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/valyala/fasthttp"
 )
 
 func Test_Response_Status(t *testing.T) {
@@ -953,4 +954,74 @@ func (m *mockWriteCloser) Write(p []byte) (int, error) {
 func (m *mockWriteCloser) Close() error {
 	m.closed = true
 	return nil
+}
+
+// Test_Response_RespondedOrigin covers the fallbacks in the recorded origin.
+//
+// The pair is what credits a Set-Cookie to the host that actually served the
+// response rather than the one the caller addressed. A Response assembled
+// outside the normal execution path never has it recorded, and must fall back
+// to the request's own URI rather than attributing the cookie to nothing.
+func Test_Response_RespondedOrigin(t *testing.T) {
+	t.Parallel()
+
+	// Built per subtest: these run in parallel, so a URI released when the
+	// parent returns would be reset out from under them.
+	askedURI := func(t *testing.T) *fasthttp.URI {
+		t.Helper()
+		u := fasthttp.AcquireURI()
+		t.Cleanup(func() { fasthttp.ReleaseURI(u) })
+		require.NoError(t, u.Parse(nil, []byte("http://asked.example/asked")))
+		return u
+	}
+
+	t.Run("nothing recorded falls back", func(t *testing.T) {
+		t.Parallel()
+
+		resp := AcquireResponse()
+		defer ReleaseResponse(resp)
+
+		host, path := resp.respondedOrigin(askedURI(t))
+		require.Equal(t, "asked.example", string(host))
+		require.Equal(t, "/asked", string(path))
+	})
+
+	t.Run("a nil URI records nothing", func(t *testing.T) {
+		t.Parallel()
+
+		resp := AcquireResponse()
+		defer ReleaseResponse(resp)
+
+		resp.setRespondedURI(nil)
+
+		host, path := resp.respondedOrigin(askedURI(t))
+		require.Equal(t, "asked.example", string(host), "a nil URI must leave the fallback in place")
+		require.Equal(t, "/asked", string(path))
+	})
+
+	t.Run("what was recorded wins", func(t *testing.T) {
+		t.Parallel()
+
+		served := fasthttp.AcquireURI()
+		t.Cleanup(func() { fasthttp.ReleaseURI(served) })
+		require.NoError(t, served.Parse(nil, []byte("http://served.example/served")))
+
+		fallback := askedURI(t)
+
+		resp := AcquireResponse()
+		defer ReleaseResponse(resp)
+
+		resp.setRespondedURI(served)
+
+		host, path := resp.respondedOrigin(fallback)
+		require.Equal(t, "served.example", string(host))
+		require.Equal(t, "/served", string(path))
+
+		// Reset clears it, so a pooled Response cannot credit the next
+		// response to the previous one's origin.
+		resp.Reset()
+		host, path = resp.respondedOrigin(fallback)
+		require.Equal(t, "asked.example", string(host))
+		require.Equal(t, "/asked", string(path))
+	})
 }
