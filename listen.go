@@ -112,8 +112,9 @@ type ListenConfig struct {
 	// certificates. Setting it requires and verifies a client certificate, which
 	// is how ListenConfig asks for mTLS.
 	//
-	// Ignored when TLSConfig is set, in which case no client certificate is
-	// required at all; set ClientAuth and ClientCAs on that tls.Config instead.
+	// Ignored when TLSConfig is set: that config is served as supplied and this
+	// field does not modify it, so whether a client certificate is required is
+	// whatever its ClientAuth and ClientCAs say.
 	//
 	// Default : ""
 	CertClientFile string `json:"cert_client_file"`
@@ -323,13 +324,14 @@ func (app *App) Listen(addr string, config ...ListenConfig) error {
 // one of these is dropped without a word. CertClientFile is the field where
 // silence is dangerous: it is the only way ListenConfig asks for mutual TLS, so
 // a deployment that set it and also handed Fiber a TLSConfig — the documented
-// way to plug in an external certificate provider — comes up serving every
-// client, demanding no certificate from any of them. Say so at startup rather
-// than let that pass for a working mTLS listener.
+// way to plug in an external certificate provider — gets whatever that config
+// says about client certificates, which is nothing unless it sets ClientAuth
+// and ClientCAs itself. Say which one decides rather than let the two settings
+// pass for one working mTLS listener.
 func warnSupersededTLSFields(cfg *ListenConfig) {
 	if cfg.CertClientFile != "" {
-		log.Warn("[Listen] TLSConfig supersedes CertClientFile: no client certificate will be required. " +
-			"Set ClientAuth and ClientCAs on TLSConfig to require one.")
+		log.Warn("[Listen] TLSConfig supersedes CertClientFile: client certificates are required only if " +
+			"TLSConfig sets ClientAuth and ClientCAs.")
 	}
 
 	var ignored []string
@@ -349,13 +351,15 @@ func warnSupersededTLSFields(cfg *ListenConfig) {
 
 // warnIgnoredTLSFieldsOnListener reports TLS settings that App.Listener cannot
 // honor. It serves the listener it is handed, so a caller who configured
-// CertClientFile there gets no client-certificate verification at all — and,
-// unless they wrapped the listener themselves, no TLS either. Neither is
-// visible from the outside without a warning.
+// CertClientFile there does not get client-certificate verification from it —
+// whether any is required is up to the listener they supplied, and unless they
+// wrapped it themselves there is no TLS either. Neither is visible from the
+// outside without a warning.
 func warnIgnoredTLSFieldsOnListener(cfg *ListenConfig, ln net.Listener) {
 	if cfg.CertClientFile != "" {
-		log.Warn("[Listener] CertClientFile is ignored: no client certificate will be required. " +
-			"Wrap the listener with tls.NewListener using a tls.Config that sets ClientAuth and ClientCAs.")
+		log.Warn("[Listener] CertClientFile is ignored: client certificates are required only if the supplied " +
+			"listener already asks for them. Wrap it with tls.NewListener using a tls.Config that sets " +
+			"ClientAuth and ClientCAs.")
 	}
 
 	var ignored []string
@@ -415,11 +419,12 @@ func applyClientCert(tlsConfig *tls.Config, certClientFile string) error {
 // You should enter custom ListenConfig to customize startup. (prefork, startup message, graceful shutdown...)
 //
 // The listener is served exactly as supplied, so every TLS field of the config
-// is ignored — including CertClientFile, which means this entry point never
-// requires a client certificate. Wrap the listener with crypto/tls yourself
-// (tls.NewListener) to serve TLS or to require mutual TLS here; a warning is
-// logged for each TLS field supplied, since a silently unwrapped listener reads
-// as a working TLS or mTLS deployment.
+// is ignored — including CertClientFile. Whether this entry point serves TLS at
+// all, or requires a client certificate, is decided entirely by the listener
+// handed to it: wrap it with crypto/tls yourself (tls.NewListener) to do either.
+// A warning is logged for each TLS field supplied, since a config that looks
+// like it asks for TLS or mTLS while the listener does neither reads as a
+// working deployment.
 func (app *App) Listener(ln net.Listener, config ...ListenConfig) error {
 	cfg := listenConfigDefault(config...)
 	warnIgnoredTLSFieldsOnListener(&cfg, ln)

@@ -479,7 +479,8 @@ func Test_Redirect_Back_WithCrossOriginReferer(t *testing.T) {
 	require.Equal(t, "/", string(c.Response().Header.Peek(HeaderLocation)))
 }
 
-// go test -run Test_Redirect_Back_RejectsBrowserNormalizedReferer
+// go test -run Test_Redirect_Back_RejectsEmptyAuthorityReferer
+//
 // Test_Redirect_Back_RejectsEmptyAuthorityReferer covers a network-path
 // reference whose authority came out empty.
 //

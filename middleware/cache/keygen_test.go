@@ -23,23 +23,23 @@ type keygenCase struct {
 
 func keygenCorpus() []keygenCase {
 	return []keygenCase{
-		{name: "noquery", uri: "/demo", want: "/|q=|h=Accept:0|Accept-Encoding:0|Accept-Language:0"},
-		{name: "single", uri: "/demo?foo=bar", want: "/|q=foo=bar|h=Accept:0|Accept-Encoding:0|Accept-Language:0"},
-		{name: "multi_dup", uri: "/demo?b=2&a=1&a=3", want: "/|q=a=1&a=3&b=2|h=Accept:0|Accept-Encoding:0|Accept-Language:0"},
-		{name: "path_delims", uri: "/a|b:c\\d?x=1", want: "/|q=x=1|h=Accept:0|Accept-Encoding:0|Accept-Language:0"},
-		{name: "query_escape", uri: "/p?k=a b&z=%2F&k=z", want: "/|q=k=a+b&k=z&z=%2F|h=Accept:0|Accept-Encoding:0|Accept-Language:0"},
-		{name: "with_headers", uri: "/p?foo=bar", headers: map[string]string{"Accept": "text/html", "Accept-Encoding": "gzip"}, want: "/|q=foo=bar|h=Accept:1|text/html|Accept-Encoding:1|gzip|Accept-Language:0"},
-		{name: "with_cookie", uri: "/p?foo=bar", cookie: "sid=abc123", keyCooks: []string{"sid"}, want: "/|q=foo=bar|h=Accept:0|Accept-Encoding:0|Accept-Language:0|c=sid:abc123"},
-		{name: "long_query", uri: "/p?q=" + strings.Repeat("x", 300), want: "/|q=sha256:4d86f7dbfc8b3bfe229da7e27f4ac8f6cf8114e24e5cb6b5af1d09cb4cc3d982|h=Accept:0|Accept-Encoding:0|Accept-Language:0"},
-		{name: "long_path", uri: "/" + strings.Repeat("p", 300) + "?a=1", want: "/|q=a=1|h=Accept:0|Accept-Encoding:0|Accept-Language:0"},
-		{name: "disable_query", uri: "/p?foo=bar", noQuery: true, want: "/|h=Accept:0|Accept-Encoding:0|Accept-Language:0"},
-		{name: "header_val_delims", uri: "/p", headers: map[string]string{"Accept": "a|b:c"}, want: "/|q=|h=Accept:1|a\\pb\\cc|Accept-Encoding:0|Accept-Language:0"},
-		{name: "empty_query", uri: "/p?", want: "/|q=|h=Accept:0|Accept-Encoding:0|Accept-Language:0"},
-		{name: "many_params", uri: "/p?" + strings.Repeat("k=v&", 200) + "z=1", want: "/|q=sha256:f8f7166c8aec35092b4c6f66a895ec9f302746c6310aa0dbfde45cbd30aa1829|h=Accept:0|Accept-Encoding:0|Accept-Language:0"},
-		{name: "query_empty_body", uri: "/q", method: fiber.MethodQuery, want: "/|q=|h=Accept:0|Accept-Encoding:0|Accept-Language:0|b="},
-		{name: "query_body", uri: "/q", method: fiber.MethodQuery, body: "foo=bar", want: "/|q=|h=Accept:0|Accept-Encoding:0|Accept-Language:0|b=foo=bar"},
-		{name: "query_body_delims", uri: "/q", method: fiber.MethodQuery, body: "a|b:c", want: "/|q=|h=Accept:0|Accept-Encoding:0|Accept-Language:0|b=a\\pb\\cc"},
-		{name: "query_with_querystring", uri: "/q?x=1", method: fiber.MethodQuery, body: "foo=bar", want: "/|q=x=1|h=Accept:0|Accept-Encoding:0|Accept-Language:0|b=foo=bar"},
+		{name: "noquery", uri: "/demo", want: "/|q=|h=accept:0|accept-encoding:0|accept-language:0"},
+		{name: "single", uri: "/demo?foo=bar", want: "/|q=foo=bar|h=accept:0|accept-encoding:0|accept-language:0"},
+		{name: "multi_dup", uri: "/demo?b=2&a=1&a=3", want: "/|q=a=1&a=3&b=2|h=accept:0|accept-encoding:0|accept-language:0"},
+		{name: "path_delims", uri: "/a|b:c\\d?x=1", want: "/|q=x=1|h=accept:0|accept-encoding:0|accept-language:0"},
+		{name: "query_escape", uri: "/p?k=a b&z=%2F&k=z", want: "/|q=k=a+b&k=z&z=%2F|h=accept:0|accept-encoding:0|accept-language:0"},
+		{name: "with_headers", uri: "/p?foo=bar", headers: map[string]string{"Accept": "text/html", "Accept-Encoding": "gzip"}, want: "/|q=foo=bar|h=accept:1|text/html|accept-encoding:1|gzip|accept-language:0"},
+		{name: "with_cookie", uri: "/p?foo=bar", cookie: "sid=abc123", keyCooks: []string{"sid"}, want: "/|q=foo=bar|h=accept:0|accept-encoding:0|accept-language:0|c=sid:abc123"},
+		{name: "long_query", uri: "/p?q=" + strings.Repeat("x", 300), want: "/|q=sha256:4d86f7dbfc8b3bfe229da7e27f4ac8f6cf8114e24e5cb6b5af1d09cb4cc3d982|h=accept:0|accept-encoding:0|accept-language:0"},
+		{name: "long_path", uri: "/" + strings.Repeat("p", 300) + "?a=1", want: "/|q=a=1|h=accept:0|accept-encoding:0|accept-language:0"},
+		{name: "disable_query", uri: "/p?foo=bar", noQuery: true, want: "/|h=accept:0|accept-encoding:0|accept-language:0"},
+		{name: "header_val_delims", uri: "/p", headers: map[string]string{"Accept": "a|b:c"}, want: "/|q=|h=accept:1|a\\pb\\cc|accept-encoding:0|accept-language:0"},
+		{name: "empty_query", uri: "/p?", want: "/|q=|h=accept:0|accept-encoding:0|accept-language:0"},
+		{name: "many_params", uri: "/p?" + strings.Repeat("k=v&", 200) + "z=1", want: "/|q=sha256:f8f7166c8aec35092b4c6f66a895ec9f302746c6310aa0dbfde45cbd30aa1829|h=accept:0|accept-encoding:0|accept-language:0"},
+		{name: "query_empty_body", uri: "/q", method: fiber.MethodQuery, want: "/|q=|h=accept:0|accept-encoding:0|accept-language:0|b="},
+		{name: "query_body", uri: "/q", method: fiber.MethodQuery, body: "foo=bar", want: "/|q=|h=accept:0|accept-encoding:0|accept-language:0|b=foo=bar"},
+		{name: "query_body_delims", uri: "/q", method: fiber.MethodQuery, body: "a|b:c", want: "/|q=|h=accept:0|accept-encoding:0|accept-language:0|b=a\\pb\\cc"},
+		{name: "query_with_querystring", uri: "/q?x=1", method: fiber.MethodQuery, body: "foo=bar", want: "/|q=x=1|h=accept:0|accept-encoding:0|accept-language:0|b=foo=bar"},
 	}
 }
 
@@ -64,11 +64,16 @@ func buildKeygenCtx(tc *keygenCase) (fiber.Ctx, *Config) {
 	if tc.cookie != "" {
 		c.Request().Header.Set("Cookie", tc.cookie)
 	}
-	cfg := ConfigDefault
-	cfg.DisableQueryKeys = tc.noQuery
+	// Through configDefault, not ConfigDefault: New applies it to every config
+	// it is given, and it lowercases the header dimensions. Keying off the raw
+	// default instead pinned "h=accept:0", a key format no running application
+	// produces — so a change to the normalization would not have been caught by
+	// the fixtures that exist to catch exactly that.
+	in := Config{DisableQueryKeys: tc.noQuery}
 	if tc.keyCooks != nil {
-		cfg.KeyCookies = tc.keyCooks
+		in.KeyCookies = tc.keyCooks
 	}
+	cfg := configDefault(in)
 	return c, &cfg
 }
 

@@ -3455,3 +3455,60 @@ func Test_CSRF_TrustedOriginIsAllowedWhenCrossSite(t *testing.T) {
 	// And a value no browser produces is refused by the header check itself.
 	require.Equal(t, fiber.StatusForbidden, post("http://partner.com", "not-a-real-value"))
 }
+
+// Test_CSRF_CrossSiteWithoutOriginOverPlaintext pins what happens when the
+// browser says the request is cross-site but sends no Origin, on a plaintext
+// connection.
+//
+// Sec-Fetch-Site does not decide cross-site on its own, and an absent Origin is
+// not a failure over plaintext — the check is skipped for it, because there is
+// no Referer fallback to fall back to. What is left holding the request is the
+// double-submit token, so that is what this pins: with a valid pair it is
+// accepted, and without one it is not.
+func Test_CSRF_CrossSiteWithoutOriginOverPlaintext(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Use(New())
+	app.Get("/", func(c fiber.Ctx) error { return c.SendString(TokenFromContext(c)) })
+	app.Post("/", func(c fiber.Ctx) error { return c.SendString("accepted") })
+	h := app.Handler()
+
+	get := fasthttp.AcquireRequest()
+	defer fasthttp.ReleaseRequest(get)
+	get.Header.SetMethod(fiber.MethodGet)
+	get.SetRequestURI("/")
+	get.Header.SetHost("example.com")
+	gctx := &fasthttp.RequestCtx{}
+	gctx.Init(get, nil, nil)
+	h(gctx)
+
+	token := string(gctx.Response.Body())
+	require.NotEmpty(t, token)
+	cookie, _, _ := strings.Cut(string(gctx.Response.Header.Peek(fiber.HeaderSetCookie)), ";")
+	require.NotEmpty(t, cookie)
+
+	post := func(withToken bool) int {
+		req := fasthttp.AcquireRequest()
+		defer fasthttp.ReleaseRequest(req)
+		req.Header.SetMethod(fiber.MethodPost)
+		req.SetRequestURI("/")
+		req.Header.SetHost("example.com")
+		req.Header.Set(fiber.HeaderSecFetchSite, "cross-site")
+		// No Origin, and no Referer either.
+		req.Header.Set(fiber.HeaderCookie, cookie)
+		if withToken {
+			req.Header.Set(HeaderName, token)
+		}
+
+		ctx := &fasthttp.RequestCtx{}
+		ctx.Init(req, nil, nil)
+		h(ctx)
+		return ctx.Response.StatusCode()
+	}
+
+	require.Equal(t, fiber.StatusOK, post(true),
+		"over plaintext with no Origin, the token is what the request rests on")
+	require.Equal(t, fiber.StatusForbidden, post(false),
+		"and without it nothing else lets the request through")
+}

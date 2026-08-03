@@ -251,9 +251,10 @@ The jar follows RFC 6265 for storage and retrieval:
   `net/http`, which permits `Cookie` from `foo.com` to `sub.foo.com`. That is
   wider than the jar's own rule: a cookie set without a `Domain=` attribute is
   host-only and the jar would not send it to `sub.foo.com`, yet a redirect
-  there carries it. Where a subdomain is a different trust boundary, follow
-  redirects yourself with `MaxRedirects(0)` and issue each hop as its own
-  request, so the jar decides for each one.
+  there carries it. This only arises once redirects are being followed, which
+  is not the default: leave `MaxRedirects` unset — or set `0`, via
+  `Request.SetMaxRedirects` or `Config{MaxRedirects: 0}` — and issue each hop
+  yourself, so the jar decides for each one.
 
 ### Request
 

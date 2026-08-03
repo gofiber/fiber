@@ -525,6 +525,13 @@ func New(config ...Config) fiber.Handler {
 						// anything it now excludes.
 						continue
 					}
+					if !canonical {
+						// DelBytes is byte-exact, so a line this response
+						// already carries under another spelling survives it
+						// and the append below lands beside it — the pair this
+						// clear exists to prevent.
+						delOtherSpellings(&c.Response().Header, utils.UnsafeString(e.headers[i].key))
+					}
 					c.Response().Header.DelBytes(e.headers[i].key)
 				}
 				for i := range e.headers {

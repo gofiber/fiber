@@ -1093,7 +1093,11 @@ func Test_AuthorizationHash_CoversEveryFieldLine(t *testing.T) {
 		// handler ran for. Indexed defensively: a single-line case added later
 		// should fail the assertion, not panic here.
 		lines := c.Request().Header.PeekAll(fiber.HeaderAuthorization)
-		return c.SendString("body for:" + string(lines[len(lines)-1]))
+		last := ""
+		if len(lines) > 0 {
+			last = string(lines[len(lines)-1])
+		}
+		return c.SendString("body for:" + last)
 	})
 
 	do := func(lines ...string) (string, string) {
@@ -1915,5 +1919,40 @@ func Test_Cache_LongHeaderNameIsNotIgnored(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, want, resp.Header.Get("X-Cache"))
 		require.Equal(t, "kept", resp.Header.Get(long), "a name too long to be on the list is carried (%s)", want)
+	}
+}
+
+// Test_Cache_ReplayClearsEveryStoredSpelling covers the clear that runs before
+// the stored field lines are appended back.
+//
+// DelBytes matches the stored key byte for byte, so under
+// DisableHeaderNormalizing a line this response already carries under another
+// spelling survived it and the append landed beside it — two lines of one
+// field, which is the pair the clear exists to prevent. The fields the
+// middleware writes from the entry's own slots go through setFieldLine and were
+// already covered; these are the ones replayed from StoreResponseHeaders.
+func Test_Cache_ReplayClearsEveryStoredSpelling(t *testing.T) {
+	t.Parallel()
+
+	// The spelling this middleware sees on the way out varies per request, so
+	// the entry stores one and the response being replayed onto carries
+	// another.
+	var n atomic.Int64
+	spellings := []string{"X-Tenant", "x-tenant", "X-TENANT"}
+
+	app := fiber.New(fiber.Config{DisableHeaderNormalizing: true})
+	app.Use(func(c fiber.Ctx) error {
+		c.Response().Header.Set(spellings[n.Add(1)%int64(len(spellings))], "from-middleware")
+		return c.Next()
+	})
+	app.Use(New(Config{StoreResponseHeaders: true, Expiration: time.Minute}))
+	app.Get("/", func(c fiber.Ctx) error { return c.SendString("body") })
+
+	for _, want := range []string{cacheMiss, cacheHit, cacheHit} {
+		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, want, resp.Header.Get("X-Cache"))
+		require.Len(t, resp.Header.Values("X-Tenant"), 1,
+			"one field line whatever spelling each hop chose (%s): %v", want, resp.Header.Values("X-Tenant"))
 	}
 }

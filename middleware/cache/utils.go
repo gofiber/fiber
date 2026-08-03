@@ -184,12 +184,12 @@ func headerNamesAreCanonical(c fiber.Ctx) bool {
 // anonymous and replayed to everyone.
 //
 // Field names are case-insensitive (RFC 9110 Section 5.1), so match them that
-// way. Only reached when the byte-for-byte lookup found nothing, which for a
-// normalizing header means the field is absent and the walk finds nothing
-// either.
-// header store that only the caller can know, not a mode of operation.
+// way. The walk replaces the byte-for-byte lookup rather than backing it up: a
+// request can carry both spellings, and an empty canonical line would satisfy a
+// fallback-only fast path while hiding the credential on the line beside it.
+// Test_Authorization_MixedCaseFieldLines is that case.
 //
-//nolint:revive // flag-parameter: normalized is a property of the request's
+//nolint:revive // flag-parameter: normalized is a property of the request's header store that only the caller can know, not a mode of operation
 func fieldLines(h headerPeeker, name string, normalized bool) [][]byte {
 	if normalized {
 		// fasthttp canonicalized every stored key, so a byte-for-byte lookup
@@ -252,28 +252,33 @@ func firstFieldLine(h headerPeeker, name string, normalized bool) []byte { //nol
 // how old it believes the response to be.
 func setFieldLine(h *fasthttp.ResponseHeader, name string, value []byte, normalized bool) { //nolint:revive // flag-parameter: normalized is a property of the header store
 	if !normalized {
-		// Every other spelling, not just the first one found. Writing through
-		// the first and stopping there left any remaining spelling untouched,
-		// so a response already carrying both "Date" and "date" — one from an
-		// outer middleware, one from the handler — went out with the stale one
-		// beside the value written here, which is the pair this exists to
-		// prevent.
-		//
-		// Collected before anything is deleted: Del is byte-exact too, and
-		// removing an entry while ranging over the store it belongs to is not
-		// safe.
-		var others []string
-		for k := range h.All() {
-			if ks := utils.UnsafeString(k); ks != name && utils.EqualFold(ks, name) {
-				others = append(others, string(k))
-			}
-		}
-		for _, k := range others {
-			h.Del(k)
-		}
+		delOtherSpellings(h, name)
 	}
 
 	h.SetBytesV(name, value)
+}
+
+// delOtherSpellings removes every stored spelling of name except name itself,
+// which the caller is about to write or delete under that exact key.
+//
+// Every other one, not just the first found. A response can carry more than two
+// — one from an outer middleware, one from the handler — and stopping at the
+// first leaves the rest beside the value written here, which is the pair the
+// caller is trying to prevent.
+//
+// Collected before anything is deleted: Del is byte-exact too, and removing an
+// entry while ranging over the store it belongs to is not safe.
+func delOtherSpellings(h *fasthttp.ResponseHeader, name string) {
+	var others []string
+	for k := range h.All() {
+		if ks := utils.UnsafeString(k); ks != name && utils.EqualFold(ks, name) {
+			others = append(others, string(k))
+		}
+	}
+
+	for _, k := range others {
+		h.Del(k)
+	}
 }
 
 // ignoredHeaderNames is ignoreHeaders keyed the way a field name has to be

@@ -631,7 +631,10 @@ func Test_Listen_TLSConfig_WarnsSupersededFields(t *testing.T) {
 
 	out := buf.String()
 	require.Contains(t, out, "CertClientFile")
-	require.Contains(t, out, "no client certificate will be required")
+	// Not "no client certificate will be required": the supplied TLSConfig may
+	// set ClientAuth and ClientCAs itself, and then one is. What the warning
+	// has to say is which of the two decides.
+	require.Contains(t, out, "required only if TLSConfig sets ClientAuth and ClientCAs")
 	require.Contains(t, out, "TLSConfigFunc")
 }
 
@@ -687,7 +690,9 @@ func Test_Listener_WarnsIgnoredTLSFields(t *testing.T) {
 
 	out := buf.String()
 	require.Contains(t, out, "CertClientFile is ignored")
-	require.Contains(t, out, "no client certificate will be required")
+	// The supplied listener may already require a certificate, so the warning
+	// names what decides rather than asserting none is asked for.
+	require.Contains(t, out, "required only if the supplied listener already asks for them")
 }
 
 // go test -run Test_Listen_AutoCert_Conflicts
