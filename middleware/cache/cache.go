@@ -835,6 +835,10 @@ func New(config ...Config) fiber.Handler {
 		now := cfg.now().UTC()
 		nowUnix := safeUnixSeconds(now)
 		dateHeader := firstFieldLine(&c.Response().Header, fiber.HeaderDate, canonical)
+		// The second result says whether the date parsed, which is not asked:
+		// an absent or unparsable Date leaves parsedDate zero, and
+		// clampDateSeconds resolves that to the receipt timestamp — the same
+		// answer either way.
 		parsedDate, _ := parseHTTPDate(dateHeader)
 		e.date = clampDateSeconds(parsedDate, nowUnix)
 		dateBytes := utils.AppendHTTPDate(nil, secondsToTime(e.date))
