@@ -116,9 +116,9 @@ func Balancer(config ...Config) fiber.Handler {
 
 		if !policy.KeepHopByHopHeaders {
 			if cfg.KeepConnectionHeader {
-				stripHopByHopResponseHeaders(res, normalized, fiber.HeaderConnection)
+				stripHopByHopResponseHeaders(res, fiber.HeaderConnection)
 			} else {
-				stripHopByHopResponseHeaders(res, normalized)
+				stripHopByHopResponseHeaders(res)
 			}
 		}
 
@@ -438,7 +438,7 @@ func doActionWithPolicy(
 		return err
 	}
 	if !policy.KeepHopByHopHeaders {
-		stripHopByHopResponseHeaders(res, normalized)
+		stripHopByHopResponseHeaders(res)
 	}
 	return nil
 }

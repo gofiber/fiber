@@ -239,13 +239,55 @@ func stripHopByHopRequestHeaders(req *fasthttp.Request, normalized bool, except 
 
 // stripHopByHopResponseHeaders applies the same filtering on the way
 // back, so upstream cannot leak connection-scoped state to the client.
-func stripHopByHopResponseHeaders(res *fasthttp.Response, normalized bool, except ...string) { //nolint:revive // flag-parameter: normalized is a property of the header store
-	delConnectionListedHeaders(&res.Header, fieldLines(&res.Header, fiber.HeaderConnection, normalized), normalized)
-	for _, h := range hopByHopHeaders {
-		if containsFold(except, h) {
-			continue
+// A response header takes no normalized argument, unlike the request one. The
+// request store is the server's, so the app config that set the server's
+// normalization is the authority on it. A proxied response is parsed by the
+// outbound fasthttp.Client, which carries its own
+// DisableHeaderNamesNormalizing and in fact stamps it onto this very header on
+// every hop — the two settings are independent, so the app's answer says
+// nothing about the keys stored here. Reading it anyway meant a proxy that
+// preserves upstream casing, with an app that normalizes, stripped nothing at
+// all: an upstream's "keep-alive", "upgrade" and "te" all reached the client.
+//
+// So ask the header rather than the config. One pass finds every spelling to
+// delete, which costs the same whether or not any of them turned out to be
+// unusual — and is cheaper than the per-name scan the request side avoids,
+// since that one repeats the walk for each name.
+func stripHopByHopResponseHeaders(res *fasthttp.Response, except ...string) {
+	// Headers listed in Connection must be removed first so the listing is
+	// honored before the Connection field itself is dropped.
+	delConnectionListedHeaders(&res.Header, fieldLines(&res.Header, fiber.HeaderConnection, false), false)
+
+	names := hopByHopHeaders
+	if len(except) > 0 {
+		names = make([]string, 0, len(hopByHopHeaders))
+		for _, h := range hopByHopHeaders {
+			if !containsFold(except, h) {
+				names = append(names, h)
+			}
 		}
-		delField(&res.Header, h, normalized)
+	}
+	delFieldSet(&res.Header, names)
+}
+
+// delFieldSet removes every field line whose name matches any of names,
+// whatever case each is stored under, in a single pass.
+//
+// Keys are collected before anything is deleted, since fasthttp's iterator
+// walks the storage the deletes rewrite. A repeated name is collected and
+// deleted repeatedly; Del removes every line at once so the second call finds
+// nothing, and scanning to avoid it costs more than making it — the same
+// measurement the adaptor package records for the same shape.
+func delFieldSet(h headerDeleter, names []string) {
+	var removed []string
+	for k := range h.All() {
+		if containsFold(names, utils.UnsafeString(k)) {
+			removed = append(removed, string(k))
+		}
+	}
+
+	for _, name := range removed {
+		h.Del(name)
 	}
 }
 

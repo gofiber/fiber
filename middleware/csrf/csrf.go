@@ -340,8 +340,41 @@ func (handler *Handler) DeleteToken(c fiber.Ctx) error {
 	return nil
 }
 
+// requestHeader returns the value of name, matching the field name the way a
+// recipient must (RFC 9110 Section 5.1).
+//
+// Ctx.Get compares the stored key byte for byte, which finds the header only
+// while fasthttp has canonicalized it. Under DisableHeaderNormalizing the store
+// keeps the spelling the client sent — and lower case is what HTTP/2 and
+// HTTP/3 require on the wire, so it is what a front end translating down to
+// HTTP/1.1 preserves. Every read below then came back empty, and an absent
+// Origin is not treated as a failure here: on a plaintext connection the origin
+// check is skipped entirely for it. Confirmed with the setting on and a valid
+// double-submit pair, "Origin: http://evil.com" was refused with 403 while
+// "origin: http://evil.com" was accepted — the one check that tells a
+// cross-site POST from a same-site one, silently switched off by the case of a
+// header name the attacker chooses.
+//
+// The byte-for-byte lookup runs first, so nothing is walked in the normalizing
+// case, which is the default.
+func requestHeader(c fiber.Ctx, name string) string {
+	if v := c.Get(name); v != "" {
+		return v
+	}
+	if !c.App().Config().DisableHeaderNormalizing {
+		return ""
+	}
+
+	for k, v := range c.Request().Header.All() {
+		if utils.EqualFold(utils.UnsafeString(k), name) {
+			return string(v)
+		}
+	}
+	return ""
+}
+
 func validateSecFetchSite(c fiber.Ctx) error {
-	secFetchSite := utils.Trim(c.Get(fiber.HeaderSecFetchSite), ' ')
+	secFetchSite := utils.Trim(requestHeader(c, fiber.HeaderSecFetchSite), ' ')
 
 	if secFetchSite == "" {
 		return nil
@@ -364,7 +397,7 @@ func validateSecFetchSite(c fiber.Ctx) error {
 // returns an error if the origin header is not present or is invalid
 // returns nil if the origin header is valid
 func originMatchesHost(c fiber.Ctx, trustedOrigins []string, trustedSubOrigins []subdomain) error {
-	origin := c.Get(fiber.HeaderOrigin)
+	origin := requestHeader(c, fiber.HeaderOrigin)
 	// "null" is set by some browsers when the origin is a secure context https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Origin#description
 	if origin == "" || utils.EqualFold(origin, "null") {
 		return errOriginNotFound
@@ -398,7 +431,7 @@ func originMatchesHost(c fiber.Ctx, trustedOrigins []string, trustedSubOrigins [
 // returns an error if the referer header is not present or is invalid
 // returns nil if the referer header is valid
 func refererMatchesHost(c fiber.Ctx, trustedOrigins []string, trustedSubOrigins []subdomain) error {
-	referer := c.Get(fiber.HeaderReferer)
+	referer := requestHeader(c, fiber.HeaderReferer)
 	if referer == "" {
 		return ErrRefererNotFound
 	}

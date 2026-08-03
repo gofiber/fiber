@@ -1522,3 +1522,44 @@ func Test_Proxy_CrossHostStripsEveryCredentialHeader(t *testing.T) {
 
 	require.Empty(t, <-seen, "no credential header may follow a redirect off the addressed host")
 }
+
+// Test_Proxy_ResponseStripIgnoresTheAppsNormalizationSetting checks the
+// response-side hop-by-hop strip against a proxy whose outbound client
+// preserves upstream header casing while the app itself normalizes.
+//
+// The two settings are independent — the client stamps its own onto the
+// response header on every hop — so reading the app's told the strip nothing
+// about the keys it was about to match, and it removed nothing: the upstream's
+// connection-scoped headers reached the client unchanged.
+func Test_Proxy_ResponseStripIgnoresTheAppsNormalizationSetting(t *testing.T) {
+	t.Parallel()
+
+	// The upstream preserves the casing it writes, and writes its hop-by-hop
+	// headers in lower case.
+	upstream := fiber.New(fiber.Config{DisableHeaderNormalizing: true})
+	upstream.Get("/", func(c fiber.Ctx) error {
+		c.Response().Header.Set("keep-alive", "timeout=5")
+		c.Response().Header.Set("upgrade", "websocket")
+		c.Response().Header.Set("te", "trailers")
+		return c.SendString("upstream")
+	})
+	ln, err := net.Listen(fiber.NetworkTCP4, "127.0.0.1:0")
+	require.NoError(t, err)
+	addr := ln.Addr().String()
+	startServer(upstream, ln)
+
+	cli := &fasthttp.Client{DisableHeaderNamesNormalizing: true}
+
+	// ...while the app takes the default, so the two settings disagree.
+	app := fiber.New()
+	app.Use(Forward("http://"+addr, cli))
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+
+	for _, name := range []string{fiber.HeaderKeepAlive, fiber.HeaderUpgrade, fiber.HeaderTE} {
+		require.Empty(t, resp.Header.Values(name),
+			"%s must not reach the client whatever case the upstream wrote it in", name)
+	}
+}
