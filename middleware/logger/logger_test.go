@@ -2127,6 +2127,12 @@ func Test_Logger_IPs_WithoutHeaderNormalizing(t *testing.T) {
 // request data — started a second entry the reader has no way to tell from a
 // real one.
 func Test_Logger_RegisterContextTag_Sanitizes(t *testing.T) {
+	t.Parallel()
+
+	// Both registries are mutex-guarded and re-registering replaces rather
+	// than fails, so this runs in parallel like every other registry test in
+	// the package. The name has to be its own, though: registration is global
+	// and outlives the test whether or not it is parallel.
 	RegisterContextTag("sanitize-probe", func(_ any) string {
 		return "before\r\nGET /forged HTTP/1.1\nafter"
 	})
