@@ -85,6 +85,40 @@ the client chose. Delete first so exactly one line survives. Resolve `c.IP()`
 before the delete as well: with `Config.ProxyHeader` set to `X-Real-IP`, `c.IP()`
 reads the very header being replaced.
 
+:::caution With `DisableHeaderNormalizing`, delete every spelling
+
+`Del` matches the stored key byte for byte. That finds every line while Fiber
+canonicalizes header names, which is the default — but under
+[`DisableHeaderNormalizing`](../api/fiber.md#config) the store keeps the
+spelling the client sent, and lower case is what HTTP/2 and HTTP/3 put on the
+wire. `Del("X-Real-IP")` then leaves a client-sent `x-real-ip` untouched and the
+`Add` lands beside it, which is the pair the delete exists to prevent.
+
+The middleware's own `Forward`, `DomainForward` and `BalancerForward` handle
+this. Doing it by hand takes one pass to collect the spellings and another to
+remove them, since deleting while iterating the store is not safe:
+
+```go
+ip := c.IP()
+h := &c.Request().Header
+
+var spellings []string
+for k := range h.All() {
+    if utils.EqualFold(utils.UnsafeString(k), "X-Real-IP") {
+        spellings = append(spellings, string(k))
+    }
+}
+for _, name := range spellings {
+    h.Del(name)
+}
+
+h.Add("X-Real-IP", ip)
+```
+
+`utils` here is `github.com/gofiber/utils/v2`.
+
+:::
+
 ### Path concatenation safety
 
 `DomainForward` and `BalancerForward` previously concatenated the configured upstream with `c.OriginalURL()`. Crafted request paths beginning with `//` could exploit URL parsing to redirect the proxy at a different host (network-path reference injection). The proxy now sanitises the joined path so the upstream host pinned in configuration is preserved regardless of the inbound request.
