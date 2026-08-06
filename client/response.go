@@ -23,16 +23,9 @@ type Response struct {
 	RawResponse *fasthttp.Response
 	cookie      []*fasthttp.Cookie
 
-	// respondedHost and respondedPath record where the response was actually
-	// served from. After a redirect that is the final hop, not the URI the
-	// caller asked for, and cookie storage has to follow it: crediting a
-	// redirect target's Set-Cookie to the original host would let that target
-	// plant cookies for an origin it does not control.
-	//
-	// Only these two components are ever read, so they are kept as byte slices
-	// rather than a whole fasthttp.URI — which would add ~296 bytes and a deep
-	// copy per request to every pooled Response, and make this exported type
-	// uncopyable through the URI's embedded noCopy.
+	// respondedHost and respondedPath record where the response was actually served
+	// from, which cookie storage must follow or a redirect target plants cookies
+	// for an origin it does not control. Byte slices: a URI would cost ~296 bytes.
 	respondedHost []byte
 	respondedPath []byte
 }

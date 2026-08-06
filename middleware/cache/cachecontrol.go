@@ -252,16 +252,8 @@ func allowsSharedCacheDirectives(cc responseCacheControl) bool {
 }
 
 // allowsSharedCacheStorage reports whether a response says outright that a
-// shared cache may hold it.
-//
-// Stricter than allowsSharedCacheDirectives, which answers RFC 9111 §3.5 — may
-// a response to an authorized request be reused — and so accepts
-// must-revalidate, on the bargain that the cache re-checks at the origin.
-//
-// A cookie asks a different question. must-revalidate governs when a stale
-// entry may be reused, not whether it is impersonal, and this middleware never
-// revalidates, so it cannot keep that bargain. public and s-maxage state the
-// thing actually relied on, and only a shared cache acts on either.
+// shared cache may hold it. Stricter than allowsSharedCacheDirectives, which
+// accepts must-revalidate on a bargain this middleware never keeps.
 func allowsSharedCacheStorage(cc responseCacheControl) bool {
 	// The store path rejects private long before the cookie gate; this arm just
 	// keeps the predicate self-contained.

@@ -61,16 +61,9 @@ func (s *standardClientTransport) DoDeadline(req *fasthttp.Request, resp *fastht
 	return s.client.DoDeadline(req, resp, deadline)
 }
 
-// DoRedirects delegates to fasthttp, whose redirect loop resolves relative
-// Location values, applies RFC 9110 §15.4.4 to 303 responses for every method,
-// and strips credentials on redirects away from the initial host. Routing this
-// through doRedirectsWithClient instead would substitute a narrower
-// reimplementation of all three.
-//
-// The trade is that the scheme checks doRedirectsWithClient makes — refusing an
-// HTTPS-to-HTTP downgrade and any non-http(s) target — do not apply here.
-// fasthttp follows a downgrade the way net/http does, keeping credentials
-// because the host is unchanged; see ErrRedirectDowngrade.
+// DoRedirects delegates to fasthttp, whose loop resolves relative Locations,
+// applies RFC 9110 §15.4.4 to 303s, and strips credentials off the initial host.
+// The trade: it follows an HTTPS-to-HTTP downgrade. See ErrRedirectDowngrade.
 func (s *standardClientTransport) DoRedirects(req *fasthttp.Request, resp *fasthttp.Response, maxRedirects int) error {
 	return s.client.DoRedirects(req, resp, maxRedirects)
 }
@@ -353,14 +346,9 @@ func doRedirectsWithClient(req *fasthttp.Request, resp *fasthttp.Response, maxRe
 		}
 		currentURL = nextURL
 
-		// 301, 302 and 303 turn any body-carrying method into a GET, body and
-		// all — net/http's redirectBehavior, for every method rather than just
-		// POST, since Fiber drives QUERY through here too and one that kept its
-		// method would replay its body to another host. Required for 303 by RFC
-		// 9110 Section 15.4.4, permitted for 301 and 302 by 15.4.2 and 15.4.3.
-		//
-		// fasthttp changes only POST and keeps the body; this is the one place
-		// the two deliberately differ. 307 and 308 preserve both by design.
+		// 301, 302 and 303 turn any body-carrying method into a GET, body and all —
+		// net/http's redirectBehavior, for every method rather than just POST, since
+		// Fiber drives QUERY here too. fasthttp changes only POST; the one difference.
 		switch statusCode {
 		case fasthttp.StatusMovedPermanently, fasthttp.StatusFound, fasthttp.StatusSeeOther:
 			if !req.Header.IsGet() && !req.Header.IsHead() {
@@ -369,11 +357,9 @@ func doRedirectsWithClient(req *fasthttp.Request, resp *fasthttp.Response, maxRe
 			}
 		}
 
-		// Credentials are scoped to the origin that issued them, so drop them
-		// once the chain leaves it. The trust boundary is net/http's, which
-		// fasthttp's own loop also implements: measured against the *initial*
-		// host rather than the previous hop, ignoring the port, and treating a
-		// subdomain of it as still trusted.
+		// Credentials are scoped to the origin that issued them, so drop them once
+		// the chain leaves it. net/http's boundary, which fasthttp also implements:
+		// against the initial host, ignoring the port, subdomains still trusted.
 		if !trustedRedirectTarget(nextHost, initialHostname) {
 			for _, h := range crosshost.SensitiveHeaders {
 				req.Header.Del(h)
@@ -382,13 +368,9 @@ func doRedirectsWithClient(req *fasthttp.Request, resp *fasthttp.Response, maxRe
 	}
 }
 
-// dropRequestBody removes a request's body and everything that frames or
-// describes it, so the next hop carries none of it.
-//
-// Content-Length, Transfer-Encoding and Trailer signal a body (RFC 9112);
-// Content-Type and Content-Encoding describe one that is no longer there, and a
-// GET announcing a coding with nothing to decode is rejectable. PostArgs is
-// reset last: it is parsed lazily, and a stale copy would be re-serialized.
+// dropRequestBody removes a request's body and everything framing or describing
+// it: Content-Length, Transfer-Encoding and Trailer signal one (RFC 9112),
+// Content-Type and Content-Encoding describe one no longer there.
 func dropRequestBody(req *fasthttp.Request) {
 	req.Header.Del(fasthttp.HeaderContentLength)
 	req.Header.Del(fasthttp.HeaderContentType)
@@ -402,10 +384,9 @@ func dropRequestBody(req *fasthttp.Request) {
 // hostnameWithoutPort strips the port from a host[:port] value, leaving a
 // bracketed IPv6 literal's own colons alone.
 func hostnameWithoutPort(host string) string {
-	// More than one colon without brackets is an IPv6 literal written bare,
-	// where the last colon belongs to the address: truncating there folds
-	// "fe80::1" and "fe80::2" to one name, and a hop between them would keep
-	// its credentials.
+	// More than one colon without brackets is a bare IPv6 literal, where the last
+	// colon belongs to the address: truncating there folds "fe80::1" and
+	// "fe80::2" to one name, and a hop between them would keep its credentials.
 	if strings.HasPrefix(host, "[") || strings.Count(host, ":") <= 1 {
 		if i := strings.LastIndexByte(host, ':'); i >= 0 && strings.IndexByte(host[i:], ']') < 0 {
 			host = host[:i]
@@ -420,9 +401,8 @@ func hostnameWithoutPort(host string) string {
 }
 
 // trustedRedirectTarget reports whether credentials issued for initialHostname
-// may still be sent to host, which may carry a port. The target is trusted when
-// it is the initial host or a subdomain of it — the rule net/http documents for
-// forwarding sensitive headers across redirects.
+// may still be sent to host, which may carry a port: trusted when it is that
+// host or a subdomain — net/http's rule for forwarding sensitive headers.
 func trustedRedirectTarget(host, initialHostname string) bool {
 	target := hostnameWithoutPort(host)
 	if utils.EqualFold(target, initialHostname) {
@@ -434,11 +414,9 @@ func trustedRedirectTarget(host, initialHostname string) bool {
 	if initialHostname == "" {
 		return false
 	}
-	// The same bail-out net/http's isDomainOrSubdomain makes, and for the same
-	// reason: a ':' or '%' means this is not a hostname, and running the suffix
-	// test anyway matches inside an IPv6 zone identifier. "[::1%.example.com]"
-	// would come back a subdomain of example.com and carry the Authorization
-	// and Cookie headers to a loopback service.
+	// The same bail-out net/http's isDomainOrSubdomain makes: a ':' or '%' means
+	// this is no hostname, and the suffix test would match inside an IPv6 zone
+	// identifier — "[::1%.example.com]" would come back a subdomain of it.
 	if strings.ContainsAny(target, ":%") {
 		return false
 	}

@@ -628,10 +628,8 @@ func (r *DefaultRes) CBOR(data any, ctype ...string) error {
 // By default, the callback name is simply callback.
 //
 // The callback name is reduced to a JavaScript member expression: everything
-// outside [A-Za-z0-9_$.[]] is dropped. Callers routinely take the name straight
-// from the query string, which is what JSONP is for, and the name lands
-// verbatim in a same-origin text/javascript body — so an unfiltered one would
-// let a request supply arbitrary script for the app's own origin.
+// outside [A-Za-z0-9_$.[]] is dropped. It lands verbatim in a same-origin
+// text/javascript body, and callers take it straight from the query string.
 func (r *DefaultRes) JSONP(data any, callback ...string) error {
 	raw, err := r.c.app.config.JSONEncoder(data)
 	if err != nil {
@@ -663,28 +661,18 @@ func (r *DefaultRes) JSONP(data any, callback ...string) error {
 
 const defaultJSONPCallback = "callback"
 
-// isJSONPCallbackByte reports whether b may appear in a JSONP callback name.
-// The set spells a JavaScript member expression — identifiers, property
-// access, bracket indexing — and admits nothing that could open a string, a
-// comment, or a new statement, so the emitted body can only ever call
-// something the including page already has.
+// isJSONPCallbackByte reports whether b may appear in a JSONP callback name. The
+// set spells a JavaScript member expression and admits nothing that could open a
+// string, comment or statement.
 func isJSONPCallbackByte(b byte) bool {
 	return (b >= 'a' && b <= 'z') || (b >= 'A' && b <= 'Z') ||
 		(b >= '0' && b <= '9') ||
 		b == '_' || b == '$' || b == '.' || b == '[' || b == ']'
 }
 
-// sanitizeJSONPCallback drops every byte isJSONPCallbackByte rejects, matching
-// how Express and Django filter the same value, then requires the result to
-// actually look like a member expression. It returns "" when nothing usable is
-// left, which the caller turns into the default name.
-//
-// Filtering alone is enough for safety — no byte that could open a statement, a
-// string or a comment survives it — but not for correctness: "1.2.3", "...",
-// "[]" and "a[" are all made of allowed bytes and all emit a body that throws
-// in the browser instead of calling anything. Names already valid ("cb",
-// "window.cb", "ns.cb[0]", "$.jsonp_1") are returned unchanged and cost no
-// allocation.
+// sanitizeJSONPCallback drops every byte isJSONPCallbackByte rejects, as Express
+// and Django do, then requires a member expression, returning "" otherwise.
+// Filtering is enough for safety, not correctness: "1.2.3" and "a[" only throw.
 func sanitizeJSONPCallback(cb string) string {
 	i := 0
 	for ; i < len(cb); i++ {
@@ -740,11 +728,9 @@ func isJSONPMemberExpression(cb string) bool {
 			depth--
 			afterClose = true
 		default:
-			// Only '.', '[' or another ']' may follow a closing bracket, so
-			// "cb[0]x" is not a member expression. Without this the state
-			// machine would accept it and emit a body that does not parse —
-			// and would silently become unsound if the byte set below it ever
-			// grew to cover quoted keys.
+			// Only '.', '[' or another ']' may follow a closing bracket, so "cb[0]x"
+			// is no member expression. Without this the machine would accept it and
+			// emit a body that does not parse.
 			if afterClose {
 				return false
 			}

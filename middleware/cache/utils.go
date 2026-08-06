@@ -101,13 +101,8 @@ func responseSetsCookie(h *fasthttp.ResponseHeader, normalized bool) bool { //no
 		return true
 	}
 	// Not PeekAll(Set-Cookie): fasthttp answers that from its cookie store and
-	// returns a single empty entry when there is none, so a length test on it
-	// reports a cookie that was never set.
-	//
-	// Set-Cookie2 has no store of its own, so unlike Set-Cookie it is found
-	// only under the spelling the handler wrote: fieldname.Lines rather than
-	// PeekAll, or a lower-case one walked past this guard and the personalized
-	// response it names was stored and replayed to every later client.
+	// returns one empty entry when there is none. Set-Cookie2 has no store, so it
+	// is found only under the spelling the handler wrote.
 	for _, v := range fieldname.Lines(h, setCookie2, normalized) {
 		if len(v) > 0 {
 			return true
@@ -118,29 +113,18 @@ func responseSetsCookie(h *fasthttp.ResponseHeader, normalized bool) bool { //no
 
 // keyFieldLines returns the field lines of name to key a cache entry on.
 //
-// Cookie is answered from fasthttp's own store, which reports raw field lines
-// before collection and one merged entry after — and which of those happens
-// depends on middleware order. So a Vary: Cookie route, keyed before the handler
-// and stored after, keyed the same request two ways: a miss every second request
-// and a stranded duplicate each time.
-//
-// Force the collection so the merged form is always what gets keyed. It is the
-// only representation both states agree on, and collecting is idempotent.
+// Cookie is answered from fasthttp's store, which reports raw lines before
+// collection and one merged entry after — so force the collection, the only
+// representation both states agree on. Collecting is idempotent.
 func keyFieldLines(h *fasthttp.RequestHeader, name string, normalized bool) [][]byte {
 	switch {
 	case utils.EqualFold(name, fiber.HeaderCookie):
 		h.Cookie("") // collectCookies; the lookup itself is expected to miss
 
 	case utils.EqualFold(name, fiber.HeaderContentType) && mediatype.IsForm(h.ContentType()):
-		// Fold here rather than read whatever arrived: the key is built once
-		// before the handler and once after, and the form accessors lowercase
-		// this header in place between them, so the entry landed under a key no
-		// lookup would produce.
-		//
-		// This is a write on an otherwise read-only path. The handler then sees
-		// the folded value — which is what FormValue would give it anyway, with
-		// the boundary's case intact — and IsForm gates it, so nothing else is
-		// touched.
+		// Fold here rather than read whatever arrived: the key is built once before
+		// the handler and once after, and the form accessors lowercase this header
+		// in between, so the entry landed under a key no lookup would produce.
 		mediatype.NormalizeRequestContentType(h)
 	}
 
@@ -148,13 +132,8 @@ func keyFieldLines(h *fasthttp.RequestHeader, name string, normalized bool) [][]
 }
 
 // setFieldLine writes value as the field line for name, replacing whichever
-// spelling of it the response already carries.
-//
-// Set matches the stored key byte for byte, so under DisableHeaderNormalizing
-// it leaves a differently-spelled line of the same field untouched and the
-// response goes out carrying both. Nothing reconciles two Age or two Date
-// lines: a downstream cache reads one of them, and which one it reads decides
-// how old it believes the response to be.
+// spelling the response carries. Set is byte-exact, so it otherwise left a
+// differently-spelled line and nothing reconciles two Age or two Date lines.
 func setFieldLine(h *fasthttp.ResponseHeader, name string, value []byte, normalized bool) { //nolint:revive // flag-parameter: normalized is a property of the header store
 	if !normalized {
 		fieldname.DelOthers(h, name)
@@ -179,17 +158,8 @@ var ignoredHeaderNames = func() map[string]struct{} {
 const maxIgnoredHeaderLen = 32
 
 // isIgnoredHeader reports whether key names a field this cache must not carry
-// between requests.
-//
-// Field names are case-insensitive (RFC 9110 Section 5.1) and these are matched
-// against keys the response stored, which under DisableHeaderNormalizing are
-// whatever spelling the handler used. A byte-for-byte lookup missed those, so a
-// handler writing "cache-control" or "age" in lower case had it kept in the
-// entry and replayed beside the copy this package writes from the entry's own
-// fields — two Cache-Control lines on every hit, one of them the "public" that
-// gets synthesized precisely because the other was invisible. A shared cache
-// downstream then has explicit permission to store and share a response whose
-// origin never granted it.
+// between requests. Matched case-insensitively (RFC 9110 §5.1): a byte-exact
+// lookup missed a handler's lower-case "cache-control" and replayed it.
 func isIgnoredHeader(key []byte) bool {
 	if len(key) > maxIgnoredHeaderLen {
 		return false
@@ -209,20 +179,9 @@ func isIgnoredHeader(key []byte) bool {
 	return ok
 }
 
-// joinedHeader returns every field line for key, comma-joined.
-//
-// A recipient may combine repeated field lines into that form (RFC 9110
-// Section 5.2), and Cache-Control, Pragma and Vary have to be read across all
-// of them — Peek returns only the first, so a response declaring
-//
-//	Vary: Accept-Encoding
-//	Vary: X-Tenant
-//
-// was cached as if the second line had never been sent, and served across
-// tenants.
-//
-// The single-line case allocates nothing, and the returned slice survives later
-// PeekAll calls: those reuse the scratch slice of headers, not the value bytes.
+// joinedHeader returns every field line for key, comma-joined, since a recipient
+// may combine them into that form (RFC 9110 §5.2). Peek returns only the first,
+// so a second "Vary:" line was cached as if it had never been sent.
 func joinedHeader(h fieldname.Peeker, key string, normalized bool) []byte {
 	values := fieldname.Lines(h, key, normalized)
 	switch len(values) {

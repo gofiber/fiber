@@ -1,9 +1,6 @@
 // Package headerlookup answers, for a caller holding a fiber.Ctx, the two
-// questions the byte-for-byte header API cannot: whether the stored field names
-// are canonical, and what a named request header holds if they are not.
-//
-// The matching itself lives in internal/fieldname, which takes fasthttp header
-// types so package fiber can use it too.
+// questions the byte-exact header API cannot: whether the stored field names are
+// canonical, and what a named request header holds if they are not.
 package headerlookup
 
 import (
@@ -21,14 +18,8 @@ func Canonical(c fiber.Ctx) bool {
 }
 
 // Value returns the named request header, matching the field name
-// case-insensitively (RFC 9110 Section 5.1).
-//
-// Ctx.Get compares byte for byte, so under DisableHeaderNormalizing a "referer:"
-// or "origin:" from a client behind an HTTP/2 front end reads as absent — which
-// makes an extractor refuse a request it should allow, and makes the CSRF origin
-// check treat the absence as nothing to verify.
-//
-// The byte-for-byte lookup runs first, so nothing is walked in the default case.
+// case-insensitively (RFC 9110 §5.1). Ctx.Get is byte-exact, so a lower-case
+// "origin:" read as absent and the CSRF check found nothing to verify.
 func Value(c fiber.Ctx, name string) string {
 	if v := c.Get(name); v != "" {
 		return v

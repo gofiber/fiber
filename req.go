@@ -165,13 +165,9 @@ func (r *DefaultReq) Body() []byte {
 		return r.getBody()
 	}
 
-	// Get Content-Encoding header. Multiple field lines form one combined
-	// list (RFC 9110 Section 5.2), so join them before splitting.
-	// The single-line result aliases the header storage, so fold into a new
-	// string rather than rewriting the request's bytes. ToLower returns its
-	// input unchanged with no uppercase byte, which every real value satisfies,
-	// so the common path stays allocation-free. A stack buffer is not an option:
-	// the substrings flow on into tryDecodeBodyInOrder and would escape.
+	// Multiple field lines form one list (RFC 9110 §5.2), so join before splitting.
+	// The result aliases the header storage, so fold into a new string; ToLower
+	// returns its input unchanged without an uppercase byte, so this stays free.
 	encodedBytes := peekJoinedRequestHeader(&request.Header, HeaderContentEncoding)
 	headerEncoding = utilsstrings.ToLower(utils.UnsafeString(encodedBytes))
 
@@ -419,20 +415,12 @@ func (r *DefaultReq) FormFile(key string) (*multipart.FileHeader, error) {
 // BodyLimit so the configured limit is consistently enforced.
 //
 // On a form request this lowercases the case-insensitive parts of the request's
-// own Content-Type, so a value obtained earlier from Get(HeaderContentType) —
-// which aliases those bytes unless Immutable is set — can change during the
-// call. Copy it first if you need it to outlive one.
+// own Content-Type, so a value obtained earlier from Get(HeaderContentType) can
+// change during the call. Copy it first if you need it to outlive one.
 func (r *DefaultReq) FormValue(key string, defaultValue ...string) string {
-	// fasthttp locates the urlencoded body and multipart boundary with
-	// case-sensitive comparisons, so a legal "Multipart/Form-Data" yielded
-	// nothing here. Bind and Redirect.WithInput normalize too, so a handler does
-	// not
-	// have to call one of those first to get its own form back.
-	//
-	// Guarded, because the fold lands on the request's own bytes: normalizing
-	// unconditionally would rewrite a JSON request's Content-Type underneath a
-	// caller still holding what c.Get(HeaderContentType) returned, which is a
-	// view into exactly those bytes unless Immutable is set.
+	// fasthttp locates the urlencoded body and multipart boundary
+	// case-sensitively, so a legal "Multipart/Form-Data" yielded nothing here.
+	// Guarded, because the fold rewrites the request's own bytes.
 	if mediatype.IsForm(r.c.fasthttp.Request.Header.ContentType()) {
 		mediatype.NormalizeRequestContentType(&r.c.fasthttp.Request.Header)
 	}
@@ -981,17 +969,12 @@ func currentMethod(c *DefaultCtx) string {
 // MultipartForm parse form entries from binary.
 // This returns a map[string][]string, so given a key, the value will be a string slice.
 //
-// On a form request this lowercases the case-insensitive parts of the request's
-// own Content-Type, so a value obtained earlier from Get(HeaderContentType) —
-// which aliases those bytes unless Immutable is set — can change during the
-// call. Copy it first if you need it to outlive one.
+// On a form request this lowercases the request's own Content-Type, so a value
+// obtained earlier from Get(HeaderContentType) can change during the call.
 func (r *DefaultReq) MultipartForm() (*multipart.Form, error) {
 	// fasthttp matches both "multipart/form-data" and the "boundary=" parameter
-	// name case-sensitively, so fold them first (see
-	// mediatype.NormalizeRequestContentType). FormFile and SaveFile reach the
-	// parser through here, so this covers them too. Guarded like FormValue: the
-	// fold rewrites the request's own bytes, so it must not touch a
-	// Content-Type the parser was never going to look at.
+	// name case-sensitively, so fold first. FormFile and SaveFile come through
+	// here too. Guarded like FormValue: the fold writes.
 	if mediatype.IsForm(r.c.fasthttp.Request.Header.ContentType()) {
 		mediatype.NormalizeRequestContentType(&r.c.fasthttp.Request.Header)
 	}
@@ -1103,12 +1086,8 @@ func (r *DefaultReq) Scheme() string {
 }
 
 // forwardedScheme canonicalizes a scheme announced by a proxy header. Only
-// "http" and "https" are accepted: the value reaches callers that splice it
-// into a URL (BaseURL) or compare it for origin equality (CSRF, Redirect.Back),
-// so a header naming any other scheme — "javascript" included — must not become
-// the request's scheme. Rejecting it leaves the previously determined scheme in
-// place instead, which is the connection's own scheme unless another proxy
-// header already supplied a valid one.
+// "http" and "https": the value is spliced into a URL (BaseURL) and compared for
+// origin equality (CSRF, Redirect.Back). Rejecting leaves the prior scheme.
 func forwardedScheme(value string) (string, bool) {
 	value = utils.TrimSpace(value)
 	switch {

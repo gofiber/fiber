@@ -327,10 +327,9 @@ func (cj *CookieJar) setByHostAndPath(host, requestPath []byte, cookies ...*fast
 
 	defaultPath := defaultCookiePathFor(requestPath)
 
-	// One clock reading for the whole call, as parseCookiesFromResp already
-	// does. The capacity sweep below runs per cookie — each may land under a
-	// different key — and taking a fresh time.Now() inside it bought nothing
-	// but a syscall per cookie while cj.mu is held.
+	// One clock reading for the whole call, as parseCookiesFromResp already does.
+	// The capacity sweep below runs per cookie, and a fresh time.Now() inside it
+	// bought nothing but a syscall per cookie while cj.mu is held.
 	now := time.Now()
 
 	for _, cookie := range cookies {
@@ -498,22 +497,9 @@ func defaultCookiePathFor(requestPath []byte) []byte {
 
 // setDefaultCookiePath stores path as c's Path attribute.
 //
-// fasthttp's Cookie.SetPathBytes runs the value through normalizePath, which
-// percent-decodes it and turns ';' into a space. The path handed to us came
-// from URI.Path(), which fasthttp has already decoded once, so setting it
-// naively decodes twice: a request for "/a%2541b/c" would store the scope
-// "/aAb" and the cookie could never be sent again, not even to the URL that
-// set it. Escaping '%' survives the second decode.
-//
-// A path holding ';' cannot round-trip at all — normalizePath rewrites it to a
-// space whether it arrives raw or as "%3B" — so those fall back to "/". That is
-// deliberately the wider of the two options: the alternative is a scope the
-// cookie can never match, which loses it silently on the URL that set it. It
-// widens the cookie only across paths of the same host, and RFC 6265 Section
-// 8.5 is explicit that the path attribute is not a security boundary — a
-// document on one path can read another path's cookies through the DOM
-// regardless. Narrowing this properly means storing the scope beside the cookie
-// rather than inside fasthttp's normalizing Path field.
+// SetPathBytes percent-decodes the value, and the path came from URI.Path()
+// already decoded once, so setting it naively decodes twice — "/a%2541b/c"
+// stored "/aAb". A path holding ';' cannot round-trip and falls back to "/".
 func setDefaultCookiePath(c *fasthttp.Cookie, path []byte) {
 	c.SetPathBytes(escapePercent(path))
 	if !bytes.Equal(c.Path(), path) {

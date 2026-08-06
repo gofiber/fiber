@@ -60,14 +60,9 @@ func makeBuildVaryKeyFunc(hexBufPool *sync.Pool) func([]string, *fasthttp.Reques
 			_, _ = sum.Write(binary.AppendUvarint(lenBuf[:0], uint64(len(name)))) //nolint:errcheck // hash.Hash.Write for std hashes never errors
 			_, _ = sum.Write(utils.UnsafeBytes(name))                             //nolint:errcheck // hash.Hash.Write for std hashes never errors
 
-			// Every field line, not just the first: the split and comma-joined
-			// forms are equivalent on the wire (RFC 9110 Section 5.2), but Peek
-			// returns only the first, so a request sending X-Tenant twice hashed
-			// like one sending just the first value — the exact cross-request
-			// mixing Vary exists to prevent.
-			//
-			// PeekAll reuses the header's scratch slice for ordinary names, so
-			// those cost nothing. Cookie and Trailer are re-serialized per call.
+			// Every field line, not just the first: the split and comma-joined forms
+			// are equivalent (RFC 9110 §5.2), so a request sending X-Tenant twice
+			// hashed like one sending just the first value.
 			values := keyFieldLines(hdr, name, normalized)
 			_, _ = sum.Write(binary.AppendUvarint(lenBuf[:0], uint64(len(values)))) //nolint:errcheck // hash.Hash.Write for std hashes never errors
 			for _, v := range values {

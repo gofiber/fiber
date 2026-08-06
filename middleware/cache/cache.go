@@ -77,21 +77,15 @@ var ignoreHeaders = map[string]struct{}{
 	"Keep-Alive":          {},
 	"Proxy-Authenticate":  {},
 	"Proxy-Authorization": {},
-	// A cache entry is served to every client that matches its key, so a
-	// Set-Cookie captured from one response would hand that client's session
-	// to all the others. It still reaches the client that caused the miss;
-	// only the stored copy is dropped. Set-Cookie2 is the obsolete RFC 2965
-	// spelling and leaks exactly the same way, so it is dropped alongside —
-	// the client's crossHostSensitiveHeaders list strips its request-side
-	// counterpart, Cookie2, for the same reason.
+	// Served to every client matching the key, so a captured Set-Cookie hands one
+	// client's session to all the others. It still reaches the client that caused
+	// the miss. Set-Cookie2 is the obsolete RFC 2965 spelling and leaks the same.
 	"Set-Cookie":  {},
 	"Set-Cookie2": {},
 	"TE":          {},
-	// "Trailer", not "Trailers": the hop-by-hop header is Trailer
-	// (RFC 9110 Section 6.6.2) — "trailers" is a TE token and never appears as a
-	// response header key, so the old spelling matched nothing and let a
-	// Trailer field describing one connection's chunked framing be replayed to
-	// every later hit.
+	// "Trailer", not "Trailers": the hop-by-hop header is Trailer (RFC 9110
+	// §6.6.2), so the old spelling matched nothing and replayed one connection's
+	// chunked framing to every later hit.
 	"Trailer":           {},
 	"Transfer-Encoding": {},
 	"Upgrade":           {},
@@ -217,13 +211,9 @@ func New(config ...Config) fiber.Handler {
 
 	// Return new handler
 	return func(c fiber.Ctx) error {
-		// Every field line, like the hash below: a request whose first
-		// Authorization line is empty and whose second carries the credential
-		// would otherwise be taken for anonymous, keyed with anonymous traffic
-		// and served to it. Only lengths are read here, so nothing outlives the
-		// user-supplied KeyGenerator that runs next.
-		// Whether a byte-for-byte header lookup is complete for this request.
-		// Read once: it is app config, fixed for the life of the handler.
+		// Every field line, like the hash below: an empty first Authorization line
+		// would otherwise read as anonymous. canonical is app config, fixed for the
+		// life of the handler, so read it once.
 		canonical := headerlookup.Canonical(c)
 
 		hasAuthorization := false
@@ -259,16 +249,9 @@ func New(config ...Config) fiber.Handler {
 		baseKey := requestMethod + "|" + cfg.KeyGenerator(c)
 		manifestKey := baseKey + "|vary"
 		if hasAuthorization {
-			// Read at the point of use, not at the top of the handler: the
-			// single-line result aliases the header's own storage, and
-			// cfg.KeyGenerator above is user code that may add or delete
-			// headers, which lets fasthttp recycle the slot it points at.
-			//
-			// Every field line, for the same reason the key headers and Vary
-			// read them all: two requests whose Authorization differs only past
-			// the first line would otherwise hash the same and share one |auth=
-			// partition, so a shared-cacheable response stored for one
-			// credential set would be served to the other.
+			// Read at the point of use: the result aliases the header's storage, and
+			// cfg.KeyGenerator is user code that may recycle the slot. Every field
+			// line, or two credentials differing past the first would share a key.
 			authHash := hashAuthorization(joinedHeader(&c.Request().Header, fiber.HeaderAuthorization, canonical))
 			baseKey += "|auth=" + authHash
 			manifestKey = baseKey + "|vary"
@@ -495,33 +478,19 @@ func New(config ...Config) fiber.Handler {
 				clampedDate := clampDateSeconds(e.date, ts)
 				dateValue := utils.AppendHTTPDate(nil, secondsToTime(clampedDate))
 				setFieldLine(&c.Response().Header, fiber.HeaderDate, dateValue, canonical)
-				// One entry per field line, so replaying with Set collapsed a
-				// repeated name — it overwrites the first match and leaves the
-				// rest. A response sending Vary twice came back varying only on
-				// the second, and two Content-Security-Policy lines came back as
-				// whichever is weaker alone.
-				//
-				// Clear every stored name first, then append in order. Two
-				// passes rather than a per-entry seen-scan, which would be
-				// quadratic on the hit path. The names written above are all in
-				// ignoreHeaders, so never among the stored entries.
+				// One entry per field line, so Set collapsed a repeated name — a Vary
+				// sent twice came back varying only on the second. Clear every stored
+				// name first, then append; a per-entry scan would be quadratic here.
 				for i := range e.headers {
 					if isIgnoredHeader(e.headers[i].key) {
-						// An entry stored before Set-Cookie joined ignoreHeaders
-						// still carries one, and nothing versions the serialized
-						// form. Replaying it is worse than it looks: DelBytes on
-						// Set-Cookie clears fasthttp's whole cookie store, wiping
-						// the session an outer middleware just set on this very
-						// response, and then re-installs another client's. Re-read
-						// the list on the way out so an upgrade cannot resurrect
-						// anything it now excludes.
+						// An entry stored before Set-Cookie joined ignoreHeaders still
+						// carries one, and DelBytes on it clears fasthttp's whole cookie
+						// store — wiping the session an outer middleware just set.
 						continue
 					}
 					if !canonical {
-						// DelBytes is byte-exact, so a line this response
-						// already carries under another spelling survives it
-						// and the append below lands beside it — the pair this
-						// clear exists to prevent.
+						// DelBytes is byte-exact, so a line under another spelling survives
+						// it and the append lands beside it — the pair this clear prevents.
 						fieldname.DelOthers(&c.Response().Header, utils.UnsafeString(e.headers[i].key))
 					}
 					c.Response().Header.DelBytes(e.headers[i].key)
@@ -650,25 +619,18 @@ func New(config ...Config) fiber.Handler {
 			}
 		}
 
-		// unreachable marks the response uncacheable and hands back any entry
-		// still held from the lookup. Each decision below is a decision not to
-		// store, so the copy unmarshalled from external storage has no further
-		// use and would otherwise be dropped instead of returned to the pool.
+		// unreachable marks the response uncacheable and hands back any entry still
+		// held from the lookup: each decision below is a decision not to store, so
+		// the unmarshalled copy would otherwise be dropped rather than pooled.
 		isSharedCacheAllowed := allowsSharedCacheDirectives(respCacheControl)
 		if hasAuthorization && !isSharedCacheAllowed {
 			markUnreachable()
 			return nil
 		}
 
-		// A response that sets a cookie personalized itself for the one client
-		// that caused this miss. Dropping the Set-Cookie is not enough — the
-		// body is the payload, and replaying it hands that client's page to
-		// everyone who hits the entry later.
-		//
-		// Stricter than the test above: RFC 9111 Section 3.5 lets
-		// must-revalidate carry a response to an authorized request because a
-		// revalidating cache re-checks at the origin, and this one never
-		// revalidates. A route wanting both says so with public or s-maxage.
+		// A cookie personalizes the response for the one client that caused this
+		// miss, and the body is the payload. Stricter than the test above: RFC 9111
+		// §3.5 allows must-revalidate on a cache that re-checks, and this never does.
 		if !allowsSharedCacheStorage(respCacheControl) && responseSetsCookie(&c.Response().Header, canonical) {
 			markUnreachable()
 			return nil
@@ -787,11 +749,9 @@ func New(config ...Config) fiber.Handler {
 			}
 		}
 
-		// Hand back whatever the lookup left holding before overwriting it. A
-		// stale entry survives to here whenever the request said no-cache or the
-		// entry carried no expiry, and dropping it would lose one pooled item
-		// per such request — the same leak markUnreachable closes on the paths
-		// that decide not to store at all.
+		// Hand back whatever the lookup left holding. A stale entry survives to here
+		// whenever the request said no-cache or it carried no expiry, and dropping
+		// it would leak one pooled item per such request.
 		if e != nil {
 			manager.release(e)
 		}
@@ -822,10 +782,9 @@ func New(config ...Config) fiber.Handler {
 		now := cfg.now().UTC()
 		nowUnix := safeUnixSeconds(now)
 		dateHeader := fieldname.First(&c.Response().Header, fiber.HeaderDate, canonical)
-		// The second result says whether the date parsed, which is not asked:
-		// an absent or unparsable Date leaves parsedDate zero, and
-		// clampDateSeconds resolves that to the receipt timestamp — the same
-		// answer either way.
+		// The second result says whether the date parsed, which is not asked: an
+		// absent or unparsable Date leaves parsedDate zero, which clampDateSeconds
+		// resolves to the receipt timestamp — the same answer either way.
 		parsedDate, _ := parseHTTPDate(dateHeader)
 		e.date = clampDateSeconds(parsedDate, nowUnix)
 		dateBytes := utils.AppendHTTPDate(nil, secondsToTime(e.date))
@@ -847,13 +806,9 @@ func New(config ...Config) fiber.Handler {
 				})
 			}
 		} else {
-			// Keep the destination of a redirect even when headers are not
-			// stored. 300 and 301 are cacheable statuses, so without this a hit
-			// replayed the status and nothing to follow it to: the first client
-			// got "301 Location: /new" and every one after it a bare 301. The
-			// status is meaningless on its own, in the way a body is meaningless
-			// without its Content-Type — which is why that one is always kept
-			// too.
+			// Keep a redirect's destination even when headers are not stored: 300 and
+			// 301 are cacheable, so without this the first client got
+			// "301 Location: /new" and every one after it a bare 301.
 			e.headers = e.headers[:0]
 			if location := fieldname.First(&c.Response().Header, fiber.HeaderLocation, canonical); len(location) > 0 {
 				e.headers = append(e.headers, cachedHeader{

@@ -342,16 +342,9 @@ func parserResponseCookie(c *Client, resp *Response, req *Request) error {
 		return err
 	}
 
-	// Store cookies in the cookie jar if available.
-	//
-	// The Set-Cookie headers belong to whichever host served this response, not
-	// to the one the caller originally addressed. Storing them against the
-	// request URI would let the last hop of a redirect chain plant cookies for
-	// an unrelated origin, so the jar is keyed by the responding URI.
-	//
-	// Cookies carried by the intermediate 3xx responses are not stored: only
-	// the final response reaches this hook. That loses a cookie set alongside a
-	// redirect, but never misfiles one.
+	// Store cookies in the jar if available, keyed by the responding URI rather
+	// than the requested one — otherwise a redirect's last hop could plant cookies
+	// for an unrelated origin. Only the final response reaches this hook.
 	if c.cookieJar != nil {
 		host, path := resp.respondedOrigin(req.RawRequest.URI())
 		c.cookieJar.parseCookiesFromResp(host, path, resp.RawResponse)

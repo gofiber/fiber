@@ -41,18 +41,9 @@ func (*FormBinding) Name() string {
 
 // Bind parses the request body and returns the result.
 func (b *FormBinding) Bind(req *fasthttp.Request, out any) error {
-	// Callers that reach the binder directly do not go through Fiber's header
-	// normalization, and comparing case-insensitively here is not enough on its
-	// own: the parsers this method hands the request to — Request.PostArgs and
-	// Request.MultipartForm — match the media type and the "boundary=" parameter
-	// name case-sensitively, so a legal "Multipart/Form-Data" would still bind
-	// nothing (or fail outright once the comparison routed it to bindMultipart).
-	// Fold the case-insensitive parts first, then compare.
-	//
-	// Guarded on the media type actually being a form, because the fold lands
-	// on the request's own bytes: running it on, say, a JSON request would
-	// rewrite a header the caller may still be holding a view into, to no
-	// purpose — neither parser below is going to look at it.
+	// Callers reaching the binder directly skip Fiber's normalization, and
+	// comparing case-insensitively is not enough: PostArgs and MultipartForm match
+	// the media type and "boundary=" case-sensitively. Guarded — the fold writes.
 	if mediatype.IsForm(req.Header.ContentType()) {
 		mediatype.NormalizeRequestContentType(&req.Header)
 	}

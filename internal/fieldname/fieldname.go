@@ -1,18 +1,12 @@
 // Package fieldname reads and removes HTTP header fields by name
-// case-insensitively (RFC 9110 Section 5.1).
+// case-insensitively (RFC 9110 §5.1).
 //
-// fasthttp's Peek, PeekAll and Del compare the stored key byte for byte, which
-// finds every line only while fasthttp canonicalizes it. Under
-// DisableHeaderNormalizing the store keeps the spelling the peer sent, and
-// lower case is what HTTP/2 and HTTP/3 put on the wire.
+// fasthttp's Peek, PeekAll and Del are byte-exact, which finds every line only
+// while it canonicalizes the key; under DisableHeaderNormalizing the store keeps
+// the spelling the peer sent, which for HTTP/2 and 3 is lower case.
 //
-// The canonical flag says whether the caller knows the stored keys to be
-// canonical; fasthttp keeps that answer private, so it is passed in — see
-// headerlookup.Canonical. When true these do exactly what the fasthttp call
-// does and cost the same.
-//
-// Takes fasthttp header types rather than a fiber.Ctx so package fiber can use
-// it too.
+// canonical says whether the caller knows the keys to be canonical — fasthttp
+// keeps that private, so it is passed in; see headerlookup.Canonical.
 package fieldname
 
 import (
@@ -35,11 +29,9 @@ type Deleter interface {
 	All() iter.Seq2[[]byte, []byte]
 }
 
-// Lines returns every field line stored under name.
-//
-// The walk replaces the byte-for-byte lookup rather than backing it up: a
-// message can carry both spellings, and an empty canonical line would satisfy a
-// fallback-only fast path while hiding the value beside it.
+// Lines returns every field line stored under name. The walk replaces the
+// byte-exact lookup rather than backing it up: a message can carry both
+// spellings, and an empty canonical line would hide the value beside it.
 //
 //nolint:revive // flag-parameter: canonical is a property of the header store, not a mode of operation
 func Lines(h Peeker, name string, canonical bool) [][]byte {
@@ -58,10 +50,8 @@ func Lines(h Peeker, name string, canonical bool) [][]byte {
 }
 
 // First returns the first field line stored under name, or nil if there is none.
-//
-// The names fasthttp keeps in a slot of their own — Content-Type, Server,
-// Set-Cookie, Trailer, Content-Length — are unaffected either way: every
-// spelling is routed into the slot on the way in.
+// The names fasthttp keeps in a slot of their own are unaffected either way:
+// every spelling is routed into the slot on the way in.
 //
 //nolint:revive // flag-parameter: canonical is a property of the header store
 func First(h Peeker, name string, canonical bool) []byte {
@@ -107,10 +97,8 @@ func Del(h Deleter, name string, canonical bool) {
 }
 
 // DelOthers removes every stored spelling of name except name itself, which the
-// caller is about to write or delete under that exact key.
-//
-// Every other one, not just the first: a message can carry more than two, and
-// stopping early leaves the rest beside the value the caller writes.
+// caller is about to write or delete under that key. Every other one, not just
+// the first: stopping early leaves the rest beside the value the caller writes.
 func DelOthers(h Deleter, name string) {
 	// Collected before deleting: removing while ranging over the store is not safe.
 	var others []string

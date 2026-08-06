@@ -1370,16 +1370,9 @@ type GenericTypeFloat interface {
 	float32 | float64
 }
 
-// bindMediaType returns the request's media type, lowered so it can be compared
-// against the MIME constants.
-//
-// The request's own bytes are folded only for a form. That is the one case
-// where it has to happen in place: fasthttp's form and multipart parsers match
-// the media type and the "boundary=" parameter name case-sensitively, so they
-// need the header itself changed. Anything else is compared on a lowered copy,
-// leaving the header alone — a caller may still be holding what
-// c.Get(HeaderContentType) returned, which is a view into those same bytes
-// unless Immutable is set.
+// bindMediaType returns the request's media type, lowered for comparison against
+// the MIME constants. The request's own bytes are folded only for a form, the
+// one case needing it in place; anything else is compared on a copy.
 func bindMediaType(h *fasthttp.RequestHeader) string {
 	if mediatype.IsForm(h.ContentType()) {
 		raw := utils.UnsafeString(mediatype.NormalizeRequestContentType(h))

@@ -335,13 +335,8 @@ func CopyContextToFiberContext(src any, requestContext *fasthttp.RequestCtx) {
 }
 
 // framingHeaders delimit and address the message rather than describe what it
-// carries. Excluded from both the snapshot and the clear: the wrapped
-// middleware works on a converted copy, so one missing there says nothing about
-// the original, and clearing it corrupts the body the handler still reads.
-//
-// The trade is that a wrapped middleware cannot change them either. Host is
-// restored separately from r.Host, and Transfer-Encoding could not round-trip
-// regardless — fasthttpadaptor routes it to http.Request.TransferEncoding.
+// carries, and are excluded from the snapshot and the clear: the wrapped
+// middleware sees a copy, so clearing one corrupts the body still being read.
 var framingHeaders = [...]string{
 	fiber.HeaderHost,
 	fiber.HeaderContentLength,
@@ -357,12 +352,8 @@ type headerPair struct {
 }
 
 // snapshotHeaders copies the non-framing headers of the converted request into
-// owned strings.
-//
-// fasthttpadaptor builds http.Request.Header with b2s, so its keys and values
-// are unsafe views into the buffers the fiber header owns, and writing back in
-// place corrupts data still being read: a Set-then-Add copy duplicated the last
-// value of every multi-valued header. Materializing first removes the aliasing.
+// owned strings. fasthttpadaptor builds r.Header with b2s, so its keys and values
+// alias buffers the fiber header owns — writing back in place corrupted them.
 func snapshotHeaders(h http.Header) []headerPair {
 	// One entry per field line, not per name: len(h) regrows the slice for
 	// every multi-valued header, which is what these tend to be.
@@ -385,16 +376,8 @@ func snapshotHeaders(h http.Header) []headerPair {
 }
 
 // clearCopiedHeaders deletes every non-framing header from the fiber request so
-// the copy that follows rebuilds the set exactly as the wrapped net/http
-// middleware left it.
-//
-// Set-then-Add cannot: fasthttp's Set replaces only the first entry, so a
-// middleware collapsing a multi-valued header left the rest in place, and one
-// changing nothing duplicated the last value of every such header. Removals
-// never propagated at all, in any of net/http's spellings.
-//
-// Keys are collected before deleting, since the iterator walks the storage the
-// deletes rewrite.
+// the copy that follows rebuilds the set as the wrapped middleware left it.
+// Set-then-Add cannot: Set replaces only the first entry, and removals never did.
 func clearCopiedHeaders(fhdr *fasthttp.RequestHeader) {
 	// Not sized from fhdr.Len(): that counts by walking every header, so
 	// pre-sizing would traverse them twice — and the walk also collects the
@@ -405,10 +388,9 @@ func clearCopiedHeaders(fhdr *fasthttp.RequestHeader) {
 		if isFramingHeader(name) {
 			continue
 		}
-		// Repeated names are Del'd repeatedly; Del removes every line at once,
-		// so the second call finds nothing. Skipping it costs more: a
-		// slices.Contains scan measured 17% slower at twenty headers and 61% at
-		// a hundred, where no name repeats and every scan fails.
+		// Repeated names are Del'd repeatedly; Del removes every line at once, so
+		// the second finds nothing. Skipping it costs more — a slices.Contains scan
+		// measured 17% slower at twenty headers and 61% at a hundred.
 		removed = append(removed, string(key))
 	}
 
@@ -436,16 +418,9 @@ func HTTPMiddleware(mw func(http.Handler) http.Handler) fiber.Handler {
 			freq := c.Request()
 			fhdr := &freq.Header
 
-			// Snapshot before mutating: fasthttpadaptor fills r.Header with
-			// b2s views into fhdr's own storage, so every Set, Del or SetHost
-			// below rewrites the bytes the remaining entries point at. The
-			// method/URI/host writes are ordered after this for the same
-			// reason. They happen to be safe today — each one copies a value
-			// that aliases the very field it writes back to, and none of them
-			// touch the key/value store the general headers live in — but that
-			// is a property of fasthttp's current internals, not something this
-			// package can rely on. Taking the snapshot first makes the code
-			// hold the invariant its own comment states.
+			// Snapshot before mutating: fasthttpadaptor fills r.Header with b2s views
+			// into fhdr's storage, so every Set, Del or SetHost below rewrites bytes the
+			// remaining entries point at. The method/URI/host writes follow for that.
 			pairs := snapshotHeaders(r.Header)
 
 			fhdr.SetMethod(r.Method)

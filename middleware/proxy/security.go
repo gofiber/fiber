@@ -237,22 +237,11 @@ func stripHopByHopRequestHeaders(req *fasthttp.Request, normalized bool, except 
 	}
 }
 
-// stripHopByHopResponseHeaders applies the same filtering on the way
-// back, so upstream cannot leak connection-scoped state to the client.
-// A response header takes no normalized argument, unlike the request one. The
-// request store is the server's, so the app config that set the server's
-// normalization is the authority on it. A proxied response is parsed by the
-// outbound fasthttp.Client, which carries its own
-// DisableHeaderNamesNormalizing and in fact stamps it onto this very header on
-// every hop — the two settings are independent, so the app's answer says
-// nothing about the keys stored here. Reading it anyway meant a proxy that
-// preserves upstream casing, with an app that normalizes, stripped nothing at
-// all: an upstream's "keep-alive", "upgrade" and "te" all reached the client.
+// stripHopByHopResponseHeaders applies the same filtering on the way back.
 //
-// So ask the header rather than the config. One pass finds every spelling to
-// delete, which costs the same whether or not any of them turned out to be
-// unusual — and is cheaper than the per-name scan the request side avoids,
-// since that one repeats the walk for each name.
+// It takes no normalized argument: a proxied response is parsed by the outbound
+// fasthttp.Client, whose own setting is independent of the app's, so ask the
+// header. One pass finds every spelling, cheaper than the per-name scan.
 func stripHopByHopResponseHeaders(res *fasthttp.Response, except ...string) {
 	// Headers listed in Connection must be removed first so the listing is
 	// honored before the Connection field itself is dropped.

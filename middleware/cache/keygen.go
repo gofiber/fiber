@@ -185,11 +185,9 @@ func appendCanonicalHeaderSubset(dst []byte, header *fasthttp.RequestHeader, nam
 		dst = append(dst, escapeKeyDelimiters(name)...)
 		dst = append(dst, ':')
 
-		// Every field line, not just the first: the split and comma-joined forms
-		// are equivalent (RFC 9110 Section 5.2), but Peek returns only the
-		// first, so a request sending a key header twice keyed like one sending
-		// just that value and was served its cached response. PeekAll reuses the
-		// header's scratch slice; Cookie and Trailer are re-serialized per call.
+		// Every field line, not just the first: the split and comma-joined forms are
+		// equivalent (RFC 9110 §5.2), so a key header sent twice keyed like one sent
+		// once and was served its cached response.
 		values := keyFieldLines(header, name, normalized)
 
 		// The count keeps the framing injective: without it an absent header and
@@ -197,11 +195,9 @@ func appendCanonicalHeaderSubset(dst []byte, header *fasthttp.RequestHeader, nam
 		// single value containing the separator.
 		dst = strconv.AppendInt(dst, int64(len(values)), 10)
 
-		// Each value is bounded, but nothing bounds how many there are, and a
-		// few hundred field lines build a multi-kilobyte key that ends up a map
-		// key in the store. Hold the whole dimension to the same bound, hashing
-		// past it. The hash covers the raw lines, which the verbatim form never
-		// is, so the two cannot collide.
+		// Each value is bounded, but not how many there are, and a few hundred field
+		// lines build a multi-kilobyte map key. Hash past the bound; the hash covers
+		// raw lines, which the verbatim form never is, so the two cannot collide.
 		total := 0
 		for _, value := range values {
 			total += len(value) + 1

@@ -126,13 +126,9 @@ func ReleaseRedirect(r *Redirect) {
 
 func (r *Redirect) release() {
 	r.status = StatusSeeOther
-	// Zero before truncating. WithInput copies the whole request body into
-	// these entries — passwords, tokens, anything the form carried — and a
-	// bare r.messages[:0] leaves those strings reachable from the backing
-	// array, so the pooled *Redirect keeps them alive for as long as the
-	// process runs. Nothing re-slices past len, so this is retention rather
-	// than a cross-request read, but there is no reason to hold a credential
-	// after the redirect that carried it has been written.
+	// Zero before truncating: WithInput copies the whole request body into these
+	// entries, and a bare [:0] leaves those strings reachable from the backing
+	// array for as long as the pooled *Redirect lives.
 	clear(r.messages[:cap(r.messages)])
 	r.messages = r.messages[:0]
 	r.c = nil
@@ -378,10 +374,9 @@ func (r *Redirect) Route(name string, config ...RedirectConfig) error {
 			queryText.B = utils.AppendQueryEscape(queryText.B, v)
 		}
 
-		// Concatenated here rather than inside a helper: the result is handed
-		// straight to To, which copies it into the header, so escape analysis
-		// can build it on the stack. Returning it from a function instead cost
-		// an allocation per redirect.
+		// Concatenated here rather than in a helper: the result goes straight to
+		// To, so escape analysis can build it on the stack. Returning it from a
+		// function cost an allocation per redirect.
 		query := r.c.app.toString(queryText.Bytes())
 		separator, fragment := queryMergePoint(location)
 		if fragment < 0 {
@@ -394,18 +389,8 @@ func (r *Redirect) Route(name string, config ...RedirectConfig) error {
 }
 
 // queryMergePoint says where a query belongs in location: the separator that
-// introduces it, and the index the fragment starts at, or -1 when there is
-// none.
-//
-// Appending "?" + query is right only for a location holding neither a query
-// nor a fragment. A route path is written without either, but a parameter value
-// spliced into it may hold both: with a "?" already present the client reads
-// one query string, so the added parameters are folded into the earlier one's
-// value instead of standing beside it, and after a "#" they land inside the
-// fragment, which is never sent to the server at all.
-//
-// It returns the two positions rather than the finished string so the caller
-// can concatenate where the result is used; see the call site.
+// introduces it, and where the fragment starts, or -1. A parameter spliced into
+// a route path may hold both, and appending "?" folded them into one value.
 func queryMergePoint(location string) (separator string, fragment int) { //nolint:nonamedreturns // the two results are easy to swap without names
 	fragment = strings.IndexByte(location, '#')
 
@@ -449,17 +434,9 @@ func (r *Redirect) Back(fallback ...string) error {
 	return r.To(location)
 }
 
-// refererHeader returns the Referer, matching the field name the way a
-// recipient must (RFC 9110 Section 5.1).
-//
-// Ctx.Get compares the stored key byte for byte, which finds the header only
-// while fasthttp has canonicalized it. Under DisableHeaderNormalizing the store
-// keeps the spelling the client sent, and lower case is what HTTP/2 and HTTP/3
-// require on the wire — so a "referer:" from a client behind such a front end
-// read as no referer at all and Back always went to the fallback.
-//
-// The byte-for-byte lookup runs first, so nothing is walked in the normalizing
-// case, which is the default.
+// refererHeader returns the Referer, matching the field name the way a recipient
+// must (RFC 9110 §5.1). Ctx.Get is byte-exact, so under DisableHeaderNormalizing
+// a lower-case "referer:" read as absent and Back always took the fallback.
 func (r *Redirect) refererHeader() string {
 	if v := r.c.Get(HeaderReferer); v != "" {
 		return v
@@ -471,17 +448,9 @@ func (r *Redirect) refererHeader() string {
 	return r.c.app.toString(fieldname.First(&r.c.fasthttp.Request.Header, HeaderReferer, false))
 }
 
-// sameOriginReferer reports whether the Referer value resolves back to the
-// origin currently being served, and returns the normalized form that is safe
-// to echo in a Location header.
-//
-// The value is normalized the way a browser does before resolving it, because
-// that — not net/url — decides where the redirect lands: " //evil.com",
-// "/\t/evil.com", "/\evil.com" and "///evil.com" all reach another origin
-// while net/url reports them as ordinary relative paths.
-//
-// Anything still carrying an authority afterwards must match the current scheme
-// and host; a scheme without one ("javascript:alert(1)") is always rejected.
+// sameOriginReferer reports whether the Referer resolves back to the origin now
+// being served, returning the normalized form safe to echo. A browser's
+// normalization decides that, not net/url: " //evil.com", "/\evil.com", "///x".
 func (r *Redirect) sameOriginReferer(location string) (string, bool) {
 	// The normalized value is what gets redirected to, so a client that does
 	// not apply these rules itself cannot resolve a different origin than the
@@ -502,31 +471,18 @@ func (r *Redirect) sameOriginReferer(location string) (string, bool) {
 		return "", false
 	}
 	if parsed.Host == "" {
-		// A scheme with no authority ("javascript:", "mailto:", ...) is not a
-		// same-origin document reference; anything else is a relative path.
-		//
-		// Except a network-path reference with an empty authority: "//?x",
-		// "//#f" and "//@" name no origin at all, and produce a Location no
-		// client can resolve. The all-slash forms normalized to "/" above and
-		// are genuinely this origin.
+		// A scheme with no authority ("javascript:", "mailto:") is no same-origin
+		// reference; anything else is a relative path — except an empty authority
+		// ("//?x", "//#f", "//@"), which names no origin and resolves nowhere.
 		return location, parsed.Scheme == "" && !strings.HasPrefix(location, "//")
 	}
 
 	return location, schemehost.Match(parsed.Scheme, parsed.Host, r.c.Scheme(), r.c.Host())
 }
 
-// normalizeRefererURL applies the parts of the WHATWG URL Standard's basic URL
-// parser that decide which origin a Referer resolves to: strip surrounding C0
-// controls and spaces, drop every ASCII tab and newline, fold backslashes onto
-// forward slashes, and collapse a leading run of slashes to the two that begin
-// an authority.
-//
-// The backslash fold stops at the first "?" or "#": the parser substitutes it
-// only while reading the scheme, authority and path, so folding in the query
-// would rewrite one the user is entitled to get back. Tab and newline removal
-// applies to the whole input.
-//
-// Byte-wise on purpose — mapping runes would re-encode invalid UTF-8 as U+FFFD.
+// normalizeRefererURL applies the parts of the WHATWG parser that decide which
+// origin a Referer resolves to: strip surrounding C0 controls, drop tab and
+// newline, fold backslashes, collapse a leading slash run to two.
 func normalizeRefererURL(location string) string {
 	location = strings.TrimFunc(location, func(c rune) bool { return c <= ' ' })
 
@@ -576,11 +532,8 @@ func normalizeRefererURL(location string) string {
 // parseAndClearFlashMessages is a method to get flash messages before they are getting removed
 func (r *Redirect) parseAndClearFlashMessages() {
 	// UnmarshalMsg re-slices this capacity rather than allocating, and the
-	// generated per-message decoder assigns only the fields the message
-	// carries. A message encoded as an empty map therefore keeps whatever the
-	// slot already held, so the destination has to arrive zeroed. release()
-	// zeroes it before pooling for exactly this reason; do it here too so the
-	// guarantee holds at the point that depends on it.
+	// generated decoder assigns only the fields the message carries — so an empty
+	// map keeps whatever the slot held, and the destination must arrive zeroed.
 	clear(r.c.flashMessages[:cap(r.c.flashMessages)])
 	r.c.flashMessages = r.c.flashMessages[:0]
 
@@ -594,12 +547,9 @@ func (r *Redirect) parseAndClearFlashMessages() {
 		}
 	}
 
-	// Expire the cookie whatever the payload turned out to be — including the
-	// hex-decode failure above, which used to return before reaching here. A
-	// value this application cannot decode is one it will never decode, so
-	// leaving it in place only means re-running hex and msgp over
-	// attacker-controlled bytes on every subsequent request, for as long as
-	// the browser keeps sending it.
+	// Expire the cookie whatever the payload turned out to be, including the
+	// hex-decode failure above. A value this application cannot decode it never
+	// will, so leaving it means re-running hex and msgp on every later request.
 	r.c.Cookie(&Cookie{
 		Name:     FlashCookieName,
 		Value:    "",
@@ -610,14 +560,10 @@ func (r *Redirect) parseAndClearFlashMessages() {
 	})
 }
 
-// processFlashMessages is a helper function to process flash messages and old input data
-// and set them as cookies.
+// processFlashMessages sets the flash messages and old input data as cookies.
 //
-// The payload is hex-encoded, not encrypted or signed, and WithInput copies the
-// whole submitted form into it — a rejected login carries the password the user
-// just typed. It is read back only by parseAndClearFlashMessages, so the cookie
-// is marked HTTPOnly to keep it out of document.cookie, and Secure whenever the
-// request itself arrived over TLS so it is never replayed in the clear.
+// The payload is hex-encoded, not signed, and WithInput copies the whole form
+// into it — so the cookie is HTTPOnly, and Secure whenever the request was TLS.
 func (r *Redirect) processFlashMessages() {
 	if len(r.messages) == 0 {
 		return

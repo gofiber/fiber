@@ -50,13 +50,9 @@ func RegisterContextTag(name string, extract func(ctx any) string) {
 		panic("logger: RegisterContextTag requires a non-empty name and extractor")
 	}
 
-	// Sanitized like every built-in tag. What extract returns is whatever the
-	// registering application pulled out of the context, which in practice is
-	// request data — a header, a claim, an identifier taken from one — so
-	// writing it raw lets a CR or LF in that value close the line and start
-	// another. A log a reader cannot trust to have one entry per line is worse
-	// than one that is merely terse, and this is the path the sanitizer exists
-	// for: the built-in tags all pass through it already.
+	// Sanitized like every built-in tag: what extract returns is whatever the
+	// application pulled out of the context, in practice request data, so writing
+	// it raw lets a CR or LF close the line and start another.
 	fiberlog.MustRegisterContextTag(name, func(output fiberlog.Buffer, ctx any, _ *fiberlog.ContextData, _ string) (int, error) {
 		v := extract(ctx)
 		if v == "" {

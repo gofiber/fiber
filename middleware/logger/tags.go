@@ -108,14 +108,9 @@ func createTagMap(cfg *Config) map[string]LogFunc {
 			return writeSanitizedString(output, c.IP())
 		},
 		TagIPs: func(output Buffer, c fiber.Ctx, _ *Data, _ string) (int, error) {
-			// Ask the framework for the chain rather than read the header a
-			// second way: under DisableHeaderNormalizing a lower-case
-			// "x-forwarded-for:" matched nothing here and logged an empty chain
-			// while the trust decisions went on using it.
-			//
-			// c.IPs() also splits and trims, so repeated lines and one
-			// comma-joined line log identically — which RFC 9110 Section 5.2
-			// says they are.
+			// Ask the framework for the chain rather than read the header a second way:
+			// a lower-case "x-forwarded-for:" logged an empty chain while the trust
+			// decisions used it. c.IPs() splits and trims, so both wire forms match.
 			ips := c.IPs()
 			n := 0
 			for i, ip := range ips {

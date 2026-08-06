@@ -749,18 +749,9 @@ func (c *DefaultCtx) release() {
 		ReleaseBind(c.bind)
 		c.bind = nil
 	}
-	// Zero the whole backing array, not just the live prefix, before this ctx
-	// goes back to the pool. What lives here is the previous request's flash
-	// data, which for WithInput is its entire submitted form, and a pooled ctx
-	// may sit idle for a long time holding it.
-	//
-	// This is the retention half of the pair. The leak itself is closed at the
-	// point that depends on it, in parseAndClearFlashMessages, because
-	// redirectionMsgs.UnmarshalMsg re-slices this capacity and
-	// redirectionMsg.UnmarshalMsg assigns only the fields a message carries —
-	// so the destination has to arrive zeroed. Either clear alone stops the
-	// cross-request read; both are kept so neither site depends on the other
-	// remembering.
+	// Zero the whole backing array before pooling: what lives here is the previous
+	// request's flash data, which for WithInput is its entire form.
+	// parseAndClearFlashMessages clears too, since UnmarshalMsg re-slices this.
 	clear(c.flashMessages[:cap(c.flashMessages)])
 	c.flashMessages = c.flashMessages[:0]
 	// Clear viewBindMap by deleting all keys (reuse underlying map if possible)

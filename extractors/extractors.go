@@ -345,9 +345,8 @@ func FromForm(param string) Extractor {
 func FromHeader(header string) Extractor {
 	return Extractor{
 		Extract: func(c fiber.Ctx) (string, error) {
-			// Not Ctx.Get: it compares the stored key byte for byte, so under
-			// DisableHeaderNormalizing a token sent under the lower-case name
-			// that HTTP/2 and HTTP/3 put on the wire was not found, and the
+			// Not Ctx.Get: it is byte-exact, so under DisableHeaderNormalizing a token
+			// sent under the lower-case name HTTP/2 and 3 use was not found, and the
 			// request refused for carrying no token when it carried one.
 			value := headerlookup.Value(c, header)
 			if value == "" {

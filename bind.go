@@ -345,12 +345,9 @@ func (b *Bind) XML(out any) error {
 // If Content-Type is "application/x-www-form-urlencoded" or "multipart/form-data", it will bind the form values.
 // Multipart file fields are supported using *multipart.FileHeader, []*multipart.FileHeader, or *[]*multipart.FileHeader.
 func (b *Bind) Form(out any) error {
-	// The Content-Type is deliberately not normalized here. FormBinding.Bind
-	// opens by doing it itself — callers reaching the binder directly bypass
-	// this method entirely — so a fold here would be a second pass over the
-	// same header. Body still folds before dispatching, because it has to read
-	// the media type to pick a binder at all; that leaves one redundant scan on
-	// the Body path, which is the price of the binder standing alone.
+	// The Content-Type is deliberately not normalized here: FormBinding.Bind opens
+	// by doing it itself, so a fold here would be a second pass over the same
+	// header. Body still folds, because it must read the media type to dispatch.
 	bind := binder.GetFromThePool[*binder.FormBinding](&binder.FormBinderPool)
 	bind.EnableSplitting = b.ctx.App().config.EnableSplittingOnParsers
 	bind.MaxBodySize = b.ctx.App().config.BodyLimit

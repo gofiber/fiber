@@ -244,18 +244,12 @@ func WithClient(cli *fasthttp.Client) {
 const realIPHeader = "X-Real-IP"
 
 // setRealIP replaces every inbound X-Real-IP field line with the peer address
-// Fiber derived for this request.
-//
-// Set alone overwrites the first field line and leaves the rest, so a client
-// sending the header twice keeps a value of its own on the wire — and whichever
-// line the upstream reads (many take the last; RFC 9110 Section 5.2 permits
-// joining duplicates), the client influenced the address it is attributed to.
-// Delete first so exactly one line survives.
+// Fiber derived. Set alone overwrites the first and leaves the rest, so a client
+// sending it twice kept a value of its own on the wire.
 func setRealIP(c fiber.Ctx) {
-	// Resolve the address before deleting anything: with
-	// Config.ProxyHeader set to "X-Real-IP", c.IP() reads the very header
-	// being replaced, and deleting first would hand the upstream an empty
-	// value instead of the client address.
+	// Resolve the address before deleting anything: with ProxyHeader set to
+	// "X-Real-IP", c.IP() reads the very header being replaced, and deleting first
+	// handed the upstream an empty value.
 	ip := c.IP()
 	// Add, not Set: nothing is left to replace, and Add says what is meant.
 	// fieldname.Del rather than Del so a differently-spelled line does not
