@@ -60,24 +60,14 @@ func makeBuildVaryKeyFunc(hexBufPool *sync.Pool) func([]string, *fasthttp.Reques
 			_, _ = sum.Write(binary.AppendUvarint(lenBuf[:0], uint64(len(name)))) //nolint:errcheck // hash.Hash.Write for std hashes never errors
 			_, _ = sum.Write(utils.UnsafeBytes(name))                             //nolint:errcheck // hash.Hash.Write for std hashes never errors
 
-			// Every field line, not just the first. A name may arrive on more
-			// than one line, and the two forms are equivalent on the wire
-			// (RFC 9110 Section 5.2) — but Peek returns only the first, so a
-			// request carrying
+			// Every field line, not just the first: the split and comma-joined
+			// forms are equivalent on the wire (RFC 9110 Section 5.2), but Peek
+			// returns only the first, so a request sending X-Tenant twice hashed
+			// like one sending just the first value — the exact cross-request
+			// mixing Vary exists to prevent.
 			//
-			//	X-Tenant: public
-			//	X-Tenant: acme-private
-			//
-			// hashed to the same key as one carrying just "public". The entry
-			// stored for the first is then served to the second, which is the
-			// exact cross-request mixing Vary exists to prevent.
-			//
-			// PeekAll reuses the header's own scratch slice for ordinary names,
-			// so those cost no allocation; the values are consumed before the
-			// next call to it. Cookie and Trailer are the exception — fasthttp
-			// re-serializes those from its own stores into a fresh buffer per
-			// call — so a "Vary: Cookie" response pays for that twice per
-			// request, once at lookup and once at store.
+			// PeekAll reuses the header's scratch slice for ordinary names, so
+			// those cost nothing. Cookie and Trailer are re-serialized per call.
 			values := keyFieldLines(hdr, name, normalized)
 			_, _ = sum.Write(binary.AppendUvarint(lenBuf[:0], uint64(len(values)))) //nolint:errcheck // hash.Hash.Write for std hashes never errors
 			for _, v := range values {

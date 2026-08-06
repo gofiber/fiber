@@ -495,26 +495,16 @@ func New(config ...Config) fiber.Handler {
 				clampedDate := clampDateSeconds(e.date, ts)
 				dateValue := utils.AppendHTTPDate(nil, secondsToTime(clampedDate))
 				setFieldLine(&c.Response().Header, fiber.HeaderDate, dateValue, canonical)
-				// Header.All() yields one entry per field line, so a response
-				// that sent a name twice is stored twice. Replaying the entries
-				// with Set collapses the pair — Set overwrites the first
-				// matching line and leaves the rest — so
+				// One entry per field line, so replaying with Set collapsed a
+				// repeated name — it overwrites the first match and leaves the
+				// rest. A response sending Vary twice came back varying only on
+				// the second, and two Content-Security-Policy lines came back as
+				// whichever is weaker alone.
 				//
-				//	Vary: Cookie
-				//	Vary: Accept-Encoding
-				//
-				// came back out of the cache varying only on Accept-Encoding,
-				// enough for a downstream shared cache to start serving one
-				// user's response to another, and two Content-Security-Policy
-				// lines, which a browser enforces as the intersection of both,
-				// came back as whichever one is weaker alone.
-				//
-				// Clear every stored name first, then append the lines in
-				// order. Two passes rather than a per-entry "have I seen this
-				// name" scan, which would be quadratic on the hit path. Nothing
-				// written above is at risk: those names — Content-Type,
-				// Content-Encoding, Cache-Control, Expires, ETag, Date — are all
-				// in ignoreHeaders and so are never among the stored entries.
+				// Clear every stored name first, then append in order. Two
+				// passes rather than a per-entry seen-scan, which would be
+				// quadratic on the hit path. The names written above are all in
+				// ignoreHeaders, so never among the stored entries.
 				for i := range e.headers {
 					if isIgnoredHeader(e.headers[i].key) {
 						// An entry stored before Set-Cookie joined ignoreHeaders
@@ -670,20 +660,15 @@ func New(config ...Config) fiber.Handler {
 			return nil
 		}
 
-		// A stored entry is served to every client whose request matches its
-		// key, so a response that sets a cookie has personalized itself for the
-		// one client that caused this miss. Keeping the Set-Cookie out of the
-		// stored headers is not enough — the body is the payload, and replaying
-		// it hands that client's page to everyone who hits the entry later.
+		// A response that sets a cookie personalized itself for the one client
+		// that caused this miss. Dropping the Set-Cookie is not enough — the
+		// body is the payload, and replaying it hands that client's page to
+		// everyone who hits the entry later.
 		//
-		// Refuse to store unless the response says outright that a shared cache
-		// may hold it. That is a stricter test than the one above: RFC 9111
-		// Section 3.5 lets must-revalidate carry a response to an authorized
-		// request because a revalidating cache re-checks the credential at the
-		// origin, but this middleware never revalidates, and the directive says
-		// nothing about whether the body is personalized. A route that genuinely
-		// wants both a cookie and shared caching can say so with
-		// "Cache-Control: public" or an s-maxage.
+		// Stricter than the test above: RFC 9111 Section 3.5 lets
+		// must-revalidate carry a response to an authorized request because a
+		// revalidating cache re-checks at the origin, and this one never
+		// revalidates. A route wanting both says so with public or s-maxage.
 		if !allowsSharedCacheStorage(respCacheControl) && responseSetsCookie(&c.Response().Header, canonical) {
 			markUnreachable()
 			return nil

@@ -185,33 +185,23 @@ func appendCanonicalHeaderSubset(dst []byte, header *fasthttp.RequestHeader, nam
 		dst = append(dst, escapeKeyDelimiters(name)...)
 		dst = append(dst, ':')
 
-		// Every field line, not just the first. A name may arrive on more than
-		// one line, and the split form is equivalent to the comma-joined one on
-		// the wire (RFC 9110 Section 5.2) — but Peek returns only the first, so
-		// a request sending a key header twice keyed identically to one sending
-		// just that first value and was served its cached response. PeekAll
-		// reuses the header's own scratch slice for ordinary names, so those
-		// cost no allocation; the values are consumed before the next call to
-		// it. Cookie and Trailer are the exception — fasthttp re-serializes
-		// those from its own stores into a fresh buffer per call — so naming
-		// either in KeyHeaders allocates once per request.
+		// Every field line, not just the first: the split and comma-joined forms
+		// are equivalent (RFC 9110 Section 5.2), but Peek returns only the
+		// first, so a request sending a key header twice keyed like one sending
+		// just that value and was served its cached response. PeekAll reuses the
+		// header's scratch slice; Cookie and Trailer are re-serialized per call.
 		values := keyFieldLines(header, name, normalized)
 
-		// The count keeps the framing injective. Without it an absent header
-		// and one present with an empty value both emit nothing, and a list of
-		// values could not be told from a single value that happened to contain
-		// the separator. Escaping guarantees no value holds a raw '|', so the
-		// separator below is unambiguous.
+		// The count keeps the framing injective: without it an absent header and
+		// an empty one both emit nothing, and a list could not be told from a
+		// single value containing the separator.
 		dst = strconv.AppendInt(dst, int64(len(values)), 10)
 
-		// appendBoundKeySegment bounds each value, but nothing bounds how many
-		// there are, and a client may repeat a header as often as the read
-		// buffer allows. Left alone, a few hundred field lines would build a
-		// multi-kilobyte key that is then concatenated into the manifest and
-		// body keys and used as a map key in the store — so hold the whole
-		// dimension to the same per-dimension bound the rest of this file keeps,
-		// hashing it once past that point. The hash covers the raw lines, which
-		// the verbatim form never is, so the two cannot collide.
+		// Each value is bounded, but nothing bounds how many there are, and a
+		// few hundred field lines build a multi-kilobyte key that ends up a map
+		// key in the store. Hold the whole dimension to the same bound, hashing
+		// past it. The hash covers the raw lines, which the verbatim form never
+		// is, so the two cannot collide.
 		total := 0
 		for _, value := range values {
 			total += len(value) + 1

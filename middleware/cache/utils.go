@@ -118,42 +118,29 @@ func responseSetsCookie(h *fasthttp.ResponseHeader, normalized bool) bool { //no
 
 // keyFieldLines returns the field lines of name to key a cache entry on.
 //
-// PeekAll is what makes a name arriving on several lines key differently from
-// one that arrived on a single line — except for Cookie, which fasthttp answers
-// from its own store. What it reports there depends on whether that store has
-// been collected yet: before collection the raw field lines, after collection
-// one merged, re-serialized entry. Whether collection has happened depends on
-// which middleware ran first, so reading either accessor directly lets the same
-// request on the wire key two different ways: a Vary: Cookie route, whose
-// lookup runs before the handler and whose store runs after, misses on every
-// second request and strands a duplicate entry each time.
+// Cookie is answered from fasthttp's own store, which reports raw field lines
+// before collection and one merged entry after — and which of those happens
+// depends on middleware order. So a Vary: Cookie route, keyed before the handler
+// and stored after, keyed the same request two ways: a miss every second request
+// and a stranded duplicate each time.
 //
-// Force the collection so the merged form is what gets keyed, always. It is the
-// only representation both states agree on — Peek is no better than PeekAll
-// here, since uncollected it reports just the first field line and would drop a
-// "Cookie: session=..." sent on a second one out of the key entirely, letting
-// two clients with different sessions share an entry. Collecting is idempotent
-// and is what any cookie read in the handler would do anyway.
+// Force the collection so the merged form is always what gets keyed. It is the
+// only representation both states agree on, and collecting is idempotent.
 func keyFieldLines(h *fasthttp.RequestHeader, name string, normalized bool) [][]byte {
 	switch {
 	case utils.EqualFold(name, fiber.HeaderCookie):
 		h.Cookie("") // collectCookies; the lookup itself is expected to miss
 
 	case utils.EqualFold(name, fiber.HeaderContentType) && mediatype.IsForm(h.ContentType()):
-		// Fold it here rather than read whatever spelling arrived. The key is
-		// built twice — once to look an entry up before the handler runs, once
-		// to store it after — and the form accessors lowercase this header in
-		// place in between, so the two saw different bytes and the entry landed
-		// under a key no lookup would produce.
+		// Fold here rather than read whatever arrived: the key is built once
+		// before the handler and once after, and the form accessors lowercase
+		// this header in place between them, so the entry landed under a key no
+		// lookup would produce.
 		//
-		// Note this is a write, on a path that otherwise only reads. Wherever a
-		// key is built before the handler runs — every request when KeyHeaders
-		// names Content-Type, and from the second request on for Vary, once a
-		// manifest exists — the handler sees the folded value whether or not it
-		// asks for a form value. That is the value it would get from FormValue
-		// or MultipartForm anyway, and the boundary keeps its case, so only a
-		// handler comparing the media type case-sensitively can tell. IsForm
-		// gates it, so nothing else is touched.
+		// This is a write on an otherwise read-only path. The handler then sees
+		// the folded value — which is what FormValue would give it anyway, with
+		// the boundary's case intact — and IsForm gates it, so nothing else is
+		// touched.
 		mediatype.NormalizeRequestContentType(h)
 	}
 
@@ -224,24 +211,18 @@ func isIgnoredHeader(key []byte) bool {
 
 // joinedHeader returns every field line for key, comma-joined.
 //
-// A recipient may combine repeated field lines into exactly that form
-// (RFC 9110 Section 5.2), and the decisions built on Cache-Control, Pragma and
-// Vary have to see all of them: a "no-store" or a "Vary: *" on a second line
-// binds just as much as one on the first, and a Vary naming a header the
-// response actually differs by is what keeps one client's response off another
-// client's request. Peek returns only the first line, so any of those on a
-// later line was silently dropped and the response cached as if it had never
-// been sent — which is how a response that declared
+// A recipient may combine repeated field lines into that form (RFC 9110
+// Section 5.2), and Cache-Control, Pragma and Vary have to be read across all
+// of them — Peek returns only the first, so a response declaring
 //
 //	Vary: Accept-Encoding
 //	Vary: X-Tenant
 //
-// came to be served across tenants.
+// was cached as if the second line had never been sent, and served across
+// tenants.
 //
-// The single-line case — every response that does not go out of its way to use
-// Header.Add — returns the header's own bytes and allocates nothing. The
-// returned slice stays valid across later PeekAll calls: those reuse the
-// header's scratch slice of slice headers, not the value bytes it points at.
+// The single-line case allocates nothing, and the returned slice survives later
+// PeekAll calls: those reuse the scratch slice of headers, not the value bytes.
 func joinedHeader(h fieldname.Peeker, key string, normalized bool) []byte {
 	values := fieldname.Lines(h, key, normalized)
 	switch len(values) {

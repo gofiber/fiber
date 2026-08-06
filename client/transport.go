@@ -353,20 +353,14 @@ func doRedirectsWithClient(req *fasthttp.Request, resp *fasthttp.Response, maxRe
 		}
 		currentURL = nextURL
 
-		// 301, 302 and 303 all turn a method that carries a body into a GET, and
-		// the body goes with it. That is net/http's redirectBehavior, which this
-		// loop already follows for the credential boundary below, and it covers
-		// every method rather than just POST: Fiber's client drives QUERY
-		// requests through here as well (client/core.go), and one that kept its
-		// method would replay its body to the redirect target — possibly a
-		// different host than the caller addressed — under a method that no
-		// longer describes it. RFC 9110 Section 15.4.4 requires the change for
-		// 303; Sections 15.4.2 and 15.4.3 permit it for 301 and 302.
+		// 301, 302 and 303 turn any body-carrying method into a GET, body and
+		// all — net/http's redirectBehavior, for every method rather than just
+		// POST, since Fiber drives QUERY through here too and one that kept its
+		// method would replay its body to another host. Required for 303 by RFC
+		// 9110 Section 15.4.4, permitted for 301 and 302 by 15.4.2 and 15.4.3.
 		//
-		// fasthttp's own loop stops short of this for 301 and 302, changing only
-		// POST and keeping the body. That is the one place the two deliberately
-		// differ. 307 and 308 are untouched by design: they exist precisely to
-		// preserve the method and body.
+		// fasthttp changes only POST and keeps the body; this is the one place
+		// the two deliberately differ. 307 and 308 preserve both by design.
 		switch statusCode {
 		case fasthttp.StatusMovedPermanently, fasthttp.StatusFound, fasthttp.StatusSeeOther:
 			if !req.Header.IsGet() && !req.Header.IsHead() {
@@ -391,13 +385,10 @@ func doRedirectsWithClient(req *fasthttp.Request, resp *fasthttp.Response, maxRe
 // dropRequestBody removes a request's body and everything that frames or
 // describes it, so the next hop carries none of it.
 //
-// Per RFC 9112 a body is signaled by Content-Length or Transfer-Encoding, and a
-// Trailer field only applies to a chunked one, so all of them go with the body.
-// Content-Type and Content-Encoding describe a body that is no longer there —
-// leaving the latter behind sends a GET announcing a content coding with
-// nothing to decode, which a strict origin is entitled to reject. PostArgs is
-// reset last: it is parsed lazily from the body, and a copy already parsed from
-// the old one would otherwise be re-serialized on the next write.
+// Content-Length, Transfer-Encoding and Trailer signal a body (RFC 9112);
+// Content-Type and Content-Encoding describe one that is no longer there, and a
+// GET announcing a coding with nothing to decode is rejectable. PostArgs is
+// reset last: it is parsed lazily, and a stale copy would be re-serialized.
 func dropRequestBody(req *fasthttp.Request) {
 	req.Header.Del(fasthttp.HeaderContentLength)
 	req.Header.Del(fasthttp.HeaderContentType)
@@ -411,21 +402,17 @@ func dropRequestBody(req *fasthttp.Request) {
 // hostnameWithoutPort strips the port from a host[:port] value, leaving a
 // bracketed IPv6 literal's own colons alone.
 func hostnameWithoutPort(host string) string {
-	// Only an unbracketed host can carry a bare "host:port", and such a host
-	// has at most one colon. More than one and no brackets means an IPv6
-	// literal written without them, where the last colon is part of the
-	// address: truncating there would fold "fe80::1" and "fe80::2" to the same
-	// "fe80:", and trustedRedirectTarget would then call a hop between them
-	// same-origin and keep the credentials.
+	// More than one colon without brackets is an IPv6 literal written bare,
+	// where the last colon belongs to the address: truncating there folds
+	// "fe80::1" and "fe80::2" to one name, and a hop between them would keep
+	// its credentials.
 	if strings.HasPrefix(host, "[") || strings.Count(host, ":") <= 1 {
 		if i := strings.LastIndexByte(host, ':'); i >= 0 && strings.IndexByte(host[i:], ']') < 0 {
 			host = host[:i]
 		}
 	}
-	// Unwrap exactly one matched pair, not every bracket on either end
-	// (strings.Trim would turn "[[x]]" into "x"). The result feeds the
-	// same-origin and suffix tests in trustedRedirectTarget, so two spellings
-	// must never fold to one name.
+	// Exactly one matched pair, not every bracket (strings.Trim folds "[[x]]"
+	// to "x"). Two spellings must never fold to one name here.
 	if len(host) >= 2 && host[0] == '[' && host[len(host)-1] == ']' {
 		host = host[1 : len(host)-1]
 	}
@@ -441,9 +428,8 @@ func trustedRedirectTarget(host, initialHostname string) bool {
 	if utils.EqualFold(target, initialHostname) {
 		return true
 	}
-	// With no initial hostname there is no origin for the target to be a
-	// subdomain of, and the suffix test below would degenerate: every host is a
-	// suffix match for "", so any name ending in '.' ("evil.com.") would come
+	// No initial hostname means no origin to be a subdomain of, and the suffix
+	// test degenerates: every host matches "", so a name ending in '.' would
 	// back trusted and keep the credentials.
 	if initialHostname == "" {
 		return false

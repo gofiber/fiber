@@ -254,27 +254,17 @@ func allowsSharedCacheDirectives(cc responseCacheControl) bool {
 // allowsSharedCacheStorage reports whether a response says outright that a
 // shared cache may hold it.
 //
-// Deliberately stricter than allowsSharedCacheDirectives. That one answers RFC
-// 9111 §3.5's question — may a response to an authorized request be reused —
-// and the RFC answers it with must-revalidate, public and s-maxage, because a
-// cache honoring must-revalidate returns to the origin once the entry goes
-// stale and the origin re-checks the credential.
+// Stricter than allowsSharedCacheDirectives, which answers RFC 9111 §3.5 — may
+// a response to an authorized request be reused — and so accepts
+// must-revalidate, on the bargain that the cache re-checks at the origin.
 //
-// A response that sets a cookie asks a different question, and must-revalidate
-// is not an answer to it: the directive governs when a stale entry may be
-// reused, not whether the entry is impersonal, and an author writes it on a
-// personalized page precisely to keep that page fresh. This middleware also
-// never revalidates — it serves the stored body for the whole configured
-// expiration without consulting the handler again — so the bargain the RFC's
-// allowance rests on is not one it can keep.
-//
-// public and s-maxage state the thing actually being relied on here, that a
-// shared cache may store this response. Both are directives only a shared cache
-// acts on, so neither is written by accident.
+// A cookie asks a different question. must-revalidate governs when a stale
+// entry may be reused, not whether it is impersonal, and this middleware never
+// revalidates, so it cannot keep that bargain. public and s-maxage state the
+// thing actually relied on, and only a shared cache acts on either.
 func allowsSharedCacheStorage(cc responseCacheControl) bool {
-	// The store path rejects private well before reaching the cookie gate, so
-	// this arm is the predicate holding its own contract for a reader who meets
-	// it standalone, not a branch the caller needs.
+	// The store path rejects private long before the cookie gate; this arm just
+	// keeps the predicate self-contained.
 	if cc.hasPrivate {
 		return false
 	}

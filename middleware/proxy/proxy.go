@@ -246,28 +246,20 @@ const realIPHeader = "X-Real-IP"
 // setRealIP replaces every inbound X-Real-IP field line with the peer address
 // Fiber derived for this request.
 //
-// Header.Set alone is not enough: it overwrites the first field line with that
-// name and leaves the rest in place, so a client that sends the header twice
-// keeps one of its own values on the wire. The upstream then sees
-//
-//	X-Real-IP: <trusted>
-//	X-Real-IP: <attacker>
-//
-// and whichever line it reads — many servers take the last, and RFC 9110
-// Section 5.2 says a recipient may join duplicates into a comma-separated list
-// — the client got to influence the address the upstream attributes the
-// request to. Delete first so exactly one line survives.
+// Set alone overwrites the first field line and leaves the rest, so a client
+// sending the header twice keeps a value of its own on the wire — and whichever
+// line the upstream reads (many take the last; RFC 9110 Section 5.2 permits
+// joining duplicates), the client influenced the address it is attributed to.
+// Delete first so exactly one line survives.
 func setRealIP(c fiber.Ctx) {
 	// Resolve the address before deleting anything: with
 	// Config.ProxyHeader set to "X-Real-IP", c.IP() reads the very header
 	// being replaced, and deleting first would hand the upstream an empty
 	// value instead of the client address.
 	ip := c.IP()
-	// Del then Add, not Del then Set: after the Del there is no field line left
-	// to replace, so Set would only fall through to an append anyway. Add says
-	// what is meant — exactly one line, the one written here. delField rather
-	// than Del so a client that spelled the name differently does not keep a
-	// line of its own beside it; see delField.
+	// Add, not Set: nothing is left to replace, and Add says what is meant.
+	// fieldname.Del rather than Del so a differently-spelled line does not
+	// survive beside it.
 	fieldname.Del(&c.Request().Header, realIPHeader, headerlookup.Canonical(c))
 	c.Request().Header.Add(realIPHeader, ip)
 }
@@ -634,12 +626,9 @@ type urlRoundrobin struct {
 	next atomic.Uint64
 }
 
-// Compare-and-swap rather than a bare Add: the counter holds the next index
-// already reduced into the pool, so the sequence stays a strict round-robin
-// even where the counter would otherwise wrap mid-cycle. The modulo is not
-// redundant with that — it also reduces a value the counter did not produce
-// itself, which is what makes a freshly stored or externally set counter land
-// in range.
+// Compare-and-swap rather than a bare Add, so the counter holds the next index
+// already reduced into the pool and the sequence stays a strict round-robin
+// across a wrap. The modulo also reduces a counter this loop did not produce.
 func (r *urlRoundrobin) get() *url.URL {
 	poolSize := uint64(len(r.pool))
 	for {

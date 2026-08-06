@@ -475,21 +475,13 @@ func (r *Redirect) refererHeader() string {
 // origin currently being served, and returns the normalized form that is safe
 // to echo in a Location header.
 //
-// The value is normalized the way a browser normalizes a URL before resolving
-// it, because that — not net/url — decides where the redirect actually lands:
+// The value is normalized the way a browser does before resolving it, because
+// that — not net/url — decides where the redirect lands: " //evil.com",
+// "/\t/evil.com", "/\evil.com" and "///evil.com" all reach another origin
+// while net/url reports them as ordinary relative paths.
 //
-//   - Leading and trailing C0 controls and spaces are stripped, and ASCII tab
-//     and newline are removed everywhere, so " //evil.com" and "/\t/evil.com"
-//     are not mistaken for paths.
-//   - Backslashes are equivalent to forward slashes in http(s) URLs, so
-//     "/\evil.com" and "\\evil.com" are network-path references to another
-//     host even though net/url reports them as ordinary relative paths.
-//   - A leading run of more than two slashes still starts an authority, so
-//     "///evil.com" is cross-origin even though net/url reports it as a path.
-//
-// Anything that still carries an authority after normalization must match the
-// current scheme and host; a scheme without an authority (e.g.
-// "javascript:alert(1)") is always rejected.
+// Anything still carrying an authority afterwards must match the current scheme
+// and host; a scheme without one ("javascript:alert(1)") is always rejected.
 func (r *Redirect) sameOriginReferer(location string) (string, bool) {
 	// The normalized value is what gets redirected to, so a client that does
 	// not apply these rules itself cannot resolve a different origin than the
@@ -513,12 +505,9 @@ func (r *Redirect) sameOriginReferer(location string) (string, bool) {
 		// A scheme with no authority ("javascript:", "mailto:", ...) is not a
 		// same-origin document reference; anything else is a relative path.
 		//
-		// Except a network-path reference whose authority came out empty:
-		// "//?x", "//#f" and "//@" name no origin at all, so calling them
-		// same-origin was answering a different question than the one asked,
-		// and the Location they produced is one no client can resolve — a
-		// browser fails to parse it rather than going anywhere. The forms that
-		// are merely slashes, "//" and "///", normalized to "/" further up and
+		// Except a network-path reference with an empty authority: "//?x",
+		// "//#f" and "//@" name no origin at all, and produce a Location no
+		// client can resolve. The all-slash forms normalized to "/" above and
 		// are genuinely this origin.
 		return location, parsed.Scheme == "" && !strings.HasPrefix(location, "//")
 	}
@@ -532,16 +521,12 @@ func (r *Redirect) sameOriginReferer(location string) (string, bool) {
 // forward slashes, and collapse a leading run of slashes to the two that begin
 // an authority.
 //
-// The backslash fold stops at the first "?" or "#". The parser substitutes "\\"
-// for "/" only while it is reading the scheme, authority and path of a special
-// URL; in the query and fragment states a backslash is an ordinary code point,
-// so folding there would rewrite a query the user is entitled to be sent back
-// to. Tab and newline removal, by contrast, is applied to the whole input
-// before parsing begins.
+// The backslash fold stops at the first "?" or "#": the parser substitutes it
+// only while reading the scheme, authority and path, so folding in the query
+// would rewrite one the user is entitled to get back. Tab and newline removal
+// applies to the whole input.
 //
-// The scan is byte-wise on purpose: mapping runes would re-encode any invalid
-// UTF-8 byte in the referer as U+FFFD, corrupting a path or query that
-// normalization was never asked to touch.
+// Byte-wise on purpose — mapping runes would re-encode invalid UTF-8 as U+FFFD.
 func normalizeRefererURL(location string) string {
 	location = strings.TrimFunc(location, func(c rune) bool { return c <= ' ' })
 

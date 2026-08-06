@@ -168,12 +168,10 @@ func (r *DefaultReq) Body() []byte {
 	// Get Content-Encoding header. Multiple field lines form one combined
 	// list (RFC 9110 Section 5.2), so join them before splitting.
 	// The single-line result aliases the header storage, so fold into a new
-	// string rather than rewriting the request's own bytes. utilsstrings.ToLower
-	// returns its input unchanged when there is no uppercase byte, which every
-	// real value ("gzip", "br", "deflate", "identity") satisfies — so the common
-	// path stays allocation-free. A stack scratch buffer is not an option here:
-	// the substrings flow into encodingOrder and on into tryDecodeBodyInOrder,
-	// which forces the array to the heap on every call.
+	// string rather than rewriting the request's bytes. ToLower returns its
+	// input unchanged with no uppercase byte, which every real value satisfies,
+	// so the common path stays allocation-free. A stack buffer is not an option:
+	// the substrings flow on into tryDecodeBodyInOrder and would escape.
 	encodedBytes := peekJoinedRequestHeader(&request.Header, HeaderContentEncoding)
 	headerEncoding = utilsstrings.ToLower(utils.UnsafeString(encodedBytes))
 
@@ -425,11 +423,10 @@ func (r *DefaultReq) FormFile(key string) (*multipart.FileHeader, error) {
 // which aliases those bytes unless Immutable is set — can change during the
 // call. Copy it first if you need it to outlive one.
 func (r *DefaultReq) FormValue(key string, defaultValue ...string) string {
-	// fasthttp's PostArgs and MultipartForm locate the urlencoded body and the
-	// multipart boundary with case-sensitive comparisons, so a legal
-	// "Application/X-WWW-Form-Urlencoded" or "Multipart/Form-Data" reaching this
-	// accessor would otherwise yield nothing. Bind and Redirect.WithInput
-	// normalize for the same reason; doing it here too means a handler does not
+	// fasthttp locates the urlencoded body and multipart boundary with
+	// case-sensitive comparisons, so a legal "Multipart/Form-Data" yielded
+	// nothing here. Bind and Redirect.WithInput normalize too, so a handler does
+	// not
 	// have to call one of those first to get its own form back.
 	//
 	// Guarded, because the fold lands on the request's own bytes: normalizing

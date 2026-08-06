@@ -65,11 +65,10 @@ type ListenConfig struct {
 	//
 	// It replaces the other TLS settings rather than seeding them: CertFile,
 	// CertKeyFile, CertClientFile, AutoCertManager, TLSConfigFunc and
-	// TLSMinVersion are all ignored while it is set. A warning is logged for
-	// each one that can be told apart from its zero value; TLSMinVersion cannot,
-	// since it is always defaulted, so set MinVersion on the tls.Config itself.
-	// In particular there is no mutual TLS unless that tls.Config sets
-	// ClientAuth and ClientCAs — setting CertClientFile does not add it.
+	// TLSMinVersion are ignored while it is set, and each distinguishable from
+	// its zero value is warned about. TLSMinVersion is not, being always
+	// defaulted — set MinVersion on the tls.Config. In particular there is no
+	// mutual TLS unless it sets ClientAuth and ClientCAs.
 	//
 	// Default: nil
 	TLSConfig *tls.Config `json:"tls_config"`

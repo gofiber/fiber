@@ -334,20 +334,14 @@ func CopyContextToFiberContext(src any, requestContext *fasthttp.RequestCtx) {
 	}
 }
 
-// framingHeaders describe how the message itself is delimited and addressed
-// rather than what it carries. They are excluded from both the snapshot and the
-// clear: the wrapped middleware works on a converted copy of the request, so a
-// framing header missing from that copy says nothing about the original, and
-// clearing one would corrupt the body the fiber handler goes on to read. Host
-// is also restored explicitly by the caller from r.Host.
+// framingHeaders delimit and address the message rather than describe what it
+// carries. Excluded from both the snapshot and the clear: the wrapped
+// middleware works on a converted copy, so one missing there says nothing about
+// the original, and clearing it corrupts the body the handler still reads.
 //
-// The cost is that a wrapped middleware cannot change them either — a
-// Header.Set("Connection", ...) is dropped along with a Header.Del. That is the
-// deliberate trade: these headers frame the fiber request that is still being
-// read, not the converted copy, and Transfer-Encoding could not round-trip in
-// any case because fasthttpadaptor routes it to http.Request.TransferEncoding
-// rather than to Header. Middleware that needs to influence framing should do
-// so on the fiber side.
+// The trade is that a wrapped middleware cannot change them either. Host is
+// restored separately from r.Host, and Transfer-Encoding could not round-trip
+// regardless — fasthttpadaptor routes it to http.Request.TransferEncoding.
 var framingHeaders = [...]string{
 	fiber.HeaderHost,
 	fiber.HeaderContentLength,
@@ -365,20 +359,13 @@ type headerPair struct {
 // snapshotHeaders copies the non-framing headers of the converted request into
 // owned strings.
 //
-// fasthttpadaptor builds http.Request.Header with b2s (fasthttpadaptor's
-// request.go), so its keys and values are unsafe views into the very buffers
-// the fiber request header owns. Writing back in place therefore corrupts the
-// data still being read: a plain Set-then-Add copy duplicated the last value of
-// every multi-valued header, and SetHost spliced whatever r.Header["Host"]
-// pointed at. Materializing first removes the aliasing entirely.
-//
-// Framing and identity headers are dropped here rather than copied back: they
-// describe the original message, not the converted copy, and Host is restored
-// separately from r.Host.
+// fasthttpadaptor builds http.Request.Header with b2s, so its keys and values
+// are unsafe views into the buffers the fiber header owns, and writing back in
+// place corrupts data still being read: a Set-then-Add copy duplicated the last
+// value of every multi-valued header. Materializing first removes the aliasing.
 func snapshotHeaders(h http.Header) []headerPair {
-	// One entry per field line, not per name: sizing by len(h) regrows the
-	// slice for every multi-valued header, which is exactly what the headers
-	// worth snapshotting (X-Forwarded-For, Accept, Cookie) tend to be.
+	// One entry per field line, not per name: len(h) regrows the slice for
+	// every multi-valued header, which is what these tend to be.
 	lines := 0
 	for _, vals := range h {
 		lines += len(vals)
@@ -401,16 +388,13 @@ func snapshotHeaders(h http.Header) []headerPair {
 // the copy that follows rebuilds the set exactly as the wrapped net/http
 // middleware left it.
 //
-// Copying with Set-then-Add cannot do that. fasthttp's Set replaces only the
-// first entry with a given name, so a middleware that collapses a multi-valued
-// header — `r.Header.Set("X-Forwarded-For", sanitized)` — left the remaining
-// original values in place, and a middleware that changed nothing at all
-// duplicated the last value of every multi-valued header. Removals were not
-// propagated either, in any of net/http's spellings: Del, assigning nil, or
-// filtering the slice to empty.
+// Set-then-Add cannot: fasthttp's Set replaces only the first entry, so a
+// middleware collapsing a multi-valued header left the rest in place, and one
+// changing nothing duplicated the last value of every such header. Removals
+// never propagated at all, in any of net/http's spellings.
 //
-// Keys are collected before anything is deleted, since fasthttp's iterator
-// walks the header storage the deletes rewrite.
+// Keys are collected before deleting, since the iterator walks the storage the
+// deletes rewrite.
 func clearCopiedHeaders(fhdr *fasthttp.RequestHeader) {
 	// Not sized from fhdr.Len(): that counts by walking every header, so
 	// pre-sizing would traverse them twice — and the walk also collects the
@@ -421,13 +405,10 @@ func clearCopiedHeaders(fhdr *fasthttp.RequestHeader) {
 		if isFramingHeader(name) {
 			continue
 		}
-		// Repeated names are appended repeatedly and Del'd repeatedly. Del
-		// removes every field line at once, so the second call finds nothing —
-		// but skipping it costs more than making it. A slices.Contains scan of
-		// what has been collected so far was measurably slower on the common
-		// header set, where no name repeats and every scan therefore fails:
-		// 17% at twenty headers, 61% at a hundred. It bought back a few
-		// allocations only when a name actually did repeat.
+		// Repeated names are Del'd repeatedly; Del removes every line at once,
+		// so the second call finds nothing. Skipping it costs more: a
+		// slices.Contains scan measured 17% slower at twenty headers and 61% at
+		// a hundred, where no name repeats and every scan fails.
 		removed = append(removed, string(key))
 	}
 

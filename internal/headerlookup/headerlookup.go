@@ -3,8 +3,7 @@
 // are canonical, and what a named request header holds if they are not.
 //
 // The matching itself lives in internal/fieldname, which takes fasthttp header
-// types so package fiber can use it too. This package is the thin part that
-// needs a Ctx.
+// types so package fiber can use it too.
 package headerlookup
 
 import (
@@ -12,37 +11,24 @@ import (
 	"github.com/gofiber/fiber/v3/internal/fieldname"
 )
 
-// Canonical reports whether fasthttp normalized this request's header names,
-// which decides whether a byte-for-byte lookup finds all of them.
+// Canonical reports whether fasthttp normalized this request's header names.
 //
 // fasthttp keeps the answer private, so take it from the app config that set
-// it. Getting this wrong in the safe direction only costs a walk; wrong the
-// other way loses field lines, and what that means depends on the caller — for
-// Authorization it reads a request as anonymous, and for a sanitizer it leaves
-// one removing nothing.
-//
-// This answers for the request store, which is the server's. A proxied response
-// is parsed by an outbound fasthttp.Client carrying its own setting, so this
-// says nothing about the keys stored there — ask the header instead.
+// it. This answers for the request store only: a proxied response is parsed by
+// an outbound fasthttp.Client carrying its own setting.
 func Canonical(c fiber.Ctx) bool {
 	return !c.App().Config().DisableHeaderNormalizing
 }
 
-// Value returns the value of the request header named name, matching the field
-// name case-insensitively (RFC 9110 Section 5.1).
+// Value returns the named request header, matching the field name
+// case-insensitively (RFC 9110 Section 5.1).
 //
-// Ctx.Get compares the stored key byte for byte, which finds the header only
-// while fasthttp has canonicalized it. Under DisableHeaderNormalizing the store
-// keeps the spelling the client sent — and lower case is not exotic there:
-// HTTP/2 and HTTP/3 require it on the wire, so it is what a front end
-// translating down to HTTP/1.1 preserves. A framework check reading through Get
-// then sees no header at all, and what that means depends on the check: a
-// credential extractor refuses a request it should have allowed, while the CSRF
-// origin check treats the absence as nothing to verify and lets a cross-site
-// POST through.
+// Ctx.Get compares byte for byte, so under DisableHeaderNormalizing a "referer:"
+// or "origin:" from a client behind an HTTP/2 front end reads as absent — which
+// makes an extractor refuse a request it should allow, and makes the CSRF origin
+// check treat the absence as nothing to verify.
 //
-// The byte-for-byte lookup runs first, so nothing is walked in the normalizing
-// case, which is the default.
+// The byte-for-byte lookup runs first, so nothing is walked in the default case.
 func Value(c fiber.Ctx, name string) string {
 	if v := c.Get(name); v != "" {
 		return v

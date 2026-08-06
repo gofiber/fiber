@@ -33,9 +33,8 @@ type authorityChunk struct {
 type compiledRule struct {
 	pattern *regexp.Regexp
 	target  string
-	// authorityChunks splits the target's own authority — the span that decides
-	// which host the redirect reaches — into literal text and "$N" tokens, so
-	// each substituted value can be judged by where it lands. Empty when the
+	// authorityChunks splits the target's authority into literal text and "$N"
+	// tokens, so each value can be judged by where it lands. Empty when the
 	// authority holds no placeholder and so cannot be moved by a request.
 	authorityChunks []authorityChunk
 	// sameOrigin is set when the target names no authority of its own. The "$N"
@@ -48,22 +47,11 @@ type compiledRule struct {
 func New(config ...Config) fiber.Handler {
 	cfg := configDefault(config...)
 
-	// Initialize. The rules are walked in a fixed order rather than the map's:
-	// two patterns can match the same path, and with a map range the winner —
-	// and now, since a rule can be refused and fall through to the next, whether
-	// there is a redirect at all — changed from run to run.
-	//
-	// Most specific first. Plain lexicographic order would sort "/*" ahead of
-	// "/old/*" and let the catch-all shadow it on every request.
-	//
-	// Specificity is read in two steps, because one measure does not order these
-	// rules on its own. How much a rule pins before its first wildcard comes
-	// first: an anchored prefix is the stronger claim, so "/old/*" outranks "/*".
-	// Where two rules pin the same prefix that is a tie — "/cdn/*" and "/cdn/*x"
-	// both stop at "/cdn/" — and the total pinned length separates them, so the
-	// rule that also pins an "x" past the wildcard is tried first rather than
-	// being left dead behind the broader one. Ties beyond that fall back to the
-	// key so the order stays total.
+	// Walk the rules in a fixed order, most specific first: two patterns can
+	// match the same path, and a map range made the winner vary from run to run.
+	// Lexicographic order alone would sort "/*" ahead of "/old/*", so rank by
+	// what a rule pins before its first wildcard, then by total pinned length
+	// ("/cdn/*x" ahead of "/cdn/*"), then by key to stay total.
 	keys := slices.Collect(maps.Keys(cfg.Rules))
 	slices.SortFunc(keys, func(a, b string) int {
 		if d := cmp.Compare(literalPrefixLen(b), literalPrefixLen(a)); d != 0 {
@@ -76,17 +64,10 @@ func New(config ...Config) fiber.Handler {
 	})
 
 	for _, k := range keys {
-		// Read the target the way the client will, before deciding anything
-		// about it. The URL parser deletes every tab, LF and CR before it
-		// parses, and the guard below was reading the bytes as written — so a
-		// tab was scored as author-written host text that then vanished on the
-		// way to the client. "https://\t$1" passed as a target naming its own
-		// host, and a captured "/evil.com" composed "https:///evil.com", which
-		// a browser reads as evil.com. A tab also defeated the leading-slash
-		// skip in authoritySpan, leaving "https://\t/[$1::1]" with no authority
-		// to guard at all. Normalizing here closes both, and composing from
-		// these bytes changes no Location, since the same pass runs on the
-		// composed value anyway.
+		// Read the target the way the client will before judging it: a tab the
+		// parser deletes was otherwise scored as author-written host text, so
+		// "https://\t$1" passed as naming its own host while a captured
+		// "/evil.com" composed "https:///evil.com" — evil.com to a browser.
 		v := urlnorm.AsBrowserReads(cfg.Rules[k])
 		pattern := strings.ReplaceAll(k, "*", "(.*)")
 		// Anchor both ends so a rule matches the whole path. Without the leading
@@ -110,18 +91,16 @@ func New(config ...Config) fiber.Handler {
 				"network or only a group within it depends on where it sits, and Fiber does not tell the two "+
 				"apart. Write the address in full and capture the port instead", k)
 		case letsRequestPickHost:
-			// The request would pick the host this redirects to. That is an open
-			// redirect by construction — nothing here can tell the intended
-			// destination from an attacker's — so the rule never fires, and this
-			// says why, since the alternative is a rule that silently does
-			// nothing.
+			// An open redirect by construction: nothing here can tell the
+			// intended destination from an attacker's. The rule never fires, and
+			// this says why rather than leaving it silently dead.
 			log.Warnf("[REDIRECT] rule %q is ignored: its target takes the redirect host from the request path, "+
 				"so anyone who can shape the path would choose where the client lands. Pin the host in the target", k)
 		case authorityEndsInOpenCapture(chunks):
-			// The target's host ends in a capture with nothing pinned after it,
-			// so a value like ".evil.com" would extend the host into a domain
-			// the author does not control. Such a value is refused per request,
-			// which without this would look like the rule quietly not firing.
+			// The host ends in a capture with nothing pinned after it, so
+			// ".evil.com" would extend it into a domain the author does not
+			// control. Refused per request, which would otherwise read as the
+			// rule quietly not firing.
 			log.Warnf("[REDIRECT] rule %q ends in a capture inside its host, so only a value that cannot "+
 				"extend that host is honored — one opening a path, query or fragment. Pin what follows the "+
 				"capture in the target to redirect on every value", k)
@@ -155,20 +134,16 @@ func New(config ...Config) fiber.Handler {
 				continue
 			}
 
-			// A target may put a capture inside its own authority —
-			// "https://$1.cdn.example.com" is a plausible way to route per
-			// tenant — and the author means $1 to be a label, not a whole URL.
-			// Refuse the rule when a value would move the host, rather than
-			// guess what the author meant; the request falls through to the app.
+			// In "https://$1.cdn.example.com" the author means $1 as a label,
+			// not a whole URL. Refuse the value that would move the host rather
+			// than guess; the request falls through to the app.
 			if !authorityHolds(rule.authorityChunks, replacer) {
 				continue
 			}
 
-			// Normalize on every branch, not just the guarded one. The bytes
-			// urlnorm.AsBrowserReads removes are never meaningful in a URL and the
-			// client drops them anyway, so an author-configured absolute target
-			// loses nothing — and the guard below then always runs on the
-			// location as it will actually be read.
+			// Normalize on every branch: the bytes removed are never meaningful
+			// and the client drops them anyway, so the guard below always runs
+			// on the location as it will be read.
 			location := urlnorm.AsBrowserReads(replacer.Replace(rule.target))
 			if rule.sameOrigin {
 				location = keepSameOrigin(location)
@@ -183,16 +158,10 @@ func New(config ...Config) fiber.Handler {
 // withRequestQuery carries the request's query string onto the composed
 // location.
 //
-// Appending "?" + query was right only for a target holding neither a query nor
-// a fragment. A target with its own query got a second "?", which the URL
-// parser reads as one query string — "/new?from=old" plus "bar=2" became
-// "from=old?bar=2", a single parameter, so the request's own query was folded
-// into the target's value rather than added beside it. A target with a fragment
-// got the query after the "#", where a parser reads it as part of the fragment
-// and the query is lost outright.
-//
-// Merge into whatever query the target already has, and put it before the
-// fragment, which is where a query belongs.
+// Appending "?" + query suited only a target holding neither. One with its own
+// query got a second "?", folding the request's query into the target's last
+// value ("/new?from=old" + "bar=2" -> "from=old?bar=2"); one with a fragment got
+// the query after the "#", losing it. Merge, and place it before the fragment.
 func withRequestQuery(location, query string) string {
 	if query == "" {
 		return location
@@ -244,25 +213,15 @@ func targetNamesAuthority(target string) bool {
 // authoritySpan returns the byte range of target's own authority, or 0, 0 when
 // target names none.
 //
-// An authority runs from the "//" that opens it to the first byte that ends it:
-// "/", "?" or "#" per RFC 3986, plus "\" because the WHATWG URL parser treats a
-// backslash there as a slash. A scheme with no "//" after it — "mailto:x" — has
-// no authority at all, and neither does a path-only target.
+// It runs from the "//" that opens it to the first "/", "?" or "#" (RFC 3986),
+// plus "\", which the WHATWG parser treats as a slash there.
 //
-// Any further slashes right after the opening pair belong to neither: the
-// parser's special-authority-ignore-slashes state skips the whole run before it
-// starts reading the host. Stopping the span at the first of them instead made
-// "///$1" look like a target with an empty authority — no chunks to guard, and
-// still "absolute" enough to skip keepSameOrigin — while the browser read
-// "///evil.com" as evil.com.
+// Slashes right after the opening pair belong to neither side: the parser skips
+// the whole run before reading the host, so stopping at the first made "///$1"
+// look like an empty authority with nothing to guard.
 //
-// A special scheme does not need the "//" at all: its own state in the parser
-// goes to the authority whether or not the slashes are there, so "https:host"
-// and "https://host" name the same host. Requiring them here left the same rule
-// guarded in one spelling and not the other — "https://cdn.example.com$1" was
-// refused a value of "@evil.com", while "https:cdn.example.com$1" composed
-// "https:cdn.example.com@evil.com", where everything before the "@" is userinfo
-// and the host is the request's.
+// A special scheme needs no "//" at all — "https:host" and "https://host" name
+// the same host — so requiring it guarded one spelling and not the other.
 func authoritySpan(target string) (start, end int) { //nolint:nonamedreturns // the pair is a range; names say which is which
 	switch {
 	case strings.HasPrefix(target, "//"):
@@ -358,34 +317,24 @@ func authorityChunks(target string) []authorityChunk {
 //
 // Where a token sits decides what it may contain:
 //
-//   - More authority follows it ("https://$1.cdn.example.com"): the author
-//     pinned the end of the host, so the value is a label inside it and must not
-//     carry a byte that ends the authority ("/", "\", "?", "#"), starts a new
-//     host by making everything before it userinfo ("@"), or opens a port (":").
-//     Without that check a value of "evil.com/x" composes
-//     "https://evil.com/x.cdn.example.com", whose authority stops at the slash —
-//     the browser goes to evil.com.
-//   - It ends the authority ("https://cdn.example.com$1", and equally
-//     "https://example.com$1/health"): nothing the author wrote closes the host,
-//     so any value that does not open the next component extends it into a
-//     domain they do not control — "evil.com" composes "example.comevil.com",
-//     which someone can register. The value must open a component — "/", "\",
-//     "?" or "#" — or be empty, or be a port where the author wrote the colon.
-//     What follows the authority in the target makes no difference: the host is
-//     already decided by then.
+//   - More authority follows it ("https://$1.cdn.example.com"): the value is a
+//     label inside a host the author closed, so it must carry nothing that ends
+//     the authority ("/", "\", "?", "#"), makes what precedes it userinfo ("@"),
+//     or opens a port (":"). Otherwise "evil.com/x" composes
+//     "https://evil.com/x.cdn.example.com", whose authority stops at the slash.
+//   - It ends the authority ("https://cdn.example.com$1"): nothing closes the
+//     host, so the value must open a component, be empty, or be a port where the
+//     author wrote the colon — else "evil.com" composes "example.comevil.com".
 //
-// A target whose authority is nothing but a capture never reaches here: New
-// marks it letsRequestPickHost and the rule is refused outright.
+// A target whose authority is nothing but a capture is refused by New instead.
 func authorityHolds(chunks []authorityChunk, replacer *strings.Replacer) bool {
 	for i, chunk := range chunks {
 		if !chunk.placeholder {
 			continue
 		}
-		// Through the Replacer, not by indexing the captures: the Replacer is
-		// what composes the location, and it matches its patterns in the order
-		// they were given, so "$10" is consumed as "$1" followed by a literal
-		// "0". Indexing would have judged the tenth capture while the first was
-		// the one actually spliced into the host.
+		// Through the Replacer, not by indexing: it composes the location and
+		// matches patterns in the order given, so "$10" is "$1" then a literal
+		// "0". Indexing judged the tenth capture while the first was spliced in.
 		value := replacer.Replace(chunk.text)
 
 		if hostPins(chunks[i+1:]) {
@@ -397,18 +346,16 @@ func authorityHolds(chunks []authorityChunk, replacer *strings.Replacer) bool {
 			continue
 		}
 
-		// Nothing the author wrote closes the host after this token, so any
-		// value that does not open the next component extends it into a domain
-		// they do not control: "evil.com" composes "example.comevil.com", which
-		// someone can register.
+		// Nothing closes the host after this token, so a value that does not
+		// open the next component extends it into a registrable domain:
+		// "evil.com" composes "example.comevil.com".
 		switch {
 		case value == "":
 		case strings.IndexByte(`/\?#`, value[0]) >= 0 && hostPins(chunks[:i]):
-			// Opens the next component, so the authority ended at the host the
-			// author wrote. Only where they wrote one: with nothing but
-			// separators ahead of it, "//$1." composing "///evil.com." does not
-			// end an authority at all — the parser skips every leading slash and
-			// reads the rest as the host.
+			// Opens the next component, so the authority ended at the author's
+			// host — but only where they wrote one: with nothing but separators
+			// ahead, "//$1." composing "///evil.com." ends no authority, since
+			// the parser skips the slashes and reads the rest as the host.
 		case i > 0 && strings.HasSuffix(chunks[i-1].text, ":") && isAllDigits(value):
 			// A port. The author wrote the colon, and the URL parser rejects a
 			// port holding anything but digits outright, so digits are the only
@@ -423,16 +370,10 @@ func authorityHolds(chunks []authorityChunk, replacer *strings.Replacer) bool {
 // hostPins reports whether the author wrote host text among these chunks, which
 // is asked of the chunks on one side of a capture or the other.
 //
-// Ahead of a capture, it is what makes a value opening the next component leave
-// the author's text as the host: "//$1." puts nothing but a dot before the end
-// of the authority, so a value of "/evil.com" composes "///evil.com." — three
-// slashes the WHATWG parser skips on its way to reading "evil.com." as the
-// host, rather than a path hanging off a host the author chose.
-//
-// Past a capture, it is what makes the value land inside a host the author
-// closed themselves. A port does not close a host and neither do the separators
-// that may trail one, which is why "https://$1:$2" and "https://$1:8080" leave
-// $1 free to name the host outright: ":443" and ":8080" pin nothing.
+// Ahead of a capture it is what leaves the author's text as the host once the
+// value opens the next component; past one it is what makes the value land
+// inside a host the author closed. A port closes nothing, which is why
+// "https://$1:8080" still leaves $1 free to name the host outright.
 func hostPins(chunks []authorityChunk) bool {
 	for _, chunk := range chunks {
 		if !chunk.placeholder && chunk.pins {
@@ -445,17 +386,13 @@ func hostPins(chunks []authorityChunk) bool {
 // targetLetsRequestPickHost reports whether the request, not the author, decides
 // the host a target reaches.
 //
-// An authority that holds a capture and no host text of the author's hands the
-// host over whole. "https://$1" and "//$1" are the plain spellings, but a
-// capture followed by nothing that pins a host does the same: "https://$1:8080"
-// pins a port and "//$1." a trailing dot, and neither is a host. This is the
-// static half of the question authorityHolds asks per value, so the two agree
-// by construction — every value it would refuse belongs to a rule refused here
-// first.
+// An authority holding a capture and no host text of the author's hands the
+// host over whole — "https://$1", and equally "https://$1:8080", since a port
+// pins no host. This is the static half of the question authorityHolds asks per
+// value, so the two agree by construction.
 //
-// "https:$1" has no "//" at all, so it names no authority for authorityChunks
-// to guard and no origin for keepSameOrigin to hold it to — yet a value of
-// "//evil.com" still composes "https://evil.com".
+// "https:$1" names no authority to guard and no origin to hold it to, yet a
+// value of "//evil.com" still composes "https://evil.com".
 func targetLetsRequestPickHost(target string, chunks []authorityChunk) bool {
 	// A non-nil chunk list always holds a capture — authorityChunks returns nil
 	// unless it appended one — so the only question left is whether the author
@@ -469,20 +406,14 @@ func targetLetsRequestPickHost(target string, chunks []authorityChunk) bool {
 		return !hostPins(chunks)
 	}
 
-	// No authority span, so the only way a value reaches a host is by opening
-	// one itself, and it can only do that from immediately after the scheme's
-	// colon. What matters there is not which scheme it is: "//" opens an
-	// authority for every scheme, so "mailto:$1", "myapp:$1" and "custom:$1"
-	// all composed a host of the request's choosing from a captured
-	// "//evil.com". For the special schemes the parser does not even need the
-	// slashes — "https:evil.com" is https://evil.com — but either way the
-	// capture has to sit at the front to do it.
+	// No authority span, so a value reaches a host only by opening one itself,
+	// and only from immediately after the scheme's colon. "//" does that for
+	// every scheme, so "mailto:$1" and "myapp:$1" both composed a host of the
+	// request's choosing; special schemes need no slashes at all.
 	//
-	// Author text between the colon and the capture settles it: "myapp:fixed/$1"
-	// opens no authority at all, and "https:fixed/$1" opens one the author
-	// filled in. And a capture at the front is still safe where the author wrote
-	// host text after it, which is what "mailto:$1@example.com" does — the
-	// parser reads example.com as the host and the capture as userinfo.
+	// Author text between the colon and the capture settles it, and a leading
+	// capture is still safe where host text follows — "mailto:$1@example.com"
+	// reads example.com as the host and the capture as userinfo.
 	i := schemeEnd(target)
 	if i <= 0 || strings.HasPrefix(target[i+1:], "//") {
 		return false
@@ -512,19 +443,12 @@ func placeholderEnd(s string) int {
 // captureInBrackets reports whether a "$N" token falls inside the brackets of
 // an IPv6 literal in the target's authority.
 //
-// Everywhere else the author's host text sits after the capture, because a DNS
-// name is written least significant label first: "$1.example.com" stays under
-// example.com whatever the request supplies. A bracketed address reverses that
-// — it is written most significant group first, so there the text before the
-// capture is what pins where the redirect lands.
-//
-// Rather than carry a second and opposite reading of the same question, refuse
-// the shape. Both halves of it were wrong when judged by the ordinary rule:
-// "https://[$1::1]" let the request choose the routing prefix and reach
-// loopback or link-local, and "https://[2001:db8::$1]" — where the author did
-// pin the network — redirected only for a value that happened to be all
-// digits, silently dropping every hex group. An author who wants either can
-// write the address in full and capture the port.
+// A DNS name is written least significant label first, so "$1.example.com"
+// stays under example.com. A bracketed address reverses that, and rather than
+// carry a second and opposite reading of the same question, refuse the shape:
+// judged by the ordinary rule, "https://[$1::1]" let the request pick the
+// routing prefix and reach loopback. Write the address in full and capture the
+// port instead.
 func captureInBrackets(target string) bool {
 	start, end := authoritySpan(target)
 	authority := target[start:end]
@@ -582,16 +506,11 @@ func captureInBrackets(target string) bool {
 // keepSameOrigin strips an authority that the captured path segments introduced
 // into a target that named none.
 //
-// The target is written by the application author, but the "$N" values spliced
-// into it are request path bytes, and the path arrives with its slash runs
-// intact. So the documented rule "/api/*" -> "/$1" turns a request for
-// "/api//evil.com" into "Location: //evil.com" — a network-path reference the
-// browser follows to evil.com — and "/redirect/*" -> "$1" turns
-// "/redirect/https://evil.com" into an outright absolute redirect. An author
-// who wrote a path-only target did not ask for either.
-// It expects a location that has already been through urlnorm.AsBrowserReads, so the
-// checks below run on the bytes the client will act on rather than on the bytes
-// as composed.
+// The "$N" values are request path bytes, slash runs intact, so "/api/*" ->
+// "/$1" turned a request for "/api//evil.com" into "Location: //evil.com", and
+// "/redirect/*" -> "$1" into an outright absolute redirect.
+//
+// Expects a location already through urlnorm.AsBrowserReads.
 func keepSameOrigin(location string) string {
 	if schemeEnd(location) > 0 {
 		// Root it so what the capture supplied is read as a path on this
@@ -606,10 +525,8 @@ func keepSameOrigin(location string) string {
 	if n == 0 || (n == 1 && location[0] == '/') {
 		return location
 	}
-	// Collapse the run to the single slash the target asked for. Backslashes
-	// count as slashes here: the WHATWG URL parser folds them in this position,
-	// so a browser reaches evil.com from "/\evil.com" exactly as it does from
-	// "//evil.com".
+	// Collapse to the single slash the target asked for. Backslashes count as
+	// slashes: the parser folds them in this position.
 	return "/" + location[n:]
 }
 
@@ -754,28 +671,20 @@ var hostMapping = idna.New(
 // pinsHost reports whether a literal chunk of a target's authority actually
 // fixes part of the host.
 //
-// Only what follows the last "@" and precedes the port colon counts, and only
-// once the punctuation that may surround a hostname is stripped. ":8080" pins
-// nothing — "evil.com:8080" is still evil.com — and neither does a lone ".",
-// since "evil.com." is "evil.com" with the DNS root spelled out. Text before an
-// "@" is userinfo, not host: "https://example.com@$1" reads example.com as a
-// username and leaves the host to the capture. Nor do the brackets around an
-// IPv6 literal, so "https://[$1]:8080" hands over the address the same way
-// "https://$1:8080" hands over the name. Treating any of them as author-written
-// host text left the capture beside it judged as an interior label, and the
-// request named the host.
+// Only what follows the last "@" and precedes the port colon counts, once the
+// punctuation around a hostname is stripped. ":8080" pins nothing, nor does a
+// lone "." (the DNS root), nor text before an "@" (userinfo), nor the brackets
+// of an IPv6 literal. Treating any as author-written host text left the capture
+// beside it judged an interior label, and the request named the host.
 //
-// The "@" is read within this chunk. A capture can split an authority so that
-// its real last "@" falls in a later chunk, which makes a literal here score as
-// host text when the URL parser reads it as userinfo — "https://a.com$1@$2" is
-// the shape. Every value authorityHolds then accepts either ends the authority
-// before that "@" or leaves the host empty, so nothing escapes, but the model
-// is per chunk rather than per authority.
+// The "@" is read per chunk, so a capture splitting an authority ahead of its
+// real last "@" scores a literal here as host text — "https://a.com$1@$2".
+// Nothing escapes: every value authorityHolds accepts there ends the authority
+// first or leaves the host empty.
 //
-// openLeft says where the literal sits in that authority, which only the caller
-// knows: a capture can reach a literal it precedes, and cannot reach one that
-// opens the authority or follows an "@". It selects no mode of operation, so
-// the flag-parameter check below is answered rather than obeyed.
+// openLeft says where the literal sits, which only the caller knows: a capture
+// reaches a literal it precedes, not one opening the authority or following
+// an "@".
 //
 //nolint:revive // flag-parameter: openLeft is a position, not a mode
 func pinsHost(literal string, openLeft bool) bool {
@@ -788,56 +697,43 @@ func pinsHost(literal string, openLeft bool) bool {
 	// An IPv6 literal carries colons of its own, so the port colon is the one
 	// past the closing bracket rather than the first.
 	if i := strings.IndexByte(literal, ']'); i >= 0 {
-		// A closing bracket with no opener in this chunk means a capture split
-		// the address, and what stands here is its tail. The tail of an IPv6
-		// literal is the low bits, not the network it routes to: "::1]" in
-		// "https://[$1::1]" leaves the leading group — the routing prefix — to
-		// the request, which is the whole address as far as where it lands.
+		// A closing bracket with no opener means a capture split the address and
+		// this is its tail — the low bits, not the network. "::1]" in
+		// "https://[$1::1]" leaves the routing prefix to the request.
 		j := strings.IndexByte(literal[:i], '[')
 		if j < 0 {
 			return false
 		}
-		// With an opener the author wrote an address, brackets and all — but
-		// only if they wrote one. Brackets holding anything else pin no host
-		// and compose nothing a client can parse, so counting them as
-		// author-written text bought a rule that matched every request and
-		// redirected to a location no client could follow. Ask whether it
-		// parses rather than whether it looks like it might: "[zzz1]" and
-		// "[evil.com1]" hold hex digits and are not addresses.
+		// With an opener the author wrote an address — but only if they wrote a
+		// real one. Ask whether it parses rather than whether it looks like it:
+		// "[zzz1]" holds hex digits and is not an address, and counting it as
+		// author text bought a rule redirecting nowhere a client could follow.
 		//
-		// Brackets hold an IPv6 address only, so "[127.0.0.1]" is not a host
-		// however well it parses on its own. The colon test is what separates
-		// the two spellings — an address written as IPv4 has none, and one
-		// written as IPv6 always has — since ParseIP alone accepts both, and
-		// To4 would reject "[::ffff:127.0.0.1]", which is a legal host.
+		// Brackets hold IPv6 only, so "[127.0.0.1]" is no host however well it
+		// parses. The colon separates the spellings, since ParseIP takes both
+		// and To4 would reject "[::ffff:127.0.0.1]", which is legal.
 		inner := literal[j+1 : i]
 		return strings.IndexByte(inner, ':') >= 0 && net.ParseIP(inner) != nil
 	}
 	if strings.IndexByte(literal, '[') >= 0 {
-		// An opener with no closer is the other half of the case above: the
-		// author wrote the leading groups of an address a capture split, and a
-		// fragment pins no host on its own. captureInBrackets refuses such a
-		// target outright, so this only keeps the two answers consistent.
+		// The other half: leading groups of a split address pin no host on their
+		// own. captureInBrackets refuses such targets outright; this only keeps
+		// the two answers consistent.
 		return false
 	}
 
 	if i := strings.IndexByte(literal, ':'); i >= 0 {
 		literal = literal[:i]
 	}
-	// Read what is left the way the parser reads a host. UTS #46 mapping — the
-	// first thing done to a domain before anything looks at it — deletes some
-	// 270 code points outright and folds three more onto a plain ".", and this
-	// trim only knew about ASCII. So "https://$1\u00ad" scored the soft hyphen
-	// as author-written host text, compiled without a warning, and composed
-	// "https://evil.com\u00ad" from a captured "evil.com" — which a browser
-	// reads as evil.com. Anything the mapping refuses outright pins nothing
-	// either, since it cannot become a host at all.
+	// Read what is left the way the parser reads a host: UTS #46 mapping deletes
+	// some 270 code points and folds three onto ".", and an ASCII-only trim
+	// scored a soft hyphen as author-written text — "https://$1\u00ad" composed
+	// "https://evil.com\u00ad", which a browser reads as evil.com. What the
+	// mapping refuses outright pins nothing either.
 	//
-	// Invalid UTF-8 is not one of the things it refuses — it substitutes
-	// U+FFFD and returns no error — so rule it out first. A browser rejects
-	// U+FFFD in a host anyway, but the bytes reach that point through a
-	// decoding this guard does not model, and a lead byte the value supplies
-	// could pair with a continuation byte here.
+	// Invalid UTF-8 is not refused — it becomes U+FFFD with no error — so rule
+	// it out first: a lead byte the value supplies could pair with a
+	// continuation byte here.
 	decoded := percentDecode(literal)
 	if !utf8.ValidString(decoded) {
 		return false
@@ -864,29 +760,18 @@ func pinsHost(literal string, openLeft bool) bool {
 	}
 
 	// A host whose last label reads as a number is parsed as an IPv4 address,
-	// and there the author's trailing text is the low octets — the request
-	// supplies the network, the same inversion that makes a capture inside an
-	// IPv6 literal unjudgeable. "https://$1.1" looks like a pinned suffix and
-	// composed "https://127.0.0.1" from a captured "127.0.0"; "https://$1.0x1"
-	// did the same, since the IPv4 parser reads hex. Only a complete address
-	// pins a host that way.
-	// With no dot of its own the literal sits inside a label the capture opens
-	// on the left, and the author has then written no label at all — only its
-	// tail. Whatever the request supplies decides what that label becomes:
+	// where the author's trailing text is the low octets and the request
+	// supplies the network: "https://$1.1" composed "https://127.0.0.1" from a
+	// captured "127.0.0". Only a complete address pins a host that way.
+	// With no dot of its own the literal is only the tail of a label the capture
+	// opens, and the value decides what that label becomes:
 	//
 	//	"https://$1xyz"  + "evil."     -> https://evil.xyz    a registrable name
 	//	"https://$1cafe" + "0x"        -> https://0xcafe      0.0.202.254
-	//	"https://$1x"    + "127.0.0"   -> https://127.0.0x    127.0.0.0
 	//	"https://$1E"    + "evil.com%2"-> https://evil.com%2E evil.com
 	//
-	// The head can end the author's label with a dot, open a hex number in
-	// front of it, or finish a percent-escape the value left dangling. None of
-	// it is pinned, so a dotless tail pins nothing.
-	//
-	// Judged before the trim, since it is the literal's own leading "." that
-	// closes the label against whatever the capture supplies — "$1.de" pins the
-	// German suffix exactly as "$1.example.com" pins that domain, and trimming
-	// it away first made every all-hex TLD look open.
+	// Judged before the trim: the literal's own leading "." is what closes the
+	// label, so trimming first made every all-hex TLD look open.
 	if strings.HasPrefix(mapped, ".") {
 		openLeft = false
 	}
@@ -900,10 +785,9 @@ func pinsHost(literal string, openLeft bool) bool {
 	}
 	if isIPv4Number(last) {
 		// An address pins a host only where the capture cannot reach its first
-		// octet, which is the network. Open on the left it can: with the
-		// literal "%3110.0.0.1" — a "1" the client only sees after decoding, so
-		// chunking does not split it off — a captured "0" composes
-		// "0%3110.0.0.1", which reads as octal 0127 and lands on 72.0.0.1.
+		// octet — the network. Open on the left it can: against the literal
+		// "%3110.0.0.1", a captured "0" composes "0%3110.0.0.1", which reads as
+		// octal 0127 and lands on 72.0.0.1.
 		return !openLeft && net.ParseIP(trimmed) != nil
 	}
 	return true
