@@ -11,6 +11,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/urlnorm"
 	"github.com/gofiber/fiber/v3/log"
 	"github.com/gofiber/utils/v2"
 	"golang.org/x/net/idna"
@@ -86,7 +87,7 @@ func New(config ...Config) fiber.Handler {
 		// to guard at all. Normalizing here closes both, and composing from
 		// these bytes changes no Location, since the same pass runs on the
 		// composed value anyway.
-		v := asBrowserReads(cfg.Rules[k])
+		v := urlnorm.AsBrowserReads(cfg.Rules[k])
 		pattern := strings.ReplaceAll(k, "*", "(.*)")
 		// Anchor both ends so a rule matches the whole path. Without the leading
 		// "^" the pattern matches any suffix, so a request can be redirected by a
@@ -164,11 +165,11 @@ func New(config ...Config) fiber.Handler {
 			}
 
 			// Normalize on every branch, not just the guarded one. The bytes
-			// asBrowserReads removes are never meaningful in a URL and the
+			// urlnorm.AsBrowserReads removes are never meaningful in a URL and the
 			// client drops them anyway, so an author-configured absolute target
 			// loses nothing — and the guard below then always runs on the
 			// location as it will actually be read.
-			location := asBrowserReads(replacer.Replace(rule.target))
+			location := urlnorm.AsBrowserReads(replacer.Replace(rule.target))
 			if rule.sameOrigin {
 				location = keepSameOrigin(location)
 			}
@@ -588,7 +589,7 @@ func captureInBrackets(target string) bool {
 // browser follows to evil.com — and "/redirect/*" -> "$1" turns
 // "/redirect/https://evil.com" into an outright absolute redirect. An author
 // who wrote a path-only target did not ask for either.
-// It expects a location that has already been through asBrowserReads, so the
+// It expects a location that has already been through urlnorm.AsBrowserReads, so the
 // checks below run on the bytes the client will act on rather than on the bytes
 // as composed.
 func keepSameOrigin(location string) string {
@@ -610,40 +611,6 @@ func keepSameOrigin(location string) string {
 	// so a browser reaches evil.com from "/\evil.com" exactly as it does from
 	// "//evil.com".
 	return "/" + location[n:]
-}
-
-// asBrowserReads returns location as the client will actually see it, so the
-// checks above run on that rather than on the bytes as composed.
-//
-// Two rewrites happen to a Location before anything navigates. A recipient
-// strips leading and trailing optional whitespace from a field value
-// (RFC 9110 Section 5.5), and the WHATWG URL parser removes every ASCII tab,
-// LF and CR anywhere in the input before it parses. Skipping them leaves the
-// same normalization mismatch this guard exists to close: with UnescapePath
-// enabled, "/r/%20//evil.com" under the rule "$1" composes " //evil.com",
-// whose leading slash run the guard never sees, and "/api/%09/evil.com" under
-// "/$1" composes "/\t/evil.com", which the parser turns back into
-// "//evil.com". Both reach evil.com. Ordinary spaces are left alone — the
-// parser percent-encodes them rather than removing them, so an interior one
-// cannot form an authority.
-func asBrowserReads(location string) string {
-	var b []byte
-	for i := 0; i < len(location); i++ {
-		switch c := location[i]; c {
-		case '\t', '\n', '\r':
-			if b == nil {
-				b = append(make([]byte, 0, len(location)), location[:i]...)
-			}
-		default:
-			if b != nil {
-				b = append(b, c)
-			}
-		}
-	}
-	if b != nil {
-		location = string(b)
-	}
-	return strings.TrimFunc(location, func(r rune) bool { return r <= ' ' })
 }
 
 // https://github.com/labstack/echo/blob/master/middleware/rewrite.go
@@ -883,7 +850,7 @@ func pinsHost(literal string, openLeft bool) bool {
 
 	// Nor does anything at or below a space, nor DEL. The parser strips a
 	// leading or trailing run of them from the whole input before it reads
-	// anything, and asBrowserReads does the same to the composed location — so
+	// anything, and urlnorm.AsBrowserReads does the same to the composed location — so
 	// a control character in the target pinned a host that was gone by the time
 	// the client saw it. "https://$1\x01$2" composed "https://evil.com\x01"
 	// from a captured "evil.com" and an empty second capture, and shipped

@@ -10,6 +10,7 @@ import (
 	"slices"
 	"sync/atomic"
 
+	"github.com/gofiber/fiber/v3/internal/urlnorm"
 	"github.com/gofiber/utils/v2"
 	utilsstrings "github.com/gofiber/utils/v2/strings"
 	"github.com/gofiber/utils/v2/swar"
@@ -233,7 +234,7 @@ func (r Route) URL(params Map) (string, error) {
 //  3. Greedy parameter fallback for wildcard (*) and plus (+) parameters
 func buildRouteURL(route *Route, params Map) (string, error) {
 	if len(route.routeParser.segs) == 0 {
-		return asRoutePath(route.Path), nil
+		return urlnorm.RootedPath(route.Path), nil
 	}
 
 	buf := bytebufferpool.Get()
@@ -287,59 +288,7 @@ func buildRouteURL(route *Route, params Map) (string, error) {
 		}
 	}
 
-	return asRoutePath(buf.String()), nil
-}
-
-// asRoutePath returns the URL composed for a named route as what it can only
-// be: a path on the origin now being served.
-//
-// Every route is registered under "/", so the path a route builds starts there
-// too — but only the constant parts of it are the author's. A parameter value
-// is whatever the caller passed, and it is spliced in raw, so where the route
-// is "/*" that single leading slash is all that separates the value from the
-// start of the URL. A value of "/evil.com" then composes "//evil.com", a
-// network-path reference the browser resolves to another origin, and
-// "\evil.com" composes "/\evil.com", which the WHATWG URL parser folds to the
-// same thing. Whoever asked for the URL of a route in this application asked
-// for neither.
-//
-// It runs here rather than at any one caller so that every way of asking the
-// same question — Route.URL, GetRouteURL, Redirect().Route — gets the same
-// answer. A value reaching Location through one and an href through another is
-// the same value either way.
-//
-// The parser also removes every ASCII tab, LF and CR before it reads a URL, so
-// those come out first — otherwise "\t/evil.com" composes "/\t/evil.com", whose
-// leading slash run is two by the time anything navigates. Removing them
-// changes no location a client could tell apart, since it drops them itself.
-func asRoutePath(location string) string {
-	var b []byte
-	for i := 0; i < len(location); i++ {
-		switch c := location[i]; c {
-		case '\t', '\n', '\r':
-			if b == nil {
-				b = append(make([]byte, 0, len(location)), location[:i]...)
-			}
-		default:
-			if b != nil {
-				b = append(b, c)
-			}
-		}
-	}
-	if b != nil {
-		location = string(b)
-	}
-
-	n := 0
-	for n < len(location) && (location[n] == '/' || location[n] == '\\') {
-		n++
-	}
-	if n == 1 && location[0] == '/' {
-		return location
-	}
-	// Collapse the run to the single slash the route is rooted at. Backslashes
-	// count as slashes here because the parser folds them in this position.
-	return "/" + location[n:]
+	return urlnorm.RootedPath(buf.String()), nil
 }
 
 // preferredGreedyParameters returns the generic greedy fallback lookup order

@@ -1,11 +1,32 @@
-// Package headerlookup reads a request header by name the way a recipient must,
-// for the framework decisions that cannot be left to a byte-for-byte match.
+// Package headerlookup answers, for a caller holding a fiber.Ctx, the two
+// questions the byte-for-byte header API cannot: whether the stored field names
+// are canonical, and what a named request header holds if they are not.
+//
+// The matching itself lives in internal/fieldname, which takes fasthttp header
+// types so package fiber can use it too. This package is the thin part that
+// needs a Ctx.
 package headerlookup
 
 import (
 	"github.com/gofiber/fiber/v3"
-	"github.com/gofiber/utils/v2"
+	"github.com/gofiber/fiber/v3/internal/fieldname"
 )
+
+// Canonical reports whether fasthttp normalized this request's header names,
+// which decides whether a byte-for-byte lookup finds all of them.
+//
+// fasthttp keeps the answer private, so take it from the app config that set
+// it. Getting this wrong in the safe direction only costs a walk; wrong the
+// other way loses field lines, and what that means depends on the caller — for
+// Authorization it reads a request as anonymous, and for a sanitizer it leaves
+// one removing nothing.
+//
+// This answers for the request store, which is the server's. A proxied response
+// is parsed by an outbound fasthttp.Client carrying its own setting, so this
+// says nothing about the keys stored there — ask the header instead.
+func Canonical(c fiber.Ctx) bool {
+	return !c.App().Config().DisableHeaderNormalizing
+}
 
 // Value returns the value of the request header named name, matching the field
 // name case-insensitively (RFC 9110 Section 5.1).
@@ -21,21 +42,14 @@ import (
 // POST through.
 //
 // The byte-for-byte lookup runs first, so nothing is walked in the normalizing
-// case, which is the default. This lives in one place because the same read is
-// needed from packages that cannot see each other's helpers, and the copy that
-// was not written is the one that stayed broken.
+// case, which is the default.
 func Value(c fiber.Ctx, name string) string {
 	if v := c.Get(name); v != "" {
 		return v
 	}
-	if !c.App().Config().DisableHeaderNormalizing {
+	if Canonical(c) {
 		return ""
 	}
 
-	for k, v := range c.Request().Header.All() {
-		if utils.EqualFold(utils.UnsafeString(k), name) {
-			return string(v)
-		}
-	}
-	return ""
+	return string(fieldname.First(&c.Request().Header, name, false))
 }

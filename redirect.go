@@ -15,6 +15,7 @@ import (
 	"github.com/valyala/bytebufferpool"
 	"github.com/valyala/fasthttp"
 
+	"github.com/gofiber/fiber/v3/internal/fieldname"
 	"github.com/gofiber/fiber/v3/internal/schemehost"
 )
 
@@ -457,10 +458,6 @@ func (r *Redirect) Back(fallback ...string) error {
 // require on the wire — so a "referer:" from a client behind such a front end
 // read as no referer at all and Back always went to the fallback.
 //
-// internal/headerlookup does this for the middleware packages, but it takes a
-// fiber.Ctx and so imports this one; the same read has to be spelled out here
-// rather than shared.
-//
 // The byte-for-byte lookup runs first, so nothing is walked in the normalizing
 // case, which is the default.
 func (r *Redirect) refererHeader() string {
@@ -471,12 +468,7 @@ func (r *Redirect) refererHeader() string {
 		return ""
 	}
 
-	for k, v := range r.c.fasthttp.Request.Header.All() {
-		if utils.EqualFold(utils.UnsafeString(k), HeaderReferer) {
-			return r.c.app.toString(v)
-		}
-	}
-	return ""
+	return r.c.app.toString(fieldname.First(&r.c.fasthttp.Request.Header, HeaderReferer, false))
 }
 
 // sameOriginReferer reports whether the Referer value resolves back to the

@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/urlnorm"
 	"github.com/stretchr/testify/require"
 )
 
@@ -1139,7 +1140,7 @@ func Test_AsBrowserReads(t *testing.T) {
 		{"", ""},
 		{" \t ", ""},
 	} {
-		require.Equal(t, tc.want, asBrowserReads(tc.in), "input %q", tc.in)
+		require.Equal(t, tc.want, urlnorm.AsBrowserReads(tc.in), "input %q", tc.in)
 	}
 }
 
@@ -1476,7 +1477,7 @@ func Test_Redirect_InternationalizedHostsStillPin(t *testing.T) {
 // removes before reading a host.
 //
 // The parser strips a leading or trailing run of controls and spaces from the
-// whole input before parsing, and asBrowserReads does the same to the composed
+// whole input before parsing, and urlnorm.AsBrowserReads does the same to the composed
 // location. So a control character in the target pinned a host that was gone by
 // the time the client saw it: with an empty second capture the rule below
 // composed "https://evil.com\x01" and shipped "https://evil.com".

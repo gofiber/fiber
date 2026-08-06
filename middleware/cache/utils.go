@@ -5,13 +5,13 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"iter"
 	"math"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/fieldname"
 	"github.com/gofiber/fiber/v3/internal/mediatype"
 	"github.com/gofiber/utils/v2"
 	"github.com/valyala/fasthttp"
@@ -105,10 +105,10 @@ func responseSetsCookie(h *fasthttp.ResponseHeader, normalized bool) bool { //no
 	// reports a cookie that was never set.
 	//
 	// Set-Cookie2 has no store of its own, so unlike Set-Cookie it is found
-	// only under the spelling the handler wrote: fieldLines rather than
+	// only under the spelling the handler wrote: fieldname.Lines rather than
 	// PeekAll, or a lower-case one walked past this guard and the personalized
 	// response it names was stored and replayed to every later client.
-	for _, v := range fieldLines(h, setCookie2, normalized) {
+	for _, v := range fieldname.Lines(h, setCookie2, normalized) {
 		if len(v) > 0 {
 			return true
 		}
@@ -157,89 +157,7 @@ func keyFieldLines(h *fasthttp.RequestHeader, name string, normalized bool) [][]
 		mediatype.NormalizeRequestContentType(h)
 	}
 
-	return fieldLines(h, name, normalized)
-}
-
-// headerNamesAreCanonical reports whether fasthttp normalized this request's
-// header names, which decides whether a byte-for-byte lookup finds all of them.
-//
-// fasthttp keeps the answer private, so take it from the app config that set
-// it. Getting this wrong in the safe direction only costs a walk; wrong the
-// other way loses field lines, which for Authorization means reading a request
-// as anonymous.
-func headerNamesAreCanonical(c fiber.Ctx) bool {
-	return !c.App().Config().DisableHeaderNormalizing
-}
-
-// fieldLines returns every field line stored under name, matching the name the
-// way a recipient must.
-//
-// PeekAll compares stored keys byte for byte. That is enough while fasthttp
-// normalizes them, but under DisableHeaderNormalizing the store keeps the
-// spelling the client sent, and the names asked for here are written out in
-// canonical or lower case by whoever calls. Every lookup then missed, and a
-// header nobody can find is a header that is not there: a Vary dimension
-// dropped silently out of the key, and — worse — an "authorization:" sent in
-// lower case read as no credential at all, so the response to it was stored as
-// anonymous and replayed to everyone.
-//
-// Field names are case-insensitive (RFC 9110 Section 5.1), so match them that
-// way. The walk replaces the byte-for-byte lookup rather than backing it up: a
-// request can carry both spellings, and an empty canonical line would satisfy a
-// fallback-only fast path while hiding the credential on the line beside it.
-// Test_Authorization_MixedCaseFieldLines is that case.
-//
-//nolint:revive // flag-parameter: normalized is a property of the request's header store that only the caller can know, not a mode of operation
-func fieldLines(h headerPeeker, name string, normalized bool) [][]byte {
-	if normalized {
-		// fasthttp canonicalized every stored key, so a byte-for-byte lookup
-		// finds all of them and PeekAll hands back the header's own slice
-		// without allocating.
-		return h.PeekAll(name)
-	}
-
-	var values [][]byte
-	for k, v := range h.All() {
-		if utils.EqualFold(utils.UnsafeString(k), name) {
-			values = append(values, v)
-		}
-	}
-	return values
-}
-
-// headerPeeker is the part of fasthttp's request and response headers this
-// package needs to read every field line of a name.
-type headerPeeker interface {
-	Peek(key string) []byte
-	PeekAll(key string) [][]byte
-	All() iter.Seq2[[]byte, []byte]
-}
-
-// firstFieldLine returns the first field line stored under name, which is what
-// Peek reports once fasthttp has canonicalized the stored key.
-//
-// Under DisableHeaderNormalizing it has not, and Peek falls through to a
-// byte-for-byte scan of the general header store, so a handler writing
-// "cache-control" or "expires" in lower case stored a field this package then
-// could not see. Every consequence of that is the same shape: the value goes
-// unread where it should decide something, and a second line of the same field
-// is written beside it because nothing reported the first.
-//
-// The names fasthttp keeps in a slot of their own — Content-Type,
-// Content-Encoding, Server, Set-Cookie, Trailer, Content-Length — are not
-// affected either way. Peek answers those from the slot, and every spelling is
-// routed into it on the way in, so they need no help here.
-func firstFieldLine(h headerPeeker, name string, normalized bool) []byte { //nolint:revive // flag-parameter: normalized is a property of the header store
-	if normalized {
-		return h.Peek(name)
-	}
-
-	for k, v := range h.All() {
-		if utils.EqualFold(utils.UnsafeString(k), name) {
-			return v
-		}
-	}
-	return nil
+	return fieldname.Lines(h, name, normalized)
 }
 
 // setFieldLine writes value as the field line for name, replacing whichever
@@ -252,33 +170,10 @@ func firstFieldLine(h headerPeeker, name string, normalized bool) []byte { //nol
 // how old it believes the response to be.
 func setFieldLine(h *fasthttp.ResponseHeader, name string, value []byte, normalized bool) { //nolint:revive // flag-parameter: normalized is a property of the header store
 	if !normalized {
-		delOtherSpellings(h, name)
+		fieldname.DelOthers(h, name)
 	}
 
 	h.SetBytesV(name, value)
-}
-
-// delOtherSpellings removes every stored spelling of name except name itself,
-// which the caller is about to write or delete under that exact key.
-//
-// Every other one, not just the first found. A response can carry more than two
-// — one from an outer middleware, one from the handler — and stopping at the
-// first leaves the rest beside the value written here, which is the pair the
-// caller is trying to prevent.
-//
-// Collected before anything is deleted: Del is byte-exact too, and removing an
-// entry while ranging over the store it belongs to is not safe.
-func delOtherSpellings(h *fasthttp.ResponseHeader, name string) {
-	var others []string
-	for k := range h.All() {
-		if ks := utils.UnsafeString(k); ks != name && utils.EqualFold(ks, name) {
-			others = append(others, string(k))
-		}
-	}
-
-	for _, k := range others {
-		h.Del(k)
-	}
 }
 
 // ignoredHeaderNames is ignoreHeaders keyed the way a field name has to be
@@ -347,8 +242,8 @@ func isIgnoredHeader(key []byte) bool {
 // Header.Add — returns the header's own bytes and allocates nothing. The
 // returned slice stays valid across later PeekAll calls: those reuse the
 // header's scratch slice of slice headers, not the value bytes it points at.
-func joinedHeader(h headerPeeker, key string, normalized bool) []byte {
-	values := fieldLines(h, key, normalized)
+func joinedHeader(h fieldname.Peeker, key string, normalized bool) []byte {
+	values := fieldname.Lines(h, key, normalized)
 	switch len(values) {
 	case 0:
 		return nil

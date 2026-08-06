@@ -14,6 +14,7 @@ import (
 	"github.com/valyala/fasthttp"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/headerlookup"
 )
 
 const (
@@ -60,7 +61,7 @@ func defaultKeyGenerator(c fiber.Ctx, cfg *Config) string {
 
 	if len(cfg.KeyHeaders) > 0 {
 		buf = append(buf, '|', 'h', '=')
-		buf = appendCanonicalHeaderSubset(buf, &c.Request().Header, cfg.KeyHeaders, headerNamesAreCanonical(c))
+		buf = appendCanonicalHeaderSubset(buf, &c.Request().Header, cfg.KeyHeaders, headerlookup.Canonical(c))
 	}
 
 	if len(cfg.KeyCookies) > 0 {

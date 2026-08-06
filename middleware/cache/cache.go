@@ -16,6 +16,8 @@ import (
 	"github.com/valyala/fasthttp"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/fieldname"
+	"github.com/gofiber/fiber/v3/internal/headerlookup"
 )
 
 // buffer size for hexpool
@@ -222,10 +224,10 @@ func New(config ...Config) fiber.Handler {
 		// user-supplied KeyGenerator that runs next.
 		// Whether a byte-for-byte header lookup is complete for this request.
 		// Read once: it is app config, fixed for the life of the handler.
-		canonical := headerNamesAreCanonical(c)
+		canonical := headerlookup.Canonical(c)
 
 		hasAuthorization := false
-		for _, v := range fieldLines(&c.Request().Header, fiber.HeaderAuthorization, canonical) {
+		for _, v := range fieldname.Lines(&c.Request().Header, fiber.HeaderAuthorization, canonical) {
 			if len(v) > 0 {
 				hasAuthorization = true
 				break
@@ -530,7 +532,7 @@ func New(config ...Config) fiber.Handler {
 						// already carries under another spelling survives it
 						// and the append below lands beside it — the pair this
 						// clear exists to prevent.
-						delOtherSpellings(&c.Response().Header, utils.UnsafeString(e.headers[i].key))
+						fieldname.DelOthers(&c.Response().Header, utils.UnsafeString(e.headers[i].key))
 					}
 					c.Response().Header.DelBytes(e.headers[i].key)
 				}
@@ -541,7 +543,7 @@ func New(config ...Config) fiber.Handler {
 					c.Response().Header.AddBytesKV(e.headers[i].key, e.headers[i].value)
 				}
 				// Set Cache-Control header if not disabled and not already set
-				if !cfg.DisableCacheControl && len(firstFieldLine(&c.Response().Header, fiber.HeaderCacheControl, canonical)) == 0 {
+				if !cfg.DisableCacheControl && len(fieldname.First(&c.Response().Header, fiber.HeaderCacheControl, canonical)) == 0 {
 					remaining := uint64(0)
 					if e.exp > ts {
 						remaining = e.exp - ts
@@ -816,12 +818,12 @@ func New(config ...Config) fiber.Handler {
 		e.cencoding = utils.CopyBytes(c.Response().Header.Peek(fiber.HeaderContentEncoding))
 		e.private = false
 		e.cacheControl = utils.CopyBytes(cacheControlBytes)
-		e.expires = utils.CopyBytes(firstFieldLine(&c.Response().Header, fiber.HeaderExpires, canonical))
-		e.etag = utils.CopyBytes(firstFieldLine(&c.Response().Header, fiber.HeaderETag, canonical))
+		e.expires = utils.CopyBytes(fieldname.First(&c.Response().Header, fiber.HeaderExpires, canonical))
+		e.etag = utils.CopyBytes(fieldname.First(&c.Response().Header, fiber.HeaderETag, canonical))
 		e.date = 0
 
 		ageVal := uint64(0)
-		if b := firstFieldLine(&c.Response().Header, fiber.HeaderAge, canonical); len(b) > 0 {
+		if b := fieldname.First(&c.Response().Header, fiber.HeaderAge, canonical); len(b) > 0 {
 			if v, err := fasthttp.ParseUint(b); err == nil {
 				if v >= 0 {
 					ageVal = uint64(v)
@@ -834,7 +836,7 @@ func New(config ...Config) fiber.Handler {
 		e.shareable = isSharedCacheAllowed
 		now := cfg.now().UTC()
 		nowUnix := safeUnixSeconds(now)
-		dateHeader := firstFieldLine(&c.Response().Header, fiber.HeaderDate, canonical)
+		dateHeader := fieldname.First(&c.Response().Header, fiber.HeaderDate, canonical)
 		// The second result says whether the date parsed, which is not asked:
 		// an absent or unparsable Date leaves parsedDate zero, and
 		// clampDateSeconds resolves that to the receipt timestamp — the same
@@ -868,7 +870,7 @@ func New(config ...Config) fiber.Handler {
 			// without its Content-Type — which is why that one is always kept
 			// too.
 			e.headers = e.headers[:0]
-			if location := firstFieldLine(&c.Response().Header, fiber.HeaderLocation, canonical); len(location) > 0 {
+			if location := fieldname.First(&c.Response().Header, fiber.HeaderLocation, canonical); len(location) > 0 {
 				e.headers = append(e.headers, cachedHeader{
 					key:   utils.CopyBytes(utils.UnsafeBytes(fiber.HeaderLocation)),
 					value: utils.CopyBytes(location),
@@ -889,7 +891,7 @@ func New(config ...Config) fiber.Handler {
 			if respCacheControl.maxAgeSet {
 				expiration = secondsToDuration(respCacheControl.maxAge)
 				expirationSource = expirationSourceMaxAge
-			} else if expiresBytes := firstFieldLine(&c.Response().Header, fiber.HeaderExpires, canonical); len(expiresBytes) > 0 {
+			} else if expiresBytes := fieldname.First(&c.Response().Header, fiber.HeaderExpires, canonical); len(expiresBytes) > 0 {
 				// Same parser as the Date header (utils.go parseHTTPDate) so
 				// both share one acceptance set: IMF-fixdate plus the obsolete
 				// RFC 850 and asctime forms RFC 9110 §5.6.7 requires.

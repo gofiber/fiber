@@ -15,6 +15,8 @@ import (
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/internal/crosshost"
 
+	"github.com/gofiber/fiber/v3/internal/fieldname"
+	"github.com/gofiber/fiber/v3/internal/headerlookup"
 	"github.com/valyala/fasthttp"
 )
 
@@ -81,7 +83,7 @@ func Balancer(config ...Config) fiber.Handler {
 		// Set request and response
 		req := c.Request()
 		res := c.Response()
-		normalized := headerNamesAreCanonical(c)
+		normalized := headerlookup.Canonical(c)
 
 		if !policy.KeepHopByHopHeaders {
 			if cfg.KeepConnectionHeader {
@@ -236,16 +238,6 @@ func WithClient(cli *fasthttp.Client) {
 	client.Store(cli)
 }
 
-// headerNamesAreCanonical reports whether fasthttp normalized this request's
-// header names, which decides whether a byte-for-byte lookup finds all of them.
-//
-// fasthttp keeps the answer private, so take it from the app config that set
-// it. Getting this wrong in the safe direction only costs a walk; wrong the
-// other way leaves a sanitizer removing nothing.
-func headerNamesAreCanonical(c fiber.Ctx) bool {
-	return !c.App().Config().DisableHeaderNormalizing
-}
-
 // realIPHeader is the field the proxy overwrites with the peer address Fiber
 // derived, so an upstream reading it sees this hop's view rather than the
 // client's claim.
@@ -276,7 +268,7 @@ func setRealIP(c fiber.Ctx) {
 	// what is meant — exactly one line, the one written here. delField rather
 	// than Del so a client that spelled the name differently does not keep a
 	// line of its own beside it; see delField.
-	delField(&c.Request().Header, realIPHeader, headerNamesAreCanonical(c))
+	fieldname.Del(&c.Request().Header, realIPHeader, headerlookup.Canonical(c))
 	c.Request().Header.Add(realIPHeader, ip)
 }
 
@@ -332,7 +324,7 @@ func Do(c fiber.Ctx, addr string, clients ...*fasthttp.Client) error {
 // cannot be rebound to a private IP between validation and connection.
 func DoRedirects(c fiber.Ctx, addr string, maxRedirectsCount int, clients ...*fasthttp.Client) error {
 	policy := currentSecurityPolicy()
-	normalized := headerNamesAreCanonical(c)
+	normalized := headerlookup.Canonical(c)
 	return doActionWithPolicy(c, addr, policy, func(cli *fasthttp.Client, req *fasthttp.Request, resp *fasthttp.Response, u *url.URL) error {
 		return followRedirects(cli, req, resp, maxRedirectsCount, u, policy, normalized)
 	}, clients...)
@@ -415,7 +407,7 @@ func doActionWithPolicy(
 
 	req := c.Request()
 	res := c.Response()
-	normalized := headerNamesAreCanonical(c)
+	normalized := headerlookup.Canonical(c)
 	originalURL := utils.CopyString(c.OriginalURL())
 	defer req.SetRequestURI(originalURL)
 
@@ -510,7 +502,7 @@ func followRedirects(cli *fasthttp.Client, req *fasthttp.Request, resp *fasthttp
 
 func stripCrossHostHeaders(req *fasthttp.Request, normalized bool) { //nolint:revive // flag-parameter: normalized is a property of the header store
 	for _, h := range crosshost.SensitiveHeaders {
-		delField(&req.Header, h, normalized)
+		fieldname.Del(&req.Header, h, normalized)
 	}
 }
 

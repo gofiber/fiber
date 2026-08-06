@@ -5,7 +5,6 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
-	"iter"
 	"net"
 	"net/url"
 	"strings"
@@ -13,6 +12,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/fieldname"
 	"github.com/gofiber/utils/v2"
 	"github.com/valyala/fasthttp"
 )
@@ -228,12 +228,12 @@ var hopByHopHeaders = []string{
 func stripHopByHopRequestHeaders(req *fasthttp.Request, normalized bool, except ...string) { //nolint:revive // flag-parameter: normalized is a property of the header store
 	// Headers listed in Connection must be removed first so the
 	// listing is honored before the Connection field itself is dropped.
-	delConnectionListedHeaders(&req.Header, fieldLines(&req.Header, fiber.HeaderConnection, normalized), normalized)
+	delConnectionListedHeaders(&req.Header, fieldname.Lines(&req.Header, fiber.HeaderConnection, normalized), normalized)
 	for _, h := range hopByHopHeaders {
-		if containsFold(except, h) {
+		if fieldname.ContainsFold(except, h) {
 			continue
 		}
-		delField(&req.Header, h, normalized)
+		fieldname.Del(&req.Header, h, normalized)
 	}
 }
 
@@ -256,126 +256,18 @@ func stripHopByHopRequestHeaders(req *fasthttp.Request, normalized bool, except 
 func stripHopByHopResponseHeaders(res *fasthttp.Response, except ...string) {
 	// Headers listed in Connection must be removed first so the listing is
 	// honored before the Connection field itself is dropped.
-	delConnectionListedHeaders(&res.Header, fieldLines(&res.Header, fiber.HeaderConnection, false), false)
+	delConnectionListedHeaders(&res.Header, fieldname.Lines(&res.Header, fiber.HeaderConnection, false), false)
 
 	names := hopByHopHeaders
 	if len(except) > 0 {
 		names = make([]string, 0, len(hopByHopHeaders))
 		for _, h := range hopByHopHeaders {
-			if !containsFold(except, h) {
+			if !fieldname.ContainsFold(except, h) {
 				names = append(names, h)
 			}
 		}
 	}
-	delFieldSet(&res.Header, names)
-}
-
-// delFieldSet removes every field line whose name matches any of names,
-// whatever case each is stored under, in a single pass.
-//
-// Keys are collected before anything is deleted, since fasthttp's iterator
-// walks the storage the deletes rewrite. A repeated name is collected and
-// deleted repeatedly; Del removes every line at once so the second call finds
-// nothing, and scanning to avoid it costs more than making it — the same
-// measurement the adaptor package records for the same shape.
-func delFieldSet(h headerDeleter, names []string) {
-	var removed []string
-	for k := range h.All() {
-		if containsFold(names, utils.UnsafeString(k)) {
-			removed = append(removed, string(k))
-		}
-	}
-
-	for _, name := range removed {
-		h.Del(name)
-	}
-}
-
-func containsFold(haystack []string, needle string) bool {
-	for _, h := range haystack {
-		if utils.EqualFold(h, needle) {
-			return true
-		}
-	}
-	return false
-}
-
-// headerDeleter is the part of fasthttp's request and response header types
-// the sanitizers here need to find a field by name and take it away.
-type headerDeleter interface {
-	Del(key string)
-	PeekAll(key string) [][]byte
-	All() iter.Seq2[[]byte, []byte]
-}
-
-// fieldLines returns every field line stored under name, matching the name the
-// way a recipient must.
-//
-// PeekAll compares the stored key byte for byte, which finds every line only
-// while fasthttp canonicalizes it. See delField for why that does not hold
-// here.
-func fieldLines(h headerDeleter, name string, normalized bool) [][]byte { //nolint:revive // flag-parameter: normalized is a property of the header store
-	if normalized {
-		return h.PeekAll(name)
-	}
-
-	var values [][]byte
-	for k, v := range h.All() {
-		if utils.EqualFold(utils.UnsafeString(k), name) {
-			values = append(values, v)
-		}
-	}
-	return values
-}
-
-// delField removes every field line named name, whatever case it is stored
-// under.
-//
-// Del matches the stored key byte for byte. That is enough while fasthttp
-// canonicalizes it, but under DisableHeaderNormalizing the store keeps the
-// spelling the peer sent — and lower case is not exotic there: HTTP/2 and
-// HTTP/3 require it on the wire, so it is exactly what a front end translating
-// down to HTTP/1.1 preserves. Every sanitizer in this package then removed
-// nothing, and each of them is the only thing standing between a peer and a
-// header it must not have. Confirmed against a proxy with the setting on:
-//
-//   - a request for a redirect that crossed to another host carried the
-//     client's "authorization" and "cookie" to that host;
-//   - "upgrade", "te" and "keep-alive" reached the upstream, as did a header
-//     named in "connection", which is a peer smuggling a connection-scoped
-//     field through an intermediary that is required to drop it;
-//   - the client's own "x-real-ip" arrived beside the one the proxy writes,
-//     letting it choose the address the upstream attributes it to.
-//
-// normalized says whether the caller knows every stored key to be canonical,
-// which is the default and where the scan below would only confirm that Del had
-// already found everything — at the cost of an iterator allocation per name, on
-// a path that otherwise allocates nothing. So it is skipped there entirely,
-// and the answer comes from the app config that set it rather than from
-// fasthttp, which keeps it private.
-func delField(h headerDeleter, name string, normalized bool) { //nolint:revive // flag-parameter: normalized is a property of the header store
-	h.Del(name)
-	if normalized {
-		return
-	}
-
-	// Restart the scan after each removal rather than deleting while ranging
-	// over the store being modified. A field arrives under one spelling
-	// essentially always, so this repeats only for a peer that went out of its
-	// way to send several.
-	for {
-		other := ""
-		for k := range h.All() {
-			if utils.EqualFold(utils.UnsafeString(k), name) {
-				other = string(k)
-				break
-			}
-		}
-		if other == "" {
-			return
-		}
-		h.Del(other)
-	}
+	fieldname.DelSet(&res.Header, names)
 }
 
 // delConnectionListedHeaders deletes every comma-separated header name
@@ -385,12 +277,12 @@ func delField(h headerDeleter, name string, normalized bool) { //nolint:revive /
 // because fasthttp's Del only re-slices the header's entry list — it never
 // rewrites other entries' key/value buffers — and Del does not retain the
 // name after returning.
-func delConnectionListedHeaders(h headerDeleter, values [][]byte, normalized bool) { //nolint:revive // flag-parameter: normalized is a property of the header store
+func delConnectionListedHeaders(h fieldname.Deleter, values [][]byte, normalized bool) { //nolint:revive // flag-parameter: normalized is a property of the header store
 	for _, v := range values {
 		for name := range strings.SplitSeq(utils.UnsafeString(v), ",") {
 			name = utils.TrimSpace(name)
 			if name != "" {
-				delField(h, name, normalized)
+				fieldname.Del(h, name, normalized)
 			}
 		}
 	}
