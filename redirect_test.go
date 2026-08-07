@@ -1485,8 +1485,12 @@ func Test_Redirect_FlashCookie_Attributes(t *testing.T) {
 
 // go test -run Test_Redirect_FlashMessages_NoCrossRequestLeak
 func Test_Redirect_FlashMessages_NoCrossRequestLeak(t *testing.T) {
-	// Not parallel: the point is to reuse one pooled context across two
-	// sequential requests.
+	t.Parallel()
+
+	// The two requests below are sequential regardless, which is what makes the
+	// second reuse the first's pooled ctx. Running the test alongside others
+	// does not weaken that: mutation-verified with both clears reverted, this
+	// still fails under the full package's parallel load.
 	app := New()
 
 	app.Get("/read", func(c Ctx) error {
