@@ -10,6 +10,7 @@ import (
 	"slices"
 	"sync/atomic"
 
+	"github.com/gofiber/fiber/v3/internal/urlnorm"
 	"github.com/gofiber/utils/v2"
 	utilsstrings "github.com/gofiber/utils/v2/strings"
 	"github.com/gofiber/utils/v2/swar"
@@ -233,7 +234,7 @@ func (r Route) URL(params Map) (string, error) {
 //  3. Greedy parameter fallback for wildcard (*) and plus (+) parameters
 func buildRouteURL(route *Route, params Map) (string, error) {
 	if len(route.routeParser.segs) == 0 {
-		return route.Path, nil
+		return urlnorm.RootedPath(route.Path), nil
 	}
 
 	buf := bytebufferpool.Get()
@@ -287,7 +288,7 @@ func buildRouteURL(route *Route, params Map) (string, error) {
 		}
 	}
 
-	return buf.String(), nil
+	return urlnorm.RootedPath(buf.String()), nil
 }
 
 // preferredGreedyParameters returns the generic greedy fallback lookup order
