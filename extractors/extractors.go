@@ -158,7 +158,7 @@ type chainGuardKey struct {
 func FromAuthHeader(authScheme string) Extractor {
 	return Extractor{
 		Extract: func(c fiber.Ctx) (string, error) {
-			authHeader := c.Get(fiber.HeaderAuthorization)
+			authHeader := headerlookup.Value(c, fiber.HeaderAuthorization)
 			if authHeader == "" {
 				return "", ErrNotFound
 			}

@@ -1133,3 +1133,33 @@ func Test_FromHeader_IgnoresHeaderNameCase(t *testing.T) {
 		})
 	}
 }
+
+// Test_FromAuthHeader_IgnoresHeaderNameCase pins the same for the Authorization
+// reader, which reaches every keyauth and bearer-token caller.
+//
+// FromHeader was fixed first and this one was missed: a lower-case
+// "authorization:" read as absent, so the scheme check never ran and the
+// request was refused for carrying no credential when it carried one.
+func Test_FromAuthHeader_IgnoresHeaderNameCase(t *testing.T) {
+	t.Parallel()
+
+	for _, normalize := range []bool{true, false} {
+		t.Run(fmt.Sprintf("normalize=%v", normalize), func(t *testing.T) {
+			t.Parallel()
+
+			for _, sent := range []string{"Authorization", "authorization", "AUTHORIZATION"} {
+				app := fiber.New(fiber.Config{DisableHeaderNormalizing: !normalize})
+				c := app.AcquireCtx(&fasthttp.RequestCtx{})
+				if !normalize {
+					c.Request().Header.DisableNormalizing()
+				}
+				c.Request().Header.Set(sent, "Bearer the-token")
+
+				got, err := FromAuthHeader("Bearer").Extract(c)
+				require.NoError(t, err, "sent as %q", sent)
+				require.Equal(t, "the-token", got, "sent as %q", sent)
+				app.ReleaseCtx(c)
+			}
+		})
+	}
+}
