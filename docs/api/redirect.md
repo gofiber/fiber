@@ -281,6 +281,10 @@ hex-encoded, not encrypted or signed, so anything sensitive in the request goes
 back to the browser as a cookie value. Prefer `With` for the specific fields you
 need to carry across the redirect.
 
+The cookie is `HttpOnly`, and `Secure` when the request that produced it arrived
+over TLS — so script cannot read it and it is not replayed in the clear. Neither
+attribute protects the payload from whoever is at the browser.
+
 :::
 
 ```go title="Signature"
