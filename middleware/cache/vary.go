@@ -3,6 +3,7 @@ package cache
 import (
 	"context"
 	"crypto/sha256"
+	"encoding/binary"
 	"encoding/hex"
 	"errors"
 	"sort"
@@ -48,14 +49,28 @@ func parseVary(vary string) ([]string, bool) {
 	return names, false
 }
 
-func makeBuildVaryKeyFunc(hexBufPool *sync.Pool) func([]string, *fasthttp.RequestHeader) string {
-	return func(names []string, hdr *fasthttp.RequestHeader) string {
+func makeBuildVaryKeyFunc(hexBufPool *sync.Pool) func([]string, *fasthttp.RequestHeader, bool) string {
+	return func(names []string, hdr *fasthttp.RequestHeader, normalized bool) string {
 		sum := sha256.New()
+		// Written inline rather than through a closure: capturing lenBuf would
+		// force the array to the heap, adding two allocations to every request
+		// that has a Vary manifest.
+		var lenBuf [binary.MaxVarintLen64]byte
 		for _, name := range names {
-			_, _ = sum.Write(utils.UnsafeBytes(name)) //nolint:errcheck // hash.Hash.Write for std hashes never errors
-			_, _ = sum.Write([]byte{0})               //nolint:errcheck // hash.Hash.Write for std hashes never errors
-			_, _ = sum.Write(hdr.Peek(name))          //nolint:errcheck // hash.Hash.Write for std hashes never errors
-			_, _ = sum.Write([]byte{0})               //nolint:errcheck // hash.Hash.Write for std hashes never errors
+			_, _ = sum.Write(binary.AppendUvarint(lenBuf[:0], uint64(len(name)))) //nolint:errcheck // hash.Hash.Write for std hashes never errors
+			_, _ = sum.Write(utils.UnsafeBytes(name))                             //nolint:errcheck // hash.Hash.Write for std hashes never errors
+
+			// Every field line, not just the first: the split and comma-joined forms
+			// are equivalent (RFC 9110 §5.2), so a request sending X-Tenant twice
+			// hashed like one sending just the first value.
+			values := keyFieldLines(hdr, name, normalized)
+			_, _ = sum.Write(binary.AppendUvarint(lenBuf[:0], uint64(len(values)))) //nolint:errcheck // hash.Hash.Write for std hashes never errors
+			for _, v := range values {
+				// Length-prefixed so the framing stays injective: without it
+				// two lines "a" and "b" would hash like a single line "a\x00b".
+				_, _ = sum.Write(binary.AppendUvarint(lenBuf[:0], uint64(len(v)))) //nolint:errcheck // hash.Hash.Write for std hashes never errors
+				_, _ = sum.Write(v)                                                //nolint:errcheck // hash.Hash.Write for std hashes never errors
+			}
 		}
 
 		var hashBytes [sha256.Size]byte

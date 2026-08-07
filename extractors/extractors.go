@@ -30,6 +30,7 @@ import (
 	"net/url"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/headerlookup"
 	"github.com/gofiber/utils/v2"
 )
 
@@ -157,7 +158,7 @@ type chainGuardKey struct {
 func FromAuthHeader(authScheme string) Extractor {
 	return Extractor{
 		Extract: func(c fiber.Ctx) (string, error) {
-			authHeader := c.Get(fiber.HeaderAuthorization)
+			authHeader := headerlookup.Value(c, fiber.HeaderAuthorization)
 			if authHeader == "" {
 				return "", ErrNotFound
 			}
@@ -344,7 +345,10 @@ func FromForm(param string) Extractor {
 func FromHeader(header string) Extractor {
 	return Extractor{
 		Extract: func(c fiber.Ctx) (string, error) {
-			value := c.Get(header)
+			// Not Ctx.Get: it is byte-exact, so under DisableHeaderNormalizing a token
+			// sent under the lower-case name HTTP/2 and 3 use was not found, and the
+			// request refused for carrying no token when it carried one.
+			value := headerlookup.Value(c, header)
 			if value == "" {
 				return "", ErrNotFound
 			}

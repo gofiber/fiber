@@ -14,6 +14,8 @@ import (
 	"github.com/valyala/bytebufferpool"
 	"github.com/valyala/fasthttp"
 	"golang.org/x/net/idna"
+
+	"github.com/gofiber/fiber/v3/internal/mediatype"
 )
 
 // Pre-allocated byte slices for common header comparisons to avoid allocations
@@ -163,15 +165,9 @@ func (r *DefaultReq) Body() []byte {
 		return r.getBody()
 	}
 
-	// Get Content-Encoding header. Multiple field lines form one combined
-	// list (RFC 9110 Section 5.2), so join them before splitting.
-	// The single-line result aliases the header storage, so fold into a new
-	// string rather than rewriting the request's own bytes. utilsstrings.ToLower
-	// returns its input unchanged when there is no uppercase byte, which every
-	// real value ("gzip", "br", "deflate", "identity") satisfies — so the common
-	// path stays allocation-free. A stack scratch buffer is not an option here:
-	// the substrings flow into encodingOrder and on into tryDecodeBodyInOrder,
-	// which forces the array to the heap on every call.
+	// Multiple field lines form one list (RFC 9110 §5.2), so join before splitting.
+	// The result aliases the header storage, so fold into a new string; ToLower
+	// returns its input unchanged without an uppercase byte, so this stays free.
 	encodedBytes := peekJoinedRequestHeader(&request.Header, HeaderContentEncoding)
 	headerEncoding = utilsstrings.ToLower(utils.UnsafeString(encodedBytes))
 
@@ -417,7 +413,18 @@ func (r *DefaultReq) FormFile(key string) (*multipart.FileHeader, error) {
 // Make copies or use the Immutable setting instead.
 // When the request is a multipart form, it is parsed using the application's
 // BodyLimit so the configured limit is consistently enforced.
+//
+// On a form request this lowercases the case-insensitive parts of the request's
+// own Content-Type, so a value obtained earlier from Get(HeaderContentType) can
+// change during the call. Copy it first if you need it to outlive one.
 func (r *DefaultReq) FormValue(key string, defaultValue ...string) string {
+	// fasthttp locates the urlencoded body and multipart boundary
+	// case-sensitively, so a legal "Multipart/Form-Data" yielded nothing here.
+	// Guarded, because the fold rewrites the request's own bytes.
+	if mediatype.IsForm(r.c.fasthttp.Request.Header.ContentType()) {
+		mediatype.NormalizeRequestContentType(&r.c.fasthttp.Request.Header)
+	}
+
 	if r.c.IsMultipart() {
 		// For multipart requests, parse the form using the application's BodyLimit.
 		// fasthttp's FormValue would otherwise re-parse with its default 8 MiB limit,
@@ -961,7 +968,17 @@ func currentMethod(c *DefaultCtx) string {
 
 // MultipartForm parse form entries from binary.
 // This returns a map[string][]string, so given a key, the value will be a string slice.
+//
+// On a form request this lowercases the request's own Content-Type, so a value
+// obtained earlier from Get(HeaderContentType) can change during the call.
 func (r *DefaultReq) MultipartForm() (*multipart.Form, error) {
+	// fasthttp matches both "multipart/form-data" and the "boundary=" parameter
+	// name case-sensitively, so fold first. FormFile and SaveFile come through
+	// here too. Guarded like FormValue: the fold writes.
+	if mediatype.IsForm(r.c.fasthttp.Request.Header.ContentType()) {
+		mediatype.NormalizeRequestContentType(&r.c.fasthttp.Request.Header)
+	}
+
 	return r.c.fasthttp.MultipartFormWithLimit(r.c.app.config.BodyLimit)
 }
 
@@ -1048,21 +1065,39 @@ func (r *DefaultReq) Scheme() string {
 				utils.EqualFold(key, xForwardedProtocolBytes) {
 				v := app.toString(val)
 				if before, _, found := strings.Cut(v, ","); found {
-					scheme = utils.TrimSpace(before)
-				} else {
-					scheme = utils.TrimSpace(v)
+					v = before
+				}
+				if forwarded, ok := forwardedScheme(v); ok {
+					scheme = forwarded
 				}
 			} else if utils.EqualFold(key, xForwardedSslBytes) && utils.EqualFold(val, onBytes) {
 				scheme = schemeHTTPS
 			}
 
 		case utils.EqualFold(key, xURLSchemeBytes):
-			scheme = utils.TrimSpace(app.toString(val))
+			if forwarded, ok := forwardedScheme(app.toString(val)); ok {
+				scheme = forwarded
+			}
 		default:
 			continue
 		}
 	}
-	return utilsstrings.ToLower(utils.TrimSpace(scheme))
+	return scheme
+}
+
+// forwardedScheme canonicalizes a scheme announced by a proxy header. Only
+// "http" and "https": the value is spliced into a URL (BaseURL) and compared for
+// origin equality (CSRF, Redirect.Back). Rejecting leaves the prior scheme.
+func forwardedScheme(value string) (string, bool) {
+	value = utils.TrimSpace(value)
+	switch {
+	case utils.EqualFold(value, schemeHTTPS):
+		return schemeHTTPS, true
+	case utils.EqualFold(value, schemeHTTP):
+		return schemeHTTP, true
+	default:
+		return "", false
+	}
 }
 
 // Protocol returns the HTTP protocol of request: HTTP/1.1 and HTTP/2.

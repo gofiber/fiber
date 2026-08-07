@@ -2732,6 +2732,45 @@ func Test_Ctx_FormValue_NonMultipart(t *testing.T) {
 	require.Equal(t, "fallback", c.FormValue("missing", "fallback"))
 }
 
+// Test_Ctx_Form_MixedCaseContentType asserts that Ctx's own form accessors
+// accept the media type and parameter names in any case (RFC 9110 Sections
+// 8.3.1 and 5.6.6). fasthttp matches both case-sensitively, so without the
+// normalization these return nothing at all — and a handler should not have to
+// call Bind first to get its own form back.
+func Test_Ctx_Form_MixedCaseContentType(t *testing.T) {
+	t.Parallel()
+
+	t.Run("urlencoded", func(t *testing.T) {
+		t.Parallel()
+
+		app := New()
+		c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck,forcetypeassert // not needed
+
+		c.Request().Header.SetMethod(MethodPost)
+		c.Request().Header.Set(HeaderContentType, "Application/X-WWW-Form-Urlencoded")
+		c.Request().SetBodyString("name=carol")
+
+		require.Equal(t, "carol", c.FormValue("name"))
+	})
+
+	t.Run("multipart", func(t *testing.T) {
+		t.Parallel()
+
+		app := New()
+		c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck,forcetypeassert // not needed
+
+		// The boundary parameter *name* is folded, its value is not.
+		c.Request().Header.SetMethod(MethodPost)
+		c.Request().Header.Set(HeaderContentType, `Multipart/Form-Data; BOUNDARY=AbC`)
+		c.Request().SetBodyString("--AbC\r\nContent-Disposition: form-data; name=\"name\"\r\n\r\ncarol\r\n--AbC--\r\n")
+
+		form, err := c.MultipartForm()
+		require.NoError(t, err)
+		require.Equal(t, []string{"carol"}, form.Value["name"])
+		require.Equal(t, "carol", c.FormValue("name"))
+	})
+}
+
 func Benchmark_Ctx_Fresh_StaleEtag(b *testing.B) {
 	app := New()
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
@@ -5350,6 +5389,45 @@ func Test_Ctx_Scheme_HeaderNormalization(t *testing.T) {
 	c.Request().Header.Reset()
 }
 
+// go test -run Test_Ctx_Scheme_RejectsForeignSchemes
+func Test_Ctx_Scheme_RejectsForeignSchemes(t *testing.T) {
+	t.Parallel()
+
+	app := New(Config{
+		TrustProxy: true,
+		TrustProxyConfig: TrustProxyConfig{
+			Proxies: []string{"0.0.0.0"},
+		},
+	})
+
+	freq := &fasthttp.RequestCtx{}
+	freq.SetRemoteAddr(net.Addr(&net.TCPAddr{IP: net.ParseIP("0.0.0.0")}))
+
+	c := app.AcquireCtx(freq)
+
+	// A scheme Fiber does not serve must never reach BaseURL or the
+	// same-origin comparisons that consume Scheme.
+	for _, header := range []string{HeaderXForwardedProto, HeaderXForwardedProtocol, HeaderXUrlScheme} {
+		for _, value := range []string{"javascript", "ftp", "data", "HTTPS evil", ""} {
+			c.Request().Header.Set(header, value)
+			require.Equal(t, schemeHTTP, c.Scheme(), "%s: %q", header, value)
+			c.Request().Header.Reset()
+		}
+	}
+
+	// A rejected value must not clobber a valid one supplied by another header.
+	c.Request().Header.Set(HeaderXForwardedProto, schemeHTTPS)
+	c.Request().Header.Set(HeaderXUrlScheme, "javascript")
+	require.Equal(t, schemeHTTPS, c.Scheme())
+	c.Request().Header.Reset()
+
+	// BaseURL is the reason this matters: a foreign scheme spliced in here
+	// yields a URL an application may hand to a browser.
+	c.Request().URI().SetHost("example.com")
+	c.Request().Header.Set(HeaderXForwardedProto, "javascript")
+	require.Equal(t, "http://example.com", c.BaseURL())
+}
+
 // go test -v -run=^$ -bench=Benchmark_Ctx_Scheme -benchmem -count=4
 func Benchmark_Ctx_Scheme(b *testing.B) {
 	app := New()
@@ -7826,6 +7904,8 @@ func Test_Ctx_JSONP(t *testing.T) {
 		require.Equal(t, "text/javascript; charset=utf-8", string(c.Response().Header.Peek("content-type")))
 	})
 }
+
+// go test -run Test_Ctx_JSONP_SanitizesCallback
 
 // go test -v  -run=^$ -bench=Benchmark_Ctx_JSONP -benchmem -count=4
 func Benchmark_Ctx_JSONP(b *testing.B) {

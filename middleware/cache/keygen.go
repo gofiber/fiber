@@ -2,9 +2,11 @@ package cache
 
 import (
 	"crypto/sha256"
+	"encoding/binary"
 	"encoding/hex"
 	"net/url"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -12,6 +14,7 @@ import (
 	"github.com/valyala/fasthttp"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/headerlookup"
 )
 
 const (
@@ -58,7 +61,7 @@ func defaultKeyGenerator(c fiber.Ctx, cfg *Config) string {
 
 	if len(cfg.KeyHeaders) > 0 {
 		buf = append(buf, '|', 'h', '=')
-		buf = appendCanonicalHeaderSubset(buf, &c.Request().Header, cfg.KeyHeaders)
+		buf = appendCanonicalHeaderSubset(buf, &c.Request().Header, cfg.KeyHeaders, headerlookup.Canonical(c))
 	}
 
 	if len(cfg.KeyCookies) > 0 {
@@ -173,7 +176,7 @@ func appendCanonicalQueryString(dst []byte, uri *fasthttp.URI) []byte {
 	return dst
 }
 
-func appendCanonicalHeaderSubset(dst []byte, header *fasthttp.RequestHeader, names []string) []byte {
+func appendCanonicalHeaderSubset(dst []byte, header *fasthttp.RequestHeader, names []string, normalized bool) []byte {
 	for idx, name := range names {
 		if idx > 0 {
 			dst = append(dst, '|')
@@ -181,13 +184,53 @@ func appendCanonicalHeaderSubset(dst []byte, header *fasthttp.RequestHeader, nam
 		// Escape name (though names are normalized and trusted)
 		dst = append(dst, escapeKeyDelimiters(name)...)
 		dst = append(dst, ':')
-		headerValue := header.Peek(name)
-		// Escape value to prevent delimiter injection
-		escapedValue := escapeKeyDelimiters(utils.UnsafeString(headerValue))
-		dst = appendBoundKeySegment(dst, escapedValue)
+
+		// Every field line, not just the first: the split and comma-joined forms are
+		// equivalent (RFC 9110 §5.2), so a key header sent twice keyed like one sent
+		// once and was served its cached response.
+		values := keyFieldLines(header, name, normalized)
+
+		// The count keeps the framing injective: without it an absent header and
+		// an empty one both emit nothing, and a list could not be told from a
+		// single value containing the separator.
+		dst = strconv.AppendInt(dst, int64(len(values)), 10)
+
+		// Each value is bounded, but not how many there are, and a few hundred field
+		// lines build a multi-kilobyte map key. Hash past the bound; the hash covers
+		// raw lines, which the verbatim form never is, so the two cannot collide.
+		total := 0
+		for _, value := range values {
+			total += len(value) + 1
+		}
+		if total > maxKeyDimensionSegmentLength {
+			dst = appendHashedKeySegment(dst, joinKeyHeaderValues(values))
+			continue
+		}
+
+		for _, value := range values {
+			dst = append(dst, '|')
+			// Escape value to prevent delimiter injection
+			dst = appendBoundKeySegment(dst, escapeKeyDelimiters(utils.UnsafeString(value)))
+		}
 	}
 
 	return dst
+}
+
+// joinKeyHeaderValues concatenates field lines with a length prefix each, so
+// the digest taken over the result distinguishes value lists that a plain
+// concatenation would not (["ab"] from ["a","b"]).
+func joinKeyHeaderValues(values [][]byte) []byte {
+	n := 0
+	for _, v := range values {
+		n += len(v) + binary.MaxVarintLen64
+	}
+	joined := make([]byte, 0, n)
+	for _, v := range values {
+		joined = binary.AppendUvarint(joined, uint64(len(v)))
+		joined = append(joined, v...)
+	}
+	return joined
 }
 
 func appendCanonicalCookieSubset(dst []byte, c fiber.Ctx, names []string) []byte {

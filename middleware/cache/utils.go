@@ -6,10 +6,13 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/fieldname"
+	"github.com/gofiber/fiber/v3/internal/mediatype"
 	"github.com/gofiber/utils/v2"
 	"github.com/valyala/fasthttp"
 )
@@ -84,6 +87,124 @@ func lookupCachedHeader(headers []cachedHeader, name string) ([]byte, bool) {
 		}
 	}
 	return nil, false
+}
+
+// setCookie2 is the obsolete RFC 2965 spelling of Set-Cookie. fasthttp keeps it
+// as an ordinary field rather than in its cookie store, so it has to be looked
+// up separately.
+const setCookie2 = "Set-Cookie2"
+
+// responseSetsCookie reports whether the response hands a cookie to the client
+// that caused this miss.
+func responseSetsCookie(h *fasthttp.ResponseHeader, normalized bool) bool { //nolint:revive // flag-parameter: normalized is a property of the header store
+	for range h.Cookies() {
+		return true
+	}
+	// Not PeekAll(Set-Cookie): fasthttp answers that from its cookie store and
+	// returns one empty entry when there is none. Set-Cookie2 has no store, so it
+	// is found only under the spelling the handler wrote.
+	for _, v := range fieldname.Lines(h, setCookie2, normalized) {
+		if len(v) > 0 {
+			return true
+		}
+	}
+	return false
+}
+
+// keyFieldLines returns the field lines of name to key a cache entry on.
+//
+// Cookie is answered from fasthttp's store, which reports raw lines before
+// collection and one merged entry after — so force the collection, the only
+// representation both states agree on. Collecting is idempotent.
+func keyFieldLines(h *fasthttp.RequestHeader, name string, normalized bool) [][]byte {
+	switch {
+	case utils.EqualFold(name, fiber.HeaderCookie):
+		h.Cookie("") // collectCookies; the lookup itself is expected to miss
+
+	case utils.EqualFold(name, fiber.HeaderContentType) && mediatype.IsForm(h.ContentType()):
+		// Fold here rather than read whatever arrived: the key is built once before
+		// the handler and once after, and the form accessors lowercase this header
+		// in between, so the entry landed under a key no lookup would produce.
+		mediatype.NormalizeRequestContentType(h)
+	}
+
+	return fieldname.Lines(h, name, normalized)
+}
+
+// setFieldLine writes value as the field line for name, replacing whichever
+// spelling the response carries. Set is byte-exact, so it otherwise left a
+// differently-spelled line and nothing reconciles two Age or two Date lines.
+func setFieldLine(h *fasthttp.ResponseHeader, name string, value []byte, normalized bool) { //nolint:revive // flag-parameter: normalized is a property of the header store
+	if !normalized {
+		fieldname.DelOthers(h, name)
+	}
+
+	h.SetBytesV(name, value)
+}
+
+// ignoredHeaderNames is ignoreHeaders keyed the way a field name has to be
+// matched, since the spellings reaching isIgnoredHeader are the ones a handler
+// chose rather than the ones fasthttp canonicalized.
+var ignoredHeaderNames = func() map[string]struct{} {
+	folded := make(map[string]struct{}, len(ignoreHeaders))
+	for name := range ignoreHeaders {
+		folded[strings.ToLower(name)] = struct{}{}
+	}
+	return folded
+}()
+
+// maxIgnoredHeaderLen is the longest name in ignoredHeaderNames. Anything
+// longer cannot be one of them, so it never needs folding.
+const maxIgnoredHeaderLen = 32
+
+// isIgnoredHeader reports whether key names a field this cache must not carry
+// between requests. Matched case-insensitively (RFC 9110 §5.1): a byte-exact
+// lookup missed a handler's lower-case "cache-control" and replayed it.
+func isIgnoredHeader(key []byte) bool {
+	if len(key) > maxIgnoredHeaderLen {
+		return false
+	}
+
+	var buf [maxIgnoredHeaderLen]byte
+	lower := buf[:len(key)]
+	for i := range key {
+		c := key[i]
+		if c >= 'A' && c <= 'Z' {
+			c += 'a' - 'A'
+		}
+		lower[i] = c
+	}
+
+	_, ok := ignoredHeaderNames[string(lower)]
+	return ok
+}
+
+// joinedHeader returns every field line for key, comma-joined, since a recipient
+// may combine them into that form (RFC 9110 §5.2). Peek returns only the first,
+// so a second "Vary:" line was cached as if it had never been sent.
+func joinedHeader(h fieldname.Peeker, key string, normalized bool) []byte {
+	values := fieldname.Lines(h, key, normalized)
+	switch len(values) {
+	case 0:
+		return nil
+	case 1:
+		return values[0]
+	}
+
+	n := 0
+	for _, v := range values {
+		n += len(v) + 1
+	}
+	joined := make([]byte, 0, n)
+	for i, v := range values {
+		if i > 0 {
+			// A bare comma, matching package fiber's own field-line joiner, so
+			// the two render a combined value identically.
+			joined = append(joined, ',')
+		}
+		joined = append(joined, v...)
+	}
+	return joined
 }
 
 func parseHTTPDate(dateBytes []byte) (uint64, bool) {

@@ -250,3 +250,15 @@ func allowsSharedCacheDirectives(cc responseCacheControl) bool {
 	// an Expires header alone MUST NOT allow sharing when Authorization is present.
 	return false
 }
+
+// allowsSharedCacheStorage reports whether a response says outright that a
+// shared cache may hold it. Stricter than allowsSharedCacheDirectives, which
+// accepts must-revalidate on a bargain this middleware never keeps.
+func allowsSharedCacheStorage(cc responseCacheControl) bool {
+	// The store path rejects private long before the cookie gate; this arm just
+	// keeps the predicate self-contained.
+	if cc.hasPrivate {
+		return false
+	}
+	return cc.hasPublic || cc.sMaxAgeSet
+}

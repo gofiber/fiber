@@ -301,6 +301,11 @@ type Ctx interface {
 	// Make copies or use the Immutable setting instead.
 	// When the request is a multipart form, it is parsed using the application's
 	// BodyLimit so the configured limit is consistently enforced.
+	//
+	// On a form request this lowercases the case-insensitive parts of the request's
+	// own Content-Type, so a value obtained earlier from Get(HeaderContentType) —
+	// which aliases those bytes unless Immutable is set — can change during the
+	// call. Copy it first if you need it to outlive one.
 	FormValue(key string, defaultValue ...string) string
 	// Fresh returns true when the response is still “fresh” in the client's cache,
 	// otherwise false is returned to indicate that the client cache is now stale
@@ -366,6 +371,11 @@ type Ctx interface {
 	Method(override ...string) string
 	// MultipartForm parse form entries from binary.
 	// This returns a map[string][]string, so given a key, the value will be a string slice.
+	//
+	// On a form request this lowercases the case-insensitive parts of the request's
+	// own Content-Type, so a value obtained earlier from Get(HeaderContentType) —
+	// which aliases those bytes unless Immutable is set — can change during the
+	// call. Copy it first if you need it to outlive one.
 	MultipartForm() (*multipart.Form, error)
 	// Params is used to get the route parameters.
 	// Defaults to empty string "" if the param doesn't exist.

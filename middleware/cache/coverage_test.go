@@ -6,10 +6,12 @@ import (
 	"context"
 	"errors"
 	"math"
+	"strings"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/gofiber/fiber/v3"
 	"github.com/stretchr/testify/require"
 	"github.com/tinylib/msgp/msgp"
 	"github.com/valyala/fasthttp"
@@ -334,6 +336,26 @@ func Test_allowsSharedCacheDirectives(t *testing.T) {
 	require.False(t, allowsSharedCacheDirectives(responseCacheControl{}))
 }
 
+func Test_allowsSharedCacheStorage(t *testing.T) {
+	t.Parallel()
+
+	require.True(t, allowsSharedCacheStorage(responseCacheControl{hasPublic: true}))
+	require.True(t, allowsSharedCacheStorage(responseCacheControl{sMaxAgeSet: true}))
+	require.False(t, allowsSharedCacheStorage(responseCacheControl{}))
+
+	// The revalidate directives part company with allowsSharedCacheDirectives:
+	// they say when a stale entry may be reused, not that the body is
+	// impersonal, and this middleware never revalidates.
+	require.False(t, allowsSharedCacheStorage(responseCacheControl{mustRevalidate: true}))
+	require.False(t, allowsSharedCacheStorage(responseCacheControl{proxyRevalidate: true}))
+
+	// private wins over an accompanying opt-in. The store path rejects private
+	// well before the cookie gate, so this is the predicate holding its own
+	// contract rather than a reachable branch.
+	require.False(t, allowsSharedCacheStorage(responseCacheControl{hasPrivate: true, hasPublic: true}))
+	require.False(t, allowsSharedCacheStorage(responseCacheControl{hasPrivate: true, sMaxAgeSet: true}))
+}
+
 func Test_secondsConversions_Overflow(t *testing.T) {
 	t.Parallel()
 
@@ -502,8 +524,99 @@ func Test_makeBuildVaryKeyFunc(t *testing.T) {
 	hdr.Set("Accept", "application/json")
 	hdr.Set("Accept-Encoding", "gzip")
 
-	key := fn([]string{"accept", "accept-encoding"}, &hdr)
+	key := fn([]string{"accept", "accept-encoding"}, &hdr, true)
 	require.Contains(t, key, "|vary|")
 	// Deterministic for the same inputs (also exercises the pooled buffer path).
-	require.Equal(t, key, fn([]string{"accept", "accept-encoding"}, &hdr))
+	require.Equal(t, key, fn([]string{"accept", "accept-encoding"}, &hdr, true))
+}
+
+// Test_makeBuildVaryKeyFunc_RepeatedFieldLines pins that every field line of a
+// Vary'd header reaches the key.
+//
+// A name may arrive on more than one line, and the split is equivalent to the
+// comma-joined form on the wire (RFC 9110 Section 5.2). The key used to hash
+// only the first line, so a request carrying two X-Tenant lines and one
+// carrying just the first shared an entry — the exact cross-request mixing
+// Vary exists to prevent.
+func Test_makeBuildVaryKeyFunc_RepeatedFieldLines(t *testing.T) {
+	t.Parallel()
+
+	fn := makeBuildVaryKeyFunc(&sync.Pool{})
+
+	key := func(values ...string) string {
+		var hdr fasthttp.RequestHeader
+		for _, v := range values {
+			hdr.Add("X-Tenant", v)
+		}
+		return fn([]string{"x-tenant"}, &hdr, true)
+	}
+
+	both := key("public", "acme-private")
+	require.NotEqual(t, both, key("public"), "a dropped field line must change the key")
+	require.NotEqual(t, both, key("acme-private"))
+	require.NotEqual(t, both, key(), "an absent header must not key like a present one")
+	// Order is part of the value, so a reordering is a different variant.
+	require.NotEqual(t, both, key("acme-private", "public"))
+	// The framing is injective: two lines must not hash like one joined line.
+	require.NotEqual(t, both, key("publicacme-private"))
+	require.NotEqual(t, both, key("public,acme-private"))
+	// And the per-value length prefix is what makes it so. The assertions above
+	// differ in how many lines there are, which is hashed on its own, so they
+	// hold even without the prefix; these two split the same bytes the same
+	// number of ways and collide without it.
+	require.NotEqual(t, key("ab", "c"), key("a", "bc"))
+	require.NotEqual(t, key("a", "bb", "c"), key("aa", "b", "c"))
+	// Same input, same key.
+	require.Equal(t, both, key("public", "acme-private"))
+}
+
+// Test_Cache_VaryRepeatedFieldLines is the end-to-end form: a request that
+// sends one field line must not be served the entry stored for a request that
+// sent two.
+func Test_Cache_VaryRepeatedFieldLines(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Use(New(Config{Expiration: time.Minute}))
+	app.Get("/", func(c fiber.Ctx) error {
+		c.Set("Vary", "X-Tenant")
+		values := c.Request().Header.PeekAll("X-Tenant")
+		parts := make([]string, 0, len(values))
+		for _, v := range values {
+			parts = append(parts, string(v)+";")
+		}
+		return c.SendString("tenant:" + strings.Join(parts, ""))
+	})
+
+	do := func(lines ...string) (body, cacheStatus string) { //nolint:nonamedreturns // names document the pair
+		req := fasthttp.AcquireRequest()
+		defer fasthttp.ReleaseRequest(req)
+		req.Header.SetMethod(fiber.MethodGet)
+		req.SetRequestURI("/")
+		req.SetHost("example.com")
+		for _, l := range lines {
+			req.Header.Add("X-Tenant", l)
+		}
+		fctx := &fasthttp.RequestCtx{}
+		fctx.Init(req, nil, nil)
+		app.Handler()(fctx)
+		return string(fctx.Response.Body()), string(fctx.Response.Header.Peek("X-Cache"))
+	}
+
+	body, status := do("public", "acme-private")
+	require.Equal(t, cacheMiss, status)
+	require.Equal(t, "tenant:public;acme-private;", body)
+
+	body, status = do("public")
+	require.Equal(t, cacheMiss, status, "the single-line request must not hit the two-line entry")
+	require.Equal(t, "tenant:public;", body)
+
+	// Each variant still caches on its own key.
+	body, status = do("public", "acme-private")
+	require.Equal(t, cacheHit, status)
+	require.Equal(t, "tenant:public;acme-private;", body)
+
+	body, status = do("public")
+	require.Equal(t, cacheHit, status)
+	require.Equal(t, "tenant:public;", body)
 }

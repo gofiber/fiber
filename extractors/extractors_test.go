@@ -2,6 +2,7 @@ package extractors
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"strings"
 	"testing"
@@ -1100,4 +1101,65 @@ func Benchmark_isValidToken68(b *testing.B) {
 		}
 	}
 	_ = got
+}
+
+// Test_FromHeader_IgnoresHeaderNameCase pins that a token is found under the
+// name it actually arrived as.
+//
+// Ctx.Get compares the stored key byte for byte, so under
+// DisableHeaderNormalizing a token sent under the lower-case name that HTTP/2
+// and HTTP/3 put on the wire was not found, and the request refused for
+// carrying no token when it carried one.
+func Test_FromHeader_IgnoresHeaderNameCase(t *testing.T) {
+	t.Parallel()
+
+	for _, normalize := range []bool{true, false} {
+		t.Run(fmt.Sprintf("normalize=%v", normalize), func(t *testing.T) {
+			t.Parallel()
+
+			for _, sent := range []string{"X-Csrf-Token", "x-csrf-token", "X-CSRF-TOKEN"} {
+				app := fiber.New(fiber.Config{DisableHeaderNormalizing: !normalize})
+				c := app.AcquireCtx(&fasthttp.RequestCtx{})
+				if !normalize {
+					c.Request().Header.DisableNormalizing()
+				}
+				c.Request().Header.Set(sent, "the-token")
+
+				got, err := FromHeader("X-Csrf-Token").Extract(c)
+				require.NoError(t, err, "sent as %q", sent)
+				require.Equal(t, "the-token", got, "sent as %q", sent)
+				app.ReleaseCtx(c)
+			}
+		})
+	}
+}
+
+// Test_FromAuthHeader_IgnoresHeaderNameCase pins the same for the Authorization
+// reader, which reaches every keyauth and bearer-token caller.
+//
+// FromHeader was fixed first and this one was missed: a lower-case
+// "authorization:" read as absent, so the scheme check never ran and the
+// request was refused for carrying no credential when it carried one.
+func Test_FromAuthHeader_IgnoresHeaderNameCase(t *testing.T) {
+	t.Parallel()
+
+	for _, normalize := range []bool{true, false} {
+		t.Run(fmt.Sprintf("normalize=%v", normalize), func(t *testing.T) {
+			t.Parallel()
+
+			for _, sent := range []string{"Authorization", "authorization", "AUTHORIZATION"} {
+				app := fiber.New(fiber.Config{DisableHeaderNormalizing: !normalize})
+				c := app.AcquireCtx(&fasthttp.RequestCtx{})
+				if !normalize {
+					c.Request().Header.DisableNormalizing()
+				}
+				c.Request().Header.Set(sent, "Bearer the-token")
+
+				got, err := FromAuthHeader("Bearer").Extract(c)
+				require.NoError(t, err, "sent as %q", sent)
+				require.Equal(t, "the-token", got, "sent as %q", sent)
+				app.ReleaseCtx(c)
+			}
+		})
+	}
 }

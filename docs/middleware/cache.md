@@ -124,6 +124,91 @@ Cache lookup/storage is applied only for `GET` and `HEAD` requests by default. O
 
 If a response sets `Vary`, request lookup/storage is also partitioned by those header values unless `DisableVaryHeaders` is `true`. Responses with `Vary: *` remain uncacheable.
 
+### Cached redirects
+
+`300` and `301` are cacheable statuses, so a redirect can be served from the
+cache. Its `Location` is kept with the entry even when `StoreResponseHeaders` is
+off, since the status means nothing without it — the same reason `Content-Type`
+is always kept. No other response header is stored on that path.
+
+### Header names
+
+Response field names are matched case-insensitively, as
+[RFC 9110 §5.1](https://www.rfc-editor.org/rfc/rfc9110.html#section-5.1)
+requires, so a handler is free to write `cache-control` or `expires` in lower
+case under
+[`DisableHeaderNormalizing`](../api/fiber.md#config). Those values decide what
+they would decide either way, and the fields this middleware writes itself —
+`Cache-Control`, `Age`, `Date`, `ETag`, `Expires` — replace whatever spelling
+the response already carries rather than being added beside it.
+
+### Responses that are never stored
+
+One entry is served to every client whose request matches its key, so a response
+that identifies a single client is not stored at all:
+
+- **A response that sets a cookie.** `Set-Cookie` means the response has been
+  personalized for the client that caused the miss, and the body — not just the
+  header — is what would be replayed to everyone else. The response still
+  reaches that client normally; only the entry is skipped, and `X-Cache` reads
+  `unreachable`.
+- **A response to a request carrying `Authorization`,** unless the response
+  permits shared caching, per
+  [RFC 9111 §3.5](https://www.rfc-editor.org/rfc/rfc9111.html#section-3.5).
+- **`Cache-Control: no-store`, `private`, `no-cache`, or `Vary: *`.**
+
+A route that genuinely wants both a cookie and a shared entry can say so with
+`Cache-Control: public` or an `s-maxage` — directives only a shared cache acts
+on, so neither is written by accident. `must-revalidate` and `proxy-revalidate`
+do **not** lift the cookie restriction, even though RFC 9111 §3.5 accepts
+`must-revalidate` for the `Authorization` case: that allowance holds because a
+revalidating cache returns to the origin and the origin re-checks the
+credential, and this middleware never revalidates — it serves the stored body
+for the whole configured `Expiration`.
+
+Applications that refresh a session cookie on every response will find that most
+routes stop being cached — that is the point, since those responses are
+per-client. Set the cookie only where it changes, or mark the genuinely public
+routes `public`.
+
+:::caution Register the cache outside any middleware that writes cookies
+
+The check above reads the response as it stands when the cache decides to store
+it, which is the moment `c.Next()` returns to the cache middleware. A middleware
+registered **outside** the cache does its post-`c.Next()` work later, so a cookie
+it writes then is not there to be seen — the entry is stored and the next client
+reads the first one's body.
+
+Fiber's own [session](./session.md) middleware writes its cookie exactly that
+way, so the order matters:
+
+```go
+app.Use(cache.New())    // correct: the cookie is written before the cache decides
+app.Use(session.New())
+
+app.Use(session.New())  // leaks: the cookie is written after the cache stored
+app.Use(cache.New())
+```
+
+The same applies to any handler wrapper of the form
+`err := c.Next(); c.Cookie(...); return err`. Note also that a response
+personalized from a **request** cookie without setting one is cached and shared
+by design — use `KeyCookies` or `Vary: Cookie` to key those apart.
+
+:::
+
+### Vary and `Content-Type`
+
+A request `Content-Type` naming a form is folded to lower case before it is used
+in the cache key, so the key is the same whether it is built before or after the
+handler runs — the form accessors fold that header in place, and without this
+the entry would be stored under a key no lookup produces.
+
+A handler on such a route therefore sees the folded media type even if it never
+reads a form value: on every request when `KeyHeaders` names `Content-Type`, and
+from the second request on when only `Vary` does. The boundary keeps its case,
+and a non-form `Content-Type` is left alone.
+
 ## Config
 
 | Property             | Type                                           | Description                                                                                                                                                                                                                                                                                                    | Default                                                          |
@@ -142,7 +227,7 @@ If a response sets `Vary`, request lookup/storage is also partitioned by those h
 | DisableVaryHeaders   | `bool`                                         | Disables response `Vary` dimensions in cache lookup/storage partitioning. | `false` |
 | ExpirationGenerator  | `func(fiber.Ctx, *cache.Config) time.Duration` | ExpirationGenerator allows you to generate custom expiration keys based on the request.                                                                                                                                                                                                                        | `nil`                                                            |
 | Storage              | `fiber.Storage`                                | Storage is used to store the state of the middleware.                                                                                                                                                                                                                                                            | In-memory store                                                  |
-| StoreResponseHeaders | `bool`                                         | StoreResponseHeaders allows you to store additional headers generated by next middlewares & handler.                                                                                                                                                                                                           | `false`                                                          |
+| StoreResponseHeaders | `bool`                                         | StoreResponseHeaders allows you to store additional headers generated by next middlewares & handler. Connection-scoped headers and `Set-Cookie` are never stored, since a cache entry is replayed to every client that matches its key.                                                                          | `false`                                                          |
 | MaxBytes             | `uint`                                         | MaxBytes is the maximum number of bytes of response bodies simultaneously stored in cache. | `1 * 1024 * 1024` (~1 MB)                                                  |
 
 ## Default Config
