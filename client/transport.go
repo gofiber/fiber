@@ -5,8 +5,10 @@ package client
 
 import (
 	"crypto/tls"
+	"strings"
 	"time"
 
+	"github.com/gofiber/fiber/v3/internal/crosshost"
 	"github.com/gofiber/utils/v2"
 	"github.com/valyala/fasthttp"
 )
@@ -59,6 +61,9 @@ func (s *standardClientTransport) DoDeadline(req *fasthttp.Request, resp *fastht
 	return s.client.DoDeadline(req, resp, deadline)
 }
 
+// DoRedirects delegates to fasthttp, whose loop resolves relative Locations,
+// applies RFC 9110 §15.4.4 to 303s, and strips credentials off the initial host.
+// The trade: it follows an HTTPS-to-HTTP downgrade. See ErrRedirectDowngrade.
 func (s *standardClientTransport) DoRedirects(req *fasthttp.Request, resp *fasthttp.Response, maxRedirects int) error {
 	return s.client.DoRedirects(req, resp, maxRedirects)
 }
@@ -113,6 +118,8 @@ func (h *hostClientTransport) DoDeadline(req *fasthttp.Request, resp *fasthttp.R
 	return h.client.DoDeadline(req, resp, deadline)
 }
 
+// DoRedirects delegates to fasthttp for the same reasons as
+// standardClientTransport.DoRedirects.
 func (h *hostClientTransport) DoRedirects(req *fasthttp.Request, resp *fasthttp.Response, maxRedirects int) error {
 	return h.client.DoRedirects(req, resp, maxRedirects)
 }
@@ -298,6 +305,7 @@ type redirectClient interface {
 // for negative values, and validates redirect targets before following them.
 func doRedirectsWithClient(req *fasthttp.Request, resp *fasthttp.Response, maxRedirects int, client redirectClient) error {
 	currentURL := req.URI().String()
+	initialHostname := hostnameWithoutPort(string(req.URI().Host()))
 	redirects := 0
 	singleRequestOnly := maxRedirects <= 0
 
@@ -332,19 +340,89 @@ func doRedirectsWithClient(req *fasthttp.Request, resp *fasthttp.Response, maxRe
 			return fasthttp.ErrMissingLocation
 		}
 
-		nextURL, err := composeRedirectURL(currentURL, location, req.DisableRedirectPathNormalizing)
+		nextURL, nextHost, err := composeRedirectURL(currentURL, location, req.DisableRedirectPathNormalizing)
 		if err != nil {
 			return err
 		}
 		currentURL = nextURL
 
-		if req.Header.IsPost() && (statusCode == fasthttp.StatusMovedPermanently || statusCode == fasthttp.StatusFound || statusCode == fasthttp.StatusSeeOther) {
-			req.Header.SetMethod(fasthttp.MethodGet)
-			req.SetBody(nil)
-			req.Header.Del(fasthttp.HeaderContentType)
-			req.Header.Del(fasthttp.HeaderContentLength)
+		// 301, 302 and 303 turn any body-carrying method into a GET, body and all —
+		// net/http's redirectBehavior, for every method rather than just POST, since
+		// Fiber drives QUERY here too. fasthttp changes only POST; the one difference.
+		switch statusCode {
+		case fasthttp.StatusMovedPermanently, fasthttp.StatusFound, fasthttp.StatusSeeOther:
+			if !req.Header.IsGet() && !req.Header.IsHead() {
+				req.Header.SetMethod(fasthttp.MethodGet)
+				dropRequestBody(req)
+			}
+		}
+
+		// Credentials are scoped to the origin that issued them, so drop them once
+		// the chain leaves it. net/http's boundary, which fasthttp also implements:
+		// against the initial host, ignoring the port, subdomains still trusted.
+		if !trustedRedirectTarget(nextHost, initialHostname) {
+			for _, h := range crosshost.SensitiveHeaders {
+				req.Header.Del(h)
+			}
 		}
 	}
+}
+
+// dropRequestBody removes a request's body and everything framing or describing
+// it: Content-Length, Transfer-Encoding and Trailer signal one (RFC 9112),
+// Content-Type and Content-Encoding describe one no longer there.
+func dropRequestBody(req *fasthttp.Request) {
+	req.Header.Del(fasthttp.HeaderContentLength)
+	req.Header.Del(fasthttp.HeaderContentType)
+	req.Header.Del(fasthttp.HeaderContentEncoding)
+	req.Header.Del(fasthttp.HeaderTransferEncoding)
+	req.Header.Del(fasthttp.HeaderTrailer)
+	req.ResetBody()
+	req.PostArgs().Reset()
+}
+
+// hostnameWithoutPort strips the port from a host[:port] value, leaving a
+// bracketed IPv6 literal's own colons alone.
+func hostnameWithoutPort(host string) string {
+	// More than one colon without brackets is a bare IPv6 literal, where the last
+	// colon belongs to the address: truncating there folds "fe80::1" and
+	// "fe80::2" to one name, and a hop between them would keep its credentials.
+	if strings.HasPrefix(host, "[") || strings.Count(host, ":") <= 1 {
+		if i := strings.LastIndexByte(host, ':'); i >= 0 && strings.IndexByte(host[i:], ']') < 0 {
+			host = host[:i]
+		}
+	}
+	// Exactly one matched pair, not every bracket (strings.Trim folds "[[x]]"
+	// to "x"). Two spellings must never fold to one name here.
+	if len(host) >= 2 && host[0] == '[' && host[len(host)-1] == ']' {
+		host = host[1 : len(host)-1]
+	}
+	return host
+}
+
+// trustedRedirectTarget reports whether credentials issued for initialHostname
+// may still be sent to host, which may carry a port: trusted when it is that
+// host or a subdomain — net/http's rule for forwarding sensitive headers.
+func trustedRedirectTarget(host, initialHostname string) bool {
+	target := hostnameWithoutPort(host)
+	if utils.EqualFold(target, initialHostname) {
+		return true
+	}
+	// No initial hostname means no origin to be a subdomain of, and the suffix
+	// test degenerates: every host matches "", so a name ending in '.' would
+	// back trusted and keep the credentials.
+	if initialHostname == "" {
+		return false
+	}
+	// The same bail-out net/http's isDomainOrSubdomain makes: a ':' or '%' means
+	// this is no hostname, and the suffix test would match inside an IPv6 zone
+	// identifier — "[::1%.example.com]" would come back a subdomain of it.
+	if strings.ContainsAny(target, ":%") {
+		return false
+	}
+	return len(target) > len(initialHostname) &&
+		target[len(target)-len(initialHostname)-1] == '.' &&
+		utils.HasSuffixFold(target, initialHostname)
 }
 
 // composeRedirectURL resolves a redirect target relative to the current request
@@ -352,10 +430,14 @@ func doRedirectsWithClient(req *fasthttp.Request, resp *fasthttp.Response, maxRe
 // restricting schemes to HTTP/S so caller-provided Location headers cannot
 // trigger arbitrary transports. Redirects from HTTPS to plaintext HTTP are
 // rejected to prevent credentials from leaking after a TLS handshake.
-func composeRedirectURL(base string, location []byte, disablePathNormalizing bool) (string, error) {
+//
+// It returns the resolved URL along with its host, which the caller compares
+// against the previous hop to decide whether origin-scoped credentials still
+// apply.
+func composeRedirectURL(base string, location []byte, disablePathNormalizing bool) (redirectURL, host string, err error) { //nolint:nonamedreturns // names document the two string results
 	for _, b := range location {
 		if b < 0x20 || b == 0x7f {
-			return "", fasthttp.ErrorInvalidURI
+			return "", "", fasthttp.ErrorInvalidURI
 		}
 	}
 
@@ -369,16 +451,16 @@ func composeRedirectURL(base string, location []byte, disablePathNormalizing boo
 
 	scheme := uri.Scheme()
 	if len(scheme) > 0 && !utils.EqualFold(scheme, httpScheme) && !utils.EqualFold(scheme, httpsScheme) {
-		return "", fasthttp.ErrorInvalidURI
+		return "", "", fasthttp.ErrorInvalidURI
 	}
 
 	if len(scheme) > 0 && len(uri.Host()) == 0 {
-		return "", fasthttp.ErrorInvalidURI
+		return "", "", fasthttp.ErrorInvalidURI
 	}
 
 	if wasHTTPS && utils.EqualFold(scheme, httpScheme) {
-		return "", ErrRedirectDowngrade
+		return "", "", ErrRedirectDowngrade
 	}
 
-	return uri.String(), nil
+	return uri.String(), string(uri.Host()), nil
 }

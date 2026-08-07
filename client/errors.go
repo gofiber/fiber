@@ -12,9 +12,8 @@ var (
 	errCookieJarTypeAssertion    = errors.New("failed to type-assert to *CookieJar")
 	errSyncPoolBuffer            = errors.New("failed to retrieve buffer from a sync.Pool")
 
-	// ErrRedirectDowngrade is returned when DoRedirects encounters a
-	// redirect from an HTTPS origin to a plaintext HTTP target.
-	// Following such a redirect would leak any credentials, cookies, or
-	// session tokens that the original HTTPS handshake protected.
+	// ErrRedirectDowngrade is returned when a redirect leads from an HTTPS origin
+	// to plaintext HTTP. Only the load-balancing transport raises it: the others
+	// delegate to fasthttp, which takes the hop. Set MaxRedirects to 0 to refuse.
 	ErrRedirectDowngrade = errors.New("client: HTTPS to HTTP redirect blocked")
 )

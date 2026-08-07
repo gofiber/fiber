@@ -177,6 +177,7 @@ func (cj *CookieJar) getCookiesByHost(host string) []*fasthttp.Cookie {
 	if len(kept) == 0 {
 		delete(cj.hostCookies, host)
 	} else {
+		clearVacated(stored, kept)
 		cj.hostCookies[host] = kept
 	}
 
@@ -229,6 +230,7 @@ func (cj *CookieJar) cookiesForRequest(host string, path []byte, secure bool) []
 		if len(kept) == 0 {
 			delete(cj.hostCookies, domain)
 		} else {
+			clearVacated(cookies, kept)
 			cj.hostCookies[domain] = kept
 		}
 	}
@@ -246,6 +248,12 @@ func (cj *CookieJar) cookiesForRequest(host string, path []byte, secure bool) []
 			}
 			return cmp.Compare(a.seq, b.seq)
 		})
+	}
+
+	if len(matched) == 0 {
+		// Get documents a nil result when nothing matches, and a caller may be
+		// testing for exactly that; make([]T, 0) is not nil.
+		return nil
 	}
 
 	out := make([]*fasthttp.Cookie, len(matched))
@@ -319,6 +327,11 @@ func (cj *CookieJar) setByHostAndPath(host, requestPath []byte, cookies ...*fast
 
 	defaultPath := defaultCookiePathFor(requestPath)
 
+	// One clock reading for the whole call, as parseCookiesFromResp already does.
+	// The capacity sweep below runs per cookie, and a fresh time.Now() inside it
+	// bought nothing but a syscall per cookie while cj.mu is held.
+	now := time.Now()
+
 	for _, cookie := range cookies {
 		// Fold with utilsstrings.ToLower rather than in place: the cookie
 		// belongs to the caller, and the jar documents that it only stores
@@ -342,7 +355,7 @@ func (cj *CookieJar) setByHostAndPath(host, requestPath []byte, cookies ...*fast
 			}
 		}
 
-		cj.ensureHostCapacityLocked(key, time.Now())
+		cj.ensureHostCapacityLocked(key, now)
 		hostCookies := cj.hostCookies[key]
 
 		// Normalize the path up front so an entry stored through this API is
@@ -484,15 +497,9 @@ func defaultCookiePathFor(requestPath []byte) []byte {
 
 // setDefaultCookiePath stores path as c's Path attribute.
 //
-// fasthttp's Cookie.SetPathBytes runs the value through normalizePath, which
-// percent-decodes it and turns ';' into a space. The path handed to us came
-// from URI.Path(), which fasthttp has already decoded once, so setting it
-// naively decodes twice: a request for "/a%2541b/c" would store the scope
-// "/aAb" and the cookie could never be sent again, not even to the URL that
-// set it. Escaping '%' survives the second decode; if the value still does not
-// round-trip (a path containing ';', which normalizePath rewrites
-// unconditionally), fall back to leaving the scope at "/" — broader than the
-// RFC prescribes, but the cookie stays usable instead of being silently lost.
+// SetPathBytes percent-decodes the value, and the path came from URI.Path()
+// already decoded once, so setting it naively decodes twice — "/a%2541b/c"
+// stored "/aAb". A path holding ';' cannot round-trip and falls back to "/".
 func setDefaultCookiePath(c *fasthttp.Cookie, path []byte) {
 	c.SetPathBytes(escapePercent(path))
 	if !bytes.Equal(c.Path(), path) {
@@ -593,7 +600,12 @@ func (cj *CookieJar) parseCookiesFromResp(host, path []byte, resp *fasthttp.Resp
 					kept = append(kept, v)
 				}
 			}
-			cj.hostCookies[key] = kept
+			if len(kept) == 0 {
+				delete(cj.hostCookies, key)
+			} else {
+				clearVacated(cookies, kept)
+				cj.hostCookies[key] = kept
+			}
 			fasthttp.ReleaseCookie(c)
 		}
 		fasthttp.ReleaseCookie(tmp)
@@ -675,6 +687,7 @@ func (cj *CookieJar) ensureHostCapacityLocked(key string, now time.Time) {
 			}
 			continue
 		}
+		clearVacated(cookies, kept)
 		cj.hostCookies[host] = kept
 	}
 
