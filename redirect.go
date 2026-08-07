@@ -11,11 +11,11 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/gofiber/fiber/v3/binder"
 	"github.com/gofiber/utils/v2"
 	"github.com/valyala/bytebufferpool"
 	"github.com/valyala/fasthttp"
 
+	"github.com/gofiber/fiber/v3/internal/fieldname"
 	"github.com/gofiber/fiber/v3/internal/schemehost"
 )
 
@@ -195,10 +195,7 @@ func (r *Redirect) With(key, value string, level ...uint8) *Redirect {
 // This method can send form, multipart form, query data to redirected route.
 // You can get them by using: Redirect().OldInputs(), Redirect().OldInput()
 func (r *Redirect) WithInput() *Redirect {
-	// Get content-type, folding only the media type so the case-sensitive
-	// multipart boundary survives (see normalizeContentTypeMediaType).
-	raw := utils.UnsafeString(normalizeContentTypeMediaType(&r.c.RequestCtx().Request.Header))
-	ctype := binder.FilterFlags(utils.ParseVendorSpecificContentType(raw))
+	ctype := bindMediaType(&r.c.RequestCtx().Request.Header)
 
 	oldInput := acquireOldInput()
 	defer releaseOldInput(oldInput)
@@ -448,12 +445,7 @@ func (r *Redirect) refererHeader() string {
 		return ""
 	}
 
-	for k, v := range r.c.fasthttp.Request.Header.All() {
-		if utils.EqualFold(utils.UnsafeString(k), HeaderReferer) {
-			return r.c.app.toString(v)
-		}
-	}
-	return ""
+	return r.c.app.toString(fieldname.First(&r.c.fasthttp.Request.Header, HeaderReferer, false))
 }
 
 // sameOriginReferer reports whether the Referer resolves back to the origin now

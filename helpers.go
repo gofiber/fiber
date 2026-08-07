@@ -24,9 +24,12 @@ import (
 
 	"github.com/gofiber/utils/v2"
 	utilsbytes "github.com/gofiber/utils/v2/bytes"
+	utilsstrings "github.com/gofiber/utils/v2/strings"
 	"github.com/gofiber/utils/v2/swar"
 
+	"github.com/gofiber/fiber/v3/binder"
 	"github.com/gofiber/fiber/v3/internal/contextvalue"
+	"github.com/gofiber/fiber/v3/internal/mediatype"
 	"github.com/gofiber/fiber/v3/log"
 
 	"github.com/valyala/bytebufferpool"
@@ -280,69 +283,6 @@ func appendLowerASCII(dst, src []byte) []byte {
 		dst[i] = c
 	}
 	return dst
-}
-
-// normalizeContentTypeMediaType lowercases the case-insensitive parts of a
-// request's Content-Type in place and returns the full header value.
-//
-// The fold has to land on the request's own bytes rather than on a copy:
-// fasthttp locates the multipart boundary and the urlencoded form body with
-// case-sensitive comparisons (Request.MultipartFormBoundary matches a
-// lowercase "boundary=", Request.PostArgs a lowercase media type), as does
-// binder.FormBinding — so a perfectly legal "Multipart/Form-Data" or
-// "BOUNDARY=" would otherwise parse as an empty form.
-//
-// Both the media type and the parameter *names* are case-insensitive
-// (RFC 9110 Sections 8.3.1 and 5.6.6) and are folded. Parameter *values* are
-// left untouched: a multipart boundary is case-sensitive, and folding it
-// detaches the header from the body it describes.
-func normalizeContentTypeMediaType(h *fasthttp.RequestHeader) []byte {
-	ct := h.ContentType()
-
-	i := bytes.IndexByte(ct, ';')
-	if i == -1 {
-		utilsbytes.UnsafeToLower(ct)
-		return ct
-	}
-	utilsbytes.UnsafeToLower(ct[:i])
-
-	for i < len(ct) {
-		i++ // step over the ';'
-		for i < len(ct) && (ct[i] == ' ' || ct[i] == '\t') {
-			i++
-		}
-
-		nameStart := i
-		for i < len(ct) && ct[i] != '=' && ct[i] != ';' {
-			i++
-		}
-		utilsbytes.UnsafeToLower(ct[nameStart:i])
-		if i >= len(ct) || ct[i] == ';' {
-			continue
-		}
-
-		// Step over the value without touching it. A quoted-string may
-		// contain ';' (RFC 9110 Section 5.6.6), so it has to be consumed as a
-		// unit or the next parameter name would be mislocated.
-		i++ // step over the '='
-		if i < len(ct) && ct[i] == '"' {
-			i++
-			for i < len(ct) && ct[i] != '"' {
-				if ct[i] == '\\' && i+1 < len(ct) {
-					i++
-				}
-				i++
-			}
-			if i < len(ct) {
-				i++ // closing quote
-			}
-		}
-		for i < len(ct) && ct[i] != ';' {
-			i++
-		}
-	}
-
-	return ct
 }
 
 // defaultString returns the value or a default value if it is set
@@ -1428,4 +1368,19 @@ type GenericTypeIntegerUnsigned interface {
 // GenericTypeFloat is the union of supported floating-point types.
 type GenericTypeFloat interface {
 	float32 | float64
+}
+
+// bindMediaType returns the request's media type, lowered for comparison against
+// the MIME constants. The request's own bytes are folded only for a form, the
+// one case needing it in place; anything else is compared on a copy.
+func bindMediaType(h *fasthttp.RequestHeader) string {
+	if mediatype.IsForm(h.ContentType()) {
+		raw := utils.UnsafeString(mediatype.NormalizeRequestContentType(h))
+		return binder.FilterFlags(utils.ParseVendorSpecificContentType(raw))
+	}
+
+	// ToLower returns its input unchanged when there is nothing to fold, so the
+	// common path costs no allocation.
+	lowered := utilsstrings.ToLower(utils.UnsafeString(h.ContentType()))
+	return binder.FilterFlags(utils.ParseVendorSpecificContentType(lowered))
 }

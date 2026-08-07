@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/textproto"
 	"reflect"
+	"strings"
 	"sync"
 	"time"
 	"unsafe"
@@ -333,6 +334,80 @@ func CopyContextToFiberContext(src any, requestContext *fasthttp.RequestCtx) {
 	}
 }
 
+// framingHeaders delimit and address the message rather than describe what it
+// carries, and are excluded from the snapshot and the clear: the wrapped
+// middleware sees a copy, so clearing one corrupts the body still being read.
+var framingHeaders = [...]string{
+	fiber.HeaderHost,
+	fiber.HeaderContentLength,
+	fiber.HeaderTransferEncoding,
+	fiber.HeaderConnection,
+}
+
+// headerPair is one owned copy of a header line taken from the converted
+// net/http request.
+type headerPair struct {
+	key   string
+	value string
+}
+
+// snapshotHeaders copies the non-framing headers of the converted request into
+// owned strings. fasthttpadaptor builds r.Header with b2s, so its keys and values
+// alias buffers the fiber header owns — writing back in place corrupted them.
+func snapshotHeaders(h http.Header) []headerPair {
+	// One entry per field line, not per name: len(h) regrows the slice for
+	// every multi-valued header, which is what these tend to be.
+	lines := 0
+	for _, vals := range h {
+		lines += len(vals)
+	}
+
+	pairs := make([]headerPair, 0, lines)
+	for key, vals := range h {
+		if isFramingHeader(key) {
+			continue
+		}
+		ownedKey := strings.Clone(key)
+		for _, v := range vals {
+			pairs = append(pairs, headerPair{key: ownedKey, value: strings.Clone(v)})
+		}
+	}
+	return pairs
+}
+
+// clearCopiedHeaders deletes every non-framing header from the fiber request so
+// the copy that follows rebuilds the set as the wrapped middleware left it.
+// Set-then-Add cannot: Set replaces only the first entry, and removals never did.
+func clearCopiedHeaders(fhdr *fasthttp.RequestHeader) {
+	// Not sized from fhdr.Len(): that counts by walking every header, so
+	// pre-sizing would traverse them twice — and the walk also collects the
+	// cookie store and re-serializes it, on a per-request path.
+	var removed []string
+	for key := range fhdr.All() {
+		name := utils.UnsafeString(key)
+		if isFramingHeader(name) {
+			continue
+		}
+		// Repeated names are Del'd repeatedly; Del removes every line at once, so
+		// the second finds nothing. Skipping it costs more — a slices.Contains scan
+		// measured 17% slower at twenty headers and 61% at a hundred.
+		removed = append(removed, string(key))
+	}
+
+	for _, name := range removed {
+		fhdr.Del(name)
+	}
+}
+
+func isFramingHeader(name string) bool {
+	for _, h := range framingHeaders {
+		if utils.EqualFold(name, h) {
+			return true
+		}
+	}
+	return false
+}
+
 // HTTPMiddleware wraps net/http middleware to fiber middleware
 func HTTPMiddleware(mw func(http.Handler) http.Handler) fiber.Handler {
 	return func(c fiber.Ctx) error {
@@ -342,6 +417,12 @@ func HTTPMiddleware(mw func(http.Handler) http.Handler) fiber.Handler {
 
 			freq := c.Request()
 			fhdr := &freq.Header
+
+			// Snapshot before mutating: fasthttpadaptor fills r.Header with b2s views
+			// into fhdr's storage, so every Set, Del or SetHost below rewrites bytes the
+			// remaining entries point at. The method/URI/host writes follow for that.
+			pairs := snapshotHeaders(r.Header)
+
 			fhdr.SetMethod(r.Method)
 			freq.SetRequestURI(r.RequestURI)
 			freq.SetHost(r.Host)
@@ -349,17 +430,9 @@ func HTTPMiddleware(mw func(http.Handler) http.Handler) fiber.Handler {
 
 			// Remove all cookies before setting, see https://github.com/valyala/fasthttp/pull/1864
 			fhdr.DelAllCookies()
-			for key, vals := range r.Header {
-				if len(vals) == 0 {
-					continue
-				}
-				// Set replaces whatever the key held on the fiber request,
-				// then Add appends the remaining values so multi-value
-				// headers survive instead of collapsing to the last value.
-				fhdr.Set(key, vals[0])
-				for _, v := range vals[1:] {
-					fhdr.Add(key, v)
-				}
+			clearCopiedHeaders(fhdr)
+			for _, p := range pairs {
+				fhdr.Add(p.key, p.value)
 			}
 			CopyContextToFiberContext(r.Context(), c.RequestCtx())
 		})

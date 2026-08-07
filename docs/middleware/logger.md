@@ -299,6 +299,21 @@ Logger provides predefined formats that you can use by name or directly by speci
 `${bytesSent}` returns the value of the `Content-Length` response header. If the header is missing or the response is streaming (e.g., chunked encoding), the value will be `-1`. Fiber does not calculate the actual response body size for performance reasons.
 :::
 
+## The `${ips}` tag
+
+`${ips}` logs the chain the framework parsed, `Ctx.IPs()`, joined with `,`. It
+is the same list the trusted-proxy decisions are made from, so an access log and
+what was actually enforced cannot disagree — reading `X-Forwarded-For` here
+separately meant reading it a second way, and under
+[`DisableHeaderNormalizing`](../api/fiber.md#config) a lower-case
+`x-forwarded-for:` logged an empty chain while the framework went on using it.
+
+Because the entries are split and trimmed rather than echoed as sent, repeated
+`X-Forwarded-For` header lines and a single comma-joined one log identically,
+which is what [RFC 9110 §5.2](https://www.rfc-editor.org/rfc/rfc9110.html#section-5.2)
+says they are. `${ips}` is empty unless the peer is a trusted proxy — see
+[`TrustProxy`](../api/fiber.md#config).
+
 ## Control-Character Sanitization
 
 Values that come from the request are scrubbed before they reach the log stream: every ASCII control byte (C0 and DEL) is replaced with a space, and horizontal tab is preserved. Without this, a percent-decoded query parameter, form field, or request body containing `\r\n` could forge additional access-log lines and corrupt an audit trail.

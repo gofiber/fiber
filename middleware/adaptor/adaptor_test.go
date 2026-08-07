@@ -2234,3 +2234,144 @@ func Test_FiberApp_RemoteAddrSurvivesPooling(t *testing.T) {
 		require.Equal(t, addr, retained[i].String())
 	}
 }
+
+// Test_HTTPMiddleware_PropagatesHeaderRemoval asserts that a header the wrapped
+// net/http middleware deletes stays deleted for the fiber handler. Copying only
+// what r.Header still holds would leave the original value in place, silently
+// defeating middleware whose purpose is to strip a header.
+func Test_HTTPMiddleware_PropagatesHeaderRemoval(t *testing.T) {
+	t.Parallel()
+
+	type seen struct {
+		forwardedFor  string
+		authorization string
+		kept          string
+		contentType   string
+		body          string
+	}
+
+	var got seen
+
+	app := fiber.New()
+	app.Use(HTTPMiddleware(func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			r.Header.Del("X-Forwarded-For")
+			r.Header.Del(fiber.HeaderAuthorization)
+			next.ServeHTTP(w, r)
+		})
+	}))
+	app.Post("/", func(c fiber.Ctx) error {
+		got = seen{
+			forwardedFor:  c.Get("X-Forwarded-For"),
+			authorization: c.Get(fiber.HeaderAuthorization),
+			kept:          c.Get("X-Kept"),
+			contentType:   c.Get(fiber.HeaderContentType),
+			body:          string(c.Body()),
+		}
+		return c.SendString("ok")
+	})
+
+	req := httptest.NewRequest(fiber.MethodPost, "/", strings.NewReader("a=1"))
+	req.Header.Set(fiber.HeaderContentType, "application/x-www-form-urlencoded")
+	req.Header.Set("X-Forwarded-For", "1.2.3.4")
+	req.Header.Set(fiber.HeaderAuthorization, "Bearer secret")
+	req.Header.Set("X-Kept", "still here")
+
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+
+	require.Empty(t, got.forwardedFor)
+	require.Empty(t, got.authorization)
+	// Headers the middleware left alone survive, and the framing headers it
+	// never touches must not be collateral damage.
+	require.Equal(t, "still here", got.kept)
+	require.Equal(t, "application/x-www-form-urlencoded", got.contentType)
+	require.Equal(t, "a=1", got.body)
+}
+
+// Test_HTTPMiddleware_HeaderFidelity asserts that the fiber request ends up
+// holding exactly what the wrapped net/http middleware left in r.Header.
+//
+// fasthttpadaptor builds r.Header from b2s views into fiber's own header
+// storage, so a copy-back that writes while reading corrupts itself: values got
+// duplicated, sanitized values kept their originals alongside them, and the
+// rewritten Host came back spliced with the bytes of the old one.
+func Test_HTTPMiddleware_HeaderFidelity(t *testing.T) {
+	t.Parallel()
+
+	forwardedFor := func(t *testing.T, mw func(http.Handler) http.Handler) ([]string, string, string) {
+		t.Helper()
+
+		var (
+			values  []string
+			uriHost string
+			hdrHost string
+		)
+		app := fiber.New()
+		app.Use(HTTPMiddleware(mw))
+		app.Get("/", func(c fiber.Ctx) error {
+			for _, v := range c.Request().Header.PeekAll("X-Forwarded-For") {
+				values = append(values, string(v))
+			}
+			uriHost, hdrHost = c.Host(), c.Get(fiber.HeaderHost)
+			return c.SendString("ok")
+		})
+
+		req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+		req.Host = "original.example"
+		req.Header.Add("X-Forwarded-For", "1.1.1.1")
+		req.Header.Add("X-Forwarded-For", "2.2.2.2")
+
+		resp, err := app.Test(req)
+		require.NoError(t, err)
+		require.Equal(t, fiber.StatusOK, resp.StatusCode)
+		return values, uriHost, hdrHost
+	}
+
+	t.Run("pass-through preserves every value exactly once", func(t *testing.T) {
+		t.Parallel()
+
+		got, _, _ := forwardedFor(t, func(next http.Handler) http.Handler { return next })
+		require.Equal(t, []string{"1.1.1.1", "2.2.2.2"}, got)
+	})
+
+	t.Run("collapsing a multi-valued header drops the originals", func(t *testing.T) {
+		t.Parallel()
+
+		got, _, _ := forwardedFor(t, func(next http.Handler) http.Handler {
+			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				r.Header.Set("X-Forwarded-For", "9.9.9.9")
+				next.ServeHTTP(w, r)
+			})
+		})
+		// Leaving "2.2.2.2" behind would hand the spoofed value straight to
+		// c.IPs() and the TrustProxy chain walk.
+		require.Equal(t, []string{"9.9.9.9"}, got)
+	})
+
+	t.Run("assigning nil removes the header", func(t *testing.T) {
+		t.Parallel()
+
+		got, _, _ := forwardedFor(t, func(next http.Handler) http.Handler {
+			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				r.Header["X-Forwarded-For"] = nil
+				next.ServeHTTP(w, r)
+			})
+		})
+		require.Empty(t, got)
+	})
+
+	t.Run("rewritten host is not spliced with the old one", func(t *testing.T) {
+		t.Parallel()
+
+		_, uriHost, hdrHost := forwardedFor(t, func(next http.Handler) http.Handler {
+			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				r.Host = "internal.svc"
+				next.ServeHTTP(w, r)
+			})
+		})
+		require.Equal(t, "internal.svc", uriHost)
+		require.Equal(t, "internal.svc", hdrHost)
+	})
+}

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -3325,4 +3326,189 @@ func Test_CSRF_Security_TrustedOriginSchemeIsolation(t *testing.T) {
 	require.Equal(t, fiber.StatusOK, post("https://trusted.example.com"))
 	// The same host over http is NOT trusted.
 	require.Equal(t, fiber.StatusForbidden, post("http://trusted.example.com"))
+}
+
+// Test_CSRF_OriginCheckIgnoresHeaderNameCase pins that the origin check tells a
+// cross-site POST from a same-site one whatever case the field names arrive in.
+//
+// Ctx.Get compares the stored key byte for byte, so under
+// DisableHeaderNormalizing every read came back empty — and an absent Origin is
+// not a failure here: on a plaintext connection the check is skipped for it. A
+// cross-site request that spelled the header in lower case, which is what
+// HTTP/2 and HTTP/3 put on the wire, was therefore accepted where the canonical
+// spelling was refused.
+func Test_CSRF_OriginCheckIgnoresHeaderNameCase(t *testing.T) {
+	t.Parallel()
+
+	for _, normalize := range []bool{true, false} {
+		t.Run(fmt.Sprintf("normalize=%v", normalize), func(t *testing.T) {
+			t.Parallel()
+
+			app := fiber.New(fiber.Config{DisableHeaderNormalizing: !normalize})
+			app.Use(New())
+			app.Get("/", func(c fiber.Ctx) error { return c.SendString(TokenFromContext(c)) })
+			app.Post("/", func(c fiber.Ctx) error { return c.SendString("accepted") })
+			h := app.Handler()
+
+			// A legitimate visit, for the cookie and token a double-submit
+			// check needs. Without them the token check refuses everything and
+			// the origin check is never reached.
+			get := fasthttp.AcquireRequest()
+			defer fasthttp.ReleaseRequest(get)
+			get.Header.SetMethod(fiber.MethodGet)
+			get.SetRequestURI("/")
+			get.Header.SetHost("example.com")
+			gctx := &fasthttp.RequestCtx{}
+			gctx.Init(get, nil, nil)
+			h(gctx)
+
+			token := string(gctx.Response.Body())
+			require.NotEmpty(t, token)
+			cookie, _, _ := strings.Cut(string(gctx.Response.Header.Peek(fiber.HeaderSetCookie)), ";")
+			require.NotEmpty(t, cookie)
+
+			post := func(originHeader, origin string) int {
+				req := fasthttp.AcquireRequest()
+				defer fasthttp.ReleaseRequest(req)
+				if !normalize {
+					req.Header.DisableNormalizing()
+				}
+				req.Header.SetMethod(fiber.MethodPost)
+				req.SetRequestURI("/")
+				req.Header.SetHost("example.com")
+				req.Header.Set(fiber.HeaderCookie, cookie)
+				req.Header.Set(HeaderName, token)
+				req.Header.Set(originHeader, origin)
+
+				ctx := &fasthttp.RequestCtx{}
+				ctx.Init(req, nil, nil)
+				h(ctx)
+				return ctx.Response.StatusCode()
+			}
+
+			// Same-origin passes under either spelling, so the assertions below
+			// cannot pass by refusing everything.
+			require.Equal(t, fiber.StatusOK, post(fiber.HeaderOrigin, "http://example.com"))
+			require.Equal(t, fiber.StatusOK, post("origin", "http://example.com"))
+
+			require.Equal(t, fiber.StatusForbidden, post(fiber.HeaderOrigin, "http://evil.com"))
+			require.Equal(t, fiber.StatusForbidden, post("origin", "http://evil.com"),
+				"a cross-site origin must be refused whatever case its name arrives in")
+		})
+	}
+}
+
+// Test_CSRF_TrustedOriginIsAllowedWhenCrossSite pins that Sec-Fetch-Site does
+// not decide cross-site on its own.
+//
+// "cross-site" is exactly what a browser sends for a legitimate request to an
+// origin the application trusts, so rejecting it in the header check would make
+// TrustedOrigins unusable; the decision belongs to the origin check, which
+// knows which origins those are.
+func Test_CSRF_TrustedOriginIsAllowedWhenCrossSite(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Use(New(Config{TrustedOrigins: []string{"http://partner.com"}}))
+	app.Get("/", func(c fiber.Ctx) error { return c.SendString(TokenFromContext(c)) })
+	app.Post("/", func(c fiber.Ctx) error { return c.SendString("accepted") })
+	h := app.Handler()
+
+	get := fasthttp.AcquireRequest()
+	defer fasthttp.ReleaseRequest(get)
+	get.Header.SetMethod(fiber.MethodGet)
+	get.SetRequestURI("/")
+	get.Header.SetHost("example.com")
+	gctx := &fasthttp.RequestCtx{}
+	gctx.Init(get, nil, nil)
+	h(gctx)
+
+	token := string(gctx.Response.Body())
+	require.NotEmpty(t, token)
+	cookie, _, _ := strings.Cut(string(gctx.Response.Header.Peek(fiber.HeaderSetCookie)), ";")
+	require.NotEmpty(t, cookie)
+
+	post := func(origin, secFetchSite string) int {
+		req := fasthttp.AcquireRequest()
+		defer fasthttp.ReleaseRequest(req)
+		req.Header.SetMethod(fiber.MethodPost)
+		req.SetRequestURI("/")
+		req.Header.SetHost("example.com")
+		req.Header.Set(fiber.HeaderCookie, cookie)
+		req.Header.Set(HeaderName, token)
+		req.Header.Set(fiber.HeaderOrigin, origin)
+		if secFetchSite != "" {
+			req.Header.Set(fiber.HeaderSecFetchSite, secFetchSite)
+		}
+		ctx := &fasthttp.RequestCtx{}
+		ctx.Init(req, nil, nil)
+		h(ctx)
+		return ctx.Response.StatusCode()
+	}
+
+	require.Equal(t, fiber.StatusOK, post("http://partner.com", "cross-site"),
+		"a trusted origin is allowed even though the browser calls it cross-site")
+	require.Equal(t, fiber.StatusOK, post("http://example.com", "same-origin"))
+
+	// The origin check is still what refuses an untrusted one.
+	require.Equal(t, fiber.StatusForbidden, post("http://evil.com", "cross-site"))
+	// And a value no browser produces is refused by the header check itself.
+	require.Equal(t, fiber.StatusForbidden, post("http://partner.com", "not-a-real-value"))
+}
+
+// Test_CSRF_CrossSiteWithoutOriginOverPlaintext pins what happens when the
+// browser says the request is cross-site but sends no Origin, on a plaintext
+// connection.
+//
+// Sec-Fetch-Site does not decide cross-site on its own, and an absent Origin is
+// not a failure over plaintext — the check is skipped for it, because there is
+// no Referer fallback to fall back to. What is left holding the request is the
+// double-submit token, so that is what this pins: with a valid pair it is
+// accepted, and without one it is not.
+func Test_CSRF_CrossSiteWithoutOriginOverPlaintext(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Use(New())
+	app.Get("/", func(c fiber.Ctx) error { return c.SendString(TokenFromContext(c)) })
+	app.Post("/", func(c fiber.Ctx) error { return c.SendString("accepted") })
+	h := app.Handler()
+
+	get := fasthttp.AcquireRequest()
+	defer fasthttp.ReleaseRequest(get)
+	get.Header.SetMethod(fiber.MethodGet)
+	get.SetRequestURI("/")
+	get.Header.SetHost("example.com")
+	gctx := &fasthttp.RequestCtx{}
+	gctx.Init(get, nil, nil)
+	h(gctx)
+
+	token := string(gctx.Response.Body())
+	require.NotEmpty(t, token)
+	cookie, _, _ := strings.Cut(string(gctx.Response.Header.Peek(fiber.HeaderSetCookie)), ";")
+	require.NotEmpty(t, cookie)
+
+	post := func(withToken bool) int {
+		req := fasthttp.AcquireRequest()
+		defer fasthttp.ReleaseRequest(req)
+		req.Header.SetMethod(fiber.MethodPost)
+		req.SetRequestURI("/")
+		req.Header.SetHost("example.com")
+		req.Header.Set(fiber.HeaderSecFetchSite, "cross-site")
+		// No Origin, and no Referer either.
+		req.Header.Set(fiber.HeaderCookie, cookie)
+		if withToken {
+			req.Header.Set(HeaderName, token)
+		}
+
+		ctx := &fasthttp.RequestCtx{}
+		ctx.Init(req, nil, nil)
+		h(ctx)
+		return ctx.Response.StatusCode()
+	}
+
+	require.Equal(t, fiber.StatusOK, post(true),
+		"over plaintext with no Origin, the token is what the request rests on")
+	require.Equal(t, fiber.StatusForbidden, post(false),
+		"and without it nothing else lets the request through")
 }
