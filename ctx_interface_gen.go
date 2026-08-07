@@ -490,6 +490,12 @@ type Ctx interface {
 	// JSONP sends a JSON response with JSONP support.
 	// This method is identical to JSON, except that it opts-in to JSONP callback support.
 	// By default, the callback name is simply callback.
+	//
+	// The callback name is reduced to a JavaScript member expression: everything
+	// outside [A-Za-z0-9_$.[]] is dropped. Callers routinely take the name straight
+	// from the query string, which is what JSONP is for, and the name lands
+	// verbatim in a same-origin text/javascript body — so an unfiltered one would
+	// let a request supply arbitrary script for the app's own origin.
 	JSONP(data any, callback ...string) error
 	// XML converts any interface or string to XML.
 	// This method also sets the content header to application/xml; charset=utf-8.

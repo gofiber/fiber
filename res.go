@@ -626,15 +626,21 @@ func (r *DefaultRes) CBOR(data any, ctype ...string) error {
 // JSONP sends a JSON response with JSONP support.
 // This method is identical to JSON, except that it opts-in to JSONP callback support.
 // By default, the callback name is simply callback.
+//
+// The callback name is reduced to a JavaScript member expression: everything
+// outside [A-Za-z0-9_$.[]] is dropped. It lands verbatim in a same-origin
+// text/javascript body, and callers take it straight from the query string.
 func (r *DefaultRes) JSONP(data any, callback ...string) error {
 	raw, err := r.c.app.config.JSONEncoder(data)
 	if err != nil {
 		return err
 	}
 
-	cb := "callback"
+	cb := defaultJSONPCallback
 	if len(callback) > 0 {
-		cb = callback[0]
+		if sanitized := sanitizeJSONPCallback(callback[0]); sanitized != "" {
+			cb = sanitized
+		}
 	}
 
 	// Build JSONP response: callback(data);
@@ -651,6 +657,92 @@ func (r *DefaultRes) JSONP(data any, callback ...string) error {
 	r.c.fasthttp.Response.SetBody(buf.Bytes())
 	bytebufferpool.Put(buf)
 	return nil
+}
+
+const defaultJSONPCallback = "callback"
+
+// isJSONPCallbackByte reports whether b may appear in a JSONP callback name. The
+// set spells a JavaScript member expression and admits nothing that could open a
+// string, comment or statement.
+func isJSONPCallbackByte(b byte) bool {
+	return (b >= 'a' && b <= 'z') || (b >= 'A' && b <= 'Z') ||
+		(b >= '0' && b <= '9') ||
+		b == '_' || b == '$' || b == '.' || b == '[' || b == ']'
+}
+
+// sanitizeJSONPCallback drops every byte isJSONPCallbackByte rejects, as Express
+// and Django do, then requires a member expression, returning "" otherwise.
+// Filtering is enough for safety, not correctness: "1.2.3" and "a[" only throw.
+func sanitizeJSONPCallback(cb string) string {
+	i := 0
+	for ; i < len(cb); i++ {
+		if !isJSONPCallbackByte(cb[i]) {
+			break
+		}
+	}
+
+	if i != len(cb) {
+		out := make([]byte, i, len(cb))
+		copy(out, cb[:i])
+		for ; i < len(cb); i++ {
+			if isJSONPCallbackByte(cb[i]) {
+				out = append(out, cb[i])
+			}
+		}
+		cb = utils.UnsafeString(out)
+	}
+
+	if !isJSONPMemberExpression(cb) {
+		return ""
+	}
+	return cb
+}
+
+// isJSONPMemberExpression reports whether cb is a dotted chain of identifiers
+// with optional bracket indexing — the shape a JSONP body may legally call.
+func isJSONPMemberExpression(cb string) bool {
+	if cb == "" {
+		return false
+	}
+
+	depth := 0
+	atStart := true     // expecting the first byte of an identifier
+	afterClose := false // a ']' just closed an index
+	for i := 0; i < len(cb); i++ {
+		switch c := cb[i]; c {
+		case '.':
+			if atStart {
+				return false
+			}
+			atStart, afterClose = true, false
+		case '[':
+			if atStart {
+				return false
+			}
+			depth++
+			atStart, afterClose = true, false
+		case ']':
+			if atStart || depth == 0 {
+				return false
+			}
+			depth--
+			afterClose = true
+		default:
+			// Only '.', '[' or another ']' may follow a closing bracket, so "cb[0]x"
+			// is no member expression. Without this the machine would accept it and
+			// emit a body that does not parse.
+			if afterClose {
+				return false
+			}
+			// An identifier may not start with a digit, but a bracket index
+			// legitimately is one ("ns.cb[0]").
+			if atStart && depth == 0 && c >= '0' && c <= '9' {
+				return false
+			}
+			atStart = false
+		}
+	}
+	return depth == 0 && !atStart
 }
 
 // XML converts any interface or string to XML.
