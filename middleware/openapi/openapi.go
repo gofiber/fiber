@@ -1185,7 +1185,7 @@ func adoptCanonicalParamNames(variant *pathVariant, canonical []string) {
 
 	renamed := make(map[string]string, len(canonical))
 	for i, old := range variant.ParamNames {
-		renamed[old] = canonical[i]
+		renamed[old] = canonical[i] //nolint:gosec // G602: the guard above makes the two slices the same length
 	}
 
 	if len(variant.ParamConstraints) > 0 {

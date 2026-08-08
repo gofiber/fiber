@@ -395,3 +395,60 @@ func Test_OpenAPI_ServerVariableEnumDetached(t *testing.T) {
 	require.Contains(t, body, `"eu"`)
 	require.NotContains(t, body, "mutated")
 }
+
+// Test_AdoptCanonicalParamNames covers the rename directly, including the
+// constraint keys and the defensive guard that a hierarchy match makes
+// unreachable through the public API.
+func Test_AdoptCanonicalParamNames(t *testing.T) {
+	t.Parallel()
+
+	t.Run("renames names, constraints and aliases", func(t *testing.T) {
+		t.Parallel()
+
+		variant := pathVariant{
+			Path:             "/files/{name}",
+			ParamNames:       []string{"name"},
+			ParamConstraints: map[string]string{"name": "int"},
+			PathParamAliases: map[string]string{"name": "name"},
+		}
+		adoptCanonicalParamNames(&variant, []string{"id"})
+
+		require.Equal(t, []string{"id"}, variant.ParamNames)
+		require.Equal(t, map[string]string{"id": "int"}, variant.ParamConstraints)
+		require.Equal(t, map[string]string{"name": "id"}, variant.PathParamAliases)
+	})
+
+	t.Run("a count mismatch leaves the variant alone", func(t *testing.T) {
+		t.Parallel()
+
+		variant := pathVariant{
+			ParamNames:       []string{"a", "b"},
+			ParamConstraints: map[string]string{"a": "int"},
+		}
+		adoptCanonicalParamNames(&variant, []string{"x"})
+
+		require.Equal(t, []string{"a", "b"}, variant.ParamNames)
+		require.Equal(t, map[string]string{"a": "int"}, variant.ParamConstraints)
+	})
+}
+
+// Test_OpenAPI_CanonicalPathKeepsConstraintSchema asserts the adopted names
+// keep their constraint-derived schemas through the rename.
+func Test_OpenAPI_CanonicalPathKeepsConstraintSchema(t *testing.T) {
+	t.Parallel()
+
+	spec := fetchSpecWithConfig(t, Config{}, func(app *fiber.App) {
+		app.Get("/items/:id", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
+		app.Post("/items/:code<int>", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
+	})
+
+	item := requireMap(t, requireMap(t, spec["paths"])["/items/{id}"])
+	op := requireMap(t, item["post"])
+	params, ok := op["parameters"].([]any)
+	require.True(t, ok)
+
+	param := requireMap(t, params[0])
+	require.Equal(t, "id", param["name"])
+	// The constraint traveled with the rename.
+	require.Equal(t, map[string]any{"type": "integer"}, requireMap(t, param["schema"]))
+}
