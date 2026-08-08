@@ -419,6 +419,9 @@ func New(config ...Config) fiber.Handler {
 					}
 					unlock()
 					c.Set(cfg.CacheHeader, cacheUnreachable)
+					if reqDirectives.onlyIfCached {
+						return c.SendStatus(fiber.StatusGatewayTimeout)
+					}
 					return c.Next()
 				}
 

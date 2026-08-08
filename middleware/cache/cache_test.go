@@ -3650,6 +3650,79 @@ func TestCacheBypassesExistingEntryForAuthorization(t *testing.T) {
 	require.Equal(t, "1", string(body))
 }
 
+func TestCacheOnlyIfCachedRejectsNonShareableAuthorizationEntry(t *testing.T) {
+	t.Parallel()
+
+	const cacheHeader = "X-Test-Cache"
+
+	storage := newMutatingStorage(nil)
+	app := fiber.New()
+	app.Use(New(Config{
+		CacheHeader: cacheHeader,
+		Expiration:  time.Hour,
+		Storage:     storage,
+	}))
+
+	var originCalls atomic.Int32
+	app.Get("/", func(c fiber.Ctx) error {
+		call := originCalls.Add(1)
+		if call == 1 {
+			c.Set(fiber.HeaderCacheControl, "public, max-age=3600")
+		}
+		return c.SendString(fmt.Sprintf("origin-%d", call))
+	})
+
+	newAuthorizationRequest := func(cacheControl string) *http.Request {
+		req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+		req.Header.Set(fiber.HeaderAuthorization, "Bearer token")
+		if cacheControl != "" {
+			req.Header.Set(fiber.HeaderCacheControl, cacheControl)
+		}
+		return req
+	}
+
+	resp, err := app.Test(newAuthorizationRequest(""))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	require.Equal(t, cacheMiss, resp.Header.Get(cacheHeader))
+	require.Equal(t, int32(1), originCalls.Load())
+
+	metadataKey := ""
+	for key, value := range storage.data {
+		if strings.HasSuffix(key, "_body") {
+			continue
+		}
+
+		var cached item
+		_, err = cached.UnmarshalMsg(value)
+		require.NoError(t, err)
+		cached.shareable = false
+		storage.data[key], err = cached.MarshalMsg(nil)
+		require.NoError(t, err)
+		metadataKey = key
+	}
+	require.NotEmpty(t, metadataKey)
+
+	resp, err = app.Test(newAuthorizationRequest("only-if-cached"))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusGatewayTimeout, resp.StatusCode)
+	require.Equal(t, cacheUnreachable, resp.Header.Get(cacheHeader))
+	require.Equal(t, int32(1), originCalls.Load())
+	require.Contains(t, storage.data, metadataKey)
+	require.Contains(t, storage.data, metadataKey+"_body")
+
+	resp, err = app.Test(newAuthorizationRequest(""))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	require.Equal(t, cacheUnreachable, resp.Header.Get(cacheHeader))
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "origin-2", string(body))
+	require.Equal(t, int32(2), originCalls.Load())
+	require.Contains(t, storage.data, metadataKey)
+	require.Contains(t, storage.data, metadataKey+"_body")
+}
+
 func TestCacheAllowsSharedCacheWithAuthorization(t *testing.T) {
 	t.Parallel()
 
