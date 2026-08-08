@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
@@ -79,17 +80,153 @@ func Test_returnBindErr_TypedNilFiberError(t *testing.T) {
 
 // go test -run Test_AcquireReleaseBind -v
 func Test_AcquireReleaseBind(t *testing.T) {
+	t.Parallel()
+
 	b := AcquireBind()
 	b.shouldSkipErrHandling = false
 	b.shouldSkipValidation = true
+	b.jsonDecoder = json.Unmarshal
 	b.ctx = &DefaultCtx{}
 	ReleaseBind(b)
 
 	b2 := AcquireBind()
 	require.Nil(t, b2.ctx)
+	require.Nil(t, b2.jsonDecoder)
 	require.True(t, b2.shouldSkipErrHandling)
 	require.False(t, b2.shouldSkipValidation)
 	ReleaseBind(b2)
+}
+
+func Test_Bind_WithJSONDecoder_OverridesAppDecoder(t *testing.T) {
+	t.Parallel()
+
+	appDecoderErr := errors.New("app decoder used")
+	for _, bindJSON := range []struct {
+		bind func(*Bind, any) error
+		name string
+	}{
+		{name: "json", bind: func(b *Bind, out any) error { return b.JSON(out) }},
+		{name: "body", bind: func(b *Bind, out any) error { return b.Body(out) }},
+		{name: "all", bind: func(b *Bind, out any) error { return b.All(out) }},
+	} {
+		t.Run(bindJSON.name, func(t *testing.T) {
+			t.Parallel()
+
+			app := New(Config{
+				JSONDecoder: func([]byte, any) error { return appDecoderErr },
+			})
+			c := app.AcquireCtx(&fasthttp.RequestCtx{})
+			t.Cleanup(func() { app.ReleaseCtx(c) })
+			c.Request().Header.SetContentType(MIMEApplicationJSON)
+			c.Request().SetBodyString(`{"name":"Fiber"}`)
+
+			var result struct {
+				Name string `json:"name"`
+			}
+			err := bindJSON.bind(c.Bind().WithJSONDecoder(json.Unmarshal), &result)
+
+			require.NoError(t, err)
+			require.Equal(t, "Fiber", result.Name)
+		})
+	}
+}
+
+func Test_Bind_WithJSONDecoder_NilUsesAppDecoder(t *testing.T) {
+	t.Parallel()
+
+	appDecoderErr := errors.New("app decoder used")
+	app := New(Config{
+		JSONDecoder: func([]byte, any) error { return appDecoderErr },
+	})
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	t.Cleanup(func() { app.ReleaseCtx(c) })
+	c.Request().SetBodyString(`{"name":"Fiber"}`)
+
+	var result struct {
+		Name string `json:"name"`
+	}
+	err := c.Bind().WithJSONDecoder(nil).JSON(&result)
+
+	require.ErrorIs(t, err, appDecoderErr)
+}
+
+func Test_Bind_WithJSONDecoder_NilUsesDefaultAppDecoder(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	t.Cleanup(func() { app.ReleaseCtx(c) })
+	c.Request().SetBodyString(`{"name":"Fiber"}`)
+
+	var result struct {
+		Name string `json:"name"`
+	}
+	err := c.Bind().WithJSONDecoder(nil).JSON(&result)
+
+	require.NoError(t, err)
+	require.Equal(t, "Fiber", result.Name)
+}
+
+func Test_Bind_WithJSONDecoder_RejectsStrictJSONErrors(t *testing.T) {
+	t.Parallel()
+
+	for _, bindJSON := range []struct {
+		bind func(*Bind, any) error
+		name string
+	}{
+		{name: "json", bind: func(b *Bind, out any) error { return b.JSON(out) }},
+		{name: "body", bind: func(b *Bind, out any) error { return b.Body(out) }},
+		{name: "all", bind: func(b *Bind, out any) error { return b.All(out) }},
+	} {
+		t.Run(bindJSON.name, func(t *testing.T) {
+			t.Parallel()
+
+			for _, testCase := range []struct {
+				body    string
+				name    string
+				wantErr string
+			}{
+				{body: `{"name":"Fiber","unknown":true}`, name: "unknown field", wantErr: `unknown field "unknown"`},
+				{body: `{"name":"Fiber"} {}`, name: "trailing JSON", wantErr: "json: multiple values"},
+			} {
+				t.Run(testCase.name, func(t *testing.T) {
+					t.Parallel()
+
+					app := New()
+					c := app.AcquireCtx(&fasthttp.RequestCtx{})
+					t.Cleanup(func() { app.ReleaseCtx(c) })
+					c.Request().Header.SetContentType(MIMEApplicationJSON)
+					c.Request().SetBodyString(testCase.body)
+
+					var result struct {
+						Name string `json:"name"`
+					}
+					err := bindJSON.bind(c.Bind().WithJSONDecoder(strictJSONUnmarshal), &result)
+
+					require.ErrorContains(t, err, testCase.wantErr)
+				})
+			}
+		})
+	}
+}
+
+func strictJSONUnmarshal(data []byte, out any) error {
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(out); err != nil {
+		return err
+	}
+
+	var trailing any
+	err := decoder.Decode(&trailing)
+	if errors.Is(err, io.EOF) {
+		return nil
+	}
+	if err == nil {
+		return errors.New("json: multiple values")
+	}
+
+	return err
 }
 
 // go test -run Test_BindError -v

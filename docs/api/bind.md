@@ -892,6 +892,46 @@ The `MIMETypes` method is used to check if the custom binder should be used for 
 
 For more control over error handling, you can use the following methods.
 
+### WithJSONDecoder
+
+Use a JSON decoder for the current bind chain. Passing `nil` uses the decoder
+configured on the application. The override applies when JSON is decoded by
+`JSON`, `Body`, or `All`.
+
+```go title="Signature"
+func (b *Bind) WithJSONDecoder(decoder utils.JSONUnmarshal) *Bind
+```
+
+For strict request schemas, configure a decoder that rejects unknown fields and
+additional top-level JSON values:
+
+```go
+func strictJSONUnmarshal(data []byte, out any) error {
+    decoder := json.NewDecoder(bytes.NewReader(data))
+    decoder.DisallowUnknownFields()
+    if err := decoder.Decode(out); err != nil {
+        return err
+    }
+
+    var trailing any
+    if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
+        if err == nil {
+            return errors.New("json: multiple values")
+        }
+        return err
+    }
+    return nil
+}
+
+app.Post("/cats", func(c fiber.Ctx) error {
+    var cat Cat
+    if err := c.Bind().WithJSONDecoder(strictJSONUnmarshal).Body(&cat); err != nil {
+        return err
+    }
+    return c.JSON(cat)
+})
+```
+
 ### WithAutoHandling
 
 If you want to handle binder errors automatically, you can use `WithAutoHandling`.
