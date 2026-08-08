@@ -182,6 +182,14 @@ func getViewsLock(views Views) *sync.RWMutex {
 	return globalViewsLocks.get(views)
 }
 
+func isNilViews(views Views) bool {
+	if views == nil {
+		return true
+	}
+	value := reflect.ValueOf(views)
+	return value.Kind() == reflect.Pointer && value.IsNil()
+}
+
 // Config is a struct holding the server settings.
 type Config struct { //nolint:govet // Aligning the struct fields is not necessary. betteralign:ignore
 	// Enables the "Server: value" HTTP header.
@@ -907,11 +915,7 @@ func (app *App) ReloadViews() error {
 
 	var reloaded bool
 	for _, targetApp := range apps {
-		if targetApp == nil || targetApp.config.Views == nil {
-			continue
-		}
-
-		if viewValue := reflect.ValueOf(targetApp.config.Views); viewValue.Kind() == reflect.Pointer && viewValue.IsNil() {
+		if targetApp == nil || isNilViews(targetApp.config.Views) {
 			continue
 		}
 
@@ -936,6 +940,26 @@ func (app *App) ReloadViews() error {
 		return ErrNoViewEngineConfigured
 	}
 
+	return nil
+}
+
+// Render writes a template through the configured view engine.
+func (app *App) Render(out io.Writer, name string, binding any, layouts ...string) error {
+	views := app.config.Views
+	if isNilViews(views) {
+		return ErrNoViewEngineConfigured
+	}
+	if len(layouts) == 0 && app.config.ViewsLayout != "" {
+		layouts = []string{app.config.ViewsLayout}
+	}
+
+	viewsLock := getViewsLock(views)
+	viewsLock.RLock()
+	defer viewsLock.RUnlock()
+
+	if err := views.Render(out, name, binding, layouts...); err != nil {
+		return fmt.Errorf("fiber: failed to render views: %w", err)
+	}
 	return nil
 }
 

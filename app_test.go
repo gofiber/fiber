@@ -2126,6 +2126,26 @@ func (v *countingView) Load() error {
 
 func (*countingView) Render(io.Writer, string, any, ...string) error { return nil }
 
+type writerView struct {
+	renderErr error
+}
+
+func (*writerView) Load() error { return nil }
+
+func (v *writerView) Render(out io.Writer, name string, binding any, layouts ...string) error {
+	if v.renderErr != nil {
+		return v.renderErr
+	}
+	bind, ok := binding.(Map)
+	if !ok {
+		return errors.New("unexpected binding type")
+	}
+	if _, err := fmt.Fprintf(out, "%s:%s:%s", name, bind["title"], strings.Join(layouts, ",")); err != nil {
+		return fmt.Errorf("write rendered view: %w", err)
+	}
+	return nil
+}
+
 type blockingView struct {
 	loadStarted   chan struct{}
 	loadRelease   chan struct{}
@@ -2423,6 +2443,54 @@ func Test_App_ReloadViews_InterfaceNilPointer(t *testing.T) {
 
 	err := app.ReloadViews()
 	require.ErrorIs(t, err, ErrNoViewEngineConfigured)
+}
+
+func Test_App_Render_WritesConfiguredView(t *testing.T) {
+	t.Parallel()
+
+	app := New(Config{Views: &writerView{}, ViewsLayout: "base"})
+	var out bytes.Buffer
+
+	err := app.Render(&out, "partial", Map{"title": "Fiber"})
+
+	require.NoError(t, err)
+	require.Equal(t, "partial:Fiber:base", out.String())
+}
+
+func Test_App_Render_ReturnsViewErrors(t *testing.T) {
+	t.Parallel()
+
+	t.Run("no view engine", func(t *testing.T) {
+		t.Parallel()
+
+		app := New()
+
+		err := app.Render(io.Discard, "partial", nil)
+
+		require.ErrorIs(t, err, ErrNoViewEngineConfigured)
+	})
+
+	t.Run("typed nil view engine", func(t *testing.T) {
+		t.Parallel()
+
+		var view *writerView
+		app := &App{config: Config{Views: view}}
+
+		err := app.Render(io.Discard, "partial", nil)
+
+		require.ErrorIs(t, err, ErrNoViewEngineConfigured)
+	})
+
+	t.Run("render failure", func(t *testing.T) {
+		t.Parallel()
+
+		wantErr := errors.New("render failed")
+		app := New(Config{Views: &writerView{renderErr: wantErr}})
+
+		err := app.Render(io.Discard, "partial", Map{})
+
+		require.ErrorIs(t, err, wantErr)
+	})
 }
 
 func Test_App_ReloadViews_MountedViews(t *testing.T) {
