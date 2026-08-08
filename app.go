@@ -1636,18 +1636,24 @@ func (app *App) applyToRegIDLocked(regID uint64, apply func(route *Route)) bool 
 // the router lock, like GetRoutes, so it can be read safely while other
 // goroutines register or document routes.
 func (app *App) GetRoute(name string) Route {
+	var copied Route
+
 	app.mutex.Lock()
 	defer app.mutex.Unlock()
 
 	for _, routes := range app.stack {
 		for _, route := range routes {
 			if route.Name == name {
-				return app.copyRouteValue(route)
+				// Filled in place: Route is large, and returning it through a
+				// helper would move the whole struct an extra time on a call
+				// made once per route lookup.
+				app.copyRouteInto(&copied, route)
+				return copied
 			}
 		}
 	}
 
-	return Route{}
+	return copied
 }
 
 // routeURL builds the URL for the named route, reading only the routing data it

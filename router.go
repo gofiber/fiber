@@ -1028,26 +1028,47 @@ func (app *App) copyRoute(route *Route) *Route {
 // copyRouteValue is copyRoute without the heap allocation, for callers that
 // return the clone by value (GetRoute, GetRoutes). Building the clone in place
 // keeps a route lookup off the heap even though it still deep-copies.
-func (app *App) copyRouteValue(route *Route) Route {
-	copied := app.copyRouteBaseValue(route)
+func (app *App) copyRouteValue(route *Route) (copied Route) { //nolint:nonamedreturns // the named result is what keeps this to a single struct copy
+	app.copyRouteInto(&copied, route)
+	return copied
+}
 
-	// An undocumented route — the common case on a route lookup — has nothing
-	// to deep-copy, so the base copy is already a complete one.
-	if route.RequestBody == nil && route.Parameters == nil && route.Responses == nil &&
-		route.Tags == nil && route.Security == nil && route.ExternalDocs == nil &&
-		route.OperationExtensions == nil {
-		return copied
+// isDocumented reports whether the route carries any OpenAPI metadata that a
+// copy has to deep-clone. Small enough to inline, so an undocumented route —
+// the common case on a lookup — never calls out of line.
+func (r *Route) isDocumented() bool {
+	return r.RequestBody != nil || r.Parameters != nil || r.Responses != nil ||
+		r.Tags != nil || r.Security != nil || r.ExternalDocs != nil ||
+		r.OperationExtensions != nil
+}
+
+// copyRouteInto deep-copies route into dst.
+//
+// It writes through a destination pointer rather than returning a Route so the
+// caller's result slot is filled directly. Route is a large struct, and every
+// value-returning hop used to cost another move of the whole thing on a path
+// GetRoute takes for each lookup.
+func (app *App) copyRouteInto(dst, route *Route) {
+	*dst = *route
+	dst.group = nil
+
+	if !route.isDocumented() {
+		return
 	}
 
-	copied.RequestBody = cloneRouteRequestBody(route.RequestBody)
-	copied.Parameters = cloneRouteParameters(route.Parameters)
-	copied.Responses = cloneRouteResponses(route.Responses)
-	copied.Tags = append([]string(nil), route.Tags...)
-	copied.Security = cloneRouteSecurity(route.Security)
-	copied.ExternalDocs = copyAnyMap(route.ExternalDocs)
-	copied.OperationExtensions = copyAnyMap(route.OperationExtensions)
+	app.cloneRouteDocInto(dst, route)
+}
 
-	return copied
+// cloneRouteDocInto deep-clones the documentation containers of route into dst.
+// Kept out of line so the undocumented fast path stays small.
+func (*App) cloneRouteDocInto(dst, route *Route) {
+	dst.RequestBody = cloneRouteRequestBody(route.RequestBody)
+	dst.Parameters = cloneRouteParameters(route.Parameters)
+	dst.Responses = cloneRouteResponses(route.Responses)
+	dst.Tags = append([]string(nil), route.Tags...)
+	dst.Security = cloneRouteSecurity(route.Security)
+	dst.ExternalDocs = copyAnyMap(route.ExternalDocs)
+	dst.OperationExtensions = copyAnyMap(route.OperationExtensions)
 }
 
 // copyRouteBase copies routing data and scalar metadata but skips the deep
