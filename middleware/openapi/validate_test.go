@@ -29,9 +29,8 @@ var validParameterLocations = map[string]struct{}{
 
 var pathTemplateRe = regexp.MustCompile(`\{([^}]+)\}`)
 
-// validateOpenAPIDocument asserts that raw is a structurally valid OpenAPI 3.0/3.1
-// document for the subset of the specification this middleware emits. It is a
-// dependency-free regression guard, not a full meta-schema validator.
+// validateOpenAPIDocument asserts raw is structurally valid for the subset this
+// middleware emits. A dependency-free guard, not a meta-schema validator.
 func validateOpenAPIDocument(t *testing.T, raw []byte) {
 	t.Helper()
 

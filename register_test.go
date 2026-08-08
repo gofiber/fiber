@@ -10,9 +10,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// Test_RouteChain_OpenAPI_Helpers exercises the documentation helpers on the
-// Registering (RouteChain) fluent API, which delegate to the app's
-// route-metadata machinery for the chain's own registration.
+// Test_RouteChain_OpenAPI_Helpers exercises the doc helpers on the RouteChain
+// fluent API, which target the chain's own registration.
 func Test_RouteChain_OpenAPI_Helpers(t *testing.T) {
 	t.Parallel()
 	app := New()

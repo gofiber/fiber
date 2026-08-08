@@ -265,16 +265,13 @@ type domainRouter struct {
 	group   *Group // non-nil when created from a Group
 	matcher domainMatcher
 
-	// lastRegID identifies this domain router's most recent registration, so
-	// the documentation helpers below target it instead of the app-global
-	// latest route (which may belong to a different router). Accessed
-	// atomically.
+	// lastRegID is this router's most recent registration, so the doc helpers
+	// target it rather than the app-global latest route. Accessed atomically.
 	lastRegID uint64
 }
 
-// pattern returns the canonical form of the domain pattern (lowercased
-// constant labels, ":param" markers preserved); it identifies the domain on
-// registered routes so same-path routes on different domains are never merged.
+// pattern returns the canonical domain form, which identifies the domain on
+// routes so same-path routes on different domains are never merged.
 func (d *domainRouter) pattern() string {
 	return strings.Join(d.matcher.parts, ".")
 }
@@ -439,13 +436,8 @@ func (d *domainRouter) mount(prefix string, subApp *App) Router {
 	})
 	wrapperApp.customConstraints = subApp.customConstraints
 
-	// Clone routes from the sub-app with domain-wrapped handlers.
-	// Lock the sub-app while reading to prevent data races with concurrent
-	// route registration. The lock is scoped to the copy alone: holding it
-	// across the registration below would take the parent's mutex while
-	// holding the child's — inverting the parent→child order that
-	// processSubAppsRoutes relies on — and would deadlock any onMount hook
-	// that inspects the sub-app.
+	// Clone the sub-app's routes under its lock, scoped to the copy alone:
+	// holding it across the registration would invert the parent→child order.
 	func() {
 		subApp.mutex.Lock()
 		defer subApp.mutex.Unlock()
@@ -628,10 +620,8 @@ func (d *domainRouter) Route(prefix string, fn func(router Router), name ...stri
 // When the domain router was created from a Group, this delegates to the
 // group's Name method so that group name prefixes are applied correctly.
 func (d *domainRouter) Name(name string) Router {
-	// Before the first route, naming a group-backed domain router sets the
-	// group's name prefix (Group.Name's documented behavior). Afterwards it
-	// names this router's own most recent registration, like every other
-	// documentation helper here.
+	// Before the first route this sets the group's name prefix; afterwards it
+	// names this router's own latest registration, like the other helpers.
 	if d.group != nil && !d.group.hasAnyRoute {
 		d.group.Name(name)
 		return d
@@ -802,9 +792,8 @@ type domainRegistering struct {
 	domain *domainRouter
 	path   string
 
-	// lastRegID identifies this chain's most recent registration, so the
-	// documentation helpers below target it instead of the app-global latest
-	// route. Accessed atomically.
+	// lastRegID is this chain's most recent registration, so the doc helpers
+	// target it rather than the app-global latest route. Accessed atomically.
 	lastRegID uint64
 }
 

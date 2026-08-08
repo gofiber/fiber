@@ -23,8 +23,7 @@ func specBodyOf(t *testing.T, app *fiber.App, path string) (int, string) {
 }
 
 // Test_OpenAPI_ReviewRegressions covers defects found in review: each subtest
-// reproduces a scenario that previously produced a wrong or unreachable
-// document.
+// reproduces a case that produced a wrong or unreachable document.
 func Test_OpenAPI_ReviewRegressions(t *testing.T) {
 	t.Parallel()
 

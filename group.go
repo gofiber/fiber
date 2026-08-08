@@ -19,10 +19,8 @@ type Group struct {
 
 	Prefix string
 
-	// lastRegID identifies the group's most recent registration, so the
-	// documentation helpers below target it instead of the app-global latest
-	// route (which may belong to a different router). Accessed atomically;
-	// a plain uint64 keeps Group safely copyable for the group hooks.
+	// lastRegID is the group's most recent registration, so the doc helpers
+	// target it rather than the app-global latest route. Accessed atomically.
 	lastRegID uint64
 
 	hasAnyRoute bool
@@ -354,9 +352,8 @@ func (grp *Group) Group(prefix string, handlers ...any) Router {
 	newGrp := &Group{Prefix: prefix, app: grp.app, parentGroup: grp}
 	if len(handlers) > 0 {
 		converted := collectHandlers("group", handlers...)
-		// The middleware belongs to the sub-group, so record it there: writing
-		// it to the parent would retarget the parent's later documentation
-		// helpers at this Use route.
+		// The middleware belongs to the sub-group; writing it to the parent
+		// would retarget the parent's later doc helpers at this Use route.
 		atomic.StoreUint64(&newGrp.lastRegID, grp.app.register([]string{methodUse}, prefix, grp, "", converted...))
 	}
 	if err := grp.app.hooks.executeOnGroupHooks(*newGrp); err != nil {

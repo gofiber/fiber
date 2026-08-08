@@ -75,153 +75,82 @@ type ExternalDocs struct {
 	URL string `json:"url"`
 }
 
-// Config defines the config for middleware.
-//
-// Config controls top-level OpenAPI document metadata only.
-// Operation-level metadata is derived from route helper methods.
+// Config defines the config for middleware. It controls top-level document
+// metadata only; operation metadata comes from the route helpers.
 type Config struct {
-	// ExternalDocs references external documentation for the API.
-	//
-	// Optional. Default: nil
+	// ExternalDocs references external documentation for the API. Optional. Default: nil
 	ExternalDocs *ExternalDocs
 
-	// SwaggerOptions contains additional Swagger UI options merged into the
-	// generated SwaggerUIBundle call.
-	//
-	// Optional. Default: nil
+	// SwaggerOptions holds extra options merged into the SwaggerUIBundle call. Optional. Default: nil
 	SwaggerOptions map[string]any
 
-	// Components holds reusable OpenAPI component definitions such as schemas,
-	// responses, and parameters. These are emitted under the top-level
-	// "components" key of the generated specification, allowing $ref references
-	// (e.g. "#/components/schemas/User") to resolve correctly.
-	//
-	// Optional. Default: nil
+	// Components holds reusable definitions emitted under "components", so $ref targets resolve. Optional. Default: nil
 	Components map[string]any
 
-	// SecuritySchemes holds reusable security scheme definitions (e.g. bearer,
-	// apiKey, oauth2). They are emitted under "components.securitySchemes" and
-	// can be referenced by the Security field or the route-level Security helper.
-	//
-	// Optional. Default: nil
+	// SecuritySchemes holds scheme definitions emitted under "components.securitySchemes". Optional. Default: nil
 	SecuritySchemes map[string]any
 
-	// Webhooks holds OpenAPI 3.1 webhook definitions, keyed by name. Each value is
-	// a Path Item object. Only emitted for OpenAPI 3.1.0 and above.
-	//
-	// Optional. Default: nil
+	// Webhooks maps a name to a Path Item object. OpenAPI 3.1+ only. Optional. Default: nil
 	Webhooks map[string]any
 
-	// Next defines a function to skip this middleware when returned true.
-	//
-	// Optional. Default: nil
+	// Next defines a function to skip this middleware when returned true. Optional. Default: nil
 	Next func(c fiber.Ctx) bool
 
-	// Contact holds contact information for the exposed API.
-	//
-	// Optional. Default: nil
+	// Contact holds contact information for the exposed API. Optional. Default: nil
 	Contact *Contact
 
-	// License holds license information for the exposed API.
-	//
-	// Optional. Default: nil
+	// License holds license information for the exposed API. Optional. Default: nil
 	License *License
 
-	// TermsOfService is a URL to the Terms of Service for the API.
-	//
-	// Optional. Default: ""
+	// TermsOfService is a URL to the Terms of Service for the API. Optional. Default: ""
 	TermsOfService string
 
-	// Summary is a short summary of the API (info.summary). Only emitted for
-	// OpenAPI 3.1.0 and above.
-	//
-	// Optional. Default: ""
+	// Summary is a short summary of the API (info.summary). OpenAPI 3.1+ only. Optional. Default: ""
 	Summary string
 
-	// JSONSchemaDialect sets the default JSON Schema dialect. Only emitted for
-	// OpenAPI 3.1.0 and above.
-	//
-	// Optional. Default: ""
+	// JSONSchemaDialect sets the default JSON Schema dialect. OpenAPI 3.1+ only. Optional. Default: ""
 	JSONSchemaDialect string
 
-	// Self is the self-assigned URI of the document, emitted as the "$self"
-	// field. Only emitted for OpenAPI 3.2.0 and above.
-	//
-	// Optional. Default: ""
+	// Self is the document's self-assigned URI ("$self"). OpenAPI 3.2+ only. Optional. Default: ""
 	Self string
 
-	// ServerURL is the server URL used in the generated specification.
-	//
-	// Optional. Default: ""
+	// ServerURL is the server URL used in the generated specification. Optional. Default: ""
 	ServerURL string
 
-	// OpenAPIVersion specifies the OpenAPI specification version to generate.
-	// Supported values: "3.0.0", "3.1.0" (default), "3.2.0"
-	//
-	// Optional. Default: "3.1.0"
+	// OpenAPIVersion selects the spec version: "3.0.0", "3.1.0" or "3.2.0". Optional. Default: "3.1.0"
 	OpenAPIVersion string
 
-	// SwaggerStandalonePresetURL is the standalone preset script URL used by the
-	// generated Swagger UI page, which renders with the "StandaloneLayout" (top
-	// bar with the Authorize button). Like the other Swagger asset URLs it can
-	// be overridden to self-host the assets; an empty value selects the default
-	// rather than omitting the script, so offline deployments must point this
-	// at their own copy just like SwaggerCSSURL and SwaggerBundleURL.
-	//
-	// Optional. Default: "https://unpkg.com/swagger-ui-dist@5.32.6/swagger-ui-standalone-preset.js"
+	// SwaggerStandalonePresetURL is the preset script URL; empty selects the default, never omits it. Optional. Default: "https://unpkg.com/swagger-ui-dist@5.32.6/swagger-ui-standalone-preset.js"
 	SwaggerStandalonePresetURL string
 
-	// Title is the title for the generated OpenAPI specification.
-	//
-	// Optional. Default: "Fiber API"
+	// Title is the title for the generated OpenAPI specification. Optional. Default: "Fiber API"
 	Title string
 
-	// Version is the version for the generated OpenAPI specification.
-	//
-	// Optional. Default: "1.0.0"
+	// Version is the version for the generated OpenAPI specification. Optional. Default: "1.0.0"
 	Version string
 
-	// Description is the description for the generated OpenAPI specification.
-	//
-	// Optional. Default: ""
+	// Description is the description for the generated OpenAPI specification. Optional. Default: ""
 	Description string
 
-	// SwaggerBundleURL is the script URL used by the generated Swagger UI page.
-	//
-	// Optional. Default: "https://unpkg.com/swagger-ui-dist@5.32.6/swagger-ui-bundle.js"
+	// SwaggerBundleURL is the script URL used by the generated Swagger UI page. Optional. Default: "https://unpkg.com/swagger-ui-dist@5.32.6/swagger-ui-bundle.js"
 	SwaggerBundleURL string
 
-	// Path is the route where the specification will be served.
-	//
-	// Optional. Default: "/openapi.json"
+	// Path is the route where the specification will be served. Optional. Default: "/openapi.json"
 	Path string
 
-	// UIPath is the route where the Swagger UI page will be served.
-	//
-	// Optional. Default: "/swagger"
+	// UIPath is the route where the Swagger UI page will be served. Optional. Default: "/swagger"
 	UIPath string
 
-	// SwaggerCSSURL is the stylesheet URL used by the generated Swagger UI page.
-	//
-	// Optional. Default: "https://unpkg.com/swagger-ui-dist@5.32.6/swagger-ui.css"
+	// SwaggerCSSURL is the stylesheet URL used by the generated Swagger UI page. Optional. Default: "https://unpkg.com/swagger-ui-dist@5.32.6/swagger-ui.css"
 	SwaggerCSSURL string
 
-	// Tags lists top-level tag definitions (with descriptions) used by operations.
-	//
-	// Optional. Default: nil
+	// Tags lists top-level tag definitions (with descriptions) used by operations. Optional. Default: nil
 	Tags []Tag
 
-	// Security defines the document-level (default) security requirements.
-	// Each requirement maps a scheme name (declared in SecuritySchemes) to its
-	// required scopes; multiple requirements are combined with OR semantics.
-	//
-	// Optional. Default: nil
+	// Security lists document-level requirements, combined with OR semantics. Optional. Default: nil
 	Security []map[string][]string
 
-	// Servers lists the servers hosting the API. When set, it takes precedence
-	// over ServerURL.
-	//
-	// Optional. Default: nil
+	// Servers lists the servers hosting the API; it takes precedence over ServerURL. Optional. Default: nil
 	Servers []Server
 }
 
@@ -241,9 +170,8 @@ var ConfigDefault = Config{
 	OpenAPIVersion:             versionOpenAPI31,
 }
 
-// deepCopyAnyMap copies a raw OpenAPI object so nested maps and slices supplied
-// by the caller are not shared with the handler. Values of other types are
-// copied as-is; only containers can be mutated in place.
+// deepCopyAnyMap copies a raw OpenAPI object so the caller shares no nested
+// container with the handler. Non-container values are copied as-is.
 func deepCopyAnyMap(src map[string]any) map[string]any {
 	if src == nil {
 		return nil
@@ -328,19 +256,16 @@ func configDefault(config ...Config) Config {
 	if cfg.SwaggerStandalonePresetURL == "" {
 		cfg.SwaggerStandalonePresetURL = ConfigDefault.SwaggerStandalonePresetURL
 	}
-	// Detach every reference-typed field from the caller. The handler keeps this
-	// config for its lifetime and reads it while serving requests, so anything
-	// left aliased could be mutated concurrently by the caller — a data race,
-	// and for the map-valued fields an unrecoverable concurrent map access.
+	// Detach every reference-typed field: the handler reads this config while
+	// serving, so anything left aliased races with a caller that mutates it.
 	cfg.SwaggerOptions = deepCopyAnyMap(cfg.SwaggerOptions)
 	cfg.Components = deepCopyAnyMap(cfg.Components)
 	cfg.SecuritySchemes = deepCopyAnyMap(cfg.SecuritySchemes)
 	cfg.Webhooks = deepCopyAnyMap(cfg.Webhooks)
 	cfg.Servers = slices.Clone(cfg.Servers)
 	for i := range cfg.Servers {
-		// maps.Clone is shallow, and every ServerVariable carries an Enum
-		// slice, so the values have to be rebuilt for the config to be truly
-		// detached from the caller.
+		// maps.Clone is shallow and every ServerVariable carries an Enum slice,
+		// so the values are rebuilt to detach them too.
 		if variables := cfg.Servers[i].Variables; variables != nil {
 			cloned := make(map[string]ServerVariable, len(variables))
 			for name, variable := range variables {

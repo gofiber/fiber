@@ -9,14 +9,9 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// embedStruct builds a value of a struct type that embeds the given types plus
-// any extra fields.
-//
-// The type is assembled reflectively on purpose: these fixtures deliberately
-// create two embedded fields carrying the same json tag, which is the ambiguity
-// under test, but `go vet`'s structtag check rejects that shape in source and
-// would fail `make audit`. Building it at runtime keeps the behavior covered
-// without a statically duplicated tag.
+// embedStruct builds a struct value embedding the given types plus extra fields.
+// Assembled reflectively because `go vet` rejects the duplicate json tags these
+// fixtures deliberately create, which are the ambiguity under test.
 func embedStruct(embedded []any, extra ...reflect.StructField) any {
 	fields := make([]reflect.StructField, 0, len(embedded)+len(extra))
 	for _, value := range embedded {
@@ -527,10 +522,8 @@ func Test_SchemaOf_OpenAPITagWithComma(t *testing.T) {
 	require.Equal(t, []any{"active", "inactive"}, status["enum"])
 }
 
-// Test_SchemaOf_EmbeddedFieldDoesNotShadowParent verifies that a field declared
-// on the parent struct wins over a promoted embedded field of the same name,
-// matching encoding/json semantics, and that required entries are not
-// duplicated.
+// Test_SchemaOf_EmbeddedFieldDoesNotShadowParent verifies a parent field wins
+// over a promoted one of the same name, without duplicating required.
 func Test_SchemaOf_EmbeddedFieldDoesNotShadowParent(t *testing.T) {
 	t.Parallel()
 
@@ -577,9 +570,8 @@ func Test_SchemaOf_StringOption(t *testing.T) {
 	require.Equal(t, "string", requireProp(t, props, "name")[schemaKeyType])
 }
 
-// Test_SchemaOf_ConflictingEmbeddedFieldsDropped verifies a field promoted by
-// two embedded structs at the same depth is dropped entirely, matching
-// encoding/json's ambiguity rule.
+// Test_SchemaOf_ConflictingEmbeddedFieldsDropped verifies a field promoted twice
+// at one depth is dropped, matching encoding/json's ambiguity rule.
 func Test_SchemaOf_ConflictingEmbeddedFieldsDropped(t *testing.T) {
 	t.Parallel()
 
@@ -628,9 +620,8 @@ func Test_SchemaOf_EmbeddedRequiredDeterministic(t *testing.T) {
 	}
 }
 
-// Test_SchemaOf_DepthResolvedEmbeddedField verifies a field promoted at a
-// shallower embedding depth wins over the same name at a deeper depth,
-// matching encoding/json.
+// Test_SchemaOf_DepthResolvedEmbeddedField verifies a shallower promotion wins
+// over the same name deeper, matching encoding/json.
 func Test_SchemaOf_DepthResolvedEmbeddedField(t *testing.T) {
 	t.Parallel()
 
@@ -707,9 +698,8 @@ func Test_SchemaOf_UnexportedEmbeddedStruct(t *testing.T) {
 	require.ElementsMatch(t, []string{"id", "name"}, required)
 }
 
-// Test_SchemaOf_DiamondEmbeddingDropsAmbiguous verifies a field reached twice
-// at the same depth through different embeds of the same type is dropped,
-// matching encoding/json's ambiguity rule.
+// Test_SchemaOf_DiamondEmbeddingDropsAmbiguous verifies a field reached twice at
+// one depth through different embeds is dropped, as encoding/json does.
 func Test_SchemaOf_DiamondEmbeddingDropsAmbiguous(t *testing.T) {
 	t.Parallel()
 
@@ -761,9 +751,8 @@ type textID struct {
 
 func (textID) MarshalText() ([]byte, error) { return []byte("id"), nil }
 
-// Test_SchemaOf_CustomMarshalers verifies types with custom JSON or text
-// marshaling are not documented via field reflection, since encoding/json
-// bypasses the fields entirely.
+// Test_SchemaOf_CustomMarshalers verifies custom JSON or text marshaling is not
+// documented by field reflection, which encoding/json bypasses.
 func Test_SchemaOf_CustomMarshalers(t *testing.T) {
 	t.Parallel()
 
@@ -795,9 +784,8 @@ type ptrTextID struct {
 
 func (*ptrTextID) MarshalText() ([]byte, error) { return []byte("id"), nil }
 
-// Test_SchemaOf_JSONNumberAndPtrTextMarshaler verifies json.Number is
-// documented as a number and pointer-receiver-only text marshalers as
-// accepting any value (their wire shape depends on addressability).
+// Test_SchemaOf_JSONNumberAndPtrTextMarshaler verifies json.Number documents as
+// a number, and pointer-only text marshalers as accepting any value.
 func Test_SchemaOf_JSONNumberAndPtrTextMarshaler(t *testing.T) {
 	t.Parallel()
 

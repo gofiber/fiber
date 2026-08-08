@@ -119,10 +119,8 @@ func Test_CopyAnyMap_NilInterfaceElement(t *testing.T) {
 	})
 }
 
-// fullyPopulatedRoute builds a Route with every exported field set to a
-// non-zero value. Test_CopyRoute_Complete uses reflection to enforce that,
-// so adding a Route field without updating this fixture — and copyRoute —
-// fails the build gate.
+// fullyPopulatedRoute sets every exported Route field non-zero, so adding one
+// without updating this fixture and copyRoute fails Test_CopyRoute_Complete.
 func fullyPopulatedRoute() *Route {
 	return &Route{
 		Method:      MethodPost,
@@ -223,9 +221,8 @@ func Test_RouteChain_DocumentationHelpers(t *testing.T) {
 	require.Equal(t, []string{"chained"}, routes[MethodGet].Tags)
 }
 
-// Test_Shutdown_WithInflightGetRoutes verifies graceful shutdown completes
-// while an in-flight handler calls GetRoutes (previously both waited on
-// app.mutex forever).
+// Test_Shutdown_WithInflightGetRoutes verifies shutdown completes while a
+// handler calls GetRoutes; both used to wait on app.mutex forever.
 func Test_Shutdown_WithInflightGetRoutes(t *testing.T) {
 	t.Parallel()
 	app := New()
@@ -272,9 +269,8 @@ func Test_Shutdown_WithInflightGetRoutes(t *testing.T) {
 	}
 }
 
-// Test_Hooks_MayCallLockingAppMethods verifies OnRoute/OnName hooks can call
-// GetRoutes and documentation helpers without self-deadlocking (hooks now fire
-// after the router lock is released).
+// Test_Hooks_MayCallLockingAppMethods verifies hooks can call GetRoutes and the
+// doc helpers without deadlocking, since they fire unlocked.
 func Test_Hooks_MayCallLockingAppMethods(t *testing.T) {
 	t.Parallel()
 	app := New()
@@ -322,9 +318,8 @@ func Test_GetRoute_DeepCopy(t *testing.T) {
 	require.NotContains(t, fresh.Responses, "999")
 }
 
-// Test_Mount_StartupConcurrentSubAppDocHelpers verifies parent startup clones
-// sub-app routes under the sub-app's lock, so concurrent documentation helpers
-// on the sub-app cannot race the clone (run with -race).
+// Test_Mount_StartupConcurrentSubAppDocHelpers verifies startup clones sub-app
+// routes under its lock, so concurrent doc helpers cannot race the clone.
 func Test_Mount_StartupConcurrentSubAppDocHelpers(t *testing.T) {
 	t.Parallel()
 	sub := New()
@@ -354,10 +349,8 @@ func Test_Mount_StartupConcurrentSubAppDocHelpers(t *testing.T) {
 	wg.Wait()
 }
 
-// Test_ScopedDocHelpers_TargetOwnRegistration verifies helpers on RouteChain,
-// Group, and Domain document their own last registration even after unrelated
-// routes were registered on the app (previously they hit the app-global
-// latest route).
+// Test_ScopedDocHelpers_TargetOwnRegistration verifies scoped helpers document
+// their own last registration, not the app-global latest route.
 func Test_ScopedDocHelpers_TargetOwnRegistration(t *testing.T) {
 	t.Parallel()
 
@@ -415,9 +408,8 @@ func Test_ScopedDocHelpers_TargetOwnRegistration(t *testing.T) {
 	})
 }
 
-// Test_Domain_SamePathKeepsSeparateRoutes verifies same-path registrations on
-// different domains are no longer compression-merged, so each keeps its own
-// handlers and documentation.
+// Test_Domain_SamePathKeepsSeparateRoutes verifies same-path routes on different
+// domains never merge, so each keeps its own handlers and documentation.
 func Test_Domain_SamePathKeepsSeparateRoutes(t *testing.T) {
 	t.Parallel()
 	app := New()
@@ -483,8 +475,7 @@ func Test_DocCursor_InvalidatedByRemovalAndStartup(t *testing.T) {
 }
 
 // Test_MountRegistration_DocHelpersAreNoOps verifies metadata chained onto a
-// sub-app mount neither survives startup nor pretends to: the helpers are
-// explicit no-ops for mount placeholders.
+// mount neither survives startup nor pretends to: the helpers are no-ops.
 func Test_MountRegistration_DocHelpersAreNoOps(t *testing.T) {
 	t.Parallel()
 	sub := New()
@@ -581,9 +572,8 @@ func Test_AutoHeadTwins_CarryNoDocumentation(t *testing.T) {
 	require.Empty(t, twin.Responses)
 }
 
-// Test_Hooks_OutsideRouterLock verifies hooks that inspect the app do not
-// deadlock against the router lock. GetRoutes/GetRoute and the documentation
-// helpers all take app.mutex, so every hook must fire with it released.
+// Test_Hooks_OutsideRouterLock verifies hooks inspecting the app do not deadlock:
+// they all take app.mutex, so every hook must fire with it released.
 func Test_Hooks_OutsideRouterLock(t *testing.T) {
 	t.Parallel()
 
@@ -647,8 +637,7 @@ func Test_DocMetadata_CyclicValueDoesNotCrash(t *testing.T) {
 }
 
 // Test_ScopedName_TargetsOwnRegistration verifies Name is scoped like the other
-// documentation helpers: on a RouteChain, Group or Domain router it names that
-// router's own last registration, not whatever the app registered most recently.
+// helpers: it names that router's own last registration.
 func Test_ScopedName_TargetsOwnRegistration(t *testing.T) {
 	t.Parallel()
 
@@ -692,8 +681,7 @@ func Test_ScopedName_TargetsOwnRegistration(t *testing.T) {
 }
 
 // Test_ScopedHelpers_AfterMergedRegistration verifies a scoped helper still
-// reaches a registration that was compression-merged into the preceding stack
-// entry, even once later registrations moved the fast-path batch on.
+// reaches a merged registration once later ones moved the batch on.
 func Test_ScopedHelpers_AfterMergedRegistration(t *testing.T) {
 	t.Parallel()
 	app := New()
@@ -711,9 +699,8 @@ func Test_ScopedHelpers_AfterMergedRegistration(t *testing.T) {
 	require.Greater(t, app.RoutesRevision(), rev)
 }
 
-// Test_Group_SubGroupDoesNotStealParentCursor verifies creating a sub-group with
-// middleware leaves the parent group's helpers pointed at the parent's own last
-// route rather than the sub-group's Use registration.
+// Test_Group_SubGroupDoesNotStealParentCursor verifies a sub-group with
+// middleware leaves the parent's helpers on the parent's own last route.
 func Test_Group_SubGroupDoesNotStealParentCursor(t *testing.T) {
 	t.Parallel()
 	app := New()
@@ -828,9 +815,8 @@ func Test_AddParameter_SchemaSelection(t *testing.T) {
 	})
 }
 
-// Test_AddParameter_ContentSingleMediaType asserts the Parameter Object rule
-// that a content map holds exactly one entry, and that the key is a real media
-// type.
+// Test_AddParameter_ContentSingleMediaType asserts a content map holds exactly
+// one entry and that its key is a real media type.
 func Test_AddParameter_ContentSingleMediaType(t *testing.T) {
 	t.Parallel()
 

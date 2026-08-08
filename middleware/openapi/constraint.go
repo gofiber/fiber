@@ -9,12 +9,8 @@ import (
 	utilsstrings "github.com/gofiber/utils/v2/strings"
 )
 
-// Route patterns may constrain a parameter (":id<int>", ":n<range(1,10)>"), and
-// those constraints describe the accepted values precisely enough to type the
-// generated schema. The grammar below mirrors path.go: constraints inside the
-// "<...>" span are separated by non-escaped ';', a constraint's arguments run
-// from its first non-escaped '(' to its last ')', and arguments are separated by
-// non-escaped ','.
+// Route constraints (":id<int>") describe accepted values precisely enough to
+// type the schema. This grammar mirrors path.go's.
 const (
 	constraintSpanStart     = '<'
 	constraintSpanEnd       = '>'
@@ -25,13 +21,10 @@ const (
 	constraintEscapeChar    = '\\'
 )
 
-// scanConstraintSpan reads the "<...>" span that starts at open in pattern and
-// returns its inner text plus the index just past the span. Nested '<'/'>' pairs
-// are tracked so a constraint argument may contain them, and a delimiter
-// preceded by the escape character is a literal — matching path.go, which would
-// otherwise disagree with us about where the parameter ends.
+// scanConstraintSpan reads the "<...>" span at open, returning its inner text
+// and the index past it. Nesting and escaped delimiters follow path.go.
 //
-//nolint:nonamedreturns // gocritic requires names here to tell the two results apart
+//nolint:nonamedreturns // gocritic requires names to tell the two results apart
 func scanConstraintSpan(pattern string, open int) (raw string, next int) {
 	i := open + 1
 	start := i
@@ -57,9 +50,8 @@ func scanConstraintSpan(pattern string, open int) (raw string, next int) {
 	return pattern[start:end], i
 }
 
-// pathParamSchema derives a parameter schema from a route pattern's constraint
-// span. An empty or unrecognized span yields the default string schema, so an
-// unknown or custom constraint never produces a wrong type.
+// pathParamSchema derives a parameter schema from a constraint span. An empty
+// or unrecognized span yields the string default rather than a guessed type.
 func pathParamSchema(rawConstraints string) map[string]any {
 	schema := map[string]any{}
 	for _, entry := range splitNonEscaped(rawConstraints, constraintSeparator) {
@@ -75,9 +67,8 @@ func pathParamSchema(rawConstraints string) map[string]any {
 	return schema
 }
 
-// applyConstraintToSchema merges one constraint into schema. Keywords already
-// present are never overwritten, so in a chain like "<int;min(5)>" the first
-// constraint that pins the type keeps it.
+// applyConstraintToSchema merges one constraint in. Existing keywords are never
+// overwritten, so in "<int;min(5)>" the first constraint to set one keeps it.
 func applyConstraintToSchema(schema map[string]any, name string, args []string) {
 	switch resolveConstraintName(name) {
 	case fiber.ConstraintInt:
@@ -87,10 +78,8 @@ func applyConstraintToSchema(schema map[string]any, name string, args []string) 
 	case fiber.ConstraintFloat:
 		setSchemaType(schema, schemaTypeNumber)
 	case fiber.ConstraintAlpha:
-		// The runtime check accepts any Unicode letter. A "^[A-Za-z]+$" pattern
-		// would document the endpoint as stricter than it is, and "\p{L}" needs
-		// a regex flavor OpenAPI tooling cannot be assumed to have, so the type
-		// alone is the honest description.
+		// The runtime check accepts any Unicode letter, so an ASCII-only pattern
+		// would document the route as stricter than it is.
 		setSchemaType(schema, schemaTypeString)
 	case fiber.ConstraintGUID:
 		setSchemaType(schema, schemaTypeString)
@@ -149,9 +138,8 @@ func resolveConstraintName(name string) string {
 	}
 }
 
-// datetimeLayoutFormat maps the two Go time layouts that have an exact OpenAPI
-// format to it. Any other layout is left as a plain string, because "format"
-// would then claim a shape the route does not actually accept.
+// datetimeLayoutFormat maps the Go layouts with an exact OpenAPI format. Any
+// other layout stays a plain string rather than claiming a shape.
 func datetimeLayoutFormat(args []string) string {
 	if len(args) == 0 {
 		return ""
@@ -198,9 +186,8 @@ type parsedConstraint struct {
 	args []string
 }
 
-// splitConstraintEntry separates a constraint's name from its arguments,
-// matching path.go: the argument list runs from the first non-escaped '(' to the
-// last ')'.
+// splitConstraintEntry separates a constraint's name from its arguments: they
+// run from the first non-escaped '(' to the last ')', as in path.go.
 func splitConstraintEntry(entry string) parsedConstraint {
 	entry = strings.TrimSpace(entry)
 	start := indexNonEscaped(entry, constraintArgsStart)

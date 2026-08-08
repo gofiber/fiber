@@ -2975,9 +2975,8 @@ func Test_Route_URL(t *testing.T) {
 	})
 }
 
-// Test_App_MetadataUseDoesNotClobberConcreteRoutes verifies documentation
-// helpers chained on a Use() registration only touch the middleware entries,
-// never concrete routes sharing the same path.
+// Test_App_MetadataUseDoesNotClobberConcreteRoutes verifies helpers chained on a
+// Use() only touch middleware entries, never concrete routes on that path.
 func Test_App_MetadataUseDoesNotClobberConcreteRoutes(t *testing.T) {
 	t.Parallel()
 	app := New()
@@ -2990,9 +2989,8 @@ func Test_App_MetadataUseDoesNotClobberConcreteRoutes(t *testing.T) {
 	require.False(t, route.IsHidden())
 }
 
-// Test_App_MetadataDoesNotClobberExplicitHead verifies documentation helpers
-// chained on a GET registration do not overwrite an explicitly registered HEAD
-// route at the same path.
+// Test_App_MetadataDoesNotClobberExplicitHead verifies helpers chained on a GET
+// do not overwrite an explicitly registered HEAD route at the same path.
 func Test_App_MetadataDoesNotClobberExplicitHead(t *testing.T) {
 	t.Parallel()
 	app := New()
@@ -3149,9 +3147,8 @@ func Test_App_OperationExtensionNilElements(t *testing.T) {
 	require.Contains(t, m, "e")
 }
 
-// Test_App_MetadataNoCollisionWithMountedRoutes verifies registration IDs of
-// expanded mount routes can never collide with parent registrations, so
-// documenting a route added after startup cannot touch mounted routes.
+// Test_App_MetadataNoCollisionWithMountedRoutes verifies expanded mount route IDs
+// never collide with parent registrations, so later docs cannot touch them.
 func Test_App_MetadataNoCollisionWithMountedRoutes(t *testing.T) {
 	t.Parallel()
 	sub := New()

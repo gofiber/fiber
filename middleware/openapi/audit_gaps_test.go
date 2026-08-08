@@ -10,9 +10,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// Test_OpenAPI_ParameterContent covers describing a parameter by media type
-// instead of by schema, which the Parameter Object allows for any location and
-// requires for the OpenAPI 3.2 "querystring" location.
+// Test_OpenAPI_ParameterContent covers describing a parameter by media type,
+// which any location allows and 3.2 "querystring" requires.
 func Test_OpenAPI_ParameterContent(t *testing.T) {
 	t.Parallel()
 
@@ -158,9 +157,8 @@ func Test_SchemaOf_OmitZero(t *testing.T) {
 	require.Contains(t, props, "empty")
 }
 
-// Test_SchemaOf_InvalidJSONTagName asserts that a json tag name encoding/json
-// rejects falls back to the Go field name in the schema too, so the schema and
-// the wire format cannot disagree.
+// Test_SchemaOf_InvalidJSONTagName asserts a tag name encoding/json rejects
+// falls back to the field name here too, so schema and wire agree.
 func Test_SchemaOf_InvalidJSONTagName(t *testing.T) {
 	t.Parallel()
 
@@ -190,9 +188,8 @@ func Test_SchemaOf_InvalidJSONTagName(t *testing.T) {
 	require.Contains(t, props, "a b")
 }
 
-// Test_OpenAPI_PathParameterConstraintSchema asserts that a route pattern's
-// "<...>" constraint types the generated path parameter schema instead of every
-// path parameter being reported as a plain string.
+// Test_OpenAPI_PathParameterConstraintSchema asserts a "<...>" constraint types
+// the path parameter schema instead of reporting every one as a string.
 func Test_OpenAPI_PathParameterConstraintSchema(t *testing.T) {
 	t.Parallel()
 
@@ -284,9 +281,8 @@ func Test_OpenAPI_ConstraintSchemaOptionalParameter(t *testing.T) {
 	require.NotContains(t, bare, "parameters")
 }
 
-// Test_OpenAPI_EscapedConstraintDelimiter asserts that an escaped '>' inside a
-// constraint does not close the span early, which used to leak the rest of the
-// constraint text into the generated path.
+// Test_OpenAPI_EscapedConstraintDelimiter asserts an escaped '>' does not close
+// the span early, which used to leak constraint text into the path.
 func Test_OpenAPI_EscapedConstraintDelimiter(t *testing.T) {
 	t.Parallel()
 
@@ -305,10 +301,8 @@ func Test_OpenAPI_EscapedConstraintDelimiter(t *testing.T) {
 	require.Equal(t, "v", requireMap(t, params[0])["name"])
 }
 
-// Test_OpenAPI_SelfHostedSwaggerAssets locks the behavior the offline section of
-// the documentation describes: overriding all three asset URLs leaves the page
-// with no outbound requests, while an empty value selects the CDN default rather
-// than omitting the script.
+// Test_OpenAPI_SelfHostedSwaggerAssets locks the documented offline behavior:
+// all three URLs overridden leaves no outbound request; empty means default.
 func Test_OpenAPI_SelfHostedSwaggerAssets(t *testing.T) {
 	t.Parallel()
 
@@ -347,10 +341,8 @@ func Test_OpenAPI_SelfHostedSwaggerAssets(t *testing.T) {
 	})
 }
 
-// Test_OpenAPI_CanonicalPathAdoptsParamNames asserts that an operation folded
-// onto an already-published equivalent template also adopts that template's
-// parameter names. Leaving the original names declared a parameter the path did
-// not reference, making the document invalid.
+// Test_OpenAPI_CanonicalPathAdoptsParamNames asserts an operation folded onto an
+// equivalent template adopts its names, or the document is invalid.
 func Test_OpenAPI_CanonicalPathAdoptsParamNames(t *testing.T) {
 	t.Parallel()
 
@@ -396,9 +388,8 @@ func Test_OpenAPI_ServerVariableEnumDetached(t *testing.T) {
 	require.NotContains(t, body, "mutated")
 }
 
-// Test_AdoptCanonicalParamNames covers the rename directly, including the
-// constraint keys and the defensive guard that a hierarchy match makes
-// unreachable through the public API.
+// Test_AdoptCanonicalParamNames covers the rename directly, including constraint
+// keys and the guard a hierarchy match makes unreachable in practice.
 func Test_AdoptCanonicalParamNames(t *testing.T) {
 	t.Parallel()
 
@@ -453,10 +444,8 @@ func Test_OpenAPI_CanonicalPathKeepsConstraintSchema(t *testing.T) {
 	require.Equal(t, map[string]any{"type": "integer"}, requireMap(t, param["schema"]))
 }
 
-// Test_OpenAPI_DynamicMountPrefix covers middleware mounted on a pattern whose
-// segment count varies. Truncating the prefix at the first optional or greedy
-// segment pointed the handler at the wrong target, so it answered 404 on paths
-// it was mounted to serve.
+// Test_OpenAPI_DynamicMountPrefix covers a mount whose segment count varies;
+// truncating at the first variable segment answered 404 on served paths.
 func Test_OpenAPI_DynamicMountPrefix(t *testing.T) {
 	t.Parallel()
 

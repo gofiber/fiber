@@ -132,8 +132,7 @@ func Test_IsValidJSONTagName(t *testing.T) {
 	t.Parallel()
 
 	// Mirrors encoding/json's isValidTag: letters, digits and the listed
-	// punctuation are allowed; an empty name is not a rename, and backslash and
-	// quote are reserved.
+	// punctuation are allowed; backslash, quote and empty are not.
 	require.True(t, isValidJSONTagName("name"))
 	require.True(t, isValidJSONTagName("a b"))
 	require.True(t, isValidJSONTagName("a-b_c.d"))

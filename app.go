@@ -91,10 +91,8 @@ type App struct {
 	hooks *Hooks
 	// Latest route & group
 	latestRoute *Route
-	// latestBatch holds the live stack entries (and auto-HEAD twins) of the
-	// registration identified by latestBatchID, so chained documentation
-	// helpers apply in O(batch) instead of scanning the whole stack. Guarded
-	// by mutex.
+	// latestBatch holds the live entries of latestBatchID, so chained helpers
+	// apply in O(batch) instead of scanning the stack. Guarded by mutex.
 	latestBatch []*Route
 	// newCtxFunc
 	newCtxFunc func(app *App) CustomCtx
@@ -975,10 +973,8 @@ func (app *App) Name(name string) Router {
 		}
 	})
 
-	// Snapshot under the lock, then fire hooks after releasing it so they may
-	// safely call locking app methods (GetRoutes, documentation helpers,
-	// RemoveRoute, ...). The private snapshot keeps hook reads from racing
-	// concurrent documentation of the live route.
+	// Snapshot under the lock and fire hooks after releasing it, so they may call
+	// locking methods without their reads racing the live route.
 	var named *Route
 	if app.latestRoute != nil && len(app.hooks.onName) > 0 {
 		named = app.copyRoute(app.latestRoute)
@@ -1000,10 +996,8 @@ const (
 	openapiTypeString = "string"
 )
 
-// The doc* factories below build the mutation applied by each documentation
-// helper. They run the helper's validation and defensive copying once at
-// construction, so App, Group, Registering, and the domain routers all share
-// the exact same behavior instead of five copies of it.
+// The doc* factories below build each helper's mutation, validating and copying
+// once so all five routers share one behavior instead of five copies.
 
 func docSetSummary(sum string) func(route *Route) {
 	return func(route *Route) { route.Summary = sum }
@@ -1137,10 +1131,8 @@ func docAddParameter(param RouteParameter) func(route *Route) {
 	// mutated; the per-route copies below keep routes from aliasing each other.
 	switch {
 	case len(param.Content) > 0:
-		// A Parameter Object carries either a schema or a content map, never
-		// both, so an explicit content map wins over any schema the caller set.
-		// The spec also restricts that map to a single entry, so more than one
-		// media type would generate a document validators reject.
+		// A Parameter Object carries a schema or a content map, never both, and
+		// the map holds exactly one entry.
 		if len(param.Content) > 1 {
 			panic("parameter content must contain exactly one media type: " + param.Name)
 		}
@@ -1152,9 +1144,8 @@ func docAddParameter(param RouteParameter) func(route *Route) {
 	case param.SchemaRef != "":
 		param.Schema = map[string]any{openapiRefKey: param.SchemaRef}
 	case location == "querystring":
-		// OpenAPI 3.2 querystring parameters are described via content rather
-		// than schema, so no default schema is injected; the middleware wraps
-		// whatever schema the caller supplied into a content entry.
+		// 3.2 querystring parameters use content, so no default schema is
+		// injected; the middleware wraps whatever was supplied.
 		param.Schema = copyAnyMap(param.Schema)
 	default:
 		schema := copyAnyMap(param.Schema)
@@ -1184,11 +1175,8 @@ func docAddParameter(param RouteParameter) func(route *Route) {
 	}
 }
 
-// AddParameter documents an input parameter using the full RouteParameter,
-// exposing advanced fields (deprecated, style, explode, allowEmptyValue,
-// allowReserved, content) in addition to the basics. Setting Content describes
-// the parameter by media type instead of by schema, which is the only valid
-// form for the OpenAPI 3.2 "querystring" location.
+// AddParameter documents a parameter using the full RouteParameter. Content
+// describes it by media type, the only valid form for 3.2 "querystring".
 //
 //nolint:gocritic // hugeParam: by-value keeps the chainable route-helper API ergonomic.
 func (app *App) AddParameter(param RouteParameter) Router {
@@ -1233,9 +1221,8 @@ func defaultResponseDescription(status int) string {
 	return "Status " + strconv.Itoa(status)
 }
 
-// getOrCreateResponse returns the route's response entry for key, creating it
-// with a default description when absent. The caller must hold app.mutex (it
-// runs inside applyToLatestRouteLocked callbacks).
+// getOrCreateResponse returns the response entry for key, creating it with a
+// default description when absent. The caller must hold app.mutex.
 func getOrCreateResponse(route *Route, key string, status int) RouteResponse {
 	if route.Responses == nil {
 		route.Responses = make(map[string]RouteResponse)
@@ -1277,9 +1264,8 @@ func docAddResponse(status int, description string, schema map[string]any, schem
 		copyResp.MediaTypes = append([]string(nil), resp.MediaTypes...)
 		copyResp.Schema = copyAnyMap(resp.Schema)
 		copyResp.Examples = copyAnyMap(resp.Examples)
-		// Headers, links, and per-media-type content documented earlier via
-		// ResponseHeader/ResponseLink/ResponseContent belong to the same
-		// response entry and must survive a later Response call.
+		// Headers, links and content documented earlier belong to the same entry
+		// and must survive a later Response call.
 		if existing, ok := route.Responses[key]; ok {
 			copyResp.Headers = existing.Headers
 			copyResp.Links = existing.Links
@@ -1364,11 +1350,8 @@ func (app *App) Deprecated() Router {
 	return app
 }
 
-// Security sets the OpenAPI security requirements for the most recently added
-// route. Each requirement maps a security scheme name to its required scopes;
-// multiple requirements are combined with OR semantics. Passing an empty
-// requirement (an empty map) documents that the operation requires no
-// authentication, overriding any document-level default.
+// Security sets the requirements for the most recently added route, combined
+// with OR semantics. An empty requirement documents "no auth".
 func (app *App) Security(requirements ...map[string][]string) Router {
 	app.applyToLatest(docSetSecurity(requirements...))
 	return app
@@ -1454,9 +1437,8 @@ func docResponseContent(status int, description string, content map[string]Route
 	key := responseKey(status)
 	return func(route *Route) {
 		resp := getOrCreateResponse(route, key, status)
-		// An empty description means "unspecified": keep whatever an earlier
-		// Response()/ResponseWithExample() call set rather than overwriting the
-		// author's text with the canned status message.
+		// An empty description means "unspecified": keep what an earlier call set
+		// rather than overwriting it with the canned status message.
 		if description != "" {
 			resp.Description = description
 		}
@@ -1484,9 +1466,8 @@ func docResponseLink(status int, name string, link map[string]any) func(route *R
 	}
 }
 
-// ResponseHeader documents a response header for the given status code on the
-// most recently added route, creating the response entry if it does not exist
-// yet. A status of 0 documents the "default" response.
+// ResponseHeader documents a response header for a status code, creating the
+// response entry if needed. A status of 0 documents the "default" response.
 func (app *App) ResponseHeader(status int, name, description string, schema map[string]any) Router {
 	app.applyToLatest(docResponseHeader(status, name, description, schema))
 	return app
@@ -1534,15 +1515,8 @@ func (app *App) applyToLatest(apply func(route *Route)) {
 	app.mutex.Unlock()
 }
 
-// applyToRegistration locks the router and applies a documentation mutation to
-// every route of the registration identified by regID; scoped routers (Group,
-// Registering, domainRouter) use it so their helpers document their own last
-// registration instead of the app-global one. A regID of 0 (no registration
-// yet) is a no-op.
-// applyNameToRegistration assigns a name to every route of the registration
-// identified by regID and fires the OnName hooks, mirroring App.Name but scoped
-// to one registration instead of the app-global latest one. A regID of 0 (no
-// registration yet) is a no-op.
+// applyNameToRegistration names every route of regID and fires the OnName hooks,
+// mirroring App.Name but scoped to one registration. A regID of 0 is a no-op.
 func (app *App) applyNameToRegistration(regID uint64, name string) {
 	if regID == 0 {
 		return
@@ -1577,6 +1551,8 @@ func (app *App) applyNameToRegistration(regID uint64, name string) {
 	}
 }
 
+// applyToRegistration applies a documentation mutation to every route of regID,
+// so a scoped router documents its own last registration. A regID of 0 is a no-op.
 func (app *App) applyToRegistration(regID uint64, apply func(route *Route)) {
 	if regID == 0 || apply == nil {
 		return
@@ -1588,17 +1564,9 @@ func (app *App) applyToRegistration(regID uint64, apply func(route *Route)) {
 	app.mutex.Unlock()
 }
 
-// applyToLatestRouteLocked runs apply on every stack entry created by the most
-// recent registration (per-method Use() copies and, after startup, the
-// registration's auto-HEAD twin). Routes that merely share the same path or
-// method — explicitly registered HEAD routes, concrete routes under a
-// middleware prefix, shadowed duplicate registrations, entries the
-// registration was compression-merged into, or routes on other domains — are
-// deliberately not touched, so documenting one registration can never clobber
-// another's metadata. Two silent no-op cases follow from that rule: mount
-// registrations (their placeholder routes are deleted when the mount expands
-// at startup) and registrations whose entries were all compression-merged into
-// an earlier registration.
+// applyToLatestRouteLocked runs apply on every entry of the most recent
+// registration. Routes that merely share a path, method or domain are left
+// alone, so documenting one registration never clobbers another's.
 func (app *App) applyToLatestRouteLocked(apply func(route *Route)) {
 	if app.latestRoute == nil || apply == nil {
 		return
@@ -1608,10 +1576,8 @@ func (app *App) applyToLatestRouteLocked(apply func(route *Route)) {
 	}
 }
 
-// applyToRegIDLocked applies a mutation to every stack entry of the
-// registration identified by regID. It prefers the O(batch) latestBatch fast
-// path and falls back to a full stack scan for older registrations. Returns
-// whether any route was touched. The caller must hold app.mutex.
+// applyToRegIDLocked applies a mutation to every entry of regID, preferring the
+// O(batch) fast path. Reports whether anything was touched; holds app.mutex.
 func (app *App) applyToRegIDLocked(regID uint64, apply func(route *Route)) bool {
 	if regID == 0 {
 		return false
@@ -1640,9 +1606,8 @@ func (app *App) applyToRegIDLocked(regID uint64, apply func(route *Route)) bool 
 	return applied
 }
 
-// GetRoute Get route by name. The returned route is a deep copy taken under
-// the router lock, like GetRoutes, so it can be read safely while other
-// goroutines register or document routes.
+// GetRoute Get route by name. The returned route is a deep copy taken under the
+// router lock, so it stays safe while other goroutines register or document.
 func (app *App) GetRoute(name string) Route {
 	var copied Route
 
@@ -1652,9 +1617,8 @@ func (app *App) GetRoute(name string) Route {
 	for _, routes := range app.stack {
 		for _, route := range routes {
 			if route.Name == name {
-				// Filled in place: Route is large, and returning it through a
-				// helper would move the whole struct an extra time on a call
-				// made once per route lookup.
+				// Filled in place: Route is large, and a value-returning helper
+				// would move the whole struct an extra time per lookup.
 				app.copyRouteInto(&copied, route)
 				return copied
 			}
@@ -1664,13 +1628,8 @@ func (app *App) GetRoute(name string) Route {
 	return copied
 }
 
-// routeURL builds the URL for the named route, reading only the routing data it
-// needs (path, parsed segments and case sensitivity) under the router lock.
-//
-// URL building never touches documentation metadata, so it must not pay for the
-// deep clone GetRoute performs, nor for a copy of the Route struct itself. An
-// unknown name leaves the path empty, which yields ("", nil) exactly as looking
-// the route up and building from the zero Route used to.
+// routeURL builds a named route's URL, reading only the routing data it needs so
+// it never pays for GetRoute's deep clone. An unknown name yields ("", nil).
 func (app *App) routeURL(name string, params Map) (string, error) {
 	var (
 		path          string
@@ -1696,8 +1655,7 @@ func (app *App) routeURL(name string, params Map) (string, error) {
 }
 
 // GetRoutes Get all routes. When filterUseOption equal to true, it will filter the routes registered by the middleware.
-// The returned routes are deep copies taken under the router lock, so they can
-// be read safely while other goroutines register or document routes.
+// The returned routes are deep copies taken under the router lock.
 func (app *App) GetRoutes(filterUseOption ...bool) []Route {
 	var filterUse bool
 	if len(filterUseOption) != 0 {
@@ -1719,9 +1677,8 @@ func (app *App) GetRoutes(filterUseOption ...bool) []Route {
 	return rs
 }
 
-// RoutesRevision returns a counter that increments whenever a route is added,
-// removed, or has its documentation metadata mutated. Consumers can compare
-// revisions to cheaply detect route-table staleness without locking.
+// RoutesRevision returns a counter incremented whenever a route is added, removed
+// or documented, so consumers can detect staleness without locking.
 func (app *App) RoutesRevision() uint64 {
 	return app.routesRevision.Load()
 }
@@ -2054,10 +2011,8 @@ func (app *App) ShutdownWithTimeout(timeout time.Duration) error {
 //
 // ShutdownWithContext does not close keepalive connections so its recommended to set ReadTimeout to something else than 0.
 func (app *App) ShutdownWithContext(ctx context.Context) error {
-	// Capture the server under the lock, but do NOT hold app.mutex across the
-	// shutdown wait: in-flight handlers may call locking methods such as
-	// GetRoutes, and holding the mutex while waiting for those requests to
-	// finish would deadlock the shutdown.
+	// Do NOT hold app.mutex across the shutdown wait: in-flight handlers may call
+	// locking methods, and waiting on them under the mutex would deadlock.
 	app.mutex.Lock()
 	server := app.server
 	app.mutex.Unlock()

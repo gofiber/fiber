@@ -262,9 +262,8 @@ func Test_SchemaOf_UnsupportedSliceAndMapElements(t *testing.T) {
 		Ch []chan int          `json:"ch"`
 	}
 
-	// encoding/json fails outright on these values ("json: unsupported type:
-	// chan int"), so the fields are skipped rather than documented as an array
-	// or object the handler could never produce.
+	// encoding/json fails outright on these values, so the fields are skipped
+	// rather than documented as something the handler could never produce.
 	schema := SchemaOf(withUnsupported{})
 	props := requireMap(t, schema["properties"])
 

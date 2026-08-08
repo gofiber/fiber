@@ -81,9 +81,8 @@ var (
 	textMarshalerType = reflect.TypeFor[encoding.TextMarshaler]()
 )
 
-// implementsMarshaler reports whether t (or *t) implements the given
-// marshaler interface, in which case encoding/json bypasses ordinary field
-// reflection for values of that type.
+// implementsMarshaler reports whether t (or *t) implements the interface, in
+// which case encoding/json bypasses ordinary field reflection.
 func implementsMarshaler(t, iface reflect.Type) bool {
 	return t.Implements(iface) || reflect.PointerTo(t).Implements(iface)
 }
@@ -126,15 +125,13 @@ func typeSchema(t reflect.Type, visited map[reflect.Type]bool) map[string]any {
 		return map[string]any{schemaKeyType: schemaTypeNumber}
 	}
 
-	// Types with custom JSON marshaling (including structs that promote a
-	// MarshalJSON from an embedded type, e.g. time.Time) produce output that
-	// field reflection cannot predict, so accept any value.
+	// Custom JSON marshaling produces output field reflection cannot predict,
+	// so accept any value.
 	if implementsMarshaler(t, jsonMarshalerType) {
 		return map[string]any{}
 	}
-	// A value-receiver text marshaler always produces a string. When only *T
-	// implements it, encoding/json cannot call the method on non-addressable
-	// values and falls back to plain reflection, so the shape is unknowable.
+	// A value-receiver text marshaler always yields a string; when only *T
+	// implements it, encoding/json may fall back and the shape is unknowable.
 	if t.Implements(textMarshalerType) {
 		return map[string]any{schemaKeyType: schemaTypeString}
 	}
@@ -166,9 +163,8 @@ func typeSchema(t reflect.Type, visited map[reflect.Type]bool) map[string]any {
 		items := typeSchema(t.Elem(), visited)
 		delete(visited, t)
 		if items == nil {
-			// The element has no JSON representation, so neither does the
-			// slice: encoding/json fails outright on such a value rather than
-			// emitting an array, and the caller skips the field.
+			// With no JSON representation for the element there is none for the
+			// slice: encoding/json fails outright rather than emitting one.
 			return nil
 		}
 		return map[string]any{schemaKeyType: "array", "items": items}
@@ -216,11 +212,8 @@ func structSchema(t reflect.Type, visited map[reflect.Type]bool) map[string]any 
 	properties := make(map[string]any)
 	var required []string
 
-	// Fields are resolved level by level over the embedding tree, matching
-	// encoding/json: a name is taken at the shallowest depth where it appears;
-	// among candidates at that depth exactly one json-tagged field wins,
-	// otherwise the name is ambiguous and dropped entirely (deeper fields do
-	// not resurrect it).
+	// Resolved level by level like encoding/json: a name is taken at its
+	// shallowest depth, where one tagged field wins or the name is dropped.
 	type fieldCandidate struct {
 		schema   map[string]any
 		required bool
@@ -228,18 +221,14 @@ func structSchema(t reflect.Type, visited map[reflect.Type]bool) map[string]any 
 	}
 	type embedRef struct {
 		t reflect.Type
-		// optional marks fields reached through a pointer embed or an
-		// omitempty embed: they are not guaranteed to be present and must not
-		// be marked required on the parent.
+		// optional marks fields reached through a pointer or omitempty embed:
+		// not guaranteed present, so never required on the parent.
 		optional bool
 	}
 
 	level := []embedRef{{t: t}}
-	// expanded tracks struct types flattened at shallower levels: re-expanding
-	// them deeper could recurse forever (embedding cycles) and their fields
-	// would lose to the shallower ones anyway. Same-level duplicates are NOT
-	// deduplicated — their fields must collide and be dropped like
-	// encoding/json does.
+	// expanded tracks types already flattened shallower, which could otherwise
+	// recurse forever. Same-level duplicates must still collide and drop.
 	expanded := map[reflect.Type]bool{t: true}
 	dropped := make(map[string]bool)
 
@@ -264,9 +253,8 @@ func structSchema(t reflect.Type, visited map[reflect.Type]bool) map[string]any 
 				}
 				isEmbeddedStruct := field.Anonymous && embeddedType.Kind() == reflect.Struct && embeddedType != timeType && name == ""
 
-				// encoding/json ignores unexported fields, but it still
-				// promotes the exported fields of an embedded unexported
-				// struct type.
+				// encoding/json ignores unexported fields but still promotes
+				// those of an embedded unexported struct.
 				if !field.IsExported() && !isEmbeddedStruct {
 					continue
 				}
@@ -400,11 +388,8 @@ func parseJSONTag(field *reflect.StructField) jsonTagInfo {
 	return info
 }
 
-// isValidJSONTagName reports whether name is accepted as a json tag name by
-// encoding/json. It mirrors the encoding/json isValidTag rules: any letter or
-// digit is allowed, plus the listed punctuation; backslash and quote are
-// reserved. An empty name is not a rename, so it is reported as invalid and the
-// caller falls back to the field name either way.
+// isValidJSONTagName mirrors encoding/json's isValidTag: letters, digits and the
+// listed punctuation are allowed; backslash, quote and an empty name are not.
 func isValidJSONTagName(name string) bool {
 	if name == "" {
 		return false
@@ -420,10 +405,8 @@ func isValidJSONTagName(name string) bool {
 	return true
 }
 
-// openapiDirectiveRe locates the start of each recognized openapi tag directive.
-// A directive begins at the start of the tag or after a comma. Everything from a
-// directive's colon up to the next directive (or the end of the tag) is its
-// value, so values may freely contain commas and colons.
+// openapiDirectiveRe locates each directive's start. Its value runs from the
+// colon to the next directive, so values may contain commas and colons.
 var openapiDirectiveRe = regexp.MustCompile(`(?:^|,)\s*(description|example|format|enum):`)
 
 func applyOpenAPITag(field *reflect.StructField, schema map[string]any) {

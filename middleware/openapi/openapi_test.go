@@ -2309,9 +2309,8 @@ func Test_OpenAPI_MultiPrefixUIPages(t *testing.T) {
 	}
 }
 
-// Test_OpenAPI_OptionalVariantDoesNotOverwrite verifies an optional-parameter
-// variant never overwrites the documentation of an earlier registered route at
-// the same path and method, matching router dispatch precedence.
+// Test_OpenAPI_OptionalVariantDoesNotOverwrite verifies a variant never
+// overwrites an earlier route's docs, matching router dispatch precedence.
 func Test_OpenAPI_OptionalVariantDoesNotOverwrite(t *testing.T) {
 	t.Parallel()
 
@@ -2418,9 +2417,8 @@ func Test_OpenAPI_MountedParamPrefixPathParams(t *testing.T) {
 	require.Contains(t, paths, "/tenant/{tid}/users/{id}")
 }
 
-// Test_OpenAPI_ResponseSchemaWithoutMediaType verifies a response schema or
-// example documented without media types falls back to the route's Produces
-// type instead of being dropped.
+// Test_OpenAPI_ResponseSchemaWithoutMediaType verifies a schema or example with
+// no media type falls back to the route's Produces instead of being dropped.
 func Test_OpenAPI_ResponseSchemaWithoutMediaType(t *testing.T) {
 	t.Parallel()
 
@@ -2460,9 +2458,8 @@ func Test_OpenAPI_ExactRouteUnderParameterizedMount(t *testing.T) {
 	require.Contains(t, spec.Paths, "/{tenant}/users")
 }
 
-// Test_OpenAPI_DuplicateSanitizedParamNames verifies distinct Fiber parameters
-// that sanitize to the same identifier get unique names in the path template,
-// as required by the OpenAPI specification.
+// Test_OpenAPI_DuplicateSanitizedParamNames verifies parameters that sanitize
+// alike get unique template names, as the specification requires.
 func Test_OpenAPI_DuplicateSanitizedParamNames(t *testing.T) {
 	t.Parallel()
 
@@ -2472,9 +2469,8 @@ func Test_OpenAPI_DuplicateSanitizedParamNames(t *testing.T) {
 	require.Equal(t, []string{"na_ve", "na_ve_2"}, variants[0].ParamNames)
 }
 
-// Test_OpenAPI_ConcurrentDocsAndSpecRequests guards the locking contract: spec
-// generation snapshots routes under the router lock, so serving /openapi.json
-// while other goroutines mutate route metadata must be race-free (run with -race).
+// Test_OpenAPI_ConcurrentDocsAndSpecRequests guards the locking contract:
+// serving the spec while other goroutines document routes must be race-free.
 func Test_OpenAPI_ConcurrentDocsAndSpecRequests(t *testing.T) {
 	t.Parallel()
 
@@ -2602,10 +2598,8 @@ func Test_OpenAPI_SecurityEmptyScopesEmitArray(t *testing.T) {
 	require.NotContains(t, string(body), `"bearerAuth":null`)
 }
 
-// Test_OpenAPI_MultiOptionalParamsSingleHierarchy verifies routes with several
-// optional parameters emit only one templated path per hierarchy level: the
-// OpenAPI spec forbids templated paths identical up to parameter names, and
-// the router would always bind the first parameter anyway.
+// Test_OpenAPI_MultiOptionalParamsSingleHierarchy verifies several optional
+// parameters emit one templated path per hierarchy level, as the spec requires.
 func Test_OpenAPI_MultiOptionalParamsSingleHierarchy(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
@@ -2628,10 +2622,8 @@ func Test_OpenAPI_MultiOptionalParamsSingleHierarchy(t *testing.T) {
 	require.NotContains(t, spec.Paths, "/files/{name}")
 }
 
-// Test_OpenAPI_MountPrefixWithConstraintsAndEscapes verifies mount prefixes
-// whose '*'/'+' characters live inside a <constraint> or behind an escape are
-// not misclassified as wildcards (which previously made the spec target
-// unreachable).
+// Test_OpenAPI_MountPrefixWithConstraintsAndEscapes verifies '*'/'+' inside a
+// constraint or escape is not read as a wildcard, which hid the spec target.
 func Test_OpenAPI_MountPrefixWithConstraintsAndEscapes(t *testing.T) {
 	t.Parallel()
 
@@ -2666,9 +2658,8 @@ func Test_OpenAPI_MountPrefixWithConstraintsAndEscapes(t *testing.T) {
 	})
 }
 
-// Test_OpenAPI_SharedHandlerAcrossApps verifies one handler value registered
-// on two apps serves each app's own spec, even when their route revisions
-// coincide.
+// Test_OpenAPI_SharedHandlerAcrossApps verifies one handler on two apps serves
+// each app's own spec, even when their route revisions coincide.
 func Test_OpenAPI_SharedHandlerAcrossApps(t *testing.T) {
 	t.Parallel()
 	handler := New()

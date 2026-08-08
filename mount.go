@@ -195,10 +195,8 @@ func (app *App) processSubAppsRoutes() {
 				continue
 			}
 
-			// Clone the sub-app's routes under the sub-app's lock: its stack
-			// and route metadata can be mutated concurrently by registration
-			// or documentation helpers, which lock only the sub-app's mutex.
-			// Lock order is strictly parent→child, so no cycle is possible.
+			// Cloned under the sub-app's lock, which registration and the doc
+			// helpers also take. Lock order is parent→child, so no cycle.
 			subApp := route.group.app
 			subApp.mutex.Lock()
 
@@ -210,10 +208,8 @@ func (app *App) processSubAppsRoutes() {
 				// Clone the sub-app's route
 				subAppRouteClone := app.copyRoute(subAppRoute)
 
-				// The clone carries the sub-app's registration ID, which comes
-				// from a different counter and could collide with a parent
-				// registration; clear it so metadata helpers on later parent
-				// registrations can never target expanded mount routes.
+				// The clone's registration ID comes from another counter and
+				// could collide, so clear it rather than let helpers match.
 				subAppRouteClone.regID = 0
 
 				// Add the parent route's path as a prefix to the sub-app's route

@@ -77,11 +77,8 @@ type Router interface {
 	Tags(tags ...string) Router
 	// Deprecated marks the most recently registered route as deprecated.
 	Deprecated() Router
-	// Security sets the security requirements for the most recently registered
-	// route. Each requirement maps a security scheme name to its required
-	// scopes; multiple requirements are combined with OR semantics. Passing an
-	// empty requirement (an empty map) documents that the operation requires no
-	// authentication, overriding any document-level default.
+	// Security sets the requirements for the most recently registered route,
+	// combined with OR semantics. An empty requirement documents "no auth".
 	Security(requirements ...map[string][]string) Router
 	// ResponseHeader documents a response header for the given status code on the
 	// most recently registered route, creating the response entry if needed.
@@ -89,9 +86,8 @@ type Router interface {
 	// Hidden excludes the most recently registered route from the generated
 	// OpenAPI specification.
 	Hidden() Router
-	// AddParameter documents an input parameter using the full RouteParameter,
-	// allowing advanced fields (deprecated, style, explode, allowEmptyValue,
-	// allowReserved) that the simpler Parameter helpers do not expose.
+	// AddParameter documents a parameter using the full RouteParameter, exposing
+	// fields the simpler Parameter helpers do not.
 	AddParameter(param RouteParameter) Router
 	// OperationExternalDocs sets the externalDocs of the most recently registered
 	// operation.
@@ -151,16 +147,12 @@ type Route struct {
 	//nolint:revive // Having both a Path (uppercase) and a path (lowercase) is fine
 	Path string `json:"path"` // Original registered route path
 
-	// domain is the host pattern the route was registered under via
-	// app.Domain(); empty for regular routes. Same-path registrations on
-	// different domains must never be compression-merged, so each keeps its
-	// own handlers and documentation metadata. Read only at registration
-	// time, never by the request scan.
+	// domain is the host pattern from app.Domain(), empty otherwise. It keeps
+	// same-path routes on different domains from merging. Registration-time only.
 	domain string
 
-	// regID identifies the register() call that created this route, so
-	// chainable helpers (Name, Summary, ...) can reach every stack entry of
-	// the same registration.
+	// regID identifies the register() call that created this route, so chainable
+	// helpers can reach every stack entry of the same registration.
 	regID uint64
 
 	// OpenAPI documentation metadata. The request scan never reads any of it,
@@ -411,9 +403,8 @@ func preferredGreedyParameters(paramName string) []string {
 	return defaultGreedyParameterKeys
 }
 
-// IsMiddleware reports whether this route was registered via Use() and
-// therefore matches path prefixes rather than exact paths. This is useful
-// for filtering middleware routes from generated API specifications.
+// IsMiddleware reports whether the route was registered via Use() and so matches
+// prefixes, which lets generated specifications filter it out.
 func (r *Route) IsMiddleware() bool {
 	return r.use
 }
@@ -430,12 +421,8 @@ func (r *Route) IsHidden() bool {
 	return r.hidden
 }
 
-// RouteParameter describes an input captured by a route.
-//
-// A parameter is described either by Schema/SchemaRef or by Content, never by
-// both: setting Content takes precedence and suppresses the schema, matching the
-// OpenAPI rule that a Parameter Object carries exactly one of them. Content is
-// the only valid form for the OpenAPI 3.2 "querystring" location.
+// RouteParameter describes an input captured by a route. Schema/SchemaRef and
+// Content are mutually exclusive; Content wins, and 3.2 "querystring" needs it.
 type RouteParameter struct {
 	Schema          map[string]any            `json:"schema"`
 	Content         map[string]RouteMediaType `json:"content,omitempty"`
@@ -453,9 +440,8 @@ type RouteParameter struct {
 	AllowReserved   bool                      `json:"allowReserved,omitempty"`   //nolint:tagliatelle // OpenAPI spec uses camelCase
 }
 
-// RouteMediaType describes a single media type entry, allowing a different
-// schema, examples and encoding per content type within one request body or
-// response.
+// RouteMediaType describes one media type entry, so a body or response can carry
+// a different schema, examples and encoding per content type.
 type RouteMediaType struct {
 	Schema    map[string]any `json:"schema,omitempty"`
 	Example   any            `json:"example,omitempty"`
@@ -1005,9 +991,8 @@ func (app *App) addPrefixToRoute(prefix string, route *Route, regexHandler any, 
 	route.Path = prefixedPath
 	route.path = RemoveEscapeChar(prettyPath)
 	route.routeParser = parseRoute(prettyPath, regexHandler, customConstraints...)
-	// The prefix may introduce parameters of its own (e.g. mounting under
-	// "/:tenant"), so the parameter names must be re-derived from the
-	// prefixed path just like register() derives them from the raw path.
+	// The prefix may add parameters of its own, so the names are re-derived from
+	// the prefixed path exactly as register() derives them.
 	route.Params = parseRoute(prefixedPath, regexHandler, customConstraints...).params
 	route.root = false
 	route.star = false
@@ -1026,28 +1011,22 @@ func (app *App) copyRoute(route *Route) *Route {
 }
 
 // copyRouteValue is copyRoute without the heap allocation, for callers that
-// return the clone by value (GetRoute, GetRoutes). Building the clone in place
-// keeps a route lookup off the heap even though it still deep-copies.
+// return the clone by value (GetRoute, GetRoutes).
 func (app *App) copyRouteValue(route *Route) (copied Route) { //nolint:nonamedreturns // the named result is what keeps this to a single struct copy
 	app.copyRouteInto(&copied, route)
 	return copied
 }
 
-// isDocumented reports whether the route carries any OpenAPI metadata that a
-// copy has to deep-clone. Small enough to inline, so an undocumented route —
-// the common case on a lookup — never calls out of line.
+// isDocumented reports whether the route carries metadata a copy must clone.
+// Small enough to inline, so the common case never calls out of line.
 func (r *Route) isDocumented() bool {
 	return r.RequestBody != nil || r.Parameters != nil || r.Responses != nil ||
 		r.Tags != nil || r.Security != nil || r.ExternalDocs != nil ||
 		r.OperationExtensions != nil
 }
 
-// copyRouteInto deep-copies route into dst.
-//
-// It writes through a destination pointer rather than returning a Route so the
-// caller's result slot is filled directly. Route is a large struct, and every
-// value-returning hop used to cost another move of the whole thing on a path
-// GetRoute takes for each lookup.
+// copyRouteInto deep-copies route into dst. It writes through a pointer so the
+// caller's slot is filled once: Route is large and every hop costs a full move.
 func (app *App) copyRouteInto(dst, route *Route) {
 	*dst = *route
 	dst.group = nil
@@ -1071,21 +1050,15 @@ func (*App) cloneRouteDocInto(dst, route *Route) {
 	dst.OperationExtensions = copyAnyMap(route.OperationExtensions)
 }
 
-// copyRouteBase copies routing data and scalar metadata but skips the deep
-// clone of documentation maps/slices. Auto-generated HEAD twins use it because
-// their doc metadata is never read: the OpenAPI middleware excludes autoHead
-// routes and HEAD serves by re-running the copied GET handler stack.
+// copyRouteBase copies routing data but skips the documentation clone, which
+// auto-HEAD twins never need: their metadata is never read.
 func (app *App) copyRouteBase(route *Route) *Route {
 	copied := app.copyRouteBaseValue(route)
 	return &copied
 }
 
-// copyRouteBaseValue is copyRouteBase without the heap allocation.
-//
-// It copies the route wholesale and then clears exactly the fields a base copy
-// must not share — the group pointer and the documentation containers — which
-// is both equivalent to naming every field explicitly and markedly cheaper: a
-// single move instead of two dozen field writes, on a struct this large.
+// copyRouteBaseValue is copyRouteBase without the heap allocation. Copying
+// wholesale then clearing beats two dozen field writes on a struct this large.
 func (*App) copyRouteBaseValue(route *Route) Route {
 	copied := *route
 
@@ -1214,10 +1187,8 @@ func cloneRouteResponses(responses map[string]RouteResponse) map[string]RouteRes
 	return cloned
 }
 
-// maxCopyDepth bounds the deep copy of route documentation metadata. Users can
-// store arbitrary values there, including self-referential ones; without a
-// bound such a value turns every GetRoutes call into an unrecoverable stack
-// overflow. Real documentation nests far shallower than this.
+// maxCopyDepth bounds the documentation deep copy: users can store cyclic values
+// there, which would otherwise make GetRoutes overflow the stack.
 const maxCopyDepth = 100
 
 func copyAnyMap(src map[string]any) map[string]any {
@@ -1229,9 +1200,8 @@ func copyAnyMapDepth(src map[string]any, depth int) map[string]any {
 		return nil
 	}
 	if depth >= maxCopyDepth {
-		// Cyclic or pathologically deep metadata: stop copying rather than
-		// recursing until the goroutine stack dies. Sharing the reference is
-		// the lesser evil, and encoding/json reports the cycle itself.
+		// Cyclic or pathologically deep metadata: sharing the reference is the
+		// lesser evil, and encoding/json reports the cycle itself.
 		return src
 	}
 	dst := make(map[string]any, len(src))
@@ -1437,10 +1407,8 @@ func (app *App) pruneAutoHeadRouteLocked(path string) {
 	}
 }
 
-// register creates one stack entry per method for the given path and returns
-// the registration ID stamped on every entry, so scoped helpers (Group,
-// Registering, domainRouter) can target exactly this registration later.
-// domain is the host pattern for app.Domain() registrations, "" otherwise.
+// register creates one stack entry per method and returns the ID stamped on each,
+// so scoped helpers can target this registration. domain is app.Domain()'s host.
 func (app *App) register(methods []string, pathRaw string, group *Group, domain string, handlers ...Handler) uint64 {
 	// A regular route requires at least one ctx handler
 	if len(handlers) == 0 && group == nil {
@@ -1558,13 +1526,9 @@ func (app *App) addRoute(method string, route *Route) {
 		!route.mount && !app.stack[m][l-1].mount && app.stack[m][l-1].domain == route.domain {
 		preRoute := app.stack[m][l-1]
 		preRoute.Handlers = append(preRoute.Handlers, route.Handlers...)
-		// Consecutive same-path registrations share one stack entry, and its
-		// documentation deliberately belongs to the latest registration
-		// (chained .Name()/.Summary() on the newest Use()/route wins, matching
-		// Fiber's established naming behavior). Restamping the entry keeps the
-		// registration-ID lookup agreeing with the batch fast path: without it
-		// a scoped helper called after an unrelated registration would scan for
-		// an ID no stack entry carries and silently document nothing.
+		// Consecutive same-path registrations share an entry whose documentation
+		// belongs to the latest one, so restamping keeps ID lookup and the batch
+		// fast path agreeing — otherwise a scoped helper documents nothing.
 		preRoute.regID = route.regID
 		liveRoute = preRoute
 		app.latestBatch = append(app.latestBatch, preRoute)
@@ -1578,16 +1542,12 @@ func (app *App) addRoute(method string, route *Route) {
 
 	app.bumpRoutesRevision()
 
-	// Track the most recent registration so chained helpers (Name, Summary,
-	// ...) target it. Mount routes are tracked too — otherwise a helper
-	// chained onto app.Use("/api", subApp) would mutate whatever route was
-	// registered before the mount — but onRoute hooks are not fired for them.
+	// Tracked so chained helpers target it. Mounts are tracked too, or a helper
+	// chained onto one would mutate the previous route; their hooks stay unfired.
 	app.latestRoute = liveRoute
 
-	// Snapshot the route under the lock, then fire hooks after releasing it so
-	// they may safely call locking app methods (GetRoutes, documentation
-	// helpers, RemoveRoute, ...). The private snapshot keeps hook reads from
-	// racing concurrent documentation of the live route.
+	// Snapshot under the lock and fire hooks after releasing it, so they may call
+	// locking methods without their reads racing the live route.
 	var hookRoute *Route
 	if !route.mount && len(app.hooks.onRoute) > 0 {
 		hookRoute = app.copyRoute(liveRoute)
@@ -1600,10 +1560,8 @@ func (app *App) addRoute(method string, route *Route) {
 	}
 }
 
-// resetBatchIfNewRegistrationLocked starts a fresh helper-target batch when
-// regID belongs to a new registration. Documentation helpers use the batch to
-// reach every stack entry of the most recent registration in O(batch) instead
-// of scanning the stack. The caller must hold app.mutex.
+// resetBatchIfNewRegistrationLocked starts a fresh batch for a new registration,
+// letting helpers reach its entries in O(batch). The caller holds app.mutex.
 func (app *App) resetBatchIfNewRegistrationLocked(regID uint64) {
 	if regID != app.latestBatchID {
 		app.latestBatchID = regID
@@ -1621,12 +1579,8 @@ func (app *App) ensureAutoHeadRoutes() {
 	app.fireOnRouteHooks(twins)
 }
 
-// ensureAutoHeadRoutesLocked creates the missing auto-HEAD twins and returns
-// private snapshots of them; the caller must hold app.mutex and fire the
-// onRoute hooks for the returned snapshots after releasing it.
 // autoHeadKey identifies a route for auto-HEAD twinning. The domain is part of
-// the identity because same-path routes on different domains are distinct
-// routes, each needing its own twin.
+// the identity: same-path routes on different domains each need their own twin.
 func autoHeadKey(route *Route) string {
 	if route.domain == "" {
 		return route.path
@@ -1634,6 +1588,8 @@ func autoHeadKey(route *Route) string {
 	return route.domain + "\x00" + route.path
 }
 
+// ensureAutoHeadRoutesLocked creates the missing auto-HEAD twins and returns
+// snapshots; the caller holds app.mutex and fires their hooks after releasing.
 func (app *App) ensureAutoHeadRoutesLocked() []*Route {
 	if app.config.DisableHeadAutoRegister {
 		return nil
@@ -1646,10 +1602,8 @@ func (app *App) ensureAutoHeadRoutesLocked() []*Route {
 	}
 
 	headStack := app.stack[headIndex]
-	// Keyed by domain as well as path: routes registered on different domains
-	// stay separate, so each domain's GET needs its own twin. Keying on the
-	// path alone gave the second domain no HEAD route at all, and its HEAD
-	// requests fell through the first domain's wrapper to a 404.
+	// Keyed by domain as well as path: each domain's GET needs its own twin, and
+	// keying on the path alone left the second domain answering 404.
 	existing := make(map[string]struct{}, len(headStack))
 	for _, route := range headStack {
 		if route.mount || route.use {
@@ -1679,10 +1633,8 @@ func (app *App) ensureAutoHeadRoutesLocked() []*Route {
 		headRoute.group = route.group
 		headRoute.Method = MethodHead
 		headRoute.autoHead = true
-		// Twins carry no documentation at all: copyRouteBase skips the doc
-		// maps/slices, and the scalar doc fields are blanked here so Stack and
-		// GetRoutes never expose a half-documented HEAD route. Spec consumers
-		// filter twins via IsAutoHead.
+		// Twins carry no documentation: the containers are skipped and the scalars
+		// blanked, so nothing exposes a half-documented HEAD route.
 		headRoute.Summary = ""
 		headRoute.Description = ""
 		headRoute.Consumes = ""
@@ -1696,19 +1648,16 @@ func (app *App) ensureAutoHeadRoutesLocked() []*Route {
 		existing[autoHeadKey(route)] = struct{}{}
 		app.hasRoutesRefreshed = true
 		added = true
-		// Snapshot for the onRoute hooks, which run after the lock is
-		// released and must not read the live route. Nothing to snapshot when
-		// no hook will observe it.
+		// Snapshot for the onRoute hooks, which run unlocked and must not read the
+		// live route. Nothing to snapshot when no hook will observe it.
 		if len(app.hooks.onRoute) > 0 {
 			twins = append(twins, app.copyRoute(headRoute))
 		}
 
 		atomic.AddUint32(&app.handlersCount, uint32(len(headRoute.Handlers))) //nolint:gosec // G115 - handler count is always small
 
-		// The twin deliberately stays out of the registration batch and never
-		// becomes latestRoute: it carries no documentation of its own (the
-		// fields were blanked above), and letting a post-startup helper reach
-		// it would re-document an arbitrary route.
+		// The twin stays out of the batch and never becomes latestRoute: letting a
+		// later helper reach it would re-document an arbitrary route.
 	}
 
 	if added {

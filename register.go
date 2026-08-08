@@ -63,9 +63,8 @@ type Registering struct {
 
 	path string
 
-	// lastRegID identifies this chain's most recent registration, so the
-	// documentation helpers below target it instead of the app-global latest
-	// route (which may belong to a different router). Accessed atomically.
+	// lastRegID is this chain's most recent registration, so the doc helpers
+	// target it rather than the app-global latest route. Accessed atomically.
 	lastRegID uint64
 }
 

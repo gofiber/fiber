@@ -2175,9 +2175,8 @@ func Test_Domain_OpenAPI_Helpers_Advanced(t *testing.T) {
 	})
 }
 
-// Test_Domain_RouteChain_OpenAPI_Helpers covers the documentation helpers on a
-// domain-scoped RouteChain (domainRegistering), which delegate to the same
-// route-metadata machinery for the chain's own registration.
+// Test_Domain_RouteChain_OpenAPI_Helpers covers the doc helpers on a
+// domain-scoped RouteChain, which target the chain's own registration.
 func Test_Domain_RouteChain_OpenAPI_Helpers(t *testing.T) {
 	t.Parallel()
 	app := New()
@@ -2240,9 +2239,8 @@ func Test_Domain_RouteChain_OpenAPI_Helpers(t *testing.T) {
 	require.True(t, app.stack[app.methodInt(MethodGet)][0].IsHidden())
 }
 
-// Test_Domain_Group_Use_EmptyHandlers exercises a domain group's prefix-only
-// Use (no handlers): the empty-handler wrap fast path and the group's
-// hasAnyRoute bookkeeping.
+// Test_Domain_Group_Use_EmptyHandlers exercises a prefix-only Use: the
+// empty-handler fast path and the group's hasAnyRoute bookkeeping.
 func Test_Domain_Group_Use_EmptyHandlers(t *testing.T) {
 	t.Parallel()
 	app := New()
@@ -2292,9 +2290,8 @@ func Test_Domain_Mount_HookError(t *testing.T) {
 	})
 }
 
-// Test_Domain_AutoHead_PerDomain asserts each domain's GET gets its own
-// auto-generated HEAD twin. Keying twins on the path alone left the second
-// domain without one, so its HEAD requests fell through to a 404.
+// Test_Domain_AutoHead_PerDomain asserts each domain's GET gets its own HEAD
+// twin; keying on the path alone left the second domain answering 404.
 func Test_Domain_AutoHead_PerDomain(t *testing.T) {
 	t.Parallel()
 
