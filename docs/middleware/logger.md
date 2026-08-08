@@ -114,6 +114,34 @@ app.Use(logger.New(logger.Config{
 }))
 ```
 
+### Logging Handler Errors
+
+The `${error}` tag contains the non-nil error returned by a downstream handler or middleware. Setting an error status and writing a response normally returns `nil`, so code such as `return c.Status(fiber.StatusInternalServerError).JSON(...)` sets `${status}` to `500` but leaves `${error}` empty.
+
+Return an error and let the application's `ErrorHandler` format the response when both the response and `${error}` should contain the failure:
+
+```go
+app := fiber.New(fiber.Config{
+    ErrorHandler: func(c fiber.Ctx, err error) error {
+        code := fiber.StatusInternalServerError
+        if fiberErr, ok := err.(*fiber.Error); ok {
+            code = fiberErr.Code
+        }
+        return c.Status(code).JSON(fiber.Map{"error": err.Error()})
+    },
+})
+
+app.Use(logger.New(logger.Config{
+    Format: "${status} ${method} ${path} ${error}\n",
+}))
+
+app.Get("/reports", func(c fiber.Ctx) error {
+    return fiber.NewError(fiber.StatusInternalServerError, "report generation failed")
+})
+```
+
+Register the logger before the routes whose returned errors it should observe. Handlers that have already written their complete response can use `${status}` for outcome logging instead.
+
 ### Auto-Registered Tags
 
 Some Fiber middleware registers logger middleware tags automatically. Register the producing middleware before `logger.New()` and then use the tag in `Format`.
