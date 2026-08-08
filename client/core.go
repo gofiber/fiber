@@ -151,9 +151,16 @@ func (c *core) preHooks() error {
 	}
 
 	c.client.mu.Lock()
-	defer c.client.mu.Unlock()
-
 	for _, f := range c.client.builtinRequestHooks {
+		if err := f(c.client, c.req); err != nil {
+			c.client.mu.Unlock()
+			return err
+		}
+	}
+	finalHooks := slices.Clone(c.client.finalRequestHooks)
+	c.client.mu.Unlock()
+
+	for _, f := range finalHooks {
 		if err := f(c.client, c.req); err != nil {
 			return err
 		}

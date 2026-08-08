@@ -448,6 +448,44 @@ func Test_PreHooks_AllowsUserHookClientConfigMutation(t *testing.T) {
 	require.Contains(t, string(core.req.RawRequest.Header.Cookie("session")), "abc")
 }
 
+func Test_PreHooks_FinalRequestHookSeesSerializedRequest(t *testing.T) {
+	t.Parallel()
+
+	client := New()
+	client.AddFinalRequestHook(func(_ *Client, req *Request) error {
+		require.Equal(t, "POST", string(req.RawRequest.Header.Method()))
+		require.Equal(t, "application/json", string(req.RawRequest.Header.ContentType()))
+		require.JSONEq(t, `{"name":"fiber"}`, string(req.RawRequest.Body()))
+		req.RawRequest.Header.Set("X-Signature", "signed")
+		return nil
+	})
+
+	core := newCore()
+	core.client = client
+	core.req = AcquireRequest()
+	defer ReleaseRequest(core.req)
+	core.req.SetMethod("POST").SetURL("http://example.com").SetJSON(map[string]string{"name": "fiber"})
+
+	require.NoError(t, core.preHooks())
+	require.Equal(t, "signed", string(core.req.RawRequest.Header.Peek("X-Signature")))
+}
+
+func Test_PreHooks_ReturnsFinalRequestHookError(t *testing.T) {
+	t.Parallel()
+
+	client := New()
+	wantErr := errors.New("final request hook failed")
+	client.AddFinalRequestHook(func(_ *Client, _ *Request) error { return wantErr })
+
+	core := newCore()
+	core.client = client
+	core.req = AcquireRequest()
+	defer ReleaseRequest(core.req)
+	core.req.SetURL("http://example.com")
+
+	require.ErrorIs(t, core.preHooks(), wantErr)
+}
+
 // Test_AfterHooks_ReturnsUserHookError verifies a failing user response hook
 // aborts afterHooks and its error is propagated.
 func Test_AfterHooks_ReturnsUserHookError(t *testing.T) {
