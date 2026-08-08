@@ -48,7 +48,7 @@ type Router interface {
 // Route is a struct that holds all metadata for each registered handler.
 //
 //nolint:govet // fieldalignment: the router's scan dictates this order, see below
-type Route struct {
+type Route struct { // betteralign:ignore - field order is optimized for route scanning
 	// ### important: always keep in sync with the copy method "app.copyRoute" and all creations of Route struct ###
 	//
 	// Field order is load-bearing. App.next scans a bucket of routes and

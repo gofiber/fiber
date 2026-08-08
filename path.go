@@ -28,7 +28,7 @@ import (
 // scanning. Keep them first when adding fields.
 //
 //nolint:govet // fieldalignment: the slash bounds lead deliberately, see above
-type routeParser struct {
+type routeParser struct { // betteralign:ignore - field order is optimized for route scanning
 	minSlashes    int32           // minimum number of '/' a matching detection path can contain
 	maxSlashes    int32           // maximum number of '/' a matching detection path can contain; only valid when maxBounded is true
 	maxBounded    bool            // false when a parameter can swallow '/', making the maximum unknowable; false also disables the max check

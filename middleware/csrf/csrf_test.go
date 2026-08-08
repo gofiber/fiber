@@ -204,6 +204,80 @@ func TestCSRFStorageDeleteError(t *testing.T) {
 	require.ErrorContains(t, captured, "csrf: failed to delete token from storage")
 }
 
+func Test_CSRF_CrossOriginProtectionOnly(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name           string
+		method         string
+		secFetchSite   string
+		origin         string
+		trustedOrigins []string
+		bypass         bool
+		allowed        bool
+	}{
+		{name: "safe get", method: fiber.MethodGet, secFetchSite: "cross-site", allowed: true},
+		{name: "safe head", method: fiber.MethodHead, secFetchSite: "cross-site", allowed: true},
+		{name: "safe options", method: fiber.MethodOptions, secFetchSite: "cross-site", allowed: true},
+		{name: "same origin fetch metadata", method: fiber.MethodPost, secFetchSite: "same-origin", allowed: true},
+		{name: "browser navigation", method: fiber.MethodPost, secFetchSite: "none", allowed: true},
+		{name: "non browser request", method: fiber.MethodPost, allowed: true},
+		{name: "matching origin host", method: fiber.MethodPost, origin: "http://example.com", allowed: true},
+		{name: "cross site fetch metadata", method: fiber.MethodPost, secFetchSite: "cross-site"},
+		{name: "same site fetch metadata", method: fiber.MethodPost, secFetchSite: "same-site"},
+		{name: "mismatched origin host", method: fiber.MethodPost, origin: "https://evil.example"},
+		{name: "malformed origin", method: fiber.MethodPost, origin: "://invalid"},
+		{name: "null origin", method: fiber.MethodPost, origin: "null"},
+		{name: "trusted origin", method: fiber.MethodPost, secFetchSite: "cross-site", origin: "https://trusted.example", trustedOrigins: []string{"https://trusted.example"}, allowed: true},
+		{name: "trusted subdomain", method: fiber.MethodPost, secFetchSite: "cross-site", origin: "https://api.example.net", trustedOrigins: []string{"https://*.example.net"}, allowed: true},
+		{name: "next bypass", method: fiber.MethodPost, secFetchSite: "cross-site", bypass: true, allowed: true},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			var captured error
+			app := fiber.New()
+			app.Use(New(Config{
+				CrossOriginProtectionOnly: true,
+				TrustedOrigins:            test.trustedOrigins,
+				Next: func(fiber.Ctx) bool {
+					return test.bypass
+				},
+				ErrorHandler: func(_ fiber.Ctx, err error) error {
+					captured = err
+					return fiber.ErrForbidden
+				},
+			}))
+			app.All("/", func(c fiber.Ctx) error {
+				return c.SendStatus(fiber.StatusNoContent)
+			})
+
+			req := httptest.NewRequest(test.method, "https://example.com/", http.NoBody)
+			if test.secFetchSite != "" {
+				req.Header.Set(fiber.HeaderSecFetchSite, test.secFetchSite)
+			}
+			if test.origin != "" {
+				req.Header.Set(fiber.HeaderOrigin, test.origin)
+			}
+
+			resp, err := app.Test(req)
+			require.NoError(t, err)
+			defer func() { require.NoError(t, resp.Body.Close()) }()
+
+			if test.allowed {
+				require.Equal(t, fiber.StatusNoContent, resp.StatusCode)
+				require.Empty(t, resp.Header.Values(fiber.HeaderSetCookie))
+				require.NoError(t, captured)
+				return
+			}
+			require.Equal(t, fiber.StatusForbidden, resp.StatusCode)
+			require.ErrorIs(t, captured, ErrCrossOriginRequest)
+		})
+	}
+}
+
 func Test_CSRF(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
@@ -2053,6 +2127,29 @@ func Benchmark_Middleware_CSRF_Check(b *testing.B) {
 	ctx.Request.Header.Set(fiber.HeaderReferer, "https://example.com")
 	ctx.Request.Header.Set(HeaderName, token)
 	ctx.Request.Header.SetCookie(ConfigDefault.CookieName, token)
+
+	b.ReportAllocs()
+
+	for b.Loop() {
+		h(ctx)
+	}
+
+	require.Equal(b, fiber.StatusTeapot, ctx.Response.Header.StatusCode())
+}
+
+func Benchmark_Middleware_CSRF_CrossOriginProtectionOnly(b *testing.B) {
+	app := fiber.New()
+
+	app.Use(New(Config{CrossOriginProtectionOnly: true}))
+	app.Post("/", func(c fiber.Ctx) error {
+		return c.SendStatus(fiber.StatusTeapot)
+	})
+
+	h := app.Handler()
+	ctx := &fasthttp.RequestCtx{}
+	ctx.Request.Header.SetMethod(fiber.MethodPost)
+	ctx.Request.Header.SetHost("example.com")
+	ctx.Request.Header.Set(fiber.HeaderSecFetchSite, "same-origin")
 
 	b.ReportAllocs()
 
