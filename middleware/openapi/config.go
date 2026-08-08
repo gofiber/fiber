@@ -1,7 +1,6 @@
 package openapi
 
 import (
-	"maps"
 	"slices"
 
 	"github.com/gofiber/fiber/v3"
@@ -339,7 +338,17 @@ func configDefault(config ...Config) Config {
 	cfg.Webhooks = deepCopyAnyMap(cfg.Webhooks)
 	cfg.Servers = slices.Clone(cfg.Servers)
 	for i := range cfg.Servers {
-		cfg.Servers[i].Variables = maps.Clone(cfg.Servers[i].Variables)
+		// maps.Clone is shallow, and every ServerVariable carries an Enum
+		// slice, so the values have to be rebuilt for the config to be truly
+		// detached from the caller.
+		if variables := cfg.Servers[i].Variables; variables != nil {
+			cloned := make(map[string]ServerVariable, len(variables))
+			for name, variable := range variables {
+				variable.Enum = slices.Clone(variable.Enum)
+				cloned[name] = variable
+			}
+			cfg.Servers[i].Variables = cloned
+		}
 	}
 	cfg.Tags = slices.Clone(cfg.Tags)
 	for i := range cfg.Tags {

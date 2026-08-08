@@ -346,3 +346,52 @@ func Test_OpenAPI_SelfHostedSwaggerAssets(t *testing.T) {
 		require.Contains(t, body, ConfigDefault.SwaggerStandalonePresetURL)
 	})
 }
+
+// Test_OpenAPI_CanonicalPathAdoptsParamNames asserts that an operation folded
+// onto an already-published equivalent template also adopts that template's
+// parameter names. Leaving the original names declared a parameter the path did
+// not reference, making the document invalid.
+func Test_OpenAPI_CanonicalPathAdoptsParamNames(t *testing.T) {
+	t.Parallel()
+
+	spec := fetchSpecWithConfig(t, Config{}, func(app *fiber.App) {
+		app.Get("/files/:id", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
+		app.Post("/files/:name", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
+	})
+
+	paths := requireMap(t, spec["paths"])
+	require.Contains(t, paths, "/files/{id}")
+	require.NotContains(t, paths, "/files/{name}")
+
+	item := requireMap(t, paths["/files/{id}"])
+	for _, method := range []string{"get", "post"} {
+		op := requireMap(t, item[method])
+		params, ok := op["parameters"].([]any)
+		require.Truef(t, ok, "%s has no parameters", method)
+		require.Lenf(t, params, 1, "%s", method)
+		require.Equalf(t, "id", requireMap(t, params[0])["name"], "%s declares the canonical name", method)
+	}
+}
+
+// Test_OpenAPI_ServerVariableEnumDetached asserts the config detaches server
+// variable enum slices from the caller, which maps.Clone alone did not do.
+func Test_OpenAPI_ServerVariableEnumDetached(t *testing.T) {
+	t.Parallel()
+
+	enum := []string{"eu", "us"}
+	app := fiber.New()
+	app.Get("/x", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
+	app.Use(New(Config{
+		Servers: []Server{{
+			URL:       "https://{region}.example.com",
+			Variables: map[string]ServerVariable{"region": {Default: "eu", Enum: enum}},
+		}},
+	}))
+
+	// Mutating the caller's slice after New must not reach the served document.
+	enum[0] = "mutated"
+
+	_, body := specBodyOf(t, app, "/openapi.json")
+	require.Contains(t, body, `"eu"`)
+	require.NotContains(t, body, "mutated")
+}

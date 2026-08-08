@@ -1624,6 +1624,16 @@ func (app *App) ensureAutoHeadRoutes() {
 // ensureAutoHeadRoutesLocked creates the missing auto-HEAD twins and returns
 // private snapshots of them; the caller must hold app.mutex and fire the
 // onRoute hooks for the returned snapshots after releasing it.
+// autoHeadKey identifies a route for auto-HEAD twinning. The domain is part of
+// the identity because same-path routes on different domains are distinct
+// routes, each needing its own twin.
+func autoHeadKey(route *Route) string {
+	if route.domain == "" {
+		return route.path
+	}
+	return route.domain + "\x00" + route.path
+}
+
 func (app *App) ensureAutoHeadRoutesLocked() []*Route {
 	if app.config.DisableHeadAutoRegister {
 		return nil
@@ -1636,12 +1646,16 @@ func (app *App) ensureAutoHeadRoutesLocked() []*Route {
 	}
 
 	headStack := app.stack[headIndex]
+	// Keyed by domain as well as path: routes registered on different domains
+	// stay separate, so each domain's GET needs its own twin. Keying on the
+	// path alone gave the second domain no HEAD route at all, and its HEAD
+	// requests fell through the first domain's wrapper to a 404.
 	existing := make(map[string]struct{}, len(headStack))
 	for _, route := range headStack {
 		if route.mount || route.use {
 			continue
 		}
-		existing[route.path] = struct{}{}
+		existing[autoHeadKey(route)] = struct{}{}
 	}
 
 	if len(app.stack[getIndex]) == 0 {
@@ -1657,7 +1671,7 @@ func (app *App) ensureAutoHeadRoutesLocked() []*Route {
 		if route.mount || route.use {
 			continue
 		}
-		if _, ok := existing[route.path]; ok {
+		if _, ok := existing[autoHeadKey(route)]; ok {
 			continue
 		}
 
@@ -1679,7 +1693,7 @@ func (app *App) ensureAutoHeadRoutesLocked() []*Route {
 		// unchanged while still producing an empty body on the wire.
 
 		headStack = append(headStack, headRoute)
-		existing[route.path] = struct{}{}
+		existing[autoHeadKey(route)] = struct{}{}
 		app.hasRoutesRefreshed = true
 		added = true
 		// Snapshot for the onRoute hooks, which run after the lock is

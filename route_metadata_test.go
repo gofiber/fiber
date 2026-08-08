@@ -827,3 +827,49 @@ func Test_AddParameter_SchemaSelection(t *testing.T) {
 		})
 	})
 }
+
+// Test_AddParameter_ContentSingleMediaType asserts the Parameter Object rule
+// that a content map holds exactly one entry, and that the key is a real media
+// type.
+func Test_AddParameter_ContentSingleMediaType(t *testing.T) {
+	t.Parallel()
+
+	t.Run("two media types panic", func(t *testing.T) {
+		t.Parallel()
+		app := New()
+		require.Panics(t, func() {
+			app.Get("/multi", testHandlerOK).AddParameter(RouteParameter{
+				Name: "filter",
+				In:   "query",
+				Content: map[string]RouteMediaType{
+					MIMEApplicationJSON: {Schema: map[string]any{"type": "object"}},
+					MIMEApplicationXML:  {Schema: map[string]any{"type": "object"}},
+				},
+			})
+		})
+	})
+
+	t.Run("invalid media type panics", func(t *testing.T) {
+		t.Parallel()
+		app := New()
+		require.Panics(t, func() {
+			app.Get("/bad", testHandlerOK).AddParameter(RouteParameter{
+				Name:    "filter",
+				In:      "query",
+				Content: map[string]RouteMediaType{"nonsense": {}},
+			})
+		})
+	})
+
+	t.Run("one media type is accepted", func(t *testing.T) {
+		t.Parallel()
+		app := New()
+		app.Get("/one", testHandlerOK).AddParameter(RouteParameter{
+			Name:    "filter",
+			In:      "query",
+			Content: map[string]RouteMediaType{MIMEApplicationJSON: {Schema: map[string]any{"type": "object"}}},
+		})
+		param := routesFor(app, "/one")[MethodGet].Parameters[0]
+		require.Len(t, param.Content, 1)
+	})
+}

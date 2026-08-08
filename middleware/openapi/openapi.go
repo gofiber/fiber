@@ -709,7 +709,7 @@ func generateSpec(routes []fiber.Route, cfg *Config) openAPISpec {
 	// the rule is per document, not per method — so a later operation on the
 	// same hierarchy joins the path item that already exists instead of
 	// creating a second, forbidden one.
-	hierarchyPaths := make(map[string]string)
+	hierarchyPaths := make(map[string]canonicalPathItem)
 
 	for i := range routes {
 		r := &routes[i]
@@ -759,14 +759,22 @@ func generateSpec(routes []fiber.Route, cfg *Config) openAPISpec {
 				// Another route already published this hierarchy under a
 				// different parameter name; emit into that path item, and drop
 				// the operation if the method is taken there too.
-				if canonical != variant.Path {
-					if _, taken := paths[canonical][methodLower]; taken {
+				if canonical.path != variant.Path {
+					if _, taken := paths[canonical.path][methodLower]; taken {
 						continue
 					}
-					variant.Path = canonical
+					// The operation moves onto the canonical template, so its
+					// parameters have to move with it: declaring "name" under a
+					// path that reads "{id}" leaves the template parameter
+					// undeclared and the document invalid.
+					adoptCanonicalParamNames(&variant, canonical.params)
+					variant.Path = canonical.path
 				}
 			} else {
-				hierarchyPaths[hierarchy] = variant.Path
+				hierarchyPaths[hierarchy] = canonicalPathItem{
+					path:   variant.Path,
+					params: variant.ParamNames,
+				}
 			}
 
 			params := make([]parameter, 0, len(variant.ParamNames))
@@ -1154,6 +1162,58 @@ func convertRouteResponses(routeResponses map[string]fiber.RouteResponse, fallba
 		}
 	}
 	return merged
+}
+
+// canonicalPathItem is the path template already published for a hierarchy,
+// together with the parameter names it declares.
+type canonicalPathItem struct {
+	path   string
+	params []string
+}
+
+// adoptCanonicalParamNames rewrites a variant's path parameter names to those
+// of the canonical template it is being folded into. The two paths share a
+// hierarchy — identical once template names are blanked — so their parameters
+// correspond position by position.
+func adoptCanonicalParamNames(variant *pathVariant, canonical []string) {
+	if len(canonical) != len(variant.ParamNames) {
+		// Defensive: a hierarchy match implies equal counts, so this cannot
+		// normally happen. Renaming on a mismatch would be worse than leaving
+		// the names alone.
+		return
+	}
+
+	renamed := make(map[string]string, len(canonical))
+	for i, old := range variant.ParamNames {
+		renamed[old] = canonical[i]
+	}
+
+	if len(variant.ParamConstraints) > 0 {
+		constraints := make(map[string]string, len(variant.ParamConstraints))
+		for name, raw := range variant.ParamConstraints {
+			if newName, ok := renamed[name]; ok {
+				name = newName
+			}
+			constraints[name] = raw
+		}
+		variant.ParamConstraints = constraints
+	}
+
+	// Aliases map the author's route-pattern names onto emitted names, so they
+	// have to point at the canonical names for AddParameter(in: "path") to keep
+	// matching after the move.
+	if len(variant.PathParamAliases) > 0 {
+		aliases := make(map[string]string, len(variant.PathParamAliases))
+		for raw, emitted := range variant.PathParamAliases {
+			if newName, ok := renamed[emitted]; ok {
+				emitted = newName
+			}
+			aliases[raw] = emitted
+		}
+		variant.PathParamAliases = aliases
+	}
+
+	variant.ParamNames = append([]string(nil), canonical...)
 }
 
 func remapRouteParameters(extras []fiber.RouteParameter, aliases map[string]string, pathParams []string) []fiber.RouteParameter {

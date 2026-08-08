@@ -1139,6 +1139,14 @@ func docAddParameter(param RouteParameter) func(route *Route) {
 	case len(param.Content) > 0:
 		// A Parameter Object carries either a schema or a content map, never
 		// both, so an explicit content map wins over any schema the caller set.
+		// The spec also restricts that map to a single entry, so more than one
+		// media type would generate a document validators reject.
+		if len(param.Content) > 1 {
+			panic("parameter content must contain exactly one media type: " + param.Name)
+		}
+		for mediaType := range param.Content {
+			validateMediaType(utils.TrimSpace(mediaType))
+		}
 		param.Schema = nil
 		param.SchemaRef = ""
 	case param.SchemaRef != "":

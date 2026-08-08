@@ -2291,3 +2291,22 @@ func Test_Domain_Mount_HookError(t *testing.T) {
 		app.Domain("api.example.com").Use("/api", sub)
 	})
 }
+
+// Test_Domain_AutoHead_PerDomain asserts each domain's GET gets its own
+// auto-generated HEAD twin. Keying twins on the path alone left the second
+// domain without one, so its HEAD requests fell through to a 404.
+func Test_Domain_AutoHead_PerDomain(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	app.Domain("a.example.com").Get("/x", func(c Ctx) error { return c.SendString("A") })
+	app.Domain("b.example.com").Get("/x", func(c Ctx) error { return c.SendString("B") })
+
+	for _, host := range []string{"a.example.com", "b.example.com"} {
+		req := httptest.NewRequest(MethodHead, "http://"+host+"/x", http.NoBody)
+		req.Host = host
+		resp, err := app.Test(req)
+		require.NoError(t, err)
+		require.Equalf(t, StatusOK, resp.StatusCode, "HEAD %s", host)
+	}
+}
