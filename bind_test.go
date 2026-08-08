@@ -79,17 +79,96 @@ func Test_returnBindErr_TypedNilFiberError(t *testing.T) {
 
 // go test -run Test_AcquireReleaseBind -v
 func Test_AcquireReleaseBind(t *testing.T) {
+	t.Parallel()
+
 	b := AcquireBind()
 	b.shouldSkipErrHandling = false
 	b.shouldSkipValidation = true
+	b.jsonDecoder = json.Unmarshal
 	b.ctx = &DefaultCtx{}
 	ReleaseBind(b)
 
 	b2 := AcquireBind()
 	require.Nil(t, b2.ctx)
+	require.Nil(t, b2.jsonDecoder)
 	require.True(t, b2.shouldSkipErrHandling)
 	require.False(t, b2.shouldSkipValidation)
 	ReleaseBind(b2)
+}
+
+func Test_Bind_WithJSONDecoder_OverridesAppDecoder(t *testing.T) {
+	t.Parallel()
+
+	appDecoderErr := errors.New("app decoder used")
+	app := New(Config{
+		JSONDecoder: func([]byte, any) error { return appDecoderErr },
+	})
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	t.Cleanup(func() { app.ReleaseCtx(c) })
+	c.Request().Header.SetContentType(MIMEApplicationJSON)
+	c.Request().SetBodyString(`{"name":"Fiber"}`)
+
+	var result struct {
+		Name string `json:"name"`
+	}
+	err := c.Bind().WithJSONDecoder(json.Unmarshal).Body(&result)
+
+	require.NoError(t, err)
+	require.Equal(t, "Fiber", result.Name)
+}
+
+func Test_Bind_WithJSONDecoder_NilUsesAppDecoder(t *testing.T) {
+	t.Parallel()
+
+	appDecoderErr := errors.New("app decoder used")
+	app := New(Config{
+		JSONDecoder: func([]byte, any) error { return appDecoderErr },
+	})
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	t.Cleanup(func() { app.ReleaseCtx(c) })
+	c.Request().SetBodyString(`{"name":"Fiber"}`)
+
+	var result struct {
+		Name string `json:"name"`
+	}
+	err := c.Bind().WithJSONDecoder(nil).JSON(&result)
+
+	require.ErrorIs(t, err, appDecoderErr)
+}
+
+func Test_Bind_WithJSONDecoder_RejectsUnknownFields(t *testing.T) {
+	t.Parallel()
+
+	strictDecoder := func(data []byte, out any) error {
+		decoder := json.NewDecoder(bytes.NewReader(data))
+		decoder.DisallowUnknownFields()
+		return decoder.Decode(out)
+	}
+
+	for _, bindBody := range []struct {
+		bind func(*Bind, any) error
+		name string
+	}{
+		{name: "body", bind: func(b *Bind, out any) error { return b.Body(out) }},
+		{name: "all", bind: func(b *Bind, out any) error { return b.All(out) }},
+	} {
+		t.Run(bindBody.name, func(t *testing.T) {
+			t.Parallel()
+
+			app := New()
+			c := app.AcquireCtx(&fasthttp.RequestCtx{})
+			t.Cleanup(func() { app.ReleaseCtx(c) })
+			c.Request().Header.SetContentType(MIMEApplicationJSON)
+			c.Request().SetBodyString(`{"name":"Fiber","unknown":true}`)
+
+			var result struct {
+				Name string `json:"name"`
+			}
+			err := bindBody.bind(c.Bind().WithJSONDecoder(strictDecoder), &result)
+
+			require.ErrorContains(t, err, `unknown field "unknown"`)
+		})
+	}
 }
 
 // go test -run Test_BindError -v
