@@ -452,3 +452,116 @@ func Test_OpenAPI_CanonicalPathKeepsConstraintSchema(t *testing.T) {
 	// The constraint traveled with the rename.
 	require.Equal(t, map[string]any{"type": "integer"}, requireMap(t, param["schema"]))
 }
+
+// Test_OpenAPI_DynamicMountPrefix covers middleware mounted on a pattern whose
+// segment count varies. Truncating the prefix at the first optional or greedy
+// segment pointed the handler at the wrong target, so it answered 404 on paths
+// it was mounted to serve.
+func Test_OpenAPI_DynamicMountPrefix(t *testing.T) {
+	t.Parallel()
+
+	serve := func(t *testing.T, mount, request string) int {
+		t.Helper()
+		app := fiber.New()
+		app.Get("/hello", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
+		app.Use(mount, New())
+		status, _ := specBodyOf(t, app, request)
+		return status
+	}
+
+	cases := []struct {
+		name    string
+		mount   string
+		request string
+		status  int
+	}{
+		{"optional segment present", "/:tenant?", "/acme/openapi.json", fiber.StatusOK},
+		{"optional segment omitted", "/:tenant?", "/openapi.json", fiber.StatusOK},
+		{"optional segment serves the ui too", "/:tenant?", "/acme/swagger", fiber.StatusOK},
+		// One optional segment cannot consume two, so this is not a target.
+		{"beyond the segment bound", "/:tenant?", "/a/b/openapi.json", fiber.StatusNotFound},
+		{"required parameter", "/:tenant", "/acme/openapi.json", fiber.StatusOK},
+		{"optional between literals", "/api/:tenant?/docs", "/api/acme/docs/openapi.json", fiber.StatusOK},
+		{"greedy segment", "/files/*", "/files/a/b/openapi.json", fiber.StatusOK},
+		// Under a greedy mount every split is tried and none is a target.
+		{"greedy segment with no target", "/files/*", "/files/a/b", fiber.StatusNotFound},
+		// No split of a "+" mount leaves a target here, so resolution reports
+		// nothing and the static truncation ("/files") still serves it.
+		{"greedy segment falls back to the static prefix", "/files/+", "/files/openapi.json", fiber.StatusOK},
+		// Static mounts keep their exact-path behavior.
+		{"static mount", "/v1", "/v1/openapi.json", fiber.StatusOK},
+		{"static mount is not global", "/v1", "/openapi.json", fiber.StatusNotFound},
+		{"global mount", "/", "/openapi.json", fiber.StatusOK},
+		{"global mount ignores nested lookalikes", "/", "/x/openapi.json", fiber.StatusNotFound},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, tc.status, serve(t, tc.mount, tc.request))
+		})
+	}
+}
+
+// Test_PrefixSegmentBounds pins how many request segments each mount shape can
+// consume; -1 means a greedy segment leaves it unbounded.
+func Test_PrefixSegmentBounds(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		pattern string
+		lowest  int
+		highest int
+		dynamic bool
+	}{
+		{"/", 0, 0, false},
+		{"/v1", 1, 1, false},
+		{"/v1/api", 2, 2, false},
+		{"/:tenant", 1, 1, true},
+		{"/:tenant?", 0, 1, true},
+		{"/api/:tenant?/docs", 2, 3, true},
+		{"/files/*", 1, -1, true},
+		{"/files/+", 2, -1, true},
+		// A constraint is not a parameter marker of its own.
+		{"/:id<int>", 1, 1, true},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.pattern, func(t *testing.T) {
+			t.Parallel()
+			minSegments, maxSegments, dynamic := prefixSegmentBounds(tc.pattern)
+			require.Equal(t, tc.lowest, minSegments, "min")
+			require.Equal(t, tc.highest, maxSegments, "max")
+			require.Equal(t, tc.dynamic, dynamic, "dynamic")
+		})
+	}
+}
+
+// Test_PathPrefixSegments covers the split helper, including asking for more
+// segments than the path has.
+func Test_PathPrefixSegments(t *testing.T) {
+	t.Parallel()
+
+	prefix, ok := pathPrefixSegments("/acme/openapi.json", 1)
+	require.True(t, ok)
+	require.Equal(t, "/acme", prefix)
+
+	prefix, ok = pathPrefixSegments("/a/b/c", 2)
+	require.True(t, ok)
+	require.Equal(t, "/a/b", prefix)
+
+	prefix, ok = pathPrefixSegments("/acme/openapi.json", 0)
+	require.True(t, ok)
+	require.Empty(t, prefix)
+
+	_, ok = pathPrefixSegments("/acme/openapi.json", 2)
+	require.False(t, ok)
+
+	// An empty path has no segment to give.
+	_, ok = pathPrefixSegments("", 1)
+	require.False(t, ok)
+
+	require.Equal(t, 0, countPathSegments("/"))
+	require.Equal(t, 1, countPathSegments("/a"))
+	require.Equal(t, 3, countPathSegments("/a/b/c"))
+}

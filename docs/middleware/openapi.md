@@ -583,6 +583,12 @@ prefix. For example, `app.Group("/v1").Use(openapi.New())` serves the specificat
 The same prefix resolution applies to `UIPath`, so `app.Group("/v1").Use(openapi.New())` also serves the Swagger UI page at
 `/v1/swagger` by default.
 
+A prefix may itself be parameterized. `app.Use("/:tenant?", openapi.New())` serves
+`/acme/openapi.json` and `/openapi.json`, and `app.Use("/files/*", openapi.New())`
+serves the document under whatever the wildcard matched. The prefix is resolved
+per request against the number of segments the pattern can consume, so a mount
+that can take at most one segment does not answer two levels down.
+
 The middleware can also be pinned to an exact route — `app.Get("/openapi.json", openapi.New())` or
 `app.Use("/v1/openapi.json", openapi.New())` serves the specification at that registered path. Note that an exact-route
 mount serves only that one endpoint, so the Swagger UI needs its own registration (or a prefix `Use`) to be reachable.

@@ -225,6 +225,13 @@ func resolveTargets(c fiber.Ctx, specPath, uiPath string, equal func(a, b string
 	}
 
 	prefix := routePrefix(route.Path, c.Path())
+	// A mount whose pattern has optional or greedy segments consumes a varying
+	// number of request segments, so the static truncation above cannot say
+	// where the mount ends. The router has already matched this request, so the
+	// only open question is the split — resolve it against the request.
+	if resolved, ok := resolveDynamicMountPrefix(route.Path, c.Path(), specPath, uiPath, equal); ok {
+		prefix = resolved
+	}
 	switch {
 	case specPath != "" && hasSuffix(prefix, specPath, equal):
 		// e.g. app.Use("/v1/openapi.json", openapi.New()): the mount itself is
@@ -419,6 +426,119 @@ func normalizePathHierarchy(path string) string {
 // values are taken from the request path, consuming one request segment per
 // pattern segment; greedy wildcards and optional parameters make the prefix
 // length ambiguous and end it.
+// resolveDynamicMountPrefix picks the mount prefix for a request served by a
+// middleware mounted on a pattern with optional or greedy segments.
+//
+// Such a pattern consumes a variable number of leading segments, so a static
+// walk of the pattern cannot say where the mount ends and the served path
+// begins — and truncating at the first variable segment left the middleware
+// comparing the request against the wrong target, answering 404 on a path it
+// was mounted to serve.
+//
+// The route has already matched, so the pattern does not need re-matching: only
+// the split point is unknown. Every split the pattern's segment bounds allow is
+// tried, shortest first, and the one whose remainder is exactly a target wins.
+// Reporting no split leaves the caller with the static truncation.
+func resolveDynamicMountPrefix(pattern, requestPath, specPath, uiPath string, equal func(a, b string) bool) (string, bool) {
+	minSegments, maxSegments, dynamic := prefixSegmentBounds(pattern)
+	if !dynamic {
+		// A static mount is its own prefix, and its escaped form still needs
+		// unescaping, which routePrefix handles.
+		return "", false
+	}
+
+	if maxSegments < 0 || maxSegments > countPathSegments(requestPath) {
+		// A greedy segment is unbounded; no split can consume more segments
+		// than the request has.
+		maxSegments = countPathSegments(requestPath)
+	}
+
+	for n := minSegments; n <= maxSegments; n++ {
+		candidate, ok := pathPrefixSegments(requestPath, n)
+		if !ok {
+			break
+		}
+		if specPath != "" && equal(candidate+specPath, requestPath) {
+			return candidate, true
+		}
+		if uiPath != "" && equal(candidate+uiPath, requestPath) {
+			return candidate, true
+		}
+	}
+	return "", false
+}
+
+// prefixSegmentBounds reports how many leading request segments the mount
+// pattern can consume, and whether it is dynamic at all. A greedy segment makes
+// the maximum unbounded, reported as -1.
+func prefixSegmentBounds(pattern string) (minSegments, maxSegments int, dynamic bool) { //nolint:nonamedreturns // three ints and a bool read better named
+	pattern = utils.TrimRight(pattern, '/')
+	if pattern == "" {
+		return 0, 0, false
+	}
+
+	greedy := false
+	for seg := range strings.SplitSeq(strings.TrimPrefix(pattern, "/"), "/") {
+		// Classified by routing tokens only, so a constraint or an escaped
+		// character never reads as a parameter.
+		tokens := routeTokens(seg)
+		switch {
+		case strings.ContainsAny(tokens, "*+"):
+			// "+" needs at least one segment; "*" may match none.
+			if strings.Contains(tokens, "+") {
+				minSegments++
+			}
+			greedy = true
+			dynamic = true
+		case strings.HasSuffix(tokens, "?"):
+			// Optional: zero or one segment.
+			maxSegments++
+			dynamic = true
+		default:
+			if strings.Contains(tokens, ":") {
+				dynamic = true
+			}
+			minSegments++
+			maxSegments++
+		}
+	}
+
+	if greedy {
+		return minSegments, -1, true
+	}
+	return minSegments, maxSegments, dynamic
+}
+
+// countPathSegments counts the slash-separated segments of a request path.
+func countPathSegments(requestPath string) int {
+	trimmed := strings.Trim(requestPath, "/")
+	if trimmed == "" {
+		return 0
+	}
+	return strings.Count(trimmed, "/") + 1
+}
+
+// pathPrefixSegments returns the leading n segments of requestPath, reporting
+// false when it does not have that many segments to give.
+func pathPrefixSegments(requestPath string, n int) (string, bool) {
+	if n <= 0 {
+		return "", true
+	}
+
+	idx := 0
+	for range n {
+		if idx+1 > len(requestPath) {
+			return "", false
+		}
+		next := strings.IndexByte(requestPath[idx+1:], '/')
+		if next < 0 {
+			return "", false
+		}
+		idx += 1 + next
+	}
+	return requestPath[:idx], true
+}
+
 func routePrefix(pattern, requestPath string) string {
 	pattern = utils.TrimRight(pattern, '/')
 	if pattern == "" {
