@@ -59,7 +59,7 @@ func (app *App) mount(prefix string, subApp *App) Router {
 
 	// register mounted group
 	mountGroup := &Group{Prefix: prefix, app: subApp}
-	app.register([]string{methodUse}, prefix, mountGroup)
+	app.register([]string{methodUse}, prefix, mountGroup, "")
 
 	// Execute onMount hooks
 	if err := subApp.hooks.executeOnMountHooks(app); err != nil {
@@ -91,7 +91,7 @@ func (grp *Group) mount(prefix string, subApp *App) Router {
 
 	// register mounted group
 	mountGroup := &Group{Prefix: groupPath, app: subApp}
-	grp.app.register([]string{methodUse}, groupPath, mountGroup)
+	grp.app.register([]string{methodUse}, groupPath, mountGroup, "")
 
 	// Execute onMount hooks
 	if err := subApp.hooks.executeOnMountHooks(grp.app); err != nil {
@@ -195,20 +195,30 @@ func (app *App) processSubAppsRoutes() {
 				continue
 			}
 
+			// Cloned under the sub-app's lock, which registration and the doc
+			// helpers also take. Lock order is parent→child, so no cycle.
+			subApp := route.group.app
+			subApp.mutex.Lock()
+
 			// Create a slice to hold the sub-app's routes
-			subRoutes := make([]*Route, len(route.group.app.stack[m]))
+			subRoutes := make([]*Route, len(subApp.stack[m]))
 
 			// Iterate over the sub-app's routes
-			for j, subAppRoute := range route.group.app.stack[m] {
+			for j, subAppRoute := range subApp.stack[m] {
 				// Clone the sub-app's route
 				subAppRouteClone := app.copyRoute(subAppRoute)
 
+				// The clone's registration ID comes from another counter and
+				// could collide, so clear it rather than let helpers match.
+				subAppRouteClone.regID = 0
+
 				// Add the parent route's path as a prefix to the sub-app's route
-				app.addPrefixToRoute(route.path, subAppRouteClone, route.group.app.config.RegexHandler, route.group.app.customConstraints...)
+				app.addPrefixToRoute(route.path, subAppRouteClone, subApp.config.RegexHandler, subApp.customConstraints...)
 
 				// Add the cloned sub-app's route to the slice of sub-app routes
 				subRoutes[j] = subAppRouteClone
 			}
+			subApp.mutex.Unlock()
 
 			// Insert the sub-app's routes into the parent app's stack
 			newStack := make([]*Route, len(app.stack[m])+len(subRoutes)-1)
@@ -221,6 +231,7 @@ func (app *App) processSubAppsRoutes() {
 
 			// Mark the parent app's routes as refreshed
 			app.hasRoutesRefreshed = true
+			app.bumpRoutesRevision()
 			// update stackLen after appending subRoutes to app.stack[m]
 			stackLen = len(app.stack[m])
 		}

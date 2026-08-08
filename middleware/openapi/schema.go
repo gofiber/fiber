@@ -1,0 +1,472 @@
+package openapi
+
+import (
+	"encoding"
+	"encoding/json"
+	"reflect"
+	"regexp"
+	"strconv"
+	"strings"
+	"time"
+	"unicode"
+
+	"github.com/gofiber/utils/v2"
+)
+
+// SchemaOf generates an OpenAPI JSON Schema from a Go value using reflection.
+// It inspects struct fields, their types, and json tags to produce a schema
+// suitable for use with route helpers like ResponseWithExample, RequestBodyWithExample,
+// and ParameterWithExample, or for inclusion in Config.Components.
+//
+// Supported types:
+//   - Primitives: string, bool, int*, uint*, float*
+//   - time.Time → {"type": "string", "format": "date-time"}
+//   - []byte → {"type": "string", "format": "byte"} (Go marshals it as base64)
+//   - Slices/arrays → {"type": "array", "items": {...}}
+//   - Maps with string keys → {"type": "object", "additionalProperties": {...}}
+//   - Structs → {"type": "object", "properties": {...}, "required": [...]}
+//   - Pointers → schema of the pointed-to type (nullable fields are not required)
+//   - interface{}/any → {} (accepts any value)
+//   - Types implementing json.Marshaler → {} (custom output cannot be predicted)
+//   - Types implementing encoding.TextMarshaler → {"type": "string"}
+//
+// Embedded structs and embedded pointers to structs are flattened into the
+// parent object (matching encoding/json). Self-referential or mutually
+// recursive structs are handled by emitting a bare {"type": "object"} at the
+// point the cycle repeats, so reflection never recurses forever. Fields whose
+// type has no JSON representation (chan, func, complex, ...) are skipped.
+//
+// Struct field tags:
+//   - `json:"name"` sets the property name; `json:"-"` skips the field
+//   - `json:",omitempty"` and `json:",omitzero"` make the field optional (not
+//     added to required)
+//   - `openapi:"description:text"` sets the property description
+//   - `openapi:"example:value"` sets the property example
+//   - `openapi:"format:fmt"` overrides the format (e.g., "email", "uuid")
+//   - `openapi:"enum:a|b|c"` sets the enum values
+//
+// openapi directives are comma-separated and a value may contain commas and
+// colons; the only limitation is that a value cannot contain a comma immediately
+// followed by another directive key (e.g. ",description:").
+//
+// Example:
+//
+//	type User struct {
+//	    ID    int    `json:"id"`
+//	    Name  string `json:"name"`
+//	    Email string `json:"email" openapi:"format:email,description:User email"`
+//	}
+//	schema := openapi.SchemaOf(User{})
+//	// Returns: map[string]any{
+//	//   "type": "object",
+//	//   "properties": map[string]any{
+//	//     "id":    map[string]any{"type": "integer"},
+//	//     "name":  map[string]any{"type": "string"},
+//	//     "email": map[string]any{"type": "string", "format": "email", "description": "User email"},
+//	//   },
+//	//   "required": []string{"id", "name", "email"},
+//	// }
+func SchemaOf(v any) map[string]any {
+	t := reflect.TypeOf(v)
+	if t == nil {
+		return nil
+	}
+	return typeSchema(t, nil)
+}
+
+var (
+	timeType          = reflect.TypeFor[time.Time]()
+	jsonNumberType    = reflect.TypeFor[json.Number]()
+	jsonMarshalerType = reflect.TypeFor[json.Marshaler]()
+	textMarshalerType = reflect.TypeFor[encoding.TextMarshaler]()
+)
+
+// implementsMarshaler reports whether t (or *t) implements the interface, in
+// which case encoding/json bypasses ordinary field reflection.
+func implementsMarshaler(t, iface reflect.Type) bool {
+	return t.Implements(iface) || reflect.PointerTo(t).Implements(iface)
+}
+
+// maxPointerDepth bounds pointer dereferencing so a self-referential pointer
+// type cannot spin forever.
+const maxPointerDepth = 32
+
+// markVisited records t as being expanded, allocating the set on first use, and
+// returns it so callers can pass it down the recursion.
+func markVisited(visited map[reflect.Type]bool, t reflect.Type) map[reflect.Type]bool {
+	if visited == nil {
+		visited = make(map[reflect.Type]bool)
+	}
+	visited[t] = true
+	return visited
+}
+
+// typeSchema builds the schema for a single type. visited tracks the composite
+// types currently on the recursion stack so that cyclic types terminate.
+func typeSchema(t reflect.Type, visited map[reflect.Type]bool) map[string]any {
+	// A self-referential pointer type (type P *P) never stops being a pointer,
+	// so bound the walk instead of dereferencing forever.
+	for range maxPointerDepth {
+		if t.Kind() != reflect.Pointer {
+			break
+		}
+		t = t.Elem()
+	}
+	if t.Kind() == reflect.Pointer {
+		return map[string]any{}
+	}
+
+	if t == timeType {
+		return map[string]any{schemaKeyType: schemaTypeString, schemaKeyFormat: "date-time"}
+	}
+
+	// json.Number is a string kind but marshals as a bare JSON number.
+	if t == jsonNumberType {
+		return map[string]any{schemaKeyType: schemaTypeNumber}
+	}
+
+	// Custom JSON marshaling produces output field reflection cannot predict,
+	// so accept any value.
+	if implementsMarshaler(t, jsonMarshalerType) {
+		return map[string]any{}
+	}
+	// A value-receiver text marshaler always yields a string; when only *T
+	// implements it, encoding/json may fall back and the shape is unknowable.
+	if t.Implements(textMarshalerType) {
+		return map[string]any{schemaKeyType: schemaTypeString}
+	}
+	if reflect.PointerTo(t).Implements(textMarshalerType) {
+		return map[string]any{}
+	}
+
+	switch t.Kind() {
+	case reflect.String:
+		return map[string]any{schemaKeyType: schemaTypeString}
+	case reflect.Bool:
+		return map[string]any{schemaKeyType: schemaTypeBoolean}
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
+		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+		return map[string]any{schemaKeyType: schemaTypeInteger}
+	case reflect.Float32, reflect.Float64:
+		return map[string]any{schemaKeyType: schemaTypeNumber}
+	case reflect.Slice, reflect.Array:
+		// Go marshals []byte (a slice of uint8) as a base64-encoded string.
+		// Fixed-size byte arrays are still marshaled as arrays of numbers.
+		if t.Kind() == reflect.Slice && t.Elem().Kind() == reflect.Uint8 {
+			return map[string]any{schemaKeyType: schemaTypeString, schemaKeyFormat: "byte"}
+		}
+		// A recursive element type (type L []L) would expand forever.
+		if visited[t] {
+			return map[string]any{schemaKeyType: "array"}
+		}
+		visited = markVisited(visited, t)
+		items := typeSchema(t.Elem(), visited)
+		delete(visited, t)
+		if items == nil {
+			// With no JSON representation for the element there is none for the
+			// slice: encoding/json fails outright rather than emitting one.
+			return nil
+		}
+		return map[string]any{schemaKeyType: "array", "items": items}
+	case reflect.Map:
+		if t.Key().Kind() != reflect.String {
+			return map[string]any{schemaKeyType: schemaTypeObject}
+		}
+		// A recursive element type (type M map[string]M) would expand forever.
+		if visited[t] {
+			return map[string]any{schemaKeyType: schemaTypeObject}
+		}
+		visited = markVisited(visited, t)
+		additional := typeSchema(t.Elem(), visited)
+		delete(visited, t)
+		if additional == nil {
+			// See the slice branch: an unmarshalable element makes the whole
+			// map unmarshalable.
+			return nil
+		}
+		return map[string]any{schemaKeyType: schemaTypeObject, "additionalProperties": additional}
+	case reflect.Struct:
+		return structSchema(t, visited)
+	case reflect.Interface:
+		// An interface value (e.g. any) accepts any JSON value.
+		return map[string]any{}
+	default:
+		// Unsupported kinds (chan, func, complex, uintptr, unsafe.Pointer) have
+		// no JSON representation.
+		return nil
+	}
+}
+
+func structSchema(t reflect.Type, visited map[reflect.Type]bool) map[string]any {
+	// Break reference cycles: if this struct type is already being expanded
+	// further up the stack, emit a bare object instead of recursing forever.
+	if visited[t] {
+		return map[string]any{schemaKeyType: schemaTypeObject}
+	}
+	if visited == nil {
+		visited = make(map[reflect.Type]bool)
+	}
+	visited[t] = true
+	defer delete(visited, t)
+
+	properties := make(map[string]any)
+	var required []string
+
+	// Resolved level by level like encoding/json: a name is taken at its
+	// shallowest depth, where one tagged field wins or the name is dropped.
+	type fieldCandidate struct {
+		schema   map[string]any
+		required bool
+		tagged   bool
+	}
+	type embedRef struct {
+		t reflect.Type
+		// optional marks fields reached through a pointer or omitempty embed:
+		// not guaranteed present, so never required on the parent.
+		optional bool
+	}
+
+	level := []embedRef{{t: t}}
+	// expanded tracks types already flattened shallower, which could otherwise
+	// recurse forever. Same-level duplicates must still collide and drop.
+	expanded := map[reflect.Type]bool{t: true}
+	dropped := make(map[string]bool)
+
+	for len(level) > 0 {
+		var nextLevel []embedRef
+		candidates := make(map[string][]fieldCandidate)
+		var order []string
+
+		for _, ref := range level {
+			for i := range ref.t.NumField() {
+				field := ref.t.Field(i)
+
+				tagInfo := parseJSONTag(&field)
+				if tagInfo.skip {
+					continue
+				}
+				name := tagInfo.name
+
+				embeddedType := field.Type
+				for embeddedType.Kind() == reflect.Pointer {
+					embeddedType = embeddedType.Elem()
+				}
+				isEmbeddedStruct := field.Anonymous && embeddedType.Kind() == reflect.Struct && embeddedType != timeType && name == ""
+
+				// encoding/json ignores unexported fields but still promotes
+				// those of an embedded unexported struct.
+				if !field.IsExported() && !isEmbeddedStruct {
+					continue
+				}
+
+				if isEmbeddedStruct {
+					if expanded[embeddedType] {
+						continue
+					}
+					nextLevel = append(nextLevel, embedRef{
+						t:        embeddedType,
+						optional: ref.optional || tagInfo.omit || field.Type.Kind() == reflect.Pointer,
+					})
+					continue
+				}
+
+				if name == "" {
+					name = field.Name
+				}
+
+				fieldSchema := typeSchema(field.Type, visited)
+				if fieldSchema == nil {
+					// The field type has no JSON representation; skip it
+					// entirely rather than emitting a meaningless empty schema.
+					continue
+				}
+
+				// The ",string" option makes encoding/json wrap the value in a
+				// JSON string, so the documented type must be string as well.
+				if tagInfo.asString {
+					switch fieldSchema[schemaKeyType] {
+					case schemaTypeInteger, schemaTypeNumber, schemaTypeBoolean:
+						fieldSchema[schemaKeyType] = schemaTypeString
+					default:
+					}
+				}
+
+				applyOpenAPITag(&field, fieldSchema)
+
+				if _, ok := candidates[name]; !ok {
+					order = append(order, name)
+				}
+				candidates[name] = append(candidates[name], fieldCandidate{
+					schema:   fieldSchema,
+					required: !tagInfo.omit && field.Type.Kind() != reflect.Pointer && !ref.optional,
+					tagged:   tagInfo.name != "",
+				})
+			}
+		}
+
+		for _, name := range order {
+			if dropped[name] {
+				continue
+			}
+			if _, exists := properties[name]; exists {
+				continue
+			}
+			cands := candidates[name]
+			chosen := 0
+			if len(cands) > 1 {
+				// Exactly one json-tagged candidate dominates; otherwise the
+				// name is ambiguous at this depth and dropped for good.
+				taggedIdx, taggedCount := -1, 0
+				for i := range cands {
+					if cands[i].tagged {
+						taggedIdx = i
+						taggedCount++
+					}
+				}
+				if taggedCount != 1 {
+					dropped[name] = true
+					continue
+				}
+				chosen = taggedIdx
+			}
+			properties[name] = cands[chosen].schema
+			if cands[chosen].required {
+				required = append(required, name)
+			}
+		}
+
+		for _, ref := range nextLevel {
+			expanded[ref.t] = true
+		}
+		level = nextLevel
+	}
+
+	schema := map[string]any{
+		schemaKeyType: schemaTypeObject,
+		"properties":  properties,
+	}
+	if len(required) > 0 {
+		schema["required"] = required
+	}
+	return schema
+}
+
+// jsonTagInfo carries the parsed pieces of a field's json tag.
+type jsonTagInfo struct {
+	name     string
+	omit     bool
+	skip     bool
+	asString bool
+}
+
+func parseJSONTag(field *reflect.StructField) jsonTagInfo {
+	tag := field.Tag.Get("json")
+	if tag == "" {
+		return jsonTagInfo{}
+	}
+	if tag == "-" {
+		return jsonTagInfo{skip: true}
+	}
+	name, opts, _ := strings.Cut(tag, ",")
+	// encoding/json ignores a tag name containing reserved characters and falls
+	// back to the Go field name; mirror that so the schema matches the wire format.
+	if !isValidJSONTagName(name) {
+		name = ""
+	}
+	info := jsonTagInfo{name: name}
+	for opts != "" {
+		var opt string
+		opt, opts, _ = strings.Cut(opts, ",")
+		switch opt {
+		case "omitempty", "omitzero":
+			info.omit = true
+		case "string":
+			info.asString = true
+		default:
+		}
+	}
+	return info
+}
+
+// isValidJSONTagName mirrors encoding/json's isValidTag: letters, digits and the
+// listed punctuation are allowed; backslash, quote and an empty name are not.
+func isValidJSONTagName(name string) bool {
+	if name == "" {
+		return false
+	}
+	for _, c := range name {
+		switch {
+		case strings.ContainsRune("!#$%&()*+-./:;<=>?@[]^_{|}~ ", c):
+			// Reserved punctuation is allowed inside a tag name.
+		case !unicode.IsLetter(c) && !unicode.IsDigit(c):
+			return false
+		}
+	}
+	return true
+}
+
+// openapiDirectiveRe locates each directive's start. Its value runs from the
+// colon to the next directive, so values may contain commas and colons.
+var openapiDirectiveRe = regexp.MustCompile(`(?:^|,)\s*(description|example|format|enum):`)
+
+func applyOpenAPITag(field *reflect.StructField, schema map[string]any) {
+	tag := field.Tag.Get("openapi")
+	if tag == "" {
+		return
+	}
+
+	locs := openapiDirectiveRe.FindAllStringSubmatchIndex(tag, -1)
+	for i, loc := range locs {
+		key := tag[loc[2]:loc[3]]
+		valStart := loc[1]
+		valEnd := len(tag)
+		if i+1 < len(locs) {
+			valEnd = locs[i+1][0]
+		}
+		val := utils.TrimSpace(tag[valStart:valEnd])
+
+		switch key {
+		case "description":
+			schema["description"] = val
+		case "example":
+			schema["example"] = inferExampleValue(val, schema)
+		case "format":
+			schema["format"] = val
+		case "enum":
+			values := strings.Split(val, "|")
+			enumSlice := make([]any, len(values))
+			for j, v := range values {
+				// Convert each value to the field's type so an integer field
+				// does not end up with a string-only enum no value can satisfy.
+				enumSlice[j] = inferExampleValue(utils.TrimSpace(v), schema)
+			}
+			schema["enum"] = enumSlice
+		default:
+			// Unreachable: the regexp only matches the keys handled above.
+		}
+	}
+}
+
+func inferExampleValue(val string, schema map[string]any) any {
+	schemaType, ok := schema[schemaKeyType].(string)
+	if !ok {
+		return val
+	}
+	switch schemaType {
+	case schemaTypeInteger:
+		if n, err := utils.ParseInt(val); err == nil {
+			return n
+		}
+	case schemaTypeNumber:
+		if f, err := utils.ParseFloat64(val); err == nil {
+			return f
+		}
+	case schemaTypeBoolean:
+		if b, err := strconv.ParseBool(val); err == nil {
+			return b
+		}
+	default:
+		// String and other types use the raw string value.
+	}
+	return val
+}
