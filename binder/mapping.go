@@ -113,10 +113,13 @@ func parseToStruct(aliasTag string, out any, data map[string][]string, files ...
 	// Get decoder from pool
 	pool := getDecoderPool(aliasTag)
 	schemaDecoder := pool.Get().(*schema.Decoder) //nolint:errcheck,forcetypeassert // not needed
-	defer pool.Put(schemaDecoder)
+	defer func() {
+		// Decode caches parsed paths, which originate from untrusted request keys.
+		// Clear them before pooling the decoder so they cannot accumulate across requests.
+		schemaDecoder.SetAliasTag(aliasTag)
+		pool.Put(schemaDecoder)
+	}()
 
-	// Alias tag is baked in at build time (see decoderBuilder); setting it here
-	// would reset the decoder's type cache on every request.
 	if err := schemaDecoder.Decode(out, data, files...); err != nil {
 		return fmt.Errorf("%w", err)
 	}
