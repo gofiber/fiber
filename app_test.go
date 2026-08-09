@@ -1606,6 +1606,62 @@ func Test_App_ShutdownWithTimeout_WaitsForStreamedBody(t *testing.T) {
 	require.True(t, <-streamDone, "shutdown returned while the body was still being written")
 }
 
+// Test_App_Shutdown_ContextNotCanceled pins #3431: c.Context() stays usable for
+// in-flight work during graceful shutdown (unlike RequestCtx.Done()).
+func Test_App_Shutdown_ContextNotCanceled(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	handlerStarted := make(chan struct{})
+	// Results observed inside the handler after shutdown has begun.
+	contextErr := make(chan error, 1)
+	requestCtxCanceled := make(chan bool, 1)
+
+	app.Get("/slow", func(c Ctx) error {
+		close(handlerStarted)
+
+		// Wait long enough for Shutdown to start and close fasthttp's done channel.
+		select {
+		case <-c.Context().Done():
+			contextErr <- c.Context().Err()
+		case <-time.After(500 * time.Millisecond):
+			contextErr <- nil
+		}
+
+		select {
+		case <-c.RequestCtx().Done():
+			requestCtxCanceled <- true
+		case <-time.After(50 * time.Millisecond):
+			requestCtxCanceled <- false
+		}
+
+		return c.SendString("ok")
+	})
+
+	ln := fasthttputil.NewInmemoryListener()
+	go func() {
+		assert.NoError(t, app.Listener(ln))
+	}()
+	time.Sleep(50 * time.Millisecond)
+
+	go func() {
+		conn, err := ln.Dial()
+		assert.NoError(t, err)
+		_, err = conn.Write([]byte("GET /slow HTTP/1.1\r\nHost: example.com\r\n\r\n"))
+		assert.NoError(t, err)
+		// Drain response so the connection can finish cleanly.
+		_, copyErr := io.Copy(io.Discard, conn)
+		assert.NoError(t, copyErr)
+		assert.NoError(t, conn.Close())
+	}()
+
+	<-handlerStarted
+	require.NoError(t, app.ShutdownWithTimeout(2*time.Second))
+
+	require.NoError(t, <-contextErr, "c.Context() must not be canceled by graceful shutdown")
+	require.True(t, <-requestCtxCanceled, "RequestCtx.Done() is closed when the server shuts down")
+}
+
 func Test_App_ShutdownWithContext(t *testing.T) {
 	t.Parallel()
 
