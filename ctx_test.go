@@ -5924,6 +5924,78 @@ func Test_Ctx_FullPath_Middleware(t *testing.T) {
 	require.Equal(t, []string{"/", "/test"}, recorded)
 }
 
+// go test -run Test_Ctx_MatchedRoute_Middleware
+func Test_Ctx_MatchedRoute_Middleware(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+
+	var recorded []string
+
+	app.Use(func(c Ctx) error {
+		if route := c.MatchedRoute(); route != nil {
+			recorded = append(recorded, route.Path, route.Name)
+		}
+		return c.Next()
+	})
+
+	app.Get("/users/:id", func(c Ctx) error {
+		require.Equal(t, "/users/:id", c.MatchedRoute().Path)
+		require.Equal(t, "user.show", c.MatchedRoute().Name)
+		return c.SendStatus(StatusOK)
+	}).Name("user.show")
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/users/42", http.NoBody))
+	require.NoError(t, err, "app.Test(req)")
+	defer func() { require.NoError(t, resp.Body.Close()) }()
+
+	require.Equal(t, StatusOK, resp.StatusCode)
+	require.Equal(t, []string{"/users/:id", "user.show"}, recorded)
+}
+
+// go test -run Test_Ctx_MatchedRoute_NotFound
+func Test_Ctx_MatchedRoute_NotFound(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+
+	app.Use(func(c Ctx) error {
+		require.Nil(t, c.MatchedRoute())
+		return c.Next()
+	})
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/not-found", http.NoBody))
+	require.NoError(t, err, "app.Test(req)")
+	defer func() { require.NoError(t, resp.Body.Close()) }()
+
+	require.Equal(t, StatusNotFound, resp.StatusCode)
+}
+
+// go test -run Test_Ctx_MatchedRoute_SkipUnmatchedRoutes
+func Test_Ctx_MatchedRoute_SkipUnmatchedRoutes(t *testing.T) {
+	t.Parallel()
+
+	app := New(Config{SkipUnmatchedRoutes: true})
+
+	var path string
+	app.Use(func(c Ctx) error {
+		if route := c.MatchedRoute(); route != nil {
+			path = route.Path
+		}
+		return c.Next()
+	})
+	app.Get("/items/:id", func(c Ctx) error {
+		return c.SendStatus(StatusOK)
+	})
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/items/7", http.NoBody))
+	require.NoError(t, err, "app.Test(req)")
+	defer func() { require.NoError(t, resp.Body.Close()) }()
+
+	require.Equal(t, StatusOK, resp.StatusCode)
+	require.Equal(t, "/items/:id", path)
+}
+
 // go test -run Test_Ctx_RouteNormalized
 func Test_Ctx_RouteNormalized(t *testing.T) {
 	t.Parallel()

@@ -60,6 +60,7 @@ type DefaultCtx struct {
 	DefaultRes                                  // Default response api
 	app                    *App                 // Reference to *App
 	route                  *Route               // Reference to *Route
+	matchedRoute           *Route               // Cached next non-middleware route match (MatchedRoute)
 	fasthttp               *fasthttp.RequestCtx // Reference to *fasthttp.RequestCtx
 	bind                   *Bind                // Default bind reference
 	redirect               *Redirect            // Default redirect reference
@@ -314,6 +315,8 @@ func (c *DefaultCtx) Path(override ...string) string {
 		c.configDependentPaths()
 		// The detection path/tree hash changed; invalidate the lookahead index.
 		c.firstMatchIndex = -1
+		// Path rewrite invalidates any cached MatchedRoute look-ahead.
+		c.matchedRoute = nil
 	}
 	return c.app.toString(c.path)
 }
@@ -385,6 +388,61 @@ func (c *DefaultCtx) routeFallback() *Route {
 		Handlers: emptyRouteHandlers[:],
 		Params:   emptyRouteParams[:],
 	}
+}
+
+// MatchedRoute returns the next non-middleware route that matches the current
+// request without advancing the handler chain. It is useful inside global
+// middleware when you need to inspect the target route (path or name) before
+// calling Next. Returns nil when no endpoint matches.
+//
+// Unlike Route, which reflects the route currently being executed (often the
+// middleware itself before Next), MatchedRoute looks ahead in the route stack.
+func (c *DefaultCtx) MatchedRoute() *Route {
+	// Already on a non-middleware endpoint.
+	if c.route != nil && !c.route.use && !c.route.mount {
+		return c.route
+	}
+	if c.matchedRoute != nil {
+		return c.matchedRoute
+	}
+	if c.methodInt == -1 || c.app == nil {
+		return nil
+	}
+
+	// SkipUnmatchedRoutes already resolved the endpoint index.
+	if c.firstMatchIndex >= 0 {
+		tree := c.app.treeIndex[c.methodInt].lookup(c.treePathHash)
+		if c.firstMatchIndex < len(tree) {
+			route := tree[c.firstMatchIndex]
+			if route != nil && !route.use && !route.mount {
+				c.matchedRoute = route
+				return route
+			}
+		}
+	}
+
+	tree := c.app.treeIndex[c.methodInt].lookup(c.treePathHash)
+	detectionPath := utils.UnsafeString(c.detectionPath)
+	path := utils.UnsafeString(c.path)
+	pathSlashes := c.pathSlashCount(c.app)
+	// Use a scratch params buffer so look-ahead does not clobber c.values.
+	var scratch [maxParams]string
+
+	for i := c.indexRoute + 1; i < len(tree); i++ {
+		route := tree[i]
+		if route.mount || route.use {
+			continue
+		}
+		if route.prefixRejects(pathHeadWord(detectionPath)) {
+			continue
+		}
+		if route.match(detectionPath, path, &scratch, pathSlashes) {
+			c.matchedRoute = route
+			return route
+		}
+	}
+
+	return nil
 }
 
 // FullPath returns the matched route path, including any group prefixes.
@@ -677,6 +735,8 @@ func (c *DefaultCtx) XHR() bool {
 // configDependentPaths set paths for route recognition and prepared paths for the user,
 // here the features for caseSensitive, decoded paths, strict paths are evaluated
 func (c *DefaultCtx) configDependentPaths() {
+	// Path normalization may change detectionPath / tree hash; drop look-ahead cache.
+	c.matchedRoute = nil
 	c.path = append(c.path[:0], c.pathOriginal...)
 	// If UnescapePath enabled, we decode the path and save it for the framework user
 	if c.app.config.UnescapePath {
@@ -720,6 +780,8 @@ func (c *DefaultCtx) Reset(fctx *fasthttp.RequestCtx) {
 	c.isMatched = false
 	c.shouldSkipNonUseRoutes = false
 	c.firstMatchIndex = -1
+	c.route = nil
+	c.matchedRoute = nil
 	// Set paths
 	c.pathOriginal = c.app.toString(fctx.URI().PathOriginal())
 	// Set method
@@ -744,6 +806,7 @@ func (c *DefaultCtx) release() {
 		c.isUserContextSet = false
 	}
 	c.route = nil
+	c.matchedRoute = nil
 	c.fasthttp = nil
 	if c.bind != nil {
 		ReleaseBind(c.bind)
