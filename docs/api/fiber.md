@@ -343,6 +343,14 @@ func (app *App) ShutdownWithTimeout(timeout time.Duration) error
 func (app *App) ShutdownWithContext(ctx context.Context) error
 ```
 
+:::info How long does shutdown wait?
+`Shutdown` / `ShutdownWithTimeout` / `ShutdownWithContext` wait for **in-flight handlers** (including streaming responses written with `SendStream` / `SendStreamWriter`) until they return or the timeout fires. The timeout is measured from the start of shutdown; if a handler finishes before the deadline, shutdown returns without waiting for the full timeout.
+
+Call `Shutdown*` from a separate goroutine while `Listen` / `Listener` runs, and keep the process alive until `Shutdown*` returns. Set a non-zero `ReadTimeout` / `IdleTimeout` so idle keepalive connections do not block shutdown forever.
+
+`ListenConfig.ShutdownTimeout` is applied only when Fiber runs its **built-in** graceful shutdown path (for example with `GracefulContext`). If you call `app.ShutdownWithTimeout` yourself, that argument is the one that applies.
+:::
+
 ## Helper functions
 
 ### NewError
