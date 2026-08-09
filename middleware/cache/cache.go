@@ -411,6 +411,13 @@ func New(config ...Config) fiber.Handler {
 					return c.SendStatus(fiber.StatusGatewayTimeout)
 				}
 				return c.Next()
+			case entryHasExpiration && hasAuthorization && !e.shareable && reqDirectives.onlyIfCached:
+				if cfg.Storage != nil {
+					manager.release(e)
+				}
+				unlock()
+				c.Set(cfg.CacheHeader, cacheUnreachable)
+				return c.SendStatus(fiber.StatusGatewayTimeout)
 			case entryHasExpiration && !requestNoCache:
 				servedStale = entryExpired
 				if hasAuthorization && !e.shareable {
@@ -419,9 +426,6 @@ func New(config ...Config) fiber.Handler {
 					}
 					unlock()
 					c.Set(cfg.CacheHeader, cacheUnreachable)
-					if reqDirectives.onlyIfCached {
-						return c.SendStatus(fiber.StatusGatewayTimeout)
-					}
 					return c.Next()
 				}
 

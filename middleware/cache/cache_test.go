@@ -3672,16 +3672,19 @@ func TestCacheOnlyIfCachedRejectsNonShareableAuthorizationEntry(t *testing.T) {
 		return c.SendString(fmt.Sprintf("origin-%d", call))
 	})
 
-	newAuthorizationRequest := func(cacheControl string) *http.Request {
+	newAuthorizationRequest := func(cacheControl, pragma string) *http.Request {
 		req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 		req.Header.Set(fiber.HeaderAuthorization, "Bearer token")
 		if cacheControl != "" {
 			req.Header.Set(fiber.HeaderCacheControl, cacheControl)
 		}
+		if pragma != "" {
+			req.Header.Set(fiber.HeaderPragma, pragma)
+		}
 		return req
 	}
 
-	resp, err := app.Test(newAuthorizationRequest(""))
+	resp, err := app.Test(newAuthorizationRequest("", ""))
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
 	require.Equal(t, cacheMiss, resp.Header.Get(cacheHeader))
@@ -3703,7 +3706,7 @@ func TestCacheOnlyIfCachedRejectsNonShareableAuthorizationEntry(t *testing.T) {
 	}
 	require.NotEmpty(t, metadataKey)
 
-	resp, err = app.Test(newAuthorizationRequest("only-if-cached"))
+	resp, err = app.Test(newAuthorizationRequest("only-if-cached", ""))
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusGatewayTimeout, resp.StatusCode)
 	require.Equal(t, cacheUnreachable, resp.Header.Get(cacheHeader))
@@ -3711,7 +3714,23 @@ func TestCacheOnlyIfCachedRejectsNonShareableAuthorizationEntry(t *testing.T) {
 	require.Contains(t, storage.data, metadataKey)
 	require.Contains(t, storage.data, metadataKey+"_body")
 
-	resp, err = app.Test(newAuthorizationRequest(""))
+	resp, err = app.Test(newAuthorizationRequest("no-cache, only-if-cached", ""))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusGatewayTimeout, resp.StatusCode)
+	require.Equal(t, cacheUnreachable, resp.Header.Get(cacheHeader))
+	require.Equal(t, int32(1), originCalls.Load())
+	require.Contains(t, storage.data, metadataKey)
+	require.Contains(t, storage.data, metadataKey+"_body")
+
+	resp, err = app.Test(newAuthorizationRequest("only-if-cached", "no-cache"))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusGatewayTimeout, resp.StatusCode)
+	require.Equal(t, cacheUnreachable, resp.Header.Get(cacheHeader))
+	require.Equal(t, int32(1), originCalls.Load())
+	require.Contains(t, storage.data, metadataKey)
+	require.Contains(t, storage.data, metadataKey+"_body")
+
+	resp, err = app.Test(newAuthorizationRequest("no-cache", ""))
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
 	require.Equal(t, cacheUnreachable, resp.Header.Get(cacheHeader))
