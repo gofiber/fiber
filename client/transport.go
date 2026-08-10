@@ -65,6 +65,12 @@ func (s *standardClientTransport) DoDeadline(req *fasthttp.Request, resp *fastht
 // fasthttp's own loop, so every transport applies the same target validation.
 // fasthttp's loop takes an HTTPS-to-HTTP hop; this one refuses it.
 func (s *standardClientTransport) DoRedirects(req *fasthttp.Request, resp *fasthttp.Response, maxRedirects int) error {
+	// Before the loop serializes the URI, as fasthttp's own DoRedirects does:
+	// the setting has to reach req.URI() first or "/a//b" is normalized away on
+	// the very request the transport was configured to leave alone.
+	if s.client.DisablePathNormalizing {
+		req.URI().DisablePathNormalizing = true
+	}
 	return doRedirectsWithClient(req, resp, maxRedirects, s.client)
 }
 
@@ -121,6 +127,10 @@ func (h *hostClientTransport) DoDeadline(req *fasthttp.Request, resp *fasthttp.R
 // DoRedirects uses the shared loop for the same reasons as
 // standardClientTransport.DoRedirects.
 func (h *hostClientTransport) DoRedirects(req *fasthttp.Request, resp *fasthttp.Response, maxRedirects int) error {
+	// See standardClientTransport.DoRedirects.
+	if h.client.DisablePathNormalizing {
+		req.URI().DisablePathNormalizing = true
+	}
 	return doRedirectsWithClient(req, resp, maxRedirects, h.client)
 }
 

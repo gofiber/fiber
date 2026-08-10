@@ -898,3 +898,57 @@ func Test_httpClientTransport_Interface(t *testing.T) {
 		})
 	}
 }
+
+// Test_Transport_DoRedirects_KeepsPathNormalizingDisabled covers a transport
+// wrapping a client that asked for the path to be left alone.
+//
+// fasthttp's own DoRedirects sets the flag on req.URI() before serializing it.
+// This loop serializes first, so without the same step the very first request
+// went out with "/a//b" collapsed — the redirect implementation changing the
+// path the caller asked for.
+func Test_Transport_DoRedirects_KeepsPathNormalizingDisabled(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name     string
+		wantPath string
+		disable  bool
+	}{
+		{name: "disabled keeps the path as written", wantPath: "/a//b", disable: true},
+		{name: "enabled normalizes as before", wantPath: "/a/b", disable: false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			ln := fasthttputil.NewInmemoryListener()
+			seen := make(chan string, 4)
+			server := &fasthttp.Server{Handler: func(ctx *fasthttp.RequestCtx) {
+				seen <- string(ctx.Request.URI().PathOriginal())
+				ctx.SetStatusCode(fasthttp.StatusOK)
+			}}
+			done := make(chan struct{})
+			go func() {
+				defer close(done)
+				assert.NoError(t, server.Serve(ln))
+			}()
+			defer func() {
+				require.NoError(t, server.Shutdown())
+				<-done
+			}()
+
+			transport := newStandardClientTransport(&fasthttp.Client{
+				DisablePathNormalizing: tc.disable,
+				Dial:                   func(string) (net.Conn, error) { return ln.Dial() },
+			})
+
+			req, resp := fasthttp.AcquireRequest(), fasthttp.AcquireResponse()
+			defer fasthttp.ReleaseRequest(req)
+			defer fasthttp.ReleaseResponse(resp)
+			req.SetRequestURI("http://example.com/a//b")
+
+			require.NoError(t, transport.DoRedirects(req, resp, 3))
+			require.Equal(t, fasthttp.StatusOK, resp.StatusCode())
+			require.Equal(t, tc.wantPath, <-seen)
+		})
+	}
+}

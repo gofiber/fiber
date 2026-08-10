@@ -189,11 +189,18 @@ func listenConfigDefault(config ...ListenConfig) ListenConfig {
 		cfg.TLSMinVersion = tls.VersionTLS12
 	}
 
+	return cfg
+}
+
+// validateTLSMinVersion rejects a version this package will not build a
+// tls.Config from. Asked only where the field is read: rejecting it in the
+// defaults panicked before warnSupersededTLSFields or
+// warnIgnoredTLSFieldsOnListener could say the value was being ignored anyway,
+// which is the diagnostic a stale TLS 1.1 most needs.
+func validateTLSMinVersion(cfg *ListenConfig) {
 	if cfg.TLSMinVersion != tls.VersionTLS12 && cfg.TLSMinVersion != tls.VersionTLS13 {
 		panic("unsupported TLS version, please use tls.VersionTLS12 or tls.VersionTLS13")
 	}
-
-	return cfg
 }
 
 // Listen serves HTTP requests from the given addr.
@@ -212,6 +219,8 @@ func (app *App) Listen(addr string, config ...ListenConfig) error {
 		tlsConfig = cfg.TLSConfig.Clone()
 		warnSupersededTLSFields(&cfg)
 	} else {
+		validateTLSMinVersion(&cfg)
+
 		switch {
 		case cfg.AutoCertManager != nil && (cfg.CertFile != "" || cfg.CertKeyFile != ""):
 			return ErrAutoCertWithCertFile

@@ -1384,3 +1384,57 @@ func Test_WarnSupersededTLSFields_Branches(t *testing.T) {
 		})
 	}
 }
+
+// Test_Listen_StaleTLSMinVersionReachesTheDiagnostics covers where the
+// unsupported-version check is asked.
+//
+// A stale tls.VersionTLS11 beside a TLSConfig, or on App.Listener, is a value
+// neither path reads. Rejecting it in the defaults panicked before either
+// warning could run, so the caller learned nothing about the field being
+// ignored — the one thing worth telling them. Where the version is read, it is
+// still rejected.
+//
+//nolint:tparallel // the warning subtests capture the package-level log output
+func Test_Listen_StaleTLSMinVersionReachesTheDiagnostics(t *testing.T) {
+	t.Run("superseded by TLSConfig", func(t *testing.T) {
+		var buf bytes.Buffer
+		withCapturedLogOutput(t, &buf)
+
+		cfg := listenConfigDefault(ListenConfig{
+			TLSConfig:     &tls.Config{MinVersion: tls.VersionTLS12},
+			TLSMinVersion: tls.VersionTLS11,
+		})
+		require.NotPanics(t, func() { warnSupersededTLSFields(&cfg) })
+		require.Contains(t, buf.String(), "TLSMinVersion")
+	})
+
+	t.Run("ignored on a supplied listener", func(t *testing.T) {
+		var buf bytes.Buffer
+		withCapturedLogOutput(t, &buf)
+
+		ln, err := net.Listen(NetworkTCP4, "127.0.0.1:0")
+		require.NoError(t, err)
+		defer func() { require.NoError(t, ln.Close()) }()
+
+		cfg := listenConfigDefault(ListenConfig{TLSMinVersion: tls.VersionTLS11})
+		require.NotPanics(t, func() { warnIgnoredTLSFieldsOnListener(&cfg, ln) })
+		require.Contains(t, buf.String(), "TLSMinVersion")
+	})
+
+	t.Run("still rejected where it is read", func(t *testing.T) {
+		t.Parallel()
+
+		cfg := listenConfigDefault(ListenConfig{TLSMinVersion: tls.VersionTLS11})
+		require.PanicsWithValue(t,
+			"unsupported TLS version, please use tls.VersionTLS12 or tls.VersionTLS13",
+			func() { validateTLSMinVersion(&cfg) })
+	})
+
+	t.Run("the default is accepted", func(t *testing.T) {
+		t.Parallel()
+
+		cfg := listenConfigDefault()
+		require.Equal(t, uint16(tls.VersionTLS12), cfg.TLSMinVersion)
+		require.NotPanics(t, func() { validateTLSMinVersion(&cfg) })
+	})
+}
