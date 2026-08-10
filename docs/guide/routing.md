@@ -291,7 +291,11 @@ app.Get("/v1/*/shop/*", handler)
 ```
 
 :::info
-Fiber lets multiple parameters share a single path segment, unlike routers such as Express, Gin, and Echo where `:param` always consumes a whole segment. When named parameters are adjacent, each leading one captures a single character and the last captures the rest. This does not raise an error, so an unexpected pattern silently captures differently than you might assume.
+Fiber lets multiple parameters share a single path segment, unlike routers such as Express, Gin, and Echo where `:param` always consumes a whole segment. When named parameters are adjacent **with no literal separator between them**, the router cannot know where one parameter ends and the next begins: there is no delimiter in the pattern to split on.
+
+To keep matching deterministic, Fiber assigns every adjacent named parameter except the last a fixed length of **one character**, and the **last** parameter takes the remainder of the segment (up to the next delimiter or end of path). This is why `/:sign:param` against `/@v1` yields `sign=@` and `param=v1`, not `sign=@v` and `param=1`.
+
+If you need a multi-character split, put a literal delimiter between parameters, for example `/:sign-:param` matching `/@v-1`.
 :::
 
 </TabItem>
