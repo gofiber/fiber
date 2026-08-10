@@ -33,10 +33,17 @@ type authorityChunk struct {
 type compiledRule struct {
 	pattern *regexp.Regexp
 	target  string
+	// authorityEnders are the bytes a value may open the next component with,
+	// which is scheme-dependent: see authorityEnders.
+	authorityEnders string
 	// authorityChunks splits the target's authority into literal text and "$N"
 	// tokens, so each value can be judged by where it lands. Empty when the
 	// authority holds no placeholder and so cannot be moved by a request.
 	authorityChunks []authorityChunk
+	// opaquePath is set when the target names a scheme but no authority of its
+	// own. A capture may write the "//" that opens one, and it need only supply
+	// half of it, so the composed location is what gets checked.
+	opaquePath bool
 	// sameOrigin is set when the target names no authority of its own. The "$N"
 	// values spliced into such a target come from the request path, so they must
 	// not be able to introduce one.
@@ -107,10 +114,13 @@ func New(config ...Config) fiber.Handler {
 			continue
 		}
 
+		spanStart, spanEnd := authoritySpan(v)
 		cfg.rulesRegex = append(cfg.rulesRegex, compiledRule{
 			pattern:         regexp.MustCompile(pattern),
 			target:          v,
 			authorityChunks: chunks,
+			authorityEnders: authorityEnders(v),
+			opaquePath:      spanStart == spanEnd && schemeEnd(v) > 0,
 			sameOrigin:      !targetNamesAuthority(v),
 		})
 	}
@@ -131,7 +141,7 @@ func New(config ...Config) fiber.Handler {
 			// In "https://$1.cdn.example.com" the author means $1 as a label,
 			// not a whole URL. Refuse the value that would move the host rather
 			// than guess; the request falls through to the app.
-			if !authorityHolds(rule.authorityChunks, replacer) {
+			if !authorityHolds(rule.authorityChunks, replacer, rule.authorityEnders) {
 				continue
 			}
 
@@ -139,6 +149,15 @@ func New(config ...Config) fiber.Handler {
 			// and the client drops them anyway, so the guard below always runs
 			// on the location as it will be read.
 			location := urlnorm.AsBrowserReads(replacer.Replace(rule.target))
+			// The target had a scheme and an opaque path, so it named no host at
+			// all. A value writing the "//" that opens one — "myapp:$1@example.com"
+			// against "//evil.com/x" — hands the destination to the request, and
+			// the "@example.com" that looked like it pinned the host is only path.
+			if rule.opaquePath {
+				if start, end := authoritySpan(location); start != end {
+					continue
+				}
+			}
 			if rule.sameOrigin {
 				location = keepSameOrigin(location)
 			}
@@ -224,10 +243,22 @@ func authoritySpan(target string) (start, end int) { //nolint:nonamedreturns // 
 		start++
 	}
 
-	if offset := strings.IndexAny(target[start:], `/\?#`); offset >= 0 {
+	if offset := strings.IndexAny(target[start:], authorityEnders(target)); offset >= 0 {
 		return start, start + offset
 	}
 	return start, len(target)
+}
+
+// authorityEnders returns the bytes that end target's authority. WHATWG folds
+// "\" into "/" only under a special scheme; under any other one it is an
+// ordinary authority byte, so "myapp://example.com\@evil.com" is userinfo
+// "example.com\" and a host of evil.com. A target with no scheme is
+// protocol-relative, and the scheme it inherits is special.
+func authorityEnders(target string) string {
+	if i := schemeEnd(target); i > 0 && !isSpecialScheme(target[:i]) {
+		return `/?#`
+	}
+	return `/\?#`
 }
 
 // specialSchemes are the schemes the WHATWG URL Standard calls special. The
@@ -295,7 +326,7 @@ func authorityChunks(target string) []authorityChunk {
 // authorityHolds reports whether the values leave the target's authority naming
 // the author's host: a token with more authority after it must stay one label,
 // one ending the authority must open the next component, be empty, or be a port.
-func authorityHolds(chunks []authorityChunk, replacer *strings.Replacer) bool {
+func authorityHolds(chunks []authorityChunk, replacer *strings.Replacer, enders string) bool {
 	for i, chunk := range chunks {
 		if !chunk.placeholder {
 			continue
@@ -326,7 +357,7 @@ func authorityHolds(chunks []authorityChunk, replacer *strings.Replacer) bool {
 		// "evil.com" composes "example.comevil.com".
 		switch {
 		case value == "":
-		case strings.IndexByte(`/\?#`, value[0]) >= 0 && hostPins(chunks[:i]):
+		case strings.IndexByte(enders, value[0]) >= 0 && hostPins(chunks[:i]):
 			// Opens the next component, so the authority ended at the author's host —
 			// but only where they wrote one: "//$1." composing "///evil.com." ends no
 			// authority, since the parser skips the slashes.
@@ -691,14 +722,16 @@ func pinsHost(literal string, openLeft bool) bool {
 
 // patternBytes are the bytes of a rule key that match something other than
 // themselves. "*" is the documented wildcard; the rest are regexp syntax, which
-// reaches the compiled pattern because a key is used as one. "." and "$" stay
-// out: both are ordinary in a path, and neither pins less than the byte it is.
-const patternBytes = `*[](){}+?^|\`
+// reaches the compiled pattern because a key is used as one. "." is among them:
+// it matches any byte, so "/api/user." pins no more of a path than "/api/user"
+// and must not outrank the exact "/api/users". "$" is not, anchoring rather
+// than matching, and the compiled pattern anchors the end regardless.
+const patternBytes = `*.[](){}+?^|\`
 
 // literalPrefixLen returns how much of a rule's path is pinned before its first
 // wildcard, which is what makes one rule more specific than another it overlaps.
 func literalPrefixLen(rule string) int {
-	if i := strings.IndexAny(rule, patternBytes); i >= 0 {
+	if i := indexUnescapedAny(rule, patternBytes); i >= 0 {
 		return i
 	}
 	return len(rule)
@@ -709,12 +742,34 @@ func literalPrefixLen(rule string) int {
 // tie on prefix, and the lexicographic fallback left the narrower one dead.
 func literalLen(rule string) int {
 	n := 0
-	for i := range len(rule) {
+	for i := 0; i < len(rule); i++ {
+		if rule[i] == '\\' && i+1 < len(rule) {
+			// An escaped metacharacter matches itself, so it pins the one byte it
+			// stands for — "/a\.b" pins "/a.b", the backslash being syntax.
+			i++
+			n++
+			continue
+		}
 		if strings.IndexByte(patternBytes, rule[i]) < 0 {
 			n++
 		}
 	}
 	return n
+}
+
+// indexUnescapedAny returns the first index in s of a byte from chars that a
+// backslash does not escape, or -1.
+func indexUnescapedAny(s, chars string) int {
+	for i := 0; i < len(s); i++ {
+		if s[i] == '\\' {
+			i++ // whatever follows matches itself
+			continue
+		}
+		if strings.IndexByte(chars, s[i]) >= 0 {
+			return i
+		}
+	}
+	return -1
 }
 
 // opensPort reports whether the nearest literal before a token ends in the colon
