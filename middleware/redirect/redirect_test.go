@@ -2168,3 +2168,60 @@ func Test_Redirect_NonSpecialSchemeAuthority(t *testing.T) {
 		})
 	}
 }
+
+// Test_Redirect_ThirdSlashUnderNonSpecialScheme covers a target whose authority
+// the author left empty by writing a third slash.
+//
+// Only a special scheme reaches "special authority ignore slashes" and skips
+// past it; under any other one that slash terminates an empty authority, so the
+// capture is path. Skipping it regardless read the capture as the host, and the
+// rule was dropped at startup for handing the host to the request.
+func Test_Redirect_ThirdSlashUnderNonSpecialScheme(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		target  string
+		request string
+		want    string // "" means the rule must not fire
+	}{
+		{"empty authority leaves the capture in the path", "myapp:///$1", "/p/evil.com", "myapp:///evil.com"},
+		{"deeper path under an empty authority", "myapp:///x/$1", "/p/evil.com", "myapp:///x/evil.com"},
+
+		// A special scheme skips them, so the capture is the host and the rule
+		// still hands the destination away.
+		{"special scheme still skips them", "https:///$1", "/p/evil.com", ""},
+		{"two slashes still open an authority", "myapp://$1", "/p/evil.com", ""},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			app := fiber.New(fiber.Config{UnescapePath: true})
+			app.Use(New(Config{
+				Rules:      map[string]string{"/p/*": tc.target},
+				StatusCode: fiber.StatusFound,
+			}))
+			app.Get("/*", func(c fiber.Ctx) error { return c.SendString("fell through") })
+
+			req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, tc.request, http.NoBody)
+			require.NoError(t, err)
+			resp, err := app.Test(req)
+			require.NoError(t, err)
+
+			if tc.want == "" {
+				require.Equal(t, fiber.StatusOK, resp.StatusCode, "the rule must not fire")
+				require.Empty(t, resp.Header.Get("Location"))
+				return
+			}
+			require.Equal(t, fiber.StatusFound, resp.StatusCode)
+			require.Equal(t, tc.want, resp.Header.Get("Location"))
+
+			// The authority stayed empty, so nothing the value supplied is a host.
+			u, err := url.Parse(resp.Header.Get("Location"))
+			require.NoError(t, err)
+			require.Empty(t, u.Host)
+		})
+	}
+}
