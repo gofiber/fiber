@@ -60,9 +60,9 @@ type ListenConfig struct {
 	// Default: nil
 	TLSConfigFunc func(tlsConfig *tls.Config) `json:"tls_config_func"`
 
-	// TLSConfig is served as-is, enabling external certificate providers via
-	// GetCertificate. It replaces the other TLS settings rather than seeding them,
-	// so there is no mutual TLS unless it sets ClientAuth and ClientCAs.
+	// TLSConfig is cloned and served as supplied, enabling external certificate
+	// providers via GetCertificate. It replaces the other TLS settings rather than
+	// seeding them, so there is no mutual TLS unless its ClientAuth requires it.
 	//
 	// Default: nil
 	TLSConfig *tls.Config `json:"tls_config"`
@@ -103,7 +103,7 @@ type ListenConfig struct {
 
 	// CertClientFile is a path of the CA bundle used to verify client
 	// certificates, which is how ListenConfig asks for mTLS. Ignored when
-	// TLSConfig is set: its ClientAuth and ClientCAs decide instead.
+	// TLSConfig is set: its ClientAuth decides instead, against its ClientCAs.
 	//
 	// Default : ""
 	CertClientFile string `json:"cert_client_file"`
