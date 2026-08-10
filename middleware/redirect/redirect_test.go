@@ -1985,7 +1985,7 @@ func Test_LiteralLengths(t *testing.T) {
 		// A key is compiled as a regexp, so its metacharacters match something
 		// other than themselves and pin nothing. Counting them as path bytes put
 		// "/api/[a-z]+" ahead of "/api/users", shadowing the exact rule outright.
-		{rule: "/api/[a-z]+", prefixLen: 5, totalLen: 8},
+		{rule: "/api/[a-z]+", prefixLen: 5, totalLen: 5},
 		{rule: "/api/users", prefixLen: 10, totalLen: 10},
 		{rule: "/(a|b)/x", prefixLen: 1, totalLen: 5},
 		// "." matches any byte, so "/api/user." pins no more than "/api/user".
@@ -1994,6 +1994,11 @@ func Test_LiteralLengths(t *testing.T) {
 		{rule: `/p/a\.png`, prefixLen: 9, totalLen: 8},
 		// "$" anchors rather than matching, and the pattern anchors either way.
 		{rule: "/p/a$", prefixLen: 5, totalLen: 5},
+		// A class matches one byte whatever it lists, so listing more
+		// alternatives buys no specificity.
+		{rule: "/api/[abcdefghijklmnopqrstuvwxyz]", prefixLen: 5, totalLen: 5},
+		{rule: "/api/[ab]", prefixLen: 5, totalLen: 5},
+		{rule: "/api/[a-z]x", prefixLen: 5, totalLen: 6},
 	}
 
 	for _, tc := range tests {
@@ -2223,5 +2228,38 @@ func Test_Redirect_ThirdSlashUnderNonSpecialScheme(t *testing.T) {
 			require.NoError(t, err)
 			require.Empty(t, u.Host)
 		})
+	}
+}
+
+// Test_Redirect_WiderClassDoesNotOutrank covers two rules that differ only in
+// how many alternatives their character class lists. A class matches one byte
+// either way, so the longer list pins no more path — counting its members made
+// the broader rule win every time and left the narrower one dead.
+func Test_Redirect_WiderClassDoesNotOutrank(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Use(New(Config{
+		Rules: map[string]string{
+			"/api/[abcdefghijklmnopqrstuvwxyz]": "/broad",
+			"/api/[ab]":                         "/narrow",
+		},
+		StatusCode: fiber.StatusFound,
+	}))
+	app.Get("/*", func(c fiber.Ctx) error { return c.SendString("fell through") })
+
+	for _, tc := range []struct{ request, want string }{
+		// Both match, and they now tie on pinned length, so the deterministic
+		// key order decides rather than the length of the class.
+		{"/api/a", "/narrow"},
+		// Only the wider class matches this one.
+		{"/api/z", "/broad"},
+	} {
+		req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, tc.request, http.NoBody)
+		require.NoError(t, err)
+		resp, err := app.Test(req)
+		require.NoError(t, err)
+		require.Equal(t, fiber.StatusFound, resp.StatusCode, tc.request)
+		require.Equal(t, tc.want, resp.Header.Get("Location"), tc.request)
 	}
 }

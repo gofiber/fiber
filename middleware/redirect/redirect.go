@@ -753,15 +753,26 @@ func literalPrefixLen(rule string) int {
 // tie on prefix, and the lexicographic fallback left the narrower one dead.
 func literalLen(rule string) int {
 	n := 0
+	inClass := false
 	for i := 0; i < len(rule); i++ {
 		if rule[i] == '\\' && i+1 < len(rule) {
 			// An escaped metacharacter matches itself, so it pins the one byte it
 			// stands for — "/a\.b" pins "/a.b", the backslash being syntax.
 			i++
-			n++
+			if !inClass {
+				n++
+			}
 			continue
 		}
-		if strings.IndexByte(patternBytes, rule[i]) < 0 {
+		switch {
+		case inClass:
+			// A class matches one byte whatever it lists, so its members pin
+			// nothing: "/api/[a-z]" is no more specific than "/api/[ab]", and
+			// counting them put the broader rule ahead of the narrower one.
+			inClass = rule[i] != ']'
+		case rule[i] == '[':
+			inClass = true
+		case strings.IndexByte(patternBytes, rule[i]) < 0:
 			n++
 		}
 	}
