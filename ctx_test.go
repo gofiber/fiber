@@ -7990,6 +7990,15 @@ func Test_Ctx_JSONP_SanitizesCallback(t *testing.T) {
 		{name: "let alone", callback: "let", expected: "let"},
 		{name: "let with a property", callback: "let.a", expected: "let.a"},
 		{name: "let indexed deeper", callback: "cb[let[a]]", expected: "cb[let[a]]"},
+
+		// A JSONP body is parsed as a classic script in sloppy mode, where
+		// "await" is an identifier unless it stands in a module or an async
+		// function, and "yield" unless in strict mode or a generator. Both are
+		// callable names here; V8 parses every one of these.
+		{name: "await heads the expression", callback: "await.cb", expected: "await.cb"},
+		{name: "await in an index", callback: "cb[await]", expected: "cb[await]"},
+		{name: "yield heads the expression", callback: "yield.cb", expected: "yield.cb"},
+		{name: "yield in an index", callback: "cb[yield]", expected: "cb[yield]"},
 		{name: "let as a property", callback: "cb.let[0]", expected: "cb.let[0]"},
 	}
 

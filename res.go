@@ -784,17 +784,21 @@ func isJSONPMemberExpression(cb string) bool {
 // which any word may do. Emitting "for({…})" instead just ships a syntax error to
 // the browser, so those spellings fall back to the default callback.
 func isJSReservedWord(tok string) bool {
-	// "this", "true", "false" and "null" are absent on purpose: they are
-	// keywords rather than identifiers, but each is a complete expression, so
-	// "this.cb" and "cb[true]" parse. What is rejected here cannot begin one —
-	// "for" and "cb[new]" are syntax errors whatever surrounds them.
+	// Only the words a classic script rejects wherever they stand. A JSONP body
+	// is loaded by a script tag, so it is parsed under the script goal in sloppy
+	// mode, and several words that look reserved are ordinary identifiers there.
+	//
+	// Absent on purpose: "this", "true", "false" and "null" are keywords, but
+	// each is a complete expression, so "this.cb" and "cb[true]" parse. "await"
+	// is reserved only in a module or an async function, and "yield" only in
+	// strict mode or a generator, so both name a callback here. "let" is
+	// contextual in a third way and handled where it is read.
 	switch tok {
-	case "await", "break", "case", "catch", "class", "const", "continue",
+	case "break", "case", "catch", "class", "const", "continue",
 		"debugger", "default", "delete", "do", "else", "enum", "export",
 		"extends", "finally", "for", "function", "if", "import", "in",
 		"instanceof", "new", "return", "super", "switch",
-		"throw", "try", "typeof", "var", "void", "while", "with",
-		"yield":
+		"throw", "try", "typeof", "var", "void", "while", "with":
 		return true
 	default:
 		return false
