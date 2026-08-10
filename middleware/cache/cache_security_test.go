@@ -2023,7 +2023,7 @@ func Test_Cache_LegacyStoredSetCookieIsUnsafe(t *testing.T) {
 	require.Equal(t, cacheMiss, resp.Header.Get("X-Cache"))
 
 	// Rewrite the stored entry the way the older version left it.
-	const key = "GET|k"
+	key := cacheKeyVersion + "|GET|k"
 	m := newManager(store, false)
 	e, err := m.get(context.Background(), key)
 	require.NoError(t, err)
@@ -2090,4 +2090,52 @@ func Test_Cache_ProxiedResponseCasingIsRead(t *testing.T) {
 			require.Equal(t, int64(2), handlerRuns.Load(), "nothing was cached")
 		})
 	}
+}
+
+// Test_Cache_LegacyAnonymousEntryIsNotRead covers an entry a previous version
+// stored. It detected Authorization byte-exactly, so under DisableHeaderNormalizing
+// a request bearing a lower-case "authorization" was taken for anonymous and its
+// response cached under the anonymous key. Only lookups that carry the header
+// moved to a partition of their own, so on a store that survived the upgrade an
+// anonymous request would still find that entry and be served the authenticated
+// body. The key namespace is versioned so no such entry is ever read.
+func Test_Cache_LegacyAnonymousEntryIsNotRead(t *testing.T) {
+	t.Parallel()
+
+	storage := memory.New()
+	app := fiber.New(fiber.Config{DisableHeaderNormalizing: true})
+	app.Use(New(Config{
+		Storage:    storage,
+		Expiration: time.Minute,
+		KeyGenerator: func(c fiber.Ctx) string {
+			// A custom generator, as an application preserving the old key format
+			// across the upgrade would have.
+			return c.Path()
+		},
+	}))
+	app.Get("/me", func(c fiber.Ctx) error { return c.SendString("handler ran") })
+
+	// Seed what the previous version wrote for alice: the anonymous key, holding
+	// her authenticated body.
+	legacy := &item{
+		body:      []byte("alice's private page"),
+		ctype:     []byte(fiber.MIMETextPlainCharsetUTF8),
+		status:    fiber.StatusOK,
+		exp:       uint64(time.Now().Add(time.Minute).Unix()),
+		ttl:       uint64(time.Minute / time.Second),
+		headers:   nil,
+		cencoding: nil,
+	}
+	raw, err := legacy.MarshalMsg(nil)
+	require.NoError(t, err)
+	require.NoError(t, storage.Set("GET|/me", raw, time.Minute))
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/me", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "handler ran", string(body), "the legacy anonymous entry must not be served")
+	require.Equal(t, cacheMiss, resp.Header.Get("X-Cache"))
 }
