@@ -65,8 +65,27 @@ func parseCacheControlDirectives(cc []byte, fn func(key, value []byte)) {
 			break
 		}
 
+		// A directive value may be a quoted-string (RFC 9111 §5.2), and a comma
+		// inside one is data rather than the end of the directive. Scanning past
+		// it read the tokens in an extension value as directives of their own,
+		// so `ext="a, public, b"` said public and authorized sharing.
+		// Unterminated quotes swallow the rest of the field, which is the safe
+		// way round: what follows is read as one value rather than as directives
+		// a sender never separated.
 		start := i
-		for i < len(cc) && cc[i] != ',' {
+		inQuotes := false
+		for i < len(cc) {
+			if inQuotes && cc[i] == '\\' && i+1 < len(cc) {
+				// A quoted-pair: the byte after the backslash is data, a quote
+				// among it, so the string does not end there.
+				i += 2
+				continue
+			}
+			if cc[i] == '"' {
+				inQuotes = !inQuotes
+			} else if cc[i] == ',' && !inQuotes {
+				break
+			}
 			i++
 		}
 		partEnd := i

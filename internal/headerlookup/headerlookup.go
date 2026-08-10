@@ -79,7 +79,21 @@ func Value(c fiber.Ctx, name string) (string, bool) {
 // refuses, which is the outcome Value reaches directly.
 func Combined(c fiber.Ctx, name string) string {
 	cfg := c.App().Config()
-	lines := fieldname.Lines(&c.Request().Header, name, !cfg.DisableHeaderNormalizing)
+	h := &c.Request().Header
+
+	if utils.EqualFold(name, fiber.HeaderCookie) {
+		// Cookie is not a comma-separated list — RFC 6265 §5.4 joins its
+		// crumbs with "; " — and fasthttp keeps them in a store of their own,
+		// which PeekAll enumerates one cookie at a time. Joining those would
+		// hand the caller "a=1, b=2" for a request that said "a=1; b=2".
+		// Collecting first makes fasthttp reassemble the field, so what is read
+		// below is the one line it actually holds. The lookup is expected to
+		// miss; collecting is the point of the call, as it is in the cache's
+		// keyFieldLines.
+		h.Cookie("")
+	}
+
+	lines := fieldname.Lines(h, name, !cfg.DisableHeaderNormalizing)
 
 	switch len(lines) {
 	case 0:
