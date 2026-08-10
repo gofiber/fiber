@@ -5,6 +5,7 @@ package client
 
 import (
 	"crypto/tls"
+	"fmt"
 	"strings"
 	"time"
 
@@ -459,6 +460,18 @@ func trustedRedirectTarget(host, initialHostname string) bool {
 // It returns the resolved URL along with its host, which the caller compares
 // against the previous hop to decide whether origin-scoped credentials still
 // apply.
+// parsesAsURI reports whether fasthttp reads full as a URI at all, returning the
+// reason it does not. Only Parse surfaces that; Update and UpdateBytes discard it.
+func parsesAsURI(full []byte) error {
+	check := fasthttp.AcquireURI()
+	defer fasthttp.ReleaseURI(check)
+
+	if err := check.Parse(nil, full); err != nil {
+		return fmt.Errorf("%w: %w", fasthttp.ErrorInvalidURI, err)
+	}
+	return nil
+}
+
 func composeRedirectURL(base string, location []byte, disablePathNormalizing bool) (redirectURL, host string, err error) { //nolint:nonamedreturns // names document the two string results
 	for _, b := range location {
 		if b < 0x20 || b == 0x7f {
@@ -473,6 +486,17 @@ func composeRedirectURL(base string, location []byte, disablePathNormalizing boo
 	wasHTTPS := utils.EqualFold(uri.Scheme(), httpsScheme)
 	uri.UpdateBytes(location)
 	uri.DisablePathNormalizing = disablePathNormalizing
+
+	// UpdateBytes resolves the reference but discards the parse error, leaving
+	// whatever it had read behind: "http://example.com:abc/x" keeps the host
+	// "example.com:abc" and loses the path. fasthttp's own redirect loop returned
+	// that error rather than sending a second request, and a HostClient connects
+	// to its fixed Addr, so following one carries the malformed Host to a server
+	// that would otherwise never have been asked. Parse reports what UpdateBytes
+	// swallowed, so ask it of the result.
+	if err := parsesAsURI(uri.FullURI()); err != nil {
+		return "", "", err
+	}
 
 	scheme := uri.Scheme()
 	if len(scheme) > 0 && !utils.EqualFold(scheme, httpScheme) && !utils.EqualFold(scheme, httpsScheme) {

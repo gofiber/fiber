@@ -632,8 +632,10 @@ func (r *DefaultRes) CBOR(data any, ctype ...string) error {
 // By default, the callback name is simply callback.
 //
 // The callback name is reduced to a JavaScript member expression: everything
-// outside [A-Za-z0-9_$.[]] is dropped. It lands verbatim in a same-origin
-// text/javascript body, and callers take it straight from the query string.
+// outside [A-Za-z0-9_$.[]] is dropped. Callers routinely take the name straight
+// from the query string, which is what JSONP is for, and the name lands
+// verbatim in a same-origin text/javascript body — so an unfiltered one would
+// let a request supply arbitrary script for the app's own origin.
 func (r *DefaultRes) JSONP(data any, callback ...string) error {
 	raw, err := r.c.app.config.JSONEncoder(data)
 	if err != nil {

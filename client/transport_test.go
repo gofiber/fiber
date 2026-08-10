@@ -1066,3 +1066,67 @@ func Test_DoRedirects_NilResponse(t *testing.T) {
 	})
 	require.Equal(t, 2, hops, "the redirect was still followed")
 }
+
+// Test_Transport_DoRedirects_RefusesUnparsableTarget covers a Location fasthttp
+// cannot parse. URI.UpdateBytes discards that error and keeps whatever it read,
+// so "http://example.com:abc/x" left the host "example.com:abc" and lost the
+// path — and a HostClient, which connects to its fixed Addr regardless, would
+// have sent a second request carrying that Host. fasthttp's own redirect loop
+// returns the error instead, so this one does too.
+func Test_Transport_DoRedirects_RefusesUnparsableTarget(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name     string
+		location string
+		wantErr  bool
+	}{
+		{name: "invalid port", location: "http://example.com:abc/x", wantErr: true},
+		{name: "space in the host", location: "http://exa mple.com/x", wantErr: true},
+		{name: "unclosed bracket", location: "http://[::1/x", wantErr: true},
+		{name: "a target that parses is followed", location: "/next", wantErr: false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			ln := fasthttputil.NewInmemoryListener()
+			var hops atomic.Int64
+			server := &fasthttp.Server{Handler: func(ctx *fasthttp.RequestCtx) {
+				if hops.Add(1) == 1 {
+					ctx.Response.Header.Set(fiber.HeaderLocation, tc.location)
+					ctx.SetStatusCode(fasthttp.StatusFound)
+					return
+				}
+				ctx.SetStatusCode(fasthttp.StatusOK)
+			}}
+			done := make(chan struct{})
+			go func() {
+				defer close(done)
+				assert.NoError(t, server.Serve(ln))
+			}()
+			defer func() {
+				require.NoError(t, server.Shutdown())
+				<-done
+			}()
+
+			transport := newStandardClientTransport(&fasthttp.Client{
+				Dial: func(string) (net.Conn, error) { return ln.Dial() },
+			})
+
+			req, resp := fasthttp.AcquireRequest(), fasthttp.AcquireResponse()
+			defer fasthttp.ReleaseRequest(req)
+			defer fasthttp.ReleaseResponse(resp)
+			req.SetRequestURI("http://example.com/start")
+
+			err := transport.DoRedirects(req, resp, 3)
+			if tc.wantErr {
+				require.ErrorIs(t, err, fasthttp.ErrorInvalidURI)
+				require.Equal(t, int64(1), hops.Load(), "the malformed target must not be requested")
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, fasthttp.StatusOK, resp.StatusCode())
+			require.Equal(t, int64(2), hops.Load())
+		})
+	}
+}
