@@ -301,22 +301,24 @@ Logger provides predefined formats that you can use by name or directly by speci
 
 ## The `${ips}` tag
 
-`${ips}` logs the chain the framework parsed, `Ctx.IPs()`, joined with `,`. It
-is the same list the trusted-proxy decisions are made from, so an access log and
-what was actually enforced cannot disagree — reading `X-Forwarded-For` here
-separately meant reading it a second way, and under
-[`DisableHeaderNormalizing`](../api/fiber.md#config) a lower-case
-`x-forwarded-for:` logged an empty chain while the framework went on using it.
+`${ips}` logs the chain the framework parsed, `Ctx.IPs()`, joined with `,`.
+Reading `X-Forwarded-For` here separately meant reading it a second way, and
+under [`DisableHeaderNormalizing`](../api/fiber.md#config) a lower-case
+`x-forwarded-for:` logged an empty chain while `Ctx.IPs()` went on returning it.
+
+It is not the list any trust decision is made from. `Ctx.IPs()` parses
+`X-Forwarded-For` unconditionally, while `Ctx.IP()` consults
+[`TrustProxy`](../api/fiber.md#config) and reads
+[`ProxyHeader`](../api/fiber.md#config), which need not be `X-Forwarded-For` at
+all — so `${ips}` and the address Fiber acted on can name different hosts.
 
 Because the entries are split and trimmed rather than echoed as sent, repeated
 `X-Forwarded-For` header lines and a single comma-joined one log identically,
 which is what [RFC 9110 §5.2](https://www.rfc-editor.org/rfc/rfc9110.html#section-5.2)
 says they are.
 
-`${ips}` logs the chain as supplied, whether or not the peer is a trusted proxy,
-because it reports what `Ctx.IPs()` returns. Any client can send
-`X-Forwarded-For`, so treat a logged chain as attacker-controlled unless
-[`TrustProxy`](../api/fiber.md#config) is configured and the peer is in it. Use
+Any client can send `X-Forwarded-For`, so treat a logged chain as
+attacker-controlled unless `TrustProxy` is configured and the peer is in it. Use
 `${ip}`, which is the peer address, when you need one you can rely on.
 
 ## Control-Character Sanitization
