@@ -1,6 +1,7 @@
 package extractors
 
 import (
+	"bufio"
 	"context"
 	"fmt"
 	"net/http"
@@ -217,7 +218,6 @@ func Test_Extractor_Chain(t *testing.T) {
 	})
 }
 
-// go test -run Test_Extractor_FromAuthHeader_EdgeCases
 // Test_Extractor_FromHeader_CombinesRepeatedLines covers a field carried on
 // several lines. FromHeader is given its name by the application, and a name it
 // is given may be a list field a peer may legally send twice, so the lines are
@@ -246,6 +246,31 @@ func Test_Extractor_FromHeader_CombinesRepeatedLines(t *testing.T) {
 			require.Equal(t, "text/html, application/json", value)
 		})
 	}
+}
+
+// Test_Extractor_FromHeader_CookieKeepsItsOwnSeparator covers FromHeader named
+// with Cookie, whose crumbs are joined with "; " (RFC 6265 §5.4) rather than
+// with the comma a list field takes.
+//
+// fasthttp keeps cookies in a store of their own that PeekAll enumerates one at
+// a time, so the generic join produced "a=1, b=2" for a request that said
+// "a=1; b=2" — a value no cookie parser downstream would read back.
+func Test_Extractor_FromHeader_CookieKeepsItsOwnSeparator(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(ctx)
+
+	// Read from the wire rather than Set: a request carrying Cookie twice, which
+	// is what an HTTP/1 gateway writes for the split field HTTP/2 permits. Only
+	// then does fasthttp hand the crumbs back one at a time.
+	raw := "GET / HTTP/1.1\r\nHost: example.com\r\nCookie: a=1\r\nCookie: b=2\r\n\r\n"
+	require.NoError(t, ctx.Request().Header.Read(bufio.NewReader(strings.NewReader(raw))))
+
+	value, err := FromHeader(fiber.HeaderCookie).Extract(ctx)
+	require.NoError(t, err)
+	require.Equal(t, "a=1; b=2", value)
 }
 
 // Test_Extractor_FromHeader_SingleLineIsUnchanged is the control for the test
@@ -310,6 +335,7 @@ func Test_Extractor_FromAuthHeader_RepeatedLineIsNotACredential(t *testing.T) {
 	require.Equal(t, "client", token)
 }
 
+// go test -run Test_Extractor_FromAuthHeader_EdgeCases
 func Test_Extractor_FromAuthHeader_EdgeCases(t *testing.T) {
 	t.Parallel()
 

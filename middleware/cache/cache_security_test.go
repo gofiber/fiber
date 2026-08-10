@@ -1772,6 +1772,77 @@ func Test_Cache_SetCookie2IsSeenWhateverItsCase(t *testing.T) {
 	}
 }
 
+// Test_Cache_QuotedDirectiveDoesNotAuthorizeSharing covers a Cache-Control
+// whose extension value is a quoted-string containing commas.
+//
+// The directive scan split on every comma, so the tokens inside the quotes were
+// read as directives of their own. A response saying nothing about sharing was
+// therefore taken to have said "public" — enough to pass the gate that lets a
+// cookie-setting response be stored, after which its body went to later clients
+// with only the cookie removed. RFC 9111 §5.2 makes the value a quoted-string;
+// a comma inside one does not end the directive.
+func Test_Cache_QuotedDirectiveDoesNotAuthorizeSharing(t *testing.T) {
+	t.Parallel()
+
+	for _, cc := range []string{
+		`ext="a, public, b"`,
+		`ext="a, s-maxage=99, b"`,
+		// The escaped quote must not end the value early either, or the scan
+		// resumes inside the string and finds the token after it.
+		`ext="a\", public, b"`,
+	} {
+		t.Run(cc, func(t *testing.T) {
+			t.Parallel()
+
+			app := fiber.New()
+			app.Use(New(Config{Expiration: time.Minute}))
+
+			var n atomic.Int64
+			app.Get("/", func(c fiber.Ctx) error {
+				id := n.Add(1)
+				c.Response().Header.Set(fiber.HeaderCacheControl, cc)
+				c.Response().Header.Set(fiber.HeaderSetCookie, fmt.Sprintf("session=client-%d", id))
+				return c.SendString(fmt.Sprintf("private to client-%d", id))
+			})
+
+			for range 2 {
+				resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+				require.NoError(t, err)
+				require.Equal(t, cacheUnreachable, resp.Header.Get("X-Cache"),
+					"a token inside a quoted extension value does not authorize sharing")
+			}
+			require.Equal(t, int64(2), n.Load(), "each client must reach the handler")
+		})
+	}
+}
+
+// Test_Cache_QuotedDirectiveStillReadsRealOnes is the control for the test
+// above: a quoted value must not hide the directives written beside it.
+func Test_Cache_QuotedDirectiveStillReadsRealOnes(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Use(New(Config{Expiration: time.Minute}))
+
+	var n atomic.Int64
+	app.Get("/", func(c fiber.Ctx) error {
+		id := n.Add(1)
+		c.Response().Header.Set(fiber.HeaderCacheControl, `ext="a, b", public`)
+		c.Response().Header.Set(fiber.HeaderSetCookie, fmt.Sprintf("session=client-%d", id))
+		return c.SendString(fmt.Sprintf("shared-%d", id))
+	})
+
+	first, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, cacheMiss, first.Header.Get("X-Cache"))
+
+	second, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, cacheHit, second.Header.Get("X-Cache"),
+		"public written outside the quotes still authorizes sharing")
+	require.Equal(t, int64(1), n.Load())
+}
+
 // Test_Cache_EveryStaleSpellingIsReplaced covers a response that already
 // carries two spellings of a field this middleware writes.
 //
