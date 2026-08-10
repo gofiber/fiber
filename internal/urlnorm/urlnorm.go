@@ -34,31 +34,24 @@ func StripTabCRLF(s string) string {
 // be: a path on the origin now being served. A parameter is spliced in raw, so
 // on "/*" "/evil.com" composed "//evil.com" and "\evil.com" folded to the same.
 //
-// routePath is the path the route was registered at, and only the slashes the
-// author wrote there are kept. Collapsing to one regardless composed "/internal"
-// for a route registered at "//internal", which is a different path and answers
-// 404 — the value's slashes are the ones that must go, not theirs.
-func RootedPath(location, routePath string) string {
+// Exactly one leading slash, never two: "//evil.com" is a network-path reference
+// whose host is whatever follows, so it resolves against "https://good.example"
+// as "https://evil.com". That is true of author text as much as of a value,
+// which is why NamesAuthority refuses such a route rather than composing it.
+func RootedPath(location string) string {
 	location = StripTabCRLF(location)
 
-	keep := leadingSlashes(StripTabCRLF(routePath))
-	if keep == 0 {
-		keep = 1 // a route path always starts one, so this is only a guard
-	}
-	n := leadingSlashes(location)
-	keep = min(keep, n)
-
-	if n == keep && strings.IndexByte(location[:n], '\\') < 0 {
+	n := LeadingSlashes(location)
+	if n == 1 && location[0] == '/' {
 		return location
 	}
-	// Backslashes count as slashes here because the parser folds them, so the
-	// kept prefix is rewritten rather than sliced.
-	return strings.Repeat("/", keep) + location[n:]
+	// Backslashes count as slashes here because the parser folds them.
+	return "/" + location[n:]
 }
 
-// leadingSlashes returns the length of the run of slashes starting s, counting
+// LeadingSlashes returns the length of the run of slashes starting s, counting
 // backslashes among them because the parser folds the two.
-func leadingSlashes(s string) int {
+func LeadingSlashes(s string) int {
 	n := 0
 	for n < len(s) && (s[n] == '/' || s[n] == '\\') {
 		n++

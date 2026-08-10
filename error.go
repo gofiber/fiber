@@ -22,6 +22,11 @@ var (
 	ErrNoViewEngineConfigured = errors.New("fiber: no view engine configured")
 	// ErrAutoCertWithCertFile indicates AutoCertManager cannot be used with CertFile/CertKeyFile.
 	ErrAutoCertWithCertFile = errors.New("tls: AutoCertManager cannot be combined with CertFile/CertKeyFile")
+	// ErrRouteNotRepresentable indicates a route whose path no relative URL can
+	// name, so Route.URL, GetRouteURL and Redirect().Route cannot compose one.
+	// A path starting with two or more slashes is such a route: the URL that
+	// would reach it opens an authority instead.
+	ErrRouteNotRepresentable = errors.New("router: route path cannot be expressed as a relative URL")
 )
 
 // Fiber redirection errors
