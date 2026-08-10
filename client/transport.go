@@ -61,11 +61,11 @@ func (s *standardClientTransport) DoDeadline(req *fasthttp.Request, resp *fastht
 	return s.client.DoDeadline(req, resp, deadline)
 }
 
-// DoRedirects delegates to fasthttp, whose loop resolves relative Locations,
-// applies RFC 9110 §15.4.4 to 303s, and strips credentials off the initial host.
-// The trade: it follows an HTTPS-to-HTTP downgrade. See ErrRedirectDowngrade.
+// DoRedirects follows redirects through doRedirectsWithClient rather than
+// fasthttp's own loop, so every transport applies the same target validation.
+// fasthttp's loop takes an HTTPS-to-HTTP hop; this one refuses it.
 func (s *standardClientTransport) DoRedirects(req *fasthttp.Request, resp *fasthttp.Response, maxRedirects int) error {
-	return s.client.DoRedirects(req, resp, maxRedirects)
+	return doRedirectsWithClient(req, resp, maxRedirects, s.client)
 }
 
 func (s *standardClientTransport) CloseIdleConnections() {
@@ -118,10 +118,10 @@ func (h *hostClientTransport) DoDeadline(req *fasthttp.Request, resp *fasthttp.R
 	return h.client.DoDeadline(req, resp, deadline)
 }
 
-// DoRedirects delegates to fasthttp for the same reasons as
+// DoRedirects uses the shared loop for the same reasons as
 // standardClientTransport.DoRedirects.
 func (h *hostClientTransport) DoRedirects(req *fasthttp.Request, resp *fasthttp.Response, maxRedirects int) error {
-	return h.client.DoRedirects(req, resp, maxRedirects)
+	return doRedirectsWithClient(req, resp, maxRedirects, h.client)
 }
 
 func (h *hostClientTransport) CloseIdleConnections() {
@@ -293,14 +293,14 @@ func walkBalancingClientWithBreak(client any, fn func(*fasthttp.HostClient) bool
 }
 
 // redirectClient describes the minimal Do-capable surface needed by
-// doRedirectsWithClient so transports that do not expose DoRedirects (such as
-// fasthttp.LBClient) can participate in redirect handling.
+// doRedirectsWithClient, which every transport satisfies including
+// fasthttp.LBClient, the one that exposes no DoRedirects of its own.
 type redirectClient interface {
 	Do(req *fasthttp.Request, resp *fasthttp.Response) error
 }
 
-// doRedirectsWithClient mirrors fasthttp's redirect loop for transports that do
-// not expose DoRedirects (e.g. fasthttp.LBClient). The helper always issues the
+// doRedirectsWithClient is the redirect loop behind every transport, so target
+// validation does not depend on which one a caller built. It always issues the
 // initial request, respects zero redirect limits, falls back to the default cap
 // for negative values, and validates redirect targets before following them.
 func doRedirectsWithClient(req *fasthttp.Request, resp *fasthttp.Response, maxRedirects int, client redirectClient) error {
@@ -346,15 +346,15 @@ func doRedirectsWithClient(req *fasthttp.Request, resp *fasthttp.Response, maxRe
 		}
 		currentURL = nextURL
 
-		// 301, 302 and 303 turn any body-carrying method into a GET, body and all —
-		// net/http's redirectBehavior, for every method rather than just POST, since
-		// Fiber drives QUERY here too. fasthttp changes only POST; the one difference.
+		// 301, 302 and 303 retry as a GET without the body: net/http's
+		// redirectBehavior. The body goes even when the method already was GET or
+		// HEAD, or it would be replayed to the target, possibly a different host.
 		switch statusCode {
 		case fasthttp.StatusMovedPermanently, fasthttp.StatusFound, fasthttp.StatusSeeOther:
 			if !req.Header.IsGet() && !req.Header.IsHead() {
 				req.Header.SetMethod(fasthttp.MethodGet)
-				dropRequestBody(req)
 			}
+			dropRequestBody(req)
 		}
 
 		// Credentials are scoped to the origin that issued them, so drop them once

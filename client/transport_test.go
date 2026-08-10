@@ -5,13 +5,16 @@ import (
 	"errors"
 	"net"
 	"strconv"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
+	"github.com/valyala/fasthttp/fasthttputil"
 )
 
 type stubBalancingClient struct{}
@@ -254,7 +257,8 @@ func TestWalkBalancingClientWithBreak(t *testing.T) {
 
 // TestDoRedirectsWithClient_DropsBodyForAnyMethod pins net/http's
 // redirectBehavior: 301, 302 and 303 all turn a body-carrying method into GET
-// and drop the body, for every method rather than just POST.
+// and drop the body, for every method rather than just POST, and drop the body
+// even where the method already was GET or HEAD.
 //
 // Fiber's client drives QUERY requests through this loop too (client/core.go),
 // and both branches used to be gated on IsPost — so a QUERY kept its method and
@@ -322,24 +326,33 @@ func TestDoRedirectsWithClient_DropsBodyForAnyMethod(t *testing.T) {
 		})
 	}
 
-	// HEAD keeps its method: RFC 9110 Section 15.4.4 says GET *or* HEAD.
-	t.Run("HEAD keeps its method", func(t *testing.T) {
-		t.Parallel()
+	// GET and HEAD keep their method: RFC 9110 Section 15.4.4 says GET *or* HEAD.
+	// The body still goes, or a GET carrying one replays it to the target.
+	for _, method := range []string{fasthttp.MethodGet, fasthttp.MethodHead} {
+		t.Run(method+" keeps its method but not its body", func(t *testing.T) {
+			t.Parallel()
 
-		req := fasthttp.AcquireRequest()
-		resp := fasthttp.AcquireResponse()
-		defer fasthttp.ReleaseRequest(req)
-		defer fasthttp.ReleaseResponse(resp)
+			req := fasthttp.AcquireRequest()
+			resp := fasthttp.AcquireResponse()
+			defer fasthttp.ReleaseRequest(req)
+			defer fasthttp.ReleaseResponse(resp)
 
-		req.SetRequestURI("http://example.com/start")
-		req.Header.SetMethod(fasthttp.MethodHead)
-		client := &stubRedirectClient{calls: []stubRedirectCall{
-			{status: ptrInt(fasthttp.StatusSeeOther), location: ptrString("/next")},
-			{status: ptrInt(fasthttp.StatusOK)},
-		}}
-		require.NoError(t, doRedirectsWithClient(req, resp, -1, client))
-		require.Equal(t, fasthttp.MethodHead, string(req.Header.Method()))
-	})
+			req.SetRequestURI("http://example.com/start")
+			req.Header.SetMethod(method)
+			req.Header.SetContentType("application/json")
+			req.SetBodyString(`{"q":"secret"}`)
+
+			client := &stubRedirectClient{calls: []stubRedirectCall{
+				{status: ptrInt(fasthttp.StatusSeeOther), location: ptrString("http://other.example/next")},
+				{status: ptrInt(fasthttp.StatusOK)},
+			}}
+			require.NoError(t, doRedirectsWithClient(req, resp, -1, client))
+
+			require.Equal(t, method, string(req.Header.Method()))
+			require.Empty(t, req.Body(), "the body must not reach the redirect target")
+			require.Empty(t, req.Header.ContentType())
+		})
+	}
 }
 
 func TestDoRedirectsWithClientBranches(t *testing.T) {
@@ -614,6 +627,54 @@ func TestDoRedirectsWithClient_ValidatesTargets(t *testing.T) {
 			require.ErrorIs(t, doRedirectsWithClient(req, resp, 5, client), tc.wantErr)
 		})
 	}
+}
+
+// TestClient_DoRedirects_RejectsHTTPSDowngrade drives the transport New()
+// actually builds over a real TLS hop. It used to delegate to fasthttp's loop,
+// which follows an HTTPS-to-HTTP redirect and, the host being unchanged, keeps
+// the credentials on it.
+//
+// Only the plaintext hop is left undialable: reaching it produces a dial error
+// rather than ErrRedirectDowngrade, so the assertion cannot pass vacuously.
+func TestClient_DoRedirects_RejectsHTTPSDowngrade(t *testing.T) {
+	t.Parallel()
+
+	cert, err := tls.LoadX509KeyPair("../.github/testdata/ssl.pem", "../.github/testdata/ssl.key")
+	require.NoError(t, err)
+
+	ln := fasthttputil.NewInmemoryListener()
+	app := fiber.New()
+	app.Get("/start", func(c fiber.Ctx) error {
+		return c.Redirect().Status(fiber.StatusFound).To("http://example.com/collect")
+	})
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		assert.NoError(t, app.Listener(
+			tls.NewListener(ln, &tls.Config{MinVersion: tls.VersionTLS12, Certificates: []tls.Certificate{cert}}),
+			fiber.ListenConfig{DisableStartupMessage: true},
+		))
+	}()
+	defer func() {
+		require.NoError(t, app.Shutdown())
+		<-done
+	}()
+
+	client := New().
+		SetDial(func(addr string) (net.Conn, error) {
+			if strings.HasSuffix(addr, ":443") {
+				return ln.Dial()
+			}
+			return nil, errors.New("the plaintext hop must never be dialed")
+		}).
+		SetTLSConfig(&tls.Config{InsecureSkipVerify: true}) // self-signed test certificate
+
+	_, err = client.Get("https://example.com/start", Config{
+		Header:       map[string]string{fiber.HeaderAuthorization: "Bearer secret"},
+		MaxRedirects: 5,
+	})
+	require.ErrorIs(t, err, ErrRedirectDowngrade)
 }
 
 // TestClient_DoRedirects_StripsCredentialsCrossHost exercises the default

@@ -13,7 +13,7 @@ var (
 	errSyncPoolBuffer            = errors.New("failed to retrieve buffer from a sync.Pool")
 
 	// ErrRedirectDowngrade is returned when a redirect leads from an HTTPS origin
-	// to plaintext HTTP. Only the load-balancing transport raises it: the others
-	// delegate to fasthttp, which takes the hop. Set MaxRedirects to 0 to refuse.
+	// to plaintext HTTP, on every transport. Set MaxRedirects to 0 to take such a
+	// hop yourself instead.
 	ErrRedirectDowngrade = errors.New("client: HTTPS to HTTP redirect blocked")
 )

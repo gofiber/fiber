@@ -1647,6 +1647,7 @@ func Test_CookieJar_AttributesCookiesToRespondingHost(t *testing.T) {
 		out := make(map[string]string)
 		for _, ck := range jar.Get(uri) {
 			out[string(ck.Key())] = string(ck.Value())
+			fasthttp.ReleaseCookie(ck) // Get hands back copies it acquired from the pool.
 		}
 		return out
 	}

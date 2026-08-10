@@ -15,7 +15,6 @@ import (
 	"testing"
 	"time"
 
-	fiberlog "github.com/gofiber/fiber/v3/log"
 	"github.com/gofiber/utils/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -602,13 +601,14 @@ func Test_Listen_TLSConfig_WithTLSConfigFunc(t *testing.T) {
 
 // go test -run Test_Listen_TLSConfig_WarnsSupersededFields
 func Test_Listen_TLSConfig_WarnsSupersededFields(t *testing.T) {
-	// Not parallel: swaps the package-level log output.
+	// Not parallel: it captures the package-level log output, and Go keeps no
+	// parallel test in flight while a serial one runs. Test_Listen_TLSConfig_WithTLSConfigFunc
+	// is parallel and warns, so it would otherwise write into this buffer.
 	cert, err := tls.LoadX509KeyPair("./.github/testdata/ssl.pem", "./.github/testdata/ssl.key")
 	require.NoError(t, err)
 
 	var buf bytes.Buffer
-	fiberlog.SetOutput(&buf)
-	t.Cleanup(func() { fiberlog.SetOutput(os.Stderr) })
+	withCapturedLogOutput(t, &buf)
 
 	app := New()
 	go func() {
@@ -627,26 +627,28 @@ func Test_Listen_TLSConfig_WarnsSupersededFields(t *testing.T) {
 		// for a certificate, which reads as working mTLS until someone checks.
 		CertClientFile: "./.github/testdata/ca-chain.cert.pem",
 		TLSConfigFunc:  func(*tls.Config) {},
+		// The supplied TLSConfig permits TLS 1.2, so this request is dropped.
+		TLSMinVersion: tls.VersionTLS13,
 	}))
 
 	out := buf.String()
 	require.Contains(t, out, "CertClientFile")
 	// Not "no client certificate will be required": the supplied TLSConfig may
-	// set ClientAuth and ClientCAs itself, and then one is. What the warning
-	// has to say is which of the two decides.
-	require.Contains(t, out, "required only if TLSConfig sets ClientAuth and ClientCAs")
+	// ask for one itself, and then one is. What the warning has to say is which
+	// of the two decides, and that ClientAuth is what decides it.
+	require.Contains(t, out, "required only if TLSConfig sets ClientAuth to a Require mode")
 	require.Contains(t, out, "TLSConfigFunc")
+	require.Contains(t, out, "TLSMinVersion")
 }
 
 // go test -run Test_Listen_TLSConfig_NoWarningWhenAlone
 func Test_Listen_TLSConfig_NoWarningWhenAlone(t *testing.T) {
-	// Not parallel: swaps the package-level log output.
+	// Not parallel: captures the package-level log output.
 	cert, err := tls.LoadX509KeyPair("./.github/testdata/ssl.pem", "./.github/testdata/ssl.key")
 	require.NoError(t, err)
 
 	var buf bytes.Buffer
-	fiberlog.SetOutput(&buf)
-	t.Cleanup(func() { fiberlog.SetOutput(os.Stderr) })
+	withCapturedLogOutput(t, &buf)
 
 	app := New()
 	go func() {
@@ -667,10 +669,9 @@ func Test_Listen_TLSConfig_NoWarningWhenAlone(t *testing.T) {
 
 // go test -run Test_Listener_WarnsIgnoredTLSFields
 func Test_Listener_WarnsIgnoredTLSFields(t *testing.T) {
-	// Not parallel: swaps the package-level log output.
+	// Not parallel: captures the package-level log output.
 	var buf bytes.Buffer
-	fiberlog.SetOutput(&buf)
-	t.Cleanup(func() { fiberlog.SetOutput(os.Stderr) })
+	withCapturedLogOutput(t, &buf)
 
 	ln, err := net.Listen(NetworkTCP4, "127.0.0.1:0")
 	require.NoError(t, err)
@@ -692,7 +693,7 @@ func Test_Listener_WarnsIgnoredTLSFields(t *testing.T) {
 	require.Contains(t, out, "CertClientFile is ignored")
 	// The supplied listener may already require a certificate, so the warning
 	// names what decides rather than asserting none is asked for.
-	require.Contains(t, out, "required only if the supplied listener already asks for them")
+	require.Contains(t, out, "required only if the supplied listener already asks for one")
 }
 
 // go test -run Test_Listen_AutoCert_Conflicts
@@ -1220,7 +1221,7 @@ func emptyHandler(_ Ctx) error {
 // wording, and the two suffixes — a plain listener is not serving TLS at all,
 // which is worth saying, and a TLS one already is.
 func Test_WarnIgnoredTLSFieldsOnListener_Branches(t *testing.T) {
-	// Not parallel: swaps the package-level log output.
+	// Not parallel: captures the package-level log output.
 	cert, err := tls.LoadX509KeyPair("./.github/testdata/ssl.pem", "./.github/testdata/ssl.key")
 	require.NoError(t, err)
 
@@ -1280,13 +1281,25 @@ func Test_WarnIgnoredTLSFieldsOnListener_Branches(t *testing.T) {
 			listener: plain,
 			contains: []string{"AutoCertManager", "is ignored"},
 		},
+		{
+			name:     "a raised minimum version is named",
+			cfg:      ListenConfig{TLSMinVersion: tls.VersionTLS13},
+			listener: plain,
+			contains: []string{"TLSMinVersion", "is ignored"},
+		},
+		{
+			// The default and the unset zero both mean nothing was displaced.
+			name:     "the default minimum version is not",
+			cfg:      ListenConfig{TLSMinVersion: tls.VersionTLS12},
+			listener: plain,
+			absent:   []string{"ignored"},
+		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			var buf bytes.Buffer
-			fiberlog.SetOutput(&buf)
-			t.Cleanup(func() { fiberlog.SetOutput(os.Stderr) })
+			withCapturedLogOutput(t, &buf)
 
 			cfg := tc.cfg
 			warnIgnoredTLSFieldsOnListener(&cfg, tc.listener)
@@ -1308,7 +1321,7 @@ func Test_WarnIgnoredTLSFieldsOnListener_Branches(t *testing.T) {
 // one it displaces is named. The end-to-end test above covers the pair a real
 // deployment hits; this drives the two that are otherwise unreached.
 func Test_WarnSupersededTLSFields_Branches(t *testing.T) {
-	// Not parallel: swaps the package-level log output.
+	// Not parallel: captures the package-level log output.
 	tests := []struct {
 		name     string
 		contains []string
@@ -1331,21 +1344,32 @@ func Test_WarnSupersededTLSFields_Branches(t *testing.T) {
 			contains: []string{"supersedes AutoCertManager"},
 		},
 		{
+			name:     "a raised minimum version",
+			cfg:      ListenConfig{TLSMinVersion: tls.VersionTLS13},
+			contains: []string{"supersedes TLSMinVersion"},
+		},
+		{
+			// The default and the unset zero both mean nothing was displaced.
+			name:   "the default minimum version is not reported",
+			cfg:    ListenConfig{TLSMinVersion: tls.VersionTLS12},
+			absent: []string{"supersedes"},
+		},
+		{
 			name: "all of them at once",
 			cfg: ListenConfig{
 				CertKeyFile:     "./.github/testdata/ssl.key",
 				AutoCertManager: &autocert.Manager{},
 				TLSConfigFunc:   func(*tls.Config) {},
+				TLSMinVersion:   tls.VersionTLS13,
 			},
-			contains: []string{"CertFile/CertKeyFile", "AutoCertManager", "TLSConfigFunc"},
+			contains: []string{"CertFile/CertKeyFile", "TLSMinVersion", "AutoCertManager", "TLSConfigFunc"},
 		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			var buf bytes.Buffer
-			fiberlog.SetOutput(&buf)
-			t.Cleanup(func() { fiberlog.SetOutput(os.Stderr) })
+			withCapturedLogOutput(t, &buf)
 
 			cfg := tc.cfg
 			warnSupersededTLSFields(&cfg)

@@ -311,13 +311,18 @@ func (app *App) Listen(addr string, config ...ListenConfig) error {
 // ListenConfig asks for mTLS, and a TLSConfig says nothing about it by default.
 func warnSupersededTLSFields(cfg *ListenConfig) {
 	if cfg.CertClientFile != "" {
-		log.Warn("[Listen] TLSConfig supersedes CertClientFile: client certificates are required only if " +
-			"TLSConfig sets ClientAuth and ClientCAs.")
+		log.Warn("[Listen] TLSConfig supersedes CertClientFile: a client certificate is required only if " +
+			"TLSConfig sets ClientAuth to a Require mode, with ClientCAs as the roots it verifies against.")
 	}
 
 	var ignored []string
 	if cfg.CertFile != "" || cfg.CertKeyFile != "" {
 		ignored = append(ignored, "CertFile/CertKeyFile")
+	}
+	// Zero is unset and listenConfigDefault fills in TLS 1.2, so only a caller who
+	// asked for something else is losing anything here.
+	if cfg.TLSMinVersion != 0 && cfg.TLSMinVersion != tls.VersionTLS12 {
+		ignored = append(ignored, "TLSMinVersion")
 	}
 	if cfg.AutoCertManager != nil {
 		ignored = append(ignored, "AutoCertManager")
@@ -335,9 +340,9 @@ func warnSupersededTLSFields(cfg *ListenConfig) {
 // certificate verification — and unless the caller wrapped it, no TLS either.
 func warnIgnoredTLSFieldsOnListener(cfg *ListenConfig, ln net.Listener) {
 	if cfg.CertClientFile != "" {
-		log.Warn("[Listener] CertClientFile is ignored: client certificates are required only if the supplied " +
-			"listener already asks for them. Wrap it with tls.NewListener using a tls.Config that sets " +
-			"ClientAuth and ClientCAs.")
+		log.Warn("[Listener] CertClientFile is ignored: a client certificate is required only if the supplied " +
+			"listener already asks for one. Wrap it with tls.NewListener using a tls.Config whose ClientAuth " +
+			"is a Require mode.")
 	}
 
 	var ignored []string
@@ -346,6 +351,9 @@ func warnIgnoredTLSFieldsOnListener(cfg *ListenConfig, ln net.Listener) {
 	}
 	if cfg.CertFile != "" || cfg.CertKeyFile != "" {
 		ignored = append(ignored, "CertFile/CertKeyFile")
+	}
+	if cfg.TLSMinVersion != 0 && cfg.TLSMinVersion != tls.VersionTLS12 {
+		ignored = append(ignored, "TLSMinVersion")
 	}
 	if cfg.AutoCertManager != nil {
 		ignored = append(ignored, "AutoCertManager")

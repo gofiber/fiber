@@ -708,15 +708,16 @@ func isJSONPMemberExpression(cb string) bool {
 	depth := 0
 	atStart := true     // expecting the first byte of an identifier
 	afterClose := false // a ']' just closed an index
+	numeric := false    // the open index began with a digit, so it is a number
 	for i := 0; i < len(cb); i++ {
 		switch c := cb[i]; c {
 		case '.':
-			if atStart {
+			if atStart || numeric {
 				return false
 			}
 			atStart, afterClose = true, false
 		case '[':
-			if atStart {
+			if atStart || numeric {
 				return false
 			}
 			depth++
@@ -726,7 +727,7 @@ func isJSONPMemberExpression(cb string) bool {
 				return false
 			}
 			depth--
-			afterClose = true
+			afterClose, numeric = true, false
 		default:
 			// Only '.', '[' or another ']' may follow a closing bracket, so "cb[0]x"
 			// is no member expression. Without this the machine would accept it and
@@ -734,12 +735,19 @@ func isJSONPMemberExpression(cb string) bool {
 			if afterClose {
 				return false
 			}
-			// An identifier may not start with a digit, but a bracket index
-			// legitimately is one ("ns.cb[0]").
-			if atStart && depth == 0 && c >= '0' && c <= '9' {
+			if atStart {
+				// An identifier may not start with a digit. A bracket index may, and
+				// then it is that number alone: "cb[0]" parses, "cb[0x]" does not.
+				if c >= '0' && c <= '9' {
+					if depth == 0 {
+						return false
+					}
+					numeric = true
+				}
+				atStart = false
+			} else if numeric && (c < '0' || c > '9') {
 				return false
 			}
-			atStart = false
 		}
 	}
 	return depth == 0 && !atStart

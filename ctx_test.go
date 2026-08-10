@@ -7947,6 +7947,16 @@ func Test_Ctx_JSONP_SanitizesCallback(t *testing.T) {
 		{name: "index after index", callback: "cb[0][1]", expected: "cb[0][1]"},
 		{name: "property after index", callback: "cb[0].x", expected: "cb[0].x"},
 		{name: "nested index", callback: "a[b[0]]", expected: "a[b[0]]"},
+
+		// An index that opens with a digit is a number, so it is digits to the
+		// closing bracket. Anything else there is made of allowed bytes and still
+		// emits a body that throws.
+		{name: "multi digit index", callback: "cb[10]", expected: "cb[10]"},
+		{name: "identifier index", callback: "cb[i]", expected: "cb[i]"},
+		{name: "index with trailing letters", callback: "cb[0foo]", expected: "callback"},
+		{name: "hex-looking index", callback: "ns[0x]", expected: "callback"},
+		{name: "dotted number index", callback: "ns[1.2.3]", expected: "callback"},
+		{name: "index into a number", callback: "cb[0[1]]", expected: "callback"},
 	}
 
 	app := New()
