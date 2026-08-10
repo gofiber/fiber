@@ -1,6 +1,8 @@
 package client
 
 import (
+	"bufio"
+	"bytes"
 	"crypto/tls"
 	"errors"
 	"net"
@@ -951,4 +953,75 @@ func Test_Transport_DoRedirects_KeepsPathNormalizingDisabled(t *testing.T) {
 			require.Equal(t, tc.wantPath, <-seen)
 		})
 	}
+}
+
+// Test_DropRequestBody_RemovesExpect covers the 100-continue expectation, which
+// may not be generated without content (RFC 9110 Section 10.1.1). Left on the
+// bodyless follow-up, a strict target answers 417 instead of serving it.
+func Test_DropRequestBody_RemovesExpect(t *testing.T) {
+	t.Parallel()
+
+	req := fasthttp.AcquireRequest()
+	defer fasthttp.ReleaseRequest(req)
+	req.Header.SetMethod(fasthttp.MethodPost)
+	req.Header.Set(fasthttp.HeaderExpect, "100-continue")
+	req.Header.SetContentType("application/x-www-form-urlencoded")
+	req.SetBodyString("a=1")
+
+	dropRequestBody(req)
+
+	require.Empty(t, req.Header.Peek(fasthttp.HeaderExpect))
+	require.Empty(t, req.Body())
+}
+
+// Test_DropRequestBody_ClearsTheParsedForm pins why the PostArgs reset is there:
+// Request.Write falls back to the parsed form when the body is empty, so a
+// caller that had read PostArgs would otherwise have sent the dropped body on
+// the redirected GET.
+func Test_DropRequestBody_ClearsTheParsedForm(t *testing.T) {
+	t.Parallel()
+
+	req := fasthttp.AcquireRequest()
+	defer fasthttp.ReleaseRequest(req)
+	req.SetRequestURI("http://example.com/y")
+	req.Header.SetMethod(fasthttp.MethodPost)
+	req.Header.SetContentType("application/x-www-form-urlencoded")
+	req.SetBodyString("a=1")
+	require.Equal(t, "a=1", req.PostArgs().String(), "the caller reads the form first")
+
+	req.Header.SetMethod(fasthttp.MethodGet)
+	dropRequestBody(req)
+
+	var buf bytes.Buffer
+	w := bufio.NewWriter(&buf)
+	require.NoError(t, req.Write(w))
+	require.NoError(t, w.Flush())
+	require.NotContains(t, buf.String(), "a=1", "the dropped form must not come back as the body")
+}
+
+// Test_Response_ResetDropsOversizedOriginBuffers covers the recorded origin on a
+// pooled Response. A redirect target chooses that path, so an oversized buffer
+// is kept out of the pool rather than carried by every later response.
+func Test_Response_ResetDropsOversizedOriginBuffers(t *testing.T) {
+	t.Parallel()
+
+	resp := &Response{RawResponse: fasthttp.AcquireResponse()}
+	defer fasthttp.ReleaseResponse(resp.RawResponse)
+
+	var uri fasthttp.URI
+	uri.SetHost("example.com")
+	uri.SetPath("/" + strings.Repeat("a", maxOriginBuf))
+	resp.setRespondedURI(&uri)
+	require.Greater(t, cap(resp.respondedPath), maxOriginBuf)
+
+	resp.Reset()
+	require.Empty(t, resp.respondedPath)
+	require.LessOrEqual(t, cap(resp.respondedPath), maxOriginBuf, "the oversized buffer is not pooled")
+
+	// An ordinary one is kept, so the common path still reuses its buffer.
+	uri.SetPath("/short")
+	resp.setRespondedURI(&uri)
+	before := cap(resp.respondedPath)
+	resp.Reset()
+	require.Equal(t, before, cap(resp.respondedPath), "a modest buffer survives for reuse")
 }

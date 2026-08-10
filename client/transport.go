@@ -387,7 +387,14 @@ func dropRequestBody(req *fasthttp.Request) {
 	req.Header.Del(fasthttp.HeaderContentEncoding)
 	req.Header.Del(fasthttp.HeaderTransferEncoding)
 	req.Header.Del(fasthttp.HeaderTrailer)
+	// A 100-continue expectation may not be generated without content
+	// (RFC 9110 Section 10.1.1), and a strict target answers the bodyless
+	// follow-up with 417 rather than the redirect the caller was following.
+	req.Header.Del(fasthttp.HeaderExpect)
 	req.ResetBody()
+	// Load-bearing, not bookkeeping: Request.Write falls back to the parsed form
+	// when the body is empty, so a caller that had read PostArgs would have sent
+	// the old "a=1" as the body of the redirected GET.
 	req.PostArgs().Reset()
 }
 

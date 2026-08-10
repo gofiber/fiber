@@ -51,6 +51,21 @@ func (r *Response) setRespondedURI(uri *fasthttp.URI) {
 	r.respondedPath = append(r.respondedPath[:0], uri.Path()...)
 }
 
+// maxOriginBuf bounds the recorded-origin buffers kept on a pooled Response. A
+// redirect target chooses the path these hold, so a run of long ones would
+// otherwise leave every pooled Response holding a buffer sized to the longest
+// it ever saw.
+const maxOriginBuf = 4 * 1024
+
+// resetOriginBuf empties b for reuse, dropping it outright when it grew past
+// what is worth carrying between requests.
+func resetOriginBuf(b []byte) []byte {
+	if cap(b) > maxOriginBuf {
+		return nil
+	}
+	return b[:0]
+}
+
 // respondedOrigin returns the host and path the response was served from,
 // falling back to fallback when they were not recorded — a Response assembled
 // outside the normal execution path.
@@ -220,8 +235,8 @@ func (r *Response) Save(v any) error {
 func (r *Response) Reset() {
 	r.client = nil
 	r.request = nil
-	r.respondedHost = r.respondedHost[:0]
-	r.respondedPath = r.respondedPath[:0]
+	r.respondedHost = resetOriginBuf(r.respondedHost)
+	r.respondedPath = resetOriginBuf(r.respondedPath)
 
 	for len(r.cookie) != 0 {
 		t := r.cookie[0]
