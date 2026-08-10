@@ -68,7 +68,7 @@ func New(config ...Config) fiber.Handler {
 		// Two rules pinning the same amount are separated by how much else they
 		// match: an alternation matches every branch, so "/very/specific|/x" is
 		// wider than the exact "/x" it ties with.
-		if d := cmp.Compare(len(splitAlternation(a)), len(splitAlternation(b))); d != 0 {
+		if d := cmp.Compare(patternWidth(a), patternWidth(b)); d != 0 {
 			return d
 		}
 		return cmp.Compare(a, b)
@@ -84,7 +84,12 @@ func New(config ...Config) fiber.Handler {
 		// "^" the pattern matches any suffix, so a request can be redirected by a
 		// rule whose path it only happens to end with (e.g. "/old" would also
 		// redirect "/very/old"). See issue #4476.
-		pattern = "^" + pattern + "$"
+		//
+		// Grouped first, because concatenation binds looser than "|": "/a|/b"
+		// anchored by hand is "(^/a)|(/b$)", which anchors neither branch at both
+		// ends and redirected "/a-extra" and "extra/b". Non-capturing, so the
+		// "$N" tokens still number the author's own groups.
+		pattern = "^(?:" + pattern + ")$"
 		chunks := authorityChunks(v)
 
 		letsRequestPickHost := targetLetsRequestPickHost(v, chunks)
@@ -240,17 +245,27 @@ func authoritySpan(target string) (start, end int) { //nolint:nonamedreturns // 
 		switch {
 		case i <= 0:
 			return 0, 0
+		case isFileScheme(target):
+			// "file state" takes one slash to reach "file slash state" and one
+			// more to reach the host, and both fold a backslash into a slash. So
+			// the authority opens after any two of them: "file:/\evil.com/share"
+			// and "file:\\evil.com/share" name the host evil.com exactly as
+			// "file://evil.com/share" does, and reading only "//" let a captured
+			// "\evil.com/share" pick the host of a rule targeting "file:/$1".
+			if i+2 >= len(target) || !isSlash(target[i+1]) || !isSlash(target[i+2]) {
+				// Fewer than two, so the parser leaves "file state" for "path
+				// state" and there is no authority: "file:tmp/x" is the path
+				// "/tmp/x" of an empty host, and dropping the rule told the author
+				// something untrue about it. What a value can still do is write
+				// the slashes itself, which the composed location is checked for.
+				return 0, 0
+			}
+			start = i + 3
 		case strings.HasPrefix(target[i+1:], "//"):
 			start = i + 3
-		case special && !isFileScheme(target):
+		case special:
 			start = i + 1
 		default:
-			// No authority to move. Under "file" that holds without the slashes
-			// too: the parser leaves "file state" for "path state" unless one
-			// follows, so "file:tmp/x" is the path "/tmp/x" of an empty host and
-			// dropping the rule told the author something untrue about it. What a
-			// value can still do is write the "//" itself, which the composed
-			// location is checked for.
 			return 0, 0
 		}
 	}
@@ -266,7 +281,7 @@ func authoritySpan(target string) (start, end int) { //nolint:nonamedreturns // 
 	// "file:///$1" has the empty authority of a local path. It keeps the
 	// backslash folding, which is why it stays in the special list.
 	if special && !isFileScheme(target) {
-		for start < len(target) && (target[start] == '/' || target[start] == '\\') {
+		for start < len(target) && isSlash(target[start]) {
 			start++
 		}
 	}
@@ -299,6 +314,12 @@ var specialSchemes = map[string]struct{}{
 	"wss":   {},
 	"ftp":   {},
 	"file":  {},
+}
+
+// isSlash reports whether c separates URL components. A backslash does under a
+// special scheme, which the parser folds into a slash before reading it.
+func isSlash(c byte) bool {
+	return c == '/' || c == '\\'
 }
 
 // isFileScheme reports whether target names the "file" scheme, which is special
@@ -835,12 +856,14 @@ const patternBytes = `*.[](){}+?^|\`
 // An alternation pins only what its least specific branch does: "/very/specific|/x"
 // matches "/x", so it pins one byte rather than the fourteen standing before the
 // "|", which had it outrank the exact "/x" and shadow it outright.
+// Counted in what a path is pinned to rather than in bytes of the rule, since
+// the two part company over escapes: "\x{61}" is six bytes standing for the one
+// byte "a", and measuring the rule made it tie the class "[a-z]" it should
+// outrank, and outrank the "/p/a" it merely equals.
 func literalPrefixLen(rule string) int {
 	return minOverBranches(rule, func(branch string) int {
-		if i := indexUnescapedAny(branch, patternBytes); i >= 0 {
-			return i
-		}
-		return len(branch)
+		s := literalScanner{rule: branch}
+		return s.pinnedPrefix()
 	})
 }
 
@@ -877,11 +900,12 @@ func (s *literalScanner) widestBranch() int {
 		c := s.rule[s.i]
 		switch {
 		case c == '\\':
+			size, pins := escapeSpan(s.rule, s.i)
+			s.i += size
 			atom = 0
-			if s.i+1 < len(s.rule) && !inClass && escapePinsAByte(s.rule[s.i+1]) {
+			if pins && !inClass {
 				n, atom = n+1, 1
 			}
-			s.i += 2
 			continue
 		case inClass:
 			// A class matches one byte whatever it lists, so its members pin
@@ -925,6 +949,95 @@ func (s *literalScanner) widestBranch() int {
 	return smallerBranch(smallest, n)
 }
 
+// pinnedPrefix counts what the rule pins before its first wildcard, stopping at
+// the first construct that pins nothing — a class, a group, a wildcard, a class
+// escape, or an atom a quantifier makes optional.
+func (s *literalScanner) pinnedPrefix() int {
+	n := 0
+	for s.i < len(s.rule) {
+		size := 1
+		if c := s.rule[s.i]; c == '\\' {
+			pins := false
+			if size, pins = escapeSpan(s.rule, s.i); !pins {
+				return n
+			}
+		} else if strings.IndexByte(patternBytes, c) >= 0 {
+			return n
+		}
+		if quantifierAllowsNone(s.rule, s.i+size) {
+			return n
+		}
+		s.i += size
+		n++
+	}
+	return n
+}
+
+// patternWidth returns how many alternatives a rule expands to, which separates
+// two that pin the same amount: "/p/[a-z](x|y)" matches everything
+// "/p/[a-z]x" does and one path more, so it must not sort ahead of it. Counting
+// only top-level branches left the two tied, and key order put the wider first.
+func patternWidth(rule string) int {
+	s := literalScanner{rule: rule}
+	return s.width()
+}
+
+// width is patternWidth from the current position to the end of the rule or to
+// the ")" closing the group beginning there. The alternatives of a sequence
+// multiply and those of an alternation add, so a group counts wherever it sits.
+func (s *literalScanner) width() int {
+	total, n := 0, 1
+	inClass := false
+	for s.i < len(s.rule) {
+		switch c := s.rule[s.i]; {
+		case c == '\\':
+			size, _ := escapeSpan(s.rule, s.i)
+			s.i += size
+			continue
+		case inClass:
+			inClass = c != ']'
+		case c == '[':
+			inClass = true
+		case c == '(':
+			s.i = skipGroupPrefix(s.rule, s.i+1)
+			n = clampWidth(n * s.width())
+			continue
+		case c == ')':
+			s.i++
+			return clampWidth(total + n)
+		case c == '|':
+			total, n = clampWidth(total+n), 1
+		}
+		s.i++
+	}
+	return clampWidth(total + n)
+}
+
+// maxPatternWidth bounds the product a nest of groups builds, since the count is
+// only ever compared against another and nothing needs the exact figure.
+const maxPatternWidth = 1 << 20
+
+func clampWidth(n int) int {
+	return min(n, maxPatternWidth)
+}
+
+// quantifierAllowsNone reports whether a quantifier at i lets what precedes it
+// match nothing, which is what stops "/api/ab?" from pinning the "b".
+func quantifierAllowsNone(rule string, i int) bool {
+	if i >= len(rule) {
+		return false
+	}
+	if rule[i] == '?' {
+		return true
+	}
+	if rule[i] != '{' {
+		return false
+	}
+
+	_, zeroMin := skipQuantifier(rule, i)
+	return zeroMin
+}
+
 // smallerBranch folds one more branch's count into the smallest seen, where -1
 // stands for no branch counted yet.
 func smallerBranch(smallest, n int) int {
@@ -966,18 +1079,58 @@ func skipGroupPrefix(rule string, i int) int {
 	return i
 }
 
-// escapePinsAByte reports whether a backslash followed by c stands for the one
-// literal byte it is written with. Punctuation does — "/a\.b" pins "/a.b" — while
-// a letter or digit introduces a class, an assertion or a numeric escape: "\d"
-// matches any digit, so "/api/\d+" pins no more than "/api/" and must not
-// outrank the exact "/api/1" it would otherwise shadow.
-func escapePinsAByte(c byte) bool {
-	switch {
-	case c >= 'a' && c <= 'z', c >= 'A' && c <= 'Z', c >= '0' && c <= '9':
-		return false
-	default:
-		return true
+// escapeSpan measures the escape beginning at the backslash at i: how many bytes
+// of the rule it occupies, and whether it stands for one character of a path.
+//
+// Punctuation does — "/a\.b" pins "/a.b" — and so does every spelling that names
+// one character outright, including "\x{61}", "\x61", "\101" and "\t". A letter
+// leading anything else introduces a class or an assertion: "\d" matches any
+// digit, so "/api/\d+" pins no more than "/api/" and must not outrank the exact
+// "/api/1" it would otherwise shadow.
+func escapeSpan(rule string, i int) (int, bool) {
+	if i+1 >= len(rule) {
+		return 1, false // a trailing backslash names nothing
 	}
+
+	switch c := rule[i+1]; {
+	case c == 'a', c == 'f', c == 'n', c == 'r', c == 't', c == 'v':
+		return 2, true // a control character written by name
+	case c == 'x':
+		return hexEscapeSpan(rule, i)
+	case c >= '0' && c <= '7':
+		// Octal, up to three digits: "\101" is "A".
+		n := 2
+		for n < 4 && i+n < len(rule) && rule[i+n] >= '0' && rule[i+n] <= '7' {
+			n++
+		}
+		return n, true
+	case c >= 'a' && c <= 'z', c >= 'A' && c <= 'Z', c >= '0' && c <= '9':
+		// "\d", "\w", "\p{Greek}", "\b" — a class or an assertion. Measured as
+		// two bytes even where it runs longer, which only ends the prefix sooner.
+		return 2, false
+	default:
+		return 2, true
+	}
+}
+
+// hexEscapeSpan measures a "\xHH" or "\x{...}" escape, both of which name one
+// character. An incomplete one is no literal, and the regexp would not compile.
+func hexEscapeSpan(rule string, i int) (int, bool) {
+	if i+2 < len(rule) && rule[i+2] == '{' {
+		if end := strings.IndexByte(rule[i+2:], '}'); end >= 0 {
+			return 2 + end + 1, true
+		}
+		return 2, false
+	}
+	if i+3 < len(rule) && isHexDigit(rule[i+2]) && isHexDigit(rule[i+3]) {
+		return 4, true
+	}
+	return 2, false
+}
+
+func isHexDigit(c byte) bool {
+	_, ok := unhex(c)
+	return ok
 }
 
 // minOverBranches applies measure to each top-level alternation branch of rule
@@ -1020,25 +1173,6 @@ func splitAlternation(rule string) []string {
 		}
 	}
 	return append(branches, rule[start:])
-}
-
-// indexUnescapedAny returns the first index in s of a byte from chars that a
-// backslash does not escape, or -1.
-func indexUnescapedAny(s, chars string) int {
-	for i := 0; i < len(s); i++ {
-		if s[i] == '\\' {
-			if i+1 >= len(s) || !escapePinsAByte(s[i+1]) {
-				// A class or an assertion pins nothing, so the prefix ends here.
-				return i
-			}
-			i++ // an escaped metacharacter matches itself
-			continue
-		}
-		if strings.IndexByte(chars, s[i]) >= 0 {
-			return i
-		}
-	}
-	return -1
 }
 
 // opensPort reports whether the nearest literal before a token ends in the colon

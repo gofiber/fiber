@@ -2002,16 +2002,27 @@ func Test_LiteralLengths(t *testing.T) {
 		{rule: `/api/\w`, prefixLen: 5, totalLen: 5},
 		// A quantifier's bounds are syntax, and one allowing none of what it
 		// follows takes that back: "/api/a{0,1}" matches "/api/" too.
-		{rule: "/api/a{0,1}", prefixLen: 6, totalLen: 5},
+		{rule: "/api/a{0,1}", prefixLen: 5, totalLen: 5},
 		{rule: "/api/a{2,3}", prefixLen: 6, totalLen: 6},
-		{rule: "/api/a?b", prefixLen: 6, totalLen: 6},
+		{rule: "/api/a?b", prefixLen: 5, totalLen: 6},
 		{rule: "/api/(ab)?c", prefixLen: 5, totalLen: 6},
 		// An unclosed brace is an ordinary byte to the regexp parser.
 		{rule: "/api/a{", prefixLen: 6, totalLen: 6},
 		// "." matches any byte, so "/api/user." pins no more than "/api/user".
 		{rule: "/api/user.", prefixLen: 9, totalLen: 9},
-		// Escaped, it matches itself and pins the byte it stands for.
-		{rule: `/p/a\.png`, prefixLen: 9, totalLen: 8},
+		// Escaped, it matches itself and pins the byte it stands for. Counted in
+		// what a path is pinned to, so the backslash adds nothing to either.
+		{rule: `/p/a\.png`, prefixLen: 8, totalLen: 8},
+		// A complete escape names one character however it is spelled, so it is
+		// as specific as writing that character: "/p/\x{61}" is "/p/a".
+		{rule: `/p/\x{61}`, prefixLen: 4, totalLen: 4},
+		{rule: `/p/\x61`, prefixLen: 4, totalLen: 4},
+		{rule: `/p/\141`, prefixLen: 4, totalLen: 4},
+		{rule: `/p/\t`, prefixLen: 4, totalLen: 4},
+		// An incomplete one names nothing, so it ends the prefix where it
+		// stands. Only the prefix is pinned here: such a rule does not compile,
+		// so nothing downstream of the sort ever sees it.
+		{rule: `/p/\x{61`, prefixLen: 3, totalLen: 5},
 		// "$" anchors rather than matching, and the pattern anchors either way.
 		{rule: "/p/a$", prefixLen: 5, totalLen: 5},
 		// A class matches one byte whatever it lists, so listing more
@@ -2374,6 +2385,140 @@ func Test_Redirect_OptionalQuantifierDoesNotOutrankExactRule(t *testing.T) {
 		{"/api/ab", "/exact"},
 		// What only the quantified rule matches still reaches it.
 		{"/api/a", "/maybe"},
+	} {
+		req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, tc.request, http.NoBody)
+		require.NoError(t, err)
+		resp, err := app.Test(req)
+		require.NoError(t, err)
+		require.Equal(t, fiber.StatusFound, resp.StatusCode, tc.request)
+		require.Equal(t, tc.want, resp.Header.Get("Location"), tc.request)
+	}
+}
+
+// Test_Redirect_FileAuthorityOpensOnBackslashes covers "file:/$1", which looks
+// like it names no authority. The parser folds a backslash into a slash on the
+// way to the file host, so a captured "\evil.com/share" composes a location
+// whose host is evil.com — on Windows, a UNC path to a server of its choosing.
+func Test_Redirect_FileAuthorityOpensOnBackslashes(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New(fiber.Config{UnescapePath: true})
+	app.Use(New(Config{Rules: map[string]string{"/r/*": "file:/$1"}, StatusCode: fiber.StatusFound}))
+	app.Get("/*", func(c fiber.Ctx) error { return c.SendString("fell through") })
+
+	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/r/%5Cevil.com/share", http.NoBody)
+	require.NoError(t, err)
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	require.Empty(t, resp.Header.Get("Location"))
+
+	// A value that stays a path still redirects. So does a third slash, which
+	// closes the authority empty exactly as "file:///tmp" does.
+	for _, tc := range []struct{ request, want string }{
+		{"/r/tmp/report", "file:/tmp/report"},
+		{"/r/%5C%5Cevil.com/share", `file:/\\evil.com/share`},
+	} {
+		req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, tc.request, http.NoBody)
+		require.NoError(t, err)
+		resp, err := app.Test(req)
+		require.NoError(t, err)
+		require.Equal(t, fiber.StatusFound, resp.StatusCode, tc.request)
+		require.Equal(t, tc.want, resp.Header.Get("Location"), tc.request)
+	}
+
+	// The span itself, which is what the runtime guard asks of the composition:
+	// two slashes in any spelling open the host, and a third closes it empty.
+	for _, target := range []string{`file:/\evil.com/share`, `file:\\evil.com/share`, `file:\/evil.com`, "file://evil.com"} {
+		start, end := authoritySpan(target)
+		require.Equal(t, "evil.com", target[start:end], target)
+	}
+	for _, target := range []string{`file:/\\evil.com`, "file:///tmp", `file:\\\evil.com`} {
+		start, end := authoritySpan(target)
+		require.Equal(t, start, end, target)
+	}
+}
+
+// Test_Redirect_AnchorsBindEveryBranch covers a rule holding a top-level "|".
+// Concatenating the anchors made "^/a|/b$", which anchors the start of one
+// branch and the end of the other, so a path only sharing an edge matched.
+func Test_Redirect_AnchorsBindEveryBranch(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Use(New(Config{Rules: map[string]string{"/a|/b": "/moved"}, StatusCode: fiber.StatusFound}))
+	app.Get("/*", func(c fiber.Ctx) error { return c.SendString("fell through") })
+
+	for _, tc := range []struct {
+		request string
+		want    int
+	}{
+		{"/a", fiber.StatusFound},
+		{"/b", fiber.StatusFound},
+		{"/a-extra", fiber.StatusOK},
+		{"/extra/b", fiber.StatusOK},
+	} {
+		req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, tc.request, http.NoBody)
+		require.NoError(t, err)
+		resp, err := app.Test(req)
+		require.NoError(t, err)
+		require.Equal(t, tc.want, resp.StatusCode, tc.request)
+	}
+}
+
+// Test_Redirect_NestedAlternationLosesTheTieBreak covers two rules that tie on
+// both specificity measures. The wider one matches a path the other does not, so
+// key order deciding between them left the exact rule dead.
+func Test_Redirect_NestedAlternationLosesTheTieBreak(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Use(New(Config{
+		Rules: map[string]string{
+			"/p/[a-z](x|y)": "/wide",
+			"/p/[a-z]x":     "/narrow",
+		},
+		StatusCode: fiber.StatusFound,
+	}))
+	app.Get("/*", func(c fiber.Ctx) error { return c.SendString("fell through") })
+
+	for _, tc := range []struct{ request, want string }{
+		{"/p/ax", "/narrow"},
+		{"/p/ay", "/wide"},
+	} {
+		req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, tc.request, http.NoBody)
+		require.NoError(t, err)
+		resp, err := app.Test(req)
+		require.NoError(t, err)
+		require.Equal(t, fiber.StatusFound, resp.StatusCode, tc.request)
+		require.Equal(t, tc.want, resp.Header.Get("Location"), tc.request)
+	}
+
+	require.Equal(t, 2, patternWidth("/p/[a-z](x|y)"))
+	require.Equal(t, 1, patternWidth("/p/[a-z]x"))
+	require.Equal(t, 2, patternWidth("/very/specific|/x"))
+	require.Equal(t, 4, patternWidth("(a|b)(c|d)"))
+}
+
+// Test_Redirect_HexEscapeOutranksAClass covers "\x{61}", which names the one
+// character "a". Reading every letter-led escape as a class scored it no higher
+// than "[a-z]", and the tie left key order to pick the broader rule.
+func Test_Redirect_HexEscapeOutranksAClass(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Use(New(Config{
+		Rules: map[string]string{
+			`/p/\x{61}`: "/exact",
+			"/p/[a-z]":  "/class",
+		},
+		StatusCode: fiber.StatusFound,
+	}))
+	app.Get("/*", func(c fiber.Ctx) error { return c.SendString("fell through") })
+
+	for _, tc := range []struct{ request, want string }{
+		{"/p/a", "/exact"},
+		{"/p/b", "/class"},
 	} {
 		req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, tc.request, http.NoBody)
 		require.NoError(t, err)
