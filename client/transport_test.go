@@ -1110,6 +1110,50 @@ func Test_DoRedirects_NilResponse(t *testing.T) {
 	require.Equal(t, 2, hops, "the redirect was still followed")
 }
 
+// Test_Transport_DoRedirects_RefusesUnparsableInitialURI covers the URI the
+// caller supplies, as against the redirect targets covered below.
+//
+// Request.URI swallows the parse error the same way UpdateBytes does, so the
+// loop read a half-parsed URI: "http://example.com:abc/x" keeps the malformed
+// authority as its host and loses its path. A HostClient dials its fixed Addr
+// whatever the URI says, so that host would have gone out as the Host header of
+// a request the caller never wrote. fasthttp's own loop calls the
+// error-returning parser after every SetRequestURI; this one now does too.
+func Test_Transport_DoRedirects_RefusesUnparsableInitialURI(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name    string
+		uri     string
+		wantErr bool
+	}{
+		{name: "invalid port", uri: "http://example.com:abc/x", wantErr: true},
+		{name: "unclosed bracket", uri: "http://[::1/x", wantErr: true},
+		{name: "a URI that parses is sent", uri: "http://example.com/x", wantErr: false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			stub := &stubRedirectClient{}
+			req := fasthttp.AcquireRequest()
+			resp := fasthttp.AcquireResponse()
+			defer fasthttp.ReleaseRequest(req)
+			defer fasthttp.ReleaseResponse(resp)
+			req.SetRequestURI(tc.uri)
+
+			err := doRedirectsWithClient(req, resp, 3, stub)
+			if tc.wantErr {
+				require.ErrorIs(t, err, fasthttp.ErrorInvalidURI)
+				require.Equal(t, 0, stub.CallCount(),
+					"a malformed URI must be refused before anything is sent")
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, 1, stub.CallCount())
+		})
+	}
+}
+
 // Test_Transport_DoRedirects_RefusesUnparsableTarget covers a Location fasthttp
 // cannot parse. URI.UpdateBytes discards that error and keeps whatever it read,
 // so "http://example.com:abc/x" left the host "example.com:abc" and lost the

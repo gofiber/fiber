@@ -340,6 +340,17 @@ func doRedirectsWithClient(req *fasthttp.Request, resp *fasthttp.Response, maxRe
 	for {
 		req.SetRequestURI(currentURL)
 
+		// Where fasthttp's own loop calls the error-returning req.parseURI, and
+		// for the same reason: Request.URI swallows the error and hands back a
+		// half-parsed URI, so "http://example.com:abc/x" keeps the malformed
+		// authority as its host and loses the path. A HostClient dials its fixed
+		// Addr regardless, so that host went out as the Host header of a request
+		// the caller never wrote. The redirect targets below are checked as they
+		// are composed; this is the same check for the URI the caller supplied.
+		if err := parsesAsURI([]byte(currentURL)); err != nil {
+			return err
+		}
+
 		if err := client.Do(req, resp); err != nil {
 			return err
 		}
