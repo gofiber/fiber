@@ -2444,10 +2444,13 @@ func Test_HTTPMiddleware_JoinsRepeatedConnectionValues(t *testing.T) {
 		wantClose bool
 	}{
 		{name: "token list", write: []string{"keep-alive", "X-Internal"}, want: "keep-alive, X-Internal"},
-		// The close flag stays unset for a token list, which is what fasthttp's
-		// own wire parser does with "Connection: close, X-Internal" as well — the
-		// point here is that the token survives at all rather than being replaced.
-		{name: "close first", write: []string{"close", "X-Internal"}, want: "close, X-Internal"},
+		// Where "close" is among the tokens the flag wins, since fasthttp holds
+		// one or the other and the server reads only the flag. Peek answers
+		// "close" once it is set, so the other tokens go — the alternative was a
+		// connection the client asked to close being kept open.
+		{name: "close first", write: []string{"close", "X-Internal"}, want: "close", wantClose: true},
+		{name: "close last", write: []string{"X-Internal", "close"}, want: "close", wantClose: true},
+		{name: "close cased", write: []string{"X-Internal", "CLOSE"}, want: "close", wantClose: true},
 		{name: "close alone still closes", write: []string{"close"}, want: "close", wantClose: true},
 		{name: "single entry is unchanged", write: []string{"keep-alive"}, want: "keep-alive"},
 	} {

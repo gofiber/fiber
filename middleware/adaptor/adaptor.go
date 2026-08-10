@@ -355,6 +355,17 @@ type headerPair struct {
 	value string
 }
 
+// hasCloseToken reports whether a Connection field value lists "close" among its
+// tokens, which RFC 9110 Section 7.6.1 matches case-insensitively.
+func hasCloseToken(value string) bool {
+	for token := range strings.SplitSeq(value, ",") {
+		if utils.EqualFold(utils.TrimSpace(token), "close") {
+			return true
+		}
+	}
+	return false
+}
+
 // snapshotHeaders copies the non-framing headers of the converted request into
 // owned strings. fasthttpadaptor builds r.Header with b2s, so its keys and values
 // alias buffers the fiber header owns — writing back in place corrupted them.
@@ -451,7 +462,19 @@ func HTTPMiddleware(mw func(http.Handler) http.Handler) fiber.Handler {
 				fhdr.Add(p.key, p.value)
 			}
 			if len(connection) > 0 {
-				fhdr.Set(fiber.HeaderConnection, strings.Join(connection, ", "))
+				joined := strings.Join(connection, ", ")
+				fhdr.Set(fiber.HeaderConnection, joined)
+				if hasCloseToken(joined) {
+					// fasthttp holds either the close flag or an arbitrary value,
+					// never both: setting the flag makes Peek answer "close" and
+					// hides the rest, while Set of anything but a bare "close"
+					// clears the flag. Where the two conflict the flag has to win —
+					// Set alone left a connection the client asked to close being
+					// kept open, since the server reads the flag and nothing else.
+					// The cost is that a field named beside "close" stops being
+					// visible as hop-by-hop for this request.
+					fhdr.SetConnectionClose()
+				}
 			}
 			CopyContextToFiberContext(r.Context(), c.RequestCtx())
 		})
