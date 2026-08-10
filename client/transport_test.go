@@ -394,8 +394,12 @@ func TestDoRedirectsWithClientBranches(t *testing.T) {
 	req.SetRequestURI("http://example.com/again")
 	req.SetBodyString("payload")
 
+	// A limit of zero issues the request and counts the first redirect against
+	// it, as fasthttp's own DoRedirects does. Returning nil made a request that
+	// finished indistinguishable from one that stopped at a hop, and the request
+	// is left as it was sent, since the error comes before any rewrite.
 	singleCall := &stubRedirectClient{calls: []stubRedirectCall{{status: ptrInt(fasthttp.StatusFound), location: ptrString("/ignored")}}}
-	require.NoError(t, doRedirectsWithClient(req, resp, 0, singleCall))
+	require.ErrorIs(t, doRedirectsWithClient(req, resp, 0, singleCall), fasthttp.ErrTooManyRedirects)
 	require.Equal(t, fasthttp.StatusFound, resp.StatusCode())
 	require.Equal(t, fasthttp.MethodPost, string(req.Header.Method()))
 	require.Equal(t, "http://example.com/again", req.URI().String())

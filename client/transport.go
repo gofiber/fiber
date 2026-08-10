@@ -312,8 +312,14 @@ type redirectClient interface {
 
 // doRedirectsWithClient is the redirect loop behind every transport, so target
 // validation does not depend on which one a caller built. It always issues the
-// initial request, respects zero redirect limits, falls back to the default cap
-// for negative values, and validates redirect targets before following them.
+// initial request, falls back to the default cap for a negative limit, and
+// validates a redirect target before following one.
+//
+// A limit of zero is counted the way fasthttp counts it — the first redirect is
+// the first one counted, so it returns ErrTooManyRedirects. Returning the
+// redirect response instead left a caller unable to tell a request that finished
+// from one that stopped at a hop, and it is what the DoRedirects this stands in
+// for does.
 func doRedirectsWithClient(req *fasthttp.Request, resp *fasthttp.Response, maxRedirects int, client redirectClient) error {
 	if resp == nil {
 		// "Response is ignored if resp is nil", per fasthttp's own DoRedirects
@@ -326,11 +332,9 @@ func doRedirectsWithClient(req *fasthttp.Request, resp *fasthttp.Response, maxRe
 	currentURL := req.URI().String()
 	initialHostname := hostnameWithoutPort(string(req.URI().Host()))
 	redirects := 0
-	singleRequestOnly := maxRedirects <= 0
 
 	if maxRedirects < 0 {
 		maxRedirects = defaultRedirectLimit
-		singleRequestOnly = false
 	}
 
 	for {
@@ -342,10 +346,6 @@ func doRedirectsWithClient(req *fasthttp.Request, resp *fasthttp.Response, maxRe
 
 		statusCode := resp.Header.StatusCode()
 		if !fasthttp.StatusCodeIsRedirect(statusCode) {
-			return nil
-		}
-
-		if singleRequestOnly {
 			return nil
 		}
 

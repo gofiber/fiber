@@ -7981,6 +7981,16 @@ func Test_Ctx_JSONP_SanitizesCallback(t *testing.T) {
 		{name: "reserved word as property", callback: "cb.new", expected: "cb.new"},
 		{name: "reserved word as nested property", callback: "cb[a.class]", expected: "cb[a.class]"},
 		{name: "reserved word as prefix", callback: "news", expected: "news"},
+
+		// "let" is a keyword only where a "[" follows it at the head of the
+		// statement the body is: "let[a](…);" is read as a destructuring
+		// declaration and throws, while every other position is a call.
+		{name: "let indexed at the head", callback: "let[a]", expected: "callback"},
+		{name: "let indexed by a number", callback: "let[0]", expected: "callback"},
+		{name: "let alone", callback: "let", expected: "let"},
+		{name: "let with a property", callback: "let.a", expected: "let.a"},
+		{name: "let indexed deeper", callback: "cb[let[a]]", expected: "cb[let[a]]"},
+		{name: "let as a property", callback: "cb.let[0]", expected: "cb.let[0]"},
 	}
 
 	app := New()

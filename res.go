@@ -710,6 +710,13 @@ func isJSONPMemberExpression(cb string) bool {
 	if cb == "" {
 		return false
 	}
+	// "let" is a keyword only where a "[" follows it, and only at the head: an
+	// expression statement may not begin "let [", so the body "let[a](…);" is
+	// read as a destructuring declaration and is a syntax error. "let(…)",
+	// "let.a(…)" and an inner "cb[let[a]]" are all calls and stay allowed.
+	if strings.HasPrefix(cb, "let[") {
+		return false
+	}
 
 	depth := 0
 	atStart := true     // expecting the first byte of an identifier
