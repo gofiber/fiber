@@ -218,6 +218,51 @@ func Test_Extractor_Chain(t *testing.T) {
 }
 
 // go test -run Test_Extractor_FromAuthHeader_EdgeCases
+// Test_Extractor_FromHeader_CombinesRepeatedLines covers a field carried on
+// several lines. FromHeader is given its name by the application, and a name it
+// is given may be a list field a peer may legally send twice, so the lines are
+// combined the way RFC 9110 §5.3 says a recipient may rather than refused as an
+// ambiguous single value.
+func Test_Extractor_FromHeader_CombinesRepeatedLines(t *testing.T) {
+	t.Parallel()
+
+	for _, normalize := range []bool{true, false} {
+		t.Run(fmt.Sprintf("normalize=%v", normalize), func(t *testing.T) {
+			t.Parallel()
+
+			app := fiber.New(fiber.Config{DisableHeaderNormalizing: !normalize})
+			ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+			defer app.ReleaseCtx(ctx)
+			if !normalize {
+				ctx.Request().Header.DisableNormalizing()
+			}
+
+			ctx.Request().Header.Add("Accept", "text/html")
+			// The second spelling is the one HTTP/2 and 3 put on the wire.
+			ctx.Request().Header.Add("accept", "application/json")
+
+			value, err := FromHeader("Accept").Extract(ctx)
+			require.NoError(t, err)
+			require.Equal(t, "text/html, application/json", value)
+		})
+	}
+}
+
+// Test_Extractor_FromHeader_SingleLineIsUnchanged is the control for the test
+// above: one line is returned as it arrived, with no separator introduced.
+func Test_Extractor_FromHeader_SingleLineIsUnchanged(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(ctx)
+	ctx.Request().Header.Set("X-API-Key", "abc123")
+
+	value, err := FromHeader("X-API-Key").Extract(ctx)
+	require.NoError(t, err)
+	require.Equal(t, "abc123", value)
+}
+
 // Test_Extractor_FromAuthHeader_RepeatedLineIsNotACredential covers a message
 // carrying Authorization twice, which is what a middleware clearing the field
 // leaves behind when the client sent another spelling of it.

@@ -3490,6 +3490,76 @@ func Test_CSRF_RepeatedOriginIsRefused(t *testing.T) {
 	}
 }
 
+// Test_CSRF_RepeatedSecFetchSiteAndRefererAreRefused covers the other two
+// single-value fields the check reads, for the same reason as Origin: a second
+// line makes the field unreadable, and neither may be treated as absent — an
+// absent Sec-Fetch-Site is skipped, and an absent Referer on HTTPS is what the
+// Referer check exists to refuse.
+func Test_CSRF_RepeatedSecFetchSiteAndRefererAreRefused(t *testing.T) {
+	t.Parallel()
+
+	// Trusted-proxy app: Ctx.Scheme reads X-Forwarded-Proto only from a trusted
+	// peer, and the Referer check runs only on HTTPS.
+	app := newTrustedApp()
+	app.Use(New())
+	app.Get("/", func(c fiber.Ctx) error { return c.SendString(TokenFromContext(c)) })
+	app.Post("/", func(c fiber.Ctx) error { return c.SendString("accepted") })
+	h := app.Handler()
+
+	get := &fasthttp.RequestCtx{}
+	get.Request.Header.SetMethod(fiber.MethodGet)
+	get.Request.SetRequestURI("/")
+	get.Request.URI().SetScheme("https")
+	get.Request.Header.SetProtocol("https")
+	get.Request.Header.SetHost("example.com")
+	h(get)
+
+	token := string(get.Response.Body())
+	require.NotEmpty(t, token)
+	cookie, _, _ := strings.Cut(string(get.Response.Header.Peek(fiber.HeaderSetCookie)), ";")
+	require.NotEmpty(t, cookie)
+
+	post := func(build func(*fasthttp.RequestCtx)) int {
+		ctx := &fasthttp.RequestCtx{}
+		ctx.Request.Header.SetMethod(fiber.MethodPost)
+		ctx.Request.SetRequestURI("/")
+		ctx.Request.URI().SetScheme("https")
+		ctx.Request.URI().SetHost("example.com")
+		ctx.Request.Header.SetProtocol("https")
+		ctx.Request.Header.SetHost("example.com")
+		// Ctx.Scheme reads this rather than the URI, and the Referer check runs
+		// only on HTTPS.
+		ctx.Request.Header.Set(fiber.HeaderXForwardedProto, "https")
+		ctx.Request.Header.Set(fiber.HeaderCookie, cookie)
+		ctx.Request.Header.Set(HeaderName, token)
+		build(ctx)
+		h(ctx)
+		return ctx.Response.StatusCode()
+	}
+
+	// A same-origin request with one of each still passes, so the refusals
+	// below cannot pass by refusing everything.
+	require.Equal(t, fiber.StatusOK, post(func(ctx *fasthttp.RequestCtx) {
+		ctx.Request.Header.Set(fiber.HeaderSecFetchSite, "same-origin")
+		ctx.Request.Header.Set(fiber.HeaderOrigin, "https://example.com")
+	}))
+	require.Equal(t, fiber.StatusOK, post(func(ctx *fasthttp.RequestCtx) {
+		ctx.Request.Header.Set(fiber.HeaderReferer, "https://example.com/page")
+	}), "no Origin on HTTPS falls through to the Referer check, which this passes")
+
+	require.Equal(t, fiber.StatusForbidden, post(func(ctx *fasthttp.RequestCtx) {
+		ctx.Request.Header.Set(fiber.HeaderSecFetchSite, "same-origin")
+		ctx.Request.Header.Add(fiber.HeaderSecFetchSite, "same-origin")
+		ctx.Request.Header.Set(fiber.HeaderOrigin, "https://example.com")
+	}), "a repeated Sec-Fetch-Site must not be skipped as an absent one is")
+
+	require.Equal(t, fiber.StatusForbidden, post(func(ctx *fasthttp.RequestCtx) {
+		// No Origin, so the check falls through to Referer on this HTTPS request.
+		ctx.Request.Header.Set(fiber.HeaderReferer, "https://example.com/page")
+		ctx.Request.Header.Add(fiber.HeaderReferer, "https://evil.example/page")
+	}), "a repeated Referer is refused rather than resolved to one of the lines")
+}
+
 // Test_CSRF_TrustedOriginIsAllowedWhenCrossSite pins that Sec-Fetch-Site does
 // not decide cross-site on its own.
 //
