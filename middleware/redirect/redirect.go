@@ -222,25 +222,36 @@ func targetNamesAuthority(target string) bool {
 // target names none: from the "//" to the first "/", "?", "#" or "\". A special
 // scheme needs no "//" — "https:host" and "https://host" name the same host.
 func authoritySpan(target string) (start, end int) { //nolint:nonamedreturns // the pair is a range; names say which is which
+	special := true
 	switch {
 	case strings.HasPrefix(target, "//"):
+		// Protocol-relative, so the scheme is the page's and every scheme that
+		// can be one is special.
 		start = 2
 	default:
 		i := schemeEnd(target)
+		special = isSpecialScheme(target[:max(i, 0)])
 		switch {
 		case i <= 0:
 			return 0, 0
 		case strings.HasPrefix(target[i+1:], "//"):
 			start = i + 3
-		case isSpecialScheme(target[:i]):
+		case special:
 			start = i + 1
 		default:
 			return 0, 0
 		}
 	}
 
-	for start < len(target) && (target[start] == '/' || target[start] == '\\') {
-		start++
+	// Only a special scheme ignores the slashes past the first two: the parser
+	// reaches "special authority ignore slashes" for those alone. Under any
+	// other scheme the third one terminates an empty authority, so "myapp:///$1"
+	// names no host and the capture is path — skipping it read $1 as the host
+	// and the rule was dropped at startup for handing the host away.
+	if special {
+		for start < len(target) && (target[start] == '/' || target[start] == '\\') {
+			start++
+		}
 	}
 
 	if offset := strings.IndexAny(target[start:], authorityEnders(target)); offset >= 0 {
