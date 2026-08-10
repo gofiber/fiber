@@ -51,7 +51,7 @@ Only `http` and `https` upstream schemes are accepted by default; `file://`, `go
 
 `DoRedirects` rejects redirects from HTTPS origins to plaintext HTTP targets with `ErrRedirectDowngrade`. Following such a redirect would leak any cookies or `Authorization` headers established under TLS. Set `SecurityPolicy.AllowHTTPSDowngrade = true` to override.
 
-When a redirect crosses to a **different host**, `DoRedirects` strips the `Authorization`, `Proxy-Authorization`, and `Cookie` headers so credentials bound to the original origin are not forwarded to a third-party upstream. Same-host redirects retain these headers.
+When a redirect crosses to a **different host**, `DoRedirects` strips `Authorization`, `Proxy-Authorization`, `Proxy-Authenticate`, `WWW-Authenticate`, `Cookie` and the obsolete `Cookie2`, so credentials bound to the original origin are not forwarded to a third-party upstream. This is `net/http`'s own set. Same-host redirects retain these headers.
 
 ### RFC 7230 hop-by-hop header stripping
 

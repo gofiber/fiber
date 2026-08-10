@@ -337,11 +337,10 @@ Tags whose values the framework controls — `${status}`, `${method}`, `${protoc
 Only ASCII controls are replaced. Bytes at or above `0x80` pass through untouched, so C1 controls (U+0080–U+009F, including NEL U+0085, which some log pipelines treat as a line break) survive scrubbing. Handle those yourself if your values can carry them.
 
 :::caution
-Four paths bypass the built-in scrubbing, because each one replaces the renderer rather than wrapping it:
+Three paths bypass the built-in scrubbing, because each one replaces the renderer rather than wrapping it:
 
 - `Config.CustomTags`
 - `RegisterTag` / `MustRegisterTag`
-- `RegisterContextTag`
 - `Config.LoggerFunc`, which replaces the rendering pipeline wholesale
 
 Anything request-derived that you write from one of these needs scrubbing. Use `logger.SanitizeValue`, which applies exactly what the built-in tags apply:
@@ -352,7 +351,7 @@ logger.MustRegisterTag("tenant", func(output logger.Buffer, c fiber.Ctx, _ *logg
 })
 ```
 
-Fiber's own context tags — `${username}`, `${api-key}`, `${csrf-token}`, `${requestid}`, `${session-id}` — are safe because the middleware behind each one validates or redacts at the source, not because `RegisterContextTag` scrubs.
+`RegisterContextTag` is not on that list: it wraps your extractor rather than being one, so what the extractor returns is scrubbed on the way out — in both the access-log renderer and the `log` package one. Fiber's own context tags — `${username}`, `${api-key}`, `${csrf-token}`, `${requestid}`, `${session-id}` — are registered through it, and the middleware behind each one validates or redacts at the source as well.
 :::
 
 ## Constants

@@ -21,6 +21,10 @@ type Peeker interface {
 	Peek(key string) []byte
 	PeekAll(key string) [][]byte
 	All() iter.Seq2[[]byte, []byte]
+	// VisitAll is deprecated in fasthttp in favor of All, but All builds an
+	// iterator per call while this walks the store directly. Kept for the reads
+	// that run per request and do not need to stop early.
+	VisitAll(f func(key, value []byte))
 }
 
 // Deleter is the part of fasthttp's headers needed to remove a field by name.
@@ -41,12 +45,14 @@ func Lines(h Peeker, name string, canonical bool) [][]byte {
 		return h.PeekAll(name)
 	}
 
+	// Walked rather than ranged: this runs per key header on every cacheable
+	// request, and All's iterator costs more than the match itself does.
 	var values [][]byte
-	for k, v := range h.All() {
+	h.VisitAll(func(k, v []byte) {
 		if utils.EqualFold(utils.UnsafeString(k), name) {
 			values = append(values, v)
 		}
-	}
+	})
 	return values
 }
 
