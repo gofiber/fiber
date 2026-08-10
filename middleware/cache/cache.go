@@ -257,7 +257,7 @@ func New(config ...Config) fiber.Handler {
 			// the same as two lines carrying one each, and the two are different
 			// principals, so a comma would put them in one partition.
 			authLines := fieldname.Lines(&c.Request().Header, fiber.HeaderAuthorization, canonical)
-			authHash := hashAuthorization(joinKeyHeaderValues(authLines))
+			authHash := hashAuthorization(authLines)
 			baseKey += "|auth=" + authHash
 			manifestKey = baseKey + "|vary"
 		}

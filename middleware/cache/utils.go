@@ -2,6 +2,7 @@ package cache
 
 import (
 	"crypto/sha256"
+	"encoding/binary"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -271,9 +272,40 @@ func secondsToDuration(sec uint64) time.Duration {
 	return time.Duration(sec) * time.Second
 }
 
-func makeHashAuthFunc(hexBufPool *sync.Pool) func([]byte) string {
-	return func(authHeader []byte) string {
-		sum := sha256.Sum256(authHeader)
+// maxAuthScratch bounds the framing buffer kept between requests, so one
+// oversized Authorization header does not pin a large allocation for the life of
+// the process.
+const maxAuthScratch = 8 * 1024
+
+// authScratchPool holds the buffer the field lines are framed into. The framing
+// has to exist somewhere before it is hashed, and a fresh buffer per request put
+// an allocation on the cache path for every authenticated request.
+var authScratchPool = sync.Pool{
+	New: func() any {
+		b := make([]byte, 0, 256)
+		return &b
+	},
+}
+
+// makeHashAuthFunc returns the digest of a request's Authorization field lines,
+// each length-prefixed so that ["ab"] and ["a","b"] do not collide.
+func makeHashAuthFunc(hexBufPool *sync.Pool) func([][]byte) string {
+	return func(lines [][]byte) string {
+		scratchPtr, ok := authScratchPool.Get().(*[]byte)
+		if !ok || scratchPtr == nil {
+			b := make([]byte, 0, 256)
+			scratchPtr = &b
+		}
+		framed := (*scratchPtr)[:0]
+		for _, v := range lines {
+			framed = binary.AppendUvarint(framed, uint64(len(v)))
+			framed = append(framed, v...)
+		}
+		sum := sha256.Sum256(framed)
+		if cap(framed) <= maxAuthScratch {
+			*scratchPtr = framed
+			authScratchPool.Put(scratchPtr)
+		}
 
 		v := hexBufPool.Get()
 		bufPtr, ok := v.(*[]byte)
