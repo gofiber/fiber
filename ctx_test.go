@@ -7957,6 +7957,13 @@ func Test_Ctx_JSONP_SanitizesCallback(t *testing.T) {
 		{name: "hex-looking index", callback: "ns[0x]", expected: "callback"},
 		{name: "dotted number index", callback: "ns[1.2.3]", expected: "callback"},
 		{name: "index into a number", callback: "cb[0[1]]", expected: "callback"},
+
+		// Only a token opened by '[' may be a number. A property named after a dot
+		// may not, however deep in brackets the dot sits.
+		{name: "numeric property in index", callback: "cb[a.0]", expected: "callback"},
+		{name: "numeric property nested", callback: "cb[x[a.1]]", expected: "callback"},
+		{name: "numeric property trailing", callback: "cb[a.b.0]", expected: "callback"},
+		{name: "identifier property in index", callback: "cb[a.b]", expected: "cb[a.b]"},
 	}
 
 	app := New()

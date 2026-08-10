@@ -707,6 +707,7 @@ func isJSONPMemberExpression(cb string) bool {
 
 	depth := 0
 	atStart := true     // expecting the first byte of an identifier
+	inIndex := false    // that first byte follows '[', so a number may stand there
 	afterClose := false // a ']' just closed an index
 	numeric := false    // the open index began with a digit, so it is a number
 	for i := 0; i < len(cb); i++ {
@@ -715,13 +716,13 @@ func isJSONPMemberExpression(cb string) bool {
 			if atStart || numeric {
 				return false
 			}
-			atStart, afterClose = true, false
+			atStart, inIndex, afterClose = true, false, false
 		case '[':
 			if atStart || numeric {
 				return false
 			}
 			depth++
-			atStart, afterClose = true, false
+			atStart, inIndex, afterClose = true, true, false
 		case ']':
 			if atStart || depth == 0 {
 				return false
@@ -738,13 +739,15 @@ func isJSONPMemberExpression(cb string) bool {
 			if atStart {
 				// An identifier may not start with a digit. A bracket index may, and
 				// then it is that number alone: "cb[0]" parses, "cb[0x]" does not.
+				// Only a token opened by '[' counts — "cb[a.0]" is a property named
+				// after a dot, where a digit is as illegal as it is at the top level.
 				if c >= '0' && c <= '9' {
-					if depth == 0 {
+					if !inIndex {
 						return false
 					}
 					numeric = true
 				}
-				atStart = false
+				atStart, inIndex = false, false
 			} else if numeric && (c < '0' || c > '9') {
 				return false
 			}
