@@ -308,7 +308,14 @@ func authorityHolds(chunks []authorityChunk, replacer *strings.Replacer) bool {
 		if hostPins(chunks[i+1:]) {
 			// The author closed the host past this token, so the value is a
 			// label inside it and only has to stay one.
-			if strings.ContainsAny(value, `/\?#@:`) {
+			forbidden := `/\?#@:`
+			if userinfoCloses(chunks[i+1:]) {
+				// Except that the token sits in userinfo, where ":" separates a
+				// password and "@" is not the last one — the author wrote that.
+				// Only the four that end the authority outright still matter.
+				forbidden = `/\?#`
+			}
+			if strings.ContainsAny(value, forbidden) {
 				return false
 			}
 			continue
@@ -340,6 +347,18 @@ func authorityHolds(chunks []authorityChunk, replacer *strings.Replacer) bool {
 func hostPins(chunks []authorityChunk) bool {
 	for _, chunk := range chunks {
 		if !chunk.placeholder && chunk.pins {
+			return true
+		}
+	}
+	return false
+}
+
+// userinfoCloses reports whether the author wrote an "@" among these chunks,
+// asked of what follows a capture. The host begins after the last one, so a
+// capture before it is userinfo and names no label.
+func userinfoCloses(chunks []authorityChunk) bool {
+	for _, chunk := range chunks {
+		if !chunk.placeholder && strings.ContainsRune(chunk.text, '@') {
 			return true
 		}
 	}
