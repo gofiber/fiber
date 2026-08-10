@@ -127,7 +127,7 @@ app := fiber.New(fiber.Config{
         if fiberErr, ok := err.(*fiber.Error); ok {
             code = fiberErr.Code
         }
-        return c.Status(code).JSON(fiber.Map{"error": err.Error()})
+        return c.Status(code).JSON(fiber.Map{"error": "request failed"})
     },
 })
 
