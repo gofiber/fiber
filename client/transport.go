@@ -404,6 +404,16 @@ func dropRequestBody(req *fasthttp.Request) {
 	// Load-bearing, not bookkeeping: Request.Write falls back to the parsed form
 	// when the body is empty, so a caller that had read PostArgs would have sent
 	// the old "a=1" as the body of the redirected GET.
+	//
+	// fasthttp's own loop clears the parsed flag beside this, which leaves a
+	// reused request re-parsing whatever body it is given next. That half is not
+	// reachable from here: parsedPostArgs is unexported and only Request.Reset
+	// and ReadLimitBody clear it, and Reset would take the URI, headers and TLS
+	// flag this loop is still using. What differs is confined to a caller that
+	// reuses the request without resetting it: its PostArgs reads empty rather
+	// than re-parsing. The body it sends is the new one either way, and an
+	// untouched fasthttp request is worse off there — it hands back the previous
+	// body's values, since SetBody does not invalidate the form either.
 	req.PostArgs().Reset()
 }
 

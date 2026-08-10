@@ -1003,6 +1003,45 @@ func Test_DropRequestBody_ClearsTheParsedForm(t *testing.T) {
 	require.NotContains(t, buf.String(), "a=1", "the dropped form must not come back as the body")
 }
 
+// Test_DropRequestBody_ReusedRequestSendsTheNewBody covers the request a caller
+// gets back and then reuses without resetting it.
+//
+// fasthttp clears its parsed-form flag beside the values here, which this cannot
+// reach: the field is unexported and only Request.Reset clears it, which would
+// take the URI and headers the redirect loop is still using. What survives that
+// gap has to be the part that matters — the body actually sent, and the earlier
+// form not reappearing in it or in a later read. An untouched fasthttp request
+// is no better here: SetBody does not invalidate the parsed form either, so it
+// answers a reused PostArgs with the previous body's values.
+func Test_DropRequestBody_ReusedRequestSendsTheNewBody(t *testing.T) {
+	t.Parallel()
+
+	req := fasthttp.AcquireRequest()
+	defer fasthttp.ReleaseRequest(req)
+	req.SetRequestURI("http://example.com/y")
+	req.Header.SetMethod(fasthttp.MethodPost)
+	req.Header.SetContentType("application/x-www-form-urlencoded")
+	req.SetBodyString("a=1")
+	require.Equal(t, "a=1", req.PostArgs().String(), "the caller reads the form first")
+
+	dropRequestBody(req)
+
+	// The caller reuses the request for a second POST.
+	req.Header.SetMethod(fasthttp.MethodPost)
+	req.Header.SetContentType("application/x-www-form-urlencoded")
+	req.SetBodyString("b=2")
+
+	require.NotContains(t, req.PostArgs().String(), "a=1",
+		"a reused request must not report the previous body's form values")
+
+	var buf bytes.Buffer
+	w := bufio.NewWriter(&buf)
+	require.NoError(t, req.Write(w))
+	require.NoError(t, w.Flush())
+	require.Contains(t, buf.String(), "b=2", "the reused request sends the body it was given")
+	require.NotContains(t, buf.String(), "a=1")
+}
+
 // Test_Response_ResetDropsOversizedOriginBuffers covers the recorded origin on a
 // pooled Response. A redirect target chooses that path, so an oversized buffer
 // is kept out of the pool rather than carried by every later response.
