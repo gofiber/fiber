@@ -311,8 +311,13 @@ separately meant reading it a second way, and under
 Because the entries are split and trimmed rather than echoed as sent, repeated
 `X-Forwarded-For` header lines and a single comma-joined one log identically,
 which is what [RFC 9110 §5.2](https://www.rfc-editor.org/rfc/rfc9110.html#section-5.2)
-says they are. `${ips}` is empty unless the peer is a trusted proxy — see
-[`TrustProxy`](../api/fiber.md#config).
+says they are.
+
+`${ips}` logs the chain as supplied, whether or not the peer is a trusted proxy,
+because it reports what `Ctx.IPs()` returns. Any client can send
+`X-Forwarded-For`, so treat a logged chain as attacker-controlled unless
+[`TrustProxy`](../api/fiber.md#config) is configured and the peer is in it. Use
+`${ip}`, which is the peer address, when you need one you can rely on.
 
 ## Control-Character Sanitization
 

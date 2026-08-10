@@ -34,13 +34,13 @@ func Test_NormalizeRequestContentType(t *testing.T) {
 		{"trailing semicolon", "Text/Plain;", "text/plain;"},
 		{"empty", "", ""},
 
-		// An unterminated quote consumes the rest of the list. fasthttp's own
-		// boundary scanner has no quoting rules at all, so this scanner stays no
-		// more permissive than it: the string ends at the first quote, escaped
-		// or not, and never swallows a later parameter name a backslash
-		// "escaped" past.
+		// An unterminated quote consumes the rest of the list, and a quoted-pair
+		// keeps the value going (RFC 9110 Section 5.6.6). Everything inside the
+		// quotes is a value, so no parameter name in there is folded: fasthttp
+		// matches "boundary" case-sensitively, and folding one hidden in a value
+		// is what would promote it over the boundary the author wrote.
 		{"unterminated quote", `Multipart/Form-Data; X="abc`, `multipart/form-data; x="abc`},
-		{"backslash is not an escape", `Multipart/Form-Data; X="\"; BOUNDARY=abc`, `multipart/form-data; x="\"; boundary=abc`},
+		{"quoted-pair keeps the value open", `Multipart/Form-Data; X="\"; BOUNDARY=abc`, `multipart/form-data; x="\"; BOUNDARY=abc`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -105,4 +105,57 @@ func Test_NormalizeRequestContentType_KeepsBoundaryUsable(t *testing.T) {
 	form, err := req.MultipartForm()
 	require.NoError(t, err)
 	require.Equal(t, []string{"world"}, form.Value["who"])
+}
+
+// Test_NormalizeRequestContentType_QuotedPair covers a quoted-pair inside a
+// parameter value.
+//
+// Ending the quoted-string at an escaped quote folds the rest of it as though
+// those were parameters. fasthttp matches "boundary" case-sensitively and takes
+// the first one, so lowercasing a decoy it would otherwise walk past is what
+// makes it the boundary it picks — and the real one is never reached.
+func Test_NormalizeRequestContentType_QuotedPair(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name string
+		in   string
+		want string
+	}{
+		{
+			name: "escaped quote does not end the value",
+			in:   `Multipart/Form-Data; X="\"; BOUNDARY=bogus"; BOUNDARY=Real`,
+			want: `multipart/form-data; x="\"; BOUNDARY=bogus"; boundary=Real`,
+		},
+		{
+			name: "trailing backslash cannot escape past the end",
+			in:   `Multipart/Form-Data; X="ab\`,
+			want: `multipart/form-data; x="ab\`,
+		},
+		{
+			name: "escaped backslash still closes the value",
+			in:   `Multipart/Form-Data; X="a\\"; BOUNDARY=Real`,
+			want: `multipart/form-data; x="a\\"; boundary=Real`,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			var h fasthttp.RequestHeader
+			h.SetContentType(tc.in)
+			require.Equal(t, tc.want, string(NormalizeRequestContentType(&h)))
+		})
+	}
+}
+
+// Test_NormalizeRequestContentType_DecoyBoundaryLosesToReal is the same input
+// read the way fasthttp reads it: the boundary it selects has to be the one the
+// author wrote, not the one hidden in an earlier parameter's value.
+func Test_NormalizeRequestContentType_DecoyBoundaryLosesToReal(t *testing.T) {
+	t.Parallel()
+
+	var h fasthttp.RequestHeader
+	h.SetContentType(`Multipart/Form-Data; X="\"; BOUNDARY=bogus"; BOUNDARY=Real`)
+	NormalizeRequestContentType(&h)
+	require.Equal(t, "Real", string(h.MultipartFormBoundary()))
 }

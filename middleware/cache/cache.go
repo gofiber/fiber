@@ -252,7 +252,12 @@ func New(config ...Config) fiber.Handler {
 			// Read at the point of use: the result aliases the header's storage, and
 			// cfg.KeyGenerator is user code that may recycle the slot. Every field
 			// line, or two credentials differing past the first would share a key.
-			authHash := hashAuthorization(joinedHeader(&c.Request().Header, fiber.HeaderAuthorization, canonical))
+			//
+			// Length-prefixed, not comma-joined: a lone "Bearer a,Bearer b" renders
+			// the same as two lines carrying one each, and the two are different
+			// principals, so a comma would put them in one partition.
+			authLines := fieldname.Lines(&c.Request().Header, fiber.HeaderAuthorization, canonical)
+			authHash := hashAuthorization(joinKeyHeaderValues(authLines))
 			baseKey += "|auth=" + authHash
 			manifestKey = baseKey + "|vary"
 		}
@@ -363,6 +368,12 @@ func New(config ...Config) fiber.Handler {
 				if cc, ok := lookupCachedHeader(e.headers, fiber.HeaderCacheControl); ok && hasDirective(utils.UnsafeString(cc), privateDirective) {
 					entryHasPrivate = true
 				}
+			}
+			// An entry written before Set-Cookie joined ignoreHeaders carries one
+			// beside a body that is personalized for whoever caused that miss.
+			// Dropping the cookie on replay leaves that body, so the entry goes.
+			if !entryHasPrivate && len(e.headers) > 0 && cachedHeadersSetCookie(e.headers) {
+				entryHasPrivate = true
 			}
 			requestNoCache := reqDirectives.noCache
 
