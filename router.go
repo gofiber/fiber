@@ -237,7 +237,13 @@ func buildRouteURL(route *Route, params Map) (string, error) {
 	// so "//internal" resolves to the host "internal" rather than a path here,
 	// and one leading slash reaches a different route. Say so instead of
 	// composing either.
-	if urlnorm.LeadingSlashes(route.Path) > 1 {
+	//
+	// Judged after the parser's own input handling, since that is what a client
+	// applies to whatever is composed: a tab, CR or LF is deleted, so a route
+	// registered at "/\t/internal" reads as "//internal", and no URL names a
+	// route holding one of those bytes anywhere.
+	normalized := urlnorm.StripTabCRLF(route.Path)
+	if len(normalized) != len(route.Path) || urlnorm.LeadingSlashes(normalized) > 1 {
 		return "", ErrRouteNotRepresentable
 	}
 

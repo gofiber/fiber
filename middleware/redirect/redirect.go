@@ -776,37 +776,102 @@ func literalPrefixLen(rule string) int {
 // literalLen returns how much of a rule's path is pinned in total, which
 // separates two rules whose wildcards start together: "/cdn/*" and "/cdn/*x"
 // tie on prefix, and the lexicographic fallback left the narrower one dead.
+// A group is measured the same way a top-level alternation is, by its least
+// specific branch: "/api/[a-z](specific|x)" pins no more of a path than
+// "/api/[a-z]x" does, and crediting it with the letters of every alternative had
+// it sort first and shadow the narrower rule on every request they share.
 func literalLen(rule string) int {
-	return minOverBranches(rule, branchLiteralLen)
+	s := literalScanner{rule: rule}
+	return s.widestBranch()
 }
 
-// branchLiteralLen is literalLen for one alternation branch.
-func branchLiteralLen(rule string) int {
-	n := 0
+// literalScanner walks a rule once, so that measuring a group can be a recursive
+// call that leaves the position just past the ")" it consumed.
+type literalScanner struct {
+	rule string
+	i    int
+}
+
+// widestBranch counts the bytes pinned from the current position to the end of
+// the rule, or to the ")" closing the group beginning there, and returns the
+// smallest count over the alternation branches it passed — a rule pins only what
+// the widest path it matches does.
+func (s *literalScanner) widestBranch() int {
+	smallest, n := -1, 0
 	inClass := false
-	for i := 0; i < len(rule); i++ {
-		if rule[i] == '\\' && i+1 < len(rule) {
-			// An escaped metacharacter matches itself, so it pins the one byte it
-			// stands for — "/a\.b" pins "/a.b", the backslash being syntax.
-			i++
-			if !inClass {
+	for s.i < len(s.rule) {
+		c := s.rule[s.i]
+		switch {
+		case c == '\\':
+			if s.i+1 < len(s.rule) && !inClass && escapePinsAByte(s.rule[s.i+1]) {
 				n++
 			}
+			s.i += 2
 			continue
-		}
-		switch {
 		case inClass:
 			// A class matches one byte whatever it lists, so its members pin
 			// nothing: "/api/[a-z]" is no more specific than "/api/[ab]", and
 			// counting them put the broader rule ahead of the narrower one.
-			inClass = rule[i] != ']'
-		case rule[i] == '[':
+			inClass = c != ']'
+		case c == '[':
 			inClass = true
-		case strings.IndexByte(patternBytes, rule[i]) < 0:
+		case c == '(':
+			s.i = skipGroupPrefix(s.rule, s.i+1)
+			n += s.widestBranch()
+			continue
+		case c == ')':
+			s.i++
+			return smallerBranch(smallest, n)
+		case c == '|':
+			smallest, n = smallerBranch(smallest, n), 0
+		case strings.IndexByte(patternBytes, c) < 0:
 			n++
 		}
+		s.i++
 	}
-	return n
+	return smallerBranch(smallest, n)
+}
+
+// smallerBranch folds one more branch's count into the smallest seen, where -1
+// stands for no branch counted yet.
+func smallerBranch(smallest, n int) int {
+	if smallest < 0 || n < smallest {
+		return n
+	}
+	return smallest
+}
+
+// skipGroupPrefix returns the index of a group's body, past the "?" section of a
+// non-capturing, flagged or named group — "(?:", "(?i:", "(?P<id>" — whose bytes
+// are syntax rather than path.
+func skipGroupPrefix(rule string, i int) int {
+	if i >= len(rule) || rule[i] != '?' {
+		return i
+	}
+	for j := i + 1; j < len(rule); j++ {
+		switch rule[j] {
+		case ':', '>':
+			return j + 1
+		case ')':
+			// A flag-only group, "(?i)". Leave the ")" for the caller to close on.
+			return j
+		}
+	}
+	return i
+}
+
+// escapePinsAByte reports whether a backslash followed by c stands for the one
+// literal byte it is written with. Punctuation does — "/a\.b" pins "/a.b" — while
+// a letter or digit introduces a class, an assertion or a numeric escape: "\d"
+// matches any digit, so "/api/\d+" pins no more than "/api/" and must not
+// outrank the exact "/api/1" it would otherwise shadow.
+func escapePinsAByte(c byte) bool {
+	switch {
+	case c >= 'a' && c <= 'z', c >= 'A' && c <= 'Z', c >= '0' && c <= '9':
+		return false
+	default:
+		return true
+	}
 }
 
 // minOverBranches applies measure to each top-level alternation branch of rule
@@ -856,7 +921,11 @@ func splitAlternation(rule string) []string {
 func indexUnescapedAny(s, chars string) int {
 	for i := 0; i < len(s); i++ {
 		if s[i] == '\\' {
-			i++ // whatever follows matches itself
+			if i+1 >= len(s) || !escapePinsAByte(s[i+1]) {
+				// A class or an assertion pins nothing, so the prefix ends here.
+				return i
+			}
+			i++ // an escaped metacharacter matches itself
 			continue
 		}
 		if strings.IndexByte(chars, s[i]) >= 0 {

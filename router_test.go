@@ -4462,9 +4462,12 @@ func Test_Route_URL_RefusesUnrepresentableRoute(t *testing.T) {
 	app := New()
 	app.Get("//internal", func(c Ctx) error { return c.SendString("internal") }).Name("dbl")
 	app.Get("//*", func(c Ctx) error { return c.SendString("wild") }).Name("dblwild")
+	// The parser deletes the tab, so this path is read as "//internal" too. The
+	// byte is not there to be seen by the time anything acts on the composition.
+	app.Get("/\t/internal", func(c Ctx) error { return c.SendString("tabbed") }).Name("tab")
 	app.Get("/*", func(c Ctx) error { return c.SendString("ok") }).Name("wild")
 
-	for _, name := range []string{"dbl", "dblwild"} {
+	for _, name := range []string{"dbl", "dblwild", "tab"} {
 		url, err := app.GetRoute(name).URL(Map{"*": "evil.com"})
 		require.ErrorIs(t, err, ErrRouteNotRepresentable, name)
 		require.Empty(t, url, name)
