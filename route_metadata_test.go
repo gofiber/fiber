@@ -859,3 +859,51 @@ func Test_AddParameter_ContentSingleMediaType(t *testing.T) {
 		require.Len(t, param.Content, 1)
 	})
 }
+
+// Test_ContentHelpers_ValidateMediaTypes asserts RequestBodyContent and
+// ResponseContent reject a bad key, like the simpler helpers already do.
+func Test_ContentHelpers_ValidateMediaTypes(t *testing.T) {
+	t.Parallel()
+
+	t.Run("request body content", func(t *testing.T) {
+		t.Parallel()
+		app := New()
+		require.Panics(t, func() {
+			app.Post("/a", testHandlerOK).
+				RequestBodyContent("payload", true, map[string]RouteMediaType{"invalid": {}})
+		})
+	})
+
+	t.Run("response content", func(t *testing.T) {
+		t.Parallel()
+		app := New()
+		require.Panics(t, func() {
+			app.Get("/b", testHandlerOK).
+				ResponseContent(StatusOK, "ok", map[string]RouteMediaType{"invalid": {}})
+		})
+	})
+
+	t.Run("valid media types are accepted", func(t *testing.T) {
+		t.Parallel()
+		app := New()
+		app.Post("/c", testHandlerOK).
+			RequestBodyContent("payload", true, map[string]RouteMediaType{MIMEApplicationJSON: {}}).
+			ResponseContent(StatusOK, "ok", map[string]RouteMediaType{MIMEApplicationXML: {}})
+		route := routesFor(app, "/c")[MethodPost]
+		require.Len(t, route.RequestBody.Content, 1)
+	})
+}
+
+// Test_RemoveRoute_HandlerCountPerDomain asserts removing a path registered on
+// two domains decrements the handler count for each, not just the first.
+func Test_RemoveRoute_HandlerCountPerDomain(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	app.Domain("a.example").Use("/x", func(c Ctx) error { return c.Next() })
+	app.Domain("b.example").Use("/x", func(c Ctx) error { return c.Next() })
+	require.Equal(t, uint32(2), app.HandlersCount())
+
+	app.RemoveRoute("/x")
+	require.Equal(t, uint32(0), app.HandlersCount())
+}

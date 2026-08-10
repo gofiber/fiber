@@ -1136,9 +1136,7 @@ func docAddParameter(param RouteParameter) func(route *Route) {
 		if len(param.Content) > 1 {
 			panic("parameter content must contain exactly one media type: " + param.Name)
 		}
-		for mediaType := range param.Content {
-			validateMediaType(utils.TrimSpace(mediaType))
-		}
+		validateContentMediaTypes(param.Content)
 		param.Schema = nil
 		param.SchemaRef = ""
 	case param.SchemaRef != "":
@@ -1420,7 +1418,17 @@ func docOperationExtension(fields map[string]any) func(route *Route) {
 	}
 }
 
+// validateContentMediaTypes panics on a key the content map cannot legally use,
+// matching the validation the simpler RequestBody/Response helpers already do.
+func validateContentMediaTypes(content map[string]RouteMediaType) {
+	for mediaType := range content {
+		validateMediaType(utils.TrimSpace(mediaType))
+	}
+}
+
 func docRequestBodyContent(description string, required bool, content map[string]RouteMediaType) func(route *Route) {
+	validateContentMediaTypes(content)
+
 	// cloneRouteRequestBody performs the per-route deep copy, so the caller's
 	// content map is referenced but never stored.
 	body := &RouteRequestBody{
@@ -1434,6 +1442,8 @@ func docRequestBodyContent(description string, required bool, content map[string
 }
 
 func docResponseContent(status int, description string, content map[string]RouteMediaType) func(route *Route) {
+	validateContentMediaTypes(content)
+
 	key := responseKey(status)
 	return func(route *Route) {
 		resp := getOrCreateResponse(route, key, status)

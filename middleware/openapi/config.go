@@ -1,6 +1,7 @@
 package openapi
 
 import (
+	"reflect"
 	"slices"
 
 	"github.com/gofiber/fiber/v3"
@@ -196,8 +197,49 @@ func deepCopyAnyValue(src any) any {
 	case []string:
 		return slices.Clone(value)
 	default:
+		return deepCopyReflected(src)
+	}
+}
+
+// deepCopyReflected clones map and slice values of any concrete type, which the
+// typed switch above cannot name. Anything else is returned as-is.
+func deepCopyReflected(src any) any {
+	v := reflect.ValueOf(src)
+	switch v.Kind() {
+	case reflect.Map:
+		if v.IsNil() {
+			return src
+		}
+		cloned := reflect.MakeMapWithSize(v.Type(), v.Len())
+		iter := v.MapRange()
+		for iter.Next() {
+			cloned.SetMapIndex(iter.Key(), deepCopyReflectedValue(iter.Value()))
+		}
+		return cloned.Interface()
+	case reflect.Slice:
+		if v.IsNil() {
+			return src
+		}
+		cloned := reflect.MakeSlice(v.Type(), v.Len(), v.Len())
+		for i := range v.Len() {
+			cloned.Index(i).Set(deepCopyReflectedValue(v.Index(i)))
+		}
+		return cloned.Interface()
+	default:
 		return src
 	}
+}
+
+// deepCopyReflectedValue copies one element, recursing through interfaces so a
+// nested container inside an `any` is cloned rather than shared.
+func deepCopyReflectedValue(v reflect.Value) reflect.Value {
+	if v.Kind() == reflect.Interface && !v.IsNil() {
+		return reflect.ValueOf(deepCopyAnyValue(v.Interface()))
+	}
+	if v.Kind() == reflect.Map || v.Kind() == reflect.Slice {
+		return reflect.ValueOf(deepCopyReflected(v.Interface()))
+	}
+	return v
 }
 
 // cloneSecurityRequirements copies the requirement maps and their scope slices

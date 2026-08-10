@@ -554,3 +554,99 @@ func Test_PathPrefixSegments(t *testing.T) {
 	require.Equal(t, 1, countPathSegments("/a"))
 	require.Equal(t, 3, countPathSegments("/a/b/c"))
 }
+
+// Test_OpenAPI_LiteralBracesEncoded asserts braces from a route's literal text
+// are percent-encoded, since OpenAPI would read them as an undeclared template.
+func Test_OpenAPI_LiteralBracesEncoded(t *testing.T) {
+	t.Parallel()
+
+	spec := fetchSpecWithConfig(t, Config{}, func(app *fiber.App) {
+		app.Get("/files/{raw}", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
+		app.Get("/users/:id", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
+	})
+
+	paths := requireMap(t, spec["paths"])
+	require.Contains(t, paths, "/files/%7Braw%7D")
+	require.NotContains(t, paths, "/files/{raw}")
+	// Braces introduced for a real parameter are untouched.
+	require.Contains(t, paths, "/users/{id}")
+}
+
+// Test_OpenAPI_LicenseIdentifierExcludesURL asserts the License Object emits
+// identifier or url but never both, and that 3.0 still drops the identifier.
+func Test_OpenAPI_LicenseIdentifierExcludesURL(t *testing.T) {
+	t.Parallel()
+
+	register := func(app *fiber.App) {
+		app.Get("/x", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
+	}
+	license := &License{Name: "MIT", Identifier: "MIT", URL: "https://example.com/license"}
+
+	spec := fetchSpecWithConfig(t, Config{OpenAPIVersion: "3.1.0", License: license}, register)
+	got := requireMap(t, requireMap(t, spec["info"])["license"])
+	require.Equal(t, "MIT", got["identifier"])
+	require.NotContains(t, got, "url")
+
+	// 3.0 has no identifier, so the url survives there instead.
+	spec = fetchSpecWithConfig(t, Config{OpenAPIVersion: "3.0.0", License: license}, register)
+	got = requireMap(t, requireMap(t, spec["info"])["license"])
+	require.NotContains(t, got, "identifier")
+	require.Equal(t, "https://example.com/license", got["url"])
+
+	// The caller's License is never mutated.
+	require.Equal(t, "MIT", license.Identifier)
+	require.Equal(t, "https://example.com/license", license.URL)
+}
+
+// Test_OpenAPI_TypedConfigContainersDetached asserts the config deep copy reaches
+// typed maps and slices, not only the built-in any-keyed ones.
+func Test_OpenAPI_TypedConfigContainersDetached(t *testing.T) {
+	t.Parallel()
+
+	type schema struct {
+		Type string `json:"type"`
+	}
+	typed := map[string]schema{"User": {Type: "object"}}
+	slice := []schema{{Type: "array"}}
+
+	app := fiber.New()
+	app.Get("/x", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
+	app.Use(New(Config{Components: map[string]any{"schemas": typed, "list": slice}}))
+
+	// Mutating the caller's containers after New must not reach the document.
+	typed["User"] = schema{Type: "mutated"}
+	slice[0] = schema{Type: "mutated"}
+
+	_, body := specBodyOf(t, app, "/openapi.json")
+	require.NotContains(t, body, "mutated")
+	require.Contains(t, body, `"object"`)
+	require.Contains(t, body, `"array"`)
+}
+
+// Test_DeepCopyReflected covers the container clone directly: nil and non-container
+// values pass through, and nested containers inside an `any` are cloned too.
+func Test_DeepCopyReflected(t *testing.T) {
+	t.Parallel()
+
+	require.Equal(t, 42, deepCopyReflected(42))
+
+	var nilMap map[string]int
+	require.Nil(t, deepCopyReflected(nilMap))
+	var nilSlice []int
+	require.Nil(t, deepCopyReflected(nilSlice))
+
+	// A typed map holding `any` values must clone the nested container.
+	nested := map[string]any{"inner": map[string]any{"k": "v"}}
+	src := map[string]map[string]any{"outer": nested}
+	cloned, ok := deepCopyReflected(src).(map[string]map[string]any)
+	require.True(t, ok)
+	requireMap(t, nested["inner"])["k"] = "mutated"
+	require.Equal(t, "v", requireMap(t, cloned["outer"]["inner"])["k"])
+
+	// Slices of slices clone element by element.
+	rows := [][]int{{1, 2}}
+	clonedRows, ok := deepCopyReflected(rows).([][]int)
+	require.True(t, ok)
+	rows[0][0] = 99
+	require.Equal(t, 1, clonedRows[0][0])
+}

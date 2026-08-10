@@ -345,6 +345,11 @@ same name always wins over the derived schema.
 `alpha` accepts any Unicode letter at runtime, so no `pattern` is emitted: an
 ASCII-only pattern would document the route as stricter than it is.
 
+The length constraints count UTF-8 **bytes** at runtime, while JSON Schema's
+`minLength`/`maxLength` count **characters**. The two agree for ASCII values; for
+non-ASCII ones the emitted bound is an approximation, so document such parameters
+explicitly with `AddParameter` if the exact bound matters.
+
 ### Response headers
 
 `ResponseHeader(status, name, description, schema)` documents a response header

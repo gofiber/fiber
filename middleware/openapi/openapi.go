@@ -936,11 +936,16 @@ func generateSpec(routes []fiber.Route, cfg *Config) openAPISpec {
 		}
 	}
 
-	// license.identifier (SPDX) requires OpenAPI 3.1+. Drop it for 3.0 without
-	// mutating the caller's License.
-	if cfg.License != nil && cfg.License.Identifier != "" && !versionAtLeast(cfg.OpenAPIVersion, versionOpenAPI31) {
+	// The License Object allows identifier or url, never both, and the SPDX
+	// identifier itself requires 3.1+. Narrow a copy so the caller's is untouched.
+	if cfg.License != nil && cfg.License.Identifier != "" {
 		licenseCopy := *cfg.License
-		licenseCopy.Identifier = ""
+		if versionAtLeast(cfg.OpenAPIVersion, versionOpenAPI31) {
+			// identifier wins: it is the more precise of the two.
+			licenseCopy.URL = ""
+		} else {
+			licenseCopy.Identifier = ""
+		}
 		spec.Info.License = &licenseCopy
 	}
 
@@ -1468,7 +1473,7 @@ func buildOpenAPIPathVariants(fiberPath string, params []string) []pathVariant {
 					}
 					i++
 				}
-				current.path += fiberPath[runStart:i]
+				current.path += encodeLiteralBraces(fiberPath[runStart:i])
 			}
 		}
 
@@ -1514,6 +1519,16 @@ func buildOpenAPIPathVariants(fiberPath string, params []string) []pathVariant {
 	}
 
 	return unique
+}
+
+// encodeLiteralBraces percent-encodes braces coming from the route's literal
+// text, which OpenAPI would otherwise read as an undeclared template expression.
+func encodeLiteralBraces(literal string) string {
+	if !strings.ContainsAny(literal, "{}") {
+		return literal
+	}
+	replaced := strings.ReplaceAll(literal, "{", "%7B")
+	return strings.ReplaceAll(replaced, "}", "%7D")
 }
 
 // uniquePathParamName suffixes a name already used in this variant: templates

@@ -2265,37 +2265,45 @@ func Test_CopyAnyMap_DeepCopyTypedSlices(t *testing.T) {
 }
 
 func Test_Route_InvalidMediaType(t *testing.T) {
+	t.Parallel()
+
 	t.Run("produces", func(t *testing.T) {
+		t.Parallel()
 		app := New()
 		require.Panics(t, func() {
 			app.Get("/", testEmptyHandler).Produces("invalid")
 		})
 	})
 	t.Run("consumes", func(t *testing.T) {
+		t.Parallel()
 		app := New()
 		require.Panics(t, func() {
 			app.Get("/", testEmptyHandler).Consumes("invalid")
 		})
 	})
 	t.Run("request body", func(t *testing.T) {
+		t.Parallel()
 		app := New()
 		require.Panics(t, func() {
 			app.Post("/", testEmptyHandler).RequestBody("payload", true, "invalid")
 		})
 	})
 	t.Run("request body missing type", func(t *testing.T) {
+		t.Parallel()
 		app := New()
 		require.Panics(t, func() {
 			app.Post("/", testEmptyHandler).RequestBody("payload", true)
 		})
 	})
 	t.Run("response", func(t *testing.T) {
+		t.Parallel()
 		app := New()
 		require.Panics(t, func() {
 			app.Get("/", testEmptyHandler).Response(StatusOK, "", "invalid")
 		})
 	})
 	t.Run("parameter", func(t *testing.T) {
+		t.Parallel()
 		app := New()
 		require.Panics(t, func() {
 			app.Get("/", testEmptyHandler).Parameter("foo", "body", true, nil, "")

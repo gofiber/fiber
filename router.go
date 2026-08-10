@@ -1367,9 +1367,12 @@ func (app *App) deleteRoute(methods []string, matchFunc func(r *Route) bool) {
 			}
 
 			// Decrement global handler count. In middleware routes, only decrement once
-			if _, ok := removedUseRoutes[route.path]; (route.use && slices.Equal(methods, app.config.RequestMethods) && !ok) || !route.use {
+			// Keyed by domain as well as path: same-path middleware on two
+			// domains are separate registrations, each counted once.
+			useKey := autoHeadKey(route)
+			if _, ok := removedUseRoutes[useKey]; (route.use && slices.Equal(methods, app.config.RequestMethods) && !ok) || !route.use {
 				if route.use {
-					removedUseRoutes[route.path] = struct{}{}
+					removedUseRoutes[useKey] = struct{}{}
 				}
 
 				atomic.AddUint32(&app.handlersCount, ^uint32(len(route.Handlers)-1)) //nolint:gosec // G115 - handler count is always small
