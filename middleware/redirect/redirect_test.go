@@ -1137,10 +1137,14 @@ func Test_PinsHost(t *testing.T) {
 		{"127.0.0.1", true}, // the author wrote the whole address
 		{"10.0.0.1", true},
 
+		// A bare number is an address rather than a name, and the parser takes
+		// the abbreviated spellings too: "1" is 0.0.0.1 and "0x1" the same, so
+		// the author who wrote one pinned the whole host.
+		{"1", true},
+		{"0x1", true},
+
 		{"", false},
 		{".", false},
-		{"1", false},   // a bare number is an address, not a name
-		{"0x1", false}, // and so is the hex spelling
 		{"[example.com", false},
 		// Closed on the left the dotless rule no longer stands in front of the
 		// decode, map and trim steps, so this is where each answers for itself:
@@ -1160,9 +1164,9 @@ func Test_PinsHost(t *testing.T) {
 		// The trim has to run on the front too: keeping the space leaves a
 		// last label of " 1", which reads as no number, and the address check
 		// never runs on what is really the address 1.
-		{" 1", false},
-		{"%201", false},
-		{"%3A0x", false},
+		{" 1", true},
+		{"%201", true},
+		{"%3A0x", true}, // "0x" is a number too, and it is zero
 	} {
 		require.Equal(t, tc.want, pinsHost(tc.literal, false), "literal %q closed on the left", tc.literal)
 	}
@@ -1996,6 +2000,14 @@ func Test_LiteralLengths(t *testing.T) {
 		// and ends the prefix where it stands.
 		{rule: `/api/\d+`, prefixLen: 5, totalLen: 5},
 		{rule: `/api/\w`, prefixLen: 5, totalLen: 5},
+		// A quantifier's bounds are syntax, and one allowing none of what it
+		// follows takes that back: "/api/a{0,1}" matches "/api/" too.
+		{rule: "/api/a{0,1}", prefixLen: 6, totalLen: 5},
+		{rule: "/api/a{2,3}", prefixLen: 6, totalLen: 6},
+		{rule: "/api/a?b", prefixLen: 6, totalLen: 6},
+		{rule: "/api/(ab)?c", prefixLen: 5, totalLen: 6},
+		// An unclosed brace is an ordinary byte to the regexp parser.
+		{rule: "/api/a{", prefixLen: 6, totalLen: 6},
 		// "." matches any byte, so "/api/user." pins no more than "/api/user".
 		{rule: "/api/user.", prefixLen: 9, totalLen: 9},
 		// Escaped, it matches itself and pins the byte it stands for.
@@ -2340,6 +2352,129 @@ func Test_Redirect_GroupedAlternationRankedByItsWidestBranch(t *testing.T) {
 		require.Equal(t, fiber.StatusFound, resp.StatusCode, tc.request)
 		require.Equal(t, tc.want, resp.Header.Get("Location"), tc.request)
 	}
+}
+
+// Test_Redirect_OptionalQuantifierDoesNotOutrankExactRule covers "{0,1}", whose
+// bounds were counted as path bytes. That put the rule matching "/api/" as well
+// ahead of the exact "/api/a", which it then answered for.
+func Test_Redirect_OptionalQuantifierDoesNotOutrankExactRule(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Use(New(Config{
+		Rules: map[string]string{
+			"/api/ab{0,1}": "/maybe",
+			"/api/ab":      "/exact",
+		},
+		StatusCode: fiber.StatusFound,
+	}))
+	app.Get("/*", func(c fiber.Ctx) error { return c.SendString("fell through") })
+
+	for _, tc := range []struct{ request, want string }{
+		{"/api/ab", "/exact"},
+		// What only the quantified rule matches still reaches it.
+		{"/api/a", "/maybe"},
+	} {
+		req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, tc.request, http.NoBody)
+		require.NoError(t, err)
+		resp, err := app.Test(req)
+		require.NoError(t, err)
+		require.Equal(t, fiber.StatusFound, resp.StatusCode, tc.request)
+		require.Equal(t, tc.want, resp.Header.Get("Location"), tc.request)
+	}
+}
+
+// Test_Redirect_CaptureEndsAuthorityPastADeletedByte covers a captured "\t/ok".
+// The parser deletes the tab, so the value ends the authority at the author's
+// host and the client reaches "/ok" — judging the tab as the first byte instead
+// read the value as extending the host, and the redirect was refused.
+func Test_Redirect_CaptureEndsAuthorityPastADeletedByte(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New(fiber.Config{UnescapePath: true})
+	app.Use(New(Config{
+		Rules:      map[string]string{"/r/*": "https://example.com$1"},
+		StatusCode: fiber.StatusFound,
+	}))
+	app.Get("/*", func(c fiber.Ctx) error { return c.SendString("fell through") })
+
+	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/r/%09%2Fok", http.NoBody)
+	require.NoError(t, err)
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusFound, resp.StatusCode)
+
+	// What the client reads is example.com, whatever bytes the parser drops on
+	// the way there.
+	location := resp.Header.Get("Location")
+	ref, err := url.Parse(strings.NewReplacer("\t", "", "\r", "", "\n", "").Replace(location))
+	require.NoError(t, err)
+	require.Equal(t, "example.com", ref.Host)
+	require.Equal(t, "/ok", ref.Path)
+
+	// A value that really does extend the host is still refused.
+	req, err = http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/r/%09evil", http.NoBody)
+	require.NoError(t, err)
+	resp, err = app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+}
+
+// Test_Redirect_BareFileSchemeIsAPath covers a "file:" target with no slashes,
+// which names no authority: the parser leaves "file state" for "path state"
+// unless one follows, so what stands there is path. Reading it as a host made a
+// value that is only a path name one, and the redirect was skipped at runtime.
+func Test_Redirect_BareFileSchemeIsAPath(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Use(New(Config{Rules: map[string]string{"/r/*": "file:tmp$1"}, StatusCode: fiber.StatusFound}))
+	app.Get("/*", func(c fiber.Ctx) error { return c.SendString("fell through") })
+
+	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/r/report", http.NoBody)
+	require.NoError(t, err)
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusFound, resp.StatusCode)
+	require.Equal(t, "file:tmpreport", resp.Header.Get("Location"))
+
+	// A bare "file:" target holds no authority span, so it is opaque-path and the
+	// composed location is what gets checked for one.
+	start, end := authoritySpan("file:tmp/report")
+	require.Equal(t, 0, start)
+	require.Equal(t, 0, end)
+	start, end = authoritySpan("file://host/report")
+	require.NotEqual(t, start, end)
+}
+
+// Test_Redirect_AuthorPinnedShortIPv4 covers "127.1", which the URL parser reads
+// as 127.0.0.1. Judging it by net.ParseIP said the author had pinned no host and
+// dropped a rule whose host they had written in full.
+func Test_Redirect_AuthorPinnedShortIPv4(t *testing.T) {
+	t.Parallel()
+
+	for _, host := range []string{"127.1", "0x7f.1", "2130706433", "127.0.0.1"} {
+		app := fiber.New()
+		app.Use(New(Config{
+			Rules:      map[string]string{"/r/*": "https://" + host + ":$1"},
+			StatusCode: fiber.StatusFound,
+		}))
+		app.Get("/*", func(c fiber.Ctx) error { return c.SendString("fell through") })
+
+		req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/r/8080", http.NoBody)
+		require.NoError(t, err)
+		resp, err := app.Test(req)
+		require.NoError(t, err)
+		require.Equal(t, fiber.StatusFound, resp.StatusCode, host)
+		require.Equal(t, "https://"+host+":8080", resp.Header.Get("Location"), host)
+	}
+
+	// A host that is not an address still hands the host away when the capture
+	// closes it, so "https://$1" stays refused.
+	require.False(t, isIPv4Host("127.0.0.256"))
+	require.False(t, isIPv4Host("1.2.3.4.5"))
+	require.False(t, isIPv4Host("0x1g"))
+	require.True(t, isIPv4Host("127.0.0.1."))
 }
 
 // Test_Redirect_ClassEscapeDoesNotOutrankExactRule covers "\d", which matches any
