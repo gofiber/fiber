@@ -197,10 +197,13 @@ func Test_Logger_TimeUpdaterStopsOnDone(t *testing.T) {
 
 	initial, ok := timestamp.Load().(string)
 	require.True(t, ok)
-	time.Sleep(20 * time.Millisecond)
-	updated, ok := timestamp.Load().(string)
-	require.True(t, ok)
-	require.NotEqual(t, initial, updated)
+	// Wait for a tick rather than assume one lands inside a fixed sleep: the
+	// updater is a goroutine on a 5ms ticker, and a loaded machine ran the whole
+	// sleep before scheduling it.
+	require.Eventually(t, func() bool {
+		updated, isString := timestamp.Load().(string)
+		return isString && updated != initial
+	}, time.Second, time.Millisecond, "timestamp was never updated")
 
 	close(done)
 	select {
