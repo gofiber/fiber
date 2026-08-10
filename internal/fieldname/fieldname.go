@@ -56,18 +56,57 @@ func Lines(h Peeker, name string, canonical bool) [][]byte {
 	return values
 }
 
-// First returns the first field line stored under name, or nil if there is none.
-// The names fasthttp keeps in a slot of their own are unaffected either way:
-// every spelling is routed into the slot on the way in.
+// First returns the first field line stored under name that holds anything, or
+// nil if there is none. The names fasthttp keeps in a slot of their own are
+// unaffected either way: every spelling is routed into the slot on the way in.
+//
+// Empty lines are stepped over rather than answered with, because a message can
+// carry the name more than once and Peek reports the first line whether or not
+// it holds a value. "Origin:" ahead of "Origin: http://evil.example" therefore
+// read as no Origin at all — and an absent Origin is not a failure to the CSRF
+// check, which skips it on a plaintext request. A field line that is present
+// and empty says nothing a caller can act on, so nothing is lost by looking
+// past it for one that does.
 //
 //nolint:revive // flag-parameter: canonical is a property of the header store
 func First(h Peeker, name string, canonical bool) []byte {
 	if canonical {
-		return h.Peek(name)
+		v := h.Peek(name)
+		if len(v) > 0 {
+			return v
+		}
+		if v == nil {
+			// Nothing is stored under the name, so there is nothing beside it
+			// to find and the walk below is skipped: a nil answer means absent,
+			// a non-nil empty one means a line that is present and empty. That
+			// distinction is fasthttp's to keep, so Test_First_EmptyLineIsNotNil
+			// pins it — if it ever stops holding, that test says so rather than
+			// this quietly reverting to reading only the first line.
+			return nil
+		}
+
+		// Reached only for a field that is present and empty, which is the shape
+		// being guarded against rather than one anything sends by accident.
+		// PeekAll costs no allocation and resolves the slotted names.
+		for _, v := range h.PeekAll(name) {
+			if len(v) > 0 {
+				return v
+			}
+		}
+		return nil
 	}
 
+	// Split out rather than written below: All's iterator is heap-allocated
+	// where the compiler cannot see the branch is dead, so holding it in this
+	// function cost the canonical path an allocation it never used.
+	return firstFold(h, name)
+}
+
+// firstFold answers First for a store whose field names are spelled however the
+// peer sent them.
+func firstFold(h Peeker, name string) []byte {
 	for k, v := range h.All() {
-		if utils.EqualFold(utils.UnsafeString(k), name) {
+		if len(v) > 0 && utils.EqualFold(utils.UnsafeString(k), name) {
 			return v
 		}
 	}
