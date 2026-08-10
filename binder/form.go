@@ -40,8 +40,10 @@ func (*FormBinding) Name() string {
 
 // Bind parses the request body and returns the result.
 func (b *FormBinding) Bind(req *fasthttp.Request, out any) error {
-	// Handle multipart form
-	if FilterFlags(utils.UnsafeString(req.Header.ContentType())) == MIMEMultipartForm {
+	// Handle multipart form. Media types are case-insensitive
+	// (RFC 9110 Section 8.3.1), so compare accordingly — callers that reach
+	// the binder directly do not go through Fiber's header normalization.
+	if utils.EqualFold(FilterFlags(utils.UnsafeString(req.Header.ContentType())), MIMEMultipartForm) {
 		return b.bindMultipart(req, out)
 	}
 

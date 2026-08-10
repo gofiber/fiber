@@ -155,6 +155,19 @@ func Test_isValidRequestID_RejectsObsText(t *testing.T) {
 	require.False(t, isValidRequestID("valid\xff"))
 }
 
+func Test_isValidRequestID_WordBoundaries(t *testing.T) {
+	t.Parallel()
+
+	// Word-at-a-time coverage: valid and invalid bytes at whole-word,
+	// overlapping-tail-word, and scalar-tail positions.
+	require.True(t, isValidRequestID("6ba7b810-9dad-11d1-80b4-00c04fd430c8"))
+	require.True(t, isValidRequestID("abcdefgh"))
+	require.False(t, isValidRequestID("abcdefg\x1f"))
+	require.False(t, isValidRequestID("abcdefgh\x7f"))
+	require.False(t, isValidRequestID("abcdefghij\x00klm"))
+	require.False(t, isValidRequestID("ab\x00"))
+}
+
 // go test -run Test_RequestID_Next
 func Test_RequestID_Next(t *testing.T) {
 	t.Parallel()
@@ -282,4 +295,21 @@ func Test_RequestID_FromContext_Types(t *testing.T) {
 	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+}
+
+// go test -v -run=^$ -bench=Benchmark_isValidRequestID -benchmem -count=4
+func Benchmark_isValidRequestID(b *testing.B) {
+	inputs := []string{
+		"6ba7b810-9dad-11d1-80b4-00c04fd430c8", // UUID, the middleware's own format
+		"trace-12345",
+		"bad\x00id-aaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+	}
+	var ok bool
+	b.ReportAllocs()
+	for b.Loop() {
+		for _, in := range inputs {
+			ok = isValidRequestID(in)
+		}
+	}
+	_ = ok
 }

@@ -2911,3 +2911,401 @@ func BenchmarkBind_All(b *testing.B) {
 		}
 	}
 }
+
+// go test -run Test_Bind_All_CustomPrecedence
+func Test_Bind_All_CustomPrecedence(t *testing.T) {
+	t.Parallel()
+	app := New()
+
+	type CustomPrecedenceReq struct {
+		Name string `binding_source:"query,header,cookie,body,uri" query:"name" header:"x-name" cookie:"c-name" json:"name" uri:"name"`
+	}
+
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck,forcetypeassert // not needed
+	defer app.ReleaseCtx(ctx)
+
+	// Set data in query, header, cookie, body, and uri.
+	// Since query is the first in our custom precedence, it should win.
+	ctx.Request().URI().SetQueryString("name=from_query")
+	ctx.Request().Header.Set("x-name", "from_header")
+	ctx.Request().Header.SetCookie("c-name", "from_cookie")
+	ctx.Request().Header.SetContentType(MIMEApplicationJSON)
+	ctx.Request().SetBody([]byte(`{"name":"from_body"}`))
+	ctx.route = &Route{Params: []string{"name"}}
+	ctx.values = [maxParams]string{"from_uri"}
+
+	req := new(CustomPrecedenceReq)
+	require.NoError(t, ctx.Bind().All(req))
+	require.Equal(t, "from_query", req.Name)
+
+	// Now try without query. Header should win.
+	ctx2 := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck,forcetypeassert // not needed
+	defer app.ReleaseCtx(ctx2)
+	ctx2.Request().Header.Set("x-name", "from_header")
+	ctx2.Request().Header.SetCookie("c-name", "from_cookie")
+	ctx2.Request().Header.SetContentType(MIMEApplicationJSON)
+	ctx2.Request().SetBody([]byte(`{"name":"from_body"}`))
+	ctx2.route = &Route{Params: []string{"name"}}
+	ctx2.values = [maxParams]string{"from_uri"}
+
+	req2 := new(CustomPrecedenceReq)
+	require.NoError(t, ctx2.Bind().All(req2))
+	require.Equal(t, "from_header", req2.Name)
+
+	// Now try without header. Cookie should win.
+	ctx3 := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck,forcetypeassert // not needed
+	defer app.ReleaseCtx(ctx3)
+	ctx3.Request().Header.SetCookie("c-name", "from_cookie")
+	ctx3.Request().Header.SetContentType(MIMEApplicationJSON)
+	ctx3.Request().SetBody([]byte(`{"name":"from_body"}`))
+	ctx3.route = &Route{Params: []string{"name"}}
+	ctx3.values = [maxParams]string{"from_uri"}
+
+	req3 := new(CustomPrecedenceReq)
+	require.NoError(t, ctx3.Bind().All(req3))
+	require.Equal(t, "from_cookie", req3.Name)
+
+	// Now try without cookie. Body should win.
+	ctx4 := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck,forcetypeassert // not needed
+	defer app.ReleaseCtx(ctx4)
+	ctx4.Request().Header.SetContentType(MIMEApplicationJSON)
+	ctx4.Request().SetBody([]byte(`{"name":"from_body"}`))
+	ctx4.route = &Route{Params: []string{"name"}}
+	ctx4.values = [maxParams]string{"from_uri"}
+
+	req4 := new(CustomPrecedenceReq)
+	require.NoError(t, ctx4.Bind().All(req4))
+	require.Equal(t, "from_body", req4.Name)
+
+	// Now try without body. URI should win.
+	ctx5 := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck,forcetypeassert // not needed
+	defer app.ReleaseCtx(ctx5)
+	ctx5.route = &Route{Params: []string{"name"}}
+	ctx5.values = [maxParams]string{"from_uri"}
+
+	req5 := new(CustomPrecedenceReq)
+	require.NoError(t, ctx5.Bind().All(req5))
+	require.Equal(t, "from_uri", req5.Name)
+}
+
+// go test -run Test_Bind_All_CustomPrecedence_InvalidToken
+func Test_Bind_All_CustomPrecedence_InvalidToken(t *testing.T) {
+	t.Parallel()
+	app := New()
+
+	type InvalidPrecedenceReq struct {
+		BindingSource struct{} `binding_source:"query,invalid,cookie"`
+		Name          string   `query:"name"`
+	}
+
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(ctx)
+
+	req := new(InvalidPrecedenceReq)
+	err := ctx.Bind().All(req)
+	require.EqualError(t, err, `unknown binding_source "invalid"`)
+}
+
+// go test -run Test_Bind_All_CustomPrecedence_OmittedSources
+func Test_Bind_All_CustomPrecedence_OmittedSources(t *testing.T) {
+	t.Parallel()
+	app := New()
+
+	type OmittedPrecedenceReq struct {
+		// Only query is bound. Headers and Body are ignored.
+		BindingSource struct{} `binding_source:"query"`
+		Name          string   `query:"name" header:"x-name" json:"name"`
+	}
+
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(ctx)
+
+	ctx.Request().Header.Set("x-name", "from_header")
+	ctx.Request().Header.SetContentType(MIMEApplicationJSON)
+	ctx.Request().SetBody([]byte(`{"name":"from_body"}`))
+
+	// Set an unrelated query param, meaning Name will not be found in query
+	ctx.Request().URI().SetQueryString("other=from_query")
+
+	req := new(OmittedPrecedenceReq)
+	require.NoError(t, ctx.Bind().All(req))
+
+	// Because query is the only bound source, and "name" wasn't in the query, Name should be empty
+	require.Empty(t, req.Name)
+
+	// Now set the query param
+	ctx.Request().URI().SetQueryString("name=from_query")
+	req2 := new(OmittedPrecedenceReq)
+	require.NoError(t, ctx.Bind().All(req2))
+	require.Equal(t, "from_query", req2.Name)
+}
+
+// go test -run Test_Bind_All_CustomPrecedence_DoesNotReadOmittedBody
+func Test_Bind_All_CustomPrecedence_DoesNotReadOmittedBody(t *testing.T) {
+	t.Parallel()
+	app := New()
+
+	type QueryOnlyReq struct {
+		BindingSource struct{} `binding_source:"query"`
+		Name          string   `query:"name"`
+	}
+
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(ctx)
+
+	ctx.Request().Header.SetContentType(MIMEApplicationJSON)
+	ctx.Request().SetBodyStream(bytes.NewBufferString(`{"name":"from_body"}`), -1)
+	ctx.Request().URI().SetQueryString("name=from_query")
+
+	req := new(QueryOnlyReq)
+	require.NoError(t, ctx.Bind().All(req))
+	require.Equal(t, "from_query", req.Name)
+	require.True(t, ctx.Request().IsBodyStream(), "query-only binding must not consume the request body stream")
+}
+
+// go test -run Test_Bind_All_CustomPrecedence_Duplicates
+func Test_Bind_All_CustomPrecedence_Duplicates(t *testing.T) {
+	t.Parallel()
+	app := New()
+
+	type DuplicatePrecedenceReq struct {
+		BindingSource struct{} `binding_source:"query,query,header"`
+		Name          string   `query:"name" header:"x-name"`
+	}
+
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(ctx)
+
+	ctx.Request().Header.Set("x-name", "from_header")
+
+	req := new(DuplicatePrecedenceReq)
+	require.NoError(t, ctx.Bind().All(req))
+	require.Equal(t, "from_header", req.Name)
+}
+
+// go test -run Test_Bind_All_CustomPrecedence_MultipleTags
+func Test_Bind_All_CustomPrecedence_MultipleTags(t *testing.T) {
+	t.Parallel()
+	app := New()
+
+	type MultipleTagsReq struct {
+		Field1 struct{} `binding_source:"query"`
+		Field2 struct{} `binding_source:"header"`
+	}
+
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(ctx)
+
+	req := new(MultipleTagsReq)
+	err := ctx.Bind().All(req)
+	require.EqualError(t, err, "multiple binding_source tags found on struct MultipleTagsReq")
+}
+
+// go test -v -run=^$ -bench=BenchmarkBind_All_CustomPrecedence -benchmem -count=4
+func BenchmarkBind_All_CustomPrecedence(b *testing.B) {
+	type User struct {
+		BindingSource struct{} `binding_source:"query,header,cookie,body,uri"`
+		SessionID     string   `json:"session_id" cookie:"session_id"`
+		Name          string   `query:"name" json:"name" form:"name"`
+		Email         string   `json:"email" form:"email"`
+		Role          string   `header:"X-User-Role"`
+		ID            int      `uri:"id" query:"id" json:"id" form:"id"`
+	}
+
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+
+	config := &RequestConfig{
+		ContentType: MIMEApplicationJSON,
+		Body:        []byte(`{"name":"john", "email": "john@doe.com", "session_id": "abc1234", "id": 1}`),
+		Headers: map[string]string{
+			"X-User-Role": "admin",
+		},
+		Cookies: map[string]string{
+			"session_id": "abc123",
+		},
+		Query: "id=1&name=john",
+	}
+
+	bind := &Bind{
+		ctx: c,
+	}
+
+	for b.Loop() {
+		user := &User{}
+		config.ApplyTo(c)
+		if err := bind.All(user); err != nil {
+			b.Fatalf("unexpected error: %v", err)
+		}
+	}
+}
+
+// Test_Bind_Body_ContentTypeNormalization pins both halves of the
+// Content-Type contract. The media type must be folded in place, because
+// fasthttp and binder.FormBinding locate the form body with case-sensitive
+// prefix checks — so a legal "Multipart/Form-Data" has to still bind. The
+// parameters must NOT be folded, because a multipart boundary is
+// case-sensitive and anything replaying the request (a proxy, an adaptor)
+// would no longer parse the body it forwarded.
+func Test_Bind_Body_ContentTypeNormalization(t *testing.T) {
+	t.Parallel()
+
+	// Both the media type and the parameter names are case-insensitive
+	// (RFC 9110 Sections 8.3.1 and 5.6.6); only the boundary value is not.
+	for _, ctype := range []string{
+		"multipart/form-data; boundary=AbCdEfMixed12345",
+		"Multipart/Form-Data; boundary=AbCdEfMixed12345",
+		"multipart/form-data; BOUNDARY=AbCdEfMixed12345",
+		"multipart/form-data; Boundary=AbCdEfMixed12345",
+		"Multipart/Form-Data; BOUNDARY=AbCdEfMixed12345",
+		`multipart/form-data; CHARSET="a;b"; BOUNDARY=AbCdEfMixed12345`,
+	} {
+		t.Run("case-insensitive "+ctype, func(t *testing.T) {
+			t.Parallel()
+
+			var body bytes.Buffer
+			w := multipart.NewWriter(&body)
+			require.NoError(t, w.SetBoundary("AbCdEfMixed12345"))
+			require.NoError(t, w.WriteField("name", "john"))
+			require.NoError(t, w.Close())
+
+			app := New()
+			app.Post("/", func(c Ctx) error {
+				var out struct {
+					Name string `form:"name"`
+				}
+				require.NoError(t, c.Bind().Body(&out))
+				require.Equal(t, "john", out.Name)
+				// The boundary value keeps its case so the request can be replayed.
+				require.Contains(t, c.Get(HeaderContentType), "AbCdEfMixed12345")
+				return nil
+			})
+
+			req := httptest.NewRequest(MethodPost, "/", bytes.NewReader(body.Bytes()))
+			req.Header.Set(HeaderContentType, ctype)
+			resp, err := app.Test(req)
+			require.NoError(t, err)
+			require.Equal(t, StatusOK, resp.StatusCode)
+		})
+	}
+
+	t.Run("mixed-case urlencoded still binds", func(t *testing.T) {
+		t.Parallel()
+
+		app := New()
+		app.Post("/", func(c Ctx) error {
+			var out struct {
+				Name string `form:"name"`
+			}
+			require.NoError(t, c.Bind().Body(&out))
+			require.Equal(t, "john", out.Name)
+			return nil
+		})
+
+		req := httptest.NewRequest(MethodPost, "/", strings.NewReader("name=john"))
+		req.Header.Set(HeaderContentType, "APPLICATION/X-WWW-FORM-URLENCODED")
+		resp, err := app.Test(req)
+		require.NoError(t, err)
+		require.Equal(t, StatusOK, resp.StatusCode)
+	})
+
+	t.Run("boundary case is preserved", testBindBodyPreservesBoundary)
+}
+
+func testBindBodyPreservesBoundary(t *testing.T) {
+	t.Parallel()
+
+	var body bytes.Buffer
+	w := multipart.NewWriter(&body)
+	require.NoError(t, w.SetBoundary("AbCdEfMixedCase12345"))
+	require.NoError(t, w.WriteField("name", "john"))
+	require.NoError(t, w.Close())
+	raw := body.Bytes()
+
+	const wantCType = "multipart/form-data; boundary=AbCdEfMixedCase12345"
+
+	app := New()
+	app.Post("/", func(c Ctx) error {
+		var out struct {
+			Name string `form:"name"`
+		}
+		require.NoError(t, c.Bind().Body(&out))
+		require.Equal(t, "john", out.Name)
+
+		require.Equal(t, wantCType, c.Get(HeaderContentType))
+
+		// Replaying the request from its header and body — what forwarding it
+		// upstream amounts to — must still parse.
+		fwd := fasthttp.AcquireRequest()
+		defer fasthttp.ReleaseRequest(fwd)
+		fwd.Header.SetMethod(MethodPost)
+		fwd.SetRequestURI("/")
+		fwd.Header.SetContentType(c.Get(HeaderContentType))
+		fwd.SetBody(raw)
+
+		form, err := fwd.MultipartForm()
+		require.NoError(t, err)
+		require.Equal(t, []string{"john"}, form.Value["name"])
+		return nil
+	})
+
+	req := httptest.NewRequest(MethodPost, "/", bytes.NewReader(raw))
+	req.Header.Set(HeaderContentType, wantCType)
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, StatusOK, resp.StatusCode)
+}
+
+// Test_Bind_Form_ContentTypeNormalization covers the Form entry point
+// directly. Bind().Body() normalizes the Content-Type before dispatching, but
+// Bind().Form() reaches the binder without going through it — so a legal
+// mixed-case media type bound nothing here and reported no error.
+func Test_Bind_Form_ContentTypeNormalization(t *testing.T) {
+	t.Parallel()
+
+	t.Run("multipart", func(t *testing.T) {
+		t.Parallel()
+
+		var body bytes.Buffer
+		w := multipart.NewWriter(&body)
+		require.NoError(t, w.SetBoundary("AbCdEfMixed12345"))
+		require.NoError(t, w.WriteField("name", "john"))
+		require.NoError(t, w.Close())
+
+		app := New()
+		app.Post("/", func(c Ctx) error {
+			var out struct {
+				Name string `form:"name"`
+			}
+			require.NoError(t, c.Bind().Form(&out))
+			require.Equal(t, "john", out.Name)
+			return nil
+		})
+
+		req := httptest.NewRequest(MethodPost, "/", bytes.NewReader(body.Bytes()))
+		req.Header.Set(HeaderContentType, "Multipart/Form-Data; BOUNDARY=AbCdEfMixed12345")
+		resp, err := app.Test(req)
+		require.NoError(t, err)
+		require.Equal(t, StatusOK, resp.StatusCode)
+	})
+
+	t.Run("urlencoded", func(t *testing.T) {
+		t.Parallel()
+
+		app := New()
+		app.Post("/", func(c Ctx) error {
+			var out struct {
+				Name string `form:"name"`
+			}
+			require.NoError(t, c.Bind().Form(&out))
+			require.Equal(t, "john", out.Name)
+			return nil
+		})
+
+		req := httptest.NewRequest(MethodPost, "/", strings.NewReader("name=john"))
+		req.Header.Set(HeaderContentType, "APPLICATION/X-WWW-FORM-URLENCODED")
+		resp, err := app.Test(req)
+		require.NoError(t, err)
+		require.Equal(t, StatusOK, resp.StatusCode)
+	})
+}

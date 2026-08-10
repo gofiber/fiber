@@ -764,6 +764,38 @@ func init() {
 					{url: "/api/v1/abc", params: nil, match: false},
 				},
 			},
+			// a parameter terminated by a single-byte compare part can swallow '/'
+			// (findParamLen's IndexByte branch has no slash guard)
+			{
+				pattern: "/api/v1/:param-:param2",
+				testCases: []routeTestCase{
+					{url: "/api/v1/enti/ty-x", params: []string{"enti/ty", "x"}, match: true},
+				},
+			},
+			// successive parameters consume one byte each, which may be a '/'
+			{
+				pattern: "/test:sign:param",
+				testCases: []routeTestCase{
+					{url: "/test/x", params: []string{"/", "x"}, match: true},
+				},
+			},
+			// optional trailing segments drop their leading slashes
+			{
+				pattern: "/api/:day/:month?/:year?",
+				testCases: []routeTestCase{
+					{url: "/api/1", params: []string{"1", "", ""}, match: true},
+					{url: "/api/1/2", params: []string{"1", "2", ""}, match: true},
+					{url: "/api/1/2/3", params: []string{"1", "2", "3"}, match: true},
+				},
+			},
+			// prefix (partialCheck) routes with parameters match deeper paths
+			{
+				pattern: "/mw/:version",
+				testCases: []routeTestCase{
+					{url: "/mw/v1/users/list", params: []string{"v1"}, match: true, partialCheck: true},
+					{url: "/mw", params: nil, match: false, partialCheck: true},
+				},
+			},
 		}...,
 	)
 }

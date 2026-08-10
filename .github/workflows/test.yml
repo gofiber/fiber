@@ -23,17 +23,18 @@ jobs:
     strategy:
       matrix:
         go-version: [1.25.x, 1.26.x]
-        platform: [ubuntu-latest, windows-latest, macos-latest]
+        platform: [blacksmith-4vcpu-ubuntu-2404, blacksmith-4vcpu-windows-2025, blacksmith-6vcpu-macos-latest]
     runs-on: ${{ matrix.platform }}
     timeout-minutes: 30
     steps:
       - name: Fetch Repository
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Install Go
-        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: ${{ matrix.go-version }}
+          check-latest: true
 
       - name: Test
         uses: gofiber/.github/.github/actions/gotestsum@main
@@ -43,7 +44,7 @@ jobs:
           args: -race -count=1 -coverprofile=coverage.txt -covermode=atomic -shuffle=on
 
       - name: Upload coverage reports to Codecov
-        if: ${{ matrix.platform == 'ubuntu-latest' && matrix.go-version == '1.25.x' }}
+        if: ${{ runner.os == 'Linux' && matrix.go-version == '1.25.x' }}
         uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
@@ -52,18 +53,27 @@ jobs:
           verbose: true
 
   repeated:
-    runs-on: ubuntu-latest
+    # Still 15 runs in total, but spread over three jobs. -shuffle seeds once per
+    # process, so a single -count=15 replays one order fifteen times; three processes
+    # sample three orders and finish in a third of the time.
+    strategy:
+      fail-fast: false
+      matrix:
+        run: [1, 2, 3]
+    # 8 vCPU: 85 test packages feed `go test -p`, and the dominant root package is
+    # t.Parallel() throughout, so both parallelism axes scale with cores
+    runs-on: blacksmith-8vcpu-ubuntu-2404
     timeout-minutes: 30
     steps:
       - name: Fetch Repository
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Install Go
-        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: stable
 
       - name: Test
         uses: gofiber/.github/.github/actions/gotestsum@main
         with:
-          args: ./... -race -count=15 -shuffle=on
+          args: ./... -race -count=5 -shuffle=on

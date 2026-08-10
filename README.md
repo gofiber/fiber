@@ -18,6 +18,9 @@
   <a href="https://github.com/gofiber/fiber/actions?query=workflow%3ATest">
     <img src="https://img.shields.io/github/actions/workflow/status/gofiber/fiber/test.yml?branch=main&label=%F0%9F%A7%AA%20tests&style=flat-square&color=75C46B">
   </a>
+  <a href="https://gofiber.github.io/fiber/benchmarks/">
+    <img src="https://img.shields.io/badge/%F0%9F%93%8A%20benchmarks-charts-00ACD7.svg?style=flat-square">
+  </a>
     <a href="https://docs.gofiber.io">
     <img src="https://img.shields.io/badge/%F0%9F%92%A1%20fiber-docs-00ACD7.svg?style=flat-square">
   </a>
@@ -50,6 +53,21 @@
       <img width="280" height="52" alt="CodeRabbit" src="https://www.coderabbit.ai/images/logo-orange.svg">
     </picture>
   </a>
+</p>
+<p align="center">
+  <a href="https://blacksmith.sh/?utm_source=gofiber&utm_medium=sponsor&utm_content=readme">
+    <img width="280" height="96" alt="Blacksmith" src="https://raw.githubusercontent.com/gofiber/.github/main/assets/sponsors/blacksmith.png">
+  </a>
+</p>
+<p align="center">
+  <sub><b>Tool Sponsors</b> - supporting Fiber with free IDE licenses and AI credits</sub>
+</p>
+<p align="center">
+  <a href="https://www.jetbrains.com/?from=gofiber" title="JetBrains - IDE licenses"><img width="36" height="36" alt="JetBrains" src="https://github.com/JetBrains.png?size=72"></a>
+  &nbsp;
+  <a href="https://openai.com/?utm_source=gofiber&utm_medium=sponsor&utm_content=readme" title="OpenAI - AI credits"><img width="36" height="36" alt="OpenAI" src="https://github.com/openai.png?size=72"></a>
+  &nbsp;
+  <a href="https://www.anthropic.com/?utm_source=gofiber&utm_medium=sponsor&utm_content=readme" title="Anthropic - AI credits"><img width="36" height="36" alt="Anthropic" src="https://github.com/anthropics.png?size=72"></a>
 </p>
 
 ---
@@ -104,7 +122,7 @@ This simple server is easy to set up and run. It introduces the core concepts of
 
 ## Zero Allocation
 
-Fiber is optimized for **high-performance**, meaning values returned from **fiber.Ctx** are **not** immutable by default and **will** be re-used across requests. As a rule of thumb, you **must** only use context values within the handler and **must not** keep any references. Once you return from the handler, any values obtained from the context will be re-used in future requests. Visit our [documentation](https://docs.gofiber.io/#zero-allocation) to learn more.
+Fiber is optimized for **high-performance**, meaning values returned from **fiber.Ctx** are **not** immutable by default and **will** be reused across requests. As a rule of thumb, you **must** only use context values within the handler and **must not** keep any references. Once you return from the handler, any values obtained from the context will be reused in future requests. Visit our [documentation](https://docs.gofiber.io/#zero-allocation) to learn more.
 
 ## 🤖 Benchmarks
 
@@ -173,7 +191,7 @@ func main() {
 }
 ```
 
-When you need to convert entire applications or re-use `net/http` middleware chains, rely on the [adaptor middleware](https://docs.gofiber.io/next/middleware/adaptor/). It converts handlers and middlewares in both directions and even lets you mount a Fiber app in a `net/http` server.
+When you need to convert entire applications or reuse `net/http` middleware chains, rely on the [adaptor middleware](https://docs.gofiber.io/next/middleware/adaptor/). It converts handlers and middlewares in both directions and even lets you mount a Fiber app in a `net/http` server.
 
 ### Express-style handlers
 
@@ -837,20 +855,23 @@ Fiber is an open-source project that runs on donations to pay the bills, e.g., o
 
 <table>
 <tr><td valign="top"><strong>🚀 Fiber Hero</strong></td><td><a href="https://www.thanks.dev" title="@thnxdev"><img src="https://github.com/thnxdev.png" width="40" alt="@thnxdev" /></a></td></tr>
+<tr><td valign="top"><strong>🪴 Fiber Friend</strong></td><td><a href="https://github.com/Gl1tchedPixzl" title="@Gl1tchedPixzl"><img src="https://github.com/Gl1tchedPixzl.png" width="26" alt="@Gl1tchedPixzl" /></a></td></tr>
 </table>
 <!-- sponsors -->
 <!-- skip-docs -->
 
 ## 💻 Code Contributors
 
-<img src="https://opencollective.com/fiber/contributors.svg?width=890&button=false" alt="Code Contributors" style="max-width:100%;">
+<a href="https://github.com/gofiber/fiber/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=gofiber/fiber" alt="Code Contributors" style="max-width:100%;">
+</a>
 
 ## ⭐️ Stargazers
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=gofiber/fiber&type=Date&theme=dark" />
-  <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=gofiber/fiber&type=Date" />
-  <img src="https://api.star-history.com/svg?repos=gofiber/fiber&type=Date" />
+  <source media="(prefers-color-scheme: dark)" srcset="https://next.ossinsight.io/widgets/official/analyze-repo-stars-history/thumbnail.png?repo_id=234231371&image_size=auto&color_scheme=dark" />
+  <source media="(prefers-color-scheme: light)" srcset="https://next.ossinsight.io/widgets/official/analyze-repo-stars-history/thumbnail.png?repo_id=234231371&image_size=auto&color_scheme=light" />
+  <img src="https://next.ossinsight.io/widgets/official/analyze-repo-stars-history/thumbnail.png?repo_id=234231371&image_size=auto&color_scheme=light" alt="Stargazers over time" />
 </picture>
 
 ## 🧾 License

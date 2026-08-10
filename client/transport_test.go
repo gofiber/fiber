@@ -325,6 +325,30 @@ func TestDoRedirectsWithClientBranches(t *testing.T) {
 	require.ErrorIs(t, doRedirectsWithClient(req, resp, 1, client), fasthttp.ErrTooManyRedirects)
 }
 
+// TestComposeRedirectURL_RejectsHTTPSDowngrade verifies that redirects
+// from HTTPS origins to plaintext HTTP targets are refused so cookies
+// and credentials never leave the TLS boundary.
+func TestComposeRedirectURL_RejectsHTTPSDowngrade(t *testing.T) {
+	t.Parallel()
+	_, err := composeRedirectURL("https://example.com/login", []byte("http://example.com/after"), false)
+	require.ErrorIs(t, err, ErrRedirectDowngrade)
+
+	// Same-origin HTTP→HTTP is fine.
+	out, err := composeRedirectURL("http://example.com/a", []byte("http://example.com/b"), false)
+	require.NoError(t, err)
+	require.Equal(t, "http://example.com/b", out)
+
+	// HTTPS→HTTPS is fine.
+	out, err = composeRedirectURL("https://example.com/a", []byte("https://example.com/b"), false)
+	require.NoError(t, err)
+	require.Equal(t, "https://example.com/b", out)
+
+	// HTTP→HTTPS upgrade is fine.
+	out, err = composeRedirectURL("http://example.com/a", []byte("https://example.com/b"), false)
+	require.NoError(t, err)
+	require.Equal(t, "https://example.com/b", out)
+}
+
 func TestDoRedirectsWithClientDefaultLimit(t *testing.T) {
 	t.Parallel()
 

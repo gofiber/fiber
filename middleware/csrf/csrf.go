@@ -347,8 +347,13 @@ func validateSecFetchSite(c fiber.Ctx) error {
 		return nil
 	}
 
-	switch utilsstrings.ToLower(secFetchSite) {
-	case "same-origin", "none", "cross-site", "same-site":
+	// Compare case-insensitively without lowering: the four valid tokens all
+	// have distinct lengths, so at most one EqualFold does a real comparison.
+	switch {
+	case utils.EqualFold(secFetchSite, "same-origin"),
+		utils.EqualFold(secFetchSite, "none"),
+		utils.EqualFold(secFetchSite, "cross-site"),
+		utils.EqualFold(secFetchSite, "same-site"):
 		return nil
 	default:
 		return ErrFetchSiteInvalid
@@ -359,8 +364,9 @@ func validateSecFetchSite(c fiber.Ctx) error {
 // returns an error if the origin header is not present or is invalid
 // returns nil if the origin header is valid
 func originMatchesHost(c fiber.Ctx, trustedOrigins []string, trustedSubOrigins []subdomain) error {
-	origin := utilsstrings.ToLower(c.Get(fiber.HeaderOrigin))
-	if origin == "" || origin == "null" { // "null" is set by some browsers when the origin is a secure context https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Origin#description
+	origin := c.Get(fiber.HeaderOrigin)
+	// "null" is set by some browsers when the origin is a secure context https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Origin#description
+	if origin == "" || utils.EqualFold(origin, "null") {
 		return errOriginNotFound
 	}
 
@@ -369,18 +375,20 @@ func originMatchesHost(c fiber.Ctx, trustedOrigins []string, trustedSubOrigins [
 		return ErrOriginInvalid
 	}
 
+	// Match compares case-insensitively, so the dominant same-origin case
+	// needs no lowered copy of the header.
 	if schemehost.Match(originURL.Scheme, originURL.Host, c.Scheme(), c.Host()) {
 		return nil
 	}
 
+	// The trusted-origin fallbacks compare against pre-lowered config values.
+	origin = utilsstrings.ToLower(origin)
 	if slices.Contains(trustedOrigins, origin) {
 		return nil
 	}
 
-	for _, trustedSubOrigin := range trustedSubOrigins {
-		if trustedSubOrigin.match(origin) {
-			return nil
-		}
+	if matchSubdomainOrigin(trustedSubOrigins, origin) {
+		return nil
 	}
 
 	return ErrOriginNoMatch
@@ -390,7 +398,7 @@ func originMatchesHost(c fiber.Ctx, trustedOrigins []string, trustedSubOrigins [
 // returns an error if the referer header is not present or is invalid
 // returns nil if the referer header is valid
 func refererMatchesHost(c fiber.Ctx, trustedOrigins []string, trustedSubOrigins []subdomain) error {
-	referer := utilsstrings.ToLower(c.Get(fiber.HeaderReferer))
+	referer := c.Get(fiber.HeaderReferer)
 	if referer == "" {
 		return ErrRefererNotFound
 	}
@@ -400,20 +408,23 @@ func refererMatchesHost(c fiber.Ctx, trustedOrigins []string, trustedSubOrigins 
 		return ErrRefererInvalid
 	}
 
+	// Match compares case-insensitively, so the dominant same-origin case
+	// needs no lowered copy of the header (which would copy the whole URL,
+	// path and query included).
 	if schemehost.Match(refererURL.Scheme, refererURL.Host, c.Scheme(), c.Host()) {
 		return nil
 	}
 
-	refererOrigin := refererURL.Scheme + "://" + refererURL.Host
+	// The trusted-origin fallbacks compare against pre-lowered config values.
+	// url.Parse already lowercases the scheme; the host may need it.
+	refererOrigin := refererURL.Scheme + "://" + utilsstrings.ToLower(refererURL.Host)
 
 	if slices.Contains(trustedOrigins, refererOrigin) {
 		return nil
 	}
 
-	for _, trustedSubOrigin := range trustedSubOrigins {
-		if trustedSubOrigin.match(refererOrigin) {
-			return nil
-		}
+	if matchSubdomainOrigin(trustedSubOrigins, refererOrigin) {
+		return nil
 	}
 
 	return ErrRefererNoMatch

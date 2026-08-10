@@ -6,6 +6,8 @@ description: >-
 sidebar_position: 3
 ---
 
+import MethodIndex from '@site/src/components/method-index';
+
 The `Response` struct in Fiber's HTTP client represents the server's reply and exposes:
 
 - **Status Code**: The HTTP status code returned by the server (e.g., `200 OK`, `404 Not Found`).
@@ -23,6 +25,10 @@ type Response struct {
     RawResponse *fasthttp.Response
 }
 ```
+
+Use the index to jump straight to any response method; filter by name:
+
+<MethodIndex itemNoun="methods" placeholder="Filter methods, e.g. json" flat />
 
 ## AcquireResponse
 

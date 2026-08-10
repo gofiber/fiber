@@ -63,9 +63,13 @@ func TestTimeout_Exceeded(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
 
+	// The handler sleep and the bound below are spread far apart on purpose: a
+	// tight bound measures runner load, not early return.
+	const handlerSleep = 2 * time.Second
+
 	// This handler listens for context cancelation and returns early when timeout occurs.
 	app.Get("/slow", New(func(c fiber.Ctx) error {
-		if err := sleepWithContext(c.Context(), 200*time.Millisecond, context.DeadlineExceeded); err != nil {
+		if err := sleepWithContext(c.Context(), handlerSleep, context.DeadlineExceeded); err != nil {
 			return err
 		}
 		return c.SendString("Should never get here")
@@ -77,8 +81,8 @@ func TestTimeout_Exceeded(t *testing.T) {
 	elapsed := time.Since(start)
 	require.NoError(t, err, "app.Test(req) should not fail")
 	require.Equal(t, fiber.StatusRequestTimeout, resp.StatusCode, "Expected 408 Request Timeout")
-	// Handler should return shortly after timeout (not wait full 200ms)
-	require.Less(t, elapsed, 150*time.Millisecond, "handler should return early on context cancelation")
+	// Handler should return on cancelation, well before its own sleep elapses.
+	require.Less(t, elapsed, handlerSleep/2, "handler should return early on context cancelation")
 }
 
 // TestTimeout_ContextPropagation verifies that the timeout context is properly

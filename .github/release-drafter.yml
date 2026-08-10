@@ -1,10 +1,16 @@
-_extends: gofiber/.github:release-drafter.yml
+_extends:
+  from: gofiber/.github:release-drafter.yml
+  strategy:
+    categories: append
 commitish: main
 filter-by-commitish: true
-include-labels:
-  - 'v3'
-exclude-labels:
-  - 'v2'
+categories:
+  - type: pre-include
+    when:
+      label: 'v3'
+  - type: pre-exclude
+    when:
+      label: 'v2'
 template: |
     $CHANGES
 

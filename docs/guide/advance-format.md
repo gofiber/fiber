@@ -3,7 +3,7 @@ id: advance-format
 title: 🐛 Advanced Format
 description: >-
   Learn how to use MessagePack (MsgPack) and CBOR for efficient binary serialization in Fiber applications.
-sidebar_position: 9
+sidebar_position: 10
 ---
 
 ## MsgPack

@@ -260,6 +260,17 @@ linters:
       - linters:
           - nolintlint
         text: directive `.*` is unused for linter "revive"
+      # helpers.go deliberately calls fasthttp's deprecated VisitAll (not the
+      # replacement All) to stay zero-alloc: All returns an iterator closure
+      # that escapes to the heap on every call. An inline //nolint:staticcheck
+      # cannot police this reliably because the golangci-lint CI cache can carry
+      # staticcheck facts from before these calls existed, surfacing no SA1019
+      # finding and making nolintlint report the directive as unused. Exclude the
+      # finding at report time instead so it is robust to cache state.
+      - path: helpers\.go
+        linters:
+          - staticcheck
+        text: 'SA1019: .*VisitAll'
     paths:
       - _msgp\.go
       - _msgp_test\.go

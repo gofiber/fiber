@@ -6,11 +6,13 @@ package fiber
 
 import (
 	"fmt"
+	"math/bits"
 	"slices"
 	"sync/atomic"
 
 	"github.com/gofiber/utils/v2"
 	utilsstrings "github.com/gofiber/utils/v2/strings"
+	"github.com/gofiber/utils/v2/swar"
 	"github.com/valyala/bytebufferpool"
 	"github.com/valyala/fasthttp"
 )
@@ -44,20 +46,25 @@ type Router interface {
 }
 
 // Route is a struct that holds all metadata for each registered handler.
+//
+//nolint:govet // fieldalignment: the router's scan dictates this order, see below
 type Route struct {
 	// ### important: always keep in sync with the copy method "app.copyRoute" and all creations of Route struct ###
-	group *Group // Group instance. used for routes in groups
+	//
+	// Field order is load-bearing. App.next scans a bucket of routes and
+	// discards most of them, so the fields it needs to do that lead the struct
+	// and a rejected candidate costs one cache line instead of touching the
+	// whole thing. prefix/prefixMask come first because they alone reject the
+	// common case; path, Params' length, the routing flags and routeParser's
+	// slash bounds follow for the candidates that survive. Keep new routing
+	// state up here and everything else below routeParser.
+
+	prefix     uint64 // leading path bytes packed little-endian, see buildPrefixFilter
+	prefixMask uint64 // covers the bytes of prefix that are known constants; 0 disables the filter
 
 	path string // Prettified path
 
-	// Public fields
-	Method string `json:"method"` // HTTP method
-	Name   string `json:"name"`   // Route's name
-	//nolint:revive // Having both a Path (uppercase) and a path (lowercase) is fine
-	Path        string      `json:"path"`   // Original registered route path
-	Params      []string    `json:"params"` // Case-sensitive param keys
-	Handlers    []Handler   `json:"-"`      // Ctx handlers
-	routeParser routeParser // Parameter parser
+	Params []string `json:"params"` // Case-sensitive param keys
 
 	// Data for routing
 	use           bool // USE matches path prefixes
@@ -66,12 +73,135 @@ type Route struct {
 	root          bool // Path equals '/'
 	autoHead      bool // Automatically generated HEAD route
 	caseSensitive bool // Whether parameter matching is case-sensitive
+
+	routeParser routeParser // Parameter parser
+
+	Handlers []Handler `json:"-"` // Ctx handlers
+
+	group *Group // Group instance. used for routes in groups
+
+	// Public fields
+	Method string `json:"method"` // HTTP method
+	Name   string `json:"name"`   // Route's name
+	//nolint:revive // Having both a Path (uppercase) and a path (lowercase) is fine
+	Path string `json:"path"` // Original registered route path
 }
 
 var (
 	defaultGreedyParameterKeys    = []string{"*", "+"}
 	preferredPlusGreedyParameters = []string{"+", "*"}
 )
+
+// routeTree is a flat, open-addressed index from a tree-path hash to the route
+// bucket of a single HTTP method. It serves the request-time lookup that used
+// to go through treeStack's map[int][]*Route, where hashing the key and walking
+// the bucket group accounted for ~14% of a routed request in CPU profiles.
+// Here the lookup is a multiply-shift plus a short linear probe, and a miss
+// resolves to the globals bucket inline instead of costing a second lookup.
+type routeTree struct {
+	// hashes is a power-of-two sized probe table holding the tree-path hash of
+	// each slot, 0 meaning free. It is kept apart from the buckets so a probe
+	// walks 4 bytes per slot (16 per cache line) instead of a slice header.
+	// nil when the method has no prefixed bucket and every request hits globals.
+	hashes []int32
+	// buckets is parallel to hashes and holds the routes of each occupied slot
+	buckets [][]*Route
+	// globals is the bucket for tree hash 0, which is also where misses go
+	globals []*Route
+	// mask is len(hashes)-1, used to wrap the probe
+	mask uint32
+	// shift is 32-log2(len(hashes)), so slot keeps the high bits of the
+	// multiply. A fixed shift would cap the index at whatever it exposes and
+	// leave larger tables with an unreachable upper half.
+	shift uint32
+}
+
+// routeTreeHashMul is the golden-ratio constant used to spread tree hashes,
+// whose low bits are just the third path byte, across the probe table.
+const routeTreeHashMul = 0x9E3779B1
+
+// buildRouteTree converts one method's tree-path buckets into a routeTree.
+//
+// It returns a pointer, and allocates rather than recycling the previous
+// tables, so that publishing a rebuilt tree is a single pointer store. Holding
+// the tree by value instead cost a five-word store, which let a reader pair the
+// new hash table with the old buckets; recycling the tables let a reader see a
+// cleared one and fall through to globals. Both were measurable — 24 wrong
+// answers in 20k requests served across a RebuildTree loop, against 0 before
+// the index existed — so this restores the parity that assigning treeStack's
+// map pointer used to provide.
+//
+// The buckets are freshly allocated for each build so a published tree remains
+// immutable while a request scans it. Publishing is still an unsynchronized
+// store, however, so this does not make RebuildTree safe for concurrent use;
+// RebuildTree's own doc states the contract.
+func buildRouteTree(buckets map[int][]*Route) *routeTree {
+	tree := &routeTree{globals: buckets[0]}
+
+	prefixed := len(buckets)
+	if _, ok := buckets[0]; ok {
+		prefixed--
+	}
+	if prefixed == 0 {
+		return tree
+	}
+
+	// Keep the table at most half full: probes stay short, and a free slot is
+	// always reachable, which is what terminates the loop in lookup.
+	size := 8
+	for size < prefixed*2 {
+		size *= 2
+	}
+
+	tree.hashes = make([]int32, size)
+	tree.buckets = make([][]*Route, size)
+	tree.mask = uint32(size - 1) //nolint:gosec // G115 - size is a small power of two
+	// size is a power of two, so its trailing-zero count is log2(size).
+	tree.shift = uint32(32 - bits.TrailingZeros32(uint32(size))) //nolint:gosec // G115 - size is a small power of two
+
+	for hash, routes := range buckets {
+		if hash == 0 {
+			continue
+		}
+		i := tree.slot(hash)
+		for tree.hashes[i] != 0 {
+			i = (i + 1) & tree.mask
+		}
+		tree.hashes[i] = int32(hash) //nolint:gosec // G115 - tree hashes are 24-bit, built from three path bytes
+		tree.buckets[i] = routes
+	}
+
+	return tree
+}
+
+// slot returns the probe start index for a tree-path hash.
+//
+// Fibonacci hashing: the multiply pushes the entropy of the low bytes up into
+// the high bits, so the index has to be taken from the top. Shifting by a fixed
+// amount and masking cannot do that -- it bounds the index by whatever the
+// shift leaves, which for a table bigger than that bound makes the upper half
+// unreachable as a probe start and collapses the lower half into a linear scan.
+func (t *routeTree) slot(hash int) uint32 {
+	return uint32(hash) * routeTreeHashMul >> t.shift //nolint:gosec // G115 - tree hashes are 24-bit, built from three path bytes
+}
+
+// lookup returns the route bucket for a tree-path hash, falling back to the
+// globals bucket when that hash has no bucket of its own.
+func (t *routeTree) lookup(hash int) []*Route {
+	if hash == 0 || t.hashes == nil {
+		return t.globals
+	}
+
+	want := int32(hash) //nolint:gosec // G115 - tree hashes are 24-bit, built from three path bytes
+	for i := t.slot(hash); ; i = (i + 1) & t.mask {
+		switch t.hashes[i] {
+		case want:
+			return t.buckets[i]
+		case 0:
+			return t.globals
+		}
+	}
+}
 
 // URL generates a URL from the route path and parameters.
 // This method fills in the route parameters with the provided values.
@@ -177,7 +307,104 @@ func preferredGreedyParameters(paramName string) []string {
 	return defaultGreedyParameterKeys
 }
 
-func (r *Route) match(detectionPath, path string, params *[maxParams]string) bool {
+// pathHeadWord packs the first swar.WordLen bytes of a detection path into a
+// little-endian word, zero-padded when the path is shorter, so a route's
+// precomputed prefix can be tested with a single masked compare.
+func pathHeadWord(s string) uint64 {
+	if len(s) >= swar.WordLen {
+		return swar.Load8(s, 0)
+	}
+
+	var word uint64
+	for i := range len(s) {
+		word |= uint64(s[i]) << (8 * i)
+	}
+	return word
+}
+
+// buildPrefixFilter precomputes the leading-byte filter that App.next uses to
+// discard routes before paying for Route.match.
+//
+// The filter mirrors the first comparison each branch of match would make, so
+// it can only reject what match would reject:
+//   - a route without parameters is compared against r.path in full (exact for
+//     an endpoint, as a prefix for middleware), so r.path leads it
+//   - a parametric route enters getMatch, which requires the constant part of
+//     the first segment; an optional trailing slash may be dropped there, so
+//     that byte is left out
+//   - '*' matches every path, and a first segment that is itself a parameter
+//     constrains nothing, so both disable the filter
+//
+// The star check has to come first, before the parametric branch. star is
+// derived from the unescaped path (isStar in register), while Params comes from
+// parsing the escaped one, so a route registered as `/\*` arrives here with
+// star set and no params — and match returns true for it unconditionally.
+//
+// Anything that changes a route's path, params or parser must run this again.
+// The three places that can are register, which builds the route, copyRoute,
+// which carries the fields over, and addPrefixToRoute, which rewrites them.
+// Test_Route_PrefixFilter_NotStale pins that the set is complete.
+//
+// It is deliberately not recomputed in buildTree. buildTree runs from
+// RebuildTree, whose whole purpose is registering routes on a live app, and the
+// routes it would write to are the ones in-flight requests are reading: a
+// reader that caught this function between setting prefix and narrowing
+// prefixMask compared a short prefix under an all-ones mask and rejected a
+// route it matches. That measured 178 spurious misses in 22.8M requests served
+// across a rebuild loop, against 0 before the filter existed.
+func (r *Route) buildPrefixFilter() {
+	r.prefix, r.prefixMask = computePrefixFilter(r)
+}
+
+// computePrefixFilter derives a route's leading-byte filter without publishing
+// it, so the two words can be installed in one assignment and the result can be
+// recomputed and compared in tests. It returns the packed prefix word and the
+// mask covering its known bytes.
+//
+//nolint:nonamedreturns // the pair is easier to read named than by position
+func computePrefixFilter(r *Route) (word, mask uint64) {
+	if r.star {
+		return 0, 0
+	}
+
+	prefix := r.path
+	if len(r.Params) > 0 {
+		segs := r.routeParser.segs
+		if len(segs) == 0 || segs[0].IsParam {
+			return 0, 0
+		}
+		prefix = segs[0].Const
+		if segs[0].HasOptionalSlash {
+			prefix = prefix[:len(prefix)-1]
+		}
+	}
+
+	if len(prefix) > swar.WordLen {
+		prefix = prefix[:swar.WordLen]
+	}
+	if prefix == "" {
+		return 0, 0
+	}
+
+	mask = ^uint64(0)
+	if n := len(prefix); n < swar.WordLen {
+		mask = uint64(1)<<(8*n) - 1
+	}
+	return pathHeadWord(prefix), mask
+}
+
+// prefixRejects reports whether the leading bytes of a detection path, packed
+// by pathHeadWord, already rule this route out.
+//
+// This is the whole of the leading-byte filter, and it lives here rather than
+// inline at the scan sites so there is one copy to change and one copy for the
+// differential tests to guard. Six hand-written copies could drift from each
+// other, and a test asserting against a seventh would not notice.
+func (r *Route) prefixRejects(head uint64) bool {
+	return (head^r.prefix)&r.prefixMask != 0
+}
+
+func (r *Route) match(detectionPath, path string, params *[maxParams]string, pathSlashes int) bool {
 	// root detectionPath check
 	if r.root && len(detectionPath) == 1 && detectionPath[0] == '/' {
 		return true
@@ -195,8 +422,16 @@ func (r *Route) match(detectionPath, path string, params *[maxParams]string) boo
 
 	// Does this route have parameters?
 	if len(r.Params) > 0 {
+		// Quick-reject on the precomputed slash-count bounds before walking segments.
+		// pathSlashes 0 means the count is unknown and the filter must stay out of
+		// the way; prefix (use) routes may extend past the pattern, so only the
+		// lower bound applies to them.
+		p := &r.routeParser
+		if pathSlashes > 0 && (pathSlashes < int(p.minSlashes) || (!r.use && p.maxBounded && pathSlashes > int(p.maxSlashes))) {
+			return false
+		}
 		// Match params using precomputed routeParser
-		return r.routeParser.getMatch(detectionPath, path, params, r.use)
+		return p.getMatch(detectionPath, path, params, r.use)
 	}
 
 	// Middleware route?
@@ -227,13 +462,12 @@ func (app *App) next(c *DefaultCtx) (bool, error) {
 	treeHash := c.treePathHash
 	detectionPath := utils.UnsafeString(c.detectionPath)
 	path := utils.UnsafeString(c.path)
-	// Get stack length
-	tree, ok := app.treeStack[methodInt][treeHash]
-	if !ok {
-		tree = app.treeStack[methodInt][0]
-	}
+	// Get the route bucket for this method and tree path
+	tree := app.treeIndex[methodInt].lookup(treeHash)
+	head := pathHeadWord(detectionPath)
 	indexRoute := max(c.indexRoute+1, 0)
 	// Hoist loop invariants: route.match takes &c.values, so these would reload each iteration.
+	pathSlashes := c.pathSlashCount(app)
 	firstMatchIndex := c.firstMatchIndex
 	skipNonUse := c.shouldSkipNonUseRoutes
 	skipHasParamUse := app.skip.hasParamUse
@@ -243,6 +477,11 @@ func (app *App) next(c *DefaultCtx) (bool, error) {
 	for ; indexRoute < len(tree); indexRoute++ {
 		// Get *Route
 		route := tree[indexRoute]
+
+		// Reject on the leading path bytes before touching the rest of the route
+		if route.prefixRejects(head) {
+			continue
+		}
 
 		if route.mount {
 			continue
@@ -267,7 +506,7 @@ func (app *App) next(c *DefaultCtx) (bool, error) {
 		}
 
 		// Check if it matches the request path
-		if !route.match(detectionPath, path, &c.values) {
+		if !route.match(detectionPath, path, &c.values, pathSlashes) {
 			continue
 		}
 
@@ -318,10 +557,7 @@ func (app *App) next(c *DefaultCtx) (bool, error) {
 		// Reset stack index
 		indexRoute := -1
 
-		tree, ok := app.treeStack[i][treeHash]
-		if !ok {
-			tree = app.treeStack[i][0]
-		}
+		tree := app.treeIndex[i].lookup(treeHash)
 		// Get stack length
 		lenr := len(tree) - 1
 		// Loop over the route stack starting from previous index
@@ -330,13 +566,13 @@ func (app *App) next(c *DefaultCtx) (bool, error) {
 			indexRoute++
 			// Get *Route
 			route := tree[indexRoute]
-			// Skip use routes
-			if route.use {
+			// Skip use routes and routes the leading path bytes already rule out
+			if route.use || route.prefixRejects(head) {
 				continue
 			}
 			// Check if it matches the request path
 			// No match, next route
-			if route.match(detectionPath, path, &c.values) {
+			if route.match(detectionPath, path, &c.values, pathSlashes) {
 				// We matched
 				exists = true
 				// Add method to Allow header
@@ -356,16 +592,15 @@ func (app *App) next(c *DefaultCtx) (bool, error) {
 func (app *App) nextCustom(c CustomCtx) (bool, error) {
 	methodInt := c.getMethodInt()
 	treeHash := c.getTreePathHash()
-	// Get stack length
-	tree, ok := app.treeStack[methodInt][treeHash]
-	if !ok {
-		tree = app.treeStack[methodInt][0]
-	}
+	// Get the route bucket for this method and tree path
+	tree := app.treeIndex[methodInt].lookup(treeHash)
 	indexRoute := max(c.getIndexRoute()+1, 0)
 	// Hoist loop-invariant accessors; nothing changes mid-loop (Next()/RestartRouting re-enter with fresh reads).
 	detectionPath := c.getDetectionPath()
+	head := pathHeadWord(detectionPath)
 	path := c.Path()
 	values := c.getValues()
+	pathSlashes := c.pathSlashCount(app)
 	firstMatchIndex := c.getFirstMatchIndex()
 	skipNonUse := c.getSkipNonUseRoutes()
 	skipHasParamUse := app.skip.hasParamUse
@@ -375,6 +610,11 @@ func (app *App) nextCustom(c CustomCtx) (bool, error) {
 	for ; indexRoute < len(tree); indexRoute++ {
 		// Get *Route
 		route := tree[indexRoute]
+
+		// Reject on the leading path bytes before touching the rest of the route
+		if route.prefixRejects(head) {
+			continue
+		}
 
 		if route.mount {
 			continue
@@ -399,7 +639,7 @@ func (app *App) nextCustom(c CustomCtx) (bool, error) {
 		}
 
 		// Check if it matches the request path
-		if !route.match(detectionPath, path, values) {
+		if !route.match(detectionPath, path, values, pathSlashes) {
 			continue
 		}
 		if skipNonUse && !route.use {
@@ -448,10 +688,7 @@ func (app *App) nextCustom(c CustomCtx) (bool, error) {
 		// Reset stack index
 		indexRoute := -1
 
-		tree, ok := app.treeStack[i][treeHash]
-		if !ok {
-			tree = app.treeStack[i][0]
-		}
+		tree := app.treeIndex[i].lookup(treeHash)
 		// Get stack length
 		lenr := len(tree) - 1
 		// Loop over the route stack starting from previous index
@@ -460,13 +697,13 @@ func (app *App) nextCustom(c CustomCtx) (bool, error) {
 			indexRoute++
 			// Get *Route
 			route := tree[indexRoute]
-			// Skip use routes
-			if route.use {
+			// Skip use routes and routes the leading path bytes already rule out
+			if route.use || route.prefixRejects(head) {
 				continue
 			}
 			// Check if it matches the request path
 			// No match, next route
-			if route.match(detectionPath, path, values) {
+			if route.match(detectionPath, path, values, pathSlashes) {
 				// We matched
 				exists = true
 				// Add method to Allow header
@@ -507,7 +744,7 @@ func (app *App) defaultRequestHandler(rctx *fasthttp.RequestCtx) {
 	// (without middleware next() already answers 404/405 cheaply). CORS preflight is
 	// exempt so cors middleware can answer paths that lack an explicit OPTIONS route.
 	if app.skip.enabled && !ctx.IsPreflight() {
-		res := app.resolveSkip(ctx.methodInt, ctx.treePathHash,
+		res := app.resolveSkip(ctx.methodInt, ctx.treePathHash, ctx.pathSlashCount(app),
 			utils.UnsafeString(ctx.detectionPath), utils.UnsafeString(ctx.path), &ctx.values)
 		switch res.decision {
 		case skipNotFound:
@@ -549,7 +786,7 @@ func (app *App) customRequestHandler(rctx *fasthttp.RequestCtx) {
 	// (without middleware next() already answers 404/405 cheaply). CORS preflight is
 	// exempt so cors middleware can answer paths that lack an explicit OPTIONS route.
 	if app.skip.enabled && !ctx.IsPreflight() {
-		res := app.resolveSkip(ctx.getMethodInt(), ctx.getTreePathHash(),
+		res := app.resolveSkip(ctx.getMethodInt(), ctx.getTreePathHash(), ctx.pathSlashCount(app),
 			ctx.getDetectionPath(), ctx.Path(), ctx.getValues())
 		switch res.decision {
 		case skipNotFound:
@@ -589,12 +826,20 @@ func (app *App) addPrefixToRoute(prefix string, route *Route, regexHandler any, 
 	route.root = false
 	route.star = false
 	route.caseSensitive = app.config.CaseSensitive
+	// buildTree recomputes this for every route, but this function rewrites the
+	// path and parser a filter is derived from, so refresh it here too rather
+	// than depend on a caller marking the routes refreshed.
+	route.buildPrefixFilter()
 
 	return route
 }
 
 func (*App) copyRoute(route *Route) *Route {
 	return &Route{
+		// Leading-byte filter
+		prefix:     route.prefix,
+		prefixMask: route.prefixMask,
+
 		// Router booleans
 		use:           route.use,
 		mount:         route.mount,
@@ -789,6 +1034,7 @@ func (app *App) register(methods []string, pathRaw string, group *Group, handler
 			Method:   method,
 			Handlers: handlers,
 		}
+		route.buildPrefixFilter()
 
 		// Increment global handler count
 		atomic.AddUint32(&app.handlersCount, uint32(len(handlers))) //nolint:gosec // G115 - handler count is always small
@@ -930,6 +1176,7 @@ func (app *App) buildTree() *App {
 	}
 
 	// 1) First loop: determine all possible 3-char prefixes ("treePaths") for each method
+	hasParamRoutes := false
 	for method := range app.config.RequestMethods {
 		routes := app.stack[method]
 		treePaths := make([]int, len(routes))
@@ -938,7 +1185,17 @@ func (app *App) buildTree() *App {
 		prefixCounts := make(map[int]int, len(routes))
 
 		for i, route := range routes {
-			if len(route.routeParser.segs) > 0 && len(route.routeParser.segs[0].Const) >= maxDetectionPaths {
+			// The leading-byte filter is deliberately not rebuilt here; see
+			// buildPrefixFilter. These routes are live for in-flight requests.
+
+			// Star routes resolve before the slash-count quick-reject in
+			// Route.match, so only non-star parametric routes consult it.
+			if len(route.Params) > 0 && !route.star {
+				hasParamRoutes = true
+			}
+
+			if len(route.routeParser.segs) > 0 && len(route.routeParser.segs[0].Const) >= maxDetectionPaths &&
+				!dropsOptionalSlashBelowTreeHash(route.routeParser.segs[0]) {
 				treePaths[i] = int(route.routeParser.segs[0].Const[0])<<16 |
 					int(route.routeParser.segs[0].Const[1])<<8 |
 					int(route.routeParser.segs[0].Const[2])
@@ -952,11 +1209,28 @@ func (app *App) buildTree() *App {
 			prefixCounts[treePaths[i]]++
 		}
 
-		prevBuckets := app.treeStack[method]
+		// Carve this build's buckets out of one allocation. The arena is fresh
+		// per build, so a published bucket is never written through; a bucket
+		// per make() would give the same guarantee, but one allocation keeps a
+		// rebuild's alloc count flat as routes are added.
+		//
+		// Each bucket is a three-index slice whose cap is exactly what the
+		// append loop below puts in it, so a bucket cannot reach its
+		// neighbor: appending past that cap reallocates instead of writing
+		// into the next window.
+		total := globalCount
+		for _, count := range prefixCounts {
+			total += count + globalCount
+		}
+		arena := make([]*Route, total)
+
 		tsMap := make(map[int][]*Route, len(prefixCounts)+1)
-		tsMap[0] = reuseRouteBucket(prevBuckets, 0, globalCount)
+		tsMap[0] = arena[0:0:globalCount]
+		off := globalCount
 		for treePath, count := range prefixCounts {
-			tsMap[treePath] = reuseRouteBucket(prevBuckets, treePath, count+globalCount)
+			end := off + count + globalCount
+			tsMap[treePath] = arena[off:off:end]
+			off = end
 		}
 
 		for i, route := range routes {
@@ -973,7 +1247,9 @@ func (app *App) buildTree() *App {
 		}
 
 		app.treeStack[method] = tsMap
+		app.treeIndex[method] = buildRouteTree(tsMap)
 	}
+	app.hasParamRoutes = hasParamRoutes
 
 	app.buildSkipIndexes()
 
@@ -982,9 +1258,16 @@ func (app *App) buildTree() *App {
 	return app
 }
 
-func reuseRouteBucket(prev map[int][]*Route, key, capHint int) []*Route {
-	if bucket, ok := prev[key]; ok && cap(bucket) >= capHint {
-		return bucket[:0]
-	}
-	return make([]*Route, 0, capHint)
+// dropsOptionalSlashBelowTreeHash reports whether a route's leading constant
+// segment can match a detection path too short to carry a tree hash.
+//
+// getMatch lets a segment with HasOptionalSlash match one byte less than its
+// Const (the trailing '/' is optional), so "/a/" also matches "/a". A
+// detection path shorter than maxDetectionPaths always hashes to 0, so a route
+// bucketed under the hash of its full Const would be invisible to that
+// request: next() would scan bucket 0 and never see it. Consts longer than
+// maxDetectionPaths are unaffected — dropping the final '/' leaves the first
+// three bytes, and therefore the hash, unchanged.
+func dropsOptionalSlashBelowTreeHash(seg *routeSegment) bool {
+	return seg.HasOptionalSlash && len(seg.Const) == maxDetectionPaths
 }

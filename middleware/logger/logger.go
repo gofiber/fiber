@@ -120,9 +120,11 @@ func New(config ...Config) fiber.Handler {
 		} else {
 			data.Timestamp = ""
 		}
-		// These compiled chains are shared across requests. The default logger and
-		// custom LoggerFunc implementations must only read them, for example via
-		// logtemplate.ExecuteChains.
+		// These compiled chains are shared across requests, so a custom
+		// LoggerFunc must only read them — never append to or reorder them.
+		// Walk Data.TemplateChain and Data.LogFuncChain in step; the helper the
+		// default logger uses for this lives in internal/ and is not importable
+		// from outside the module.
 		data.TemplateChain = templateChain
 		data.LogFuncChain = logFuncChain
 		// put data back in the pool

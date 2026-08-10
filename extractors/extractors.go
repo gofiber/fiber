@@ -117,7 +117,9 @@ type chainGuardKey struct {
 //
 // RFC Compliance:
 //   - Follows RFC 9110 Section 11.6.2 for Authorization header format
-//   - Enforces 1*SP (one or more spaces) between auth-scheme and credentials
+//   - Requires exactly one SP between auth-scheme and credentials. RFC 9110
+//     permits 1*SP, but a single space is what clients send in practice and
+//     the stricter rule keeps the parse unambiguous.
 //   - Implements RFC 7235 token68 character validation for extracted tokens
 //   - Case-insensitive auth scheme matching per HTTP standards
 //
@@ -551,6 +553,9 @@ func Chain(extractors ...Extractor) Extractor {
 }
 
 // isValidToken68 checks if a string is a valid token68 per RFC 7235/9110.
+// NOTE: a swar.MatchRangeMask-based rewrite of this scan benchmarked 16%
+// slower than this scalar loop (the six-mask character class costs more per
+// word than the compiler's optimized switch costs per byte), so it stays.
 func isValidToken68(token string) bool {
 	if token == "" {
 		return false

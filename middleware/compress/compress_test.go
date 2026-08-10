@@ -27,7 +27,7 @@ var testConfig = fiber.TestConfig{
 }
 
 func init() {
-	dat, err := os.ReadFile("../../.github/README.md")
+	dat, err := os.ReadFile("../../README.md")
 	if err != nil {
 		panic(err)
 	}

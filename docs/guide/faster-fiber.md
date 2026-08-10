@@ -1,7 +1,7 @@
 ---
 id: faster-fiber
 title: ⚡ Make Fiber Faster
-sidebar_position: 7
+sidebar_position: 11
 ---
 
 ## Custom JSON Encoder/Decoder
@@ -97,3 +97,8 @@ func main() {
   normalized route patterns during registration
 - compiled matchers are reused across requests, so custom matchers must be safe
   for concurrent use
+
+## Related Performance Reading
+
+- [Zero Allocation](../intro.md#zero-allocation): why `Ctx` values are reused across requests and how to copy them safely
+- [Benchmarks](../extra/benchmarks.md): how Fiber compares to other frameworks

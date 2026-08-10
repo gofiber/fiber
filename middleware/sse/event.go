@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"strconv"
 	"strings"
 	"time"
 
@@ -58,7 +57,7 @@ func writeEvent(w *bufio.Writer, event Event, jsonMarshal ...utils.JSONMarshal) 
 		}
 	}
 	if event.Retry > 0 {
-		appendField(&frame, "retry", strconv.FormatInt(event.Retry.Milliseconds(), 10))
+		appendField(&frame, "retry", utils.FormatInt(event.Retry.Milliseconds()))
 	}
 	if data.hasData {
 		appendData(&frame, data.data)
@@ -135,7 +134,7 @@ func appendData(w *bytes.Buffer, data string) {
 }
 
 func sanitizeField(value string) (string, error) {
-	if strings.ContainsAny(value, "\r\n") {
+	if utils.IndexAny2(value, '\r', '\n') != -1 {
 		return "", errInvalidField
 	}
 	return utils.Trim(value, ' '), nil

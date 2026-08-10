@@ -20,7 +20,6 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
-	"regexp"
 	"runtime"
 	"strconv"
 	"strings"
@@ -409,9 +408,6 @@ func Test_App_Custom_Middleware_404_Should_Not_SetMethodNotAllowed(t *testing.T)
 
 func Test_App_ServerErrorHandler_SmallReadBuffer(t *testing.T) {
 	t.Parallel()
-	expectedError := regexp.MustCompile(
-		`error when reading request headers: small read buffer\. Increase ReadBufferSize\. Buffer size=4096, contents: "GET / HTTP/1.1\\r\\nHost: example\.com\\r\\nVery-Long-Header: -+`,
-	)
 	app := New()
 
 	app.Get("/", func(_ Ctx) error {
@@ -426,7 +422,8 @@ func Test_App_ServerErrorHandler_SmallReadBuffer(t *testing.T) {
 		t.Error("Expect an error at app.Test(request)")
 	}
 
-	require.Regexp(t, expectedError, err.Error())
+	// assert on the error type, not on fasthttp's message wording
+	require.ErrorAs(t, err, new(*fasthttp.ErrSmallBuffer))
 }
 
 func Test_App_Errors(t *testing.T) {
@@ -449,7 +446,7 @@ func Test_App_Errors(t *testing.T) {
 
 	_, err = app.Test(httptest.NewRequest(MethodGet, "/", strings.NewReader("big body")))
 	if err != nil {
-		require.Equal(t, "body size exceeds the given limit", err.Error(), "app.Test(req)")
+		require.ErrorIs(t, err, fasthttp.ErrBodyTooLarge, "app.Test(req)")
 	}
 }
 
@@ -2036,10 +2033,16 @@ func Test_NewErrorf_Format(t *testing.T) {
 			want: "odd 1%!(EXTRA int=2, int=3)",
 		},
 		{
-			name: "≥2 args but first not string",
+			name: "≥2 args but first not string keeps all args",
 			code: StatusBadRequest,
 			in:   args{errors.New("boom"), 42},
-			want: "boom",
+			want: "boom 42",
+		},
+		{
+			name: "≥2 args, first non-string followed by string",
+			code: StatusInternalServerError,
+			in:   args{42, "extra details"},
+			want: "42extra details",
 		},
 	}
 

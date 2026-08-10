@@ -220,6 +220,12 @@ func Test_HSTSHeaders(t *testing.T) {
 			expected: "max-age=60; includeSubDomains",
 		},
 		{
+			name:     "TLS request with excluded subdomains sets bare max-age",
+			config:   Config{HSTSMaxAge: 60, HSTSExcludeSubdomains: true},
+			scheme:   "https",
+			expected: "max-age=60",
+		},
+		{
 			name:   "TLS request with zero max age omits header",
 			config: Config{HSTSMaxAge: 0},
 			scheme: "https",

@@ -1,7 +1,7 @@
 ---
 id: utils
 title: 🧰 Utils
-sidebar_position: 8
+sidebar_position: 9
 toc_max_heading_level: 4
 ---
 
@@ -123,6 +123,12 @@ Checks whether a given path matches a Fiber route pattern. Useful for testing
 patterns without registering them. Patterns may contain parameters, wildcards
 and optional segments. An optional `Config` allows control over case sensitivity
 and strict routing.
+
+The path is normalized exactly the way the router normalizes an incoming
+request before matching, so the answer agrees with what the app would actually
+do. In particular, with the default `StrictRouting: false` a trailing slash on
+the path is ignored, so `RoutePatternMatch("/a/", "/a")` reports `true`. Set
+`StrictRouting: true` if you need the two forms to be distinguished.
 
 ```go title="Signature"
 func RoutePatternMatch(path, pattern string, cfg ...Config) bool

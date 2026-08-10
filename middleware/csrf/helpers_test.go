@@ -185,6 +185,87 @@ func Benchmark_CSRF_SubdomainMatch(b *testing.B) {
 	}
 }
 
+func benchSubdomains(n int) []subdomain {
+	subs := make([]subdomain, n)
+	for i := range subs {
+		subs[i] = subdomain{prefix: "https://", suffix: "example.com"}
+	}
+	return subs
+}
+
+func Benchmark_CSRF_SubdomainMatch_PerPatternNormalize(b *testing.B) {
+	subdomains := benchSubdomains(16)
+	origin := "https://api.service.example.org"
+
+	b.ReportAllocs()
+
+	for b.Loop() {
+		for _, sub := range subdomains {
+			isValid, normalized := normalizeOrigin(origin)
+			if isValid && normalized == origin && sub.matchNormalized(origin) {
+				break
+			}
+		}
+	}
+}
+
+func Benchmark_CSRF_MatchSubdomainOrigin(b *testing.B) {
+	subdomains := benchSubdomains(16)
+	origin := "https://api.service.example.org"
+
+	b.ReportAllocs()
+
+	for b.Loop() {
+		matchSubdomainOrigin(subdomains, origin)
+	}
+}
+
+func Test_CSRF_MatchSubdomainOrigin(t *testing.T) {
+	t.Parallel()
+
+	subdomains := []subdomain{
+		{prefix: "https://", suffix: "example.net"},
+		{prefix: "https://", suffix: "example.org"},
+		{prefix: "https://", suffix: "example.com"},
+	}
+
+	tests := []struct {
+		name     string
+		origin   string
+		expected bool
+	}{
+		{
+			name:     "matches later pattern",
+			origin:   "https://api.service.example.com",
+			expected: true,
+		},
+		{
+			name:     "rejects invalid origin once",
+			origin:   "https://user@api.example.com",
+			expected: false,
+		},
+		{
+			name:     "rejects non-normalized origin",
+			origin:   "https://API.service.example.com",
+			expected: false,
+		},
+		{
+			name:     "rejects unmatched origin",
+			origin:   "https://api.service.example.dev",
+			expected: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got := matchSubdomainOrigin(subdomains, tt.origin)
+			assert.Equal(t, tt.expected, got)
+		})
+	}
+}
+
 func Test_CSRF_Security_CompareConstantTime(t *testing.T) {
 	t.Parallel()
 

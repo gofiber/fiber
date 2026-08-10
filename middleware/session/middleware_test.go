@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"sort"
@@ -15,6 +16,7 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/extractors"
+	"github.com/gofiber/fiber/v3/internal/clocktest"
 	"github.com/gofiber/fiber/v3/internal/loggertest"
 	fiberlog "github.com/gofiber/fiber/v3/log"
 	"github.com/gofiber/fiber/v3/middleware/logger"
@@ -479,11 +481,13 @@ func Test_Session_WithConfig(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
 
+	const idleTimeout = 1 * time.Second
+
 	app.Use(New(Config{
 		Next: func(c fiber.Ctx) bool {
 			return c.Get("key") == "value"
 		},
-		IdleTimeout: 1 * time.Second,
+		IdleTimeout: idleTimeout,
 		Extractor:   extractors.FromCookie("session_id_test"),
 		KeyGenerator: func() string {
 			return "test"
@@ -572,8 +576,8 @@ func Test_Session_WithConfig(t *testing.T) {
 	h(ctx)
 	require.Equal(t, fiber.StatusInternalServerError, ctx.Response.StatusCode())
 
-	// Test idle timeout
-	time.Sleep(1200 * time.Millisecond)
+	// Test idle timeout, waiting on the cached clock the storage compares against
+	clocktest.SleepPast(t, idleTimeout)
 	ctx = &fasthttp.RequestCtx{}
 	ctx.Request.Header.SetMethod(fiber.MethodGet)
 	ctx.Request.Header.SetCookie("session_id_test", token)
@@ -901,4 +905,42 @@ func Test_Middleware_ResolveContext(t *testing.T) {
 		ctx := m.resolveContext()
 		require.NotNil(t, ctx)
 	})
+}
+
+// The middleware saves after the handler returns, so a handler's own deferred
+// cancel must not reach storage through Ctx.Err().
+func Test_Session_Save_After_Handler_Cancel(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+	app.Use(New())
+
+	app.Get("/set", func(c fiber.Ctx) error {
+		ctx, cancel := context.WithTimeout(c.Context(), time.Hour)
+		defer cancel()
+		c.SetContext(ctx)
+
+		FromContext(c).Set("hello", "world")
+		return nil
+	})
+	app.Get("/get", func(c fiber.Ctx) error {
+		v, ok := FromContext(c).Get("hello").(string)
+		if !ok {
+			return c.SendStatus(fiber.StatusNotFound)
+		}
+		return c.SendString(v)
+	})
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/set", http.NoBody))
+	require.NoError(t, err)
+	cookie := resp.Header.Get("Set-Cookie")
+	require.NotEmpty(t, cookie)
+
+	req := httptest.NewRequest(fiber.MethodGet, "/get", http.NoBody)
+	req.Header.Set("Cookie", cookie)
+	resp, err = app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "world", string(body))
 }

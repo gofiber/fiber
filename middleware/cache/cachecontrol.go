@@ -7,11 +7,22 @@ import (
 
 // hasDirective checks if a cache directive header value contains a directive (case-insensitive).
 // A directive is considered matched when followed by end-of-string, ',', ' ', '\t', or '='
-// per RFC 9111 §5.2.
+// per RFC 9111 §5.2. An empty directive never matches.
 func hasDirective(cc, directive string) bool {
-	ccLen := len(cc)
 	dirLen := len(directive)
-	for i := 0; i <= ccLen-dirLen; i++ {
+	if dirLen == 0 {
+		return false
+	}
+	// Cheap first-byte fold filter before the full compare, the shape that
+	// beat an IndexFold skip-scan for isNoCache on typical short values;
+	// a rare false candidate (the fold is exact only for letters) just
+	// costs one EqualFold.
+	first := directive[0] | 0x20
+	n := len(cc)
+	for i := 0; i <= n-dirLen; i++ {
+		if cc[i]|0x20 != first {
+			continue
+		}
 		if !utils.EqualFold(cc[i:i+dirLen], directive) {
 			continue
 		}
@@ -21,15 +32,15 @@ func hasDirective(cc, directive string) bool {
 				continue
 			}
 		}
-		if i+dirLen == ccLen {
+		end := i + dirLen
+		if end == n {
 			return true
 		}
-		next := cc[i+dirLen]
+		next := cc[end]
 		if next == ',' || next == ' ' || next == '\t' || next == '=' {
 			return true
 		}
 	}
-
 	return false
 }
 

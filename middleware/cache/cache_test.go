@@ -54,6 +54,20 @@ func (c *testClock) Add(d time.Duration) {
 	c.now = c.now.Add(d)
 }
 
+// tickingClock advances a second on every read, so any clock read the store
+// phase performs after the Date header was stamped surfaces as phantom age.
+type tickingClock struct {
+	now time.Time
+	mu  sync.Mutex
+}
+
+func (c *tickingClock) Now() time.Time {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.now = c.now.Add(time.Second)
+	return c.now
+}
+
 type failingCacheStorage struct {
 	data map[string][]byte
 	errs map[string]error
@@ -2168,6 +2182,40 @@ func Test_CacheExpiresFutureAllowsCaching(t *testing.T) {
 	require.Equal(t, "expires1", string(body))
 }
 
+// Test_CacheExpiresObsoleteFormatAllowsCaching pins the RFC 9110 §5.6.7
+// acceptance set: a future Expires in the obsolete RFC 850 format is a valid
+// HTTP-date and must enable caching rather than hit the parse-error
+// (force-revalidate) path, consistently with how the Date header is parsed.
+func Test_CacheExpiresObsoleteFormatAllowsCaching(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Use(New(Config{
+		StoreResponseHeaders: true,
+	}))
+
+	var count int
+	app.Get("/", func(c fiber.Ctx) error {
+		count++
+		c.Set(fiber.HeaderExpires, time.Now().Add(30*time.Second).UTC().Format("Monday, 02-Jan-06 15:04:05 GMT"))
+		return c.SendString("expires" + strconv.Itoa(count))
+	})
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, cacheMiss, resp.Header.Get("X-Cache"))
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "expires1", string(body))
+
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, cacheHit, resp.Header.Get("X-Cache"))
+	body, err = io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "expires1", string(body))
+}
+
 func Test_CacheExpiresPastPreventsCaching(t *testing.T) {
 	t.Parallel()
 
@@ -2320,6 +2368,44 @@ func Test_CacheInvalidExpiresStoredAsStale(t *testing.T) {
 	require.Equal(t, "body3", string(body))
 	require.Contains(t, storage.data, expectedKey)
 	require.Contains(t, storage.data, expectedKey+"_body")
+}
+
+func Test_CacheStoreDoesNotAgeItsOwnResponse(t *testing.T) {
+	t.Parallel()
+
+	// A response fiber just generated has age 0, so a one-second lifetime has to
+	// survive the store phase no matter how much time passes inside it.
+	clock := &tickingClock{now: time.Now().Truncate(time.Second)}
+	app := fiber.New()
+	app.Use(New(Config{clock: clock.Now}))
+
+	app.Get("/", func(c fiber.Ctx) error {
+		c.Set(fiber.HeaderCacheControl, "max-age=1")
+		return c.SendString("cached")
+	})
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, cacheMiss, resp.Header.Get("X-Cache"))
+}
+
+func Test_CacheStoreExpiresAnchoredToDate(t *testing.T) {
+	t.Parallel()
+
+	// An Expires lifetime must be measured from the instant the Date header is
+	// anchored to, or clock reads inside the store phase consume it.
+	clock := &tickingClock{now: time.Now().Truncate(time.Second)}
+	app := fiber.New()
+	app.Use(New(Config{clock: clock.Now}))
+
+	app.Get("/", func(c fiber.Ctx) error {
+		c.Set(fiber.HeaderExpires, clock.Now().Add(2*time.Second).UTC().Format(http.TimeFormat))
+		return c.SendString("cached")
+	})
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, cacheMiss, resp.Header.Get("X-Cache"))
 }
 
 func Test_CacheSMaxAgeOverridesMaxAgeWhenShorter(t *testing.T) {
@@ -2528,7 +2614,10 @@ func Test_CacheMaxStaleRespectsProxyRevalidateSharedAuth(t *testing.T) {
 	var count int
 	app.Get("/", func(c fiber.Ctx) error {
 		count++
-		c.Set(fiber.HeaderCacheControl, "s-maxage=1, proxy-revalidate")
+		// s-maxage=2, not 1: the store phase reads cfg.now() twice and charges the
+		// whole second in between as apparent age, so a one-second lifetime can be
+		// consumed entirely and the entry reported unreachable instead of cached.
+		c.Set(fiber.HeaderCacheControl, "s-maxage=2, proxy-revalidate")
 		return c.SendString(strconv.Itoa(count))
 	})
 
@@ -2539,7 +2628,7 @@ func Test_CacheMaxStaleRespectsProxyRevalidateSharedAuth(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, cacheMiss, resp.Header.Get("X-Cache"))
 
-	time.Sleep(1500 * time.Millisecond)
+	time.Sleep(2500 * time.Millisecond)
 
 	req = httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	req.Header.Set(fiber.HeaderAuthorization, "Bearer abc")
@@ -3743,7 +3832,7 @@ func Benchmark_Cache(b *testing.B) {
 	app.Use(New())
 
 	app.Get("/demo", func(c fiber.Ctx) error {
-		data, _ := os.ReadFile("../../.github/README.md") //nolint:errcheck // We're inside a benchmark
+		data, _ := os.ReadFile("../../README.md") //nolint:errcheck // We're inside a benchmark
 		return c.Status(fiber.StatusTeapot).Send(data)
 	})
 
@@ -3769,7 +3858,7 @@ func Benchmark_Cache_Miss(b *testing.B) {
 	app.Use(New())
 
 	app.Get("/*", func(c fiber.Ctx) error {
-		data, _ := os.ReadFile("../../.github/README.md") //nolint:errcheck // We're inside a benchmark
+		data, _ := os.ReadFile("../../README.md") //nolint:errcheck // We're inside a benchmark
 		return c.Status(fiber.StatusOK).Send(data)
 	})
 
@@ -3801,7 +3890,7 @@ func Benchmark_Cache_Storage(b *testing.B) {
 	}))
 
 	app.Get("/demo", func(c fiber.Ctx) error {
-		data, _ := os.ReadFile("../../.github/README.md") //nolint:errcheck // We're inside a benchmark
+		data, _ := os.ReadFile("../../README.md") //nolint:errcheck // We're inside a benchmark
 		return c.Status(fiber.StatusTeapot).Send(data)
 	})
 
@@ -5590,6 +5679,8 @@ func Test_hasDirective(t *testing.T) {
 
 		// Empty / edge cases
 		{"empty header", "", "no-cache", false},
+		{"empty directive never matches", "no-cache", "", false},
+		{"empty directive empty header", "", "", false},
 	}
 
 	for _, tc := range tests {
@@ -5666,4 +5757,22 @@ func Test_CacheInvalidator_RaceWithExactTimestamp(t *testing.T) {
 	// Each invalidation must drive at least one fresh handler execution.
 	// Long Expiration guarantees natural expiry cannot account for the bump.
 	require.Greater(t, handlerCalls.Load(), primed, "invalidator never bypassed the cache")
+}
+
+// go test -v -run=^$ -bench=Benchmark_hasDirective -benchmem -count=4
+func Benchmark_hasDirective(b *testing.B) {
+	inputs := []string{
+		"no-cache",
+		"public, max-age=3600",
+		"private, no-store, must-revalidate",
+		"max-age=30, s-maxage=90, no-cache",
+	}
+	var got bool
+	b.ReportAllocs()
+	for b.Loop() {
+		for _, in := range inputs {
+			got = hasDirective(in, "no-cache")
+		}
+	}
+	_ = got
 }

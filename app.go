@@ -82,8 +82,6 @@ type App struct {
 	pool sync.Pool
 	// Fasthttp server
 	server *fasthttp.Server
-	// Converts string to a byte slice
-	toBytes func(s string) (b []byte)
 	// Converts byte slice to a string
 	toString func(b []byte) string
 	// Hooks
@@ -108,8 +106,16 @@ type App struct {
 	sendfiles []*sendFileStore
 	// custom binders
 	customBinders []CustomBinder
-	// Route stack divided by HTTP methods and route prefixes
+	// Route stack divided by HTTP methods and route prefixes. Build-time only:
+	// requests go through treeIndex. Each build replaces it with freshly
+	// allocated buckets rather than refilling the previous ones, so a published
+	// tree stays immutable; it is retained as a field because buildLookahead
+	// reads it to index the same buckets next() will scan.
 	treeStack []map[int][]*Route
+	// Request-time view of treeStack: one flat, open-addressed index per HTTP
+	// method, rebuilt with the tree (see routeTree in router.go). Held by
+	// pointer so a rebuild publishes each method's tree in one store.
+	treeIndex []*routeTree
 	// Precomputed unmatched-route indexes, rebuilt with the tree (router_skip.go)
 	skip skipRouteIndex
 	// sendfilesMutex is a mutex used for sendfile operations
@@ -121,6 +127,9 @@ type App struct {
 	hasRoutesRefreshed bool
 	// hasCustomCtx tracks whether app uses a custom context implementation
 	hasCustomCtx bool
+	// hasParamRoutes tracks whether any route consults the per-request slash
+	// count (rebuilt with the tree); when false the count is skipped entirely
+	hasParamRoutes bool
 }
 
 type viewsLockKey struct {
@@ -687,7 +696,6 @@ func New(config ...Config) *App {
 	app := &App{
 		// Create config
 		config:        Config{},
-		toBytes:       utils.UnsafeBytes,
 		toString:      utils.UnsafeString,
 		latestRoute:   &Route{},
 		customBinders: []CustomBinder{},
@@ -749,7 +757,7 @@ func New(config ...Config) *App {
 	}
 
 	if app.config.Immutable {
-		app.toBytes, app.toString = toBytesImmutable, toStringImmutable
+		app.toString = toStringImmutable
 	}
 
 	if app.config.ErrorHandler == nil {
@@ -795,6 +803,11 @@ func New(config ...Config) *App {
 	// Create router stack
 	app.stack = make([][]*Route, len(app.config.RequestMethods))
 	app.treeStack = make([]map[int][]*Route, len(app.config.RequestMethods))
+	app.treeIndex = make([]*routeTree, len(app.config.RequestMethods))
+	for i := range app.treeIndex {
+		// Never nil: next() may run before the tree is first built.
+		app.treeIndex[i] = &routeTree{}
+	}
 
 	// Override colors
 	app.config.ColorScheme = defaultColors(&app.config.ColorScheme)
@@ -1240,8 +1253,9 @@ func NewErrorf(code int, message ...any) *Error {
 		if format, ok := message[0].(string); ok {
 			msg = fmt.Sprintf(format, message[1:]...)
 		} else {
-			// If the first arg isn’t a string, fall back.
-			msg = fmt.Sprint(message[0])
+			// If the first arg isn’t a format string, stringify all of them
+			// instead of dropping everything after the first.
+			msg = fmt.Sprint(message...)
 		}
 	}
 
@@ -1324,7 +1338,9 @@ func (app *App) ShutdownWithContext(ctx context.Context) error {
 
 	// Execute the Shutdown hook
 	app.hooks.executeOnPreShutdownHooks()
-	defer app.hooks.executeOnPostShutdownHooks(err)
+	// Use a closure so the hooks receive the final error; a plain
+	// `defer ...(err)` would capture the nil value at registration time.
+	defer func() { app.hooks.executeOnPostShutdownHooks(err) }()
 
 	err = app.server.ShutdownWithContext(ctx)
 	return err

@@ -6,6 +6,7 @@ import (
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/middleware/logger"
 	"github.com/gofiber/utils/v2"
+	"github.com/gofiber/utils/v2/swar"
 )
 
 // The contextKey type is unexported to prevent collisions with context keys defined in
@@ -68,6 +69,13 @@ func sanitizeRequestID(rid string, generator func() string) string {
 	return utils.SecureToken()
 }
 
+// visibleASCIIMask marks the lanes of w inside [0x20, 0x7E]; bytes >= 0x80
+// are never marked. A word is all visible ASCII iff the mask equals
+// swar.HighBits.
+func visibleASCIIMask(w uint64) uint64 {
+	return swar.MatchRangeMask(w, 0x20, 0x7e)
+}
+
 // isValidRequestID reports whether the request ID contains only visible ASCII
 // characters (0x20–0x7E) and is non-empty.
 func isValidRequestID(rid string) bool {
@@ -75,9 +83,23 @@ func isValidRequestID(rid string) bool {
 		return false
 	}
 
-	for i := 0; i < len(rid); i++ {
-		c := rid[i]
-		if c < 0x20 || c > 0x7e {
+	// Check eight bytes per iteration, finishing inputs of 8+ bytes with
+	// one overlapping word; shorter ones are checked byte-wise.
+	n := len(rid)
+	i := 0
+	for ; i+swar.WordLen <= n; i += swar.WordLen {
+		if visibleASCIIMask(swar.Load8(rid, i)) != swar.HighBits {
+			return false
+		}
+	}
+	if i == n {
+		return true
+	}
+	if n >= swar.WordLen {
+		return visibleASCIIMask(swar.Load8(rid, n-swar.WordLen)) == swar.HighBits
+	}
+	for ; i < n; i++ {
+		if c := rid[i]; c < 0x20 || c > 0x7e {
 			return false
 		}
 	}

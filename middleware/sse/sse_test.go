@@ -597,3 +597,21 @@ type errWriter struct {
 func (w errWriter) Write([]byte) (int, error) {
 	return 0, fmt.Errorf("test writer: %w", w.err)
 }
+
+// go test -v -run=^$ -bench=Benchmark_sanitizeField -benchmem -count=4
+func Benchmark_sanitizeField(b *testing.B) {
+	inputs := []string{
+		"tick",                                 // short: scalar path
+		"6ba7b810-9dad-11d1-80b4-00c04fd430c8", // typical event ID
+		"a longer event name for dashboards",
+	}
+	var s string
+	var err error
+	b.ReportAllocs()
+	for b.Loop() {
+		for _, in := range inputs {
+			s, err = sanitizeField(in)
+		}
+	}
+	_, _ = s, err
+}

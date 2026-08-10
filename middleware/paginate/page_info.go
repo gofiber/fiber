@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"slices"
 
 	"github.com/gofiber/utils/v2"
 )
@@ -132,8 +133,35 @@ func buildPaginationURL(baseURL, pageParam, pageValue, limitParam, limitValue st
 	q := u.Query()
 	q.Set(pageParam, pageValue)
 	q.Set(limitParam, limitValue)
-	u.RawQuery = q.Encode()
+	u.RawQuery = encodeQueryValues(q)
 	return u.String()
+}
+
+// encodeQueryValues renders q exactly like url.Values.Encode — keys sorted,
+// values in slice order — but escapes with utils.AppendQueryEscape into a
+// single buffer instead of allocating an intermediate string per key and
+// value the way the stdlib does.
+func encodeQueryValues(q url.Values) string {
+	if len(q) == 0 {
+		return ""
+	}
+	keys := make([]string, 0, len(q))
+	for k := range q {
+		keys = append(keys, k)
+	}
+	slices.Sort(keys)
+	var buf []byte
+	for _, k := range keys {
+		for _, v := range q[k] {
+			if len(buf) > 0 {
+				buf = append(buf, '&')
+			}
+			buf = utils.AppendQueryEscape(buf, k)
+			buf = append(buf, '=')
+			buf = utils.AppendQueryEscape(buf, v)
+		}
+	}
+	return utils.UnsafeString(buf)
 }
 
 // CursorValues returns the decoded cursor key-value map.

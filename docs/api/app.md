@@ -7,6 +7,11 @@ toc_max_heading_level: 4
 ---
 
 import Reference from '@site/src/components/reference';
+import MethodIndex from '@site/src/components/method-index';
+
+Use the index to jump straight to any `App` method; filter by name or by category:
+
+<MethodIndex itemNoun="methods" placeholder="Filter methods, e.g. route" />
 
 ## Routing
 

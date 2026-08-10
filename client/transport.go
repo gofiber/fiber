@@ -4,10 +4,10 @@
 package client
 
 import (
-	"bytes"
 	"crypto/tls"
 	"time"
 
+	"github.com/gofiber/utils/v2"
 	"github.com/valyala/fasthttp"
 )
 
@@ -350,7 +350,8 @@ func doRedirectsWithClient(req *fasthttp.Request, resp *fasthttp.Response, maxRe
 // composeRedirectURL resolves a redirect target relative to the current request
 // URL while rejecting suspicious payloads (e.g. control characters) and
 // restricting schemes to HTTP/S so caller-provided Location headers cannot
-// trigger arbitrary transports.
+// trigger arbitrary transports. Redirects from HTTPS to plaintext HTTP are
+// rejected to prevent credentials from leaking after a TLS handshake.
 func composeRedirectURL(base string, location []byte, disablePathNormalizing bool) (string, error) {
 	for _, b := range location {
 		if b < 0x20 || b == 0x7f {
@@ -362,15 +363,21 @@ func composeRedirectURL(base string, location []byte, disablePathNormalizing boo
 	defer fasthttp.ReleaseURI(uri)
 
 	uri.Update(base)
+	wasHTTPS := utils.EqualFold(uri.Scheme(), httpsScheme)
 	uri.UpdateBytes(location)
 	uri.DisablePathNormalizing = disablePathNormalizing
 
-	if scheme := uri.Scheme(); len(scheme) > 0 && !bytes.EqualFold(scheme, httpScheme) && !bytes.EqualFold(scheme, httpsScheme) {
+	scheme := uri.Scheme()
+	if len(scheme) > 0 && !utils.EqualFold(scheme, httpScheme) && !utils.EqualFold(scheme, httpsScheme) {
 		return "", fasthttp.ErrorInvalidURI
 	}
 
-	if len(uri.Scheme()) > 0 && len(uri.Host()) == 0 {
+	if len(scheme) > 0 && len(uri.Host()) == 0 {
 		return "", fasthttp.ErrorInvalidURI
+	}
+
+	if wasHTTPS && utils.EqualFold(scheme, httpScheme) {
+		return "", ErrRedirectDowngrade
 	}
 
 	return uri.String(), nil

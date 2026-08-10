@@ -1,15 +1,15 @@
 ---
 id: reverse-proxy
-title: 🔄 Reverse Proxy Configuration
+title: 🔄 Reverse Proxy
 description: >-
   Learn how to set up reverse proxies like Nginx or Traefik to enable modern
   HTTP capabilities in your Fiber application, including HTTP/2 and
   HTTP/3 (QUIC) support. This guide also covers basic reverse
   proxy configuration and links to external documentation.
-sidebar_position: 4
+sidebar_position: 8
 ---
 
-## Reverse Proxies
+## Proxies
 
 Running Fiber behind a reverse proxy is a common production setup.
 Reverse proxies can handle:

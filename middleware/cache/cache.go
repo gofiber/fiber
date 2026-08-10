@@ -452,7 +452,7 @@ func New(config ...Config) fiber.Handler {
 					c.Response().Header.SetBytesV(fiber.HeaderETag, e.etag)
 				}
 				clampedDate := clampDateSeconds(e.date, ts)
-				dateValue := fasthttp.AppendHTTPDate(nil, secondsToTime(clampedDate))
+				dateValue := utils.AppendHTTPDate(nil, secondsToTime(clampedDate))
 				c.Response().Header.SetBytesV(fiber.HeaderDate, dateValue)
 				for i := range e.headers {
 					h := e.headers[i]
@@ -715,7 +715,7 @@ func New(config ...Config) fiber.Handler {
 		dateHeader := c.Response().Header.Peek(fiber.HeaderDate)
 		parsedDate, _ := parseHTTPDate(dateHeader)
 		e.date = clampDateSeconds(parsedDate, nowUnix)
-		dateBytes := fasthttp.AppendHTTPDate(nil, secondsToTime(e.date))
+		dateBytes := utils.AppendHTTPDate(nil, secondsToTime(e.date))
 		c.Response().Header.SetBytesV(fiber.HeaderDate, dateBytes)
 
 		// Store all response headers
@@ -750,12 +750,17 @@ func New(config ...Config) fiber.Handler {
 				expiration = secondsToDuration(respCacheControl.maxAge)
 				expirationSource = expirationSourceMaxAge
 			} else if expiresBytes := c.Response().Header.Peek(fiber.HeaderExpires); len(expiresBytes) > 0 {
-				expiresAt, err := fasthttp.ParseHTTPDate(expiresBytes)
+				// Same parser as the Date header (utils.go parseHTTPDate) so
+				// both share one acceptance set: IMF-fixdate plus the obsolete
+				// RFC 850 and asctime forms RFC 9110 §5.6.7 requires.
+				expiresAt, err := utils.ParseHTTPDate(expiresBytes)
 				if err != nil {
 					expiration = time.Nanosecond
 					expiresParseError = true
 				} else {
-					expiration = expiresAt.Sub(cfg.now())
+					// Measured from the receipt timestamp, not a fresh read, so the
+					// lifetime stays anchored to the same instant as Date and e.exp
+					expiration = expiresAt.Sub(now)
 				}
 				expirationSource = expirationSourceExpires
 			}
@@ -778,8 +783,9 @@ func New(config ...Config) fiber.Handler {
 			return nil
 		}
 
-		ts = safeUnixSeconds(cfg.now())
-		responseTS := max(ts, nowUnix)
+		// Reuse the receipt timestamp the Date header was clamped against: a
+		// fresh read here charges Fiber's own processing time to the response as age
+		responseTS := nowUnix
 
 		maxAgeSeconds := uint64(time.Duration(math.MaxInt64) / time.Second)
 		var ageDuration time.Duration
@@ -815,7 +821,7 @@ func New(config ...Config) fiber.Handler {
 		e.exp = responseTS + uint64(remainingExpiration.Seconds())
 		e.ttl = uint64(expiration.Seconds())
 		if expiresParseError {
-			e.exp = ts + 1
+			e.exp = responseTS + 1
 		}
 
 		// Store entry in heap (space already reserved in eviction phase)

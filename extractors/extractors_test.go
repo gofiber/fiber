@@ -1066,6 +1066,13 @@ func Test_isValidToken68(t *testing.T) {
 		{token: "token68==", want: true, name: "multiple equals at end"},
 		{token: "token68=extra", want: false, name: "equals followed by extra chars"},
 		{token: "T0ken-._~+/=", want: true, name: "all allowed chars with equals at end"},
+		{token: "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0In0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9P", want: true, name: "jwt-like long token"},
+		{token: "abcdefgh", want: true, name: "8-byte token accepted"},
+		{token: "abcdefg,", want: false, name: "trailing comma rejected"},
+		{token: "abcdefghijklmno\x00", want: false, name: "NUL rejected"},
+		{token: "abcdefgh\xc3\xa9", want: false, name: "non-ascii rejected"},
+		{token: "abcdefghijklmnop====", want: true, name: "long token with padding run"},
+		{token: "abcdefghijklmnop==x=", want: false, name: "base char inside padding run"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -1076,4 +1083,21 @@ func Test_isValidToken68(t *testing.T) {
 			}
 		})
 	}
+}
+
+// go test -v -run=^$ -bench=Benchmark_isValidToken68 -benchmem -count=4
+func Benchmark_isValidToken68(b *testing.B) {
+	inputs := []string{
+		"eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0In0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9P", // JWT-like
+		"dXNlcjpwYXNzd29yZA==", // short base64 credential
+		"token@invalid",        // early reject
+	}
+	var got bool
+	b.ReportAllocs()
+	for b.Loop() {
+		for _, in := range inputs {
+			got = isValidToken68(in)
+		}
+	}
+	_ = got
 }

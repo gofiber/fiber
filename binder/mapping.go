@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/gofiber/utils/v2"
 	utilsstrings "github.com/gofiber/utils/v2/strings"
 	"github.com/valyala/bytebufferpool"
 
@@ -313,7 +314,6 @@ func buildFieldInfo(t reflect.Type, aliasTag string) fieldInfo {
 
 func equalFieldType(out any, kind reflect.Kind, key, aliasTag string) bool {
 	typ := reflect.TypeOf(out).Elem()
-	key = utilsstrings.ToLower(key)
 
 	if isStringKeyMap(typ) {
 		return true
@@ -322,6 +322,10 @@ func equalFieldType(out any, kind reflect.Kind, key, aliasTag string) bool {
 	if typ.Kind() != reflect.Struct {
 		return false
 	}
+
+	// Lower the key only once a struct lookup is actually needed; the early
+	// returns above never use it.
+	key = utilsstrings.ToLower(key)
 
 	cache := getFieldCache(aliasTag)
 	val, ok := cache.Load(typ)
@@ -347,7 +351,7 @@ func equalFieldType(out any, kind reflect.Kind, key, aliasTag string) bool {
 
 // FilterFlags returns the media type value by trimming any parameters from a Content-Type header.
 func FilterFlags(content string) string {
-	if i := strings.IndexAny(content, " ;"); i >= 0 {
+	if i := utils.IndexAny2(content, ' ', ';'); i >= 0 {
 		return content[:i]
 	}
 	return content

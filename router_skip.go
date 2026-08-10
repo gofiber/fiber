@@ -4,6 +4,10 @@
 
 package fiber
 
+import (
+	"strings"
+)
+
 // skipRouteIndex holds precomputed unmatched-route indexes, rebuilt by buildSkipIndexes with the route tree.
 type skipRouteIndex struct {
 	// staticMethods maps a static endpoint's path to a method bitmask; nil unless SkipUnmatchedRoutes is on
@@ -14,6 +18,10 @@ type skipRouteIndex struct {
 	zeroBucket *skipBucket
 	// routeMethods is a method bitmask with at least one non-use route; only valid when methodMaskValid
 	routeMethods uint64
+	// staticSlashes has a bit per '/' count present among staticMethods' keys, so
+	// resolveSkip can skip hashing the path when no static route could match it.
+	// Counts >= 64 set no bit; requests that long take the unconditional path.
+	staticSlashes uint64
 	// enabled gates the fast path: SkipUnmatchedRoutes is on and middleware is registered
 	// (without middleware next() already answers 404/405 cheaply)
 	enabled bool
@@ -116,6 +124,11 @@ func (idx *skipRouteIndex) buildLookahead(app *App) {
 				continue
 			}
 			static[route.path] |= bit
+			// These routes match by exact string compare, so a candidate
+			// detection path necessarily carries the same number of '/'.
+			if n := strings.Count(route.path, "/"); n < 64 {
+				idx.staticSlashes |= uint64(1) << n
+			}
 		}
 
 		// Candidates come from the final buckets (post bucket-0 replication) so idx lines up with next()'s scan.
@@ -165,15 +178,26 @@ func (idx *skipRouteIndex) buildLookahead(app *App) {
 
 // resolveSkip decides 404/405/run-chain. values is scratch: param/wildcard
 // middleware may overwrite it before the endpoint runs, so next() re-matches then.
-func (app *App) resolveSkip(methodInt, treeHash int, detectionPath, path string, values *[maxParams]string) skipResult {
+func (app *App) resolveSkip(methodInt, treeHash, pathSlashes int, detectionPath, path string, values *[maxParams]string) skipResult {
 	skip := &app.skip
 	methodBit := uint64(1) << methodInt
-	staticMask := skip.staticMethods[detectionPath]
+
+	// Hashing detectionPath for the static index costs a pass over the whole
+	// path, and static endpoints match by exact compare, so a differing '/'
+	// count rules them all out before the map is touched. pathSlashes 0 means
+	// the count was never computed, which stands the filter down.
+	var staticMask uint64
+	if pathSlashes == 0 || pathSlashes >= 64 || skip.staticSlashes&(uint64(1)<<pathSlashes) != 0 {
+		staticMask = skip.staticMethods[detectionPath]
+	}
 
 	// Tier 1: a static endpoint matches this method.
 	if staticMask&methodBit != 0 {
 		return skipResult{decision: skipRunChain, matchIndex: -1}
 	}
+
+	// Only the candidate scans below need the leading-byte filter's request word.
+	head := pathHeadWord(detectionPath)
 
 	// Single bucket lookup; an unknown tree hash falls back to bucket 0 like next() does.
 	b, ok := skip.buckets[treeHash]
@@ -181,9 +205,12 @@ func (app *App) resolveSkip(methodInt, treeHash int, detectionPath, path string,
 		b = skip.zeroBucket
 	}
 
-	// Tier 2: scan this method's parametric candidates.
+	// Tier 2: scan this method's parametric candidates, leading-byte filter first.
 	for _, cand := range b.cands[methodInt] {
-		if cand.route.match(detectionPath, path, values) {
+		if cand.route.prefixRejects(head) {
+			continue
+		}
+		if cand.route.match(detectionPath, path, values, pathSlashes) {
 			return skipResult{decision: skipRunChain, matchIndex: cand.idx}
 		}
 	}
@@ -204,7 +231,10 @@ func (app *App) resolveSkip(methodInt, treeHash int, detectionPath, path string,
 			continue
 		}
 		for _, cand := range b.cands[m] {
-			if cand.route.match(detectionPath, path, values) {
+			if cand.route.prefixRejects(head) {
+				continue
+			}
+			if cand.route.match(detectionPath, path, values, pathSlashes) {
 				allow |= bit
 				break
 			}

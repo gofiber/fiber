@@ -1638,7 +1638,7 @@ func Test_Request_MaxRedirects(t *testing.T) {
 			Get("http://example.com")
 
 		require.Nil(t, resp)
-		require.Equal(t, "too many redirects detected when doing the request", err.Error())
+		require.ErrorIs(t, err, fasthttp.ErrTooManyRedirects)
 	})
 
 	t.Run("MaxRedirects", func(t *testing.T) {
