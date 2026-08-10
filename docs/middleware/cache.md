@@ -128,8 +128,13 @@ If a response sets `Vary`, request lookup/storage is also partitioned by those h
 
 `300` and `301` are cacheable statuses, so a redirect can be served from the
 cache. Its `Location` is kept with the entry even when `StoreResponseHeaders` is
-off, since the status means nothing without it — the same reason `Content-Type`
-is always kept. No other response header is stored on that path.
+off, since the status means nothing without it.
+
+`Location` joins a set the entry always carries, each in a field of its own
+rather than in the stored header list: `Content-Type`, `Content-Encoding`,
+`Cache-Control`, `Expires`, `ETag`, `Date` and `Age`. Those are what the entry
+needs to be replayed and revalidated at all. `StoreResponseHeaders` is about
+every other response header, none of which is kept without it.
 
 ### Header names
 

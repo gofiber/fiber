@@ -577,9 +577,15 @@ func New(config ...Config) fiber.Handler {
 			c.Set(cfg.CacheHeader, cacheUnreachable)
 		}
 
-		cacheControlBytes := joinedHeader(&c.Response().Header, fiber.HeaderCacheControl, canonical)
+		// The response's own spelling, not the app's: a proxy hands c.Response()
+		// to an outbound fasthttp.Client, which stamps its own normalizing setting
+		// on it. Reading a lower-case "cache-control: private" as absent cached
+		// one client's body and replayed it to the next under "public, max-age".
+		respCanonical := fieldname.Canonical(&c.Response().Header)
+
+		cacheControlBytes := joinedHeader(&c.Response().Header, fiber.HeaderCacheControl, respCanonical)
 		respCacheControl := parseResponseCacheControl(cacheControlBytes)
-		varyHeader := utils.UnsafeString(joinedHeader(&c.Response().Header, fiber.HeaderVary, canonical))
+		varyHeader := utils.UnsafeString(joinedHeader(&c.Response().Header, fiber.HeaderVary, respCanonical))
 		hasPrivate := respCacheControl.hasPrivate
 		hasNoCache := respCacheControl.hasNoCache
 		varyNames, varyHasStar := parseVary(varyHeader)
@@ -642,7 +648,7 @@ func New(config ...Config) fiber.Handler {
 		// A cookie personalizes the response for the one client that caused this
 		// miss, and the body is the payload. Stricter than the test above: RFC 9111
 		// §3.5 allows must-revalidate on a cache that re-checks, and this never does.
-		if !allowsSharedCacheStorage(respCacheControl) && responseSetsCookie(&c.Response().Header, canonical) {
+		if !allowsSharedCacheStorage(respCacheControl) && responseSetsCookie(&c.Response().Header, respCanonical) {
 			markUnreachable()
 			return nil
 		}
@@ -774,32 +780,32 @@ func New(config ...Config) fiber.Handler {
 		e.cencoding = utils.CopyBytes(c.Response().Header.Peek(fiber.HeaderContentEncoding))
 		e.private = false
 		e.cacheControl = utils.CopyBytes(cacheControlBytes)
-		e.expires = utils.CopyBytes(fieldname.First(&c.Response().Header, fiber.HeaderExpires, canonical))
-		e.etag = utils.CopyBytes(fieldname.First(&c.Response().Header, fiber.HeaderETag, canonical))
+		e.expires = utils.CopyBytes(fieldname.First(&c.Response().Header, fiber.HeaderExpires, respCanonical))
+		e.etag = utils.CopyBytes(fieldname.First(&c.Response().Header, fiber.HeaderETag, respCanonical))
 		e.date = 0
 
 		ageVal := uint64(0)
-		if b := fieldname.First(&c.Response().Header, fiber.HeaderAge, canonical); len(b) > 0 {
+		if b := fieldname.First(&c.Response().Header, fiber.HeaderAge, respCanonical); len(b) > 0 {
 			if v, err := fasthttp.ParseUint(b); err == nil {
 				if v >= 0 {
 					ageVal = uint64(v)
 				}
 			}
 		} else {
-			setFieldLine(&c.Response().Header, fiber.HeaderAge, []byte("0"), canonical)
+			setFieldLine(&c.Response().Header, fiber.HeaderAge, []byte("0"), respCanonical)
 		}
 		e.age = ageVal
 		e.shareable = isSharedCacheAllowed
 		now := cfg.now().UTC()
 		nowUnix := safeUnixSeconds(now)
-		dateHeader := fieldname.First(&c.Response().Header, fiber.HeaderDate, canonical)
+		dateHeader := fieldname.First(&c.Response().Header, fiber.HeaderDate, respCanonical)
 		// The second result says whether the date parsed, which is not asked: an
 		// absent or unparsable Date leaves parsedDate zero, which clampDateSeconds
 		// resolves to the receipt timestamp — the same answer either way.
 		parsedDate, _ := parseHTTPDate(dateHeader)
 		e.date = clampDateSeconds(parsedDate, nowUnix)
 		dateBytes := utils.AppendHTTPDate(nil, secondsToTime(e.date))
-		setFieldLine(&c.Response().Header, fiber.HeaderDate, dateBytes, canonical)
+		setFieldLine(&c.Response().Header, fiber.HeaderDate, dateBytes, respCanonical)
 
 		// Store all response headers
 		// (more: https://datatracker.ietf.org/doc/html/rfc2616#section-13.5.1)
@@ -821,7 +827,7 @@ func New(config ...Config) fiber.Handler {
 			// 301 are cacheable, so without this the first client got
 			// "301 Location: /new" and every one after it a bare 301.
 			e.headers = e.headers[:0]
-			if location := fieldname.First(&c.Response().Header, fiber.HeaderLocation, canonical); len(location) > 0 {
+			if location := fieldname.First(&c.Response().Header, fiber.HeaderLocation, respCanonical); len(location) > 0 {
 				e.headers = append(e.headers, cachedHeader{
 					key:   utils.CopyBytes(utils.UnsafeBytes(fiber.HeaderLocation)),
 					value: utils.CopyBytes(location),
@@ -842,7 +848,7 @@ func New(config ...Config) fiber.Handler {
 			if respCacheControl.maxAgeSet {
 				expiration = secondsToDuration(respCacheControl.maxAge)
 				expirationSource = expirationSourceMaxAge
-			} else if expiresBytes := fieldname.First(&c.Response().Header, fiber.HeaderExpires, canonical); len(expiresBytes) > 0 {
+			} else if expiresBytes := fieldname.First(&c.Response().Header, fiber.HeaderExpires, respCanonical); len(expiresBytes) > 0 {
 				// Same parser as the Date header (utils.go parseHTTPDate) so
 				// both share one acceptance set: IMF-fixdate plus the obsolete
 				// RFC 850 and asctime forms RFC 9110 §5.6.7 requires.

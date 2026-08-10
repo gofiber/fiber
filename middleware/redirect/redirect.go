@@ -308,7 +308,14 @@ func authorityHolds(chunks []authorityChunk, replacer *strings.Replacer) bool {
 		if hostPins(chunks[i+1:]) {
 			// The author closed the host past this token, so the value is a
 			// label inside it and only has to stay one.
-			if strings.ContainsAny(value, `/\?#@:`) {
+			forbidden := `/\?#@:`
+			if userinfoCloses(chunks[i+1:]) {
+				// Except that the token sits in userinfo, where ":" separates a
+				// password and "@" is not the last one — the author wrote that.
+				// Only the four that end the authority outright still matter.
+				forbidden = `/\?#`
+			}
+			if strings.ContainsAny(value, forbidden) {
 				return false
 			}
 			continue
@@ -323,7 +330,7 @@ func authorityHolds(chunks []authorityChunk, replacer *strings.Replacer) bool {
 			// Opens the next component, so the authority ended at the author's host —
 			// but only where they wrote one: "//$1." composing "///evil.com." ends no
 			// authority, since the parser skips the slashes.
-		case i > 0 && strings.HasSuffix(chunks[i-1].text, ":") && isAllDigits(value):
+		case opensPort(chunks[:i]) && isAllDigits(value):
 			// A port. The author wrote the colon, and the URL parser rejects a
 			// port holding anything but digits outright, so digits are the only
 			// value that can be what they meant.
@@ -340,6 +347,18 @@ func authorityHolds(chunks []authorityChunk, replacer *strings.Replacer) bool {
 func hostPins(chunks []authorityChunk) bool {
 	for _, chunk := range chunks {
 		if !chunk.placeholder && chunk.pins {
+			return true
+		}
+	}
+	return false
+}
+
+// userinfoCloses reports whether the author wrote an "@" among these chunks,
+// asked of what follows a capture. The host begins after the last one, so a
+// capture before it is userinfo and names no label.
+func userinfoCloses(chunks []authorityChunk) bool {
+	for _, chunk := range chunks {
+		if !chunk.placeholder && strings.ContainsRune(chunk.text, '@') {
 			return true
 		}
 	}
@@ -670,10 +689,16 @@ func pinsHost(literal string, openLeft bool) bool {
 	return true
 }
 
+// patternBytes are the bytes of a rule key that match something other than
+// themselves. "*" is the documented wildcard; the rest are regexp syntax, which
+// reaches the compiled pattern because a key is used as one. "." and "$" stay
+// out: both are ordinary in a path, and neither pins less than the byte it is.
+const patternBytes = `*[](){}+?^|\`
+
 // literalPrefixLen returns how much of a rule's path is pinned before its first
 // wildcard, which is what makes one rule more specific than another it overlaps.
 func literalPrefixLen(rule string) int {
-	if i := strings.IndexByte(rule, '*'); i >= 0 {
+	if i := strings.IndexAny(rule, patternBytes); i >= 0 {
 		return i
 	}
 	return len(rule)
@@ -683,5 +708,25 @@ func literalPrefixLen(rule string) int {
 // separates two rules whose wildcards start together: "/cdn/*" and "/cdn/*x"
 // tie on prefix, and the lexicographic fallback left the narrower one dead.
 func literalLen(rule string) int {
-	return len(rule) - strings.Count(rule, "*")
+	n := 0
+	for i := range len(rule) {
+		if strings.IndexByte(patternBytes, rule[i]) < 0 {
+			n++
+		}
+	}
+	return n
+}
+
+// opensPort reports whether the nearest literal before a token ends in the colon
+// that opens a port. Several captures may compose one — "example.com:$1$2" — so
+// placeholders in between are stepped over; each is asked for digits in turn,
+// which is the same question asked of the whole.
+func opensPort(before []authorityChunk) bool {
+	for _, chunk := range slices.Backward(before) {
+		if chunk.placeholder {
+			continue
+		}
+		return strings.HasSuffix(chunk.text, ":")
+	}
+	return false
 }

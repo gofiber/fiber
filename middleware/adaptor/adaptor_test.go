@@ -2375,3 +2375,55 @@ func Test_HTTPMiddleware_HeaderFidelity(t *testing.T) {
 		require.Equal(t, "internal.svc", hdrHost)
 	})
 }
+
+// Test_HTTPMiddleware_PropagatesConnectionRewrite covers Connection, which names
+// the hop-by-hop fields a proxy is to strip.
+//
+// Middleware rewrites that list — dropping the edit left the handler, and any
+// proxy reading it downstream, working from the list the client sent. The header
+// also drives fasthttp's close flag, which has to survive the round trip.
+func Test_HTTPMiddleware_PropagatesConnectionRewrite(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name  string
+		sent  string
+		write string // "" leaves the header alone
+		want  string
+	}{
+		{name: "rewritten", sent: "keep-alive, X-Client-Token", write: "keep-alive", want: "keep-alive"},
+		{name: "extended", sent: "keep-alive", write: "keep-alive, X-Internal", want: "keep-alive, X-Internal"},
+		{name: "untouched close survives", sent: "close", want: "close"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			var got string
+			var gotClose bool
+
+			app := fiber.New()
+			app.Use(HTTPMiddleware(func(next http.Handler) http.Handler {
+				return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					if tc.write != "" {
+						r.Header.Set(fiber.HeaderConnection, tc.write)
+					}
+					next.ServeHTTP(w, r)
+				})
+			}))
+			app.Get("/", func(c fiber.Ctx) error {
+				got = c.Get(fiber.HeaderConnection)
+				gotClose = c.Request().Header.ConnectionClose()
+				return c.SendString("ok")
+			})
+
+			req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+			req.Header.Set(fiber.HeaderConnection, tc.sent)
+
+			resp, err := app.Test(req)
+			require.NoError(t, err)
+			require.Equal(t, fiber.StatusOK, resp.StatusCode)
+			require.Equal(t, tc.want, got)
+			require.Equal(t, tc.want == "close", gotClose, "the close flag follows the value")
+		})
+	}
+}

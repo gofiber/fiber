@@ -3,7 +3,9 @@ package redirect
 import (
 	"context"
 	"net/http"
+	"net/url"
 	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/gofiber/fiber/v3"
@@ -341,6 +343,72 @@ func Test_Redirect_CaptureInsideAuthority(t *testing.T) {
 			}
 			require.Equal(t, fiber.StatusFound, resp.StatusCode)
 			require.Equal(t, tc.want, resp.Header.Get("Location"))
+		})
+	}
+}
+
+// Test_Redirect_CaptureInUserinfo covers a capture the author placed before an
+// "@" they wrote themselves. The host starts after the last "@", so the value is
+// userinfo: ":" separates a password there and a further "@" only lengthens it,
+// while the four bytes that end an authority outright still have to stay out.
+func Test_Redirect_CaptureInUserinfo(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		target  string
+		request string
+		want    string // "" means the rule must not fire
+	}{
+		{"password", "https://$1@example.com/", "/cdn/user%3Apassword", "https://user:password@example.com/"},
+		{"further at sign", "https://$1@example.com/", "/cdn/a%40evil.com", "https://a@evil.com@example.com/"},
+		{"plain userinfo", "https://$1@example.com/", "/cdn/user", "https://user@example.com/"},
+
+		// The four that end the authority reach the host past the "@".
+		{"slash", "https://$1@example.com/", "/cdn/evil.com%2Fx", ""},
+		{"backslash", "https://$1@example.com/", "/cdn/evil.com%5Cx", ""},
+		{"question mark", "https://$1@example.com/", "/cdn/evil.com%3Fx", ""},
+		{"fragment", "https://$1@example.com/", "/cdn/evil.com%23x", ""},
+
+		// Past the author's "@" the capture is a host label again, so the label
+		// rule applies to it as it would anywhere else in the host.
+		{"label after the at sign", "https://user@$1.example.com/", "/cdn/a%3Ab", ""},
+		{"clean label after the at sign", "https://user@$1.example.com/", "/cdn/images", "https://user@images.example.com/"},
+	}
+
+	// Every composed location names a host the author wrote, whatever the value
+	// put in the userinfo before it.
+	const wantHost = "example.com"
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			app := fiber.New(fiber.Config{UnescapePath: true})
+			app.Use(New(Config{
+				Rules:      map[string]string{"/cdn/*": tc.target},
+				StatusCode: fiber.StatusFound,
+			}))
+			app.Get("/*", func(c fiber.Ctx) error { return c.SendString("fell through") })
+
+			req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, tc.request, http.NoBody)
+			require.NoError(t, err)
+			resp, err := app.Test(req)
+			require.NoError(t, err)
+
+			if tc.want == "" {
+				require.Equal(t, fiber.StatusOK, resp.StatusCode, "the rule must not fire")
+				require.Empty(t, resp.Header.Get("Location"))
+				return
+			}
+			require.Equal(t, fiber.StatusFound, resp.StatusCode)
+			require.Equal(t, tc.want, resp.Header.Get("Location"))
+
+			// Whatever the value did, the host is still the author's — a label
+			// they left to the capture sits under it.
+			u, err := url.Parse(resp.Header.Get("Location"))
+			require.NoError(t, err)
+			require.True(t, u.Host == wantHost || strings.HasSuffix(u.Host, "."+wantHost), "host %q", u.Host)
 		})
 	}
 }
@@ -1913,6 +1981,15 @@ func Test_LiteralLengths(t *testing.T) {
 		{rule: "/p/*.png", prefixLen: 3, totalLen: 7},
 		{rule: "*", prefixLen: 0, totalLen: 0},
 		{rule: "/a/*/b/*", prefixLen: 3, totalLen: 6},
+
+		// A key is compiled as a regexp, so its metacharacters match something
+		// other than themselves and pin nothing. Counting them as path bytes put
+		// "/api/[a-z]+" ahead of "/api/users", shadowing the exact rule outright.
+		{rule: "/api/[a-z]+", prefixLen: 5, totalLen: 8},
+		{rule: "/api/users", prefixLen: 10, totalLen: 10},
+		{rule: "/(a|b)/x", prefixLen: 1, totalLen: 5},
+		// "." and "$" are ordinary in a path and stay counted.
+		{rule: "/p/a.png", prefixLen: 8, totalLen: 8},
 	}
 
 	for _, tc := range tests {
@@ -1921,5 +1998,78 @@ func Test_LiteralLengths(t *testing.T) {
 			require.Equal(t, tc.prefixLen, literalPrefixLen(tc.rule), "literalPrefixLen")
 			require.Equal(t, tc.totalLen, literalLen(tc.rule), "literalLen")
 		})
+	}
+}
+
+// Test_Redirect_ComposedPort covers one port built from several captures. Each
+// is asked for digits, which is the same question asked of the composition, so
+// the rule holds — requiring every one to sit directly after the colon left it
+// dead for any input at all.
+func Test_Redirect_ComposedPort(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		request string
+		want    string
+	}{
+		{"both captures digits", "/r/80/80", "https://example.com:8080"},
+		{"uneven digits", "/r/8/443", "https://example.com:8443"},
+		{"second capture is not a port", "/r/80/x", ""},
+		{"first capture is not a port", "/r/x/80", ""},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			app := fiber.New()
+			app.Use(New(Config{
+				Rules:      map[string]string{"/r/*/*": "https://example.com:$1$2"},
+				StatusCode: fiber.StatusFound,
+			}))
+			app.Get("/*", func(c fiber.Ctx) error { return c.SendString("fell through") })
+
+			req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, tc.request, http.NoBody)
+			require.NoError(t, err)
+			resp, err := app.Test(req)
+			require.NoError(t, err)
+
+			if tc.want == "" {
+				require.Equal(t, fiber.StatusOK, resp.StatusCode, "the rule must not fire")
+				return
+			}
+			require.Equal(t, fiber.StatusFound, resp.StatusCode)
+			require.Equal(t, tc.want, resp.Header.Get("Location"))
+		})
+	}
+}
+
+// Test_Redirect_ExactRuleBeatsPattern covers ordering between a rule written
+// with regexp syntax and an exact one it overlaps. The metacharacters pin no
+// path, so counting them as pinned text made the broad rule win every time.
+func Test_Redirect_ExactRuleBeatsPattern(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Use(New(Config{
+		Rules: map[string]string{
+			"/api/[a-z]+": "/broad",
+			"/api/users":  "/exact",
+		},
+		StatusCode: fiber.StatusFound,
+	}))
+	app.Get("/*", func(c fiber.Ctx) error { return c.SendString("fell through") })
+
+	for _, tc := range []struct{ request, want string }{
+		{"/api/users", "/exact"},
+		{"/api/other", "/broad"},
+	} {
+		req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, tc.request, http.NoBody)
+		require.NoError(t, err)
+		resp, err := app.Test(req)
+		require.NoError(t, err)
+		require.Equal(t, fiber.StatusFound, resp.StatusCode, tc.request)
+		require.Equal(t, tc.want, resp.Header.Get("Location"), tc.request)
 	}
 }
