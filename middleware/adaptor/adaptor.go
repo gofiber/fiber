@@ -337,11 +337,15 @@ func CopyContextToFiberContext(src any, requestContext *fasthttp.RequestCtx) {
 // framingHeaders delimit and address the message rather than describe what it
 // carries, and are excluded from the snapshot and the clear: the wrapped
 // middleware sees a copy, so clearing one corrupts the body still being read.
+//
+// Connection is not among them. It frames the hop rather than the body, and
+// naming which fields are hop-by-hop is something middleware rewrites — dropping
+// that edit left the handler reading the client's own list. fasthttp re-derives
+// its close flag when the line is written back, so the round trip keeps it.
 var framingHeaders = [...]string{
 	fiber.HeaderHost,
 	fiber.HeaderContentLength,
 	fiber.HeaderTransferEncoding,
-	fiber.HeaderConnection,
 }
 
 // headerPair is one owned copy of a header line taken from the converted

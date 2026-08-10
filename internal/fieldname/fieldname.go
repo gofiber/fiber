@@ -67,6 +67,40 @@ func First(h Peeker, name string, canonical bool) []byte {
 	return nil
 }
 
+// Canonical reports whether every field name in h is spelled the way fasthttp
+// normalizes it, so the byte-exact Peek and Del find them all.
+//
+// Ask this of a response rather than reading the app config: a proxied response
+// is parsed by an outbound fasthttp.Client carrying its own normalizing setting,
+// so a default-normalizing app can hold a response of lower-case names. It is
+// one pass over the names, against one per field for the walking reads.
+func Canonical(h Peeker) bool {
+	for k := range h.All() {
+		if !isCanonicalName(k) {
+			return false
+		}
+	}
+	return true
+}
+
+// isCanonicalName reports whether name is upper case at the start of each
+// "-"-separated token and lower case everywhere else, which is what fasthttp's
+// normalization produces.
+func isCanonicalName(name []byte) bool {
+	upper := true
+	for _, c := range name {
+		if upper {
+			if c >= 'a' && c <= 'z' {
+				return false
+			}
+		} else if c >= 'A' && c <= 'Z' {
+			return false
+		}
+		upper = c == '-'
+	}
+	return true
+}
+
 // Del removes every field line named name, whatever case it is stored under.
 //
 //nolint:revive // flag-parameter: canonical is a property of the header store

@@ -2041,3 +2041,53 @@ func Test_Cache_LegacyStoredSetCookieIsUnsafe(t *testing.T) {
 	require.Equal(t, int64(2), handlerRuns.Load(), "the handler answers instead")
 	require.Empty(t, resp.Header.Get(fiber.HeaderSetCookie), "and the stored cookie goes nowhere")
 }
+
+// Test_Cache_ProxiedResponseCasingIsRead covers a response whose field names the
+// app config does not describe.
+//
+// A proxy hands c.Response() to an outbound fasthttp.Client, and fasthttp stamps
+// that client's DisableHeaderNamesNormalizing onto the response it parses into.
+// A default-normalizing app can therefore hold a lower-case "cache-control:
+// private" — which, read byte-exact, cached one client's body and replayed it to
+// the next under a synthesized "public, max-age".
+func Test_Cache_ProxiedResponseCasingIsRead(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name      string
+		directive string
+	}{
+		{"private", "private"},
+		{"no-store", "no-store"},
+		{"no-cache", "no-cache"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			var handlerRuns atomic.Int64
+			app := fiber.New()
+			app.Use(New(Config{StoreResponseHeaders: true, Expiration: time.Minute}))
+			app.Get("/", func(c fiber.Ctx) error {
+				handlerRuns.Add(1)
+				// What the outbound client left behind, without the round trip.
+				c.Response().Header.DisableNormalizing()
+				c.Response().Header.Set("cache-control", tc.directive)
+				return c.SendString("secret-for-" + c.Get("X-User"))
+			})
+
+			for _, user := range []string{"alice", "bob"} {
+				req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+				req.Header.Set("X-User", user)
+				resp, err := app.Test(req)
+				require.NoError(t, err)
+
+				body, err := io.ReadAll(resp.Body)
+				require.NoError(t, err)
+				require.Equal(t, "secret-for-"+user, string(body), "each client gets its own body")
+				require.Equal(t, tc.directive, resp.Header.Get(fiber.HeaderCacheControl),
+					"the restriction the origin sent survives")
+			}
+			require.Equal(t, int64(2), handlerRuns.Load(), "nothing was cached")
+		})
+	}
+}
