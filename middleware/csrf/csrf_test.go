@@ -3398,6 +3398,78 @@ func Test_CSRF_OriginCheckIgnoresHeaderNameCase(t *testing.T) {
 	}
 }
 
+// Test_CSRF_EmptyOriginLineDoesNotHideTheRealOne pins that a second Origin line
+// is read when the first one is empty.
+//
+// Ctx.Get answers with the first line stored under the exact key, empty or not,
+// and an empty answer is indistinguishable from an absent header — which the
+// origin check treats as no failure at all, skipping it on a plaintext request.
+// A message carrying "Origin:" ahead of its real Origin therefore turned the
+// check off, under both spellings and whether or not the names are normalized.
+func Test_CSRF_EmptyOriginLineDoesNotHideTheRealOne(t *testing.T) {
+	t.Parallel()
+
+	for _, normalize := range []bool{true, false} {
+		t.Run(fmt.Sprintf("normalize=%v", normalize), func(t *testing.T) {
+			t.Parallel()
+
+			app := fiber.New(fiber.Config{DisableHeaderNormalizing: !normalize})
+			app.Use(New())
+			app.Get("/", func(c fiber.Ctx) error { return c.SendString(TokenFromContext(c)) })
+			app.Post("/", func(c fiber.Ctx) error { return c.SendString("accepted") })
+			h := app.Handler()
+
+			get := fasthttp.AcquireRequest()
+			defer fasthttp.ReleaseRequest(get)
+			get.Header.SetMethod(fiber.MethodGet)
+			get.SetRequestURI("/")
+			get.Header.SetHost("example.com")
+			gctx := &fasthttp.RequestCtx{}
+			gctx.Init(get, nil, nil)
+			h(gctx)
+
+			token := string(gctx.Response.Body())
+			require.NotEmpty(t, token)
+			cookie, _, _ := strings.Cut(string(gctx.Response.Header.Peek(fiber.HeaderSetCookie)), ";")
+			require.NotEmpty(t, cookie)
+
+			// shadowed sends an empty Origin line ahead of a second one carrying
+			// origin, which is what a header-writing intermediary in front of the
+			// application can produce. Set then Add stores the two lines fasthttp
+			// parses such a message into.
+			shadowed := func(secondName, origin string) int {
+				req := fasthttp.AcquireRequest()
+				defer fasthttp.ReleaseRequest(req)
+				if !normalize {
+					req.Header.DisableNormalizing()
+				}
+				req.Header.SetMethod(fiber.MethodPost)
+				req.SetRequestURI("/")
+				req.Header.SetHost("example.com")
+				req.Header.Set(fiber.HeaderCookie, cookie)
+				req.Header.Set(HeaderName, token)
+				req.Header.Set(fiber.HeaderOrigin, "")
+				req.Header.Add(secondName, origin)
+
+				ctx := &fasthttp.RequestCtx{}
+				ctx.Init(req, nil, nil)
+				h(ctx)
+				return ctx.Response.StatusCode()
+			}
+
+			// The shadowed same-origin request still passes, so the assertions
+			// below cannot pass by refusing every message that carries two lines.
+			require.Equal(t, fiber.StatusOK, shadowed(fiber.HeaderOrigin, "http://example.com"))
+			require.Equal(t, fiber.StatusOK, shadowed("origin", "http://example.com"))
+
+			require.Equal(t, fiber.StatusForbidden, shadowed(fiber.HeaderOrigin, "http://evil.com"),
+				"an empty first line must not hide the origin beside it")
+			require.Equal(t, fiber.StatusForbidden, shadowed("origin", "http://evil.com"),
+				"an empty first line must not hide the origin beside it")
+		})
+	}
+}
+
 // Test_CSRF_TrustedOriginIsAllowedWhenCrossSite pins that Sec-Fetch-Site does
 // not decide cross-site on its own.
 //
