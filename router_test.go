@@ -4449,3 +4449,38 @@ func Test_Route_OptionalSlash_SingleCharSegment(t *testing.T) {
 		})
 	}
 }
+
+// Test_Route_URL_KeepsRegisteredLeadingSlashes covers a route whose own path
+// starts more than one slash. Those name the route, so collapsing them composed
+// a URL for a path that answers 404 — only the slashes a parameter contributes
+// may go, since those are what would compose a host.
+func Test_Route_URL_KeepsRegisteredLeadingSlashes(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	app.Get("//internal", func(c Ctx) error { return c.SendString("internal") }).Name("dbl")
+	app.Get("//internal/:name", func(c Ctx) error { return c.SendString(c.Params("name")) }).Name("dblparam")
+	app.Get("/*", func(c Ctx) error { return c.SendString("wild") }).Name("wild")
+
+	for _, tc := range []struct {
+		name   string
+		params Map
+		want   string
+	}{
+		{"dbl", Map{}, "//internal"},
+		{"dblparam", Map{"name": "john"}, "//internal/john"},
+		// A value opening its own slash still cannot add one to the route's.
+		{"wild", Map{"*": "/evil.com"}, "/evil.com"},
+	} {
+		url, err := app.GetRoute(tc.name).URL(tc.params)
+		require.NoError(t, err, tc.name)
+		require.Equal(t, tc.want, url, tc.name)
+	}
+
+	// The composed URL reaches the route it was composed from.
+	req, err := http.NewRequestWithContext(context.Background(), MethodGet, "//internal", http.NoBody)
+	require.NoError(t, err)
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, StatusOK, resp.StatusCode)
+}
