@@ -242,9 +242,15 @@ func authoritySpan(target string) (start, end int) { //nolint:nonamedreturns // 
 			return 0, 0
 		case strings.HasPrefix(target[i+1:], "//"):
 			start = i + 3
-		case special:
+		case special && !isFileScheme(target):
 			start = i + 1
 		default:
+			// No authority to move. Under "file" that holds without the slashes
+			// too: the parser leaves "file state" for "path state" unless one
+			// follows, so "file:tmp/x" is the path "/tmp/x" of an empty host and
+			// dropping the rule told the author something untrue about it. What a
+			// value can still do is write the "//" itself, which the composed
+			// location is checked for.
 			return 0, 0
 		}
 	}
@@ -364,7 +370,11 @@ func authorityHolds(chunks []authorityChunk, replacer *strings.Replacer, enders 
 		// Through the Replacer, not by indexing: it composes the location and
 		// matches patterns in the order given, so "$10" is "$1" then a literal
 		// "0". Indexing judged the tenth capture while the first was spliced in.
-		value := replacer.Replace(chunk.text)
+		// Read as the client will, since that is who acts on the composition: the
+		// parser deletes tabs, CRs and LFs, so a value of "\t/ok" reaches "/ok"
+		// and ends the authority there. Judging the tab instead refused a
+		// redirect the client would have followed safely.
+		value := urlnorm.StripTabCRLF(replacer.Replace(chunk.text))
 
 		if hostPins(chunks[i+1:]) {
 			// The author closed the host past this token, so the value is a
@@ -614,6 +624,62 @@ func isIPv4Number(label string) bool {
 	return true
 }
 
+// isIPv4Host reports whether the URL parser reads host as an IPv4 address. It
+// accepts spellings net.ParseIP does not — "127.1" is 127.0.0.1, so is "0x7f.1",
+// and "2130706433" is the same address written as one number — and judging them
+// by net.ParseIP dropped rules whose host the author had pinned outright.
+func isIPv4Host(host string) bool {
+	parts := strings.Split(host, ".")
+	// One trailing dot is allowed and names no part: "127.0.0.1." is an address.
+	if len(parts) > 1 && parts[len(parts)-1] == "" {
+		parts = parts[:len(parts)-1]
+	}
+	if len(parts) > 4 {
+		return false
+	}
+
+	last := len(parts) - 1
+	for i, part := range parts {
+		n, ok := ipv4Number(part)
+		if !ok {
+			return false
+		}
+		// Every part but the last is one octet. The last takes whatever octets
+		// were not written, which is what makes "127.1" and "2130706433" work.
+		limit := uint64(256)
+		if i == last {
+			limit = uint64(1) << (8 * (4 - last))
+		}
+		if n >= limit {
+			return false
+		}
+	}
+	return true
+}
+
+// ipv4Number parses one dotted part the way the URL parser's IPv4 number parser
+// does: "0x" for hex, a bare leading "0" for octal, decimal otherwise. Reports
+// the value and whether the part was a number at all.
+func ipv4Number(part string) (uint64, bool) {
+	base := 10
+	switch {
+	case len(part) >= 2 && part[0] == '0' && (part[1] == 'x' || part[1] == 'X'):
+		part, base = part[2:], 16
+	case len(part) >= 2 && part[0] == '0':
+		part, base = part[1:], 8
+	}
+	if part == "" {
+		// What "0" and "0x" are left as, both of which are zero.
+		return 0, true
+	}
+
+	n, err := strconv.ParseUint(part, base, 64)
+	if err != nil {
+		return 0, false
+	}
+	return n, true
+}
+
 // percentDecode decodes the valid "%XX" escapes in s, as a URL parser does
 // before reading a host: "https://$1%2E" otherwise pinned a host on three
 // characters decoding to a bare ".". A stray "%" is left as the parser leaves it.
@@ -730,7 +796,8 @@ func pinsHost(literal string, openLeft bool) bool {
 	// A numeric last label is parsed as IPv4, the author's text being the low
 	// octets: "https://$1.1" composed "https://127.0.0.1" from "127.0.0". Judged
 	// before the trim — the leading "." is what closes the label.
-	if strings.HasPrefix(mapped, ".") {
+	tail := strings.HasPrefix(mapped, ".")
+	if tail {
 		openLeft = false
 	}
 	if openLeft && strings.IndexByte(trimmed, '.') < 0 {
@@ -742,10 +809,14 @@ func pinsHost(literal string, openLeft bool) bool {
 		last = trimmed[i+1:]
 	}
 	if isIPv4Number(last) {
-		// An address pins a host only where the capture cannot reach its first
-		// octet. Open on the left it can: against "%3110.0.0.1", a captured "0"
-		// composes "0%3110.0.0.1", octal 0127, landing on 72.0.0.1.
-		return !openLeft && net.ParseIP(trimmed) != nil
+		// An address pins a host only where the author wrote the whole of it.
+		// Open on the left the capture reaches its first octet: against
+		// "%3110.0.0.1", a captured "0" composes "0%3110.0.0.1", octal 0127,
+		// landing on 72.0.0.1. And a leading "." says a capture already supplied
+		// the octets before this text, which is what "https://$1.1" does —
+		// "127.0.0" composes "https://127.0.0.1". Either way the author pinned
+		// only part of an address, which pins no host at all.
+		return !openLeft && !tail && isIPv4Host(trimmed)
 	}
 	return true
 }
@@ -799,12 +870,16 @@ type literalScanner struct {
 func (s *literalScanner) widestBranch() int {
 	smallest, n := -1, 0
 	inClass := false
+	// atom is what the construct just read pins, which a quantifier that allows
+	// none of it takes back: "/api/a?" and "/api/a{0,1}" pin "/api/" alone.
+	atom := 0
 	for s.i < len(s.rule) {
 		c := s.rule[s.i]
 		switch {
 		case c == '\\':
+			atom = 0
 			if s.i+1 < len(s.rule) && !inClass && escapePinsAByte(s.rule[s.i+1]) {
-				n++
+				n, atom = n+1, 1
 			}
 			s.i += 2
 			continue
@@ -814,18 +889,36 @@ func (s *literalScanner) widestBranch() int {
 			// counting them put the broader rule ahead of the narrower one.
 			inClass = c != ']'
 		case c == '[':
-			inClass = true
+			inClass, atom = true, 0
 		case c == '(':
 			s.i = skipGroupPrefix(s.rule, s.i+1)
-			n += s.widestBranch()
+			atom = s.widestBranch()
+			n += atom
 			continue
 		case c == ')':
 			s.i++
 			return smallerBranch(smallest, n)
 		case c == '|':
-			smallest, n = smallerBranch(smallest, n), 0
+			smallest, n, atom = smallerBranch(smallest, n), 0, 0
+		case c == '?':
+			// Zero or one, so what it follows pins nothing at all. "*" is not
+			// read this way: a rule's "*" is Fiber's wildcard, already replaced
+			// by "(.*)" before the key is compiled.
+			n, atom = n-atom, 0
+		case c == '{':
+			// The bounds are syntax, and counting their digits and comma put
+			// "/api/a{0,1}" three bytes ahead of the exact "/api/a" it shadowed.
+			var zeroMin bool
+			s.i, zeroMin = skipQuantifier(s.rule, s.i)
+			if zeroMin {
+				n -= atom
+			}
+			atom = 0
+			continue
 		case strings.IndexByte(patternBytes, c) < 0:
-			n++
+			n, atom = n+1, 1
+		default:
+			atom = 0
 		}
 		s.i++
 	}
@@ -839,6 +932,19 @@ func smallerBranch(smallest, n int) int {
 		return n
 	}
 	return smallest
+}
+
+// skipQuantifier returns the index just past the "{m,n}" beginning at i, and
+// whether it allows none of what it follows. An unclosed "{" is an ordinary byte
+// to the regexp parser, so it is left as one here: the index only moves past it.
+func skipQuantifier(rule string, i int) (int, bool) {
+	end := strings.IndexByte(rule[i:], '}')
+	if end < 0 {
+		return i + 1, false
+	}
+
+	body := rule[i+1 : i+end]
+	return i + end + 1, body == "0" || strings.HasPrefix(body, "0,")
 }
 
 // skipGroupPrefix returns the index of a group's body, past the "?" section of a
