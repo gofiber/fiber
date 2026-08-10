@@ -94,6 +94,18 @@ func lookupCachedHeader(headers []cachedHeader, name string) ([]byte, bool) {
 // up separately.
 const setCookie2 = "Set-Cookie2"
 
+// cachedHeadersSetCookie reports whether a stored entry carries a cookie. Only
+// an entry written before Set-Cookie joined ignoreHeaders can, so this asks
+// about a persisted store an older version filled, not about anything this one
+// would write.
+func cachedHeadersSetCookie(headers []cachedHeader) bool {
+	if _, ok := lookupCachedHeader(headers, fiber.HeaderSetCookie); ok {
+		return true
+	}
+	_, ok := lookupCachedHeader(headers, setCookie2)
+	return ok
+}
+
 // responseSetsCookie reports whether the response hands a cookie to the client
 // that caused this miss.
 func responseSetsCookie(h *fasthttp.ResponseHeader, normalized bool) bool { //nolint:revive // flag-parameter: normalized is a property of the header store

@@ -2,6 +2,7 @@ package cache
 
 import (
 	"bufio"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
@@ -15,6 +16,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/storage/memory"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
 )
@@ -1955,4 +1957,87 @@ func Test_Cache_ReplayClearsEveryStoredSpelling(t *testing.T) {
 		require.Len(t, resp.Header.Values("X-Tenant"), 1,
 			"one field line whatever spelling each hop chose (%s): %v", want, resp.Header.Values("X-Tenant"))
 	}
+}
+
+// Test_Cache_AuthorizationFieldLinesFramed covers the framing of the
+// Authorization value that goes into the key.
+//
+// Joining field lines with a comma renders "Bearer a,Bearer b" the same whether
+// it arrived as one line or as two, and this middleware treats a second line as
+// a second credential, so the two layouts shared a partition: with a response
+// opting into shared caching, the single-line request was served the two-line
+// request's body.
+func Test_Cache_AuthorizationFieldLinesFramed(t *testing.T) {
+	t.Parallel()
+
+	var handlerRuns atomic.Int64
+	app := fiber.New()
+	app.Use(New(Config{Expiration: time.Minute}))
+	app.Get("/", func(c fiber.Ctx) error {
+		handlerRuns.Add(1)
+		c.Set(fiber.HeaderCacheControl, "public, max-age=60")
+		return c.SendString(c.Get(fiber.HeaderAuthorization))
+	})
+
+	twoLines := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+	twoLines.Header.Add(fiber.HeaderAuthorization, "Bearer shared")
+	twoLines.Header.Add(fiber.HeaderAuthorization, "Bearer alice")
+	resp, err := app.Test(twoLines)
+	require.NoError(t, err)
+	require.Equal(t, cacheMiss, resp.Header.Get("X-Cache"))
+
+	oneLine := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+	oneLine.Header.Set(fiber.HeaderAuthorization, "Bearer shared,Bearer alice")
+	resp, err = app.Test(oneLine)
+	require.NoError(t, err)
+	require.Equal(t, cacheMiss, resp.Header.Get("X-Cache"),
+		"a lone comma-joined credential must not land on the two-line entry")
+	require.Equal(t, int64(2), handlerRuns.Load(), "each layout is its own principal")
+}
+
+// Test_Cache_LegacyStoredSetCookieIsUnsafe covers an entry left by a version
+// that stored Set-Cookie among the response headers.
+//
+// The body beside that cookie is personalized for whoever caused the miss, so
+// omitting only the cookie on replay still hands that body to everyone matching
+// the key. The entry is dropped instead.
+func Test_Cache_LegacyStoredSetCookieIsUnsafe(t *testing.T) {
+	t.Parallel()
+
+	store := memory.New()
+	var handlerRuns atomic.Int64
+	app := fiber.New()
+	app.Use(New(Config{
+		Storage:              store,
+		StoreResponseHeaders: true,
+		Expiration:           time.Minute,
+		KeyGenerator:         func(_ fiber.Ctx) string { return "k" },
+	}))
+	app.Get("/", func(c fiber.Ctx) error {
+		handlerRuns.Add(1)
+		return c.SendString("alice-only")
+	})
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, cacheMiss, resp.Header.Get("X-Cache"))
+
+	// Rewrite the stored entry the way the older version left it.
+	const key = "GET|k"
+	m := newManager(store, false)
+	e, err := m.get(context.Background(), key)
+	require.NoError(t, err)
+	require.NotNil(t, e)
+	e.headers = append(e.headers, cachedHeader{
+		key:   []byte(fiber.HeaderSetCookie),
+		value: []byte("session=alice; Path=/"),
+	})
+	require.NoError(t, m.set(context.Background(), key, e, time.Minute))
+
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, cacheUnreachable, resp.Header.Get("X-Cache"),
+		"an entry carrying a cookie is not replayed")
+	require.Equal(t, int64(2), handlerRuns.Load(), "the handler answers instead")
+	require.Empty(t, resp.Header.Get(fiber.HeaderSetCookie), "and the stored cookie goes nowhere")
 }
