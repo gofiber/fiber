@@ -6,38 +6,39 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// Test_RootedPath covers the two sources of a leading slash: the route path the
-// author registered, whose slashes name the route and must survive, and a
-// parameter spliced at the front, whose slashes would compose a host.
+// Test_RootedPath pins the one shape a URL composed from a named route may take:
+// a path on the origin now being served, opening exactly one slash. Two would
+// open an authority, so "//evil.com" resolves against "https://good.example" as
+// "https://evil.com" — a value spliced at the front must never reach that.
 func Test_RootedPath(t *testing.T) {
 	t.Parallel()
 
 	for _, tc := range []struct {
-		name      string
-		location  string
-		routePath string
-		want      string
+		name     string
+		location string
+		want     string
 	}{
-		{"ordinary path", "/user/john", "/user/:name", "/user/john"},
-
-		// The value opened a second slash on a route that starts one.
-		{"value adds a slash", "//evil.com", "/*", "/evil.com"},
-		{"value adds a backslash", `/\evil.com`, "/*", "/evil.com"},
-		{"value adds several", "///evil.com", "/*", "/evil.com"},
-		{"value is only slashes", "//", "/*", "/"},
-
-		// The author registered the slashes, so they name the route: collapsing
-		// them composed a path that answers 404.
-		{"route starts two", "//internal", "//internal", "//internal"},
-		{"route starts two with a value", "//internal/john", "//internal/:name", "//internal/john"},
-		{"route starts two, value adds one", "///evil.com", "//*", "//evil.com"},
-
-		// A backslash the author wrote is folded, the parser reading it as one.
-		{"route backslash is folded", `\internal`, `\internal`, "/internal"},
+		{"ordinary path", "/user/john", "/user/john"},
+		{"value adds a slash", "//evil.com", "/evil.com"},
+		{"value adds a backslash", `/\evil.com`, "/evil.com"},
+		{"value adds several", "///evil.com", "/evil.com"},
+		{"value is only slashes", "//", "/"},
+		{"backslash is folded", `\internal`, "/internal"},
+		// Tab, LF and CR go first, or one hides behind the leading slash.
+		{"control bytes cannot hide a slash", "/\t/evil.com", "/evil.com"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			require.Equal(t, tc.want, RootedPath(tc.location, tc.routePath))
+			require.Equal(t, tc.want, RootedPath(tc.location))
 		})
 	}
+}
+
+func Test_LeadingSlashes(t *testing.T) {
+	t.Parallel()
+
+	require.Equal(t, 0, LeadingSlashes("internal"))
+	require.Equal(t, 1, LeadingSlashes("/internal"))
+	require.Equal(t, 2, LeadingSlashes("//internal"))
+	require.Equal(t, 2, LeadingSlashes(`/\internal`))
 }

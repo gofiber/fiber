@@ -233,8 +233,16 @@ func (r Route) URL(params Map) (string, error) {
 //  2. Case-insensitive fallback picking the lexicographically-smallest matching key (when !caseSensitive)
 //  3. Greedy parameter fallback for wildcard (*) and plus (+) parameters
 func buildRouteURL(route *Route, params Map) (string, error) {
+	// No relative URL names such a route. Two leading slashes open an authority,
+	// so "//internal" resolves to the host "internal" rather than a path here,
+	// and one leading slash reaches a different route. Say so instead of
+	// composing either.
+	if urlnorm.LeadingSlashes(route.Path) > 1 {
+		return "", ErrRouteNotRepresentable
+	}
+
 	if len(route.routeParser.segs) == 0 {
-		return urlnorm.RootedPath(route.Path, route.Path), nil
+		return urlnorm.RootedPath(route.Path), nil
 	}
 
 	buf := bytebufferpool.Get()
@@ -288,7 +296,7 @@ func buildRouteURL(route *Route, params Map) (string, error) {
 		}
 	}
 
-	return urlnorm.RootedPath(buf.String(), route.Path), nil
+	return urlnorm.RootedPath(buf.String()), nil
 }
 
 // preferredGreedyParameters returns the generic greedy fallback lookup order
