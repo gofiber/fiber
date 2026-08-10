@@ -158,8 +158,11 @@ type chainGuardKey struct {
 func FromAuthHeader(authScheme string) Extractor {
 	return Extractor{
 		Extract: func(c fiber.Ctx) (string, error) {
-			authHeader := headerlookup.Value(c, fiber.HeaderAuthorization)
-			if authHeader == "" {
+			// A second Authorization line, whatever it is spelled like, makes
+			// the credential ambiguous — including where middleware cleared this
+			// field and a line the client sent stayed behind it.
+			authHeader, ok := headerlookup.Value(c, fiber.HeaderAuthorization)
+			if !ok || authHeader == "" {
 				return "", ErrNotFound
 			}
 
@@ -348,8 +351,8 @@ func FromHeader(header string) Extractor {
 			// Not Ctx.Get: it is byte-exact, so under DisableHeaderNormalizing a token
 			// sent under the lower-case name HTTP/2 and 3 use was not found, and the
 			// request refused for carrying no token when it carried one.
-			value := headerlookup.Value(c, header)
-			if value == "" {
+			value, ok := headerlookup.Value(c, header)
+			if !ok || value == "" {
 				return "", ErrNotFound
 			}
 			return value, nil
