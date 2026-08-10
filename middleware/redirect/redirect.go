@@ -65,6 +65,12 @@ func New(config ...Config) fiber.Handler {
 		if d := cmp.Compare(literalLen(b), literalLen(a)); d != 0 {
 			return d
 		}
+		// Two rules pinning the same amount are separated by how much else they
+		// match: an alternation matches every branch, so "/very/specific|/x" is
+		// wider than the exact "/x" it ties with.
+		if d := cmp.Compare(len(splitAlternation(a)), len(splitAlternation(b))); d != 0 {
+			return d
+		}
 		return cmp.Compare(a, b)
 	})
 
@@ -248,7 +254,12 @@ func authoritySpan(target string) (start, end int) { //nolint:nonamedreturns // 
 	// other scheme the third one terminates an empty authority, so "myapp:///$1"
 	// names no host and the capture is path — skipping it read $1 as the host
 	// and the rule was dropped at startup for handing the host away.
-	if special {
+	//
+	// "file" is special but takes its own route through the parser, going from
+	// "file slash state" straight to the host without that ignore step, so
+	// "file:///$1" has the empty authority of a local path. It keeps the
+	// backslash folding, which is why it stays in the special list.
+	if special && !isFileScheme(target) {
 		for start < len(target) && (target[start] == '/' || target[start] == '\\') {
 			start++
 		}
@@ -282,6 +293,14 @@ var specialSchemes = map[string]struct{}{
 	"wss":   {},
 	"ftp":   {},
 	"file":  {},
+}
+
+// isFileScheme reports whether target names the "file" scheme, which is special
+// yet reaches its host through "file slash state" rather than the ignore-slashes
+// one every other special scheme takes.
+func isFileScheme(target string) bool {
+	i := schemeEnd(target)
+	return i > 0 && strings.EqualFold(target[:i], "file")
 }
 
 // isSpecialScheme reports whether scheme is one of them. A scheme is
@@ -741,17 +760,28 @@ const patternBytes = `*.[](){}+?^|\`
 
 // literalPrefixLen returns how much of a rule's path is pinned before its first
 // wildcard, which is what makes one rule more specific than another it overlaps.
+//
+// An alternation pins only what its least specific branch does: "/very/specific|/x"
+// matches "/x", so it pins one byte rather than the fourteen standing before the
+// "|", which had it outrank the exact "/x" and shadow it outright.
 func literalPrefixLen(rule string) int {
-	if i := indexUnescapedAny(rule, patternBytes); i >= 0 {
-		return i
-	}
-	return len(rule)
+	return minOverBranches(rule, func(branch string) int {
+		if i := indexUnescapedAny(branch, patternBytes); i >= 0 {
+			return i
+		}
+		return len(branch)
+	})
 }
 
 // literalLen returns how much of a rule's path is pinned in total, which
 // separates two rules whose wildcards start together: "/cdn/*" and "/cdn/*x"
 // tie on prefix, and the lexicographic fallback left the narrower one dead.
 func literalLen(rule string) int {
+	return minOverBranches(rule, branchLiteralLen)
+}
+
+// branchLiteralLen is literalLen for one alternation branch.
+func branchLiteralLen(rule string) int {
 	n := 0
 	inClass := false
 	for i := 0; i < len(rule); i++ {
@@ -777,6 +807,48 @@ func literalLen(rule string) int {
 		}
 	}
 	return n
+}
+
+// minOverBranches applies measure to each top-level alternation branch of rule
+// and returns the smallest result, since a rule is only as specific as the least
+// specific path it can match. Without a "|" that is just measure(rule).
+func minOverBranches(rule string, measure func(string) int) int {
+	smallest := -1
+	for _, branch := range splitAlternation(rule) {
+		if n := measure(branch); smallest < 0 || n < smallest {
+			smallest = n
+		}
+	}
+	return smallest
+}
+
+// splitAlternation splits rule on the "|" bytes that separate its top-level
+// branches: unescaped, and outside any group or character class, where a "|" is
+// an ordinary member rather than a separator.
+func splitAlternation(rule string) []string {
+	var branches []string
+	depth, start := 0, 0
+	inClass := false
+	for i := 0; i < len(rule); i++ {
+		switch c := rule[i]; {
+		case c == '\\' && i+1 < len(rule):
+			i++
+		case inClass:
+			inClass = c != ']'
+		case c == '[':
+			inClass = true
+		case c == '(':
+			depth++
+		case c == ')':
+			if depth > 0 {
+				depth--
+			}
+		case c == '|' && depth == 0:
+			branches = append(branches, rule[start:i])
+			start = i + 1
+		}
+	}
+	return append(branches, rule[start:])
 }
 
 // indexUnescapedAny returns the first index in s of a byte from chars that a

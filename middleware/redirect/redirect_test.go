@@ -1999,6 +1999,10 @@ func Test_LiteralLengths(t *testing.T) {
 		{rule: "/api/[abcdefghijklmnopqrstuvwxyz]", prefixLen: 5, totalLen: 5},
 		{rule: "/api/[ab]", prefixLen: 5, totalLen: 5},
 		{rule: "/api/[a-z]x", prefixLen: 5, totalLen: 6},
+		// An alternation is only as specific as its least specific branch.
+		{rule: "/very/specific|/x", prefixLen: 2, totalLen: 2},
+		// A "|" inside a group or a class separates no top-level branch.
+		{rule: "/p/[a|b]", prefixLen: 3, totalLen: 3},
 	}
 
 	for _, tc := range tests {
@@ -2261,5 +2265,84 @@ func Test_Redirect_WiderClassDoesNotOutrank(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, fiber.StatusFound, resp.StatusCode, tc.request)
 		require.Equal(t, tc.want, resp.Header.Get("Location"), tc.request)
+	}
+}
+
+// Test_Redirect_AlternationRankedByItsWidestBranch covers a rule that can match
+// by more than one branch. It is only as specific as the least specific of them,
+// so crediting everything before the "|" put it ahead of the exact rule it ties
+// with and shadowed that rule outright.
+func Test_Redirect_AlternationRankedByItsWidestBranch(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Use(New(Config{
+		Rules: map[string]string{
+			"/very/specific|/x": "/alt",
+			"/x":                "/exact",
+		},
+		StatusCode: fiber.StatusFound,
+	}))
+	app.Get("/*", func(c fiber.Ctx) error { return c.SendString("fell through") })
+
+	for _, tc := range []struct{ request, want string }{
+		// Both match, and the exact rule wins: they pin the same one byte, and
+		// the alternation matches strictly more paths.
+		{"/x", "/exact"},
+		// The branch only the alternation matches still reaches it.
+		{"/very/specific", "/alt"},
+	} {
+		req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, tc.request, http.NoBody)
+		require.NoError(t, err)
+		resp, err := app.Test(req)
+		require.NoError(t, err)
+		require.Equal(t, fiber.StatusFound, resp.StatusCode, tc.request)
+		require.Equal(t, tc.want, resp.Header.Get("Location"), tc.request)
+	}
+}
+
+// Test_Redirect_FileSchemeEmptyAuthority covers "file", which is special — it
+// folds backslashes — but reaches its host through "file slash state" rather
+// than the ignore-slashes one every other special scheme takes. So "file:///$1"
+// has the empty authority of a local path, and skipping that third slash read
+// the capture as the host and dropped the rule at startup.
+func Test_Redirect_FileSchemeEmptyAuthority(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		target  string
+		request string
+		want    string // "" means the rule must not fire
+	}{
+		{"local path composes", "file:///$1", "/p/tmp/report", "file:///tmp/report"},
+		{"deeper local path", "file:///var/$1", "/p/log", "file:///var/log"},
+		// Two slashes still open an authority, so the capture is the host there.
+		{"capture as the file host", "file://$1/x", "/p/evil.com", ""},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			app := fiber.New(fiber.Config{UnescapePath: true})
+			app.Use(New(Config{
+				Rules:      map[string]string{"/p/*": tc.target},
+				StatusCode: fiber.StatusFound,
+			}))
+			app.Get("/*", func(c fiber.Ctx) error { return c.SendString("fell through") })
+
+			req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, tc.request, http.NoBody)
+			require.NoError(t, err)
+			resp, err := app.Test(req)
+			require.NoError(t, err)
+
+			if tc.want == "" {
+				require.Equal(t, fiber.StatusOK, resp.StatusCode, "the rule must not fire")
+				return
+			}
+			require.Equal(t, fiber.StatusFound, resp.StatusCode)
+			require.Equal(t, tc.want, resp.Header.Get("Location"))
+		})
 	}
 }
