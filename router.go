@@ -234,7 +234,7 @@ func (r Route) URL(params Map) (string, error) {
 //  3. Greedy parameter fallback for wildcard (*) and plus (+) parameters
 func buildRouteURL(route *Route, params Map) (string, error) {
 	if len(route.routeParser.segs) == 0 {
-		return urlnorm.RootedPath(route.Path), nil
+		return urlnorm.RootedPath(route.Path, route.Path), nil
 	}
 
 	buf := bytebufferpool.Get()
@@ -288,7 +288,7 @@ func buildRouteURL(route *Route, params Map) (string, error) {
 		}
 	}
 
-	return urlnorm.RootedPath(buf.String()), nil
+	return urlnorm.RootedPath(buf.String(), route.Path), nil
 }
 
 // preferredGreedyParameters returns the generic greedy fallback lookup order
