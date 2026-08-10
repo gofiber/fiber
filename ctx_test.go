@@ -7964,6 +7964,18 @@ func Test_Ctx_JSONP_SanitizesCallback(t *testing.T) {
 		{name: "numeric property nested", callback: "cb[x[a.1]]", expected: "callback"},
 		{name: "numeric property trailing", callback: "cb[a.b.0]", expected: "callback"},
 		{name: "identifier property in index", callback: "cb[a.b]", expected: "cb[a.b]"},
+
+		// A reserved word is refused only where the word is read as a name: the
+		// head of the expression and the head inside each index. After a dot it is
+		// a property name, which any word may be.
+		{name: "reserved word alone", callback: "for", expected: "callback"},
+		{name: "reserved word head", callback: "this.cb", expected: "callback"},
+		{name: "literal head", callback: "null.x", expected: "callback"},
+		{name: "reserved word in index", callback: "cb[new]", expected: "callback"},
+		{name: "reserved word heads an index", callback: "cb[new.a]", expected: "callback"},
+		{name: "reserved word as property", callback: "cb.new", expected: "cb.new"},
+		{name: "reserved word as nested property", callback: "cb[a.class]", expected: "cb[a.class]"},
+		{name: "reserved word as prefix", callback: "news", expected: "news"},
 	}
 
 	app := New()

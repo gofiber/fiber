@@ -421,6 +421,10 @@ func (r *DefaultRes) Response() *fasthttp.Response {
 	return &r.c.fasthttp.Response
 }
 
+// formatDefaultMediaType is the sentinel MediaType marking a Format handler as
+// the fallback. It is not a media type and is never emitted as a Content-Type.
+const formatDefaultMediaType = "default"
+
 // Format performs content-negotiation on the Accept HTTP header.
 // It uses Accepts to select a proper format and calls the matching
 // user-provided handler function.
@@ -450,7 +454,7 @@ func (r *DefaultRes) Format(handlers ...ResFmt) error {
 		// use its media type. The literal "default" is not a media type and
 		// must not be emitted as a Content-Type value.
 		for _, h := range handlers {
-			if h.MediaType != "default" {
+			if h.MediaType != formatDefaultMediaType {
 				r.c.fasthttp.Response.Header.SetContentType(h.MediaType)
 				return h.Handler(r.c)
 			}
@@ -465,7 +469,7 @@ func (r *DefaultRes) Format(handlers ...ResFmt) error {
 	types := make([]string, 0, 8)
 	var defaultHandler Handler
 	for _, h := range handlers {
-		if h.MediaType == "default" {
+		if h.MediaType == formatDefaultMediaType {
 			defaultHandler = h.Handler
 			continue
 		}
@@ -710,25 +714,31 @@ func isJSONPMemberExpression(cb string) bool {
 	inIndex := false    // that first byte follows '[', so a number may stand there
 	afterClose := false // a ']' just closed an index
 	numeric := false    // the open index began with a digit, so it is a number
+	isRef := true       // the open token is read as a name, not written as a property
+	start := 0          // first byte of the open token
 	for i := 0; i < len(cb); i++ {
 		switch c := cb[i]; c {
 		case '.':
-			if atStart || numeric {
+			if atStart || numeric || (isRef && isJSReservedWord(cb[start:i])) {
 				return false
 			}
-			atStart, inIndex, afterClose = true, false, false
+			atStart, inIndex, afterClose, isRef = true, false, false, false
 		case '[':
-			if atStart || numeric {
+			if atStart || numeric || (isRef && isJSReservedWord(cb[start:i])) {
 				return false
 			}
 			depth++
-			atStart, inIndex, afterClose = true, true, false
+			atStart, inIndex, afterClose, isRef = true, true, false, true
+			start = i + 1
 		case ']':
 			if atStart || depth == 0 {
 				return false
 			}
+			if isRef && !numeric && isJSReservedWord(cb[start:i]) {
+				return false
+			}
 			depth--
-			afterClose, numeric = true, false
+			afterClose, numeric, isRef = true, false, false
 		default:
 			// Only '.', '[' or another ']' may follow a closing bracket, so "cb[0]x"
 			// is no member expression. Without this the machine would accept it and
@@ -753,7 +763,29 @@ func isJSONPMemberExpression(cb string) bool {
 			}
 		}
 	}
+	if isRef && !numeric && isJSReservedWord(cb[start:]) {
+		return false
+	}
 	return depth == 0 && !atStart
+}
+
+// isJSReservedWord reports whether tok is a word JavaScript will not read as a
+// name. Only the positions that are read matter — the head of the expression and
+// the head inside each index — since "a.for" and "a[b.class]" name properties,
+// which any word may do. Emitting "for({…})" instead just ships a syntax error to
+// the browser, so those spellings fall back to the default callback.
+func isJSReservedWord(tok string) bool {
+	switch tok {
+	case "await", "break", "case", "catch", "class", "const", "continue",
+		"debugger", "default", "delete", "do", "else", "enum", "export",
+		"extends", "false", "finally", "for", "function", "if", "import", "in",
+		"instanceof", "new", "null", "return", "super", "switch", "this",
+		"throw", "true", "try", "typeof", "var", "void", "while", "with",
+		"yield":
+		return true
+	default:
+		return false
+	}
 }
 
 // XML converts any interface or string to XML.
