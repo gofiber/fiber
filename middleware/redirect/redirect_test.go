@@ -1987,7 +1987,15 @@ func Test_LiteralLengths(t *testing.T) {
 		// "/api/[a-z]+" ahead of "/api/users", shadowing the exact rule outright.
 		{rule: "/api/[a-z]+", prefixLen: 5, totalLen: 5},
 		{rule: "/api/users", prefixLen: 10, totalLen: 10},
-		{rule: "/(a|b)/x", prefixLen: 1, totalLen: 5},
+		{rule: "/(a|b)/x", prefixLen: 1, totalLen: 4},
+		// A group is an alternation too, so it pins what its widest branch pins.
+		{rule: "/api/[a-z](specific|x)", prefixLen: 5, totalLen: 6},
+		// The "?:" of a non-capturing group is syntax, not path.
+		{rule: "/p/(?:ab)", prefixLen: 3, totalLen: 5},
+		// A class escape matches any byte of its class, so it pins none of them
+		// and ends the prefix where it stands.
+		{rule: `/api/\d+`, prefixLen: 5, totalLen: 5},
+		{rule: `/api/\w`, prefixLen: 5, totalLen: 5},
 		// "." matches any byte, so "/api/user." pins no more than "/api/user".
 		{rule: "/api/user.", prefixLen: 9, totalLen: 9},
 		// Escaped, it matches itself and pins the byte it stands for.
@@ -2291,6 +2299,68 @@ func Test_Redirect_AlternationRankedByItsWidestBranch(t *testing.T) {
 		{"/x", "/exact"},
 		// The branch only the alternation matches still reaches it.
 		{"/very/specific", "/alt"},
+	} {
+		req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, tc.request, http.NoBody)
+		require.NoError(t, err)
+		resp, err := app.Test(req)
+		require.NoError(t, err)
+		require.Equal(t, fiber.StatusFound, resp.StatusCode, tc.request)
+		require.Equal(t, tc.want, resp.Header.Get("Location"), tc.request)
+	}
+}
+
+// Test_Redirect_GroupedAlternationRankedByItsWidestBranch covers an alternation
+// written inside a group, which is one just the same. Crediting it with the
+// literals of every branch made the rule that matches more paths sort as the
+// more specific one, so it answered every request they share.
+func Test_Redirect_GroupedAlternationRankedByItsWidestBranch(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Use(New(Config{
+		Rules: map[string]string{
+			"/p/[a-z](reports|x.*)": "/grouped",
+			"/p/[a-z]xy":            "/narrow",
+		},
+		StatusCode: fiber.StatusFound,
+	}))
+	app.Get("/*", func(c fiber.Ctx) error { return c.SendString("fell through") })
+
+	for _, tc := range []struct{ request, want string }{
+		// Both match "/p/axy". The grouped rule pins only the one byte its "x.*"
+		// branch does, so the rule pinning "xy" answers it.
+		{"/p/axy", "/narrow"},
+		// What only the grouped rule matches still reaches it.
+		{"/p/areports", "/grouped"},
+	} {
+		req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, tc.request, http.NoBody)
+		require.NoError(t, err)
+		resp, err := app.Test(req)
+		require.NoError(t, err)
+		require.Equal(t, fiber.StatusFound, resp.StatusCode, tc.request)
+		require.Equal(t, tc.want, resp.Header.Get("Location"), tc.request)
+	}
+}
+
+// Test_Redirect_ClassEscapeDoesNotOutrankExactRule covers "\d", which matches any
+// digit. Reading it as the byte "d" escaped counted two path bytes that are not
+// there, putting the rule that matches every digit ahead of the exact one.
+func Test_Redirect_ClassEscapeDoesNotOutrankExactRule(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Use(New(Config{
+		Rules: map[string]string{
+			`/api/\d+`: "/digits",
+			"/api/1":   "/one",
+		},
+		StatusCode: fiber.StatusFound,
+	}))
+	app.Get("/*", func(c fiber.Ctx) error { return c.SendString("fell through") })
+
+	for _, tc := range []struct{ request, want string }{
+		{"/api/1", "/one"},
+		{"/api/27", "/digits"},
 	} {
 		req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, tc.request, http.NoBody)
 		require.NoError(t, err)
