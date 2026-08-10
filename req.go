@@ -415,8 +415,9 @@ func (r *DefaultReq) FormFile(key string) (*multipart.FileHeader, error) {
 // BodyLimit so the configured limit is consistently enforced.
 //
 // On a form request this lowercases the case-insensitive parts of the request's
-// own Content-Type, so a value obtained earlier from Get(HeaderContentType) can
-// change during the call. Copy it first if you need it to outlive one.
+// own Content-Type, so a value obtained earlier from Get(HeaderContentType) —
+// which aliases those bytes unless Immutable is set — can change during the
+// call. Copy it first if you need it to outlive one.
 func (r *DefaultReq) FormValue(key string, defaultValue ...string) string {
 	// fasthttp locates the urlencoded body and multipart boundary
 	// case-sensitively, so a legal "Multipart/Form-Data" yielded nothing here.
@@ -969,8 +970,10 @@ func currentMethod(c *DefaultCtx) string {
 // MultipartForm parse form entries from binary.
 // This returns a map[string][]string, so given a key, the value will be a string slice.
 //
-// On a form request this lowercases the request's own Content-Type, so a value
-// obtained earlier from Get(HeaderContentType) can change during the call.
+// On a form request this lowercases the case-insensitive parts of the request's
+// own Content-Type, so a value obtained earlier from Get(HeaderContentType) —
+// which aliases those bytes unless Immutable is set — can change during the
+// call. Copy it first if you need it to outlive one.
 func (r *DefaultReq) MultipartForm() (*multipart.Form, error) {
 	// fasthttp matches both "multipart/form-data" and the "boundary=" parameter
 	// name case-sensitively, so fold first. FormFile and SaveFile come through
