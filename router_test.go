@@ -4465,9 +4465,14 @@ func Test_Route_URL_RefusesUnrepresentableRoute(t *testing.T) {
 	// The parser deletes the tab, so this path is read as "//internal" too. The
 	// byte is not there to be seen by the time anything acts on the composition.
 	app.Get("/\t/internal", func(c Ctx) error { return c.SendString("tabbed") }).Name("tab")
+	// A trailing space goes the same way: the parser strips a run of controls or
+	// spaces from either end, so this route is read as "/internal", which is a
+	// different one. Reachable as "/internal%20" under UnescapePath, but no URL
+	// composed here can name it.
+	app.Get("/internal ", func(c Ctx) error { return c.SendString("spaced") }).Name("space")
 	app.Get("/*", func(c Ctx) error { return c.SendString("ok") }).Name("wild")
 
-	for _, name := range []string{"dbl", "dblwild", "tab"} {
+	for _, name := range []string{"dbl", "dblwild", "tab", "space"} {
 		url, err := app.GetRoute(name).URL(Map{"*": "evil.com"})
 		require.ErrorIs(t, err, ErrRouteNotRepresentable, name)
 		require.Empty(t, url, name)

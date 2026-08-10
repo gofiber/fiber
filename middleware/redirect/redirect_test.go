@@ -2023,8 +2023,10 @@ func Test_LiteralLengths(t *testing.T) {
 		// stands. Only the prefix is pinned here: such a rule does not compile,
 		// so nothing downstream of the sort ever sees it.
 		{rule: `/p/\x{61`, prefixLen: 3, totalLen: 5},
-		// "$" anchors rather than matching, and the pattern anchors either way.
-		{rule: "/p/a$", prefixLen: 5, totalLen: 5},
+		// An anchor asserts a position and consumes nothing, so it pins no path.
+		{rule: "/p/a$", prefixLen: 4, totalLen: 4},
+		{rule: "/p/[a-z]$", prefixLen: 3, totalLen: 3},
+		{rule: "^/p/a", prefixLen: 0, totalLen: 4},
 		// A class matches one byte whatever it lists, so listing more
 		// alternatives buys no specificity.
 		{rule: "/api/[abcdefghijklmnopqrstuvwxyz]", prefixLen: 5, totalLen: 5},
@@ -2395,6 +2397,66 @@ func Test_Redirect_OptionalQuantifierDoesNotOutrankExactRule(t *testing.T) {
 	}
 }
 
+// Test_Redirect_AnchorPinsNoPath covers an explicit "$" in a rule. It asserts a
+// position and consumes nothing, so counting it as a path byte put the broader
+// class rule ahead of the exact one on a path they both match.
+func Test_Redirect_AnchorPinsNoPath(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Use(New(Config{
+		Rules: map[string]string{
+			"/p/[a-z]$": "/class",
+			"/p/[a]":    "/exact",
+		},
+		StatusCode: fiber.StatusFound,
+	}))
+	app.Get("/*", func(c fiber.Ctx) error { return c.SendString("fell through") })
+
+	for _, tc := range []struct{ request, want string }{
+		{"/p/a", "/exact"},
+		{"/p/b", "/class"},
+	} {
+		req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, tc.request, http.NoBody)
+		require.NoError(t, err)
+		resp, err := app.Test(req)
+		require.NoError(t, err)
+		require.Equal(t, fiber.StatusFound, resp.StatusCode, tc.request)
+		require.Equal(t, tc.want, resp.Header.Get("Location"), tc.request)
+	}
+}
+
+// Test_Redirect_UserinfoDelimitersFollowTheScheme covers a capture in the
+// userinfo of a non-special target. A backslash ends the authority only under a
+// special scheme, so refusing one outright dropped a redirect whose host the
+// author had pinned — "myapp://user\name@example.com" still reaches example.com.
+func Test_Redirect_UserinfoDelimitersFollowTheScheme(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name   string
+		target string
+		want   string
+	}{
+		{name: "non-special takes the backslash as userinfo", target: "myapp://$1@example.com", want: `myapp://user\name@example.com`},
+		{name: "special folds it into a slash", target: "https://$1@example.com", want: ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			app := fiber.New(fiber.Config{UnescapePath: true})
+			app.Use(New(Config{Rules: map[string]string{"/r/*": tc.target}, StatusCode: fiber.StatusFound}))
+			app.Get("/*", func(c fiber.Ctx) error { return c.SendString("fell through") })
+
+			req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/r/user%5Cname", http.NoBody)
+			require.NoError(t, err)
+			resp, err := app.Test(req)
+			require.NoError(t, err)
+			require.Equal(t, tc.want, resp.Header.Get("Location"))
+		})
+	}
+}
+
 // Test_Redirect_FileAuthorityOpensOnBackslashes covers "file:/$1", which looks
 // like it names no authority. The parser folds a backslash into a slash on the
 // way to the file host, so a captured "\evil.com/share" composes a location
@@ -2494,8 +2556,11 @@ func Test_Redirect_NestedAlternationLosesTheTieBreak(t *testing.T) {
 		require.Equal(t, tc.want, resp.Header.Get("Location"), tc.request)
 	}
 
-	require.Equal(t, 2, patternWidth("/p/[a-z](x|y)"))
-	require.Equal(t, 1, patternWidth("/p/[a-z]x"))
+	// A class counts its breadth here too, so the two differ by the group alone.
+	require.Equal(t, 52, patternWidth("/p/[a-z](x|y)"))
+	require.Equal(t, 26, patternWidth("/p/[a-z]x"))
+	require.Equal(t, 1, patternWidth("/p/[a]"))
+	require.Equal(t, 256, patternWidth("/p/."))
 	require.Equal(t, 2, patternWidth("/very/specific|/x"))
 	require.Equal(t, 4, patternWidth("(a|b)(c|d)"))
 }

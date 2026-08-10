@@ -239,11 +239,13 @@ func buildRouteURL(route *Route, params Map) (string, error) {
 	// composing either.
 	//
 	// Judged after the parser's own input handling, since that is what a client
-	// applies to whatever is composed: a tab, CR or LF is deleted, so a route
-	// registered at "/\t/internal" reads as "//internal", and no URL names a
-	// route holding one of those bytes anywhere.
-	normalized := urlnorm.StripTabCRLF(route.Path)
-	if len(normalized) != len(route.Path) || urlnorm.LeadingSlashes(normalized) > 1 {
+	// applies to whatever is composed: a tab, CR or LF is deleted anywhere in the
+	// URL, and a run of controls or spaces is stripped from either end. So a
+	// route registered at "/\t/internal" reads as "//internal", and one at
+	// "/internal " — reachable through "/internal%20" under UnescapePath — reads
+	// as "/internal", a different route. No URL names either.
+	normalized := urlnorm.AsBrowserReads(route.Path)
+	if normalized != route.Path || urlnorm.LeadingSlashes(normalized) > 1 {
 		return "", ErrRouteNotRepresentable
 	}
 
