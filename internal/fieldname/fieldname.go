@@ -13,6 +13,7 @@ import (
 	"iter"
 
 	"github.com/gofiber/utils/v2"
+	"github.com/valyala/fasthttp"
 )
 
 // Peeker is the part of fasthttp's headers needed to read field lines by name.
@@ -73,14 +74,16 @@ func First(h Peeker, name string, canonical bool) []byte {
 // Ask this of a response rather than reading the app config: a proxied response
 // is parsed by an outbound fasthttp.Client carrying its own normalizing setting,
 // so a default-normalizing app can hold a response of lower-case names. It is
-// one pass over the names, against one per field for the walking reads.
-func Canonical(h Peeker) bool {
-	for k := range h.All() {
-		if !isCanonicalName(k) {
-			return false
+// one walk, against one per field for the case-insensitive reads it saves.
+func Canonical(h *fasthttp.ResponseHeader) bool {
+	canonical := true
+	//nolint:staticcheck // All allocates an iterator per call; this runs per response
+	h.VisitAll(func(k, _ []byte) {
+		if canonical && !isCanonicalName(k) {
+			canonical = false
 		}
-	}
-	return true
+	})
+	return canonical
 }
 
 // isCanonicalName reports whether name is upper case at the start of each
