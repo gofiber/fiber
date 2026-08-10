@@ -218,6 +218,53 @@ func Test_Extractor_Chain(t *testing.T) {
 }
 
 // go test -run Test_Extractor_FromAuthHeader_EdgeCases
+// Test_Extractor_FromAuthHeader_RepeatedLineIsNotACredential covers a message
+// carrying Authorization twice, which is what a middleware clearing the field
+// leaves behind when the client sent another spelling of it.
+//
+// Under DisableHeaderNormalizing a byte-exact Set writes the canonical name and
+// leaves the client's lower-case line — the spelling HTTP/2 and 3 put on the
+// wire — in place beside it. Reading either one lets whoever wrote the other
+// decide: the first line is the cleared value only where fasthttp happens to
+// store it first, and the first non-empty one is always the client's. Neither
+// is an answer, so no credential is extracted and the caller refuses.
+func Test_Extractor_FromAuthHeader_RepeatedLineIsNotACredential(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New(fiber.Config{DisableHeaderNormalizing: true})
+	extractor := FromAuthHeader("Bearer")
+
+	// Both orders fasthttp stores, depending on whether the client's line was
+	// already under the canonical name when the middleware cleared it.
+	for _, order := range [][2][2]string{
+		{{"authorization", "Bearer client"}, {"Authorization", ""}},
+		{{"Authorization", ""}, {"authorization", "Bearer client"}},
+	} {
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+		ctx.Request().Header.DisableNormalizing()
+		for _, line := range order {
+			ctx.Request().Header.Add(line[0], line[1])
+		}
+
+		token, err := extractor.Extract(ctx)
+		require.ErrorIs(t, err, ErrNotFound,
+			"a second Authorization line makes the credential ambiguous, whichever order it is stored in")
+		require.Empty(t, token)
+		app.ReleaseCtx(ctx)
+	}
+
+	// A single line is still extracted, so the assertions above cannot pass by
+	// refusing everything.
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(ctx)
+	ctx.Request().Header.DisableNormalizing()
+	ctx.Request().Header.Set("authorization", "Bearer client")
+
+	token, err := extractor.Extract(ctx)
+	require.NoError(t, err)
+	require.Equal(t, "client", token)
+}
+
 func Test_Extractor_FromAuthHeader_EdgeCases(t *testing.T) {
 	t.Parallel()
 

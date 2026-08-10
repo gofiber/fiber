@@ -62,11 +62,16 @@ func Lines(h Peeker, name string, canonical bool) [][]byte {
 //
 // Empty lines are stepped over rather than answered with, because a message can
 // carry the name more than once and Peek reports the first line whether or not
-// it holds a value. "Origin:" ahead of "Origin: http://evil.example" therefore
-// read as no Origin at all — and an absent Origin is not a failure to the CSRF
-// check, which skips it on a plaintext request. A field line that is present
-// and empty says nothing a caller can act on, so nothing is lost by looking
-// past it for one that does.
+// it holds a value: an empty "Cache-Control:" ahead of "Cache-Control: private"
+// read as a response saying nothing about caching. A field line that is present
+// and empty says nothing a caller can act on, so nothing is lost by looking past
+// it for one that does.
+//
+// Repetition itself is left to the caller to judge, because what it means
+// depends on the field: a response may carry Cache-Control twice and mean the
+// list, while a second Origin or Authorization line is malformed and cannot be
+// resolved by picking one. headerlookup.Value refuses that case for the request
+// fields where it arises.
 //
 //nolint:revive // flag-parameter: canonical is a property of the header store
 func First(h Peeker, name string, canonical bool) []byte {

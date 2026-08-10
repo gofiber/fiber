@@ -3398,15 +3398,21 @@ func Test_CSRF_OriginCheckIgnoresHeaderNameCase(t *testing.T) {
 	}
 }
 
-// Test_CSRF_EmptyOriginLineDoesNotHideTheRealOne pins that a second Origin line
-// is read when the first one is empty.
+// Test_CSRF_RepeatedOriginIsRefused pins what a message carrying two Origin
+// lines gets.
 //
 // Ctx.Get answers with the first line stored under the exact key, empty or not,
 // and an empty answer is indistinguishable from an absent header — which the
 // origin check treats as no failure at all, skipping it on a plaintext request.
 // A message carrying "Origin:" ahead of its real Origin therefore turned the
 // check off, under both spellings and whether or not the names are normalized.
-func Test_CSRF_EmptyOriginLineDoesNotHideTheRealOne(t *testing.T) {
+//
+// Origin is a single-value field, so a second line is malformed however it is
+// spelled and whatever it holds. It is refused rather than resolved: reading
+// past the empty line would let whoever wrote the other one pick which is read.
+// That is why the same-origin case below is refused too — the check cannot know
+// which line the request meant.
+func Test_CSRF_RepeatedOriginIsRefused(t *testing.T) {
 	t.Parallel()
 
 	for _, normalize := range []bool{true, false} {
@@ -3433,11 +3439,7 @@ func Test_CSRF_EmptyOriginLineDoesNotHideTheRealOne(t *testing.T) {
 			cookie, _, _ := strings.Cut(string(gctx.Response.Header.Peek(fiber.HeaderSetCookie)), ";")
 			require.NotEmpty(t, cookie)
 
-			// shadowed sends an empty Origin line ahead of a second one carrying
-			// origin, which is what a header-writing intermediary in front of the
-			// application can produce. Set then Add stores the two lines fasthttp
-			// parses such a message into.
-			shadowed := func(secondName, origin string) int {
+			post := func(build func(*fasthttp.Request)) int {
 				req := fasthttp.AcquireRequest()
 				defer fasthttp.ReleaseRequest(req)
 				if !normalize {
@@ -3448,8 +3450,7 @@ func Test_CSRF_EmptyOriginLineDoesNotHideTheRealOne(t *testing.T) {
 				req.Header.SetHost("example.com")
 				req.Header.Set(fiber.HeaderCookie, cookie)
 				req.Header.Set(HeaderName, token)
-				req.Header.Set(fiber.HeaderOrigin, "")
-				req.Header.Add(secondName, origin)
+				build(req)
 
 				ctx := &fasthttp.RequestCtx{}
 				ctx.Init(req, nil, nil)
@@ -3457,15 +3458,34 @@ func Test_CSRF_EmptyOriginLineDoesNotHideTheRealOne(t *testing.T) {
 				return ctx.Response.StatusCode()
 			}
 
-			// The shadowed same-origin request still passes, so the assertions
-			// below cannot pass by refusing every message that carries two lines.
-			require.Equal(t, fiber.StatusOK, shadowed(fiber.HeaderOrigin, "http://example.com"))
-			require.Equal(t, fiber.StatusOK, shadowed("origin", "http://example.com"))
+			single := func(name, origin string) int {
+				return post(func(req *fasthttp.Request) { req.Header.Set(name, origin) })
+			}
+
+			// shadowed sends an empty Origin line ahead of a second one carrying
+			// origin, which is what a header-writing intermediary in front of the
+			// application can produce. Set then Add stores the two lines fasthttp
+			// parses such a message into.
+			shadowed := func(secondName, origin string) int {
+				return post(func(req *fasthttp.Request) {
+					req.Header.Set(fiber.HeaderOrigin, "")
+					req.Header.Add(secondName, origin)
+				})
+			}
+
+			// A single Origin line still passes, so the assertions below cannot
+			// pass by refusing everything.
+			require.Equal(t, fiber.StatusOK, single(fiber.HeaderOrigin, "http://example.com"))
+			require.Equal(t, fiber.StatusOK, single("origin", "http://example.com"))
 
 			require.Equal(t, fiber.StatusForbidden, shadowed(fiber.HeaderOrigin, "http://evil.com"),
 				"an empty first line must not hide the origin beside it")
 			require.Equal(t, fiber.StatusForbidden, shadowed("origin", "http://evil.com"),
 				"an empty first line must not hide the origin beside it")
+
+			require.Equal(t, fiber.StatusForbidden, shadowed(fiber.HeaderOrigin, "http://example.com"),
+				"a repeated Origin is refused rather than resolved, same-origin included")
+			require.Equal(t, fiber.StatusForbidden, shadowed("origin", "http://example.com"))
 		})
 	}
 }

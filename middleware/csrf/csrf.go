@@ -347,7 +347,13 @@ func (handler *Handler) DeleteToken(c fiber.Ctx) error {
 // values the Fetch standard defines. Not "cross-site": a browser sends that for
 // a legitimate request to a TrustedOrigins entry. What is left, no browser sends.
 func validateSecFetchSite(c fiber.Ctx) error {
-	secFetchSite := utils.Trim(headerlookup.Value(c, fiber.HeaderSecFetchSite), ' ')
+	raw, ok := headerlookup.Value(c, fiber.HeaderSecFetchSite)
+	if !ok {
+		// More than one line: refused rather than read, and refused here rather
+		// than skipped as an absent header would be.
+		return ErrFetchSiteInvalid
+	}
+	secFetchSite := utils.Trim(raw, ' ')
 
 	if secFetchSite == "" {
 		return nil
@@ -370,7 +376,12 @@ func validateSecFetchSite(c fiber.Ctx) error {
 // returns an error if the origin header is not present or is invalid
 // returns nil if the origin header is valid
 func originMatchesHost(c fiber.Ctx, trustedOrigins []string, trustedSubOrigins []subdomain) error {
-	origin := headerlookup.Value(c, fiber.HeaderOrigin)
+	origin, ok := headerlookup.Value(c, fiber.HeaderOrigin)
+	if !ok {
+		// Not errOriginNotFound: an absent Origin is skipped on a plaintext
+		// request, and a malformed message must not buy that.
+		return ErrOriginInvalid
+	}
 	// "null" is set by some browsers when the origin is a secure context https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Origin#description
 	if origin == "" || utils.EqualFold(origin, "null") {
 		return errOriginNotFound
@@ -404,7 +415,10 @@ func originMatchesHost(c fiber.Ctx, trustedOrigins []string, trustedSubOrigins [
 // returns an error if the referer header is not present or is invalid
 // returns nil if the referer header is valid
 func refererMatchesHost(c fiber.Ctx, trustedOrigins []string, trustedSubOrigins []subdomain) error {
-	referer := headerlookup.Value(c, fiber.HeaderReferer)
+	referer, ok := headerlookup.Value(c, fiber.HeaderReferer)
+	if !ok {
+		return ErrRefererInvalid
+	}
 	if referer == "" {
 		return ErrRefererNotFound
 	}

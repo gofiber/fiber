@@ -45,9 +45,13 @@ func Test_First_EmptyLineIsNotNil(t *testing.T) {
 
 // Test_First_EmptyLineDoesNotHideTheValue covers the read First exists for: a
 // field name carried twice, the first line empty. Peek reports that first line
-// whatever it holds, so the value beside it was invisible to every caller —
-// including the CSRF origin check, which treats an unreadable Origin as an
-// absent one and skips itself on a plaintext request.
+// whatever it holds, so the value beside it was invisible to every caller — a
+// response's "Cache-Control: private" behind an empty line of the same name
+// read as a response that said nothing about caching.
+//
+// Origin is used here only because it is a name fasthttp keeps no slot for, the
+// same as the response fields this now serves; the request-side reads that must
+// refuse a repeated field rather than resolve it go through headerlookup.Value.
 func Test_First_EmptyLineDoesNotHideTheValue(t *testing.T) {
 	t.Parallel()
 
