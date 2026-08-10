@@ -5,6 +5,7 @@ package headerlookup
 
 import (
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/fieldname"
 	"github.com/gofiber/utils/v2"
 	"github.com/valyala/fasthttp"
 )
@@ -63,6 +64,49 @@ func Value(c fiber.Ctx, name string) (string, bool) {
 		return string(found), true
 	}
 	return utils.UnsafeString(found), true
+}
+
+// Combined returns the named request header as the one value RFC 9110 §5.3
+// gives a field carried on several lines: their values in the order received,
+// separated by ", ".
+//
+// This is for a caller naming a field it does not choose — extractors take the
+// name from the application's config, and Accept, Forwarded and the rest are
+// list fields a peer may legally send twice. Value's refusal is wrong for them,
+// because two lines there are one value, not two answers. Where the field is a
+// single value the combination is still not one: a credential joined with
+// another does not match the one that was issued, so a caller comparing it
+// refuses, which is the outcome Value reaches directly.
+func Combined(c fiber.Ctx, name string) string {
+	cfg := c.App().Config()
+	lines := fieldname.Lines(&c.Request().Header, name, !cfg.DisableHeaderNormalizing)
+
+	switch len(lines) {
+	case 0:
+		return ""
+	case 1:
+		if len(lines[0]) == 0 {
+			return ""
+		}
+		if cfg.Immutable {
+			return string(lines[0])
+		}
+		return utils.UnsafeString(lines[0])
+	}
+
+	n := 2 * (len(lines) - 1)
+	for _, line := range lines {
+		n += len(line)
+	}
+	joined := make([]byte, 0, n)
+	for i, line := range lines {
+		if i > 0 {
+			joined = append(joined, ',', ' ')
+		}
+		joined = append(joined, line...)
+	}
+	// The buffer is this function's own, so no copy is owed to Immutable.
+	return utils.UnsafeString(joined)
 }
 
 // canonicalValue answers Value for a store whose field names fasthttp folded on

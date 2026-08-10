@@ -351,8 +351,14 @@ func FromHeader(header string) Extractor {
 			// Not Ctx.Get: it is byte-exact, so under DisableHeaderNormalizing a token
 			// sent under the lower-case name HTTP/2 and 3 use was not found, and the
 			// request refused for carrying no token when it carried one.
-			value, ok := headerlookup.Value(c, header)
-			if !ok || value == "" {
+			// Combined, not Value: the name comes from the application's
+			// config, and a field it names may be a list one a peer is allowed
+			// to send twice — Accept and Forwarded among them. Two lines there
+			// are one value rather than two answers, so they are joined the way
+			// RFC 9110 §5.3 says a recipient may. A repeated token still fails
+			// the comparison the caller makes, so nothing is loosened.
+			value := headerlookup.Combined(c, header)
+			if value == "" {
 				return "", ErrNotFound
 			}
 			return value, nil
