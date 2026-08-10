@@ -1978,7 +1978,7 @@ func Test_LiteralLengths(t *testing.T) {
 		// follows it too.
 		{rule: "/cdn/*", prefixLen: 5, totalLen: 5},
 		{rule: "/cdn/*x", prefixLen: 5, totalLen: 6},
-		{rule: "/p/*.png", prefixLen: 3, totalLen: 7},
+		{rule: "/p/*.png", prefixLen: 3, totalLen: 6},
 		{rule: "*", prefixLen: 0, totalLen: 0},
 		{rule: "/a/*/b/*", prefixLen: 3, totalLen: 6},
 
@@ -1988,8 +1988,12 @@ func Test_LiteralLengths(t *testing.T) {
 		{rule: "/api/[a-z]+", prefixLen: 5, totalLen: 8},
 		{rule: "/api/users", prefixLen: 10, totalLen: 10},
 		{rule: "/(a|b)/x", prefixLen: 1, totalLen: 5},
-		// "." and "$" are ordinary in a path and stay counted.
-		{rule: "/p/a.png", prefixLen: 8, totalLen: 8},
+		// "." matches any byte, so "/api/user." pins no more than "/api/user".
+		{rule: "/api/user.", prefixLen: 9, totalLen: 9},
+		// Escaped, it matches itself and pins the byte it stands for.
+		{rule: `/p/a\.png`, prefixLen: 9, totalLen: 8},
+		// "$" anchors rather than matching, and the pattern anchors either way.
+		{rule: "/p/a$", prefixLen: 5, totalLen: 5},
 	}
 
 	for _, tc := range tests {
@@ -2071,5 +2075,96 @@ func Test_Redirect_ExactRuleBeatsPattern(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, fiber.StatusFound, resp.StatusCode, tc.request)
 		require.Equal(t, tc.want, resp.Header.Get("Location"), tc.request)
+	}
+}
+
+// Test_Redirect_ExactRuleBeatsDottedPattern is the same ordering question as
+// Test_Redirect_ExactRuleBeatsPattern for the one metacharacter that looks like
+// path text. A "." matches any byte, so it pins nothing and must not tie with
+// the literal it resembles and then win on the lexicographic fallback.
+func Test_Redirect_ExactRuleBeatsDottedPattern(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Use(New(Config{
+		Rules: map[string]string{
+			"/api/user.": "/broad",
+			"/api/users": "/exact",
+		},
+		StatusCode: fiber.StatusFound,
+	}))
+	app.Get("/*", func(c fiber.Ctx) error { return c.SendString("fell through") })
+
+	for _, tc := range []struct{ request, want string }{
+		{"/api/users", "/exact"},
+		{"/api/userx", "/broad"},
+	} {
+		req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, tc.request, http.NoBody)
+		require.NoError(t, err)
+		resp, err := app.Test(req)
+		require.NoError(t, err)
+		require.Equal(t, fiber.StatusFound, resp.StatusCode, tc.request)
+		require.Equal(t, tc.want, resp.Header.Get("Location"), tc.request)
+	}
+}
+
+// Test_Redirect_NonSpecialSchemeAuthority covers targets under a scheme the
+// WHATWG URL Standard does not call special — a custom deep link.
+//
+// Two things differ there. A "\" is an ordinary authority byte rather than a
+// delimiter, so accepting one as opening the path let a value reach past the
+// author's host into a new one. And a scheme followed by an opaque path names
+// no host at all, so text after the capture only looked like it pinned one:
+// "myapp:$1@example.com" against "//evil.com/x" composed a host of evil.com.
+func Test_Redirect_NonSpecialSchemeAuthority(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		target  string
+		request string
+		want    string // "" means the rule must not fire
+	}{
+		// The capture writes the "//" that opens an authority the target had none of.
+		{"capture opens an authority", "myapp:$1@example.com", "/p/%2F%2Fevil.com%2Fx", ""},
+		{"capture opens one with the target's slash", "myapp:$1/@evil.com", "/p/%2F", ""},
+		// Ordinary userinfo under the same shape still composes.
+		{"plain userinfo", "myapp:$1@example.com", "/p/user", "myapp:user@example.com"},
+		{"mailto", "mailto:$1@example.com", "/p/bob", "mailto:bob@example.com"},
+
+		// A backslash does not end a non-special authority, so it reaches the host.
+		{"backslash in a non-special authority", "myapp://example.com$1", "/p/%5C@evil.com", ""},
+		{"backslash written by the author", `myapp://example.com\$1`, "/p/evil.com", ""},
+		{"slash still opens the path", "myapp://example.com$1", "/p/%2Fok", "myapp://example.com/ok"},
+
+		// Under a special scheme the parser folds it, so it still opens the path.
+		{"backslash under a special scheme", "https://example.com$1", "/p/%5Cok", `https://example.com\ok`},
+		{"slash under a special scheme", "https://example.com$1", "/p/%2Fok", "https://example.com/ok"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			app := fiber.New(fiber.Config{UnescapePath: true})
+			app.Use(New(Config{
+				Rules:      map[string]string{"/p/*": tc.target},
+				StatusCode: fiber.StatusFound,
+			}))
+			app.Get("/*", func(c fiber.Ctx) error { return c.SendString("fell through") })
+
+			req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, tc.request, http.NoBody)
+			require.NoError(t, err)
+			resp, err := app.Test(req)
+			require.NoError(t, err)
+
+			if tc.want == "" {
+				require.Equal(t, fiber.StatusOK, resp.StatusCode, "the rule must not fire")
+				require.Empty(t, resp.Header.Get("Location"))
+				return
+			}
+			require.Equal(t, fiber.StatusFound, resp.StatusCode)
+			require.Equal(t, tc.want, resp.Header.Get("Location"))
+		})
 	}
 }
