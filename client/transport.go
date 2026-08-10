@@ -314,6 +314,14 @@ type redirectClient interface {
 // initial request, respects zero redirect limits, falls back to the default cap
 // for negative values, and validates redirect targets before following them.
 func doRedirectsWithClient(req *fasthttp.Request, resp *fasthttp.Response, maxRedirects int, client redirectClient) error {
+	if resp == nil {
+		// "Response is ignored if resp is nil", per fasthttp's own DoRedirects
+		// doc. Its loop reads resp.Header regardless and panics, so honor the
+		// documented contract here rather than inherit that.
+		resp = fasthttp.AcquireResponse()
+		defer fasthttp.ReleaseResponse(resp)
+	}
+
 	currentURL := req.URI().String()
 	initialHostname := hostnameWithoutPort(string(req.URI().Host()))
 	redirects := 0

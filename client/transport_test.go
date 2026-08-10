@@ -1025,3 +1025,44 @@ func Test_Response_ResetDropsOversizedOriginBuffers(t *testing.T) {
 	resp.Reset()
 	require.Equal(t, before, cap(resp.respondedPath), "a modest buffer survives for reuse")
 }
+
+// Test_DoRedirects_NilResponse covers the response fasthttp's own DoRedirects
+// documents as optional — "Response is ignored if resp is nil". Its loop reads
+// resp.Header regardless and panics on it; this one acquires its own instead.
+func Test_DoRedirects_NilResponse(t *testing.T) {
+	t.Parallel()
+
+	ln := fasthttputil.NewInmemoryListener()
+	hops := 0
+	server := &fasthttp.Server{Handler: func(ctx *fasthttp.RequestCtx) {
+		hops++
+		if string(ctx.Path()) == "/start" {
+			ctx.Response.Header.Set(fiber.HeaderLocation, "/end")
+			ctx.SetStatusCode(fasthttp.StatusFound)
+			return
+		}
+		ctx.SetStatusCode(fasthttp.StatusOK)
+	}}
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		assert.NoError(t, server.Serve(ln))
+	}()
+	defer func() {
+		require.NoError(t, server.Shutdown())
+		<-done
+	}()
+
+	transport := newStandardClientTransport(&fasthttp.Client{
+		Dial: func(string) (net.Conn, error) { return ln.Dial() },
+	})
+
+	req := fasthttp.AcquireRequest()
+	defer fasthttp.ReleaseRequest(req)
+	req.SetRequestURI("http://example.com/start")
+
+	require.NotPanics(t, func() {
+		require.NoError(t, transport.DoRedirects(req, nil, 3))
+	})
+	require.Equal(t, 2, hops, "the redirect was still followed")
+}

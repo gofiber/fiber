@@ -7969,9 +7969,14 @@ func Test_Ctx_JSONP_SanitizesCallback(t *testing.T) {
 		// head of the expression and the head inside each index. After a dot it is
 		// a property name, which any word may be.
 		{name: "reserved word alone", callback: "for", expected: "callback"},
-		{name: "reserved word head", callback: "this.cb", expected: "callback"},
-		{name: "literal head", callback: "null.x", expected: "callback"},
 		{name: "reserved word in index", callback: "cb[new]", expected: "callback"},
+
+		// A keyword that is itself a complete expression parses where one is
+		// read, so these are left alone.
+		{name: "this heads the expression", callback: "this.cb", expected: "this.cb"},
+		{name: "literal heads the expression", callback: "null.x", expected: "null.x"},
+		{name: "literal in an index", callback: "cb[true]", expected: "cb[true]"},
+		{name: "this in an index", callback: "cb[this]", expected: "cb[this]"},
 		{name: "reserved word heads an index", callback: "cb[new.a]", expected: "callback"},
 		{name: "reserved word as property", callback: "cb.new", expected: "cb.new"},
 		{name: "reserved word as nested property", callback: "cb[a.class]", expected: "cb[a.class]"},

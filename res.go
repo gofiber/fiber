@@ -775,12 +775,16 @@ func isJSONPMemberExpression(cb string) bool {
 // which any word may do. Emitting "for({…})" instead just ships a syntax error to
 // the browser, so those spellings fall back to the default callback.
 func isJSReservedWord(tok string) bool {
+	// "this", "true", "false" and "null" are absent on purpose: they are
+	// keywords rather than identifiers, but each is a complete expression, so
+	// "this.cb" and "cb[true]" parse. What is rejected here cannot begin one —
+	// "for" and "cb[new]" are syntax errors whatever surrounds them.
 	switch tok {
 	case "await", "break", "case", "catch", "class", "const", "continue",
 		"debugger", "default", "delete", "do", "else", "enum", "export",
-		"extends", "false", "finally", "for", "function", "if", "import", "in",
-		"instanceof", "new", "null", "return", "super", "switch", "this",
-		"throw", "true", "try", "typeof", "var", "void", "while", "with",
+		"extends", "finally", "for", "function", "if", "import", "in",
+		"instanceof", "new", "return", "super", "switch",
+		"throw", "try", "typeof", "var", "void", "while", "with",
 		"yield":
 		return true
 	default:

@@ -110,8 +110,11 @@ func (c *core) execFunc() (*Response, error) {
 		resp.setRequest(c.req)
 		// reqv carries the URI of the hop that produced this response, which after a
 		// redirect is not c.req's. Record it before reqv is pooled so the response
-		// hooks can attribute cookies to its real origin.
-		resp.setRespondedURI(reqv.URI())
+		// hooks can attribute cookies to its real origin — and only where a jar
+		// will read it, since the copy is otherwise pure cost on every request.
+		if c.client != nil && c.client.cookieJar != nil {
+			resp.setRespondedURI(reqv.URI())
+		}
 
 		// Swap the fasthttp response with the Fiber response's RawResponse field.
 		// This is required, as (*fasthttp.Response).CopyTo() explicitly does not

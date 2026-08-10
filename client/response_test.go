@@ -1025,3 +1025,40 @@ func Test_Response_RespondedOrigin(t *testing.T) {
 		require.Equal(t, "/asked", string(path))
 	})
 }
+
+// Test_Response_RespondedOriginOnlyRecordedForAJar covers where the recorded
+// origin comes from. Only the cookie-jar hook reads it, so a client without one
+// pays nothing to record it, and the fallback answers with the requested URI.
+func Test_Response_RespondedOriginOnlyRecordedForAJar(t *testing.T) {
+	t.Parallel()
+
+	server := startTestServer(t, func(app *fiber.App) {
+		app.Get("/x", func(c fiber.Ctx) error {
+			c.Cookie(&fiber.Cookie{Name: "a", Value: "1"})
+			return c.SendString("hi")
+		})
+	})
+	t.Cleanup(server.stop)
+
+	t.Run("no jar records nothing", func(t *testing.T) {
+		t.Parallel()
+
+		resp, err := New().SetDial(server.dial()).Get("http://example.com/x")
+		require.NoError(t, err)
+		defer resp.Close()
+		require.Empty(t, resp.respondedHost)
+		require.Empty(t, resp.respondedPath)
+	})
+
+	t.Run("a jar gets the origin", func(t *testing.T) {
+		t.Parallel()
+
+		jar := AcquireCookieJar()
+		defer jar.Release()
+		resp, err := New().SetDial(server.dial()).SetCookieJar(jar).Get("http://example.com/x")
+		require.NoError(t, err)
+		defer resp.Close()
+		require.Equal(t, "example.com", string(resp.respondedHost))
+		require.Equal(t, "/x", string(resp.respondedPath))
+	})
+}
