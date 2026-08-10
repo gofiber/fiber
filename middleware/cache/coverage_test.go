@@ -373,10 +373,14 @@ func Test_makeHashAuthFunc(t *testing.T) {
 
 	pool := &sync.Pool{}
 	fn := makeHashAuthFunc(pool)
-	got := fn([]byte("Bearer token"))
+	got := fn([][]byte{[]byte("Bearer token")})
 	require.Len(t, got, hexLen)
 	// Stable for the same input, and uses the pool on the second call.
-	require.Equal(t, got, fn([]byte("Bearer token")))
+	require.Equal(t, got, fn([][]byte{[]byte("Bearer token")}))
+
+	// Length-prefixed, so a split that concatenates to the same bytes does not
+	// land on the same digest.
+	require.NotEqual(t, fn([][]byte{[]byte("ab")}), fn([][]byte{[]byte("a"), []byte("b")}))
 }
 
 func Test_manager_get_StorageErrors(t *testing.T) {

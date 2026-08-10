@@ -317,9 +317,12 @@ Because the entries are split and trimmed rather than echoed as sent, repeated
 which is what [RFC 9110 §5.2](https://www.rfc-editor.org/rfc/rfc9110.html#section-5.2)
 says they are.
 
-Any client can send `X-Forwarded-For`, so treat a logged chain as
-attacker-controlled unless `TrustProxy` is configured and the peer is in it. Use
-`${ip}`, which is the peer address, when you need one you can rely on.
+Treat a logged chain as attacker-controlled, trusted peer or not. A proxy you
+trust appends the address it saw to whatever the client already put in
+`X-Forwarded-For`, and `Ctx.IPs()` returns every element without the
+right-to-left walk `Ctx.IP()` uses, so the entries to the left of the ones your
+own infrastructure added are still the client's to choose. Use `${ip}`, which is
+the peer address, when you need one you can rely on.
 
 ## Control-Character Sanitization
 
