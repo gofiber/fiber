@@ -399,15 +399,19 @@ func authorityHolds(chunks []authorityChunk, replacer *strings.Replacer, enders 
 
 		if hostPins(chunks[i+1:]) {
 			// The author closed the host past this token, so the value is a
-			// label inside it and only has to stay one.
-			forbidden := `/\?#@:`
-			if userinfoCloses(chunks[i+1:]) {
-				// Except that the token sits in userinfo, where ":" separates a
-				// password and "@" is not the last one — the author wrote that.
-				// Only the four that end the authority outright still matter.
-				forbidden = `/\?#`
+			// label inside it and only has to stay one. What ends the authority
+			// is scheme-dependent — a backslash does so only under a special
+			// scheme — so "myapp://$1@example.com" takes a value of "user\name"
+			// as the userinfo it is, rather than refusing a redirect whose host
+			// the author had pinned.
+			if strings.ContainsAny(value, enders) {
+				return false
 			}
-			if strings.ContainsAny(value, forbidden) {
+			// Outside userinfo the "@" and the ":" matter too: either would move
+			// the host or open a port the author did not write. Inside it the
+			// author wrote the "@" that closes it, and a ":" only separates a
+			// password.
+			if !userinfoCloses(chunks[i+1:]) && strings.ContainsAny(value, "@:") {
 				return false
 			}
 			continue
@@ -846,9 +850,10 @@ func pinsHost(literal string, openLeft bool) bool {
 // themselves. "*" is the documented wildcard; the rest are regexp syntax, which
 // reaches the compiled pattern because a key is used as one. "." is among them:
 // it matches any byte, so "/api/user." pins no more of a path than "/api/user"
-// and must not outrank the exact "/api/users". "$" is not, anchoring rather
-// than matching, and the compiled pattern anchors the end regardless.
-const patternBytes = `*.[](){}+?^|\`
+// and must not outrank the exact "/api/users". So are "^" and "$": an anchor
+// asserts a position and consumes nothing, and counting one as a path byte put
+// the broader "/p/[a-z]$" ahead of "/p/[a]" on a path they both match.
+const patternBytes = `*.[](){}+?^|\$`
 
 // literalPrefixLen returns how much of a rule's path is pinned before its first
 // wildcard, which is what makes one rule more specific than another it overlaps.
@@ -987,30 +992,77 @@ func patternWidth(rule string) int {
 // multiply and those of an alternation add, so a group counts wherever it sits.
 func (s *literalScanner) width() int {
 	total, n := 0, 1
-	inClass := false
 	for s.i < len(s.rule) {
-		switch c := s.rule[s.i]; {
-		case c == '\\':
+		switch s.rule[s.i] {
+		case '\\':
 			size, _ := escapeSpan(s.rule, s.i)
 			s.i += size
 			continue
-		case inClass:
-			inClass = c != ']'
-		case c == '[':
-			inClass = true
-		case c == '(':
+		case '[':
+			n = clampWidth(n * s.classWidth())
+			continue
+		case '.':
+			// Any byte, so it is the widest single position there is.
+			n = clampWidth(n * 256)
+		case '(':
 			s.i = skipGroupPrefix(s.rule, s.i+1)
 			n = clampWidth(n * s.width())
 			continue
-		case c == ')':
+		case ')':
 			s.i++
 			return clampWidth(total + n)
-		case c == '|':
+		case '|':
 			total, n = clampWidth(total+n), 1
 		}
 		s.i++
 	}
 	return clampWidth(total + n)
+}
+
+// classWidth returns how many bytes the character class at the current position
+// matches, leaving the position just past its "]". A class pins nothing whatever
+// it lists, so this is the only place its breadth is read: it separates two
+// rules that pin the same amount, "[a-z]" matching twenty-six paths where "[a]"
+// matches one.
+func (s *literalScanner) classWidth() int {
+	rule := s.rule
+	j := s.i + 1
+	negated := false
+	if j < len(rule) && rule[j] == '^' {
+		negated, j = true, j+1
+	}
+
+	size := 0
+	if j < len(rule) && rule[j] == ']' {
+		// First inside the brackets, "]" is a member rather than the close.
+		size, j = 1, j+1
+	}
+
+	for j < len(rule) && rule[j] != ']' {
+		switch {
+		case rule[j] == '\\':
+			// A class escape stands for a set of its own, but one is enough to
+			// order it against the members beside it.
+			span, _ := escapeSpan(rule, j)
+			size, j = size+1, j+span
+		case j+2 < len(rule) && rule[j+1] == '-' && rule[j+2] != ']':
+			if lo, hi := rule[j], rule[j+2]; hi >= lo {
+				size += int(hi-lo) + 1
+			}
+			j += 3
+		default:
+			size, j = size+1, j+1
+		}
+	}
+	if j < len(rule) {
+		j++ // past the "]"
+	}
+	s.i = j
+
+	if negated {
+		size = 256 - size
+	}
+	return max(size, 1)
 }
 
 // maxPatternWidth bounds the product a nest of groups builds, since the count is

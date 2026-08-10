@@ -2427,3 +2427,54 @@ func Test_HTTPMiddleware_PropagatesConnectionRewrite(t *testing.T) {
 		})
 	}
 }
+
+// Test_HTTPMiddleware_JoinsRepeatedConnectionValues covers middleware that
+// writes Connection as several slice entries, which is how net/http represents a
+// combined value. fasthttp keeps the field in a slot of its own, so a second Add
+// replaced the first rather than appending: the earlier token vanished, taking
+// with it whatever it had marked hop-by-hop, and a "close" written that way
+// stopped closing the connection.
+func Test_HTTPMiddleware_JoinsRepeatedConnectionValues(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name      string
+		want      string
+		write     []string
+		wantClose bool
+	}{
+		{name: "token list", write: []string{"keep-alive", "X-Internal"}, want: "keep-alive, X-Internal"},
+		// The close flag stays unset for a token list, which is what fasthttp's
+		// own wire parser does with "Connection: close, X-Internal" as well — the
+		// point here is that the token survives at all rather than being replaced.
+		{name: "close first", write: []string{"close", "X-Internal"}, want: "close, X-Internal"},
+		{name: "close alone still closes", write: []string{"close"}, want: "close", wantClose: true},
+		{name: "single entry is unchanged", write: []string{"keep-alive"}, want: "keep-alive"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			var got string
+			var gotClose bool
+
+			app := fiber.New()
+			app.Use(HTTPMiddleware(func(next http.Handler) http.Handler {
+				return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					r.Header[http.CanonicalHeaderKey(fiber.HeaderConnection)] = tc.write
+					next.ServeHTTP(w, r)
+				})
+			}))
+			app.Get("/", func(c fiber.Ctx) error {
+				got = c.Get(fiber.HeaderConnection)
+				gotClose = c.Request().Header.ConnectionClose()
+				return c.SendString("ok")
+			})
+
+			resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+			require.NoError(t, err)
+			require.Equal(t, fiber.StatusOK, resp.StatusCode)
+			require.Equal(t, tc.want, got)
+			require.Equal(t, tc.wantClose, gotClose)
+		})
+	}
+}

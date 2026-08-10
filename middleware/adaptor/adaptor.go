@@ -435,8 +435,23 @@ func HTTPMiddleware(mw func(http.Handler) http.Handler) fiber.Handler {
 			// Remove all cookies before setting, see https://github.com/valyala/fasthttp/pull/1864
 			fhdr.DelAllCookies()
 			clearCopiedHeaders(fhdr)
+			// Connection lives in a slot of its own, so a second Add replaces the
+			// first rather than appending: net/http represents a combined value as
+			// several entries, and ["keep-alive", "X-Internal"] arrived as
+			// "X-Internal" alone — dropping the token that marks a field hop-by-hop,
+			// which a proxy downstream would then forward. ["close", …] lost the
+			// close signal the same way. A recipient may combine field lines with
+			// commas (RFC 9110 §5.3), so they are joined and set once.
+			var connection []string
 			for _, p := range pairs {
+				if utils.EqualFold(p.key, fiber.HeaderConnection) {
+					connection = append(connection, p.value)
+					continue
+				}
 				fhdr.Add(p.key, p.value)
+			}
+			if len(connection) > 0 {
+				fhdr.Set(fiber.HeaderConnection, strings.Join(connection, ", "))
 			}
 			CopyContextToFiberContext(r.Context(), c.RequestCtx())
 		})

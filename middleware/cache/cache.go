@@ -34,6 +34,19 @@ const (
 	cacheMiss        = "miss"
 )
 
+// cacheKeyVersion namespaces every key this version writes, so an entry a
+// previous one stored is never read rather than being reinterpreted.
+//
+// Bumped because the rules for what shares a partition changed. An earlier
+// version detected Authorization byte-exactly, so under DisableHeaderNormalizing
+// a request bearing a lower-case "authorization" was taken for anonymous and its
+// response cached under the anonymous key. Only lookups that carry the header
+// now move to a partition of their own — so on an external store that survived
+// the upgrade, an anonymous request would still find that entry and be served an
+// authenticated body. Bump this whenever what a key stands for changes; the cost
+// is one cold cache after a deploy.
+const cacheKeyVersion = "v2"
+
 type expirationSource uint8
 
 const (
@@ -246,7 +259,7 @@ func New(config ...Config) fiber.Handler {
 		}
 
 		// Get key from request
-		baseKey := requestMethod + "|" + cfg.KeyGenerator(c)
+		baseKey := cacheKeyVersion + "|" + requestMethod + "|" + cfg.KeyGenerator(c)
 		manifestKey := baseKey + "|vary"
 		if hasAuthorization {
 			// Read at the point of use: the result aliases the header's storage, and
