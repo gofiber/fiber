@@ -68,11 +68,26 @@ var ErrChainCycle = errors.New("cyclic extractor chain")
 
 // Extractor defines a value extraction method with metadata.
 type Extractor struct {
-	Extract    func(fiber.Ctx) (string, error)
-	Key        string      // The parameter/header name used for extraction
-	AuthScheme string      // The auth scheme used, e.g., "Bearer"
-	Chain      []Extractor // For chained extractors, stores all extractors in the chain
-	Source     Source      // The type of source being extracted from
+	// Deprecated: Use ExtractSource instead.
+	Extract       func(fiber.Ctx) (string, error)
+	ExtractSource func(fiber.Ctx) (string, Source, error)
+	Key           string      // The parameter/header name used for extraction
+	AuthScheme    string      // The auth scheme used, e.g., "Bearer"
+	Chain         []Extractor // For chained extractors, stores all extractors in the chain
+	Source        Source      // The type of source being extracted from
+}
+
+// ExtractWithSource calls ExtractSource if populated, otherwise falls back
+// to Extract with the extractor's static Source metadata.
+func ExtractWithSource(e Extractor, c fiber.Ctx) (string, Source, error) {
+	if e.ExtractSource != nil {
+		return e.ExtractSource(c)
+	}
+	if e.Extract == nil {
+		return "", e.Source, ErrNotFound
+	}
+	v, err := e.Extract(c)
+	return v, e.Source, err
 }
 
 // Contains reports whether this extractor, or any extractor in its chain, matches pred.
@@ -155,38 +170,43 @@ type chainGuardKey struct {
 //	extractor := FromAuthHeader("")
 //	// Input: "CustomAuth token123" -> Output: "CustomAuth token123"
 func FromAuthHeader(authScheme string) Extractor {
-	return Extractor{
-		Extract: func(c fiber.Ctx) (string, error) {
-			authHeader := c.Get(fiber.HeaderAuthorization)
-			if authHeader == "" {
+	fn := func(c fiber.Ctx) (string, error) {
+		authHeader := c.Get(fiber.HeaderAuthorization)
+		if authHeader == "" {
+			return "", ErrNotFound
+		}
+
+		// Check if the header starts with the specified auth scheme
+		if authScheme != "" {
+			schemeLen := len(authScheme)
+			if len(authHeader) <= schemeLen || !utils.EqualFold(authHeader[:schemeLen], authScheme) {
+				return "", ErrNotFound
+			}
+			rest := authHeader[schemeLen:]
+			if rest == "" || rest[0] != ' ' {
 				return "", ErrNotFound
 			}
 
-			// Check if the header starts with the specified auth scheme
-			if authScheme != "" {
-				schemeLen := len(authScheme)
-				if len(authHeader) <= schemeLen || !utils.EqualFold(authHeader[:schemeLen], authScheme) {
-					return "", ErrNotFound
-				}
-				rest := authHeader[schemeLen:]
-				if rest == "" || rest[0] != ' ' {
-					return "", ErrNotFound
-				}
-
-				// Extract token after the required space
-				token := rest[1:]
-				if token == "" {
-					return "", ErrNotFound
-				}
-
-				if !isValidToken68(token) {
-					return "", ErrNotFound
-				}
-
-				return token, nil
+			// Extract token after the required space
+			token := rest[1:]
+			if token == "" {
+				return "", ErrNotFound
 			}
 
-			return authHeader, nil
+			if !isValidToken68(token) {
+				return "", ErrNotFound
+			}
+
+			return token, nil
+		}
+
+		return authHeader, nil
+	}
+	return Extractor{
+		Extract: fn,
+		ExtractSource: func(c fiber.Ctx) (string, Source, error) {
+			v, err := fn(c)
+			return v, SourceAuthHeader, err
 		},
 		Key:        fiber.HeaderAuthorization,
 		Source:     SourceAuthHeader,
@@ -220,13 +240,18 @@ func FromAuthHeader(authScheme string) Extractor {
 //	// Cookie: "session_id=abc123" -> Output: "abc123"
 //	// Missing cookie -> Output: ErrNotFound
 func FromCookie(key string) Extractor {
+	fn := func(c fiber.Ctx) (string, error) {
+		value := c.Cookies(key)
+		if value == "" {
+			return "", ErrNotFound
+		}
+		return value, nil
+	}
 	return Extractor{
-		Extract: func(c fiber.Ctx) (string, error) {
-			value := c.Cookies(key)
-			if value == "" {
-				return "", ErrNotFound
-			}
-			return value, nil
+		Extract: fn,
+		ExtractSource: func(c fiber.Ctx) (string, Source, error) {
+			v, err := fn(c)
+			return v, SourceCookie, err
 		},
 		Key:    key,
 		Source: SourceCookie,
