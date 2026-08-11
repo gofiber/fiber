@@ -2428,6 +2428,70 @@ func Test_HTTPMiddleware_PropagatesConnectionRewrite(t *testing.T) {
 	}
 }
 
+// Test_HTTPMiddleware_ConnectionCloseSurvivesDownstream covers the close
+// instruction against a downstream chain that writes the response field itself.
+//
+// fasthttp holds one flag for the whole response, so a handler that resets the
+// response or sets a Connection value of its own clears it. Setting the flag
+// before c.Next left the connection reused despite the rewrite that asked for
+// it to close, so it is applied on the way out instead.
+func Test_HTTPMiddleware_ConnectionCloseSurvivesDownstream(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		handler func(fiber.Ctx) error
+		name    string
+		status  int
+	}{
+		{
+			name:    "plain handler",
+			handler: func(c fiber.Ctx) error { return c.SendString("ok") },
+			status:  fiber.StatusOK,
+		},
+		{
+			name: "handler resetting the response",
+			handler: func(c fiber.Ctx) error {
+				c.Response().Reset()
+				return c.SendString("ok")
+			},
+			status: fiber.StatusOK,
+		},
+		{
+			name: "handler asking to keep the connection",
+			handler: func(c fiber.Ctx) error {
+				c.Response().Header.Set(fiber.HeaderConnection, "keep-alive")
+				return c.SendString("ok")
+			},
+			status: fiber.StatusOK,
+		},
+		{
+			// The ErrorHandler writes the response after this middleware has
+			// returned, so the flag has to outlive that too.
+			name:    "handler returning an error",
+			handler: func(_ fiber.Ctx) error { return errors.New("boom") },
+			status:  fiber.StatusInternalServerError,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			app := fiber.New()
+			app.Use(HTTPMiddleware(func(next http.Handler) http.Handler {
+				return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					r.Header[http.CanonicalHeaderKey(fiber.HeaderConnection)] = []string{"close", "X-Internal"}
+					next.ServeHTTP(w, r)
+				})
+			}))
+			app.Get("/", tc.handler)
+
+			resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+			require.NoError(t, err)
+			require.Equal(t, tc.status, resp.StatusCode)
+			require.True(t, resp.Close, "the connection the middleware asked to close has to close")
+		})
+	}
+}
+
 // Test_HTTPMiddleware_JoinsRepeatedConnectionValues covers middleware that
 // writes Connection as several slice entries, which is how net/http represents a
 // combined value. fasthttp keeps the field in a slot of its own, so a second Add

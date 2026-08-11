@@ -481,20 +481,26 @@ func HTTPMiddleware(mw func(http.Handler) http.Handler) fiber.Handler {
 		// error result is always nil.
 		fasthttpadaptor.NewFastHTTPHandler(mw(nextHandler))(c.RequestCtx())
 
+		var err error
+		if next {
+			err = c.Next()
+		}
+
 		if connectionClose {
 			// The close instruction rides on the response so the request keeps the
 			// complete field for every observer — downstream handlers, middleware
 			// resuming after Next, and the app's ErrorHandler alike. It also has to
-			// go here to have any effect: fasthttp stores the request flag before
-			// calling the handler and never reads it again, whereas the response
-			// flag is what the server consults once the handler returns.
+			// go on the response to have any effect: fasthttp stores the request
+			// flag before calling the handler and never reads it again, whereas the
+			// response flag is what the server consults once the handler returns.
+			//
+			// Applied on the way out, because a single flag stands for the whole
+			// response and the downstream chain can clear it: a handler resetting
+			// the response, or setting a Connection value of its own, left the
+			// connection reused despite the rewrite that asked for it to close.
 			c.Response().Header.SetConnectionClose()
 		}
-
-		if next {
-			return c.Next()
-		}
-		return nil
+		return err
 	}
 }
 
