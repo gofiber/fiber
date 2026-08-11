@@ -998,6 +998,11 @@ func (s *literalScanner) width() int {
 			size, _ := escapeSpan(s.rule, s.i)
 			s.i += size
 			continue
+		case '*':
+			// Fiber expands its wildcard to ".*", so it is wider than every
+			// single-byte construct, including a character class. Treat it as
+			// maximally wide so key order cannot let it shadow a narrower rule.
+			n = maxPatternWidth
 		case '[':
 			n = clampWidth(n * s.classWidth())
 			continue

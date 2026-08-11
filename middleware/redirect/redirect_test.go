@@ -1945,6 +1945,18 @@ func Test_Redirect_RuleOrderIsBySpecificity(t *testing.T) {
 			path:  "/a/b/c",
 			want:  "/two",
 		},
+		{
+			name:  "a character class outranks a wildcard",
+			rules: map[string]string{"/api/*": "/wild/$1", "/api/[ab]": "/class"},
+			path:  "/api/a?token=secret",
+			want:  "/class?token=secret",
+		},
+		{
+			name:  "the wildcard still takes paths outside the class",
+			rules: map[string]string{"/api/*": "/wild/$1", "/api/[ab]": "/class"},
+			path:  "/api/z",
+			want:  "/wild/z",
+		},
 	}
 
 	for _, tc := range tests {
@@ -2561,6 +2573,7 @@ func Test_Redirect_NestedAlternationLosesTheTieBreak(t *testing.T) {
 	require.Equal(t, 26, patternWidth("/p/[a-z]x"))
 	require.Equal(t, 1, patternWidth("/p/[a]"))
 	require.Equal(t, 256, patternWidth("/p/."))
+	require.Equal(t, maxPatternWidth, patternWidth("/p/*"))
 	require.Equal(t, 2, patternWidth("/very/specific|/x"))
 	require.Equal(t, 4, patternWidth("(a|b)(c|d)"))
 }
