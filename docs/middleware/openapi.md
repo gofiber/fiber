@@ -374,6 +374,28 @@ app.Post("/users", createUser).
     })
 ```
 
+### The `default` response
+
+A status of `0` addresses the OpenAPI `default` response — the one that applies
+to any status code not listed explicitly. Every status-taking helper accepts it:
+
+```go
+app.Get("/users", listUsers).
+    Response(fiber.StatusOK, "OK", fiber.MIMEApplicationJSON).
+    ResponseWithExample(
+        0, "Unexpected error",
+        nil, "#/components/schemas/Error", nil, nil,
+        fiber.MIMEApplicationJSON,
+    ).
+    ResponseHeader(0, "X-Request-Id", "Correlation id", map[string]any{"type": "string"})
+```
+
+`Response`/`ResponseWithExample` replace an empty description with the status
+text (`"OK"`, `"Not Found"`, …, or `"Default response"` for `0`), and preserve
+any headers, links and content already documented for the same status.
+`ResponseContent` instead leaves the description untouched when given an empty
+one, so it can add content to an entry another call described.
+
 ### Per-media-type content
 
 `RequestBodyContent` and `ResponseContent` accept a map of media type to
@@ -492,6 +514,23 @@ schemes: security device-authorization flow and `oauth2MetadataUrl`, XML
 `nodeType`, Media Type `itemSchema` (sequential/streaming media), Path Item
 `additionalOperations`, and `components.mediaTypes`.
 
+### Validation
+
+The documentation helpers reject arguments that could only produce an invalid
+document, and they do it at registration time — a panic during startup rather
+than a malformed spec served in production:
+
+| Helper | Panics when |
+|:-------|:------------|
+| `Consumes`, `Produces`, `RequestBody*`, `Response*`, `RequestBodyContent`, `ResponseContent` | a media type is not a parseable `type/subtype` |
+| `RequestBody`, `RequestBodyWithExample` | no usable media type is given |
+| `Parameter*`, `AddParameter` | the name is empty, `In` is not `path`/`query`/`header`/`cookie`/`querystring`, or `Content` holds more than one media type |
+| `Response*`, `ResponseHeader`, `ResponseLink`, `ResponseContent` | the status is outside 100–599 (`0` is allowed and means `default`) |
+| `ResponseHeader`, `ResponseLink` | the header or link name is empty |
+
+Passing an empty string to `Consumes`/`Produces` is not an error: it clears the
+route's media type.
+
 ### Behavior and defaults
 
 - If a route declares no responses, a sensible default is added: `200 OK` for most
@@ -501,21 +540,32 @@ schemes: security device-authorization flow and `oauth2MetadataUrl`, XML
   `description` key at all, no tags and not deprecated. No request body or response content
   type is invented: a request body appears only when `Consumes`/`RequestBody*` is
   set explicitly, and default responses carry a description only until
-  `Produces`/`Response*` declares a media type. `Consumes`, `Produces` and
-  `RequestBody` panic on an invalid media type; passing an empty string to
-  `Consumes`/`Produces` clears the route's media type, while `RequestBody`
-  requires at least one.
+  `Produces`/`Response*` declares a media type.
+- A route's `Consumes`/`Produces` are inferred from the first media type passed
+  to `RequestBody*` and to a `200` `Response*`, but only when `Consumes()` or
+  `Produces()` did not set one explicitly.
 - Each operation gets a unique `operationId`: routes documented with `Name` use
   that name; routes without one get an id generated from the method and path (for
   example `GET /users/{id}` → `getUsersId`). Collisions get a numeric suffix
   (`_2`, `_3`, …) so the document stays valid.
 - Path parameters whose sanitized names collide are also suffixed (`_2`, `_3`, …)
   so parameter names stay unique per path.
+- Wildcard segments (`*`, `+`) become an ordinary path parameter named
+  `wildcard<n>`: `/files/*` documents as `/files/{wildcard1}`. Pass that name to
+  `AddParameter` (`In: "path"`) to give it a description or a schema.
 - Routes with several optional parameters (e.g. `/files/:dir?/:name?`) emit one
   templated path per hierarchy level (`/files`, `/files/{dir}`,
   `/files/{dir}/{name}`): the router always binds the first parameter, and the
   OpenAPI specification forbids templated paths that differ only in parameter
-  names.
+  names. The expansion is capped at 64 variants per route, since it is otherwise
+  exponential in the number of optional parameters; the fully-populated variant
+  is always emitted.
+- Only the `GET` and `HEAD` routes the application registers itself are
+  documented. The `HEAD` route Fiber derives automatically from every `GET` is
+  omitted, so a plain `app.Get(...)` produces a single `get` operation; register
+  `app.Head(...)` explicitly to document one.
+- The middleware itself answers only `GET` and `HEAD` requests; any other method
+  on the spec or UI path falls through to the next handler.
 - `GET` and `HEAD` operations never emit a `requestBody`, even if `Consumes` or
   `RequestBody` is set, because those methods do not carry a request body. The
   same applies to `TRACE`, which must not include content per RFC 9110.
@@ -581,6 +631,11 @@ schemes: security device-authorization flow and `oauth2MetadataUrl`, XML
 `Server.Name` and `License.Identifier` are emitted only for the versions that
 support them (3.2, 3.2 and 3.1+ respectively). Setting an unsupported
 `OpenAPIVersion` falls back to the default.
+
+The License Object allows `identifier` or `url`, never both. Setting both keeps
+`identifier` and drops `url` on 3.1+, and does the reverse on 3.0.0 where
+`identifier` does not exist. A `Server` with an empty `URL` is dropped, and
+`Servers` falls back to `ServerURL` only when it contributes no usable entry.
 
 When the middleware is attached to a group or mounted under a prefixed `Use`, the configured `Path` is resolved relative to that
 prefix. For example, `app.Group("/v1").Use(openapi.New())` serves the specification at `/v1/openapi.json`, while a global
@@ -669,15 +724,25 @@ app.Use(openapi.New(openapi.Config{
 | `[]byte` | `string` (format: `byte`, base64) |
 | `[]T` / `[N]T` | `array` (items: schema of `T`) |
 | `map[string]T` | `object` (additionalProperties: schema of `T`) |
+| `map[K]T` with a non-string key | `object` (no `additionalProperties`) |
 | struct | `object` (properties from fields) |
 | `*T` | schema of `T` (field not included in `required`) |
 | `any` / `interface{}` | `{}` (accepts any value) |
+| `json.Number` | `number` (a string kind that marshals as a bare number) |
+| implements `json.Marshaler` | `{}` (custom output cannot be predicted) |
+| implements `encoding.TextMarshaler` | `string` |
+
+A `TextMarshaler` yields `string` only when the method has a value receiver. If
+just `*T` implements it, `encoding/json` may or may not use it depending on
+addressability, so the schema falls back to `{}`.
 
 Embedded structs and embedded pointers to structs are flattened into the parent
-object (matching `encoding/json`). Self-referential or mutually recursive structs
-are handled safely by emitting a bare `{"type": "object"}` where the cycle
-repeats. Fields whose type has no JSON representation (channels, functions, etc.)
-are skipped.
+object (matching `encoding/json`). A name is taken at its shallowest depth; when
+two fields collide at the same depth, exactly one of them being `json`-tagged
+wins and any other tie drops the name — the same conflict rules `encoding/json`
+applies. Self-referential or mutually recursive structs are handled safely by
+emitting a bare `{"type": "object"}` where the cycle repeats. Fields whose type
+has no JSON representation (channels, functions, etc.) are skipped.
 
 ### Struct field tags
 
@@ -686,6 +751,8 @@ are skipped.
   too, so the schema always matches the wire format
 - **`json:",omitempty"`** and **`json:",omitzero"`** — make the field optional
   (not in `required`)
+- **`json:",string"`** — documents the field as `string`, matching the quoted
+  form `encoding/json` writes for numeric and boolean fields
 - **`openapi:"description:text"`** — sets the property description
 - **`openapi:"example:value"`** — sets the property example (auto-converted to the correct type)
 - **`openapi:"format:fmt"`** — sets the format (e.g., `email`, `uuid`, `date-time`)

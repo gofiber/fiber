@@ -721,29 +721,25 @@ func (d *domainRouter) Deprecated() Router {
 	return d
 }
 
-// Security sets the OpenAPI security requirements for the most recently added
-// route on the domain router.
+// Security sets the OpenAPI security requirements for the most recently added route.
 func (d *domainRouter) Security(requirements ...map[string][]string) Router {
 	d.app.applyToRegistration(atomic.LoadUint64(&d.lastRegID), docSetSecurity(requirements...))
 	return d
 }
 
-// Hidden excludes the most recently added route on the domain router from the
-// generated OpenAPI specification.
+// Hidden excludes the most recently added route from the generated specification.
 func (d *domainRouter) Hidden() Router {
 	d.app.applyToRegistration(atomic.LoadUint64(&d.lastRegID), docSetHidden())
 	return d
 }
 
-// ResponseHeader documents a response header for the most recently added route
-// on the domain router.
+// ResponseHeader documents a response header for the most recently added route.
 func (d *domainRouter) ResponseHeader(status int, name, description string, schema map[string]any) Router {
 	d.app.applyToRegistration(atomic.LoadUint64(&d.lastRegID), docResponseHeader(status, name, description, schema))
 	return d
 }
 
-// AddParameter documents an input parameter on the most recently added route on
-// the domain router using the full RouteParameter.
+// AddParameter documents an input parameter using the full RouteParameter.
 //
 //nolint:gocritic // hugeParam: by-value keeps the chainable route-helper API ergonomic.
 func (d *domainRouter) AddParameter(param RouteParameter) Router {
@@ -751,36 +747,31 @@ func (d *domainRouter) AddParameter(param RouteParameter) Router {
 	return d
 }
 
-// OperationExternalDocs sets the externalDocs of the most recently added route on
-// the domain router.
+// OperationExternalDocs sets the externalDocs of the most recently added route.
 func (d *domainRouter) OperationExternalDocs(description, url string) Router {
 	d.app.applyToRegistration(atomic.LoadUint64(&d.lastRegID), docOperationExternalDocs(description, url))
 	return d
 }
 
-// RequestBodyContent documents a per-media-type request body on the most recently
-// added route on the domain router.
+// RequestBodyContent documents a per-media-type request body on the latest route.
 func (d *domainRouter) RequestBodyContent(description string, required bool, content map[string]RouteMediaType) Router {
 	d.app.applyToRegistration(atomic.LoadUint64(&d.lastRegID), docRequestBodyContent(description, required, content))
 	return d
 }
 
-// ResponseContent documents a per-media-type response on the most recently added
-// route on the domain router.
+// ResponseContent documents a per-media-type response on the latest route.
 func (d *domainRouter) ResponseContent(status int, description string, content map[string]RouteMediaType) Router {
 	d.app.applyToRegistration(atomic.LoadUint64(&d.lastRegID), docResponseContent(status, description, content))
 	return d
 }
 
-// ResponseLink documents a response link on the most recently added route on the
-// domain router.
+// ResponseLink documents a response link on the most recently added route.
 func (d *domainRouter) ResponseLink(status int, name string, link map[string]any) Router {
 	d.app.applyToRegistration(atomic.LoadUint64(&d.lastRegID), docResponseLink(status, name, link))
 	return d
 }
 
-// OperationExtension merges arbitrary operation-object fields on the most recently
-// added route on the domain router.
+// OperationExtension merges arbitrary operation-object fields on the latest route.
 func (d *domainRouter) OperationExtension(fields map[string]any) Router {
 	d.app.applyToRegistration(atomic.LoadUint64(&d.lastRegID), docOperationExtension(fields))
 	return d

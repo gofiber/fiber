@@ -1079,8 +1079,7 @@ func docRequestBodyWithExample(description string, required bool, schema map[str
 
 	return func(route *Route) {
 		route.RequestBody = cloneRouteRequestBody(body)
-		// Only adopt the request body media type as the route's Consumes value
-		// when the user has not set one explicitly via Consumes().
+		// Adopt the body's media type only when Consumes() set none.
 		if len(sanitized) > 0 && route.Consumes == "" {
 			route.Consumes = sanitized[0]
 		}
@@ -1271,8 +1270,7 @@ func docAddResponse(status int, description string, schema map[string]any, schem
 			copyResp.Content = existing.Content
 		}
 		route.Responses[key] = copyResp
-		// Only adopt the response media type as the route's Produces value when
-		// the user has not set one explicitly via Produces().
+		// Adopt the response media type only when Produces() set none.
 		if status == StatusOK && len(copyResp.MediaTypes) > 0 && route.Produces == "" {
 			route.Produces = copyResp.MediaTypes[0]
 		}

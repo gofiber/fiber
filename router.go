@@ -1538,9 +1538,8 @@ func (app *App) addRoute(method string, route *Route) {
 		!route.mount && !app.stack[m][l-1].mount && app.stack[m][l-1].domain == route.domain {
 		preRoute := app.stack[m][l-1]
 		preRoute.Handlers = append(preRoute.Handlers, route.Handlers...)
-		// Consecutive same-path registrations share an entry whose documentation
-		// belongs to the latest one, so restamping keeps ID lookup and the batch
-		// fast path agreeing — otherwise a scoped helper documents nothing.
+		// A merged entry's documentation belongs to the latest registration, so
+		// restamping regID keeps a scoped helper from documenting nothing.
 		preRoute.regID = route.regID
 		liveRoute = preRoute
 		app.latestBatch = append(app.latestBatch, preRoute)

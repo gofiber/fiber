@@ -27,6 +27,7 @@ import (
 //   - Structs → {"type": "object", "properties": {...}, "required": [...]}
 //   - Pointers → schema of the pointed-to type (nullable fields are not required)
 //   - interface{}/any → {} (accepts any value)
+//   - json.Number → {"type": "number"}
 //   - Types implementing json.Marshaler → {} (custom output cannot be predicted)
 //   - Types implementing encoding.TextMarshaler → {"type": "string"}
 //
@@ -40,6 +41,7 @@ import (
 //   - `json:"name"` sets the property name; `json:"-"` skips the field
 //   - `json:",omitempty"` and `json:",omitzero"` make the field optional (not
 //     added to required)
+//   - `json:",string"` documents the field as a string, as encoding/json writes it
 //   - `openapi:"description:text"` sets the property description
 //   - `openapi:"example:value"` sets the property example
 //   - `openapi:"format:fmt"` overrides the format (e.g., "email", "uuid")

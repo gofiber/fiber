@@ -340,7 +340,6 @@ func configDefault(config ...Config) Config {
 	if cfg.OpenAPIVersion == "" {
 		cfg.OpenAPIVersion = ConfigDefault.OpenAPIVersion
 	}
-	// Normalize OpenAPI version to supported values
 	switch cfg.OpenAPIVersion {
 	case versionOpenAPI30, versionOpenAPI31, versionOpenAPI32:
 		// supported

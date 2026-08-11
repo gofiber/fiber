@@ -787,15 +787,12 @@ func generateSpec(routes []fiber.Route, cfg *Config) openAPISpec {
 		if r.Method == fiber.MethodQuery && !versionAtLeast(cfg.OpenAPIVersion, versionOpenAPI32) {
 			continue
 		}
-		// Skip middleware routes registered via Use()
 		if r.IsMiddleware() {
 			continue
 		}
-		// Skip automatically generated HEAD routes
 		if r.IsAutoHead() {
 			continue
 		}
-		// Skip routes explicitly excluded from the spec via Hidden()
 		if r.IsHidden() {
 			continue
 		}
@@ -949,7 +946,6 @@ func generateSpec(routes []fiber.Route, cfg *Config) openAPISpec {
 		spec.Info.License = &licenseCopy
 	}
 
-	// OpenAPI 3.1+ document fields.
 	if versionAtLeast(cfg.OpenAPIVersion, versionOpenAPI31) {
 		spec.Info.Summary = cfg.Summary
 		spec.JSONSchemaDialect = cfg.JSONSchemaDialect
@@ -958,7 +954,6 @@ func generateSpec(routes []fiber.Route, cfg *Config) openAPISpec {
 		}
 	}
 
-	// OpenAPI 3.2+ document fields.
 	if versionAtLeast(cfg.OpenAPIVersion, versionOpenAPI32) {
 		spec.Self = cfg.Self
 	}
@@ -1345,7 +1340,6 @@ func defaultResponseForMethod(method, mediaType string) (string, response) {
 		status = "204"
 		description = "No Content"
 	default:
-		// Keep default 200/OK status
 	}
 
 	resp := response{Description: description}
@@ -1463,8 +1457,7 @@ func buildOpenAPIPathVariants(fiberPath string, params []string) []pathVariant {
 				i += 2
 
 			default:
-				// Append the whole literal run at once instead of one byte at a
-				// time.
+				// Append the whole literal run rather than one byte at a time.
 				runStart := i
 				for i < length {
 					c := fiberPath[i]
