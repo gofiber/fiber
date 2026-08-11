@@ -109,6 +109,12 @@ func Test_defaultResponseForMethod(t *testing.T) {
 	require.Equal(t, "200", status)
 	require.Contains(t, resp.Content, fiber.MIMEApplicationJSON)
 
+	// RFC 9110: HEAD answers as GET would, minus the content, so it mirrors the
+	// GET status rather than claiming 204.
+	headStatus, headResp := defaultResponseForMethod(fiber.MethodHead, fiber.MIMEApplicationJSON)
+	require.Equal(t, status, headStatus)
+	require.Equal(t, resp, headResp)
+
 	status, resp = defaultResponseForMethod(fiber.MethodDelete, fiber.MIMEApplicationJSON)
 	require.Equal(t, "204", status)
 	require.Nil(t, resp.Content)

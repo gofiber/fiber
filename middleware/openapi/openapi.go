@@ -1331,15 +1331,16 @@ func shouldIncludeRequestBody(reqType string, route *fiber.Route) bool {
 	return reqType != "" && route != nil
 }
 
+// defaultResponseForMethod is the response an undocumented route gets. HEAD
+// mirrors GET, since RFC 9110 has it answer as GET would minus the content.
 func defaultResponseForMethod(method, mediaType string) (string, response) {
 	status := "200"
 	description := "OK"
 
-	switch method {
-	case fiber.MethodDelete, fiber.MethodHead:
+	// RFC 9110 names 204 among the statuses a successful DELETE should return.
+	if method == fiber.MethodDelete {
 		status = "204"
 		description = "No Content"
-	default:
 	}
 
 	resp := response{Description: description}

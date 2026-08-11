@@ -129,4 +129,24 @@ func Test_OpenAPI_ReviewRegressions(t *testing.T) {
 		_, body := specBodyOf(t, app, "/openapi.json")
 		require.Contains(t, body, "My custom description")
 	})
+
+	// RFC 9110 9.3.2: HEAD answers as GET would minus the content, so an
+	// undocumented HEAD must not claim 204 where its GET twin says 200.
+	t.Run("HeadDefaultMirrorsGet", func(t *testing.T) {
+		t.Parallel()
+		app := fiber.New()
+		app.Get("/mirror", func(c fiber.Ctx) error { return c.SendStatus(200) })
+		app.Head("/mirror", func(c fiber.Ctx) error { return c.SendStatus(200) })
+		app.Use(New())
+
+		_, body := specBodyOf(t, app, "/openapi.json")
+		var spec openAPISpec
+		require.NoError(t, json.Unmarshal([]byte(body), &spec))
+
+		ops := spec.Paths["/mirror"]
+		require.Contains(t, ops, "head")
+		require.Equal(t, ops["get"].Responses, ops["head"].Responses)
+		require.Contains(t, ops["head"].Responses, "200")
+		require.NotContains(t, ops["head"].Responses, "204")
+	})
 }

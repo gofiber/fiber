@@ -534,8 +534,11 @@ route's media type.
 ### Behavior and defaults
 
 - If a route declares no responses, a sensible default is added: `200 OK` for most
-  methods and `204 No Content` for `DELETE` and `HEAD`. Declaring any response via
-  the helpers disables the automatic default.
+  methods and `204 No Content` for `DELETE`, one of the statuses RFC 9110 names
+  for a successful delete. `HEAD` mirrors `GET` (`200 OK`, plus the `Produces`
+  media type if set) because RFC 9110 has a `HEAD` response carry the same header
+  fields as the `GET` would, minus the content. Declaring any response via the
+  helpers disables the automatic default.
 - Operations without metadata default to a summary of `"METHOD /path"`, no
   `description` key at all, no tags and not deprecated. No request body or response content
   type is invented: a request body appears only when `Consumes`/`RequestBody*` is
