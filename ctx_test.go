@@ -5971,6 +5971,36 @@ func Test_Ctx_MatchedRoute_NotFound(t *testing.T) {
 	require.Equal(t, StatusNotFound, resp.StatusCode)
 }
 
+// go test -run Test_Ctx_MatchedRoute_CachedAndSkipped
+func Test_Ctx_MatchedRoute_CachedAndSkipped(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+
+	var calls int
+	app.Use(func(c Ctx) error {
+		first := c.MatchedRoute()  // computes and caches the look-ahead
+		second := c.MatchedRoute() // hits the cached value
+		require.Same(t, first, second)
+		calls++
+		return c.Next()
+	})
+	// A route with a non-matching prefix exercises prefixRejects skip.
+	app.Get("/other/:id", func(c Ctx) error { return c.SendStatus(StatusOK) })
+	// A middleware route registered ahead of the target exercises the use/mount skip.
+	app.Use("/users", func(c Ctx) error { return c.Next() })
+	app.Get("/users/:id", func(c Ctx) error {
+		return c.SendStatus(StatusOK)
+	}).Name("user.show")
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/users/42", http.NoBody))
+	require.NoError(t, err, "app.Test(req)")
+	defer func() { require.NoError(t, resp.Body.Close()) }()
+
+	require.Equal(t, StatusOK, resp.StatusCode)
+	require.Equal(t, 1, calls)
+}
+
 // go test -run Test_Ctx_MatchedRoute_SkipUnmatchedRoutes
 func Test_Ctx_MatchedRoute_SkipUnmatchedRoutes(t *testing.T) {
 	t.Parallel()
