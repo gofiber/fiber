@@ -56,6 +56,48 @@ func Test_FormBinder_Bind(t *testing.T) {
 	require.False(t, b.EnableSplitting)
 }
 
+// Test_FormBinder_Bind_MixedCaseContentType covers callers that drive the
+// binder directly, which do not go through Fiber's header normalization. Media
+// types and parameter names are case-insensitive (RFC 9110 Sections 8.3.1 and
+// 5.6.6), but fasthttp's PostArgs and MultipartForm match them case-sensitively
+// — so the binder has to fold them before handing the request over.
+func Test_FormBinder_Bind_MixedCaseContentType(t *testing.T) {
+	t.Parallel()
+
+	type User struct {
+		Name string `form:"name"`
+	}
+
+	t.Run("urlencoded", func(t *testing.T) {
+		t.Parallel()
+
+		req := fasthttp.AcquireRequest()
+		t.Cleanup(func() { fasthttp.ReleaseRequest(req) })
+		req.Header.SetMethod("POST")
+		req.Header.SetContentType("Application/X-WWW-Form-Urlencoded")
+		req.SetBodyString("name=john")
+
+		var user User
+		require.NoError(t, (&FormBinding{}).Bind(req, &user))
+		require.Equal(t, "john", user.Name)
+	})
+
+	t.Run("multipart", func(t *testing.T) {
+		t.Parallel()
+
+		req := fasthttp.AcquireRequest()
+		t.Cleanup(func() { fasthttp.ReleaseRequest(req) })
+		req.Header.SetMethod("POST")
+		// The boundary parameter *name* is folded, its value is not.
+		req.Header.SetContentType(`Multipart/Form-Data; BOUNDARY=AbC`)
+		req.SetBodyString("--AbC\r\nContent-Disposition: form-data; name=\"name\"\r\n\r\njohn\r\n--AbC--\r\n")
+
+		var user User
+		require.NoError(t, (&FormBinding{}).Bind(req, &user))
+		require.Equal(t, "john", user.Name)
+	})
+}
+
 func Test_FormBinder_Bind_ParseError(t *testing.T) {
 	b := &FormBinding{}
 	type User struct {

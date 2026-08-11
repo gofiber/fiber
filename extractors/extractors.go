@@ -30,6 +30,7 @@ import (
 	"net/url"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/headerlookup"
 	"github.com/gofiber/utils/v2"
 )
 
@@ -157,8 +158,11 @@ type chainGuardKey struct {
 func FromAuthHeader(authScheme string) Extractor {
 	return Extractor{
 		Extract: func(c fiber.Ctx) (string, error) {
-			authHeader := c.Get(fiber.HeaderAuthorization)
-			if authHeader == "" {
+			// A second Authorization line, whatever it is spelled like, makes
+			// the credential ambiguous — including where middleware cleared this
+			// field and a line the client sent stayed behind it.
+			authHeader, ok := headerlookup.Value(c, fiber.HeaderAuthorization)
+			if !ok || authHeader == "" {
 				return "", ErrNotFound
 			}
 
@@ -344,7 +348,16 @@ func FromForm(param string) Extractor {
 func FromHeader(header string) Extractor {
 	return Extractor{
 		Extract: func(c fiber.Ctx) (string, error) {
-			value := c.Get(header)
+			// Not Ctx.Get: it is byte-exact, so under DisableHeaderNormalizing a token
+			// sent under the lower-case name HTTP/2 and 3 use was not found, and the
+			// request refused for carrying no token when it carried one.
+			// Combined, not Value: the name comes from the application's
+			// config, and a field it names may be a list one a peer is allowed
+			// to send twice — Accept and Forwarded among them. Two lines there
+			// are one value rather than two answers, so they are joined the way
+			// RFC 9110 §5.3 says a recipient may. A repeated token still fails
+			// the comparison the caller makes, so nothing is loosened.
+			value := headerlookup.Combined(c, header)
 			if value == "" {
 				return "", ErrNotFound
 			}

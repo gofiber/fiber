@@ -2732,6 +2732,45 @@ func Test_Ctx_FormValue_NonMultipart(t *testing.T) {
 	require.Equal(t, "fallback", c.FormValue("missing", "fallback"))
 }
 
+// Test_Ctx_Form_MixedCaseContentType asserts that Ctx's own form accessors
+// accept the media type and parameter names in any case (RFC 9110 Sections
+// 8.3.1 and 5.6.6). fasthttp matches both case-sensitively, so without the
+// normalization these return nothing at all — and a handler should not have to
+// call Bind first to get its own form back.
+func Test_Ctx_Form_MixedCaseContentType(t *testing.T) {
+	t.Parallel()
+
+	t.Run("urlencoded", func(t *testing.T) {
+		t.Parallel()
+
+		app := New()
+		c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck,forcetypeassert // not needed
+
+		c.Request().Header.SetMethod(MethodPost)
+		c.Request().Header.Set(HeaderContentType, "Application/X-WWW-Form-Urlencoded")
+		c.Request().SetBodyString("name=carol")
+
+		require.Equal(t, "carol", c.FormValue("name"))
+	})
+
+	t.Run("multipart", func(t *testing.T) {
+		t.Parallel()
+
+		app := New()
+		c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck,forcetypeassert // not needed
+
+		// The boundary parameter *name* is folded, its value is not.
+		c.Request().Header.SetMethod(MethodPost)
+		c.Request().Header.Set(HeaderContentType, `Multipart/Form-Data; BOUNDARY=AbC`)
+		c.Request().SetBodyString("--AbC\r\nContent-Disposition: form-data; name=\"name\"\r\n\r\ncarol\r\n--AbC--\r\n")
+
+		form, err := c.MultipartForm()
+		require.NoError(t, err)
+		require.Equal(t, []string{"carol"}, form.Value["name"])
+		require.Equal(t, "carol", c.FormValue("name"))
+	})
+}
+
 func Benchmark_Ctx_Fresh_StaleEtag(b *testing.B) {
 	app := New()
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
@@ -5350,6 +5389,45 @@ func Test_Ctx_Scheme_HeaderNormalization(t *testing.T) {
 	c.Request().Header.Reset()
 }
 
+// go test -run Test_Ctx_Scheme_RejectsForeignSchemes
+func Test_Ctx_Scheme_RejectsForeignSchemes(t *testing.T) {
+	t.Parallel()
+
+	app := New(Config{
+		TrustProxy: true,
+		TrustProxyConfig: TrustProxyConfig{
+			Proxies: []string{"0.0.0.0"},
+		},
+	})
+
+	freq := &fasthttp.RequestCtx{}
+	freq.SetRemoteAddr(net.Addr(&net.TCPAddr{IP: net.ParseIP("0.0.0.0")}))
+
+	c := app.AcquireCtx(freq)
+
+	// A scheme Fiber does not serve must never reach BaseURL or the
+	// same-origin comparisons that consume Scheme.
+	for _, header := range []string{HeaderXForwardedProto, HeaderXForwardedProtocol, HeaderXUrlScheme} {
+		for _, value := range []string{"javascript", "ftp", "data", "HTTPS evil", ""} {
+			c.Request().Header.Set(header, value)
+			require.Equal(t, schemeHTTP, c.Scheme(), "%s: %q", header, value)
+			c.Request().Header.Reset()
+		}
+	}
+
+	// A rejected value must not clobber a valid one supplied by another header.
+	c.Request().Header.Set(HeaderXForwardedProto, schemeHTTPS)
+	c.Request().Header.Set(HeaderXUrlScheme, "javascript")
+	require.Equal(t, schemeHTTPS, c.Scheme())
+	c.Request().Header.Reset()
+
+	// BaseURL is the reason this matters: a foreign scheme spliced in here
+	// yields a URL an application may hand to a browser.
+	c.Request().URI().SetHost("example.com")
+	c.Request().Header.Set(HeaderXForwardedProto, "javascript")
+	require.Equal(t, "http://example.com", c.BaseURL())
+}
+
 // go test -v -run=^$ -bench=Benchmark_Ctx_Scheme -benchmem -count=4
 func Benchmark_Ctx_Scheme(b *testing.B) {
 	app := New()
@@ -7825,6 +7903,119 @@ func Test_Ctx_JSONP(t *testing.T) {
 		require.Equal(t, `callback(["custom","json"]);`, string(c.Response().Body()))
 		require.Equal(t, "text/javascript; charset=utf-8", string(c.Response().Header.Peek("content-type")))
 	})
+}
+
+// go test -run Test_Ctx_JSONP_SanitizesCallback
+func Test_Ctx_JSONP_SanitizesCallback(t *testing.T) {
+	t.Parallel()
+
+	// The callback name is emitted verbatim into a same-origin
+	// text/javascript body, and JSONP callers take it from the query string by
+	// design, so anything that could open a statement, a string, or a comment
+	// has to be stripped before it gets there.
+	tests := []struct {
+		name     string
+		callback string
+		expected string
+	}{
+		{name: "statement injection", callback: "alert(1);//", expected: "alert1"},
+		{name: "markup injection", callback: "</script><img src=x onerror=alert(1)>", expected: "scriptimgsrcxonerroralert1"},
+		{name: "eval payload", callback: "eval(atob('YWxlcnQoMSk='));x", expected: "evalatobYWxlcnQoMSkx"},
+		{name: "newline", callback: "cb\nalert(1)", expected: "cbalert1"},
+		{name: "quote", callback: `cb"+alert(1)+"`, expected: "cbalert1"},
+
+		// Legitimate member expressions must survive untouched.
+		{name: "plain identifier", callback: "cb", expected: "cb"},
+		{name: "property access", callback: "window.cb", expected: "window.cb"},
+		{name: "bracket index", callback: "ns.cb[0]", expected: "ns.cb[0]"},
+		{name: "dollar and underscore", callback: "$.jsonp_1", expected: "$.jsonp_1"},
+
+		// Nothing callable left: fall back rather than emit a body that throws.
+		{name: "fully stripped", callback: "()+-;", expected: "callback"},
+		{name: "empty", callback: "", expected: "callback"},
+		{name: "bare number", callback: "123", expected: "callback"},
+		{name: "leading digit", callback: "0.0", expected: "callback"},
+		{name: "dots only", callback: "...", expected: "callback"},
+		{name: "unbalanced bracket", callback: "a[", expected: "callback"},
+		{name: "empty index", callback: "a[]", expected: "callback"},
+		{name: "empty label", callback: "a..b", expected: "callback"},
+
+		// An identifier may not resume straight after a closing bracket; only
+		// '.', '[' or another ']' may follow one.
+		{name: "identifier after index", callback: "cb[0]x", expected: "callback"},
+		{name: "digit after index", callback: "cb[0]1", expected: "callback"},
+		{name: "index after index", callback: "cb[0][1]", expected: "cb[0][1]"},
+		{name: "property after index", callback: "cb[0].x", expected: "cb[0].x"},
+		{name: "nested index", callback: "a[b[0]]", expected: "a[b[0]]"},
+
+		// An index that opens with a digit is a number, so it is digits to the
+		// closing bracket. Anything else there is made of allowed bytes and still
+		// emits a body that throws.
+		{name: "multi digit index", callback: "cb[10]", expected: "cb[10]"},
+		{name: "identifier index", callback: "cb[i]", expected: "cb[i]"},
+		{name: "index with trailing letters", callback: "cb[0foo]", expected: "callback"},
+		{name: "hex-looking index", callback: "ns[0x]", expected: "callback"},
+		{name: "dotted number index", callback: "ns[1.2.3]", expected: "callback"},
+		{name: "index into a number", callback: "cb[0[1]]", expected: "callback"},
+
+		// Only a token opened by '[' may be a number. A property named after a dot
+		// may not, however deep in brackets the dot sits.
+		{name: "numeric property in index", callback: "cb[a.0]", expected: "callback"},
+		{name: "numeric property nested", callback: "cb[x[a.1]]", expected: "callback"},
+		{name: "numeric property trailing", callback: "cb[a.b.0]", expected: "callback"},
+		{name: "identifier property in index", callback: "cb[a.b]", expected: "cb[a.b]"},
+
+		// A reserved word is refused only where the word is read as a name: the
+		// head of the expression and the head inside each index. After a dot it is
+		// a property name, which any word may be.
+		{name: "reserved word alone", callback: "for", expected: "callback"},
+		{name: "reserved word in index", callback: "cb[new]", expected: "callback"},
+
+		// A keyword that is itself a complete expression parses where one is
+		// read, so these are left alone.
+		{name: "this heads the expression", callback: "this.cb", expected: "this.cb"},
+		{name: "literal heads the expression", callback: "null.x", expected: "null.x"},
+		{name: "literal in an index", callback: "cb[true]", expected: "cb[true]"},
+		{name: "this in an index", callback: "cb[this]", expected: "cb[this]"},
+		{name: "reserved word heads an index", callback: "cb[new.a]", expected: "callback"},
+		{name: "reserved word as property", callback: "cb.new", expected: "cb.new"},
+		{name: "reserved word as nested property", callback: "cb[a.class]", expected: "cb[a.class]"},
+		{name: "reserved word as prefix", callback: "news", expected: "news"},
+
+		// "let" is a keyword only where a "[" follows it at the head of the
+		// statement the body is: "let[a](…);" is read as a destructuring
+		// declaration and throws, while every other position is a call.
+		{name: "let indexed at the head", callback: "let[a]", expected: "callback"},
+		{name: "let indexed by a number", callback: "let[0]", expected: "callback"},
+		{name: "let alone", callback: "let", expected: "let"},
+		{name: "let with a property", callback: "let.a", expected: "let.a"},
+		{name: "let indexed deeper", callback: "cb[let[a]]", expected: "cb[let[a]]"},
+
+		// A JSONP body is parsed as a classic script in sloppy mode, where
+		// "await" is an identifier unless it stands in a module or an async
+		// function, and "yield" unless in strict mode or a generator. Both are
+		// callable names here; V8 parses every one of these.
+		{name: "await heads the expression", callback: "await.cb", expected: "await.cb"},
+		{name: "await in an index", callback: "cb[await]", expected: "cb[await]"},
+		{name: "yield heads the expression", callback: "yield.cb", expected: "yield.cb"},
+		{name: "yield in an index", callback: "cb[yield]", expected: "cb[yield]"},
+		{name: "let as a property", callback: "cb.let[0]", expected: "cb.let[0]"},
+	}
+
+	app := New()
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			c := app.AcquireCtx(&fasthttp.RequestCtx{})
+			defer app.ReleaseCtx(c)
+
+			require.NoError(t, c.JSONP(Map{"a": 1}, tc.callback))
+			require.Equal(t, tc.expected+`({"a":1});`, string(c.Response().Body()))
+			require.Equal(t, "text/javascript; charset=utf-8", string(c.Response().Header.Peek(HeaderContentType)))
+			require.Equal(t, "nosniff", string(c.Response().Header.Peek(HeaderXContentTypeOptions)))
+		})
+	}
 }
 
 // go test -v  -run=^$ -bench=Benchmark_Ctx_JSONP -benchmem -count=4

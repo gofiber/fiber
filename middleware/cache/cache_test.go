@@ -268,7 +268,7 @@ func TestCacheStorageGetError(t *testing.T) {
 	t.Parallel()
 
 	storage := newFailingCacheStorage()
-	storage.errs["get|GET|/|q=|h=accept:|accept-encoding:|accept-language:"] = errors.New("boom")
+	storage.errs["get|"+cacheKeyVersion+"|GET|/|q=|h=accept:0|accept-encoding:0|accept-language:0"] = errors.New("boom")
 
 	var captured error
 	app := fiber.New(fiber.Config{
@@ -294,7 +294,7 @@ func TestCacheStorageSetError(t *testing.T) {
 	t.Parallel()
 
 	storage := newFailingCacheStorage()
-	storage.errs["set|GET|/|q=|h=accept:|accept-encoding:|accept-language:_body"] = errors.New("boom")
+	storage.errs["set|"+cacheKeyVersion+"|GET|/|q=|h=accept:0|accept-encoding:0|accept-language:0_body"] = errors.New("boom")
 
 	var captured error
 	app := fiber.New(fiber.Config{
@@ -320,14 +320,14 @@ func TestCacheStorageDeleteError(t *testing.T) {
 	t.Parallel()
 
 	storage := newFailingCacheStorage()
-	storage.errs["del|GET|/|q=|h=accept:|accept-encoding:|accept-language:"] = errors.New("boom")
+	storage.errs["del|"+cacheKeyVersion+"|GET|/|q=|h=accept:0|accept-encoding:0|accept-language:0"] = errors.New("boom")
 
 	// Use an obviously expired timestamp without relying on time-based conversions
 	expired := &item{exp: 1}
 	raw, err := expired.MarshalMsg(nil)
 	require.NoError(t, err)
 
-	storage.data["GET|/|q=|h=accept:|accept-encoding:|accept-language:"] = raw
+	storage.data[cacheKeyVersion+"|GET|/|q=|h=accept:0|accept-encoding:0|accept-language:0"] = raw
 
 	var captured error
 	app := fiber.New(fiber.Config{
@@ -409,8 +409,8 @@ func TestCacheEvictionPropagatesRequestContextToDelete(t *testing.T) {
 	}
 
 	require.ElementsMatch(t, []string{
-		"GET|/first|q=|h=accept:|accept-encoding:|accept-language:",
-		"GET|/first|q=|h=accept:|accept-encoding:|accept-language:_body",
+		cacheKeyVersion + "|GET|/first|q=|h=accept:0|accept-encoding:0|accept-language:0",
+		cacheKeyVersion + "|GET|/first|q=|h=accept:0|accept-encoding:0|accept-language:0_body",
 	}, keys)
 }
 
@@ -418,7 +418,7 @@ func TestCacheCleanupPropagatesRequestContextToDelete(t *testing.T) {
 	t.Parallel()
 
 	storage := newContextRecorderStorage()
-	storage.errs["set|GET|/|q=|h=accept:|accept-encoding:|accept-language:"] = errors.New("boom")
+	storage.errs["set|"+cacheKeyVersion+"|GET|/|q=|h=accept:0|accept-encoding:0|accept-language:0"] = errors.New("boom")
 
 	var captured error
 	app := fiber.New(fiber.Config{
@@ -447,7 +447,7 @@ func TestCacheCleanupPropagatesRequestContextToDelete(t *testing.T) {
 
 	records := storage.recordedDeletes()
 	require.Len(t, records, 1)
-	require.Equal(t, "GET|/|q=|h=accept:|accept-encoding:|accept-language:_body", records[0].key)
+	require.Equal(t, cacheKeyVersion+"|GET|/|q=|h=accept:0|accept-encoding:0|accept-language:0_body", records[0].key)
 	require.Equal(t, "cleanup", records[0].value)
 	require.True(t, records[0].canceled)
 }
@@ -499,8 +499,8 @@ func TestCacheStorageOperationsObserveRequestContext(t *testing.T) {
 	require.Len(t, setRecords, 2)
 	for _, rec := range setRecords {
 		require.Contains(t, []string{
-			"GET|/cache|q=|h=accept:|accept-encoding:|accept-language:",
-			"GET|/cache|q=|h=accept:|accept-encoding:|accept-language:_body",
+			cacheKeyVersion + "|GET|/cache|q=|h=accept:0|accept-encoding:0|accept-language:0",
+			cacheKeyVersion + "|GET|/cache|q=|h=accept:0|accept-encoding:0|accept-language:0_body",
 		}, rec.key)
 		require.Equal(t, "store", rec.value)
 		require.True(t, rec.canceled)
@@ -515,11 +515,11 @@ func TestCacheStorageOperationsObserveRequestContext(t *testing.T) {
 			continue
 		}
 
-		if rec.key == "GET|/cache|q=|h=accept:|accept-encoding:|accept-language:" {
+		if rec.key == cacheKeyVersion+"|GET|/cache|q=|h=accept:0|accept-encoding:0|accept-language:0" {
 			require.True(t, rec.canceled)
 			fetchEntry = true
 		}
-		if rec.key == "GET|/cache|q=|h=accept:|accept-encoding:|accept-language:_body" {
+		if rec.key == cacheKeyVersion+"|GET|/cache|q=|h=accept:0|accept-encoding:0|accept-language:0_body" {
 			require.True(t, rec.canceled)
 			fetchBody = true
 		}
@@ -1383,7 +1383,7 @@ func Test_Cache_DefaultKeyDimensions(t *testing.T) {
 		expectedBoundedPath := "sha256:" + hex.EncodeToString(hash[:])
 		require.Len(t, expectedBoundedPath, len("sha256:")+sha256.Size*2)
 
-		expectedPrefix := fiber.MethodGet + "|" + expectedBoundedPath
+		expectedPrefix := cacheKeyVersion + "|" + fiber.MethodGet + "|" + expectedBoundedPath
 		foundBoundedKey := false
 		for key := range storage.data {
 			require.NotContains(t, key, oversizedPath)
@@ -1651,6 +1651,239 @@ func Test_AdditionalE2EResponseHeaders(t *testing.T) {
 	resp, err = app.Test(req)
 	require.NoError(t, err)
 	require.Equal(t, "foobar", resp.Header.Get("X-Foobar"))
+}
+
+// Test_SetCookieResponseIsNotStored asserts that a response handing the client
+// a cookie is not stored at all.
+//
+// The entry would be served to every client whose request matches its key, and
+// a response that sets a cookie has personalized itself for the one client that
+// caused the miss. Keeping Set-Cookie out of the stored headers is not enough —
+// the body is the payload, so the second client below would read the first
+// one's page.
+func Test_SetCookieResponseIsNotStored(t *testing.T) {
+	t.Parallel()
+
+	var calls int
+	app := fiber.New()
+	app.Use(New(Config{StoreResponseHeaders: true}))
+	app.Get("/", func(c fiber.Ctx) error {
+		calls++
+		c.Cookie(&fiber.Cookie{Name: "session", Value: fmt.Sprintf("secret-%d", calls)})
+		return c.SendString(fmt.Sprintf("page-for-client-%d", calls))
+	})
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, cacheUnreachable, resp.Header.Get("X-Cache"))
+	require.Contains(t, resp.Header.Get("Set-Cookie"), "session=secret-1")
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "page-for-client-1", string(body))
+
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, cacheUnreachable, resp.Header.Get("X-Cache"))
+	require.Contains(t, resp.Header.Get("Set-Cookie"), "session=secret-2")
+	body, err = io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "page-for-client-2", string(body), "the second client must not read the first one's page")
+	require.Equal(t, 2, calls, "the handler must run for both clients")
+}
+
+// Test_SetCookieResponseRevalidateDirectivesAreNotConsent asserts that
+// must-revalidate and proxy-revalidate do not buy a cookie-setting response a
+// place in the store.
+//
+// RFC 9111 §3.5 lets must-revalidate carry a response to an authorized request,
+// because a cache honoring it goes back to the origin once the entry is stale
+// and the origin re-checks the credential. Neither half of that holds here: the
+// directive says when a stale entry may be reused, not that the body is
+// impersonal, and this middleware never revalidates — it serves the stored body
+// for the whole configured expiration. Reusing the authorization test for the
+// cookie gate therefore handed the first client's page to the second.
+func Test_SetCookieResponseRevalidateDirectivesAreNotConsent(t *testing.T) {
+	t.Parallel()
+
+	for _, directive := range []string{"must-revalidate", "proxy-revalidate"} {
+		t.Run(directive, func(t *testing.T) {
+			t.Parallel()
+
+			var calls int
+			app := fiber.New()
+			app.Use(New(Config{StoreResponseHeaders: true}))
+			app.Get("/", func(c fiber.Ctx) error {
+				calls++
+				c.Set(fiber.HeaderCacheControl, directive)
+				c.Cookie(&fiber.Cookie{Name: "session", Value: fmt.Sprintf("secret-%d", calls)})
+				return c.SendString(fmt.Sprintf("page-for-client-%d", calls))
+			})
+
+			resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+			require.NoError(t, err)
+			require.Equal(t, cacheUnreachable, resp.Header.Get("X-Cache"))
+
+			resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+			require.NoError(t, err)
+			require.Equal(t, cacheUnreachable, resp.Header.Get("X-Cache"))
+			body, err := io.ReadAll(resp.Body)
+			require.NoError(t, err)
+			require.Equal(t, "page-for-client-2", string(body), "the second client must not read the first one's page")
+			require.Equal(t, 2, calls, "the handler must run for both clients")
+		})
+	}
+}
+
+// Test_SetCookieResponseSharedCacheOptIn asserts the escape hatch still works:
+// a response that says outright a shared cache may hold it is taken at its
+// word, so the gate above is about the revalidate directives specifically and
+// not a blanket refusal of every cookie-setting response.
+func Test_SetCookieResponseSharedCacheOptIn(t *testing.T) {
+	t.Parallel()
+
+	for _, directive := range []string{"public", "s-maxage=60"} {
+		t.Run(directive, func(t *testing.T) {
+			t.Parallel()
+
+			app := fiber.New()
+			app.Use(New(Config{StoreResponseHeaders: true}))
+			app.Get("/", func(c fiber.Ctx) error {
+				c.Set(fiber.HeaderCacheControl, directive)
+				c.Cookie(&fiber.Cookie{Name: "session", Value: "shared"})
+				return c.SendString("hi")
+			})
+
+			resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+			require.NoError(t, err)
+			require.Equal(t, cacheMiss, resp.Header.Get("X-Cache"))
+			// Without this the test passes vacuously: a response carrying no
+			// cookie is stored anyway, so the assertions below would not
+			// distinguish "the opt-in beat the cookie gate" from "there was no
+			// cookie to gate".
+			require.Contains(t, resp.Header.Get("Set-Cookie"), "session=shared")
+
+			resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+			require.NoError(t, err)
+			require.Equal(t, cacheHit, resp.Header.Get("X-Cache"))
+			require.Empty(t, resp.Header.Values("Set-Cookie"), "the stored entry must not replay the cookie")
+		})
+	}
+}
+
+// Test_SetCookieFromInnerMiddlewareIsSeen pins the ordering the cookie gate can
+// actually enforce: a middleware that writes its cookie on the way out is seen
+// when it sits inside the cache, because its post-Next work has already run by
+// the time the store decision is made.
+//
+// The reverse order is a hazard the gate cannot see. With the cookie-writing
+// middleware outside, its post-Next work runs after the cache has stored, so
+// the entry is kept and the next client reads the first one's body. Nothing
+// here can detect that — the response the cache inspects genuinely has no
+// cookie on it yet — so it is documented as an ordering requirement in
+// docs/middleware/cache.md rather than asserted as behavior.
+func Test_SetCookieFromInnerMiddlewareIsSeen(t *testing.T) {
+	t.Parallel()
+
+	var calls int
+	app := fiber.New()
+	app.Use(New())
+	app.Use(func(c fiber.Ctx) error {
+		err := c.Next()
+		c.Cookie(&fiber.Cookie{Name: "session", Value: fmt.Sprintf("secret-%d", calls)})
+		return err
+	})
+	app.Get("/", func(c fiber.Ctx) error {
+		calls++
+		return c.SendString(fmt.Sprintf("page-for-client-%d", calls))
+	})
+
+	for i := 1; i <= 2; i++ {
+		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, cacheUnreachable, resp.Header.Get("X-Cache"))
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		require.Equal(t, fmt.Sprintf("page-for-client-%d", i), string(body))
+	}
+	require.Equal(t, 2, calls, "the handler must run for both clients")
+}
+
+// Test_StoreResponseHeaders_DropsSetCookie covers the opt-in path: a route that
+// says a shared cache may store the response is taken at its word, and then the
+// stored copy still leaves Set-Cookie out so the entry cannot hand the first
+// client's session to the rest.
+func Test_StoreResponseHeaders_DropsSetCookie(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Use(New(Config{
+		StoreResponseHeaders: true,
+	}))
+
+	app.Get("/", func(c fiber.Ctx) error {
+		c.Set(fiber.HeaderCacheControl, "public, max-age=60")
+		c.Cookie(&fiber.Cookie{Name: "session", Value: "first-client-secret"})
+		c.Response().Header.Add("X-Foobar", "foobar")
+		return c.SendString("hi")
+	})
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, cacheMiss, resp.Header.Get("X-Cache"))
+	require.Contains(t, resp.Header.Get("Set-Cookie"), "session=first-client-secret")
+
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, cacheHit, resp.Header.Get("X-Cache"))
+	require.Empty(t, resp.Header.Values("Set-Cookie"))
+	// Other stored headers still come back, so the assertion above is about
+	// Set-Cookie specifically and not about header storage being off.
+	require.Equal(t, "foobar", resp.Header.Get("X-Foobar"))
+}
+
+// Test_StoreResponseHeaders_KeepsRepeatedFieldLines asserts that a header sent
+// on more than one field line comes back off a cache hit intact.
+//
+// The restore loop used to replay every stored entry with Set, which overwrites
+// the first matching line and leaves the rest — so a name sent twice collapsed
+// to its last value. Two of the headers below are why that matters: a Vary that
+// loses "Cookie" lets a downstream shared cache serve one user's response to
+// another, and a Content-Security-Policy that loses a line drops from the
+// intersection of both policies (what a browser actually enforces) to whichever
+// one is weaker on its own.
+func Test_StoreResponseHeaders_KeepsRepeatedFieldLines(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Use(New(Config{
+		StoreResponseHeaders: true,
+	}))
+
+	app.Get("/", func(c fiber.Ctx) error {
+		c.Response().Header.Add("Vary", "Cookie")
+		c.Response().Header.Add("Vary", "Accept-Encoding")
+		c.Response().Header.Add("Content-Security-Policy", "default-src 'none'")
+		c.Response().Header.Add("Content-Security-Policy", "script-src 'self'")
+		c.Response().Header.Add("X-Single", "only")
+		return c.SendString("hi")
+	})
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, cacheMiss, resp.Header.Get("X-Cache"))
+	require.Equal(t, []string{"Cookie", "Accept-Encoding"}, resp.Header.Values("Vary"))
+
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, cacheHit, resp.Header.Get("X-Cache"))
+	require.Equal(t, []string{"Cookie", "Accept-Encoding"}, resp.Header.Values("Vary"))
+	require.Equal(t,
+		[]string{"default-src 'none'", "script-src 'self'"},
+		resp.Header.Values("Content-Security-Policy"),
+	)
+	// A name sent once is still restored once, so the fix did not turn Set into
+	// an unconditional Add.
+	require.Equal(t, []string{"only"}, resp.Header.Values("X-Single"))
 }
 
 func Test_CacheHeader(t *testing.T) {
@@ -2347,7 +2580,7 @@ func Test_CacheInvalidExpiresStoredAsStale(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "body1", string(body))
 
-	expectedKey := "GET|/|invalid-expires"
+	expectedKey := cacheKeyVersion + "|GET|/|invalid-expires"
 	require.Contains(t, storage.data, expectedKey)
 	require.Contains(t, storage.data, expectedKey+"_body")
 
