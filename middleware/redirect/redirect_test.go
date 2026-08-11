@@ -1995,6 +1995,23 @@ func Test_Redirect_RuleOrderIsBySpecificity(t *testing.T) {
 			path:  "/p/0",
 			want:  "/posix",
 		},
+		{
+			// The name is measured by what it matches, so the ten digits it
+			// stands for lose to the two the explicit class lists.
+			name:  "a posix name is as broad as the bytes it matches",
+			rules: map[string]string{"/p/[[:digit:]]": "/posix", "/p/[09]": "/explicit"},
+			path:  "/p/0",
+			want:  "/explicit",
+		},
+		{
+			// "\*" survives the replacement as "\(.*)" — a literal "(" and then
+			// a live wildcard — so this rule matches any suffix, not the one
+			// path the escaped star suggests.
+			name:  "an escaped star is still a wildcard after the replacement",
+			rules: map[string]string{`/p/(\*`: "/broad", "/p/[(]a": "/narrow"},
+			path:  "/p/(a",
+			want:  "/narrow",
+		},
 	}
 
 	for _, tc := range tests {
@@ -2628,14 +2645,26 @@ func Test_Redirect_NestedAlternationLosesTheTieBreak(t *testing.T) {
 	require.Equal(t, 0, wildcardRank(`/p/\d`))
 	require.Equal(t, 1, wildcardRank(`/p/\d*`))
 
-	// A POSIX name is one member of the class holding it, so the scan resumes
-	// past the outer "]" rather than inside the brackets.
+	// A POSIX name is a member of the class holding it, so the scan resumes past
+	// the outer "]" rather than inside the brackets — and it is measured by what
+	// it matches, since a name scored as one member ranked "[[:digit:]]"
+	// narrower than the "[09]" it contains.
 	require.Equal(t, 0, wildcardRank("/p/[[:digit:]*]"))
-	require.Equal(t, 2, patternWidth("/p/[[:digit:]*]"))
-	require.Equal(t, 1, patternWidth("/p/[[:digit:]]"))
+	require.Equal(t, 10, patternWidth("/p/[[:digit:]]"))
+	require.Equal(t, 11, patternWidth("/p/[[:digit:]*]"))
+	require.Equal(t, 246, patternWidth("/p/[[:^digit:]]"))
+	require.Greater(t, patternWidth("/p/[[:digit:]]"), patternWidth("/p/[09]"))
 	// Without a closing ":]" the "[" is a member like any other, which is how
 	// Go's parser reads it: this class lists "[" and ":".
 	require.Equal(t, 2, patternWidth("/p/[[:]"))
+	// A name Go does not know counts as one. Such a rule fails to compile
+	// ("invalid character class range"), so it never reaches an ordering.
+	require.Equal(t, 1, patternWidth("/p/[[:bogus:]]"))
+
+	// The replacement does not spare a star behind a backslash: "\*" compiles as
+	// an escaped parenthesis and then a live wildcard.
+	require.Equal(t, 1, wildcardRank(`/p/(\*`))
+	require.Equal(t, 0, wildcardRank(`/p/\.`))
 
 	// A star inside "\Q ... \E" names itself, so the rule matches one path.
 	require.Equal(t, 1, patternWidth(`/p/\Q*\E`))

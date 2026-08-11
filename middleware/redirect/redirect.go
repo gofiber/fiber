@@ -1067,9 +1067,9 @@ func (s *literalScanner) classWidth() int {
 			// "[:digit:]" does not close the class holding it. Reading it as one
 			// left the scan inside the brackets, where the members beyond it were
 			// measured as pattern syntax and a "*" among them was taken for
-			// Fiber's wildcard. Counted as one, like the class escape below.
+			// Fiber's wildcard.
 			if end := strings.Index(rule[j+2:], ":]"); end >= 0 {
-				size, j = size+1, j+2+end+2
+				size, j = size+posixClassWidth(rule[j+2:j+2+end]), j+2+end+2
 			} else {
 				size, j = size+1, j+1
 			}
@@ -1096,6 +1096,46 @@ func (s *literalScanner) classWidth() int {
 		size = 256 - size
 	}
 	return max(size, 1)
+}
+
+// posixClassSizes gives how many bytes each POSIX name matches, since the
+// breadth is the whole reason a class is measured: counting "[:digit:]" as one
+// member scored "[[:digit:]]" narrower than the "[09]" it contains, and the
+// broader rule then shadowed the narrower one.
+var posixClassSizes = map[string]int{
+	"alnum":  62,  // [0-9A-Za-z]
+	"alpha":  52,  // [A-Za-z]
+	"ascii":  128, // [\x00-\x7F]
+	"blank":  2,   // [\t ]
+	"cntrl":  33,  // [\x00-\x1F\x7F]
+	"digit":  10,  // [0-9]
+	"graph":  94,  // [!-~]
+	"lower":  26,  // [a-z]
+	"print":  95,  // [ -~]
+	"punct":  32,  // [!-/:-@[-`{-~]
+	"space":  6,   // [\t\n\v\f\r ]
+	"upper":  26,  // [A-Z]
+	"word":   63,  // [0-9A-Za-z_]
+	"xdigit": 22,  // [0-9A-Fa-f]
+}
+
+// posixClassWidth returns how many bytes the POSIX name written between "[:"
+// and ":]" matches, negation included: "[:^digit:]" is every byte but a digit.
+// A name Go does not know counts as one, though such a rule fails to compile
+// and so never reaches an ordering.
+func posixClassWidth(name string) int {
+	negated := strings.HasPrefix(name, "^")
+	if negated {
+		name = name[1:]
+	}
+	size, ok := posixClassSizes[name]
+	if !ok {
+		return 1
+	}
+	if negated {
+		return 256 - size
+	}
+	return size
 }
 
 // maxPatternWidth bounds the product a nest of groups builds, since the count is
@@ -1135,6 +1175,14 @@ func wildcardRank(rule string) int {
 			if quoteStart(rule, i) {
 				i = skipQuoted(rule, i)
 				continue
+			}
+			// The replacement runs over the whole key before it is compiled, so
+			// a backslash does not spare the star that follows it: "\*" becomes
+			// "\(.*)", which is an escaped parenthesis and then a live wildcard.
+			// Read as the literal star it resembles, "/p/(\*" ranked as pinning
+			// every position while it matched any suffix at all.
+			if i+1 < len(rule) && rule[i+1] == '*' {
+				return 1
 			}
 			size, _ := escapeSpan(rule, i)
 			i += size
