@@ -1957,6 +1957,22 @@ func Test_Redirect_RuleOrderIsBySpecificity(t *testing.T) {
 			path:  "/api/z",
 			want:  "/wild/z",
 		},
+		{
+			// Two rules opening with a wildcard are still told apart by what
+			// follows it, which saturating the wildcard's width erased.
+			name:  "a class past a wildcard is read like any other",
+			rules: map[string]string{`/p/*[a-z]`: "/wide", `/p/*[ab]`: "/narrow"},
+			path:  "/p/za",
+			want:  "/narrow",
+		},
+		{
+			// Quoted, the star is a byte of the path rather than a wildcard, so
+			// this rule matches the single path the catch-all also takes.
+			name:  "a quoted star is not a wildcard",
+			rules: map[string]string{`/p/\Q*\E`: "/exact", "/p/....": "/wide"},
+			path:  "/p/(.*)",
+			want:  "/exact",
+		},
 	}
 
 	for _, tc := range tests {
@@ -2573,9 +2589,23 @@ func Test_Redirect_NestedAlternationLosesTheTieBreak(t *testing.T) {
 	require.Equal(t, 26, patternWidth("/p/[a-z]x"))
 	require.Equal(t, 1, patternWidth("/p/[a]"))
 	require.Equal(t, 256, patternWidth("/p/."))
-	require.Equal(t, maxPatternWidth, patternWidth("/p/*"))
 	require.Equal(t, 2, patternWidth("/very/specific|/x"))
 	require.Equal(t, 4, patternWidth("(a|b)(c|d)"))
+
+	// Fiber's wildcard expands to "(.*)", so it is measured as the widest single
+	// position rather than saturated: what follows still separates two rules that
+	// both open with one.
+	require.Equal(t, 256, patternWidth("/p/*"))
+	require.Greater(t, patternWidth("/p/*[a-z]"), patternWidth("/p/*[ab]"))
+	require.Greater(t, patternWidth("/p/*"), patternWidth("/p/[a-z]"))
+
+	// A star inside "\Q ... \E" names itself, so the rule matches one path.
+	require.Equal(t, 1, patternWidth(`/p/\Q*\E`))
+	require.Less(t, patternWidth(`/p/\Q*\E`), patternWidth("/p/...."))
+
+	// The clamp is reached by multiplying, never by overflowing into a negative
+	// that would sort a catch-all ahead of everything it shadows.
+	require.Equal(t, maxPatternWidth, patternWidth("/p/*(....)(....)(....)"))
 }
 
 // Test_Redirect_HexEscapeOutranksAClass covers "\x{61}", which names the one

@@ -995,23 +995,31 @@ func (s *literalScanner) width() int {
 	for s.i < len(s.rule) {
 		switch s.rule[s.i] {
 		case '\\':
+			// A "\Q ... \E" span quotes every byte it holds, so the pattern bytes
+			// inside name themselves: "/p/\Q*\E" matches the one path "/p/(.*)"
+			// once Fiber has expanded the star, and reading that star as a
+			// wildcard had the exact rule measured as a catch-all.
+			if quoteStart(s.rule, s.i) {
+				s.i = skipQuoted(s.rule, s.i)
+				continue
+			}
 			size, _ := escapeSpan(s.rule, s.i)
 			s.i += size
 			continue
-		case '*':
-			// Fiber expands its wildcard to ".*", so it is wider than every
-			// single-byte construct, including a character class. Treat it as
-			// maximally wide so key order cannot let it shadow a narrower rule.
-			n = maxPatternWidth
 		case '[':
-			n = clampWidth(n * s.classWidth())
+			n = mulWidth(n, s.classWidth())
 			continue
-		case '.':
-			// Any byte, so it is the widest single position there is.
-			n = clampWidth(n * 256)
+		case '.', '*':
+			// "." is any byte, and Fiber expands its wildcard to "(.*)", so both
+			// are as wide as a single position gets. Measuring the wildcard is
+			// what stops a catch-all from tying — and then, on key order,
+			// shadowing — a character class pinning the same prefix. It is
+			// measured rather than saturated so that what follows still tells
+			// two wildcard rules apart: "/p/*[ab]" is narrower than "/p/*[a-z]".
+			n = mulWidth(n, 256)
 		case '(':
 			s.i = skipGroupPrefix(s.rule, s.i+1)
-			n = clampWidth(n * s.width())
+			n = mulWidth(n, s.width())
 			continue
 		case ')':
 			s.i++
@@ -1076,6 +1084,32 @@ const maxPatternWidth = 1 << 20
 
 func clampWidth(n int) int {
 	return min(n, maxPatternWidth)
+}
+
+// mulWidth multiplies two widths, clamping before the product is formed rather
+// than after. A nest of groups multiplies two already-clamped counts, which
+// overflows an int on a 32-bit build — and the negative that came out sorted the
+// widest rule first, ahead of the narrow one it shadows.
+func mulWidth(n, by int) int {
+	if by > 0 && n > maxPatternWidth/by {
+		return maxPatternWidth
+	}
+	return clampWidth(n * by)
+}
+
+// quoteStart reports whether a "\Q ... \E" span opens at i.
+func quoteStart(rule string, i int) bool {
+	return i+1 < len(rule) && rule[i+1] == 'Q'
+}
+
+// skipQuoted returns the position just past the "\Q ... \E" span opening at i.
+// An unterminated span quotes the rest of the rule, which is how Go's parser
+// reads one.
+func skipQuoted(rule string, i int) int {
+	if end := strings.Index(rule[i+2:], `\E`); end >= 0 {
+		return i + 2 + end + 2
+	}
+	return len(rule)
 }
 
 // quantifierAllowsNone reports whether a quantifier at i lets what precedes it
