@@ -1092,6 +1092,16 @@ func (s *literalScanner) classWidth() int {
 	}
 	s.i = j
 
+	// The members are summed rather than unioned, so overlapping sets are counted
+	// twice and the total can run past the 256 bytes any class is drawn from.
+	// Past that the sum says nothing about the count, and a complement taken from
+	// it came out negative: "[^[:alpha:][:^digit:]]" matches the ten digits, but
+	// scored 256-298 and, floored to 1, sorted ahead of the "[09]" it contains.
+	// Such a class is read as matching every byte instead, so one this scan
+	// cannot measure never shadows one it can.
+	if size > 256 {
+		return 256
+	}
 	if negated {
 		size = 256 - size
 	}

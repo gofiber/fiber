@@ -2012,6 +2012,15 @@ func Test_Redirect_RuleOrderIsBySpecificity(t *testing.T) {
 			path:  "/p/(a",
 			want:  "/narrow",
 		},
+		{
+			// This class matches the ten digits, but its members overlap and
+			// sum past 256, so the complement of the sum came out negative —
+			// floored to 1, it ranked as the narrowest rule there is.
+			name:  "a class whose members overlap does not rank as narrow",
+			rules: map[string]string{"/p/[^[:alpha:][:^digit:]]": "/broad", "/p/[09]": "/narrow"},
+			path:  "/p/0",
+			want:  "/narrow",
+		},
 	}
 
 	for _, tc := range tests {
@@ -2660,6 +2669,12 @@ func Test_Redirect_NestedAlternationLosesTheTieBreak(t *testing.T) {
 	// A name Go does not know counts as one. Such a rule fails to compile
 	// ("invalid character class range"), so it never reaches an ordering.
 	require.Equal(t, 1, patternWidth("/p/[[:bogus:]]"))
+	// Members are summed, not unioned, so overlapping sets can run past the 256
+	// bytes a class is drawn from. Past that the sum measures nothing, and the
+	// class is read as matching every byte rather than as the negative — floored
+	// to 1 — that a complement of the sum produced.
+	require.Equal(t, 256, patternWidth("/p/[^[:alpha:][:^digit:]]"))
+	require.Equal(t, 256, patternWidth("/p/[[:ascii:][:^digit:]]"))
 
 	// The replacement does not spare a star behind a backslash: "\*" compiles as
 	// an escaped parenthesis and then a live wildcard.
