@@ -1985,6 +1985,16 @@ func Test_Redirect_RuleOrderIsBySpecificity(t *testing.T) {
 			path: "/p/zaaaaaaaaaaaa",
 			want: "/narrow",
 		},
+		{
+			// The "]" closing "[:digit:]" does not close the class holding it,
+			// and stopping there left the scan reading the members beyond as
+			// pattern syntax — the star among them ranked this exact rule as a
+			// catch-all, behind the dot that really is one.
+			name:  "a posix name does not end the class holding it",
+			rules: map[string]string{"/p/[[:digit:]*]": "/posix", "/p/.": "/dot"},
+			path:  "/p/0",
+			want:  "/posix",
+		},
 	}
 
 	for _, tc := range tests {
@@ -2617,6 +2627,15 @@ func Test_Redirect_NestedAlternationLosesTheTieBreak(t *testing.T) {
 	require.Equal(t, 1, wildcardRank(`/p/\Qab\E*`))
 	require.Equal(t, 0, wildcardRank(`/p/\d`))
 	require.Equal(t, 1, wildcardRank(`/p/\d*`))
+
+	// A POSIX name is one member of the class holding it, so the scan resumes
+	// past the outer "]" rather than inside the brackets.
+	require.Equal(t, 0, wildcardRank("/p/[[:digit:]*]"))
+	require.Equal(t, 2, patternWidth("/p/[[:digit:]*]"))
+	require.Equal(t, 1, patternWidth("/p/[[:digit:]]"))
+	// Without a closing ":]" the "[" is a member like any other, which is how
+	// Go's parser reads it: this class lists "[" and ":".
+	require.Equal(t, 2, patternWidth("/p/[[:]"))
 
 	// A star inside "\Q ... \E" names itself, so the rule matches one path.
 	require.Equal(t, 1, patternWidth(`/p/\Q*\E`))

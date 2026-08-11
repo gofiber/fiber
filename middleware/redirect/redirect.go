@@ -1062,6 +1062,17 @@ func (s *literalScanner) classWidth() int {
 
 	for j < len(rule) && rule[j] != ']' {
 		switch {
+		case rule[j] == '[' && j+1 < len(rule) && rule[j+1] == ':':
+			// A POSIX name stands for a set of its own, and the "]" closing
+			// "[:digit:]" does not close the class holding it. Reading it as one
+			// left the scan inside the brackets, where the members beyond it were
+			// measured as pattern syntax and a "*" among them was taken for
+			// Fiber's wildcard. Counted as one, like the class escape below.
+			if end := strings.Index(rule[j+2:], ":]"); end >= 0 {
+				size, j = size+1, j+2+end+2
+			} else {
+				size, j = size+1, j+1
+			}
 		case rule[j] == '\\':
 			// A class escape stands for a set of its own, but one is enough to
 			// order it against the members beside it.
