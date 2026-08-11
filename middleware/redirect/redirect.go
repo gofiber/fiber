@@ -65,9 +65,22 @@ func New(config ...Config) fiber.Handler {
 		if d := cmp.Compare(literalLen(b), literalLen(a)); d != 0 {
 			return d
 		}
+		// A wildcard matches a run of any length, so a rule holding one is
+		// broader than any rule that does not, however much either pins:
+		// "/api/*" must not shadow the "/api/[ab]" it ties with. Ranked on its
+		// own rather than folded into the width below, which saturates — two
+		// rules whose widths both reach the clamp would tie again, and the
+		// broader of the two won on key order.
+		if aw, bw := hasWildcard(a), hasWildcard(b); aw != bw {
+			if aw {
+				return 1
+			}
+			return -1
+		}
 		// Two rules pinning the same amount are separated by how much else they
 		// match: an alternation matches every branch, so "/very/specific|/x" is
-		// wider than the exact "/x" it ties with.
+		// wider than the exact "/x" it ties with. Two wildcard rules land here
+		// too, separated by everything beside the wildcard they share.
 		if d := cmp.Compare(patternWidth(a), patternWidth(b)); d != 0 {
 			return d
 		}
@@ -1009,13 +1022,12 @@ func (s *literalScanner) width() int {
 		case '[':
 			n = mulWidth(n, s.classWidth())
 			continue
-		case '.', '*':
-			// "." is any byte, and Fiber expands its wildcard to "(.*)", so both
-			// are as wide as a single position gets. Measuring the wildcard is
-			// what stops a catch-all from tying — and then, on key order,
-			// shadowing — a character class pinning the same prefix. It is
-			// measured rather than saturated so that what follows still tells
-			// two wildcard rules apart: "/p/*[ab]" is narrower than "/p/*[a-z]".
+		case '.':
+			// Any byte, so it is the widest single position there is. Fiber's
+			// "*" is not counted here: it matches a run of any length, which no
+			// number this is compared against can stand for, so hasWildcard
+			// ranks it ahead of the width instead. Left out, the width measures
+			// what separates two rules that both carry one.
 			n = mulWidth(n, 256)
 		case '(':
 			s.i = skipGroupPrefix(s.rule, s.i+1)
@@ -1095,6 +1107,37 @@ func mulWidth(n, by int) int {
 		return maxPatternWidth
 	}
 	return clampWidth(n * by)
+}
+
+// hasWildcard reports whether the rule carries Fiber's "*" wildcard, which is
+// expanded to "(.*)" before the key is compiled and so matches a run of bytes of
+// any length. That is a breadth no width can stand for, since a width saturates
+// and two saturated rules tie.
+//
+// A star inside a character class or a "\Q ... \E" span is a byte of the path
+// rather than a wildcard: the expansion leaves "[(.*)]" a class listing four
+// characters, and "\Q(.*)\E" the literal text.
+func hasWildcard(rule string) bool {
+	for i := 0; i < len(rule); {
+		switch rule[i] {
+		case '\\':
+			if quoteStart(rule, i) {
+				i = skipQuoted(rule, i)
+				continue
+			}
+			size, _ := escapeSpan(rule, i)
+			i += size
+		case '[':
+			s := literalScanner{rule: rule, i: i}
+			s.classWidth() // leaves s.i just past the "]"
+			i = s.i
+		case '*':
+			return true
+		default:
+			i++
+		}
+	}
+	return false
 }
 
 // quoteStart reports whether a "\Q ... \E" span opens at i.
