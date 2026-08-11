@@ -2444,10 +2444,10 @@ func Test_HTTPMiddleware_JoinsRepeatedConnectionValues(t *testing.T) {
 		wantClose bool
 	}{
 		{name: "token list", write: []string{"keep-alive", "X-Internal"}, want: "keep-alive, X-Internal"},
-		// Downstream middleware must see the complete token list so a proxy can
-		// remove every named hop-by-hop field. The transport close flag is set
-		// only after the downstream chain returns, because fasthttp otherwise
-		// hides all tokens beside "close".
+		// Every observer must see the complete token list so a proxy can remove
+		// each named hop-by-hop field. Setting fasthttp's request flag would hide
+		// all tokens beside "close", so the close instruction is carried on the
+		// response instead.
 		{name: "close first", write: []string{"close", "X-Internal"}, want: "close, X-Internal", wantClose: true},
 		{name: "close last", write: []string{"X-Internal", "close"}, want: "X-Internal, close", wantClose: true},
 		{name: "close cased", write: []string{"X-Internal", "CLOSE"}, want: "X-Internal, CLOSE", wantClose: true},
@@ -2457,14 +2457,17 @@ func Test_HTTPMiddleware_JoinsRepeatedConnectionValues(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			var got string
-			var gotClose bool
-			var finalClose bool
+			var got, afterNext string
+			var gotClose, finalClose bool
 
 			app := fiber.New()
 			app.Use(func(c fiber.Ctx) error {
 				err := c.Next()
-				finalClose = c.Request().Header.ConnectionClose()
+				// A middleware resuming here — or the app's ErrorHandler, which
+				// runs once this returns — reads the same field a downstream
+				// proxy would, so it has to survive the whole chain intact.
+				afterNext = c.Get(fiber.HeaderConnection)
+				finalClose = c.Response().Header.ConnectionClose()
 				return err
 			})
 			app.Use(HTTPMiddleware(func(next http.Handler) http.Handler {
@@ -2483,12 +2486,10 @@ func Test_HTTPMiddleware_JoinsRepeatedConnectionValues(t *testing.T) {
 			require.NoError(t, err)
 			require.Equal(t, fiber.StatusOK, resp.StatusCode)
 			require.Equal(t, tc.want, got)
-			if len(tc.write) > 1 && tc.wantClose {
-				require.False(t, gotClose, "downstream must see the complete Connection field")
-			} else {
-				require.Equal(t, tc.wantClose, gotClose)
-			}
-			require.Equal(t, tc.wantClose, finalClose, "the transport close flag must survive downstream processing")
+			require.Equal(t, tc.wantClose, resp.Close, "close has to reach the wire, not just the fiber context")
+			require.Equal(t, tc.want, afterNext, "the complete Connection field must outlive the downstream chain")
+			require.Equal(t, tc.want == "close", gotClose, "the request flag stands in only for a bare close")
+			require.Equal(t, tc.wantClose, finalClose, "the transport close instruction rides on the response")
 		})
 	}
 }

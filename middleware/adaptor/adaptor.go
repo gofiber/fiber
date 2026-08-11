@@ -466,10 +466,10 @@ func HTTPMiddleware(mw func(http.Handler) http.Handler) fiber.Handler {
 				joined := strings.Join(connection, ", ")
 				fhdr.Set(fiber.HeaderConnection, joined)
 				if hasCloseToken(joined) {
-					// Setting fasthttp's close flag hides every other Connection
-					// token from downstream middleware. Defer it until c.Next has
-					// consumed the complete list (RFC 9110 §7.6.1), while still
-					// preserving the transport-level close instruction.
+					// The close instruction is carried separately rather than
+					// written back here: fasthttp's request flag makes Peek answer
+					// "close" and hides the rest of the list (RFC 9110 §7.6.1),
+					// which is how a proxy downstream learns what to strip.
 					connectionClose = true
 				}
 			}
@@ -481,15 +481,18 @@ func HTTPMiddleware(mw func(http.Handler) http.Handler) fiber.Handler {
 		// error result is always nil.
 		fasthttpadaptor.NewFastHTTPHandler(mw(nextHandler))(c.RequestCtx())
 
-		if next {
-			err := c.Next()
-			if connectionClose {
-				c.Request().Header.SetConnectionClose()
-			}
-			return err
-		}
 		if connectionClose {
-			c.Request().Header.SetConnectionClose()
+			// The close instruction rides on the response so the request keeps the
+			// complete field for every observer — downstream handlers, middleware
+			// resuming after Next, and the app's ErrorHandler alike. It also has to
+			// go here to have any effect: fasthttp stores the request flag before
+			// calling the handler and never reads it again, whereas the response
+			// flag is what the server consults once the handler returns.
+			c.Response().Header.SetConnectionClose()
+		}
+
+		if next {
+			return c.Next()
 		}
 		return nil
 	}
