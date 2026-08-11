@@ -2602,6 +2602,9 @@ func Test_Redirect_NestedAlternationLosesTheTieBreak(t *testing.T) {
 	// A star inside "\Q ... \E" names itself, so the rule matches one path.
 	require.Equal(t, 1, patternWidth(`/p/\Q*\E`))
 	require.Less(t, patternWidth(`/p/\Q*\E`), patternWidth("/p/...."))
+	// Go's parser quotes to the end of the pattern when the "\E" is missing, so
+	// the scanner has to stop there rather than run past it.
+	require.Equal(t, 1, patternWidth(`/p/\Q*.[ab]`))
 
 	// The clamp is reached by multiplying, never by overflowing into a negative
 	// that would sort a catch-all ahead of everything it shadows.
