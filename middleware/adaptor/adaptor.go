@@ -427,6 +427,7 @@ func isFramingHeader(name string) bool {
 func HTTPMiddleware(mw func(http.Handler) http.Handler) fiber.Handler {
 	return func(c fiber.Ctx) error {
 		var next bool
+		var connectionClose bool
 		nextHandler := http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
 			next = true
 
@@ -465,15 +466,11 @@ func HTTPMiddleware(mw func(http.Handler) http.Handler) fiber.Handler {
 				joined := strings.Join(connection, ", ")
 				fhdr.Set(fiber.HeaderConnection, joined)
 				if hasCloseToken(joined) {
-					// fasthttp holds either the close flag or an arbitrary value,
-					// never both: setting the flag makes Peek answer "close" and
-					// hides the rest, while Set of anything but a bare "close"
-					// clears the flag. Where the two conflict the flag has to win —
-					// Set alone left a connection the client asked to close being
-					// kept open, since the server reads the flag and nothing else.
-					// The cost is that a field named beside "close" stops being
-					// visible as hop-by-hop for this request.
-					fhdr.SetConnectionClose()
+					// Setting fasthttp's close flag hides every other Connection
+					// token from downstream middleware. Defer it until c.Next has
+					// consumed the complete list (RFC 9110 §7.6.1), while still
+					// preserving the transport-level close instruction.
+					connectionClose = true
 				}
 			}
 			CopyContextToFiberContext(r.Context(), c.RequestCtx())
@@ -485,7 +482,14 @@ func HTTPMiddleware(mw func(http.Handler) http.Handler) fiber.Handler {
 		fasthttpadaptor.NewFastHTTPHandler(mw(nextHandler))(c.RequestCtx())
 
 		if next {
-			return c.Next()
+			err := c.Next()
+			if connectionClose {
+				c.Request().Header.SetConnectionClose()
+			}
+			return err
+		}
+		if connectionClose {
+			c.Request().Header.SetConnectionClose()
 		}
 		return nil
 	}

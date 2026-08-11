@@ -2444,13 +2444,13 @@ func Test_HTTPMiddleware_JoinsRepeatedConnectionValues(t *testing.T) {
 		wantClose bool
 	}{
 		{name: "token list", write: []string{"keep-alive", "X-Internal"}, want: "keep-alive, X-Internal"},
-		// Where "close" is among the tokens the flag wins, since fasthttp holds
-		// one or the other and the server reads only the flag. Peek answers
-		// "close" once it is set, so the other tokens go — the alternative was a
-		// connection the client asked to close being kept open.
-		{name: "close first", write: []string{"close", "X-Internal"}, want: "close", wantClose: true},
-		{name: "close last", write: []string{"X-Internal", "close"}, want: "close", wantClose: true},
-		{name: "close cased", write: []string{"X-Internal", "CLOSE"}, want: "close", wantClose: true},
+		// Downstream middleware must see the complete token list so a proxy can
+		// remove every named hop-by-hop field. The transport close flag is set
+		// only after the downstream chain returns, because fasthttp otherwise
+		// hides all tokens beside "close".
+		{name: "close first", write: []string{"close", "X-Internal"}, want: "close, X-Internal", wantClose: true},
+		{name: "close last", write: []string{"X-Internal", "close"}, want: "X-Internal, close", wantClose: true},
+		{name: "close cased", write: []string{"X-Internal", "CLOSE"}, want: "X-Internal, CLOSE", wantClose: true},
 		{name: "close alone still closes", write: []string{"close"}, want: "close", wantClose: true},
 		{name: "single entry is unchanged", write: []string{"keep-alive"}, want: "keep-alive"},
 	} {
@@ -2459,8 +2459,14 @@ func Test_HTTPMiddleware_JoinsRepeatedConnectionValues(t *testing.T) {
 
 			var got string
 			var gotClose bool
+			var finalClose bool
 
 			app := fiber.New()
+			app.Use(func(c fiber.Ctx) error {
+				err := c.Next()
+				finalClose = c.Request().Header.ConnectionClose()
+				return err
+			})
 			app.Use(HTTPMiddleware(func(next http.Handler) http.Handler {
 				return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 					r.Header[http.CanonicalHeaderKey(fiber.HeaderConnection)] = tc.write
@@ -2477,7 +2483,12 @@ func Test_HTTPMiddleware_JoinsRepeatedConnectionValues(t *testing.T) {
 			require.NoError(t, err)
 			require.Equal(t, fiber.StatusOK, resp.StatusCode)
 			require.Equal(t, tc.want, got)
-			require.Equal(t, tc.wantClose, gotClose)
+			if len(tc.write) > 1 && tc.wantClose {
+				require.False(t, gotClose, "downstream must see the complete Connection field")
+			} else {
+				require.Equal(t, tc.wantClose, gotClose)
+			}
+			require.Equal(t, tc.wantClose, finalClose, "the transport close flag must survive downstream processing")
 		})
 	}
 }
