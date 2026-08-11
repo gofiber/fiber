@@ -749,6 +749,10 @@ func (c *DefaultCtx) release() {
 		ReleaseBind(c.bind)
 		c.bind = nil
 	}
+	// Zero the whole backing array before pooling: what lives here is the previous
+	// request's flash data, which for WithInput is its entire form.
+	// parseAndClearFlashMessages clears too, since UnmarshalMsg re-slices this.
+	clear(c.flashMessages[:cap(c.flashMessages)])
 	c.flashMessages = c.flashMessages[:0]
 	// Clear viewBindMap by deleting all keys (reuse underlying map if possible)
 	if c.viewBindMap != nil {

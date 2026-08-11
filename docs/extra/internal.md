@@ -364,8 +364,8 @@ When performing redirections, Fiber can send flash messages or preserve old inpu
 
 1. Collecting Flash Data: When a redirect is initiated, developers can add flash messages via Redirect.With() or old input data via Redirect.WithInput().
 2. Serialization: The flash messages and input data are serialized (using a fast marshalling method) into a byte sequence.
-3. Setting a Cookie: The serialized data is stored in a special cookie (named fiber_flash) that will be sent to the client.
-4. Retrieval & Clearing: On the subsequent request, the flash data is read from the cookie, deserialized, and then cleared.
+3. Setting a Cookie: The serialized data is stored in a special cookie (named fiber_flash) that will be sent to the client. The cookie is set `HttpOnly`, so the payload stays out of `document.cookie`. It is `Secure` only when the request that produced it arrived over TLS: a redirect that starts on plain HTTP sets a cookie without that attribute, which the browser will send over HTTP as well. It is hex-encoded rather than encrypted or signed, so treat everything in it as visible to the client.
+4. Retrieval & Clearing: On the subsequent request, the flash data is read from the cookie, deserialized, and then cleared. The cookie is expired on every read, including when the stored value fails to decode, so a malformed payload is not re-parsed on later requests.
 
 ```mermaid
 flowchart TD

@@ -327,6 +327,31 @@ Logger provides predefined formats that you can use by name or directly by speci
 `${bytesSent}` returns the value of the `Content-Length` response header. If the header is missing or the response is streaming (e.g., chunked encoding), the value will be `-1`. Fiber does not calculate the actual response body size for performance reasons.
 :::
 
+## The `${ips}` tag
+
+`${ips}` logs the chain the framework parsed, `Ctx.IPs()`, joined with `,`.
+Reading `X-Forwarded-For` here separately meant reading it a second way, and
+under [`DisableHeaderNormalizing`](../api/fiber.md#config) a lower-case
+`x-forwarded-for:` logged an empty chain while `Ctx.IPs()` went on returning it.
+
+It is not the list any trust decision is made from. `Ctx.IPs()` parses
+`X-Forwarded-For` unconditionally, while `Ctx.IP()` consults
+[`TrustProxy`](../api/fiber.md#config) and reads
+[`ProxyHeader`](../api/fiber.md#config), which need not be `X-Forwarded-For` at
+all — so `${ips}` and the address Fiber acted on can name different hosts.
+
+Because the entries are split and trimmed rather than echoed as sent, repeated
+`X-Forwarded-For` header lines and a single comma-joined one log identically,
+which is what [RFC 9110 §5.2](https://www.rfc-editor.org/rfc/rfc9110.html#section-5.2)
+says they are.
+
+Treat a logged chain as attacker-controlled, trusted peer or not. A proxy you
+trust appends the address it saw to whatever the client already put in
+`X-Forwarded-For`, and `Ctx.IPs()` returns every element without the
+right-to-left walk `Ctx.IP()` uses, so the entries to the left of the ones your
+own infrastructure added are still the client's to choose. Use `${ip}`, which is
+the peer address, when you need one you can rely on.
+
 ## Control-Character Sanitization
 
 Values that come from the request are scrubbed before they reach the log stream: every ASCII control byte (C0 and DEL) is replaced with a space, and horizontal tab is preserved. Without this, a percent-decoded query parameter, form field, or request body containing `\r\n` could forge additional access-log lines and corrupt an audit trail.
@@ -340,11 +365,10 @@ Tags whose values the framework controls — `${status}`, `${method}`, `${protoc
 Only ASCII controls are replaced. Bytes at or above `0x80` pass through untouched, so C1 controls (U+0080–U+009F, including NEL U+0085, which some log pipelines treat as a line break) survive scrubbing. Handle those yourself if your values can carry them.
 
 :::caution
-Four paths bypass the built-in scrubbing, because each one replaces the renderer rather than wrapping it:
+Three paths bypass the built-in scrubbing, because each one replaces the renderer rather than wrapping it:
 
 - `Config.CustomTags`
 - `RegisterTag` / `MustRegisterTag`
-- `RegisterContextTag`
 - `Config.LoggerFunc`, which replaces the rendering pipeline wholesale
 
 Anything request-derived that you write from one of these needs scrubbing. Use `logger.SanitizeValue`, which applies exactly what the built-in tags apply:
@@ -355,7 +379,7 @@ logger.MustRegisterTag("tenant", func(output logger.Buffer, c fiber.Ctx, _ *logg
 })
 ```
 
-Fiber's own context tags — `${username}`, `${api-key}`, `${csrf-token}`, `${requestid}`, `${session-id}` — are safe because the middleware behind each one validates or redacts at the source, not because `RegisterContextTag` scrubs.
+`RegisterContextTag` is not on that list: it wraps your extractor rather than being one, so what the extractor returns is scrubbed on the way out — in both the access-log renderer and the `log` package one. Fiber's own context tags — `${username}`, `${api-key}`, `${csrf-token}`, `${requestid}`, `${session-id}` — are registered through it, and the middleware behind each one validates or redacts at the source as well.
 :::
 
 ## Constants

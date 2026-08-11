@@ -2,6 +2,7 @@ package logger
 
 import (
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/logtemplate"
 	fiberlog "github.com/gofiber/fiber/v3/log"
 )
 
@@ -49,12 +50,15 @@ func RegisterContextTag(name string, extract func(ctx any) string) {
 		panic("logger: RegisterContextTag requires a non-empty name and extractor")
 	}
 
+	// Sanitized like every built-in tag: what extract returns is whatever the
+	// application pulled out of the context, in practice request data, so writing
+	// it raw lets a CR or LF close the line and start another.
 	fiberlog.MustRegisterContextTag(name, func(output fiberlog.Buffer, ctx any, _ *fiberlog.ContextData, _ string) (int, error) {
 		v := extract(ctx)
 		if v == "" {
 			return 0, nil
 		}
-		return output.WriteString(v)
+		return logtemplate.WriteSanitizedString(output, v)
 	})
 
 	MustRegisterTag(name, func(output Buffer, c fiber.Ctx, _ *Data, _ string) (int, error) {
@@ -62,6 +66,6 @@ func RegisterContextTag(name string, extract func(ctx any) string) {
 		if v == "" {
 			return 0, nil
 		}
-		return output.WriteString(v)
+		return writeSanitizedString(output, v)
 	})
 }

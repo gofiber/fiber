@@ -51,7 +51,7 @@ Only `http` and `https` upstream schemes are accepted by default; `file://`, `go
 
 `DoRedirects` rejects redirects from HTTPS origins to plaintext HTTP targets with `ErrRedirectDowngrade`. Following such a redirect would leak any cookies or `Authorization` headers established under TLS. Set `SecurityPolicy.AllowHTTPSDowngrade = true` to override.
 
-When a redirect crosses to a **different host**, `DoRedirects` strips the `Authorization`, `Proxy-Authorization`, and `Cookie` headers so credentials bound to the original origin are not forwarded to a third-party upstream. Same-host redirects retain these headers.
+When a redirect crosses to a **different host**, `DoRedirects` strips `Authorization`, `Proxy-Authorization`, `Proxy-Authenticate`, `WWW-Authenticate`, `Cookie` and the obsolete `Cookie2`, so credentials bound to the original origin are not forwarded to a third-party upstream. This is `net/http`'s own set. Same-host redirects retain these headers.
 
 ### RFC 7230 hop-by-hop header stripping
 
@@ -72,8 +72,52 @@ When a redirect crosses to a **different host**, `DoRedirects` strips the `Autho
 If you're using `Balancer` with the `Config` struct, you can replicate the protection in `ModifyRequest`. When using `Do`, `DoRedirects`, `DoDeadline`, or `DoTimeout` directly, the `X-Real-IP` header is not set automatically — set it manually if needed:
 
 ```go
-c.Request().Header.Set("X-Real-IP", c.IP())
+ip := c.IP()
+c.Request().Header.Del("X-Real-IP")
+c.Request().Header.Add("X-Real-IP", ip)
 ```
+
+`Set` alone is not enough here. It replaces the first field line with that name
+and leaves any others in place, so a client that sends `X-Real-IP` twice keeps
+one of its own values on the wire, and the upstream — which may read the last
+line, or join the pair per RFC 9110 §5.2 — attributes the request to an address
+the client chose. Delete first so exactly one line survives. Resolve `c.IP()`
+before the delete as well: with `Config.ProxyHeader` set to `X-Real-IP`, `c.IP()`
+reads the very header being replaced.
+
+:::caution With `DisableHeaderNormalizing`, delete every spelling
+
+`Del` matches the stored key byte for byte. That finds every line while Fiber
+canonicalizes header names, which is the default — but under
+[`DisableHeaderNormalizing`](../api/fiber.md#config) the store keeps the
+spelling the client sent, and lower case is what HTTP/2 and HTTP/3 put on the
+wire. `Del("X-Real-IP")` then leaves a client-sent `x-real-ip` untouched and the
+`Add` lands beside it, which is the pair the delete exists to prevent.
+
+The middleware's own `Forward`, `DomainForward` and `BalancerForward` handle
+this. Doing it by hand takes one pass to collect the spellings and another to
+remove them, since deleting while iterating the store is not safe:
+
+```go
+ip := c.IP()
+h := &c.Request().Header
+
+var spellings []string
+for k := range h.All() {
+    if utils.EqualFold(utils.UnsafeString(k), "X-Real-IP") {
+        spellings = append(spellings, string(k))
+    }
+}
+for _, name := range spellings {
+    h.Del(name)
+}
+
+h.Add("X-Real-IP", ip)
+```
+
+`utils` here is `github.com/gofiber/utils/v2`.
+
+:::
 
 ### Path concatenation safety
 
