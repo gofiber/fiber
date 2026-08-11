@@ -225,8 +225,9 @@ type Config struct { //nolint:govet // Aligning the struct fields is not necessa
 	// Warning: middleware never runs for skipped requests. This breaks Use-based
 	// responders on unregistered paths (catch-all 404 pages, static, proxy,
 	// healthcheck, rewrite and redirect middleware); loggers and metrics will not
-	// see the skipped requests either. CORS preflight requests are exempt, so cors
-	// middleware keeps working. Customize the 404/405 responses via ErrorHandler.
+	// see the skipped requests either, and a rate limiter neither counts nor
+	// throttles them. CORS preflight requests are exempt, so cors middleware
+	// keeps working. Customize the 404/405 responses via ErrorHandler.
 	//
 	// Note: with more than 64 entries in RequestMethods the fast path is disabled
 	// and requests fall through to the normal router.
@@ -1636,32 +1637,6 @@ func (app *App) GetRoute(name string) Route {
 	}
 
 	return copied
-}
-
-// routeURL builds a named route's URL, reading only the routing data it needs so
-// it never pays for GetRoute's deep clone. An unknown name yields ("", nil).
-func (app *App) routeURL(name string, params Map) (string, error) {
-	var (
-		path          string
-		parser        routeParser
-		caseSensitive bool
-	)
-
-	app.mutex.Lock()
-	for _, routes := range app.stack {
-		for _, route := range routes {
-			if route.Name == name {
-				path, parser, caseSensitive = route.Path, route.routeParser, route.caseSensitive
-				break
-			}
-		}
-		if path != "" {
-			break
-		}
-	}
-	app.mutex.Unlock()
-
-	return buildRouteURLFrom(path, &parser, caseSensitive, params)
 }
 
 // GetRoutes Get all routes. When filterUseOption equal to true, it will filter the routes registered by the middleware.

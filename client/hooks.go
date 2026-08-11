@@ -342,9 +342,12 @@ func parserResponseCookie(c *Client, resp *Response, req *Request) error {
 		return err
 	}
 
-	// Store cookies in the cookie jar if available.
+	// Store cookies in the jar if available, keyed by the responding URI rather
+	// than the requested one — otherwise a redirect's last hop could plant cookies
+	// for an unrelated origin. Only the final response reaches this hook.
 	if c.cookieJar != nil {
-		c.cookieJar.parseCookiesFromResp(req.RawRequest.URI().Host(), req.RawRequest.URI().Path(), resp.RawResponse)
+		host, path := resp.respondedOrigin(req.RawRequest.URI())
+		c.cookieJar.parseCookiesFromResp(host, path, resp.RawResponse)
 	}
 
 	return nil

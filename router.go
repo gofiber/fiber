@@ -11,6 +11,7 @@ import (
 	"slices"
 	"sync/atomic"
 
+	"github.com/gofiber/fiber/v3/internal/urlnorm"
 	"github.com/gofiber/utils/v2"
 	utilsstrings "github.com/gofiber/utils/v2/strings"
 	"github.com/gofiber/utils/v2/swar"
@@ -320,22 +321,30 @@ func (r Route) URL(params Map) (string, error) {
 //  2. Case-insensitive fallback picking the lexicographically-smallest matching key (when !caseSensitive)
 //  3. Greedy parameter fallback for wildcard (*) and plus (+) parameters
 func buildRouteURL(route *Route, params Map) (string, error) {
-	return buildRouteURLFrom(route.Path, &route.routeParser, route.caseSensitive, params)
-}
+	// No relative URL names such a route. Two leading slashes open an authority,
+	// so "//internal" resolves to the host "internal" rather than a path here,
+	// and one leading slash reaches a different route. Say so instead of
+	// composing either.
+	//
+	// Judged after the parser's own input handling, since that is what a client
+	// applies to whatever is composed: a tab, CR or LF is deleted anywhere in the
+	// URL, and a run of controls or spaces is stripped from either end. So a
+	// route registered at "/\t/internal" reads as "//internal", and one at
+	// "/internal " — reachable through "/internal%20" under UnescapePath — reads
+	// as "/internal", a different route. No URL names either.
+	normalized := urlnorm.AsBrowserReads(route.Path)
+	if normalized != route.Path || urlnorm.LeadingSlashes(normalized) > 1 {
+		return "", ErrRouteNotRepresentable
+	}
 
-// buildRouteURLFrom is buildRouteURL over the three fields it actually reads, so
-// callers on the request path can build a URL without materializing a Route.
-//
-//nolint:revive // flag-parameter: caseSensitive mirrors Route.caseSensitive, it selects a lookup rule rather than a branch of behavior.
-func buildRouteURLFrom(path string, parser *routeParser, caseSensitive bool, params Map) (string, error) {
-	if len(parser.segs) == 0 {
-		return path, nil
+	if len(route.routeParser.segs) == 0 {
+		return urlnorm.RootedPath(route.Path), nil
 	}
 
 	buf := bytebufferpool.Get()
 	defer bytebufferpool.Put(buf)
 
-	for _, segment := range parser.segs {
+	for _, segment := range route.routeParser.segs {
 		if !segment.IsParam {
 			_, err := buf.WriteString(segment.Const)
 			if err != nil {
@@ -350,7 +359,7 @@ func buildRouteURLFrom(path string, parser *routeParser, caseSensitive bool, par
 		)
 
 		// Prefer an exact parameter name match
-		if val, found = params[segment.ParamName]; !found && !caseSensitive {
+		if val, found = params[segment.ParamName]; !found && !route.caseSensitive {
 			// Fall back to a case-insensitive match using a deterministic winner
 			var matchedKey string
 			foundMatch := false
@@ -383,7 +392,7 @@ func buildRouteURLFrom(path string, parser *routeParser, caseSensitive bool, par
 		}
 	}
 
-	return buf.String(), nil
+	return urlnorm.RootedPath(buf.String()), nil
 }
 
 // preferredGreedyParameters returns the generic greedy fallback lookup order

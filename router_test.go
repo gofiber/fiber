@@ -13,6 +13,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	neturl "net/url"
 	"os"
 	"reflect"
 	"regexp"
@@ -4958,4 +4959,42 @@ func Test_Route_OptionalSlash_SingleCharSegment(t *testing.T) {
 			require.Equal(t, StatusOK, resp.StatusCode)
 		})
 	}
+}
+
+// Test_Route_URL_RefusesUnrepresentableRoute covers a route whose own path
+// starts more than one slash. No relative URL names it: two leading slashes open
+// an authority, so "//internal" resolves to the host "internal" rather than a
+// path here, and collapsing to one reaches a different route. Both silently
+// composed the wrong thing, one of them an open redirect, so it errors instead.
+func Test_Route_URL_RefusesUnrepresentableRoute(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	app.Get("//internal", func(c Ctx) error { return c.SendString("internal") }).Name("dbl")
+	app.Get("//*", func(c Ctx) error { return c.SendString("wild") }).Name("dblwild")
+	// The parser deletes the tab, so this path is read as "//internal" too. The
+	// byte is not there to be seen by the time anything acts on the composition.
+	app.Get("/\t/internal", func(c Ctx) error { return c.SendString("tabbed") }).Name("tab")
+	// A trailing space goes the same way: the parser strips a run of controls or
+	// spaces from either end, so this route is read as "/internal", which is a
+	// different one. Reachable as "/internal%20" under UnescapePath, but no URL
+	// composed here can name it.
+	app.Get("/internal ", func(c Ctx) error { return c.SendString("spaced") }).Name("space")
+	app.Get("/*", func(c Ctx) error { return c.SendString("ok") }).Name("wild")
+
+	for _, name := range []string{"dbl", "dblwild", "tab", "space"} {
+		url, err := app.GetRoute(name).URL(Map{"*": "evil.com"})
+		require.ErrorIs(t, err, ErrRouteNotRepresentable, name)
+		require.Empty(t, url, name)
+	}
+
+	// An ordinary route still composes, and a value cannot open an authority.
+	url, err := app.GetRoute("wild").URL(Map{"*": "/evil.com"})
+	require.NoError(t, err)
+	require.Equal(t, "/evil.com", url)
+
+	// What that composed reaches is this origin, not evil.com.
+	ref, err := neturl.Parse(url)
+	require.NoError(t, err)
+	require.Empty(t, ref.Host)
 }

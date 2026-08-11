@@ -108,7 +108,26 @@ func createTagMap(cfg *Config) map[string]LogFunc {
 			return writeSanitizedString(output, c.IP())
 		},
 		TagIPs: func(output Buffer, c fiber.Ctx, _ *Data, _ string) (int, error) {
-			return writeSanitizedString(output, c.Get(fiber.HeaderXForwardedFor))
+			// Ask the framework for the chain rather than read the header a second way:
+			// a lower-case "x-forwarded-for:" logged an empty chain while the trust
+			// decisions used it. c.IPs() splits and trims, so both wire forms match.
+			ips := c.IPs()
+			n := 0
+			for i, ip := range ips {
+				if i > 0 {
+					m, err := output.WriteString(",")
+					n += m
+					if err != nil {
+						return n, err
+					}
+				}
+				m, err := writeSanitizedString(output, ip)
+				n += m
+				if err != nil {
+					return n, err
+				}
+			}
+			return n, nil
 		},
 		TagHost: func(output Buffer, c fiber.Ctx, _ *Data, _ string) (int, error) {
 			return writeSanitizedString(output, c.Hostname())

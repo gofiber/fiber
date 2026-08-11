@@ -599,6 +599,103 @@ func Test_Listen_TLSConfig_WithTLSConfigFunc(t *testing.T) {
 	require.False(t, calledTLSConfigFunc)
 }
 
+// go test -run Test_Listen_TLSConfig_WarnsSupersededFields
+func Test_Listen_TLSConfig_WarnsSupersededFields(t *testing.T) {
+	// Not parallel: it captures the package-level log output, and Go keeps no
+	// parallel test in flight while a serial one runs. Test_Listen_TLSConfig_WithTLSConfigFunc
+	// is parallel and warns, so it would otherwise write into this buffer.
+	cert, err := tls.LoadX509KeyPair("./.github/testdata/ssl.pem", "./.github/testdata/ssl.key")
+	require.NoError(t, err)
+
+	var buf bytes.Buffer
+	withCapturedLogOutput(t, &buf)
+
+	app := New()
+	go func() {
+		time.Sleep(500 * time.Millisecond)
+		assert.NoError(t, app.Shutdown())
+	}()
+
+	require.NoError(t, app.Listen(":0", ListenConfig{
+		DisableStartupMessage: true,
+		TLSConfig: &tls.Config{
+			MinVersion:   tls.VersionTLS12,
+			Certificates: []tls.Certificate{cert},
+		},
+		// Superseded by TLSConfig. CertClientFile is the one that matters: a
+		// listener that silently drops it serves every client without asking
+		// for a certificate, which reads as working mTLS until someone checks.
+		CertClientFile: "./.github/testdata/ca-chain.cert.pem",
+		TLSConfigFunc:  func(*tls.Config) {},
+		// The supplied TLSConfig permits TLS 1.2, so this request is dropped.
+		TLSMinVersion: tls.VersionTLS13,
+	}))
+
+	out := buf.String()
+	require.Contains(t, out, "CertClientFile")
+	// Not "no client certificate will be required": the supplied TLSConfig may
+	// ask for one itself, and then one is. What the warning has to say is which
+	// of the two decides, and that ClientAuth is what decides it.
+	require.Contains(t, out, "required only if TLSConfig sets ClientAuth to a Require mode")
+	require.Contains(t, out, "TLSConfigFunc")
+	require.Contains(t, out, "TLSMinVersion")
+}
+
+// go test -run Test_Listen_TLSConfig_NoWarningWhenAlone
+func Test_Listen_TLSConfig_NoWarningWhenAlone(t *testing.T) {
+	// Not parallel: captures the package-level log output.
+	cert, err := tls.LoadX509KeyPair("./.github/testdata/ssl.pem", "./.github/testdata/ssl.key")
+	require.NoError(t, err)
+
+	var buf bytes.Buffer
+	withCapturedLogOutput(t, &buf)
+
+	app := New()
+	go func() {
+		time.Sleep(500 * time.Millisecond)
+		assert.NoError(t, app.Shutdown())
+	}()
+
+	require.NoError(t, app.Listen(":0", ListenConfig{
+		DisableStartupMessage: true,
+		TLSConfig: &tls.Config{
+			MinVersion:   tls.VersionTLS12,
+			Certificates: []tls.Certificate{cert},
+		},
+	}))
+
+	require.NotContains(t, buf.String(), "supersedes")
+}
+
+// go test -run Test_Listener_WarnsIgnoredTLSFields
+func Test_Listener_WarnsIgnoredTLSFields(t *testing.T) {
+	// Not parallel: captures the package-level log output.
+	var buf bytes.Buffer
+	withCapturedLogOutput(t, &buf)
+
+	ln, err := net.Listen(NetworkTCP4, "127.0.0.1:0")
+	require.NoError(t, err)
+
+	app := New()
+	go func() {
+		time.Sleep(500 * time.Millisecond)
+		assert.NoError(t, app.Shutdown())
+	}()
+
+	// Listener serves ln untouched, so mTLS here is silently absent unless the
+	// caller wrapped the listener themselves.
+	require.NoError(t, app.Listener(ln, ListenConfig{
+		DisableStartupMessage: true,
+		CertClientFile:        "./.github/testdata/ca-chain.cert.pem",
+	}))
+
+	out := buf.String()
+	require.Contains(t, out, "CertClientFile is ignored")
+	// The supplied listener may already require a certificate, so the warning
+	// names what decides rather than asserting none is asked for.
+	require.Contains(t, out, "required only if the supplied listener already asks for one")
+}
+
 // go test -run Test_Listen_AutoCert_Conflicts
 func Test_Listen_AutoCert_Conflicts(t *testing.T) {
 	t.Parallel()
@@ -1114,4 +1211,230 @@ func captureOutput(f func()) string {
 
 func emptyHandler(_ Ctx) error {
 	return nil
+}
+
+// go test -run Test_WarnIgnoredTLSFieldsOnListener_Branches
+//
+// Listener serves the listener it is handed, so every TLS field in the config
+// is dropped. The end-to-end tests above cover CertClientFile, which returns
+// before the rest; this drives the remaining fields, the singular/plural
+// wording, and the two suffixes — a plain listener is not serving TLS at all,
+// which is worth saying, and a TLS one already is.
+func Test_WarnIgnoredTLSFieldsOnListener_Branches(t *testing.T) {
+	// Not parallel: captures the package-level log output.
+	cert, err := tls.LoadX509KeyPair("./.github/testdata/ssl.pem", "./.github/testdata/ssl.key")
+	require.NoError(t, err)
+
+	plain, err := net.Listen(NetworkTCP4, "127.0.0.1:0")
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = plain.Close() }) //nolint:errcheck // closing a test listener
+
+	secure, err := net.Listen(NetworkTCP4, "127.0.0.1:0")
+	require.NoError(t, err)
+	tlsLn := tls.NewListener(secure, &tls.Config{
+		MinVersion:   tls.VersionTLS12,
+		Certificates: []tls.Certificate{cert},
+	})
+	t.Cleanup(func() { _ = tlsLn.Close() }) //nolint:errcheck // closing a test listener
+
+	tests := []struct {
+		listener net.Listener
+		contains []string
+		absent   []string
+		name     string
+		cfg      ListenConfig
+	}{
+		{
+			name:     "nothing to report",
+			cfg:      ListenConfig{},
+			listener: plain,
+			absent:   []string{"ignored"},
+		},
+		{
+			name:     "one field reads singular",
+			cfg:      ListenConfig{TLSConfig: &tls.Config{MinVersion: tls.VersionTLS12}},
+			listener: tlsLn,
+			contains: []string{"TLSConfig", "is ignored."},
+			absent:   []string{"not serving TLS"},
+		},
+		{
+			// A plain listener is not serving TLS at all, which is the more
+			// surprising half and is said outright.
+			name:     "a plain listener says so",
+			cfg:      ListenConfig{TLSConfig: &tls.Config{MinVersion: tls.VersionTLS12}},
+			listener: plain,
+			contains: []string{"TLSConfig", "is ignored", "this listener is not serving TLS"},
+		},
+		{
+			name: "several fields read plural",
+			cfg: ListenConfig{
+				CertFile:      "./.github/testdata/ssl.pem",
+				CertKeyFile:   "./.github/testdata/ssl.key",
+				TLSConfigFunc: func(*tls.Config) {},
+			},
+			listener: plain,
+			contains: []string{"CertFile/CertKeyFile", "TLSConfigFunc", "are ignored"},
+		},
+		{
+			name:     "the certificate manager counts too",
+			cfg:      ListenConfig{AutoCertManager: &autocert.Manager{}},
+			listener: plain,
+			contains: []string{"AutoCertManager", "is ignored"},
+		},
+		{
+			name:     "a raised minimum version is named",
+			cfg:      ListenConfig{TLSMinVersion: tls.VersionTLS13},
+			listener: plain,
+			contains: []string{"TLSMinVersion", "is ignored"},
+		},
+		{
+			// The default and the unset zero both mean nothing was displaced.
+			name:     "the default minimum version is not",
+			cfg:      ListenConfig{TLSMinVersion: tls.VersionTLS12},
+			listener: plain,
+			absent:   []string{"ignored"},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			withCapturedLogOutput(t, &buf)
+
+			cfg := tc.cfg
+			warnIgnoredTLSFieldsOnListener(&cfg, tc.listener)
+
+			out := buf.String()
+			for _, want := range tc.contains {
+				require.Contains(t, out, want)
+			}
+			for _, unwanted := range tc.absent {
+				require.NotContains(t, out, unwanted)
+			}
+		})
+	}
+}
+
+// go test -run Test_WarnSupersededTLSFields_Branches
+//
+// TLSConfig replaces the other TLS settings rather than seeding them, so each
+// one it displaces is named. The end-to-end test above covers the pair a real
+// deployment hits; this drives the two that are otherwise unreached.
+func Test_WarnSupersededTLSFields_Branches(t *testing.T) {
+	// Not parallel: captures the package-level log output.
+	tests := []struct {
+		name     string
+		contains []string
+		absent   []string
+		cfg      ListenConfig
+	}{
+		{
+			name:   "nothing to report",
+			cfg:    ListenConfig{},
+			absent: []string{"supersedes"},
+		},
+		{
+			name:     "certificate files",
+			cfg:      ListenConfig{CertFile: "./.github/testdata/ssl.pem"},
+			contains: []string{"supersedes CertFile/CertKeyFile"},
+		},
+		{
+			name:     "certificate manager",
+			cfg:      ListenConfig{AutoCertManager: &autocert.Manager{}},
+			contains: []string{"supersedes AutoCertManager"},
+		},
+		{
+			name:     "a raised minimum version",
+			cfg:      ListenConfig{TLSMinVersion: tls.VersionTLS13},
+			contains: []string{"supersedes TLSMinVersion"},
+		},
+		{
+			// The default and the unset zero both mean nothing was displaced.
+			name:   "the default minimum version is not reported",
+			cfg:    ListenConfig{TLSMinVersion: tls.VersionTLS12},
+			absent: []string{"supersedes"},
+		},
+		{
+			name: "all of them at once",
+			cfg: ListenConfig{
+				CertKeyFile:     "./.github/testdata/ssl.key",
+				AutoCertManager: &autocert.Manager{},
+				TLSConfigFunc:   func(*tls.Config) {},
+				TLSMinVersion:   tls.VersionTLS13,
+			},
+			contains: []string{"CertFile/CertKeyFile", "TLSMinVersion", "AutoCertManager", "TLSConfigFunc"},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			withCapturedLogOutput(t, &buf)
+
+			cfg := tc.cfg
+			warnSupersededTLSFields(&cfg)
+
+			out := buf.String()
+			for _, want := range tc.contains {
+				require.Contains(t, out, want)
+			}
+			for _, unwanted := range tc.absent {
+				require.NotContains(t, out, unwanted)
+			}
+		})
+	}
+}
+
+// Test_Listen_StaleTLSMinVersionReachesTheDiagnostics covers where the
+// unsupported-version check is asked.
+//
+// A stale tls.VersionTLS11 beside a TLSConfig, or on App.Listener, is a value
+// neither path reads. Rejecting it in the defaults panicked before either
+// warning could run, so the caller learned nothing about the field being
+// ignored — the one thing worth telling them. Where the version is read, it is
+// still rejected.
+//
+//nolint:tparallel // the warning subtests capture the package-level log output
+func Test_Listen_StaleTLSMinVersionReachesTheDiagnostics(t *testing.T) {
+	t.Run("superseded by TLSConfig", func(t *testing.T) {
+		var buf bytes.Buffer
+		withCapturedLogOutput(t, &buf)
+
+		cfg := listenConfigDefault(ListenConfig{
+			TLSConfig:     &tls.Config{MinVersion: tls.VersionTLS12},
+			TLSMinVersion: tls.VersionTLS11,
+		})
+		require.NotPanics(t, func() { warnSupersededTLSFields(&cfg) })
+		require.Contains(t, buf.String(), "TLSMinVersion")
+	})
+
+	t.Run("ignored on a supplied listener", func(t *testing.T) {
+		var buf bytes.Buffer
+		withCapturedLogOutput(t, &buf)
+
+		ln, err := net.Listen(NetworkTCP4, "127.0.0.1:0")
+		require.NoError(t, err)
+		defer func() { require.NoError(t, ln.Close()) }()
+
+		cfg := listenConfigDefault(ListenConfig{TLSMinVersion: tls.VersionTLS11})
+		require.NotPanics(t, func() { warnIgnoredTLSFieldsOnListener(&cfg, ln) })
+		require.Contains(t, buf.String(), "TLSMinVersion")
+	})
+
+	t.Run("still rejected where it is read", func(t *testing.T) {
+		t.Parallel()
+
+		cfg := listenConfigDefault(ListenConfig{TLSMinVersion: tls.VersionTLS11})
+		require.PanicsWithValue(t,
+			"unsupported TLS version, please use tls.VersionTLS12 or tls.VersionTLS13",
+			func() { validateTLSMinVersion(&cfg) })
+	})
+
+	t.Run("the default is accepted", func(t *testing.T) {
+		t.Parallel()
+
+		cfg := listenConfigDefault()
+		require.Equal(t, uint16(tls.VersionTLS12), cfg.TLSMinVersion)
+		require.NotPanics(t, func() { validateTLSMinVersion(&cfg) })
+	})
 }
