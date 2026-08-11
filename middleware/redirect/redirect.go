@@ -71,11 +71,8 @@ func New(config ...Config) fiber.Handler {
 		// own rather than folded into the width below, which saturates — two
 		// rules whose widths both reach the clamp would tie again, and the
 		// broader of the two won on key order.
-		if aw, bw := hasWildcard(a), hasWildcard(b); aw != bw {
-			if aw {
-				return 1
-			}
-			return -1
+		if d := cmp.Compare(wildcardRank(a), wildcardRank(b)); d != 0 {
+			return d
 		}
 		// Two rules pinning the same amount are separated by how much else they
 		// match: an alternation matches every branch, so "/very/specific|/x" is
@@ -1109,15 +1106,18 @@ func mulWidth(n, by int) int {
 	return clampWidth(n * by)
 }
 
-// hasWildcard reports whether the rule carries Fiber's "*" wildcard, which is
-// expanded to "(.*)" before the key is compiled and so matches a run of bytes of
-// any length. That is a breadth no width can stand for, since a width saturates
-// and two saturated rules tie.
+// wildcardRank returns 1 for a rule carrying Fiber's "*" wildcard and 0 for one
+// that does not, so the wildcard rule sorts second.
+//
+// The wildcard is expanded to "(.*)" before the key is compiled, so it matches a
+// run of bytes of any length — a breadth no width can stand for, since a width
+// saturates and two saturated rules tie. Ranked here, the width goes on
+// measuring what separates two rules that both carry one.
 //
 // A star inside a character class or a "\Q ... \E" span is a byte of the path
 // rather than a wildcard: the expansion leaves "[(.*)]" a class listing four
 // characters, and "\Q(.*)\E" the literal text.
-func hasWildcard(rule string) bool {
+func wildcardRank(rule string) int {
 	for i := 0; i < len(rule); {
 		switch rule[i] {
 		case '\\':
@@ -1132,12 +1132,12 @@ func hasWildcard(rule string) bool {
 			s.classWidth() // leaves s.i just past the "]"
 			i = s.i
 		case '*':
-			return true
+			return 1
 		default:
 			i++
 		}
 	}
-	return false
+	return 0
 }
 
 // quoteStart reports whether a "\Q ... \E" span opens at i.

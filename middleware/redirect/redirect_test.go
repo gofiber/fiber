@@ -2604,19 +2604,19 @@ func Test_Redirect_NestedAlternationLosesTheTieBreak(t *testing.T) {
 	require.Equal(t, 2, patternWidth("/very/specific|/x"))
 	require.Equal(t, 4, patternWidth("(a|b)(c|d)"))
 
-	// The wildcard is ranked by hasWildcard rather than counted here, so the
-	// width goes on separating two rules that both carry one.
-	require.True(t, hasWildcard("/p/*"))
-	require.False(t, hasWildcard("/p/[a-z]"))
+	// The wildcard is ranked on its own rather than counted here, so the width
+	// goes on separating two rules that both carry one.
+	require.Equal(t, 1, wildcardRank("/p/*"))
+	require.Equal(t, 0, wildcardRank("/p/[a-z]"))
 	require.Greater(t, patternWidth("/p/*[a-z]"), patternWidth("/p/*[ab]"))
 
 	// A star that names itself is no wildcard: quoted, or listed by a class.
-	require.False(t, hasWildcard(`/p/\Q*\E`))
-	require.False(t, hasWildcard(`/p/\Qab`))
-	require.False(t, hasWildcard("/p/[*]"))
-	require.True(t, hasWildcard(`/p/\Qab\E*`))
-	require.False(t, hasWildcard(`/p/\d`))
-	require.True(t, hasWildcard(`/p/\d*`))
+	require.Equal(t, 0, wildcardRank(`/p/\Q*\E`))
+	require.Equal(t, 0, wildcardRank(`/p/\Qab`))
+	require.Equal(t, 0, wildcardRank("/p/[*]"))
+	require.Equal(t, 1, wildcardRank(`/p/\Qab\E*`))
+	require.Equal(t, 0, wildcardRank(`/p/\d`))
+	require.Equal(t, 1, wildcardRank(`/p/\d*`))
 
 	// A star inside "\Q ... \E" names itself, so the rule matches one path.
 	require.Equal(t, 1, patternWidth(`/p/\Q*\E`))
