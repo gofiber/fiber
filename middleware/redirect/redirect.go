@@ -65,9 +65,18 @@ func New(config ...Config) fiber.Handler {
 		if d := cmp.Compare(literalLen(b), literalLen(a)); d != 0 {
 			return d
 		}
+		// A wildcard matches a run of any length, so a rule holding one is
+		// broader than any rule that does not, however much either pins:
+		// "/api/*" must not shadow the "/api/[ab]" it ties with. Ranked on its
+		// own rather than counted as a width, which saturates — two rules whose
+		// widths both reached the clamp would tie again.
+		if d := cmp.Compare(wildcardRank(a), wildcardRank(b)); d != 0 {
+			return d
+		}
 		// Two rules pinning the same amount are separated by how much else they
 		// match: an alternation matches every branch, so "/very/specific|/x" is
-		// wider than the exact "/x" it ties with.
+		// wider than the exact "/x" it ties with. Two wildcard rules land here
+		// too, separated by everything beside the wildcard they share.
 		if d := cmp.Compare(patternWidth(a), patternWidth(b)); d != 0 {
 			return d
 		}
@@ -1071,6 +1080,44 @@ const maxPatternWidth = 1 << 20
 
 func clampWidth(n int) int {
 	return min(n, maxPatternWidth)
+}
+
+// wildcardRank returns 1 for a rule carrying Fiber's "*" wildcard and 0 for one
+// that does not, so the wildcard rule sorts second.
+//
+// The wildcard is expanded to "(.*)" before the key is compiled, so it matches a
+// run of bytes of any length — a breadth no width can stand for, since a width
+// saturates and two saturated rules tie. Ranked here, the width goes on
+// measuring what separates two rules that both carry one.
+//
+// A star inside a character class or a "\Q ... \E" span names itself instead:
+// the expansion leaves "[(.*)]" a class and "\Q(.*)\E" literal text.
+func wildcardRank(rule string) int {
+	for i := 0; i < len(rule); {
+		switch rule[i] {
+		case '\\':
+			if i+1 < len(rule) && rule[i+1] == 'Q' {
+				// Quoted to the matching "\E", or to the end of the rule when
+				// there is none, which is how Go's parser reads one.
+				if end := strings.Index(rule[i+2:], `\E`); end >= 0 {
+					i += 2 + end + 2
+					continue
+				}
+				return 0
+			}
+			size, _ := escapeSpan(rule, i)
+			i += size
+		case '[':
+			s := literalScanner{rule: rule, i: i}
+			s.classWidth() // leaves s.i just past the "]"
+			i = s.i
+		case '*':
+			return 1
+		default:
+			i++
+		}
+	}
+	return 0
 }
 
 // quantifierAllowsNone reports whether a quantifier at i lets what precedes it
