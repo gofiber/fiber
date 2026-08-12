@@ -68,9 +68,8 @@ func New(config ...Config) fiber.Handler {
 		// A wildcard matches a run of any length, so a rule holding one is
 		// broader than any rule that does not, however much either pins:
 		// "/api/*" must not shadow the "/api/[ab]" it ties with. Ranked on its
-		// own rather than folded into the width below, which saturates — two
-		// rules whose widths both reach the clamp would tie again, and the
-		// broader of the two won on key order.
+		// own rather than counted as a width, which saturates — two rules whose
+		// widths both reached the clamp would tie again.
 		if d := cmp.Compare(wildcardRank(a), wildcardRank(b)); d != 0 {
 			return d
 		}
@@ -1005,30 +1004,18 @@ func (s *literalScanner) width() int {
 	for s.i < len(s.rule) {
 		switch s.rule[s.i] {
 		case '\\':
-			// A "\Q ... \E" span quotes every byte it holds, so the pattern bytes
-			// inside name themselves: "/p/\Q*\E" matches the one path "/p/(.*)"
-			// once Fiber has expanded the star, and reading that star as a
-			// wildcard had the exact rule measured as a catch-all.
-			if quoteStart(s.rule, s.i) {
-				s.i = skipQuoted(s.rule, s.i)
-				continue
-			}
 			size, _ := escapeSpan(s.rule, s.i)
 			s.i += size
 			continue
 		case '[':
-			n = mulWidth(n, s.classWidth())
+			n = clampWidth(n * s.classWidth())
 			continue
 		case '.':
-			// Any byte, so it is the widest single position there is. Fiber's
-			// "*" is not counted here: it matches a run of any length, which no
-			// number this is compared against can stand for, so hasWildcard
-			// ranks it ahead of the width instead. Left out, the width measures
-			// what separates two rules that both carry one.
-			n = mulWidth(n, 256)
+			// Any byte, so it is the widest single position there is.
+			n = clampWidth(n * 256)
 		case '(':
 			s.i = skipGroupPrefix(s.rule, s.i+1)
-			n = mulWidth(n, s.width())
+			n = clampWidth(n * s.width())
 			continue
 		case ')':
 			s.i++
@@ -1062,17 +1049,6 @@ func (s *literalScanner) classWidth() int {
 
 	for j < len(rule) && rule[j] != ']' {
 		switch {
-		case rule[j] == '[' && j+1 < len(rule) && rule[j+1] == ':':
-			// A POSIX name stands for a set of its own, and the "]" closing
-			// "[:digit:]" does not close the class holding it. Reading it as one
-			// left the scan inside the brackets, where the members beyond it were
-			// measured as pattern syntax and a "*" among them was taken for
-			// Fiber's wildcard.
-			if end := strings.Index(rule[j+2:], ":]"); end >= 0 {
-				size, j = size+posixClassWidth(rule[j+2:j+2+end]), j+2+end+2
-			} else {
-				size, j = size+1, j+1
-			}
 		case rule[j] == '\\':
 			// A class escape stands for a set of its own, but one is enough to
 			// order it against the members beside it.
@@ -1092,60 +1068,10 @@ func (s *literalScanner) classWidth() int {
 	}
 	s.i = j
 
-	// The members are summed rather than unioned, so overlapping sets are counted
-	// twice and the total can run past the 256 bytes any class is drawn from.
-	// Past that the sum says nothing about the count, and a complement taken from
-	// it came out negative: "[^[:alpha:][:^digit:]]" matches the ten digits, but
-	// scored 256-298 and, floored to 1, sorted ahead of the "[09]" it contains.
-	// Such a class is read as matching every byte instead, so one this scan
-	// cannot measure never shadows one it can.
-	if size > 256 {
-		return 256
-	}
 	if negated {
 		size = 256 - size
 	}
 	return max(size, 1)
-}
-
-// posixClassSizes gives how many bytes each POSIX name matches, since the
-// breadth is the whole reason a class is measured: counting "[:digit:]" as one
-// member scored "[[:digit:]]" narrower than the "[09]" it contains, and the
-// broader rule then shadowed the narrower one.
-var posixClassSizes = map[string]int{
-	"alnum":  62,  // [0-9A-Za-z]
-	"alpha":  52,  // [A-Za-z]
-	"ascii":  128, // [\x00-\x7F]
-	"blank":  2,   // [\t ]
-	"cntrl":  33,  // [\x00-\x1F\x7F]
-	"digit":  10,  // [0-9]
-	"graph":  94,  // [!-~]
-	"lower":  26,  // [a-z]
-	"print":  95,  // [ -~]
-	"punct":  32,  // [!-/:-@[-`{-~]
-	"space":  6,   // [\t\n\v\f\r ]
-	"upper":  26,  // [A-Z]
-	"word":   63,  // [0-9A-Za-z_]
-	"xdigit": 22,  // [0-9A-Fa-f]
-}
-
-// posixClassWidth returns how many bytes the POSIX name written between "[:"
-// and ":]" matches, negation included: "[:^digit:]" is every byte but a digit.
-// A name Go does not know counts as one, though such a rule fails to compile
-// and so never reaches an ordering.
-func posixClassWidth(name string) int {
-	negated := strings.HasPrefix(name, "^")
-	if negated {
-		name = name[1:]
-	}
-	size, ok := posixClassSizes[name]
-	if !ok {
-		return 1
-	}
-	if negated {
-		return 256 - size
-	}
-	return size
 }
 
 // maxPatternWidth bounds the product a nest of groups builds, since the count is
@@ -1156,17 +1082,6 @@ func clampWidth(n int) int {
 	return min(n, maxPatternWidth)
 }
 
-// mulWidth multiplies two widths, clamping before the product is formed rather
-// than after. A nest of groups multiplies two already-clamped counts, which
-// overflows an int on a 32-bit build — and the negative that came out sorted the
-// widest rule first, ahead of the narrow one it shadows.
-func mulWidth(n, by int) int {
-	if by > 0 && n > maxPatternWidth/by {
-		return maxPatternWidth
-	}
-	return clampWidth(n * by)
-}
-
 // wildcardRank returns 1 for a rule carrying Fiber's "*" wildcard and 0 for one
 // that does not, so the wildcard rule sorts second.
 //
@@ -1175,24 +1090,20 @@ func mulWidth(n, by int) int {
 // saturates and two saturated rules tie. Ranked here, the width goes on
 // measuring what separates two rules that both carry one.
 //
-// A star inside a character class or a "\Q ... \E" span is a byte of the path
-// rather than a wildcard: the expansion leaves "[(.*)]" a class listing four
-// characters, and "\Q(.*)\E" the literal text.
+// A star inside a character class or a "\Q ... \E" span names itself instead:
+// the expansion leaves "[(.*)]" a class and "\Q(.*)\E" literal text.
 func wildcardRank(rule string) int {
 	for i := 0; i < len(rule); {
 		switch rule[i] {
 		case '\\':
-			if quoteStart(rule, i) {
-				i = skipQuoted(rule, i)
-				continue
-			}
-			// The replacement runs over the whole key before it is compiled, so
-			// a backslash does not spare the star that follows it: "\*" becomes
-			// "\(.*)", which is an escaped parenthesis and then a live wildcard.
-			// Read as the literal star it resembles, "/p/(\*" ranked as pinning
-			// every position while it matched any suffix at all.
-			if i+1 < len(rule) && rule[i+1] == '*' {
-				return 1
+			if i+1 < len(rule) && rule[i+1] == 'Q' {
+				// Quoted to the matching "\E", or to the end of the rule when
+				// there is none, which is how Go's parser reads one.
+				if end := strings.Index(rule[i+2:], `\E`); end >= 0 {
+					i += 2 + end + 2
+					continue
+				}
+				return 0
 			}
 			size, _ := escapeSpan(rule, i)
 			i += size
@@ -1207,21 +1118,6 @@ func wildcardRank(rule string) int {
 		}
 	}
 	return 0
-}
-
-// quoteStart reports whether a "\Q ... \E" span opens at i.
-func quoteStart(rule string, i int) bool {
-	return i+1 < len(rule) && rule[i+1] == 'Q'
-}
-
-// skipQuoted returns the position just past the "\Q ... \E" span opening at i.
-// An unterminated span quotes the rest of the rule, which is how Go's parser
-// reads one.
-func skipQuoted(rule string, i int) int {
-	if end := strings.Index(rule[i+2:], `\E`); end >= 0 {
-		return i + 2 + end + 2
-	}
-	return len(rule)
 }
 
 // quantifierAllowsNone reports whether a quantifier at i lets what precedes it

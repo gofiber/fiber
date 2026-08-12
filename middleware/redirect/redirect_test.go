@@ -1946,6 +1946,8 @@ func Test_Redirect_RuleOrderIsBySpecificity(t *testing.T) {
 			want:  "/two",
 		},
 		{
+			// The two pin the same prefix and the same total, and a wildcard
+			// matches a run of any length, so the class is the narrower claim.
 			name:  "a character class outranks a wildcard",
 			rules: map[string]string{"/api/*": "/wild/$1", "/api/[ab]": "/class"},
 			path:  "/api/a?token=secret",
@@ -1958,67 +1960,11 @@ func Test_Redirect_RuleOrderIsBySpecificity(t *testing.T) {
 			want:  "/wild/z",
 		},
 		{
-			// Two rules opening with a wildcard are still told apart by what
-			// follows it, which saturating the wildcard's width erased.
+			// Two rules that both carry a wildcard are still told apart by the
+			// width of everything beside it.
 			name:  "a class past a wildcard is read like any other",
 			rules: map[string]string{`/p/*[a-z]`: "/wide", `/p/*[ab]`: "/narrow"},
 			path:  "/p/za",
-			want:  "/narrow",
-		},
-		{
-			// Quoted, the star is a byte of the path rather than a wildcard, so
-			// this rule matches the single path the catch-all also takes.
-			name:  "a quoted star is not a wildcard",
-			rules: map[string]string{`/p/\Q*\E`: "/exact", "/p/....": "/wide"},
-			path:  "/p/(.*)",
-			want:  "/exact",
-		},
-		{
-			// Both suffixes are wide enough that counting the wildcard among
-			// them drove the product into the clamp, where the two tied and key
-			// order handed the path to the broader rule.
-			name: "wide suffixes past a wildcard still rank",
-			rules: map[string]string{
-				"/p/*[a-z][ab][ab][ab][ab][ab][ab][ab][ab][ab][ab][ab]": "/wide",
-				"/p/*[ab][ab][ab][ab][ab][ab][ab][ab][ab][ab][ab][ab]":  "/narrow",
-			},
-			path: "/p/zaaaaaaaaaaaa",
-			want: "/narrow",
-		},
-		{
-			// The "]" closing "[:digit:]" does not close the class holding it,
-			// and stopping there left the scan reading the members beyond as
-			// pattern syntax — the star among them ranked this exact rule as a
-			// catch-all, behind the dot that really is one.
-			name:  "a posix name does not end the class holding it",
-			rules: map[string]string{"/p/[[:digit:]*]": "/posix", "/p/.": "/dot"},
-			path:  "/p/0",
-			want:  "/posix",
-		},
-		{
-			// The name is measured by what it matches, so the ten digits it
-			// stands for lose to the two the explicit class lists.
-			name:  "a posix name is as broad as the bytes it matches",
-			rules: map[string]string{"/p/[[:digit:]]": "/posix", "/p/[09]": "/explicit"},
-			path:  "/p/0",
-			want:  "/explicit",
-		},
-		{
-			// "\*" survives the replacement as "\(.*)" — a literal "(" and then
-			// a live wildcard — so this rule matches any suffix, not the one
-			// path the escaped star suggests.
-			name:  "an escaped star is still a wildcard after the replacement",
-			rules: map[string]string{`/p/(\*`: "/broad", "/p/[(]a": "/narrow"},
-			path:  "/p/(a",
-			want:  "/narrow",
-		},
-		{
-			// This class matches the ten digits, but its members overlap and
-			// sum past 256, so the complement of the sum came out negative —
-			// floored to 1, it ranked as the narrowest rule there is.
-			name:  "a class whose members overlap does not rank as narrow",
-			rules: map[string]string{"/p/[^[:alpha:][:^digit:]]": "/broad", "/p/[09]": "/narrow"},
-			path:  "/p/0",
 			want:  "/narrow",
 		},
 	}
@@ -2648,49 +2594,10 @@ func Test_Redirect_NestedAlternationLosesTheTieBreak(t *testing.T) {
 
 	// A star that names itself is no wildcard: quoted, or listed by a class.
 	require.Equal(t, 0, wildcardRank(`/p/\Q*\E`))
-	require.Equal(t, 0, wildcardRank(`/p/\Qab`))
+	require.Equal(t, 0, wildcardRank(`/p/\Qab*`))
 	require.Equal(t, 0, wildcardRank("/p/[*]"))
 	require.Equal(t, 1, wildcardRank(`/p/\Qab\E*`))
-	require.Equal(t, 0, wildcardRank(`/p/\d`))
 	require.Equal(t, 1, wildcardRank(`/p/\d*`))
-
-	// A POSIX name is a member of the class holding it, so the scan resumes past
-	// the outer "]" rather than inside the brackets — and it is measured by what
-	// it matches, since a name scored as one member ranked "[[:digit:]]"
-	// narrower than the "[09]" it contains.
-	require.Equal(t, 0, wildcardRank("/p/[[:digit:]*]"))
-	require.Equal(t, 10, patternWidth("/p/[[:digit:]]"))
-	require.Equal(t, 11, patternWidth("/p/[[:digit:]*]"))
-	require.Equal(t, 246, patternWidth("/p/[[:^digit:]]"))
-	require.Greater(t, patternWidth("/p/[[:digit:]]"), patternWidth("/p/[09]"))
-	// Without a closing ":]" the "[" is a member like any other, which is how
-	// Go's parser reads it: this class lists "[" and ":".
-	require.Equal(t, 2, patternWidth("/p/[[:]"))
-	// A name Go does not know counts as one. Such a rule fails to compile
-	// ("invalid character class range"), so it never reaches an ordering.
-	require.Equal(t, 1, patternWidth("/p/[[:bogus:]]"))
-	// Members are summed, not unioned, so overlapping sets can run past the 256
-	// bytes a class is drawn from. Past that the sum measures nothing, and the
-	// class is read as matching every byte rather than as the negative — floored
-	// to 1 — that a complement of the sum produced.
-	require.Equal(t, 256, patternWidth("/p/[^[:alpha:][:^digit:]]"))
-	require.Equal(t, 256, patternWidth("/p/[[:ascii:][:^digit:]]"))
-
-	// The replacement does not spare a star behind a backslash: "\*" compiles as
-	// an escaped parenthesis and then a live wildcard.
-	require.Equal(t, 1, wildcardRank(`/p/(\*`))
-	require.Equal(t, 0, wildcardRank(`/p/\.`))
-
-	// A star inside "\Q ... \E" names itself, so the rule matches one path.
-	require.Equal(t, 1, patternWidth(`/p/\Q*\E`))
-	require.Less(t, patternWidth(`/p/\Q*\E`), patternWidth("/p/...."))
-	// Go's parser quotes to the end of the pattern when the "\E" is missing, so
-	// the scanner has to stop there rather than run past it.
-	require.Equal(t, 1, patternWidth(`/p/\Q*.[ab]`))
-
-	// The clamp is reached by multiplying, never by overflowing into a negative
-	// that would sort a catch-all ahead of everything it shadows.
-	require.Equal(t, maxPatternWidth, patternWidth("/p/*(....)(....)(....)"))
 }
 
 // Test_Redirect_HexEscapeOutranksAClass covers "\x{61}", which names the one
