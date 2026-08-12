@@ -1945,6 +1945,28 @@ func Test_Redirect_RuleOrderIsBySpecificity(t *testing.T) {
 			path:  "/a/b/c",
 			want:  "/two",
 		},
+		{
+			// The two pin the same prefix and the same total, and a wildcard
+			// matches a run of any length, so the class is the narrower claim.
+			name:  "a character class outranks a wildcard",
+			rules: map[string]string{"/api/*": "/wild/$1", "/api/[ab]": "/class"},
+			path:  "/api/a?token=secret",
+			want:  "/class?token=secret",
+		},
+		{
+			name:  "the wildcard still takes paths outside the class",
+			rules: map[string]string{"/api/*": "/wild/$1", "/api/[ab]": "/class"},
+			path:  "/api/z",
+			want:  "/wild/z",
+		},
+		{
+			// Two rules that both carry a wildcard are still told apart by the
+			// width of everything beside it.
+			name:  "a class past a wildcard is read like any other",
+			rules: map[string]string{`/p/*[a-z]`: "/wide", `/p/*[ab]`: "/narrow"},
+			path:  "/p/za",
+			want:  "/narrow",
+		},
 	}
 
 	for _, tc := range tests {
@@ -2563,6 +2585,19 @@ func Test_Redirect_NestedAlternationLosesTheTieBreak(t *testing.T) {
 	require.Equal(t, 256, patternWidth("/p/."))
 	require.Equal(t, 2, patternWidth("/very/specific|/x"))
 	require.Equal(t, 4, patternWidth("(a|b)(c|d)"))
+
+	// The wildcard is ranked on its own rather than counted here, so the width
+	// goes on separating two rules that both carry one.
+	require.Equal(t, 1, wildcardRank("/p/*"))
+	require.Equal(t, 0, wildcardRank("/p/[a-z]"))
+	require.Greater(t, patternWidth("/p/*[a-z]"), patternWidth("/p/*[ab]"))
+
+	// A star that names itself is no wildcard: quoted, or listed by a class.
+	require.Equal(t, 0, wildcardRank(`/p/\Q*\E`))
+	require.Equal(t, 0, wildcardRank(`/p/\Qab*`))
+	require.Equal(t, 0, wildcardRank("/p/[*]"))
+	require.Equal(t, 1, wildcardRank(`/p/\Qab\E*`))
+	require.Equal(t, 1, wildcardRank(`/p/\d*`))
 }
 
 // Test_Redirect_HexEscapeOutranksAClass covers "\x{61}", which names the one
