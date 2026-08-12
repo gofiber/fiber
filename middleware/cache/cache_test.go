@@ -4061,10 +4061,12 @@ func TestCacheSeparatesAuthorizationValues(t *testing.T) {
 // Benchmark_Cache measures the hit path: the first request stores the response
 // and every one after it is served from the entry.
 //
-// The status has to be one RFC 9111 Section 15.1 lists as cacheable. This was
-// 418, which is not, so the middleware answered "unreachable" every time and
-// the benchmark measured the path that stores nothing while the handler re-read
-// the file on every iteration.
+// The status has to be one this middleware treats as cacheable, which is the
+// set RFC 9110 Section 15.1 marks heuristically cacheable — RFC 9111 defines
+// caching but has no Section 15, and defers the status codes to that one. This
+// was 418, which is not in the set, so the middleware answered "unreachable"
+// every time and the benchmark measured the path that stores nothing while the
+// handler re-read the file on every iteration.
 //
 // go test -v -run=^$ -bench=Benchmark_Cache -benchmem -count=4
 func Benchmark_Cache(b *testing.B) {
