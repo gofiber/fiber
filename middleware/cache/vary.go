@@ -25,7 +25,13 @@ func parseVary(vary string) ([]string, bool) {
 		return nil, false
 	}
 
-	var names []string
+	// Sized to the separators the field actually carries. Appending into a nil
+	// slice grows the backing array as it goes — three allocations for a
+	// three-name manifest — and this runs per lookup for every entry that
+	// varies. The cap the loop enforces bounds it, and a comma-separated list
+	// never holds more names than it has commas plus one, so the slice is
+	// allocated once and never grown.
+	names := make([]string, 0, min(strings.Count(vary, ",")+1, maxVaryHeaders))
 	count := 0
 	for part := range strings.SplitSeq(vary, ",") {
 		name := utils.TrimSpace(utilsstrings.ToLower(part))

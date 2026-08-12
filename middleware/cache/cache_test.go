@@ -4085,6 +4085,13 @@ func Benchmark_Cache(b *testing.B) {
 	fctx.Request.Header.SetMethod(fiber.MethodGet)
 	fctx.Request.SetRequestURI("/demo")
 
+	// One untimed request to populate the entry, so every measured iteration is
+	// a hit rather than the first being the miss that fills the cache. b.Loop
+	// resets the timer when it first returns, so this stays out of the numbers.
+	// Without it the benchmark also fails outright at -benchtime=1x, where the
+	// single iteration is that miss.
+	h(fctx)
+
 	b.ReportAllocs()
 
 	for b.Loop() {
@@ -4144,6 +4151,13 @@ func Benchmark_Cache_Storage(b *testing.B) {
 	fctx.Request.Header.SetMethod(fiber.MethodGet)
 	fctx.Request.SetRequestURI("/demo")
 
+	// One untimed request to populate the entry, so every measured iteration is
+	// a hit rather than the first being the miss that fills the cache. b.Loop
+	// resets the timer when it first returns, so this stays out of the numbers.
+	// Without it the benchmark also fails outright at -benchtime=1x, where the
+	// single iteration is that miss.
+	h(fctx)
+
 	b.ReportAllocs()
 
 	for b.Loop() {
@@ -4171,6 +4185,13 @@ func Benchmark_Cache_AdditionalHeaders(b *testing.B) {
 	fctx := &fasthttp.RequestCtx{}
 	fctx.Request.Header.SetMethod(fiber.MethodGet)
 	fctx.Request.SetRequestURI("/demo")
+
+	// One untimed request to populate the entry, so every measured iteration is
+	// a hit rather than the first being the miss that fills the cache. b.Loop
+	// resets the timer when it first returns, so this stays out of the numbers.
+	// Without it the benchmark also fails outright at -benchtime=1x, where the
+	// single iteration is that miss.
+	h(fctx)
 
 	b.ReportAllocs()
 
@@ -4204,6 +4225,13 @@ func Benchmark_Cache_QueryMethod(b *testing.B) {
 	fctx.Request.SetRequestURI("/demo")
 	fctx.Request.SetBody([]byte(`{"filter":"active","page":1}`))
 
+	// One untimed request to populate the entry, so every measured iteration is
+	// a hit rather than the first being the miss that fills the cache. b.Loop
+	// resets the timer when it first returns, so this stays out of the numbers.
+	// Without it the benchmark also fails outright at -benchtime=1x, where the
+	// single iteration is that miss.
+	h(fctx)
+
 	b.ReportAllocs()
 
 	for b.Loop() {
@@ -4211,6 +4239,7 @@ func Benchmark_Cache_QueryMethod(b *testing.B) {
 	}
 
 	require.Equal(b, fiber.StatusOK, fctx.Response.Header.StatusCode())
+	require.Equal(b, cacheHit, string(fctx.Response.Header.Peek("X-Cache")))
 }
 
 func Benchmark_Cache_MaxSize(b *testing.B) {
