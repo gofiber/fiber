@@ -4058,6 +4058,14 @@ func TestCacheSeparatesAuthorizationValues(t *testing.T) {
 	require.Equal(t, 2, count)
 }
 
+// Benchmark_Cache measures the hit path: the first request stores the response
+// and every one after it is served from the entry.
+//
+// The status has to be one RFC 9111 Section 15.1 lists as cacheable. This was
+// 418, which is not, so the middleware answered "unreachable" every time and
+// the benchmark measured the path that stores nothing while the handler re-read
+// the file on every iteration.
+//
 // go test -v -run=^$ -bench=Benchmark_Cache -benchmem -count=4
 func Benchmark_Cache(b *testing.B) {
 	app := fiber.New()
@@ -4066,7 +4074,7 @@ func Benchmark_Cache(b *testing.B) {
 
 	app.Get("/demo", func(c fiber.Ctx) error {
 		data, _ := os.ReadFile("../../README.md") //nolint:errcheck // We're inside a benchmark
-		return c.Status(fiber.StatusTeapot).Send(data)
+		return c.Status(fiber.StatusOK).Send(data)
 	})
 
 	h := app.Handler()
@@ -4081,7 +4089,8 @@ func Benchmark_Cache(b *testing.B) {
 		h(fctx)
 	}
 
-	require.Equal(b, fiber.StatusTeapot, fctx.Response.Header.StatusCode())
+	require.Equal(b, fiber.StatusOK, fctx.Response.Header.StatusCode())
+	require.Equal(b, cacheHit, string(fctx.Response.Header.Peek("X-Cache")))
 	require.Greater(b, len(fctx.Response.Body()), 30000)
 }
 
@@ -4124,7 +4133,7 @@ func Benchmark_Cache_Storage(b *testing.B) {
 
 	app.Get("/demo", func(c fiber.Ctx) error {
 		data, _ := os.ReadFile("../../README.md") //nolint:errcheck // We're inside a benchmark
-		return c.Status(fiber.StatusTeapot).Send(data)
+		return c.Status(fiber.StatusOK).Send(data)
 	})
 
 	h := app.Handler()
@@ -4139,7 +4148,8 @@ func Benchmark_Cache_Storage(b *testing.B) {
 		h(fctx)
 	}
 
-	require.Equal(b, fiber.StatusTeapot, fctx.Response.Header.StatusCode())
+	require.Equal(b, fiber.StatusOK, fctx.Response.Header.StatusCode())
+	require.Equal(b, cacheHit, string(fctx.Response.Header.Peek("X-Cache")))
 	require.Greater(b, len(fctx.Response.Body()), 30000)
 }
 
@@ -4151,7 +4161,7 @@ func Benchmark_Cache_AdditionalHeaders(b *testing.B) {
 
 	app.Get("/demo", func(c fiber.Ctx) error {
 		c.Response().Header.Add("X-Foobar", "foobar")
-		return c.SendStatus(418)
+		return c.SendStatus(fiber.StatusOK)
 	})
 
 	h := app.Handler()
@@ -4166,8 +4176,13 @@ func Benchmark_Cache_AdditionalHeaders(b *testing.B) {
 		h(fctx)
 	}
 
-	require.Equal(b, fiber.StatusTeapot, fctx.Response.Header.StatusCode())
-	require.Equal(b, []byte("foobar"), fctx.Response.Header.Peek("X-Foobar"))
+	require.Equal(b, fiber.StatusOK, fctx.Response.Header.StatusCode())
+	require.Equal(b, cacheHit, string(fctx.Response.Header.Peek("X-Cache")))
+	// Exactly one line, not one per iteration. The handler adds it on the miss
+	// and the hit path replaces what it stored; while the response was never
+	// cached the handler ran every time and its Add piled up on the reused
+	// context, so the benchmark grew its own work as it went.
+	require.Equal(b, [][]byte{[]byte("foobar")}, fctx.Response.Header.PeekAll("X-Foobar"))
 }
 
 func Benchmark_Cache_QueryMethod(b *testing.B) {
@@ -4209,7 +4224,7 @@ func Benchmark_Cache_MaxSize(b *testing.B) {
 			app.Use(New(Config{MaxBytes: size}))
 
 			app.Get("/*", func(c fiber.Ctx) error {
-				return c.Status(fiber.StatusTeapot).SendString("1")
+				return c.Status(fiber.StatusOK).SendString("1")
 			})
 
 			h := app.Handler()
@@ -4218,14 +4233,21 @@ func Benchmark_Cache_MaxSize(b *testing.B) {
 
 			b.ReportAllocs()
 
+			// strconv, not fmt.Sprintf: the formatting is the benchmark's own
+			// setup and its allocation was landing in the middleware's numbers.
 			n := 0
+			uri := make([]byte, 0, 24)
 			for b.Loop() {
 				n++
-				fctx.Request.SetRequestURI(fmt.Sprintf("/%v", n))
+				uri = strconv.AppendInt(append(uri[:0], '/'), int64(n), 10)
+				fctx.Request.SetRequestURIBytes(uri)
 				h(fctx)
 			}
 
-			require.Equal(b, fiber.StatusTeapot, fctx.Response.Header.StatusCode())
+			// Stored, so the bounded case actually reaches the eviction loop this
+			// benchmark exists to measure.
+			require.Equal(b, fiber.StatusOK, fctx.Response.Header.StatusCode())
+			require.Equal(b, cacheMiss, string(fctx.Response.Header.Peek("X-Cache")))
 		})
 	}
 }

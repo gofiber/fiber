@@ -7,7 +7,6 @@ import (
 	"errors"
 	"math"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
@@ -368,15 +367,20 @@ func Test_secondsConversions_Overflow(t *testing.T) {
 	require.Equal(t, 5*time.Second, secondsToDuration(5))
 }
 
-func Test_makeHashAuthFunc(t *testing.T) {
+func Test_appendAuthHash(t *testing.T) {
 	t.Parallel()
 
-	pool := &sync.Pool{}
-	fn := makeHashAuthFunc(pool)
+	fn := func(lines [][]byte) string {
+		return string(appendAuthHash(nil, lines))
+	}
 	got := fn([][]byte{[]byte("Bearer token")})
 	require.Len(t, got, hexLen)
-	// Stable for the same input, and uses the pool on the second call.
+	// Stable for the same input, and reuses the pooled framing buffer on the
+	// second call.
 	require.Equal(t, got, fn([][]byte{[]byte("Bearer token")}))
+
+	// Appended to whatever the caller is already building, not returned alone.
+	require.Equal(t, "key|auth="+got, string(appendAuthHash([]byte("key|auth="), [][]byte{[]byte("Bearer token")})))
 
 	// Length-prefixed, so a split that concatenates to the same bytes does not
 	// land on the same digest.
@@ -519,10 +523,12 @@ func Test_varyManifest_StoreLoad(t *testing.T) {
 	require.ErrorContains(t, err, "boom")
 }
 
-func Test_makeBuildVaryKeyFunc(t *testing.T) {
+func Test_appendVaryKey(t *testing.T) {
 	t.Parallel()
 
-	fn := makeBuildVaryKeyFunc(&sync.Pool{})
+	fn := func(names []string, hdr *fasthttp.RequestHeader, normalized bool) string {
+		return string(appendVaryKey(nil, names, hdr, normalized))
+	}
 
 	var hdr fasthttp.RequestHeader
 	hdr.Set("Accept", "application/json")
@@ -530,11 +536,13 @@ func Test_makeBuildVaryKeyFunc(t *testing.T) {
 
 	key := fn([]string{"accept", "accept-encoding"}, &hdr, true)
 	require.Contains(t, key, "|vary|")
-	// Deterministic for the same inputs (also exercises the pooled buffer path).
+	// Deterministic for the same inputs.
 	require.Equal(t, key, fn([]string{"accept", "accept-encoding"}, &hdr, true))
+	// varyKey is the same suffix appended to a base key, in one allocation.
+	require.Equal(t, "base"+key, varyKey("base", []string{"accept", "accept-encoding"}, &hdr, true))
 }
 
-// Test_makeBuildVaryKeyFunc_RepeatedFieldLines pins that every field line of a
+// Test_appendVaryKey_RepeatedFieldLines pins that every field line of a
 // Vary'd header reaches the key.
 //
 // A name may arrive on more than one line, and the split is equivalent to the
@@ -542,10 +550,12 @@ func Test_makeBuildVaryKeyFunc(t *testing.T) {
 // only the first line, so a request carrying two X-Tenant lines and one
 // carrying just the first shared an entry — the exact cross-request mixing
 // Vary exists to prevent.
-func Test_makeBuildVaryKeyFunc_RepeatedFieldLines(t *testing.T) {
+func Test_appendVaryKey_RepeatedFieldLines(t *testing.T) {
 	t.Parallel()
 
-	fn := makeBuildVaryKeyFunc(&sync.Pool{})
+	fn := func(names []string, hdr *fasthttp.RequestHeader, normalized bool) string {
+		return string(appendVaryKey(nil, names, hdr, normalized))
+	}
 
 	key := func(values ...string) string {
 		var hdr fasthttp.RequestHeader
