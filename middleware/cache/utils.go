@@ -287,45 +287,28 @@ var authScratchPool = sync.Pool{
 	},
 }
 
-// makeHashAuthFunc returns the digest of a request's Authorization field lines,
-// each length-prefixed so that ["ab"] and ["a","b"] do not collide.
-func makeHashAuthFunc(hexBufPool *sync.Pool) func([][]byte) string {
-	return func(lines [][]byte) string {
-		scratchPtr, ok := authScratchPool.Get().(*[]byte)
-		if !ok || scratchPtr == nil {
-			b := make([]byte, 0, 256)
-			scratchPtr = &b
-		}
-		framed := (*scratchPtr)[:0]
-		for _, v := range lines {
-			framed = binary.AppendUvarint(framed, uint64(len(v)))
-			framed = append(framed, v...)
-		}
-		sum := sha256.Sum256(framed)
-		if cap(framed) <= maxAuthScratch {
-			*scratchPtr = framed
-			authScratchPool.Put(scratchPtr)
-		}
-
-		v := hexBufPool.Get()
-		bufPtr, ok := v.(*[]byte)
-		if !ok || bufPtr == nil {
-			b := make([]byte, hexLen)
-			bufPtr = &b
-		}
-
-		buf := *bufPtr
-		if cap(buf) < hexLen {
-			buf = make([]byte, hexLen)
-		} else {
-			buf = buf[:hexLen]
-		}
-		*bufPtr = buf
-
-		hex.Encode(buf, sum[:])
-		result := string(buf)
-
-		hexBufPool.Put(bufPtr)
-		return result
+// appendAuthHash appends the hex digest of a request's Authorization field
+// lines, each length-prefixed so that ["ab"] and ["a","b"] do not collide.
+//
+// Written into the caller's buffer rather than returned as a string: the digest
+// only ever becomes part of a cache key, and handing one back cost an
+// allocation per authenticated request on top of the key's own.
+func appendAuthHash(dst []byte, lines [][]byte) []byte {
+	scratchPtr, ok := authScratchPool.Get().(*[]byte)
+	if !ok || scratchPtr == nil {
+		b := make([]byte, 0, 256)
+		scratchPtr = &b
 	}
+	framed := (*scratchPtr)[:0]
+	for _, v := range lines {
+		framed = binary.AppendUvarint(framed, uint64(len(v)))
+		framed = append(framed, v...)
+	}
+	sum := sha256.Sum256(framed)
+	if cap(framed) <= maxAuthScratch {
+		*scratchPtr = framed
+		authScratchPool.Put(scratchPtr)
+	}
+
+	return hex.AppendEncode(dst, sum[:])
 }
