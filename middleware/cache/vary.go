@@ -18,6 +18,10 @@ import (
 // maxVaryHeaders caps the number of Vary headers processed to prevent DoS.
 const maxVaryHeaders = 32
 
+// defaultVaryNames is the capacity parseVary starts its name slice at, sized to
+// hold what a real Vary field carries without regrowing.
+const defaultVaryNames = 8
+
 func parseVary(vary string) ([]string, bool) {
 	// Asked of every response, and almost none carry the field. The scan below
 	// would answer the same, after allocating the slice it never fills.
@@ -25,13 +29,16 @@ func parseVary(vary string) ([]string, bool) {
 		return nil, false
 	}
 
-	// Sized to the separators the field actually carries. Appending into a nil
-	// slice grows the backing array as it goes — three allocations for a
-	// three-name manifest — and this runs per lookup for every entry that
-	// varies. The cap the loop enforces bounds it, and a comma-separated list
-	// never holds more names than it has commas plus one, so the slice is
-	// allocated once and never grown.
-	names := make([]string, 0, min(strings.Count(vary, ",")+1, maxVaryHeaders))
+	// Given a capacity up front, because appending into a nil slice regrows the
+	// backing array as it goes — three allocations for a three-name manifest —
+	// and this runs per lookup for every entry that varies.
+	//
+	// A fixed size rather than one counted off the separators: counting them
+	// reads the whole field, while the walk below stops at the cap. That gave a
+	// long list one full pass it is about to be rejected for, which is the work
+	// maxVaryHeaders exists to refuse. Real fields carry a name or three, so the
+	// exact size bought one allocation over this in a case that does not arise.
+	names := make([]string, 0, defaultVaryNames)
 	count := 0
 	for part := range strings.SplitSeq(vary, ",") {
 		name := utils.TrimSpace(utilsstrings.ToLower(part))
