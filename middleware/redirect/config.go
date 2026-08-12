@@ -1,8 +1,6 @@
 package redirect
 
 import (
-	"regexp"
-
 	"github.com/gofiber/fiber/v3"
 )
 
@@ -21,7 +19,7 @@ type Config struct {
 	// "/users/*/orders/*": "/user/$1/order/$2",
 	Rules map[string]string
 
-	rulesRegex map[*regexp.Regexp]string
+	rulesRegex []compiledRule
 
 	// The status code when redirecting
 	// This is ignored if Redirect is disabled

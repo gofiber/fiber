@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/textproto"
 	"reflect"
+	"strings"
 	"sync"
 	"time"
 	"unsafe"
@@ -333,15 +334,111 @@ func CopyContextToFiberContext(src any, requestContext *fasthttp.RequestCtx) {
 	}
 }
 
+// framingHeaders delimit and address the message rather than describe what it
+// carries, and are excluded from the snapshot and the clear: the wrapped
+// middleware sees a copy, so clearing one corrupts the body still being read.
+//
+// Connection is not among them. It frames the hop rather than the body, and
+// naming which fields are hop-by-hop is something middleware rewrites — dropping
+// that edit left the handler reading the client's own list. fasthttp re-derives
+// its close flag when the line is written back, so the round trip keeps it.
+var framingHeaders = [...]string{
+	fiber.HeaderHost,
+	fiber.HeaderContentLength,
+	fiber.HeaderTransferEncoding,
+}
+
+// headerPair is one owned copy of a header line taken from the converted
+// net/http request.
+type headerPair struct {
+	key   string
+	value string
+}
+
+// hasCloseToken reports whether a Connection field value lists "close" among its
+// tokens, which RFC 9110 Section 7.6.1 matches case-insensitively.
+func hasCloseToken(value string) bool {
+	for token := range strings.SplitSeq(value, ",") {
+		if utils.EqualFold(utils.TrimSpace(token), "close") {
+			return true
+		}
+	}
+	return false
+}
+
+// snapshotHeaders copies the non-framing headers of the converted request into
+// owned strings. fasthttpadaptor builds r.Header with b2s, so its keys and values
+// alias buffers the fiber header owns — writing back in place corrupted them.
+func snapshotHeaders(h http.Header) []headerPair {
+	// One entry per field line, not per name: len(h) regrows the slice for
+	// every multi-valued header, which is what these tend to be.
+	lines := 0
+	for _, vals := range h {
+		lines += len(vals)
+	}
+
+	pairs := make([]headerPair, 0, lines)
+	for key, vals := range h {
+		if isFramingHeader(key) {
+			continue
+		}
+		ownedKey := strings.Clone(key)
+		for _, v := range vals {
+			pairs = append(pairs, headerPair{key: ownedKey, value: strings.Clone(v)})
+		}
+	}
+	return pairs
+}
+
+// clearCopiedHeaders deletes every non-framing header from the fiber request so
+// the copy that follows rebuilds the set as the wrapped middleware left it.
+// Set-then-Add cannot: Set replaces only the first entry, and removals never did.
+func clearCopiedHeaders(fhdr *fasthttp.RequestHeader) {
+	// Not sized from fhdr.Len(): that counts by walking every header, so
+	// pre-sizing would traverse them twice — and the walk also collects the
+	// cookie store and re-serializes it, on a per-request path.
+	var removed []string
+	for key := range fhdr.All() {
+		name := utils.UnsafeString(key)
+		if isFramingHeader(name) {
+			continue
+		}
+		// Repeated names are Del'd repeatedly; Del removes every line at once, so
+		// the second finds nothing. Skipping it costs more — a slices.Contains scan
+		// measured 17% slower at twenty headers and 61% at a hundred.
+		removed = append(removed, string(key))
+	}
+
+	for _, name := range removed {
+		fhdr.Del(name)
+	}
+}
+
+func isFramingHeader(name string) bool {
+	for _, h := range framingHeaders {
+		if utils.EqualFold(name, h) {
+			return true
+		}
+	}
+	return false
+}
+
 // HTTPMiddleware wraps net/http middleware to fiber middleware
 func HTTPMiddleware(mw func(http.Handler) http.Handler) fiber.Handler {
 	return func(c fiber.Ctx) error {
 		var next bool
+		var connectionClose bool
 		nextHandler := http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
 			next = true
 
 			freq := c.Request()
 			fhdr := &freq.Header
+
+			// Snapshot before mutating: fasthttpadaptor fills r.Header with b2s views
+			// into fhdr's storage, so every Set, Del or SetHost below rewrites bytes the
+			// remaining entries point at. The method/URI/host writes follow for that.
+			pairs := snapshotHeaders(r.Header)
+
 			fhdr.SetMethod(r.Method)
 			freq.SetRequestURI(r.RequestURI)
 			freq.SetHost(r.Host)
@@ -349,16 +446,31 @@ func HTTPMiddleware(mw func(http.Handler) http.Handler) fiber.Handler {
 
 			// Remove all cookies before setting, see https://github.com/valyala/fasthttp/pull/1864
 			fhdr.DelAllCookies()
-			for key, vals := range r.Header {
-				if len(vals) == 0 {
+			clearCopiedHeaders(fhdr)
+			// Connection lives in a slot of its own, so a second Add replaces the
+			// first rather than appending: net/http represents a combined value as
+			// several entries, and ["keep-alive", "X-Internal"] arrived as
+			// "X-Internal" alone — dropping the token that marks a field hop-by-hop,
+			// which a proxy downstream would then forward. ["close", …] lost the
+			// close signal the same way. A recipient may combine field lines with
+			// commas (RFC 9110 §5.3), so they are joined and set once.
+			var connection []string
+			for _, p := range pairs {
+				if utils.EqualFold(p.key, fiber.HeaderConnection) {
+					connection = append(connection, p.value)
 					continue
 				}
-				// Set replaces whatever the key held on the fiber request,
-				// then Add appends the remaining values so multi-value
-				// headers survive instead of collapsing to the last value.
-				fhdr.Set(key, vals[0])
-				for _, v := range vals[1:] {
-					fhdr.Add(key, v)
+				fhdr.Add(p.key, p.value)
+			}
+			if len(connection) > 0 {
+				joined := strings.Join(connection, ", ")
+				fhdr.Set(fiber.HeaderConnection, joined)
+				if hasCloseToken(joined) {
+					// The close instruction is carried separately rather than
+					// written back here: fasthttp's request flag makes Peek answer
+					// "close" and hides the rest of the list (RFC 9110 §7.6.1),
+					// which is how a proxy downstream learns what to strip.
+					connectionClose = true
 				}
 			}
 			CopyContextToFiberContext(r.Context(), c.RequestCtx())
@@ -369,10 +481,26 @@ func HTTPMiddleware(mw func(http.Handler) http.Handler) fiber.Handler {
 		// error result is always nil.
 		fasthttpadaptor.NewFastHTTPHandler(mw(nextHandler))(c.RequestCtx())
 
+		var err error
 		if next {
-			return c.Next()
+			err = c.Next()
 		}
-		return nil
+
+		if connectionClose {
+			// The close instruction rides on the response so the request keeps the
+			// complete field for every observer — downstream handlers, middleware
+			// resuming after Next, and the app's ErrorHandler alike. It also has to
+			// go on the response to have any effect: fasthttp stores the request
+			// flag before calling the handler and never reads it again, whereas the
+			// response flag is what the server consults once the handler returns.
+			//
+			// Applied on the way out, because a single flag stands for the whole
+			// response and the downstream chain can clear it: a handler resetting
+			// the response, or setting a Connection value of its own, left the
+			// connection reused despite the rewrite that asked for it to close.
+			c.Response().Header.SetConnectionClose()
+		}
+		return err
 	}
 }
 

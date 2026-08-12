@@ -421,6 +421,10 @@ func (r *DefaultRes) Response() *fasthttp.Response {
 	return &r.c.fasthttp.Response
 }
 
+// formatDefaultMediaType is the sentinel MediaType marking a Format handler as
+// the fallback. It is not a media type and is never emitted as a Content-Type.
+const formatDefaultMediaType = "default"
+
 // Format performs content-negotiation on the Accept HTTP header.
 // It uses Accepts to select a proper format and calls the matching
 // user-provided handler function.
@@ -450,7 +454,7 @@ func (r *DefaultRes) Format(handlers ...ResFmt) error {
 		// use its media type. The literal "default" is not a media type and
 		// must not be emitted as a Content-Type value.
 		for _, h := range handlers {
-			if h.MediaType != "default" {
+			if h.MediaType != formatDefaultMediaType {
 				r.c.fasthttp.Response.Header.SetContentType(h.MediaType)
 				return h.Handler(r.c)
 			}
@@ -465,7 +469,7 @@ func (r *DefaultRes) Format(handlers ...ResFmt) error {
 	types := make([]string, 0, 8)
 	var defaultHandler Handler
 	for _, h := range handlers {
-		if h.MediaType == "default" {
+		if h.MediaType == formatDefaultMediaType {
 			defaultHandler = h.Handler
 			continue
 		}
@@ -626,15 +630,23 @@ func (r *DefaultRes) CBOR(data any, ctype ...string) error {
 // JSONP sends a JSON response with JSONP support.
 // This method is identical to JSON, except that it opts-in to JSONP callback support.
 // By default, the callback name is simply callback.
+//
+// The callback name is reduced to a JavaScript member expression: everything
+// outside [A-Za-z0-9_$.[]] is dropped. Callers routinely take the name straight
+// from the query string, which is what JSONP is for, and the name lands
+// verbatim in a same-origin text/javascript body — so an unfiltered one would
+// let a request supply arbitrary script for the app's own origin.
 func (r *DefaultRes) JSONP(data any, callback ...string) error {
 	raw, err := r.c.app.config.JSONEncoder(data)
 	if err != nil {
 		return err
 	}
 
-	cb := "callback"
+	cb := defaultJSONPCallback
 	if len(callback) > 0 {
-		cb = callback[0]
+		if sanitized := sanitizeJSONPCallback(callback[0]); sanitized != "" {
+			cb = sanitized
+		}
 	}
 
 	// Build JSONP response: callback(data);
@@ -651,6 +663,146 @@ func (r *DefaultRes) JSONP(data any, callback ...string) error {
 	r.c.fasthttp.Response.SetBody(buf.Bytes())
 	bytebufferpool.Put(buf)
 	return nil
+}
+
+const defaultJSONPCallback = "callback"
+
+// isJSONPCallbackByte reports whether b may appear in a JSONP callback name. The
+// set spells a JavaScript member expression and admits nothing that could open a
+// string, comment or statement.
+func isJSONPCallbackByte(b byte) bool {
+	return (b >= 'a' && b <= 'z') || (b >= 'A' && b <= 'Z') ||
+		(b >= '0' && b <= '9') ||
+		b == '_' || b == '$' || b == '.' || b == '[' || b == ']'
+}
+
+// sanitizeJSONPCallback drops every byte isJSONPCallbackByte rejects, as Express
+// and Django do, then requires a member expression, returning "" otherwise.
+// Filtering is enough for safety, not correctness: "1.2.3" and "a[" only throw.
+func sanitizeJSONPCallback(cb string) string {
+	i := 0
+	for ; i < len(cb); i++ {
+		if !isJSONPCallbackByte(cb[i]) {
+			break
+		}
+	}
+
+	if i != len(cb) {
+		out := make([]byte, i, len(cb))
+		copy(out, cb[:i])
+		for ; i < len(cb); i++ {
+			if isJSONPCallbackByte(cb[i]) {
+				out = append(out, cb[i])
+			}
+		}
+		cb = utils.UnsafeString(out)
+	}
+
+	if !isJSONPMemberExpression(cb) {
+		return ""
+	}
+	return cb
+}
+
+// isJSONPMemberExpression reports whether cb is a dotted chain of identifiers
+// with optional bracket indexing — the shape a JSONP body may legally call.
+func isJSONPMemberExpression(cb string) bool {
+	if cb == "" {
+		return false
+	}
+	// "let" is a keyword only where a "[" follows it, and only at the head: an
+	// expression statement may not begin "let [", so the body "let[a](…);" is
+	// read as a destructuring declaration and is a syntax error. "let(…)",
+	// "let.a(…)" and an inner "cb[let[a]]" are all calls and stay allowed.
+	if strings.HasPrefix(cb, "let[") {
+		return false
+	}
+
+	depth := 0
+	atStart := true     // expecting the first byte of an identifier
+	inIndex := false    // that first byte follows '[', so a number may stand there
+	afterClose := false // a ']' just closed an index
+	numeric := false    // the open index began with a digit, so it is a number
+	isRef := true       // the open token is read as a name, not written as a property
+	start := 0          // first byte of the open token
+	for i := 0; i < len(cb); i++ {
+		switch c := cb[i]; c {
+		case '.':
+			if atStart || numeric || (isRef && isJSReservedWord(cb[start:i])) {
+				return false
+			}
+			atStart, inIndex, afterClose, isRef = true, false, false, false
+		case '[':
+			if atStart || numeric || (isRef && isJSReservedWord(cb[start:i])) {
+				return false
+			}
+			depth++
+			atStart, inIndex, afterClose, isRef = true, true, false, true
+			start = i + 1
+		case ']':
+			if atStart || depth == 0 {
+				return false
+			}
+			if isRef && !numeric && isJSReservedWord(cb[start:i]) {
+				return false
+			}
+			depth--
+			afterClose, numeric, isRef = true, false, false
+		default:
+			// Only '.', '[' or another ']' may follow a closing bracket, so "cb[0]x"
+			// is no member expression. Without this the machine would accept it and
+			// emit a body that does not parse.
+			if afterClose {
+				return false
+			}
+			if atStart {
+				// An identifier may not start with a digit. A bracket index may, and
+				// then it is that number alone: "cb[0]" parses, "cb[0x]" does not.
+				// Only a token opened by '[' counts — "cb[a.0]" is a property named
+				// after a dot, where a digit is as illegal as it is at the top level.
+				if c >= '0' && c <= '9' {
+					if !inIndex {
+						return false
+					}
+					numeric = true
+				}
+				atStart, inIndex = false, false
+			} else if numeric && (c < '0' || c > '9') {
+				return false
+			}
+		}
+	}
+	if isRef && !numeric && isJSReservedWord(cb[start:]) {
+		return false
+	}
+	return depth == 0 && !atStart
+}
+
+// isJSReservedWord reports whether tok is a word JavaScript will not read as a
+// name. Only the positions that are read matter — the head of the expression and
+// the head inside each index — since "a.for" and "a[b.class]" name properties,
+// which any word may do. Emitting "for({…})" instead just ships a syntax error to
+// the browser, so those spellings fall back to the default callback.
+func isJSReservedWord(tok string) bool {
+	// Only the words a classic script rejects wherever they stand. A JSONP body
+	// is loaded by a script tag, so it is parsed under the script goal in sloppy
+	// mode, and several words that look reserved are ordinary identifiers there.
+	//
+	// Absent on purpose: "this", "true", "false" and "null" are keywords, but
+	// each is a complete expression, so "this.cb" and "cb[true]" parse. "await"
+	// is reserved only in a module or an async function, and "yield" only in
+	// strict mode or a generator, so both name a callback here. "let" is
+	// contextual in a third way and handled where it is read.
+	switch tok {
+	case "break", "case", "catch", "class", "const", "continue",
+		"debugger", "default", "delete", "do", "else", "enum", "export",
+		"extends", "finally", "for", "function", "if", "import", "in",
+		"instanceof", "new", "return", "super", "switch",
+		"throw", "try", "typeof", "var", "void", "while", "with":
+		return true
+	default:
+		return false
+	}
 }
 
 // XML converts any interface or string to XML.

@@ -267,6 +267,20 @@ app.Get("/test", func(c fiber.Ctx) error {
 // /test returns "/user/1"
 ```
 
+:::note
+A named route belongs to this application, so what comes back is always a path
+on this origin: a `params` value that would open an authority — `"/evil.com"`
+or `"\evil.com"` under a `/*` route — is kept as the path segment the route
+asked for. [`Route.URL`](./app.md#url) and
+[`Redirect().Route`](./redirect.md#route) return the same answer for the same
+input, so it does not matter which one puts it in a `Location` header or an
+`href`.
+
+The values themselves are still written into the path as given. Where they come
+from the request, escape them with [`url.PathEscape`](https://pkg.go.dev/net/url#PathEscape)
+if the route expects one segment per parameter.
+:::
+
 ### HasBody
 
 Returns `true` if the incoming request contains a body or a `Content-Length` header greater than zero.
@@ -1018,6 +1032,15 @@ app.Post("/", func(c fiber.Ctx) error {
 
 Form values can be retrieved by name, the **first** value for the given key is returned.
 
+:::caution
+
+On a form request this lowercases the case-insensitive parts of the request's
+own `Content-Type`, so a value obtained earlier from `Get(HeaderContentType)` —
+which aliases those bytes unless [Immutable](./fiber.md#immutable) is set — can
+change during the call. Copy it first if you need it to outlive one.
+
+:::
+
 ```go title="Signature"
 func (c fiber.Ctx) FormValue(key string, defaultValue ...string) string
 ```
@@ -1427,6 +1450,15 @@ app.Post("/override", func(c fiber.Ctx) error {
 ### MultipartForm
 
 To access multipart form entries, you can parse the binary with `MultipartForm()`. This returns a `*multipart.Form`, allowing you to access form values and files. Parsing is bounded by the app [BodyLimit](./fiber.md#bodylimit).
+
+:::caution
+
+On a form request this lowercases the case-insensitive parts of the request's
+own `Content-Type`, so a value obtained earlier from `Get(HeaderContentType)` —
+which aliases those bytes unless [Immutable](./fiber.md#immutable) is set — can
+change during the call. Copy it first if you need it to outlive one.
+
+:::
 
 ```go title="Signature"
 func (c fiber.Ctx) MultipartForm() (*multipart.Form, error)
@@ -1888,6 +1920,19 @@ Contains the request protocol string: `http` or `https` for TLS requests.
 
 :::info
 Please use [`Config.TrustProxy`](fiber.md#trustproxy) to prevent header spoofing if your app is behind a proxy.
+:::
+
+:::note
+
+Only `http` and `https` are ever returned. When the proxy is trusted, the
+forwarding headers (`X-Forwarded-Proto`, `X-Forwarded-Protocol`,
+`X-Forwarded-Ssl`, `X-Url-Scheme`) are read, but a value naming anything else is
+ignored rather than passed through — the result is spliced into
+[`BaseURL`](#baseurl) and compared for origin equality by CSRF and
+`Redirect().Back()`, so a header announcing, say, `javascript` must not become
+part of a URL. A proxy that terminates a different protocol should send the
+scheme the client used to reach it.
+
 :::
 
 ```go title="Signature"
@@ -2497,6 +2542,8 @@ app.Get("/json", func(c fiber.Ctx) error {
 Sends a JSON response with JSONP support. This method is identical to [JSON](ctx.md#json), except that it opts-in to JSONP callback support. By default, the callback name is simply `callback`.
 
 Override this by passing a **named string** in the method.
+
+The callback name is reduced to a JavaScript member expression: every character outside `[A-Za-z0-9_$.[]]` is dropped, so names like `window.cb`, `ns.cb[0]`, and `$.jsonp_1` pass through unchanged. Because the name is written straight into a same-origin `text/javascript` body — and JSONP callers normally take it from the query string — leaving it unfiltered would let a request supply arbitrary script for your own origin. If what survives is not a valid member expression, the default `callback` is used: `cb[0]` is emitted, `cb[0x]` is not.
 
 ```go title="Signature"
 func (c fiber.Ctx) JSONP(data any, callback ...string) error

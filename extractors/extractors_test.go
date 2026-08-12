@@ -1,7 +1,9 @@
 package extractors
 
 import (
+	"bufio"
 	"context"
+	"fmt"
 	"net/http"
 	"strings"
 	"testing"
@@ -214,6 +216,123 @@ func Test_Extractor_Chain(t *testing.T) {
 		require.Empty(t, token)
 		require.ErrorIs(t, err, ErrNotFound)
 	})
+}
+
+// Test_Extractor_FromHeader_CombinesRepeatedLines covers a field carried on
+// several lines. FromHeader is given its name by the application, and a name it
+// is given may be a list field a peer may legally send twice, so the lines are
+// combined the way RFC 9110 §5.3 says a recipient may rather than refused as an
+// ambiguous single value.
+func Test_Extractor_FromHeader_CombinesRepeatedLines(t *testing.T) {
+	t.Parallel()
+
+	for _, normalize := range []bool{true, false} {
+		t.Run(fmt.Sprintf("normalize=%v", normalize), func(t *testing.T) {
+			t.Parallel()
+
+			app := fiber.New(fiber.Config{DisableHeaderNormalizing: !normalize})
+			ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+			defer app.ReleaseCtx(ctx)
+			if !normalize {
+				ctx.Request().Header.DisableNormalizing()
+			}
+
+			ctx.Request().Header.Add("Accept", "text/html")
+			// The second spelling is the one HTTP/2 and 3 put on the wire.
+			ctx.Request().Header.Add("accept", "application/json")
+
+			value, err := FromHeader("Accept").Extract(ctx)
+			require.NoError(t, err)
+			require.Equal(t, "text/html, application/json", value)
+		})
+	}
+}
+
+// Test_Extractor_FromHeader_CookieKeepsItsOwnSeparator covers FromHeader named
+// with Cookie, whose crumbs are joined with "; " (RFC 6265 §5.4) rather than
+// with the comma a list field takes.
+//
+// fasthttp keeps cookies in a store of their own that PeekAll enumerates one at
+// a time, so the generic join produced "a=1, b=2" for a request that said
+// "a=1; b=2" — a value no cookie parser downstream would read back.
+func Test_Extractor_FromHeader_CookieKeepsItsOwnSeparator(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(ctx)
+
+	// Read from the wire rather than Set: a request carrying Cookie twice, which
+	// is what an HTTP/1 gateway writes for the split field HTTP/2 permits. Only
+	// then does fasthttp hand the crumbs back one at a time.
+	raw := "GET / HTTP/1.1\r\nHost: example.com\r\nCookie: a=1\r\nCookie: b=2\r\n\r\n"
+	require.NoError(t, ctx.Request().Header.Read(bufio.NewReader(strings.NewReader(raw))))
+
+	value, err := FromHeader(fiber.HeaderCookie).Extract(ctx)
+	require.NoError(t, err)
+	require.Equal(t, "a=1; b=2", value)
+}
+
+// Test_Extractor_FromHeader_SingleLineIsUnchanged is the control for the test
+// above: one line is returned as it arrived, with no separator introduced.
+func Test_Extractor_FromHeader_SingleLineIsUnchanged(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(ctx)
+	ctx.Request().Header.Set("X-API-Key", "abc123")
+
+	value, err := FromHeader("X-API-Key").Extract(ctx)
+	require.NoError(t, err)
+	require.Equal(t, "abc123", value)
+}
+
+// Test_Extractor_FromAuthHeader_RepeatedLineIsNotACredential covers a message
+// carrying Authorization twice, which is what a middleware clearing the field
+// leaves behind when the client sent another spelling of it.
+//
+// Under DisableHeaderNormalizing a byte-exact Set writes the canonical name and
+// leaves the client's lower-case line — the spelling HTTP/2 and 3 put on the
+// wire — in place beside it. Reading either one lets whoever wrote the other
+// decide: the first line is the cleared value only where fasthttp happens to
+// store it first, and the first non-empty one is always the client's. Neither
+// is an answer, so no credential is extracted and the caller refuses.
+func Test_Extractor_FromAuthHeader_RepeatedLineIsNotACredential(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New(fiber.Config{DisableHeaderNormalizing: true})
+	extractor := FromAuthHeader("Bearer")
+
+	// Both orders fasthttp stores, depending on whether the client's line was
+	// already under the canonical name when the middleware cleared it.
+	for _, order := range [][2][2]string{
+		{{"authorization", "Bearer client"}, {"Authorization", ""}},
+		{{"Authorization", ""}, {"authorization", "Bearer client"}},
+	} {
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+		ctx.Request().Header.DisableNormalizing()
+		for _, line := range order {
+			ctx.Request().Header.Add(line[0], line[1])
+		}
+
+		token, err := extractor.Extract(ctx)
+		require.ErrorIs(t, err, ErrNotFound,
+			"a second Authorization line makes the credential ambiguous, whichever order it is stored in")
+		require.Empty(t, token)
+		app.ReleaseCtx(ctx)
+	}
+
+	// A single line is still extracted, so the assertions above cannot pass by
+	// refusing everything.
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(ctx)
+	ctx.Request().Header.DisableNormalizing()
+	ctx.Request().Header.Set("authorization", "Bearer client")
+
+	token, err := extractor.Extract(ctx)
+	require.NoError(t, err)
+	require.Equal(t, "client", token)
 }
 
 // go test -run Test_Extractor_FromAuthHeader_EdgeCases
@@ -1100,4 +1219,65 @@ func Benchmark_isValidToken68(b *testing.B) {
 		}
 	}
 	_ = got
+}
+
+// Test_FromHeader_IgnoresHeaderNameCase pins that a token is found under the
+// name it actually arrived as.
+//
+// Ctx.Get compares the stored key byte for byte, so under
+// DisableHeaderNormalizing a token sent under the lower-case name that HTTP/2
+// and HTTP/3 put on the wire was not found, and the request refused for
+// carrying no token when it carried one.
+func Test_FromHeader_IgnoresHeaderNameCase(t *testing.T) {
+	t.Parallel()
+
+	for _, normalize := range []bool{true, false} {
+		t.Run(fmt.Sprintf("normalize=%v", normalize), func(t *testing.T) {
+			t.Parallel()
+
+			for _, sent := range []string{"X-Csrf-Token", "x-csrf-token", "X-CSRF-TOKEN"} {
+				app := fiber.New(fiber.Config{DisableHeaderNormalizing: !normalize})
+				c := app.AcquireCtx(&fasthttp.RequestCtx{})
+				if !normalize {
+					c.Request().Header.DisableNormalizing()
+				}
+				c.Request().Header.Set(sent, "the-token")
+
+				got, err := FromHeader("X-Csrf-Token").Extract(c)
+				require.NoError(t, err, "sent as %q", sent)
+				require.Equal(t, "the-token", got, "sent as %q", sent)
+				app.ReleaseCtx(c)
+			}
+		})
+	}
+}
+
+// Test_FromAuthHeader_IgnoresHeaderNameCase pins the same for the Authorization
+// reader, which reaches every keyauth and bearer-token caller.
+//
+// FromHeader was fixed first and this one was missed: a lower-case
+// "authorization:" read as absent, so the scheme check never ran and the
+// request was refused for carrying no credential when it carried one.
+func Test_FromAuthHeader_IgnoresHeaderNameCase(t *testing.T) {
+	t.Parallel()
+
+	for _, normalize := range []bool{true, false} {
+		t.Run(fmt.Sprintf("normalize=%v", normalize), func(t *testing.T) {
+			t.Parallel()
+
+			for _, sent := range []string{"Authorization", "authorization", "AUTHORIZATION"} {
+				app := fiber.New(fiber.Config{DisableHeaderNormalizing: !normalize})
+				c := app.AcquireCtx(&fasthttp.RequestCtx{})
+				if !normalize {
+					c.Request().Header.DisableNormalizing()
+				}
+				c.Request().Header.Set(sent, "Bearer the-token")
+
+				got, err := FromAuthHeader("Bearer").Extract(c)
+				require.NoError(t, err, "sent as %q", sent)
+				require.Equal(t, "the-token", got, "sent as %q", sent)
+				app.ReleaseCtx(c)
+			}
+		})
+	}
 }
