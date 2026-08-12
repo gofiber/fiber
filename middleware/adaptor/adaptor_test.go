@@ -2428,6 +2428,70 @@ func Test_HTTPMiddleware_PropagatesConnectionRewrite(t *testing.T) {
 	}
 }
 
+// Test_HTTPMiddleware_ConnectionCloseSurvivesDownstream covers the close
+// instruction against a downstream chain that writes the response field itself.
+//
+// fasthttp holds one flag for the whole response, so a handler that resets the
+// response or sets a Connection value of its own clears it. Setting the flag
+// before c.Next left the connection reused despite the rewrite that asked for
+// it to close, so it is applied on the way out instead.
+func Test_HTTPMiddleware_ConnectionCloseSurvivesDownstream(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		handler func(fiber.Ctx) error
+		name    string
+		status  int
+	}{
+		{
+			name:    "plain handler",
+			handler: func(c fiber.Ctx) error { return c.SendString("ok") },
+			status:  fiber.StatusOK,
+		},
+		{
+			name: "handler resetting the response",
+			handler: func(c fiber.Ctx) error {
+				c.Response().Reset()
+				return c.SendString("ok")
+			},
+			status: fiber.StatusOK,
+		},
+		{
+			name: "handler asking to keep the connection",
+			handler: func(c fiber.Ctx) error {
+				c.Response().Header.Set(fiber.HeaderConnection, "keep-alive")
+				return c.SendString("ok")
+			},
+			status: fiber.StatusOK,
+		},
+		{
+			// The ErrorHandler writes the response after this middleware has
+			// returned, so the flag has to outlive that too.
+			name:    "handler returning an error",
+			handler: func(_ fiber.Ctx) error { return errors.New("boom") },
+			status:  fiber.StatusInternalServerError,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			app := fiber.New()
+			app.Use(HTTPMiddleware(func(next http.Handler) http.Handler {
+				return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					r.Header[http.CanonicalHeaderKey(fiber.HeaderConnection)] = []string{"close", "X-Internal"}
+					next.ServeHTTP(w, r)
+				})
+			}))
+			app.Get("/", tc.handler)
+
+			resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+			require.NoError(t, err)
+			require.Equal(t, tc.status, resp.StatusCode)
+			require.True(t, resp.Close, "the connection the middleware asked to close has to close")
+		})
+	}
+}
+
 // Test_HTTPMiddleware_JoinsRepeatedConnectionValues covers middleware that
 // writes Connection as several slice entries, which is how net/http represents a
 // combined value. fasthttp keeps the field in a slot of its own, so a second Add
@@ -2444,23 +2508,32 @@ func Test_HTTPMiddleware_JoinsRepeatedConnectionValues(t *testing.T) {
 		wantClose bool
 	}{
 		{name: "token list", write: []string{"keep-alive", "X-Internal"}, want: "keep-alive, X-Internal"},
-		// Where "close" is among the tokens the flag wins, since fasthttp holds
-		// one or the other and the server reads only the flag. Peek answers
-		// "close" once it is set, so the other tokens go — the alternative was a
-		// connection the client asked to close being kept open.
-		{name: "close first", write: []string{"close", "X-Internal"}, want: "close", wantClose: true},
-		{name: "close last", write: []string{"X-Internal", "close"}, want: "close", wantClose: true},
-		{name: "close cased", write: []string{"X-Internal", "CLOSE"}, want: "close", wantClose: true},
+		// Every observer must see the complete token list so a proxy can remove
+		// each named hop-by-hop field. Setting fasthttp's request flag would hide
+		// all tokens beside "close", so the close instruction is carried on the
+		// response instead.
+		{name: "close first", write: []string{"close", "X-Internal"}, want: "close, X-Internal", wantClose: true},
+		{name: "close last", write: []string{"X-Internal", "close"}, want: "X-Internal, close", wantClose: true},
+		{name: "close cased", write: []string{"X-Internal", "CLOSE"}, want: "X-Internal, CLOSE", wantClose: true},
 		{name: "close alone still closes", write: []string{"close"}, want: "close", wantClose: true},
 		{name: "single entry is unchanged", write: []string{"keep-alive"}, want: "keep-alive"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			var got string
-			var gotClose bool
+			var got, afterNext string
+			var gotClose, finalClose bool
 
 			app := fiber.New()
+			app.Use(func(c fiber.Ctx) error {
+				err := c.Next()
+				// A middleware resuming here — or the app's ErrorHandler, which
+				// runs once this returns — reads the same field a downstream
+				// proxy would, so it has to survive the whole chain intact.
+				afterNext = c.Get(fiber.HeaderConnection)
+				finalClose = c.Response().Header.ConnectionClose()
+				return err
+			})
 			app.Use(HTTPMiddleware(func(next http.Handler) http.Handler {
 				return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 					r.Header[http.CanonicalHeaderKey(fiber.HeaderConnection)] = tc.write
@@ -2477,7 +2550,10 @@ func Test_HTTPMiddleware_JoinsRepeatedConnectionValues(t *testing.T) {
 			require.NoError(t, err)
 			require.Equal(t, fiber.StatusOK, resp.StatusCode)
 			require.Equal(t, tc.want, got)
-			require.Equal(t, tc.wantClose, gotClose)
+			require.Equal(t, tc.wantClose, resp.Close, "close has to reach the wire, not just the fiber context")
+			require.Equal(t, tc.want, afterNext, "the complete Connection field must outlive the downstream chain")
+			require.Equal(t, tc.want == "close", gotClose, "the request flag stands in only for a bare close")
+			require.Equal(t, tc.wantClose, finalClose, "the transport close instruction rides on the response")
 		})
 	}
 }

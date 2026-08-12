@@ -427,6 +427,7 @@ func isFramingHeader(name string) bool {
 func HTTPMiddleware(mw func(http.Handler) http.Handler) fiber.Handler {
 	return func(c fiber.Ctx) error {
 		var next bool
+		var connectionClose bool
 		nextHandler := http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
 			next = true
 
@@ -465,15 +466,11 @@ func HTTPMiddleware(mw func(http.Handler) http.Handler) fiber.Handler {
 				joined := strings.Join(connection, ", ")
 				fhdr.Set(fiber.HeaderConnection, joined)
 				if hasCloseToken(joined) {
-					// fasthttp holds either the close flag or an arbitrary value,
-					// never both: setting the flag makes Peek answer "close" and
-					// hides the rest, while Set of anything but a bare "close"
-					// clears the flag. Where the two conflict the flag has to win —
-					// Set alone left a connection the client asked to close being
-					// kept open, since the server reads the flag and nothing else.
-					// The cost is that a field named beside "close" stops being
-					// visible as hop-by-hop for this request.
-					fhdr.SetConnectionClose()
+					// The close instruction is carried separately rather than
+					// written back here: fasthttp's request flag makes Peek answer
+					// "close" and hides the rest of the list (RFC 9110 §7.6.1),
+					// which is how a proxy downstream learns what to strip.
+					connectionClose = true
 				}
 			}
 			CopyContextToFiberContext(r.Context(), c.RequestCtx())
@@ -484,10 +481,26 @@ func HTTPMiddleware(mw func(http.Handler) http.Handler) fiber.Handler {
 		// error result is always nil.
 		fasthttpadaptor.NewFastHTTPHandler(mw(nextHandler))(c.RequestCtx())
 
+		var err error
 		if next {
-			return c.Next()
+			err = c.Next()
 		}
-		return nil
+
+		if connectionClose {
+			// The close instruction rides on the response so the request keeps the
+			// complete field for every observer — downstream handlers, middleware
+			// resuming after Next, and the app's ErrorHandler alike. It also has to
+			// go on the response to have any effect: fasthttp stores the request
+			// flag before calling the handler and never reads it again, whereas the
+			// response flag is what the server consults once the handler returns.
+			//
+			// Applied on the way out, because a single flag stands for the whole
+			// response and the downstream chain can clear it: a handler resetting
+			// the response, or setting a Connection value of its own, left the
+			// connection reused despite the rewrite that asked for it to close.
+			c.Response().Header.SetConnectionClose()
+		}
+		return err
 	}
 }
 
