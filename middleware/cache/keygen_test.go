@@ -286,7 +286,7 @@ func (s *keyRecordingStorage) Reset() error {
 	return nil
 }
 
-func (s *keyRecordingStorage) Close() error { return nil }
+func (*keyRecordingStorage) Close() error { return nil }
 
 func (s *keyRecordingStorage) lookedUp() []string {
 	s.mu.Lock()
