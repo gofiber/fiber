@@ -1281,3 +1281,215 @@ func Test_FromAuthHeader_IgnoresHeaderNameCase(t *testing.T) {
 		})
 	}
 }
+
+// go test -run Test_ExtractWithSource
+func Test_ExtractWithSource(t *testing.T) {
+	t.Parallel()
+
+	t.Run("prefers_ExtractSource", func(t *testing.T) {
+		t.Parallel()
+
+		app := fiber.New()
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+		t.Cleanup(func() { app.ReleaseCtx(ctx) })
+		ctx.Request().Header.SetCookie("session", "cookie-value")
+
+		v, src, err := ExtractWithSource(FromCookie("session"), ctx)
+		require.NoError(t, err)
+		require.Equal(t, "cookie-value", v)
+		require.Equal(t, SourceCookie, src)
+	})
+
+	t.Run("falls_back_to_Extract_with_static_Source", func(t *testing.T) {
+		t.Parallel()
+
+		app := fiber.New()
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+		t.Cleanup(func() { app.ReleaseCtx(ctx) })
+
+		handRolled := Extractor{
+			Extract: func(_ fiber.Ctx) (string, error) {
+				return "legacy-value", nil
+			},
+			Source: SourceHeader,
+			Key:    "X-Legacy",
+		}
+
+		v, src, err := ExtractWithSource(handRolled, ctx)
+		require.NoError(t, err)
+		require.Equal(t, "legacy-value", v)
+		require.Equal(t, SourceHeader, src)
+	})
+
+	t.Run("nil_both_returns_ErrNotFound", func(t *testing.T) {
+		t.Parallel()
+
+		app := fiber.New()
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+		t.Cleanup(func() { app.ReleaseCtx(ctx) })
+
+		empty := Extractor{Source: SourceCustom, Key: "empty"}
+		v, src, err := ExtractWithSource(empty, ctx)
+		require.Empty(t, v)
+		require.Equal(t, SourceCustom, src)
+		require.ErrorIs(t, err, ErrNotFound)
+	})
+
+	t.Run("all_builtins_populate_ExtractSource", func(t *testing.T) {
+		t.Parallel()
+
+		require.NotNil(t, FromHeader("X-Token").ExtractSource)
+		require.NotNil(t, FromAuthHeader("Bearer").ExtractSource)
+		require.NotNil(t, FromCookie("token").ExtractSource)
+		require.NotNil(t, FromQuery("token").ExtractSource)
+		require.NotNil(t, FromForm("token").ExtractSource)
+		require.NotNil(t, FromParam("token").ExtractSource)
+		require.NotNil(t, FromCustom("custom", nil).ExtractSource)
+		require.NotNil(t, Chain(FromHeader("X-Token")).ExtractSource)
+		require.NotNil(t, Chain().ExtractSource)
+	})
+}
+
+// go test -run Test_Extractor_Chain_ExtractSource
+func Test_Extractor_Chain_ExtractSource(t *testing.T) {
+	t.Parallel()
+
+	t.Run("reports_winning_child_source", func(t *testing.T) {
+		t.Parallel()
+
+		app := fiber.New()
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+		t.Cleanup(func() { app.ReleaseCtx(ctx) })
+		// Header missing; query wins. Static chain Source stays SourceHeader,
+		// but ExtractSource must report SourceQuery.
+		ctx.Request().SetRequestURI("/?token=from-query")
+
+		chain := Chain(FromHeader("X-Token"), FromQuery("token"))
+		require.Equal(t, SourceHeader, chain.Source)
+
+		v, src, err := ExtractWithSource(chain, ctx)
+		require.NoError(t, err)
+		require.Equal(t, "from-query", v)
+		require.Equal(t, SourceQuery, src)
+	})
+
+	t.Run("first_child_source_when_first_wins", func(t *testing.T) {
+		t.Parallel()
+
+		app := fiber.New()
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+		t.Cleanup(func() { app.ReleaseCtx(ctx) })
+		ctx.Request().Header.Set("X-Token", "from-header")
+		ctx.Request().SetRequestURI("/?token=from-query")
+
+		v, src, err := ExtractWithSource(Chain(FromHeader("X-Token"), FromQuery("token")), ctx)
+		require.NoError(t, err)
+		require.Equal(t, "from-header", v)
+		require.Equal(t, SourceHeader, src)
+	})
+
+	t.Run("source_only_child_participates", func(t *testing.T) {
+		t.Parallel()
+
+		app := fiber.New()
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+		t.Cleanup(func() { app.ReleaseCtx(ctx) })
+
+		sourceOnly := Extractor{
+			ExtractSource: func(_ fiber.Ctx) (string, Source, error) {
+				return "source-only-value", SourceCustom, nil
+			},
+			Source: SourceCustom,
+			Key:    "source-only",
+		}
+		// Legacy Extract skips nil Extract; source path must still find it.
+		chain := Chain(FromHeader("X-Token"), sourceOnly)
+
+		v, err := chain.Extract(ctx)
+		require.Empty(t, v)
+		require.ErrorIs(t, err, ErrNotFound)
+
+		sv, src, serr := ExtractWithSource(chain, ctx)
+		require.NoError(t, serr)
+		require.Equal(t, "source-only-value", sv)
+		require.Equal(t, SourceCustom, src)
+	})
+
+	t.Run("hand_rolled_nil_ExtractSource_in_chain", func(t *testing.T) {
+		t.Parallel()
+
+		app := fiber.New()
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+		t.Cleanup(func() { app.ReleaseCtx(ctx) })
+
+		handRolled := Extractor{
+			Extract: func(_ fiber.Ctx) (string, error) {
+				return "hand-rolled", nil
+			},
+			Source: SourceForm,
+			Key:    "form-key",
+		}
+		chain := Chain(FromHeader("X-Token"), handRolled)
+
+		v, src, err := ExtractWithSource(chain, ctx)
+		require.NoError(t, err)
+		require.Equal(t, "hand-rolled", v)
+		require.Equal(t, SourceForm, src)
+	})
+
+	t.Run("separate_guards_allow_Extract_then_ExtractSource", func(t *testing.T) {
+		t.Parallel()
+
+		app := fiber.New()
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+		t.Cleanup(func() { app.ReleaseCtx(ctx) })
+		ctx.Request().Header.SetCookie("token", "cookie-token")
+
+		chain := Chain(FromHeader("X-Token"), FromCookie("token"))
+
+		v, err := chain.Extract(ctx)
+		require.NoError(t, err)
+		require.Equal(t, "cookie-token", v)
+
+		sv, src, serr := ExtractWithSource(chain, ctx)
+		require.NoError(t, serr)
+		require.Equal(t, "cookie-token", sv)
+		require.Equal(t, SourceCookie, src)
+	})
+
+	t.Run("source_path_detects_cycle", func(t *testing.T) {
+		t.Parallel()
+
+		app := fiber.New()
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+		t.Cleanup(func() { app.ReleaseCtx(ctx) })
+
+		var chainExtractor Extractor
+		chainExtractor = Chain(FromCustom("cycle", func(c fiber.Ctx) (string, error) {
+			// Re-enter via ExtractSource so the source guard fires.
+			_, _, err := chainExtractor.ExtractSource(c)
+			return "", err
+		}))
+
+		// Prefer driving the cycle through ExtractSource when the child is
+		// source-aware; FromCustom has ExtractSource that calls Extract, which
+		// re-enters ExtractSource above.
+		v, src, err := ExtractWithSource(chainExtractor, ctx)
+		require.Empty(t, v)
+		require.Equal(t, SourceCustom, src)
+		require.ErrorIs(t, err, ErrChainCycle)
+	})
+
+	t.Run("empty_chain_source_path", func(t *testing.T) {
+		t.Parallel()
+
+		app := fiber.New()
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+		t.Cleanup(func() { app.ReleaseCtx(ctx) })
+
+		v, src, err := ExtractWithSource(Chain(), ctx)
+		require.Empty(t, v)
+		require.Equal(t, SourceCustom, src)
+		require.ErrorIs(t, err, ErrNotFound)
+	})
+}

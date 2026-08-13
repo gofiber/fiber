@@ -68,8 +68,17 @@ var ErrNotFound = errors.New("value not found")
 var ErrChainCycle = errors.New("cyclic extractor chain")
 
 // Extractor defines a value extraction method with metadata.
+//
+// Extract remains the primary extraction callback for existing callers.
+// ExtractSource is optional and returns the value together with the source that
+// supplied it. Prefer ExtractWithSource when source metadata is needed; it
+// calls ExtractSource when set and otherwise falls back to Extract with the
+// extractor's static Source field.
+//
+// Extract is not deprecated in this release so middleware that still calls it
+// continues to pass staticcheck. A future major version may remove Extract in
+// favor of the source-aware signature.
 type Extractor struct {
-	// Deprecated: Use ExtractSource instead.
 	Extract       func(fiber.Ctx) (string, error)
 	ExtractSource func(fiber.Ctx) (string, Source, error)
 	Key           string      // The parameter/header name used for extraction
@@ -289,17 +298,22 @@ func FromCookie(key string) Extractor {
 //	postExtractor := FromParam("postId")
 //	// URL: /users/123/posts/456 -> userId: "123", postId: "456"
 func FromParam(param string) Extractor {
+	fn := func(c fiber.Ctx) (string, error) {
+		value := c.Params(param)
+		if value == "" {
+			return "", ErrNotFound
+		}
+		unescapedValue, err := url.PathUnescape(value)
+		if err != nil {
+			return "", ErrNotFound
+		}
+		return unescapedValue, nil
+	}
 	return Extractor{
-		Extract: func(c fiber.Ctx) (string, error) {
-			value := c.Params(param)
-			if value == "" {
-				return "", ErrNotFound
-			}
-			unescapedValue, err := url.PathUnescape(value)
-			if err != nil {
-				return "", ErrNotFound
-			}
-			return unescapedValue, nil
+		Extract: fn,
+		ExtractSource: func(c fiber.Ctx) (string, Source, error) {
+			v, err := fn(c)
+			return v, SourceParam, err
 		},
 		Key:    param,
 		Source: SourceParam,
@@ -332,13 +346,18 @@ func FromParam(param string) Extractor {
 //	// Form data: "username=john_doe&password=secret" -> Output: "john_doe"
 //	// Missing field -> Output: ErrNotFound
 func FromForm(param string) Extractor {
+	fn := func(c fiber.Ctx) (string, error) {
+		value := c.FormValue(param)
+		if value == "" {
+			return "", ErrNotFound
+		}
+		return value, nil
+	}
 	return Extractor{
-		Extract: func(c fiber.Ctx) (string, error) {
-			value := c.FormValue(param)
-			if value == "" {
-				return "", ErrNotFound
-			}
-			return value, nil
+		Extract: fn,
+		ExtractSource: func(c fiber.Ctx) (string, Source, error) {
+			v, err := fn(c)
+			return v, SourceForm, err
 		},
 		Key:    param,
 		Source: SourceForm,
@@ -371,22 +390,27 @@ func FromForm(param string) Extractor {
 //	// Header: "X-API-Key: abc123" -> Output: "abc123"
 //	// Missing header -> Output: ErrNotFound
 func FromHeader(header string) Extractor {
+	fn := func(c fiber.Ctx) (string, error) {
+		// Not Ctx.Get: it is byte-exact, so under DisableHeaderNormalizing a token
+		// sent under the lower-case name HTTP/2 and 3 use was not found, and the
+		// request refused for carrying no token when it carried one.
+		// Combined, not Value: the name comes from the application's
+		// config, and a field it names may be a list one a peer is allowed
+		// to send twice — Accept and Forwarded among them. Two lines there
+		// are one value rather than two answers, so they are joined the way
+		// RFC 9110 §5.3 says a recipient may. A repeated token still fails
+		// the comparison the caller makes, so nothing is loosened.
+		value := headerlookup.Combined(c, header)
+		if value == "" {
+			return "", ErrNotFound
+		}
+		return value, nil
+	}
 	return Extractor{
-		Extract: func(c fiber.Ctx) (string, error) {
-			// Not Ctx.Get: it is byte-exact, so under DisableHeaderNormalizing a token
-			// sent under the lower-case name HTTP/2 and 3 use was not found, and the
-			// request refused for carrying no token when it carried one.
-			// Combined, not Value: the name comes from the application's
-			// config, and a field it names may be a list one a peer is allowed
-			// to send twice — Accept and Forwarded among them. Two lines there
-			// are one value rather than two answers, so they are joined the way
-			// RFC 9110 §5.3 says a recipient may. A repeated token still fails
-			// the comparison the caller makes, so nothing is loosened.
-			value := headerlookup.Combined(c, header)
-			if value == "" {
-				return "", ErrNotFound
-			}
-			return value, nil
+		Extract: fn,
+		ExtractSource: func(c fiber.Ctx) (string, Source, error) {
+			v, err := fn(c)
+			return v, SourceHeader, err
 		},
 		Key:    header,
 		Source: SourceHeader,
@@ -421,13 +445,18 @@ func FromHeader(header string) Extractor {
 //	// URL: /api/data?token=abc123&format=json -> Output: "abc123"
 //	// URL: /api/data?format=json -> Output: ErrNotFound
 func FromQuery(param string) Extractor {
+	fn := func(c fiber.Ctx) (string, error) {
+		value := c.Query(param)
+		if value == "" {
+			return "", ErrNotFound
+		}
+		return value, nil
+	}
 	return Extractor{
-		Extract: func(c fiber.Ctx) (string, error) {
-			value := c.Query(param)
-			if value == "" {
-				return "", ErrNotFound
-			}
-			return value, nil
+		Extract: fn,
+		ExtractSource: func(c fiber.Ctx) (string, Source, error) {
+			v, err := fn(c)
+			return v, SourceQuery, err
 		},
 		Key:    param,
 		Source: SourceQuery,
@@ -489,8 +518,12 @@ func FromCustom(key string, fn func(fiber.Ctx) (string, error)) Extractor {
 	}
 	return Extractor{
 		Extract: fn,
-		Key:     key,
-		Source:  SourceCustom,
+		ExtractSource: func(c fiber.Ctx) (string, Source, error) {
+			v, err := fn(c)
+			return v, SourceCustom, err
+		},
+		Key:    key,
+		Source: SourceCustom,
 	}
 }
 
@@ -500,7 +533,9 @@ func FromCustom(key string, fn func(fiber.Ctx) (string, error)) Extractor {
 // The function:
 //   - Tries each extractor in the order provided
 //   - Returns the first successful extraction (non-empty value with no error)
-//   - Skips extractors with nil Extract functions
+//   - Legacy Extract skips children with a nil Extract function
+//   - ExtractSource walks children via ExtractWithSource so source-only children
+//     and hand-rolled extractors (nil ExtractSource) participate safely
 //   - Returns the last error encountered if all extractors fail
 //   - Returns ErrNotFound if no extractors are provided or all return empty values
 //
@@ -511,13 +546,17 @@ func FromCustom(key string, fn func(fiber.Ctx) (string, error)) Extractor {
 // Returns:
 //
 //	An Extractor that attempts each provided extractor in order.
-//	The returned extractor uses the Source and Key from the first extractor for metadata.
+//	The returned extractor uses the Source and Key from the first extractor for
+//	static metadata. ExtractSource / ExtractWithSource report the winning child's
+//	Source instead of that primary metadata.
 //
 // Behavior:
 //   - Success: Returns the first non-empty value with no error
 //   - Partial failure: Continues to next extractor if current returns error or empty value
 //   - Total failure: Returns last error encountered, or ErrNotFound if no errors
 //   - Empty chain: Always returns ErrNotFound
+//   - Cycle guards for Extract and ExtractSource are independent so calling both
+//     on the same request does not produce a false ErrChainCycle
 //
 // Examples:
 //
@@ -540,30 +579,40 @@ func FromCustom(key string, fn func(fiber.Ctx) (string, error)) Extractor {
 //	Order extractors by security preference. Most secure sources (headers, cookies)
 //	should be attempted before less secure ones (query params, form data).
 func Chain(extractors ...Extractor) Extractor {
+	notFound := func(fiber.Ctx) (string, error) {
+		return "", ErrNotFound
+	}
+	notFoundSource := func(fiber.Ctx) (string, Source, error) {
+		return "", SourceCustom, ErrNotFound
+	}
+
 	if len(extractors) == 0 {
 		return Extractor{
-			Extract: func(fiber.Ctx) (string, error) {
-				return "", ErrNotFound
-			},
-			Source: SourceCustom,
-			Key:    "",
-			Chain:  []Extractor{},
+			Extract:       notFound,
+			ExtractSource: notFoundSource,
+			Source:        SourceCustom,
+			Key:           "",
+			Chain:         []Extractor{},
 		}
 	}
 
-	// Use the source and key from the first extractor as the primary
+	// Use the source and key from the first extractor as the primary static metadata.
+	// ExtractSource reports the winning child's Source at runtime.
 	primarySource := extractors[0].Source
 	primaryKey := extractors[0].Key
-	guardKey := chainGuardKey{id: new(byte)}
+	// Separate guards: calling Extract then ExtractSource (or the reverse) on the
+	// same request must not false-positive as a cycle.
+	extractGuard := chainGuardKey{id: new(byte)}
+	sourceGuard := chainGuardKey{id: new(byte)}
 
 	return Extractor{
 		Extract: func(c fiber.Ctx) (string, error) {
-			if active, ok := c.Locals(guardKey).(bool); ok && active {
+			if active, ok := c.Locals(extractGuard).(bool); ok && active {
 				return "", ErrChainCycle
 			}
 
-			c.Locals(guardKey, true)
-			defer c.Locals(guardKey, false)
+			c.Locals(extractGuard, true)
+			defer c.Locals(extractGuard, false)
 
 			var lastErr error // last error encountered (including ErrNotFound)
 
@@ -583,6 +632,33 @@ func Chain(extractors ...Extractor) Extractor {
 				return "", lastErr
 			}
 			return "", ErrNotFound
+		},
+		ExtractSource: func(c fiber.Ctx) (string, Source, error) {
+			if active, ok := c.Locals(sourceGuard).(bool); ok && active {
+				return "", primarySource, ErrChainCycle
+			}
+
+			c.Locals(sourceGuard, true)
+			defer c.Locals(sourceGuard, false)
+
+			var lastErr error
+			lastSource := primarySource
+
+			for _, extractor := range extractors {
+				// ExtractWithSource handles nil ExtractSource (fallback) and nil Extract.
+				v, src, err := ExtractWithSource(extractor, c)
+				if err == nil && v != "" {
+					return v, src, nil
+				}
+				if err != nil {
+					lastErr = err
+					lastSource = src
+				}
+			}
+			if lastErr != nil {
+				return "", lastSource, lastErr
+			}
+			return "", primarySource, ErrNotFound
 		},
 		Source: primarySource,
 		Key:    primaryKey,
