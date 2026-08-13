@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"math"
 	"slices"
+	"strconv"
 	"sync"
 	"time"
 
@@ -20,9 +21,23 @@ import (
 	"github.com/gofiber/fiber/v3/internal/headerlookup"
 )
 
-// buffer size for hexpool
 // hexLen is the hex-encoded length of a SHA-256 sum, shared by the auth and vary hashers.
 const hexLen = sha256.Size * 2
+
+// Sizes for the local arrays the response headers are formatted into, so the
+// values reach the header store — which copies them — without a heap
+// allocation each. Both are upper bounds; an append past one still produces the
+// same bytes, only more slowly.
+const (
+	// httpDateLen holds an IMF-fixdate, "Mon, 02 Jan 2006 15:04:05 GMT".
+	httpDateLen = 32
+	// maxUintDigits holds the decimal form of any uint64.
+	maxUintDigits = 20
+)
+
+// publicMaxAge is the Cache-Control this middleware writes on a hit when the
+// entry carries none of its own, less the delta-seconds appended after it.
+const publicMaxAge = "public, max-age="
 
 // cache status
 // unreachable: when cache is bypass, or invalid
@@ -155,15 +170,6 @@ func New(config ...Config) fiber.Handler {
 	heap := &indexedHeap{}
 	// count stored bytes (sizes of response bodies)
 	var storedBytes uint
-	// Pool for hex encoding buffers
-	hexBufPool := &sync.Pool{
-		New: func() any {
-			buf := make([]byte, hexLen)
-			return &buf
-		},
-	}
-	hashAuthorization := makeHashAuthFunc(hexBufPool)
-	buildVaryKey := makeBuildVaryKeyFunc(hexBufPool)
 
 	// Delete key from both manager and storage
 	deleteKey := func(ctx context.Context, dkey string) error {
@@ -258,9 +264,16 @@ func New(config ...Config) fiber.Handler {
 			return c.Next()
 		}
 
-		// Get key from request
-		baseKey := cacheKeyVersion + "|" + requestMethod + "|" + cfg.KeyGenerator(c)
-		manifestKey := baseKey + "|vary"
+		// Get key from request. Assembled in one pooled buffer so the whole key
+		// costs a single allocation: the pieces used to be concatenated one at a
+		// time, and every join copied the key built so far into a fresh string.
+		keyBufPtr := acquireKeyBuffer()
+		keyBuf := (*keyBufPtr)[:0]
+		keyBuf = append(keyBuf, cacheKeyVersion...)
+		keyBuf = append(keyBuf, '|')
+		keyBuf = append(keyBuf, requestMethod...)
+		keyBuf = append(keyBuf, '|')
+		keyBuf = appendGeneratedKey(keyBuf, c, &cfg)
 		if hasAuthorization {
 			// Read at the point of use: the result aliases the header's storage, and
 			// cfg.KeyGenerator is user code that may recycle the slot. Every field
@@ -270,9 +283,21 @@ func New(config ...Config) fiber.Handler {
 			// the same as two lines carrying one each, and the two are different
 			// principals, so a comma would put them in one partition.
 			authLines := fieldname.Lines(&c.Request().Header, fiber.HeaderAuthorization, canonical)
-			authHash := hashAuthorization(authLines)
-			baseKey += "|auth=" + authHash
-			manifestKey = baseKey + "|vary"
+			keyBuf = append(keyBuf, "|auth="...)
+			keyBuf = appendAuthHash(keyBuf, authLines)
+		}
+		baseLen := len(keyBuf)
+
+		// baseKey and manifestKey differ only by the suffix, so one string holds
+		// both: slicing a string off the front of another shares its bytes rather
+		// than copying them, which the separate concatenation could not do.
+		var baseKey, manifestKey string
+		if cfg.DisableVaryHeaders {
+			baseKey = string(keyBuf)
+		} else {
+			keyBuf = append(keyBuf, "|vary"...)
+			manifestKey = string(keyBuf)
+			baseKey = manifestKey[:baseLen]
 		}
 		key := baseKey
 
@@ -284,12 +309,15 @@ func New(config ...Config) fiber.Handler {
 		if !cfg.DisableVaryHeaders {
 			varyNames, hasVaryManifest, err = loadVaryManifest(reqCtx, manager, manifestKey)
 			if err != nil {
+				releaseKeyBuffer(keyBufPtr, keyBuf)
 				return err
 			}
 			if len(varyNames) > 0 {
-				key += buildVaryKey(varyNames, &c.Request().Header, canonical)
+				keyBuf = appendVaryKey(keyBuf[:baseLen], varyNames, &c.Request().Header, canonical)
+				key = string(keyBuf)
 			}
 		}
+		releaseKeyBuffer(keyBufPtr, keyBuf)
 
 		// Get entry from pool
 		e, err := manager.get(reqCtx, key)
@@ -459,6 +487,13 @@ func New(config ...Config) fiber.Handler {
 					return c.SendStatus(fiber.StatusGatewayTimeout)
 				}
 				return c.Next()
+			case entryHasExpiration && hasAuthorization && !e.shareable && reqDirectives.onlyIfCached:
+				if cfg.Storage != nil {
+					manager.release(e)
+				}
+				unlock()
+				c.Set(cfg.CacheHeader, cacheUnreachable)
+				return c.SendStatus(fiber.StatusGatewayTimeout)
 			case entryHasExpiration && !requestNoCache:
 				servedStale = entryExpired
 				if hasAuthorization && !e.shareable {
@@ -500,7 +535,11 @@ func New(config ...Config) fiber.Handler {
 					setFieldLine(&c.Response().Header, fiber.HeaderETag, e.etag, canonical)
 				}
 				clampedDate := clampDateSeconds(e.date, ts)
-				dateValue := utils.AppendHTTPDate(nil, secondsToTime(clampedDate))
+				// Formatted into a local array rather than a fresh slice: the value
+				// is copied into the header store, so nothing outlives this line and
+				// the nil destination was an allocation on every cache hit.
+				var dateBuf [httpDateLen]byte
+				dateValue := utils.AppendHTTPDate(dateBuf[:0], secondsToTime(clampedDate))
 				setFieldLine(&c.Response().Header, fiber.HeaderDate, dateValue, canonical)
 				// One entry per field line, so Set collapsed a repeated name — a Vary
 				// sent twice came back varying only on the second. Clear every stored
@@ -531,16 +570,19 @@ func New(config ...Config) fiber.Handler {
 					if e.exp > ts {
 						remaining = e.exp - ts
 					}
-					maxAge := utils.FormatUint(remaining)
-					c.Set(fiber.HeaderCacheControl, "public, max-age="+maxAge)
+					// Built in a local array: FormatUint and the join were two
+					// allocations, and the header store copies the bytes anyway.
+					var ccBuf [len(publicMaxAge) + maxUintDigits]byte
+					cacheControlValue := strconv.AppendUint(append(ccBuf[:0], publicMaxAge...), remaining, 10)
+					setFieldLine(&c.Response().Header, fiber.HeaderCacheControl, cacheControlValue, canonical)
 				}
 
 				const maxDeltaSeconds = uint64(math.MaxInt32)
 				ageSeconds := min(entryAge, maxDeltaSeconds)
 
 				// RFC-compliant Age header (RFC 9111)
-				age := utils.FormatUint(ageSeconds)
-				setFieldLine(&c.Response().Header, fiber.HeaderAge, utils.UnsafeBytes(age), canonical)
+				var ageBuf [maxUintDigits]byte
+				setFieldLine(&c.Response().Header, fiber.HeaderAge, strconv.AppendUint(ageBuf[:0], ageSeconds, 10), canonical)
 				appendWarningHeaders(&c.Response().Header, servedStale, isHeuristicFreshness(e, &cfg, entryAge))
 
 				c.Set(cfg.CacheHeader, cacheHit)
@@ -641,7 +683,7 @@ func New(config ...Config) fiber.Handler {
 		shouldStoreVaryManifest := !cfg.DisableVaryHeaders && len(varyNames) > 0
 		if !cfg.DisableVaryHeaders && len(varyNames) > 0 {
 			if key == baseKey {
-				key += buildVaryKey(varyNames, &c.Request().Header, canonical)
+				key = varyKey(baseKey, varyNames, &c.Request().Header, canonical)
 			}
 		} else if !cfg.DisableVaryHeaders && hasVaryManifest {
 			if err := manager.del(reqCtx, manifestKey); err != nil {
@@ -817,7 +859,8 @@ func New(config ...Config) fiber.Handler {
 		// resolves to the receipt timestamp — the same answer either way.
 		parsedDate, _ := parseHTTPDate(dateHeader)
 		e.date = clampDateSeconds(parsedDate, nowUnix)
-		dateBytes := utils.AppendHTTPDate(nil, secondsToTime(e.date))
+		var dateBuf [httpDateLen]byte
+		dateBytes := utils.AppendHTTPDate(dateBuf[:0], secondsToTime(e.date))
 		setFieldLine(&c.Response().Header, fiber.HeaderDate, dateBytes, respCanonical)
 
 		// Store all response headers

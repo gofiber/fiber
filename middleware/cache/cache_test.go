@@ -3883,6 +3883,98 @@ func TestCacheBypassesExistingEntryForAuthorization(t *testing.T) {
 	require.Equal(t, "1", string(body))
 }
 
+func TestCacheOnlyIfCachedRejectsNonShareableAuthorizationEntry(t *testing.T) {
+	t.Parallel()
+
+	const cacheHeader = "X-Test-Cache"
+
+	storage := newMutatingStorage(nil)
+	app := fiber.New()
+	app.Use(New(Config{
+		CacheHeader: cacheHeader,
+		Expiration:  time.Hour,
+		Storage:     storage,
+	}))
+
+	var originCalls atomic.Int32
+	app.Get("/", func(c fiber.Ctx) error {
+		call := originCalls.Add(1)
+		if call == 1 {
+			c.Set(fiber.HeaderCacheControl, "public, max-age=3600")
+		}
+		return c.SendString(fmt.Sprintf("origin-%d", call))
+	})
+
+	newAuthorizationRequest := func(cacheControl, pragma string) *http.Request {
+		req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+		req.Header.Set(fiber.HeaderAuthorization, "Bearer token")
+		if cacheControl != "" {
+			req.Header.Set(fiber.HeaderCacheControl, cacheControl)
+		}
+		if pragma != "" {
+			req.Header.Set(fiber.HeaderPragma, pragma)
+		}
+		return req
+	}
+
+	resp, err := app.Test(newAuthorizationRequest("", ""))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	require.Equal(t, cacheMiss, resp.Header.Get(cacheHeader))
+	require.Equal(t, int32(1), originCalls.Load())
+
+	metadataKey := ""
+	for key, value := range storage.data {
+		if strings.HasSuffix(key, "_body") {
+			continue
+		}
+
+		var cached item
+		_, err = cached.UnmarshalMsg(value)
+		require.NoError(t, err)
+		cached.shareable = false
+		storage.data[key], err = cached.MarshalMsg(nil)
+		require.NoError(t, err)
+		metadataKey = key
+	}
+	require.NotEmpty(t, metadataKey)
+
+	resp, err = app.Test(newAuthorizationRequest("only-if-cached", ""))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusGatewayTimeout, resp.StatusCode)
+	require.Equal(t, cacheUnreachable, resp.Header.Get(cacheHeader))
+	require.Equal(t, int32(1), originCalls.Load())
+	require.Contains(t, storage.data, metadataKey)
+	require.Contains(t, storage.data, metadataKey+"_body")
+
+	resp, err = app.Test(newAuthorizationRequest("no-cache, only-if-cached", ""))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusGatewayTimeout, resp.StatusCode)
+	require.Equal(t, cacheUnreachable, resp.Header.Get(cacheHeader))
+	require.Equal(t, int32(1), originCalls.Load())
+	require.Contains(t, storage.data, metadataKey)
+	require.Contains(t, storage.data, metadataKey+"_body")
+
+	resp, err = app.Test(newAuthorizationRequest("only-if-cached", "no-cache"))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusGatewayTimeout, resp.StatusCode)
+	require.Equal(t, cacheUnreachable, resp.Header.Get(cacheHeader))
+	require.Equal(t, int32(1), originCalls.Load())
+	require.Contains(t, storage.data, metadataKey)
+	require.Contains(t, storage.data, metadataKey+"_body")
+
+	resp, err = app.Test(newAuthorizationRequest("no-cache", ""))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	require.Equal(t, cacheUnreachable, resp.Header.Get(cacheHeader))
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "origin-2", string(body))
+	require.Equal(t, int32(2), originCalls.Load())
+	require.Contains(t, storage.data, metadataKey)
+	require.Contains(t, storage.data, metadataKey+"_body")
+}
+
 func TestCacheAllowsSharedCacheWithAuthorization(t *testing.T) {
 	t.Parallel()
 
@@ -4058,6 +4150,16 @@ func TestCacheSeparatesAuthorizationValues(t *testing.T) {
 	require.Equal(t, 2, count)
 }
 
+// Benchmark_Cache measures the hit path: the first request stores the response
+// and every one after it is served from the entry.
+//
+// The status has to be one this middleware treats as cacheable, which is the
+// set RFC 9110 Section 15.1 marks heuristically cacheable — RFC 9111 defines
+// caching but has no Section 15, and defers the status codes to that one. This
+// was 418, which is not in the set, so the middleware answered "unreachable"
+// every time and the benchmark measured the path that stores nothing while the
+// handler re-read the file on every iteration.
+//
 // go test -v -run=^$ -bench=Benchmark_Cache -benchmem -count=4
 func Benchmark_Cache(b *testing.B) {
 	app := fiber.New()
@@ -4066,7 +4168,7 @@ func Benchmark_Cache(b *testing.B) {
 
 	app.Get("/demo", func(c fiber.Ctx) error {
 		data, _ := os.ReadFile("../../README.md") //nolint:errcheck // We're inside a benchmark
-		return c.Status(fiber.StatusTeapot).Send(data)
+		return c.Status(fiber.StatusOK).Send(data)
 	})
 
 	h := app.Handler()
@@ -4075,13 +4177,21 @@ func Benchmark_Cache(b *testing.B) {
 	fctx.Request.Header.SetMethod(fiber.MethodGet)
 	fctx.Request.SetRequestURI("/demo")
 
+	// One untimed request to populate the entry, so every measured iteration is
+	// a hit rather than the first being the miss that fills the cache. b.Loop
+	// resets the timer when it first returns, so this stays out of the numbers.
+	// Without it the benchmark also fails outright at -benchtime=1x, where the
+	// single iteration is that miss.
+	h(fctx)
+
 	b.ReportAllocs()
 
 	for b.Loop() {
 		h(fctx)
 	}
 
-	require.Equal(b, fiber.StatusTeapot, fctx.Response.Header.StatusCode())
+	require.Equal(b, fiber.StatusOK, fctx.Response.Header.StatusCode())
+	require.Equal(b, cacheHit, string(fctx.Response.Header.Peek("X-Cache")))
 	require.Greater(b, len(fctx.Response.Body()), 30000)
 }
 
@@ -4124,7 +4234,7 @@ func Benchmark_Cache_Storage(b *testing.B) {
 
 	app.Get("/demo", func(c fiber.Ctx) error {
 		data, _ := os.ReadFile("../../README.md") //nolint:errcheck // We're inside a benchmark
-		return c.Status(fiber.StatusTeapot).Send(data)
+		return c.Status(fiber.StatusOK).Send(data)
 	})
 
 	h := app.Handler()
@@ -4133,13 +4243,21 @@ func Benchmark_Cache_Storage(b *testing.B) {
 	fctx.Request.Header.SetMethod(fiber.MethodGet)
 	fctx.Request.SetRequestURI("/demo")
 
+	// One untimed request to populate the entry, so every measured iteration is
+	// a hit rather than the first being the miss that fills the cache. b.Loop
+	// resets the timer when it first returns, so this stays out of the numbers.
+	// Without it the benchmark also fails outright at -benchtime=1x, where the
+	// single iteration is that miss.
+	h(fctx)
+
 	b.ReportAllocs()
 
 	for b.Loop() {
 		h(fctx)
 	}
 
-	require.Equal(b, fiber.StatusTeapot, fctx.Response.Header.StatusCode())
+	require.Equal(b, fiber.StatusOK, fctx.Response.Header.StatusCode())
+	require.Equal(b, cacheHit, string(fctx.Response.Header.Peek("X-Cache")))
 	require.Greater(b, len(fctx.Response.Body()), 30000)
 }
 
@@ -4151,7 +4269,7 @@ func Benchmark_Cache_AdditionalHeaders(b *testing.B) {
 
 	app.Get("/demo", func(c fiber.Ctx) error {
 		c.Response().Header.Add("X-Foobar", "foobar")
-		return c.SendStatus(418)
+		return c.SendStatus(fiber.StatusOK)
 	})
 
 	h := app.Handler()
@@ -4160,14 +4278,26 @@ func Benchmark_Cache_AdditionalHeaders(b *testing.B) {
 	fctx.Request.Header.SetMethod(fiber.MethodGet)
 	fctx.Request.SetRequestURI("/demo")
 
+	// One untimed request to populate the entry, so every measured iteration is
+	// a hit rather than the first being the miss that fills the cache. b.Loop
+	// resets the timer when it first returns, so this stays out of the numbers.
+	// Without it the benchmark also fails outright at -benchtime=1x, where the
+	// single iteration is that miss.
+	h(fctx)
+
 	b.ReportAllocs()
 
 	for b.Loop() {
 		h(fctx)
 	}
 
-	require.Equal(b, fiber.StatusTeapot, fctx.Response.Header.StatusCode())
-	require.Equal(b, []byte("foobar"), fctx.Response.Header.Peek("X-Foobar"))
+	require.Equal(b, fiber.StatusOK, fctx.Response.Header.StatusCode())
+	require.Equal(b, cacheHit, string(fctx.Response.Header.Peek("X-Cache")))
+	// Exactly one line, not one per iteration. The handler adds it on the miss
+	// and the hit path replaces what it stored; while the response was never
+	// cached the handler ran every time and its Add piled up on the reused
+	// context, so the benchmark grew its own work as it went.
+	require.Equal(b, [][]byte{[]byte("foobar")}, fctx.Response.Header.PeekAll("X-Foobar"))
 }
 
 func Benchmark_Cache_QueryMethod(b *testing.B) {
@@ -4187,6 +4317,13 @@ func Benchmark_Cache_QueryMethod(b *testing.B) {
 	fctx.Request.SetRequestURI("/demo")
 	fctx.Request.SetBody([]byte(`{"filter":"active","page":1}`))
 
+	// One untimed request to populate the entry, so every measured iteration is
+	// a hit rather than the first being the miss that fills the cache. b.Loop
+	// resets the timer when it first returns, so this stays out of the numbers.
+	// Without it the benchmark also fails outright at -benchtime=1x, where the
+	// single iteration is that miss.
+	h(fctx)
+
 	b.ReportAllocs()
 
 	for b.Loop() {
@@ -4194,6 +4331,7 @@ func Benchmark_Cache_QueryMethod(b *testing.B) {
 	}
 
 	require.Equal(b, fiber.StatusOK, fctx.Response.Header.StatusCode())
+	require.Equal(b, cacheHit, string(fctx.Response.Header.Peek("X-Cache")))
 }
 
 func Benchmark_Cache_MaxSize(b *testing.B) {
@@ -4209,7 +4347,7 @@ func Benchmark_Cache_MaxSize(b *testing.B) {
 			app.Use(New(Config{MaxBytes: size}))
 
 			app.Get("/*", func(c fiber.Ctx) error {
-				return c.Status(fiber.StatusTeapot).SendString("1")
+				return c.Status(fiber.StatusOK).SendString("1")
 			})
 
 			h := app.Handler()
@@ -4218,14 +4356,21 @@ func Benchmark_Cache_MaxSize(b *testing.B) {
 
 			b.ReportAllocs()
 
+			// strconv, not fmt.Sprintf: the formatting is the benchmark's own
+			// setup and its allocation was landing in the middleware's numbers.
 			n := 0
+			uri := make([]byte, 0, 24)
 			for b.Loop() {
 				n++
-				fctx.Request.SetRequestURI(fmt.Sprintf("/%v", n))
+				uri = strconv.AppendInt(append(uri[:0], '/'), int64(n), 10)
+				fctx.Request.SetRequestURIBytes(uri)
 				h(fctx)
 			}
 
-			require.Equal(b, fiber.StatusTeapot, fctx.Response.Header.StatusCode())
+			// Stored, so the bounded case actually reaches the eviction loop this
+			// benchmark exists to measure.
+			require.Equal(b, fiber.StatusOK, fctx.Response.Header.StatusCode())
+			require.Equal(b, cacheMiss, string(fctx.Response.Header.Peek("X-Cache")))
 		})
 	}
 }
