@@ -1,6 +1,6 @@
 ---
 id: utils
-title: 🧰 Utils
+title: Utils
 sidebar_position: 9
 toc_max_heading_level: 4
 ---
@@ -68,7 +68,7 @@ app.Use("/user/:user/:id", func(c fiber.Ctx) error {
     fiber.Locals[string](c, "user", "john")
     fiber.Locals[int](c, "id", 25)
     // ...
-    
+
     return c.Next()
 })
 

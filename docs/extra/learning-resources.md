@@ -1,6 +1,6 @@
 ---
 id: learning-resources
-title: 📚 Learning Resources
+title: Learning Resources
 description: >-
   Interactive learning platforms and community resources to help you learn Fiber concepts through hands-on practice.
 sidebar_position: 4

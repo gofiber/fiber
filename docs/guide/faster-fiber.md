@@ -1,6 +1,6 @@
 ---
 id: faster-fiber
-title: ⚡ Make Fiber Faster
+title: Make Fiber Faster
 sidebar_position: 11
 ---
 

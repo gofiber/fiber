@@ -1,6 +1,6 @@
 ---
 id: benchmarks
-title: 📊 Benchmarks
+title: Benchmarks
 description: >-
   These benchmarks aim to compare the performance of Fiber and other web
   frameworks.

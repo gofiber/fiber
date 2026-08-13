@@ -1,6 +1,6 @@
 ---
 id: grouping
-title: 🎭 Grouping
+title: Grouping
 sidebar_position: 2
 ---
 

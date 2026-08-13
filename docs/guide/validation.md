@@ -1,6 +1,6 @@
 ---
 id: validation
-title: 🔎 Validation
+title: Validation
 sidebar_position: 5
 ---
 

@@ -1,6 +1,6 @@
 ---
 id: error-handling
-title: 🐛 Error Handling
+title: Error Handling
 description: >-
   Fiber supports centralized error handling: handlers return errors so you can
   log them or send a custom HTTP response to the client.

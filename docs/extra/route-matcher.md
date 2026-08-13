@@ -1,6 +1,6 @@
 ---
 id: route-matcher
-title: 🎯 Route Matcher
+title: Route Matcher
 description: >-
   Interactive playground for Fiber's route matching: edit a route table and a
   request, see which route wins, why the others lose, and which parameters

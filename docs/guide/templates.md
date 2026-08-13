@@ -1,6 +1,6 @@
 ---
 id: templates
-title: 📝 Templates
+title: Templates
 description: Fiber supports server-side template engines.
 sidebar_position: 3
 ---

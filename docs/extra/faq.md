@@ -1,6 +1,6 @@
 ---
 id: faq
-title: 🤔 FAQ
+title: FAQ
 description: >-
   Frequently asked questions. Open an issue if you have another question to add.
 sidebar_position: 1

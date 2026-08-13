@@ -1,6 +1,6 @@
 ---
 id: response
-title: 📥 Response
+title: Response
 description: >-
   Response methods of Gofiber HTTP client.
 sidebar_position: 3

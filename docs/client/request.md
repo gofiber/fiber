@@ -1,6 +1,6 @@
 ---
 id: request
-title: 📤 Request
+title:  Request
 description: >-
   Request methods of Gofiber HTTP client.
 sidebar_position: 2
@@ -298,11 +298,11 @@ fmt.Println(resp.String())
 ```json
 {
   "headers": {
-    "Golang": "Fiber", 
-    "Host": "httpbin.org", 
-    "Referer": "", 
-    "Test": "123456,654321", 
-    "User-Agent": "fiber", 
+    "Golang": "Fiber",
+    "Host": "httpbin.org",
+    "Referer": "",
+    "Test": "123456,654321",
+    "User-Agent": "fiber",
     "X-Amzn-Trace-Id": "Root=1-664105d2-033cf7173457adb56d9e7193"
   }
 }
@@ -339,11 +339,11 @@ fmt.Println(resp.String())
 ```json
 {
   "headers": {
-    "Golang": "Fiber", 
-    "Host": "httpbin.org", 
-    "Referer": "", 
-    "Test": "654321", 
-    "User-Agent": "fiber", 
+    "Golang": "Fiber",
+    "Host": "httpbin.org",
+    "Referer": "",
+    "Test": "654321",
+    "User-Agent": "fiber",
     "X-Amzn-Trace-Id": "Root=1-664105e5-5d676ba348450cdb62847f04"
   }
 }
@@ -412,12 +412,12 @@ fmt.Println(string(resp.Body()))
 
 ```json
 {
-  "Content-Length": "145", 
-  "Content-Type": "application/json", 
+  "Content-Length": "145",
+  "Content-Type": "application/json",
   "hobbies": [
-    "football", 
+    "football",
     "basketball"
-  ], 
+  ],
   "name": "joe"
 }
 ```
@@ -484,12 +484,12 @@ fmt.Println(string(resp.Body()))
 
 ```json
 {
-  "Content-Length": "147", 
-  "Content-Type": "application/json", 
+  "Content-Length": "147",
+  "Content-Type": "application/json",
   "Hobbies": [
-    "Football", 
+    "Football",
     "Basketball"
-  ], 
+  ],
   "Name": "John Doe"
 }
 ```
@@ -786,16 +786,16 @@ fmt.Println(string(resp.Body()))
 
 ```json
 {
-  "args": {}, 
-  "data": "", 
-  "files": {}, 
+  "args": {},
+  "data": "",
+  "files": {},
   "form": {
     "points": [
-      "80", 
-      "90", 
+      "80",
+      "90",
       "100"
     ]
-  }, 
+  },
   // ...
 }
 ```
@@ -830,13 +830,13 @@ fmt.Println(string(resp.Body()))
 
 ```json
 {
-  "args": {}, 
-  "data": "", 
-  "files": {}, 
+  "args": {},
+  "data": "",
+  "files": {},
   "form": {
-    "email": "john@doe.com", 
+    "email": "john@doe.com",
     "name": "john"
-  }, 
+  },
   // ...
 }
 ```
@@ -926,12 +926,12 @@ fmt.Println(string(resp.Body()))
 
 ```json
 {
-  "args": {}, 
-  "data": "", 
+  "args": {},
+  "data": "",
   "files": {
     "file1": "This is an empty file!\n"
-  }, 
-  "form": {}, 
+  },
+  "form": {},
   // ...
 }
 ```
@@ -966,12 +966,12 @@ fmt.Println(string(resp.Body()))
 
 ```json
 {
-  "args": {}, 
-  "data": "", 
+  "args": {},
+  "data": "",
   "files": {
     "file1": "Hello, World!"
-  }, 
-  "form": {}, 
+  },
+  "form": {},
   // ...
 }
 ```
@@ -1021,10 +1021,10 @@ fmt.Println(string(resp.Body()))
 
 ```json
 {
-  "args": {}, 
-  "data": "", 
-  "files": {}, 
-  "form": {}, 
+  "args": {},
+  "data": "",
+  "files": {},
+  "form": {},
   // ...
 }
 ```

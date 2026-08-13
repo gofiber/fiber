@@ -1,7 +1,7 @@
 ---
 slug: /
 id: welcome
-title: 👋 Welcome
+title: Welcome
 sidebar_position: 1
 ---
 

@@ -1,5 +1,5 @@
 ---
-title: 🏗️ Internal Architecture
+title: Internal Architecture
 description: >-
   Learn about the internal architecture of Fiber, including the overall structure, request handling flow, routing, and path parsing.
 sidebar_position: 3

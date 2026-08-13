@@ -1,6 +1,6 @@
 ---
 id: ecosystem
-title: 🗺️ Ecosystem
+title: Ecosystem
 description: >-
   A map of the Fiber landscape: what ships in the core module and how the
   template engines, contrib middleware, storage drivers, utils, schema,

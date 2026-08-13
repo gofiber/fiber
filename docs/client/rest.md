@@ -1,6 +1,6 @@
 ---
 id: rest
-title: 🖥️ REST
+title: REST
 description: >-
   HTTP client for Fiber.
 sidebar_position: 1

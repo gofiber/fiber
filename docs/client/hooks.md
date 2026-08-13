@@ -1,6 +1,6 @@
 ---
 id: hooks
-title: 🎣 Hooks
+title: Hooks
 description: >-
   Hooks are used to manipulate the request/response process of the Fiber client.
 sidebar_position: 4
