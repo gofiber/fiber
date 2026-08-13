@@ -5,13 +5,13 @@ sidebar_position: 1.5
 toc_max_heading_level: 4
 ---
 
-## 🎉 Welcome
+## Welcome
 
 We are excited to announce the release of Fiber v3! 🚀
 
 In this guide, we'll walk you through the most important changes in Fiber `v3` and show you how to migrate your existing Fiber `v2` applications to Fiber `v3`.
 
-### 🛠️ Migration tool
+### Migration tool
 
 Fiber v3 introduces a CLI-powered migration helper. Install the CLI and let
 it update your project automatically:
@@ -25,21 +25,21 @@ See the [migration guide](#-migration-guide) for more details and options.
 
 Here's a quick overview of the changes in Fiber `v3`:
 
-- [🚀 App](#-app)
-- [🎣 Hooks](#-hooks)
-- [🚀 Listen](#-listen)
-- [🗺️ Router](#-router)
-- [🧠 Context](#-context)
-- [📎 Binding](#-binding)
-- [🔬 Extractors Package](#-extractors-package)
-- [🔄️ Redirect](#-redirect)
-- [🌎 Client package](#-client-package)
-- [🧰 Generic functions](#-generic-functions)
-- [🛠️ Utils](#utils)
-- [🧩 Services](#-services)
-- [📃 Log](#-log)
-- [📦 Storage Interface](#-storage-interface)
-- [🧬 Middlewares](#-middlewares)
+- [App](#-app)
+- [Hooks](#-hooks)
+- [Listen](#-listen)
+- [Router](#-router)
+- [Context](#-context)
+- [Binding](#-binding)
+- [Extractors Package](#-extractors-package)
+- [Redirect](#-redirect)
+- [Client package](#-client-package)
+- [Generic functions](#-generic-functions)
+- [Utils](#utils)
+- [Services](#-services)
+- [Log](#-log)
+- [Storage Interface](#-storage-interface)
+- [Middlewares](#-middlewares)
   - [Important Change for Accessing Middleware Data](#important-change-for-accessing-middleware-data)
   - [Adaptor](#adaptor)
   - [BasicAuth](#basicauth)
@@ -58,14 +58,14 @@ Here's a quick overview of the changes in Fiber `v3`:
   - [Recover](#recover)
   - [Session](#session)
   - [SSE](#sse)
-- [🔌 Addons](#-addons)
-- [📋 Migration guide](#-migration-guide)
+- [Addons](#-addons)
+- [Migration guide](#-migration-guide)
 
 ## Dropping support for old Go versions
 
 Fiber `v3` requires Go `1.25` or later. Update your toolchain to `1.25+` before upgrading so the module `go` directive and standard library features align with the new minimum version.
 
-## 🚀 App
+## App
 
 We have made several changes to the Fiber app, including:
 
@@ -222,7 +222,7 @@ app.Listen(":444", fiber.ListenConfig{
 
 `MIMEApplicationJavaScript` and `MIMEApplicationJavaScriptCharsetUTF8` are deprecated. Use `MIMETextJavaScript` and `MIMETextJavaScriptCharsetUTF8` instead.
 
-## 🎣 Hooks
+## Hooks
 
 We have made several changes to the Fiber hooks, including:
 
@@ -248,7 +248,7 @@ app.Listen(":3000") // This blocks
 app.Shutdown()      // Never reached
 ```
 
-## 🚀 Listen
+## Listen
 
 We have made several changes to the Fiber listen, including:
 
@@ -353,7 +353,7 @@ func main() {
 }
 ```
 
-## 🗺 Router
+## Router
 
 We have slightly adapted our router interface
 
@@ -649,7 +649,7 @@ Key improvements:
 
 The `TypeConstraint` type, `Constraint.ID`, and `Constraint.RegexCompiler` fields are retained but deprecated.
 
-## 🧠 Context
+## Context
 
 ### New Features
 
@@ -859,7 +859,7 @@ app.Get("/hello", func (c fiber.Ctx) error {
 
 ---
 
-## 📎 Binding
+## Binding
 
 Fiber v3 introduces a new binding mechanism that simplifies the process of binding request data to structs. The new binding system supports binding from various sources such as URL parameters, query parameters, headers, and request bodies. This unified approach makes it easier to handle different types of request data in a consistent manner.
 
@@ -895,7 +895,7 @@ In this example, the `Bind` method is used to bind the request body to the `User
 
 </details>
 
-## 🔬 Extractors Package
+## Extractors Package
 
 Fiber v3 introduces a new shared `extractors` package that consolidates value extraction utilities previously duplicated across middleware packages. This package provides a unified API for extracting values from headers, cookies, query parameters, form data, and URL parameters with built-in chain/fallback logic and security considerations.
 
@@ -949,7 +949,7 @@ Middleware packages in Fiber v3 now use the shared extractors package instead of
 - **Maintainability**: Single source of truth for extraction logic
 - **Security**: Unified security considerations and warnings
 
-## 🔄 Redirect
+## Redirect
 
 Fiber v3 enhances the redirect functionality by introducing new methods and improving existing ones. The new redirect methods provide more flexibility and control over the redirection process.
 
@@ -982,7 +982,7 @@ The default redirect status code has been updated from `302 Found` to `303 See O
 
 :::
 
-## 🌎 Client package
+## Client package
 
 The Gofiber client has been completely rebuilt. It includes numerous new features such as Cookiejar, request/response hooks, and more.
 You can take a look to [client docs](./client/rest.md) to see what's new with the client.
@@ -1018,7 +1018,7 @@ fmt.Println(resp.StatusCode(), resp.String())
 - Dialer, TLS, and proxy helpers now update every host client inside a load balancer, so complex pools inherit the same configuration.
 - The Fiber client exposes `Do`, `DoTimeout`, `DoDeadline`, and `CloseIdleConnections`, matching the surface area of the wrapped fasthttp transports.
 
-## 🧰 Generic functions
+## Generic functions
 
 Fiber v3 introduces new generic functions that provide additional utility and flexibility for developers. These functions are designed to simplify common tasks and improve code readability.
 
@@ -1211,13 +1211,13 @@ curl "http://localhost:3000/header"
 
 </details>
 
-## 🛠️ Utils {#utils}
+## Utils {#utils}
 
 Fiber v3 removes the built-in `utils` directory and now imports utility helpers from the separate [`github.com/gofiber/utils/v2`](https://github.com/gofiber/utils) module. See the [migration guide](#utils-migration) for detailed replacement steps and examples.
 
 The `github.com/gofiber/utils` module also introduces new helpers like `ParseInt`, `ParseUint`, `Walk`, `ReadFile`, and `Timestamp`.
 
-## 🧩 Services
+## Services
 
 Fiber v3 introduces a new feature called Services. This feature allows developers to quickly start services that the application depends on, removing the need to manually provision things like database servers, caches, or message brokers, to name a few.
 
@@ -1302,7 +1302,7 @@ INFO Total process count:       1
 
 </details>
 
-## 📃 Log
+##  Log
 
 `fiber.AllLogger[T]` interface now has a new generic type parameter `T` and a method called `Logger`. This method can be used to get the underlying logger instance from the Fiber logger middleware. This is useful when you want to configure the logger middleware with a custom logger and still want to access the underlying logger instance with the appropriate type.
 
@@ -1344,7 +1344,7 @@ DeleteWithContext(ctx context.Context, key string) error
 ResetWithContext(ctx context.Context) error
 ```
 
-## 🧬 Middlewares
+## Middlewares
 
 ### Important Change for Accessing Middleware Data
 
@@ -1792,7 +1792,7 @@ The timeout middleware is now configurable. A new `Config` struct allows customi
 
 **Migration:** Replace calls like `timeout.New(handler, 2*time.Second)` with `timeout.New(handler, timeout.Config{Timeout: 2 * time.Second})`.
 
-## 🔌 Addons
+## Addons
 
 In v3, Fiber introduced Addons. Addons are additional useful packages that can be used in Fiber.
 
@@ -1845,7 +1845,7 @@ func main() {
 
 </details>
 
-## 📋 Migration guide
+## Migration guide
 
 To streamline upgrades between Fiber versions, the Fiber CLI ships with a
 `migrate` command:
@@ -1863,17 +1863,17 @@ fiber migrate --to v3
 
 ### Changes Overview
 
-- [🚀 App](#-app-1)
-- [🎣 Hooks](#-hooks-1)
-- [🚀 Listen](#-listen-1)
-- [🗺 Router](#-router-1)
-- [🧠 Context](#-context-1)
-- [📎 Binding (was Parser)](#-parser)
-- [🔄 Redirect](#-redirect-1)
-- [🧾 Log](#-log-1)
-- [🌎 Client package](#-client-package-1)
-- [🛠️ Utils](#utils-migration)
-- [🧬 Middlewares](#-middlewares-1)
+- [App](#-app-1)
+- [Hooks](#-hooks-1)
+- [Listen](#-listen-1)
+- [Router](#-router-1)
+- [Context](#-context-1)
+- [Binding (was Parser)](#-parser)
+- [Redirect](#-redirect-1)
+- [Log](#-log-1)
+- [Client package](#-client-package-1)
+- [Utils](#utils-migration)
+- [Middlewares](#-middlewares-1)
   - [Important Change for Accessing Middleware Data](#important-change-for-accessing-middleware-data)
   - [BasicAuth](#basicauth-1)
   - [Cache](#cache-1)
@@ -1887,7 +1887,7 @@ fiber migrate --to v3
   - [Proxy](#proxy-1)
   - [Session](#session-1)
 
-### 🚀 App
+### App
 
 #### Static
 
@@ -1954,7 +1954,7 @@ app := fiber.New(fiber.Config{
 
 For detailed proxy configuration guidance, see the [reverse proxy guide](./guide/reverse-proxy.md).
 
-### 🎣 Hooks
+### Hooks
 
 `OnShutdown` has been replaced by two hooks: `OnPreShutdown` and `OnPostShutdown`.
 Use them to run cleanup code before and after the server shuts down. When handling
@@ -1975,7 +1975,7 @@ app.Hooks().OnPreShutdown(func() error {
 })
 ```
 
-### 🚀 Listen
+### Listen
 
 The `Listen` helpers (`ListenTLS`, `ListenMutualTLS`, etc.) were removed. Use
 `app.Listen()` with `fiber.ListenConfig` and a `tls.Config` when TLS is required.
@@ -1996,7 +1996,7 @@ app.Listen(":3000", fiber.ListenConfig{
 })
 ```
 
-### 🗺 Router
+### Router
 
 #### Direct `net/http` handlers
 
@@ -2119,7 +2119,7 @@ Note: Use this method with caution. It is **not** thread-safe and can be very pe
 
 For more details, refer to the [app documentation](./api/app.md#removeroute):
 
-### 🧠 Context
+### Context
 
 Fiber v3 introduces several new features and changes to the Ctx interface, enhancing its functionality and flexibility.
 
@@ -2182,7 +2182,7 @@ In this example, the `Ctx` parameter in the handler is used as an interface (`fi
 
 </details>
 
-#### 📎 Parser
+#### Parser
 
 The `Parser` section in Fiber v3 has undergone significant changes to improve functionality and flexibility.
 
@@ -2312,7 +2312,7 @@ The `Parser` section in Fiber v3 has undergone significant changes to improve fu
 
     </details>
 
-#### 🔄 Redirect
+#### Redirect
 
 Fiber v3 enhances the redirect functionality by introducing new methods and improving existing ones. The new redirect methods provide more flexibility and control over the redirection process.
 
@@ -2381,11 +2381,11 @@ Fiber v3 enhances the redirect functionality by introducing new methods and impr
 
     </details>
 
-#### 🧾 Log
+#### Log
 
 The `ConfigurableLogger` and `AllLogger` interfaces now use generics. You can specify the underlying logger type when implementing these interfaces. While `any` can be used for maximum flexibility in some contexts, when retrieving the concrete logger via `log.DefaultLogger`, you must specify the exact underlying logger type, for example `log.DefaultLogger[*MyLogger]().Logger()`.
 
-### 🌎 Client package
+### Client package
 
 Fiber v3 introduces a completely rebuilt client package with numerous new features such as Cookiejar, request/response hooks, and more. Here is a guide to help you migrate from Fiber v2 to Fiber v3.
 
@@ -2907,7 +2907,7 @@ func demo() {
 
 The `github.com/gofiber/utils/v2` module also introduces new helpers like `ParseInt`, `ParseUint`, `Walk`, `ReadFile`, and `Timestamp`.
 
-### 🧬 Middlewares
+### Middlewares
 
 #### Important Change for Accessing Middleware Data
 
