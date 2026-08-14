@@ -1,7 +1,10 @@
 package session
 
 import (
+	"reflect"
 	"sync"
+	"sync/atomic"
+	"time"
 )
 
 // msgp -file="data.go" -o="data_msgp.go" -tests=true -unexported
@@ -12,6 +15,37 @@ import (
 type data struct {
 	Data         map[any]any // Session key counts are expected to be bounded.
 	sync.RWMutex `msg:"-"`
+
+	// dirty is set when Data may no longer match the snapshot the session was
+	// decoded from. It is cleared after a successful decode and set again on
+	// any mutation, or when Get hands out a value that could alias the stored
+	// data. Save skips re-encoding while the flag is clear.
+	dirty atomic.Bool
+}
+
+// valueMayAlias reports whether v could share memory with the stored session
+// data, meaning the caller may mutate the session through it without calling
+// Set. Scalars are safe; everything else is treated as aliasing.
+func valueMayAlias(v any) bool {
+	switch v.(type) {
+	case nil,
+		string, bool,
+		int, int8, int16, int32, int64,
+		uint, uint8, uint16, uint32, uint64, uintptr,
+		float32, float64, complex64, complex128,
+		time.Time, time.Duration:
+		return false
+	}
+	switch reflect.TypeOf(v).Kind() {
+	case reflect.String, reflect.Bool,
+		reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
+		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr,
+		reflect.Float32, reflect.Float64, reflect.Complex64, reflect.Complex128:
+		// named scalar types are plain copies as well
+		return false
+	default:
+		return true
+	}
 }
 
 var dataPool = sync.Pool{
@@ -60,6 +94,7 @@ func (d *data) Reset() {
 	d.Lock()
 	defer d.Unlock()
 	clear(d.Data)
+	d.dirty.Store(true)
 }
 
 // Get retrieves a value from the data map by key.
@@ -76,7 +111,12 @@ func (d *data) Reset() {
 func (d *data) Get(key any) any {
 	d.RLock()
 	defer d.RUnlock()
-	return d.Data[key]
+	v := d.Data[key]
+	if valueMayAlias(v) {
+		// the caller may mutate the session through this value
+		d.dirty.Store(true)
+	}
+	return v
 }
 
 // Set updates or creates a new key-value pair in the data map.
@@ -92,6 +132,7 @@ func (d *data) Set(key, value any) {
 	d.Lock()
 	defer d.Unlock()
 	d.Data[key] = value
+	d.dirty.Store(true)
 }
 
 // Delete removes a key-value pair from the data map.
@@ -106,6 +147,7 @@ func (d *data) Delete(key any) {
 	d.Lock()
 	defer d.Unlock()
 	delete(d.Data, key)
+	d.dirty.Store(true)
 }
 
 // Keys retrieves all keys in the data map.
@@ -121,6 +163,10 @@ func (d *data) Keys() []any {
 	defer d.RUnlock()
 	keys := make([]any, 0, len(d.Data))
 	for k := range d.Data {
+		// pointer keys can be mutated by the caller just like values
+		if valueMayAlias(k) {
+			d.dirty.Store(true)
+		}
 		keys = append(keys, k)
 	}
 	return keys

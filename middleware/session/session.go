@@ -18,9 +18,13 @@ import (
 // Session serializes access to its internal state with mutexes, but it is
 // request-scoped and must not be used after the request lifecycle ends.
 type Session struct {
-	ctx         fiber.Ctx            // fiber context
-	config      *Store               // store configuration
-	data        *data                // key value data
+	ctx    fiber.Ctx // fiber context
+	config *Store    // store configuration
+	data   *data     // key value data
+	// rawData holds the encoded snapshot this session was decoded from (nil
+	// for fresh sessions). Save reuses it while the data is still clean,
+	// skipping a full re-encode; see saveSessionWithContext.
+	rawData     []byte
 	id          string               // session id
 	extractor   extractors.Extractor // extractor that supplied the session ID
 	idleTimeout time.Duration        // idleTimeout of this session
@@ -96,6 +100,7 @@ func releaseSession(s *Session) {
 	s.ctx = nil
 	s.config = nil
 	s.extractor = extractors.Extractor{}
+	s.rawData = nil
 	if s.data != nil {
 		s.data.Reset()
 	}
@@ -222,6 +227,7 @@ func (s *Session) DestroyWithContext(ctx context.Context) error {
 	// Reset local data only after the storage delete succeeded, so a
 	// canceled/failed delete leaves the session data intact.
 	s.data.Reset()
+	s.rawData = nil
 
 	// Expire session
 	s.delSession()
@@ -324,6 +330,8 @@ func (s *Session) ResetWithContext(ctx context.Context) error {
 func (s *Session) refresh() {
 	s.id = s.config.KeyGenerator()
 	s.isFresh = true
+	// the snapshot belongs to the previous session id
+	s.rawData = nil
 }
 
 // Save saves the session data and updates the cookie
@@ -391,6 +399,13 @@ func (s *Session) saveSessionWithContext(ctx context.Context) error {
 	// Update client cookie
 	s.setSession()
 
+	// Nothing changed since decode: write the retained snapshot back instead
+	// of re-encoding. Storage still gets the Set call, so the idle timeout
+	// keeps sliding.
+	if !s.data.dirty.Load() && s.rawData != nil {
+		return s.config.Storage.SetWithContext(ctx, s.id, s.rawData, s.idleTimeout)
+	}
+
 	// Encode session data
 	s.data.RLock()
 	encodedBytes, err := s.encodeSessionData()
@@ -398,6 +413,10 @@ func (s *Session) saveSessionWithContext(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("failed to encode data: %w", err)
 	}
+
+	// the new encoding becomes the clean baseline for later saves
+	s.rawData = encodedBytes
+	s.data.dirty.Store(false)
 
 	// Pass copied bytes with session id to provider
 	return s.config.Storage.SetWithContext(ctx, s.id, encodedBytes, s.idleTimeout)
@@ -587,6 +606,10 @@ func (s *Session) decodeSessionData(rawData []byte) error {
 	if err := decCache.Decode(&s.data.Data); err != nil {
 		return fmt.Errorf("failed to decode session data: %w", err)
 	}
+	// Keep a copy of the encoded snapshot so a clean Save can reuse it; the
+	// storage owns rawData and may invalidate it after this call.
+	s.rawData = utils.CopyBytes(rawData)
+	s.data.dirty.Store(false)
 	return nil
 }
 
