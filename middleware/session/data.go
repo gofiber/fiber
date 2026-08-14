@@ -16,10 +16,7 @@ type data struct {
 	Data         map[any]any // Session key counts are expected to be bounded.
 	sync.RWMutex `msg:"-"`
 
-	// dirty is set when Data may no longer match the snapshot the session was
-	// decoded from. It is cleared after a successful decode and set again on
-	// any mutation, or when Get hands out a value that could alias the stored
-	// data. Save skips re-encoding while the flag is clear.
+	// dirty is set when Data may no longer match the snapshot it was decoded from
 	dirty atomic.Bool
 }
 

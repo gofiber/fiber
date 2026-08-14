@@ -2242,3 +2242,155 @@ func Test_Session_WithContext_NilContext(t *testing.T) {
 		assertNoNilPanic(t, func() error { return sess.SaveWithContext(nil) }) //nolint:staticcheck // SA1012: nil is intentional — verifies the nil-context guard
 	})
 }
+
+// A save without changes must still hit storage (the idle timeout keeps
+// sliding) and keep the stored data intact.
+func Test_Session_CleanSave_RefreshesStorageAndKeepsData(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+	store := NewStore()
+
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+	c.Request().Header.SetCookie("session_id", "clean-save-id")
+
+	sess, err := store.Get(c)
+	require.NoError(t, err)
+	sess.Set("uid", "1337")
+	require.NoError(t, sess.Save())
+	id := sess.ID()
+	sess.Release()
+
+	stored, err := store.Storage.Get(id)
+	require.NoError(t, err)
+	require.NotEmpty(t, stored)
+
+	// read-only round trip
+	sess, err = store.Get(c)
+	require.NoError(t, err)
+	require.Equal(t, "1337", sess.Get("uid"))
+	require.NoError(t, sess.Save())
+	sess.Release()
+
+	afterRaw, err := store.Storage.Get(id)
+	require.NoError(t, err)
+	require.Equal(t, stored, afterRaw)
+
+	sess, err = store.Get(c)
+	require.NoError(t, err)
+	require.Equal(t, "1337", sess.Get("uid"))
+	sess.Release()
+}
+
+// Mutating a map obtained from Get must survive the save even when Set is
+// never called.
+func Test_Session_GetAliasableValue_MarksDirty(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+	store := NewStore()
+	store.RegisterType(map[string]string{})
+
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+	c.Request().Header.SetCookie("session_id", "alias-id")
+
+	sess, err := store.Get(c)
+	require.NoError(t, err)
+	sess.Set("prefs", map[string]string{"theme": "dark"})
+	require.NoError(t, sess.Save())
+	sess.Release()
+
+	sess, err = store.Get(c)
+	require.NoError(t, err)
+	prefs, ok := sess.Get("prefs").(map[string]string)
+	require.True(t, ok)
+	prefs["theme"] = "light"
+	require.NoError(t, sess.Save())
+	sess.Release()
+
+	sess, err = store.Get(c)
+	require.NoError(t, err)
+	prefs, ok = sess.Get("prefs").(map[string]string)
+	require.True(t, ok)
+	require.Equal(t, "light", prefs["theme"])
+	sess.Release()
+}
+
+// References handed out or passed in stay live after a save; a mutation made
+// between two saves must end up in storage.
+func Test_Session_AliasedValueMutatedBetweenSaves(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+	store := NewStore()
+	store.RegisterType(map[string]string{})
+
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+	c.Request().Header.SetCookie("session_id", "alias-between-saves-id")
+
+	// via Set: the caller keeps the map it stored
+	sess, err := store.Get(c)
+	require.NoError(t, err)
+	own := map[string]string{"theme": "dark"}
+	sess.Set("prefs", own)
+	require.NoError(t, sess.Save())
+	own["theme"] = "light"
+	require.NoError(t, sess.Save())
+	sess.Release()
+
+	sess, err = store.Get(c)
+	require.NoError(t, err)
+	prefs, ok := sess.Get("prefs").(map[string]string)
+	require.True(t, ok)
+	require.Equal(t, "light", prefs["theme"])
+
+	// via Get: same map, mutated after the first save
+	prefs["lang"] = "en"
+	require.NoError(t, sess.Save())
+	prefs["lang"] = "de"
+	require.NoError(t, sess.Save())
+	sess.Release()
+
+	sess, err = store.Get(c)
+	require.NoError(t, err)
+	prefs, ok = sess.Get("prefs").(map[string]string)
+	require.True(t, ok)
+	require.Equal(t, "de", prefs["lang"])
+	sess.Release()
+}
+
+// go test -v -run=^$ -bench=Benchmark_Session_ReadOnly -benchmem -count=4
+func Benchmark_Session_ReadOnly(b *testing.B) {
+	app := fiber.New()
+	store := NewStore()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+	c.Request().Header.SetCookie("session_id", "12356789")
+
+	// seed the stored session once
+	sess, err := store.Get(c)
+	if err != nil {
+		b.Fatal(err)
+	}
+	sess.Set("uid", "1337")
+	if err := sess.Save(); err != nil {
+		b.Fatal(err)
+	}
+	sess.Release()
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for b.Loop() {
+		sess, err := store.Get(c)
+		if err != nil {
+			b.Fatal(err)
+		}
+		if got, ok := sess.Get("uid").(string); !ok || got != "1337" {
+			b.Fatalf("unexpected session value: %v", sess.Get("uid"))
+		}
+		if err := sess.Save(); err != nil {
+			b.Fatal(err)
+		}
+		sess.Release()
+	}
+}

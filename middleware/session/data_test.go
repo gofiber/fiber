@@ -281,3 +281,23 @@ func TestData_Delete(t *testing.T) {
 		// No assertion needed, just ensure no panic or error
 	})
 }
+
+func Test_ValueMayAlias(t *testing.T) {
+	t.Parallel()
+	type named int64
+	type withSlice struct{ B []byte }
+
+	require.False(t, valueMayAlias(nil))
+	require.False(t, valueMayAlias("s"))
+	require.False(t, valueMayAlias(int(1)))
+	require.False(t, valueMayAlias(int64(1)))
+	require.False(t, valueMayAlias(uint32(1)))
+	require.False(t, valueMayAlias(3.14))
+	require.False(t, valueMayAlias(true))
+	require.False(t, valueMayAlias(named(7)))
+
+	require.True(t, valueMayAlias([]byte("b")))
+	require.True(t, valueMayAlias(map[string]string{}))
+	require.True(t, valueMayAlias(&withSlice{}))
+	require.True(t, valueMayAlias(withSlice{B: []byte("x")}))
+}
