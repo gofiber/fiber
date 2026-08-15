@@ -147,7 +147,10 @@ func typeSchema(t reflect.Type, visited map[reflect.Type]bool) map[string]any {
 	case reflect.Bool:
 		return map[string]any{schemaKeyType: schemaTypeBoolean}
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
-		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64,
+		// encoding/json writes uintptr as a bare number, so omitting it here
+		// would drop a field that does appear on the wire.
+		reflect.Uintptr:
 		return map[string]any{schemaKeyType: schemaTypeInteger}
 	case reflect.Float32, reflect.Float64:
 		return map[string]any{schemaKeyType: schemaTypeNumber}

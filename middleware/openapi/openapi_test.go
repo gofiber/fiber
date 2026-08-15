@@ -2896,6 +2896,28 @@ func Test_SchemaOf_InvalidJSONTagName(t *testing.T) {
 	require.Contains(t, props, "a b")
 }
 
+// Test_SchemaOf_UintptrDocumented pins uintptr, which encoding/json writes as a
+// bare number: dropping it would document fewer fields than the wire carries.
+func Test_SchemaOf_UintptrDocumented(t *testing.T) {
+	t.Parallel()
+
+	type withUintptr struct {
+		Pointer uintptr `json:"pointer"`
+		Count   int     `json:"count"`
+	}
+
+	encoded, err := json.Marshal(withUintptr{Pointer: 42, Count: 7})
+	require.NoError(t, err)
+	var wire map[string]any
+	require.NoError(t, json.Unmarshal(encoded, &wire))
+
+	props := requireMap(t, SchemaOf(withUintptr{})["properties"])
+	for name := range wire {
+		require.Containsf(t, props, name, "schema is missing wire property %q", name)
+	}
+	require.Equal(t, map[string]any{"type": "integer"}, props["pointer"])
+}
+
 // Test_OpenAPI_PathParameterConstraintSchema asserts a "<...>" constraint types
 // the path parameter schema instead of reporting every one as a string.
 func Test_OpenAPI_PathParameterConstraintSchema(t *testing.T) {

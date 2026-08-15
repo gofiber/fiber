@@ -1163,6 +1163,9 @@ func docAddParameter(param RouteParameter) func(route *Route) {
 	return func(route *Route) {
 		paramCopy := param
 		paramCopy.Schema = copyAnyMap(param.Schema)
+		// Example is an `any`: a map or slice would otherwise stay aliased to
+		// the caller, as the response helpers already guard against.
+		paramCopy.Example = copyAnyValue(param.Example)
 		paramCopy.Examples = copyAnyMap(param.Examples)
 		paramCopy.Content = cloneRouteMediaTypeMap(param.Content)
 		if param.Explode != nil {

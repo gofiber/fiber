@@ -714,6 +714,26 @@ func Test_Group_SubGroupDoesNotStealParentCursor(t *testing.T) {
 	require.Equal(t, []string{"users"}, route.Tags)
 }
 
+// Test_AddParameter_ExampleDetached pins the parameter example against caller
+// mutation, matching what the response helpers already guarantee. A live alias
+// would change the served document without bumping the route revision.
+func Test_AddParameter_ExampleDetached(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	example := map[string]any{"nested": map[string]any{"k": "original"}}
+	app.Get("/p", testHandlerOK).
+		AddParameter(RouteParameter{Name: "q", In: "query", Example: example})
+
+	nested, ok := example["nested"].(map[string]any)
+	require.True(t, ok)
+	nested["k"] = "mutated"
+	example["added"] = true
+
+	stored := app.GetRoutes()[0].Parameters[0].Example
+	require.Equal(t, map[string]any{"nested": map[string]any{"k": "original"}}, stored)
+}
+
 // Test_AddParameter_SchemaSelection covers how docAddParameter decides between a
 // content map, a schema reference, the querystring location and a plain schema.
 func Test_AddParameter_SchemaSelection(t *testing.T) {
