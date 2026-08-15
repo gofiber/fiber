@@ -907,8 +907,8 @@ func (r *DefaultRes) Render(name string, bind any, layouts ...string) error {
 	// deep its mount path is, so neither borrows the other's engine; a tie
 	// goes to the domain mount, which matched the host as well.
 	domain := rootApp.domainMountOwner(r.c)
-	domainViews := rootApp.domainMountConfig(r.c, domain, appHasViews)
-	domainLayout := rootApp.domainMountConfig(r.c, domain, appHasViewsLayout)
+	domainViews := domainMountConfig(domain, appHasViews)
+	domainLayout := domainMountConfig(domain, appHasViewsLayout)
 
 	for _, prefix := range slices.Backward(rootApp.mountFields.appListKeys) {
 		app := rootApp.mountFields.appList[prefix]

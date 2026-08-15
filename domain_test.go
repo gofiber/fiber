@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -3627,6 +3628,103 @@ func Test_Domain_UseMountInheritsOnlyFromCoveringMounts(t *testing.T) {
 	resp, err := app.Test(req)
 	require.NoError(t, err)
 	require.Equal(t, 597, resp.StatusCode)
+}
+
+// Test_Domain_UseMountIgnoresOverlappingSibling verifies that inheritance
+// follows the mounts an app is registered inside, not every shallower one that
+// happens to reach the same request: a separately registered mount overlapping
+// by host and path encloses nothing.
+func Test_Domain_UseMountIgnoresOverlappingSibling(t *testing.T) {
+	t.Parallel()
+
+	wildcard := New(Config{ErrorHandler: func(c Ctx, _ error) error {
+		return c.Status(598).SendString("wildcard")
+	}})
+	wildcard.Get("/thing", func(c Ctx) error {
+		return c.SendString("thing")
+	})
+
+	exact := New() // no handler of its own
+	exact.Get("/boom", func(_ Ctx) error {
+		return errors.New("boom")
+	})
+
+	app := New(Config{ErrorHandler: func(c Ctx, _ error) error {
+		return c.Status(599).SendString("root")
+	}})
+	app.Domain(":tenant.example.com").Use("/api", wildcard)
+	app.Domain("admin.example.com").Use("/api/child", exact)
+
+	req := httptest.NewRequest(MethodGet, "/api/child/boom", http.NoBody)
+	req.Host = "admin.example.com" // matches both patterns
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, 599, resp.StatusCode)
+}
+
+// Test_Domain_UseMountPlainRouteKeepsItsOwnConfig verifies that a domain mount
+// does not answer for a route an ordinary mount served, even where it covers
+// the same prefix on a matching host.
+func Test_Domain_UseMountPlainRouteKeepsItsOwnConfig(t *testing.T) {
+	t.Parallel()
+
+	plain := New() // no handler of its own
+	plain.Get("/boom", func(_ Ctx) error {
+		return errors.New("boom")
+	})
+
+	subApp := New(Config{ErrorHandler: func(c Ctx, _ error) error {
+		return c.Status(601).SendString("domain")
+	}})
+	subApp.Get("/other", func(_ Ctx) error {
+		return errors.New("boom")
+	})
+
+	app := New(Config{ErrorHandler: func(c Ctx, _ error) error {
+		return c.Status(602).SendString("root")
+	}})
+	app.Use("/api", plain)
+	app.Domain("api.example.com").Use("/api", subApp)
+
+	req := httptest.NewRequest(MethodGet, "/api/boom", http.NoBody)
+	req.Host = "api.example.com"
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, 602, resp.StatusCode)
+
+	// The domain mount still answers for the routes it did serve.
+	req = httptest.NewRequest(MethodGet, "/api/other", http.NoBody)
+	req.Host = "api.example.com"
+	resp, err = app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, 601, resp.StatusCode)
+}
+
+// Test_Domain_UseMountConcurrentRegistration verifies that cloning a sub-app's
+// routes does not race registration on that sub-app: a route registered on a
+// path it already serves has its handlers appended in place.
+func Test_Domain_UseMountConcurrentRegistration(t *testing.T) {
+	t.Parallel()
+
+	handler := func(c Ctx) error { return c.SendString("x") }
+	subApp := New()
+	subApp.Get("/x", handler)
+
+	var wg sync.WaitGroup
+
+	wg.Go(func() {
+		for range 200 {
+			subApp.Get("/x", handler)
+		}
+	})
+
+	wg.Go(func() {
+		for range 200 {
+			New().Domain("api.example.com").Use("/api", subApp)
+		}
+	})
+
+	wg.Wait()
 }
 
 // Test_Domain_UseMountInheritsDomainViews verifies the same inheritance for the

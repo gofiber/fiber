@@ -60,18 +60,23 @@ type domainMountedApp struct {
 	// matchers are the patterns of the domain routers this app was mounted
 	// behind, outermost last. A request has to satisfy all of them.
 	matchers []domainMatcher
+	// ancestors are the apps this one is mounted inside, outermost first. They
+	// are what its configuration is inherited from: a mount that merely covers
+	// the same path encloses nothing.
+	ancestors []*App
 }
 
 // newDomainMount records a mount of mounted at path, normalized and parsed
 // with the routing rules of the app it is being mounted on, so the lookups
 // recognize it the same way the router recognizes its routes.
-func (app *App) newDomainMount(mounted *App, path string, matchers []domainMatcher) domainMountedApp {
+func (app *App) newDomainMount(mounted *App, path string, matchers []domainMatcher, ancestors []*App) domainMountedApp {
 	normalized := app.normalizePath(path)
 
 	mount := domainMountedApp{
-		app:      mounted,
-		path:     normalized,
-		matchers: matchers,
+		app:       mounted,
+		path:      normalized,
+		matchers:  matchers,
+		ancestors: ancestors,
 	}
 
 	if parser := parseRoute(normalized, app.config.RegexHandler, app.customConstraints...); len(parser.params) > 0 {
@@ -215,6 +220,9 @@ func (grp *Group) mount(prefix string, subApp *App) Router {
 // mount it was reached through is.
 type domainOwner struct {
 	app *App
+	// ancestors are the apps the owner is mounted inside, outermost first, and
+	// are what it inherits configuration from.
+	ancestors []*App
 	// depth is how many path segments the mount covers, which ranks the owner
 	// against the plain mounts covering the same request.
 	depth int
@@ -248,7 +256,7 @@ func appHasViewsLayout(app *App) bool { return app.config.ViewsLayout != "" }
 // does — the inheritance an ordinarily nested mount gets from the app it sits
 // in. Mounts at the owner's own depth are siblings that did not serve the
 // request, and configure nothing on its behalf.
-func (app *App) domainMountConfig(c Ctx, owner domainOwner, want func(*App) bool) *App {
+func domainMountConfig(owner domainOwner, want func(*App) bool) *App {
 	if owner.app == nil {
 		return nil
 	}
@@ -257,31 +265,17 @@ func (app *App) domainMountConfig(c Ctx, owner domainOwner, want func(*App) bool
 		return owner.app
 	}
 
-	var (
-		found *App
-		best  int
-	)
-
-	path := app.normalizePath(c.Path())
-
-	for i := range app.mountFields.domainAppList {
-		mount := &app.mountFields.domainAppList[i]
-
-		depth := mount.depth()
-		if depth >= owner.depth || !want(mount.app) {
-			continue
-		}
-
-		if !mount.covers(path) || !mount.matchesHost(c.Hostname()) {
-			continue
-		}
-
-		if found == nil || depth > best {
-			found, best = mount.app, depth
+	// Innermost first, so the nearest app configuring the setting answers. Only
+	// the apps the owner is mounted inside are consulted: a mount that reaches
+	// the same paths on the same hosts is a sibling, and configures nothing on
+	// the owner's behalf.
+	for _, ancestor := range slices.Backward(owner.ancestors) {
+		if want(ancestor) {
+			return ancestor
 		}
 	}
 
-	return found
+	return nil
 }
 
 // domainMountOwner returns the domain mount that owns this request: the app the
@@ -311,16 +305,25 @@ func (app *App) domainMountOwner(c Ctx) domainOwner {
 		// Two sub-apps mounted at one path behind overlapping patterns both
 		// cover the request and both match the host. Only one of them ran.
 		if mount.app == routeApp && (byRoute.app == nil || depth > byRoute.depth) {
-			byRoute.app, byRoute.depth = mount.app, depth
+			byRoute.app, byRoute.depth, byRoute.ancestors = mount.app, depth, mount.ancestors
 		}
 
 		if owner.app == nil || depth > owner.depth {
-			owner.app, owner.depth = mount.app, depth
+			owner.app, owner.depth, owner.ancestors = mount.app, depth, mount.ancestors
 		}
 	}
 
 	if byRoute.app != nil {
 		return byRoute
+	}
+
+	// A route that names an app none of these mounts describe was served by an
+	// ordinary mount, or by one whose host these patterns reject. Either way
+	// this request is not a domain mount's to answer for, and only one that ran
+	// no mounted route at all — a 404, or an error raised above them — is left
+	// to the mount covering its path.
+	if routeApp != nil {
+		return domainOwner{}
 	}
 
 	return owner
@@ -348,9 +351,10 @@ func (app *App) mountedApps() []*App {
 // mountedAppRef is an app reachable from another one: the path it is reachable
 // at, and the domain patterns a request has to satisfy to get there.
 type mountedAppRef struct {
-	app      *App
-	path     string
-	matchers []domainMatcher
+	app       *App
+	path      string
+	matchers  []domainMatcher
+	ancestors []*App
 }
 
 // mountTree returns this app and every app mounted below it, plain or on a
@@ -373,7 +377,7 @@ func (app *App) appendMountTree(dst []mountedAppRef, prefix string, matchers []d
 		return dst
 	}
 
-	dst = append(dst, mountedAppRef{app: app, path: prefix, matchers: matchers})
+	dst = append(dst, mountedAppRef{app: app, path: prefix, matchers: matchers, ancestors: slices.Clone(chain)})
 	chain = append(chain, app)
 
 	// Patterns compose innermost first, the order a mount records them in: a
@@ -516,7 +520,8 @@ func (app *App) routeOwner(route *Route) *App {
 func (app *App) appendDomainMounts(dst, mounts []domainMountedApp, prefix string) []domainMountedApp {
 	for i := range mounts {
 		mount := &mounts[i]
-		dst = addDomainMount(dst, app.newDomainMount(mount.app, getGroupPath(prefix, mount.path), mount.matchers))
+		moved := app.newDomainMount(mount.app, getGroupPath(prefix, mount.path), mount.matchers, mount.ancestors)
+		dst = addDomainMount(dst, &moved)
 	}
 
 	return dst
@@ -525,14 +530,14 @@ func (app *App) appendDomainMounts(dst, mounts []domainMountedApp, prefix string
 // addDomainMount appends a domain mount unless the same one is already
 // recorded. An app list holds the descendants of the apps it lists, so the
 // startup walk reaches the same mount once per path that leads to it.
-func addDomainMount(dst []domainMountedApp, mount domainMountedApp) []domainMountedApp {
+func addDomainMount(dst []domainMountedApp, mount *domainMountedApp) []domainMountedApp {
 	for i := range dst {
-		if dst[i].equals(&mount) {
+		if dst[i].equals(mount) {
 			return dst
 		}
 	}
 
-	return append(dst, mount)
+	return append(dst, *mount)
 }
 
 // MountPath returns the route pattern where the current app instance was mounted as a sub-application.

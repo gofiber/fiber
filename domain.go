@@ -479,17 +479,25 @@ func (d *domainRouter) mount(prefix string, subApp *App) Router {
 	// app they were registered on. The routes reach all of them either way.
 	pending := subApp.mountTree()
 
-	d.app.mutex.Lock()
-	// Support for configs of mounted-apps and sub-mounted-apps
+	// Each app's mount path is written under its own lock, and before the
+	// parent's is taken: an app registering a route reads it there, and it may
+	// be the parent itself when an app is mounted on itself.
 	for i := range pending {
 		mount := &pending[i]
 		mount.path = getGroupPath(mountPath, mount.path)
 
+		mount.app.mutex.Lock()
 		mount.app.mountFields.mountPath = mount.path
-		d.app.mountFields.domainAppList = addDomainMount(
-			d.app.mountFields.domainAppList,
-			d.app.newDomainMount(mount.app, mount.path, append(slices.Clone(mount.matchers), d.matcher)),
-		)
+		mount.app.mutex.Unlock()
+	}
+
+	d.app.mutex.Lock()
+	// Support for configs of mounted-apps and sub-mounted-apps
+	for i := range pending {
+		mount := &pending[i]
+		recorded := d.app.newDomainMount(mount.app, mount.path, append(slices.Clone(mount.matchers), d.matcher), mount.ancestors)
+
+		d.app.mountFields.domainAppList = addDomainMount(d.app.mountFields.domainAppList, &recorded)
 	}
 	d.app.mutex.Unlock()
 
@@ -558,17 +566,44 @@ func (d *domainRouter) domainRoutes(dst, src *App, pathPrefix string, chain []*A
 		*autoHead = false
 	}
 
-	// Take a snapshot rather than holding the lock for the whole walk: it
-	// keeps concurrent route registration on src from racing the read, and it
-	// keeps this from ever holding two apps' locks at once.
+	// Take a snapshot rather than holding the lock for the whole walk: it keeps
+	// this from ever holding two apps' locks at once. The routes are copied by
+	// value, not by pointer, because registering a route on a path src already
+	// serves appends to that route's handlers in place, and renaming one writes
+	// its name — a clone taken after the lock was released would race both.
 	//
-	// It is indexed by dst's methods, not src's: an app is free to configure
-	// its own RequestMethods, and the two tables then neither line up nor have
-	// to be the same length.
+	// A mount placeholder is kept as it is: its target app is read from the
+	// group it carries, and the walk into it has to happen unlocked.
+	//
+	// The snapshot is indexed by dst's methods, not src's: an app is free to
+	// configure its own RequestMethods, and the two tables then neither line up
+	// nor have to be the same length.
+	type sourceRoute struct {
+		route *Route
+		owner *App
+	}
+
 	src.mutex.Lock()
-	stack := make([][]*Route, len(routes))
+	stack := make([][]sourceRoute, len(routes))
 	for m := range stack {
-		stack[m] = slices.Clone(src.routesForMethod(dst.method(m)))
+		srcRoutes := src.routesForMethod(dst.method(m))
+		stack[m] = make([]sourceRoute, len(srcRoutes))
+
+		for i, route := range srcRoutes {
+			if route.mount {
+				stack[m][i] = sourceRoute{route: route}
+				continue
+			}
+
+			// src is itself a wrapper when the sub-app had domain mounts of its
+			// own, and already knows the real app behind each of its routes.
+			owner := src.routeOwner(route)
+			if owner == nil {
+				owner = src
+			}
+
+			stack[m][i] = sourceRoute{route: src.copyRoute(route), owner: owner}
+		}
 	}
 	dst.customConstraints = mergeCustomConstraints(dst.customConstraints, src.customConstraints)
 	src.mutex.Unlock()
@@ -579,23 +614,24 @@ func (d *domainRouter) domainRoutes(dst, src *App, pathPrefix string, chain []*A
 	var mounted map[*Group][][]*Route
 
 	for m := range routes {
-		for _, route := range stack[m] {
-			if route.mount {
+		for _, source := range stack[m] {
+			if source.route.mount {
 				// register only sets mount for a route whose group carries the
 				// mounted app, so group and group.app are both set here — the
 				// same invariant processSubAppsRoutes relies on.
-				if mounted[route.group] == nil {
+				group := source.route.group
+				if mounted[group] == nil {
 					if mounted == nil {
 						mounted = make(map[*Group][][]*Route)
 					}
-					mounted[route.group] = d.domainRoutes(dst, route.group.app, getGroupPath(pathPrefix, route.path), append(chain, src), autoHead)
+					mounted[group] = d.domainRoutes(dst, group.app, getGroupPath(pathPrefix, source.route.path), append(chain, src), autoHead)
 				}
 
-				routes[m] = append(routes[m], mounted[route.group][m]...)
+				routes[m] = append(routes[m], mounted[group][m]...)
 				continue
 			}
 
-			clonedRoute := src.copyRoute(route)
+			clonedRoute := source.route
 			// An empty prefix cannot change the path, and re-parsing the route
 			// to reach the same result is the most expensive thing here.
 			if pathPrefix != "" {
@@ -605,14 +641,8 @@ func (d *domainRouter) domainRoutes(dst, src *App, pathPrefix string, chain []*A
 
 			// Record the app the route came from, so a request that runs it
 			// resolves that app's config rather than one inferred from the host
-			// and the path. src is itself a wrapper when the sub-app had domain
-			// mounts of its own, and already knows the real app behind each of
-			// its routes.
-			owner := src.routeOwner(route)
-			if owner == nil {
-				owner = src
-			}
-			dst.markRouteOwner(clonedRoute, owner)
+			// and the path.
+			dst.markRouteOwner(clonedRoute, source.owner)
 
 			routes[m] = append(routes[m], clonedRoute)
 		}
