@@ -478,23 +478,22 @@ func (d *domainRouter) mount(prefix string, subApp *App) Router {
 		path := getGroupPath(mountPath, mountedPrefixes)
 
 		subAppInstance.mountFields.mountPath = path
-		d.app.mountFields.domainAppList = addDomainMount(d.app.mountFields.domainAppList, domainMountedApp{
-			app:      subAppInstance,
-			path:     path,
-			matchers: []domainMatcher{d.matcher},
-		})
+		d.app.mountFields.domainAppList = addDomainMount(
+			d.app.mountFields.domainAppList,
+			d.app.newDomainMount(subAppInstance, path, []domainMatcher{d.matcher}),
+		)
 	}
 	// Apps the sub-app itself domain-mounted keep their own patterns as well:
 	// a request has to satisfy both to reach them.
-	for _, mount := range domainMounts {
+	for i := range domainMounts {
+		mount := &domainMounts[i]
 		path := getGroupPath(mountPath, mount.path)
 
 		mount.app.mountFields.mountPath = path
-		d.app.mountFields.domainAppList = addDomainMount(d.app.mountFields.domainAppList, domainMountedApp{
-			app:      mount.app,
-			path:     path,
-			matchers: append(slices.Clone(mount.matchers), d.matcher),
-		})
+		d.app.mountFields.domainAppList = addDomainMount(
+			d.app.mountFields.domainAppList,
+			d.app.newDomainMount(mount.app, path, append(slices.Clone(mount.matchers), d.matcher)),
+		)
 	}
 	d.app.mutex.Unlock()
 

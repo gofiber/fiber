@@ -902,37 +902,17 @@ func (r *DefaultRes) Render(name string, bind any, layouts ...string) error {
 	rootApp := r.c.app
 	var rendered bool
 
-	// A sub-app mounted on a domain is checked first: its views only apply to
-	// a matching host, so it cannot be found by the path scan below, and having
-	// matched the host makes it the more specific of two mounts at one path.
-	if viewsApp := rootApp.domainMountedViews(r.c); viewsApp != nil {
-		if len(layouts) == 0 && viewsApp.config.ViewsLayout != "" {
-			layouts = []string{viewsApp.config.ViewsLayout}
-		}
-
-		if err := func() error {
-			viewsLock := getViewsLock(viewsApp.config.Views)
-			viewsLock.RLock()
-			defer viewsLock.RUnlock()
-
-			if err := viewsApp.config.Views.Render(buf, name, bind, layouts...); err != nil {
-				return fmt.Errorf("failed to render: %w", err)
-			}
-
-			return nil
-		}(); err != nil {
-			return err
-		}
-
-		rendered = true
-	}
+	// A sub-app mounted on a domain only applies to a matching host, so the
+	// path scan below cannot find it. Rank it against the plain mounts by how
+	// deep its mount path is, so neither borrows the other's engine; a tie
+	// goes to the domain mount, which matched the host as well.
+	domainApp, domainDepth := rootApp.domainMountedViews(r.c)
 
 	for _, prefix := range slices.Backward(rootApp.mountFields.appListKeys) {
-		if rendered {
+		app := rootApp.mountFields.appList[prefix]
+		if domainApp != nil && app.config.Views != nil && mountDepth(prefix) <= domainDepth {
 			break
 		}
-
-		app := rootApp.mountFields.appList[prefix]
 		if prefix == "" || rootApp.mountCoversPath(prefix, r.c.Path()) {
 			if len(layouts) == 0 && app.config.ViewsLayout != "" {
 				layouts = []string{
@@ -960,6 +940,28 @@ func (r *DefaultRes) Render(name string, bind any, layouts ...string) error {
 				break
 			}
 		}
+	}
+
+	if !rendered && domainApp != nil {
+		if len(layouts) == 0 && domainApp.config.ViewsLayout != "" {
+			layouts = []string{domainApp.config.ViewsLayout}
+		}
+
+		if err := func() error {
+			viewsLock := getViewsLock(domainApp.config.Views)
+			viewsLock.RLock()
+			defer viewsLock.RUnlock()
+
+			if err := domainApp.config.Views.Render(buf, name, bind, layouts...); err != nil {
+				return fmt.Errorf("failed to render: %w", err)
+			}
+
+			return nil
+		}(); err != nil {
+			return err
+		}
+
+		rendered = true
 	}
 
 	if !rendered {

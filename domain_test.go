@@ -3176,6 +3176,113 @@ func Test_Domain_UseMountKeepsParentAutoHead(t *testing.T) {
 	require.Equal(t, StatusOK, resp.StatusCode, "the parent's own route keeps its HEAD route")
 }
 
+// Test_Domain_UseMountParametricMountPath verifies that a domain mount
+// registered at a parametric path owns the requests its routes serve, so its
+// error handler and views apply to them.
+func Test_Domain_UseMountParametricMountPath(t *testing.T) {
+	t.Parallel()
+
+	subApp := New(Config{
+		ErrorHandler: func(c Ctx, _ error) error {
+			return c.Status(571).SendString("sub error")
+		},
+	})
+	subApp.Get("/boom", func(_ Ctx) error {
+		return errors.New("boom")
+	})
+
+	app := New()
+	app.Domain("api.example.com").Use("/:tenant", subApp)
+
+	req := httptest.NewRequest(MethodGet, "/acme/boom", http.NoBody)
+	req.Host = "api.example.com"
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, 571, resp.StatusCode)
+}
+
+// Test_Domain_UseMountRootIsShallowest verifies that a mount at the root is
+// the least specific of the mounts covering a request, so a named mount
+// registered after it still owns its own routes.
+func Test_Domain_UseMountRootIsShallowest(t *testing.T) {
+	t.Parallel()
+
+	rootApp := New(Config{
+		ErrorHandler: func(c Ctx, _ error) error {
+			return c.Status(572).SendString("root mount")
+		},
+	})
+	rootApp.Get("/other", func(_ Ctx) error {
+		return errors.New("boom")
+	})
+
+	apiApp := New(Config{
+		ErrorHandler: func(c Ctx, _ error) error {
+			return c.Status(573).SendString("api mount")
+		},
+	})
+	apiApp.Get("/boom", func(_ Ctx) error {
+		return errors.New("boom")
+	})
+
+	app := New()
+	app.Domain("api.example.com").Use("/", rootApp)
+	app.Domain("api.example.com").Use("/api", apiApp)
+
+	req := httptest.NewRequest(MethodGet, "/api/boom", http.NoBody)
+	req.Host = "api.example.com"
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, 573, resp.StatusCode)
+}
+
+// Test_Domain_UseMountViewsRankedAgainstPlain verifies that a domain mount and
+// an ordinary one are ranked against each other by mount depth, so the deeper
+// of the two renders with its own engine.
+func Test_Domain_UseMountViewsRankedAgainstPlain(t *testing.T) {
+	t.Parallel()
+
+	domainEngine := &testTemplateEngine{path: "testdata2"}
+	require.NoError(t, domainEngine.Load())
+
+	plainEngine := &testTemplateEngine{path: "testdata3"}
+	require.NoError(t, plainEngine.Load())
+
+	domainApp := New(Config{Views: domainEngine})
+	domainApp.Get("/x", func(c Ctx) error {
+		return c.Render("bruh.tmpl", Map{})
+	})
+
+	plainApp := New(Config{Views: plainEngine})
+	plainApp.Get("/view", func(c Ctx) error {
+		return c.Render("hello_world.tmpl", Map{"Name": "deep"})
+	})
+
+	app := New()
+	app.Domain("api.example.com").Use("/api", domainApp)
+	app.Use("/api/admin", plainApp)
+
+	// The deeper plain mount owns this one.
+	req := httptest.NewRequest(MethodGet, "/api/admin/view", http.NoBody)
+	req.Host = "api.example.com"
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, StatusOK, resp.StatusCode)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "<h1>Hello deep!</h1>", string(body))
+
+	// And the domain mount still owns its own.
+	req = httptest.NewRequest(MethodGet, "/api/x", http.NoBody)
+	req.Host = "api.example.com"
+	resp, err = app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, StatusOK, resp.StatusCode)
+	body, err = io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "<h1>I'm Bruh</h1>", string(body))
+}
+
 // Test_Domain_UseMountNestedCycle verifies that cloning a sub-app whose mount
 // graph contains a cycle terminates, and stops at the point the cycle closes.
 // It drives the clone directly: such an app cannot be served, because the

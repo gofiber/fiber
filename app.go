@@ -1599,7 +1599,7 @@ func (app *App) ErrorHandler(ctx Ctx, err error) error {
 
 		if app.mountCoversPath(prefix, ctx.Path()) {
 			// Count slashes instead of splitting - more efficient
-			parts := strings.Count(prefix, "/") + 1
+			parts := mountDepth(prefix)
 			if mountedPrefixParts <= parts {
 				if subApp.configured.ErrorHandler != nil {
 					mountedErrHandler = subApp.config.ErrorHandler
@@ -1611,27 +1611,16 @@ func (app *App) ErrorHandler(ctx Ctx, err error) error {
 	}
 
 	// Sub-apps mounted on a domain answer only for a matching host, so their
-	// error handler cannot be picked by path alone. They are considered after
-	// the plain mounts, which lets a domain mount win a tie on path depth: it
-	// matched the host too, so it is the more specific of the two.
-	//
-	// Between two domain mounts at the same depth the first one registered
-	// wins, matching the order their routes are matched in — a pattern that
-	// only overlaps a later one still keeps its own handler.
-	domainPrefixParts := -1
-
-	for i := range app.mountFields.domainAppList {
-		mount := &app.mountFields.domainAppList[i]
-
-		if app.mountCoversPath(mount.path, ctx.Path()) && mount.matchesHost(ctx.Hostname()) {
-			if parts := mount.prefixParts(); mountedPrefixParts <= parts && domainPrefixParts < parts {
-				if mount.app.configured.ErrorHandler != nil {
-					mountedErrHandler = mount.app.config.ErrorHandler
-				}
-
-				mountedPrefixParts = parts
-				domainPrefixParts = parts
-			}
+	// error handler cannot be picked by path alone. The owner is considered
+	// after the plain mounts, which lets a domain mount win a tie on path
+	// depth: it matched the host too, so it is the more specific of the two.
+	if owner, depth := app.domainMountOwner(ctx); owner != nil && mountedPrefixParts <= depth {
+		// The owner decides, as it does among the plain mounts: one without a
+		// handler of its own falls through to this app's, rather than to the
+		// handler of a shallower mount that did not serve the request.
+		mountedErrHandler = nil
+		if owner.configured.ErrorHandler != nil {
+			mountedErrHandler = owner.config.ErrorHandler
 		}
 	}
 
