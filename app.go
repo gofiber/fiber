@@ -1606,13 +1606,10 @@ func (app *App) ErrorHandler(ctx Ctx, err error) error {
 		mountedPrefixParts int
 	)
 
-	normalizedPath := utils.AddTrailingSlashString(ctx.Path())
-
 	for _, prefix := range app.mountFields.appListKeys {
 		subApp := app.mountFields.appList[prefix]
-		normalizedPrefix := utils.AddTrailingSlashString(prefix)
 
-		if prefix != "" && strings.HasPrefix(normalizedPath, normalizedPrefix) {
+		if app.mountCoversPath(prefix, ctx.Path()) {
 			// Count slashes instead of splitting - more efficient
 			parts := strings.Count(prefix, "/") + 1
 			if mountedPrefixParts <= parts {
@@ -1637,9 +1634,8 @@ func (app *App) ErrorHandler(ctx Ctx, err error) error {
 
 	for i := range app.mountFields.domainAppList {
 		mount := &app.mountFields.domainAppList[i]
-		normalizedPrefix := utils.AddTrailingSlashString(mount.path)
 
-		if mount.path != "" && strings.HasPrefix(normalizedPath, normalizedPrefix) && mount.matchesHost(ctx.Hostname()) {
+		if app.mountCoversPath(mount.path, ctx.Path()) && mount.matchesHost(ctx.Hostname()) {
 			if parts := mount.prefixParts(); mountedPrefixParts <= parts && domainPrefixParts < parts {
 				if mount.app.configured.ErrorHandler != nil {
 					mountedErrHandler = mount.app.config.ErrorHandler

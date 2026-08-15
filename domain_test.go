@@ -2982,6 +2982,86 @@ func Test_Domain_UseMountOverlappingPatterns(t *testing.T) {
 	require.Equal(t, 598, resp.StatusCode)
 }
 
+// Test_Domain_UseMountParametricPrefix verifies that a parametric mount prefix
+// inside a domain-mounted sub-app still matches as a pattern once the routes
+// have been prefixed twice.
+func Test_Domain_UseMountParametricPrefix(t *testing.T) {
+	t.Parallel()
+
+	child := New()
+	child.Get("/x", func(c Ctx) error {
+		return c.SendString("version=" + c.Params("version"))
+	})
+
+	subApp := New()
+	subApp.Use("/v1/:version", child)
+
+	app := New()
+	app.Domain("api.example.com").Use("/api", subApp)
+
+	req := httptest.NewRequest(MethodGet, "/api/v1/42/x", http.NoBody)
+	req.Host = "api.example.com"
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, StatusOK, resp.StatusCode)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "version=42", string(body))
+
+	req = httptest.NewRequest(MethodGet, "/api/v1/42/x", http.NoBody)
+	req.Host = "www.example.com"
+	resp, err = app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, StatusNotFound, resp.StatusCode)
+}
+
+// Test_Domain_UseMountCaseInsensitivePath verifies that a domain mount
+// registered with a differently-cased path still owns its config on a
+// case-insensitive app, the way its routes do.
+func Test_Domain_UseMountCaseInsensitivePath(t *testing.T) {
+	t.Parallel()
+
+	engine := &testTemplateEngine{path: "testdata2"}
+	require.NoError(t, engine.Load())
+
+	subApp := New(Config{
+		Views: engine,
+		ErrorHandler: func(c Ctx, _ error) error {
+			return c.Status(599).SendString("sub error")
+		},
+	})
+	subApp.Get("/boom", func(_ Ctx) error {
+		return errors.New("boom")
+	})
+	subApp.Get("/view", func(c Ctx) error {
+		return c.Render("bruh.tmpl", Map{})
+	})
+
+	app := New()
+	app.Domain("api.example.com").Use("/API", subApp)
+
+	req := httptest.NewRequest(MethodGet, "/api/boom", http.NoBody)
+	req.Host = "api.example.com"
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, 599, resp.StatusCode)
+
+	req = httptest.NewRequest(MethodGet, "/api/view", http.NoBody)
+	req.Host = "api.example.com"
+	resp, err = app.Test(req)
+	require.NoError(t, err)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "<h1>I'm Bruh</h1>", string(body))
+
+	// Still host-scoped: another host gets neither the route nor the config.
+	req = httptest.NewRequest(MethodGet, "/api/boom", http.NoBody)
+	req.Host = "www.example.com"
+	resp, err = app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, StatusNotFound, resp.StatusCode)
+}
+
 // Test_Domain_UseMountNestedCycle verifies that cloning a sub-app whose mount
 // graph contains a cycle terminates, and stops at the point the cycle closes.
 // It drives the clone directly: such an app cannot be served, because the

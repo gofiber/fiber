@@ -840,6 +840,17 @@ func (app *App) addPrefixToRoute(prefix string, route *Route, regexHandler any, 
 	route.Path = prefixedPath
 	route.path = RemoveEscapeChar(prettyPath)
 	route.routeParser = parseRoute(prettyPath, regexHandler, customConstraints...)
+	// A prefix can introduce parameters of its own — a sub-app mounted at
+	// "/v1/:version" is prefixing every one of its routes with one. Params
+	// decides whether the router matches a route by pattern or by string
+	// equality, so it has to be rebuilt along with the parser or the route
+	// stops matching entirely. Read from the unprettified path, as register
+	// does, so parameter names keep the case they were registered with.
+	if prettyPath == prefixedPath {
+		route.Params = route.routeParser.params
+	} else {
+		route.Params = parseRoute(prefixedPath, regexHandler, customConstraints...).params
+	}
 	route.root = false
 	route.star = false
 	route.caseSensitive = app.config.CaseSensitive

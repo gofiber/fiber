@@ -147,17 +147,12 @@ func (app *App) domainMountedViews(c Ctx) *App {
 		matchParts int
 	)
 
-	normalizedPath := utils.AddTrailingSlashString(c.Path())
-
 	for i := range app.mountFields.domainAppList {
 		mount := &app.mountFields.domainAppList[i]
-		if mount.path == "" || mount.app.config.Views == nil {
+		if mount.app.config.Views == nil {
 			continue
 		}
-		// Matched on the path, as ErrorHandler matches the same entries. The
-		// plain-mount scan in Render searches the whole URL instead, which also
-		// answers for a mount path appearing in a query string.
-		if !strings.HasPrefix(normalizedPath, utils.AddTrailingSlashString(mount.path)) || !mount.matchesHost(c.Hostname()) {
+		if !app.mountCoversPath(mount.path, c.Path()) || !mount.matchesHost(c.Hostname()) {
 			continue
 		}
 
@@ -167,6 +162,23 @@ func (app *App) domainMountedViews(c Ctx) *App {
 	}
 
 	return viewsApp
+}
+
+// mountCoversPath reports whether a mount registered at mountPath covers path.
+//
+// Both sides are put through this app's routing rules first: a mount path is
+// stored as the caller spelled it, so on a case-insensitive app a mount
+// registered as "/API" has to cover a request for "/api/x" the same way its
+// routes do.
+func (app *App) mountCoversPath(mountPath, path string) bool {
+	if mountPath == "" {
+		return false
+	}
+
+	return strings.HasPrefix(
+		utils.AddTrailingSlashString(app.normalizePath(path)),
+		utils.AddTrailingSlashString(app.normalizePath(mountPath)),
+	)
 }
 
 // mountSkipsAutoHead reports whether path belongs to a mounted app that does
@@ -179,10 +191,8 @@ func (app *App) domainMountedViews(c Ctx) *App {
 // route alone, leaving the middleware the mounted app registered for its own
 // methods out of the chain.
 func (app *App) mountSkipsAutoHead(path string) bool {
-	normalizedPath := utils.AddTrailingSlashString(path)
-
 	skips := func(mounted *App, mountPath string) bool {
-		if mountPath == "" || !strings.HasPrefix(normalizedPath, utils.AddTrailingSlashString(mountPath)) {
+		if !app.mountCoversPath(mountPath, path) {
 			return false
 		}
 		if !mounted.config.DisableHeadAutoRegister && mounted.methodInt(MethodHead) >= 0 {
@@ -192,7 +202,7 @@ func (app *App) mountSkipsAutoHead(path string) bool {
 		// Covering the path is not enough to own the route: a mount at "/"
 		// covers every path this app registered itself. Ask the mounted app
 		// whether the route is one of its own.
-		return mounted.hasEndpoint(MethodGet, strings.TrimPrefix(path, utils.TrimRight(mountPath, '/')))
+		return mounted.hasEndpoint(MethodGet, strings.TrimPrefix(path, utils.TrimRight(app.normalizePath(mountPath), '/')))
 	}
 
 	for mountPath, mounted := range app.mountFields.appList {

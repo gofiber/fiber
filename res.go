@@ -933,7 +933,7 @@ func (r *DefaultRes) Render(name string, bind any, layouts ...string) error {
 		}
 
 		app := rootApp.mountFields.appList[prefix]
-		if prefix == "" || strings.Contains(r.c.OriginalURL(), prefix) {
+		if prefix == "" || rootApp.mountCoversPath(prefix, r.c.Path()) {
 			if len(layouts) == 0 && app.config.ViewsLayout != "" {
 				layouts = []string{
 					app.config.ViewsLayout,

@@ -861,3 +861,118 @@ func Test_App_Mount_RootMountKeepsParentAutoHead(t *testing.T) {
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, StatusMethodNotAllowed, resp.StatusCode, "the mounted app serves no HEAD")
 }
+
+// Test_App_Mount_ParametricPrefix verifies that a mount prefix carrying a
+// parameter is matched as a pattern. The prefix rewrites every route of the
+// mounted app, so the parameters it introduces have to be rebuilt onto them.
+func Test_App_Mount_ParametricPrefix(t *testing.T) {
+	t.Parallel()
+
+	micro := New()
+	micro.Get("/doe", func(c Ctx) error {
+		return c.SendString("version=" + c.Params("Version"))
+	})
+
+	app := New()
+	app.Use("/v1/:Version", micro)
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/v1/42/doe", http.NoBody))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
+
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "version=42", string(body))
+}
+
+// Test_App_Mount_ParametricPrefixNested verifies the same when the prefix is
+// applied a second time, by an outer mount.
+func Test_App_Mount_ParametricPrefixNested(t *testing.T) {
+	t.Parallel()
+
+	micro := New()
+	micro.Get("/doe", func(c Ctx) error {
+		return c.SendString("version=" + c.Params("version"))
+	})
+
+	sub := New()
+	sub.Use("/v1/:version", micro)
+
+	app := New()
+	app.Use("/john", sub)
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/john/v1/42/doe", http.NoBody))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
+
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "version=42", string(body))
+}
+
+// Test_App_Mount_CaseInsensitivePath verifies that a mount path is matched by
+// the app's own routing rules when its config is resolved: a case-insensitive
+// app serves "/api/doe" from a mount registered as "/API", so the mounted app's
+// error handler has to answer for it too.
+func Test_App_Mount_CaseInsensitivePath(t *testing.T) {
+	t.Parallel()
+
+	micro := New(Config{
+		ErrorHandler: func(c Ctx, _ error) error {
+			return c.Status(599).SendString("micro error")
+		},
+	})
+	micro.Get("/doe", func(_ Ctx) error {
+		return errors.New("boom")
+	})
+
+	app := New()
+	app.Use("/API", micro)
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/api/doe", http.NoBody))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, 599, resp.StatusCode, "Status code")
+
+	// A case-sensitive app keeps the two apart.
+	strict := New(Config{CaseSensitive: true})
+	strict.Use("/API", micro)
+
+	resp, err = strict.Test(httptest.NewRequest(MethodGet, "/API/doe", http.NoBody))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, 599, resp.StatusCode, "Status code")
+
+	resp, err = strict.Test(httptest.NewRequest(MethodGet, "/api/doe", http.NoBody))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, StatusNotFound, resp.StatusCode, "Status code")
+}
+
+// Test_App_Mount_ViewsPathOnly verifies that a mounted app's views are chosen
+// by the request path, not by its mount path appearing anywhere in the URL.
+func Test_App_Mount_ViewsPathOnly(t *testing.T) {
+	t.Parallel()
+
+	subEngine := &testTemplateEngine{path: "testdata2"}
+	require.NoError(t, subEngine.Load())
+
+	parentEngine := &testTemplateEngine{}
+	require.NoError(t, parentEngine.Load())
+
+	micro := New(Config{Views: subEngine})
+	micro.Get("/view", func(c Ctx) error {
+		return c.Render("bruh.tmpl", Map{})
+	})
+
+	app := New(Config{Views: parentEngine})
+	app.Use("/john", micro)
+	app.Get("/elsewhere", func(c Ctx) error {
+		return c.Render("index.tmpl", Map{"Title": "parent"})
+	})
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/elsewhere?next=/john/view", http.NoBody))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
+
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "<h1>parent</h1>", string(body))
+}
