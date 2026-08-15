@@ -149,12 +149,17 @@ func (app *App) domainMountedViews(c Ctx) *App {
 		matchParts int
 	)
 
+	normalizedPath := utils.AddTrailingSlashString(c.Path())
+
 	for i := range app.mountFields.domainAppList {
 		mount := &app.mountFields.domainAppList[i]
 		if mount.path == "" || mount.app.config.Views == nil {
 			continue
 		}
-		if !strings.Contains(c.OriginalURL(), mount.path) || !mount.matchesHost(c.Hostname()) {
+		// Matched on the path, as ErrorHandler matches the same entries. The
+		// plain-mount scan in Render searches the whole URL instead, which also
+		// answers for a mount path appearing in a query string.
+		if !strings.HasPrefix(normalizedPath, utils.AddTrailingSlashString(mount.path)) || !mount.matchesHost(c.Hostname()) {
 			continue
 		}
 

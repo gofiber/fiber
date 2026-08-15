@@ -2673,6 +2673,161 @@ func Test_Domain_UseMountLeavesSubAppIntact(t *testing.T) {
 	require.Equal(t, "nested x", string(body))
 }
 
+// Test_Domain_UseMountViewsLayout verifies that a domain-mounted sub-app's
+// ViewsLayout is applied when the caller passes no layout of its own.
+func Test_Domain_UseMountViewsLayout(t *testing.T) {
+	t.Parallel()
+
+	engine := &testTemplateEngine{}
+	require.NoError(t, engine.Load())
+
+	subApp := New(Config{Views: engine, ViewsLayout: "main.tmpl"})
+	subApp.Get("/view", func(c Ctx) error {
+		return c.Render("index.tmpl", Map{"Title": "Hello, World!"})
+	})
+
+	app := New()
+	app.Domain("api.example.com").Use("/api", subApp)
+
+	req := httptest.NewRequest(MethodGet, "/api/view", http.NoBody)
+	req.Host = "api.example.com"
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, StatusOK, resp.StatusCode)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "<h1>Hello, World!</h1><h1>I'm main</h1>", string(body))
+}
+
+// Test_Domain_UseMountViewsError verifies that a render failure in a
+// domain-mounted sub-app's engine is reported rather than falling through to
+// the parent's views.
+func Test_Domain_UseMountViewsError(t *testing.T) {
+	t.Parallel()
+
+	parentEngine := &testTemplateEngine{}
+	require.NoError(t, parentEngine.Load())
+
+	subApp := New(Config{Views: errorTemplateEngine{}})
+	subApp.Get("/view", func(c Ctx) error {
+		return c.Render("index.tmpl", Map{"Title": "Hello, World!"})
+	})
+
+	app := New(Config{Views: parentEngine})
+	app.Domain("api.example.com").Use("/api", subApp)
+
+	req := httptest.NewRequest(MethodGet, "/api/view", http.NoBody)
+	req.Host = "api.example.com"
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, StatusInternalServerError, resp.StatusCode)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Contains(t, string(body), "errorTemplateEngine")
+}
+
+// Test_Domain_UseMountWithoutViews verifies that a domain-mounted sub-app with
+// no view engine of its own leaves rendering to the parent.
+func Test_Domain_UseMountWithoutViews(t *testing.T) {
+	t.Parallel()
+
+	engine := &testTemplateEngine{}
+	require.NoError(t, engine.Load())
+
+	subApp := New()
+	subApp.Get("/view", func(c Ctx) error {
+		return c.Render("index.tmpl", Map{"Title": "from parent"})
+	})
+
+	app := New(Config{Views: engine})
+	app.Domain("api.example.com").Use("/api", subApp)
+
+	req := httptest.NewRequest(MethodGet, "/api/view", http.NoBody)
+	req.Host = "api.example.com"
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, StatusOK, resp.StatusCode)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "<h1>from parent</h1>", string(body))
+}
+
+// Test_Domain_UseMountReloadViews verifies that ReloadViews reaches the view
+// engine of a domain-mounted sub-app, which appList no longer holds.
+func Test_Domain_UseMountReloadViews(t *testing.T) {
+	t.Parallel()
+
+	engine := &testTemplateEngine{path: "testdata2"}
+	require.NoError(t, engine.Load())
+
+	subApp := New(Config{Views: engine})
+	subApp.Get("/view", func(c Ctx) error {
+		return c.Render("bruh.tmpl", Map{})
+	})
+
+	app := New()
+	app.Domain("api.example.com").Use("/api", subApp)
+
+	require.NoError(t, app.ReloadViews())
+
+	req := httptest.NewRequest(MethodGet, "/api/view", http.NoBody)
+	req.Host = "api.example.com"
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, StatusOK, resp.StatusCode)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "<h1>I'm Bruh</h1>", string(body))
+}
+
+// Test_Domain_UseMountSelf verifies that mounting an app on its own domain
+// router returns instead of deadlocking on the app's mutex.
+func Test_Domain_UseMountSelf(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	app.Get("/x", func(c Ctx) error {
+		return c.SendString("x")
+	})
+
+	require.NotPanics(t, func() {
+		app.Domain("api.example.com").Use("/self", app)
+	})
+}
+
+// Test_Domain_UseMountViewsPathOnly verifies that a domain-mounted sub-app's
+// views are chosen by the request path, not by the mount path appearing
+// anywhere in the URL — a query string carrying it must not select them.
+func Test_Domain_UseMountViewsPathOnly(t *testing.T) {
+	t.Parallel()
+
+	subEngine := &testTemplateEngine{path: "testdata2"}
+	require.NoError(t, subEngine.Load())
+
+	parentEngine := &testTemplateEngine{}
+	require.NoError(t, parentEngine.Load())
+
+	subApp := New(Config{Views: subEngine})
+	subApp.Get("/view", func(c Ctx) error {
+		return c.Render("bruh.tmpl", Map{})
+	})
+
+	app := New(Config{Views: parentEngine})
+	app.Domain("api.example.com").Use("/api", subApp)
+	app.Get("/elsewhere", func(c Ctx) error {
+		return c.Render("index.tmpl", Map{"Title": "parent"})
+	})
+
+	req := httptest.NewRequest(MethodGet, "/elsewhere?next=/api/view", http.NoBody)
+	req.Host = "api.example.com"
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, StatusOK, resp.StatusCode)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "<h1>parent</h1>", string(body))
+}
+
 // Test_Domain_UseMountNestedCycle verifies that cloning a sub-app whose mount
 // graph contains a cycle terminates, and stops at the point the cycle closes.
 // It drives the clone directly: such an app cannot be served, because the

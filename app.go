@@ -904,9 +904,10 @@ func (app *App) ReloadViews() error {
 
 	apps := []*App{app}
 	if app.mountFields != nil {
-		apps = apps[:0]
 		for _, subApp := range app.mountFields.appList {
-			apps = append(apps, subApp)
+			if !slices.Contains(apps, subApp) {
+				apps = append(apps, subApp)
+			}
 		}
 		// Domain mounts are kept out of appList, but their view engines still
 		// have to be reloaded.

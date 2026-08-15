@@ -6,6 +6,7 @@ package fiber
 
 import (
 	"fmt"
+	"maps"
 	"reflect"
 	"slices"
 	"strings"
@@ -448,12 +449,19 @@ func (d *domainRouter) mount(prefix string, subApp *App) Router {
 	// sub-apps mounted at the same path on different domains do not displace
 	// each other.
 	//
-	// Hold the sub-app while its lists are read: App.mount writes them under
-	// the same lock, so a concurrent mount on the sub-app would race.
+	// Snapshot the sub-app's lists under its own lock and let go of it before
+	// taking the parent's. App.mount writes them under that lock, so reading
+	// them unguarded would race — but holding both at once would hang outright
+	// when an app is mounted on itself, and could deadlock two goroutines
+	// mounting each other's apps.
 	subApp.mutex.Lock()
+	pathMounts := maps.Clone(subApp.mountFields.appList)
+	domainMounts := slices.Clone(subApp.mountFields.domainAppList)
+	subApp.mutex.Unlock()
+
 	d.app.mutex.Lock()
 	// Support for configs of mounted-apps and sub-mounted-apps
-	for mountedPrefixes, subAppInstance := range subApp.mountFields.appList {
+	for mountedPrefixes, subAppInstance := range pathMounts {
 		path := getGroupPath(mountPath, mountedPrefixes)
 
 		subAppInstance.mountFields.mountPath = path
@@ -465,7 +473,7 @@ func (d *domainRouter) mount(prefix string, subApp *App) Router {
 	}
 	// Apps the sub-app itself domain-mounted keep their own patterns as well:
 	// a request has to satisfy both to reach them.
-	for _, mount := range subApp.mountFields.domainAppList {
+	for _, mount := range domainMounts {
 		path := getGroupPath(mountPath, mount.path)
 
 		mount.app.mountFields.mountPath = path
@@ -476,7 +484,6 @@ func (d *domainRouter) mount(prefix string, subApp *App) Router {
 		})
 	}
 	d.app.mutex.Unlock()
-	subApp.mutex.Unlock()
 
 	// Create a mount group referencing the wrapper app (not the original).
 	// During route expansion (processSubAppsRoutes), Fiber reads routes from
@@ -555,12 +562,9 @@ func (d *domainRouter) domainRoutes(dst, src *App, pathPrefix string, chain []*A
 	for m := range routes {
 		for _, route := range stack[m] {
 			if route.mount {
-				// A placeholder registered by mount() always has both, but a
-				// sub-app assembled by other means may not.
-				if route.group == nil || route.group.app == nil {
-					continue
-				}
-
+				// register only sets mount for a route whose group carries the
+				// mounted app, so group and group.app are both set here — the
+				// same invariant processSubAppsRoutes relies on.
 				if mounted[route.group] == nil {
 					if mounted == nil {
 						mounted = make(map[*Group][][]*Route)
