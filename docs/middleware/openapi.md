@@ -37,6 +37,12 @@ generated specification at `GET /openapi.json` and a Swagger UI page at
 app.Use(openapi.New())
 ```
 
+Visiting `/swagger` renders the generated document. Everything below comes from
+the routes themselves and from `Config` — the tag groups, the server list and the
+**Authorize** button all appear because the sections further down configure them:
+
+![Swagger UI page served by the OpenAPI middleware, listing the documented operations grouped by tag](./img/openapi-swagger-ui.png)
+
 The middleware inspects the app's routes and generates the spec on the first
 matching request. The spec is cached, but the cache is automatically invalidated
 whenever the route table changes — routes added or removed, or route
@@ -283,6 +289,13 @@ app.Post("/users", createUser).
     Tags("users", "admin").
     Produces(fiber.MIMEApplicationJSON)
 ```
+
+Expanding that operation in the UI shows where each helper lands: `Description`
+under the summary, `RequestBodyWithExample` as the **Example Value**,
+`ResponseWithExample` as the response body, and `ResponseHeader` as the headers
+table beneath it:
+
+![An expanded operation in Swagger UI showing the request body example, the response schema and the documented Location response header](./img/openapi-operation-detail.png)
 
 ### Per-operation security
 
