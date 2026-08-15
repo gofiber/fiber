@@ -849,6 +849,16 @@ func (app *App) addPrefixToRoute(prefix string, route *Route, regexHandler any, 
 	route.buildPrefixFilter()
 }
 
+// copyRoute clones a route, deliberately leaving group behind: a clone belongs
+// to whichever app it is being placed in, and Name() would otherwise prefix it
+// with the group name of the app it came from. Callers that do want the group —
+// ensureAutoHeadRoutesLocked, which copies a route in place — assign it back.
+//
+// The omission is load-bearing for a mount placeholder, whose target app lives
+// in group.app: carrying it over would let a clone of the placeholder expand
+// the mounted app's handlers verbatim, which for a domain mount means serving
+// them on every host. domainRouter.cloneRoutesForDomain expands the mount
+// instead, so no placeholder is ever cloned.
 func (*App) copyRoute(route *Route) *Route {
 	return &Route{
 		// Leading-byte filter
