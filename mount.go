@@ -64,12 +64,15 @@ type domainMountedApp struct {
 	// are what its configuration is inherited from: a mount that merely covers
 	// the same path encloses nothing.
 	ancestors []*App
+	// declared are the constraints of the apps whose mount prefixes the path is
+	// composed of, which is where a constraint named in one of them is defined
+	declared []CustomConstraint
 }
 
 // newDomainMount records a mount of mounted at path, normalized and parsed
 // with the routing rules of the app it is being mounted on, so the lookups
 // recognize it the same way the router recognizes its routes.
-func (app *App) newDomainMount(mounted *App, path string, matchers []domainMatcher, ancestors []*App) domainMountedApp {
+func (app *App) newDomainMount(mounted *App, path string, matchers []domainMatcher, ancestors []*App, declared []CustomConstraint) domainMountedApp {
 	normalized := app.normalizePath(path)
 
 	mount := domainMountedApp{
@@ -77,9 +80,15 @@ func (app *App) newDomainMount(mounted *App, path string, matchers []domainMatch
 		path:      normalized,
 		matchers:  matchers,
 		ancestors: ancestors,
+		declared:  declared,
 	}
 
-	if parser := parseRoute(normalized, app.config.RegexHandler, app.customConstraints...); len(parser.params) > 0 {
+	// A mount prefix is written in the terms of the app it was registered on,
+	// and may name a constraint only that app knows. Those win where both
+	// define a name, as they do when a mount's routes are re-parsed.
+	constraints := mergeCustomConstraints(slices.Clone(declared), app.customConstraints)
+
+	if parser := parseRoute(normalized, app.config.RegexHandler, constraints...); len(parser.params) > 0 {
 		mount.parser = &parser
 	}
 
@@ -355,6 +364,7 @@ type mountedAppRef struct {
 	path      string
 	matchers  []domainMatcher
 	ancestors []*App
+	declared  []CustomConstraint
 }
 
 // mountTree returns this app and every app mounted below it, plain or on a
@@ -365,20 +375,31 @@ type mountedAppRef struct {
 // app mounted on a descendant afterwards is missing from it until startup
 // repairs it — and a domain mount records its apps when it is registered.
 func (app *App) mountTree() []mountedAppRef {
-	return app.appendMountTree(nil, "", nil, nil)
+	return app.appendMountTree(nil, "", nil, nil, nil)
 }
 
 // appendMountTree adds this app and its descendants to dst, reached at prefix
 // behind matchers. chain holds the apps above this one so a mount cycle
 // terminates; it is a slice because it is only ever a few entries deep, and an
 // app mounted on two branches is still reached through both.
-func (app *App) appendMountTree(dst []mountedAppRef, prefix string, matchers []domainMatcher, chain []*App) []mountedAppRef {
+func (app *App) appendMountTree(dst []mountedAppRef, prefix string, matchers []domainMatcher, declared []CustomConstraint, chain []*App) []mountedAppRef {
 	if slices.Contains(chain, app) {
 		return dst
 	}
 
-	dst = append(dst, mountedAppRef{app: app, path: prefix, matchers: matchers, ancestors: slices.Clone(chain)})
+	dst = append(dst, mountedAppRef{
+		app:       app,
+		path:      prefix,
+		matchers:  matchers,
+		ancestors: slices.Clone(chain),
+		declared:  declared,
+	})
 	chain = append(chain, app)
+
+	// The prefixes below are written in this app's terms, so a constraint only
+	// it knows travels with them. Its own win where a name is defined twice,
+	// the way a mounted app's do when its routes are re-parsed.
+	declared = mergeCustomConstraints(slices.Clone(app.customConstraints), declared)
 
 	// Patterns compose innermost first, the order a mount records them in: a
 	// request has to satisfy every one of them.
@@ -387,6 +408,7 @@ func (app *App) appendMountTree(dst []mountedAppRef, prefix string, matchers []d
 			dst,
 			getGroupPath(prefix, mount.path),
 			append(slices.Clone(mount.matchers), matchers...),
+			declared,
 			chain,
 		)
 	}
@@ -396,7 +418,7 @@ func (app *App) appendMountTree(dst []mountedAppRef, prefix string, matchers []d
 			continue
 		}
 
-		dst = mounted.appendMountTree(dst, getGroupPath(prefix, mountPrefix), matchers, chain)
+		dst = mounted.appendMountTree(dst, getGroupPath(prefix, mountPrefix), matchers, declared, chain)
 	}
 
 	return dst
@@ -520,7 +542,7 @@ func (app *App) routeOwner(route *Route) *App {
 func (app *App) appendDomainMounts(dst, mounts []domainMountedApp, prefix string) []domainMountedApp {
 	for i := range mounts {
 		mount := &mounts[i]
-		moved := app.newDomainMount(mount.app, getGroupPath(prefix, mount.path), mount.matchers, mount.ancestors)
+		moved := app.newDomainMount(mount.app, getGroupPath(prefix, mount.path), mount.matchers, mount.ancestors, mount.declared)
 		dst = addDomainMount(dst, &moved)
 	}
 
@@ -532,9 +554,20 @@ func (app *App) appendDomainMounts(dst, mounts []domainMountedApp, prefix string
 // startup walk reaches the same mount once per path that leads to it.
 func addDomainMount(dst []domainMountedApp, mount *domainMountedApp) []domainMountedApp {
 	for i := range dst {
-		if dst[i].equals(mount) {
-			return dst
+		if !dst[i].equals(mount) {
+			continue
 		}
+
+		// An app list holds the descendants of the apps it lists, so a mount is
+		// reached both through the app it was registered on and as an entry of
+		// the app above that one. Only the first walk passes through its real
+		// parent; the other arrives with a prefix of that chain, and which one
+		// is seen first is up to map iteration order.
+		if len(mount.ancestors) > len(dst[i].ancestors) {
+			dst[i].ancestors = mount.ancestors
+		}
+
+		return dst
 	}
 
 	return append(dst, *mount)

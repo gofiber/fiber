@@ -495,7 +495,7 @@ func (d *domainRouter) mount(prefix string, subApp *App) Router {
 	// Support for configs of mounted-apps and sub-mounted-apps
 	for i := range pending {
 		mount := &pending[i]
-		recorded := d.app.newDomainMount(mount.app, mount.path, append(slices.Clone(mount.matchers), d.matcher), mount.ancestors)
+		recorded := d.app.newDomainMount(mount.app, mount.path, append(slices.Clone(mount.matchers), d.matcher), mount.ancestors, mount.declared)
 
 		d.app.mountFields.domainAppList = addDomainMount(d.app.mountFields.domainAppList, &recorded)
 	}

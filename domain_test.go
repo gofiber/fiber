@@ -3727,6 +3727,75 @@ func Test_Domain_UseMountConcurrentRegistration(t *testing.T) {
 	wg.Wait()
 }
 
+// Test_Domain_UseMountNestedPrefixConstraint verifies that a constraint named in
+// a nested mount prefix is still applied when the mount is recorded on the app
+// above: the constraint is registered on the app that wrote the prefix, not on
+// the one recording it.
+func Test_Domain_UseMountNestedPrefixConstraint(t *testing.T) {
+	t.Parallel()
+
+	child := New(Config{ErrorHandler: func(c Ctx, _ error) error {
+		return c.Status(603).SendString("child")
+	}})
+	child.Get("/x", func(c Ctx) error {
+		return c.SendString("x")
+	})
+
+	mid := New()
+	mid.RegisterCustomConstraint(&onlyFooConstraint{})
+	mid.Use("/:name<onlyfoo>", child)
+
+	outer := New()
+	outer.Use("/mid", mid)
+
+	app := New(Config{ErrorHandler: func(c Ctx, _ error) error {
+		return c.Status(604).SendString("root")
+	}})
+	app.Domain("api.example.com").Use("/api", outer)
+
+	// The mount covers the path the constraint accepts, and nothing else.
+	for path, want := range map[string]int{"/api/mid/foo/nope": 603, "/api/mid/bar/nope": 604} {
+		req := httptest.NewRequest(MethodGet, path, http.NoBody)
+		req.Host = "api.example.com"
+		resp, err := app.Test(req)
+		require.NoError(t, err)
+		require.Equal(t, want, resp.StatusCode, path)
+	}
+}
+
+// Test_Domain_UseMountAncestryIsStable verifies that a mount reached both
+// through its own parent and as an entry of the app above it keeps the ancestry
+// of the former, whichever the unordered walk happens to record first.
+func Test_Domain_UseMountAncestryIsStable(t *testing.T) {
+	t.Parallel()
+
+	for range 40 {
+		child := New()
+		child.Get("/boom", func(_ Ctx) error {
+			return errors.New("boom")
+		})
+
+		mid := New(Config{ErrorHandler: func(c Ctx, _ error) error {
+			return c.Status(605).SendString("mid")
+		}})
+		mid.Use("/child", child)
+
+		outer := New()
+		outer.Use("/mid", mid)
+
+		app := New(Config{ErrorHandler: func(c Ctx, _ error) error {
+			return c.Status(606).SendString("root")
+		}})
+		app.Domain("api.example.com").Use("/api", outer)
+
+		req := httptest.NewRequest(MethodGet, "/api/mid/child/boom", http.NoBody)
+		req.Host = "api.example.com"
+		resp, err := app.Test(req)
+		require.NoError(t, err)
+		require.Equal(t, 605, resp.StatusCode)
+	}
+}
+
 // Test_Domain_UseMountInheritsDomainViews verifies the same inheritance for the
 // view engine: a child of a domain-mounted app renders through that app's
 // engine rather than the root's.
