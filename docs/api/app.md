@@ -249,6 +249,8 @@ Because domain filtering is applied at handler-execution time (not during route 
 
 :::note
 When mounting sub-applications via `Domain(...).Use(*fiber.App)`, routes are cloned from the sub-app at mount time. This means the same sub-app can safely be mounted on multiple domains without double-wrapping, but routes registered on the sub-app **after** mounting will not inherit domain filtering. Register all sub-app routes before mounting.
+
+Apps that the sub-app has mounted itself are cloned along with it, so nested routes are domain-filtered as well. The same "register before mounting" rule applies to them.
 :::
 
 ```go title="Signature"

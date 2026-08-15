@@ -1898,6 +1898,484 @@ func Test_Domain_UseMountRoutesAfterMount(t *testing.T) {
 	require.Equal(t, StatusNotFound, resp.StatusCode)
 }
 
+// Test_Domain_UseMountNested verifies that a sub-app that itself mounts another
+// app can be mounted on a domain router: the nested routes are served under the
+// domain and are filtered by host like any other domain-mounted route.
+func Test_Domain_UseMountNested(t *testing.T) {
+	t.Parallel()
+
+	child := New()
+	child.Get("/x", func(c Ctx) error {
+		return c.SendString("nested x")
+	})
+
+	subApp := New()
+	subApp.Use("/v1", child)
+	subApp.Get("/flat", func(c Ctx) error {
+		return c.SendString("flat")
+	})
+
+	app := New()
+	app.Domain("api.example.com").Use("/api", subApp)
+
+	// The nested route is reachable on the matching host
+	req := httptest.NewRequest(MethodGet, "/api/v1/x", http.NoBody)
+	req.Host = "api.example.com"
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, StatusOK, resp.StatusCode)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "nested x", string(body))
+
+	// The sub-app's own routes still work alongside the nested ones
+	req = httptest.NewRequest(MethodGet, "/api/flat", http.NoBody)
+	req.Host = "api.example.com"
+	resp, err = app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, StatusOK, resp.StatusCode)
+	body, err = io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "flat", string(body))
+
+	// Both are rejected on a non-matching host
+	for _, path := range []string{"/api/v1/x", "/api/flat"} {
+		req = httptest.NewRequest(MethodGet, path, http.NoBody)
+		req.Host = "www.example.com"
+		resp, err = app.Test(req)
+		require.NoError(t, err)
+		require.Equal(t, StatusNotFound, resp.StatusCode, path)
+	}
+}
+
+// Test_Domain_UseMountNestedDeep verifies that mounts nested more than one
+// level deep are expanded, and that domain parameters resolve inside them.
+func Test_Domain_UseMountNestedDeep(t *testing.T) {
+	t.Parallel()
+
+	grandChild := New()
+	grandChild.Get("/deep", func(c Ctx) error {
+		return c.SendString("tenant=" + DomainParam(c, "tenant"))
+	})
+
+	child := New()
+	child.Use("/v2", grandChild)
+
+	subApp := New()
+	subApp.Use("/v1", child)
+
+	app := New()
+	app.Domain(":tenant.example.com").Use("/api", subApp)
+
+	req := httptest.NewRequest(MethodGet, "/api/v1/v2/deep", http.NoBody)
+	req.Host = "acme.example.com"
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, StatusOK, resp.StatusCode)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "tenant=acme", string(body))
+
+	req = httptest.NewRequest(MethodGet, "/api/v1/v2/deep", http.NoBody)
+	req.Host = "acme.example.org"
+	resp, err = app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, StatusNotFound, resp.StatusCode)
+}
+
+// Test_Domain_UseMountNestedMiddleware verifies that middleware of a nested
+// sub-app is domain-filtered too, instead of running on every host.
+func Test_Domain_UseMountNestedMiddleware(t *testing.T) {
+	t.Parallel()
+
+	var hits int
+	child := New()
+	child.Use(func(c Ctx) error {
+		hits++
+		return c.Next()
+	})
+	child.Get("/x", func(c Ctx) error {
+		return c.SendString("nested x")
+	})
+
+	subApp := New()
+	subApp.Use("/v1", child)
+
+	app := New()
+	app.Domain("api.example.com").Use("/api", subApp)
+	// Same path outside the domain, so the request is served instead of 404ing
+	// and any nested middleware that leaked would run.
+	app.Get("/api/v1/x", func(c Ctx) error {
+		return c.SendString("fallback")
+	})
+
+	req := httptest.NewRequest(MethodGet, "/api/v1/x", http.NoBody)
+	req.Host = "www.example.com"
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, StatusOK, resp.StatusCode)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "fallback", string(body))
+	require.Equal(t, 0, hits, "nested middleware must not run on a non-matching host")
+
+	req = httptest.NewRequest(MethodGet, "/api/v1/x", http.NoBody)
+	req.Host = "api.example.com"
+	resp, err = app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, StatusOK, resp.StatusCode)
+	body, err = io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "nested x", string(body))
+	require.Equal(t, 1, hits)
+}
+
+// Test_Domain_UseMountNestedAtRoot verifies the nested mount also works when
+// both the domain mount and the nested mount sit at the root path.
+func Test_Domain_UseMountNestedAtRoot(t *testing.T) {
+	t.Parallel()
+
+	child := New()
+	child.Get("/x", func(c Ctx) error {
+		return c.SendString("nested x")
+	})
+
+	subApp := New()
+	subApp.Use(child)
+
+	app := New()
+	app.Domain("api.example.com").Use(subApp)
+
+	req := httptest.NewRequest(MethodGet, "/x", http.NoBody)
+	req.Host = "api.example.com"
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, StatusOK, resp.StatusCode)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "nested x", string(body))
+
+	req = httptest.NewRequest(MethodGet, "/x", http.NoBody)
+	req.Host = "www.example.com"
+	resp, err = app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, StatusNotFound, resp.StatusCode)
+}
+
+// Test_Domain_UseMountNestedFromGroup verifies a nested mount registered
+// through a group's domain router picks up the group prefix.
+func Test_Domain_UseMountNestedFromGroup(t *testing.T) {
+	t.Parallel()
+
+	child := New()
+	child.Get("/data", func(c Ctx) error {
+		return c.SendString("data response")
+	})
+
+	subApp := New()
+	subApp.Use("/v1", child)
+
+	app := New()
+	api := app.Group("/api")
+	api.Domain("api.example.com").Use("/mnt", subApp)
+
+	req := httptest.NewRequest(MethodGet, "/api/mnt/v1/data", http.NoBody)
+	req.Host = "api.example.com"
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, StatusOK, resp.StatusCode)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "data response", string(body))
+
+	req = httptest.NewRequest(MethodGet, "/api/mnt/v1/data", http.NoBody)
+	req.Host = "www.example.com"
+	resp, err = app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, StatusNotFound, resp.StatusCode)
+}
+
+// Test_Domain_UseMountNestedReusable verifies that a sub-app with a nested
+// mount can be mounted on several domains and still be usable unfiltered
+// elsewhere, i.e. the original sub-app's handlers are never domain-wrapped.
+func Test_Domain_UseMountNestedReusable(t *testing.T) {
+	t.Parallel()
+
+	child := New()
+	child.Get("/x", func(c Ctx) error {
+		return c.SendString("nested x")
+	})
+
+	subApp := New()
+	subApp.Use("/v1", child)
+
+	app := New()
+	app.Domain("api.example.com").Use("/api", subApp)
+	app.Domain("admin.example.com").Use("/api", subApp)
+
+	for _, host := range []string{"api.example.com", "admin.example.com"} {
+		req := httptest.NewRequest(MethodGet, "/api/v1/x", http.NoBody)
+		req.Host = host
+		resp, err := app.Test(req)
+		require.NoError(t, err)
+		require.Equal(t, StatusOK, resp.StatusCode, host)
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		require.Equal(t, "nested x", string(body), host)
+	}
+
+	req := httptest.NewRequest(MethodGet, "/api/v1/x", http.NoBody)
+	req.Host = "www.example.com"
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, StatusNotFound, resp.StatusCode)
+
+	// The original sub-app's handlers were never wrapped, so a plain mount of
+	// it still serves on any host.
+	plain := New()
+	plain.Use("/api", subApp)
+
+	req = httptest.NewRequest(MethodGet, "/api/v1/x", http.NoBody)
+	req.Host = "anything.example.net"
+	resp, err = plain.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, StatusOK, resp.StatusCode)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "nested x", string(body))
+}
+
+// Test_Domain_UseMountNestedOrder verifies the nested app's routes are expanded
+// in the position its mount was registered at, so registration order still
+// decides which route wins.
+func Test_Domain_UseMountNestedOrder(t *testing.T) {
+	t.Parallel()
+
+	child := New()
+	child.Get("/x", func(c Ctx) error {
+		return c.SendString("child")
+	})
+
+	subApp := New()
+	subApp.Get("/v1/x", func(c Ctx) error {
+		return c.SendString("before mount")
+	})
+	subApp.Use("/v1", child)
+	subApp.Get("/v1/y", func(c Ctx) error {
+		return c.SendString("after mount")
+	})
+
+	app := New()
+	app.Domain("api.example.com").Use("/api", subApp)
+
+	// Registered before the mount, so it takes precedence over the nested /x
+	req := httptest.NewRequest(MethodGet, "/api/v1/x", http.NoBody)
+	req.Host = "api.example.com"
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, StatusOK, resp.StatusCode)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "before mount", string(body))
+
+	// Routes registered after the mount are kept as well
+	req = httptest.NewRequest(MethodGet, "/api/v1/y", http.NoBody)
+	req.Host = "api.example.com"
+	resp, err = app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, StatusOK, resp.StatusCode)
+	body, err = io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "after mount", string(body))
+}
+
+// Test_Domain_UseMountNestedParams verifies parameters and wildcards of a
+// nested sub-app survive the prefixing done while expanding the mount.
+func Test_Domain_UseMountNestedParams(t *testing.T) {
+	t.Parallel()
+
+	child := New()
+	child.Get("/user/:id", func(c Ctx) error {
+		return c.SendString("id=" + c.Params("id"))
+	})
+	child.Get("/files/*", func(c Ctx) error {
+		return c.SendString("file=" + c.Params("*"))
+	})
+
+	subApp := New()
+	subApp.Use("/v1", child)
+
+	app := New()
+	app.Domain("api.example.com").Use("/api", subApp)
+
+	req := httptest.NewRequest(MethodGet, "/api/v1/user/42", http.NoBody)
+	req.Host = "api.example.com"
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, StatusOK, resp.StatusCode)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "id=42", string(body))
+
+	req = httptest.NewRequest(MethodGet, "/api/v1/files/a/b.txt", http.NoBody)
+	req.Host = "api.example.com"
+	resp, err = app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, StatusOK, resp.StatusCode)
+	body, err = io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "file=a/b.txt", string(body))
+}
+
+// Test_Domain_UseMountNestedDomainMount verifies that a sub-app whose own
+// nested mount was registered on a domain router can itself be mounted, both
+// on a domain router and plainly.
+func Test_Domain_UseMountNestedDomainMount(t *testing.T) {
+	t.Parallel()
+
+	child := New()
+	child.Get("/x", func(c Ctx) error {
+		return c.SendString("nested x")
+	})
+
+	subApp := New()
+	subApp.Domain("api.example.com").Use("/v1", child)
+
+	// Mounted on a matching domain: the host check applies twice, which is
+	// satisfied by the same host.
+	app := New()
+	app.Domain("api.example.com").Use("/api", subApp)
+
+	req := httptest.NewRequest(MethodGet, "/api/v1/x", http.NoBody)
+	req.Host = "api.example.com"
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, StatusOK, resp.StatusCode)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "nested x", string(body))
+
+	req = httptest.NewRequest(MethodGet, "/api/v1/x", http.NoBody)
+	req.Host = "www.example.com"
+	resp, err = app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, StatusNotFound, resp.StatusCode)
+
+	// Mounted plainly: the sub-app's own domain filter still applies.
+	plain := New()
+	plain.Use("/api", subApp)
+
+	req = httptest.NewRequest(MethodGet, "/api/v1/x", http.NoBody)
+	req.Host = "api.example.com"
+	resp, err = plain.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, StatusOK, resp.StatusCode)
+	body, err = io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "nested x", string(body))
+
+	req = httptest.NewRequest(MethodGet, "/api/v1/x", http.NoBody)
+	req.Host = "www.example.com"
+	resp, err = plain.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, StatusNotFound, resp.StatusCode)
+}
+
+// Test_Domain_UseMountNestedRestrictedMethods verifies that a sub-app which
+// declares fewer request methods than the app it is mounted on can still be
+// domain-mounted: the wrapper's stack has to stay indexable at the parent's
+// method indexes.
+func Test_Domain_UseMountNestedRestrictedMethods(t *testing.T) {
+	t.Parallel()
+
+	subApp := New(Config{RequestMethods: []string{MethodGet}})
+	subApp.Get("/x", func(c Ctx) error {
+		return c.SendString("restricted x")
+	})
+
+	app := New()
+	app.Domain("api.example.com").Use("/api", subApp)
+
+	req := httptest.NewRequest(MethodGet, "/api/x", http.NoBody)
+	req.Host = "api.example.com"
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, StatusOK, resp.StatusCode)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "restricted x", string(body))
+
+	req = httptest.NewRequest(MethodGet, "/api/x", http.NoBody)
+	req.Host = "www.example.com"
+	resp, err = app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, StatusNotFound, resp.StatusCode)
+}
+
+// Test_Domain_UseMountNestedExtraMethods verifies that a sub-app can be
+// domain-mounted on an app whose request methods go beyond the defaults: the
+// parent reads the wrapper's stack at its own method indexes, so the wrapper
+// has to be as long as the parent's method table.
+func Test_Domain_UseMountNestedExtraMethods(t *testing.T) {
+	t.Parallel()
+
+	methods := append(append([]string{}, DefaultMethods...), "PURGE")
+	app := New(Config{RequestMethods: methods})
+
+	child := New()
+	child.Get("/x", func(c Ctx) error {
+		return c.SendString("nested x")
+	})
+	subApp := New()
+	subApp.Use("/v1", child)
+
+	app.Domain("api.example.com").Use("/api", subApp)
+
+	req := httptest.NewRequest(MethodGet, "/api/v1/x", http.NoBody)
+	req.Host = "api.example.com"
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, StatusOK, resp.StatusCode)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "nested x", string(body))
+
+	req = httptest.NewRequest(MethodGet, "/api/v1/x", http.NoBody)
+	req.Host = "www.example.com"
+	resp, err = app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, StatusNotFound, resp.StatusCode)
+}
+
+// Test_Domain_UseMountNestedCycle verifies that cloning a sub-app whose mount
+// graph contains a cycle terminates, and stops at the point the cycle closes.
+// It drives the clone directly: such an app cannot be served, because the
+// parent's startup loops in appendSubAppLists, independently of domain routing.
+func Test_Domain_UseMountNestedCycle(t *testing.T) {
+	t.Parallel()
+
+	first := New()
+	second := New()
+	second.Get("/x", func(c Ctx) error {
+		return c.SendString("nested x")
+	})
+	first.Use("/second", second)
+	second.Use("/first", first)
+
+	app := New()
+	d := &domainRouter{app: app, matcher: parseDomainPattern("api.example.com")}
+	wrapper := New()
+	d.cloneRoutesForDomain(wrapper, first)
+
+	// second's route is cloned once, under the prefix it was mounted at, and
+	// the mount that closes the cycle back onto first contributes nothing.
+	var paths []string
+	for _, route := range wrapper.stack[app.methodInt(MethodGet)] {
+		paths = append(paths, route.path)
+	}
+	require.Equal(t, []string{"/second/x"}, paths)
+}
+
 // Test_Domain_Security_PatternLengthLimits verifies RFC 1035 length limits
 // are enforced for domain patterns (253 total, 63 per label).
 func Test_Domain_Security_PatternLengthLimits(t *testing.T) {

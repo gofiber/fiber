@@ -7,6 +7,7 @@ package fiber
 import (
 	"fmt"
 	"reflect"
+	"slices"
 	"strings"
 
 	"github.com/gofiber/utils/v2"
@@ -418,28 +419,25 @@ func (d *domainRouter) mount(prefix string, subApp *App) Router {
 	// Create a wrapper app so that the original sub-app is not mutated.
 	// This allows the same sub-app to be reused (e.g., mounted on multiple
 	// domains) without double-wrapping handlers.
+	//
+	// The method table comes from the app being mounted on, not from the
+	// sub-app: processSubAppsRoutes reads the wrapper's stack at the parent's
+	// method indexes, so a wrapper with a shorter stack would put that read out
+	// of range.
 	wrapperApp := New(Config{
-		CaseSensitive: subApp.config.CaseSensitive,
-		StrictRouting: subApp.config.StrictRouting,
-		RegexHandler:  subApp.config.RegexHandler,
+		CaseSensitive:  subApp.config.CaseSensitive,
+		StrictRouting:  subApp.config.StrictRouting,
+		RegexHandler:   subApp.config.RegexHandler,
+		RequestMethods: d.app.config.RequestMethods,
 	})
 	wrapperApp.customConstraints = subApp.customConstraints
 
 	// Clone routes from the sub-app with domain-wrapped handlers.
-	// Lock the sub-app while reading to prevent data races with concurrent
-	// route registration.
-	subApp.mutex.Lock()
-	defer subApp.mutex.Unlock()
-	for m := range subApp.stack {
-		for _, route := range subApp.stack[m] {
-			clonedRoute := subApp.copyRoute(route)
-			if len(clonedRoute.Handlers) > 0 {
-				clonedRoute.Handlers = d.wrapHandlers(clonedRoute.Handlers)
-			}
-			wrapperApp.stack[m] = append(wrapperApp.stack[m], clonedRoute)
-		}
-	}
+	d.cloneRoutesForDomain(wrapperApp, subApp)
 
+	// Hold the sub-app while its app list is read: App.mount writes that map
+	// under the same lock, so a concurrent mount on the sub-app would race.
+	subApp.mutex.Lock()
 	d.app.mutex.Lock()
 	// Support for configs of mounted-apps and sub-mounted-apps
 	for mountedPrefixes, subAppInstance := range subApp.mountFields.appList {
@@ -449,6 +447,7 @@ func (d *domainRouter) mount(prefix string, subApp *App) Router {
 		d.app.mountFields.appList[path] = subAppInstance
 	}
 	d.app.mutex.Unlock()
+	subApp.mutex.Unlock()
 
 	// Create a mount group referencing the wrapper app (not the original).
 	// During route expansion (processSubAppsRoutes), Fiber reads routes from
@@ -471,6 +470,93 @@ func (d *domainRouter) mount(prefix string, subApp *App) Router {
 	}
 
 	return d
+}
+
+// cloneRoutesForDomain fills dst with domain-filtered clones of src's routes,
+// expanding any app src itself has mounted.
+//
+// The expansion is what keeps a nested mount working. A mount is registered as
+// a placeholder route that carries its target app in the unexported group
+// field, and copyRoute does not carry that field over, so a cloned placeholder
+// would reach startup with mount set and group nil and crash the expansion in
+// processSubAppsRoutes. Flattening the descendants here also runs their
+// handlers through wrapHandlers, so they stay bound to the domain instead of
+// being served on every host.
+func (d *domainRouter) cloneRoutesForDomain(dst, src *App) {
+	for m, routes := range d.domainRoutes(dst, src, "", nil) {
+		dst.stack[m] = routes
+	}
+}
+
+// domainRoutes returns src's routes, cloned with domain-filtered handlers and
+// with pathPrefix applied, as one slice per method index of dst. Routes of an
+// app src has mounted take the placeholder's position, so the order the
+// sub-app registered its routes in is preserved.
+//
+// chain holds the apps between the mounted sub-app and src, so a mount cycle
+// terminates. It is a slice rather than a set because it is only ever a few
+// entries deep and each branch needs its own: an app mounted twice on sibling
+// branches is cloned for both.
+func (d *domainRouter) domainRoutes(dst, src *App, pathPrefix string, chain []*App) [][]*Route {
+	routes := make([][]*Route, len(dst.stack))
+	if slices.Contains(chain, src) {
+		return routes
+	}
+
+	// Take a snapshot rather than holding the lock for the whole walk: it
+	// keeps concurrent route registration on src from racing the read, and it
+	// keeps this from ever holding two apps' locks at once.
+	src.mutex.Lock()
+	stack := make([][]*Route, len(src.stack))
+	for m := range src.stack {
+		stack[m] = slices.Clone(src.stack[m])
+	}
+	src.mutex.Unlock()
+
+	// Mounted apps are flattened once and reused across the method indexes:
+	// register files a copy of the placeholder in every method's stack, and
+	// all of them share the one group it was registered with.
+	var mounted map[*Group][][]*Route
+
+	for m := range routes {
+		// An app configured with fewer request methods than the app it is
+		// mounted on has a shorter stack, and simply holds no routes for the
+		// remaining methods.
+		if m >= len(stack) {
+			continue
+		}
+
+		for _, route := range stack[m] {
+			if route.mount {
+				// A placeholder registered by mount() always has both, but a
+				// sub-app assembled by other means may not.
+				if route.group == nil || route.group.app == nil {
+					continue
+				}
+
+				if mounted[route.group] == nil {
+					if mounted == nil {
+						mounted = make(map[*Group][][]*Route)
+					}
+					mounted[route.group] = d.domainRoutes(dst, route.group.app, getGroupPath(pathPrefix, route.path), append(chain, src))
+				}
+
+				routes[m] = append(routes[m], mounted[route.group][m]...)
+				continue
+			}
+
+			clonedRoute := src.copyRoute(route)
+			// An empty prefix cannot change the path, and re-parsing the route
+			// to reach the same result is the most expensive thing here.
+			if pathPrefix != "" {
+				dst.addPrefixToRoute(pathPrefix, clonedRoute, src.config.RegexHandler, src.customConstraints...)
+			}
+			clonedRoute.Handlers = d.wrapHandlers(clonedRoute.Handlers)
+			routes[m] = append(routes[m], clonedRoute)
+		}
+	}
+
+	return routes
 }
 
 // Get registers a route for GET methods.
