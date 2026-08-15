@@ -561,10 +561,12 @@ func addDomainMount(dst []domainMountedApp, mount *domainMountedApp) []domainMou
 		// An app list holds the descendants of the apps it lists, so a mount is
 		// reached both through the app it was registered on and as an entry of
 		// the app above that one. Only the first walk passes through its real
-		// parent; the other arrives with a prefix of that chain, and which one
-		// is seen first is up to map iteration order.
+		// parent; the other arrives with a prefix of that chain, and with the
+		// constraints of the apps it skipped missing from its path — and which
+		// one is seen first is up to map iteration order. The complete record
+		// replaces the partial one whichever way round they arrive.
 		if len(mount.ancestors) > len(dst[i].ancestors) {
-			dst[i].ancestors = mount.ancestors
+			dst[i] = *mount
 		}
 
 		return dst
