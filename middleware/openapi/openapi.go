@@ -5,6 +5,7 @@ import (
 	"fmt"
 	htemplate "html/template"
 	"maps"
+	"reflect"
 	"slices"
 	"strings"
 	"sync"
@@ -1003,14 +1004,34 @@ func buildComponents(cfg *Config) map[string]any {
 		// Preserve any securitySchemes the user already placed in Components by
 		// merging rather than overwriting.
 		schemes := make(map[string]any, len(cfg.SecuritySchemes))
-		if existing, ok := components["securitySchemes"].(map[string]any); ok {
-			maps.Copy(schemes, existing)
-		}
+		maps.Copy(schemes, stringKeyedEntries(components["securitySchemes"]))
 		maps.Copy(schemes, cfg.SecuritySchemes)
 		components["securitySchemes"] = schemes
 	}
 
 	return components
+}
+
+// stringKeyedEntries reads any string-keyed map as map[string]any. A typed map
+// such as map[string]MyScheme fails a plain type assertion, and treating that as
+// "absent" would drop the caller's schemes instead of merging them.
+func stringKeyedEntries(src any) map[string]any {
+	if src == nil {
+		return nil
+	}
+	if typed, ok := src.(map[string]any); ok {
+		return typed
+	}
+	value := reflect.ValueOf(src)
+	if value.Kind() != reflect.Map || value.Type().Key().Kind() != reflect.String || value.IsNil() {
+		return nil
+	}
+	out := make(map[string]any, value.Len())
+	iter := value.MapRange()
+	for iter.Next() {
+		out[iter.Key().String()] = iter.Value().Interface()
+	}
+	return out
 }
 
 // dropQuerystringParameters filters out parameters using the OpenAPI 3.2-only

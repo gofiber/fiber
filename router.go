@@ -1248,11 +1248,14 @@ func copyAnyValueDepth(src any, depth int) any {
 		}
 		return copied
 	default:
-		return copyCompositeValue(src)
+		return copyCompositeValue(src, depth)
 	}
 }
 
-func copyCompositeValue(src any) any {
+// copyCompositeValue clones map and slice values of any named type, which the
+// typed switch above cannot name. depth continues the caller's count: restarting
+// it here would let a cycle inside a named type recurse past maxCopyDepth.
+func copyCompositeValue(src any, depth int) any {
 	value := reflect.ValueOf(src)
 
 	switch value.Kind() {
@@ -1264,7 +1267,7 @@ func copyCompositeValue(src any) any {
 		for i := range value.Len() {
 			// A nil element yields an invalid reflect.Value; leave the zero
 			// value in place instead of panicking in Set.
-			if elem := copyAnyValue(value.Index(i).Interface()); elem != nil {
+			if elem := copyAnyValueDepth(value.Index(i).Interface(), depth+1); elem != nil {
 				copied.Index(i).Set(reflect.ValueOf(elem))
 			}
 		}
@@ -1279,7 +1282,7 @@ func copyCompositeValue(src any) any {
 			// SetMapIndex with an invalid value deletes the key, so map a nil
 			// element to the element type's zero value to preserve it.
 			val := reflect.Zero(value.Type().Elem())
-			if elem := copyAnyValue(iter.Value().Interface()); elem != nil {
+			if elem := copyAnyValueDepth(iter.Value().Interface(), depth+1); elem != nil {
 				val = reflect.ValueOf(elem)
 			}
 			copied.SetMapIndex(iter.Key(), val)
@@ -1538,8 +1541,15 @@ func (app *App) addRoute(method string, route *Route) {
 		!route.mount && !app.stack[m][l-1].mount && app.stack[m][l-1].domain == route.domain {
 		preRoute := app.stack[m][l-1]
 		preRoute.Handlers = append(preRoute.Handlers, route.Handlers...)
-		// A merged entry's documentation belongs to the latest registration, so
-		// restamping regID keeps a scoped helper from documenting nothing.
+		// The entry carries the latest registration so the batch fast path and
+		// the stack scan agree, and the superseded ID is aliased onto it so the
+		// earlier scope's helpers still reach the entry they share.
+		if preRoute.regID != 0 && preRoute.regID != route.regID {
+			if app.mergedRegIDs == nil {
+				app.mergedRegIDs = make(map[uint64]uint64, 1)
+			}
+			app.mergedRegIDs[preRoute.regID] = route.regID
+		}
 		preRoute.regID = route.regID
 		liveRoute = preRoute
 		app.latestBatch = append(app.latestBatch, preRoute)

@@ -94,6 +94,10 @@ type App struct {
 	// latestBatch holds the live entries of latestBatchID, so chained helpers
 	// apply in O(batch) instead of scanning the stack. Guarded by mutex.
 	latestBatch []*Route
+	// mergedRegIDs maps a registration that compression merged away onto the one
+	// now stamped on the shared entry, so the earlier scope's helpers still reach
+	// it instead of silently doing nothing. Guarded by mutex.
+	mergedRegIDs map[uint64]uint64
 	// newCtxFunc
 	newCtxFunc func(app *App) CustomCtx
 	// TLS handler
@@ -1590,10 +1594,28 @@ func (app *App) applyToLatestRouteLocked(apply func(route *Route)) {
 
 // applyToRegIDLocked applies a mutation to every entry of regID, preferring the
 // O(batch) fast path. Reports whether anything was touched; holds app.mutex.
+// maxRegIDAliasHops bounds the merge chain walk; it is a guard against a cycle,
+// not a real limit, since each hop moves to a strictly later registration.
+const maxRegIDAliasHops = 64
+
+// resolveRegIDLocked follows compression merges to the registration currently
+// stamped on the shared entry. The caller must hold app.mutex.
+func (app *App) resolveRegIDLocked(regID uint64) uint64 {
+	for range maxRegIDAliasHops {
+		next, ok := app.mergedRegIDs[regID]
+		if !ok || next == regID {
+			break
+		}
+		regID = next
+	}
+	return regID
+}
+
 func (app *App) applyToRegIDLocked(regID uint64, apply func(route *Route)) bool {
 	if regID == 0 {
 		return false
 	}
+	regID = app.resolveRegIDLocked(regID)
 
 	applied := false
 	if regID == app.latestBatchID {

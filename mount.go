@@ -91,7 +91,9 @@ func (grp *Group) mount(prefix string, subApp *App) Router {
 
 	// register mounted group
 	mountGroup := &Group{Prefix: groupPath, app: subApp}
-	grp.app.register([]string{methodUse}, groupPath, mountGroup, "")
+	// Advance the group's cursor onto the mount, matching App.Use. Leaving it
+	// behind would retarget a chained helper at the route registered before it.
+	atomic.StoreUint64(&grp.lastRegID, grp.app.register([]string{methodUse}, groupPath, mountGroup, ""))
 
 	// Execute onMount hooks
 	if err := subApp.hooks.executeOnMountHooks(grp.app); err != nil {

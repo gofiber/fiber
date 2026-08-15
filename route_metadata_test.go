@@ -927,3 +927,70 @@ func Test_RemoveRoute_HandlerCountPerDomain(t *testing.T) {
 	app.RemoveRoute("/x")
 	require.Equal(t, uint32(0), app.HandlersCount())
 }
+
+// Test_ScopedHelpers_SurviveCompression pins the earlier scope's helper against
+// route compression: two routers registering the same method and path share one
+// stack entry, and the first scope must still reach it.
+func Test_ScopedHelpers_SurviveCompression(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	g1 := app.Group("/g")
+	g2 := app.Group("/g")
+	g1.Get("/same", testHandlerOK)
+	g2.Get("/same", testHandlerOK)
+
+	g1.Summary("from-g1")
+	g2.Description("from-g2")
+
+	var found *Route
+	for _, r := range app.GetRoutes() {
+		if r.Path == "/g/same" && r.Method == MethodGet {
+			route := r
+			found = &route
+		}
+	}
+	require.NotNil(t, found)
+	require.Equal(t, "from-g1", found.Summary, "the merged-away scope's helper was dropped")
+	require.Equal(t, "from-g2", found.Description)
+}
+
+// Test_GroupMount_DoesNotRetargetPreviousRoute pins a group mount as the helper
+// cursor, so a chained helper is a no-op rather than documenting the route
+// registered before the mount.
+func Test_GroupMount_DoesNotRetargetPreviousRoute(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	grp := app.Group("/v1")
+	grp.Get("/health", testHandlerOK).Summary("health")
+
+	sub := New()
+	sub.Get("/x", testHandlerOK)
+	grp.Use("/api", sub)
+	grp.Tags("mounted")
+
+	for _, r := range app.GetRoutes() {
+		if r.Path == "/v1/health" {
+			require.Equal(t, "health", r.Summary)
+			require.Empty(t, r.Tags, "the mount retargeted the previous route")
+		}
+	}
+}
+
+// Test_CopyAnyValue_NamedMapCycle pins the depth counter across the reflected
+// copier: a cycle inside a named map type must hit maxCopyDepth rather than
+// recursing until the stack overflows.
+func Test_CopyAnyValue_NamedMapCycle(t *testing.T) {
+	t.Parallel()
+
+	type metadata map[string]any
+	cyclic := metadata{}
+	cyclic["self"] = cyclic
+	require.NotPanics(t, func() { _ = copyAnyValue(cyclic) })
+
+	type list []any
+	cyclicList := list{nil}
+	cyclicList[0] = cyclicList
+	require.NotPanics(t, func() { _ = copyAnyValue(cyclicList) })
+}
