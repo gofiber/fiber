@@ -1126,7 +1126,7 @@ func Test_App_GETOnly_Middleware_Status(t *testing.T) {
 		return err
 	})
 
-	app.Get("/", func(c Ctx) error {
+	app.Post("/", func(c Ctx) error {
 		return c.SendString("Hello 👋!")
 	})
 
