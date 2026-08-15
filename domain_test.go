@@ -2390,6 +2390,63 @@ func Test_Domain_UseMountNestedRequestMethods(t *testing.T) {
 	}
 }
 
+// Test_Domain_UseMountAutoHead verifies that domain-mounted routes get their
+// automatic HEAD companion, for the sub-app's own routes and for the routes of
+// an app it has mounted, and that the HEAD route is domain-filtered too.
+func Test_Domain_UseMountAutoHead(t *testing.T) {
+	t.Parallel()
+
+	child := New()
+	child.Get("/nested", func(c Ctx) error {
+		return c.SendString("nested")
+	})
+
+	subApp := New()
+	subApp.Use("/v1", child)
+	subApp.Get("/flat", func(c Ctx) error {
+		return c.SendString("flat")
+	})
+
+	app := New()
+	app.Domain("api.example.com").Use("/api", subApp)
+
+	// HEAD is the first request, so the route has to exist after the single
+	// startup pass a served app performs.
+	for _, path := range []string{"/api/v1/nested", "/api/flat"} {
+		req := httptest.NewRequest(MethodHead, path, http.NoBody)
+		req.Host = "api.example.com"
+		resp, err := app.Test(req)
+		require.NoError(t, err)
+		require.Equal(t, StatusOK, resp.StatusCode, path)
+
+		req = httptest.NewRequest(MethodHead, path, http.NoBody)
+		req.Host = "www.example.com"
+		resp, err = app.Test(req)
+		require.NoError(t, err)
+		require.Equal(t, StatusNotFound, resp.StatusCode, path)
+	}
+}
+
+// Test_Domain_UseMountAutoHeadDisabled verifies that a sub-app which turned
+// automatic HEAD registration off does not get HEAD routes from the mount.
+func Test_Domain_UseMountAutoHeadDisabled(t *testing.T) {
+	t.Parallel()
+
+	subApp := New(Config{DisableHeadAutoRegister: true})
+	subApp.Get("/flat", func(c Ctx) error {
+		return c.SendString("flat")
+	})
+
+	app := New()
+	app.Domain("api.example.com").Use("/api", subApp)
+
+	req := httptest.NewRequest(MethodHead, "/api/flat", http.NoBody)
+	req.Host = "api.example.com"
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, StatusMethodNotAllowed, resp.StatusCode)
+}
+
 // Test_Domain_UseMountNestedCycle verifies that cloning a sub-app whose mount
 // graph contains a cycle terminates, and stops at the point the cycle closes.
 // It drives the clone directly: such an app cannot be served, because the

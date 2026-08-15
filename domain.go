@@ -425,15 +425,22 @@ func (d *domainRouter) mount(prefix string, subApp *App) Router {
 	// method indexes, so a wrapper with a shorter stack would put that read out
 	// of range.
 	wrapperApp := New(Config{
-		CaseSensitive:  subApp.config.CaseSensitive,
-		StrictRouting:  subApp.config.StrictRouting,
-		RegexHandler:   subApp.config.RegexHandler,
-		RequestMethods: d.app.config.RequestMethods,
+		CaseSensitive:           subApp.config.CaseSensitive,
+		StrictRouting:           subApp.config.StrictRouting,
+		RegexHandler:            subApp.config.RegexHandler,
+		RequestMethods:          d.app.config.RequestMethods,
+		DisableHeadAutoRegister: subApp.config.DisableHeadAutoRegister,
 	})
 	wrapperApp.customConstraints = subApp.customConstraints
 
 	// Clone routes from the sub-app with domain-wrapped handlers.
 	d.cloneRoutesForDomain(wrapperApp, subApp)
+
+	// Give the clones their automatic HEAD routes. A mounted app normally gets
+	// them from startupProcess, which walks the parent's app list — and the
+	// wrapper is deliberately not in it, so without this a domain-mounted GET
+	// route answers HEAD with 405 where a plain mount answers 200.
+	wrapperApp.ensureAutoHeadRoutes()
 
 	// Hold the sub-app while its app list is read: App.mount writes that map
 	// under the same lock, so a concurrent mount on the sub-app would race.
