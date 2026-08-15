@@ -907,6 +907,8 @@ func (r *DefaultRes) Render(name string, bind any, layouts ...string) error {
 	// deep its mount path is, so neither borrows the other's engine; a tie
 	// goes to the domain mount, which matched the host as well.
 	domain := rootApp.domainMountOwner(r.c)
+	domainViews := rootApp.domainMountConfig(r.c, domain, appHasViews)
+	domainLayout := rootApp.domainMountConfig(r.c, domain, appHasViewsLayout)
 
 	for _, prefix := range slices.Backward(rootApp.mountFields.appListKeys) {
 		app := rootApp.mountFields.appList[prefix]
@@ -914,11 +916,11 @@ func (r *DefaultRes) Render(name string, bind any, layouts ...string) error {
 			// The layout applies whether or not the owner brought an engine:
 			// a mount configuring only a layout renders through the engine
 			// above it, exactly as an ordinary one does.
-			if len(layouts) == 0 && domain.app.config.ViewsLayout != "" {
-				layouts = []string{domain.app.config.ViewsLayout}
+			if len(layouts) == 0 && domainLayout != nil {
+				layouts = []string{domainLayout.config.ViewsLayout}
 			}
 
-			if domain.hasViews() {
+			if domainViews != nil {
 				break
 			}
 
@@ -961,13 +963,13 @@ func (r *DefaultRes) Render(name string, bind any, layouts ...string) error {
 
 	// The layout is already settled: the scan above visits the root mount at
 	// worst, which every owner outranks, and applies the owner's layout there.
-	if !rendered && domain.hasViews() {
+	if !rendered && domainViews != nil {
 		if err := func() error {
-			viewsLock := getViewsLock(domain.app.config.Views)
+			viewsLock := getViewsLock(domainViews.config.Views)
 			viewsLock.RLock()
 			defer viewsLock.RUnlock()
 
-			if err := domain.app.config.Views.Render(buf, name, bind, layouts...); err != nil {
+			if err := domainViews.config.Views.Render(buf, name, bind, layouts...); err != nil {
 				return fmt.Errorf("failed to render: %w", err)
 			}
 

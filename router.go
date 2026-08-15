@@ -1129,6 +1129,28 @@ func (app *App) ensureAutoHeadRoutes() {
 	app.ensureAutoHeadRoutesLocked()
 }
 
+// autoHeadKey identifies the route an automatic HEAD companion would collide
+// with.
+type autoHeadKey struct {
+	// owner is set only where routes are host-scoped, and is what keeps the
+	// HEAD route of one mounted app from standing in for another app's GET
+	owner *App
+	path  string
+}
+
+// autoHeadKey returns the key route is deduplicated under. Where an app's
+// routes are host-scoped — the wrapper a domain mount builds — a HEAD route
+// only covers the GET routes of the same mounted app: on a hostname that app's
+// pattern rejects it declines, leaving a GET route of another one there without
+// a companion to answer for it.
+func (app *App) autoHeadKey(route *Route) autoHeadKey {
+	if !app.mountFields.hostScopedRoutes {
+		return autoHeadKey{path: route.path}
+	}
+
+	return autoHeadKey{owner: app.routeOwner(route), path: route.path}
+}
+
 func (app *App) ensureAutoHeadRoutesLocked() {
 	if app.config.DisableHeadAutoRegister {
 		return
@@ -1141,12 +1163,12 @@ func (app *App) ensureAutoHeadRoutesLocked() {
 	}
 
 	headStack := app.stack[headIndex]
-	existing := make(map[string]struct{}, len(headStack))
+	existing := make(map[autoHeadKey]struct{}, len(headStack))
 	for _, route := range headStack {
 		if route.mount || route.use {
 			continue
 		}
-		existing[route.path] = struct{}{}
+		existing[app.autoHeadKey(route)] = struct{}{}
 	}
 
 	if len(app.stack[getIndex]) == 0 {
@@ -1159,7 +1181,7 @@ func (app *App) ensureAutoHeadRoutesLocked() {
 		if route.mount || route.use {
 			continue
 		}
-		if _, ok := existing[route.path]; ok {
+		if _, ok := existing[app.autoHeadKey(route)]; ok {
 			continue
 		}
 		if app.skipsAutoHeadFor(route) {
@@ -1180,7 +1202,7 @@ func (app *App) ensureAutoHeadRoutesLocked() {
 		// unchanged while still producing an empty body on the wire.
 
 		headStack = append(headStack, headRoute)
-		existing[route.path] = struct{}{}
+		existing[app.autoHeadKey(route)] = struct{}{}
 		app.hasRoutesRefreshed = true
 		added = true
 

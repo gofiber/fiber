@@ -431,6 +431,11 @@ func (d *domainRouter) mount(prefix string, subApp *App) Router {
 		RequestMethods:          d.app.config.RequestMethods,
 		DisableHeadAutoRegister: subApp.config.DisableHeadAutoRegister,
 	})
+	// Every route the wrapper carries is filtered by the pattern of the mount
+	// it came from, which is what the automatic HEAD routes have to respect:
+	// the apps behind one wrapper do not all answer for the same hostnames.
+	wrapperApp.mountFields.hostScopedRoutes = true
+
 	// Clone routes from the sub-app with domain-wrapped handlers. The clone
 	// also collects the constraints of every app it walks, since the wrapper is
 	// what the routes are re-parsed against when the mount is expanded, and

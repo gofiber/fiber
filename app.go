@@ -1622,8 +1622,8 @@ func (app *App) ErrorHandler(ctx Ctx, err error) error {
 			mountedErrHandler = nil
 		}
 
-		if owner.app.configured.ErrorHandler != nil {
-			mountedErrHandler = owner.app.config.ErrorHandler
+		if handler := app.domainMountConfig(ctx, owner, appHasErrorHandler); handler != nil {
+			mountedErrHandler = handler.config.ErrorHandler
 		}
 	}
 

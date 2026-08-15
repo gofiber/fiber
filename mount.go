@@ -42,6 +42,9 @@ type mountFields struct {
 	subAppsRoutesAdded sync.Once
 	// check mounted sub-apps
 	subAppsProcessed sync.Once
+	// Whether this app's routes only answer for the hostnames the mount they
+	// came from matches, which is true of the wrapper a domain mount builds
+	hostScopedRoutes bool
 }
 
 // domainMountedApp is a sub-app mounted through a domain router. Its config —
@@ -232,12 +235,53 @@ func (o domainOwner) ties(plainDepth int) bool {
 	return o.app != nil && plainDepth == o.depth
 }
 
-// hasViews reports whether this owner configures a view engine of its own. One
-// that does not leaves the plain mounts and the root to render, rather than
-// borrowing the engine of a mount that did not serve the request — its layout
-// still applies, as a plain mount's does when it has no engine either.
-func (o domainOwner) hasViews() bool {
-	return o.app != nil && o.app.config.Views != nil
+// appHasErrorHandler, appHasViews and appHasViewsLayout are the settings a
+// request inherits from the domain mounts it was reached through.
+func appHasErrorHandler(app *App) bool { return app.configured.ErrorHandler != nil }
+
+func appHasViews(app *App) bool { return app.config.Views != nil }
+
+func appHasViewsLayout(app *App) bool { return app.config.ViewsLayout != "" }
+
+// domainMountConfig returns the app a setting is taken from: the owner when it
+// configures one, and otherwise the deepest domain mount enclosing it that
+// does — the inheritance an ordinarily nested mount gets from the app it sits
+// in. Mounts at the owner's own depth are siblings that did not serve the
+// request, and configure nothing on its behalf.
+func (app *App) domainMountConfig(c Ctx, owner domainOwner, want func(*App) bool) *App {
+	if owner.app == nil {
+		return nil
+	}
+
+	if want(owner.app) {
+		return owner.app
+	}
+
+	var (
+		found *App
+		best  int
+	)
+
+	path := app.normalizePath(c.Path())
+
+	for i := range app.mountFields.domainAppList {
+		mount := &app.mountFields.domainAppList[i]
+
+		depth := mount.depth()
+		if depth >= owner.depth || !want(mount.app) {
+			continue
+		}
+
+		if !mount.covers(path) || !mount.matchesHost(c.Hostname()) {
+			continue
+		}
+
+		if found == nil || depth > best {
+			found, best = mount.app, depth
+		}
+	}
+
+	return found
 }
 
 // domainMountOwner returns the domain mount that owns this request: the app the

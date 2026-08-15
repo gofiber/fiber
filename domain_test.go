@@ -3531,6 +3531,138 @@ func Test_Domain_UseMountCyclicOrdinaryMounts(t *testing.T) {
 	require.Equal(t, "pong", string(body))
 }
 
+// Test_Domain_UseMountAutoHeadPerMount verifies that a HEAD route one mounted
+// app registers does not stand in for another's GET route at the same path:
+// on a hostname the first app's pattern rejects, its route declines and the GET
+// route needs an automatic companion of its own.
+func Test_Domain_UseMountAutoHeadPerMount(t *testing.T) {
+	t.Parallel()
+
+	inner := New()
+	inner.Head("/x", func(c Ctx) error {
+		c.Set("X-Handler", "inner")
+		return nil
+	})
+
+	outer := New()
+	outer.Get("/x", func(c Ctx) error {
+		c.Set("X-Handler", "outer")
+		return nil
+	})
+	outer.Domain("admin.example.com").Use("/", inner)
+
+	app := New()
+	app.Domain(":tenant.example.com").Use("/api", outer)
+
+	for host, want := range map[string]string{
+		"admin.example.com": "inner", // matches both patterns
+		"other.example.com": "outer", // only the outer one
+	} {
+		req := httptest.NewRequest(MethodHead, "/api/x", http.NoBody)
+		req.Host = host
+		resp, err := app.Test(req)
+		require.NoError(t, err)
+		require.Equal(t, StatusOK, resp.StatusCode, host)
+		require.Equal(t, want, resp.Header.Get("X-Handler"), host)
+	}
+}
+
+// Test_Domain_UseMountInheritsDomainErrorHandler verifies that an app mounted
+// inside a domain-mounted one inherits its error handler when it configures
+// none, as an ordinarily nested mount does.
+func Test_Domain_UseMountInheritsDomainErrorHandler(t *testing.T) {
+	t.Parallel()
+
+	child := New()
+	child.Get("/boom", func(_ Ctx) error {
+		return errors.New("boom")
+	})
+
+	subApp := New(Config{ErrorHandler: func(c Ctx, _ error) error {
+		return c.Status(594).SendString("sub")
+	}})
+	subApp.Use("/child", child)
+
+	app := New(Config{ErrorHandler: func(c Ctx, _ error) error {
+		return c.Status(595).SendString("root")
+	}})
+	app.Domain("api.example.com").Use("/api", subApp)
+
+	req := httptest.NewRequest(MethodGet, "/api/child/boom", http.NoBody)
+	req.Host = "api.example.com"
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, 594, resp.StatusCode)
+}
+
+// Test_Domain_UseMountInheritsOnlyFromCoveringMounts verifies that inheritance
+// reaches the mounts a request passed through, not every shallower one: a
+// domain mount on another path encloses nothing here.
+func Test_Domain_UseMountInheritsOnlyFromCoveringMounts(t *testing.T) {
+	t.Parallel()
+
+	other := New(Config{ErrorHandler: func(c Ctx, _ error) error {
+		return c.Status(596).SendString("other")
+	}})
+	other.Get("/thing", func(c Ctx) error {
+		return c.SendString("thing")
+	})
+
+	child := New()
+	child.Get("/boom", func(_ Ctx) error {
+		return errors.New("boom")
+	})
+
+	subApp := New()
+	subApp.Use("/child", child)
+
+	app := New(Config{ErrorHandler: func(c Ctx, _ error) error {
+		return c.Status(597).SendString("root")
+	}})
+	app.Domain("api.example.com").Use("/other", other)
+	app.Domain("api.example.com").Use("/api", subApp)
+
+	req := httptest.NewRequest(MethodGet, "/api/child/boom", http.NoBody)
+	req.Host = "api.example.com"
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, 597, resp.StatusCode)
+}
+
+// Test_Domain_UseMountInheritsDomainViews verifies the same inheritance for the
+// view engine: a child of a domain-mounted app renders through that app's
+// engine rather than the root's.
+func Test_Domain_UseMountInheritsDomainViews(t *testing.T) {
+	t.Parallel()
+
+	// Holds no template the child asks for, so borrowing it would fail.
+	rootEngine := &testTemplateEngine{path: "testdata2"}
+	require.NoError(t, rootEngine.Load())
+
+	subEngine := &testTemplateEngine{}
+	require.NoError(t, subEngine.Load())
+
+	child := New()
+	child.Get("/view", func(c Ctx) error {
+		return c.Render("index.tmpl", Map{"Title": "child"})
+	})
+
+	subApp := New(Config{Views: subEngine})
+	subApp.Use("/child", child)
+
+	app := New(Config{Views: rootEngine})
+	app.Domain("api.example.com").Use("/api", subApp)
+
+	req := httptest.NewRequest(MethodGet, "/api/child/view", http.NoBody)
+	req.Host = "api.example.com"
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, StatusOK, resp.StatusCode)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "<h1>child</h1>", string(body))
+}
+
 // Test_Domain_UseMountKeepsParentAutoHead verifies that a domain mount which
 // registers no automatic HEAD routes only withholds them from its own routes,
 // leaving a route the parent registered at the same path with its own.
