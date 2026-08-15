@@ -951,11 +951,9 @@ func (r *DefaultRes) Render(name string, bind any, layouts ...string) error {
 		}
 	}
 
+	// The layout is already settled: the scan above visits the root mount at
+	// worst, which every owner outranks, and applies the owner's layout there.
 	if !rendered && domain.hasViews() {
-		if len(layouts) == 0 && domain.app.config.ViewsLayout != "" {
-			layouts = []string{domain.app.config.ViewsLayout}
-		}
-
 		if err := func() error {
 			viewsLock := getViewsLock(domain.app.config.Views)
 			viewsLock.RLock()
