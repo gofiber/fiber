@@ -431,13 +431,7 @@ func (d *domainRouter) mount(prefix string, subApp *App) Router {
 	subApp.mutex.Lock()
 	defer subApp.mutex.Unlock()
 	for m := range subApp.stack {
-		for _, route := range subApp.stack[m] {
-			clonedRoute := subApp.copyRoute(route)
-			if len(clonedRoute.Handlers) > 0 {
-				clonedRoute.Handlers = d.wrapHandlers(clonedRoute.Handlers)
-			}
-			wrapperApp.stack[m] = append(wrapperApp.stack[m], clonedRoute)
-		}
+		wrapperApp.stack[m] = append(wrapperApp.stack[m], d.cloneRoutes(subApp, m)...)
 	}
 
 	d.app.mutex.Lock()
@@ -471,6 +465,34 @@ func (d *domainRouter) mount(prefix string, subApp *App) Router {
 	}
 
 	return d
+}
+
+// cloneRoutes returns the routes app has registered for a single HTTP method,
+// cloned with domain-filtered handlers. Apps mounted on app are expanded in
+// place rather than cloned as mount placeholders: copyRoute does not carry over
+// the unexported group field, so a placeholder surviving into the clone would
+// leave processSubAppsRoutes dereferencing a nil group at startup.
+func (d *domainRouter) cloneRoutes(app *App, m int) []*Route {
+	routes := make([]*Route, 0, len(app.stack[m]))
+
+	for _, route := range app.stack[m] {
+		if route.mount {
+			mountedApp := route.group.app
+			for _, mountedRoute := range d.cloneRoutes(mountedApp, m) {
+				routes = append(routes, app.addPrefixToRoute(route.path, mountedRoute, mountedApp.config.RegexHandler, mountedApp.customConstraints...))
+			}
+
+			continue
+		}
+
+		clonedRoute := app.copyRoute(route)
+		if len(clonedRoute.Handlers) > 0 {
+			clonedRoute.Handlers = d.wrapHandlers(clonedRoute.Handlers)
+		}
+		routes = append(routes, clonedRoute)
+	}
+
+	return routes
 }
 
 // Get registers a route for GET methods.

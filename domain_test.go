@@ -1898,6 +1898,62 @@ func Test_Domain_UseMountRoutesAfterMount(t *testing.T) {
 	require.Equal(t, StatusNotFound, resp.StatusCode)
 }
 
+// Test_Domain_UseMountNested verifies that a sub-app which itself mounts
+// another app can be mounted on a domain router: the nested routes are
+// registered and stay domain-filtered.
+func Test_Domain_UseMountNested(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	subApp := New()
+	childApp := New()
+	grandChildApp := New()
+
+	grandChildApp.Get("/deep", func(c Ctx) error {
+		return c.SendString("deep response")
+	})
+	childApp.Get("/data", func(c Ctx) error {
+		return c.SendString("data response")
+	})
+	childApp.Use("/nested", grandChildApp)
+	subApp.Use("/v1", childApp)
+
+	// Mount the sub-app, which carries its own mounts, on the domain router
+	app.Domain("api.example.com").Use("/api", subApp)
+
+	// Routes of the nested apps work on the correct domain
+	req := httptest.NewRequest(MethodGet, "/api/v1/data", http.NoBody)
+	req.Host = "api.example.com"
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, StatusOK, resp.StatusCode)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "data response", string(body))
+
+	req = httptest.NewRequest(MethodGet, "/api/v1/nested/deep", http.NoBody)
+	req.Host = "api.example.com"
+	resp, err = app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, StatusOK, resp.StatusCode)
+	body, err = io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "deep response", string(body))
+
+	// The same routes are rejected on a wrong domain
+	req = httptest.NewRequest(MethodGet, "/api/v1/data", http.NoBody)
+	req.Host = "www.example.com"
+	resp, err = app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, StatusNotFound, resp.StatusCode)
+
+	req = httptest.NewRequest(MethodGet, "/api/v1/nested/deep", http.NoBody)
+	req.Host = "www.example.com"
+	resp, err = app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, StatusNotFound, resp.StatusCode)
+}
+
 // Test_Domain_Security_PatternLengthLimits verifies RFC 1035 length limits
 // are enforced for domain patterns (253 total, 63 per label).
 func Test_Domain_Security_PatternLengthLimits(t *testing.T) {
