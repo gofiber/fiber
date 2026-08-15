@@ -1162,7 +1162,7 @@ func (app *App) ensureAutoHeadRoutesLocked() {
 		if _, ok := existing[route.path]; ok {
 			continue
 		}
-		if app.mountSkipsAutoHead(route.path) {
+		if app.skipsAutoHeadFor(route) {
 			continue
 		}
 

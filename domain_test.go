@@ -3062,6 +3062,120 @@ func Test_Domain_UseMountCaseInsensitivePath(t *testing.T) {
 	require.Equal(t, StatusNotFound, resp.StatusCode)
 }
 
+// Test_Domain_UseMountRecordedOnce verifies that a domain mount reached through
+// several layers of ordinary mounts is recorded once. Each app list already
+// holds the descendants of the apps it lists, so the startup walk arrives at
+// the same mount by every path that leads to it.
+func Test_Domain_UseMountRecordedOnce(t *testing.T) {
+	t.Parallel()
+
+	child := New()
+	child.Get("/x", func(c Ctx) error {
+		return c.SendString("nested x")
+	})
+
+	inner := New()
+	inner.Domain("api.example.com").Use("/child", child)
+
+	app := inner
+	for range 6 {
+		outer := New()
+		outer.Use("/layer", app)
+		app = outer
+	}
+
+	req := httptest.NewRequest(MethodGet, "/unrouted", http.NoBody)
+	req.Host = "api.example.com"
+	_, err := app.Test(req)
+	require.NoError(t, err)
+
+	require.Len(t, app.mountFields.domainAppList, 1)
+}
+
+// Test_Domain_UseMountReloadViewsBeforeStart verifies that ReloadViews reaches
+// a domain-mounted app nested inside an ordinary mount before the app has been
+// through its startup process.
+func Test_Domain_UseMountReloadViewsBeforeStart(t *testing.T) {
+	t.Parallel()
+
+	engine := &testTemplateEngine{path: "testdata2"}
+	require.NoError(t, engine.Load())
+
+	child := New(Config{Views: engine})
+	child.Get("/view", func(c Ctx) error {
+		return c.Render("bruh.tmpl", Map{})
+	})
+
+	mid := New()
+	mid.Domain("api.example.com").Use("/child", child)
+
+	app := New()
+	app.Use("/mid", mid)
+
+	require.NoError(t, app.ReloadViews())
+}
+
+// Test_Domain_UseMountOverlappingViews verifies that when two domain mounts at
+// one path both match, the one that owns the route decides which views apply —
+// a later overlapping mount's engine is not borrowed for it.
+func Test_Domain_UseMountOverlappingViews(t *testing.T) {
+	t.Parallel()
+
+	rootEngine := &testTemplateEngine{}
+	require.NoError(t, rootEngine.Load())
+
+	wildcardEngine := &testTemplateEngine{path: "testdata2"}
+	require.NoError(t, wildcardEngine.Load())
+
+	// Registered first, owns the route, and configures no views of its own.
+	exact := New()
+	exact.Get("/view", func(c Ctx) error {
+		return c.Render("index.tmpl", Map{"Title": "exact"})
+	})
+
+	wildcard := New(Config{Views: wildcardEngine})
+	wildcard.Get("/other", func(c Ctx) error {
+		return c.Render("bruh.tmpl", Map{})
+	})
+
+	app := New(Config{Views: rootEngine})
+	app.Domain("admin.example.com").Use("/api", exact)
+	app.Domain(":tenant.example.com").Use("/api", wildcard)
+
+	req := httptest.NewRequest(MethodGet, "/api/view", http.NoBody)
+	req.Host = "admin.example.com"
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, StatusOK, resp.StatusCode)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "<h1>exact</h1>", string(body))
+}
+
+// Test_Domain_UseMountKeepsParentAutoHead verifies that a domain mount which
+// registers no automatic HEAD routes only withholds them from its own routes,
+// leaving a route the parent registered at the same path with its own.
+func Test_Domain_UseMountKeepsParentAutoHead(t *testing.T) {
+	t.Parallel()
+
+	subApp := New(Config{DisableHeadAutoRegister: true})
+	subApp.Get("/x", func(c Ctx) error {
+		return c.SendString("sub x")
+	})
+
+	app := New()
+	app.Get("/api/x", func(c Ctx) error {
+		return c.SendString("parent x")
+	})
+	app.Domain("api.example.com").Use("/api", subApp)
+
+	req := httptest.NewRequest(MethodHead, "/api/x", http.NoBody)
+	req.Host = "www.example.com"
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, StatusOK, resp.StatusCode, "the parent's own route keeps its HEAD route")
+}
+
 // Test_Domain_UseMountNestedCycle verifies that cloning a sub-app whose mount
 // graph contains a cycle terminates, and stops at the point the cycle closes.
 // It drives the clone directly: such an app cannot be served, because the

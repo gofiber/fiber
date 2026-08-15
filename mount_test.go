@@ -976,3 +976,27 @@ func Test_App_Mount_ViewsPathOnly(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "<h1>parent</h1>", string(body))
 }
+
+// Test_App_Mount_ParametricPrefixConstraint verifies that a constraint named in
+// a mount prefix is enforced. The prefix belongs to the app doing the mounting,
+// so its constraints have to reach the re-parse of the mounted routes.
+func Test_App_Mount_ParametricPrefixConstraint(t *testing.T) {
+	t.Parallel()
+
+	micro := New()
+	micro.Get("/doe", func(c Ctx) error {
+		return c.SendString("name=" + c.Params("name"))
+	})
+
+	app := New()
+	app.RegisterCustomConstraint(&onlyFooConstraint{})
+	app.Use("/:name<onlyfoo>", micro)
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/foo/doe", http.NoBody))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
+
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/bar/doe", http.NoBody))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, StatusNotFound, resp.StatusCode, "the prefix constraint still rejects")
+}

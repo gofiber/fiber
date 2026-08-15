@@ -447,6 +447,11 @@ func (d *domainRouter) mount(prefix string, subApp *App) Router {
 	// synthesizes a HEAD route from a GET one, and its middleware comes from
 	// the clone: an app that does not serve HEAD contributed none, so the
 	// synthesized route would run its handler with nothing in front of it.
+	//
+	// The wrapper carries that answer for the whole tree, so the app it is
+	// mounted on withholds automatic HEAD routes from these routes too when
+	// it expands them.
+	wrapperApp.config.DisableHeadAutoRegister = !autoHead
 	if autoHead {
 		wrapperApp.ensureAutoHeadRoutes()
 	}
@@ -473,7 +478,7 @@ func (d *domainRouter) mount(prefix string, subApp *App) Router {
 		path := getGroupPath(mountPath, mountedPrefixes)
 
 		subAppInstance.mountFields.mountPath = path
-		d.app.mountFields.domainAppList = append(d.app.mountFields.domainAppList, domainMountedApp{
+		d.app.mountFields.domainAppList = addDomainMount(d.app.mountFields.domainAppList, domainMountedApp{
 			app:      subAppInstance,
 			path:     path,
 			matchers: []domainMatcher{d.matcher},
@@ -485,7 +490,7 @@ func (d *domainRouter) mount(prefix string, subApp *App) Router {
 		path := getGroupPath(mountPath, mount.path)
 
 		mount.app.mountFields.mountPath = path
-		d.app.mountFields.domainAppList = append(d.app.mountFields.domainAppList, domainMountedApp{
+		d.app.mountFields.domainAppList = addDomainMount(d.app.mountFields.domainAppList, domainMountedApp{
 			app:      mount.app,
 			path:     path,
 			matchers: append(slices.Clone(mount.matchers), d.matcher),

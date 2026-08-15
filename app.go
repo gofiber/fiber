@@ -20,7 +20,6 @@ import (
 	"net/http/httputil"
 	"os"
 	"reflect"
-	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -902,21 +901,10 @@ func (app *App) ReloadViews() error {
 	app.mutex.Lock()
 	defer app.mutex.Unlock()
 
-	apps := []*App{app}
-	if app.mountFields != nil {
-		for _, subApp := range app.mountFields.appList {
-			if !slices.Contains(apps, subApp) {
-				apps = append(apps, subApp)
-			}
-		}
-		// Domain mounts are kept out of appList, but their view engines still
-		// have to be reloaded.
-		for i := range app.mountFields.domainAppList {
-			if mount := &app.mountFields.domainAppList[i]; !slices.Contains(apps, mount.app) {
-				apps = append(apps, mount.app)
-			}
-		}
-	}
+	// Walks the mount metadata rather than the flattened app list: a domain
+	// mount nested inside a plain one only reaches the root's list once the
+	// app has started, and ReloadViews may be called before that.
+	apps := app.mountedApps()
 
 	var reloaded bool
 	for _, targetApp := range apps {
