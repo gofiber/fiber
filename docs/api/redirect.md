@@ -91,7 +91,7 @@ app.Get("/user/:name", func(c fiber.Ctx) error {
 A named route is a route in this application, so the redirect always stays on
 this origin: a `Params` value that would open an authority — `"/evil.com"` or
 `"\evil.com"` under a `/*` route — is kept as the path segment the route asked
-for. [`Route.URL`](./app.md#url) and [`GetRouteURL`](./ctx.md#getrouteurl)
+for. [`Route.URL`](./app.md#getroute) and [`GetRouteURL`](./ctx.md#getrouteurl)
 answer the same for the same input.
 
 `Queries` are merged into whatever query the composed path already holds and
