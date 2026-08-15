@@ -431,9 +431,9 @@ func (d *domainRouter) mount(prefix string, subApp *App) Router {
 		RequestMethods:          d.app.config.RequestMethods,
 		DisableHeadAutoRegister: subApp.config.DisableHeadAutoRegister,
 	})
-	wrapperApp.customConstraints = subApp.customConstraints
-
-	// Clone routes from the sub-app with domain-wrapped handlers.
+	// Clone routes from the sub-app with domain-wrapped handlers. The clone
+	// also collects the constraints of every app it walks, since the wrapper is
+	// what the routes are re-parsed against when the mount is expanded.
 	d.cloneRoutesForDomain(wrapperApp, subApp)
 
 	// Give the clones their automatic HEAD routes. A mounted app normally gets
@@ -522,6 +522,7 @@ func (d *domainRouter) domainRoutes(dst, src *App, pathPrefix string, chain []*A
 	for m := range stack {
 		stack[m] = slices.Clone(src.routesForMethod(dst.method(m)))
 	}
+	dst.customConstraints = mergeCustomConstraints(dst.customConstraints, src.customConstraints)
 	src.mutex.Unlock()
 
 	// Mounted apps are flattened once and reused across the method indexes:

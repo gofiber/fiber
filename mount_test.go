@@ -725,3 +725,45 @@ func Test_App_Mount_ReorderedRequestMethods(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "post doe", string(body))
 }
+
+// onlyFooConstraint and onlyBarConstraint are custom constraints used to check
+// that a mounted app's constraints survive the mount's route expansion.
+type onlyFooConstraint struct{}
+
+func (*onlyFooConstraint) Name() string { return "onlyfoo" }
+
+func (*onlyFooConstraint) Execute(param string, _ ...string) bool { return param == "foo" }
+
+type onlyBarConstraint struct{}
+
+func (*onlyBarConstraint) Name() string { return "onlybar" }
+
+func (*onlyBarConstraint) Execute(param string, _ ...string) bool { return param == "bar" }
+
+// Test_App_Mount_PreservesNestedCustomConstraint verifies that a custom
+// constraint registered on an app reached through two mounts still validates.
+// Expanding a mount re-parses the routes against the app above, so the
+// constraint has to travel with them or it silently stops rejecting anything.
+func Test_App_Mount_PreservesNestedCustomConstraint(t *testing.T) {
+	t.Parallel()
+
+	micro := New()
+	micro.RegisterCustomConstraint(&onlyFooConstraint{})
+	micro.Get("/doe/:name<onlyfoo>", func(c Ctx) error {
+		return c.SendString(c.Params("name"))
+	})
+
+	sub := New()
+	sub.Use("/v1", micro)
+
+	app := New()
+	app.Use("/john", sub)
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/john/v1/doe/foo", http.NoBody))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
+
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/john/v1/doe/bar", http.NoBody))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, StatusNotFound, resp.StatusCode, "Status code")
+}

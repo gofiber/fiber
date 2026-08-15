@@ -2447,6 +2447,42 @@ func Test_Domain_UseMountAutoHeadDisabled(t *testing.T) {
 	require.Equal(t, StatusMethodNotAllowed, resp.StatusCode)
 }
 
+// Test_Domain_UseMountCustomConstraint verifies that custom constraints of a
+// domain-mounted app, and of an app it has mounted in turn, still validate once
+// the routes are expanded into the parent.
+func Test_Domain_UseMountCustomConstraint(t *testing.T) {
+	t.Parallel()
+
+	child := New()
+	child.RegisterCustomConstraint(&onlyFooConstraint{})
+	child.Get("/nested/:name<onlyfoo>", func(c Ctx) error {
+		return c.SendString(c.Params("name"))
+	})
+
+	subApp := New()
+	subApp.RegisterCustomConstraint(&onlyBarConstraint{})
+	subApp.Use("/v1", child)
+	subApp.Get("/flat/:name<onlybar>", func(c Ctx) error {
+		return c.SendString(c.Params("name"))
+	})
+
+	app := New()
+	app.Domain("api.example.com").Use("/api", subApp)
+
+	for path, want := range map[string]int{
+		"/api/v1/nested/foo": StatusOK,
+		"/api/v1/nested/bar": StatusNotFound,
+		"/api/flat/bar":      StatusOK,
+		"/api/flat/foo":      StatusNotFound,
+	} {
+		req := httptest.NewRequest(MethodGet, path, http.NoBody)
+		req.Host = "api.example.com"
+		resp, err := app.Test(req)
+		require.NoError(t, err)
+		require.Equal(t, want, resp.StatusCode, path)
+	}
+}
+
 // Test_Domain_UseMountNestedCycle verifies that cloning a sub-app whose mount
 // graph contains a cycle terminates, and stops at the point the cycle closes.
 // It drives the clone directly: such an app cannot be served, because the

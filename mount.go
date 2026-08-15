@@ -200,6 +200,10 @@ func (app *App) processSubAppsRoutes() {
 			// tables then neither line up nor have to be the same length.
 			subAppRoutes := route.group.app.routesForMethod(app.method(m))
 
+			// The sub-app's routes are about to be re-parsed against this app,
+			// so its constraints have to be resolvable here too.
+			app.customConstraints = mergeCustomConstraints(app.customConstraints, route.group.app.customConstraints)
+
 			// Create a slice to hold the sub-app's routes
 			subRoutes := make([]*Route, len(subAppRoutes))
 
