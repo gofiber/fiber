@@ -5,6 +5,7 @@
 package fiber
 
 import (
+	"maps"
 	"slices"
 	"sort"
 	"strings"
@@ -29,9 +30,9 @@ type mountFields struct {
 	// routes, kept by route because a path can belong to a mount and to this
 	// app at once
 	noAutoHeadRoutes map[*Route]struct{}
-	// Domain-mounted app each cloned route came from, so the request that ran
-	// one resolves its config directly instead of inferring an owner from the
-	// host and the path
+	// Mounted app each cloned route came from, so the request that ran one
+	// resolves its config directly instead of inferring an owner from the host
+	// and the path
 	routeOwners map[*Route]*App
 	// Ordered keys of apps (sorted by key length for Render)
 	appListKeys []string
@@ -227,17 +228,12 @@ func (o domainOwner) outranks(plainDepth int) bool {
 	return o.app != nil && (o.exact || plainDepth <= o.depth)
 }
 
-// domainMountedViews returns the domain mount whose view engine answers for
-// this request, and no owner when it configures none — leaving the plain mounts
-// and the root to answer rather than borrowing the engine of a mount that did
-// not serve the request.
-func (app *App) domainMountedViews(c Ctx) domainOwner {
-	owner := app.domainMountOwner(c)
-	if owner.app == nil || owner.app.config.Views == nil {
-		return domainOwner{}
-	}
-
-	return owner
+// hasViews reports whether this owner configures a view engine of its own. One
+// that does not leaves the plain mounts and the root to render, rather than
+// borrowing the engine of a mount that did not serve the request — its layout
+// still applies, as a plain mount's does when it has no engine either.
+func (o domainOwner) hasViews() bool {
+	return o.app != nil && o.app.config.Views != nil
 }
 
 // domainMountOwner returns the domain mount that owns this request: the app the
@@ -295,11 +291,30 @@ func (app *App) mountedApps() []*App {
 	return apps
 }
 
-// mountedAppsSnapshot returns the apps mounted directly on this one, read
-// under its own lock: App.mount writes those lists under it, and a walk that
-// read them unguarded would race a concurrent mount. One app is locked at a
-// time, so a caller may hold none of them.
+// mountedAppsSnapshot returns the apps mounted directly on this one, plain or
+// on a domain.
 func (app *App) mountedAppsSnapshot() []*App {
+	plain := app.plainMountsSnapshot()
+	domain := app.domainMountsSnapshot()
+
+	mounted := make([]*App, 0, len(plain)+len(domain))
+	for _, sub := range plain {
+		mounted = append(mounted, sub)
+	}
+
+	for i := range domain {
+		mounted = append(mounted, domain[i].app)
+	}
+
+	return mounted
+}
+
+// plainMountsSnapshot copies this app's list of ordinarily mounted apps, read
+// under its own lock: App.mount writes it under that lock, and a read left
+// unguarded would race a concurrent mount. Only this app is locked, and only
+// for the copy, so a caller may hold no other app's lock — mounting an app on
+// itself would otherwise take one lock twice.
+func (app *App) plainMountsSnapshot() map[string]*App {
 	if app.mountFields == nil {
 		return nil
 	}
@@ -307,16 +322,20 @@ func (app *App) mountedAppsSnapshot() []*App {
 	app.mutex.Lock()
 	defer app.mutex.Unlock()
 
-	mounted := make([]*App, 0, len(app.mountFields.appList)+len(app.mountFields.domainAppList))
-	for _, sub := range app.mountFields.appList {
-		mounted = append(mounted, sub)
+	return maps.Clone(app.mountFields.appList)
+}
+
+// domainMountsSnapshot copies this app's domain mount records, under the same
+// lock and with the same restriction as plainMountsSnapshot.
+func (app *App) domainMountsSnapshot() []domainMountedApp {
+	if app.mountFields == nil {
+		return nil
 	}
 
-	for i := range app.mountFields.domainAppList {
-		mounted = append(mounted, app.mountFields.domainAppList[i].app)
-	}
+	app.mutex.Lock()
+	defer app.mutex.Unlock()
 
-	return mounted
+	return slices.Clone(app.mountFields.domainAppList)
 }
 
 // mountCoversPath reports whether a mount registered at mountPath covers path.
@@ -357,10 +376,15 @@ func (app *App) skipsAutoHeadFor(route *Route) bool {
 	return ok
 }
 
-// markRouteOwner records that route was cloned out of owner, a sub-app mounted
-// on a domain. Ownership is kept by route for the same reason the automatic
+// markRouteOwner records that route was cloned out of owner, the app it was
+// mounted from. Ownership is kept by route for the same reason the automatic
 // HEAD provenance is: host and path do not identify the app on their own, since
 // two sub-apps can be mounted at one path behind patterns that both match.
+//
+// Ordinary mounts are recorded as well as domain ones. A sub-app that has
+// already expanded its own mounts carries its children's routes in its stack,
+// and the domain mount that clones them next would otherwise take them all for
+// its own.
 func (app *App) markRouteOwner(route *Route, owner *App) {
 	if app.mountFields.routeOwners == nil {
 		app.mountFields.routeOwners = make(map[*Route]*App)
@@ -369,8 +393,8 @@ func (app *App) markRouteOwner(route *Route, owner *App) {
 	app.mountFields.routeOwners[route] = owner
 }
 
-// routeOwner returns the domain-mounted app route was cloned out of, or nil
-// when the route did not come from one.
+// routeOwner returns the mounted app route was cloned out of, or nil when the
+// route did not come from a mount.
 func (app *App) routeOwner(route *Route) *App {
 	if route == nil || len(app.mountFields.routeOwners) == 0 {
 		return nil
@@ -541,12 +565,15 @@ func (app *App) processSubAppsRoutes() {
 					app.markSkipAutoHead(subAppRouteClone)
 				}
 
-				// Carry the domain mount each route came from over as well: the
-				// sub-app here is the wrapper the domain router built, and the
-				// apps behind it are the ones whose config has to answer.
-				if owner := route.group.app.routeOwner(subAppRoute); owner != nil {
-					app.markRouteOwner(subAppRouteClone, owner)
+				// Carry the app each route came from over as well. The sub-app
+				// here is the wrapper the domain router built when the mount is
+				// a domain one, and the apps behind it are the ones whose config
+				// has to answer; an ordinary mount is its own routes' owner.
+				owner := route.group.app.routeOwner(subAppRoute)
+				if owner == nil {
+					owner = route.group.app
 				}
+				app.markRouteOwner(subAppRouteClone, owner)
 
 				// Add the cloned sub-app's route to the slice of sub-app routes
 				subRoutes[j] = subAppRouteClone

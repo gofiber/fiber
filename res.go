@@ -906,12 +906,21 @@ func (r *DefaultRes) Render(name string, bind any, layouts ...string) error {
 	// path scan below cannot find it. Rank it against the plain mounts by how
 	// deep its mount path is, so neither borrows the other's engine; a tie
 	// goes to the domain mount, which matched the host as well.
-	domain := rootApp.domainMountedViews(r.c)
+	domain := rootApp.domainMountOwner(r.c)
 
 	for _, prefix := range slices.Backward(rootApp.mountFields.appListKeys) {
 		app := rootApp.mountFields.appList[prefix]
-		if app.config.Views != nil && domain.outranks(mountDepth(prefix)) {
-			break
+		if domain.outranks(mountDepth(prefix)) {
+			// The layout applies whether or not the owner brought an engine:
+			// a mount configuring only a layout renders through the engine
+			// above it, exactly as an ordinary one does.
+			if len(layouts) == 0 && domain.app.config.ViewsLayout != "" {
+				layouts = []string{domain.app.config.ViewsLayout}
+			}
+
+			if app.config.Views != nil && domain.hasViews() {
+				break
+			}
 		}
 		if prefix == "" || rootApp.mountCoversPath(prefix, r.c.Path()) {
 			if len(layouts) == 0 && app.config.ViewsLayout != "" {
@@ -942,7 +951,7 @@ func (r *DefaultRes) Render(name string, bind any, layouts ...string) error {
 		}
 	}
 
-	if !rendered && domain.app != nil {
+	if !rendered && domain.hasViews() {
 		if len(layouts) == 0 && domain.app.config.ViewsLayout != "" {
 			layouts = []string{domain.app.config.ViewsLayout}
 		}

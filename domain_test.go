@@ -3282,6 +3282,103 @@ func Test_Domain_UseMountDeclinedHostKeepsRootErrorHandler(t *testing.T) {
 	require.Equal(t, StatusNotFound, resp.StatusCode)
 }
 
+// Test_Domain_UseMountViewsLayoutWithoutViews verifies that a domain mount
+// configuring only a layout renders through the engine above it and keeps its
+// layout, as an ordinary mount without an engine of its own does.
+func Test_Domain_UseMountViewsLayoutWithoutViews(t *testing.T) {
+	t.Parallel()
+
+	engine := &testTemplateEngine{}
+	require.NoError(t, engine.Load())
+
+	subApp := New(Config{ViewsLayout: "main.tmpl"})
+	subApp.Get("/view", func(c Ctx) error {
+		return c.Render("index.tmpl", Map{"Title": "Hello"})
+	})
+
+	app := New(Config{Views: engine})
+	app.Domain("api.example.com").Use("/api", subApp)
+
+	req := httptest.NewRequest(MethodGet, "/api/view", http.NoBody)
+	req.Host = "api.example.com"
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, StatusOK, resp.StatusCode)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "<h1>Hello</h1><h1>I'm main</h1>", string(body))
+}
+
+// Test_Domain_UseMountBehindPlainDescendant verifies that an app domain-mounted
+// on an ordinary descendant of a domain-mounted app is found: those records live
+// only on the app they were registered on, and ordinary mounting does not carry
+// them upward.
+func Test_Domain_UseMountBehindPlainDescendant(t *testing.T) {
+	t.Parallel()
+
+	inner := New(Config{ErrorHandler: func(c Ctx, _ error) error {
+		return c.Status(586).SendString("inner")
+	}})
+	inner.Get("/boom", func(_ Ctx) error {
+		return errors.New("boom")
+	})
+
+	mid := New()
+	outer := New()
+	outer.Use("/mid", mid)
+	mid.Domain("admin.example.com").Use("/child", inner)
+
+	app := New()
+	app.Domain(":tenant.example.com").Use("/api", outer)
+
+	req := httptest.NewRequest(MethodGet, "/api/mid/child/boom", http.NoBody)
+	req.Host = "admin.example.com"
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, 586, resp.StatusCode)
+
+	// Both patterns have to match: the inner app is behind its own domain
+	// router as well as the one it was reached through.
+	req = httptest.NewRequest(MethodGet, "/api/mid/child/boom", http.NoBody)
+	req.Host = "other.example.com"
+	resp, err = app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, StatusNotFound, resp.StatusCode)
+}
+
+// Test_Domain_UseMountStartedSubApp verifies that a sub-app which has already
+// expanded its own mounts keeps its children as the owners of their routes when
+// it is domain-mounted afterwards, rather than being credited with all of them.
+func Test_Domain_UseMountStartedSubApp(t *testing.T) {
+	t.Parallel()
+
+	child := New(Config{ErrorHandler: func(c Ctx, _ error) error {
+		return c.Status(587).SendString("child")
+	}})
+	child.Get("/boom", func(_ Ctx) error {
+		return errors.New("boom")
+	})
+
+	subApp := New(Config{ErrorHandler: func(c Ctx, _ error) error {
+		return c.Status(588).SendString("sub")
+	}})
+	subApp.Use("/mid", child)
+
+	// Run the sub-app on its own first, which replaces its mount placeholders
+	// with the child's routes.
+	_, err := subApp.Test(httptest.NewRequest(MethodGet, "/mid/boom", http.NoBody))
+	require.NoError(t, err)
+
+	app := New()
+	app.Domain("api.example.com").Use("/api", subApp)
+
+	req := httptest.NewRequest(MethodGet, "/api/mid/boom", http.NoBody)
+	req.Host = "api.example.com"
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, 587, resp.StatusCode)
+}
+
 // Test_Domain_UseMountKeepsParentAutoHead verifies that a domain mount which
 // registers no automatic HEAD routes only withholds them from its own routes,
 // leaving a route the parent registered at the same path with its own.
