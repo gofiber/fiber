@@ -1663,6 +1663,11 @@ func (app *App) serverErrorHandler(fctx *fasthttp.RequestCtx, err error) {
 		err = NewError(StatusBadRequest, errMessage)
 	}
 
+	var fiberErr *Error
+	if errors.As(err, &fiberErr) {
+		c.Status(fiberErr.Code)
+	}
+
 	if c.getMethodInt() != -1 {
 		c.setSkipNonUseRoutes(true)
 		defer c.setSkipNonUseRoutes(false)
