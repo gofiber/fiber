@@ -918,8 +918,16 @@ func (r *DefaultRes) Render(name string, bind any, layouts ...string) error {
 				layouts = []string{domain.app.config.ViewsLayout}
 			}
 
-			if app.config.Views != nil && domain.hasViews() {
+			if domain.hasViews() {
 				break
+			}
+
+			// With no engine of its own the search goes on above the owner,
+			// as it does for an ordinary mount — but not through a mount as
+			// deep as the owner, which is a sibling that did not serve the
+			// request and whose engine is not the owner's to borrow.
+			if domain.ties(mountDepth(prefix)) {
+				continue
 			}
 		}
 		if prefix == "" || rootApp.mountCoversPath(prefix, r.c.Path()) {

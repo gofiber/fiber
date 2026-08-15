@@ -208,24 +208,28 @@ func (grp *Group) mount(prefix string, subApp *App) Router {
 	return grp
 }
 
-// domainOwner is the domain-mounted app a request belongs to, together with
-// what is known about how specific that answer is.
+// domainOwner is the domain-mounted app a request belongs to, and how deep the
+// mount it was reached through is.
 type domainOwner struct {
 	app *App
-	// depth is how many path segments the mount covers, which ranks an
-	// inferred owner against the plain mounts covering the same request.
+	// depth is how many path segments the mount covers, which ranks the owner
+	// against the plain mounts covering the same request.
 	depth int
-	// exact marks an owner taken from the route that actually ran. Nothing
-	// outranks it: the request was served by that app, not merely covered by
-	// its mount path.
-	exact bool
 }
 
 // outranks reports whether this owner should answer for the request instead of
-// a plain mount whose path is plainDepth segments deep. An inferred owner wins
-// a tie, having matched the host as well.
+// a plain mount whose path is plainDepth segments deep. It wins a tie, having
+// matched the host as well, and gives way to a deeper plain mount, as a mounted
+// app gives way to one mounted below it.
 func (o domainOwner) outranks(plainDepth int) bool {
-	return o.app != nil && (o.exact || plainDepth <= o.depth)
+	return o.app != nil && plainDepth <= o.depth
+}
+
+// ties reports whether a plain mount is exactly as deep as this owner. Such a
+// mount is a sibling rather than an ancestor: the owner takes precedence over
+// it, and falls through past it to the mounts enclosing them both.
+func (o domainOwner) ties(plainDepth int) bool {
+	return o.app != nil && plainDepth == o.depth
 }
 
 // hasViews reports whether this owner configures a view engine of its own. One
@@ -248,7 +252,7 @@ func (app *App) domainMountOwner(c Ctx) domainOwner {
 	// that app served nothing.
 	routeApp := app.routeOwner(c.Route())
 
-	var owner domainOwner
+	var owner, byRoute domainOwner
 
 	path := app.normalizePath(c.Path())
 
@@ -258,15 +262,21 @@ func (app *App) domainMountOwner(c Ctx) domainOwner {
 			continue
 		}
 
+		depth := mount.depth()
+
 		// Two sub-apps mounted at one path behind overlapping patterns both
 		// cover the request and both match the host. Only one of them ran.
-		if mount.app == routeApp {
-			return domainOwner{app: mount.app, exact: true}
+		if mount.app == routeApp && (byRoute.app == nil || depth > byRoute.depth) {
+			byRoute.app, byRoute.depth = mount.app, depth
 		}
 
-		if depth := mount.depth(); owner.app == nil || depth > owner.depth {
+		if owner.app == nil || depth > owner.depth {
 			owner.app, owner.depth = mount.app, depth
 		}
+	}
+
+	if byRoute.app != nil {
+		return byRoute
 	}
 
 	return owner
@@ -289,6 +299,59 @@ func (app *App) mountedApps() []*App {
 	}
 
 	return apps
+}
+
+// mountedAppRef is an app reachable from another one: the path it is reachable
+// at, and the domain patterns a request has to satisfy to get there.
+type mountedAppRef struct {
+	app      *App
+	path     string
+	matchers []domainMatcher
+}
+
+// mountTree returns this app and every app mounted below it, plain or on a
+// domain, with the paths and the domain patterns composed along the way.
+//
+// It walks the mount metadata of each app in turn rather than reading the
+// flattened list of one: that list is filled in when an app is mounted, so an
+// app mounted on a descendant afterwards is missing from it until startup
+// repairs it — and a domain mount records its apps when it is registered.
+func (app *App) mountTree() []mountedAppRef {
+	return app.appendMountTree(nil, "", nil, nil)
+}
+
+// appendMountTree adds this app and its descendants to dst, reached at prefix
+// behind matchers. chain holds the apps above this one so a mount cycle
+// terminates; it is a slice because it is only ever a few entries deep, and an
+// app mounted on two branches is still reached through both.
+func (app *App) appendMountTree(dst []mountedAppRef, prefix string, matchers []domainMatcher, chain []*App) []mountedAppRef {
+	if slices.Contains(chain, app) {
+		return dst
+	}
+
+	dst = append(dst, mountedAppRef{app: app, path: prefix, matchers: matchers})
+	chain = append(chain, app)
+
+	// Patterns compose innermost first, the order a mount records them in: a
+	// request has to satisfy every one of them.
+	for _, mount := range app.domainMountsSnapshot() {
+		dst = mount.app.appendMountTree(
+			dst,
+			getGroupPath(prefix, mount.path),
+			append(slices.Clone(mount.matchers), matchers...),
+			chain,
+		)
+	}
+
+	for mountPrefix, mounted := range app.plainMountsSnapshot() {
+		if mounted == app {
+			continue
+		}
+
+		dst = mounted.appendMountTree(dst, getGroupPath(prefix, mountPrefix), matchers, chain)
+	}
+
+	return dst
 }
 
 // mountedAppsSnapshot returns the apps mounted directly on this one, plain or

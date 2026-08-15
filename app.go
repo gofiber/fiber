@@ -1613,10 +1613,15 @@ func (app *App) ErrorHandler(ctx Ctx, err error) error {
 	// after the plain mounts, which lets a domain mount win a tie on path
 	// depth: it matched the host too, so it is the more specific of the two.
 	if owner := app.domainMountOwner(ctx); owner.outranks(mountedPrefixParts) {
-		// The owner decides, as it does among the plain mounts: one without a
-		// handler of its own falls through to this app's, rather than to the
-		// handler of a shallower mount that did not serve the request.
-		mountedErrHandler = nil
+		// A plain mount as deep as the owner is a sibling that did not serve
+		// the request, so its handler is dropped rather than inherited. One
+		// above them both still encloses the owner, and an owner configuring
+		// no handler of its own inherits it, as a nested mount inherits the
+		// handler of the mount it sits in.
+		if owner.ties(mountedPrefixParts) {
+			mountedErrHandler = nil
+		}
+
 		if owner.app.configured.ErrorHandler != nil {
 			mountedErrHandler = owner.app.config.ErrorHandler
 		}

@@ -467,39 +467,18 @@ func (d *domainRouter) mount(prefix string, subApp *App) Router {
 	// — but holding two at once would hang outright when an app is mounted on
 	// itself, and could deadlock two goroutines mounting each other's apps.
 	//
-	// The sub-app's list carries its ordinary descendants, and each of them
-	// carries the apps it domain-mounted itself: those records live only on the
-	// app they were registered on, and ordinary mounting does not propagate
-	// them. Walking the descendants here is what puts an app domain-mounted
-	// behind one of them on the map, since the routes reach this app either way.
-	pathMounts := subApp.plainMountsSnapshot()
-
-	type pendingMount struct {
-		app      *App
-		path     string
-		matchers []domainMatcher
-	}
-
-	pending := make([]pendingMount, 0, len(pathMounts))
-	for mountedPrefixes, mounted := range pathMounts {
-		prefixed := getGroupPath(mountPath, mountedPrefixes)
-		pending = append(pending, pendingMount{app: mounted, path: prefixed})
-
-		// Apps mounted on a domain keep their own patterns as well: a request
-		// has to satisfy every one of them to reach the app.
-		for _, mount := range mounted.domainMountsSnapshot() {
-			pending = append(pending, pendingMount{
-				app:      mount.app,
-				path:     getGroupPath(prefixed, mount.path),
-				matchers: mount.matchers,
-			})
-		}
-	}
+	// The walk goes through the sub-app's own mount metadata rather than its
+	// flattened list, which is filled in as apps are mounted and so misses one
+	// mounted on a descendant afterwards; it also picks up the apps each
+	// descendant domain-mounted itself, since those records live only on the
+	// app they were registered on. The routes reach all of them either way.
+	pending := subApp.mountTree()
 
 	d.app.mutex.Lock()
 	// Support for configs of mounted-apps and sub-mounted-apps
 	for i := range pending {
 		mount := &pending[i]
+		mount.path = getGroupPath(mountPath, mount.path)
 
 		mount.app.mountFields.mountPath = mount.path
 		d.app.mountFields.domainAppList = addDomainMount(
