@@ -255,25 +255,38 @@ func (app *App) mountedApps() []*App {
 	apps := []*App{app}
 
 	for i := 0; i < len(apps); i++ {
-		current := apps[i]
-		if current.mountFields == nil {
-			continue
-		}
-
-		for _, mounted := range current.mountFields.appList {
+		for _, mounted := range apps[i].mountedAppsSnapshot() {
 			if !slices.Contains(apps, mounted) {
-				apps = append(apps, mounted)
-			}
-		}
-
-		for j := range current.mountFields.domainAppList {
-			if mounted := current.mountFields.domainAppList[j].app; !slices.Contains(apps, mounted) {
 				apps = append(apps, mounted)
 			}
 		}
 	}
 
 	return apps
+}
+
+// mountedAppsSnapshot returns the apps mounted directly on this one, read
+// under its own lock: App.mount writes those lists under it, and a walk that
+// read them unguarded would race a concurrent mount. One app is locked at a
+// time, so a caller may hold none of them.
+func (app *App) mountedAppsSnapshot() []*App {
+	if app.mountFields == nil {
+		return nil
+	}
+
+	app.mutex.Lock()
+	defer app.mutex.Unlock()
+
+	mounted := make([]*App, 0, len(app.mountFields.appList)+len(app.mountFields.domainAppList))
+	for _, sub := range app.mountFields.appList {
+		mounted = append(mounted, sub)
+	}
+
+	for i := range app.mountFields.domainAppList {
+		mounted = append(mounted, app.mountFields.domainAppList[i].app)
+	}
+
+	return mounted
 }
 
 // mountCoversPath reports whether a mount registered at mountPath covers path.

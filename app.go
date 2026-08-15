@@ -898,12 +898,10 @@ func (app *App) RegisterCustomBinder(customBinder CustomBinder) {
 // ReloadViews reloads the configured view engine by invoking its Load method.
 // It returns an error if no view engine is configured or if reloading fails.
 func (app *App) ReloadViews() error {
-	app.mutex.Lock()
-	defer app.mutex.Unlock()
-
 	// Walks the mount metadata rather than the flattened app list: a domain
 	// mount nested inside a plain one only reaches the root's list once the
-	// app has started, and ReloadViews may be called before that.
+	// app has started, and ReloadViews may be called before that. The walk
+	// takes each app's own lock in turn, so this must not hold one itself.
 	apps := app.mountedApps()
 
 	var reloaded bool
