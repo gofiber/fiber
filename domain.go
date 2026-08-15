@@ -434,14 +434,22 @@ func (d *domainRouter) mount(prefix string, subApp *App) Router {
 	})
 	// Clone routes from the sub-app with domain-wrapped handlers. The clone
 	// also collects the constraints of every app it walks, since the wrapper is
-	// what the routes are re-parsed against when the mount is expanded.
-	d.cloneRoutesForDomain(wrapperApp, subApp)
+	// what the routes are re-parsed against when the mount is expanded, and
+	// reports whether they all register automatic HEAD routes.
+	autoHead := d.cloneRoutesForDomain(wrapperApp, subApp)
 
 	// Give the clones their automatic HEAD routes. A mounted app normally gets
 	// them from startupProcess, which walks the parent's app list — and the
 	// wrapper is deliberately not in it, so without this a domain-mounted GET
 	// route answers HEAD with 405 where a plain mount answers 200.
-	wrapperApp.ensureAutoHeadRoutes()
+	//
+	// Only when every app behind the mount registers them itself. The wrapper
+	// synthesizes a HEAD route from a GET one, and its middleware comes from
+	// the clone: an app that does not serve HEAD contributed none, so the
+	// synthesized route would run its handler with nothing in front of it.
+	if autoHead {
+		wrapperApp.ensureAutoHeadRoutes()
+	}
 
 	// Register the sub-app, and every app it has mounted, as domain mounts of
 	// the parent. They are kept out of appList so that their ErrorHandler and
@@ -518,10 +526,15 @@ func (d *domainRouter) mount(prefix string, subApp *App) Router {
 // processSubAppsRoutes. Flattening the descendants here also runs their
 // handlers through wrapHandlers, so they stay bound to the domain instead of
 // being served on every host.
-func (d *domainRouter) cloneRoutesForDomain(dst, src *App) {
-	for m, routes := range d.domainRoutes(dst, src, "", nil) {
+// It reports whether every app it walked registers automatic HEAD routes, so
+// the caller can tell when synthesizing them on the clone would be safe.
+func (d *domainRouter) cloneRoutesForDomain(dst, src *App) bool {
+	autoHead := true
+	for m, routes := range d.domainRoutes(dst, src, "", nil, &autoHead) {
 		dst.stack[m] = routes
 	}
+
+	return autoHead
 }
 
 // domainRoutes returns src's routes, cloned with domain-filtered handlers and
@@ -533,10 +546,16 @@ func (d *domainRouter) cloneRoutesForDomain(dst, src *App) {
 // terminates. It is a slice rather than a set because it is only ever a few
 // entries deep and each branch needs its own: an app mounted twice on sibling
 // branches is cloned for both.
-func (d *domainRouter) domainRoutes(dst, src *App, pathPrefix string, chain []*App) [][]*Route {
+func (d *domainRouter) domainRoutes(dst, src *App, pathPrefix string, chain []*App, autoHead *bool) [][]*Route {
 	routes := make([][]*Route, len(dst.stack))
 	if slices.Contains(chain, src) {
 		return routes
+	}
+
+	// An app that does not serve HEAD, or that turned the automatic routes off,
+	// contributes neither HEAD routes nor HEAD middleware to the clone.
+	if src.config.DisableHeadAutoRegister || src.methodInt(MethodHead) < 0 {
+		*autoHead = false
 	}
 
 	// Take a snapshot rather than holding the lock for the whole walk: it
@@ -569,7 +588,7 @@ func (d *domainRouter) domainRoutes(dst, src *App, pathPrefix string, chain []*A
 					if mounted == nil {
 						mounted = make(map[*Group][][]*Route)
 					}
-					mounted[route.group] = d.domainRoutes(dst, route.group.app, getGroupPath(pathPrefix, route.path), append(chain, src))
+					mounted[route.group] = d.domainRoutes(dst, route.group.app, getGroupPath(pathPrefix, route.path), append(chain, src), autoHead)
 				}
 
 				routes[m] = append(routes[m], mounted[route.group][m]...)

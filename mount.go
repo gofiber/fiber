@@ -91,7 +91,6 @@ func (app *App) mount(prefix string, subApp *App) Router {
 		subApp.mountFields.mountPath = path
 		app.mountFields.appList[path] = subApp
 	}
-	app.mountFields.domainAppList = appendDomainMounts(app.mountFields.domainAppList, subApp.mountFields.domainAppList, prefix)
 	app.mutex.Unlock()
 
 	// register mounted group
@@ -124,7 +123,6 @@ func (grp *Group) mount(prefix string, subApp *App) Router {
 		subApp.mountFields.mountPath = path
 		grp.app.mountFields.appList[path] = subApp
 	}
-	grp.app.mountFields.domainAppList = appendDomainMounts(grp.app.mountFields.domainAppList, subApp.mountFields.domainAppList, groupPath)
 	grp.app.mutex.Unlock()
 
 	// register mounted group
@@ -171,15 +169,52 @@ func (app *App) domainMountedViews(c Ctx) *App {
 	return viewsApp
 }
 
-// appendDomainMounts re-registers the domain mounts of a sub-app on the app it
-// is being mounted on, moving their paths under prefix. Their domain patterns
-// travel with them: the host still has to match for their config to apply.
+// mountSkipsAutoHead reports whether path belongs to a mounted app that does
+// not register automatic HEAD routes of its own, either because it does not
+// serve HEAD at all or because it turned them off.
+//
+// Once a mount is expanded, its routes sit in this app's stack and are
+// indistinguishable from its own, so the automatic-HEAD pass would synthesize
+// a HEAD route the mounted app never wanted — and synthesize it from the GET
+// route alone, leaving the middleware the mounted app registered for its own
+// methods out of the chain.
+func (app *App) mountSkipsAutoHead(path string) bool {
+	normalizedPath := utils.AddTrailingSlashString(path)
+
+	skips := func(mounted *App, mountPath string) bool {
+		if mountPath == "" || !strings.HasPrefix(normalizedPath, utils.AddTrailingSlashString(mountPath)) {
+			return false
+		}
+
+		return mounted.config.DisableHeadAutoRegister || mounted.methodInt(MethodHead) < 0
+	}
+
+	for mountPath, mounted := range app.mountFields.appList {
+		if skips(mounted, mountPath) {
+			return true
+		}
+	}
+
+	for i := range app.mountFields.domainAppList {
+		mount := &app.mountFields.domainAppList[i]
+		if skips(mount.app, mount.path) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// appendDomainMounts re-registers the domain mounts of a mounted app on the app
+// above it, moving their paths under prefix. Their domain patterns travel with
+// them: the host still has to match for their config to apply.
 func appendDomainMounts(dst, mounts []domainMountedApp, prefix string) []domainMountedApp {
 	for _, mount := range mounts {
-		path := getGroupPath(prefix, mount.path)
-
-		mount.app.mountFields.mountPath = path
-		dst = append(dst, domainMountedApp{app: mount.app, path: path, matchers: mount.matchers})
+		dst = append(dst, domainMountedApp{
+			app:      mount.app,
+			path:     getGroupPath(prefix, mount.path),
+			matchers: mount.matchers,
+		})
 	}
 
 	return dst
@@ -243,8 +278,13 @@ func (app *App) appendSubAppLists(appList map[string]*App, parent ...string) {
 			app.mountFields.appList[prefix] = subApp
 		}
 
+		// Domain mounts are kept out of appList, so collect them here instead.
+		// Doing it at startup rather than when the sub-app was mounted also
+		// picks up the ones registered in between.
+		app.mountFields.domainAppList = appendDomainMounts(app.mountFields.domainAppList, subApp.mountFields.domainAppList, prefix)
+
 		// The first element of appList is always the app itself. If there are no other sub apps, we should skip appending nested apps.
-		if len(subApp.mountFields.appList) > 1 {
+		if subApp.hasMountedApps() {
 			app.appendSubAppLists(subApp.mountFields.appList, prefix)
 		}
 	}

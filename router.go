@@ -1151,6 +1151,9 @@ func (app *App) ensureAutoHeadRoutesLocked() {
 		if _, ok := existing[route.path]; ok {
 			continue
 		}
+		if app.mountSkipsAutoHead(route.path) {
+			continue
+		}
 
 		headRoute := app.copyRoute(route)
 		headRoute.group = route.group

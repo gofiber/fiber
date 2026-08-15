@@ -11,6 +11,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
@@ -2790,9 +2791,17 @@ func Test_Domain_UseMountSelf(t *testing.T) {
 		return c.SendString("x")
 	})
 
-	require.NotPanics(t, func() {
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
 		app.Domain("api.example.com").Use("/self", app)
-	})
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(10 * time.Second):
+		require.FailNow(t, "mounting an app on its own domain router did not return")
+	}
 }
 
 // Test_Domain_UseMountViewsPathOnly verifies that a domain-mounted sub-app's
@@ -2826,6 +2835,146 @@ func Test_Domain_UseMountViewsPathOnly(t *testing.T) {
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
 	require.Equal(t, "<h1>parent</h1>", string(body))
+}
+
+// Test_Domain_UseMountAutoHeadKeepsMiddleware verifies that a sub-app which
+// does not serve HEAD gets no synthesized HEAD routes. Its middleware is
+// registered for its own methods only, so a HEAD route built from the GET one
+// would reach the handler with nothing in front of it.
+func Test_Domain_UseMountAutoHeadKeepsMiddleware(t *testing.T) {
+	t.Parallel()
+
+	subApp := New(Config{RequestMethods: []string{MethodGet, MethodPost}})
+	subApp.Use(func(c Ctx) error {
+		return c.SendStatus(StatusUnauthorized)
+	})
+	subApp.Get("/secret", func(c Ctx) error {
+		c.Set("X-Secret", "leaked")
+		return c.SendString("secret")
+	})
+
+	app := New()
+	app.Domain("api.example.com").Use("/api", subApp)
+
+	req := httptest.NewRequest(MethodGet, "/api/secret", http.NoBody)
+	req.Host = "api.example.com"
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, StatusUnauthorized, resp.StatusCode)
+
+	// Twice: app.Test runs the startup process on every call, and the second
+	// pass sees the mount already expanded into the parent's stack.
+	for range 2 {
+		req = httptest.NewRequest(MethodHead, "/api/secret", http.NoBody)
+		req.Host = "api.example.com"
+		resp, err = app.Test(req)
+		require.NoError(t, err)
+		require.Equal(t, StatusMethodNotAllowed, resp.StatusCode)
+		require.Empty(t, resp.Header.Get("X-Secret"))
+	}
+}
+
+// Test_Domain_UseMountNestedAutoHeadDisabled verifies that a nested app which
+// turned automatic HEAD routes off does not get them from the mount either.
+func Test_Domain_UseMountNestedAutoHeadDisabled(t *testing.T) {
+	t.Parallel()
+
+	child := New(Config{DisableHeadAutoRegister: true})
+	child.Get("/x", func(c Ctx) error {
+		return c.SendString("nested x")
+	})
+
+	subApp := New()
+	subApp.Use("/v1", child)
+
+	app := New()
+	app.Domain("api.example.com").Use("/api", subApp)
+
+	req := httptest.NewRequest(MethodHead, "/api/v1/x", http.NoBody)
+	req.Host = "api.example.com"
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, StatusMethodNotAllowed, resp.StatusCode)
+}
+
+// Test_Domain_UseMountAfterOuterMount verifies that a domain mount registered
+// on a sub-app after that sub-app was itself mounted is still found: the
+// parent picks the metadata up when it discovers sub-apps at startup.
+func Test_Domain_UseMountAfterOuterMount(t *testing.T) {
+	t.Parallel()
+
+	child := New(Config{
+		ErrorHandler: func(c Ctx, _ error) error {
+			return c.Status(596).SendString("child error")
+		},
+	})
+	child.Get("/boom", func(_ Ctx) error {
+		return errors.New("boom")
+	})
+
+	mid := New()
+
+	app := New()
+	app.Use("/mid", mid)
+	// Registered after the outer mount, but before the app is served.
+	mid.Domain("api.example.com").Use("/child", child)
+
+	req := httptest.NewRequest(MethodGet, "/mid/child/boom", http.NoBody)
+	req.Host = "api.example.com"
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, 596, resp.StatusCode)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "child error", string(body))
+
+	req = httptest.NewRequest(MethodGet, "/mid/child/boom", http.NoBody)
+	req.Host = "www.example.com"
+	resp, err = app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, StatusNotFound, resp.StatusCode)
+}
+
+// Test_Domain_UseMountOverlappingPatterns verifies that when two domain mounts
+// at one path have patterns that both match, each sub-app still handles the
+// errors of its own routes.
+func Test_Domain_UseMountOverlappingPatterns(t *testing.T) {
+	t.Parallel()
+
+	exact := New(Config{
+		ErrorHandler: func(c Ctx, _ error) error {
+			return c.Status(597).SendString("exact error")
+		},
+	})
+	exact.Get("/boom", func(_ Ctx) error {
+		return errors.New("boom")
+	})
+
+	wildcard := New(Config{
+		ErrorHandler: func(c Ctx, _ error) error {
+			return c.Status(598).SendString("wildcard error")
+		},
+	})
+	wildcard.Get("/other", func(_ Ctx) error {
+		return errors.New("boom")
+	})
+
+	app := New()
+	app.Domain("admin.example.com").Use("/api", exact)
+	app.Domain(":tenant.example.com").Use("/api", wildcard)
+
+	// admin.example.com matches both patterns; the route belongs to the first.
+	req := httptest.NewRequest(MethodGet, "/api/boom", http.NoBody)
+	req.Host = "admin.example.com"
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, 597, resp.StatusCode)
+
+	req = httptest.NewRequest(MethodGet, "/api/other", http.NoBody)
+	req.Host = "acme.example.com"
+	resp, err = app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, 598, resp.StatusCode)
 }
 
 // Test_Domain_UseMountNestedCycle verifies that cloning a sub-app whose mount

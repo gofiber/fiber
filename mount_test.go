@@ -803,3 +803,35 @@ func Test_App_Mount_CarriesDomainMount(t *testing.T) {
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, StatusNotFound, resp.StatusCode, "Status code")
 }
+
+// Test_App_Mount_AutoHeadKeepsMiddleware verifies that a mounted app which does
+// not serve HEAD gets no synthesized HEAD routes once its routes are expanded
+// into the parent — they would run without the middleware it registered.
+func Test_App_Mount_AutoHeadKeepsMiddleware(t *testing.T) {
+	t.Parallel()
+
+	micro := New(Config{RequestMethods: []string{MethodGet, MethodPost}})
+	micro.Use(func(c Ctx) error {
+		return c.SendStatus(StatusUnauthorized)
+	})
+	micro.Get("/doe", func(c Ctx) error {
+		c.Set("X-Secret", "leaked")
+		return c.SendString("doe")
+	})
+
+	app := New()
+	app.Use("/john", micro)
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/john/doe", http.NoBody))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, StatusUnauthorized, resp.StatusCode, "Status code")
+
+	// Twice: app.Test runs the startup process on every call, and the second
+	// pass sees the mount already expanded into the parent's stack.
+	for range 2 {
+		resp, err = app.Test(httptest.NewRequest(MethodHead, "/john/doe", http.NoBody))
+		require.NoError(t, err, "app.Test(req)")
+		require.Equal(t, StatusMethodNotAllowed, resp.StatusCode, "Status code")
+		require.Empty(t, resp.Header.Get("X-Secret"))
+	}
+}
