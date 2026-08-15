@@ -1437,7 +1437,7 @@ func Test_Extractor_Chain_ExtractSource(t *testing.T) {
 		require.Equal(t, SourceForm, src)
 	})
 
-	t.Run("separate_guards_allow_Extract_then_ExtractSource", func(t *testing.T) {
+	t.Run("shared_guard_allows_sequential_Extract_then_ExtractSource", func(t *testing.T) {
 		t.Parallel()
 
 		app := fiber.New()
@@ -1447,6 +1447,8 @@ func Test_Extractor_Chain_ExtractSource(t *testing.T) {
 
 		chain := Chain(FromHeader("X-Token"), FromCookie("token"))
 
+		// Guard is cleared on return, so a later entry point on the same
+		// request is not treated as a cycle.
 		v, err := chain.Extract(ctx)
 		require.NoError(t, err)
 		require.Equal(t, "cookie-token", v)
@@ -1466,17 +1468,52 @@ func Test_Extractor_Chain_ExtractSource(t *testing.T) {
 
 		var chainExtractor Extractor
 		chainExtractor = Chain(FromCustom("cycle", func(c fiber.Ctx) (string, error) {
-			// Re-enter via ExtractSource so the source guard fires.
+			// Re-enter via ExtractSource while Extract is already active.
 			_, _, err := chainExtractor.ExtractSource(c)
 			return "", err
 		}))
 
-		// Prefer driving the cycle through ExtractSource when the child is
-		// source-aware; FromCustom has ExtractSource that calls Extract, which
-		// re-enters ExtractSource above.
+		// FromCustom.ExtractSource calls Extract, which re-enters ExtractSource.
+		// Shared guard must treat the cross-API re-entry as a cycle.
 		v, src, err := ExtractWithSource(chainExtractor, ctx)
 		require.Empty(t, v)
 		require.Equal(t, SourceCustom, src)
+		require.ErrorIs(t, err, ErrChainCycle)
+	})
+
+	t.Run("cross_api_reentry_via_Extract_detects_cycle", func(t *testing.T) {
+		t.Parallel()
+
+		app := fiber.New()
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+		t.Cleanup(func() { app.ReleaseCtx(ctx) })
+
+		var chainExtractor Extractor
+		// Source-only child that re-enters through the legacy Extract API.
+		// With separate guards, Extract would not see ExtractSource as active
+		// and would either nest forever or skip this nil-Extract child.
+		chainExtractor = Chain(Extractor{
+			ExtractSource: func(c fiber.Ctx) (string, Source, error) {
+				v, err := chainExtractor.Extract(c)
+				return v, SourceCustom, err
+			},
+			Source: SourceCustom,
+			Key:    "cross-api-cycle",
+		})
+
+		v, src, err := ExtractWithSource(chainExtractor, ctx)
+		require.Empty(t, v)
+		require.Equal(t, SourceCustom, src)
+		require.ErrorIs(t, err, ErrChainCycle)
+
+		// Symmetric: enter via Extract while a nested child hits ExtractSource.
+		var chainB Extractor
+		chainB = Chain(FromCustom("to-source", func(c fiber.Ctx) (string, error) {
+			_, _, err := chainB.ExtractSource(c)
+			return "", err
+		}))
+		token, err := chainB.Extract(ctx)
+		require.Empty(t, token)
 		require.ErrorIs(t, err, ErrChainCycle)
 	})
 

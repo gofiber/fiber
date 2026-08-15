@@ -555,8 +555,10 @@ func FromCustom(key string, fn func(fiber.Ctx) (string, error)) Extractor {
 //   - Partial failure: Continues to next extractor if current returns error or empty value
 //   - Total failure: Returns last error encountered, or ErrNotFound if no errors
 //   - Empty chain: Always returns ErrNotFound
-//   - Cycle guards for Extract and ExtractSource are independent so calling both
-//     on the same request does not produce a false ErrChainCycle
+//   - Extract and ExtractSource share one cycle guard so a child that re-enters
+//     the same chain through the other API still returns ErrChainCycle. The
+//     guard is cleared on return, so sequential Extract then ExtractSource
+//     (or the reverse) on the same request is fine.
 //
 // Examples:
 //
@@ -600,19 +602,18 @@ func Chain(extractors ...Extractor) Extractor {
 	// ExtractSource reports the winning child's Source at runtime.
 	primarySource := extractors[0].Source
 	primaryKey := extractors[0].Key
-	// Separate guards: calling Extract then ExtractSource (or the reverse) on the
-	// same request must not false-positive as a cycle.
-	extractGuard := chainGuardKey{id: new(byte)}
-	sourceGuard := chainGuardKey{id: new(byte)}
+	// One guard for both entry points: nested re-entry via the other API is a
+	// cycle. defer clears it so sequential Extract / ExtractSource is allowed.
+	guard := chainGuardKey{id: new(byte)}
 
 	return Extractor{
 		Extract: func(c fiber.Ctx) (string, error) {
-			if active, ok := c.Locals(extractGuard).(bool); ok && active {
+			if active, ok := c.Locals(guard).(bool); ok && active {
 				return "", ErrChainCycle
 			}
 
-			c.Locals(extractGuard, true)
-			defer c.Locals(extractGuard, false)
+			c.Locals(guard, true)
+			defer c.Locals(guard, false)
 
 			var lastErr error // last error encountered (including ErrNotFound)
 
@@ -634,12 +635,12 @@ func Chain(extractors ...Extractor) Extractor {
 			return "", ErrNotFound
 		},
 		ExtractSource: func(c fiber.Ctx) (string, Source, error) {
-			if active, ok := c.Locals(sourceGuard).(bool); ok && active {
+			if active, ok := c.Locals(guard).(bool); ok && active {
 				return "", primarySource, ErrChainCycle
 			}
 
-			c.Locals(sourceGuard, true)
-			defer c.Locals(sourceGuard, false)
+			c.Locals(guard, true)
+			defer c.Locals(guard, false)
 
 			var lastErr error
 			lastSource := primarySource
