@@ -2347,6 +2347,49 @@ func Test_Domain_UseMountNestedExtraMethods(t *testing.T) {
 	require.Equal(t, StatusNotFound, resp.StatusCode)
 }
 
+// Test_Domain_UseMountNestedRequestMethods verifies that a nested sub-app
+// listing its own request methods keeps each route under the method it was
+// registered with, and that a shorter table does not cut the clone short.
+func Test_Domain_UseMountNestedRequestMethods(t *testing.T) {
+	t.Parallel()
+
+	// Swap GET and POST, so the two apps' stack indexes disagree.
+	methods := append([]string{}, DefaultMethods...)
+	for i, method := range methods {
+		switch method {
+		case MethodGet:
+			methods[i] = MethodPost
+		case MethodPost:
+			methods[i] = MethodGet
+		}
+	}
+
+	child := New(Config{RequestMethods: methods})
+	child.Get("/x", func(c Ctx) error {
+		return c.SendString("get x")
+	})
+	child.Post("/x", func(c Ctx) error {
+		return c.SendString("post x")
+	})
+
+	subApp := New()
+	subApp.Use("/v1", child)
+
+	app := New()
+	app.Domain("api.example.com").Use("/api", subApp)
+
+	for method, want := range map[string]string{MethodGet: "get x", MethodPost: "post x"} {
+		req := httptest.NewRequest(method, "/api/v1/x", http.NoBody)
+		req.Host = "api.example.com"
+		resp, err := app.Test(req)
+		require.NoError(t, err)
+		require.Equal(t, StatusOK, resp.StatusCode, method)
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		require.Equal(t, want, string(body), method)
+	}
+}
+
 // Test_Domain_UseMountNestedCycle verifies that cloning a sub-app whose mount
 // graph contains a cycle terminates, and stops at the point the cycle closes.
 // It drives the clone directly: such an app cannot be served, because the

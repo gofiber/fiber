@@ -506,10 +506,14 @@ func (d *domainRouter) domainRoutes(dst, src *App, pathPrefix string, chain []*A
 	// Take a snapshot rather than holding the lock for the whole walk: it
 	// keeps concurrent route registration on src from racing the read, and it
 	// keeps this from ever holding two apps' locks at once.
+	//
+	// It is indexed by dst's methods, not src's: an app is free to configure
+	// its own RequestMethods, and the two tables then neither line up nor have
+	// to be the same length.
 	src.mutex.Lock()
-	stack := make([][]*Route, len(src.stack))
-	for m := range src.stack {
-		stack[m] = slices.Clone(src.stack[m])
+	stack := make([][]*Route, len(routes))
+	for m := range stack {
+		stack[m] = slices.Clone(src.routesForMethod(dst.method(m)))
 	}
 	src.mutex.Unlock()
 
@@ -519,13 +523,6 @@ func (d *domainRouter) domainRoutes(dst, src *App, pathPrefix string, chain []*A
 	var mounted map[*Group][][]*Route
 
 	for m := range routes {
-		// An app configured with fewer request methods than the app it is
-		// mounted on has a shorter stack, and simply holds no routes for the
-		// remaining methods.
-		if m >= len(stack) {
-			continue
-		}
-
 		for _, route := range stack[m] {
 			if route.mount {
 				// A placeholder registered by mount() always has both, but a

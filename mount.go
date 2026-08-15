@@ -195,11 +195,16 @@ func (app *App) processSubAppsRoutes() {
 				continue
 			}
 
+			// Read the sub-app's routes by method rather than by stack index:
+			// an app is free to configure its own RequestMethods, and the two
+			// tables then neither line up nor have to be the same length.
+			subAppRoutes := route.group.app.routesForMethod(app.method(m))
+
 			// Create a slice to hold the sub-app's routes
-			subRoutes := make([]*Route, len(route.group.app.stack[m]))
+			subRoutes := make([]*Route, len(subAppRoutes))
 
 			// Iterate over the sub-app's routes
-			for j, subAppRoute := range route.group.app.stack[m] {
+			for j, subAppRoute := range subAppRoutes {
 				// Clone the sub-app's route
 				subAppRouteClone := app.copyRoute(subAppRoute)
 

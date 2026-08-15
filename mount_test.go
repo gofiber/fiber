@@ -634,3 +634,94 @@ func Test_Ctx_Render_MountGroup(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "<h1>Hello doe!</h1>", string(body))
 }
+
+// Test_App_Mount_FewerRequestMethods verifies that a sub-app serving only some
+// of the parent's request methods can be mounted: the parent must read the
+// sub-app's routes by method, not by its own stack index.
+func Test_App_Mount_FewerRequestMethods(t *testing.T) {
+	t.Parallel()
+
+	micro := New(Config{RequestMethods: []string{MethodGet}})
+	micro.Get("/doe", func(c Ctx) error {
+		return c.SendString("doe")
+	})
+
+	app := New()
+	app.Use("/john", micro)
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/john/doe", http.NoBody))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
+
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "doe", string(body))
+}
+
+// Test_App_Mount_FewerRequestMethodsNested verifies the same for a sub-app
+// reached through another mount.
+func Test_App_Mount_FewerRequestMethodsNested(t *testing.T) {
+	t.Parallel()
+
+	micro := New(Config{RequestMethods: []string{MethodGet}})
+	micro.Get("/doe", func(c Ctx) error {
+		return c.SendString("doe")
+	})
+
+	sub := New()
+	sub.Use("/v1", micro)
+
+	app := New()
+	app.Use("/john", sub)
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/john/v1/doe", http.NoBody))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
+
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "doe", string(body))
+}
+
+// Test_App_Mount_ReorderedRequestMethods verifies that a sub-app which lists
+// the same request methods in a different order keeps serving each route under
+// the method it was registered with.
+func Test_App_Mount_ReorderedRequestMethods(t *testing.T) {
+	t.Parallel()
+
+	// Swap GET and POST, so the two apps' stack indexes disagree.
+	methods := append([]string{}, DefaultMethods...)
+	for i, method := range methods {
+		switch method {
+		case MethodGet:
+			methods[i] = MethodPost
+		case MethodPost:
+			methods[i] = MethodGet
+		}
+	}
+
+	micro := New(Config{RequestMethods: methods})
+	micro.Get("/doe", func(c Ctx) error {
+		return c.SendString("get doe")
+	})
+	micro.Post("/doe", func(c Ctx) error {
+		return c.SendString("post doe")
+	})
+
+	app := New()
+	app.Use("/john", micro)
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/john/doe", http.NoBody))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "get doe", string(body))
+
+	resp, err = app.Test(httptest.NewRequest(MethodPost, "/john/doe", http.NoBody))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
+	body, err = io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "post doe", string(body))
+}
