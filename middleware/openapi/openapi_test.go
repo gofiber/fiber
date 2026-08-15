@@ -3693,3 +3693,50 @@ func Test_OpenAPI_SwaggerOptionsMarshalError(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusInternalServerError, resp.StatusCode)
 }
+
+// Test_StringKeyedEntries covers reading an existing components value that the
+// caller may have typed however they like.
+func Test_StringKeyedEntries(t *testing.T) {
+	t.Parallel()
+
+	type scheme struct {
+		Type string `json:"type"`
+	}
+
+	require.Nil(t, stringKeyedEntries(nil))
+	require.Nil(t, stringKeyedEntries("not a map"))
+	require.Nil(t, stringKeyedEntries(map[int]string{1: "a"}), "non-string keys cannot be merged")
+	require.Nil(t, stringKeyedEntries(map[string]scheme(nil)), "a nil typed map has nothing to merge")
+
+	untyped := map[string]any{"a": 1}
+	require.Equal(t, untyped, stringKeyedEntries(untyped))
+
+	typed := map[string]scheme{"bearer": {Type: "http"}}
+	require.Equal(t, map[string]any{"bearer": scheme{Type: "http"}}, stringKeyedEntries(typed))
+}
+
+// Test_OpenAPI_TypedSecuritySchemesMerge pins a typed Components securityScheme
+// map against Config.SecuritySchemes: the two must merge, not overwrite.
+func Test_OpenAPI_TypedSecuritySchemesMerge(t *testing.T) {
+	t.Parallel()
+
+	type scheme struct {
+		Type   string `json:"type"`
+		Scheme string `json:"scheme"`
+	}
+
+	cfg := configDefault(Config{
+		Components: map[string]any{
+			"securitySchemes": map[string]scheme{
+				"fromComponents": {Type: "http", Scheme: "basic"},
+			},
+		},
+		SecuritySchemes: map[string]any{
+			"fromConfig": map[string]any{"type": "http", "scheme": "bearer"},
+		},
+	})
+
+	schemes := requireMap(t, buildComponents(&cfg)["securitySchemes"])
+	require.Contains(t, schemes, "fromComponents", "the caller's typed schemes were dropped")
+	require.Contains(t, schemes, "fromConfig")
+}
