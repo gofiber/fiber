@@ -3152,6 +3152,136 @@ func Test_Domain_UseMountOverlappingViews(t *testing.T) {
 	require.Equal(t, "<h1>exact</h1>", string(body))
 }
 
+// Test_Domain_UseMountOverlappingViewsLaterMount verifies that the second of two
+// mounts at one path renders through its own engine when it owns the route: the
+// mounts are equally deep and both match the host, so only the route that ran
+// tells them apart.
+func Test_Domain_UseMountOverlappingViewsLaterMount(t *testing.T) {
+	t.Parallel()
+
+	rootEngine := &testTemplateEngine{}
+	require.NoError(t, rootEngine.Load())
+
+	exactEngine := &testTemplateEngine{}
+	require.NoError(t, exactEngine.Load())
+
+	wildcardEngine := &testTemplateEngine{path: "testdata2"}
+	require.NoError(t, wildcardEngine.Load())
+
+	exact := New(Config{Views: exactEngine})
+	exact.Get("/view", func(c Ctx) error {
+		return c.Render("index.tmpl", Map{"Title": "exact"})
+	})
+
+	// Registered second, and owns the route this request runs.
+	wildcard := New(Config{Views: wildcardEngine})
+	wildcard.Get("/other", func(c Ctx) error {
+		return c.Render("bruh.tmpl", Map{})
+	})
+
+	app := New(Config{Views: rootEngine})
+	app.Domain("admin.example.com").Use("/api", exact)
+	app.Domain(":tenant.example.com").Use("/api", wildcard)
+
+	// bruh.tmpl only exists in the wildcard mount's engine, so rendering it at
+	// all is what proves the engine of the mount that owns the route was used.
+	req := httptest.NewRequest(MethodGet, "/api/other", http.NoBody)
+	req.Host = "admin.example.com"
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, StatusOK, resp.StatusCode)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "<h1>I'm Bruh</h1>", string(body))
+}
+
+// Test_Domain_UseMountOverlappingErrorHandler verifies that two mounts at one
+// path each answer for their own routes. They are equally deep and both match
+// the host, so the request is only attributable through the route that ran.
+func Test_Domain_UseMountOverlappingErrorHandler(t *testing.T) {
+	t.Parallel()
+
+	first := New(Config{ErrorHandler: func(c Ctx, _ error) error {
+		return c.Status(581).SendString("first")
+	}})
+	first.Get("/first", func(_ Ctx) error {
+		return errors.New("boom")
+	})
+
+	second := New(Config{ErrorHandler: func(c Ctx, _ error) error {
+		return c.Status(582).SendString("second")
+	}})
+	second.Get("/second", func(_ Ctx) error {
+		return errors.New("boom")
+	})
+
+	app := New()
+	app.Domain("admin.example.com").Use("/api", first)
+	app.Domain(":tenant.example.com").Use("/api", second)
+
+	for path, want := range map[string]int{"/api/first": 581, "/api/second": 582} {
+		req := httptest.NewRequest(MethodGet, path, http.NoBody)
+		req.Host = "admin.example.com" // matches both patterns
+		resp, err := app.Test(req)
+		require.NoError(t, err)
+		require.Equal(t, want, resp.StatusCode, path)
+	}
+}
+
+// Test_Domain_UseMountOverlappingErrorHandlerAutoHead verifies that an automatic
+// HEAD route resolves the same owner its GET route does, rather than falling
+// back to the first mount that covers the path.
+func Test_Domain_UseMountOverlappingErrorHandlerAutoHead(t *testing.T) {
+	t.Parallel()
+
+	first := New(Config{ErrorHandler: func(c Ctx, _ error) error {
+		return c.Status(583).SendString("first")
+	}})
+	first.Get("/first", func(_ Ctx) error {
+		return errors.New("boom")
+	})
+
+	second := New(Config{ErrorHandler: func(c Ctx, _ error) error {
+		return c.Status(584).SendString("second")
+	}})
+	second.Get("/second", func(_ Ctx) error {
+		return errors.New("boom")
+	})
+
+	app := New()
+	app.Domain("admin.example.com").Use("/api", first)
+	app.Domain(":tenant.example.com").Use("/api", second)
+
+	req := httptest.NewRequest(MethodHead, "/api/second", http.NoBody)
+	req.Host = "admin.example.com"
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, 584, resp.StatusCode)
+}
+
+// Test_Domain_UseMountDeclinedHostKeepsRootErrorHandler verifies that a mount
+// whose handlers declined the host does not answer for the request they passed
+// on: the route it registered is the one that ran, but it served nothing.
+func Test_Domain_UseMountDeclinedHostKeepsRootErrorHandler(t *testing.T) {
+	t.Parallel()
+
+	subApp := New(Config{ErrorHandler: func(c Ctx, _ error) error {
+		return c.Status(585).SendString("sub")
+	}})
+	subApp.Get("/boom", func(_ Ctx) error {
+		return errors.New("boom")
+	})
+
+	app := New()
+	app.Domain("api.example.com").Use("/api", subApp)
+
+	req := httptest.NewRequest(MethodGet, "/api/boom", http.NoBody)
+	req.Host = "other.example.com"
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, StatusNotFound, resp.StatusCode)
+}
+
 // Test_Domain_UseMountKeepsParentAutoHead verifies that a domain mount which
 // registers no automatic HEAD routes only withholds them from its own routes,
 // leaving a route the parent registered at the same path with its own.

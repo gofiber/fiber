@@ -29,6 +29,10 @@ type mountFields struct {
 	// routes, kept by route because a path can belong to a mount and to this
 	// app at once
 	noAutoHeadRoutes map[*Route]struct{}
+	// Domain-mounted app each cloned route came from, so the request that ran
+	// one resolves its config directly instead of inferring an owner from the
+	// host and the path
+	routeOwners map[*Route]*App
 	// Ordered keys of apps (sorted by key length for Render)
 	appListKeys []string
 	// guards one-time generation of appListKeys
@@ -203,32 +207,52 @@ func (grp *Group) mount(prefix string, subApp *App) Router {
 	return grp
 }
 
-// domainMountedViews returns the view engine of the domain mount that owns this
-// request: the deepest one covering the path whose patterns match the host, and
-// among equally deep ones the first registered, matching the order their routes
-// are matched in.
-//
-// It returns nil when the owner configures no views, leaving the plain mounts
-// and the root to answer — rather than borrowing the engine of a mount that did
-// not serve the request.
-func (app *App) domainMountedViews(c Ctx) (*App, int) { //nolint:gocritic // unnamedResult: named returns conflict with nonamedreturns linter
-	owner, depth := app.domainMountOwner(c)
-	if owner == nil || owner.config.Views == nil {
-		return nil, 0
-	}
-
-	return owner, depth
+// domainOwner is the domain-mounted app a request belongs to, together with
+// what is known about how specific that answer is.
+type domainOwner struct {
+	app *App
+	// depth is how many path segments the mount covers, which ranks an
+	// inferred owner against the plain mounts covering the same request.
+	depth int
+	// exact marks an owner taken from the route that actually ran. Nothing
+	// outranks it: the request was served by that app, not merely covered by
+	// its mount path.
+	exact bool
 }
 
-// domainMountOwner returns the domain mount that owns this request and the
-// depth it matched at: the deepest one covering the path whose patterns match
-// the host, and among equally deep ones the first registered, matching the
-// order their routes are matched in.
-func (app *App) domainMountOwner(c Ctx) (*App, int) { //nolint:gocritic // unnamedResult: named returns conflict with nonamedreturns linter
-	var (
-		owner *App
-		best  int
-	)
+// outranks reports whether this owner should answer for the request instead of
+// a plain mount whose path is plainDepth segments deep. An inferred owner wins
+// a tie, having matched the host as well.
+func (o domainOwner) outranks(plainDepth int) bool {
+	return o.app != nil && (o.exact || plainDepth <= o.depth)
+}
+
+// domainMountedViews returns the domain mount whose view engine answers for
+// this request, and no owner when it configures none — leaving the plain mounts
+// and the root to answer rather than borrowing the engine of a mount that did
+// not serve the request.
+func (app *App) domainMountedViews(c Ctx) domainOwner {
+	owner := app.domainMountOwner(c)
+	if owner.app == nil || owner.app.config.Views == nil {
+		return domainOwner{}
+	}
+
+	return owner
+}
+
+// domainMountOwner returns the domain mount that owns this request: the app the
+// route that ran was mounted from, or — for an error raised before any of them
+// matched — the deepest mount covering the path whose patterns match the host,
+// and among equally deep ones the first registered, matching the order their
+// routes are matched in.
+func (app *App) domainMountOwner(c Ctx) domainOwner {
+	// The app the route that ran was mounted from, if it was mounted at all.
+	// Its mount still has to match the request: a domain-wrapped handler that
+	// declined the host left the route it belongs to as the one that ran, and
+	// that app served nothing.
+	routeApp := app.routeOwner(c.Route())
+
+	var owner domainOwner
 
 	path := app.normalizePath(c.Path())
 
@@ -238,12 +262,18 @@ func (app *App) domainMountOwner(c Ctx) (*App, int) { //nolint:gocritic // unnam
 			continue
 		}
 
-		if depth := mount.depth(); owner == nil || depth > best {
-			owner, best = mount.app, depth
+		// Two sub-apps mounted at one path behind overlapping patterns both
+		// cover the request and both match the host. Only one of them ran.
+		if mount.app == routeApp {
+			return domainOwner{app: mount.app, exact: true}
+		}
+
+		if depth := mount.depth(); owner.app == nil || depth > owner.depth {
+			owner.app, owner.depth = mount.app, depth
 		}
 	}
 
-	return owner, best
+	return owner
 }
 
 // mountedApps returns this app and every app mounted below it, plain or on a
@@ -325,6 +355,28 @@ func (app *App) skipsAutoHeadFor(route *Route) bool {
 	_, ok := app.mountFields.noAutoHeadRoutes[route]
 
 	return ok
+}
+
+// markRouteOwner records that route was cloned out of owner, a sub-app mounted
+// on a domain. Ownership is kept by route for the same reason the automatic
+// HEAD provenance is: host and path do not identify the app on their own, since
+// two sub-apps can be mounted at one path behind patterns that both match.
+func (app *App) markRouteOwner(route *Route, owner *App) {
+	if app.mountFields.routeOwners == nil {
+		app.mountFields.routeOwners = make(map[*Route]*App)
+	}
+
+	app.mountFields.routeOwners[route] = owner
+}
+
+// routeOwner returns the domain-mounted app route was cloned out of, or nil
+// when the route did not come from one.
+func (app *App) routeOwner(route *Route) *App {
+	if route == nil || len(app.mountFields.routeOwners) == 0 {
+		return nil
+	}
+
+	return app.mountFields.routeOwners[route]
 }
 
 // appendDomainMounts re-registers the domain mounts of a mounted app on the app
@@ -487,6 +539,13 @@ func (app *App) processSubAppsRoutes() {
 				// theirs and the sub-app's descendants keep skipping.
 				if skipsAutoHead || route.group.app.skipsAutoHeadFor(subAppRoute) {
 					app.markSkipAutoHead(subAppRouteClone)
+				}
+
+				// Carry the domain mount each route came from over as well: the
+				// sub-app here is the wrapper the domain router built, and the
+				// apps behind it are the ones whose config has to answer.
+				if owner := route.group.app.routeOwner(subAppRoute); owner != nil {
+					app.markRouteOwner(subAppRouteClone, owner)
 				}
 
 				// Add the cloned sub-app's route to the slice of sub-app routes

@@ -606,6 +606,18 @@ func (d *domainRouter) domainRoutes(dst, src *App, pathPrefix string, chain []*A
 				dst.addPrefixToRoute(pathPrefix, clonedRoute, src.config.RegexHandler, src.customConstraints...)
 			}
 			clonedRoute.Handlers = d.wrapHandlers(clonedRoute.Handlers)
+
+			// Record the app the route came from, so a request that runs it
+			// resolves that app's config rather than one inferred from the host
+			// and the path. src is itself a wrapper when the sub-app had domain
+			// mounts of its own, and already knows the real app behind each of
+			// its routes.
+			owner := src.routeOwner(route)
+			if owner == nil {
+				owner = src
+			}
+			dst.markRouteOwner(clonedRoute, owner)
+
 			routes[m] = append(routes[m], clonedRoute)
 		}
 	}

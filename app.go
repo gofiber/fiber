@@ -1612,13 +1612,13 @@ func (app *App) ErrorHandler(ctx Ctx, err error) error {
 	// error handler cannot be picked by path alone. The owner is considered
 	// after the plain mounts, which lets a domain mount win a tie on path
 	// depth: it matched the host too, so it is the more specific of the two.
-	if owner, depth := app.domainMountOwner(ctx); owner != nil && mountedPrefixParts <= depth {
+	if owner := app.domainMountOwner(ctx); owner.outranks(mountedPrefixParts) {
 		// The owner decides, as it does among the plain mounts: one without a
 		// handler of its own falls through to this app's, rather than to the
 		// handler of a shallower mount that did not serve the request.
 		mountedErrHandler = nil
-		if owner.configured.ErrorHandler != nil {
-			mountedErrHandler = owner.config.ErrorHandler
+		if owner.app.configured.ErrorHandler != nil {
+			mountedErrHandler = owner.app.config.ErrorHandler
 		}
 	}
 

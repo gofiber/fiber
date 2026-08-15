@@ -1170,6 +1170,11 @@ func (app *App) ensureAutoHeadRoutesLocked() {
 		headRoute.group = route.group
 		headRoute.Method = MethodHead
 		headRoute.autoHead = true
+		// The synthesized route belongs to whichever app the GET route came
+		// from, so a HEAD request resolves the same config a GET one does.
+		if owner := app.routeOwner(route); owner != nil {
+			app.markRouteOwner(headRoute, owner)
+		}
 		// Fasthttp automatically omits response bodies when transmitting
 		// HEAD responses, so the copied GET handler stack can execute
 		// unchanged while still producing an empty body on the wire.
