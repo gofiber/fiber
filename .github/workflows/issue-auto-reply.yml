@@ -1,0 +1,13 @@
+name: issue-auto-reply
+
+on:
+  issues:
+    types: [opened, labeled]
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  reply:
+    uses: gofiber/.github/.github/workflows/issue-auto-reply.yml@main

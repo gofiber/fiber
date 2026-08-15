@@ -32,3 +32,4 @@ jobs:
           globs: |
             **/*.md
             #vendor
+            #.github/issue-replies
