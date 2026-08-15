@@ -901,7 +901,37 @@ func (r *DefaultRes) Render(name string, bind any, layouts ...string) error {
 
 	rootApp := r.c.app
 	var rendered bool
+
+	// A sub-app mounted on a domain is checked first: its views only apply to
+	// a matching host, so it cannot be found by the path scan below, and having
+	// matched the host makes it the more specific of two mounts at one path.
+	if viewsApp := rootApp.domainMountedViews(r.c); viewsApp != nil {
+		if len(layouts) == 0 && viewsApp.config.ViewsLayout != "" {
+			layouts = []string{viewsApp.config.ViewsLayout}
+		}
+
+		if err := func() error {
+			viewsLock := getViewsLock(viewsApp.config.Views)
+			viewsLock.RLock()
+			defer viewsLock.RUnlock()
+
+			if err := viewsApp.config.Views.Render(buf, name, bind, layouts...); err != nil {
+				return fmt.Errorf("failed to render: %w", err)
+			}
+
+			return nil
+		}(); err != nil {
+			return err
+		}
+
+		rendered = true
+	}
+
 	for _, prefix := range slices.Backward(rootApp.mountFields.appListKeys) {
+		if rendered {
+			break
+		}
+
 		app := rootApp.mountFields.appList[prefix]
 		if prefix == "" || strings.Contains(r.c.OriginalURL(), prefix) {
 			if len(layouts) == 0 && app.config.ViewsLayout != "" {

@@ -767,3 +767,39 @@ func Test_App_Mount_PreservesNestedCustomConstraint(t *testing.T) {
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, StatusNotFound, resp.StatusCode, "Status code")
 }
+
+// Test_App_Mount_CarriesDomainMount verifies that mounting an app which has a
+// domain mount of its own carries that mount's config along, host check
+// included.
+func Test_App_Mount_CarriesDomainMount(t *testing.T) {
+	t.Parallel()
+
+	micro := New(Config{
+		ErrorHandler: func(c Ctx, _ error) error {
+			return c.Status(596).SendString("micro error")
+		},
+	})
+	micro.Get("/doe", func(_ Ctx) error {
+		return errors.New("boom")
+	})
+
+	sub := New()
+	sub.Domain("api.example.com").Use("/v1", micro)
+
+	app := New()
+	app.Use("/john", sub)
+
+	req := httptest.NewRequest(MethodGet, "/john/v1/doe", http.NoBody)
+	req.Host = "api.example.com"
+	resp, err := app.Test(req)
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, 596, resp.StatusCode, "Status code")
+
+	// The route does not match on another host, and the sub-app's error
+	// handler must not answer for it either.
+	req = httptest.NewRequest(MethodGet, "/john/v1/doe", http.NoBody)
+	req.Host = "www.example.com"
+	resp, err = app.Test(req)
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, StatusNotFound, resp.StatusCode, "Status code")
+}

@@ -5,6 +5,7 @@
 package fiber
 
 import (
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -2481,6 +2482,195 @@ func Test_Domain_UseMountCustomConstraint(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, want, resp.StatusCode, path)
 	}
+}
+
+// Test_Domain_UseMountPerHostConfig verifies that two sub-apps mounted at the
+// same path on different domains each keep their own error handler and view
+// engine. Keyed by path alone they would displace each other.
+func Test_Domain_UseMountPerHostConfig(t *testing.T) {
+	t.Parallel()
+
+	engineA := &testTemplateEngine{path: "testdata2"}
+	require.NoError(t, engineA.Load())
+
+	engineB := &testTemplateEngine{path: "testdata3"}
+	require.NoError(t, engineB.Load())
+
+	subA := New(Config{
+		Views: engineA,
+		ErrorHandler: func(c Ctx, _ error) error {
+			return c.Status(591).SendString("a error")
+		},
+	})
+	subA.Get("/boom", func(_ Ctx) error {
+		return errors.New("boom")
+	})
+	subA.Get("/view", func(c Ctx) error {
+		return c.Render("bruh.tmpl", Map{})
+	})
+
+	subB := New(Config{
+		Views: engineB,
+		ErrorHandler: func(c Ctx, _ error) error {
+			return c.Status(592).SendString("b error")
+		},
+	})
+	subB.Get("/boom", func(_ Ctx) error {
+		return errors.New("boom")
+	})
+	subB.Get("/view", func(c Ctx) error {
+		return c.Render("hello_world.tmpl", Map{"Name": "b"})
+	})
+
+	app := New()
+	app.Domain("a.example.com").Use("/api", subA)
+	app.Domain("b.example.com").Use("/api", subB)
+
+	req := httptest.NewRequest(MethodGet, "/api/boom", http.NoBody)
+	req.Host = "a.example.com"
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, 591, resp.StatusCode)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "a error", string(body))
+
+	req = httptest.NewRequest(MethodGet, "/api/boom", http.NoBody)
+	req.Host = "b.example.com"
+	resp, err = app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, 592, resp.StatusCode)
+	body, err = io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "b error", string(body))
+
+	req = httptest.NewRequest(MethodGet, "/api/view", http.NoBody)
+	req.Host = "a.example.com"
+	resp, err = app.Test(req)
+	require.NoError(t, err)
+	body, err = io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "<h1>I'm Bruh</h1>", string(body))
+
+	req = httptest.NewRequest(MethodGet, "/api/view", http.NoBody)
+	req.Host = "b.example.com"
+	resp, err = app.Test(req)
+	require.NoError(t, err)
+	body, err = io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "<h1>Hello b!</h1>", string(body))
+}
+
+// Test_Domain_UseMountConfigIgnoredOnOtherHost verifies that a domain-mounted
+// sub-app's error handler does not answer for a host its pattern rejects.
+func Test_Domain_UseMountConfigIgnoredOnOtherHost(t *testing.T) {
+	t.Parallel()
+
+	subApp := New(Config{
+		ErrorHandler: func(c Ctx, _ error) error {
+			return c.Status(593).SendString("sub error")
+		},
+	})
+	subApp.Get("/mounted", func(_ Ctx) error {
+		return errors.New("boom")
+	})
+
+	app := New()
+	app.Domain("api.example.com").Use("/api", subApp)
+	// A route of the parent, under the same prefix, on every host.
+	app.Get("/api/own", func(_ Ctx) error {
+		return errors.New("boom")
+	})
+
+	req := httptest.NewRequest(MethodGet, "/api/own", http.NoBody)
+	req.Host = "www.example.com"
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, StatusInternalServerError, resp.StatusCode)
+
+	// On a matching host the sub-app still governs its own prefix.
+	req = httptest.NewRequest(MethodGet, "/api/mounted", http.NoBody)
+	req.Host = "api.example.com"
+	resp, err = app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, 593, resp.StatusCode)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "sub error", string(body))
+}
+
+// Test_Domain_UseMountNestedErrorHandler verifies that the deepest mount
+// covering the request wins, nested apps included.
+func Test_Domain_UseMountNestedErrorHandler(t *testing.T) {
+	t.Parallel()
+
+	child := New(Config{
+		ErrorHandler: func(c Ctx, _ error) error {
+			return c.Status(594).SendString("child error")
+		},
+	})
+	child.Get("/boom", func(_ Ctx) error {
+		return errors.New("boom")
+	})
+
+	subApp := New(Config{
+		ErrorHandler: func(c Ctx, _ error) error {
+			return c.Status(595).SendString("sub error")
+		},
+	})
+	subApp.Use("/v1", child)
+	subApp.Get("/boom", func(_ Ctx) error {
+		return errors.New("boom")
+	})
+
+	app := New()
+	app.Domain("api.example.com").Use("/api", subApp)
+
+	for path, want := range map[string]int{"/api/v1/boom": 594, "/api/boom": 595} {
+		req := httptest.NewRequest(MethodGet, path, http.NoBody)
+		req.Host = "api.example.com"
+		resp, err := app.Test(req)
+		require.NoError(t, err)
+		require.Equal(t, want, resp.StatusCode, path)
+	}
+}
+
+// Test_Domain_UseMountLeavesSubAppIntact verifies that mounting a sub-app on a
+// domain does not flatten the sub-app's own mounts, so it stays usable on its
+// own afterwards.
+func Test_Domain_UseMountLeavesSubAppIntact(t *testing.T) {
+	t.Parallel()
+
+	child := New()
+	child.Get("/x", func(c Ctx) error {
+		return c.SendString("nested x")
+	})
+
+	subApp := New()
+	subApp.Use("/v1", child)
+
+	getIndex := subApp.methodInt(MethodGet)
+	routesBefore := len(subApp.stack[getIndex])
+
+	app := New()
+	app.Domain("api.example.com").Use("/api", subApp)
+
+	req := httptest.NewRequest(MethodGet, "/api/v1/x", http.NoBody)
+	req.Host = "api.example.com"
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, StatusOK, resp.StatusCode)
+
+	require.Len(t, subApp.stack[getIndex], routesBefore, "the sub-app's own stack was rewritten")
+	require.True(t, subApp.stack[getIndex][0].mount, "the sub-app's mount was expanded in place")
+
+	// The sub-app still resolves its own mount when served on its own.
+	resp, err = subApp.Test(httptest.NewRequest(MethodGet, "/v1/x", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, StatusOK, resp.StatusCode)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "nested x", string(body))
 }
 
 // Test_Domain_UseMountNestedCycle verifies that cloning a sub-app whose mount

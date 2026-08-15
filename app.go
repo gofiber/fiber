@@ -20,6 +20,7 @@ import (
 	"net/http/httputil"
 	"os"
 	"reflect"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -901,9 +902,19 @@ func (app *App) ReloadViews() error {
 	app.mutex.Lock()
 	defer app.mutex.Unlock()
 
-	apps := map[string]*App{"": app}
+	apps := []*App{app}
 	if app.mountFields != nil {
-		apps = app.mountFields.appList
+		apps = apps[:0]
+		for _, subApp := range app.mountFields.appList {
+			apps = append(apps, subApp)
+		}
+		// Domain mounts are kept out of appList, but their view engines still
+		// have to be reloaded.
+		for i := range app.mountFields.domainAppList {
+			if mount := &app.mountFields.domainAppList[i]; !slices.Contains(apps, mount.app) {
+				apps = append(apps, mount.app)
+			}
+		}
 	}
 
 	var reloaded bool
@@ -1585,7 +1596,7 @@ func (app *App) init() *App {
 // the app, which if not set is the DefaultErrorHandler.
 func (app *App) ErrorHandler(ctx Ctx, err error) error {
 	// Fast path: no mounted sub-apps, so no prefix lookup is needed
-	if len(app.mountFields.appListKeys) == 0 {
+	if len(app.mountFields.appListKeys) == 0 && len(app.mountFields.domainAppList) == 0 {
 		return app.config.ErrorHandler(ctx, err)
 	}
 
@@ -1606,6 +1617,25 @@ func (app *App) ErrorHandler(ctx Ctx, err error) error {
 			if mountedPrefixParts <= parts {
 				if subApp.configured.ErrorHandler != nil {
 					mountedErrHandler = subApp.config.ErrorHandler
+				}
+
+				mountedPrefixParts = parts
+			}
+		}
+	}
+
+	// Sub-apps mounted on a domain answer only for a matching host, so their
+	// error handler cannot be picked by path alone. They are considered after
+	// the plain mounts, which lets a domain mount win a tie on path depth: it
+	// matched the host too, so it is the more specific of the two.
+	for i := range app.mountFields.domainAppList {
+		mount := &app.mountFields.domainAppList[i]
+		normalizedPrefix := utils.AddTrailingSlashString(mount.path)
+
+		if mount.path != "" && strings.HasPrefix(normalizedPath, normalizedPrefix) && mount.matchesHost(ctx.Hostname()) {
+			if parts := mount.prefixParts(); mountedPrefixParts <= parts {
+				if mount.app.configured.ErrorHandler != nil {
+					mountedErrHandler = mount.app.config.ErrorHandler
 				}
 
 				mountedPrefixParts = parts

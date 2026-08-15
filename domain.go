@@ -442,8 +442,14 @@ func (d *domainRouter) mount(prefix string, subApp *App) Router {
 	// route answers HEAD with 405 where a plain mount answers 200.
 	wrapperApp.ensureAutoHeadRoutes()
 
-	// Hold the sub-app while its app list is read: App.mount writes that map
-	// under the same lock, so a concurrent mount on the sub-app would race.
+	// Register the sub-app, and every app it has mounted, as domain mounts of
+	// the parent. They are kept out of appList so that their ErrorHandler and
+	// view engine only answer for hosts this domain matches, and so that two
+	// sub-apps mounted at the same path on different domains do not displace
+	// each other.
+	//
+	// Hold the sub-app while its lists are read: App.mount writes them under
+	// the same lock, so a concurrent mount on the sub-app would race.
 	subApp.mutex.Lock()
 	d.app.mutex.Lock()
 	// Support for configs of mounted-apps and sub-mounted-apps
@@ -451,7 +457,23 @@ func (d *domainRouter) mount(prefix string, subApp *App) Router {
 		path := getGroupPath(mountPath, mountedPrefixes)
 
 		subAppInstance.mountFields.mountPath = path
-		d.app.mountFields.appList[path] = subAppInstance
+		d.app.mountFields.domainAppList = append(d.app.mountFields.domainAppList, domainMountedApp{
+			app:      subAppInstance,
+			path:     path,
+			matchers: []domainMatcher{d.matcher},
+		})
+	}
+	// Apps the sub-app itself domain-mounted keep their own patterns as well:
+	// a request has to satisfy both to reach them.
+	for _, mount := range subApp.mountFields.domainAppList {
+		path := getGroupPath(mountPath, mount.path)
+
+		mount.app.mountFields.mountPath = path
+		d.app.mountFields.domainAppList = append(d.app.mountFields.domainAppList, domainMountedApp{
+			app:      mount.app,
+			path:     path,
+			matchers: append(slices.Clone(mount.matchers), d.matcher),
+		})
 	}
 	d.app.mutex.Unlock()
 	subApp.mutex.Unlock()

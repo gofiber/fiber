@@ -6,6 +6,7 @@ package fiber
 
 import (
 	"sort"
+	"strings"
 	"sync"
 	"sync/atomic"
 
@@ -18,6 +19,11 @@ type mountFields struct {
 	appList map[string]*App
 	// Prefix of app if it was mounted
 	mountPath string
+	// Apps mounted through a domain router. They are kept out of appList
+	// because that map is keyed by path alone: two apps mounted at the same
+	// path for different hosts would displace each other, and a lookup would
+	// answer for hosts the domain pattern rejects.
+	domainAppList []domainMountedApp
 	// Ordered keys of apps (sorted by key length for Render)
 	appListKeys []string
 	// guards one-time generation of appListKeys
@@ -26,6 +32,36 @@ type mountFields struct {
 	subAppsRoutesAdded sync.Once
 	// check mounted sub-apps
 	subAppsProcessed sync.Once
+}
+
+// domainMountedApp is a sub-app mounted through a domain router. Its config —
+// the ErrorHandler and the view engine — applies only to requests whose
+// hostname matches every domain pattern the app was mounted behind.
+type domainMountedApp struct {
+	app *App
+	// path is the full mount path, as appList would key it
+	path string
+	// matchers are the patterns of the domain routers this app was mounted
+	// behind, outermost last. A request has to satisfy all of them.
+	matchers []domainMatcher
+}
+
+// matchesHost reports whether hostname satisfies every domain pattern the app
+// was mounted behind.
+func (m *domainMountedApp) matchesHost(hostname string) bool {
+	for i := range m.matchers {
+		if matched, _ := m.matchers[i].match(hostname); !matched {
+			return false
+		}
+	}
+
+	return true
+}
+
+// prefixParts counts the path segments of the mount path, so the deepest mount
+// covering a request can be picked the same way appList entries are.
+func (m *domainMountedApp) prefixParts() int {
+	return strings.Count(m.path, "/") + 1
 }
 
 // Create empty mountFields instance
@@ -55,6 +91,7 @@ func (app *App) mount(prefix string, subApp *App) Router {
 		subApp.mountFields.mountPath = path
 		app.mountFields.appList[path] = subApp
 	}
+	app.mountFields.domainAppList = appendDomainMounts(app.mountFields.domainAppList, subApp.mountFields.domainAppList, prefix)
 	app.mutex.Unlock()
 
 	// register mounted group
@@ -87,6 +124,7 @@ func (grp *Group) mount(prefix string, subApp *App) Router {
 		subApp.mountFields.mountPath = path
 		grp.app.mountFields.appList[path] = subApp
 	}
+	grp.app.mountFields.domainAppList = appendDomainMounts(grp.app.mountFields.domainAppList, subApp.mountFields.domainAppList, groupPath)
 	grp.app.mutex.Unlock()
 
 	// register mounted group
@@ -101,6 +139,47 @@ func (grp *Group) mount(prefix string, subApp *App) Router {
 	return grp
 }
 
+// domainMountedViews returns the view engine owner among the app's domain
+// mounts for this request: the deepest mount whose path is part of the URL,
+// whose patterns match the host, and which configures views. It returns nil
+// when none does, leaving the plain mounts to answer.
+func (app *App) domainMountedViews(c Ctx) *App {
+	var (
+		viewsApp   *App
+		matchParts int
+	)
+
+	for i := range app.mountFields.domainAppList {
+		mount := &app.mountFields.domainAppList[i]
+		if mount.path == "" || mount.app.config.Views == nil {
+			continue
+		}
+		if !strings.Contains(c.OriginalURL(), mount.path) || !mount.matchesHost(c.Hostname()) {
+			continue
+		}
+
+		if parts := mount.prefixParts(); parts > matchParts {
+			viewsApp, matchParts = mount.app, parts
+		}
+	}
+
+	return viewsApp
+}
+
+// appendDomainMounts re-registers the domain mounts of a sub-app on the app it
+// is being mounted on, moving their paths under prefix. Their domain patterns
+// travel with them: the host still has to match for their config to apply.
+func appendDomainMounts(dst, mounts []domainMountedApp, prefix string) []domainMountedApp {
+	for _, mount := range mounts {
+		path := getGroupPath(prefix, mount.path)
+
+		mount.app.mountFields.mountPath = path
+		dst = append(dst, domainMountedApp{app: mount.app, path: path, matchers: mount.matchers})
+	}
+
+	return dst
+}
+
 // MountPath returns the route pattern where the current app instance was mounted as a sub-application.
 func (app *App) MountPath() string {
 	return app.mountFields.mountPath
@@ -108,7 +187,7 @@ func (app *App) MountPath() string {
 
 // hasMountedApps Checks if there are any mounted apps in the current application.
 func (app *App) hasMountedApps() bool {
-	return len(app.mountFields.appList) > 1
+	return len(app.mountFields.appList) > 1 || len(app.mountFields.domainAppList) > 0
 }
 
 // mountStartupProcess Handles the startup process of mounted apps by appending sub-app routes, generating app list keys, and processing sub-app routes.
