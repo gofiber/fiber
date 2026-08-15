@@ -1196,6 +1196,21 @@ func (app *App) routesForMethod(method string) []*Route {
 	return app.stack[m]
 }
 
+// hasEndpoint reports whether the app registered an endpoint at path for the
+// given method. Middleware and mount placeholders do not count: they match a
+// prefix rather than name a route of their own.
+func (app *App) hasEndpoint(method, path string) bool {
+	normalized := app.normalizePath(path)
+
+	for _, route := range app.routesForMethod(method) {
+		if !route.use && !route.mount && route.path == normalized {
+			return true
+		}
+	}
+
+	return false
+}
+
 func (app *App) method(methodInt int) string {
 	// methodInt is -1 for methods not registered in RequestMethods (the
 	// router responds 501 before dispatch, but contexts acquired directly

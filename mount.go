@@ -185,8 +185,14 @@ func (app *App) mountSkipsAutoHead(path string) bool {
 		if mountPath == "" || !strings.HasPrefix(normalizedPath, utils.AddTrailingSlashString(mountPath)) {
 			return false
 		}
+		if !mounted.config.DisableHeadAutoRegister && mounted.methodInt(MethodHead) >= 0 {
+			return false
+		}
 
-		return mounted.config.DisableHeadAutoRegister || mounted.methodInt(MethodHead) < 0
+		// Covering the path is not enough to own the route: a mount at "/"
+		// covers every path this app registered itself. Ask the mounted app
+		// whether the route is one of its own.
+		return mounted.hasEndpoint(MethodGet, strings.TrimPrefix(path, utils.TrimRight(mountPath, '/')))
 	}
 
 	for mountPath, mounted := range app.mountFields.appList {

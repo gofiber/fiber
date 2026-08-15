@@ -2792,13 +2792,18 @@ func Test_Domain_UseMountSelf(t *testing.T) {
 	})
 
 	done := make(chan struct{})
+
+	var mountPanic any
 	go func() {
 		defer close(done)
+		defer func() { mountPanic = recover() }()
+
 		app.Domain("api.example.com").Use("/self", app)
 	}()
 
 	select {
 	case <-done:
+		require.Nil(t, mountPanic, "mounting an app on its own domain router panicked")
 	case <-time.After(10 * time.Second):
 		require.FailNow(t, "mounting an app on its own domain router did not return")
 	}

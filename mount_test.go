@@ -835,3 +835,29 @@ func Test_App_Mount_AutoHeadKeepsMiddleware(t *testing.T) {
 		require.Empty(t, resp.Header.Get("X-Secret"))
 	}
 }
+
+// Test_App_Mount_RootMountKeepsParentAutoHead verifies that a mounted app which
+// does not serve HEAD only withholds automatic HEAD routes from its own routes.
+// A mount at "/" covers every path, and the app above keeps its own.
+func Test_App_Mount_RootMountKeepsParentAutoHead(t *testing.T) {
+	t.Parallel()
+
+	micro := New(Config{RequestMethods: []string{MethodGet, MethodPost}})
+	micro.Get("/doe", func(c Ctx) error {
+		return c.SendString("doe")
+	})
+
+	app := New()
+	app.Get("/own", func(c Ctx) error {
+		return c.SendString("own")
+	})
+	app.Use("/", micro)
+
+	resp, err := app.Test(httptest.NewRequest(MethodHead, "/own", http.NoBody))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, StatusOK, resp.StatusCode, "the app's own route keeps its HEAD route")
+
+	resp, err = app.Test(httptest.NewRequest(MethodHead, "/doe", http.NoBody))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, StatusMethodNotAllowed, resp.StatusCode, "the mounted app serves no HEAD")
+}
