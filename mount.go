@@ -293,11 +293,10 @@ func domainMountRender(owner domainOwner) (*App, string) { //nolint:gocritic // 
 // does — the inheritance an ordinarily nested mount gets from the app it sits
 // in. Mounts at the owner's own depth are siblings that did not serve the
 // request, and configure nothing on its behalf.
+//
+// There has to be an owner: nothing outranks a plain mount without one, so a
+// caller reaches this having established it.
 func domainMountConfig(owner domainOwner, want func(*App) bool) *App {
-	if owner.app == nil {
-		return nil
-	}
-
 	if want(owner.app) {
 		return owner.app
 	}
