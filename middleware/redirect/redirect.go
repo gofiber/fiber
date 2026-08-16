@@ -1068,10 +1068,8 @@ func (s *literalScanner) width() int {
 // optional returns the width a run of n alternatives reaches once the atom it
 // ends in, itself atom alternatives wide, may be left out.
 func optional(n, atom int) int {
-	if atom < 1 {
-		return clampWidth(n)
-	}
-	return clampWidth(n / atom * (atom + 1))
+	w := max(atom, 1)
+	return clampWidth(n / w * (w + 1))
 }
 
 // classWidth returns how many bytes the character class at the current position
