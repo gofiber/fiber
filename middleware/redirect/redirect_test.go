@@ -2697,7 +2697,7 @@ func Test_Redirect_OptionalAtomWidensARule(t *testing.T) {
 // Test_Redirect_UnboundedRepetitionIsWidest covers the quantifier that runs on:
 // "/p/[ab]+" matches paths of every length, where "/p/[a][ab]?" matches three,
 // yet reading "+" as a single atom left the unbounded rule the narrower of the
-// two once the "?" widened its neighbour.
+// two once the "?" widened its neighbor.
 func Test_Redirect_UnboundedRepetitionIsWidest(t *testing.T) {
 	t.Parallel()
 
