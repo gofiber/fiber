@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/gofiber/utils/v2"
 	"github.com/stretchr/testify/require"
 )
 
@@ -108,7 +109,7 @@ func Test_Docs_MiddlewarePageSections(t *testing.T) {
 	// An exception for a page that no longer exists would silently excuse that
 	// page the day someone adds it back.
 	for _, exception := range middlewareDocExceptions {
-		require.NotEmpty(t, strings.TrimSpace(exception.reason),
+		require.NotEmpty(t, utils.TrimSpace(exception.reason),
 			"middlewareDocExceptions covers %s without a reason", exception.file)
 		require.True(t, pages[exception.file],
 			"middlewareDocExceptions covers %s (%s) but that page does not exist",
