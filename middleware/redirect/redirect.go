@@ -961,9 +961,9 @@ func (s *literalScanner) widestBranch() int {
 		case c == '{':
 			// The bounds are syntax, and counting their digits and comma put
 			// "/api/a{0,1}" three bytes ahead of the exact "/api/a" it shadowed.
-			var zeroMin bool
-			s.i, zeroMin, _ = skipQuantifier(s.rule, s.i)
-			if zeroMin {
+			var bounds quantifierBounds
+			s.i, bounds = skipQuantifier(s.rule, s.i)
+			if bounds.allowsNone {
 				n -= atom
 			}
 			atom = 0
@@ -1055,13 +1055,13 @@ func (s *literalScanner) width() int {
 			// "/p/[ab]+" ahead of the three paths "/p/[a][ab]?" matches.
 			n, atom = maxPatternWidth, 1
 		case '{':
-			var zeroMin, unbounded bool
-			s.i, zeroMin, unbounded = skipQuantifier(s.rule, s.i)
+			var bounds quantifierBounds
+			s.i, bounds = skipQuantifier(s.rule, s.i)
 			switch {
-			case unbounded:
+			case bounds.runsOn:
 				// "{2,}" runs on the same way "+" does.
 				n = maxPatternWidth
-			case zeroMin:
+			case bounds.allowsNone:
 				n = optional(n, atom)
 			}
 			atom = 1
@@ -1216,8 +1216,8 @@ func quantifierAllowsNone(rule string, i int) bool {
 		return false
 	}
 
-	_, zeroMin, _ := skipQuantifier(rule, i)
-	return zeroMin
+	_, bounds := skipQuantifier(rule, i)
+	return bounds.allowsNone
 }
 
 // smallerBranch folds one more branch's count into the smallest seen, where -1
@@ -1229,18 +1229,28 @@ func smallerBranch(smallest, n int) int {
 	return smallest
 }
 
-// skipQuantifier returns the index just past the "{m,n}" beginning at i, whether
-// it allows none of what it follows, and whether it names no upper bound at all.
-// An unclosed "{" is an ordinary byte to the regexp parser, so it is left as one
-// here: the index only moves past it.
-func skipQuantifier(rule string, i int) (int, bool, bool) {
+// quantifierBounds is what a "{m,n}" says about the atom it follows: whether it
+// allows none of it, as "{0,3}" does, and whether it lets it run without end, as
+// "{2,}" does. "{0,}" is both.
+type quantifierBounds struct {
+	allowsNone bool
+	runsOn     bool
+}
+
+// skipQuantifier returns the index just past the "{m,n}" beginning at i and what
+// it bounds. An unclosed "{" is an ordinary byte to the regexp parser, so it is
+// left as one here: the index only moves past it.
+func skipQuantifier(rule string, i int) (int, quantifierBounds) {
 	brace := strings.IndexByte(rule[i:], '}')
 	if brace < 0 {
-		return i + 1, false, false
+		return i + 1, quantifierBounds{}
 	}
 
 	body := rule[i+1 : i+brace]
-	return i + brace + 1, body == "0" || strings.HasPrefix(body, "0,"), strings.HasSuffix(body, ",")
+	return i + brace + 1, quantifierBounds{
+		allowsNone: body == "0" || strings.HasPrefix(body, "0,"),
+		runsOn:     strings.HasSuffix(body, ","),
+	}
 }
 
 // posixNameEnd returns the index just past the POSIX class name beginning at i
