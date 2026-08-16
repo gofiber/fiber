@@ -898,13 +898,11 @@ func (app *App) RegisterCustomBinder(customBinder CustomBinder) {
 // ReloadViews reloads the configured view engine by invoking its Load method.
 // It returns an error if no view engine is configured or if reloading fails.
 func (app *App) ReloadViews() error {
-	app.mutex.Lock()
-	defer app.mutex.Unlock()
-
-	apps := map[string]*App{"": app}
-	if app.mountFields != nil {
-		apps = app.mountFields.appList
-	}
+	// Walks the mount metadata rather than the flattened app list: a domain
+	// mount nested inside a plain one only reaches the root's list once the
+	// app has started, and ReloadViews may be called before that. The walk
+	// takes each app's own lock in turn, so this must not hold one itself.
+	apps := app.mountedApps()
 
 	var reloaded bool
 	for _, targetApp := range apps {
@@ -1585,31 +1583,52 @@ func (app *App) init() *App {
 // the app, which if not set is the DefaultErrorHandler.
 func (app *App) ErrorHandler(ctx Ctx, err error) error {
 	// Fast path: no mounted sub-apps, so no prefix lookup is needed
-	if len(app.mountFields.appListKeys) == 0 {
+	if len(app.mountFields.appListKeys) == 0 && len(app.mountFields.domainAppList) == 0 {
 		return app.config.ErrorHandler(ctx, err)
 	}
 
 	var (
 		mountedErrHandler  ErrorHandler
+		mountedErrApp      *App
 		mountedPrefixParts int
 	)
 
-	normalizedPath := utils.AddTrailingSlashString(ctx.Path())
-
 	for _, prefix := range app.mountFields.appListKeys {
 		subApp := app.mountFields.appList[prefix]
-		normalizedPrefix := utils.AddTrailingSlashString(prefix)
 
-		if prefix != "" && strings.HasPrefix(normalizedPath, normalizedPrefix) {
+		if app.mountCoversPath(prefix, ctx.Path()) {
 			// Count slashes instead of splitting - more efficient
-			parts := strings.Count(prefix, "/") + 1
+			parts := mountDepth(prefix)
 			if mountedPrefixParts <= parts {
 				if subApp.configured.ErrorHandler != nil {
 					mountedErrHandler = subApp.config.ErrorHandler
+					mountedErrApp = subApp
 				}
 
 				mountedPrefixParts = parts
 			}
+		}
+	}
+
+	// Sub-apps mounted on a domain answer only for a matching host, so their
+	// error handler cannot be picked by path alone. The owner is considered
+	// after the plain mounts, which lets a domain mount win a tie on path
+	// depth: it matched the host too, so it is the more specific of the two.
+	if owner := app.domainMountOwner(ctx); owner.outranks(mountedPrefixParts) {
+		// A plain mount the owner supersedes did not serve the request, so its
+		// handler is dropped rather than inherited. One enclosing the owner
+		// still does, and an owner configuring no handler of its own inherits
+		// it, as a nested mount inherits the handler of the mount it sits in.
+		//
+		// Unless the mount is one of the apps the owner sits in: a domain
+		// mount at the root of a plain one covers exactly the paths that mount
+		// does, and is as deep as it without being beside it.
+		if owner.supersedes(mountedPrefixParts, mountedErrApp) {
+			mountedErrHandler = nil
+		}
+
+		if handler := domainMountConfig(owner, appHasErrorHandler); handler != nil {
+			mountedErrHandler = handler.config.ErrorHandler
 		}
 	}
 

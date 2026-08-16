@@ -901,9 +901,37 @@ func (r *DefaultRes) Render(name string, bind any, layouts ...string) error {
 
 	rootApp := r.c.app
 	var rendered bool
+
+	// A sub-app mounted on a domain only applies to a matching host, so the
+	// path scan below cannot find it. Rank it against the plain mounts by how
+	// deep its mount path is, so neither borrows the other's engine; a tie
+	// goes to the domain mount, which matched the host as well.
+	domain := rootApp.domainMountOwner(r.c)
+	domainViews, domainLayout := domainMountRender(domain)
+
 	for _, prefix := range slices.Backward(rootApp.mountFields.appListKeys) {
 		app := rootApp.mountFields.appList[prefix]
-		if prefix == "" || strings.Contains(r.c.OriginalURL(), prefix) {
+		if domain.outranks(mountDepth(prefix)) {
+			// The layout applies whether or not the owner brought an engine:
+			// a mount configuring only a layout renders through the engine
+			// above it, exactly as an ordinary one does.
+			if len(layouts) == 0 && domainLayout != "" {
+				layouts = []string{domainLayout}
+			}
+
+			if domainViews != nil {
+				break
+			}
+
+			// With no engine of its own the search goes on above the owner, as
+			// it does for an ordinary mount — but not through a mount the
+			// owner supersedes, which did not serve the request and whose
+			// engine is not the owner's to borrow.
+			if domain.supersedes(mountDepth(prefix), app) {
+				continue
+			}
+		}
+		if prefix == "" || rootApp.mountCoversPath(prefix, r.c.Path()) {
 			if len(layouts) == 0 && app.config.ViewsLayout != "" {
 				layouts = []string{
 					app.config.ViewsLayout,
@@ -930,6 +958,26 @@ func (r *DefaultRes) Render(name string, bind any, layouts ...string) error {
 				break
 			}
 		}
+	}
+
+	// The layout is already settled: the scan above visits the root mount at
+	// worst, which every owner outranks, and applies the owner's layout there.
+	if !rendered && domainViews != nil {
+		if err := func() error {
+			viewsLock := getViewsLock(domainViews.config.Views)
+			viewsLock.RLock()
+			defer viewsLock.RUnlock()
+
+			if err := domainViews.config.Views.Render(buf, name, bind, layouts...); err != nil {
+				return fmt.Errorf("failed to render: %w", err)
+			}
+
+			return nil
+		}(); err != nil {
+			return err
+		}
+
+		rendered = true
 	}
 
 	if !rendered {
