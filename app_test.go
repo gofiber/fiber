@@ -1112,6 +1112,57 @@ func Test_App_GETOnly(t *testing.T) {
 	require.Equal(t, StatusMethodNotAllowed, resp.StatusCode, "Status code")
 }
 
+// go test -run Test_App_GETOnly_Middleware_Status
+func Test_App_GETOnly_Middleware_Status(t *testing.T) {
+	t.Parallel()
+	app := New(Config{
+		GETOnly: true,
+	})
+
+	observed := make(chan int, 1)
+	app.Use(func(c Ctx) error {
+		err := c.Next()
+		observed <- c.Response().StatusCode()
+		return err
+	})
+
+	app.Post("/", func(c Ctx) error {
+		return c.SendString("Hello 👋!")
+	})
+
+	req := httptest.NewRequest(MethodPost, "/", http.NoBody)
+	resp, err := app.Test(req)
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, StatusMethodNotAllowed, resp.StatusCode, "Status code")
+	require.Equal(t, StatusMethodNotAllowed, <-observed, "Status code seen by middleware")
+}
+
+// An ErrorHandler that writes only a body used to answer a transport-refused
+// request with 200. Seeding the status changes that, so pin it.
+// go test -run Test_App_GETOnly_ErrorHandler_WithoutStatus
+func Test_App_GETOnly_ErrorHandler_WithoutStatus(t *testing.T) {
+	t.Parallel()
+	app := New(Config{
+		GETOnly: true,
+		ErrorHandler: func(c Ctx, err error) error {
+			return c.SendString(err.Error())
+		},
+	})
+
+	app.Post("/", func(c Ctx) error {
+		return c.SendString("Hello 👋!")
+	})
+
+	req := httptest.NewRequest(MethodPost, "/", http.NoBody)
+	resp, err := app.Test(req)
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, StatusMethodNotAllowed, resp.StatusCode, "Status code")
+
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "Method Not Allowed", string(body), "Body")
+}
+
 func Test_App_Use_Params_Group(t *testing.T) {
 	t.Parallel()
 	app := New()
