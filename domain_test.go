@@ -3796,6 +3796,40 @@ func Test_Domain_UseMountAncestryIsStable(t *testing.T) {
 	}
 }
 
+// Test_Domain_UseMountLayoutStopsAtEngine verifies that a mount rendering
+// through an engine of its own takes no layout from the mount enclosing it, as
+// an ordinary mount does not: the scan stops at the first engine covering the
+// request either way.
+func Test_Domain_UseMountLayoutStopsAtEngine(t *testing.T) {
+	t.Parallel()
+
+	childEngine := &testTemplateEngine{}
+	require.NoError(t, childEngine.Load())
+
+	subEngine := &testTemplateEngine{}
+	require.NoError(t, subEngine.Load())
+
+	child := New(Config{Views: childEngine}) // an engine, and no layout
+	child.Get("/view", func(c Ctx) error {
+		return c.Render("index.tmpl", Map{"Title": "child"})
+	})
+
+	subApp := New(Config{Views: subEngine, ViewsLayout: "main.tmpl"})
+	subApp.Use("/child", child)
+
+	app := New()
+	app.Domain("api.example.com").Use("/api", subApp)
+
+	req := httptest.NewRequest(MethodGet, "/api/child/view", http.NoBody)
+	req.Host = "api.example.com"
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, StatusOK, resp.StatusCode)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "<h1>child</h1>", string(body))
+}
+
 // Test_Domain_UseMountInheritsDomainViews verifies the same inheritance for the
 // view engine: a child of a domain-mounted app renders through that app's
 // engine rather than the root's.

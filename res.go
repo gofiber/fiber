@@ -907,8 +907,7 @@ func (r *DefaultRes) Render(name string, bind any, layouts ...string) error {
 	// deep its mount path is, so neither borrows the other's engine; a tie
 	// goes to the domain mount, which matched the host as well.
 	domain := rootApp.domainMountOwner(r.c)
-	domainViews := domainMountConfig(domain, appHasViews)
-	domainLayout := domainMountConfig(domain, appHasViewsLayout)
+	domainViews, domainLayout := domainMountRender(domain)
 
 	for _, prefix := range slices.Backward(rootApp.mountFields.appListKeys) {
 		app := rootApp.mountFields.appList[prefix]
@@ -916,8 +915,8 @@ func (r *DefaultRes) Render(name string, bind any, layouts ...string) error {
 			// The layout applies whether or not the owner brought an engine:
 			// a mount configuring only a layout renders through the engine
 			// above it, exactly as an ordinary one does.
-			if len(layouts) == 0 && domainLayout != nil {
-				layouts = []string{domainLayout.config.ViewsLayout}
+			if len(layouts) == 0 && domainLayout != "" {
+				layouts = []string{domainLayout}
 			}
 
 			if domainViews != nil {

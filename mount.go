@@ -252,13 +252,41 @@ func (o domainOwner) ties(plainDepth int) bool {
 	return o.app != nil && plainDepth == o.depth
 }
 
-// appHasErrorHandler, appHasViews and appHasViewsLayout are the settings a
-// request inherits from the domain mounts it was reached through.
+// appHasErrorHandler is the setting a request inherits from the domain mounts
+// it was reached through.
 func appHasErrorHandler(app *App) bool { return app.configured.ErrorHandler != nil }
 
-func appHasViews(app *App) bool { return app.config.Views != nil }
+// domainMountRender resolves what a domain mount contributes to a render: the
+// nearest app configuring a view engine, and the layout of the nearest app at
+// or below that one which configures a layout.
+//
+// The layout search stops where rendering does. An app with an engine of its
+// own renders through it and takes no layout from further out, exactly as the
+// scan over the ordinary mounts stops at the first engine it covers; only when
+// nothing below configures an engine does the layout travel outward with the
+// search for one.
+func domainMountRender(owner domainOwner) (*App, string) { //nolint:gocritic // unnamedResult: named returns conflict with nonamedreturns linter
+	if owner.app == nil {
+		return nil, ""
+	}
 
-func appHasViewsLayout(app *App) bool { return app.config.ViewsLayout != "" }
+	layout := owner.app.config.ViewsLayout
+	if owner.app.config.Views != nil {
+		return owner.app, layout
+	}
+
+	for _, ancestor := range slices.Backward(owner.ancestors) {
+		if layout == "" {
+			layout = ancestor.config.ViewsLayout
+		}
+
+		if ancestor.config.Views != nil {
+			return ancestor, layout
+		}
+	}
+
+	return nil, layout
+}
 
 // domainMountConfig returns the app a setting is taken from: the owner when it
 // configures one, and otherwise the deepest domain mount enclosing it that
