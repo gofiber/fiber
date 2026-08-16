@@ -1233,7 +1233,7 @@ func smallerBranch(smallest, n int) int {
 // it allows none of what it follows, and whether it names no upper bound at all.
 // An unclosed "{" is an ordinary byte to the regexp parser, so it is left as one
 // here: the index only moves past it.
-func skipQuantifier(rule string, i int) (end int, zeroMin, unbounded bool) {
+func skipQuantifier(rule string, i int) (int, bool, bool) {
 	brace := strings.IndexByte(rule[i:], '}')
 	if brace < 0 {
 		return i + 1, false, false
