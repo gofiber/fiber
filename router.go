@@ -985,7 +985,7 @@ func (app *App) customRequestHandler(rctx *fasthttp.RequestCtx) {
 	}
 }
 
-func (app *App) addPrefixToRoute(prefix string, route *Route, regexHandler any, customConstraints ...CustomConstraint) *Route {
+func (app *App) addPrefixToRoute(prefix string, route *Route, regexHandler any, customConstraints ...CustomConstraint) {
 	prefixedPath := getGroupPath(prefix, route.Path)
 	prettyPath := prefixedPath
 	// Case-sensitive routing, all to lowercase
@@ -1000,9 +1000,17 @@ func (app *App) addPrefixToRoute(prefix string, route *Route, regexHandler any, 
 	route.Path = prefixedPath
 	route.path = RemoveEscapeChar(prettyPath)
 	route.routeParser = parseRoute(prettyPath, regexHandler, customConstraints...)
-	// The prefix may add parameters of its own, so the names are re-derived from
-	// the prefixed path exactly as register() derives them.
-	route.Params = parseRoute(prefixedPath, regexHandler, customConstraints...).params
+	// A prefix can introduce parameters of its own — a sub-app mounted at
+	// "/v1/:version" is prefixing every one of its routes with one. Params
+	// decides whether the router matches a route by pattern or by string
+	// equality, so it has to be rebuilt along with the parser or the route
+	// stops matching entirely. Read from the unprettified path, as register
+	// does, so parameter names keep the case they were registered with.
+	if prettyPath == prefixedPath {
+		route.Params = route.routeParser.params
+	} else {
+		route.Params = parseRoute(prefixedPath, regexHandler, customConstraints...).params
+	}
 	route.root = false
 	route.star = false
 	route.caseSensitive = app.config.CaseSensitive
@@ -1010,10 +1018,18 @@ func (app *App) addPrefixToRoute(prefix string, route *Route, regexHandler any, 
 	// path and parser a filter is derived from, so refresh it here too rather
 	// than depend on a caller marking the routes refreshed.
 	route.buildPrefixFilter()
-
-	return route
 }
 
+// copyRoute clones a route, deliberately leaving group behind: a clone belongs
+// to whichever app it is being placed in, and Name() would otherwise prefix it
+// with the group name of the app it came from. Callers that do want the group —
+// ensureAutoHeadRoutesLocked, which copies a route in place — assign it back.
+//
+// The omission is load-bearing for a mount placeholder, whose target app lives
+// in group.app: carrying it over would let a clone of the placeholder expand
+// the mounted app's handlers verbatim, which for a domain mount means serving
+// them on every host. domainRouter.cloneRoutesForDomain expands the mount
+// instead, so no placeholder is ever cloned.
 func (app *App) copyRoute(route *Route) *Route {
 	copied := app.copyRouteValue(route)
 	return &copied
@@ -1346,7 +1362,7 @@ func (app *App) deleteRoute(methods []string, matchFunc func(r *Route) bool) {
 	app.mutex.Lock()
 	defer app.mutex.Unlock()
 
-	removedUseRoutes := make(map[string]struct{})
+	removedUseRoutes := make(map[autoHeadKey]struct{})
 
 	for _, method := range methods {
 		// Uppercase HTTP methods
@@ -1381,7 +1397,7 @@ func (app *App) deleteRoute(methods []string, matchFunc func(r *Route) bool) {
 			// Decrement global handler count. In middleware routes, only decrement once
 			// Keyed by domain as well as path: same-path middleware on two
 			// domains are separate registrations, each counted once.
-			useKey := autoHeadKey(route)
+			useKey := app.autoHeadKey(route)
 			if _, ok := removedUseRoutes[useKey]; (route.use && slices.Equal(methods, app.config.RequestMethods) && !ok) || !route.use {
 				if route.use {
 					removedUseRoutes[useKey] = struct{}{}
@@ -1600,13 +1616,30 @@ func (app *App) ensureAutoHeadRoutes() {
 	app.fireOnRouteHooks(twins)
 }
 
-// autoHeadKey identifies a route for auto-HEAD twinning. The domain is part of
-// the identity: same-path routes on different domains each need their own twin.
-func autoHeadKey(route *Route) string {
-	if route.domain == "" {
-		return route.path
+// autoHeadKey identifies the route an automatic HEAD companion would collide
+// with.
+type autoHeadKey struct {
+	// owner is set only where routes are host-scoped, and is what keeps the
+	// HEAD route of one mounted app from standing in for another app's GET
+	owner *App
+	// domain separates same-path routes registered on different domain
+	// routers, which each need their own twin
+	domain string
+	path   string
+}
+
+// autoHeadKey returns the key route is deduplicated under. Where an app's
+// routes are host-scoped — the wrapper a domain mount builds — a HEAD route
+// only covers the GET routes of the same mounted app: on a hostname that app's
+// pattern rejects it declines, leaving a GET route of another one there without
+// a companion to answer for it.
+func (app *App) autoHeadKey(route *Route) autoHeadKey {
+	key := autoHeadKey{domain: route.domain, path: route.path}
+	if app.mountFields.hostScopedRoutes {
+		key.owner = app.routeOwner(route)
 	}
-	return route.domain + "\x00" + route.path
+
+	return key
 }
 
 // ensureAutoHeadRoutesLocked creates the missing auto-HEAD twins and returns
@@ -1623,14 +1656,12 @@ func (app *App) ensureAutoHeadRoutesLocked() []*Route {
 	}
 
 	headStack := app.stack[headIndex]
-	// Keyed by domain as well as path: each domain's GET needs its own twin, and
-	// keying on the path alone left the second domain answering 404.
-	existing := make(map[string]struct{}, len(headStack))
+	existing := make(map[autoHeadKey]struct{}, len(headStack))
 	for _, route := range headStack {
 		if route.mount || route.use {
 			continue
 		}
-		existing[autoHeadKey(route)] = struct{}{}
+		existing[app.autoHeadKey(route)] = struct{}{}
 	}
 
 	if len(app.stack[getIndex]) == 0 {
@@ -1646,7 +1677,10 @@ func (app *App) ensureAutoHeadRoutesLocked() []*Route {
 		if route.mount || route.use {
 			continue
 		}
-		if _, ok := existing[autoHeadKey(route)]; ok {
+		if _, ok := existing[app.autoHeadKey(route)]; ok {
+			continue
+		}
+		if app.skipsAutoHeadFor(route) {
 			continue
 		}
 
@@ -1654,6 +1688,13 @@ func (app *App) ensureAutoHeadRoutesLocked() []*Route {
 		headRoute.group = route.group
 		headRoute.Method = MethodHead
 		headRoute.autoHead = true
+		// The synthesized route belongs to whichever app the GET route came
+		// from, so a HEAD request resolves the same config a GET one does, and
+		// an app re-parsing it later holds it to the same constraints.
+		if owner := app.routeOwner(route); owner != nil {
+			app.markRouteOwner(headRoute, owner)
+		}
+		app.markRouteConstraints(headRoute, app.mountFields.routeConstraints[route])
 		// Twins carry no documentation: the containers are skipped and the scalars
 		// blanked, so nothing exposes a half-documented HEAD route.
 		headRoute.Summary = ""
@@ -1666,7 +1707,7 @@ func (app *App) ensureAutoHeadRoutesLocked() []*Route {
 		// unchanged while still producing an empty body on the wire.
 
 		headStack = append(headStack, headRoute)
-		existing[autoHeadKey(route)] = struct{}{}
+		existing[app.autoHeadKey(route)] = struct{}{}
 		app.hasRoutesRefreshed = true
 		added = true
 		// Snapshot for the onRoute hooks, which run unlocked and must not read the

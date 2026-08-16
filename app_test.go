@@ -2479,6 +2479,42 @@ func Test_App_ReloadViews_MountedViews_MultipleApps(t *testing.T) {
 	require.Equal(t, initialLoadsB+1, viewB.loads)
 }
 
+func Test_App_ReloadViews_MountedViews_ConcurrentMount(t *testing.T) {
+	t.Parallel()
+	view := &countingView{}
+	subApp := New()
+	app := New(Config{Views: view})
+	app.Use("/sub", subApp)
+
+	// The walk down the mount tree reads every app's mount metadata, so it has
+	// to take each app's own lock rather than only the one it started from.
+	initialLoads := view.loads
+
+	var (
+		wg        sync.WaitGroup
+		reloadErr error
+	)
+
+	wg.Go(func() {
+		for range 200 {
+			if err := app.ReloadViews(); err != nil {
+				reloadErr = err
+				return
+			}
+		}
+	})
+
+	wg.Go(func() {
+		for range 200 {
+			subApp.Use("/nested", New())
+		}
+	})
+
+	wg.Wait()
+	require.NoError(t, reloadErr)
+	require.Equal(t, initialLoads+200, view.loads)
+}
+
 func Test_App_ReloadViews_MountedViews_SharedEngineBlocksSiblingRender(t *testing.T) {
 	t.Parallel()
 
