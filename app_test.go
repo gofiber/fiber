@@ -1112,6 +1112,57 @@ func Test_App_GETOnly(t *testing.T) {
 	require.Equal(t, StatusMethodNotAllowed, resp.StatusCode, "Status code")
 }
 
+// go test -run Test_App_GETOnly_Middleware_Status
+func Test_App_GETOnly_Middleware_Status(t *testing.T) {
+	t.Parallel()
+	app := New(Config{
+		GETOnly: true,
+	})
+
+	observed := make(chan int, 1)
+	app.Use(func(c Ctx) error {
+		err := c.Next()
+		observed <- c.Response().StatusCode()
+		return err
+	})
+
+	app.Post("/", func(c Ctx) error {
+		return c.SendString("Hello 👋!")
+	})
+
+	req := httptest.NewRequest(MethodPost, "/", http.NoBody)
+	resp, err := app.Test(req)
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, StatusMethodNotAllowed, resp.StatusCode, "Status code")
+	require.Equal(t, StatusMethodNotAllowed, <-observed, "Status code seen by middleware")
+}
+
+// An ErrorHandler that writes only a body used to answer a transport-refused
+// request with 200. Seeding the status changes that, so pin it.
+// go test -run Test_App_GETOnly_ErrorHandler_WithoutStatus
+func Test_App_GETOnly_ErrorHandler_WithoutStatus(t *testing.T) {
+	t.Parallel()
+	app := New(Config{
+		GETOnly: true,
+		ErrorHandler: func(c Ctx, err error) error {
+			return c.SendString(err.Error())
+		},
+	})
+
+	app.Post("/", func(c Ctx) error {
+		return c.SendString("Hello 👋!")
+	})
+
+	req := httptest.NewRequest(MethodPost, "/", http.NoBody)
+	resp, err := app.Test(req)
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, StatusMethodNotAllowed, resp.StatusCode, "Status code")
+
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "Method Not Allowed", string(body), "Body")
+}
+
 func Test_App_Use_Params_Group(t *testing.T) {
 	t.Parallel()
 	app := New()
@@ -1489,6 +1540,70 @@ func Test_App_ShutdownWithTimeout(t *testing.T) {
 			t.Fatalf("unexpected err %v. Expecting %v", err, context.DeadlineExceeded)
 		}
 	}
+}
+
+// A streamed body is written after the handler has already returned, so the
+// shutdown tests above, which block inside the handler, say nothing about it.
+// Reported as #3370 against v3.0.0-beta.4: a download was cut off instead of
+// being allowed to finish within the timeout.
+func Test_App_ShutdownWithTimeout_WaitsForStreamedBody(t *testing.T) {
+	t.Parallel()
+
+	const chunks = 5
+
+	streaming := make(chan struct{})
+	finished := make(chan struct{})
+
+	app := New()
+	app.Get("/stream", func(c Ctx) error {
+		c.Response().SetBodyStreamWriter(func(w *bufio.Writer) {
+			defer close(finished)
+			for i := range chunks {
+				_, err := w.WriteString("chunk")
+				assert.NoError(t, err)
+				assert.NoError(t, w.Flush())
+				if i == 0 {
+					close(streaming)
+				}
+				time.Sleep(50 * time.Millisecond)
+			}
+		})
+		return nil
+	})
+
+	ln := fasthttputil.NewInmemoryListener()
+	serverReady := make(chan struct{})
+	go func() {
+		close(serverReady)
+		assert.NoError(t, app.Listener(ln))
+	}()
+	<-serverReady
+
+	conn, err := ln.Dial()
+	require.NoError(t, err)
+	_, err = conn.Write([]byte("GET /stream HTTP/1.1\r\nHost: example.com\r\n\r\n"))
+	require.NoError(t, err)
+
+	// Shut down mid-stream, which is the point: the handler is long gone by now.
+	<-streaming
+	// Sampled where shutdown returns, not after the read below: reading the whole
+	// body first closes finished, and the check would then hold either way.
+	streamDone := make(chan bool, 1)
+	go func() {
+		assert.NoError(t, app.ShutdownWithTimeout(10*time.Second))
+		select {
+		case <-finished:
+			streamDone <- true
+		default:
+			streamDone <- false
+		}
+	}()
+
+	var resp fasthttp.Response
+	require.NoError(t, resp.Read(bufio.NewReader(conn)))
+	require.Equal(t, strings.Repeat("chunk", chunks), string(resp.Body()))
+
+	require.True(t, <-streamDone, "shutdown returned while the body was still being written")
 }
 
 func Test_App_ShutdownWithContext(t *testing.T) {
@@ -2477,6 +2592,42 @@ func Test_App_ReloadViews_MountedViews_MultipleApps(t *testing.T) {
 
 	require.Equal(t, initialLoadsA+1, viewA.loads)
 	require.Equal(t, initialLoadsB+1, viewB.loads)
+}
+
+func Test_App_ReloadViews_MountedViews_ConcurrentMount(t *testing.T) {
+	t.Parallel()
+	view := &countingView{}
+	subApp := New()
+	app := New(Config{Views: view})
+	app.Use("/sub", subApp)
+
+	// The walk down the mount tree reads every app's mount metadata, so it has
+	// to take each app's own lock rather than only the one it started from.
+	initialLoads := view.loads
+
+	var (
+		wg        sync.WaitGroup
+		reloadErr error
+	)
+
+	wg.Go(func() {
+		for range 200 {
+			if err := app.ReloadViews(); err != nil {
+				reloadErr = err
+				return
+			}
+		}
+	})
+
+	wg.Go(func() {
+		for range 200 {
+			subApp.Use("/nested", New())
+		}
+	})
+
+	wg.Wait()
+	require.NoError(t, reloadErr)
+	require.Equal(t, initialLoads+200, view.loads)
 }
 
 func Test_App_ReloadViews_MountedViews_SharedEngineBlocksSiblingRender(t *testing.T) {

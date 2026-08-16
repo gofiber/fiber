@@ -271,7 +271,7 @@ app.Get("/test", func(c fiber.Ctx) error {
 A named route belongs to this application, so what comes back is always a path
 on this origin: a `params` value that would open an authority — `"/evil.com"`
 or `"\evil.com"` under a `/*` route — is kept as the path segment the route
-asked for. [`Route.URL`](./app.md#url) and
+asked for. [`Route.URL`](./app.md#getroute) and
 [`Redirect().Route`](./redirect.md#route) return the same answer for the same
 input, so it does not matter which one puts it in a `Location` header or an
 `href`.

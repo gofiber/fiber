@@ -1183,6 +1183,19 @@ func (app *App) methodInt(s string) int {
 	return slices.Index(app.config.RequestMethods, s)
 }
 
+// routesForMethod returns the routes registered for an HTTP method, or nil if
+// the app does not serve it. Use this instead of indexing another app's stack
+// with your own method index: RequestMethods is configurable, so two apps'
+// tables can differ in both order and length.
+func (app *App) routesForMethod(method string) []*Route {
+	m := app.methodInt(method)
+	if m < 0 || m >= len(app.stack) {
+		return nil
+	}
+
+	return app.stack[m]
+}
+
 func (app *App) method(methodInt int) string {
 	// methodInt is -1 for methods not registered in RequestMethods (the
 	// router responds 501 before dispatch, but contexts acquired directly

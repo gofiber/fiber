@@ -272,6 +272,63 @@ Run tests with the following `curl` command:
 curl -X POST -H "Content-Type: multipart/form-data" -F "name=john" -F "pass=doe" -F 'avatar=@filename' localhost:3000
 ```
 
+#### Nested and Array Form Fields
+
+A form body is a flat list of key/value pairs, so structure lives in the field name. The notations below work for both `application/x-www-form-urlencoded` and `multipart/form-data`, and identically for [query parameters](#query).
+
+| Notation           | Example                      | Binds to                             |
+| ------------------ | ---------------------------- | ------------------------------------ |
+| Repeated key       | `colors=red&colors=blue`     | slice of scalars                     |
+| Empty brackets     | `colors[]=red&colors[]=blue` | slice of scalars                     |
+| Bracket field      | `address[city]=Berlin`       | field of a nested struct             |
+| Dot field          | `address.city=Berlin`        | field of a nested struct             |
+| Indexed brackets   | `items[0][sku]=A1`           | field of a struct slice element      |
+| Dot index          | `items.0.sku=A1`             | field of a struct slice element      |
+| Mixed index/field  | `items[0].sku=A1`            | field of a struct slice element      |
+
+Bracket and dot notation are interchangeable and can be nested to any depth:
+
+```go title="Struct"
+type Address struct {
+    City string `form:"city"`
+    Zip  string `form:"zip"`
+}
+
+type Item struct {
+    SKU string `form:"sku"`
+    Qty int    `form:"qty"`
+}
+
+type Order struct {
+    Colors  []string `form:"colors"`
+    Address Address  `form:"address"`
+    Items   []Item   `form:"items"`
+}
+```
+
+```bash title="curl"
+curl -X POST http://localhost:3000/orders \
+  --data "colors[]=red&colors[]=blue" \
+  --data "address[city]=Berlin&address.zip=10115" \
+  --data "items[0][sku]=A1&items[0].qty=2&items.1.sku=B2&items.1.qty=5"
+```
+
+```go title="Result"
+Order{
+    Colors:  []string{"red", "blue"},
+    Address: Address{City: "Berlin", Zip: "10115"},
+    Items:   []Item{{SKU: "A1", Qty: 2}, {SKU: "B2", Qty: 5}},
+}
+```
+
+:::caution
+An index only ever addresses a struct field. `colors[0]=red` and `colors.0=red` do **not** fill a `[]string`. With the default decoder the value is dropped and no error is returned; after `SetParserDecoder(ParserConfig{IgnoreUnknownKeys: false})` the same input fails with `schema: invalid path "colors.0"`. Use a repeated key or `colors[]` for slices of scalars.
+:::
+
+:::note
+The struct field tag never contains the brackets or the index. `colors[]`, `colors[0]` and `colors.0` all resolve against `form:"colors"`.
+:::
+
 ### JSON
 
 Binds the request JSON body to a struct.
@@ -512,6 +569,7 @@ Fiber supports several formats for passing array values via query parameters. Th
 | Comma-separated          | `?colors=red,blue`                             | **Yes**                             |
 | Indexed bracket notation | `?posts[0][title]=Hello&posts[1][title]=World` | No                                  |
 | Nested bracket notation  | `?preferences[tags]=golang,api`                | No (comma splitting: **Yes**)       |
+| Dot notation             | `?user.name=Alice&posts.0.title=Hello`         | No                                  |
 
 ##### Repeated Key
 
@@ -653,6 +711,32 @@ curl "http://localhost:3000/api?preferences[tags]=golang,api"
 :::note
 Pointer fields (`*[]string`, `*Preferences`) let you distinguish between a missing parameter (`nil`) and an empty one. When the parameter is present, Fiber allocates the pointer automatically.
 :::
+
+##### Dot Notation
+
+Nested fields and indexes have a dot equivalent, and the two can be mixed within one request. Empty brackets are the exception, `colors[]` has no dot form:
+
+```text
+GET /api?user.name=Alice&posts.0.title=Hello&posts[1].title=World
+```
+
+```go title="Struct"
+type Post struct {
+    Title string `query:"title"`
+}
+
+type User struct {
+    Name string `query:"name"`
+}
+
+type Request struct {
+    User  User   `query:"user"`
+    Posts []Post `query:"posts"`
+}
+// Result: User = {Name: "Alice"}, Posts = [{Title: "Hello"}, {Title: "World"}]
+```
+
+Query and form binding share the same decoder, so the full notation reference in [Nested and Array Form Fields](#nested-and-array-form-fields) applies here too, including the caveat that an index never fills a slice of scalars.
 
 ### RespHeader
 

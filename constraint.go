@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"reflect"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -171,6 +172,27 @@ func findConstraintHandler(name string, regexHandler any, customs []CustomConstr
 		}
 	}
 	return nil
+}
+
+// mergeCustomConstraints adds the constraints of a mounted app to the app its
+// routes are being expanded into.
+//
+// Expanding a mount re-parses the sub-app's routes against the expanding app,
+// so without this a constraint the sub-app registered stops resolving the
+// moment its routes move up a level — findConstraintHandler returns nil and
+// analyseParameterPart drops the constraint, leaving a route that silently
+// validates nothing. A name the expanding app already defines keeps its own
+// constraint, which is what its own routes were parsed with.
+func mergeCustomConstraints(dst, src []CustomConstraint) []CustomConstraint {
+	for _, constraint := range src {
+		if slices.ContainsFunc(dst, func(existing CustomConstraint) bool { return existing.Name() == constraint.Name() }) {
+			continue
+		}
+
+		dst = append(dst, constraint)
+	}
+
+	return dst
 }
 
 // newConstraint creates a Constraint with the given handler and data,
