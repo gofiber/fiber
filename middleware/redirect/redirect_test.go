@@ -2622,6 +2622,59 @@ func Test_Redirect_FewerWildcardsWin(t *testing.T) {
 	require.Equal(t, "/safe/xx?secret=top", resp.Header.Get("Location"))
 	require.Equal(t, 2, wildcardRank("/p/*a*b"))
 	require.Equal(t, 1, wildcardRank("/p/*ab"))
+	// Both expand to a single alternative, so the width leaves them tied and
+	// the count is all that stands between them.
+	require.Equal(t, patternWidth("/p/*a*b"), patternWidth("/p/*ab"))
+}
+
+// Test_Redirect_WildcardCountYieldsToWidth covers the pair the count alone gets
+// backwards: "/p/([a]*|[c]*)" carries two wildcards to "/p/[a-d]*"'s one and yet
+// matches half as many paths, so reading the count before the width handed every
+// "/p/a..." request to the broader rule.
+func Test_Redirect_WildcardCountYieldsToWidth(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Use(New(Config{
+		Rules: map[string]string{
+			`/p/([a]*|[c]*)`: "/narrow",
+			`/p/[a-d]*`:      "/broad",
+		},
+		StatusCode: fiber.StatusFound,
+	}))
+
+	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/p/axyz", http.NoBody)
+	require.NoError(t, err)
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusFound, resp.StatusCode)
+	require.Equal(t, "/narrow", resp.Header.Get("Location"))
+
+	// Every earlier measure ties, and the wildcard count points the wrong way.
+	require.Equal(t, literalPrefixLen(`/p/[a-d]*`), literalPrefixLen(`/p/([a]*|[c]*)`))
+	require.Equal(t, literalLen(`/p/[a-d]*`), literalLen(`/p/([a]*|[c]*)`))
+	require.Equal(t, carriesWildcard(`/p/[a-d]*`), carriesWildcard(`/p/([a]*|[c]*)`))
+	require.Greater(t, wildcardRank(`/p/([a]*|[c]*)`), wildcardRank(`/p/[a-d]*`))
+	require.Less(t, patternWidth(`/p/([a]*|[c]*)`), patternWidth(`/p/[a-d]*`))
+}
+
+// Test_Redirect_UnterminatedQuoteRuleIsRejected pins what an unclosed "\Q" does:
+// Go reads it as quoting the rest of the rule, which swallows the ")" anchoring
+// the key, so the rule never compiles and never reaches the ordering the count
+// decides. The count is still carried past the quoted tail, since the wildcards
+// standing before it are expanded either way.
+func Test_Redirect_UnterminatedQuoteRuleIsRejected(t *testing.T) {
+	t.Parallel()
+
+	require.Panics(t, func() {
+		New(Config{
+			Rules:      map[string]string{`/p/*\Qab*`: "/safe"},
+			StatusCode: fiber.StatusFound,
+		})
+	})
+
+	require.Equal(t, 1, wildcardRank(`/p/*\Qab*`))
+	require.Equal(t, 2, wildcardRank(`/p/*\Qab\E*`))
 }
 
 // Test_Redirect_HexEscapeOutranksAClass covers "\x{61}", which names the one
