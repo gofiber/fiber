@@ -69,8 +69,11 @@ func New(config ...Config) fiber.Handler {
 		// broader than any rule that does not, however much either pins:
 		// "/api/*" must not shadow the "/api/[ab]" it ties with. Ranked on its
 		// own rather than counted as a width, which saturates — two rules whose
-		// widths both reached the clamp would tie again.
-		if d := cmp.Compare(wildcardRank(a), wildcardRank(b)); d != 0 {
+		// widths both reached the clamp would tie again. Only whether a rule
+		// carries one is read here: a second wildcard says nothing about what
+		// the rest of the rule pins, so counting them ahead of the width put
+		// the broad "/p/[a-d]*" in front of the narrow "/p/([a]*|[c]*)".
+		if d := cmp.Compare(carriesWildcard(a), carriesWildcard(b)); d != 0 {
 			return d
 		}
 		// Two rules pinning the same amount are separated by how much else they
@@ -78,6 +81,13 @@ func New(config ...Config) fiber.Handler {
 		// wider than the exact "/x" it ties with. Two wildcard rules land here
 		// too, separated by everything beside the wildcard they share.
 		if d := cmp.Compare(patternWidth(a), patternWidth(b)); d != 0 {
+			return d
+		}
+		// Whatever the width leaves tied is separated by how many wildcards the
+		// rules spend it on, since a width stands for none of them: "/p/*a*b"
+		// and "/p/*ab" both expand to a single alternative, and the key order
+		// below put the broader two-wildcard rule first.
+		if d := cmp.Compare(wildcardRank(a), wildcardRank(b)); d != 0 {
 			return d
 		}
 		return cmp.Compare(a, b)
@@ -1082,13 +1092,24 @@ func clampWidth(n int) int {
 	return min(n, maxPatternWidth)
 }
 
-// wildcardRank returns the number of Fiber "*" wildcards in a rule, so rules
-// with fewer wildcards sort first.
+// carriesWildcard returns 1 for a rule holding at least one Fiber "*" wildcard
+// and 0 for one that holds none, so the wildcard rule sorts second.
 //
 // The wildcard is expanded to "(.*)" before the key is compiled, so it matches a
 // run of bytes of any length — a breadth no width can stand for, since a width
 // saturates and two saturated rules tie. Ranked here, the width goes on
-// measuring what separates two rules that carry the same number.
+// measuring what separates two rules that both carry one. How many each carries
+// is read after the width, by wildcardRank: a second wildcard widens a rule but
+// says nothing about what the rest of it pins, so a rule holding two can still
+// be the narrower of the pair.
+func carriesWildcard(rule string) int {
+	return min(wildcardRank(rule), 1)
+}
+
+// wildcardRank returns the number of Fiber "*" wildcards in a rule, which is the
+// last thing separating two that the width leaves tied: "/p/*a*b" and "/p/*ab"
+// both expand to a single alternative, so nothing but the count stands between
+// the broader rule and the narrower one it would shadow.
 //
 // A star inside a character class or a "\Q ... \E" span names itself instead:
 // the expansion leaves "[(.*)]" a class and "\Q(.*)\E" literal text.
@@ -1099,12 +1120,14 @@ func wildcardRank(rule string) int {
 		case '\\':
 			if i+1 < len(rule) && rule[i+1] == 'Q' {
 				// Quoted to the matching "\E", or to the end of the rule when
-				// there is none, which is how Go's parser reads one.
+				// there is none, which is how Go's parser reads one. Only the
+				// quoted tail is given up: the wildcards standing before it are
+				// still expanded, so the count already reached is what holds.
 				if end := strings.Index(rule[i+2:], `\E`); end >= 0 {
 					i += 2 + end + 2
 					continue
 				}
-				return 0
+				return rank
 			}
 			size, _ := escapeSpan(rule, i)
 			i += size
