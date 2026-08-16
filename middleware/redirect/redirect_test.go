@@ -2653,7 +2653,7 @@ func Test_Redirect_WildcardCountYieldsToWidth(t *testing.T) {
 	// Every earlier measure ties, and the wildcard count points the wrong way.
 	require.Equal(t, literalPrefixLen(`/p/[a-d]*`), literalPrefixLen(`/p/([a]*|[c]*)`))
 	require.Equal(t, literalLen(`/p/[a-d]*`), literalLen(`/p/([a]*|[c]*)`))
-	require.Equal(t, carriesWildcard(`/p/[a-d]*`), carriesWildcard(`/p/([a]*|[c]*)`))
+	require.Equal(t, carriesRun(`/p/[a-d]*`), carriesRun(`/p/([a]*|[c]*)`))
 	require.Greater(t, wildcardRank(`/p/([a]*|[c]*)`), wildcardRank(`/p/[a-d]*`))
 	require.Less(t, patternWidth(`/p/([a]*|[c]*)`), patternWidth(`/p/[a-d]*`))
 }
@@ -2688,7 +2688,6 @@ func Test_Redirect_OptionalAtomWidensARule(t *testing.T) {
 	require.Less(t, patternWidth(`/p/*[a]*`), patternWidth(`/p/*a?`))
 	require.Equal(t, 2, patternWidth("/p/a?"))
 	require.Equal(t, 2, patternWidth("/p/a{0,1}"))
-	require.Equal(t, 1, patternWidth("/p/a{1,2}"))
 	require.Equal(t, 27, patternWidth("/p/[a-z]?"))
 	// An escape names an atom too, and it is the one the "?" takes back.
 	require.Equal(t, 2, patternWidth(`/p/\.?`))
@@ -2697,7 +2696,8 @@ func Test_Redirect_OptionalAtomWidensARule(t *testing.T) {
 // Test_Redirect_UnboundedRepetitionIsWidest covers the quantifier that runs on:
 // "/p/[ab]+" matches paths of every length, where "/p/[a][ab]?" matches three,
 // yet reading "+" as a single atom left the unbounded rule the narrower of the
-// two once the "?" widened its neighbor.
+// two once the "?" widened its neighbor. Ranked beside the wildcard, since that
+// is the other way a rule runs on, and the width goes on measuring the atom.
 func Test_Redirect_UnboundedRepetitionIsWidest(t *testing.T) {
 	t.Parallel()
 
@@ -2717,11 +2717,102 @@ func Test_Redirect_UnboundedRepetitionIsWidest(t *testing.T) {
 	require.Equal(t, fiber.StatusFound, resp.StatusCode)
 	require.Equal(t, "/narrow", resp.Header.Get("Location"))
 
-	// A run without an end saturates; one with an upper bound is counted.
-	require.Equal(t, maxPatternWidth, patternWidth(`/p/[ab]+`))
-	require.Equal(t, maxPatternWidth, patternWidth(`/p/[a]{2,}`))
+	// A run without an end is ranked, not measured, so the width is left to
+	// separate two rules that both run on.
+	require.Equal(t, 1, carriesRun(`/p/[ab]+`))
+	require.Equal(t, 1, carriesRun(`/p/[a]{2,}`))
+	require.Equal(t, 0, carriesRun(`/p/[a][ab]?`))
+	require.Equal(t, 0, carriesRun(`/p/[a]{2,3}`))
+	require.Less(t, patternWidth(`/p/[z]+`), patternWidth(`/p/[a-z]+`))
+
+	// Every count a bounded quantifier permits is a set of paths of its own,
+	// and they add: "{2,3}" matches "aa" and "aaa".
 	require.Equal(t, 3, patternWidth(`/p/[a][ab]?`))
-	require.Equal(t, 1, patternWidth(`/p/[a]{2,3}`))
+	require.Equal(t, 6, patternWidth(`/p/[ab]{1,2}`))
+	require.Equal(t, 2, patternWidth(`/p/[a]{2,3}`))
+	require.Equal(t, 1, patternWidth(`/p/[a]{2}`))
+	// Braces spelling no number are literal text, and a range whose upper bound
+	// is missing or below its lower one bounds nothing either: what they follow
+	// is left measured as it stands, which is the one occurrence it names.
+	require.Equal(t, 1, patternWidth(`/p/{id}`))
+	require.Equal(t, patternWidth(`/p/[ab]`), patternWidth(`/p/[ab]{1,x}`))
+	require.Equal(t, patternWidth(`/p/[ab]`), patternWidth(`/p/[ab]{3,1}`))
+}
+
+// Test_Redirect_FiniteRepetitionIsCounted covers the bounded quantifier the
+// optional width alone got backwards: "/p/[ab]{1,2}" matches six paths to the
+// three "/p/[a][ab]?" matches, and counting only the absent atom left the wider
+// rule the narrower by this measure, taking "/p/a" from the rule that pins it.
+func Test_Redirect_FiniteRepetitionIsCounted(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Use(New(Config{
+		Rules: map[string]string{
+			`/p/[a][ab]?`:  "/narrow",
+			`/p/[ab]{1,2}`: "/broad",
+		},
+		StatusCode: fiber.StatusFound,
+	}))
+
+	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/p/a", http.NoBody)
+	require.NoError(t, err)
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusFound, resp.StatusCode)
+	require.Equal(t, "/narrow", resp.Header.Get("Location"))
+}
+
+// Test_Redirect_UnboundedRulesKeepTheirBreadth covers two rules that both run
+// on: "/p/[z]+" pins the one byte "/p/[a-z]+" leaves to any letter, so the width
+// has to go on measuring the atom the quantifier repeats.
+func Test_Redirect_UnboundedRulesKeepTheirBreadth(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Use(New(Config{
+		Rules: map[string]string{
+			`/p/[z]+`:   "/narrow",
+			`/p/[a-z]+`: "/broad",
+		},
+		StatusCode: fiber.StatusFound,
+	}))
+
+	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/p/z", http.NoBody)
+	require.NoError(t, err)
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusFound, resp.StatusCode)
+	require.Equal(t, "/narrow", resp.Header.Get("Location"))
+}
+
+// Test_Redirect_EscapedByteIsOneMember covers the class escape that spells one
+// byte rather than a set: "[\.]" lists the dot alone, and counting it as a set
+// put it behind the "[.-/]" range that contains it.
+func Test_Redirect_EscapedByteIsOneMember(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Use(New(Config{
+		Rules: map[string]string{
+			`/p/[\.]`:  "/narrow",
+			`/p/[.-/]`: "/broad",
+		},
+		StatusCode: fiber.StatusFound,
+	}))
+
+	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/p/.", http.NoBody)
+	require.NoError(t, err)
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusFound, resp.StatusCode)
+	require.Equal(t, "/narrow", resp.Header.Get("Location"))
+
+	// One byte named, however it is spelled; a set only when it stands for one.
+	require.Equal(t, 1, patternWidth(`/p/[\.]`))
+	require.Equal(t, 1, patternWidth(`/p/[\x61]`))
+	require.Equal(t, 2, patternWidth(`/p/[.-/]`))
+	require.Equal(t, setMemberWidth, patternWidth(`/p/[\d]`))
 }
 
 // Test_Redirect_SetMemberOutweighsAListedByte covers a class whose member stands

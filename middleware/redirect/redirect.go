@@ -65,15 +65,16 @@ func New(config ...Config) fiber.Handler {
 		if d := cmp.Compare(literalLen(b), literalLen(a)); d != 0 {
 			return d
 		}
-		// A wildcard matches a run of any length, so a rule holding one is
-		// broader than any rule that does not, however much either pins:
-		// "/api/*" must not shadow the "/api/[ab]" it ties with. Ranked on its
-		// own rather than counted as a width, which saturates — two rules whose
-		// widths both reached the clamp would tie again. Only whether a rule
-		// carries one is read here: a second wildcard says nothing about what
-		// the rest of the rule pins, so counting them ahead of the width put
-		// the broad "/p/[a-d]*" in front of the narrow "/p/([a]*|[c]*)".
-		if d := cmp.Compare(carriesWildcard(a), carriesWildcard(b)); d != 0 {
+		// A wildcard matches a run of any length, and so does a "+" or a
+		// "{2,}", so a rule holding one is broader than any rule whose every
+		// position is bounded, however much either pins: "/api/*" must not
+		// shadow the "/api/[ab]" it ties with. Ranked on its own rather than
+		// counted as a width, which saturates — two rules whose widths both
+		// reached the clamp would tie again. Only whether a rule carries a run
+		// is read here: a second wildcard says nothing about what the rest of
+		// the rule pins, so counting them ahead of the width put the broad
+		// "/p/[a-d]*" in front of the narrow "/p/([a]*|[c]*)".
+		if d := cmp.Compare(carriesRun(a), carriesRun(b)); d != 0 {
 			return d
 		}
 		// Two rules pinning the same amount are separated by how much else they
@@ -1014,6 +1015,11 @@ func patternWidth(rule string) int {
 // width is patternWidth from the current position to the end of the rule or to
 // the ")" closing the group beginning there. The alternatives of a sequence
 // multiply and those of an alternation add, so a group counts wherever it sits.
+//
+// A quantifier that runs on — "+", or "{2,}" — is no count of alternatives at
+// all and is left unmeasured here, carriesRun having already sorted the rule
+// behind every bounded one. The width goes on measuring the atom it repeats,
+// which is what separates "/p/[z]+" from the "/p/[a-z]+" that contains it.
 func (s *literalScanner) width() int {
 	total, n := 0, 1
 	// atom is what the construct just read multiplied n by, which a quantifier
@@ -1048,21 +1054,12 @@ func (s *literalScanner) width() int {
 			// An atom that may be absent matches everything it does and one
 			// path more, so "/p/*a?" is wider than the "/p/*a" it ties with —
 			// and wider than "/p/*[a]*", which its wildcard count sorts below.
-			n, atom = optional(n, atom), 1
-		case '+':
-			// One or more, so the run has no end: no count of alternatives
-			// stands for it, and reading it as a single atom put the unbounded
-			// "/p/[ab]+" ahead of the three paths "/p/[a][ab]?" matches.
-			n, atom = maxPatternWidth, 1
+			n, atom = repeated(n, atom, 0, 1), 1
 		case '{':
 			var bounds quantifierBounds
 			s.i, bounds = skipQuantifier(s.rule, s.i)
-			switch {
-			case bounds.runsOn:
-				// "{2,}" runs on the same way "+" does.
-				n = maxPatternWidth
-			case bounds.allowsNone:
-				n = optional(n, atom)
+			if !bounds.runsOn {
+				n = repeated(n, atom, bounds.lo, bounds.hi)
 			}
 			atom = 1
 			continue
@@ -1074,11 +1071,22 @@ func (s *literalScanner) width() int {
 	return clampWidth(total + n)
 }
 
-// optional returns the width a run of n alternatives reaches once the atom it
-// ends in, itself atom alternatives wide, may be left out.
-func optional(n, atom int) int {
+// repeated returns the width a run of n alternatives reaches once the atom it
+// ends in, itself atom alternatives wide, may repeat lo to hi times. Each count
+// the quantifier permits is a set of paths of its own and they add: "[ab]{1,2}"
+// matches the two "[ab]" does and the four its pairs spell, where "[a][ab]?"
+// matches three. Counting only whether none was permitted left the wider of the
+// two the narrower by this measure.
+func repeated(n, atom, lo, hi int) int {
 	w := max(atom, 1)
-	return clampWidth(n / w * (w + 1))
+	total, term := 0, 1 // w to the zero, the one path where the atom is absent
+	for k := 0; k <= hi && total < maxPatternWidth; k++ {
+		if k >= lo {
+			total = clampWidth(total + term)
+		}
+		term = clampWidth(term * w)
+	}
+	return clampWidth(n / w * max(total, 1))
 }
 
 // classWidth returns how many bytes the character class at the current position
@@ -1110,8 +1118,14 @@ func (s *literalScanner) classWidth() int {
 		}
 		switch {
 		case rule[j] == '\\':
-			// A class escape stands for a set of its own.
-			span, _ := escapeSpan(rule, j)
+			// A class escape stands for a set of its own — unless it spells one
+			// byte, as "[\.]" does, which is a member like any other: counting
+			// that as a set put it behind the "[.-/]" range containing it.
+			span, pins := escapeSpan(rule, j)
+			if pins {
+				size, j = size+1, j+span
+				break
+			}
 			size, j = size+setMemberWidth, j+span
 		case j+2 < len(rule) && rule[j+1] == '-' && rule[j+2] != ']':
 			if lo, hi := rule[j], rule[j+2]; hi >= lo {
@@ -1150,29 +1164,47 @@ func clampWidth(n int) int {
 	return min(n, maxPatternWidth)
 }
 
-// carriesWildcard returns 1 for a rule holding at least one Fiber "*" wildcard
-// and 0 for one that holds none, so the wildcard rule sorts second.
+// carriesRun returns 1 for a rule matching a run of bytes of any length and 0
+// for one whose every position is bounded, so the rule that runs on sorts second.
 //
-// The wildcard is expanded to "(.*)" before the key is compiled, so it matches a
-// run of bytes of any length — a breadth no width can stand for, since a width
-// saturates and two saturated rules tie. Ranked here, the width goes on
-// measuring what separates two rules that both carry one. How many each carries
-// is read after the width, by wildcardRank: a second wildcard widens a rule but
-// says nothing about what the rest of it pins, so a rule holding two can still
-// be the narrower of the pair.
-func carriesWildcard(rule string) int {
-	return min(wildcardRank(rule), 1)
+// Fiber's "*" is one such run, expanded to "(.*)" before the key is compiled,
+// and a "+" or "{2,}" is another. Their breadth is one no width can stand for,
+// since a width saturates and two saturated rules tie. Ranked here, the width
+// goes on measuring what the rules pin besides the run — which is what separates
+// "/p/[z]+" from the "/p/[a-z]+" containing it, a pair a saturated width left
+// tied for key order to pick apart. How many wildcards a rule carries is read
+// after the width, by wildcardRank: a second wildcard widens a rule but says
+// nothing about what the rest of it pins, so a rule holding two can still be the
+// narrower of the pair.
+func carriesRun(rule string) int {
+	if r := scanRuns(rule); r.wildcards > 0 || r.unbounded {
+		return 1
+	}
+	return 0
 }
 
 // wildcardRank returns the number of Fiber "*" wildcards in a rule, which is the
 // last thing separating two that the width leaves tied: "/p/*a*b" and "/p/*ab"
 // both expand to a single alternative, so nothing but the count stands between
 // the broader rule and the narrower one it would shadow.
+func wildcardRank(rule string) int {
+	return scanRuns(rule).wildcards
+}
+
+// ruleRuns is what a rule matches without bound: the Fiber "*" wildcards it
+// carries, and whether a quantifier lets some atom repeat without end.
+type ruleRuns struct {
+	wildcards int
+	unbounded bool
+}
+
+// scanRuns reads both in one walk, since telling either from the rule means
+// skipping the same classes and quoted spans.
 //
 // A star inside a character class or a "\Q ... \E" span names itself instead:
 // the expansion leaves "[(.*)]" a class and "\Q(.*)\E" literal text.
-func wildcardRank(rule string) int {
-	rank := 0
+func scanRuns(rule string) ruleRuns {
+	runs := ruleRuns{}
 	for i := 0; i < len(rule); {
 		switch rule[i] {
 		case '\\':
@@ -1185,7 +1217,7 @@ func wildcardRank(rule string) int {
 					i += 2 + end + 2
 					continue
 				}
-				return rank
+				return runs
 			}
 			size, _ := escapeSpan(rule, i)
 			i += size
@@ -1194,13 +1226,20 @@ func wildcardRank(rule string) int {
 			s.classWidth() // leaves s.i just past the "]"
 			i = s.i
 		case '*':
-			rank++
+			runs.wildcards++
 			i++
+		case '+':
+			runs.unbounded = true
+			i++
+		case '{':
+			var bounds quantifierBounds
+			i, bounds = skipQuantifier(rule, i)
+			runs.unbounded = runs.unbounded || bounds.runsOn
 		default:
 			i++
 		}
 	}
-	return rank
+	return runs
 }
 
 // quantifierAllowsNone reports whether a quantifier at i lets what precedes it
@@ -1229,28 +1268,53 @@ func smallerBranch(smallest, n int) int {
 	return smallest
 }
 
-// quantifierBounds is what a "{m,n}" says about the atom it follows: whether it
-// allows none of it, as "{0,3}" does, and whether it lets it run without end, as
-// "{2,}" does. "{0,}" is both.
+// quantifierBounds is how many times a "{m,n}" lets the atom before it repeat.
+// runsOn marks the "{2,}" that names no upper bound, whose min and max say
+// nothing; allowsNone is the min of zero read on its own, since that is all the
+// literal length needs of it.
 type quantifierBounds struct {
+	lo, hi     int
 	allowsNone bool
 	runsOn     bool
 }
 
 // skipQuantifier returns the index just past the "{m,n}" beginning at i and what
 // it bounds. An unclosed "{" is an ordinary byte to the regexp parser, so it is
-// left as one here: the index only moves past it.
+// left as one here: the index only moves past it, bounding nothing.
 func skipQuantifier(rule string, i int) (int, quantifierBounds) {
 	brace := strings.IndexByte(rule[i:], '}')
 	if brace < 0 {
-		return i + 1, quantifierBounds{}
+		return i + 1, quantifierBounds{lo: 1, hi: 1}
 	}
 
-	body := rule[i+1 : i+brace]
-	return i + brace + 1, quantifierBounds{
-		allowsNone: body == "0" || strings.HasPrefix(body, "0,"),
-		runsOn:     strings.HasSuffix(body, ","),
+	return i + brace + 1, quantifierRange(rule[i+1 : i+brace])
+}
+
+// quantifierRange reads the body of a "{m,n}". A body spelling no number is no
+// quantifier to Go's parser either — the braces of "{id}" are literal text — so
+// it is read as repeating what it follows exactly once, which is to say as
+// bounding nothing.
+func quantifierRange(body string) quantifierBounds {
+	once := quantifierBounds{lo: 1, hi: 1}
+
+	lo, hi, comma := strings.Cut(body, ",")
+	m, err := strconv.Atoi(lo)
+	if err != nil || m < 0 {
+		return once
 	}
+
+	switch {
+	case !comma:
+		return quantifierBounds{lo: m, hi: m, allowsNone: m == 0}
+	case hi == "":
+		return quantifierBounds{lo: m, allowsNone: m == 0, runsOn: true}
+	}
+
+	n, err := strconv.Atoi(hi)
+	if err != nil || n < m {
+		return once
+	}
+	return quantifierBounds{lo: m, hi: n, allowsNone: m == 0}
 }
 
 // posixNameEnd returns the index just past the POSIX class name beginning at i
