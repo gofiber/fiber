@@ -2690,6 +2690,8 @@ func Test_Redirect_OptionalAtomWidensARule(t *testing.T) {
 	require.Equal(t, 2, patternWidth("/p/a{0,1}"))
 	require.Equal(t, 1, patternWidth("/p/a{1,2}"))
 	require.Equal(t, 27, patternWidth("/p/[a-z]?"))
+	// An escape names an atom too, and it is the one the "?" takes back.
+	require.Equal(t, 2, patternWidth(`/p/\.?`))
 }
 
 // Test_Redirect_PosixClassNamesItsOwnStars covers "[[:alpha:]*]", whose "]"
@@ -2724,6 +2726,9 @@ func Test_Redirect_PosixClassNamesItsOwnStars(t *testing.T) {
 	// A name is one only inside a class: "[:alpha:]" standing on its own is a
 	// class listing those bytes, so the star after it is Fiber's wildcard.
 	require.Equal(t, 1, wildcardRank(`/p/[:alpha:]*`))
+	// A name that never closes is no name, and the star it lists is a member
+	// like any other rather than a wildcard.
+	require.Equal(t, 0, wildcardRank(`/p/[[:alpha*]`))
 }
 
 // Test_Redirect_UnterminatedQuoteRuleIsRejected pins what an unclosed "\Q" does:
