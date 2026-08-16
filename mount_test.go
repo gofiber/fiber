@@ -740,6 +740,73 @@ func (*onlyBarConstraint) Name() string { return "onlybar" }
 
 func (*onlyBarConstraint) Execute(param string, _ ...string) bool { return param == "bar" }
 
+// sameNameFooConstraint and sameNameBarConstraint share a name and accept
+// different values, as two apps mounted side by side are free to do.
+type sameNameFooConstraint struct{}
+
+func (*sameNameFooConstraint) Name() string { return "same" }
+
+func (*sameNameFooConstraint) Execute(param string, _ ...string) bool { return param == "foo" }
+
+type sameNameBarConstraint struct{}
+
+func (*sameNameBarConstraint) Name() string { return "same" }
+
+func (*sameNameBarConstraint) Execute(param string, _ ...string) bool { return param == "bar" }
+
+// Test_App_Mount_SiblingConstraintNames verifies that a constraint binds only
+// the routes of the app that registered it: two apps mounted side by side can
+// name one differently, and the app above them must not hold either to the
+// other's.
+func Test_App_Mount_SiblingConstraintNames(t *testing.T) {
+	t.Parallel()
+
+	// A fresh tree per case: mounting one app on two parents would have the
+	// first expand it before the second cloned it.
+	build := func() *App {
+		handler := func(c Ctx) error { return c.SendString("ok") }
+
+		foo := New()
+		foo.RegisterCustomConstraint(&sameNameFooConstraint{})
+		foo.Get("/:value<same>", handler)
+
+		bar := New()
+		bar.RegisterCustomConstraint(&sameNameBarConstraint{})
+		bar.Get("/:value<same>", handler)
+
+		subApp := New()
+		subApp.Use("/foo", foo)
+		subApp.Use("/bar", bar)
+
+		return subApp
+	}
+
+	plain := New()
+	plain.Use("/sub", build())
+
+	domain := New()
+	domain.Domain("api.example.com").Use("/sub", build())
+
+	want := map[string]int{
+		"/sub/foo/foo": StatusOK,
+		"/sub/foo/bar": StatusNotFound,
+		"/sub/bar/bar": StatusOK,
+		"/sub/bar/foo": StatusNotFound,
+	}
+
+	for path, status := range want {
+		resp, err := plain.Test(httptest.NewRequest(MethodGet, path, http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, status, resp.StatusCode, "plain "+path)
+
+		req := httptest.NewRequest(MethodGet, path, http.NoBody)
+		req.Host = "api.example.com"
+		resp, err = domain.Test(req)
+		require.NoError(t, err)
+		require.Equal(t, status, resp.StatusCode, "domain "+path)
+	}
+}
+
 // Test_App_Mount_PreservesNestedCustomConstraint verifies that a custom
 // constraint registered on an app reached through two mounts still validates.
 // Expanding a mount re-parses the routes against the app above, so the

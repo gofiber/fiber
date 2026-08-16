@@ -34,6 +34,10 @@ type mountFields struct {
 	// resolves its config directly instead of inferring an owner from the host
 	// and the path
 	routeOwners map[*Route]*App
+	// Constraints each cloned route was parsed with, which are the ones of the
+	// apps its path was composed by. Two sibling mounts can name one constraint
+	// differently, and a route is only ever bound by the one its own app has.
+	routeConstraints map[*Route][]CustomConstraint
 	// Ordered keys of apps (sorted by key length for Render)
 	appListKeys []string
 	// guards one-time generation of appListKeys
@@ -599,6 +603,32 @@ func (app *App) markRouteOwner(route *Route, owner *App) {
 	app.mountFields.routeOwners[route] = owner
 }
 
+// markRouteConstraints records the constraints route was parsed with, so the
+// next app to re-parse it uses those rather than a registry merged from every
+// app it happens to have mounted.
+func (app *App) markRouteConstraints(route *Route, constraints []CustomConstraint) {
+	if len(constraints) == 0 {
+		return
+	}
+
+	if app.mountFields.routeConstraints == nil {
+		app.mountFields.routeConstraints = make(map[*Route][]CustomConstraint)
+	}
+
+	app.mountFields.routeConstraints[route] = constraints
+}
+
+// routeConstraintsFor returns the constraints route was parsed with, falling
+// back to those of the app holding it — which is where its own routes get
+// theirs from.
+func (app *App) routeConstraintsFor(route *Route) []CustomConstraint {
+	if recorded, ok := app.mountFields.routeConstraints[route]; ok {
+		return recorded
+	}
+
+	return app.customConstraints
+}
+
 // routeOwner returns the mounted app route was cloned out of, or nil when the
 // route did not come from a mount.
 func (app *App) routeOwner(route *Route) *App {
@@ -761,11 +791,6 @@ func (app *App) processSubAppsRoutes() {
 			// so its constraints have to be resolvable here too.
 			app.customConstraints = mergeCustomConstraints(app.customConstraints, route.group.app.customConstraints)
 
-			// The prefix is this app's, and may name a constraint only this
-			// app knows; the routes are the sub-app's, whose constraints win
-			// where both define a name.
-			constraints := mergeCustomConstraints(slices.Clone(route.group.app.customConstraints), app.customConstraints)
-
 			// A sub-app that registers no automatic HEAD routes of its own
 			// must not be given them here either: its middleware is
 			// registered for the methods it serves, and a HEAD route
@@ -780,8 +805,19 @@ func (app *App) processSubAppsRoutes() {
 				// Clone the sub-app's route
 				subAppRouteClone := app.copyRoute(subAppRoute)
 
+				// The prefix is this app's, and may name a constraint only this
+				// app knows; the route brings the constraints of the apps that
+				// composed its path, and those win where a name is defined
+				// twice. Kept per route: two apps mounted side by side can name
+				// one constraint differently, and neither binds the other.
+				constraints := mergeCustomConstraints(
+					slices.Clone(route.group.app.routeConstraintsFor(subAppRoute)),
+					app.customConstraints,
+				)
+
 				// Add the parent route's path as a prefix to the sub-app's route
 				app.addPrefixToRoute(route.path, subAppRouteClone, route.group.app.config.RegexHandler, constraints...)
+				app.markRouteConstraints(subAppRouteClone, constraints)
 
 				// Carry the sub-app's stance on automatic HEAD routes over to
 				// the clone, so this app's own routes at the same path keep

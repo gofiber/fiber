@@ -581,8 +581,9 @@ func (d *domainRouter) domainRoutes(dst, src *App, walk domainClone) [][]*Route 
 	// configure its own RequestMethods, and the two tables then neither line up
 	// nor have to be the same length.
 	type sourceRoute struct {
-		route *Route
-		owner *App
+		route       *Route
+		owner       *App
+		constraints []CustomConstraint
 	}
 
 	src.mutex.Lock()
@@ -604,7 +605,11 @@ func (d *domainRouter) domainRoutes(dst, src *App, walk domainClone) [][]*Route 
 				owner = src
 			}
 
-			stack[m][i] = sourceRoute{route: src.copyRoute(route), owner: owner}
+			stack[m][i] = sourceRoute{
+				route:       src.copyRoute(route),
+				owner:       owner,
+				constraints: src.routeConstraintsFor(route),
+			}
 		}
 	}
 	dst.customConstraints = mergeCustomConstraints(dst.customConstraints, src.customConstraints)
@@ -640,8 +645,15 @@ func (d *domainRouter) domainRoutes(dst, src *App, walk domainClone) [][]*Route 
 			clonedRoute := source.route
 			// An empty prefix cannot change the path, and re-parsing the route
 			// to reach the same result is the most expensive thing here.
+			// The route brings the constraints of the apps that composed its
+			// path, and those win over the ones collected from the rest of the
+			// tree: two apps mounted side by side can name one constraint
+			// differently, and neither binds the other.
+			constraints := mergeCustomConstraints(slices.Clone(source.constraints), dst.customConstraints)
+			dst.markRouteConstraints(clonedRoute, constraints)
+
 			if walk.prefix != "" {
-				dst.addPrefixToRoute(walk.prefix, clonedRoute, src.config.RegexHandler, src.customConstraints...)
+				dst.addPrefixToRoute(walk.prefix, clonedRoute, src.config.RegexHandler, constraints...)
 			}
 			clonedRoute.Handlers = d.wrapHandlers(clonedRoute.Handlers)
 
