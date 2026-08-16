@@ -932,6 +932,11 @@ func (s *literalScanner) widestBranch() int {
 			}
 			continue
 		case inClass:
+			if end := posixNameEnd(s.rule, s.i); end > s.i {
+				// The "]" of a POSIX name closes the name, not the class.
+				s.i = end
+				continue
+			}
 			// A class matches one byte whatever it lists, so its members pin
 			// nothing: "/api/[a-z]" is no more specific than "/api/[ab]", and
 			// counting them put the broader rule ahead of the narrower one.
@@ -1011,31 +1016,62 @@ func patternWidth(rule string) int {
 // multiply and those of an alternation add, so a group counts wherever it sits.
 func (s *literalScanner) width() int {
 	total, n := 0, 1
+	// atom is what the construct just read multiplied n by, which a quantifier
+	// allowing none of it puts back to add the alternative where it is absent.
+	atom := 1
 	for s.i < len(s.rule) {
 		switch s.rule[s.i] {
 		case '\\':
 			size, _ := escapeSpan(s.rule, s.i)
 			s.i += size
+			atom = 1
 			continue
 		case '[':
-			n = clampWidth(n * s.classWidth())
+			atom = s.classWidth()
+			n = clampWidth(n * atom)
 			continue
 		case '.':
 			// Any byte, so it is the widest single position there is.
-			n = clampWidth(n * 256)
+			atom = 256
+			n = clampWidth(n * atom)
 		case '(':
 			s.i = skipGroupPrefix(s.rule, s.i+1)
-			n = clampWidth(n * s.width())
+			atom = s.width()
+			n = clampWidth(n * atom)
 			continue
 		case ')':
 			s.i++
 			return clampWidth(total + n)
 		case '|':
-			total, n = clampWidth(total+n), 1
+			total, n, atom = clampWidth(total+n), 1, 1
+		case '?':
+			// An atom that may be absent matches everything it does and one
+			// path more, so "/p/*a?" is wider than the "/p/*a" it ties with —
+			// and wider than "/p/*[a]*", which its wildcard count sorts below.
+			n, atom = optional(n, atom), 1
+		case '{':
+			var zeroMin bool
+			s.i, zeroMin = skipQuantifier(s.rule, s.i)
+			if zeroMin {
+				n = optional(n, atom)
+			}
+			atom = 1
+			continue
+		default:
+			atom = 1
 		}
 		s.i++
 	}
 	return clampWidth(total + n)
+}
+
+// optional returns the width a run of n alternatives reaches once the atom it
+// ends in, itself atom alternatives wide, may be left out.
+func optional(n, atom int) int {
+	if atom < 1 {
+		return clampWidth(n)
+	}
+	return clampWidth(n / atom * (atom + 1))
 }
 
 // classWidth returns how many bytes the character class at the current position
@@ -1058,6 +1094,13 @@ func (s *literalScanner) classWidth() int {
 	}
 
 	for j < len(rule) && rule[j] != ']' {
+		if end := posixNameEnd(rule, j); end > j {
+			// A POSIX name stands for a set of its own, counted like a class
+			// escape. Its own "]" is not the class's, and reading one as the
+			// close left the rest of the class scanned as pattern text.
+			size, j = size+1, end
+			continue
+		}
 		switch {
 		case rule[j] == '\\':
 			// A class escape stands for a set of its own, but one is enough to
@@ -1182,6 +1225,21 @@ func skipQuantifier(rule string, i int) (int, bool) {
 
 	body := rule[i+1 : i+end]
 	return i + end + 1, body == "0" || strings.HasPrefix(body, "0,")
+}
+
+// posixNameEnd returns the index just past the POSIX class name beginning at i
+// inside a character class — "[[:alpha:]]" names the letters — or i when nothing
+// there names one. The name carries a "]" of its own, and stopping the class
+// scan at it left the members standing after the name read as pattern text: the
+// stars of "[[:alpha:]*]" counted as wildcards rather than as class members.
+func posixNameEnd(rule string, i int) int {
+	if i+1 >= len(rule) || rule[i] != '[' || rule[i+1] != ':' {
+		return i
+	}
+	if end := strings.Index(rule[i+2:], ":]"); end >= 0 {
+		return i + 2 + end + 2
+	}
+	return i
 }
 
 // skipGroupPrefix returns the index of a group's body, past the "?" section of a

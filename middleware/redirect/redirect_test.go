@@ -2658,6 +2658,74 @@ func Test_Redirect_WildcardCountYieldsToWidth(t *testing.T) {
 	require.Less(t, patternWidth(`/p/([a]*|[c]*)`), patternWidth(`/p/[a-d]*`))
 }
 
+// Test_Redirect_OptionalAtomWidensARule covers the rule an extra wildcard makes
+// look broader than it is: "/p/*[a]*" carries two wildcards to "/p/*a?"'s one,
+// yet the "?" leaves that one matching every path the other pins an "a" in. The
+// width has to see the atom the quantifier takes back, or the count sorts the
+// rule that matches everything first.
+func Test_Redirect_OptionalAtomWidensARule(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Use(New(Config{
+		Rules: map[string]string{
+			`/p/*[a]*`: "/narrow",
+			`/p/*a?`:   "/broad",
+		},
+		StatusCode: fiber.StatusFound,
+	}))
+
+	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/p/a", http.NoBody)
+	require.NoError(t, err)
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusFound, resp.StatusCode)
+	require.Equal(t, "/narrow", resp.Header.Get("Location"))
+
+	// The optional atom is the one measure that separates them, and "{0,1}"
+	// spells the same thing.
+	require.Greater(t, wildcardRank(`/p/*[a]*`), wildcardRank(`/p/*a?`))
+	require.Less(t, patternWidth(`/p/*[a]*`), patternWidth(`/p/*a?`))
+	require.Equal(t, 2, patternWidth("/p/a?"))
+	require.Equal(t, 2, patternWidth("/p/a{0,1}"))
+	require.Equal(t, 1, patternWidth("/p/a{1,2}"))
+	require.Equal(t, 27, patternWidth("/p/[a-z]?"))
+}
+
+// Test_Redirect_PosixClassNamesItsOwnStars covers "[[:alpha:]*]", whose "]"
+// closes the POSIX name rather than the class. Stopping the class scan there
+// read the members standing after the name as pattern text, counting the stars
+// of a one-wildcard rule as three and sorting it behind a broader rule.
+func Test_Redirect_PosixClassNamesItsOwnStars(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Use(New(Config{
+		Rules: map[string]string{
+			`/p/*[[:alpha:]*][[:alpha:]*]`: "/narrow",
+			`/p/*[\pL(.*)A-z]`:             "/broad",
+		},
+		StatusCode: fiber.StatusFound,
+	}))
+
+	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/p/aa", http.NoBody)
+	require.NoError(t, err)
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusFound, resp.StatusCode)
+	require.Equal(t, "/narrow", resp.Header.Get("Location"))
+
+	// One wildcard, and a class counted whole however its members are spelled.
+	require.Equal(t, 1, wildcardRank(`/p/*[[:alpha:]*][[:alpha:]*]`))
+	require.Equal(t, 0, wildcardRank(`/p/[[:alpha:]*]`))
+	require.Equal(t, 2, patternWidth(`/p/[[:alpha:]*]`))
+	// A member standing after the name pins nothing, being a member still.
+	require.Equal(t, 3, literalLen(`/p/[[:alpha:]a]`))
+	// A name is one only inside a class: "[:alpha:]" standing on its own is a
+	// class listing those bytes, so the star after it is Fiber's wildcard.
+	require.Equal(t, 1, wildcardRank(`/p/[:alpha:]*`))
+}
+
 // Test_Redirect_UnterminatedQuoteRuleIsRejected pins what an unclosed "\Q" does:
 // Go reads it as quoting the rest of the rule, which swallows the ")" anchoring
 // the key, so the rule never compiles and never reaches the ordering the count
