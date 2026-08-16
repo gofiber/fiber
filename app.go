@@ -20,7 +20,6 @@ import (
 	"net/http/httputil"
 	"os"
 	"reflect"
-	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -1616,16 +1615,15 @@ func (app *App) ErrorHandler(ctx Ctx, err error) error {
 	// after the plain mounts, which lets a domain mount win a tie on path
 	// depth: it matched the host too, so it is the more specific of the two.
 	if owner := app.domainMountOwner(ctx); owner.outranks(mountedPrefixParts) {
-		// A plain mount as deep as the owner is a sibling that did not serve
-		// the request, so its handler is dropped rather than inherited. One
-		// above them both still encloses the owner, and an owner configuring
-		// no handler of its own inherits it, as a nested mount inherits the
-		// handler of the mount it sits in.
+		// A plain mount the owner supersedes did not serve the request, so its
+		// handler is dropped rather than inherited. One enclosing the owner
+		// still does, and an owner configuring no handler of its own inherits
+		// it, as a nested mount inherits the handler of the mount it sits in.
 		//
 		// Unless the mount is one of the apps the owner sits in: a domain
 		// mount at the root of a plain one covers exactly the paths that mount
 		// does, and is as deep as it without being beside it.
-		if owner.ties(mountedPrefixParts) && !slices.Contains(owner.ancestors, mountedErrApp) {
+		if owner.supersedes(mountedPrefixParts, mountedErrApp) {
 			mountedErrHandler = nil
 		}
 

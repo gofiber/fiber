@@ -235,21 +235,28 @@ type domainOwner struct {
 	// depth is how many path segments the mount covers, which ranks the owner
 	// against the plain mounts covering the same request.
 	depth int
+	// exact marks an owner taken from the route that ran rather than inferred
+	// from the host and the path
+	exact bool
 }
 
 // outranks reports whether this owner should answer for the request instead of
-// a plain mount whose path is plainDepth segments deep. It wins a tie, having
-// matched the host as well, and gives way to a deeper plain mount, as a mounted
-// app gives way to one mounted below it.
+// a plain mount whose path is plainDepth segments deep.
+//
+// An owner taken from the route that ran always does: that route was served by
+// it, and a plain mount is only ever ranked by depth because path is all there
+// is to go on. An inferred one wins a tie, having matched the host as well, and
+// gives way to a deeper plain mount as a mounted app gives way to one below it.
 func (o domainOwner) outranks(plainDepth int) bool {
-	return o.app != nil && plainDepth <= o.depth
+	return o.app != nil && (o.exact || plainDepth <= o.depth)
 }
 
-// ties reports whether a plain mount is exactly as deep as this owner. Such a
-// mount is a sibling rather than an ancestor: the owner takes precedence over
-// it, and falls through past it to the mounts enclosing them both.
-func (o domainOwner) ties(plainDepth int) bool {
-	return o.app != nil && plainDepth == o.depth
+// supersedes reports whether this owner replaces a plain mount rather than
+// inheriting from it. One at or below the owner's own depth did not serve the
+// request; only the apps the owner is mounted inside enclose it, and those it
+// inherits from however deep they are.
+func (o domainOwner) supersedes(plainDepth int, plain *App) bool {
+	return o.app != nil && plainDepth >= o.depth && !slices.Contains(o.ancestors, plain)
 }
 
 // appHasErrorHandler is the setting a request inherits from the domain mounts
@@ -341,7 +348,7 @@ func (app *App) domainMountOwner(c Ctx) domainOwner {
 		// Two sub-apps mounted at one path behind overlapping patterns both
 		// cover the request and both match the host. Only one of them ran.
 		if mount.app == routeApp && (byRoute.app == nil || depth > byRoute.depth) {
-			byRoute.app, byRoute.depth, byRoute.ancestors = mount.app, depth, mount.ancestors
+			byRoute = domainOwner{app: mount.app, ancestors: mount.ancestors, depth: depth, exact: true}
 		}
 
 		if owner.app == nil || depth > owner.depth {
@@ -419,10 +426,25 @@ type mountWalk struct {
 	refs []mountedAppRef
 }
 
-// mountWalkKey identifies an app at the path it was reached at.
+// mountWalkKey identifies an app at the path it was reached at, behind the
+// patterns it was reached through: the same app can be mounted at one path for
+// two hostnames, and each of those is a mount of its own.
 type mountWalkKey struct {
-	app  *App
-	path string
+	app      *App
+	path     string
+	matchers string
+}
+
+// matchersKey identifies a set of domain patterns. Labels carry neither
+// separator, so the parts of one pattern and the patterns of one mount cannot
+// run together.
+func matchersKey(matchers []domainMatcher) string {
+	patterns := make([]string, len(matchers))
+	for i := range matchers {
+		patterns[i] = strings.Join(matchers[i].parts, ".")
+	}
+
+	return strings.Join(patterns, "\n")
 }
 
 // add records this app and its descendants, reached at prefix
@@ -434,7 +456,7 @@ func (w *mountWalk) add(app *App, prefix string, matchers []domainMatcher, decla
 		return
 	}
 
-	key := mountWalkKey{app: app, path: prefix}
+	key := mountWalkKey{app: app, path: prefix, matchers: matchersKey(matchers)}
 	if reached, ok := w.seen[key]; ok && reached >= len(chain) {
 		return
 	}

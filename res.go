@@ -923,12 +923,11 @@ func (r *DefaultRes) Render(name string, bind any, layouts ...string) error {
 				break
 			}
 
-			// With no engine of its own the search goes on above the owner,
-			// as it does for an ordinary mount — but not through a mount as
-			// deep as the owner, which is a sibling that did not serve the
-			// request and whose engine is not the owner's to borrow. One the
-			// owner sits inside is not beside it, however deep it is.
-			if domain.ties(mountDepth(prefix)) && !slices.Contains(domain.ancestors, app) {
+			// With no engine of its own the search goes on above the owner, as
+			// it does for an ordinary mount — but not through a mount the
+			// owner supersedes, which did not serve the request and whose
+			// engine is not the owner's to borrow.
+			if domain.supersedes(mountDepth(prefix), app) {
 				continue
 			}
 		}

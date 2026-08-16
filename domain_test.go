@@ -3911,6 +3911,74 @@ func Test_Domain_UseMountTreeVisitsEachMountOnce(t *testing.T) {
 	require.Less(t, len(apps[0].mountTree()), (depth+1)*(depth+1))
 }
 
+// Test_Domain_UseMountSharedAppOnTwoPatterns verifies that one app mounted at a
+// path for two hostnames is recorded for both: the mounts differ only in the
+// patterns that reach them.
+func Test_Domain_UseMountSharedAppOnTwoPatterns(t *testing.T) {
+	t.Parallel()
+
+	shared := New(Config{ErrorHandler: func(c Ctx, _ error) error {
+		return c.Status(608).SendString("shared")
+	}})
+	shared.Get("/boom", func(_ Ctx) error {
+		return errors.New("boom")
+	})
+
+	subApp := New()
+	subApp.Domain("a.example.com").Use("/", shared)
+	subApp.Domain("b.example.com").Use("/", shared)
+
+	app := New()
+	app.Domain(":sub.example.com").Use("/api", subApp)
+
+	for _, host := range []string{"a.example.com", "b.example.com"} {
+		req := httptest.NewRequest(MethodGet, "/api/boom", http.NoBody)
+		req.Host = host
+		resp, err := app.Test(req)
+		require.NoError(t, err)
+		require.Equal(t, 608, resp.StatusCode, host)
+	}
+}
+
+// Test_Domain_UseMountOutranksDeeperUnrelatedMount verifies that the app a route
+// was mounted from answers for it even where an unrelated plain mount reaches
+// deeper: that mount serves none of these routes, and depth only stands in for
+// ownership where nothing better is known.
+func Test_Domain_UseMountOutranksDeeperUnrelatedMount(t *testing.T) {
+	t.Parallel()
+
+	subApp := New(Config{ErrorHandler: func(c Ctx, _ error) error {
+		return c.Status(609).SendString("domain")
+	}})
+	subApp.Get("/admin/boom", func(_ Ctx) error {
+		return errors.New("boom")
+	})
+
+	plain := New(Config{ErrorHandler: func(c Ctx, _ error) error {
+		return c.Status(610).SendString("plain")
+	}})
+	plain.Get("/other", func(c Ctx) error {
+		return c.SendString("other")
+	})
+
+	app := New()
+	app.Domain("api.example.com").Use("/api", subApp)
+	app.Use("/api/admin", plain)
+
+	req := httptest.NewRequest(MethodGet, "/api/admin/boom", http.NoBody)
+	req.Host = "api.example.com"
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, 609, resp.StatusCode)
+
+	// The deeper mount still answers for the routes it does serve.
+	req = httptest.NewRequest(MethodGet, "/api/admin/missing", http.NoBody)
+	req.Host = "api.example.com"
+	resp, err = app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, 610, resp.StatusCode)
+}
+
 // Test_Domain_UseMountInheritsDomainViews verifies the same inheritance for the
 // view engine: a child of a domain-mounted app renders through that app's
 // engine rather than the root's.
