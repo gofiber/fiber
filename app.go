@@ -1663,8 +1663,8 @@ func (app *App) serverErrorHandler(fctx *fasthttp.RequestCtx, err error) {
 		err = NewError(StatusBadRequest, errMessage)
 	}
 
-	// Apply the mapped status before the Use chain runs so middleware observes the
-	// status that is actually sent instead of the default 200.
+	// Seed the mapped status so middleware observes it instead of the default 200.
+	// The ErrorHandler below still has the last word on what goes out.
 	if fiberErr, matched := asFiberError(err); matched && fiberErr != nil {
 		c.Status(fiberErr.Code)
 	}
