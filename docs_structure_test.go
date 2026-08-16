@@ -90,6 +90,11 @@ func Test_Docs_MiddlewarePageSections(t *testing.T) {
 
 		for _, section := range middlewareDocSections {
 			if skips[name][section] {
+				// A page that has grown the section back keeps its exception alive
+				// and with it a hole in the check, so the skip has to go.
+				require.False(t, headings[section],
+					"%s/%s carries %q again - drop that section from its middlewareDocExceptions entry",
+					middlewareDocsDir, name, section)
 				continue
 			}
 			require.True(t, headings[section],
@@ -103,6 +108,8 @@ func Test_Docs_MiddlewarePageSections(t *testing.T) {
 	// An exception for a page that no longer exists would silently excuse that
 	// page the day someone adds it back.
 	for _, exception := range middlewareDocExceptions {
+		require.NotEmpty(t, strings.TrimSpace(exception.reason),
+			"middlewareDocExceptions covers %s without a reason", exception.file)
 		require.True(t, pages[exception.file],
 			"middlewareDocExceptions covers %s (%s) but that page does not exist",
 			exception.file, exception.reason)

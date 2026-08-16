@@ -1535,22 +1535,24 @@ func Test_App_ShutdownWithTimeout_WaitsForStreamedBody(t *testing.T) {
 
 	// Shut down mid-stream, which is the point: the handler is long gone by now.
 	<-streaming
-	shutdownErr := make(chan error, 1)
+	// Sampled where shutdown returns, not after the read below: reading the whole
+	// body first closes finished, and the check would then hold either way.
+	streamDone := make(chan bool, 1)
 	go func() {
-		shutdownErr <- app.ShutdownWithTimeout(10 * time.Second)
+		assert.NoError(t, app.ShutdownWithTimeout(10*time.Second))
+		select {
+		case <-finished:
+			streamDone <- true
+		default:
+			streamDone <- false
+		}
 	}()
 
 	var resp fasthttp.Response
 	require.NoError(t, resp.Read(bufio.NewReader(conn)))
 	require.Equal(t, strings.Repeat("chunk", chunks), string(resp.Body()))
 
-	require.NoError(t, <-shutdownErr)
-
-	select {
-	case <-finished:
-	default:
-		t.Fatal("shutdown returned while the body was still being written")
-	}
+	require.True(t, <-streamDone, "shutdown returned while the body was still being written")
 }
 
 func Test_App_ShutdownWithContext(t *testing.T) {
