@@ -1491,6 +1491,84 @@ func Test_App_ShutdownWithTimeout(t *testing.T) {
 	}
 }
 
+// Test_App_ShutdownWithTimeout_WaitsForInFlightHandler pins #3370: with a
+// generous timeout, shutdown waits for active handlers (including stream writers)
+// instead of returning immediately.
+func Test_App_ShutdownWithTimeout_WaitsForInFlightHandler(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	handlerStarted := make(chan struct{})
+	handlerFinished := make(chan struct{})
+
+	app.Get("/slow", func(c Ctx) error {
+		close(handlerStarted)
+		// Stream long enough that a premature shutdown would drop the client.
+		err := c.SendStreamWriter(func(w *bufio.Writer) {
+			for range 10 {
+				if _, writeErr := w.WriteString("chunk\n"); writeErr != nil {
+					return
+				}
+				if flushErr := w.Flush(); flushErr != nil {
+					return
+				}
+				time.Sleep(100 * time.Millisecond)
+			}
+		})
+		close(handlerFinished)
+		return err
+	})
+
+	ln := fasthttputil.NewInmemoryListener()
+	go func() {
+		assert.NoError(t, app.Listener(ln))
+	}()
+	time.Sleep(50 * time.Millisecond)
+
+	type clientResult struct {
+		err error
+		n   int64
+	}
+	clientDone := make(chan clientResult, 1)
+	go func() {
+		conn, err := ln.Dial()
+		if err != nil {
+			clientDone <- clientResult{err: err}
+			return
+		}
+
+		_, err = conn.Write([]byte("GET /slow HTTP/1.1\r\nHost: example.com\r\n\r\n"))
+		if err != nil {
+			_ = conn.Close() //nolint:errcheck // best-effort cleanup after write failure
+			clientDone <- clientResult{err: err}
+			return
+		}
+		n, err := io.Copy(io.Discard, conn)
+		if closeErr := conn.Close(); err == nil {
+			err = closeErr
+		}
+		clientDone <- clientResult{n: n, err: err}
+	}()
+
+	<-handlerStarted
+	started := time.Now()
+	require.NoError(t, app.ShutdownWithTimeout(5*time.Second))
+	elapsed := time.Since(started)
+
+	// Shutdown must wait for the ~1s stream rather than returning immediately.
+	require.GreaterOrEqual(t, elapsed.Milliseconds(), int64(800))
+
+	select {
+	case <-handlerFinished:
+	case <-time.After(2 * time.Second):
+		t.Fatal("handler did not finish before/around shutdown")
+	}
+
+	res := <-clientDone
+	require.NoError(t, res.err)
+	require.Positive(t, res.n)
+}
+
 func Test_App_ShutdownWithContext(t *testing.T) {
 	t.Parallel()
 
