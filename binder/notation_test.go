@@ -1,6 +1,8 @@
 package binder
 
 import (
+	"bytes"
+	"mime/multipart"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -23,9 +25,31 @@ type notationTarget struct {
 	Items  []notationInner `form:"items" query:"items"`
 }
 
+// multipartRequest re-encodes a urlencoded input as a multipart body, so the
+// same table can be sent through bindMultipart without being written out twice.
+func multipartRequest(t *testing.T, input string) *fasthttp.Request {
+	t.Helper()
+
+	var args fasthttp.Args
+	args.Parse(input)
+
+	body := new(bytes.Buffer)
+	writer := multipart.NewWriter(body)
+	for key, value := range args.All() {
+		require.NoError(t, writer.WriteField(string(key), string(value)))
+	}
+	require.NoError(t, writer.Close())
+
+	req := fasthttp.AcquireRequest()
+	req.SetBody(body.Bytes())
+	req.Header.SetContentType(writer.FormDataContentType())
+
+	return req
+}
+
 // Test_Notation_FormAndQuery pins the key notations the binding docs promise.
-// Form and query share one schema decoder, so both run against the same table:
-// a divergence between them is a bug in either.
+// Form, multipart and query share one schema decoder, so all three run against
+// the same table: a divergence between them is a bug in one of them.
 func Test_Notation_FormAndQuery(t *testing.T) {
 	t.Parallel()
 
@@ -105,6 +129,15 @@ func Test_Notation_FormAndQuery(t *testing.T) {
 			var form notationTarget
 			require.NoError(t, (&FormBinding{}).Bind(formReq, &form))
 			require.Equal(t, tc.want, form)
+
+			// Multipart takes its own branch through bindMultipart before it
+			// reaches the shared decoder, so the docs only get to claim both.
+			multipartReq := multipartRequest(t, tc.input)
+			defer fasthttp.ReleaseRequest(multipartReq)
+
+			var multipartOut notationTarget
+			require.NoError(t, (&FormBinding{}).Bind(multipartReq, &multipartOut))
+			require.Equal(t, tc.want, multipartOut)
 
 			queryReq := fasthttp.AcquireRequest()
 			defer fasthttp.ReleaseRequest(queryReq)

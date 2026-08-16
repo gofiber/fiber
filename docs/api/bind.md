@@ -276,7 +276,7 @@ curl -X POST -H "Content-Type: multipart/form-data" -F "name=john" -F "pass=doe"
 
 A form body is a flat list of key/value pairs, so structure lives in the field name. The notations below work for both `application/x-www-form-urlencoded` and `multipart/form-data`, and identically for [query parameters](#query).
 
-| Notation           | Example field name           | Binds to                             |
+| Notation           | Example                      | Binds to                             |
 | ------------------ | ---------------------------- | ------------------------------------ |
 | Repeated key       | `colors=red&colors=blue`     | slice of scalars                     |
 | Empty brackets     | `colors[]=red&colors[]=blue` | slice of scalars                     |
@@ -322,7 +322,7 @@ Order{
 ```
 
 :::caution
-An index only ever addresses a struct field. `colors[0]=red` and `colors.0=red` do **not** fill a `[]string`; the value is dropped and no error is returned. Use a repeated key or `colors[]` for slices of scalars.
+An index only ever addresses a struct field. `colors[0]=red` and `colors.0=red` do **not** fill a `[]string`. With the default decoder the value is dropped and no error is returned; after `SetParserDecoder(ParserConfig{IgnoreUnknownKeys: false})` the same input fails with `schema: invalid path "colors.0"`. Use a repeated key or `colors[]` for slices of scalars.
 :::
 
 :::note
@@ -714,7 +714,7 @@ Pointer fields (`*[]string`, `*Preferences`) let you distinguish between a missi
 
 ##### Dot Notation
 
-Every bracket form has a dot equivalent, and the two can be mixed within one request:
+Nested fields and indexes have a dot equivalent, and the two can be mixed within one request. Empty brackets are the exception, `colors[]` has no dot form:
 
 ```text
 GET /api?user.name=Alice&posts.0.title=Hello&posts[1].title=World
@@ -736,7 +736,7 @@ type Request struct {
 // Result: User = {Name: "Alice"}, Posts = [{Title: "Hello"}, {Title: "World"}]
 ```
 
-Query and form binding share the same decoder, so the full notation reference in [Nested and Array Form Fields](#nested-and-array-form-fields) applies here too — including the caveat that an index never fills a slice of scalars.
+Query and form binding share the same decoder, so the full notation reference in [Nested and Array Form Fields](#nested-and-array-form-fields) applies here too, including the caveat that an index never fills a slice of scalars.
 
 ### RespHeader
 
