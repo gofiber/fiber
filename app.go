@@ -20,6 +20,7 @@ import (
 	"net/http/httputil"
 	"os"
 	"reflect"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -1589,6 +1590,7 @@ func (app *App) ErrorHandler(ctx Ctx, err error) error {
 
 	var (
 		mountedErrHandler  ErrorHandler
+		mountedErrApp      *App
 		mountedPrefixParts int
 	)
 
@@ -1601,6 +1603,7 @@ func (app *App) ErrorHandler(ctx Ctx, err error) error {
 			if mountedPrefixParts <= parts {
 				if subApp.configured.ErrorHandler != nil {
 					mountedErrHandler = subApp.config.ErrorHandler
+					mountedErrApp = subApp
 				}
 
 				mountedPrefixParts = parts
@@ -1618,7 +1621,11 @@ func (app *App) ErrorHandler(ctx Ctx, err error) error {
 		// above them both still encloses the owner, and an owner configuring
 		// no handler of its own inherits it, as a nested mount inherits the
 		// handler of the mount it sits in.
-		if owner.ties(mountedPrefixParts) {
+		//
+		// Unless the mount is one of the apps the owner sits in: a domain
+		// mount at the root of a plain one covers exactly the paths that mount
+		// does, and is as deep as it without being beside it.
+		if owner.ties(mountedPrefixParts) && !slices.Contains(owner.ancestors, mountedErrApp) {
 			mountedErrHandler = nil
 		}
 

@@ -3861,6 +3861,56 @@ func Test_Domain_UseMountAutoHeadPerSubtree(t *testing.T) {
 	}
 }
 
+// Test_Domain_UseMountInheritsEqualDepthAncestor verifies that a mount as deep
+// as the owner is only passed over when it is beside it. A domain mount at the
+// root of an ordinary one covers exactly the paths that mount does, and its
+// error handler is still the one enclosing the request.
+func Test_Domain_UseMountInheritsEqualDepthAncestor(t *testing.T) {
+	t.Parallel()
+
+	child := New() // no handler of its own
+	child.Get("/boom", func(_ Ctx) error {
+		return errors.New("boom")
+	})
+
+	subApp := New(Config{ErrorHandler: func(c Ctx, _ error) error {
+		return c.Status(607).SendString("sub")
+	}})
+	subApp.Domain("api.example.com").Use("/", child)
+
+	app := New()
+	app.Use("/mid", subApp)
+
+	req := httptest.NewRequest(MethodGet, "/mid/boom", http.NoBody)
+	req.Host = "api.example.com"
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, 607, resp.StatusCode)
+}
+
+// Test_Domain_UseMountTreeVisitsEachMountOnce verifies that recording a mount
+// does not walk a descendant once per route through the app lists leading to
+// it: those lists hold descendants, so an unguarded walk grows exponentially
+// with the depth of the tree.
+func Test_Domain_UseMountTreeVisitsEachMountOnce(t *testing.T) {
+	t.Parallel()
+
+	const depth = 12
+
+	apps := make([]*App, depth+1)
+	for i := range apps {
+		apps[i] = New()
+	}
+
+	for i := depth; i > 0; i-- {
+		apps[i-1].Use("/layer", apps[i])
+	}
+
+	// Quadratic at worst: an app is walked again only when it is reached
+	// through a longer chain than one it has already been reached with.
+	require.Less(t, len(apps[0].mountTree()), (depth+1)*(depth+1))
+}
+
 // Test_Domain_UseMountInheritsDomainViews verifies the same inheritance for the
 // view engine: a child of a domain-mounted app renders through that app's
 // engine rather than the root's.

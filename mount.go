@@ -402,19 +402,45 @@ type mountedAppRef struct {
 // app mounted on a descendant afterwards is missing from it until startup
 // repairs it — and a domain mount records its apps when it is registered.
 func (app *App) mountTree() []mountedAppRef {
-	return app.appendMountTree(nil, "", nil, nil, nil)
+	walk := mountWalk{seen: make(map[mountWalkKey]int)}
+	walk.add(app, "", nil, nil, nil)
+
+	return walk.refs
 }
 
-// appendMountTree adds this app and its descendants to dst, reached at prefix
+// mountWalk carries the state of one walk over an app's mounts.
+type mountWalk struct {
+	// seen holds the longest chain each app has already been reached at, per
+	// path. An app list holds the descendants of the apps it lists, so a
+	// descendant is reachable through every combination of the lists leading to
+	// it — walking one again pays for itself only when the chain is longer than
+	// one it was reached with before, since only the longest is kept.
+	seen map[mountWalkKey]int
+	refs []mountedAppRef
+}
+
+// mountWalkKey identifies an app at the path it was reached at.
+type mountWalkKey struct {
+	app  *App
+	path string
+}
+
+// add records this app and its descendants, reached at prefix
 // behind matchers. chain holds the apps above this one so a mount cycle
 // terminates; it is a slice because it is only ever a few entries deep, and an
 // app mounted on two branches is still reached through both.
-func (app *App) appendMountTree(dst []mountedAppRef, prefix string, matchers []domainMatcher, declared []CustomConstraint, chain []*App) []mountedAppRef {
+func (w *mountWalk) add(app *App, prefix string, matchers []domainMatcher, declared []CustomConstraint, chain []*App) {
 	if slices.Contains(chain, app) {
-		return dst
+		return
 	}
 
-	dst = append(dst, mountedAppRef{
+	key := mountWalkKey{app: app, path: prefix}
+	if reached, ok := w.seen[key]; ok && reached >= len(chain) {
+		return
+	}
+	w.seen[key] = len(chain)
+
+	w.refs = append(w.refs, mountedAppRef{
 		app:       app,
 		path:      prefix,
 		matchers:  matchers,
@@ -431,8 +457,8 @@ func (app *App) appendMountTree(dst []mountedAppRef, prefix string, matchers []d
 	// Patterns compose innermost first, the order a mount records them in: a
 	// request has to satisfy every one of them.
 	for _, mount := range app.domainMountsSnapshot() {
-		dst = mount.app.appendMountTree(
-			dst,
+		w.add(
+			mount.app,
 			getGroupPath(prefix, mount.path),
 			append(slices.Clone(mount.matchers), matchers...),
 			declared,
@@ -445,10 +471,8 @@ func (app *App) appendMountTree(dst []mountedAppRef, prefix string, matchers []d
 			continue
 		}
 
-		dst = mounted.appendMountTree(dst, getGroupPath(prefix, mountPrefix), matchers, declared, chain)
+		w.add(mounted, getGroupPath(prefix, mountPrefix), matchers, declared, chain)
 	}
-
-	return dst
 }
 
 // mountedAppsSnapshot returns the apps mounted directly on this one, plain or
@@ -566,10 +590,15 @@ func (app *App) routeOwner(route *Route) *App {
 // appendDomainMounts re-registers the domain mounts of a mounted app on the app
 // above it, moving their paths under prefix. Their domain patterns travel with
 // them: the host still has to match for their config to apply.
-func (app *App) appendDomainMounts(dst, mounts []domainMountedApp, prefix string) []domainMountedApp {
+func (app *App) appendDomainMounts(dst, mounts []domainMountedApp, prefix string, owner *App) []domainMountedApp {
 	for i := range mounts {
 		mount := &mounts[i]
-		moved := app.newDomainMount(mount.app, getGroupPath(prefix, mount.path), mount.matchers, mount.ancestors, mount.declared)
+
+		// The app they were registered on encloses them from here: their own
+		// ancestors are the apps between it and them, and it is the outermost.
+		ancestors := append([]*App{owner}, mount.ancestors...)
+
+		moved := app.newDomainMount(mount.app, getGroupPath(prefix, mount.path), mount.matchers, ancestors, mount.declared)
 		dst = addDomainMount(dst, &moved)
 	}
 
@@ -663,7 +692,7 @@ func (app *App) appendSubAppLists(appList map[string]*App, parent ...string) {
 		// Domain mounts are kept out of appList, so collect them here instead.
 		// Doing it at startup rather than when the sub-app was mounted also
 		// picks up the ones registered in between.
-		app.mountFields.domainAppList = app.appendDomainMounts(app.mountFields.domainAppList, subApp.mountFields.domainAppList, prefix)
+		app.mountFields.domainAppList = app.appendDomainMounts(app.mountFields.domainAppList, subApp.mountFields.domainAppList, prefix, subApp)
 
 		// The first element of appList is always the app itself. If there are no other sub apps, we should skip appending nested apps.
 		if subApp.hasMountedApps() {
