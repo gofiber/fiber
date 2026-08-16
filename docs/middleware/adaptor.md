@@ -50,7 +50,7 @@ or `FiberApp`, the adaptor enforces the app's configured `BodyLimit`. The app's 
 
 ---
 
-## Usage Examples
+## Examples
 
 ### 1. Using `net/http` handlers in Fiber (`HTTPHandler`, `HTTPHandlerFunc`)
 

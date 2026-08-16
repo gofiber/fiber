@@ -1491,6 +1491,70 @@ func Test_App_ShutdownWithTimeout(t *testing.T) {
 	}
 }
 
+// A streamed body is written after the handler has already returned, so the
+// shutdown tests above, which block inside the handler, say nothing about it.
+// Reported as #3370 against v3.0.0-beta.4: a download was cut off instead of
+// being allowed to finish within the timeout.
+func Test_App_ShutdownWithTimeout_WaitsForStreamedBody(t *testing.T) {
+	t.Parallel()
+
+	const chunks = 5
+
+	streaming := make(chan struct{})
+	finished := make(chan struct{})
+
+	app := New()
+	app.Get("/stream", func(c Ctx) error {
+		c.Response().SetBodyStreamWriter(func(w *bufio.Writer) {
+			defer close(finished)
+			for i := range chunks {
+				_, err := w.WriteString("chunk")
+				assert.NoError(t, err)
+				assert.NoError(t, w.Flush())
+				if i == 0 {
+					close(streaming)
+				}
+				time.Sleep(50 * time.Millisecond)
+			}
+		})
+		return nil
+	})
+
+	ln := fasthttputil.NewInmemoryListener()
+	serverReady := make(chan struct{})
+	go func() {
+		close(serverReady)
+		assert.NoError(t, app.Listener(ln))
+	}()
+	<-serverReady
+
+	conn, err := ln.Dial()
+	require.NoError(t, err)
+	_, err = conn.Write([]byte("GET /stream HTTP/1.1\r\nHost: example.com\r\n\r\n"))
+	require.NoError(t, err)
+
+	// Shut down mid-stream, which is the point: the handler is long gone by now.
+	<-streaming
+	// Sampled where shutdown returns, not after the read below: reading the whole
+	// body first closes finished, and the check would then hold either way.
+	streamDone := make(chan bool, 1)
+	go func() {
+		assert.NoError(t, app.ShutdownWithTimeout(10*time.Second))
+		select {
+		case <-finished:
+			streamDone <- true
+		default:
+			streamDone <- false
+		}
+	}()
+
+	var resp fasthttp.Response
+	require.NoError(t, resp.Read(bufio.NewReader(conn)))
+	require.Equal(t, strings.Repeat("chunk", chunks), string(resp.Body()))
+
+	require.True(t, <-streamDone, "shutdown returned while the body was still being written")
+}
+
 func Test_App_ShutdownWithContext(t *testing.T) {
 	t.Parallel()
 
