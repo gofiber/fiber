@@ -2694,6 +2694,65 @@ func Test_Redirect_OptionalAtomWidensARule(t *testing.T) {
 	require.Equal(t, 2, patternWidth(`/p/\.?`))
 }
 
+// Test_Redirect_UnboundedRepetitionIsWidest covers the quantifier that runs on:
+// "/p/[ab]+" matches paths of every length, where "/p/[a][ab]?" matches three,
+// yet reading "+" as a single atom left the unbounded rule the narrower of the
+// two once the "?" widened its neighbour.
+func Test_Redirect_UnboundedRepetitionIsWidest(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Use(New(Config{
+		Rules: map[string]string{
+			`/p/[a][ab]?`: "/narrow",
+			`/p/[ab]+`:    "/broad",
+		},
+		StatusCode: fiber.StatusFound,
+	}))
+
+	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/p/a", http.NoBody)
+	require.NoError(t, err)
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusFound, resp.StatusCode)
+	require.Equal(t, "/narrow", resp.Header.Get("Location"))
+
+	// A run without an end saturates; one with an upper bound is counted.
+	require.Equal(t, maxPatternWidth, patternWidth(`/p/[ab]+`))
+	require.Equal(t, maxPatternWidth, patternWidth(`/p/[a]{2,}`))
+	require.Equal(t, 3, patternWidth(`/p/[a][ab]?`))
+	require.Equal(t, 1, patternWidth(`/p/[a]{2,3}`))
+}
+
+// Test_Redirect_SetMemberOutweighsAListedByte covers a class whose member stands
+// for a set of its own: "[[:alpha:]]" contains the "[a]" it must not shadow, and
+// counting the name as one member left the two tied for key order to pick apart.
+func Test_Redirect_SetMemberOutweighsAListedByte(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Use(New(Config{
+		Rules: map[string]string{
+			`/p/[a]`:         "/narrow",
+			`/p/[[:alpha:]]`: "/broad",
+		},
+		StatusCode: fiber.StatusFound,
+	}))
+
+	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/p/a", http.NoBody)
+	require.NoError(t, err)
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusFound, resp.StatusCode)
+	require.Equal(t, "/narrow", resp.Header.Get("Location"))
+
+	// However the set is spelled, and whatever it holds.
+	require.Equal(t, 1, patternWidth(`/p/[a]`))
+	require.Equal(t, setMemberWidth, patternWidth(`/p/[[:alpha:]]`))
+	require.Equal(t, setMemberWidth, patternWidth(`/p/[\d]`))
+	require.Equal(t, setMemberWidth, patternWidth(`/p/[[:digit:]]`))
+}
+
 // Test_Redirect_PosixClassNamesItsOwnStars covers "[[:alpha:]*]", whose "]"
 // closes the POSIX name rather than the class. Stopping the class scan there
 // read the members standing after the name as pattern text, counting the stars
@@ -2720,7 +2779,8 @@ func Test_Redirect_PosixClassNamesItsOwnStars(t *testing.T) {
 	// One wildcard, and a class counted whole however its members are spelled.
 	require.Equal(t, 1, wildcardRank(`/p/*[[:alpha:]*][[:alpha:]*]`))
 	require.Equal(t, 0, wildcardRank(`/p/[[:alpha:]*]`))
-	require.Equal(t, 2, patternWidth(`/p/[[:alpha:]*]`))
+	// The name counts as a set, the star beside it as the one byte it lists.
+	require.Equal(t, setMemberWidth+1, patternWidth(`/p/[[:alpha:]*]`))
 	// A member standing after the name pins nothing, being a member still.
 	require.Equal(t, 3, literalLen(`/p/[[:alpha:]a]`))
 	// A name is one only inside a class: "[:alpha:]" standing on its own is a

@@ -962,7 +962,7 @@ func (s *literalScanner) widestBranch() int {
 			// The bounds are syntax, and counting their digits and comma put
 			// "/api/a{0,1}" three bytes ahead of the exact "/api/a" it shadowed.
 			var zeroMin bool
-			s.i, zeroMin = skipQuantifier(s.rule, s.i)
+			s.i, zeroMin, _ = skipQuantifier(s.rule, s.i)
 			if zeroMin {
 				n -= atom
 			}
@@ -1049,10 +1049,19 @@ func (s *literalScanner) width() int {
 			// path more, so "/p/*a?" is wider than the "/p/*a" it ties with —
 			// and wider than "/p/*[a]*", which its wildcard count sorts below.
 			n, atom = optional(n, atom), 1
+		case '+':
+			// One or more, so the run has no end: no count of alternatives
+			// stands for it, and reading it as a single atom put the unbounded
+			// "/p/[ab]+" ahead of the three paths "/p/[a][ab]?" matches.
+			n, atom = maxPatternWidth, 1
 		case '{':
-			var zeroMin bool
-			s.i, zeroMin = skipQuantifier(s.rule, s.i)
-			if zeroMin {
+			var zeroMin, unbounded bool
+			s.i, zeroMin, unbounded = skipQuantifier(s.rule, s.i)
+			switch {
+			case unbounded:
+				// "{2,}" runs on the same way "+" does.
+				n = maxPatternWidth
+			case zeroMin:
 				n = optional(n, atom)
 			}
 			atom = 1
@@ -1096,15 +1105,14 @@ func (s *literalScanner) classWidth() int {
 			// A POSIX name stands for a set of its own, counted like a class
 			// escape. Its own "]" is not the class's, and reading one as the
 			// close left the rest of the class scanned as pattern text.
-			size, j = size+1, end
+			size, j = size+setMemberWidth, end
 			continue
 		}
 		switch {
 		case rule[j] == '\\':
-			// A class escape stands for a set of its own, but one is enough to
-			// order it against the members beside it.
+			// A class escape stands for a set of its own.
 			span, _ := escapeSpan(rule, j)
-			size, j = size+1, j+span
+			size, j = size+setMemberWidth, j+span
 		case j+2 < len(rule) && rule[j+1] == '-' && rule[j+2] != ']':
 			if lo, hi := rule[j], rule[j+2]; hi >= lo {
 				size += int(hi-lo) + 1
@@ -1128,6 +1136,15 @@ func (s *literalScanner) classWidth() int {
 // maxPatternWidth bounds the product a nest of groups builds, since the count is
 // only ever compared against another and nothing needs the exact figure.
 const maxPatternWidth = 1 << 20
+
+// setMemberWidth is what a class member standing for a set of its own counts,
+// whether it is written as an escape, "[\d]", or as a POSIX name, "[[:alpha:]]".
+// How large the set is cannot be read off either spelling alone and would not
+// separate two of them anyway, but one member's worth read "[[:alpha:]]" as no
+// wider than the "[a]" it contains, and the tie left key order to pick between
+// them. Two says the one thing that is certain: a set is wider than the single
+// byte a listed member pins.
+const setMemberWidth = 2
 
 func clampWidth(n int) int {
 	return min(n, maxPatternWidth)
@@ -1199,7 +1216,7 @@ func quantifierAllowsNone(rule string, i int) bool {
 		return false
 	}
 
-	_, zeroMin := skipQuantifier(rule, i)
+	_, zeroMin, _ := skipQuantifier(rule, i)
 	return zeroMin
 }
 
@@ -1212,17 +1229,18 @@ func smallerBranch(smallest, n int) int {
 	return smallest
 }
 
-// skipQuantifier returns the index just past the "{m,n}" beginning at i, and
-// whether it allows none of what it follows. An unclosed "{" is an ordinary byte
-// to the regexp parser, so it is left as one here: the index only moves past it.
-func skipQuantifier(rule string, i int) (int, bool) {
-	end := strings.IndexByte(rule[i:], '}')
-	if end < 0 {
-		return i + 1, false
+// skipQuantifier returns the index just past the "{m,n}" beginning at i, whether
+// it allows none of what it follows, and whether it names no upper bound at all.
+// An unclosed "{" is an ordinary byte to the regexp parser, so it is left as one
+// here: the index only moves past it.
+func skipQuantifier(rule string, i int) (end int, zeroMin, unbounded bool) {
+	brace := strings.IndexByte(rule[i:], '}')
+	if brace < 0 {
+		return i + 1, false, false
 	}
 
-	body := rule[i+1 : i+end]
-	return i + end + 1, body == "0" || strings.HasPrefix(body, "0,")
+	body := rule[i+1 : i+brace]
+	return i + brace + 1, body == "0" || strings.HasPrefix(body, "0,"), strings.HasSuffix(body, ",")
 }
 
 // posixNameEnd returns the index just past the POSIX class name beginning at i
