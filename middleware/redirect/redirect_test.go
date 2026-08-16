@@ -2600,6 +2600,30 @@ func Test_Redirect_NestedAlternationLosesTheTieBreak(t *testing.T) {
 	require.Equal(t, 1, wildcardRank(`/p/\d*`))
 }
 
+// Test_Redirect_FewerWildcardsWin ties every other specificity measure to
+// ensure a broader multi-wildcard rule cannot shadow a narrower rule.
+func Test_Redirect_FewerWildcardsWin(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Use(New(Config{
+		Rules: map[string]string{
+			"/p/*a*b": "https://attacker.example/$1/$2",
+			"/p/*ab":  "/safe/$1",
+		},
+		StatusCode: fiber.StatusFound,
+	}))
+
+	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/p/xxab?secret=top", http.NoBody)
+	require.NoError(t, err)
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusFound, resp.StatusCode)
+	require.Equal(t, "/safe/xx?secret=top", resp.Header.Get("Location"))
+	require.Equal(t, 2, wildcardRank("/p/*a*b"))
+	require.Equal(t, 1, wildcardRank("/p/*ab"))
+}
+
 // Test_Redirect_HexEscapeOutranksAClass covers "\x{61}", which names the one
 // character "a". Reading every letter-led escape as a class scored it no higher
 // than "[a-z]", and the tie left key order to pick the broader rule.

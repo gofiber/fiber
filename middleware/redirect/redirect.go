@@ -1082,17 +1082,18 @@ func clampWidth(n int) int {
 	return min(n, maxPatternWidth)
 }
 
-// wildcardRank returns 1 for a rule carrying Fiber's "*" wildcard and 0 for one
-// that does not, so the wildcard rule sorts second.
+// wildcardRank returns the number of Fiber "*" wildcards in a rule, so rules
+// with fewer wildcards sort first.
 //
 // The wildcard is expanded to "(.*)" before the key is compiled, so it matches a
 // run of bytes of any length — a breadth no width can stand for, since a width
 // saturates and two saturated rules tie. Ranked here, the width goes on
-// measuring what separates two rules that both carry one.
+// measuring what separates two rules that carry the same number.
 //
 // A star inside a character class or a "\Q ... \E" span names itself instead:
 // the expansion leaves "[(.*)]" a class and "\Q(.*)\E" literal text.
 func wildcardRank(rule string) int {
+	rank := 0
 	for i := 0; i < len(rule); {
 		switch rule[i] {
 		case '\\':
@@ -1112,12 +1113,13 @@ func wildcardRank(rule string) int {
 			s.classWidth() // leaves s.i just past the "]"
 			i = s.i
 		case '*':
-			return 1
+			rank++
+			i++
 		default:
 			i++
 		}
 	}
-	return 0
+	return rank
 }
 
 // quantifierAllowsNone reports whether a quantifier at i lets what precedes it
