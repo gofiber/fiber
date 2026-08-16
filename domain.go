@@ -439,26 +439,17 @@ func (d *domainRouter) mount(prefix string, subApp *App) Router {
 	// Clone routes from the sub-app with domain-wrapped handlers. The clone
 	// also collects the constraints of every app it walks, since the wrapper is
 	// what the routes are re-parsed against when the mount is expanded, and
-	// reports whether they all register automatic HEAD routes.
-	autoHead := d.cloneRoutesForDomain(wrapperApp, subApp)
+	// marks the routes of the apps that register no automatic HEAD routes.
+	d.cloneRoutesForDomain(wrapperApp, subApp)
 
 	// Give the clones their automatic HEAD routes. A mounted app normally gets
 	// them from startupProcess, which walks the parent's app list — and the
 	// wrapper is deliberately not in it, so without this a domain-mounted GET
 	// route answers HEAD with 405 where a plain mount answers 200.
 	//
-	// Only when every app behind the mount registers them itself. The wrapper
-	// synthesizes a HEAD route from a GET one, and its middleware comes from
-	// the clone: an app that does not serve HEAD contributed none, so the
-	// synthesized route would run its handler with nothing in front of it.
-	//
-	// The wrapper carries that answer for the whole tree, so the app it is
-	// mounted on withholds automatic HEAD routes from these routes too when
-	// it expands them.
-	wrapperApp.config.DisableHeadAutoRegister = !autoHead
-	if autoHead {
-		wrapperApp.ensureAutoHeadRoutes()
-	}
+	// The routes marked while cloning are passed over, and the marks travel on
+	// to the app this one is mounted on, so it withholds them there as well.
+	wrapperApp.ensureAutoHeadRoutes()
 
 	// Register the sub-app, and every app it has mounted, as domain mounts of
 	// the parent. They are kept out of appList so that their ErrorHandler and
@@ -534,37 +525,48 @@ func (d *domainRouter) mount(prefix string, subApp *App) Router {
 // processSubAppsRoutes. Flattening the descendants here also runs their
 // handlers through wrapHandlers, so they stay bound to the domain instead of
 // being served on every host.
-// It reports whether every app it walked registers automatic HEAD routes, so
-// the caller can tell when synthesizing them on the clone would be safe.
-func (d *domainRouter) cloneRoutesForDomain(dst, src *App) bool {
-	autoHead := true
-	for m, routes := range d.domainRoutes(dst, src, "", nil, &autoHead) {
+// Routes cloned from an app that registers no automatic HEAD routes are marked
+// as such on the wrapper, so synthesizing them stays off for those and stays on
+// for the rest.
+func (d *domainRouter) cloneRoutesForDomain(dst, src *App) {
+	for m, routes := range d.domainRoutes(dst, src, domainClone{}) {
 		dst.stack[m] = routes
 	}
+}
 
-	return autoHead
+// domainClone is what a walk down a mounted app's tree carries with it.
+type domainClone struct {
+	// prefix is the path the app being walked is mounted at, relative to the
+	// app the domain mount was registered with
+	prefix string
+	// chain holds the apps between the mounted sub-app and this one, so a mount
+	// cycle terminates. It is a slice rather than a set because it is only ever
+	// a few entries deep and each branch needs its own: an app mounted twice on
+	// sibling branches is cloned for both.
+	chain []*App
+	// skipAutoHead marks that an app above this one registers no automatic HEAD
+	// routes, and stands in front of these
+	skipAutoHead bool
 }
 
 // domainRoutes returns src's routes, cloned with domain-filtered handlers and
-// with pathPrefix applied, as one slice per method index of dst. Routes of an
-// app src has mounted take the placeholder's position, so the order the
+// with the walk's prefix applied, as one slice per method index of dst. Routes
+// of an app src has mounted take the placeholder's position, so the order the
 // sub-app registered its routes in is preserved.
-//
-// chain holds the apps between the mounted sub-app and src, so a mount cycle
-// terminates. It is a slice rather than a set because it is only ever a few
-// entries deep and each branch needs its own: an app mounted twice on sibling
-// branches is cloned for both.
-func (d *domainRouter) domainRoutes(dst, src *App, pathPrefix string, chain []*App, autoHead *bool) [][]*Route {
+func (d *domainRouter) domainRoutes(dst, src *App, walk domainClone) [][]*Route {
 	routes := make([][]*Route, len(dst.stack))
-	if slices.Contains(chain, src) {
+	if slices.Contains(walk.chain, src) {
 		return routes
 	}
 
 	// An app that does not serve HEAD, or that turned the automatic routes off,
-	// contributes neither HEAD routes nor HEAD middleware to the clone.
-	if src.config.DisableHeadAutoRegister || src.methodInt(MethodHead) < 0 {
-		*autoHead = false
-	}
+	// contributes neither HEAD routes nor HEAD middleware to the clone — so a
+	// HEAD route synthesized from one of its GET routes would run the handler
+	// with nothing in front of it. That holds for the apps it has mounted too,
+	// whose routes it stands in front of, and for no one else: the mount is a
+	// tree, and an app opting out says nothing about its siblings or the apps
+	// it is mounted inside.
+	skipAutoHead := walk.skipAutoHead || src.config.DisableHeadAutoRegister || src.methodInt(MethodHead) < 0
 
 	// Take a snapshot rather than holding the lock for the whole walk: it keeps
 	// this from ever holding two apps' locks at once. The routes are copied by
@@ -624,7 +626,11 @@ func (d *domainRouter) domainRoutes(dst, src *App, pathPrefix string, chain []*A
 					if mounted == nil {
 						mounted = make(map[*Group][][]*Route)
 					}
-					mounted[group] = d.domainRoutes(dst, group.app, getGroupPath(pathPrefix, source.route.path), append(chain, src), autoHead)
+					mounted[group] = d.domainRoutes(dst, group.app, domainClone{
+						prefix:       getGroupPath(walk.prefix, source.route.path),
+						chain:        append(walk.chain, src),
+						skipAutoHead: skipAutoHead,
+					})
 				}
 
 				routes[m] = append(routes[m], mounted[group][m]...)
@@ -634,8 +640,8 @@ func (d *domainRouter) domainRoutes(dst, src *App, pathPrefix string, chain []*A
 			clonedRoute := source.route
 			// An empty prefix cannot change the path, and re-parsing the route
 			// to reach the same result is the most expensive thing here.
-			if pathPrefix != "" {
-				dst.addPrefixToRoute(pathPrefix, clonedRoute, src.config.RegexHandler, src.customConstraints...)
+			if walk.prefix != "" {
+				dst.addPrefixToRoute(walk.prefix, clonedRoute, src.config.RegexHandler, src.customConstraints...)
 			}
 			clonedRoute.Handlers = d.wrapHandlers(clonedRoute.Handlers)
 
@@ -643,6 +649,10 @@ func (d *domainRouter) domainRoutes(dst, src *App, pathPrefix string, chain []*A
 			// resolves that app's config rather than one inferred from the host
 			// and the path.
 			dst.markRouteOwner(clonedRoute, source.owner)
+
+			if skipAutoHead {
+				dst.markSkipAutoHead(clonedRoute)
+			}
 
 			routes[m] = append(routes[m], clonedRoute)
 		}

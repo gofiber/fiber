@@ -3830,6 +3830,37 @@ func Test_Domain_UseMountLayoutStopsAtEngine(t *testing.T) {
 	require.Equal(t, "<h1>child</h1>", string(body))
 }
 
+// Test_Domain_UseMountAutoHeadPerSubtree verifies that one app opting out of
+// automatic HEAD routes withholds them from itself and the apps it is mounted
+// in front of, and from nothing else — the routes of the app it sits inside
+// keep theirs, as they do under an ordinary mount.
+func Test_Domain_UseMountAutoHeadPerSubtree(t *testing.T) {
+	t.Parallel()
+
+	handler := func(c Ctx) error { return c.SendString("x") }
+
+	child := New(Config{DisableHeadAutoRegister: true})
+	child.Get("/deep", handler)
+
+	subApp := New()
+	subApp.Get("/top", handler)
+	subApp.Use("/v1", child)
+
+	app := New()
+	app.Domain("api.example.com").Use("/api", subApp)
+
+	for path, want := range map[string]int{
+		"/api/top":     StatusOK,
+		"/api/v1/deep": StatusMethodNotAllowed,
+	} {
+		req := httptest.NewRequest(MethodHead, path, http.NoBody)
+		req.Host = "api.example.com"
+		resp, err := app.Test(req)
+		require.NoError(t, err)
+		require.Equal(t, want, resp.StatusCode, path)
+	}
+}
+
 // Test_Domain_UseMountInheritsDomainViews verifies the same inheritance for the
 // view engine: a child of a domain-mounted app renders through that app's
 // engine rather than the root's.
