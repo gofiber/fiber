@@ -825,7 +825,7 @@ func (app *App) customRequestHandler(rctx *fasthttp.RequestCtx) {
 	}
 }
 
-func (app *App) addPrefixToRoute(prefix string, route *Route, regexHandler any, customConstraints ...CustomConstraint) *Route {
+func (app *App) addPrefixToRoute(prefix string, route *Route, regexHandler any, customConstraints ...CustomConstraint) {
 	prefixedPath := getGroupPath(prefix, route.Path)
 	prettyPath := prefixedPath
 	// Case-sensitive routing, all to lowercase
@@ -840,6 +840,17 @@ func (app *App) addPrefixToRoute(prefix string, route *Route, regexHandler any, 
 	route.Path = prefixedPath
 	route.path = RemoveEscapeChar(prettyPath)
 	route.routeParser = parseRoute(prettyPath, regexHandler, customConstraints...)
+	// A prefix can introduce parameters of its own — a sub-app mounted at
+	// "/v1/:version" is prefixing every one of its routes with one. Params
+	// decides whether the router matches a route by pattern or by string
+	// equality, so it has to be rebuilt along with the parser or the route
+	// stops matching entirely. Read from the unprettified path, as register
+	// does, so parameter names keep the case they were registered with.
+	if prettyPath == prefixedPath {
+		route.Params = route.routeParser.params
+	} else {
+		route.Params = parseRoute(prefixedPath, regexHandler, customConstraints...).params
+	}
 	route.root = false
 	route.star = false
 	route.caseSensitive = app.config.CaseSensitive
@@ -847,10 +858,18 @@ func (app *App) addPrefixToRoute(prefix string, route *Route, regexHandler any, 
 	// path and parser a filter is derived from, so refresh it here too rather
 	// than depend on a caller marking the routes refreshed.
 	route.buildPrefixFilter()
-
-	return route
 }
 
+// copyRoute clones a route, deliberately leaving group behind: a clone belongs
+// to whichever app it is being placed in, and Name() would otherwise prefix it
+// with the group name of the app it came from. Callers that do want the group —
+// ensureAutoHeadRoutesLocked, which copies a route in place — assign it back.
+//
+// The omission is load-bearing for a mount placeholder, whose target app lives
+// in group.app: carrying it over would let a clone of the placeholder expand
+// the mounted app's handlers verbatim, which for a domain mount means serving
+// them on every host. domainRouter.cloneRoutesForDomain expands the mount
+// instead, so no placeholder is ever cloned.
 func (*App) copyRoute(route *Route) *Route {
 	return &Route{
 		// Leading-byte filter
@@ -1110,6 +1129,28 @@ func (app *App) ensureAutoHeadRoutes() {
 	app.ensureAutoHeadRoutesLocked()
 }
 
+// autoHeadKey identifies the route an automatic HEAD companion would collide
+// with.
+type autoHeadKey struct {
+	// owner is set only where routes are host-scoped, and is what keeps the
+	// HEAD route of one mounted app from standing in for another app's GET
+	owner *App
+	path  string
+}
+
+// autoHeadKey returns the key route is deduplicated under. Where an app's
+// routes are host-scoped — the wrapper a domain mount builds — a HEAD route
+// only covers the GET routes of the same mounted app: on a hostname that app's
+// pattern rejects it declines, leaving a GET route of another one there without
+// a companion to answer for it.
+func (app *App) autoHeadKey(route *Route) autoHeadKey {
+	if !app.mountFields.hostScopedRoutes {
+		return autoHeadKey{path: route.path}
+	}
+
+	return autoHeadKey{owner: app.routeOwner(route), path: route.path}
+}
+
 func (app *App) ensureAutoHeadRoutesLocked() {
 	if app.config.DisableHeadAutoRegister {
 		return
@@ -1122,12 +1163,12 @@ func (app *App) ensureAutoHeadRoutesLocked() {
 	}
 
 	headStack := app.stack[headIndex]
-	existing := make(map[string]struct{}, len(headStack))
+	existing := make(map[autoHeadKey]struct{}, len(headStack))
 	for _, route := range headStack {
 		if route.mount || route.use {
 			continue
 		}
-		existing[route.path] = struct{}{}
+		existing[app.autoHeadKey(route)] = struct{}{}
 	}
 
 	if len(app.stack[getIndex]) == 0 {
@@ -1140,7 +1181,10 @@ func (app *App) ensureAutoHeadRoutesLocked() {
 		if route.mount || route.use {
 			continue
 		}
-		if _, ok := existing[route.path]; ok {
+		if _, ok := existing[app.autoHeadKey(route)]; ok {
+			continue
+		}
+		if app.skipsAutoHeadFor(route) {
 			continue
 		}
 
@@ -1148,12 +1192,19 @@ func (app *App) ensureAutoHeadRoutesLocked() {
 		headRoute.group = route.group
 		headRoute.Method = MethodHead
 		headRoute.autoHead = true
+		// The synthesized route belongs to whichever app the GET route came
+		// from, so a HEAD request resolves the same config a GET one does, and
+		// an app re-parsing it later holds it to the same constraints.
+		if owner := app.routeOwner(route); owner != nil {
+			app.markRouteOwner(headRoute, owner)
+		}
+		app.markRouteConstraints(headRoute, app.mountFields.routeConstraints[route])
 		// Fasthttp automatically omits response bodies when transmitting
 		// HEAD responses, so the copied GET handler stack can execute
 		// unchanged while still producing an empty body on the wire.
 
 		headStack = append(headStack, headRoute)
-		existing[route.path] = struct{}{}
+		existing[app.autoHeadKey(route)] = struct{}{}
 		app.hasRoutesRefreshed = true
 		added = true
 

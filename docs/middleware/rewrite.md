@@ -23,7 +23,7 @@ func New(config ...Config) fiber.Handler
 Rules are stored in a map, so iteration order is undefined. Avoid overlapping patterns if precedence matters.
 :::
 
-### Examples
+## Examples
 
 ```go
 package main
