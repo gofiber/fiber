@@ -1359,7 +1359,9 @@ func Test_ExtractWithSource(t *testing.T) {
 		ctx.Request().Header.Set("X-Token", "raw-header")
 
 		e := FromHeader("X-Token")
-		// Callers may decorate Extract for validation/normalization.
+		// Callers may decorate Extract for validation/normalization. Clear the
+		// constructor ExtractSource (or re-point it at the new Extract) so
+		// ExtractWithSource uses the override instead of the captured original.
 		e.Extract = func(c fiber.Ctx) (string, error) {
 			v, err := FromHeader("X-Token").Extract(c)
 			if err != nil {
@@ -1367,11 +1369,43 @@ func Test_ExtractWithSource(t *testing.T) {
 			}
 			return "normalized:" + v, nil
 		}
+		e.ExtractSource = nil
 
 		v, src, err := ExtractWithSource(e, ctx)
 		require.NoError(t, err)
 		require.Equal(t, "normalized:raw-header", v)
 		require.Equal(t, SourceHeader, src)
+	})
+
+	t.Run("prefers_ExtractSource_when_both_callbacks_set", func(t *testing.T) {
+		t.Parallel()
+
+		app := fiber.New()
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+		t.Cleanup(func() { app.ReleaseCtx(ctx) })
+		ctx.Request().URI().SetQueryString("api_key=from-query")
+
+		// Dual-callback custom extractor: legacy Extract always succeeds with a
+		// static SourceHeader, while ExtractSource reports the real origin.
+		e := Extractor{
+			Extract: func(_ fiber.Ctx) (string, error) {
+				return "from-query", nil
+			},
+			ExtractSource: func(c fiber.Ctx) (string, Source, error) {
+				v := c.Query("api_key")
+				if v == "" {
+					return "", SourceCustom, ErrNotFound
+				}
+				return v, SourceQuery, nil
+			},
+			Source: SourceHeader, // static/declared; must not win over ExtractSource
+			Key:    "api_key",
+		}
+
+		v, src, err := ExtractWithSource(e, ctx)
+		require.NoError(t, err)
+		require.Equal(t, "from-query", v)
+		require.Equal(t, SourceQuery, src)
 	})
 }
 

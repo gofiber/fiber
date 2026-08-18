@@ -75,6 +75,22 @@ var ErrChainCycle = errors.New("cyclic extractor chain")
 // calls ExtractSource when set and otherwise falls back to Extract with the
 // extractor's static Source field.
 //
+// Source is declared/static metadata (for a chain, the first child). It is not
+// by itself an authoritative origin signal: SourceHeader is the zero value, so
+// a hand-rolled Extract without an explicit Source reports SourceHeader.
+// Runtime origin is available only from a successful ExtractWithSource call
+// (err == nil); on failure the returned Source may be static or last-child
+// fallback metadata and must not be treated as the origin of a value.
+//
+// When decorating a built-in extractor, replace Extract and either clear
+// ExtractSource or set ExtractSource to delegate to the new Extract so
+// ExtractWithSource stays in sync. Dual-callback custom extractors should set
+// both; ExtractWithSource prefers ExtractSource so a runtime-dependent source
+// is not replaced by the static Source field.
+//
+// Prefer keyed composite literals when constructing Extractor values so adding
+// fields (such as ExtractSource) does not break unkeyed literals.
+//
 // Extract is not deprecated in this release so middleware that still calls it
 // continues to pass staticcheck. A future major version may remove Extract in
 // favor of the source-aware signature.
@@ -92,22 +108,28 @@ type Extractor struct {
 // Behavior:
 //   - Extractors with a non-empty Chain use ExtractSource when set so the
 //     winning child's Source is reported (Chain.ExtractSource).
-//   - Otherwise Extract is preferred when set. Built-in constructors capture
-//     the same underlying function in ExtractSource, but callers may replace
-//     the public Extract field for validation/auditing; preferring Extract
-//     keeps those legacy overrides effective for source-aware callers.
-//   - When only ExtractSource is set (source-only children), that path is used.
+//   - Otherwise ExtractSource is preferred when set. That keeps dual-callback
+//     custom extractors (Extract for legacy callers, ExtractSource for a
+//     runtime-dependent source) reachable through this helper. Built-in
+//     constructors set both to the same underlying logic; callers that replace
+//     only Extract should clear ExtractSource or re-point it at the new Extract
+//     so the override is visible here.
+//   - When only Extract is set, falls back to Extract with the static Source.
 //   - When both callbacks are nil, returns ErrNotFound.
+//
+// The returned Source is meaningful for security decisions only when err is nil.
 func ExtractWithSource(e Extractor, c fiber.Ctx) (string, Source, error) {
 	if len(e.Chain) > 0 && e.ExtractSource != nil {
+		return e.ExtractSource(c)
+	}
+	// Prefer ExtractSource when present so intentionally supplied source-aware
+	// callbacks (including dual-callback custom extractors) are not bypassed.
+	if e.ExtractSource != nil {
 		return e.ExtractSource(c)
 	}
 	if e.Extract != nil {
 		v, err := e.Extract(c)
 		return v, e.Source, err
-	}
-	if e.ExtractSource != nil {
-		return e.ExtractSource(c)
 	}
 	return "", e.Source, ErrNotFound
 }
@@ -663,7 +685,7 @@ func Chain(extractors ...Extractor) Extractor {
 				if extractor.Extract == nil && extractor.ExtractSource == nil {
 					continue
 				}
-				// ExtractWithSource honors Extract overrides and source-only children.
+				// ExtractWithSource prefers ExtractSource, then Extract (source-only / legacy).
 				v, src, err := ExtractWithSource(extractor, c)
 				if err == nil && v != "" {
 					return v, src, nil
