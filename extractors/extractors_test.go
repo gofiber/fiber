@@ -1287,7 +1287,7 @@ func Test_FromAuthHeader_IgnoresHeaderNameCase(t *testing.T) {
 func Test_ExtractWithSource(t *testing.T) {
 	t.Parallel()
 
-	t.Run("prefers_ExtractSource", func(t *testing.T) {
+	t.Run("builtin_cookie_source", func(t *testing.T) {
 		t.Parallel()
 
 		app := fiber.New()
@@ -1336,18 +1336,38 @@ func Test_ExtractWithSource(t *testing.T) {
 		require.ErrorIs(t, err, ErrNotFound)
 	})
 
-	t.Run("all_builtins_populate_ExtractSource", func(t *testing.T) {
+	t.Run("builtins_report_static_source_via_ExtractWithSource", func(t *testing.T) {
 		t.Parallel()
 
-		require.NotNil(t, FromHeader("X-Token").ExtractSource)
-		require.NotNil(t, FromAuthHeader("Bearer").ExtractSource)
-		require.NotNil(t, FromCookie("token").ExtractSource)
-		require.NotNil(t, FromQuery("token").ExtractSource)
-		require.NotNil(t, FromForm("token").ExtractSource)
-		require.NotNil(t, FromParam("token").ExtractSource)
-		require.NotNil(t, FromCustom("custom", nil).ExtractSource)
-		require.NotNil(t, Chain(FromHeader("X-Token")).ExtractSource)
-		require.NotNil(t, Chain().ExtractSource)
+		app := fiber.New()
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+		t.Cleanup(func() { app.ReleaseCtx(ctx) })
+		ctx.Request().Header.Set("X-Token", "h")
+		ctx.Request().Header.SetCookie("token", "c")
+		ctx.Request().SetRequestURI("/?token=q")
+
+		_, src, err := ExtractWithSource(FromHeader("X-Token"), ctx)
+		require.NoError(t, err)
+		require.Equal(t, SourceHeader, src)
+		_, src, err = ExtractWithSource(FromCookie("token"), ctx)
+		require.NoError(t, err)
+		require.Equal(t, SourceCookie, src)
+		_, src, err = ExtractWithSource(FromQuery("token"), ctx)
+		require.NoError(t, err)
+		require.Equal(t, SourceQuery, src)
+		require.NotNil(t, Chain(FromHeader("X-Token")).Extract)
+		require.NotNil(t, Chain().Extract)
+	})
+
+	t.Run("unkeyed_literal_still_compiles_without_extra_fields", func(t *testing.T) {
+		t.Parallel()
+		// Positional form must match the public field set exactly. Keeping
+		// source-aware extraction field-free preserves this shape.
+		fn := func(_ fiber.Ctx) (string, error) { return "v", nil }
+		e := Extractor{fn, "k", "", nil, SourceCustom}
+		require.NotNil(t, e.Extract)
+		require.Equal(t, "k", e.Key)
+		require.Equal(t, SourceCustom, e.Source)
 	})
 
 	t.Run("honors_legacy_Extract_override", func(t *testing.T) {
@@ -1359,9 +1379,8 @@ func Test_ExtractWithSource(t *testing.T) {
 		ctx.Request().Header.Set("X-Token", "raw-header")
 
 		e := FromHeader("X-Token")
-		// Callers may decorate Extract for validation/normalization. Clear the
-		// constructor ExtractSource (or re-point it at the new Extract) so
-		// ExtractWithSource uses the override instead of the captured original.
+		// Callers may decorate Extract for validation/normalization.
+		// ExtractWithSource always uses Extract for leaves, so the override wins.
 		e.Extract = func(c fiber.Ctx) (string, error) {
 			v, err := FromHeader("X-Token").Extract(c)
 			if err != nil {
@@ -1369,7 +1388,6 @@ func Test_ExtractWithSource(t *testing.T) {
 			}
 			return "normalized:" + v, nil
 		}
-		e.ExtractSource = nil
 
 		v, src, err := ExtractWithSource(e, ctx)
 		require.NoError(t, err)
@@ -1377,36 +1395,6 @@ func Test_ExtractWithSource(t *testing.T) {
 		require.Equal(t, SourceHeader, src)
 	})
 
-	t.Run("prefers_ExtractSource_when_both_callbacks_set", func(t *testing.T) {
-		t.Parallel()
-
-		app := fiber.New()
-		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
-		t.Cleanup(func() { app.ReleaseCtx(ctx) })
-		ctx.Request().URI().SetQueryString("api_key=from-query")
-
-		// Dual-callback custom extractor: legacy Extract always succeeds with a
-		// static SourceHeader, while ExtractSource reports the real origin.
-		e := Extractor{
-			Extract: func(_ fiber.Ctx) (string, error) {
-				return "from-query", nil
-			},
-			ExtractSource: func(c fiber.Ctx) (string, Source, error) {
-				v := c.Query("api_key")
-				if v == "" {
-					return "", SourceCustom, ErrNotFound
-				}
-				return v, SourceQuery, nil
-			},
-			Source: SourceHeader, // static/declared; must not win over ExtractSource
-			Key:    "api_key",
-		}
-
-		v, src, err := ExtractWithSource(e, ctx)
-		require.NoError(t, err)
-		require.Equal(t, "from-query", v)
-		require.Equal(t, SourceQuery, src)
-	})
 }
 
 // go test -run Test_Extractor_Chain_ExtractSource
@@ -1447,33 +1435,6 @@ func Test_Extractor_Chain_ExtractSource(t *testing.T) {
 		require.Equal(t, SourceHeader, src)
 	})
 
-	t.Run("source_only_child_participates", func(t *testing.T) {
-		t.Parallel()
-
-		app := fiber.New()
-		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
-		t.Cleanup(func() { app.ReleaseCtx(ctx) })
-
-		sourceOnly := Extractor{
-			ExtractSource: func(_ fiber.Ctx) (string, Source, error) {
-				return "source-only-value", SourceCustom, nil
-			},
-			Source: SourceCustom,
-			Key:    "source-only",
-		}
-		// Legacy Extract skips nil Extract; source path must still find it.
-		chain := Chain(FromHeader("X-Token"), sourceOnly)
-
-		v, err := chain.Extract(ctx)
-		require.Empty(t, v)
-		require.ErrorIs(t, err, ErrNotFound)
-
-		sv, src, serr := ExtractWithSource(chain, ctx)
-		require.NoError(t, serr)
-		require.Equal(t, "source-only-value", sv)
-		require.Equal(t, SourceCustom, src)
-	})
-
 	t.Run("skips_empty_children_preserves_prior_error", func(t *testing.T) {
 		t.Parallel()
 
@@ -1503,7 +1464,7 @@ func Test_Extractor_Chain_ExtractSource(t *testing.T) {
 		require.ErrorIs(t, serr, customErr)
 	})
 
-	t.Run("hand_rolled_nil_ExtractSource_in_chain", func(t *testing.T) {
+	t.Run("hand_rolled_in_chain", func(t *testing.T) {
 		t.Parallel()
 
 		app := fiber.New()
@@ -1525,7 +1486,7 @@ func Test_Extractor_Chain_ExtractSource(t *testing.T) {
 		require.Equal(t, SourceForm, src)
 	})
 
-	t.Run("shared_guard_allows_sequential_Extract_then_ExtractSource", func(t *testing.T) {
+	t.Run("shared_guard_allows_sequential_Extract_then_ExtractWithSource", func(t *testing.T) {
 		t.Parallel()
 
 		app := fiber.New()
@@ -1556,12 +1517,11 @@ func Test_Extractor_Chain_ExtractSource(t *testing.T) {
 
 		var chainExtractor Extractor
 		chainExtractor = Chain(FromCustom("cycle", func(c fiber.Ctx) (string, error) {
-			// Re-enter via ExtractSource while Extract is already active.
-			_, _, err := chainExtractor.ExtractSource(c)
+			// Re-enter via ExtractWithSource while Extract is already active.
+			_, _, err := ExtractWithSource(chainExtractor, c)
 			return "", err
 		}))
 
-		// FromCustom.ExtractSource calls Extract, which re-enters ExtractSource.
 		// Shared guard must treat the cross-API re-entry as a cycle.
 		v, src, err := ExtractWithSource(chainExtractor, ctx)
 		require.Empty(t, v)
@@ -1576,28 +1536,10 @@ func Test_Extractor_Chain_ExtractSource(t *testing.T) {
 		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
 		t.Cleanup(func() { app.ReleaseCtx(ctx) })
 
-		var chainExtractor Extractor
-		// Source-only child that re-enters through the legacy Extract API.
-		// With separate guards, Extract would not see ExtractSource as active
-		// and would either nest forever or skip this nil-Extract child.
-		chainExtractor = Chain(Extractor{
-			ExtractSource: func(c fiber.Ctx) (string, Source, error) {
-				v, err := chainExtractor.Extract(c)
-				return v, SourceCustom, err
-			},
-			Source: SourceCustom,
-			Key:    "cross-api-cycle",
-		})
-
-		v, src, err := ExtractWithSource(chainExtractor, ctx)
-		require.Empty(t, v)
-		require.Equal(t, SourceCustom, src)
-		require.ErrorIs(t, err, ErrChainCycle)
-
-		// Symmetric: enter via Extract while a nested child hits ExtractSource.
+		// Enter via Extract while a nested child hits ExtractWithSource.
 		var chainB Extractor
 		chainB = Chain(FromCustom("to-source", func(c fiber.Ctx) (string, error) {
-			_, _, err := chainB.ExtractSource(c)
+			_, _, err := ExtractWithSource(chainB, c)
 			return "", err
 		}))
 		token, err := chainB.Extract(ctx)

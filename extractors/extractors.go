@@ -28,6 +28,7 @@ package extractors
 import (
 	"errors"
 	"net/url"
+	"unsafe"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/internal/headerlookup"
@@ -69,67 +70,104 @@ var ErrChainCycle = errors.New("cyclic extractor chain")
 
 // Extractor defines a value extraction method with metadata.
 //
-// Extract remains the primary extraction callback for existing callers.
-// ExtractSource is optional and returns the value together with the source that
-// supplied it. Prefer ExtractWithSource when source metadata is needed; it
-// calls ExtractSource when set and otherwise falls back to Extract with the
-// extractor's static Source field.
+// Extract is the extraction callback. Source is declared/static metadata (for a
+// chain, the first child). SourceHeader is the zero value, so a hand-rolled
+// Extract without an explicit Source reports SourceHeader.
 //
-// Source is declared/static metadata (for a chain, the first child). It is not
-// by itself an authoritative origin signal: SourceHeader is the zero value, so
-// a hand-rolled Extract without an explicit Source reports SourceHeader.
-// Runtime origin is available only from a successful ExtractWithSource call
-// (err == nil); on failure the returned Source may be static or last-child
+// Prefer ExtractWithSource when the caller needs the source that actually
+// supplied a value. For chains it re-walks children and returns the winning
+// child's Source. For leaves it returns Extract's result with the static Source.
+// No extra struct field is required, so existing unkeyed Extractor literals
+// keep compiling.
+//
+// Runtime origin is meaningful only from a successful ExtractWithSource call
+// (err == nil). On failure the returned Source may be static or last-child
 // fallback metadata and must not be treated as the origin of a value.
 //
-// When decorating a built-in extractor, replace Extract and either clear
-// ExtractSource or set ExtractSource to delegate to the new Extract so
-// ExtractWithSource stays in sync. Dual-callback custom extractors should set
-// both; ExtractWithSource prefers ExtractSource so a runtime-dependent source
-// is not replaced by the static Source field.
-//
-// Prefer keyed composite literals when constructing Extractor values so adding
-// fields (such as ExtractSource) does not break unkeyed literals.
-//
 // Extract is not deprecated in this release so middleware that still calls it
-// continues to pass staticcheck. A future major version may remove Extract in
-// favor of the source-aware signature.
+// continues to pass staticcheck.
 type Extractor struct {
-	Extract       func(fiber.Ctx) (string, error)
-	ExtractSource func(fiber.Ctx) (string, Source, error)
-	Key           string      // The parameter/header name used for extraction
-	AuthScheme    string      // The auth scheme used, e.g., "Bearer"
-	Chain         []Extractor // For chained extractors, stores all extractors in the chain
-	Source        Source      // The type of source being extracted from
+	Extract    func(fiber.Ctx) (string, error)
+	Key        string      // The parameter/header name used for extraction
+	AuthScheme string      // The auth scheme used, e.g., "Bearer"
+	Chain      []Extractor // For chained extractors, stores all extractors in the chain
+	Source     Source      // The type of source being extracted from
 }
 
 // ExtractWithSource returns the extracted value together with its source.
 //
 // Behavior:
-//   - Extractors with a non-empty Chain use ExtractSource when set so the
-//     winning child's Source is reported (Chain.ExtractSource).
-//   - Otherwise ExtractSource is preferred when set. That keeps dual-callback
-//     custom extractors (Extract for legacy callers, ExtractSource for a
-//     runtime-dependent source) reachable through this helper. Built-in
-//     constructors set both to the same underlying logic; callers that replace
-//     only Extract should clear ExtractSource or re-point it at the new Extract
-//     so the override is visible here.
-//   - When only Extract is set, falls back to Extract with the static Source.
-//   - When both callbacks are nil, returns ErrNotFound.
+//   - Non-empty Chain: walk children (same success rules as Chain.Extract),
+//     skip nil Extract, return the winning child's Source. Uses the same cycle
+//     guard identity as Chain.Extract so nested re-entry still yields ErrChainCycle.
+//   - Leaf with Extract: return Extract(c) with the static Source.
+//   - Neither: ErrNotFound.
 //
 // The returned Source is meaningful for security decisions only when err is nil.
 func ExtractWithSource(e Extractor, c fiber.Ctx) (string, Source, error) {
-	if len(e.Chain) > 0 && e.ExtractSource != nil {
-		return e.ExtractSource(c)
-	}
-	// Prefer ExtractSource when present so intentionally supplied source-aware
-	// callbacks (including dual-callback custom extractors) are not bypassed.
-	if e.ExtractSource != nil {
-		return e.ExtractSource(c)
+	if len(e.Chain) > 0 {
+		return extractChainWithSource(e, c)
 	}
 	if e.Extract != nil {
 		v, err := e.Extract(c)
 		return v, e.Source, err
+	}
+	return "", e.Source, ErrNotFound
+}
+
+// chainGuardFor returns a Locals key shared by Chain.Extract and ExtractWithSource
+// for the same chain backing array.
+func chainGuardFor(chain []Extractor) (chainGuardKey, bool) {
+	if len(chain) == 0 {
+		return chainGuardKey{}, false
+	}
+	// Address of the first element is stable for the shared backing array.
+	return chainGuardKey{id: (*byte)(unsafe.Pointer(&chain[0]))}, true
+}
+
+func extractChainWithSource(e Extractor, c fiber.Ctx) (string, Source, error) {
+	guard, ok := chainGuardFor(e.Chain)
+	if !ok {
+		return "", SourceCustom, ErrNotFound
+	}
+	if active, ok := c.Locals(guard).(bool); ok && active {
+		return "", e.Source, ErrChainCycle
+	}
+	c.Locals(guard, true)
+	defer c.Locals(guard, false)
+
+	var lastErr error
+	lastSource := e.Source
+	for _, extractor := range e.Chain {
+		if extractor.Extract == nil && len(extractor.Chain) == 0 {
+			continue
+		}
+		// Nested chains and leaves both go through ExtractWithSource.
+		if extractor.Extract == nil && len(extractor.Chain) > 0 {
+			v, src, err := ExtractWithSource(extractor, c)
+			if err == nil && v != "" {
+				return v, src, nil
+			}
+			if err != nil {
+				lastErr = err
+				lastSource = src
+			}
+			continue
+		}
+		if extractor.Extract == nil {
+			continue
+		}
+		v, src, err := ExtractWithSource(extractor, c)
+		if err == nil && v != "" {
+			return v, src, nil
+		}
+		if err != nil {
+			lastErr = err
+			lastSource = src
+		}
+	}
+	if lastErr != nil {
+		return "", lastSource, lastErr
 	}
 	return "", e.Source, ErrNotFound
 }
@@ -250,11 +288,7 @@ func FromAuthHeader(authScheme string) Extractor {
 		return authHeader, nil
 	}
 	return Extractor{
-		Extract: fn,
-		ExtractSource: func(c fiber.Ctx) (string, Source, error) {
-			v, err := fn(c)
-			return v, SourceAuthHeader, err
-		},
+		Extract:    fn,
 		Key:        fiber.HeaderAuthorization,
 		Source:     SourceAuthHeader,
 		AuthScheme: authScheme,
@@ -296,12 +330,8 @@ func FromCookie(key string) Extractor {
 	}
 	return Extractor{
 		Extract: fn,
-		ExtractSource: func(c fiber.Ctx) (string, Source, error) {
-			v, err := fn(c)
-			return v, SourceCookie, err
-		},
-		Key:    key,
-		Source: SourceCookie,
+		Key:     key,
+		Source:  SourceCookie,
 	}
 }
 
@@ -345,12 +375,8 @@ func FromParam(param string) Extractor {
 	}
 	return Extractor{
 		Extract: fn,
-		ExtractSource: func(c fiber.Ctx) (string, Source, error) {
-			v, err := fn(c)
-			return v, SourceParam, err
-		},
-		Key:    param,
-		Source: SourceParam,
+		Key:     param,
+		Source:  SourceParam,
 	}
 }
 
@@ -389,12 +415,8 @@ func FromForm(param string) Extractor {
 	}
 	return Extractor{
 		Extract: fn,
-		ExtractSource: func(c fiber.Ctx) (string, Source, error) {
-			v, err := fn(c)
-			return v, SourceForm, err
-		},
-		Key:    param,
-		Source: SourceForm,
+		Key:     param,
+		Source:  SourceForm,
 	}
 }
 
@@ -442,12 +464,8 @@ func FromHeader(header string) Extractor {
 	}
 	return Extractor{
 		Extract: fn,
-		ExtractSource: func(c fiber.Ctx) (string, Source, error) {
-			v, err := fn(c)
-			return v, SourceHeader, err
-		},
-		Key:    header,
-		Source: SourceHeader,
+		Key:     header,
+		Source:  SourceHeader,
 	}
 }
 
@@ -488,12 +506,8 @@ func FromQuery(param string) Extractor {
 	}
 	return Extractor{
 		Extract: fn,
-		ExtractSource: func(c fiber.Ctx) (string, Source, error) {
-			v, err := fn(c)
-			return v, SourceQuery, err
-		},
-		Key:    param,
-		Source: SourceQuery,
+		Key:     param,
+		Source:  SourceQuery,
 	}
 }
 
@@ -552,12 +566,8 @@ func FromCustom(key string, fn func(fiber.Ctx) (string, error)) Extractor {
 	}
 	return Extractor{
 		Extract: fn,
-		ExtractSource: func(c fiber.Ctx) (string, Source, error) {
-			v, err := fn(c)
-			return v, SourceCustom, err
-		},
-		Key:    key,
-		Source: SourceCustom,
+		Key:     key,
+		Source:  SourceCustom,
 	}
 }
 
@@ -567,11 +577,10 @@ func FromCustom(key string, fn func(fiber.Ctx) (string, error)) Extractor {
 // The function:
 //   - Tries each extractor in the order provided
 //   - Returns the first successful extraction (non-empty value with no error)
-//   - Legacy Extract skips children with a nil Extract function
-//   - ExtractSource walks children via ExtractWithSource so source-only children
-//     and hand-rolled extractors (nil ExtractSource) participate safely
+//   - Skips children with a nil Extract function
 //   - Returns the last error encountered if all extractors fail
 //   - Returns ErrNotFound if no extractors are provided or all return empty values
+//   - ExtractWithSource on a chain walks the same children and reports the winning Source
 //
 // Parameters:
 //   - extractors: A variadic list of Extractor instances to try in sequence.
@@ -581,18 +590,16 @@ func FromCustom(key string, fn func(fiber.Ctx) (string, error)) Extractor {
 //
 //	An Extractor that attempts each provided extractor in order.
 //	The returned extractor uses the Source and Key from the first extractor for
-//	static metadata. ExtractSource / ExtractWithSource report the winning child's
-//	Source instead of that primary metadata.
+//	static metadata. ExtractWithSource reports the winning child's Source.
 //
 // Behavior:
 //   - Success: Returns the first non-empty value with no error
 //   - Partial failure: Continues to next extractor if current returns error or empty value
 //   - Total failure: Returns last error encountered, or ErrNotFound if no errors
 //   - Empty chain: Always returns ErrNotFound
-//   - Extract and ExtractSource share one cycle guard so a child that re-enters
-//     the same chain through the other API still returns ErrChainCycle. The
-//     guard is cleared on return, so sequential Extract then ExtractSource
-//     (or the reverse) on the same request is fine.
+//   - Extract and ExtractWithSource share one cycle guard so a child that
+//     re-enters the same chain still returns ErrChainCycle. The guard is cleared
+//     on return, so sequential Extract then ExtractWithSource is fine.
 //
 // Examples:
 //
@@ -618,30 +625,28 @@ func Chain(extractors ...Extractor) Extractor {
 	notFound := func(fiber.Ctx) (string, error) {
 		return "", ErrNotFound
 	}
-	notFoundSource := func(fiber.Ctx) (string, Source, error) {
-		return "", SourceCustom, ErrNotFound
-	}
 
 	if len(extractors) == 0 {
 		return Extractor{
-			Extract:       notFound,
-			ExtractSource: notFoundSource,
-			Source:        SourceCustom,
-			Key:           "",
-			Chain:         []Extractor{},
+			Extract: notFound,
+			Source:  SourceCustom,
+			Key:     "",
+			Chain:   []Extractor{},
 		}
 	}
 
-	// Use the source and key from the first extractor as the primary static metadata.
-	// ExtractSource reports the winning child's Source at runtime.
-	primarySource := extractors[0].Source
-	primaryKey := extractors[0].Key
-	// One guard for both entry points: nested re-entry via the other API is a
-	// cycle. defer clears it so sequential Extract / ExtractSource is allowed.
-	guard := chainGuardKey{id: new(byte)}
+	// Defensive copy used for introspection and the shared cycle guard identity
+	// (address of kids[0] matches ExtractWithSource on this Chain value).
+	kids := append([]Extractor(nil), extractors...)
+	primarySource := kids[0].Source
+	primaryKey := kids[0].Key
 
 	return Extractor{
 		Extract: func(c fiber.Ctx) (string, error) {
+			guard, ok := chainGuardFor(kids)
+			if !ok {
+				return "", ErrNotFound
+			}
 			if active, ok := c.Locals(guard).(bool); ok && active {
 				return "", ErrChainCycle
 			}
@@ -651,7 +656,7 @@ func Chain(extractors ...Extractor) Extractor {
 
 			var lastErr error // last error encountered (including ErrNotFound)
 
-			for _, extractor := range extractors {
+			for _, extractor := range kids {
 				if extractor.Extract == nil {
 					continue
 				}
@@ -668,41 +673,9 @@ func Chain(extractors ...Extractor) Extractor {
 			}
 			return "", ErrNotFound
 		},
-		ExtractSource: func(c fiber.Ctx) (string, Source, error) {
-			if active, ok := c.Locals(guard).(bool); ok && active {
-				return "", primarySource, ErrChainCycle
-			}
-
-			c.Locals(guard, true)
-			defer c.Locals(guard, false)
-
-			var lastErr error
-			lastSource := primarySource
-
-			for _, extractor := range extractors {
-				// Skip zero-value / empty children so they do not overwrite a
-				// meaningful earlier error with ErrNotFound (matches Extract).
-				if extractor.Extract == nil && extractor.ExtractSource == nil {
-					continue
-				}
-				// ExtractWithSource prefers ExtractSource, then Extract (source-only / legacy).
-				v, src, err := ExtractWithSource(extractor, c)
-				if err == nil && v != "" {
-					return v, src, nil
-				}
-				if err != nil {
-					lastErr = err
-					lastSource = src
-				}
-			}
-			if lastErr != nil {
-				return "", lastSource, lastErr
-			}
-			return "", primarySource, ErrNotFound
-		},
 		Source: primarySource,
 		Key:    primaryKey,
-		Chain:  append([]Extractor(nil), extractors...), // Defensive copy for introspection
+		Chain:  kids,
 	}
 }
 

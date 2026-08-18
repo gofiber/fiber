@@ -16,18 +16,19 @@ Package providing shared value extraction utilities for Fiber middleware package
 
 ### Extractor Structure
 
-Field order matches the Go struct. Prefer **keyed** composite literals when constructing `Extractor` values so new fields (for example `ExtractSource`) do not break unkeyed literals.
-
 ```go
 type Extractor struct {
-  Extract       func(fiber.Ctx) (string, error)
-  ExtractSource func(fiber.Ctx) (string, Source, error) // optional; value + winning source
-  Key           string      // The parameter/header name used for extraction
-  AuthScheme    string      // The auth scheme used, e.g., "Bearer"
-  Chain         []Extractor // For chained extractors, stores all extractors in the chain
-  Source        Source      // Declared/static source metadata (first child for a chain)
+  Extract    func(fiber.Ctx) (string, error)
+  Key        string      // The parameter/header name used for extraction
+  AuthScheme string      // The auth scheme used, e.g., "Bearer"
+  Chain      []Extractor // For chained extractors, stores all extractors in the chain
+  Source     Source      // Declared/static source metadata (first child for a chain)
 }
 ```
+
+Source-aware extraction does **not** add fields to `Extractor`, so existing unkeyed
+literals and keyed constructors keep working. Use `ExtractWithSource` for the
+winning source.
 
 ### Available Functions
 
@@ -80,7 +81,7 @@ case extractors.SourceCustom:
 }
 ```
 
-`ExtractWithSource` prefers `ExtractSource` when set (so dual-callback custom extractors can report a runtime-dependent source). If you replace only `Extract` on a built-in, clear `ExtractSource` or re-point it at the new `Extract` so the override is used.
+For leaves, `ExtractWithSource` always calls `Extract` and returns the static `Source`. Decorating `Extract` is therefore visible to source-aware callers without extra wiring.
 
 ### Chain Behavior
 
@@ -88,12 +89,11 @@ The `Chain` function implements fallback logic:
 
 - Returns first successful extraction (non-empty value, no error)
 - If all extractors fail, returns the last error encountered or `ErrNotFound`
-- **Skips extractors with both `nil` Extract and `nil` ExtractSource** (zero-value children)
-- `Extract` skips children with `nil` Extract; `ExtractSource` / `ExtractWithSource` also accept source-only children
-- Detects recursive chain re-entry and returns `ErrChainCycle` (shared guard across both APIs)
+- **Skips extractors with `nil` Extract** (zero-value children)
+- Detects recursive chain re-entry and returns `ErrChainCycle` (shared guard across Extract and ExtractWithSource)
 - Preserves `Source` and `Key` from the first extractor for static introspection (not `AuthScheme`)
 - Stores defensive copy for runtime inspection via the `Chain` field
-- On success, `ExtractSource` / `ExtractWithSource` report the **winning child's** `Source`
+- On success, `ExtractWithSource` reports the **winning child's** `Source`
 - On failure, the returned source is fallback metadata only — do not treat it as the origin of an extracted value
 
 ### Chain Introspection

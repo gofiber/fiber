@@ -37,12 +37,12 @@ Extractors are utilities that middleware uses to get values from different parts
 
 ### Extractor Structure
 
-Each `Extractor` contains the fields below (order matches the Go struct). Prefer **keyed** composite literals when constructing `Extractor` values so adding fields such as `ExtractSource` does not break downstream unkeyed literals.
+Each `Extractor` contains the fields below (order matches the Go struct). Prefer **keyed** composite literals when constructing `Extractor` values so adding fields such as `ExtractWithSource` does not break downstream unkeyed literals.
 
 ```go
 type Extractor struct {
     Extract       func(fiber.Ctx) (string, error)             // Primary extraction callback
-    ExtractSource func(fiber.Ctx) (string, Source, error)     // Optional: value + winning source
+    ExtractWithSource func(fiber.Ctx) (string, Source, error)     // Optional: value + winning source
     Key           string                                      // Parameter/header name
     AuthScheme    string                                      // Auth scheme (FromAuthHeader)
     Chain         []Extractor                                 // Chained extractors
@@ -83,7 +83,7 @@ if src == extractors.SourceQuery {
 }
 ```
 
-`ExtractWithSource` prefers `ExtractSource` when set (so dual-callback custom extractors can report a runtime-dependent source), falls back to `Extract` plus static `Source` when only `Extract` is set, and always runs chains through the chain's `ExtractSource` so the winning child source is returned. If you replace only the public `Extract` field on a built-in, clear `ExtractSource` or re-point it at the new `Extract` so the override is visible to source-aware callers.
+`ExtractWithSource` prefers `ExtractWithSource` when set (so dual-callback custom extractors can report a runtime-dependent source), falls back to `Extract` plus static `Source` when only `Extract` is set, and always runs chains through the chain's `ExtractWithSource` so the winning child source is returned. If you replace only the public `Extract` field on a built-in, clear `ExtractWithSource` or re-point it at the new `Extract` so the override is visible to source-aware callers.
 
 ### Chain Behavior
 
@@ -91,10 +91,10 @@ The `Chain` function creates extractors that try multiple sources in order:
 
 - Returns the first successful extraction (non-empty value with no error)
 - If all extractors fail, returns the last error encountered or `ErrNotFound`
-- **Robust error handling**: Skips zero-value children (`Extract` and `ExtractSource` both `nil`); `Extract` also skips `nil` Extract
-- **Cycle prevention**: Detects recursive chain re-entry and returns `ErrChainCycle` (shared across `Extract` and `ExtractSource`)
+- **Robust error handling**: Skips zero-value children (`Extract` and `ExtractWithSource` both `nil`); `Extract` also skips `nil` Extract
+- **Cycle prevention**: Detects recursive chain re-entry and returns `ErrChainCycle` (shared across `Extract` and `ExtractWithSource`)
 - Preserves `Source` and `Key` from the first extractor for static metadata (not `AuthScheme`)
-- On success, `ExtractSource` / `ExtractWithSource` report the winning child's source at runtime
+- On success, `ExtractWithSource` / `ExtractWithSource` report the winning child's source at runtime
 - On failure, the returned source is fallback metadata only — do not treat it as the origin of an extracted value
 - Stores a defensive copy of all chained extractors for introspection via the `Chain` field
 
