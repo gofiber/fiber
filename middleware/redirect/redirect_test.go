@@ -2,6 +2,7 @@ package redirect
 
 import (
 	"context"
+	"math"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -2884,8 +2885,12 @@ func Test_Redirect_SignedBoundIsNoQuantifier(t *testing.T) {
 	t.Parallel()
 
 	require.Equal(t, literalPrefixLen(`/p/a....`), literalPrefixLen(`/p/a{-0}`))
-	require.Equal(t, literalLen(`/p/a....`), literalLen(`/p/a{-0}`))
 	require.Less(t, patternWidth(`/p/a{-0}`), patternWidth(`/p/a....`))
+
+	// Text pins what it spells: the bytes between the braces are path, not
+	// syntax, and the rule pins more of one than the "/p/a...." it outranks.
+	require.Equal(t, literalLen(`/p/a-0`), literalLen(`/p/a{-0}`))
+	require.Greater(t, literalLen(`/p/a{-0}`), literalLen(`/p/a....`))
 
 	// Digits alone name a count; a sign, a space or a stray byte do not.
 	require.Equal(t, 2, patternWidth(`/p/[ab]{1}`))
@@ -3202,4 +3207,90 @@ func Test_Redirect_FileSchemeEmptyAuthority(t *testing.T) {
 			require.Equal(t, tc.want, resp.Header.Get("Location"))
 		})
 	}
+}
+
+// Test_Redirect_LiteralBracesHideNoRun covers "{x*}", whose braces bound no
+// repetition and are text to Go's parser. Skipping the body of every "{...}"
+// passed over the run standing inside it, so a rule that runs on measured as
+// bounded and sorted ahead of a rule it contains on a path they share.
+func Test_Redirect_LiteralBracesHideNoRun(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Use(New(Config{
+		Rules: map[string]string{
+			`/p/(a|{x[c]})`: "/narrow",
+			`/p/(a|{x*})`:   "/broad",
+		},
+		StatusCode: fiber.StatusFound,
+	}))
+
+	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/p/a", http.NoBody)
+	require.NoError(t, err)
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusFound, resp.StatusCode)
+	require.Equal(t, "/narrow", resp.Header.Get("Location"))
+
+	// The run is seen wherever it stands, and a "+" between the braces is one too.
+	require.Equal(t, 1, wildcardRank(`/p/(a|{x*})`))
+	require.Equal(t, 1, carriesRun(`/p/(a|{x*})`))
+	require.Equal(t, 1, carriesRun(`/p/(a|{x+})`))
+	require.Equal(t, 0, carriesRun(`/p/(a|{x[c]})`))
+
+	// A bound the braces do spell still names a repetition rather than text.
+	require.Equal(t, 1, carriesRun(`/p/[ab]x{2,}`))
+	require.Equal(t, patternWidth(`/p/[ab]`), patternWidth(`/p/[ab]x{2}`))
+}
+
+// Test_Redirect_LiteralBracesAreMeasured covers the same braces in the width and
+// the literal length: what stands between them is rule like any other, and
+// passing over it left a rule measuring as narrow as the one it contains.
+func Test_Redirect_LiteralBracesAreMeasured(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Use(New(Config{
+		Rules: map[string]string{
+			`/p/(a|{x[c]})`:   "/narrow",
+			`/p/(a|{x[a-z]})`: "/broad",
+		},
+		StatusCode: fiber.StatusFound,
+	}))
+
+	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/p/a", http.NoBody)
+	require.NoError(t, err)
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusFound, resp.StatusCode)
+	require.Equal(t, "/narrow", resp.Header.Get("Location"))
+
+	require.Equal(t, 26, patternWidth(`/p/{x[a-z]}`))
+	require.Equal(t, 1, patternWidth(`/p/{x[c]}`))
+
+	// And what they pin is pinned: the "x" between them is a byte of the path.
+	require.Equal(t, literalLen(`/p/x`), literalLen(`/p/{x[c]}`))
+
+	// Go reads the braces the same way, so the rule compiles and matches them.
+	require.True(t, regexp.MustCompile(`^(?:/p/{x[a-z]})$`).MatchString("/p/{xc}"))
+}
+
+// Test_Redirect_WidthSaturatesRatherThanWraps covers the product of two widths,
+// which does not fit an int where an int is thirty-two bits wide. Multiplying
+// before the clamp wrapped it negative, and a negative width sorts a rule ahead
+// of every rule it contains.
+func Test_Redirect_WidthSaturatesRatherThanWraps(t *testing.T) {
+	t.Parallel()
+
+	require.Equal(t, maxPatternWidth, scaledWidth(math.MaxInt, 2))
+	require.Equal(t, maxPatternWidth, scaledWidth(maxPatternWidth, maxPatternWidth))
+	require.Equal(t, 6, scaledWidth(2, 3))
+	require.Equal(t, 0, scaledWidth(0, 3))
+	require.Equal(t, 0, scaledWidth(3, 0))
+
+	// The pair that wrapped: a repetition reached on an already saturated width.
+	broad := patternWidth(`/p/[a-z][a-z][a-z][a-z][a-z][a-zA-Z]{1,2}`)
+	require.Equal(t, maxPatternWidth, broad)
+	require.Greater(t, broad, patternWidth(`/p/[a][a-z][a-z][a-z][a-z][a]`))
+	require.Equal(t, maxPatternWidth, repeated(maxPatternWidth, 2756, 1, 1))
 }

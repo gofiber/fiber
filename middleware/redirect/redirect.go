@@ -1037,17 +1037,17 @@ func (s *literalScanner) width() int {
 			continue
 		case '[':
 			atom, prev, quantified = s.classWidth(), n, false
-			n = clampWidth(n * atom)
+			n = scaledWidth(n, atom)
 			continue
 		case '.':
 			// Any byte, so it is the widest single position there is.
 			atom, prev, quantified = 256, n, false
-			n = clampWidth(n * atom)
+			n = scaledWidth(n, atom)
 		case '(':
 			s.i = skipGroupPrefix(s.rule, s.i+1)
 			prev, quantified = n, false
 			atom = s.width()
-			n = clampWidth(n * atom)
+			n = scaledWidth(n, atom)
 			continue
 		case ')':
 			s.i++
@@ -1073,6 +1073,12 @@ func (s *literalScanner) width() int {
 		case '{':
 			var bounds quantifierBounds
 			s.i, bounds = skipQuantifier(s.rule, s.i)
+			if !bounds.quantifies {
+				// Braces standing as text: the "{" is a byte like any other,
+				// and what it holds is measured rather than passed over.
+				atom, prev, quantified = 1, n, false
+				continue
+			}
 			if !bounds.runsOn {
 				n, prev = repeated(prev, atom, bounds.lo, bounds.hi), n
 			}
@@ -1104,9 +1110,9 @@ func repeated(prev, atom, lo, hi int) int {
 		if k >= lo {
 			total = clampWidth(total + term)
 		}
-		term = clampWidth(term * w)
+		term = scaledWidth(term, w)
 	}
-	return clampWidth(prev * max(total, 1))
+	return scaledWidth(prev, max(total, 1))
 }
 
 // classWidth returns how many bytes the character class at the current position
@@ -1186,6 +1192,21 @@ const setMemberWidth = 2
 
 func clampWidth(n int) int {
 	return min(n, maxPatternWidth)
+}
+
+// scaledWidth multiplies one width by another, saturating rather than wrapping.
+// Both stay at or below maxPatternWidth, but their product does not fit an int
+// where an int is thirty-two bits wide, and a product that wraps comes back
+// negative: on a 386 build "/p/[a-z][a-z][a-z][a-z][a-z][a-zA-Z]{1,2}" measured
+// -1405091840 and sorted ahead of the "/p/[a][a-z][a-z][a-z][a-z][a]" it contains.
+func scaledWidth(a, b int) int {
+	if a <= 0 || b <= 0 {
+		return 0
+	}
+	if a > maxPatternWidth/b {
+		return maxPatternWidth
+	}
+	return clampWidth(a * b)
 }
 
 // carriesRun returns 1 for a rule matching a run of bytes of any length and 0
@@ -1295,23 +1316,34 @@ func smallerBranch(smallest, n int) int {
 // quantifierBounds is how many times a "{m,n}" lets the atom before it repeat.
 // runsOn marks the "{2,}" that names no upper bound, whose min and max say
 // nothing; allowsNone is the min of zero read on its own, since that is all the
-// literal length needs of it.
+// literal length needs of it. quantifies separates the braces that bound a
+// repetition from the ones standing as text, whose bounds say nothing either.
 type quantifierBounds struct {
 	lo, hi     int
 	allowsNone bool
 	runsOn     bool
+	quantifies bool
 }
 
 // skipQuantifier returns the index just past the "{m,n}" beginning at i and what
 // it bounds. An unclosed "{" is an ordinary byte to the regexp parser, so it is
 // left as one here: the index only moves past it, bounding nothing.
+//
+// So is a "{" whose body spells no bound. Its braces and everything between them
+// are rule like any other and are walked rather than skipped: skipping them hid
+// the run in "/p/{x*}", which then sorted ahead of the "/p/[{][x]([a]+)[}]" it
+// contains.
 func skipQuantifier(rule string, i int) (int, quantifierBounds) {
 	brace := strings.IndexByte(rule[i:], '}')
 	if brace < 0 {
 		return i + 1, quantifierBounds{lo: 1, hi: 1}
 	}
 
-	return i + brace + 1, quantifierRange(rule[i+1 : i+brace])
+	bounds := quantifierRange(rule[i+1 : i+brace])
+	if !bounds.quantifies {
+		return i + 1, bounds
+	}
+	return i + brace + 1, bounds
 }
 
 // quantifierRange reads the body of a "{m,n}". A body spelling no bound is no
@@ -1329,16 +1361,16 @@ func quantifierRange(body string) quantifierBounds {
 
 	switch {
 	case !comma:
-		return quantifierBounds{lo: m, hi: m, allowsNone: m == 0}
+		return quantifierBounds{lo: m, hi: m, allowsNone: m == 0, quantifies: true}
 	case hi == "":
-		return quantifierBounds{lo: m, allowsNone: m == 0, runsOn: true}
+		return quantifierBounds{lo: m, allowsNone: m == 0, runsOn: true, quantifies: true}
 	}
 
 	n, ok := repeatCount(hi)
 	if !ok || n < m {
 		return once
 	}
-	return quantifierBounds{lo: m, hi: n, allowsNone: m == 0}
+	return quantifierBounds{lo: m, hi: n, allowsNone: m == 0, quantifies: true}
 }
 
 // repeatCount reads one bound of a "{m,n}". Go's repetition grammar spells a
