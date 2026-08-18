@@ -1209,20 +1209,31 @@ func scaledWidth(a, b int) int {
 	return clampWidth(a * b)
 }
 
-// carriesRun returns 1 for a rule matching a run of bytes of any length and 0
-// for one whose every position is bounded, so the rule that runs on sorts second.
+// carriesRun grades how open-ended a rule's broadest run of bytes is: 0 where
+// every position is bounded, 1 where a run repeats something the rule names, and
+// 2 where it repeats anything at all. The rule that runs on sorts behind the one
+// that does not, and the run repeating anything behind the run that does not.
 //
-// Fiber's "*" is one such run, expanded to "(.*)" before the key is compiled,
-// and a "+" or "{2,}" is another. Their breadth is one no width can stand for,
-// since a width saturates and two saturated rules tie. Ranked here, the width
-// goes on measuring what the rules pin besides the run — which is what separates
-// "/p/[z]+" from the "/p/[a-z]+" containing it, a pair a saturated width left
-// tied for key order to pick apart. How many wildcards a rule carries is read
-// after the width, by wildcardRank: a second wildcard widens a rule but says
-// nothing about what the rest of it pins, so a rule holding two can still be the
-// narrower of the pair.
+// Fiber's "*" is the second kind, expanded to "(.*)" before the key is compiled;
+// a "+" or a "{2,}" is the first, since what it repeats is written beside it.
+// The distinction is what separates "/p/*a" from the "/p/(a|aa)+" it contains:
+// both run on, and grading them alike left the pair to a width that reads the
+// wildcard's bytes as one — measuring the broad rule 1 against the narrow rule's
+// 2, and handing the shared path and its query to the broad target.
+//
+// Their breadth is one no width can stand for, since a width saturates and two
+// saturated rules tie. Graded here, the width goes on measuring what the rules
+// pin besides the run — which is what separates "/p/[z]+" from the "/p/[a-z]+"
+// containing it, a pair a saturated width left tied for key order to pick apart.
+// How many wildcards a rule carries is read after the width, by wildcardRank: a
+// second wildcard widens a rule but says nothing about what the rest of it pins,
+// so a rule holding two can still be the narrower of the pair.
 func carriesRun(rule string) int {
-	if r := scanRuns(rule); r.wildcards > 0 || r.unbounded {
+	r := scanRuns(rule)
+	switch {
+	case r.wildcards > 0:
+		return 2
+	case r.unbounded:
 		return 1
 	}
 	return 0

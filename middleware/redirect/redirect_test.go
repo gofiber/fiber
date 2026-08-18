@@ -3234,7 +3234,7 @@ func Test_Redirect_LiteralBracesHideNoRun(t *testing.T) {
 
 	// The run is seen wherever it stands, and a "+" between the braces is one too.
 	require.Equal(t, 1, wildcardRank(`/p/(a|{x*})`))
-	require.Equal(t, 1, carriesRun(`/p/(a|{x*})`))
+	require.Equal(t, 2, carriesRun(`/p/(a|{x*})`))
 	require.Equal(t, 1, carriesRun(`/p/(a|{x+})`))
 	require.Equal(t, 0, carriesRun(`/p/(a|{x[c]})`))
 
@@ -3293,4 +3293,38 @@ func Test_Redirect_WidthSaturatesRatherThanWraps(t *testing.T) {
 	require.Equal(t, maxPatternWidth, broad)
 	require.Greater(t, broad, patternWidth(`/p/[a][a-z][a-z][a-z][a-z][a]`))
 	require.Equal(t, maxPatternWidth, repeated(maxPatternWidth, 2756, 1, 1))
+}
+
+// Test_Redirect_WildcardOutrunsANamedRun covers a rule running on beside one
+// that runs on too: "/p/(a|aa)+" repeats what it names, where "/p/*" repeats
+// anything, so the first is contained in the second. Grading the two runs alike
+// left the pair to a width that reads a wildcard's bytes as one, which measured
+// the broad rule narrower and carried the shared path's query to its target.
+func Test_Redirect_WildcardOutrunsANamedRun(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Use(New(Config{
+		Rules: map[string]string{
+			`/p/(a|aa)+`: "/narrow",
+			`/p/*a`:      "/broad",
+		},
+		StatusCode: fiber.StatusFound,
+	}))
+
+	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/p/a?token=secret", http.NoBody)
+	require.NoError(t, err)
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusFound, resp.StatusCode)
+	require.Equal(t, "/narrow?token=secret", resp.Header.Get("Location"))
+
+	// Three grades, and the pair the width could not tell apart sits across two.
+	require.Equal(t, 0, carriesRun(`/p/[ab]a`))
+	require.Equal(t, 1, carriesRun(`/p/(a|aa)+`))
+	require.Equal(t, 2, carriesRun(`/p/*a`))
+	require.Less(t, patternWidth(`/p/*a`), patternWidth(`/p/(a|aa)+`))
+
+	// A rule carrying both runs is graded by the broader of the two.
+	require.Equal(t, 2, carriesRun(`/p/*[ab]+`))
 }
