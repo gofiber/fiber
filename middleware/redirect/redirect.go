@@ -927,9 +927,13 @@ func literalLen(rule string) int {
 type literalScanner struct {
 	rule string
 	i    int
-	// repeated is the breadth of the widest atom the rule repeats, recorded by
-	// width as it passes each quantifier. See repeatedWidth.
+	// repeatedAtom is the breadth of the widest atom the rule repeats, recorded
+	// by width as it passes each quantifier. See repeatedWidth.
 	repeatedAtom int
+	// groupEmpty is what the group width just finished reading matches: true
+	// where that is the empty string and nothing else, however deeply the
+	// group's own groups nest.
+	groupEmpty bool
 }
 
 // widestBranch counts the bytes pinned from the current position to the end of
@@ -1079,6 +1083,9 @@ func (s *literalScanner) width() int {
 	// counting it made "/p/(?:)?(?:)?[a]" twice as wide as the "/p/[ab]" that
 	// contains it, on a path only the first matches.
 	empty := false
+	// filled is whether anything matching more than the empty string has been
+	// read here, which is what the group closing this call reports to its caller.
+	filled := false
 	for s.i < len(s.rule) {
 		switch s.rule[s.i] {
 		case '\\':
@@ -1086,6 +1093,7 @@ func (s *literalScanner) width() int {
 				// Quoted text spells one path and no alternatives.
 				s.i = q.end
 				atom, prev, quantified, empty = 1, n, false, q.text == ""
+				filled = filled || !empty
 				continue
 			}
 			// An escape naming a set matches what a class of the same members
@@ -1097,26 +1105,30 @@ func (s *literalScanner) width() int {
 			}
 			size, _ := escapeSpan(s.rule, s.i)
 			s.i += size
-			prev, quantified, empty = n, false, false
+			prev, quantified, empty, filled = n, false, false, true
 			n = scaledWidth(n, atom)
 			continue
 		case '[':
-			atom, prev, quantified, empty = s.classWidth(), n, false, false
+			atom, prev, quantified, empty, filled = s.classWidth(), n, false, false, true
 			n = scaledWidth(n, atom)
 			continue
 		case '.':
 			// Any byte, so it is the widest single position there is.
-			atom, prev, quantified, empty = 256, n, false, false
+			atom, prev, quantified, empty, filled = 256, n, false, false, true
 			n = scaledWidth(n, atom)
 		case '(':
 			s.i = skipGroupPrefix(s.rule, s.i+1)
 			prev, quantified = n, false
-			empty = s.i < len(s.rule) && s.rule[s.i] == ')'
 			atom = s.width()
+			// A group holding nothing but empty groups is empty itself, which
+			// reading only what it spells missed.
+			empty = s.groupEmpty
+			filled = filled || !empty
 			n = scaledWidth(n, atom)
 			continue
 		case ')':
 			s.i++
+			s.groupEmpty = !filled
 			return clampWidth(total + n)
 		case '|':
 			total, n, atom, prev, quantified, empty = clampWidth(total+n), 1, 1, 1, false, false
@@ -1137,12 +1149,14 @@ func (s *literalScanner) width() int {
 			// so it repeats any byte. Measured no wider than the byte it is
 			// written as, the run itself being ranked by carriesRun.
 			s.repeatedAtom = max(s.repeatedAtom, 256)
-			atom, prev, quantified, empty = 1, n, false, false
+			atom, prev, quantified, empty, filled = 1, n, false, false, true
 		case '+':
 			// The run it names is ranked by carriesRun rather than measured
 			// here, but it is a quantifier still: the "?" that may follow is
 			// Go's non-greedy marker.
-			s.repeatedAtom = max(s.repeatedAtom, atom)
+			if !empty {
+				s.repeatedAtom = max(s.repeatedAtom, atom)
+			}
 			atom, prev, quantified = 1, n, true
 		case '{':
 			var bounds quantifierBounds
@@ -1150,17 +1164,19 @@ func (s *literalScanner) width() int {
 			if !bounds.quantifies {
 				// Braces standing as text: the "{" is a byte like any other,
 				// and what it holds is measured rather than passed over.
-				atom, prev, quantified, empty = 1, n, false, false
+				atom, prev, quantified, empty, filled = 1, n, false, false, true
 				continue
 			}
-			s.repeatedAtom = max(s.repeatedAtom, atom)
-			if !bounds.runsOn && !empty {
-				n, prev = repeated(prev, atom, bounds.lo, bounds.hi), n
+			if !empty {
+				s.repeatedAtom = max(s.repeatedAtom, atom)
+				if !bounds.runsOn {
+					n, prev = repeated(prev, atom, bounds.lo, bounds.hi), n
+				}
 			}
 			atom, quantified = 1, true
 			continue
 		default:
-			atom, prev, quantified, empty = 1, n, false, false
+			atom, prev, quantified, empty, filled = 1, n, false, false, true
 		}
 		s.i++
 	}
@@ -1219,28 +1235,28 @@ func (s *literalScanner) classWidth() int {
 			j = end
 			continue
 		}
-		switch {
-		case rule[j] == '\\':
-			// A class escape stands for a set of its own — unless it spells one
-			// byte, as "[\.]" does, which is a member like any other: counting
-			// that as a set put it behind the "[.-/]" range containing it.
-			span, pins := escapeSpan(rule, j)
-			if !pins && escapeSet(rule, j) {
-				members.addSet(rule[j : j+span])
-				j += span
-				break
-			}
-			members.addByte(rule[j+span-1])
-			j += span
-		case j+2 < len(rule) && rule[j+1] == '-' && rule[j+2] != ']':
-			if lo, hi := rule[j], rule[j+2]; hi >= lo {
-				members.addRange(lo, hi)
-			}
-			j += 3
-		default:
-			members.addByte(rule[j])
-			j++
+
+		lo := readClassMember(rule, j)
+		if !lo.spellsByte {
+			members.addNamed(rule[j:lo.end], lo.width)
+			j = lo.end
+			continue
 		}
+
+		// A "-" between two members names every byte from one to the other, and
+		// either endpoint may be spelled as an escape: Go reads "[\x{61}-\x{7a}]"
+		// as "[a-z]", where reading the endpoints as written counted the braces.
+		if lo.end+1 < len(rule) && rule[lo.end] == '-' && rule[lo.end+1] != ']' {
+			if hi := readClassMember(rule, lo.end+1); hi.spellsByte {
+				if hi.b >= lo.b {
+					members.addRange(lo.b, hi.b)
+				}
+				j = hi.end
+				continue
+			}
+		}
+		members.addByte(lo.b)
+		j = lo.end
 	}
 	if j < len(rule) {
 		j++ // past the "]"
@@ -1254,6 +1270,75 @@ func (s *literalScanner) classWidth() int {
 	return max(size, 1)
 }
 
+// classMember is one member of a character class: the byte it spells, where it
+// ends, and what it is worth where no byte answers for it — a set escape, or a
+// character wider than the bytes a class is counted in.
+type classMember struct {
+	end        int
+	width      int
+	b          byte
+	spellsByte bool
+}
+
+// readClassMember reads the member beginning at i, which is one byte unless a
+// backslash opens it.
+func readClassMember(rule string, i int) classMember {
+	if rule[i] != '\\' {
+		return classMember{b: rule[i], end: i + 1, width: 1, spellsByte: true}
+	}
+
+	span, pins := escapeSpan(rule, i)
+	if !pins {
+		// A class escape stands for a set of its own — unless it spells one
+		// byte, as "[\.]" does, which is a member like any other: counting that
+		// as a set put it behind the "[.-/]" range containing it.
+		w := 1
+		if escapeSet(rule, i) {
+			w = setMemberWidth
+		}
+		return classMember{end: i + span, width: w}
+	}
+	if b, ok := escapeByte(rule, i, span); ok {
+		return classMember{b: b, end: i + span, width: 1, spellsByte: true}
+	}
+	return classMember{end: i + span, width: 1}
+}
+
+// escapeByte returns the byte an escape spelling one character stands for. A
+// "\x{3B1}" names a character of more than one byte, which no member of a class
+// counted in bytes is, so it answers no.
+func escapeByte(rule string, i, span int) (byte, bool) {
+	switch c := rule[i+1]; {
+	case c == 'a':
+		return 0x07, true
+	case c == 'f':
+		return 0x0C, true
+	case c == 'n':
+		return '\n', true
+	case c == 'r':
+		return '\r', true
+	case c == 't':
+		return '\t', true
+	case c == 'v':
+		return 0x0B, true
+	case c == 'x':
+		return parsedByte(strings.Trim(rule[i+2:i+span], "{}"), 16)
+	case c >= '0' && c <= '7':
+		return parsedByte(rule[i+1:i+span], 8)
+	default:
+		return rule[i+span-1], true // "\." and the like: the byte it escapes
+	}
+}
+
+// parsedByte reads digits naming one byte, answering no where they name more.
+func parsedByte(digits string, base int) (byte, bool) {
+	n, err := strconv.ParseUint(digits, base, 8)
+	if err != nil {
+		return 0, false
+	}
+	return byte(n), true
+}
+
 // classMembers accumulates what a character class matches: the bytes it lists,
 // held one bit each, and the sets it names, held by spelling. Either is counted
 // once however often it is repeated, since repeating a member matches nothing
@@ -1264,8 +1349,16 @@ func (s *literalScanner) classWidth() int {
 // No count of members can be right for a set whose size is not knowable here:
 // see setMemberWidth.
 type classMembers struct {
-	sets  []string
+	named []namedMember
 	bytes [4]uint64
+}
+
+// namedMember is a member no byte value answers for: a set spelled by name, or a
+// character of more than one byte. Held by its spelling so repeating it counts
+// once, and carrying what it is worth — a set is setMemberWidth, a character 1.
+type namedMember struct {
+	spelling string
+	width    int
 }
 
 func (m *classMembers) addByte(b byte) {
@@ -1282,13 +1375,23 @@ func (m *classMembers) addRange(lo, hi byte) {
 }
 
 func (m *classMembers) addSet(spelling string) {
-	if !slices.Contains(m.sets, spelling) {
-		m.sets = append(m.sets, spelling)
+	m.addNamed(spelling, setMemberWidth)
+}
+
+func (m *classMembers) addNamed(spelling string, w int) {
+	for _, named := range m.named {
+		if named.spelling == spelling {
+			return
+		}
 	}
+	m.named = append(m.named, namedMember{spelling: spelling, width: w})
 }
 
 func (m *classMembers) width() int {
-	n := len(m.sets) * setMemberWidth
+	n := 0
+	for _, named := range m.named {
+		n += named.width
+	}
 	for _, w := range m.bytes {
 		n += bits.OnesCount64(w)
 	}
@@ -1383,12 +1486,13 @@ type ruleRuns struct {
 // the expansion leaves "[(.*)]" a class and "\Q(.*)\E" literal text.
 func scanRuns(rule string) ruleRuns {
 	runs := ruleRuns{}
-	// starts holds where the body of each still-open group begins, so a ")"
-	// standing there closes a group holding nothing. empty marks the construct
-	// just read as one matching only the empty string, whose repetitions are all
-	// the same path: "/p/(?:)+a" matches "/p/a" and nothing besides, and grading
-	// it as a run sorted it behind the broader "/p/b?a" it is contained in.
-	var starts []int
+	// filled holds, for each group still open, whether anything matching more
+	// than the empty string has been read inside it, so a group closes empty
+	// where nothing has. empty marks the construct just read as one matching
+	// only the empty string, whose repetitions are all the same path:
+	// "/p/(?:)+a" matches "/p/a" and nothing besides, and grading it as a run
+	// sorted it behind the broader "/p/b?a" it is contained in.
+	var filled []bool
 	empty := false
 	for i := 0; i < len(rule); {
 		switch rule[i] {
@@ -1397,9 +1501,8 @@ func scanRuns(rule string) ruleRuns {
 				// Only the quoted text is given up: the wildcards standing
 				// before it are still expanded, so the count already reached is
 				// what holds.
-				i = q.end
-				empty = q.text == ""
-				continue
+				i, empty = q.end, q.text == ""
+				break
 			}
 			size, _ := escapeSpan(rule, i)
 			i += size
@@ -1411,13 +1514,15 @@ func scanRuns(rule string) ruleRuns {
 			empty = false
 		case '(':
 			i = skipGroupPrefix(rule, i+1)
-			starts = append(starts, i)
-			empty = false
+			filled = append(filled, false)
 			continue
 		case ')':
-			empty = len(starts) > 0 && starts[len(starts)-1] == i
-			if len(starts) > 0 {
-				starts = starts[:len(starts)-1]
+			// A group holding nothing but empty groups is empty itself, which
+			// reading only what it spells missed: "(?:(?:))" matches the empty
+			// string alone, and its "+" was graded a run all the same.
+			empty = len(filled) == 0 || !filled[len(filled)-1]
+			if len(filled) > 0 {
+				filled = filled[:len(filled)-1]
 			}
 			i++
 		case '*':
@@ -1440,6 +1545,9 @@ func scanRuns(rule string) ruleRuns {
 		default:
 			i++
 			empty = false
+		}
+		if !empty && len(filled) > 0 {
+			filled[len(filled)-1] = true
 		}
 	}
 	return runs
