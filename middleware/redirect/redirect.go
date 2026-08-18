@@ -1054,9 +1054,17 @@ func (s *literalScanner) width() int {
 				atom, prev, quantified, empty = 1, n, false, q.text == ""
 				continue
 			}
+			// An escape naming a set matches what a class of the same members
+			// does, and counting it as one character measured "/p/\w[ab]" as
+			// half the "/p/[ab]{2}" it contains.
+			atom = 1
+			if escapeSet(s.rule, s.i) {
+				atom = setMemberWidth
+			}
 			size, _ := escapeSpan(s.rule, s.i)
 			s.i += size
-			atom, prev, quantified, empty = 1, n, false, false
+			prev, quantified, empty = n, false, false
+			n = scaledWidth(n, atom)
 			continue
 		case '[':
 			atom, prev, quantified, empty = s.classWidth(), n, false, false
@@ -1174,12 +1182,12 @@ func (s *literalScanner) classWidth() int {
 			// byte, as "[\.]" does, which is a member like any other: counting
 			// that as a set put it behind the "[.-/]" range containing it.
 			span, pins := escapeSpan(rule, j)
-			if pins {
-				members.addByte(rule[j+span-1])
+			if !pins && escapeSet(rule, j) {
+				members.addSet(rule[j : j+span])
 				j += span
 				break
 			}
-			members.addSet(rule[j : j+span])
+			members.addByte(rule[j+span-1])
 			j += span
 		case j+2 < len(rule) && rule[j+1] == '-' && rule[j+2] != ']':
 			if lo, hi := rule[j], rule[j+2]; hi >= lo {
@@ -1562,6 +1570,21 @@ func scanQuoted(rule string, i int) quotedSpan {
 		return quotedSpan{text: rule[i+2 : i+2+n], end: i + 2 + n + 2, ok: true}
 	}
 	return quotedSpan{text: rule[i+2:], end: len(rule), ok: true}
+}
+
+// escapeSet reports whether the escape at the backslash at i stands for a set of
+// characters rather than for one or for none. "\d" and "\p{Greek}" do; "\." spells
+// a byte, and "\b" asserts a position and matches nothing at all — measuring an
+// assertion as a set put "/p/[ab]\b" level with the "/p/[a-d]" that contains it.
+func escapeSet(rule string, i int) bool {
+	if i+1 >= len(rule) {
+		return false
+	}
+	switch rule[i+1] {
+	case 'd', 'D', 's', 'S', 'w', 'W', 'p', 'P':
+		return true
+	}
+	return false
 }
 
 // escapeSpan measures the escape beginning at the backslash at i: how many bytes
