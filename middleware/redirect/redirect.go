@@ -1034,9 +1034,22 @@ func (s *literalScanner) pinnedAtoms() []string {
 			// there: the branches of "(?:a|aa)" agree on an "a", which stopping
 			// at the "(" missed — leaving the rule behind the "/p/a+" that
 			// contains it on a path they share.
+			flagged := groupSetsFlags(s.rule, s.i)
 			g := groupSpan(s.rule, s.i)
 			s.i = g.end
-			if quantifierAllowsNone(s.rule, g.end) {
+			if none := absentAtom(s.rule, g.end); none.ok {
+				// Counted none times, the group matches nothing and the rest of
+				// the rule pins what it did.
+				s.i = none.end
+				continue
+			}
+			switch {
+			case flagged:
+				// The flags say what the text inside matches, which is no longer
+				// the path it spells: "(?i:a)" matches an "A" too, and pinning
+				// its "a" put it level with the "/p/a" it contains.
+				return pinned
+			case quantifierAllowsNone(s.rule, g.end):
 				// The whole group may be absent, so it pins nothing at all:
 				// "/api/(ab)?c" matches "/api/c".
 				return pinned
@@ -1065,13 +1078,34 @@ func (s *literalScanner) pinnedAtoms() []string {
 				return pinned
 			}
 			atom = pinnedAtom(s.rule, s.i, size)
+		case c == '[':
+			// A class pins nothing whatever it lists, so the prefix ends here —
+			// unless a count of none takes it away, leaving what follows pinned.
+			class := literalScanner{rule: s.rule, i: s.i}
+			class.classWidth() // leaves class.i just past the "]"
+			none := absentAtom(s.rule, class.i)
+			if !none.ok {
+				return pinned
+			}
+			s.i = none.end
+			continue
 		case strings.IndexByte(patternBytes, c) >= 0:
 			return pinned
 		default:
 			atom = s.rule[s.i : s.i+1]
 		}
 
-		if quantifierAllowsNone(s.rule, s.i+size) {
+		after := s.i + size
+		if none := absentAtom(s.rule, after); none.ok {
+			// A count of none takes the atom away and leaves the rest of the
+			// rule pinning what it did: "/p/a{0}a" matches "/p/a" alone, and
+			// stopping here read it as pinning no more than "/p/".
+			s.i = none.end
+			continue
+		}
+		if quantifierAllowsNone(s.rule, after) {
+			// An atom that may be absent is pinned by no path: "/p/a?b" matches
+			// "/p/b", so the prefix ends before the "a".
 			return pinned
 		}
 		s.i += size
@@ -1774,6 +1808,49 @@ func quantifierAllowsNone(rule string, i int) bool {
 
 	_, bounds := skipQuantifier(rule, i)
 	return bounds.allowsNone
+}
+
+// absentQuantifier is a quantifier that takes what precedes it away outright,
+// and where it ends.
+type absentQuantifier struct {
+	end int
+	ok  bool
+}
+
+// absentAtom reads the quantifier at i, answering yes only where it permits no
+// count at all. A "?" or a "{0,2}" merely permits none, which ends a prefix
+// rather than skipping a byte of it, since a path may arrive without the atom.
+func absentAtom(rule string, i int) absentQuantifier {
+	if i >= len(rule) || rule[i] != '{' {
+		return absentQuantifier{end: i}
+	}
+
+	end, bounds := skipQuantifier(rule, i)
+	if !bounds.quantifies || bounds.runsOn || bounds.hi != 0 {
+		return absentQuantifier{end: i}
+	}
+	return absentQuantifier{end: end, ok: true}
+}
+
+// groupSetsFlags reports whether the group opening at i sets match flags, which
+// say what the text inside it matches: "(?i:a)" matches an "A" as well, so its
+// spelling is no path the rule pins.
+func groupSetsFlags(rule string, i int) bool {
+	if i+1 >= len(rule) || rule[i+1] != '?' {
+		return false
+	}
+
+	for j := i + 2; j < len(rule); j++ {
+		switch c := rule[j]; c {
+		case ':', ')':
+			return j > i+2 // something stood between the "?" and the close
+		case 'i', 'm', 's', 'U', '-':
+			continue
+		default:
+			return false // a capture name, or no group prefix at all
+		}
+	}
+	return false
 }
 
 // smallerBranch folds one more branch's count into the smallest seen, where -1

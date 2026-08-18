@@ -3927,3 +3927,65 @@ func Test_Redirect_AlternationSeparatorIsEmpty(t *testing.T) {
 	require.Equal(t, 1, carriesRun(`/p/(?:a|b{0})+`))
 	require.Equal(t, 1, carriesRun(`/p/(?:a|b)+`))
 }
+
+// Test_Redirect_PrefixReadsZeroCountsAndFlags covers two constructs the pinned
+// prefix read wrong in opposite directions: a "{0}", which takes its atom away
+// without ending what the rest of the rule pins, and a group setting match
+// flags, whose spelling is no longer the path it names.
+func Test_Redirect_PrefixReadsZeroCountsAndFlags(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name, narrow, broad, path string
+	}{
+		{"zero-count", `/p/a{0}a`, `/p/(?:a)[ab]?`, "/p/a?token=x"},
+		{"folded", `/p/a`, `/p/(?i:a)`, "/p/a?token=x"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			app := fiber.New()
+			app.Use(New(Config{
+				Rules:      map[string]string{tc.narrow: "/narrow", tc.broad: "/broad"},
+				StatusCode: fiber.StatusFound,
+			}))
+
+			req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, tc.path, http.NoBody)
+			require.NoError(t, err)
+			resp, err := app.Test(req)
+			require.NoError(t, err)
+			require.Equal(t, fiber.StatusFound, resp.StatusCode)
+			require.Equal(t, "/narrow?token=x", resp.Header.Get("Location"))
+		})
+	}
+
+	// A count of none is skipped, where a count that permits one ends the prefix
+	// — a path may arrive without the atom, and none arrives with it.
+	require.Equal(t, literalPrefixLen(`/p/a`), literalPrefixLen(`/p/a{0}a`))
+	require.Equal(t, literalPrefixLen(`/p/ab`), literalPrefixLen(`/p/a[c-z]{0}b`))
+	require.Equal(t, literalPrefixLen(`/p/`), literalPrefixLen(`/p/a{0,2}a`))
+	require.Equal(t, literalPrefixLen(`/p/`), literalPrefixLen(`/p/a?a`))
+
+	// Flags say what the text inside the group matches, so it pins no path —
+	// whether they are scoped to the group or set for the rest of the rule.
+	require.Equal(t, literalPrefixLen(`/p/`), literalPrefixLen(`/p/(?i:a)`))
+	require.Equal(t, literalPrefixLen(`/p/`), literalPrefixLen(`/p/(?i:a)b`))
+	require.Equal(t, literalPrefixLen(`/p/`), literalPrefixLen(`/p/(?i)a`))
+	require.Equal(t, literalPrefixLen(`/p/`), literalPrefixLen(`/p/(?-i:a)`))
+
+	// A group counted none times is skipped like any other atom, and a "(" that
+	// opens no group at all names no flags either.
+	require.Equal(t, literalPrefixLen(`/p/ab`), literalPrefixLen(`/p/a(?:xy){0}b`))
+	require.Equal(t, literalPrefixLen(`/p/`), literalPrefixLen(`/p/(?`))
+	require.Equal(t, literalPrefixLen(`/p/`), literalPrefixLen(`/p/(?P`))
+
+	// A group naming no flags pins what it spells, a capture name among them.
+	require.Equal(t, literalPrefixLen(`/p/a`), literalPrefixLen(`/p/(?:a)`))
+	require.Equal(t, literalPrefixLen(`/p/a`), literalPrefixLen(`/p/(?P<n>a)`))
+	require.Equal(t, literalPrefixLen(`/p/a`), literalPrefixLen(`/p/(a)`))
+
+	// Which is what Go says of them: the flagged rule matches a path the exact
+	// one does not.
+	require.True(t, regexp.MustCompile(`^(?:/p/(?i:a))$`).MatchString("/p/A"))
+	require.False(t, regexp.MustCompile(`^(?:/p/a)$`).MatchString("/p/A"))
+}
