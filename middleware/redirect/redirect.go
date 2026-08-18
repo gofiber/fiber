@@ -1024,26 +1024,28 @@ func (s *literalScanner) width() int {
 	total, n := 0, 1
 	// atom is what the construct just read multiplied n by, and prev is what the
 	// run measured before it did — both kept so a quantifier can put the atom
-	// back and count what it permits instead.
-	atom, prev := 1, 1
+	// back and count what it permits instead. quantified marks the construct
+	// just read as a quantifier itself, since the "?" following one is Go's
+	// non-greedy marker rather than a second quantifier of its own.
+	atom, prev, quantified := 1, 1, false
 	for s.i < len(s.rule) {
 		switch s.rule[s.i] {
 		case '\\':
 			size, _ := escapeSpan(s.rule, s.i)
 			s.i += size
-			atom, prev = 1, n
+			atom, prev, quantified = 1, n, false
 			continue
 		case '[':
-			atom, prev = s.classWidth(), n
+			atom, prev, quantified = s.classWidth(), n, false
 			n = clampWidth(n * atom)
 			continue
 		case '.':
 			// Any byte, so it is the widest single position there is.
-			atom, prev = 256, n
+			atom, prev, quantified = 256, n, false
 			n = clampWidth(n * atom)
 		case '(':
 			s.i = skipGroupPrefix(s.rule, s.i+1)
-			prev = n
+			prev, quantified = n, false
 			atom = s.width()
 			n = clampWidth(n * atom)
 			continue
@@ -1051,22 +1053,33 @@ func (s *literalScanner) width() int {
 			s.i++
 			return clampWidth(total + n)
 		case '|':
-			total, n, atom, prev = clampWidth(total+n), 1, 1, 1
+			total, n, atom, prev, quantified = clampWidth(total+n), 1, 1, 1, false
 		case '?':
-			// An atom that may be absent matches everything it does and one
-			// path more, so "/p/*a?" is wider than the "/p/*a" it ties with —
-			// and wider than "/p/*[a]*", which its wildcard count sorts below.
-			n, atom, prev = repeated(prev, atom, 0, 1), 1, n
+			// A "?" following a quantifier only says the repetition is not
+			// greedy, and "/p/[b]+?" matches what "/p/[b]+" does: counting it
+			// as an atom that may be absent widened the narrower of a pair.
+			if !quantified {
+				// An atom that may be absent matches everything it does and
+				// one path more, so "/p/*a?" is wider than the "/p/*a" it ties
+				// with — and wider than "/p/*[a]*", which the count sorts below.
+				n, prev = repeated(prev, atom, 0, 1), n
+			}
+			atom, quantified = 1, true
+		case '+':
+			// The run it names is ranked by carriesRun rather than measured
+			// here, but it is a quantifier still: the "?" that may follow is
+			// Go's non-greedy marker.
+			atom, prev, quantified = 1, n, true
 		case '{':
 			var bounds quantifierBounds
 			s.i, bounds = skipQuantifier(s.rule, s.i)
 			if !bounds.runsOn {
 				n, prev = repeated(prev, atom, bounds.lo, bounds.hi), n
 			}
-			atom = 1
+			atom, quantified = 1, true
 			continue
 		default:
-			atom, prev = 1, n
+			atom, prev, quantified = 1, n, false
 		}
 		s.i++
 	}
@@ -1157,6 +1170,10 @@ func (s *literalScanner) classWidth() int {
 // maxPatternWidth bounds the product a nest of groups builds, since the count is
 // only ever compared against another and nothing needs the exact figure.
 const maxPatternWidth = 1 << 20
+
+// maxRepeatCount is the largest count Go's regexp parser takes in a "{m,n}",
+// above which it refuses the pattern outright: regexp/syntax spells it 1000.
+const maxRepeatCount = 1000
 
 // setMemberWidth is what a class member standing for a set of its own counts,
 // whether it is written as an escape, "[\d]", or as a POSIX name, "[[:alpha:]]".
@@ -1338,10 +1355,13 @@ func repeatCount(bound string) (int, bool) {
 		}
 	}
 
-	// A count Go itself would refuse for its size leaves the braces to be read
-	// as they stand, which is what the caller does with a bound it cannot take.
+	// Go's parser refuses a count above maxRepeatCount, so a rule carrying one
+	// never compiles and the braces are left to be read as they stand. Capped
+	// here as well as there, since the sort measures a rule before it is
+	// compiled: walking to a bound of a billion spent seconds of startup on a
+	// rule that was going to be rejected anyway.
 	n, err := strconv.Atoi(bound)
-	if err != nil {
+	if err != nil || n > maxRepeatCount {
 		return 0, false
 	}
 	return n, true

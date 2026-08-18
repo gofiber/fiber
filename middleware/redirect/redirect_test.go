@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strconv"
 	"strings"
 	"testing"
@@ -2894,6 +2895,59 @@ func Test_Redirect_SignedBoundIsNoQuantifier(t *testing.T) {
 	require.Equal(t, patternWidth(`/p/[ab]`), patternWidth(`/p/[ab]{,3}`))
 	// Nor does a count too large to hold, which Go refuses for its size anyway.
 	require.Equal(t, patternWidth(`/p/[ab]`), patternWidth(`/p/[ab]{99999999999999999999}`))
+}
+
+// Test_Redirect_NonGreedyMarkerIsNoQuantifier covers the "?" that follows a
+// repetition: it says the repetition is not greedy, and "/p/[b]+?" matches what
+// "/p/[b]+" does. Counting it as an atom that may be absent widened the narrow
+// rule past the "/p/[ab]+" containing it, and key order then chose the broad one.
+func Test_Redirect_NonGreedyMarkerIsNoQuantifier(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Use(New(Config{
+		Rules: map[string]string{
+			`/p/[b]+?`: "/narrow",
+			`/p/[ab]+`: "/broad",
+		},
+		StatusCode: fiber.StatusFound,
+	}))
+
+	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/p/b", http.NoBody)
+	require.NoError(t, err)
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusFound, resp.StatusCode)
+	require.Equal(t, "/narrow", resp.Header.Get("Location"))
+
+	// The marker leaves the width where the repetition left it, whichever
+	// repetition it follows. A rule's "*" is not among them: it is Fiber's
+	// wildcard, expanded to a group the "?" after it does quantify.
+	require.Equal(t, patternWidth(`/p/[b]+`), patternWidth(`/p/[b]+?`))
+	require.Equal(t, patternWidth(`/p/[ab]{1,2}`), patternWidth(`/p/[ab]{1,2}?`))
+	require.Equal(t, patternWidth(`/p/[ab]?`), patternWidth(`/p/[ab]??`))
+	// A "?" of its own still counts the alternative where the atom is absent.
+	require.Equal(t, 3, patternWidth(`/p/[ab]?`))
+}
+
+// Test_Redirect_OversizedBoundIsNoQuantifier covers the count Go refuses for its
+// size: a rule carrying one never compiles, and the sort measures a rule before
+// it is compiled. Walking to a bound of a billion spent seconds of startup on a
+// rule that was going to be rejected anyway.
+func Test_Redirect_OversizedBoundIsNoQuantifier(t *testing.T) {
+	t.Parallel()
+
+	// Counted up to Go's own limit, and read as text above it.
+	require.Equal(t, maxPatternWidth, patternWidth(`/p/[ab]{`+strconv.Itoa(maxRepeatCount)+`}`))
+	require.Equal(t, patternWidth(`/p/[ab]`), patternWidth(`/p/[ab]{`+strconv.Itoa(maxRepeatCount+1)+`}`))
+	require.Equal(t, patternWidth(`/p/[ab]`), patternWidth(`/p/[ab]{1000000000}`))
+	require.Equal(t, patternWidth(`/p/[ab]`), patternWidth(`/p/[ab]{1,1000000000}`))
+
+	// Which is what Go says of them too: the rule above the limit is refused.
+	_, err := regexp.Compile(`^(?:/p/[ab]{` + strconv.Itoa(maxRepeatCount) + `})$`)
+	require.NoError(t, err)
+	_, err = regexp.Compile(`^(?:/p/[ab]{` + strconv.Itoa(maxRepeatCount+1) + `})$`)
+	require.Error(t, err)
 }
 
 // Test_Redirect_PosixClassNamesItsOwnStars covers "[[:alpha:]*]", whose "]"
