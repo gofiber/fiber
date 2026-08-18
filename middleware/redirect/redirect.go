@@ -1143,9 +1143,11 @@ func (s *literalScanner) width() int {
 			// A group holding nothing but empty groups is empty itself, which
 			// reading only what it spells missed.
 			empty = s.groupEmpty
-			if !empty {
-				s.widest = max(s.widest, atom)
-			}
+			// The group's own width is no position of the rule: it is the
+			// product of the positions inside it, each of which recorded itself
+			// as this call read them. Recording the product instead made
+			// "/p/(?:[a-m][a-z][a-z][a-z][a-z])" the widest thing there is,
+			// where the "/p/[a-z][a-z][a-z][a-z][a-z]" containing it read 26.
 			n = scaledWidth(n, atom)
 			continue
 		case ')':
@@ -1584,6 +1586,14 @@ func scanRuns(rule string) ruleRuns {
 			runs.wildcards++
 			i++
 			empty = false
+		case '?':
+			// Quantifier syntax, whether it repeats what stands before it or
+			// only says a repetition is not greedy. Either way it matches
+			// nothing of its own, and reading it as a construct lost the
+			// emptiness of what it followed: the inner group of
+			// "/p/(?:(?:)+?)+a" was empty until the "?" was counted.
+			i++
+			continue
 		case '+':
 			runs.unbounded = runs.unbounded || !empty
 			i++
