@@ -58,6 +58,12 @@ func New(config ...Config) fiber.Handler {
 	// Fixed order, most specific first: two patterns can match the same path, and
 	// a map range made the winner vary per run. Rank by what a rule pins before
 	// its first wildcard, then by total pinned length, then by key to stay total.
+	//
+	// Every key below must be a function of one rule alone. Asking one of a pair
+	// and not of another is not an ordering: reading a key only where both rules
+	// had an answer for it left "/p/[a-z]{5}", "/p/[a-zA-Z]{5}" and
+	// "/p/[a-zB-Z][b-z][b-z][b-z][b-z]" in a cycle, and slices.SortFunc then gave
+	// whichever order the map happened to hand it.
 	keys := slices.Collect(maps.Keys(cfg.Rules))
 	slices.SortFunc(keys, func(a, b string) int {
 		if d := cmp.Compare(literalPrefixLen(b), literalPrefixLen(a)); d != 0 {
