@@ -2018,8 +2018,11 @@ func Test_LiteralLengths(t *testing.T) {
 		{rule: "/(a|b)/x", prefixLen: 1, totalLen: 4},
 		// A group is an alternation too, so it pins what its widest branch pins.
 		{rule: "/api/[a-z](specific|x)", prefixLen: 5, totalLen: 6},
-		// The "?:" of a non-capturing group is syntax, not path.
-		{rule: "/p/(?:ab)", prefixLen: 3, totalLen: 5},
+		// The "?:" of a non-capturing group is syntax, not path, and a group
+		// every branch of which pins the same text pins it too.
+		{rule: "/p/(?:ab)", prefixLen: 5, totalLen: 5},
+		{rule: "/p/(?:a|aa)", prefixLen: 4, totalLen: 4},
+		{rule: "/p/(?:ab|ba)", prefixLen: 3, totalLen: 5},
 		// A class escape matches any byte of its class, so it pins none of them
 		// and ends the prefix where it stands.
 		{rule: `/api/\d+`, prefixLen: 5, totalLen: 5},
@@ -3830,4 +3833,65 @@ func Test_Redirect_NonGreedyMarkerKeepsAnEmptyAtom(t *testing.T) {
 	require.Equal(t, 0, carriesRun(`/p/(?:(?:)?)+`))
 	require.Equal(t, 1, carriesRun(`/p/(?:a?)+`))
 	require.Equal(t, 1, carriesRun(`/p/(?:[a-z]+?)+`))
+}
+
+// Test_Redirect_PrefixReadsQuotesAndGroups covers two constructs that stopped
+// the pinned prefix though each pins path: a "\Q...\E" span, read as an escape
+// pinning nothing, and a group every branch of which begins alike. Each rule
+// stopped short and sorted behind a superset of itself.
+func Test_Redirect_PrefixReadsQuotesAndGroups(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name, narrow, broad, path string
+	}{
+		{"quoted", `/p/\Qab\E`, `/p/a.+`, "/p/ab?token=x"},
+		{"grouped", `/p/(?:a|aa)`, `/p/a+`, "/p/a?token=x"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			app := fiber.New()
+			app.Use(New(Config{
+				Rules:      map[string]string{tc.narrow: "/narrow", tc.broad: "/broad"},
+				StatusCode: fiber.StatusFound,
+			}))
+
+			req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, tc.path, http.NoBody)
+			require.NoError(t, err)
+			resp, err := app.Test(req)
+			require.NoError(t, err)
+			require.Equal(t, fiber.StatusFound, resp.StatusCode)
+			require.Equal(t, "/narrow?token=x", resp.Header.Get("Location"))
+
+			require.GreaterOrEqual(t, literalPrefixLen(tc.narrow), literalPrefixLen(tc.broad))
+		})
+	}
+
+	// Quoted text pins what it spells, and the prefix goes on past the "\E".
+	require.Equal(t, literalPrefixLen(`/p/ab`), literalPrefixLen(`/p/\Qab\E`))
+	require.Equal(t, literalPrefixLen(`/p/abcd`), literalPrefixLen(`/p/\Qab\Ecd`))
+	require.Equal(t, literalPrefixLen(`/p/`), literalPrefixLen(`/p/\Q\E`))
+
+	// A quantifier reaches the last byte quoted, and no more of them.
+	require.Equal(t, literalPrefixLen(`/p/a`), literalPrefixLen(`/p/\Qab\E?`))
+
+	// A group pins only what every branch of it pins, so branches beginning
+	// differently pin nothing — and a quantifier can take the group away whole.
+	require.Equal(t, literalPrefixLen(`/p/a`), literalPrefixLen(`/p/(?:ab|ac)d`))
+	require.Equal(t, literalPrefixLen(`/p/`), literalPrefixLen(`/p/(?:ab|ba)`))
+	require.Equal(t, literalPrefixLen(`/p/`), literalPrefixLen(`/p/(?:ab)?c`))
+	require.Equal(t, literalPrefixLen(`/p/ab`), literalPrefixLen(`/p/(?:ab)+`))
+
+	// Two spellings of one character agree, which is what the prefix counts in,
+	// and a character no byte answers for is named by the spelling instead.
+	require.Equal(t, literalPrefixLen(`/p/ab`), literalPrefixLen(`/p/(?:\x{61}b|ab)`))
+	require.Equal(t, literalPrefixLen(`/p/ab`), literalPrefixLen(`/p/(?:\x{3B1}b|\x{3B1}b)`))
+	require.Equal(t, literalPrefixLen(`/p/`), literalPrefixLen(`/p/(?:\x{3B1}|a)`))
+
+	// A group closes where its own nesting, classes and quotes say it does, and
+	// runs to the end of the rule where nothing closes it.
+	require.Equal(t, literalPrefixLen(`/p/ab`), literalPrefixLen(`/p/(?:\Qa\E(?:b)[c-c])`))
+	require.Equal(t, literalPrefixLen(`/p/ab`), literalPrefixLen(`/p/(?:ab`))
+	require.Equal(t, literalPrefixLen(`/p/a`), literalPrefixLen(`/p/(?:a[)]|a[)]b)`))
 }
