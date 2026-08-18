@@ -3522,3 +3522,50 @@ func Test_Redirect_SetEscapeIsMeasuredWhereverItStands(t *testing.T) {
 	// A backslash ending the rule names nothing, so it is no set either.
 	require.Equal(t, patternWidth(`/p/`), patternWidth(`/p/\`))
 }
+
+// Test_Redirect_RepeatedAtomSeparatesTiedWidths covers two ways a repetition
+// leaves the width unable to separate a rule from one containing it: a run is
+// measured nowhere, so "/p/[b]+a?" spells the two paths "/p/[ab]+" spells; and a
+// bounded repetition saturates, so "/p/[a-z]{5}" and "/p/[a-zA-Z]{5}" both reach
+// the clamp. Key order chose the broad rule of each pair.
+func Test_Redirect_RepeatedAtomSeparatesTiedWidths(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name, narrow, broad, path string
+	}{
+		{"run", `/p/[b]+a?`, `/p/[ab]+`, "/p/b?token=secret"},
+		{"saturated", `/p/[a-z]{5}`, `/p/[a-zA-Z]{5}`, "/p/aaaaa?token=secret"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			app := fiber.New()
+			app.Use(New(Config{
+				Rules:      map[string]string{tc.narrow: "/narrow", tc.broad: "/broad"},
+				StatusCode: fiber.StatusFound,
+			}))
+
+			req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, tc.path, http.NoBody)
+			require.NoError(t, err)
+			resp, err := app.Test(req)
+			require.NoError(t, err)
+			require.Equal(t, fiber.StatusFound, resp.StatusCode)
+			require.Equal(t, "/narrow?token=secret", resp.Header.Get("Location"))
+
+			// Tied on the width, and separated by what the repetition repeats.
+			require.Equal(t, patternWidth(tc.broad), patternWidth(tc.narrow))
+			require.Less(t, repeatedWidth(tc.narrow), repeatedWidth(tc.broad))
+		})
+	}
+
+	// Every quantifier records what it repeats, and Fiber's "*" repeats any byte.
+	require.Equal(t, 0, repeatedWidth(`/p/[ab]`))
+	require.Equal(t, 2, repeatedWidth(`/p/[ab]?`))
+	require.Equal(t, 26, repeatedWidth(`/p/[a-z]+`))
+	require.Equal(t, 256, repeatedWidth(`/p/*`))
+
+	// It is read after the width, so it never moves a pair the width separates.
+	require.Equal(t, 1, patternWidth(`/p/[z]+`))
+	require.Equal(t, 26, patternWidth(`/p/[a-z]+`))
+}
