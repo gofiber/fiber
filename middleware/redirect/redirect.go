@@ -1012,27 +1012,154 @@ func (s *literalScanner) widestBranch() int {
 }
 
 // pinnedPrefix counts what the rule pins before its first wildcard, stopping at
-// the first construct that pins nothing — a class, a group, a wildcard, a class
-// escape, or an atom a quantifier makes optional.
+// the first construct that pins nothing — a class, a wildcard, a class escape,
+// or an atom a quantifier makes optional. A group stops it too, save for what
+// every branch of the group pins alike.
 func (s *literalScanner) pinnedPrefix() int {
-	n := 0
+	return len(s.pinnedAtoms())
+}
+
+// pinnedAtoms returns what the rule pins before its first wildcard, one entry
+// per character of the path rather than per byte of the rule: "\x{61}" is six
+// bytes standing for the one byte "a". Named by the character where the byte it
+// spells can be read, so that the two compare alike, and by its spelling
+// otherwise — two spellings of one character Go reads wider than a byte then
+// compare unequal, which only ends a prefix sooner.
+func (s *literalScanner) pinnedAtoms() []string {
+	var pinned []string
 	for s.i < len(s.rule) {
-		size := 1
-		if c := s.rule[s.i]; c == '\\' {
+		c := s.rule[s.i]
+		if c == '(' {
+			// A group pins what every branch of it pins, and stops the prefix
+			// there: the branches of "(?:a|aa)" agree on an "a", which stopping
+			// at the "(" missed — leaving the rule behind the "/p/a+" that
+			// contains it on a path they share.
+			g := groupSpan(s.rule, s.i)
+			s.i = g.end
+			if quantifierAllowsNone(s.rule, g.end) {
+				// The whole group may be absent, so it pins nothing at all:
+				// "/api/(ab)?c" matches "/api/c".
+				return pinned
+			}
+			return append(pinned, commonPinnedAtoms(g.text)...)
+		}
+
+		size, atom := 1, ""
+		switch {
+		case c == '\\':
+			if q := scanQuoted(s.rule, s.i); q.ok {
+				// Quoted text pins every byte it spells: reading the span as an
+				// escape that pins nothing stopped "/p/\Qab\E" at three, behind
+				// the "/p/a.+" containing it.
+				text := q.text
+				s.i = q.end
+				if text != "" && quantifierAllowsNone(s.rule, q.end) {
+					// The quantifier reaches only the last byte quoted.
+					return append(pinned, byteAtoms(text[:len(text)-1])...)
+				}
+				pinned = append(pinned, byteAtoms(text)...)
+				continue
+			}
 			pins := false
 			if size, pins = escapeSpan(s.rule, s.i); !pins {
-				return n
+				return pinned
 			}
-		} else if strings.IndexByte(patternBytes, c) >= 0 {
-			return n
+			atom = pinnedAtom(s.rule, s.i, size)
+		case strings.IndexByte(patternBytes, c) >= 0:
+			return pinned
+		default:
+			atom = s.rule[s.i : s.i+1]
 		}
+
 		if quantifierAllowsNone(s.rule, s.i+size) {
-			return n
+			return pinned
 		}
 		s.i += size
-		n++
+		pinned = append(pinned, atom)
 	}
-	return n
+	return pinned
+}
+
+// byteAtoms names each byte of text as a pinned character of its own.
+func byteAtoms(text string) []string {
+	atoms := make([]string, 0, len(text))
+	for i := range len(text) {
+		atoms = append(atoms, text[i:i+1])
+	}
+	return atoms
+}
+
+// pinnedAtom names the character an escape spells.
+func pinnedAtom(rule string, i, size int) string {
+	if b, ok := escapeByte(rule, i, size); ok {
+		return string([]byte{b})
+	}
+	return rule[i : i+size]
+}
+
+// commonPinnedAtoms returns what every branch of a group's body pins alike,
+// which is all of it the rule can be said to pin: a branch pinning something
+// else is a path the rule matches without it.
+func commonPinnedAtoms(body string) []string {
+	var common []string
+	for n, branch := range splitAlternation(body) {
+		s := literalScanner{rule: branch}
+		if atoms := s.pinnedAtoms(); n == 0 {
+			common = atoms
+		} else {
+			common = commonAtoms(common, atoms)
+		}
+	}
+	return common
+}
+
+// commonAtoms returns the leading atoms two branches agree on.
+func commonAtoms(a, b []string) []string {
+	for i := range min(len(a), len(b)) {
+		if a[i] != b[i] {
+			return a[:i]
+		}
+	}
+	return a[:min(len(a), len(b))]
+}
+
+// groupBody is what a group holds and where it ends.
+type groupBody struct {
+	text string
+	end  int
+}
+
+// groupSpan returns the body of the group opening at i and the index just past
+// its ")", or the rest of the rule where none closes it.
+func groupSpan(rule string, i int) groupBody {
+	start := skipGroupPrefix(rule, i+1)
+	depth := 1
+	for j := start; j < len(rule); {
+		switch rule[j] {
+		case '\\':
+			if q := scanQuoted(rule, j); q.ok {
+				j = q.end
+				continue
+			}
+			size, _ := escapeSpan(rule, j)
+			j += size
+			continue
+		case '[':
+			s := literalScanner{rule: rule, i: j}
+			s.classWidth() // leaves s.i just past the "]"
+			j = s.i
+			continue
+		case '(':
+			depth++
+		case ')':
+			depth--
+			if depth == 0 {
+				return groupBody{text: rule[start:j], end: j + 1}
+			}
+		}
+		j++
+	}
+	return groupBody{text: rule[start:], end: len(rule)}
 }
 
 // patternWidth returns how many alternatives a rule expands to, which separates
