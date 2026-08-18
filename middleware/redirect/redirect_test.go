@@ -3439,3 +3439,47 @@ func Test_Redirect_ClassCountsAMemberOnce(t *testing.T) {
 	require.Equal(t, patternWidth(`/p/[]]`), patternWidth(`/p/[]]]`))
 	require.Equal(t, patternWidth(`/p/[]]`), patternWidth(`/p/[]b-a]`))
 }
+
+// Test_Redirect_EmptyAtomIsNoRun covers a quantifier whose atom matches only the
+// empty string: "/p/(?:)+a" matches "/p/a" and nothing besides, however many
+// times the "+" repeats nothing. Grading it as a run sorted the exact rule
+// behind the broader "/p/b?a" that contains it, and the query went with it.
+func Test_Redirect_EmptyAtomIsNoRun(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Use(New(Config{
+		Rules: map[string]string{
+			`/p/(?:)+a`: "/narrow",
+			`/p/b?a`:    "/broad",
+		},
+		StatusCode: fiber.StatusFound,
+	}))
+
+	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/p/a?token=x", http.NoBody)
+	require.NoError(t, err)
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusFound, resp.StatusCode)
+	require.Equal(t, "/narrow?token=x", resp.Header.Get("Location"))
+
+	// No run, whichever quantifier repeats the empty group, and no width either.
+	require.Equal(t, 0, carriesRun(`/p/(?:)+a`))
+	require.Equal(t, 0, carriesRun(`/p/(){2,}a`))
+	require.Equal(t, 0, carriesRun(`/p/\Q\E+a`))
+	require.Equal(t, patternWidth(`/p/a`), patternWidth(`/p/(?:)?(?:)?a`))
+	require.Equal(t, patternWidth(`/p/a`), patternWidth(`/p/(?:){2,4}a`))
+
+	// A group holding something is a run again, and so is Fiber's "*": it is
+	// expanded to "(.*)" whatever stands before it.
+	require.Equal(t, 1, carriesRun(`/p/(?:a)+`))
+	require.Equal(t, 2, carriesRun(`/p/(?:)*a`))
+
+	// Only what a group spells is read, so a group whose emptiness is its own
+	// contents' — "(?:(?:))" — is a run here though it matches nothing either.
+	// Seeing through it needs a width that can say "matches nothing at all",
+	// which this one cannot: a scalar built by multiplying breadth across
+	// positions has no value for it.
+	require.Equal(t, 1, carriesRun(`/p/(?:(?:))+`))
+	require.Equal(t, patternWidth(`/p/[ab]`), patternWidth(`/p/(?:)?[ab]`))
+}
