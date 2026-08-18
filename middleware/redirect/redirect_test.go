@@ -3483,3 +3483,42 @@ func Test_Redirect_EmptyAtomIsNoRun(t *testing.T) {
 	require.Equal(t, 1, carriesRun(`/p/(?:(?:))+`))
 	require.Equal(t, patternWidth(`/p/[ab]`), patternWidth(`/p/(?:)?[ab]`))
 }
+
+// Test_Redirect_SetEscapeIsMeasuredWhereverItStands covers "\w" outside a class:
+// it matches what a class of the same members does, and counting it as one
+// character measured "/p/\w[ab]" as half the "/p/[ab]{2}" it contains — so a
+// repetition on the narrow rule sorted it behind the broad one.
+func Test_Redirect_SetEscapeIsMeasuredWhereverItStands(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Use(New(Config{
+		Rules: map[string]string{
+			`/p/[ab]{2}`: "/narrow",
+			`/p/\w[ab]`:  "/broad",
+		},
+		StatusCode: fiber.StatusFound,
+	}))
+
+	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/p/aa?code=secret", http.NoBody)
+	require.NoError(t, err)
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusFound, resp.StatusCode)
+	require.Equal(t, "/narrow?code=secret", resp.Header.Get("Location"))
+
+	// A set escape measures a set wherever it stands, and the same one either way.
+	require.Equal(t, patternWidth(`/p/[\w]`), patternWidth(`/p/\w`))
+	require.Equal(t, patternWidth(`/p/[\p{Greek}]`), patternWidth(`/p/\p{Greek}`))
+	require.Greater(t, patternWidth(`/p/\w`), patternWidth(`/p/\.`))
+
+	// An escape spelling one character is still one, and an assertion matches
+	// nothing at all: reading either as a set put "/p/[ab]\b" level with the
+	// "/p/[a-d]" containing it.
+	require.Equal(t, patternWidth(`/p/a`), patternWidth(`/p/\.`))
+	require.Equal(t, patternWidth(`/p/[ab]`), patternWidth(`/p/[ab]\b`))
+	require.Less(t, patternWidth(`/p/[ab]\b`), patternWidth(`/p/[a-d]`))
+
+	// A backslash ending the rule names nothing, so it is no set either.
+	require.Equal(t, patternWidth(`/p/`), patternWidth(`/p/\`))
+}
