@@ -87,6 +87,21 @@ func New(config ...Config) fiber.Handler {
 		if d := cmp.Compare(patternWidth(a), patternWidth(b)); d != 0 {
 			return d
 		}
+		// A quantifier repeating a wider atom matches more of what the rules
+		// share, so the rule repeating the narrower atom sorts first. Read after
+		// the width rather than before it: the width already separates most
+		// pairs, and this only speaks where it cannot — over a run it does not
+		// measure, or over a bounded repetition whose product has saturated.
+		//
+		// Asked only of two rules that both repeat something, since that is the
+		// only pair the answer is about: reading a rule repeating nothing as the
+		// narrower of the two put the broad "/p/\w[ab]" ahead of the
+		// "/p/[ab]{2}" it contains.
+		if ra, rb := repeatedWidth(a), repeatedWidth(b); ra > 0 && rb > 0 {
+			if d := cmp.Compare(ra, rb); d != 0 {
+				return d
+			}
+		}
 		// Whatever the width leaves tied is separated by how many wildcards the
 		// rules spend it on, since a width stands for none of them: "/p/*a*b"
 		// and "/p/*ab" both expand to a single alternative, and the key order
@@ -912,6 +927,9 @@ func literalLen(rule string) int {
 type literalScanner struct {
 	rule string
 	i    int
+	// repeated is the breadth of the widest atom the rule repeats, recorded by
+	// width as it passes each quantifier. See repeatedWidth.
+	repeatedAtom int
 }
 
 // widestBranch counts the bytes pinned from the current position to the end of
@@ -1024,6 +1042,22 @@ func patternWidth(rule string) int {
 	return s.width()
 }
 
+// repeatedWidth returns how much breadth a rule's widest quantifier repeats: any
+// byte for Fiber's "*", the atom itself for a "?", a "+" or a "{m,n}", and none
+// for a rule that repeats nothing. It separates two rules the width leaves tied,
+// which repetition makes easy to leave tied in two ways.
+//
+// A run is measured nowhere in the width, so "/p/[b]+a?" spells the two paths
+// "/p/[ab]+" spells while matching a subset of them. And a bounded repetition
+// saturates: "/p/[a-z]{5}" and the "/p/[a-zA-Z]{5}" containing it both reach the
+// clamp. The atom keeps its breadth either way — 1 against 2, and 26 against 52 —
+// where key order alone chose the broad rule of each pair.
+func repeatedWidth(rule string) int {
+	s := literalScanner{rule: rule}
+	s.width()
+	return s.repeatedAtom
+}
+
 // width is patternWidth from the current position to the end of the rule or to
 // the ")" closing the group beginning there. The alternatives of a sequence
 // multiply and those of an alternation add, so a group counts wherever it sits.
@@ -1094,13 +1128,21 @@ func (s *literalScanner) width() int {
 				// An atom that may be absent matches everything it does and
 				// one path more, so "/p/*a?" is wider than the "/p/*a" it ties
 				// with — and wider than "/p/*[a]*", which the count sorts below.
+				s.repeatedAtom = max(s.repeatedAtom, atom)
 				n, prev = repeated(prev, atom, 0, 1), n
 			}
 			atom, quantified = 1, true
+		case '*':
+			// Fiber's wildcard, expanded to "(.*)" before the key is compiled,
+			// so it repeats any byte. Measured no wider than the byte it is
+			// written as, the run itself being ranked by carriesRun.
+			s.repeatedAtom = max(s.repeatedAtom, 256)
+			atom, prev, quantified, empty = 1, n, false, false
 		case '+':
 			// The run it names is ranked by carriesRun rather than measured
 			// here, but it is a quantifier still: the "?" that may follow is
 			// Go's non-greedy marker.
+			s.repeatedAtom = max(s.repeatedAtom, atom)
 			atom, prev, quantified = 1, n, true
 		case '{':
 			var bounds quantifierBounds
@@ -1111,6 +1153,7 @@ func (s *literalScanner) width() int {
 				atom, prev, quantified, empty = 1, n, false, false
 				continue
 			}
+			s.repeatedAtom = max(s.repeatedAtom, atom)
 			if !bounds.runsOn && !empty {
 				n, prev = repeated(prev, atom, bounds.lo, bounds.hi), n
 			}
