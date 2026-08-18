@@ -1040,30 +1040,36 @@ func (s *literalScanner) width() int {
 	// just read as a quantifier itself, since the "?" following one is Go's
 	// non-greedy marker rather than a second quantifier of its own.
 	atom, prev, quantified := 1, 1, false
+	// empty marks the construct just read as one matching only the empty string.
+	// Every count of it spells the same path, so a quantifier on one is no width:
+	// counting it made "/p/(?:)?(?:)?[a]" twice as wide as the "/p/[ab]" that
+	// contains it, on a path only the first matches.
+	empty := false
 	for s.i < len(s.rule) {
 		switch s.rule[s.i] {
 		case '\\':
 			if q := scanQuoted(s.rule, s.i); q.ok {
 				// Quoted text spells one path and no alternatives.
 				s.i = q.end
-				atom, prev, quantified = 1, n, false
+				atom, prev, quantified, empty = 1, n, false, q.text == ""
 				continue
 			}
 			size, _ := escapeSpan(s.rule, s.i)
 			s.i += size
-			atom, prev, quantified = 1, n, false
+			atom, prev, quantified, empty = 1, n, false, false
 			continue
 		case '[':
-			atom, prev, quantified = s.classWidth(), n, false
+			atom, prev, quantified, empty = s.classWidth(), n, false, false
 			n = scaledWidth(n, atom)
 			continue
 		case '.':
 			// Any byte, so it is the widest single position there is.
-			atom, prev, quantified = 256, n, false
+			atom, prev, quantified, empty = 256, n, false, false
 			n = scaledWidth(n, atom)
 		case '(':
 			s.i = skipGroupPrefix(s.rule, s.i+1)
 			prev, quantified = n, false
+			empty = s.i < len(s.rule) && s.rule[s.i] == ')'
 			atom = s.width()
 			n = scaledWidth(n, atom)
 			continue
@@ -1071,12 +1077,12 @@ func (s *literalScanner) width() int {
 			s.i++
 			return clampWidth(total + n)
 		case '|':
-			total, n, atom, prev, quantified = clampWidth(total+n), 1, 1, 1, false
+			total, n, atom, prev, quantified, empty = clampWidth(total+n), 1, 1, 1, false, false
 		case '?':
 			// A "?" following a quantifier only says the repetition is not
 			// greedy, and "/p/[b]+?" matches what "/p/[b]+" does: counting it
 			// as an atom that may be absent widened the narrower of a pair.
-			if !quantified {
+			if !quantified && !empty {
 				// An atom that may be absent matches everything it does and
 				// one path more, so "/p/*a?" is wider than the "/p/*a" it ties
 				// with — and wider than "/p/*[a]*", which the count sorts below.
@@ -1094,16 +1100,16 @@ func (s *literalScanner) width() int {
 			if !bounds.quantifies {
 				// Braces standing as text: the "{" is a byte like any other,
 				// and what it holds is measured rather than passed over.
-				atom, prev, quantified = 1, n, false
+				atom, prev, quantified, empty = 1, n, false, false
 				continue
 			}
-			if !bounds.runsOn {
+			if !bounds.runsOn && !empty {
 				n, prev = repeated(prev, atom, bounds.lo, bounds.hi), n
 			}
 			atom, quantified = 1, true
 			continue
 		default:
-			atom, prev, quantified = 1, n, false
+			atom, prev, quantified, empty = 1, n, false, false
 		}
 		s.i++
 	}
@@ -1326,6 +1332,13 @@ type ruleRuns struct {
 // the expansion leaves "[(.*)]" a class and "\Q(.*)\E" literal text.
 func scanRuns(rule string) ruleRuns {
 	runs := ruleRuns{}
+	// starts holds where the body of each still-open group begins, so a ")"
+	// standing there closes a group holding nothing. empty marks the construct
+	// just read as one matching only the empty string, whose repetitions are all
+	// the same path: "/p/(?:)+a" matches "/p/a" and nothing besides, and grading
+	// it as a run sorted it behind the broader "/p/b?a" it is contained in.
+	var starts []int
+	empty := false
 	for i := 0; i < len(rule); {
 		switch rule[i] {
 		case '\\':
@@ -1334,26 +1347,48 @@ func scanRuns(rule string) ruleRuns {
 				// before it are still expanded, so the count already reached is
 				// what holds.
 				i = q.end
+				empty = q.text == ""
 				continue
 			}
 			size, _ := escapeSpan(rule, i)
 			i += size
+			empty = false
 		case '[':
 			s := literalScanner{rule: rule, i: i}
 			s.classWidth() // leaves s.i just past the "]"
 			i = s.i
+			empty = false
+		case '(':
+			i = skipGroupPrefix(rule, i+1)
+			starts = append(starts, i)
+			empty = false
+			continue
+		case ')':
+			empty = len(starts) > 0 && starts[len(starts)-1] == i
+			if len(starts) > 0 {
+				starts = starts[:len(starts)-1]
+			}
+			i++
 		case '*':
+			// Fiber's own wildcard, which is expanded to "(.*)" whatever stands
+			// before it, so it runs on even where that is an empty group.
 			runs.wildcards++
 			i++
+			empty = false
 		case '+':
-			runs.unbounded = true
+			runs.unbounded = runs.unbounded || !empty
 			i++
 		case '{':
 			var bounds quantifierBounds
 			i, bounds = skipQuantifier(rule, i)
-			runs.unbounded = runs.unbounded || bounds.runsOn
+			if !bounds.quantifies {
+				empty = false
+				break
+			}
+			runs.unbounded = runs.unbounded || (bounds.runsOn && !empty)
 		default:
 			i++
+			empty = false
 		}
 	}
 	return runs
