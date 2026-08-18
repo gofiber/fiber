@@ -87,20 +87,12 @@ func New(config ...Config) fiber.Handler {
 		if d := cmp.Compare(patternWidth(a), patternWidth(b)); d != 0 {
 			return d
 		}
-		// A quantifier repeating a wider atom matches more of what the rules
-		// share, so the rule repeating the narrower atom sorts first. Read after
-		// the width rather than before it: the width already separates most
-		// pairs, and this only speaks where it cannot — over a run it does not
-		// measure, or over a bounded repetition whose product has saturated.
-		//
-		// Asked only of two rules that both repeat something, since that is the
-		// only pair the answer is about: reading a rule repeating nothing as the
-		// narrower of the two put the broad "/p/\w[ab]" ahead of the
-		// "/p/[ab]{2}" it contains.
-		if ra, rb := repeatedWidth(a), repeatedWidth(b); ra > 0 && rb > 0 {
-			if d := cmp.Compare(ra, rb); d != 0 {
-				return d
-			}
+		// The widest position a rule matches, which is what the width loses
+		// where it saturates or where it leaves a run unmeasured. Read after the
+		// width rather than before it: the width already separates most pairs,
+		// and this only speaks where it cannot.
+		if d := cmp.Compare(widestAtom(a), widestAtom(b)); d != 0 {
+			return d
 		}
 		// Whatever the width leaves tied is separated by how many wildcards the
 		// rules spend it on, since a width stands for none of them: "/p/*a*b"
@@ -927,9 +919,9 @@ func literalLen(rule string) int {
 type literalScanner struct {
 	rule string
 	i    int
-	// repeatedAtom is the breadth of the widest atom the rule repeats, recorded
-	// by width as it passes each quantifier. See repeatedWidth.
-	repeatedAtom int
+	// widestAtom is the breadth of the widest single construct the rule matches,
+	// recorded by width as it reads each one. See widestAtom.
+	widest int
 	// groupEmpty is what the group width just finished reading matches: true
 	// where that is the empty string and nothing else, however deeply the
 	// group's own groups nest.
@@ -1046,20 +1038,26 @@ func patternWidth(rule string) int {
 	return s.width()
 }
 
-// repeatedWidth returns how much breadth a rule's widest quantifier repeats: any
-// byte for Fiber's "*", the atom itself for a "?", a "+" or a "{m,n}", and none
-// for a rule that repeats nothing. It separates two rules the width leaves tied,
-// which repetition makes easy to leave tied in two ways.
+// widestAtom returns the breadth of the widest single construct a rule matches:
+// a class, a group, a set escape, or any byte for Fiber's "*". It separates two
+// rules the width leaves tied, which repetition makes easy to leave tied in two
+// ways.
 //
 // A run is measured nowhere in the width, so "/p/[b]+a?" spells the two paths
 // "/p/[ab]+" spells while matching a subset of them. And a bounded repetition
 // saturates: "/p/[a-z]{5}" and the "/p/[a-zA-Z]{5}" containing it both reach the
-// clamp. The atom keeps its breadth either way — 1 against 2, and 26 against 52 —
-// where key order alone chose the broad rule of each pair.
-func repeatedWidth(rule string) int {
+// clamp. The widest position keeps its breadth either way — 1 against 2, and 26
+// against 52 — where key order alone chose the broad rule of each pair.
+//
+// Read of every rule and not only of those that repeat something. Asking it of
+// one rule and not the other made the comparison depend on which pair was being
+// compared, and slices.SortFunc needs a total order: "/p/[a-z]{5}",
+// "/p/[a-zA-Z]{5}" and "/p/[a-zB-Z][b-z][b-z][b-z][b-z]" formed a cycle, and the
+// order the map handed them in then decided which rule won.
+func widestAtom(rule string) int {
 	s := literalScanner{rule: rule}
 	s.width()
-	return s.repeatedAtom
+	return s.widest
 }
 
 // width is patternWidth from the current position to the end of the rule or to
@@ -1082,18 +1080,23 @@ func (s *literalScanner) width() int {
 	// Every count of it spells the same path, so a quantifier on one is no width:
 	// counting it made "/p/(?:)?(?:)?[a]" twice as wide as the "/p/[ab]" that
 	// contains it, on a path only the first matches.
-	empty := false
-	// filled is whether anything matching more than the empty string has been
-	// read here, which is what the group closing this call reports to its caller.
-	filled := false
+	//
+	// filled is whether anything read here matches more than the empty string,
+	// which is what the group closing this call reports to its caller. It takes
+	// the construct just read only once a quantifier can no longer empty it: the
+	// "{0}" in "(?:a{0})" leaves the group as empty as "(?:)".
+	empty, filled := true, false
+	commit := func() {
+		filled = filled || !empty
+	}
 	for s.i < len(s.rule) {
 		switch s.rule[s.i] {
 		case '\\':
+			commit()
 			if q := scanQuoted(s.rule, s.i); q.ok {
 				// Quoted text spells one path and no alternatives.
 				s.i = q.end
 				atom, prev, quantified, empty = 1, n, false, q.text == ""
-				filled = filled || !empty
 				continue
 			}
 			// An escape naming a set matches what a class of the same members
@@ -1104,34 +1107,52 @@ func (s *literalScanner) width() int {
 				atom = setMemberWidth
 			}
 			size, _ := escapeSpan(s.rule, s.i)
+			// An assertion consumes nothing, so it leaves what it stands beside
+			// as empty as it found it: "(?:\b)+a" matches "/p/a" and no more.
+			asserts := escapeAsserts(s.rule, s.i)
 			s.i += size
-			prev, quantified, empty, filled = n, false, false, true
-			n = scaledWidth(n, atom)
+			prev, quantified, empty = n, false, asserts
+			if !asserts {
+				s.widest = max(s.widest, atom)
+				n = scaledWidth(n, atom)
+			}
 			continue
 		case '[':
-			atom, prev, quantified, empty, filled = s.classWidth(), n, false, false, true
+			commit()
+			atom, prev, quantified, empty = s.classWidth(), n, false, false
+			s.widest = max(s.widest, atom)
 			n = scaledWidth(n, atom)
 			continue
 		case '.':
 			// Any byte, so it is the widest single position there is.
-			atom, prev, quantified, empty, filled = 256, n, false, false, true
+			commit()
+			atom, prev, quantified, empty = 256, n, false, false
+			s.widest = max(s.widest, atom)
 			n = scaledWidth(n, atom)
 		case '(':
+			commit()
 			s.i = skipGroupPrefix(s.rule, s.i+1)
 			prev, quantified = n, false
 			atom = s.width()
 			// A group holding nothing but empty groups is empty itself, which
 			// reading only what it spells missed.
 			empty = s.groupEmpty
-			filled = filled || !empty
+			if !empty {
+				s.widest = max(s.widest, atom)
+			}
 			n = scaledWidth(n, atom)
 			continue
 		case ')':
+			commit()
 			s.i++
 			s.groupEmpty = !filled
 			return clampWidth(total + n)
 		case '|':
-			total, n, atom, prev, quantified, empty = clampWidth(total+n), 1, 1, 1, false, false
+			commit()
+			total, n, atom, prev, quantified, empty = clampWidth(total+n), 1, 1, 1, false, true
+		case '^', '$':
+			// An anchor asserts a position and consumes nothing.
+			atom, prev, quantified, empty = 1, n, false, true
 		case '?':
 			// A "?" following a quantifier only says the repetition is not
 			// greedy, and "/p/[b]+?" matches what "/p/[b]+" does: counting it
@@ -1140,23 +1161,20 @@ func (s *literalScanner) width() int {
 				// An atom that may be absent matches everything it does and
 				// one path more, so "/p/*a?" is wider than the "/p/*a" it ties
 				// with — and wider than "/p/*[a]*", which the count sorts below.
-				s.repeatedAtom = max(s.repeatedAtom, atom)
 				n, prev = repeated(prev, atom, 0, 1), n
 			}
 			atom, quantified = 1, true
 		case '*':
 			// Fiber's wildcard, expanded to "(.*)" before the key is compiled,
-			// so it repeats any byte. Measured no wider than the byte it is
+			// so it matches any byte. Measured no wider than the byte it is
 			// written as, the run itself being ranked by carriesRun.
-			s.repeatedAtom = max(s.repeatedAtom, 256)
-			atom, prev, quantified, empty, filled = 1, n, false, false, true
+			commit()
+			s.widest = max(s.widest, 256)
+			atom, prev, quantified, empty = 1, n, false, false
 		case '+':
 			// The run it names is ranked by carriesRun rather than measured
 			// here, but it is a quantifier still: the "?" that may follow is
 			// Go's non-greedy marker.
-			if !empty {
-				s.repeatedAtom = max(s.repeatedAtom, atom)
-			}
 			atom, prev, quantified = 1, n, true
 		case '{':
 			var bounds quantifierBounds
@@ -1164,22 +1182,30 @@ func (s *literalScanner) width() int {
 			if !bounds.quantifies {
 				// Braces standing as text: the "{" is a byte like any other,
 				// and what it holds is measured rather than passed over.
-				atom, prev, quantified, empty, filled = 1, n, false, false, true
+				commit()
+				atom, prev, quantified, empty = 1, n, false, false
 				continue
 			}
-			if !empty {
-				s.repeatedAtom = max(s.repeatedAtom, atom)
-				if !bounds.runsOn {
-					n, prev = repeated(prev, atom, bounds.lo, bounds.hi), n
-				}
+			if !bounds.runsOn && !empty {
+				n, prev = repeated(prev, atom, bounds.lo, bounds.hi), n
+			}
+			// A count of none takes the atom away, leaving what stands here as
+			// empty as no atom at all.
+			if !bounds.runsOn && bounds.hi == 0 {
+				empty = true
 			}
 			atom, quantified = 1, true
 			continue
 		default:
-			atom, prev, quantified, empty, filled = 1, n, false, false, true
+			// One byte of the path, which is the narrowest position there is.
+			commit()
+			s.widest = max(s.widest, 1)
+			atom, prev, quantified, empty = 1, n, false, false
 		}
 		s.i++
 	}
+	commit()
+	s.groupEmpty = !filled
 	return clampWidth(total + n)
 }
 
@@ -1492,11 +1518,20 @@ func scanRuns(rule string) ruleRuns {
 	// only the empty string, whose repetitions are all the same path:
 	// "/p/(?:)+a" matches "/p/a" and nothing besides, and grading it as a run
 	// sorted it behind the broader "/p/b?a" it is contained in.
+	//
+	// A group takes the construct just read only once a quantifier can no longer
+	// empty it, since "(?:a{0})" holds as little as "(?:)" does.
 	var filled []bool
-	empty := false
+	empty := true
+	commit := func() {
+		if !empty && len(filled) > 0 {
+			filled[len(filled)-1] = true
+		}
+	}
 	for i := 0; i < len(rule); {
 		switch rule[i] {
 		case '\\':
+			commit()
 			if q := scanQuoted(rule, i); q.ok {
 				// Only the quoted text is given up: the wildcards standing
 				// before it are still expanded, so the count already reached is
@@ -1504,50 +1539,69 @@ func scanRuns(rule string) ruleRuns {
 				i, empty = q.end, q.text == ""
 				break
 			}
+			// An assertion consumes nothing, and leaves what stands beside it as
+			// empty as it found it.
+			empty = escapeAsserts(rule, i)
 			size, _ := escapeSpan(rule, i)
 			i += size
-			empty = false
 		case '[':
+			commit()
 			s := literalScanner{rule: rule, i: i}
 			s.classWidth() // leaves s.i just past the "]"
-			i = s.i
-			empty = false
+			i, empty = s.i, false
 		case '(':
+			commit()
 			i = skipGroupPrefix(rule, i+1)
 			filled = append(filled, false)
+			empty = true
 			continue
 		case ')':
 			// A group holding nothing but empty groups is empty itself, which
 			// reading only what it spells missed: "(?:(?:))" matches the empty
 			// string alone, and its "+" was graded a run all the same.
+			commit()
 			empty = len(filled) == 0 || !filled[len(filled)-1]
 			if len(filled) > 0 {
 				filled = filled[:len(filled)-1]
 			}
 			i++
+			continue
+		case '^', '$':
+			// An anchor asserts a position and consumes nothing.
+			i++
+			empty = true
+			continue
 		case '*':
 			// Fiber's own wildcard, which is expanded to "(.*)" whatever stands
 			// before it, so it runs on even where that is an empty group.
+			commit()
 			runs.wildcards++
 			i++
 			empty = false
 		case '+':
 			runs.unbounded = runs.unbounded || !empty
 			i++
+			continue
 		case '{':
 			var bounds quantifierBounds
 			i, bounds = skipQuantifier(rule, i)
 			if !bounds.quantifies {
+				commit()
 				empty = false
 				break
 			}
-			runs.unbounded = runs.unbounded || (bounds.runsOn && !empty)
+			switch {
+			case bounds.runsOn:
+				runs.unbounded = runs.unbounded || !empty
+			case bounds.hi == 0:
+				// A count of none takes the atom away.
+				empty = true
+			}
+			continue
 		default:
+			commit()
 			i++
 			empty = false
-		}
-		if !empty && len(filled) > 0 {
-			filled[len(filled)-1] = true
 		}
 	}
 	return runs
@@ -1733,6 +1787,22 @@ func escapeSet(rule string, i int) bool {
 	}
 	switch rule[i+1] {
 	case 'd', 'D', 's', 'S', 'w', 'W', 'p', 'P':
+		return true
+	}
+	return false
+}
+
+// escapeAsserts reports whether the escape at the backslash at i asserts a
+// position rather than matching anything: "\b" stands between a word byte and a
+// byte that is not one, and consumes neither. A group holding one is as empty as
+// a group holding nothing, and reading it as consuming graded the "+" in
+// "/p/(?:\b)+a" a run over a rule matching "/p/a" alone.
+func escapeAsserts(rule string, i int) bool {
+	if i+1 >= len(rule) {
+		return false
+	}
+	switch rule[i+1] {
+	case 'b', 'B', 'A', 'z':
 		return true
 	}
 	return false

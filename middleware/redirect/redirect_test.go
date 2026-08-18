@@ -3556,17 +3556,18 @@ func Test_Redirect_RepeatedAtomSeparatesTiedWidths(t *testing.T) {
 			require.Equal(t, fiber.StatusFound, resp.StatusCode)
 			require.Equal(t, "/narrow?token=secret", resp.Header.Get("Location"))
 
-			// Tied on the width, and separated by what the repetition repeats.
+			// Tied on the width, and separated by the widest position each matches.
 			require.Equal(t, patternWidth(tc.broad), patternWidth(tc.narrow))
-			require.Less(t, repeatedWidth(tc.narrow), repeatedWidth(tc.broad))
+			require.Less(t, widestAtom(tc.narrow), widestAtom(tc.broad))
 		})
 	}
 
-	// Every quantifier records what it repeats, and Fiber's "*" repeats any byte.
-	require.Equal(t, 0, repeatedWidth(`/p/[ab]`))
-	require.Equal(t, 2, repeatedWidth(`/p/[ab]?`))
-	require.Equal(t, 26, repeatedWidth(`/p/[a-z]+`))
-	require.Equal(t, 256, repeatedWidth(`/p/*`))
+	// Every rule has an answer, repeating or not, and Fiber's "*" matches any byte.
+	require.Equal(t, 2, widestAtom(`/p/[ab]`))
+	require.Equal(t, 2, widestAtom(`/p/[ab]?`))
+	require.Equal(t, 26, widestAtom(`/p/[a-z]+`))
+	require.Equal(t, 256, widestAtom(`/p/*`))
+	require.Equal(t, 1, widestAtom(`/p/abc`))
 
 	// It is read after the width, so it never moves a pair the width separates.
 	require.Equal(t, 1, patternWidth(`/p/[z]+`))
@@ -3657,4 +3658,113 @@ func Test_Redirect_EscapedClassMemberIsDecoded(t *testing.T) {
 	// one member it is rather than as a set.
 	require.Equal(t, patternWidth(`/p/[a]`), patternWidth(`/p/[\x{3B1}]`))
 	require.Less(t, patternWidth(`/p/[\x{3B1}]`), patternWidth(`/p/[\d]`))
+}
+
+// Test_Redirect_KeyOrderIsTotal covers the comparator itself: slices.SortFunc
+// needs a total order, and asking a key of one rule and not the other made the
+// answer depend on which pair was being compared. Three rules then formed a
+// cycle, and the order the map handed them in decided which won.
+func Test_Redirect_KeyOrderIsTotal(t *testing.T) {
+	t.Parallel()
+
+	// The cycle: all three tie down to the width, which saturates for each.
+	rules := []string{
+		`/p/[a-z]{5}`,
+		`/p/[a-zA-Z]{5}`,
+		`/p/[a-zB-Z][b-z][b-z][b-z][b-z]`,
+	}
+	for _, rule := range rules {
+		require.Equal(t, maxPatternWidth, patternWidth(rule), rule)
+		require.Equal(t, 0, carriesRun(rule), rule)
+	}
+
+	// Every ordering the three can be given sorts them the same way, which is
+	// what a comparator that reads each rule on its own terms guarantees.
+	// Each rule keeps its own target, so the winner is named the same however the
+	// three are ordered going in.
+	targets := map[string]string{rules[0]: "/narrow", rules[1]: "/broad", rules[2]: "/other"}
+	want := ""
+	for _, order := range [][]string{
+		{rules[0], rules[1], rules[2]},
+		{rules[0], rules[2], rules[1]},
+		{rules[1], rules[0], rules[2]},
+		{rules[1], rules[2], rules[0]},
+		{rules[2], rules[0], rules[1]},
+		{rules[2], rules[1], rules[0]},
+	} {
+		app := fiber.New()
+		app.Use(New(Config{
+			Rules: map[string]string{
+				order[0]: targets[order[0]],
+				order[1]: targets[order[1]],
+				order[2]: targets[order[2]],
+			},
+			StatusCode: fiber.StatusFound,
+		}))
+
+		req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/p/aaaaa?token=x", http.NoBody)
+		require.NoError(t, err)
+		resp, err := app.Test(req)
+		require.NoError(t, err)
+		require.Equal(t, fiber.StatusFound, resp.StatusCode)
+
+		got := resp.Header.Get("Location")
+		if want == "" {
+			want = got
+		}
+		require.Equal(t, want, got, order)
+	}
+
+	// And it is the narrowest of the three that wins: "/p/[a-z]{5}" is a strict
+	// subset of "/p/[a-zA-Z]{5}".
+	require.Equal(t, "/narrow?token=x", want)
+	require.Less(t, widestAtom(rules[0]), widestAtom(rules[2]))
+	require.Less(t, widestAtom(rules[2]), widestAtom(rules[1]))
+}
+
+// Test_Redirect_ZeroWidthConstructIsEmpty covers what a group can hold and still
+// match nothing: an assertion, which stands between bytes without consuming one,
+// and an atom a "{0}" takes away. Either left the group counted as consuming, so
+// "/p/(?:\b)+a" and "/p/(?:a{0})+a" were graded runs though each matches "/p/a"
+// alone, and both sorted behind the broader "/p/b?a" that contains them.
+func Test_Redirect_ZeroWidthConstructIsEmpty(t *testing.T) {
+	t.Parallel()
+
+	for _, narrow := range []string{`/p/(?:\b)+a`, `/p/(?:a{0})+a`} {
+		t.Run(narrow, func(t *testing.T) {
+			t.Parallel()
+
+			app := fiber.New()
+			app.Use(New(Config{
+				Rules:      map[string]string{narrow: "/narrow", `/p/b?a`: "/broad"},
+				StatusCode: fiber.StatusFound,
+			}))
+
+			req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/p/a?token=x", http.NoBody)
+			require.NoError(t, err)
+			resp, err := app.Test(req)
+			require.NoError(t, err)
+			require.Equal(t, fiber.StatusFound, resp.StatusCode)
+			require.Equal(t, "/narrow?token=x", resp.Header.Get("Location"))
+
+			require.Equal(t, 0, carriesRun(narrow))
+		})
+	}
+
+	// An anchor asserts a position and consumes nothing, so it is empty too —
+	// though no request reaches a rule holding one anywhere but at its ends.
+	require.Equal(t, 0, carriesRun(`/p/(?:^)+a`))
+	require.Equal(t, 0, carriesRun(`/p/(?:$)+a`))
+	require.Equal(t, patternWidth(`/p/a`), patternWidth(`/p/a$`))
+
+	// An assertion pins nothing and widens nothing, wherever it stands.
+	require.Equal(t, patternWidth(`/p/a`), patternWidth(`/p/a\b`))
+	require.Equal(t, patternWidth(`/p/a`), patternWidth(`/p/a\b?`))
+	require.Equal(t, literalLen(`/p/a`), literalLen(`/p/a\b`))
+
+	// A count of none takes the atom away, and a count that permits one does not.
+	require.Equal(t, 0, carriesRun(`/p/(?:[a-z]{0})+`))
+	require.Equal(t, 1, carriesRun(`/p/(?:[a-z]{0,2})+`))
+	require.Equal(t, 1, carriesRun(`/p/(?:[a-z]{0,})+`))
+	require.Equal(t, patternWidth(`/p/a`), patternWidth(`/p/a[b-z]{0}`))
 }
