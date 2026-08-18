@@ -3989,3 +3989,119 @@ func Test_Redirect_PrefixReadsZeroCountsAndFlags(t *testing.T) {
 	require.True(t, regexp.MustCompile(`^(?:/p/(?i:a))$`).MatchString("/p/A"))
 	require.False(t, regexp.MustCompile(`^(?:/p/a)$`).MatchString("/p/A"))
 }
+
+// Test_Redirect_CaseFoldingIsNoExactText covers a group setting the "i" flag,
+// which says the text it reaches matches in either case. Counting that text as
+// path put "/p/(?i)a" ahead of the "/p/[a]" it contains, and measuring it as one
+// character left the pair tied for key order to pick between.
+func Test_Redirect_CaseFoldingIsNoExactText(t *testing.T) {
+	t.Parallel()
+
+	for _, broad := range []string{`/p/(?i)a`, `/p/(?i:a)`, `/p/(?si)a`} {
+		t.Run(broad, func(t *testing.T) {
+			t.Parallel()
+
+			app := fiber.New()
+			app.Use(New(Config{
+				Rules:      map[string]string{`/p/[a]`: "/narrow", broad: "/broad"},
+				StatusCode: fiber.StatusFound,
+			}))
+
+			req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/p/a?token=x", http.NoBody)
+			require.NoError(t, err)
+			resp, err := app.Test(req)
+			require.NoError(t, err)
+			require.Equal(t, fiber.StatusFound, resp.StatusCode)
+			require.Equal(t, "/narrow?token=x", resp.Header.Get("Location"))
+
+			// Broader on both counts: it pins no path, and matches two characters
+			// where the class matches one.
+			require.Equal(t, literalLen(`/p/`), literalLen(broad))
+			require.Greater(t, patternWidth(broad), patternWidth(`/p/[a]`))
+		})
+	}
+
+	// Scoped flags end at the group's ")", where a flag-only group reaches the
+	// rest of the rule.
+	require.Equal(t, literalLen(`/p/b`), literalLen(`/p/(?i:a)b`))
+	require.Equal(t, literalLen(`/p/`), literalLen(`/p/(?i)ab`))
+	require.Equal(t, patternWidth(`/p/[ab]`), patternWidth(`/p/(?i:a)`))
+	require.Equal(t, patternWidth(`/p/(?i:a)a`), patternWidth(`/p/(?i:a)(?-i:a)`))
+	require.Equal(t, patternWidth(`/p/a`), patternWidth(`/p/(?i)(?-i)a`))
+
+	// A group naming no flags is exact text still, a capture name among them.
+	require.Equal(t, literalLen(`/p/ab`), literalLen(`/p/(?:a)b`))
+	require.Equal(t, literalLen(`/p/ab`), literalLen(`/p/(?P<n>a)b`))
+	require.Equal(t, patternWidth(`/p/a`), patternWidth(`/p/(?:a)`))
+
+	// Which is what Go says of them.
+	require.True(t, regexp.MustCompile(`^(?:/p/(?i)a)$`).MatchString("/p/A"))
+	require.False(t, regexp.MustCompile(`^(?:/p/(?i)(?-i)a)$`).MatchString("/p/A"))
+}
+
+// Test_Redirect_QuotedPipeSeparatesNoBranch covers a "|" inside quoted text: it
+// is a byte of the path, and splitting the rule there measured "/p/\Qa|b\E" as
+// the least of two branches that are not there.
+func Test_Redirect_QuotedPipeSeparatesNoBranch(t *testing.T) {
+	t.Parallel()
+
+	// No request reaches these rules — Fiber percent-encodes a "|" in a path —
+	// so the ordering is pinned by the keys the sort reads rather than by a
+	// redirect that cannot happen.
+	require.Equal(t, literalPrefixLen(`/p/a\|b`), literalPrefixLen(`/p/\Qa|b\E`))
+	require.Greater(t, literalPrefixLen(`/p/\Qa|b\E`), literalPrefixLen(`/p/a\|(?i:b)`))
+	require.Equal(t, literalLen(`/p/a\|b`), literalLen(`/p/\Qa|b\E`))
+
+	// A "|" outside a quote still separates branches, and one inside a class
+	// still does not.
+	require.Equal(t, literalPrefixLen(`/x`), literalPrefixLen(`/p/xa|/x`))
+	require.Equal(t, literalPrefixLen(`/p/`), literalPrefixLen(`/p/[a|b]`))
+	require.Len(t, splitAlternation(`/p/\Qa|b\E|/x`), 2)
+}
+
+// Test_Redirect_DeepNestingIsBounded covers a rule nesting groups without end:
+// every level of the prefix scan reads to the ")" closing it, so following them
+// all costs the square of the depth. Sixteen thousand groups spent 2.4 seconds
+// of startup on a rule Go compiles without complaint.
+func Test_Redirect_DeepNestingIsBounded(t *testing.T) {
+	t.Parallel()
+
+	deep := "/p/" + strings.Repeat("(?:", 16000) + "a" + strings.Repeat(")", 16000)
+	require.NotPanics(t, func() {
+		New(Config{Rules: map[string]string{deep: "/x", "/p/a": "/y"}})
+	})
+
+	// Followed no further than the bound, which only ends a prefix sooner.
+	require.Equal(t, literalPrefixLen(`/p/`), literalPrefixLen(deep))
+	require.Equal(t, literalPrefixLen(`/p/a`), literalPrefixLen("/p/"+strings.Repeat("(?:", maxPinnedDepth-1)+"a"+strings.Repeat(")", maxPinnedDepth-1)))
+	require.Equal(t, literalPrefixLen(`/p/`), literalPrefixLen("/p/"+strings.Repeat("(?:", maxPinnedDepth+1)+"a"+strings.Repeat(")", maxPinnedDepth+1)))
+}
+
+// Test_Redirect_QuotedTextCountedNoneTimes covers a "{0}" after a "\E": the
+// count reaches the last byte quoted and no more, so the bytes before it are
+// pinned and the rest of the rule goes on pinning what it did. Ending the prefix
+// there left "/p/a\Qbc\E{0}d" tied with the broader "/p/a\142(?i:d)".
+func Test_Redirect_QuotedTextCountedNoneTimes(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Use(New(Config{
+		Rules: map[string]string{
+			`/p/a\Qbc\E{0}d`: "/narrow",
+			`/p/a\142(?i:d)`: "/broad",
+		},
+		StatusCode: fiber.StatusFound,
+	}))
+
+	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/p/abd?token=x", http.NoBody)
+	require.NoError(t, err)
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusFound, resp.StatusCode)
+	require.Equal(t, "/narrow?token=x", resp.Header.Get("Location"))
+
+	// The count takes the "c" and nothing else, and the "d" after it is pinned.
+	require.Equal(t, literalPrefixLen(`/p/abd`), literalPrefixLen(`/p/a\Qbc\E{0}d`))
+	require.Equal(t, literalPrefixLen(`/p/ab`), literalPrefixLen(`/p/a\Qbc\E?d`))
+	require.Equal(t, literalPrefixLen(`/p/abcd`), literalPrefixLen(`/p/a\Qbc\Ed`))
+}

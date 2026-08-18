@@ -928,6 +928,9 @@ type literalScanner struct {
 	// widestAtom is the breadth of the widest single construct the rule matches,
 	// recorded by width as it reads each one. See widestAtom.
 	widest int
+	// folded is whether case folding is in force at the position width has
+	// reached, an "(?i)" having turned it on. See foldedWidth.
+	folded bool
 	// groupEmpty is what the group width just finished reading matches: true
 	// where that is the empty string and nothing else, however deeply the
 	// group's own groups nest.
@@ -977,6 +980,18 @@ func (s *literalScanner) widestBranch() int {
 		case c == '[':
 			inClass, atom = true, 0
 		case c == '(':
+			if flags := groupFlagScope(s.rule, s.i); flags.sets {
+				// The flags say what the text they cover matches, so it spells
+				// no path: counting the "a" of "/p/(?i)a" put it ahead of the
+				// "/p/[a]" it contains, on a path they share.
+				s.i = groupSpan(s.rule, s.i).end
+				atom = 0
+				if !flags.scoped {
+					// Set for the rest of the rule, which pins nothing either.
+					return smallerBranch(smallest, n)
+				}
+				continue
+			}
 			s.i = skipGroupPrefix(s.rule, s.i+1)
 			atom = s.widestBranch()
 			n += atom
@@ -1016,8 +1031,15 @@ func (s *literalScanner) widestBranch() int {
 // or an atom a quantifier makes optional. A group stops it too, save for what
 // every branch of the group pins alike.
 func (s *literalScanner) pinnedPrefix() int {
-	return len(s.pinnedAtoms())
+	return len(s.pinnedAtoms(0))
 }
+
+// maxPinnedDepth bounds how many groups deep the prefix is followed. Every level
+// is read by scanning to the ")" closing it, so the work rises with the square
+// of the nesting: sixteen thousand groups spent 2.4 seconds of startup, on a
+// rule Go compiles happily. Stopping short only ends a prefix sooner, and a rule
+// nesting this deep before pinning a byte pins nothing worth following.
+const maxPinnedDepth = 32
 
 // pinnedAtoms returns what the rule pins before its first wildcard, one entry
 // per character of the path rather than per byte of the rule: "\x{61}" is six
@@ -1025,7 +1047,7 @@ func (s *literalScanner) pinnedPrefix() int {
 // spells can be read, so that the two compare alike, and by its spelling
 // otherwise — two spellings of one character Go reads wider than a byte then
 // compare unequal, which only ends a prefix sooner.
-func (s *literalScanner) pinnedAtoms() []string {
+func (s *literalScanner) pinnedAtoms(depth int) []string {
 	var pinned []string
 	for s.i < len(s.rule) {
 		c := s.rule[s.i]
@@ -1034,7 +1056,10 @@ func (s *literalScanner) pinnedAtoms() []string {
 			// there: the branches of "(?:a|aa)" agree on an "a", which stopping
 			// at the "(" missed — leaving the rule behind the "/p/a+" that
 			// contains it on a path they share.
-			flagged := groupSetsFlags(s.rule, s.i)
+			flagged := groupFlagScope(s.rule, s.i).sets
+			if depth >= maxPinnedDepth {
+				return pinned
+			}
 			g := groupSpan(s.rule, s.i)
 			s.i = g.end
 			if none := absentAtom(s.rule, g.end); none.ok {
@@ -1054,7 +1079,7 @@ func (s *literalScanner) pinnedAtoms() []string {
 				// "/api/(ab)?c" matches "/api/c".
 				return pinned
 			}
-			return append(pinned, commonPinnedAtoms(g.text)...)
+			return append(pinned, commonPinnedAtoms(g.text, depth+1)...)
 		}
 
 		size, atom := 1, ""
@@ -1066,9 +1091,18 @@ func (s *literalScanner) pinnedAtoms() []string {
 				// the "/p/a.+" containing it.
 				text := q.text
 				s.i = q.end
-				if text != "" && quantifierAllowsNone(s.rule, q.end) {
-					// The quantifier reaches only the last byte quoted.
-					return append(pinned, byteAtoms(text[:len(text)-1])...)
+				if text != "" {
+					// A quantifier after the "\E" reaches the last byte quoted
+					// and no more, so a count of none takes that byte away and
+					// leaves the rest of the rule pinning what it did.
+					if none := absentAtom(s.rule, q.end); none.ok {
+						pinned = append(pinned, byteAtoms(text[:len(text)-1])...)
+						s.i = none.end
+						continue
+					}
+					if quantifierAllowsNone(s.rule, q.end) {
+						return append(pinned, byteAtoms(text[:len(text)-1])...)
+					}
 				}
 				pinned = append(pinned, byteAtoms(text)...)
 				continue
@@ -1134,11 +1168,11 @@ func pinnedAtom(rule string, i, size int) string {
 // commonPinnedAtoms returns what every branch of a group's body pins alike,
 // which is all of it the rule can be said to pin: a branch pinning something
 // else is a path the rule matches without it.
-func commonPinnedAtoms(body string) []string {
+func commonPinnedAtoms(body string, depth int) []string {
 	var common []string
 	for n, branch := range splitAlternation(body) {
 		s := literalScanner{rule: branch}
-		if atoms := s.pinnedAtoms(); n == 0 {
+		if atoms := s.pinnedAtoms(depth); n == 0 {
 			common = atoms
 		} else {
 			common = commonAtoms(common, atoms)
@@ -1273,6 +1307,7 @@ func (s *literalScanner) width() int {
 			if escapeSet(s.rule, s.i) {
 				atom = setMemberWidth
 			}
+			atom = s.foldedWidth(atom)
 			size, _ := escapeSpan(s.rule, s.i)
 			// An assertion consumes nothing, so it leaves what it stands beside
 			// as empty as it found it: "(?:\b)+a" matches "/p/a" and no more.
@@ -1286,7 +1321,7 @@ func (s *literalScanner) width() int {
 			continue
 		case '[':
 			commit()
-			atom, prev, quantified, empty = s.classWidth(), n, false, false
+			atom, prev, quantified, empty = s.foldedWidth(s.classWidth()), n, false, false
 			s.widest = max(s.widest, atom)
 			n = scaledWidth(n, atom)
 			continue
@@ -1298,9 +1333,17 @@ func (s *literalScanner) width() int {
 			n = scaledWidth(n, atom)
 		case '(':
 			commit()
+			// Flags reach the text they cover, and an "(?i)" closing at its own
+			// ")" reaches everything standing after it as well.
+			flags := groupFlagScope(s.rule, s.i)
+			outer := s.folded
+			s.folded = (s.folded || flags.folds) && !flags.clears
 			s.i = skipGroupPrefix(s.rule, s.i+1)
 			prev, quantified = n, false
 			atom = s.width()
+			if flags.scoped || !flags.sets {
+				s.folded = outer
+			}
 			// A group holding nothing but empty groups is empty itself, which
 			// reading only what it spells missed.
 			empty = s.groupEmpty
@@ -1366,16 +1409,30 @@ func (s *literalScanner) width() int {
 			atom, quantified = 1, true
 			continue
 		default:
-			// One byte of the path, which is the narrowest position there is.
+			// One byte of the path, which is the narrowest position there is
+			// unless case folding matches it in either case.
 			commit()
-			s.widest = max(s.widest, 1)
-			atom, prev, quantified, empty = 1, n, false, false
+			atom, prev, quantified, empty = s.foldedWidth(1), n, false, false
+			s.widest = max(s.widest, atom)
+			n = scaledWidth(n, atom)
 		}
 		s.i++
 	}
 	commit()
 	s.groupEmpty = !filled
 	return clampWidth(total + n)
+}
+
+// foldedWidth doubles what a position matches where case folding is in force,
+// each letter being matched in either case. A floor rather than a count, since
+// how many of the bytes a class lists are letters is not read here: one byte's
+// worth read "(?i)a" as no wider than the "[a]" it contains, and the tie left
+// key order to pick between them.
+func (s *literalScanner) foldedWidth(w int) int {
+	if !s.folded {
+		return w
+	}
+	return min(scaledWidth(w, 2), 256)
 }
 
 // repeated returns the width a run reaches once the atom ending it, itself atom
@@ -1832,25 +1889,49 @@ func absentAtom(rule string, i int) absentQuantifier {
 	return absentQuantifier{end: end, ok: true}
 }
 
-// groupSetsFlags reports whether the group opening at i sets match flags, which
-// say what the text inside it matches: "(?i:a)" matches an "A" as well, so its
-// spelling is no path the rule pins.
-func groupSetsFlags(rule string, i int) bool {
+// groupFlags is what a group's prefix says about match flags. sets marks a group
+// naming any; scoped marks one closing them at its own ")", where "(?i)" leaves
+// them set for everything after it.
+type groupFlags struct {
+	sets   bool
+	scoped bool
+	folds  bool
+	clears bool
+}
+
+// groupFlagScope reads the prefix of the group opening at i. Flags say what the
+// text they cover matches, so that text spells no path the rule pins: "(?i:a)"
+// matches an "A" as well, and "(?i)a" leaves the "a" after it matching one too.
+func groupFlagScope(rule string, i int) groupFlags {
 	if i+1 >= len(rule) || rule[i+1] != '?' {
-		return false
+		return groupFlags{}
 	}
 
+	folds, cleared, clearing := false, false, false
 	for j := i + 2; j < len(rule); j++ {
 		switch c := rule[j]; c {
-		case ':', ')':
-			return j > i+2 // something stood between the "?" and the close
-		case 'i', 'm', 's', 'U', '-':
+		case ':':
+			return groupFlags{sets: j > i+2, scoped: true, folds: folds, clears: cleared && !folds}
+		case ')':
+			return groupFlags{sets: j > i+2, folds: folds, clears: cleared && !folds}
+		case '-':
+			cleared = false
+			clearing = true
+		case 'i':
+			// Named before the "-" it is set, and after it cleared: "(?i-s:)"
+			// folds case where "(?-i:)" stops folding it.
+			if clearing {
+				cleared = true
+			} else {
+				folds = true
+			}
+		case 'm', 's', 'U':
 			continue
 		default:
-			return false // a capture name, or no group prefix at all
+			return groupFlags{} // a capture name, or no group prefix at all
 		}
 	}
-	return false
+	return groupFlags{}
 }
 
 // smallerBranch folds one more branch's count into the smallest seen, where -1
@@ -2133,7 +2214,14 @@ func splitAlternation(rule string) []string {
 	inClass := false
 	for i := 0; i < len(rule); i++ {
 		switch c := rule[i]; {
-		case c == '\\' && i+1 < len(rule):
+		case c == '\\':
+			if q := scanQuoted(rule, i); q.ok {
+				// A "|" inside quoted text separates nothing: it is a byte of
+				// the path, and splitting there measured "/p/\Qa|b\E" as the
+				// least of two branches that are not there.
+				i = q.end - 1
+				continue
+			}
 			i++
 		case inClass:
 			inClass = c != ']'
