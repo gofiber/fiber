@@ -1022,26 +1022,28 @@ func patternWidth(rule string) int {
 // which is what separates "/p/[z]+" from the "/p/[a-z]+" that contains it.
 func (s *literalScanner) width() int {
 	total, n := 0, 1
-	// atom is what the construct just read multiplied n by, which a quantifier
-	// allowing none of it puts back to add the alternative where it is absent.
-	atom := 1
+	// atom is what the construct just read multiplied n by, and prev is what the
+	// run measured before it did — both kept so a quantifier can put the atom
+	// back and count what it permits instead.
+	atom, prev := 1, 1
 	for s.i < len(s.rule) {
 		switch s.rule[s.i] {
 		case '\\':
 			size, _ := escapeSpan(s.rule, s.i)
 			s.i += size
-			atom = 1
+			atom, prev = 1, n
 			continue
 		case '[':
-			atom = s.classWidth()
+			atom, prev = s.classWidth(), n
 			n = clampWidth(n * atom)
 			continue
 		case '.':
 			// Any byte, so it is the widest single position there is.
-			atom = 256
+			atom, prev = 256, n
 			n = clampWidth(n * atom)
 		case '(':
 			s.i = skipGroupPrefix(s.rule, s.i+1)
+			prev = n
 			atom = s.width()
 			n = clampWidth(n * atom)
 			continue
@@ -1049,35 +1051,40 @@ func (s *literalScanner) width() int {
 			s.i++
 			return clampWidth(total + n)
 		case '|':
-			total, n, atom = clampWidth(total+n), 1, 1
+			total, n, atom, prev = clampWidth(total+n), 1, 1, 1
 		case '?':
 			// An atom that may be absent matches everything it does and one
 			// path more, so "/p/*a?" is wider than the "/p/*a" it ties with —
 			// and wider than "/p/*[a]*", which its wildcard count sorts below.
-			n, atom = repeated(n, atom, 0, 1), 1
+			n, atom, prev = repeated(prev, atom, 0, 1), 1, n
 		case '{':
 			var bounds quantifierBounds
 			s.i, bounds = skipQuantifier(s.rule, s.i)
 			if !bounds.runsOn {
-				n = repeated(n, atom, bounds.lo, bounds.hi)
+				n, prev = repeated(prev, atom, bounds.lo, bounds.hi), n
 			}
 			atom = 1
 			continue
 		default:
-			atom = 1
+			atom, prev = 1, n
 		}
 		s.i++
 	}
 	return clampWidth(total + n)
 }
 
-// repeated returns the width a run of n alternatives reaches once the atom it
-// ends in, itself atom alternatives wide, may repeat lo to hi times. Each count
-// the quantifier permits is a set of paths of its own and they add: "[ab]{1,2}"
-// matches the two "[ab]" does and the four its pairs spell, where "[a][ab]?"
-// matches three. Counting only whether none was permitted left the wider of the
-// two the narrower by this measure.
-func repeated(n, atom, lo, hi int) int {
+// repeated returns the width a run reaches once the atom ending it, itself atom
+// alternatives wide, may repeat lo to hi times. Each count the quantifier permits
+// is a set of paths of its own and they add: "[ab]{1,2}" matches the two "[ab]"
+// does and the four its pairs spell, where "[a][ab]?" matches three. Counting
+// only whether none was permitted left the wider of the two the narrower by this
+// measure.
+//
+// prev is what the run measured before the atom multiplied it in, carried here
+// rather than divided back out of it: a product that reached the clamp cannot be
+// undone, and dividing invented a width below it — one that sorted a five-class
+// rule ahead of the subset it contains.
+func repeated(prev, atom, lo, hi int) int {
 	w := max(atom, 1)
 	total, term := 0, 1 // w to the zero, the one path where the atom is absent
 	for k := 0; k <= hi && total < maxPatternWidth; k++ {
@@ -1086,7 +1093,7 @@ func repeated(n, atom, lo, hi int) int {
 		}
 		term = clampWidth(term * w)
 	}
-	return clampWidth(n / w * max(total, 1))
+	return clampWidth(prev * max(total, 1))
 }
 
 // classWidth returns how many bytes the character class at the current position
@@ -1290,7 +1297,7 @@ func skipQuantifier(rule string, i int) (int, quantifierBounds) {
 	return i + brace + 1, quantifierRange(rule[i+1 : i+brace])
 }
 
-// quantifierRange reads the body of a "{m,n}". A body spelling no number is no
+// quantifierRange reads the body of a "{m,n}". A body spelling no bound is no
 // quantifier to Go's parser either — the braces of "{id}" are literal text — so
 // it is read as repeating what it follows exactly once, which is to say as
 // bounding nothing.
@@ -1298,8 +1305,8 @@ func quantifierRange(body string) quantifierBounds {
 	once := quantifierBounds{lo: 1, hi: 1}
 
 	lo, hi, comma := strings.Cut(body, ",")
-	m, err := strconv.Atoi(lo)
-	if err != nil || m < 0 {
+	m, ok := repeatCount(lo)
+	if !ok {
 		return once
 	}
 
@@ -1310,11 +1317,34 @@ func quantifierRange(body string) quantifierBounds {
 		return quantifierBounds{lo: m, allowsNone: m == 0, runsOn: true}
 	}
 
-	n, err := strconv.Atoi(hi)
-	if err != nil || n < m {
+	n, ok := repeatCount(hi)
+	if !ok || n < m {
 		return once
 	}
 	return quantifierBounds{lo: m, hi: n, allowsNone: m == 0}
+}
+
+// repeatCount reads one bound of a "{m,n}". Go's repetition grammar spells a
+// bound in decimal digits and nothing else, so a sign makes the braces literal
+// text: "a{-0}" is a path of six bytes, not an "a" repeated none. Reading the
+// sign as a count took four bytes off what that rule pins.
+func repeatCount(bound string) (int, bool) {
+	if bound == "" {
+		return 0, false
+	}
+	for i := 0; i < len(bound); i++ {
+		if bound[i] < '0' || bound[i] > '9' {
+			return 0, false
+		}
+	}
+
+	// A count Go itself would refuse for its size leaves the braces to be read
+	// as they stand, which is what the caller does with a bound it cannot take.
+	n, err := strconv.Atoi(bound)
+	if err != nil {
+		return 0, false
+	}
+	return n, true
 }
 
 // posixNameEnd returns the index just past the POSIX class name beginning at i

@@ -2844,6 +2844,58 @@ func Test_Redirect_SetMemberOutweighsAListedByte(t *testing.T) {
 	require.Equal(t, setMemberWidth, patternWidth(`/p/[[:digit:]]`))
 }
 
+// Test_Redirect_SaturatedWidthSurvivesAQuantifier covers the rule whose width
+// reached the clamp before its last atom: dividing that atom back out invented a
+// width below the clamp, and "/p/[a-z][a-z][a-z][a-z][a-z][ab]{0}" sorted ahead
+// of the "/p/[ab][a-z][a-z][a-z][a-z]" it contains.
+func Test_Redirect_SaturatedWidthSurvivesAQuantifier(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Use(New(Config{
+		Rules: map[string]string{
+			`/p/[ab][a-z][a-z][a-z][a-z]`:         "/narrow",
+			`/p/[a-z][a-z][a-z][a-z][a-z][ab]{0}`: "/broad",
+		},
+		StatusCode: fiber.StatusFound,
+	}))
+
+	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/p/aaaaa", http.NoBody)
+	require.NoError(t, err)
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusFound, resp.StatusCode)
+	require.Equal(t, "/narrow", resp.Header.Get("Location"))
+
+	// The clamp holds through the quantifier rather than being divided back.
+	require.Equal(t, maxPatternWidth, patternWidth(`/p/[a-z][a-z][a-z][a-z][a-z][ab]{0}`))
+	require.Less(t, patternWidth(`/p/[ab][a-z][a-z][a-z][a-z]`), maxPatternWidth)
+	// What a quantifier permits is still counted where nothing saturated.
+	require.Equal(t, 1, patternWidth(`/p/[ab]{0}`))
+	require.Equal(t, 4, patternWidth(`/p/[ab]{2}`))
+}
+
+// Test_Redirect_SignedBoundIsNoQuantifier covers braces Go reads as literal text:
+// its repetition grammar spells a bound in digits, so "a{-0}" pins the whole path
+// rather than repeating the "a" none. Reading the sign as a count took four bytes
+// off what the rule pins and handed its path to a broader rule.
+func Test_Redirect_SignedBoundIsNoQuantifier(t *testing.T) {
+	t.Parallel()
+
+	require.Equal(t, literalPrefixLen(`/p/a....`), literalPrefixLen(`/p/a{-0}`))
+	require.Equal(t, literalLen(`/p/a....`), literalLen(`/p/a{-0}`))
+	require.Less(t, patternWidth(`/p/a{-0}`), patternWidth(`/p/a....`))
+
+	// Digits alone name a count; a sign, a space or a stray byte do not.
+	require.Equal(t, 2, patternWidth(`/p/[ab]{1}`))
+	require.Equal(t, patternWidth(`/p/[ab]`), patternWidth(`/p/[ab]{+1}`))
+	require.Equal(t, patternWidth(`/p/[ab]`), patternWidth(`/p/[ab]{ 1}`))
+	// A missing lower bound names no count either: Go reads "{,3}" as text.
+	require.Equal(t, patternWidth(`/p/[ab]`), patternWidth(`/p/[ab]{,3}`))
+	// Nor does a count too large to hold, which Go refuses for its size anyway.
+	require.Equal(t, patternWidth(`/p/[ab]`), patternWidth(`/p/[ab]{99999999999999999999}`))
+}
+
 // Test_Redirect_PosixClassNamesItsOwnStars covers "[[:alpha:]*]", whose "]"
 // closes the POSIX name rather than the class. Stopping the class scan there
 // read the members standing after the name as pattern text, counting the stars
