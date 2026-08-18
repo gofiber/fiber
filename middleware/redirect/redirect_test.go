@@ -3328,3 +3328,114 @@ func Test_Redirect_WildcardOutrunsANamedRun(t *testing.T) {
 	// A rule carrying both runs is graded by the broader of the two.
 	require.Equal(t, 2, carriesRun(`/p/*[ab]+`))
 }
+
+// Test_Redirect_PropertyNameIsNotPath covers "\p{Greek}", whose braces name the
+// property rather than bounding a repetition. Left to be read as rule text once
+// literal braces were walked, "Greek" pinned five bytes of path the rule does
+// not pin, sorting the property ahead of the one character it contains.
+func Test_Redirect_PropertyNameIsNotPath(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New(fiber.Config{UnescapePath: true})
+	app.Use(New(Config{
+		Rules: map[string]string{
+			`/p/[\x{3B1}]`: "/narrow",
+			`/p/\p{Greek}`: "/broad",
+		},
+		StatusCode: fiber.StatusFound,
+	}))
+
+	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/p/%CE%B1?token=x", http.NoBody)
+	require.NoError(t, err)
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusFound, resp.StatusCode)
+	require.Equal(t, "/narrow?token=x", resp.Header.Get("Location"))
+
+	// The property pins nothing, however long its name and however it is spelled.
+	require.Equal(t, literalLen(`/p/`), literalLen(`/p/\p{Greek}`))
+	require.Equal(t, literalLen(`/p/`), literalLen(`/p/\pL`))
+	require.Equal(t, literalPrefixLen(`/p/`), literalPrefixLen(`/p/\p{Greek}`))
+
+	// Where "\x{3B1}" names one character, and pins it.
+	require.Greater(t, literalLen(`/p/\x{3B1}`), literalLen(`/p/\p{Greek}`))
+
+	// A property naming nothing is the two bytes it spells, closed or not.
+	require.Equal(t, literalLen(`/p/`), literalLen(`/p/\p`))
+	require.Equal(t, literalLen(`/p/Greek`), literalLen(`/p/\p{Greek`))
+}
+
+// Test_Redirect_QuotedTextIsNoQuantifier covers "\Qa?\E", whose "?" is a byte of
+// the path rather than a quantifier. Reading it as one measured the exact rule
+// as wide as the "/p/[a][?x]" containing it, and key order took the broad one.
+func Test_Redirect_QuotedTextIsNoQuantifier(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New(fiber.Config{UnescapePath: true})
+	app.Use(New(Config{
+		Rules: map[string]string{
+			`/p/\Qa?\E`:  "/narrow",
+			`/p/[a][?x]`: "/broad",
+		},
+		StatusCode: fiber.StatusFound,
+	}))
+
+	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/p/a%3F?token=x", http.NoBody)
+	require.NoError(t, err)
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusFound, resp.StatusCode)
+	require.Equal(t, "/narrow?token=x", resp.Header.Get("Location"))
+
+	// Quoted text pins what it spells and spells one path, quantifiers and all.
+	require.Equal(t, literalLen(`/p/a\?`), literalLen(`/p/\Qa?\E`))
+	require.Equal(t, 1, patternWidth(`/p/\Qa?\E`))
+	require.Equal(t, 1, patternWidth(`/p/\Q[ab]{2}\E`))
+	require.Equal(t, 0, carriesRun(`/p/\Qa+\E`))
+
+	// And the quote runs to the end of the rule where no "\E" closes it, which
+	// is how Go reads one — such a rule does not compile, so New panics on it.
+	require.Equal(t, literalLen(`/p/ab`), literalLen(`/p/\Qab`))
+	require.Panics(t, func() {
+		New(Config{Rules: map[string]string{`/p/\Qab`: "/x"}})
+	})
+}
+
+// Test_Redirect_ClassCountsAMemberOnce covers a class repeating what it lists.
+// Repeating a member matches nothing more, and counting each spelling made
+// "[^\d\d\d]" narrower than the "[^\dABC]" it contains.
+func Test_Redirect_ClassCountsAMemberOnce(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Use(New(Config{
+		Rules: map[string]string{
+			`/p/[^\dABC]`:  "/narrow",
+			`/p/[^\d\d\d]`: "/broad",
+		},
+		StatusCode: fiber.StatusFound,
+	}))
+
+	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/p/z?token=x", http.NoBody)
+	require.NoError(t, err)
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusFound, resp.StatusCode)
+	require.Equal(t, "/narrow?token=x", resp.Header.Get("Location"))
+
+	// A repeated set, byte or range counts once; two ranges overlapping count
+	// what they cover between them rather than what they cover apiece.
+	require.Equal(t, patternWidth(`/p/[\d]`), patternWidth(`/p/[\d\d\d]`))
+	require.Equal(t, patternWidth(`/p/[a]`), patternWidth(`/p/[aaa]`))
+	require.Equal(t, patternWidth(`/p/[a-d]`), patternWidth(`/p/[a-cb-d]`))
+	require.Equal(t, patternWidth(`/p/[[:alpha:]]`), patternWidth(`/p/[[:alpha:][:alpha:]]`))
+
+	// Two spellings of one set are still two, there being no size to compare.
+	require.Greater(t, patternWidth(`/p/[\d[:digit:]]`), patternWidth(`/p/[\d]`))
+
+	// First inside the brackets a "]" is a member, and counted once like any
+	// other; a range running backwards names none, "]" being all "[]b-a]" lists.
+	require.Equal(t, patternWidth(`/p/[x]`), patternWidth(`/p/[]]`))
+	require.Equal(t, patternWidth(`/p/[]]`), patternWidth(`/p/[]]]`))
+	require.Equal(t, patternWidth(`/p/[]]`), patternWidth(`/p/[]b-a]`))
+}

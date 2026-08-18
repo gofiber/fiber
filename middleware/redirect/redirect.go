@@ -3,6 +3,7 @@ package redirect
 import (
 	"cmp"
 	"maps"
+	"math/bits"
 	"net"
 	"regexp"
 	"slices"
@@ -927,6 +928,15 @@ func (s *literalScanner) widestBranch() int {
 		c := s.rule[s.i]
 		switch {
 		case c == '\\':
+			if q := scanQuoted(s.rule, s.i); q.ok && !inClass {
+				// Quoted text pins every byte it spells, a "?" among them.
+				s.i = q.end
+				atom = 0
+				if q.text != "" {
+					n, atom = n+len(q.text), 1
+				}
+				continue
+			}
 			size, pins := escapeSpan(s.rule, s.i)
 			s.i += size
 			atom = 0
@@ -1033,6 +1043,12 @@ func (s *literalScanner) width() int {
 	for s.i < len(s.rule) {
 		switch s.rule[s.i] {
 		case '\\':
+			if q := scanQuoted(s.rule, s.i); q.ok {
+				// Quoted text spells one path and no alternatives.
+				s.i = q.end
+				atom, prev, quantified = 1, n, false
+				continue
+			}
 			size, _ := escapeSpan(s.rule, s.i)
 			s.i += size
 			atom, prev, quantified = 1, n, false
@@ -1130,10 +1146,11 @@ func (s *literalScanner) classWidth() int {
 		negated, j = true, j+1
 	}
 
-	size := 0
+	var members classMembers
 	if j < len(rule) && rule[j] == ']' {
 		// First inside the brackets, "]" is a member rather than the close.
-		size, j = 1, j+1
+		members.addByte(']')
+		j++
 	}
 
 	for j < len(rule) && rule[j] != ']' {
@@ -1141,7 +1158,8 @@ func (s *literalScanner) classWidth() int {
 			// A POSIX name stands for a set of its own, counted like a class
 			// escape. Its own "]" is not the class's, and reading one as the
 			// close left the rest of the class scanned as pattern text.
-			size, j = size+setMemberWidth, end
+			members.addSet(rule[j:end])
+			j = end
 			continue
 		}
 		switch {
@@ -1151,17 +1169,20 @@ func (s *literalScanner) classWidth() int {
 			// that as a set put it behind the "[.-/]" range containing it.
 			span, pins := escapeSpan(rule, j)
 			if pins {
-				size, j = size+1, j+span
+				members.addByte(rule[j+span-1])
+				j += span
 				break
 			}
-			size, j = size+setMemberWidth, j+span
+			members.addSet(rule[j : j+span])
+			j += span
 		case j+2 < len(rule) && rule[j+1] == '-' && rule[j+2] != ']':
 			if lo, hi := rule[j], rule[j+2]; hi >= lo {
-				size += int(hi-lo) + 1
+				members.addRange(lo, hi)
 			}
 			j += 3
 		default:
-			size, j = size+1, j+1
+			members.addByte(rule[j])
+			j++
 		}
 	}
 	if j < len(rule) {
@@ -1169,10 +1190,52 @@ func (s *literalScanner) classWidth() int {
 	}
 	s.i = j
 
+	size := members.width()
 	if negated {
 		size = 256 - size
 	}
 	return max(size, 1)
+}
+
+// classMembers accumulates what a character class matches: the bytes it lists,
+// held one bit each, and the sets it names, held by spelling. Either is counted
+// once however often it is repeated, since repeating a member matches nothing
+// more — "[^\d\d\d]" matches what "[^\d]" does, and subtracting the set once
+// per spelling made it narrower than the "[^\dABC]" it contains.
+//
+// Two spellings of one set are still counted twice, "[\d[:digit:]]" among them.
+// No count of members can be right for a set whose size is not knowable here:
+// see setMemberWidth.
+type classMembers struct {
+	sets  []string
+	bytes [4]uint64
+}
+
+func (m *classMembers) addByte(b byte) {
+	m.bytes[b>>6] |= 1 << (b & 63)
+}
+
+func (m *classMembers) addRange(lo, hi byte) {
+	for b := lo; ; b++ {
+		m.addByte(b)
+		if b == hi {
+			return
+		}
+	}
+}
+
+func (m *classMembers) addSet(spelling string) {
+	if !slices.Contains(m.sets, spelling) {
+		m.sets = append(m.sets, spelling)
+	}
+}
+
+func (m *classMembers) width() int {
+	n := len(m.sets) * setMemberWidth
+	for _, w := range m.bytes {
+		n += bits.OnesCount64(w)
+	}
+	return n
 }
 
 // maxPatternWidth bounds the product a nest of groups builds, since the count is
@@ -1266,16 +1329,12 @@ func scanRuns(rule string) ruleRuns {
 	for i := 0; i < len(rule); {
 		switch rule[i] {
 		case '\\':
-			if i+1 < len(rule) && rule[i+1] == 'Q' {
-				// Quoted to the matching "\E", or to the end of the rule when
-				// there is none, which is how Go's parser reads one. Only the
-				// quoted tail is given up: the wildcards standing before it are
-				// still expanded, so the count already reached is what holds.
-				if end := strings.Index(rule[i+2:], `\E`); end >= 0 {
-					i += 2 + end + 2
-					continue
-				}
-				return runs
+			if q := scanQuoted(rule, i); q.ok {
+				// Only the quoted text is given up: the wildcards standing
+				// before it are still expanded, so the count already reached is
+				// what holds.
+				i = q.end
+				continue
 			}
 			size, _ := escapeSpan(rule, i)
 			i += size
@@ -1446,6 +1505,30 @@ func skipGroupPrefix(rule string, i int) int {
 	return i
 }
 
+// quotedSpan is the text a "\Q" quotes and the index just past the span. Go
+// reads an unterminated "\Q" as quoting to the end of the rule, so the span runs
+// there — such a rule does not compile, the quote swallowing the paren that
+// closes the key, but it is measured before it is compiled.
+type quotedSpan struct {
+	text string
+	end  int
+	ok   bool
+}
+
+// scanQuoted reads the "\Q...\E" beginning at the backslash at i. What it
+// quotes is path rather than pattern: a "?" or a "{2}" standing inside it is a
+// byte the rule pins, and reading one as a quantifier widened the exact
+// "/p/\Qa?\E" past the "/p/[a][?x]" that contains it.
+func scanQuoted(rule string, i int) quotedSpan {
+	if i+1 >= len(rule) || rule[i+1] != 'Q' {
+		return quotedSpan{end: i}
+	}
+	if n := strings.Index(rule[i+2:], `\E`); n >= 0 {
+		return quotedSpan{text: rule[i+2 : i+2+n], end: i + 2 + n + 2, ok: true}
+	}
+	return quotedSpan{text: rule[i+2:], end: len(rule), ok: true}
+}
+
 // escapeSpan measures the escape beginning at the backslash at i: how many bytes
 // of the rule it occupies, and whether it stands for one character of a path.
 //
@@ -1471,13 +1554,33 @@ func escapeSpan(rule string, i int) (int, bool) {
 			n++
 		}
 		return n, true
+	case c == 'p', c == 'P':
+		return propertySpan(rule, i)
 	case c >= 'a' && c <= 'z', c >= 'A' && c <= 'Z', c >= '0' && c <= '9':
-		// "\d", "\w", "\p{Greek}", "\b" — a class or an assertion. Measured as
-		// two bytes even where it runs longer, which only ends the prefix sooner.
+		// "\d", "\w", "\b" — a class or an assertion. Measured as two bytes
+		// even where it runs longer, which only ends the prefix sooner.
 		return 2, false
 	default:
 		return 2, true
 	}
+}
+
+// propertySpan measures a "\p{Greek}" or a "\pL", neither of which names one
+// character: a Unicode property is a set of them. What names the property is part
+// of the escape all the same, and leaving it to be read as rule text pinned the
+// five bytes of "Greek" as path — sorting the property ahead of the "/p/[\x{3B1}]"
+// it contains.
+func propertySpan(rule string, i int) (int, bool) {
+	if i+2 >= len(rule) {
+		return 2, false // "\p" alone names nothing
+	}
+	if rule[i+2] == '{' {
+		if end := strings.IndexByte(rule[i+2:], '}'); end >= 0 {
+			return 2 + end + 1, false
+		}
+		return 2, false
+	}
+	return 3, false // "\pL", one letter naming the property
 }
 
 // hexEscapeSpan measures a "\xHH" or "\x{...}" escape, both of which name one
