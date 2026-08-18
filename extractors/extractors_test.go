@@ -3,6 +3,7 @@ package extractors
 import (
 	"bufio"
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -1348,6 +1349,30 @@ func Test_ExtractWithSource(t *testing.T) {
 		require.NotNil(t, Chain(FromHeader("X-Token")).ExtractSource)
 		require.NotNil(t, Chain().ExtractSource)
 	})
+
+	t.Run("honors_legacy_Extract_override", func(t *testing.T) {
+		t.Parallel()
+
+		app := fiber.New()
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+		t.Cleanup(func() { app.ReleaseCtx(ctx) })
+		ctx.Request().Header.Set("X-Token", "raw-header")
+
+		e := FromHeader("X-Token")
+		// Callers may decorate Extract for validation/normalization.
+		e.Extract = func(c fiber.Ctx) (string, error) {
+			v, err := FromHeader("X-Token").Extract(c)
+			if err != nil {
+				return "", err
+			}
+			return "normalized:" + v, nil
+		}
+
+		v, src, err := ExtractWithSource(e, ctx)
+		require.NoError(t, err)
+		require.Equal(t, "normalized:raw-header", v)
+		require.Equal(t, SourceHeader, src)
+	})
 }
 
 // go test -run Test_Extractor_Chain_ExtractSource
@@ -1413,6 +1438,35 @@ func Test_Extractor_Chain_ExtractSource(t *testing.T) {
 		require.NoError(t, serr)
 		require.Equal(t, "source-only-value", sv)
 		require.Equal(t, SourceCustom, src)
+	})
+
+	t.Run("skips_empty_children_preserves_prior_error", func(t *testing.T) {
+		t.Parallel()
+
+		app := fiber.New()
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+		t.Cleanup(func() { app.ReleaseCtx(ctx) })
+
+		customErr := errors.New("custom failure")
+		customFailure := Extractor{
+			Extract: func(_ fiber.Ctx) (string, error) {
+				return "", customErr
+			},
+			Source: SourceCustom,
+			Key:    "fail",
+		}
+		// Zero-value trailing child must not rewrite the chain error to ErrNotFound
+		// under ExtractWithSource (Extract already skips nil Extract).
+		chain := Chain(customFailure, Extractor{})
+
+		v, err := chain.Extract(ctx)
+		require.Empty(t, v)
+		require.ErrorIs(t, err, customErr)
+
+		sv, src, serr := ExtractWithSource(chain, ctx)
+		require.Empty(t, sv)
+		require.Equal(t, SourceCustom, src)
+		require.ErrorIs(t, serr, customErr)
 	})
 
 	t.Run("hand_rolled_nil_ExtractSource_in_chain", func(t *testing.T) {

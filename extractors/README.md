@@ -18,11 +18,12 @@ Package providing shared value extraction utilities for Fiber middleware package
 
 ```go
 type Extractor struct {
-  Extract    func(fiber.Ctx) (string, error)
-  Key        string      // The parameter/header name used for extraction
-  AuthScheme string      // The auth scheme used, e.g., "Bearer"
-  Chain      []Extractor // For chained extractors, stores all extractors in the chain
-  Source     Source      // The type of source being extracted from
+  Extract       func(fiber.Ctx) (string, error)
+  ExtractSource func(fiber.Ctx) (string, Source, error) // optional; value + winning source
+  Key           string      // The parameter/header name used for extraction
+  AuthScheme    string      // The auth scheme used, e.g., "Bearer"
+  Chain         []Extractor // For chained extractors, stores all extractors in the chain
+  Source        Source      // Static source metadata (first/declared source)
 }
 ```
 
@@ -36,27 +37,34 @@ type Extractor struct {
 - `FromQuery(param string)`: Extract from URL query parameters
 - `FromCustom(key string, fn func(fiber.Ctx) (string, error))`: Define custom extraction logic with metadata
 - `Chain(extractors ...Extractor)`: Chain multiple extractors with fallback
+- `ExtractWithSource(e Extractor, c fiber.Ctx) (string, Source, error)`: Extract value and the source that supplied it
 - `Extractor.Contains(pred func(Extractor) bool)`: Check whether this extractor, or any nested chained extractor, matches a predicate
 
 ### Source Inspection
 
-The `Source` field provides **security-aware extraction** by explicitly identifying the origin of extracted values. This enables middleware to enforce security policies based on data source:
+The `Source` field provides **security-aware extraction** by explicitly identifying the origin of extracted values. This enables middleware to enforce security policies based on data source.
+
+For a single built-in extractor, `Source` is enough. For a `Chain`, the static `Source` is always the **first** child's source. Prefer `ExtractWithSource` when security decisions depend on which fallback actually won:
 
 ```go
-switch extractor.Source {
-case SourceAuthHeader:
+token, src, err := extractors.ExtractWithSource(tokenExtractor, c)
+if err != nil {
+    return err
+}
+switch src {
+case extractors.SourceAuthHeader:
     // Authorization header - commonly used for authentication tokens
-case SourceHeader:
+case extractors.SourceHeader:
     // Custom HTTP headers - application-specific data
-case SourceCookie:
+case extractors.SourceCookie:
     // HTTP cookies - client-side stored data
-case SourceQuery:
+case extractors.SourceQuery:
     // URL query parameters - visible in URLs and logs (security consideration)
-case SourceForm:
+case extractors.SourceForm:
     // Form data - POST body data
-case SourceParam:
+case extractors.SourceParam:
     // URL path parameters - route-based data
-case SourceCustom:
+case extractors.SourceCustom:
     // Custom extraction logic
 }
 ```
@@ -67,10 +75,12 @@ The `Chain` function implements fallback logic:
 
 - Returns first successful extraction (non-empty value, no error)
 - If all extractors fail, returns the last error encountered or `ErrNotFound`
-- **Skips extractors with `nil` Extract functions** (graceful error handling)
-- Detects recursive chain re-entry and returns `ErrChainCycle`
+- **Skips extractors with both `nil` Extract and `nil` ExtractSource** (zero-value children)
+- `Extract` skips children with `nil` Extract; `ExtractSource` / `ExtractWithSource` also accept source-only children
+- Detects recursive chain re-entry and returns `ErrChainCycle` (shared guard across both APIs)
 - Preserves metadata from first extractor for introspection
 - Stores defensive copy for runtime inspection via the `Chain` field
+- `ExtractSource` / `ExtractWithSource` report the **winning child's** `Source`
 
 ### Chain Introspection
 

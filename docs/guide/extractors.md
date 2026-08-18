@@ -32,6 +32,7 @@ Extractors are utilities that middleware uses to get values from different parts
 - `FromQuery(param string)`: Extract from URL query parameters
 - `FromCustom(key string, fn func(fiber.Ctx) (string, error))`: Define custom extraction logic with metadata
 - `Chain(extractors ...Extractor)`: Chain multiple extractors with fallback logic
+- `ExtractWithSource(e Extractor, c fiber.Ctx) (string, Source, error)`: Return value and the source that supplied it (preferred for security decisions on chains)
 - `Extractor.Contains(pred func(Extractor) bool)`: Check whether this extractor, or any nested chained extractor, matches a predicate
 
 ### Extractor Structure
@@ -40,11 +41,12 @@ Each `Extractor` contains:
 
 ```go
 type Extractor struct {
-    Extract    func(fiber.Ctx) (string, error)  // Extraction function
-    Key        string                           // Parameter/header name
-    Source     Source                           // Source type for inspection
-    AuthScheme string                           // Auth scheme (FromAuthHeader)
-    Chain      []Extractor                      // Chained extractors
+    Extract       func(fiber.Ctx) (string, error)             // Primary extraction callback
+    ExtractSource func(fiber.Ctx) (string, Source, error)     // Optional: value + winning source
+    Key           string                                      // Parameter/header name
+    Source        Source                                      // Static source type for inspection
+    AuthScheme    string                                      // Auth scheme (FromAuthHeader)
+    Chain         []Extractor                                 // Chained extractors
 }
 ```
 
@@ -54,15 +56,39 @@ type Extractor struct {
 - **Form Data**: POST body form fields
 - **URL Parameters**: Route parameters like `/users/:id`
 
+### Source-Aware Extraction
+
+`Extractor.Source` is static metadata (for a chain, the **first** child). When middleware needs the source that actually produced the value, use `ExtractWithSource`:
+
+```go
+tokenExtractor := extractors.Chain(
+    extractors.FromHeader("X-API-Key"),
+    extractors.FromQuery("api_key"),
+)
+
+token, src, err := extractors.ExtractWithSource(tokenExtractor, c)
+if err != nil {
+    return err
+}
+// src is SourceHeader or SourceQuery depending on which child won — do not
+// assume tokenExtractor.Source (always SourceHeader for this chain).
+if src == extractors.SourceQuery {
+    // e.g. apply stricter policy or audit logging for query-sourced secrets
+}
+```
+
+`ExtractWithSource` honors legacy overrides of the public `Extract` field on leaf extractors, and falls back to `ExtractSource` for source-only children. Chains always run through the chain's `ExtractSource` so the winning child source is returned.
+
 ### Chain Behavior
 
 The `Chain` function creates extractors that try multiple sources in order:
 
 - Returns the first successful extraction (non-empty value with no error)
 - If all extractors fail, returns the last error encountered or `ErrNotFound`
-- **Robust error handling**: Skips extractors with `nil` Extract functions
-- **Cycle prevention**: Detects recursive chain re-entry and returns `ErrChainCycle`
-- Preserves the source and key from the first extractor for metadata
+- **Robust error handling**: Skips zero-value children (`Extract` and `ExtractSource` both `nil`); `Extract` also skips `nil` Extract
+- **Cycle prevention**: Detects recursive chain re-entry and returns `ErrChainCycle` (shared across `Extract` and `ExtractSource`)
+- Preserves the source and key from the first extractor for static metadata
+- `ExtractSource` / `ExtractWithSource` report the winning child's source at runtime
 - Stores a defensive copy of all chained extractors for introspection via the `Chain` field
 
 ### Chain Introspection

@@ -87,17 +87,29 @@ type Extractor struct {
 	Source        Source      // The type of source being extracted from
 }
 
-// ExtractWithSource calls ExtractSource if populated, otherwise falls back
-// to Extract with the extractor's static Source metadata.
+// ExtractWithSource returns the extracted value together with its source.
+//
+// Behavior:
+//   - Extractors with a non-empty Chain use ExtractSource when set so the
+//     winning child's Source is reported (Chain.ExtractSource).
+//   - Otherwise Extract is preferred when set. Built-in constructors capture
+//     the same underlying function in ExtractSource, but callers may replace
+//     the public Extract field for validation/auditing; preferring Extract
+//     keeps those legacy overrides effective for source-aware callers.
+//   - When only ExtractSource is set (source-only children), that path is used.
+//   - When both callbacks are nil, returns ErrNotFound.
 func ExtractWithSource(e Extractor, c fiber.Ctx) (string, Source, error) {
+	if len(e.Chain) > 0 && e.ExtractSource != nil {
+		return e.ExtractSource(c)
+	}
+	if e.Extract != nil {
+		v, err := e.Extract(c)
+		return v, e.Source, err
+	}
 	if e.ExtractSource != nil {
 		return e.ExtractSource(c)
 	}
-	if e.Extract == nil {
-		return "", e.Source, ErrNotFound
-	}
-	v, err := e.Extract(c)
-	return v, e.Source, err
+	return "", e.Source, ErrNotFound
 }
 
 // Contains reports whether this extractor, or any extractor in its chain, matches pred.
@@ -646,7 +658,12 @@ func Chain(extractors ...Extractor) Extractor {
 			lastSource := primarySource
 
 			for _, extractor := range extractors {
-				// ExtractWithSource handles nil ExtractSource (fallback) and nil Extract.
+				// Skip zero-value / empty children so they do not overwrite a
+				// meaningful earlier error with ErrNotFound (matches Extract).
+				if extractor.Extract == nil && extractor.ExtractSource == nil {
+					continue
+				}
+				// ExtractWithSource honors Extract overrides and source-only children.
 				v, src, err := ExtractWithSource(extractor, c)
 				if err == nil && v != "" {
 					return v, src, nil
