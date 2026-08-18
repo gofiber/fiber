@@ -70,10 +70,12 @@ func New(config ...Config) fiber.Handler {
 		// position is bounded, however much either pins: "/api/*" must not
 		// shadow the "/api/[ab]" it ties with. Ranked on its own rather than
 		// counted as a width, which saturates — two rules whose widths both
-		// reached the clamp would tie again. Only whether a rule carries a run
-		// is read here: a second wildcard says nothing about what the rest of
-		// the rule pins, so counting them ahead of the width put the broad
-		// "/p/[a-d]*" in front of the narrow "/p/([a]*|[c]*)".
+		// reached the clamp would tie again. What a run repeats is read here
+		// too, since a wildcard repeats anything and a "+" only what the rule
+		// spells beside it; how many wildcards a rule carries is not, a second
+		// one saying nothing about what the rest of it pins — counting them
+		// ahead of the width put the broad "/p/[a-d]*" in front of the narrow
+		// "/p/([a]*|[c]*)".
 		if d := cmp.Compare(carriesRun(a), carriesRun(b)); d != 0 {
 			return d
 		}
