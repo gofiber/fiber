@@ -3475,12 +3475,15 @@ func Test_Redirect_EmptyAtomIsNoRun(t *testing.T) {
 	require.Equal(t, 1, carriesRun(`/p/(?:a)+`))
 	require.Equal(t, 2, carriesRun(`/p/(?:)*a`))
 
-	// Only what a group spells is read, so a group whose emptiness is its own
-	// contents' — "(?:(?:))" — is a run here though it matches nothing either.
-	// Seeing through it needs a width that can say "matches nothing at all",
-	// which this one cannot: a scalar built by multiplying breadth across
-	// positions has no value for it.
-	require.Equal(t, 1, carriesRun(`/p/(?:(?:))+`))
+	// A group's emptiness is its contents', however deeply they nest.
+	require.Equal(t, 0, carriesRun(`/p/(?:(?:))+`))
+	require.Equal(t, 0, carriesRun(`/p/(?:(?:(?:)))+`))
+	require.Equal(t, 0, carriesRun(`/p/(?:\Q\E)+`))
+
+	// A group holding anything at all is filled, one branch of it being enough.
+	require.Equal(t, 1, carriesRun(`/p/(?:(?:)a)+`))
+	require.Equal(t, 1, carriesRun(`/p/(?:|a)+`))
+	require.Equal(t, 1, carriesRun(`/p/(?:(?:a))+`))
 	require.Equal(t, patternWidth(`/p/[ab]`), patternWidth(`/p/(?:)?[ab]`))
 }
 
@@ -3568,4 +3571,90 @@ func Test_Redirect_RepeatedAtomSeparatesTiedWidths(t *testing.T) {
 	// It is read after the width, so it never moves a pair the width separates.
 	require.Equal(t, 1, patternWidth(`/p/[z]+`))
 	require.Equal(t, 26, patternWidth(`/p/[a-z]+`))
+}
+
+// Test_Redirect_NestedEmptyGroupIsStillEmpty covers a group whose emptiness is
+// its contents': "(?:(?:))" matches the empty string alone, so "/p/(?:(?:))+a"
+// matches "/p/a" and nothing besides. Reading only what a group spells graded it
+// as a run and sorted the exact rule behind the broader "/p/b?a" containing it.
+func Test_Redirect_NestedEmptyGroupIsStillEmpty(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Use(New(Config{
+		Rules: map[string]string{
+			`/p/(?:(?:))+a`: "/narrow",
+			`/p/b?a`:        "/broad",
+		},
+		StatusCode: fiber.StatusFound,
+	}))
+
+	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/p/a?token=x", http.NoBody)
+	require.NoError(t, err)
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusFound, resp.StatusCode)
+	require.Equal(t, "/narrow?token=x", resp.Header.Get("Location"))
+
+	// The width reads the nesting the same way, so a quantifier on one is none.
+	require.Equal(t, patternWidth(`/p/[a]`), patternWidth(`/p/(?:(?:))?(?:(?:))?[a]`))
+	require.Equal(t, patternWidth(`/p/[a]`), patternWidth(`/p/(?:(?:(?:)))?[a]`))
+	require.Less(t, patternWidth(`/p/(?:(?:))?[a]`), patternWidth(`/p/[ab]`))
+
+	// And a group holding something still widens what may be absent from it.
+	require.Greater(t, patternWidth(`/p/(?:(?:a))?[a]`), patternWidth(`/p/[a]`))
+}
+
+// Test_Redirect_EscapedClassMemberIsDecoded covers a class whose members are
+// spelled as escapes: Go reads "[\x{61}-\x{7a}]" as "[a-z]", and reading the
+// endpoints as written counted their closing braces — two members, which tied
+// the range with the "/p/[ab]" it contains.
+func Test_Redirect_EscapedClassMemberIsDecoded(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Use(New(Config{
+		Rules: map[string]string{
+			`/p/[ab]`:            "/narrow",
+			`/p/[\x{61}-\x{7a}]`: "/broad",
+		},
+		StatusCode: fiber.StatusFound,
+	}))
+
+	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/p/a?token=x", http.NoBody)
+	require.NoError(t, err)
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusFound, resp.StatusCode)
+	require.Equal(t, "/narrow?token=x", resp.Header.Get("Location"))
+
+	// A range spelled in escapes covers what the same range spelled plainly does,
+	// in every spelling Go reads as one character.
+	require.Equal(t, patternWidth(`/p/[a-z]`), patternWidth(`/p/[\x{61}-\x{7a}]`))
+	require.Equal(t, patternWidth(`/p/[a-z]`), patternWidth(`/p/[\x61-\x7a]`))
+	require.Equal(t, patternWidth(`/p/[A-Z]`), patternWidth(`/p/[\101-\132]`))
+	require.Equal(t, patternWidth(`/p/[a-z]`), patternWidth(`/p/[a-\x7a]`))
+
+	// And one member spelled twice is still one member, however it is spelled.
+	require.Equal(t, patternWidth(`/p/[a]`), patternWidth(`/p/[a\x{61}]`))
+	require.Equal(t, patternWidth(`/p/[\n]`), patternWidth(`/p/[\x0a]`))
+
+	// Every control character written by name is the byte it names.
+	for _, tc := range []struct {
+		named, hex string
+	}{
+		{`\a`, `\x07`},
+		{`\f`, `\x0c`},
+		{`\n`, `\x0a`},
+		{`\r`, `\x0d`},
+		{`\t`, `\x09`},
+		{`\v`, `\x0b`},
+	} {
+		require.Equal(t, patternWidth(`/p/[`+tc.hex+`]`), patternWidth(`/p/[`+tc.named+tc.hex+`]`), tc.named)
+	}
+
+	// A character of more than one byte is no endpoint, and is counted as the
+	// one member it is rather than as a set.
+	require.Equal(t, patternWidth(`/p/[a]`), patternWidth(`/p/[\x{3B1}]`))
+	require.Less(t, patternWidth(`/p/[\x{3B1}]`), patternWidth(`/p/[\d]`))
 }
