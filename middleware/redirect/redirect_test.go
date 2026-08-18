@@ -2053,7 +2053,10 @@ func Test_LiteralLengths(t *testing.T) {
 		// An anchor asserts a position and consumes nothing, so it pins no path.
 		{rule: "/p/a$", prefixLen: 4, totalLen: 4},
 		{rule: "/p/[a-z]$", prefixLen: 3, totalLen: 3},
-		{rule: "^/p/a", prefixLen: 0, totalLen: 4},
+		// An anchor asserts a position and consumes nothing, so it neither pins
+		// a byte nor ends what follows: New anchors every rule anyway.
+		{rule: "^/p/a", prefixLen: 4, totalLen: 4},
+		{rule: `\A/p/a`, prefixLen: 4, totalLen: 4},
 		// A class matches one byte whatever it lists, so listing more
 		// alternatives buys no specificity.
 		{rule: "/api/[abcdefghijklmnopqrstuvwxyz]", prefixLen: 5, totalLen: 5},
@@ -3525,8 +3528,11 @@ func Test_Redirect_SetEscapeIsMeasuredWhereverItStands(t *testing.T) {
 	require.Equal(t, patternWidth(`/p/[ab]`), patternWidth(`/p/[ab]\b`))
 	require.Less(t, patternWidth(`/p/[ab]\b`), patternWidth(`/p/[a-d]`))
 
-	// A backslash ending the rule names nothing, so it is no set either.
+	// A backslash ending the rule names nothing, so it is no set either, and no
+	// character: it is asked for one wherever a width is taken.
 	require.Equal(t, patternWidth(`/p/`), patternWidth(`/p/\`))
+	_, spells := escapeByte(`/p/\`, 3, 1)
+	require.False(t, spells)
 }
 
 // Test_Redirect_RepeatedAtomSeparatesTiedWidths covers two ways a repetition
@@ -3966,12 +3972,16 @@ func Test_Redirect_PrefixReadsZeroCountsAndFlags(t *testing.T) {
 	require.Equal(t, literalPrefixLen(`/p/`), literalPrefixLen(`/p/a{0,2}a`))
 	require.Equal(t, literalPrefixLen(`/p/`), literalPrefixLen(`/p/a?a`))
 
-	// Flags say what the text inside the group matches, so it pins no path —
-	// whether they are scoped to the group or set for the rest of the rule.
+	// Folding says what the text inside the group matches, so it pins no path —
+	// whether it is scoped to the group or set for the rest of the rule. A flag
+	// that moves no literal leaves the text pinned, and so does turning folding
+	// back off.
 	require.Equal(t, literalPrefixLen(`/p/`), literalPrefixLen(`/p/(?i:a)`))
 	require.Equal(t, literalPrefixLen(`/p/`), literalPrefixLen(`/p/(?i:a)b`))
 	require.Equal(t, literalPrefixLen(`/p/`), literalPrefixLen(`/p/(?i)a`))
-	require.Equal(t, literalPrefixLen(`/p/`), literalPrefixLen(`/p/(?-i:a)`))
+	require.Equal(t, literalPrefixLen(`/p/a`), literalPrefixLen(`/p/(?-i:a)`))
+	require.Equal(t, literalPrefixLen(`/p/a`), literalPrefixLen(`/p/(?m:a)`))
+	require.Equal(t, literalPrefixLen(`/p/a`), literalPrefixLen(`/p/(?s:a)`))
 
 	// A group counted none times is skipped like any other atom, and a "(" that
 	// opens no group at all names no flags either.
@@ -4104,4 +4114,90 @@ func Test_Redirect_QuotedTextCountedNoneTimes(t *testing.T) {
 	require.Equal(t, literalPrefixLen(`/p/abd`), literalPrefixLen(`/p/a\Qbc\E{0}d`))
 	require.Equal(t, literalPrefixLen(`/p/ab`), literalPrefixLen(`/p/a\Qbc\E?d`))
 	require.Equal(t, literalPrefixLen(`/p/abcd`), literalPrefixLen(`/p/a\Qbc\Ed`))
+}
+
+// Test_Redirect_FoldingReadsWhatGoFolds covers three things the first reading of
+// case folding got wrong: quoted text was measured as though folding did not
+// reach it, every folded position was counted as two where Go folds a "k" to
+// three, and a flag that moves no literal was treated as though it did.
+func Test_Redirect_FoldingReadsWhatGoFolds(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name, narrow, broad string
+	}{
+		{"quoted", `/p/[Kk]`, `/p/(?i:\Qk\E)`},
+		{"cycle", `/p/[Kk]`, `/p/(?i:k)`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			app := fiber.New()
+			app.Use(New(Config{
+				Rules:      map[string]string{tc.narrow: "/narrow", tc.broad: "/broad"},
+				StatusCode: fiber.StatusFound,
+			}))
+
+			req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/p/k?token=x", http.NoBody)
+			require.NoError(t, err)
+			resp, err := app.Test(req)
+			require.NoError(t, err)
+			require.Equal(t, fiber.StatusFound, resp.StatusCode)
+			require.Equal(t, "/narrow?token=x", resp.Header.Get("Location"))
+
+			require.Greater(t, patternWidth(tc.broad), patternWidth(tc.narrow))
+		})
+	}
+
+	// What Go folds is what is counted: a "k" to "K" and the Kelvin sign, an "a"
+	// to "A" alone, and a digit to itself.
+	require.Equal(t, 3, patternWidth(`/p/(?i:k)`))
+	require.Equal(t, 2, patternWidth(`/p/(?i:a)`))
+	require.Equal(t, 1, patternWidth(`/p/(?i:1)`))
+	require.Equal(t, 3, patternWidth(`/p/(?i:s)`))
+	require.True(t, regexp.MustCompile(`^(?:/p/(?i:k))$`).MatchString("/p/\u212A"))
+
+	// Folding reaches quoted text and escapes that spell a character, and a
+	// class is read as a floor still, its members not being counted here.
+	require.Equal(t, patternWidth(`/p/(?i:k)`), patternWidth(`/p/(?i:\Qk\E)`))
+	require.Equal(t, patternWidth(`/p/(?i:k)`), patternWidth(`/p/(?i:\x6b)`))
+	require.Equal(t, patternWidth(`/p/(?i:kk)`), patternWidth(`/p/(?i:\Qkk\E)`))
+	require.Equal(t, 2*patternWidth(`/p/[ab]`), patternWidth(`/p/(?i:[ab])`))
+
+	// A flag that moves no literal leaves it exact: "m" moves what an anchor
+	// asserts and "s" what a "." matches, neither of which is a literal.
+	require.Equal(t, literalLen(`/p/a`), literalLen(`/p/(?m:a)`))
+	require.Equal(t, literalLen(`/p/a`), literalLen(`/p/(?s:a)`))
+	require.Equal(t, patternWidth(`/p/a`), patternWidth(`/p/(?m:a)`))
+	require.Equal(t, literalLen(`/p/`), literalLen(`/p/(?mi:a)`))
+}
+
+// Test_Redirect_AnchorEndsNoPrefix covers a rule opening with an anchor: New
+// anchors every rule already, so "^/p/a" matches exactly "/p/a" — but stopping
+// at the "^" left it pinning none of the path it spells, behind the broader
+// "/p/(?:a|b)" on a path they share.
+func Test_Redirect_AnchorEndsNoPrefix(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Use(New(Config{
+		Rules: map[string]string{
+			`^/p/a`:      "/narrow",
+			`/p/(?:a|b)`: "/broad",
+		},
+		StatusCode: fiber.StatusFound,
+	}))
+
+	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/p/a?token=x", http.NoBody)
+	require.NoError(t, err)
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusFound, resp.StatusCode)
+	require.Equal(t, "/narrow?token=x", resp.Header.Get("Location"))
+
+	// An anchor pins no byte of its own and ends nothing, wherever it stands.
+	require.Equal(t, literalPrefixLen(`/p/a`), literalPrefixLen(`^/p/a`))
+	require.Equal(t, literalPrefixLen(`/p/a`), literalPrefixLen(`\A/p/a`))
+	require.Equal(t, literalPrefixLen(`/p/a`), literalPrefixLen(`/p/a$`))
+	require.Equal(t, literalPrefixLen(`/p/ab`), literalPrefixLen(`/p/a\bb`))
 }

@@ -9,6 +9,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"unicode"
 	"unicode/utf8"
 
 	"github.com/gofiber/fiber/v3"
@@ -980,10 +981,12 @@ func (s *literalScanner) widestBranch() int {
 		case c == '[':
 			inClass, atom = true, 0
 		case c == '(':
-			if flags := groupFlagScope(s.rule, s.i); flags.sets {
-				// The flags say what the text they cover matches, so it spells
-				// no path: counting the "a" of "/p/(?i)a" put it ahead of the
-				// "/p/[a]" it contains, on a path they share.
+			if flags := groupFlagScope(s.rule, s.i); flags.folds {
+				// Folding says what the text it covers matches, so that text
+				// spells no path: counting the "a" of "/p/(?i)a" put it ahead
+				// of the "/p/[a]" it contains, on a path they share. Only
+				// folding does — an "m" moves what an anchor asserts and an "s"
+				// what a "." matches, neither of which is a literal.
 				s.i = groupSpan(s.rule, s.i).end
 				atom = 0
 				if !flags.scoped {
@@ -1056,7 +1059,7 @@ func (s *literalScanner) pinnedAtoms(depth int) []string {
 			// there: the branches of "(?:a|aa)" agree on an "a", which stopping
 			// at the "(" missed — leaving the rule behind the "/p/a+" that
 			// contains it on a path they share.
-			flagged := groupFlagScope(s.rule, s.i).sets
+			folded := groupFlagScope(s.rule, s.i).folds
 			if depth >= maxPinnedDepth {
 				return pinned
 			}
@@ -1069,8 +1072,8 @@ func (s *literalScanner) pinnedAtoms(depth int) []string {
 				continue
 			}
 			switch {
-			case flagged:
-				// The flags say what the text inside matches, which is no longer
+			case folded:
+				// Folding says what the text inside matches, which is no longer
 				// the path it spells: "(?i:a)" matches an "A" too, and pinning
 				// its "a" put it level with the "/p/a" it contains.
 				return pinned
@@ -1080,6 +1083,15 @@ func (s *literalScanner) pinnedAtoms(depth int) []string {
 				return pinned
 			}
 			return append(pinned, commonPinnedAtoms(g.text, depth+1)...)
+		}
+
+		if c == '^' || c == '$' {
+			// An anchor asserts a position and consumes nothing, so it pins no
+			// byte and ends nothing: New anchors every rule already, and
+			// stopping at the "^" of "^/p/a" left it pinning none of the path
+			// it spells.
+			s.i++
+			continue
 		}
 
 		size, atom := 1, ""
@@ -1105,6 +1117,13 @@ func (s *literalScanner) pinnedAtoms(depth int) []string {
 					}
 				}
 				pinned = append(pinned, byteAtoms(text)...)
+				continue
+			}
+			if escapeAsserts(s.rule, s.i) {
+				// An assertion consumes nothing, so it pins nothing and ends
+				// nothing either: "\A/p/a" pins what "/p/a" does.
+				span, _ := escapeSpan(s.rule, s.i)
+				s.i += span
 				continue
 			}
 			pins := false
@@ -1291,24 +1310,39 @@ func (s *literalScanner) width() int {
 		filled = filled || !empty
 	}
 	for s.i < len(s.rule) {
-		switch s.rule[s.i] {
+		c := s.rule[s.i]
+		switch c {
 		case '\\':
 			commit()
 			if q := scanQuoted(s.rule, s.i); q.ok {
-				// Quoted text spells one path and no alternatives.
+				// Quoted text spells one path and no alternatives — unless
+				// folding is in force, where each byte of it matches its own
+				// case and the others: "(?i:\Qk\E)" matches three characters.
 				s.i = q.end
-				atom, prev, quantified, empty = 1, n, false, q.text == ""
+				atom = 1
+				for i := range len(q.text) {
+					atom = scaledWidth(atom, s.foldedChar(q.text[i]))
+				}
+				prev, quantified, empty = n, false, q.text == ""
+				s.widest = max(s.widest, atom)
+				n = scaledWidth(n, atom)
 				continue
 			}
 			// An escape naming a set matches what a class of the same members
 			// does, and counting it as one character measured "/p/\w[ab]" as
 			// half the "/p/[ab]{2}" it contains.
+			size, pins := escapeSpan(s.rule, s.i)
 			atom = 1
-			if escapeSet(s.rule, s.i) {
-				atom = setMemberWidth
+			switch {
+			case escapeSet(s.rule, s.i):
+				atom = s.foldedWidth(setMemberWidth)
+			case pins:
+				// The character it spells, which folding may match in another
+				// case as well.
+				if b, spells := escapeByte(s.rule, s.i, size); spells {
+					atom = s.foldedChar(b)
+				}
 			}
-			atom = s.foldedWidth(atom)
-			size, _ := escapeSpan(s.rule, s.i)
 			// An assertion consumes nothing, so it leaves what it stands beside
 			// as empty as it found it: "(?:\b)+a" matches "/p/a" and no more.
 			asserts := escapeAsserts(s.rule, s.i)
@@ -1410,9 +1444,9 @@ func (s *literalScanner) width() int {
 			continue
 		default:
 			// One byte of the path, which is the narrowest position there is
-			// unless case folding matches it in either case.
+			// unless case folding matches it in another case as well.
 			commit()
-			atom, prev, quantified, empty = s.foldedWidth(1), n, false, false
+			atom, prev, quantified, empty = s.foldedChar(c), n, false, false
 			s.widest = max(s.widest, atom)
 			n = scaledWidth(n, atom)
 		}
@@ -1433,6 +1467,24 @@ func (s *literalScanner) foldedWidth(w int) int {
 		return w
 	}
 	return min(scaledWidth(w, 2), 256)
+}
+
+// foldedChar counts what one character matches where folding is in force, which
+// is knowable exactly: Go folds a "k" to "K" and to the Kelvin sign as well, so
+// three, where an "a" matches two and a "1" one. Reading every folded position
+// as two left "(?i:k)" level with the "[Kk]" it contains.
+func (s *literalScanner) foldedChar(b byte) int {
+	if !s.folded || b >= utf8.RuneSelf {
+		return 1
+	}
+
+	r, n := rune(b), 0
+	for f := r; ; {
+		n++
+		if f = unicode.SimpleFold(f); f == r {
+			return n
+		}
+	}
 }
 
 // repeated returns the width a run reaches once the atom ending it, itself atom
@@ -1560,6 +1612,10 @@ func readClassMember(rule string, i int) classMember {
 // "\x{3B1}" names a character of more than one byte, which no member of a class
 // counted in bytes is, so it answers no.
 func escapeByte(rule string, i, span int) (byte, bool) {
+	if i+1 >= len(rule) {
+		return 0, false // a trailing backslash spells nothing
+	}
+
 	switch c := rule[i+1]; {
 	case c == 'a':
 		return 0x07, true
