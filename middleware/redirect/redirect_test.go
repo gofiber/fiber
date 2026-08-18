@@ -3768,3 +3768,66 @@ func Test_Redirect_ZeroWidthConstructIsEmpty(t *testing.T) {
 	require.Equal(t, 1, carriesRun(`/p/(?:[a-z]{0,})+`))
 	require.Equal(t, patternWidth(`/p/a`), patternWidth(`/p/a[b-z]{0}`))
 }
+
+// Test_Redirect_GroupIsNoOnePosition covers the widest position a rule matches
+// where a sequence is wrapped in a group: the group's width is the product of
+// the positions inside it, not a position of its own. Reading the product made
+// "/p/(?:[a-m][a-z][a-z][a-z][a-z])" the widest thing there is, and it sorted
+// behind the "/p/[a-z][a-z][a-z][a-z][a-z]" that contains it.
+func Test_Redirect_GroupIsNoOnePosition(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Use(New(Config{
+		Rules: map[string]string{
+			`/p/(?:[a-m][a-z][a-z][a-z][a-z])`: "/narrow",
+			`/p/[a-z][a-z][a-z][a-z][a-z]`:     "/broad",
+		},
+		StatusCode: fiber.StatusFound,
+	}))
+
+	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/p/aaaaa?token=x", http.NoBody)
+	require.NoError(t, err)
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusFound, resp.StatusCode)
+	require.Equal(t, "/narrow?token=x", resp.Header.Get("Location"))
+
+	// Grouping changes no position, however deeply the groups nest.
+	require.Equal(t, 26, widestAtom(`/p/(?:[a-m][a-z][a-z][a-z][a-z])`))
+	require.Equal(t, 26, widestAtom(`/p/[a-z][a-z][a-z][a-z][a-z]`))
+	require.Equal(t, widestAtom(`/p/[a-z]a`), widestAtom(`/p/(?:(?:(?:[a-z])))a`))
+	require.Equal(t, widestAtom(`/p/[a-z]`), widestAtom(`/p/(?:[a-m]|[a-z])`))
+}
+
+// Test_Redirect_NonGreedyMarkerKeepsAnEmptyAtom covers the "?" that says a
+// repetition is not greedy, standing between an empty atom and the quantifier
+// repeating it. Reading it as a construct of its own lost the emptiness, so
+// "/p/(?:(?:)+?)+a" was graded a run though it matches "/p/a" alone, and sorted
+// behind the broader "/p/b?a" that contains it.
+func Test_Redirect_NonGreedyMarkerKeepsAnEmptyAtom(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Use(New(Config{
+		Rules: map[string]string{
+			`/p/(?:(?:)+?)+a`: "/narrow",
+			`/p/b?a`:          "/broad",
+		},
+		StatusCode: fiber.StatusFound,
+	}))
+
+	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/p/a?token=x", http.NoBody)
+	require.NoError(t, err)
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusFound, resp.StatusCode)
+	require.Equal(t, "/narrow?token=x", resp.Header.Get("Location"))
+
+	// A "?" matches nothing of its own, so it neither fills a group nor empties
+	// one: what it follows is what decides.
+	require.Equal(t, 0, carriesRun(`/p/(?:(?:)+?)+a`))
+	require.Equal(t, 0, carriesRun(`/p/(?:(?:)?)+`))
+	require.Equal(t, 1, carriesRun(`/p/(?:a?)+`))
+	require.Equal(t, 1, carriesRun(`/p/(?:[a-z]+?)+`))
+}
