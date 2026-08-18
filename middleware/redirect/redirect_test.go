@@ -3895,3 +3895,35 @@ func Test_Redirect_PrefixReadsQuotesAndGroups(t *testing.T) {
 	require.Equal(t, literalPrefixLen(`/p/ab`), literalPrefixLen(`/p/(?:ab`))
 	require.Equal(t, literalPrefixLen(`/p/a`), literalPrefixLen(`/p/(?:a[)]|a[)]b)`))
 }
+
+// Test_Redirect_AlternationSeparatorIsEmpty covers the "|" between branches
+// every one of which matches nothing: it separates them and matches nothing
+// itself, but reading it as a construct filled the group they had each left
+// empty. "/p/(?:a{0}|b{0})+a" was then graded a run though it matches "/p/a"
+// alone, and sorted behind the broader "/p/(?:b|)a" that contains it.
+func Test_Redirect_AlternationSeparatorIsEmpty(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Use(New(Config{
+		Rules: map[string]string{
+			`/p/(?:a{0}|b{0})+a`: "/narrow",
+			`/p/(?:b|)a`:         "/broad",
+		},
+		StatusCode: fiber.StatusFound,
+	}))
+
+	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/p/a?token=x", http.NoBody)
+	require.NoError(t, err)
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusFound, resp.StatusCode)
+	require.Equal(t, "/narrow?token=x", resp.Header.Get("Location"))
+
+	// A group is empty where every branch of it is, and filled where any is not.
+	require.Equal(t, 0, carriesRun(`/p/(?:a{0}|b{0})+a`))
+	require.Equal(t, 0, carriesRun(`/p/(?:|)+a`))
+	require.Equal(t, 1, carriesRun(`/p/(?:|a)+`))
+	require.Equal(t, 1, carriesRun(`/p/(?:a|b{0})+`))
+	require.Equal(t, 1, carriesRun(`/p/(?:a|b)+`))
+}

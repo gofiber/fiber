@@ -1706,6 +1706,15 @@ func scanRuns(rule string) ruleRuns {
 			i++
 			empty = true
 			continue
+		case '|':
+			// A branch of the group begins here with nothing read in it yet, and
+			// the separator itself matches nothing: reading it as a construct
+			// filled the group its branches had each left empty, so
+			// "/p/(?:a{0}|b{0})+a" was graded a run though it matches "/p/a".
+			commit()
+			i++
+			empty = true
+			continue
 		case '*':
 			// Fiber's own wildcard, which is expanded to "(.*)" whatever stands
 			// before it, so it runs on even where that is an empty group.
