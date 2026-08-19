@@ -650,6 +650,8 @@ func (r *Request) PathParams() iter.Seq2[string, string]
 
 **SetPathParam** sets a single path parameter key-value pair, overriding previously set values.
 
+Placeholders are matched as `:name` and end at a path-segment boundary (`/`, `-`, `.`, `:`, `\`, `?` or `#`), so `:id` does not also match the start of `:idx`. Values are percent-encoded with path-segment rules, and each placeholder is resolved once — a substituted value is never scanned for further placeholders.
+
 ```go title="Signature"
 func (r *Request) SetPathParam(key, val string) *Request
 ```

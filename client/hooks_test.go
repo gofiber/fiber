@@ -156,6 +156,88 @@ func Test_Parser_Request_URL(t *testing.T) {
 		require.Equal(t, "http://example.com/api/12/fiber/val", req.RawRequest.URI().String())
 	})
 
+	t.Run("path param does not match a longer placeholder", func(t *testing.T) {
+		t.Parallel()
+		client := New().
+			SetBaseURL("http://example.com/api/:idx").
+			SetPathParam("id", "5")
+		req := AcquireRequest()
+
+		err := parserRequestURL(client, req)
+		require.NoError(t, err)
+		require.Equal(t, "http://example.com/api/:idx", req.RawRequest.URI().String())
+	})
+
+	t.Run("path params sharing a prefix are resolved independently", func(t *testing.T) {
+		t.Parallel()
+		client := New().SetBaseURL("http://example.com/api/:idx/:id")
+		req := AcquireRequest().
+			SetPathParams(map[string]string{
+				"id":  "5",
+				"idx": "9",
+			})
+
+		err := parserRequestURL(client, req)
+		require.NoError(t, err)
+		require.Equal(t, "http://example.com/api/9/5", req.RawRequest.URI().String())
+	})
+
+	t.Run("path param value cannot open a query", func(t *testing.T) {
+		t.Parallel()
+		client := New()
+		req := AcquireRequest().
+			SetURL("http://example.com/api/:id").
+			SetPathParam("id", "a?b")
+
+		err := parserRequestURL(client, req)
+		require.NoError(t, err)
+		require.Equal(t, "http://example.com/api/a%3Fb", req.RawRequest.URI().String())
+	})
+
+	t.Run("path param value keeps its escaped separator when normalizing is off", func(t *testing.T) {
+		t.Parallel()
+		client := New()
+		req := AcquireRequest().
+			SetURL("http://example.com/api/:id").
+			SetPathParam("id", "a/b").
+			SetDisablePathNormalizing(true)
+
+		err := parserRequestURL(client, req)
+		require.NoError(t, err)
+		require.Equal(t, "http://example.com/api/a%2Fb", req.RawRequest.URI().String())
+	})
+
+	t.Run("an escaped separator is decoded again by path normalizing", func(t *testing.T) {
+		t.Parallel()
+		client := New()
+		req := AcquireRequest().
+			SetURL("http://example.com/api/:id").
+			SetPathParam("id", "a/b")
+
+		err := parserRequestURL(client, req)
+		require.NoError(t, err)
+		// The value is escaped to "a%2Fb" before the URI is set, but fasthttp
+		// percent-decodes the path while normalizing it, so an encoded "/" is
+		// indistinguishable from a real separator on the wire. Escaping still
+		// contains "?" and "#", which normalizing does not decode.
+		require.Equal(t, "http://example.com/api/a/b", req.RawRequest.URI().String())
+	})
+
+	t.Run("a substituted value is not substituted again", func(t *testing.T) {
+		t.Parallel()
+		client := New()
+		req := AcquireRequest().
+			SetURL("http://example.com/api/:id").
+			SetPathParams(map[string]string{
+				"id":   ":name",
+				"name": "fiber",
+			})
+
+		err := parserRequestURL(client, req)
+		require.NoError(t, err)
+		require.Equal(t, "http://example.com/api/:name", req.RawRequest.URI().String())
+	})
+
 	t.Run("query params from client should be set", func(t *testing.T) {
 		t.Parallel()
 		client := New().
@@ -820,5 +902,26 @@ func releaseBenchmarkRequest(req *Request) {
 	fasthttp.ReleaseArgs(req.formData.Args)
 	for _, f := range req.files {
 		ReleaseFile(f)
+	}
+}
+
+func Benchmark_Parser_Request_URL_PathParams(b *testing.B) {
+	client := New().SetBaseURL("http://example.com/api/:version")
+	client.SetPathParam("version", "v1")
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for b.Loop() {
+		req := AcquireRequest().
+			SetURL("/users/:id/posts/:postID").
+			SetPathParams(map[string]string{
+				"id":     "12345",
+				"postID": "67890",
+			})
+		if err := parserRequestURL(client, req); err != nil {
+			b.Fatal(err)
+		}
+		ReleaseRequest(req)
 	}
 }
