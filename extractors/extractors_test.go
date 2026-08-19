@@ -1395,6 +1395,43 @@ func Test_ExtractWithSource(t *testing.T) {
 		require.Equal(t, SourceHeader, src)
 	})
 
+	t.Run("honors_chain_level_Extract_override", func(t *testing.T) {
+		t.Parallel()
+
+		app := fiber.New()
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+		t.Cleanup(func() { app.ReleaseCtx(ctx) })
+		// Only query is present. An undecorated chain would accept it; a
+		// chain-level Extract override that rejects query-sourced values must
+		// still win under ExtractWithSource.
+		ctx.Request().SetRequestURI("/?token=from-query")
+
+		chain := Chain(FromHeader("X-Token"), FromQuery("token"))
+		base := chain.Extract
+		rejectQuery := errors.New("query tokens not allowed")
+		chain.Extract = func(c fiber.Ctx) (string, error) {
+			v, err := base(c)
+			if err != nil {
+				return "", err
+			}
+			// Simulate a decorator that only permits header-sourced credentials.
+			// The value is present via query; reject it.
+			if c.Query("token") == v {
+				return "", rejectQuery
+			}
+			return v, nil
+		}
+
+		v, err := chain.Extract(ctx)
+		require.Empty(t, v)
+		require.ErrorIs(t, err, rejectQuery)
+
+		sv, src, serr := ExtractWithSource(chain, ctx)
+		require.Empty(t, sv)
+		require.Equal(t, SourceHeader, src) // static first-child metadata on error
+		require.ErrorIs(t, serr, rejectQuery)
+	})
+
 }
 
 // go test -run Test_Extractor_Chain_ExtractSource
@@ -1558,5 +1595,56 @@ func Test_Extractor_Chain_ExtractSource(t *testing.T) {
 		require.Empty(t, v)
 		require.Equal(t, SourceCustom, src)
 		require.ErrorIs(t, err, ErrNotFound)
+	})
+
+	t.Run("public_Chain_slice_mutation_does_not_affect_Extract", func(t *testing.T) {
+		t.Parallel()
+
+		app := fiber.New()
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+		t.Cleanup(func() { app.ReleaseCtx(ctx) })
+		ctx.Request().Header.Set("X-Token", "from-header")
+		ctx.Request().SetRequestURI("/?token=from-query")
+
+		chain := Chain(FromHeader("X-Token"), FromQuery("token"))
+		require.Len(t, chain.Chain, 2)
+
+		// Mutating the public introspection slice must not change which
+		// children Extract runs (private execution list).
+		chain.Chain[0] = FromQuery("token")
+		chain.Chain[1] = FromHeader("X-Missing")
+
+		v, err := chain.Extract(ctx)
+		require.NoError(t, err)
+		require.Equal(t, "from-header", v)
+
+		// Value still comes from private kids via Extract.
+		sv, _, serr := ExtractWithSource(chain, ctx)
+		require.NoError(t, serr)
+		require.Equal(t, "from-header", sv)
+	})
+
+	t.Run("chain_override_success_still_reports_winning_source", func(t *testing.T) {
+		t.Parallel()
+
+		app := fiber.New()
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+		t.Cleanup(func() { app.ReleaseCtx(ctx) })
+		ctx.Request().SetRequestURI("/?token=from-query")
+
+		chain := Chain(FromHeader("X-Token"), FromQuery("token"))
+		base := chain.Extract
+		chain.Extract = func(c fiber.Ctx) (string, error) {
+			v, err := base(c)
+			if err != nil {
+				return "", err
+			}
+			return "normalized:" + v, nil
+		}
+
+		v, src, err := ExtractWithSource(chain, ctx)
+		require.NoError(t, err)
+		require.Equal(t, "normalized:from-query", v)
+		require.Equal(t, SourceQuery, src)
 	})
 }

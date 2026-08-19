@@ -81,7 +81,7 @@ case extractors.SourceCustom:
 }
 ```
 
-For leaves, `ExtractWithSource` always calls `Extract` and returns the static `Source`. Decorating `Extract` is therefore visible to source-aware callers without extra wiring.
+`ExtractWithSource` always calls `Extract` when set (leaves and chains), so decorating `Extract` for validation or normalization is visible to source-aware callers. For chains it then walks children to report the **winning child's** `Source`. There is no `ExtractWithSource` struct field.
 
 ### Chain Behavior
 
@@ -92,7 +92,7 @@ The `Chain` function implements fallback logic:
 - **Skips extractors with `nil` Extract** (zero-value children)
 - Detects recursive chain re-entry and returns `ErrChainCycle` (shared guard across Extract and ExtractWithSource)
 - Preserves `Source` and `Key` from the first extractor for static introspection (not `AuthScheme`)
-- Stores defensive copy for runtime inspection via the `Chain` field
+- Exposes a **separate defensive copy** via the `Chain` field for introspection; mutating it does not change which children `Extract` runs
 - On success, `ExtractWithSource` reports the **winning child's** `Source`
 - On failure, the returned source is fallback metadata only — do not treat it as the origin of an extracted value
 

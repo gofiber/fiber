@@ -37,16 +37,15 @@ Extractors are utilities that middleware uses to get values from different parts
 
 ### Extractor Structure
 
-Each `Extractor` contains the fields below (order matches the Go struct). Prefer **keyed** composite literals when constructing `Extractor` values so adding fields such as `ExtractWithSource` does not break downstream unkeyed literals.
+Each `Extractor` contains the fields below (order matches the Go struct). Prefer **keyed** composite literals when constructing `Extractor` values. Source-aware extraction is provided by the package function `ExtractWithSource` — it is **not** a field on `Extractor`, so existing unkeyed literals keep compiling.
 
 ```go
 type Extractor struct {
-    Extract       func(fiber.Ctx) (string, error)             // Primary extraction callback
-    ExtractWithSource func(fiber.Ctx) (string, Source, error)     // Optional: value + winning source
-    Key           string                                      // Parameter/header name
-    AuthScheme    string                                      // Auth scheme (FromAuthHeader)
-    Chain         []Extractor                                 // Chained extractors
-    Source        Source                                      // Declared/static source metadata
+    Extract    func(fiber.Ctx) (string, error) // Extraction callback
+    Key        string                          // Parameter/header name
+    AuthScheme string                          // Auth scheme (FromAuthHeader)
+    Chain      []Extractor                     // Chained extractors (introspection copy)
+    Source     Source                          // Declared/static source metadata
 }
 ```
 
@@ -64,7 +63,7 @@ type Extractor struct {
 - `SourceHeader` is the zero value of `Source`. A legacy `Extract`-only callback that omits `Source` therefore reports `SourceHeader` via `ExtractWithSource`.
 - Error paths may return static or last-child source metadata even when no value was supplied. Use the returned source for security decisions **only when `err == nil`**, and only when that source metadata is known to be accurate for your extractor.
 
-When middleware needs the source that actually produced the value, use `ExtractWithSource`:
+When middleware needs the source that actually produced the value, call the package function `ExtractWithSource`:
 
 ```go
 tokenExtractor := extractors.Chain(
@@ -83,7 +82,7 @@ if src == extractors.SourceQuery {
 }
 ```
 
-`ExtractWithSource` prefers `ExtractWithSource` when set (so dual-callback custom extractors can report a runtime-dependent source), falls back to `Extract` plus static `Source` when only `Extract` is set, and always runs chains through the chain's `ExtractWithSource` so the winning child source is returned. If you replace only the public `Extract` field on a built-in, clear `ExtractWithSource` or re-point it at the new `Extract` so the override is visible to source-aware callers.
+`ExtractWithSource` always uses the public `Extract` callback when set (so leaf and chain-level `Extract` overrides for validation/normalization are honored). For chains it then walks the `Chain` children to report the winning child's `Source`. Leaves return `Extract`'s result with the static `Source`. Replacing `Extract` on a built-in or on a `Chain` is enough — there is no second callback field to clear or re-point.
 
 ### Chain Behavior
 
@@ -91,12 +90,12 @@ The `Chain` function creates extractors that try multiple sources in order:
 
 - Returns the first successful extraction (non-empty value with no error)
 - If all extractors fail, returns the last error encountered or `ErrNotFound`
-- **Robust error handling**: Skips zero-value children (`Extract` and `ExtractWithSource` both `nil`); `Extract` also skips `nil` Extract
+- **Robust error handling**: Skips children with a `nil` `Extract` (and zero-value trailing children)
 - **Cycle prevention**: Detects recursive chain re-entry and returns `ErrChainCycle` (shared across `Extract` and `ExtractWithSource`)
 - Preserves `Source` and `Key` from the first extractor for static metadata (not `AuthScheme`)
-- On success, `ExtractWithSource` / `ExtractWithSource` report the winning child's source at runtime
+- On success, `ExtractWithSource` reports the winning child's source at runtime
 - On failure, the returned source is fallback metadata only — do not treat it as the origin of an extracted value
-- Stores a defensive copy of all chained extractors for introspection via the `Chain` field
+- Exposes a **defensive copy** of children via the `Chain` field for introspection; mutating that slice does not change which children `Extract` runs
 
 ### Chain Introspection
 

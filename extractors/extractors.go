@@ -75,10 +75,9 @@ var ErrChainCycle = errors.New("cyclic extractor chain")
 // Extract without an explicit Source reports SourceHeader.
 //
 // Prefer ExtractWithSource when the caller needs the source that actually
-// supplied a value. For chains it re-walks children and returns the winning
-// child's Source. For leaves it returns Extract's result with the static Source.
-// No extra struct field is required, so existing unkeyed Extractor literals
-// keep compiling.
+// supplied a value. It always honors Extract (including chain-level overrides),
+// then for chains reports the winning child's Source. No extra struct field is
+// required, so existing unkeyed Extractor literals keep compiling.
 //
 // Runtime origin is meaningful only from a successful ExtractWithSource call
 // (err == nil). On failure the returned Source may be static or last-child
@@ -97,22 +96,54 @@ type Extractor struct {
 // ExtractWithSource returns the extracted value together with its source.
 //
 // Behavior:
-//   - Non-empty Chain: walk children (same success rules as Chain.Extract),
-//     skip nil Extract, return the winning child's Source. Uses the same cycle
-//     guard identity as Chain.Extract so nested re-entry still yields ErrChainCycle.
-//   - Leaf with Extract: return Extract(c) with the static Source.
+//   - Extract set (leaf or chain): call Extract so legacy overrides /
+//     decoration (validation, normalization) are honored. For chains, the
+//     winning child's Source is resolved by walking e.Chain after a successful
+//     Extract; on Extract failure the static Source is returned with the error.
+//   - Chain with nil Extract: walk children (same success rules as Chain.Extract),
+//     skip nil Extract, return the winning child's Source.
 //   - Neither: ErrNotFound.
 //
 // The returned Source is meaningful for security decisions only when err is nil.
 func ExtractWithSource(e Extractor, c fiber.Ctx) (string, Source, error) {
+	if e.Extract != nil {
+		v, err := e.Extract(c)
+		if len(e.Chain) == 0 {
+			return v, e.Source, err
+		}
+		// Chain (built-in or decorated Extract): value comes from Extract so
+		// chain-level overrides are not bypassed by a child re-walk.
+		if err != nil {
+			return "", e.Source, err
+		}
+		if v == "" {
+			return "", e.Source, ErrNotFound
+		}
+		if src, ok := peekChainWinningSource(e, c); ok {
+			return v, src, nil
+		}
+		return v, e.Source, nil
+	}
 	if len(e.Chain) > 0 {
 		return extractChainWithSource(e, c)
 	}
-	if e.Extract != nil {
-		v, err := e.Extract(c)
-		return v, e.Source, err
-	}
 	return "", e.Source, ErrNotFound
+}
+
+// peekChainWinningSource walks e.Chain and returns the Source of the first
+// successful child extraction. Used after Chain.Extract already produced a
+// value so source-aware callers still learn which child won.
+func peekChainWinningSource(e Extractor, c fiber.Ctx) (Source, bool) {
+	for _, extractor := range e.Chain {
+		if extractor.Extract == nil && len(extractor.Chain) == 0 {
+			continue
+		}
+		v, src, err := ExtractWithSource(extractor, c)
+		if err == nil && v != "" {
+			return src, true
+		}
+	}
+	return e.Source, false
 }
 
 // chainGuardFor returns a Locals key shared by Chain.Extract and ExtractWithSource
@@ -635,9 +666,11 @@ func Chain(extractors ...Extractor) Extractor {
 		}
 	}
 
-	// Defensive copy used for introspection and the shared cycle guard identity
-	// (address of kids[0] matches ExtractWithSource on this Chain value).
+	// Private execution list captured by Extract. Public Chain is a separate
+	// defensive copy so callers can inspect/rewrite metadata without changing
+	// which children Extract actually runs.
 	kids := append([]Extractor(nil), extractors...)
+	pub := append([]Extractor(nil), kids...)
 	primarySource := kids[0].Source
 	primaryKey := kids[0].Key
 
@@ -675,7 +708,7 @@ func Chain(extractors ...Extractor) Extractor {
 		},
 		Source: primarySource,
 		Key:    primaryKey,
-		Chain:  kids,
+		Chain:  pub,
 	}
 }
 
