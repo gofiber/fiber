@@ -28,6 +28,7 @@ package extractors
 import (
 	"errors"
 	"net/url"
+	"strings"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/internal/headerlookup"
@@ -269,6 +270,19 @@ func FromParam(param string) Extractor {
 			value := c.Params(param)
 			if value == "" {
 				return "", ErrNotFound
+			}
+			// Without a percent sign there is nothing to decode, and this is
+			// the common case, so it skips the config read below.
+			if !strings.Contains(value, "%") {
+				return value, nil
+			}
+			// UnescapePath already decoded the path once in the router, so
+			// decoding again here would spend the client's escaping twice: a
+			// literal "%20" sent as "%2520" would arrive as a space. Decode
+			// only when the router left the value raw, which keeps the number
+			// of decodes at one whatever the config says.
+			if c.App().Config().UnescapePath {
+				return value, nil
 			}
 			unescapedValue, err := url.PathUnescape(value)
 			if err != nil {
