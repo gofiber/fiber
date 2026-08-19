@@ -81,13 +81,9 @@ func parserRequestURL(c *Client, req *Request) error {
 		}
 	}
 
-	// Set path parameters from the request and client.
-	for key, val := range req.path.All() {
-		uri = strings.ReplaceAll(uri, ":"+key, val)
-	}
-	for key, val := range c.path.All() {
-		uri = strings.ReplaceAll(uri, ":"+key, val)
-	}
+	// Set path parameters from the request and the client. Request values are
+	// looked up first, so they keep overriding the client's for the same name.
+	uri = substitutePathParams(uri, req.path, *c.path)
 
 	// Set the URI in the raw request.
 	disablePathNormalizing := c.isPathNormalizingDisabled || req.DisablePathNormalizing()
@@ -115,6 +111,131 @@ func parserRequestURL(c *Client, req *Request) error {
 	req.RawRequest.URI().SetHash(hashPart)
 
 	return nil
+}
+
+// pathParamEndChars marks the bytes that terminate a ":name" placeholder in a
+// request URL. The set mirrors the route parser's parameterEndChars (path.go),
+// so a client placeholder is delimited exactly like a server route parameter,
+// plus '#', which ends the path client-side.
+var pathParamEndChars = [256]bool{
+	'/':  true,
+	'-':  true,
+	'.':  true,
+	':':  true,
+	'\\': true,
+	'?':  true,
+	'#':  true,
+}
+
+// substitutePathParams replaces every ":name" placeholder in uri with the value
+// found in sources, searched in order. A placeholder ends at a path-segment
+// boundary, so ":id" no longer also matches the head of ":idx"; the scan is a
+// single left-to-right pass, so a substituted value is never rescanned for
+// placeholders; and each value is percent-encoded with path-segment rules, so a
+// "/", "?" or "#" inside a value cannot restructure the request target.
+// A placeholder with no matching value is left untouched.
+func substitutePathParams(uri string, sources ...PathParam) string {
+	if !strings.ContainsRune(uri, ':') {
+		return uri
+	}
+
+	authorityEnd := authorityEnd(uri)
+
+	var (
+		buf  []byte
+		last int
+	)
+
+	for i := 0; i < len(uri); i++ {
+		if uri[i] != ':' {
+			continue
+		}
+
+		end := i + 1
+		for end < len(uri) && !pathParamEndChars[uri[end]] {
+			end++
+		}
+
+		name := uri[i+1 : end]
+		if name == "" {
+			continue
+		}
+
+		// A host may be templated ("http://:tenant.example.com"), so the
+		// authority is scanned too — but a digits-only name there is the port,
+		// and substituting it would eat the ":" that separates it from the host.
+		if i < authorityEnd && isAllDigits(name) {
+			continue
+		}
+
+		val, ok := lookupPathParam(name, sources)
+		if !ok {
+			continue
+		}
+
+		if buf == nil {
+			// One growth for the common case: the substituted values are
+			// usually shorter than the placeholders plus a little slack.
+			buf = make([]byte, 0, len(uri)+16)
+		}
+
+		buf = append(buf, uri[last:i]...)
+		buf = utils.AppendPathEscape(buf, val)
+		last = end
+		i = end - 1
+	}
+
+	if buf == nil {
+		return uri
+	}
+
+	return string(append(buf, uri[last:]...))
+}
+
+// authorityEnd returns the index at which uri's authority ends, or 0 when uri
+// has none. Everything from "://" up to the first "/", "?" or "#" is authority.
+func authorityEnd(uri string) int {
+	start := strings.Index(uri, "://")
+	if start < 0 {
+		return 0
+	}
+	start += len("://")
+
+	for i := start; i < len(uri); i++ {
+		switch uri[i] {
+		case '/', '?', '#':
+			return i
+		}
+	}
+
+	return len(uri)
+}
+
+// isAllDigits reports whether s is a non-empty run of ASCII digits.
+func isAllDigits(s string) bool {
+	if s == "" {
+		return false
+	}
+
+	for i := range len(s) {
+		if s[i] < '0' || s[i] > '9' {
+			return false
+		}
+	}
+
+	return true
+}
+
+// lookupPathParam returns the first value stored under name, searching sources
+// in order.
+func lookupPathParam(name string, sources []PathParam) (string, bool) {
+	for _, source := range sources {
+		if val, ok := source[name]; ok {
+			return val, true
+		}
+	}
+
+	return "", false
 }
 
 // parserRequestHeader merges client and request headers, and sets headers automatically based on the request data.
