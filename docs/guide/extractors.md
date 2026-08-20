@@ -82,7 +82,7 @@ if src == extractors.SourceQuery {
 }
 ```
 
-`ExtractWithSource` always uses the public `Extract` callback when set (so leaf and chain-level `Extract` overrides for validation/normalization are honored). For chains it then walks the `Chain` children to report the winning child's `Source`. Leaves return `Extract`'s result with the static `Source`. Replacing `Extract` on a built-in or on a `Chain` is enough — there is no second callback field to clear or re-point.
+`ExtractWithSource` always uses the public `Extract` callback when set (so leaf and chain-level `Extract` overrides for validation/normalization are honored). For a built-in `Chain`, that single `Extract` pass records the winning child's `Source` and `ExtractWithSource` reads the capture — children are not extracted a second time. Hand-rolled `Extract`+`Chain` values without a capture fall back to a guarded walk of the public `Chain` metadata. Leaves return `Extract`'s result with the static `Source`. Replacing `Extract` on a built-in or on a `Chain` is enough — there is no second callback field to clear or re-point.
 
 ### Chain Behavior
 

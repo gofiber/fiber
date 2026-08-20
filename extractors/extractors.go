@@ -100,10 +100,16 @@ type Extractor struct {
 // On failure it may be static or last-child fallback metadata and must not be
 // treated as the origin of a value. Extract is not deprecated in this release.
 func ExtractWithSource(e Extractor, c fiber.Ctx) (string, Source, error) {
+	// Mark this request frame so Chain.Extract only pushes winner captures when
+	// a source-aware caller is active. Bare chain.Extract must not leave stack
+	// entries that a later ExtractWithSource on an unrelated leaf would consume.
+	enterChainWinCapture(c)
+	defer leaveChainWinCapture(c)
+
 	if e.Extract != nil {
 		v, err := e.Extract(c)
-		// Prefer source captured during Extract. Built-in Chain always pushes
-		// on success, even if the caller cleared or reassigned e.Chain.
+		// Prefer source captured during Extract. Built-in Chain pushes on
+		// success while capture is active, even if e.Chain was cleared.
 		if src, ok := popChainWinningSource(c); ok {
 			if err != nil {
 				return "", e.Source, err
@@ -188,6 +194,30 @@ func chainGuardFor(chain []Extractor) (chainGuardKey, bool) {
 // propagate the true winning child Source outward, and so clearing/reassigning
 // the public Chain field cannot orphan or retarget the capture.
 type chainWinStackKey struct{}
+
+// chainWinDepthKey counts nested ExtractWithSource frames. Chain.Extract only
+// pushes winners while depth > 0 so legacy Extract-only calls leave no stale
+// entries for a later source-aware call on the same Ctx.
+type chainWinDepthKey struct{}
+
+func enterChainWinCapture(c fiber.Ctx) {
+	depth, _ := c.Locals(chainWinDepthKey{}).(int)
+	c.Locals(chainWinDepthKey{}, depth+1)
+}
+
+func leaveChainWinCapture(c fiber.Ctx) {
+	depth, _ := c.Locals(chainWinDepthKey{}).(int)
+	if depth <= 1 {
+		c.Locals(chainWinDepthKey{}, nil)
+		return
+	}
+	c.Locals(chainWinDepthKey{}, depth-1)
+}
+
+func chainWinCaptureActive(c fiber.Ctx) bool {
+	depth, _ := c.Locals(chainWinDepthKey{}).(int)
+	return depth > 0
+}
 
 func pushChainWinningSource(c fiber.Ctx, src Source) {
 	var stack []Source
@@ -754,13 +784,17 @@ func Chain(extractors ...Extractor) Extractor {
 				}
 				v, err := extractor.Extract(c)
 				if err == nil && v != "" {
-					// Prefer a Source pushed by a nested Chain.Extract; otherwise
-					// the child's declared Source (correct for leaves).
-					src := extractor.Source
-					if nested, ok := popChainWinningSource(c); ok {
-						src = nested
+					// Only record winners for ExtractWithSource callers. Bare
+					// Extract must not leave stack entries on the Ctx.
+					if chainWinCaptureActive(c) {
+						// Prefer a Source pushed by a nested Chain.Extract;
+						// otherwise the child's declared Source (leaves).
+						src := extractor.Source
+						if nested, ok := popChainWinningSource(c); ok {
+							src = nested
+						}
+						pushChainWinningSource(c, src)
 					}
-					pushChainWinningSource(c, src)
 					return v, nil
 				}
 				if err != nil {

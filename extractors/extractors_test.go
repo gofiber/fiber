@@ -1765,6 +1765,28 @@ func Test_Extractor_Chain_ExtractSource(t *testing.T) {
 		require.Equal(t, SourceQuery, src)
 	})
 
+	t.Run("bare_Extract_does_not_pollute_later_ExtractWithSource", func(t *testing.T) {
+		t.Parallel()
+
+		app := fiber.New()
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+		t.Cleanup(func() { app.ReleaseCtx(ctx) })
+		ctx.Request().Header.SetCookie("session", "cookie-value")
+		ctx.Request().SetRequestURI("/?token=from-query")
+
+		// Legacy path: Extract alone must not leave a winner that a later
+		// source-aware call on an unrelated leaf would mis-attribute.
+		chain := Chain(FromHeader("X-Missing"), FromQuery("token"))
+		v, err := chain.Extract(ctx)
+		require.NoError(t, err)
+		require.Equal(t, "from-query", v)
+
+		sv, src, serr := ExtractWithSource(FromCookie("session"), ctx)
+		require.NoError(t, serr)
+		require.Equal(t, "cookie-value", sv)
+		require.Equal(t, SourceCookie, src)
+	})
+
 	t.Run("chain_override_success_still_reports_winning_source", func(t *testing.T) {
 		t.Parallel()
 
