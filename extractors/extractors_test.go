@@ -1726,6 +1726,45 @@ func Test_Extractor_Chain_ExtractSource(t *testing.T) {
 		require.Equal(t, 1, calls, "stateful child must not run again during source resolution")
 	})
 
+	t.Run("nested_chain_reports_inner_winning_source", func(t *testing.T) {
+		t.Parallel()
+
+		app := fiber.New()
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+		t.Cleanup(func() { app.ReleaseCtx(ctx) })
+		ctx.Request().SetRequestURI("/?token=from-query")
+
+		// Outer chain has one child: an inner chain whose first child misses
+		// and second (query) wins. Must report SourceQuery, not the inner
+		// chain's static first-child SourceCookie.
+		inner := Chain(FromCookie("token"), FromQuery("token"))
+		outer := Chain(inner)
+
+		sv, src, serr := ExtractWithSource(outer, ctx)
+		require.NoError(t, serr)
+		require.Equal(t, "from-query", sv)
+		require.Equal(t, SourceQuery, src)
+	})
+
+	t.Run("clearing_public_Chain_still_returns_captured_source", func(t *testing.T) {
+		t.Parallel()
+
+		app := fiber.New()
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+		t.Cleanup(func() { app.ReleaseCtx(ctx) })
+		ctx.Request().SetRequestURI("/?token=from-query")
+
+		chain := Chain(FromHeader("X-Token"), FromQuery("token"))
+		// Mutating/clearing public metadata must not drop the source captured
+		// from the private execution list.
+		chain.Chain = nil
+
+		sv, src, serr := ExtractWithSource(chain, ctx)
+		require.NoError(t, serr)
+		require.Equal(t, "from-query", sv)
+		require.Equal(t, SourceQuery, src)
+	})
+
 	t.Run("chain_override_success_still_reports_winning_source", func(t *testing.T) {
 		t.Parallel()
 

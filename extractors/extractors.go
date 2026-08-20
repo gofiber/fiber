@@ -88,10 +88,10 @@ type Extractor struct {
 // Behavior:
 //   - Extract set (leaf or chain): call Extract so legacy overrides /
 //     decoration (validation, normalization) are honored. For built-in
-//     Chain, the winning child's Source is captured during that Extract
-//     (no second child walk). Hand-rolled Extract+Chain without a capture
-//     falls back to a guarded peek of e.Chain. On Extract failure the
-//     static Source is returned with the error.
+//     Chain, the winning Source is pushed on a request-local stack during
+//     that Extract (no second child walk; survives public Chain reassignment).
+//     Hand-rolled Extract+Chain without a capture falls back to a guarded
+//     peek of e.Chain. On Extract failure the static Source is returned.
 //   - Chain with nil Extract: walk children (same success rules as Chain.Extract),
 //     skip nil Extract, return the winning child's Source.
 //   - Neither: ErrNotFound.
@@ -102,21 +102,27 @@ type Extractor struct {
 func ExtractWithSource(e Extractor, c fiber.Ctx) (string, Source, error) {
 	if e.Extract != nil {
 		v, err := e.Extract(c)
+		// Prefer source captured during Extract. Built-in Chain always pushes
+		// on success, even if the caller cleared or reassigned e.Chain.
+		if src, ok := popChainWinningSource(c); ok {
+			if err != nil {
+				return "", e.Source, err
+			}
+			if v == "" {
+				return "", e.Source, ErrNotFound
+			}
+			return v, src, nil
+		}
 		if len(e.Chain) == 0 {
 			return v, e.Source, err
 		}
-		// Chain (built-in or decorated Extract): value comes from Extract so
-		// chain-level overrides are not bypassed by a child re-walk.
+		// Hand-rolled Extract+Chain without capture: value from Extract, source
+		// via guarded peek of the public Chain metadata.
 		if err != nil {
 			return "", e.Source, err
 		}
 		if v == "" {
 			return "", e.Source, ErrNotFound
-		}
-		// Prefer the source recorded while Extract ran (correct under private
-		// kids + public Chain mutation; no double extraction of children).
-		if src, ok := consumeChainWinningSource(c, e.Chain); ok {
-			return v, src, nil
 		}
 		src, ok, peekErr := peekChainWinningSource(e, c)
 		if peekErr != nil {
@@ -177,27 +183,33 @@ func chainGuardFor(chain []Extractor) (chainGuardKey, bool) {
 	return chainGuardKey{id: (*byte)(unsafe.Pointer(&chain[0]))}, true //nolint:gosec // G103: identity key for Locals cycle guard only
 }
 
-// chainWinKeyFor returns the Locals key used to stash the winning Source from
-// Chain.Extract so ExtractWithSource can read it without re-running children.
-func chainWinKeyFor(guard chainGuardKey) chainWinKey {
-	return chainWinKey{id: guard.id}
+// chainWinStackKey is a request-local stack of Sources recorded by Chain.Extract.
+// A stack (not a key derived from e.Chain) is required so nested chains can
+// propagate the true winning child Source outward, and so clearing/reassigning
+// the public Chain field cannot orphan or retarget the capture.
+type chainWinStackKey struct{}
+
+func pushChainWinningSource(c fiber.Ctx, src Source) {
+	var stack []Source
+	if prev, ok := c.Locals(chainWinStackKey{}).([]Source); ok && len(prev) > 0 {
+		stack = append(stack, prev...)
+	}
+	stack = append(stack, src)
+	c.Locals(chainWinStackKey{}, stack)
 }
 
-func rememberChainWinningSource(c fiber.Ctx, guard chainGuardKey, src Source) {
-	c.Locals(chainWinKeyFor(guard), src)
-}
-
-func consumeChainWinningSource(c fiber.Ctx, chain []Extractor) (Source, bool) {
-	guard, ok := chainGuardFor(chain)
-	if !ok {
+func popChainWinningSource(c fiber.Ctx) (Source, bool) {
+	prev, ok := c.Locals(chainWinStackKey{}).([]Source)
+	if !ok || len(prev) == 0 {
 		return 0, false
 	}
-	key := chainWinKeyFor(guard)
-	src, ok := c.Locals(key).(Source)
-	if !ok {
-		return 0, false
+	src := prev[len(prev)-1]
+	prev = prev[:len(prev)-1]
+	if len(prev) == 0 {
+		c.Locals(chainWinStackKey{}, nil)
+	} else {
+		c.Locals(chainWinStackKey{}, prev)
 	}
-	c.Locals(key, nil)
 	return src, true
 }
 
@@ -282,12 +294,6 @@ func (e Extractor) Contains(pred func(Extractor) bool) bool {
 }
 
 type chainGuardKey struct {
-	id *byte
-}
-
-// chainWinKey stashes the Source of the child that won Chain.Extract.
-// Shares the pointer identity with chainGuardKey for the same Chain instance.
-type chainWinKey struct {
 	id *byte
 }
 
@@ -748,8 +754,13 @@ func Chain(extractors ...Extractor) Extractor {
 				}
 				v, err := extractor.Extract(c)
 				if err == nil && v != "" {
-					// Record which private child won for ExtractWithSource.
-					rememberChainWinningSource(c, guard, extractor.Source)
+					// Prefer a Source pushed by a nested Chain.Extract; otherwise
+					// the child's declared Source (correct for leaves).
+					src := extractor.Source
+					if nested, ok := popChainWinningSource(c); ok {
+						src = nested
+					}
+					pushChainWinningSource(c, src)
 					return v, nil
 				}
 				if err != nil {
