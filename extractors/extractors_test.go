@@ -1787,6 +1787,35 @@ func Test_Extractor_Chain_ExtractSource(t *testing.T) {
 		require.Equal(t, SourceCookie, src)
 	})
 
+	t.Run("rejected_nested_chain_does_not_poison_fallback_source", func(t *testing.T) {
+		t.Parallel()
+
+		app := fiber.New()
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+		t.Cleanup(func() { app.ReleaseCtx(ctx) })
+		ctx.Request().Header.SetCookie("session", "cookie-value")
+		ctx.Request().SetRequestURI("/?token=from-query")
+
+		// Nested chain would win via cookie, but a decorator rejects after
+		// base Extract. Outer fallback is query — source must be SourceQuery,
+		// not the rejected nested cookie capture.
+		inner := Chain(FromCookie("session"), FromHeader("X-Missing"))
+		base := inner.Extract
+		reject := errors.New("cookie rejected")
+		inner.Extract = func(c fiber.Ctx) (string, error) {
+			if _, err := base(c); err != nil {
+				return "", err
+			}
+			return "", reject
+		}
+		outer := Chain(inner, FromQuery("token"))
+
+		sv, src, serr := ExtractWithSource(outer, ctx)
+		require.NoError(t, serr)
+		require.Equal(t, "from-query", sv)
+		require.Equal(t, SourceQuery, src)
+	})
+
 	t.Run("chain_override_success_still_reports_winning_source", func(t *testing.T) {
 		t.Parallel()
 

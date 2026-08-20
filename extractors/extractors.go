@@ -200,13 +200,20 @@ type chainWinStackKey struct{}
 // entries for a later source-aware call on the same Ctx.
 type chainWinDepthKey struct{}
 
+func chainWinDepth(c fiber.Ctx) int {
+	depth, ok := c.Locals(chainWinDepthKey{}).(int)
+	if !ok {
+		return 0
+	}
+	return depth
+}
+
 func enterChainWinCapture(c fiber.Ctx) {
-	depth, _ := c.Locals(chainWinDepthKey{}).(int)
-	c.Locals(chainWinDepthKey{}, depth+1)
+	c.Locals(chainWinDepthKey{}, chainWinDepth(c)+1)
 }
 
 func leaveChainWinCapture(c fiber.Ctx) {
-	depth, _ := c.Locals(chainWinDepthKey{}).(int)
+	depth := chainWinDepth(c)
 	if depth <= 1 {
 		c.Locals(chainWinDepthKey{}, nil)
 		return
@@ -215,22 +222,43 @@ func leaveChainWinCapture(c fiber.Ctx) {
 }
 
 func chainWinCaptureActive(c fiber.Ctx) bool {
-	depth, _ := c.Locals(chainWinDepthKey{}).(int)
-	return depth > 0
+	return chainWinDepth(c) > 0
+}
+
+func chainWinStack(c fiber.Ctx) []Source {
+	prev, ok := c.Locals(chainWinStackKey{}).([]Source)
+	if !ok {
+		return nil
+	}
+	return prev
+}
+
+func chainWinStackLen(c fiber.Ctx) int {
+	return len(chainWinStack(c))
+}
+
+func truncateChainWinStack(c fiber.Ctx, n int) {
+	prev := chainWinStack(c)
+	if len(prev) == 0 {
+		return
+	}
+	if n <= 0 {
+		c.Locals(chainWinStackKey{}, nil)
+		return
+	}
+	if len(prev) > n {
+		c.Locals(chainWinStackKey{}, prev[:n])
+	}
 }
 
 func pushChainWinningSource(c fiber.Ctx, src Source) {
-	var stack []Source
-	if prev, ok := c.Locals(chainWinStackKey{}).([]Source); ok && len(prev) > 0 {
-		stack = append(stack, prev...)
-	}
-	stack = append(stack, src)
+	stack := append(append([]Source(nil), chainWinStack(c)...), src)
 	c.Locals(chainWinStackKey{}, stack)
 }
 
 func popChainWinningSource(c fiber.Ctx) (Source, bool) {
-	prev, ok := c.Locals(chainWinStackKey{}).([]Source)
-	if !ok || len(prev) == 0 {
+	prev := chainWinStack(c)
+	if len(prev) == 0 {
 		return 0, false
 	}
 	src := prev[len(prev)-1]
@@ -782,6 +810,10 @@ func Chain(extractors ...Extractor) Extractor {
 				if extractor.Extract == nil {
 					continue
 				}
+				// Snapshot stack so a child that pushes then fails (e.g. decorated
+				// nested Chain that validates after base Extract) cannot leave a
+				// stale winner for a later successful sibling.
+				stackBefore := chainWinStackLen(c)
 				v, err := extractor.Extract(c)
 				if err == nil && v != "" {
 					// Only record winners for ExtractWithSource callers. Bare
@@ -793,10 +825,15 @@ func Chain(extractors ...Extractor) Extractor {
 						if nested, ok := popChainWinningSource(c); ok {
 							src = nested
 						}
+						// Drop any extra leftover pushes from this child.
+						truncateChainWinStack(c, stackBefore)
 						pushChainWinningSource(c, src)
+					} else {
+						truncateChainWinStack(c, stackBefore)
 					}
 					return v, nil
 				}
+				truncateChainWinStack(c, stackBefore)
 				if err != nil {
 					lastErr = err
 				}
