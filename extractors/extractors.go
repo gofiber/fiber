@@ -87,9 +87,11 @@ type Extractor struct {
 //
 // Behavior:
 //   - Extract set (leaf or chain): call Extract so legacy overrides /
-//     decoration (validation, normalization) are honored. For chains, the
-//     winning child's Source is resolved by walking e.Chain after a successful
-//     Extract; on Extract failure the static Source is returned with the error.
+//     decoration (validation, normalization) are honored. For built-in
+//     Chain, the winning child's Source is captured during that Extract
+//     (no second child walk). Hand-rolled Extract+Chain without a capture
+//     falls back to a guarded peek of e.Chain. On Extract failure the
+//     static Source is returned with the error.
 //   - Chain with nil Extract: walk children (same success rules as Chain.Extract),
 //     skip nil Extract, return the winning child's Source.
 //   - Neither: ErrNotFound.
@@ -111,6 +113,11 @@ func ExtractWithSource(e Extractor, c fiber.Ctx) (string, Source, error) {
 		if v == "" {
 			return "", e.Source, ErrNotFound
 		}
+		// Prefer the source recorded while Extract ran (correct under private
+		// kids + public Chain mutation; no double extraction of children).
+		if src, ok := consumeChainWinningSource(c, e.Chain); ok {
+			return v, src, nil
+		}
 		src, ok, peekErr := peekChainWinningSource(e, c)
 		if peekErr != nil {
 			// Recursive public Chain metadata (e.g. chain.Chain[0] = chain)
@@ -129,12 +136,9 @@ func ExtractWithSource(e Extractor, c fiber.Ctx) (string, Source, error) {
 }
 
 // peekChainWinningSource walks e.Chain and returns the Source of the first
-// successful child extraction. Used after Chain.Extract already produced a
-// value so source-aware callers still learn which child won.
-//
-// The walk is guarded with the same Locals key as extractChainWithSource so a
-// recursive public introspection slice cannot re-enter forever after Extract's
-// private-kids guard has been cleared.
+// successful child extraction. Fallback when Extract did not record a winner
+// (hand-rolled Extract+Chain). Guarded with the same Locals key as Chain.Extract
+// and extractChainWithSource (public Chain backing array).
 func peekChainWinningSource(e Extractor, c fiber.Ctx) (Source, bool, error) {
 	guard, ok := chainGuardFor(e.Chain)
 	if ok {
@@ -163,14 +167,38 @@ func peekChainWinningSource(e Extractor, c fiber.Ctx) (Source, bool, error) {
 	return e.Source, false, nil
 }
 
-// chainGuardFor returns a Locals key shared by Chain.Extract and ExtractWithSource
-// for the same chain backing array.
+// chainGuardFor returns a Locals key shared by Chain.Extract, peek, and
+// extractChainWithSource for the public Chain backing array.
 func chainGuardFor(chain []Extractor) (chainGuardKey, bool) {
 	if len(chain) == 0 {
 		return chainGuardKey{}, false
 	}
 	// Address of the first element is stable for the shared backing array.
 	return chainGuardKey{id: (*byte)(unsafe.Pointer(&chain[0]))}, true //nolint:gosec // G103: identity key for Locals cycle guard only
+}
+
+// chainWinKeyFor returns the Locals key used to stash the winning Source from
+// Chain.Extract so ExtractWithSource can read it without re-running children.
+func chainWinKeyFor(guard chainGuardKey) chainWinKey {
+	return chainWinKey{id: guard.id}
+}
+
+func rememberChainWinningSource(c fiber.Ctx, guard chainGuardKey, src Source) {
+	c.Locals(chainWinKeyFor(guard), src)
+}
+
+func consumeChainWinningSource(c fiber.Ctx, chain []Extractor) (Source, bool) {
+	guard, ok := chainGuardFor(chain)
+	if !ok {
+		return 0, false
+	}
+	key := chainWinKeyFor(guard)
+	src, ok := c.Locals(key).(Source)
+	if !ok {
+		return 0, false
+	}
+	c.Locals(key, nil)
+	return src, true
 }
 
 func extractChainWithSource(e Extractor, c fiber.Ctx) (string, Source, error) {
@@ -254,6 +282,12 @@ func (e Extractor) Contains(pred func(Extractor) bool) bool {
 }
 
 type chainGuardKey struct {
+	id *byte
+}
+
+// chainWinKey stashes the Source of the child that won Chain.Extract.
+// Shares the pointer identity with chainGuardKey for the same Chain instance.
+type chainWinKey struct {
 	id *byte
 }
 
@@ -693,7 +727,9 @@ func Chain(extractors ...Extractor) Extractor {
 
 	return Extractor{
 		Extract: func(c fiber.Ctx) (string, error) {
-			guard, ok := chainGuardFor(kids)
+			// Guard on the public Chain array so ExtractWithSource / peek share
+			// the same cycle identity (private kids stay execution-only).
+			guard, ok := chainGuardFor(pub)
 			if !ok {
 				return "", ErrNotFound
 			}
@@ -712,6 +748,8 @@ func Chain(extractors ...Extractor) Extractor {
 				}
 				v, err := extractor.Extract(c)
 				if err == nil && v != "" {
+					// Record which private child won for ExtractWithSource.
+					rememberChainWinningSource(c, guard, extractor.Source)
 					return v, nil
 				}
 				if err != nil {

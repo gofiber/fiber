@@ -1617,13 +1617,15 @@ func Test_Extractor_Chain_ExtractSource(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, "from-header", v)
 
-		// Value still comes from private kids via Extract.
-		sv, _, serr := ExtractWithSource(chain, ctx)
+		// Value and source come from private kids via Extract capture, not
+		// a second walk of the mutated public Chain.
+		sv, src, serr := ExtractWithSource(chain, ctx)
 		require.NoError(t, serr)
 		require.Equal(t, "from-header", sv)
+		require.Equal(t, SourceHeader, src)
 	})
 
-	t.Run("recursive_public_Chain_metadata_returns_ErrChainCycle", func(t *testing.T) {
+	t.Run("recursive_public_Chain_metadata_uses_captured_source", func(t *testing.T) {
 		t.Parallel()
 
 		app := fiber.New()
@@ -1633,8 +1635,8 @@ func Test_Extractor_Chain_ExtractSource(t *testing.T) {
 
 		chain := Chain(FromHeader("X-Token"), FromQuery("token"))
 		// Corrupt introspection metadata after construction. Extract still
-		// succeeds via the private kids list, but the source walk must not
-		// recurse forever once Extract's cycle guard is cleared.
+		// succeeds via the private kids list and records the winner so
+		// ExtractWithSource does not need to walk the recursive public slice.
 		chain.Chain[0] = chain
 
 		v, err := chain.Extract(ctx)
@@ -1642,9 +1644,86 @@ func Test_Extractor_Chain_ExtractSource(t *testing.T) {
 		require.Equal(t, "from-header", v)
 
 		sv, src, serr := ExtractWithSource(chain, ctx)
+		require.NoError(t, serr)
+		require.Equal(t, "from-header", sv)
+		require.Equal(t, SourceHeader, src)
+	})
+
+	t.Run("peek_recursive_public_Chain_without_capture_returns_ErrChainCycle", func(t *testing.T) {
+		t.Parallel()
+
+		app := fiber.New()
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+		t.Cleanup(func() { app.ReleaseCtx(ctx) })
+		ctx.Request().Header.Set("X-Token", "from-header")
+
+		// Hand-rolled Extract+Chain: no winner capture, so ExtractWithSource
+		// falls back to peeking the public Chain.
+		header := FromHeader("X-Token")
+		var chain Extractor
+		chain = Extractor{
+			Extract: header.Extract,
+			Source:  header.Source,
+			Key:     header.Key,
+			Chain:   []Extractor{header},
+		}
+		chain.Chain[0] = chain
+
+		sv, src, serr := ExtractWithSource(chain, ctx)
 		require.Empty(t, sv)
 		require.Equal(t, SourceHeader, src)
 		require.ErrorIs(t, serr, ErrChainCycle)
+	})
+
+	t.Run("shared_guard_blocks_cross_entry_during_source_path", func(t *testing.T) {
+		t.Parallel()
+
+		app := fiber.New()
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+		t.Cleanup(func() { app.ReleaseCtx(ctx) })
+		ctx.Request().SetRequestURI("/?token=from-query")
+
+		// First child re-enters the outer chain via Extract while the chain's
+		// Extract is active; second child would succeed if the cycle were ignored.
+		var chain Extractor
+		chain = Chain(
+			FromCustom("reenter", func(c fiber.Ctx) (string, error) {
+				return chain.Extract(c)
+			}),
+			FromQuery("token"),
+		)
+
+		sv, src, serr := ExtractWithSource(chain, ctx)
+		require.NoError(t, serr)
+		require.Equal(t, "from-query", sv)
+		// Must not mis-attribute the query value to the custom re-entry child.
+		require.Equal(t, SourceQuery, src)
+	})
+
+	t.Run("no_double_extract_of_stateful_custom_child", func(t *testing.T) {
+		t.Parallel()
+
+		app := fiber.New()
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+		t.Cleanup(func() { app.ReleaseCtx(ctx) })
+
+		calls := 0
+		chain := Chain(
+			FromCustom("once", func(_ fiber.Ctx) (string, error) {
+				calls++
+				if calls == 1 {
+					return "only-once", nil
+				}
+				return "", ErrNotFound
+			}),
+			FromQuery("token"),
+		)
+
+		sv, src, serr := ExtractWithSource(chain, ctx)
+		require.NoError(t, serr)
+		require.Equal(t, "only-once", sv)
+		require.Equal(t, SourceCustom, src)
+		require.Equal(t, 1, calls, "stateful child must not run again during source resolution")
 	})
 
 	t.Run("chain_override_success_still_reports_winning_source", func(t *testing.T) {
