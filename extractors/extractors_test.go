@@ -1431,7 +1431,6 @@ func Test_ExtractWithSource(t *testing.T) {
 		require.Equal(t, SourceHeader, src) // static first-child metadata on error
 		require.ErrorIs(t, serr, rejectQuery)
 	})
-
 }
 
 // go test -run Test_Extractor_Chain_ExtractSource

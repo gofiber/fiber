@@ -69,22 +69,6 @@ var ErrNotFound = errors.New("value not found")
 var ErrChainCycle = errors.New("cyclic extractor chain")
 
 // Extractor defines a value extraction method with metadata.
-//
-// Extract is the extraction callback. Source is declared/static metadata (for a
-// chain, the first child). SourceHeader is the zero value, so a hand-rolled
-// Extract without an explicit Source reports SourceHeader.
-//
-// Prefer ExtractWithSource when the caller needs the source that actually
-// supplied a value. It always honors Extract (including chain-level overrides),
-// then for chains reports the winning child's Source. No extra struct field is
-// required, so existing unkeyed Extractor literals keep compiling.
-//
-// Runtime origin is meaningful only from a successful ExtractWithSource call
-// (err == nil). On failure the returned Source may be static or last-child
-// fallback metadata and must not be treated as the origin of a value.
-//
-// Extract is not deprecated in this release so middleware that still calls it
-// continues to pass staticcheck.
 type Extractor struct {
 	Extract    func(fiber.Ctx) (string, error)
 	Key        string      // The parameter/header name used for extraction
@@ -94,6 +78,12 @@ type Extractor struct {
 }
 
 // ExtractWithSource returns the extracted value together with its source.
+//
+// Prefer this over Extract when the caller needs the source that actually
+// supplied a value. Source on Extractor is declared/static metadata (for a
+// chain, the first child); SourceHeader is the zero value, so a hand-rolled
+// Extract without an explicit Source reports SourceHeader. No extra struct
+// field is required, so existing unkeyed Extractor literals keep compiling.
 //
 // Behavior:
 //   - Extract set (leaf or chain): call Extract so legacy overrides /
@@ -105,6 +95,8 @@ type Extractor struct {
 //   - Neither: ErrNotFound.
 //
 // The returned Source is meaningful for security decisions only when err is nil.
+// On failure it may be static or last-child fallback metadata and must not be
+// treated as the origin of a value. Extract is not deprecated in this release.
 func ExtractWithSource(e Extractor, c fiber.Ctx) (string, Source, error) {
 	if e.Extract != nil {
 		v, err := e.Extract(c)
@@ -153,7 +145,7 @@ func chainGuardFor(chain []Extractor) (chainGuardKey, bool) {
 		return chainGuardKey{}, false
 	}
 	// Address of the first element is stable for the shared backing array.
-	return chainGuardKey{id: (*byte)(unsafe.Pointer(&chain[0]))}, true
+	return chainGuardKey{id: (*byte)(unsafe.Pointer(&chain[0]))}, true //nolint:gosec // G103: identity key for Locals cycle guard only
 }
 
 func extractChainWithSource(e Extractor, c fiber.Ctx) (string, Source, error) {
