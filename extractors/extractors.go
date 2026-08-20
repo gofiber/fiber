@@ -111,7 +111,13 @@ func ExtractWithSource(e Extractor, c fiber.Ctx) (string, Source, error) {
 		if v == "" {
 			return "", e.Source, ErrNotFound
 		}
-		if src, ok := peekChainWinningSource(e, c); ok {
+		src, ok, peekErr := peekChainWinningSource(e, c)
+		if peekErr != nil {
+			// Recursive public Chain metadata (e.g. chain.Chain[0] = chain)
+			// must not stack-overflow after Extract cleared its own guard.
+			return "", e.Source, peekErr
+		}
+		if ok {
 			return v, src, nil
 		}
 		return v, e.Source, nil
@@ -125,17 +131,36 @@ func ExtractWithSource(e Extractor, c fiber.Ctx) (string, Source, error) {
 // peekChainWinningSource walks e.Chain and returns the Source of the first
 // successful child extraction. Used after Chain.Extract already produced a
 // value so source-aware callers still learn which child won.
-func peekChainWinningSource(e Extractor, c fiber.Ctx) (Source, bool) {
+//
+// The walk is guarded with the same Locals key as extractChainWithSource so a
+// recursive public introspection slice cannot re-enter forever after Extract's
+// private-kids guard has been cleared.
+func peekChainWinningSource(e Extractor, c fiber.Ctx) (Source, bool, error) {
+	guard, ok := chainGuardFor(e.Chain)
+	if ok {
+		if active, ok := c.Locals(guard).(bool); ok && active {
+			return e.Source, false, ErrChainCycle
+		}
+		c.Locals(guard, true)
+		defer c.Locals(guard, false)
+	}
+
 	for _, extractor := range e.Chain {
 		if extractor.Extract == nil && len(extractor.Chain) == 0 {
 			continue
 		}
 		v, src, err := ExtractWithSource(extractor, c)
-		if err == nil && v != "" {
-			return src, true
+		if err != nil {
+			if errors.Is(err, ErrChainCycle) {
+				return e.Source, false, ErrChainCycle
+			}
+			continue
+		}
+		if v != "" {
+			return src, true, nil
 		}
 	}
-	return e.Source, false
+	return e.Source, false, nil
 }
 
 // chainGuardFor returns a Locals key shared by Chain.Extract and ExtractWithSource

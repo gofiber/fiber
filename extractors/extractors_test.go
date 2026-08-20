@@ -1623,6 +1623,30 @@ func Test_Extractor_Chain_ExtractSource(t *testing.T) {
 		require.Equal(t, "from-header", sv)
 	})
 
+	t.Run("recursive_public_Chain_metadata_returns_ErrChainCycle", func(t *testing.T) {
+		t.Parallel()
+
+		app := fiber.New()
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+		t.Cleanup(func() { app.ReleaseCtx(ctx) })
+		ctx.Request().Header.Set("X-Token", "from-header")
+
+		chain := Chain(FromHeader("X-Token"), FromQuery("token"))
+		// Corrupt introspection metadata after construction. Extract still
+		// succeeds via the private kids list, but the source walk must not
+		// recurse forever once Extract's cycle guard is cleared.
+		chain.Chain[0] = chain
+
+		v, err := chain.Extract(ctx)
+		require.NoError(t, err)
+		require.Equal(t, "from-header", v)
+
+		sv, src, serr := ExtractWithSource(chain, ctx)
+		require.Empty(t, sv)
+		require.Equal(t, SourceHeader, src)
+		require.ErrorIs(t, serr, ErrChainCycle)
+	})
+
 	t.Run("chain_override_success_still_reports_winning_source", func(t *testing.T) {
 		t.Parallel()
 
