@@ -1649,30 +1649,26 @@ func Test_Extractor_Chain_ExtractSource(t *testing.T) {
 		require.Equal(t, SourceHeader, src)
 	})
 
-	t.Run("peek_recursive_public_Chain_without_capture_returns_ErrChainCycle", func(t *testing.T) {
+	t.Run("replaced_Extract_without_base_uses_static_Source", func(t *testing.T) {
 		t.Parallel()
 
 		app := fiber.New()
 		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
 		t.Cleanup(func() { app.ReleaseCtx(ctx) })
-		ctx.Request().Header.Set("X-Token", "from-header")
+		ctx.Request().Header.SetCookie("session", "cookie-value")
+		ctx.Request().SetRequestURI("/?token=from-query")
 
-		// Hand-rolled Extract+Chain: no winner capture, so ExtractWithSource
-		// falls back to peeking the public Chain.
-		header := FromHeader("X-Token")
-		var chain Extractor
-		chain = Extractor{
-			Extract: header.Extract,
-			Source:  header.Source,
-			Key:     header.Key,
-			Chain:   []Extractor{header},
+		// Full Extract replacement (does not call base): must not peek Chain
+		// children and mis-tag the replacement value as SourceQuery.
+		chain := Chain(FromHeader("X-Missing"), FromQuery("token"))
+		chain.Extract = func(c fiber.Ctx) (string, error) {
+			return FromCookie("session").Extract(c)
 		}
-		chain.Chain[0] = chain
 
 		sv, src, serr := ExtractWithSource(chain, ctx)
-		require.Empty(t, sv)
-		require.Equal(t, SourceHeader, src)
-		require.ErrorIs(t, serr, ErrChainCycle)
+		require.NoError(t, serr)
+		require.Equal(t, "cookie-value", sv)
+		require.Equal(t, SourceHeader, src) // static first-child metadata
 	})
 
 	t.Run("shared_guard_blocks_cross_entry_during_source_path", func(t *testing.T) {

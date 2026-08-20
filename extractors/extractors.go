@@ -90,8 +90,8 @@ type Extractor struct {
 //     decoration (validation, normalization) are honored. For built-in
 //     Chain, the winning Source is pushed on a request-local stack during
 //     that Extract (no second child walk; survives public Chain reassignment).
-//     Hand-rolled Extract+Chain without a capture falls back to a guarded
-//     peek of e.Chain. On Extract failure the static Source is returned.
+//     If Extract succeeds without a capture (custom replacement, or leaf),
+//     the declared e.Source is returned — e.Chain is not re-walked.
 //   - Chain with nil Extract: walk children (same success rules as Chain.Extract),
 //     skip nil Extract, return the winning child's Source.
 //   - Neither: ErrNotFound.
@@ -119,25 +119,14 @@ func ExtractWithSource(e Extractor, c fiber.Ctx) (string, Source, error) {
 			}
 			return v, src, nil
 		}
-		if len(e.Chain) == 0 {
-			return v, e.Source, err
-		}
-		// Hand-rolled Extract+Chain without capture: value from Extract, source
-		// via guarded peek of the public Chain metadata.
+		// No capture: use declared Source. Do not re-walk e.Chain after a
+		// successful custom/replaced Extract — that would attribute the
+		// replacement's value to whichever child happens to succeed on peek.
 		if err != nil {
 			return "", e.Source, err
 		}
 		if v == "" {
 			return "", e.Source, ErrNotFound
-		}
-		src, ok, peekErr := peekChainWinningSource(e, c)
-		if peekErr != nil {
-			// Recursive public Chain metadata (e.g. chain.Chain[0] = chain)
-			// must not stack-overflow after Extract cleared its own guard.
-			return "", e.Source, peekErr
-		}
-		if ok {
-			return v, src, nil
 		}
 		return v, e.Source, nil
 	}
@@ -147,39 +136,7 @@ func ExtractWithSource(e Extractor, c fiber.Ctx) (string, Source, error) {
 	return "", e.Source, ErrNotFound
 }
 
-// peekChainWinningSource walks e.Chain and returns the Source of the first
-// successful child extraction. Fallback when Extract did not record a winner
-// (hand-rolled Extract+Chain). Guarded with the same Locals key as Chain.Extract
-// and extractChainWithSource (public Chain backing array).
-func peekChainWinningSource(e Extractor, c fiber.Ctx) (Source, bool, error) {
-	guard, ok := chainGuardFor(e.Chain)
-	if ok {
-		if active, ok := c.Locals(guard).(bool); ok && active {
-			return e.Source, false, ErrChainCycle
-		}
-		c.Locals(guard, true)
-		defer c.Locals(guard, false)
-	}
-
-	for _, extractor := range e.Chain {
-		if extractor.Extract == nil && len(extractor.Chain) == 0 {
-			continue
-		}
-		v, src, err := ExtractWithSource(extractor, c)
-		if err != nil {
-			if errors.Is(err, ErrChainCycle) {
-				return e.Source, false, ErrChainCycle
-			}
-			continue
-		}
-		if v != "" {
-			return src, true, nil
-		}
-	}
-	return e.Source, false, nil
-}
-
-// chainGuardFor returns a Locals key shared by Chain.Extract, peek, and
+// chainGuardFor returns a Locals key shared by Chain.Extract and
 // extractChainWithSource for the public Chain backing array.
 func chainGuardFor(chain []Extractor) (chainGuardKey, bool) {
 	if len(chain) == 0 {
@@ -806,19 +763,20 @@ func Chain(extractors ...Extractor) Extractor {
 
 			var lastErr error // last error encountered (including ErrNotFound)
 
+			capture := chainWinCaptureActive(c)
 			for _, extractor := range kids {
 				if extractor.Extract == nil {
 					continue
 				}
-				// Snapshot stack so a child that pushes then fails (e.g. decorated
-				// nested Chain that validates after base Extract) cannot leave a
-				// stale winner for a later successful sibling.
-				stackBefore := chainWinStackLen(c)
+				// Snapshot stack only in source-aware frames so legacy
+				// Chain.Extract hot paths skip Locals bookkeeping.
+				stackBefore := 0
+				if capture {
+					stackBefore = chainWinStackLen(c)
+				}
 				v, err := extractor.Extract(c)
 				if err == nil && v != "" {
-					// Only record winners for ExtractWithSource callers. Bare
-					// Extract must not leave stack entries on the Ctx.
-					if chainWinCaptureActive(c) {
+					if capture {
 						// Prefer a Source pushed by a nested Chain.Extract;
 						// otherwise the child's declared Source (leaves).
 						src := extractor.Source
@@ -828,12 +786,13 @@ func Chain(extractors ...Extractor) Extractor {
 						// Drop any extra leftover pushes from this child.
 						truncateChainWinStack(c, stackBefore)
 						pushChainWinningSource(c, src)
-					} else {
-						truncateChainWinStack(c, stackBefore)
 					}
 					return v, nil
 				}
-				truncateChainWinStack(c, stackBefore)
+				if capture {
+					// Child pushed then failed/rejected — discard its capture.
+					truncateChainWinStack(c, stackBefore)
+				}
 				if err != nil {
 					lastErr = err
 				}

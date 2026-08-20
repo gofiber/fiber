@@ -81,7 +81,7 @@ case extractors.SourceCustom:
 }
 ```
 
-`ExtractWithSource` always calls `Extract` when set (leaves and chains), so decorating `Extract` for validation or normalization is visible to source-aware callers. Built-in `Chain.Extract` records the winning child's `Source` during that pass; `ExtractWithSource` consumes the capture (no second child walk). Hand-rolled `Extract`+`Chain` without a capture may fall back to a guarded metadata walk. There is no `ExtractWithSource` struct field.
+`ExtractWithSource` always calls `Extract` when set (leaves and chains), so decorating `Extract` for validation or normalization is visible to source-aware callers. Built-in `Chain.Extract` records the winning child's `Source` during that pass; `ExtractWithSource` consumes the capture (no second child walk). If `Extract` succeeds without a capture (custom full replacement, or leaf), the declared static `Source` is returned — `Chain` children are not re-executed to guess provenance. There is no `ExtractWithSource` struct field.
 
 ### Chain Behavior
 
