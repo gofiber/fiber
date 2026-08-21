@@ -1,5 +1,9 @@
 package fiber
 
+import (
+	internalcookie "github.com/gofiber/fiber/v3/internal/cookie"
+)
+
 // HTTP methods were copied from net/http.
 const (
 	MethodGet     = "GET"     // RFC 7231, 4.3.1
@@ -312,10 +316,10 @@ const (
 // Cookie SameSite
 // https://datatracker.ietf.org/doc/html/draft-ietf-httpbis-rfc6265bis-03#section-4.1.2.7
 const (
-	CookieSameSiteDisabled   = "disabled" // not in RFC, just control "SameSite" attribute will not be set.
-	CookieSameSiteLaxMode    = "Lax"
-	CookieSameSiteStrictMode = "Strict"
-	CookieSameSiteNoneMode   = "None"
+	CookieSameSiteDisabled   = internalcookie.SameSiteDisabled // not in RFC, just control "SameSite" attribute will not be set.
+	CookieSameSiteLaxMode    = internalcookie.SameSiteLax
+	CookieSameSiteStrictMode = internalcookie.SameSiteStrict
+	CookieSameSiteNoneMode   = internalcookie.SameSiteNone
 )
 
 // Route Constraints
