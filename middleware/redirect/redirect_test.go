@@ -54,7 +54,7 @@ func requireWin(t *testing.T, rules []Rule, path, want string) {
 }
 
 // requireRule builds a one-rule app and asserts where the request lands:
-// redirected to want, or — want "" — fallen through with no Location.
+// redirected to want, or fallen through with no Location where want is "".
 func requireRule(t *testing.T, unescape bool, pattern, target, request, want string) {
 	t.Helper()
 	status, location := get(t, testApp([]Rule{{From: pattern, To: target}}, unescape), request)
@@ -707,7 +707,7 @@ func Test_PinsHost(t *testing.T) {
 		{"[zzz1]", false},
 		{"[evil.com1]", false},
 		{"[a b]", false},
-		// Brackets hold IPv6 only, so an IPv4 address is no host there — but the IPv4-mapped spelling is.
+		// Brackets hold IPv6 only, so an IPv4 address is no host there. The IPv4-mapped spelling is.
 		{"[127.0.0.1]", false},
 		{"[1.2.3.4]", false},
 		{"[::ffff:127.0.0.1]", true},
@@ -743,7 +743,7 @@ func Test_PinsHost(t *testing.T) {
 		// "A" is a hex tail a capture can turn into a number with "0x", so it pins only behind a label separator.
 		{"%41", false},
 		{"%41.example.com", true},
-		// A stray "%" is literal to the parser, not an error — though dotless.
+		// A stray "%" is literal to the parser, not an error, though dotless.
 		{"100%", false},
 		{"a%zz", false},
 		// A host whose last label reads as a number is an IPv4 address, and only a complete one pins a host.
@@ -1273,7 +1273,7 @@ func Test_Redirect_NoSlashSpecialSchemeAuthorityIsGuarded(t *testing.T) {
 // Test_Redirect_DeprecatedMapHeuristicIsNotExact records what the deprecated
 // map cannot do. Its order is read off the path text a rule pins, so two rules
 // separated only by regexp syntax can order the wrong way round: "[a-z]" spells
-// more bytes than "[ab]" while matching more paths. RuleList is the answer —
+// more bytes than "[ab]" while matching more paths. RuleList is the answer:
 // the author says which comes first and nothing has to be inferred.
 func Test_Redirect_DeprecatedMapHeuristicIsNotExact(t *testing.T) {
 	t.Parallel()

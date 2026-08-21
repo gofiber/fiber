@@ -93,7 +93,7 @@ The deprecated `Rules` map has no order of its own, so Fiber sorts it: most path
 text pinned before the first `*` wins, then most path text overall, then fewest
 asterisks, then the key itself. That covers rules written with path text and
 `*`. Rules relying on regular-expression syntax beyond `*` may order differently
-— use `RuleList`, where the order is yours.
+Use `RuleList`, where the order is yours.
 
 ## How captures are placed
 

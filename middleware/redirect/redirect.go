@@ -290,8 +290,8 @@ func New(config ...Config) fiber.Handler {
 			// on the location as it will be read.
 			location := urlnorm.AsBrowserReads(replacer.Replace(rule.target))
 			// The target had a scheme and an opaque path, so it named no host at all. A
-			// value writing the "//" that opens one — "myapp:$1@example.com" against
-			// "//evil.com/x" — hands the destination to the request.
+			// value writing the "//" that opens one hands the destination to the
+			// request: "myapp:$1@example.com" against "//evil.com/x".
 			if rule.opaquePath {
 				if start, end := authoritySpan(location); start != end {
 					continue
@@ -755,8 +755,8 @@ func isIPv4Number(label string) bool {
 }
 
 // isIPv4Host reports whether the URL parser reads host as an IPv4 address. It
-// accepts spellings net.ParseIP does not — "127.1", "0x7f.1" and "2130706433"
-// all name 127.0.0.1 — and judging by net.ParseIP dropped rules pinning a host.
+// accepts spellings net.ParseIP does not: "127.1", "0x7f.1" and "2130706433"
+// all name 127.0.0.1, and judging by net.ParseIP dropped rules pinning a host.
 func isIPv4Host(host string) bool {
 	parts := strings.Split(host, ".")
 	// One trailing dot is allowed and names no part: "127.0.0.1." is an address.
