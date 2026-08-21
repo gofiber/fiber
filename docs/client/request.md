@@ -652,6 +652,10 @@ func (r *Request) PathParams() iter.Seq2[string, string]
 
 Placeholders are matched as `:name` and end at a path-segment boundary (`/`, `-`, `.`, `:`, `\`, `?` or `#`), so `:id` does not also match the start of `:idx`. Values are percent-encoded with path-segment rules, and each placeholder is resolved once — a substituted value is never scanned for further placeholders.
 
+The host can be templated too (`https://:tenant.example.com/api`). A placeholder in the authority whose name is only digits is treated as the port and is left unchanged, and a value substituted into the authority also has `:` and `@` percent-encoded so it cannot introduce a port or userinfo and redirect the request to another host.
+
+A `/` inside a value is written as `%2F`, but fasthttp's path normalizing decodes it again before the request is sent, so by default the value reaches the server as two path segments. `SetDisablePathNormalizing(true)` on the client or request keeps `%2F` on the wire; whether it survives routing is then up to the server, and many — including Fiber's own — decode it while matching. Escaping still contains `?` and `#`, which normalizing does not decode.
+
 ```go title="Signature"
 func (r *Request) SetPathParam(key, val string) *Request
 ```

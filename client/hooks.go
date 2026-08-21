@@ -131,15 +131,16 @@ var pathParamEndChars = [256]bool{
 // found in sources, searched in order. A placeholder ends at a path-segment
 // boundary, so ":id" no longer also matches the head of ":idx"; the scan is a
 // single left-to-right pass, so a substituted value is never rescanned for
-// placeholders; and each value is percent-encoded with path-segment rules, so a
-// "/", "?" or "#" inside a value cannot restructure the request target.
+// placeholders; and each value is percent-encoded, so a "/", "?" or "#" inside
+// a value cannot restructure the request target, and a ":" or "@" inside a
+// value substituted into the authority cannot move the request to another host.
 // A placeholder with no matching value is left untouched.
 func substitutePathParams(uri string, sources ...PathParam) string {
 	if !strings.ContainsRune(uri, ':') {
 		return uri
 	}
 
-	authorityEnd := authorityEnd(uri)
+	authEnd := authorityEnd(uri)
 
 	var (
 		buf  []byte
@@ -164,7 +165,7 @@ func substitutePathParams(uri string, sources ...PathParam) string {
 		// A host may be templated ("http://:tenant.example.com"), so the
 		// authority is scanned too — but a digits-only name there is the port,
 		// and substituting it would eat the ":" that separates it from the host.
-		if i < authorityEnd && isAllDigits(name) {
+		if i < authEnd && isAllDigits(name) {
 			continue
 		}
 
@@ -180,7 +181,11 @@ func substitutePathParams(uri string, sources ...PathParam) string {
 		}
 
 		buf = append(buf, uri[last:i]...)
-		buf = utils.AppendPathEscape(buf, val)
+		if i < authEnd {
+			buf = appendAuthorityEscape(buf, val)
+		} else {
+			buf = utils.AppendPathEscape(buf, val)
+		}
 		last = end
 		i = end - 1
 	}
@@ -190,6 +195,30 @@ func substitutePathParams(uri string, sources ...PathParam) string {
 	}
 
 	return string(append(buf, uri[last:]...))
+}
+
+// appendAuthorityEscape appends val to dst percent-encoded for use inside a
+// URI authority. utils.AppendPathEscape keeps ":" and "@" verbatim, which is
+// harmless in a path but not here: they open a port and a userinfo section, so
+// a value such as "a@evil.com" would otherwise send the request to a different
+// host than the template names.
+func appendAuthorityEscape(dst []byte, val string) []byte {
+	last := 0
+
+	for i := range len(val) {
+		switch val[i] {
+		case ':':
+			dst = append(utils.AppendPathEscape(dst, val[last:i]), "%3A"...)
+		case '@':
+			dst = append(utils.AppendPathEscape(dst, val[last:i]), "%40"...)
+		default:
+			continue
+		}
+
+		last = i + 1
+	}
+
+	return utils.AppendPathEscape(dst, val[last:])
 }
 
 // authorityEnd returns the index at which uri's authority ends, or 0 when uri
@@ -213,17 +242,13 @@ func authorityEnd(uri string) int {
 
 // isAllDigits reports whether s is a non-empty run of ASCII digits.
 func isAllDigits(s string) bool {
-	if s == "" {
-		return false
-	}
-
 	for i := range len(s) {
 		if s[i] < '0' || s[i] > '9' {
 			return false
 		}
 	}
 
-	return true
+	return s != ""
 }
 
 // lookupPathParam returns the first value stored under name, searching sources

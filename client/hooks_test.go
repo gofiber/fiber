@@ -223,6 +223,21 @@ func Test_Parser_Request_URL(t *testing.T) {
 		require.Equal(t, "http://example.com/api/a/b", req.RawRequest.URI().String())
 	})
 
+	t.Run("path param value cannot rewrite the host", func(t *testing.T) {
+		t.Parallel()
+		client := New()
+		req := AcquireRequest().
+			SetURL("http://:host/api").
+			SetPathParam("host", "x@evil.com")
+
+		err := parserRequestURL(client, req)
+		require.NoError(t, err)
+		// utils.AppendPathEscape keeps "@", which here would end a userinfo
+		// section: the host became "evil.com" and the request left for another
+		// server. A value substituted into the authority escapes it.
+		require.Equal(t, "x%40evil.com", string(req.RawRequest.URI().Host()))
+	})
+
 	t.Run("a substituted value is not substituted again", func(t *testing.T) {
 		t.Parallel()
 		client := New()
