@@ -19,10 +19,11 @@ func Test_SubstitutePathParams(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name   string
-		uri    string
-		params PathParam
-		want   string
+		name    string
+		uri     string
+		params  PathParam
+		want    string
+		wantErr bool
 	}{
 		{
 			name:   "plain substitution",
@@ -166,33 +167,82 @@ func Test_SubstitutePathParams(t *testing.T) {
 			want:   "/api/users",
 		},
 		{
-			// utils.AppendPathEscape leaves "@" alone, which is correct in a
-			// path but would open a userinfo section in the authority and hand
-			// the request to evil.com.
-			name:   "a value cannot introduce userinfo in the authority",
-			uri:    "http://:tenant.example.com/api",
-			params: PathParam{"tenant": "a@evil.com"},
-			want:   "http://a%40evil.com.example.com/api",
+			// "@" would end a userinfo section and hand the request to
+			// evil.com. Escaping it is not an option — a "%XX" below 0x80 in a
+			// host makes fasthttp abandon the rest of the URI — so the request
+			// fails instead.
+			name:    "a value cannot introduce userinfo in the authority",
+			uri:     "http://:tenant.example.com/api",
+			params:  PathParam{"tenant": "a@evil.com"},
+			wantErr: true,
 		},
 		{
-			name:   "a value cannot introduce a port in the authority",
-			uri:    "http://:tenant.example.com/api",
-			params: PathParam{"tenant": "evil.com:8080"},
-			want:   "http://evil.com%3A8080.example.com/api",
+			name:    "a value cannot introduce a port in the authority",
+			uri:     "http://:tenant.example.com/api",
+			params:  PathParam{"tenant": "evil.com:8080"},
+			wantErr: true,
 		},
 		{
-			name:   "authority escaping survives repeated delimiters",
-			uri:    "http://:tenant.example.com/api",
-			params: PathParam{"tenant": "a@b:c@d"},
-			want:   "http://a%40b%3Ac%40d.example.com/api",
+			name:    "a value that would need escaping in a host is rejected",
+			uri:     "http://:tenant.example.com/api",
+			params:  PathParam{"tenant": "a b"},
+			wantErr: true,
 		},
 		{
-			// The same bytes in a path segment stay verbatim: net/url's
+			name:    "a value cannot add a segment to the authority",
+			uri:     "http://:tenant.example.com/api",
+			params:  PathParam{"tenant": "evil.com/"},
+			wantErr: true,
+		},
+		{
+			// The sub-delims a host parse keeps verbatim, so they need no
+			// escaping and are not a reason to fail the request.
+			name:   "host-legal sub-delims are allowed in an authority value",
+			uri:    "http://:tenant.example.com/api",
+			params: PathParam{"tenant": "a$b&c+d=e"},
+			want:   "http://a$b&c+d=e.example.com/api",
+		},
+		{
+			name:   "an internationalized host label is passed through",
+			uri:    "http://:tenant.example.com/api",
+			params: PathParam{"tenant": "\u00fcn\u00efcode"},
+			want:   "http://\u00fcn\u00efcode.example.com/api",
+		},
+		{
+			// The same bytes in a path segment are harmless: net/url's
 			// PathEscape leaves them, and nothing in a path reparses them.
 			name:   "the same delimiters are left verbatim in the path",
 			uri:    "http://example.com/api/:id",
 			params: PathParam{"id": "a@b:c"},
 			want:   "http://example.com/api/a@b:c",
+		},
+		{
+			// The colons in "[2001:db8::1]" are the address, not placeholder
+			// separators, so a "db8" parameter must not rewrite the host.
+			name:   "an IPv6 literal is not a set of placeholders",
+			uri:    "http://[2001:db8::1]/api/:id",
+			params: PathParam{"db8": "PWN", "id": "5"},
+			want:   "http://[2001:db8::1]/api/5",
+		},
+		{
+			name:   "an IPv6 literal with a port is left intact",
+			uri:    "http://[2001:db8::1]:8080/api/:id",
+			params: PathParam{"db8": "PWN", "8080": "9090", "id": "5"},
+			want:   "http://[2001:db8::1]:8080/api/5",
+		},
+		{
+			// A digits-only name is the port and is skipped, but a named
+			// placeholder in the port position is a normal substitution.
+			name:   "a port can be templated under a non-numeric name",
+			uri:    "http://example.com::port/api/:id",
+			params: PathParam{"port": "8080", "id": "5"},
+			want:   "http://example.com:8080/api/5",
+		},
+		{
+			name:   "a placeholder after an IPv6 literal still resolves",
+			uri:    "http://[::1]:8080/api/:id",
+			params: PathParam{"id": "5"},
+			want:   "http://[::1]:8080/api/5",
 		},
 		{
 			name:   "a trailing colon is not a placeholder",
@@ -205,7 +255,14 @@ func Test_SubstitutePathParams(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			require.Equal(t, tc.want, substitutePathParams(tc.uri, tc.params))
+			got, err := substitutePathParams(tc.uri, tc.params)
+			if tc.wantErr {
+				require.ErrorIs(t, err, ErrPathParamInHost)
+				return
+			}
+
+			require.NoError(t, err)
+			require.Equal(t, tc.want, got)
 		})
 	}
 }
@@ -215,11 +272,12 @@ func Test_SubstitutePathParams(t *testing.T) {
 func Test_SubstitutePathParams_SourceOrder(t *testing.T) {
 	t.Parallel()
 
-	got := substitutePathParams(
+	got, err := substitutePathParams(
 		"http://example.com/api/:id/:name",
 		PathParam{"id": "request"},
 		PathParam{"id": "client", "name": "client"},
 	)
+	require.NoError(t, err)
 	require.Equal(t, "http://example.com/api/request/client", got)
 }
 
@@ -334,7 +392,8 @@ func FuzzSubstitutePathParams(f *testing.F) {
 	}
 
 	f.Fuzz(func(t *testing.T, val string) {
-		got := substitutePathParams("/a/:p/b", PathParam{"p": val})
+		got, err := substitutePathParams("/a/:p/b", PathParam{"p": val})
+		require.NoError(t, err)
 
 		parts := strings.Split(got, "/")
 		require.Len(t, parts, 4, "value changed the segment count: %q", got)
