@@ -223,12 +223,13 @@ func substitutePathParams(uri string, disablePathNormalizing bool, sources ...Pa
 
 // isSingleSegment reports whether val still occupies exactly one path segment
 // after fasthttp has normalized the path. Normalizing percent-decodes the path
-// before it collapses "." and ".." segments, so an escaped "/" turns back into
-// a real separator and a value of "../../admin" walks out of the path the
-// template set. Only the raw bytes matter: a "%2F" typed by the caller is
-// written as "%252F" and decodes to a literal "%2F", not to a separator.
+// before it collapses "//", "/./" and "/x/../", so an escaped "/" turns back
+// into a real separator and a value of "../../admin" walks out of the path the
+// template set, while an empty value leaves a "//" that collapses and drops
+// the segment entirely. Only the raw bytes matter: a "%2F" typed by the caller
+// is written as "%252F" and decodes to a literal "%2F", not to a separator.
 func isSingleSegment(val string) bool {
-	return !strings.ContainsAny(val, `/\`) && val != "." && val != ".."
+	return val != "" && val != "." && val != ".." && !strings.ContainsAny(val, `/\`)
 }
 
 // isHostSafe reports whether val may be substituted into a URI authority

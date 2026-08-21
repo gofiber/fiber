@@ -212,10 +212,19 @@ func Test_SubstitutePathParams(t *testing.T) {
 			want:   "http://example.com/api/:name",
 		},
 		{
-			name:   "an empty value collapses the placeholder",
-			uri:    "http://example.com/api/:id/x",
-			params: PathParam{"id": ""},
-			want:   "http://example.com/api//x",
+			// The "//" this leaves is collapsed by path normalizing, so the
+			// segment disappears and "/api/:id/x" is sent as "/api/x".
+			name:    "an empty value is rejected",
+			uri:     "http://example.com/api/:id/x",
+			params:  PathParam{"id": ""},
+			wantErr: ErrPathParamInPath,
+		},
+		{
+			name:    "an empty value collapses the placeholder when normalizing is off",
+			uri:     "http://example.com/api/:id/x",
+			params:  PathParam{"id": ""},
+			want:    "http://example.com/api//x",
+			keepEsc: true,
 		},
 		{
 			name:   "no placeholder, no work",
@@ -433,6 +442,64 @@ func Test_PathParam_Traversal_NeverDials(t *testing.T) {
 		Get("http://example.com/api/v1/:id/end")
 	require.ErrorIs(t, err, ErrPathParamInPath)
 	require.False(t, dialed.Load(), "the request was sent")
+}
+
+// FuzzPathParamTarget asserts the property that matters at the other end of
+// the wire: whatever the value, the request either fails or targets exactly the
+// path the template names. The string-level fuzz below cannot see this — the
+// escaping is undone again by fasthttp's path normalizing, which is how
+// "../../admin" used to reach "/admin/end".
+func FuzzPathParamTarget(f *testing.F) {
+	for _, seed := range []string{"", "..", ".", "a/b", "../../admin", "%2e%2e", "..%2f", `a\b`, "a;b", "\r\n", "//", "....//", ".%2e", "%252e%252e", "a?b", "a#b", "\u00fc"} {
+		f.Add(seed)
+	}
+
+	f.Fuzz(func(t *testing.T, val string) {
+		client := New()
+		req := AcquireRequest().
+			SetClient(client).
+			SetURL("http://example.com/api/v1/:id/end").
+			SetPathParam("id", val)
+		defer ReleaseRequest(req)
+
+		if err := parserRequestURL(client, req); err != nil {
+			return
+		}
+
+		uri := req.RawRequest.URI()
+		path := string(uri.Path())
+		require.True(t, strings.HasPrefix(path, "/api/v1/"), "value left the template path: %q", path)
+		require.True(t, strings.HasSuffix(path, "/end"), "value left the template path: %q", path)
+		require.Equal(t, 4, strings.Count(path, "/"), "value changed the segment count: %q", path)
+		require.Equal(t, "example.com", string(uri.Host()), "value changed the host")
+	})
+}
+
+// FuzzPathParamHost is the same property for the authority: a value either
+// fails or stays one label of the domain the template names. This is the one
+// that has to hold, because getting it wrong sends the request elsewhere.
+func FuzzPathParamHost(f *testing.F) {
+	for _, seed := range []string{"", "a", "a@b", "a:1", "[::1]", "a.b", "a%2eb", "..", "a/b", "\u00fc", "a$b", "-", "0", "a\rb"} {
+		f.Add(seed)
+	}
+
+	f.Fuzz(func(t *testing.T, val string) {
+		client := New()
+		req := AcquireRequest().
+			SetClient(client).
+			SetURL("http://:tenant.example.com/api").
+			SetPathParam("tenant", val)
+		defer ReleaseRequest(req)
+
+		if err := parserRequestURL(client, req); err != nil {
+			return
+		}
+
+		uri := req.RawRequest.URI()
+		require.True(t, strings.HasSuffix(string(uri.Host()), ".example.com"),
+			"value left the templated domain: %q", uri.Host())
+		require.Equal(t, "/api", string(uri.Path()), "value ate the path")
+	})
 }
 
 // FuzzSubstitutePathParams asserts the property the old ReplaceAll could not
