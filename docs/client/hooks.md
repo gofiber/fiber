@@ -100,6 +100,23 @@ Fiber includes built-in request hooks:
 If a request hook returns an error, Fiber stops the request and returns the error immediately.
 :::
 
+### Final Request Hooks
+
+Hooks added with `AddRequestHook` run before Fiber's built-in hooks, so they can
+configure high-level request fields such as URL parameters, headers, and body.
+Hooks added with `AddFinalRequestHook` run after the built-in hooks and
+immediately before the request is sent. At that point `RawRequest` contains the
+final serialized URL, headers, cookies, and body, which is useful for request
+signing:
+
+```go
+cc.AddFinalRequestHook(func(_ *client.Client, req *client.Request) error {
+    signature := sign(req.RawRequest.Header.Header(), req.RawRequest.Body())
+    req.RawRequest.Header.Set("X-Signature", signature)
+    return nil
+})
+```
+
 **Example with Multiple Hooks:**
 
 ```go
@@ -253,7 +270,9 @@ exit status 2
 
 ## Hook Execution Order
 
-Hooks run in FIFO order (first in, first out), so they're executed in the order you add them. Keep this in mind when adding multiple hooks, as the order can affect the outcome.
+Each hook group runs in FIFO order. The complete request pipeline is regular
+request hooks, built-in request hooks, final request hooks, transport, built-in
+response hooks, and regular response hooks.
 
 **Example:**
 

@@ -243,6 +243,24 @@ Adds one or more user-defined request hooks.
 func (c *Client) AddRequestHook(h ...RequestHook) *Client
 ```
 
+### FinalRequestHook
+
+Returns final request hooks. These run after Fiber has serialized the URL,
+headers, and body, immediately before the transport sends the request.
+
+```go title="Signature"
+func (c *Client) FinalRequestHook() []RequestHook
+```
+
+### AddFinalRequestHook
+
+Adds final request hooks. Use these when request signing or authentication must
+inspect the serialized request body and automatically generated headers.
+
+```go title="Signature"
+func (c *Client) AddFinalRequestHook(h ...RequestHook) *Client
+```
+
 ### AddResponseHook
 
 Adds one or more user-defined response hooks.

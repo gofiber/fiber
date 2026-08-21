@@ -63,6 +63,7 @@ type Client struct {
 	referer              string
 	userRequestHooks     []RequestHook
 	builtinRequestHooks  []RequestHook
+	finalRequestHooks    []RequestHook
 	userResponseHooks    []ResponseHook
 	builtinResponseHooks []ResponseHook
 
@@ -157,6 +158,24 @@ func (c *Client) AddRequestHook(h ...RequestHook) *Client {
 	defer c.mu.Unlock()
 
 	c.userRequestHooks = append(c.userRequestHooks, h...)
+	return c
+}
+
+// FinalRequestHook returns a copy of the user-defined final request hooks.
+func (c *Client) FinalRequestHook() []RequestHook {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	return slices.Clone(c.finalRequestHooks)
+}
+
+// AddFinalRequestHook registers hooks for the point after request serialization
+// and immediately before transport execution.
+func (c *Client) AddFinalRequestHook(h ...RequestHook) *Client {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	c.finalRequestHooks = append(c.finalRequestHooks, h...)
 	return c
 }
 
@@ -968,6 +987,7 @@ func newClient(transport httpClientTransport) *Client {
 
 		userRequestHooks:     []RequestHook{},
 		builtinRequestHooks:  []RequestHook{parserRequestURL, parserRequestHeader, parserRequestBody},
+		finalRequestHooks:    []RequestHook{},
 		userResponseHooks:    []ResponseHook{},
 		builtinResponseHooks: []ResponseHook{parserResponseCookie, logger},
 		jsonMarshal:          json.Marshal,
