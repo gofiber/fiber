@@ -8,6 +8,8 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
+// Test_ParseSameSite covers every accepted mode, case-insensitive matching,
+// Secure requirements, and the invalid-to-Lax fallback contract.
 func Test_ParseSameSite(t *testing.T) {
 	t.Parallel()
 
