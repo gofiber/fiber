@@ -160,6 +160,41 @@ func Test_SubstitutePathParams(t *testing.T) {
 			want:   "http://example.com/api/users",
 		},
 		{
+			name:   "a relative URI with no colon at all short-circuits",
+			uri:    "/api/users",
+			params: PathParam{"id": "5"},
+			want:   "/api/users",
+		},
+		{
+			// utils.AppendPathEscape leaves "@" alone, which is correct in a
+			// path but would open a userinfo section in the authority and hand
+			// the request to evil.com.
+			name:   "a value cannot introduce userinfo in the authority",
+			uri:    "http://:tenant.example.com/api",
+			params: PathParam{"tenant": "a@evil.com"},
+			want:   "http://a%40evil.com.example.com/api",
+		},
+		{
+			name:   "a value cannot introduce a port in the authority",
+			uri:    "http://:tenant.example.com/api",
+			params: PathParam{"tenant": "evil.com:8080"},
+			want:   "http://evil.com%3A8080.example.com/api",
+		},
+		{
+			name:   "authority escaping survives repeated delimiters",
+			uri:    "http://:tenant.example.com/api",
+			params: PathParam{"tenant": "a@b:c@d"},
+			want:   "http://a%40b%3Ac%40d.example.com/api",
+		},
+		{
+			// The same bytes in a path segment stay verbatim: net/url's
+			// PathEscape leaves them, and nothing in a path reparses them.
+			name:   "the same delimiters are left verbatim in the path",
+			uri:    "http://example.com/api/:id",
+			params: PathParam{"id": "a@b:c"},
+			want:   "http://example.com/api/a@b:c",
+		},
+		{
 			name:   "a trailing colon is not a placeholder",
 			uri:    "http://example.com/api/:",
 			params: PathParam{"": "x"},
