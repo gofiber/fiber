@@ -654,16 +654,24 @@ func New(config ...Config) fiber.Handler {
 		// RFC 9111 requires responses with Vary: * to remain uncacheable even when
 		// response-driven Vary partitioning is otherwise disabled.
 		if hasPrivate || hasNoCache || varyHasStar {
-			if e != nil {
+			// External storage entries are released before an origin revalidation.
+			// If the replacement is uncacheable, delete the persisted stale entry
+			// and its body instead of leaving them reachable by later requests.
+			deleteRevalidatedEntry := cfg.Storage != nil && revalidate
+			if e != nil || deleteRevalidatedEntry {
+				heapIdx := oldHeapIdx
+				if e != nil {
+					heapIdx = e.heapidx
+				}
 				if err := deleteKey(reqCtx, key); err != nil {
-					if cfg.Storage != nil {
+					if cfg.Storage != nil && e != nil {
 						manager.release(e)
 					}
 					return fmt.Errorf("cache: failed to delete cached response for key %q: %w", maskKey(key), err)
 				}
 				mux.Lock()
-				removeHeapEntry(key, e.heapidx)
-				if cfg.Storage != nil {
+				removeHeapEntry(key, heapIdx)
+				if cfg.Storage != nil && e != nil {
 					manager.release(e)
 				}
 				e = nil
