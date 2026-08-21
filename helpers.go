@@ -29,6 +29,7 @@ import (
 
 	"github.com/gofiber/fiber/v3/binder"
 	"github.com/gofiber/fiber/v3/internal/contextvalue"
+	etagpkg "github.com/gofiber/fiber/v3/internal/etag"
 	"github.com/gofiber/fiber/v3/internal/mediatype"
 	"github.com/gofiber/fiber/v3/log"
 
@@ -926,82 +927,11 @@ func sortAcceptedTypes(at []acceptedType) {
 	}
 }
 
-// normalizeEtag validates an entity tag and returns the
-// value without quotes. weak is true if the tag has the "W/" prefix.
-func normalizeEtag(t string) (value string, weak, ok bool) { //nolint:nonamedreturns // gocritic unnamedResult requires naming the parsed ETag components
-	weak = strings.HasPrefix(t, "W/")
-	if weak {
-		t = t[2:]
-	}
-
-	if len(t) < 2 || t[0] != '"' || t[len(t)-1] != '"' {
-		return "", weak, false
-	}
-	return t[1 : len(t)-1], weak, true
-}
-
-// matchEtag performs a weak comparison of entity tags according to
-// RFC 9110 §8.8.3.2. The weak indicator ("W/") is ignored, but both tags must
-// be properly quoted. Invalid tags result in a mismatch.
-func matchEtag(s, etag string) bool {
-	n1, _, ok1 := normalizeEtag(s)
-	n2, _, ok2 := normalizeEtag(etag)
-	if !ok1 || !ok2 {
-		return false
-	}
-
-	return n1 == n2
-}
-
-// matchEtagStrong performs a strong entity-tag comparison following
-// RFC 9110 §8.8.3.1. A weak tag never matches a strong one, even if the quoted
-// values are identical.
-func matchEtagStrong(s, etag string) bool {
-	n1, w1, ok1 := normalizeEtag(s)
-	n2, w2, ok2 := normalizeEtag(etag)
-	if !ok1 || !ok2 || w1 || w2 {
-		return false
-	}
-
-	return n1 == n2
-}
-
 // isEtagStale reports whether a response with the given ETag would be considered
 // stale when presented with the raw If-None-Match header value. Comparison is
 // weak as defined by RFC 9110 §8.8.3.2.
 func (app *App) isEtagStale(etag string, noneMatchBytes []byte) bool {
-	header := utils.TrimSpace(app.toString(noneMatchBytes))
-
-	// Short-circuit the wildcard case: "*" never counts as stale.
-	if header == "*" {
-		return false
-	}
-
-	// Split the header on commas that sit outside DQUOTE-delimited opaque-tags:
-	// etagc permits "," inside the quoted tag (RFC 9110 §8.8.3), so `"v1,v2"`
-	// is a single entity tag, not two list elements. Only '"' and ','
-	// affect the split, so jump between them instead of visiting every byte.
-	start := 0
-	pos := 0
-	inQuotes := false
-	for {
-		i := utils.IndexAny2(header[pos:], '"', ',')
-		if i == -1 {
-			break
-		}
-		i += pos
-		pos = i + 1
-		if header[i] == '"' {
-			inQuotes = !inQuotes
-		} else if !inQuotes {
-			if matchEtag(utils.TrimSpace(header[start:i]), etag) {
-				return false
-			}
-			start = i + 1
-		}
-	}
-
-	return !matchEtag(utils.TrimSpace(header[start:]), etag)
+	return !etagpkg.AnyMatch(app.toString(noneMatchBytes), etag)
 }
 
 func parseAddr(raw string) (host, port string) { //nolint:nonamedreturns // gocritic unnamedResult requires naming host and port parts for clarity
