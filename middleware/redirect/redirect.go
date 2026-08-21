@@ -57,14 +57,8 @@ func New(config ...Config) fiber.Handler {
 	cfg := configDefault(config...)
 
 	// Fixed order, most specific first: two patterns can match the same path, and
-	// a map range made the winner vary per run. Rank by what a rule pins before
-	// its first wildcard, then by total pinned length, then by key to stay total.
-	//
-	// Every key below must be a function of one rule alone. Asking one of a pair
-	// and not of another is not an ordering: reading a key only where both rules
-	// had an answer for it left "/p/[a-z]{5}", "/p/[a-zA-Z]{5}" and
-	// "/p/[a-zB-Z][b-z][b-z][b-z][b-z]" in a cycle, and slices.SortFunc then gave
-	// whichever order the map happened to hand it.
+	// a map range made the winner vary per run. Every key below must be a function
+	// of one rule alone, or the comparison is no ordering and cycles appear.
 	keys := slices.Collect(maps.Keys(cfg.Rules))
 	slices.SortFunc(keys, func(a, b string) int {
 		if d := cmp.Compare(literalPrefixLen(b), literalPrefixLen(a)); d != 0 {
@@ -73,38 +67,27 @@ func New(config ...Config) fiber.Handler {
 		if d := cmp.Compare(literalLen(b), literalLen(a)); d != 0 {
 			return d
 		}
-		// A wildcard matches a run of any length, and so does a "+" or a
-		// "{2,}", so a rule holding one is broader than any rule whose every
-		// position is bounded, however much either pins: "/api/*" must not
-		// shadow the "/api/[ab]" it ties with. Ranked on its own rather than
-		// counted as a width, which saturates — two rules whose widths both
-		// reached the clamp would tie again. What a run repeats is read here
-		// too, since a wildcard repeats anything and a "+" only what the rule
-		// spells beside it; how many wildcards a rule carries is not, a second
-		// one saying nothing about what the rest of it pins — counting them
-		// ahead of the width put the broad "/p/[a-d]*" in front of the narrow
-		// "/p/([a]*|[c]*)".
+		// A wildcard, a "+" or a "{2,}" matches a run of any length, so a rule holding
+		// one is broader than any rule whose every position is bounded: "/api/*" must
+		// not shadow the "/api/[ab]" it ties with. Ranked here since a width saturates.
 		if d := cmp.Compare(carriesRun(a), carriesRun(b)); d != 0 {
 			return d
 		}
-		// Two rules pinning the same amount are separated by how much else they
-		// match: an alternation matches every branch, so "/very/specific|/x" is
-		// wider than the exact "/x" it ties with. Two wildcard rules land here
-		// too, separated by everything beside the wildcard they share.
+		// Two rules pinning the same amount are separated by how much else they match:
+		// an alternation matches every branch, so "/very/specific|/x" is wider than the
+		// exact "/x" it ties with.
 		if d := cmp.Compare(patternWidth(a), patternWidth(b)); d != 0 {
 			return d
 		}
-		// The widest position a rule matches, which is what the width loses
-		// where it saturates or where it leaves a run unmeasured. Read after the
-		// width rather than before it: the width already separates most pairs,
-		// and this only speaks where it cannot.
+		// The widest position a rule matches, which is what the width loses where it
+		// saturates or leaves a run unmeasured. Read after the width, which already
+		// separates most pairs.
 		if d := cmp.Compare(widestAtom(a), widestAtom(b)); d != 0 {
 			return d
 		}
-		// Whatever the width leaves tied is separated by how many wildcards the
-		// rules spend it on, since a width stands for none of them: "/p/*a*b"
-		// and "/p/*ab" both expand to a single alternative, and the key order
-		// below put the broader two-wildcard rule first.
+		// Whatever the width leaves tied is separated by how many wildcards the rules
+		// spend it on: "/p/*a*b" and "/p/*ab" both expand to a single alternative, and
+		// key order alone put the broader two-wildcard rule first.
 		if d := cmp.Compare(wildcardRank(a), wildcardRank(b)); d != 0 {
 			return d
 		}
@@ -117,15 +100,9 @@ func New(config ...Config) fiber.Handler {
 		// host while a captured "/evil.com" composed "https:///evil.com".
 		v := urlnorm.AsBrowserReads(cfg.Rules[k])
 		pattern := strings.ReplaceAll(k, "*", "(.*)")
-		// Anchor both ends so a rule matches the whole path. Without the leading
-		// "^" the pattern matches any suffix, so a request can be redirected by a
-		// rule whose path it only happens to end with (e.g. "/old" would also
-		// redirect "/very/old"). See issue #4476.
-		//
-		// Grouped first, because concatenation binds looser than "|": "/a|/b"
-		// anchored by hand is "(^/a)|(/b$)", which anchors neither branch at both
-		// ends and redirected "/a-extra" and "extra/b". Non-capturing, so the
-		// "$N" tokens still number the author's own groups.
+		// Anchor both ends so a rule matches the whole path rather than any suffix
+		// (see issue #4476). Grouped first because concatenation binds looser than
+		// "|", and non-capturing so the "$N" tokens still number the author's groups.
 		pattern = "^(?:" + pattern + ")$"
 		chunks := authorityChunks(v)
 
@@ -197,10 +174,9 @@ func New(config ...Config) fiber.Handler {
 			// and the client drops them anyway, so the guard below always runs
 			// on the location as it will be read.
 			location := urlnorm.AsBrowserReads(replacer.Replace(rule.target))
-			// The target had a scheme and an opaque path, so it named no host at
-			// all. A value writing the "//" that opens one — "myapp:$1@example.com"
-			// against "//evil.com/x" — hands the destination to the request, and
-			// the "@example.com" that looked like it pinned the host is only path.
+			// The target had a scheme and an opaque path, so it named no host at all. A
+			// value writing the "//" that opens one — "myapp:$1@example.com" against
+			// "//evil.com/x" — hands the destination to the request.
 			if rule.opaquePath {
 				if start, end := authoritySpan(location); start != end {
 					continue
@@ -283,18 +259,13 @@ func authoritySpan(target string) (start, end int) { //nolint:nonamedreturns // 
 		case i <= 0:
 			return 0, 0
 		case isFileScheme(target):
-			// "file state" takes one slash to reach "file slash state" and one
-			// more to reach the host, and both fold a backslash into a slash. So
-			// the authority opens after any two of them: "file:/\evil.com/share"
-			// and "file:\\evil.com/share" name the host evil.com exactly as
-			// "file://evil.com/share" does, and reading only "//" let a captured
-			// "\evil.com/share" pick the host of a rule targeting "file:/$1".
+			// The authority opens after any two slashes, both of which fold a backslash
+			// in: "file:/\evil.com/share" and "file:\\evil.com/share" name the host
+			// "file://evil.com/share" does.
 			if i+2 >= len(target) || !isSlash(target[i+1]) || !isSlash(target[i+2]) {
-				// Fewer than two, so the parser leaves "file state" for "path
-				// state" and there is no authority: "file:tmp/x" is the path
-				// "/tmp/x" of an empty host, and dropping the rule told the author
-				// something untrue about it. What a value can still do is write
-				// the slashes itself, which the composed location is checked for.
+				// Fewer than two, so there is no authority: "file:tmp/x" is the path "/tmp/x"
+				// of an empty host, and dropping the rule told the author something untrue.
+				// A value writing the slashes itself is caught on the composed location.
 				return 0, 0
 			}
 			start = i + 3
@@ -307,16 +278,9 @@ func authoritySpan(target string) (start, end int) { //nolint:nonamedreturns // 
 		}
 	}
 
-	// Only a special scheme ignores the slashes past the first two: the parser
-	// reaches "special authority ignore slashes" for those alone. Under any
-	// other scheme the third one terminates an empty authority, so "myapp:///$1"
-	// names no host and the capture is path — skipping it read $1 as the host
-	// and the rule was dropped at startup for handing the host away.
-	//
-	// "file" is special but takes its own route through the parser, going from
-	// "file slash state" straight to the host without that ignore step, so
-	// "file:///$1" has the empty authority of a local path. It keeps the
-	// backslash folding, which is why it stays in the special list.
+	// Only a special scheme ignores the slashes past the first two, so under any
+	// other one the third terminates an empty authority. "file" is special but
+	// skips that step, leaving "file:///$1" the empty authority of a local path.
 	if special && !isFileScheme(target) {
 		for start < len(target) && isSlash(target[start]) {
 			start++
@@ -330,10 +294,8 @@ func authoritySpan(target string) (start, end int) { //nolint:nonamedreturns // 
 }
 
 // authorityEnders returns the bytes that end target's authority. WHATWG folds
-// "\" into "/" only under a special scheme; under any other one it is an
-// ordinary authority byte, so "myapp://example.com\@evil.com" is userinfo
-// "example.com\" and a host of evil.com. A target with no scheme is
-// protocol-relative, and the scheme it inherits is special.
+// "\" into "/" only under a special scheme; under any other it is an ordinary
+// authority byte. A scheme-less target inherits the page's, which is special.
 func authorityEnders(target string) string {
 	if i := schemeEnd(target); i > 0 && !isSpecialScheme(target[:i]) {
 		return `/?#`
@@ -425,29 +387,21 @@ func authorityHolds(chunks []authorityChunk, replacer *strings.Replacer, enders 
 		if !chunk.placeholder {
 			continue
 		}
-		// Through the Replacer, not by indexing: it composes the location and
-		// matches patterns in the order given, so "$10" is "$1" then a literal
-		// "0". Indexing judged the tenth capture while the first was spliced in.
-		// Read as the client will, since that is who acts on the composition: the
-		// parser deletes tabs, CRs and LFs, so a value of "\t/ok" reaches "/ok"
-		// and ends the authority there. Judging the tab instead refused a
-		// redirect the client would have followed safely.
+		// Through the Replacer, not by indexing: it matches patterns in the order
+		// given, so "$10" is "$1" then a literal "0". Tabs, CRs and LFs are stripped
+		// because the parser deletes them, so "\t/ok" ends the authority at the "/".
 		value := urlnorm.StripTabCRLF(replacer.Replace(chunk.text))
 
 		if hostPins(chunks[i+1:]) {
-			// The author closed the host past this token, so the value is a
-			// label inside it and only has to stay one. What ends the authority
-			// is scheme-dependent — a backslash does so only under a special
-			// scheme — so "myapp://$1@example.com" takes a value of "user\name"
-			// as the userinfo it is, rather than refusing a redirect whose host
-			// the author had pinned.
+			// The author closed the host past this token, so the value is a label inside
+			// it and only has to stay one. What ends the authority is scheme-dependent: a
+			// backslash does so only under a special scheme.
 			if strings.ContainsAny(value, enders) {
 				return false
 			}
-			// Outside userinfo the "@" and the ":" matter too: either would move
-			// the host or open a port the author did not write. Inside it the
-			// author wrote the "@" that closes it, and a ":" only separates a
-			// password.
+			// Outside userinfo the "@" and the ":" matter too: either would move the host
+			// or open a port the author did not write. Inside it the author wrote the "@"
+			// that closes it, and a ":" only separates a password.
 			if !userinfoCloses(chunks[i+1:]) && strings.ContainsAny(value, "@:") {
 				return false
 			}
@@ -687,9 +641,8 @@ func isIPv4Number(label string) bool {
 }
 
 // isIPv4Host reports whether the URL parser reads host as an IPv4 address. It
-// accepts spellings net.ParseIP does not — "127.1" is 127.0.0.1, so is "0x7f.1",
-// and "2130706433" is the same address written as one number — and judging them
-// by net.ParseIP dropped rules whose host the author had pinned outright.
+// accepts spellings net.ParseIP does not — "127.1", "0x7f.1" and "2130706433"
+// all name 127.0.0.1 — and judging by net.ParseIP dropped rules pinning a host.
 func isIPv4Host(host string) bool {
 	parts := strings.Split(host, ".")
 	// One trailing dot is allowed and names no part: "127.0.0.1." is an address.
@@ -871,37 +824,22 @@ func pinsHost(literal string, openLeft bool) bool {
 		last = trimmed[i+1:]
 	}
 	if isIPv4Number(last) {
-		// An address pins a host only where the author wrote the whole of it.
-		// Open on the left the capture reaches its first octet: against
-		// "%3110.0.0.1", a captured "0" composes "0%3110.0.0.1", octal 0127,
-		// landing on 72.0.0.1. And a leading "." says a capture already supplied
-		// the octets before this text, which is what "https://$1.1" does —
-		// "127.0.0" composes "https://127.0.0.1". Either way the author pinned
-		// only part of an address, which pins no host at all.
+		// An address pins a host only where the author wrote the whole of it. Open on
+		// the left the capture reaches its first octet, and a leading "." says one
+		// already supplied the octets before this text, as "https://$1.1" does.
 		return !openLeft && !tail && isIPv4Host(trimmed)
 	}
 	return true
 }
 
 // patternBytes are the bytes of a rule key that match something other than
-// themselves. "*" is the documented wildcard; the rest are regexp syntax, which
-// reaches the compiled pattern because a key is used as one. "." is among them:
-// it matches any byte, so "/api/user." pins no more of a path than "/api/user"
-// and must not outrank the exact "/api/users". So are "^" and "$": an anchor
-// asserts a position and consumes nothing, and counting one as a path byte put
-// the broader "/p/[a-z]$" ahead of "/p/[a]" on a path they both match.
+// themselves: "*" is the documented wildcard and the rest is regexp syntax,
+// "." and the anchors among them, since none of those pins a byte of a path.
 const patternBytes = `*.[](){}+?^|\$`
 
 // literalPrefixLen returns how much of a rule's path is pinned before its first
-// wildcard, which is what makes one rule more specific than another it overlaps.
-//
-// An alternation pins only what its least specific branch does: "/very/specific|/x"
-// matches "/x", so it pins one byte rather than the fourteen standing before the
-// "|", which had it outrank the exact "/x" and shadow it outright.
-// Counted in what a path is pinned to rather than in bytes of the rule, since
-// the two part company over escapes: "\x{61}" is six bytes standing for the one
-// byte "a", and measuring the rule made it tie the class "[a-z]" it should
-// outrank, and outrank the "/p/a" it merely equals.
+// wildcard. An alternation pins only what its least specific branch does, and
+// the count is of path characters rather than rule bytes: "\x{61}" is one "a".
 func literalPrefixLen(rule string) int {
 	return minOverBranches(rule, func(branch string) int {
 		s := literalScanner{rule: branch}
@@ -909,13 +847,9 @@ func literalPrefixLen(rule string) int {
 	})
 }
 
-// literalLen returns how much of a rule's path is pinned in total, which
-// separates two rules whose wildcards start together: "/cdn/*" and "/cdn/*x"
-// tie on prefix, and the lexicographic fallback left the narrower one dead.
-// A group is measured the same way a top-level alternation is, by its least
-// specific branch: "/api/[a-z](specific|x)" pins no more of a path than
-// "/api/[a-z]x" does, and crediting it with the letters of every alternative had
-// it sort first and shadow the narrower rule on every request they share.
+// literalLen returns how much of a rule's path is pinned in total, separating
+// two rules whose wildcards start together, as "/cdn/*" and "/cdn/*x" do. A
+// group counts for its least specific branch, as a top-level alternation does.
 func literalLen(rule string) int {
 	s := literalScanner{rule: rule}
 	return s.widestBranch()
@@ -939,9 +873,8 @@ type literalScanner struct {
 }
 
 // widestBranch counts the bytes pinned from the current position to the end of
-// the rule, or to the ")" closing the group beginning there, and returns the
-// smallest count over the alternation branches it passed — a rule pins only what
-// the widest path it matches does.
+// the rule or to the ")" closing the group beginning there, taking the smallest
+// count over the branches it passed: a rule pins only what its widest path does.
 func (s *literalScanner) widestBranch() int {
 	smallest, n := -1, 0
 	inClass := false
@@ -982,11 +915,9 @@ func (s *literalScanner) widestBranch() int {
 			inClass, atom = true, 0
 		case c == '(':
 			if flags := groupFlagScope(s.rule, s.i); flags.folds {
-				// Folding says what the text it covers matches, so that text
-				// spells no path: counting the "a" of "/p/(?i)a" put it ahead
-				// of the "/p/[a]" it contains, on a path they share. Only
-				// folding does — an "m" moves what an anchor asserts and an "s"
-				// what a "." matches, neither of which is a literal.
+				// Folding says what the text it covers matches, so that text spells no path:
+				// counting the "a" of "/p/(?i)a" put it ahead of the "/p/[a]" it contains.
+				// Only folding does; an "m" or an "s" moves no literal.
 				s.i = groupSpan(s.rule, s.i).end
 				atom = 0
 				if !flags.scoped {
@@ -1031,34 +962,26 @@ func (s *literalScanner) widestBranch() int {
 
 // pinnedPrefix counts what the rule pins before its first wildcard, stopping at
 // the first construct that pins nothing — a class, a wildcard, a class escape,
-// or an atom a quantifier makes optional. A group stops it too, save for what
-// every branch of the group pins alike.
+// or an optional atom. A group stops it too, save for what its branches share.
 func (s *literalScanner) pinnedPrefix() int {
 	return len(s.pinnedAtoms(0))
 }
 
-// maxPinnedDepth bounds how many groups deep the prefix is followed. Every level
-// is read by scanning to the ")" closing it, so the work rises with the square
-// of the nesting: sixteen thousand groups spent 2.4 seconds of startup, on a
-// rule Go compiles happily. Stopping short only ends a prefix sooner, and a rule
-// nesting this deep before pinning a byte pins nothing worth following.
+// maxPinnedDepth bounds how many groups deep the prefix is followed. Each level
+// scans to the ")" closing it, so the work rises with the square of the nesting:
+// sixteen thousand groups spent 2.4 seconds of startup. Stopping short is safe.
 const maxPinnedDepth = 32
 
 // pinnedAtoms returns what the rule pins before its first wildcard, one entry
 // per character of the path rather than per byte of the rule: "\x{61}" is six
-// bytes standing for the one byte "a". Named by the character where the byte it
-// spells can be read, so that the two compare alike, and by its spelling
-// otherwise — two spellings of one character Go reads wider than a byte then
-// compare unequal, which only ends a prefix sooner.
+// bytes standing for the one byte "a", and the two have to compare alike.
 func (s *literalScanner) pinnedAtoms(depth int) []string {
 	var pinned []string
 	for s.i < len(s.rule) {
 		c := s.rule[s.i]
 		if c == '(' {
-			// A group pins what every branch of it pins, and stops the prefix
-			// there: the branches of "(?:a|aa)" agree on an "a", which stopping
-			// at the "(" missed — leaving the rule behind the "/p/a+" that
-			// contains it on a path they share.
+			// A group pins what every branch of it pins and stops the prefix there: the
+			// branches of "(?:a|aa)" agree on an "a", which stopping at the "(" missed.
 			folded := groupFlagScope(s.rule, s.i).folds
 			if depth >= maxPinnedDepth {
 				return pinned
@@ -1086,10 +1009,9 @@ func (s *literalScanner) pinnedAtoms(depth int) []string {
 		}
 
 		if c == '^' || c == '$' {
-			// An anchor asserts a position and consumes nothing, so it pins no
-			// byte and ends nothing: New anchors every rule already, and
-			// stopping at the "^" of "^/p/a" left it pinning none of the path
-			// it spells.
+			// An anchor asserts a position and consumes nothing, so it pins no byte and
+			// ends nothing: New anchors every rule already, and stopping at the "^" of
+			// "^/p/a" left it pinning none of the path it spells.
 			s.i++
 			continue
 		}
@@ -1250,30 +1172,16 @@ func groupSpan(rule string, i int) groupBody {
 }
 
 // patternWidth returns how many alternatives a rule expands to, which separates
-// two that pin the same amount: "/p/[a-z](x|y)" matches everything
-// "/p/[a-z]x" does and one path more, so it must not sort ahead of it. Counting
-// only top-level branches left the two tied, and key order put the wider first.
+// two that pin the same amount: "/p/[a-z](x|y)" matches everything "/p/[a-z]x"
+// does and one path more, so it must not sort ahead of it.
 func patternWidth(rule string) int {
 	s := literalScanner{rule: rule}
 	return s.width()
 }
 
 // widestAtom returns the breadth of the widest single construct a rule matches:
-// a class, a group, a set escape, or any byte for Fiber's "*". It separates two
-// rules the width leaves tied, which repetition makes easy to leave tied in two
-// ways.
-//
-// A run is measured nowhere in the width, so "/p/[b]+a?" spells the two paths
-// "/p/[ab]+" spells while matching a subset of them. And a bounded repetition
-// saturates: "/p/[a-z]{5}" and the "/p/[a-zA-Z]{5}" containing it both reach the
-// clamp. The widest position keeps its breadth either way — 1 against 2, and 26
-// against 52 — where key order alone chose the broad rule of each pair.
-//
-// Read of every rule and not only of those that repeat something. Asking it of
-// one rule and not the other made the comparison depend on which pair was being
-// compared, and slices.SortFunc needs a total order: "/p/[a-z]{5}",
-// "/p/[a-zA-Z]{5}" and "/p/[a-zB-Z][b-z][b-z][b-z][b-z]" formed a cycle, and the
-// order the map handed them in then decided which rule won.
+// a class, a group, a set escape, or any byte for Fiber's "*". It separates the
+// rules a saturated or run-blind width leaves tied, and is read of every rule.
 func widestAtom(rule string) int {
 	s := literalScanner{rule: rule}
 	s.width()
@@ -1281,30 +1189,17 @@ func widestAtom(rule string) int {
 }
 
 // width is patternWidth from the current position to the end of the rule or to
-// the ")" closing the group beginning there. The alternatives of a sequence
-// multiply and those of an alternation add, so a group counts wherever it sits.
-//
-// A quantifier that runs on — "+", or "{2,}" — is no count of alternatives at
-// all and is left unmeasured here, carriesRun having already sorted the rule
-// behind every bounded one. The width goes on measuring the atom it repeats,
-// which is what separates "/p/[z]+" from the "/p/[a-z]+" that contains it.
+// the ")" closing the group beginning there: the alternatives of a sequence
+// multiply and those of an alternation add. A run is left to carriesRun.
 func (s *literalScanner) width() int {
 	total, n := 0, 1
-	// atom is what the construct just read multiplied n by, and prev is what the
-	// run measured before it did — both kept so a quantifier can put the atom
-	// back and count what it permits instead. quantified marks the construct
-	// just read as a quantifier itself, since the "?" following one is Go's
-	// non-greedy marker rather than a second quantifier of its own.
+	// atom is what the construct just read multiplied n by and prev what the run
+	// measured before it, so a quantifier can put the atom back. quantified marks a
+	// quantifier, whose trailing "?" is Go's non-greedy marker rather than another.
 	atom, prev, quantified := 1, 1, false
-	// empty marks the construct just read as one matching only the empty string.
-	// Every count of it spells the same path, so a quantifier on one is no width:
-	// counting it made "/p/(?:)?(?:)?[a]" twice as wide as the "/p/[ab]" that
-	// contains it, on a path only the first matches.
-	//
-	// filled is whether anything read here matches more than the empty string,
-	// which is what the group closing this call reports to its caller. It takes
-	// the construct just read only once a quantifier can no longer empty it: the
-	// "{0}" in "(?:a{0})" leaves the group as empty as "(?:)".
+	// empty marks the construct just read as one matching only the empty string,
+	// whose every count spells the same path. filled is whether anything read here
+	// matches more, which is what the group closing this call reports to its caller.
 	empty, filled := true, false
 	commit := func() {
 		filled = filled || !empty
@@ -1381,11 +1276,8 @@ func (s *literalScanner) width() int {
 			// A group holding nothing but empty groups is empty itself, which
 			// reading only what it spells missed.
 			empty = s.groupEmpty
-			// The group's own width is no position of the rule: it is the
-			// product of the positions inside it, each of which recorded itself
-			// as this call read them. Recording the product instead made
-			// "/p/(?:[a-m][a-z][a-z][a-z][a-z])" the widest thing there is,
-			// where the "/p/[a-z][a-z][a-z][a-z][a-z]" containing it read 26.
+			// The group's own width is no position of the rule but the product of the
+			// positions inside it, each of which recorded itself as this call read them.
 			n = scaledWidth(n, atom)
 			continue
 		case ')':
@@ -1459,9 +1351,7 @@ func (s *literalScanner) width() int {
 
 // foldedWidth doubles what a position matches where case folding is in force,
 // each letter being matched in either case. A floor rather than a count, since
-// how many of the bytes a class lists are letters is not read here: one byte's
-// worth read "(?i)a" as no wider than the "[a]" it contains, and the tie left
-// key order to pick between them.
+// how many of the bytes a class lists are letters is not read here.
 func (s *literalScanner) foldedWidth(w int) int {
 	if !s.folded {
 		return w
@@ -1471,8 +1361,7 @@ func (s *literalScanner) foldedWidth(w int) int {
 
 // foldedChar counts what one character matches where folding is in force, which
 // is knowable exactly: Go folds a "k" to "K" and to the Kelvin sign as well, so
-// three, where an "a" matches two and a "1" one. Reading every folded position
-// as two left "(?i:k)" level with the "[Kk]" it contains.
+// three, where an "a" matches two and a "1" one.
 func (s *literalScanner) foldedChar(b byte) int {
 	if !s.folded || b >= utf8.RuneSelf {
 		return 1
@@ -1488,16 +1377,9 @@ func (s *literalScanner) foldedChar(b byte) int {
 }
 
 // repeated returns the width a run reaches once the atom ending it, itself atom
-// alternatives wide, may repeat lo to hi times. Each count the quantifier permits
-// is a set of paths of its own and they add: "[ab]{1,2}" matches the two "[ab]"
-// does and the four its pairs spell, where "[a][ab]?" matches three. Counting
-// only whether none was permitted left the wider of the two the narrower by this
-// measure.
-//
-// prev is what the run measured before the atom multiplied it in, carried here
-// rather than divided back out of it: a product that reached the clamp cannot be
-// undone, and dividing invented a width below it — one that sorted a five-class
-// rule ahead of the subset it contains.
+// alternatives wide, may repeat lo to hi times: every permitted count is a set
+// of paths of its own, and they add. prev is carried in rather than divided out,
+// a product that reached the clamp being past undoing.
 func repeated(prev, atom, lo, hi int) int {
 	w := max(atom, 1)
 	total, term := 0, 1 // w to the zero, the one path where the atom is absent
@@ -1512,9 +1394,7 @@ func repeated(prev, atom, lo, hi int) int {
 
 // classWidth returns how many bytes the character class at the current position
 // matches, leaving the position just past its "]". A class pins nothing whatever
-// it lists, so this is the only place its breadth is read: it separates two
-// rules that pin the same amount, "[a-z]" matching twenty-six paths where "[a]"
-// matches one.
+// it lists, so this is the only place its breadth is read.
 func (s *literalScanner) classWidth() int {
 	rule := s.rule
 	j := s.i + 1
@@ -1648,14 +1528,8 @@ func parsedByte(digits string, base int) (byte, bool) {
 }
 
 // classMembers accumulates what a character class matches: the bytes it lists,
-// held one bit each, and the sets it names, held by spelling. Either is counted
-// once however often it is repeated, since repeating a member matches nothing
-// more — "[^\d\d\d]" matches what "[^\d]" does, and subtracting the set once
-// per spelling made it narrower than the "[^\dABC]" it contains.
-//
-// Two spellings of one set are still counted twice, "[\d[:digit:]]" among them.
-// No count of members can be right for a set whose size is not knowable here:
-// see setMemberWidth.
+// held one bit each, and the sets it names, held by spelling so that repeating
+// one counts once. Two spellings of one set still count twice: see setMemberWidth.
 type classMembers struct {
 	named []namedMember
 	bytes [4]uint64
@@ -1715,23 +1589,17 @@ const maxPatternWidth = 1 << 20
 const maxRepeatCount = 1000
 
 // setMemberWidth is what a class member standing for a set of its own counts,
-// whether it is written as an escape, "[\d]", or as a POSIX name, "[[:alpha:]]".
-// How large the set is cannot be read off either spelling alone and would not
-// separate two of them anyway, but one member's worth read "[[:alpha:]]" as no
-// wider than the "[a]" it contains, and the tie left key order to pick between
-// them. Two says the one thing that is certain: a set is wider than the single
-// byte a listed member pins.
+// written as an escape, "[\d]", or as a POSIX name, "[[:alpha:]]". Its true size
+// is unknowable here, and two says the one certain thing: a set beats one byte.
 const setMemberWidth = 2
 
 func clampWidth(n int) int {
 	return min(n, maxPatternWidth)
 }
 
-// scaledWidth multiplies one width by another, saturating rather than wrapping.
-// Both stay at or below maxPatternWidth, but their product does not fit an int
-// where an int is thirty-two bits wide, and a product that wraps comes back
-// negative: on a 386 build "/p/[a-z][a-z][a-z][a-z][a-z][a-zA-Z]{1,2}" measured
-// -1405091840 and sorted ahead of the "/p/[a][a-z][a-z][a-z][a-z][a]" it contains.
+// scaledWidth multiplies one width by another, saturating rather than wrapping:
+// the product of two clamped widths does not fit a thirty-two bit int, and one
+// that wrapped came back negative and sorted a rule ahead of the subset it holds.
 func scaledWidth(a, b int) int {
 	if a <= 0 || b <= 0 {
 		return 0
@@ -1742,25 +1610,9 @@ func scaledWidth(a, b int) int {
 	return clampWidth(a * b)
 }
 
-// carriesRun grades how open-ended a rule's broadest run of bytes is: 0 where
-// every position is bounded, 1 where a run repeats something the rule names, and
-// 2 where it repeats anything at all. The rule that runs on sorts behind the one
-// that does not, and the run repeating anything behind the run that does not.
-//
-// Fiber's "*" is the second kind, expanded to "(.*)" before the key is compiled;
-// a "+" or a "{2,}" is the first, since what it repeats is written beside it.
-// The distinction is what separates "/p/*a" from the "/p/(a|aa)+" it contains:
-// both run on, and grading them alike left the pair to a width that reads the
-// wildcard's bytes as one — measuring the broad rule 1 against the narrow rule's
-// 2, and handing the shared path and its query to the broad target.
-//
-// Their breadth is one no width can stand for, since a width saturates and two
-// saturated rules tie. Graded here, the width goes on measuring what the rules
-// pin besides the run — which is what separates "/p/[z]+" from the "/p/[a-z]+"
-// containing it, a pair a saturated width left tied for key order to pick apart.
-// How many wildcards a rule carries is read after the width, by wildcardRank: a
-// second wildcard widens a rule but says nothing about what the rest of it pins,
-// so a rule holding two can still be the narrower of the pair.
+// carriesRun grades how open-ended a rule's broadest run is: 0 where every
+// position is bounded, 1 where a run repeats what the rule names beside it, and
+// 2 for Fiber's "*", which repeats anything. A saturating width cannot say this.
 func carriesRun(rule string) int {
 	r := scanRuns(rule)
 	switch {
@@ -1772,10 +1624,9 @@ func carriesRun(rule string) int {
 	return 0
 }
 
-// wildcardRank returns the number of Fiber "*" wildcards in a rule, which is the
-// last thing separating two that the width leaves tied: "/p/*a*b" and "/p/*ab"
-// both expand to a single alternative, so nothing but the count stands between
-// the broader rule and the narrower one it would shadow.
+// wildcardRank returns the number of Fiber "*" wildcards in a rule, the last
+// thing separating two that the width leaves tied: "/p/*a*b" and "/p/*ab" both
+// expand to a single alternative.
 func wildcardRank(rule string) int {
 	return scanRuns(rule).wildcards
 }
@@ -1788,21 +1639,13 @@ type ruleRuns struct {
 }
 
 // scanRuns reads both in one walk, since telling either from the rule means
-// skipping the same classes and quoted spans.
-//
-// A star inside a character class or a "\Q ... \E" span names itself instead:
-// the expansion leaves "[(.*)]" a class and "\Q(.*)\E" literal text.
+// skipping the same classes and quoted spans, where a star names itself: the
+// expansion leaves "[(.*)]" a class and "\Q(.*)\E" literal text.
 func scanRuns(rule string) ruleRuns {
 	runs := ruleRuns{}
-	// filled holds, for each group still open, whether anything matching more
-	// than the empty string has been read inside it, so a group closes empty
-	// where nothing has. empty marks the construct just read as one matching
-	// only the empty string, whose repetitions are all the same path:
-	// "/p/(?:)+a" matches "/p/a" and nothing besides, and grading it as a run
-	// sorted it behind the broader "/p/b?a" it is contained in.
-	//
-	// A group takes the construct just read only once a quantifier can no longer
-	// empty it, since "(?:a{0})" holds as little as "(?:)" does.
+	// filled holds, for each group still open, whether anything matching more than
+	// the empty string has been read in it; empty marks the construct just read as
+	// one matching only the empty string, whose repetitions are all the same path.
 	var filled []bool
 	empty := true
 	commit := func() {
@@ -1854,10 +1697,8 @@ func scanRuns(rule string) ruleRuns {
 			empty = true
 			continue
 		case '|':
-			// A branch of the group begins here with nothing read in it yet, and
-			// the separator itself matches nothing: reading it as a construct
-			// filled the group its branches had each left empty, so
-			// "/p/(?:a{0}|b{0})+a" was graded a run though it matches "/p/a".
+			// A branch begins here with nothing read in it yet, and the separator matches
+			// nothing: reading it as a construct filled a group its branches left empty.
 			commit()
 			i++
 			empty = true
@@ -1870,11 +1711,9 @@ func scanRuns(rule string) ruleRuns {
 			i++
 			empty = false
 		case '?':
-			// Quantifier syntax, whether it repeats what stands before it or
-			// only says a repetition is not greedy. Either way it matches
-			// nothing of its own, and reading it as a construct lost the
-			// emptiness of what it followed: the inner group of
-			// "/p/(?:(?:)+?)+a" was empty until the "?" was counted.
+			// Quantifier syntax, whether it repeats what stands before it or only says a
+			// repetition is not greedy. Either way it matches nothing of its own, and
+			// reading it as a construct lost the emptiness of what it followed.
 			i++
 			continue
 		case '+':
@@ -2000,10 +1839,8 @@ func smallerBranch(smallest, n int) int {
 }
 
 // quantifierBounds is how many times a "{m,n}" lets the atom before it repeat.
-// runsOn marks the "{2,}" that names no upper bound, whose min and max say
-// nothing; allowsNone is the min of zero read on its own, since that is all the
-// literal length needs of it. quantifies separates the braces that bound a
-// repetition from the ones standing as text, whose bounds say nothing either.
+// runsOn marks the "{2,}" naming no upper bound; allowsNone is the min of zero
+// read alone; quantifies separates a real bound from braces standing as text.
 type quantifierBounds struct {
 	lo, hi     int
 	allowsNone bool
@@ -2012,13 +1849,8 @@ type quantifierBounds struct {
 }
 
 // skipQuantifier returns the index just past the "{m,n}" beginning at i and what
-// it bounds. An unclosed "{" is an ordinary byte to the regexp parser, so it is
-// left as one here: the index only moves past it, bounding nothing.
-//
-// So is a "{" whose body spells no bound. Its braces and everything between them
-// are rule like any other and are walked rather than skipped: skipping them hid
-// the run in "/p/{x*}", which then sorted ahead of the "/p/[{][x]([a]+)[}]" it
-// contains.
+// it bounds. An unclosed "{", or one whose body spells no bound, is an ordinary
+// byte to the regexp parser: the index moves past it alone, so it is walked.
 func skipQuantifier(rule string, i int) (int, quantifierBounds) {
 	brace := strings.IndexByte(rule[i:], '}')
 	if brace < 0 {
@@ -2034,8 +1866,7 @@ func skipQuantifier(rule string, i int) (int, quantifierBounds) {
 
 // quantifierRange reads the body of a "{m,n}". A body spelling no bound is no
 // quantifier to Go's parser either — the braces of "{id}" are literal text — so
-// it is read as repeating what it follows exactly once, which is to say as
-// bounding nothing.
+// it is read as bounding nothing.
 func quantifierRange(body string) quantifierBounds {
 	once := quantifierBounds{lo: 1, hi: 1}
 
@@ -2059,10 +1890,9 @@ func quantifierRange(body string) quantifierBounds {
 	return quantifierBounds{lo: m, hi: n, allowsNone: m == 0, quantifies: true}
 }
 
-// repeatCount reads one bound of a "{m,n}". Go's repetition grammar spells a
-// bound in decimal digits and nothing else, so a sign makes the braces literal
-// text: "a{-0}" is a path of six bytes, not an "a" repeated none. Reading the
-// sign as a count took four bytes off what that rule pins.
+// repeatCount reads one bound of a "{m,n}". Go spells a bound in decimal digits
+// and nothing else, so a sign makes the braces literal text: "a{-0}" is a path
+// of six bytes, not an "a" repeated none.
 func repeatCount(bound string) (int, bool) {
 	if bound == "" {
 		return 0, false
@@ -2073,11 +1903,9 @@ func repeatCount(bound string) (int, bool) {
 		}
 	}
 
-	// Go's parser refuses a count above maxRepeatCount, so a rule carrying one
-	// never compiles and the braces are left to be read as they stand. Capped
-	// here as well as there, since the sort measures a rule before it is
-	// compiled: walking to a bound of a billion spent seconds of startup on a
-	// rule that was going to be rejected anyway.
+	// Go's parser refuses a count above maxRepeatCount, so such a rule never
+	// compiles. Capped here too, since the sort measures a rule before compiling it
+	// and walking to a bound of a billion spent seconds of startup.
 	n, err := strconv.Atoi(bound)
 	if err != nil || n > maxRepeatCount {
 		return 0, false
@@ -2087,9 +1915,7 @@ func repeatCount(bound string) (int, bool) {
 
 // posixNameEnd returns the index just past the POSIX class name beginning at i
 // inside a character class — "[[:alpha:]]" names the letters — or i when nothing
-// there names one. The name carries a "]" of its own, and stopping the class
-// scan at it left the members standing after the name read as pattern text: the
-// stars of "[[:alpha:]*]" counted as wildcards rather than as class members.
+// there names one. Its own "]" is not the class's, and stopping there misread it.
 func posixNameEnd(rule string, i int) int {
 	if i+1 >= len(rule) || rule[i] != '[' || rule[i+1] != ':' {
 		return i
@@ -2120,19 +1946,17 @@ func skipGroupPrefix(rule string, i int) int {
 }
 
 // quotedSpan is the text a "\Q" quotes and the index just past the span. Go
-// reads an unterminated "\Q" as quoting to the end of the rule, so the span runs
-// there — such a rule does not compile, the quote swallowing the paren that
-// closes the key, but it is measured before it is compiled.
+// reads an unterminated "\Q" as quoting to the end of the rule, which is where
+// the span runs: such a rule is measured before it fails to compile.
 type quotedSpan struct {
 	text string
 	end  int
 	ok   bool
 }
 
-// scanQuoted reads the "\Q...\E" beginning at the backslash at i. What it
-// quotes is path rather than pattern: a "?" or a "{2}" standing inside it is a
-// byte the rule pins, and reading one as a quantifier widened the exact
-// "/p/\Qa?\E" past the "/p/[a][?x]" that contains it.
+// scanQuoted reads the "\Q...\E" beginning at the backslash at i. What it quotes
+// is path rather than pattern: a "?" or a "{2}" inside it is a byte the rule
+// pins, and reading one as a quantifier widened an exact rule.
 func scanQuoted(rule string, i int) quotedSpan {
 	if i+1 >= len(rule) || rule[i+1] != 'Q' {
 		return quotedSpan{end: i}
@@ -2144,9 +1968,8 @@ func scanQuoted(rule string, i int) quotedSpan {
 }
 
 // escapeSet reports whether the escape at the backslash at i stands for a set of
-// characters rather than for one or for none. "\d" and "\p{Greek}" do; "\." spells
-// a byte, and "\b" asserts a position and matches nothing at all — measuring an
-// assertion as a set put "/p/[ab]\b" level with the "/p/[a-d]" that contains it.
+// characters rather than for one or for none: "\d" and "\p{Greek}" do, where
+// "\." spells a byte and "\b" matches nothing at all.
 func escapeSet(rule string, i int) bool {
 	if i+1 >= len(rule) {
 		return false
@@ -2159,10 +1982,8 @@ func escapeSet(rule string, i int) bool {
 }
 
 // escapeAsserts reports whether the escape at the backslash at i asserts a
-// position rather than matching anything: "\b" stands between a word byte and a
-// byte that is not one, and consumes neither. A group holding one is as empty as
-// a group holding nothing, and reading it as consuming graded the "+" in
-// "/p/(?:\b)+a" a run over a rule matching "/p/a" alone.
+// position rather than matching anything: "\b" stands between a word byte and
+// one that is not, so a group holding it is as empty as a group holding nothing.
 func escapeAsserts(rule string, i int) bool {
 	if i+1 >= len(rule) {
 		return false
@@ -2175,13 +1996,8 @@ func escapeAsserts(rule string, i int) bool {
 }
 
 // escapeSpan measures the escape beginning at the backslash at i: how many bytes
-// of the rule it occupies, and whether it stands for one character of a path.
-//
-// Punctuation does — "/a\.b" pins "/a.b" — and so does every spelling that names
-// one character outright, including "\x{61}", "\x61", "\101" and "\t". A letter
-// leading anything else introduces a class or an assertion: "\d" matches any
-// digit, so "/api/\d+" pins no more than "/api/" and must not outrank the exact
-// "/api/1" it would otherwise shadow.
+// of the rule it occupies, and whether it stands for one character of a path —
+// punctuation and "\x{61}" do, where "\d" or "\b" names a class or an assertion.
 func escapeSpan(rule string, i int) (int, bool) {
 	if i+1 >= len(rule) {
 		return 1, false // a trailing backslash names nothing
@@ -2211,10 +2027,8 @@ func escapeSpan(rule string, i int) (int, bool) {
 }
 
 // propertySpan measures a "\p{Greek}" or a "\pL", neither of which names one
-// character: a Unicode property is a set of them. What names the property is part
-// of the escape all the same, and leaving it to be read as rule text pinned the
-// five bytes of "Greek" as path — sorting the property ahead of the "/p/[\x{3B1}]"
-// it contains.
+// character: a Unicode property is a set of them. The name is part of the escape,
+// and leaving it to be read as rule text pinned "Greek" as path.
 func propertySpan(rule string, i int) (int, bool) {
 	if i+2 >= len(rule) {
 		return 2, false // "\p" alone names nothing
@@ -2299,8 +2113,7 @@ func splitAlternation(rule string) []string {
 
 // opensPort reports whether the nearest literal before a token ends in the colon
 // that opens a port. Several captures may compose one — "example.com:$1$2" — so
-// placeholders in between are stepped over; each is asked for digits in turn,
-// which is the same question asked of the whole.
+// placeholders in between are stepped over and each asked for digits in turn.
 func opensPort(before []authorityChunk) bool {
 	for _, chunk := range slices.Backward(before) {
 		if chunk.placeholder {
