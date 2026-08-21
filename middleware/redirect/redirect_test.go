@@ -1,9 +1,9 @@
 package redirect
 
 import (
-	"context"
 	"math"
 	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"regexp"
 	"strconv"
@@ -15,8 +15,49 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// testApp builds an app running the middleware over rules, with a fall-through
+// route so a request no rule redirects answers 200 "fell through".
+func testApp(rules map[string]string, unescape bool) *fiber.App {
+	app := fiber.New(fiber.Config{UnescapePath: unescape})
+	app.Use(New(Config{Rules: rules, StatusCode: fiber.StatusFound}))
+	app.Get("/*", func(c fiber.Ctx) error {
+		return c.SendString("fell through")
+	})
+	return app
+}
+
+// get sends one GET to app and returns the response status and Location.
+func get(t *testing.T, app *fiber.App, path string) (int, string) {
+	t.Helper()
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, path, http.NoBody))
+	require.NoError(t, err)
+	return resp.StatusCode, resp.Header.Get("Location")
+}
+
+// requireWin asserts that one GET for path redirects to want.
+func requireWin(t *testing.T, rules map[string]string, path, want string) {
+	t.Helper()
+	status, location := get(t, testApp(rules, false), path)
+	require.Equal(t, fiber.StatusFound, status, "request %q", path)
+	require.Equal(t, want, location, "request %q", path)
+}
+
+// requireRule builds a one-rule app and asserts where the request lands:
+// redirected to want, or — want "" — fallen through with no Location.
+func requireRule(t *testing.T, unescape bool, pattern, target, request, want string) {
+	t.Helper()
+	status, location := get(t, testApp(map[string]string{pattern: target}, unescape), request)
+	if want == "" {
+		require.Equal(t, fiber.StatusOK, status, "the rule must not fire on %q", request)
+		require.Empty(t, location)
+		return
+	}
+	require.Equal(t, fiber.StatusFound, status, "request %q", request)
+	require.Equal(t, want, location, "request %q", request)
+}
+
 func Test_Redirect(t *testing.T) {
-	app := *fiber.New()
+	app := fiber.New()
 
 	app.Use(New(Config{
 		Rules: map[string]string{
@@ -124,14 +165,9 @@ func Test_Redirect(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, tt.url, http.NoBody)
-			require.NoError(t, err)
-			req.Header.Set("Location", "github.com/gofiber/redirect")
-			resp, err := app.Test(req)
-
-			require.NoError(t, err)
-			require.Equal(t, tt.statusCode, resp.StatusCode)
-			require.Equal(t, tt.redirectTo, resp.Header.Get("Location"))
+			status, location := get(t, app, tt.url)
+			require.Equal(t, tt.statusCode, status)
+			require.Equal(t, tt.redirectTo, location)
 		})
 	}
 }
@@ -142,30 +178,20 @@ func Test_Redirect_StartAnchor(t *testing.T) {
 
 	app := fiber.New()
 	app.Use(New(Config{
-		Rules: map[string]string{
-			"/old": "/new",
-		},
+		Rules:      map[string]string{"/old": "/new"},
 		StatusCode: fiber.StatusMovedPermanently,
 	}))
-	app.Get("/very/old", func(c fiber.Ctx) error {
-		return c.SendString("not redirected")
-	})
+	app.Get("/very/old", func(c fiber.Ctx) error { return c.SendString("not redirected") })
 
 	// The rule matches the whole path and redirects.
-	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/old", http.NoBody)
-	require.NoError(t, err)
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusMovedPermanently, resp.StatusCode)
-	require.Equal(t, "/new", resp.Header.Get("Location"))
+	status, location := get(t, app, "/old")
+	require.Equal(t, fiber.StatusMovedPermanently, status)
+	require.Equal(t, "/new", location)
 
 	// A path that only ends with the rule path must not be redirected.
-	req, err = http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/very/old", http.NoBody)
-	require.NoError(t, err)
-	resp, err = app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
-	require.Empty(t, resp.Header.Get("Location"))
+	status, location = get(t, app, "/very/old")
+	require.Equal(t, fiber.StatusOK, status)
+	require.Empty(t, location)
 }
 
 // Test_Redirect_SameOriginTargets verifies a captured path segment cannot take a path-only target off this origin.
@@ -198,18 +224,7 @@ func Test_Redirect_SameOriginTargets(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			app := fiber.New()
-			app.Use(New(Config{
-				Rules:      map[string]string{tc.pattern: tc.target},
-				StatusCode: fiber.StatusFound,
-			}))
-
-			req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, tc.request, http.NoBody)
-			require.NoError(t, err)
-			resp, err := app.Test(req)
-			require.NoError(t, err)
-			require.Equal(t, fiber.StatusFound, resp.StatusCode)
-			require.Equal(t, tc.want, resp.Header.Get("Location"))
+			requireRule(t, false, tc.pattern, tc.target, tc.request, tc.want)
 		})
 	}
 }
@@ -239,18 +254,7 @@ func Test_Redirect_SameOriginTargets_Unescaped(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			app := fiber.New(fiber.Config{UnescapePath: true})
-			app.Use(New(Config{
-				Rules:      map[string]string{tc.pattern: tc.target},
-				StatusCode: fiber.StatusFound,
-			}))
-
-			req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, tc.request, http.NoBody)
-			require.NoError(t, err)
-			resp, err := app.Test(req)
-			require.NoError(t, err)
-			require.Equal(t, fiber.StatusFound, resp.StatusCode)
-			require.Equal(t, tc.want, resp.Header.Get("Location"))
+			requireRule(t, true, tc.pattern, tc.target, tc.request, tc.want)
 		})
 	}
 }
@@ -296,25 +300,7 @@ func Test_Redirect_CaptureInsideAuthority(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			app := fiber.New(fiber.Config{UnescapePath: true})
-			app.Use(New(Config{
-				Rules:      map[string]string{"/cdn/*": tc.target},
-				StatusCode: fiber.StatusFound,
-			}))
-			app.Get("/*", func(c fiber.Ctx) error { return c.SendString("fell through") })
-
-			req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, tc.request, http.NoBody)
-			require.NoError(t, err)
-			resp, err := app.Test(req)
-			require.NoError(t, err)
-
-			if tc.want == "" {
-				require.Equal(t, fiber.StatusOK, resp.StatusCode, "the rule must not fire")
-				require.Empty(t, resp.Header.Get("Location"))
-				return
-			}
-			require.Equal(t, fiber.StatusFound, resp.StatusCode)
-			require.Equal(t, tc.want, resp.Header.Get("Location"))
+			requireRule(t, true, "/cdn/*", tc.target, tc.request, tc.want)
 		})
 	}
 }
@@ -344,37 +330,11 @@ func Test_Redirect_CaptureInUserinfo(t *testing.T) {
 		{"clean label after the at sign", "https://user@$1.example.com/", "/cdn/images", "https://user@images.example.com/"},
 	}
 
-	// Every composed location names a host the author wrote.
-	const wantHost = "example.com"
-
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			app := fiber.New(fiber.Config{UnescapePath: true})
-			app.Use(New(Config{
-				Rules:      map[string]string{"/cdn/*": tc.target},
-				StatusCode: fiber.StatusFound,
-			}))
-			app.Get("/*", func(c fiber.Ctx) error { return c.SendString("fell through") })
-
-			req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, tc.request, http.NoBody)
-			require.NoError(t, err)
-			resp, err := app.Test(req)
-			require.NoError(t, err)
-
-			if tc.want == "" {
-				require.Equal(t, fiber.StatusOK, resp.StatusCode, "the rule must not fire")
-				require.Empty(t, resp.Header.Get("Location"))
-				return
-			}
-			require.Equal(t, fiber.StatusFound, resp.StatusCode)
-			require.Equal(t, tc.want, resp.Header.Get("Location"))
-
-			// Whatever the value did, the host is still the author's.
-			u, err := url.Parse(resp.Header.Get("Location"))
-			require.NoError(t, err)
-			require.True(t, u.Host == wantHost || strings.HasSuffix(u.Host, "."+wantHost), "host %q", u.Host)
+			requireRule(t, true, "/cdn/*", tc.target, tc.request, tc.want)
 		})
 	}
 }
@@ -384,33 +344,11 @@ func Test_Redirect_CaptureEndingTheAuthority(t *testing.T) {
 	t.Parallel()
 
 	// "/cdn*" leaves the leading slash in the capture, so $1 supplies the path.
-	app := fiber.New()
-	app.Use(New(Config{
-		Rules:      map[string]string{"/cdn*": "https://cdn.example.com$1"},
-		StatusCode: fiber.StatusFound,
-	}))
-	app.Get("/*", func(c fiber.Ctx) error { return c.SendString("fell through") })
-
-	get := func(target string) (int, string) {
-		req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, target, http.NoBody)
-		require.NoError(t, err)
-		resp, err := app.Test(req)
-		require.NoError(t, err)
-		return resp.StatusCode, resp.Header.Get("Location")
-	}
-
-	status, location := get("/cdn/foo.png")
-	require.Equal(t, fiber.StatusFound, status, "a capture that opens a path must still redirect")
-	require.Equal(t, "https://cdn.example.com/foo.png", location)
-
-	status, location = get("/cdn/a/b/c")
-	require.Equal(t, fiber.StatusFound, status)
-	require.Equal(t, "https://cdn.example.com/a/b/c", location)
-
+	const target = "https://cdn.example.com$1"
+	requireRule(t, false, "/cdn*", target, "/cdn/foo.png", "https://cdn.example.com/foo.png")
+	requireRule(t, false, "/cdn*", target, "/cdn/a/b/c", "https://cdn.example.com/a/b/c")
 	// The capture carries the "@" into the path, so the host is still the author's.
-	status, location = get("/cdn/@evil.com")
-	require.Equal(t, fiber.StatusFound, status)
-	require.Equal(t, "https://cdn.example.com/@evil.com", location)
+	requireRule(t, false, "/cdn*", target, "/cdn/@evil.com", "https://cdn.example.com/@evil.com")
 }
 
 func Test_AuthorityChunks(t *testing.T) {
@@ -493,25 +431,7 @@ func Test_Redirect_CaptureBoundedByTheTarget(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			app := fiber.New(fiber.Config{UnescapePath: true})
-			app.Use(New(Config{
-				Rules:      map[string]string{"/t/*": tc.target},
-				StatusCode: fiber.StatusFound,
-			}))
-			app.Get("/*", func(c fiber.Ctx) error { return c.SendString("fell through") })
-
-			req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, tc.request, http.NoBody)
-			require.NoError(t, err)
-			resp, err := app.Test(req)
-			require.NoError(t, err)
-
-			if tc.want == "" {
-				require.Equal(t, fiber.StatusOK, resp.StatusCode, "the rule must not fire")
-				require.Empty(t, resp.Header.Get("Location"))
-				return
-			}
-			require.Equal(t, fiber.StatusFound, resp.StatusCode)
-			require.Equal(t, tc.want, resp.Header.Get("Location"))
+			requireRule(t, true, "/t/*", tc.target, tc.request, tc.want)
 		})
 	}
 }
@@ -522,41 +442,22 @@ func Test_Redirect_CaptureClosingTheHost(t *testing.T) {
 
 	tests := []struct {
 		name    string
-		pattern string
 		target  string
 		request string
 		want    string // "" means the rule must not fire
 	}{
-		{"empty trailing capture", "/a/*x*", "https://$1$2", "/a/evil.comx", ""},
-		{"empty trailing capture after a dot", "/a/*x*", "https://$1.$2", "/a/evil.comx", ""},
+		{"empty trailing capture", "https://$1$2", "/a/evil.comx", ""},
+		{"empty trailing capture after a dot", "https://$1.$2", "/a/evil.comx", ""},
 
 		// An empty trailing capture is fine where the author's own text still closes the host.
-		{"author text closes the host", "/a/*x*", "https://$1.assets.example.com$2", "/a/tenantx", "https://tenant.assets.example.com"},
+		{"author text closes the host", "https://$1.assets.example.com$2", "/a/tenantx", "https://tenant.assets.example.com"},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			app := fiber.New()
-			app.Use(New(Config{
-				Rules:      map[string]string{tc.pattern: tc.target},
-				StatusCode: fiber.StatusFound,
-			}))
-			app.Get("/*", func(c fiber.Ctx) error { return c.SendString("fell through") })
-
-			req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, tc.request, http.NoBody)
-			require.NoError(t, err)
-			resp, err := app.Test(req)
-			require.NoError(t, err)
-
-			if tc.want == "" {
-				require.Equal(t, fiber.StatusOK, resp.StatusCode, "the rule must not fire")
-				require.Empty(t, resp.Header.Get("Location"))
-				return
-			}
-			require.Equal(t, fiber.StatusFound, resp.StatusCode)
-			require.Equal(t, tc.want, resp.Header.Get("Location"))
+			requireRule(t, false, "/a/*x*", tc.target, tc.request, tc.want)
 		})
 	}
 }
@@ -565,21 +466,8 @@ func Test_Redirect_CaptureClosingTheHost(t *testing.T) {
 func Test_Redirect_TenthCaptureInAuthority(t *testing.T) {
 	t.Parallel()
 
-	app := fiber.New()
-	app.Use(New(Config{
-		Rules:      map[string]string{"/t/*/*/*/*/*/*/*/*/*/*": "https://$10.cdn.example.com/"},
-		StatusCode: fiber.StatusFound,
-	}))
-	app.Get("/*", func(c fiber.Ctx) error { return c.SendString("fell through") })
-
-	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet,
-		"/t/evil.com/x/b/c/d/e/f/g/h/i/tenant", http.NoBody)
-	require.NoError(t, err)
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-
-	require.Equal(t, fiber.StatusOK, resp.StatusCode, "the rule must not fire")
-	require.Empty(t, resp.Header.Get("Location"))
+	requireRule(t, false, "/t/*/*/*/*/*/*/*/*/*/*", "https://$10.cdn.example.com/",
+		"/t/evil.com/x/b/c/d/e/f/g/h/i/tenant", "")
 }
 
 // Test_Redirect_ExtraSlashesBeforeTheCapture covers a target opening its authority with more than two slashes.
@@ -606,25 +494,7 @@ func Test_Redirect_ExtraSlashesBeforeTheCapture(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			app := fiber.New()
-			app.Use(New(Config{
-				Rules:      map[string]string{"/go/*": tc.target},
-				StatusCode: fiber.StatusFound,
-			}))
-			app.Get("/*", func(c fiber.Ctx) error { return c.SendString("fell through") })
-
-			req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, tc.request, http.NoBody)
-			require.NoError(t, err)
-			resp, err := app.Test(req)
-			require.NoError(t, err)
-
-			if tc.want == "" {
-				require.Equal(t, fiber.StatusOK, resp.StatusCode, "the rule must not fire")
-				require.Empty(t, resp.Header.Get("Location"))
-				return
-			}
-			require.Equal(t, fiber.StatusFound, resp.StatusCode)
-			require.Equal(t, tc.want, resp.Header.Get("Location"))
+			requireRule(t, false, "/go/*", tc.target, tc.request, tc.want)
 		})
 	}
 }
@@ -646,18 +516,14 @@ func Test_Redirect_OverlappingRulesAreDeterministic(t *testing.T) {
 		return app
 	}
 
-	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/cdn/ax", http.NoBody)
-	require.NoError(t, err)
-	resp, err := build().Test(req)
+	resp, err := build().Test(httptest.NewRequest(fiber.MethodGet, "/cdn/ax", http.NoBody))
 	require.NoError(t, err)
 	first := resp.Header.Get("Location")
 	require.NotEmpty(t, first)
 
 	// Rebuilding the middleware re-walks the rules map, which is where the randomization came from.
 	for range 20 {
-		req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/cdn/ax", http.NoBody)
-		require.NoError(t, err)
-		resp, err := build().Test(req)
+		resp, err := build().Test(httptest.NewRequest(fiber.MethodGet, "/cdn/ax", http.NoBody))
 		require.NoError(t, err)
 		require.Equal(t, first, resp.Header.Get("Location"))
 	}
@@ -687,25 +553,7 @@ func Test_Redirect_PortDoesNotPinTheHost(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			app := fiber.New()
-			app.Use(New(Config{
-				Rules:      map[string]string{tc.pattern: tc.target},
-				StatusCode: fiber.StatusFound,
-			}))
-			app.Get("/*", func(c fiber.Ctx) error { return c.SendString("fell through") })
-
-			req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, tc.request, http.NoBody)
-			require.NoError(t, err)
-			resp, err := app.Test(req)
-			require.NoError(t, err)
-
-			if tc.want == "" {
-				require.Equal(t, fiber.StatusOK, resp.StatusCode, "the rule must not fire")
-				require.Empty(t, resp.Header.Get("Location"))
-				return
-			}
-			require.Equal(t, fiber.StatusFound, resp.StatusCode)
-			require.Equal(t, tc.want, resp.Header.Get("Location"))
+			requireRule(t, false, tc.pattern, tc.target, tc.request, tc.want)
 		})
 	}
 }
@@ -714,27 +562,13 @@ func Test_Redirect_PortDoesNotPinTheHost(t *testing.T) {
 func Test_Redirect_MoreSpecificRuleWins(t *testing.T) {
 	t.Parallel()
 
-	app := fiber.New()
-	app.Use(New(Config{
-		Rules: map[string]string{
-			"/*":     "/home",
-			"/old/*": "/new/$1",
-		},
-		StatusCode: fiber.StatusFound,
-	}))
-
-	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/old/thing", http.NoBody)
-	require.NoError(t, err)
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, "/new/thing", resp.Header.Get("Location"))
-
+	rules := map[string]string{
+		"/*":     "/home",
+		"/old/*": "/new/$1",
+	}
+	requireWin(t, rules, "/old/thing", "/new/thing")
 	// The catch-all still covers everything the specific rule does not.
-	req, err = http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/other", http.NoBody)
-	require.NoError(t, err)
-	resp, err = app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, "/home", resp.Header.Get("Location"))
+	requireWin(t, rules, "/other", "/home")
 }
 
 // Test_TargetLetsRequestPickHost pins which target shapes hand the destination to the request, "https:$1" among them.
@@ -1065,18 +899,8 @@ func Test_AsBrowserReads(t *testing.T) {
 func Test_Redirect_SameOriginTargets_QueryPreserved(t *testing.T) {
 	t.Parallel()
 
-	app := fiber.New()
-	app.Use(New(Config{
-		Rules:      map[string]string{"/api/*": "/$1"},
-		StatusCode: fiber.StatusFound,
-	}))
-
 	// The query is appended after the location is made same-origin, so it survives the collapse.
-	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/api//evil.com?a=1&b=2", http.NoBody)
-	require.NoError(t, err)
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, "/evil.com?a=1&b=2", resp.Header.Get("Location"))
+	requireRule(t, false, "/api/*", "/$1", "/api//evil.com?a=1&b=2", "/evil.com?a=1&b=2")
 }
 
 func Test_SchemeEnd(t *testing.T) {
@@ -1104,157 +928,103 @@ func Test_SchemeEnd(t *testing.T) {
 
 func Test_Next(t *testing.T) {
 	// Case 1 : Next function always returns true
-	app := *fiber.New()
+	app := fiber.New()
 	app.Use(New(Config{
-		Next: func(fiber.Ctx) bool {
-			return true
-		},
-		Rules: map[string]string{
-			"/default": "google.com",
-		},
+		Next:       func(fiber.Ctx) bool { return true },
+		Rules:      map[string]string{"/default": "google.com"},
 		StatusCode: fiber.StatusMovedPermanently,
 	}))
-
 	app.Use(func(c fiber.Ctx) error {
 		return c.SendStatus(fiber.StatusOK)
 	})
 
-	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/default", http.NoBody)
-	require.NoError(t, err)
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	status, _ := get(t, app, "/default")
+	require.Equal(t, fiber.StatusOK, status)
 
 	// Case 2 : Next function always returns false
-	app = *fiber.New()
+	app = fiber.New()
 	app.Use(New(Config{
-		Next: func(fiber.Ctx) bool {
-			return false
-		},
-		Rules: map[string]string{
-			"/default": "google.com",
-		},
+		Next:       func(fiber.Ctx) bool { return false },
+		Rules:      map[string]string{"/default": "google.com"},
 		StatusCode: fiber.StatusMovedPermanently,
 	}))
 
-	req, err = http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/default", http.NoBody)
-	require.NoError(t, err)
-	resp, err = app.Test(req)
-	require.NoError(t, err)
-
-	require.Equal(t, fiber.StatusMovedPermanently, resp.StatusCode)
-	require.Equal(t, "google.com", resp.Header.Get("Location"))
+	status, location := get(t, app, "/default")
+	require.Equal(t, fiber.StatusMovedPermanently, status)
+	require.Equal(t, "google.com", location)
 }
 
 func Test_NoRules(t *testing.T) {
 	// Case 1: No rules with default route defined
-	app := *fiber.New()
-
-	app.Use(New(Config{
-		StatusCode: fiber.StatusMovedPermanently,
-	}))
-
+	app := fiber.New()
+	app.Use(New(Config{StatusCode: fiber.StatusMovedPermanently}))
 	app.Use(func(c fiber.Ctx) error {
 		return c.SendStatus(fiber.StatusOK)
 	})
 
-	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/default", http.NoBody)
-	require.NoError(t, err)
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	status, _ := get(t, app, "/default")
+	require.Equal(t, fiber.StatusOK, status)
 
 	// Case 2: No rules and no default route defined
-	app = *fiber.New()
+	app = fiber.New()
+	app.Use(New(Config{StatusCode: fiber.StatusMovedPermanently}))
 
-	app.Use(New(Config{
-		StatusCode: fiber.StatusMovedPermanently,
-	}))
-
-	req, err = http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/default", http.NoBody)
-	require.NoError(t, err)
-	resp, err = app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusNotFound, resp.StatusCode)
+	status, _ = get(t, app, "/default")
+	require.Equal(t, fiber.StatusNotFound, status)
 }
 
 func Test_DefaultConfig(t *testing.T) {
 	// Case 1: Default config and no default route
-	app := *fiber.New()
-
+	app := fiber.New()
 	app.Use(New())
 
-	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/default", http.NoBody)
-	require.NoError(t, err)
-	resp, err := app.Test(req)
-
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusNotFound, resp.StatusCode)
+	status, _ := get(t, app, "/default")
+	require.Equal(t, fiber.StatusNotFound, status)
 
 	// Case 2: Default config and default route
-	app = *fiber.New()
-
+	app = fiber.New()
 	app.Use(New())
 	app.Use(func(c fiber.Ctx) error {
 		return c.SendStatus(fiber.StatusOK)
 	})
 
-	req, err = http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/default", http.NoBody)
-	require.NoError(t, err)
-	resp, err = app.Test(req)
-
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	status, _ = get(t, app, "/default")
+	require.Equal(t, fiber.StatusOK, status)
 }
 
 func Test_RegexRules(t *testing.T) {
 	// Case 1: Rules regex is empty
-	app := *fiber.New()
+	app := fiber.New()
 	app.Use(New(Config{
 		Rules:      map[string]string{},
 		StatusCode: fiber.StatusMovedPermanently,
 	}))
-
 	app.Use(func(c fiber.Ctx) error {
 		return c.SendStatus(fiber.StatusOK)
 	})
 
-	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/default", http.NoBody)
-	require.NoError(t, err)
-	resp, err := app.Test(req)
-
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	status, _ := get(t, app, "/default")
+	require.Equal(t, fiber.StatusOK, status)
 
 	// Case 2: Rules regex map contains valid regex and well-formed replacement URLs
-	app = *fiber.New()
+	app = fiber.New()
 	app.Use(New(Config{
-		Rules: map[string]string{
-			"/default": "google.com",
-		},
+		Rules:      map[string]string{"/default": "google.com"},
 		StatusCode: fiber.StatusMovedPermanently,
 	}))
-
 	app.Use(func(c fiber.Ctx) error {
 		return c.SendStatus(fiber.StatusOK)
 	})
 
-	req, err = http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/default", http.NoBody)
-	require.NoError(t, err)
-	resp, err = app.Test(req)
-
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusMovedPermanently, resp.StatusCode)
-	require.Equal(t, "google.com", resp.Header.Get("Location"))
+	status, location := get(t, app, "/default")
+	require.Equal(t, fiber.StatusMovedPermanently, status)
+	require.Equal(t, "google.com", location)
 
 	// Case 3: Test invalid regex throws panic
-	app = *fiber.New()
+	app = fiber.New()
 	require.Panics(t, func() {
 		app.Use(New(Config{
-			Rules: map[string]string{
-				"(": "google.com",
-			},
+			Rules:      map[string]string{"(": "google.com"},
 			StatusCode: fiber.StatusMovedPermanently,
 		}))
 	})
@@ -1285,16 +1055,7 @@ func Test_Redirect_TargetIsReadAsTheClientWillRead(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			app := fiber.New(fiber.Config{UnescapePath: true})
-			app.Use(New(Config{Rules: map[string]string{"/r/*": tc.target}}))
-			app.Get("/r/*", func(c fiber.Ctx) error { return c.SendString("fell through") })
-
-			req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, tc.request, http.NoBody)
-			require.NoError(t, err)
-			resp, err := app.Test(req)
-			require.NoError(t, err)
-			require.Equal(t, fiber.StatusOK, resp.StatusCode, "the rule must be refused at startup")
-			require.Empty(t, resp.Header.Get("Location"))
+			requireRule(t, true, "/r/*", tc.target, tc.request, "")
 		})
 	}
 }
@@ -1314,14 +1075,7 @@ func Test_Redirect_TargetWhitespaceLeavesWorkingRulesAlone(t *testing.T) {
 		t.Run(tc.target, func(t *testing.T) {
 			t.Parallel()
 
-			app := fiber.New()
-			app.Use(New(Config{Rules: map[string]string{"/r/*": tc.target}}))
-
-			req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, tc.request, http.NoBody)
-			require.NoError(t, err)
-			resp, err := app.Test(req)
-			require.NoError(t, err)
-			require.Equal(t, tc.want, resp.Header.Get("Location"))
+			requireRule(t, false, "/r/*", tc.target, tc.request, tc.want)
 		})
 	}
 }
@@ -1334,16 +1088,7 @@ func Test_Redirect_HostTextTheParserDeletes(t *testing.T) {
 		t.Run(strconv.QuoteToASCII(suffix), func(t *testing.T) {
 			t.Parallel()
 
-			app := fiber.New()
-			app.Use(New(Config{Rules: map[string]string{"/r/*": "https://$1" + suffix}}))
-			app.Get("/r/*", func(c fiber.Ctx) error { return c.SendString("fell through") })
-
-			req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/r/evil.com", http.NoBody)
-			require.NoError(t, err)
-			resp, err := app.Test(req)
-			require.NoError(t, err)
-			require.Equal(t, fiber.StatusOK, resp.StatusCode, "the rule must be refused at startup")
-			require.Empty(t, resp.Header.Get("Location"))
+			requireRule(t, false, "/r/*", "https://$1"+suffix, "/r/evil.com", "")
 		})
 	}
 }
@@ -1360,14 +1105,7 @@ func Test_Redirect_InternationalizedHostsStillPin(t *testing.T) {
 		t.Run(tc.target, func(t *testing.T) {
 			t.Parallel()
 
-			app := fiber.New()
-			app.Use(New(Config{Rules: map[string]string{"/r/*": tc.target}}))
-
-			req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/r/t", http.NoBody)
-			require.NoError(t, err)
-			resp, err := app.Test(req)
-			require.NoError(t, err)
-			require.Equal(t, tc.want, resp.Header.Get("Location"))
+			requireRule(t, false, "/r/*", tc.target, "/r/t", tc.want)
 		})
 	}
 }
@@ -1380,16 +1118,7 @@ func Test_Redirect_ControlCharacterPinsNoHost(t *testing.T) {
 		t.Run(strconv.QuoteToASCII(sep), func(t *testing.T) {
 			t.Parallel()
 
-			app := fiber.New()
-			app.Use(New(Config{Rules: map[string]string{"/r/*x*": "https://$1" + sep + "$2"}}))
-			app.Use(func(c fiber.Ctx) error { return c.SendString("fell through") })
-
-			req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/r/evil.comx", http.NoBody)
-			require.NoError(t, err)
-			resp, err := app.Test(req)
-			require.NoError(t, err)
-			require.Equal(t, fiber.StatusOK, resp.StatusCode, "the rule must be refused at startup")
-			require.Empty(t, resp.Header.Get("Location"))
+			requireRule(t, false, "/r/*x*", "https://$1"+sep+"$2", "/r/evil.comx", "")
 		})
 	}
 }
@@ -1402,27 +1131,12 @@ func Test_Redirect_PercentEscapePinsOnlyWhatItDecodesTo(t *testing.T) {
 		t.Run(suffix, func(t *testing.T) {
 			t.Parallel()
 
-			app := fiber.New()
-			app.Use(New(Config{Rules: map[string]string{"/r/*": "https://$1" + suffix}}))
-			app.Use(func(c fiber.Ctx) error { return c.SendString("fell through") })
-
-			req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/r/evil.com", http.NoBody)
-			require.NoError(t, err)
-			resp, err := app.Test(req)
-			require.NoError(t, err)
-			require.Equal(t, fiber.StatusOK, resp.StatusCode, "the rule must be refused at startup")
-			require.Empty(t, resp.Header.Get("Location"))
+			requireRule(t, false, "/r/*", "https://$1"+suffix, "/r/evil.com", "")
 		})
 	}
 
 	// An escape that decodes to real host text still pins one.
-	app := fiber.New()
-	app.Use(New(Config{Rules: map[string]string{"/r/*": "https://$1%41.example.com"}}))
-	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/r/t", http.NoBody)
-	require.NoError(t, err)
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, "https://t%41.example.com", resp.Header.Get("Location"))
+	requireRule(t, false, "/r/*", "https://$1%41.example.com", "/r/t", "https://t%41.example.com")
 }
 
 // Test_Redirect_NumericSuffixPinsNoHost covers the IPv4 reading, where "https://$1.1" composed loopback from "127.0.0".
@@ -1438,16 +1152,7 @@ func Test_Redirect_NumericSuffixPinsNoHost(t *testing.T) {
 		t.Run(tc.target, func(t *testing.T) {
 			t.Parallel()
 
-			app := fiber.New()
-			app.Use(New(Config{Rules: map[string]string{"/r/*": tc.target}}))
-			app.Use(func(c fiber.Ctx) error { return c.SendString("fell through") })
-
-			req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, tc.request, http.NoBody)
-			require.NoError(t, err)
-			resp, err := app.Test(req)
-			require.NoError(t, err)
-			require.Equal(t, fiber.StatusOK, resp.StatusCode, "the rule must be refused at startup")
-			require.Empty(t, resp.Header.Get("Location"))
+			requireRule(t, false, "/r/*", tc.target, tc.request, "")
 		})
 	}
 }
@@ -1465,14 +1170,7 @@ func Test_Redirect_CompleteAddressStillPins(t *testing.T) {
 		t.Run(tc.target, func(t *testing.T) {
 			t.Parallel()
 
-			app := fiber.New()
-			app.Use(New(Config{Rules: map[string]string{"/r/*": tc.target}}))
-
-			req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, tc.request, http.NoBody)
-			require.NoError(t, err)
-			resp, err := app.Test(req)
-			require.NoError(t, err)
-			require.Equal(t, tc.want, resp.Header.Get("Location"))
+			requireRule(t, false, "/r/*", tc.target, tc.request, tc.want)
 		})
 	}
 }
@@ -1503,16 +1201,7 @@ func Test_Redirect_DotlessTailPinsNoHost(t *testing.T) {
 		t.Run(tc.target+" "+tc.request, func(t *testing.T) {
 			t.Parallel()
 
-			app := fiber.New()
-			app.Use(New(Config{Rules: map[string]string{tc.rule: tc.target}}))
-			app.Use(func(c fiber.Ctx) error { return c.SendString("fell through") })
-
-			req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, tc.request, http.NoBody)
-			require.NoError(t, err)
-			resp, err := app.Test(req)
-			require.NoError(t, err)
-			require.Equal(t, fiber.StatusOK, resp.StatusCode, "the rule must be refused at startup")
-			require.Empty(t, resp.Header.Get("Location"))
+			requireRule(t, false, tc.rule, tc.target, tc.request, "")
 		})
 	}
 }
@@ -1532,14 +1221,7 @@ func Test_Redirect_ClosedLabelStillPins(t *testing.T) {
 		t.Run(tc.target, func(t *testing.T) {
 			t.Parallel()
 
-			app := fiber.New()
-			app.Use(New(Config{Rules: map[string]string{"/r/*": tc.target}}))
-
-			req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, tc.request, http.NoBody)
-			require.NoError(t, err)
-			resp, err := app.Test(req)
-			require.NoError(t, err)
-			require.Equal(t, tc.want, resp.Header.Get("Location"))
+			requireRule(t, false, "/r/*", tc.target, tc.request, tc.want)
 		})
 	}
 }
@@ -1563,14 +1245,7 @@ func Test_Redirect_CarriesQueryOntoTargetsOwnQuery(t *testing.T) {
 		t.Run(tc.target+" "+tc.request, func(t *testing.T) {
 			t.Parallel()
 
-			app := fiber.New()
-			app.Use(New(Config{Rules: map[string]string{"/old": tc.target}}))
-
-			req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, tc.request, http.NoBody)
-			require.NoError(t, err)
-			resp, err := app.Test(req)
-			require.NoError(t, err)
-			require.Equal(t, tc.want, resp.Header.Get("Location"))
+			requireRule(t, false, "/old", tc.target, tc.request, tc.want)
 		})
 	}
 }
@@ -1585,82 +1260,26 @@ func Test_Redirect_NoSlashSpecialSchemeAuthorityIsGuarded(t *testing.T) {
 		path   string
 		want   string
 	}{
-		{
-			name:   "an @ makes the author's host userinfo",
-			target: "https:cdn.example.com$1",
-			path:   "/r/@evil.com",
-			want:   "",
-		},
-		{
-			name:   "a leading dot extends the host into another domain",
-			target: "https:cdn.example.com$1",
-			path:   "/r/.evil.com",
-			want:   "",
-		},
-		{
-			name:   "ws is special too",
-			target: "ws:cdn.example.com$1",
-			path:   "/r/@evil.com",
-			want:   "",
-		},
-		{
-			name:   "ftp is special too",
-			target: "ftp:cdn.example.com$1",
-			path:   "/r/@evil.com",
-			want:   "",
-		},
-		{
-			// The scheme is case-insensitive, so the reading does not change.
-			name:   "the scheme's own case does not matter",
-			target: "HTTPS:cdn.example.com$1",
-			path:   "/r/@evil.com",
-			want:   "",
-		},
-		{
-			// A label under the author's host is what the rule is for.
-			name:   "an interior label still redirects",
-			target: "https:$1.example.com",
-			path:   "/r/tenant",
-			want:   "https:tenant.example.com",
-		},
-		{
-			name:   "a capture between two literals still redirects",
-			target: "https:cdn.$1.com",
-			path:   "/r/example",
-			want:   "https:cdn.example.com",
-		},
-		{
-			// The "/" ends the authority, so the capture is a path segment and an "@" in it reaches no host.
-			name:   "past the first slash the capture is a path",
-			target: "https:cdn.example.com/$1",
-			path:   "/r/@evil.com",
-			want:   "https:cdn.example.com/@evil.com",
-		},
-		{
-			// mailto is not special: with no "//" it has no authority, so the capture is an addressee.
-			name:   "a scheme that is not special has no implied authority",
-			target: "mailto:$1@example.com",
-			path:   "/r/user",
-			want:   "mailto:user@example.com",
-		},
+		{"an @ makes the author's host userinfo", "https:cdn.example.com$1", "/r/@evil.com", ""},
+		{"a leading dot extends the host into another domain", "https:cdn.example.com$1", "/r/.evil.com", ""},
+		{"ws is special too", "ws:cdn.example.com$1", "/r/@evil.com", ""},
+		{"ftp is special too", "ftp:cdn.example.com$1", "/r/@evil.com", ""},
+		// The scheme is case-insensitive, so the reading does not change.
+		{"the scheme's own case does not matter", "HTTPS:cdn.example.com$1", "/r/@evil.com", ""},
+		// A label under the author's host is what the rule is for.
+		{"an interior label still redirects", "https:$1.example.com", "/r/tenant", "https:tenant.example.com"},
+		{"a capture between two literals still redirects", "https:cdn.$1.com", "/r/example", "https:cdn.example.com"},
+		// The "/" ends the authority, so the capture is a path segment and an "@" in it reaches no host.
+		{"past the first slash the capture is a path", "https:cdn.example.com/$1", "/r/@evil.com", "https:cdn.example.com/@evil.com"},
+		// mailto is not special: with no "//" it has no authority, so the capture is an addressee.
+		{"a scheme that is not special has no implied authority", "mailto:$1@example.com", "/r/user", "mailto:user@example.com"},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			app := fiber.New()
-			app.Use(New(Config{Rules: map[string]string{"/r/*": tc.target}, StatusCode: fiber.StatusFound}))
-			app.Use(func(c fiber.Ctx) error { return c.SendString("fell through") })
-
-			req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, tc.path, http.NoBody)
-			require.NoError(t, err)
-			resp, err := app.Test(req)
-			require.NoError(t, err)
-			require.Equal(t, tc.want, resp.Header.Get("Location"))
-			if tc.want == "" {
-				require.Equal(t, fiber.StatusOK, resp.StatusCode, "a refused value falls through")
-			}
+			requireRule(t, false, "/r/*", tc.target, tc.path, tc.want)
 		})
 	}
 }
@@ -1733,15 +1352,7 @@ func Test_Redirect_RuleOrderIsBySpecificity(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			app := fiber.New()
-			app.Use(New(Config{Rules: tc.rules, StatusCode: fiber.StatusFound}))
-			app.Use(func(c fiber.Ctx) error { return c.SendString("fell through") })
-
-			req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, tc.path, http.NoBody)
-			require.NoError(t, err)
-			resp, err := app.Test(req)
-			require.NoError(t, err)
-			require.Equal(t, tc.want, resp.Header.Get("Location"))
+			requireWin(t, tc.rules, tc.path, tc.want)
 		})
 	}
 }
@@ -1841,24 +1452,7 @@ func Test_Redirect_ComposedPort(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			app := fiber.New()
-			app.Use(New(Config{
-				Rules:      map[string]string{"/r/*/*": "https://example.com:$1$2"},
-				StatusCode: fiber.StatusFound,
-			}))
-			app.Get("/*", func(c fiber.Ctx) error { return c.SendString("fell through") })
-
-			req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, tc.request, http.NoBody)
-			require.NoError(t, err)
-			resp, err := app.Test(req)
-			require.NoError(t, err)
-
-			if tc.want == "" {
-				require.Equal(t, fiber.StatusOK, resp.StatusCode, "the rule must not fire")
-				return
-			}
-			require.Equal(t, fiber.StatusFound, resp.StatusCode)
-			require.Equal(t, tc.want, resp.Header.Get("Location"))
+			requireRule(t, false, "/r/*/*", "https://example.com:$1$2", tc.request, tc.want)
 		})
 	}
 }
@@ -1867,26 +1461,15 @@ func Test_Redirect_ComposedPort(t *testing.T) {
 func Test_Redirect_ExactRuleBeatsPattern(t *testing.T) {
 	t.Parallel()
 
-	app := fiber.New()
-	app.Use(New(Config{
-		Rules: map[string]string{
-			"/api/[a-z]+": "/broad",
-			"/api/users":  "/exact",
-		},
-		StatusCode: fiber.StatusFound,
-	}))
-	app.Get("/*", func(c fiber.Ctx) error { return c.SendString("fell through") })
-
+	rules := map[string]string{
+		"/api/[a-z]+": "/broad",
+		"/api/users":  "/exact",
+	}
 	for _, tc := range []struct{ request, want string }{
 		{"/api/users", "/exact"},
 		{"/api/other", "/broad"},
 	} {
-		req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, tc.request, http.NoBody)
-		require.NoError(t, err)
-		resp, err := app.Test(req)
-		require.NoError(t, err)
-		require.Equal(t, fiber.StatusFound, resp.StatusCode, tc.request)
-		require.Equal(t, tc.want, resp.Header.Get("Location"), tc.request)
+		requireWin(t, rules, tc.request, tc.want)
 	}
 }
 
@@ -1894,26 +1477,15 @@ func Test_Redirect_ExactRuleBeatsPattern(t *testing.T) {
 func Test_Redirect_ExactRuleBeatsDottedPattern(t *testing.T) {
 	t.Parallel()
 
-	app := fiber.New()
-	app.Use(New(Config{
-		Rules: map[string]string{
-			"/api/user.": "/broad",
-			"/api/users": "/exact",
-		},
-		StatusCode: fiber.StatusFound,
-	}))
-	app.Get("/*", func(c fiber.Ctx) error { return c.SendString("fell through") })
-
+	rules := map[string]string{
+		"/api/user.": "/broad",
+		"/api/users": "/exact",
+	}
 	for _, tc := range []struct{ request, want string }{
 		{"/api/users", "/exact"},
 		{"/api/userx", "/broad"},
 	} {
-		req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, tc.request, http.NoBody)
-		require.NoError(t, err)
-		resp, err := app.Test(req)
-		require.NoError(t, err)
-		require.Equal(t, fiber.StatusFound, resp.StatusCode, tc.request)
-		require.Equal(t, tc.want, resp.Header.Get("Location"), tc.request)
+		requireWin(t, rules, tc.request, tc.want)
 	}
 }
 
@@ -1948,25 +1520,7 @@ func Test_Redirect_NonSpecialSchemeAuthority(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			app := fiber.New(fiber.Config{UnescapePath: true})
-			app.Use(New(Config{
-				Rules:      map[string]string{"/p/*": tc.target},
-				StatusCode: fiber.StatusFound,
-			}))
-			app.Get("/*", func(c fiber.Ctx) error { return c.SendString("fell through") })
-
-			req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, tc.request, http.NoBody)
-			require.NoError(t, err)
-			resp, err := app.Test(req)
-			require.NoError(t, err)
-
-			if tc.want == "" {
-				require.Equal(t, fiber.StatusOK, resp.StatusCode, "the rule must not fire")
-				require.Empty(t, resp.Header.Get("Location"))
-				return
-			}
-			require.Equal(t, fiber.StatusFound, resp.StatusCode)
-			require.Equal(t, tc.want, resp.Header.Get("Location"))
+			requireRule(t, true, "/p/*", tc.target, tc.request, tc.want)
 		})
 	}
 }
@@ -1993,30 +1547,7 @@ func Test_Redirect_ThirdSlashUnderNonSpecialScheme(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			app := fiber.New(fiber.Config{UnescapePath: true})
-			app.Use(New(Config{
-				Rules:      map[string]string{"/p/*": tc.target},
-				StatusCode: fiber.StatusFound,
-			}))
-			app.Get("/*", func(c fiber.Ctx) error { return c.SendString("fell through") })
-
-			req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, tc.request, http.NoBody)
-			require.NoError(t, err)
-			resp, err := app.Test(req)
-			require.NoError(t, err)
-
-			if tc.want == "" {
-				require.Equal(t, fiber.StatusOK, resp.StatusCode, "the rule must not fire")
-				require.Empty(t, resp.Header.Get("Location"))
-				return
-			}
-			require.Equal(t, fiber.StatusFound, resp.StatusCode)
-			require.Equal(t, tc.want, resp.Header.Get("Location"))
-
-			// The authority stayed empty, so nothing the value supplied is a host.
-			u, err := url.Parse(resp.Header.Get("Location"))
-			require.NoError(t, err)
-			require.Empty(t, u.Host)
+			requireRule(t, true, "/p/*", tc.target, tc.request, tc.want)
 		})
 	}
 }
@@ -2025,28 +1556,17 @@ func Test_Redirect_ThirdSlashUnderNonSpecialScheme(t *testing.T) {
 func Test_Redirect_WiderClassDoesNotOutrank(t *testing.T) {
 	t.Parallel()
 
-	app := fiber.New()
-	app.Use(New(Config{
-		Rules: map[string]string{
-			"/api/[abcdefghijklmnopqrstuvwxyz]": "/broad",
-			"/api/[ab]":                         "/narrow",
-		},
-		StatusCode: fiber.StatusFound,
-	}))
-	app.Get("/*", func(c fiber.Ctx) error { return c.SendString("fell through") })
-
+	rules := map[string]string{
+		"/api/[abcdefghijklmnopqrstuvwxyz]": "/broad",
+		"/api/[ab]":                         "/narrow",
+	}
 	for _, tc := range []struct{ request, want string }{
 		// Both match, and they tie on pinned length, so the deterministic key order decides.
 		{"/api/a", "/narrow"},
 		// Only the wider class matches this one.
 		{"/api/z", "/broad"},
 	} {
-		req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, tc.request, http.NoBody)
-		require.NoError(t, err)
-		resp, err := app.Test(req)
-		require.NoError(t, err)
-		require.Equal(t, fiber.StatusFound, resp.StatusCode, tc.request)
-		require.Equal(t, tc.want, resp.Header.Get("Location"), tc.request)
+		requireWin(t, rules, tc.request, tc.want)
 	}
 }
 
@@ -2054,28 +1574,17 @@ func Test_Redirect_WiderClassDoesNotOutrank(t *testing.T) {
 func Test_Redirect_AlternationRankedByItsWidestBranch(t *testing.T) {
 	t.Parallel()
 
-	app := fiber.New()
-	app.Use(New(Config{
-		Rules: map[string]string{
-			"/very/specific|/x": "/alt",
-			"/x":                "/exact",
-		},
-		StatusCode: fiber.StatusFound,
-	}))
-	app.Get("/*", func(c fiber.Ctx) error { return c.SendString("fell through") })
-
+	rules := map[string]string{
+		"/very/specific|/x": "/alt",
+		"/x":                "/exact",
+	}
 	for _, tc := range []struct{ request, want string }{
 		// Both match, and the exact rule wins: they pin the same byte and the alternation matches strictly more paths.
 		{"/x", "/exact"},
 		// The branch only the alternation matches still reaches it.
 		{"/very/specific", "/alt"},
 	} {
-		req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, tc.request, http.NoBody)
-		require.NoError(t, err)
-		resp, err := app.Test(req)
-		require.NoError(t, err)
-		require.Equal(t, fiber.StatusFound, resp.StatusCode, tc.request)
-		require.Equal(t, tc.want, resp.Header.Get("Location"), tc.request)
+		requireWin(t, rules, tc.request, tc.want)
 	}
 }
 
@@ -2083,28 +1592,17 @@ func Test_Redirect_AlternationRankedByItsWidestBranch(t *testing.T) {
 func Test_Redirect_GroupedAlternationRankedByItsWidestBranch(t *testing.T) {
 	t.Parallel()
 
-	app := fiber.New()
-	app.Use(New(Config{
-		Rules: map[string]string{
-			"/p/[a-z](reports|x.*)": "/grouped",
-			"/p/[a-z]xy":            "/narrow",
-		},
-		StatusCode: fiber.StatusFound,
-	}))
-	app.Get("/*", func(c fiber.Ctx) error { return c.SendString("fell through") })
-
+	rules := map[string]string{
+		"/p/[a-z](reports|x.*)": "/grouped",
+		"/p/[a-z]xy":            "/narrow",
+	}
 	for _, tc := range []struct{ request, want string }{
 		// Both match "/p/axy", and the grouped rule pins only the byte its "x.*" branch does.
 		{"/p/axy", "/narrow"},
 		// What only the grouped rule matches still reaches it.
 		{"/p/areports", "/grouped"},
 	} {
-		req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, tc.request, http.NoBody)
-		require.NoError(t, err)
-		resp, err := app.Test(req)
-		require.NoError(t, err)
-		require.Equal(t, fiber.StatusFound, resp.StatusCode, tc.request)
-		require.Equal(t, tc.want, resp.Header.Get("Location"), tc.request)
+		requireWin(t, rules, tc.request, tc.want)
 	}
 }
 
@@ -2112,27 +1610,16 @@ func Test_Redirect_GroupedAlternationRankedByItsWidestBranch(t *testing.T) {
 func Test_Redirect_OptionalQuantifierDoesNotOutrankExactRule(t *testing.T) {
 	t.Parallel()
 
-	app := fiber.New()
-	app.Use(New(Config{
-		Rules: map[string]string{
-			"/api/ab{0,1}": "/maybe",
-			"/api/ab":      "/exact",
-		},
-		StatusCode: fiber.StatusFound,
-	}))
-	app.Get("/*", func(c fiber.Ctx) error { return c.SendString("fell through") })
-
+	rules := map[string]string{
+		"/api/ab{0,1}": "/maybe",
+		"/api/ab":      "/exact",
+	}
 	for _, tc := range []struct{ request, want string }{
 		{"/api/ab", "/exact"},
 		// What only the quantified rule matches still reaches it.
 		{"/api/a", "/maybe"},
 	} {
-		req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, tc.request, http.NoBody)
-		require.NoError(t, err)
-		resp, err := app.Test(req)
-		require.NoError(t, err)
-		require.Equal(t, fiber.StatusFound, resp.StatusCode, tc.request)
-		require.Equal(t, tc.want, resp.Header.Get("Location"), tc.request)
+		requireWin(t, rules, tc.request, tc.want)
 	}
 }
 
@@ -2140,26 +1627,15 @@ func Test_Redirect_OptionalQuantifierDoesNotOutrankExactRule(t *testing.T) {
 func Test_Redirect_AnchorPinsNoPath(t *testing.T) {
 	t.Parallel()
 
-	app := fiber.New()
-	app.Use(New(Config{
-		Rules: map[string]string{
-			"/p/[a-z]$": "/class",
-			"/p/[a]":    "/exact",
-		},
-		StatusCode: fiber.StatusFound,
-	}))
-	app.Get("/*", func(c fiber.Ctx) error { return c.SendString("fell through") })
-
+	rules := map[string]string{
+		"/p/[a-z]$": "/class",
+		"/p/[a]":    "/exact",
+	}
 	for _, tc := range []struct{ request, want string }{
 		{"/p/a", "/exact"},
 		{"/p/b", "/class"},
 	} {
-		req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, tc.request, http.NoBody)
-		require.NoError(t, err)
-		resp, err := app.Test(req)
-		require.NoError(t, err)
-		require.Equal(t, fiber.StatusFound, resp.StatusCode, tc.request)
-		require.Equal(t, tc.want, resp.Header.Get("Location"), tc.request)
+		requireWin(t, rules, tc.request, tc.want)
 	}
 }
 
@@ -2178,15 +1654,7 @@ func Test_Redirect_UserinfoDelimitersFollowTheScheme(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			app := fiber.New(fiber.Config{UnescapePath: true})
-			app.Use(New(Config{Rules: map[string]string{"/r/*": tc.target}, StatusCode: fiber.StatusFound}))
-			app.Get("/*", func(c fiber.Ctx) error { return c.SendString("fell through") })
-
-			req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/r/user%5Cname", http.NoBody)
-			require.NoError(t, err)
-			resp, err := app.Test(req)
-			require.NoError(t, err)
-			require.Equal(t, tc.want, resp.Header.Get("Location"))
+			requireRule(t, true, "/r/*", tc.target, "/r/user%5Cname", tc.want)
 		})
 	}
 }
@@ -2195,28 +1663,14 @@ func Test_Redirect_UserinfoDelimitersFollowTheScheme(t *testing.T) {
 func Test_Redirect_FileAuthorityOpensOnBackslashes(t *testing.T) {
 	t.Parallel()
 
-	app := fiber.New(fiber.Config{UnescapePath: true})
-	app.Use(New(Config{Rules: map[string]string{"/r/*": "file:/$1"}, StatusCode: fiber.StatusFound}))
-	app.Get("/*", func(c fiber.Ctx) error { return c.SendString("fell through") })
-
-	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/r/%5Cevil.com/share", http.NoBody)
-	require.NoError(t, err)
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
-	require.Empty(t, resp.Header.Get("Location"))
+	requireRule(t, true, "/r/*", "file:/$1", "/r/%5Cevil.com/share", "")
 
 	// A value that stays a path still redirects, as does a third slash, which closes the authority empty like "file:///tmp".
 	for _, tc := range []struct{ request, want string }{
 		{"/r/tmp/report", "file:/tmp/report"},
 		{"/r/%5C%5Cevil.com/share", `file:/\\evil.com/share`},
 	} {
-		req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, tc.request, http.NoBody)
-		require.NoError(t, err)
-		resp, err := app.Test(req)
-		require.NoError(t, err)
-		require.Equal(t, fiber.StatusFound, resp.StatusCode, tc.request)
-		require.Equal(t, tc.want, resp.Header.Get("Location"), tc.request)
+		requireRule(t, true, "/r/*", "file:/$1", tc.request, tc.want)
 	}
 
 	// The span itself, which is what the runtime guard asks of the composition.
@@ -2234,10 +1688,7 @@ func Test_Redirect_FileAuthorityOpensOnBackslashes(t *testing.T) {
 func Test_Redirect_AnchorsBindEveryBranch(t *testing.T) {
 	t.Parallel()
 
-	app := fiber.New()
-	app.Use(New(Config{Rules: map[string]string{"/a|/b": "/moved"}, StatusCode: fiber.StatusFound}))
-	app.Get("/*", func(c fiber.Ctx) error { return c.SendString("fell through") })
-
+	app := testApp(map[string]string{"/a|/b": "/moved"}, false)
 	for _, tc := range []struct {
 		request string
 		want    int
@@ -2247,11 +1698,8 @@ func Test_Redirect_AnchorsBindEveryBranch(t *testing.T) {
 		{"/a-extra", fiber.StatusOK},
 		{"/extra/b", fiber.StatusOK},
 	} {
-		req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, tc.request, http.NoBody)
-		require.NoError(t, err)
-		resp, err := app.Test(req)
-		require.NoError(t, err)
-		require.Equal(t, tc.want, resp.StatusCode, tc.request)
+		status, _ := get(t, app, tc.request)
+		require.Equal(t, tc.want, status, tc.request)
 	}
 }
 
@@ -2259,26 +1707,15 @@ func Test_Redirect_AnchorsBindEveryBranch(t *testing.T) {
 func Test_Redirect_NestedAlternationLosesTheTieBreak(t *testing.T) {
 	t.Parallel()
 
-	app := fiber.New()
-	app.Use(New(Config{
-		Rules: map[string]string{
-			"/p/[a-z](x|y)": "/wide",
-			"/p/[a-z]x":     "/narrow",
-		},
-		StatusCode: fiber.StatusFound,
-	}))
-	app.Get("/*", func(c fiber.Ctx) error { return c.SendString("fell through") })
-
+	rules := map[string]string{
+		"/p/[a-z](x|y)": "/wide",
+		"/p/[a-z]x":     "/narrow",
+	}
 	for _, tc := range []struct{ request, want string }{
 		{"/p/ax", "/narrow"},
 		{"/p/ay", "/wide"},
 	} {
-		req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, tc.request, http.NoBody)
-		require.NoError(t, err)
-		resp, err := app.Test(req)
-		require.NoError(t, err)
-		require.Equal(t, fiber.StatusFound, resp.StatusCode, tc.request)
-		require.Equal(t, tc.want, resp.Header.Get("Location"), tc.request)
+		requireWin(t, rules, tc.request, tc.want)
 	}
 
 	// A class counts its breadth here too, so the two differ by the group alone.
@@ -2306,21 +1743,10 @@ func Test_Redirect_NestedAlternationLosesTheTieBreak(t *testing.T) {
 func Test_Redirect_FewerWildcardsWin(t *testing.T) {
 	t.Parallel()
 
-	app := fiber.New()
-	app.Use(New(Config{
-		Rules: map[string]string{
-			"/p/*a*b": "https://attacker.example/$1/$2",
-			"/p/*ab":  "/safe/$1",
-		},
-		StatusCode: fiber.StatusFound,
-	}))
-
-	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/p/xxab?secret=top", http.NoBody)
-	require.NoError(t, err)
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusFound, resp.StatusCode)
-	require.Equal(t, "/safe/xx?secret=top", resp.Header.Get("Location"))
+	requireWin(t, map[string]string{
+		"/p/*a*b": "https://attacker.example/$1/$2",
+		"/p/*ab":  "/safe/$1",
+	}, "/p/xxab?secret=top", "/safe/xx?secret=top")
 	require.Equal(t, 2, wildcardRank("/p/*a*b"))
 	require.Equal(t, 1, wildcardRank("/p/*ab"))
 	// Both expand to a single alternative, so the width leaves them tied and the count decides.
@@ -2331,21 +1757,10 @@ func Test_Redirect_FewerWildcardsWin(t *testing.T) {
 func Test_Redirect_WildcardCountYieldsToWidth(t *testing.T) {
 	t.Parallel()
 
-	app := fiber.New()
-	app.Use(New(Config{
-		Rules: map[string]string{
-			`/p/([a]*|[c]*)`: "/narrow",
-			`/p/[a-d]*`:      "/broad",
-		},
-		StatusCode: fiber.StatusFound,
-	}))
-
-	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/p/axyz", http.NoBody)
-	require.NoError(t, err)
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusFound, resp.StatusCode)
-	require.Equal(t, "/narrow", resp.Header.Get("Location"))
+	requireWin(t, map[string]string{
+		`/p/([a]*|[c]*)`: "/narrow",
+		`/p/[a-d]*`:      "/broad",
+	}, "/p/axyz", "/narrow")
 
 	// Every earlier measure ties, and the wildcard count points the wrong way.
 	require.Equal(t, literalPrefixLen(`/p/[a-d]*`), literalPrefixLen(`/p/([a]*|[c]*)`))
@@ -2359,21 +1774,10 @@ func Test_Redirect_WildcardCountYieldsToWidth(t *testing.T) {
 func Test_Redirect_OptionalAtomWidensARule(t *testing.T) {
 	t.Parallel()
 
-	app := fiber.New()
-	app.Use(New(Config{
-		Rules: map[string]string{
-			`/p/*[a]*`: "/narrow",
-			`/p/*a?`:   "/broad",
-		},
-		StatusCode: fiber.StatusFound,
-	}))
-
-	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/p/a", http.NoBody)
-	require.NoError(t, err)
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusFound, resp.StatusCode)
-	require.Equal(t, "/narrow", resp.Header.Get("Location"))
+	requireWin(t, map[string]string{
+		`/p/*[a]*`: "/narrow",
+		`/p/*a?`:   "/broad",
+	}, "/p/a", "/narrow")
 
 	// The optional atom is the one measure that separates them, and "{0,1}" spells the same thing.
 	require.Greater(t, wildcardRank(`/p/*[a]*`), wildcardRank(`/p/*a?`))
@@ -2389,28 +1793,16 @@ func Test_Redirect_OptionalAtomWidensARule(t *testing.T) {
 func Test_Redirect_UnboundedRepetitionIsWidest(t *testing.T) {
 	t.Parallel()
 
-	app := fiber.New()
-	app.Use(New(Config{
-		Rules: map[string]string{
-			`/p/[a][ab]?`: "/narrow",
-			`/p/[ab]+`:    "/broad",
-		},
-		StatusCode: fiber.StatusFound,
-	}))
-
-	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/p/a", http.NoBody)
-	require.NoError(t, err)
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusFound, resp.StatusCode)
-	require.Equal(t, "/narrow", resp.Header.Get("Location"))
+	requireWin(t, map[string]string{
+		`/p/[a][ab]?`: "/narrow",
+		`/p/[ab]+`:    "/broad",
+	}, "/p/a", "/narrow")
 
 	// A run without an end is ranked, not measured, so the width separates two rules that both run on.
 	require.Equal(t, 1, carriesRun(`/p/[ab]+`))
 	require.Equal(t, 1, carriesRun(`/p/[a]{2,}`))
 	require.Equal(t, 0, carriesRun(`/p/[a][ab]?`))
 	require.Equal(t, 0, carriesRun(`/p/[a]{2,3}`))
-	require.Less(t, patternWidth(`/p/[z]+`), patternWidth(`/p/[a-z]+`))
 
 	// Every count a bounded quantifier permits is a set of paths of its own, and they add: "{2,3}" matches "aa" and "aaa".
 	require.Equal(t, 3, patternWidth(`/p/[a][ab]?`))
@@ -2427,63 +1819,30 @@ func Test_Redirect_UnboundedRepetitionIsWidest(t *testing.T) {
 func Test_Redirect_FiniteRepetitionIsCounted(t *testing.T) {
 	t.Parallel()
 
-	app := fiber.New()
-	app.Use(New(Config{
-		Rules: map[string]string{
-			`/p/[a][ab]?`:  "/narrow",
-			`/p/[ab]{1,2}`: "/broad",
-		},
-		StatusCode: fiber.StatusFound,
-	}))
-
-	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/p/a", http.NoBody)
-	require.NoError(t, err)
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusFound, resp.StatusCode)
-	require.Equal(t, "/narrow", resp.Header.Get("Location"))
+	requireWin(t, map[string]string{
+		`/p/[a][ab]?`:  "/narrow",
+		`/p/[ab]{1,2}`: "/broad",
+	}, "/p/a", "/narrow")
 }
 
 // Test_Redirect_UnboundedRulesKeepTheirBreadth covers two rules that both run on: "/p/[z]+" and "/p/[a-z]+".
 func Test_Redirect_UnboundedRulesKeepTheirBreadth(t *testing.T) {
 	t.Parallel()
 
-	app := fiber.New()
-	app.Use(New(Config{
-		Rules: map[string]string{
-			`/p/[z]+`:   "/narrow",
-			`/p/[a-z]+`: "/broad",
-		},
-		StatusCode: fiber.StatusFound,
-	}))
-
-	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/p/z", http.NoBody)
-	require.NoError(t, err)
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusFound, resp.StatusCode)
-	require.Equal(t, "/narrow", resp.Header.Get("Location"))
+	requireWin(t, map[string]string{
+		`/p/[z]+`:   "/narrow",
+		`/p/[a-z]+`: "/broad",
+	}, "/p/z", "/narrow")
 }
 
 // Test_Redirect_EscapedByteIsOneMember covers the class escape spelling one byte: "[\.]" lists the dot alone.
 func Test_Redirect_EscapedByteIsOneMember(t *testing.T) {
 	t.Parallel()
 
-	app := fiber.New()
-	app.Use(New(Config{
-		Rules: map[string]string{
-			`/p/[\.]`:  "/narrow",
-			`/p/[.-/]`: "/broad",
-		},
-		StatusCode: fiber.StatusFound,
-	}))
-
-	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/p/.", http.NoBody)
-	require.NoError(t, err)
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusFound, resp.StatusCode)
-	require.Equal(t, "/narrow", resp.Header.Get("Location"))
+	requireWin(t, map[string]string{
+		`/p/[\.]`:  "/narrow",
+		`/p/[.-/]`: "/broad",
+	}, "/p/.", "/narrow")
 
 	// One byte named, however it is spelled; a set only when it stands for one.
 	require.Equal(t, 1, patternWidth(`/p/[\.]`))
@@ -2496,26 +1855,13 @@ func Test_Redirect_EscapedByteIsOneMember(t *testing.T) {
 func Test_Redirect_SetMemberOutweighsAListedByte(t *testing.T) {
 	t.Parallel()
 
-	app := fiber.New()
-	app.Use(New(Config{
-		Rules: map[string]string{
-			`/p/[a]`:         "/narrow",
-			`/p/[[:alpha:]]`: "/broad",
-		},
-		StatusCode: fiber.StatusFound,
-	}))
-
-	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/p/a", http.NoBody)
-	require.NoError(t, err)
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusFound, resp.StatusCode)
-	require.Equal(t, "/narrow", resp.Header.Get("Location"))
+	requireWin(t, map[string]string{
+		`/p/[a]`:         "/narrow",
+		`/p/[[:alpha:]]`: "/broad",
+	}, "/p/a", "/narrow")
 
 	// However the set is spelled, and whatever it holds.
-	require.Equal(t, 1, patternWidth(`/p/[a]`))
 	require.Equal(t, setMemberWidth, patternWidth(`/p/[[:alpha:]]`))
-	require.Equal(t, setMemberWidth, patternWidth(`/p/[\d]`))
 	require.Equal(t, setMemberWidth, patternWidth(`/p/[[:digit:]]`))
 }
 
@@ -2523,21 +1869,10 @@ func Test_Redirect_SetMemberOutweighsAListedByte(t *testing.T) {
 func Test_Redirect_SaturatedWidthSurvivesAQuantifier(t *testing.T) {
 	t.Parallel()
 
-	app := fiber.New()
-	app.Use(New(Config{
-		Rules: map[string]string{
-			`/p/[ab][a-z][a-z][a-z][a-z]`:         "/narrow",
-			`/p/[a-z][a-z][a-z][a-z][a-z][ab]{0}`: "/broad",
-		},
-		StatusCode: fiber.StatusFound,
-	}))
-
-	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/p/aaaaa", http.NoBody)
-	require.NoError(t, err)
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusFound, resp.StatusCode)
-	require.Equal(t, "/narrow", resp.Header.Get("Location"))
+	requireWin(t, map[string]string{
+		`/p/[ab][a-z][a-z][a-z][a-z]`:         "/narrow",
+		`/p/[a-z][a-z][a-z][a-z][a-z][ab]{0}`: "/broad",
+	}, "/p/aaaaa", "/narrow")
 
 	// The clamp holds through the quantifier rather than being divided back.
 	require.Equal(t, maxPatternWidth, patternWidth(`/p/[a-z][a-z][a-z][a-z][a-z][ab]{0}`))
@@ -2572,21 +1907,10 @@ func Test_Redirect_SignedBoundIsNoQuantifier(t *testing.T) {
 func Test_Redirect_NonGreedyMarkerIsNoQuantifier(t *testing.T) {
 	t.Parallel()
 
-	app := fiber.New()
-	app.Use(New(Config{
-		Rules: map[string]string{
-			`/p/[b]+?`: "/narrow",
-			`/p/[ab]+`: "/broad",
-		},
-		StatusCode: fiber.StatusFound,
-	}))
-
-	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/p/b", http.NoBody)
-	require.NoError(t, err)
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusFound, resp.StatusCode)
-	require.Equal(t, "/narrow", resp.Header.Get("Location"))
+	requireWin(t, map[string]string{
+		`/p/[b]+?`: "/narrow",
+		`/p/[ab]+`: "/broad",
+	}, "/p/b", "/narrow")
 
 	// The marker leaves the width where the repetition left it — but a rule's "*" expands to a group the "?" does quantify.
 	require.Equal(t, patternWidth(`/p/[b]+`), patternWidth(`/p/[b]+?`))
@@ -2617,21 +1941,10 @@ func Test_Redirect_OversizedBoundIsNoQuantifier(t *testing.T) {
 func Test_Redirect_PosixClassNamesItsOwnStars(t *testing.T) {
 	t.Parallel()
 
-	app := fiber.New()
-	app.Use(New(Config{
-		Rules: map[string]string{
-			`/p/*[[:alpha:]*][[:alpha:]*]`: "/narrow",
-			`/p/*[\pL(.*)A-z]`:             "/broad",
-		},
-		StatusCode: fiber.StatusFound,
-	}))
-
-	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/p/aa", http.NoBody)
-	require.NoError(t, err)
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusFound, resp.StatusCode)
-	require.Equal(t, "/narrow", resp.Header.Get("Location"))
+	requireWin(t, map[string]string{
+		`/p/*[[:alpha:]*][[:alpha:]*]`: "/narrow",
+		`/p/*[\pL(.*)A-z]`:             "/broad",
+	}, "/p/aa", "/narrow")
 
 	// One wildcard, and a class counted whole however its members are spelled.
 	require.Equal(t, 1, wildcardRank(`/p/*[[:alpha:]*][[:alpha:]*]`))
@@ -2665,26 +1978,15 @@ func Test_Redirect_UnterminatedQuoteRuleIsRejected(t *testing.T) {
 func Test_Redirect_HexEscapeOutranksAClass(t *testing.T) {
 	t.Parallel()
 
-	app := fiber.New()
-	app.Use(New(Config{
-		Rules: map[string]string{
-			`/p/\x{61}`: "/exact",
-			"/p/[a-z]":  "/class",
-		},
-		StatusCode: fiber.StatusFound,
-	}))
-	app.Get("/*", func(c fiber.Ctx) error { return c.SendString("fell through") })
-
+	rules := map[string]string{
+		`/p/\x{61}`: "/exact",
+		"/p/[a-z]":  "/class",
+	}
 	for _, tc := range []struct{ request, want string }{
 		{"/p/a", "/exact"},
 		{"/p/b", "/class"},
 	} {
-		req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, tc.request, http.NoBody)
-		require.NoError(t, err)
-		resp, err := app.Test(req)
-		require.NoError(t, err)
-		require.Equal(t, fiber.StatusFound, resp.StatusCode, tc.request)
-		require.Equal(t, tc.want, resp.Header.Get("Location"), tc.request)
+		requireWin(t, rules, tc.request, tc.want)
 	}
 }
 
@@ -2692,48 +1994,26 @@ func Test_Redirect_HexEscapeOutranksAClass(t *testing.T) {
 func Test_Redirect_CaptureEndsAuthorityPastADeletedByte(t *testing.T) {
 	t.Parallel()
 
-	app := fiber.New(fiber.Config{UnescapePath: true})
-	app.Use(New(Config{
-		Rules:      map[string]string{"/r/*": "https://example.com$1"},
-		StatusCode: fiber.StatusFound,
-	}))
-	app.Get("/*", func(c fiber.Ctx) error { return c.SendString("fell through") })
-
-	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/r/%09%2Fok", http.NoBody)
-	require.NoError(t, err)
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusFound, resp.StatusCode)
+	app := testApp(map[string]string{"/r/*": "https://example.com$1"}, true)
+	status, location := get(t, app, "/r/%09%2Fok")
+	require.Equal(t, fiber.StatusFound, status)
 
 	// What the client reads is example.com, whatever bytes the parser drops on the way there.
-	location := resp.Header.Get("Location")
 	ref, err := url.Parse(strings.NewReplacer("\t", "", "\r", "", "\n", "").Replace(location))
 	require.NoError(t, err)
 	require.Equal(t, "example.com", ref.Host)
 	require.Equal(t, "/ok", ref.Path)
 
 	// A value that really does extend the host is still refused.
-	req, err = http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/r/%09evil", http.NoBody)
-	require.NoError(t, err)
-	resp, err = app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	status, _ = get(t, app, "/r/%09evil")
+	require.Equal(t, fiber.StatusOK, status)
 }
 
 // Test_Redirect_BareFileSchemeIsAPath covers a "file:" target with no slashes, which names no authority.
 func Test_Redirect_BareFileSchemeIsAPath(t *testing.T) {
 	t.Parallel()
 
-	app := fiber.New()
-	app.Use(New(Config{Rules: map[string]string{"/r/*": "file:tmp$1"}, StatusCode: fiber.StatusFound}))
-	app.Get("/*", func(c fiber.Ctx) error { return c.SendString("fell through") })
-
-	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/r/report", http.NoBody)
-	require.NoError(t, err)
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusFound, resp.StatusCode)
-	require.Equal(t, "file:tmpreport", resp.Header.Get("Location"))
+	requireRule(t, false, "/r/*", "file:tmp$1", "/r/report", "file:tmpreport")
 
 	// A bare "file:" target holds no authority span, so it is opaque-path and the composed location is what gets checked.
 	start, end := authoritySpan("file:tmp/report")
@@ -2748,19 +2028,7 @@ func Test_Redirect_AuthorPinnedShortIPv4(t *testing.T) {
 	t.Parallel()
 
 	for _, host := range []string{"127.1", "0x7f.1", "2130706433", "127.0.0.1"} {
-		app := fiber.New()
-		app.Use(New(Config{
-			Rules:      map[string]string{"/r/*": "https://" + host + ":$1"},
-			StatusCode: fiber.StatusFound,
-		}))
-		app.Get("/*", func(c fiber.Ctx) error { return c.SendString("fell through") })
-
-		req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/r/8080", http.NoBody)
-		require.NoError(t, err)
-		resp, err := app.Test(req)
-		require.NoError(t, err)
-		require.Equal(t, fiber.StatusFound, resp.StatusCode, host)
-		require.Equal(t, "https://"+host+":8080", resp.Header.Get("Location"), host)
+		requireRule(t, false, "/r/*", "https://"+host+":$1", "/r/8080", "https://"+host+":8080")
 	}
 
 	// A host that is not an address still hands the host away when the capture closes it, so "https://$1" stays refused.
@@ -2774,26 +2042,15 @@ func Test_Redirect_AuthorPinnedShortIPv4(t *testing.T) {
 func Test_Redirect_ClassEscapeDoesNotOutrankExactRule(t *testing.T) {
 	t.Parallel()
 
-	app := fiber.New()
-	app.Use(New(Config{
-		Rules: map[string]string{
-			`/api/\d+`: "/digits",
-			"/api/1":   "/one",
-		},
-		StatusCode: fiber.StatusFound,
-	}))
-	app.Get("/*", func(c fiber.Ctx) error { return c.SendString("fell through") })
-
+	rules := map[string]string{
+		`/api/\d+`: "/digits",
+		"/api/1":   "/one",
+	}
 	for _, tc := range []struct{ request, want string }{
 		{"/api/1", "/one"},
 		{"/api/27", "/digits"},
 	} {
-		req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, tc.request, http.NoBody)
-		require.NoError(t, err)
-		resp, err := app.Test(req)
-		require.NoError(t, err)
-		require.Equal(t, fiber.StatusFound, resp.StatusCode, tc.request)
-		require.Equal(t, tc.want, resp.Header.Get("Location"), tc.request)
+		requireWin(t, rules, tc.request, tc.want)
 	}
 }
 
@@ -2817,24 +2074,7 @@ func Test_Redirect_FileSchemeEmptyAuthority(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			app := fiber.New(fiber.Config{UnescapePath: true})
-			app.Use(New(Config{
-				Rules:      map[string]string{"/p/*": tc.target},
-				StatusCode: fiber.StatusFound,
-			}))
-			app.Get("/*", func(c fiber.Ctx) error { return c.SendString("fell through") })
-
-			req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, tc.request, http.NoBody)
-			require.NoError(t, err)
-			resp, err := app.Test(req)
-			require.NoError(t, err)
-
-			if tc.want == "" {
-				require.Equal(t, fiber.StatusOK, resp.StatusCode, "the rule must not fire")
-				return
-			}
-			require.Equal(t, fiber.StatusFound, resp.StatusCode)
-			require.Equal(t, tc.want, resp.Header.Get("Location"))
+			requireRule(t, true, "/p/*", tc.target, tc.request, tc.want)
 		})
 	}
 }
@@ -2843,21 +2083,10 @@ func Test_Redirect_FileSchemeEmptyAuthority(t *testing.T) {
 func Test_Redirect_LiteralBracesHideNoRun(t *testing.T) {
 	t.Parallel()
 
-	app := fiber.New()
-	app.Use(New(Config{
-		Rules: map[string]string{
-			`/p/(a|{x[c]})`: "/narrow",
-			`/p/(a|{x*})`:   "/broad",
-		},
-		StatusCode: fiber.StatusFound,
-	}))
-
-	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/p/a", http.NoBody)
-	require.NoError(t, err)
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusFound, resp.StatusCode)
-	require.Equal(t, "/narrow", resp.Header.Get("Location"))
+	requireWin(t, map[string]string{
+		`/p/(a|{x[c]})`: "/narrow",
+		`/p/(a|{x*})`:   "/broad",
+	}, "/p/a", "/narrow")
 
 	// The run is seen wherever it stands, and a "+" between the braces is one too.
 	require.Equal(t, 1, wildcardRank(`/p/(a|{x*})`))
@@ -2874,21 +2103,10 @@ func Test_Redirect_LiteralBracesHideNoRun(t *testing.T) {
 func Test_Redirect_LiteralBracesAreMeasured(t *testing.T) {
 	t.Parallel()
 
-	app := fiber.New()
-	app.Use(New(Config{
-		Rules: map[string]string{
-			`/p/(a|{x[c]})`:   "/narrow",
-			`/p/(a|{x[a-z]})`: "/broad",
-		},
-		StatusCode: fiber.StatusFound,
-	}))
-
-	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/p/a", http.NoBody)
-	require.NoError(t, err)
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusFound, resp.StatusCode)
-	require.Equal(t, "/narrow", resp.Header.Get("Location"))
+	requireWin(t, map[string]string{
+		`/p/(a|{x[c]})`:   "/narrow",
+		`/p/(a|{x[a-z]})`: "/broad",
+	}, "/p/a", "/narrow")
 
 	require.Equal(t, 26, patternWidth(`/p/{x[a-z]}`))
 	require.Equal(t, 1, patternWidth(`/p/{x[c]}`))
@@ -2921,21 +2139,10 @@ func Test_Redirect_WidthSaturatesRatherThanWraps(t *testing.T) {
 func Test_Redirect_WildcardOutrunsANamedRun(t *testing.T) {
 	t.Parallel()
 
-	app := fiber.New()
-	app.Use(New(Config{
-		Rules: map[string]string{
-			`/p/(a|aa)+`: "/narrow",
-			`/p/*a`:      "/broad",
-		},
-		StatusCode: fiber.StatusFound,
-	}))
-
-	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/p/a?token=secret", http.NoBody)
-	require.NoError(t, err)
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusFound, resp.StatusCode)
-	require.Equal(t, "/narrow?token=secret", resp.Header.Get("Location"))
+	requireWin(t, map[string]string{
+		`/p/(a|aa)+`: "/narrow",
+		`/p/*a`:      "/broad",
+	}, "/p/a?token=secret", "/narrow?token=secret")
 
 	// Three grades, and the pair the width could not tell apart sits across two.
 	require.Equal(t, 0, carriesRun(`/p/[ab]a`))
@@ -2951,21 +2158,12 @@ func Test_Redirect_WildcardOutrunsANamedRun(t *testing.T) {
 func Test_Redirect_PropertyNameIsNotPath(t *testing.T) {
 	t.Parallel()
 
-	app := fiber.New(fiber.Config{UnescapePath: true})
-	app.Use(New(Config{
-		Rules: map[string]string{
-			`/p/[\x{3B1}]`: "/narrow",
-			`/p/\p{Greek}`: "/broad",
-		},
-		StatusCode: fiber.StatusFound,
-	}))
-
-	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/p/%CE%B1?token=x", http.NoBody)
-	require.NoError(t, err)
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusFound, resp.StatusCode)
-	require.Equal(t, "/narrow?token=x", resp.Header.Get("Location"))
+	status, location := get(t, testApp(map[string]string{
+		`/p/[\x{3B1}]`: "/narrow",
+		`/p/\p{Greek}`: "/broad",
+	}, true), "/p/%CE%B1?token=x")
+	require.Equal(t, fiber.StatusFound, status)
+	require.Equal(t, "/narrow?token=x", location)
 
 	// The property pins nothing, however long its name and however it is spelled.
 	require.Equal(t, literalLen(`/p/`), literalLen(`/p/\p{Greek}`))
@@ -2984,21 +2182,12 @@ func Test_Redirect_PropertyNameIsNotPath(t *testing.T) {
 func Test_Redirect_QuotedTextIsNoQuantifier(t *testing.T) {
 	t.Parallel()
 
-	app := fiber.New(fiber.Config{UnescapePath: true})
-	app.Use(New(Config{
-		Rules: map[string]string{
-			`/p/\Qa?\E`:  "/narrow",
-			`/p/[a][?x]`: "/broad",
-		},
-		StatusCode: fiber.StatusFound,
-	}))
-
-	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/p/a%3F?token=x", http.NoBody)
-	require.NoError(t, err)
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusFound, resp.StatusCode)
-	require.Equal(t, "/narrow?token=x", resp.Header.Get("Location"))
+	status, location := get(t, testApp(map[string]string{
+		`/p/\Qa?\E`:  "/narrow",
+		`/p/[a][?x]`: "/broad",
+	}, true), "/p/a%3F?token=x")
+	require.Equal(t, fiber.StatusFound, status)
+	require.Equal(t, "/narrow?token=x", location)
 
 	// Quoted text pins what it spells and spells one path, quantifiers and all.
 	require.Equal(t, literalLen(`/p/a\?`), literalLen(`/p/\Qa?\E`))
@@ -3017,21 +2206,10 @@ func Test_Redirect_QuotedTextIsNoQuantifier(t *testing.T) {
 func Test_Redirect_ClassCountsAMemberOnce(t *testing.T) {
 	t.Parallel()
 
-	app := fiber.New()
-	app.Use(New(Config{
-		Rules: map[string]string{
-			`/p/[^\dABC]`:  "/narrow",
-			`/p/[^\d\d\d]`: "/broad",
-		},
-		StatusCode: fiber.StatusFound,
-	}))
-
-	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/p/z?token=x", http.NoBody)
-	require.NoError(t, err)
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusFound, resp.StatusCode)
-	require.Equal(t, "/narrow?token=x", resp.Header.Get("Location"))
+	requireWin(t, map[string]string{
+		`/p/[^\dABC]`:  "/narrow",
+		`/p/[^\d\d\d]`: "/broad",
+	}, "/p/z?token=x", "/narrow?token=x")
 
 	// A repeated set, byte or range counts once; two overlapping ranges count what they cover between them.
 	require.Equal(t, patternWidth(`/p/[\d]`), patternWidth(`/p/[\d\d\d]`))
@@ -3052,21 +2230,10 @@ func Test_Redirect_ClassCountsAMemberOnce(t *testing.T) {
 func Test_Redirect_EmptyAtomIsNoRun(t *testing.T) {
 	t.Parallel()
 
-	app := fiber.New()
-	app.Use(New(Config{
-		Rules: map[string]string{
-			`/p/(?:)+a`: "/narrow",
-			`/p/b?a`:    "/broad",
-		},
-		StatusCode: fiber.StatusFound,
-	}))
-
-	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/p/a?token=x", http.NoBody)
-	require.NoError(t, err)
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusFound, resp.StatusCode)
-	require.Equal(t, "/narrow?token=x", resp.Header.Get("Location"))
+	requireWin(t, map[string]string{
+		`/p/(?:)+a`: "/narrow",
+		`/p/b?a`:    "/broad",
+	}, "/p/a?token=x", "/narrow?token=x")
 
 	// No run, whichever quantifier repeats the empty group, and no width either.
 	require.Equal(t, 0, carriesRun(`/p/(?:)+a`))
@@ -3095,21 +2262,10 @@ func Test_Redirect_EmptyAtomIsNoRun(t *testing.T) {
 func Test_Redirect_SetEscapeIsMeasuredWhereverItStands(t *testing.T) {
 	t.Parallel()
 
-	app := fiber.New()
-	app.Use(New(Config{
-		Rules: map[string]string{
-			`/p/[ab]{2}`: "/narrow",
-			`/p/\w[ab]`:  "/broad",
-		},
-		StatusCode: fiber.StatusFound,
-	}))
-
-	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/p/aa?code=secret", http.NoBody)
-	require.NoError(t, err)
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusFound, resp.StatusCode)
-	require.Equal(t, "/narrow?code=secret", resp.Header.Get("Location"))
+	requireWin(t, map[string]string{
+		`/p/[ab]{2}`: "/narrow",
+		`/p/\w[ab]`:  "/broad",
+	}, "/p/aa?code=secret", "/narrow?code=secret")
 
 	// A set escape measures a set wherever it stands, and the same one either way.
 	require.Equal(t, patternWidth(`/p/[\w]`), patternWidth(`/p/\w`))
@@ -3140,18 +2296,7 @@ func Test_Redirect_RepeatedAtomSeparatesTiedWidths(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			app := fiber.New()
-			app.Use(New(Config{
-				Rules:      map[string]string{tc.narrow: "/narrow", tc.broad: "/broad"},
-				StatusCode: fiber.StatusFound,
-			}))
-
-			req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, tc.path, http.NoBody)
-			require.NoError(t, err)
-			resp, err := app.Test(req)
-			require.NoError(t, err)
-			require.Equal(t, fiber.StatusFound, resp.StatusCode)
-			require.Equal(t, "/narrow?token=secret", resp.Header.Get("Location"))
+			requireWin(t, map[string]string{tc.narrow: "/narrow", tc.broad: "/broad"}, tc.path, "/narrow?token=secret")
 
 			// Tied on the width, and separated by the widest position each matches.
 			require.Equal(t, patternWidth(tc.broad), patternWidth(tc.narrow))
@@ -3175,21 +2320,10 @@ func Test_Redirect_RepeatedAtomSeparatesTiedWidths(t *testing.T) {
 func Test_Redirect_NestedEmptyGroupIsStillEmpty(t *testing.T) {
 	t.Parallel()
 
-	app := fiber.New()
-	app.Use(New(Config{
-		Rules: map[string]string{
-			`/p/(?:(?:))+a`: "/narrow",
-			`/p/b?a`:        "/broad",
-		},
-		StatusCode: fiber.StatusFound,
-	}))
-
-	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/p/a?token=x", http.NoBody)
-	require.NoError(t, err)
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusFound, resp.StatusCode)
-	require.Equal(t, "/narrow?token=x", resp.Header.Get("Location"))
+	requireWin(t, map[string]string{
+		`/p/(?:(?:))+a`: "/narrow",
+		`/p/b?a`:        "/broad",
+	}, "/p/a?token=x", "/narrow?token=x")
 
 	// The width reads the nesting the same way, so a quantifier on one is none.
 	require.Equal(t, patternWidth(`/p/[a]`), patternWidth(`/p/(?:(?:))?(?:(?:))?[a]`))
@@ -3204,21 +2338,10 @@ func Test_Redirect_NestedEmptyGroupIsStillEmpty(t *testing.T) {
 func Test_Redirect_EscapedClassMemberIsDecoded(t *testing.T) {
 	t.Parallel()
 
-	app := fiber.New()
-	app.Use(New(Config{
-		Rules: map[string]string{
-			`/p/[ab]`:            "/narrow",
-			`/p/[\x{61}-\x{7a}]`: "/broad",
-		},
-		StatusCode: fiber.StatusFound,
-	}))
-
-	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/p/a?token=x", http.NoBody)
-	require.NoError(t, err)
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusFound, resp.StatusCode)
-	require.Equal(t, "/narrow?token=x", resp.Header.Get("Location"))
+	requireWin(t, map[string]string{
+		`/p/[ab]`:            "/narrow",
+		`/p/[\x{61}-\x{7a}]`: "/broad",
+	}, "/p/a?token=x", "/narrow?token=x")
 
 	// A range spelled in escapes covers what the same range spelled plainly does, in every spelling Go reads as one character.
 	require.Equal(t, patternWidth(`/p/[a-z]`), patternWidth(`/p/[\x{61}-\x{7a}]`))
@@ -3275,23 +2398,13 @@ func Test_Redirect_KeyOrderIsTotal(t *testing.T) {
 		{rules[2], rules[0], rules[1]},
 		{rules[2], rules[1], rules[0]},
 	} {
-		app := fiber.New()
-		app.Use(New(Config{
-			Rules: map[string]string{
-				order[0]: targets[order[0]],
-				order[1]: targets[order[1]],
-				order[2]: targets[order[2]],
-			},
-			StatusCode: fiber.StatusFound,
-		}))
-
-		req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/p/aaaaa?token=x", http.NoBody)
-		require.NoError(t, err)
-		resp, err := app.Test(req)
-		require.NoError(t, err)
-		require.Equal(t, fiber.StatusFound, resp.StatusCode)
-
-		got := resp.Header.Get("Location")
+		app := testApp(map[string]string{
+			order[0]: targets[order[0]],
+			order[1]: targets[order[1]],
+			order[2]: targets[order[2]],
+		}, false)
+		status, got := get(t, app, "/p/aaaaa?token=x")
+		require.Equal(t, fiber.StatusFound, status)
 		if want == "" {
 			want = got
 		}
@@ -3312,18 +2425,7 @@ func Test_Redirect_ZeroWidthConstructIsEmpty(t *testing.T) {
 		t.Run(narrow, func(t *testing.T) {
 			t.Parallel()
 
-			app := fiber.New()
-			app.Use(New(Config{
-				Rules:      map[string]string{narrow: "/narrow", `/p/b?a`: "/broad"},
-				StatusCode: fiber.StatusFound,
-			}))
-
-			req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/p/a?token=x", http.NoBody)
-			require.NoError(t, err)
-			resp, err := app.Test(req)
-			require.NoError(t, err)
-			require.Equal(t, fiber.StatusFound, resp.StatusCode)
-			require.Equal(t, "/narrow?token=x", resp.Header.Get("Location"))
+			requireWin(t, map[string]string{narrow: "/narrow", `/p/b?a`: "/broad"}, "/p/a?token=x", "/narrow?token=x")
 
 			require.Equal(t, 0, carriesRun(narrow))
 		})
@@ -3350,21 +2452,10 @@ func Test_Redirect_ZeroWidthConstructIsEmpty(t *testing.T) {
 func Test_Redirect_GroupIsNoOnePosition(t *testing.T) {
 	t.Parallel()
 
-	app := fiber.New()
-	app.Use(New(Config{
-		Rules: map[string]string{
-			`/p/(?:[a-m][a-z][a-z][a-z][a-z])`: "/narrow",
-			`/p/[a-z][a-z][a-z][a-z][a-z]`:     "/broad",
-		},
-		StatusCode: fiber.StatusFound,
-	}))
-
-	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/p/aaaaa?token=x", http.NoBody)
-	require.NoError(t, err)
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusFound, resp.StatusCode)
-	require.Equal(t, "/narrow?token=x", resp.Header.Get("Location"))
+	requireWin(t, map[string]string{
+		`/p/(?:[a-m][a-z][a-z][a-z][a-z])`: "/narrow",
+		`/p/[a-z][a-z][a-z][a-z][a-z]`:     "/broad",
+	}, "/p/aaaaa?token=x", "/narrow?token=x")
 
 	// Grouping changes no position, however deeply the groups nest.
 	require.Equal(t, 26, widestAtom(`/p/(?:[a-m][a-z][a-z][a-z][a-z])`))
@@ -3377,21 +2468,10 @@ func Test_Redirect_GroupIsNoOnePosition(t *testing.T) {
 func Test_Redirect_NonGreedyMarkerKeepsAnEmptyAtom(t *testing.T) {
 	t.Parallel()
 
-	app := fiber.New()
-	app.Use(New(Config{
-		Rules: map[string]string{
-			`/p/(?:(?:)+?)+a`: "/narrow",
-			`/p/b?a`:          "/broad",
-		},
-		StatusCode: fiber.StatusFound,
-	}))
-
-	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/p/a?token=x", http.NoBody)
-	require.NoError(t, err)
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusFound, resp.StatusCode)
-	require.Equal(t, "/narrow?token=x", resp.Header.Get("Location"))
+	requireWin(t, map[string]string{
+		`/p/(?:(?:)+?)+a`: "/narrow",
+		`/p/b?a`:          "/broad",
+	}, "/p/a?token=x", "/narrow?token=x")
 
 	// A "?" matches nothing of its own, so it neither fills a group nor empties one.
 	require.Equal(t, 0, carriesRun(`/p/(?:(?:)+?)+a`))
@@ -3413,18 +2493,7 @@ func Test_Redirect_PrefixReadsQuotesAndGroups(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			app := fiber.New()
-			app.Use(New(Config{
-				Rules:      map[string]string{tc.narrow: "/narrow", tc.broad: "/broad"},
-				StatusCode: fiber.StatusFound,
-			}))
-
-			req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, tc.path, http.NoBody)
-			require.NoError(t, err)
-			resp, err := app.Test(req)
-			require.NoError(t, err)
-			require.Equal(t, fiber.StatusFound, resp.StatusCode)
-			require.Equal(t, "/narrow?token=x", resp.Header.Get("Location"))
+			requireWin(t, map[string]string{tc.narrow: "/narrow", tc.broad: "/broad"}, tc.path, "/narrow?token=x")
 
 			require.GreaterOrEqual(t, literalPrefixLen(tc.narrow), literalPrefixLen(tc.broad))
 		})
@@ -3459,26 +2528,14 @@ func Test_Redirect_PrefixReadsQuotesAndGroups(t *testing.T) {
 func Test_Redirect_AlternationSeparatorIsEmpty(t *testing.T) {
 	t.Parallel()
 
-	app := fiber.New()
-	app.Use(New(Config{
-		Rules: map[string]string{
-			`/p/(?:a{0}|b{0})+a`: "/narrow",
-			`/p/(?:b|)a`:         "/broad",
-		},
-		StatusCode: fiber.StatusFound,
-	}))
-
-	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/p/a?token=x", http.NoBody)
-	require.NoError(t, err)
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusFound, resp.StatusCode)
-	require.Equal(t, "/narrow?token=x", resp.Header.Get("Location"))
+	requireWin(t, map[string]string{
+		`/p/(?:a{0}|b{0})+a`: "/narrow",
+		`/p/(?:b|)a`:         "/broad",
+	}, "/p/a?token=x", "/narrow?token=x")
 
 	// A group is empty where every branch of it is, and filled where any is not.
 	require.Equal(t, 0, carriesRun(`/p/(?:a{0}|b{0})+a`))
 	require.Equal(t, 0, carriesRun(`/p/(?:|)+a`))
-	require.Equal(t, 1, carriesRun(`/p/(?:|a)+`))
 	require.Equal(t, 1, carriesRun(`/p/(?:a|b{0})+`))
 	require.Equal(t, 1, carriesRun(`/p/(?:a|b)+`))
 }
@@ -3496,18 +2553,7 @@ func Test_Redirect_PrefixReadsZeroCountsAndFlags(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			app := fiber.New()
-			app.Use(New(Config{
-				Rules:      map[string]string{tc.narrow: "/narrow", tc.broad: "/broad"},
-				StatusCode: fiber.StatusFound,
-			}))
-
-			req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, tc.path, http.NoBody)
-			require.NoError(t, err)
-			resp, err := app.Test(req)
-			require.NoError(t, err)
-			require.Equal(t, fiber.StatusFound, resp.StatusCode)
-			require.Equal(t, "/narrow?token=x", resp.Header.Get("Location"))
+			requireWin(t, map[string]string{tc.narrow: "/narrow", tc.broad: "/broad"}, tc.path, "/narrow?token=x")
 		})
 	}
 
@@ -3548,18 +2594,7 @@ func Test_Redirect_CaseFoldingIsNoExactText(t *testing.T) {
 		t.Run(broad, func(t *testing.T) {
 			t.Parallel()
 
-			app := fiber.New()
-			app.Use(New(Config{
-				Rules:      map[string]string{`/p/[a]`: "/narrow", broad: "/broad"},
-				StatusCode: fiber.StatusFound,
-			}))
-
-			req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/p/a?token=x", http.NoBody)
-			require.NoError(t, err)
-			resp, err := app.Test(req)
-			require.NoError(t, err)
-			require.Equal(t, fiber.StatusFound, resp.StatusCode)
-			require.Equal(t, "/narrow?token=x", resp.Header.Get("Location"))
+			requireWin(t, map[string]string{`/p/[a]`: "/narrow", broad: "/broad"}, "/p/a?token=x", "/narrow?token=x")
 
 			// Broader on both counts: it pins no path, and matches two characters where the class matches one.
 			require.Equal(t, literalLen(`/p/`), literalLen(broad))
@@ -3618,21 +2653,10 @@ func Test_Redirect_DeepNestingIsBounded(t *testing.T) {
 func Test_Redirect_QuotedTextCountedNoneTimes(t *testing.T) {
 	t.Parallel()
 
-	app := fiber.New()
-	app.Use(New(Config{
-		Rules: map[string]string{
-			`/p/a\Qbc\E{0}d`: "/narrow",
-			`/p/a\142(?i:d)`: "/broad",
-		},
-		StatusCode: fiber.StatusFound,
-	}))
-
-	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/p/abd?token=x", http.NoBody)
-	require.NoError(t, err)
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusFound, resp.StatusCode)
-	require.Equal(t, "/narrow?token=x", resp.Header.Get("Location"))
+	requireWin(t, map[string]string{
+		`/p/a\Qbc\E{0}d`: "/narrow",
+		`/p/a\142(?i:d)`: "/broad",
+	}, "/p/abd?token=x", "/narrow?token=x")
 
 	// The count takes the "c" and nothing else, and the "d" after it is pinned.
 	require.Equal(t, literalPrefixLen(`/p/abd`), literalPrefixLen(`/p/a\Qbc\E{0}d`))
@@ -3653,18 +2677,7 @@ func Test_Redirect_FoldingReadsWhatGoFolds(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			app := fiber.New()
-			app.Use(New(Config{
-				Rules:      map[string]string{tc.narrow: "/narrow", tc.broad: "/broad"},
-				StatusCode: fiber.StatusFound,
-			}))
-
-			req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/p/k?token=x", http.NoBody)
-			require.NoError(t, err)
-			resp, err := app.Test(req)
-			require.NoError(t, err)
-			require.Equal(t, fiber.StatusFound, resp.StatusCode)
-			require.Equal(t, "/narrow?token=x", resp.Header.Get("Location"))
+			requireWin(t, map[string]string{tc.narrow: "/narrow", tc.broad: "/broad"}, "/p/k?token=x", "/narrow?token=x")
 
 			require.Greater(t, patternWidth(tc.broad), patternWidth(tc.narrow))
 		})
@@ -3694,25 +2707,11 @@ func Test_Redirect_FoldingReadsWhatGoFolds(t *testing.T) {
 func Test_Redirect_AnchorEndsNoPrefix(t *testing.T) {
 	t.Parallel()
 
-	app := fiber.New()
-	app.Use(New(Config{
-		Rules: map[string]string{
-			`^/p/a`:      "/narrow",
-			`/p/(?:a|b)`: "/broad",
-		},
-		StatusCode: fiber.StatusFound,
-	}))
-
-	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/p/a?token=x", http.NoBody)
-	require.NoError(t, err)
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusFound, resp.StatusCode)
-	require.Equal(t, "/narrow?token=x", resp.Header.Get("Location"))
+	requireWin(t, map[string]string{
+		`^/p/a`:      "/narrow",
+		`/p/(?:a|b)`: "/broad",
+	}, "/p/a?token=x", "/narrow?token=x")
 
 	// An anchor pins no byte of its own and ends nothing, wherever it stands.
-	require.Equal(t, literalPrefixLen(`/p/a`), literalPrefixLen(`^/p/a`))
-	require.Equal(t, literalPrefixLen(`/p/a`), literalPrefixLen(`\A/p/a`))
-	require.Equal(t, literalPrefixLen(`/p/a`), literalPrefixLen(`/p/a$`))
 	require.Equal(t, literalPrefixLen(`/p/ab`), literalPrefixLen(`/p/a\bb`))
 }
