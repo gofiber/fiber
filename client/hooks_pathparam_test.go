@@ -469,6 +469,8 @@ func FuzzPathParamTarget(f *testing.F) {
 	}
 
 	f.Fuzz(func(t *testing.T, val string) {
+		t.Parallel()
+
 		client := New()
 		req := AcquireRequest().
 			SetClient(client).
@@ -498,6 +500,8 @@ func FuzzPathParamHost(f *testing.F) {
 	}
 
 	f.Fuzz(func(t *testing.T, val string) {
+		t.Parallel()
+
 		client := New()
 		req := AcquireRequest().
 			SetClient(client).
@@ -529,6 +533,8 @@ func FuzzSubstitutePathParams(f *testing.F) {
 	}
 
 	f.Fuzz(func(t *testing.T, val string) {
+		t.Parallel()
+
 		got, err := substitutePathParams("/a/:p/b", true, PathParam{"p": val})
 		require.NoError(t, err)
 
