@@ -27,7 +27,7 @@ func testApp(rules map[string]string, unescape bool) *fiber.App {
 }
 
 // get sends one GET to app and returns the response status and Location.
-func get(t *testing.T, app *fiber.App, path string) (int, string) {
+func get(t *testing.T, app *fiber.App, path string) (status int, location string) { //nolint:nonamedreturns // names document the pair
 	t.Helper()
 	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, path, http.NoBody))
 	require.NoError(t, err)
