@@ -274,12 +274,10 @@ func (c *DefaultCtx) Charset() string {
 			return true
 		}
 		value, err := unescapeHeaderValue(value)
-		if err != nil {
-			return false
-		}
 		// VisitHeaderParams doesn't allow callback values to escape.
 		charset = string(value)
-		return false
+		// A failed unescape leaves charset empty; keep looking for a valid value.
+		return err != nil
 	})
 	return charset
 }
