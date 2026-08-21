@@ -267,81 +267,88 @@ func (c *DefaultCtx) MediaType() string {
 
 // Charset returns the charset parameter from the Content-Type header.
 func (c *DefaultCtx) Charset() string {
-	contentType := c.fasthttp.Request.Header.ContentType()
-	_, params, ok := bytes.Cut(contentType, []byte{';'})
-	if !ok {
-		return ""
+	contentType := removeEmptyHeaderParams(c.fasthttp.Request.Header.ContentType())
+	charset := ""
+	fasthttp.VisitHeaderParams(contentType, func(key, value []byte) bool {
+		if !utils.EqualFold(key, []byte("charset")) {
+			return true
+		}
+		value, err := unescapeHeaderValue(value)
+		if err != nil {
+			// Keep looking for a valid charset after an invalid escaped value.
+			return true
+		}
+		charset = c.app.toString(value)
+		return false
+	})
+	return charset
+}
+
+// removeEmptyHeaderParams removes empty parameter elements allowed by RFC 9110
+// Section 5.6.6 because fasthttp treats them as invalid and stops visiting.
+// The usual path returns the original slice without allocating.
+func removeEmptyHeaderParams(header []byte) []byte {
+	firstSemicolon := bytes.IndexByte(header, ';')
+	if firstSemicolon == -1 || bytes.IndexByte(header[firstSemicolon+1:], ';') == -1 {
+		return header
 	}
-	for len(params) > 0 {
-		// Slice off the next parameter at the next ";" that sits outside a
-		// quoted-string: parameter values may be quoted and contain ";"
-		// (RFC 9110 Section 5.6.6). A DQUOTE only opens a quoted-string at
-		// the start of a value (after an "=" plus optional whitespace), so a
-		// stray quote later in an unquoted value cannot swallow the rest of
-		// the header.
-		param := params
-		end := -1
-		inQuotes := false
-		escaped := false
-		expectValue := false
-	scan:
-		for i := 0; i < len(params); i++ {
-			ch := params[i]
+
+	var normalized []byte
+	segmentStart := 0
+	inQuotes := false
+	escaped := false
+
+	for i, ch := range header {
+		if i < segmentStart {
+			continue
+		}
+		if inQuotes {
 			switch {
 			case escaped:
 				escaped = false
-			case inQuotes:
-				switch ch {
-				case '\\':
-					escaped = true
-				case '"':
-					inQuotes = false
-				}
-			case ch == '=':
-				expectValue = true
-			case ch == '"' && expectValue:
-				inQuotes = true
-				expectValue = false
-			case ch == ';':
-				end = i
-				break scan
-			case ch != ' ' && ch != '\t':
-				expectValue = false
+			case ch == '\\':
+				escaped = true
+			case ch == '"':
+				inQuotes = false
 			}
+			continue
 		}
-		if end >= 0 {
-			param = params[:end]
-			params = params[end+1:]
-		} else {
-			params = nil
+		if ch == '"' {
+			inQuotes = true
+			continue
+		}
+		if ch != ';' {
+			continue
 		}
 
-		name, value, ok := bytes.Cut(param, []byte{'='})
-		if !ok || !utils.EqualFold(utils.TrimSpace(name), []byte("charset")) {
+		next := i + 1
+		for next < len(header) && (header[next] == ' ' || header[next] == '\t') {
+			next++
+		}
+		if next >= len(header) || header[next] != ';' {
 			continue
 		}
-		v := utils.TrimSpace(value)
-		if len(v) > 0 && v[0] == '"' {
-			// A quoted value must be a complete quoted-string, and its
-			// quoted-pairs must be replaced with the escaped octet
-			// (RFC 9110 Section 5.6.4).
-			if len(v) < 2 || v[len(v)-1] != '"' {
-				return ""
-			}
-			unescaped, err := unescapeHeaderValue(v[1 : len(v)-1])
-			if err != nil {
-				return ""
-			}
-			v = unescaped
-		} else if bytes.IndexByte(v, '"') >= 0 {
-			// A bare token must not contain DQUOTE; skip the invalid
-			// parameter instead of surfacing garbage, so a well-formed
-			// charset parameter later in the header can still be found.
-			continue
+		if normalized == nil {
+			normalized = make([]byte, 0, len(header))
 		}
-		return c.app.toString(v)
+		normalized = append(normalized, header[segmentStart:i]...)
+		normalized = append(normalized, ';')
+		segmentStart = next + 1
+		for segmentStart < len(header) {
+			for segmentStart < len(header) && (header[segmentStart] == ' ' || header[segmentStart] == '\t') {
+				segmentStart++
+			}
+			if segmentStart >= len(header) || header[segmentStart] != ';' {
+				break
+			}
+			segmentStart++
+		}
 	}
-	return ""
+
+	if normalized == nil {
+		return header
+	}
+	return append(normalized, header[segmentStart:]...)
 }
 
 // IsJSON reports whether the Content-Type header is JSON.
