@@ -281,6 +281,20 @@ func Test_SubstitutePathParams(t *testing.T) {
 			want:   "http://a$b&c+d=e.example.com/api",
 		},
 		{
+			// The bytes reach the Host header verbatim, and "\xc0\xaf" is the
+			// overlong encoding of "/" — a separator to a lenient decoder.
+			name:    "malformed UTF-8 in an authority value is rejected",
+			uri:     "http://:tenant.example.com/api",
+			params:  PathParam{"tenant": "\xc0\xaf"},
+			wantErr: ErrPathParamInHost,
+		},
+		{
+			name:    "a lone continuation byte in an authority value is rejected",
+			uri:     "http://:tenant.example.com/api",
+			params:  PathParam{"tenant": "\xff"},
+			wantErr: ErrPathParamInHost,
+		},
+		{
 			name:   "an internationalized host label is passed through",
 			uri:    "http://:tenant.example.com/api",
 			params: PathParam{"tenant": "\u00fcn\u00efcode"},
@@ -479,7 +493,7 @@ func FuzzPathParamTarget(f *testing.F) {
 // fails or stays one label of the domain the template names. This is the one
 // that has to hold, because getting it wrong sends the request elsewhere.
 func FuzzPathParamHost(f *testing.F) {
-	for _, seed := range []string{"", "a", "a@b", "a:1", "[::1]", "a.b", "a%2eb", "..", "a/b", "\u00fc", "a$b", "-", "0", "a\rb"} {
+	for _, seed := range []string{"", "a", "a@b", "a:1", "[::1]", "a.b", "a%2eb", "..", "a/b", "\u00fc", "a$b", "-", "0", "a\rb", "\xc0\xaf", "\xff", "\xe2\x82"} {
 		f.Add(seed)
 	}
 
@@ -496,8 +510,12 @@ func FuzzPathParamHost(f *testing.F) {
 		}
 
 		uri := req.RawRequest.URI()
-		require.True(t, strings.HasSuffix(string(uri.Host()), ".example.com"),
-			"value left the templated domain: %q", uri.Host())
+		// Nothing may transform an accepted value: it is one label of the
+		// domain the template names, byte for byte, save for the case folding
+		// fasthttp applies to every host.
+		want, got := val+".example.com", string(uri.Host())
+		require.Len(t, got, len(want), "value did not land verbatim: %q", got)
+		require.True(t, strings.EqualFold(want, got), "value did not land verbatim: %q", got)
 		require.Equal(t, "/api", string(uri.Path()), "value ate the path")
 	})
 }
