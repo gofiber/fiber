@@ -1,9 +1,11 @@
 package client
 
 import (
+	"errors"
 	"net"
 	"net/url"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -19,11 +21,12 @@ func Test_SubstitutePathParams(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
+		wantErr error
+		params  PathParam
 		name    string
 		uri     string
-		params  PathParam
 		want    string
-		wantErr bool
+		keepEsc bool
 	}{
 		{
 			name:   "plain substitution",
@@ -131,10 +134,70 @@ func Test_SubstitutePathParams(t *testing.T) {
 			want:   "http://example.com/api/a%23b",
 		},
 		{
-			name:   "a value cannot add a segment",
+			// Path normalizing would decode this "%2F" back into a separator,
+			// so the escape only holds when normalizing is off.
+			name:    "a value cannot add a segment",
+			uri:     "http://example.com/api/:id",
+			params:  PathParam{"id": "a/b"},
+			want:    "http://example.com/api/a%2Fb",
+			keepEsc: true,
+		},
+		{
+			name:    "a separator in a value is rejected when normalizing will decode it",
+			uri:     "http://example.com/api/:id",
+			params:  PathParam{"id": "a/b"},
+			wantErr: ErrPathParamInPath,
+		},
+		{
+			// Normalizing decodes the path before it collapses "..", so this
+			// used to leave the path the template set: "/api/v1/:id/end" with
+			// "../../admin" went out as "/admin/end".
+			name:    "a value cannot traverse out of its segment",
+			uri:     "http://example.com/api/v1/:id/end",
+			params:  PathParam{"id": "../../admin"},
+			wantErr: ErrPathParamInPath,
+		},
+		{
+			name:    "a dot-dot value is rejected",
+			uri:     "http://example.com/api/v1/:id/end",
+			params:  PathParam{"id": ".."},
+			wantErr: ErrPathParamInPath,
+		},
+		{
+			name:    "a dot value is rejected",
+			uri:     "http://example.com/api/v1/:id/end",
+			params:  PathParam{"id": "."},
+			wantErr: ErrPathParamInPath,
+		},
+		{
+			name:    "a backslash in a value is rejected",
+			uri:     "http://example.com/api/:id",
+			params:  PathParam{"id": `a\b`},
+			wantErr: ErrPathParamInPath,
+		},
+		{
+			// Disabling normalizing is a caller asking for the raw path, so the
+			// escape is emitted as written. Whether it survives routing is then
+			// up to the server: one that unescapes paths decodes it again.
+			name:    "traversal is allowed to stay escaped when normalizing is off",
+			uri:     "http://example.com/api/v1/:id/end",
+			params:  PathParam{"id": "../../admin"},
+			want:    "http://example.com/api/v1/..%2F..%2Fadmin/end",
+			keepEsc: true,
+		},
+		{
+			// A "%2F" the caller typed is escaped to "%252F" and decodes to a
+			// literal "%2F", so it never becomes a separator.
+			name:   "an already-escaped separator in a value is not a separator",
 			uri:    "http://example.com/api/:id",
-			params: PathParam{"id": "a/b"},
-			want:   "http://example.com/api/a%2Fb",
+			params: PathParam{"id": "a%2Fb"},
+			want:   "http://example.com/api/a%252Fb",
+		},
+		{
+			name:   "a dot inside a longer value is fine",
+			uri:    "http://example.com/api/:id",
+			params: PathParam{"id": "a..b"},
+			want:   "http://example.com/api/a..b",
 		},
 		{
 			name:   "a percent in a value is encoded, not passed through",
@@ -174,25 +237,31 @@ func Test_SubstitutePathParams(t *testing.T) {
 			name:    "a value cannot introduce userinfo in the authority",
 			uri:     "http://:tenant.example.com/api",
 			params:  PathParam{"tenant": "a@evil.com"},
-			wantErr: true,
+			wantErr: ErrPathParamInHost,
 		},
 		{
 			name:    "a value cannot introduce a port in the authority",
 			uri:     "http://:tenant.example.com/api",
 			params:  PathParam{"tenant": "evil.com:8080"},
-			wantErr: true,
+			wantErr: ErrPathParamInHost,
 		},
 		{
 			name:    "a value that would need escaping in a host is rejected",
 			uri:     "http://:tenant.example.com/api",
 			params:  PathParam{"tenant": "a b"},
-			wantErr: true,
+			wantErr: ErrPathParamInHost,
 		},
 		{
 			name:    "a value cannot add a segment to the authority",
 			uri:     "http://:tenant.example.com/api",
 			params:  PathParam{"tenant": "evil.com/"},
-			wantErr: true,
+			wantErr: ErrPathParamInHost,
+		},
+		{
+			name:    "an empty authority value is rejected",
+			uri:     "http://:host/api",
+			params:  PathParam{"host": ""},
+			wantErr: ErrPathParamInHost,
 		},
 		{
 			// The sub-delims a host parse keeps verbatim, so they need no
@@ -255,9 +324,9 @@ func Test_SubstitutePathParams(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			got, err := substitutePathParams(tc.uri, tc.params)
-			if tc.wantErr {
-				require.ErrorIs(t, err, ErrPathParamInHost)
+			got, err := substitutePathParams(tc.uri, tc.keepEsc, tc.params)
+			if tc.wantErr != nil {
+				require.ErrorIs(t, err, tc.wantErr)
 				return
 			}
 
@@ -274,6 +343,7 @@ func Test_SubstitutePathParams_SourceOrder(t *testing.T) {
 
 	got, err := substitutePathParams(
 		"http://example.com/api/:id/:name",
+		false,
 		PathParam{"id": "request"},
 		PathParam{"id": "client", "name": "client"},
 	)
@@ -345,42 +415,24 @@ func Test_PathParam_RoundTrip(t *testing.T) {
 	}
 }
 
-// Test_PathParam_RoundTrip_SeparatorInValue records what a "/" inside a value
-// does: the escape is written, then fasthttp's path normalizing decodes it, so
-// the value reaches the server as two segments and the route no longer matches.
-func Test_PathParam_RoundTrip_SeparatorInValue(t *testing.T) {
+// Test_PathParam_Traversal_NeverDials proves the traversal never leaves the
+// process: "../../admin" in a value used to be escaped, then decoded again by
+// path normalizing, and "/api/v1/:id/end" went out as "/admin/end".
+func Test_PathParam_Traversal_NeverDials(t *testing.T) {
 	t.Parallel()
 
-	ln := fasthttputil.NewInmemoryListener()
-	app := fiber.New(fiber.Config{UnescapePath: true})
-	app.Get("/api/:id/end", func(c fiber.Ctx) error {
-		return c.SendString(c.Params("id"))
+	var dialed atomic.Bool
+	client := New().SetDial(func(_ string) (net.Conn, error) {
+		dialed.Store(true)
+		return nil, errors.New("dial must not happen")
 	})
 
-	ch := make(chan struct{})
-	go func() {
-		assert.NoError(t, app.Listener(ln, fiber.ListenConfig{DisableStartupMessage: true}))
-		close(ch)
-	}()
-	t.Cleanup(func() {
-		require.NoError(t, app.Shutdown())
-		select {
-		case <-ch:
-		case <-time.After(time.Second):
-			t.Fatal("timeout when waiting for server close")
-		}
-	})
-
-	client := New().SetDial(func(_ string) (net.Conn, error) { return ln.Dial() })
-
-	resp, err := AcquireRequest().
+	_, err := AcquireRequest().
 		SetClient(client).
-		SetPathParam("id", "a/b").
-		Get("http://example.com/api/:id/end")
-	require.NoError(t, err)
-	defer resp.Close()
-
-	require.Equal(t, fiber.StatusNotFound, resp.StatusCode())
+		SetPathParam("id", "../../admin").
+		Get("http://example.com/api/v1/:id/end")
+	require.ErrorIs(t, err, ErrPathParamInPath)
+	require.False(t, dialed.Load(), "the request was sent")
 }
 
 // FuzzSubstitutePathParams asserts the property the old ReplaceAll could not
@@ -392,7 +444,7 @@ func FuzzSubstitutePathParams(f *testing.F) {
 	}
 
 	f.Fuzz(func(t *testing.T, val string) {
-		got, err := substitutePathParams("/a/:p/b", PathParam{"p": val})
+		got, err := substitutePathParams("/a/:p/b", true, PathParam{"p": val})
 		require.NoError(t, err)
 
 		parts := strings.Split(got, "/")

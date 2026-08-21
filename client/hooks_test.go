@@ -207,20 +207,19 @@ func Test_Parser_Request_URL(t *testing.T) {
 		require.Equal(t, "http://example.com/api/a%2Fb", req.RawRequest.URI().String())
 	})
 
-	t.Run("an escaped separator is decoded again by path normalizing", func(t *testing.T) {
+	t.Run("a separator in a value is rejected when normalizing will decode it", func(t *testing.T) {
 		t.Parallel()
 		client := New()
 		req := AcquireRequest().
 			SetURL("http://example.com/api/:id").
 			SetPathParam("id", "a/b")
 
+		// The value would be escaped to "a%2Fb", but fasthttp percent-decodes
+		// the path while normalizing it, so an encoded "/" is indistinguishable
+		// from a real separator on the wire. Escaping still contains "?" and
+		// "#", which normalizing does not decode.
 		err := parserRequestURL(client, req)
-		require.NoError(t, err)
-		// The value is escaped to "a%2Fb" before the URI is set, but fasthttp
-		// percent-decodes the path while normalizing it, so an encoded "/" is
-		// indistinguishable from a real separator on the wire. Escaping still
-		// contains "?" and "#", which normalizing does not decode.
-		require.Equal(t, "http://example.com/api/a/b", req.RawRequest.URI().String())
+		require.ErrorIs(t, err, ErrPathParamInPath)
 	})
 
 	t.Run("path param value cannot rewrite the host", func(t *testing.T) {
