@@ -2891,9 +2891,12 @@ func Test_SchemaOf_InvalidJSONTagName(t *testing.T) {
 		require.Containsf(t, props, name, "schema is missing wire property %q", name)
 	}
 	require.Len(t, props, len(wire))
-	// Backslash is reserved, so encoding/json ignores the rename; a space is not.
-	require.Contains(t, props, "Reserved")
+	// A space is accepted by every release, so that rename always lands.
 	require.Contains(t, props, "a b")
+	// The backslash name is deliberately not asserted literally: releases
+	// disagree on whether it is accepted, truncated, or ignored in favor of the
+	// field name, and the loop above already pins the schema to whichever the
+	// running toolchain does.
 }
 
 // Test_SchemaOf_UintptrDocumented pins uintptr, which encoding/json writes as a

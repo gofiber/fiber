@@ -373,10 +373,10 @@ func parseJSONTag(field *reflect.StructField) jsonTagInfo {
 		return jsonTagInfo{skip: true}
 	}
 	name, opts, _ := strings.Cut(tag, ",")
-	// encoding/json ignores a tag name containing reserved characters and falls
-	// back to the Go field name; mirror that so the schema matches the wire format.
-	if !isValidJSONTagName(name) {
-		name = ""
+	// An unusual name is resolved against the running encoding/json rather than
+	// assumed, so the schema matches the wire format on every toolchain.
+	if !isPlainJSONTagName(name) {
+		name = effectiveJSONTagName(name)
 	}
 	info := jsonTagInfo{name: name}
 	for opts != "" {
@@ -393,9 +393,11 @@ func parseJSONTag(field *reflect.StructField) jsonTagInfo {
 	return info
 }
 
-// isValidJSONTagName mirrors encoding/json's isValidTag: letters, digits and the
-// listed punctuation are allowed; backslash, quote and an empty name are not.
-func isValidJSONTagName(name string) bool {
+// isPlainJSONTagName reports whether every encoding/json release has taken name
+// as written: letters, digits and the punctuation isValidTag has always allowed.
+// Anything else is left to effectiveJSONTagName, since the treatment of the
+// remaining characters has changed between Go releases.
+func isPlainJSONTagName(name string) bool {
 	if name == "" {
 		return false
 	}
@@ -408,6 +410,45 @@ func isValidJSONTagName(name string) bool {
 		}
 	}
 	return true
+}
+
+// effectiveJSONTagName returns the property name encoding/json actually gives a
+// field tagged with name, or "" when the tag is ignored and the Go field name is
+// used instead.
+//
+// The rules for unusual names are version-dependent — Go 1.27 accepts a
+// backslash or a tab that earlier releases rejected, and truncates at an
+// apostrophe or backtick where they fell back to the field name — so the answer
+// is read from the toolchain in use rather than reimplemented here. Only names
+// isPlainJSONTagName rejects reach this, which real struct tags do not have, so
+// the marshal never lands on a hot path.
+func effectiveJSONTagName(name string) string {
+	// Quoted, not spliced: a struct tag value is an unquoted Go string literal,
+	// so a name carrying a backslash or a quote has to be re-escaped or it
+	// round-trips through StructTag.Get as something else entirely.
+	probe := reflect.StructOf([]reflect.StructField{{
+		Name: "Probe",
+		Type: reflect.TypeFor[string](),
+		Tag:  reflect.StructTag("json:" + strconv.Quote(name)),
+	}})
+
+	encoded, err := json.Marshal(reflect.New(probe).Elem().Interface())
+	if err != nil {
+		return ""
+	}
+
+	var decoded map[string]string
+	if err := json.Unmarshal(encoded, &decoded); err != nil {
+		return ""
+	}
+	for key := range decoded {
+		if key == "Probe" {
+			// The tag was ignored; the caller falls back to the field name.
+			return ""
+		}
+		return key
+	}
+	return ""
 }
 
 // openapiDirectiveRe locates each directive's start. Its value runs from the

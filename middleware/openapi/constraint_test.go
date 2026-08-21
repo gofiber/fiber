@@ -1,6 +1,9 @@
 package openapi
 
 import (
+	"encoding/json"
+	"reflect"
+	"strconv"
 	"testing"
 	"time"
 
@@ -128,17 +131,59 @@ func Test_SplitConstraintEntry(t *testing.T) {
 	require.Equal(t, parsedConstraint{name: "int"}, splitConstraintEntry("  int  "))
 }
 
-func Test_IsValidJSONTagName(t *testing.T) {
+func Test_IsPlainJSONTagName(t *testing.T) {
 	t.Parallel()
 
-	// Mirrors encoding/json's isValidTag: letters, digits and the listed
-	// punctuation are allowed; backslash, quote and empty are not.
-	require.True(t, isValidJSONTagName("name"))
-	require.True(t, isValidJSONTagName("a b"))
-	require.True(t, isValidJSONTagName("a-b_c.d"))
-	require.True(t, isValidJSONTagName("field2"))
-	require.True(t, isValidJSONTagName("Ünïcøde"))
-	require.False(t, isValidJSONTagName(""))
-	require.False(t, isValidJSONTagName(`a\b`))
-	require.False(t, isValidJSONTagName(`a"b`))
+	// The fast path: names every encoding/json release has taken as written —
+	// letters, digits and the punctuation isValidTag has always allowed.
+	require.True(t, isPlainJSONTagName("name"))
+	require.True(t, isPlainJSONTagName("a b"))
+	require.True(t, isPlainJSONTagName("a-b_c.d"))
+	require.True(t, isPlainJSONTagName("field2"))
+	require.True(t, isPlainJSONTagName("Ünïcøde"))
+	require.False(t, isPlainJSONTagName(""))
+
+	// Version-dependent names are deferred to the running toolchain instead of
+	// being judged here: Go 1.27 accepts a backslash or tab that 1.26 rejected,
+	// and truncates at an apostrophe or backtick.
+	for _, name := range []string{`a\b`, `a"b`, "a'b", "a`b", "a\tb"} {
+		require.Falsef(t, isPlainJSONTagName(name), "%q should take the probe path", name)
+	}
+}
+
+// Test_EffectiveJSONTagName pins the probe against the toolchain compiling it,
+// rather than against a hard-coded expectation that a Go release can invalidate.
+func Test_EffectiveJSONTagName(t *testing.T) {
+	t.Parallel()
+
+	for _, name := range []string{`a\b`, "a'b", "a`b", "a\tb", `a"b`} {
+		want := wireNameFor(t, name)
+		require.Equalf(t, want, effectiveJSONTagName(name),
+			"probe disagrees with encoding/json for tag %q", name)
+	}
+}
+
+// wireNameFor marshals a struct tagged with name and returns the property it
+// lands under, or "" when the tag was ignored and the field name was used.
+func wireNameFor(t *testing.T, name string) string {
+	t.Helper()
+
+	typ := reflect.StructOf([]reflect.StructField{{
+		Name: "Probe",
+		Type: reflect.TypeFor[string](),
+		Tag:  reflect.StructTag("json:" + strconv.Quote(name)),
+	}})
+
+	encoded, err := json.Marshal(reflect.New(typ).Elem().Interface())
+	require.NoError(t, err)
+
+	var decoded map[string]string
+	require.NoError(t, json.Unmarshal(encoded, &decoded))
+	for key := range decoded {
+		if key == "Probe" {
+			return ""
+		}
+		return key
+	}
+	return ""
 }
