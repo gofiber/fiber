@@ -237,9 +237,13 @@ func isSingleSegment(val string) bool {
 // below 0x80 inside a host, and it then abandons the rest of the URI, so a
 // value that would need escaping has to fail the request instead. The set is
 // RFC 3986's unreserved characters plus the sub-delims a host parse keeps, and
-// any non-ASCII byte, which fasthttp passes through. ":" and "@" are excluded
-// deliberately: they would add a port or a userinfo section, and a value of
-// "x@evil.com" in "http://:host/api" would send the request to evil.com.
+// the bytes of a valid UTF-8 sequence, which fasthttp passes through so an IDN
+// label can be templated. ":" and "@" are excluded deliberately: they would add
+// a port or a userinfo section, and a value of "x@evil.com" in
+// "http://:host/api" would send the request to evil.com. Malformed UTF-8 is
+// excluded for the same reason one step removed: the bytes reach the Host
+// header verbatim, and an overlong sequence such as "\xc0\xaf" is a "/" to a
+// lenient decoder somewhere downstream.
 func isHostSafe(val string) bool {
 	for i := range len(val) {
 		switch c := val[i]; {
@@ -254,7 +258,7 @@ func isHostSafe(val string) bool {
 
 	// An empty value would build "http:///api", which fails later at dial with
 	// a message that says nothing about the parameter.
-	return val != ""
+	return val != "" && utf8.ValidString(val)
 }
 
 // inIPv6Literal reports whether the authority prefix ends inside a "[...]"
