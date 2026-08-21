@@ -8142,6 +8142,11 @@ func Test_Ctx_Links(t *testing.T) {
 	// quoted-string stays grammar-valid (RFC 9110 §5.6.4).
 	c.Links("http://example.com", `next" x`)
 	require.Equal(t, `<http://example.com>; rel="next\" x"`, string(c.Response().Header.Peek(HeaderLink)))
+
+	// Unlike Attachment filenames, rel values are not sanitized first, so the
+	// shared serializer must also encode controls here.
+	c.Links("http://example.com", "next\t\x01\n\r\x7f")
+	require.Equal(t, `<http://example.com>; rel="next%09%01\n\r%7F"`, string(c.Response().Header.Peek(HeaderLink)))
 }
 
 // go test -v  -run=^$ -bench=Benchmark_Ctx_Links -benchmem -count=4
