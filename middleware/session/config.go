@@ -5,6 +5,7 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/extractors"
+	internalcookie "github.com/gofiber/fiber/v3/internal/cookie"
 	"github.com/gofiber/fiber/v3/log"
 	"github.com/gofiber/utils/v2"
 )
@@ -46,6 +47,7 @@ type Config struct {
 	CookiePath string
 
 	// CookieSameSite specifies the SameSite attribute of the cookie.
+	// Accepted values are "Disabled", "Lax", "Strict", and "None", case-insensitively.
 	//
 	// Optional. Default: "Lax"
 	CookieSameSite string
@@ -94,7 +96,7 @@ var ConfigDefault = Config{
 	IdleTimeout:    30 * time.Minute,
 	KeyGenerator:   utils.SecureToken,
 	Extractor:      extractors.FromCookie("session_id"),
-	CookieSameSite: "Lax",
+	CookieSameSite: fiber.CookieSameSiteLaxMode,
 }
 
 // DefaultErrorHandler logs the error and sends a 500 status code.
@@ -129,13 +131,11 @@ func DefaultErrorHandler(c fiber.Ctx, err error) {
 //	cfg := configDefault()
 //	cfg := configDefault(customConfig)
 func configDefault(config ...Config) Config {
-	// Return default config if nothing provided
-	if len(config) < 1 {
-		return ConfigDefault
+	cfg := ConfigDefault
+	if len(config) > 0 {
+		// Override default config
+		cfg = config[0]
 	}
-
-	// Override default config
-	cfg := config[0]
 
 	// Set default values
 	if cfg.IdleTimeout <= 0 {
@@ -158,6 +158,10 @@ func configDefault(config ...Config) Config {
 
 	if cfg.CookieSameSite == "" {
 		cfg.CookieSameSite = ConfigDefault.CookieSameSite
+	}
+
+	if _, valid := internalcookie.ParseSameSite(cfg.CookieSameSite); !valid {
+		panic("[session] CookieSameSite must be one of Disabled, Lax, Strict, or None")
 	}
 
 	return cfg
