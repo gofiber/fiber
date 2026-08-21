@@ -1012,6 +1012,50 @@ func Test_BearerErrorFields(t *testing.T) {
 	require.Equal(t, `Bearer realm="Restricted", error="invalid_token", error_description="token expired", error_uri="https://example.com"`, res.Header.Get("WWW-Authenticate"))
 }
 
+// Test_ChallengeQuotedStringEscaping verifies both default ApiKey and Bearer
+// challenges use HTTP quoted-string escaping rather than Go syntax.
+func Test_ChallengeQuotedStringEscaping(t *testing.T) {
+	t.Parallel()
+
+	t.Run("default ApiKey challenge", func(t *testing.T) {
+		t.Parallel()
+
+		app := fiber.New()
+		app.Use(New(Config{
+			Extractor: extractors.FromQuery("key"),
+			Realm:     "area \"A\"\\\x01\n",
+			Validator: func(_ fiber.Ctx, _ string) (bool, error) { return false, errors.New("invalid") },
+		}))
+
+		res, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, `ApiKey realm="area \"A\"\\%01\n"`, res.Header.Get(fiber.HeaderWWWAuthenticate))
+	})
+
+	t.Run("Bearer parameters", func(t *testing.T) {
+		t.Parallel()
+
+		app := fiber.New()
+		app.Use(New(Config{
+			Realm:            "area \"A\"\\\x01",
+			Error:            ErrorInvalidToken,
+			ErrorDescription: "bad \"token\"\\\x02\n",
+			ErrorURI:         `https://example.com/docs?q="x"`,
+			Validator:        func(_ fiber.Ctx, _ string) (bool, error) { return false, errors.New("invalid") },
+		}))
+
+		req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+		req.Header.Set(fiber.HeaderAuthorization, "Bearer bad")
+		res, err := app.Test(req)
+		require.NoError(t, err)
+		require.Equal(
+			t,
+			`Bearer realm="area \"A\"\\%01", error="invalid_token", error_description="bad \"token\"\\%02\n", error_uri="https://example.com/docs?q=\"x\""`,
+			res.Header.Get(fiber.HeaderWWWAuthenticate),
+		)
+	})
+}
+
 func Test_BearerErrorURIOnly(t *testing.T) {
 	app := fiber.New()
 	app.Use(New(Config{
