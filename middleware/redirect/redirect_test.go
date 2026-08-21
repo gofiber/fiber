@@ -1,7 +1,6 @@
 package redirect
 
 import (
-	"math"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -17,9 +16,9 @@ import (
 
 // testApp builds an app running the middleware over rules, with a fall-through
 // route so a request no rule redirects answers 200 "fell through".
-func testApp(rules map[string]string, unescape bool) *fiber.App {
+func testApp(rules []Rule, unescape bool) *fiber.App {
 	app := fiber.New(fiber.Config{UnescapePath: unescape})
-	app.Use(New(Config{Rules: rules, StatusCode: fiber.StatusFound}))
+	app.Use(New(Config{RuleList: rules, StatusCode: fiber.StatusFound}))
 	app.Get("/*", func(c fiber.Ctx) error {
 		return c.SendString("fell through")
 	})
@@ -35,7 +34,19 @@ func get(t *testing.T, app *fiber.App, path string) (status int, location string
 }
 
 // requireWin asserts that one GET for path redirects to want.
-func requireWin(t *testing.T, rules map[string]string, path, want string) {
+func requireWinMap(t *testing.T, rules map[string]string, path, want string) {
+	t.Helper()
+	app := fiber.New()
+	app.Use(New(Config{Rules: rules, StatusCode: fiber.StatusFound}))
+	app.Get("/*", func(c fiber.Ctx) error {
+		return c.SendString("fell through")
+	})
+	status, location := get(t, app, path)
+	require.Equal(t, fiber.StatusFound, status, "request %q", path)
+	require.Equal(t, want, location, "request %q", path)
+}
+
+func requireWin(t *testing.T, rules []Rule, path, want string) {
 	t.Helper()
 	status, location := get(t, testApp(rules, false), path)
 	require.Equal(t, fiber.StatusFound, status, "request %q", path)
@@ -46,7 +57,7 @@ func requireWin(t *testing.T, rules map[string]string, path, want string) {
 // redirected to want, or — want "" — fallen through with no Location.
 func requireRule(t *testing.T, unescape bool, pattern, target, request, want string) {
 	t.Helper()
-	status, location := get(t, testApp(map[string]string{pattern: target}, unescape), request)
+	status, location := get(t, testApp([]Rule{{From: pattern, To: target}}, unescape), request)
 	if want == "" {
 		require.Equal(t, fiber.StatusOK, status, "the rule must not fire on %q", request)
 		require.Empty(t, location)
@@ -60,40 +71,28 @@ func Test_Redirect(t *testing.T) {
 	app := fiber.New()
 
 	app.Use(New(Config{
-		Rules: map[string]string{
-			"/default": "google.com",
-		},
+		RuleList:   []Rule{{From: "/default", To: "google.com"}},
 		StatusCode: fiber.StatusMovedPermanently,
 	}))
 	app.Use(New(Config{
-		Rules: map[string]string{
-			"/default/*": "fiber.wiki",
-		},
+		RuleList:   []Rule{{From: "/default/*", To: "fiber.wiki"}},
 		StatusCode: fiber.StatusTemporaryRedirect,
 	}))
 	app.Use(New(Config{
-		Rules: map[string]string{
-			"/redirect/*": "$1",
-		},
+		RuleList:   []Rule{{From: "/redirect/*", To: "$1"}},
 		StatusCode: fiber.StatusSeeOther,
 	}))
 	app.Use(New(Config{
-		Rules: map[string]string{
-			"/pattern/*": "golang.org",
-		},
+		RuleList:   []Rule{{From: "/pattern/*", To: "golang.org"}},
 		StatusCode: fiber.StatusFound,
 	}))
 
 	app.Use(New(Config{
-		Rules: map[string]string{
-			"/": "/swagger",
-		},
+		RuleList:   []Rule{{From: "/", To: "/swagger"}},
 		StatusCode: fiber.StatusMovedPermanently,
 	}))
 	app.Use(New(Config{
-		Rules: map[string]string{
-			"/params": "/with_params",
-		},
+		RuleList:   []Rule{{From: "/params", To: "/with_params"}},
 		StatusCode: fiber.StatusMovedPermanently,
 	}))
 
@@ -178,7 +177,7 @@ func Test_Redirect_StartAnchor(t *testing.T) {
 
 	app := fiber.New()
 	app.Use(New(Config{
-		Rules:      map[string]string{"/old": "/new"},
+		RuleList:   []Rule{{From: "/old", To: "/new"}},
 		StatusCode: fiber.StatusMovedPermanently,
 	}))
 	app.Get("/very/old", func(c fiber.Ctx) error { return c.SendString("not redirected") })
@@ -506,9 +505,9 @@ func Test_Redirect_OverlappingRulesAreDeterministic(t *testing.T) {
 	build := func() *fiber.App {
 		app := fiber.New()
 		app.Use(New(Config{
-			Rules: map[string]string{
-				"/cdn/*":  "/first/$1",
-				"/cdn/*x": "/second/$1",
+			RuleList: []Rule{
+				{From: "/cdn/*", To: "/first/$1"},
+				{From: "/cdn/*x", To: "/second/$1"},
 			},
 			StatusCode: fiber.StatusFound,
 		}))
@@ -556,19 +555,6 @@ func Test_Redirect_PortDoesNotPinTheHost(t *testing.T) {
 			requireRule(t, false, tc.pattern, tc.target, tc.request, tc.want)
 		})
 	}
-}
-
-// Test_Redirect_MoreSpecificRuleWins pins that the rule pinning more of the path is tried first, not "/*" before "/old/*".
-func Test_Redirect_MoreSpecificRuleWins(t *testing.T) {
-	t.Parallel()
-
-	rules := map[string]string{
-		"/*":     "/home",
-		"/old/*": "/new/$1",
-	}
-	requireWin(t, rules, "/old/thing", "/new/thing")
-	// The catch-all still covers everything the specific rule does not.
-	requireWin(t, rules, "/other", "/home")
 }
 
 // Test_TargetLetsRequestPickHost pins which target shapes hand the destination to the request, "https:$1" among them.
@@ -931,7 +917,7 @@ func Test_Next(t *testing.T) {
 	app := fiber.New()
 	app.Use(New(Config{
 		Next:       func(fiber.Ctx) bool { return true },
-		Rules:      map[string]string{"/default": "google.com"},
+		RuleList:   []Rule{{From: "/default", To: "google.com"}},
 		StatusCode: fiber.StatusMovedPermanently,
 	}))
 	app.Use(func(c fiber.Ctx) error {
@@ -945,7 +931,7 @@ func Test_Next(t *testing.T) {
 	app = fiber.New()
 	app.Use(New(Config{
 		Next:       func(fiber.Ctx) bool { return false },
-		Rules:      map[string]string{"/default": "google.com"},
+		RuleList:   []Rule{{From: "/default", To: "google.com"}},
 		StatusCode: fiber.StatusMovedPermanently,
 	}))
 
@@ -996,7 +982,7 @@ func Test_RegexRules(t *testing.T) {
 	// Case 1: Rules regex is empty
 	app := fiber.New()
 	app.Use(New(Config{
-		Rules:      map[string]string{},
+		RuleList:   []Rule{},
 		StatusCode: fiber.StatusMovedPermanently,
 	}))
 	app.Use(func(c fiber.Ctx) error {
@@ -1009,7 +995,7 @@ func Test_RegexRules(t *testing.T) {
 	// Case 2: Rules regex map contains valid regex and well-formed replacement URLs
 	app = fiber.New()
 	app.Use(New(Config{
-		Rules:      map[string]string{"/default": "google.com"},
+		RuleList:   []Rule{{From: "/default", To: "google.com"}},
 		StatusCode: fiber.StatusMovedPermanently,
 	}))
 	app.Use(func(c fiber.Ctx) error {
@@ -1024,7 +1010,7 @@ func Test_RegexRules(t *testing.T) {
 	app = fiber.New()
 	require.Panics(t, func() {
 		app.Use(New(Config{
-			Rules:      map[string]string{"(": "google.com"},
+			RuleList:   []Rule{{From: "(", To: "google.com"}},
 			StatusCode: fiber.StatusMovedPermanently,
 		}))
 	})
@@ -1284,8 +1270,63 @@ func Test_Redirect_NoSlashSpecialSchemeAuthorityIsGuarded(t *testing.T) {
 	}
 }
 
-// Test_Redirect_RuleOrderIsBySpecificity pins the order overlapping rules are tried in.
-func Test_Redirect_RuleOrderIsBySpecificity(t *testing.T) {
+// Test_Redirect_DeprecatedMapHeuristicIsNotExact records what the deprecated
+// map cannot do. Its order is read off the path text a rule pins, so two rules
+// separated only by regexp syntax can order the wrong way round: "[a-z]" spells
+// more bytes than "[ab]" while matching more paths. RuleList is the answer —
+// the author says which comes first and nothing has to be inferred.
+func Test_Redirect_DeprecatedMapHeuristicIsNotExact(t *testing.T) {
+	t.Parallel()
+
+	const narrow, broad = `/p/*[ab]`, `/p/*[a-z]`
+
+	// The map hands "/p/za" to the broader rule, which is not what the author
+	// would have picked.
+	requireWinMap(t, map[string]string{broad: "/wide", narrow: "/narrow"}, "/p/za", "/wide")
+
+	// Ordering them explicitly settles it.
+	requireWin(t, []Rule{{From: narrow, To: "/narrow"}, {From: broad, To: "/wide"}}, "/p/za", "/narrow")
+}
+
+// Test_Redirect_FirstMatchWins pins the order rules are tried in: the first
+// whose pattern matches answers, as routes do, and the broader rule still takes
+// every path the narrower one leaves.
+func Test_Redirect_FirstMatchWins(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name   string
+		narrow Rule
+		broad  Rule
+		shared string
+		wide   string
+	}{
+		{"a suffix past the wildcard", Rule{From: "/old/*", To: "/new"}, Rule{From: "/*", To: "/home"}, "/old/thing", "/other"},
+		{"an exact rule and a class", Rule{From: "/api/users", To: "/exact"}, Rule{From: "/api/[a-z]+", To: "/broad"}, "/api/users", "/api/other"},
+		{"a dot matches any byte", Rule{From: "/api/users", To: "/exact"}, Rule{From: "/api/user.", To: "/broad"}, "/api/users", "/api/userx"},
+		{"a narrower class", Rule{From: "/api/[ab]", To: "/narrow"}, Rule{From: "/api/[abcdefghijklmnopqrstuvwxyz]", To: "/broad"}, "/api/a", "/api/z"},
+		{"an alternation matches every branch", Rule{From: "/x", To: "/exact"}, Rule{From: "/very/specific|/x", To: "/alt"}, "/x", "/very/specific"},
+		{"a grouped alternation", Rule{From: "/p/[a-z]xy", To: "/narrow"}, Rule{From: "/p/[a-z](reports|x.*)", To: "/grouped"}, "/p/axy", "/p/areports"},
+		{"an optional atom", Rule{From: "/api/ab", To: "/exact"}, Rule{From: "/api/ab{0,1}", To: "/maybe"}, "/api/ab", "/api/a"},
+		{"an anchor consumes nothing", Rule{From: "/p/[a]", To: "/exact"}, Rule{From: "/p/[a-z]$", To: "/class"}, "/p/a", "/p/b"},
+		{"a class escape", Rule{From: "/api/1", To: "/one"}, Rule{From: `/api/\d+`, To: "/digits"}, "/api/1", "/api/27"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			// The path both match goes to whichever rule the author put first.
+			requireWin(t, []Rule{tc.narrow, tc.broad}, tc.shared, tc.narrow.To)
+			// What only the broader rule matches still reaches it.
+			requireWin(t, []Rule{tc.narrow, tc.broad}, tc.wide, tc.broad.To)
+			// Reversing the order reverses the winner on the shared path, which
+			// is the whole of what author order buys.
+			requireWin(t, []Rule{tc.broad, tc.narrow}, tc.shared, tc.broad.To)
+		})
+	}
+}
+
+// Test_Redirect_DeprecatedMapOrderIsBySpecificity pins the heuristic that orders the deprecated Rules map.
+func Test_Redirect_DeprecatedMapOrderIsBySpecificity(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -1339,101 +1380,18 @@ func Test_Redirect_RuleOrderIsBySpecificity(t *testing.T) {
 			path:  "/api/z",
 			want:  "/wild/z",
 		},
-		{
-			// Two rules that both carry a wildcard are still told apart by the width of everything beside it.
-			name:  "a class past a wildcard is read like any other",
-			rules: map[string]string{`/p/*[a-z]`: "/wide", `/p/*[ab]`: "/narrow"},
-			path:  "/p/za",
-			want:  "/narrow",
-		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			requireWin(t, tc.rules, tc.path, tc.want)
+			requireWinMap(t, tc.rules, tc.path, tc.want)
 		})
 	}
 }
 
 // Test_LiteralLengths pins how a rule's pinned length is measured, which is what orders two rules that overlap.
-func Test_LiteralLengths(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		rule      string
-		prefixLen int
-		totalLen  int
-	}{
-		// No wildcard at all: the whole rule is pinned.
-		{rule: "/exact", prefixLen: 6, totalLen: 6},
-		{rule: "/", prefixLen: 1, totalLen: 1},
-		{rule: "", prefixLen: 0, totalLen: 0},
-		// The prefix stops at the first wildcard; the total counts what follows it too.
-		{rule: "/cdn/*", prefixLen: 5, totalLen: 5},
-		{rule: "/cdn/*x", prefixLen: 5, totalLen: 6},
-		{rule: "/p/*.png", prefixLen: 3, totalLen: 6},
-		{rule: "*", prefixLen: 0, totalLen: 0},
-		{rule: "/a/*/b/*", prefixLen: 3, totalLen: 6},
-
-		// A key is compiled as a regexp, so its metacharacters pin nothing: "/api/[a-z]+" outranked "/api/users".
-		{rule: "/api/[a-z]+", prefixLen: 5, totalLen: 5},
-		{rule: "/api/users", prefixLen: 10, totalLen: 10},
-		{rule: "/(a|b)/x", prefixLen: 1, totalLen: 4},
-		// A group is an alternation too, so it pins what its widest branch pins.
-		{rule: "/api/[a-z](specific|x)", prefixLen: 5, totalLen: 6},
-		// The "?:" of a non-capturing group is syntax, and a group every branch of which pins the same text pins it too.
-		{rule: "/p/(?:ab)", prefixLen: 5, totalLen: 5},
-		{rule: "/p/(?:a|aa)", prefixLen: 4, totalLen: 4},
-		{rule: "/p/(?:ab|ba)", prefixLen: 3, totalLen: 5},
-		// A class escape matches any byte of its class, so it pins none of them and ends the prefix.
-		{rule: `/api/\d+`, prefixLen: 5, totalLen: 5},
-		{rule: `/api/\w`, prefixLen: 5, totalLen: 5},
-		// A quantifier's bounds are syntax, and one allowing none takes its atom back: "/api/a{0,1}" matches "/api/" too.
-		{rule: "/api/a{0,1}", prefixLen: 5, totalLen: 5},
-		{rule: "/api/a{2,3}", prefixLen: 6, totalLen: 6},
-		{rule: "/api/a?b", prefixLen: 5, totalLen: 6},
-		{rule: "/api/(ab)?c", prefixLen: 5, totalLen: 6},
-		// An unclosed brace is an ordinary byte to the regexp parser.
-		{rule: "/api/a{", prefixLen: 6, totalLen: 6},
-		// "." matches any byte, so "/api/user." pins no more than "/api/user".
-		{rule: "/api/user.", prefixLen: 9, totalLen: 9},
-		// Escaped, it matches itself and pins the byte it stands for; the backslash adds nothing.
-		{rule: `/p/a\.png`, prefixLen: 8, totalLen: 8},
-		// A complete escape names one character however it is spelled: "/p/\x{61}" is "/p/a".
-		{rule: `/p/\x{61}`, prefixLen: 4, totalLen: 4},
-		{rule: `/p/\x61`, prefixLen: 4, totalLen: 4},
-		{rule: `/p/\141`, prefixLen: 4, totalLen: 4},
-		{rule: `/p/\t`, prefixLen: 4, totalLen: 4},
-		// An incomplete one names nothing, so it ends the prefix — and such a rule never compiles anyway.
-		{rule: `/p/\x{61`, prefixLen: 3, totalLen: 5},
-		// An anchor asserts a position and consumes nothing, so it pins no path.
-		{rule: "/p/a$", prefixLen: 4, totalLen: 4},
-		{rule: "/p/[a-z]$", prefixLen: 3, totalLen: 3},
-		// An anchor asserts a position and consumes nothing, so it neither pins a byte nor ends what follows.
-		{rule: "^/p/a", prefixLen: 4, totalLen: 4},
-		{rule: `\A/p/a`, prefixLen: 4, totalLen: 4},
-		// A class matches one byte whatever it lists, so listing more alternatives buys no specificity.
-		{rule: "/api/[abcdefghijklmnopqrstuvwxyz]", prefixLen: 5, totalLen: 5},
-		{rule: "/api/[ab]", prefixLen: 5, totalLen: 5},
-		{rule: "/api/[a-z]x", prefixLen: 5, totalLen: 6},
-		// An alternation is only as specific as its least specific branch.
-		{rule: "/very/specific|/x", prefixLen: 2, totalLen: 2},
-		// A "|" inside a group or a class separates no top-level branch.
-		{rule: "/p/[a|b]", prefixLen: 3, totalLen: 3},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.rule, func(t *testing.T) {
-			t.Parallel()
-			require.Equal(t, tc.prefixLen, literalPrefixLen(tc.rule), "literalPrefixLen")
-			require.Equal(t, tc.totalLen, literalLen(tc.rule), "literalLen")
-		})
-	}
-}
-
-// Test_Redirect_ComposedPort covers one port built from several captures, each asked for digits as the composition would be.
 func Test_Redirect_ComposedPort(t *testing.T) {
 	t.Parallel()
 
@@ -1454,38 +1412,6 @@ func Test_Redirect_ComposedPort(t *testing.T) {
 
 			requireRule(t, false, "/r/*/*", "https://example.com:$1$2", tc.request, tc.want)
 		})
-	}
-}
-
-// Test_Redirect_ExactRuleBeatsPattern covers ordering between a rule written in regexp syntax and an exact one.
-func Test_Redirect_ExactRuleBeatsPattern(t *testing.T) {
-	t.Parallel()
-
-	rules := map[string]string{
-		"/api/[a-z]+": "/broad",
-		"/api/users":  "/exact",
-	}
-	for _, tc := range []struct{ request, want string }{
-		{"/api/users", "/exact"},
-		{"/api/other", "/broad"},
-	} {
-		requireWin(t, rules, tc.request, tc.want)
-	}
-}
-
-// Test_Redirect_ExactRuleBeatsDottedPattern is the same for the metacharacter that looks like path text: ".".
-func Test_Redirect_ExactRuleBeatsDottedPattern(t *testing.T) {
-	t.Parallel()
-
-	rules := map[string]string{
-		"/api/user.": "/broad",
-		"/api/users": "/exact",
-	}
-	for _, tc := range []struct{ request, want string }{
-		{"/api/users", "/exact"},
-		{"/api/userx", "/broad"},
-	} {
-		requireWin(t, rules, tc.request, tc.want)
 	}
 }
 
@@ -1552,93 +1478,6 @@ func Test_Redirect_ThirdSlashUnderNonSpecialScheme(t *testing.T) {
 	}
 }
 
-// Test_Redirect_WiderClassDoesNotOutrank covers two rules differing only in how many alternatives their class lists.
-func Test_Redirect_WiderClassDoesNotOutrank(t *testing.T) {
-	t.Parallel()
-
-	rules := map[string]string{
-		"/api/[abcdefghijklmnopqrstuvwxyz]": "/broad",
-		"/api/[ab]":                         "/narrow",
-	}
-	for _, tc := range []struct{ request, want string }{
-		// Both match, and they tie on pinned length, so the deterministic key order decides.
-		{"/api/a", "/narrow"},
-		// Only the wider class matches this one.
-		{"/api/z", "/broad"},
-	} {
-		requireWin(t, rules, tc.request, tc.want)
-	}
-}
-
-// Test_Redirect_AlternationRankedByItsWidestBranch covers a rule only as specific as its least specific branch.
-func Test_Redirect_AlternationRankedByItsWidestBranch(t *testing.T) {
-	t.Parallel()
-
-	rules := map[string]string{
-		"/very/specific|/x": "/alt",
-		"/x":                "/exact",
-	}
-	for _, tc := range []struct{ request, want string }{
-		// Both match, and the exact rule wins: they pin the same byte and the alternation matches strictly more paths.
-		{"/x", "/exact"},
-		// The branch only the alternation matches still reaches it.
-		{"/very/specific", "/alt"},
-	} {
-		requireWin(t, rules, tc.request, tc.want)
-	}
-}
-
-// Test_Redirect_GroupedAlternationRankedByItsWidestBranch covers an alternation written inside a group.
-func Test_Redirect_GroupedAlternationRankedByItsWidestBranch(t *testing.T) {
-	t.Parallel()
-
-	rules := map[string]string{
-		"/p/[a-z](reports|x.*)": "/grouped",
-		"/p/[a-z]xy":            "/narrow",
-	}
-	for _, tc := range []struct{ request, want string }{
-		// Both match "/p/axy", and the grouped rule pins only the byte its "x.*" branch does.
-		{"/p/axy", "/narrow"},
-		// What only the grouped rule matches still reaches it.
-		{"/p/areports", "/grouped"},
-	} {
-		requireWin(t, rules, tc.request, tc.want)
-	}
-}
-
-// Test_Redirect_OptionalQuantifierDoesNotOutrankExactRule covers "{0,1}", whose bounds were counted as path bytes.
-func Test_Redirect_OptionalQuantifierDoesNotOutrankExactRule(t *testing.T) {
-	t.Parallel()
-
-	rules := map[string]string{
-		"/api/ab{0,1}": "/maybe",
-		"/api/ab":      "/exact",
-	}
-	for _, tc := range []struct{ request, want string }{
-		{"/api/ab", "/exact"},
-		// What only the quantified rule matches still reaches it.
-		{"/api/a", "/maybe"},
-	} {
-		requireWin(t, rules, tc.request, tc.want)
-	}
-}
-
-// Test_Redirect_AnchorPinsNoPath covers an explicit "$", which asserts a position and consumes nothing.
-func Test_Redirect_AnchorPinsNoPath(t *testing.T) {
-	t.Parallel()
-
-	rules := map[string]string{
-		"/p/[a-z]$": "/class",
-		"/p/[a]":    "/exact",
-	}
-	for _, tc := range []struct{ request, want string }{
-		{"/p/a", "/exact"},
-		{"/p/b", "/class"},
-	} {
-		requireWin(t, rules, tc.request, tc.want)
-	}
-}
-
 // Test_Redirect_UserinfoDelimitersFollowTheScheme covers a capture in the userinfo of a non-special target.
 func Test_Redirect_UserinfoDelimitersFollowTheScheme(t *testing.T) {
 	t.Parallel()
@@ -1688,7 +1527,7 @@ func Test_Redirect_FileAuthorityOpensOnBackslashes(t *testing.T) {
 func Test_Redirect_AnchorsBindEveryBranch(t *testing.T) {
 	t.Parallel()
 
-	app := testApp(map[string]string{"/a|/b": "/moved"}, false)
+	app := testApp([]Rule{{From: "/a|/b", To: "/moved"}}, false)
 	for _, tc := range []struct {
 		request string
 		want    int
@@ -1704,124 +1543,12 @@ func Test_Redirect_AnchorsBindEveryBranch(t *testing.T) {
 }
 
 // Test_Redirect_NestedAlternationLosesTheTieBreak covers two rules that tie on both specificity measures.
-func Test_Redirect_NestedAlternationLosesTheTieBreak(t *testing.T) {
-	t.Parallel()
-
-	rules := map[string]string{
-		"/p/[a-z](x|y)": "/wide",
-		"/p/[a-z]x":     "/narrow",
-	}
-	for _, tc := range []struct{ request, want string }{
-		{"/p/ax", "/narrow"},
-		{"/p/ay", "/wide"},
-	} {
-		requireWin(t, rules, tc.request, tc.want)
-	}
-
-	// A class counts its breadth here too, so the two differ by the group alone.
-	require.Equal(t, 52, patternWidth("/p/[a-z](x|y)"))
-	require.Equal(t, 26, patternWidth("/p/[a-z]x"))
-	require.Equal(t, 1, patternWidth("/p/[a]"))
-	require.Equal(t, 256, patternWidth("/p/."))
-	require.Equal(t, 2, patternWidth("/very/specific|/x"))
-	require.Equal(t, 4, patternWidth("(a|b)(c|d)"))
-
-	// The wildcard is ranked on its own rather than counted here, so the width goes on separating two rules that carry one.
-	require.Equal(t, 1, wildcardRank("/p/*"))
-	require.Equal(t, 0, wildcardRank("/p/[a-z]"))
-	require.Greater(t, patternWidth("/p/*[a-z]"), patternWidth("/p/*[ab]"))
-
-	// A star that names itself is no wildcard: quoted, or listed by a class.
-	require.Equal(t, 0, wildcardRank(`/p/\Q*\E`))
-	require.Equal(t, 0, wildcardRank(`/p/\Qab*`))
-	require.Equal(t, 0, wildcardRank("/p/[*]"))
-	require.Equal(t, 1, wildcardRank(`/p/\Qab\E*`))
-	require.Equal(t, 1, wildcardRank(`/p/\d*`))
-}
-
-// Test_Redirect_FewerWildcardsWin ties every other measure, leaving the wildcard count to separate the pair.
-func Test_Redirect_FewerWildcardsWin(t *testing.T) {
-	t.Parallel()
-
-	requireWin(t, map[string]string{
-		"/p/*a*b": "https://attacker.example/$1/$2",
-		"/p/*ab":  "/safe/$1",
-	}, "/p/xxab?secret=top", "/safe/xx?secret=top")
-	require.Equal(t, 2, wildcardRank("/p/*a*b"))
-	require.Equal(t, 1, wildcardRank("/p/*ab"))
-	// Both expand to a single alternative, so the width leaves them tied and the count decides.
-	require.Equal(t, patternWidth("/p/*a*b"), patternWidth("/p/*ab"))
-}
-
-// Test_Redirect_WildcardCountYieldsToWidth covers the pair the count alone gets backwards.
-func Test_Redirect_WildcardCountYieldsToWidth(t *testing.T) {
-	t.Parallel()
-
-	requireWin(t, map[string]string{
-		`/p/([a]*|[c]*)`: "/narrow",
-		`/p/[a-d]*`:      "/broad",
-	}, "/p/axyz", "/narrow")
-
-	// Every earlier measure ties, and the wildcard count points the wrong way.
-	require.Equal(t, literalPrefixLen(`/p/[a-d]*`), literalPrefixLen(`/p/([a]*|[c]*)`))
-	require.Equal(t, literalLen(`/p/[a-d]*`), literalLen(`/p/([a]*|[c]*)`))
-	require.Equal(t, carriesRun(`/p/[a-d]*`), carriesRun(`/p/([a]*|[c]*)`))
-	require.Greater(t, wildcardRank(`/p/([a]*|[c]*)`), wildcardRank(`/p/[a-d]*`))
-	require.Less(t, patternWidth(`/p/([a]*|[c]*)`), patternWidth(`/p/[a-d]*`))
-}
-
-// Test_Redirect_OptionalAtomWidensARule covers "/p/*a?", which one wildcard makes look narrower than "/p/*[a]*".
-func Test_Redirect_OptionalAtomWidensARule(t *testing.T) {
-	t.Parallel()
-
-	requireWin(t, map[string]string{
-		`/p/*[a]*`: "/narrow",
-		`/p/*a?`:   "/broad",
-	}, "/p/a", "/narrow")
-
-	// The optional atom is the one measure that separates them, and "{0,1}" spells the same thing.
-	require.Greater(t, wildcardRank(`/p/*[a]*`), wildcardRank(`/p/*a?`))
-	require.Less(t, patternWidth(`/p/*[a]*`), patternWidth(`/p/*a?`))
-	require.Equal(t, 2, patternWidth("/p/a?"))
-	require.Equal(t, 2, patternWidth("/p/a{0,1}"))
-	require.Equal(t, 27, patternWidth("/p/[a-z]?"))
-	// An escape names an atom too, and it is the one the "?" takes back.
-	require.Equal(t, 2, patternWidth(`/p/\.?`))
-}
-
-// Test_Redirect_UnboundedRepetitionIsWidest covers the quantifier that runs on: "/p/[ab]+" matches every length.
-func Test_Redirect_UnboundedRepetitionIsWidest(t *testing.T) {
-	t.Parallel()
-
-	requireWin(t, map[string]string{
-		`/p/[a][ab]?`: "/narrow",
-		`/p/[ab]+`:    "/broad",
-	}, "/p/a", "/narrow")
-
-	// A run without an end is ranked, not measured, so the width separates two rules that both run on.
-	require.Equal(t, 1, carriesRun(`/p/[ab]+`))
-	require.Equal(t, 1, carriesRun(`/p/[a]{2,}`))
-	require.Equal(t, 0, carriesRun(`/p/[a][ab]?`))
-	require.Equal(t, 0, carriesRun(`/p/[a]{2,3}`))
-
-	// Every count a bounded quantifier permits is a set of paths of its own, and they add: "{2,3}" matches "aa" and "aaa".
-	require.Equal(t, 3, patternWidth(`/p/[a][ab]?`))
-	require.Equal(t, 6, patternWidth(`/p/[ab]{1,2}`))
-	require.Equal(t, 2, patternWidth(`/p/[a]{2,3}`))
-	require.Equal(t, 1, patternWidth(`/p/[a]{2}`))
-	// Braces spelling no number are literal text, and a range with no upper bound or a backwards one bounds nothing.
-	require.Equal(t, 1, patternWidth(`/p/{id}`))
-	require.Equal(t, patternWidth(`/p/[ab]`), patternWidth(`/p/[ab]{1,x}`))
-	require.Equal(t, patternWidth(`/p/[ab]`), patternWidth(`/p/[ab]{3,1}`))
-}
-
-// Test_Redirect_FiniteRepetitionIsCounted covers the bounded quantifier: "/p/[ab]{1,2}" matches six paths.
 func Test_Redirect_FiniteRepetitionIsCounted(t *testing.T) {
 	t.Parallel()
 
-	requireWin(t, map[string]string{
-		`/p/[a][ab]?`:  "/narrow",
-		`/p/[ab]{1,2}`: "/broad",
+	requireWin(t, []Rule{
+		{From: `/p/[a][ab]?`, To: "/narrow"},
+		{From: `/p/[ab]{1,2}`, To: "/broad"},
 	}, "/p/a", "/narrow")
 }
 
@@ -1829,158 +1556,27 @@ func Test_Redirect_FiniteRepetitionIsCounted(t *testing.T) {
 func Test_Redirect_UnboundedRulesKeepTheirBreadth(t *testing.T) {
 	t.Parallel()
 
-	requireWin(t, map[string]string{
-		`/p/[z]+`:   "/narrow",
-		`/p/[a-z]+`: "/broad",
+	requireWin(t, []Rule{
+		{From: `/p/[z]+`, To: "/narrow"},
+		{From: `/p/[a-z]+`, To: "/broad"},
 	}, "/p/z", "/narrow")
 }
 
 // Test_Redirect_EscapedByteIsOneMember covers the class escape spelling one byte: "[\.]" lists the dot alone.
-func Test_Redirect_EscapedByteIsOneMember(t *testing.T) {
-	t.Parallel()
-
-	requireWin(t, map[string]string{
-		`/p/[\.]`:  "/narrow",
-		`/p/[.-/]`: "/broad",
-	}, "/p/.", "/narrow")
-
-	// One byte named, however it is spelled; a set only when it stands for one.
-	require.Equal(t, 1, patternWidth(`/p/[\.]`))
-	require.Equal(t, 1, patternWidth(`/p/[\x61]`))
-	require.Equal(t, 2, patternWidth(`/p/[.-/]`))
-	require.Equal(t, setMemberWidth, patternWidth(`/p/[\d]`))
-}
-
-// Test_Redirect_SetMemberOutweighsAListedByte covers a member standing for a set: "[[:alpha:]]" contains "[a]".
-func Test_Redirect_SetMemberOutweighsAListedByte(t *testing.T) {
-	t.Parallel()
-
-	requireWin(t, map[string]string{
-		`/p/[a]`:         "/narrow",
-		`/p/[[:alpha:]]`: "/broad",
-	}, "/p/a", "/narrow")
-
-	// However the set is spelled, and whatever it holds.
-	require.Equal(t, setMemberWidth, patternWidth(`/p/[[:alpha:]]`))
-	require.Equal(t, setMemberWidth, patternWidth(`/p/[[:digit:]]`))
-}
-
-// Test_Redirect_SaturatedWidthSurvivesAQuantifier covers a width that reached the clamp before its last atom.
-func Test_Redirect_SaturatedWidthSurvivesAQuantifier(t *testing.T) {
-	t.Parallel()
-
-	requireWin(t, map[string]string{
-		`/p/[ab][a-z][a-z][a-z][a-z]`:         "/narrow",
-		`/p/[a-z][a-z][a-z][a-z][a-z][ab]{0}`: "/broad",
-	}, "/p/aaaaa", "/narrow")
-
-	// The clamp holds through the quantifier rather than being divided back.
-	require.Equal(t, maxPatternWidth, patternWidth(`/p/[a-z][a-z][a-z][a-z][a-z][ab]{0}`))
-	require.Less(t, patternWidth(`/p/[ab][a-z][a-z][a-z][a-z]`), maxPatternWidth)
-	// What a quantifier permits is still counted where nothing saturated.
-	require.Equal(t, 1, patternWidth(`/p/[ab]{0}`))
-	require.Equal(t, 4, patternWidth(`/p/[ab]{2}`))
-}
-
-// Test_Redirect_SignedBoundIsNoQuantifier covers braces Go reads as literal text: "a{-0}" repeats nothing.
-func Test_Redirect_SignedBoundIsNoQuantifier(t *testing.T) {
-	t.Parallel()
-
-	require.Equal(t, literalPrefixLen(`/p/a....`), literalPrefixLen(`/p/a{-0}`))
-	require.Less(t, patternWidth(`/p/a{-0}`), patternWidth(`/p/a....`))
-
-	// Text pins what it spells: the bytes between the braces are path, not syntax.
-	require.Equal(t, literalLen(`/p/a-0`), literalLen(`/p/a{-0}`))
-	require.Greater(t, literalLen(`/p/a{-0}`), literalLen(`/p/a....`))
-
-	// Digits alone name a count; a sign, a space or a stray byte do not.
-	require.Equal(t, 2, patternWidth(`/p/[ab]{1}`))
-	require.Equal(t, patternWidth(`/p/[ab]`), patternWidth(`/p/[ab]{+1}`))
-	require.Equal(t, patternWidth(`/p/[ab]`), patternWidth(`/p/[ab]{ 1}`))
-	// A missing lower bound names no count either: Go reads "{,3}" as text.
-	require.Equal(t, patternWidth(`/p/[ab]`), patternWidth(`/p/[ab]{,3}`))
-	// Nor does a count too large to hold, which Go refuses for its size anyway.
-	require.Equal(t, patternWidth(`/p/[ab]`), patternWidth(`/p/[ab]{99999999999999999999}`))
-}
-
-// Test_Redirect_NonGreedyMarkerIsNoQuantifier covers the "?" that only says a repetition is not greedy.
-func Test_Redirect_NonGreedyMarkerIsNoQuantifier(t *testing.T) {
-	t.Parallel()
-
-	requireWin(t, map[string]string{
-		`/p/[b]+?`: "/narrow",
-		`/p/[ab]+`: "/broad",
-	}, "/p/b", "/narrow")
-
-	// The marker leaves the width where the repetition left it — but a rule's "*" expands to a group the "?" does quantify.
-	require.Equal(t, patternWidth(`/p/[b]+`), patternWidth(`/p/[b]+?`))
-	require.Equal(t, patternWidth(`/p/[ab]{1,2}`), patternWidth(`/p/[ab]{1,2}?`))
-	require.Equal(t, patternWidth(`/p/[ab]?`), patternWidth(`/p/[ab]??`))
-	// A "?" of its own still counts the alternative where the atom is absent.
-	require.Equal(t, 3, patternWidth(`/p/[ab]?`))
-}
-
-// Test_Redirect_OversizedBoundIsNoQuantifier covers the count Go refuses for its size, measured before compiling.
-func Test_Redirect_OversizedBoundIsNoQuantifier(t *testing.T) {
-	t.Parallel()
-
-	// Counted up to Go's own limit, and read as text above it.
-	require.Equal(t, maxPatternWidth, patternWidth(`/p/[ab]{`+strconv.Itoa(maxRepeatCount)+`}`))
-	require.Equal(t, patternWidth(`/p/[ab]`), patternWidth(`/p/[ab]{`+strconv.Itoa(maxRepeatCount+1)+`}`))
-	require.Equal(t, patternWidth(`/p/[ab]`), patternWidth(`/p/[ab]{1000000000}`))
-	require.Equal(t, patternWidth(`/p/[ab]`), patternWidth(`/p/[ab]{1,1000000000}`))
-
-	// Which is what Go says of them too: the rule above the limit is refused.
-	_, err := regexp.Compile(`^(?:/p/[ab]{` + strconv.Itoa(maxRepeatCount) + `})$`)
-	require.NoError(t, err)
-	_, err = regexp.Compile(`^(?:/p/[ab]{` + strconv.Itoa(maxRepeatCount+1) + `})$`)
-	require.Error(t, err)
-}
-
-// Test_Redirect_PosixClassNamesItsOwnStars covers "[[:alpha:]*]", whose "]" closes the POSIX name rather than the class.
-func Test_Redirect_PosixClassNamesItsOwnStars(t *testing.T) {
-	t.Parallel()
-
-	requireWin(t, map[string]string{
-		`/p/*[[:alpha:]*][[:alpha:]*]`: "/narrow",
-		`/p/*[\pL(.*)A-z]`:             "/broad",
-	}, "/p/aa", "/narrow")
-
-	// One wildcard, and a class counted whole however its members are spelled.
-	require.Equal(t, 1, wildcardRank(`/p/*[[:alpha:]*][[:alpha:]*]`))
-	require.Equal(t, 0, wildcardRank(`/p/[[:alpha:]*]`))
-	// The name counts as a set, the star beside it as the one byte it lists.
-	require.Equal(t, setMemberWidth+1, patternWidth(`/p/[[:alpha:]*]`))
-	// A member standing after the name pins nothing, being a member still.
-	require.Equal(t, 3, literalLen(`/p/[[:alpha:]a]`))
-	// A name is one only inside a class: "[:alpha:]" alone is a class, so the star after it is Fiber's wildcard.
-	require.Equal(t, 1, wildcardRank(`/p/[:alpha:]*`))
-	// A name that never closes is no name, and the star it lists is a member like any other.
-	require.Equal(t, 0, wildcardRank(`/p/[[:alpha*]`))
-}
-
-// Test_Redirect_UnterminatedQuoteRuleIsRejected pins an unclosed "\Q": it quotes the rest, so the key never compiles.
 func Test_Redirect_UnterminatedQuoteRuleIsRejected(t *testing.T) {
 	t.Parallel()
 
 	require.Panics(t, func() {
-		New(Config{
-			Rules:      map[string]string{`/p/*\Qab*`: "/safe"},
-			StatusCode: fiber.StatusFound,
-		})
+		New(Config{RuleList: []Rule{{From: `/p/*\Qab*`, To: "/safe"}}})
 	})
-
-	require.Equal(t, 1, wildcardRank(`/p/*\Qab*`))
-	require.Equal(t, 2, wildcardRank(`/p/*\Qab\E*`))
 }
 
-// Test_Redirect_HexEscapeOutranksAClass covers "\x{61}", which names the one character "a" rather than a class.
 func Test_Redirect_HexEscapeOutranksAClass(t *testing.T) {
 	t.Parallel()
 
-	rules := map[string]string{
-		`/p/\x{61}`: "/exact",
-		"/p/[a-z]":  "/class",
+	rules := []Rule{
+		{From: `/p/\x{61}`, To: "/exact"},
+		{From: "/p/[a-z]", To: "/class"},
 	}
 	for _, tc := range []struct{ request, want string }{
 		{"/p/a", "/exact"},
@@ -1994,7 +1590,7 @@ func Test_Redirect_HexEscapeOutranksAClass(t *testing.T) {
 func Test_Redirect_CaptureEndsAuthorityPastADeletedByte(t *testing.T) {
 	t.Parallel()
 
-	app := testApp(map[string]string{"/r/*": "https://example.com$1"}, true)
+	app := testApp([]Rule{{From: "/r/*", To: "https://example.com$1"}}, true)
 	status, location := get(t, app, "/r/%09%2Fok")
 	require.Equal(t, fiber.StatusFound, status)
 
@@ -2038,22 +1634,6 @@ func Test_Redirect_AuthorPinnedShortIPv4(t *testing.T) {
 	require.True(t, isIPv4Host("127.0.0.1."))
 }
 
-// Test_Redirect_ClassEscapeDoesNotOutrankExactRule covers "\d", which matches any digit rather than the byte "d" escaped.
-func Test_Redirect_ClassEscapeDoesNotOutrankExactRule(t *testing.T) {
-	t.Parallel()
-
-	rules := map[string]string{
-		`/api/\d+`: "/digits",
-		"/api/1":   "/one",
-	}
-	for _, tc := range []struct{ request, want string }{
-		{"/api/1", "/one"},
-		{"/api/27", "/digits"},
-	} {
-		requireWin(t, rules, tc.request, tc.want)
-	}
-}
-
 // Test_Redirect_FileSchemeEmptyAuthority covers "file", whose "file:///$1" is the empty authority of a local path.
 func Test_Redirect_FileSchemeEmptyAuthority(t *testing.T) {
 	t.Parallel()
@@ -2080,638 +1660,151 @@ func Test_Redirect_FileSchemeEmptyAuthority(t *testing.T) {
 }
 
 // Test_Redirect_LiteralBracesHideNoRun covers "{x*}", whose braces bound no repetition and hide no run.
-func Test_Redirect_LiteralBracesHideNoRun(t *testing.T) {
-	t.Parallel()
-
-	requireWin(t, map[string]string{
-		`/p/(a|{x[c]})`: "/narrow",
-		`/p/(a|{x*})`:   "/broad",
-	}, "/p/a", "/narrow")
-
-	// The run is seen wherever it stands, and a "+" between the braces is one too.
-	require.Equal(t, 1, wildcardRank(`/p/(a|{x*})`))
-	require.Equal(t, 2, carriesRun(`/p/(a|{x*})`))
-	require.Equal(t, 1, carriesRun(`/p/(a|{x+})`))
-	require.Equal(t, 0, carriesRun(`/p/(a|{x[c]})`))
-
-	// A bound the braces do spell still names a repetition rather than text.
-	require.Equal(t, 1, carriesRun(`/p/[ab]x{2,}`))
-	require.Equal(t, patternWidth(`/p/[ab]`), patternWidth(`/p/[ab]x{2}`))
-}
-
-// Test_Redirect_LiteralBracesAreMeasured covers the same braces in the width and the literal length.
-func Test_Redirect_LiteralBracesAreMeasured(t *testing.T) {
-	t.Parallel()
-
-	requireWin(t, map[string]string{
-		`/p/(a|{x[c]})`:   "/narrow",
-		`/p/(a|{x[a-z]})`: "/broad",
-	}, "/p/a", "/narrow")
-
-	require.Equal(t, 26, patternWidth(`/p/{x[a-z]}`))
-	require.Equal(t, 1, patternWidth(`/p/{x[c]}`))
-
-	// And what they pin is pinned: the "x" between them is a byte of the path.
-	require.Equal(t, literalLen(`/p/x`), literalLen(`/p/{x[c]}`))
-
-	// Go reads the braces the same way, so the rule compiles and matches them.
-	require.True(t, regexp.MustCompile(`^(?:/p/{x[a-z]})$`).MatchString("/p/{xc}"))
-}
-
-// Test_Redirect_WidthSaturatesRatherThanWraps covers the product of two widths, which wrapped negative on a 32-bit int.
-func Test_Redirect_WidthSaturatesRatherThanWraps(t *testing.T) {
-	t.Parallel()
-
-	require.Equal(t, maxPatternWidth, scaledWidth(math.MaxInt, 2))
-	require.Equal(t, maxPatternWidth, scaledWidth(maxPatternWidth, maxPatternWidth))
-	require.Equal(t, 6, scaledWidth(2, 3))
-	require.Equal(t, 0, scaledWidth(0, 3))
-	require.Equal(t, 0, scaledWidth(3, 0))
-
-	// The pair that wrapped: a repetition reached on an already saturated width.
-	broad := patternWidth(`/p/[a-z][a-z][a-z][a-z][a-z][a-zA-Z]{1,2}`)
-	require.Equal(t, maxPatternWidth, broad)
-	require.Greater(t, broad, patternWidth(`/p/[a][a-z][a-z][a-z][a-z][a]`))
-	require.Equal(t, maxPatternWidth, repeated(maxPatternWidth, 2756, 1, 1))
-}
-
-// Test_Redirect_WildcardOutrunsANamedRun covers a run repeating what it names beside one repeating anything.
-func Test_Redirect_WildcardOutrunsANamedRun(t *testing.T) {
-	t.Parallel()
-
-	requireWin(t, map[string]string{
-		`/p/(a|aa)+`: "/narrow",
-		`/p/*a`:      "/broad",
-	}, "/p/a?token=secret", "/narrow?token=secret")
-
-	// Three grades, and the pair the width could not tell apart sits across two.
-	require.Equal(t, 0, carriesRun(`/p/[ab]a`))
-	require.Equal(t, 1, carriesRun(`/p/(a|aa)+`))
-	require.Equal(t, 2, carriesRun(`/p/*a`))
-	require.Less(t, patternWidth(`/p/*a`), patternWidth(`/p/(a|aa)+`))
-
-	// A rule carrying both runs is graded by the broader of the two.
-	require.Equal(t, 2, carriesRun(`/p/*[ab]+`))
-}
-
-// Test_Redirect_PropertyNameIsNotPath covers "\p{Greek}", whose braces name the property rather than bounding a repetition.
-func Test_Redirect_PropertyNameIsNotPath(t *testing.T) {
-	t.Parallel()
-
-	status, location := get(t, testApp(map[string]string{
-		`/p/[\x{3B1}]`: "/narrow",
-		`/p/\p{Greek}`: "/broad",
-	}, true), "/p/%CE%B1?token=x")
-	require.Equal(t, fiber.StatusFound, status)
-	require.Equal(t, "/narrow?token=x", location)
-
-	// The property pins nothing, however long its name and however it is spelled.
-	require.Equal(t, literalLen(`/p/`), literalLen(`/p/\p{Greek}`))
-	require.Equal(t, literalLen(`/p/`), literalLen(`/p/\pL`))
-	require.Equal(t, literalPrefixLen(`/p/`), literalPrefixLen(`/p/\p{Greek}`))
-
-	// Where "\x{3B1}" names one character, and pins it.
-	require.Greater(t, literalLen(`/p/\x{3B1}`), literalLen(`/p/\p{Greek}`))
-
-	// A property naming nothing is the two bytes it spells, closed or not.
-	require.Equal(t, literalLen(`/p/`), literalLen(`/p/\p`))
-	require.Equal(t, literalLen(`/p/Greek`), literalLen(`/p/\p{Greek`))
-}
-
-// Test_Redirect_QuotedTextIsNoQuantifier covers "\Qa?\E", whose "?" is a byte of the path rather than a quantifier.
-func Test_Redirect_QuotedTextIsNoQuantifier(t *testing.T) {
-	t.Parallel()
-
-	status, location := get(t, testApp(map[string]string{
-		`/p/\Qa?\E`:  "/narrow",
-		`/p/[a][?x]`: "/broad",
-	}, true), "/p/a%3F?token=x")
-	require.Equal(t, fiber.StatusFound, status)
-	require.Equal(t, "/narrow?token=x", location)
-
-	// Quoted text pins what it spells and spells one path, quantifiers and all.
-	require.Equal(t, literalLen(`/p/a\?`), literalLen(`/p/\Qa?\E`))
-	require.Equal(t, 1, patternWidth(`/p/\Qa?\E`))
-	require.Equal(t, 1, patternWidth(`/p/\Q[ab]{2}\E`))
-	require.Equal(t, 0, carriesRun(`/p/\Qa+\E`))
-
-	// And the quote runs to the end of the rule where no "\E" closes it, so New panics on such a key.
-	require.Equal(t, literalLen(`/p/ab`), literalLen(`/p/\Qab`))
-	require.Panics(t, func() {
-		New(Config{Rules: map[string]string{`/p/\Qab`: "/x"}})
-	})
-}
-
-// Test_Redirect_ClassCountsAMemberOnce covers a class repeating what it lists, counted once per member.
-func Test_Redirect_ClassCountsAMemberOnce(t *testing.T) {
-	t.Parallel()
-
-	requireWin(t, map[string]string{
-		`/p/[^\dABC]`:  "/narrow",
-		`/p/[^\d\d\d]`: "/broad",
-	}, "/p/z?token=x", "/narrow?token=x")
-
-	// A repeated set, byte or range counts once; two overlapping ranges count what they cover between them.
-	require.Equal(t, patternWidth(`/p/[\d]`), patternWidth(`/p/[\d\d\d]`))
-	require.Equal(t, patternWidth(`/p/[a]`), patternWidth(`/p/[aaa]`))
-	require.Equal(t, patternWidth(`/p/[a-d]`), patternWidth(`/p/[a-cb-d]`))
-	require.Equal(t, patternWidth(`/p/[[:alpha:]]`), patternWidth(`/p/[[:alpha:][:alpha:]]`))
-
-	// Two spellings of one set are still two, there being no size to compare.
-	require.Greater(t, patternWidth(`/p/[\d[:digit:]]`), patternWidth(`/p/[\d]`))
-
-	// First inside the brackets a "]" is a member, and a range running backwards names none: "]" is all "[]b-a]" lists.
-	require.Equal(t, patternWidth(`/p/[x]`), patternWidth(`/p/[]]`))
-	require.Equal(t, patternWidth(`/p/[]]`), patternWidth(`/p/[]]]`))
-	require.Equal(t, patternWidth(`/p/[]]`), patternWidth(`/p/[]b-a]`))
-}
-
-// Test_Redirect_EmptyAtomIsNoRun covers a quantifier whose atom matches only the empty string.
-func Test_Redirect_EmptyAtomIsNoRun(t *testing.T) {
-	t.Parallel()
-
-	requireWin(t, map[string]string{
-		`/p/(?:)+a`: "/narrow",
-		`/p/b?a`:    "/broad",
-	}, "/p/a?token=x", "/narrow?token=x")
-
-	// No run, whichever quantifier repeats the empty group, and no width either.
-	require.Equal(t, 0, carriesRun(`/p/(?:)+a`))
-	require.Equal(t, 0, carriesRun(`/p/(){2,}a`))
-	require.Equal(t, 0, carriesRun(`/p/\Q\E+a`))
-	require.Equal(t, patternWidth(`/p/a`), patternWidth(`/p/(?:)?(?:)?a`))
-	require.Equal(t, patternWidth(`/p/a`), patternWidth(`/p/(?:){2,4}a`))
-
-	// A group holding something is a run again, and so is Fiber's "*": it is expanded to "(.*)" whatever stands before it.
-	require.Equal(t, 1, carriesRun(`/p/(?:a)+`))
-	require.Equal(t, 2, carriesRun(`/p/(?:)*a`))
-
-	// A group's emptiness is its contents', however deeply they nest.
-	require.Equal(t, 0, carriesRun(`/p/(?:(?:))+`))
-	require.Equal(t, 0, carriesRun(`/p/(?:(?:(?:)))+`))
-	require.Equal(t, 0, carriesRun(`/p/(?:\Q\E)+`))
-
-	// A group holding anything at all is filled, one branch of it being enough.
-	require.Equal(t, 1, carriesRun(`/p/(?:(?:)a)+`))
-	require.Equal(t, 1, carriesRun(`/p/(?:|a)+`))
-	require.Equal(t, 1, carriesRun(`/p/(?:(?:a))+`))
-	require.Equal(t, patternWidth(`/p/[ab]`), patternWidth(`/p/(?:)?[ab]`))
-}
-
-// Test_Redirect_SetEscapeIsMeasuredWhereverItStands covers "\w" outside a class, which matches a set all the same.
-func Test_Redirect_SetEscapeIsMeasuredWhereverItStands(t *testing.T) {
-	t.Parallel()
-
-	requireWin(t, map[string]string{
-		`/p/[ab]{2}`: "/narrow",
-		`/p/\w[ab]`:  "/broad",
-	}, "/p/aa?code=secret", "/narrow?code=secret")
-
-	// A set escape measures a set wherever it stands, and the same one either way.
-	require.Equal(t, patternWidth(`/p/[\w]`), patternWidth(`/p/\w`))
-	require.Equal(t, patternWidth(`/p/[\p{Greek}]`), patternWidth(`/p/\p{Greek}`))
-	require.Greater(t, patternWidth(`/p/\w`), patternWidth(`/p/\.`))
-
-	// An escape spelling one character is still one, and an assertion matches nothing at all.
-	require.Equal(t, patternWidth(`/p/a`), patternWidth(`/p/\.`))
-	require.Equal(t, patternWidth(`/p/[ab]`), patternWidth(`/p/[ab]\b`))
-	require.Less(t, patternWidth(`/p/[ab]\b`), patternWidth(`/p/[a-d]`))
-
-	// A backslash ending the rule names nothing, so it is no set either, and no character.
-	require.Equal(t, patternWidth(`/p/`), patternWidth(`/p/\`))
-	_, spells := escapeByte(`/p/\`, 3, 1)
-	require.False(t, spells)
-}
-
-// Test_Redirect_RepeatedAtomSeparatesTiedWidths covers the two ways a repetition leaves the width tied.
-func Test_Redirect_RepeatedAtomSeparatesTiedWidths(t *testing.T) {
-	t.Parallel()
-
-	for _, tc := range []struct {
-		name, narrow, broad, path string
-	}{
-		{"run", `/p/[b]+a?`, `/p/[ab]+`, "/p/b?token=secret"},
-		{"saturated", `/p/[a-z]{5}`, `/p/[a-zA-Z]{5}`, "/p/aaaaa?token=secret"},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-
-			requireWin(t, map[string]string{tc.narrow: "/narrow", tc.broad: "/broad"}, tc.path, "/narrow?token=secret")
-
-			// Tied on the width, and separated by the widest position each matches.
-			require.Equal(t, patternWidth(tc.broad), patternWidth(tc.narrow))
-			require.Less(t, widestAtom(tc.narrow), widestAtom(tc.broad))
-		})
-	}
-
-	// Every rule has an answer, repeating or not, and Fiber's "*" matches any byte.
-	require.Equal(t, 2, widestAtom(`/p/[ab]`))
-	require.Equal(t, 2, widestAtom(`/p/[ab]?`))
-	require.Equal(t, 26, widestAtom(`/p/[a-z]+`))
-	require.Equal(t, 256, widestAtom(`/p/*`))
-	require.Equal(t, 1, widestAtom(`/p/abc`))
-
-	// It is read after the width, so it never moves a pair the width separates.
-	require.Equal(t, 1, patternWidth(`/p/[z]+`))
-	require.Equal(t, 26, patternWidth(`/p/[a-z]+`))
-}
-
-// Test_Redirect_NestedEmptyGroupIsStillEmpty covers a group whose emptiness is its contents': "(?:(?:))".
-func Test_Redirect_NestedEmptyGroupIsStillEmpty(t *testing.T) {
-	t.Parallel()
-
-	requireWin(t, map[string]string{
-		`/p/(?:(?:))+a`: "/narrow",
-		`/p/b?a`:        "/broad",
-	}, "/p/a?token=x", "/narrow?token=x")
-
-	// The width reads the nesting the same way, so a quantifier on one is none.
-	require.Equal(t, patternWidth(`/p/[a]`), patternWidth(`/p/(?:(?:))?(?:(?:))?[a]`))
-	require.Equal(t, patternWidth(`/p/[a]`), patternWidth(`/p/(?:(?:(?:)))?[a]`))
-	require.Less(t, patternWidth(`/p/(?:(?:))?[a]`), patternWidth(`/p/[ab]`))
-
-	// And a group holding something still widens what may be absent from it.
-	require.Greater(t, patternWidth(`/p/(?:(?:a))?[a]`), patternWidth(`/p/[a]`))
-}
-
-// Test_Redirect_EscapedClassMemberIsDecoded covers members spelled as escapes: Go reads "[\x{61}-\x{7a}]" as "[a-z]".
-func Test_Redirect_EscapedClassMemberIsDecoded(t *testing.T) {
-	t.Parallel()
-
-	requireWin(t, map[string]string{
-		`/p/[ab]`:            "/narrow",
-		`/p/[\x{61}-\x{7a}]`: "/broad",
-	}, "/p/a?token=x", "/narrow?token=x")
-
-	// A range spelled in escapes covers what the same range spelled plainly does, in every spelling Go reads as one character.
-	require.Equal(t, patternWidth(`/p/[a-z]`), patternWidth(`/p/[\x{61}-\x{7a}]`))
-	require.Equal(t, patternWidth(`/p/[a-z]`), patternWidth(`/p/[\x61-\x7a]`))
-	require.Equal(t, patternWidth(`/p/[A-Z]`), patternWidth(`/p/[\101-\132]`))
-	require.Equal(t, patternWidth(`/p/[a-z]`), patternWidth(`/p/[a-\x7a]`))
-
-	// And one member spelled twice is still one member, however it is spelled.
-	require.Equal(t, patternWidth(`/p/[a]`), patternWidth(`/p/[a\x{61}]`))
-	require.Equal(t, patternWidth(`/p/[\n]`), patternWidth(`/p/[\x0a]`))
-
-	// Every control character written by name is the byte it names.
-	for _, tc := range []struct {
-		named, hex string
-	}{
-		{`\a`, `\x07`},
-		{`\f`, `\x0c`},
-		{`\n`, `\x0a`},
-		{`\r`, `\x0d`},
-		{`\t`, `\x09`},
-		{`\v`, `\x0b`},
-	} {
-		require.Equal(t, patternWidth(`/p/[`+tc.hex+`]`), patternWidth(`/p/[`+tc.named+tc.hex+`]`), tc.named)
-	}
-
-	// A character of more than one byte is no endpoint, and counts as the one member it is.
-	require.Equal(t, patternWidth(`/p/[a]`), patternWidth(`/p/[\x{3B1}]`))
-	require.Less(t, patternWidth(`/p/[\x{3B1}]`), patternWidth(`/p/[\d]`))
-}
-
-// Test_Redirect_KeyOrderIsTotal covers the comparator itself, which left three rules in a cycle.
-func Test_Redirect_KeyOrderIsTotal(t *testing.T) {
-	t.Parallel()
-
-	// The cycle: all three tie down to the width, which saturates for each.
-	rules := []string{
-		`/p/[a-z]{5}`,
-		`/p/[a-zA-Z]{5}`,
-		`/p/[a-zB-Z][b-z][b-z][b-z][b-z]`,
-	}
-	for _, rule := range rules {
-		require.Equal(t, maxPatternWidth, patternWidth(rule), rule)
-		require.Equal(t, 0, carriesRun(rule), rule)
-	}
-
-	// Every ordering the three can be given sorts them the same way, so the winner is named the same however they go in.
-	targets := map[string]string{rules[0]: "/narrow", rules[1]: "/broad", rules[2]: "/other"}
-	want := ""
-	for _, order := range [][]string{
-		{rules[0], rules[1], rules[2]},
-		{rules[0], rules[2], rules[1]},
-		{rules[1], rules[0], rules[2]},
-		{rules[1], rules[2], rules[0]},
-		{rules[2], rules[0], rules[1]},
-		{rules[2], rules[1], rules[0]},
-	} {
-		app := testApp(map[string]string{
-			order[0]: targets[order[0]],
-			order[1]: targets[order[1]],
-			order[2]: targets[order[2]],
-		}, false)
-		status, got := get(t, app, "/p/aaaaa?token=x")
-		require.Equal(t, fiber.StatusFound, status)
-		if want == "" {
-			want = got
-		}
-		require.Equal(t, want, got, order)
-	}
-
-	// And the narrowest of the three wins: "/p/[a-z]{5}" is a strict subset of "/p/[a-zA-Z]{5}".
-	require.Equal(t, "/narrow?token=x", want)
-	require.Less(t, widestAtom(rules[0]), widestAtom(rules[2]))
-	require.Less(t, widestAtom(rules[2]), widestAtom(rules[1]))
-}
-
-// Test_Redirect_ZeroWidthConstructIsEmpty covers what a group can hold and still match nothing.
-func Test_Redirect_ZeroWidthConstructIsEmpty(t *testing.T) {
-	t.Parallel()
-
-	for _, narrow := range []string{`/p/(?:\b)+a`, `/p/(?:a{0})+a`} {
-		t.Run(narrow, func(t *testing.T) {
-			t.Parallel()
-
-			requireWin(t, map[string]string{narrow: "/narrow", `/p/b?a`: "/broad"}, "/p/a?token=x", "/narrow?token=x")
-
-			require.Equal(t, 0, carriesRun(narrow))
-		})
-	}
-
-	// An anchor asserts a position and consumes nothing, so it is empty too.
-	require.Equal(t, 0, carriesRun(`/p/(?:^)+a`))
-	require.Equal(t, 0, carriesRun(`/p/(?:$)+a`))
-	require.Equal(t, patternWidth(`/p/a`), patternWidth(`/p/a$`))
-
-	// An assertion pins nothing and widens nothing, wherever it stands.
-	require.Equal(t, patternWidth(`/p/a`), patternWidth(`/p/a\b`))
-	require.Equal(t, patternWidth(`/p/a`), patternWidth(`/p/a\b?`))
-	require.Equal(t, literalLen(`/p/a`), literalLen(`/p/a\b`))
-
-	// A count of none takes the atom away, and a count that permits one does not.
-	require.Equal(t, 0, carriesRun(`/p/(?:[a-z]{0})+`))
-	require.Equal(t, 1, carriesRun(`/p/(?:[a-z]{0,2})+`))
-	require.Equal(t, 1, carriesRun(`/p/(?:[a-z]{0,})+`))
-	require.Equal(t, patternWidth(`/p/a`), patternWidth(`/p/a[b-z]{0}`))
-}
-
-// Test_Redirect_GroupIsNoOnePosition covers a group's width, which is the product of the positions inside it.
-func Test_Redirect_GroupIsNoOnePosition(t *testing.T) {
-	t.Parallel()
-
-	requireWin(t, map[string]string{
-		`/p/(?:[a-m][a-z][a-z][a-z][a-z])`: "/narrow",
-		`/p/[a-z][a-z][a-z][a-z][a-z]`:     "/broad",
-	}, "/p/aaaaa?token=x", "/narrow?token=x")
-
-	// Grouping changes no position, however deeply the groups nest.
-	require.Equal(t, 26, widestAtom(`/p/(?:[a-m][a-z][a-z][a-z][a-z])`))
-	require.Equal(t, 26, widestAtom(`/p/[a-z][a-z][a-z][a-z][a-z]`))
-	require.Equal(t, widestAtom(`/p/[a-z]a`), widestAtom(`/p/(?:(?:(?:[a-z])))a`))
-	require.Equal(t, widestAtom(`/p/[a-z]`), widestAtom(`/p/(?:[a-m]|[a-z])`))
-}
-
-// Test_Redirect_NonGreedyMarkerKeepsAnEmptyAtom covers the "?" between an empty atom and its quantifier.
-func Test_Redirect_NonGreedyMarkerKeepsAnEmptyAtom(t *testing.T) {
-	t.Parallel()
-
-	requireWin(t, map[string]string{
-		`/p/(?:(?:)+?)+a`: "/narrow",
-		`/p/b?a`:          "/broad",
-	}, "/p/a?token=x", "/narrow?token=x")
-
-	// A "?" matches nothing of its own, so it neither fills a group nor empties one.
-	require.Equal(t, 0, carriesRun(`/p/(?:(?:)+?)+a`))
-	require.Equal(t, 0, carriesRun(`/p/(?:(?:)?)+`))
-	require.Equal(t, 1, carriesRun(`/p/(?:a?)+`))
-	require.Equal(t, 1, carriesRun(`/p/(?:[a-z]+?)+`))
-}
-
-// Test_Redirect_PrefixReadsQuotesAndGroups covers a "\Q...\E" span and a group whose branches begin alike.
-func Test_Redirect_PrefixReadsQuotesAndGroups(t *testing.T) {
-	t.Parallel()
-
-	for _, tc := range []struct {
-		name, narrow, broad, path string
-	}{
-		{"quoted", `/p/\Qab\E`, `/p/a.+`, "/p/ab?token=x"},
-		{"grouped", `/p/(?:a|aa)`, `/p/a+`, "/p/a?token=x"},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-
-			requireWin(t, map[string]string{tc.narrow: "/narrow", tc.broad: "/broad"}, tc.path, "/narrow?token=x")
-
-			require.GreaterOrEqual(t, literalPrefixLen(tc.narrow), literalPrefixLen(tc.broad))
-		})
-	}
-
-	// Quoted text pins what it spells, and the prefix goes on past the "\E".
-	require.Equal(t, literalPrefixLen(`/p/ab`), literalPrefixLen(`/p/\Qab\E`))
-	require.Equal(t, literalPrefixLen(`/p/abcd`), literalPrefixLen(`/p/\Qab\Ecd`))
-	require.Equal(t, literalPrefixLen(`/p/`), literalPrefixLen(`/p/\Q\E`))
-
-	// A quantifier reaches the last byte quoted, and no more of them.
-	require.Equal(t, literalPrefixLen(`/p/a`), literalPrefixLen(`/p/\Qab\E?`))
-
-	// A group pins only what every branch of it pins, and a quantifier can take the group away whole.
-	require.Equal(t, literalPrefixLen(`/p/a`), literalPrefixLen(`/p/(?:ab|ac)d`))
-	require.Equal(t, literalPrefixLen(`/p/`), literalPrefixLen(`/p/(?:ab|ba)`))
-	require.Equal(t, literalPrefixLen(`/p/`), literalPrefixLen(`/p/(?:ab)?c`))
-	require.Equal(t, literalPrefixLen(`/p/ab`), literalPrefixLen(`/p/(?:ab)+`))
-
-	// Two spellings of one character agree, and a character no byte answers for is named by the spelling instead.
-	require.Equal(t, literalPrefixLen(`/p/ab`), literalPrefixLen(`/p/(?:\x{61}b|ab)`))
-	require.Equal(t, literalPrefixLen(`/p/ab`), literalPrefixLen(`/p/(?:\x{3B1}b|\x{3B1}b)`))
-	require.Equal(t, literalPrefixLen(`/p/`), literalPrefixLen(`/p/(?:\x{3B1}|a)`))
-
-	// A group closes where its own nesting, classes and quotes say it does, or at the end of the rule.
-	require.Equal(t, literalPrefixLen(`/p/ab`), literalPrefixLen(`/p/(?:\Qa\E(?:b)[c-c])`))
-	require.Equal(t, literalPrefixLen(`/p/ab`), literalPrefixLen(`/p/(?:ab`))
-	require.Equal(t, literalPrefixLen(`/p/a`), literalPrefixLen(`/p/(?:a[)]|a[)]b)`))
-}
-
-// Test_Redirect_AlternationSeparatorIsEmpty covers the "|" between branches every one of which matches nothing.
-func Test_Redirect_AlternationSeparatorIsEmpty(t *testing.T) {
-	t.Parallel()
-
-	requireWin(t, map[string]string{
-		`/p/(?:a{0}|b{0})+a`: "/narrow",
-		`/p/(?:b|)a`:         "/broad",
-	}, "/p/a?token=x", "/narrow?token=x")
-
-	// A group is empty where every branch of it is, and filled where any is not.
-	require.Equal(t, 0, carriesRun(`/p/(?:a{0}|b{0})+a`))
-	require.Equal(t, 0, carriesRun(`/p/(?:|)+a`))
-	require.Equal(t, 1, carriesRun(`/p/(?:a|b{0})+`))
-	require.Equal(t, 1, carriesRun(`/p/(?:a|b)+`))
-}
-
-// Test_Redirect_PrefixReadsZeroCountsAndFlags covers a "{0}" and a group setting match flags.
-func Test_Redirect_PrefixReadsZeroCountsAndFlags(t *testing.T) {
-	t.Parallel()
-
-	for _, tc := range []struct {
-		name, narrow, broad, path string
-	}{
-		{"zero-count", `/p/a{0}a`, `/p/(?:a)[ab]?`, "/p/a?token=x"},
-		{"folded", `/p/a`, `/p/(?i:a)`, "/p/a?token=x"},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-
-			requireWin(t, map[string]string{tc.narrow: "/narrow", tc.broad: "/broad"}, tc.path, "/narrow?token=x")
-		})
-	}
-
-	// A count of none is skipped, where a count that permits one ends the prefix: a path may arrive without the atom.
-	require.Equal(t, literalPrefixLen(`/p/a`), literalPrefixLen(`/p/a{0}a`))
-	require.Equal(t, literalPrefixLen(`/p/ab`), literalPrefixLen(`/p/a[c-z]{0}b`))
-	require.Equal(t, literalPrefixLen(`/p/`), literalPrefixLen(`/p/a{0,2}a`))
-	require.Equal(t, literalPrefixLen(`/p/`), literalPrefixLen(`/p/a?a`))
-
-	// Folding says what the text inside matches, so it pins no path, scoped or not.
-	require.Equal(t, literalPrefixLen(`/p/`), literalPrefixLen(`/p/(?i:a)`))
-	require.Equal(t, literalPrefixLen(`/p/`), literalPrefixLen(`/p/(?i:a)b`))
-	require.Equal(t, literalPrefixLen(`/p/`), literalPrefixLen(`/p/(?i)a`))
-	require.Equal(t, literalPrefixLen(`/p/a`), literalPrefixLen(`/p/(?-i:a)`))
-	require.Equal(t, literalPrefixLen(`/p/a`), literalPrefixLen(`/p/(?m:a)`))
-	require.Equal(t, literalPrefixLen(`/p/a`), literalPrefixLen(`/p/(?s:a)`))
-
-	// A group counted none times is skipped like any other atom, and a "(" that opens no group names no flags.
-	require.Equal(t, literalPrefixLen(`/p/ab`), literalPrefixLen(`/p/a(?:xy){0}b`))
-	require.Equal(t, literalPrefixLen(`/p/`), literalPrefixLen(`/p/(?`))
-	require.Equal(t, literalPrefixLen(`/p/`), literalPrefixLen(`/p/(?P`))
-
-	// A group naming no flags pins what it spells, a capture name among them.
-	require.Equal(t, literalPrefixLen(`/p/a`), literalPrefixLen(`/p/(?:a)`))
-	require.Equal(t, literalPrefixLen(`/p/a`), literalPrefixLen(`/p/(?P<n>a)`))
-	require.Equal(t, literalPrefixLen(`/p/a`), literalPrefixLen(`/p/(a)`))
-
-	// Which is what Go says of them: the flagged rule matches a path the exact one does not.
-	require.True(t, regexp.MustCompile(`^(?:/p/(?i:a))$`).MatchString("/p/A"))
-	require.False(t, regexp.MustCompile(`^(?:/p/a)$`).MatchString("/p/A"))
-}
-
-// Test_Redirect_CaseFoldingIsNoExactText covers a group setting the "i" flag, whose text pins no path.
-func Test_Redirect_CaseFoldingIsNoExactText(t *testing.T) {
-	t.Parallel()
-
-	for _, broad := range []string{`/p/(?i)a`, `/p/(?i:a)`, `/p/(?si)a`} {
-		t.Run(broad, func(t *testing.T) {
-			t.Parallel()
-
-			requireWin(t, map[string]string{`/p/[a]`: "/narrow", broad: "/broad"}, "/p/a?token=x", "/narrow?token=x")
-
-			// Broader on both counts: it pins no path, and matches two characters where the class matches one.
-			require.Equal(t, literalLen(`/p/`), literalLen(broad))
-			require.Greater(t, patternWidth(broad), patternWidth(`/p/[a]`))
-		})
-	}
-
-	// Scoped flags end at the group's ")", where a flag-only group reaches the rest of the rule.
-	require.Equal(t, literalLen(`/p/b`), literalLen(`/p/(?i:a)b`))
-	require.Equal(t, literalLen(`/p/`), literalLen(`/p/(?i)ab`))
-	require.Equal(t, patternWidth(`/p/[ab]`), patternWidth(`/p/(?i:a)`))
-	require.Equal(t, patternWidth(`/p/(?i:a)a`), patternWidth(`/p/(?i:a)(?-i:a)`))
-	require.Equal(t, patternWidth(`/p/a`), patternWidth(`/p/(?i)(?-i)a`))
-
-	// A group naming no flags is exact text still, a capture name among them.
-	require.Equal(t, literalLen(`/p/ab`), literalLen(`/p/(?:a)b`))
-	require.Equal(t, literalLen(`/p/ab`), literalLen(`/p/(?P<n>a)b`))
-	require.Equal(t, patternWidth(`/p/a`), patternWidth(`/p/(?:a)`))
-
-	// Which is what Go says of them.
-	require.True(t, regexp.MustCompile(`^(?:/p/(?i)a)$`).MatchString("/p/A"))
-	require.False(t, regexp.MustCompile(`^(?:/p/(?i)(?-i)a)$`).MatchString("/p/A"))
-}
-
-// Test_Redirect_QuotedPipeSeparatesNoBranch covers a "|" inside quoted text, which separates no branch.
-func Test_Redirect_QuotedPipeSeparatesNoBranch(t *testing.T) {
-	t.Parallel()
-
-	// No request reaches these rules — Fiber percent-encodes a "|" — so the keys the sort reads pin the ordering.
-	require.Equal(t, literalPrefixLen(`/p/a\|b`), literalPrefixLen(`/p/\Qa|b\E`))
-	require.Greater(t, literalPrefixLen(`/p/\Qa|b\E`), literalPrefixLen(`/p/a\|(?i:b)`))
-	require.Equal(t, literalLen(`/p/a\|b`), literalLen(`/p/\Qa|b\E`))
-
-	// A "|" outside a quote still separates branches, and one inside a class still does not.
-	require.Equal(t, literalPrefixLen(`/x`), literalPrefixLen(`/p/xa|/x`))
-	require.Equal(t, literalPrefixLen(`/p/`), literalPrefixLen(`/p/[a|b]`))
-	require.Len(t, splitAlternation(`/p/\Qa|b\E|/x`), 2)
-}
-
-// Test_Redirect_DeepNestingIsBounded covers a rule nesting groups without end, at the square of the depth.
 func Test_Redirect_DeepNestingIsBounded(t *testing.T) {
 	t.Parallel()
 
 	deep := "/p/" + strings.Repeat("(?:", 16000) + "a" + strings.Repeat(")", 16000)
 	require.NotPanics(t, func() {
-		New(Config{Rules: map[string]string{deep: "/x", "/p/a": "/y"}})
+		New(Config{RuleList: []Rule{{From: deep, To: "/x"}, {From: "/p/a", To: "/y"}}})
 	})
-
-	// Followed no further than the bound, which only ends a prefix sooner.
-	require.Equal(t, literalPrefixLen(`/p/`), literalPrefixLen(deep))
-	require.Equal(t, literalPrefixLen(`/p/a`), literalPrefixLen("/p/"+strings.Repeat("(?:", maxPinnedDepth-1)+"a"+strings.Repeat(")", maxPinnedDepth-1)))
-	require.Equal(t, literalPrefixLen(`/p/`), literalPrefixLen("/p/"+strings.Repeat("(?:", maxPinnedDepth+1)+"a"+strings.Repeat(")", maxPinnedDepth+1)))
 }
 
-// Test_Redirect_QuotedTextCountedNoneTimes covers a "{0}" after a "\E", which reaches the last byte quoted and no more.
-func Test_Redirect_QuotedTextCountedNoneTimes(t *testing.T) {
+// Test_Redirect_BothRuleFieldsPanic pins that a config setting the deprecated
+// map and the ordered list at once is refused: the two disagree about what
+// decides precedence, and picking one silently is the bug this API replaced.
+func Test_Redirect_BothRuleFieldsPanic(t *testing.T) {
 	t.Parallel()
 
-	requireWin(t, map[string]string{
-		`/p/a\Qbc\E{0}d`: "/narrow",
-		`/p/a\142(?i:d)`: "/broad",
-	}, "/p/abd?token=x", "/narrow?token=x")
+	require.Panics(t, func() {
+		New(Config{
+			Rules:    map[string]string{"/old": "/new"},
+			RuleList: []Rule{{From: "/old", To: "/new"}},
+		})
+	})
 
-	// The count takes the "c" and nothing else, and the "d" after it is pinned.
-	require.Equal(t, literalPrefixLen(`/p/abd`), literalPrefixLen(`/p/a\Qbc\E{0}d`))
-	require.Equal(t, literalPrefixLen(`/p/ab`), literalPrefixLen(`/p/a\Qbc\E?d`))
-	require.Equal(t, literalPrefixLen(`/p/abcd`), literalPrefixLen(`/p/a\Qbc\Ed`))
+	// Either alone is fine.
+	require.NotPanics(t, func() {
+		New(Config{Rules: map[string]string{"/old": "/new"}})
+	})
+	require.NotPanics(t, func() {
+		New(Config{RuleList: []Rule{{From: "/old", To: "/new"}}})
+	})
 }
 
-// Test_Redirect_FoldingReadsWhatGoFolds covers quoted text, a "k" folding to three, and a flag moving no literal.
-func Test_Redirect_FoldingReadsWhatGoFolds(t *testing.T) {
+// Test_Redirect_DeprecatedMapStillRedirects pins that the deprecated field goes
+// on working, since it has to for the whole of v3.
+func Test_Redirect_DeprecatedMapStillRedirects(t *testing.T) {
+	t.Parallel()
+
+	requireWinMap(t, map[string]string{"/api/*": "/$1"}, "/api/users", "/users")
+	requireWinMap(t, map[string]string{"/old": "/new"}, "/old", "/new")
+}
+
+// Test_ShadowedRules pins which rule orders leave a rule dead. Reported rather
+// than reordered: the order is the author's, so the answer is to tell them.
+func Test_ShadowedRules(t *testing.T) {
 	t.Parallel()
 
 	for _, tc := range []struct {
-		name, narrow, broad string
+		name    string
+		rules   []Rule
+		shadows bool
 	}{
-		{"quoted", `/p/[Kk]`, `/p/(?i:\Qk\E)`},
-		{"cycle", `/p/[Kk]`, `/p/(?i:k)`},
+		{"catch-all first", []Rule{{From: "/*", To: "/a"}, {From: "/old/*", To: "/b"}}, true},
+		{"catch-all last", []Rule{{From: "/old/*", To: "/b"}, {From: "/*", To: "/a"}}, false},
+		{"wildcard eats the exact rule", []Rule{{From: "/api/*", To: "/a"}, {From: "/api/users", To: "/b"}}, true},
+		{"exact rule first", []Rule{{From: "/api/users", To: "/b"}, {From: "/api/*", To: "/a"}}, false},
+		{"more wildcards eat fewer", []Rule{{From: "/p/*a*b", To: "/a"}, {From: "/p/*ab", To: "/b"}}, true},
+		{"fewer wildcards first", []Rule{{From: "/p/*ab", To: "/b"}, {From: "/p/*a*b", To: "/a"}}, false},
+		{"a suffix under a wildcard", []Rule{{From: "/p/*", To: "/a"}, {From: "/p/*.png", To: "/b"}}, true},
+		{"a deeper path under a wildcard", []Rule{{From: "/users/*", To: "/a"}, {From: "/users/*/orders/*", To: "/b"}}, true},
+		{"disjoint rules shadow nothing", []Rule{{From: "/a/*", To: "/x"}, {From: "/b/*", To: "/y"}}, false},
+		{"one rule shadows nothing", []Rule{{From: "/a/*", To: "/x"}}, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			requireWin(t, map[string]string{tc.narrow: "/narrow", tc.broad: "/broad"}, "/p/k?token=x", "/narrow?token=x")
-
-			require.Greater(t, patternWidth(tc.broad), patternWidth(tc.narrow))
+			compiled := make([]compiledRule, 0, len(tc.rules))
+			for _, rule := range tc.rules {
+				compiled = append(compiled, compiledRule{
+					from:    rule.From,
+					pattern: regexp.MustCompile("^(?:" + strings.ReplaceAll(rule.From, "*", "(.*)") + ")$"),
+				})
+			}
+			require.Equal(t, tc.shadows, shadowedRules(compiled, nil))
 		})
 	}
-
-	// What Go folds is what is counted: a "k" to "K" and the Kelvin sign, an "a" to "A" alone, and a digit to itself.
-	require.Equal(t, 3, patternWidth(`/p/(?i:k)`))
-	require.Equal(t, 2, patternWidth(`/p/(?i:a)`))
-	require.Equal(t, 1, patternWidth(`/p/(?i:1)`))
-	require.Equal(t, 3, patternWidth(`/p/(?i:s)`))
-	require.True(t, regexp.MustCompile(`^(?:/p/(?i:k))$`).MatchString("/p/\u212A"))
-
-	// Folding reaches quoted text and escapes that spell a character, and a class is read as a floor still.
-	require.Equal(t, patternWidth(`/p/(?i:k)`), patternWidth(`/p/(?i:\Qk\E)`))
-	require.Equal(t, patternWidth(`/p/(?i:k)`), patternWidth(`/p/(?i:\x6b)`))
-	require.Equal(t, patternWidth(`/p/(?i:kk)`), patternWidth(`/p/(?i:\Qkk\E)`))
-	require.Equal(t, 2*patternWidth(`/p/[ab]`), patternWidth(`/p/(?i:[ab])`))
-
-	// A flag that moves no literal leaves it exact: "m" moves what an anchor asserts and "s" what a "." matches.
-	require.Equal(t, literalLen(`/p/a`), literalLen(`/p/(?m:a)`))
-	require.Equal(t, literalLen(`/p/a`), literalLen(`/p/(?s:a)`))
-	require.Equal(t, patternWidth(`/p/a`), patternWidth(`/p/(?m:a)`))
-	require.Equal(t, literalLen(`/p/`), literalLen(`/p/(?mi:a)`))
 }
 
-// Test_Redirect_AnchorEndsNoPrefix covers a rule opening with an anchor, which New adds to every rule anyway.
-func Test_Redirect_AnchorEndsNoPrefix(t *testing.T) {
+// Test_OrderedRules pins each key the deprecated map is sorted by, and that a
+// RuleList is handed back in the order the author wrote it.
+func Test_OrderedRules(t *testing.T) {
 	t.Parallel()
 
-	requireWin(t, map[string]string{
-		`^/p/a`:      "/narrow",
-		`/p/(?:a|b)`: "/broad",
-	}, "/p/a?token=x", "/narrow?token=x")
+	t.Run("a rule list keeps the author's order", func(t *testing.T) {
+		t.Parallel()
 
-	// An anchor pins no byte of its own and ends nothing, wherever it stands.
-	require.Equal(t, literalPrefixLen(`/p/ab`), literalPrefixLen(`/p/a\bb`))
+		list := []Rule{{From: "/*", To: "/broad"}, {From: "/api/users", To: "/exact"}}
+		require.Equal(t, list, orderedRules(Config{RuleList: list}))
+	})
+
+	for _, tc := range []struct {
+		name  string
+		rules map[string]string
+		want  []string
+	}{
+		{
+			// A rule with no wildcard at all pins the whole of what it spells.
+			name:  "more pinned before the wildcard wins",
+			rules: map[string]string{"/api/*": "/a", "/api/users": "/b"},
+			want:  []string{"/api/users", "/api/*"},
+		},
+		{
+			name:  "then more pinned in total",
+			rules: map[string]string{"/cdn/*": "/a", "/cdn/*x": "/b"},
+			want:  []string{"/cdn/*x", "/cdn/*"},
+		},
+		{
+			name:  "then fewer wildcards",
+			rules: map[string]string{"/p/*a*b": "/a", "/p/*ab": "/b"},
+			want:  []string{"/p/*ab", "/p/*a*b"},
+		},
+		{
+			// Nothing else separates them, so the key itself keeps it total.
+			name:  "then the key itself",
+			rules: map[string]string{"/p/b*": "/b", "/p/a*": "/a"},
+			want:  []string{"/p/a*", "/p/b*"},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			rules := orderedRules(Config{Rules: tc.rules})
+			got := make([]string, 0, len(rules))
+			for _, rule := range rules {
+				got = append(got, rule.From)
+				require.Equal(t, tc.rules[rule.From], rule.To)
+			}
+			require.Equal(t, tc.want, got)
+		})
+	}
+}
+
+// Test_ShadowedRulesIsBounded pins that the scan gives up rather than walking
+// every pair of a rule list long enough for the cost to show.
+func Test_ShadowedRulesIsBounded(t *testing.T) {
+	t.Parallel()
+
+	shadowing := func(n int) []compiledRule {
+		rules := make([]compiledRule, 0, n)
+		rules = append(rules, compiledRule{from: "/*", pattern: regexp.MustCompile(`^(?:(.*))$`)})
+		for i := 1; i < n; i++ {
+			from := "/p" + strconv.Itoa(i)
+			rules = append(rules, compiledRule{from: from, pattern: regexp.MustCompile("^(?:" + from + ")$")})
+		}
+		return rules
+	}
+
+	require.True(t, shadowedRules(shadowing(maxShadowChecked), nil))
+	require.False(t, shadowedRules(shadowing(maxShadowChecked+1), nil))
 }
