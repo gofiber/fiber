@@ -230,12 +230,26 @@ func Test_Parser_Request_URL(t *testing.T) {
 			SetURL("http://:host/api").
 			SetPathParam("host", "x@evil.com")
 
+		// "@" ends a userinfo section, so this used to resolve to the host
+		// "evil.com" and the request left for another server.
+		err := parserRequestURL(client, req)
+		require.ErrorIs(t, err, ErrPathParamInHost)
+	})
+
+	t.Run("a host path param keeps the rest of the URL intact", func(t *testing.T) {
+		t.Parallel()
+		client := New()
+		req := AcquireRequest().
+			SetURL("http://:host/api/v1?a=b").
+			SetPathParam("host", "\u00fcn\u00efcode.example.com")
+
 		err := parserRequestURL(client, req)
 		require.NoError(t, err)
-		// utils.AppendPathEscape keeps "@", which here would end a userinfo
-		// section: the host became "evil.com" and the request left for another
-		// server. A value substituted into the authority escapes it.
-		require.Equal(t, "x%40evil.com", string(req.RawRequest.URI().Host()))
+		require.Equal(t, "\u00fcn\u00efcode.example.com", string(req.RawRequest.URI().Host()))
+		// A percent-escape in the host makes fasthttp abandon the rest of the
+		// URI, so this pins that a host value never gets escaped.
+		require.Equal(t, "/api/v1", string(req.RawRequest.URI().Path()))
+		require.Equal(t, "a=b", string(req.RawRequest.URI().QueryString()))
 	})
 
 	t.Run("a substituted value is not substituted again", func(t *testing.T) {

@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"unicode/utf8"
 
 	"github.com/gofiber/utils/v2"
 	"github.com/valyala/fasthttp"
@@ -83,7 +84,10 @@ func parserRequestURL(c *Client, req *Request) error {
 
 	// Set path parameters from the request and the client. Request values are
 	// looked up first, so they keep overriding the client's for the same name.
-	uri = substitutePathParams(uri, req.path, *c.path)
+	uri, err := substitutePathParams(uri, req.path, *c.path)
+	if err != nil {
+		return err
+	}
 
 	// Set the URI in the raw request.
 	disablePathNormalizing := c.isPathNormalizingDisabled || req.DisablePathNormalizing()
@@ -131,13 +135,15 @@ var pathParamEndChars = [256]bool{
 // found in sources, searched in order. A placeholder ends at a path-segment
 // boundary, so ":id" no longer also matches the head of ":idx"; the scan is a
 // single left-to-right pass, so a substituted value is never rescanned for
-// placeholders; and each value is percent-encoded, so a "/", "?" or "#" inside
-// a value cannot restructure the request target, and a ":" or "@" inside a
-// value substituted into the authority cannot move the request to another host.
+// placeholders; and each value is percent-encoded with path-segment rules, so
+// a "/", "?" or "#" inside a value cannot restructure the request target.
 // A placeholder with no matching value is left untouched.
-func substitutePathParams(uri string, sources ...PathParam) string {
+//
+// A placeholder in the authority is filled verbatim and its value is checked
+// against isHostSafe instead, returning ErrPathParamInHost when it fails.
+func substitutePathParams(uri string, sources ...PathParam) (string, error) {
 	if !strings.ContainsRune(uri, ':') {
-		return uri
+		return uri, nil
 	}
 
 	authEnd := authorityEnd(uri)
@@ -169,6 +175,12 @@ func substitutePathParams(uri string, sources ...PathParam) string {
 			continue
 		}
 
+		// The colons inside an IPv6 literal belong to the address, so
+		// "http://[2001:db8::1]/x" must not be rewritten by a "db8" parameter.
+		if i < authEnd && inIPv6Literal(uri[:i]) {
+			continue
+		}
+
 		val, ok := lookupPathParam(name, sources)
 		if !ok {
 			continue
@@ -182,7 +194,10 @@ func substitutePathParams(uri string, sources ...PathParam) string {
 
 		buf = append(buf, uri[last:i]...)
 		if i < authEnd {
-			buf = appendAuthorityEscape(buf, val)
+			if !isHostSafe(val) {
+				return "", fmt.Errorf("%w: %q", ErrPathParamInHost, name)
+			}
+			buf = append(buf, val...)
 		} else {
 			buf = utils.AppendPathEscape(buf, val)
 		}
@@ -191,34 +206,39 @@ func substitutePathParams(uri string, sources ...PathParam) string {
 	}
 
 	if buf == nil {
-		return uri
+		return uri, nil
 	}
 
-	return string(append(buf, uri[last:]...))
+	return string(append(buf, uri[last:]...)), nil
 }
 
-// appendAuthorityEscape appends val to dst percent-encoded for use inside a
-// URI authority. utils.AppendPathEscape keeps ":" and "@" verbatim, which is
-// harmless in a path but not here: they open a port and a userinfo section, so
-// a value such as "a@evil.com" would otherwise send the request to a different
-// host than the template names.
-func appendAuthorityEscape(dst []byte, val string) []byte {
-	last := 0
-
+// isHostSafe reports whether val may be substituted into a URI authority
+// verbatim. Percent-encoding is not an option there: fasthttp rejects a "%XX"
+// below 0x80 inside a host, and it then abandons the rest of the URI, so a
+// value that would need escaping has to fail the request instead. The set is
+// RFC 3986's unreserved characters plus the sub-delims a host parse keeps, and
+// any non-ASCII byte, which fasthttp passes through. ":" and "@" are excluded
+// deliberately: they would add a port or a userinfo section, and a value of
+// "x@evil.com" in "http://:host/api" would send the request to evil.com.
+func isHostSafe(val string) bool {
 	for i := range len(val) {
-		switch val[i] {
-		case ':':
-			dst = append(utils.AppendPathEscape(dst, val[last:i]), "%3A"...)
-		case '@':
-			dst = append(utils.AppendPathEscape(dst, val[last:i]), "%40"...)
+		switch c := val[i]; {
+		case c >= 'a' && c <= 'z', c >= 'A' && c <= 'Z', c >= '0' && c <= '9':
+		case c == '-', c == '.', c == '_', c == '~':
+		case c == '$', c == '&', c == '+', c == '=':
+		case c >= utf8.RuneSelf:
 		default:
-			continue
+			return false
 		}
-
-		last = i + 1
 	}
 
-	return utils.AppendPathEscape(dst, val[last:])
+	return true
+}
+
+// inIPv6Literal reports whether the authority prefix ends inside a "[...]"
+// IPv6 literal.
+func inIPv6Literal(prefix string) bool {
+	return strings.LastIndexByte(prefix, '[') > strings.LastIndexByte(prefix, ']')
 }
 
 // authorityEnd returns the index at which uri's authority ends, or 0 when uri
