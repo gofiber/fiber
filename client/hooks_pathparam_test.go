@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v3"
+	utilsstrings "github.com/gofiber/utils/v2/strings"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp/fasthttputil"
@@ -495,7 +496,7 @@ func FuzzPathParamTarget(f *testing.F) {
 // fails or stays one label of the domain the template names. This is the one
 // that has to hold, because getting it wrong sends the request elsewhere.
 func FuzzPathParamHost(f *testing.F) {
-	for _, seed := range []string{"", "a", "a@b", "a:1", "[::1]", "a.b", "a%2eb", "..", "a/b", "\u00fc", "a$b", "-", "0", "a\rb", "\xc0\xaf", "\xff", "\xe2\x82"} {
+	for _, seed := range []string{"", "a", "a@b", "a:1", "[::1]", "a.b", "a%2eb", "..", "a/b", "\u00fc", "a$b", "-", "0", "a\rb", "σ", "Σ", "\xc0\xaf", "\xff", "\xe2\x82"} {
 		f.Add(seed)
 	}
 
@@ -515,11 +516,11 @@ func FuzzPathParamHost(f *testing.F) {
 
 		uri := req.RawRequest.URI()
 		// Nothing may transform an accepted value: it is one label of the
-		// domain the template names, byte for byte, save for the case folding
-		// fasthttp applies to every host.
-		want, got := val+".example.com", string(uri.Host())
-		require.Len(t, got, len(want), "value did not land verbatim: %q", got)
-		require.True(t, strings.EqualFold(want, got), "value did not land verbatim: %q", got)
+		// domain the template names, byte for byte, save for the ASCII
+		// lowercasing fasthttp applies to every host. Not EqualFold, which
+		// reads "σ" and "ς" as equal and would accept a mangled label.
+		want := utilsstrings.ToLower(val + ".example.com")
+		require.Equal(t, want, string(uri.Host()), "value did not land verbatim")
 		require.Equal(t, "/api", string(uri.Path()), "value ate the path")
 	})
 }
