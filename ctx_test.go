@@ -174,10 +174,25 @@ func Test_Ctx_Charset(t *testing.T) {
 			expected:    "",
 		},
 		{
-			// VisitHeaderParams stops at the first malformed parameter.
-			name:        "empty_param_stops_before_charset",
+			// RFC 9110 §5.6.6 permits empty parameter elements.
+			name:        "empty_param_before_charset",
 			contentType: "text/plain; ; charset=utf-8",
-			expected:    "",
+			expected:    "utf-8",
+		},
+		{
+			name:        "empty_param_between_params",
+			contentType: "text/plain; foo=bar; ; charset=utf-8",
+			expected:    "utf-8",
+		},
+		{
+			name:        "multiple_empty_params",
+			contentType: "text/plain;;; charset=utf-8",
+			expected:    "utf-8",
+		},
+		{
+			name:        "empty_params_with_tabs",
+			contentType: "text/plain;\t;\t;\tcharset=utf-8",
+			expected:    "utf-8",
 		},
 		{
 			name:        "spaces_around_equals_stop_parsing",
@@ -219,6 +234,11 @@ func Test_Ctx_Charset(t *testing.T) {
 			// a parameter delimiter.
 			name:        "quoted_value_with_semicolon_before_charset",
 			contentType: `text/plain; title="x;charset=bad"; charset=utf-8`,
+			expected:    "utf-8",
+		},
+		{
+			name:        "empty_param_syntax_inside_quoted_value",
+			contentType: `text/plain; title="x; ;y"; charset=utf-8`,
 			expected:    "utf-8",
 		},
 		{
@@ -271,6 +291,20 @@ func Test_Ctx_Charset(t *testing.T) {
 			require.Equal(t, testCase.expected, c.Charset())
 		})
 	}
+}
+
+// go test -run=^$ -bench=Benchmark_Ctx_Charset -benchmem -count=4
+func Benchmark_Ctx_Charset(b *testing.B) {
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	c.Request().Header.Set(HeaderContentType, "text/plain; charset=utf-8")
+
+	var charset string
+	b.ReportAllocs()
+	for b.Loop() {
+		charset = c.Charset()
+	}
+	require.Equal(b, "utf-8", charset)
 }
 
 // go test -run Test_Ctx_HeaderHelpers

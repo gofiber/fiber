@@ -267,19 +267,88 @@ func (c *DefaultCtx) MediaType() string {
 
 // Charset returns the charset parameter from the Content-Type header.
 func (c *DefaultCtx) Charset() string {
-	contentType := c.fasthttp.Request.Header.ContentType()
+	contentType := removeEmptyHeaderParams(c.fasthttp.Request.Header.ContentType())
 	charset := ""
 	fasthttp.VisitHeaderParams(contentType, func(key, value []byte) bool {
 		if !utils.EqualFold(key, []byte("charset")) {
 			return true
 		}
 		value, err := unescapeHeaderValue(value)
-		// VisitHeaderParams doesn't allow callback values to escape.
-		charset = string(value)
-		// A failed unescape leaves charset empty; keep looking for a valid value.
-		return err != nil
+		if err != nil {
+			// Keep looking for a valid charset after an invalid escaped value.
+			return true
+		}
+		charset = c.app.toString(value)
+		return false
 	})
 	return charset
+}
+
+// removeEmptyHeaderParams removes empty parameter elements allowed by RFC 9110
+// Section 5.6.6 because fasthttp treats them as invalid and stops visiting.
+// The usual path returns the original slice without allocating.
+func removeEmptyHeaderParams(header []byte) []byte {
+	firstSemicolon := bytes.IndexByte(header, ';')
+	if firstSemicolon == -1 || bytes.IndexByte(header[firstSemicolon+1:], ';') == -1 {
+		return header
+	}
+
+	var normalized []byte
+	segmentStart := 0
+	inQuotes := false
+	escaped := false
+
+	for i, ch := range header {
+		if i < segmentStart {
+			continue
+		}
+		if inQuotes {
+			switch {
+			case escaped:
+				escaped = false
+			case ch == '\\':
+				escaped = true
+			case ch == '"':
+				inQuotes = false
+			}
+			continue
+		}
+		if ch == '"' {
+			inQuotes = true
+			continue
+		}
+		if ch != ';' {
+			continue
+		}
+
+		next := i + 1
+		for next < len(header) && (header[next] == ' ' || header[next] == '\t') {
+			next++
+		}
+		if next >= len(header) || header[next] != ';' {
+			continue
+		}
+		if normalized == nil {
+			normalized = make([]byte, 0, len(header))
+		}
+		normalized = append(normalized, header[segmentStart:i]...)
+		normalized = append(normalized, ';')
+		segmentStart = next + 1
+		for segmentStart < len(header) {
+			for segmentStart < len(header) && (header[segmentStart] == ' ' || header[segmentStart] == '\t') {
+				segmentStart++
+			}
+			if segmentStart >= len(header) || header[segmentStart] != ';' {
+				break
+			}
+			segmentStart++
+		}
+	}
+
+	if normalized == nil {
+		return header
+	}
+	return append(normalized, header[segmentStart:]...)
 }
 
 // IsJSON reports whether the Content-Type header is JSON.
