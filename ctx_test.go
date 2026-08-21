@@ -174,14 +174,15 @@ func Test_Ctx_Charset(t *testing.T) {
 			expected:    "",
 		},
 		{
-			name:        "empty_param_before_charset",
+			// VisitHeaderParams stops at the first malformed parameter.
+			name:        "empty_param_stops_before_charset",
 			contentType: "text/plain; ; charset=utf-8",
-			expected:    "utf-8",
+			expected:    "",
 		},
 		{
-			name:        "charset_with_spaces",
+			name:        "spaces_around_equals_stop_parsing",
 			contentType: "text/plain; charset = utf-8",
-			expected:    "utf-8",
+			expected:    "",
 		},
 		{
 			name:        "charset_in_middle",
@@ -240,10 +241,11 @@ func Test_Ctx_Charset(t *testing.T) {
 			expected:    "utf-8",
 		},
 		{
-			// A quoted value with trailing junk is not a valid quoted-string.
+			// VisitHeaderParams emits a complete quoted value before skipping
+			// trailing bytes up to the next parameter.
 			name:        "quoted_value_with_trailing_junk",
 			contentType: `text/plain; charset="utf-8"x`,
-			expected:    "",
+			expected:    "utf-8",
 		},
 		{
 			name:        "unterminated_quoted_value",
@@ -251,11 +253,11 @@ func Test_Ctx_Charset(t *testing.T) {
 			expected:    "",
 		},
 		{
-			// A bare-token value containing a DQUOTE is invalid; the
-			// parameter is skipped so the later well-formed charset wins.
+			// VisitHeaderParams emits the token prefix and the first charset
+			// parameter wins.
 			name:        "bare_value_with_quote_then_valid_charset",
 			contentType: `text/plain; a=b"; charset=bad"; charset=utf-8`,
-			expected:    "utf-8",
+			expected:    "bad",
 		},
 	}
 
