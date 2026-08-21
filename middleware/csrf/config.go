@@ -95,6 +95,13 @@ type Config struct {
 	// Optional. Default: 30 * time.Minute
 	IdleTimeout time.Duration
 
+	// CrossOriginProtectionOnly disables token and cookie handling and rejects
+	// unsafe cross-origin browser requests using Fetch Metadata and Origin.
+	// Requests without either header are treated as non-browser requests.
+	//
+	// Optional. Default: false
+	CrossOriginProtectionOnly bool
+
 	// DisableValueRedaction turns off masking CSRF tokens and storage keys in logs and errors.
 	//
 	// Optional. Default: false
