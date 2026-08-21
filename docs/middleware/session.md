@@ -69,6 +69,7 @@ app.Use(session.New(session.Config{
     AbsoluteTimeout:   24 * time.Hour,    // Maximum session life
     Extractor:         extractors.FromCookie("__Host-session_id"),
 }))
+```
 
 Notes:
 
@@ -76,7 +77,6 @@ Notes:
 - CookieSameSite accepts `"Disabled"`, `"Lax"`, `"Strict"`, or `"None"` case-insensitively; other values panic during configuration.
 - If CookieSameSite is set to `"Disabled"`, the cookie omits the SameSite attribute and preserves `CookieSecure`.
 - If CookieSameSite is set to `"None"`, the middleware automatically forces `CookieSecure=true` when setting the cookie.
-```
 
 ## Usage Patterns
 

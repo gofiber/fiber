@@ -1094,7 +1094,8 @@ func Test_Session_Cookie(t *testing.T) {
 	require.Regexp(t, `^session_id=[A-Za-z0-9\-_]{43}; max-age=\d+; path=/; SameSite=Lax$`, string(cookie))
 }
 
-// go test -run Test_Session_Cookie_SameSite
+// Test_Session_Cookie_SameSite verifies every supported mode's emitted
+// attribute and interaction with the Secure flag.
 func Test_Session_Cookie_SameSite(t *testing.T) {
 	t.Parallel()
 

@@ -55,6 +55,8 @@ func TestAbsoluteTimeoutValidation(t *testing.T) {
 	})
 }
 
+// TestCookieSameSiteValidation verifies that initialization accepts every
+// supported mode and rejects unsupported non-empty values.
 func TestCookieSameSiteValidation(t *testing.T) {
 	t.Parallel()
 
