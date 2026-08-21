@@ -84,13 +84,14 @@ func parserRequestURL(c *Client, req *Request) error {
 
 	// Set path parameters from the request and the client. Request values are
 	// looked up first, so they keep overriding the client's for the same name.
-	uri, err := substitutePathParams(uri, req.path, *c.path)
+	disablePathNormalizing := c.isPathNormalizingDisabled || req.DisablePathNormalizing()
+
+	uri, err := substitutePathParams(uri, disablePathNormalizing, req.path, *c.path)
 	if err != nil {
 		return err
 	}
 
 	// Set the URI in the raw request.
-	disablePathNormalizing := c.isPathNormalizingDisabled || req.DisablePathNormalizing()
 	req.RawRequest.SetRequestURI(uri)
 	req.RawRequest.URI().DisablePathNormalizing = disablePathNormalizing
 	if disablePathNormalizing {
@@ -136,12 +137,17 @@ var pathParamEndChars = [256]bool{
 // boundary, so ":id" no longer also matches the head of ":idx"; the scan is a
 // single left-to-right pass, so a substituted value is never rescanned for
 // placeholders; and each value is percent-encoded with path-segment rules, so
-// a "/", "?" or "#" inside a value cannot restructure the request target.
+// a "?" or "#" inside a value cannot restructure the request target.
 // A placeholder with no matching value is left untouched.
 //
-// A placeholder in the authority is filled verbatim and its value is checked
-// against isHostSafe instead, returning ErrPathParamInHost when it fails.
-func substitutePathParams(uri string, sources ...PathParam) (string, error) {
+// With path normalizing left on, escaping alone cannot hold a value inside its
+// segment — normalizing decodes the path before it collapses "." and ".." — so
+// a value that would break out is rejected with ErrPathParamInPath. A
+// placeholder in the authority is filled verbatim and checked against
+// isHostSafe, returning ErrPathParamInHost.
+//
+//nolint:revive // flag-parameter: disablePathNormalizing is the request setting, as in composeRedirectURL
+func substitutePathParams(uri string, disablePathNormalizing bool, sources ...PathParam) (string, error) {
 	if !strings.ContainsRune(uri, ':') {
 		return uri, nil
 	}
@@ -199,6 +205,9 @@ func substitutePathParams(uri string, sources ...PathParam) (string, error) {
 			}
 			buf = append(buf, val...)
 		} else {
+			if !disablePathNormalizing && !isSingleSegment(val) {
+				return "", fmt.Errorf("%w: %q", ErrPathParamInPath, name)
+			}
 			buf = utils.AppendPathEscape(buf, val)
 		}
 		last = end
@@ -210,6 +219,16 @@ func substitutePathParams(uri string, sources ...PathParam) (string, error) {
 	}
 
 	return string(append(buf, uri[last:]...)), nil
+}
+
+// isSingleSegment reports whether val still occupies exactly one path segment
+// after fasthttp has normalized the path. Normalizing percent-decodes the path
+// before it collapses "." and ".." segments, so an escaped "/" turns back into
+// a real separator and a value of "../../admin" walks out of the path the
+// template set. Only the raw bytes matter: a "%2F" typed by the caller is
+// written as "%252F" and decodes to a literal "%2F", not to a separator.
+func isSingleSegment(val string) bool {
+	return !strings.ContainsAny(val, `/\`) && val != "." && val != ".."
 }
 
 // isHostSafe reports whether val may be substituted into a URI authority
@@ -232,7 +251,9 @@ func isHostSafe(val string) bool {
 		}
 	}
 
-	return true
+	// An empty value would build "http:///api", which fails later at dial with
+	// a message that says nothing about the parameter.
+	return val != ""
 }
 
 // inIPv6Literal reports whether the authority prefix ends inside a "[...]"
