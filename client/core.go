@@ -299,6 +299,8 @@ func newCore() *core {
 var (
 	ErrTimeoutOrCancel      = errors.New("timeout or cancel")
 	ErrURLFormat            = errors.New("the URL is incorrect")
+	ErrPathParamInHost      = errors.New("the path parameter value is not valid in a host")
+	ErrPathParamInPath      = errors.New("the path parameter value is not a single path segment")
 	ErrNotSupportSchema     = errors.New("protocol not supported; only http or https are allowed")
 	ErrFileNoName           = errors.New("the file should have a name")
 	ErrBodyType             = errors.New("the body type should be []byte")
