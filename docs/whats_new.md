@@ -3049,7 +3049,7 @@ app.Use(redirect.New(redirect.Config{
 }))
 ```
 
-`Rules` keeps working for the whole of v3. Its order is now decided by a documented heuristic — most path text pinned before the first `*`, then most path text overall, then fewest asterisks, then the key — rather than by analysing each pattern. Configurations written with path text and `*` are unaffected; rules relying on regular-expression syntax beyond `*` may order differently, and `RuleList` gives exact control. Setting both fields panics.
+`Rules` keeps working for the whole of v3. Its order is now decided by a documented heuristic rather than by analysing each pattern: most path text pinned before the first `*`, then most path text overall, then fewest asterisks, then the key. Configurations written with path text and `*` are unaffected; rules relying on regular-expression syntax beyond `*` may order differently, and `RuleList` gives exact control. Setting both fields panics.
 
 Fiber now also warns at startup when a rule can never fire because an earlier one matches every path it does.
 
