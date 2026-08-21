@@ -150,16 +150,31 @@ func (c *core) preHooks() error {
 		}
 	}
 
-	c.client.mu.Lock()
-	defer c.client.mu.Unlock()
+	finalHooks, err := c.runBuiltinRequestHooks()
+	if err != nil {
+		return err
+	}
 
-	for _, f := range c.client.builtinRequestHooks {
+	for _, f := range finalHooks {
 		if err := f(c.client, c.req); err != nil {
 			return err
 		}
 	}
 
 	return nil
+}
+
+func (c *core) runBuiltinRequestHooks() ([]RequestHook, error) {
+	c.client.mu.Lock()
+	defer c.client.mu.Unlock()
+
+	for _, f := range c.client.builtinRequestHooks {
+		if err := f(c.client, c.req); err != nil {
+			return nil, err
+		}
+	}
+
+	return slices.Clone(c.client.finalRequestHooks), nil
 }
 
 // afterHooks runs all response hooks after receiving the response.

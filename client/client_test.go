@@ -283,6 +283,16 @@ func Test_Client_Add_Hook(t *testing.T) {
 		require.Len(t, client.RequestHook(), 3)
 	})
 
+	t.Run("add final request hooks", func(t *testing.T) {
+		t.Parallel()
+
+		client := New().AddFinalRequestHook(func(_ *Client, _ *Request) error {
+			return nil
+		})
+
+		require.Len(t, client.FinalRequestHook(), 1)
+	})
+
 	t.Run("add response hooks", func(t *testing.T) {
 		t.Parallel()
 		client := New().AddResponseHook(func(_ *Client, _ *Response, _ *Request) error {
