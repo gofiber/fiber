@@ -88,19 +88,11 @@ app.Get("/user/:name", func(c fiber.Ctx) error {
 ```
 
 :::note
-A named route is a route in this application, so the redirect always stays on
-this origin: a `Params` value that would open an authority — `"/evil.com"` or
-`"\evil.com"` under a `/*` route — is kept as the path segment the route asked
-for. [`Route.URL`](./app.md#getroute) and [`GetRouteURL`](./ctx.md#getrouteurl)
-answer the same for the same input.
-
-`Queries` are merged into whatever query the composed path already holds and
-placed ahead of any fragment, so a `Params` value carrying `?` or `#` cannot
-absorb or discard them.
-
-The values themselves are still written into the path as given. Where they come
-from the request, escape them with [`url.PathEscape`](https://pkg.go.dev/net/url#PathEscape)
-if the route expects one segment per parameter.
+Each `Params` value is automatically percent-encoded with URL path-segment
+rules. Delimiters such as `/`, `?`, and `#` therefore remain parameter data
+instead of adding a path segment, query, or fragment, and cannot absorb or
+discard `Queries`. [`Route.URL`](./app.md#getroute) and
+[`GetRouteURL`](./ctx.md#getrouteurl) apply the same encoding.
 :::
 
 ### Back

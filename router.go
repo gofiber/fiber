@@ -208,6 +208,7 @@ func (t *routeTree) lookup(hash int) []*Route {
 // This method fills in the route parameters with the provided values.
 // Parameter matching respects the app's CaseSensitive configuration:
 // case-insensitive by default, case-sensitive when CaseSensitive is true.
+// Parameter values are percent-encoded using URL path-segment rules.
 //
 // Example:
 //
@@ -226,7 +227,8 @@ func (r Route) URL(params Map) (string, error) {
 
 // buildRouteURL generates a URL from route segments and parameters.
 // This shared helper is used by both Route.URL() and DefaultRes.getLocationFromRoute()
-// to ensure consistent URL generation behavior across APIs.
+// to ensure consistent URL generation behavior across APIs. Substituted values
+// are encoded as path segments before they enter the composed URL.
 //
 // Parameter resolution uses a deterministic three-step lookup:
 //  1. Exact key match on segment.ParamName
@@ -297,10 +299,7 @@ func buildRouteURL(route *Route, params Map) (string, error) {
 		}
 
 		if found {
-			_, err := buf.WriteString(utils.ToString(val))
-			if err != nil {
-				return "", fmt.Errorf("failed to write string: %w", err)
-			}
+			buf.B = utils.AppendPathEscape(buf.B, utils.ToString(val))
 		}
 	}
 
