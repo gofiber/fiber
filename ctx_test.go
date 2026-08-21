@@ -399,6 +399,26 @@ func (c *customCtx) Params(key string, defaultValue ...string) string { //revive
 	return "prefix_" + c.DefaultCtx.Params(key)
 }
 
+// jsonEnvelopeCustomCtx overrides JSON to wrap payloads in a standard API envelope.
+// Used to regression-test #3319 (CustomCtx methods must survive middleware / Next).
+type jsonEnvelopeCustomCtx struct {
+	DefaultCtx
+}
+
+type jsonEnvelope struct {
+	Data    any    `json:"data"`
+	Message string `json:"message"`
+	Code    int    `json:"code"`
+}
+
+func (c *jsonEnvelopeCustomCtx) JSON(data any, ctype ...string) error {
+	return c.DefaultCtx.JSON(jsonEnvelope{
+		Code:    StatusOK,
+		Data:    data,
+		Message: "OK",
+	}, ctype...)
+}
+
 // go test -run Test_Ctx_CustomCtx
 func Test_Ctx_CustomCtx(t *testing.T) {
 	t.Parallel()
@@ -486,6 +506,53 @@ func Test_Ctx_CustomCtx_WithMiddleware(t *testing.T) {
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err, "io.ReadAll(resp.Body)")
 	require.Equal(t, "prefix_", string(body))
+}
+
+// go test -run Test_Ctx_CustomCtx_JSON_WithMiddleware
+func Test_Ctx_CustomCtx_JSON_WithMiddleware(t *testing.T) {
+	t.Parallel()
+
+	newCtx := func(app *App) CustomCtx {
+		return &jsonEnvelopeCustomCtx{DefaultCtx: *NewDefaultCtx(app)}
+	}
+
+	t.Run("without middleware", func(t *testing.T) {
+		t.Parallel()
+
+		app := NewWithCustomCtx(newCtx)
+		app.Get("/vvv", func(c Ctx) error {
+			return c.JSON(Map{"a": "b"})
+		})
+
+		resp, err := app.Test(httptest.NewRequest(MethodGet, "/vvv", http.NoBody))
+		require.NoError(t, err, "app.Test(req)")
+		defer func() { require.NoError(t, resp.Body.Close()) }()
+
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err, "io.ReadAll(resp.Body)")
+		require.JSONEq(t, `{"code":200,"data":{"a":"b"},"message":"OK"}`, string(body))
+	})
+
+	t.Run("with middleware", func(t *testing.T) {
+		t.Parallel()
+
+		app := NewWithCustomCtx(newCtx)
+		app.Use(func(c Ctx) error {
+			return c.Next()
+		})
+		app.Get("/vvv", func(c Ctx) error {
+			return c.JSON(Map{"a": "b"})
+		})
+
+		resp, err := app.Test(httptest.NewRequest(MethodGet, "/vvv", http.NoBody))
+		require.NoError(t, err, "app.Test(req)")
+		defer func() { require.NoError(t, resp.Body.Close()) }()
+
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err, "io.ReadAll(resp.Body)")
+		// Middleware must not drop the custom JSON wrapper (#3319).
+		require.JSONEq(t, `{"code":200,"data":{"a":"b"},"message":"OK"}`, string(body))
+	})
 }
 
 // go test -run Test_Ctx_CustomCtx
