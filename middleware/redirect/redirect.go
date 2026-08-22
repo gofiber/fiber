@@ -883,9 +883,9 @@ func pinsHost(literal string, openLeft bool) bool {
 		if j < 0 {
 			return false
 		}
-		// With an opener the author wrote an address — but only a real one, so ask
-		// whether it parses: "[zzz1]" is hex digits, not an address. Brackets hold
-		// IPv6 only, and the colon separates the spellings ParseIP takes both of.
+		// With an opener the author wrote an address, but only a real one counts,
+		// so ask a parser: "[zzz1]" is hex digits and "[02001::1]" is a group of
+		// five, which a check bounding only the group's value reads as an address.
 		inner := literal[j+1 : i]
 		return strings.IndexByte(inner, ':') >= 0 && net.ParseIP(inner) != nil
 	}
