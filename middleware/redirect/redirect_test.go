@@ -703,8 +703,12 @@ func Test_PinsHost(t *testing.T) {
 		{"[:]", false},
 		{"[.]", false},
 		{"[[]", false},
-		// Holding a hex digit is not the same as being an address.
+		// Holding a hex digit is not the same as being an address, and a group runs
+		// to four of them: a check bounding the value alone reads "02001" as 0x2001.
 		{"[zzz1]", false},
+		{"[02001::1]", false},
+		{"[0ffff::]", false},
+		{"[000001::]", false},
 		{"[evil.com1]", false},
 		{"[a b]", false},
 		// Brackets hold IPv6 only, so an IPv4 address is no host there. The IPv4-mapped spelling is.
