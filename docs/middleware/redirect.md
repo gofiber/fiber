@@ -26,9 +26,9 @@ func main() {
     app := fiber.New()
 
     app.Use(redirect.New(redirect.Config{
-      Rules: map[string]string{
-        "/old":   "/new",
-        "/old/*": "/new/$1",
+      RuleList: []redirect.Rule{
+        {From: "/old", To: "/new"},
+        {From: "/old/*", To: "/new/$1"},
       },
       StatusCode: fiber.StatusMovedPermanently,
     }))
@@ -56,8 +56,44 @@ curl http://localhost:3000/old/hello
 | Property   | Type                | Description                               | Default                |
 |:-----------|:--------------------|:------------------------------------------|:-----------------------|
 | Next       | `func(fiber.Ctx) bool` | Skip when function returns true.          | nil                    |
-| Rules      | `map[string]string`   | Map paths to new ones; `$1`, `$2` insert params. | Required               |
+| RuleList   | `[]Rule`              | Rules tried in order, first match wins; `$1`, `$2` insert params. | Required |
+| Rules      | `map[string]string`   | **Deprecated.** Use `RuleList`. A map has no order, so precedence is decided by a heuristic. | nil |
 | StatusCode | `int`                 | HTTP code for redirects.                  | 302 Temporary Redirect |
+
+A `Rule` is a pattern and a target:
+
+```go
+type Rule struct {
+    From string // the path pattern, where "*" matches a run of any length
+    To   string // the target, where "$1", "$2" stand for what the asterisks captured
+}
+```
+
+Setting both `RuleList` and `Rules` panics: the two disagree about what decides
+precedence, so there is no sensible way to honour them together.
+
+## Rule order
+
+Rules are tried in the order you write them and the first one whose `From`
+matches answers, exactly as [routes](../guide/routing.md) are matched. Put the
+specific rules before the catch-alls:
+
+```go
+RuleList: []redirect.Rule{
+    {From: "/api/users", To: "/v2/users"},  // checked first
+    {From: "/api/*", To: "/v2/$1"},         // takes everything else
+}
+```
+
+Written the other way round, `/api/*` answers `/api/users` too and the second
+rule never fires. Fiber logs a warning at startup naming any rule an earlier one
+shadows outright, so a dead rule tells you rather than going quiet.
+
+The deprecated `Rules` map has no order of its own, so Fiber sorts it: most path
+text pinned before the first `*` wins, then most path text overall, then fewest
+asterisks, then the key itself. That covers rules written with path text and
+`*`. Rules relying on regular-expression syntax beyond `*` may order differently
+Use `RuleList`, where the order is yours.
 
 ## How captures are placed
 
@@ -147,8 +183,8 @@ capture the port instead:
 
 A refused rule is dropped, so the request continues to the **remaining rules of
 this middleware** before reaching the rest of the stack. With
-`{"/go/*": "https://$1", "/*": "/home"}`, a request for `/go/evil.com` is
-redirected to `/home` by the catch-all.
+`[]redirect.Rule{{From: "/go/*", To: "https://$1"}, {From: "/*", To: "/home"}}`,
+a request for `/go/evil.com` is redirected to `/home` by the rule that follows.
 
 This applies to every scheme, not only the ones a browser navigates by. A `//`
 opens an authority whatever the scheme is, so `"mailto:$1"`, `"myapp:$1"` and

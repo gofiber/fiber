@@ -32,7 +32,9 @@ type authorityChunk struct {
 // once at construction, of whether that target picks its own destination.
 type compiledRule struct {
 	pattern *regexp.Regexp
-	target  string
+	// from is the rule as the author wrote it, kept for the warnings only.
+	from   string
+	target string
 	// authorityEnders are the bytes a value may open the next component with,
 	// which is scheme-dependent: see authorityEnders.
 	authorityEnders string
@@ -50,54 +52,159 @@ type compiledRule struct {
 	sameOrigin bool
 }
 
-// New creates a new middleware handler
-func New(config ...Config) fiber.Handler {
-	cfg := configDefault(config...)
+// patternBytes are the bytes of a rule key that match something other than
+// themselves: "*" is the documented wildcard and the rest is regexp syntax,
+// since a key reaches the compiled pattern as one.
+const patternBytes = `*.[](){}+?^|\$`
 
-	// Fixed order, most specific first: two patterns can match the same path, and
-	// a map range made the winner vary per run. Rank by what a rule pins before
-	// its first wildcard, then by total pinned length, then by key to stay total.
+// orderedRules returns the rules to try, in the order to try them. RuleList is
+// the author's own order, first match wins. The deprecated map has none, so its
+// keys are sorted most specific first by the heuristic below.
+func orderedRules(cfg Config) []Rule {
+	if len(cfg.RuleList) > 0 {
+		return cfg.RuleList
+	}
+
 	keys := slices.Collect(maps.Keys(cfg.Rules))
+	// Most specific first, by what a key pins rather than by what its pattern
+	// means: a map hands them over in a random order, so something has to decide,
+	// and reading the regexp to measure its breadth cost more than it settled.
+	// Every key is a function of one rule alone, and the terminal comparison is
+	// on distinct map keys, so the order is total.
 	slices.SortFunc(keys, func(a, b string) int {
-		if d := cmp.Compare(literalPrefixLen(b), literalPrefixLen(a)); d != 0 {
+		// What each pins before its first wildcard, then in total: "/api/users"
+		// outranks the "/api/*" that would otherwise answer for it.
+		if d := cmp.Compare(pinnedPrefixLen(b), pinnedPrefixLen(a)); d != 0 {
 			return d
 		}
-		if d := cmp.Compare(literalLen(b), literalLen(a)); d != 0 {
+		if d := cmp.Compare(pinnedLen(b), pinnedLen(a)); d != 0 {
 			return d
 		}
-		// A wildcard matches a run of any length, so a rule holding one is
-		// broader than any rule that does not, however much either pins:
-		// "/api/*" must not shadow the "/api/[ab]" it ties with. Ranked on its
-		// own rather than counted as a width, which saturates — two rules whose
-		// widths both reached the clamp would tie again.
-		if d := cmp.Compare(wildcardRank(a), wildcardRank(b)); d != 0 {
-			return d
-		}
-		// Two rules pinning the same amount are separated by how much else they
-		// match: an alternation matches every branch, so "/very/specific|/x" is
-		// wider than the exact "/x" it ties with. Two wildcard rules land here
-		// too, separated by everything beside the wildcard they share.
-		if d := cmp.Compare(patternWidth(a), patternWidth(b)); d != 0 {
+		// A second wildcard matches everything the first does and more, so the
+		// rule carrying fewer of them is the narrower claim: "/p/*ab" must answer
+		// the path "/p/*a*b" would otherwise take.
+		if d := cmp.Compare(strings.Count(a, "*"), strings.Count(b, "*")); d != 0 {
 			return d
 		}
 		return cmp.Compare(a, b)
 	})
 
+	rules := make([]Rule, 0, len(keys))
 	for _, k := range keys {
+		rules = append(rules, Rule{From: k, To: cfg.Rules[k]})
+	}
+	return rules
+}
+
+// pinnedPrefixLen returns how many bytes of a path a rule pins before its first
+// wildcard, which is what makes one rule more specific than another it overlaps.
+func pinnedPrefixLen(rule string) int {
+	if i := strings.IndexAny(rule, patternBytes); i >= 0 {
+		return i
+	}
+	return len(rule)
+}
+
+// pinnedLen returns how many bytes of a rule stand for themselves, which
+// separates two rules whose wildcards start together: "/cdn/*" and "/cdn/*x".
+func pinnedLen(rule string) int {
+	n := 0
+	for i := 0; i < len(rule); i++ {
+		if strings.IndexByte(patternBytes, rule[i]) < 0 {
+			n++
+		}
+	}
+	return n
+}
+
+// shadowProbes are the values a wildcard is filled with to ask what a rule
+// matches. Only a probe the rule itself matches is used, so a rule is never
+// reported against a path it does not answer.
+var shadowProbes = []string{"a", "0", "x/y", ""}
+
+// warnShadowedRules warns about a rule an earlier one answers for outright.
+// Order is the author's to choose, so this reports the dead rule rather than
+// quietly moving it: a rule list generated from config is often emitted in
+// alphabetical order, which puts "/api/*" in front of the "/api/users" it eats.
+func warnShadowedRules(rules []compiledRule) {
+	shadowedRules(rules, func(shadowed, by string) {
+		log.Warnf("[REDIRECT] rule %q never fires: the earlier rule %q matches every path it does. "+
+			"Rules are tried in order, so move the narrower rule first", shadowed, by)
+	})
+}
+
+// shadowedRules hands each rule an earlier one answers for to report, and says
+// whether it found any. Quadratic in the rule count, so it is bounded: a list
+// long enough to cost real time is not one anybody is reading warnings from.
+func shadowedRules(rules []compiledRule, report func(shadowed, by string)) bool {
+	if len(rules) > maxShadowChecked {
+		return false
+	}
+
+	found := false
+	for i, rule := range rules {
+		witnesses := ruleWitnesses(rule.from, rule.pattern)
+		if len(witnesses) == 0 {
+			continue
+		}
+		for j := range i {
+			if !matchesAll(rules[j].pattern, witnesses) {
+				continue
+			}
+			if report == nil {
+				return true
+			}
+			report(rule.from, rules[j].from)
+			found = true
+			break
+		}
+	}
+	return found
+}
+
+// maxShadowChecked bounds the pairs the shadow scan walks, since it compares
+// every rule against every earlier one and runs at startup.
+const maxShadowChecked = 100
+
+// ruleWitnesses returns sample paths the rule matches, built by filling its
+// wildcards with probe values. A probe the rule turns down is dropped, so what
+// comes back is only ever paths this rule answers.
+func ruleWitnesses(from string, pattern *regexp.Regexp) []string {
+	witnesses := make([]string, 0, len(shadowProbes))
+	for _, probe := range shadowProbes {
+		candidate := strings.ReplaceAll(from, "*", probe)
+		if candidate != "" && pattern.MatchString(candidate) {
+			witnesses = append(witnesses, candidate)
+		}
+	}
+	return witnesses
+}
+
+// matchesAll reports whether one pattern answers every witness of another rule,
+// which is what makes that rule dead behind this one.
+func matchesAll(pattern *regexp.Regexp, witnesses []string) bool {
+	for _, witness := range witnesses {
+		if !pattern.MatchString(witness) {
+			return false
+		}
+	}
+	return true
+}
+
+// New creates a new middleware handler
+func New(config ...Config) fiber.Handler {
+	cfg := configDefault(config...)
+
+	for _, rule := range orderedRules(cfg) {
+		k := rule.From
 		// Read the target as the client will: a tab the parser deletes was scored
 		// as author-written host text, so "https://\t$1" passed as naming its own
 		// host while a captured "/evil.com" composed "https:///evil.com".
-		v := urlnorm.AsBrowserReads(cfg.Rules[k])
+		v := urlnorm.AsBrowserReads(rule.To)
 		pattern := strings.ReplaceAll(k, "*", "(.*)")
-		// Anchor both ends so a rule matches the whole path. Without the leading
-		// "^" the pattern matches any suffix, so a request can be redirected by a
-		// rule whose path it only happens to end with (e.g. "/old" would also
-		// redirect "/very/old"). See issue #4476.
-		//
-		// Grouped first, because concatenation binds looser than "|": "/a|/b"
-		// anchored by hand is "(^/a)|(/b$)", which anchors neither branch at both
-		// ends and redirected "/a-extra" and "extra/b". Non-capturing, so the
-		// "$N" tokens still number the author's own groups.
+		// Anchor both ends so a rule matches the whole path rather than any suffix
+		// (see issue #4476). Grouped first because concatenation binds looser than
+		// "|", and non-capturing so the "$N" tokens still number the author's groups.
 		pattern = "^(?:" + pattern + ")$"
 		chunks := authorityChunks(v)
 
@@ -136,6 +243,7 @@ func New(config ...Config) fiber.Handler {
 
 		spanStart, spanEnd := authoritySpan(v)
 		cfg.rulesRegex = append(cfg.rulesRegex, compiledRule{
+			from:            k,
 			pattern:         regexp.MustCompile(pattern),
 			target:          v,
 			authorityChunks: chunks,
@@ -145,15 +253,27 @@ func New(config ...Config) fiber.Handler {
 		})
 	}
 
+	warnShadowedRules(cfg.rulesRegex)
+
+	// Bound before the closure so it captures these alone: capturing cfg kept the
+	// caller's rule map reachable for the life of the app, long after New read it.
+	compiled, statusCode, next := cfg.rulesRegex, cfg.StatusCode, cfg.Next
+
 	// Middleware function
 	return func(c fiber.Ctx) error {
 		// Next request to skip middleware
-		if cfg.Next != nil && cfg.Next(c) {
+		if next != nil && next(c) {
 			return c.Next()
 		}
+		// Read once rather than per rule: under Immutable a Path() is a fresh copy,
+		// and the trailing slashes come off the same way for every rule.
+		path := c.Path()
+		if len(path) > 1 {
+			path = utils.TrimRight(path, '/')
+		}
 		// Rewrite
-		for _, rule := range cfg.rulesRegex {
-			replacer := captureTokens(rule.pattern, c.Path())
+		for _, rule := range compiled {
+			replacer := captureTokens(rule.pattern, path)
 			if replacer == nil {
 				continue
 			}
@@ -169,10 +289,9 @@ func New(config ...Config) fiber.Handler {
 			// and the client drops them anyway, so the guard below always runs
 			// on the location as it will be read.
 			location := urlnorm.AsBrowserReads(replacer.Replace(rule.target))
-			// The target had a scheme and an opaque path, so it named no host at
-			// all. A value writing the "//" that opens one — "myapp:$1@example.com"
-			// against "//evil.com/x" — hands the destination to the request, and
-			// the "@example.com" that looked like it pinned the host is only path.
+			// The target had a scheme and an opaque path, so it named no host at all. A
+			// value writing the "//" that opens one hands the destination to the
+			// request: "myapp:$1@example.com" against "//evil.com/x".
 			if rule.opaquePath {
 				if start, end := authoritySpan(location); start != end {
 					continue
@@ -182,7 +301,7 @@ func New(config ...Config) fiber.Handler {
 				location = keepSameOrigin(location)
 			}
 			location = withRequestQuery(location, utils.UnsafeString(c.RequestCtx().QueryArgs().QueryString()))
-			return c.Redirect().Status(cfg.StatusCode).To(location)
+			return c.Redirect().Status(statusCode).To(location)
 		}
 		return c.Next()
 	}
@@ -255,18 +374,13 @@ func authoritySpan(target string) (start, end int) { //nolint:nonamedreturns // 
 		case i <= 0:
 			return 0, 0
 		case isFileScheme(target):
-			// "file state" takes one slash to reach "file slash state" and one
-			// more to reach the host, and both fold a backslash into a slash. So
-			// the authority opens after any two of them: "file:/\evil.com/share"
-			// and "file:\\evil.com/share" name the host evil.com exactly as
-			// "file://evil.com/share" does, and reading only "//" let a captured
-			// "\evil.com/share" pick the host of a rule targeting "file:/$1".
+			// The authority opens after any two slashes, both of which fold a backslash
+			// in: "file:/\evil.com/share" and "file:\\evil.com/share" name the host
+			// "file://evil.com/share" does.
 			if i+2 >= len(target) || !isSlash(target[i+1]) || !isSlash(target[i+2]) {
-				// Fewer than two, so the parser leaves "file state" for "path
-				// state" and there is no authority: "file:tmp/x" is the path
-				// "/tmp/x" of an empty host, and dropping the rule told the author
-				// something untrue about it. What a value can still do is write
-				// the slashes itself, which the composed location is checked for.
+				// Fewer than two, so there is no authority: "file:tmp/x" is the path "/tmp/x"
+				// of an empty host, and dropping the rule told the author something untrue.
+				// A value writing the slashes itself is caught on the composed location.
 				return 0, 0
 			}
 			start = i + 3
@@ -279,16 +393,9 @@ func authoritySpan(target string) (start, end int) { //nolint:nonamedreturns // 
 		}
 	}
 
-	// Only a special scheme ignores the slashes past the first two: the parser
-	// reaches "special authority ignore slashes" for those alone. Under any
-	// other scheme the third one terminates an empty authority, so "myapp:///$1"
-	// names no host and the capture is path — skipping it read $1 as the host
-	// and the rule was dropped at startup for handing the host away.
-	//
-	// "file" is special but takes its own route through the parser, going from
-	// "file slash state" straight to the host without that ignore step, so
-	// "file:///$1" has the empty authority of a local path. It keeps the
-	// backslash folding, which is why it stays in the special list.
+	// Only a special scheme ignores the slashes past the first two, so under any
+	// other one the third terminates an empty authority. "file" is special but
+	// skips that step, leaving "file:///$1" the empty authority of a local path.
 	if special && !isFileScheme(target) {
 		for start < len(target) && isSlash(target[start]) {
 			start++
@@ -302,10 +409,8 @@ func authoritySpan(target string) (start, end int) { //nolint:nonamedreturns // 
 }
 
 // authorityEnders returns the bytes that end target's authority. WHATWG folds
-// "\" into "/" only under a special scheme; under any other one it is an
-// ordinary authority byte, so "myapp://example.com\@evil.com" is userinfo
-// "example.com\" and a host of evil.com. A target with no scheme is
-// protocol-relative, and the scheme it inherits is special.
+// "\" into "/" only under a special scheme; under any other it is an ordinary
+// authority byte. A scheme-less target inherits the page's, which is special.
 func authorityEnders(target string) string {
 	if i := schemeEnd(target); i > 0 && !isSpecialScheme(target[:i]) {
 		return `/?#`
@@ -397,29 +502,21 @@ func authorityHolds(chunks []authorityChunk, replacer *strings.Replacer, enders 
 		if !chunk.placeholder {
 			continue
 		}
-		// Through the Replacer, not by indexing: it composes the location and
-		// matches patterns in the order given, so "$10" is "$1" then a literal
-		// "0". Indexing judged the tenth capture while the first was spliced in.
-		// Read as the client will, since that is who acts on the composition: the
-		// parser deletes tabs, CRs and LFs, so a value of "\t/ok" reaches "/ok"
-		// and ends the authority there. Judging the tab instead refused a
-		// redirect the client would have followed safely.
+		// Through the Replacer, not by indexing: it matches patterns in the order
+		// given, so "$10" is "$1" then a literal "0". Tabs, CRs and LFs are stripped
+		// because the parser deletes them, so "\t/ok" ends the authority at the "/".
 		value := urlnorm.StripTabCRLF(replacer.Replace(chunk.text))
 
 		if hostPins(chunks[i+1:]) {
-			// The author closed the host past this token, so the value is a
-			// label inside it and only has to stay one. What ends the authority
-			// is scheme-dependent — a backslash does so only under a special
-			// scheme — so "myapp://$1@example.com" takes a value of "user\name"
-			// as the userinfo it is, rather than refusing a redirect whose host
-			// the author had pinned.
+			// The author closed the host past this token, so the value is a label inside
+			// it and only has to stay one. What ends the authority is scheme-dependent: a
+			// backslash does so only under a special scheme.
 			if strings.ContainsAny(value, enders) {
 				return false
 			}
-			// Outside userinfo the "@" and the ":" matter too: either would move
-			// the host or open a port the author did not write. Inside it the
-			// author wrote the "@" that closes it, and a ":" only separates a
-			// password.
+			// Outside userinfo the "@" and the ":" matter too: either would move the host
+			// or open a port the author did not write. Inside it the author wrote the "@"
+			// that closes it, and a ":" only separates a password.
 			if !userinfoCloses(chunks[i+1:]) && strings.ContainsAny(value, "@:") {
 				return false
 			}
@@ -589,14 +686,13 @@ func keepSameOrigin(location string) string {
 
 // https://github.com/labstack/echo/blob/master/middleware/rewrite.go
 func captureTokens(pattern *regexp.Regexp, input string) *strings.Replacer {
-	if len(input) > 1 {
-		input = utils.TrimRight(input, '/')
-	}
-	groups := pattern.FindAllStringSubmatch(input, -1)
+	// One match or none: the pattern is anchored at both ends, so a match spans
+	// the whole input and there is never a second one to look for.
+	groups := pattern.FindStringSubmatch(input)
 	if groups == nil {
 		return nil
 	}
-	values := groups[0][1:]
+	values := groups[1:]
 	replace := make([]string, 2*len(values))
 	for i, v := range values {
 		j := 2 * i
@@ -627,7 +723,7 @@ func authorityEndsInOpenCapture(chunks []authorityChunk) bool {
 		if !chunk.placeholder || hostPins(chunks[i+1:]) {
 			continue
 		}
-		if i > 0 && strings.HasSuffix(chunks[i-1].text, ":") && !chunks[i-1].placeholder {
+		if opensPort(chunks[:i]) {
 			continue // a port position
 		}
 		return true
@@ -659,9 +755,8 @@ func isIPv4Number(label string) bool {
 }
 
 // isIPv4Host reports whether the URL parser reads host as an IPv4 address. It
-// accepts spellings net.ParseIP does not — "127.1" is 127.0.0.1, so is "0x7f.1",
-// and "2130706433" is the same address written as one number — and judging them
-// by net.ParseIP dropped rules whose host the author had pinned outright.
+// accepts spellings net.ParseIP does not: "127.1", "0x7f.1" and "2130706433"
+// all name 127.0.0.1, and judging by net.ParseIP dropped rules pinning a host.
 func isIPv4Host(host string) bool {
 	parts := strings.Split(host, ".")
 	// One trailing dot is allowed and names no part: "127.0.0.1." is an address.
@@ -788,9 +883,9 @@ func pinsHost(literal string, openLeft bool) bool {
 		if j < 0 {
 			return false
 		}
-		// With an opener the author wrote an address — but only a real one, so ask
-		// whether it parses: "[zzz1]" is hex digits, not an address. Brackets hold
-		// IPv6 only, and the colon separates the spellings ParseIP takes both of.
+		// With an opener the author wrote an address, but only a real one counts,
+		// so ask a parser: "[zzz1]" is hex digits and "[02001::1]" is a group of
+		// five, which a check bounding only the group's value reads as an address.
 		inner := literal[j+1 : i]
 		return strings.IndexByte(inner, ':') >= 0 && net.ParseIP(inner) != nil
 	}
@@ -843,441 +938,17 @@ func pinsHost(literal string, openLeft bool) bool {
 		last = trimmed[i+1:]
 	}
 	if isIPv4Number(last) {
-		// An address pins a host only where the author wrote the whole of it.
-		// Open on the left the capture reaches its first octet: against
-		// "%3110.0.0.1", a captured "0" composes "0%3110.0.0.1", octal 0127,
-		// landing on 72.0.0.1. And a leading "." says a capture already supplied
-		// the octets before this text, which is what "https://$1.1" does —
-		// "127.0.0" composes "https://127.0.0.1". Either way the author pinned
-		// only part of an address, which pins no host at all.
+		// An address pins a host only where the author wrote the whole of it. Open on
+		// the left the capture reaches its first octet, and a leading "." says one
+		// already supplied the octets before this text, as "https://$1.1" does.
 		return !openLeft && !tail && isIPv4Host(trimmed)
 	}
 	return true
 }
 
-// patternBytes are the bytes of a rule key that match something other than
-// themselves. "*" is the documented wildcard; the rest are regexp syntax, which
-// reaches the compiled pattern because a key is used as one. "." is among them:
-// it matches any byte, so "/api/user." pins no more of a path than "/api/user"
-// and must not outrank the exact "/api/users". So are "^" and "$": an anchor
-// asserts a position and consumes nothing, and counting one as a path byte put
-// the broader "/p/[a-z]$" ahead of "/p/[a]" on a path they both match.
-const patternBytes = `*.[](){}+?^|\$`
-
-// literalPrefixLen returns how much of a rule's path is pinned before its first
-// wildcard, which is what makes one rule more specific than another it overlaps.
-//
-// An alternation pins only what its least specific branch does: "/very/specific|/x"
-// matches "/x", so it pins one byte rather than the fourteen standing before the
-// "|", which had it outrank the exact "/x" and shadow it outright.
-// Counted in what a path is pinned to rather than in bytes of the rule, since
-// the two part company over escapes: "\x{61}" is six bytes standing for the one
-// byte "a", and measuring the rule made it tie the class "[a-z]" it should
-// outrank, and outrank the "/p/a" it merely equals.
-func literalPrefixLen(rule string) int {
-	return minOverBranches(rule, func(branch string) int {
-		s := literalScanner{rule: branch}
-		return s.pinnedPrefix()
-	})
-}
-
-// literalLen returns how much of a rule's path is pinned in total, which
-// separates two rules whose wildcards start together: "/cdn/*" and "/cdn/*x"
-// tie on prefix, and the lexicographic fallback left the narrower one dead.
-// A group is measured the same way a top-level alternation is, by its least
-// specific branch: "/api/[a-z](specific|x)" pins no more of a path than
-// "/api/[a-z]x" does, and crediting it with the letters of every alternative had
-// it sort first and shadow the narrower rule on every request they share.
-func literalLen(rule string) int {
-	s := literalScanner{rule: rule}
-	return s.widestBranch()
-}
-
-// literalScanner walks a rule once, so that measuring a group can be a recursive
-// call that leaves the position just past the ")" it consumed.
-type literalScanner struct {
-	rule string
-	i    int
-}
-
-// widestBranch counts the bytes pinned from the current position to the end of
-// the rule, or to the ")" closing the group beginning there, and returns the
-// smallest count over the alternation branches it passed — a rule pins only what
-// the widest path it matches does.
-func (s *literalScanner) widestBranch() int {
-	smallest, n := -1, 0
-	inClass := false
-	// atom is what the construct just read pins, which a quantifier that allows
-	// none of it takes back: "/api/a?" and "/api/a{0,1}" pin "/api/" alone.
-	atom := 0
-	for s.i < len(s.rule) {
-		c := s.rule[s.i]
-		switch {
-		case c == '\\':
-			size, pins := escapeSpan(s.rule, s.i)
-			s.i += size
-			atom = 0
-			if pins && !inClass {
-				n, atom = n+1, 1
-			}
-			continue
-		case inClass:
-			// A class matches one byte whatever it lists, so its members pin
-			// nothing: "/api/[a-z]" is no more specific than "/api/[ab]", and
-			// counting them put the broader rule ahead of the narrower one.
-			inClass = c != ']'
-		case c == '[':
-			inClass, atom = true, 0
-		case c == '(':
-			s.i = skipGroupPrefix(s.rule, s.i+1)
-			atom = s.widestBranch()
-			n += atom
-			continue
-		case c == ')':
-			s.i++
-			return smallerBranch(smallest, n)
-		case c == '|':
-			smallest, n, atom = smallerBranch(smallest, n), 0, 0
-		case c == '?':
-			// Zero or one, so what it follows pins nothing at all. "*" is not
-			// read this way: a rule's "*" is Fiber's wildcard, already replaced
-			// by "(.*)" before the key is compiled.
-			n, atom = n-atom, 0
-		case c == '{':
-			// The bounds are syntax, and counting their digits and comma put
-			// "/api/a{0,1}" three bytes ahead of the exact "/api/a" it shadowed.
-			var zeroMin bool
-			s.i, zeroMin = skipQuantifier(s.rule, s.i)
-			if zeroMin {
-				n -= atom
-			}
-			atom = 0
-			continue
-		case strings.IndexByte(patternBytes, c) < 0:
-			n, atom = n+1, 1
-		default:
-			atom = 0
-		}
-		s.i++
-	}
-	return smallerBranch(smallest, n)
-}
-
-// pinnedPrefix counts what the rule pins before its first wildcard, stopping at
-// the first construct that pins nothing — a class, a group, a wildcard, a class
-// escape, or an atom a quantifier makes optional.
-func (s *literalScanner) pinnedPrefix() int {
-	n := 0
-	for s.i < len(s.rule) {
-		size := 1
-		if c := s.rule[s.i]; c == '\\' {
-			pins := false
-			if size, pins = escapeSpan(s.rule, s.i); !pins {
-				return n
-			}
-		} else if strings.IndexByte(patternBytes, c) >= 0 {
-			return n
-		}
-		if quantifierAllowsNone(s.rule, s.i+size) {
-			return n
-		}
-		s.i += size
-		n++
-	}
-	return n
-}
-
-// patternWidth returns how many alternatives a rule expands to, which separates
-// two that pin the same amount: "/p/[a-z](x|y)" matches everything
-// "/p/[a-z]x" does and one path more, so it must not sort ahead of it. Counting
-// only top-level branches left the two tied, and key order put the wider first.
-func patternWidth(rule string) int {
-	s := literalScanner{rule: rule}
-	return s.width()
-}
-
-// width is patternWidth from the current position to the end of the rule or to
-// the ")" closing the group beginning there. The alternatives of a sequence
-// multiply and those of an alternation add, so a group counts wherever it sits.
-func (s *literalScanner) width() int {
-	total, n := 0, 1
-	for s.i < len(s.rule) {
-		switch s.rule[s.i] {
-		case '\\':
-			size, _ := escapeSpan(s.rule, s.i)
-			s.i += size
-			continue
-		case '[':
-			n = clampWidth(n * s.classWidth())
-			continue
-		case '.':
-			// Any byte, so it is the widest single position there is.
-			n = clampWidth(n * 256)
-		case '(':
-			s.i = skipGroupPrefix(s.rule, s.i+1)
-			n = clampWidth(n * s.width())
-			continue
-		case ')':
-			s.i++
-			return clampWidth(total + n)
-		case '|':
-			total, n = clampWidth(total+n), 1
-		}
-		s.i++
-	}
-	return clampWidth(total + n)
-}
-
-// classWidth returns how many bytes the character class at the current position
-// matches, leaving the position just past its "]". A class pins nothing whatever
-// it lists, so this is the only place its breadth is read: it separates two
-// rules that pin the same amount, "[a-z]" matching twenty-six paths where "[a]"
-// matches one.
-func (s *literalScanner) classWidth() int {
-	rule := s.rule
-	j := s.i + 1
-	negated := false
-	if j < len(rule) && rule[j] == '^' {
-		negated, j = true, j+1
-	}
-
-	size := 0
-	if j < len(rule) && rule[j] == ']' {
-		// First inside the brackets, "]" is a member rather than the close.
-		size, j = 1, j+1
-	}
-
-	for j < len(rule) && rule[j] != ']' {
-		switch {
-		case rule[j] == '\\':
-			// A class escape stands for a set of its own, but one is enough to
-			// order it against the members beside it.
-			span, _ := escapeSpan(rule, j)
-			size, j = size+1, j+span
-		case j+2 < len(rule) && rule[j+1] == '-' && rule[j+2] != ']':
-			if lo, hi := rule[j], rule[j+2]; hi >= lo {
-				size += int(hi-lo) + 1
-			}
-			j += 3
-		default:
-			size, j = size+1, j+1
-		}
-	}
-	if j < len(rule) {
-		j++ // past the "]"
-	}
-	s.i = j
-
-	if negated {
-		size = 256 - size
-	}
-	return max(size, 1)
-}
-
-// maxPatternWidth bounds the product a nest of groups builds, since the count is
-// only ever compared against another and nothing needs the exact figure.
-const maxPatternWidth = 1 << 20
-
-func clampWidth(n int) int {
-	return min(n, maxPatternWidth)
-}
-
-// wildcardRank returns 1 for a rule carrying Fiber's "*" wildcard and 0 for one
-// that does not, so the wildcard rule sorts second.
-//
-// The wildcard is expanded to "(.*)" before the key is compiled, so it matches a
-// run of bytes of any length — a breadth no width can stand for, since a width
-// saturates and two saturated rules tie. Ranked here, the width goes on
-// measuring what separates two rules that both carry one.
-//
-// A star inside a character class or a "\Q ... \E" span names itself instead:
-// the expansion leaves "[(.*)]" a class and "\Q(.*)\E" literal text.
-func wildcardRank(rule string) int {
-	for i := 0; i < len(rule); {
-		switch rule[i] {
-		case '\\':
-			if i+1 < len(rule) && rule[i+1] == 'Q' {
-				// Quoted to the matching "\E", or to the end of the rule when
-				// there is none, which is how Go's parser reads one.
-				if end := strings.Index(rule[i+2:], `\E`); end >= 0 {
-					i += 2 + end + 2
-					continue
-				}
-				return 0
-			}
-			size, _ := escapeSpan(rule, i)
-			i += size
-		case '[':
-			s := literalScanner{rule: rule, i: i}
-			s.classWidth() // leaves s.i just past the "]"
-			i = s.i
-		case '*':
-			return 1
-		default:
-			i++
-		}
-	}
-	return 0
-}
-
-// quantifierAllowsNone reports whether a quantifier at i lets what precedes it
-// match nothing, which is what stops "/api/ab?" from pinning the "b".
-func quantifierAllowsNone(rule string, i int) bool {
-	if i >= len(rule) {
-		return false
-	}
-	if rule[i] == '?' {
-		return true
-	}
-	if rule[i] != '{' {
-		return false
-	}
-
-	_, zeroMin := skipQuantifier(rule, i)
-	return zeroMin
-}
-
-// smallerBranch folds one more branch's count into the smallest seen, where -1
-// stands for no branch counted yet.
-func smallerBranch(smallest, n int) int {
-	if smallest < 0 || n < smallest {
-		return n
-	}
-	return smallest
-}
-
-// skipQuantifier returns the index just past the "{m,n}" beginning at i, and
-// whether it allows none of what it follows. An unclosed "{" is an ordinary byte
-// to the regexp parser, so it is left as one here: the index only moves past it.
-func skipQuantifier(rule string, i int) (int, bool) {
-	end := strings.IndexByte(rule[i:], '}')
-	if end < 0 {
-		return i + 1, false
-	}
-
-	body := rule[i+1 : i+end]
-	return i + end + 1, body == "0" || strings.HasPrefix(body, "0,")
-}
-
-// skipGroupPrefix returns the index of a group's body, past the "?" section of a
-// non-capturing, flagged or named group — "(?:", "(?i:", "(?P<id>" — whose bytes
-// are syntax rather than path.
-func skipGroupPrefix(rule string, i int) int {
-	if i >= len(rule) || rule[i] != '?' {
-		return i
-	}
-	for j := i + 1; j < len(rule); j++ {
-		switch rule[j] {
-		case ':', '>':
-			return j + 1
-		case ')':
-			// A flag-only group, "(?i)". Leave the ")" for the caller to close on.
-			return j
-		}
-	}
-	return i
-}
-
-// escapeSpan measures the escape beginning at the backslash at i: how many bytes
-// of the rule it occupies, and whether it stands for one character of a path.
-//
-// Punctuation does — "/a\.b" pins "/a.b" — and so does every spelling that names
-// one character outright, including "\x{61}", "\x61", "\101" and "\t". A letter
-// leading anything else introduces a class or an assertion: "\d" matches any
-// digit, so "/api/\d+" pins no more than "/api/" and must not outrank the exact
-// "/api/1" it would otherwise shadow.
-func escapeSpan(rule string, i int) (int, bool) {
-	if i+1 >= len(rule) {
-		return 1, false // a trailing backslash names nothing
-	}
-
-	switch c := rule[i+1]; {
-	case c == 'a', c == 'f', c == 'n', c == 'r', c == 't', c == 'v':
-		return 2, true // a control character written by name
-	case c == 'x':
-		return hexEscapeSpan(rule, i)
-	case c >= '0' && c <= '7':
-		// Octal, up to three digits: "\101" is "A".
-		n := 2
-		for n < 4 && i+n < len(rule) && rule[i+n] >= '0' && rule[i+n] <= '7' {
-			n++
-		}
-		return n, true
-	case c >= 'a' && c <= 'z', c >= 'A' && c <= 'Z', c >= '0' && c <= '9':
-		// "\d", "\w", "\p{Greek}", "\b" — a class or an assertion. Measured as
-		// two bytes even where it runs longer, which only ends the prefix sooner.
-		return 2, false
-	default:
-		return 2, true
-	}
-}
-
-// hexEscapeSpan measures a "\xHH" or "\x{...}" escape, both of which name one
-// character. An incomplete one is no literal, and the regexp would not compile.
-func hexEscapeSpan(rule string, i int) (int, bool) {
-	if i+2 < len(rule) && rule[i+2] == '{' {
-		if end := strings.IndexByte(rule[i+2:], '}'); end >= 0 {
-			return 2 + end + 1, true
-		}
-		return 2, false
-	}
-	if i+3 < len(rule) && isHexDigit(rule[i+2]) && isHexDigit(rule[i+3]) {
-		return 4, true
-	}
-	return 2, false
-}
-
-func isHexDigit(c byte) bool {
-	_, ok := unhex(c)
-	return ok
-}
-
-// minOverBranches applies measure to each top-level alternation branch of rule
-// and returns the smallest result, since a rule is only as specific as the least
-// specific path it can match. Without a "|" that is just measure(rule).
-func minOverBranches(rule string, measure func(string) int) int {
-	smallest := -1
-	for _, branch := range splitAlternation(rule) {
-		if n := measure(branch); smallest < 0 || n < smallest {
-			smallest = n
-		}
-	}
-	return smallest
-}
-
-// splitAlternation splits rule on the "|" bytes that separate its top-level
-// branches: unescaped, and outside any group or character class, where a "|" is
-// an ordinary member rather than a separator.
-func splitAlternation(rule string) []string {
-	var branches []string
-	depth, start := 0, 0
-	inClass := false
-	for i := 0; i < len(rule); i++ {
-		switch c := rule[i]; {
-		case c == '\\' && i+1 < len(rule):
-			i++
-		case inClass:
-			inClass = c != ']'
-		case c == '[':
-			inClass = true
-		case c == '(':
-			depth++
-		case c == ')':
-			if depth > 0 {
-				depth--
-			}
-		case c == '|' && depth == 0:
-			branches = append(branches, rule[start:i])
-			start = i + 1
-		}
-	}
-	return append(branches, rule[start:])
-}
-
 // opensPort reports whether the nearest literal before a token ends in the colon
 // that opens a port. Several captures may compose one — "example.com:$1$2" — so
-// placeholders in between are stepped over; each is asked for digits in turn,
-// which is the same question asked of the whole.
+// placeholders in between are stepped over and each asked for digits in turn.
 func opensPort(before []authorityChunk) bool {
 	for _, chunk := range slices.Backward(before) {
 		if chunk.placeholder {

@@ -1,9 +1,10 @@
 package redirect
 
 import (
-	"context"
 	"net/http"
+	"net/http/httptest"
 	"net/url"
+	"regexp"
 	"strconv"
 	"strings"
 	"testing"
@@ -13,44 +14,85 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// testApp builds an app running the middleware over rules, with a fall-through
+// route so a request no rule redirects answers 200 "fell through".
+func testApp(rules []Rule, unescape bool) *fiber.App {
+	app := fiber.New(fiber.Config{UnescapePath: unescape})
+	app.Use(New(Config{RuleList: rules, StatusCode: fiber.StatusFound}))
+	app.Get("/*", func(c fiber.Ctx) error {
+		return c.SendString("fell through")
+	})
+	return app
+}
+
+// get sends one GET to app and returns the response status and Location.
+func get(t *testing.T, app *fiber.App, path string) (status int, location string) { //nolint:nonamedreturns // names document the pair
+	t.Helper()
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, path, http.NoBody))
+	require.NoError(t, err)
+	return resp.StatusCode, resp.Header.Get("Location")
+}
+
+// requireWin asserts that one GET for path redirects to want.
+func requireWinMap(t *testing.T, rules map[string]string, path, want string) {
+	t.Helper()
+	app := fiber.New()
+	app.Use(New(Config{Rules: rules, StatusCode: fiber.StatusFound}))
+	app.Get("/*", func(c fiber.Ctx) error {
+		return c.SendString("fell through")
+	})
+	status, location := get(t, app, path)
+	require.Equal(t, fiber.StatusFound, status, "request %q", path)
+	require.Equal(t, want, location, "request %q", path)
+}
+
+func requireWin(t *testing.T, rules []Rule, path, want string) {
+	t.Helper()
+	status, location := get(t, testApp(rules, false), path)
+	require.Equal(t, fiber.StatusFound, status, "request %q", path)
+	require.Equal(t, want, location, "request %q", path)
+}
+
+// requireRule builds a one-rule app and asserts where the request lands:
+// redirected to want, or fallen through with no Location where want is "".
+func requireRule(t *testing.T, unescape bool, pattern, target, request, want string) {
+	t.Helper()
+	status, location := get(t, testApp([]Rule{{From: pattern, To: target}}, unescape), request)
+	if want == "" {
+		require.Equal(t, fiber.StatusOK, status, "the rule must not fire on %q", request)
+		require.Empty(t, location)
+		return
+	}
+	require.Equal(t, fiber.StatusFound, status, "request %q", request)
+	require.Equal(t, want, location, "request %q", request)
+}
+
 func Test_Redirect(t *testing.T) {
-	app := *fiber.New()
+	app := fiber.New()
 
 	app.Use(New(Config{
-		Rules: map[string]string{
-			"/default": "google.com",
-		},
+		RuleList:   []Rule{{From: "/default", To: "google.com"}},
 		StatusCode: fiber.StatusMovedPermanently,
 	}))
 	app.Use(New(Config{
-		Rules: map[string]string{
-			"/default/*": "fiber.wiki",
-		},
+		RuleList:   []Rule{{From: "/default/*", To: "fiber.wiki"}},
 		StatusCode: fiber.StatusTemporaryRedirect,
 	}))
 	app.Use(New(Config{
-		Rules: map[string]string{
-			"/redirect/*": "$1",
-		},
+		RuleList:   []Rule{{From: "/redirect/*", To: "$1"}},
 		StatusCode: fiber.StatusSeeOther,
 	}))
 	app.Use(New(Config{
-		Rules: map[string]string{
-			"/pattern/*": "golang.org",
-		},
+		RuleList:   []Rule{{From: "/pattern/*", To: "golang.org"}},
 		StatusCode: fiber.StatusFound,
 	}))
 
 	app.Use(New(Config{
-		Rules: map[string]string{
-			"/": "/swagger",
-		},
+		RuleList:   []Rule{{From: "/", To: "/swagger"}},
 		StatusCode: fiber.StatusMovedPermanently,
 	}))
 	app.Use(New(Config{
-		Rules: map[string]string{
-			"/params": "/with_params",
-		},
+		RuleList:   []Rule{{From: "/params", To: "/with_params"}},
 		StatusCode: fiber.StatusMovedPermanently,
 	}))
 
@@ -122,60 +164,36 @@ func Test_Redirect(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, tt.url, http.NoBody)
-			require.NoError(t, err)
-			req.Header.Set("Location", "github.com/gofiber/redirect")
-			resp, err := app.Test(req)
-
-			require.NoError(t, err)
-			require.Equal(t, tt.statusCode, resp.StatusCode)
-			require.Equal(t, tt.redirectTo, resp.Header.Get("Location"))
+			status, location := get(t, app, tt.url)
+			require.Equal(t, tt.statusCode, status)
+			require.Equal(t, tt.redirectTo, location)
 		})
 	}
 }
 
-// Test_Redirect_StartAnchor verifies that a rule only matches from the start of
-// the path, so a request is not redirected by a rule whose path it merely ends
-// with (issue #4476).
+// Test_Redirect_StartAnchor verifies a rule only matches from the start of the path (issue #4476).
 func Test_Redirect_StartAnchor(t *testing.T) {
 	t.Parallel()
 
 	app := fiber.New()
 	app.Use(New(Config{
-		Rules: map[string]string{
-			"/old": "/new",
-		},
+		RuleList:   []Rule{{From: "/old", To: "/new"}},
 		StatusCode: fiber.StatusMovedPermanently,
 	}))
-	app.Get("/very/old", func(c fiber.Ctx) error {
-		return c.SendString("not redirected")
-	})
+	app.Get("/very/old", func(c fiber.Ctx) error { return c.SendString("not redirected") })
 
 	// The rule matches the whole path and redirects.
-	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/old", http.NoBody)
-	require.NoError(t, err)
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusMovedPermanently, resp.StatusCode)
-	require.Equal(t, "/new", resp.Header.Get("Location"))
+	status, location := get(t, app, "/old")
+	require.Equal(t, fiber.StatusMovedPermanently, status)
+	require.Equal(t, "/new", location)
 
 	// A path that only ends with the rule path must not be redirected.
-	req, err = http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/very/old", http.NoBody)
-	require.NoError(t, err)
-	resp, err = app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
-	require.Empty(t, resp.Header.Get("Location"))
+	status, location = get(t, app, "/very/old")
+	require.Equal(t, fiber.StatusOK, status)
+	require.Empty(t, location)
 }
 
-// Test_Redirect_SameOriginTargets verifies that captured path segments cannot
-// turn a path-only target into a redirect off this origin.
-//
-// The path arrives with its slash runs intact, so the documented rule
-// "/api/*" -> "/$1" composed "Location: //evil.com" from a request for
-// "/api//evil.com" — a network-path reference the browser follows to evil.com —
-// and "/redirect/*" -> "$1" composed an outright absolute redirect from
-// "/redirect/https://evil.com".
+// Test_Redirect_SameOriginTargets verifies a captured path segment cannot take a path-only target off this origin.
 func Test_Redirect_SameOriginTargets(t *testing.T) {
 	t.Parallel()
 
@@ -196,8 +214,7 @@ func Test_Redirect_SameOriginTargets(t *testing.T) {
 		{"capture below a prefix", "/old/*", "/new/$1", "/old//evil.com", "/new//evil.com"},
 		{"relative reference", "/g", "google.com", "/g", "google.com"},
 
-		// A target that names its own authority is the author's call, so it is
-		// left exactly as configured.
+		// A target naming its own authority is the author's call, so it is left as configured.
 		{"absolute target", "/ext/*", "https://cdn.example.com/$1", "/ext/a", "https://cdn.example.com/a"},
 		{"protocol relative target", "/pr/*", "//cdn.example.com/$1", "/pr/a", "//cdn.example.com/a"},
 	}
@@ -206,30 +223,12 @@ func Test_Redirect_SameOriginTargets(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			app := fiber.New()
-			app.Use(New(Config{
-				Rules:      map[string]string{tc.pattern: tc.target},
-				StatusCode: fiber.StatusFound,
-			}))
-
-			req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, tc.request, http.NoBody)
-			require.NoError(t, err)
-			resp, err := app.Test(req)
-			require.NoError(t, err)
-			require.Equal(t, fiber.StatusFound, resp.StatusCode)
-			require.Equal(t, tc.want, resp.Header.Get("Location"))
+			requireRule(t, false, tc.pattern, tc.target, tc.request, tc.want)
 		})
 	}
 }
 
-// Test_Redirect_SameOriginTargets_Unescaped covers the same guard when
-// UnescapePath decodes the capture before it is spliced in.
-//
-// Two rewrites reach a Location before anything navigates: a recipient strips
-// leading and trailing whitespace from the field value (RFC 9110 Section 5.5),
-// and the WHATWG URL parser removes every ASCII tab, LF and CR before parsing.
-// Checking the composed bytes alone missed both, so " //evil.com" and
-// "/\t/evil.com" still reached evil.com.
+// Test_Redirect_SameOriginTargets_Unescaped covers the same guard once UnescapePath decodes the capture.
 func Test_Redirect_SameOriginTargets_Unescaped(t *testing.T) {
 	t.Parallel()
 
@@ -245,8 +244,7 @@ func Test_Redirect_SameOriginTargets_Unescaped(t *testing.T) {
 		{"tab before scheme", "/r/*", "$1", "/r/%09https://evil.com", "/https://evil.com"},
 		{"interior tab", "/api/*", "/$1", "/api/%09/evil.com", "/evil.com"},
 
-		// A space is not removed by the URL parser — it gets percent-encoded —
-		// so an interior one cannot form an authority and is left alone.
+		// A space is percent-encoded rather than removed, so an interior one forms no authority.
 		{"interior space", "/api/*", "/$1", "/api/%20/evil.com", "/ /evil.com"},
 		{"ordinary capture", "/api/*", "/$1", "/api/users", "/users"},
 	}
@@ -255,30 +253,12 @@ func Test_Redirect_SameOriginTargets_Unescaped(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			app := fiber.New(fiber.Config{UnescapePath: true})
-			app.Use(New(Config{
-				Rules:      map[string]string{tc.pattern: tc.target},
-				StatusCode: fiber.StatusFound,
-			}))
-
-			req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, tc.request, http.NoBody)
-			require.NoError(t, err)
-			resp, err := app.Test(req)
-			require.NoError(t, err)
-			require.Equal(t, fiber.StatusFound, resp.StatusCode)
-			require.Equal(t, tc.want, resp.Header.Get("Location"))
+			requireRule(t, true, tc.pattern, tc.target, tc.request, tc.want)
 		})
 	}
 }
 
-// Test_Redirect_CaptureInsideAuthority asserts that a capture spliced into the
-// target's own authority cannot cut that authority short and pick a different
-// host.
-//
-// A target like "https://$1.assets.example.com/" is a plausible way to route
-// per tenant, and the author means $1 to be a label. A capture holding
-// "evil.com/x" composed "https://evil.com/x.assets.example.com/", whose
-// authority ends at that slash — so the browser went to evil.com.
+// Test_Redirect_CaptureInsideAuthority asserts a capture in the target's authority cannot pick another host.
 func Test_Redirect_CaptureInsideAuthority(t *testing.T) {
 	t.Parallel()
 
@@ -293,30 +273,25 @@ func Test_Redirect_CaptureInsideAuthority(t *testing.T) {
 		{"protocol relative target", "//$1.assets.example.com/", "/cdn/evil.com/x", ""},
 		{"question mark escapes", "https://$1.assets.example.com/", "/cdn/evil.com%3Fa", ""},
 
-		// An "@" makes everything before it userinfo, so the host becomes the
-		// capture's — no authority-ending byte required.
+		// An "@" makes everything before it userinfo, so the host becomes the capture's.
 		{"at sign makes the host userinfo", "https://$1.assets.example.com/", "/cdn/a@evil.com", ""},
 		{"at sign at the end of the authority", "https://cdn.example.com$1", "/cdn/@evil.com", ""},
-		// A capture that does not open a new component extends the host the
-		// author wrote.
+		// A capture that does not open a new component extends the host the author wrote.
 		{"bare value extends the host", "https://cdn.example.com$1", "/cdn/x", ""},
 
 		// A clean label still composes.
 		{"clean label", "https://$1.assets.example.com/", "/cdn/images", "https://images.assets.example.com/"},
 		{"clean label protocol relative", "//$1.assets.example.com/", "/cdn/images", "//images.assets.example.com/"},
 
-		// A capture in the path may hold slashes freely — it cannot reach the
-		// authority, which the target fixed.
+		// A capture in the path may hold slashes freely; the target fixed the authority.
 		{"path capture keeps slashes", "https://cdn.example.com/$1", "/cdn/a/b/c", "https://cdn.example.com/a/b/c"},
 		{"path capture with a host-like value", "https://cdn.example.com/$1", "/cdn/evil.com/x", "https://cdn.example.com/evil.com/x"},
 
-		// A target handing the whole authority to the capture would let the
-		// request choose the host, so the rule never fires. New warns why.
+		// A target handing the whole authority to the capture never fires, and New warns why.
 		{"whole authority is the capture", "https://$1", "/cdn/anything/x", ""},
 		{"protocol relative whole authority", "//$1", "/cdn/anything", ""},
 		{"scheme with no authority", "https:$1", "/cdn//evil.com", ""},
-		// Separators alone pin nothing, so a value opening a path does not end
-		// an authority the author never wrote: "///evil.com." is read host-first.
+		// Separators alone pin nothing: "///evil.com." is read host-first, so a value opening a path ends no authority.
 		{"separator only before the capture", "//$1.", "/cdn/evil.com", ""},
 	}
 
@@ -324,33 +299,12 @@ func Test_Redirect_CaptureInsideAuthority(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			app := fiber.New(fiber.Config{UnescapePath: true})
-			app.Use(New(Config{
-				Rules:      map[string]string{"/cdn/*": tc.target},
-				StatusCode: fiber.StatusFound,
-			}))
-			app.Get("/*", func(c fiber.Ctx) error { return c.SendString("fell through") })
-
-			req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, tc.request, http.NoBody)
-			require.NoError(t, err)
-			resp, err := app.Test(req)
-			require.NoError(t, err)
-
-			if tc.want == "" {
-				require.Equal(t, fiber.StatusOK, resp.StatusCode, "the rule must not fire")
-				require.Empty(t, resp.Header.Get("Location"))
-				return
-			}
-			require.Equal(t, fiber.StatusFound, resp.StatusCode)
-			require.Equal(t, tc.want, resp.Header.Get("Location"))
+			requireRule(t, true, "/cdn/*", tc.target, tc.request, tc.want)
 		})
 	}
 }
 
-// Test_Redirect_CaptureInUserinfo covers a capture the author placed before an
-// "@" they wrote themselves. The host starts after the last "@", so the value is
-// userinfo: ":" separates a password there and a further "@" only lengthens it,
-// while the four bytes that end an authority outright still have to stay out.
+// Test_Redirect_CaptureInUserinfo covers a capture before an "@" the author wrote, where the value is only userinfo.
 func Test_Redirect_CaptureInUserinfo(t *testing.T) {
 	t.Parallel()
 
@@ -370,84 +324,30 @@ func Test_Redirect_CaptureInUserinfo(t *testing.T) {
 		{"question mark", "https://$1@example.com/", "/cdn/evil.com%3Fx", ""},
 		{"fragment", "https://$1@example.com/", "/cdn/evil.com%23x", ""},
 
-		// Past the author's "@" the capture is a host label again, so the label
-		// rule applies to it as it would anywhere else in the host.
+		// Past the author's "@" the capture is a host label again.
 		{"label after the at sign", "https://user@$1.example.com/", "/cdn/a%3Ab", ""},
 		{"clean label after the at sign", "https://user@$1.example.com/", "/cdn/images", "https://user@images.example.com/"},
 	}
-
-	// Every composed location names a host the author wrote, whatever the value
-	// put in the userinfo before it.
-	const wantHost = "example.com"
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			app := fiber.New(fiber.Config{UnescapePath: true})
-			app.Use(New(Config{
-				Rules:      map[string]string{"/cdn/*": tc.target},
-				StatusCode: fiber.StatusFound,
-			}))
-			app.Get("/*", func(c fiber.Ctx) error { return c.SendString("fell through") })
-
-			req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, tc.request, http.NoBody)
-			require.NoError(t, err)
-			resp, err := app.Test(req)
-			require.NoError(t, err)
-
-			if tc.want == "" {
-				require.Equal(t, fiber.StatusOK, resp.StatusCode, "the rule must not fire")
-				require.Empty(t, resp.Header.Get("Location"))
-				return
-			}
-			require.Equal(t, fiber.StatusFound, resp.StatusCode)
-			require.Equal(t, tc.want, resp.Header.Get("Location"))
-
-			// Whatever the value did, the host is still the author's — a label
-			// they left to the capture sits under it.
-			u, err := url.Parse(resp.Header.Get("Location"))
-			require.NoError(t, err)
-			require.True(t, u.Host == wantHost || strings.HasSuffix(u.Host, "."+wantHost), "host %q", u.Host)
+			requireRule(t, true, "/cdn/*", tc.target, tc.request, tc.want)
 		})
 	}
 }
 
-// Test_Redirect_CaptureEndingTheAuthority covers a target whose placeholder
-// ends its authority, which is a natural way to keep the request's own path:
-// the capture must open a new component rather than extend the host.
+// Test_Redirect_CaptureEndingTheAuthority covers a placeholder ending the authority, which must open a new component.
 func Test_Redirect_CaptureEndingTheAuthority(t *testing.T) {
 	t.Parallel()
 
 	// "/cdn*" leaves the leading slash in the capture, so $1 supplies the path.
-	app := fiber.New()
-	app.Use(New(Config{
-		Rules:      map[string]string{"/cdn*": "https://cdn.example.com$1"},
-		StatusCode: fiber.StatusFound,
-	}))
-	app.Get("/*", func(c fiber.Ctx) error { return c.SendString("fell through") })
-
-	get := func(target string) (int, string) {
-		req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, target, http.NoBody)
-		require.NoError(t, err)
-		resp, err := app.Test(req)
-		require.NoError(t, err)
-		return resp.StatusCode, resp.Header.Get("Location")
-	}
-
-	status, location := get("/cdn/foo.png")
-	require.Equal(t, fiber.StatusFound, status, "a capture that opens a path must still redirect")
-	require.Equal(t, "https://cdn.example.com/foo.png", location)
-
-	status, location = get("/cdn/a/b/c")
-	require.Equal(t, fiber.StatusFound, status)
-	require.Equal(t, "https://cdn.example.com/a/b/c", location)
-
-	// The capture carries the '@' into the path, past the authority, so the
-	// host is still the author's.
-	status, location = get("/cdn/@evil.com")
-	require.Equal(t, fiber.StatusFound, status)
-	require.Equal(t, "https://cdn.example.com/@evil.com", location)
+	const target = "https://cdn.example.com$1"
+	requireRule(t, false, "/cdn*", target, "/cdn/foo.png", "https://cdn.example.com/foo.png")
+	requireRule(t, false, "/cdn*", target, "/cdn/a/b/c", "https://cdn.example.com/a/b/c")
+	// The capture carries the "@" into the path, so the host is still the author's.
+	requireRule(t, false, "/cdn*", target, "/cdn/@evil.com", "https://cdn.example.com/@evil.com")
 }
 
 func Test_AuthorityChunks(t *testing.T) {
@@ -481,8 +381,7 @@ func Test_AuthorityChunks(t *testing.T) {
 		{text: ":8080"},
 	}, authorityChunks("https://$1:8080"))
 
-	// A literal between two captures is open on the left, unlike one that
-	// starts the authority — the only place that distinction is made.
+	// A literal between two captures is open on the left, unlike one starting the authority.
 	require.Equal(t, []authorityChunk{
 		{text: "$1", placeholder: true},
 		{text: "xyz:"},
@@ -494,19 +393,12 @@ func Test_AuthorityChunks(t *testing.T) {
 		{text: "$1", placeholder: true},
 	}, authorityChunks("https://xyz.example.com$1"))
 
-	// A target that is nothing but the token: the author picked the
-	// destination outright, and authorityHolds leaves it alone.
+	// A target that is nothing but the token: the author picked the destination outright.
 	require.Equal(t, []authorityChunk{{text: "$1", placeholder: true}}, authorityChunks("https://$1"))
 	require.Equal(t, []authorityChunk{{text: "$12", placeholder: true}}, authorityChunks("//$12"))
 }
 
-// Test_Redirect_CaptureBoundedByTheTarget covers a token that closes the
-// authority but not the target — a port, or a host prefix with a path after it.
-//
-// Such a token is bounded by the author's own text, so it takes the content
-// check rather than the "must open the next component" rule. Treating it like a
-// token at the end of the target made every real value fail that rule, and the
-// affected rules silently stopped redirecting.
+// Test_Redirect_CaptureBoundedByTheTarget covers a token that closes the authority but not the target.
 func Test_Redirect_CaptureBoundedByTheTarget(t *testing.T) {
 	t.Parallel()
 
@@ -521,19 +413,14 @@ func Test_Redirect_CaptureBoundedByTheTarget(t *testing.T) {
 		// The value is still part of the authority, so it may not restructure it.
 		{"at sign in a port", "https://cdn.example.com:$1/health", "/t/80@evil.com", ""},
 
-		// A capture that ends the host is refused even where the target
-		// continues past it: "evil.com" would compose "example.comevil.com",
-		// a domain someone can register. What follows in the target makes no
-		// difference, because the host is already decided by then.
+		// A capture ending the host is refused even where the target continues: "evil.com" composes "example.comevil.com".
 		{"host extended before a path", "https://example.com$1/health", "/t/evil.com", ""},
 		{"host prefix with a path after", "https://tenant-$1/app", "/t/evil.com", ""},
 		{"slash in a host prefix", "https://tenant-$1/app", "/t/evil.com%2Fx", ""},
 		// Opening a path closes the host at the author's own text.
 		{"capture opens a path", "https://example.com$1/health", "/t/%2Ffoo", "https://example.com/foo/health"},
 
-		// A token right after the port colon ends the target, but a port cannot
-		// extend a host and the URL parser rejects a non-numeric one outright,
-		// so a digit run is honored.
+		// A token after the port colon ends the target, but the parser rejects a non-numeric port, so digits are honored.
 		{"port at the end of the target", "https://cdn.example.com:$1", "/t/8080", "https://cdn.example.com:8080"},
 		{"non-numeric port", "https://cdn.example.com:$1", "/t/80@evil.com", ""},
 		{"port extended into a host", "https://cdn.example.com:$1", "/t/8080.evil.com", ""},
@@ -543,120 +430,46 @@ func Test_Redirect_CaptureBoundedByTheTarget(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			app := fiber.New(fiber.Config{UnescapePath: true})
-			app.Use(New(Config{
-				Rules:      map[string]string{"/t/*": tc.target},
-				StatusCode: fiber.StatusFound,
-			}))
-			app.Get("/*", func(c fiber.Ctx) error { return c.SendString("fell through") })
-
-			req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, tc.request, http.NoBody)
-			require.NoError(t, err)
-			resp, err := app.Test(req)
-			require.NoError(t, err)
-
-			if tc.want == "" {
-				require.Equal(t, fiber.StatusOK, resp.StatusCode, "the rule must not fire")
-				require.Empty(t, resp.Header.Get("Location"))
-				return
-			}
-			require.Equal(t, fiber.StatusFound, resp.StatusCode)
-			require.Equal(t, tc.want, resp.Header.Get("Location"))
+			requireRule(t, true, "/t/*", tc.target, tc.request, tc.want)
 		})
 	}
 }
 
-// Test_Redirect_CaptureClosingTheHost covers the two ways a capture can end up
-// naming the host even though it is not the last chunk of the target's
-// authority.
-//
-// A trailing token that resolves to empty contributes nothing, so the one
-// before it closes the host; and a literal made only of the separators that may
-// trail a hostname pins nothing, since "evil.com." is the same host as
-// "evil.com" with the DNS root spelled out. Judging each token by its position
-// alone let "https://$1$2" with an empty $2 treat $1 as an interior label, and
-// the request named the host outright.
+// Test_Redirect_CaptureClosingTheHost covers a capture naming the host without being the target's last chunk.
 func Test_Redirect_CaptureClosingTheHost(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
 		name    string
-		pattern string
 		target  string
 		request string
 		want    string // "" means the rule must not fire
 	}{
-		{"empty trailing capture", "/a/*x*", "https://$1$2", "/a/evil.comx", ""},
-		{"empty trailing capture after a dot", "/a/*x*", "https://$1.$2", "/a/evil.comx", ""},
+		{"empty trailing capture", "https://$1$2", "/a/evil.comx", ""},
+		{"empty trailing capture after a dot", "https://$1.$2", "/a/evil.comx", ""},
 
-		// An empty trailing capture is fine where the author's own text still
-		// closes the host.
-		{"author text closes the host", "/a/*x*", "https://$1.assets.example.com$2", "/a/tenantx", "https://tenant.assets.example.com"},
+		// An empty trailing capture is fine where the author's own text still closes the host.
+		{"author text closes the host", "https://$1.assets.example.com$2", "/a/tenantx", "https://tenant.assets.example.com"},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			app := fiber.New()
-			app.Use(New(Config{
-				Rules:      map[string]string{tc.pattern: tc.target},
-				StatusCode: fiber.StatusFound,
-			}))
-			app.Get("/*", func(c fiber.Ctx) error { return c.SendString("fell through") })
-
-			req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, tc.request, http.NoBody)
-			require.NoError(t, err)
-			resp, err := app.Test(req)
-			require.NoError(t, err)
-
-			if tc.want == "" {
-				require.Equal(t, fiber.StatusOK, resp.StatusCode, "the rule must not fire")
-				require.Empty(t, resp.Header.Get("Location"))
-				return
-			}
-			require.Equal(t, fiber.StatusFound, resp.StatusCode)
-			require.Equal(t, tc.want, resp.Header.Get("Location"))
+			requireRule(t, false, "/a/*x*", tc.target, tc.request, tc.want)
 		})
 	}
 }
 
-// Test_Redirect_TenthCaptureInAuthority pins that the guard judges what the
-// Replacer will actually splice in.
-//
-// strings.Replacer matches its patterns in the order they were given, so "$10"
-// is consumed as "$1" followed by a literal "0". Resolving the token by index
-// instead checked the tenth capture while the first was the one reaching the
-// host, and a rule with ten or more wildcards was an open redirect straight
-// past the guard.
+// Test_Redirect_TenthCaptureInAuthority pins the guard on what the Replacer splices in, "$10" being "$1" then "0".
 func Test_Redirect_TenthCaptureInAuthority(t *testing.T) {
 	t.Parallel()
 
-	app := fiber.New()
-	app.Use(New(Config{
-		Rules:      map[string]string{"/t/*/*/*/*/*/*/*/*/*/*": "https://$10.cdn.example.com/"},
-		StatusCode: fiber.StatusFound,
-	}))
-	app.Get("/*", func(c fiber.Ctx) error { return c.SendString("fell through") })
-
-	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet,
-		"/t/evil.com/x/b/c/d/e/f/g/h/i/tenant", http.NoBody)
-	require.NoError(t, err)
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-
-	require.Equal(t, fiber.StatusOK, resp.StatusCode, "the rule must not fire")
-	require.Empty(t, resp.Header.Get("Location"))
+	requireRule(t, false, "/t/*/*/*/*/*/*/*/*/*/*", "https://$10.cdn.example.com/",
+		"/t/evil.com/x/b/c/d/e/f/g/h/i/tenant", "")
 }
 
-// Test_Redirect_ExtraSlashesBeforeTheCapture covers targets that open their
-// authority with more than two slashes.
-//
-// The URL parser's special-authority-ignore-slashes state skips the whole run
-// before it reads the host, so "///evil.com" is evil.com. Stopping the authority
-// span at the first of those slashes instead made such a target look like it had
-// an empty authority: no chunks for the guard to walk, and still "absolute"
-// enough that the same-origin fallback was skipped too.
+// Test_Redirect_ExtraSlashesBeforeTheCapture covers a target opening its authority with more than two slashes.
 func Test_Redirect_ExtraSlashesBeforeTheCapture(t *testing.T) {
 	t.Parallel()
 
@@ -672,8 +485,7 @@ func Test_Redirect_ExtraSlashesBeforeTheCapture(t *testing.T) {
 		{"scheme with three slashes", "https:///$1", "/go/evil.com", ""},
 		{"scheme then backslash", `https://\$1`, "/go/evil.com", ""},
 
-		// A host the author wrote after the run is still their choice, and the
-		// capture only reaches the path.
+		// A host the author wrote after the run is still their choice.
 		{"fixed host after the run", "///static/$1", "/go/x", "///static/x"},
 	}
 
@@ -681,44 +493,21 @@ func Test_Redirect_ExtraSlashesBeforeTheCapture(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			app := fiber.New()
-			app.Use(New(Config{
-				Rules:      map[string]string{"/go/*": tc.target},
-				StatusCode: fiber.StatusFound,
-			}))
-			app.Get("/*", func(c fiber.Ctx) error { return c.SendString("fell through") })
-
-			req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, tc.request, http.NoBody)
-			require.NoError(t, err)
-			resp, err := app.Test(req)
-			require.NoError(t, err)
-
-			if tc.want == "" {
-				require.Equal(t, fiber.StatusOK, resp.StatusCode, "the rule must not fire")
-				require.Empty(t, resp.Header.Get("Location"))
-				return
-			}
-			require.Equal(t, fiber.StatusFound, resp.StatusCode)
-			require.Equal(t, tc.want, resp.Header.Get("Location"))
+			requireRule(t, false, "/go/*", tc.target, tc.request, tc.want)
 		})
 	}
 }
 
-// Test_Redirect_OverlappingRulesAreDeterministic pins that two patterns matching
-// the same path resolve the same way on every run.
-//
-// The rules used to be held in a map and walked in its randomized order, so the
-// winner changed run to run — and once a rule could be refused and fall through
-// to the next, so did whether there was a redirect at all.
+// Test_Redirect_OverlappingRulesAreDeterministic pins that two patterns matching one path resolve the same every run.
 func Test_Redirect_OverlappingRulesAreDeterministic(t *testing.T) {
 	t.Parallel()
 
 	build := func() *fiber.App {
 		app := fiber.New()
 		app.Use(New(Config{
-			Rules: map[string]string{
-				"/cdn/*":  "/first/$1",
-				"/cdn/*x": "/second/$1",
+			RuleList: []Rule{
+				{From: "/cdn/*", To: "/first/$1"},
+				{From: "/cdn/*x", To: "/second/$1"},
 			},
 			StatusCode: fiber.StatusFound,
 		}))
@@ -726,29 +515,20 @@ func Test_Redirect_OverlappingRulesAreDeterministic(t *testing.T) {
 		return app
 	}
 
-	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/cdn/ax", http.NoBody)
-	require.NoError(t, err)
-	resp, err := build().Test(req)
+	resp, err := build().Test(httptest.NewRequest(fiber.MethodGet, "/cdn/ax", http.NoBody))
 	require.NoError(t, err)
 	first := resp.Header.Get("Location")
 	require.NotEmpty(t, first)
 
-	// Rebuilding the middleware re-walks the rules map, which is where the
-	// randomization came from.
+	// Rebuilding the middleware re-walks the rules map, which is where the randomization came from.
 	for range 20 {
-		req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/cdn/ax", http.NoBody)
-		require.NoError(t, err)
-		resp, err := build().Test(req)
+		resp, err := build().Test(httptest.NewRequest(fiber.MethodGet, "/cdn/ax", http.NoBody))
 		require.NoError(t, err)
 		require.Equal(t, first, resp.Header.Get("Location"))
 	}
 }
 
-// Test_Redirect_PortDoesNotPinTheHost covers a capture followed only by a port.
-//
-// A port closes nothing: "evil.com:8080" is still evil.com. Counting the
-// literal ":8080" as author-written host text left the capture beside it judged
-// as a harmless interior label, and the request named the host outright.
+// Test_Redirect_PortDoesNotPinTheHost covers a capture followed only by a port: "evil.com:8080" is still evil.com.
 func Test_Redirect_PortDoesNotPinTheHost(t *testing.T) {
 	t.Parallel()
 
@@ -772,70 +552,12 @@ func Test_Redirect_PortDoesNotPinTheHost(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			app := fiber.New()
-			app.Use(New(Config{
-				Rules:      map[string]string{tc.pattern: tc.target},
-				StatusCode: fiber.StatusFound,
-			}))
-			app.Get("/*", func(c fiber.Ctx) error { return c.SendString("fell through") })
-
-			req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, tc.request, http.NoBody)
-			require.NoError(t, err)
-			resp, err := app.Test(req)
-			require.NoError(t, err)
-
-			if tc.want == "" {
-				require.Equal(t, fiber.StatusOK, resp.StatusCode, "the rule must not fire")
-				require.Empty(t, resp.Header.Get("Location"))
-				return
-			}
-			require.Equal(t, fiber.StatusFound, resp.StatusCode)
-			require.Equal(t, tc.want, resp.Header.Get("Location"))
+			requireRule(t, false, tc.pattern, tc.target, tc.request, tc.want)
 		})
 	}
 }
 
-// Test_Redirect_MoreSpecificRuleWins pins that a rule pinning more of the path
-// is evaluated before one that pins less.
-//
-// Ordering the rules made evaluation deterministic, but plain lexicographic
-// order sorts "/*" ahead of "/old/*", so the catch-all would shadow the
-// specific rule on every request instead of half the time.
-func Test_Redirect_MoreSpecificRuleWins(t *testing.T) {
-	t.Parallel()
-
-	app := fiber.New()
-	app.Use(New(Config{
-		Rules: map[string]string{
-			"/*":     "/home",
-			"/old/*": "/new/$1",
-		},
-		StatusCode: fiber.StatusFound,
-	}))
-
-	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/old/thing", http.NoBody)
-	require.NoError(t, err)
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, "/new/thing", resp.Header.Get("Location"))
-
-	// The catch-all still covers everything the specific rule does not.
-	req, err = http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/other", http.NoBody)
-	require.NoError(t, err)
-	resp, err = app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, "/home", resp.Header.Get("Location"))
-}
-
-// Test_TargetLetsRequestPickHost pins which target shapes hand the destination
-// to the request. "https:$1" is the awkward one: it names no authority for the
-// chunk check to guard and no origin for keepSameOrigin to hold it to, yet a
-// captured "//evil.com" still composes "https://evil.com".
-//
-// The shapes that pin only a port, a trailing dot or userinfo belong here too.
-// authorityHolds refuses every value for them, so before they were listed the
-// rule compiled, matched each request, was refused, and fell through — while
-// warning that values opening a path or query were honored, when none were.
+// Test_TargetLetsRequestPickHost pins which target shapes hand the destination to the request, "https:$1" among them.
 func Test_TargetLetsRequestPickHost(t *testing.T) {
 	t.Parallel()
 
@@ -846,29 +568,22 @@ func Test_TargetLetsRequestPickHost(t *testing.T) {
 		{"https://$1", true},
 		{"//$1", true},
 		{"https:$1", true},
-		// The parser's missing-solidus step gives every special scheme but file
-		// an authority, so a capture after the colon names the host with no
-		// slash of its own: "ws:evil.com" is ws://evil.com.
+		// The missing-solidus step gives every special scheme but file an authority: "ws:evil.com" is ws://evil.com.
 		{"ws:$1", true},
 		{"wss:$1", true},
 		{"ftp:$1", true},
 		{"WS:$1", true},
 		{"FTP:$1", true},
-		// file has no missing-solidus reading, but a captured "//evil.com" opens
-		// an authority for it like any other scheme.
+		// file has no missing-solidus reading, but a captured "//evil.com" opens an authority for it too.
 		{"file:$1", true},
-		// Any scheme at all: "//" is what opens the authority, so which scheme
-		// it is does not enter into it.
+		// Any scheme at all: "//" is what opens the authority.
 		{"mailto:$1", true},
 		{"myapp:$1", true},
 		{"custom:$1", true},
-		// Author text between the colon and the capture leaves no authority for
-		// the value to open, or one the author already filled in.
+		// Author text between the colon and the capture leaves no authority for the value to open.
 		{"myapp:fixed/$1", false},
 		{"https:fixed/$1", false},
-		// Nothing beside the capture is host text: a port, a captured port, a
-		// second capture and a trailing dot all pin nothing, so the value names
-		// the host on its own.
+		// A port, a captured port, a second capture and a trailing dot pin nothing, so the value names the host.
 		{"https://$1:8080", true},
 		{"https://$1:8080/health", true},
 		{"https://$1:$2", true},
@@ -878,66 +593,52 @@ func Test_TargetLetsRequestPickHost(t *testing.T) {
 		// Text before an "@" is a username, not a host.
 		{"https://example.com@$1", true},
 		{"https://user:pw@$1", true},
-		// A capture inside the brackets is refused whichever side the author
-		// wrote: a bracketed address runs most significant group first, so the
-		// ordinary "text after the capture pins it" reading is backwards there.
+		// A capture inside the brackets is refused either side, a bracketed address running most significant group first.
 		{"https://[$1]", true},
 		{"https://[$1]:8080/", true},
 		{"https://[$1::1]", true},
 		{"https://[2001:db8::$1]", true},
 		{"https://[2001:db8::$1]:8080", true},
 
-		// A scheme with no authority syntax has no host to hijack, so it is not
-		// refused — dropping it would kill a working rule and the warning would
-		// say something untrue about it.
+		// A scheme with no authority syntax has no host to hijack, so it is not refused.
 		{"mailto:$1@example.com", false},
 		{"myapp:$1@example.com", false},
 
 		{"https://$1.example.com", false},
 		{"https://cdn.example.com$1", false},
 		{"https://cdn.example.com/$1", false},
-		// The same rules spelled without the "//". A special scheme reaches the
-		// authority state either way, so the two spellings have to be read the
-		// same: the capture here is a label under the author's host, and it is
-		// authorityHolds that judges each value for it.
+		// The same rules spelled without the "//", which a special scheme reads the same way.
 		{"https:$1.example.com", false},
 		{"https:cdn.example.com$1", false},
 		{"https:cdn.$1.com", false},
 		{"ws:$1.example.com", false},
 		{"ftp:cdn.example.com$1", false},
 		{"HTTPS:$1.example.com", false},
-		// And where nothing but a port or a dot sits beside it, refused in
-		// either spelling.
+		// And where nothing but a port or a dot sits beside it, refused in either spelling.
 		{"https:$1:8080", true},
 		{"ws:$1.", true},
 		{"https:example.com@$1", true},
-		// The author's host text can sit either side of the capture, and a
-		// captured port leaves it theirs.
+		// The author's host text can sit either side of the capture.
 		{"https://$1@example.com", false},
 		{"https://cdn.example.com:$1", false},
 		{"https://tenant-$1.example.com", false},
-		// A bracketed literal the author wrote in full still pins the host, so
-		// a captured port beside it is theirs to allow.
+		// A bracketed literal the author wrote in full still pins the host, so a captured port beside it is theirs to allow.
 		{"https://[::1]:$1", false},
 		{"https://[::1]:8080/$1", false},
 		{"https://[::]:$1", false},
 		{"https://[2001:db8::1]:$2/$1", false},
-		// A bracket in userinfo is an ordinary character, not a host delimiter,
-		// so it does not make the capture beside it interior to an address.
+		// A bracket in userinfo is an ordinary character, not a host delimiter.
 		{"https://[$1]@example.com", false},
 		{"https://us[er@$1.example.com", false},
 		{"https://us[er@example.com:$1", false},
 		// Empty brackets pin no host, so the capture names it outright.
 		{"https://[]$1", true},
 		{"https://[:]:$1", true},
-		// Only an "@" outside the brackets ends the userinfo. One inside them
-		// is no delimiter to the URL parser either, so the brackets still hold
-		// the host and a capture among them still chooses the address.
+		// Only an "@" outside the brackets ends the userinfo, so a capture among them still chooses the address.
 		{"https://[$1@::1]", true},
 		{"https://[2001:db8::$1@a]", true},
 		{"https://x@y@[$1::1]", true},
-		// Past the closing bracket the "@" does end the userinfo, so these name
-		// the host after it and the capture only reaches userinfo.
+		// Past the closing bracket the "@" does end the userinfo, so the capture only reaches it.
 		{"https://[$1]@x", false},
 		{"https://[$1::1]@a", false},
 		{"https://$1@[::1]", false},
@@ -952,13 +653,11 @@ func Test_TargetLetsRequestPickHost(t *testing.T) {
 	}
 }
 
-// Test_PinsHost pins the three things that are not author-written host text: a
-// port, the separators that may trail a hostname, and userinfo.
+// Test_PinsHost pins the three things that are not author-written host text: a port, trailing separators, and userinfo.
 func Test_PinsHost(t *testing.T) {
 	t.Parallel()
 
-	// wantClosed is the answer when a label separator, an "@" or the start of
-	// the authority stands between the capture and this literal.
+	// wantClosed is the answer when a label separator, an "@" or the start of the authority stands to the left.
 	for _, tc := range []struct {
 		literal string
 		want    bool
@@ -970,8 +669,7 @@ func Test_PinsHost(t *testing.T) {
 		{"@example.com", true},
 		{"user:pw@example.com", true},
 
-		// An IPv6 literal's own colons sit inside the brackets, so the port is
-		// what follows the closing one.
+		// An IPv6 literal's own colons sit inside the brackets, so the port is what follows the closing one.
 		{"[::1]", true},
 		{"[::1]:", true},
 		{"[::1]:8080", true},
@@ -979,14 +677,12 @@ func Test_PinsHost(t *testing.T) {
 		// The unspecified address is still a complete one the author wrote.
 		{"[::]", true},
 		{"[::]:", true},
-		// An opener with no closer is a fragment of an address some capture
-		// split, so it pins nothing on its own — the mirror of "::1]" above.
+		// An opener with no closer is a fragment of an address some capture split, so it pins nothing.
 		{"[2001:db8::", false},
 		{"[::", false},
 		{"[abc", false},
 		{"[fe80", false},
-		// Decided by the fragment rule alone: with a dot of its own it is not
-		// dotless, and it holds no hex tail, so nothing else would refuse it.
+		// Decided by the fragment rule alone: it is neither dotless nor a hex tail.
 		{"[example.com", false},
 
 		{"", false},
@@ -998,37 +694,36 @@ func Test_PinsHost(t *testing.T) {
 		{"example.com@", false},
 		{"user:pw@", false},
 		{"example.com@:8080", false},
-		// The brackets around an IPv6 literal are punctuation, so a target of
-		// "https://[$1]:8080" pins no more of the host than "https://$1:8080".
+		// The brackets are punctuation, so "https://[$1]:8080" pins no more than "https://$1:8080".
 		{"[", false},
 		{"]", false},
 		{"]:8080", false},
-		// Brackets holding no address pin nothing. Counting them bought a rule
-		// that matched every request and composed a location no client parses.
+		// Brackets holding no address pin nothing, and counting them composed a location no client parses.
 		{"[]", false},
 		{"[:]", false},
 		{"[.]", false},
 		{"[[]", false},
-		// Holding a hex digit is not the same as being an address.
+		// Holding a hex digit is not the same as being an address, and a group runs
+		// to four of them: a check bounding the value alone reads "02001" as 0x2001.
 		{"[zzz1]", false},
+		{"[02001::1]", false},
+		{"[0ffff::]", false},
+		{"[000001::]", false},
 		{"[evil.com1]", false},
 		{"[a b]", false},
-		// Brackets hold an IPv6 address only, so an IPv4 one is no host there
-		// however well it parses alone — but the IPv4-mapped IPv6 spelling is.
+		// Brackets hold IPv6 only, so an IPv4 address is no host there. The IPv4-mapped spelling is.
 		{"[127.0.0.1]", false},
 		{"[1.2.3.4]", false},
 		{"[::ffff:127.0.0.1]", true},
 		{"[0:0:0:0:0:0:0:1]", true},
 		// A zone ID is not accepted in a URL host, by this or by the parser.
 		{"[fe80::1%25eth0]", false},
-		// Whitespace is not host text: the parser deletes a tab outright and
-		// percent-encodes a space into a host that fails to parse.
+		// Whitespace is not host text: the parser deletes a tab and percent-encodes a space.
 		{" ", false},
 		{"\t", false},
 		{"\n", false},
 		{" \t ", false},
-		// Nor is anything UTS #46 mapping deletes before a host is read, nor
-		// the code points it folds onto a plain ".", which pins nothing either.
+		// Nor is anything UTS #46 deletes, nor what it folds onto a plain ".".
 		{"\u00ad", false}, // soft hyphen
 		{"\ufeff", false}, // zero width no-break space
 		{"\u200b", false}, // zero width space
@@ -1038,71 +733,56 @@ func Test_PinsHost(t *testing.T) {
 		{"\uff0e", false}, // fullwidth full stop
 		{"\uff61", false}, // halfwidth ideographic full stop
 		{"\u00ad\u200b", false},
-		// A control character is stripped from either end of the whole input
-		// before the parser reads anything, and is forbidden in a host in the
-		// middle, so it pins nothing wherever it sits.
+		// A control character is stripped from either end and forbidden in the middle, so it pins nothing wherever it sits.
 		{"\x00", false},
 		{"\x01", false},
 		{"\x1f", false},
 		{"\x7f", false},
-		// The parser percent-decodes a host before reading it, so an escape
-		// pins only what it stands for.
+		// The parser percent-decodes a host first, so an escape pins only what it stands for.
 		{"%2E", false},       // "."
 		{"%2e", false},       // same, lowercased
 		{"%C2%AD", false},    // soft hyphen
 		{"%E3%80%82", false}, // ideographic full stop
 		{"%EF%BB%BF", false}, // BOM
-		// "A" is host text, but alone it is a hex tail a capture can turn into
-		// a number by supplying "0x" — so it pins only where a label already
-		// separates it from whatever came before.
+		// "A" is a hex tail a capture can turn into a number with "0x", so it pins only behind a label separator.
 		{"%41", false},
 		{"%41.example.com", true},
-		// A stray "%" is literal to the parser, not an error — though dotless,
-		// so nothing here pins on its own account.
+		// A stray "%" is literal to the parser, not an error, though dotless.
 		{"100%", false},
 		{"a%zz", false},
-		// A host whose last label reads as a number is an IPv4 address, where
-		// the author's trailing text is the low octets and the request supplies
-		// the network. Only a complete address pins one.
+		// A host whose last label reads as a number is an IPv4 address, and only a complete one pins a host.
 		{".1", false},
 		{".0", false},
 		{".0.0.1", false},
 		{".0x1", false},
-		// A hex tail is one a capture can open a number with, by supplying the
-		// "0x" — or finish a percent-escape it left dangling.
+		// A hex tail is one a capture can open a number with, by supplying the "0x", or finish a dangling escape.
 		{"cafe", false},
 		{"beef", false},
 		{"e", false},
 		{"ad", false},
 		{"x", false},
 		{"xcafe", false},
-		// Invalid UTF-8 is not host text: the mapping turns it into U+FFFD,
-		// which no client accepts in a host.
+		// Invalid UTF-8 is not host text: the mapping turns it into U+FFFD.
 		{"\xff.example.com", false},
 		{"%FF.example.com", false},
 		{"\xed\xa0\x80.example.com", false},
 
-		// Nor does any other dotless tail: the head the capture supplies can
-		// simply end with a dot, leaving the author's text a bare final label —
-		// "https://$1xyz" reached evil.xyz from a captured "evil.".
+		// Nor does any other dotless tail: a captured "evil." left "https://$1xyz" reaching evil.xyz.
 		{"cdn", false},
 		{"xyz", false},
 		{"tenant-", false},
 		{"com", false},
-		// A trailing dot is not a label separator against what precedes it, and
-		// the trim takes it off, so these are dotless too.
+		// A trailing dot separates no label and the trim takes it off, so these are dotless too.
 		{"xyz.", false},
 		{"com.", false},
-		// A leading "." closes the label, so an all-hex suffix is a suffix —
-		// ".de" pins Germany the way ".example.com" pins that domain.
+		// A leading "." closes the label, so an all-hex suffix is a suffix: ".de" pins Germany.
 		{".de", true},
 		{".be", true},
 		{".cc", true},
 		{".ad", true},
 		{".cafe", true},
 		{".e", true},
-		// Even a whole address: open on the left the capture reaches its first
-		// octet, which is the network.
+		// Even a whole address: open on the left the capture reaches its first octet, which is the network.
 		{"127.0.0.1", false},
 		{"10.0.0.1", false},
 		// A name is still a name, whatever letters it is made of.
@@ -1112,17 +792,14 @@ func Test_PinsHost(t *testing.T) {
 		// An internationalized label is host text, in either spelling.
 		{"\u4f8b\u3048.jp", true},
 		{"xn--r8jz45g.jp", true},
-		// A closer with no opener is the tail of an address a capture split,
-		// and an IPv6 tail is the low bits, not the network it routes to.
+		// A closer with no opener is the tail of a split address, and an IPv6 tail is the low bits.
 		{"::1]", false},
 		{":db8::1]", false},
 	} {
 		require.Equal(t, tc.want, pinsHost(tc.literal, true), "literal %q", tc.literal)
 	}
 
-	// The closed-on-the-left branch: a dotless tail the capture cannot reach
-	// pins the host, which is what keeps "https://[$1]@x" and
-	// "https://cdn$1.example.com" compiling.
+	// The closed-on-the-left branch, where a dotless tail the capture cannot reach pins the host.
 	for _, tc := range []struct {
 		literal string
 		want    bool
@@ -1137,19 +814,14 @@ func Test_PinsHost(t *testing.T) {
 		{"127.0.0.1", true}, // the author wrote the whole address
 		{"10.0.0.1", true},
 
-		// A bare number is an address rather than a name, and the parser takes
-		// the abbreviated spellings too: "1" is 0.0.0.1 and "0x1" the same, so
-		// the author who wrote one pinned the whole host.
+		// A bare number is an address rather than a name, abbreviated spellings included: "1" is 0.0.0.1.
 		{"1", true},
 		{"0x1", true},
 
 		{"", false},
 		{".", false},
 		{"[example.com", false},
-		// Closed on the left the dotless rule no longer stands in front of the
-		// decode, map and trim steps, so this is where each answers for itself:
-		// a code point the mapping deletes, ones the trim drops, and delimiters
-		// that only appear once the escape is decoded.
+		// Closed on the left, the decode, map and trim steps each answer for themselves.
 		{"\u00ad", false},
 		{"\u200b", false},
 		{"\u3002example.com", true}, // folds to ".example.com"
@@ -1161,9 +833,7 @@ func Test_PinsHost(t *testing.T) {
 		{"%2E", false},
 		{"%3A", false},
 		{"%5B", false},
-		// The trim has to run on the front too: keeping the space leaves a
-		// last label of " 1", which reads as no number, and the address check
-		// never runs on what is really the address 1.
+		// The trim has to run on the front too, or a last label of " 1" reads as no number.
 		{" 1", true},
 		{"%201", true},
 		{"%3A0x", true}, // "0x" is a number too, and it is zero
@@ -1219,19 +889,8 @@ func Test_AsBrowserReads(t *testing.T) {
 func Test_Redirect_SameOriginTargets_QueryPreserved(t *testing.T) {
 	t.Parallel()
 
-	app := fiber.New()
-	app.Use(New(Config{
-		Rules:      map[string]string{"/api/*": "/$1"},
-		StatusCode: fiber.StatusFound,
-	}))
-
-	// The query is appended after the location is made same-origin, so it
-	// survives the collapse untouched.
-	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/api//evil.com?a=1&b=2", http.NoBody)
-	require.NoError(t, err)
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, "/evil.com?a=1&b=2", resp.Header.Get("Location"))
+	// The query is appended after the location is made same-origin, so it survives the collapse.
+	requireRule(t, false, "/api/*", "/$1", "/api//evil.com?a=1&b=2", "/evil.com?a=1&b=2")
 }
 
 func Test_SchemeEnd(t *testing.T) {
@@ -1259,157 +918,103 @@ func Test_SchemeEnd(t *testing.T) {
 
 func Test_Next(t *testing.T) {
 	// Case 1 : Next function always returns true
-	app := *fiber.New()
+	app := fiber.New()
 	app.Use(New(Config{
-		Next: func(fiber.Ctx) bool {
-			return true
-		},
-		Rules: map[string]string{
-			"/default": "google.com",
-		},
+		Next:       func(fiber.Ctx) bool { return true },
+		RuleList:   []Rule{{From: "/default", To: "google.com"}},
 		StatusCode: fiber.StatusMovedPermanently,
 	}))
-
 	app.Use(func(c fiber.Ctx) error {
 		return c.SendStatus(fiber.StatusOK)
 	})
 
-	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/default", http.NoBody)
-	require.NoError(t, err)
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	status, _ := get(t, app, "/default")
+	require.Equal(t, fiber.StatusOK, status)
 
 	// Case 2 : Next function always returns false
-	app = *fiber.New()
+	app = fiber.New()
 	app.Use(New(Config{
-		Next: func(fiber.Ctx) bool {
-			return false
-		},
-		Rules: map[string]string{
-			"/default": "google.com",
-		},
+		Next:       func(fiber.Ctx) bool { return false },
+		RuleList:   []Rule{{From: "/default", To: "google.com"}},
 		StatusCode: fiber.StatusMovedPermanently,
 	}))
 
-	req, err = http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/default", http.NoBody)
-	require.NoError(t, err)
-	resp, err = app.Test(req)
-	require.NoError(t, err)
-
-	require.Equal(t, fiber.StatusMovedPermanently, resp.StatusCode)
-	require.Equal(t, "google.com", resp.Header.Get("Location"))
+	status, location := get(t, app, "/default")
+	require.Equal(t, fiber.StatusMovedPermanently, status)
+	require.Equal(t, "google.com", location)
 }
 
 func Test_NoRules(t *testing.T) {
 	// Case 1: No rules with default route defined
-	app := *fiber.New()
-
-	app.Use(New(Config{
-		StatusCode: fiber.StatusMovedPermanently,
-	}))
-
+	app := fiber.New()
+	app.Use(New(Config{StatusCode: fiber.StatusMovedPermanently}))
 	app.Use(func(c fiber.Ctx) error {
 		return c.SendStatus(fiber.StatusOK)
 	})
 
-	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/default", http.NoBody)
-	require.NoError(t, err)
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	status, _ := get(t, app, "/default")
+	require.Equal(t, fiber.StatusOK, status)
 
 	// Case 2: No rules and no default route defined
-	app = *fiber.New()
+	app = fiber.New()
+	app.Use(New(Config{StatusCode: fiber.StatusMovedPermanently}))
 
-	app.Use(New(Config{
-		StatusCode: fiber.StatusMovedPermanently,
-	}))
-
-	req, err = http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/default", http.NoBody)
-	require.NoError(t, err)
-	resp, err = app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusNotFound, resp.StatusCode)
+	status, _ = get(t, app, "/default")
+	require.Equal(t, fiber.StatusNotFound, status)
 }
 
 func Test_DefaultConfig(t *testing.T) {
 	// Case 1: Default config and no default route
-	app := *fiber.New()
-
+	app := fiber.New()
 	app.Use(New())
 
-	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/default", http.NoBody)
-	require.NoError(t, err)
-	resp, err := app.Test(req)
-
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusNotFound, resp.StatusCode)
+	status, _ := get(t, app, "/default")
+	require.Equal(t, fiber.StatusNotFound, status)
 
 	// Case 2: Default config and default route
-	app = *fiber.New()
-
+	app = fiber.New()
 	app.Use(New())
 	app.Use(func(c fiber.Ctx) error {
 		return c.SendStatus(fiber.StatusOK)
 	})
 
-	req, err = http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/default", http.NoBody)
-	require.NoError(t, err)
-	resp, err = app.Test(req)
-
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	status, _ = get(t, app, "/default")
+	require.Equal(t, fiber.StatusOK, status)
 }
 
 func Test_RegexRules(t *testing.T) {
 	// Case 1: Rules regex is empty
-	app := *fiber.New()
+	app := fiber.New()
 	app.Use(New(Config{
-		Rules:      map[string]string{},
+		RuleList:   []Rule{},
 		StatusCode: fiber.StatusMovedPermanently,
 	}))
-
 	app.Use(func(c fiber.Ctx) error {
 		return c.SendStatus(fiber.StatusOK)
 	})
 
-	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/default", http.NoBody)
-	require.NoError(t, err)
-	resp, err := app.Test(req)
-
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	status, _ := get(t, app, "/default")
+	require.Equal(t, fiber.StatusOK, status)
 
 	// Case 2: Rules regex map contains valid regex and well-formed replacement URLs
-	app = *fiber.New()
+	app = fiber.New()
 	app.Use(New(Config{
-		Rules: map[string]string{
-			"/default": "google.com",
-		},
+		RuleList:   []Rule{{From: "/default", To: "google.com"}},
 		StatusCode: fiber.StatusMovedPermanently,
 	}))
-
 	app.Use(func(c fiber.Ctx) error {
 		return c.SendStatus(fiber.StatusOK)
 	})
 
-	req, err = http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/default", http.NoBody)
-	require.NoError(t, err)
-	resp, err = app.Test(req)
-
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusMovedPermanently, resp.StatusCode)
-	require.Equal(t, "google.com", resp.Header.Get("Location"))
+	status, location := get(t, app, "/default")
+	require.Equal(t, fiber.StatusMovedPermanently, status)
+	require.Equal(t, "google.com", location)
 
 	// Case 3: Test invalid regex throws panic
-	app = *fiber.New()
+	app = fiber.New()
 	require.Panics(t, func() {
 		app.Use(New(Config{
-			Rules: map[string]string{
-				"(": "google.com",
-			},
+			RuleList:   []Rule{{From: "(", To: "google.com"}},
 			StatusCode: fiber.StatusMovedPermanently,
 		}))
 	})
@@ -1420,16 +1025,7 @@ func requireNoAuthorityChunks(t *testing.T, target, msg string) {
 	require.Nil(t, authorityChunks(target), msg)
 }
 
-// Test_Redirect_TargetIsReadAsTheClientWillRead pins that the guard judges the
-// target the URL parser will see, not the bytes as configured.
-//
-// The parser deletes every tab, LF and CR before parsing. Reading the target
-// as written scored one of them as author-written host text that then vanished
-// on the way out, so "https://\t$1" passed as a target naming its own host and
-// a captured "/evil.com" composed "https:///evil.com" — evil.com to a browser,
-// with no startup warning. A tab also defeated the leading-slash skip in
-// authoritySpan, leaving the authority of "https://\t/[$1::1]" unguarded
-// entirely, which reached "[beef::1]" and "[::ffff:127.0.0.1]".
+// Test_Redirect_TargetIsReadAsTheClientWillRead pins the guard on the target the parser sees, tabs, LFs and CRs gone.
 func Test_Redirect_TargetIsReadAsTheClientWillRead(t *testing.T) {
 	t.Parallel()
 
@@ -1449,22 +1045,12 @@ func Test_Redirect_TargetIsReadAsTheClientWillRead(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			app := fiber.New(fiber.Config{UnescapePath: true})
-			app.Use(New(Config{Rules: map[string]string{"/r/*": tc.target}}))
-			app.Get("/r/*", func(c fiber.Ctx) error { return c.SendString("fell through") })
-
-			req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, tc.request, http.NoBody)
-			require.NoError(t, err)
-			resp, err := app.Test(req)
-			require.NoError(t, err)
-			require.Equal(t, fiber.StatusOK, resp.StatusCode, "the rule must be refused at startup")
-			require.Empty(t, resp.Header.Get("Location"))
+			requireRule(t, true, "/r/*", tc.target, tc.request, "")
 		})
 	}
 }
 
-// Test_Redirect_TargetWhitespaceLeavesWorkingRulesAlone is the other half: the
-// normalization above must not disturb a target that never had any.
+// Test_Redirect_TargetWhitespaceLeavesWorkingRulesAlone is the other half: a target that never had any must be left alone.
 func Test_Redirect_TargetWhitespaceLeavesWorkingRulesAlone(t *testing.T) {
 	t.Parallel()
 
@@ -1479,26 +1065,12 @@ func Test_Redirect_TargetWhitespaceLeavesWorkingRulesAlone(t *testing.T) {
 		t.Run(tc.target, func(t *testing.T) {
 			t.Parallel()
 
-			app := fiber.New()
-			app.Use(New(Config{Rules: map[string]string{"/r/*": tc.target}}))
-
-			req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, tc.request, http.NoBody)
-			require.NoError(t, err)
-			resp, err := app.Test(req)
-			require.NoError(t, err)
-			require.Equal(t, tc.want, resp.Header.Get("Location"))
+			requireRule(t, false, "/r/*", tc.target, tc.request, tc.want)
 		})
 	}
 }
 
-// Test_Redirect_HostTextTheParserDeletes pins that a target cannot be made to
-// look host-pinned with characters a URL parser drops before it reads the host.
-//
-// UTS #46 mapping runs on a domain before anything looks at it: it deletes some
-// 270 code points outright and folds three more onto a plain ".". Judging the
-// literal on its bytes let an invisible one stand in for a host — so
-// "https://$1\u00ad" compiled with no warning, and a captured "evil.com"
-// composed "https://evil.com\u00ad", which a browser resolves to evil.com.
+// Test_Redirect_HostTextTheParserDeletes pins that the code points UTS #46 deletes cannot make a target look host-pinned.
 func Test_Redirect_HostTextTheParserDeletes(t *testing.T) {
 	t.Parallel()
 
@@ -1506,22 +1078,12 @@ func Test_Redirect_HostTextTheParserDeletes(t *testing.T) {
 		t.Run(strconv.QuoteToASCII(suffix), func(t *testing.T) {
 			t.Parallel()
 
-			app := fiber.New()
-			app.Use(New(Config{Rules: map[string]string{"/r/*": "https://$1" + suffix}}))
-			app.Get("/r/*", func(c fiber.Ctx) error { return c.SendString("fell through") })
-
-			req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/r/evil.com", http.NoBody)
-			require.NoError(t, err)
-			resp, err := app.Test(req)
-			require.NoError(t, err)
-			require.Equal(t, fiber.StatusOK, resp.StatusCode, "the rule must be refused at startup")
-			require.Empty(t, resp.Header.Get("Location"))
+			requireRule(t, false, "/r/*", "https://$1"+suffix, "/r/evil.com", "")
 		})
 	}
 }
 
-// Test_Redirect_InternationalizedHostsStillPin is the other half: mapping the
-// literal must not cost a rule whose host is written in a non-ASCII script.
+// Test_Redirect_InternationalizedHostsStillPin is the other half: mapping must not cost a rule whose host is non-ASCII.
 func Test_Redirect_InternationalizedHostsStillPin(t *testing.T) {
 	t.Parallel()
 
@@ -1533,26 +1095,12 @@ func Test_Redirect_InternationalizedHostsStillPin(t *testing.T) {
 		t.Run(tc.target, func(t *testing.T) {
 			t.Parallel()
 
-			app := fiber.New()
-			app.Use(New(Config{Rules: map[string]string{"/r/*": tc.target}}))
-
-			req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/r/t", http.NoBody)
-			require.NoError(t, err)
-			resp, err := app.Test(req)
-			require.NoError(t, err)
-			require.Equal(t, tc.want, resp.Header.Get("Location"))
+			requireRule(t, false, "/r/*", tc.target, "/r/t", tc.want)
 		})
 	}
 }
 
-// Test_Redirect_ControlCharacterPinsNoHost pins the other half of what a client
-// removes before reading a host.
-//
-// The parser strips a leading or trailing run of controls and spaces from the
-// whole input before parsing, and urlnorm.AsBrowserReads does the same to the composed
-// location. So a control character in the target pinned a host that was gone by
-// the time the client saw it: with an empty second capture the rule below
-// composed "https://evil.com\x01" and shipped "https://evil.com".
+// Test_Redirect_ControlCharacterPinsNoHost covers the leading or trailing run of controls and spaces a client removes.
 func Test_Redirect_ControlCharacterPinsNoHost(t *testing.T) {
 	t.Parallel()
 
@@ -1560,25 +1108,12 @@ func Test_Redirect_ControlCharacterPinsNoHost(t *testing.T) {
 		t.Run(strconv.QuoteToASCII(sep), func(t *testing.T) {
 			t.Parallel()
 
-			app := fiber.New()
-			app.Use(New(Config{Rules: map[string]string{"/r/*x*": "https://$1" + sep + "$2"}}))
-			app.Use(func(c fiber.Ctx) error { return c.SendString("fell through") })
-
-			req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/r/evil.comx", http.NoBody)
-			require.NoError(t, err)
-			resp, err := app.Test(req)
-			require.NoError(t, err)
-			require.Equal(t, fiber.StatusOK, resp.StatusCode, "the rule must be refused at startup")
-			require.Empty(t, resp.Header.Get("Location"))
+			requireRule(t, false, "/r/*x*", "https://$1"+sep+"$2", "/r/evil.comx", "")
 		})
 	}
 }
 
-// Test_Redirect_PercentEscapePinsOnlyWhatItDecodesTo covers the escaped
-// spelling of the same idea: a URL parser percent-decodes a host before it maps
-// or reads it, so "%2E" is the "." this guard already knows pins nothing, and
-// "%C2%AD" is a soft hyphen the mapping deletes. Judging the escape as written
-// let three ordinary characters stand in for a host.
+// Test_Redirect_PercentEscapePinsOnlyWhatItDecodesTo covers the escaped spelling: "%2E" is a ".", "%C2%AD" a soft hyphen.
 func Test_Redirect_PercentEscapePinsOnlyWhatItDecodesTo(t *testing.T) {
 	t.Parallel()
 
@@ -1586,38 +1121,15 @@ func Test_Redirect_PercentEscapePinsOnlyWhatItDecodesTo(t *testing.T) {
 		t.Run(suffix, func(t *testing.T) {
 			t.Parallel()
 
-			app := fiber.New()
-			app.Use(New(Config{Rules: map[string]string{"/r/*": "https://$1" + suffix}}))
-			app.Use(func(c fiber.Ctx) error { return c.SendString("fell through") })
-
-			req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/r/evil.com", http.NoBody)
-			require.NoError(t, err)
-			resp, err := app.Test(req)
-			require.NoError(t, err)
-			require.Equal(t, fiber.StatusOK, resp.StatusCode, "the rule must be refused at startup")
-			require.Empty(t, resp.Header.Get("Location"))
+			requireRule(t, false, "/r/*", "https://$1"+suffix, "/r/evil.com", "")
 		})
 	}
 
 	// An escape that decodes to real host text still pins one.
-	app := fiber.New()
-	app.Use(New(Config{Rules: map[string]string{"/r/*": "https://$1%41.example.com"}}))
-	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/r/t", http.NoBody)
-	require.NoError(t, err)
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, "https://t%41.example.com", resp.Header.Get("Location"))
+	requireRule(t, false, "/r/*", "https://$1%41.example.com", "/r/t", "https://t%41.example.com")
 }
 
-// Test_Redirect_NumericSuffixPinsNoHost covers the IPv4 reading of the same
-// inversion that makes a capture inside an IPv6 literal unjudgeable.
-//
-// A host whose last label reads as a number is parsed as an IPv4 address, so
-// the author's trailing text is the low octets and the capture supplies the
-// network. "https://$1.1" looks like a pinned suffix and composed
-// "https://127.0.0.1" from a captured "127.0.0" — loopback, and 169.254.169.254
-// or a private range just as easily. The IPv4 parser reads hex too, so
-// "https://$1.0x1" did the same.
+// Test_Redirect_NumericSuffixPinsNoHost covers the IPv4 reading, where "https://$1.1" composed loopback from "127.0.0".
 func Test_Redirect_NumericSuffixPinsNoHost(t *testing.T) {
 	t.Parallel()
 
@@ -1630,23 +1142,12 @@ func Test_Redirect_NumericSuffixPinsNoHost(t *testing.T) {
 		t.Run(tc.target, func(t *testing.T) {
 			t.Parallel()
 
-			app := fiber.New()
-			app.Use(New(Config{Rules: map[string]string{"/r/*": tc.target}}))
-			app.Use(func(c fiber.Ctx) error { return c.SendString("fell through") })
-
-			req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, tc.request, http.NoBody)
-			require.NoError(t, err)
-			resp, err := app.Test(req)
-			require.NoError(t, err)
-			require.Equal(t, fiber.StatusOK, resp.StatusCode, "the rule must be refused at startup")
-			require.Empty(t, resp.Header.Get("Location"))
+			requireRule(t, false, "/r/*", tc.target, tc.request, "")
 		})
 	}
 }
 
-// Test_Redirect_CompleteAddressStillPins is the other half: an address the
-// author wrote in full is theirs, so a capture beside it is only a port or a
-// path.
+// Test_Redirect_CompleteAddressStillPins is the other half: an address written in full is the author's.
 func Test_Redirect_CompleteAddressStillPins(t *testing.T) {
 	t.Parallel()
 
@@ -1659,30 +1160,12 @@ func Test_Redirect_CompleteAddressStillPins(t *testing.T) {
 		t.Run(tc.target, func(t *testing.T) {
 			t.Parallel()
 
-			app := fiber.New()
-			app.Use(New(Config{Rules: map[string]string{"/r/*": tc.target}}))
-
-			req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, tc.request, http.NoBody)
-			require.NoError(t, err)
-			resp, err := app.Test(req)
-			require.NoError(t, err)
-			require.Equal(t, tc.want, resp.Header.Get("Location"))
+			requireRule(t, false, "/r/*", tc.target, tc.request, tc.want)
 		})
 	}
 }
 
-// Test_Redirect_DotlessTailPinsNoHost covers a literal with no dot of its own:
-// it sits inside a label the capture opens on the left, so what the author
-// wrote is only that label's tail and the request decides what the label is.
-//
-// Two tails let the request take the whole label. A tail of hex digits becomes
-// a number once the value supplies "0x" — "https://$1cafe" reached
-// 0.0.202.254, and "https://$1x" turned a captured "127.0.0" into 127.0.0.0 —
-// and the same tails finish a percent-escape the value left open, so
-// "https://$1E" composed "https://evil.com%2E" from "evil.com%2", whose
-// trailing dot pins nothing. That second shape is pinned by the "E" row of
-// Test_PinsHost rather than here, since net/http will not build a request
-// carrying the dangling escape it needs.
+// Test_Redirect_DotlessTailPinsNoHost covers a literal with no dot, only the tail of a label the capture opens.
 func Test_Redirect_DotlessTailPinsNoHost(t *testing.T) {
 	t.Parallel()
 
@@ -1691,46 +1174,29 @@ func Test_Redirect_DotlessTailPinsNoHost(t *testing.T) {
 		{"/r/*", "https://$1x", "/r/10.0.0"},
 		{"/r/*", "https://$1cafe", "/r/0x"},
 		{"/r/*", "https://$1beef", "/r/0x"},
-		// The head can simply end with a dot, which pins nothing at all: the
-		// author's text becomes a bare final label of the request's choosing.
+		// The head can simply end with a dot, leaving the author's text a bare final label.
 		{"/r/*", "https://$1xyz", "/r/evil."},
 		{"/r/*", "https://$1com", "/r/evil."},
 		{"/r/*", "https://$1io", "/r/evil."},
-		// The literal sits between two captures, the one place a literal is
-		// open on the left without starting the authority.
+		// The literal sits between two captures, the one place a literal is open on the left without starting the authority.
 		{"/r/*/*", "https://$1xyz:$2", "/r/evil./8080"},
 		{"/r/*/*", "https://$1cafe:$2", "/r/0x/8080"},
-		// Its only dot is trailing, and a trailing dot separates nothing from
-		// what precedes it.
+		// Its only dot is trailing, and a trailing dot separates nothing from what precedes it.
 		{"/r/*", "https://$1xyz.", "/r/evil."},
 		{"/r/*", "https://$1com.", "/r/evil."},
-		// The address rule only sees these once the port is cut off and the
-		// last label is taken after the trim; skipping either step let them
-		// compile and reach 8.0.0.1 from a captured "0".
+		// The address rule only sees these once the port is cut off and the last label taken after the trim.
 		{"/r/*", "https://$110.0.0.1:8080", "/r/0"},
 		{"/r/*", "https://$110.0.0.1.", "/r/0"},
 	} {
 		t.Run(tc.target+" "+tc.request, func(t *testing.T) {
 			t.Parallel()
 
-			app := fiber.New()
-			app.Use(New(Config{Rules: map[string]string{tc.rule: tc.target}}))
-			app.Use(func(c fiber.Ctx) error { return c.SendString("fell through") })
-
-			req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, tc.request, http.NoBody)
-			require.NoError(t, err)
-			resp, err := app.Test(req)
-			require.NoError(t, err)
-			require.Equal(t, fiber.StatusOK, resp.StatusCode, "the rule must be refused at startup")
-			require.Empty(t, resp.Header.Get("Location"))
+			requireRule(t, false, tc.rule, tc.target, tc.request, "")
 		})
 	}
 }
 
-// Test_Redirect_ClosedLabelStillPins is the other half: a literal a capture
-// cannot reach into still pins the host. An "@" starts the host, so the capture
-// before it is only userinfo; a dot of the literal's own separates the label;
-// and a tail holding a non-hex byte is one no prefix turns into a number.
+// Test_Redirect_ClosedLabelStillPins is the other half: an "@", an own dot or a non-hex byte keeps the capture out.
 func Test_Redirect_ClosedLabelStillPins(t *testing.T) {
 	t.Parallel()
 
@@ -1745,26 +1211,12 @@ func Test_Redirect_ClosedLabelStillPins(t *testing.T) {
 		t.Run(tc.target, func(t *testing.T) {
 			t.Parallel()
 
-			app := fiber.New()
-			app.Use(New(Config{Rules: map[string]string{"/r/*": tc.target}}))
-
-			req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, tc.request, http.NoBody)
-			require.NoError(t, err)
-			resp, err := app.Test(req)
-			require.NoError(t, err)
-			require.Equal(t, tc.want, resp.Header.Get("Location"))
+			requireRule(t, false, "/r/*", tc.target, tc.request, tc.want)
 		})
 	}
 }
 
-// Test_Redirect_CarriesQueryOntoTargetsOwnQuery pins how the request's query
-// string joins a target that already has one, or a fragment.
-//
-// Appending "?" + query was right only for a target holding neither. A target
-// with its own query got a second "?", which a URL parser reads as one query
-// string — "/new?from=old" plus "bar=2" became the single parameter
-// "from=old?bar=2" — and a target with a fragment got the query after the "#",
-// where it is read as part of the fragment and the request's query is lost.
+// Test_Redirect_CarriesQueryOntoTargetsOwnQuery pins how the request's query joins a target's own query or fragment.
 func Test_Redirect_CarriesQueryOntoTargetsOwnQuery(t *testing.T) {
 	t.Parallel()
 
@@ -1783,28 +1235,12 @@ func Test_Redirect_CarriesQueryOntoTargetsOwnQuery(t *testing.T) {
 		t.Run(tc.target+" "+tc.request, func(t *testing.T) {
 			t.Parallel()
 
-			app := fiber.New()
-			app.Use(New(Config{Rules: map[string]string{"/old": tc.target}}))
-
-			req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, tc.request, http.NoBody)
-			require.NoError(t, err)
-			resp, err := app.Test(req)
-			require.NoError(t, err)
-			require.Equal(t, tc.want, resp.Header.Get("Location"))
+			requireRule(t, false, "/old", tc.target, tc.request, tc.want)
 		})
 	}
 }
 
-// Test_Redirect_NoSlashSpecialSchemeAuthorityIsGuarded pins that a target
-// naming its host without the "//" is held to the same rules as one that writes
-// them.
-//
-// A special scheme reaches the authority state either way — "https:host" and
-// "https://host" name the same host — but authoritySpan looked for the slashes,
-// so the no-slash spelling had no authority for the chunk checks to guard and
-// no value was ever refused. "https:cdn.example.com$1" composed
-// "https:cdn.example.com@evil.com", where everything before the "@" is userinfo
-// and evil.com is the host the client reaches.
+// Test_Redirect_NoSlashSpecialSchemeAuthorityIsGuarded holds "https:host" to the same rules as "https://host".
 func Test_Redirect_NoSlashSpecialSchemeAuthorityIsGuarded(t *testing.T) {
 	t.Parallel()
 
@@ -1814,95 +1250,87 @@ func Test_Redirect_NoSlashSpecialSchemeAuthorityIsGuarded(t *testing.T) {
 		path   string
 		want   string
 	}{
-		{
-			name:   "an @ makes the author's host userinfo",
-			target: "https:cdn.example.com$1",
-			path:   "/r/@evil.com",
-			want:   "",
-		},
-		{
-			name:   "a leading dot extends the host into another domain",
-			target: "https:cdn.example.com$1",
-			path:   "/r/.evil.com",
-			want:   "",
-		},
-		{
-			name:   "ws is special too",
-			target: "ws:cdn.example.com$1",
-			path:   "/r/@evil.com",
-			want:   "",
-		},
-		{
-			name:   "ftp is special too",
-			target: "ftp:cdn.example.com$1",
-			path:   "/r/@evil.com",
-			want:   "",
-		},
-		{
-			// The scheme is case-insensitive, so the reading does not change.
-			name:   "the scheme's own case does not matter",
-			target: "HTTPS:cdn.example.com$1",
-			path:   "/r/@evil.com",
-			want:   "",
-		},
-		{
-			// A label under the author's host is what the rule is for.
-			name:   "an interior label still redirects",
-			target: "https:$1.example.com",
-			path:   "/r/tenant",
-			want:   "https:tenant.example.com",
-		},
-		{
-			name:   "a capture between two literals still redirects",
-			target: "https:cdn.$1.com",
-			path:   "/r/example",
-			want:   "https:cdn.example.com",
-		},
-		{
-			// The "/" ends the authority, so the capture is a path segment and
-			// an "@" in it reaches no host.
-			name:   "past the first slash the capture is a path",
-			target: "https:cdn.example.com/$1",
-			path:   "/r/@evil.com",
-			want:   "https:cdn.example.com/@evil.com",
-		},
-		{
-			// mailto is not special: with no "//" it has no authority at all,
-			// so the capture is an addressee and the author's host follows it.
-			name:   "a scheme that is not special has no implied authority",
-			target: "mailto:$1@example.com",
-			path:   "/r/user",
-			want:   "mailto:user@example.com",
-		},
+		{"an @ makes the author's host userinfo", "https:cdn.example.com$1", "/r/@evil.com", ""},
+		{"a leading dot extends the host into another domain", "https:cdn.example.com$1", "/r/.evil.com", ""},
+		{"ws is special too", "ws:cdn.example.com$1", "/r/@evil.com", ""},
+		{"ftp is special too", "ftp:cdn.example.com$1", "/r/@evil.com", ""},
+		// The scheme is case-insensitive, so the reading does not change.
+		{"the scheme's own case does not matter", "HTTPS:cdn.example.com$1", "/r/@evil.com", ""},
+		// A label under the author's host is what the rule is for.
+		{"an interior label still redirects", "https:$1.example.com", "/r/tenant", "https:tenant.example.com"},
+		{"a capture between two literals still redirects", "https:cdn.$1.com", "/r/example", "https:cdn.example.com"},
+		// The "/" ends the authority, so the capture is a path segment and an "@" in it reaches no host.
+		{"past the first slash the capture is a path", "https:cdn.example.com/$1", "/r/@evil.com", "https:cdn.example.com/@evil.com"},
+		// mailto is not special: with no "//" it has no authority, so the capture is an addressee.
+		{"a scheme that is not special has no implied authority", "mailto:$1@example.com", "/r/user", "mailto:user@example.com"},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			app := fiber.New()
-			app.Use(New(Config{Rules: map[string]string{"/r/*": tc.target}, StatusCode: fiber.StatusFound}))
-			app.Use(func(c fiber.Ctx) error { return c.SendString("fell through") })
-
-			req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, tc.path, http.NoBody)
-			require.NoError(t, err)
-			resp, err := app.Test(req)
-			require.NoError(t, err)
-			require.Equal(t, tc.want, resp.Header.Get("Location"))
-			if tc.want == "" {
-				require.Equal(t, fiber.StatusOK, resp.StatusCode, "a refused value falls through")
-			}
+			requireRule(t, false, "/r/*", tc.target, tc.path, tc.want)
 		})
 	}
 }
 
-// Test_Redirect_RuleOrderIsBySpecificity pins the order overlapping rules are
-// tried in. A map range gave no order at all, so which rule won changed run to
-// run; ordering by the literal prefix alone fixed the "/*" versus "/old/*" case
-// but left two rules that pin the same prefix tied, and the lexicographic
-// fallback then put the broader one first — where it matches everything the
-// narrower one would, leaving that rule dead.
-func Test_Redirect_RuleOrderIsBySpecificity(t *testing.T) {
+// Test_Redirect_DeprecatedMapHeuristicIsNotExact records what the deprecated
+// map cannot do. Its order is read off the path text a rule pins, so two rules
+// separated only by regexp syntax can order the wrong way round: "[a-z]" spells
+// more bytes than "[ab]" while matching more paths. RuleList is the answer:
+// the author says which comes first and nothing has to be inferred.
+func Test_Redirect_DeprecatedMapHeuristicIsNotExact(t *testing.T) {
+	t.Parallel()
+
+	const narrow, broad = `/p/*[ab]`, `/p/*[a-z]`
+
+	// The map hands "/p/za" to the broader rule, which is not what the author
+	// would have picked.
+	requireWinMap(t, map[string]string{broad: "/wide", narrow: "/narrow"}, "/p/za", "/wide")
+
+	// Ordering them explicitly settles it.
+	requireWin(t, []Rule{{From: narrow, To: "/narrow"}, {From: broad, To: "/wide"}}, "/p/za", "/narrow")
+}
+
+// Test_Redirect_FirstMatchWins pins the order rules are tried in: the first
+// whose pattern matches answers, as routes do, and the broader rule still takes
+// every path the narrower one leaves.
+func Test_Redirect_FirstMatchWins(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name   string
+		narrow Rule
+		broad  Rule
+		shared string
+		wide   string
+	}{
+		{"a suffix past the wildcard", Rule{From: "/old/*", To: "/new"}, Rule{From: "/*", To: "/home"}, "/old/thing", "/other"},
+		{"an exact rule and a class", Rule{From: "/api/users", To: "/exact"}, Rule{From: "/api/[a-z]+", To: "/broad"}, "/api/users", "/api/other"},
+		{"a dot matches any byte", Rule{From: "/api/users", To: "/exact"}, Rule{From: "/api/user.", To: "/broad"}, "/api/users", "/api/userx"},
+		{"a narrower class", Rule{From: "/api/[ab]", To: "/narrow"}, Rule{From: "/api/[abcdefghijklmnopqrstuvwxyz]", To: "/broad"}, "/api/a", "/api/z"},
+		{"an alternation matches every branch", Rule{From: "/x", To: "/exact"}, Rule{From: "/very/specific|/x", To: "/alt"}, "/x", "/very/specific"},
+		{"a grouped alternation", Rule{From: "/p/[a-z]xy", To: "/narrow"}, Rule{From: "/p/[a-z](reports|x.*)", To: "/grouped"}, "/p/axy", "/p/areports"},
+		{"an optional atom", Rule{From: "/api/ab", To: "/exact"}, Rule{From: "/api/ab{0,1}", To: "/maybe"}, "/api/ab", "/api/a"},
+		{"an anchor consumes nothing", Rule{From: "/p/[a]", To: "/exact"}, Rule{From: "/p/[a-z]$", To: "/class"}, "/p/a", "/p/b"},
+		{"a class escape", Rule{From: "/api/1", To: "/one"}, Rule{From: `/api/\d+`, To: "/digits"}, "/api/1", "/api/27"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			// The path both match goes to whichever rule the author put first.
+			requireWin(t, []Rule{tc.narrow, tc.broad}, tc.shared, tc.narrow.To)
+			// What only the broader rule matches still reaches it.
+			requireWin(t, []Rule{tc.narrow, tc.broad}, tc.wide, tc.broad.To)
+			// Reversing the order reverses the winner on the shared path, which
+			// is the whole of what author order buys.
+			requireWin(t, []Rule{tc.broad, tc.narrow}, tc.shared, tc.broad.To)
+		})
+	}
+}
+
+// Test_Redirect_DeprecatedMapOrderIsBySpecificity pins the heuristic that orders the deprecated Rules map.
+func Test_Redirect_DeprecatedMapOrderIsBySpecificity(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -1912,8 +1340,7 @@ func Test_Redirect_RuleOrderIsBySpecificity(t *testing.T) {
 		want  string
 	}{
 		{
-			// Same prefix, so only what each pins past the wildcard separates
-			// them.
+			// Same prefix, so only what each pins past the wildcard separates them.
 			name:  "a suffix past the wildcard is more specific",
 			rules: map[string]string{"/cdn/*": "/broad", "/cdn/*x": "/narrow"},
 			path:  "/cdn/foox",
@@ -1932,8 +1359,7 @@ func Test_Redirect_RuleOrderIsBySpecificity(t *testing.T) {
 			want:  "/img",
 		},
 		{
-			// The prefix comparison still decides first: an anchored prefix is
-			// the stronger claim, so the catch-all does not shadow this.
+			// The prefix comparison still decides first: an anchored prefix is the stronger claim.
 			name:  "a longer prefix outranks a longer total",
 			rules: map[string]string{"/*": "/catchall", "/old/*": "/new"},
 			path:  "/old/z",
@@ -1946,8 +1372,7 @@ func Test_Redirect_RuleOrderIsBySpecificity(t *testing.T) {
 			want:  "/two",
 		},
 		{
-			// The two pin the same prefix and the same total, and a wildcard
-			// matches a run of any length, so the class is the narrower claim.
+			// The two pin the same prefix and total, and a wildcard matches a run of any length, so the class is narrower.
 			name:  "a character class outranks a wildcard",
 			rules: map[string]string{"/api/*": "/wild/$1", "/api/[ab]": "/class"},
 			path:  "/api/a?token=secret",
@@ -1959,120 +1384,18 @@ func Test_Redirect_RuleOrderIsBySpecificity(t *testing.T) {
 			path:  "/api/z",
 			want:  "/wild/z",
 		},
-		{
-			// Two rules that both carry a wildcard are still told apart by the
-			// width of everything beside it.
-			name:  "a class past a wildcard is read like any other",
-			rules: map[string]string{`/p/*[a-z]`: "/wide", `/p/*[ab]`: "/narrow"},
-			path:  "/p/za",
-			want:  "/narrow",
-		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			app := fiber.New()
-			app.Use(New(Config{Rules: tc.rules, StatusCode: fiber.StatusFound}))
-			app.Use(func(c fiber.Ctx) error { return c.SendString("fell through") })
-
-			req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, tc.path, http.NoBody)
-			require.NoError(t, err)
-			resp, err := app.Test(req)
-			require.NoError(t, err)
-			require.Equal(t, tc.want, resp.Header.Get("Location"))
+			requireWinMap(t, tc.rules, tc.path, tc.want)
 		})
 	}
 }
 
-// Test_LiteralLengths pins how a rule's pinned length is measured, which is
-// what orders two rules that overlap.
-func Test_LiteralLengths(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		rule      string
-		prefixLen int
-		totalLen  int
-	}{
-		// No wildcard at all: the whole rule is pinned.
-		{rule: "/exact", prefixLen: 6, totalLen: 6},
-		{rule: "/", prefixLen: 1, totalLen: 1},
-		{rule: "", prefixLen: 0, totalLen: 0},
-		// The prefix stops at the first wildcard; the total counts what
-		// follows it too.
-		{rule: "/cdn/*", prefixLen: 5, totalLen: 5},
-		{rule: "/cdn/*x", prefixLen: 5, totalLen: 6},
-		{rule: "/p/*.png", prefixLen: 3, totalLen: 6},
-		{rule: "*", prefixLen: 0, totalLen: 0},
-		{rule: "/a/*/b/*", prefixLen: 3, totalLen: 6},
-
-		// A key is compiled as a regexp, so its metacharacters match something
-		// other than themselves and pin nothing. Counting them as path bytes put
-		// "/api/[a-z]+" ahead of "/api/users", shadowing the exact rule outright.
-		{rule: "/api/[a-z]+", prefixLen: 5, totalLen: 5},
-		{rule: "/api/users", prefixLen: 10, totalLen: 10},
-		{rule: "/(a|b)/x", prefixLen: 1, totalLen: 4},
-		// A group is an alternation too, so it pins what its widest branch pins.
-		{rule: "/api/[a-z](specific|x)", prefixLen: 5, totalLen: 6},
-		// The "?:" of a non-capturing group is syntax, not path.
-		{rule: "/p/(?:ab)", prefixLen: 3, totalLen: 5},
-		// A class escape matches any byte of its class, so it pins none of them
-		// and ends the prefix where it stands.
-		{rule: `/api/\d+`, prefixLen: 5, totalLen: 5},
-		{rule: `/api/\w`, prefixLen: 5, totalLen: 5},
-		// A quantifier's bounds are syntax, and one allowing none of what it
-		// follows takes that back: "/api/a{0,1}" matches "/api/" too.
-		{rule: "/api/a{0,1}", prefixLen: 5, totalLen: 5},
-		{rule: "/api/a{2,3}", prefixLen: 6, totalLen: 6},
-		{rule: "/api/a?b", prefixLen: 5, totalLen: 6},
-		{rule: "/api/(ab)?c", prefixLen: 5, totalLen: 6},
-		// An unclosed brace is an ordinary byte to the regexp parser.
-		{rule: "/api/a{", prefixLen: 6, totalLen: 6},
-		// "." matches any byte, so "/api/user." pins no more than "/api/user".
-		{rule: "/api/user.", prefixLen: 9, totalLen: 9},
-		// Escaped, it matches itself and pins the byte it stands for. Counted in
-		// what a path is pinned to, so the backslash adds nothing to either.
-		{rule: `/p/a\.png`, prefixLen: 8, totalLen: 8},
-		// A complete escape names one character however it is spelled, so it is
-		// as specific as writing that character: "/p/\x{61}" is "/p/a".
-		{rule: `/p/\x{61}`, prefixLen: 4, totalLen: 4},
-		{rule: `/p/\x61`, prefixLen: 4, totalLen: 4},
-		{rule: `/p/\141`, prefixLen: 4, totalLen: 4},
-		{rule: `/p/\t`, prefixLen: 4, totalLen: 4},
-		// An incomplete one names nothing, so it ends the prefix where it
-		// stands. Only the prefix is pinned here: such a rule does not compile,
-		// so nothing downstream of the sort ever sees it.
-		{rule: `/p/\x{61`, prefixLen: 3, totalLen: 5},
-		// An anchor asserts a position and consumes nothing, so it pins no path.
-		{rule: "/p/a$", prefixLen: 4, totalLen: 4},
-		{rule: "/p/[a-z]$", prefixLen: 3, totalLen: 3},
-		{rule: "^/p/a", prefixLen: 0, totalLen: 4},
-		// A class matches one byte whatever it lists, so listing more
-		// alternatives buys no specificity.
-		{rule: "/api/[abcdefghijklmnopqrstuvwxyz]", prefixLen: 5, totalLen: 5},
-		{rule: "/api/[ab]", prefixLen: 5, totalLen: 5},
-		{rule: "/api/[a-z]x", prefixLen: 5, totalLen: 6},
-		// An alternation is only as specific as its least specific branch.
-		{rule: "/very/specific|/x", prefixLen: 2, totalLen: 2},
-		// A "|" inside a group or a class separates no top-level branch.
-		{rule: "/p/[a|b]", prefixLen: 3, totalLen: 3},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.rule, func(t *testing.T) {
-			t.Parallel()
-			require.Equal(t, tc.prefixLen, literalPrefixLen(tc.rule), "literalPrefixLen")
-			require.Equal(t, tc.totalLen, literalLen(tc.rule), "literalLen")
-		})
-	}
-}
-
-// Test_Redirect_ComposedPort covers one port built from several captures. Each
-// is asked for digits, which is the same question asked of the composition, so
-// the rule holds — requiring every one to sit directly after the colon left it
-// dead for any input at all.
+// Test_LiteralLengths pins how a rule's pinned length is measured, which is what orders two rules that overlap.
 func Test_Redirect_ComposedPort(t *testing.T) {
 	t.Parallel()
 
@@ -2091,95 +1414,12 @@ func Test_Redirect_ComposedPort(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			app := fiber.New()
-			app.Use(New(Config{
-				Rules:      map[string]string{"/r/*/*": "https://example.com:$1$2"},
-				StatusCode: fiber.StatusFound,
-			}))
-			app.Get("/*", func(c fiber.Ctx) error { return c.SendString("fell through") })
-
-			req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, tc.request, http.NoBody)
-			require.NoError(t, err)
-			resp, err := app.Test(req)
-			require.NoError(t, err)
-
-			if tc.want == "" {
-				require.Equal(t, fiber.StatusOK, resp.StatusCode, "the rule must not fire")
-				return
-			}
-			require.Equal(t, fiber.StatusFound, resp.StatusCode)
-			require.Equal(t, tc.want, resp.Header.Get("Location"))
+			requireRule(t, false, "/r/*/*", "https://example.com:$1$2", tc.request, tc.want)
 		})
 	}
 }
 
-// Test_Redirect_ExactRuleBeatsPattern covers ordering between a rule written
-// with regexp syntax and an exact one it overlaps. The metacharacters pin no
-// path, so counting them as pinned text made the broad rule win every time.
-func Test_Redirect_ExactRuleBeatsPattern(t *testing.T) {
-	t.Parallel()
-
-	app := fiber.New()
-	app.Use(New(Config{
-		Rules: map[string]string{
-			"/api/[a-z]+": "/broad",
-			"/api/users":  "/exact",
-		},
-		StatusCode: fiber.StatusFound,
-	}))
-	app.Get("/*", func(c fiber.Ctx) error { return c.SendString("fell through") })
-
-	for _, tc := range []struct{ request, want string }{
-		{"/api/users", "/exact"},
-		{"/api/other", "/broad"},
-	} {
-		req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, tc.request, http.NoBody)
-		require.NoError(t, err)
-		resp, err := app.Test(req)
-		require.NoError(t, err)
-		require.Equal(t, fiber.StatusFound, resp.StatusCode, tc.request)
-		require.Equal(t, tc.want, resp.Header.Get("Location"), tc.request)
-	}
-}
-
-// Test_Redirect_ExactRuleBeatsDottedPattern is the same ordering question as
-// Test_Redirect_ExactRuleBeatsPattern for the one metacharacter that looks like
-// path text. A "." matches any byte, so it pins nothing and must not tie with
-// the literal it resembles and then win on the lexicographic fallback.
-func Test_Redirect_ExactRuleBeatsDottedPattern(t *testing.T) {
-	t.Parallel()
-
-	app := fiber.New()
-	app.Use(New(Config{
-		Rules: map[string]string{
-			"/api/user.": "/broad",
-			"/api/users": "/exact",
-		},
-		StatusCode: fiber.StatusFound,
-	}))
-	app.Get("/*", func(c fiber.Ctx) error { return c.SendString("fell through") })
-
-	for _, tc := range []struct{ request, want string }{
-		{"/api/users", "/exact"},
-		{"/api/userx", "/broad"},
-	} {
-		req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, tc.request, http.NoBody)
-		require.NoError(t, err)
-		resp, err := app.Test(req)
-		require.NoError(t, err)
-		require.Equal(t, fiber.StatusFound, resp.StatusCode, tc.request)
-		require.Equal(t, tc.want, resp.Header.Get("Location"), tc.request)
-	}
-}
-
-// Test_Redirect_NonSpecialSchemeAuthority covers targets under a scheme the
-// WHATWG URL Standard does not call special — a custom deep link.
-//
-// Two things differ there. A "\" is an ordinary authority byte rather than a
-// delimiter, so accepting one as opening the path let a value reach past the
-// author's host into a new one. And a scheme followed by an opaque path names
-// no host at all, so text after the capture only looked like it pinned one:
-// "myapp:$1@example.com" against "//evil.com/x" composed a host of evil.com.
+// Test_Redirect_NonSpecialSchemeAuthority covers a custom deep link, where "\" is an ordinary authority byte.
 func Test_Redirect_NonSpecialSchemeAuthority(t *testing.T) {
 	t.Parallel()
 
@@ -2210,36 +1450,12 @@ func Test_Redirect_NonSpecialSchemeAuthority(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			app := fiber.New(fiber.Config{UnescapePath: true})
-			app.Use(New(Config{
-				Rules:      map[string]string{"/p/*": tc.target},
-				StatusCode: fiber.StatusFound,
-			}))
-			app.Get("/*", func(c fiber.Ctx) error { return c.SendString("fell through") })
-
-			req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, tc.request, http.NoBody)
-			require.NoError(t, err)
-			resp, err := app.Test(req)
-			require.NoError(t, err)
-
-			if tc.want == "" {
-				require.Equal(t, fiber.StatusOK, resp.StatusCode, "the rule must not fire")
-				require.Empty(t, resp.Header.Get("Location"))
-				return
-			}
-			require.Equal(t, fiber.StatusFound, resp.StatusCode)
-			require.Equal(t, tc.want, resp.Header.Get("Location"))
+			requireRule(t, true, "/p/*", tc.target, tc.request, tc.want)
 		})
 	}
 }
 
-// Test_Redirect_ThirdSlashUnderNonSpecialScheme covers a target whose authority
-// the author left empty by writing a third slash.
-//
-// Only a special scheme reaches "special authority ignore slashes" and skips
-// past it; under any other one that slash terminates an empty authority, so the
-// capture is path. Skipping it regardless read the capture as the host, and the
-// rule was dropped at startup for handing the host to the request.
+// Test_Redirect_ThirdSlashUnderNonSpecialScheme covers an authority the author left empty with a third slash.
 func Test_Redirect_ThirdSlashUnderNonSpecialScheme(t *testing.T) {
 	t.Parallel()
 
@@ -2252,8 +1468,7 @@ func Test_Redirect_ThirdSlashUnderNonSpecialScheme(t *testing.T) {
 		{"empty authority leaves the capture in the path", "myapp:///$1", "/p/evil.com", "myapp:///evil.com"},
 		{"deeper path under an empty authority", "myapp:///x/$1", "/p/evil.com", "myapp:///x/evil.com"},
 
-		// A special scheme skips them, so the capture is the host and the rule
-		// still hands the destination away.
+		// A special scheme skips them, so the capture is the host and the rule still hands the destination away.
 		{"special scheme still skips them", "https:///$1", "/p/evil.com", ""},
 		{"two slashes still open an authority", "myapp://$1", "/p/evil.com", ""},
 	}
@@ -2262,196 +1477,12 @@ func Test_Redirect_ThirdSlashUnderNonSpecialScheme(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			app := fiber.New(fiber.Config{UnescapePath: true})
-			app.Use(New(Config{
-				Rules:      map[string]string{"/p/*": tc.target},
-				StatusCode: fiber.StatusFound,
-			}))
-			app.Get("/*", func(c fiber.Ctx) error { return c.SendString("fell through") })
-
-			req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, tc.request, http.NoBody)
-			require.NoError(t, err)
-			resp, err := app.Test(req)
-			require.NoError(t, err)
-
-			if tc.want == "" {
-				require.Equal(t, fiber.StatusOK, resp.StatusCode, "the rule must not fire")
-				require.Empty(t, resp.Header.Get("Location"))
-				return
-			}
-			require.Equal(t, fiber.StatusFound, resp.StatusCode)
-			require.Equal(t, tc.want, resp.Header.Get("Location"))
-
-			// The authority stayed empty, so nothing the value supplied is a host.
-			u, err := url.Parse(resp.Header.Get("Location"))
-			require.NoError(t, err)
-			require.Empty(t, u.Host)
+			requireRule(t, true, "/p/*", tc.target, tc.request, tc.want)
 		})
 	}
 }
 
-// Test_Redirect_WiderClassDoesNotOutrank covers two rules that differ only in
-// how many alternatives their character class lists. A class matches one byte
-// either way, so the longer list pins no more path — counting its members made
-// the broader rule win every time and left the narrower one dead.
-func Test_Redirect_WiderClassDoesNotOutrank(t *testing.T) {
-	t.Parallel()
-
-	app := fiber.New()
-	app.Use(New(Config{
-		Rules: map[string]string{
-			"/api/[abcdefghijklmnopqrstuvwxyz]": "/broad",
-			"/api/[ab]":                         "/narrow",
-		},
-		StatusCode: fiber.StatusFound,
-	}))
-	app.Get("/*", func(c fiber.Ctx) error { return c.SendString("fell through") })
-
-	for _, tc := range []struct{ request, want string }{
-		// Both match, and they now tie on pinned length, so the deterministic
-		// key order decides rather than the length of the class.
-		{"/api/a", "/narrow"},
-		// Only the wider class matches this one.
-		{"/api/z", "/broad"},
-	} {
-		req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, tc.request, http.NoBody)
-		require.NoError(t, err)
-		resp, err := app.Test(req)
-		require.NoError(t, err)
-		require.Equal(t, fiber.StatusFound, resp.StatusCode, tc.request)
-		require.Equal(t, tc.want, resp.Header.Get("Location"), tc.request)
-	}
-}
-
-// Test_Redirect_AlternationRankedByItsWidestBranch covers a rule that can match
-// by more than one branch. It is only as specific as the least specific of them,
-// so crediting everything before the "|" put it ahead of the exact rule it ties
-// with and shadowed that rule outright.
-func Test_Redirect_AlternationRankedByItsWidestBranch(t *testing.T) {
-	t.Parallel()
-
-	app := fiber.New()
-	app.Use(New(Config{
-		Rules: map[string]string{
-			"/very/specific|/x": "/alt",
-			"/x":                "/exact",
-		},
-		StatusCode: fiber.StatusFound,
-	}))
-	app.Get("/*", func(c fiber.Ctx) error { return c.SendString("fell through") })
-
-	for _, tc := range []struct{ request, want string }{
-		// Both match, and the exact rule wins: they pin the same one byte, and
-		// the alternation matches strictly more paths.
-		{"/x", "/exact"},
-		// The branch only the alternation matches still reaches it.
-		{"/very/specific", "/alt"},
-	} {
-		req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, tc.request, http.NoBody)
-		require.NoError(t, err)
-		resp, err := app.Test(req)
-		require.NoError(t, err)
-		require.Equal(t, fiber.StatusFound, resp.StatusCode, tc.request)
-		require.Equal(t, tc.want, resp.Header.Get("Location"), tc.request)
-	}
-}
-
-// Test_Redirect_GroupedAlternationRankedByItsWidestBranch covers an alternation
-// written inside a group, which is one just the same. Crediting it with the
-// literals of every branch made the rule that matches more paths sort as the
-// more specific one, so it answered every request they share.
-func Test_Redirect_GroupedAlternationRankedByItsWidestBranch(t *testing.T) {
-	t.Parallel()
-
-	app := fiber.New()
-	app.Use(New(Config{
-		Rules: map[string]string{
-			"/p/[a-z](reports|x.*)": "/grouped",
-			"/p/[a-z]xy":            "/narrow",
-		},
-		StatusCode: fiber.StatusFound,
-	}))
-	app.Get("/*", func(c fiber.Ctx) error { return c.SendString("fell through") })
-
-	for _, tc := range []struct{ request, want string }{
-		// Both match "/p/axy". The grouped rule pins only the one byte its "x.*"
-		// branch does, so the rule pinning "xy" answers it.
-		{"/p/axy", "/narrow"},
-		// What only the grouped rule matches still reaches it.
-		{"/p/areports", "/grouped"},
-	} {
-		req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, tc.request, http.NoBody)
-		require.NoError(t, err)
-		resp, err := app.Test(req)
-		require.NoError(t, err)
-		require.Equal(t, fiber.StatusFound, resp.StatusCode, tc.request)
-		require.Equal(t, tc.want, resp.Header.Get("Location"), tc.request)
-	}
-}
-
-// Test_Redirect_OptionalQuantifierDoesNotOutrankExactRule covers "{0,1}", whose
-// bounds were counted as path bytes. That put the rule matching "/api/" as well
-// ahead of the exact "/api/a", which it then answered for.
-func Test_Redirect_OptionalQuantifierDoesNotOutrankExactRule(t *testing.T) {
-	t.Parallel()
-
-	app := fiber.New()
-	app.Use(New(Config{
-		Rules: map[string]string{
-			"/api/ab{0,1}": "/maybe",
-			"/api/ab":      "/exact",
-		},
-		StatusCode: fiber.StatusFound,
-	}))
-	app.Get("/*", func(c fiber.Ctx) error { return c.SendString("fell through") })
-
-	for _, tc := range []struct{ request, want string }{
-		{"/api/ab", "/exact"},
-		// What only the quantified rule matches still reaches it.
-		{"/api/a", "/maybe"},
-	} {
-		req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, tc.request, http.NoBody)
-		require.NoError(t, err)
-		resp, err := app.Test(req)
-		require.NoError(t, err)
-		require.Equal(t, fiber.StatusFound, resp.StatusCode, tc.request)
-		require.Equal(t, tc.want, resp.Header.Get("Location"), tc.request)
-	}
-}
-
-// Test_Redirect_AnchorPinsNoPath covers an explicit "$" in a rule. It asserts a
-// position and consumes nothing, so counting it as a path byte put the broader
-// class rule ahead of the exact one on a path they both match.
-func Test_Redirect_AnchorPinsNoPath(t *testing.T) {
-	t.Parallel()
-
-	app := fiber.New()
-	app.Use(New(Config{
-		Rules: map[string]string{
-			"/p/[a-z]$": "/class",
-			"/p/[a]":    "/exact",
-		},
-		StatusCode: fiber.StatusFound,
-	}))
-	app.Get("/*", func(c fiber.Ctx) error { return c.SendString("fell through") })
-
-	for _, tc := range []struct{ request, want string }{
-		{"/p/a", "/exact"},
-		{"/p/b", "/class"},
-	} {
-		req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, tc.request, http.NoBody)
-		require.NoError(t, err)
-		resp, err := app.Test(req)
-		require.NoError(t, err)
-		require.Equal(t, fiber.StatusFound, resp.StatusCode, tc.request)
-		require.Equal(t, tc.want, resp.Header.Get("Location"), tc.request)
-	}
-}
-
-// Test_Redirect_UserinfoDelimitersFollowTheScheme covers a capture in the
-// userinfo of a non-special target. A backslash ends the authority only under a
-// special scheme, so refusing one outright dropped a redirect whose host the
-// author had pinned — "myapp://user\name@example.com" still reaches example.com.
+// Test_Redirect_UserinfoDelimitersFollowTheScheme covers a capture in the userinfo of a non-special target.
 func Test_Redirect_UserinfoDelimitersFollowTheScheme(t *testing.T) {
 	t.Parallel()
 
@@ -2466,53 +1497,26 @@ func Test_Redirect_UserinfoDelimitersFollowTheScheme(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			app := fiber.New(fiber.Config{UnescapePath: true})
-			app.Use(New(Config{Rules: map[string]string{"/r/*": tc.target}, StatusCode: fiber.StatusFound}))
-			app.Get("/*", func(c fiber.Ctx) error { return c.SendString("fell through") })
-
-			req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/r/user%5Cname", http.NoBody)
-			require.NoError(t, err)
-			resp, err := app.Test(req)
-			require.NoError(t, err)
-			require.Equal(t, tc.want, resp.Header.Get("Location"))
+			requireRule(t, true, "/r/*", tc.target, "/r/user%5Cname", tc.want)
 		})
 	}
 }
 
-// Test_Redirect_FileAuthorityOpensOnBackslashes covers "file:/$1", which looks
-// like it names no authority. The parser folds a backslash into a slash on the
-// way to the file host, so a captured "\evil.com/share" composes a location
-// whose host is evil.com — on Windows, a UNC path to a server of its choosing.
+// Test_Redirect_FileAuthorityOpensOnBackslashes covers "file:/$1", where a captured "\evil.com/share" names a host.
 func Test_Redirect_FileAuthorityOpensOnBackslashes(t *testing.T) {
 	t.Parallel()
 
-	app := fiber.New(fiber.Config{UnescapePath: true})
-	app.Use(New(Config{Rules: map[string]string{"/r/*": "file:/$1"}, StatusCode: fiber.StatusFound}))
-	app.Get("/*", func(c fiber.Ctx) error { return c.SendString("fell through") })
+	requireRule(t, true, "/r/*", "file:/$1", "/r/%5Cevil.com/share", "")
 
-	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/r/%5Cevil.com/share", http.NoBody)
-	require.NoError(t, err)
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
-	require.Empty(t, resp.Header.Get("Location"))
-
-	// A value that stays a path still redirects. So does a third slash, which
-	// closes the authority empty exactly as "file:///tmp" does.
+	// A value that stays a path still redirects, as does a third slash, which closes the authority empty like "file:///tmp".
 	for _, tc := range []struct{ request, want string }{
 		{"/r/tmp/report", "file:/tmp/report"},
 		{"/r/%5C%5Cevil.com/share", `file:/\\evil.com/share`},
 	} {
-		req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, tc.request, http.NoBody)
-		require.NoError(t, err)
-		resp, err := app.Test(req)
-		require.NoError(t, err)
-		require.Equal(t, fiber.StatusFound, resp.StatusCode, tc.request)
-		require.Equal(t, tc.want, resp.Header.Get("Location"), tc.request)
+		requireRule(t, true, "/r/*", "file:/$1", tc.request, tc.want)
 	}
 
-	// The span itself, which is what the runtime guard asks of the composition:
-	// two slashes in any spelling open the host, and a third closes it empty.
+	// The span itself, which is what the runtime guard asks of the composition.
 	for _, target := range []string{`file:/\evil.com/share`, `file:\\evil.com/share`, `file:\/evil.com`, "file://evil.com"} {
 		start, end := authoritySpan(target)
 		require.Equal(t, "evil.com", target[start:end], target)
@@ -2523,16 +1527,11 @@ func Test_Redirect_FileAuthorityOpensOnBackslashes(t *testing.T) {
 	}
 }
 
-// Test_Redirect_AnchorsBindEveryBranch covers a rule holding a top-level "|".
-// Concatenating the anchors made "^/a|/b$", which anchors the start of one
-// branch and the end of the other, so a path only sharing an edge matched.
+// Test_Redirect_AnchorsBindEveryBranch covers a top-level "|", where concatenated anchors made "^/a|/b$".
 func Test_Redirect_AnchorsBindEveryBranch(t *testing.T) {
 	t.Parallel()
 
-	app := fiber.New()
-	app.Use(New(Config{Rules: map[string]string{"/a|/b": "/moved"}, StatusCode: fiber.StatusFound}))
-	app.Get("/*", func(c fiber.Ctx) error { return c.SendString("fell through") })
-
+	app := testApp([]Rule{{From: "/a|/b", To: "/moved"}}, false)
 	for _, tc := range []struct {
 		request string
 		want    int
@@ -2542,149 +1541,81 @@ func Test_Redirect_AnchorsBindEveryBranch(t *testing.T) {
 		{"/a-extra", fiber.StatusOK},
 		{"/extra/b", fiber.StatusOK},
 	} {
-		req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, tc.request, http.NoBody)
-		require.NoError(t, err)
-		resp, err := app.Test(req)
-		require.NoError(t, err)
-		require.Equal(t, tc.want, resp.StatusCode, tc.request)
+		status, _ := get(t, app, tc.request)
+		require.Equal(t, tc.want, status, tc.request)
 	}
 }
 
-// Test_Redirect_NestedAlternationLosesTheTieBreak covers two rules that tie on
-// both specificity measures. The wider one matches a path the other does not, so
-// key order deciding between them left the exact rule dead.
-func Test_Redirect_NestedAlternationLosesTheTieBreak(t *testing.T) {
+// Test_Redirect_NestedAlternationLosesTheTieBreak covers two rules that tie on both specificity measures.
+func Test_Redirect_FiniteRepetitionIsCounted(t *testing.T) {
 	t.Parallel()
 
-	app := fiber.New()
-	app.Use(New(Config{
-		Rules: map[string]string{
-			"/p/[a-z](x|y)": "/wide",
-			"/p/[a-z]x":     "/narrow",
-		},
-		StatusCode: fiber.StatusFound,
-	}))
-	app.Get("/*", func(c fiber.Ctx) error { return c.SendString("fell through") })
-
-	for _, tc := range []struct{ request, want string }{
-		{"/p/ax", "/narrow"},
-		{"/p/ay", "/wide"},
-	} {
-		req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, tc.request, http.NoBody)
-		require.NoError(t, err)
-		resp, err := app.Test(req)
-		require.NoError(t, err)
-		require.Equal(t, fiber.StatusFound, resp.StatusCode, tc.request)
-		require.Equal(t, tc.want, resp.Header.Get("Location"), tc.request)
-	}
-
-	// A class counts its breadth here too, so the two differ by the group alone.
-	require.Equal(t, 52, patternWidth("/p/[a-z](x|y)"))
-	require.Equal(t, 26, patternWidth("/p/[a-z]x"))
-	require.Equal(t, 1, patternWidth("/p/[a]"))
-	require.Equal(t, 256, patternWidth("/p/."))
-	require.Equal(t, 2, patternWidth("/very/specific|/x"))
-	require.Equal(t, 4, patternWidth("(a|b)(c|d)"))
-
-	// The wildcard is ranked on its own rather than counted here, so the width
-	// goes on separating two rules that both carry one.
-	require.Equal(t, 1, wildcardRank("/p/*"))
-	require.Equal(t, 0, wildcardRank("/p/[a-z]"))
-	require.Greater(t, patternWidth("/p/*[a-z]"), patternWidth("/p/*[ab]"))
-
-	// A star that names itself is no wildcard: quoted, or listed by a class.
-	require.Equal(t, 0, wildcardRank(`/p/\Q*\E`))
-	require.Equal(t, 0, wildcardRank(`/p/\Qab*`))
-	require.Equal(t, 0, wildcardRank("/p/[*]"))
-	require.Equal(t, 1, wildcardRank(`/p/\Qab\E*`))
-	require.Equal(t, 1, wildcardRank(`/p/\d*`))
+	requireWin(t, []Rule{
+		{From: `/p/[a][ab]?`, To: "/narrow"},
+		{From: `/p/[ab]{1,2}`, To: "/broad"},
+	}, "/p/a", "/narrow")
 }
 
-// Test_Redirect_HexEscapeOutranksAClass covers "\x{61}", which names the one
-// character "a". Reading every letter-led escape as a class scored it no higher
-// than "[a-z]", and the tie left key order to pick the broader rule.
+// Test_Redirect_UnboundedRulesKeepTheirBreadth covers two rules that both run on: "/p/[z]+" and "/p/[a-z]+".
+func Test_Redirect_UnboundedRulesKeepTheirBreadth(t *testing.T) {
+	t.Parallel()
+
+	requireWin(t, []Rule{
+		{From: `/p/[z]+`, To: "/narrow"},
+		{From: `/p/[a-z]+`, To: "/broad"},
+	}, "/p/z", "/narrow")
+}
+
+// Test_Redirect_EscapedByteIsOneMember covers the class escape spelling one byte: "[\.]" lists the dot alone.
+func Test_Redirect_UnterminatedQuoteRuleIsRejected(t *testing.T) {
+	t.Parallel()
+
+	require.Panics(t, func() {
+		New(Config{RuleList: []Rule{{From: `/p/*\Qab*`, To: "/safe"}}})
+	})
+}
+
 func Test_Redirect_HexEscapeOutranksAClass(t *testing.T) {
 	t.Parallel()
 
-	app := fiber.New()
-	app.Use(New(Config{
-		Rules: map[string]string{
-			`/p/\x{61}`: "/exact",
-			"/p/[a-z]":  "/class",
-		},
-		StatusCode: fiber.StatusFound,
-	}))
-	app.Get("/*", func(c fiber.Ctx) error { return c.SendString("fell through") })
-
+	rules := []Rule{
+		{From: `/p/\x{61}`, To: "/exact"},
+		{From: "/p/[a-z]", To: "/class"},
+	}
 	for _, tc := range []struct{ request, want string }{
 		{"/p/a", "/exact"},
 		{"/p/b", "/class"},
 	} {
-		req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, tc.request, http.NoBody)
-		require.NoError(t, err)
-		resp, err := app.Test(req)
-		require.NoError(t, err)
-		require.Equal(t, fiber.StatusFound, resp.StatusCode, tc.request)
-		require.Equal(t, tc.want, resp.Header.Get("Location"), tc.request)
+		requireWin(t, rules, tc.request, tc.want)
 	}
 }
 
-// Test_Redirect_CaptureEndsAuthorityPastADeletedByte covers a captured "\t/ok".
-// The parser deletes the tab, so the value ends the authority at the author's
-// host and the client reaches "/ok" — judging the tab as the first byte instead
-// read the value as extending the host, and the redirect was refused.
+// Test_Redirect_CaptureEndsAuthorityPastADeletedByte covers a captured "\t/ok", whose tab the parser deletes.
 func Test_Redirect_CaptureEndsAuthorityPastADeletedByte(t *testing.T) {
 	t.Parallel()
 
-	app := fiber.New(fiber.Config{UnescapePath: true})
-	app.Use(New(Config{
-		Rules:      map[string]string{"/r/*": "https://example.com$1"},
-		StatusCode: fiber.StatusFound,
-	}))
-	app.Get("/*", func(c fiber.Ctx) error { return c.SendString("fell through") })
+	app := testApp([]Rule{{From: "/r/*", To: "https://example.com$1"}}, true)
+	status, location := get(t, app, "/r/%09%2Fok")
+	require.Equal(t, fiber.StatusFound, status)
 
-	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/r/%09%2Fok", http.NoBody)
-	require.NoError(t, err)
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusFound, resp.StatusCode)
-
-	// What the client reads is example.com, whatever bytes the parser drops on
-	// the way there.
-	location := resp.Header.Get("Location")
+	// What the client reads is example.com, whatever bytes the parser drops on the way there.
 	ref, err := url.Parse(strings.NewReplacer("\t", "", "\r", "", "\n", "").Replace(location))
 	require.NoError(t, err)
 	require.Equal(t, "example.com", ref.Host)
 	require.Equal(t, "/ok", ref.Path)
 
 	// A value that really does extend the host is still refused.
-	req, err = http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/r/%09evil", http.NoBody)
-	require.NoError(t, err)
-	resp, err = app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	status, _ = get(t, app, "/r/%09evil")
+	require.Equal(t, fiber.StatusOK, status)
 }
 
-// Test_Redirect_BareFileSchemeIsAPath covers a "file:" target with no slashes,
-// which names no authority: the parser leaves "file state" for "path state"
-// unless one follows, so what stands there is path. Reading it as a host made a
-// value that is only a path name one, and the redirect was skipped at runtime.
+// Test_Redirect_BareFileSchemeIsAPath covers a "file:" target with no slashes, which names no authority.
 func Test_Redirect_BareFileSchemeIsAPath(t *testing.T) {
 	t.Parallel()
 
-	app := fiber.New()
-	app.Use(New(Config{Rules: map[string]string{"/r/*": "file:tmp$1"}, StatusCode: fiber.StatusFound}))
-	app.Get("/*", func(c fiber.Ctx) error { return c.SendString("fell through") })
+	requireRule(t, false, "/r/*", "file:tmp$1", "/r/report", "file:tmpreport")
 
-	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/r/report", http.NoBody)
-	require.NoError(t, err)
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusFound, resp.StatusCode)
-	require.Equal(t, "file:tmpreport", resp.Header.Get("Location"))
-
-	// A bare "file:" target holds no authority span, so it is opaque-path and the
-	// composed location is what gets checked for one.
+	// A bare "file:" target holds no authority span, so it is opaque-path and the composed location is what gets checked.
 	start, end := authoritySpan("file:tmp/report")
 	require.Equal(t, 0, start)
 	require.Equal(t, 0, end)
@@ -2692,70 +1623,22 @@ func Test_Redirect_BareFileSchemeIsAPath(t *testing.T) {
 	require.NotEqual(t, start, end)
 }
 
-// Test_Redirect_AuthorPinnedShortIPv4 covers "127.1", which the URL parser reads
-// as 127.0.0.1. Judging it by net.ParseIP said the author had pinned no host and
-// dropped a rule whose host they had written in full.
+// Test_Redirect_AuthorPinnedShortIPv4 covers "127.1", which the URL parser reads as 127.0.0.1 where net.ParseIP does not.
 func Test_Redirect_AuthorPinnedShortIPv4(t *testing.T) {
 	t.Parallel()
 
 	for _, host := range []string{"127.1", "0x7f.1", "2130706433", "127.0.0.1"} {
-		app := fiber.New()
-		app.Use(New(Config{
-			Rules:      map[string]string{"/r/*": "https://" + host + ":$1"},
-			StatusCode: fiber.StatusFound,
-		}))
-		app.Get("/*", func(c fiber.Ctx) error { return c.SendString("fell through") })
-
-		req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/r/8080", http.NoBody)
-		require.NoError(t, err)
-		resp, err := app.Test(req)
-		require.NoError(t, err)
-		require.Equal(t, fiber.StatusFound, resp.StatusCode, host)
-		require.Equal(t, "https://"+host+":8080", resp.Header.Get("Location"), host)
+		requireRule(t, false, "/r/*", "https://"+host+":$1", "/r/8080", "https://"+host+":8080")
 	}
 
-	// A host that is not an address still hands the host away when the capture
-	// closes it, so "https://$1" stays refused.
+	// A host that is not an address still hands the host away when the capture closes it, so "https://$1" stays refused.
 	require.False(t, isIPv4Host("127.0.0.256"))
 	require.False(t, isIPv4Host("1.2.3.4.5"))
 	require.False(t, isIPv4Host("0x1g"))
 	require.True(t, isIPv4Host("127.0.0.1."))
 }
 
-// Test_Redirect_ClassEscapeDoesNotOutrankExactRule covers "\d", which matches any
-// digit. Reading it as the byte "d" escaped counted two path bytes that are not
-// there, putting the rule that matches every digit ahead of the exact one.
-func Test_Redirect_ClassEscapeDoesNotOutrankExactRule(t *testing.T) {
-	t.Parallel()
-
-	app := fiber.New()
-	app.Use(New(Config{
-		Rules: map[string]string{
-			`/api/\d+`: "/digits",
-			"/api/1":   "/one",
-		},
-		StatusCode: fiber.StatusFound,
-	}))
-	app.Get("/*", func(c fiber.Ctx) error { return c.SendString("fell through") })
-
-	for _, tc := range []struct{ request, want string }{
-		{"/api/1", "/one"},
-		{"/api/27", "/digits"},
-	} {
-		req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, tc.request, http.NoBody)
-		require.NoError(t, err)
-		resp, err := app.Test(req)
-		require.NoError(t, err)
-		require.Equal(t, fiber.StatusFound, resp.StatusCode, tc.request)
-		require.Equal(t, tc.want, resp.Header.Get("Location"), tc.request)
-	}
-}
-
-// Test_Redirect_FileSchemeEmptyAuthority covers "file", which is special — it
-// folds backslashes — but reaches its host through "file slash state" rather
-// than the ignore-slashes one every other special scheme takes. So "file:///$1"
-// has the empty authority of a local path, and skipping that third slash read
-// the capture as the host and dropped the rule at startup.
+// Test_Redirect_FileSchemeEmptyAuthority covers "file", whose "file:///$1" is the empty authority of a local path.
 func Test_Redirect_FileSchemeEmptyAuthority(t *testing.T) {
 	t.Parallel()
 
@@ -2775,24 +1658,235 @@ func Test_Redirect_FileSchemeEmptyAuthority(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			app := fiber.New(fiber.Config{UnescapePath: true})
-			app.Use(New(Config{
-				Rules:      map[string]string{"/p/*": tc.target},
-				StatusCode: fiber.StatusFound,
-			}))
-			app.Get("/*", func(c fiber.Ctx) error { return c.SendString("fell through") })
+			requireRule(t, true, "/p/*", tc.target, tc.request, tc.want)
+		})
+	}
+}
 
-			req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, tc.request, http.NoBody)
-			require.NoError(t, err)
-			resp, err := app.Test(req)
-			require.NoError(t, err)
+// Test_Redirect_LiteralBracesHideNoRun covers "{x*}", whose braces bound no repetition and hide no run.
+func Test_Redirect_DeepNestingIsBounded(t *testing.T) {
+	t.Parallel()
 
-			if tc.want == "" {
-				require.Equal(t, fiber.StatusOK, resp.StatusCode, "the rule must not fire")
-				return
+	deep := "/p/" + strings.Repeat("(?:", 16000) + "a" + strings.Repeat(")", 16000)
+	require.NotPanics(t, func() {
+		New(Config{RuleList: []Rule{{From: deep, To: "/x"}, {From: "/p/a", To: "/y"}}})
+	})
+}
+
+// Test_Redirect_BothRuleFieldsPanic pins that a config setting the deprecated
+// map and the ordered list at once is refused: the two disagree about what
+// decides precedence, and picking one silently is the bug this API replaced.
+func Test_Redirect_BothRuleFieldsPanic(t *testing.T) {
+	t.Parallel()
+
+	require.Panics(t, func() {
+		New(Config{
+			Rules:    map[string]string{"/old": "/new"},
+			RuleList: []Rule{{From: "/old", To: "/new"}},
+		})
+	})
+
+	// Either alone is fine.
+	require.NotPanics(t, func() {
+		New(Config{Rules: map[string]string{"/old": "/new"}})
+	})
+	require.NotPanics(t, func() {
+		New(Config{RuleList: []Rule{{From: "/old", To: "/new"}}})
+	})
+}
+
+// Test_Redirect_DeprecatedMapStillRedirects pins that the deprecated field goes
+// on working, since it has to for the whole of v3.
+func Test_Redirect_DeprecatedMapStillRedirects(t *testing.T) {
+	t.Parallel()
+
+	requireWinMap(t, map[string]string{"/api/*": "/$1"}, "/api/users", "/users")
+	requireWinMap(t, map[string]string{"/old": "/new"}, "/old", "/new")
+}
+
+// Test_ShadowedRules pins which rule orders leave a rule dead. Reported rather
+// than reordered: the order is the author's, so the answer is to tell them.
+func Test_ShadowedRules(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name    string
+		rules   []Rule
+		shadows bool
+	}{
+		{"catch-all first", []Rule{{From: "/*", To: "/a"}, {From: "/old/*", To: "/b"}}, true},
+		{"catch-all last", []Rule{{From: "/old/*", To: "/b"}, {From: "/*", To: "/a"}}, false},
+		{"wildcard eats the exact rule", []Rule{{From: "/api/*", To: "/a"}, {From: "/api/users", To: "/b"}}, true},
+		{"exact rule first", []Rule{{From: "/api/users", To: "/b"}, {From: "/api/*", To: "/a"}}, false},
+		{"more wildcards eat fewer", []Rule{{From: "/p/*a*b", To: "/a"}, {From: "/p/*ab", To: "/b"}}, true},
+		{"fewer wildcards first", []Rule{{From: "/p/*ab", To: "/b"}, {From: "/p/*a*b", To: "/a"}}, false},
+		{"a suffix under a wildcard", []Rule{{From: "/p/*", To: "/a"}, {From: "/p/*.png", To: "/b"}}, true},
+		{"a deeper path under a wildcard", []Rule{{From: "/users/*", To: "/a"}, {From: "/users/*/orders/*", To: "/b"}}, true},
+		{"disjoint rules shadow nothing", []Rule{{From: "/a/*", To: "/x"}, {From: "/b/*", To: "/y"}}, false},
+		{"one rule shadows nothing", []Rule{{From: "/a/*", To: "/x"}}, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			compiled := make([]compiledRule, 0, len(tc.rules))
+			for _, rule := range tc.rules {
+				compiled = append(compiled, compiledRule{
+					from:    rule.From,
+					pattern: regexp.MustCompile("^(?:" + strings.ReplaceAll(rule.From, "*", "(.*)") + ")$"),
+				})
 			}
-			require.Equal(t, fiber.StatusFound, resp.StatusCode)
-			require.Equal(t, tc.want, resp.Header.Get("Location"))
+			require.Equal(t, tc.shadows, shadowedRules(compiled, nil))
+		})
+	}
+}
+
+// Test_OrderedRules pins each key the deprecated map is sorted by, and that a
+// RuleList is handed back in the order the author wrote it.
+func Test_OrderedRules(t *testing.T) {
+	t.Parallel()
+
+	t.Run("a rule list keeps the author's order", func(t *testing.T) {
+		t.Parallel()
+
+		list := []Rule{{From: "/*", To: "/broad"}, {From: "/api/users", To: "/exact"}}
+		require.Equal(t, list, orderedRules(Config{RuleList: list}))
+	})
+
+	for _, tc := range []struct {
+		name  string
+		rules map[string]string
+		want  []string
+	}{
+		{
+			// A rule with no wildcard at all pins the whole of what it spells.
+			name:  "more pinned before the wildcard wins",
+			rules: map[string]string{"/api/*": "/a", "/api/users": "/b"},
+			want:  []string{"/api/users", "/api/*"},
+		},
+		{
+			name:  "then more pinned in total",
+			rules: map[string]string{"/cdn/*": "/a", "/cdn/*x": "/b"},
+			want:  []string{"/cdn/*x", "/cdn/*"},
+		},
+		{
+			name:  "then fewer wildcards",
+			rules: map[string]string{"/p/*a*b": "/a", "/p/*ab": "/b"},
+			want:  []string{"/p/*ab", "/p/*a*b"},
+		},
+		{
+			// Nothing else separates them, so the key itself keeps it total.
+			name:  "then the key itself",
+			rules: map[string]string{"/p/b*": "/b", "/p/a*": "/a"},
+			want:  []string{"/p/a*", "/p/b*"},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			rules := orderedRules(Config{Rules: tc.rules})
+			got := make([]string, 0, len(rules))
+			for _, rule := range rules {
+				got = append(got, rule.From)
+				require.Equal(t, tc.rules[rule.From], rule.To)
+			}
+			require.Equal(t, tc.want, got)
+		})
+	}
+}
+
+// Test_ShadowedRulesIsBounded pins that the scan gives up rather than walking
+// every pair of a rule list long enough for the cost to show.
+func Test_ShadowedRulesIsBounded(t *testing.T) {
+	t.Parallel()
+
+	shadowing := func(n int) []compiledRule {
+		rules := make([]compiledRule, 0, n)
+		rules = append(rules, compiledRule{from: "/*", pattern: regexp.MustCompile(`^(?:(.*))$`)})
+		for i := 1; i < n; i++ {
+			from := "/p" + strconv.Itoa(i)
+			rules = append(rules, compiledRule{from: from, pattern: regexp.MustCompile("^(?:" + from + ")$")})
+		}
+		return rules
+	}
+
+	require.True(t, shadowedRules(shadowing(maxShadowChecked), nil))
+	require.False(t, shadowedRules(shadowing(maxShadowChecked+1), nil))
+}
+
+// benchRules builds n non-overlapping rules, the last of which is the one a
+// benchmark request matches.
+func benchRules(n int) []Rule {
+	rules := make([]Rule, 0, n)
+	for i := range n {
+		id := strconv.Itoa(i)
+		rules = append(rules, Rule{From: "/old" + id + "/*", To: "/new" + id + "/$1"})
+	}
+	return rules
+}
+
+// Benchmark_Redirect_New measures building the middleware, which is where rule
+// order is settled. It is parameterized over the rule count because that is
+// what a per-rule startup cost shows up in.
+func Benchmark_Redirect_New(b *testing.B) {
+	for _, n := range []int{1, 10, 100, 500} {
+		b.Run(strconv.Itoa(n)+"-rules", func(b *testing.B) {
+			rules := benchRules(n)
+			b.ReportAllocs()
+			for b.Loop() {
+				New(Config{RuleList: rules})
+			}
+		})
+	}
+}
+
+// Benchmark_Redirect_NewDeprecatedMap is the same over the deprecated map,
+// which has to be ordered before it can be used.
+func Benchmark_Redirect_NewDeprecatedMap(b *testing.B) {
+	for _, n := range []int{1, 10, 100, 500} {
+		b.Run(strconv.Itoa(n)+"-rules", func(b *testing.B) {
+			rules := make(map[string]string, n)
+			for _, rule := range benchRules(n) {
+				rules[rule.From] = rule.To
+			}
+			b.ReportAllocs()
+			for b.Loop() {
+				New(Config{Rules: rules})
+			}
+		})
+	}
+}
+
+// Benchmark_Redirect_Handler measures the request path over the target shapes
+// that cost different amounts to compose.
+func Benchmark_Redirect_Handler(b *testing.B) {
+	for _, tc := range []struct {
+		name    string
+		request string
+		rules   []Rule
+	}{
+		{name: "static", rules: []Rule{{From: "/old", To: "/new"}}, request: "/old"},
+		{name: "one-capture", rules: []Rule{{From: "/api/*", To: "/v2/$1"}}, request: "/api/users"},
+		{name: "two-captures", rules: []Rule{{From: "/users/*/orders/*", To: "/user/$1/order/$2"}}, request: "/users/7/orders/9"},
+		{name: "guarded-host", rules: []Rule{{From: "/cdn/*", To: "https://$1.cdn.example.com/"}}, request: "/cdn/images"},
+		{name: "with-query", rules: []Rule{{From: "/api/*", To: "/v2/$1"}}, request: "/api/users?a=1&b=2"},
+		{name: "miss", rules: benchRules(50), request: "/nothing/here"},
+		{name: "last-of-50", rules: benchRules(50), request: "/old49/thing"},
+	} {
+		b.Run(tc.name, func(b *testing.B) {
+			app := fiber.New()
+			app.Use(New(Config{RuleList: tc.rules}))
+			app.Get("/*", func(c fiber.Ctx) error {
+				return c.SendString("fell through")
+			})
+
+			b.ReportAllocs()
+			for b.Loop() {
+				resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, tc.request, http.NoBody))
+				if err != nil {
+					b.Fatal(err)
+				}
+				resp.Body.Close() //nolint:errcheck // the body is empty and the error says nothing here
+			}
 		})
 	}
 }
