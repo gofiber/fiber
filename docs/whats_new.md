@@ -3027,6 +3027,34 @@ app.Use(cors.New(cors.Config{
 }))
 ```
 
+#### Redirect
+
+- **Ordered rules**: `Rules map[string]string` is deprecated in favour of `RuleList []Rule`. A map has no order, so which rule answered a path two rules both matched could not be expressed by the author. Rules in a `RuleList` are tried in the order written and the first match wins, exactly as routes are matched.
+
+```go
+// Before
+app.Use(redirect.New(redirect.Config{
+    Rules: map[string]string{
+        "/old":   "/new",
+        "/old/*": "/new/$1",
+    },
+}))
+
+// After
+app.Use(redirect.New(redirect.Config{
+    RuleList: []redirect.Rule{
+        {From: "/old", To: "/new"},
+        {From: "/old/*", To: "/new/$1"},
+    },
+}))
+```
+
+`Rules` keeps working for the whole of v3. Its order is now decided by a documented heuristic rather than by analysing each pattern: most path text pinned before the first `*`, then most path text overall, then fewest asterisks, then the key. Configurations written with path text and `*` are unaffected; rules relying on regular-expression syntax beyond `*` may order differently, and `RuleList` gives exact control. Setting both fields panics.
+
+Fiber now also warns at startup when a rule can never fire because an earlier one matches every path it does.
+
+- **A capture may no longer stand inside a target's authority**, which covers the host, the port and any userinfo: `"https://$1.cdn.example.com/"`, `"https://cdn.example.com:$1"` and `"https://$1"` are refused at startup with a warning, and those rules never fire. Whether such a value was safe depended on percent-decoding, IDNA mapping, numeric labels read as IPv4 addresses, IPv6 brackets and userinfo, and each of those was a way to move the host somewhere the target did not name. A capture in the path, query or fragment is unchanged. Where the destination host genuinely varies, pick it in a handler and use `c.Redirect()`, where the value is yours to validate.
+
 #### CSRF
 
 - **Field Renaming**: The `Expiration` field in the CSRF middleware configuration has been renamed to `IdleTimeout` to better describe its functionality. Additionally, the default value has been reduced from 1 hour to 30 minutes. Update your code as follows:
