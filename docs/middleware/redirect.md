@@ -4,7 +4,8 @@ id: redirect
 
 # Redirect
 
-Redirect middleware maps old URLs to new ones using simple rules.
+Redirect middleware maps old URLs to new ones using simple rules. Rules are
+tried in the order you write them and the first match wins.
 
 ## Signatures
 
@@ -80,8 +81,8 @@ precedence, so there is no sensible way to honour them together.
 ## Rule order
 
 Rules are tried in the order you write them and the first one whose `From`
-matches answers, exactly as [routes](../guide/routing.md) are matched. Put the
-specific rules before the catch-alls:
+matches answers, exactly as [routes](../guide/routing.md) are matched. Nothing
+reorders a `RuleList`. Put the specific rules before the catch-alls:
 
 ```go
 RuleList: []redirect.Rule{

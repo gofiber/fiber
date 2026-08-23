@@ -33,9 +33,10 @@ type Config struct {
 	// configurations.
 	Rules map[string]string
 
-	// RuleList defines the URL path rewrite rules, tried in the order given:
-	// the first rule whose From matches the request path wins, as routes do.
-	// Put the specific rules before the catch-alls.
+	// RuleList defines the URL path redirect rules. They are tried in the order
+	// given and the first rule whose From matches the request path wins, as
+	// routes do; nothing reorders the list. Put the specific rules before the
+	// catch-alls.
 	// Required. Example:
 	// {From: "/old", To: "/new"},
 	// {From: "/api/*", To: "/$1"},
