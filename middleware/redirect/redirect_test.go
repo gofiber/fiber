@@ -978,9 +978,9 @@ func Test_ShadowedRules(t *testing.T) {
 	}
 }
 
-// Test_OrderedRules pins each key the deprecated map is sorted by, and that a
+// Test_RuleList pins each key the deprecated map is sorted by, and that a
 // RuleList is handed back in the order the author wrote it.
-func Test_OrderedRules(t *testing.T) {
+func Test_RuleList(t *testing.T) {
 	t.Parallel()
 
 	t.Run("a rule list keeps the author's order", func(t *testing.T) {
@@ -1155,8 +1155,12 @@ func Test_Redirect_CaptureInAuthorityIsRefused(t *testing.T) {
 		"https://user@$1.example.com/",
 		// Percent-escapes and IDN, which the analysis decoded and mapped.
 		"https://$1%41.example.com", "https://$1.例え.jp/", "https://$1.xn--r8jz45g.jp/",
-		// Non-special scheme.
-		"myapp://example.com$1",
+		// Non-special scheme, where a backslash does not end the authority.
+		"myapp://example.com$1", `myapp://example.com\$1`, `myapp://$1\@example.com`,
+		// A special scheme reaches its host without the "//", so the span has to
+		// be read there too: "https:host" and "https://host" name the same host.
+		"https:$1", "https:cdn.example.com$1", "ws:$1.example.com", "HTTPS:$1",
+		"https:$1@example.com",
 	}
 
 	for _, target := range targets {

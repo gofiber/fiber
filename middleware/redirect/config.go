@@ -8,7 +8,9 @@ import (
 // client to. The values captured in asterisk can be retrieved by index e.g.
 // $1, $2 and so on.
 type Rule struct {
-	// From is the path pattern, where "*" matches a run of any length.
+	// From is the path pattern, where "*" matches a run of any length. The key
+	// reaches the compiled pattern as a regular expression, so the other regexp
+	// metacharacters keep their meaning: "/a.b" also matches "/aXb".
 	From string
 
 	// To is the redirect target, where "$1", "$2" and so on stand for what the
@@ -18,11 +20,11 @@ type Rule struct {
 
 // Config defines the config for middleware.
 type Config struct {
-	// Filter defines a function to skip middleware.
+	// Next defines a function to skip middleware.
 	// Optional. Default: nil
 	Next func(fiber.Ctx) bool
 
-	// Rules defines the URL path rewrite rules. The values captured in asterisk can be
+	// Rules defines the URL path redirect rules. The values captured in asterisk can be
 	// retrieved by index e.g. $1, $2 and so on.
 	//
 	// Deprecated: Use RuleList instead. A map has no order, so the rule answering
@@ -37,7 +39,6 @@ type Config struct {
 	// Required. Example:
 	// {From: "/old", To: "/new"},
 	// {From: "/api/*", To: "/$1"},
-	// {From: "/js/*", To: "/public/javascript/$1"},
 	// {From: "/users/*/orders/*", To: "/user/$1/order/$2"},
 	RuleList []Rule
 

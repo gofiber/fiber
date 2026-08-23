@@ -194,9 +194,9 @@ func New(config ...Config) fiber.Handler {
 			// every one of those was a way to move the host. Not compiled at all,
 			// so "never fires" is structural rather than a flag a later edit
 			// could forget to test.
-			log.Warnf("[REDIRECT] rule %q is ignored: its target captures inside the redirect host, so the "+
-				"request would have a say in where the client lands. Write the host in full and capture "+
-				"only the path, query or fragment", k)
+			log.Warnf("[REDIRECT] rule %q is ignored: its target captures inside the redirect authority, so "+
+				"the request would have a say in where the client lands. That covers the host, the port and "+
+				"any userinfo. Write the authority in full and capture only the path, query or fragment", k)
 			continue
 		}
 

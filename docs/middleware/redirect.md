@@ -56,7 +56,7 @@ curl http://localhost:3000/old/hello
 | Property   | Type                | Description                               | Default                |
 |:-----------|:--------------------|:------------------------------------------|:-----------------------|
 | Next       | `func(fiber.Ctx) bool` | Skip when function returns true.          | nil                    |
-| RuleList   | `[]Rule`              | Rules tried in order, first match wins; `$1`, `$2` insert params. | Required |
+| RuleList   | `[]Rule`              | Rules tried in order, first match wins; `$1`, `$2` insert wildcard captures. | Required |
 | Rules      | `map[string]string`   | **Deprecated.** Use `RuleList`. A map has no order, so precedence is decided by a heuristic. | nil |
 | StatusCode | `int`                 | HTTP code for redirects.                  | 302 Temporary Redirect |
 
@@ -68,6 +68,11 @@ type Rule struct {
     To   string // the target, where "$1", "$2" stand for what the asterisks captured
 }
 ```
+
+`From` reaches the compiled pattern as a regular expression, so the other regexp
+metacharacters keep their meaning: `/a.b` also matches `/aXb`, and `/faq?` also
+matches `/fa`. Only `*` is a documented placeholder; write a rule out of path
+text and `*` and it behaves as it reads.
 
 Setting both `RuleList` and `Rules` panics: the two disagree about what decides
 precedence, so there is no sensible way to honour them together.
@@ -86,30 +91,37 @@ RuleList: []redirect.Rule{
 ```
 
 Written the other way round, `/api/*` answers `/api/users` too and the second
-rule never fires. Fiber logs a warning at startup naming any rule an earlier one
-shadows outright, so a dead rule tells you rather than going quiet.
+rule never fires. For lists of 100 rules or fewer, Fiber logs a warning at startup naming any rule
+an earlier one shadows outright, so a dead rule tells you rather than going
+quiet.
 
 The deprecated `Rules` map has no order of its own, so Fiber sorts it: most path
-text pinned before the first `*` wins, then most path text overall, then fewest
-asterisks, then the key itself. That covers rules written with path text and
-`*`. Rules relying on regular-expression syntax beyond `*` may order differently
-Use `RuleList`, where the order is yours.
+text pinned before the first `*` or other regular-expression character wins,
+then most path text overall, then fewest asterisks, then the key itself. That
+covers rules written with path text and `*`. Rules relying on
+regular-expression syntax beyond `*` may order differently. Use `RuleList`,
+where the order is yours.
 
 ## How captures are placed
 
 The values a rule captures come from the request path, so a `$N` may stand in
 the path, the query or the fragment of a target, but never in its host.
 
-**A target with no host of its own**, `"/api/*": "/$1"`, always redirects within
-this application. The composed location is read the way a browser reads it, then
-held to this origin: a leading run of slashes collapses to one, and a capture
-that turned the location into an absolute URL is rooted as a path. Without that,
-`/api//evil.com` would send `Location: //evil.com`, which the browser follows to
-evil.com.
+**A target with no scheme and no authority**, `{From: "/api/*", To: "/$1"}`,
+always redirects within this application. The composed location is read the way
+a browser reads it, then held to this origin: a leading run of slashes collapses
+to one, and a capture that turned the location into an absolute URL is rooted as
+a path. Without that, `/api//evil.com` would send `Location: //evil.com`, which
+the browser follows to evil.com.
 
-**A target naming its own host**, `"/ext/*": "https://cdn.example.com/$1"`,
-redirects wherever it says. A `$N` after the host may hold anything, including
-slashes; it can only add to the path.
+**A target naming its own authority**, `{From: "/ext/*", To: "https://cdn.example.com/$1"}`,
+redirects wherever it says. A `$N` after the authority may hold anything,
+including slashes; it can only add to the path.
+
+**A target naming a scheme but no authority**, `{From: "/m/*", To: "myapp:$1"}`,
+also leaves this application, so the rooting above does not apply to it. A
+capture there may not open an authority of its own: a value that writes the
+`//` starting one is refused for that request.
 
 :::caution
 
@@ -125,6 +137,13 @@ If you need per-tenant destinations, pick the host in a handler and use
 `c.Redirect()`, where the value is yours to validate.
 
 :::
+
+## What the location carries
+
+The request's query string is appended to every `Location`, so `/old?a=1`
+redirects to `/new?a=1`, and a query the target already carries is merged rather
+than replaced. A trailing slash on the request path is trimmed before matching,
+so `/old/` is answered by the rule for `/old`.
 
 ## Default Config
 
