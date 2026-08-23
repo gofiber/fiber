@@ -17,8 +17,10 @@ func New(config ...Config) fiber.Handler
 | Property | Type                  | Description                                           | Default    |
 |:---------|:----------------------|:------------------------------------------------------|:-----------|
 | Next     | `func(fiber.Ctx) bool` | Skip when function returns `true`.                    | `nil`      |
-| RuleList | `[]Rule`          | Rules tried in order, first match wins; `$1`, `$2` insert wildcard captures. | Required |
+| RuleList | `[]Rule`          | Rules tried in order, first match wins; `$1`, `$2` insert wildcard captures. | nil |
 | Rules    | `map[string]string`   | **Deprecated.** Use `RuleList`. A map has no order, so precedence is decided by a heuristic. | nil |
+
+Set one of `RuleList` or `Rules`. With neither, the middleware rewrites nothing.
 
 A rule's `From` is path text: `*` matches a run of any bytes but a newline, and
 every other byte stands for itself, so `/preis-1.000-euro` rewrites that path

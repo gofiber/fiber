@@ -491,7 +491,7 @@ func Test_Rewrite_PatternIsPathTextNotRegexp(t *testing.T) {
 		{name: "brackets are text", from: "/v[1]", path: "/v1", want: "/v1"},
 		{name: "brackets match themselves", from: "/v[1]", path: "/v[1]", want: "/hit"},
 		// A rule spelling "?" can never fire: the byte starts the query, so no
-		// path carries it. Quoted it is inert, where as a regexp it made the
+		// path carries it. Quoted it is inert, whereas as a regexp it made the
 		// preceding byte optional and fired on a path the author never wrote.
 		{name: "question mark no longer eats a shorter path", from: "/faq?", path: "/fa", want: "/fa"},
 	}
@@ -531,7 +531,7 @@ func Test_Rewrite_BothRuleFieldsPanic(t *testing.T) {
 	})
 }
 
-func Test_Rewrite_RuleListRanking(t *testing.T) {
+func Test_Rewrite_DeprecatedRulesRanking(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {

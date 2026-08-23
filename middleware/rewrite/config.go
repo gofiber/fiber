@@ -36,8 +36,9 @@ type Config struct {
 	// RuleList defines the URL path rewrite rules. They are tried in the order
 	// given and the first rule whose From matches the request path wins, as
 	// routes do; nothing reorders the list. Put the specific rules before the
-	// catch-alls.
-	// Required. Example:
+	// catch-alls. Set this or the deprecated Rules, not both.
+	//
+	// Example:
 	// {From: "/old", To: "/new"},
 	// {From: "/api/*", To: "/$1"},
 	// {From: "/js/*", To: "/public/javascript/$1"},
