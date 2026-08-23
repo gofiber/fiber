@@ -443,14 +443,14 @@ func rewritten(t *testing.T, cfg Config, path string) string {
 	return string(body)
 }
 
-func Test_Rewrite_RuleListOrderWins(t *testing.T) {
+func Test_Rewrite_OrderedRulesOrderWins(t *testing.T) {
 	t.Parallel()
 
-	narrowFirst := Config{RuleList: []Rule{
+	narrowFirst := Config{OrderedRules: []Rule{
 		{From: "/p/a*", To: "/narrow/$1"},
 		{From: "/p/*", To: "/broad/$1"},
 	}}
-	broadFirst := Config{RuleList: []Rule{
+	broadFirst := Config{OrderedRules: []Rule{
 		{From: "/p/*", To: "/broad/$1"},
 		{From: "/p/a*", To: "/narrow/$1"},
 	}}
@@ -500,7 +500,7 @@ func Test_Rewrite_PatternIsPathTextNotRegexp(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			cfg := Config{RuleList: []Rule{{From: tc.from, To: "/hit"}}}
+			cfg := Config{OrderedRules: []Rule{{From: tc.from, To: "/hit"}}}
 			require.Equal(t, tc.want, rewritten(t, cfg, tc.path))
 		})
 	}
@@ -513,7 +513,7 @@ func Test_Rewrite_AlternationNoLongerEscapesTheAnchors(t *testing.T) {
 	// branch each and the rule fired on any path starting "/a" or ending "/b"
 	// (issue #4476). Quoted, "|" is path text and the rule claims no path a
 	// client can send, since the byte arrives percent-encoded.
-	cfg := Config{RuleList: []Rule{{From: "/a|/b", To: "/hit"}}}
+	cfg := Config{OrderedRules: []Rule{{From: "/a|/b", To: "/hit"}}}
 
 	for _, path := range []string{"/a", "/b", "/xx/b", "/a/yy"} {
 		require.Equal(t, path, rewritten(t, cfg, path))
@@ -525,8 +525,67 @@ func Test_Rewrite_BothRuleFieldsPanic(t *testing.T) {
 
 	require.Panics(t, func() {
 		New(Config{
-			Rules:    map[string]string{"/old": "/new"},
-			RuleList: []Rule{{From: "/old", To: "/new"}},
+			Rules:        map[string]string{"/old": "/new"},
+			OrderedRules: []Rule{{From: "/old", To: "/new"}},
 		})
 	})
+}
+
+func Test_Rewrite_OrderedRulesRanking(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		rules map[string]string
+		want  []string
+	}{
+		{
+			name:  "longer pinned prefix first",
+			rules: map[string]string{"/api/*": "/a", "/api/users/*": "/b"},
+			want:  []string{"/api/users/*", "/api/*"},
+		},
+		{
+			name:  "same prefix, more pinned text first",
+			rules: map[string]string{"/cdn/*": "/a", "/cdn/*x": "/b"},
+			want:  []string{"/cdn/*x", "/cdn/*"},
+		},
+		{
+			name:  "same pinned text, fewer wildcards first",
+			rules: map[string]string{"/p/*a*b": "/a", "/p/*ab": "/b"},
+			want:  []string{"/p/*ab", "/p/*a*b"},
+		},
+		{
+			name:  "otherwise the key, so the order is total",
+			rules: map[string]string{"/b/*": "/x", "/a/*": "/y"},
+			want:  []string{"/a/*", "/b/*"},
+		},
+		{
+			name:  "a rule without a wildcard pins its whole length",
+			rules: map[string]string{"/exact": "/a", "/ex*": "/b"},
+			want:  []string{"/exact", "/ex*"},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			got := make([]string, 0, len(tc.rules))
+			for _, rule := range orderedRules(Config{Rules: tc.rules}) {
+				got = append(got, rule.From)
+			}
+			require.Equal(t, tc.want, got)
+		})
+	}
+}
+
+func Test_Rewrite_DeprecatedRulesAreQuotedToo(t *testing.T) {
+	t.Parallel()
+
+	// Both entry points share compilePattern, so a future split cannot quietly
+	// leave the map path compiling its keys as regular expressions.
+	cfg := Config{Rules: map[string]string{"/preis-1.000-euro": "/hit"}}
+
+	require.Equal(t, "/preis-1X000-euro", rewritten(t, cfg, "/preis-1X000-euro"))
+	require.Equal(t, "/hit", rewritten(t, cfg, "/preis-1.000-euro"))
 }

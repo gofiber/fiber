@@ -21,16 +21,16 @@ func New(config ...Config) fiber.Handler {
 
 	// Initialize
 	rules := orderedRules(cfg)
-	cfg.rules = make([]compiledRule, 0, len(rules))
+	compiled := make([]compiledRule, 0, len(rules))
 	for _, rule := range rules {
-		cfg.rules = append(cfg.rules, compiledRule{
+		compiled = append(compiled, compiledRule{
 			pattern: compilePattern(rule.From),
 			to:      rule.To,
 		})
 	}
 
-	// Bound before the closure so it captures these alone.
-	compiled, next := cfg.rules, cfg.Next
+	// Bound before the closure so it captures this alone.
+	next := cfg.Next
 
 	// Middleware function
 	return func(c fiber.Ctx) error {
@@ -52,21 +52,22 @@ func New(config ...Config) fiber.Handler {
 
 // compilePattern turns a rule into the regexp that matches it. Everything but
 // "*" is quoted, so a rule is the path text it spells: "/preis-1.000" matches
-// that path and not "/preis-1X000".
+// that path and not "/preis-1X000". "*" stands for any run of bytes except a
+// newline, which is what "." excludes and no ordinary path carries.
 func compilePattern(from string) *regexp.Regexp {
 	pattern := strings.ReplaceAll(regexp.QuoteMeta(from), `\*`, "(.*)")
 	// Anchor both ends so a rule matches the whole path rather than any suffix
-	// (see issue #4476). Grouped because concatenation binds looser than "|",
-	// which quoting now rules out but the group costs nothing and says so.
+	// (see issue #4476). The group is belt and braces: quoting already rules out
+	// the "|" that made "^/a|/b$" parse as "(^/a)|(/b$)".
 	return regexp.MustCompile("^(?:" + pattern + ")$")
 }
 
-// orderedRules returns the rules to try, in the order to try them. RuleList is
+// orderedRules returns the rules to try, in the order to try them. OrderedRules is
 // the author's own order, first match wins. The deprecated map has none, so its
 // keys are ranked most-specific first and that order is documented.
 func orderedRules(cfg Config) []Rule {
-	if len(cfg.RuleList) > 0 {
-		return cfg.RuleList
+	if len(cfg.OrderedRules) > 0 {
+		return cfg.OrderedRules
 	}
 
 	keys := make([]string, 0, len(cfg.Rules))
@@ -82,8 +83,9 @@ func orderedRules(cfg Config) []Rule {
 		if d := cmp.Compare(pinnedLen(b), pinnedLen(a)); d != 0 {
 			return d
 		}
-		// A second wildcard matches everything the first does and more, so the
-		// rule carrying fewer of them is the narrower claim.
+		// A second wildcard usually widens the claim, so the rule carrying fewer
+		// of them goes first. Two adjacent asterisks mean no more than one, and
+		// there the count misreads which rule is narrower.
 		if d := cmp.Compare(strings.Count(a, "*"), strings.Count(b, "*")); d != 0 {
 			return d
 		}

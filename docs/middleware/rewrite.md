@@ -17,22 +17,22 @@ func New(config ...Config) fiber.Handler
 | Property | Type                  | Description                                           | Default    |
 |:---------|:----------------------|:------------------------------------------------------|:-----------|
 | Next     | `func(fiber.Ctx) bool` | Skip when function returns `true`.                    | `nil`      |
-| RuleList | `[]Rule`              | Rules tried in order; the first match wins. Use `$1`, `$2` for wildcard captures.| (Required) |
-| Rules    | `map[string]string`   | Deprecated. Same rules as a map, ranked most specific first.| `nil`      |
+| OrderedRules | `[]Rule`          | Rules tried in order, first match wins; `$1`, `$2` insert wildcard captures. | Required |
+| Rules    | `map[string]string`   | **Deprecated.** Use `OrderedRules`. A map has no order, so precedence is decided by a heuristic. | nil |
 
-A rule's `From` is path text: `*` matches a run of any length and every other
-byte stands for itself, so `/preis-1.000-euro` rewrites that path and not
-`/preis-1X000-euro`.
+A rule's `From` is path text: `*` matches a run of any bytes but a newline, and
+every other byte stands for itself, so `/preis-1.000-euro` rewrites that path
+and not `/preis-1X000-euro`. There is no escape for a literal `*`.
 
-Put the specific rules before the catch-alls. Setting both `RuleList` and
+Put the specific rules before the catch-alls. Setting both `OrderedRules` and
 `Rules` panics.
 
 :::note
-`Rules` is deprecated because a map has no order, so which rule answered a path
-two rules both matched was decided by map iteration, which Go randomizes per
-run. It keeps working for the whole of v3: its keys are ranked most path text
-before the first `*`, then most path text overall, then fewest asterisks, then
-the key itself.
+`Rules` keeps working for the whole of v3. Its keys are ranked by a heuristic
+rather than by the author: most path text before the first `*`, then most path
+text overall, then fewest asterisks, then the key itself. That is a rough
+reading of "most specific", not an exact one, so a long wildcard rule can still
+outrank a shorter exact one. `OrderedRules` gives exact control.
 :::
 
 ## Examples
@@ -49,7 +49,7 @@ func main() {
     app := fiber.New()
 
     app.Use(rewrite.New(rewrite.Config{
-      RuleList: []rewrite.Rule{
+      OrderedRules: []rewrite.Rule{
         {From: "/old", To: "/new"},
         {From: "/old/*", To: "/new/$1"},
       },
