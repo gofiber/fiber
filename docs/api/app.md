@@ -689,6 +689,14 @@ func main() {
 `NewWithCustomCtx` works with global and route middleware. Fiber passes your custom context through `c.Next()`, so overridden methods (for example a custom `JSON`) still run after `app.Use(...)`.
 
 ```go title="Custom JSON with middleware"
+package main
+
+import (
+    "log"
+
+    "github.com/gofiber/fiber/v3"
+)
+
 type APICtx struct {
     fiber.DefaultCtx
 }
