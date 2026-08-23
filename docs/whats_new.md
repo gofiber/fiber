@@ -3053,6 +3053,8 @@ app.Use(redirect.New(redirect.Config{
 
 Fiber now also warns at startup when a rule can never fire because an earlier one matches every path it does.
 
+- **A capture may no longer stand inside a target's host**: `"https://$1.cdn.example.com/"`, `"https://cdn.example.com:$1"` and `"https://$1"` are refused at startup with a warning, and those rules never fire. Whether such a value was safe depended on percent-decoding, IDNA mapping, numeric labels read as IPv4 addresses, IPv6 brackets and userinfo, and each of those was a way to move the host somewhere the target did not name. A capture in the path, query or fragment is unchanged. Where the destination host genuinely varies, pick it in a handler and use `c.Redirect()`, where the value is yours to validate.
+
 #### CSRF
 
 - **Field Renaming**: The `Expiration` field in the CSRF middleware configuration has been renamed to `IdleTimeout` to better describe its functionality. Additionally, the default value has been reduced from 1 hour to 30 minutes. Update your code as follows:
