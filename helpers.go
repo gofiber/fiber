@@ -33,7 +33,6 @@ import (
 	"github.com/gofiber/fiber/v3/internal/mediatype"
 	"github.com/gofiber/fiber/v3/log"
 
-	"github.com/valyala/bytebufferpool"
 	"github.com/valyala/fasthttp"
 )
 
@@ -168,90 +167,6 @@ func readContent(rf io.ReaderFrom, name string) (int64, error) {
 		return n, fmt.Errorf("failed to read: %w", readErr)
 	}
 	return n, nil
-}
-
-// quoteEscapeMask marks the lanes of w holding bytes quoteRawString must
-// escape: '\\', '"', any C0 control (including HTAB), or DEL. Lanes >= 0x80
-// are never marked; non-ASCII bytes pass through verbatim. This is
-// utils.IndexNonQuotable's RFC 9110 set widened by HTAB, which the RFC
-// permits as qdtext but this function has always percent-encoded.
-func quoteEscapeMask(w uint64) uint64 {
-	return swar.MatchByteMask(w, '\\') | swar.MatchByteMask(w, '"') |
-		swar.MatchRangeMask(w, 0x00, 0x1f) | swar.MatchByteMask(w, 0x7f)
-}
-
-// indexQuoteEscape returns the index of the first byte quoteEscapeMask
-// matches, or -1 if raw needs no escaping. It scans eight bytes at a time,
-// finishing inputs of 8+ bytes with one overlapping word; shorter inputs
-// are checked byte-wise.
-func indexQuoteEscape(raw string) int {
-	n := len(raw)
-	i := 0
-	for ; i+swar.WordLen <= n; i += swar.WordLen {
-		if m := quoteEscapeMask(swar.Load8(raw, i)); m != 0 {
-			return i + swar.FirstLane(m)
-		}
-	}
-	if i == n {
-		return -1
-	}
-	if n >= swar.WordLen {
-		if m := quoteEscapeMask(swar.Load8(raw, n-swar.WordLen)); m != 0 {
-			return n - swar.WordLen + swar.FirstLane(m)
-		}
-		return -1
-	}
-	for ; i < n; i++ {
-		if c := raw[i]; c == '\\' || c == '"' || c < 0x20 || c == 0x7f {
-			return i
-		}
-	}
-	return -1
-}
-
-// quoteRawString escapes the characters that need quoting inside an RFC 9110
-// quoted-string (https://www.rfc-editor.org/rfc/rfc9110#section-5.6.4), plus
-// HTAB, which the RFC permits as qdtext but this function has always
-// percent-encoded. The result may contain non-ASCII bytes.
-func (*App) quoteRawString(raw string) string {
-	// Fast path: most values need no escaping at all; avoid the pooled
-	// buffer and the string allocation entirely.
-	end := indexQuoteEscape(raw)
-	if end == -1 {
-		return raw
-	}
-
-	const hex = "0123456789ABCDEF"
-	bb := bytebufferpool.Get()
-	defer bytebufferpool.Put(bb)
-
-	// Every byte before end is quotable and tab-free, so it hits the
-	// verbatim case of the switch below; copy it in one append.
-	bb.B = append(bb.B, raw[:end]...)
-	for i := end; i < len(raw); i++ {
-		c := raw[i]
-		switch {
-		case c == '\\' || c == '"':
-			// escape backslash and quote
-			bb.B = append(bb.B, '\\', c)
-		case c == '\n':
-			bb.B = append(bb.B, '\\', 'n')
-		case c == '\r':
-			bb.B = append(bb.B, '\\', 'r')
-		case c < 0x20 || c == 0x7f:
-			// percent-encode control and DEL
-			bb.B = append(
-				bb.B,
-				'%',
-				hex[c>>4],
-				hex[c&0x0f],
-			)
-		default:
-			bb.B = append(bb.B, c)
-		}
-	}
-
-	return string(bb.B)
 }
 
 // appendLowerASCII writes the ASCII-lowercased bytes of src into dst[:0],

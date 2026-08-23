@@ -1673,47 +1673,6 @@ func Test_IsEtagStale(t *testing.T) {
 	require.True(t, app.isEtagStale(`"v2"`, []byte(`"v1,v2"`)))
 }
 
-func Test_App_quoteRawString(t *testing.T) {
-	t.Parallel()
-
-	cases := []struct {
-		name string
-		in   string
-		out  string
-	}{
-		{"empty", "", ""},
-		{"simple", "simple", "simple"},
-		{"backslash", "A\\B", "A\\\\B"},
-		{"quote", `He said "Yo"`, `He said \"Yo\"`},
-		{"newline", "Hello\n", "Hello\\n"},
-		{"carriage", "Hello\r", "Hello\\r"},
-		{"controls", string([]byte{0, 31, 127}), "%00%1F%7F"},
-		{"tab", "a\tb", "a%09b"},
-		{"mixed", "test \"A\n\r" + string([]byte{1}) + "\\", `test \"A\n\r%01\\`},
-	}
-
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-			app := New()
-			require.Equal(t, tc.out, app.quoteRawString(tc.in))
-		})
-	}
-}
-
-func Test_App_quoteRawString_DetachesFromPooledBuffer(t *testing.T) {
-	t.Parallel()
-
-	app := New()
-
-	first := app.quoteRawString(`A\B`)
-	second := app.quoteRawString(`C"D`)
-
-	require.Equal(t, `A\\B`, first)
-	require.Equal(t, `C\"D`, second)
-	require.Equal(t, `A\\B`, first)
-}
-
 func TestStoreInContext(t *testing.T) {
 	t.Parallel()
 

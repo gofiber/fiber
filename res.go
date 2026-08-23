@@ -16,6 +16,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"github.com/gofiber/fiber/v3/internal/quotedstring"
 	"github.com/gofiber/utils/v2"
 	"github.com/valyala/bytebufferpool"
 	"github.com/valyala/fasthttp"
@@ -262,8 +263,8 @@ func encodeExtValue(s string) string {
 // for a sanitized filename: the filename parameter is a quoted-string with
 // RFC 9110 §5.6.4 escaping, and non-ASCII names additionally carry an
 // RFC 8187 filename* ext-value for interoperability.
-func contentDispositionAttachment(app *App, fname string) string {
-	disp := `attachment; filename="` + app.quoteRawString(fname) + `"`
+func contentDispositionAttachment(fname string) string {
+	disp := `attachment; filename="` + quotedstring.Escape(fname) + `"`
 	if !utils.IsASCII(fname) {
 		disp += `; filename*=UTF-8''` + encodeExtValue(fname)
 	}
@@ -277,7 +278,7 @@ func (r *DefaultRes) Attachment(filename ...string) {
 		fname = sanitizeFilename(fname)
 		fname = fallbackFilenameIfInvalid(fname)
 		r.Type(filepath.Ext(fname))
-		r.setCanonical(HeaderContentDisposition, contentDispositionAttachment(r.c.app, fname))
+		r.setCanonical(HeaderContentDisposition, contentDispositionAttachment(fname))
 		return
 	}
 	r.setCanonical(HeaderContentDisposition, "attachment")
@@ -410,7 +411,7 @@ func (r *DefaultRes) Download(file string, filename ...string) error {
 	}
 	fname = sanitizeFilename(fname)
 	fname = fallbackFilenameIfInvalid(fname)
-	r.setCanonical(HeaderContentDisposition, contentDispositionAttachment(r.c.app, fname))
+	r.setCanonical(HeaderContentDisposition, contentDispositionAttachment(fname))
 	return r.SendFile(file)
 }
 
@@ -834,7 +835,7 @@ func (r *DefaultRes) Links(link ...string) {
 			bb.WriteString(`; rel="`)
 			// The rel value sits inside a quoted-string, so quotes and
 			// backslashes must be escaped (RFC 9110 Section 5.6.4).
-			bb.WriteString(r.c.app.quoteRawString(link[i]))
+			bb.WriteString(quotedstring.Escape(link[i]))
 			bb.WriteString(`",`)
 		}
 	}
