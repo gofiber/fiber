@@ -27,13 +27,13 @@ type Config struct {
 	// Rules defines the URL path rewrite rules. The values captured in asterisk can be
 	// retrieved by index e.g. $1, $2 and so on.
 	//
-	// Deprecated: Use OrderedRules instead. A map has no order, so the rule
+	// Deprecated: Use RuleList instead. A map has no order, so the rule
 	// answering a path two rules both match is decided by a documented heuristic
 	// rather than by the author. Retained for backward compatibility with
 	// existing configurations.
 	Rules map[string]string
 
-	// OrderedRules defines the URL path rewrite rules, tried in the order given:
+	// RuleList defines the URL path rewrite rules, tried in the order given:
 	// the first rule whose From matches the request path wins, as routes do.
 	// Put the specific rules before the catch-alls.
 	// Required. Example:
@@ -41,7 +41,7 @@ type Config struct {
 	// {From: "/api/*", To: "/$1"},
 	// {From: "/js/*", To: "/public/javascript/$1"},
 	// {From: "/users/*/orders/*", To: "/user/$1/order/$2"},
-	OrderedRules []Rule
+	RuleList []Rule
 }
 
 // Helper function to set default values
@@ -54,8 +54,8 @@ func configDefault(config ...Config) Config {
 	// Override default config
 	cfg := config[0]
 
-	if len(cfg.Rules) > 0 && len(cfg.OrderedRules) > 0 {
-		panic("rewrite: set either Rules (deprecated) or OrderedRules, not both")
+	if len(cfg.Rules) > 0 && len(cfg.RuleList) > 0 {
+		panic("rewrite: set either Rules (deprecated) or RuleList, not both")
 	}
 
 	return cfg

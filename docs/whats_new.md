@@ -3239,7 +3239,7 @@ app.Get("/gif", proxy.Forward("https://i.imgur.com/IWaBepg.gif"))
 
 #### Rewrite
 
-- **Ordered rules**: `Rules map[string]string` is deprecated in favour of `OrderedRules []Rule`. A map has no order, so which rule answered a path two rules both matched was decided by map iteration, which Go randomizes per run: the same request could be rewritten differently from one call to the next. Rules in an `OrderedRules` list are tried in the order written and the first match wins, exactly as routes are matched.
+- **Ordered rules**: `Rules map[string]string` is deprecated in favour of `RuleList []Rule`. A map has no order, so which rule answered a path two rules both matched was decided by map iteration, which Go randomizes per run: the same request could be rewritten differently from one call to the next. Rules in an `RuleList` list are tried in the order written and the first match wins, exactly as routes are matched.
 
 ```go
 // Before
@@ -3252,7 +3252,7 @@ app.Use(rewrite.New(rewrite.Config{
 
 // After
 app.Use(rewrite.New(rewrite.Config{
-    OrderedRules: []rewrite.Rule{
+    RuleList: []rewrite.Rule{
         {From: "/old", To: "/new"},
         {From: "/old/*", To: "/new/$1"},
     },

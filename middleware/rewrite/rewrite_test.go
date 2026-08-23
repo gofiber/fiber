@@ -443,14 +443,14 @@ func rewritten(t *testing.T, cfg Config, path string) string {
 	return string(body)
 }
 
-func Test_Rewrite_OrderedRulesOrderWins(t *testing.T) {
+func Test_Rewrite_RuleListOrderWins(t *testing.T) {
 	t.Parallel()
 
-	narrowFirst := Config{OrderedRules: []Rule{
+	narrowFirst := Config{RuleList: []Rule{
 		{From: "/p/a*", To: "/narrow/$1"},
 		{From: "/p/*", To: "/broad/$1"},
 	}}
-	broadFirst := Config{OrderedRules: []Rule{
+	broadFirst := Config{RuleList: []Rule{
 		{From: "/p/*", To: "/broad/$1"},
 		{From: "/p/a*", To: "/narrow/$1"},
 	}}
@@ -500,7 +500,7 @@ func Test_Rewrite_PatternIsPathTextNotRegexp(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			cfg := Config{OrderedRules: []Rule{{From: tc.from, To: "/hit"}}}
+			cfg := Config{RuleList: []Rule{{From: tc.from, To: "/hit"}}}
 			require.Equal(t, tc.want, rewritten(t, cfg, tc.path))
 		})
 	}
@@ -513,7 +513,7 @@ func Test_Rewrite_AlternationNoLongerEscapesTheAnchors(t *testing.T) {
 	// branch each and the rule fired on any path starting "/a" or ending "/b"
 	// (issue #4476). Quoted, "|" is path text and the rule claims no path a
 	// client can send, since the byte arrives percent-encoded.
-	cfg := Config{OrderedRules: []Rule{{From: "/a|/b", To: "/hit"}}}
+	cfg := Config{RuleList: []Rule{{From: "/a|/b", To: "/hit"}}}
 
 	for _, path := range []string{"/a", "/b", "/xx/b", "/a/yy"} {
 		require.Equal(t, path, rewritten(t, cfg, path))
@@ -525,13 +525,13 @@ func Test_Rewrite_BothRuleFieldsPanic(t *testing.T) {
 
 	require.Panics(t, func() {
 		New(Config{
-			Rules:        map[string]string{"/old": "/new"},
-			OrderedRules: []Rule{{From: "/old", To: "/new"}},
+			Rules:    map[string]string{"/old": "/new"},
+			RuleList: []Rule{{From: "/old", To: "/new"}},
 		})
 	})
 }
 
-func Test_Rewrite_OrderedRulesRanking(t *testing.T) {
+func Test_Rewrite_RuleListRanking(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {

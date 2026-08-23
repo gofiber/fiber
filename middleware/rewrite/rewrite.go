@@ -62,12 +62,12 @@ func compilePattern(from string) *regexp.Regexp {
 	return regexp.MustCompile("^(?:" + pattern + ")$")
 }
 
-// orderedRules returns the rules to try, in the order to try them. OrderedRules is
+// orderedRules returns the rules to try, in the order to try them. RuleList is
 // the author's own order, first match wins. The deprecated map has none, so its
 // keys are ranked most-specific first and that order is documented.
 func orderedRules(cfg Config) []Rule {
-	if len(cfg.OrderedRules) > 0 {
-		return cfg.OrderedRules
+	if len(cfg.RuleList) > 0 {
+		return cfg.RuleList
 	}
 
 	keys := make([]string, 0, len(cfg.Rules))
