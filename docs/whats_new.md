@@ -3265,6 +3265,32 @@ app.Get("/gif", proxy.Forward("https://i.imgur.com/IWaBepg.gif"))
 
 `proxy.Balancer` also adopts the common middleware signature pattern and now accepts an optional variadic config: call `proxy.Balancer()` to use the defaults or continue passing a single `proxy.Config` value as in v2.
 
+#### Rewrite
+
+- **Ordered rules**: `Rules map[string]string` is deprecated in favour of `RuleList []Rule`. A map has no order, so which rule answered a path two rules both matched was decided by map iteration, which Go randomizes per run: the same request could be rewritten differently from one call to the next. Rules in an `RuleList` list are tried in the order written and the first match wins, exactly as routes are matched.
+
+```go
+// Before
+app.Use(rewrite.New(rewrite.Config{
+    Rules: map[string]string{
+        "/old":   "/new",
+        "/old/*": "/new/$1",
+    },
+}))
+
+// After
+app.Use(rewrite.New(rewrite.Config{
+    RuleList: []rewrite.Rule{
+        {From: "/old", To: "/new"},
+        {From: "/old/*", To: "/new/$1"},
+    },
+}))
+```
+
+`Rules` keeps working for the whole of v3; its keys are ranked most path text before the first `*`, then most path text overall, then fewest asterisks, then the key. Setting both fields panics.
+
+- **A rule is path text**: `From` is no longer compiled as an unescaped regular expression. `*` matches a run of any bytes but a newline and every other byte stands for itself, so `/preis-1.000-euro` rewrites that path and no longer also `/preis-1X000-euro`, and `/faq?` no longer rewrites `/fa`. This also completes the anchoring fix from #4476: `"^" + "/a|/b" + "$"` parsed as `(^/a)|(/b$)`, so a rule could match by prefix or suffix alone. Rules written with path text and `*` are unaffected; a rule relying on regular-expression syntax now matches the literal characters it spells.
+
 #### Session
 
 `session.New()` now returns a middleware handler. When using the store pattern,
