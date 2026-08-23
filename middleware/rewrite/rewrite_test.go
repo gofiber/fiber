@@ -422,3 +422,111 @@ func Benchmark_Rewrite_Parallel(b *testing.B) {
 		})
 	})
 }
+
+// rewritten runs one request through a rewrite config and reports the path the
+// handler saw.
+func rewritten(t *testing.T, cfg Config, path string) string {
+	t.Helper()
+
+	app := fiber.New()
+	app.Use(New(cfg))
+	app.Use(func(c fiber.Ctx) error {
+		return c.SendString(c.Path())
+	})
+
+	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, path, http.NoBody)
+	require.NoError(t, err)
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	return string(body)
+}
+
+func Test_Rewrite_RuleListOrderWins(t *testing.T) {
+	t.Parallel()
+
+	narrowFirst := Config{RuleList: []Rule{
+		{From: "/p/a*", To: "/narrow/$1"},
+		{From: "/p/*", To: "/broad/$1"},
+	}}
+	broadFirst := Config{RuleList: []Rule{
+		{From: "/p/*", To: "/broad/$1"},
+		{From: "/p/a*", To: "/narrow/$1"},
+	}}
+
+	require.Equal(t, "/narrow/bc", rewritten(t, narrowFirst, "/p/abc"))
+	require.Equal(t, "/broad/abc", rewritten(t, broadFirst, "/p/abc"))
+}
+
+func Test_Rewrite_DeprecatedRulesOrderIsStable(t *testing.T) {
+	t.Parallel()
+
+	// A map has no order, so this pins that the ranking decides the winner
+	// rather than Go's randomized iteration.
+	cfg := Config{Rules: map[string]string{
+		"/p/*":  "/broad/$1",
+		"/p/a*": "/narrow/$1",
+	}}
+	for range 25 {
+		require.Equal(t, "/narrow/bc", rewritten(t, cfg, "/p/abc"))
+	}
+}
+
+func Test_Rewrite_PatternIsPathTextNotRegexp(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		from string
+		path string
+		want string
+	}{
+		{name: "dot is a dot", from: "/preis-1.000-euro", path: "/preis-1X000-euro", want: "/preis-1X000-euro"},
+		{name: "dot matches itself", from: "/preis-1.000-euro", path: "/preis-1.000-euro", want: "/hit"},
+		{name: "parentheses are text", from: "/files(old)", path: "/filesold", want: "/filesold"},
+		{name: "parentheses match themselves", from: "/files(old)", path: "/files(old)", want: "/hit"},
+		{name: "plus is text", from: "/a+", path: "/aaa", want: "/aaa"},
+		{name: "plus matches itself", from: "/a+", path: "/a+", want: "/hit"},
+		{name: "brackets are text", from: "/v[1]", path: "/v1", want: "/v1"},
+		{name: "brackets match themselves", from: "/v[1]", path: "/v[1]", want: "/hit"},
+		// A rule spelling "?" can never fire: the byte starts the query, so no
+		// path carries it. Quoted it is inert, where as a regexp it made the
+		// preceding byte optional and fired on a path the author never wrote.
+		{name: "question mark no longer eats a shorter path", from: "/faq?", path: "/fa", want: "/fa"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			cfg := Config{RuleList: []Rule{{From: tc.from, To: "/hit"}}}
+			require.Equal(t, tc.want, rewritten(t, cfg, tc.path))
+		})
+	}
+}
+
+func Test_Rewrite_AlternationNoLongerEscapesTheAnchors(t *testing.T) {
+	t.Parallel()
+
+	// Read as a regexp, "^/a|/b$" is "(^/a)|(/b$)", so the anchors bound one
+	// branch each and the rule fired on any path starting "/a" or ending "/b"
+	// (issue #4476). Quoted, "|" is path text and the rule claims no path a
+	// client can send, since the byte arrives percent-encoded.
+	cfg := Config{RuleList: []Rule{{From: "/a|/b", To: "/hit"}}}
+
+	for _, path := range []string{"/a", "/b", "/xx/b", "/a/yy"} {
+		require.Equal(t, path, rewritten(t, cfg, path))
+	}
+}
+
+func Test_Rewrite_BothRuleFieldsPanic(t *testing.T) {
+	t.Parallel()
+
+	require.Panics(t, func() {
+		New(Config{
+			Rules:    map[string]string{"/old": "/new"},
+			RuleList: []Rule{{From: "/old", To: "/new"}},
+		})
+	})
+}
