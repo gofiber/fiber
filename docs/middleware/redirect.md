@@ -4,8 +4,9 @@ id: redirect
 
 # Redirect
 
-Redirect middleware maps old URLs to new ones using simple rules. Rules are
-tried in the order you write them and the first match wins.
+Redirect middleware maps old URLs to new ones using simple rules. A `RuleList`
+is tried in the order you write it and the first match wins; the deprecated
+`Rules` map has no order of its own and is ranked by a heuristic.
 
 ## Signatures
 
@@ -57,7 +58,7 @@ curl http://localhost:3000/old/hello
 | Property   | Type                | Description                               | Default                |
 |:-----------|:--------------------|:------------------------------------------|:-----------------------|
 | Next       | `func(fiber.Ctx) bool` | Skip when function returns true.          | nil                    |
-| RuleList   | `[]Rule`              | Rules tried in order, first match wins; `$1`, `$2` insert wildcard captures. | Required |
+| RuleList   | `[]Rule`              | Rules tried in order, first match wins; `$1`, `$2` insert wildcard captures. | nil |
 | Rules      | `map[string]string`   | **Deprecated.** Use `RuleList`. A map has no order, so precedence is decided by a heuristic. | nil |
 | StatusCode | `int`                 | HTTP code for redirects.                  | 302 Temporary Redirect |
 
@@ -106,7 +107,7 @@ where the order is yours.
 ## How captures are placed
 
 The values a rule captures come from the request path, so a `$N` may stand in
-the path, the query or the fragment of a target, but never in its host.
+the path, the query or the fragment of a target, but never in its authority.
 
 **A target with no scheme and no authority**, `{From: "/api/*", To: "/$1"}`,
 always redirects within this application. The composed location is read the way
@@ -126,13 +127,13 @@ capture there may not open an authority of its own: a value that writes the
 
 :::caution
 
-**A `$N` inside the host is refused.** Fiber logs a warning and the rule never
+**A `$N` inside the authority is refused.** Fiber logs a warning and the rule never
 fires, so `"https://$1.cdn.example.com/"`, `"https://cdn.example.com:$1"` and
-`"https://$1"` all do nothing. Whether a value is safe inside a host depends on
-percent-decoding, IDNA mapping, numeric labels read as IPv4 addresses, IPv6
-brackets and userinfo, and each of those was a way to move the host somewhere
-the author did not write. Write the host in full and capture only what follows
-it.
+`"https://$1"` all do nothing. That covers the host, the port and any userinfo.
+Whether a value is safe in there depends on percent-decoding, IDNA mapping,
+numeric labels read as IPv4 addresses, IPv6 brackets and userinfo, and each of
+those was a way to move the host somewhere the author did not write. Write the
+authority in full and capture only what follows it.
 
 If you need per-tenant destinations, pick the host in a handler and use
 `c.Redirect()`, where the value is yours to validate.
