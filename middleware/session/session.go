@@ -10,6 +10,7 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/extractors"
+	internalcookie "github.com/gofiber/fiber/v3/internal/cookie"
 	"github.com/gofiber/utils/v2"
 	"github.com/valyala/fasthttp"
 )
@@ -547,22 +548,11 @@ func (s *Session) delSession() {
 
 // setCookieAttributes sets the cookie attributes based on the session config.
 func (s *Session) setCookieAttributes(fcookie *fasthttp.Cookie) {
-	// Set SameSite attribute
-	switch {
-	case utils.EqualFold(s.config.CookieSameSite, fiber.CookieSameSiteStrictMode):
-		fcookie.SetSameSite(fasthttp.CookieSameSiteStrictMode)
-	case utils.EqualFold(s.config.CookieSameSite, fiber.CookieSameSiteNoneMode):
-		fcookie.SetSameSite(fasthttp.CookieSameSiteNoneMode)
-	default:
-		fcookie.SetSameSite(fasthttp.CookieSameSiteLaxMode)
-	}
-
-	// The Secure attribute is required for SameSite=None
-	if fcookie.SameSite() == fasthttp.CookieSameSiteNoneMode {
-		fcookie.SetSecure(true)
-	} else {
-		fcookie.SetSecure(s.config.CookieSecure)
-	}
+	sameSite, _ := internalcookie.ParseSameSite(s.config.CookieSameSite)
+	fcookie.SetSameSite(sameSite.FastHTTPMode)
+	// The Secure attribute is required for SameSite=None; every other mode
+	// preserves the configured value.
+	fcookie.SetSecure(s.config.CookieSecure || sameSite.RequiresSecure)
 
 	fcookie.SetHTTPOnly(s.config.CookieHTTPOnly)
 }

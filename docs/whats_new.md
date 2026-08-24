@@ -3316,5 +3316,16 @@ app.Use(session.New(session.Config{
 }))
 ```
 
+`CookieSameSite` is now read the same way as it is for `Ctx.Cookie`:
+
+- **`"Disabled"` omits the attribute.** The session used to ignore
+  `CookieSameSiteDisabled` and send `SameSite=Lax`, while `Ctx.Cookie` honored
+  it, so one constant meant two things. A session cookie configured this way now
+  carries no `SameSite` attribute, which is weaker than what was sent before. Set
+  `CookieSameSite: "Lax"` explicitly to keep the old cookie.
+- **Any other value panics** during configuration instead of silently falling
+  back to `Lax`, matching how `AbsoluteTimeout` is already validated. `Disabled`,
+  `Lax`, `Strict` and `None` are accepted case-insensitively.
+
 See the [Session Middleware Migration Guide](./middleware/session.md#migration-guide)
 for complete details.

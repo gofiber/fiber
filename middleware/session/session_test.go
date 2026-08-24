@@ -3,7 +3,6 @@ package session
 import (
 	"context"
 	"errors"
-	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -1095,69 +1094,79 @@ func Test_Session_Cookie(t *testing.T) {
 	require.Regexp(t, `^session_id=[A-Za-z0-9\-_]{43}; max-age=\d+; path=/; SameSite=Lax$`, string(cookie))
 }
 
-// go test -run Test_Session_Cookie_SameSite
+// Test_Session_Cookie_SameSite verifies every supported mode's emitted
+// attribute and interaction with the Secure flag.
 func Test_Session_Cookie_SameSite(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		expectedInHeader string
 		name             string
 		sameSite         string
+		expectedSameSite string
 		initialSecure    bool
+		expectSecure     bool
 	}{
 		{
 			name:             "Lax should not force secure",
 			sameSite:         "Lax",
-			initialSecure:    false,
-			expectedInHeader: "SameSite=Lax",
+			expectedSameSite: "SameSite=Lax",
 		},
 		{
 			name:             "Lax with secure should stay secure",
 			sameSite:         "Lax",
+			expectedSameSite: "SameSite=Lax",
 			initialSecure:    true,
-			expectedInHeader: "SameSite=Lax; secure",
+			expectSecure:     true,
 		},
 		{
 			name:             "Strict should not force secure",
 			sameSite:         "Strict",
-			initialSecure:    false,
-			expectedInHeader: "SameSite=Strict",
+			expectedSameSite: "SameSite=Strict",
 		},
 		{
 			name:             "Strict with secure should stay secure",
 			sameSite:         "Strict",
+			expectedSameSite: "SameSite=Strict",
 			initialSecure:    true,
-			expectedInHeader: "SameSite=Strict; secure",
+			expectSecure:     true,
 		},
 		{
 			name:             "None should force secure",
 			sameSite:         "None",
-			initialSecure:    false,
-			expectedInHeader: "SameSite=None; secure",
+			expectedSameSite: "SameSite=None",
+			expectSecure:     true,
 		},
 		{
 			name:             "None with secure should stay secure",
 			sameSite:         "None",
+			expectedSameSite: "SameSite=None",
 			initialSecure:    true,
-			expectedInHeader: "SameSite=None; secure",
+			expectSecure:     true,
 		},
 		{
 			name:             "Case-insensitive none should force secure",
 			sameSite:         "none",
-			initialSecure:    false,
-			expectedInHeader: "SameSite=None; secure",
+			expectedSameSite: "SameSite=None",
+			expectSecure:     true,
 		},
 		{
 			name:             "Case-insensitive strict should not force secure",
 			sameSite:         "strict",
-			initialSecure:    false,
-			expectedInHeader: "SameSite=Strict",
+			expectedSameSite: "SameSite=Strict",
 		},
 		{
-			name:             "Default should be Lax",
-			sameSite:         "invalid",
-			initialSecure:    false,
-			expectedInHeader: "SameSite=Lax",
+			name:     "Disabled should omit SameSite",
+			sameSite: fiber.CookieSameSiteDisabled,
+		},
+		{
+			name:          "Case-insensitive disabled should preserve secure",
+			sameSite:      "DISABLED",
+			initialSecure: true,
+			expectSecure:  true,
+		},
+		{
+			name:             "Empty should default to Lax",
+			expectedSameSite: "SameSite=Lax",
 		},
 	}
 
@@ -1188,15 +1197,15 @@ func Test_Session_Cookie_SameSite(t *testing.T) {
 
 			// check cookie
 			cookie := string(ctx.Response().Header.PeekCookie("session_id"))
-			// The order of attributes in the cookie string is not guaranteed.
-			// Instead of checking for a single substring, we check for the presence of each part.
-			parts := strings.SplitSeq(tc.expectedInHeader, "; ")
-			for part := range parts {
-				require.Contains(t, cookie, part)
+			if tc.expectedSameSite == "" {
+				require.NotContains(t, cookie, "SameSite")
+			} else {
+				require.Contains(t, cookie, tc.expectedSameSite)
 			}
 
-			// Also check that secure is NOT present when it shouldn't be
-			if !tc.initialSecure && tc.sameSite != "None" && tc.sameSite != "none" {
+			if tc.expectSecure {
+				require.Contains(t, cookie, "secure")
+			} else {
 				require.NotContains(t, cookie, "secure")
 			}
 		})
