@@ -5972,15 +5972,17 @@ func Test_Ctx_MatchedRoute_NotFound(t *testing.T) {
 }
 
 // go test -run Test_Ctx_MatchedRoute_CachedAndSkipped
-func Test_Ctx_MatchedRoute_CachedAndSkipped(t *testing.T) {
+func Test_Ctx_MatchedRoute_RepeatedAndSkipped(t *testing.T) {
 	t.Parallel()
 
 	app := New()
 
 	var calls int
 	app.Use(func(c Ctx) error {
-		first := c.MatchedRoute()  // computes and caches the look-ahead
-		second := c.MatchedRoute() // hits the cached value
+		// Repeated calls resolve to the same *Route out of the tree, without a
+		// cached copy in between.
+		first := c.MatchedRoute()
+		second := c.MatchedRoute()
 		require.Same(t, first, second)
 		calls++
 		return c.Next()
@@ -5999,6 +6001,86 @@ func Test_Ctx_MatchedRoute_CachedAndSkipped(t *testing.T) {
 
 	require.Equal(t, StatusOK, resp.StatusCode)
 	require.Equal(t, 1, calls)
+}
+
+// go test -run Test_Ctx_MatchedRoute_MatchesTheRouteThatRuns
+// Sweeps the whole route fixture: whatever the look-ahead names in middleware
+// must be the endpoint next() then executes, or nil when none does. prefixRejects
+// warns that hand-written scan copies drift unnoticed; this is that guard.
+func Test_Ctx_MatchedRoute_MatchesTheRouteThatRuns(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+
+	var predicted, actual *Route
+	app.Use(func(c Ctx) error {
+		predicted = c.MatchedRoute()
+		return c.Next()
+	})
+	registerDummyRoutes(app)
+	// Record what really ran, from inside the endpoint's own chain position.
+	for _, r := range app.stack {
+		for _, route := range r {
+			if route.use || route.mount || len(route.Handlers) == 0 {
+				continue
+			}
+			handler := route.Handlers[len(route.Handlers)-1]
+			route.Handlers[len(route.Handlers)-1] = func(c Ctx) error {
+				actual = c.Route()
+				return handler(c)
+			}
+		}
+	}
+
+	for i := range routesFixture.TestRoutes {
+		tr := routesFixture.TestRoutes[i]
+		predicted, actual = nil, nil
+
+		req := httptest.NewRequest(tr.Method, tr.Path, http.NoBody)
+		resp, err := app.Test(req)
+		require.NoError(t, err, "%s %s", tr.Method, tr.Path)
+		require.NoError(t, resp.Body.Close())
+
+		require.Same(t, actual, predicted,
+			"%s %s: look-ahead named %v but %v ran", tr.Method, tr.Path,
+			routeName(predicted), routeName(actual))
+	}
+}
+
+func routeName(r *Route) any {
+	if r == nil {
+		return nil
+	}
+	return r.Method + " " + r.Path
+}
+
+// go test -run Test_Ctx_MatchedRoute_FollowsMethodOverride
+func Test_Ctx_MatchedRoute_FollowsMethodOverride(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+
+	var before, after string
+	app.Use(func(c Ctx) error {
+		if r := c.MatchedRoute(); r != nil {
+			before = r.Name
+		}
+		c.Request().Header.SetMethod(MethodPost)
+		c.Req().Method(MethodPost)
+		if r := c.MatchedRoute(); r != nil {
+			after = r.Name
+		}
+		return c.Next()
+	})
+	app.Get("/x", func(c Ctx) error { return c.SendStatus(StatusOK) }).Name("x.get")
+	app.Post("/x", func(c Ctx) error { return c.SendStatus(StatusOK) }).Name("x.post")
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/x", http.NoBody))
+	require.NoError(t, err, "app.Test(req)")
+	defer func() { require.NoError(t, resp.Body.Close()) }()
+
+	require.Equal(t, "x.get", before)
+	require.Equal(t, "x.post", after, "MatchedRoute must follow a method override, not report the route the old method would have hit")
 }
 
 // go test -run Test_Ctx_MatchedRoute_SkipUnmatchedRoutes
