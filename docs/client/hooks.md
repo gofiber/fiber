@@ -100,35 +100,6 @@ Fiber includes built-in request hooks:
 If a request hook returns an error, Fiber stops the request and returns the error immediately.
 :::
 
-### Final Request Hooks
-
-Hooks added with `AddRequestHook` run before Fiber's built-in hooks, so they can
-configure high-level request fields such as URL parameters, headers, and body.
-Hooks added with `AddFinalRequestHook` run after the built-in hooks and
-immediately before the request is sent, when `RawRequest` holds the resolved
-URL, the merged headers and cookies, and the serialized body. This is the place
-for request signing:
-
-```go
-cc.AddFinalRequestHook(func(_ *client.Client, req *client.Request) error {
-    raw := req.RawRequest
-    signature := sign(raw.URI().RequestURI(), raw.URI().Host(), raw.Body())
-    raw.Header.Set("X-Signature", signature)
-    return nil
-})
-```
-
-:::caution
-fasthttp writes the request line, `Host` and `Content-Length` when it sends the
-request, which is after this hook. Take the target and the host from
-`RawRequest.URI()`: `Header.Header()` still carries the absolute URL without its
-query string, and `Header.Host()` is empty.
-
-Redirects are followed below the hook, so it runs once per call rather than once
-per request. A signature bound to one URL stays on the request when fasthttp
-follows a `Location` to another.
-:::
-
 **Example with Multiple Hooks:**
 
 ```go
@@ -166,6 +137,38 @@ exit status 2
 ```
 
 </details>
+
+### Final Request Hooks
+
+Hooks added with `AddRequestHook` run before Fiber's built-in hooks, so they can
+configure high-level request fields such as URL parameters, headers, and body.
+Hooks added with `AddFinalRequestHook` run after the built-in hooks and
+immediately before the request is sent, when `RawRequest` holds the resolved
+URL, the merged headers and cookies, and the serialized body. This is the place
+for request signing:
+
+```go
+cc.AddFinalRequestHook(func(_ *client.Client, req *client.Request) error {
+    raw := req.RawRequest
+    signature := sign(raw.URI().RequestURI(), raw.URI().Host(), raw.Body())
+    raw.Header.Set("X-Signature", signature)
+    return nil
+})
+```
+
+:::caution
+fasthttp writes the request line, `Host` and `Content-Length` when it sends the
+request, which is after this hook. Take the target and the host from
+`RawRequest.URI()`: `Header.Header()` still carries the absolute URL without its
+query string, and `Header.Host()` is empty.
+
+The hook runs once per call, not once per attempt: retries resend the request it
+signed, and a redirect is followed below it, carrying a signature bound to the
+previous URL. Sign with a nonce or a timestamp only when retries are off.
+
+On a streamed body, `RawRequest.Body()` drains the stream into memory. The
+signature then covers what is sent, but the request is no longer streamed.
+:::
 
 ## Response Hooks
 
