@@ -6003,6 +6003,36 @@ func Test_Ctx_MatchedRoute_RepeatedAndSkipped(t *testing.T) {
 	require.Equal(t, 1, calls)
 }
 
+// go test -run Test_Ctx_MatchedRoute_NilWhenNoEndpointCanRun
+// serverErrorHandler replays the chain for protocol-level errors with
+// shouldSkipNonUseRoutes set, and next() then runs no endpoint at all.
+func Test_Ctx_MatchedRoute_NilWhenNoEndpointCanRun(t *testing.T) {
+	t.Parallel()
+
+	app := New(Config{BodyLimit: 8})
+
+	var reported []*Route
+	endpointRan := false
+	app.Use(func(c Ctx) error {
+		reported = append(reported, c.MatchedRoute())
+		return c.Next()
+	})
+	app.Post("/big", func(c Ctx) error {
+		endpointRan = true
+		return c.SendString("endpoint")
+	}).Name("big.post")
+
+	req := httptest.NewRequest(MethodPost, "/big", bytes.NewReader(bytes.Repeat([]byte("x"), 4096)))
+	_, err := app.Test(req)
+	require.Error(t, err, "the body limit should reject this request")
+
+	require.False(t, endpointRan)
+	require.NotEmpty(t, reported, "the middleware chain should still have run")
+	for _, r := range reported {
+		require.Nil(t, r, "no endpoint can run in this pass, so none may be named")
+	}
+}
+
 // go test -run Test_Ctx_MatchedRoute_MatchesTheRouteThatRuns
 // Sweeps the whole route fixture: whatever the look-ahead names in middleware
 // must be the endpoint next() then executes, or nil when none does. prefixRejects
@@ -6017,6 +6047,9 @@ func Test_Ctx_MatchedRoute_MatchesTheRouteThatRuns(t *testing.T) {
 		predicted = c.MatchedRoute()
 		return c.Next()
 	})
+	// A middleware between the observer and the endpoints: the scan has to skip it,
+	// and the sweep has to notice if it ever stops doing so.
+	app.Use("/repos", func(c Ctx) error { return c.Next() })
 	registerDummyRoutes(app)
 	// Record what really ran, from inside the endpoint's own chain position.
 	for _, r := range app.stack {
