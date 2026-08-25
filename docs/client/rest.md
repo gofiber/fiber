@@ -255,7 +255,9 @@ func (c *Client) FinalRequestHook() []RequestHook
 ### AddFinalRequestHook
 
 Adds final request hooks. Use these when request signing or authentication must
-inspect the serialized request body and automatically generated headers.
+inspect the serialized request body together with the merged headers. See
+[Final Request Hooks](./hooks.md#final-request-hooks) for what is already set at
+that point and what fasthttp adds afterwards.
 
 ```go title="Signature"
 func (c *Client) AddFinalRequestHook(h ...RequestHook) *Client

@@ -105,17 +105,29 @@ If a request hook returns an error, Fiber stops the request and returns the erro
 Hooks added with `AddRequestHook` run before Fiber's built-in hooks, so they can
 configure high-level request fields such as URL parameters, headers, and body.
 Hooks added with `AddFinalRequestHook` run after the built-in hooks and
-immediately before the request is sent. At that point `RawRequest` contains the
-final serialized URL, headers, cookies, and body, which is useful for request
-signing:
+immediately before the request is sent, when `RawRequest` holds the resolved
+URL, the merged headers and cookies, and the serialized body. This is the place
+for request signing:
 
 ```go
 cc.AddFinalRequestHook(func(_ *client.Client, req *client.Request) error {
-    signature := sign(req.RawRequest.Header.Header(), req.RawRequest.Body())
-    req.RawRequest.Header.Set("X-Signature", signature)
+    raw := req.RawRequest
+    signature := sign(raw.URI().RequestURI(), raw.URI().Host(), raw.Body())
+    raw.Header.Set("X-Signature", signature)
     return nil
 })
 ```
+
+:::caution
+fasthttp writes the request line, `Host` and `Content-Length` when it sends the
+request, which is after this hook. Take the target and the host from
+`RawRequest.URI()`: `Header.Header()` still carries the absolute URL without its
+query string, and `Header.Host()` is empty.
+
+Redirects are followed below the hook, so it runs once per call rather than once
+per request. A signature bound to one URL stays on the request when fasthttp
+follows a `Location` to another.
+:::
 
 **Example with Multiple Hooks:**
 
