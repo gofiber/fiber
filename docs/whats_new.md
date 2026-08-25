@@ -1012,6 +1012,16 @@ defer resp.Close()
 fmt.Println(resp.StatusCode(), resp.String())
 ```
 
+:::caution
+A path parameter value now fills exactly one path segment. A value holding `/`
+or `\`, a value that is exactly `.` or `..`, and an empty value are rejected
+with `ErrPathParamInPath`; a value substituted into the host must already be a
+valid host or the request fails with `ErrPathParamInHost`. Previously such a
+value was pasted in unchanged, so `SetPathParam("id", "../../admin")` on
+`/api/:id` quietly sent the request to `/admin`. Set
+`SetDisablePathNormalizing(true)` to send a multi-segment value on purpose.
+:::
+
 ### Fasthttp transport integration
 
 - `client.NewWithHostClient` and `client.NewWithLBClient` allow you to plug existing `fasthttp` clients directly into Fiber while keeping retries, redirects, and hook logic consistent.
