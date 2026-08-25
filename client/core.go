@@ -149,6 +149,7 @@ func (c *core) execFunc() (*Response, error) {
 func (c *core) preHooks() error {
 	c.client.mu.RLock()
 	userHooks := slices.Clone(c.client.userRequestHooks)
+	finalHooks := slices.Clone(c.client.finalRequestHooks)
 	c.client.mu.RUnlock()
 
 	for _, f := range userHooks {
@@ -157,6 +158,22 @@ func (c *core) preHooks() error {
 		}
 	}
 
+	if err := c.runBuiltinRequestHooks(); err != nil {
+		return err
+	}
+
+	for _, f := range finalHooks {
+		if err := f(c.client, c.req); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// runBuiltinRequestHooks serializes the request under the client lock, as the
+// built-in hooks read client-level state while they fill in RawRequest.
+func (c *core) runBuiltinRequestHooks() error {
 	c.client.mu.Lock()
 	defer c.client.mu.Unlock()
 

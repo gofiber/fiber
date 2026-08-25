@@ -138,6 +138,44 @@ exit status 2
 
 </details>
 
+### Final Request Hooks
+
+Hooks added with `AddRequestHook` run before Fiber's built-in hooks, so they can
+configure high-level request fields such as URL parameters, headers, and body.
+Hooks added with `AddFinalRequestHook` run after the built-in hooks and
+immediately before the request is sent, when `RawRequest` holds the resolved
+URL, the merged headers and cookies, and the serialized body. This is the place
+for request signing:
+
+```go
+cc.AddFinalRequestHook(func(_ *client.Client, req *client.Request) error {
+    raw := req.RawRequest
+    if raw.IsBodyStream() {
+        return errors.New("cannot sign a streamed body")
+    }
+
+    signature := sign(raw.URI().RequestURI(), raw.URI().Host(), raw.Body())
+    raw.Header.Set("X-Signature", signature)
+    return nil
+})
+```
+
+:::caution
+fasthttp writes the request line, `Host` and `Content-Length` when it sends the
+request, which is after this hook. Take the target and the host from
+`RawRequest.URI()`: `Header.Header()` still carries the absolute URL without its
+query string, and `Header.Host()` is empty.
+
+The hook runs once per call, not once per attempt: retries resend the request it
+signed, and a redirect is followed below it, carrying a signature bound to the
+previous URL. Sign with a nonce or a timestamp only when retries are off.
+
+Hence the `IsBodyStream` guard above. Reading `RawRequest.Body()` drains a body
+stream into memory, and a stream that fails mid-read leaves fasthttp's error
+text in the body: that text is then sent as the payload, signed as if it were
+genuine, while `Send` reports no error. Buffer such a body before attaching it.
+:::
+
 ## Response Hooks
 
 **Response hooks** are functions executed after the HTTP response is received. They follow the signature:
@@ -253,7 +291,9 @@ exit status 2
 
 ## Hook Execution Order
 
-Hooks run in FIFO order (first in, first out), so they're executed in the order you add them. Keep this in mind when adding multiple hooks, as the order can affect the outcome.
+Each hook group runs in FIFO order. The complete request pipeline is regular
+request hooks, built-in request hooks, final request hooks, transport, built-in
+response hooks, and regular response hooks.
 
 **Example:**
 

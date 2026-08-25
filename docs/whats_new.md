@@ -2806,6 +2806,7 @@ jar.Set(uri, c)
 | Feature | v3 API |
 |---------|--------|
 | Request Hooks | `c.AddRequestHook(fn)` |
+| Final Request Hooks | `c.AddFinalRequestHook(fn)` |
 | Response Hooks | `c.AddResponseHook(fn)` |
 | Proxy | `c.SetProxyURL(url)` |
 | Context | `req.SetContext(ctx)` |
