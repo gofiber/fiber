@@ -170,7 +170,7 @@ func substitutePathParams(uri string, disablePathNormalizing bool, sources ...Pa
 			continue
 		}
 
-		name, val, end, ok := lookupPlaceholder(uri, i, i < authEnd, sources)
+		ph, ok := lookupPlaceholder(uri, i, i < authEnd, sources)
 		if !ok {
 			continue
 		}
@@ -183,18 +183,18 @@ func substitutePathParams(uri string, disablePathNormalizing bool, sources ...Pa
 
 		buf = append(buf, uri[last:i]...)
 		if i < authEnd {
-			if !isHostSafe(val) {
-				return "", fmt.Errorf("%w: %q", ErrPathParamInHost, name)
+			if !isHostSafe(ph.value) {
+				return "", fmt.Errorf("%w: %q", ErrPathParamInHost, ph.name)
 			}
-			buf = append(buf, val...)
+			buf = append(buf, ph.value...)
 		} else {
-			if !disablePathNormalizing && !isSingleSegment(val) {
-				return "", fmt.Errorf("%w: %q", ErrPathParamInPath, name)
+			if !disablePathNormalizing && !isSingleSegment(ph.value) {
+				return "", fmt.Errorf("%w: %q", ErrPathParamInPath, ph.name)
 			}
-			buf = utils.AppendPathEscape(buf, val)
+			buf = utils.AppendPathEscape(buf, ph.value)
 		}
-		last = end
-		i = end - 1
+		last = ph.end
+		i = ph.end - 1
 	}
 
 	if buf == nil {
@@ -294,7 +294,16 @@ var pathParamSegmentEndChars = [256]bool{
 // to each terminator inside it, longest first, so a name holding a "-", "." or
 // ":" still resolves. ":idx" never offers "id", because "x" does not terminate a
 // name and the shorter run is therefore not a candidate at all.
-func lookupPlaceholder(uri string, i int, inAuthority bool, sources []PathParam) (string, string, int, bool) {
+// placeholder is a resolved ":name" in a request URL: the parameter name, the
+// value found for it, and the index just past the name in the URL.
+type placeholder struct {
+	name  string
+	value string
+	end   int
+}
+
+//nolint:revive // flag-parameter: inAuthority selects the port rule, as in substitutePathParams
+func lookupPlaceholder(uri string, i int, inAuthority bool, sources []PathParam) (placeholder, bool) {
 	segEnd := i + 1
 	for segEnd < len(uri) && !pathParamSegmentEndChars[uri[segEnd]] {
 		segEnd++
@@ -315,11 +324,11 @@ func lookupPlaceholder(uri string, i int, inAuthority bool, sources []PathParam)
 		}
 
 		if val, ok := lookupPathParam(name, sources); ok {
-			return name, val, end, true
+			return placeholder{name: name, value: val, end: end}, true
 		}
 	}
 
-	return "", "", 0, false
+	return placeholder{}, false
 }
 
 // lookupPathParam returns the first value stored under name, searching sources
