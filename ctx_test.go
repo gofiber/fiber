@@ -5971,7 +5971,7 @@ func Test_Ctx_Endpoint_NotFound(t *testing.T) {
 	require.Equal(t, StatusNotFound, resp.StatusCode)
 }
 
-// go test -run Test_Ctx_Endpoint_CachedAndSkipped
+// go test -run Test_Ctx_Endpoint_RepeatedAndSkipped
 func Test_Ctx_Endpoint_RepeatedAndSkipped(t *testing.T) {
 	t.Parallel()
 
