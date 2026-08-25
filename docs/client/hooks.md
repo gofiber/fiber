@@ -150,6 +150,10 @@ for request signing:
 ```go
 cc.AddFinalRequestHook(func(_ *client.Client, req *client.Request) error {
     raw := req.RawRequest
+    if raw.IsBodyStream() {
+        return errors.New("cannot sign a streamed body")
+    }
+
     signature := sign(raw.URI().RequestURI(), raw.URI().Host(), raw.Body())
     raw.Header.Set("X-Signature", signature)
     return nil
@@ -166,8 +170,10 @@ The hook runs once per call, not once per attempt: retries resend the request it
 signed, and a redirect is followed below it, carrying a signature bound to the
 previous URL. Sign with a nonce or a timestamp only when retries are off.
 
-On a streamed body, `RawRequest.Body()` drains the stream into memory. The
-signature then covers what is sent, but the request is no longer streamed.
+Hence the `IsBodyStream` guard above. Reading `RawRequest.Body()` drains a body
+stream into memory, and a stream that fails mid-read leaves fasthttp's error
+text in the body: that text is then sent as the payload, signed as if it were
+genuine, while `Send` reports no error. Buffer such a body before attaching it.
 :::
 
 ## Response Hooks
