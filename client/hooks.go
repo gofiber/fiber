@@ -164,30 +164,13 @@ func substitutePathParams(uri string, disablePathNormalizing bool, sources ...Pa
 			continue
 		}
 
-		end := i + 1
-		for end < len(uri) && !pathParamEndChars[uri[end]] {
-			end++
-		}
-
-		name := uri[i+1 : end]
-		if name == "" {
-			continue
-		}
-
-		// A host may be templated ("http://:tenant.example.com"), so the
-		// authority is scanned too — but a digits-only name there is the port,
-		// and substituting it would eat the ":" that separates it from the host.
-		if i < authEnd && isAllDigits(name) {
-			continue
-		}
-
 		// The colons inside an IPv6 literal belong to the address, so
 		// "http://[2001:db8::1]/x" must not be rewritten by a "db8" parameter.
 		if i < authEnd && inIPv6Literal(uri[:i]) {
 			continue
 		}
 
-		val, ok := lookupPathParam(name, sources)
+		name, val, end, ok := lookupPlaceholder(uri, i, i < authEnd, sources)
 		if !ok {
 			continue
 		}
@@ -295,6 +278,48 @@ func isAllDigits(s string) bool {
 	}
 
 	return s != ""
+}
+
+// pathParamSegmentEndChars marks the bytes that end the segment a ":name" lives
+// in, which is as far as a placeholder name can reach.
+var pathParamSegmentEndChars = [256]bool{
+	'/':  true,
+	'\\': true,
+	'?':  true,
+	'#':  true,
+}
+
+// lookupPlaceholder resolves the ":name" starting at i, returning the value and
+// the index just past the name. Candidates run from the end of the segment down
+// to each terminator inside it, longest first, so a name holding a "-", "." or
+// ":" still resolves. ":idx" never offers "id", because "x" does not terminate a
+// name and the shorter run is therefore not a candidate at all.
+func lookupPlaceholder(uri string, i int, inAuthority bool, sources []PathParam) (string, string, int, bool) {
+	segEnd := i + 1
+	for segEnd < len(uri) && !pathParamSegmentEndChars[uri[segEnd]] {
+		segEnd++
+	}
+
+	for end := segEnd; end > i+1; end-- {
+		if end != segEnd && !pathParamEndChars[uri[end]] {
+			continue
+		}
+
+		name := uri[i+1 : end]
+
+		// A host may be templated ("http://:tenant.example.com"), so the
+		// authority is scanned too, but a digits-only name there is the port,
+		// and substituting it would eat the ":" that separates it from the host.
+		if inAuthority && isAllDigits(name) {
+			continue
+		}
+
+		if val, ok := lookupPathParam(name, sources); ok {
+			return name, val, end, true
+		}
+	}
+
+	return "", "", 0, false
 }
 
 // lookupPathParam returns the first value stored under name, searching sources

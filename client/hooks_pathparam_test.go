@@ -60,6 +60,30 @@ func Test_SubstitutePathParams(t *testing.T) {
 			want:   "http://example.com/api/5-suffix",
 		},
 		{
+			name:   "a name holding a dash resolves, not just its prefix",
+			uri:    "http://example.com/api/:api-version/users",
+			params: PathParam{"api-version": "v2"},
+			want:   "http://example.com/api/v2/users",
+		},
+		{
+			name:   "a name holding a dot resolves, not just its prefix",
+			uri:    "http://example.com/api/:v1.0/x",
+			params: PathParam{"v1.0": "beta"},
+			want:   "http://example.com/api/beta/x",
+		},
+		{
+			name:   "a name holding a colon resolves in the path",
+			uri:    "http://example.com/api/:ns:key",
+			params: PathParam{"ns:key": "v"},
+			want:   "http://example.com/api/v",
+		},
+		{
+			name:   "the longer name wins when both are set",
+			uri:    "http://example.com/api/:id-suffix",
+			params: PathParam{"id": "5", "id-suffix": "full"},
+			want:   "http://example.com/api/full",
+		},
+		{
 			name:   "adjacent placeholders",
 			uri:    "http://example.com/api/:a:b",
 			params: PathParam{"a": "1", "b": "2"},

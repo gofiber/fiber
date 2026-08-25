@@ -650,7 +650,7 @@ func (r *Request) PathParams() iter.Seq2[string, string]
 
 **SetPathParam** sets a single path parameter key-value pair, overriding previously set values.
 
-Placeholders are matched as `:name` and end at a path-segment boundary (`/`, `-`, `.`, `:`, `\`, `?` or `#`), so `:id` does not also match the start of `:idx`. Values are percent-encoded with path-segment rules, and each placeholder is resolved once — a substituted value is never scanned for further placeholders.
+Placeholders are matched as `:name`, and where several registered names fit, the longest one wins, so a name holding a `-`, `.` or `:` resolves as itself. A name otherwise ends at a path-segment boundary (`/`, `-`, `.`, `:`, `\`, `?` or `#`), so `:id` does not also match the start of `:idx`. Values are percent-encoded with path-segment rules, and each placeholder is resolved once — a substituted value is never scanned for further placeholders.
 
 A value stays inside the one path segment its placeholder occupies. Path normalizing percent-decodes the path before it collapses `.` and `..`, so escaping a separator is not enough on its own: a value containing `/` or `\`, a value that is exactly `.` or `..`, or an empty value — which leaves a `//` that collapses and drops the segment — fails the request with `ErrPathParamInPath` rather than changing the path the template set. A `%2F` you write yourself is not a separator — it is escaped to `%252F` and decodes back to the literal text `%2F`.
 
