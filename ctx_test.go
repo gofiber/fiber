@@ -6003,6 +6003,28 @@ func Test_Ctx_Endpoint_RepeatedAndSkipped(t *testing.T) {
 	require.Equal(t, 1, calls)
 }
 
+// go test -bench=Benchmark_Ctx_Endpoint -benchmem -count=4
+func Benchmark_Ctx_Endpoint(b *testing.B) {
+	app := New()
+	app.Use(func(c Ctx) error { return c.Next() })
+	registerDummyRoutes(app)
+	app.startupProcess()
+
+	fctx := &fasthttp.RequestCtx{}
+	fctx.Request.Header.SetMethod(MethodDelete)
+	fctx.Request.SetRequestURI("/user/keys/1337")
+	c := app.AcquireCtx(fctx).(*DefaultCtx) //nolint:errcheck,forcetypeassert // matches the other ctx benchmarks
+	defer app.ReleaseCtx(c)
+	c.Reset(fctx)
+
+	var route *Route
+	b.ReportAllocs()
+	for b.Loop() {
+		route = c.Endpoint()
+	}
+	require.NotNil(b, route)
+}
+
 // go test -run Test_Ctx_Endpoint_NilWhenNoEndpointCanRun
 // serverErrorHandler replays the chain for protocol-level errors with
 // shouldSkipNonUseRoutes set, and next() then runs no endpoint at all.
