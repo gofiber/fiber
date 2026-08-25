@@ -1620,33 +1620,41 @@ func Test_App_Shutdown_ContextNotCanceled(t *testing.T) {
 	app.Get("/slow", func(c Ctx) error {
 		close(handlerStarted)
 
-		// Wait long enough for Shutdown to start and close fasthttp's done channel.
-		select {
-		case <-c.Context().Done():
-			contextErr <- c.Context().Err()
-		case <-time.After(500 * time.Millisecond):
-			contextErr <- nil
-		}
-
+		// Waiting on RequestCtx first is what gives the second check meaning: it
+		// proves shutdown has actually started, so a c.Context() that is still
+		// alive afterwards cannot just be one that shutdown has yet to reach.
 		select {
 		case <-c.RequestCtx().Done():
 			requestCtxCanceled <- true
-		case <-time.After(50 * time.Millisecond):
+		case <-time.After(5 * time.Second):
 			requestCtxCanceled <- false
+		}
+
+		select {
+		case <-c.Context().Done():
+			contextErr <- c.Context().Err()
+		default:
+			contextErr <- nil
 		}
 
 		return c.SendString("ok")
 	})
 
 	ln := fasthttputil.NewInmemoryListener()
+	serverReady := make(chan struct{})
 	go func() {
+		close(serverReady)
 		assert.NoError(t, app.Listener(ln))
 	}()
-	time.Sleep(50 * time.Millisecond)
+	<-serverReady
 
+	clientDone := make(chan struct{})
 	go func() {
+		defer close(clientDone)
 		conn, err := ln.Dial()
-		assert.NoError(t, err)
+		if !assert.NoError(t, err) {
+			return
+		}
 		_, err = conn.Write([]byte("GET /slow HTTP/1.1\r\nHost: example.com\r\n\r\n"))
 		assert.NoError(t, err)
 		// Drain response so the connection can finish cleanly.
@@ -1655,11 +1663,16 @@ func Test_App_Shutdown_ContextNotCanceled(t *testing.T) {
 		assert.NoError(t, conn.Close())
 	}()
 
-	<-handlerStarted
-	require.NoError(t, app.ShutdownWithTimeout(2*time.Second))
+	select {
+	case <-handlerStarted:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the handler never ran; the client goroutine could not reach it")
+	}
+	require.NoError(t, app.ShutdownWithTimeout(5*time.Second))
+	<-clientDone
 
-	require.NoError(t, <-contextErr, "c.Context() must not be canceled by graceful shutdown")
 	require.True(t, <-requestCtxCanceled, "RequestCtx.Done() is closed when the server shuts down")
+	require.NoError(t, <-contextErr, "c.Context() must not be canceled by graceful shutdown")
 }
 
 func Test_App_ShutdownWithContext(t *testing.T) {
