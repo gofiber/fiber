@@ -6138,6 +6138,39 @@ func Test_Ctx_Endpoint_FollowsMethodOverride(t *testing.T) {
 	require.Equal(t, "x.post", after, "Endpoint must follow a method override, not report the route the old method would have hit")
 }
 
+// go test -run Test_Ctx_Endpoint_LooksPastTheCurrentRoute
+// A middleware placed behind an endpoint that already ran must be told the next
+// endpoint, not the one the chain has passed. Both endpoints are parametric so
+// that SkipUnmatchedRoutes resolves a firstMatchIndex at all: a static hit
+// short-circuits resolveSkip before it records one.
+func Test_Ctx_Endpoint_LooksPastTheCurrentRoute(t *testing.T) {
+	t.Parallel()
+
+	for _, skipUnmatched := range []bool{false, true} {
+		t.Run(fmt.Sprintf("SkipUnmatchedRoutes=%v", skipUnmatched), func(t *testing.T) {
+			t.Parallel()
+
+			app := New(Config{SkipUnmatchedRoutes: skipUnmatched})
+
+			var seen *Route
+			app.Get("/:first", func(c Ctx) error { return c.Next() })
+			app.Use(func(c Ctx) error {
+				seen = c.Endpoint()
+				return c.Next()
+			})
+			app.Get("/:second", func(c Ctx) error { return c.SendStatus(StatusOK) })
+
+			resp, err := app.Test(httptest.NewRequest(MethodGet, "/x", http.NoBody))
+			require.NoError(t, err, "app.Test(req)")
+			defer func() { require.NoError(t, resp.Body.Close()) }()
+
+			require.Equal(t, StatusOK, resp.StatusCode)
+			require.NotNil(t, seen, "an endpoint is still ahead")
+			require.Equal(t, "/:second", seen.Path, "the /:first endpoint already ran")
+		})
+	}
+}
+
 // go test -run Test_Ctx_Endpoint_SkipUnmatchedRoutes
 func Test_Ctx_Endpoint_SkipUnmatchedRoutes(t *testing.T) {
 	t.Parallel()
