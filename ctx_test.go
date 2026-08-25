@@ -6069,6 +6069,278 @@ func Test_Ctx_FullPath_Middleware(t *testing.T) {
 	require.Equal(t, []string{"/", "/test"}, recorded)
 }
 
+// go test -run Test_Ctx_Endpoint_Middleware
+func Test_Ctx_Endpoint_Middleware(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+
+	var recorded []string
+
+	app.Use(func(c Ctx) error {
+		if route := c.Endpoint(); route != nil {
+			recorded = append(recorded, route.Path, route.Name)
+		}
+		return c.Next()
+	})
+
+	app.Get("/users/:id", func(c Ctx) error {
+		require.Equal(t, "/users/:id", c.Endpoint().Path)
+		require.Equal(t, "user.show", c.Endpoint().Name)
+		return c.SendStatus(StatusOK)
+	}).Name("user.show")
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/users/42", http.NoBody))
+	require.NoError(t, err, "app.Test(req)")
+	defer func() { require.NoError(t, resp.Body.Close()) }()
+
+	require.Equal(t, StatusOK, resp.StatusCode)
+	require.Equal(t, []string{"/users/:id", "user.show"}, recorded)
+}
+
+// go test -run Test_Ctx_Endpoint_NotFound
+func Test_Ctx_Endpoint_NotFound(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+
+	app.Use(func(c Ctx) error {
+		require.Nil(t, c.Endpoint())
+		return c.Next()
+	})
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/not-found", http.NoBody))
+	require.NoError(t, err, "app.Test(req)")
+	defer func() { require.NoError(t, resp.Body.Close()) }()
+
+	require.Equal(t, StatusNotFound, resp.StatusCode)
+}
+
+// go test -run Test_Ctx_Endpoint_RepeatedAndSkipped
+func Test_Ctx_Endpoint_RepeatedAndSkipped(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+
+	var calls int
+	app.Use(func(c Ctx) error {
+		// Repeated calls resolve to the same *Route out of the tree, without a
+		// cached copy in between.
+		first := c.Endpoint()
+		second := c.Endpoint()
+		require.Same(t, first, second)
+		calls++
+		return c.Next()
+	})
+	// A route with a non-matching prefix exercises prefixRejects skip.
+	app.Get("/other/:id", func(c Ctx) error { return c.SendStatus(StatusOK) })
+	// A middleware route registered ahead of the target exercises the use/mount skip.
+	app.Use("/users", func(c Ctx) error { return c.Next() })
+	app.Get("/users/:id", func(c Ctx) error {
+		return c.SendStatus(StatusOK)
+	}).Name("user.show")
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/users/42", http.NoBody))
+	require.NoError(t, err, "app.Test(req)")
+	defer func() { require.NoError(t, resp.Body.Close()) }()
+
+	require.Equal(t, StatusOK, resp.StatusCode)
+	require.Equal(t, 1, calls)
+}
+
+// go test -bench=Benchmark_Ctx_Endpoint -benchmem -count=4
+func Benchmark_Ctx_Endpoint(b *testing.B) {
+	app := New()
+	app.Use(func(c Ctx) error { return c.Next() })
+	registerDummyRoutes(app)
+	app.startupProcess()
+
+	fctx := &fasthttp.RequestCtx{}
+	fctx.Request.Header.SetMethod(MethodDelete)
+	fctx.Request.SetRequestURI("/user/keys/1337")
+	c := app.AcquireCtx(fctx).(*DefaultCtx) //nolint:errcheck,forcetypeassert // matches the other ctx benchmarks
+	defer app.ReleaseCtx(c)
+	c.Reset(fctx)
+
+	var route *Route
+	b.ReportAllocs()
+	for b.Loop() {
+		route = c.Endpoint()
+	}
+	require.NotNil(b, route)
+}
+
+// go test -run Test_Ctx_Endpoint_NilWhenNoEndpointCanRun
+// serverErrorHandler replays the chain for protocol-level errors with
+// shouldSkipNonUseRoutes set, and next() then runs no endpoint at all.
+func Test_Ctx_Endpoint_NilWhenNoEndpointCanRun(t *testing.T) {
+	t.Parallel()
+
+	app := New(Config{BodyLimit: 8})
+
+	var reported []*Route
+	endpointRan := false
+	app.Use(func(c Ctx) error {
+		reported = append(reported, c.Endpoint())
+		return c.Next()
+	})
+	app.Post("/big", func(c Ctx) error {
+		endpointRan = true
+		return c.SendString("endpoint")
+	}).Name("big.post")
+
+	req := httptest.NewRequest(MethodPost, "/big", bytes.NewReader(bytes.Repeat([]byte("x"), 4096)))
+	_, err := app.Test(req)
+	require.Error(t, err, "the body limit should reject this request")
+
+	require.False(t, endpointRan)
+	require.NotEmpty(t, reported, "the middleware chain should still have run")
+	for _, r := range reported {
+		require.Nil(t, r, "no endpoint can run in this pass, so none may be named")
+	}
+}
+
+// go test -run Test_Ctx_Endpoint_MatchesTheRouteThatRuns
+// Sweeps the whole route fixture: whatever the look-ahead names in middleware
+// must be the endpoint next() then executes, or nil when none does. prefixRejects
+// warns that hand-written scan copies drift unnoticed; this is that guard.
+func Test_Ctx_Endpoint_MatchesTheRouteThatRuns(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+
+	var predicted, actual *Route
+	app.Use(func(c Ctx) error {
+		predicted = c.Endpoint()
+		return c.Next()
+	})
+	// A middleware between the observer and the endpoints: the scan has to skip it,
+	// and the sweep has to notice if it ever stops doing so.
+	app.Use("/repos", func(c Ctx) error { return c.Next() })
+	registerDummyRoutes(app)
+	// Record what really ran, from inside the endpoint's own chain position.
+	for _, r := range app.stack {
+		for _, route := range r {
+			if route.use || route.mount || len(route.Handlers) == 0 {
+				continue
+			}
+			handler := route.Handlers[len(route.Handlers)-1]
+			route.Handlers[len(route.Handlers)-1] = func(c Ctx) error {
+				actual = c.Route()
+				return handler(c)
+			}
+		}
+	}
+
+	for i := range routesFixture.TestRoutes {
+		tr := routesFixture.TestRoutes[i]
+		predicted, actual = nil, nil
+
+		req := httptest.NewRequest(tr.Method, tr.Path, http.NoBody)
+		resp, err := app.Test(req)
+		require.NoError(t, err, "%s %s", tr.Method, tr.Path)
+		require.NoError(t, resp.Body.Close())
+
+		require.Same(t, actual, predicted,
+			"%s %s: look-ahead named %v but %v ran", tr.Method, tr.Path,
+			routeName(predicted), routeName(actual))
+	}
+}
+
+func routeName(r *Route) any {
+	if r == nil {
+		return nil
+	}
+	return r.Method + " " + r.Path
+}
+
+// go test -run Test_Ctx_Endpoint_FollowsMethodOverride
+func Test_Ctx_Endpoint_FollowsMethodOverride(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+
+	var before, after string
+	app.Use(func(c Ctx) error {
+		if r := c.Endpoint(); r != nil {
+			before = r.Name
+		}
+		c.Request().Header.SetMethod(MethodPost)
+		c.Req().Method(MethodPost)
+		if r := c.Endpoint(); r != nil {
+			after = r.Name
+		}
+		return c.Next()
+	})
+	app.Get("/x", func(c Ctx) error { return c.SendStatus(StatusOK) }).Name("x.get")
+	app.Post("/x", func(c Ctx) error { return c.SendStatus(StatusOK) }).Name("x.post")
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/x", http.NoBody))
+	require.NoError(t, err, "app.Test(req)")
+	defer func() { require.NoError(t, resp.Body.Close()) }()
+
+	require.Equal(t, "x.get", before)
+	require.Equal(t, "x.post", after, "Endpoint must follow a method override, not report the route the old method would have hit")
+}
+
+// go test -run Test_Ctx_Endpoint_LooksPastTheCurrentRoute
+// A middleware placed behind an endpoint that already ran must be told the next
+// endpoint, not the one the chain has passed. Both endpoints are parametric so
+// that SkipUnmatchedRoutes resolves a firstMatchIndex at all: a static hit
+// short-circuits resolveSkip before it records one.
+func Test_Ctx_Endpoint_LooksPastTheCurrentRoute(t *testing.T) {
+	t.Parallel()
+
+	for _, skipUnmatched := range []bool{false, true} {
+		t.Run(fmt.Sprintf("SkipUnmatchedRoutes=%v", skipUnmatched), func(t *testing.T) {
+			t.Parallel()
+
+			app := New(Config{SkipUnmatchedRoutes: skipUnmatched})
+
+			var seen *Route
+			app.Get("/:first", func(c Ctx) error { return c.Next() })
+			app.Use(func(c Ctx) error {
+				seen = c.Endpoint()
+				return c.Next()
+			})
+			app.Get("/:second", func(c Ctx) error { return c.SendStatus(StatusOK) })
+
+			resp, err := app.Test(httptest.NewRequest(MethodGet, "/x", http.NoBody))
+			require.NoError(t, err, "app.Test(req)")
+			defer func() { require.NoError(t, resp.Body.Close()) }()
+
+			require.Equal(t, StatusOK, resp.StatusCode)
+			require.NotNil(t, seen, "an endpoint is still ahead")
+			require.Equal(t, "/:second", seen.Path, "the /:first endpoint already ran")
+		})
+	}
+}
+
+// go test -run Test_Ctx_Endpoint_SkipUnmatchedRoutes
+func Test_Ctx_Endpoint_SkipUnmatchedRoutes(t *testing.T) {
+	t.Parallel()
+
+	app := New(Config{SkipUnmatchedRoutes: true})
+
+	var path string
+	app.Use(func(c Ctx) error {
+		if route := c.Endpoint(); route != nil {
+			path = route.Path
+		}
+		return c.Next()
+	})
+	app.Get("/items/:id", func(c Ctx) error {
+		return c.SendStatus(StatusOK)
+	})
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/items/7", http.NoBody))
+	require.NoError(t, err, "app.Test(req)")
+	defer func() { require.NoError(t, resp.Body.Close()) }()
+
+	require.Equal(t, StatusOK, resp.StatusCode)
+	require.Equal(t, "/items/:id", path)
+}
+
 // go test -run Test_Ctx_RouteNormalized
 func Test_Ctx_RouteNormalized(t *testing.T) {
 	t.Parallel()

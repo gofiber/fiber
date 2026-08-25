@@ -167,6 +167,37 @@ app.Get("/", func(c fiber.Ctx) error {
 })
 ```
 
+### Endpoint
+
+Returns the route that will handle this request, without advancing the handler chain. Useful inside global middleware for access control or logging when you need the target route's `Path` or `Name` before calling `Next`.
+
+Returns `nil` when no endpoint will run: on `404` and `405`, and while the error handler replays the chain for a request rejected at the protocol level, such as one over `BodyLimit`.
+
+```go title="Signature"
+func (c fiber.Ctx) Endpoint() *Route
+```
+
+```go title="Example"
+app.Use(func(c fiber.Ctx) error {
+  route := c.Endpoint() // e.g. "/api/users/:id" named "user.show"
+  if route == nil {
+    return c.Next()
+  }
+  // enforce access control using route.Path or route.Name
+  return c.Next()
+})
+
+app.Get("/api/users/:id", handler).Name("user.show")
+```
+
+:::info
+`Endpoint` looks ahead, while its neighbors look back: [`Route`](#route) is the route currently executing, which inside middleware is the middleware itself, and [`Matched`](#matched) reports whether an endpoint has been selected yet.
+
+Mounted sub-apps report the flattened, prefixed route. The result is the route the router *would* reach, not a promise that it runs: an earlier middleware can still end the request first.
+
+It scans the remaining routes in the request's tree bucket, so calling it from global middleware costs a second router scan per request. That is cheap for routes spread over many prefixes and noticeable when a hundred or more share one, as with everything under `/api/v1`.
+:::
+
 ### FullPath
 
 Returns the full path of the matched route. This includes any prefixes that were added by [groups](../guide/routing.md#grouping) or mounts.
@@ -624,7 +655,7 @@ app.Get("/hello/:name", func(c fiber.Ctx) error {
 ```
 
 :::caution
-Do not rely on `c.Route()` in middlewares **before** calling `c.Next()` - `c.Route()` returns the **last executed route**.
+`c.Route()` returns the **last executed route**. Inside middleware that runs before your handler it reflects the middleware route itself. Use [`c.Endpoint()`](#endpoint) to look up the downstream handler without advancing the chain.
 :::
 
 ```go title="Example"

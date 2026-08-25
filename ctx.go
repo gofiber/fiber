@@ -387,6 +387,68 @@ func (c *DefaultCtx) routeFallback() *Route {
 	}
 }
 
+// Endpoint returns the route that will handle this request, without advancing the
+// handler chain, so global middleware can read its Path or Name before calling
+// Next. Returns nil when no endpoint will run: 404, 405, and while the error
+// handler replays the chain for a request rejected at the protocol level.
+//
+// It looks ahead, where the neighboring accessors look back: Route reports the
+// route currently executing, which inside middleware is the middleware itself,
+// and Matched reports whether an endpoint has been selected yet.
+//
+// It scans the remaining routes in the request's tree bucket, so calling it from
+// global middleware costs a second router scan per request.
+func (c *DefaultCtx) Endpoint() *Route {
+	// Already on a non-middleware endpoint.
+	if c.route != nil && !c.route.use && !c.route.mount {
+		return c.route
+	}
+	if c.methodInt == -1 || c.app == nil {
+		return nil
+	}
+	// serverErrorHandler replays the chain with this set, and next() then lets no
+	// endpoint run, so naming one here would promise a handler that cannot run.
+	if c.shouldSkipNonUseRoutes {
+		return nil
+	}
+
+	tree := c.app.treeIndex[c.methodInt].lookup(c.treePathHash)
+	detectionPath := utils.UnsafeString(c.detectionPath)
+	path := utils.UnsafeString(c.path)
+	head := pathHeadWord(detectionPath)
+	pathSlashes := c.pathSlashCount(c.app)
+
+	// SkipUnmatchedRoutes already resolved the endpoint, but the index only answers
+	// while routing has not walked past it, and a route registered mid-request can
+	// shift the bucket under it, so it still has to clear the prefix filter.
+	if c.firstMatchIndex > c.indexRoute && c.firstMatchIndex < len(tree) {
+		if route := tree[c.firstMatchIndex]; route != nil && !route.use && !route.mount &&
+			!route.prefixRejects(head) {
+			return route
+		}
+	}
+
+	// Use a scratch params buffer so look-ahead does not clobber c.values.
+	var scratch [maxParams]string
+
+	// Starting past indexRoute follows the chain, which is why the result needs no
+	// cache: every mutation that would invalidate one already moves a field read here.
+	for i := c.indexRoute + 1; i < len(tree); i++ {
+		route := tree[i]
+		if route.mount || route.use {
+			continue
+		}
+		if route.prefixRejects(head) {
+			continue
+		}
+		if route.match(detectionPath, path, &scratch, pathSlashes) {
+			return route
+		}
+	}
+
+	return nil
+}
+
 // FullPath returns the matched route path, including any group prefixes.
 func (c *DefaultCtx) FullPath() string {
 	return c.Route().Path
@@ -720,6 +782,7 @@ func (c *DefaultCtx) Reset(fctx *fasthttp.RequestCtx) {
 	c.isMatched = false
 	c.shouldSkipNonUseRoutes = false
 	c.firstMatchIndex = -1
+	c.route = nil
 	// Set paths
 	c.pathOriginal = c.app.toString(fctx.URI().PathOriginal())
 	// Set method
