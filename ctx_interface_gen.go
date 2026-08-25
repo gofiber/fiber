@@ -114,14 +114,18 @@ type Ctx interface {
 	// fallback for unregistered methods) so Route and Method always agree.
 	// Never inlined: inlining it would push Route over the inlining budget.
 	routeFallback() *Route
-	// MatchedRoute returns the next non-middleware route that matches the current
-	// request without advancing the handler chain. It is useful inside global
-	// middleware when you need to inspect the target route (path or name) before
-	// calling Next. Returns nil when no endpoint matches.
+	// Endpoint returns the route that will handle this request, without advancing the
+	// handler chain, so global middleware can read its Path or Name before calling
+	// Next. Returns nil when no endpoint will run: 404, 405, and while the error
+	// handler replays the chain for a request rejected at the protocol level.
 	//
-	// Unlike Route, which reflects the route currently being executed (often the
-	// middleware itself before Next), MatchedRoute looks ahead in the route stack.
-	MatchedRoute() *Route
+	// It looks ahead, where the neighboring accessors look back: Route reports the
+	// route currently executing, which inside middleware is the middleware itself,
+	// and Matched reports whether an endpoint has been selected yet.
+	//
+	// It scans the remaining routes in the request's tree bucket, so calling it from
+	// global middleware costs a second router scan per request.
+	Endpoint() *Route
 	// FullPath returns the matched route path, including any group prefixes.
 	FullPath() string
 	// Matched returns true if the current request path was matched by the router.

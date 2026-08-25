@@ -1290,6 +1290,11 @@ func (r *DefaultReq) Range(size int64) (Range, error) {
 	return rangeData, nil
 }
 
+// Endpoint returns the route that will handle this request. See Ctx.Endpoint.
+func (r *DefaultReq) Endpoint() *Route {
+	return r.c.Endpoint()
+}
+
 // Route returns the matched Route struct.
 func (r *DefaultReq) Route() *Route {
 	return r.c.Route()

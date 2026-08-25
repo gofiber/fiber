@@ -5924,8 +5924,8 @@ func Test_Ctx_FullPath_Middleware(t *testing.T) {
 	require.Equal(t, []string{"/", "/test"}, recorded)
 }
 
-// go test -run Test_Ctx_MatchedRoute_Middleware
-func Test_Ctx_MatchedRoute_Middleware(t *testing.T) {
+// go test -run Test_Ctx_Endpoint_Middleware
+func Test_Ctx_Endpoint_Middleware(t *testing.T) {
 	t.Parallel()
 
 	app := New()
@@ -5933,15 +5933,15 @@ func Test_Ctx_MatchedRoute_Middleware(t *testing.T) {
 	var recorded []string
 
 	app.Use(func(c Ctx) error {
-		if route := c.MatchedRoute(); route != nil {
+		if route := c.Endpoint(); route != nil {
 			recorded = append(recorded, route.Path, route.Name)
 		}
 		return c.Next()
 	})
 
 	app.Get("/users/:id", func(c Ctx) error {
-		require.Equal(t, "/users/:id", c.MatchedRoute().Path)
-		require.Equal(t, "user.show", c.MatchedRoute().Name)
+		require.Equal(t, "/users/:id", c.Endpoint().Path)
+		require.Equal(t, "user.show", c.Endpoint().Name)
 		return c.SendStatus(StatusOK)
 	}).Name("user.show")
 
@@ -5953,14 +5953,14 @@ func Test_Ctx_MatchedRoute_Middleware(t *testing.T) {
 	require.Equal(t, []string{"/users/:id", "user.show"}, recorded)
 }
 
-// go test -run Test_Ctx_MatchedRoute_NotFound
-func Test_Ctx_MatchedRoute_NotFound(t *testing.T) {
+// go test -run Test_Ctx_Endpoint_NotFound
+func Test_Ctx_Endpoint_NotFound(t *testing.T) {
 	t.Parallel()
 
 	app := New()
 
 	app.Use(func(c Ctx) error {
-		require.Nil(t, c.MatchedRoute())
+		require.Nil(t, c.Endpoint())
 		return c.Next()
 	})
 
@@ -5971,8 +5971,8 @@ func Test_Ctx_MatchedRoute_NotFound(t *testing.T) {
 	require.Equal(t, StatusNotFound, resp.StatusCode)
 }
 
-// go test -run Test_Ctx_MatchedRoute_CachedAndSkipped
-func Test_Ctx_MatchedRoute_RepeatedAndSkipped(t *testing.T) {
+// go test -run Test_Ctx_Endpoint_CachedAndSkipped
+func Test_Ctx_Endpoint_RepeatedAndSkipped(t *testing.T) {
 	t.Parallel()
 
 	app := New()
@@ -5981,8 +5981,8 @@ func Test_Ctx_MatchedRoute_RepeatedAndSkipped(t *testing.T) {
 	app.Use(func(c Ctx) error {
 		// Repeated calls resolve to the same *Route out of the tree, without a
 		// cached copy in between.
-		first := c.MatchedRoute()
-		second := c.MatchedRoute()
+		first := c.Endpoint()
+		second := c.Endpoint()
 		require.Same(t, first, second)
 		calls++
 		return c.Next()
@@ -6003,10 +6003,10 @@ func Test_Ctx_MatchedRoute_RepeatedAndSkipped(t *testing.T) {
 	require.Equal(t, 1, calls)
 }
 
-// go test -run Test_Ctx_MatchedRoute_NilWhenNoEndpointCanRun
+// go test -run Test_Ctx_Endpoint_NilWhenNoEndpointCanRun
 // serverErrorHandler replays the chain for protocol-level errors with
 // shouldSkipNonUseRoutes set, and next() then runs no endpoint at all.
-func Test_Ctx_MatchedRoute_NilWhenNoEndpointCanRun(t *testing.T) {
+func Test_Ctx_Endpoint_NilWhenNoEndpointCanRun(t *testing.T) {
 	t.Parallel()
 
 	app := New(Config{BodyLimit: 8})
@@ -6014,7 +6014,7 @@ func Test_Ctx_MatchedRoute_NilWhenNoEndpointCanRun(t *testing.T) {
 	var reported []*Route
 	endpointRan := false
 	app.Use(func(c Ctx) error {
-		reported = append(reported, c.MatchedRoute())
+		reported = append(reported, c.Endpoint())
 		return c.Next()
 	})
 	app.Post("/big", func(c Ctx) error {
@@ -6033,18 +6033,18 @@ func Test_Ctx_MatchedRoute_NilWhenNoEndpointCanRun(t *testing.T) {
 	}
 }
 
-// go test -run Test_Ctx_MatchedRoute_MatchesTheRouteThatRuns
+// go test -run Test_Ctx_Endpoint_MatchesTheRouteThatRuns
 // Sweeps the whole route fixture: whatever the look-ahead names in middleware
 // must be the endpoint next() then executes, or nil when none does. prefixRejects
 // warns that hand-written scan copies drift unnoticed; this is that guard.
-func Test_Ctx_MatchedRoute_MatchesTheRouteThatRuns(t *testing.T) {
+func Test_Ctx_Endpoint_MatchesTheRouteThatRuns(t *testing.T) {
 	t.Parallel()
 
 	app := New()
 
 	var predicted, actual *Route
 	app.Use(func(c Ctx) error {
-		predicted = c.MatchedRoute()
+		predicted = c.Endpoint()
 		return c.Next()
 	})
 	// A middleware between the observer and the endpoints: the scan has to skip it,
@@ -6087,20 +6087,20 @@ func routeName(r *Route) any {
 	return r.Method + " " + r.Path
 }
 
-// go test -run Test_Ctx_MatchedRoute_FollowsMethodOverride
-func Test_Ctx_MatchedRoute_FollowsMethodOverride(t *testing.T) {
+// go test -run Test_Ctx_Endpoint_FollowsMethodOverride
+func Test_Ctx_Endpoint_FollowsMethodOverride(t *testing.T) {
 	t.Parallel()
 
 	app := New()
 
 	var before, after string
 	app.Use(func(c Ctx) error {
-		if r := c.MatchedRoute(); r != nil {
+		if r := c.Endpoint(); r != nil {
 			before = r.Name
 		}
 		c.Request().Header.SetMethod(MethodPost)
 		c.Req().Method(MethodPost)
-		if r := c.MatchedRoute(); r != nil {
+		if r := c.Endpoint(); r != nil {
 			after = r.Name
 		}
 		return c.Next()
@@ -6113,18 +6113,18 @@ func Test_Ctx_MatchedRoute_FollowsMethodOverride(t *testing.T) {
 	defer func() { require.NoError(t, resp.Body.Close()) }()
 
 	require.Equal(t, "x.get", before)
-	require.Equal(t, "x.post", after, "MatchedRoute must follow a method override, not report the route the old method would have hit")
+	require.Equal(t, "x.post", after, "Endpoint must follow a method override, not report the route the old method would have hit")
 }
 
-// go test -run Test_Ctx_MatchedRoute_SkipUnmatchedRoutes
-func Test_Ctx_MatchedRoute_SkipUnmatchedRoutes(t *testing.T) {
+// go test -run Test_Ctx_Endpoint_SkipUnmatchedRoutes
+func Test_Ctx_Endpoint_SkipUnmatchedRoutes(t *testing.T) {
 	t.Parallel()
 
 	app := New(Config{SkipUnmatchedRoutes: true})
 
 	var path string
 	app.Use(func(c Ctx) error {
-		if route := c.MatchedRoute(); route != nil {
+		if route := c.Endpoint(); route != nil {
 			path = route.Path
 		}
 		return c.Next()
