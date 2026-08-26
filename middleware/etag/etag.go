@@ -1,13 +1,13 @@
 package etag
 
 import (
-	"bytes"
 	"hash/crc32"
 	"math"
 	"slices"
 	"strings"
 
 	"github.com/gofiber/fiber/v3"
+	internaletag "github.com/gofiber/fiber/v3/internal/etag"
 	"github.com/gofiber/utils/v2"
 	"github.com/valyala/bytebufferpool"
 )
@@ -99,7 +99,9 @@ func New(config ...Config) fiber.Handler {
 		// Get ETag header from request
 		clientEtag := c.Request().Header.Peek(fiber.HeaderIfNoneMatch)
 
-		if isNoneMatch(clientEtag, etag) {
+		// Both slices are only read for the duration of the comparison and
+		// neither is retained, so the unsafe views cannot outlive them.
+		if internaletag.AnyMatch(utils.UnsafeString(clientEtag), utils.UnsafeString(etag)) {
 			c.RequestCtx().ResetBody()
 
 			return c.SendStatus(fiber.StatusNotModified)
@@ -107,47 +109,6 @@ func New(config ...Config) fiber.Handler {
 
 		return nil
 	}
-}
-
-// isNoneMatch reports whether any entity tag in the If-None-Match header value
-// matches the response ETag, using the weak comparison required for
-// If-None-Match by RFC 9110 §8.8.3.2.
-func isNoneMatch(header, etag []byte) bool {
-	header = utils.TrimSpace(header)
-	if len(header) == 0 {
-		return false
-	}
-	if len(header) == 1 && header[0] == '*' {
-		return true
-	}
-
-	for len(header) > 0 {
-		// RFC 9110 allows a comma inside an opaque-tag, so this split can
-		// mis-parse such tags. It fails open and Fiber's ETags never contain
-		// commas, so it is acceptable here.
-		entry, rest, _ := bytes.Cut(header, []byte(","))
-		header = rest
-		if etagWeakMatch(utils.TrimSpace(entry), etag) {
-			return true
-		}
-	}
-
-	return false
-}
-
-// etagWeakMatch compares two entity tags, ignoring weak indicators
-// (RFC 9110 §8.8.3.2). Both tags must be quoted to match.
-func etagWeakMatch(a, b []byte) bool {
-	a = bytes.TrimPrefix(a, weakPrefix)
-	b = bytes.TrimPrefix(b, weakPrefix)
-	if len(a) < 2 || a[0] != '"' || a[len(a)-1] != '"' {
-		return false
-	}
-	if len(b) < 2 || b[0] != '"' || b[len(b)-1] != '"' {
-		return false
-	}
-
-	return bytes.Equal(a, b)
 }
 
 // isEventStream reports whether the response is a Server-Sent Events stream.

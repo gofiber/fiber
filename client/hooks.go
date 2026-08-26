@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"unicode/utf8"
 
 	"github.com/gofiber/utils/v2"
 	"github.com/valyala/fasthttp"
@@ -81,16 +82,16 @@ func parserRequestURL(c *Client, req *Request) error {
 		}
 	}
 
-	// Set path parameters from the request and client.
-	for key, val := range req.path.All() {
-		uri = strings.ReplaceAll(uri, ":"+key, val)
-	}
-	for key, val := range c.path.All() {
-		uri = strings.ReplaceAll(uri, ":"+key, val)
+	// Set path parameters from the request and the client. Request values are
+	// looked up first, so they keep overriding the client's for the same name.
+	disablePathNormalizing := c.isPathNormalizingDisabled || req.DisablePathNormalizing()
+
+	uri, err := substitutePathParams(uri, disablePathNormalizing, req.path, *c.path)
+	if err != nil {
+		return err
 	}
 
 	// Set the URI in the raw request.
-	disablePathNormalizing := c.isPathNormalizingDisabled || req.DisablePathNormalizing()
 	req.RawRequest.SetRequestURI(uri)
 	req.RawRequest.URI().DisablePathNormalizing = disablePathNormalizing
 	if disablePathNormalizing {
@@ -115,6 +116,231 @@ func parserRequestURL(c *Client, req *Request) error {
 	req.RawRequest.URI().SetHash(hashPart)
 
 	return nil
+}
+
+// pathParamEndChars marks the bytes that terminate a ":name" placeholder in a
+// request URL. The set mirrors the route parser's parameterEndChars (path.go),
+// so a client placeholder is delimited exactly like a server route parameter,
+// plus '#', which ends the path client-side.
+var pathParamEndChars = [256]bool{
+	'/':  true,
+	'-':  true,
+	'.':  true,
+	':':  true,
+	'\\': true,
+	'?':  true,
+	'#':  true,
+}
+
+// substitutePathParams replaces every ":name" placeholder in uri with the value
+// found in sources, searched in order. A placeholder ends at a path-segment
+// boundary, so ":id" no longer also matches the head of ":idx"; the scan is a
+// single left-to-right pass, so a substituted value is never rescanned for
+// placeholders; and each value is percent-encoded with path-segment rules, so
+// a "?" or "#" inside a value cannot restructure the request target.
+// A placeholder with no matching value is left untouched.
+//
+// With path normalizing left on, escaping alone cannot hold a value inside its
+// segment — normalizing decodes the path before it collapses "." and ".." — so
+// a value that would break out is rejected with ErrPathParamInPath. A
+// placeholder in the authority is filled verbatim and checked against
+// isHostSafe, returning ErrPathParamInHost.
+//
+//nolint:revive // flag-parameter: disablePathNormalizing is the request setting, as in composeRedirectURL
+func substitutePathParams(uri string, disablePathNormalizing bool, sources ...PathParam) (string, error) {
+	if !strings.ContainsRune(uri, ':') {
+		return uri, nil
+	}
+
+	authEnd := authorityEnd(uri)
+
+	var (
+		buf  []byte
+		last int
+	)
+
+	for i := 0; i < len(uri); i++ {
+		if uri[i] != ':' {
+			continue
+		}
+
+		// The colons inside an IPv6 literal belong to the address, so
+		// "http://[2001:db8::1]/x" must not be rewritten by a "db8" parameter.
+		if i < authEnd && inIPv6Literal(uri[:i]) {
+			continue
+		}
+
+		ph, ok := lookupPlaceholder(uri, i, i < authEnd, sources)
+		if !ok {
+			continue
+		}
+
+		if buf == nil {
+			// One growth for the common case: the substituted values are
+			// usually shorter than the placeholders plus a little slack.
+			buf = make([]byte, 0, len(uri)+16)
+		}
+
+		buf = append(buf, uri[last:i]...)
+		if i < authEnd {
+			if !isHostSafe(ph.value) {
+				return "", fmt.Errorf("%w: %q", ErrPathParamInHost, ph.name)
+			}
+			buf = append(buf, ph.value...)
+		} else {
+			if !disablePathNormalizing && !isSingleSegment(ph.value) {
+				return "", fmt.Errorf("%w: %q", ErrPathParamInPath, ph.name)
+			}
+			buf = utils.AppendPathEscape(buf, ph.value)
+		}
+		last = ph.end
+		i = ph.end - 1
+	}
+
+	if buf == nil {
+		return uri, nil
+	}
+
+	return string(append(buf, uri[last:]...)), nil
+}
+
+// isSingleSegment reports whether val still occupies exactly one path segment
+// after fasthttp has normalized the path. Normalizing percent-decodes the path
+// before it collapses "//", "/./" and "/x/../", so an escaped "/" turns back
+// into a real separator and a value of "../../admin" walks out of the path the
+// template set, while an empty value leaves a "//" that collapses and drops
+// the segment entirely. Only the raw bytes matter: a "%2F" typed by the caller
+// is written as "%252F" and decodes to a literal "%2F", not to a separator.
+func isSingleSegment(val string) bool {
+	return val != "" && val != "." && val != ".." && !strings.ContainsAny(val, `/\`)
+}
+
+// isHostSafe reports whether val may be substituted into a URI authority
+// verbatim. Percent-encoding is not an option there: fasthttp rejects a "%XX"
+// below 0x80 inside a host, and it then abandons the rest of the URI, so a
+// value that would need escaping has to fail the request instead. The set is
+// RFC 3986's unreserved characters plus the sub-delims a host parse keeps, and
+// the bytes of a valid UTF-8 sequence, which fasthttp passes through so an IDN
+// label can be templated. ":" and "@" are excluded deliberately: they would add
+// a port or a userinfo section, and a value of "x@evil.com" in
+// "http://:host/api" would send the request to evil.com. Malformed UTF-8 is
+// excluded for the same reason one step removed: the bytes reach the Host
+// header verbatim, and an overlong sequence such as "\xc0\xaf" is a "/" to a
+// lenient decoder somewhere downstream.
+func isHostSafe(val string) bool {
+	for i := range len(val) {
+		switch c := val[i]; {
+		case c >= 'a' && c <= 'z', c >= 'A' && c <= 'Z', c >= '0' && c <= '9':
+		case c == '-', c == '.', c == '_', c == '~':
+		case c == '$', c == '&', c == '+', c == '=':
+		case c >= utf8.RuneSelf:
+		default:
+			return false
+		}
+	}
+
+	// An empty value would build "http:///api", which fails later at dial with
+	// a message that says nothing about the parameter.
+	return val != "" && utf8.ValidString(val)
+}
+
+// inIPv6Literal reports whether the authority prefix ends inside a "[...]"
+// IPv6 literal.
+func inIPv6Literal(prefix string) bool {
+	return strings.LastIndexByte(prefix, '[') > strings.LastIndexByte(prefix, ']')
+}
+
+// authorityEnd returns the index at which uri's authority ends, or 0 when uri
+// has none. Everything from "://" up to the first "/", "?" or "#" is authority.
+func authorityEnd(uri string) int {
+	start := strings.Index(uri, "://")
+	if start < 0 {
+		return 0
+	}
+	start += len("://")
+
+	for i := start; i < len(uri); i++ {
+		switch uri[i] {
+		case '/', '?', '#':
+			return i
+		}
+	}
+
+	return len(uri)
+}
+
+// isAllDigits reports whether s is a non-empty run of ASCII digits.
+func isAllDigits(s string) bool {
+	for i := range len(s) {
+		if s[i] < '0' || s[i] > '9' {
+			return false
+		}
+	}
+
+	return s != ""
+}
+
+// pathParamSegmentEndChars marks the bytes that end the segment a ":name" lives
+// in, which is as far as a placeholder name can reach.
+var pathParamSegmentEndChars = [256]bool{
+	'/':  true,
+	'\\': true,
+	'?':  true,
+	'#':  true,
+}
+
+// lookupPlaceholder resolves the ":name" starting at i, returning the value and
+// the index just past the name. Candidates run from the end of the segment down
+// to each terminator inside it, longest first, so a name holding a "-", "." or
+// ":" still resolves. ":idx" never offers "id", because "x" does not terminate a
+// name and the shorter run is therefore not a candidate at all.
+// placeholder is a resolved ":name" in a request URL: the parameter name, the
+// value found for it, and the index just past the name in the URL.
+type placeholder struct {
+	name  string
+	value string
+	end   int
+}
+
+//nolint:revive // flag-parameter: inAuthority selects the port rule, as in substitutePathParams
+func lookupPlaceholder(uri string, i int, inAuthority bool, sources []PathParam) (placeholder, bool) {
+	segEnd := i + 1
+	for segEnd < len(uri) && !pathParamSegmentEndChars[uri[segEnd]] {
+		segEnd++
+	}
+
+	for end := segEnd; end > i+1; end-- {
+		if end != segEnd && !pathParamEndChars[uri[end]] {
+			continue
+		}
+
+		name := uri[i+1 : end]
+
+		// A host may be templated ("http://:tenant.example.com"), so the
+		// authority is scanned too, but a digits-only name there is the port,
+		// and substituting it would eat the ":" that separates it from the host.
+		if inAuthority && isAllDigits(name) {
+			continue
+		}
+
+		if val, ok := lookupPathParam(name, sources); ok {
+			return placeholder{name: name, value: val, end: end}, true
+		}
+	}
+
+	return placeholder{}, false
+}
+
+// lookupPathParam returns the first value stored under name, searching sources
+// in order.
+func lookupPathParam(name string, sources []PathParam) (string, bool) {
+	for _, source := range sources {
+		if val, ok := source[name]; ok {
+			return val, true
+		}
+	}
+
+	return "", false
 }
 
 // parserRequestHeader merges client and request headers, and sets headers automatically based on the request data.

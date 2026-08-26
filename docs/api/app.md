@@ -690,6 +690,57 @@ func main() {
 }
 ```
 
+`NewWithCustomCtx` works with global and route middleware. Fiber passes your custom context through `c.Next()`, so overridden methods (for example a custom `JSON`) still run after `app.Use(...)`.
+
+```go title="Custom JSON with middleware"
+package main
+
+import (
+    "log"
+
+    "github.com/gofiber/fiber/v3"
+)
+
+type APICtx struct {
+    fiber.DefaultCtx
+}
+
+type envelope struct {
+    Code    int    `json:"code"`
+    Data    any    `json:"data"`
+    Message string `json:"message"`
+}
+
+func (c *APICtx) JSON(data any, ctype ...string) error {
+    return c.DefaultCtx.JSON(envelope{
+        Code:    fiber.StatusOK,
+        Data:    data,
+        Message: "OK",
+    }, ctype...)
+}
+
+func main() {
+    app := fiber.NewWithCustomCtx(func(app *fiber.App) fiber.CustomCtx {
+        return &APICtx{DefaultCtx: *fiber.NewDefaultCtx(app)}
+    })
+
+    app.Use(func(c fiber.Ctx) error {
+        return c.Next()
+    })
+
+    app.Get("/vvv", func(c fiber.Ctx) error {
+        // Uses APICtx.JSON even though middleware called Next
+        return c.JSON(fiber.Map{"a": "b"})
+    })
+
+    log.Fatal(app.Listen(":3000"))
+}
+```
+
+:::tip
+Prefer embedding `fiber.DefaultCtx` (by value or pointer) and constructing it with `fiber.NewDefaultCtx(app)`. Overridden methods are resolved on the concrete `CustomCtx` type Fiber stores for the request.
+:::
+
 ## RegisterCustomBinder
 
 You can register custom binders to use with [`Bind().Custom("name")`](bind.md#custom). They should be compatible with the `CustomBinder` interface.

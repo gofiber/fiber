@@ -16,6 +16,8 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	internalcookie "github.com/gofiber/fiber/v3/internal/cookie"
+	"github.com/gofiber/fiber/v3/internal/quotedstring"
 	"github.com/gofiber/utils/v2"
 	"github.com/valyala/bytebufferpool"
 	"github.com/valyala/fasthttp"
@@ -262,8 +264,8 @@ func encodeExtValue(s string) string {
 // for a sanitized filename: the filename parameter is a quoted-string with
 // RFC 9110 §5.6.4 escaping, and non-ASCII names additionally carry an
 // RFC 8187 filename* ext-value for interoperability.
-func contentDispositionAttachment(app *App, fname string) string {
-	disp := `attachment; filename="` + app.quoteRawString(fname) + `"`
+func contentDispositionAttachment(fname string) string {
+	disp := `attachment; filename="` + quotedstring.Escape(fname) + `"`
 	if !utils.IsASCII(fname) {
 		disp += `; filename*=UTF-8''` + encodeExtValue(fname)
 	}
@@ -277,7 +279,7 @@ func (r *DefaultRes) Attachment(filename ...string) {
 		fname = sanitizeFilename(fname)
 		fname = fallbackFilenameIfInvalid(fname)
 		r.Type(filepath.Ext(fname))
-		r.setCanonical(HeaderContentDisposition, contentDispositionAttachment(r.c.app, fname))
+		r.setCanonical(HeaderContentDisposition, contentDispositionAttachment(fname))
 		return
 	}
 	r.setCanonical(HeaderContentDisposition, "attachment")
@@ -323,21 +325,10 @@ func (r *DefaultRes) Cookie(cookie *Cookie) {
 		c.Expires = time.Time{}
 	}
 
-	var sameSite http.SameSite
-
-	switch {
-	case utils.EqualFold(c.SameSite, CookieSameSiteStrictMode):
-		sameSite = http.SameSiteStrictMode
-	case utils.EqualFold(c.SameSite, CookieSameSiteNoneMode):
-		sameSite = http.SameSiteNoneMode
+	sameSite, _ := internalcookie.ParseSameSite(c.SameSite)
+	if sameSite.RequiresSecure {
 		// SameSite=None requires Secure=true per RFC and browser requirements
 		c.Secure = true
-	case utils.EqualFold(c.SameSite, CookieSameSiteDisabled):
-		sameSite = 0
-	case utils.EqualFold(c.SameSite, CookieSameSiteLaxMode):
-		sameSite = http.SameSiteLaxMode
-	default:
-		sameSite = http.SameSiteLaxMode
 	}
 
 	// Partitioned requires Secure=true per CHIPS spec
@@ -345,7 +336,8 @@ func (r *DefaultRes) Cookie(cookie *Cookie) {
 		c.Secure = true
 	}
 
-	// create/validate cookie using net/http
+	// Validate before fasthttp's setters can silently replace CR/LF or semicolons;
+	// rejection, rather than mutation, is this API's existing contract.
 	hc := &http.Cookie{ //nolint:gosec // G124: http.Cookie missing or has insecure Secure, HttpOnly, or SameSite attribute
 		Name:        c.Name,
 		Value:       c.Value,
@@ -355,7 +347,7 @@ func (r *DefaultRes) Cookie(cookie *Cookie) {
 		MaxAge:      c.MaxAge,
 		Secure:      c.Secure,
 		HttpOnly:    c.HTTPOnly,
-		SameSite:    sameSite,
+		SameSite:    sameSite.HTTPMode,
 		Partitioned: c.Partitioned,
 	}
 
@@ -379,16 +371,7 @@ func (r *DefaultRes) Cookie(cookie *Cookie) {
 	fcookie.SetSecure(hc.Secure)
 	fcookie.SetHTTPOnly(hc.HttpOnly)
 
-	switch sameSite {
-	case http.SameSiteLaxMode:
-		fcookie.SetSameSite(fasthttp.CookieSameSiteLaxMode)
-	case http.SameSiteStrictMode:
-		fcookie.SetSameSite(fasthttp.CookieSameSiteStrictMode)
-	case http.SameSiteNoneMode:
-		fcookie.SetSameSite(fasthttp.CookieSameSiteNoneMode)
-	default:
-		fcookie.SetSameSite(fasthttp.CookieSameSiteDisabled)
-	}
+	fcookie.SetSameSite(sameSite.FastHTTPMode)
 
 	fcookie.SetPartitioned(hc.Partitioned)
 
@@ -410,7 +393,7 @@ func (r *DefaultRes) Download(file string, filename ...string) error {
 	}
 	fname = sanitizeFilename(fname)
 	fname = fallbackFilenameIfInvalid(fname)
-	r.setCanonical(HeaderContentDisposition, contentDispositionAttachment(r.c.app, fname))
+	r.setCanonical(HeaderContentDisposition, contentDispositionAttachment(fname))
 	return r.SendFile(file)
 }
 
@@ -834,7 +817,7 @@ func (r *DefaultRes) Links(link ...string) {
 			bb.WriteString(`; rel="`)
 			// The rel value sits inside a quoted-string, so quotes and
 			// backslashes must be escaped (RFC 9110 Section 5.6.4).
-			bb.WriteString(r.c.app.quoteRawString(link[i]))
+			bb.WriteString(quotedstring.Escape(link[i]))
 			bb.WriteString(`",`)
 		}
 	}

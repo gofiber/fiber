@@ -1,12 +1,12 @@
 package keyauth
 
 import (
-	"fmt"
 	"net/url"
 	"strings"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/extractors"
+	"github.com/gofiber/fiber/v3/internal/quotedstring"
 )
 
 const (
@@ -126,7 +126,7 @@ func configDefault(config ...Config) Config {
 	}
 
 	if len(getAuthSchemes(cfg.Extractor)) == 0 && cfg.Challenge == "" {
-		cfg.Challenge = fmt.Sprintf("ApiKey realm=%q", cfg.Realm)
+		cfg.Challenge = `ApiKey realm="` + quotedstring.Escape(cfg.Realm) + `"`
 	}
 
 	if cfg.Error != "" {

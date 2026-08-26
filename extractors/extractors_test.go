@@ -1836,3 +1836,39 @@ func Test_Extractor_Chain_ExtractSource(t *testing.T) {
 		require.Equal(t, SourceQuery, src)
 	})
 }
+
+// Test_FromParam_DecodesOnce pins that a parameter is percent-decoded exactly
+// once whatever UnescapePath is set to. With UnescapePath enabled the router
+// already decoded the path, so a second decode here turned "%2520" into a
+// space instead of the "%20" the client sent.
+func Test_FromParam_DecodesOnce(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name         string
+		unescapePath bool
+	}{
+		{name: "UnescapePath disabled", unescapePath: false},
+		{name: "UnescapePath enabled", unescapePath: true},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			app := fiber.New(fiber.Config{UnescapePath: tc.unescapePath})
+			app.Get("/test/:token", func(c fiber.Ctx) error {
+				token, err := FromParam("token").Extract(c)
+				require.NoError(t, err)
+				// The client sent "%2520", which stands for the literal
+				// four-character string "%20".
+				require.Equal(t, "%20", token)
+				return nil
+			})
+
+			resp, err := app.Test(newRequest("/test/%2520"))
+			require.NoError(t, err)
+			require.Equal(t, fiber.StatusOK, resp.StatusCode)
+		})
+	}
+}

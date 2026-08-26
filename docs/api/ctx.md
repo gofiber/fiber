@@ -84,6 +84,12 @@ app.Get("/", func(c fiber.Ctx) error {
 })
 ```
 
+:::info Graceful shutdown
+The default `Context()` is **not** canceled when the app shuts down. In-flight handlers that pass `c.Context()` to database clients or other cancellation-aware work keep running until they finish (or until you cancel a derived context yourself).
+
+[`RequestCtx`](#requestctx) implements `context.Context` differently: its `Done()` channel is closed when the underlying fasthttp server starts shutting down. Prefer `c.Context()` (or a context you derive with `context.WithCancel` / timeouts) for work that must outlive the start of graceful shutdown.
+:::
+
 ### context.Context
 
 `Ctx` implements `context.Context`, but as a context that can never be canceled: `Deadline()` reports no deadline, `Done()` returns `nil` and `Err()` returns `nil`, regardless of what you pass to [`SetContext`](#setcontext). The `fiber.Ctx` instance is pooled and reused after the handler returns, which is why it cannot carry cancellation of its own. Call [`Context`](#context) within the handler to obtain a real `context.Context`, and pass that to anything that is cancellation-aware or that outlives the handler.
@@ -160,6 +166,37 @@ app.Get("/", func(c fiber.Ctx) error {
   return c.SendString("Hello World!")
 })
 ```
+
+### Endpoint
+
+Returns the route that will handle this request, without advancing the handler chain. Useful inside global middleware for access control or logging when you need the target route's `Path` or `Name` before calling `Next`.
+
+Returns `nil` when no endpoint will run: on `404` and `405`, and while the error handler replays the chain for a request rejected at the protocol level, such as one over `BodyLimit`.
+
+```go title="Signature"
+func (c fiber.Ctx) Endpoint() *Route
+```
+
+```go title="Example"
+app.Use(func(c fiber.Ctx) error {
+  route := c.Endpoint() // e.g. "/api/users/:id" named "user.show"
+  if route == nil {
+    return c.Next()
+  }
+  // enforce access control using route.Path or route.Name
+  return c.Next()
+})
+
+app.Get("/api/users/:id", handler).Name("user.show")
+```
+
+:::info
+`Endpoint` looks ahead, while its neighbors look back: [`Route`](#route) is the route currently executing, which inside middleware is the middleware itself, and [`Matched`](#matched) reports whether an endpoint has been selected yet.
+
+Mounted sub-apps report the flattened, prefixed route. The result is the route the router *would* reach, not a promise that it runs: an earlier middleware can still end the request first.
+
+It scans the remaining routes in the request's tree bucket, so calling it from global middleware costs a second router scan per request. That is cheap for routes spread over many prefixes and noticeable when a hundred or more share one, as with everything under `/api/v1`.
+:::
 
 ### FullPath
 
@@ -618,7 +655,7 @@ app.Get("/hello/:name", func(c fiber.Ctx) error {
 ```
 
 :::caution
-Do not rely on `c.Route()` in middlewares **before** calling `c.Next()` - `c.Route()` returns the **last executed route**.
+`c.Route()` returns the **last executed route**. Inside middleware that runs before your handler it reflects the middleware route itself. Use [`c.Endpoint()`](#endpoint) to look up the downstream handler without advancing the chain.
 :::
 
 ```go title="Example"

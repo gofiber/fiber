@@ -29,10 +29,10 @@ import (
 
 	"github.com/gofiber/fiber/v3/binder"
 	"github.com/gofiber/fiber/v3/internal/contextvalue"
+	etagpkg "github.com/gofiber/fiber/v3/internal/etag"
 	"github.com/gofiber/fiber/v3/internal/mediatype"
 	"github.com/gofiber/fiber/v3/log"
 
-	"github.com/valyala/bytebufferpool"
 	"github.com/valyala/fasthttp"
 )
 
@@ -167,90 +167,6 @@ func readContent(rf io.ReaderFrom, name string) (int64, error) {
 		return n, fmt.Errorf("failed to read: %w", readErr)
 	}
 	return n, nil
-}
-
-// quoteEscapeMask marks the lanes of w holding bytes quoteRawString must
-// escape: '\\', '"', any C0 control (including HTAB), or DEL. Lanes >= 0x80
-// are never marked; non-ASCII bytes pass through verbatim. This is
-// utils.IndexNonQuotable's RFC 9110 set widened by HTAB, which the RFC
-// permits as qdtext but this function has always percent-encoded.
-func quoteEscapeMask(w uint64) uint64 {
-	return swar.MatchByteMask(w, '\\') | swar.MatchByteMask(w, '"') |
-		swar.MatchRangeMask(w, 0x00, 0x1f) | swar.MatchByteMask(w, 0x7f)
-}
-
-// indexQuoteEscape returns the index of the first byte quoteEscapeMask
-// matches, or -1 if raw needs no escaping. It scans eight bytes at a time,
-// finishing inputs of 8+ bytes with one overlapping word; shorter inputs
-// are checked byte-wise.
-func indexQuoteEscape(raw string) int {
-	n := len(raw)
-	i := 0
-	for ; i+swar.WordLen <= n; i += swar.WordLen {
-		if m := quoteEscapeMask(swar.Load8(raw, i)); m != 0 {
-			return i + swar.FirstLane(m)
-		}
-	}
-	if i == n {
-		return -1
-	}
-	if n >= swar.WordLen {
-		if m := quoteEscapeMask(swar.Load8(raw, n-swar.WordLen)); m != 0 {
-			return n - swar.WordLen + swar.FirstLane(m)
-		}
-		return -1
-	}
-	for ; i < n; i++ {
-		if c := raw[i]; c == '\\' || c == '"' || c < 0x20 || c == 0x7f {
-			return i
-		}
-	}
-	return -1
-}
-
-// quoteRawString escapes the characters that need quoting inside an RFC 9110
-// quoted-string (https://www.rfc-editor.org/rfc/rfc9110#section-5.6.4), plus
-// HTAB, which the RFC permits as qdtext but this function has always
-// percent-encoded. The result may contain non-ASCII bytes.
-func (*App) quoteRawString(raw string) string {
-	// Fast path: most values need no escaping at all; avoid the pooled
-	// buffer and the string allocation entirely.
-	end := indexQuoteEscape(raw)
-	if end == -1 {
-		return raw
-	}
-
-	const hex = "0123456789ABCDEF"
-	bb := bytebufferpool.Get()
-	defer bytebufferpool.Put(bb)
-
-	// Every byte before end is quotable and tab-free, so it hits the
-	// verbatim case of the switch below; copy it in one append.
-	bb.B = append(bb.B, raw[:end]...)
-	for i := end; i < len(raw); i++ {
-		c := raw[i]
-		switch {
-		case c == '\\' || c == '"':
-			// escape backslash and quote
-			bb.B = append(bb.B, '\\', c)
-		case c == '\n':
-			bb.B = append(bb.B, '\\', 'n')
-		case c == '\r':
-			bb.B = append(bb.B, '\\', 'r')
-		case c < 0x20 || c == 0x7f:
-			// percent-encode control and DEL
-			bb.B = append(
-				bb.B,
-				'%',
-				hex[c>>4],
-				hex[c&0x0f],
-			)
-		default:
-			bb.B = append(bb.B, c)
-		}
-	}
-
-	return string(bb.B)
 }
 
 // appendLowerASCII writes the ASCII-lowercased bytes of src into dst[:0],
@@ -926,82 +842,11 @@ func sortAcceptedTypes(at []acceptedType) {
 	}
 }
 
-// normalizeEtag validates an entity tag and returns the
-// value without quotes. weak is true if the tag has the "W/" prefix.
-func normalizeEtag(t string) (value string, weak, ok bool) { //nolint:nonamedreturns // gocritic unnamedResult requires naming the parsed ETag components
-	weak = strings.HasPrefix(t, "W/")
-	if weak {
-		t = t[2:]
-	}
-
-	if len(t) < 2 || t[0] != '"' || t[len(t)-1] != '"' {
-		return "", weak, false
-	}
-	return t[1 : len(t)-1], weak, true
-}
-
-// matchEtag performs a weak comparison of entity tags according to
-// RFC 9110 §8.8.3.2. The weak indicator ("W/") is ignored, but both tags must
-// be properly quoted. Invalid tags result in a mismatch.
-func matchEtag(s, etag string) bool {
-	n1, _, ok1 := normalizeEtag(s)
-	n2, _, ok2 := normalizeEtag(etag)
-	if !ok1 || !ok2 {
-		return false
-	}
-
-	return n1 == n2
-}
-
-// matchEtagStrong performs a strong entity-tag comparison following
-// RFC 9110 §8.8.3.1. A weak tag never matches a strong one, even if the quoted
-// values are identical.
-func matchEtagStrong(s, etag string) bool {
-	n1, w1, ok1 := normalizeEtag(s)
-	n2, w2, ok2 := normalizeEtag(etag)
-	if !ok1 || !ok2 || w1 || w2 {
-		return false
-	}
-
-	return n1 == n2
-}
-
 // isEtagStale reports whether a response with the given ETag would be considered
 // stale when presented with the raw If-None-Match header value. Comparison is
 // weak as defined by RFC 9110 §8.8.3.2.
 func (app *App) isEtagStale(etag string, noneMatchBytes []byte) bool {
-	header := utils.TrimSpace(app.toString(noneMatchBytes))
-
-	// Short-circuit the wildcard case: "*" never counts as stale.
-	if header == "*" {
-		return false
-	}
-
-	// Split the header on commas that sit outside DQUOTE-delimited opaque-tags:
-	// etagc permits "," inside the quoted tag (RFC 9110 §8.8.3), so `"v1,v2"`
-	// is a single entity tag, not two list elements. Only '"' and ','
-	// affect the split, so jump between them instead of visiting every byte.
-	start := 0
-	pos := 0
-	inQuotes := false
-	for {
-		i := utils.IndexAny2(header[pos:], '"', ',')
-		if i == -1 {
-			break
-		}
-		i += pos
-		pos = i + 1
-		if header[i] == '"' {
-			inQuotes = !inQuotes
-		} else if !inQuotes {
-			if matchEtag(utils.TrimSpace(header[start:i]), etag) {
-				return false
-			}
-			start = i + 1
-		}
-	}
-
-	return !matchEtag(utils.TrimSpace(header[start:]), etag)
+	return !etagpkg.AnyMatch(app.toString(noneMatchBytes), etag)
 }
 
 func parseAddr(raw string) (host, port string) { //nolint:nonamedreturns // gocritic unnamedResult requires naming host and port parts for clarity

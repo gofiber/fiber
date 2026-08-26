@@ -1017,6 +1017,16 @@ defer resp.Close()
 fmt.Println(resp.StatusCode(), resp.String())
 ```
 
+:::caution
+A path parameter value now fills exactly one path segment. A value holding `/`
+or `\`, a value that is exactly `.` or `..`, and an empty value are rejected
+with `ErrPathParamInPath`; a value substituted into the host must already be a
+valid host or the request fails with `ErrPathParamInHost`. Previously such a
+value was pasted in unchanged, so `SetPathParam("id", "../../admin")` on
+`/api/:id` quietly sent the request to `/admin`. Set
+`SetDisablePathNormalizing(true)` to send a multi-segment value on purpose.
+:::
+
 ### Fasthttp transport integration
 
 - `client.NewWithHostClient` and `client.NewWithLBClient` allow you to plug existing `fasthttp` clients directly into Fiber while keeping retries, redirects, and hook logic consistent.
@@ -2815,6 +2825,7 @@ jar.Set(uri, c)
 | Feature | v3 API |
 |---------|--------|
 | Request Hooks | `c.AddRequestHook(fn)` |
+| Final Request Hooks | `c.AddFinalRequestHook(fn)` |
 | Response Hooks | `c.AddResponseHook(fn)` |
 | Proxy | `c.SetProxyURL(url)` |
 | Context | `req.SetContext(ctx)` |
@@ -3036,6 +3047,34 @@ app.Use(cors.New(cors.Config{
 }))
 ```
 
+#### Redirect
+
+- **Ordered rules**: `Rules map[string]string` is deprecated in favour of `RuleList []Rule`. A map has no order, so which rule answered a path two rules both matched could not be expressed by the author. Rules in a `RuleList` are tried in the order written and the first match wins, exactly as routes are matched.
+
+```go
+// Before
+app.Use(redirect.New(redirect.Config{
+    Rules: map[string]string{
+        "/old":   "/new",
+        "/old/*": "/new/$1",
+    },
+}))
+
+// After
+app.Use(redirect.New(redirect.Config{
+    RuleList: []redirect.Rule{
+        {From: "/old", To: "/new"},
+        {From: "/old/*", To: "/new/$1"},
+    },
+}))
+```
+
+`Rules` keeps working for the whole of v3. Its order is now decided by a documented heuristic rather than by analysing each pattern: most path text pinned before the first `*`, then most path text overall, then fewest asterisks, then the key. Configurations written with path text and `*` are unaffected; rules relying on regular-expression syntax beyond `*` may order differently, and `RuleList` gives exact control. Setting both fields panics.
+
+Fiber now also warns at startup when a rule can never fire because an earlier one matches every path it does.
+
+- **A capture may no longer stand inside a target's authority**, which covers the host, the port and any userinfo: `"https://$1.cdn.example.com/"`, `"https://cdn.example.com:$1"` and `"https://$1"` are refused at startup with a warning, and those rules never fire. Whether such a value was safe depended on percent-decoding, IDNA mapping, numeric labels read as IPv4 addresses, IPv6 brackets and userinfo, and each of those was a way to move the host somewhere the target did not name. A capture in the path, query or fragment is unchanged. Where the destination host genuinely varies, pick it in a handler and use `c.Redirect()`, where the value is yours to validate.
+
 #### CSRF
 
 - **Field Renaming**: The `Expiration` field in the CSRF middleware configuration has been renamed to `IdleTimeout` to better describe its functionality. Additionally, the default value has been reduced from 1 hour to 30 minutes. Update your code as follows:
@@ -3246,6 +3285,32 @@ app.Get("/gif", proxy.Forward("https://i.imgur.com/IWaBepg.gif"))
 
 `proxy.Balancer` also adopts the common middleware signature pattern and now accepts an optional variadic config: call `proxy.Balancer()` to use the defaults or continue passing a single `proxy.Config` value as in v2.
 
+#### Rewrite
+
+- **Ordered rules**: `Rules map[string]string` is deprecated in favour of `RuleList []Rule`. A map has no order, so which rule answered a path two rules both matched was decided by map iteration, which Go randomizes per run: the same request could be rewritten differently from one call to the next. Rules in an `RuleList` list are tried in the order written and the first match wins, exactly as routes are matched.
+
+```go
+// Before
+app.Use(rewrite.New(rewrite.Config{
+    Rules: map[string]string{
+        "/old":   "/new",
+        "/old/*": "/new/$1",
+    },
+}))
+
+// After
+app.Use(rewrite.New(rewrite.Config{
+    RuleList: []rewrite.Rule{
+        {From: "/old", To: "/new"},
+        {From: "/old/*", To: "/new/$1"},
+    },
+}))
+```
+
+`Rules` keeps working for the whole of v3; its keys are ranked most path text before the first `*`, then most path text overall, then fewest asterisks, then the key. Setting both fields panics.
+
+- **A rule is path text**: `From` is no longer compiled as an unescaped regular expression. `*` matches a run of any bytes but a newline and every other byte stands for itself, so `/preis-1.000-euro` rewrites that path and no longer also `/preis-1X000-euro`, and `/faq?` no longer rewrites `/fa`. This also completes the anchoring fix from #4476: `"^" + "/a|/b" + "$"` parsed as `(^/a)|(/b$)`, so a rule could match by prefix or suffix alone. Rules written with path text and `*` are unaffected; a rule relying on regular-expression syntax now matches the literal characters it spells.
+
 #### Session
 
 `session.New()` now returns a middleware handler. When using the store pattern,
@@ -3270,6 +3335,17 @@ app.Use(session.New(session.Config{
     Store:     session.NewStore(),
 }))
 ```
+
+`CookieSameSite` is now read the same way as it is for `Ctx.Cookie`:
+
+- **`"Disabled"` omits the attribute.** The session used to ignore
+  `CookieSameSiteDisabled` and send `SameSite=Lax`, while `Ctx.Cookie` honored
+  it, so one constant meant two things. A session cookie configured this way now
+  carries no `SameSite` attribute, which is weaker than what was sent before. Set
+  `CookieSameSite: "Lax"` explicitly to keep the old cookie.
+- **Any other value panics** during configuration instead of silently falling
+  back to `Lax`, matching how `AbsoluteTimeout` is already validated. `Disabled`,
+  `Lax`, `Strict` and `None` are accepted case-insensitively.
 
 See the [Session Middleware Migration Guide](./middleware/session.md#migration-guide)
 for complete details.

@@ -291,6 +291,9 @@ Refer to the [Extractors Guide](../guide/extractors) for details, security notes
 | ErrorURI        | `string`                                 | URI identifying a human-readable web page with information about the `error` in Bearer challenges. Requires `Error` and must be an absolute URI. | `""` |
 | Scope           | `string`                                 | Space-delimited list of scopes for the `scope` parameter in Bearer challenges. Each token must conform to the RFC 6750 `scope-token` syntax and requires `Error` set to `insufficient_scope`. | `""` |
 
+Generated challenge parameter values are escaped as RFC 9110 HTTP quoted
+strings. A custom `Challenge` value is emitted verbatim.
+
 ## Default Config
 
 ```go
