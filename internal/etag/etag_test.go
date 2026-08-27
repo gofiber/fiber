@@ -142,19 +142,6 @@ func Test_Split(t *testing.T) {
 	}
 }
 
-func Test_Tags_EarlyStop(t *testing.T) {
-	t.Parallel()
-
-	var seen []string
-	for tag := range Tags(`"a", "b", "c"`) {
-		seen = append(seen, tag)
-		if len(seen) == 2 {
-			break
-		}
-	}
-	require.Equal(t, []string{`"a"`, `"b"`}, seen)
-}
-
 func Test_AnyMatch_IgnoresEmptyElements(t *testing.T) {
 	t.Parallel()
 

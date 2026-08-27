@@ -18,6 +18,7 @@ import (
 
 	etagpkg "github.com/gofiber/fiber/v3/internal/etag"
 	"github.com/gofiber/fiber/v3/internal/fieldname"
+	"github.com/gofiber/fiber/v3/internal/headerlist"
 	"github.com/gofiber/fiber/v3/internal/mediatype"
 )
 
@@ -52,33 +53,33 @@ type DefaultReq struct {
 
 // Accepts checks if the specified extensions or content types are acceptable.
 func (r *DefaultReq) Accepts(offers ...string) string {
-	header := joinHeaderValues(r.c.fasthttp.Request.Header.PeekAll(HeaderAccept))
+	header := headerlist.Join(r.c.fasthttp.Request.Header.PeekAll(HeaderAccept))
 	return getOffer(header, acceptsOfferType, offers...)
 }
 
 // AcceptsCharsets checks if the specified charset is acceptable.
 func (r *DefaultReq) AcceptsCharsets(offers ...string) string {
-	header := joinHeaderValues(r.c.fasthttp.Request.Header.PeekAll(HeaderAcceptCharset))
+	header := headerlist.Join(r.c.fasthttp.Request.Header.PeekAll(HeaderAcceptCharset))
 	return getOffer(header, acceptsOffer, offers...)
 }
 
 // AcceptsEncodings checks if the specified encoding is acceptable.
 func (r *DefaultReq) AcceptsEncodings(offers ...string) string {
-	header := joinHeaderValues(r.c.fasthttp.Request.Header.PeekAll(HeaderAcceptEncoding))
+	header := headerlist.Join(r.c.fasthttp.Request.Header.PeekAll(HeaderAcceptEncoding))
 	return getOffer(header, acceptsOffer, offers...)
 }
 
 // AcceptsLanguages checks if the specified language is acceptable using
 // RFC 4647 Basic Filtering.
 func (r *DefaultReq) AcceptsLanguages(offers ...string) string {
-	header := joinHeaderValues(r.c.fasthttp.Request.Header.PeekAll(HeaderAcceptLanguage))
+	header := headerlist.Join(r.c.fasthttp.Request.Header.PeekAll(HeaderAcceptLanguage))
 	return getOffer(header, acceptsLanguageOfferBasic, offers...)
 }
 
 // AcceptsLanguagesExtended checks if the specified language is acceptable using
 // RFC 4647 Extended Filtering.
 func (r *DefaultReq) AcceptsLanguagesExtended(offers ...string) string {
-	header := joinHeaderValues(r.c.fasthttp.Request.Header.PeekAll(HeaderAcceptLanguage))
+	header := headerlist.Join(r.c.fasthttp.Request.Header.PeekAll(HeaderAcceptLanguage))
 	return getOffer(header, acceptsLanguageOfferExtended, offers...)
 }
 
@@ -178,7 +179,7 @@ func (r *DefaultReq) Body() []byte {
 	// rule defined at: https://www.rfc-editor.org/rfc/rfc9110#section-8.4-5
 	// The splitter drops empty list elements (RFC 9110 Section 5.6.1.2), and
 	// headerEncoding was already lowercased wholesale above.
-	encodingOrder = getSplicedStrList(headerEncoding, encodingOrder)
+	encodingOrder = headerlist.Append(encodingOrder, headerEncoding)
 	if len(encodingOrder) == 0 {
 		return r.getBody()
 	}
@@ -275,14 +276,14 @@ func (r *DefaultReq) headerField(name string) []byte {
 // Repeated field lines are combined into one comma-joined list
 // (RFC 9110 Section 5.2), matching what AcceptsLanguages negotiates on.
 func (r *DefaultReq) AcceptLanguage() string {
-	return r.c.app.toString(joinHeaderValues(r.c.fasthttp.Request.Header.PeekAll(HeaderAcceptLanguage)))
+	return r.c.app.toString(headerlist.Join(r.c.fasthttp.Request.Header.PeekAll(HeaderAcceptLanguage)))
 }
 
 // AcceptEncoding returns the Accept-Encoding request header.
 // Repeated field lines are combined into one comma-joined list
 // (RFC 9110 Section 5.2), matching what AcceptsEncodings negotiates on.
 func (r *DefaultReq) AcceptEncoding() string {
-	return r.c.app.toString(joinHeaderValues(r.c.fasthttp.Request.Header.PeekAll(HeaderAcceptEncoding)))
+	return r.c.app.toString(headerlist.Join(r.c.fasthttp.Request.Header.PeekAll(HeaderAcceptEncoding)))
 }
 
 // HasHeader reports whether the request includes a header with the given key.
@@ -552,7 +553,7 @@ func (r *DefaultReq) Fresh() bool {
 	// List-based fields may be split across multiple field lines, which are
 	// semantically one comma-joined list (RFC 9110 Section 5.2).
 	modifiedSince := header.Peek(HeaderIfModifiedSince)
-	noneMatch := joinHeaderValues(header.PeekAll(HeaderIfNoneMatch))
+	noneMatch := headerlist.Join(header.PeekAll(HeaderIfNoneMatch))
 
 	// unconditional request
 	if len(modifiedSince) == 0 && len(noneMatch) == 0 {
@@ -562,7 +563,7 @@ func (r *DefaultReq) Fresh() bool {
 	// Always return stale when Cache-Control: no-cache
 	// to support end-to-end reload requests
 	// https://www.rfc-editor.org/rfc/rfc9111#section-5.2.1.4
-	cacheControl := joinHeaderValues(header.PeekAll(HeaderCacheControl))
+	cacheControl := headerlist.Join(header.PeekAll(HeaderCacheControl))
 	if len(cacheControl) > 0 && isNoCache(utils.UnsafeString(cacheControl)) {
 		return false
 	}
@@ -635,7 +636,7 @@ func parseHTTPDate(date []byte) (time.Time, error) {
 func (r *DefaultReq) IfNoneMatch() []string {
 	app := r.c.app
 	lines := fieldname.Lines(&r.c.fasthttp.Request.Header, HeaderIfNoneMatch, !app.config.DisableHeaderNormalizing)
-	header := joinHeaderValues(lines)
+	header := headerlist.Join(lines)
 	if len(header) == 0 {
 		return nil
 	}
@@ -1071,18 +1072,13 @@ func hasTransferEncodingBody(hdr *fasthttp.RequestHeader) bool {
 // transferEncodingLineHasBody reports whether a single Transfer-Encoding
 // field line contains a transfer coding other than "identity".
 func transferEncodingLineHasBody(te string) bool {
-	for raw := range strings.SplitSeq(te, ",") {
-		token := utils.TrimSpace(raw)
-		if token == "" {
-			continue
-		}
+	for token := range headerlist.All(te) {
+		// A transfer coding may carry parameters ("chunked;q=1"), which name the
+		// coding no more than the bare token does (RFC 9110 Section 10.1.4).
 		if idx := strings.IndexByte(token, ';'); idx >= 0 {
 			token = utils.TrimSpace(token[:idx])
 		}
-		if token == "" {
-			continue
-		}
-		if utils.EqualFold(token, "identity") {
+		if token == "" || utils.EqualFold(token, "identity") {
 			continue
 		}
 		return true
@@ -1109,15 +1105,14 @@ func (r *DefaultReq) IsWebSocket() bool {
 // ignored when comparing; valid Connection members never contain "/", so
 // this is safe for both headers.
 func headerListContainsToken(lines [][]byte, token string) bool {
-	for _, line := range lines {
-		for v := range strings.SplitSeq(utils.UnsafeString(line), ",") {
-			element := utils.TrimSpace(v)
-			if i := strings.IndexByte(element, '/'); i >= 0 {
-				element = element[:i]
-			}
-			if utils.EqualFold(element, token) {
-				return true
-			}
+	for element := range headerlist.AllLines(lines) {
+		// Connection and Upgrade carry protocol names, which may name a version
+		// after a slash ("HTTP/2.0"). Match on the name alone.
+		if i := strings.IndexByte(element, '/'); i >= 0 {
+			element = element[:i]
+		}
+		if utils.EqualFold(element, token) {
+			return true
 		}
 	}
 	return false

@@ -13,6 +13,7 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/internal/fieldname"
+	"github.com/gofiber/fiber/v3/internal/headerlist"
 	"github.com/gofiber/fiber/v3/internal/mediatype"
 	"github.com/gofiber/utils/v2"
 	"github.com/valyala/fasthttp"
@@ -196,28 +197,7 @@ func isIgnoredHeader(key []byte) bool {
 // may combine them into that form (RFC 9110 §5.2). Peek returns only the first,
 // so a second "Vary:" line was cached as if it had never been sent.
 func joinedHeader(h fieldname.Peeker, key string, normalized bool) []byte {
-	values := fieldname.Lines(h, key, normalized)
-	switch len(values) {
-	case 0:
-		return nil
-	case 1:
-		return values[0]
-	}
-
-	n := 0
-	for _, v := range values {
-		n += len(v) + 1
-	}
-	joined := make([]byte, 0, n)
-	for i, v := range values {
-		if i > 0 {
-			// A bare comma, matching package fiber's own field-line joiner, so
-			// the two render a combined value identically.
-			joined = append(joined, ',')
-		}
-		joined = append(joined, v...)
-	}
-	return joined
+	return headerlist.Join(fieldname.Lines(h, key, normalized))
 }
 
 func parseHTTPDate(dateBytes []byte) (uint64, bool) {

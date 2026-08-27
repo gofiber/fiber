@@ -5,10 +5,10 @@
 package etag
 
 import (
-	"iter"
 	"slices"
 	"strings"
 
+	"github.com/gofiber/fiber/v3/internal/headerlist"
 	"github.com/gofiber/utils/v2"
 )
 
@@ -55,65 +55,17 @@ func MatchStrong(s, etag string) bool {
 	return n1 == n2
 }
 
-// cutTag splits the first entity tag off a raw If-None-Match or If-Match value,
-// returning it and the rest. A comma inside a quoted opaque-tag does not end an
-// element (RFC 9110 Section 8.8.3), so `"v1,v2"` is one tag.
-func cutTag(header string) (tag, rest string, ok bool) { //nolint:nonamedreturns // gocritic unnamedResult requires naming the three parts
-	if header == "" {
-		return "", "", false
-	}
-
-	// Only '"' and ',' affect the split, so jump between them instead of
-	// visiting every byte.
-	inQuotes := false
-	for i := 0; i < len(header); {
-		j := utils.IndexAny2(header[i:], '"', ',')
-		if j == -1 {
-			break
-		}
-		i += j
-		if header[i] == '"' {
-			inQuotes = !inQuotes
-		} else if !inQuotes {
-			return utils.TrimSpace(header[:i]), header[i+1:], true
-		}
-		i++
-	}
-
-	return utils.TrimSpace(header), "", true
-}
-
-// Tags iterates the entity tags in a raw If-None-Match or If-Match value,
-// trimmed and unvalidated. Empty list elements are skipped, as RFC 9110
-// Section 5.6.1 requires, so a trailing comma is not an extra tag.
-func Tags(header string) iter.Seq[string] {
-	return func(yield func(string) bool) {
-		rest := utils.TrimSpace(header)
-		for rest != "" {
-			tag, next, ok := cutTag(rest)
-			if !ok {
-				return
-			}
-			if tag != "" && !yield(tag) {
-				return
-			}
-			rest = next
-		}
-	}
-}
-
 // Split returns the entity tags in a raw If-None-Match or If-Match field value.
-// It collects Tags, so the same quoted-comma and empty-element rules apply. A
-// field value carrying no tags returns nil.
+// A comma inside a quoted opaque-tag does not separate it (RFC 9110
+// Section 8.8.3), and empty list elements are skipped. Returns nil for no tags.
 func Split(header string) []string {
-	header = utils.TrimSpace(header)
 	if header == "" {
 		return nil
 	}
 
 	// One more than the commas is an upper bound: a comma inside a quoted
 	// opaque-tag only over-estimates, never under.
-	tags := slices.AppendSeq(make([]string, 0, strings.Count(header, ",")+1), Tags(header))
+	tags := slices.AppendSeq(make([]string, 0, strings.Count(header, ",")+1), headerlist.AllQuoted(header))
 	if len(tags) == 0 {
 		return nil
 	}
@@ -131,15 +83,19 @@ func AnyMatch(header, etag string) bool {
 		return true
 	}
 
-	for rest != "" {
-		tag, next, ok := cutTag(rest)
-		if !ok {
-			return false
-		}
-		if tag != "" && Match(tag, etag) {
+	// etag is the same for every element, so parse it once rather than through
+	// Match on each. An unparseable one matches nothing (RFC 9110 8.8.3.2).
+	want, _, ok := Parse(etag)
+	if !ok {
+		return false
+	}
+
+	// Commas inside the opaque-tag do not separate: etagc permits "," within the
+	// quoted tag (RFC 9110 Section 8.8.3), so `"v1,v2"` is one entity tag.
+	for tag := range headerlist.AllQuoted(header) {
+		if got, _, ok := Parse(tag); ok && got == want {
 			return true
 		}
-		rest = next
 	}
 
 	return false
