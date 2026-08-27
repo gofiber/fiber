@@ -42,7 +42,7 @@ type Res interface {
 	// repeat resolves to the first. The copy is written back through Cookie.
 	GetCookie(name string) (*Cookie, bool)
 	// Cookies returns a copy of every cookie this response is set to send, in order,
-	// or nil when there are none. Repeated names are kept apart, and an unparseable
+	// or nil when there are none. Repeated names are kept apart, and an unparsable
 	// one is skipped. For what the client sent, use Req.Cookies.
 	Cookies() []*Cookie
 	// Download transfers the file from path as an attachment.

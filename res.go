@@ -414,7 +414,7 @@ func (r *DefaultRes) GetCookie(name string) (*Cookie, bool) {
 }
 
 // Cookies returns a copy of every cookie this response is set to send, in order,
-// or nil when there are none. Repeated names are kept apart, and an unparseable
+// or nil when there are none. Repeated names are kept apart, and an unparsable
 // one is skipped. For what the client sent, use Req.Cookies.
 func (r *DefaultRes) Cookies() []*Cookie {
 	header := &r.c.fasthttp.Response.Header
