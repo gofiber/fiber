@@ -148,8 +148,8 @@ type Req interface {
 	// one. Fresh already compares them. Only valid within the handler.
 	IfNoneMatch() []string
 	// IfModifiedSince returns the time carried by the If-Modified-Since request
-	// header, ErrHeaderNotFound when it is absent, and a parse error when it is none
-	// of the three HTTP-date formats RFC 9110 Section 5.6.7 requires.
+	// header, ErrHeaderNotFound when it is absent or empty, and a parse error when
+	// it is none of the HTTP-date formats RFC 9110 Section 5.6.7 requires.
 	IfModifiedSince() (time.Time, error)
 	// Get returns the HTTP request header specified by field.
 	// Field names are case-insensitive

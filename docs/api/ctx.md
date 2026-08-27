@@ -404,7 +404,7 @@ app.Use(func(c fiber.Ctx) error {
 
 ### IsFinal
 
-Returns `true` if no further handler of the **current route** runs after this one. It is the exact complement of [`IsMiddleware`](#ismiddleware), and `false` when no route matched at all.
+Returns `true` only for the last handler of a matched, non-middleware route, so nothing further on that route runs. It is `false` when no route matched at all — as [`IsMiddleware`](#ismiddleware) also is, so the two are not exact complements.
 
 :::caution
 This describes the route, not the whole request. A route registered with `Use` is never final even when it is the last thing that runs, and another route can still match after a final handler calls [`Next`](#next) — a specific path followed by a catch-all is the ordinary case. Use it to tell an endpoint handler from a middleware one, not to decide that the response is finished.
@@ -3222,6 +3222,10 @@ Cookie names are case-sensitive (RFC 6265, Section 4.1.1). A name written more t
 
 :::note
 The returned `Cookie` is a copy: changing it does not change the response. Pass it to [`Cookie`](#cookie) to write the change back.
+:::
+
+:::caution
+A `Set-Cookie` that carried no `Path` comes back with `Path` empty, and [`Cookie`](#cookie) writes an empty `Path` as `/`. Re-emitting such a cookie therefore widens it from the browser's RFC 6265 default-path — the directory of the request URI — to the whole origin. Set `Path` explicitly before writing one back. Cookies written through [`Cookie`](#cookie) always carry a `Path`, so this only arises for a `Set-Cookie` added with [`Add`](#add) or copied from an upstream response.
 :::
 
 ```go title="Signature"

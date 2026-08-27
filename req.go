@@ -633,7 +633,9 @@ func parseHTTPDate(date []byte) (time.Time, error) {
 // verbatim and unvalidated; a comma inside a quoted opaque-tag does not split
 // one. Fresh already compares them. Only valid within the handler.
 func (r *DefaultReq) IfNoneMatch() []string {
-	header := joinHeaderValues(r.c.fasthttp.Request.Header.PeekAll(HeaderIfNoneMatch))
+	app := r.c.app
+	lines := fieldname.Lines(&r.c.fasthttp.Request.Header, HeaderIfNoneMatch, !app.config.DisableHeaderNormalizing)
+	header := joinHeaderValues(lines)
 	if len(header) == 0 {
 		return nil
 	}
@@ -641,10 +643,10 @@ func (r *DefaultReq) IfNoneMatch() []string {
 }
 
 // IfModifiedSince returns the time carried by the If-Modified-Since request
-// header, ErrHeaderNotFound when it is absent, and a parse error when it is none
-// of the three HTTP-date formats RFC 9110 Section 5.6.7 requires.
+// header, ErrHeaderNotFound when it is absent or empty, and a parse error when
+// it is none of the HTTP-date formats RFC 9110 Section 5.6.7 requires.
 func (r *DefaultReq) IfModifiedSince() (time.Time, error) {
-	value := r.c.fasthttp.Request.Header.Peek(HeaderIfModifiedSince)
+	value := r.headerField(HeaderIfModifiedSince)
 	if len(value) == 0 {
 		return time.Time{}, ErrHeaderNotFound
 	}
@@ -1126,11 +1128,10 @@ func (r *DefaultReq) IsPreflight() bool {
 	if r.Method() != MethodOptions {
 		return false
 	}
-	hdr := &r.c.fasthttp.Request.Header
-	if len(hdr.Peek(HeaderAccessControlRequestMethod)) == 0 {
+	if len(r.headerField(HeaderAccessControlRequestMethod)) == 0 {
 		return false
 	}
-	return len(hdr.Peek(HeaderOrigin)) > 0
+	return len(r.headerField(HeaderOrigin)) > 0
 }
 
 // Secure returns whether a secure connection was established.

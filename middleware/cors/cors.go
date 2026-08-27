@@ -5,6 +5,8 @@ import (
 	"strings"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/fieldname"
+	"github.com/gofiber/fiber/v3/internal/headerlookup"
 	"github.com/gofiber/fiber/v3/log"
 	"github.com/gofiber/utils/v2"
 	utilsstrings "github.com/gofiber/utils/v2/strings"
@@ -107,10 +109,13 @@ func New(config ...Config) fiber.Handler {
 			return c.Next()
 		}
 
-		// Origin, with the original case kept for the response. Req.Origin matches
-		// the field name case-insensitively, where Ctx.Get is byte-exact: a
-		// lower-case "origin:" read as absent under DisableHeaderNormalizing.
-		originHeaderRaw := c.Req().Origin()
+		// Every request header here is read case-insensitively, as csrf already
+		// does: Ctx.Get is byte-exact, so under DisableHeaderNormalizing the
+		// lower-case names HTTP/2 sends read as absent and CORS never applied.
+		canonical := headerlookup.Canonical(c)
+
+		// Origin, with the original case kept for the response.
+		originHeaderRaw, _ := headerlookup.Value(c, fiber.HeaderOrigin)
 		originHeader := utilsstrings.ToLower(originHeaderRaw)
 
 		// If the request does not have Origin header, the request is outside the scope of CORS
@@ -125,7 +130,8 @@ func New(config ...Config) fiber.Handler {
 		}
 
 		// If it's a preflight request and doesn't have Access-Control-Request-Method header, it's outside the scope of CORS
-		if c.Method() == fiber.MethodOptions && c.Get(fiber.HeaderAccessControlRequestMethod) == "" {
+		requestMethod, _ := headerlookup.Value(c, fiber.HeaderAccessControlRequestMethod)
+		if c.Method() == fiber.MethodOptions && requestMethod == "" {
 			// Response to OPTIONS request should not be cached but,
 			// some caching can be configured to cache such responses.
 			// To Avoid poisoning the cache, we include the Vary header
@@ -180,7 +186,8 @@ func New(config ...Config) fiber.Handler {
 		// To avoid poisoning the cache, we include the Vary header
 		// of preflight responses, set in a single variadic Vary call
 		// per branch since every Vary call scans all response headers.
-		if cfg.AllowPrivateNetwork && c.Get(fiber.HeaderAccessControlRequestPrivateNetwork) == "true" {
+		privateNetwork, _ := headerlookup.Value(c, fiber.HeaderAccessControlRequestPrivateNetwork)
+		if cfg.AllowPrivateNetwork && privateNetwork == "true" {
 			c.Vary(fiber.HeaderAccessControlRequestMethod, fiber.HeaderAccessControlRequestHeaders, fiber.HeaderAccessControlRequestPrivateNetwork, fiber.HeaderOrigin)
 			c.Set(fiber.HeaderAccessControlAllowPrivateNetwork, "true")
 		} else {
@@ -196,7 +203,7 @@ func New(config ...Config) fiber.Handler {
 		if len(cfg.AllowHeaders) > 0 {
 			c.Set(fiber.HeaderAccessControlAllowHeaders, strings.Join(cfg.AllowHeaders, ", "))
 		} else {
-			h := c.Get(fiber.HeaderAccessControlRequestHeaders)
+			h := string(fieldname.First(&c.Request().Header, fiber.HeaderAccessControlRequestHeaders, canonical))
 			if h != "" {
 				c.Set(fiber.HeaderAccessControlAllowHeaders, h)
 			}

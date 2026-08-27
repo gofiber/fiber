@@ -18,6 +18,7 @@ import (
 	"unicode/utf8"
 
 	internalcookie "github.com/gofiber/fiber/v3/internal/cookie"
+	"github.com/gofiber/fiber/v3/internal/fieldname"
 	"github.com/gofiber/fiber/v3/internal/quotedstring"
 	"github.com/gofiber/utils/v2"
 	"github.com/valyala/bytebufferpool"
@@ -390,7 +391,8 @@ func (r *DefaultRes) Cookie(cookie *Cookie) {
 
 // GetCookie reads back a cookie this response is set to send, false when the
 // name is unset or its value does not parse. Names are case-sensitive and a
-// repeat resolves to the first. The copy is written back through Cookie.
+// repeat resolves to the first. Writing the copy back through Cookie stamps
+// Path=/ on a cookie that carried none, widening its scope — set Path first.
 func (r *DefaultRes) GetCookie(name string) (*Cookie, bool) {
 	header := &r.c.fasthttp.Response.Header
 
@@ -643,11 +645,12 @@ func (r *DefaultRes) ContentType() string {
 	return r.c.app.toString(r.c.fasthttp.Response.Header.ContentType())
 }
 
-// Del removes every field line stored under key, case-insensitively, and is a
-// no-op for a header that was never set. Del(HeaderSetCookie) withdraws the
-// pending cookies, where ClearCookie expires one already in the client's jar.
+// Del removes every field line stored under key, whatever case it is spelled in,
+// and is a no-op for a header that was never set. Del(HeaderSetCookie) withdraws
+// the pending cookies, where ClearCookie expires one in the client's jar.
 func (r *DefaultRes) Del(key string) {
-	r.c.fasthttp.Response.Header.Del(key)
+	header := &r.c.fasthttp.Response.Header
+	fieldname.Del(header, key, fieldname.Canonical(header))
 }
 
 // Get (a.k.a. GetRespHeader) returns the HTTP response header specified by field.

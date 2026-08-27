@@ -153,9 +153,9 @@ type Ctx interface {
 	Matched() bool
 	// IsMiddleware returns true if the current request handler was registered as middleware.
 	IsMiddleware() bool
-	// IsFinal reports whether no further handler of the current route runs after
-	// this one, the exact complement of IsMiddleware. It describes the route, not
-	// the request: another route can still match, and a Use route is never final.
+	// IsFinal reports whether this is the last handler of a matched non-middleware
+	// route, so nothing further on that route runs. It describes the route, not the
+	// request: another route can still match, and a Use route is never final.
 	IsFinal() bool
 	// OverrideParam overwrites a route parameter value by name.
 	// If the parameter name does not exist in the route, this method does nothing.
@@ -386,8 +386,8 @@ type Ctx interface {
 	// one. Fresh already compares them. Only valid within the handler.
 	IfNoneMatch() []string
 	// IfModifiedSince returns the time carried by the If-Modified-Since request
-	// header, ErrHeaderNotFound when it is absent, and a parse error when it is none
-	// of the three HTTP-date formats RFC 9110 Section 5.6.7 requires.
+	// header, ErrHeaderNotFound when it is absent or empty, and a parse error when
+	// it is none of the HTTP-date formats RFC 9110 Section 5.6.7 requires.
 	IfModifiedSince() (time.Time, error)
 	// GetAll returns every field line stored under key, where Get returns only the
 	// first, or nil when the header is absent. Empty lines are skipped, so its
@@ -566,7 +566,8 @@ type Ctx interface {
 	Cookie(cookie *Cookie)
 	// GetCookie reads back a cookie this response is set to send, false when the
 	// name is unset or its value does not parse. Names are case-sensitive and a
-	// repeat resolves to the first. The copy is written back through Cookie.
+	// repeat resolves to the first. Writing the copy back through Cookie stamps
+	// Path=/ on a cookie that carried none, widening its scope — set Path first.
 	GetCookie(name string) (*Cookie, bool)
 	// Download transfers the file from path as an attachment.
 	// Typically, browsers will prompt the user for download.
@@ -587,9 +588,9 @@ type Ctx interface {
 	// For more flexible content negotiation, use Format.
 	// If the header is not specified or there is no proper format, text/plain is used.
 	AutoFormat(body any) error
-	// Del removes every field line stored under key, case-insensitively, and is a
-	// no-op for a header that was never set. Del(HeaderSetCookie) withdraws the
-	// pending cookies, where ClearCookie expires one already in the client's jar.
+	// Del removes every field line stored under key, whatever case it is spelled in,
+	// and is a no-op for a header that was never set. Del(HeaderSetCookie) withdraws
+	// the pending cookies, where ClearCookie expires one in the client's jar.
 	Del(key string)
 	// JSON converts any interface or string to JSON.
 	// Array and slice values encode as JSON arrays,

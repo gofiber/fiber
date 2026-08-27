@@ -1910,3 +1910,35 @@ func Test_CORS_OriginWithoutHeaderNormalizing(t *testing.T) {
 	other := do("origin: http://evil.example")
 	require.Empty(t, string(other.Response.Header.Peek(fiber.HeaderAccessControlAllowOrigin)))
 }
+
+func Test_CORS_PreflightWithoutHeaderNormalizing(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New(fiber.Config{DisableHeaderNormalizing: true})
+	app.Use(New(Config{
+		AllowOrigins: []string{"http://example.com"},
+		AllowMethods: []string{fiber.MethodGet, fiber.MethodPut},
+	}))
+	app.Put("/", func(c fiber.Ctx) error {
+		return c.SendString("ok")
+	})
+
+	raw := "OPTIONS / HTTP/1.1\r\nHost: example.com\r\n" +
+		"origin: http://example.com\r\n" +
+		"access-control-request-method: PUT\r\n" +
+		"access-control-request-headers: X-Custom\r\n\r\n"
+
+	req := fasthttp.AcquireRequest()
+	defer fasthttp.ReleaseRequest(req)
+	req.Header.DisableNormalizing()
+	require.NoError(t, req.Read(bufio.NewReader(strings.NewReader(raw))))
+
+	fctx := &fasthttp.RequestCtx{}
+	fctx.Init(req, nil, nil)
+	app.Handler()(fctx)
+
+	require.Equal(t, fiber.StatusNoContent, fctx.Response.StatusCode())
+	require.Equal(t, "http://example.com", string(fctx.Response.Header.Peek(fiber.HeaderAccessControlAllowOrigin)))
+	require.Contains(t, string(fctx.Response.Header.Peek(fiber.HeaderAccessControlAllowMethods)), fiber.MethodPut)
+	require.Equal(t, "X-Custom", string(fctx.Response.Header.Peek(fiber.HeaderAccessControlAllowHeaders)))
+}

@@ -709,7 +709,7 @@ The `TypeConstraint` type, `Constraint.ID`, and `Constraint.RegexCompiler` field
 - **LocalAddr** / **RemoteAddr**: Return the connection's addresses as `net.Addr`, where `IP` returns a string.
 - **Hijack** / **Hijacked**: Take over the connection after the response is sent, and report whether that has happened.
 - **RouteName**: Returns the name of the route currently executing.
-- **IsFinal**: Reports whether the current handler is the last one in the chain, the complement of `IsMiddleware`.
+- **IsFinal**: Reports whether the current handler is the last one of a matched, non-middleware route.
 - **MountPath**: Returns the prefix the sub-app owning the current route was mounted under.
 - **Error**: Builds a `*fiber.Error` with the given status code, so a handler can reject a request in one line.
 - **GetAll**: Returns every field line of a request header, where `Get` returns only the first.

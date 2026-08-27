@@ -511,9 +511,9 @@ func (c *DefaultCtx) IsMiddleware() bool {
 	return c.indexHandler+1 < len(c.route.Handlers)
 }
 
-// IsFinal reports whether no further handler of the current route runs after
-// this one, the exact complement of IsMiddleware. It describes the route, not
-// the request: another route can still match, and a Use route is never final.
+// IsFinal reports whether this is the last handler of a matched non-middleware
+// route, so nothing further on that route runs. It describes the route, not the
+// request: another route can still match, and a Use route is never final.
 func (c *DefaultCtx) IsFinal() bool {
 	return c.route != nil && !c.IsMiddleware()
 }

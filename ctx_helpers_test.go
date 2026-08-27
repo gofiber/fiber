@@ -1040,6 +1040,56 @@ func Test_Req_HeaderFieldWithoutNormalizing(t *testing.T) {
 	require.Equal(t, "abc123", c.Req().Bearer())
 }
 
+func Test_Req_ConditionalHeadersWithoutNormalizing(t *testing.T) {
+	t.Parallel()
+	app := New(Config{DisableHeaderNormalizing: true})
+
+	fctx := &fasthttp.RequestCtx{}
+	fctx.Request.Header.DisableNormalizing()
+	fctx.Request.Header.Set("if-none-match", `"a", W/"b"`)
+	fctx.Request.Header.Set("if-modified-since", "Wed, 21 Oct 2015 07:28:00 GMT")
+	c := app.AcquireCtx(fctx)
+	t.Cleanup(func() { app.ReleaseCtx(c) })
+
+	require.Equal(t, []string{`"a"`, `W/"b"`}, c.Req().IfNoneMatch())
+
+	since, err := c.Req().IfModifiedSince()
+	require.NoError(t, err)
+	require.True(t, since.Equal(time.Date(2015, time.October, 21, 7, 28, 0, 0, time.UTC)))
+}
+
+func Test_Req_IsPreflightWithoutNormalizing(t *testing.T) {
+	t.Parallel()
+	app := New(Config{DisableHeaderNormalizing: true})
+
+	fctx := &fasthttp.RequestCtx{}
+	fctx.Request.Header.DisableNormalizing()
+	fctx.Request.Header.SetMethod(MethodOptions)
+	fctx.Request.Header.Set("origin", "https://example.com")
+	fctx.Request.Header.Set("access-control-request-method", MethodGet)
+	c := app.AcquireCtx(fctx)
+	t.Cleanup(func() { app.ReleaseCtx(c) })
+
+	require.True(t, c.Req().IsPreflight())
+}
+
+func Test_Res_Del_CaseInsensitive(t *testing.T) {
+	t.Parallel()
+	app := New(Config{DisableHeaderNormalizing: true})
+
+	fctx := &fasthttp.RequestCtx{}
+	fctx.Response.Header.DisableNormalizing()
+	c := app.AcquireCtx(fctx)
+	t.Cleanup(func() { app.ReleaseCtx(c) })
+
+	c.Response().Header.Set("x-token", "secret")
+	require.Equal(t, "secret", string(c.Response().Header.Peek("x-token")))
+
+	c.Res().Del(HeaderXRequestID)
+	c.Res().Del("X-Token")
+	require.Empty(t, string(c.Response().Header.Peek("x-token")), "a differently cased field is still removed")
+}
+
 func Test_Res_Cookies_UnparsableEntry(t *testing.T) {
 	t.Parallel()
 	app := New()
