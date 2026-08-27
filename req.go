@@ -53,33 +53,33 @@ type DefaultReq struct {
 
 // Accepts checks if the specified extensions or content types are acceptable.
 func (r *DefaultReq) Accepts(offers ...string) string {
-	header := headerlist.Join(r.c.fasthttp.Request.Header.PeekAll(HeaderAccept))
+	header := peekJoinedRequestHeader(&r.c.fasthttp.Request.Header, HeaderAccept)
 	return getOffer(header, acceptsOfferType, offers...)
 }
 
 // AcceptsCharsets checks if the specified charset is acceptable.
 func (r *DefaultReq) AcceptsCharsets(offers ...string) string {
-	header := headerlist.Join(r.c.fasthttp.Request.Header.PeekAll(HeaderAcceptCharset))
+	header := peekJoinedRequestHeader(&r.c.fasthttp.Request.Header, HeaderAcceptCharset)
 	return getOffer(header, acceptsOffer, offers...)
 }
 
 // AcceptsEncodings checks if the specified encoding is acceptable.
 func (r *DefaultReq) AcceptsEncodings(offers ...string) string {
-	header := headerlist.Join(r.c.fasthttp.Request.Header.PeekAll(HeaderAcceptEncoding))
+	header := peekJoinedRequestHeader(&r.c.fasthttp.Request.Header, HeaderAcceptEncoding)
 	return getOffer(header, acceptsOffer, offers...)
 }
 
 // AcceptsLanguages checks if the specified language is acceptable using
 // RFC 4647 Basic Filtering.
 func (r *DefaultReq) AcceptsLanguages(offers ...string) string {
-	header := headerlist.Join(r.c.fasthttp.Request.Header.PeekAll(HeaderAcceptLanguage))
+	header := peekJoinedRequestHeader(&r.c.fasthttp.Request.Header, HeaderAcceptLanguage)
 	return getOffer(header, acceptsLanguageOfferBasic, offers...)
 }
 
 // AcceptsLanguagesExtended checks if the specified language is acceptable using
 // RFC 4647 Extended Filtering.
 func (r *DefaultReq) AcceptsLanguagesExtended(offers ...string) string {
-	header := headerlist.Join(r.c.fasthttp.Request.Header.PeekAll(HeaderAcceptLanguage))
+	header := peekJoinedRequestHeader(&r.c.fasthttp.Request.Header, HeaderAcceptLanguage)
 	return getOffer(header, acceptsLanguageOfferExtended, offers...)
 }
 
@@ -273,17 +273,19 @@ func (r *DefaultReq) headerField(name string) []byte {
 }
 
 // AcceptLanguage returns the Accept-Language request header.
-// Repeated field lines are combined into one comma-joined list
-// (RFC 9110 Section 5.2), matching what AcceptsLanguages negotiates on.
+// Repeated field lines are combined into one comma-joined list (RFC 9110
+// Section 5.2) and the field name matches case-insensitively (Section 5.1),
+// matching what AcceptsLanguages negotiates on.
 func (r *DefaultReq) AcceptLanguage() string {
-	return r.c.app.toString(headerlist.Join(r.c.fasthttp.Request.Header.PeekAll(HeaderAcceptLanguage)))
+	return r.c.app.toString(peekJoinedRequestHeader(&r.c.fasthttp.Request.Header, HeaderAcceptLanguage))
 }
 
 // AcceptEncoding returns the Accept-Encoding request header.
-// Repeated field lines are combined into one comma-joined list
-// (RFC 9110 Section 5.2), matching what AcceptsEncodings negotiates on.
+// Repeated field lines are combined into one comma-joined list (RFC 9110
+// Section 5.2) and the field name matches case-insensitively (Section 5.1),
+// matching what AcceptsEncodings negotiates on.
 func (r *DefaultReq) AcceptEncoding() string {
-	return r.c.app.toString(headerlist.Join(r.c.fasthttp.Request.Header.PeekAll(HeaderAcceptEncoding)))
+	return r.c.app.toString(peekJoinedRequestHeader(&r.c.fasthttp.Request.Header, HeaderAcceptEncoding))
 }
 
 // HasHeader reports whether the request includes a header with the given key.
@@ -553,9 +555,11 @@ func (r *DefaultReq) Fresh() bool {
 
 	// fields
 	// List-based fields may be split across multiple field lines, which are
-	// semantically one comma-joined list (RFC 9110 Section 5.2).
-	modifiedSince := header.Peek(HeaderIfModifiedSince)
-	noneMatch := headerlist.Join(header.PeekAll(HeaderIfNoneMatch))
+	// semantically one comma-joined list (RFC 9110 Section 5.2). Field names
+	// match case-insensitively, so the lower-case spellings HTTP/2 and 3 send
+	// are not read as an unconditional request.
+	modifiedSince := r.headerField(HeaderIfModifiedSince)
+	noneMatch := peekJoinedRequestHeader(header, HeaderIfNoneMatch)
 
 	// unconditional request
 	if len(modifiedSince) == 0 && len(noneMatch) == 0 {
@@ -565,7 +569,7 @@ func (r *DefaultReq) Fresh() bool {
 	// Always return stale when Cache-Control: no-cache
 	// to support end-to-end reload requests
 	// https://www.rfc-editor.org/rfc/rfc9111#section-5.2.1.4
-	cacheControl := headerlist.Join(header.PeekAll(HeaderCacheControl))
+	cacheControl := peekJoinedRequestHeader(header, HeaderCacheControl)
 	if len(cacheControl) > 0 && isNoCache(utils.UnsafeString(cacheControl)) {
 		return false
 	}
@@ -636,9 +640,7 @@ func parseHTTPDate(date []byte) (time.Time, error) {
 // verbatim and unvalidated; a comma inside a quoted opaque-tag does not split
 // one. Fresh already compares them. Only valid within the handler.
 func (r *DefaultReq) IfNoneMatch() []string {
-	app := r.c.app
-	lines := fieldname.Lines(&r.c.fasthttp.Request.Header, HeaderIfNoneMatch, !app.config.DisableHeaderNormalizing)
-	header := headerlist.Join(lines)
+	header := peekJoinedRequestHeader(&r.c.fasthttp.Request.Header, HeaderIfNoneMatch)
 	if len(header) == 0 {
 		return nil
 	}

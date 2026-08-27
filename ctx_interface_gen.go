@@ -318,12 +318,14 @@ type Ctx interface {
 	// DisableHeaderNormalizing a lower-case "origin:" read as absent.
 	headerField(name string) []byte
 	// AcceptLanguage returns the Accept-Language request header.
-	// Repeated field lines are combined into one comma-joined list
-	// (RFC 9110 Section 5.2), matching what AcceptsLanguages negotiates on.
+	// Repeated field lines are combined into one comma-joined list (RFC 9110
+	// Section 5.2) and the field name matches case-insensitively (Section 5.1),
+	// matching what AcceptsLanguages negotiates on.
 	AcceptLanguage() string
 	// AcceptEncoding returns the Accept-Encoding request header.
-	// Repeated field lines are combined into one comma-joined list
-	// (RFC 9110 Section 5.2), matching what AcceptsEncodings negotiates on.
+	// Repeated field lines are combined into one comma-joined list (RFC 9110
+	// Section 5.2) and the field name matches case-insensitively (Section 5.1),
+	// matching what AcceptsEncodings negotiates on.
 	AcceptEncoding() string
 	// HasHeader reports whether the request includes a header with the given key.
 	// The field name matches case-insensitively (RFC 9110 Section 5.1), so this

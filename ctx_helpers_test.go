@@ -1188,3 +1188,66 @@ func Test_Res_SendStatus_DropsDeclaredContentLength(t *testing.T) {
 	require.Empty(t, get("/nocontent"))
 	require.Equal(t, []string{"0"}, get("/bare205"))
 }
+
+func Test_Req_AcceptsWithoutNormalizing(t *testing.T) {
+	t.Parallel()
+	app := New(Config{DisableHeaderNormalizing: true})
+
+	fctx := &fasthttp.RequestCtx{}
+	fctx.Request.Header.DisableNormalizing()
+	fctx.Request.Header.Set("accept", "application/json")
+	fctx.Request.Header.Set("accept-charset", "utf-8")
+	fctx.Request.Header.Set("accept-encoding", "gzip")
+	fctx.Request.Header.Set("accept-language", "en-GB")
+	c := app.AcquireCtx(fctx)
+	t.Cleanup(func() { app.ReleaseCtx(c) })
+
+	r := c.Req()
+	require.Equal(t, "gzip", r.AcceptEncoding())
+	require.Equal(t, "en-GB", r.AcceptLanguage())
+
+	require.Equal(t, "application/json", r.Accepts("application/json", "text/html"))
+	require.Empty(t, r.Accepts("text/html"))
+	require.Equal(t, "utf-8", r.AcceptsCharsets("utf-8", "iso-8859-1"))
+	require.Empty(t, r.AcceptsCharsets("iso-8859-1"))
+	require.Equal(t, "gzip", r.AcceptsEncodings("gzip", "br"))
+	require.Empty(t, r.AcceptsEncodings("br"))
+	require.Equal(t, "en-GB", r.AcceptsLanguages("en-GB", "de"))
+	require.Empty(t, r.AcceptsLanguages("de"))
+}
+
+func Test_Req_FreshWithoutNormalizing(t *testing.T) {
+	t.Parallel()
+	app := New(Config{DisableHeaderNormalizing: true})
+
+	newCtx := func(t *testing.T, set func(h *fasthttp.RequestHeader)) Ctx {
+		t.Helper()
+		fctx := &fasthttp.RequestCtx{}
+		fctx.Request.Header.DisableNormalizing()
+		fctx.Request.Header.SetMethod(MethodGet)
+		set(&fctx.Request.Header)
+		c := app.AcquireCtx(fctx)
+		t.Cleanup(func() { app.ReleaseCtx(c) })
+		return c
+	}
+
+	c := newCtx(t, func(h *fasthttp.RequestHeader) {
+		h.Set("if-none-match", `"abc"`)
+	})
+	c.Res().Set(HeaderETag, `"abc"`)
+	require.True(t, c.Req().Fresh())
+	require.Equal(t, []string{`"abc"`}, c.Req().IfNoneMatch())
+
+	noCache := newCtx(t, func(h *fasthttp.RequestHeader) {
+		h.Set("if-none-match", `"abc"`)
+		h.Set("cache-control", "no-cache")
+	})
+	noCache.Res().Set(HeaderETag, `"abc"`)
+	require.False(t, noCache.Req().Fresh())
+
+	since := newCtx(t, func(h *fasthttp.RequestHeader) {
+		h.Set("if-modified-since", "Wed, 21 Oct 2015 07:28:00 GMT")
+	})
+	since.Res().Set(HeaderLastModified, "Tue, 20 Oct 2015 07:28:00 GMT")
+	require.True(t, since.Req().Fresh())
+}
