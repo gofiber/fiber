@@ -68,7 +68,7 @@ func New(config ...Config) fiber.Handler {
 		}
 
 		// Don't generate ETags for invalid responses
-		if c.Response().StatusCode() != fiber.StatusOK {
+		if c.Res().StatusCode() != fiber.StatusOK {
 			return nil
 		}
 		body := c.Response().Body()
@@ -102,7 +102,7 @@ func New(config ...Config) fiber.Handler {
 		// Both slices are only read for the duration of the comparison and
 		// neither is retained, so the unsafe views cannot outlive them.
 		if internaletag.AnyMatch(utils.UnsafeString(clientEtag), utils.UnsafeString(etag)) {
-			c.RequestCtx().ResetBody()
+			c.Res().ResetBody()
 
 			return c.SendStatus(fiber.StatusNotModified)
 		}

@@ -39,7 +39,7 @@ var ConfigDefault = Config{
 	},
 
 	AllowEarlyData: func(c fiber.Ctx) bool {
-		return fiber.IsMethodSafe(c.Method())
+		return c.IsSafe()
 	},
 
 	Error: fiber.ErrTooEarly,

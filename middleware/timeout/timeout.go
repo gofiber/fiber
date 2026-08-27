@@ -120,7 +120,7 @@ func handleTimeout(
 
 		// If the response is still the default 200/empty, ensure a sensible timeout
 		// response is captured for fasthttp to send.
-		if ctx.Response().StatusCode() == fiber.StatusOK && len(ctx.Response().Body()) == 0 {
+		if ctx.Res().StatusCode() == fiber.StatusOK && len(ctx.Response().Body()) == 0 {
 			ctx.Response().SetStatusCode(fiber.StatusRequestTimeout)
 			ctx.Response().SetBodyString(fiber.ErrRequestTimeout.Message)
 		}

@@ -2231,3 +2231,49 @@ func Test_TagIPs_PropagatesWriteErrors(t *testing.T) {
 		require.Equal(t, len("1.1.1.1,"), n)
 	})
 }
+
+// Test_Logger_ResBody_DoesNotDrainStream covers a side effect logging must not
+// have. The ${resBody} tag read the response through fasthttp's Response.Body,
+// which materializes a body stream into a buffer and closes it — so merely
+// logging an SSE or SendFile route turned a streamed response into a buffered
+// one, holding the whole payload in memory and delaying every event until the
+// writer finished. Res.Body answers nil for a stream instead.
+func Test_Logger_ResBody_DoesNotDrainStream(t *testing.T) {
+	t.Parallel()
+
+	var logged bytes.Buffer
+	app := fiber.New()
+	app.Use(New(Config{
+		Format: "[${resBody}]",
+		Stream: &logged,
+	}))
+	app.Get("/events", func(c fiber.Ctx) error {
+		return c.SendStreamWriter(func(w *bufio.Writer) {
+			w.WriteString("data: one\n\n") //nolint:errcheck // nothing to do with a stream-writer error here
+			w.Flush()                      //nolint:errcheck // same
+		})
+	})
+
+	fctx := &fasthttp.RequestCtx{}
+	fctx.Request.SetRequestURI("/events")
+	fctx.Request.Header.SetMethod(fiber.MethodGet)
+	app.Handler()(fctx)
+
+	require.True(t, fctx.Response.IsBodyStream(), "logging must leave a streamed response streamed")
+	require.Equal(t, "[]", logged.String(), "and it logs nothing rather than the buffered stream")
+
+	// A buffered response is still logged, so the tag did not simply go quiet.
+	logged.Reset()
+	buffered := fiber.New()
+	buffered.Use(New(Config{Format: "[${resBody}]", Stream: &logged}))
+	buffered.Get("/", func(c fiber.Ctx) error {
+		return c.SendString("hello")
+	})
+
+	bctx := &fasthttp.RequestCtx{}
+	bctx.Request.SetRequestURI("/")
+	bctx.Request.Header.SetMethod(fiber.MethodGet)
+	buffered.Handler()(bctx)
+
+	require.Equal(t, "[hello]", logged.String())
+}

@@ -1,6 +1,7 @@
 package cors
 
 import (
+	"bufio"
 	"bytes"
 	"net/http"
 	"net/http/httptest"
@@ -1871,4 +1872,44 @@ func Test_CORS_Security_NoOriginReflectionForDisallowed(t *testing.T) {
 	got := resp.Header.Get(fiber.HeaderAccessControlAllowOrigin)
 	require.Empty(t, got)
 	require.NotEqual(t, "https://attacker.example.net", got)
+}
+
+// Test_CORS_OriginWithoutHeaderNormalizing covers the field-name lookup. Ctx.Get
+// is byte-exact, so with DisableHeaderNormalizing a lower-case "origin:" — what
+// HTTP/2 and 3 send — read as absent and the request fell outside CORS
+// altogether: no Access-Control-Allow-Origin, and no Vary either.
+func Test_CORS_OriginWithoutHeaderNormalizing(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New(fiber.Config{DisableHeaderNormalizing: true})
+	app.Use(New(Config{AllowOrigins: []string{"http://example.com"}}))
+	app.Get("/", func(c fiber.Ctx) error {
+		return c.SendString("ok")
+	})
+
+	do := func(header string) *fasthttp.RequestCtx {
+		raw := "GET / HTTP/1.1\r\nHost: example.com\r\n" + header + "\r\n\r\n"
+
+		req := fasthttp.AcquireRequest()
+		defer fasthttp.ReleaseRequest(req)
+		req.Header.DisableNormalizing()
+		require.NoError(t, req.Read(bufio.NewReader(strings.NewReader(raw))))
+
+		fctx := &fasthttp.RequestCtx{}
+		fctx.Init(req, nil, nil)
+		app.Handler()(fctx)
+		return fctx
+	}
+
+	lower := do("origin: http://example.com")
+	require.Equal(t, "http://example.com", string(lower.Response.Header.Peek(fiber.HeaderAccessControlAllowOrigin)))
+
+	// The canonical spelling behaves the same, so the lookup did not trade one
+	// case for the other.
+	canonical := do("Origin: http://example.com")
+	require.Equal(t, "http://example.com", string(canonical.Response.Header.Peek(fiber.HeaderAccessControlAllowOrigin)))
+
+	// A disallowed origin is still refused, whatever the field name looks like.
+	other := do("origin: http://evil.example")
+	require.Empty(t, string(other.Response.Header.Peek(fiber.HeaderAccessControlAllowOrigin)))
 }
