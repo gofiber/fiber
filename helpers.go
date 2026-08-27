@@ -454,47 +454,6 @@ func paramsMatch(specParamStr headerParams, offerParams string) bool {
 	return allSpecParamsMatch
 }
 
-// getSplicedStrList function takes a string and a string slice as an argument, divides the string into different
-// elements divided by ',' and stores these elements in the string slice.
-// It returns the populated string slice as an output.
-//
-// Empty list elements are parsed and ignored, as required by
-// RFC 9110 Section 5.6.1.2 for all comma-separated field values.
-//
-// If the given slice hasn't enough space, it will allocate more and return.
-func getSplicedStrList(headerValue string, dst []string) []string {
-	if headerValue == "" {
-		return nil
-	}
-
-	dst = dst[:0]
-	segmentStart := 0
-	for i := 0; i < len(headerValue); i++ {
-		if headerValue[i] == ',' {
-			if segment := utils.TrimSpace(headerValue[segmentStart:i]); segment != "" {
-				dst = append(dst, segment)
-			}
-			segmentStart = i + 1
-		}
-	}
-	if segment := utils.TrimSpace(headerValue[segmentStart:]); segment != "" {
-		dst = append(dst, segment)
-	}
-
-	return dst
-}
-
-func joinHeaderValues(headers [][]byte) []byte {
-	switch len(headers) {
-	case 0:
-		return nil
-	case 1:
-		return headers[0]
-	default:
-		return bytes.Join(headers, []byte{','})
-	}
-}
-
 // joinedHeaderValue accumulates the combined value of a header's field lines
 // (RFC 9110 Section 5.2). It allocates only in the rare multi-line case; the
 // single-line result aliases the header storage.
