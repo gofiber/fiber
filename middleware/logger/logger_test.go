@@ -2262,7 +2262,6 @@ func Test_Logger_ResBody_DoesNotDrainStream(t *testing.T) {
 	require.True(t, fctx.Response.IsBodyStream(), "logging must leave a streamed response streamed")
 	require.Equal(t, "[]", logged.String(), "and it logs nothing rather than the buffered stream")
 
-	// A buffered response is still logged, so the tag did not simply go quiet.
 	logged.Reset()
 	buffered := fiber.New()
 	buffered.Use(New(Config{Format: "[${resBody}]", Stream: &logged}))

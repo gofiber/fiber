@@ -122,15 +122,10 @@ func Test_Split(t *testing.T) {
 		{name: "list", header: `"a", "b"`, want: []string{`"a"`, `"b"`}},
 		{name: "weak", header: `W/"a", "b"`, want: []string{`W/"a"`, `"b"`}},
 		{name: "wildcard", header: "*", want: []string{"*"}},
-		// etagc permits "," inside the quoted opaque-tag, so this is one tag.
 		{name: "comma inside tag", header: `"v1,v2"`, want: []string{`"v1,v2"`}},
 		{name: "comma inside and after", header: `"v1,v2", "v3"`, want: []string{`"v1,v2"`, `"v3"`}},
 		{name: "untrimmed", header: `  "a" ,  "b"  `, want: []string{`"a"`, `"b"`}},
-		// Malformed input is returned verbatim rather than dropped; Parse is
-		// what rejects it.
 		{name: "unquoted", header: `abc`, want: []string{"abc"}},
-		// RFC 9110 Section 5.6.1 requires empty list elements to be ignored, so
-		// a trailing comma is not an extra tag.
 		{name: "trailing comma", header: `"a",`, want: []string{`"a"`}},
 		{name: "trailing comma and space", header: `"a", `, want: []string{`"a"`}},
 		{name: "leading comma", header: `,"a"`, want: []string{`"a"`}},
@@ -147,8 +142,6 @@ func Test_Split(t *testing.T) {
 	}
 }
 
-// Test_Tags_EarlyStop covers the yield-returns-false path, which Split alone
-// never exercises.
 func Test_Tags_EarlyStop(t *testing.T) {
 	t.Parallel()
 
@@ -162,8 +155,6 @@ func Test_Tags_EarlyStop(t *testing.T) {
 	require.Equal(t, []string{`"a"`, `"b"`}, seen)
 }
 
-// Test_AnyMatch_IgnoresEmptyElements pins that the empty-element rule reaches
-// AnyMatch too, so the two entry points cannot drift apart again.
 func Test_AnyMatch_IgnoresEmptyElements(t *testing.T) {
 	t.Parallel()
 
@@ -171,7 +162,6 @@ func Test_AnyMatch_IgnoresEmptyElements(t *testing.T) {
 	require.True(t, AnyMatch(`,"a"`, `"a"`))
 	require.True(t, AnyMatch(`"a",,"b"`, `"b"`))
 	require.False(t, AnyMatch(`,,`, `"a"`))
-	// An empty stored ETag must not be matched by an empty list element.
 	require.False(t, AnyMatch(`"a",`, ""))
 	require.False(t, AnyMatch(`,`, ""))
 }

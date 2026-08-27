@@ -102,7 +102,6 @@ func Test_FormatSameSite(t *testing.T) {
 			got := FormatSameSite(tc.mode)
 			require.Equal(t, tc.want, got)
 
-			// Every named mode round-trips back to the same fasthttp mode.
 			if got == "" {
 				return
 			}

@@ -201,37 +201,29 @@ func (c *DefaultCtx) Response() *fasthttp.Response {
 }
 
 // Body returns the request body, decompressing it when the request declares a
-// Content-Encoding the app accepts.
-//
-// Req and Res both carry a Body, so on Ctx the request wins, as it does for
-// Get. Use Res().Body() for what the handler has written so far.
+// Content-Encoding the app accepts. Req and Res both carry a Body, so on Ctx
+// the request wins, as it does for Get; use Res().Body() for the response.
 func (c *DefaultCtx) Body() []byte {
 	return c.DefaultReq.Body()
 }
 
-// ContentLength returns the value of the Content-Length request header.
-//
-// Req and Res both carry a ContentLength, so on Ctx the request wins, as it
-// does for Get. Use Res().ContentLength() for the length of the response.
+// ContentLength returns the value of the Content-Length request header. Req and
+// Res both carry one, so on Ctx the request wins, as it does for Get; use
+// Res().ContentLength() for the response.
 func (c *DefaultCtx) ContentLength() int {
 	return c.DefaultReq.ContentLength()
 }
 
-// ContentType returns the Content-Type request header, parameters included.
-//
-// Req and Res both carry a ContentType, so on Ctx the request wins, as it does
-// for Get. Use Res().ContentType() for the type the response will send.
+// ContentType returns the Content-Type request header, parameters included. Req
+// and Res both carry one, so on Ctx the request wins, as it does for Get; use
+// Res().ContentType() for the response.
 func (c *DefaultCtx) ContentType() string {
 	return c.DefaultReq.ContentType()
 }
 
-// Cookies returns the value of the request cookie with the given key, or
-// defaultValue when the client did not send it.
-//
-// Req and Res both carry a Cookies, so on Ctx the request wins, as it does for
-// Get. Use Res().Cookies() for the cookies this response will set.
-// Returned value is only valid within the handler. Do not store any references.
-// Make copies or use the Immutable setting to use the value outside the Handler.
+// Cookies returns the request cookie with the given key, or defaultValue. Req
+// and Res both carry one, so on Ctx the request wins; use Res().Cookies() for
+// the response. Only valid within the handler unless Immutable is set.
 func (c *DefaultCtx) Cookies(key string, defaultValue ...string) string {
 	return c.DefaultReq.Cookies(key, defaultValue...)
 }
@@ -472,10 +464,9 @@ func (c *DefaultCtx) FullPath() string {
 	return c.Route().Path
 }
 
-// RouteName returns the name of the route currently executing, or an empty
-// string when the route is unnamed. Inside middleware this is the middleware's
-// own route; use Endpoint().Name to look ahead to the route that will handle
-// the request.
+// RouteName returns the name of the route currently executing, or "" when it is
+// unnamed. Inside middleware that is the middleware's own route; use
+// Endpoint().Name to look ahead to the one that will handle the request.
 func (c *DefaultCtx) RouteName() string {
 	// Route() builds a synthetic Route when none matched, and that one never
 	// carries a Name — so the allocation could only ever produce "".
@@ -486,23 +477,8 @@ func (c *DefaultCtx) RouteName() string {
 }
 
 // MountPath returns the prefix the sub-app owning the current route was mounted
-// under, or an empty string when the route belongs to the top-level app.
-//
-// Fiber mounts by cloning a sub-app's routes into the app that serves them with
-// the prefix already baked in, so Path inside a mounted handler is the whole
-// requested path, not one relative to the mount. MountPath is what tells such a
-// handler which prefix it is living under, to build links back into its own app
-// or to strip the prefix itself.
-//
-// It answers from the route that is running, unlike App.MountPath, which
-// describes the app it is called on however that app is being served: a sub-app
-// that is mounted and also listened on directly reports its mount prefix there
-// even for its own traffic, where this reports "".
-//
-// The prefix is the owning app's, so mounting one *App at two prefixes reports
-// the one it was mounted at last — the same limitation App.MountPath has, since
-// that is where the prefix is recorded. Mount separate instances when each needs
-// to know its own prefix.
+// under, or "" for a top-level route. Path is not relative to it. One *App
+// mounted twice reports its last prefix, as App.MountPath does.
 func (c *DefaultCtx) MountPath() string {
 	if c.app == nil {
 		return ""
@@ -535,15 +511,9 @@ func (c *DefaultCtx) IsMiddleware() bool {
 	return c.indexHandler+1 < len(c.route.Handlers)
 }
 
-// IsFinal returns true if no further handler of the current route runs after
-// this one. It is the exact complement of IsMiddleware, and false when no route
-// matched at all.
-//
-// It describes this route, not the whole request: a route registered with Use is
-// never final even when it is the last thing that runs, and another route can
-// still match after a final handler calls Next — a specific path followed by a
-// catch-all is the ordinary case. So this does not promise that the response is
-// finished; use it to tell an endpoint handler from a middleware one.
+// IsFinal reports whether no further handler of the current route runs after
+// this one, the exact complement of IsMiddleware. It describes the route, not
+// the request: another route can still match, and a Use route is never final.
 func (c *DefaultCtx) IsFinal() bool {
 	return c.route != nil && !c.IsMiddleware()
 }
@@ -631,14 +601,9 @@ func (c *DefaultCtx) SaveFileToStorage(fileheader *multipart.FileHeader, path st
 	return nil
 }
 
-// Error returns an *Error carrying the given status code, so a handler can
-// reject a request in one line:
-//
-//	return c.Error(fiber.StatusBadRequest, "id must be numeric")
-//
-// The message defaults to the status text when omitted. Returning the error
-// hands it to the app's ErrorHandler, which is what writes the response; Error
-// itself sets nothing on the response.
+// Error returns an *Error carrying the given status code, defaulting the message
+// to the status text. Returning it hands it to the app's ErrorHandler, which
+// writes the response; Error itself sets nothing.
 func (*DefaultCtx) Error(status int, message ...string) error {
 	return NewError(status, message...)
 }
@@ -650,10 +615,9 @@ func (c *DefaultCtx) Status(status int) Ctx {
 	return c
 }
 
-// ID returns the connection-unique identifier fasthttp assigned to this
-// request. It is cheap and always present, unlike RequestID, which reads a
-// header a client or proxy has to have set. It is not unique across processes
-// or restarts, so it is for correlating log lines within one server run.
+// ID returns the connection-unique identifier fasthttp assigned to this request,
+// unlike RequestID, which reads a header. It is not unique across processes or
+// restarts, so use it to correlate log lines within one server run.
 func (c *DefaultCtx) ID() uint64 {
 	return c.fasthttp.ID()
 }
@@ -684,12 +648,9 @@ func (c *DefaultCtx) RemoteAddr() net.Addr {
 	return c.fasthttp.RemoteAddr()
 }
 
-// Hijack registers a handler that takes over the connection once the current
-// response is sent, for protocols Fiber does not speak itself. The handler runs
-// on the connection's own goroutine, after which the connection is closed
-// unless the server has KeepHijackedConns set.
-//
-// The Ctx is pooled and reused, so the hijack handler must not touch it.
+// Hijack registers a handler that takes over the connection once the response is
+// sent, for protocols Fiber does not speak. The connection then closes unless
+// KeepHijackedConns is set, and the handler must not touch the pooled Ctx.
 func (c *DefaultCtx) Hijack(handler fasthttp.HijackHandler) {
 	c.fasthttp.Hijack(handler)
 }

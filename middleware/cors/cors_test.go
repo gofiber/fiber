@@ -1904,12 +1904,9 @@ func Test_CORS_OriginWithoutHeaderNormalizing(t *testing.T) {
 	lower := do("origin: http://example.com")
 	require.Equal(t, "http://example.com", string(lower.Response.Header.Peek(fiber.HeaderAccessControlAllowOrigin)))
 
-	// The canonical spelling behaves the same, so the lookup did not trade one
-	// case for the other.
 	canonical := do("Origin: http://example.com")
 	require.Equal(t, "http://example.com", string(canonical.Response.Header.Peek(fiber.HeaderAccessControlAllowOrigin)))
 
-	// A disallowed origin is still refused, whatever the field name looks like.
 	other := do("origin: http://evil.example")
 	require.Empty(t, string(other.Response.Header.Peek(fiber.HeaderAccessControlAllowOrigin)))
 }

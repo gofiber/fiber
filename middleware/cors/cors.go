@@ -107,10 +107,9 @@ func New(config ...Config) fiber.Handler {
 			return c.Next()
 		}
 
-		// Get origin header preserving the original case for the response.
-		// Req.Origin matches the field name case-insensitively (RFC 9110 §5.1),
-		// where Ctx.Get is byte-exact: under DisableHeaderNormalizing a
-		// lower-case "origin:" read as absent and CORS did not apply at all.
+		// Origin, with the original case kept for the response. Req.Origin matches
+		// the field name case-insensitively, where Ctx.Get is byte-exact: a
+		// lower-case "origin:" read as absent under DisableHeaderNormalizing.
 		originHeaderRaw := c.Req().Origin()
 		originHeader := utilsstrings.ToLower(originHeaderRaw)
 

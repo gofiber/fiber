@@ -55,16 +55,9 @@ func MatchStrong(s, etag string) bool {
 	return n1 == n2
 }
 
-// cutTag splits the first entity tag off a raw If-None-Match or If-Match field
-// value, returning it and the remainder of the list. ok is false only when
-// there is nothing left to split.
-//
-// A comma inside a DQUOTE-delimited opaque-tag does not end an element: etagc
-// permits "," inside the quoted tag (RFC 9110 Section 8.8.3), so `"v1,v2"` is a
-// single entity tag rather than two list elements.
-//
-// Written as a stepper rather than a closure so AnyMatch, which runs on the
-// conditional-request path, shares the rule without paying for an iterator.
+// cutTag splits the first entity tag off a raw If-None-Match or If-Match value,
+// returning it and the rest. A comma inside a quoted opaque-tag does not end an
+// element (RFC 9110 Section 8.8.3), so `"v1,v2"` is one tag.
 func cutTag(header string) (tag, rest string, ok bool) { //nolint:nonamedreturns // gocritic unnamedResult requires naming the three parts
 	if header == "" {
 		return "", "", false
@@ -90,13 +83,9 @@ func cutTag(header string) (tag, rest string, ok bool) { //nolint:nonamedreturns
 	return utils.TrimSpace(header), "", true
 }
 
-// Tags iterates the entity tags in a raw If-None-Match or If-Match field value.
-// Elements are yielded with surrounding whitespace trimmed and are not
-// validated; pass each to Parse to reject malformed ones.
-//
-// Empty list elements are skipped rather than yielded as empty strings, because
-// RFC 9110 Section 5.6.1 requires a recipient to parse and ignore them: a
-// trailing comma is not an extra tag. An empty field value yields nothing.
+// Tags iterates the entity tags in a raw If-None-Match or If-Match value,
+// trimmed and unvalidated. Empty list elements are skipped, as RFC 9110
+// Section 5.6.1 requires, so a trailing comma is not an extra tag.
 func Tags(header string) iter.Seq[string] {
 	return func(yield func(string) bool) {
 		rest := utils.TrimSpace(header)

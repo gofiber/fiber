@@ -18,14 +18,6 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
-// -----------------------------------------------------------------------------
-// Req
-// -----------------------------------------------------------------------------
-
-// Test_Req_RequestHelpersOnReq pins the helpers to Req rather than Ctx. They
-// were first written with a *DefaultCtx receiver, which kept them off the Req
-// interface: c.UserAgent() compiled but c.Req().UserAgent() did not. Every call
-// here goes through Req, so that regression cannot come back unnoticed.
 func Test_Req_RequestHelpersOnReq(t *testing.T) {
 	t.Parallel()
 	app := New()
@@ -71,7 +63,6 @@ func Test_Req_RequestHelpersOnReq(t *testing.T) {
 	require.False(t, r.IsWebSocket())
 	require.False(t, r.IsPreflight())
 
-	// Ctx keeps promoting all of them, so no caller loses an existing spelling.
 	require.Equal(t, r.FullURL(), c.FullURL())
 	require.Equal(t, r.UserAgent(), c.UserAgent())
 	require.Equal(t, r.MediaType(), c.MediaType())
@@ -106,9 +97,7 @@ func Test_Req_GetAll(t *testing.T) {
 	t.Cleanup(func() { app.ReleaseCtx(c) })
 
 	require.Equal(t, []string{"first", "second"}, c.Req().GetAll("X-Test"))
-	// Field names are case-insensitive.
 	require.Equal(t, []string{"first", "second"}, c.Req().GetAll("x-test"))
-	// Get still answers with the first line only.
 	require.Equal(t, "first", c.Req().Get("X-Test"))
 	require.Nil(t, c.Req().GetAll("X-Absent"))
 }
@@ -135,8 +124,6 @@ func Test_Req_ContentLength(t *testing.T) {
 	require.Equal(t, -1, cc.Req().ContentLength(), "chunked bodies report an unknown length")
 	require.True(t, cc.Req().HasBody(), "an unknown length still means there is a body")
 
-	// A bodyless GET reports -2, fasthttp's "Transfer-Encoding: identity"
-	// sentinel — not 0. Callers sizing a buffer from this would panic.
 	var bodyless int
 	app.Get("/", func(c Ctx) error {
 		bodyless = c.Req().ContentLength()
@@ -147,9 +134,6 @@ func Test_Req_ContentLength(t *testing.T) {
 	require.Equal(t, -2, bodyless)
 }
 
-// Test_Req_GetAll_AbsentSlottedHeaders pins that presence answers the same as
-// HasHeader. fasthttp's PeekAll appends the Content-Length and Trailer buffers
-// unconditionally, so an absent header used to come back as one empty line.
 func Test_Req_GetAll_AbsentSlottedHeaders(t *testing.T) {
 	t.Parallel()
 	app := New()
@@ -189,9 +173,6 @@ func Test_Req_ContentType(t *testing.T) {
 	require.Equal(t, MIMEApplicationJSON, c.Req().MediaType(), "MediaType drops the parameters") //nolint:testifylint // same
 	require.Equal(t, "utf-8", c.Req().Charset())
 
-	// Req and Res both define ContentType, so Ctx must resolve to the request
-	// the way it does for Get — otherwise c.ContentType() would silently report
-	// the response's default while c.Get(HeaderContentType) reports the request.
 	require.NoError(t, c.SendString("hi"))
 	c.Type("html")
 	require.Equal(t, c.Req().ContentType(), c.ContentType())
@@ -340,9 +321,6 @@ func Test_Req_CookieNames_AllCookies(t *testing.T) {
 	require.ElementsMatch(t, []string{"session", "theme"}, c.Req().CookieNames())
 	require.Equal(t, map[string]string{"session": "abc", "theme": "dark"}, c.Req().AllCookies())
 
-	// A client can shadow a cookie by sending the name twice. Cookies(name)
-	// answers with the first, so AllCookies must too: validating one value and
-	// consuming the other is the bug this pins shut.
 	shadowed := &fasthttp.RequestCtx{}
 	shadowed.Request.Header.Set(HeaderCookie, "a=first; a=second")
 	sc := app.AcquireCtx(shadowed)
@@ -371,7 +349,6 @@ func Test_Req_IfNoneMatch(t *testing.T) {
 		{name: "single", header: `"abc"`, want: []string{`"abc"`}},
 		{name: "list", header: `"a", W/"b"`, want: []string{`"a"`, `W/"b"`}},
 		{name: "wildcard", header: "*", want: []string{"*"}},
-		// etagc permits "," inside the quoted opaque-tag, so this is one tag.
 		{name: "comma inside tag", header: `"v1,v2"`, want: []string{`"v1,v2"`}},
 	}
 
@@ -432,10 +409,6 @@ func Test_Req_IfModifiedSince(t *testing.T) {
 	require.NotErrorIs(t, err, ErrHeaderNotFound, "a malformed date is not an absent header")
 }
 
-// -----------------------------------------------------------------------------
-// Res
-// -----------------------------------------------------------------------------
-
 func Test_Res_StatusCode(t *testing.T) {
 	t.Parallel()
 	app := New()
@@ -459,7 +432,6 @@ func Test_Res_Body_ResetBody_Written(t *testing.T) {
 	require.Empty(t, c.Res().Body())
 	require.False(t, c.Res().Written())
 
-	// A status alone is not a body write.
 	c.Status(StatusCreated)
 	require.False(t, c.Res().Written())
 
@@ -481,8 +453,6 @@ func Test_Res_Written_BodyStream(t *testing.T) {
 	t.Cleanup(func() { app.ReleaseCtx(c) })
 
 	require.NoError(t, c.SendStream(strings.NewReader("streamed"), 8))
-	// Written must answer without draining the stream, so the body still goes
-	// out as a stream afterwards.
 	require.True(t, c.Res().Written())
 	require.True(t, c.Response().IsBodyStream())
 }
@@ -499,17 +469,14 @@ func Test_Res_Del(t *testing.T) {
 	c.Res().Del("x-custom")
 	require.Empty(t, c.Res().Get("X-Custom"))
 
-	// Deleting an absent header is a no-op.
 	require.NotPanics(t, func() { c.Res().Del("X-Absent") })
 
-	// Every field line goes, not just the first.
 	c.Res().Add("X-Multi", "a")
 	c.Res().Add("X-Multi", "b")
 	require.Len(t, c.Response().Header.PeekAll("X-Multi"), 2)
 	c.Res().Del("X-Multi")
 	require.Empty(t, c.Response().Header.PeekAll("X-Multi"))
 
-	// Del(Set-Cookie) withdraws the cookies this response was going to set.
 	c.Cookie(&Cookie{Name: "a", Value: "1"})
 	require.NotEmpty(t, c.Res().Cookies())
 	c.Res().Del(HeaderSetCookie)
@@ -531,7 +498,6 @@ func Test_Res_Add(t *testing.T) {
 	require.Equal(t, `Basic realm="one"`, string(lines[0]))
 	require.Equal(t, `Bearer realm="two"`, string(lines[1]))
 
-	// Append folds into one line instead, which is the difference between them.
 	c.Append("X-Folded", "a")
 	c.Append("X-Folded", "b")
 	require.Len(t, c.Response().Header.PeekAll("X-Folded"), 1)
@@ -553,8 +519,6 @@ func Test_Res_ContentType_ContentLength(t *testing.T) {
 	c.Type("html")
 	require.Equal(t, MIMETextHTMLCharsetUTF8, c.Res().ContentType(), "ContentType reads back what Type set")
 
-	// Content-Length reflects the header, which fasthttp only fills in as it
-	// serializes, so it stays 0 here even though the body is not empty.
 	require.NotEmpty(t, c.Res().Body())
 	require.Equal(t, 0, c.Res().ContentLength())
 
@@ -598,7 +562,6 @@ func Test_Res_GetCookie_Cookies(t *testing.T) {
 	require.Equal(t, CookieSameSiteStrictMode, got.SameSite)
 	require.False(t, got.SessionOnly)
 
-	// A session cookie carries neither Max-Age nor Expires, and reads back as one.
 	c.Cookie(&Cookie{Name: "flash", Value: "x", SessionOnly: true})
 	flash, ok := c.Res().GetCookie("flash")
 	require.True(t, ok)
@@ -614,16 +577,12 @@ func Test_Res_GetCookie_Cookies(t *testing.T) {
 	}
 	require.ElementsMatch(t, []string{"session", "flash"}, names)
 
-	// The returned struct is a copy: editing it leaves the response alone.
 	got.Value = "tampered"
 	again, ok := c.Res().GetCookie("session")
 	require.True(t, ok)
 	require.Equal(t, "abc", again.Value)
 }
 
-// Test_Res_Cookies_RepeatedNames pins that a name written twice yields both
-// cookies. Resolving each entry by name instead of parsing it returned the
-// first cookie once per line and made the later ones unreachable.
 func Test_Res_Cookies_RepeatedNames(t *testing.T) {
 	t.Parallel()
 	app := New()
@@ -645,13 +604,10 @@ func Test_Res_Cookies_RepeatedNames(t *testing.T) {
 	}
 	require.ElementsMatch(t, []pair{{"app", "/app"}, {"admin", "/admin"}, {"z", "/"}}, got)
 
-	// GetCookie resolves by name, so it answers with the first of a repeated one.
 	first, ok := c.Res().GetCookie("sid")
 	require.True(t, ok)
 	require.Equal(t, "app", first.Value)
 
-	// And all three really do reach the client, so none of them is an artifact
-	// of how Cookies reads them back.
 	over := New()
 	over.Get("/", func(c Ctx) error {
 		c.Cookie(&Cookie{Name: "sid", Value: "app", Path: "/app"})
@@ -664,11 +620,6 @@ func Test_Res_Cookies_RepeatedNames(t *testing.T) {
 	require.Len(t, resp.Header.Values(HeaderSetCookie), 3)
 }
 
-// Test_Res_GetCookie_Deletion pins that a cookie deletion survives the
-// read-modify-write round trip. fasthttp writes a negative MaxAge as
-// "max-age=0" and parses it back as 0, which is also what an absent attribute
-// gives — so a logout cookie read and rewritten used to come back as an
-// ordinary session cookie, leaving the client logged in.
 func Test_Res_GetCookie_Deletion(t *testing.T) {
 	t.Parallel()
 	app := New()
@@ -684,7 +635,6 @@ func Test_Res_GetCookie_Deletion(t *testing.T) {
 	require.False(t, got.SessionOnly, "an explicit max-age=0 is a deletion, not a session cookie")
 	require.Negative(t, got.MaxAge)
 
-	// Rewriting an unrelated attribute must not resurrect the cookie.
 	got.Domain = "example.com"
 	c.Cookie(got)
 	require.Contains(t, string(c.Response().Header.Peek(HeaderSetCookie)), "max-age=0")
@@ -695,9 +645,6 @@ func Test_Res_GetCookie_Deletion(t *testing.T) {
 	require.Equal(t, "example.com", rewritten.Domain)
 }
 
-// Test_Res_Body_DoesNotDrainStream pins that reading the body leaves a streamed
-// response streamed. Draining it would buffer a whole SendFile into memory and
-// hang an SSE route.
 func Test_Res_Body_DoesNotDrainStream(t *testing.T) {
 	t.Parallel()
 	app := New()
@@ -711,9 +658,6 @@ func Test_Res_Body_DoesNotDrainStream(t *testing.T) {
 	require.True(t, c.Response().IsBodyStream(), "and it is still a stream afterwards")
 }
 
-// Test_Res_Add_SpecialHeaders pins fasthttp's behavior for the headers it keeps
-// in a slot of their own: Add replaces them rather than appending, which is why
-// the doc names them.
 func Test_Res_Add_SpecialHeaders(t *testing.T) {
 	t.Parallel()
 	app := New()
@@ -726,14 +670,11 @@ func Test_Res_Add_SpecialHeaders(t *testing.T) {
 	require.Equal(t, MIMETextPlain, c.Res().ContentType(), "Content-Type is replaced, not appended")
 	require.Len(t, c.Response().Header.PeekAll(HeaderContentType), 1)
 
-	// A header with no slot of its own does append, which is the documented use.
 	c.Res().Add(HeaderLink, "</a>; rel=preload")
 	c.Res().Add(HeaderLink, "</b>; rel=preload")
 	require.Len(t, c.Response().Header.PeekAll(HeaderLink), 2)
 }
 
-// Test_Res_GetCookie_RoundTrip pins the read-modify-write path GetCookie exists
-// for: middleware that rewrites a cookie an earlier handler set.
 func Test_Res_GetCookie_RoundTrip(t *testing.T) {
 	t.Parallel()
 	app := New()
@@ -792,9 +733,6 @@ func Test_Res_NoContent_OverHTTP(t *testing.T) {
 	require.Empty(t, body)
 }
 
-// Test_Res_NoContent_DiffersFromSendStatus pins the one thing NoContent adds
-// over SendStatus(204): SendStatus drops the body but keeps a Content-Type the
-// handler set, so the two are not interchangeable.
 func Test_Res_NoContent_DiffersFromSendStatus(t *testing.T) {
 	t.Parallel()
 	app := New()
@@ -818,14 +756,6 @@ func Test_Res_NoContent_DiffersFromSendStatus(t *testing.T) {
 	require.Empty(t, none.Header.Get(HeaderContentType))
 }
 
-// -----------------------------------------------------------------------------
-// Ctx
-// -----------------------------------------------------------------------------
-
-// Test_Ctx_BodyContentLengthCookiesPreferRequest pins the three names Req and
-// Res both define. Ctx has to resolve them itself or the embedded selectors are
-// ambiguous and the package stops compiling; the request wins, as it does for
-// Get, and the response stays reachable through Res().
 func Test_Ctx_BodyContentLengthCookiesPreferRequest(t *testing.T) {
 	t.Parallel()
 	app := New()
@@ -855,7 +785,6 @@ func Test_Ctx_BodyContentLengthCookiesPreferRequest(t *testing.T) {
 	require.Len(t, serverCookies, 1)
 	require.Equal(t, "server", serverCookies[0].Value)
 
-	// Every name Req and Res share has to resolve the same way on Ctx.
 	require.Equal(t, c.Req().ContentType(), c.ContentType())
 }
 
@@ -977,19 +906,15 @@ func Test_Ctx_IsFinal(t *testing.T) {
 	require.False(t, inRouteMW, "a route handler with another after it is not final")
 	require.True(t, inHandler)
 
-	// No route matched at all: there is no final handler to be.
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 	t.Cleanup(func() { app.ReleaseCtx(c) })
 	require.False(t, c.IsFinal())
 	require.False(t, c.IsMiddleware())
 }
 
-// Test_Ctx_IsFinal_ScopedToTheRoute pins the two cases the doc calls out, so
-// nobody reads IsFinal as "the response is finished".
 func Test_Ctx_IsFinal_ScopedToTheRoute(t *testing.T) {
 	t.Parallel()
 
-	// A Use handler is never final, even when nothing runs after it.
 	terminal := New()
 	var inUse bool
 	terminal.Use(func(c Ctx) error {
@@ -1000,7 +925,6 @@ func Test_Ctx_IsFinal_ScopedToTheRoute(t *testing.T) {
 	require.NoError(t, err)
 	require.False(t, inUse, "a Use route is middleware by registration, whatever its position")
 
-	// A final handler of one route can still be followed by another route.
 	overlapping := New()
 	var inSpecific, inCatchAll bool
 	overlapping.Get("/specific", func(c Ctx) error {
@@ -1024,8 +948,6 @@ func Test_Ctx_MountPath(t *testing.T) {
 	var mounted, mountedPath string
 	micro.Get("/doe", func(c Ctx) error {
 		mounted = c.MountPath()
-		// Path aliases the pooled request buffer, which the next request
-		// overwrites; clone it to read it after the handler returns.
 		mountedPath = strings.Clone(c.Path())
 		return nil
 	})
@@ -1043,8 +965,6 @@ func Test_Ctx_MountPath(t *testing.T) {
 	_, err = app.Test(httptest.NewRequest(MethodGet, "/top", http.NoBody))
 	require.NoError(t, err)
 
-	// The same sub-app served directly is not under a mount, even though it is
-	// mounted elsewhere: MountPath answers from the route, App.MountPath does not.
 	var standalone string
 	micro.Get("/solo", func(c Ctx) error {
 		standalone = c.MountPath()
