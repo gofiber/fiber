@@ -1870,7 +1870,7 @@ app.Use(func(c fiber.Ctx) error {
 ### IsProxyTrusted
 
 Checks the trustworthiness of the remote IP.
-If [`TrustProxy`](fiber.md#trustproxy) is `false`, it returns `true`.
+If [`TrustProxy`](fiber.md#trustproxy) is `false`, it returns `false`.
 `IsProxyTrusted` can check the remote IP by proxy ranges and IP map.
 
 ```go title="Signature"
