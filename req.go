@@ -17,6 +17,7 @@ import (
 	"golang.org/x/net/idna"
 
 	etagpkg "github.com/gofiber/fiber/v3/internal/etag"
+	"github.com/gofiber/fiber/v3/internal/fieldname"
 	"github.com/gofiber/fiber/v3/internal/mediatype"
 )
 
@@ -218,10 +219,11 @@ func (r *DefaultReq) BodyStream() io.Reader {
 
 // ContentLength returns the value of the Content-Length request header.
 //
-// A negative result means the length is not known up front rather than that the
-// body is empty: fasthttp reports -1 for a chunked body and -2 for one
-// terminated by closing the connection. Use HasBody to test only for the
-// presence of a body.
+// A negative result is not a length. fasthttp reports -1 for a chunked body and
+// -2 for "Transfer-Encoding: identity", which is also what an ordinary GET with
+// no body reports — so -2, not 0, is the common case for a bodyless request.
+// Use HasBody to test whether there is a body at all, and read this only to
+// find out how large a declared one is.
 func (r *DefaultReq) ContentLength() int {
 	return r.c.fasthttp.Request.Header.ContentLength()
 }
@@ -256,8 +258,30 @@ func (r *DefaultReq) Referer() string {
 }
 
 // Origin returns the Origin request header.
+// Returned value is only valid within the handler. Do not store any references.
+// Make copies or use the Immutable setting to use the value outside the Handler.
 func (r *DefaultReq) Origin() string {
-	return r.c.app.toString(r.c.fasthttp.Request.Header.Peek(HeaderOrigin))
+	return r.c.app.toString(r.headerField(HeaderOrigin))
+}
+
+// headerField returns a request header's field value, matching the field name
+// the way a recipient must (RFC 9110 Section 5.1).
+//
+// fasthttp's Peek is byte-exact, which resolves every spelling only while it
+// canonicalizes the key; under DisableHeaderNormalizing the store keeps what the
+// peer sent, which for HTTP/2 and 3 is lower case. That is the bug the CSRF
+// middleware was fixed for: a lower-case "origin:" read as absent and the
+// same-origin check found nothing to verify. The byte-exact read stays the fast
+// path, and the walk runs only for the config that needs it.
+func (r *DefaultReq) headerField(name string) []byte {
+	if v := r.c.fasthttp.Request.Header.Peek(name); len(v) > 0 {
+		return v
+	}
+	if !r.c.app.config.DisableHeaderNormalizing {
+		return nil
+	}
+
+	return fieldname.First(&r.c.fasthttp.Request.Header, name, false)
 }
 
 // AcceptLanguage returns the Accept-Language request header.
@@ -277,6 +301,18 @@ func (r *DefaultReq) AcceptEncoding() string {
 // HasHeader reports whether the request includes a header with the given key.
 func (r *DefaultReq) HasHeader(key string) bool {
 	return len(r.c.fasthttp.Request.Header.Peek(key)) > 0
+}
+
+// ContentType returns the Content-Type request header, parameters included.
+// MediaType returns the same header with the parameters stripped, and Charset
+// returns just the charset one.
+//
+// Req and Res both carry a ContentType, so on Ctx the request wins, as it does
+// for Get. Use Res().ContentType() for the type the response will send.
+// Returned value is only valid within the handler. Do not store any references.
+// Make copies or use the Immutable setting to use the value outside the Handler.
+func (r *DefaultReq) ContentType() string {
+	return r.c.app.toString(r.c.fasthttp.Request.Header.ContentType())
 }
 
 // MediaType returns the MIME type from the Content-Type header without parameters.
@@ -416,29 +452,42 @@ func (r *DefaultReq) Cookies(key string, defaultValue ...string) string {
 }
 
 // CookieNames returns the names of the cookies sent with the request, in the
-// order they appear in the Cookie header. A name repeated by the client is
-// returned once per occurrence.
-// Returned values are only valid within the handler. Do not store any references.
-// Make copies or use the Immutable setting to use the values outside the Handler.
+// order they appear in the Cookie header, or nil when the client sent none. A
+// name the client repeated is returned once per occurrence, which is how a
+// caller detects the shadowing AllCookies collapses.
+//
+// Unlike Cookies, the returned strings are copies rather than views into the
+// request buffer, so they stay valid past the handler.
 func (r *DefaultReq) CookieNames() []string {
-	app := r.c.app
-	names := make([]string, 0, 8)
+	var names []string
 	for key := range r.c.fasthttp.Request.Header.Cookies() {
-		names = append(names, app.toString(key))
+		names = append(names, string(key))
 	}
 	return names
 }
 
-// AllCookies returns the cookies sent with the request as a name/value map.
-// When the client repeats a name the last value wins; use CookieNames to detect
-// that case.
-// Returned values are only valid within the handler. Do not store any references.
-// Make copies or use the Immutable setting to use the values outside the Handler.
+// AllCookies returns the cookies sent with the request as a name/value map, or
+// nil when the client sent none. A repeated name resolves to its first
+// occurrence, which is the one Cookies answers with too — the two must agree,
+// because a client can shadow a cookie by sending the name twice and code that
+// validated one value while consuming the other would validate the wrong one.
+// Use CookieNames to see that a name was repeated at all.
+//
+// The keys and values are copies rather than views into the request buffer:
+// fasthttp rewrites those bytes in place when a handler edits a request cookie,
+// which would not merely stale the map but rehash it into one whose own keys no
+// longer find their entries.
 func (r *DefaultReq) AllCookies() map[string]string {
-	app := r.c.app
-	cookies := make(map[string]string)
+	var cookies map[string]string
 	for key, value := range r.c.fasthttp.Request.Header.Cookies() {
-		cookies[app.toString(key)] = app.toString(value)
+		name := string(key)
+		if _, seen := cookies[name]; seen {
+			continue
+		}
+		if cookies == nil {
+			cookies = make(map[string]string)
+		}
+		cookies[name] = string(value)
 	}
 	return cookies
 }
@@ -614,9 +663,12 @@ func parseHTTPDate(date []byte) (time.Time, error) {
 // header. Repeated field lines are combined into one list (RFC 9110
 // Section 5.2), and a comma inside a quoted opaque-tag does not split it, so
 // `"v1,v2"` stays one tag. A wildcard header returns a single "*" element.
-// Tags are returned verbatim, weak "W/" prefix included, and are not validated.
-// Fresh already applies these tags to the response ETag; reach for this only to
-// implement a comparison of your own.
+// Tags are returned verbatim, weak "W/" prefix included, and are not validated;
+// empty list elements are dropped, as RFC 9110 Section 5.6.1 requires, so a
+// trailing comma is not an extra tag. Fresh already applies these tags to the
+// response ETag; reach for this only to implement a comparison of your own.
+// Returned values are only valid within the handler. Do not store any references.
+// Make copies or use the Immutable setting instead.
 func (r *DefaultReq) IfNoneMatch() []string {
 	header := joinHeaderValues(r.c.fasthttp.Request.Header.PeekAll(HeaderIfNoneMatch))
 	if len(header) == 0 {
@@ -663,18 +715,25 @@ func GetReqHeader[V GenericType](c Ctx, key string, defaultValue ...V) V {
 // A header repeated across field lines is semantically one comma-joined list
 // (RFC 9110 Section 5.2). GetAll keeps the lines apart so a caller can inspect
 // them individually, where Get returns only the first and GetHeaders builds a
-// map of the whole header block.
+// map of the whole header block. It returns nil when the header is absent.
+//
+// Empty field lines are skipped, so len(GetAll(k)) > 0 answers the same question
+// as HasHeader(k). Without that, the headers fasthttp keeps in a slot of their
+// own report one empty line when they are not present at all, and a
+// request-smuggling guard testing for Content-Length would fire on every request
+// that has none.
 // Returned values are only valid within the handler. Do not store any references.
 // Make copies or use the Immutable setting instead.
 func (r *DefaultReq) GetAll(key string) []string {
-	lines := r.c.fasthttp.Request.Header.PeekAll(key)
-	if len(lines) == 0 {
-		return nil
-	}
 	app := r.c.app
-	values := make([]string, len(lines))
-	for i, line := range lines {
-		values[i] = app.toString(line)
+	lines := fieldname.Lines(&r.c.fasthttp.Request.Header, key, !app.config.DisableHeaderNormalizing)
+
+	var values []string
+	for _, line := range lines {
+		if len(line) == 0 {
+			continue
+		}
+		values = append(values, app.toString(line))
 	}
 	return values
 }
@@ -683,13 +742,18 @@ func (r *DefaultReq) GetAll(key string) []string {
 // and the credentials that follow (RFC 9110 Section 11.6.2). Both are empty
 // when the header is absent. The credentials are returned verbatim — token68 or
 // auth-param list — and are neither decoded nor validated.
+//
+// Returned values are only valid within the handler. Do not store any
+// references: they view the request buffer, which the next request on the
+// connection overwrites, so a credential cached past the handler silently
+// becomes another request's. Make copies or use the Immutable setting instead.
 func (r *DefaultReq) Authorization() (scheme, credentials string) { //nolint:nonamedreturns // gocritic unnamedResult requires naming the two halves for clarity
-	raw := utils.TrimSpace(r.c.fasthttp.Request.Header.Peek(HeaderAuthorization))
+	raw := utils.TrimSpace(r.headerField(HeaderAuthorization))
 	if len(raw) == 0 {
 		return "", ""
 	}
 	app := r.c.app
-	i := bytes.IndexAny(raw, " \t")
+	i := utils.IndexAny2(raw, ' ', '\t')
 	if i < 0 {
 		// A lone token is a scheme without credentials, not credentials without
 		// a scheme: RFC 9110 Section 11.4 makes the scheme the mandatory half.
@@ -702,12 +766,22 @@ func (r *DefaultReq) Authorization() (scheme, credentials string) { //nolint:non
 // (RFC 6750 Section 2.1), or an empty string when the header is absent or names
 // a different auth-scheme. The token is returned verbatim: it is not validated,
 // decoded, or verified, so it still has to be authenticated before it is trusted.
+//
+// Returned value is only valid within the handler. Do not store any references:
+// it views the request buffer, which the next request on the connection
+// overwrites, so a token cached past the handler — or used as a key in a shared
+// map — silently becomes another request's. Make copies or use the Immutable
+// setting instead.
 func (r *DefaultReq) Bearer() string {
-	scheme, credentials := r.Authorization()
-	if !utils.EqualFold(scheme, "Bearer") {
+	raw := utils.TrimSpace(r.headerField(HeaderAuthorization))
+	i := utils.IndexAny2(raw, ' ', '\t')
+	// The scheme is compared on the raw bytes rather than through Authorization,
+	// so a header naming another scheme costs no string at all and a Bearer one
+	// materializes only the token.
+	if i < 0 || !utils.EqualFold(utils.UnsafeString(raw[:i]), "Bearer") {
 		return ""
 	}
-	return credentials
+	return r.c.app.toString(utils.TrimSpace(raw[i+1:]))
 }
 
 // GetHeaders (a.k.a GetReqHeaders) returns the HTTP request headers.

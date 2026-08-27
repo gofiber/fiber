@@ -55,67 +55,102 @@ func MatchStrong(s, etag string) bool {
 	return n1 == n2
 }
 
-// Tags iterates the entity tags in a raw If-None-Match or If-Match field
-// value. Commas that sit inside a DQUOTE-delimited opaque-tag do not split the
-// list: etagc permits "," inside the quoted tag (RFC 9110 Section 8.8.3), so
-// `"v1,v2"` is a single entity tag, not two list elements. Elements are yielded
-// with surrounding whitespace trimmed and are not validated; pass each to Parse
-// to reject malformed ones. An empty field value yields nothing.
+// cutTag splits the first entity tag off a raw If-None-Match or If-Match field
+// value, returning it and the remainder of the list. ok is false only when
+// there is nothing left to split.
+//
+// A comma inside a DQUOTE-delimited opaque-tag does not end an element: etagc
+// permits "," inside the quoted tag (RFC 9110 Section 8.8.3), so `"v1,v2"` is a
+// single entity tag rather than two list elements.
+//
+// Written as a stepper rather than a closure so AnyMatch, which runs on the
+// conditional-request path, shares the rule without paying for an iterator.
+func cutTag(header string) (tag, rest string, ok bool) { //nolint:nonamedreturns // gocritic unnamedResult requires naming the three parts
+	if header == "" {
+		return "", "", false
+	}
+
+	// Only '"' and ',' affect the split, so jump between them instead of
+	// visiting every byte.
+	inQuotes := false
+	for i := 0; i < len(header); {
+		j := utils.IndexAny2(header[i:], '"', ',')
+		if j == -1 {
+			break
+		}
+		i += j
+		if header[i] == '"' {
+			inQuotes = !inQuotes
+		} else if !inQuotes {
+			return utils.TrimSpace(header[:i]), header[i+1:], true
+		}
+		i++
+	}
+
+	return utils.TrimSpace(header), "", true
+}
+
+// Tags iterates the entity tags in a raw If-None-Match or If-Match field value.
+// Elements are yielded with surrounding whitespace trimmed and are not
+// validated; pass each to Parse to reject malformed ones.
+//
+// Empty list elements are skipped rather than yielded as empty strings, because
+// RFC 9110 Section 5.6.1 requires a recipient to parse and ignore them: a
+// trailing comma is not an extra tag. An empty field value yields nothing.
 func Tags(header string) iter.Seq[string] {
 	return func(yield func(string) bool) {
-		header = utils.TrimSpace(header)
-		if header == "" {
-			return
-		}
-
-		// Only '"' and ',' affect the split, so jump between them instead of
-		// visiting every byte.
-		start := 0
-		pos := 0
-		inQuotes := false
-		for {
-			i := utils.IndexAny2(header[pos:], '"', ',')
-			if i == -1 {
-				break
+		rest := utils.TrimSpace(header)
+		for rest != "" {
+			tag, next, ok := cutTag(rest)
+			if !ok {
+				return
 			}
-			i += pos
-			pos = i + 1
-			if header[i] == '"' {
-				inQuotes = !inQuotes
-			} else if !inQuotes {
-				if !yield(utils.TrimSpace(header[start:i])) {
-					return
-				}
-				start = i + 1
+			if tag != "" && !yield(tag) {
+				return
 			}
+			rest = next
 		}
-
-		yield(utils.TrimSpace(header[start:]))
 	}
 }
 
 // Split returns the entity tags in a raw If-None-Match or If-Match field value.
-// It collects Tags, so the same quoted-comma rules apply. An empty field value
-// returns nil.
+// It collects Tags, so the same quoted-comma and empty-element rules apply. A
+// field value carrying no tags returns nil.
 func Split(header string) []string {
-	return slices.Collect(Tags(header))
+	header = utils.TrimSpace(header)
+	if header == "" {
+		return nil
+	}
+
+	// One more than the commas is an upper bound: a comma inside a quoted
+	// opaque-tag only over-estimates, never under.
+	tags := slices.AppendSeq(make([]string, 0, strings.Count(header, ",")+1), Tags(header))
+	if len(tags) == 0 {
+		return nil
+	}
+	return tags
 }
 
 // AnyMatch reports whether any entity tag in the raw If-None-Match field value
 // matches etag. Comparison is weak as defined by RFC 9110 Section 8.8.3.2, and
 // "*" matches every entity tag. An empty field value matches nothing.
 func AnyMatch(header, etag string) bool {
-	header = utils.TrimSpace(header)
+	rest := utils.TrimSpace(header)
 
 	// Short-circuit the wildcard case: "*" matches any entity tag.
-	if header == "*" {
+	if rest == "*" {
 		return true
 	}
 
-	for tag := range Tags(header) {
-		if Match(tag, etag) {
+	for rest != "" {
+		tag, next, ok := cutTag(rest)
+		if !ok {
+			return false
+		}
+		if tag != "" && Match(tag, etag) {
 			return true
 		}
+		rest = next
 	}
 
 	return false

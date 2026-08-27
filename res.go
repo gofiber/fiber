@@ -2,6 +2,7 @@ package fiber
 
 import (
 	"bufio"
+	"bytes"
 	"fmt"
 	"html/template"
 	"io"
@@ -279,6 +280,11 @@ func contentDispositionAttachment(fname string) string {
 // line: headers whose values may themselves contain commas — Set-Cookie,
 // WWW-Authenticate, Link — have to be sent as separate lines to stay
 // unambiguous (RFC 9110 Section 5.3).
+//
+// The headers fasthttp stores in a slot of their own cannot repeat, and Add
+// does not append for them: Content-Type, Content-Encoding, Content-Length,
+// Connection, Server and Trailer are replaced, and Transfer-Encoding and Date
+// are ignored because fasthttp writes them itself. Use Set for those.
 func (r *DefaultRes) Add(key, val string) {
 	r.c.fasthttp.Response.Header.Add(key, val)
 }
@@ -393,24 +399,42 @@ func (r *DefaultRes) Cookie(cookie *Cookie) {
 
 // GetCookie reads back a cookie this response is already set to send, so a
 // later handler or middleware can inspect or re-emit what an earlier one wrote.
-// The second result is false when no cookie of that name has been set.
+// The second result is false when no cookie of that name has been set, or when
+// its Set-Cookie field value does not parse.
+//
+// Cookie names are case-sensitive (RFC 6265 Section 4.1.1). A name written more
+// than once resolves to the first occurrence; use Cookies to see them all.
 //
 // The returned Cookie is a copy: changing it does not change the response.
 // Pass it to Cookie to write the change back.
 func (r *DefaultRes) GetCookie(name string) (*Cookie, bool) {
+	header := &r.c.fasthttp.Response.Header
+
 	fcookie := fasthttp.AcquireCookie()
 	defer fasthttp.ReleaseCookie(fcookie)
 
-	fcookie.SetKey(name)
-	if !r.c.fasthttp.Response.Header.Cookie(fcookie) {
-		return nil, false
+	for key, value := range header.Cookies() {
+		if string(key) != name {
+			continue
+		}
+		// Parsed from the field value the iterator yields rather than looked up
+		// again by name: the lookup reports the first cookie of that name and
+		// discards the parse error, which turns a Set-Cookie whose attributes
+		// fail to parse into a cookie that silently lost its Path and flags.
+		if fcookie.ParseBytes(value) != nil {
+			return nil, false
+		}
+		return responseCookie(fcookie, value), true
 	}
 
-	return responseCookie(fcookie), true
+	return nil, false
 }
 
 // Cookies returns a copy of every cookie this response is set to send, in the
 // order they were added. It returns nil when none have been set.
+//
+// Repeated names are kept apart, so a response that sets one name at two paths
+// yields both. A Set-Cookie whose field value does not parse is skipped.
 //
 // These are the response's own Set-Cookie headers. For the cookies the client
 // sent, use Req.Cookies or Req.AllCookies.
@@ -421,23 +445,62 @@ func (r *DefaultRes) Cookies() []*Cookie {
 	defer fasthttp.ReleaseCookie(fcookie)
 
 	var cookies []*Cookie
-	for key := range header.Cookies() {
-		fcookie.Reset()
-		fcookie.SetKeyBytes(key)
-		if header.Cookie(fcookie) {
-			cookies = append(cookies, responseCookie(fcookie))
+	// The iterator yields the whole Set-Cookie field value for each entry, so
+	// each is parsed where it is found. Resolving the name against the header
+	// again would answer with the first cookie of that name once per entry,
+	// hiding every later one behind a duplicate of the first.
+	for _, value := range header.Cookies() {
+		if fcookie.ParseBytes(value) != nil {
+			continue
 		}
+		cookies = append(cookies, responseCookie(fcookie, value))
 	}
 
 	return cookies
 }
 
+// cookieAttrPresent reports whether a Set-Cookie field value carries the named
+// attribute. Attributes are separated by ";", which RFC 6265 Section 4.1.1
+// excludes from cookie-value, so splitting on it cannot cut a value in two. The
+// first element is the cookie's own name=value pair and is skipped, so a cookie
+// named after an attribute is not mistaken for one.
+func cookieAttrPresent(value []byte, attr string) bool {
+	_, rest, found := bytes.Cut(value, []byte{';'})
+	if !found {
+		return false
+	}
+
+	for len(rest) > 0 {
+		part := rest
+		if i := bytes.IndexByte(rest, ';'); i >= 0 {
+			part, rest = rest[:i], rest[i+1:]
+		} else {
+			rest = nil
+		}
+		name, _, _ := bytes.Cut(part, []byte{'='})
+		if utils.EqualFold(utils.UnsafeString(utils.TrimSpace(name)), attr) {
+			return true
+		}
+	}
+
+	return false
+}
+
 // responseCookie converts a parsed Set-Cookie header back into the Cookie
 // struct Res.Cookie accepts, so a cookie survives a read-modify-write round
-// trip. SessionOnly is derived rather than transmitted: a cookie carrying
-// neither Max-Age nor Expires is by definition a session cookie
-// (RFC 6265 Section 4.1.2).
-func responseCookie(fcookie *fasthttp.Cookie) *Cookie {
+// trip. raw is the field value fcookie was parsed from, which two attributes
+// have to be read off directly:
+//
+// Max-Age, because fasthttp writes a deletion (a negative MaxAge) as
+// "max-age=0" and parses that back as 0 — the same value an absent attribute
+// gives. Left alone, reading a deletion and writing it back would drop the
+// attribute and turn it into an ordinary session cookie, so an explicit
+// "max-age=0" is handed back as the negative MaxAge that re-emits as one.
+//
+// SessionOnly, which is not transmitted at all: a cookie carrying neither
+// Max-Age nor Expires is by definition a session cookie (RFC 6265
+// Section 4.1.2).
+func responseCookie(fcookie *fasthttp.Cookie, raw []byte) *Cookie {
 	cookie := &Cookie{
 		Name:        string(fcookie.Key()),
 		Value:       string(fcookie.Value()),
@@ -449,6 +512,9 @@ func responseCookie(fcookie *fasthttp.Cookie) *Cookie {
 		HTTPOnly:    fcookie.HTTPOnly(),
 		SameSite:    internalcookie.FormatSameSite(fcookie.SameSite()),
 		Partitioned: fcookie.Partitioned(),
+	}
+	if cookie.MaxAge == 0 && cookieAttrPresent(raw, "max-age") {
+		cookie.MaxAge = -1
 	}
 	cookie.SessionOnly = cookie.MaxAge == 0 && cookie.Expires.IsZero()
 
@@ -613,8 +679,9 @@ func (r *DefaultRes) ContentLength() int {
 // It is the read side of Type, and of the content type Fiber sets for you when
 // a JSON, XML, or SendFile response goes out.
 //
-// When nothing has set one it reports fasthttp's default, "text/plain;
-// charset=utf-8", which is what would be sent — not an empty string.
+// When nothing has set one it reports what would be sent: fasthttp's default,
+// "text/plain; charset=utf-8", or an empty string under
+// Config.DisableDefaultContentType.
 // Returned value is only valid within the handler. Do not store any references.
 // Make copies or use the Immutable setting instead.
 func (r *DefaultRes) ContentType() string {
@@ -1106,14 +1173,20 @@ func (r *DefaultRes) renderExtensions(bind any) {
 // Body returns the response body buffered so far, which lets middleware
 // inspect or checksum what a handler produced before it is written out.
 //
+// A streamed body returns nil rather than being drained. Reading it would pull
+// the whole stream into memory and turn the response into a buffered one, which
+// would hang an SSE route and defeat a large SendFile; use Written to tell a
+// streaming response from one that produced nothing, and the underlying
+// Response.Body if you really do want to materialize the stream.
+//
 // Returned value is only valid within the handler and is invalidated by the
 // next write to the response. Do not store any references; copy it instead.
-//
-// On a streamed response this drains the stream into a buffer to answer, which
-// changes how the body is sent. Guard with Written or the underlying
-// Response.IsBodyStream when the response may be a stream.
 func (r *DefaultRes) Body() []byte {
-	return r.c.fasthttp.Response.Body()
+	resp := &r.c.fasthttp.Response
+	if resp.IsBodyStream() {
+		return nil
+	}
+	return resp.Body()
 }
 
 // ResetBody discards the response body, keeping the status and headers.
@@ -1125,7 +1198,8 @@ func (r *DefaultRes) ResetBody() {
 
 // Written reports whether anything has been written to the response body yet,
 // so middleware can tell a handler that produced a response from one that left
-// it untouched. A streamed body counts as written without draining the stream.
+// it untouched. A streamed body counts as written without draining the stream,
+// which is the case Body deliberately answers nil for.
 //
 // Status and headers are not body writes: a handler that only called Status
 // leaves this false.
@@ -1355,17 +1429,16 @@ func sendFileContentLength(path string, cfg SendFile) (int64, error) {
 	return info.Size(), nil
 }
 
-// NoContent replies 204 No Content: it sets the status, discards any body
-// already written, and drops the Content-Type a handler had set, since
-// RFC 9110 Section 6.4.1 gives a 204 no content to describe. fasthttp omits
-// Content-Type from a 204 on the wire either way; dropping it here keeps the
-// response consistent if something later moves it off 204.
+// NoContent replies 204 No Content. SendStatus already discards the body for
+// every status statusDisallowsBody names; this drops the Content-Type as well,
+// since RFC 9110 Section 6.4.1 gives a 204 no content to describe.
+//
+// SendStatus(StatusNoContent) leaves a Content-Type a handler had set, so the
+// two are not interchangeable: this is the one that sends nothing about content.
 func (r *DefaultRes) NoContent() error {
-	r.Status(StatusNoContent)
-	r.c.fasthttp.Response.ResetBody()
-	r.c.fasthttp.Response.Header.Del(HeaderContentType)
+	r.Del(HeaderContentType)
 
-	return nil
+	return r.SendStatus(StatusNoContent)
 }
 
 // SendStatus sets the HTTP status code and if the response body is empty,

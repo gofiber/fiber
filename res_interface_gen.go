@@ -25,6 +25,11 @@ type Res interface {
 	// line: headers whose values may themselves contain commas — Set-Cookie,
 	// WWW-Authenticate, Link — have to be sent as separate lines to stay
 	// unambiguous (RFC 9110 Section 5.3).
+	//
+	// The headers fasthttp stores in a slot of their own cannot repeat, and Add
+	// does not append for them: Content-Type, Content-Encoding, Content-Length,
+	// Connection, Server and Trailer are replaced, and Transfer-Encoding and Date
+	// are ignored because fasthttp writes them itself. Use Set for those.
 	Add(key, val string)
 	// Attachment sets the HTTP response Content-Disposition header field to attachment.
 	Attachment(filename ...string)
@@ -43,13 +48,20 @@ type Res interface {
 	Cookie(cookie *Cookie)
 	// GetCookie reads back a cookie this response is already set to send, so a
 	// later handler or middleware can inspect or re-emit what an earlier one wrote.
-	// The second result is false when no cookie of that name has been set.
+	// The second result is false when no cookie of that name has been set, or when
+	// its Set-Cookie field value does not parse.
+	//
+	// Cookie names are case-sensitive (RFC 6265 Section 4.1.1). A name written more
+	// than once resolves to the first occurrence; use Cookies to see them all.
 	//
 	// The returned Cookie is a copy: changing it does not change the response.
 	// Pass it to Cookie to write the change back.
 	GetCookie(name string) (*Cookie, bool)
 	// Cookies returns a copy of every cookie this response is set to send, in the
 	// order they were added. It returns nil when none have been set.
+	//
+	// Repeated names are kept apart, so a response that sets one name at two paths
+	// yields both. A Set-Cookie whose field value does not parse is skipped.
 	//
 	// These are the response's own Set-Cookie headers. For the cookies the client
 	// sent, use Req.Cookies or Req.AllCookies.
@@ -88,8 +100,9 @@ type Res interface {
 	// It is the read side of Type, and of the content type Fiber sets for you when
 	// a JSON, XML, or SendFile response goes out.
 	//
-	// When nothing has set one it reports fasthttp's default, "text/plain;
-	// charset=utf-8", which is what would be sent — not an empty string.
+	// When nothing has set one it reports what would be sent: fasthttp's default,
+	// "text/plain; charset=utf-8", or an empty string under
+	// Config.DisableDefaultContentType.
 	// Returned value is only valid within the handler. Do not store any references.
 	// Make copies or use the Immutable setting instead.
 	ContentType() string
@@ -169,12 +182,14 @@ type Res interface {
 	// Body returns the response body buffered so far, which lets middleware
 	// inspect or checksum what a handler produced before it is written out.
 	//
+	// A streamed body returns nil rather than being drained. Reading it would pull
+	// the whole stream into memory and turn the response into a buffered one, which
+	// would hang an SSE route and defeat a large SendFile; use Written to tell a
+	// streaming response from one that produced nothing, and the underlying
+	// Response.Body if you really do want to materialize the stream.
+	//
 	// Returned value is only valid within the handler and is invalidated by the
 	// next write to the response. Do not store any references; copy it instead.
-	//
-	// On a streamed response this drains the stream into a buffer to answer, which
-	// changes how the body is sent. Guard with Written or the underlying
-	// Response.IsBodyStream when the response may be a stream.
 	Body() []byte
 	// ResetBody discards the response body, keeping the status and headers.
 	// Use it before replacing a partially written body — an error page over a
@@ -182,7 +197,8 @@ type Res interface {
 	ResetBody()
 	// Written reports whether anything has been written to the response body yet,
 	// so middleware can tell a handler that produced a response from one that left
-	// it untouched. A streamed body counts as written without draining the stream.
+	// it untouched. A streamed body counts as written without draining the stream,
+	// which is the case Body deliberately answers nil for.
 	//
 	// Status and headers are not body writes: a handler that only called Status
 	// leaves this false.
@@ -206,11 +222,12 @@ type Res interface {
 	// The Content-Type response HTTP header field is set based on the file's extension.
 	// If the file extension is missing or invalid, the Content-Type is detected from the file's format.
 	SendFile(file string, config ...SendFile) error
-	// NoContent replies 204 No Content: it sets the status, discards any body
-	// already written, and drops the Content-Type a handler had set, since
-	// RFC 9110 Section 6.4.1 gives a 204 no content to describe. fasthttp omits
-	// Content-Type from a 204 on the wire either way; dropping it here keeps the
-	// response consistent if something later moves it off 204.
+	// NoContent replies 204 No Content. SendStatus already discards the body for
+	// every status statusDisallowsBody names; this drops the Content-Type as well,
+	// since RFC 9110 Section 6.4.1 gives a 204 no content to describe.
+	//
+	// SendStatus(StatusNoContent) leaves a Content-Type a handler had set, so the
+	// two are not interchangeable: this is the one that sends nothing about content.
 	NoContent() error
 	// SendStatus sets the HTTP status code and if the response body is empty,
 	// it sets the correct status message in the body.

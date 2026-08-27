@@ -129,6 +129,14 @@ func Test_Split(t *testing.T) {
 		// Malformed input is returned verbatim rather than dropped; Parse is
 		// what rejects it.
 		{name: "unquoted", header: `abc`, want: []string{"abc"}},
+		// RFC 9110 Section 5.6.1 requires empty list elements to be ignored, so
+		// a trailing comma is not an extra tag.
+		{name: "trailing comma", header: `"a",`, want: []string{`"a"`}},
+		{name: "trailing comma and space", header: `"a", `, want: []string{`"a"`}},
+		{name: "leading comma", header: `,"a"`, want: []string{`"a"`}},
+		{name: "doubled comma", header: `"a",,"b"`, want: []string{`"a"`, `"b"`}},
+		{name: "only commas", header: `,,`},
+		{name: "only a comma", header: `,`},
 	}
 
 	for _, tc := range tests {
@@ -152,4 +160,48 @@ func Test_Tags_EarlyStop(t *testing.T) {
 		}
 	}
 	require.Equal(t, []string{`"a"`, `"b"`}, seen)
+}
+
+// Test_AnyMatch_IgnoresEmptyElements pins that the empty-element rule reaches
+// AnyMatch too, so the two entry points cannot drift apart again.
+func Test_AnyMatch_IgnoresEmptyElements(t *testing.T) {
+	t.Parallel()
+
+	require.True(t, AnyMatch(`"a",`, `"a"`))
+	require.True(t, AnyMatch(`,"a"`, `"a"`))
+	require.True(t, AnyMatch(`"a",,"b"`, `"b"`))
+	require.False(t, AnyMatch(`,,`, `"a"`))
+	// An empty stored ETag must not be matched by an empty list element.
+	require.False(t, AnyMatch(`"a",`, ""))
+	require.False(t, AnyMatch(`,`, ""))
+}
+
+func Benchmark_AnyMatch(b *testing.B) {
+	benchmarks := []struct {
+		name   string
+		header string
+		etag   string
+	}{
+		{name: "hit", header: `"abc123"`, etag: `"abc123"`},
+		{name: "miss", header: `"abc123"`, etag: `"xyz789"`},
+		{name: "list_miss", header: `"a", "b", "c", "d", "e"`, etag: `"z"`},
+		{name: "weak", header: `W/"abcdefghijklmnop"`, etag: `W/"abcdefghijklmnop"`},
+		{name: "empty", header: "", etag: `"a"`},
+	}
+
+	for _, bm := range benchmarks {
+		b.Run(bm.name, func(b *testing.B) {
+			b.ReportAllocs()
+			for b.Loop() {
+				_ = AnyMatch(bm.header, bm.etag)
+			}
+		})
+	}
+}
+
+func Benchmark_Split(b *testing.B) {
+	b.ReportAllocs()
+	for b.Loop() {
+		_ = Split(`"a", "b", "c"`)
+	}
 }

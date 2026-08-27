@@ -704,7 +704,6 @@ The `TypeConstraint` type, `Constraint.ID`, and `Constraint.RegexCompiler` field
 - **OverrideParam**: Overwrites the value of an existing route parameter, or does nothing if the parameter does not exist
 - **IsWebSocket**: Reports if the request attempts a WebSocket upgrade.
 - **IsPreflight**: Identifies CORS preflight requests before handlers run.
-- **Copy**: Returns a detached snapshot of the context that stays valid in a goroutine after the handler returns.
 - **ID**: Returns the connection-unique identifier of the request, without depending on a header.
 - **StartTime** / **Elapsed**: Report when the server began handling the request and how long it has taken so far.
 - **LocalAddr** / **RemoteAddr**: Return the connection's addresses as `net.Addr`, where `IP` returns a string.
@@ -717,6 +716,7 @@ The `TypeConstraint` type, `Constraint.ID`, and `Constraint.RegexCompiler` field
 - **Authorization** / **Bearer**: Split the `Authorization` header into scheme and credentials, and read a `Bearer` token.
 - **Origin**: Returns the `Origin` request header.
 - **ContentLength**: Returns the value of the `Content-Length` request header; `Res` carries one for the response.
+- **ContentType**: Returns the `Content-Type` request header with its parameters; `Res` carries one for the response.
 - **BodyStream**: Returns the request body as a stream when `StreamRequestBody` is enabled.
 - **URI**: Returns the parsed `*fasthttp.URI` of the request.
 - **CookieNames** / **AllCookies**: Enumerate the cookies the client sent.
@@ -738,8 +738,9 @@ The request helpers listed above are defined on `Req`, so they are reachable bot
 `c.Req().UserAgent()`. This also applies to `Path`, `Secure`, `XHR`, `HasBody`, `IsWebSocket`, `IsPreflight`
 and the `Accept`/`Content-Type` helpers, which are request methods and are now on `Req` as well.
 
-`Req` and `Res` each define a `Body`, `ContentLength` and `Cookies`. On `Ctx` these resolve to the **request**,
-as `Get` already did; use `c.Res().Body()`, `c.Res().ContentLength()` and `c.Res().Cookies()` for the response.
+`Req` and `Res` each define a `Body`, `ContentLength`, `ContentType` and `Cookies`. On `Ctx` these resolve to the
+**request**, as `Get` already did; use `c.Res().Body()`, `c.Res().ContentLength()`, `c.Res().ContentType()` and
+`c.Res().Cookies()` for the response.
 
 ### Removed Methods
 

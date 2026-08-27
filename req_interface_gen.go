@@ -49,10 +49,11 @@ type Req interface {
 	BodyStream() io.Reader
 	// ContentLength returns the value of the Content-Length request header.
 	//
-	// A negative result means the length is not known up front rather than that the
-	// body is empty: fasthttp reports -1 for a chunked body and -2 for one
-	// terminated by closing the connection. Use HasBody to test only for the
-	// presence of a body.
+	// A negative result is not a length. fasthttp reports -1 for a chunked body and
+	// -2 for "Transfer-Encoding: identity", which is also what an ordinary GET with
+	// no body reports — so -2, not 0, is the common case for a bodyless request.
+	// Use HasBody to test whether there is a body at all, and read this only to
+	// find out how large a declared one is.
 	ContentLength() int
 	// RequestCtx returns *fasthttp.RequestCtx that carries a deadline
 	// a cancellation signal, and other values across API boundaries.
@@ -64,7 +65,19 @@ type Req interface {
 	// Referer returns the Referer request header.
 	Referer() string
 	// Origin returns the Origin request header.
+	// Returned value is only valid within the handler. Do not store any references.
+	// Make copies or use the Immutable setting to use the value outside the Handler.
 	Origin() string
+	// headerField returns a request header's field value, matching the field name
+	// the way a recipient must (RFC 9110 Section 5.1).
+	//
+	// fasthttp's Peek is byte-exact, which resolves every spelling only while it
+	// canonicalizes the key; under DisableHeaderNormalizing the store keeps what the
+	// peer sent, which for HTTP/2 and 3 is lower case. That is the bug the CSRF
+	// middleware was fixed for: a lower-case "origin:" read as absent and the
+	// same-origin check found nothing to verify. The byte-exact read stays the fast
+	// path, and the walk runs only for the config that needs it.
+	headerField(name string) []byte
 	// AcceptLanguage returns the Accept-Language request header.
 	// Repeated field lines are combined into one comma-joined list
 	// (RFC 9110 Section 5.2), matching what AcceptsLanguages negotiates on.
@@ -75,6 +88,15 @@ type Req interface {
 	AcceptEncoding() string
 	// HasHeader reports whether the request includes a header with the given key.
 	HasHeader(key string) bool
+	// ContentType returns the Content-Type request header, parameters included.
+	// MediaType returns the same header with the parameters stripped, and Charset
+	// returns just the charset one.
+	//
+	// Req and Res both carry a ContentType, so on Ctx the request wins, as it does
+	// for Get. Use Res().ContentType() for the type the response will send.
+	// Returned value is only valid within the handler. Do not store any references.
+	// Make copies or use the Immutable setting to use the value outside the Handler.
+	ContentType() string
 	// MediaType returns the MIME type from the Content-Type header without parameters.
 	MediaType() string
 	// Charset returns the charset parameter from the Content-Type header.
@@ -100,16 +122,24 @@ type Req interface {
 	// Make copies or use the Immutable setting to use the value outside the Handler.
 	Cookies(key string, defaultValue ...string) string
 	// CookieNames returns the names of the cookies sent with the request, in the
-	// order they appear in the Cookie header. A name repeated by the client is
-	// returned once per occurrence.
-	// Returned values are only valid within the handler. Do not store any references.
-	// Make copies or use the Immutable setting to use the values outside the Handler.
+	// order they appear in the Cookie header, or nil when the client sent none. A
+	// name the client repeated is returned once per occurrence, which is how a
+	// caller detects the shadowing AllCookies collapses.
+	//
+	// Unlike Cookies, the returned strings are copies rather than views into the
+	// request buffer, so they stay valid past the handler.
 	CookieNames() []string
-	// AllCookies returns the cookies sent with the request as a name/value map.
-	// When the client repeats a name the last value wins; use CookieNames to detect
-	// that case.
-	// Returned values are only valid within the handler. Do not store any references.
-	// Make copies or use the Immutable setting to use the values outside the Handler.
+	// AllCookies returns the cookies sent with the request as a name/value map, or
+	// nil when the client sent none. A repeated name resolves to its first
+	// occurrence, which is the one Cookies answers with too — the two must agree,
+	// because a client can shadow a cookie by sending the name twice and code that
+	// validated one value while consuming the other would validate the wrong one.
+	// Use CookieNames to see that a name was repeated at all.
+	//
+	// The keys and values are copies rather than views into the request buffer:
+	// fasthttp rewrites those bytes in place when a handler edits a request cookie,
+	// which would not merely stale the map but rehash it into one whose own keys no
+	// longer find their entries.
 	AllCookies() map[string]string
 	// Request return the *fasthttp.Request object
 	// This allows you to use all fasthttp request methods
@@ -147,9 +177,12 @@ type Req interface {
 	// header. Repeated field lines are combined into one list (RFC 9110
 	// Section 5.2), and a comma inside a quoted opaque-tag does not split it, so
 	// `"v1,v2"` stays one tag. A wildcard header returns a single "*" element.
-	// Tags are returned verbatim, weak "W/" prefix included, and are not validated.
-	// Fresh already applies these tags to the response ETag; reach for this only to
-	// implement a comparison of your own.
+	// Tags are returned verbatim, weak "W/" prefix included, and are not validated;
+	// empty list elements are dropped, as RFC 9110 Section 5.6.1 requires, so a
+	// trailing comma is not an extra tag. Fresh already applies these tags to the
+	// response ETag; reach for this only to implement a comparison of your own.
+	// Returned values are only valid within the handler. Do not store any references.
+	// Make copies or use the Immutable setting instead.
 	IfNoneMatch() []string
 	// IfModifiedSince returns the time carried by the If-Modified-Since request
 	// header. It returns ErrHeaderNotFound when the header is absent, and a parse
@@ -167,7 +200,13 @@ type Req interface {
 	// A header repeated across field lines is semantically one comma-joined list
 	// (RFC 9110 Section 5.2). GetAll keeps the lines apart so a caller can inspect
 	// them individually, where Get returns only the first and GetHeaders builds a
-	// map of the whole header block.
+	// map of the whole header block. It returns nil when the header is absent.
+	//
+	// Empty field lines are skipped, so len(GetAll(k)) > 0 answers the same question
+	// as HasHeader(k). Without that, the headers fasthttp keeps in a slot of their
+	// own report one empty line when they are not present at all, and a
+	// request-smuggling guard testing for Content-Length would fire on every request
+	// that has none.
 	// Returned values are only valid within the handler. Do not store any references.
 	// Make copies or use the Immutable setting instead.
 	GetAll(key string) []string
@@ -175,11 +214,22 @@ type Req interface {
 	// and the credentials that follow (RFC 9110 Section 11.6.2). Both are empty
 	// when the header is absent. The credentials are returned verbatim — token68 or
 	// auth-param list — and are neither decoded nor validated.
+	//
+	// Returned values are only valid within the handler. Do not store any
+	// references: they view the request buffer, which the next request on the
+	// connection overwrites, so a credential cached past the handler silently
+	// becomes another request's. Make copies or use the Immutable setting instead.
 	Authorization() (scheme, credentials string)
 	// Bearer returns the credentials of a Bearer Authorization header
 	// (RFC 6750 Section 2.1), or an empty string when the header is absent or names
 	// a different auth-scheme. The token is returned verbatim: it is not validated,
 	// decoded, or verified, so it still has to be authenticated before it is trusted.
+	//
+	// Returned value is only valid within the handler. Do not store any references:
+	// it views the request buffer, which the next request on the connection
+	// overwrites, so a token cached past the handler — or used as a key in a shared
+	// map — silently becomes another request's. Make copies or use the Immutable
+	// setting instead.
 	Bearer() string
 	// GetHeaders (a.k.a GetReqHeaders) returns the HTTP request headers.
 	// Returned value is only valid within the handler. Do not store any references.

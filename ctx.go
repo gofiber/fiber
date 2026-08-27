@@ -13,7 +13,6 @@ import (
 	"maps"
 	"mime/multipart"
 	"net"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -155,58 +154,6 @@ func (c *DefaultCtx) SetContext(ctx context.Context) {
 	c.isUserContextSet = true
 }
 
-// Copy returns a detached snapshot of the context that stays valid after the
-// handler returns.
-//
-// A live Ctx is pooled and its request buffers are handed to the next request
-// on the connection, so reading one from a goroutine that outlives the handler
-// returns whatever arrived next. Copy deep-copies the request, the path buffers
-// and the route parameters into a context that is never pooled, so the goroutine
-// sees the request the handler saw. Locals come across as they are: the entries
-// are copied, the values in them are shared.
-//
-// A request body that is still a stream is not copied; read it, or call Body, on
-// the original first. The copy is for reading otherwise: its response is a
-// detached buffer that never reaches the client, and it is always a *DefaultCtx
-// even under a custom Ctx, so writing to it, or driving the chain again with
-// Next or RestartRouting, changes nothing the client will see. It does not
-// observe the request's cancellation either; when the goroutine needs that, take
-// Context() from the original before the handler returns.
-func (c *DefaultCtx) Copy() Ctx {
-	cp := NewDefaultCtx(c.app)
-
-	fctx := new(fasthttp.RequestCtx)
-	c.fasthttp.Request.CopyTo(&fctx.Request)
-	c.fasthttp.VisitUserValuesAll(func(key, value any) {
-		fctx.SetUserValue(key, value)
-	})
-	cp.fasthttp = fctx
-	cp.isUserContextSet = c.isUserContextSet
-
-	// Routes are immutable once registered, so the pointer can be shared.
-	cp.route = c.route
-	cp.methodInt = c.methodInt
-	cp.indexRoute = c.indexRoute
-	cp.indexHandler = c.indexHandler
-	cp.firstMatchIndex = c.firstMatchIndex
-	cp.treePathHash = c.treePathHash
-	cp.pathSlashes = c.pathSlashes
-	cp.isMatched = c.isMatched
-	cp.shouldSkipNonUseRoutes = c.shouldSkipNonUseRoutes
-
-	// The path buffers, and the route parameter values cut out of them, alias
-	// storage the pool reuses, so each is copied rather than shared.
-	cp.path = append(cp.path[:0], c.path...)
-	cp.detectionPath = append(cp.detectionPath[:0], c.detectionPath...)
-	cp.pathOriginal = strings.Clone(c.pathOriginal)
-	cp.baseURI = strings.Clone(c.baseURI)
-	for i, value := range c.values {
-		cp.values[i] = strings.Clone(value)
-	}
-
-	return cp
-}
-
 // Deadline returns the time when work done on behalf of this context
 // should be canceled. Ctx carries no deadline, so ok is always false.
 //
@@ -268,6 +215,14 @@ func (c *DefaultCtx) Body() []byte {
 // does for Get. Use Res().ContentLength() for the length of the response.
 func (c *DefaultCtx) ContentLength() int {
 	return c.DefaultReq.ContentLength()
+}
+
+// ContentType returns the Content-Type request header, parameters included.
+//
+// Req and Res both carry a ContentType, so on Ctx the request wins, as it does
+// for Get. Use Res().ContentType() for the type the response will send.
+func (c *DefaultCtx) ContentType() string {
+	return c.DefaultReq.ContentType()
 }
 
 // Cookies returns the value of the request cookie with the given key, or
@@ -522,7 +477,12 @@ func (c *DefaultCtx) FullPath() string {
 // own route; use Endpoint().Name to look ahead to the route that will handle
 // the request.
 func (c *DefaultCtx) RouteName() string {
-	return c.Route().Name
+	// Route() builds a synthetic Route when none matched, and that one never
+	// carries a Name — so the allocation could only ever produce "".
+	if c.route == nil {
+		return ""
+	}
+	return c.route.Name
 }
 
 // MountPath returns the prefix the sub-app owning the current route was mounted
@@ -534,16 +494,28 @@ func (c *DefaultCtx) RouteName() string {
 // handler which prefix it is living under, to build links back into its own app
 // or to strip the prefix itself.
 //
-// It answers from the route that is running, unlike App.MountPath, which only
-// ever describes the app it is called on.
+// It answers from the route that is running, unlike App.MountPath, which
+// describes the app it is called on however that app is being served: a sub-app
+// that is mounted and also listened on directly reports its mount prefix there
+// even for its own traffic, where this reports "".
+//
+// The prefix is the owning app's, so mounting one *App at two prefixes reports
+// the one it was mounted at last — the same limitation App.MountPath has, since
+// that is where the prefix is recorded. Mount separate instances when each needs
+// to know its own prefix.
 func (c *DefaultCtx) MountPath() string {
-	if c.app == nil || c.app.mountFields == nil {
+	if c.app == nil {
 		return ""
 	}
-	if owner := c.app.routeOwner(c.route); owner != nil && owner.mountFields != nil {
-		return owner.mountFields.mountPath
+	// A route with no recorded owner is this app's own, so it is not under a
+	// mount at all — reading the app's own prefix here would answer with a
+	// mount the request never went through.
+	owner := c.app.routeOwner(c.route)
+	if owner == nil {
+		return ""
 	}
-	return c.app.mountFields.mountPath
+
+	return owner.MountPath()
 }
 
 // Matched returns true if the current request path was matched by the router.
@@ -563,9 +535,15 @@ func (c *DefaultCtx) IsMiddleware() bool {
 	return c.indexHandler+1 < len(c.route.Handlers)
 }
 
-// IsFinal returns true if the current request handler is the last one in the
-// chain, meaning nothing runs after it returns. It is the complement of
-// IsMiddleware, and false when no route matched at all.
+// IsFinal returns true if no further handler of the current route runs after
+// this one. It is the exact complement of IsMiddleware, and false when no route
+// matched at all.
+//
+// It describes this route, not the whole request: a route registered with Use is
+// never final even when it is the last thing that runs, and another route can
+// still match after a final handler calls Next — a specific path followed by a
+// catch-all is the ordinary case. So this does not promise that the response is
+// finished; use it to tell an endpoint handler from a middleware one.
 func (c *DefaultCtx) IsFinal() bool {
 	return c.route != nil && !c.IsMiddleware()
 }
