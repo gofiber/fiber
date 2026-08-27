@@ -15,6 +15,7 @@ import (
 	"github.com/valyala/fasthttp"
 	"golang.org/x/net/idna"
 
+	"github.com/gofiber/fiber/v3/internal/headerlist"
 	"github.com/gofiber/fiber/v3/internal/mediatype"
 )
 
@@ -49,33 +50,33 @@ type DefaultReq struct {
 
 // Accepts checks if the specified extensions or content types are acceptable.
 func (r *DefaultReq) Accepts(offers ...string) string {
-	header := joinHeaderValues(r.c.fasthttp.Request.Header.PeekAll(HeaderAccept))
+	header := headerlist.Join(r.c.fasthttp.Request.Header.PeekAll(HeaderAccept))
 	return getOffer(header, acceptsOfferType, offers...)
 }
 
 // AcceptsCharsets checks if the specified charset is acceptable.
 func (r *DefaultReq) AcceptsCharsets(offers ...string) string {
-	header := joinHeaderValues(r.c.fasthttp.Request.Header.PeekAll(HeaderAcceptCharset))
+	header := headerlist.Join(r.c.fasthttp.Request.Header.PeekAll(HeaderAcceptCharset))
 	return getOffer(header, acceptsOffer, offers...)
 }
 
 // AcceptsEncodings checks if the specified encoding is acceptable.
 func (r *DefaultReq) AcceptsEncodings(offers ...string) string {
-	header := joinHeaderValues(r.c.fasthttp.Request.Header.PeekAll(HeaderAcceptEncoding))
+	header := headerlist.Join(r.c.fasthttp.Request.Header.PeekAll(HeaderAcceptEncoding))
 	return getOffer(header, acceptsOffer, offers...)
 }
 
 // AcceptsLanguages checks if the specified language is acceptable using
 // RFC 4647 Basic Filtering.
 func (r *DefaultReq) AcceptsLanguages(offers ...string) string {
-	header := joinHeaderValues(r.c.fasthttp.Request.Header.PeekAll(HeaderAcceptLanguage))
+	header := headerlist.Join(r.c.fasthttp.Request.Header.PeekAll(HeaderAcceptLanguage))
 	return getOffer(header, acceptsLanguageOfferBasic, offers...)
 }
 
 // AcceptsLanguagesExtended checks if the specified language is acceptable using
 // RFC 4647 Extended Filtering.
 func (r *DefaultReq) AcceptsLanguagesExtended(offers ...string) string {
-	header := joinHeaderValues(r.c.fasthttp.Request.Header.PeekAll(HeaderAcceptLanguage))
+	header := headerlist.Join(r.c.fasthttp.Request.Header.PeekAll(HeaderAcceptLanguage))
 	return getOffer(header, acceptsLanguageOfferExtended, offers...)
 }
 
@@ -175,7 +176,7 @@ func (r *DefaultReq) Body() []byte {
 	// rule defined at: https://www.rfc-editor.org/rfc/rfc9110#section-8.4-5
 	// The splitter drops empty list elements (RFC 9110 Section 5.6.1.2), and
 	// headerEncoding was already lowercased wholesale above.
-	encodingOrder = getSplicedStrList(headerEncoding, encodingOrder)
+	encodingOrder = headerlist.Append(encodingOrder, headerEncoding)
 	if len(encodingOrder) == 0 {
 		return r.getBody()
 	}
@@ -237,14 +238,14 @@ func (c *DefaultCtx) Referer() string {
 // Repeated field lines are combined into one comma-joined list
 // (RFC 9110 Section 5.2), matching what AcceptsLanguages negotiates on.
 func (c *DefaultCtx) AcceptLanguage() string {
-	return c.app.toString(joinHeaderValues(c.fasthttp.Request.Header.PeekAll(HeaderAcceptLanguage)))
+	return c.app.toString(headerlist.Join(c.fasthttp.Request.Header.PeekAll(HeaderAcceptLanguage)))
 }
 
 // AcceptEncoding returns the Accept-Encoding request header.
 // Repeated field lines are combined into one comma-joined list
 // (RFC 9110 Section 5.2), matching what AcceptsEncodings negotiates on.
 func (c *DefaultCtx) AcceptEncoding() string {
-	return c.app.toString(joinHeaderValues(c.fasthttp.Request.Header.PeekAll(HeaderAcceptEncoding)))
+	return c.app.toString(headerlist.Join(c.fasthttp.Request.Header.PeekAll(HeaderAcceptEncoding)))
 }
 
 // HasHeader reports whether the request includes a header with the given key.
@@ -478,7 +479,7 @@ func (r *DefaultReq) Fresh() bool {
 	// List-based fields may be split across multiple field lines, which are
 	// semantically one comma-joined list (RFC 9110 Section 5.2).
 	modifiedSince := header.Peek(HeaderIfModifiedSince)
-	noneMatch := joinHeaderValues(header.PeekAll(HeaderIfNoneMatch))
+	noneMatch := headerlist.Join(header.PeekAll(HeaderIfNoneMatch))
 
 	// unconditional request
 	if len(modifiedSince) == 0 && len(noneMatch) == 0 {
@@ -488,7 +489,7 @@ func (r *DefaultReq) Fresh() bool {
 	// Always return stale when Cache-Control: no-cache
 	// to support end-to-end reload requests
 	// https://www.rfc-editor.org/rfc/rfc9111#section-5.2.1.4
-	cacheControl := joinHeaderValues(header.PeekAll(HeaderCacheControl))
+	cacheControl := headerlist.Join(header.PeekAll(HeaderCacheControl))
 	if len(cacheControl) > 0 && isNoCache(utils.UnsafeString(cacheControl)) {
 		return false
 	}

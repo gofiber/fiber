@@ -17,6 +17,7 @@ import (
 	"unicode/utf8"
 
 	internalcookie "github.com/gofiber/fiber/v3/internal/cookie"
+	"github.com/gofiber/fiber/v3/internal/headerlist"
 	"github.com/gofiber/fiber/v3/internal/quotedstring"
 	"github.com/gofiber/utils/v2"
 	"github.com/valyala/bytebufferpool"
@@ -146,7 +147,7 @@ func (r *DefaultRes) Append(field string, values ...string) {
 	// Consider all existing field lines combined (RFC 9110 Section 5.2) so
 	// the dedup check sees members added on later lines via Header.Add.
 	existing, multiLine := peekJoinedResponseHeader(&r.c.fasthttp.Response.Header, field)
-	updated := appendUniqueValues(utils.UnsafeString(existing), values)
+	updated := headerlist.AppendUnique(utils.UnsafeString(existing), values)
 	if updated == "" {
 		return
 	}
@@ -156,51 +157,6 @@ func (r *DefaultRes) Append(field string, values ...string) {
 		r.c.fasthttp.Response.Header.Del(field)
 	}
 	r.Set(field, updated)
-}
-
-// appendUniqueValues returns h extended with the non-empty values that are
-// not already listed in it, or "" when nothing was added (h only ever grows,
-// so a changed result is never empty).
-func appendUniqueValues(h string, values []string) string {
-	originalH := h
-	for _, value := range values {
-		if value == "" {
-			continue
-		}
-		if h == "" {
-			h = value
-		} else if !headerContainsValue(h, value) {
-			h += ", " + value
-		}
-	}
-	if originalH == h {
-		return ""
-	}
-	return h
-}
-
-// headerContainsValue checks if a header value already contains the given value
-// as a comma-separated element. Per RFC 9110, list elements are separated by commas
-// with optional whitespace (OWS) around them.
-func headerContainsValue(header, value string) bool {
-	// Empty value should never match
-	if value == "" {
-		return false
-	}
-
-	// Exact match (single value header)
-	if header == value {
-		return true
-	}
-
-	// Check each comma-separated element, handling optional whitespace (OWS)
-	for part := range strings.SplitSeq(header, ",") {
-		if utils.TrimSpace(part) == value {
-			return true
-		}
-	}
-
-	return false
 }
 
 func sanitizeFilename(filename string) string {
@@ -1343,7 +1299,7 @@ func (r *DefaultRes) Vary(fields ...string) {
 	// later line added via Header.Add is still honored.
 	existing, multiLine := peekJoinedResponseHeader(&r.c.fasthttp.Response.Header, HeaderVary)
 	existingStr := utils.UnsafeString(existing)
-	if slices.Contains(fields, "*") || headerContainsValue(existingStr, "*") {
+	if slices.Contains(fields, "*") || headerlist.Contains(existingStr, "*") {
 		if multiLine {
 			// setCanonical only rewrites the first field line.
 			r.c.fasthttp.Response.Header.Del(HeaderVary)
@@ -1351,7 +1307,7 @@ func (r *DefaultRes) Vary(fields ...string) {
 		r.setCanonical(HeaderVary, "*")
 		return
 	}
-	updated := appendUniqueValues(existingStr, fields)
+	updated := headerlist.AppendUnique(existingStr, fields)
 	if updated == "" {
 		return
 	}

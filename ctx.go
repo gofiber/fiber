@@ -17,6 +17,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/gofiber/fiber/v3/internal/headerlist"
 	"github.com/gofiber/utils/v2"
 	"github.com/valyala/bytebufferpool"
 	"github.com/valyala/fasthttp"
@@ -551,18 +552,13 @@ func hasTransferEncodingBody(hdr *fasthttp.RequestHeader) bool {
 // transferEncodingLineHasBody reports whether a single Transfer-Encoding
 // field line contains a transfer coding other than "identity".
 func transferEncodingLineHasBody(te string) bool {
-	for raw := range strings.SplitSeq(te, ",") {
-		token := utils.TrimSpace(raw)
-		if token == "" {
-			continue
-		}
+	for token := range headerlist.All(te) {
+		// A transfer coding may carry parameters ("chunked;q=1"), which name the
+		// coding no more than the bare token does (RFC 9110 Section 10.1.4).
 		if idx := strings.IndexByte(token, ';'); idx >= 0 {
 			token = utils.TrimSpace(token[:idx])
 		}
-		if token == "" {
-			continue
-		}
-		if utils.EqualFold(token, "identity") {
+		if token == "" || utils.EqualFold(token, "identity") {
 			continue
 		}
 		return true
@@ -589,15 +585,14 @@ func (c *DefaultCtx) IsWebSocket() bool {
 // ignored when comparing; valid Connection members never contain "/", so
 // this is safe for both headers.
 func headerListContainsToken(lines [][]byte, token string) bool {
-	for _, line := range lines {
-		for v := range strings.SplitSeq(utils.UnsafeString(line), ",") {
-			element := utils.TrimSpace(v)
-			if i := strings.IndexByte(element, '/'); i >= 0 {
-				element = element[:i]
-			}
-			if utils.EqualFold(element, token) {
-				return true
-			}
+	for element := range headerlist.AllLines(lines) {
+		// Connection and Upgrade carry protocol names, which may name a version
+		// after a slash ("HTTP/2.0"). Match on the name alone.
+		if i := strings.IndexByte(element, '/'); i >= 0 {
+			element = element[:i]
+		}
+		if utils.EqualFold(element, token) {
+			return true
 		}
 	}
 	return false

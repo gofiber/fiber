@@ -7,6 +7,7 @@ package etag
 import (
 	"strings"
 
+	"github.com/gofiber/fiber/v3/internal/headerlist"
 	"github.com/gofiber/utils/v2"
 )
 
@@ -64,29 +65,20 @@ func AnyMatch(header, etag string) bool {
 		return true
 	}
 
-	// Split the header on commas that sit outside DQUOTE-delimited opaque-tags:
-	// etagc permits "," inside the quoted tag (RFC 9110 Section 8.8.3), so
-	// `"v1,v2"` is a single entity tag, not two list elements. Only '"' and ','
-	// affect the split, so jump between them instead of visiting every byte.
-	start := 0
-	pos := 0
-	inQuotes := false
-	for {
-		i := utils.IndexAny2(header[pos:], '"', ',')
-		if i == -1 {
-			break
-		}
-		i += pos
-		pos = i + 1
-		if header[i] == '"' {
-			inQuotes = !inQuotes
-		} else if !inQuotes {
-			if Match(utils.TrimSpace(header[start:i]), etag) {
-				return true
-			}
-			start = i + 1
+	// etag is the same for every element, so parse it once rather than through
+	// Match on each. An unparseable one matches nothing (RFC 9110 8.8.3.2).
+	want, _, ok := Parse(etag)
+	if !ok {
+		return false
+	}
+
+	// Commas inside the opaque-tag do not separate: etagc permits "," within the
+	// quoted tag (RFC 9110 Section 8.8.3), so `"v1,v2"` is one entity tag.
+	for tag := range headerlist.AllQuoted(header) {
+		if got, _, ok := Parse(tag); ok && got == want {
+			return true
 		}
 	}
 
-	return Match(utils.TrimSpace(header[start:]), etag)
+	return false
 }

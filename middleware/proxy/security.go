@@ -13,6 +13,7 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/internal/fieldname"
+	"github.com/gofiber/fiber/v3/internal/headerlist"
 	"github.com/gofiber/utils/v2"
 	"github.com/valyala/fasthttp"
 )
@@ -267,13 +268,8 @@ func stripHopByHopResponseHeaders(res *fasthttp.Response, except ...string) {
 // rewrites other entries' key/value buffers — and Del does not retain the
 // name after returning.
 func delConnectionListedHeaders(h fieldname.Deleter, values [][]byte, normalized bool) { //nolint:revive // flag-parameter: normalized is a property of the header store
-	for _, v := range values {
-		for name := range strings.SplitSeq(utils.UnsafeString(v), ",") {
-			name = utils.TrimSpace(name)
-			if name != "" {
-				fieldname.Del(h, name, normalized)
-			}
-		}
+	for name := range headerlist.AllLines(values) {
+		fieldname.Del(h, name, normalized)
 	}
 }
 

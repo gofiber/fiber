@@ -16,6 +16,7 @@ import (
 	"unsafe"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/headerlist"
 	"github.com/gofiber/utils/v2"
 	"github.com/valyala/fasthttp"
 	"github.com/valyala/fasthttp/fasthttpadaptor"
@@ -355,17 +356,6 @@ type headerPair struct {
 	value string
 }
 
-// hasCloseToken reports whether a Connection field value lists "close" among its
-// tokens, which RFC 9110 Section 7.6.1 matches case-insensitively.
-func hasCloseToken(value string) bool {
-	for token := range strings.SplitSeq(value, ",") {
-		if utils.EqualFold(utils.TrimSpace(token), "close") {
-			return true
-		}
-	}
-	return false
-}
-
 // snapshotHeaders copies the non-framing headers of the converted request into
 // owned strings. fasthttpadaptor builds r.Header with b2s, so its keys and values
 // alias buffers the fiber header owns — writing back in place corrupted them.
@@ -465,7 +455,9 @@ func HTTPMiddleware(mw func(http.Handler) http.Handler) fiber.Handler {
 			if len(connection) > 0 {
 				joined := strings.Join(connection, ", ")
 				fhdr.Set(fiber.HeaderConnection, joined)
-				if hasCloseToken(joined) {
+				// RFC 9110 Section 7.6.1 matches connection options
+				// case-insensitively.
+				if headerlist.ContainsFold(joined, "close") {
 					// The close instruction is carried separately rather than
 					// written back here: fasthttp's request flag makes Peek answer
 					// "close" and hides the rest of the list (RFC 9110 §7.6.1),
