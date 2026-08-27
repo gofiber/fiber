@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -1134,4 +1135,56 @@ func Test_Ctx_MountPath_NoApp(t *testing.T) {
 
 	var c DefaultCtx
 	require.NotPanics(t, func() { require.Empty(t, c.MountPath()) })
+}
+
+func Test_Req_HasHeaderWithoutNormalizing(t *testing.T) {
+	t.Parallel()
+	app := New(Config{DisableHeaderNormalizing: true})
+
+	fctx := &fasthttp.RequestCtx{}
+	fctx.Request.Header.DisableNormalizing()
+	fctx.Request.Header.Set("x-test", "yes")
+	c := app.AcquireCtx(fctx)
+	t.Cleanup(func() { app.ReleaseCtx(c) })
+
+	require.True(t, c.Req().HasHeader("X-Test"))
+	require.Equal(t, []string{"yes"}, c.Req().GetAll("X-Test"))
+	require.True(t, c.Req().HasHeader("x-test"))
+	require.False(t, c.Req().HasHeader("X-Absent"))
+}
+
+func Test_Res_SendStatus_DropsDeclaredContentLength(t *testing.T) {
+	t.Parallel()
+	app := New()
+	for _, status := range []int{StatusNoContent, StatusResetContent, StatusNotModified} {
+		app.Get("/set"+strconv.Itoa(status), func(c Ctx) error {
+			c.Set(HeaderContentLength, "42")
+			return c.SendStatus(status)
+		})
+		app.Get("/bare"+strconv.Itoa(status), func(c Ctx) error {
+			return c.SendStatus(status)
+		})
+	}
+	app.Get("/nocontent", func(c Ctx) error {
+		c.Set(HeaderContentLength, "42")
+		return c.Res().NoContent()
+	})
+
+	get := func(path string) []string {
+		resp, err := app.Test(httptest.NewRequest(MethodGet, path, http.NoBody))
+		require.NoError(t, err)
+
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		require.Empty(t, body, path)
+		require.NotContains(t, resp.Header.Values(HeaderContentLength), "42", path)
+		return resp.Header.Values(HeaderContentLength)
+	}
+
+	for _, status := range []int{StatusNoContent, StatusResetContent, StatusNotModified} {
+		require.Equal(t, get("/bare"+strconv.Itoa(status)), get("/set"+strconv.Itoa(status)), status)
+	}
+
+	require.Empty(t, get("/nocontent"))
+	require.Equal(t, []string{"0"}, get("/bare205"))
 }

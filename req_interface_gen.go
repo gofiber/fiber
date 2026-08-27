@@ -74,6 +74,8 @@ type Req interface {
 	// (RFC 9110 Section 5.2), matching what AcceptsEncodings negotiates on.
 	AcceptEncoding() string
 	// HasHeader reports whether the request includes a header with the given key.
+	// The field name matches case-insensitively (RFC 9110 Section 5.1), so this
+	// agrees with GetAll on whether the field is there.
 	HasHeader(key string) bool
 	// ContentType returns the Content-Type request header, parameters included;
 	// MediaType strips them and Charset returns just the charset. On Ctx the request

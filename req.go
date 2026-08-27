@@ -287,8 +287,10 @@ func (r *DefaultReq) AcceptEncoding() string {
 }
 
 // HasHeader reports whether the request includes a header with the given key.
+// The field name matches case-insensitively (RFC 9110 Section 5.1), so this
+// agrees with GetAll on whether the field is there.
 func (r *DefaultReq) HasHeader(key string) bool {
-	return len(r.c.fasthttp.Request.Header.Peek(key)) > 0
+	return len(r.headerField(key)) > 0
 }
 
 // ContentType returns the Content-Type request header, parameters included;

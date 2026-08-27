@@ -1342,7 +1342,12 @@ func (r *DefaultRes) SendStatus(status int) error {
 	r.Status(status)
 
 	if statusDisallowsBody(status) {
-		r.c.fasthttp.Response.ResetBody()
+		resp := &r.c.fasthttp.Response
+		resp.ResetBody()
+		// ResetBody drops the body but keeps a Content-Length the handler
+		// declared, which RFC 9110 Section 8.6 forbids here and which leaves a
+		// keep-alive peer waiting for bytes that never come.
+		resp.Header.Del(HeaderContentLength)
 		return nil
 	}
 

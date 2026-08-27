@@ -326,6 +326,8 @@ type Ctx interface {
 	// (RFC 9110 Section 5.2), matching what AcceptsEncodings negotiates on.
 	AcceptEncoding() string
 	// HasHeader reports whether the request includes a header with the given key.
+	// The field name matches case-insensitively (RFC 9110 Section 5.1), so this
+	// agrees with GetAll on whether the field is there.
 	HasHeader(key string) bool
 	// MediaType returns the MIME type from the Content-Type header without parameters.
 	MediaType() string
