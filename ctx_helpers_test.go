@@ -1019,3 +1019,69 @@ func Test_Ctx_Error_ReachesErrorHandler(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "id must be numeric", string(body))
 }
+
+func Test_Req_HeaderFieldWithoutNormalizing(t *testing.T) {
+	t.Parallel()
+	app := New(Config{DisableHeaderNormalizing: true})
+
+	fctx := &fasthttp.RequestCtx{}
+	fctx.Request.Header.DisableNormalizing()
+	fctx.Request.Header.Set("origin", "https://example.com")
+	fctx.Request.Header.Set("authorization", "Bearer abc123")
+	c := app.AcquireCtx(fctx)
+	t.Cleanup(func() { app.ReleaseCtx(c) })
+
+	require.Empty(t, c.Get(HeaderOrigin), "Ctx.Get is byte-exact and misses the lower-case spelling")
+	require.Equal(t, "https://example.com", c.Req().Origin())
+
+	scheme, credentials := c.Req().Authorization()
+	require.Equal(t, "Bearer", scheme)
+	require.Equal(t, "abc123", credentials)
+	require.Equal(t, "abc123", c.Req().Bearer())
+}
+
+func Test_Res_Cookies_UnparsableEntry(t *testing.T) {
+	t.Parallel()
+	app := New()
+
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	t.Cleanup(func() { app.ReleaseCtx(c) })
+
+	c.Cookie(&Cookie{Name: "good", Value: "1"})
+	c.Res().Add(HeaderSetCookie, "")
+
+	cookies := c.Res().Cookies()
+	require.Len(t, cookies, 1, "the unparsable entry is skipped")
+	require.Equal(t, "good", cookies[0].Name)
+
+	_, ok := c.Res().GetCookie("")
+	require.False(t, ok, "GetCookie reports failure rather than a half-parsed cookie")
+
+	good, ok := c.Res().GetCookie("good")
+	require.True(t, ok)
+	require.Equal(t, "1", good.Value)
+}
+
+func Test_Res_GetCookie_NoAttributes(t *testing.T) {
+	t.Parallel()
+	app := New()
+
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	t.Cleanup(func() { app.ReleaseCtx(c) })
+
+	c.Res().Add(HeaderSetCookie, "plain=value")
+
+	got, ok := c.Res().GetCookie("plain")
+	require.True(t, ok)
+	require.Equal(t, "value", got.Value)
+	require.Empty(t, got.Path)
+	require.Zero(t, got.MaxAge)
+	require.True(t, got.SessionOnly, "no Max-Age and no Expires is a session cookie")
+}
+
+func Test_Ctx_MountPath_NoApp(t *testing.T) {
+	t.Parallel()
+
+	var c DefaultCtx
+	require.NotPanics(t, func() { require.Empty(t, c.MountPath()) })
+}
