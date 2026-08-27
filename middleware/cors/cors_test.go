@@ -1874,10 +1874,6 @@ func Test_CORS_Security_NoOriginReflectionForDisallowed(t *testing.T) {
 	require.NotEqual(t, "https://attacker.example.net", got)
 }
 
-// Test_CORS_OriginWithoutHeaderNormalizing covers the field-name lookup. Ctx.Get
-// is byte-exact, so with DisableHeaderNormalizing a lower-case "origin:" — what
-// HTTP/2 and 3 send — read as absent and the request fell outside CORS
-// altogether: no Access-Control-Allow-Origin, and no Vary either.
 func Test_CORS_OriginWithoutHeaderNormalizing(t *testing.T) {
 	t.Parallel()
 
@@ -1941,4 +1937,34 @@ func Test_CORS_PreflightWithoutHeaderNormalizing(t *testing.T) {
 	require.Equal(t, "http://example.com", string(fctx.Response.Header.Peek(fiber.HeaderAccessControlAllowOrigin)))
 	require.Contains(t, string(fctx.Response.Header.Peek(fiber.HeaderAccessControlAllowMethods)), fiber.MethodPut)
 	require.Equal(t, "X-Custom", string(fctx.Response.Header.Peek(fiber.HeaderAccessControlAllowHeaders)))
+}
+
+func Test_CORS_PreflightSplitRequestHeaders(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Use(New(Config{
+		AllowOrigins: []string{"http://example.com"},
+		AllowMethods: []string{fiber.MethodGet, fiber.MethodPut},
+	}))
+	app.Put("/", func(c fiber.Ctx) error {
+		return c.SendString("ok")
+	})
+
+	raw := "OPTIONS / HTTP/1.1\r\nHost: example.com\r\n" +
+		"Origin: http://example.com\r\n" +
+		"Access-Control-Request-Method: PUT\r\n" +
+		"Access-Control-Request-Headers: X-One\r\n" +
+		"Access-Control-Request-Headers: X-Two\r\n\r\n"
+
+	req := fasthttp.AcquireRequest()
+	defer fasthttp.ReleaseRequest(req)
+	require.NoError(t, req.Read(bufio.NewReader(strings.NewReader(raw))))
+
+	fctx := &fasthttp.RequestCtx{}
+	fctx.Init(req, nil, nil)
+	app.Handler()(fctx)
+
+	require.Equal(t, fiber.StatusNoContent, fctx.Response.StatusCode())
+	require.Equal(t, "X-One, X-Two", string(fctx.Response.Header.Peek(fiber.HeaderAccessControlAllowHeaders)))
 }

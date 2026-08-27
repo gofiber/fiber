@@ -2232,12 +2232,6 @@ func Test_TagIPs_PropagatesWriteErrors(t *testing.T) {
 	})
 }
 
-// Test_Logger_ResBody_DoesNotDrainStream covers a side effect logging must not
-// have. The ${resBody} tag read the response through fasthttp's Response.Body,
-// which materializes a body stream into a buffer and closes it — so merely
-// logging an SSE or SendFile route turned a streamed response into a buffered
-// one, holding the whole payload in memory and delaying every event until the
-// writer finished. Res.Body answers nil for a stream instead.
 func Test_Logger_ResBody_DoesNotDrainStream(t *testing.T) {
 	t.Parallel()
 

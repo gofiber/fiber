@@ -5,7 +5,6 @@ import (
 	"strings"
 
 	"github.com/gofiber/fiber/v3"
-	"github.com/gofiber/fiber/v3/internal/fieldname"
 	"github.com/gofiber/fiber/v3/internal/headerlookup"
 	"github.com/gofiber/fiber/v3/log"
 	"github.com/gofiber/utils/v2"
@@ -112,8 +111,6 @@ func New(config ...Config) fiber.Handler {
 		// Every request header here is read case-insensitively, as csrf already
 		// does: Ctx.Get is byte-exact, so under DisableHeaderNormalizing the
 		// lower-case names HTTP/2 sends read as absent and CORS never applied.
-		canonical := headerlookup.Canonical(c)
-
 		// Origin, with the original case kept for the response.
 		originHeaderRaw, _ := headerlookup.Value(c, fiber.HeaderOrigin)
 		originHeader := utilsstrings.ToLower(originHeaderRaw)
@@ -203,7 +200,9 @@ func New(config ...Config) fiber.Handler {
 		if len(cfg.AllowHeaders) > 0 {
 			c.Set(fiber.HeaderAccessControlAllowHeaders, strings.Join(cfg.AllowHeaders, ", "))
 		} else {
-			h := string(fieldname.First(&c.Request().Header, fiber.HeaderAccessControlRequestHeaders, canonical))
+			// Combined, not Value: this one is a list field, so a peer may
+			// legally split it over two lines and both name headers to allow.
+			h := headerlookup.Combined(c, fiber.HeaderAccessControlRequestHeaders)
 			if h != "" {
 				c.Set(fiber.HeaderAccessControlAllowHeaders, h)
 			}

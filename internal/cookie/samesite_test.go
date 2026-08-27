@@ -78,8 +78,6 @@ func Test_ParseSameSite(t *testing.T) {
 	}
 }
 
-// Test_FormatSameSite covers the inverse of ParseSameSite, including the
-// fasthttp default mode that has no Fiber name.
 func Test_FormatSameSite(t *testing.T) {
 	t.Parallel()
 
