@@ -3,6 +3,7 @@ package fiber
 import (
 	"bytes"
 	"errors"
+	"io"
 	"math"
 	"mime/multipart"
 	"net"
@@ -15,6 +16,7 @@ import (
 	"github.com/valyala/fasthttp"
 	"golang.org/x/net/idna"
 
+	etagpkg "github.com/gofiber/fiber/v3/internal/etag"
 	"github.com/gofiber/fiber/v3/internal/mediatype"
 )
 
@@ -204,6 +206,26 @@ func (r *DefaultReq) Body() []byte {
 	return r.c.app.GetBytes(body)
 }
 
+// BodyStream returns the request body as a stream.
+//
+// It is only non-nil when Config.StreamRequestBody is enabled and the body has
+// not already been buffered; IsBodyStream on the underlying request reports
+// which of the two is in play. Reading from the returned reader consumes the
+// body, so a later Body call will not see it.
+func (r *DefaultReq) BodyStream() io.Reader {
+	return r.c.fasthttp.Request.BodyStream()
+}
+
+// ContentLength returns the value of the Content-Length request header.
+//
+// A negative result means the length is not known up front rather than that the
+// body is empty: fasthttp reports -1 for a chunked body and -2 for one
+// terminated by closing the connection. Use HasBody to test only for the
+// presence of a body.
+func (r *DefaultReq) ContentLength() int {
+	return r.c.fasthttp.Request.Header.ContentLength()
+}
+
 // RequestCtx returns *fasthttp.RequestCtx that carries a deadline
 // a cancellation signal, and other values across API boundaries.
 func (r *DefaultReq) RequestCtx() *fasthttp.RequestCtx {
@@ -211,50 +233,55 @@ func (r *DefaultReq) RequestCtx() *fasthttp.RequestCtx {
 }
 
 // FullURL returns the full request URL (protocol + host + original URL).
-func (c *DefaultCtx) FullURL() string {
+func (r *DefaultReq) FullURL() string {
 	buf := bytebufferpool.Get()
 	defer bytebufferpool.Put(buf)
 
-	buf.WriteString(c.Scheme())
+	buf.WriteString(r.Scheme())
 	buf.WriteString("://")
-	buf.WriteString(c.Host())
-	buf.WriteString(c.OriginalURL())
+	buf.WriteString(r.Host())
+	buf.WriteString(r.OriginalURL())
 
 	return buf.String()
 }
 
 // UserAgent returns the User-Agent request header.
-func (c *DefaultCtx) UserAgent() string {
-	return c.app.toString(c.fasthttp.Request.Header.UserAgent())
+func (r *DefaultReq) UserAgent() string {
+	return r.c.app.toString(r.c.fasthttp.Request.Header.UserAgent())
 }
 
 // Referer returns the Referer request header.
-func (c *DefaultCtx) Referer() string {
-	return c.app.toString(c.fasthttp.Request.Header.Referer())
+func (r *DefaultReq) Referer() string {
+	return r.c.app.toString(r.c.fasthttp.Request.Header.Referer())
+}
+
+// Origin returns the Origin request header.
+func (r *DefaultReq) Origin() string {
+	return r.c.app.toString(r.c.fasthttp.Request.Header.Peek(HeaderOrigin))
 }
 
 // AcceptLanguage returns the Accept-Language request header.
 // Repeated field lines are combined into one comma-joined list
 // (RFC 9110 Section 5.2), matching what AcceptsLanguages negotiates on.
-func (c *DefaultCtx) AcceptLanguage() string {
-	return c.app.toString(joinHeaderValues(c.fasthttp.Request.Header.PeekAll(HeaderAcceptLanguage)))
+func (r *DefaultReq) AcceptLanguage() string {
+	return r.c.app.toString(joinHeaderValues(r.c.fasthttp.Request.Header.PeekAll(HeaderAcceptLanguage)))
 }
 
 // AcceptEncoding returns the Accept-Encoding request header.
 // Repeated field lines are combined into one comma-joined list
 // (RFC 9110 Section 5.2), matching what AcceptsEncodings negotiates on.
-func (c *DefaultCtx) AcceptEncoding() string {
-	return c.app.toString(joinHeaderValues(c.fasthttp.Request.Header.PeekAll(HeaderAcceptEncoding)))
+func (r *DefaultReq) AcceptEncoding() string {
+	return r.c.app.toString(joinHeaderValues(r.c.fasthttp.Request.Header.PeekAll(HeaderAcceptEncoding)))
 }
 
 // HasHeader reports whether the request includes a header with the given key.
-func (c *DefaultCtx) HasHeader(key string) bool {
-	return len(c.fasthttp.Request.Header.Peek(key)) > 0
+func (r *DefaultReq) HasHeader(key string) bool {
+	return len(r.c.fasthttp.Request.Header.Peek(key)) > 0
 }
 
 // MediaType returns the MIME type from the Content-Type header without parameters.
-func (c *DefaultCtx) MediaType() string {
-	contentType := utils.TrimSpace(c.fasthttp.Request.Header.ContentType())
+func (r *DefaultReq) MediaType() string {
+	contentType := utils.TrimSpace(r.c.fasthttp.Request.Header.ContentType())
 	if len(contentType) == 0 {
 		return ""
 	}
@@ -262,12 +289,12 @@ func (c *DefaultCtx) MediaType() string {
 		contentType = contentType[:idx]
 	}
 	contentType = utils.TrimSpace(contentType)
-	return c.app.toString(contentType)
+	return r.c.app.toString(contentType)
 }
 
 // Charset returns the charset parameter from the Content-Type header.
-func (c *DefaultCtx) Charset() string {
-	contentType := c.fasthttp.Request.Header.ContentType()
+func (r *DefaultReq) Charset() string {
+	contentType := r.c.fasthttp.Request.Header.ContentType()
 	_, params, ok := bytes.Cut(contentType, []byte{';'})
 	if !ok {
 		return ""
@@ -339,44 +366,44 @@ func (c *DefaultCtx) Charset() string {
 			// charset parameter later in the header can still be found.
 			continue
 		}
-		return c.app.toString(v)
+		return r.c.app.toString(v)
 	}
 	return ""
 }
 
 // IsJSON reports whether the Content-Type header is JSON.
-func (c *DefaultCtx) IsJSON() bool {
-	return utils.EqualFold(c.MediaType(), MIMEApplicationJSON)
+func (r *DefaultReq) IsJSON() bool {
+	return utils.EqualFold(r.MediaType(), MIMEApplicationJSON)
 }
 
 // IsForm reports whether the Content-Type header is form-encoded.
-func (c *DefaultCtx) IsForm() bool {
-	return utils.EqualFold(c.MediaType(), MIMEApplicationForm)
+func (r *DefaultReq) IsForm() bool {
+	return utils.EqualFold(r.MediaType(), MIMEApplicationForm)
 }
 
 // IsMultipart reports whether the Content-Type header is multipart form data.
-func (c *DefaultCtx) IsMultipart() bool {
-	return utils.EqualFold(c.MediaType(), MIMEMultipartForm)
+func (r *DefaultReq) IsMultipart() bool {
+	return utils.EqualFold(r.MediaType(), MIMEMultipartForm)
 }
 
 // AcceptsJSON reports whether the Accept header allows JSON.
-func (c *DefaultCtx) AcceptsJSON() bool {
-	return c.Accepts(MIMEApplicationJSON) != ""
+func (r *DefaultReq) AcceptsJSON() bool {
+	return r.Accepts(MIMEApplicationJSON) != ""
 }
 
 // AcceptsHTML reports whether the Accept header allows HTML.
-func (c *DefaultCtx) AcceptsHTML() bool {
-	return c.Accepts(MIMETextHTML) != ""
+func (r *DefaultReq) AcceptsHTML() bool {
+	return r.Accepts(MIMETextHTML) != ""
 }
 
 // AcceptsXML reports whether the Accept header allows XML.
-func (c *DefaultCtx) AcceptsXML() bool {
-	return c.Accepts(MIMEApplicationXML, MIMETextXML) != ""
+func (r *DefaultReq) AcceptsXML() bool {
+	return r.Accepts(MIMEApplicationXML, MIMETextXML) != ""
 }
 
 // AcceptsEventStream reports whether the Accept header allows text/event-stream.
-func (c *DefaultCtx) AcceptsEventStream() bool {
-	return c.Accepts(MIMETextEventStream) != ""
+func (r *DefaultReq) AcceptsEventStream() bool {
+	return r.Accepts(MIMETextEventStream) != ""
 }
 
 // Cookies are used for getting a cookie value by key.
@@ -386,6 +413,34 @@ func (c *DefaultCtx) AcceptsEventStream() bool {
 // Make copies or use the Immutable setting to use the value outside the Handler.
 func (r *DefaultReq) Cookies(key string, defaultValue ...string) string {
 	return defaultString(r.c.app.toString(r.c.fasthttp.Request.Header.Cookie(key)), defaultValue)
+}
+
+// CookieNames returns the names of the cookies sent with the request, in the
+// order they appear in the Cookie header. A name repeated by the client is
+// returned once per occurrence.
+// Returned values are only valid within the handler. Do not store any references.
+// Make copies or use the Immutable setting to use the values outside the Handler.
+func (r *DefaultReq) CookieNames() []string {
+	app := r.c.app
+	names := make([]string, 0, 8)
+	for key := range r.c.fasthttp.Request.Header.Cookies() {
+		names = append(names, app.toString(key))
+	}
+	return names
+}
+
+// AllCookies returns the cookies sent with the request as a name/value map.
+// When the client repeats a name the last value wins; use CookieNames to detect
+// that case.
+// Returned values are only valid within the handler. Do not store any references.
+// Make copies or use the Immutable setting to use the values outside the Handler.
+func (r *DefaultReq) AllCookies() map[string]string {
+	app := r.c.app
+	cookies := make(map[string]string)
+	for key, value := range r.c.fasthttp.Request.Header.Cookies() {
+		cookies[app.toString(key)] = app.toString(value)
+	}
+	return cookies
 }
 
 // Request return the *fasthttp.Request object
@@ -555,6 +610,33 @@ func parseHTTPDate(date []byte) (time.Time, error) {
 	return t, nil
 }
 
+// IfNoneMatch returns the entity tags listed in the If-None-Match request
+// header. Repeated field lines are combined into one list (RFC 9110
+// Section 5.2), and a comma inside a quoted opaque-tag does not split it, so
+// `"v1,v2"` stays one tag. A wildcard header returns a single "*" element.
+// Tags are returned verbatim, weak "W/" prefix included, and are not validated.
+// Fresh already applies these tags to the response ETag; reach for this only to
+// implement a comparison of your own.
+func (r *DefaultReq) IfNoneMatch() []string {
+	header := joinHeaderValues(r.c.fasthttp.Request.Header.PeekAll(HeaderIfNoneMatch))
+	if len(header) == 0 {
+		return nil
+	}
+	return etagpkg.Split(r.c.app.toString(header))
+}
+
+// IfModifiedSince returns the time carried by the If-Modified-Since request
+// header. It returns ErrHeaderNotFound when the header is absent, and a parse
+// error when the value is none of the three HTTP-date formats RFC 9110
+// Section 5.6.7 requires recipients to accept.
+func (r *DefaultReq) IfModifiedSince() (time.Time, error) {
+	value := r.c.fasthttp.Request.Header.Peek(HeaderIfModifiedSince)
+	if len(value) == 0 {
+		return time.Time{}, ErrHeaderNotFound
+	}
+	return parseHTTPDate(value)
+}
+
 // Get returns the HTTP request header specified by field.
 // Field names are case-insensitive
 // Returned value is only valid within the handler. Do not store any references.
@@ -573,6 +655,59 @@ func GetReqHeader[V GenericType](c Ctx, key string, defaultValue ...V) V {
 		return defaultValue[0]
 	}
 	return v
+}
+
+// GetAll returns every field line of the request header specified by key.
+// Field names are case-insensitive.
+//
+// A header repeated across field lines is semantically one comma-joined list
+// (RFC 9110 Section 5.2). GetAll keeps the lines apart so a caller can inspect
+// them individually, where Get returns only the first and GetHeaders builds a
+// map of the whole header block.
+// Returned values are only valid within the handler. Do not store any references.
+// Make copies or use the Immutable setting instead.
+func (r *DefaultReq) GetAll(key string) []string {
+	lines := r.c.fasthttp.Request.Header.PeekAll(key)
+	if len(lines) == 0 {
+		return nil
+	}
+	app := r.c.app
+	values := make([]string, len(lines))
+	for i, line := range lines {
+		values[i] = app.toString(line)
+	}
+	return values
+}
+
+// Authorization splits the Authorization request header into its auth-scheme
+// and the credentials that follow (RFC 9110 Section 11.6.2). Both are empty
+// when the header is absent. The credentials are returned verbatim — token68 or
+// auth-param list — and are neither decoded nor validated.
+func (r *DefaultReq) Authorization() (scheme, credentials string) { //nolint:nonamedreturns // gocritic unnamedResult requires naming the two halves for clarity
+	raw := utils.TrimSpace(r.c.fasthttp.Request.Header.Peek(HeaderAuthorization))
+	if len(raw) == 0 {
+		return "", ""
+	}
+	app := r.c.app
+	i := bytes.IndexAny(raw, " \t")
+	if i < 0 {
+		// A lone token is a scheme without credentials, not credentials without
+		// a scheme: RFC 9110 Section 11.4 makes the scheme the mandatory half.
+		return app.toString(raw), ""
+	}
+	return app.toString(raw[:i]), app.toString(utils.TrimSpace(raw[i+1:]))
+}
+
+// Bearer returns the credentials of a Bearer Authorization header
+// (RFC 6750 Section 2.1), or an empty string when the header is absent or names
+// a different auth-scheme. The token is returned verbatim: it is not validated,
+// decoded, or verified, so it still has to be authenticated before it is trusted.
+func (r *DefaultReq) Bearer() string {
+	scheme, credentials := r.Authorization()
+	if !utils.EqualFold(scheme, "Bearer") {
+		return ""
+	}
+	return credentials
 }
 
 // GetHeaders (a.k.a GetReqHeaders) returns the HTTP request headers.
@@ -876,6 +1011,131 @@ func (r *DefaultReq) Is(extension string) bool {
 	return utils.EqualFold(ct, extensionHeader)
 }
 
+// HasBody returns true if the request declares a body via Content-Length, Transfer-Encoding, or already buffered payload data.
+func (r *DefaultReq) HasBody() bool {
+	hdr := &r.c.fasthttp.Request.Header
+
+	switch cl := hdr.ContentLength(); {
+	case cl > 0:
+		return true
+	case cl == -1:
+		// fasthttp reports -1 for Transfer-Encoding: chunked bodies.
+		return true
+	case cl == 0:
+		if hasTransferEncodingBody(hdr) {
+			return true
+		}
+	}
+
+	return len(r.c.fasthttp.Request.Body()) > 0
+}
+
+func hasTransferEncodingBody(hdr *fasthttp.RequestHeader) bool {
+	// Repeated field lines form one combined list (RFC 9110 Section 5.2),
+	// so every Transfer-Encoding line must be inspected, not just the first.
+	if lines := hdr.PeekAll(HeaderTransferEncoding); len(lines) > 0 {
+		for _, line := range lines {
+			if transferEncodingLineHasBody(utils.UnsafeString(line)) {
+				return true
+			}
+		}
+		return false
+	}
+
+	// Fallback scan for non-normalized header keys.
+	for key, value := range hdr.All() {
+		if !utils.EqualFold(utils.UnsafeString(key), HeaderTransferEncoding) {
+			continue
+		}
+		if transferEncodingLineHasBody(utils.UnsafeString(value)) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// transferEncodingLineHasBody reports whether a single Transfer-Encoding
+// field line contains a transfer coding other than "identity".
+func transferEncodingLineHasBody(te string) bool {
+	for raw := range strings.SplitSeq(te, ",") {
+		token := utils.TrimSpace(raw)
+		if token == "" {
+			continue
+		}
+		if idx := strings.IndexByte(token, ';'); idx >= 0 {
+			token = utils.TrimSpace(token[:idx])
+		}
+		if token == "" {
+			continue
+		}
+		if utils.EqualFold(token, "identity") {
+			continue
+		}
+		return true
+	}
+	return false
+}
+
+// IsWebSocket returns true if the request includes a WebSocket upgrade handshake.
+func (r *DefaultReq) IsWebSocket() bool {
+	// Repeated field lines are equivalent to one combined comma-separated
+	// list (RFC 9110 Section 5.2), so inspect every Connection and Upgrade
+	// field line, not just the first.
+	if !headerListContainsToken(r.c.fasthttp.Request.Header.PeekAll(HeaderConnection), "upgrade") {
+		return false
+	}
+	// Upgrade is a list of protocols, each optionally carrying a "/version"
+	// suffix (RFC 9110 Section 7.8), e.g. "Upgrade: websocket, h2c".
+	return headerListContainsToken(r.c.fasthttp.Request.Header.PeekAll(HeaderUpgrade), "websocket")
+}
+
+// headerListContainsToken reports whether any comma-separated element across
+// the given field lines equals token case-insensitively. An optional
+// "/version" suffix (Upgrade protocol syntax, RFC 9110 Section 7.8) is
+// ignored when comparing; valid Connection members never contain "/", so
+// this is safe for both headers.
+func headerListContainsToken(lines [][]byte, token string) bool {
+	for _, line := range lines {
+		for v := range strings.SplitSeq(utils.UnsafeString(line), ",") {
+			element := utils.TrimSpace(v)
+			if i := strings.IndexByte(element, '/'); i >= 0 {
+				element = element[:i]
+			}
+			if utils.EqualFold(element, token) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// IsPreflight returns true if the request is a CORS preflight.
+func (r *DefaultReq) IsPreflight() bool {
+	if r.Method() != MethodOptions {
+		return false
+	}
+	hdr := &r.c.fasthttp.Request.Header
+	if len(hdr.Peek(HeaderAccessControlRequestMethod)) == 0 {
+		return false
+	}
+	return len(hdr.Peek(HeaderOrigin)) > 0
+}
+
+// Secure returns whether a secure connection was established.
+func (r *DefaultReq) Secure() bool {
+	return r.Scheme() == schemeHTTPS
+}
+
+// xmlHTTPRequestBytes is precomputed for XHR detection
+var xmlHTTPRequestBytes = []byte("xmlhttprequest")
+
+// XHR returns a Boolean property, that is true, if the request's X-Requested-With header field is XMLHttpRequest,
+// indicating that the request was issued by a client library (such as jQuery).
+func (r *DefaultReq) XHR() bool {
+	return utils.EqualFold(r.c.fasthttp.Request.Header.Peek(HeaderXRequestedWith), xmlHTTPRequestBytes)
+}
+
 // Locals makes it possible to pass any values under keys scoped to the request
 // and therefore available to all following routes that match the request.
 //
@@ -967,6 +1227,19 @@ func currentMethod(c *DefaultCtx) string {
 	return string(c.fasthttp.Request.Header.Method())
 }
 
+// IsSafe reports whether the request method is safe, meaning it is not expected
+// to change server state (RFC 9110 Section 9.2.1).
+func (r *DefaultReq) IsSafe() bool {
+	return IsMethodSafe(r.Method())
+}
+
+// IsIdempotent reports whether the request method is idempotent, meaning
+// repeating it has the same intended effect as making it once (RFC 9110
+// Section 9.2.2). Every safe method is also idempotent.
+func (r *DefaultReq) IsIdempotent() bool {
+	return IsMethodIdempotent(r.Method())
+}
+
 // MultipartForm parse form entries from binary.
 // This returns a map[string][]string, so given a key, the value will be a string slice.
 //
@@ -990,6 +1263,34 @@ func (r *DefaultReq) MultipartForm() (*multipart.Form, error) {
 // Make copies or use the Immutable setting to use the value outside the Handler.
 func (r *DefaultReq) OriginalURL() string {
 	return r.c.app.toString(r.c.fasthttp.Request.Header.RequestURI())
+}
+
+// URI returns the parsed *fasthttp.URI of the request.
+// This allows you to use all fasthttp URI methods.
+// https://godoc.org/github.com/valyala/fasthttp#URI
+//
+// The returned value is owned by the request and is rewritten by a Path
+// override, so it is only valid within the handler. Do not store any references.
+func (r *DefaultReq) URI() *fasthttp.URI {
+	return r.c.fasthttp.Request.URI()
+}
+
+// Path returns the path part of the request URL.
+// Optionally, you could override the path.
+// Make copies or use the Immutable setting to use the value outside the Handler.
+func (r *DefaultReq) Path(override ...string) string {
+	if len(override) != 0 && string(r.c.path) != override[0] {
+		// Set new path to context
+		r.c.pathOriginal = override[0]
+
+		// Set new path to request context
+		r.c.fasthttp.Request.URI().SetPath(r.c.pathOriginal)
+		// Prettify path
+		r.c.configDependentPaths()
+		// The detection path/tree hash changed; invalidate the lookahead index.
+		r.c.firstMatchIndex = -1
+	}
+	return r.c.app.toString(r.c.path)
 }
 
 // Params is used to get the route parameters.

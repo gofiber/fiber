@@ -5,6 +5,8 @@
 package etag
 
 import (
+	"iter"
+	"slices"
 	"strings"
 
 	"github.com/gofiber/utils/v2"
@@ -53,6 +55,52 @@ func MatchStrong(s, etag string) bool {
 	return n1 == n2
 }
 
+// Tags iterates the entity tags in a raw If-None-Match or If-Match field
+// value. Commas that sit inside a DQUOTE-delimited opaque-tag do not split the
+// list: etagc permits "," inside the quoted tag (RFC 9110 Section 8.8.3), so
+// `"v1,v2"` is a single entity tag, not two list elements. Elements are yielded
+// with surrounding whitespace trimmed and are not validated; pass each to Parse
+// to reject malformed ones. An empty field value yields nothing.
+func Tags(header string) iter.Seq[string] {
+	return func(yield func(string) bool) {
+		header = utils.TrimSpace(header)
+		if header == "" {
+			return
+		}
+
+		// Only '"' and ',' affect the split, so jump between them instead of
+		// visiting every byte.
+		start := 0
+		pos := 0
+		inQuotes := false
+		for {
+			i := utils.IndexAny2(header[pos:], '"', ',')
+			if i == -1 {
+				break
+			}
+			i += pos
+			pos = i + 1
+			if header[i] == '"' {
+				inQuotes = !inQuotes
+			} else if !inQuotes {
+				if !yield(utils.TrimSpace(header[start:i])) {
+					return
+				}
+				start = i + 1
+			}
+		}
+
+		yield(utils.TrimSpace(header[start:]))
+	}
+}
+
+// Split returns the entity tags in a raw If-None-Match or If-Match field value.
+// It collects Tags, so the same quoted-comma rules apply. An empty field value
+// returns nil.
+func Split(header string) []string {
+	return slices.Collect(Tags(header))
+}
+
 // AnyMatch reports whether any entity tag in the raw If-None-Match field value
 // matches etag. Comparison is weak as defined by RFC 9110 Section 8.8.3.2, and
 // "*" matches every entity tag. An empty field value matches nothing.
@@ -64,29 +112,11 @@ func AnyMatch(header, etag string) bool {
 		return true
 	}
 
-	// Split the header on commas that sit outside DQUOTE-delimited opaque-tags:
-	// etagc permits "," inside the quoted tag (RFC 9110 Section 8.8.3), so
-	// `"v1,v2"` is a single entity tag, not two list elements. Only '"' and ','
-	// affect the split, so jump between them instead of visiting every byte.
-	start := 0
-	pos := 0
-	inQuotes := false
-	for {
-		i := utils.IndexAny2(header[pos:], '"', ',')
-		if i == -1 {
-			break
-		}
-		i += pos
-		pos = i + 1
-		if header[i] == '"' {
-			inQuotes = !inQuotes
-		} else if !inQuotes {
-			if Match(utils.TrimSpace(header[start:i]), etag) {
-				return true
-			}
-			start = i + 1
+	for tag := range Tags(header) {
+		if Match(tag, etag) {
+			return true
 		}
 	}
 
-	return Match(utils.TrimSpace(header[start:]), etag)
+	return false
 }

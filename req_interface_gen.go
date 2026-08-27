@@ -3,7 +3,9 @@
 package fiber
 
 import (
+	"io"
 	"mime/multipart"
+	"time"
 
 	"github.com/valyala/fasthttp"
 )
@@ -38,15 +40,77 @@ type Req interface {
 	// Don't store direct references to the returned data.
 	// If you need to keep the body's data later, make a copy or use the Immutable option.
 	Body() []byte
+	// BodyStream returns the request body as a stream.
+	//
+	// It is only non-nil when Config.StreamRequestBody is enabled and the body has
+	// not already been buffered; IsBodyStream on the underlying request reports
+	// which of the two is in play. Reading from the returned reader consumes the
+	// body, so a later Body call will not see it.
+	BodyStream() io.Reader
+	// ContentLength returns the value of the Content-Length request header.
+	//
+	// A negative result means the length is not known up front rather than that the
+	// body is empty: fasthttp reports -1 for a chunked body and -2 for one
+	// terminated by closing the connection. Use HasBody to test only for the
+	// presence of a body.
+	ContentLength() int
 	// RequestCtx returns *fasthttp.RequestCtx that carries a deadline
 	// a cancellation signal, and other values across API boundaries.
 	RequestCtx() *fasthttp.RequestCtx
+	// FullURL returns the full request URL (protocol + host + original URL).
+	FullURL() string
+	// UserAgent returns the User-Agent request header.
+	UserAgent() string
+	// Referer returns the Referer request header.
+	Referer() string
+	// Origin returns the Origin request header.
+	Origin() string
+	// AcceptLanguage returns the Accept-Language request header.
+	// Repeated field lines are combined into one comma-joined list
+	// (RFC 9110 Section 5.2), matching what AcceptsLanguages negotiates on.
+	AcceptLanguage() string
+	// AcceptEncoding returns the Accept-Encoding request header.
+	// Repeated field lines are combined into one comma-joined list
+	// (RFC 9110 Section 5.2), matching what AcceptsEncodings negotiates on.
+	AcceptEncoding() string
+	// HasHeader reports whether the request includes a header with the given key.
+	HasHeader(key string) bool
+	// MediaType returns the MIME type from the Content-Type header without parameters.
+	MediaType() string
+	// Charset returns the charset parameter from the Content-Type header.
+	Charset() string
+	// IsJSON reports whether the Content-Type header is JSON.
+	IsJSON() bool
+	// IsForm reports whether the Content-Type header is form-encoded.
+	IsForm() bool
+	// IsMultipart reports whether the Content-Type header is multipart form data.
+	IsMultipart() bool
+	// AcceptsJSON reports whether the Accept header allows JSON.
+	AcceptsJSON() bool
+	// AcceptsHTML reports whether the Accept header allows HTML.
+	AcceptsHTML() bool
+	// AcceptsXML reports whether the Accept header allows XML.
+	AcceptsXML() bool
+	// AcceptsEventStream reports whether the Accept header allows text/event-stream.
+	AcceptsEventStream() bool
 	// Cookies are used for getting a cookie value by key.
 	// Defaults to the empty string "" if the cookie doesn't exist.
 	// If a default value is given, it will return that value if the cookie doesn't exist.
 	// The returned value is only valid within the handler. Do not store any references.
 	// Make copies or use the Immutable setting to use the value outside the Handler.
 	Cookies(key string, defaultValue ...string) string
+	// CookieNames returns the names of the cookies sent with the request, in the
+	// order they appear in the Cookie header. A name repeated by the client is
+	// returned once per occurrence.
+	// Returned values are only valid within the handler. Do not store any references.
+	// Make copies or use the Immutable setting to use the values outside the Handler.
+	CookieNames() []string
+	// AllCookies returns the cookies sent with the request as a name/value map.
+	// When the client repeats a name the last value wins; use CookieNames to detect
+	// that case.
+	// Returned values are only valid within the handler. Do not store any references.
+	// Make copies or use the Immutable setting to use the values outside the Handler.
+	AllCookies() map[string]string
 	// Request return the *fasthttp.Request object
 	// This allows you to use all fasthttp request methods
 	// https://godoc.org/github.com/valyala/fasthttp#Request
@@ -79,11 +143,44 @@ type Req interface {
 	// reload request, this module will return false to make handling these requests transparent.
 	// https://github.com/jshttp/fresh/blob/master/index.js#L33
 	Fresh() bool
+	// IfNoneMatch returns the entity tags listed in the If-None-Match request
+	// header. Repeated field lines are combined into one list (RFC 9110
+	// Section 5.2), and a comma inside a quoted opaque-tag does not split it, so
+	// `"v1,v2"` stays one tag. A wildcard header returns a single "*" element.
+	// Tags are returned verbatim, weak "W/" prefix included, and are not validated.
+	// Fresh already applies these tags to the response ETag; reach for this only to
+	// implement a comparison of your own.
+	IfNoneMatch() []string
+	// IfModifiedSince returns the time carried by the If-Modified-Since request
+	// header. It returns ErrHeaderNotFound when the header is absent, and a parse
+	// error when the value is none of the three HTTP-date formats RFC 9110
+	// Section 5.6.7 requires recipients to accept.
+	IfModifiedSince() (time.Time, error)
 	// Get returns the HTTP request header specified by field.
 	// Field names are case-insensitive
 	// Returned value is only valid within the handler. Do not store any references.
 	// Make copies or use the Immutable setting instead.
 	Get(key string, defaultValue ...string) string
+	// GetAll returns every field line of the request header specified by key.
+	// Field names are case-insensitive.
+	//
+	// A header repeated across field lines is semantically one comma-joined list
+	// (RFC 9110 Section 5.2). GetAll keeps the lines apart so a caller can inspect
+	// them individually, where Get returns only the first and GetHeaders builds a
+	// map of the whole header block.
+	// Returned values are only valid within the handler. Do not store any references.
+	// Make copies or use the Immutable setting instead.
+	GetAll(key string) []string
+	// Authorization splits the Authorization request header into its auth-scheme
+	// and the credentials that follow (RFC 9110 Section 11.6.2). Both are empty
+	// when the header is absent. The credentials are returned verbatim — token68 or
+	// auth-param list — and are neither decoded nor validated.
+	Authorization() (scheme, credentials string)
+	// Bearer returns the credentials of a Bearer Authorization header
+	// (RFC 6750 Section 2.1), or an empty string when the header is absent or names
+	// a different auth-scheme. The token is returned verbatim: it is not validated,
+	// decoded, or verified, so it still has to be authenticated before it is trusted.
+	Bearer() string
 	// GetHeaders (a.k.a GetReqHeaders) returns the HTTP request headers.
 	// Returned value is only valid within the handler. Do not store any references.
 	// Make copies or use the Immutable setting instead.
@@ -129,6 +226,17 @@ type Req interface {
 	// Is returns the matching content type,
 	// if the incoming request's Content-Type HTTP header field matches the MIME type specified by the type parameter
 	Is(extension string) bool
+	// HasBody returns true if the request declares a body via Content-Length, Transfer-Encoding, or already buffered payload data.
+	HasBody() bool
+	// IsWebSocket returns true if the request includes a WebSocket upgrade handshake.
+	IsWebSocket() bool
+	// IsPreflight returns true if the request is a CORS preflight.
+	IsPreflight() bool
+	// Secure returns whether a secure connection was established.
+	Secure() bool
+	// XHR returns a Boolean property, that is true, if the request's X-Requested-With header field is XMLHttpRequest,
+	// indicating that the request was issued by a client library (such as jQuery).
+	XHR() bool
 	// Locals makes it possible to pass any values under keys scoped to the request
 	// and therefore available to all following routes that match the request.
 	//
@@ -140,6 +248,13 @@ type Req interface {
 	// If no override is given or if the provided override is not a valid HTTP method, it returns the current method from the context.
 	// Otherwise, it updates the context's method and returns the overridden method as a string.
 	Method(override ...string) string
+	// IsSafe reports whether the request method is safe, meaning it is not expected
+	// to change server state (RFC 9110 Section 9.2.1).
+	IsSafe() bool
+	// IsIdempotent reports whether the request method is idempotent, meaning
+	// repeating it has the same intended effect as making it once (RFC 9110
+	// Section 9.2.2). Every safe method is also idempotent.
+	IsIdempotent() bool
 	// MultipartForm parse form entries from binary.
 	// This returns a map[string][]string, so given a key, the value will be a string slice.
 	//
@@ -152,6 +267,17 @@ type Req interface {
 	// Returned value is only valid within the handler. Do not store any references.
 	// Make copies or use the Immutable setting to use the value outside the Handler.
 	OriginalURL() string
+	// URI returns the parsed *fasthttp.URI of the request.
+	// This allows you to use all fasthttp URI methods.
+	// https://godoc.org/github.com/valyala/fasthttp#URI
+	//
+	// The returned value is owned by the request and is rewritten by a Path
+	// override, so it is only valid within the handler. Do not store any references.
+	URI() *fasthttp.URI
+	// Path returns the path part of the request URL.
+	// Optionally, you could override the path.
+	// Make copies or use the Immutable setting to use the value outside the Handler.
+	Path(override ...string) string
 	// Params is used to get the route parameters.
 	// Defaults to empty string "" if the param doesn't exist.
 	// If a default value is given, it will return that value if the param doesn't exist.

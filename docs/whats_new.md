@@ -704,6 +704,42 @@ The `TypeConstraint` type, `Constraint.ID`, and `Constraint.RegexCompiler` field
 - **OverrideParam**: Overwrites the value of an existing route parameter, or does nothing if the parameter does not exist
 - **IsWebSocket**: Reports if the request attempts a WebSocket upgrade.
 - **IsPreflight**: Identifies CORS preflight requests before handlers run.
+- **Copy**: Returns a detached snapshot of the context that stays valid in a goroutine after the handler returns.
+- **ID**: Returns the connection-unique identifier of the request, without depending on a header.
+- **StartTime** / **Elapsed**: Report when the server began handling the request and how long it has taken so far.
+- **LocalAddr** / **RemoteAddr**: Return the connection's addresses as `net.Addr`, where `IP` returns a string.
+- **Hijack** / **Hijacked**: Take over the connection after the response is sent, and report whether that has happened.
+- **RouteName**: Returns the name of the route currently executing.
+- **IsFinal**: Reports whether the current handler is the last one in the chain, the complement of `IsMiddleware`.
+- **MountPath**: Returns the prefix the sub-app owning the current route was mounted under.
+- **Error**: Builds a `*fiber.Error` with the given status code, so a handler can reject a request in one line.
+- **GetAll**: Returns every field line of a request header, where `Get` returns only the first.
+- **Authorization** / **Bearer**: Split the `Authorization` header into scheme and credentials, and read a `Bearer` token.
+- **Origin**: Returns the `Origin` request header.
+- **ContentLength**: Returns the value of the `Content-Length` request header; `Res` carries one for the response.
+- **BodyStream**: Returns the request body as a stream when `StreamRequestBody` is enabled.
+- **URI**: Returns the parsed `*fasthttp.URI` of the request.
+- **CookieNames** / **AllCookies**: Enumerate the cookies the client sent.
+- **IfNoneMatch** / **IfModifiedSince**: Read the conditional-request headers, parsed.
+- **IsSafe** / **IsIdempotent**: Classify the request method per RFC 9110.
+- **Add**: Appends a response header as a new field line, where `Append` folds values into one.
+- **Del**: Removes a response header.
+- **StatusCode**: Returns the status code set on the response, the read side of `Status`.
+- **Body** (on `Res`): Returns the response body buffered so far.
+- **ResetBody**: Discards the response body, keeping the status and headers.
+- **Written**: Reports whether anything has been written to the response body yet.
+- **ContentType**: Returns the `Content-Type` response header, the read side of `Type`.
+- **GetCookie** / **Cookies** (on `Res`): Read back the cookies the response is set to send.
+- **NoContent**: Replies `204 No Content`, discarding any body and the `Content-Type`.
+
+### Req and Res Method Placement
+
+The request helpers listed above are defined on `Req`, so they are reachable both as `c.UserAgent()` and as
+`c.Req().UserAgent()`. This also applies to `Path`, `Secure`, `XHR`, `HasBody`, `IsWebSocket`, `IsPreflight`
+and the `Accept`/`Content-Type` helpers, which are request methods and are now on `Req` as well.
+
+`Req` and `Res` each define a `Body`, `ContentLength` and `Cookies`. On `Ctx` these resolve to the **request**,
+as `Get` already did; use `c.Res().Body()`, `c.Res().ContentLength()` and `c.Res().Cookies()` for the response.
 
 ### Removed Methods
 

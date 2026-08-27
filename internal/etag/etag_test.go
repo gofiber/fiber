@@ -107,3 +107,49 @@ func Test_AnyMatch(t *testing.T) {
 		})
 	}
 }
+
+func Test_Split(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		header string
+		want   []string
+	}{
+		{name: "empty", header: ""},
+		{name: "whitespace only", header: "   "},
+		{name: "single", header: `"abc"`, want: []string{`"abc"`}},
+		{name: "list", header: `"a", "b"`, want: []string{`"a"`, `"b"`}},
+		{name: "weak", header: `W/"a", "b"`, want: []string{`W/"a"`, `"b"`}},
+		{name: "wildcard", header: "*", want: []string{"*"}},
+		// etagc permits "," inside the quoted opaque-tag, so this is one tag.
+		{name: "comma inside tag", header: `"v1,v2"`, want: []string{`"v1,v2"`}},
+		{name: "comma inside and after", header: `"v1,v2", "v3"`, want: []string{`"v1,v2"`, `"v3"`}},
+		{name: "untrimmed", header: `  "a" ,  "b"  `, want: []string{`"a"`, `"b"`}},
+		// Malformed input is returned verbatim rather than dropped; Parse is
+		// what rejects it.
+		{name: "unquoted", header: `abc`, want: []string{"abc"}},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, tc.want, Split(tc.header))
+		})
+	}
+}
+
+// Test_Tags_EarlyStop covers the yield-returns-false path, which Split alone
+// never exercises.
+func Test_Tags_EarlyStop(t *testing.T) {
+	t.Parallel()
+
+	var seen []string
+	for tag := range Tags(`"a", "b", "c"`) {
+		seen = append(seen, tag)
+		if len(seen) == 2 {
+			break
+		}
+	}
+	require.Equal(t, []string{`"a"`, `"b"`}, seen)
+}

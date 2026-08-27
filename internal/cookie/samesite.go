@@ -56,3 +56,24 @@ func ParseSameSite(value string) (SameSite, bool) {
 		}, false
 	}
 }
+
+// FormatSameSite names the Fiber SameSite mode a fasthttp cookie carries. It
+// inverts ParseSameSite for every mode Fiber writes. A cookie set outside
+// Fiber can also carry fasthttp's default mode, which emits the attribute with
+// no value and has no Fiber name, so that returns an empty string.
+func FormatSameSite(mode fasthttp.CookieSameSite) string {
+	switch mode {
+	case fasthttp.CookieSameSiteDisabled:
+		return SameSiteDisabled
+	case fasthttp.CookieSameSiteLaxMode:
+		return SameSiteLax
+	case fasthttp.CookieSameSiteStrictMode:
+		return SameSiteStrict
+	case fasthttp.CookieSameSiteNoneMode:
+		return SameSiteNone
+	default:
+		// fasthttp's default mode lands here: it emits the attribute with no
+		// value, which is not one of the modes Fiber names.
+		return ""
+	}
+}
