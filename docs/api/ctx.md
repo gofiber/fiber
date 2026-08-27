@@ -3107,6 +3107,27 @@ app.Get("/non-ascii", func(c fiber.Ctx) error {
 })
 ```
 
+### Drop
+
+Terminates the client connection silently without sending any HTTP headers or response body.
+
+This can be used for scenarios where you want to block certain requests without notifying the client, such as mitigating
+DDoS attacks or protecting sensitive endpoints from unauthorized access.
+
+```go title="Signature"
+func (c fiber.Ctx) Drop() error
+```
+
+```go title="Example"
+app.Get("/", func(c fiber.Ctx) error {
+  if c.IP() == "192.168.1.1" {
+    return c.Drop()
+  }
+
+  return c.SendString("Hello World!")
+})
+```
+
 ### End
 
 End immediately flushes the current response and closes the underlying connection.
