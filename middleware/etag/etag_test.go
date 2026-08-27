@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/utils/v2"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
 )
@@ -378,4 +379,50 @@ func Test_ETag_WeakComparison(t *testing.T) {
 			}
 		})
 	}
+}
+
+func Test_ETag_SplitIfNoneMatch(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+	app.Use(New())
+	app.Get("/", func(c fiber.Ctx) error {
+		return c.SendString("Hello, World!")
+	})
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+	require.NoError(t, err)
+	generated := resp.Header.Get(fiber.HeaderETag)
+	require.NotEmpty(t, generated)
+
+	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+	req.Header.Add(fiber.HeaderIfNoneMatch, `"other"`)
+	req.Header.Add(fiber.HeaderIfNoneMatch, generated)
+	resp, err = app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusNotModified, resp.StatusCode)
+}
+
+func Test_ETag_HandlerETagWithoutNormalizing(t *testing.T) {
+	t.Parallel()
+	app := fiber.New(fiber.Config{DisableHeaderNormalizing: true})
+	app.Use(New())
+	app.Get("/", func(c fiber.Ctx) error {
+		c.Set("ETag", `"custom"`)
+		return c.SendString("Hello, World!")
+	})
+
+	fctx := &fasthttp.RequestCtx{}
+	fctx.Request.SetRequestURI("/")
+	fctx.Request.Header.SetMethod(fiber.MethodGet)
+	fctx.Request.Header.DisableNormalizing()
+	fctx.Response.Header.DisableNormalizing()
+	app.Handler()(fctx)
+
+	var lines []string
+	for k, v := range fctx.Response.Header.All() {
+		if utils.EqualFold(string(k), fiber.HeaderETag) {
+			lines = append(lines, string(v))
+		}
+	}
+	require.Equal(t, []string{`"custom"`}, lines)
 }

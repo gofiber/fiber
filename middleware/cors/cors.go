@@ -126,8 +126,12 @@ func New(config ...Config) fiber.Handler {
 			return c.Next()
 		}
 
-		// If it's a preflight request and doesn't have Access-Control-Request-Method header, it's outside the scope of CORS
-		requestMethod, _ := headerlookup.Value(c, fiber.HeaderAccessControlRequestMethod)
+		// If it's a preflight request and doesn't have Access-Control-Request-Method header, it's outside the scope of CORS.
+		// The header is read only for OPTIONS, so plain cross-origin requests skip the lookup.
+		requestMethod := ""
+		if c.Method() == fiber.MethodOptions {
+			requestMethod, _ = headerlookup.Value(c, fiber.HeaderAccessControlRequestMethod)
+		}
 		if c.Method() == fiber.MethodOptions && requestMethod == "" {
 			// Response to OPTIONS request should not be cached but,
 			// some caching can be configured to cache such responses.
@@ -183,8 +187,14 @@ func New(config ...Config) fiber.Handler {
 		// To avoid poisoning the cache, we include the Vary header
 		// of preflight responses, set in a single variadic Vary call
 		// per branch since every Vary call scans all response headers.
-		privateNetwork, _ := headerlookup.Value(c, fiber.HeaderAccessControlRequestPrivateNetwork)
-		if cfg.AllowPrivateNetwork && privateNetwork == "true" {
+		privateNetworkRequested := false
+		if cfg.AllowPrivateNetwork {
+			// Read only when the feature is on: with the default config the
+			// header's value is discarded, so the lookup would be pure cost.
+			privateNetwork, _ := headerlookup.Value(c, fiber.HeaderAccessControlRequestPrivateNetwork)
+			privateNetworkRequested = privateNetwork == "true"
+		}
+		if privateNetworkRequested {
 			c.Vary(fiber.HeaderAccessControlRequestMethod, fiber.HeaderAccessControlRequestHeaders, fiber.HeaderAccessControlRequestPrivateNetwork, fiber.HeaderOrigin)
 			c.Set(fiber.HeaderAccessControlAllowPrivateNetwork, "true")
 		} else {

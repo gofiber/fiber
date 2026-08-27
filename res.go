@@ -491,10 +491,11 @@ func (r *DefaultRes) Format(handlers ...ResFmt) error {
 	r.Vary(HeaderAccept)
 
 	// Absent means the combined Accept view (RFC 9110 Section 5.2) is empty:
-	// no field line, or a single empty one. Checked on the raw lines to skip
-	// the join allocation that multi-line headers would pay.
-	accepts := r.c.fasthttp.Request.Header.PeekAll(HeaderAccept)
-	if len(accepts) == 0 || (len(accepts) == 1 && len(accepts[0]) == 0) {
+	// no field line, or only empty ones. The joined read matches the field name
+	// case-insensitively, the same way Accepts negotiates, so the two entry
+	// points agree on whether the client stated a preference.
+	acceptRaw := peekJoinedRequestHeader(&r.c.fasthttp.Request.Header, HeaderAccept)
+	if len(acceptRaw) == 0 {
 		// Without an Accept header the client accepts any media type
 		// (RFC 9110 Section 12.5.1), so pick the first non-default handler and
 		// use its media type. The literal "default" is not a media type and
@@ -606,7 +607,11 @@ func (r *DefaultRes) ContentType() string {
 // the pending cookies, where ClearCookie expires one in the client's jar.
 func (r *DefaultRes) Del(key string) {
 	header := &r.c.fasthttp.Response.Header
-	fieldname.Del(header, key, fieldname.Canonical(header))
+	// The byte-exact fast path needs both sides canonical: the stored names (a
+	// proxied response can hold lower-case ones) and the caller's key, which
+	// fasthttp only normalizes while DisableHeaderNormalizing is off.
+	canonical := !r.c.app.config.DisableHeaderNormalizing && fieldname.Canonical(header)
+	fieldname.Del(header, key, canonical)
 }
 
 // Get (a.k.a. GetRespHeader) returns the HTTP response header specified by field.

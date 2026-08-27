@@ -5,6 +5,8 @@
 package fiber
 
 import (
+	"bytes"
+	"compress/gzip"
 	"io"
 	"net"
 	"net/http"
@@ -1032,7 +1034,7 @@ func Test_Req_HeaderFieldWithoutNormalizing(t *testing.T) {
 	c := app.AcquireCtx(fctx)
 	t.Cleanup(func() { app.ReleaseCtx(c) })
 
-	require.Empty(t, c.Get(HeaderOrigin), "Ctx.Get is byte-exact and misses the lower-case spelling")
+	require.Equal(t, "https://example.com", c.Get(HeaderOrigin))
 	require.Equal(t, "https://example.com", c.Req().Origin())
 
 	scheme, credentials := c.Req().Authorization()
@@ -1250,4 +1252,112 @@ func Test_Req_FreshWithoutNormalizing(t *testing.T) {
 	})
 	since.Res().Set(HeaderLastModified, "Tue, 20 Oct 2015 07:28:00 GMT")
 	require.True(t, since.Req().Fresh())
+}
+
+func Test_Req_HeaderFieldSkipsEmptyFirstLine(t *testing.T) {
+	t.Parallel()
+	app := New()
+
+	fctx := &fasthttp.RequestCtx{}
+	fctx.Request.Header.Add("X-Thing", "")
+	fctx.Request.Header.Add("X-Thing", "v2")
+	fctx.Request.Header.Add(HeaderAuthorization, "")
+	fctx.Request.Header.Add(HeaderAuthorization, "Bearer tok")
+	c := app.AcquireCtx(fctx)
+	t.Cleanup(func() { app.ReleaseCtx(c) })
+
+	require.True(t, c.Req().HasHeader("X-Thing"))
+	require.Equal(t, []string{"v2"}, c.Req().GetAll("X-Thing"))
+	require.Equal(t, "v2", c.Req().Get("X-Thing"))
+	require.Equal(t, "tok", c.Req().Bearer())
+}
+
+func Test_Req_GetWithoutNormalizing(t *testing.T) {
+	t.Parallel()
+	app := New(Config{DisableHeaderNormalizing: true})
+
+	fctx := &fasthttp.RequestCtx{}
+	fctx.Request.Header.DisableNormalizing()
+	fctx.Request.Header.Set("x-api-key", "k1")
+	c := app.AcquireCtx(fctx)
+	t.Cleanup(func() { app.ReleaseCtx(c) })
+
+	require.True(t, c.Req().HasHeader("X-Api-Key"))
+	require.Equal(t, "k1", c.Req().Get("X-Api-Key"))
+	require.Equal(t, "k1", GetReqHeader[string](c, "X-Api-Key"))
+}
+
+func Test_Req_BodyContentEncodingWithoutNormalizing(t *testing.T) {
+	t.Parallel()
+	app := New(Config{DisableHeaderNormalizing: true})
+
+	var buf bytes.Buffer
+	zw := gzip.NewWriter(&buf)
+	_, err := zw.Write([]byte("hello world"))
+	require.NoError(t, err)
+	require.NoError(t, zw.Close())
+
+	fctx := &fasthttp.RequestCtx{}
+	fctx.Request.Header.DisableNormalizing()
+	fctx.Request.Header.SetMethod(MethodPost)
+	fctx.Request.Header.Set("content-encoding", "gzip")
+	fctx.Request.SetBody(buf.Bytes())
+	c := app.AcquireCtx(fctx)
+	t.Cleanup(func() { app.ReleaseCtx(c) })
+
+	require.Equal(t, []byte("hello world"), c.Req().Body())
+}
+
+func Test_Req_UpgradePredicatesWithoutNormalizing(t *testing.T) {
+	t.Parallel()
+	app := New(Config{DisableHeaderNormalizing: true})
+
+	fctx := &fasthttp.RequestCtx{}
+	fctx.Request.Header.DisableNormalizing()
+	fctx.Request.Header.Set("connection", "Upgrade")
+	fctx.Request.Header.Set("upgrade", "websocket")
+	fctx.Request.Header.Set("x-requested-with", "XMLHttpRequest")
+	fctx.Request.Header.Set("range", "bytes=0-5")
+	c := app.AcquireCtx(fctx)
+	t.Cleanup(func() { app.ReleaseCtx(c) })
+
+	require.True(t, c.Req().IsWebSocket())
+	require.True(t, c.Req().XHR())
+
+	rg, err := c.Req().Range(100)
+	require.NoError(t, err)
+	require.Equal(t, "bytes", rg.Type)
+	require.Equal(t, []RangeSet{{Start: 0, End: 5}}, rg.Ranges)
+}
+
+func Test_Res_FormatWithoutNormalizing(t *testing.T) {
+	t.Parallel()
+	app := New(Config{DisableHeaderNormalizing: true})
+
+	fctx := &fasthttp.RequestCtx{}
+	fctx.Request.Header.DisableNormalizing()
+	fctx.Request.Header.Set("accept", "text/html")
+	c := app.AcquireCtx(fctx)
+	t.Cleanup(func() { app.ReleaseCtx(c) })
+
+	err := c.Res().Format(
+		ResFmt{MediaType: "application/json", Handler: func(cc Ctx) error { return cc.SendString("json") }},
+		ResFmt{MediaType: "text/html", Handler: func(cc Ctx) error { return cc.SendString("html") }},
+	)
+	require.NoError(t, err)
+	require.Equal(t, "html", string(c.Response().Body()))
+}
+
+func Test_Res_DelKeyCaseWithoutNormalizing(t *testing.T) {
+	t.Parallel()
+	app := New(Config{DisableHeaderNormalizing: true})
+
+	fctx := &fasthttp.RequestCtx{}
+	fctx.Response.Header.DisableNormalizing()
+	c := app.AcquireCtx(fctx)
+	t.Cleanup(func() { app.ReleaseCtx(c) })
+
+	c.Res().Set("X-Token", "secret")
+	c.Res().Del("x-token")
+	require.Empty(t, string(c.Response().Header.Peek("X-Token")))
 }

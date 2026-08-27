@@ -61,9 +61,10 @@ type Req interface {
 	// Returned value is only valid within the handler. Do not store any references.
 	// Make copies or use the Immutable setting to use the value outside the Handler.
 	Origin() string
-	// headerField returns a request header's field value, matching the field name
-	// case-insensitively (RFC 9110 Section 5.1). Peek is byte-exact, so under
-	// DisableHeaderNormalizing a lower-case "origin:" read as absent.
+	// headerField returns a request header's first non-empty field value, matching
+	// the field name case-insensitively (RFC 9110 Section 5.1). fieldname.First
+	// also steps over a present-but-empty first line, so a value on a later line
+	// is found and this agrees with GetAll on whether the field is there.
 	headerField(name string) []byte
 	// AcceptLanguage returns the Accept-Language request header.
 	// Repeated field lines are combined into one comma-joined list (RFC 9110
@@ -168,6 +169,10 @@ type Req interface {
 	// (RFC 9110 Section 11.6.2), neither decoded nor validated. They view the request
 	// buffer: a credential kept past the handler becomes another request's.
 	Authorization() (scheme, credentials string)
+	// authorizationParts splits the Authorization header at the first space or tab
+	// (RFC 9110 Section 11.4), on raw bytes so each caller materializes only the
+	// strings it needs. A lone token is a scheme without credentials.
+	authorizationParts() (scheme, credentials []byte)
 	// Bearer returns the credentials of a Bearer Authorization header (RFC 6750
 	// Section 2.1), unverified, or "" for another scheme. It views the request
 	// buffer: a token kept past the handler becomes another request's.

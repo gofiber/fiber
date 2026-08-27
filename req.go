@@ -161,11 +161,13 @@ func (r *DefaultReq) Body() []byte {
 
 	request := &r.c.fasthttp.Request
 
-	// Fast path: no Content-Encoding header at all. ContentEncoding uses the
-	// pre-normalized key constant, so absence costs a single cheap lookup.
+	// Fast path: no Content-Encoding header at all. ContentEncoding peeks the
+	// stored key byte-exactly, which is decisive only while fasthttp normalized
+	// the names on the way in — under DisableHeaderNormalizing a lower-case
+	// spelling would read as absent here and skip decompression entirely.
 	// An empty value is still a present field line and must be joined with
 	// duplicates below before RFC 9110 empty-list elements are ignored.
-	if request.Header.ContentEncoding() == nil {
+	if !r.c.app.config.DisableHeaderNormalizing && request.Header.ContentEncoding() == nil {
 		return r.getBody()
 	}
 
@@ -258,18 +260,12 @@ func (r *DefaultReq) Origin() string {
 	return r.c.app.toString(r.headerField(HeaderOrigin))
 }
 
-// headerField returns a request header's field value, matching the field name
-// case-insensitively (RFC 9110 Section 5.1). Peek is byte-exact, so under
-// DisableHeaderNormalizing a lower-case "origin:" read as absent.
+// headerField returns a request header's first non-empty field value, matching
+// the field name case-insensitively (RFC 9110 Section 5.1). fieldname.First
+// also steps over a present-but-empty first line, so a value on a later line
+// is found and this agrees with GetAll on whether the field is there.
 func (r *DefaultReq) headerField(name string) []byte {
-	if v := r.c.fasthttp.Request.Header.Peek(name); len(v) > 0 {
-		return v
-	}
-	if !r.c.app.config.DisableHeaderNormalizing {
-		return nil
-	}
-
-	return fieldname.First(&r.c.fasthttp.Request.Header, name, false)
+	return fieldname.First(&r.c.fasthttp.Request.Header, name, !r.c.app.config.DisableHeaderNormalizing)
 }
 
 // AcceptLanguage returns the Accept-Language request header.
@@ -671,7 +667,7 @@ func (r *DefaultReq) Get(key string, defaultValue ...string) string {
 // If the generic type cannot be matched to a supported type, the function
 // returns the default value (if provided) or the zero value of type V.
 func GetReqHeader[V GenericType](c Ctx, key string, defaultValue ...V) V {
-	v, err := genericParseType[V](c.App().toString(c.Request().Header.Peek(key)))
+	v, err := genericParseType[V](c.App().toString(c.Req().headerField(key)))
 	if err != nil && len(defaultValue) > 0 {
 		return defaultValue[0]
 	}
@@ -699,33 +695,38 @@ func (r *DefaultReq) GetAll(key string) []string {
 // (RFC 9110 Section 11.6.2), neither decoded nor validated. They view the request
 // buffer: a credential kept past the handler becomes another request's.
 func (r *DefaultReq) Authorization() (scheme, credentials string) { //nolint:nonamedreturns // gocritic unnamedResult requires naming the two halves for clarity
+	rawScheme, rawCredentials := r.authorizationParts()
+	app := r.c.app
+	return app.toString(rawScheme), app.toString(rawCredentials)
+}
+
+// authorizationParts splits the Authorization header at the first space or tab
+// (RFC 9110 Section 11.4), on raw bytes so each caller materializes only the
+// strings it needs. A lone token is a scheme without credentials.
+func (r *DefaultReq) authorizationParts() (scheme, credentials []byte) { //nolint:nonamedreturns // the two halves need naming for clarity
 	raw := utils.TrimSpace(r.headerField(HeaderAuthorization))
 	if len(raw) == 0 {
-		return "", ""
+		return nil, nil
 	}
-	app := r.c.app
 	i := utils.IndexAny2(raw, ' ', '\t')
 	if i < 0 {
-		// A lone token is a scheme without credentials, not credentials without
-		// a scheme: RFC 9110 Section 11.4 makes the scheme the mandatory half.
-		return app.toString(raw), ""
+		return raw, nil
 	}
-	return app.toString(raw[:i]), app.toString(utils.TrimSpace(raw[i+1:]))
+	return raw[:i], utils.TrimSpace(raw[i+1:])
 }
 
 // Bearer returns the credentials of a Bearer Authorization header (RFC 6750
 // Section 2.1), unverified, or "" for another scheme. It views the request
 // buffer: a token kept past the handler becomes another request's.
 func (r *DefaultReq) Bearer() string {
-	raw := utils.TrimSpace(r.headerField(HeaderAuthorization))
-	i := utils.IndexAny2(raw, ' ', '\t')
 	// The scheme is compared on the raw bytes rather than through Authorization,
 	// so a header naming another scheme costs no string at all and a Bearer one
 	// materializes only the token.
-	if i < 0 || !utils.EqualFold(utils.UnsafeString(raw[:i]), "Bearer") {
+	scheme, credentials := r.authorizationParts()
+	if len(credentials) == 0 || !utils.EqualFold(utils.UnsafeString(scheme), "Bearer") {
 		return ""
 	}
-	return r.c.app.toString(utils.TrimSpace(raw[i+1:]))
+	return r.c.app.toString(credentials)
 }
 
 // GetHeaders (a.k.a GetReqHeaders) returns the HTTP request headers.
@@ -1095,12 +1096,14 @@ func (r *DefaultReq) IsWebSocket() bool {
 	// Repeated field lines are equivalent to one combined comma-separated
 	// list (RFC 9110 Section 5.2), so inspect every Connection and Upgrade
 	// field line, not just the first.
-	if !headerListContainsToken(r.c.fasthttp.Request.Header.PeekAll(HeaderConnection), "upgrade") {
+	hdr := &r.c.fasthttp.Request.Header
+	canonical := !r.c.app.config.DisableHeaderNormalizing
+	if !headerListContainsToken(fieldname.Lines(hdr, HeaderConnection, canonical), "upgrade") {
 		return false
 	}
 	// Upgrade is a list of protocols, each optionally carrying a "/version"
 	// suffix (RFC 9110 Section 7.8), e.g. "Upgrade: websocket, h2c".
-	return headerListContainsToken(r.c.fasthttp.Request.Header.PeekAll(HeaderUpgrade), "websocket")
+	return headerListContainsToken(fieldname.Lines(hdr, HeaderUpgrade, canonical), "websocket")
 }
 
 // headerListContainsToken reports whether any comma-separated element across
@@ -1144,7 +1147,7 @@ var xmlHTTPRequestBytes = []byte("xmlhttprequest")
 // XHR returns a Boolean property, that is true, if the request's X-Requested-With header field is XMLHttpRequest,
 // indicating that the request was issued by a client library (such as jQuery).
 func (r *DefaultReq) XHR() bool {
-	return utils.EqualFold(r.c.fasthttp.Request.Header.Peek(HeaderXRequestedWith), xmlHTTPRequestBytes)
+	return utils.EqualFold(r.headerField(HeaderXRequestedWith), xmlHTTPRequestBytes)
 }
 
 // Locals makes it possible to pass any values under keys scoped to the request

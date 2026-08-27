@@ -120,7 +120,9 @@ func handleTimeout(
 
 		// If the response is still the default 200/empty, ensure a sensible timeout
 		// response is captured for fasthttp to send.
-		if ctx.Res().StatusCode() == fiber.StatusOK && len(ctx.Response().Body()) == 0 {
+		// Written is stream-safe: Response().Body() would materialize a body
+		// stream the timed-out handler may still be writing, blocking forever.
+		if ctx.Res().StatusCode() == fiber.StatusOK && !ctx.Res().Written() {
 			ctx.Response().SetStatusCode(fiber.StatusRequestTimeout)
 			ctx.Response().SetBodyString(fiber.ErrRequestTimeout.Message)
 		}
