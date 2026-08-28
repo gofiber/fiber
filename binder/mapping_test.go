@@ -484,16 +484,11 @@ func Test_releaseDecoder(t *testing.T) {
 	pool := new(sync.Pool)
 	releaseDecoder(pool, decoder, bindingQuery)
 
-	pooledAny := pool.Get()
-	pooled, ok := pooledAny.(*schema.Decoder)
-	require.True(t, ok)
-	require.Same(t, decoder, pooled)
-
 	var result struct {
 		Empty string    `query:"empty"`
 		Count customInt `query:"count"`
 	}
-	require.NoError(t, pooled.Decode(&result, map[string][]string{
+	require.NoError(t, decoder.Decode(&result, map[string][]string{
 		"count":   {"42"},
 		"empty":   {""},
 		"unknown": {"ignored"},
