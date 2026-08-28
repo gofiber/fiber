@@ -174,14 +174,30 @@ func Test_Ctx_Charset(t *testing.T) {
 			expected:    "",
 		},
 		{
+			// RFC 9110 §5.6.6 permits empty parameter elements.
 			name:        "empty_param_before_charset",
 			contentType: "text/plain; ; charset=utf-8",
 			expected:    "utf-8",
 		},
 		{
-			name:        "charset_with_spaces",
-			contentType: "text/plain; charset = utf-8",
+			name:        "empty_param_between_params",
+			contentType: "text/plain; foo=bar; ; charset=utf-8",
 			expected:    "utf-8",
+		},
+		{
+			name:        "multiple_empty_params",
+			contentType: "text/plain;;; charset=utf-8",
+			expected:    "utf-8",
+		},
+		{
+			name:        "empty_params_with_tabs",
+			contentType: "text/plain;\t;\t;\tcharset=utf-8",
+			expected:    "utf-8",
+		},
+		{
+			name:        "spaces_around_equals_stop_parsing",
+			contentType: "text/plain; charset = utf-8",
+			expected:    "",
 		},
 		{
 			name:        "charset_in_middle",
@@ -221,6 +237,11 @@ func Test_Ctx_Charset(t *testing.T) {
 			expected:    "utf-8",
 		},
 		{
+			name:        "empty_param_syntax_inside_quoted_value",
+			contentType: `text/plain; title="x; ;y"; charset=utf-8`,
+			expected:    "utf-8",
+		},
+		{
 			// RFC 9110 §5.6.4: quoted-pairs must be replaced with the
 			// escaped octet.
 			name:        "quoted_pair_in_charset_value",
@@ -240,10 +261,11 @@ func Test_Ctx_Charset(t *testing.T) {
 			expected:    "utf-8",
 		},
 		{
-			// A quoted value with trailing junk is not a valid quoted-string.
+			// VisitHeaderParams emits a complete quoted value before skipping
+			// trailing bytes up to the next parameter.
 			name:        "quoted_value_with_trailing_junk",
 			contentType: `text/plain; charset="utf-8"x`,
-			expected:    "",
+			expected:    "utf-8",
 		},
 		{
 			name:        "unterminated_quoted_value",
@@ -251,11 +273,11 @@ func Test_Ctx_Charset(t *testing.T) {
 			expected:    "",
 		},
 		{
-			// A bare-token value containing a DQUOTE is invalid; the
-			// parameter is skipped so the later well-formed charset wins.
+			// VisitHeaderParams emits the token prefix and the first charset
+			// parameter wins.
 			name:        "bare_value_with_quote_then_valid_charset",
 			contentType: `text/plain; a=b"; charset=bad"; charset=utf-8`,
-			expected:    "utf-8",
+			expected:    "bad",
 		},
 	}
 
@@ -269,6 +291,20 @@ func Test_Ctx_Charset(t *testing.T) {
 			require.Equal(t, testCase.expected, c.Charset())
 		})
 	}
+}
+
+// go test -run=^$ -bench=Benchmark_Ctx_Charset -benchmem -count=4
+func Benchmark_Ctx_Charset(b *testing.B) {
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	c.Request().Header.Set(HeaderContentType, "text/plain; charset=utf-8")
+
+	var charset string
+	b.ReportAllocs()
+	for b.Loop() {
+		charset = c.Charset()
+	}
+	require.Equal(b, "utf-8", charset)
 }
 
 // go test -run Test_Ctx_HeaderHelpers
