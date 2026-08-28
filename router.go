@@ -50,7 +50,6 @@ type Router interface {
 //
 //nolint:govet // fieldalignment: the router's scan dictates this order, see below
 type Route struct {
-	// betteralign:ignore // field order is optimized for router scan locality
 	// ### important: always keep in sync with the copy method "app.copyRoute" and all creations of Route struct ###
 	//
 	// Field order is load-bearing. App.next scans a bucket of routes and

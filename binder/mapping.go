@@ -38,6 +38,13 @@ var (
 	tags = []string{bindingHeader, bindingRespHeader, bindingCookie, bindingQuery, bindingForm, bindingURI}
 )
 
+const decoderCacheKeyLimit = 512
+
+type pooledDecoder struct {
+	decoder        *schema.Decoder
+	keysSinceReset int
+}
+
 func getDecoderPool(tag string) *sync.Pool {
 	decoderPoolMu.RLock()
 	pool := decoderPoolMap[tag]
@@ -57,12 +64,12 @@ func SetParserDecoder(parserConfig ParserConfig) {
 
 	for _, tag := range tags {
 		decoderPoolMap[tag] = &sync.Pool{New: func() any {
-			return decoderBuilder(tag, parserConfig)
+			return &pooledDecoder{decoder: decoderBuilder(tag, parserConfig)}
 		}}
 	}
 }
 
-func decoderBuilder(aliasTag string, parserConfig ParserConfig) any {
+func decoderBuilder(aliasTag string, parserConfig ParserConfig) *schema.Decoder {
 	decoder := schema.NewDecoder()
 	decoder.IgnoreUnknownKeys(parserConfig.IgnoreUnknownKeys)
 	// Bake the per-source tag once (pools are keyed per tag); doing it per
@@ -82,10 +89,12 @@ func init() {
 
 	for _, tag := range tags {
 		decoderPoolMap[tag] = &sync.Pool{New: func() any {
-			return decoderBuilder(tag, ParserConfig{
-				IgnoreUnknownKeys: true,
-				ZeroEmpty:         true,
-			})
+			return &pooledDecoder{
+				decoder: decoderBuilder(tag, ParserConfig{
+					IgnoreUnknownKeys: true,
+					ZeroEmpty:         true,
+				}),
+			}
 		}}
 	}
 }
@@ -112,45 +121,33 @@ func parse(aliasTag string, out any, data map[string][]string, files ...map[stri
 func parseToStruct(aliasTag string, out any, data map[string][]string, files ...map[string][]*multipart.FileHeader) error {
 	// Get decoder from pool
 	pool := getDecoderPool(aliasTag)
-	schemaDecoder := pool.Get().(*schema.Decoder) //nolint:errcheck,forcetypeassert // not needed
-	if decoderNeedsReset(data, files) {
-		defer releaseDecoder(pool, schemaDecoder, aliasTag)
-	} else {
-		defer pool.Put(schemaDecoder)
-	}
+	decoder := pool.Get().(*pooledDecoder) //nolint:errcheck,forcetypeassert // pool entries are initialized above
+	defer releaseDecoder(pool, decoder, aliasTag, decoderInputSize(data, files))
 
-	if err := schemaDecoder.Decode(out, data, files...); err != nil {
+	if err := decoder.decoder.Decode(out, data, files...); err != nil {
 		return fmt.Errorf("%w", err)
 	}
 
 	return nil
 }
 
-func decoderNeedsReset(data map[string][]string, files []map[string][]*multipart.FileHeader) bool {
-	const maxDirectKeyLen = 64 // Mirrors schema's non-caching direct-path limit.
-
-	needsReset := func(key string) bool {
-		return len(key) > maxDirectKeyLen || strings.IndexByte(key, '.') >= 0
-	}
-	for key := range data {
-		if needsReset(key) {
-			return true
-		}
-	}
+func decoderInputSize(data map[string][]string, files []map[string][]*multipart.FileHeader) int {
+	size := len(data)
 	for _, fileData := range files {
-		for key := range fileData {
-			if needsReset(key) {
-				return true
-			}
-		}
+		size += len(fileData)
 	}
-	return false
+	return size
 }
 
-func releaseDecoder(pool *sync.Pool, decoder *schema.Decoder, aliasTag string) {
-	// Dynamic paths originate from untrusted request keys. Reset their cache
-	// before pooling so they cannot accumulate across requests.
-	decoder.SetAliasTag(aliasTag)
+func releaseDecoder(pool *sync.Pool, decoder *pooledDecoder, aliasTag string, inputSize int) {
+	// Count request keys instead of scanning them on this hot path. Resetting at
+	// the budget bounds request-derived paths retained across pooled uses.
+	if inputSize >= decoderCacheKeyLimit-decoder.keysSinceReset {
+		decoder.decoder.SetAliasTag(aliasTag)
+		decoder.keysSinceReset = 0
+	} else {
+		decoder.keysSinceReset += inputSize
+	}
 	pool.Put(decoder)
 }
 

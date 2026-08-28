@@ -5,11 +5,9 @@ import (
 	"mime/multipart"
 	"reflect"
 	"strconv"
-	"strings"
 	"sync"
 	"testing"
 
-	"github.com/gofiber/schema"
 	"github.com/stretchr/testify/require"
 )
 
@@ -416,9 +414,7 @@ func Test_decoderBuilder(t *testing.T) {
 		IgnoreUnknownKeys: false,
 		ZeroEmpty:         false,
 	}
-	decAny := decoderBuilder(bindingForm, parserConfig)
-	dec, ok := decAny.(*schema.Decoder)
-	require.True(t, ok)
+	dec := decoderBuilder(bindingForm, parserConfig)
 	var out struct {
 		X customInt `custom:"x"`
 	}
@@ -453,9 +449,9 @@ func Test_decoderPoolMapInit(t *testing.T) {
 
 	for _, tag := range tags {
 		decAny := getDecoderPool(tag).Get()
-		dec, ok := decAny.(*schema.Decoder)
+		dec, ok := decAny.(*pooledDecoder)
 		require.True(t, ok)
-		require.NotNil(t, dec)
+		require.NotNil(t, dec.decoder)
 		getDecoderPool(tag).Put(decAny)
 	}
 }
@@ -470,25 +466,27 @@ func Test_releaseDecoder(t *testing.T) {
 		return reflect.ValueOf(customInt(parsed))
 	}
 
-	decoderAny := decoderBuilder(bindingForm, ParserConfig{
-		ParserType: []ParserType{{
-			CustomType: customInt(0),
-			Converter:  converter,
-		}},
-		IgnoreUnknownKeys: true,
-		ZeroEmpty:         true,
-	})
-	decoder, ok := decoderAny.(*schema.Decoder)
-	require.True(t, ok)
+	decoder := &pooledDecoder{
+		decoder: decoderBuilder(bindingForm, ParserConfig{
+			ParserType: []ParserType{{
+				CustomType: customInt(0),
+				Converter:  converter,
+			}},
+			IgnoreUnknownKeys: true,
+			ZeroEmpty:         true,
+		}),
+		keysSinceReset: decoderCacheKeyLimit - 1,
+	}
 
 	pool := new(sync.Pool)
-	releaseDecoder(pool, decoder, bindingQuery)
+	releaseDecoder(pool, decoder, bindingQuery, 1)
+	require.Zero(t, decoder.keysSinceReset)
 
 	var result struct {
 		Empty string    `query:"empty"`
 		Count customInt `query:"count"`
 	}
-	require.NoError(t, decoder.Decode(&result, map[string][]string{
+	require.NoError(t, decoder.decoder.Decode(&result, map[string][]string{
 		"count":   {"42"},
 		"empty":   {""},
 		"unknown": {"ignored"},
@@ -497,40 +495,48 @@ func Test_releaseDecoder(t *testing.T) {
 	require.Empty(t, result.Empty)
 }
 
-func Test_decoderNeedsReset(t *testing.T) {
+func Test_releaseDecoder_RetainsCacheWithinBudget(t *testing.T) {
+	t.Parallel()
+
+	decoder := &pooledDecoder{
+		decoder:        decoderBuilder(bindingForm, ParserConfig{}),
+		keysSinceReset: 2,
+	}
+
+	releaseDecoder(new(sync.Pool), decoder, bindingForm, 3)
+
+	require.Equal(t, 5, decoder.keysSinceReset)
+}
+
+func Test_decoderInputSize(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
 		name  string
 		data  map[string][]string
 		files []map[string][]*multipart.FileHeader
-		want  bool
+		want  int
 	}{
 		{
-			name: "direct key",
-			data: map[string][]string{"name": {"fiber"}},
+			name: "empty",
 		},
 		{
-			name: "nested path",
-			data: map[string][]string{"items.2.name": {"fiber"}},
-			want: true,
+			name: "values",
+			data: map[string][]string{"name": {"fiber"}, "age": {"7"}},
+			want: 2,
 		},
 		{
-			name: "long key",
-			data: map[string][]string{strings.Repeat("a", 65): {"fiber"}},
-			want: true,
-		},
-		{
-			name:  "nested file path",
-			files: []map[string][]*multipart.FileHeader{{"items.0.file": nil}},
-			want:  true,
+			name:  "values and files",
+			data:  map[string][]string{"name": {"fiber"}},
+			files: []map[string][]*multipart.FileHeader{{"avatar": nil}, {"resume": nil}},
+			want:  3,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			require.Equal(t, tt.want, decoderNeedsReset(tt.data, tt.files))
+			require.Equal(t, tt.want, decoderInputSize(tt.data, tt.files))
 		})
 	}
 }
