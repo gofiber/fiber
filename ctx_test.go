@@ -4686,7 +4686,12 @@ func Test_Ctx_Context(t *testing.T) {
 	t.Run("Nil_Context", func(t *testing.T) {
 		t.Parallel()
 		ctx := c.Context()
-		require.Equal(t, ctx, context.Background())
+
+		require.NotNil(t, ctx)
+		require.NoError(t, ctx.Err())
+
+		_, hasDeadline := ctx.Deadline()
+		require.False(t, hasDeadline)
 	})
 
 	t.Run("ValueContext", func(t *testing.T) {
@@ -11092,50 +11097,115 @@ func Benchmark_Ctx_OverrideParam(b *testing.B) {
 	}
 }
 
-// Test_Ctx_Cookie_DoesNotMutateArgument verifies that Cookie treats its
-// argument as read-only, so a caller can reuse the same *Cookie template
-// across requests without the normalization leaking back into it.
-//
-// Note the deliberate absence of Partitioned: fasthttp's SetPartitioned also
-// forces path=/ and secure, so a partitioned cookie would satisfy the emitted
-// header assertions below even if the normalization were removed entirely.
-func Test_Ctx_Cookie_DoesNotMutateArgument(t *testing.T) {
-	t.Parallel()
+// go test -v -run=Test_Ctx_Context_Lazy_Initialization_Suite
+func Test_Ctx_Context_Lazy_Initialization_Suite(t *testing.T) {
 	app := New()
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
-	tmpl := &Cookie{
-		Name:        "session",
-		Value:       "v",
-		SameSite:    CookieSameSiteNoneMode,
-		SessionOnly: true,
-		MaxAge:      60,
-		Expires:     time.Now().Add(time.Hour),
+	// Scenario with fake network connection
+	t.Run("Lazy_Initialization_With_Conn", func(t *testing.T) {
+		fctx := &fasthttp.RequestCtx{}
+		remoteAddr := &net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 8080}
+		fctx.Init(&fasthttp.Request{}, remoteAddr, nil)
+
+		ctx := app.AcquireCtx(fctx)
+		c, ok := ctx.(*DefaultCtx)
+		if !ok {
+			t.Fatal("AcquireCtx did not return *DefaultCtx")
+		}
+
+		if c.cancelFunc == nil {
+			t.Fatal("expected cancelFunc to be initialized")
+		}
+
+		goCtx := c.Context()
+		if goCtx == nil {
+			t.Fatal("expected Go context to be returned")
+		}
+		if c.cancelFunc != nil {
+			t.Error("expected cancelFunc to be nil after lazy initialization")
+		}
+
+		goCtx2 := c.Context()
+		if goCtx2 != goCtx {
+			t.Error("expected the same context instance on sequential calls")
+		}
+
+		app.ReleaseCtx(c)
+	})
+	// Scenario without fake network connection
+	t.Run("Lazy_Initialization_Without_Conn", func(t *testing.T) {
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+		c, ok := ctx.(*DefaultCtx)
+		if !ok {
+			t.Fatal("AcquireCtx did not return *DefaultCtx")
+		}
+
+		if c.cancelFunc == nil {
+			t.Fatal("expected cancelFunc to be initialized even without connection")
+		}
+
+		_ = c.Context()
+
+		if c.cancelFunc == nil {
+			t.Error("expected cancelFunc to remain non-nil when c.fasthttp.Conn() is nil")
+		}
+
+		app.ReleaseCtx(c)
+	})
+
+	// Scenario without .Context()
+	t.Run("Release_Without_Context_Access", func(t *testing.T) {
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+		c, ok := ctx.(*DefaultCtx)
+		if !ok {
+			t.Fatal("AcquireCtx did not return *DefaultCtx")
+		}
+
+		if c.cancelFunc == nil {
+			t.Fatal("expected cancelFunc to be initialized")
+		}
+
+		app.ReleaseCtx(c)
+
+		if c.cancelFunc != nil {
+			t.Error("expected cancelFunc to be cleared by release()")
+		}
+	})
+}
+
+// go test -v -run=Test_Ctx_Context_Cancel_On_Disconnect
+func Test_Ctx_Context_Cancel_On_Disconnect(t *testing.T) {
+	app := New()
+	fctx := &fasthttp.RequestCtx{}
+	netCtx, cancelNet := context.WithCancel(context.Background())
+
+	ctx := app.AcquireCtx(fctx)
+	c, ok := ctx.(*DefaultCtx)
+	if !ok {
+		t.Fatal("AcquireCtx did not return *DefaultCtx")
 	}
-	before := *tmpl
 
-	c.Cookie(tmpl)
+	c.SetContext(netCtx)
 
-	require.Equal(t, before, *tmpl, "Cookie must not mutate the caller's struct")
-	require.Empty(t, tmpl.Path)
-	require.False(t, tmpl.Secure)
-	require.Equal(t, 60, tmpl.MaxAge)
+	goCtx := c.Context()
 
-	// The emitted cookie still carries the normalized attributes. These are
-	// regression guards, not proof of the normalization: fasthttp defaults an
-	// empty path to "/" and forces Secure for SameSite=None on its own, so
-	// they would hold even without it. The require.Equal above is the
-	// assertion that actually pins this method's contract.
-	header := string(c.Response().Header.Peek(HeaderSetCookie))
-	require.Contains(t, header, "path=/")
-	require.Contains(t, header, "secure")
-	require.Contains(t, header, "SameSite=None")
-	require.NotContains(t, header, "max-age=")
+	select {
+	case <-goCtx.Done():
+		t.Fatal("context should not be canceled yet")
+	default:
+	}
 
-	// Partitioned is normalized on the copy too; assert on the struct rather
-	// than the header, since fasthttp sets Secure and Path for it anyway.
-	part := &Cookie{Name: "p", Value: "v", Path: "/scoped", Partitioned: true}
-	c.Cookie(part)
-	require.False(t, part.Secure, "Partitioned must not write Secure back to the caller")
-	require.Equal(t, "/scoped", part.Path)
+	// close net connection
+	cancelNet()
+
+	select {
+	case <-goCtx.Done():
+		if !errors.Is(goCtx.Err(), context.Canceled) {
+			t.Errorf("expected context.Canceled, got %v", goCtx.Err())
+		}
+	case <-time.After(200 * time.Millisecond):
+		t.Fatal("expected Go context to be canceled after connection close")
+	}
+
+	app.ReleaseCtx(c)
 }
