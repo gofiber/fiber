@@ -5,6 +5,7 @@ import (
 	"mime/multipart"
 	"reflect"
 	"strconv"
+	"strings"
 	"sync"
 	"testing"
 
@@ -459,6 +460,104 @@ func Test_decoderPoolMapInit(t *testing.T) {
 	}
 }
 
+func Test_releaseDecoder(t *testing.T) {
+	t.Parallel()
+
+	type customInt int
+	converter := func(value string) reflect.Value {
+		parsed, err := strconv.Atoi(value)
+		require.NoError(t, err)
+		return reflect.ValueOf(customInt(parsed))
+	}
+
+	decoderAny := decoderBuilder(bindingForm, ParserConfig{
+		ParserType: []ParserType{{
+			CustomType: customInt(0),
+			Converter:  converter,
+		}},
+		IgnoreUnknownKeys: true,
+		ZeroEmpty:         true,
+	})
+	decoder, ok := decoderAny.(*schema.Decoder)
+	require.True(t, ok)
+
+	pool := new(sync.Pool)
+	releaseDecoder(pool, decoder, bindingQuery)
+
+	pooledAny := pool.Get()
+	pooled, ok := pooledAny.(*schema.Decoder)
+	require.True(t, ok)
+	require.Same(t, decoder, pooled)
+
+	var result struct {
+		Empty string    `query:"empty"`
+		Count customInt `query:"count"`
+	}
+	require.NoError(t, pooled.Decode(&result, map[string][]string{
+		"count":   {"42"},
+		"empty":   {""},
+		"unknown": {"ignored"},
+	}))
+	require.Equal(t, customInt(42), result.Count)
+	require.Empty(t, result.Empty)
+}
+
+func Test_decoderNeedsReset(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		data  map[string][]string
+		files []map[string][]*multipart.FileHeader
+		want  bool
+	}{
+		{
+			name: "direct key",
+			data: map[string][]string{"name": {"fiber"}},
+		},
+		{
+			name: "nested path",
+			data: map[string][]string{"items.2.name": {"fiber"}},
+			want: true,
+		},
+		{
+			name: "long key",
+			data: map[string][]string{strings.Repeat("a", 65): {"fiber"}},
+			want: true,
+		},
+		{
+			name:  "nested file path",
+			files: []map[string][]*multipart.FileHeader{{"items.0.file": nil}},
+			want:  true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, tt.want, decoderNeedsReset(tt.data, tt.files))
+		})
+	}
+}
+
+func Test_parseToStruct_ReleasesDecoderAfterError(t *testing.T) {
+	t.Parallel()
+
+	type payload struct {
+		Count int `query:"count"`
+	}
+
+	require.Error(t, parseToStruct(bindingQuery, new(payload), map[string][]string{
+		"count": {"not-an-integer"},
+	}))
+
+	var result payload
+	require.NoError(t, parseToStruct(bindingQuery, &result, map[string][]string{
+		"count": {"42"},
+	}))
+	require.Equal(t, 42, result.Count)
+}
+
 func TestSetParserDecoderConcurrentAccess(t *testing.T) {
 	t.Parallel()
 
@@ -611,5 +710,45 @@ func Benchmark_equalFieldType(b *testing.B) {
 		equalFieldType(&user, reflect.String, "name", "query")
 		equalFieldType(&user, reflect.Int, "age", "query")
 		equalFieldType(&user, reflect.String, "user.name", "query")
+	}
+}
+
+func Benchmark_parseToStruct_DynamicPaths(b *testing.B) {
+	type item struct {
+		Name string `query:"name"`
+	}
+	type payload struct {
+		Items []item `query:"items"`
+	}
+
+	const pathCount = 128
+	paths := make([]map[string][]string, pathCount)
+	for i := range pathCount {
+		path := "items." + strconv.Itoa(i) + ".name"
+		paths[i] = map[string][]string{path: {"fiber"}}
+	}
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; b.Loop(); i++ {
+		var result payload
+		if err := parseToStruct(bindingQuery, &result, paths[i%pathCount]); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+func Benchmark_parseToStruct_DirectPath(b *testing.B) {
+	type payload struct {
+		Name string `query:"name"`
+	}
+	data := map[string][]string{"name": {"fiber"}}
+
+	b.ReportAllocs()
+	for b.Loop() {
+		var result payload
+		if err := parseToStruct(bindingQuery, &result, data); err != nil {
+			b.Fatal(err)
+		}
 	}
 }

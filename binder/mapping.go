@@ -113,15 +113,45 @@ func parseToStruct(aliasTag string, out any, data map[string][]string, files ...
 	// Get decoder from pool
 	pool := getDecoderPool(aliasTag)
 	schemaDecoder := pool.Get().(*schema.Decoder) //nolint:errcheck,forcetypeassert // not needed
-	defer pool.Put(schemaDecoder)
+	if decoderNeedsReset(data, files) {
+		defer releaseDecoder(pool, schemaDecoder, aliasTag)
+	} else {
+		defer pool.Put(schemaDecoder)
+	}
 
-	// Alias tag is baked in at build time (see decoderBuilder); setting it here
-	// would reset the decoder's type cache on every request.
 	if err := schemaDecoder.Decode(out, data, files...); err != nil {
 		return fmt.Errorf("%w", err)
 	}
 
 	return nil
+}
+
+func decoderNeedsReset(data map[string][]string, files []map[string][]*multipart.FileHeader) bool {
+	const maxDirectKeyLen = 64 // Mirrors schema's non-caching direct-path limit.
+
+	needsReset := func(key string) bool {
+		return len(key) > maxDirectKeyLen || strings.IndexByte(key, '.') >= 0
+	}
+	for key := range data {
+		if needsReset(key) {
+			return true
+		}
+	}
+	for _, fileData := range files {
+		for key := range fileData {
+			if needsReset(key) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func releaseDecoder(pool *sync.Pool, decoder *schema.Decoder, aliasTag string) {
+	// Dynamic paths originate from untrusted request keys. Reset their cache
+	// before pooling so they cannot accumulate across requests.
+	decoder.SetAliasTag(aliasTag)
+	pool.Put(decoder)
 }
 
 // Parse data into the map
