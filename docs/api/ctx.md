@@ -3116,6 +3116,8 @@ app.Get("/", func(c fiber.Ctx) error {
 
 Adds the given header field to the [Vary](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Vary) response header. This will append the header if not already listed; otherwise, it leaves it listed in the current location.
 
+Field names are compared case-insensitively (RFC 9110 Section 5.1). The first spelling is kept, so `Vary("accept")` followed by `Vary("Accept")` stays `Vary: accept`.
+
 :::info
 Multiple fields are **allowed**. Per RFC 9110, the wildcard `"*"` is only meaningful as the sole member of the field: adding `"*"` collapses the header to a single `*`, and once `*` is present no further fields are appended.
 :::

@@ -289,6 +289,32 @@ func Test_AppendUnique(t *testing.T) {
 	}
 }
 
+func Test_AppendUniqueFold(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name   string
+		list   string
+		want   string
+		values []string
+	}{
+		{"into empty", "", "Accept", []string{"Accept"}},
+		{"appends new", "Accept", "Accept, Origin", []string{"Origin"}},
+		{"skips present", "Accept, Origin", "", []string{"Accept"}},
+		{"skips empty values", "Accept", "", []string{""}},
+		{"nothing to add", "Accept", "", nil},
+		{"partial add", "Accept", "Accept, Origin", []string{"Accept", "Origin"}},
+		{"case is the same field", "Accept", "", []string{"accept"}},
+		{"keeps first spelling", "accept", "", []string{"Accept"}},
+		{"first spelling in one call", "", "accept", []string{"accept", "Accept"}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, tc.want, AppendUniqueFold(tc.list, tc.values))
+		})
+	}
+}
+
 func Test_Join_AliasesSingleLine(t *testing.T) {
 	t.Parallel()
 	line := []byte("gzip")
