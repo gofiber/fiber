@@ -214,17 +214,17 @@ func Join(lines [][]byte) []byte {
 //
 // Use [AppendUniqueFold] when the members are HTTP field names.
 func AppendUnique(list string, values []string) string {
-	return appendUnique(list, values, Contains)
+	return appendIfAbsent(list, values, Contains)
 }
 
 // AppendUniqueFold is [AppendUnique] with presence decided by [ContainsFold].
 // Use it when the list members are HTTP field names, which RFC 9110 Section 5.1
 // treats as case-insensitive. The first spelling is kept.
 func AppendUniqueFold(list string, values []string) string {
-	return appendUnique(list, values, ContainsFold)
+	return appendIfAbsent(list, values, ContainsFold)
 }
 
-func appendUnique(list string, values []string, present func(list, value string) bool) string {
+func appendIfAbsent(list string, values []string, present func(list, value string) bool) string {
 	original := list
 	for _, value := range values {
 		if value == "" {
