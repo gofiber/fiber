@@ -57,15 +57,19 @@ func getDecoderPool(tag string) *sync.Pool {
 	return pool
 }
 
+func newDecoderPool(aliasTag string, parserConfig ParserConfig) *sync.Pool {
+	return &sync.Pool{New: func() any {
+		return &pooledDecoder{decoder: decoderBuilder(aliasTag, parserConfig)}
+	}}
+}
+
 // SetParserDecoder allow globally change the option of form decoder, update decoderPool
 func SetParserDecoder(parserConfig ParserConfig) {
 	decoderPoolMu.Lock()
 	defer decoderPoolMu.Unlock()
 
 	for _, tag := range tags {
-		decoderPoolMap[tag] = &sync.Pool{New: func() any {
-			return &pooledDecoder{decoder: decoderBuilder(tag, parserConfig)}
-		}}
+		decoderPoolMap[tag] = newDecoderPool(tag, parserConfig)
 	}
 }
 
@@ -88,14 +92,10 @@ func init() {
 	defer decoderPoolMu.Unlock()
 
 	for _, tag := range tags {
-		decoderPoolMap[tag] = &sync.Pool{New: func() any {
-			return &pooledDecoder{
-				decoder: decoderBuilder(tag, ParserConfig{
-					IgnoreUnknownKeys: true,
-					ZeroEmpty:         true,
-				}),
-			}
-		}}
+		decoderPoolMap[tag] = newDecoderPool(tag, ParserConfig{
+			IgnoreUnknownKeys: true,
+			ZeroEmpty:         true,
+		})
 	}
 }
 

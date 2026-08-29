@@ -456,6 +456,18 @@ func Test_decoderPoolMapInit(t *testing.T) {
 	}
 }
 
+func Test_newDecoderPool(t *testing.T) {
+	t.Parallel()
+
+	pool := newDecoderPool(bindingQuery, ParserConfig{
+		IgnoreUnknownKeys: true,
+		ZeroEmpty:         true,
+	})
+	decoder, ok := pool.Get().(*pooledDecoder)
+	require.True(t, ok)
+	require.NotNil(t, decoder.decoder)
+}
+
 func Test_releaseDecoder(t *testing.T) {
 	t.Parallel()
 
