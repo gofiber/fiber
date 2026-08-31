@@ -58,7 +58,7 @@ type Config struct {
 var ConfigDefault = Config{
 	Next: func(c fiber.Ctx) bool {
 		// Skip middleware if the request was done using a safe HTTP method
-		return fiber.IsMethodSafe(c.Method())
+		return c.IsSafe()
 	},
 
 	Lifetime: 30 * time.Minute,

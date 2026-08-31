@@ -704,6 +704,44 @@ The `TypeConstraint` type, `Constraint.ID`, and `Constraint.RegexCompiler` field
 - **OverrideParam**: Overwrites the value of an existing route parameter, or does nothing if the parameter does not exist
 - **IsWebSocket**: Reports if the request attempts a WebSocket upgrade.
 - **IsPreflight**: Identifies CORS preflight requests before handlers run.
+- **ID**: Returns the connection-unique identifier of the request, without depending on a header.
+- **StartTime** / **Elapsed**: Report when the server began handling the request and how long it has taken so far.
+- **LocalAddr** / **RemoteAddr**: Return the connection's addresses as `net.Addr`, where `IP` returns a string.
+- **Hijack** / **Hijacked**: Take over the connection after the response is sent, and report whether that has happened.
+- **RouteName**: Returns the name of the route currently executing.
+- **IsFinal**: Reports whether the current handler is the last one of a matched, non-middleware route.
+- **MountPath**: Returns the prefix the sub-app owning the current route was mounted under.
+- **Error**: Builds a `*fiber.Error` with the given status code, so a handler can reject a request in one line.
+- **GetAll**: Returns every field line of a request header, where `Get` returns only the first.
+- **Authorization** / **Bearer**: Split the `Authorization` header into scheme and credentials, and read a `Bearer` token.
+- **Origin**: Returns the `Origin` request header.
+- **ContentLength**: Returns the value of the `Content-Length` request header; `Res` carries one for the response.
+- **ContentType**: Returns the `Content-Type` request header with its parameters; `Res` carries one for the response.
+- **BodyStream**: Returns the request body as a stream when `StreamRequestBody` is enabled.
+- **URI**: Returns the parsed `*fasthttp.URI` of the request.
+- **CookieNames** / **AllCookies**: Enumerate the cookies the client sent.
+- **IfNoneMatch** / **IfModifiedSince**: Read the conditional-request headers, parsed.
+- **IsSafe** / **IsIdempotent**: Classify the request method per RFC 9110.
+- **Add**: Appends a response header as a new field line, where `Append` folds values into one.
+- **Del**: Removes a response header.
+- **StatusCode**: Returns the status code set on the response, the read side of `Status`.
+- **Body** (on `Res`): Returns the response body buffered so far.
+- **ResetBody**: Discards the response body, keeping the status and headers.
+- **Written**: Reports whether anything has been written to the response body yet.
+- **ContentType**: Returns the `Content-Type` response header, the read side of `Type`.
+- **GetCookie** / **Cookies** (on `Res`): Read back the cookies the response is set to send.
+- **NoContent**: Replies `204 No Content`, discarding any body and the `Content-Type`.
+
+### Req and Res Method Placement
+
+The request helpers listed above are defined on `Req`, so they are reachable both as `c.UserAgent()` and as
+`c.Req().UserAgent()`. This also applies to `Path`, `Secure`, `XHR`, `HasBody`, `IsWebSocket`, `IsPreflight`
+and the `Accept`/`Content-Type` helpers, which are request methods and are now on `Req` as well.
+
+`Req` and `Res` each define a `Body`, `ContentLength` and `ContentType`. On `Ctx` these resolve to the
+**request**, as `Get` already did; use `c.Res().Body()`, `c.Res().ContentLength()` and `c.Res().ContentType()`
+for the response. The response cookies are `c.Res().GetCookies()`, named apart from `Req.Cookies` so that a
+`Ctx` keeps satisfying `fiber.Res`.
 
 ### Removed Methods
 
@@ -735,6 +773,21 @@ The `TypeConstraint` type, `Constraint.ID`, and `Constraint.RegexCompiler` field
   `filename="report 2024.txt"` (previously `filename="report+2024.txt"`), with
   quotes and backslashes escaped as quoted-pairs, so browsers save files under
   their real names.
+- **Get, GetReqHeader and the request header helpers**: Field names are now matched case-insensitively, as
+  [RFC 9110, Section 5.1](https://www.rfc-editor.org/rfc/rfc9110#section-5.1) requires. This is only observable
+  under `DisableHeaderNormalizing: true`, where the store keeps the spelling the peer sent: with a
+  `x-test: yes` line, `c.Get("X-Test")` returned `""` in v2 and returns `"yes"` now. The default configuration
+  is unchanged, because fasthttp canonicalizes the names on the way in.
+- **Fresh()**: `If-None-Match`, `If-Modified-Since` and `Cache-Control` are read case-insensitively for the
+  same reason, so `c.Fresh()` can now return `true` where it returned `false` under `DisableHeaderNormalizing`.
+  That changes which requests are answered `304 Not Modified`.
+- **SendStatus()**: For a status that disallows a body — `1xx`, `204` and `304` — the response body and any
+  `Content-Length` already set are now dropped, per
+  [RFC 9110, Section 8.6](https://www.rfc-editor.org/rfc/rfc9110#section-8.6). `c.Set(fiber.HeaderContentLength, "42")`
+  followed by `c.SendStatus(204)` previously put `Content-Length: 42` on the wire, along with a `Content-Type`
+  fasthttp emits for a declared length; neither line is sent now. `205 Reset Content` still sends
+  `Content-Length: 0`, which [Section 15.3.6](https://www.rfc-editor.org/rfc/rfc9110#section-15.3.6) requires.
+  Unlike the two above, this applies under the default configuration.
 - **Context()**: Renamed to `RequestCtx()` to access the underlying `fasthttp.RequestCtx`.
 - **IP()**: When `EnableIPValidation` is `true` and `TrustProxyConfig` is set, `c.IP()` now walks the `X-Forwarded-For` chain from right to left and returns the first non-trusted IP, instead of the leftmost syntactically valid IP. This closes an IP-spoofing vector where an attacker could prepend a fake address and have it returned by `c.IP()`. Apps with `EnableIPValidation = false` (the default) are unaffected. See [`Ctx.IP`](./api/ctx.md#ip) and the [reverse proxy guide](./guide/reverse-proxy.md#getting-the-real-client-ip-address) for details.
 

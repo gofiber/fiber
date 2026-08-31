@@ -145,10 +145,10 @@ func createTagMap(cfg *Config) map[string]LogFunc {
 			return writeSanitized(output, c.Body())
 		},
 		TagBytesReceived: func(output Buffer, c fiber.Ctx, _ *Data, _ string) (int, error) {
-			return appendInt(output, c.Request().Header.ContentLength())
+			return appendInt(output, c.Req().ContentLength())
 		},
 		TagBytesSent: func(output Buffer, c fiber.Ctx, _ *Data, _ string) (int, error) {
-			return appendInt(output, c.Response().Header.ContentLength())
+			return appendInt(output, c.Res().ContentLength())
 		},
 		TagRoute: func(output Buffer, c fiber.Ctx, _ *Data, _ string) (int, error) {
 			// Normally the registered pattern, but Ctx.Route falls back to a
@@ -157,7 +157,10 @@ func createTagMap(cfg *Config) map[string]LogFunc {
 			return writeSanitizedString(output, c.Route().Path)
 		},
 		TagResBody: func(output Buffer, c fiber.Ctx, _ *Data, _ string) (int, error) {
-			return writeSanitized(output, c.Response().Body())
+			// Res.Body answers nil for a streamed response rather than draining
+			// it, so logging cannot buffer an SSE or SendFile body it was only
+			// meant to observe.
+			return writeSanitized(output, c.Res().Body())
 		},
 		TagReqHeaders: func(output Buffer, c fiber.Ctx, _ *Data, _ string) (int, error) {
 			out := make(map[string][]string)
@@ -172,7 +175,7 @@ func createTagMap(cfg *Config) map[string]LogFunc {
 			return writeSanitizedString(output, strings.Join(reqHeaders, "&"))
 		},
 		TagQueryStringParams: func(output Buffer, c fiber.Ctx, _ *Data, _ string) (int, error) {
-			return writeSanitizedString(output, c.Request().URI().QueryArgs().String())
+			return writeSanitizedString(output, c.Req().URI().QueryArgs().String())
 		},
 
 		TagBlack: func(output Buffer, c fiber.Ctx, _ *Data, _ string) (int, error) {
@@ -244,9 +247,9 @@ func createTagMap(cfg *Config) map[string]LogFunc {
 		TagStatus: func(output Buffer, c fiber.Ctx, _ *Data, _ string) (int, error) {
 			if cfg.areColorsEnabled {
 				colors := c.App().Config().ColorScheme
-				return fmt.Fprintf(output, "%s%3d%s", statusColor(c.Response().StatusCode(), &colors), c.Response().StatusCode(), colors.Reset)
+				return fmt.Fprintf(output, "%s%3d%s", statusColor(c.Res().StatusCode(), &colors), c.Res().StatusCode(), colors.Reset)
 			}
-			return appendInt(output, c.Response().StatusCode())
+			return appendInt(output, c.Res().StatusCode())
 		},
 		TagMethod: func(output Buffer, c fiber.Ctx, _ *Data, _ string) (int, error) {
 			if cfg.areColorsEnabled {

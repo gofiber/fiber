@@ -14,7 +14,7 @@ func shouldSkip(c fiber.Ctx) bool {
 		return true
 	}
 
-	status := c.Response().StatusCode()
+	status := c.Res().StatusCode()
 	if status < 200 ||
 		status == fiber.StatusNoContent ||
 		status == fiber.StatusResetContent ||
@@ -26,8 +26,9 @@ func shouldSkip(c fiber.Ctx) bool {
 		return true
 	}
 
-	// Skip body length check for streaming responses to avoid materializing the stream
-	if !c.Response().IsBodyStream() && len(c.Response().Body()) == 0 {
+	// Written counts a stream without draining it, so a streaming response is
+	// never mistaken for an empty one.
+	if !c.Res().Written() {
 		return true
 	}
 

@@ -101,7 +101,7 @@ func New(config ...Config) fiber.Handler {
 		// Execute the error handler first
 		handlerErr := cfg.ErrorHandler(c, err)
 
-		status := c.Response().StatusCode()
+		status := c.Res().StatusCode()
 		if status == fiber.StatusUnauthorized || status == fiber.StatusProxyAuthRequired {
 			header := fiber.HeaderWWWAuthenticate
 			if status == fiber.StatusProxyAuthRequired {

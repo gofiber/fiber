@@ -524,7 +524,7 @@ func (s *Session) delSession() {
 		switch ext.Source {
 		case extractors.SourceHeader:
 			s.ctx.Request().Header.Del(ext.Key)
-			s.ctx.Response().Header.Del(ext.Key)
+			s.ctx.Res().Del(ext.Key)
 		case extractors.SourceCookie:
 			s.ctx.Request().Header.DelCookie(ext.Key)
 			s.ctx.Response().Header.DelCookie(ext.Key)

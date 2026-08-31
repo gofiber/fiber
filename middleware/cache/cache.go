@@ -711,7 +711,7 @@ func New(config ...Config) fiber.Handler {
 		sharedCacheMode := !hasAuthorization || isSharedCacheAllowed
 
 		// Don't cache response if status code is not cacheable
-		if _, ok := cacheableStatusCodes[c.Response().StatusCode()]; !ok {
+		if _, ok := cacheableStatusCodes[c.Res().StatusCode()]; !ok {
 			markUnreachable()
 			return nil
 		}
@@ -830,7 +830,7 @@ func New(config ...Config) fiber.Handler {
 		e = manager.acquire()
 		// Cache response
 		e.body = utils.CopyBytes(c.Response().Body())
-		e.status = c.Response().StatusCode()
+		e.status = c.Res().StatusCode()
 		e.ctype = utils.CopyBytes(c.Response().Header.ContentType())
 		e.cencoding = utils.CopyBytes(c.Response().Header.Peek(fiber.HeaderContentEncoding))
 		e.private = false

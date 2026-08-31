@@ -5,6 +5,7 @@
 package etag
 
 import (
+	"slices"
 	"strings"
 
 	"github.com/gofiber/fiber/v3/internal/headerlist"
@@ -54,14 +55,31 @@ func MatchStrong(s, etag string) bool {
 	return n1 == n2
 }
 
+// Split returns the entity tags in a raw If-None-Match or If-Match field value.
+// A comma inside a quoted opaque-tag does not separate it (RFC 9110
+// Section 8.8.3), and empty list elements are skipped. Returns nil for no tags.
+func Split(header string) []string {
+	if header == "" {
+		return nil
+	}
+
+	// One more than the commas is an upper bound: a comma inside a quoted
+	// opaque-tag only over-estimates, never under.
+	tags := slices.AppendSeq(make([]string, 0, strings.Count(header, ",")+1), headerlist.AllQuoted(header))
+	if len(tags) == 0 {
+		return nil
+	}
+	return tags
+}
+
 // AnyMatch reports whether any entity tag in the raw If-None-Match field value
 // matches etag. Comparison is weak as defined by RFC 9110 Section 8.8.3.2, and
 // "*" matches every entity tag. An empty field value matches nothing.
 func AnyMatch(header, etag string) bool {
-	header = utils.TrimSpace(header)
+	rest := utils.TrimSpace(header)
 
 	// Short-circuit the wildcard case: "*" matches any entity tag.
-	if header == "*" {
+	if rest == "*" {
 		return true
 	}
 

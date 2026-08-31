@@ -12,12 +12,11 @@ import (
 	"io"
 	"maps"
 	"mime/multipart"
-	"strings"
+	"net"
 	"sync"
 	"sync/atomic"
 	"time"
 
-	"github.com/gofiber/fiber/v3/internal/headerlist"
 	"github.com/gofiber/utils/v2"
 	"github.com/valyala/bytebufferpool"
 	"github.com/valyala/fasthttp"
@@ -201,6 +200,34 @@ func (c *DefaultCtx) Response() *fasthttp.Response {
 	return &c.fasthttp.Response
 }
 
+// Body returns the request body, decompressing it when the request declares a
+// Content-Encoding the app accepts. Req and Res both carry a Body, so on Ctx
+// the request wins, as it does for Get; use Res().Body() for the response.
+func (c *DefaultCtx) Body() []byte {
+	return c.DefaultReq.Body()
+}
+
+// ContentLength returns the value of the Content-Length request header. Req and
+// Res both carry one, so on Ctx the request wins, as it does for Get; use
+// Res().ContentLength() for the response.
+func (c *DefaultCtx) ContentLength() int {
+	return c.DefaultReq.ContentLength()
+}
+
+// ContentType returns the Content-Type request header, parameters included. Req
+// and Res both carry one, so on Ctx the request wins, as it does for Get; use
+// Res().ContentType() for the response.
+func (c *DefaultCtx) ContentType() string {
+	return c.DefaultReq.ContentType()
+}
+
+// Cookies returns the request cookie with the given key, or defaultValue. Only
+// valid within the handler unless Immutable is set. For the cookies the response
+// is set to send, use Res().GetCookies().
+func (c *DefaultCtx) Cookies(key string, defaultValue ...string) string {
+	return c.DefaultReq.Cookies(key, defaultValue...)
+}
+
 // Get returns the HTTP request header specified by field.
 // Field names are case-insensitive
 // Returned value is only valid within the handler. Do not store any references.
@@ -299,24 +326,6 @@ func (c *DefaultCtx) setHandlerCtx(ctx CustomCtx) {
 // Make copies or use the Immutable setting to use the value outside the Handler.
 func (c *DefaultCtx) OriginalURL() string {
 	return c.app.toString(c.fasthttp.Request.Header.RequestURI())
-}
-
-// Path returns the path part of the request URL.
-// Optionally, you could override the path.
-// Make copies or use the Immutable setting to use the value outside the Handler.
-func (c *DefaultCtx) Path(override ...string) string {
-	if len(override) != 0 && string(c.path) != override[0] {
-		// Set new path to context
-		c.pathOriginal = override[0]
-
-		// Set new path to request context
-		c.fasthttp.Request.URI().SetPath(c.pathOriginal)
-		// Prettify path
-		c.configDependentPaths()
-		// The detection path/tree hash changed; invalidate the lookahead index.
-		c.firstMatchIndex = -1
-	}
-	return c.app.toString(c.path)
 }
 
 // RequestID returns the request identifier from the response header or request header.
@@ -455,6 +464,36 @@ func (c *DefaultCtx) FullPath() string {
 	return c.Route().Path
 }
 
+// RouteName returns the name of the route currently executing, or "" when it is
+// unnamed. Inside middleware that is the middleware's own route; use
+// Endpoint().Name to look ahead to the one that will handle the request.
+func (c *DefaultCtx) RouteName() string {
+	// Route() builds a synthetic Route when none matched, and that one never
+	// carries a Name — so the allocation could only ever produce "".
+	if c.route == nil {
+		return ""
+	}
+	return c.route.Name
+}
+
+// MountPath returns the prefix the sub-app owning the current route was mounted
+// under, or "" for a top-level route. Path is not relative to it. One *App
+// mounted twice reports its last prefix, as App.MountPath does.
+func (c *DefaultCtx) MountPath() string {
+	if c.app == nil {
+		return ""
+	}
+	// A route with no recorded owner is this app's own, so it is not under a
+	// mount at all — reading the app's own prefix here would answer with a
+	// mount the request never went through.
+	owner := c.app.routeOwner(c.route)
+	if owner == nil {
+		return ""
+	}
+
+	return owner.MountPath()
+}
+
 // Matched returns true if the current request path was matched by the router.
 func (c *DefaultCtx) Matched() bool {
 	return c.getMatched()
@@ -472,23 +511,11 @@ func (c *DefaultCtx) IsMiddleware() bool {
 	return c.indexHandler+1 < len(c.route.Handlers)
 }
 
-// HasBody returns true if the request declares a body via Content-Length, Transfer-Encoding, or already buffered payload data.
-func (c *DefaultCtx) HasBody() bool {
-	hdr := &c.fasthttp.Request.Header
-
-	switch cl := hdr.ContentLength(); {
-	case cl > 0:
-		return true
-	case cl == -1:
-		// fasthttp reports -1 for Transfer-Encoding: chunked bodies.
-		return true
-	case cl == 0:
-		if hasTransferEncodingBody(hdr) {
-			return true
-		}
-	}
-
-	return len(c.fasthttp.Request.Body()) > 0
+// IsFinal reports whether this is the last handler of a matched non-middleware
+// route, so nothing further on that route runs. It describes the route, not the
+// request: another route can still match, and a Use route is never final.
+func (c *DefaultCtx) IsFinal() bool {
+	return c.route != nil && !c.IsMiddleware()
 }
 
 // OverrideParam overwrites a route parameter value by name.
@@ -522,92 +549,6 @@ func (c *DefaultCtx) OverrideParam(name, value string) {
 			return
 		}
 	}
-}
-
-func hasTransferEncodingBody(hdr *fasthttp.RequestHeader) bool {
-	// Repeated field lines form one combined list (RFC 9110 Section 5.2),
-	// so every Transfer-Encoding line must be inspected, not just the first.
-	if lines := hdr.PeekAll(HeaderTransferEncoding); len(lines) > 0 {
-		for _, line := range lines {
-			if transferEncodingLineHasBody(utils.UnsafeString(line)) {
-				return true
-			}
-		}
-		return false
-	}
-
-	// Fallback scan for non-normalized header keys.
-	for key, value := range hdr.All() {
-		if !utils.EqualFold(utils.UnsafeString(key), HeaderTransferEncoding) {
-			continue
-		}
-		if transferEncodingLineHasBody(utils.UnsafeString(value)) {
-			return true
-		}
-	}
-
-	return false
-}
-
-// transferEncodingLineHasBody reports whether a single Transfer-Encoding
-// field line contains a transfer coding other than "identity".
-func transferEncodingLineHasBody(te string) bool {
-	for token := range headerlist.All(te) {
-		// A transfer coding may carry parameters ("chunked;q=1"), which name the
-		// coding no more than the bare token does (RFC 9110 Section 10.1.4).
-		if idx := strings.IndexByte(token, ';'); idx >= 0 {
-			token = utils.TrimSpace(token[:idx])
-		}
-		if token == "" || utils.EqualFold(token, "identity") {
-			continue
-		}
-		return true
-	}
-	return false
-}
-
-// IsWebSocket returns true if the request includes a WebSocket upgrade handshake.
-func (c *DefaultCtx) IsWebSocket() bool {
-	// Repeated field lines are equivalent to one combined comma-separated
-	// list (RFC 9110 Section 5.2), so inspect every Connection and Upgrade
-	// field line, not just the first.
-	if !headerListContainsToken(c.fasthttp.Request.Header.PeekAll(HeaderConnection), "upgrade") {
-		return false
-	}
-	// Upgrade is a list of protocols, each optionally carrying a "/version"
-	// suffix (RFC 9110 Section 7.8), e.g. "Upgrade: websocket, h2c".
-	return headerListContainsToken(c.fasthttp.Request.Header.PeekAll(HeaderUpgrade), "websocket")
-}
-
-// headerListContainsToken reports whether any comma-separated element across
-// the given field lines equals token case-insensitively. An optional
-// "/version" suffix (Upgrade protocol syntax, RFC 9110 Section 7.8) is
-// ignored when comparing; valid Connection members never contain "/", so
-// this is safe for both headers.
-func headerListContainsToken(lines [][]byte, token string) bool {
-	for element := range headerlist.AllLines(lines) {
-		// Connection and Upgrade carry protocol names, which may name a version
-		// after a slash ("HTTP/2.0"). Match on the name alone.
-		if i := strings.IndexByte(element, '/'); i >= 0 {
-			element = element[:i]
-		}
-		if utils.EqualFold(element, token) {
-			return true
-		}
-	}
-	return false
-}
-
-// IsPreflight returns true if the request is a CORS preflight.
-func (c *DefaultCtx) IsPreflight() bool {
-	if c.Method() != MethodOptions {
-		return false
-	}
-	hdr := &c.fasthttp.Request.Header
-	if len(hdr.Peek(HeaderAccessControlRequestMethod)) == 0 {
-		return false
-	}
-	return len(hdr.Peek(HeaderOrigin)) > 0
 }
 
 // SaveFile saves any multipart file to disk.
@@ -660,9 +601,11 @@ func (c *DefaultCtx) SaveFileToStorage(fileheader *multipart.FileHeader, path st
 	return nil
 }
 
-// Secure returns whether a secure connection was established.
-func (c *DefaultCtx) Secure() bool {
-	return c.Scheme() == schemeHTTPS
+// Error returns an *Error carrying the given status code, defaulting the message
+// to the status text. Returning it hands it to the app's ErrorHandler, which
+// writes the response; Error itself sets nothing.
+func (*DefaultCtx) Error(status int, message ...string) error {
+	return NewError(status, message...)
 }
 
 // Status sets the HTTP status for the response.
@@ -670,6 +613,53 @@ func (c *DefaultCtx) Secure() bool {
 func (c *DefaultCtx) Status(status int) Ctx {
 	c.fasthttp.Response.SetStatusCode(status)
 	return c
+}
+
+// ID returns the connection-unique identifier fasthttp assigned to this request,
+// unlike RequestID, which reads a header. It is not unique across processes or
+// restarts, so use it to correlate log lines within one server run.
+func (c *DefaultCtx) ID() uint64 {
+	return c.fasthttp.ID()
+}
+
+// StartTime returns the time the server began handling this request. It is the
+// reference point Elapsed measures from.
+func (c *DefaultCtx) StartTime() time.Time {
+	return c.fasthttp.Time()
+}
+
+// Elapsed returns how long this request has been handled so far, measured from
+// StartTime. Called after the handler chain has run, it is the request latency.
+func (c *DefaultCtx) Elapsed() time.Duration {
+	return time.Since(c.fasthttp.Time())
+}
+
+// LocalAddr returns the server-side address of the connection this request
+// arrived on. IP returns the client address as a string; this is the full
+// net.Addr, so the port, network, and unix socket path survive.
+func (c *DefaultCtx) LocalAddr() net.Addr {
+	return c.fasthttp.LocalAddr()
+}
+
+// RemoteAddr returns the address of the immediate peer, which is the proxy
+// rather than the client when the app sits behind one. Use IP or IPs for the
+// client address a trusted proxy forwarded.
+func (c *DefaultCtx) RemoteAddr() net.Addr {
+	return c.fasthttp.RemoteAddr()
+}
+
+// Hijack registers a handler that takes over the connection once the response is
+// sent, for protocols Fiber does not speak. The connection then closes unless
+// KeepHijackedConns is set, and the handler must not touch the pooled Ctx.
+func (c *DefaultCtx) Hijack(handler fasthttp.HijackHandler) {
+	c.fasthttp.Hijack(handler)
+}
+
+// Hijacked returns true if Hijack has been called on this request, so a later
+// handler can tell that the connection is already spoken for and leave the
+// response alone.
+func (c *DefaultCtx) Hijacked() bool {
+	return c.fasthttp.Hijacked()
 }
 
 // String returns unique string representation of the ctx.
@@ -720,15 +710,6 @@ func (c *DefaultCtx) Value(key any) any {
 		return nil
 	}
 	return c.fasthttp.UserValue(key)
-}
-
-// xmlHTTPRequestBytes is precomputed for XHR detection
-var xmlHTTPRequestBytes = []byte("xmlhttprequest")
-
-// XHR returns a Boolean property, that is true, if the request's X-Requested-With header field is XMLHttpRequest,
-// indicating that the request was issued by a client library (such as jQuery).
-func (c *DefaultCtx) XHR() bool {
-	return utils.EqualFold(c.fasthttp.Request.Header.Peek(HeaderXRequestedWith), xmlHTTPRequestBytes)
 }
 
 // configDependentPaths set paths for route recognition and prepared paths for the user,
