@@ -538,93 +538,6 @@ func Test_Utils_AcceptsOfferType(t *testing.T) {
 	}
 }
 
-func Test_Utils_GetSplicedStrList(t *testing.T) {
-	t.Parallel()
-	testCases := []struct {
-		description  string
-		headerValue  string
-		expectedList []string
-	}{
-		{
-			description:  "normal case",
-			headerValue:  "gzip, deflate,br",
-			expectedList: []string{"gzip", "deflate", "br"},
-		},
-		{
-			description:  "no matter the value",
-			headerValue:  "   gzip,deflate, br, zip",
-			expectedList: []string{"gzip", "deflate", "br", "zip"},
-		},
-		{
-			description:  "comma with trailing spaces around values",
-			headerValue:  "gzip , br",
-			expectedList: []string{"gzip", "br"},
-		},
-		{
-			description:  "comma with tabbed whitespace",
-			headerValue:  "gzip\t,br",
-			expectedList: []string{"gzip", "br"},
-		},
-		{
-			description:  "headerValue is empty",
-			headerValue:  "",
-			expectedList: nil,
-		},
-		{
-			// RFC 9110 §5.6.1.2: empty list elements are parsed and ignored.
-			description:  "has a comma without element",
-			headerValue:  "gzip,",
-			expectedList: []string{"gzip"},
-		},
-		{
-			description:  "has a space between words",
-			headerValue:  "  foo bar, hello  world",
-			expectedList: []string{"foo bar", "hello  world"},
-		},
-		{
-			description:  "single comma",
-			headerValue:  ",",
-			expectedList: []string{},
-		},
-		{
-			description:  "multiple comma",
-			headerValue:  ",,",
-			expectedList: []string{},
-		},
-		{
-			description:  "comma with space",
-			headerValue:  ",  ,",
-			expectedList: []string{},
-		},
-		{
-			description:  "empty element between values",
-			headerValue:  "gzip, , br",
-			expectedList: []string{"gzip", "br"},
-		},
-	}
-
-	for _, tc := range testCases {
-		t.Run(tc.description, func(t *testing.T) {
-			tc := tc // create a new 'tc' variable for the goroutine
-			t.Parallel()
-			dst := make([]string, 10)
-			result := getSplicedStrList(tc.headerValue, dst)
-			require.Equal(t, tc.expectedList, result)
-		})
-	}
-}
-
-func Benchmark_Utils_GetSplicedStrList(b *testing.B) {
-	destination := make([]string, 5)
-	result := destination
-	const input = `deflate, gzip,br,brotli,zstd`
-	b.ReportAllocs()
-	for b.Loop() {
-		result = getSplicedStrList(input, destination)
-	}
-	require.Equal(b, []string{"deflate", "gzip", "br", "brotli", "zstd"}, result)
-}
-
 func Test_Utils_SortAcceptedTypes(t *testing.T) {
 	t.Parallel()
 	acceptedTypes := []acceptedType{
@@ -879,60 +792,6 @@ func Benchmark_Utils_IsNoCache(b *testing.B) {
 }
 
 // go test -run Test_HeaderContainsValue
-func Test_HeaderContainsValue(t *testing.T) {
-	t.Parallel()
-	testCases := []struct {
-		header   string
-		value    string
-		expected bool
-	}{
-		// Exact match
-		{header: "gzip", value: "gzip", expected: true},
-		{header: "gzip", value: "deflate", expected: false},
-		// Prefix match (value at start with comma)
-		{header: "gzip, deflate", value: "gzip", expected: true},
-		{header: "gzip,deflate", value: "gzip", expected: true},
-		// Suffix match (value at end)
-		{header: "deflate, gzip", value: "gzip", expected: true},
-		{header: "deflate,gzip", value: "gzip", expected: true}, // No space - OWS is optional per RFC 9110
-		{header: "br, gzip", value: "gzip", expected: true},
-		// Middle match (value in middle)
-		{header: "deflate, gzip, br", value: "gzip", expected: true},
-		{header: "deflate,gzip,br", value: "gzip", expected: true}, // No spaces - OWS is optional per RFC 9110
-		// No match - similar but not equal
-		{header: "gzip2", value: "gzip", expected: false},
-		{header: "2gzip", value: "gzip", expected: false},
-		{header: "gzip2, deflate", value: "gzip", expected: false},
-		// Whitespace handling (OWS per RFC 9110)
-		{header: "  gzip  ,  deflate  ", value: "gzip", expected: true},
-		{header: "deflate,  gzip  ", value: "gzip", expected: true},
-		// Empty cases
-		{header: "", value: "gzip", expected: false},
-		{header: "gzip", value: "", expected: false},
-		{header: "", value: "", expected: false}, // Both empty - should return false
-	}
-
-	for _, tc := range testCases {
-		result := headerContainsValue(tc.header, tc.value)
-		require.Equal(t, tc.expected, result,
-			"headerContainsValue(%q, %q) = %v, want %v",
-			tc.header, tc.value, result, tc.expected)
-	}
-}
-
-// go test -v -run=^$ -bench=Benchmark_HeaderContainsValue -benchmem -count=4
-func Benchmark_HeaderContainsValue(b *testing.B) {
-	var ok bool
-	b.ReportAllocs()
-	for b.Loop() {
-		_ = headerContainsValue("gzip", "gzip")
-		_ = headerContainsValue("gzip, deflate, br", "deflate")
-		_ = headerContainsValue("deflate, gzip", "gzip")
-		ok = headerContainsValue("deflate, gzip, br", "gzip")
-	}
-	require.True(b, ok)
-}
-
 type testGenericParseTypeIntCase struct {
 	value int64
 	bits  int
@@ -1614,13 +1473,6 @@ func Test_UnescapeHeaderValue(t *testing.T) {
 			require.Error(t, err, tc.in)
 		}
 	}
-}
-
-func Test_JoinHeaderValues(t *testing.T) {
-	t.Parallel()
-	require.Nil(t, joinHeaderValues(nil))
-	require.Equal(t, []byte("a"), joinHeaderValues([][]byte{[]byte("a")}))
-	require.Equal(t, []byte("a,b"), joinHeaderValues([][]byte{[]byte("a"), []byte("b")}))
 }
 
 func Test_ParamsMatch_InvalidEscape(t *testing.T) {

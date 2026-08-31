@@ -146,7 +146,7 @@ func New(config ...Config) fiber.Handler {
 
 		// Construct response
 		res := &response{
-			StatusCode: c.Response().StatusCode(),
+			StatusCode: c.Res().StatusCode(),
 			Body:       c.Response().Body(),
 		}
 		{

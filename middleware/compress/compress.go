@@ -4,39 +4,31 @@ import (
 	"strings"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/headerlist"
 	"github.com/gofiber/fiber/v3/middleware/etag"
-	"github.com/gofiber/utils/v2"
 	"github.com/valyala/fasthttp"
 )
-
-func hasToken(header, token string) bool {
-	for part := range strings.SplitSeq(header, ",") {
-		if utils.EqualFold(utils.TrimSpace(part), token) {
-			return true
-		}
-	}
-	return false
-}
 
 func shouldSkip(c fiber.Ctx) bool {
 	if c.Method() == fiber.MethodHead {
 		return true
 	}
 
-	status := c.Response().StatusCode()
+	status := c.Res().StatusCode()
 	if status < 200 ||
 		status == fiber.StatusNoContent ||
 		status == fiber.StatusResetContent ||
 		status == fiber.StatusNotModified ||
 		status == fiber.StatusPartialContent ||
 		c.Get(fiber.HeaderRange) != "" ||
-		hasToken(c.Get(fiber.HeaderCacheControl), "no-transform") ||
-		hasToken(c.GetRespHeader(fiber.HeaderCacheControl), "no-transform") {
+		headerlist.ContainsFold(c.Get(fiber.HeaderCacheControl), "no-transform") ||
+		headerlist.ContainsFold(c.GetRespHeader(fiber.HeaderCacheControl), "no-transform") {
 		return true
 	}
 
-	// Skip body length check for streaming responses to avoid materializing the stream
-	if !c.Response().IsBodyStream() && len(c.Response().Body()) == 0 {
+	// Written counts a stream without draining it, so a streaming response is
+	// never mistaken for an empty one.
+	if !c.Res().Written() {
 		return true
 	}
 
@@ -49,7 +41,7 @@ func appendVaryAcceptEncoding(c fiber.Ctx) {
 		c.Set(fiber.HeaderVary, fiber.HeaderAcceptEncoding)
 		return
 	}
-	if hasToken(vary, "*") || hasToken(vary, fiber.HeaderAcceptEncoding) {
+	if headerlist.ContainsFold(vary, "*") || headerlist.ContainsFold(vary, fiber.HeaderAcceptEncoding) {
 		return
 	}
 	c.Set(fiber.HeaderVary, vary+", "+fiber.HeaderAcceptEncoding)

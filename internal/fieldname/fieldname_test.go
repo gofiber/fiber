@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
@@ -111,4 +112,57 @@ func Test_First_EmptyLineDoesNotHideTheValue(t *testing.T) {
 			require.Equal(t, tc.want, string(First(h, fasthttp.HeaderOrigin, tc.canonical)))
 		})
 	}
+}
+
+func Test_Del_TerminatesOnSynthesizedContentType(t *testing.T) {
+	t.Parallel()
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		h := &fasthttp.ResponseHeader{}
+		Del(h, fasthttp.HeaderContentType, false)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("Del did not return: ResponseHeader.All reports a default Content-Type once the slot is empty")
+	}
+}
+
+func Test_Del_TerminatesOnNonCanonicalNameInNormalizingStore(t *testing.T) {
+	t.Parallel()
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		h := &fasthttp.ResponseHeader{}
+		h.SetNoDefaultContentType(true)
+		h.SetCanonical([]byte("x-session-id"), []byte("v"))
+		Del(h, "X-Session-Id", false)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("Del did not return: the store normalizes the key it is given, so it never matches the stored spelling")
+	}
+}
+
+func Test_Del_RemovesEverySpelling(t *testing.T) {
+	t.Parallel()
+
+	h := &fasthttp.ResponseHeader{}
+	h.SetNoDefaultContentType(true)
+	h.DisableNormalizing()
+	h.Add("x-trace", "a")
+	h.Add("X-Trace", "b")
+	h.Add("X-TRACE", "c")
+	h.Add("X-Keep", "k")
+
+	Del(h, "X-Trace", false)
+
+	require.Empty(t, Lines(h, "X-Trace", false))
+	require.Equal(t, "k", string(First(h, "X-Keep", false)))
 }

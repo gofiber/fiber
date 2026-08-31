@@ -5,8 +5,10 @@
 package etag
 
 import (
+	"slices"
 	"strings"
 
+	"github.com/gofiber/fiber/v3/internal/headerlist"
 	"github.com/gofiber/utils/v2"
 )
 
@@ -53,40 +55,48 @@ func MatchStrong(s, etag string) bool {
 	return n1 == n2
 }
 
+// Split returns the entity tags in a raw If-None-Match or If-Match field value.
+// A comma inside a quoted opaque-tag does not separate it (RFC 9110
+// Section 8.8.3), and empty list elements are skipped. Returns nil for no tags.
+func Split(header string) []string {
+	if header == "" {
+		return nil
+	}
+
+	// One more than the commas is an upper bound: a comma inside a quoted
+	// opaque-tag only over-estimates, never under.
+	tags := slices.AppendSeq(make([]string, 0, strings.Count(header, ",")+1), headerlist.AllQuoted(header))
+	if len(tags) == 0 {
+		return nil
+	}
+	return tags
+}
+
 // AnyMatch reports whether any entity tag in the raw If-None-Match field value
 // matches etag. Comparison is weak as defined by RFC 9110 Section 8.8.3.2, and
 // "*" matches every entity tag. An empty field value matches nothing.
 func AnyMatch(header, etag string) bool {
-	header = utils.TrimSpace(header)
+	rest := utils.TrimSpace(header)
 
 	// Short-circuit the wildcard case: "*" matches any entity tag.
-	if header == "*" {
+	if rest == "*" {
 		return true
 	}
 
-	// Split the header on commas that sit outside DQUOTE-delimited opaque-tags:
-	// etagc permits "," inside the quoted tag (RFC 9110 Section 8.8.3), so
-	// `"v1,v2"` is a single entity tag, not two list elements. Only '"' and ','
-	// affect the split, so jump between them instead of visiting every byte.
-	start := 0
-	pos := 0
-	inQuotes := false
-	for {
-		i := utils.IndexAny2(header[pos:], '"', ',')
-		if i == -1 {
-			break
-		}
-		i += pos
-		pos = i + 1
-		if header[i] == '"' {
-			inQuotes = !inQuotes
-		} else if !inQuotes {
-			if Match(utils.TrimSpace(header[start:i]), etag) {
-				return true
-			}
-			start = i + 1
+	// etag is the same for every element, so parse it once rather than through
+	// Match on each. An unparseable one matches nothing (RFC 9110 8.8.3.2).
+	want, _, ok := Parse(etag)
+	if !ok {
+		return false
+	}
+
+	// Commas inside the opaque-tag do not separate: etagc permits "," within the
+	// quoted tag (RFC 9110 Section 8.8.3), so `"v1,v2"` is one entity tag.
+	for tag := range headerlist.AllQuoted(header) {
+		if got, _, ok := Parse(tag); ok && got == want {
+			return true
 		}
 	}
 
-	return Match(utils.TrimSpace(header[start:]), etag)
+	return false
 }

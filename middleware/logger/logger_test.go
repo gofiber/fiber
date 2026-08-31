@@ -2231,3 +2231,42 @@ func Test_TagIPs_PropagatesWriteErrors(t *testing.T) {
 		require.Equal(t, len("1.1.1.1,"), n)
 	})
 }
+
+func Test_Logger_ResBody_DoesNotDrainStream(t *testing.T) {
+	t.Parallel()
+
+	var logged bytes.Buffer
+	app := fiber.New()
+	app.Use(New(Config{
+		Format: "[${resBody}]",
+		Stream: &logged,
+	}))
+	app.Get("/events", func(c fiber.Ctx) error {
+		return c.SendStreamWriter(func(w *bufio.Writer) {
+			w.WriteString("data: one\n\n") //nolint:errcheck // nothing to do with a stream-writer error here
+			w.Flush()                      //nolint:errcheck // same
+		})
+	})
+
+	fctx := &fasthttp.RequestCtx{}
+	fctx.Request.SetRequestURI("/events")
+	fctx.Request.Header.SetMethod(fiber.MethodGet)
+	app.Handler()(fctx)
+
+	require.True(t, fctx.Response.IsBodyStream(), "logging must leave a streamed response streamed")
+	require.Equal(t, "[]", logged.String(), "and it logs nothing rather than the buffered stream")
+
+	logged.Reset()
+	buffered := fiber.New()
+	buffered.Use(New(Config{Format: "[${resBody}]", Stream: &logged}))
+	buffered.Get("/", func(c fiber.Ctx) error {
+		return c.SendString("hello")
+	})
+
+	bctx := &fasthttp.RequestCtx{}
+	bctx.Request.SetRequestURI("/")
+	bctx.Request.Header.SetMethod(fiber.MethodGet)
+	buffered.Handler()(bctx)
+
+	require.Equal(t, "[hello]", logged.String())
+}
