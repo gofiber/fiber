@@ -402,6 +402,37 @@ func Test_ETag_SplitIfNoneMatch(t *testing.T) {
 	require.Equal(t, fiber.StatusNotModified, resp.StatusCode)
 }
 
+func Test_ETag_HandlerETagSpellingsWithoutNormalizing(t *testing.T) {
+	t.Parallel()
+
+	for _, spelling := range []string{"ETag", "Etag", "etag", "ETAG", "eTaG"} {
+		t.Run(spelling, func(t *testing.T) {
+			t.Parallel()
+			app := fiber.New(fiber.Config{DisableHeaderNormalizing: true})
+			app.Use(New())
+			app.Get("/", func(c fiber.Ctx) error {
+				c.Response().Header.Set(spelling, `"upstream"`)
+				return c.SendString("Hello, World!")
+			})
+
+			fctx := &fasthttp.RequestCtx{}
+			fctx.Request.SetRequestURI("/")
+			fctx.Request.Header.SetMethod(fiber.MethodGet)
+			fctx.Request.Header.DisableNormalizing()
+			fctx.Response.Header.DisableNormalizing()
+			app.Handler()(fctx)
+
+			var lines []string
+			for k, v := range fctx.Response.Header.All() {
+				if utils.EqualFold(string(k), fiber.HeaderETag) {
+					lines = append(lines, string(v))
+				}
+			}
+			require.Equal(t, []string{`"upstream"`}, lines)
+		})
+	}
+}
+
 func Test_ETag_HandlerETagWithoutNormalizing(t *testing.T) {
 	t.Parallel()
 	app := fiber.New(fiber.Config{DisableHeaderNormalizing: true})

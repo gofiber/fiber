@@ -82,8 +82,12 @@ func New(config ...Config) fiber.Handler {
 		// Skip ETag if any field line is already present, whatever case the
 		// handler spelled the name in — a second line would be a conflicting
 		// validator (RFC 9110 Section 8.8.3).
+		//
+		// Both halves of the guard are needed: fasthttp canonicalizes ETag to
+		// "Etag", so a store of canonical names still holds a spelling the
+		// byte-exact PeekAll(fiber.HeaderETag) misses while normalizing is off.
 		respHeader := &c.Response().Header
-		if len(fieldname.Lines(respHeader, fiber.HeaderETag, fieldname.Canonical(respHeader))) > 0 {
+		if len(fieldname.Lines(respHeader, fiber.HeaderETag, headerlookup.Canonical(c) && fieldname.Canonical(respHeader))) > 0 {
 			return nil
 		}
 

@@ -231,8 +231,9 @@ func contentDispositionAttachment(fname string) string {
 }
 
 // Add appends the value as a new field line, where Append folds values into one
-// comma-separated line. It does not append for the headers fasthttp slots:
-// Content-Type, Server and the rest are replaced, Date and TE ignored.
+// comma-separated line. The headers fasthttp keeps in a slot of their own are
+// the exception: Content-Type, Server and the rest are replaced and Date and TE
+// ignored, though Set-Cookie is slotted and does append. Use Cookie for that.
 func (r *DefaultRes) Add(key, val string) {
 	r.c.fasthttp.Response.Header.Add(key, val)
 }
@@ -371,10 +372,13 @@ func (r *DefaultRes) GetCookie(name string) (*Cookie, bool) {
 	return nil, false
 }
 
-// Cookies returns a copy of every cookie this response is set to send, in order,
-// or nil when there are none. Repeated names are kept apart, and an unparsable
-// one is skipped. For what the client sent, use Req.Cookies.
-func (r *DefaultRes) Cookies() []*Cookie {
+// GetCookies returns a copy of every cookie this response is set to send, in
+// order, or nil when there are none. Repeated names are kept apart, and an
+// unparsable one is skipped. For what the client sent, use Req.Cookies.
+//
+// Named for GetCookie beside it rather than Cookies, which would collide with
+// Req.Cookies under a different signature and stop Ctx satisfying Res.
+func (r *DefaultRes) GetCookies() []*Cookie {
 	header := &r.c.fasthttp.Response.Header
 
 	fcookie := fasthttp.AcquireCookie()
@@ -588,9 +592,9 @@ func (r *DefaultRes) AutoFormat(body any) error {
 	return r.SendString(b)
 }
 
-// ContentLength returns what the Content-Length response header declares, not
-// what is buffered: fasthttp fills it in on serialization, so inside a handler
-// it is 0 unless set explicitly. Use len(Res.Body()) for buffered bytes.
+// ContentLength returns what the Content-Length response header declares: a
+// length a handler or upstream set, -1 for an unknown-length stream, 0 when
+// none is declared. fasthttp fills it in on serialization; see also Res.Body.
 func (r *DefaultRes) ContentLength() int {
 	return r.c.fasthttp.Response.Header.ContentLength()
 }
@@ -1086,8 +1090,8 @@ func (r *DefaultRes) renderExtensions(bind any) {
 }
 
 // Body returns the response body buffered so far, or nil for a streamed one,
-// which draining would pull into memory and de-stream. Use Written to tell those
-// apart. Only valid until the next write to the response.
+// which draining would de-stream; Written tells those apart. The buffer is live,
+// so writing to it writes to the response, and the next write voids it.
 func (r *DefaultRes) Body() []byte {
 	resp := &r.c.fasthttp.Response
 	if resp.IsBodyStream() {

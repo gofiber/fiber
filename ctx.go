@@ -221,9 +221,9 @@ func (c *DefaultCtx) ContentType() string {
 	return c.DefaultReq.ContentType()
 }
 
-// Cookies returns the request cookie with the given key, or defaultValue. Req
-// and Res both carry one, so on Ctx the request wins; use Res().Cookies() for
-// the response. Only valid within the handler unless Immutable is set.
+// Cookies returns the request cookie with the given key, or defaultValue. Only
+// valid within the handler unless Immutable is set. For the cookies the response
+// is set to send, use Res().GetCookies().
 func (c *DefaultCtx) Cookies(key string, defaultValue ...string) string {
 	return c.DefaultReq.Cookies(key, defaultValue...)
 }

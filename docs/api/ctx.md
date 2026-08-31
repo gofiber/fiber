@@ -2697,7 +2697,7 @@ Use `c.Res()` to limit gopls suggestions to only these methods!
 Each entry lists both forms it can be called in. `DefaultCtx` embeds `DefaultRes`, so the method is promoted: `c.Del(key)` and `c.Res().Del(key)` are the same call.
 
 :::caution
-Four names are defined on both `Req` and `Res`: `Body`, `ContentLength`, `ContentType` and `Cookies`. On `Ctx` the **request wins**, the way [`Get`](#get) already does, so `c.Body()` reads the request body. The response counterparts are listed below as [`Body (Res)`](#body-res), [`ContentLength (Res)`](#contentlength-res), [`ContentType (Res)`](#contenttype-res) and [`Cookies (Res)`](#cookies-res), and are reachable only through `c.Res()` — which is why they list a single `fiber.Res` signature.
+Three names are defined on both `Req` and `Res`: `Body`, `ContentLength` and `ContentType`. On `Ctx` the **request wins**, the way [`Get`](#get) already does, so `c.Body()` reads the request body. The response counterparts are listed below as [`Body (Res)`](#body-res), [`ContentLength (Res)`](#contentlength-res) and [`ContentType (Res)`](#contenttype-res), and are reachable only through `c.Res()` — which is why they list a single `fiber.Res` signature. The response cookies are [`GetCookies`](#getcookies): named apart from `Req.Cookies` so that a `Ctx` still satisfies `fiber.Res`, which a same-name/different-signature pair would prevent.
 :::
 
 ### Add
@@ -2707,7 +2707,7 @@ Appends the given value to the response header field as a **new field line**, le
 This differs from [`Append`](#append), which folds values into a single comma-separated line: headers whose values may themselves contain commas — `WWW-Authenticate`, `Link` — have to be sent as separate lines to stay unambiguous (RFC 9110, Section 5.3).
 
 :::caution
-The headers fasthttp stores in a slot of their own cannot repeat, and `Add` does not append for them: `Content-Type`, `Content-Encoding`, `Content-Length`, `Connection`, `Server` and `Trailer` are **replaced**, and `Transfer-Encoding` and `Date` are **ignored** because fasthttp writes them itself. Use [`Set`](#set) for those.
+`Add` does not append for most of the headers fasthttp stores in a slot of their own: `Content-Type`, `Content-Encoding`, `Content-Length`, `Connection`, `Server` and `Trailer` are **replaced**, and `Transfer-Encoding` and `Date` are **ignored** because fasthttp writes them itself. Use [`Set`](#set) for those. `Set-Cookie` is slotted too but does repeat, so `Add` appends a line — prefer [`Cookie`](#cookie), which builds the field value for you.
 :::
 
 ```go title="Signature"
@@ -2851,7 +2851,7 @@ A streamed body returns `nil` rather than being drained. Reading it would pull t
 :::
 
 :::caution
-The returned value is only valid within the handler and is invalidated by the next write to the response. Do not store any references; copy it instead.
+The returned slice is the response's live buffer, not a copy — writing through it writes to the response, as it does for the request-side [`Body`](#body). It is only valid within the handler and is invalidated by the next write to the response. Do not store any references; copy it instead.
 :::
 
 ```go title="Signature"
@@ -2995,7 +2995,7 @@ Returns the value of the `Content-Length` response header.
 Reached through `c.Res()`: `Req` and `Res` both carry a `ContentLength`, so `c.ContentLength()` is the **request** header.
 
 :::note
-It reports what the header declares, not what has been buffered: fasthttp fills `Content-Length` in as it serializes the response, so inside a handler this is `0` unless something set it explicitly, and `-1` once the body is a stream of unknown length. Use `len(c.Res().Body())` for the bytes buffered so far.
+It reports what the header **declares** — a length a handler, middleware or upstream response set, and `-1` once the body is a stream of unknown length. It is not a count of buffered bytes: fasthttp fills `Content-Length` in as it serializes the response, so this is `0` inside a handler unless something set it explicitly. Use `len(c.Res().Body())` for the bytes buffered so far.
 :::
 
 ```go title="Signature"
@@ -3105,32 +3105,6 @@ app.Get("/", func(c fiber.Ctx) error {
   // Set the cookie in the response
   c.Cookie(cookie)
   return c.SendString("Partitioned cookie set")
-})
-```
-
-### Cookies (Res)
-
-Returns a copy of every cookie this response is set to send, in the order they were added. It returns `nil` when none have been set.
-
-Repeated names are kept apart, so a response that sets one name at two paths yields both. A `Set-Cookie` whose field value does not parse is skipped.
-
-Reached through `c.Res()`: `Req` and `Res` both carry a `Cookies`, so `c.Cookies(key)` reads what the **client** sent.
-
-```go title="Signature"
-func (r fiber.Res) Cookies() []*fiber.Cookie
-```
-
-```go title="Example"
-app.Use(func(c fiber.Ctx) error {
-  if err := c.Next(); err != nil {
-    return err
-  }
-
-  for _, cookie := range c.Res().Cookies() {
-    log.Printf("setting %s on %s", cookie.Name, cookie.Path)
-  }
-
-  return nil
 })
 ```
 
@@ -3328,7 +3302,7 @@ app.Get("/default", func(c fiber.Ctx) error {
 
 Reads back a cookie this response is already set to send, so a later handler or middleware can inspect or re-emit what an earlier one wrote. The second result is `false` when no cookie of that name has been set, or when its `Set-Cookie` field value does not parse.
 
-Cookie names are case-sensitive (RFC 6265, Section 4.1.1). A name written more than once resolves to the **first** occurrence; use [`Cookies`](#cookies-res) to see them all.
+Cookie names are case-sensitive (RFC 6265, Section 4.1.1). A name written more than once resolves to the **first** occurrence; use [`GetCookies`](#getcookies) to see them all.
 
 :::note
 The returned `Cookie` is a copy: changing it does not change the response. Pass it to [`Cookie`](#cookie) to write the change back.
@@ -3353,6 +3327,33 @@ app.Use(func(c fiber.Ctx) error {
   if cookie, ok := c.GetCookie("session"); ok {
     cookie.Value = encrypt(cookie.Value)
     c.Cookie(cookie)
+  }
+
+  return nil
+})
+```
+
+### GetCookies
+
+Returns a copy of every cookie this response is set to send, in the order they were added. It returns `nil` when none have been set.
+
+Repeated names are kept apart, so a response that sets one name at two paths yields both. A `Set-Cookie` whose field value does not parse is skipped.
+
+Named to sit beside [`GetCookie`](#getcookie) rather than mirroring `Req.Cookies`: the same name under a different signature would stop `fiber.Ctx` satisfying `fiber.Res`. `c.Cookies(key)` reads what the **client** sent.
+
+```go title="Signature"
+func (c fiber.Ctx) GetCookies() []*fiber.Cookie
+func (r fiber.Res) GetCookies() []*fiber.Cookie
+```
+
+```go title="Example"
+app.Use(func(c fiber.Ctx) error {
+  if err := c.Next(); err != nil {
+    return err
+  }
+
+  for _, cookie := range c.Res().GetCookies() {
+    log.Printf("setting %s on %s", cookie.Name, cookie.Path)
   }
 
   return nil

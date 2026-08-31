@@ -738,9 +738,10 @@ The request helpers listed above are defined on `Req`, so they are reachable bot
 `c.Req().UserAgent()`. This also applies to `Path`, `Secure`, `XHR`, `HasBody`, `IsWebSocket`, `IsPreflight`
 and the `Accept`/`Content-Type` helpers, which are request methods and are now on `Req` as well.
 
-`Req` and `Res` each define a `Body`, `ContentLength`, `ContentType` and `Cookies`. On `Ctx` these resolve to the
-**request**, as `Get` already did; use `c.Res().Body()`, `c.Res().ContentLength()`, `c.Res().ContentType()` and
-`c.Res().Cookies()` for the response.
+`Req` and `Res` each define a `Body`, `ContentLength` and `ContentType`. On `Ctx` these resolve to the
+**request**, as `Get` already did; use `c.Res().Body()`, `c.Res().ContentLength()` and `c.Res().ContentType()`
+for the response. The response cookies are `c.Res().GetCookies()`, named apart from `Req.Cookies` so that a
+`Ctx` keeps satisfying `fiber.Res`.
 
 ### Removed Methods
 
@@ -772,6 +773,21 @@ and the `Accept`/`Content-Type` helpers, which are request methods and are now o
   `filename="report 2024.txt"` (previously `filename="report+2024.txt"`), with
   quotes and backslashes escaped as quoted-pairs, so browsers save files under
   their real names.
+- **Get, GetReqHeader and the request header helpers**: Field names are now matched case-insensitively, as
+  [RFC 9110, Section 5.1](https://www.rfc-editor.org/rfc/rfc9110#section-5.1) requires. This is only observable
+  under `DisableHeaderNormalizing: true`, where the store keeps the spelling the peer sent: with a
+  `x-test: yes` line, `c.Get("X-Test")` returned `""` in v2 and returns `"yes"` now. The default configuration
+  is unchanged, because fasthttp canonicalizes the names on the way in.
+- **Fresh()**: `If-None-Match`, `If-Modified-Since` and `Cache-Control` are read case-insensitively for the
+  same reason, so `c.Fresh()` can now return `true` where it returned `false` under `DisableHeaderNormalizing`.
+  That changes which requests are answered `304 Not Modified`.
+- **SendStatus()**: For a status that disallows a body — `1xx`, `204` and `304` — the response body and any
+  `Content-Length` already set are now dropped, per
+  [RFC 9110, Section 8.6](https://www.rfc-editor.org/rfc/rfc9110#section-8.6). `c.Set(fiber.HeaderContentLength, "42")`
+  followed by `c.SendStatus(204)` previously put `Content-Length: 42` on the wire, along with a `Content-Type`
+  fasthttp emits for a declared length; neither line is sent now. `205 Reset Content` still sends
+  `Content-Length: 0`, which [Section 15.3.6](https://www.rfc-editor.org/rfc/rfc9110#section-15.3.6) requires.
+  Unlike the two above, this applies under the default configuration.
 - **Context()**: Renamed to `RequestCtx()` to access the underlying `fasthttp.RequestCtx`.
 - **IP()**: When `EnableIPValidation` is `true` and `TrustProxyConfig` is set, `c.IP()` now walks the `X-Forwarded-For` chain from right to left and returns the first non-trusted IP, instead of the leftmost syntactically valid IP. This closes an IP-spoofing vector where an attacker could prepend a fake address and have it returned by `c.IP()`. Apps with `EnableIPValidation = false` (the default) are unaffected. See [`Ctx.IP`](./api/ctx.md#ip) and the [reverse proxy guide](./guide/reverse-proxy.md#getting-the-real-client-ip-address) for details.
 

@@ -66,9 +66,9 @@ type Ctx interface {
 	// and Res both carry one, so on Ctx the request wins, as it does for Get; use
 	// Res().ContentType() for the response.
 	ContentType() string
-	// Cookies returns the request cookie with the given key, or defaultValue. Req
-	// and Res both carry one, so on Ctx the request wins; use Res().Cookies() for
-	// the response. Only valid within the handler unless Immutable is set.
+	// Cookies returns the request cookie with the given key, or defaultValue. Only
+	// valid within the handler unless Immutable is set. For the cookies the response
+	// is set to send, use Res().GetCookies().
 	Cookies(key string, defaultValue ...string) string
 	// Get returns the HTTP request header specified by field.
 	// Field names are case-insensitive
@@ -558,8 +558,9 @@ type Ctx interface {
 	// (RFC 9110 Section 5.6.1.2).
 	Append(field string, values ...string)
 	// Add appends the value as a new field line, where Append folds values into one
-	// comma-separated line. It does not append for the headers fasthttp slots:
-	// Content-Type, Server and the rest are replaced, Date and TE ignored.
+	// comma-separated line. The headers fasthttp keeps in a slot of their own are
+	// the exception: Content-Type, Server and the rest are replaced and Date and TE
+	// ignored, though Set-Cookie is slotted and does append. Use Cookie for that.
 	Add(key, val string)
 	// Attachment sets the HTTP response Content-Disposition header field to attachment.
 	Attachment(filename ...string)
@@ -578,6 +579,13 @@ type Ctx interface {
 	// repeat resolves to the first. Writing the copy back through Cookie stamps
 	// Path=/ on a cookie that carried none, widening its scope — set Path first.
 	GetCookie(name string) (*Cookie, bool)
+	// GetCookies returns a copy of every cookie this response is set to send, in
+	// order, or nil when there are none. Repeated names are kept apart, and an
+	// unparsable one is skipped. For what the client sent, use Req.Cookies.
+	//
+	// Named for GetCookie beside it rather than Cookies, which would collide with
+	// Req.Cookies under a different signature and stop Ctx satisfying Res.
+	GetCookies() []*Cookie
 	// Download transfers the file from path as an attachment.
 	// Typically, browsers will prompt the user for download.
 	// By default, the Content-Disposition header filename= parameter is the filepath (this typically appears in the browser dialog).

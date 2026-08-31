@@ -34,6 +34,7 @@ import (
 
 	"github.com/fxamacker/cbor/v2"
 	"github.com/gofiber/utils/v2"
+	utilsstrings "github.com/gofiber/utils/v2/strings"
 	"github.com/shamaton/msgpack/v3"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/bytebufferpool"
@@ -9826,6 +9827,157 @@ func Benchmark_Ctx_XHR(b *testing.B) {
 		equal = c.XHR()
 	}
 	require.True(b, equal)
+}
+
+// headerReadBenchCtx builds the request a browser sends, eight field lines, for
+// the header reads below. Names are stored the way the peer spelled them, so the
+// non-normalizing case exercises the case-insensitive walk rather than a store
+// fasthttp has already canonicalized.
+//
+//nolint:revive // flag-parameter: this selects which header store shape is measured
+func headerReadBenchCtx(b *testing.B, disableNormalizing bool) Ctx {
+	b.Helper()
+
+	app := New(Config{DisableHeaderNormalizing: disableNormalizing})
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+
+	fields := [][2]string{
+		{HeaderUserAgent, "Mozilla/5.0"},
+		{HeaderAccept, "text/html,application/xhtml+xml"},
+		{HeaderAcceptLanguage, "en-US,en;q=0.9"},
+		{HeaderAcceptEncoding, "gzip, deflate, br"},
+		{HeaderConnection, "keep-alive"},
+		{HeaderCacheControl, "max-age=0"},
+		{"Sec-Fetch-Site", "same-origin"},
+		{HeaderXRequestID, "3f0c1a"},
+	}
+	if disableNormalizing {
+		c.Request().Header.DisableNormalizing()
+		for _, f := range fields {
+			c.Request().Header.Set(utilsstrings.ToLower(f[0]), f[1])
+		}
+		return c
+	}
+
+	for _, f := range fields {
+		c.Request().Header.Set(f[0], f[1])
+	}
+	return c
+}
+
+func benchHeaderReadModes(b *testing.B, f func(b *testing.B, c Ctx)) {
+	b.Helper()
+
+	b.Run("Normalizing", func(b *testing.B) {
+		c := headerReadBenchCtx(b, false)
+		b.ReportAllocs()
+		f(b, c)
+	})
+	b.Run("WithoutNormalizing", func(b *testing.B) {
+		c := headerReadBenchCtx(b, true)
+		b.ReportAllocs()
+		f(b, c)
+	})
+}
+
+// go test -v -run=^$ -bench=Benchmark_Ctx_Get_Header -benchmem -count=4
+func Benchmark_Ctx_Get_Header(b *testing.B) {
+	benchHeaderReadModes(b, func(b *testing.B, c Ctx) {
+		b.Helper()
+		var v string
+		for b.Loop() {
+			v = c.Get(HeaderXRequestID)
+		}
+		require.Equal(b, "3f0c1a", v)
+	})
+}
+
+// go test -v -run=^$ -bench=Benchmark_Ctx_Get_HeaderAbsent -benchmem -count=4
+func Benchmark_Ctx_Get_HeaderAbsent(b *testing.B) {
+	benchHeaderReadModes(b, func(b *testing.B, c Ctx) {
+		b.Helper()
+		var v string
+		for b.Loop() {
+			v = c.Get("X-Not-Sent")
+		}
+		require.Empty(b, v)
+	})
+}
+
+// go test -v -run=^$ -bench=Benchmark_Ctx_HasHeader -benchmem -count=4
+func Benchmark_Ctx_HasHeader(b *testing.B) {
+	benchHeaderReadModes(b, func(b *testing.B, c Ctx) {
+		b.Helper()
+		var ok bool
+		for b.Loop() {
+			ok = c.HasHeader(HeaderXRequestID)
+		}
+		require.True(b, ok)
+	})
+}
+
+// go test -v -run=^$ -bench=Benchmark_Ctx_HasHeaderAbsent -benchmem -count=4
+func Benchmark_Ctx_HasHeaderAbsent(b *testing.B) {
+	benchHeaderReadModes(b, func(b *testing.B, c Ctx) {
+		b.Helper()
+		var ok bool
+		for b.Loop() {
+			ok = c.HasHeader("X-Not-Sent")
+		}
+		require.False(b, ok)
+	})
+}
+
+// go test -v -run=^$ -bench=Benchmark_Ctx_GetReqHeader -benchmem -count=4
+func Benchmark_Ctx_GetReqHeader(b *testing.B) {
+	benchHeaderReadModes(b, func(b *testing.B, c Ctx) {
+		b.Helper()
+		var v string
+		for b.Loop() {
+			v = GetReqHeader[string](c, HeaderXRequestID)
+		}
+		require.Equal(b, "3f0c1a", v)
+	})
+}
+
+// go test -v -run=^$ -bench=Benchmark_Ctx_IsWebSocket -benchmem -count=4
+//
+// Covered under both settings because the two paths differ in kind, not degree:
+// the canonical one peeks, while the case-insensitive one walks the store and
+// collects the field lines, which allocates.
+func Benchmark_Ctx_IsWebSocket(b *testing.B) {
+	for _, tc := range []struct {
+		name               string
+		disableNormalizing bool
+		handshake          bool
+	}{
+		{"Normalizing/handshake", false, true},
+		{"Normalizing/no-upgrade", false, false},
+		{"WithoutNormalizing/handshake", true, true},
+		{"WithoutNormalizing/no-upgrade", true, false},
+	} {
+		b.Run(tc.name, func(b *testing.B) {
+			app := New(Config{DisableHeaderNormalizing: tc.disableNormalizing})
+			c := app.AcquireCtx(&fasthttp.RequestCtx{})
+
+			connection, upgrade := HeaderConnection, HeaderUpgrade
+			if tc.disableNormalizing {
+				c.Request().Header.DisableNormalizing()
+				connection, upgrade = utilsstrings.ToLower(connection), utilsstrings.ToLower(upgrade)
+			}
+			c.Request().Header.Set(connection, "upgrade")
+			if tc.handshake {
+				c.Request().Header.Set(upgrade, "websocket")
+			}
+
+			b.ReportAllocs()
+			var got bool
+			for b.Loop() {
+				got = c.IsWebSocket()
+			}
+			require.Equal(b, tc.handshake, got)
+		})
+	}
 }
 
 // go test -v  -run=^$ -bench=Benchmark_Ctx_SendString_B -benchmem -count=4

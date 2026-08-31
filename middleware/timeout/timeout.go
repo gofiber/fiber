@@ -5,6 +5,8 @@ import (
 	"errors"
 	"runtime/debug"
 
+	"github.com/valyala/fasthttp"
+
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/log"
 )
@@ -119,12 +121,14 @@ func handleTimeout(
 		timeoutErr = invokeOnTimeout(ctx, cfg)
 
 		// If the response is still the default 200/empty, ensure a sensible timeout
-		// response is captured for fasthttp to send.
-		// Written is stream-safe: Response().Body() would materialize a body
-		// stream the timed-out handler may still be writing, blocking forever.
-		if ctx.Res().StatusCode() == fiber.StatusOK && !ctx.Res().Written() {
-			ctx.Response().SetStatusCode(fiber.StatusRequestTimeout)
-			ctx.Response().SetBodyString(fiber.ErrRequestTimeout.Message)
+		// response is captured for fasthttp to send. ResetBody closes a body
+		// stream rather than draining it, so a reader the timed-out handler never
+		// finishes writing cannot block this path.
+		resp := ctx.Response()
+		if resp.StatusCode() == fiber.StatusOK && timeoutResponseUnwritten(resp) {
+			resp.ResetBody()
+			resp.SetStatusCode(fiber.StatusRequestTimeout)
+			resp.SetBodyString(fiber.ErrRequestTimeout.Message)
 		}
 
 		// Tell fasthttp to not recycle the RequestCtx - it will acquire a new one
@@ -163,6 +167,13 @@ func handleTimeout(
 	}()
 
 	return timeoutErr
+}
+
+// timeoutResponseUnwritten reports whether the response still carries nothing a
+// client could use. A stream counts as unwritten, since Response.CopyTo does not
+// carry one over, and is checked first because Body would drain it.
+func timeoutResponseUnwritten(resp *fasthttp.Response) bool {
+	return resp.IsBodyStream() || len(resp.Body()) == 0
 }
 
 // invokeOnTimeout calls the OnTimeout handler if configured

@@ -21,6 +21,17 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
+// Splitting a handler into func(fiber.Req) and func(fiber.Res) and passing the
+// same Ctx to both is the reason the split exists, so Ctx has to satisfy each.
+// A name carried by Req and Res under different signatures breaks that on
+// assignment, which no test of the concrete types would catch.
+var (
+	_ Req = (*DefaultCtx)(nil)
+	_ Res = (*DefaultCtx)(nil)
+	_ Req = Ctx(nil)
+	_ Res = Ctx(nil)
+)
+
 func Test_Req_RequestHelpersOnReq(t *testing.T) {
 	t.Parallel()
 	app := New()
@@ -481,9 +492,9 @@ func Test_Res_Del(t *testing.T) {
 	require.Empty(t, c.Response().Header.PeekAll("X-Multi"))
 
 	c.Cookie(&Cookie{Name: "a", Value: "1"})
-	require.NotEmpty(t, c.Res().Cookies())
+	require.NotEmpty(t, c.Res().GetCookies())
 	c.Res().Del(HeaderSetCookie)
-	require.Empty(t, c.Res().Cookies())
+	require.Empty(t, c.Res().GetCookies())
 }
 
 func Test_Res_Add(t *testing.T) {
@@ -538,7 +549,7 @@ func Test_Res_GetCookie_Cookies(t *testing.T) {
 
 	_, ok := c.Res().GetCookie("absent")
 	require.False(t, ok)
-	require.Empty(t, c.Res().Cookies())
+	require.Empty(t, c.Res().GetCookies())
 
 	expires := time.Now().Add(time.Hour).UTC().Truncate(time.Second)
 	c.Cookie(&Cookie{
@@ -572,7 +583,7 @@ func Test_Res_GetCookie_Cookies(t *testing.T) {
 	require.Zero(t, flash.MaxAge)
 	require.True(t, flash.Expires.IsZero())
 
-	cookies := c.Res().Cookies()
+	cookies := c.Res().GetCookies()
 	require.Len(t, cookies, 2)
 	names := make([]string, 0, len(cookies))
 	for _, cookie := range cookies {
@@ -597,7 +608,7 @@ func Test_Res_Cookies_RepeatedNames(t *testing.T) {
 	c.Res().Add(HeaderSetCookie, "sid=admin; path=/admin")
 	c.Cookie(&Cookie{Name: "other", Value: "z"})
 
-	cookies := c.Res().Cookies()
+	cookies := c.Res().GetCookies()
 	require.Len(t, cookies, 3)
 
 	type pair struct{ value, path string }
@@ -698,7 +709,7 @@ func Test_Res_GetCookie_RoundTrip(t *testing.T) {
 	require.Equal(t, "/app", rewritten.Path, "the other attributes survive the round trip")
 	require.True(t, rewritten.HTTPOnly)
 	require.Equal(t, CookieSameSiteLaxMode, rewritten.SameSite)
-	require.Len(t, c.Res().Cookies(), 1, "rewriting replaces the cookie rather than adding one")
+	require.Len(t, c.Res().GetCookies(), 1, "rewriting replaces the cookie rather than adding one")
 }
 
 func Test_Res_NoContent(t *testing.T) {
@@ -784,7 +795,7 @@ func Test_Ctx_BodyContentLengthCookiesPreferRequest(t *testing.T) {
 	require.Equal(t, "client", c.Req().Cookies("who"))
 	require.Equal(t, "fallback", c.Cookies("absent", "fallback"))
 
-	serverCookies := c.Res().Cookies()
+	serverCookies := c.Res().GetCookies()
 	require.Len(t, serverCookies, 1)
 	require.Equal(t, "server", serverCookies[0].Value)
 
@@ -1103,7 +1114,7 @@ func Test_Res_Cookies_UnparsableEntry(t *testing.T) {
 	c.Cookie(&Cookie{Name: "good", Value: "1"})
 	c.Res().Add(HeaderSetCookie, "")
 
-	cookies := c.Res().Cookies()
+	cookies := c.Res().GetCookies()
 	require.Len(t, cookies, 1, "the unparsable entry is skipped")
 	require.Equal(t, "good", cookies[0].Name)
 
@@ -1360,4 +1371,170 @@ func Test_Res_DelKeyCaseWithoutNormalizing(t *testing.T) {
 	c.Res().Set("X-Token", "secret")
 	c.Res().Del("x-token")
 	require.Empty(t, string(c.Response().Header.Peek("X-Token")))
+}
+
+func Test_Req_Res_AccessorsImmutable(t *testing.T) {
+	t.Parallel()
+
+	scrubHeader := func(field string) func(c Ctx) {
+		return func(c Ctx) {
+			raw := c.Request().Header.Peek(field)
+			for i := range raw {
+				raw[i] = 'X'
+			}
+		}
+	}
+
+	tests := []struct {
+		setup func(c Ctx)
+		read  func(c Ctx) string
+		scrub func(c Ctx)
+		name  string
+		want  string
+		// alwaysCopies marks an accessor that builds its own string whatever
+		// Immutable says, so the buffer it was read from cannot be observed.
+		alwaysCopies bool
+	}{
+		{
+			name:  "UserAgent",
+			setup: func(c Ctx) { c.Request().Header.Set(HeaderUserAgent, "agent-one") },
+			read:  func(c Ctx) string { return c.UserAgent() },
+			scrub: scrubHeader(HeaderUserAgent),
+			want:  "agent-one",
+		},
+		{
+			name:  "Referer",
+			setup: func(c Ctx) { c.Request().Header.Set(HeaderReferer, "https://ref.example/a") },
+			read:  func(c Ctx) string { return c.Referer() },
+			scrub: scrubHeader(HeaderReferer),
+			want:  "https://ref.example/a",
+		},
+		{
+			name:  "Origin",
+			setup: func(c Ctx) { c.Request().Header.Set(HeaderOrigin, "https://origin.example") },
+			read:  func(c Ctx) string { return c.Origin() },
+			scrub: scrubHeader(HeaderOrigin),
+			want:  "https://origin.example",
+		},
+		{
+			name:  "AcceptLanguage",
+			setup: func(c Ctx) { c.Request().Header.Set(HeaderAcceptLanguage, "en-GB,en;q=0.8") },
+			read:  func(c Ctx) string { return c.AcceptLanguage() },
+			scrub: scrubHeader(HeaderAcceptLanguage),
+			want:  "en-GB,en;q=0.8",
+		},
+		{
+			name:  "AcceptEncoding",
+			setup: func(c Ctx) { c.Request().Header.Set(HeaderAcceptEncoding, "gzip, br") },
+			read:  func(c Ctx) string { return c.AcceptEncoding() },
+			scrub: scrubHeader(HeaderAcceptEncoding),
+			want:  "gzip, br",
+		},
+		{
+			name:  "ContentType",
+			setup: func(c Ctx) { c.Request().Header.Set(HeaderContentType, "text/plain; charset=iso-8859-1") },
+			read:  func(c Ctx) string { return c.ContentType() },
+			scrub: scrubHeader(HeaderContentType),
+			want:  "text/plain; charset=iso-8859-1",
+		},
+		{
+			name:  "MediaType",
+			setup: func(c Ctx) { c.Request().Header.Set(HeaderContentType, "text/plain; charset=iso-8859-1") },
+			read:  func(c Ctx) string { return c.MediaType() },
+			scrub: scrubHeader(HeaderContentType),
+			want:  "text/plain",
+		},
+		{
+			name:  "Charset",
+			setup: func(c Ctx) { c.Request().Header.Set(HeaderContentType, "text/plain; charset=iso-8859-1") },
+			read:  func(c Ctx) string { return c.Charset() },
+			scrub: scrubHeader(HeaderContentType),
+			want:  "iso-8859-1",
+		},
+		{
+			name:  "Bearer",
+			setup: func(c Ctx) { c.Request().Header.Set(HeaderAuthorization, "Bearer tok-123") },
+			read:  func(c Ctx) string { return c.Bearer() },
+			scrub: scrubHeader(HeaderAuthorization),
+			want:  "tok-123",
+		},
+		{
+			name:  "Authorization",
+			setup: func(c Ctx) { c.Request().Header.Set(HeaderAuthorization, "Basic Y3JlZA==") },
+			read: func(c Ctx) string {
+				_, credentials := c.Authorization()
+				return credentials
+			},
+			scrub: scrubHeader(HeaderAuthorization),
+			want:  "Y3JlZA==",
+		},
+		{
+			name:  "GetAll",
+			setup: func(c Ctx) { c.Request().Header.Set("X-Multi", "one") },
+			read:  func(c Ctx) string { return strings.Join(c.GetAll("X-Multi"), "|") },
+			scrub: scrubHeader("X-Multi"),
+			want:  "one",
+		},
+		{
+			name:  "IfNoneMatch",
+			setup: func(c Ctx) { c.Request().Header.Set(HeaderIfNoneMatch, `"v1", "v2"`) },
+			read:  func(c Ctx) string { return c.IfNoneMatch()[0] },
+			scrub: scrubHeader(HeaderIfNoneMatch),
+			want:  `"v1"`,
+		},
+		{
+			name:         "AllCookies",
+			setup:        func(c Ctx) { c.Request().Header.Set(HeaderCookie, "sid=abc") },
+			read:         func(c Ctx) string { return c.AllCookies()["sid"] },
+			scrub:        scrubHeader(HeaderCookie),
+			want:         "abc",
+			alwaysCopies: true,
+		},
+		{
+			name:  "Res.ContentType",
+			setup: func(c Ctx) { c.Response().Header.Set(HeaderContentType, "application/xml") },
+			read:  func(c Ctx) string { return c.Res().ContentType() },
+			scrub: func(c Ctx) {
+				raw := c.Response().Header.Peek(HeaderContentType)
+				for i := range raw {
+					raw[i] = 'X'
+				}
+			},
+			want: "application/xml",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			app := New(Config{Immutable: true})
+			c := app.AcquireCtx(&fasthttp.RequestCtx{})
+			tc.setup(c)
+
+			got := tc.read(c)
+			require.Equal(t, tc.want, got)
+
+			tc.scrub(c)
+			require.Equal(t, tc.want, got, "Immutable must hand back a copy, not a view of the header buffer")
+		})
+
+		if tc.alwaysCopies {
+			continue
+		}
+
+		t.Run(tc.name+"/scrubReachesTheBuffer", func(t *testing.T) {
+			t.Parallel()
+
+			app := New()
+			c := app.AcquireCtx(&fasthttp.RequestCtx{})
+			tc.setup(c)
+
+			got := tc.read(c)
+			require.Equal(t, tc.want, got)
+
+			tc.scrub(c)
+			require.NotEqual(t, tc.want, got, "without Immutable the value views the header buffer, so this guards the test above against a scrub that reaches nothing")
+		})
+	}
 }

@@ -19,8 +19,9 @@ type Res interface {
 	// (RFC 9110 Section 5.6.1.2).
 	Append(field string, values ...string)
 	// Add appends the value as a new field line, where Append folds values into one
-	// comma-separated line. It does not append for the headers fasthttp slots:
-	// Content-Type, Server and the rest are replaced, Date and TE ignored.
+	// comma-separated line. The headers fasthttp keeps in a slot of their own are
+	// the exception: Content-Type, Server and the rest are replaced and Date and TE
+	// ignored, though Set-Cookie is slotted and does append. Use Cookie for that.
 	Add(key, val string)
 	// Attachment sets the HTTP response Content-Disposition header field to attachment.
 	Attachment(filename ...string)
@@ -42,10 +43,13 @@ type Res interface {
 	// repeat resolves to the first. Writing the copy back through Cookie stamps
 	// Path=/ on a cookie that carried none, widening its scope — set Path first.
 	GetCookie(name string) (*Cookie, bool)
-	// Cookies returns a copy of every cookie this response is set to send, in order,
-	// or nil when there are none. Repeated names are kept apart, and an unparsable
-	// one is skipped. For what the client sent, use Req.Cookies.
-	Cookies() []*Cookie
+	// GetCookies returns a copy of every cookie this response is set to send, in
+	// order, or nil when there are none. Repeated names are kept apart, and an
+	// unparsable one is skipped. For what the client sent, use Req.Cookies.
+	//
+	// Named for GetCookie beside it rather than Cookies, which would collide with
+	// Req.Cookies under a different signature and stop Ctx satisfying Res.
+	GetCookies() []*Cookie
 	// Download transfers the file from path as an attachment.
 	// Typically, browsers will prompt the user for download.
 	// By default, the Content-Disposition header filename= parameter is the filepath (this typically appears in the browser dialog).
@@ -69,9 +73,9 @@ type Res interface {
 	// For more flexible content negotiation, use Format.
 	// If the header is not specified or there is no proper format, text/plain is used.
 	AutoFormat(body any) error
-	// ContentLength returns what the Content-Length response header declares, not
-	// what is buffered: fasthttp fills it in on serialization, so inside a handler
-	// it is 0 unless set explicitly. Use len(Res.Body()) for buffered bytes.
+	// ContentLength returns what the Content-Length response header declares: a
+	// length a handler or upstream set, -1 for an unknown-length stream, 0 when
+	// none is declared. fasthttp fills it in on serialization; see also Res.Body.
 	ContentLength() int
 	// ContentType returns the Content-Type response header, the read side of Type.
 	// With none set it reports what would be sent: fasthttp's default, or "" under
@@ -147,8 +151,8 @@ type Res interface {
 	Render(name string, bind any, layouts ...string) error
 	renderExtensions(bind any)
 	// Body returns the response body buffered so far, or nil for a streamed one,
-	// which draining would pull into memory and de-stream. Use Written to tell those
-	// apart. Only valid until the next write to the response.
+	// which draining would de-stream; Written tells those apart. The buffer is live,
+	// so writing to it writes to the response, and the next write voids it.
 	Body() []byte
 	// ResetBody discards the response body, keeping the status and headers.
 	// Use it before replacing a partially written body — an error page over a
