@@ -22,32 +22,20 @@ const (
 )
 
 // scanConstraintSpan reads the "<...>" span at open, returning its inner text
-// and the index past it. Nesting and escaped delimiters follow path.go.
+// and the index past it. As in path.go, the span closes at the first '>' that
+// is not escaped; a '<' inside it is literal, so both parsers agree on where a
+// regex ends.
 //
 //nolint:nonamedreturns // gocritic requires names to tell the two results apart
 func scanConstraintSpan(pattern string, open int) (raw string, next int) {
-	i := open + 1
-	start := i
-	depth := 1
-	for i < len(pattern) && depth > 0 {
-		if i == start || pattern[i-1] != constraintEscapeChar {
-			switch pattern[i] {
-			case constraintSpanStart:
-				depth++
-			case constraintSpanEnd:
-				depth--
-			default:
-			}
+	start := open + 1
+	for i := start; i < len(pattern); i++ {
+		if pattern[i] == constraintSpanEnd && pattern[i-1] != constraintEscapeChar {
+			return pattern[start:i], i + 1
 		}
-		i++
 	}
-	// Drop the closing '>' when the span was actually closed; an unterminated
-	// span runs to the end of the pattern.
-	end := i
-	if depth == 0 {
-		end--
-	}
-	return pattern[start:end], i
+	// An unterminated span runs to the end of the pattern.
+	return pattern[start:], len(pattern)
 }
 
 // pathParamSchema derives a parameter schema from a constraint span. An empty
@@ -187,7 +175,9 @@ type parsedConstraint struct {
 }
 
 // splitConstraintEntry separates a constraint's name from its arguments: they
-// run from the first non-escaped '(' to the last ')', as in path.go.
+// run from the first non-escaped '(' to the last ')', as in path.go. The router
+// hands a regex its argument whole, so a comma inside one (a "{1,3}" quantifier)
+// is part of the pattern; every other constraint splits and unescapes its list.
 func splitConstraintEntry(entry string) parsedConstraint {
 	entry = strings.TrimSpace(entry)
 	start := indexNonEscaped(entry, constraintArgsStart)
@@ -195,10 +185,16 @@ func splitConstraintEntry(entry string) parsedConstraint {
 	if start == -1 || end == -1 || end < start {
 		return parsedConstraint{name: entry}
 	}
-	return parsedConstraint{
-		name: entry[:start],
-		args: splitNonEscaped(entry[start+1:end], constraintArgsSeparator),
+	name := entry[:start]
+	raw := entry[start+1 : end]
+	if resolveConstraintName(name) == fiber.ConstraintRegex {
+		return parsedConstraint{name: name, args: []string{raw}}
 	}
+	args := splitNonEscaped(raw, constraintArgsSeparator)
+	for i := range args {
+		args[i] = fiber.RemoveEscapeChar(args[i])
+	}
+	return parsedConstraint{name: name, args: args}
 }
 
 // splitNonEscaped splits s on every occurrence of sep that is not preceded by a

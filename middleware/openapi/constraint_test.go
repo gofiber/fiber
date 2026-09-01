@@ -93,7 +93,9 @@ func Test_ScanConstraintSpan(t *testing.T) {
 	}{
 		{"simple", "<int>rest", "int", 0, 5},
 		{"empty span", "<>", "", 0, 2},
-		{"nested angle brackets", "<regex(^<a>$)>", "regex(^<a>$)", 0, 14},
+		// The router closes the span at the first unescaped '>', so a '<'
+		// inside does not nest; the rest of the pattern is literal.
+		{"inner angle bracket closes at first '>'", "<regex(^<a>$)>", "regex(^<a", 0, 11},
 		{"escaped close", `<regex(a\>b)>`, `regex(a\>b)`, 0, 13},
 		{"unterminated runs to end", "<int", "int", 0, 4},
 		{"offset start", "x<bool>", "bool", 1, 7},

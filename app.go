@@ -94,10 +94,11 @@ type App struct {
 	// latestBatch holds the live entries of latestBatchID, so chained helpers
 	// apply in O(batch) instead of scanning the stack. Guarded by mutex.
 	latestBatch []*Route
-	// mergedRegIDs maps a registration that compression merged away onto the one
-	// now stamped on the shared entry, so the earlier scope's helpers still reach
-	// it instead of silently doing nothing. Guarded by mutex.
-	mergedRegIDs map[uint64]uint64
+	// mergedEntries maps a registration that compression merged away onto the
+	// stack entries it shares with a later registration, so the earlier scope's
+	// helpers still reach exactly the entries it registered. Entries are dropped
+	// again when deleteRoute removes them.
+	mergedEntries map[uint64][]*Route
 	// newCtxFunc
 	newCtxFunc func(app *App) CustomCtx
 	// TLS handler
@@ -969,18 +970,15 @@ func (app *App) SetTLSHandler(tlsHandler *TLSHandler) {
 func (app *App) Name(name string) Router {
 	app.mutex.Lock()
 
-	app.applyToLatestRouteLocked(func(route *Route) {
-		route.Name = name
-		if route.group != nil {
-			route.Name = route.group.name + route.Name
-		}
-	})
-
 	// Snapshot under the lock and fire hooks after releasing it, so they may call
-	// locking methods without their reads racing the live route.
+	// locking methods without their reads racing the live route. Nothing fires
+	// when nothing was named: a mount placeholder or a removed route is skipped.
 	var named *Route
-	if app.latestRoute != nil && len(app.hooks.onName) > 0 {
-		named = app.copyRoute(app.latestRoute)
+	if app.latestRoute != nil && app.nameRoutesLocked(app.latestBatchID, name, nil) {
+		app.bumpRoutesRevision()
+		if !app.latestRoute.mount && len(app.hooks.onName) > 0 {
+			named = app.copyRoute(app.latestRoute)
+		}
 	}
 	app.mutex.Unlock()
 
@@ -1266,6 +1264,7 @@ func docAddResponse(status int, description string, schema map[string]any, schem
 		copyResp := resp
 		copyResp.MediaTypes = append([]string(nil), resp.MediaTypes...)
 		copyResp.Schema = copyAnyMap(resp.Schema)
+		copyResp.Example = copyAnyValue(resp.Example)
 		copyResp.Examples = copyAnyMap(resp.Examples)
 		// Headers, links and content documented earlier belong to the same entry
 		// and must survive a later Response call.
@@ -1538,11 +1537,7 @@ func (app *App) applyNameToRegistration(regID uint64, name string) {
 
 	app.mutex.Lock()
 	var named *Route
-	applied := app.applyToRegIDLocked(regID, func(route *Route) {
-		route.Name = name
-		if route.group != nil {
-			route.Name = route.group.name + route.Name
-		}
+	applied := app.nameRoutesLocked(regID, name, func(route *Route) {
 		if named == nil {
 			named = route
 		}
@@ -1591,29 +1586,14 @@ func (app *App) applyToLatestRouteLocked(apply func(route *Route)) {
 }
 
 // applyToRegIDLocked applies a mutation to every entry of regID, preferring the
-// O(batch) fast path. Reports whether anything was touched; holds app.mutex.
-// maxRegIDAliasHops bounds the merge chain walk; it is a guard against a cycle,
-// not a real limit, since each hop moves to a strictly later registration.
-const maxRegIDAliasHops = 64
-
-// resolveRegIDLocked follows compression merges to the registration currently
-// stamped on the shared entry. The caller must hold app.mutex.
-func (app *App) resolveRegIDLocked(regID uint64) uint64 {
-	for range maxRegIDAliasHops {
-		next, ok := app.mergedRegIDs[regID]
-		if !ok || next == regID {
-			break
-		}
-		regID = next
-	}
-	return regID
-}
-
+// O(batch) fast path. Entries that compression merged into a later registration
+// are stamped with that registration's ID and reached through mergedEntries, so
+// a scope never touches an entry it did not register. Reports whether anything
+// was touched; holds app.mutex.
 func (app *App) applyToRegIDLocked(regID uint64, apply func(route *Route)) bool {
 	if regID == 0 {
 		return false
 	}
-	regID = app.resolveRegIDLocked(regID)
 
 	applied := false
 	if regID == app.latestBatchID {
@@ -1635,7 +1615,64 @@ func (app *App) applyToRegIDLocked(regID uint64, apply func(route *Route)) bool 
 			}
 		}
 	}
+	for _, route := range app.mergedEntries[regID] {
+		apply(route)
+		applied = true
+	}
 	return applied
+}
+
+// nameRoutesLocked names every entry of regID and, as Name always has, the
+// automatic HEAD twin of each GET entry, so the pair stays reachable by one
+// name. The caller must hold app.mutex.
+func (app *App) nameRoutesLocked(regID uint64, name string, visit func(route *Route)) bool {
+	var gets []*Route
+	applied := app.applyToRegIDLocked(regID, func(route *Route) {
+		route.Name = name
+		if route.group != nil {
+			route.Name = route.group.name + route.Name
+		}
+		if route.Method == MethodGet && !route.use {
+			gets = append(gets, route)
+		}
+		if visit != nil {
+			visit(route)
+		}
+	})
+	if len(gets) == 0 {
+		return applied
+	}
+	headIndex := app.methodInt(MethodHead)
+	if headIndex == -1 {
+		return applied
+	}
+	for _, get := range gets {
+		key := app.autoHeadKey(get)
+		for _, head := range app.stack[headIndex] {
+			if head.autoHead && app.autoHeadKey(head) == key {
+				head.Name = get.Name
+			}
+		}
+	}
+	return applied
+}
+
+// routeForURL finds a named route for URL composition. Only the routing fields
+// are copied: a request-path caller has no use for the documentation, and the
+// deep copy GetRoute makes would cost every redirect an allocation per example.
+func (app *App) routeForURL(name string) Route {
+	app.mutex.Lock()
+	defer app.mutex.Unlock()
+
+	for _, routes := range app.stack {
+		for _, route := range routes {
+			if route.Name == name {
+				return app.copyRouteBaseValue(route)
+			}
+		}
+	}
+
+	return Route{}
 }
 
 // GetRoute Get route by name. The returned route is a deep copy taken under the
@@ -1834,7 +1871,9 @@ func (app *App) Group(prefix string, handlers ...any) Router {
 	grp := &Group{Prefix: prefix, app: app}
 	if len(handlers) > 0 {
 		converted := collectHandlers("group", handlers...)
-		app.register([]string{methodUse}, prefix, grp, "", converted...)
+		// The middleware belongs to the group, so helpers chained onto the
+		// group reach it, as they do for a group created from a group.
+		atomic.StoreUint64(&grp.lastRegID, app.register([]string{methodUse}, prefix, grp, "", converted...))
 	}
 	if err := app.hooks.executeOnGroupHooks(*grp); err != nil {
 		panic(err)
@@ -2411,11 +2450,14 @@ func (app *App) startupProcess() {
 	app.mutex.Lock()
 
 	twins := app.ensureAutoHeadRoutesLocked()
+	var subTwins []subAppTwins
 	for prefix, subApp := range app.mountFields.appList {
 		if prefix == "" {
 			continue
 		}
-		subApp.ensureAutoHeadRoutes()
+		if created := subApp.ensureAutoHeadRoutes(); len(created) > 0 {
+			subTwins = append(subTwins, subAppTwins{app: subApp, twins: created})
+		}
 	}
 	app.mountStartupProcess()
 
@@ -2423,9 +2465,20 @@ func (app *App) startupProcess() {
 	app.buildTree()
 
 	// Fire hooks after releasing the lock so they may safely call locking app
-	// methods (GetRoutes, documentation helpers, RemoveRoute, ...).
+	// methods (GetRoutes, documentation helpers, RemoveRoute, ...). A sub-app's
+	// hooks wait as well: they may reach into this app.
 	app.mutex.Unlock()
 	app.fireOnRouteHooks(twins)
+	for _, sub := range subTwins {
+		sub.app.fireOnRouteHooks(sub.twins)
+	}
+}
+
+// subAppTwins pairs a mounted app with the automatic HEAD routes it created
+// during the parent's startup, so their hooks can fire once the parent unlocks.
+type subAppTwins struct {
+	app   *App
+	twins []*Route
 }
 
 // Run onListen hooks. If they return an error, panic.

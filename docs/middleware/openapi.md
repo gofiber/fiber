@@ -373,8 +373,9 @@ call produced the `string($uuid)` below, only the `<guid>` in the route pattern:
 
 Chained constraints (`:id<int;min(5)>`) are merged, with the first constraint that
 sets a keyword keeping it. A custom or unrecognized constraint leaves the default
-`{"type": "string"}` rather than guessing, and an explicit `AddParameter` for the
-same name always wins over the derived schema.
+`{"type": "string"}` rather than guessing. An explicit `AddParameter` for the
+same name wins over the derived schema when it supplies one; a call that only
+adds a description or an example keeps the derived schema.
 
 `alpha` accepts any Unicode letter at runtime, so no `pattern` is emitted: an
 ASCII-only pattern would document the route as stricter than it is.
@@ -602,7 +603,9 @@ route's media type.
   so parameter names stay unique per path.
 - Wildcard segments (`*`, `+`) become an ordinary path parameter named
   `wildcard<n>`: `/files/*` documents as `/files/{wildcard1}`. Pass that name to
-  `AddParameter` (`In: "path"`) to give it a description or a schema.
+  `AddParameter` (`In: "path"`) to give it a description or a schema. Since `*`
+  also matches no segment, the bare path (`/files`) is documented as well, as for
+  an optional parameter; `+` requires a segment and gets no such variant.
 - Routes with several optional parameters (e.g. `/files/:dir?/:name?`) emit one
   templated path per hierarchy level (`/files`, `/files/{dir}`,
   `/files/{dir}/{name}`): the router always binds the first parameter, and the

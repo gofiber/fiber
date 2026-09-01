@@ -203,8 +203,10 @@ func resolveTargets(c fiber.Ctx, specPath, uiPath string, equal func(a, b string
 
 	prefix := routePrefix(route.Path, c.Path())
 	// Optional or greedy segments consume a varying number of request segments,
-	// so the truncation above cannot say where the mount ends.
-	if resolved, ok := resolveDynamicMountPrefix(route.Path, c.Path(), specPath, uiPath, equal); ok {
+	// so the truncation above cannot say where the mount ends. The request is
+	// compared trimmed, as the handler trims it, so a trailing slash still
+	// resolves.
+	if resolved, ok := resolveDynamicMountPrefix(route.Path, utils.TrimRight(c.Path(), '/'), specPath, uiPath, equal); ok {
 		prefix = resolved
 	}
 	switch {
@@ -1119,10 +1121,30 @@ func mergeRouteParameters(params []parameter, index map[string]int, extras []fib
 		}
 		if param.In == paramLocationPath {
 			param.Required = true
+			// AddParameter injects {"type": "string"} when no schema is given, so
+			// a description-only call would otherwise drop the schema the route
+			// constraint derived (":id<int>" documented as a string).
+			if idx, ok := index[param.In+":"+param.Name]; ok && extra.SchemaRef == "" && param.Content == nil && isDefaultStringSchema(extra.Schema) {
+				param.Schema = params[idx].Schema
+			}
 		}
 		params = appendOrReplaceParameter(params, index, &param)
 	}
 	return params
+}
+
+// isDefaultStringSchema reports whether a schema says nothing beyond the string
+// default the route helpers inject.
+func isDefaultStringSchema(schema map[string]any) bool {
+	switch len(schema) {
+	case 0:
+		return true
+	case 1:
+		typ, ok := schema[schemaKeyType].(string)
+		return ok && typ == schemaTypeString
+	default:
+		return false
+	}
 }
 
 func appendOrReplaceParameter(params []parameter, index map[string]int, p *parameter) []parameter {
@@ -1460,13 +1482,28 @@ func buildOpenAPIPathVariants(fiberPath string, params []string) []pathVariant {
 				current = includeState
 
 			case '*', '+':
+				isOptional := fiberPath[i] == '*'
 				resolved := resolveOpenAPIWildcardParamName(current.paramIdx, params)
-				name := uniquePathParamName(resolved.openAPI, current.params)
-				current.path += "{" + name + "}"
-				current.params = append(current.params, name)
-				current.aliases[resolved.raw] = name
-				current.paramIdx++
+				includeState := current.clone()
+				name := uniquePathParamName(resolved.openAPI, includeState.params)
+				includeState.path += "{" + name + "}"
+				includeState.params = append(includeState.params, name)
+				includeState.aliases[resolved.raw] = name
+				includeState.paramIdx++
 				i++
+
+				// "*" also matches no segment at all, so the route serves the
+				// path without it; "+" needs at least one.
+				if isOptional {
+					excludeState := current.clone()
+					excludeState.paramIdx++
+					walk(i, includeState)
+					if len(variants) < maxPathVariants {
+						walk(i, excludeState)
+					}
+					return
+				}
+				current = includeState
 
 			case '\\':
 				// The route grammar escapes the next character, matching it

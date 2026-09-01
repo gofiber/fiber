@@ -171,39 +171,55 @@ var ConfigDefault = Config{
 	OpenAPIVersion:             versionOpenAPI31,
 }
 
+// maxCopyDepth bounds the configuration deep copy: a cyclic value in
+// SwaggerOptions or Components would otherwise overflow the stack in New.
+const maxCopyDepth = 100
+
 // deepCopyAnyMap copies a raw OpenAPI object so the caller shares no nested
 // container with the handler. Non-container values are copied as-is.
 func deepCopyAnyMap(src map[string]any) map[string]any {
+	return deepCopyAnyMapDepth(src, 0)
+}
+
+func deepCopyAnyMapDepth(src map[string]any, depth int) map[string]any {
 	if src == nil {
 		return nil
 	}
+	if depth >= maxCopyDepth {
+		// Sharing the reference is the lesser evil; encoding/json reports the
+		// cycle itself when the document is served.
+		return src
+	}
 	dst := make(map[string]any, len(src))
 	for key, value := range src {
-		dst[key] = deepCopyAnyValue(value)
+		dst[key] = deepCopyAnyValueDepth(value, depth+1)
 	}
 	return dst
 }
 
-func deepCopyAnyValue(src any) any {
+func deepCopyAnyValueDepth(src any, depth int) any {
+	if depth >= maxCopyDepth {
+		return src
+	}
 	switch value := src.(type) {
 	case map[string]any:
-		return deepCopyAnyMap(value)
+		return deepCopyAnyMapDepth(value, depth)
 	case []any:
 		copied := make([]any, len(value))
 		for i := range value {
-			copied[i] = deepCopyAnyValue(value[i])
+			copied[i] = deepCopyAnyValueDepth(value[i], depth+1)
 		}
 		return copied
 	case []string:
 		return slices.Clone(value)
 	default:
-		return deepCopyReflected(src)
+		return deepCopyReflected(src, depth)
 	}
 }
 
 // deepCopyReflected clones map and slice values of any concrete type, which the
 // typed switch above cannot name. Anything else is returned as-is.
-func deepCopyReflected(src any) any {
+func deepCopyReflected(src any, depth int) any {
 	v := reflect.ValueOf(src)
 	switch v.Kind() {
 	case reflect.Map:
@@ -213,7 +229,7 @@ func deepCopyReflected(src any) any {
 		cloned := reflect.MakeMapWithSize(v.Type(), v.Len())
 		iter := v.MapRange()
 		for iter.Next() {
-			cloned.SetMapIndex(iter.Key(), deepCopyReflectedValue(iter.Value()))
+			cloned.SetMapIndex(iter.Key(), deepCopyReflectedValue(iter.Value(), depth+1))
 		}
 		return cloned.Interface()
 	case reflect.Slice:
@@ -222,7 +238,7 @@ func deepCopyReflected(src any) any {
 		}
 		cloned := reflect.MakeSlice(v.Type(), v.Len(), v.Len())
 		for i := range v.Len() {
-			cloned.Index(i).Set(deepCopyReflectedValue(v.Index(i)))
+			cloned.Index(i).Set(deepCopyReflectedValue(v.Index(i), depth+1))
 		}
 		return cloned.Interface()
 	default:
@@ -232,12 +248,12 @@ func deepCopyReflected(src any) any {
 
 // deepCopyReflectedValue copies one element, recursing through interfaces so a
 // nested container inside an `any` is cloned rather than shared.
-func deepCopyReflectedValue(v reflect.Value) reflect.Value {
+func deepCopyReflectedValue(v reflect.Value, depth int) reflect.Value {
 	if v.Kind() == reflect.Interface && !v.IsNil() {
-		return reflect.ValueOf(deepCopyAnyValue(v.Interface()))
+		return reflect.ValueOf(deepCopyAnyValueDepth(v.Interface(), depth))
 	}
 	if v.Kind() == reflect.Map || v.Kind() == reflect.Slice {
-		return reflect.ValueOf(deepCopyReflected(v.Interface()))
+		return reflect.ValueOf(deepCopyReflected(v.Interface(), depth))
 	}
 	return v
 }

@@ -9,6 +9,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/stretchr/testify/require"
@@ -1252,11 +1253,21 @@ func Test_BuildOpenAPIPathVariants(t *testing.T) {
 
 	t.Run("wildcard uses openapi-compatible parameter name", func(t *testing.T) {
 		t.Parallel()
+		// "*" also matches no segment, so the bare path is a variant too.
 		variants := buildOpenAPIPathVariants("/files/*", []string{"*1"})
-		require.Len(t, variants, 1)
+		require.Len(t, variants, 2)
 		require.Equal(t, "/files/{wildcard1}", variants[0].Path)
 		require.Equal(t, []string{"wildcard1"}, variants[0].ParamNames)
 		require.Equal(t, "wildcard1", variants[0].PathParamAliases["*1"])
+		require.Equal(t, "/files", variants[1].Path)
+		require.Empty(t, variants[1].ParamNames)
+	})
+
+	t.Run("plus wildcard needs a segment", func(t *testing.T) {
+		t.Parallel()
+		variants := buildOpenAPIPathVariants("/files/+", []string{"+1"})
+		require.Len(t, variants, 1)
+		require.Equal(t, "/files/{wildcard1}", variants[0].Path)
 	})
 }
 
@@ -1287,7 +1298,10 @@ func Test_OpenAPI_WildcardPathParameterNameMatchesTemplate(t *testing.T) {
 	app.Get("/files/*", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
 
 	paths := getPaths(t, app)
-	require.Len(t, paths, 1)
+	require.Len(t, paths, 2)
+	// The route also answers /files, since "*" may match nothing.
+	require.Nil(t, requireMap(t, paths["/files"]["get"])["parameters"])
+	delete(paths, "/files")
 	for template, ops := range paths {
 		op := requireMap(t, ops["get"])
 		params := requireSlice(t, op["parameters"])
@@ -3361,24 +3375,24 @@ func Test_OpenAPI_TypedConfigContainersDetached(t *testing.T) {
 func Test_DeepCopyReflected(t *testing.T) {
 	t.Parallel()
 
-	require.Equal(t, 42, deepCopyReflected(42))
+	require.Equal(t, 42, deepCopyReflected(42, 0))
 
 	var nilMap map[string]int
-	require.Nil(t, deepCopyReflected(nilMap))
+	require.Nil(t, deepCopyReflected(nilMap, 0))
 	var nilSlice []int
-	require.Nil(t, deepCopyReflected(nilSlice))
+	require.Nil(t, deepCopyReflected(nilSlice, 0))
 
 	// A typed map holding `any` values must clone the nested container.
 	nested := map[string]any{"inner": map[string]any{"k": "v"}}
 	src := map[string]map[string]any{"outer": nested}
-	cloned, ok := deepCopyReflected(src).(map[string]map[string]any)
+	cloned, ok := deepCopyReflected(src, 0).(map[string]map[string]any)
 	require.True(t, ok)
 	requireMap(t, nested["inner"])["k"] = "mutated"
 	require.Equal(t, "v", requireMap(t, cloned["outer"]["inner"])["k"])
 
 	// Slices of slices clone element by element.
 	rows := [][]int{{1, 2}}
-	clonedRows, ok := deepCopyReflected(rows).([][]int)
+	clonedRows, ok := deepCopyReflected(rows, 0).([][]int)
 	require.True(t, ok)
 	rows[0][0] = 99
 	require.Equal(t, 1, clonedRows[0][0])
@@ -3742,4 +3756,107 @@ func Test_OpenAPI_TypedSecuritySchemesMerge(t *testing.T) {
 	schemes := requireMap(t, buildComponents(&cfg)["securitySchemes"])
 	require.Contains(t, schemes, "fromComponents", "the caller's typed schemes were dropped")
 	require.Contains(t, schemes, "fromConfig")
+}
+
+// Test_SchemaOf_SelfReferentialPointerField pins that a field of a
+// self-referential pointer type terminates like the top-level walk does.
+func Test_SchemaOf_SelfReferentialPointerField(t *testing.T) {
+	t.Parallel()
+
+	type selfPtr *selfPtr
+	type holder struct {
+		Field selfPtr `json:"field"`
+	}
+
+	done := make(chan map[string]any, 1)
+	go func() { done <- SchemaOf(holder{}) }()
+	select {
+	case schema := <-done:
+		require.Equal(t, schemaTypeObject, schema[schemaKeyType])
+	case <-time.After(5 * time.Second):
+		require.Fail(t, "SchemaOf never returned for a self-referential pointer field")
+	}
+}
+
+// Test_Constraint_RegexArgumentKeptWhole pins that a regex constraint reaches
+// the schema whole, as the router compiles it: a comma inside is not a separator.
+func Test_Constraint_RegexArgumentKeptWhole(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Get("/a/:id<regex([0-9]{1,3})>", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
+	app.Get("/b/:code<betweenLen(2\\,4)>", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
+
+	paths := getPaths(t, app)
+	param := requireMap(t, requireSlice(t, requireMap(t, paths["/a/{id}"]["get"])["parameters"])[0])
+	require.Equal(t, map[string]any{"type": "string", "pattern": "[0-9]{1,3}"}, param["schema"])
+
+	require.Equal(t, parsedConstraint{name: "regex", args: []string{"a,b"}}, splitConstraintEntry("regex(a,b)"))
+	require.Equal(t, parsedConstraint{name: "range", args: []string{"1", "9"}}, splitConstraintEntry("range(1,9)"))
+	require.Equal(t, parsedConstraint{name: "range", args: []string{"1,9"}}, splitConstraintEntry(`range(1\,9)`))
+}
+
+// Test_OpenAPI_DynamicMountTrailingSlash pins that a trailing slash on the
+// request does not defeat prefix resolution under an optional mount segment.
+func Test_OpenAPI_DynamicMountTrailingSlash(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Use("/:tenant/:ver?", New())
+
+	for _, target := range []string{"/acme/v1/openapi.json", "/acme/v1/openapi.json/", "/acme/openapi.json/"} {
+		status, _ := specBodyOf(t, app, target)
+		require.Equal(t, fiber.StatusOK, status, target)
+	}
+}
+
+// Test_OpenAPI_WildcardDocumentsBarePath pins that "*" is documented like an
+// optional parameter, since the router matches the path without it too.
+func Test_OpenAPI_WildcardDocumentsBarePath(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Get("/files/*", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
+	app.Get("/strict/+", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
+
+	paths := getPaths(t, app)
+	require.Contains(t, paths, "/files")
+	require.Contains(t, paths, "/files/{wildcard1}")
+	require.NotContains(t, paths, "/strict")
+	require.Contains(t, paths, "/strict/{wildcard1}")
+}
+
+// Test_OpenAPI_AddParameterKeepsConstraintSchema pins that describing a
+// constrained path parameter keeps the schema the constraint derived.
+func Test_OpenAPI_AddParameterKeepsConstraintSchema(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Get("/users/:id<int>", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) }).
+		AddParameter(fiber.RouteParameter{Name: "id", In: "path", Description: "User ID"})
+	app.Get("/codes/:code<int>", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) }).
+		Parameter("code", "path", true, map[string]any{"type": "string", "pattern": "^[0-9]+$"}, "explicit")
+
+	paths := getPaths(t, app)
+	described := requireMap(t, requireSlice(t, requireMap(t, paths["/users/{id}"]["get"])["parameters"])[0])
+	require.Equal(t, "User ID", described["description"])
+	require.Equal(t, map[string]any{"type": "integer"}, described["schema"])
+
+	explicit := requireMap(t, requireSlice(t, requireMap(t, paths["/codes/{code}"]["get"])["parameters"])[0])
+	require.Equal(t, map[string]any{"type": "string", "pattern": "^[0-9]+$"}, explicit["schema"])
+}
+
+// Test_Config_CyclicOptionsDoNotOverflow pins the depth guard on the
+// configuration copy.
+func Test_Config_CyclicOptionsDoNotOverflow(t *testing.T) {
+	t.Parallel()
+
+	opts := map[string]any{}
+	opts["self"] = opts
+	require.NotPanics(t, func() { _ = New(Config{SwaggerOptions: opts}) })
+
+	type nested map[string]any
+	components := map[string]any{}
+	components["schemas"] = nested{"self": components}
+	require.NotPanics(t, func() { _ = New(Config{Components: components}) })
 }

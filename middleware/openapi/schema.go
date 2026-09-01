@@ -253,7 +253,12 @@ func structSchema(t reflect.Type, visited map[reflect.Type]bool) map[string]any 
 				name := tagInfo.name
 
 				embeddedType := field.Type
-				for embeddedType.Kind() == reflect.Pointer {
+				// Bounded like typeSchema: a self-referential pointer type
+				// (type P *P) never stops being a pointer.
+				for range maxPointerDepth {
+					if embeddedType.Kind() != reflect.Pointer {
+						break
+					}
 					embeddedType = embeddedType.Elem()
 				}
 				isEmbeddedStruct := field.Anonymous && embeddedType.Kind() == reflect.Struct && embeddedType != timeType && name == ""

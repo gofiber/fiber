@@ -460,7 +460,7 @@ func (d *domainRouter) mount(prefix string, subApp *App) Router {
 	//
 	// The routes marked while cloning are passed over, and the marks travel on
 	// to the app this one is mounted on, so it withholds them there as well.
-	wrapperApp.ensureAutoHeadRoutes()
+	wrapperApp.fireOnRouteHooks(wrapperApp.ensureAutoHeadRoutes())
 
 	// Register the sub-app, and every app it has mounted, as domain mounts of
 	// the parent. They are kept out of appList so that their ErrorHandler and
@@ -771,10 +771,13 @@ func (d *domainRouter) All(path string, handler any, handlers ...any) Router {
 func (d *domainRouter) Group(prefix string, handlers ...any) Router {
 	fullPrefix := d.registerPath(prefix)
 
+	// The middleware belongs to the new router; writing it to this one would
+	// retarget its later doc helpers at the Use route.
+	var regID uint64
 	if len(handlers) > 0 {
 		converted := collectHandlers("domain", handlers...)
 		wrapped := d.wrapHandlers(converted)
-		atomic.StoreUint64(&d.lastRegID, d.app.register([]string{methodUse}, fullPrefix, d.registerGroup(), d.pattern(), wrapped...))
+		regID = d.app.register([]string{methodUse}, fullPrefix, d.registerGroup(), d.pattern(), wrapped...)
 	}
 
 	// Create a new group on the app
@@ -784,9 +787,10 @@ func (d *domainRouter) Group(prefix string, handlers ...any) Router {
 	}
 
 	return &domainRouter{
-		app:     d.app,
-		group:   newGrp,
-		matcher: d.matcher,
+		app:       d.app,
+		group:     newGrp,
+		matcher:   d.matcher,
+		lastRegID: regID,
 	}
 }
 

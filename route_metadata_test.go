@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp/fasthttputil"
 )
@@ -993,4 +994,293 @@ func Test_CopyAnyValue_NamedMapCycle(t *testing.T) {
 	cyclicList := list{nil}
 	cyclicList[0] = cyclicList
 	require.NotPanics(t, func() { _ = copyAnyValue(cyclicList) })
+}
+
+// findRoute returns the copy of the first route with the given method and path.
+func findRoute(t *testing.T, app *App, method, path string) Route {
+	t.Helper()
+	routes := app.GetRoutes()
+	for i := range routes {
+		if routes[i].Method == method && routes[i].Path == path {
+			return routes[i]
+		}
+	}
+	require.Failf(t, "route not found", "%s %s", method, path)
+	return Route{}
+}
+
+// Test_ScopedHelpers_MergeReachesOnlyOwnEntries pins that a compression merge
+// keeps each scope's helpers on exactly the entries that scope registered: the
+// earlier one neither loses its unmerged entries nor gains the later one's.
+func Test_ScopedHelpers_MergeReachesOnlyOwnEntries(t *testing.T) {
+	t.Parallel()
+
+	t.Run("earlier scope keeps its unmerged entries", func(t *testing.T) {
+		t.Parallel()
+		app := New()
+		api := app.Group("/api")
+		api.Add([]string{MethodGet, MethodPost}, "/items", testHandlerOK)
+		app.Post("/api/items", testHandlerOK)
+		api.Summary("Items")
+
+		require.Equal(t, "Items", findRoute(t, app, MethodGet, "/api/items").Summary)
+		require.Equal(t, "Items", findRoute(t, app, MethodPost, "/api/items").Summary)
+	})
+
+	t.Run("earlier scope never reaches the later registration", func(t *testing.T) {
+		t.Parallel()
+		app := New()
+		api := app.Group("/api")
+		api.Get("/a", testHandlerOK)
+		app.Add([]string{MethodGet, MethodPost}, "/api/a", testHandlerOK)
+		api.Summary("list")
+
+		require.Equal(t, "list", findRoute(t, app, MethodGet, "/api/a").Summary)
+		require.Empty(t, findRoute(t, app, MethodPost, "/api/a").Summary, "the POST route was never registered by the group")
+	})
+
+	t.Run("removed entries are forgotten", func(t *testing.T) {
+		t.Parallel()
+		app := New()
+		g1 := app.Group("/g")
+		g2 := app.Group("/g")
+		g1.Get("/same", testHandlerOK)
+		g2.Get("/same", testHandlerOK)
+		app.RemoveRoute("/g/same", MethodGet)
+		require.NotPanics(t, func() { g1.Summary("gone") })
+		app.mutex.Lock()
+		defer app.mutex.Unlock()
+		require.Empty(t, app.mergedEntries)
+	})
+}
+
+// Test_ConcurrentRegistrations_KeepBatchesWhole pins that two scoped
+// registrations interleaving one method at a time still document every entry
+// of their own, whether the scope's registration owns the batch or not.
+func Test_ConcurrentRegistrations_KeepBatchesWhole(t *testing.T) {
+	t.Parallel()
+
+	for range 50 {
+		app := New()
+		var wg sync.WaitGroup
+		for _, prefix := range []string{"/a", "/b"} {
+			wg.Go(func() {
+				grp := app.Group(prefix)
+				grp.Add([]string{MethodGet, MethodPost}, "/x", testHandlerOK)
+				grp.Summary(prefix)
+			})
+		}
+		wg.Wait()
+
+		for _, prefix := range []string{"/a", "/b"} {
+			require.Equal(t, prefix, findRoute(t, app, MethodGet, prefix+"/x").Summary)
+			require.Equal(t, prefix, findRoute(t, app, MethodPost, prefix+"/x").Summary)
+		}
+	}
+}
+
+// Test_AutoHeadTwin_OutsideRegistrations pins that a twin created at startup
+// belongs to no registration, so a scoped helper that falls back to the stack
+// scan does not document it.
+func Test_AutoHeadTwin_OutsideRegistrations(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	api := app.Group("/api")
+	api.Get("/a", testHandlerOK)
+	app.Get("/b", testHandlerOK)
+
+	_, err := app.Test(httptest.NewRequest(MethodGet, "/api/a", http.NoBody))
+	require.NoError(t, err)
+
+	api.Summary("A").Deprecated()
+
+	require.Equal(t, "A", findRoute(t, app, MethodGet, "/api/a").Summary)
+	head := findRoute(t, app, MethodHead, "/api/a")
+	require.True(t, head.IsAutoHead())
+	require.Empty(t, head.Summary)
+	require.False(t, head.Deprecated)
+}
+
+// Test_Name_ReachesAutoHeadTwin pins that naming a GET route names the HEAD
+// twin it already has, so the pair stays reachable by one name.
+func Test_Name_ReachesAutoHeadTwin(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	app.Get("/a", testHandlerOK)
+	_, err := app.Test(httptest.NewRequest(MethodGet, "/a", http.NoBody))
+	require.NoError(t, err)
+
+	app.Name("users")
+	require.Equal(t, "users", findRoute(t, app, MethodGet, "/a").Name)
+	require.Equal(t, "users", findRoute(t, app, MethodHead, "/a").Name)
+
+	grp := app.Group("/g")
+	grp.Get("/b", testHandlerOK)
+	_, err = app.Test(httptest.NewRequest(MethodGet, "/g/b", http.NoBody))
+	require.NoError(t, err)
+	grp.Name("things")
+	require.Equal(t, "things", findRoute(t, app, MethodHead, "/g/b").Name)
+}
+
+// Test_Name_NoHookForMountPlaceholder pins that OnName fires only for a route
+// that was actually named: a mount placeholder is skipped, not reported.
+func Test_Name_NoHookForMountPlaceholder(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	var fired []string
+	app.Hooks().OnName(func(r Route) error {
+		fired = append(fired, r.Method+" "+r.Path+" "+r.Name)
+		return nil
+	})
+	app.Get("/a", testHandlerOK)
+	app.Use("/sub", New()).Name("sub")
+
+	require.Empty(t, fired)
+	require.Empty(t, findRoute(t, app, MethodGet, "/a").Name)
+
+	app.Get("/c", testHandlerOK).Name("c")
+	require.Equal(t, []string{"GET /c c"}, fired)
+}
+
+// Test_GroupMiddleware_ReachableFromGroup pins that a group created from the
+// app keeps its middleware registration, like one created from a group does.
+func Test_GroupMiddleware_ReachableFromGroup(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	app.Group("/api", testHandlerOK).Hidden()
+	mw := findRoute(t, app, MethodGet, "/api")
+	require.True(t, mw.IsHidden())
+
+	d := app.Domain("api.example.com")
+	d.Get("/a", testHandlerOK)
+	sub := d.Group("/v1", testHandlerOK)
+	d.Summary("list")
+	sub.Summary("mw")
+
+	require.Equal(t, "list", findRoute(t, app, MethodGet, "/a").Summary)
+	require.Equal(t, "mw", findRoute(t, app, MethodPost, "/v1").Summary)
+}
+
+// Test_LockingLookups_FromCallbacks pins that callbacks the router runs may call
+// the locking lookups: a RemoveRouteFunc matcher and a sub-app's OnRoute hook
+// fired during the parent's startup.
+func Test_LockingLookups_FromCallbacks(t *testing.T) {
+	t.Parallel()
+
+	t.Run("RemoveRouteFunc matcher", func(t *testing.T) {
+		t.Parallel()
+		app := New()
+		app.Get("/old", testHandlerOK).Name("old")
+		app.Get("/keep", testHandlerOK)
+
+		done := make(chan struct{})
+		go func() {
+			defer close(done)
+			app.RemoveRouteFunc(func(r *Route) bool { return r.Path == app.GetRoute("old").Path })
+		}()
+		select {
+		case <-done:
+		case <-time.After(5 * time.Second):
+			require.Fail(t, "RemoveRouteFunc deadlocked on GetRoute")
+		}
+		require.Len(t, app.GetRoutes(true), 1)
+	})
+
+	t.Run("sub-app OnRoute hook during parent startup", func(t *testing.T) {
+		t.Parallel()
+		parent := New()
+		sub := New()
+		sub.Get("/x", testHandlerOK)
+		var seen int
+		sub.Hooks().OnRoute(func(Route) error {
+			seen = len(parent.GetRoutes())
+			return nil
+		})
+		parent.Use("/api", sub)
+
+		done := make(chan struct{})
+		go func() {
+			defer close(done)
+			resp, err := parent.Test(httptest.NewRequest(MethodHead, "/api/x", http.NoBody))
+			assert.NoError(t, err)
+			assert.Equal(t, StatusOK, resp.StatusCode)
+		}()
+		select {
+		case <-done:
+		case <-time.After(5 * time.Second):
+			require.Fail(t, "startup deadlocked on the parent lock")
+		}
+		require.Positive(t, seen)
+	})
+}
+
+// Test_CopyAnyMap_KeepsNestedEmptyMaps pins that an empty nested object is
+// copied as an object, not dropped to nil and served as null.
+func Test_CopyAnyMap_KeepsNestedEmptyMaps(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	app.Post("/x", testHandlerOK).ResponseWithExample(StatusOK, "", map[string]any{
+		"type":       "object",
+		"properties": map[string]any{},
+	}, "", []any{map[string]any{}}, nil, MIMEApplicationJSON)
+
+	resp := findRoute(t, app, MethodPost, "/x").Responses["200"]
+	require.NotNil(t, resp.Schema["properties"])
+	require.Equal(t, map[string]any{}, resp.Schema["properties"])
+	example, ok := resp.Example.([]any)
+	require.True(t, ok)
+	require.Equal(t, map[string]any{}, example[0])
+
+	require.Nil(t, copyAnyMap(map[string]any{}), "a top-level empty map still reads as unset")
+}
+
+// Test_ResponseExample_NotSharedAcrossBatch pins that each route of a
+// multi-method registration gets its own copy of a response example.
+func Test_ResponseExample_NotSharedAcrossBatch(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	app.Add([]string{MethodGet, MethodPost}, "/e", testHandlerOK).
+		ResponseWithExample(StatusOK, "ok", map[string]any{"type": "object"}, "", map[string]any{"k": "v"}, nil, MIMEApplicationJSON)
+
+	app.mutex.Lock()
+	defer app.mutex.Unlock()
+	var examples []map[string]any
+	for _, routes := range app.stack {
+		for _, r := range routes {
+			if r.Path == "/e" {
+				example, ok := r.Responses["200"].Example.(map[string]any)
+				require.True(t, ok)
+				examples = append(examples, example)
+			}
+		}
+	}
+	require.Len(t, examples, 2)
+	examples[0]["k"] = "changed"
+	require.Equal(t, "v", examples[1]["k"])
+}
+
+// Test_RouteForURL_SkipsDocumentation pins the request-path lookup: it finds
+// the named route without cloning the documentation.
+func Test_RouteForURL_SkipsDocumentation(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	app.Get("/users/:id", testHandlerOK).Name("user").
+		ResponseWithExample(StatusOK, "ok", map[string]any{"type": "object"}, "", map[string]any{"k": "v"}, nil, MIMEApplicationJSON)
+
+	route := app.routeForURL("user")
+	require.Equal(t, "/users/:id", route.Path)
+	require.Nil(t, route.Responses)
+	require.Empty(t, app.routeForURL("missing").Path)
+
+	app.Get("/go", func(c Ctx) error { return c.Redirect().Route("user", RedirectConfig{Params: Map{"id": "7"}}) })
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/go", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, "/users/7", resp.Header.Get(HeaderLocation))
 }
