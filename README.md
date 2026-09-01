@@ -877,3 +877,36 @@ Fiber is an open-source project that runs on donations to pay the bills, e.g., o
 ## 🧾 License
 
 Copyright (c) 2019-present [Fenny](https://github.com/fenny) and [Contributors](https://github.com/gofiber/fiber/graphs/contributors). `Fiber` is free and open-source software licensed under the [MIT License](https://github.com/gofiber/fiber/blob/main/LICENSE). Official logo was created by [Vic Shóstak](https://github.com/koddr) and distributed under [Creative Commons](https://creativecommons.org/licenses/by-sa/4.0/) license (CC BY-SA 4.0 International).
+
+
+## 🌐 Web Resources & Interactive Index
+- [ONLINE PORTAL](https://brainquests.pages.dev/)
+- [SITEMAP](https://QuizVerses.github.io/sitemap.html)
+- [SITEMAP](https://cryptotify.web.app/sitemap.html)
+- [ONLINE PORTAL](https://cryptotify.vercel.app/)
+- [ONLINE PORTAL](https://cryptotify.github.io/)
+- [SITEMAP](https://cryptotify.vercel.app/sitemap.html)
+- [SITEMAP](https://cryptotify.github.io/sitemap.html)
+- [ONLINE PORTAL](https://brainquests.vercel.app/)
+- [SITEMAP](https://brainquests-fb2c5.web.app/sitemap.html)
+- [ONLINE PORTAL](https://cryptotify.netlify.app/)
+- [SITEMAP](https://cryptotify9.onrender.com/sitemap.html)
+- [SITEMAP](https://brainquests.onrender.com/sitemap.html)
+- [ONLINE PORTAL](https://cryptotify9.onrender.com/)
+- [ONLINE PORTAL](https://cryptotify.pages.dev/)
+- [ONLINE PORTAL](https://brainquests.onrender.com/)
+- [ONLINE PORTAL](https://brainquests.github.io/)
+- [SITEMAP](https://brainquests.vercel.app/sitemap.html)
+- [SITEMAP](https://brainquests.pages.dev/sitemap.html)
+- [SITEMAP](https://brainquests.netlify.app/sitemap.html)
+- [ONLINE PORTAL](https://quizverses-9d2f2.web.app/)
+- [SITEMAP](https://quizverses-9d2f2.web.app/sitemap.html)
+- [ONLINE PORTAL](https://cryptotify.web.app/)
+- [ONLINE PORTAL](https://QuizVerses.github.io/)
+- [SITEMAP](https://cryptotify.netlify.app/sitemap.html)
+- [SITEMAP](https://cryptotify.pages.dev/sitemap.html)
+- [ONLINE PORTAL](https://brainquests-fb2c5.web.app/)
+- [SITEMAP](https://QuizVerses.pages.dev/sitemap.html)
+- [SITEMAP](https://brainquests.github.io/sitemap.html)
+- [ONLINE PORTAL](https://brainquests.netlify.app/)
+- [ONLINE PORTAL](https://QuizVerses.pages.dev/)
