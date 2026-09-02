@@ -24,6 +24,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 	"unsafe"
@@ -3887,4 +3888,37 @@ func Test_App_IP_StripTrustedProxies_CanonicalIPForms(t *testing.T) {
 			require.Equal(t, tc.expected, c.IP())
 		})
 	}
+}
+
+// Test_App_ErrorHandler_SkipsCommittedTimeoutResponse checks that a request
+// whose response fasthttp already holds as a timeout response is left alone:
+// the configured handler could not change what the client gets, and the
+// handler that timed out may still be writing to the context.
+func Test_App_ErrorHandler_SkipsCommittedTimeoutResponse(t *testing.T) {
+	t.Parallel()
+
+	var calls atomic.Int32
+	app := New(Config{
+		ErrorHandler: func(c Ctx, err error) error {
+			calls.Add(1)
+			return c.Status(StatusTeapot).SendString(err.Error())
+		},
+	})
+
+	rctx := &fasthttp.RequestCtx{}
+	rctx.TimeoutErrorWithCode(ErrRequestTimeout.Message, StatusRequestTimeout)
+	c := app.AcquireCtx(rctx)
+	defer app.ReleaseCtx(c)
+
+	require.NoError(t, app.ErrorHandler(c, ErrRequestTimeout))
+	require.Equal(t, int32(0), calls.Load())
+	require.Equal(t, StatusOK, c.Response().StatusCode())
+	require.Empty(t, c.Response().Body())
+
+	// Without a committed response the configured handler runs as usual.
+	plain := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(plain)
+	require.NoError(t, app.ErrorHandler(plain, ErrRequestTimeout))
+	require.Equal(t, int32(1), calls.Load())
+	require.Equal(t, StatusTeapot, plain.Response().StatusCode())
 }

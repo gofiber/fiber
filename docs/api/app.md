@@ -651,6 +651,8 @@ func (app *App) Handler() fasthttp.RequestHandler
 func (app *App) ErrorHandler(ctx Ctx, err error) error
 ```
 
+A request whose response fasthttp already holds as a timeout response, as after the [timeout middleware](../middleware/timeout.md) has answered it, is left alone: `ErrorHandler` returns `nil` without running the configured handler, since anything written now would be ignored and the handler that timed out may still be using the context. The error still reaches the outer middleware.
+
 ## NewWithCustomCtx
 
 `NewWithCustomCtx` creates a new `*App` and sets the custom context factory

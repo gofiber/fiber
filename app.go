@@ -1605,6 +1605,15 @@ func (app *App) init() *App {
 // error handler. Otherwise, it uses the configured error handler for
 // the app, which if not set is the DefaultErrorHandler.
 func (app *App) ErrorHandler(ctx Ctx, err error) error {
+	// A response fasthttp already holds as a timeout response (see the timeout
+	// middleware) is sent as it is: everything written to the context now is
+	// ignored, and the handler that timed out may still be writing to it from
+	// its own goroutine. The error has been returned to the outer handlers,
+	// which is all that is left to do for such a request.
+	if ctx.RequestCtx().LastTimeoutErrorResponse() != nil {
+		return nil
+	}
+
 	// Fast path: no mounted sub-apps, so no prefix lookup is needed
 	if len(app.mountFields.appListKeys) == 0 && len(app.mountFields.domainAppList) == 0 {
 		return app.config.ErrorHandler(ctx, err)

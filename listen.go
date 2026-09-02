@@ -49,6 +49,13 @@ var ErrCertFileAndKeyRequired = errors.New("tls: CertFile and CertKeyFile must b
 type ListenConfig struct {
 	// GracefulContext is a field to shutdown Fiber by given context gracefully.
 	//
+	// With EnablePrefork the context stops the process it is canceled in:
+	// a child drains its own connections, while the master only runs its
+	// shutdown hooks and keeps supervising the children until it exits (a
+	// child whose master is gone exits at once, without draining). Deliver
+	// the signal to every process, such as the whole process group, so each
+	// child's context observes it.
+	//
 	// Default: nil
 	GracefulContext context.Context `json:"graceful_context"` //nolint:containedctx // It's needed to set context inside Listen.
 

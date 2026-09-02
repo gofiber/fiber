@@ -783,3 +783,49 @@ func Test_Timeout_OnTimeoutReturnedErrorShapesResponse(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "upstream too slow", string(body))
 }
+
+// Test_Timeout_ErrorHandlerSkippedAfterTimeout checks that the app's
+// ErrorHandler stays out of a timed-out request: fasthttp already holds the
+// response it will send, so the handler could not change it, and the handler
+// that timed out may still be writing to the same context. Outer middleware
+// still sees the error.
+func Test_Timeout_ErrorHandlerSkippedAfterTimeout(t *testing.T) {
+	t.Parallel()
+
+	var errorHandlerCalls atomic.Int32
+	app := fiber.New(fiber.Config{
+		ErrorHandler: func(c fiber.Ctx, err error) error {
+			errorHandlerCalls.Add(1)
+			return c.Status(fiber.StatusTeapot).SendString(err.Error())
+		},
+	})
+
+	seen := make(chan error, 1)
+	app.Use(func(c fiber.Ctx) error {
+		err := c.Next()
+		seen <- err
+		return err
+	})
+	app.Get("/partial", New(func(c fiber.Ctx) error {
+		if err := c.SendString("partial output"); err != nil {
+			return err
+		}
+		<-c.Context().Done()
+		return c.Context().Err()
+	}, Config{Timeout: 20 * time.Millisecond}))
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/partial", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusRequestTimeout, resp.StatusCode)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, fiber.ErrRequestTimeout.Message, string(body))
+
+	select {
+	case err := <-seen:
+		require.ErrorIs(t, err, fiber.ErrRequestTimeout)
+	case <-time.After(time.Second):
+		t.Fatal("outer middleware never observed the result")
+	}
+	require.Equal(t, int32(0), errorHandlerCalls.Load())
+}

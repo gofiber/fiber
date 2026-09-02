@@ -25,10 +25,12 @@ If a handler panics, the middleware catches it and returns `500 Internal Server 
 
 ## Known limitations
 
-- The timed-out handler keeps running in its own goroutine while the middleware returns `fiber.ErrRequestTimeout` (or runs `OnTimeout`). A handler must stop using the context once `c.Context()` is done: one that keeps writing the response races with the app's error handler and with `OnTimeout`.
+- The timed-out handler keeps running in its own goroutine while the middleware returns `fiber.ErrRequestTimeout` (or runs `OnTimeout`). A handler must stop using the context once `c.Context()` is done: one that keeps writing the response races with `OnTimeout`.
+
+- The error is returned to the outer middleware, but the app's `ErrorHandler` is not run for a timed-out request: fasthttp already holds the response it will send, so the handler could not change it, and the timed-out handler may still be writing to the context.
 
 - Timed-out requests abandon their `fiber.Ctx` to avoid data races with the core
-  request handler (including the `ErrorHandler`). These contexts are **not**
+  request handler. These contexts are **not**
   returned to the pool, so each timed-out request leaks a context. Calling
   `ForceRelease` is only safe if you can guarantee that no goroutine (including
   Fiber internals) will touch the context anymore; the timeout middleware

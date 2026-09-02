@@ -75,10 +75,11 @@ type Route struct {
 	autoHead      bool // Automatically generated HEAD route
 	caseSensitive bool // Whether parameter matching is case-sensitive
 
-	routeParser routeParser
+	routeParser routeParser // Parameter parser
+
 	// id is shared by the per-method copies of one registration, so a route
 	// can be found again in another method's tree (see routeIndexInTree).
-	id uint64 // Parameter parser
+	id uint64
 
 	Handlers []Handler `json:"-"` // Ctx handlers
 
