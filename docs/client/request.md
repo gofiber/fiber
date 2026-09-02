@@ -129,7 +129,7 @@ func (r *Request) Custom(url, method string) (*Response, error)
 
 ## AcquireRequest
 
-**AcquireRequest** returns a new pooled `Request`. Call `ReleaseRequest` when you're finished to return it to the pool and limit allocations.
+**AcquireRequest** returns a new pooled `Request`. Call `ReleaseRequest` when you're finished to return it to the pool and limit allocations. A request acquired this way stays yours: `Response.Close` releases only the response for it. Requests that the client's REST helpers (`Client.Get`, `Client.Post`, ...) create on your behalf are released by `Response.Close`.
 
 ```go title="Signature"
 func AcquireRequest() *Request
@@ -214,6 +214,10 @@ func (r *Request) SetContext(ctx context.Context) *Request
 ```go title="Signature"
 func (r *Request) Header(key string) []string
 ```
+
+:::info
+When the request is sent, the client's headers are applied first and the request's own headers with the same key replace them rather than being appended. Each send clears those keys before applying them again, so sending the same request twice does not accumulate values.
+:::
 
 ### Headers
 
@@ -719,7 +723,7 @@ func (r *Request) ResetPathParams() *Request
 
 ## SetJSON
 
-**SetJSON** sets the request body to a JSON-encoded payload.
+**SetJSON** sets the request body to a JSON-encoded payload. When the request is sent, the `Content-Type` and `Accept` headers are set to `application/json`, replacing any values set on the client or the request.
 
 ```go title="Signature"
 func (r *Request) SetJSON(v any) *Request
@@ -727,7 +731,7 @@ func (r *Request) SetJSON(v any) *Request
 
 ## SetXML
 
-**SetXML** sets the request body to an XML-encoded payload.
+**SetXML** sets the request body to an XML-encoded payload. When the request is sent, the `Content-Type` header is set to `application/xml`.
 
 ```go title="Signature"
 func (r *Request) SetXML(v any) *Request
@@ -1082,6 +1086,10 @@ func (r *Request) MaxRedirects() int
 ```go title="Signature"
 func (r *Request) SetMaxRedirects(count int) *Request
 ```
+
+:::info
+Redirects are followed only for `GET`, `HEAD` and `QUERY` requests. Other methods receive the redirect response as-is, whatever the limit.
+:::
 
 ## Send
 

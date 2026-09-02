@@ -92,7 +92,7 @@ HTTP/1.1
 
 ## Header
 
-**Header** retrieves the value of a specific response header by key. If multiple values exist for the same header, this returns the first one.
+**Header** retrieves the value of a specific response header by key. If multiple values exist for the same header, this returns the first one. The returned string is a copy, so it stays valid after the response is released.
 
 ```go title="Signature"
 func (r *Response) Header(key string) string
@@ -355,10 +355,10 @@ func (r *Response) Reset()
 
 ## Close
 
-**Close** releases both the associated `Request` and `Response` objects back to their pools.
+**Close** releases the `Response` back to its pool, along with the `Request` when the client created it for this call (`Client.Get` and the other REST helpers). A `Request` you acquired yourself, with `AcquireRequest` or `Client.R()`, stays yours to release with `ReleaseRequest`.
 
 :::warning
-After calling `Close`, any attempt to use the request or response may result in data races or undefined behavior. Ensure all processing is complete before closing.
+After calling `Close`, any attempt to use the response, or a request it released, may result in data races or undefined behavior. Ensure all processing is complete before closing.
 :::
 
 ```go title="Signature"

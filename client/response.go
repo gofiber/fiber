@@ -93,7 +93,7 @@ func (r *Response) Protocol() string {
 
 // Header returns the value of the specified response header field.
 func (r *Response) Header(key string) string {
-	return utils.UnsafeString(r.RawResponse.Header.Peek(key))
+	return string(r.RawResponse.Header.Peek(key))
 }
 
 // Headers returns all headers in the response using an iterator.
@@ -247,13 +247,17 @@ func (r *Response) Reset() {
 	r.RawResponse.Reset()
 }
 
-// Close releases both the Request and Response objects back to their pools.
+// Close releases the Response back to its pool, along with the Request when
+// the client created it for this call (Client.Get and the other helpers). A
+// Request acquired with AcquireRequest stays the caller's to release.
 // After calling Close, do not use these objects.
 func (r *Response) Close() {
 	if r.request != nil {
 		tmp := r.request
 		r.request = nil
-		ReleaseRequest(tmp)
+		if tmp.clientOwned {
+			ReleaseRequest(tmp)
+		}
 	}
 	ReleaseResponse(r)
 }

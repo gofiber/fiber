@@ -1,6 +1,7 @@
 package client
 
 import (
+	"bytes"
 	"crypto/rand"
 	"fmt"
 	"io"
@@ -17,7 +18,7 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
-var protocolCheck = regexp.MustCompile(`^https?://.*$`)
+var protocolCheck = regexp.MustCompile(`(?i)^https?://.*$`)
 
 var fileBufPool = sync.Pool{
 	New: func() any {
@@ -349,12 +350,20 @@ func parserRequestHeader(c *Client, req *Request) error {
 	// Set HTTP method.
 	req.RawRequest.Header.SetMethod(req.Method())
 
-	// Merge headers from the client.
+	// Merge headers from the client. Each key is cleared first, so a request
+	// sent again does not carry every previous send's values as well.
+	for key := range c.header.All() {
+		req.RawRequest.Header.DelBytes(key)
+	}
 	for key, value := range c.header.All() {
 		req.RawRequest.Header.AddBytesKV(key, value)
 	}
 
-	// Merge headers from the request.
+	// Merge headers from the request. A key set at both levels takes the
+	// request's values only: request-level headers override the client's.
+	for key := range req.header.All() {
+		req.RawRequest.Header.DelBytes(key)
+	}
 	for key, value := range req.header.All() {
 		req.RawRequest.Header.AddBytesKV(key, value)
 	}
@@ -553,19 +562,21 @@ func addFormFile(mw *multipart.Writer, f *File, fileBuf *[]byte) error {
 
 // parserResponseCookie parses the Set-Cookie headers from the response and stores them.
 func parserResponseCookie(c *Client, resp *Response, req *Request) error {
-	var err error
 	for key, value := range resp.RawResponse.Header.Cookies() {
 		cookie := fasthttp.AcquireCookie()
-		if err = cookie.ParseBytes(value); err != nil {
-			fasthttp.ReleaseCookie(cookie)
-			break
+		if err := cookie.ParseBytes(value); err != nil {
+			// An attribute fasthttp cannot parse (a negative Max-Age, an
+			// Expires in another format) is ignored, not fatal (RFC 6265
+			// Section 5.2): keep the cookie's name and value on their own.
+			cookie.Reset()
+			pair, _, _ := bytes.Cut(value, []byte{';'})
+			if err := cookie.ParseBytes(pair); err != nil {
+				fasthttp.ReleaseCookie(cookie)
+				continue
+			}
 		}
 		cookie.SetKeyBytes(key)
 		resp.cookie = append(resp.cookie, cookie)
-	}
-
-	if err != nil {
-		return err
 	}
 
 	// Store cookies in the jar if available, keyed by the responding URI rather
@@ -581,12 +592,22 @@ func parserResponseCookie(c *Client, resp *Response, req *Request) error {
 
 // logger is a response hook that logs request and response data if debug mode is enabled.
 func logger(c *Client, resp *Response, req *Request) error {
-	if !c.isDebug {
+	if !c.isDebug || c.logger == nil {
 		return nil
 	}
 
-	c.logger.Debugf("%s\n", req.RawRequest.String())
-	c.logger.Debugf("%s\n", resp.RawResponse.String())
+	// A streamed body is consumed by whoever reads it first, so only the
+	// headers are logged for one; String() would drain it before the caller.
+	if req.RawRequest.IsBodyStream() {
+		c.logger.Debugf("%s\n", req.RawRequest.Header.String())
+	} else {
+		c.logger.Debugf("%s\n", req.RawRequest.String())
+	}
+	if resp.RawResponse.IsBodyStream() {
+		c.logger.Debugf("%s\n", resp.RawResponse.Header.String())
+	} else {
+		c.logger.Debugf("%s\n", resp.RawResponse.String())
+	}
 
 	return nil
 }

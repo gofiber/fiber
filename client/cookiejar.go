@@ -539,6 +539,7 @@ func (cj *CookieJar) parseCookiesFromResp(host, path []byte, resp *fasthttp.Resp
 	for _, value := range resp.Header.Cookies() {
 		tmp := fasthttp.AcquireCookie()
 		_ = tmp.ParseBytes(value) //nolint:errcheck // ignore error
+		applyMaxAge(tmp, now, hasMaxAgeAttr(value))
 
 		// A Set-Cookie whose Path attribute is missing — or does not begin
 		// with '/', which fasthttp's ParseBytes stores verbatim — is scoped to
@@ -833,4 +834,40 @@ func isPublicSuffixDomain(domain string) bool {
 	suffix, _ := publicsuffix.PublicSuffix(domain)
 
 	return suffix == domain
+}
+
+// hasMaxAgeAttr reports whether a Set-Cookie value carries a Max-Age
+// attribute, which fasthttp parses back as 0 both when it is absent and when
+// it asks for immediate expiry.
+func hasMaxAgeAttr(value []byte) bool {
+	_, rest, found := bytes.Cut(value, []byte{';'})
+	if !found {
+		return false
+	}
+	for len(rest) > 0 {
+		part := rest
+		if i := bytes.IndexByte(rest, ';'); i >= 0 {
+			part, rest = rest[:i], rest[i+1:]
+		} else {
+			rest = nil
+		}
+		name, _, _ := bytes.Cut(part, []byte{'='})
+		if utils.EqualFold(utils.UnsafeString(utils.TrimSpace(name)), "max-age") {
+			return true
+		}
+	}
+	return false
+}
+
+// applyMaxAge turns a cookie's Max-Age into the absolute expiry the jar keeps.
+// Max-Age takes precedence over Expires, and a value of zero or less (which
+// fasthttp cannot parse, leaving 0) expires the cookie at once (RFC 6265
+// Section 5.2.2).
+func applyMaxAge(c *fasthttp.Cookie, now time.Time, hasAttr bool) {
+	switch {
+	case c.MaxAge() > 0:
+		c.SetExpire(now.Add(time.Duration(c.MaxAge()) * time.Second))
+	case hasAttr:
+		c.SetExpire(now.Add(-time.Second))
+	}
 }

@@ -1,6 +1,7 @@
 package client
 
 import (
+	"bufio"
 	"context"
 	"crypto/tls"
 	"encoding/hex"
@@ -10,6 +11,8 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -2507,4 +2510,277 @@ func Test_Client_StreamResponseBody(t *testing.T) {
 		require.True(t, client.StreamResponseBody())
 		require.True(t, hostClient.StreamResponseBody)
 	})
+}
+
+// go test -run Test_Client_UnparsableCookieAttributesIgnored
+//
+// A Set-Cookie fasthttp could not fully parse (a negative Max-Age, an
+// Expires in another date format) used to fail the whole request; RFC 6265
+// Section 5.2 says such attributes are ignored.
+func Test_Client_UnparsableCookieAttributesIgnored(t *testing.T) {
+	t.Parallel()
+
+	server := startTestServer(t, func(app *fiber.App) {
+		app.Get("/", func(c fiber.Ctx) error {
+			c.Response().Header.Add(fiber.HeaderSetCookie, "a=1; Max-Age=-1")
+			c.Response().Header.Add(fiber.HeaderSetCookie, "b=2; Expires=not-a-date")
+			c.Response().Header.Add(fiber.HeaderSetCookie, "c=3")
+			return c.SendString("ok")
+		})
+	})
+	defer server.stop()
+
+	client := New().SetDial(server.dial())
+	resp, err := client.Get("http://example.com/")
+	require.NoError(t, err)
+	defer resp.Close()
+	require.Equal(t, fiber.StatusOK, resp.StatusCode())
+	require.Equal(t, "ok", resp.String())
+
+	values := map[string]string{}
+	for _, cookie := range resp.Cookies() {
+		values[string(cookie.Key())] = string(cookie.Value())
+	}
+	require.Equal(t, map[string]string{"a": "1", "b": "2", "c": "3"}, values)
+}
+
+// go test -run Test_Client_ResponseHookError_KeepsCallerRequest
+//
+// A failing response hook released the caller's own Request along with the
+// response, so the documented AcquireRequest/ReleaseRequest pattern released it twice.
+func Test_Client_ResponseHookError_KeepsCallerRequest(t *testing.T) {
+	t.Parallel()
+
+	server := startTestServer(t, func(app *fiber.App) {
+		app.Get("/", func(c fiber.Ctx) error { return c.SendString("ok") })
+	})
+	defer server.stop()
+
+	client := New().SetDial(server.dial())
+	client.AddResponseHook(func(_ *Client, _ *Response, _ *Request) error {
+		return errors.New("hook failed")
+	})
+
+	req := AcquireRequest()
+	defer ReleaseRequest(req)
+	req.SetClient(client).SetURL("http://example.com/")
+
+	_, err := req.Send()
+	require.ErrorContains(t, err, "hook failed")
+	require.Equal(t, "http://example.com/", req.URL(), "the caller's request must be left intact")
+	require.Same(t, client, req.Client())
+}
+
+// go test -run Test_Request_Reset_ClearsClient
+func Test_Request_Reset_ClearsClient(t *testing.T) {
+	t.Parallel()
+
+	custom := New()
+	req := AcquireRequest()
+	req.SetClient(custom)
+	req.Reset()
+	require.Nil(t, req.Client(), "a reset request must not keep the previous owner's client")
+	ReleaseRequest(req)
+}
+
+// go test -run Test_Client_Debug_DoesNotDrainStream
+func Test_Client_Debug_DoesNotDrainStream(t *testing.T) {
+	t.Parallel()
+
+	server := startTestServer(t, func(app *fiber.App) {
+		app.Get("/", func(c fiber.Ctx) error {
+			c.Set(fiber.HeaderContentType, fiber.MIMETextPlain)
+			return c.SendStreamWriter(func(w *bufio.Writer) {
+				_, _ = w.WriteString("chunk") //nolint:errcheck // not needed
+				_ = w.Flush()                 //nolint:errcheck // not needed
+			})
+		})
+	})
+	defer server.stop()
+
+	client := New().SetDial(server.dial()).SetStreamResponseBody(true).Debug()
+
+	resp, err := client.Get("http://example.com/")
+	require.NoError(t, err)
+	defer resp.Close()
+	stream := resp.BodyStream()
+	require.NotNil(t, stream, "the debug log must not consume the streamed body")
+	body, err := io.ReadAll(stream)
+	require.NoError(t, err)
+	require.Equal(t, "chunk", string(body))
+}
+
+// go test -run Test_CookieJar_MaxAge
+//
+// Max-Age was ignored by the jar, so a Max-Age=0 logout kept sending the
+// cookie and a short Max-Age never expired (RFC 6265 Section 5.2.2).
+func Test_CookieJar_MaxAge(t *testing.T) {
+	t.Parallel()
+
+	server := startTestServer(t, func(app *fiber.App) {
+		app.Get("/set", func(c fiber.Ctx) error {
+			c.Response().Header.Add(fiber.HeaderSetCookie, "sid=abc; Max-Age=1")
+			return c.SendString("set")
+		})
+		app.Get("/del", func(c fiber.Ctx) error {
+			c.Response().Header.Add(fiber.HeaderSetCookie, "sid=abc; Max-Age=0")
+			return c.SendString("del")
+		})
+		app.Get("/echo", func(c fiber.Ctx) error {
+			return c.SendString(c.Cookies("sid"))
+		})
+	})
+	defer server.stop()
+
+	jar := AcquireCookieJar()
+	defer ReleaseCookieJar(jar)
+	client := New().SetDial(server.dial()).SetCookieJar(jar)
+
+	get := func(path string) string {
+		resp, err := client.Get("http://example.com" + path)
+		require.NoError(t, err)
+		defer resp.Close()
+		return resp.String()
+	}
+
+	get("/set")
+	require.Equal(t, "abc", get("/echo"))
+	get("/del")
+	require.Empty(t, get("/echo"), "Max-Age=0 must delete the cookie")
+
+	get("/set")
+	require.Equal(t, "abc", get("/echo"))
+	time.Sleep(1500 * time.Millisecond)
+	require.Empty(t, get("/echo"), "the cookie must expire after Max-Age seconds")
+}
+
+// go test -run Test_Request_CancelledContext_NoRace -race
+func Test_Request_CancelledContext_NoRace(t *testing.T) {
+	t.Parallel()
+
+	server := startTestServer(t, func(app *fiber.App) {
+		app.Get("/", func(c fiber.Ctx) error { return c.SendString("ok") })
+	})
+	defer server.stop()
+
+	client := New().SetDial(server.dial())
+	for range 20 {
+		ctx, cancel := context.WithCancel(t.Context())
+		cancel()
+		req := AcquireRequest()
+		req.SetClient(client).SetURL("http://example.com/").SetContext(ctx)
+		_, err := req.Send()
+		require.ErrorIs(t, err, ErrTimeoutOrCancel)
+		ReleaseRequest(req)
+	}
+}
+
+// go test -run Test_Client_RequestHeaderOverridesClientHeader
+func Test_Client_RequestHeaderOverridesClientHeader(t *testing.T) {
+	t.Parallel()
+
+	server := startTestServer(t, func(app *fiber.App) {
+		app.Get("/", func(c fiber.Ctx) error {
+			return c.SendString(strings.Join(c.GetReqHeaders()["X-Level"], "|"))
+		})
+	})
+	defer server.stop()
+
+	client := New().SetDial(server.dial()).SetHeader("X-Level", "client")
+
+	resp, err := client.Get("http://example.com/")
+	require.NoError(t, err)
+	require.Equal(t, "client", resp.String())
+	resp.Close()
+
+	req := AcquireRequest()
+	defer ReleaseRequest(req)
+	req.SetClient(client).SetURL("http://example.com/").SetHeader("X-Level", "request")
+	resp, err = req.Send()
+	require.NoError(t, err)
+	defer resp.Close()
+	require.Equal(t, "request", resp.String(), "a request-level header overrides the client-level one")
+}
+
+// go test -run Test_Request_Params_KeepInsertionOrder
+func Test_Request_Params_KeepInsertionOrder(t *testing.T) {
+	t.Parallel()
+
+	req := AcquireRequest()
+	defer ReleaseRequest(req)
+	want := make([]string, 0, 20)
+	for i := range 20 {
+		v := strconv.Itoa(i)
+		req.AddParam("a", v)
+		want = append(want, v)
+	}
+	for key, values := range req.Params() {
+		require.Equal(t, "a", key)
+		require.Equal(t, want, values)
+	}
+}
+
+// go test -run Test_Response_Header_CopiesValue
+func Test_Response_Header_CopiesValue(t *testing.T) {
+	t.Parallel()
+
+	server := startTestServer(t, func(app *fiber.App) {
+		app.Get("/", func(c fiber.Ctx) error {
+			c.Set("X-Test", "value")
+			return c.SendString("ok")
+		})
+	})
+	defer server.stop()
+
+	client := New().SetDial(server.dial())
+	resp, err := client.Get("http://example.com/")
+	require.NoError(t, err)
+	defer resp.Close()
+
+	header := resp.Header("X-Test")
+	resp.RawResponse.Header.Set("X-Test", "other")
+	require.Equal(t, "value", header, "the returned string must not alias the header storage")
+}
+
+// go test -run Test_Request_Resend_DoesNotAccumulateHeaders
+func Test_Request_Resend_DoesNotAccumulateHeaders(t *testing.T) {
+	t.Parallel()
+
+	server := startTestServer(t, func(app *fiber.App) {
+		app.Get("/", func(c fiber.Ctx) error {
+			return c.SendString(strconv.Itoa(len(c.GetReqHeaders()["X-A"])))
+		})
+	})
+	defer server.stop()
+
+	client := New().SetDial(server.dial())
+	req := AcquireRequest()
+	defer ReleaseRequest(req)
+	req.SetClient(client).SetURL("http://example.com/").SetHeader("X-A", "1")
+
+	for range 3 {
+		resp, err := req.Send()
+		require.NoError(t, err)
+		require.Equal(t, "1", resp.String(), "each send must carry the header once")
+		resp.Close()
+	}
+}
+
+// go test -run Test_Client_UppercaseScheme
+//
+// URL schemes are case-insensitive (RFC 3986 Section 3.1); "HTTP://" was
+// rejected as malformed.
+func Test_Client_UppercaseScheme(t *testing.T) {
+	t.Parallel()
+
+	server := startTestServer(t, func(app *fiber.App) {
+		app.Get("/", func(c fiber.Ctx) error { return c.SendString("ok") })
+	})
+	defer server.stop()
+
+	client := New().SetDial(server.dial())
+	resp, err := client.Get("HTTP://example.com/")
+	require.NoError(t, err)
+	defer resp.Close()
+	require.Equal(t, "ok", resp.String())
 }

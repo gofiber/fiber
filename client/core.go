@@ -53,12 +53,26 @@ func (c *core) execFunc() (*Response, error) {
 	respChan := acquireResponseChan()
 
 	cfg := c.getRetryConfig()
+
+	// Copy the request before the goroutine starts: a caller whose context is
+	// already done gets ErrTimeoutOrCancel straight away and may release its
+	// request, which the copy must not race with.
+	reqv := fasthttp.AcquireRequest()
+	c.req.RawRequest.CopyTo(reqv)
+	if bodyStream := c.req.RawRequest.BodyStream(); bodyStream != nil {
+		reqv.SetBodyStream(bodyStream, c.req.RawRequest.Header.ContentLength())
+	}
+	// Read everything the goroutine needs from the request now, for the same
+	// reason: only its own copy is safe to touch once this function returns.
+	maxRedirects := c.req.maxRedirects
+	method := string(reqv.Header.Method())
+	followRedirects := maxRedirects > 0 && (method == fiber.MethodGet || method == fiber.MethodHead || method == fiber.MethodQuery)
+
 	go func() {
 		// retain both channels until they are drained
 		defer releaseErrChan(errChan)
 		defer releaseResponseChan(respChan)
 
-		reqv := fasthttp.AcquireRequest()
 		defer fasthttp.ReleaseRequest(reqv)
 
 		respv := fasthttp.AcquireResponse()
@@ -78,23 +92,18 @@ func (c *core) execFunc() (*Response, error) {
 			}
 		}()
 
-		c.req.RawRequest.CopyTo(reqv)
-		if bodyStream := c.req.RawRequest.BodyStream(); bodyStream != nil {
-			reqv.SetBodyStream(bodyStream, c.req.RawRequest.Header.ContentLength())
-		}
-
 		var err error
 		if cfg != nil {
 			// Use an exponential backoff retry strategy.
 			err = retry.NewExponentialBackoff(*cfg).Retry(func() error {
-				if c.req.maxRedirects > 0 && (string(reqv.Header.Method()) == fiber.MethodGet || string(reqv.Header.Method()) == fiber.MethodHead || string(reqv.Header.Method()) == fiber.MethodQuery) {
-					return c.client.DoRedirects(reqv, respv, c.req.maxRedirects)
+				if followRedirects {
+					return c.client.DoRedirects(reqv, respv, maxRedirects)
 				}
 				return c.client.Do(reqv, respv)
 			})
 		} else {
-			if c.req.maxRedirects > 0 && (string(reqv.Header.Method()) == fiber.MethodGet || string(reqv.Header.Method()) == fiber.MethodHead || string(reqv.Header.Method()) == fiber.MethodQuery) {
-				err = c.client.DoRedirects(reqv, respv, c.req.maxRedirects)
+			if followRedirects {
+				err = c.client.DoRedirects(reqv, respv, maxRedirects)
 			} else {
 				err = c.client.Do(reqv, respv)
 			}
@@ -251,7 +260,13 @@ func (c *core) execute(ctx context.Context, client *Client, req *Request) (*Resp
 
 	// Execute after response hooks (built-in and then user-defined).
 	if err := c.afterHooks(resp); err != nil {
-		resp.Close()
+		// No response reaches the caller, so only what the client created is
+		// released: a request the caller acquired is still theirs.
+		resp.request = nil
+		ReleaseResponse(resp)
+		if req.clientOwned {
+			ReleaseRequest(req)
+		}
 		return nil, err
 	}
 
