@@ -615,9 +615,7 @@ func getOffer(header []byte, isAccepted func(spec, offer string, specParams head
 
 	acceptedTypes := make([]acceptedType, 0, 8)
 	order := 0
-	// Whether every range carries the same weight. When they do, the plain
-	// "first matching range in preference order wins" selection is exact and
-	// the per-offer specificity resolution can be skipped on the hot path.
+	// Whether every range carries the same weight, in which case first-match selection is exact.
 	uniformQuality := true
 	var firstQuality float64
 
@@ -707,30 +705,18 @@ func getOffer(header []byte, isAccepted func(spec, offer string, specParams head
 		sortAcceptedTypes(acceptedTypes)
 	}
 
-	// Find the best offer that matches the accepted types.
-	//
-	// Per RFC 9110 §12.5.1 the most specific matching media range determines an
-	// offer's weight, and a weight of 0 means the client explicitly rejects
-	// that range. A broader range with a higher weight (e.g. "*" or "text/*")
-	// therefore never overrides a more specific range that gives the offer a
-	// lower weight or rejects it outright.
-	// See: https://www.rfc-editor.org/rfc/rfc9110#section-12.5.1
+	// Find the best offer that matches the accepted types. Per RFC 9110 §12.5.1
+	// the most specific matching range determines an offer's weight, and q=0 rejects it.
 	result := ""
 	switch {
 	case uniformQuality && firstQuality == 0:
 		// Every range rejects: nothing is acceptable.
 	case uniformQuality:
-		// Fast path: with every range at the same weight, the most specific
-		// matching range cannot change an offer's weight, so the plain "first
-		// matching range in preference order wins" selection is exact.
+		// Fast path: with equal weights the first matching range in preference order wins.
 		result, _ = firstMatchingOffer(acceptedTypes, isAccepted, offers)
 	default:
-		// The first match is still the answer unless a more specific range
-		// lowers that offer's weight: every range before the matching one
-		// matched no offer at all, and the ranges after it weigh no more, so
-		// only such a demotion can let another offer win. Checking that one
-		// offer keeps the common weighted header (a browser's Accept) off the
-		// full per-offer resolution.
+		// The first match stands unless a more specific range later demotes
+		// that offer; only such a demotion can let another offer win.
 		offer, rank := firstMatchingOffer(acceptedTypes, isAccepted, offers)
 		if offer == "" {
 			break
@@ -741,9 +727,7 @@ func getOffer(header []byte, isAccepted func(spec, offer string, specParams head
 			break
 		}
 
-		// Resolve each offer's weight from its most specific matching range and
-		// keep the heaviest; equal weights fall back to the client's preference
-		// order and then to the order of the offers.
+		// Resolve each offer from its most specific matching range and keep the heaviest.
 		var bestQuality float64
 		bestRank := 0
 		for _, offer := range offers {
@@ -769,9 +753,8 @@ func getOffer(header []byte, isAccepted func(spec, offer string, specParams head
 	return result
 }
 
-// firstMatchingOffer returns the first offer matched by the first range, in
-// preference order, that matches any offer, with that range's index; "" when
-// nothing matches.
+// firstMatchingOffer returns the first offer matched by the first range that
+// matches any offer, with that range's index; "" when nothing matches.
 func firstMatchingOffer(types []acceptedType, isAccepted func(spec, offer string, specParams headerParams) int, offers []string) (offer string, rank int) { //nolint:nonamedreturns // gocritic unnamedResult requires naming the pair for clarity
 	for i := range types {
 		for _, candidate := range offers {
@@ -783,15 +766,10 @@ func firstMatchingOffer(types []acceptedType, isAccepted func(spec, offer string
 	return "", 0
 }
 
-// offerQuality resolves an offer against the ranges, which are in preference
-// order. The weight is the one of the most specific range matching the offer
-// (RFC 9110 §12.5.1); among equally specific ranges an explicit q=0 rejection
-// wins, so "en-US;q=0" overrides "en", "utf-8;q=0" an earlier "utf-8", and
-// "text/html;level=1;q=0" a plain "text/html", while a less specific rejection
-// such as "text/*;q=0" does not override "text/html". The rank is the position
-// of the first range matching the offer, which keeps the client's preference
-// order between offers of equal weight. ok is false when no range matches the
-// offer or its weight is 0.
+// offerQuality resolves an offer against the ranges, in preference order: the
+// weight of the most specific matching range (RFC 9110 §12.5.1), an explicit
+// q=0 winning among equally specific ones. rank is the first matching range's
+// position; ok is false when nothing matches or the weight is 0.
 func offerQuality(types []acceptedType, isAccepted func(spec, offer string, specParams headerParams) int, offer string) (quality float64, rank int, ok bool) { //nolint:nonamedreturns // gocritic unnamedResult requires naming the results for clarity
 	bestSpecificity := 0
 	for i := range types {

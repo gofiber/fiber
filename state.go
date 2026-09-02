@@ -21,8 +21,7 @@ func init() {
 type State struct {
 	dependencies  sync.Map
 	servicePrefix string
-	// services keeps the started services in start order so shutdown can
-	// terminate them in reverse; the map only answers lookups by name.
+	// services keeps the started services in start order, so shutdown can terminate them in reverse.
 	services   []Service
 	servicesMu sync.Mutex
 }

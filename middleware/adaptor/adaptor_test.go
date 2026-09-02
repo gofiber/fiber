@@ -2559,10 +2559,6 @@ func Test_HTTPMiddleware_JoinsRepeatedConnectionValues(t *testing.T) {
 	}
 }
 
-// go test -run Test_CopyContextToFiberContext_DerivedContexts
-//
-// The value walk only recursed into a field named "Context", so values below
-// a WithTimeout, WithDeadline, WithoutCancel or AfterFunc context were lost.
 func Test_CopyContextToFiberContext_DerivedContexts(t *testing.T) {
 	t.Parallel()
 
@@ -2605,9 +2601,6 @@ func Test_CopyContextToFiberContext_DerivedContexts(t *testing.T) {
 	}
 }
 
-// go test -run Test_HTTPHandler_TLSPropagated
-//
-// A request served over TLS by net/http was seen as plaintext by Fiber.
 func Test_HTTPHandler_TLSPropagated(t *testing.T) {
 	t.Parallel()
 
@@ -2631,10 +2624,6 @@ func Test_HTTPHandler_TLSPropagated(t *testing.T) {
 	require.Equal(t, "http false", rec.Body.String())
 }
 
-// go test -run Test_HTTPMiddleware_URLRewrite
-//
-// Only RequestURI was copied back after the middleware ran, so a rewrite of
-// r.URL such as http.StripPrefix was ignored.
 func Test_HTTPMiddleware_URLRewrite(t *testing.T) {
 	t.Parallel()
 

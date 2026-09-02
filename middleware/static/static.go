@@ -152,9 +152,7 @@ func New(root string, cfg ...Config) fiber.Handler {
 		rootCheck    sync.Once
 		rootCheckErr error
 		rootIsFile   bool
-		// handlers holds one file server per route the handler is registered
-		// on, keyed by the route path: the prefix stripped from a request
-		// path is the route's, so a handler shared by two routes needs two.
+		// handlers holds one file server per route path, since the stripped prefix is the route's.
 		handlers   sync.Map
 		handlersMu sync.Mutex
 	)
@@ -273,8 +271,7 @@ func New(root string, cfg ...Config) fiber.Handler {
 		return fileServer.NewRequestHandler()
 	}
 
-	// fileHandlerFor returns the file server for the route serving c, building
-	// it on first use.
+	// fileHandlerFor returns the file server for the route serving c, built on first use.
 	fileHandlerFor := func(c fiber.Ctx) fasthttp.RequestHandler {
 		routePath := c.Route().Path
 		if h, ok := handlers.Load(routePath); ok {
@@ -319,16 +316,13 @@ func New(root string, cfg ...Config) fiber.Handler {
 		status := c.RequestCtx().Response.StatusCode()
 
 		if status != fiber.StatusNotFound && status != fiber.StatusForbidden {
-			// Only a served file is an attachment; the header must not leak
-			// onto the response of the next handler on a miss.
+			// Only a served file is an attachment; the header must not leak onto a miss.
 			if config.Download {
 				name := filepath.Base(c.Path())
 				if rootIsFile {
 					name = filepath.Base(root)
 				}
-				// Attachment derives a Content-Type from the name's extension,
-				// which blanks the one the file server detected for an
-				// extension-less file: keep the detected type.
+				// Attachment derives a Content-Type from the extension; keep the detected one.
 				contentType := utils.CopyString(c.GetRespHeader(fiber.HeaderContentType))
 				c.Attachment(name)
 				if contentType != "" {
@@ -336,8 +330,7 @@ func New(root string, cfg ...Config) fiber.Handler {
 				}
 			}
 
-			// Cache headers describe a representation: an error response such
-			// as 416 must not be cached under the file's MaxAge.
+			// An error response such as 416 must not be cached under the file's MaxAge.
 			if cacheControlValue != "" && status >= fiber.StatusOK && status < fiber.StatusBadRequest {
 				c.RequestCtx().Response.Header.Set(fiber.HeaderCacheControl, cacheControlValue)
 			}

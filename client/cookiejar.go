@@ -836,9 +836,8 @@ func isPublicSuffixDomain(domain string) bool {
 	return suffix == domain
 }
 
-// hasMaxAgeAttr reports whether a Set-Cookie value carries a Max-Age
-// attribute, which fasthttp parses back as 0 both when it is absent and when
-// it asks for immediate expiry.
+// hasMaxAgeAttr reports whether a Set-Cookie value carries a Max-Age attribute;
+// fasthttp parses it as 0 both when absent and when set to 0.
 func hasMaxAgeAttr(value []byte) bool {
 	_, rest, found := bytes.Cut(value, []byte{';'})
 	if !found {
@@ -859,10 +858,8 @@ func hasMaxAgeAttr(value []byte) bool {
 	return false
 }
 
-// applyMaxAge turns a cookie's Max-Age into the absolute expiry the jar keeps.
-// Max-Age takes precedence over Expires, and a value of zero or less (which
-// fasthttp cannot parse, leaving 0) expires the cookie at once (RFC 6265
-// Section 5.2.2).
+// applyMaxAge turns Max-Age into the absolute expiry the jar keeps. It takes
+// precedence over Expires, and zero or less expires the cookie at once (RFC 6265 §5.2.2).
 func applyMaxAge(c *fasthttp.Cookie, now time.Time, hasAttr bool) {
 	switch {
 	case c.MaxAge() > 0:

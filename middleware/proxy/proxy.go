@@ -395,9 +395,7 @@ func doActionWithPolicy(
 	res := c.Response()
 	normalized := headerlookup.Canonical(c)
 	originalURL := utils.CopyString(c.OriginalURL())
-	// fasthttp rewrites the Host header to the upstream's when it sends the
-	// request; put the client's back with the URI, so middleware running
-	// after this call still describes the request the client made.
+	// fasthttp rewrote the Host header to the upstream's; put the client's back for later middleware.
 	originalHost := utils.CopyBytes(req.Header.Host())
 	defer func() {
 		req.SetRequestURI(originalURL)
@@ -595,8 +593,7 @@ func selectClient(globalClient *fasthttp.Client, clients ...*fasthttp.Client) (*
 // when AllowPrivateIPs is false the dispatching client's dial-time guard
 // re-validates the resolved IP at connect time — so a rebinding-capable
 // resolver cannot reach a private address through this handler.
-// hostWithoutPort strips the port from a Host header value, leaving a
-// bracketed IPv6 literal intact.
+// hostWithoutPort strips the port from a Host header value, keeping a bracketed IPv6 literal.
 func hostWithoutPort(host string) string {
 	if strings.HasPrefix(host, "[") {
 		if end := strings.IndexByte(host, ']'); end != -1 {
@@ -621,8 +618,7 @@ func DomainForward(hostname, addr string, clients ...*fasthttp.Client) fiber.Han
 		// EqualFold — otherwise "API.Example.com" would slip past a
 		// DomainForward("api.example.com", ...) gate and be passed
 		// through unproxied.
-		// The gate matches the host name with or without its port, and a request
-		// for another host is passed on to the next handler.
+		// Match the host with or without its port; another host is passed on to the next handler.
 		host := utils.UnsafeString(c.Request().Host())
 		if !utils.EqualFold(host, hostname) && !utils.EqualFold(hostWithoutPort(host), hostname) {
 			return c.Next()

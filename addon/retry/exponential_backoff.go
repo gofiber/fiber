@@ -21,9 +21,7 @@ type ExponentialBackoff struct {
 	// MaxRetryCount is the maximum number of retry count.
 	MaxRetryCount int
 
-	// currentInterval is the interval a Retry call starts from when
-	// InitialInterval is not set. It is never modified by Retry, so one
-	// ExponentialBackoff can serve concurrent callers.
+	// currentInterval is the starting interval when InitialInterval is unset; Retry never modifies it.
 	currentInterval time.Duration
 }
 
@@ -43,8 +41,7 @@ func NewExponentialBackoff(config ...Config) *ExponentialBackoff {
 // nil as an error, then the Retry method is terminated with returning nil. Otherwise,
 // if all function calls are returned error, then the method returns this error.
 //
-// Every call starts over at InitialInterval, and the state it advances is its
-// own, so a single ExponentialBackoff can be shared by concurrent callers.
+// Each call starts from InitialInterval with its own state, so one ExponentialBackoff can be shared.
 func (e *ExponentialBackoff) Retry(f func() error) error {
 	interval := e.InitialInterval
 	if interval <= 0 {
@@ -65,8 +62,7 @@ func (e *ExponentialBackoff) Retry(f func() error) error {
 	return err
 }
 
-// next calculates the sleeping time for the current interval and the interval
-// the following attempt starts from.
+// next returns the sleep for the current interval and the interval of the following attempt.
 func (e *ExponentialBackoff) next(current time.Duration) (sleep, following time.Duration) { //nolint:nonamedreturns // gocritic unnamedResult requires naming the pair for clarity
 	// generate a random value between [0, 1000)
 	n, err := rand.Int(rand.Reader, big.NewInt(1000))

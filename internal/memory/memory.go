@@ -143,9 +143,7 @@ func (s *Storage) gc(sleep time.Duration) {
 	}
 }
 
-// ceilSeconds converts a positive duration to whole seconds, rounding up so a
-// TTL below one second is not stored already expired and 1.9s does not expire
-// after a single second.
+// ceilSeconds converts a positive duration to whole seconds, rounding up.
 func ceilSeconds(d time.Duration) uint32 {
 	secs := (d + time.Second - 1) / time.Second
 	if secs > math.MaxUint32 {

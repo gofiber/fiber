@@ -41,9 +41,7 @@ func validateServicesSlice(services []Service) error {
 		if srv == nil {
 			return fmt.Errorf("fiber: service at index %d is nil", idx)
 		}
-		// Services are registered in the State under their name, so two
-		// sharing one would overwrite each other and the first would never be
-		// terminated.
+		// Services are keyed by name in the State, so two sharing one would overwrite each other.
 		name := srv.String()
 		if first, dup := seen[name]; dup {
 			return fmt.Errorf("fiber: duplicate service name %q: services at index %d and %d share it, but service names must be unique", name, first, idx)
@@ -93,8 +91,7 @@ func (app *App) startServices(ctx context.Context) error {
 		return nil
 	}
 
-	// Validate the whole slice first, so a nil or duplicate entry is reported
-	// before any service has been started.
+	// Validate the whole slice first, so nothing is started when an entry is invalid.
 	if err := validateServicesSlice(app.configured.Services); err != nil {
 		return err
 	}

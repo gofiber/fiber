@@ -17,8 +17,7 @@ import (
 
 // ParserConfig form decoder config for SetParserDecoder
 type ParserConfig struct {
-	// SetAliasTag is ignored: every binder decodes with the tag of its own
-	// source (query, form, header, ...), which a single global tag would break.
+	// SetAliasTag is ignored: every binder decodes with the tag of its own source.
 	SetAliasTag       string
 	ParserType        []ParserType
 	IgnoreUnknownKeys bool
@@ -226,8 +225,7 @@ func isExported(f *reflect.StructField) bool {
 }
 
 // fieldName returns the lowercased name a field is matched by: the alias from
-// its tag, or the Go field name when the tag carries no alias (as in
-// `query:",default:x"`), which schema then matches case-insensitively.
+// its tag, or the Go field name when the tag carries none.
 func fieldName(f *reflect.StructField, aliasTag string) string {
 	if f == nil {
 		return ""
@@ -244,22 +242,16 @@ func fieldName(f *reflect.StructField, aliasTag string) string {
 	return utilsstrings.ToLower(name)
 }
 
-// fieldInfo describes how the keys of one struct type resolve to fields, so
-// the splitting decision can tell a slice field from a scalar one that merely
-// shares a struct with a slice. It is built once per type and cached.
+// fieldInfo describes how the keys of one struct type resolve to fields, so a
+// slice field can be told from a scalar sharing a struct with one. Cached per type.
 type fieldInfo struct {
 	// fields holds the type's own, non-embedded fields by alias.
 	fields map[string]reflect.Type
-	// embedded holds the embedded structs by alias, pointers unwrapped, so a
-	// key can address their fields under that alias ("embedded.names").
+	// embedded holds the embedded structs by alias, pointers unwrapped.
 	embedded map[string]reflect.Type
-	// promoted holds the fields promoted from embedded structs by alias; the
-	// shallowest wins and an alias two embedded structs declare at the same
-	// depth is ambiguous, recorded as a nil type.
+	// promoted holds the fields promoted from embedded structs; an ambiguous alias is a nil type.
 	promoted map[string]promotedField
-	// nestedKinds is the coarse fallback for a key that resolves to nothing:
-	// the kinds one struct level down, as the splitting check judged before
-	// keys were resolved.
+	// nestedKinds is the coarse fallback for a key that resolves to nothing.
 	nestedKinds map[reflect.Kind]struct{}
 }
 
@@ -348,8 +340,7 @@ func buildFieldInfo(t reflect.Type, aliasTag string) fieldInfo {
 }
 
 // collectPromoted records the fields of an embedded struct, and of the structs
-// it embeds in turn, as promoted fields of the outer type. visited guards
-// against a type embedding itself through a pointer.
+// it embeds, as promoted fields of the outer type. visited stops cycles.
 func (info *fieldInfo) collectPromoted(t reflect.Type, aliasTag string, depth int, visited map[reflect.Type]struct{}) {
 	if _, seen := visited[t]; seen {
 		return
@@ -390,9 +381,8 @@ func cachedFieldInfo(t reflect.Type, aliasTag string) (fieldInfo, bool) {
 	return info, ok
 }
 
-// nextKeySegment returns the next segment of a key written in dot, bracket or
-// mixed notation ("a.b", "a[b]", "a[b].c") and the remainder after it. Empty
-// segments, such as the one "list[]" carries, are skipped.
+// nextKeySegment returns the next segment of a key in dot, bracket or mixed
+// notation ("a.b", "a[b]", "a[b].c") and the remainder; empty segments are skipped.
 func nextKeySegment(key string) (segment, rest string, ok bool) { //nolint:nonamedreturns // gocritic unnamedResult requires naming the three results for clarity
 	for key != "" {
 		i := 0
@@ -424,10 +414,8 @@ func isDigits(s string) bool {
 	return true
 }
 
-// structKeyKind resolves a key against a struct type and reports whether the
-// field it names has the given kind. A key whose first segment names no field
-// falls back to the coarse nested-kind check; one that resolves partway and
-// then names nothing is not a field of that kind.
+// structKeyKind reports whether the field a key names in a struct type has the
+// given kind. An unknown first segment falls back to the coarse nested-kind check.
 func structKeyKind(t reflect.Type, kind reflect.Kind, key, aliasTag string) bool {
 	cur := t
 	first := true
@@ -472,9 +460,8 @@ func structKeyKind(t reflect.Type, kind reflect.Kind, key, aliasTag string) bool
 	return cur.Kind() == kind
 }
 
-// resolve returns the type a key segment names within this struct. The type's
-// own fields win; an embedded struct's alias then addresses its fields when
-// more segments follow, while a promoted field answers a final segment.
+// resolve returns the type a key segment names within this struct: its own
+// fields first, then an embedded struct's alias or a promoted field.
 func (info *fieldInfo) resolve(segment string, hasMore bool) (reflect.Type, bool) { //nolint:revive // flag-parameter: hasMore is the position of the segment in the key, not a mode switch
 	if t, ok := info.fields[segment]; ok {
 		return t, true
@@ -499,9 +486,7 @@ func (info *fieldInfo) resolve(segment string, hasMore bool) (reflect.Type, bool
 }
 
 // equalFieldType reports whether the value bound under key can hold the pieces
-// of a split value: a slice field of a struct, or a slice-valued map. Only a
-// destination the decoder could fill is considered, so a nil or non-pointer
-// struct destination never splits and is left for the decoder to reject.
+// of a split value: a slice field of a struct, or a slice-valued map.
 func equalFieldType(out any, kind reflect.Kind, key, aliasTag string) bool {
 	if out == nil {
 		return false
@@ -531,8 +516,7 @@ func equalFieldType(out any, kind reflect.Kind, key, aliasTag string) bool {
 		return false
 	}
 
-	// Lower the key only once a struct lookup is actually needed; the early
-	// returns above never use it.
+	// Lower the key only once a struct lookup is needed.
 	return structKeyKind(typ, kind, utilsstrings.ToLower(key), aliasTag)
 }
 

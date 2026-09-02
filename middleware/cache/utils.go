@@ -37,9 +37,7 @@ func cachedResponseAge(e *item, now uint64) uint64 {
 		case e.exp-now < e.ttl:
 			resident = e.ttl - (e.exp - now)
 		default:
-			// The clock stepped back past the receipt time: the entry has not
-			// been resident for any measurable time, rather than for an
-			// underflowed eternity.
+			// The clock stepped back past the receipt time: no resident time, not an underflow.
 			resident = 0
 		}
 	}

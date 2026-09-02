@@ -102,9 +102,7 @@ func New(config ...Config) fiber.Handler {
 		handlerErr := cfg.ErrorHandler(c, err)
 
 		status := c.Res().StatusCode()
-		// An ErrorHandler may hand the error back for the app's ErrorHandler to
-		// write instead of setting the status itself; the challenge belongs on
-		// that response as well, so honor the error's status code too.
+		// The ErrorHandler may return the error for the app to write; honor its status code too.
 		var fiberErr *fiber.Error
 		if errors.As(handlerErr, &fiberErr) && fiberErr != nil {
 			status = fiberErr.Code

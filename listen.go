@@ -41,20 +41,15 @@ const (
 	globalIpv4Addr = "0.0.0.0"
 )
 
-// ErrCertFileAndKeyRequired indicates that only one of CertFile and CertKeyFile
-// was set. Serving TLS needs both, so Listen refuses to fall back to plaintext.
+// ErrCertFileAndKeyRequired indicates that only one of CertFile and CertKeyFile was set.
 var ErrCertFileAndKeyRequired = errors.New("tls: CertFile and CertKeyFile must both be set to serve TLS")
 
 // ListenConfig is a struct to customize startup of Fiber.
 type ListenConfig struct {
 	// GracefulContext is a field to shutdown Fiber by given context gracefully.
 	//
-	// With EnablePrefork the context stops the process it is canceled in:
-	// a child drains its own connections, while the master only runs its
-	// shutdown hooks and keeps supervising the children until it exits (a
-	// child whose master is gone exits at once, without draining). Deliver
-	// the signal to every process, such as the whole process group, so each
-	// child's context observes it.
+	// With EnablePrefork the context stops only the process it is canceled in;
+	// deliver the signal to every process so each child drains its own connections.
 	//
 	// Default: nil
 	GracefulContext context.Context `json:"graceful_context"` //nolint:containedctx // It's needed to set context inside Listen.
@@ -122,8 +117,7 @@ type ListenConfig struct {
 
 	// When the graceful shutdown begins, use this field to set the timeout
 	// duration. If the timeout is reached, OnPostShutdown will be called with the error.
-	// Set to a negative value to disable the timeout and wait indefinitely;
-	// zero applies the default.
+	// Negative disables the timeout and waits indefinitely; zero applies the default.
 	//
 	// Default: 10 * time.Second
 	ShutdownTimeout time.Duration `json:"shutdown_timeout"`
@@ -257,8 +251,7 @@ func (app *App) Listen(addr string, config ...ListenConfig) error {
 			}
 
 		case cfg.CertFile != "" || cfg.CertKeyFile != "":
-			// Half a key pair is a misconfiguration, not a request for
-			// plaintext: refuse rather than quietly serve HTTP.
+			// Half a key pair is a misconfiguration: refuse rather than serve plaintext.
 			return ErrCertFileAndKeyRequired
 
 		case cfg.AutoCertManager != nil:
@@ -732,9 +725,7 @@ func (app *App) printRoutesMessage() {
 }
 
 // gracefulShutdown shuts the app down once ctx is done. stop is closed when
-// Listen returns on its own, after an explicit Shutdown (whose hooks already
-// ran) or an error before serving (nothing to shut down), and ends the
-// goroutine without a second shutdown.
+// Listen returns on its own, which ends the goroutine without a second shutdown.
 func (app *App) gracefulShutdown(ctx context.Context, stop <-chan struct{}, cfg *ListenConfig) {
 	select {
 	case <-ctx.Done():

@@ -247,9 +247,8 @@ func (r *Response) Reset() {
 	r.RawResponse.Reset()
 }
 
-// Close releases the Response back to its pool, along with the Request when
-// the client created it for this call (Client.Get and the other helpers). A
-// Request acquired with AcquireRequest stays the caller's to release.
+// Close releases the Response back to its pool, along with the Request when a
+// client helper created it. A Request from AcquireRequest stays the caller's.
 // After calling Close, do not use these objects.
 func (r *Response) Close() {
 	if r.request != nil {

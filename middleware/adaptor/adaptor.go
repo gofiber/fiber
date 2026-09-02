@@ -41,8 +41,7 @@ type noopConn struct {
 }
 
 // tlsNoopConn is the connection handed to fasthttp for a request net/http
-// served over TLS: fasthttp learns that a connection is TLS from a
-// ConnectionState method, so plaintext requests keep the plain noopConn.
+// served over TLS; fasthttp detects TLS by a ConnectionState method.
 type tlsNoopConn struct {
 	noopConn
 	state tls.ConnectionState
@@ -52,8 +51,7 @@ func (c *tlsNoopConn) ConnectionState() tls.ConnectionState {
 	return c.state
 }
 
-// Handshake completes fasthttp's notion of a TLS connection; net/http already
-// performed the real one.
+// Handshake is a no-op; net/http already performed the real one.
 func (*tlsNoopConn) Handshake() error {
 	return nil
 }
@@ -358,18 +356,15 @@ func copyContextValues(src any, requestContext *fasthttp.RequestCtx, depth int) 
 			continue
 		}
 
-		// Any other field that is itself a context carries the parent chain:
-		// the embedded Context of valueCtx and cancelCtx, the c field of
-		// withoutCancelCtx, or the cancelCtx a timerCtx or afterFuncCtx embeds.
-		// Parents are copied first, so a child's value for the same key wins.
+		// Any other context-typed field carries the parent chain; parents are
+		// copied first, so a child's value for the same key wins.
 		if parent, ok := contextOf(reflectValue); ok {
 			copyContextValues(parent, requestContext, depth+1)
 		}
 	}
 }
 
-// contextOf returns the context a struct field holds, whether as an
-// interface, a pointer, or an embedded struct whose pointer implements it.
+// contextOf returns the context a struct field holds, as an interface, a pointer or an embedded struct.
 func contextOf(v reflect.Value) (context.Context, bool) {
 	switch v.Kind() {
 	case reflect.Interface, reflect.Pointer:
@@ -484,9 +479,8 @@ func HTTPMiddleware(mw func(http.Handler) http.Handler) fiber.Handler {
 			mu.Lock()
 			defer mu.Unlock()
 			if returned {
-				// The adaptor already handed the response over: the middleware
-				// flushed (or hijacked) before calling next, so it now runs on
-				// its own goroutine and the Fiber context is no longer ours.
+				// The middleware flushed or hijacked before calling next, so the
+				// Fiber context is no longer ours.
 				return
 			}
 			next = true
@@ -500,8 +494,7 @@ func HTTPMiddleware(mw func(http.Handler) http.Handler) fiber.Handler {
 			pairs := snapshotHeaders(r.Header)
 
 			fhdr.SetMethod(r.Method)
-			// A rewrite of r.URL (http.StripPrefix, for one) leaves RequestURI
-			// untouched, so the URL is what the middleware wants routed.
+			// A rewrite of r.URL (http.StripPrefix) leaves RequestURI untouched; route the URL.
 			requestURI := r.RequestURI
 			if r.URL != nil {
 				if rewritten := r.URL.RequestURI(); rewritten != "" && rewritten != requestURI {
@@ -511,8 +504,7 @@ func HTTPMiddleware(mw func(http.Handler) http.Handler) fiber.Handler {
 			freq.SetRequestURI(requestURI)
 			freq.SetHost(r.Host)
 			fhdr.SetHost(r.Host)
-			// The router matches the path Fiber derived at request start, so a
-			// rewritten one has to be installed on the context as well.
+			// The router matches the path derived at request start, so install the rewritten one too.
 			if path := string(freq.URI().Path()); path != c.Path() {
 				c.Path(path)
 			}
@@ -691,8 +683,7 @@ func handlerFunc(app *fiber.App, h ...fiber.Handler) http.HandlerFunc {
 		pctx.conn.remoteAddr = remoteAddr
 		var conn net.Conn = &pctx.conn
 		if r.TLS != nil {
-			// Carry the TLS state over, so c.Scheme(), c.Secure() and
-			// c.RequestCtx().TLSConnectionState() describe the connection.
+			// Carry the TLS state over, so c.Scheme() and c.Secure() describe the connection.
 			pctx.tlsConn.noopConn = pctx.conn
 			pctx.tlsConn.state = *r.TLS
 			conn = &pctx.tlsConn

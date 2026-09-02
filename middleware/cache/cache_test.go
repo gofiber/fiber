@@ -2151,10 +2151,6 @@ func stableAscendingExpiration() func(c1 fiber.Ctx, c2 *Config) time.Duration {
 	}
 }
 
-// Test_Cache_StorageMissingBodyIsMiss checks that a backend which dropped the
-// body entry while still holding the metadata is treated as a miss: the lookup
-// used to fail outright, so every request for the key was an error until the
-// metadata expired.
 func Test_Cache_StorageMissingBodyIsMiss(t *testing.T) {
 	t.Parallel()
 
@@ -2171,8 +2167,7 @@ func Test_Cache_StorageMissingBodyIsMiss(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, cacheMiss, resp.Header.Get("X-Cache"))
 
-	// Drop the body the way a backend evicting under pressure would, keeping
-	// the metadata entry.
+	// Drop the body but keep the metadata, as a backend evicting under pressure would.
 	storage.mu.Lock()
 	dropped := 0
 	for key := range storage.data {
@@ -2201,9 +2196,7 @@ func Test_Cache_StorageMissingBodyIsMiss(t *testing.T) {
 	require.Equal(t, "response-2", string(body))
 }
 
-// accountingProbe records what the MaxBytes bookkeeping holds once a request
-// has finished changing it, so a test can check the byte count and heap size
-// the eviction loop acts on rather than only the hits and misses that follow.
+// accountingProbe records the MaxBytes bookkeeping after each request.
 type accountingProbe struct {
 	mu          sync.Mutex
 	storedBytes uint
@@ -2228,11 +2221,6 @@ func (p *accountingProbe) nodes() int {
 	return p.heapLen
 }
 
-// Test_Cache_NoCacheRefresh_KeepsAccounting refreshes a fresh entry through a
-// no-cache request and checks that the replacement takes over the entry's
-// bookkeeping rather than adding to it: the old heap node used to stay behind,
-// pop in a later eviction and delete the live entry while its bytes remained
-// counted.
 func Test_Cache_NoCacheRefresh_KeepsAccounting(t *testing.T) {
 	t.Parallel()
 
@@ -2291,10 +2279,6 @@ func Test_Cache_NoCacheRefresh_KeepsAccounting(t *testing.T) {
 	}
 }
 
-// Test_Cache_UncacheableResponseDoesNotEvict checks that a response the
-// middleware decides not to store leaves the entries it would have displaced
-// alone: eviction used to make room before that decision, so an uncacheable
-// response emptied the cache of valid entries for nothing.
 func Test_Cache_UncacheableResponseDoesNotEvict(t *testing.T) {
 	t.Parallel()
 
@@ -2523,9 +2507,6 @@ func TestCacheUpstreamAge(t *testing.T) {
 	require.Equal(t, "5", resp.Header.Get(fiber.HeaderAge))
 }
 
-// Test_Cache_PartialContentNotStored checks that a 206 is never cached: the
-// middleware does not handle ranges, so a stored range was replayed — status,
-// five-byte body and all — to the next request for the whole representation.
 func Test_Cache_PartialContentNotStored(t *testing.T) {
 	t.Parallel()
 
@@ -3314,9 +3295,6 @@ func Test_CacheClampsFutureStoredDate(t *testing.T) {
 	require.GreaterOrEqual(t, ageVal, 0)
 }
 
-// Test_CacheAgeClockStepsBackwards checks that a clock stepping back past the
-// time an entry was received reports its age as 0: the resident time used to
-// underflow into a maximal Age and a spurious heuristic-expiration warning.
 func Test_CacheAgeClockStepsBackwards(t *testing.T) {
 	t.Parallel()
 
@@ -6380,23 +6358,17 @@ func Test_CacheInvalidator_RaceWithExactTimestamp(t *testing.T) {
 	require.Greater(t, handlerCalls.Load(), primed, "invalidator never bypassed the cache")
 }
 
-// Test_CacheInvalidator_SharedEntryNoDataRace runs invalidating and plain
-// requests for one key at once. The invalidator used to mark the shared
-// in-memory item expired under the lock while hits read its expiry after
-// dropping it, which the race detector reports.
 func Test_CacheInvalidator_SharedEntryNoDataRace(t *testing.T) {
 	t.Parallel()
 
 	var handlerCalls atomic.Uint64
 	app := fiber.New()
 	app.Use(New(Config{
-		// Keyed on a header the cache key does not include, so every request
-		// shares the one entry.
+		// Keyed on a header outside the cache key, so every request shares one entry.
 		CacheInvalidator: func(c fiber.Ctx) bool {
 			return c.Get("X-Invalidate") == "1"
 		},
-		// Long expiration so the only source of fresh handler executions
-		// after priming is the CacheInvalidator branch.
+		// Long expiration, so only the CacheInvalidator branch re-runs the handler.
 		Expiration: time.Hour,
 	}))
 

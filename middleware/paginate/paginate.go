@@ -42,8 +42,7 @@ func New(config ...Config) fiber.Handler {
 			limit = cfg.MaxLimit
 		}
 
-		// Without a SortKey the query is not consulted: c.Query("") would read
-		// a nameless "?=..." parameter and let it choose the order.
+		// Without a SortKey the query is not consulted: c.Query("") would read a nameless parameter.
 		sortQuery := ""
 		if cfg.SortKey != "" {
 			sortQuery = c.Query(cfg.SortKey)

@@ -238,8 +238,7 @@ func RoutePatternMatch(path, pattern string, cfg ...Config) bool {
 	parser.parseRoute(patternStr, config.RegexHandler)
 	defer routerParserPool.Put(parser)
 	if !config.CaseSensitive && strings.IndexByte(pattern, paramConstraintStart) >= 0 {
-		// The constraints belong to the pattern as written, not its lowercased
-		// form; see routeParser.adoptConstraints.
+		// The constraints come from the pattern as written; see adoptConstraints.
 		var raw routeParser
 		raw.parseRoute(pattern, config.RegexHandler)
 		parser.adoptConstraints(&raw)
@@ -248,8 +247,7 @@ func RoutePatternMatch(path, pattern string, cfg ...Config) bool {
 		parser.applyStrictRouting()
 	}
 
-	// '*' wildcard matches any path. App.register derives the star flag from
-	// the pattern with its escapes intact, so "/\*" is a literal here as well.
+	// '*' wildcard matches any path; the star flag keeps an escaped "/\*" literal.
 	if (RemoveEscapeChar(patternStr) == "/" && detectionPath == "/") || patternStr == "/*" {
 		return true
 	}
@@ -266,12 +264,9 @@ func RoutePatternMatch(path, pattern string, cfg ...Config) bool {
 	return string(patternPretty) == detectionPath
 }
 
-// adoptConstraints takes the constraints of raw's parameters, in order, for
-// this parser's parameters. The parser is built from the prettified pattern,
-// which is lowercased when routing is case-insensitive; that would lowercase
-// constraint names and arguments too, turning regex([A-Z]{2}) into
-// regex([a-z]{2}) and dropping a mixed-case custom constraint. raw is parsed
-// from the pattern as written, so its constraints are the intended ones.
+// adoptConstraints takes the constraints of raw's parameters for this parser's.
+// The parser is built from the prettified, possibly lowercased pattern, which
+// would corrupt constraint names and arguments; raw is the pattern as written.
 func (parser *routeParser) adoptConstraints(raw *routeParser) {
 	if len(parser.params) != len(raw.params) {
 		return
@@ -294,9 +289,7 @@ func (parser *routeParser) adoptConstraints(raw *routeParser) {
 }
 
 // applyStrictRouting makes a trailing slash on the last constant segment
-// mandatory, as it is for static routes under StrictRouting: "/a/:id/" must
-// not match "/a/x". The optional slash before an optional parameter is kept,
-// since "/a/:id?" matching "/a" does not depend on the setting.
+// mandatory under StrictRouting, so "/a/:id/" does not match "/a/x".
 func (parser *routeParser) applyStrictRouting() {
 	if n := len(parser.segs); n > 0 {
 		if last := parser.segs[n-1]; !last.IsParam && last.HasOptionalSlash {
@@ -306,10 +299,8 @@ func (parser *routeParser) applyStrictRouting() {
 	parser.computeSlashBounds()
 }
 
-// unescapePath decodes the percent-encoded bytes of a path in place and
-// returns the shortened slice. Unlike fasthttp's form-argument decoder it
-// leaves '+' alone, an ordinary path character (RFC 3986 Section 3.3), and it
-// keeps a malformed escape as it is.
+// unescapePath decodes the percent-encoded bytes of a path in place. Unlike the
+// form-argument decoder it leaves '+' alone and keeps a malformed escape as is.
 func unescapePath(b []byte) []byte {
 	i := bytes.IndexByte(b, '%')
 	if i == -1 {

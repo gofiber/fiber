@@ -23,8 +23,7 @@ func testSimpleHandler(c Ctx) error {
 }
 
 func Test_Hook_OnRoute(t *testing.T) {
-	// Not parallel: it redirects the process-wide logger output, which a
-	// concurrently logging test would race with.
+	// Not parallel: redirects the process-wide logger output.
 	app := New()
 
 	app.Hooks().OnRoute(func(r Route) error {
@@ -696,8 +695,7 @@ func Test_executeOnPreShutdownHooks_Error(t *testing.T) {
 }
 
 func Test_executeOnForkHooks_Error(t *testing.T) {
-	// Not parallel: it redirects the process-wide logger output, which a
-	// concurrently logging test would race with.
+	// Not parallel: redirects the process-wide logger output.
 	app := New()
 
 	app.Hooks().OnFork(func(pid int) error {

@@ -873,11 +873,6 @@ func (s *orderedService) Terminate(ctx context.Context) error {
 	return s.mockService.Terminate(ctx)
 }
 
-// go test -run Test_ShutdownServices_ReverseStartOrder
-//
-// Services are documented to terminate in reverse start order, but the
-// started services used to be iterated from a map, which made the order
-// random.
 func Test_ShutdownServices_ReverseStartOrder(t *testing.T) {
 	t.Parallel()
 
@@ -904,11 +899,6 @@ func Test_ShutdownServices_ReverseStartOrder(t *testing.T) {
 	require.Zero(t, app.state.ServicesLen())
 }
 
-// go test -run Test_StartServices_DuplicateNames
-//
-// Services are keyed by name in the State, so two services sharing a name
-// used to overwrite each other: only the last one was tracked and the
-// earlier one was never terminated.
 func Test_StartServices_DuplicateNames(t *testing.T) {
 	t.Parallel()
 

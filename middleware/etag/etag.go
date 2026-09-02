@@ -106,9 +106,7 @@ func New(config ...Config) fiber.Handler {
 		// The ETag header is sent on both 200 and 304 responses (RFC 9110 §15.4.5).
 		c.Response().Header.SetCanonical(normalizedHeaderETag, etag)
 
-		// A 304 Not Modified is defined for GET and HEAD only (RFC 9110
-		// Section 13.1.2). For any other method the handler has already run,
-		// so its response is passed through, ETag included.
+		// 304 is defined for GET and HEAD only (RFC 9110 §13.1.2); other methods pass through.
 		if method := c.Method(); method != fiber.MethodGet && method != fiber.MethodHead {
 			return nil
 		}

@@ -144,8 +144,7 @@ func (c *Client) R() *Request {
 	return AcquireRequest().SetClient(c)
 }
 
-// ownedRequest acquires a Request for one of the client's own helper calls.
-// Response.Close releases it, since the caller never sees it.
+// ownedRequest acquires a Request for a client helper call; Response.Close releases it.
 func (c *Client) ownedRequest() *Request {
 	req := AcquireRequest().SetClient(c)
 	req.clientOwned = true

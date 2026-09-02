@@ -1354,14 +1354,12 @@ func Test_Session_Reset(t *testing.T) {
 	})
 }
 
-// go test -run Test_Session_Reset_KeepsAbsoluteTimeout
 func Test_Session_Reset_KeepsAbsoluteTimeout(t *testing.T) {
 	t.Parallel()
 
 	const absoluteTimeout = time.Second
 
-	// newSessionStore keeps the storage TTL out of the way, so only the
-	// absolute timeout can expire a session.
+	// newSessionStore keeps the storage TTL out of the way; only the absolute timeout expires the session.
 	newSessionStore := func() *Store {
 		store := NewStore(Config{
 			IdleTimeout:     absoluteTimeout,

@@ -69,8 +69,7 @@ type Request struct {
 	bodyType bodyType
 
 	isPathNormalizingDisabled bool
-	// clientOwned marks a request a Client helper created for one call; Close
-	// releases it with the response, where a caller-acquired one stays theirs.
+	// clientOwned marks a request a Client helper created; Close releases it with the response.
 	clientOwned bool
 }
 

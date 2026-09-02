@@ -230,10 +230,6 @@ func Test_Favicon_Next(t *testing.T) {
 	require.Equal(t, fiber.StatusNotFound, resp.StatusCode)
 }
 
-// go test -run Test_Favicon_MaxBytes_MaxInt64
-//
-// The read limit was computed as MaxBytes+1, which overflowed for
-// math.MaxInt64 and served the icon as an empty response.
 func Test_Favicon_MaxBytes_MaxInt64(t *testing.T) {
 	t.Parallel()
 

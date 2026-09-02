@@ -158,9 +158,7 @@ func normalizeNewlines(value string) string {
 	return strings.ReplaceAll(value, "\r", "\n")
 }
 
-// retryMilliseconds converts a reconnection delay to the whole milliseconds
-// the retry field carries, rounding up so a delay below one millisecond does
-// not become "retry: 0", an instruction to reconnect at once.
+// retryMilliseconds converts a delay to whole milliseconds, rounding up so it never becomes "retry: 0".
 func retryMilliseconds(d time.Duration) int64 {
 	return int64((d + time.Millisecond - 1) / time.Millisecond)
 }

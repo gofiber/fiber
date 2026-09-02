@@ -549,8 +549,7 @@ func Test_EqualFieldType_Map(t *testing.T) {
 	require.True(t, equalFieldType(&sliceMap, reflect.Slice, "any", "query"))
 	require.True(t, equalFieldType(sliceMap, reflect.Slice, "any", "query"))
 
-	// Only a slice-valued map can hold the pieces of a split value; the other
-	// map destinations keep a single value per key.
+	// Only a slice-valued map can hold the pieces of a split value.
 	stringMap := map[string]string{}
 	require.False(t, equalFieldType(&stringMap, reflect.Slice, "any", "query"))
 	require.False(t, equalFieldType(stringMap, reflect.Slice, "any", "query"))
@@ -571,8 +570,7 @@ func Test_EqualFieldType_ScalarNotSplit(t *testing.T) {
 	}
 	var req Request
 
-	// A key that names a known non-slice field is never split, even though a
-	// nested struct declares a slice.
+	// A key naming a known non-slice field is never split.
 	require.False(t, equalFieldType(&req, reflect.Slice, "name", "query"))
 	require.False(t, equalFieldType(&req, reflect.Slice, "filter", "query"))
 	require.True(t, equalFieldType(&req, reflect.Slice, "filter.ids", "query"))
@@ -648,8 +646,7 @@ func Test_EqualFieldType_EmbeddedStruct(t *testing.T) {
 	require.True(t, equalFieldType(&req, reflect.Slice, "name", "query"))
 	require.False(t, equalFieldType(&req, reflect.String, "name", "query"))
 
-	// An alias declared by two embedded structs is ambiguous, so it is dropped
-	// and the coarse fallback applies.
+	// An alias declared by two embedded structs is ambiguous and dropped.
 	require.True(t, equalFieldType(&req, reflect.Slice, "title", "query"))
 	require.True(t, equalFieldType(&req, reflect.String, "title", "query"))
 }
@@ -675,8 +672,7 @@ func Test_EqualFieldType_InvalidDestination(t *testing.T) {
 		Names []string `query:"names"`
 	}
 
-	// Non-pointer and nil destinations are rejected by the decoder; the
-	// splitting check must not panic before it gets to report them.
+	// Destinations the decoder rejects must not panic the splitting check first.
 	require.NotPanics(t, func() {
 		require.False(t, equalFieldType(nil, reflect.Slice, "names", "query"))
 		require.False(t, equalFieldType(User{}, reflect.Slice, "names", "query"))

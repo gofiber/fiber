@@ -309,8 +309,7 @@ func (s *Session) ResetWithContext(ctx context.Context) error {
 	// canceled/failed delete leaves the session data intact.
 	if s.data != nil {
 		s.data.Reset()
-		// Reset wipes the absolute expiration with the rest of the data, so the
-		// rotated session must be armed again or it would never expire absolutely.
+		// Reset wiped the absolute expiration, so the rotated session must be armed again.
 		if s.config != nil && s.config.AbsoluteTimeout > 0 {
 			s.setAbsExpiration(time.Now().Add(s.config.AbsoluteTimeout))
 		}

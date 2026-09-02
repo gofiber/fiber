@@ -89,8 +89,7 @@ type App struct {
 	hooks *Hooks
 	// Latest route & group
 	latestRoute *Route
-	// latestRouteMethods are the methods the latest registration covered, so
-	// Name applies to all of its routes rather than the last one's method only.
+	// latestRouteMethods are the methods of the latest registration, so Name covers all of its routes.
 	latestRouteMethods []string
 	// newCtxFunc
 	newCtxFunc func(app *App) CustomCtx
@@ -129,8 +128,7 @@ type App struct {
 	handlersCount uint32
 	// contains the information if the route stack has been changed to build the optimized tree
 	hasRoutesRefreshed bool
-	// connStateHooked records that the server's ConnState callback reports
-	// closed connections to the TLS handler; see hookConnState.
+	// connStateHooked records that ConnState reports closed connections to the TLS handler.
 	connStateHooked bool
 	// hasCustomCtx tracks whether app uses a custom context implementation
 	hasCustomCtx bool
@@ -874,13 +872,10 @@ func (app *App) handleTrustedProxy(ipAddress string) {
 		if ip == nil {
 			log.Warnf("IP address %q could not be parsed", ipAddress)
 		} else {
-			// Store the canonical spelling: lookups compare the canonical form
-			// of the peer address, so "2001:DB8::1", "2001:0db8::1" or
-			// "0:0:0:0:0:0:0:1" as written would never match.
+			// Store the canonical spelling, which lookups compare against.
 			app.config.TrustProxyConfig.ips[ip.String()] = struct{}{}
 			if ip4 := ip.To4(); ip4 != nil {
-				// The X-Forwarded-For path resolves addresses through netip,
-				// which keeps the IPv4-mapped spelling apart from the dotted one.
+				// netip keeps the IPv4-mapped spelling apart from the dotted one.
 				app.config.TrustProxyConfig.ips["::ffff:"+ip4.String()] = struct{}{}
 			}
 		}
@@ -1352,10 +1347,8 @@ func (app *App) ShutdownWithContext(ctx context.Context) error {
 		return ErrNotRunning
 	}
 
-	// The drain below waits for in-flight handlers, so the app mutex must not
-	// be held meanwhile: a handler that takes it itself (RebuildTree,
-	// RemoveRoute, Name, ...) could otherwise never finish, and the shutdown
-	// would wait for it until the deadline, or forever without one.
+	// The drain waits for in-flight handlers, so the mutex must not be held
+	// meanwhile: a handler taking it (RebuildTree, Name, ...) would never finish.
 	var err error
 
 	// Execute the Shutdown hook
@@ -1605,11 +1598,8 @@ func (app *App) init() *App {
 // error handler. Otherwise, it uses the configured error handler for
 // the app, which if not set is the DefaultErrorHandler.
 func (app *App) ErrorHandler(ctx Ctx, err error) error {
-	// A response fasthttp already holds as a timeout response (see the timeout
-	// middleware) is sent as it is: everything written to the context now is
-	// ignored, and the handler that timed out may still be writing to it from
-	// its own goroutine. The error has been returned to the outer handlers,
-	// which is all that is left to do for such a request.
+	// Once fasthttp holds a timeout response, writes are ignored and the
+	// timed-out handler may still be writing: leave the context alone.
 	if ctx.RequestCtx().LastTimeoutErrorResponse() != nil {
 		return nil
 	}
@@ -1749,8 +1739,7 @@ func (app *App) startupProcess() {
 	defer app.mutex.Unlock()
 
 	app.hookConnState()
-	// Collect every mounted app first, nested ones included: they need their
-	// automatic HEAD routes before their routes are cloned into this app.
+	// Collect every mounted app first, nested ones included, so all get their automatic HEAD routes.
 	app.collectSubApps()
 	app.ensureAutoHeadRoutesLocked()
 	for prefix, subApp := range app.mountFields.appList {
@@ -1766,9 +1755,7 @@ func (app *App) startupProcess() {
 }
 
 // hookConnState makes the server report closed connections to the TLS handler,
-// which records a ClientHelloInfo per connection and must release it once the
-// connection is gone. A ConnState callback installed by the user before startup
-// keeps running after ours. Idempotent; the caller holds app.mutex.
+// keeping a user ConnState callback. Idempotent; the caller holds app.mutex.
 func (app *App) hookConnState() {
 	if app.connStateHooked || app.server == nil {
 		return

@@ -86,14 +86,10 @@ type DefaultCtx struct {
 // TLSHandler hosts the callback hooks Fiber invokes while negotiating TLS
 // connections, including optional client certificate lookups.
 //
-// It records the ClientHelloInfo of every connection it sees, keyed by the
-// connection, so Ctx.ClientHelloInfo reports the handshake of the connection a
-// request arrived on rather than whichever handshake happened last. The record
-// is released when the server reports the connection closed.
+// It records the ClientHelloInfo of every connection, keyed by the connection,
+// and releases it when the server reports the connection closed.
 type TLSHandler struct {
-	// connless holds a ClientHelloInfo recorded without a connection, which
-	// only a caller invoking GetClientInfo by hand can produce; crypto/tls
-	// always sets Conn. It answers when no per-connection record exists.
+	// connless holds a ClientHelloInfo recorded without a connection (GetClientInfo called by hand).
 	connless         atomic.Pointer[tls.ClientHelloInfo]
 	clientHelloInfos sync.Map // underlying net.Conn -> *tls.ClientHelloInfo
 }
@@ -112,8 +108,7 @@ func (t *TLSHandler) GetClientInfo(info *tls.ClientHelloInfo) (*tls.Certificate,
 	return nil, nil //nolint:nilnil // Not returning anything useful here is probably fine
 }
 
-// clientHelloInfo returns the ClientHelloInfo recorded for the connection a
-// request arrived on, or nil when the handler never saw a handshake on it.
+// clientHelloInfo returns the ClientHelloInfo recorded for a connection, or nil.
 func (t *TLSHandler) clientHelloInfo(conn net.Conn) *tls.ClientHelloInfo {
 	if key := underlyingConn(conn); key != nil {
 		if v, ok := t.clientHelloInfos.Load(key); ok {
@@ -132,9 +127,8 @@ func (t *TLSHandler) forget(conn net.Conn) {
 	}
 }
 
-// underlyingConn returns the net.Conn a TLS handshake ran on: crypto/tls hands
-// GetCertificate the raw connection, while the server sees the *tls.Conn that
-// wraps it.
+// underlyingConn returns the net.Conn a TLS handshake ran on; crypto/tls hands
+// GetCertificate the raw connection, while the server sees the *tls.Conn.
 func underlyingConn(conn net.Conn) net.Conn {
 	if tc, ok := conn.(*tls.Conn); ok {
 		return tc.NetConn()
@@ -310,9 +304,7 @@ func (c *DefaultCtx) GetRespHeaders() map[string][]string {
 	return c.DefaultRes.GetHeaders()
 }
 
-// ClientHelloInfo returns the TLS ClientHelloInfo of the connection this
-// request arrived on, or nil when the app has no TLS handler or the request
-// did not come in over a connection it negotiated.
+// ClientHelloInfo returns the TLS ClientHelloInfo of the connection this request arrived on, or nil.
 func (c *DefaultCtx) ClientHelloInfo() *tls.ClientHelloInfo {
 	if c.app.tlsHandler != nil && c.fasthttp != nil {
 		return c.app.tlsHandler.clientHelloInfo(c.fasthttp.Conn())
@@ -356,10 +348,8 @@ func (c *DefaultCtx) RestartRouting() error {
 	return err
 }
 
-// ctxForHandlers returns the context user code must be handed: the custom
-// context wrapping this one when the app uses one, otherwise the DefaultCtx
-// itself. Next already does this for route handlers; Format handlers and custom
-// binders go through here so a c.(*MyCtx) assertion holds in them too.
+// ctxForHandlers returns the context user code is handed: the custom context
+// when the app uses one, otherwise the DefaultCtx itself, as Next does.
 func (c *DefaultCtx) ctxForHandlers() Ctx {
 	if c.handlerCtx != nil {
 		return c.handlerCtx
@@ -775,7 +765,7 @@ func (c *DefaultCtx) Value(key any) any {
 func (c *DefaultCtx) configDependentPaths() {
 	c.path = append(c.path[:0], c.pathOriginal...)
 	// If UnescapePath enabled, we decode the path and save it for the framework user.
-	// Decoded as a path, not a form argument: a "+" stays a "+".
+	// Decoded as a path, so a "+" stays a "+".
 	if c.app.config.UnescapePath {
 		c.path = unescapePath(c.path)
 	}

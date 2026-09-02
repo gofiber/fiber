@@ -708,8 +708,7 @@ func (app *App) mountStartupProcess() {
 	}
 }
 
-// collectSubApps gathers the sub-apps mounted at any depth into appList, so
-// nested ones become visible to the startup steps. It runs once.
+// collectSubApps gathers the sub-apps mounted at any depth into appList. It runs once.
 func (app *App) collectSubApps() {
 	if !app.hasMountedApps() {
 		return

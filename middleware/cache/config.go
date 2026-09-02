@@ -50,10 +50,7 @@ type Config struct {
 	// make time-dependent tests deterministic. When nil, time.Now is used.
 	clock func() time.Time
 
-	// accounting, when set, is told what the MaxBytes bookkeeping holds — the
-	// bytes counted and the heap entries tracking them — once a request has
-	// finished changing it. Unexported for the same reason as clock: it exists
-	// solely so tests can check the bookkeeping. When nil, nothing is reported.
+	// accounting, when set, receives the MaxBytes bookkeeping after each request; tests only, like clock.
 	accounting func(storedBytes uint, heapLen int)
 
 	// CacheHeader header on response header, indicate cache status, with the following possible return value

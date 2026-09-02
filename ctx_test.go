@@ -11295,11 +11295,6 @@ func Test_Ctx_Cookie_DoesNotMutateArgument(t *testing.T) {
 	require.Equal(t, "/scoped", part.Path)
 }
 
-// go test -run Test_Ctx_SendFile_UncomparableFS
-//
-// The SendFile handler cache compared fs.FS interface values with ==, which
-// panics for an uncomparable dynamic type such as fstest.MapFS on the second
-// call.
 func Test_Ctx_SendFile_UncomparableFS(t *testing.T) {
 	t.Parallel()
 
@@ -11328,11 +11323,6 @@ func Test_Ctx_SendFile_UncomparableFS(t *testing.T) {
 	}
 }
 
-// go test -run Test_Ctx_SendFile_KeepsAcceptEncoding
-//
-// SendFile used to delete the request's Accept-Encoding header when its own
-// Compress option was off, so middleware running after it (compress, logger)
-// no longer saw what the client accepts.
 func Test_Ctx_SendFile_KeepsAcceptEncoding(t *testing.T) {
 	t.Parallel()
 
@@ -11356,13 +11346,11 @@ func Test_Ctx_SendFile_KeepsAcceptEncoding(t *testing.T) {
 	require.Empty(t, resp.Header.Get(HeaderContentEncoding), "Compress is off, so the file is served as-is")
 }
 
-// go test -run Test_Ctx_SendFile_CompressedByMiddleware
 func Test_Ctx_SendFile_CompressedByMiddleware(t *testing.T) {
 	t.Parallel()
 
 	app := New()
-	// The compress middleware runs fasthttp's compressor after Next; it decides
-	// on the request's Accept-Encoding, which SendFile must leave in place.
+	// compress decides on the request's Accept-Encoding after Next, so SendFile must leave it.
 	compressor := fasthttp.CompressHandlerBrotliLevel(func(*fasthttp.RequestCtx) {},
 		fasthttp.CompressBrotliDefaultCompression, fasthttp.CompressDefaultCompression)
 	app.Use(func(c Ctx) error {
@@ -11384,10 +11372,6 @@ func Test_Ctx_SendFile_CompressedByMiddleware(t *testing.T) {
 	require.Equal(t, "gzip", resp.Header.Get(HeaderContentEncoding))
 }
 
-// go test -run Test_Ctx_AutoFormat_NoAcceptHeader
-//
-// Without an Accept header, or with one nothing matches, AutoFormat is
-// documented to answer with text/plain; it used to pick text/html.
 func Test_Ctx_AutoFormat_NoAcceptHeader(t *testing.T) {
 	t.Parallel()
 
@@ -11427,11 +11411,6 @@ func Test_Ctx_AutoFormat_NoAcceptHeader(t *testing.T) {
 	}
 }
 
-// go test -run Test_Ctx_IP_IPv4MappedIPv6InProxyHeader
-//
-// Dual-stack proxies forward IPv4 clients as ::ffff:a.b.c.d (RFC 4291
-// Section 2.2); the validator used to reject that spelling because it carries
-// both '.' and ':', so the proxy itself was reported as the client.
 func Test_Ctx_IP_IPv4MappedIPv6InProxyHeader(t *testing.T) {
 	t.Parallel()
 
@@ -11455,11 +11434,6 @@ func Test_Ctx_IP_IPv4MappedIPv6InProxyHeader(t *testing.T) {
 	require.Equal(t, "203.0.113.5", c.IP())
 }
 
-// go test -run Test_Ctx_Accepts_MostSpecificRangeSetsQuality
-//
-// RFC 9110 Section 12.5.1: the most specific matching range determines an
-// offer's quality, so a broad range with a higher weight must not outrank a
-// specific range that gives the offer a lower one.
 func Test_Ctx_Accepts_MostSpecificRangeSetsQuality(t *testing.T) {
 	t.Parallel()
 
@@ -11488,10 +11462,6 @@ func Test_Ctx_Accepts_MostSpecificRangeSetsQuality(t *testing.T) {
 	require.Equal(t, "iso-8859-1", c.AcceptsCharsets("utf-8", "iso-8859-1"))
 }
 
-// go test -run Test_Ctx_Format_CustomCtx
-//
-// Format used to hand the embedded *DefaultCtx to its handlers, so under a
-// custom context the c.(*myCtx) assertion in a handler failed.
 func Test_Ctx_Format_CustomCtx(t *testing.T) {
 	t.Parallel()
 
@@ -11526,11 +11496,7 @@ func Test_Ctx_Format_CustomCtx(t *testing.T) {
 	}
 }
 
-// go test -run Test_Ctx_Body_With_Compression_IdentityChain
-//
-// The identity step of a multi-coding chain used to re-set the request body
-// with a slice aliasing it, which under ReduceMemoryUsage let fasthttp return
-// the buffer to its pool while the next decoder still read from it.
+// The identity step must not re-set the body with a slice aliasing it.
 func Test_Ctx_Body_With_Compression_IdentityChain(t *testing.T) {
 	t.Parallel()
 

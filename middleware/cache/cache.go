@@ -417,9 +417,7 @@ func New(config ...Config) fiber.Handler {
 			}
 			requestNoCache := reqDirectives.noCache
 
-			// Invalidate cache if requested. The expiry is overridden on a local
-			// copy: the in-memory item is shared with concurrent hits that read it
-			// after dropping the lock, so writing to it would race with them.
+			// Invalidate on a local copy: the in-memory item is shared with concurrent hits.
 			entryExp := e.exp
 			if cfg.CacheInvalidator != nil && cfg.CacheInvalidator(c) {
 				entryExp = ts - 1
@@ -517,10 +515,8 @@ func New(config ...Config) fiber.Handler {
 							manager.release(e)
 							return cacheBodyFetchError(maskKey, key, err)
 						}
-						// The backend dropped the body but kept the metadata (an
-						// eviction under pressure, or a TTL landing between the two
-						// writes). That is a miss, not a fault: drop the orphaned
-						// metadata and let the handler produce a fresh copy.
+						// The backend dropped the body but kept the metadata: a miss, so
+						// drop the orphaned metadata.
 						if err := deleteKey(reqCtx, key); err != nil {
 							manager.release(e)
 							return fmt.Errorf("cache: failed to delete key %q without a body: %w", maskKey(key), err)
@@ -632,9 +628,7 @@ func New(config ...Config) fiber.Handler {
 			return c.SendStatus(fiber.StatusGatewayTimeout)
 		}
 
-		// Whatever the lookup left holding is superseded once the handler's
-		// response is stored: remember its heap node so the replacement takes
-		// over its accounting instead of adding a second node for the key.
+		// Remember the superseded entry's heap node so the replacement takes over its accounting.
 		if e != nil {
 			oldHeapIdx = e.heapidx
 		}
@@ -909,8 +903,7 @@ func New(config ...Config) fiber.Handler {
 		}
 
 		// Eviction loop: atomically reserve space for the new entry and evict old entries.
-		// It runs only once the response is known to be stored, so an uncacheable
-		// response never displaces valid entries.
+		// It runs only once the response is known to be stored.
 		// Strategy:
 		// 1. Under lock: reserve space by pre-incrementing storedBytes, then collect entries to evict
 		// 2. Outside lock: perform I/O deletions
@@ -928,9 +921,7 @@ func New(config ...Config) fiber.Handler {
 
 		if cfg.MaxBytes > 0 {
 			mux.Lock()
-			// The entry being replaced hands its bookkeeping over before the new
-			// one reserves space, so a key is never tracked twice and the eviction
-			// loop below cannot pop a node whose index the replacement then reuses.
+			// The replaced entry hands its bookkeeping over first, so a key is never tracked twice.
 			if oldHeapIdx >= 0 {
 				removeHeapEntry(key, oldHeapIdx)
 				oldHeapIdx = -1

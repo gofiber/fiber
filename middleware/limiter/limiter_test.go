@@ -887,12 +887,10 @@ func Test_Limiter_Sliding_ExpirationFunc_FallbackOnNegativeDuration(t *testing.T
 	require.Equal(t, fiber.StatusTooManyRequests, resp.StatusCode)
 }
 
-// go test -run Test_Limiter_SubSecondExpirationIsOneSecondWindow -race -v
 func Test_Limiter_SubSecondExpirationIsOneSecondWindow(t *testing.T) {
 	t.Parallel()
 
-	// A positive Expiration below one second is a one-second window, not a
-	// reason to fall back to the one-minute default.
+	// A positive Expiration below one second is a one-second window.
 	require.Equal(t, 500*time.Millisecond, configDefault(Config{Expiration: 500 * time.Millisecond}).Expiration)
 
 	t.Run("fixed", func(t *testing.T) {

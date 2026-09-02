@@ -760,13 +760,10 @@ func Test_DefaultErrorHandlerChallenge(t *testing.T) {
 	require.Equal(t, "Bearer realm=\"Restricted\"", res.Header.Get("WWW-Authenticate"))
 }
 
-// go test -run Test_ErrorHandlerReturnsErrorChallenge
 func Test_ErrorHandlerReturnsErrorChallenge(t *testing.T) {
 	t.Parallel()
 
-	// An ErrorHandler may hand a *fiber.Error back for the app's ErrorHandler
-	// to write instead of setting the status itself. The challenge used to be
-	// skipped then, because only the status already on the response was read.
+	// The challenge must be set when the ErrorHandler returns the *fiber.Error instead of writing it.
 	testCases := []struct {
 		err            error
 		name           string

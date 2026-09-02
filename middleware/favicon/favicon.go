@@ -102,8 +102,7 @@ func New(config ...Config) fiber.Handler {
 }
 
 func readLimited(reader io.Reader, maxBytes int64) ([]byte, error) {
-	// One byte past the limit tells a too-large file apart, without
-	// overflowing for a limit at the top of the range.
+	// One byte past the limit tells a too-large file apart, without overflowing.
 	limit := maxBytes
 	if limit < math.MaxInt64 {
 		limit++

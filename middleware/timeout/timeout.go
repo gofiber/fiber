@@ -128,8 +128,7 @@ func handleTimeout(
 		resp := ctx.Response()
 		if resp.StatusCode() == fiber.StatusOK && timeoutResponseUnwritten(resp) {
 			resp.ResetBody()
-			// An error OnTimeout returned instead of writing the response is
-			// the response: the frozen payload is all the client will see.
+			// An error OnTimeout returned is the response the client will see.
 			status, message := fiber.StatusRequestTimeout, fiber.ErrRequestTimeout.Message
 			var fiberErr *fiber.Error
 			if errors.As(timeoutErr, &fiberErr) && fiberErr != nil {

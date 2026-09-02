@@ -173,10 +173,6 @@ type failingReader struct{}
 
 func (failingReader) Read(_ []byte) (int, error) { return 0, errors.New("fail") }
 
-// go test -run Test_ExponentialBackoff_Retry_StartsFromInitialInterval
-//
-// The current interval was kept between Retry calls, so a call after a failed
-// run started at the maximum backoff instead of the initial interval.
 func Test_ExponentialBackoff_Retry_StartsFromInitialInterval(t *testing.T) {
 	t.Parallel()
 
@@ -190,8 +186,7 @@ func Test_ExponentialBackoff_Retry_StartsFromInitialInterval(t *testing.T) {
 
 	require.Error(t, backoff.Retry(failing))
 
-	// Two attempts: one sleep, which must start over at the initial interval
-	// (plus up to a second of jitter) rather than at MaxBackoffTime.
+	// One sleep, starting over at the initial interval plus up to a second of jitter.
 	start := time.Now()
 	attempts := 0
 	require.NoError(t, backoff.Retry(func() error {
@@ -206,7 +201,6 @@ func Test_ExponentialBackoff_Retry_StartsFromInitialInterval(t *testing.T) {
 	require.Less(t, time.Since(start), 5*time.Second)
 }
 
-// go test -run Test_ExponentialBackoff_Retry_Concurrent -race
 func Test_ExponentialBackoff_Retry_Concurrent(t *testing.T) {
 	t.Parallel()
 

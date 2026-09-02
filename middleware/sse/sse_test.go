@@ -616,10 +616,6 @@ func Benchmark_sanitizeField(b *testing.B) {
 	_, _ = s, err
 }
 
-// go test -run Test_SSE_Retry_SubMillisecondRoundsUp
-//
-// A retry delay below one millisecond was written as "retry: 0", which tells
-// the client to reconnect immediately.
 func Test_SSE_Retry_SubMillisecondRoundsUp(t *testing.T) {
 	t.Parallel()
 

@@ -1580,10 +1580,6 @@ func Test_Proxy_ResponseStripIgnoresTheAppsNormalizationSetting(t *testing.T) {
 	}
 }
 
-// go test -run Test_Proxy_DomainForward_NonMatchingHostContinues
-//
-// A request for another host used to end the chain with an empty 200 instead
-// of being passed on, and a Host carrying a port never matched.
 func Test_Proxy_DomainForward_NonMatchingHostContinues(t *testing.T) {
 	t.Parallel()
 
@@ -1618,10 +1614,6 @@ func Test_Proxy_DomainForward_NonMatchingHostContinues(t *testing.T) {
 	}
 }
 
-// go test -run Test_Proxy_Forward_RestoresHost
-//
-// After the upstream call the app's own request carried the upstream Host,
-// so middleware running after Next described the wrong host.
 func Test_Proxy_Forward_RestoresHost(t *testing.T) {
 	t.Parallel()
 

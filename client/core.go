@@ -55,15 +55,13 @@ func (c *core) execFunc() (*Response, error) {
 	cfg := c.getRetryConfig()
 
 	// Copy the request before the goroutine starts: a caller whose context is
-	// already done gets ErrTimeoutOrCancel straight away and may release its
-	// request, which the copy must not race with.
+	// already done gets ErrTimeoutOrCancel at once and may release its request.
 	reqv := fasthttp.AcquireRequest()
 	c.req.RawRequest.CopyTo(reqv)
 	if bodyStream := c.req.RawRequest.BodyStream(); bodyStream != nil {
 		reqv.SetBodyStream(bodyStream, c.req.RawRequest.Header.ContentLength())
 	}
-	// Read everything the goroutine needs from the request now, for the same
-	// reason: only its own copy is safe to touch once this function returns.
+	// Read what the goroutine needs now; only its own copy is safe to touch later.
 	maxRedirects := c.req.maxRedirects
 	method := string(reqv.Header.Method())
 	followRedirects := maxRedirects > 0 && (method == fiber.MethodGet || method == fiber.MethodHead || method == fiber.MethodQuery)
@@ -260,8 +258,7 @@ func (c *core) execute(ctx context.Context, client *Client, req *Request) (*Resp
 
 	// Execute after response hooks (built-in and then user-defined).
 	if err := c.afterHooks(resp); err != nil {
-		// No response reaches the caller, so only what the client created is
-		// released: a request the caller acquired is still theirs.
+		// No response reaches the caller, so only what the client created is released.
 		resp.request = nil
 		ReleaseResponse(resp)
 		if req.clientOwned {

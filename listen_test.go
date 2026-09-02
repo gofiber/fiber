@@ -1441,11 +1441,6 @@ func Test_Listen_StaleTLSMinVersionReachesTheDiagnostics(t *testing.T) {
 	})
 }
 
-// go test -run Test_Listen_GracefulShutdown_HooksOnce
-//
-// With a GracefulContext configured, an explicit Shutdown used to fire the
-// shutdown hooks twice: Listener returning woke the graceful-shutdown
-// goroutine, which then shut the already stopped server down a second time.
 func Test_Listen_GracefulShutdown_HooksOnce(t *testing.T) {
 	t.Parallel()
 
@@ -1494,11 +1489,6 @@ func Test_Listen_GracefulShutdown_HooksOnce(t *testing.T) {
 	require.Equal(t, int32(1), postShutdown.Load(), "OnPostShutdown must fire exactly once")
 }
 
-// go test -run Test_Listen_GracefulShutdown_NoHooksOnListenError
-//
-// A Listen that fails before serving has no server to shut down, so the
-// shutdown hooks must stay silent instead of firing for a server that never
-// started.
 func Test_Listen_GracefulShutdown_NoHooksOnListenError(t *testing.T) {
 	t.Parallel()
 
@@ -1522,7 +1512,6 @@ func Test_Listen_GracefulShutdown_NoHooksOnListenError(t *testing.T) {
 	require.Zero(t, fired.Load(), "shutdown hooks must not run for a server that never started")
 }
 
-// go test -run Test_ListenConfigDefault_ShutdownTimeout
 func Test_ListenConfigDefault_ShutdownTimeout(t *testing.T) {
 	t.Parallel()
 
@@ -1554,11 +1543,6 @@ func Test_ListenConfigDefault_ShutdownTimeout(t *testing.T) {
 	})
 }
 
-// go test -run Test_GracefulShutdown_NegativeTimeoutWaitsIndefinitely
-//
-// A negative ShutdownTimeout is the documented way to wait for in-flight
-// requests without a deadline: a slow handler must still finish and the
-// OnPostShutdown hooks must see a nil error.
 func Test_GracefulShutdown_NegativeTimeoutWaitsIndefinitely(t *testing.T) {
 	t.Parallel()
 
@@ -1622,10 +1606,6 @@ func Test_GracefulShutdown_NegativeTimeoutWaitsIndefinitely(t *testing.T) {
 	require.NoError(t, <-errs)
 }
 
-// go test -run Test_Listen_TLS_PartialCertConfig
-//
-// Only one of CertFile/CertKeyFile used to fall through to the plaintext
-// branch, so a server the operator configured for TLS quietly served HTTP.
 func Test_Listen_TLS_PartialCertConfig(t *testing.T) {
 	t.Parallel()
 
@@ -1644,7 +1624,7 @@ func Test_Listen_TLS_PartialCertConfig(t *testing.T) {
 			app := New()
 			cfg := tc.cfg
 			cfg.DisableStartupMessage = true
-			// Guard against the old behavior: fail instead of serving plaintext.
+			// Fail instead of serving plaintext.
 			cfg.BeforeServeFunc = func(_ *App) error {
 				return errors.New("server would have served plaintext HTTP")
 			}
@@ -1656,10 +1636,6 @@ func Test_Listen_TLS_PartialCertConfig(t *testing.T) {
 	}
 }
 
-// go test -run Test_Listener_TLS_ClientHelloInfo_PerConnection
-//
-// The TLSHandler used to keep a single app-wide ClientHelloInfo, so a handler
-// saw whichever TLS handshake happened most recently on any connection.
 func Test_Listener_TLS_ClientHelloInfo_PerConnection(t *testing.T) {
 	t.Parallel()
 
@@ -1726,8 +1702,7 @@ func Test_Listener_TLS_ClientHelloInfo_PerConnection(t *testing.T) {
 	second := dial("second.example")
 	t.Cleanup(func() { _ = second.Close() }) //nolint:errcheck // not needed
 
-	// Both handshakes completed before either request is sent, so a shared
-	// "latest handshake" value would report second.example for both.
+	// Both handshakes complete before either request, so a shared value would report second.example twice.
 	require.Equal(t, "first.example", serverNameSeenBy(first))
 	require.Equal(t, "second.example", serverNameSeenBy(second))
 

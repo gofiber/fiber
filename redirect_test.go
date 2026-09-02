@@ -1694,12 +1694,6 @@ func Test_Redirect_parseAndClearFlashMessages_UndecodablePayload(t *testing.T) {
 	}
 }
 
-// go test -run Test_Redirect_Messages_ProgrammaticCookieHeader
-//
-// The flash-cookie prefilter only looked at the raw request headers, which a
-// request built programmatically (middleware/adaptor, app.Handler on a
-// hand-made RequestCtx) does not carry, so its flash messages were never read
-// and the cookie never cleared.
 func Test_Redirect_Messages_ProgrammaticCookieHeader(t *testing.T) {
 	t.Parallel()
 

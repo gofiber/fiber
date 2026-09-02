@@ -3333,10 +3333,6 @@ func (b *ctxTypeBinder) Parse(c Ctx, _ any) error {
 	return nil
 }
 
-// go test -run Test_Bind_CustomBinder_CustomCtx
-//
-// Custom binders used to receive the embedded *DefaultCtx rather than the
-// custom context the app was created with.
 func Test_Bind_CustomBinder_CustomCtx(t *testing.T) {
 	t.Parallel()
 

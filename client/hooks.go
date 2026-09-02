@@ -350,8 +350,7 @@ func parserRequestHeader(c *Client, req *Request) error {
 	// Set HTTP method.
 	req.RawRequest.Header.SetMethod(req.Method())
 
-	// Merge headers from the client. Each key is cleared first, so a request
-	// sent again does not carry every previous send's values as well.
+	// Merge headers from the client, clearing each key first so a resend does not accumulate values.
 	for key := range c.header.All() {
 		req.RawRequest.Header.DelBytes(key)
 	}
@@ -359,8 +358,7 @@ func parserRequestHeader(c *Client, req *Request) error {
 		req.RawRequest.Header.AddBytesKV(key, value)
 	}
 
-	// Merge headers from the request. A key set at both levels takes the
-	// request's values only: request-level headers override the client's.
+	// Merge headers from the request; they override the client's for the same key.
 	for key := range req.header.All() {
 		req.RawRequest.Header.DelBytes(key)
 	}
@@ -565,9 +563,7 @@ func parserResponseCookie(c *Client, resp *Response, req *Request) error {
 	for key, value := range resp.RawResponse.Header.Cookies() {
 		cookie := fasthttp.AcquireCookie()
 		if err := cookie.ParseBytes(value); err != nil {
-			// An attribute fasthttp cannot parse (a negative Max-Age, an
-			// Expires in another format) is ignored, not fatal (RFC 6265
-			// Section 5.2): keep the cookie's name and value on their own.
+			// An attribute fasthttp cannot parse is ignored (RFC 6265 §5.2): keep the name and value.
 			cookie.Reset()
 			pair, _, _ := bytes.Cut(value, []byte{';'})
 			if err := cookie.ParseBytes(pair); err != nil {
@@ -596,8 +592,7 @@ func logger(c *Client, resp *Response, req *Request) error {
 		return nil
 	}
 
-	// A streamed body is consumed by whoever reads it first, so only the
-	// headers are logged for one; String() would drain it before the caller.
+	// A streamed body is consumed by its first reader, so only the headers are logged.
 	if req.RawRequest.IsBodyStream() {
 		c.logger.Debugf("%s\n", req.RawRequest.Header.String())
 	} else {

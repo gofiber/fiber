@@ -958,10 +958,6 @@ func Test_Compress_Streaming_With_Compression(t *testing.T) {
 	require.Less(t, len(body), len(filedata), "Compressed size should be smaller than original")
 }
 
-// go test -run Test_Compress_StreamedBody_KeepsETagWeak
-//
-// Recomputing a strong ETag drained a streamed body into memory; a stream is
-// instead marked weak, which stays a valid validator for the encoded form.
 func Test_Compress_StreamedBody_KeepsETagWeak(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
@@ -987,10 +983,6 @@ func Test_Compress_StreamedBody_KeepsETagWeak(t *testing.T) {
 	require.Equal(t, payload, string(body))
 }
 
-// go test -run Test_Compress_AcceptEncoding_Negotiation
-//
-// Negotiation used fasthttp's exact token matching, which ignored weights,
-// wildcards and lists without spaces.
 func Test_Compress_AcceptEncoding_Negotiation(t *testing.T) {
 	t.Parallel()
 
@@ -1031,7 +1023,6 @@ func Test_Compress_AcceptEncoding_Negotiation(t *testing.T) {
 	}
 }
 
-// go test -run Test_Compress_RequestHeaderUntouched
 func Test_Compress_RequestHeaderUntouched(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()

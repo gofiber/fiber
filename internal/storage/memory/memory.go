@@ -79,9 +79,8 @@ func (s *Storage) GetWithContext(ctx context.Context, key string) ([]byte, error
 	return s.Get(key)
 }
 
-// Set saves val under key and schedules it to expire after exp. A non-positive
-// exp keeps the entry indefinitely; a positive one is rounded up to whole
-// seconds, so a sub-second value expires after one second rather than at once.
+// Set saves val under key, expiring after exp rounded up to whole seconds; a
+// non-positive exp keeps the entry indefinitely.
 func (s *Storage) Set(key string, val []byte, exp time.Duration) error {
 	// Ain't Nobody Got Time For That
 	if key == "" || len(val) == 0 {
@@ -247,8 +246,7 @@ func wrapContextError(ctx context.Context, op string) error {
 	return nil
 }
 
-// ceilSeconds converts a positive duration to whole seconds, rounding up so an
-// expiration below one second is not stored already expired.
+// ceilSeconds converts a positive duration to whole seconds, rounding up.
 func ceilSeconds(d time.Duration) uint32 {
 	secs := (d + time.Second - 1) / time.Second
 	if secs > math.MaxUint32 {

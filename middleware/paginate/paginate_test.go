@@ -1254,10 +1254,6 @@ func Benchmark_PaginateCursorMiddleware(b *testing.B) {
 	}
 }
 
-// go test -run Test_Paginate_EmptySortKey_IgnoresQuery
-//
-// With no SortKey configured the middleware still read c.Query(""), so a
-// "?=-name" parameter controlled the sort order.
 func Test_Paginate_EmptySortKey_IgnoresQuery(t *testing.T) {
 	t.Parallel()
 
@@ -1280,7 +1276,6 @@ func Test_Paginate_EmptySortKey_IgnoresQuery(t *testing.T) {
 	}
 }
 
-// go test -run Test_PageInfo_NextPageURL_NoOverflow
 func Test_PageInfo_NextPageURL_NoOverflow(t *testing.T) {
 	t.Parallel()
 

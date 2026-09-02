@@ -668,9 +668,6 @@ func Benchmark_LogfKeyAndValues_Parallel(b *testing.B) {
 	}
 }
 
-// Test_DefaultLogger_FatalExitsAboveLevel checks that Fatal terminates the
-// program even when the logger level suppresses its output; the level check
-// used to return before the exit.
 func Test_DefaultLogger_FatalExitsAboveLevel(t *testing.T) {
 	// Not parallel: it swaps the package-level exit hook and the default level.
 	var exited []int

@@ -94,9 +94,7 @@ func Test_hasFlashCookieExactMatch(t *testing.T) {
 	req = buildRequestWithCookie(t, FlashCookieName+"=valid")
 	require.True(t, hasFlashCookie(&req.Header))
 
-	// A request built programmatically (adaptor, app.Handler on a hand-made
-	// RequestCtx) carries no raw headers, so the prefilter cannot answer for it
-	// and the cookie lookup decides.
+	// A programmatic request carries no raw headers, so the cookie lookup decides.
 	var syntheticReq fasthttp.Request
 	syntheticReq.Header.Set(HeaderCookie, FlashCookieName+"=valid")
 	require.True(t, hasFlashCookie(&syntheticReq.Header))
@@ -1330,8 +1328,7 @@ func Test_Route_Registration_Prevent_Duplicate_With_Middleware(t *testing.T) {
 	verifyRequest(t, app, "/dynamically-defined", StatusNotFound)
 	require.Equal(t, uint32(6), app.handlersCount)
 
-	// RebuildTree registers the automatic HEAD companion of the new GET route
-	// right away, so the count grows by two here rather than at the next startup.
+	// RebuildTree registers the automatic HEAD companion right away, hence two.
 	verifyRequest(t, app, "/test", StatusOK)
 	require.Equal(t, uint32(8), app.handlersCount)
 
@@ -3876,8 +3873,7 @@ func Test_Route_PrefixFilter_Rejects(t *testing.T) {
 func Test_Route_PrefixFilter_EscapedStar(t *testing.T) {
 	t.Parallel()
 
-	// An escaped star is a literal "*" in the path, not the catch-all route,
-	// for a plain route and for a prefix (Use) one alike.
+	// An escaped star is a literal "*", for a plain route and a Use prefix alike.
 	for _, caseSensitive := range []bool{false, true} {
 		for _, use := range []bool{false, true} {
 			app := New(Config{CaseSensitive: caseSensitive})
@@ -4501,12 +4497,7 @@ func Test_Route_URL_RefusesUnrepresentableRoute(t *testing.T) {
 	require.Empty(t, ref.Host)
 }
 
-// go test -run Test_Router_Constraints_CaseInsensitiveRouting
-//
-// With CaseSensitive off the whole pattern used to be lowercased before it
-// was parsed, constraint names and arguments included, so regex([A-Z]{2})
-// matched lowercase only, \D became \d, a datetime layout lost its T and Z,
-// and a mixed-case custom constraint was dropped altogether.
+// Constraints must not be lowercased along with the pattern.
 func Test_Router_Constraints_CaseInsensitiveRouting(t *testing.T) {
 	t.Parallel()
 
@@ -4566,10 +4557,6 @@ func (*evenConstraint) Execute(param string, _ ...string) bool {
 	return err == nil && n%2 == 0
 }
 
-// go test -run Test_Router_MethodOverride_ContinuesInNewMethodTree
-//
-// After a middleware overrides the method, Next used to resume at the old
-// method's bucket index inside the new method's tree, skipping endpoints.
 func Test_Router_MethodOverride_ContinuesInNewMethodTree(t *testing.T) {
 	t.Parallel()
 
@@ -4605,8 +4592,7 @@ func Test_Router_MethodOverride_ContinuesInNewMethodTree(t *testing.T) {
 		})
 	}
 
-	// SkipUnmatchedRoutes answers 405 before the middleware chain runs, so the
-	// override never happens there: that is the documented short-circuit.
+	// SkipUnmatchedRoutes answers 405 before middleware runs, so no override happens.
 	t.Run("skip unmatched routes", func(t *testing.T) {
 		t.Parallel()
 
@@ -4618,9 +4604,6 @@ func Test_Router_MethodOverride_ContinuesInNewMethodTree(t *testing.T) {
 	})
 }
 
-// go test -run Test_Router_EscapedStar_IsLiteral
-//
-// An escaped star used to register as the catch-all route.
 func Test_Router_EscapedStar_IsLiteral(t *testing.T) {
 	t.Parallel()
 
@@ -4642,10 +4625,6 @@ func Test_Router_EscapedStar_IsLiteral(t *testing.T) {
 	require.True(t, RoutePatternMatch("/anything", "/*"))
 }
 
-// go test -run Test_Router_StrictRouting_ParamTrailingSlash
-//
-// Under StrictRouting a parametric route ending in "/" used to match the path
-// without it, while a static one correctly did not.
 func Test_Router_StrictRouting_ParamTrailingSlash(t *testing.T) {
 	t.Parallel()
 
@@ -4684,10 +4663,6 @@ func Test_Router_StrictRouting_ParamTrailingSlash(t *testing.T) {
 	}
 }
 
-// go test -run Test_Router_UnescapePath_PlusIsLiteral
-//
-// UnescapePath decoded the path with the form-argument decoder, which turns a
-// literal "+" into a space; in a path "+" is an ordinary character (RFC 3986).
 func Test_Router_UnescapePath_PlusIsLiteral(t *testing.T) {
 	t.Parallel()
 
@@ -4706,8 +4681,7 @@ func Test_Router_UnescapePath_PlusIsLiteral(t *testing.T) {
 		{path: "/u/a%zzb", body: "a%zzb|/u/a%zzb"},
 		{path: "/u/end%2", body: "end%2|/u/end%2"},
 	}
-	// Through the raw handler: net/http would reject the malformed escapes
-	// before they reach the router.
+	// Through the raw handler: net/http rejects malformed escapes.
 	handler := app.Handler()
 	for _, tc := range testCases {
 		fctx := &fasthttp.RequestCtx{}
@@ -4722,10 +4696,6 @@ func Test_Router_UnescapePath_PlusIsLiteral(t *testing.T) {
 	require.False(t, RoutePatternMatch("/u/john+doe", "/u/john doe", Config{UnescapePath: true}))
 }
 
-// go test -run Test_App_Add_MultipleMethods_Name
-//
-// Name used to apply only to the route of the last method an Add call
-// registered.
 func Test_App_Add_MultipleMethods_Name(t *testing.T) {
 	t.Parallel()
 
@@ -4742,9 +4712,6 @@ func Test_App_Add_MultipleMethods_Name(t *testing.T) {
 	require.True(t, named[MethodPost], "POST /x must carry the name")
 }
 
-// go test -run Test_App_Use_MultiplePrefixes_MountsEachPrefix
-//
-// Use with a prefix slice and a sub-app used to mount only the first prefix.
 func Test_App_Use_MultiplePrefixes_MountsEachPrefix(t *testing.T) {
 	t.Parallel()
 
@@ -4760,9 +4727,6 @@ func Test_App_Use_MultiplePrefixes_MountsEachPrefix(t *testing.T) {
 	}
 }
 
-// go test -run Test_App_Mount_Self_Panics
-//
-// Mounting an app onto itself used to deadlock at startup.
 func Test_App_Mount_Self_Panics(t *testing.T) {
 	t.Parallel()
 
@@ -4770,10 +4734,6 @@ func Test_App_Mount_Self_Panics(t *testing.T) {
 	require.Panics(t, func() { app.Use("/x", app) })
 }
 
-// go test -run Test_App_RebuildTree_RegistersAutoHead
-//
-// Routes added at runtime and published with RebuildTree got no automatic
-// HEAD route.
 func Test_App_RebuildTree_RegistersAutoHead(t *testing.T) {
 	t.Parallel()
 
@@ -4793,11 +4753,6 @@ func Test_App_RebuildTree_RegistersAutoHead(t *testing.T) {
 	}
 }
 
-// go test -run Test_Mount_Nested_AutoHead_SingleStartup
-//
-// A sub-app mounted onto an already-mounted app was discovered only after the
-// automatic HEAD pass had run, so its GET routes had no HEAD companion on a
-// server started once.
 func Test_Mount_Nested_AutoHead_SingleStartup(t *testing.T) {
 	t.Parallel()
 
@@ -4805,12 +4760,11 @@ func Test_Mount_Nested_AutoHead_SingleStartup(t *testing.T) {
 	nested.Get("/x", func(c Ctx) error { return c.SendString("x") })
 	sub := New()
 	app := New()
-	// Mount the parent first: a sub-app nested afterwards is only discovered
-	// at startup.
+	// Mount the parent first: a sub-app nested afterwards is only discovered at startup.
 	app.Use("/a", sub)
 	sub.Use("/b", nested)
 
-	// One startup, as a real server has, then the very first request.
+	// One startup, then the very first request.
 	handler := app.Handler()
 	for _, method := range []string{MethodHead, MethodGet} {
 		fctx := &fasthttp.RequestCtx{}
@@ -4821,10 +4775,6 @@ func Test_Mount_Nested_AutoHead_SingleStartup(t *testing.T) {
 	}
 }
 
-// go test -run Test_Router_PathOverride_ContinuesInNewBucket
-//
-// A path override that lands in another tree bucket used to leave the route
-// index at the old bucket's offset, so Next skipped the routes before it.
 func Test_Router_PathOverride_ContinuesInNewBucket(t *testing.T) {
 	t.Parallel()
 

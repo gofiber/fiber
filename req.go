@@ -139,9 +139,8 @@ func (r *DefaultReq) tryDecodeBodyInOrder(
 				*originalBody = make([]byte, len(tempBody))
 				copy(*originalBody, tempBody)
 			}
-			// identity leaves the body as it is, and body aliases it: re-setting
-			// it would first release the buffer it aliases under
-			// ReduceMemoryUsage, leaving the next decoder reading pooled memory.
+			// identity leaves the body as it is; re-setting an aliasing slice would
+			// release its buffer under ReduceMemoryUsage.
 			if encoding != StrIdentity {
 				request.SetBodyRaw(body)
 			}
@@ -952,9 +951,7 @@ func proxyHeaderValue(r *DefaultReq, header string) string {
 
 func isValidProxyIP(ipStr string) bool {
 	if strings.IndexByte(ipStr, ':') >= 0 {
-		// A colon makes it IPv6, including the IPv4-mapped form
-		// ::ffff:a.b.c.d (RFC 4291 Section 2.2) dual-stack proxies forward,
-		// which carries both separators.
+		// A colon makes it IPv6, including the IPv4-mapped form ::ffff:a.b.c.d (RFC 4291 §2.2).
 		return utils.IsIPv6(ipStr)
 	}
 	return strings.IndexByte(ipStr, '.') >= 0 && utils.IsIPv4(ipStr)
@@ -977,8 +974,7 @@ func (r *DefaultReq) isTrustedProxyIP(ipStr string) bool {
 		if ip, ok = utils.ParseIPv6(ipStr); !ok {
 			return false
 		}
-		// An IPv4-mapped address names an IPv4 proxy: classify and look it up
-		// as that, the way net.IP does for the peer address.
+		// An IPv4-mapped address names an IPv4 proxy: look it up as that, as net.IP does for the peer.
 		ip = ip.Unmap()
 	}
 
@@ -1231,9 +1227,8 @@ func (r *DefaultReq) Method(override ...string) string {
 	if methodInt == r.c.methodInt {
 		return method
 	}
-	// Routing resumes after the current route, which a middleware occupies at
-	// a position of its own in every method's tree: carry the index over to
-	// the new method's tree, or it would skip whatever precedes that position.
+	// A middleware sits at a position of its own in every method's tree, so
+	// carry the index over or Next would skip the routes before it.
 	r.c.indexRoute = app.routeIndexInTree(methodInt, r.c.treePathHash, r.c.route, r.c.indexRoute)
 	r.c.methodInt = methodInt
 	// Method changed; invalidate the lookahead index
@@ -1318,9 +1313,8 @@ func (r *DefaultReq) Path(override ...string) string {
 		r.c.configDependentPaths()
 		// The detection path/tree hash changed; invalidate the lookahead index.
 		r.c.firstMatchIndex = -1
-		// The new path may live in another tree bucket, where the current
-		// route sits at a position of its own: carry the index over so Next
-		// resumes after it rather than at a stale offset.
+		// The new path may live in another bucket, so carry the index over for
+		// Next to resume after this route.
 		r.c.indexRoute = r.c.app.routeIndexInTree(r.c.methodInt, r.c.treePathHash, r.c.route, r.c.indexRoute)
 	}
 	return r.c.app.toString(r.c.path)

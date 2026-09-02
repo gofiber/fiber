@@ -61,7 +61,7 @@ var osExit = os.Exit //nolint:revive // exiting is what Fatal is for
 func (l *defaultLogger) privateLog(lv Level, fmtArgs []any) {
 	if l.level > lv {
 		if lv == LevelFatal {
-			// Fatal terminates the program whether or not its line is written.
+			// Fatal exits even when its line is not written.
 			osExit(1)
 		}
 		return
@@ -89,7 +89,7 @@ func (l *defaultLogger) privateLog(lv Level, fmtArgs []any) {
 func (l *defaultLogger) privateLogf(lv Level, format string, fmtArgs []any) {
 	if l.level > lv {
 		if lv == LevelFatal {
-			// Fatal terminates the program whether or not its line is written.
+			// Fatal exits even when its line is not written.
 			osExit(1)
 		}
 		return
@@ -121,7 +121,7 @@ func (l *defaultLogger) privateLogf(lv Level, format string, fmtArgs []any) {
 func (l *defaultLogger) privateLogw(lv Level, format string, keysAndValues []any) {
 	if l.level > lv {
 		if lv == LevelFatal {
-			// Fatal terminates the program whether or not its line is written.
+			// Fatal exits even when its line is not written.
 			osExit(1)
 		}
 		return

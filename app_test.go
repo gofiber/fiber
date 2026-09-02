@@ -3765,11 +3765,6 @@ func Test_App_Test_SmallTimeout_WithFailOnTimeoutTrue(t *testing.T) {
 	require.ErrorIs(t, err, os.ErrDeadlineExceeded)
 }
 
-// go test -run Test_App_ShutdownWithTimeout_HandlerTakesAppMutex
-//
-// Shutdown used to hold the app mutex for the whole drain, so an in-flight
-// handler calling RebuildTree (or anything else that takes the mutex) could
-// never finish and every ShutdownWithTimeout expired.
 func Test_App_ShutdownWithTimeout_HandlerTakesAppMutex(t *testing.T) {
 	t.Parallel()
 
@@ -3812,11 +3807,6 @@ func Test_App_ShutdownWithTimeout_HandlerTakesAppMutex(t *testing.T) {
 	require.NoError(t, <-errs)
 }
 
-// go test -run Test_App_IsProxyTrusted_CanonicalIPForms
-//
-// Proxies used to be stored exactly as written while lookups use the
-// canonical net.IP form, so any non-canonical spelling silently untrusted
-// the proxy.
 func Test_App_IsProxyTrusted_CanonicalIPForms(t *testing.T) {
 	t.Parallel()
 
@@ -3850,10 +3840,6 @@ func Test_App_IsProxyTrusted_CanonicalIPForms(t *testing.T) {
 	}
 }
 
-// go test -run Test_App_IP_StripTrustedProxies_CanonicalIPForms
-//
-// The X-Forwarded-For stripping path looks proxies up through netip, so it
-// must accept the same spellings as IsProxyTrusted.
 func Test_App_IP_StripTrustedProxies_CanonicalIPForms(t *testing.T) {
 	t.Parallel()
 
@@ -3890,10 +3876,6 @@ func Test_App_IP_StripTrustedProxies_CanonicalIPForms(t *testing.T) {
 	}
 }
 
-// Test_App_ErrorHandler_SkipsCommittedTimeoutResponse checks that a request
-// whose response fasthttp already holds as a timeout response is left alone:
-// the configured handler could not change what the client gets, and the
-// handler that timed out may still be writing to the context.
 func Test_App_ErrorHandler_SkipsCommittedTimeoutResponse(t *testing.T) {
 	t.Parallel()
 

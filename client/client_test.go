@@ -2512,11 +2512,6 @@ func Test_Client_StreamResponseBody(t *testing.T) {
 	})
 }
 
-// go test -run Test_Client_UnparsableCookieAttributesIgnored
-//
-// A Set-Cookie fasthttp could not fully parse (a negative Max-Age, an
-// Expires in another date format) used to fail the whole request; RFC 6265
-// Section 5.2 says such attributes are ignored.
 func Test_Client_UnparsableCookieAttributesIgnored(t *testing.T) {
 	t.Parallel()
 
@@ -2544,10 +2539,6 @@ func Test_Client_UnparsableCookieAttributesIgnored(t *testing.T) {
 	require.Equal(t, map[string]string{"a": "1", "b": "2", "c": "3"}, values)
 }
 
-// go test -run Test_Client_ResponseHookError_KeepsCallerRequest
-//
-// A failing response hook released the caller's own Request along with the
-// response, so the documented AcquireRequest/ReleaseRequest pattern released it twice.
 func Test_Client_ResponseHookError_KeepsCallerRequest(t *testing.T) {
 	t.Parallel()
 
@@ -2571,7 +2562,6 @@ func Test_Client_ResponseHookError_KeepsCallerRequest(t *testing.T) {
 	require.Same(t, client, req.Client())
 }
 
-// go test -run Test_Request_Reset_ClearsClient
 func Test_Request_Reset_ClearsClient(t *testing.T) {
 	t.Parallel()
 
@@ -2583,7 +2573,6 @@ func Test_Request_Reset_ClearsClient(t *testing.T) {
 	ReleaseRequest(req)
 }
 
-// go test -run Test_Client_Debug_DoesNotDrainStream
 func Test_Client_Debug_DoesNotDrainStream(t *testing.T) {
 	t.Parallel()
 
@@ -2610,10 +2599,6 @@ func Test_Client_Debug_DoesNotDrainStream(t *testing.T) {
 	require.Equal(t, "chunk", string(body))
 }
 
-// go test -run Test_CookieJar_MaxAge
-//
-// Max-Age was ignored by the jar, so a Max-Age=0 logout kept sending the
-// cookie and a short Max-Age never expired (RFC 6265 Section 5.2.2).
 func Test_CookieJar_MaxAge(t *testing.T) {
 	t.Parallel()
 
@@ -2654,14 +2639,12 @@ func Test_CookieJar_MaxAge(t *testing.T) {
 	require.Empty(t, get("/echo"), "the cookie must expire after Max-Age seconds")
 }
 
-// go test -run Test_Request_CancelledContext_NoRace -race
 func Test_Request_CancelledContext_NoRace(t *testing.T) {
 	t.Parallel()
 
 	server := startTestServer(t, func(app *fiber.App) {
 		app.Get("/", func(c fiber.Ctx) error {
-			// Slow enough that the response is never ready when Send picks
-			// between it and the canceled context.
+			// Slow enough that the response never beats the canceled context.
 			time.Sleep(50 * time.Millisecond)
 			return c.SendString("ok")
 		})
@@ -2670,9 +2653,7 @@ func Test_Request_CancelledContext_NoRace(t *testing.T) {
 
 	client := New().SetDial(server.dial())
 
-	// One live request first, so the server is serving before the shutdown
-	// that ends the test: a canceled send returns before anything is dialed,
-	// and a shutdown that runs before Serve is a no-op the server outlives.
+	// A live request first, so the server is serving before it is shut down.
 	warm, err := client.Get("http://example.com/")
 	require.NoError(t, err)
 	warm.Close()
@@ -2688,7 +2669,6 @@ func Test_Request_CancelledContext_NoRace(t *testing.T) {
 	}
 }
 
-// go test -run Test_Client_RequestHeaderOverridesClientHeader
 func Test_Client_RequestHeaderOverridesClientHeader(t *testing.T) {
 	t.Parallel()
 
@@ -2715,7 +2695,6 @@ func Test_Client_RequestHeaderOverridesClientHeader(t *testing.T) {
 	require.Equal(t, "request", resp.String(), "a request-level header overrides the client-level one")
 }
 
-// go test -run Test_Request_Params_KeepInsertionOrder
 func Test_Request_Params_KeepInsertionOrder(t *testing.T) {
 	t.Parallel()
 
@@ -2733,7 +2712,6 @@ func Test_Request_Params_KeepInsertionOrder(t *testing.T) {
 	}
 }
 
-// go test -run Test_Response_Header_CopiesValue
 func Test_Response_Header_CopiesValue(t *testing.T) {
 	t.Parallel()
 
@@ -2755,7 +2733,6 @@ func Test_Response_Header_CopiesValue(t *testing.T) {
 	require.Equal(t, "value", header, "the returned string must not alias the header storage")
 }
 
-// go test -run Test_Request_Resend_DoesNotAccumulateHeaders
 func Test_Request_Resend_DoesNotAccumulateHeaders(t *testing.T) {
 	t.Parallel()
 
@@ -2779,10 +2756,6 @@ func Test_Request_Resend_DoesNotAccumulateHeaders(t *testing.T) {
 	}
 }
 
-// go test -run Test_Client_UppercaseScheme
-//
-// URL schemes are case-insensitive (RFC 3986 Section 3.1); "HTTP://" was
-// rejected as malformed.
 func Test_Client_UppercaseScheme(t *testing.T) {
 	t.Parallel()
 

@@ -77,8 +77,7 @@ type Route struct {
 
 	routeParser routeParser // Parameter parser
 
-	// id is shared by the per-method copies of one registration, so a route
-	// can be found again in another method's tree (see routeIndexInTree).
+	// id is shared by the per-method copies of one registration (see routeIndexInTree).
 	id uint64
 
 	Handlers []Handler `json:"-"` // Ctx handlers
@@ -356,9 +355,7 @@ func pathHeadWord(s string) uint64 {
 //   - '*' matches every path, and a first segment that is itself a parameter
 //     constrains nothing, so both disable the filter
 //
-// The star check has to come first, before the parametric branch: match
-// returns true for a star route unconditionally, before any parameter is
-// looked at.
+// The star check comes first: match accepts a star route before looking at parameters.
 //
 // Anything that changes a route's path, params or parser must run this again.
 // The three places that can are register, which builds the route, copyRoute,
@@ -1053,9 +1050,8 @@ func (app *App) register(methods []string, pathRaw string, group *Group, handler
 
 	parsedRaw := parseRoute(pathRaw, app.config.RegexHandler, app.customConstraints...)
 	parsedPretty := parseRoute(pathPretty, app.config.RegexHandler, app.customConstraints...)
-	// The pretty pattern is what requests are matched against, but its
-	// constraints must be the ones written in the raw pattern: lowercasing
-	// would corrupt them (see routeParser.adoptConstraints).
+	// The pretty pattern is matched against, but its constraints must come
+	// from the raw one (see routeParser.adoptConstraints).
 	parsedPretty.adoptConstraints(&parsedRaw)
 	if app.config.StrictRouting {
 		parsedPretty.applyStrictRouting()
@@ -1073,8 +1069,7 @@ func (app *App) register(methods []string, pathRaw string, group *Group, handler
 
 		isUse := method == methodUse
 		registered = append(registered, method)
-		// Derived from the pattern with its escapes intact: an escaped "/\*"
-		// is a literal path, not the catch-all route.
+		// Derived from the pattern with its escapes intact: "/\*" is a literal path.
 		isStar := pathPretty == "/*"
 		isRoot := pathPretty == "/"
 
@@ -1263,17 +1258,14 @@ func (app *App) RebuildTree() *App {
 	app.mutex.Lock()
 	defer app.mutex.Unlock()
 
-	// Routes registered since startup get their automatic HEAD companions
-	// here, as the ones registered before it did at startup.
+	// Routes registered since startup get their automatic HEAD companions here.
 	app.ensureAutoHeadRoutesLocked()
 
 	return app.buildTree()
 }
 
-// routeIndexInTree returns the position of route in the bucket of another
-// method's tree, or current when it is not there. A middleware is registered
-// in every method's stack as a copy of its own, so the copies are told apart
-// by the id they share.
+// routeIndexInTree returns the position of route in another method's tree
+// bucket, or current when it is not there; copies are told apart by their shared id.
 func (app *App) routeIndexInTree(methodInt, treeHash int, route *Route, current int) int {
 	if route == nil || methodInt < 0 || methodInt >= len(app.treeIndex) {
 		return current

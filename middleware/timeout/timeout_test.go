@@ -729,9 +729,6 @@ func Test_Timeout_OnTimeout_ResetsBodyStream(t *testing.T) {
 	require.Equal(t, fiber.ErrRequestTimeout.Message, string(resp.Body()))
 }
 
-// Test_Timeout_DefaultReturnsErrRequestTimeout checks that a timed-out request
-// hands fiber.ErrRequestTimeout back to the middleware above it, as documented;
-// the default path used to return nil, so an outer logger recorded a success.
 func Test_Timeout_DefaultReturnsErrRequestTimeout(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
@@ -759,9 +756,6 @@ func Test_Timeout_DefaultReturnsErrRequestTimeout(t *testing.T) {
 	}
 }
 
-// Test_Timeout_OnTimeoutReturnedErrorShapesResponse checks that a *fiber.Error
-// returned by OnTimeout reaches the client; it used to be dropped in favor of
-// the default 408.
 func Test_Timeout_OnTimeoutReturnedErrorShapesResponse(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
@@ -784,11 +778,6 @@ func Test_Timeout_OnTimeoutReturnedErrorShapesResponse(t *testing.T) {
 	require.Equal(t, "upstream too slow", string(body))
 }
 
-// Test_Timeout_ErrorHandlerSkippedAfterTimeout checks that the app's
-// ErrorHandler stays out of a timed-out request: fasthttp already holds the
-// response it will send, so the handler could not change it, and the handler
-// that timed out may still be writing to the same context. Outer middleware
-// still sees the error.
 func Test_Timeout_ErrorHandlerSkippedAfterTimeout(t *testing.T) {
 	t.Parallel()
 

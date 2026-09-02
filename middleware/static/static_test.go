@@ -1376,10 +1376,6 @@ func Test_SanitizePath_Error(t *testing.T) {
 	}
 }
 
-// go test -run Test_Static_Download_NotFoundLeavesNoAttachment
-//
-// With Download on, the attachment header was set before the file lookup, so
-// it leaked onto the fallthrough response of a missing file.
 func Test_Static_Download_NotFoundLeavesNoAttachment(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
@@ -1396,10 +1392,6 @@ func Test_Static_Download_NotFoundLeavesNoAttachment(t *testing.T) {
 	require.Empty(t, resp.Header.Get(fiber.HeaderContentDisposition))
 }
 
-// go test -run Test_Static_Download_KeepsDetectedContentType
-//
-// Download derived the Content-Type from the URL's extension, blanking it for
-// an extension-less file the file server had already typed by content.
 func Test_Static_Download_KeepsDetectedContentType(t *testing.T) {
 	t.Parallel()
 
@@ -1416,10 +1408,6 @@ func Test_Static_Download_KeepsDetectedContentType(t *testing.T) {
 	require.Equal(t, `attachment; filename="README"`, resp.Header.Get(fiber.HeaderContentDisposition))
 }
 
-// go test -run Test_Static_SameHandlerUnderTwoPrefixes
-//
-// The route prefix was captured from the first request and reused for every
-// route the handler was registered on.
 func Test_Static_SameHandlerUnderTwoPrefixes(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
@@ -1438,9 +1426,6 @@ func Test_Static_SameHandlerUnderTwoPrefixes(t *testing.T) {
 	}
 }
 
-// go test -run Test_Static_MaxAge_NotOnErrorResponses
-//
-// MaxAge was applied to error responses such as 416 Range Not Satisfiable.
 func Test_Static_MaxAge_NotOnErrorResponses(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()

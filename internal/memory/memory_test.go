@@ -55,8 +55,7 @@ func Test_Memory(t *testing.T) {
 	require.Nil(t, result)
 }
 
-// setWithinSecond stores key while the cached clock holds still, so the expiry
-// Set derived from it can be checked against a known second.
+// setWithinSecond stores key while the cached clock holds still.
 func setWithinSecond(t *testing.T, store *Storage, key string, val any, ttl time.Duration) uint32 {
 	t.Helper()
 	for range 100 {
@@ -77,15 +76,13 @@ func expiryOf(store *Storage, key string) uint32 {
 	return store.data[key].e
 }
 
-// go test -run Test_Memory_TTLRoundsUp -v -race
 func Test_Memory_TTLRoundsUp(t *testing.T) {
 	t.Parallel()
 
 	testCases := []struct {
 		name string
 		ttl  time.Duration
-		// want is the number of seconds after the current one the entry
-		// expires at; 0 keeps it forever.
+		// want is the expiry in seconds after the current one; 0 keeps it forever.
 		want uint32
 	}{
 		{name: "sub-second rounds up to one second", ttl: 500 * time.Millisecond, want: 1},
@@ -112,7 +109,6 @@ func Test_Memory_TTLRoundsUp(t *testing.T) {
 	}
 }
 
-// go test -run Test_Memory_SubSecondTTLExpires -v -race
 func Test_Memory_SubSecondTTLExpires(t *testing.T) {
 	t.Parallel()
 

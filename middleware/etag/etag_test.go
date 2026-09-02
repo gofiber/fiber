@@ -381,12 +381,10 @@ func Test_ETag_WeakComparison(t *testing.T) {
 	}
 }
 
-// go test -run Test_ETag_IfNoneMatchOnlyForGetHead
 func Test_ETag_IfNoneMatchOnlyForGetHead(t *testing.T) {
 	t.Parallel()
 
-	// RFC 9110 §13.1.2 reserves 304 for GET and HEAD. For the other methods the
-	// handler has already run, so the response is passed through as it is.
+	// RFC 9110 §13.1.2 reserves 304 for GET and HEAD.
 	testCases := []struct {
 		method         string
 		expectedStatus int

@@ -133,8 +133,7 @@ func Test_Storage_Memory_Set_Expiration(t *testing.T) {
 	require.Nil(t, keys)
 }
 
-// setWithinSecond stores key while the cached clock holds still, so the expiry
-// Set derived from it can be checked against a known second.
+// setWithinSecond stores key while the cached clock holds still.
 func setWithinSecond(t *testing.T, store *Storage, key string, val []byte, exp time.Duration) uint32 {
 	t.Helper()
 	for range 100 {
@@ -161,8 +160,7 @@ func Test_Storage_Memory_Set_ExpirationRoundsUp(t *testing.T) {
 	testCases := []struct {
 		name string
 		exp  time.Duration
-		// want is the number of seconds after the current one the entry
-		// expires at; 0 keeps it forever.
+		// want is the expiry in seconds after the current one; 0 keeps it forever.
 		want uint32
 	}{
 		{name: "sub-second rounds up to one second", exp: 500 * time.Millisecond, want: 1},
