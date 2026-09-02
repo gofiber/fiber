@@ -55,6 +55,75 @@ func Test_Memory(t *testing.T) {
 	require.Nil(t, result)
 }
 
+// setWithinSecond stores key while the cached clock holds still, so the expiry
+// Set derived from it can be checked against a known second.
+func setWithinSecond(t *testing.T, store *Storage, key string, val any, ttl time.Duration) uint32 {
+	t.Helper()
+	for range 100 {
+		now := utils.Timestamp()
+		store.Set(key, val, ttl)
+		if utils.Timestamp() == now {
+			return now
+		}
+	}
+	t.Fatal("cached clock kept ticking during Set")
+	return 0
+}
+
+// expiryOf returns the whole-second expiry stored for key.
+func expiryOf(store *Storage, key string) uint32 {
+	store.mu.RLock()
+	defer store.mu.RUnlock()
+	return store.data[key].e
+}
+
+// go test -run Test_Memory_TTLRoundsUp -v -race
+func Test_Memory_TTLRoundsUp(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name string
+		ttl  time.Duration
+		// want is the number of seconds after the current one the entry
+		// expires at; 0 keeps it forever.
+		want uint32
+	}{
+		{name: "sub-second rounds up to one second", ttl: 500 * time.Millisecond, want: 1},
+		{name: "whole seconds are kept", ttl: time.Second, want: 1},
+		{name: "fractions round up rather than down", ttl: 1900 * time.Millisecond, want: 2},
+		{name: "zero keeps the entry forever", ttl: 0, want: 0},
+		{name: "negative keeps the entry forever", ttl: -time.Second, want: 0},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			store := New()
+			now := setWithinSecond(t, store, "key", "value", tc.ttl)
+
+			want := tc.want
+			if want != 0 {
+				want += now
+			}
+			require.Equal(t, want, expiryOf(store, "key"))
+			require.Equal(t, "value", store.Get("key"), "a positive ttl must not be stored already expired")
+		})
+	}
+}
+
+// go test -run Test_Memory_SubSecondTTLExpires -v -race
+func Test_Memory_SubSecondTTLExpires(t *testing.T) {
+	t.Parallel()
+
+	store := New()
+	store.Set("key", "value", 500*time.Millisecond)
+	require.Equal(t, "value", store.Get("key"))
+	require.Eventually(t, func() bool {
+		return store.Get("key") == nil
+	}, 3*time.Second, 10*time.Millisecond)
+}
+
 // go test -v -run=^$ -bench=Benchmark_Memory -benchmem -count=4
 func Benchmark_Memory(b *testing.B) {
 	keyLength := 1000

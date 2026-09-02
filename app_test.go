@@ -3307,9 +3307,11 @@ func Test_App_Test_CloseFail(t *testing.T) {
 
 func Test_App_SetTLSHandler(t *testing.T) {
 	t.Parallel()
-	tlsHandler := &TLSHandler{clientHelloInfo: &tls.ClientHelloInfo{
+	tlsHandler := &TLSHandler{}
+	_, err := tlsHandler.GetClientInfo(&tls.ClientHelloInfo{
 		ServerName: "example.golang",
-	}}
+	})
+	require.NoError(t, err)
 
 	app := New()
 	app.SetTLSHandler(tlsHandler)
@@ -3760,4 +3762,129 @@ func Test_App_Test_SmallTimeout_WithFailOnTimeoutTrue(t *testing.T) {
 	})
 
 	require.ErrorIs(t, err, os.ErrDeadlineExceeded)
+}
+
+// go test -run Test_App_ShutdownWithTimeout_HandlerTakesAppMutex
+//
+// Shutdown used to hold the app mutex for the whole drain, so an in-flight
+// handler calling RebuildTree (or anything else that takes the mutex) could
+// never finish and every ShutdownWithTimeout expired.
+func Test_App_ShutdownWithTimeout_HandlerTakesAppMutex(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	inHandler := make(chan struct{})
+	shutdownStarted := make(chan struct{})
+	app.Get("/", func(c Ctx) error {
+		close(inHandler)
+		<-shutdownStarted
+		app.RebuildTree()
+		return c.SendString("ok")
+	})
+	app.Hooks().OnPreShutdown(func() error {
+		close(shutdownStarted)
+		return nil
+	})
+
+	ln := fasthttputil.NewInmemoryListener()
+	errs := make(chan error, 1)
+	go func() {
+		errs <- app.Listener(ln, ListenConfig{DisableStartupMessage: true})
+	}()
+
+	conn, err := ln.Dial()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = conn.Close() }) //nolint:errcheck // not needed
+	_, err = conn.Write([]byte("GET / HTTP/1.1\r\nHost: example.com\r\nConnection: close\r\n\r\n"))
+	require.NoError(t, err)
+
+	select {
+	case <-inHandler:
+	case <-time.After(2 * time.Second):
+		t.Fatal("request never reached the handler")
+	}
+
+	const timeout = 3 * time.Second
+	start := time.Now()
+	require.NoError(t, app.ShutdownWithTimeout(timeout))
+	require.Less(t, time.Since(start), timeout, "shutdown waited for the whole timeout: the handler deadlocked on the app mutex")
+	require.NoError(t, <-errs)
+}
+
+// go test -run Test_App_IsProxyTrusted_CanonicalIPForms
+//
+// Proxies used to be stored exactly as written while lookups use the
+// canonical net.IP form, so any non-canonical spelling silently untrusted
+// the proxy.
+func Test_App_IsProxyTrusted_CanonicalIPForms(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		proxy  string
+		remote net.IP
+	}{
+		{name: "uppercase IPv6", proxy: "2001:DB8::1", remote: net.ParseIP("2001:db8::1")},
+		{name: "zero-padded IPv6", proxy: "2001:0db8::1", remote: net.ParseIP("2001:db8::1")},
+		{name: "uncompressed IPv6", proxy: "0:0:0:0:0:0:0:1", remote: net.ParseIP("::1")},
+		{name: "IPv4-mapped IPv6 with 4-byte peer", proxy: "::ffff:10.0.0.1", remote: net.ParseIP("10.0.0.1").To4()},
+		{name: "IPv4-mapped IPv6 with 16-byte peer", proxy: "::ffff:10.0.0.1", remote: net.ParseIP("10.0.0.1")},
+		{name: "IPv4 with IPv4-mapped peer", proxy: "10.0.0.1", remote: net.ParseIP("::ffff:10.0.0.1")},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			app := New(Config{
+				TrustProxy:       true,
+				TrustProxyConfig: TrustProxyConfig{Proxies: []string{tc.proxy}},
+			})
+			c := app.AcquireCtx(&fasthttp.RequestCtx{})
+			defer app.ReleaseCtx(c)
+			c.RequestCtx().SetRemoteAddr(&net.TCPAddr{IP: tc.remote, Port: 8080})
+
+			require.True(t, c.IsProxyTrusted())
+		})
+	}
+}
+
+// go test -run Test_App_IP_StripTrustedProxies_CanonicalIPForms
+//
+// The X-Forwarded-For stripping path looks proxies up through netip, so it
+// must accept the same spellings as IsProxyTrusted.
+func Test_App_IP_StripTrustedProxies_CanonicalIPForms(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		proxy    string
+		remote   string
+		header   string
+		expected string
+	}{
+		{name: "IPv4-mapped proxy spelling", proxy: "::ffff:10.0.0.1", remote: "10.0.0.1", header: "203.0.113.50, 10.0.0.1", expected: "203.0.113.50"},
+		{name: "uppercase IPv6 proxy", proxy: "2001:DB8::1", remote: "2001:db8::1", header: "203.0.113.50, 2001:db8::1", expected: "203.0.113.50"},
+		{name: "uncompressed IPv6 proxy", proxy: "0:0:0:0:0:0:0:1", remote: "::1", header: "203.0.113.50, ::1", expected: "203.0.113.50"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			app := New(Config{
+				ProxyHeader:        HeaderXForwardedFor,
+				TrustProxy:         true,
+				EnableIPValidation: true,
+				TrustProxyConfig:   TrustProxyConfig{Proxies: []string{tc.proxy}},
+			})
+			fastCtx := &fasthttp.RequestCtx{}
+			fastCtx.SetRemoteAddr(&net.TCPAddr{IP: net.ParseIP(tc.remote), Port: 8080})
+			c := app.AcquireCtx(fastCtx)
+			defer app.ReleaseCtx(c)
+			c.Request().Header.Set(HeaderXForwardedFor, tc.header)
+
+			require.Equal(t, tc.expected, c.IP())
+		})
+	}
 }

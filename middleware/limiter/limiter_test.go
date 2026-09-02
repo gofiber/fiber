@@ -887,6 +887,79 @@ func Test_Limiter_Sliding_ExpirationFunc_FallbackOnNegativeDuration(t *testing.T
 	require.Equal(t, fiber.StatusTooManyRequests, resp.StatusCode)
 }
 
+// go test -run Test_Limiter_SubSecondExpirationIsOneSecondWindow -race -v
+func Test_Limiter_SubSecondExpirationIsOneSecondWindow(t *testing.T) {
+	t.Parallel()
+
+	// A positive Expiration below one second is a one-second window, not a
+	// reason to fall back to the one-minute default.
+	require.Equal(t, 500*time.Millisecond, configDefault(Config{Expiration: 500 * time.Millisecond}).Expiration)
+
+	t.Run("fixed", func(t *testing.T) {
+		t.Parallel()
+
+		clock := newTestClock(time.Now().Truncate(time.Second))
+		app := fiber.New()
+		app.Use(New(Config{
+			Max:               1,
+			Expiration:        500 * time.Millisecond,
+			LimiterMiddleware: FixedWindow{},
+			clock:             clock.Now,
+		}))
+		app.Get("/", func(c fiber.Ctx) error {
+			return c.SendStatus(fiber.StatusOK)
+		})
+
+		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, fiber.StatusOK, resp.StatusCode)
+
+		resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, fiber.StatusTooManyRequests, resp.StatusCode)
+		require.Equal(t, "1", resp.Header.Get(fiber.HeaderRetryAfter))
+
+		// Past the one-second window the client is admitted again.
+		clock.Add(1300 * time.Millisecond)
+
+		resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	})
+
+	t.Run("sliding", func(t *testing.T) {
+		t.Parallel()
+
+		clock := newTestClock(time.Now().Truncate(time.Second))
+		app := fiber.New()
+		app.Use(New(Config{
+			Max:               1,
+			Expiration:        500 * time.Millisecond,
+			LimiterMiddleware: SlidingWindow{},
+			clock:             clock.Now,
+		}))
+		app.Get("/", func(c fiber.Ctx) error {
+			return c.SendStatus(fiber.StatusOK)
+		})
+
+		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, fiber.StatusOK, resp.StatusCode)
+
+		resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, fiber.StatusTooManyRequests, resp.StatusCode)
+		require.Equal(t, "1", resp.Header.Get(fiber.HeaderRetryAfter))
+
+		// Two whole windows on, the previous window carries no weight.
+		clock.Add(2300 * time.Millisecond)
+
+		resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	})
+}
+
 // go test -run Test_Limiter_Concurrency_Store -race -v
 func Test_Limiter_Concurrency_Store(t *testing.T) {
 	t.Parallel()

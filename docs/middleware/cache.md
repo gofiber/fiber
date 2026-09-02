@@ -22,7 +22,6 @@ The middleware caches these RFC 7231 status codes:
 - `200: OK`
 - `203: Non-Authoritative Information`
 - `204: No Content`
-- `206: Partial Content`
 - `300: Multiple Choices`
 - `301: Moved Permanently`
 - `404: Not Found`
@@ -31,7 +30,7 @@ The middleware caches these RFC 7231 status codes:
 - `414: URI Too Long`
 - `501: Not Implemented`
 
-Responses with other status codes result in an `unreachable` cache status.
+Responses with other status codes result in an `unreachable` cache status. A `206 Partial Content` response is never stored either: the middleware does not understand range requests, so a stored partial body would be replayed to clients asking for the whole representation (RFC 9111 §3.3).
 
 For more about cacheable status codes and RFC 7231, see:
 

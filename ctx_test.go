@@ -5051,11 +5051,13 @@ func Test_Ctx_ClientHelloInfo(t *testing.T) {
 		pssWithSHA256 = 0x0804
 		versionTLS13  = 0x0304
 	)
-	app.tlsHandler = &TLSHandler{clientHelloInfo: &tls.ClientHelloInfo{
+	app.tlsHandler = &TLSHandler{}
+	_, err = app.tlsHandler.GetClientInfo(&tls.ClientHelloInfo{
 		ServerName:        "example.golang",
 		SignatureSchemes:  []tls.SignatureScheme{pssWithSHA256},
 		SupportedVersions: []uint16{versionTLS13},
-	}}
+	})
+	require.NoError(t, err)
 
 	// Test ServerName
 	resp, err = app.Test(httptest.NewRequest(MethodGet, "/ServerName", http.NoBody))

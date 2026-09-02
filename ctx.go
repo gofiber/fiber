@@ -85,16 +85,61 @@ type DefaultCtx struct {
 
 // TLSHandler hosts the callback hooks Fiber invokes while negotiating TLS
 // connections, including optional client certificate lookups.
+//
+// It records the ClientHelloInfo of every connection it sees, keyed by the
+// connection, so Ctx.ClientHelloInfo reports the handshake of the connection a
+// request arrived on rather than whichever handshake happened last. The record
+// is released when the server reports the connection closed.
 type TLSHandler struct {
-	clientHelloInfo *tls.ClientHelloInfo
+	// connless holds a ClientHelloInfo recorded without a connection, which
+	// only a caller invoking GetClientInfo by hand can produce; crypto/tls
+	// always sets Conn. It answers when no per-connection record exists.
+	connless         atomic.Pointer[tls.ClientHelloInfo]
+	clientHelloInfos sync.Map // underlying net.Conn -> *tls.ClientHelloInfo
 }
 
 // GetClientInfo Callback function to set ClientHelloInfo
 // Must comply with the method structure of https://cs.opensource.google/go/go/+/refs/tags/go1.20:src/crypto/tls/common.go;l=554-563
 // Since we overlay the method of the TLS config in the listener method
 func (t *TLSHandler) GetClientInfo(info *tls.ClientHelloInfo) (*tls.Certificate, error) {
-	t.clientHelloInfo = info
+	switch {
+	case info == nil:
+	case info.Conn != nil:
+		t.clientHelloInfos.Store(info.Conn, info)
+	default:
+		t.connless.Store(info)
+	}
 	return nil, nil //nolint:nilnil // Not returning anything useful here is probably fine
+}
+
+// clientHelloInfo returns the ClientHelloInfo recorded for the connection a
+// request arrived on, or nil when the handler never saw a handshake on it.
+func (t *TLSHandler) clientHelloInfo(conn net.Conn) *tls.ClientHelloInfo {
+	if key := underlyingConn(conn); key != nil {
+		if v, ok := t.clientHelloInfos.Load(key); ok {
+			if info, ok := v.(*tls.ClientHelloInfo); ok {
+				return info
+			}
+		}
+	}
+	return t.connless.Load()
+}
+
+// forget drops the record kept for a closed connection.
+func (t *TLSHandler) forget(conn net.Conn) {
+	if key := underlyingConn(conn); key != nil {
+		t.clientHelloInfos.Delete(key)
+	}
+}
+
+// underlyingConn returns the net.Conn a TLS handshake ran on: crypto/tls hands
+// GetCertificate the raw connection, while the server sees the *tls.Conn that
+// wraps it.
+func underlyingConn(conn net.Conn) net.Conn {
+	if tc, ok := conn.(*tls.Conn); ok {
+		return tc.NetConn()
+	}
+	return conn
 }
 
 // Views is the interface that wraps the Render function.
@@ -265,10 +310,12 @@ func (c *DefaultCtx) GetRespHeaders() map[string][]string {
 	return c.DefaultRes.GetHeaders()
 }
 
-// ClientHelloInfo return CHI from context
+// ClientHelloInfo returns the TLS ClientHelloInfo of the connection this
+// request arrived on, or nil when the app has no TLS handler or the request
+// did not come in over a connection it negotiated.
 func (c *DefaultCtx) ClientHelloInfo() *tls.ClientHelloInfo {
-	if c.app.tlsHandler != nil {
-		return c.app.tlsHandler.clientHelloInfo
+	if c.app.tlsHandler != nil && c.fasthttp != nil {
+		return c.app.tlsHandler.clientHelloInfo(c.fasthttp.Conn())
 	}
 
 	return nil

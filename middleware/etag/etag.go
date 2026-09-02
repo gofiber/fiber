@@ -106,6 +106,13 @@ func New(config ...Config) fiber.Handler {
 		// The ETag header is sent on both 200 and 304 responses (RFC 9110 §15.4.5).
 		c.Response().Header.SetCanonical(normalizedHeaderETag, etag)
 
+		// A 304 Not Modified is defined for GET and HEAD only (RFC 9110
+		// Section 13.1.2). For any other method the handler has already run,
+		// so its response is passed through, ETag included.
+		if method := c.Method(); method != fiber.MethodGet && method != fiber.MethodHead {
+			return nil
+		}
+
 		// Get ETag header from request. If-None-Match is a list field: repeated
 		// lines are one combined list (RFC 9110 Section 5.2) and the name
 		// matches case-insensitively, agreeing with the core Fresh path.

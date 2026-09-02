@@ -125,6 +125,9 @@ type App struct {
 	handlersCount uint32
 	// contains the information if the route stack has been changed to build the optimized tree
 	hasRoutesRefreshed bool
+	// connStateHooked records that the server's ConnState callback reports
+	// closed connections to the TLS handler; see hookConnState.
+	connStateHooked bool
 	// hasCustomCtx tracks whether app uses a custom context implementation
 	hasCustomCtx bool
 	// hasParamRoutes tracks whether any route consults the per-request slash
@@ -867,7 +870,15 @@ func (app *App) handleTrustedProxy(ipAddress string) {
 		if ip == nil {
 			log.Warnf("IP address %q could not be parsed", ipAddress)
 		} else {
-			app.config.TrustProxyConfig.ips[ipAddress] = struct{}{}
+			// Store the canonical spelling: lookups compare the canonical form
+			// of the peer address, so "2001:DB8::1", "2001:0db8::1" or
+			// "0:0:0:0:0:0:0:1" as written would never match.
+			app.config.TrustProxyConfig.ips[ip.String()] = struct{}{}
+			if ip4 := ip.To4(); ip4 != nil {
+				// The X-Forwarded-For path resolves addresses through netip,
+				// which keeps the IPv4-mapped spelling apart from the dotted one.
+				app.config.TrustProxyConfig.ips["::ffff:"+ip4.String()] = struct{}{}
+			}
 		}
 	}
 }
@@ -1327,13 +1338,18 @@ func (app *App) ShutdownWithTimeout(timeout time.Duration) error {
 // ShutdownWithContext does not close keepalive connections so its recommended to set ReadTimeout to something else than 0.
 func (app *App) ShutdownWithContext(ctx context.Context) error {
 	app.mutex.Lock()
-	defer app.mutex.Unlock()
+	server := app.server
+	app.mutex.Unlock()
 
-	var err error
-
-	if app.server == nil {
+	if server == nil {
 		return ErrNotRunning
 	}
+
+	// The drain below waits for in-flight handlers, so the app mutex must not
+	// be held meanwhile: a handler that takes it itself (RebuildTree,
+	// RemoveRoute, Name, ...) could otherwise never finish, and the shutdown
+	// would wait for it until the deadline, or forever without one.
+	var err error
 
 	// Execute the Shutdown hook
 	app.hooks.executeOnPreShutdownHooks()
@@ -1341,7 +1357,7 @@ func (app *App) ShutdownWithContext(ctx context.Context) error {
 	// `defer ...(err)` would capture the nil value at registration time.
 	defer func() { app.hooks.executeOnPostShutdownHooks(err) }()
 
-	err = app.server.ShutdownWithContext(ctx)
+	err = server.ShutdownWithContext(ctx)
 	return err
 }
 
@@ -1716,6 +1732,7 @@ func (app *App) startupProcess() {
 	app.mutex.Lock()
 	defer app.mutex.Unlock()
 
+	app.hookConnState()
 	app.ensureAutoHeadRoutesLocked()
 	for prefix, subApp := range app.mountFields.appList {
 		if prefix == "" {
@@ -1727,6 +1744,31 @@ func (app *App) startupProcess() {
 
 	// build route tree stack
 	app.buildTree()
+}
+
+// hookConnState makes the server report closed connections to the TLS handler,
+// which records a ClientHelloInfo per connection and must release it once the
+// connection is gone. A ConnState callback installed by the user before startup
+// keeps running after ours. Idempotent; the caller holds app.mutex.
+func (app *App) hookConnState() {
+	if app.connStateHooked || app.server == nil {
+		return
+	}
+	app.connStateHooked = true
+	user := app.server.ConnState
+	app.server.ConnState = func(conn net.Conn, state fasthttp.ConnState) {
+		if state == fasthttp.StateClosed {
+			app.mutex.Lock()
+			handler := app.tlsHandler
+			app.mutex.Unlock()
+			if handler != nil {
+				handler.forget(conn)
+			}
+		}
+		if user != nil {
+			user(conn, state)
+		}
+	}
 }
 
 // Run onListen hooks. If they return an error, panic.

@@ -5,6 +5,7 @@ package memory
 import (
 	"context"
 	"fmt"
+	"math"
 	"sync"
 	"time"
 
@@ -78,8 +79,9 @@ func (s *Storage) GetWithContext(ctx context.Context, key string) ([]byte, error
 	return s.Get(key)
 }
 
-// Set saves val under key and schedules it to expire after exp. A zero exp keeps
-// the entry indefinitely.
+// Set saves val under key and schedules it to expire after exp. A non-positive
+// exp keeps the entry indefinitely; a positive one is rounded up to whole
+// seconds, so a sub-second value expires after one second rather than at once.
 func (s *Storage) Set(key string, val []byte, exp time.Duration) error {
 	// Ain't Nobody Got Time For That
 	if key == "" || len(val) == 0 {
@@ -87,8 +89,8 @@ func (s *Storage) Set(key string, val []byte, exp time.Duration) error {
 	}
 
 	var expire uint32
-	if exp != 0 {
-		expire = uint32(exp.Seconds()) + utils.Timestamp()
+	if exp > 0 {
+		expire = ceilSeconds(exp) + utils.Timestamp()
 	}
 
 	// Copy both key and value to avoid unsafe reuse from sync.Pool
@@ -243,4 +245,14 @@ func wrapContextError(ctx context.Context, op string) error {
 		return fmt.Errorf("memory storage %s: %w", op, err)
 	}
 	return nil
+}
+
+// ceilSeconds converts a positive duration to whole seconds, rounding up so an
+// expiration below one second is not stored already expired.
+func ceilSeconds(d time.Duration) uint32 {
+	secs := (d + time.Second - 1) / time.Second
+	if secs > math.MaxUint32 {
+		return math.MaxUint32
+	}
+	return uint32(secs) //nolint:gosec // G115: bounded by the MaxUint32 check above
 }

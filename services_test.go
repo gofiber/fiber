@@ -861,3 +861,80 @@ func Benchmark_ServicesMemory(b *testing.B) {
 		})
 	})
 }
+
+// orderedService records the order in which services are terminated.
+type orderedService struct {
+	terminated *[]string
+	mockService
+}
+
+func (s *orderedService) Terminate(ctx context.Context) error {
+	*s.terminated = append(*s.terminated, s.name)
+	return s.mockService.Terminate(ctx)
+}
+
+// go test -run Test_ShutdownServices_ReverseStartOrder
+//
+// Services are documented to terminate in reverse start order, but the
+// started services used to be iterated from a map, which made the order
+// random.
+func Test_ShutdownServices_ReverseStartOrder(t *testing.T) {
+	t.Parallel()
+
+	const count = 8
+	var terminated []string
+	services := make([]Service, 0, count)
+	expected := make([]string, 0, count)
+	for i := range count {
+		name := fmt.Sprintf("dep%d", i)
+		services = append(services, &orderedService{mockService: mockService{name: name}, terminated: &terminated})
+		expected = append([]string{name}, expected...)
+	}
+
+	app := &App{
+		configured: Config{Services: services},
+		state:      newState(),
+	}
+
+	require.NoError(t, app.startServices(context.Background()))
+	require.Equal(t, count, app.state.ServicesLen())
+
+	require.NoError(t, app.shutdownServices(context.Background()))
+	require.Equal(t, expected, terminated)
+	require.Zero(t, app.state.ServicesLen())
+}
+
+// go test -run Test_StartServices_DuplicateNames
+//
+// Services are keyed by name in the State, so two services sharing a name
+// used to overwrite each other: only the last one was tracked and the
+// earlier one was never terminated.
+func Test_StartServices_DuplicateNames(t *testing.T) {
+	t.Parallel()
+
+	t.Run("startServices fails before starting anything", func(t *testing.T) {
+		t.Parallel()
+
+		first := &mockService{name: "dup"}
+		second := &mockService{name: "dup"}
+		app := &App{
+			configured: Config{Services: []Service{first, &mockService{name: "other"}, second}},
+			state:      newState(),
+		}
+
+		err := app.startServices(context.Background())
+		require.Error(t, err)
+		require.Contains(t, err.Error(), `duplicate service name "dup"`)
+		require.False(t, first.started)
+		require.False(t, second.started)
+		require.Zero(t, app.state.ServicesLen())
+	})
+
+	t.Run("New panics", func(t *testing.T) {
+		t.Parallel()
+
+		require.PanicsWithError(t, `fiber: duplicate service name "dup": services at index 0 and 2 share it, but service names must be unique`, func() {
+			New(Config{Services: []Service{&mockService{name: "dup"}, &mockService{name: "other"}, &mockService{name: "dup"}}})
+		})
+	})
+}

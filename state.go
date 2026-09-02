@@ -21,6 +21,10 @@ func init() {
 type State struct {
 	dependencies  sync.Map
 	servicePrefix string
+	// services keeps the started services in start order so shutdown can
+	// terminate them in reverse; the map only answers lookups by name.
+	services   []Service
+	servicesMu sync.Mutex
 }
 
 // NewState creates a new instance of State.
@@ -247,11 +251,32 @@ func (s *State) serviceKey(key string) string {
 func (s *State) setService(srv Service) {
 	// Always prepend the service key with the servicesStateKey to avoid collisions
 	s.Set(s.serviceKey(srv.String()), srv)
+
+	s.servicesMu.Lock()
+	s.services = append(s.services, srv)
+	s.servicesMu.Unlock()
 }
 
 // Delete removes a key-value pair from the State.
 func (s *State) deleteService(srv Service) {
 	s.Delete(s.serviceKey(srv.String()))
+
+	s.servicesMu.Lock()
+	for i, started := range s.services {
+		if started == srv {
+			s.services = append(s.services[:i], s.services[i+1:]...)
+			break
+		}
+	}
+	s.servicesMu.Unlock()
+}
+
+// startedServices returns a copy of the started services in start order.
+func (s *State) startedServices() []Service {
+	s.servicesMu.Lock()
+	defer s.servicesMu.Unlock()
+
+	return append([]Service(nil), s.services...)
 }
 
 // serviceKeys returns a slice containing all keys present for services in the application's State.

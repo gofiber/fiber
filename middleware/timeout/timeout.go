@@ -115,6 +115,7 @@ func handleTimeout(
 		// TimeoutErrorWithCode constructs a fresh fasthttp.Response internally, so
 		// the active RequestCtx response is never read.
 		ctx.RequestCtx().TimeoutErrorWithCode(fiber.ErrRequestTimeout.Message, fiber.StatusRequestTimeout)
+		timeoutErr = fiber.ErrRequestTimeout
 	} else {
 		// Prepare the timeout response before marking the RequestCtx as timed out so
 		// custom OnTimeout handlers can shape the response body.

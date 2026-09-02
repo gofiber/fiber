@@ -45,6 +45,8 @@ app.Get("/", func(c fiber.Ctx) error {
 })
 ```
 
+A matching `If-None-Match` yields `304 Not Modified` only for `GET` and `HEAD` requests, the methods RFC 9110 defines it for. Other methods pass through unchanged, with the `ETag` header still set.
+
 Entity tags in requests must be quoted per RFC 9110. For example:
 
 ```text

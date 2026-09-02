@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/gofiber/utils/v2"
 	"github.com/stretchr/testify/require"
 )
 
@@ -130,6 +131,87 @@ func Test_Storage_Memory_Set_Expiration(t *testing.T) {
 	keys, err := testStore.Keys()
 	require.NoError(t, err)
 	require.Nil(t, keys)
+}
+
+// setWithinSecond stores key while the cached clock holds still, so the expiry
+// Set derived from it can be checked against a known second.
+func setWithinSecond(t *testing.T, store *Storage, key string, val []byte, exp time.Duration) uint32 {
+	t.Helper()
+	for range 100 {
+		now := utils.Timestamp()
+		require.NoError(t, store.Set(key, val, exp))
+		if utils.Timestamp() == now {
+			return now
+		}
+	}
+	t.Fatal("cached clock kept ticking during Set")
+	return 0
+}
+
+// expiryOf returns the whole-second expiry stored for key.
+func expiryOf(store *Storage, key string) uint32 {
+	store.mux.RLock()
+	defer store.mux.RUnlock()
+	return store.db[key].expiry
+}
+
+func Test_Storage_Memory_Set_ExpirationRoundsUp(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name string
+		exp  time.Duration
+		// want is the number of seconds after the current one the entry
+		// expires at; 0 keeps it forever.
+		want uint32
+	}{
+		{name: "sub-second rounds up to one second", exp: 500 * time.Millisecond, want: 1},
+		{name: "whole seconds are kept", exp: time.Second, want: 1},
+		{name: "fractions round up rather than down", exp: 1900 * time.Millisecond, want: 2},
+		{name: "zero keeps the entry forever", exp: 0, want: 0},
+		{name: "negative keeps the entry forever", exp: -time.Second, want: 0},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			testStore := New()
+			now := setWithinSecond(t, testStore, "john", []byte("doe"), tc.exp)
+
+			want := tc.want
+			if want != 0 {
+				want += now
+			}
+			require.Equal(t, want, expiryOf(testStore, "john"))
+
+			result, err := testStore.Get("john")
+			require.NoError(t, err)
+			require.Equal(t, []byte("doe"), result, "a positive expiration must not be stored already expired")
+
+			keys, err := testStore.Keys()
+			require.NoError(t, err)
+			require.Len(t, keys, 1)
+		})
+	}
+}
+
+func Test_Storage_Memory_GCInterval_SubSecond(t *testing.T) {
+	t.Parallel()
+
+	require.Equal(t, 100*time.Millisecond, configDefault(Config{GCInterval: 100 * time.Millisecond}).GCInterval)
+
+	testStore := New(Config{GCInterval: 100 * time.Millisecond})
+	require.Equal(t, 100*time.Millisecond, testStore.gcInterval)
+	require.NoError(t, testStore.Set("john", []byte("doe"), time.Second))
+
+	// The collector, not just Get's own expiry check, must drop the entry.
+	require.Eventually(t, func() bool {
+		testStore.mux.RLock()
+		defer testStore.mux.RUnlock()
+		_, ok := testStore.db["john"]
+		return !ok
+	}, 5*time.Second, 50*time.Millisecond)
 }
 
 func Test_Storage_Memory_Set_Long_Expiration_with_Keys(t *testing.T) {

@@ -544,8 +544,144 @@ func Test_getFieldCache(t *testing.T) {
 
 func Test_EqualFieldType_Map(t *testing.T) {
 	t.Parallel()
-	m := map[string]int{}
-	require.True(t, equalFieldType(&m, reflect.Int, "any", "query"))
+
+	sliceMap := map[string][]string{}
+	require.True(t, equalFieldType(&sliceMap, reflect.Slice, "any", "query"))
+	require.True(t, equalFieldType(sliceMap, reflect.Slice, "any", "query"))
+
+	// Only a slice-valued map can hold the pieces of a split value; the other
+	// map destinations keep a single value per key.
+	stringMap := map[string]string{}
+	require.False(t, equalFieldType(&stringMap, reflect.Slice, "any", "query"))
+	require.False(t, equalFieldType(stringMap, reflect.Slice, "any", "query"))
+
+	intMap := map[string]int{}
+	require.False(t, equalFieldType(&intMap, reflect.Int, "any", "query"))
+}
+
+func Test_EqualFieldType_ScalarNotSplit(t *testing.T) {
+	t.Parallel()
+
+	type Filter struct {
+		IDs []int `query:"ids"`
+	}
+	type Request struct {
+		Name   string `query:"name"`
+		Filter Filter `query:"filter"`
+	}
+	var req Request
+
+	// A key that names a known non-slice field is never split, even though a
+	// nested struct declares a slice.
+	require.False(t, equalFieldType(&req, reflect.Slice, "name", "query"))
+	require.False(t, equalFieldType(&req, reflect.Slice, "filter", "query"))
+	require.True(t, equalFieldType(&req, reflect.Slice, "filter.ids", "query"))
+	require.False(t, equalFieldType(&req, reflect.Slice, "filter.unknown", "query"))
+
+	// Keys that resolve to nothing keep the coarse nested-kind fallback.
+	require.True(t, equalFieldType(&req, reflect.Slice, "unknown", "query"))
+}
+
+func Test_EqualFieldType_NestedDepth(t *testing.T) {
+	t.Parallel()
+
+	type Inner struct {
+		Name string   `query:"name"`
+		Tags []string `query:"tags"`
+	}
+	type Mid struct {
+		Inner Inner `query:"inner"`
+	}
+	type Item struct {
+		Name string   `query:"name"`
+		Tags []string `query:"tags"`
+	}
+	type Request struct {
+		PtrItems *[]*Item `query:"ptritems"`
+		Mid      Mid      `query:"mid"`
+		Items    []Item   `query:"items"`
+		Arr      [2]Item  `query:"arr"`
+	}
+	var req Request
+
+	require.True(t, equalFieldType(&req, reflect.Slice, "mid.inner.tags", "query"))
+	require.False(t, equalFieldType(&req, reflect.Slice, "mid.inner.name", "query"))
+	require.True(t, equalFieldType(&req, reflect.Slice, "Mid.Inner.Tags", "query"))
+
+	// Struct slices are addressed through an element index before their fields.
+	require.True(t, equalFieldType(&req, reflect.Slice, "items.0.tags", "query"))
+	require.False(t, equalFieldType(&req, reflect.Slice, "items.0.name", "query"))
+	require.True(t, equalFieldType(&req, reflect.Slice, "ptritems.3.tags", "query"))
+	require.True(t, equalFieldType(&req, reflect.Slice, "arr.1.tags", "query"))
+
+	// A path that stops at the index names the element itself.
+	require.True(t, equalFieldType(&req, reflect.Struct, "items.0", "query"))
+	require.False(t, equalFieldType(&req, reflect.Slice, "items.0", "query"))
+}
+
+func Test_EqualFieldType_EmbeddedStruct(t *testing.T) {
+	t.Parallel()
+
+	type Embedded struct {
+		Names []string `query:"names"`
+		Title string   `query:"title"`
+		Name  string   `query:"name"`
+	}
+	type Other struct {
+		Title string   `query:"title"`
+		Other []string `query:"other"`
+	}
+	type Request struct {
+		Embedded
+		*Other
+		Name []string `query:"name"`
+	}
+	var req Request
+
+	// Promoted fields resolve at the top level and under the embedded alias.
+	require.True(t, equalFieldType(&req, reflect.Slice, "names", "query"))
+	require.True(t, equalFieldType(&req, reflect.Slice, "embedded.names", "query"))
+	require.True(t, equalFieldType(&req, reflect.Slice, "other.other", "query"))
+	require.True(t, equalFieldType(&req, reflect.Slice, "other", "query"))
+
+	// The type's own field wins over a promoted one of the same alias.
+	require.True(t, equalFieldType(&req, reflect.Slice, "name", "query"))
+	require.False(t, equalFieldType(&req, reflect.String, "name", "query"))
+
+	// An alias declared by two embedded structs is ambiguous, so it is dropped
+	// and the coarse fallback applies.
+	require.True(t, equalFieldType(&req, reflect.Slice, "title", "query"))
+	require.True(t, equalFieldType(&req, reflect.String, "title", "query"))
+}
+
+func Test_EqualFieldType_RecursiveType(t *testing.T) {
+	t.Parallel()
+
+	type Node struct {
+		Next   *Node    `query:"next"`
+		Values []string `query:"values"`
+		Value  int      `query:"value"`
+	}
+	var node Node
+
+	require.True(t, equalFieldType(&node, reflect.Slice, "next.next.next.values", "query"))
+	require.False(t, equalFieldType(&node, reflect.Slice, "next.next.value", "query"))
+}
+
+func Test_EqualFieldType_InvalidDestination(t *testing.T) {
+	t.Parallel()
+
+	type User struct {
+		Names []string `query:"names"`
+	}
+
+	// Non-pointer and nil destinations are rejected by the decoder; the
+	// splitting check must not panic before it gets to report them.
+	require.NotPanics(t, func() {
+		require.False(t, equalFieldType(nil, reflect.Slice, "names", "query"))
+		require.False(t, equalFieldType(User{}, reflect.Slice, "names", "query"))
+		require.False(t, equalFieldType(map[string][]string(nil), reflect.Slice, "names", "query"))
+	})
 }
 
 func Test_equalFieldType_CacheTypeMismatch(t *testing.T) {
@@ -575,6 +711,34 @@ func Test_buildFieldInfo_Unexported(t *testing.T) {
 	require.Contains(t, info.names, "name")
 	_, ok := info.nestedKinds[reflect.Int]
 	require.True(t, ok)
+}
+
+func Test_fieldName(t *testing.T) {
+	t.Parallel()
+
+	type Tagged struct {
+		Plain    string   `query:"plain"`
+		Options  []string `query:"opts,default:a|b"`
+		OnlyOpts []string `query:",default:a|b"`
+		Untagged []string
+		Ignored  string `query:"-"`
+	}
+	typ := reflect.TypeFor[Tagged]()
+
+	cases := map[string]string{
+		"Plain":    "plain",
+		"Options":  "opts",
+		"OnlyOpts": "onlyopts", // no alias: the Go field name is matched case-insensitively, like schema
+		"Untagged": "untagged",
+		"Ignored":  "-",
+	}
+	for goName, want := range cases {
+		f, ok := typ.FieldByName(goName)
+		require.True(t, ok)
+		require.Equal(t, want, fieldName(&f, "query"))
+	}
+
+	require.Empty(t, fieldName(nil, "query"))
 }
 
 func Test_formatBindData_BracketNotationSuccess(t *testing.T) {
