@@ -2669,6 +2669,14 @@ func Test_Request_CancelledContext_NoRace(t *testing.T) {
 	defer server.stop()
 
 	client := New().SetDial(server.dial())
+
+	// One live request first, so the server is serving before the shutdown
+	// that ends the test: a canceled send returns before anything is dialed,
+	// and a shutdown that runs before Serve is a no-op the server outlives.
+	warm, err := client.Get("http://example.com/")
+	require.NoError(t, err)
+	warm.Close()
+
 	for range 20 {
 		ctx, cancel := context.WithCancel(t.Context())
 		cancel()
