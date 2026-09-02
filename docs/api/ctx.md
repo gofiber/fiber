@@ -966,6 +966,18 @@ app.Get("/", func(c fiber.Ctx) error {
 })
 ```
 
+The weight of an offer is the one of the most specific range matching it (RFC 9110 §12.5.1), so a broad range with a higher weight never overrides a more specific range that lowers or rejects that offer:
+
+```go title="Example 3"
+// Accept: text/*;q=1, text/html;q=0.5
+
+app.Get("/", func(c fiber.Ctx) error {
+  c.Accepts("text/html", "text/plain") // "text/plain": text/html weighs 0.5, text/plain 1
+  c.Accepts("text/html")               // "text/html": a lowered weight is still acceptable
+  // ...
+})
+```
+
 Media-Type parameters are supported.
 
 ```go title="Example 3"
@@ -1741,7 +1753,7 @@ See [`TrustProxy`](fiber.md#trustproxy) and [`TrustProxyConfig`](fiber.md#trustp
 
 ### IPs
 
-Returns an array of IP addresses specified in the [X-Forwarded-For](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/X-Forwarded-For) request header.
+Returns an array of IP addresses specified in the [X-Forwarded-For](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/X-Forwarded-For) request header. With `EnableIPValidation`, IPv4, IPv6 and IPv4-mapped IPv6 addresses (`::ffff:203.0.113.5`, as dual-stack proxies forward IPv4 clients) are all accepted.
 
 ```go title="Signature"
 func (c fiber.Ctx) IPs() []string
@@ -3691,6 +3703,8 @@ type SendFile struct {
   // This works differently than the github.com/gofiber/compression middleware.
   // You have to set Content-Encoding header to compress the file.
   // Available compression methods are gzip, br, and zstd.
+  // The request's Accept-Encoding header is left untouched either way, so the
+  // compress middleware can still compress the response when this is false.
   //
   // Optional. Default: false
   Compress bool `json:"compress"`

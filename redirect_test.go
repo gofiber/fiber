@@ -16,6 +16,7 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
@@ -1691,4 +1692,45 @@ func Test_Redirect_parseAndClearFlashMessages_UndecodablePayload(t *testing.T) {
 			assertFlashCookieCleared(t, c.GetRespHeader(HeaderSetCookie))
 		})
 	}
+}
+
+// go test -run Test_Redirect_Messages_ProgrammaticCookieHeader
+//
+// The flash-cookie prefilter only looked at the raw request headers, which a
+// request built programmatically (middleware/adaptor, app.Handler on a
+// hand-made RequestCtx) does not carry, so its flash messages were never read
+// and the cookie never cleared.
+func Test_Redirect_Messages_ProgrammaticCookieHeader(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	app.Get("/", func(c Ctx) error {
+		return c.SendString(c.Redirect().Message("success").Value + "," + c.Redirect().OldInput("id").Value)
+	})
+
+	msgs := redirectionMsgs{
+		{key: "success", value: "1"},
+		{key: "id", value: "42", isOldInput: true},
+	}
+	val, err := msgs.MarshalMsg(nil)
+	require.NoError(t, err)
+
+	fctx := &fasthttp.RequestCtx{}
+	fctx.Request.Header.SetMethod(MethodGet)
+	fctx.Request.SetRequestURI("/")
+	// Set, not parsed from the wire: RawHeaders stays empty.
+	fctx.Request.Header.Set(HeaderCookie, FlashCookieName+"="+hex.EncodeToString(val))
+	require.Empty(t, fctx.Request.Header.RawHeaders())
+
+	app.Handler()(fctx)
+
+	require.Equal(t, StatusOK, fctx.Response.StatusCode())
+	require.Equal(t, "1,42", string(fctx.Response.Body()))
+
+	cookie := fasthttp.AcquireCookie()
+	defer fasthttp.ReleaseCookie(cookie)
+	cookie.SetKey(FlashCookieName)
+	require.True(t, fctx.Response.Header.Cookie(cookie), "the consumed flash cookie must be expired on the client")
+	require.Empty(t, cookie.Value())
+	require.True(t, cookie.Expire().Before(time.Now()), "expiry must lie in the past")
 }

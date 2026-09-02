@@ -29,6 +29,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"testing/fstest"
 	"text/template"
 	"time"
 
@@ -11292,4 +11293,265 @@ func Test_Ctx_Cookie_DoesNotMutateArgument(t *testing.T) {
 	c.Cookie(part)
 	require.False(t, part.Secure, "Partitioned must not write Secure back to the caller")
 	require.Equal(t, "/scoped", part.Path)
+}
+
+// go test -run Test_Ctx_SendFile_UncomparableFS
+//
+// The SendFile handler cache compared fs.FS interface values with ==, which
+// panics for an uncomparable dynamic type such as fstest.MapFS on the second
+// call.
+func Test_Ctx_SendFile_UncomparableFS(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	first := fstest.MapFS{"hello.txt": &fstest.MapFile{Data: []byte("hello")}}
+	second := fstest.MapFS{"hello.txt": &fstest.MapFile{Data: []byte("other")}}
+	app.Get("/", func(c Ctx) error {
+		return c.SendFile("hello.txt", SendFile{FS: first})
+	})
+	app.Get("/other", func(c Ctx) error {
+		return c.SendFile("hello.txt", SendFile{FS: second})
+	})
+
+	for _, tc := range []struct{ path, body string }{
+		{path: "/", body: "hello"},
+		{path: "/", body: "hello"},
+		{path: "/other", body: "other"},
+		{path: "/", body: "hello"},
+	} {
+		resp, err := app.Test(httptest.NewRequest(MethodGet, tc.path, http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, StatusOK, resp.StatusCode)
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		require.Equal(t, tc.body, string(body))
+	}
+}
+
+// go test -run Test_Ctx_SendFile_KeepsAcceptEncoding
+//
+// SendFile used to delete the request's Accept-Encoding header when its own
+// Compress option was off, so middleware running after it (compress, logger)
+// no longer saw what the client accepts.
+func Test_Ctx_SendFile_KeepsAcceptEncoding(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	var seen string
+	app.Use(func(c Ctx) error {
+		err := c.Next()
+		seen = c.Get(HeaderAcceptEncoding)
+		return err
+	})
+	app.Get("/", func(c Ctx) error {
+		return c.SendFile("./ctx.go")
+	})
+
+	req := httptest.NewRequest(MethodGet, "/", http.NoBody)
+	req.Header.Set(HeaderAcceptEncoding, "gzip")
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, StatusOK, resp.StatusCode)
+	require.Equal(t, "gzip", seen)
+	require.Empty(t, resp.Header.Get(HeaderContentEncoding), "Compress is off, so the file is served as-is")
+}
+
+// go test -run Test_Ctx_SendFile_CompressedByMiddleware
+func Test_Ctx_SendFile_CompressedByMiddleware(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	// The compress middleware runs fasthttp's compressor after Next; it decides
+	// on the request's Accept-Encoding, which SendFile must leave in place.
+	compressor := fasthttp.CompressHandlerBrotliLevel(func(*fasthttp.RequestCtx) {},
+		fasthttp.CompressBrotliDefaultCompression, fasthttp.CompressDefaultCompression)
+	app.Use(func(c Ctx) error {
+		if err := c.Next(); err != nil {
+			return err
+		}
+		compressor(c.RequestCtx())
+		return nil
+	})
+	app.Get("/", func(c Ctx) error {
+		return c.SendFile("./ctx.go")
+	})
+
+	req := httptest.NewRequest(MethodGet, "/", http.NoBody)
+	req.Header.Set(HeaderAcceptEncoding, "gzip")
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, StatusOK, resp.StatusCode)
+	require.Equal(t, "gzip", resp.Header.Get(HeaderContentEncoding))
+}
+
+// go test -run Test_Ctx_AutoFormat_NoAcceptHeader
+//
+// Without an Accept header, or with one nothing matches, AutoFormat is
+// documented to answer with text/plain; it used to pick text/html.
+func Test_Ctx_AutoFormat_NoAcceptHeader(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	app.Get("/", func(c Ctx) error {
+		return c.AutoFormat("Hello, World!")
+	})
+
+	testCases := []struct {
+		name        string
+		accept      string
+		contentType string
+		body        string
+	}{
+		{name: "no header", accept: "", contentType: "text/plain; charset=utf-8", body: "Hello, World!"},
+		{name: "nothing matches", accept: "application/unsupported", contentType: "text/plain; charset=utf-8", body: "Hello, World!"},
+		{name: "wildcard picks the first format", accept: "*/*", contentType: "text/html; charset=utf-8", body: "<p>Hello, World!</p>"},
+		{name: "json", accept: MIMEApplicationJSON, contentType: "application/json; charset=utf-8", body: `"Hello, World!"`},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			req := httptest.NewRequest(MethodGet, "/", http.NoBody)
+			if tc.accept != "" {
+				req.Header.Set(HeaderAccept, tc.accept)
+			}
+			resp, err := app.Test(req)
+			require.NoError(t, err)
+			require.Equal(t, StatusOK, resp.StatusCode)
+			require.Equal(t, tc.contentType, resp.Header.Get(HeaderContentType))
+			body, err := io.ReadAll(resp.Body)
+			require.NoError(t, err)
+			require.Equal(t, tc.body, string(body))
+		})
+	}
+}
+
+// go test -run Test_Ctx_IP_IPv4MappedIPv6InProxyHeader
+//
+// Dual-stack proxies forward IPv4 clients as ::ffff:a.b.c.d (RFC 4291
+// Section 2.2); the validator used to reject that spelling because it carries
+// both '.' and ':', so the proxy itself was reported as the client.
+func Test_Ctx_IP_IPv4MappedIPv6InProxyHeader(t *testing.T) {
+	t.Parallel()
+
+	app := New(Config{
+		ProxyHeader:        HeaderXForwardedFor,
+		TrustProxy:         true,
+		EnableIPValidation: true,
+		TrustProxyConfig:   TrustProxyConfig{Private: true},
+	})
+	fctx := &fasthttp.RequestCtx{}
+	fctx.SetRemoteAddr(&net.TCPAddr{IP: net.ParseIP("10.0.0.2"), Port: 8080})
+	c := app.AcquireCtx(fctx)
+	defer app.ReleaseCtx(c)
+
+	c.Request().Header.Set(HeaderXForwardedFor, "::ffff:203.0.113.5, 10.0.0.1")
+	require.Equal(t, "::ffff:203.0.113.5", c.IP())
+	require.Equal(t, []string{"::ffff:203.0.113.5", "10.0.0.1"}, c.IPs())
+
+	// A mapped proxy address is still stripped as a trusted proxy.
+	c.Request().Header.Set(HeaderXForwardedFor, "203.0.113.5, ::ffff:10.0.0.1")
+	require.Equal(t, "203.0.113.5", c.IP())
+}
+
+// go test -run Test_Ctx_Accepts_MostSpecificRangeSetsQuality
+//
+// RFC 9110 Section 12.5.1: the most specific matching range determines an
+// offer's quality, so a broad range with a higher weight must not outrank a
+// specific range that gives the offer a lower one.
+func Test_Ctx_Accepts_MostSpecificRangeSetsQuality(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+
+	c.Request().Header.Set(HeaderAccept, "text/*;q=1, text/html;q=0.5")
+	require.Equal(t, "text/plain", c.Accepts("text/html", "text/plain"))
+	require.Equal(t, "text/html", c.Accepts("text/html"), "a lowered quality is still acceptable")
+
+	c.Request().Header.Set(HeaderAccept, "text/html;q=0.5, text/*;q=1")
+	require.Equal(t, "text/plain", c.Accepts("text/html", "text/plain"))
+
+	c.Request().Header.Set(HeaderAccept, "*/*;q=1, application/json;q=0.2")
+	require.Equal(t, "text/plain", c.Accepts("application/json", "text/plain"))
+
+	c.Request().Header.Set(HeaderAcceptEncoding, "gzip;q=0.5, *;q=1")
+	require.Equal(t, "br", c.AcceptsEncodings("gzip", "br"))
+
+	c.Request().Header.Set(HeaderAcceptLanguage, "en;q=0.5, *")
+	require.Equal(t, "fr", c.AcceptsLanguages("en", "fr"))
+	require.Equal(t, "fr", c.AcceptsLanguagesExtended("en", "fr"))
+
+	c.Request().Header.Set(HeaderAcceptCharset, "utf-8;q=0.5, *")
+	require.Equal(t, "iso-8859-1", c.AcceptsCharsets("utf-8", "iso-8859-1"))
+}
+
+// go test -run Test_Ctx_Format_CustomCtx
+//
+// Format used to hand the embedded *DefaultCtx to its handlers, so under a
+// custom context the c.(*myCtx) assertion in a handler failed.
+func Test_Ctx_Format_CustomCtx(t *testing.T) {
+	t.Parallel()
+
+	app := NewWithCustomCtx(func(app *App) CustomCtx {
+		return &customCtx{
+			DefaultCtx: *NewDefaultCtx(app),
+		}
+	})
+	describe := func(c Ctx) error {
+		if _, ok := c.(*customCtx); ok {
+			return c.SendString("custom")
+		}
+		return c.SendString("default")
+	}
+	app.Get("/", func(c Ctx) error {
+		return c.Format(
+			ResFmt{MediaType: MIMETextPlain, Handler: describe},
+			ResFmt{MediaType: "default", Handler: describe},
+		)
+	})
+
+	for _, accept := range []string{"", MIMETextPlain, "application/unsupported"} {
+		req := httptest.NewRequest(MethodGet, "/", http.NoBody)
+		if accept != "" {
+			req.Header.Set(HeaderAccept, accept)
+		}
+		resp, err := app.Test(req)
+		require.NoError(t, err)
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		require.Equal(t, "custom", string(body), "Accept %q", accept)
+	}
+}
+
+// go test -run Test_Ctx_Body_With_Compression_IdentityChain
+//
+// The identity step of a multi-coding chain used to re-set the request body
+// with a slice aliasing it, which under ReduceMemoryUsage let fasthttp return
+// the buffer to its pool while the next decoder still read from it.
+func Test_Ctx_Body_With_Compression_IdentityChain(t *testing.T) {
+	t.Parallel()
+
+	var buf bytes.Buffer
+	gz := gzip.NewWriter(&buf)
+	_, err := gz.Write([]byte("john=doe"))
+	require.NoError(t, err)
+	require.NoError(t, gz.Close())
+	compressed := buf.Bytes()
+
+	for _, reduce := range []bool{false, true} {
+		app := New(Config{ReduceMemoryUsage: reduce})
+		for _, encoding := range []string{"gzip, identity", "identity, gzip", "identity, gzip, identity"} {
+			c := app.AcquireCtx(&fasthttp.RequestCtx{})
+			c.Request().Header.Set(HeaderContentEncoding, encoding)
+			c.Request().SetBody(compressed)
+
+			require.Equal(t, []byte("john=doe"), c.Body(), "ReduceMemoryUsage=%v %q", reduce, encoding)
+			require.Equal(t, compressed, c.Request().Body(), "the original body is restored")
+			require.Equal(t, []byte("john=doe"), c.Body(), "decoding again still works")
+			app.ReleaseCtx(c)
+		}
+	}
 }

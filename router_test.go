@@ -93,9 +93,16 @@ func Test_hasFlashCookieExactMatch(t *testing.T) {
 	req = buildRequestWithCookie(t, FlashCookieName+"=valid")
 	require.True(t, hasFlashCookie(&req.Header))
 
+	// A request built programmatically (adaptor, app.Handler on a hand-made
+	// RequestCtx) carries no raw headers, so the prefilter cannot answer for it
+	// and the cookie lookup decides.
 	var syntheticReq fasthttp.Request
 	syntheticReq.Header.Set(HeaderCookie, FlashCookieName+"=valid")
-	require.False(t, hasFlashCookie(&syntheticReq.Header))
+	require.True(t, hasFlashCookie(&syntheticReq.Header))
+
+	var syntheticOther fasthttp.Request
+	syntheticOther.Header.Set(HeaderCookie, FlashCookieName+"X=not-the-flash-cookie")
+	require.False(t, hasFlashCookie(&syntheticOther.Header))
 }
 
 func Test_Route_MixedFiberAndHTTPHandlers(t *testing.T) {

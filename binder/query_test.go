@@ -337,12 +337,12 @@ func Test_QueryBinder_Bind_Splitting_EmbeddedStruct(t *testing.T) {
 	}
 
 	type Embedded struct {
-		Names []string `query:"names"`
 		Title string   `query:"title"`
+		Names []string `query:"names"`
 	}
 	type Request struct {
-		Embedded
 		Name string `query:"name"`
+		Embedded
 	}
 
 	req := fasthttp.AcquireRequest()

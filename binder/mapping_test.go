@@ -623,9 +623,9 @@ func Test_EqualFieldType_EmbeddedStruct(t *testing.T) {
 	t.Parallel()
 
 	type Embedded struct {
-		Names []string `query:"names"`
 		Title string   `query:"title"`
 		Name  string   `query:"name"`
+		Names []string `query:"names"`
 	}
 	type Other struct {
 		Title string   `query:"title"`
@@ -708,7 +708,7 @@ func Test_buildFieldInfo_Unexported(t *testing.T) {
 		Nested nested
 	}
 	info := buildFieldInfo(reflect.TypeFor[outer](), "query")
-	require.Contains(t, info.names, "name")
+	require.Contains(t, info.fields, "name")
 	_, ok := info.nestedKinds[reflect.Int]
 	require.True(t, ok)
 }
@@ -718,10 +718,10 @@ func Test_fieldName(t *testing.T) {
 
 	type Tagged struct {
 		Plain    string   `query:"plain"`
+		Ignored  string   `query:"-"`
 		Options  []string `query:"opts,default:a|b"`
 		OnlyOpts []string `query:",default:a|b"`
 		Untagged []string
-		Ignored  string `query:"-"`
 	}
 	typ := reflect.TypeFor[Tagged]()
 

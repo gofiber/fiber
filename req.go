@@ -139,7 +139,12 @@ func (r *DefaultReq) tryDecodeBodyInOrder(
 				*originalBody = make([]byte, len(tempBody))
 				copy(*originalBody, tempBody)
 			}
-			request.SetBodyRaw(body)
+			// identity leaves the body as it is, and body aliases it: re-setting
+			// it would first release the buffer it aliases under
+			// ReduceMemoryUsage, leaving the next decoder reading pooled memory.
+			if encoding != StrIdentity {
+				request.SetBodyRaw(body)
+			}
 		}
 	}
 
@@ -860,8 +865,9 @@ func (r *DefaultReq) extractIPsFromHeader(header string) []string {
 		s := utils.TrimRight(headerValue[i:j], ' ')
 
 		if r.c.app.config.EnableIPValidation {
-			// Skip validation if IP is clearly not IPv4/IPv6; otherwise, validate without allocations
-			if (!v6 && !v4) || (v6 && !utils.IsIPv6(s)) || (v4 && !utils.IsIPv4(s)) {
+			// Skip validation if IP is clearly not IPv4/IPv6; otherwise, validate without allocations.
+			// A colon decides: an IPv4-mapped IPv6 address carries both separators.
+			if (!v6 && !v4) || (v6 && !utils.IsIPv6(s)) || (!v6 && v4 && !utils.IsIPv4(s)) {
 				continue
 			}
 		}
@@ -945,11 +951,13 @@ func proxyHeaderValue(r *DefaultReq, header string) string {
 }
 
 func isValidProxyIP(ipStr string) bool {
-	hasIPv4Separator := strings.IndexByte(ipStr, '.') >= 0
-	hasIPv6Separator := strings.IndexByte(ipStr, ':') >= 0
-	return (hasIPv4Separator || hasIPv6Separator) &&
-		(!hasIPv4Separator || utils.IsIPv4(ipStr)) &&
-		(!hasIPv6Separator || utils.IsIPv6(ipStr))
+	if strings.IndexByte(ipStr, ':') >= 0 {
+		// A colon makes it IPv6, including the IPv4-mapped form
+		// ::ffff:a.b.c.d (RFC 4291 Section 2.2) dual-stack proxies forward,
+		// which carries both separators.
+		return utils.IsIPv6(ipStr)
+	}
+	return strings.IndexByte(ipStr, '.') >= 0 && utils.IsIPv4(ipStr)
 }
 
 // hasTrustedProxyConfig returns true if any trusted proxy configuration is set.
@@ -969,6 +977,9 @@ func (r *DefaultReq) isTrustedProxyIP(ipStr string) bool {
 		if ip, ok = utils.ParseIPv6(ipStr); !ok {
 			return false
 		}
+		// An IPv4-mapped address names an IPv4 proxy: classify and look it up
+		// as that, the way net.IP does for the peer address.
+		ip = ip.Unmap()
 	}
 
 	if cfg.Loopback && ip.IsLoopback() {

@@ -356,6 +356,17 @@ func (c *DefaultCtx) RestartRouting() error {
 	return err
 }
 
+// ctxForHandlers returns the context user code must be handed: the custom
+// context wrapping this one when the app uses one, otherwise the DefaultCtx
+// itself. Next already does this for route handlers; Format handlers and custom
+// binders go through here so a c.(*MyCtx) assertion holds in them too.
+func (c *DefaultCtx) ctxForHandlers() Ctx {
+	if c.handlerCtx != nil {
+		return c.handlerCtx
+	}
+	return c
+}
+
 func (c *DefaultCtx) setHandlerCtx(ctx CustomCtx) {
 	if ctx == nil {
 		c.handlerCtx = nil
@@ -967,7 +978,7 @@ func (c *DefaultCtx) Bind() *Bind {
 	if c.bind == nil {
 		c.bind = AcquireBind()
 	}
-	c.bind.ctx = c
+	c.bind.ctx = c.ctxForHandlers()
 	return c.bind
 }
 
