@@ -2659,7 +2659,12 @@ func Test_Request_CancelledContext_NoRace(t *testing.T) {
 	t.Parallel()
 
 	server := startTestServer(t, func(app *fiber.App) {
-		app.Get("/", func(c fiber.Ctx) error { return c.SendString("ok") })
+		app.Get("/", func(c fiber.Ctx) error {
+			// Slow enough that the response is never ready when Send picks
+			// between it and the canceled context.
+			time.Sleep(50 * time.Millisecond)
+			return c.SendString("ok")
+		})
 	})
 	defer server.stop()
 
