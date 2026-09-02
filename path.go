@@ -17,7 +17,6 @@ import (
 	"github.com/gofiber/utils/v2"
 	utilsbytes "github.com/gofiber/utils/v2/bytes"
 	utilsstrings "github.com/gofiber/utils/v2/strings"
-	"github.com/valyala/fasthttp"
 )
 
 // routeParser holds the path segments and param names.
@@ -217,7 +216,7 @@ func RoutePatternMatch(path, pattern string, cfg ...Config) bool {
 	// to match against and the untouched path to slice parameter values out of
 	// — so constraints see the same bytes here as they do in the router.
 	if config.UnescapePath {
-		path = utils.UnsafeString(fasthttp.AppendUnquotedArg(nil, utils.UnsafeBytes(path)))
+		path = utils.UnsafeString(unescapePath([]byte(path)))
 	}
 
 	detectionPath := path
@@ -238,12 +237,20 @@ func RoutePatternMatch(path, pattern string, cfg ...Config) bool {
 	patternStr := string(patternPretty)
 	parser.parseRoute(patternStr, config.RegexHandler)
 	defer routerParserPool.Put(parser)
+	if !config.CaseSensitive && strings.IndexByte(pattern, paramConstraintStart) >= 0 {
+		// The constraints belong to the pattern as written, not its lowercased
+		// form; see routeParser.adoptConstraints.
+		var raw routeParser
+		raw.parseRoute(pattern, config.RegexHandler)
+		parser.adoptConstraints(&raw)
+	}
+	if config.StrictRouting {
+		parser.applyStrictRouting()
+	}
 
-	// '*' wildcard matches any path. App.register derives the root/star flags
-	// from the escape-stripped pattern, so compare against that form: "/\*" is
-	// an escaped literal here but registers as a star route.
-	patternClean := RemoveEscapeChar(patternStr)
-	if (patternClean == "/" && detectionPath == "/") || patternClean == "/*" {
+	// '*' wildcard matches any path. App.register derives the star flag from
+	// the pattern with its escapes intact, so "/\*" is a literal here as well.
+	if (RemoveEscapeChar(patternStr) == "/" && detectionPath == "/") || patternStr == "/*" {
 		return true
 	}
 
@@ -257,6 +264,87 @@ func RoutePatternMatch(path, pattern string, cfg ...Config) bool {
 	patternPretty = RemoveEscapeCharBytes(patternPretty)
 
 	return string(patternPretty) == detectionPath
+}
+
+// adoptConstraints takes the constraints of raw's parameters, in order, for
+// this parser's parameters. The parser is built from the prettified pattern,
+// which is lowercased when routing is case-insensitive; that would lowercase
+// constraint names and arguments too, turning regex([A-Z]{2}) into
+// regex([a-z]{2}) and dropping a mixed-case custom constraint. raw is parsed
+// from the pattern as written, so its constraints are the intended ones.
+func (parser *routeParser) adoptConstraints(raw *routeParser) {
+	if len(parser.params) != len(raw.params) {
+		return
+	}
+	j := 0
+	for _, seg := range parser.segs {
+		if !seg.IsParam {
+			continue
+		}
+		for j < len(raw.segs) && !raw.segs[j].IsParam {
+			j++
+		}
+		if j >= len(raw.segs) {
+			return
+		}
+		seg.Constraints = raw.segs[j].Constraints
+		j++
+	}
+	parser.constParam = isConstParamShape(parser.segs)
+}
+
+// applyStrictRouting makes a trailing slash on the last constant segment
+// mandatory, as it is for static routes under StrictRouting: "/a/:id/" must
+// not match "/a/x". The optional slash before an optional parameter is kept,
+// since "/a/:id?" matching "/a" does not depend on the setting.
+func (parser *routeParser) applyStrictRouting() {
+	if n := len(parser.segs); n > 0 {
+		if last := parser.segs[n-1]; !last.IsParam && last.HasOptionalSlash {
+			last.HasOptionalSlash = false
+		}
+	}
+	parser.computeSlashBounds()
+}
+
+// unescapePath decodes the percent-encoded bytes of a path in place and
+// returns the shortened slice. Unlike fasthttp's form-argument decoder it
+// leaves '+' alone, an ordinary path character (RFC 3986 Section 3.3), and it
+// keeps a malformed escape as it is.
+func unescapePath(b []byte) []byte {
+	i := bytes.IndexByte(b, '%')
+	if i == -1 {
+		return b
+	}
+	n := len(b)
+	dst := i
+	for i < n {
+		if b[i] == '%' && i+2 < n {
+			if hi, lo := unhex(b[i+1]), unhex(b[i+2]); hi >= 0 && lo >= 0 {
+				b[dst] = byte(hi<<4 | lo) //nolint:gosec // G115: both nibbles are 0-15
+				dst++
+				i += 3
+				continue
+			}
+		}
+		b[dst] = b[i]
+		dst++
+		i++
+	}
+	return b[:dst]
+}
+
+// unhex returns the value of a hexadecimal digit, or -1 for any other byte.
+func unhex(c byte) int {
+	switch {
+	case c >= '0' && c <= '9':
+		return int(c - '0')
+	case c >= 'a' && c <= 'f':
+		return int(c-'a') + 10
+	case c >= 'A' && c <= 'F':
+		return int(c-'A') + 10
+	default:
+		return -1
+	}
 }
 
 func (parser *routeParser) reset() {

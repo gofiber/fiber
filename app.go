@@ -20,6 +20,7 @@ import (
 	"net/http/httputil"
 	"os"
 	"reflect"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -88,6 +89,9 @@ type App struct {
 	hooks *Hooks
 	// Latest route & group
 	latestRoute *Route
+	// latestRouteMethods are the methods the latest registration covered, so
+	// Name applies to all of its routes rather than the last one's method only.
+	latestRouteMethods []string
 	// newCtxFunc
 	newCtxFunc func(app *App) CustomCtx
 	// TLS handler
@@ -965,7 +969,8 @@ func (app *App) Name(name string) Router {
 	for _, routes := range app.stack {
 		for _, route := range routes {
 			isMethodValid := route.Method == app.latestRoute.Method || app.latestRoute.use ||
-				(app.latestRoute.Method == MethodGet && route.Method == MethodHead)
+				(app.latestRoute.Method == MethodGet && route.Method == MethodHead) ||
+				slices.Contains(app.latestRouteMethods, route.Method)
 
 			if route.Path == app.latestRoute.Path && isMethodValid {
 				route.Name = name
@@ -1064,7 +1069,9 @@ func (app *App) Use(args ...any) Router {
 
 	for _, prefix := range prefixes {
 		if subApp != nil {
-			return app.mount(prefix, subApp)
+			// Every prefix mounts the sub-app, as every prefix registers a handler.
+			app.mount(prefix, subApp)
+			continue
 		}
 
 		app.register([]string{methodUse}, prefix, nil, handlers...)
@@ -1733,6 +1740,9 @@ func (app *App) startupProcess() {
 	defer app.mutex.Unlock()
 
 	app.hookConnState()
+	// Collect every mounted app first, nested ones included: they need their
+	// automatic HEAD routes before their routes are cloned into this app.
+	app.collectSubApps()
 	app.ensureAutoHeadRoutesLocked()
 	for prefix, subApp := range app.mountFields.appList {
 		if prefix == "" {

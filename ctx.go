@@ -774,9 +774,10 @@ func (c *DefaultCtx) Value(key any) any {
 // here the features for caseSensitive, decoded paths, strict paths are evaluated
 func (c *DefaultCtx) configDependentPaths() {
 	c.path = append(c.path[:0], c.pathOriginal...)
-	// If UnescapePath enabled, we decode the path and save it for the framework user
+	// If UnescapePath enabled, we decode the path and save it for the framework user.
+	// Decoded as a path, not a form argument: a "+" stays a "+".
 	if c.app.config.UnescapePath {
-		c.path = fasthttp.AppendUnquotedArg(c.path[:0], c.path)
+		c.path = unescapePath(c.path)
 	}
 
 	// another path is specified which is for routing recognition only

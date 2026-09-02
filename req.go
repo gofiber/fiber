@@ -1228,6 +1228,13 @@ func (r *DefaultReq) Method(override ...string) string {
 		// return current method
 		return currentMethod(r.c)
 	}
+	if methodInt == r.c.methodInt {
+		return method
+	}
+	// Routing resumes after the current route, which a middleware occupies at
+	// a position of its own in every method's tree: carry the index over to
+	// the new method's tree, or it would skip whatever precedes that position.
+	r.c.indexRoute = app.routeIndexInTree(methodInt, r.c.treePathHash, r.c.route, r.c.indexRoute)
 	r.c.methodInt = methodInt
 	// Method changed; invalidate the lookahead index
 	r.c.firstMatchIndex = -1

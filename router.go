@@ -75,7 +75,10 @@ type Route struct {
 	autoHead      bool // Automatically generated HEAD route
 	caseSensitive bool // Whether parameter matching is case-sensitive
 
-	routeParser routeParser // Parameter parser
+	routeParser routeParser
+	// id is shared by the per-method copies of one registration, so a route
+	// can be found again in another method's tree (see routeIndexInTree).
+	id uint64 // Parameter parser
 
 	Handlers []Handler `json:"-"` // Ctx handlers
 
@@ -352,10 +355,9 @@ func pathHeadWord(s string) uint64 {
 //   - '*' matches every path, and a first segment that is itself a parameter
 //     constrains nothing, so both disable the filter
 //
-// The star check has to come first, before the parametric branch. star is
-// derived from the unescaped path (isStar in register), while Params comes from
-// parsing the escaped one, so a route registered as `/\*` arrives here with
-// star set and no params — and match returns true for it unconditionally.
+// The star check has to come first, before the parametric branch: match
+// returns true for a star route unconditionally, before any parameter is
+// looked at.
 //
 // Anything that changes a route's path, params or parser must run this again.
 // The three places that can are register, which builds the route, copyRoute,
@@ -840,6 +842,12 @@ func (app *App) addPrefixToRoute(prefix string, route *Route, regexHandler any, 
 	route.Path = prefixedPath
 	route.path = RemoveEscapeChar(prettyPath)
 	route.routeParser = parseRoute(prettyPath, regexHandler, customConstraints...)
+	// As in register: the constraints come from the pattern as written.
+	rawParser := parseRoute(prefixedPath, regexHandler, customConstraints...)
+	route.routeParser.adoptConstraints(&rawParser)
+	if app.config.StrictRouting {
+		route.routeParser.applyStrictRouting()
+	}
 	// A prefix can introduce parameters of its own — a sub-app mounted at
 	// "/v1/:version" is prefixing every one of its routes with one. Params
 	// decides whether the router matches a route by pattern or by string
@@ -1011,6 +1019,9 @@ func (app *App) pruneAutoHeadRouteLocked(path string) {
 	}
 }
 
+// routeIDs hands out the ids shared by the per-method copies of a registration.
+var routeIDs atomic.Uint64
+
 func (app *App) register(methods []string, pathRaw string, group *Group, handlers ...Handler) {
 	// A regular route requires at least one ctx handler
 	if len(handlers) == 0 && group == nil {
@@ -1041,8 +1052,17 @@ func (app *App) register(methods []string, pathRaw string, group *Group, handler
 
 	parsedRaw := parseRoute(pathRaw, app.config.RegexHandler, app.customConstraints...)
 	parsedPretty := parseRoute(pathPretty, app.config.RegexHandler, app.customConstraints...)
+	// The pretty pattern is what requests are matched against, but its
+	// constraints must be the ones written in the raw pattern: lowercasing
+	// would corrupt them (see routeParser.adoptConstraints).
+	parsedPretty.adoptConstraints(&parsedRaw)
+	if app.config.StrictRouting {
+		parsedPretty.applyStrictRouting()
+	}
 
 	isMount := group != nil && group.app != app
+	registered := make([]string, 0, len(methods))
+	routeID := routeIDs.Add(1)
 
 	for _, method := range methods {
 		method = utilsstrings.ToUpper(method)
@@ -1051,8 +1071,11 @@ func (app *App) register(methods []string, pathRaw string, group *Group, handler
 		}
 
 		isUse := method == methodUse
-		isStar := pathClean == "/*"
-		isRoot := pathClean == "/"
+		registered = append(registered, method)
+		// Derived from the pattern with its escapes intact: an escaped "/\*"
+		// is a literal path, not the catch-all route.
+		isStar := pathPretty == "/*"
+		isRoot := pathPretty == "/"
 
 		route := Route{
 			use:           isUse,
@@ -1060,6 +1083,7 @@ func (app *App) register(methods []string, pathRaw string, group *Group, handler
 			star:          isStar,
 			root:          isRoot,
 			caseSensitive: app.config.CaseSensitive,
+			id:            routeID,
 
 			path:        pathClean,
 			routeParser: parsedPretty,
@@ -1088,6 +1112,11 @@ func (app *App) register(methods []string, pathRaw string, group *Group, handler
 			app.addRoute(method, &route)
 		}
 	}
+
+	// Name applies to every route this call registered, whatever the method.
+	app.mutex.Lock()
+	app.latestRouteMethods = registered
+	app.mutex.Unlock()
 }
 
 func (app *App) addRoute(method string, route *Route) {
@@ -1233,7 +1262,27 @@ func (app *App) RebuildTree() *App {
 	app.mutex.Lock()
 	defer app.mutex.Unlock()
 
+	// Routes registered since startup get their automatic HEAD companions
+	// here, as the ones registered before it did at startup.
+	app.ensureAutoHeadRoutesLocked()
+
 	return app.buildTree()
+}
+
+// routeIndexInTree returns the position of route in the bucket of another
+// method's tree, or current when it is not there. A middleware is registered
+// in every method's stack as a copy of its own, so the copies are told apart
+// by the id they share.
+func (app *App) routeIndexInTree(methodInt, treeHash int, route *Route, current int) int {
+	if route == nil || methodInt < 0 || methodInt >= len(app.treeIndex) {
+		return current
+	}
+	for i, candidate := range app.treeIndex[methodInt].lookup(treeHash) {
+		if candidate.id == route.id {
+			return i
+		}
+	}
+	return current
 }
 
 // buildTree build the prefix tree from the previously registered routes
