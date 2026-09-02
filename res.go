@@ -140,6 +140,8 @@ func (r *DefaultRes) App() *App {
 // If the header is not already set, it creates the header with the specified value.
 // Empty values are skipped: a sender must not generate empty list elements
 // (RFC 9110 Section 5.6.1.2).
+// Members are compared byte-exactly, because some lists (Link, Cache-Control)
+// are not all field names. For Vary field names, use Vary, which folds case.
 func (r *DefaultRes) Append(field string, values ...string) {
 	if len(values) == 0 {
 		return

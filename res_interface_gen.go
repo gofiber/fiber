@@ -17,6 +17,8 @@ type Res interface {
 	// If the header is not already set, it creates the header with the specified value.
 	// Empty values are skipped: a sender must not generate empty list elements
 	// (RFC 9110 Section 5.6.1.2).
+	// Members are compared byte-exactly, because some lists (Link, Cache-Control)
+	// are not all field names. For Vary field names, use Vary, which folds case.
 	Append(field string, values ...string)
 	// Attachment sets the HTTP response Content-Disposition header field to attachment.
 	Attachment(filename ...string)

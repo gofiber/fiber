@@ -2095,6 +2095,8 @@ If the header is **not** already set, it creates the header with the specified v
 
 Empty values are skipped, since a sender must not generate empty list elements (RFC 9110).
 
+Members are compared byte-exactly. Some lists (`Link`, `Cache-Control`) are not all field names, so case folding would be the wrong default. For `Vary` field names, use [`Vary()`](#vary), which compares case-insensitively.
+
 ```go title="Signature"
 func (c fiber.Ctx) Append(field string, values ...string)
 ```
