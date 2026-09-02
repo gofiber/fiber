@@ -245,13 +245,9 @@ func fieldName(f *reflect.StructField, aliasTag string) string {
 // fieldInfo describes how the keys of one struct type resolve to fields, so a
 // slice field can be told from a scalar sharing a struct with one. Cached per type.
 type fieldInfo struct {
-	// fields holds the type's own, non-embedded fields by alias.
-	fields map[string]reflect.Type
-	// embedded holds the embedded structs by alias, pointers unwrapped.
-	embedded map[string]reflect.Type
-	// promoted holds the fields promoted from embedded structs; an ambiguous alias is a nil type.
-	promoted map[string]promotedField
-	// nestedKinds is the coarse fallback for a key that resolves to nothing.
+	fields      map[string]reflect.Type
+	embedded    map[string]reflect.Type
+	promoted    map[string]promotedField
 	nestedKinds map[reflect.Kind]struct{}
 }
 

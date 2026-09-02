@@ -89,7 +89,6 @@ type DefaultCtx struct {
 // It records the ClientHelloInfo of every connection, keyed by the connection,
 // and releases it when the server reports the connection closed.
 type TLSHandler struct {
-	// connless holds a ClientHelloInfo recorded without a connection (GetClientInfo called by hand).
 	connless         atomic.Pointer[tls.ClientHelloInfo]
 	clientHelloInfos sync.Map // underlying net.Conn -> *tls.ClientHelloInfo
 }

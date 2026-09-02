@@ -88,8 +88,7 @@ type App struct {
 	// Hooks
 	hooks *Hooks
 	// Latest route & group
-	latestRoute *Route
-	// latestRouteMethods are the methods of the latest registration, so Name covers all of its routes.
+	latestRoute        *Route
 	latestRouteMethods []string
 	// newCtxFunc
 	newCtxFunc func(app *App) CustomCtx
@@ -128,8 +127,7 @@ type App struct {
 	handlersCount uint32
 	// contains the information if the route stack has been changed to build the optimized tree
 	hasRoutesRefreshed bool
-	// connStateHooked records that ConnState reports closed connections to the TLS handler.
-	connStateHooked bool
+	connStateHooked    bool
 	// hasCustomCtx tracks whether app uses a custom context implementation
 	hasCustomCtx bool
 	// hasParamRoutes tracks whether any route consults the per-request slash

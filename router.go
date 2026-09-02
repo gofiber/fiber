@@ -77,7 +77,6 @@ type Route struct {
 
 	routeParser routeParser // Parameter parser
 
-	// id is shared by the per-method copies of one registration (see routeIndexInTree).
 	id uint64
 
 	Handlers []Handler `json:"-"` // Ctx handlers
