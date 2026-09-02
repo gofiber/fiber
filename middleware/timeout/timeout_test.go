@@ -728,3 +728,58 @@ func Test_Timeout_OnTimeout_ResetsBodyStream(t *testing.T) {
 	require.Equal(t, fiber.StatusRequestTimeout, resp.StatusCode())
 	require.Equal(t, fiber.ErrRequestTimeout.Message, string(resp.Body()))
 }
+
+// Test_Timeout_DefaultReturnsErrRequestTimeout checks that a timed-out request
+// hands fiber.ErrRequestTimeout back to the middleware above it, as documented;
+// the default path used to return nil, so an outer logger recorded a success.
+func Test_Timeout_DefaultReturnsErrRequestTimeout(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+
+	seen := make(chan error, 1)
+	app.Use(func(c fiber.Ctx) error {
+		err := c.Next()
+		seen <- err
+		return err
+	})
+	app.Get("/slow", New(func(c fiber.Ctx) error {
+		<-c.Context().Done()
+		return nil
+	}, Config{Timeout: 20 * time.Millisecond}))
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/slow", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusRequestTimeout, resp.StatusCode)
+
+	select {
+	case err := <-seen:
+		require.ErrorIs(t, err, fiber.ErrRequestTimeout)
+	case <-time.After(time.Second):
+		t.Fatal("outer middleware never observed the result")
+	}
+}
+
+// Test_Timeout_OnTimeoutReturnedErrorShapesResponse checks that a *fiber.Error
+// returned by OnTimeout reaches the client; it used to be dropped in favor of
+// the default 408.
+func Test_Timeout_OnTimeoutReturnedErrorShapesResponse(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+
+	app.Get("/slow", New(func(c fiber.Ctx) error {
+		<-c.Context().Done()
+		return nil
+	}, Config{
+		Timeout: 20 * time.Millisecond,
+		OnTimeout: func(_ fiber.Ctx) error {
+			return fiber.NewError(fiber.StatusGatewayTimeout, "upstream too slow")
+		},
+	}))
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/slow", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusGatewayTimeout, resp.StatusCode)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "upstream too slow", string(body))
+}

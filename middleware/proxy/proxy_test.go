@@ -1579,3 +1579,69 @@ func Test_Proxy_ResponseStripIgnoresTheAppsNormalizationSetting(t *testing.T) {
 			"%s must not reach the client whatever case the upstream wrote it in", name)
 	}
 }
+
+// go test -run Test_Proxy_DomainForward_NonMatchingHostContinues
+//
+// A request for another host used to end the chain with an empty 200 instead
+// of being passed on, and a Host carrying a port never matched.
+func Test_Proxy_DomainForward_NonMatchingHostContinues(t *testing.T) {
+	t.Parallel()
+
+	_, addr := createProxyTestServerIPv4(t, func(c fiber.Ctx) error {
+		return c.SendString("forwarded")
+	})
+
+	app := fiber.New()
+	app.Use(DomainForward("api.example.com", "http://"+addr))
+	app.Get("/", func(c fiber.Ctx) error {
+		return c.SendString("local")
+	})
+
+	testCases := []struct {
+		host string
+		body string
+	}{
+		{host: "api.example.com", body: "forwarded"},
+		{host: "API.Example.com:8080", body: "forwarded"},
+		{host: "www.example.com", body: "local"},
+		{host: "www.example.com:8080", body: "local"},
+	}
+	for _, tc := range testCases {
+		req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+		req.Host = tc.host
+		resp, err := app.Test(req)
+		require.NoError(t, err)
+		require.Equal(t, fiber.StatusOK, resp.StatusCode, "Host %s", tc.host)
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		require.Equal(t, tc.body, string(body), "Host %s", tc.host)
+	}
+}
+
+// go test -run Test_Proxy_Forward_RestoresHost
+//
+// After the upstream call the app's own request carried the upstream Host,
+// so middleware running after Next described the wrong host.
+func Test_Proxy_Forward_RestoresHost(t *testing.T) {
+	t.Parallel()
+
+	_, addr := createProxyTestServerIPv4(t, func(c fiber.Ctx) error {
+		return c.SendString("forwarded")
+	})
+
+	app := fiber.New()
+	seen := make(chan string, 1)
+	app.Use(func(c fiber.Ctx) error {
+		err := c.Next()
+		seen <- c.Hostname()
+		return err
+	})
+	app.Use(Forward("http://" + addr))
+
+	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+	req.Host = "public.example.com"
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	require.Equal(t, "public.example.com", <-seen)
+}

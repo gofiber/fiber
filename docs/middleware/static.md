@@ -159,7 +159,9 @@ To define static routes using `Get`, append the wildcard (`*`) operator at the e
 | ModifyResponse       | `fiber.Handler` | ModifyResponse defines a function that allows you to alter the response.                                                                             | `nil`                  |
 | NotFoundHandler       | `fiber.Handler` | NotFoundHandler defines a function to handle when the path is not found.                                                                             | `nil`                  |
 
-When **Download** is enabled, the response includes a `Content-Disposition` header with the requested filename. Non-ASCII names use the `filename*` parameter as defined by [RFC 6266](https://www.rfc-editor.org/rfc/rfc6266) and [RFC 8187](https://www.rfc-editor.org/rfc/rfc8187).
+When **Download** is enabled, the response of a served file includes a `Content-Disposition` header with the requested filename, while the `Content-Type` the file server detected is kept. Non-ASCII names use the `filename*` parameter as defined by [RFC 6266](https://www.rfc-editor.org/rfc/rfc6266) and [RFC 8187](https://www.rfc-editor.org/rfc/rfc8187). A request for a missing file falls through to the next handler without the header.
+
+**MaxAge** only applies to successful responses; an error such as `416 Range Not Satisfiable` carries no `Cache-Control`. A handler registered on several routes serves each under that route's own prefix.
 
 :::info
 You can set `CacheDuration` config property to `-1` to disable caching.

@@ -1375,3 +1375,87 @@ func Test_SanitizePath_Error(t *testing.T) {
 		})
 	}
 }
+
+// go test -run Test_Static_Download_NotFoundLeavesNoAttachment
+//
+// With Download on, the attachment header was set before the file lookup, so
+// it leaked onto the fallthrough response of a missing file.
+func Test_Static_Download_NotFoundLeavesNoAttachment(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+
+	app.Get("/files*", New("../../.github/testdata/fs", Config{Download: true}))
+	app.Get("/files/users", func(c fiber.Ctx) error {
+		return c.JSON(fiber.Map{"ok": true})
+	})
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/files/users", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	require.Equal(t, fiber.MIMEApplicationJSONCharsetUTF8, resp.Header.Get(fiber.HeaderContentType))
+	require.Empty(t, resp.Header.Get(fiber.HeaderContentDisposition))
+}
+
+// go test -run Test_Static_Download_KeepsDetectedContentType
+//
+// Download derived the Content-Type from the URL's extension, blanking it for
+// an extension-less file the file server had already typed by content.
+func Test_Static_Download_KeepsDetectedContentType(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "README"), []byte("plain words\n"), 0o644))
+
+	app := fiber.New()
+	app.Get("/docs*", New(dir, Config{Download: true}))
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/docs/README", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	require.Contains(t, resp.Header.Get(fiber.HeaderContentType), "text/plain")
+	require.Equal(t, `attachment; filename="README"`, resp.Header.Get(fiber.HeaderContentDisposition))
+}
+
+// go test -run Test_Static_SameHandlerUnderTwoPrefixes
+//
+// The route prefix was captured from the first request and reused for every
+// route the handler was registered on.
+func Test_Static_SameHandlerUnderTwoPrefixes(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+
+	handler := New("../../.github/testdata/fs")
+	app.Get("/static/*", handler)
+	app.Get("/s/*", handler)
+
+	for _, path := range []string{"/static/index.html", "/s/index.html", "/static/index.html"} {
+		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, path, http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, fiber.StatusOK, resp.StatusCode, "GET %s", path)
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		require.Contains(t, string(body), "<h1>Hello, World!</h1>", "GET %s", path)
+	}
+}
+
+// go test -run Test_Static_MaxAge_NotOnErrorResponses
+//
+// MaxAge was applied to error responses such as 416 Range Not Satisfiable.
+func Test_Static_MaxAge_NotOnErrorResponses(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+
+	app.Get("/static/*", New("../../.github/testdata/fs", Config{ByteRange: true, MaxAge: 3600}))
+
+	req := httptest.NewRequest(fiber.MethodGet, "/static/index.html", http.NoBody)
+	req.Header.Set(fiber.HeaderRange, "bytes=999999-9999999")
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusRequestedRangeNotSatisfiable, resp.StatusCode)
+	require.Empty(t, resp.Header.Get(fiber.HeaderCacheControl))
+
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/static/index.html", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	require.Equal(t, "public, max-age=3600", resp.Header.Get(fiber.HeaderCacheControl))
+}

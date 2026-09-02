@@ -57,7 +57,7 @@ func writeEvent(w *bufio.Writer, event Event, jsonMarshal ...utils.JSONMarshal) 
 		}
 	}
 	if event.Retry > 0 {
-		appendField(&frame, "retry", utils.FormatInt(event.Retry.Milliseconds()))
+		appendField(&frame, "retry", utils.FormatInt(retryMilliseconds(event.Retry)))
 	}
 	if data.hasData {
 		appendData(&frame, data.data)
@@ -156,4 +156,11 @@ func normalizeNewlines(value string) string {
 	}
 	value = strings.ReplaceAll(value, "\r\n", "\n")
 	return strings.ReplaceAll(value, "\r", "\n")
+}
+
+// retryMilliseconds converts a reconnection delay to the whole milliseconds
+// the retry field carries, rounding up so a delay below one millisecond does
+// not become "retry: 0", an instruction to reconnect at once.
+func retryMilliseconds(d time.Duration) int64 {
+	return int64((d + time.Millisecond - 1) / time.Millisecond)
 }

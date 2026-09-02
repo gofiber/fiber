@@ -128,8 +128,15 @@ func handleTimeout(
 		resp := ctx.Response()
 		if resp.StatusCode() == fiber.StatusOK && timeoutResponseUnwritten(resp) {
 			resp.ResetBody()
-			resp.SetStatusCode(fiber.StatusRequestTimeout)
-			resp.SetBodyString(fiber.ErrRequestTimeout.Message)
+			// An error OnTimeout returned instead of writing the response is
+			// the response: the frozen payload is all the client will see.
+			status, message := fiber.StatusRequestTimeout, fiber.ErrRequestTimeout.Message
+			var fiberErr *fiber.Error
+			if errors.As(timeoutErr, &fiberErr) && fiberErr != nil {
+				status, message = fiberErr.Code, fiberErr.Message
+			}
+			resp.SetStatusCode(status)
+			resp.SetBodyString(message)
 		}
 
 		// Tell fasthttp to not recycle the RequestCtx - it will acquire a new one

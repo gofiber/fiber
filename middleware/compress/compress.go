@@ -6,6 +6,7 @@ import (
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/internal/headerlist"
 	"github.com/gofiber/fiber/v3/middleware/etag"
+	"github.com/gofiber/utils/v2"
 	"github.com/valyala/fasthttp"
 )
 
@@ -110,16 +111,107 @@ func New(config ...Config) fiber.Handler {
 			return nil
 		}
 
-		compressor(c.RequestCtx())
+		// Negotiate with weights, wildcards and lists honored (RFC 9110
+		// Section 12.5.3). Without the header the client states no preference,
+		// and the response is left as it is.
+		encoding := negotiateEncoding(c.Get(fiber.HeaderAcceptEncoding))
+		if encoding == "" {
+			appendVaryAcceptEncoding(c)
+			return nil
+		}
+
+		compressWith(c, compressor, encoding)
 
 		if tag := c.GetRespHeader(fiber.HeaderETag); tag != "" && !strings.HasPrefix(tag, "W/") {
 			if c.GetRespHeader(fiber.HeaderContentEncoding) != "" {
-				c.Set(fiber.HeaderETag, string(etag.Generate(c.Response().Body())))
+				if c.Response().IsBodyStream() {
+					// The encoded bytes are not in memory to hash, and reading the
+					// stream here would buffer it whole. A weak validator still
+					// names the representation, and the encoding no longer voids it.
+					c.Set(fiber.HeaderETag, "W/"+tag)
+				} else {
+					c.Set(fiber.HeaderETag, string(etag.Generate(c.Response().Body())))
+				}
 			}
 		}
 
 		appendVaryAcceptEncoding(c)
 
 		return nil
+	}
+}
+
+// supportedEncodings lists the content codings the middleware can produce, in
+// the order preferred when the client weighs them equally.
+var supportedEncodings = [...]string{"br", "zstd", "gzip", "deflate"}
+
+// negotiateEncoding picks the supported content coding the client weighs
+// highest in its Accept-Encoding header (RFC 9110 Section 12.5.3), preferring
+// the server's order among equal weights. "" means none is acceptable, which
+// is also the answer to an absent header.
+func negotiateEncoding(accept string) string {
+	best := ""
+	bestQuality := 0.0
+	for _, offer := range supportedEncodings {
+		if quality := encodingQuality(accept, offer); quality > bestQuality {
+			best, bestQuality = offer, quality
+		}
+	}
+	return best
+}
+
+// encodingQuality returns the weight the Accept-Encoding value gives a coding:
+// its own entry when listed, else the wildcard's, else 0.
+func encodingQuality(accept, offer string) float64 {
+	wildcard := 0.0
+	for element := range headerlist.All(accept) {
+		token, params := element, ""
+		if i := strings.IndexByte(element, ';'); i >= 0 {
+			// VisitHeaderParams expects the parameters with their leading ';'.
+			token, params = element[:i], element[i:]
+		}
+		token = utils.TrimSpace(token)
+		if token != "*" && !utils.EqualFold(token, offer) {
+			continue
+		}
+		quality := 1.0
+		if params != "" {
+			quality = 0
+			fasthttp.VisitHeaderParams(utils.UnsafeBytes(params), func(key, value []byte) bool {
+				if len(key) == 1 && (key[0] == 'q' || key[0] == 'Q') {
+					if parsed, err := fasthttp.ParseUfloat(value); err == nil {
+						quality = parsed
+					}
+					return false
+				}
+				return true
+			})
+		}
+		if token == "*" {
+			wildcard = quality
+			continue
+		}
+		return quality
+	}
+	return wildcard
+}
+
+// compressWith runs fasthttp's compressor for the negotiated encoding. The
+// compressor matches bare tokens only, so it is handed just that token, and
+// the client's own Accept-Encoding is put back afterwards.
+func compressWith(c fiber.Ctx, compressor fasthttp.RequestHandler, encoding string) {
+	header := &c.Request().Header
+	lines := header.PeekAll(fiber.HeaderAcceptEncoding)
+	saved := make([][]byte, len(lines))
+	for i, line := range lines {
+		saved[i] = utils.CopyBytes(line)
+	}
+
+	header.Set(fiber.HeaderAcceptEncoding, encoding)
+	compressor(c.RequestCtx())
+
+	header.Del(fiber.HeaderAcceptEncoding)
+	for _, line := range saved {
+		header.AddBytesV(fiber.HeaderAcceptEncoding, line)
 	}
 }

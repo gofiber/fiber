@@ -615,3 +615,17 @@ func Benchmark_sanitizeField(b *testing.B) {
 	}
 	_, _ = s, err
 }
+
+// go test -run Test_SSE_Retry_SubMillisecondRoundsUp
+//
+// A retry delay below one millisecond was written as "retry: 0", which tells
+// the client to reconnect immediately.
+func Test_SSE_Retry_SubMillisecondRoundsUp(t *testing.T) {
+	t.Parallel()
+
+	var buf bytes.Buffer
+	w := bufio.NewWriter(&buf)
+	require.NoError(t, writeEvent(w, Event{Data: "x", Retry: 500 * time.Microsecond}))
+	require.NoError(t, w.Flush())
+	require.Contains(t, buf.String(), "retry: 1\n")
+}

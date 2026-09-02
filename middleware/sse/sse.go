@@ -155,7 +155,7 @@ func (s *Stream) Retry(retry time.Duration) error {
 		// write: no fmt boxing, and a single error branch.
 		var scratch [32]byte
 		frame := append(scratch[:0], "retry: "...)
-		frame = utils.AppendInt(frame, retry.Milliseconds())
+		frame = utils.AppendInt(frame, retryMilliseconds(retry))
 		frame = append(frame, '\n', '\n')
 		if _, err := w.Write(frame); err != nil {
 			return fmt.Errorf("sse: write retry: %w", err)

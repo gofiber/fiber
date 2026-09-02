@@ -957,3 +957,99 @@ func Test_Compress_Streaming_With_Compression(t *testing.T) {
 	require.NoError(t, err)
 	require.Less(t, len(body), len(filedata), "Compressed size should be smaller than original")
 }
+
+// go test -run Test_Compress_StreamedBody_KeepsETagWeak
+//
+// Recomputing a strong ETag drained a streamed body into memory; a stream is
+// instead marked weak, which stays a valid validator for the encoded form.
+func Test_Compress_StreamedBody_KeepsETagWeak(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+	app.Use(New())
+	payload := strings.Repeat("streamed content ", 500)
+	app.Get("/", func(c fiber.Ctx) error {
+		c.Set(fiber.HeaderETag, `"abc"`)
+		return c.SendStream(strings.NewReader(payload))
+	})
+
+	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+	req.Header.Set(fiber.HeaderAcceptEncoding, "gzip")
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	require.Equal(t, "gzip", resp.Header.Get(fiber.HeaderContentEncoding))
+	require.Equal(t, `W/"abc"`, resp.Header.Get(fiber.HeaderETag))
+
+	zr, err := gzip.NewReader(resp.Body)
+	require.NoError(t, err)
+	body, err := io.ReadAll(zr)
+	require.NoError(t, err)
+	require.Equal(t, payload, string(body))
+}
+
+// go test -run Test_Compress_AcceptEncoding_Negotiation
+//
+// Negotiation used fasthttp's exact token matching, which ignored weights,
+// wildcards and lists without spaces.
+func Test_Compress_AcceptEncoding_Negotiation(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		accept   string
+		encoding string
+	}{
+		{accept: "gzip;q=1.0", encoding: "gzip"},
+		{accept: "identity,gzip", encoding: "gzip"},
+		{accept: "deflate,gzip,br", encoding: "br"},
+		{accept: "*", encoding: "br"},
+		{accept: "br;q=0.5, gzip;q=1", encoding: "gzip"},
+		{accept: "identity;q=0, gzip;q=0.5", encoding: "gzip"},
+		{accept: "gzip;q=0", encoding: ""},
+		{accept: "identity", encoding: ""},
+		{accept: "", encoding: ""},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.accept, func(t *testing.T) {
+			t.Parallel()
+
+			app := fiber.New()
+			app.Use(New())
+			app.Get("/", func(c fiber.Ctx) error {
+				return c.SendString(strings.Repeat("compressible ", 500))
+			})
+
+			req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+			if tc.accept != "" {
+				req.Header.Set(fiber.HeaderAcceptEncoding, tc.accept)
+			}
+			resp, err := app.Test(req)
+			require.NoError(t, err)
+			require.Equal(t, fiber.StatusOK, resp.StatusCode)
+			require.Equal(t, tc.encoding, resp.Header.Get(fiber.HeaderContentEncoding))
+			require.Contains(t, resp.Header.Get(fiber.HeaderVary), fiber.HeaderAcceptEncoding)
+		})
+	}
+}
+
+// go test -run Test_Compress_RequestHeaderUntouched
+func Test_Compress_RequestHeaderUntouched(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+	seen := make(chan string, 1)
+	app.Use(func(c fiber.Ctx) error {
+		err := c.Next()
+		seen <- c.Get(fiber.HeaderAcceptEncoding)
+		return err
+	})
+	app.Use(New())
+	app.Get("/", func(c fiber.Ctx) error {
+		return c.SendString(strings.Repeat("compressible ", 500))
+	})
+
+	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+	req.Header.Set(fiber.HeaderAcceptEncoding, "br;q=0.5, gzip;q=1")
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, "gzip", resp.Header.Get(fiber.HeaderContentEncoding))
+	require.Equal(t, "br;q=0.5, gzip;q=1", <-seen, "the client's header must survive negotiation")
+}
