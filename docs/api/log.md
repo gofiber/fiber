@@ -107,7 +107,7 @@ log.Info("info")
 log.Warn("warn")
 ```
 
-The example uses `log.DefaultLogger`, which writes to stdout. The [contrib](https://github.com/gofiber/contrib) repo offers adapters like `fiberzap` and `fiberzerolog`, or you can register your own with `log.SetLogger`.
+The example uses `log.DefaultLogger`, which writes to stderr. The [contrib](https://github.com/gofiber/contrib) repo offers adapters like `fiberzap` and `fiberzerolog`, or you can register your own with `log.SetLogger`.
 
 Here's an example using a custom logger:
 

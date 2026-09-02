@@ -53,10 +53,17 @@ func newRetainedContext(value any) retainedContext {
 	return retainedContext{value: value, isOk: true}
 }
 
+// osExit terminates the program on Fatal; a variable so tests can intercept it.
+var osExit = os.Exit //nolint:revive // exiting is what Fatal is for
+
 // privateLog logs a message at a given level log the default logger.
 // when the level is fatal, it will exit the program.
 func (l *defaultLogger) privateLog(lv Level, fmtArgs []any) {
 	if l.level > lv {
+		if lv == LevelFatal {
+			// Fatal terminates the program whether or not its line is written.
+			osExit(1)
+		}
 		return
 	}
 	level := lv.toString()
@@ -73,7 +80,7 @@ func (l *defaultLogger) privateLog(lv Level, fmtArgs []any) {
 	buf.Reset()
 	bytebufferpool.Put(buf)
 	if lv == LevelFatal {
-		os.Exit(1) //nolint:revive // we want to exit the program when Fatal is called
+		osExit(1)
 	}
 }
 
@@ -81,6 +88,10 @@ func (l *defaultLogger) privateLog(lv Level, fmtArgs []any) {
 // when the level is fatal, it will exit the program.
 func (l *defaultLogger) privateLogf(lv Level, format string, fmtArgs []any) {
 	if l.level > lv {
+		if lv == LevelFatal {
+			// Fatal terminates the program whether or not its line is written.
+			osExit(1)
+		}
 		return
 	}
 	level := lv.toString()
@@ -101,7 +112,7 @@ func (l *defaultLogger) privateLogf(lv Level, format string, fmtArgs []any) {
 	buf.Reset()
 	bytebufferpool.Put(buf)
 	if lv == LevelFatal {
-		os.Exit(1) //nolint:revive // we want to exit the program when Fatal is called
+		osExit(1)
 	}
 }
 
@@ -109,6 +120,10 @@ func (l *defaultLogger) privateLogf(lv Level, format string, fmtArgs []any) {
 // when the level is fatal, it will exit the program.
 func (l *defaultLogger) privateLogw(lv Level, format string, keysAndValues []any) {
 	if l.level > lv {
+		if lv == LevelFatal {
+			// Fatal terminates the program whether or not its line is written.
+			osExit(1)
+		}
 		return
 	}
 	level := lv.toString()
@@ -148,7 +163,7 @@ func (l *defaultLogger) privateLogw(lv Level, format string, keysAndValues []any
 	buf.Reset()
 	bytebufferpool.Put(buf)
 	if lv == LevelFatal {
-		os.Exit(1) //nolint:revive // we want to exit the program when Fatal is called
+		osExit(1)
 	}
 }
 

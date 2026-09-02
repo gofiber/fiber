@@ -120,3 +120,5 @@ var DefaultConfig = Config{
     currentInterval: 1 * time.Second,
 }
 ```
+
+Every `Retry` call starts over at `InitialInterval` and keeps its backoff state to itself, so one `ExponentialBackoff` can be shared by concurrent callers.

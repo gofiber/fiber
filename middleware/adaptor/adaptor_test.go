@@ -5,6 +5,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"io"
@@ -2556,4 +2557,99 @@ func Test_HTTPMiddleware_JoinsRepeatedConnectionValues(t *testing.T) {
 			require.Equal(t, tc.wantClose, finalClose, "the transport close instruction rides on the response")
 		})
 	}
+}
+
+// go test -run Test_CopyContextToFiberContext_DerivedContexts
+//
+// The value walk only recursed into a field named "Context", so values below
+// a WithTimeout, WithDeadline, WithoutCancel or AfterFunc context were lost.
+func Test_CopyContextToFiberContext_DerivedContexts(t *testing.T) {
+	t.Parallel()
+
+	type key string
+	base := context.WithValue(context.Background(), key("a"), "1")
+
+	withCancel, cancel := context.WithCancel(base)
+	t.Cleanup(cancel)
+	withTimeout, cancelTimeout := context.WithTimeout(base, time.Hour)
+	t.Cleanup(cancelTimeout)
+	withDeadline, cancelDeadline := context.WithDeadline(base, time.Now().Add(time.Hour))
+	t.Cleanup(cancelDeadline)
+	afterFunc, stop := context.WithCancel(base)
+	t.Cleanup(stop)
+	context.AfterFunc(afterFunc, func() {})
+
+	testCases := []struct {
+		ctx  context.Context //nolint:containedctx // test table
+		name string
+	}{
+		{name: "WithCancel", ctx: context.WithValue(withCancel, key("b"), "2")},
+		{name: "WithTimeout", ctx: context.WithValue(withTimeout, key("b"), "2")},
+		{name: "WithDeadline", ctx: context.WithValue(withDeadline, key("b"), "2")},
+		{name: "WithoutCancel", ctx: context.WithValue(context.WithoutCancel(withTimeout), key("b"), "2")},
+		{name: "value below timeout", ctx: func() context.Context {
+			ctx, cancelInner := context.WithTimeout(context.WithValue(base, key("b"), "2"), time.Hour)
+			t.Cleanup(cancelInner)
+			return ctx
+		}()},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			var fctx fasthttp.RequestCtx
+			CopyContextToFiberContext(tc.ctx, &fctx)
+			require.Equal(t, "1", fctx.UserValue(key("a")))
+			require.Equal(t, "2", fctx.UserValue(key("b")))
+		})
+	}
+}
+
+// go test -run Test_HTTPHandler_TLSPropagated
+//
+// A request served over TLS by net/http was seen as plaintext by Fiber.
+func Test_HTTPHandler_TLSPropagated(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Get("/", func(c fiber.Ctx) error {
+		return c.SendString(c.Scheme() + " " + strconv.FormatBool(c.Secure()))
+	})
+
+	handler := FiberApp(app)
+
+	req := httptest.NewRequest(http.MethodGet, "https://example.com/", http.NoBody)
+	req.TLS = &tls.ConnectionState{Version: tls.VersionTLS13, ServerName: "example.com"}
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, "https true", rec.Body.String())
+
+	plain := httptest.NewRequest(http.MethodGet, "http://example.com/", http.NoBody)
+	rec = httptest.NewRecorder()
+	handler.ServeHTTP(rec, plain)
+	require.Equal(t, "http false", rec.Body.String())
+}
+
+// go test -run Test_HTTPMiddleware_URLRewrite
+//
+// Only RequestURI was copied back after the middleware ran, so a rewrite of
+// r.URL such as http.StripPrefix was ignored.
+func Test_HTTPMiddleware_URLRewrite(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Use(HTTPMiddleware(func(next http.Handler) http.Handler {
+		return http.StripPrefix("/api", next)
+	}))
+	app.Get("/users", func(c fiber.Ctx) error {
+		return c.SendString("users at " + c.Path())
+	})
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/api/users?x=1", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "users at /users", string(body))
 }

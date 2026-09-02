@@ -2,6 +2,7 @@ package adaptor
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"io"
@@ -37,6 +38,24 @@ func (*disableLogger) Printf(string, ...any) {
 // through the http.ResponseWriter copy-back.
 type noopConn struct {
 	remoteAddr net.Addr
+}
+
+// tlsNoopConn is the connection handed to fasthttp for a request net/http
+// served over TLS: fasthttp learns that a connection is TLS from a
+// ConnectionState method, so plaintext requests keep the plain noopConn.
+type tlsNoopConn struct {
+	noopConn
+	state tls.ConnectionState
+}
+
+func (c *tlsNoopConn) ConnectionState() tls.ConnectionState {
+	return c.state
+}
+
+// Handshake completes fasthttp's notion of a TLS connection; net/http already
+// performed the real one.
+func (*tlsNoopConn) Handshake() error {
+	return nil
 }
 
 func (*noopConn) Read([]byte) (int, error)    { return 0, io.EOF }
@@ -85,9 +104,10 @@ func newTCPAddr(ip []byte, port int, zone string) *net.TCPAddr {
 // request path stays allocation-free. The conn comes first to keep the
 // struct's trailing pointer span minimal (govet fieldalignment).
 type pooledCtx struct {
-	conn noopConn
-	lr   io.LimitedReader
-	fctx fasthttp.RequestCtx
+	conn    noopConn
+	tlsConn tlsNoopConn
+	lr      io.LimitedReader
+	fctx    fasthttp.RequestCtx
 }
 
 var ctxPool = sync.Pool{
@@ -276,7 +296,14 @@ func ConvertRequest(c fiber.Ctx, forServer bool) (*http.Request, error) {
 //
 // Deprecated: This function uses reflection and unsafe pointers; consider using explicit context passing.
 func CopyContextToFiberContext(src any, requestContext *fasthttp.RequestCtx) {
-	if requestContext == nil {
+	copyContextValues(src, requestContext, 0)
+}
+
+// maxContextDepth bounds the walk up a context chain.
+const maxContextDepth = 64
+
+func copyContextValues(src any, requestContext *fasthttp.RequestCtx, depth int) {
+	if requestContext == nil || depth > maxContextDepth {
 		return
 	}
 
@@ -320,19 +347,50 @@ func CopyContextToFiberContext(src any, requestContext *fasthttp.RequestCtx) {
 		}
 
 		switch reflectField.Name {
-		case "Context":
-			CopyContextToFiberContext(reflectValue.Interface(), requestContext)
 		case "key":
 			lastKey = reflectValue.Interface()
+			continue
 		case "val":
 			if lastKey != nil {
 				requestContext.SetUserValue(lastKey, reflectValue.Interface())
 				lastKey = nil
 			}
-		default:
 			continue
 		}
+
+		// Any other field that is itself a context carries the parent chain:
+		// the embedded Context of valueCtx and cancelCtx, the c field of
+		// withoutCancelCtx, or the cancelCtx a timerCtx or afterFuncCtx embeds.
+		// Parents are copied first, so a child's value for the same key wins.
+		if parent, ok := contextOf(reflectValue); ok {
+			copyContextValues(parent, requestContext, depth+1)
+		}
 	}
+}
+
+// contextOf returns the context a struct field holds, whether as an
+// interface, a pointer, or an embedded struct whose pointer implements it.
+func contextOf(v reflect.Value) (context.Context, bool) {
+	switch v.Kind() {
+	case reflect.Interface, reflect.Pointer:
+		if v.IsNil() {
+			return nil, false
+		}
+		if ctx, ok := v.Interface().(context.Context); ok {
+			return ctx, true
+		}
+	case reflect.Struct:
+		if v.CanAddr() {
+			if ctx, ok := v.Addr().Interface().(context.Context); ok {
+				return ctx, true
+			}
+		}
+		if ctx, ok := v.Interface().(context.Context); ok {
+			return ctx, true
+		}
+	default:
+	}
+	return nil, false
 }
 
 // framingHeaders delimit and address the message rather than describe what it
@@ -416,9 +474,21 @@ func isFramingHeader(name string) bool {
 // HTTPMiddleware wraps net/http middleware to fiber middleware
 func HTTPMiddleware(mw func(http.Handler) http.Handler) fiber.Handler {
 	return func(c fiber.Ctx) error {
-		var next bool
-		var connectionClose bool
+		var (
+			mu              sync.Mutex
+			next            bool
+			connectionClose bool
+			returned        bool
+		)
 		nextHandler := http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+			mu.Lock()
+			defer mu.Unlock()
+			if returned {
+				// The adaptor already handed the response over: the middleware
+				// flushed (or hijacked) before calling next, so it now runs on
+				// its own goroutine and the Fiber context is no longer ours.
+				return
+			}
 			next = true
 
 			freq := c.Request()
@@ -430,9 +500,22 @@ func HTTPMiddleware(mw func(http.Handler) http.Handler) fiber.Handler {
 			pairs := snapshotHeaders(r.Header)
 
 			fhdr.SetMethod(r.Method)
-			freq.SetRequestURI(r.RequestURI)
+			// A rewrite of r.URL (http.StripPrefix, for one) leaves RequestURI
+			// untouched, so the URL is what the middleware wants routed.
+			requestURI := r.RequestURI
+			if r.URL != nil {
+				if rewritten := r.URL.RequestURI(); rewritten != "" && rewritten != requestURI {
+					requestURI = rewritten
+				}
+			}
+			freq.SetRequestURI(requestURI)
 			freq.SetHost(r.Host)
 			fhdr.SetHost(r.Host)
+			// The router matches the path Fiber derived at request start, so a
+			// rewritten one has to be installed on the context as well.
+			if path := string(freq.URI().Path()); path != c.Path() {
+				c.Path(path)
+			}
 
 			// Remove all cookies before setting, see https://github.com/valyala/fasthttp/pull/1864
 			fhdr.DelAllCookies()
@@ -473,12 +556,17 @@ func HTTPMiddleware(mw func(http.Handler) http.Handler) fiber.Handler {
 		// error result is always nil.
 		fasthttpadaptor.NewFastHTTPHandler(mw(nextHandler))(c.RequestCtx())
 
+		mu.Lock()
+		returned = true
+		ranNext, closeConnection := next, connectionClose
+		mu.Unlock()
+
 		var err error
-		if next {
+		if ranNext {
 			err = c.Next()
 		}
 
-		if connectionClose {
+		if closeConnection {
 			// The close instruction rides on the response so the request keeps the
 			// complete field for every observer — downstream handlers, middleware
 			// resuming after Next, and the app's ErrorHandler alike. It also has to
@@ -601,6 +689,14 @@ func handlerFunc(app *fiber.App, h ...fiber.Handler) http.HandlerFunc {
 			remoteAddr = nil // Fallback to nil
 		}
 		pctx.conn.remoteAddr = remoteAddr
+		var conn net.Conn = &pctx.conn
+		if r.TLS != nil {
+			// Carry the TLS state over, so c.Scheme(), c.Secure() and
+			// c.RequestCtx().TLSConnectionState() describe the connection.
+			pctx.tlsConn.noopConn = pctx.conn
+			pctx.tlsConn.state = *r.TLS
+			conn = &pctx.tlsConn
+		}
 
 		// Init2 mirrors fasthttp's RequestCtx.Init, but with a no-op
 		// connection instead of fasthttp's fakeAddrer, whose Write panics.
@@ -610,7 +706,7 @@ func handlerFunc(app *fiber.App, h ...fiber.Handler) http.HandlerFunc {
 		// touches connection metadata and buffer-retention flags, so the
 		// request is built directly into fctx.Request afterwards — the same
 		// order fasthttp's Init uses, minus its full request copy.
-		fctx.Init2(&pctx.conn, disabledLogger, true)
+		fctx.Init2(conn, disabledLogger, true)
 		req := &fctx.Request
 
 		// Convert net/http -> fasthttp request with size limit

@@ -4820,3 +4820,28 @@ func Test_Mount_Nested_AutoHead_SingleStartup(t *testing.T) {
 		require.Equal(t, StatusOK, fctx.Response.StatusCode(), "%s /a/b/x", method)
 	}
 }
+
+// go test -run Test_Router_PathOverride_ContinuesInNewBucket
+//
+// A path override that lands in another tree bucket used to leave the route
+// index at the old bucket's offset, so Next skipped the routes before it.
+func Test_Router_PathOverride_ContinuesInNewBucket(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	app.Get("/zzz/other", func(c Ctx) error { return c.SendString("other") })
+	app.Use(func(c Ctx) error {
+		if c.Path() == "/zzz/y" {
+			c.Path("/aaa/x")
+		}
+		return c.Next()
+	})
+	app.Get("/aaa/x", func(c Ctx) error { return c.SendString("aaa x") })
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/zzz/y", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, StatusOK, resp.StatusCode)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "aaa x", string(body))
+}

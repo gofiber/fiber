@@ -1318,6 +1318,10 @@ func (r *DefaultReq) Path(override ...string) string {
 		r.c.configDependentPaths()
 		// The detection path/tree hash changed; invalidate the lookahead index.
 		r.c.firstMatchIndex = -1
+		// The new path may live in another tree bucket, where the current
+		// route sits at a position of its own: carry the index over so Next
+		// resumes after it rather than at a stale offset.
+		r.c.indexRoute = r.c.app.routeIndexInTree(r.c.methodInt, r.c.treePathHash, r.c.route, r.c.indexRoute)
 	}
 	return r.c.app.toString(r.c.path)
 }
