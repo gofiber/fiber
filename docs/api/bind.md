@@ -660,6 +660,24 @@ type Query struct {
 // Result: Hobby = ["soccer", "basketball", "football"]  ← 3 elements
 ```
 
+##### Per-Bind Override
+
+When you don't want to flip `EnableSplittingOnParsers` for the whole app, override the behavior for a single bind chain with `WithSplitting(true)` or `WithSplitting(false)`:
+
+```go
+type Query struct {
+    Hobby []string `query:"hobby"`
+}
+
+// Comma split just for this request, regardless of the app config:
+c.Bind().WithSplitting(true).Query(&q)
+
+// Or suppress splitting even if it's enabled globally:
+c.Bind().WithSplitting(false).Query(&q)
+```
+
+The override applies to all binding methods on the same chain (`Query`, `Header`, `RespHeader`, `Cookie`, `Form`) and is scoped to that bind instance — it does not affect other requests.
+
 ##### Indexed Bracket Notation (Nested Structs)
 
 Use indexed brackets to bind arrays of nested structs:

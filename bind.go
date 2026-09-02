@@ -38,7 +38,10 @@ var bindPool = sync.Pool{
 // By default (manual mode), parsing failures are returned as *BindError; use errors.As to extract source and field details.
 // With WithAutoHandling(), parsing failures set HTTP 400 and return *Error instead.
 type Bind struct {
-	ctx                   Ctx
+	ctx Ctx
+	// overrideSplitting tri-state: nil falls back to the app's
+	// EnableSplittingOnParsers config; non-nil forces the value for this chain.
+	overrideSplitting     *bool
 	shouldSkipErrHandling bool
 	shouldSkipValidation  bool
 }
@@ -130,6 +133,7 @@ func (b *Bind) release() {
 	b.ctx = nil
 	b.shouldSkipErrHandling = true
 	b.shouldSkipValidation = false
+	b.overrideSplitting = nil
 }
 
 // WithoutAutoHandling If you want to handle binder errors manually, you can use `WithoutAutoHandling`.
@@ -154,6 +158,27 @@ func (b *Bind) SkipValidation(skip bool) *Bind {
 	b.shouldSkipValidation = skip
 
 	return b
+}
+
+// WithSplitting overrides the app's EnableSplittingOnParsers config for the
+// current bind chain. When enabled, comma-separated values are split into
+// individual elements for fields whose target type is a slice.
+// Pass true to force splitting on, false to force it off; the override applies
+// until the Bind instance is released back to the pool.
+func (b *Bind) WithSplitting(enable bool) *Bind {
+	b.overrideSplitting = &enable
+
+	return b
+}
+
+// splittingEnabled reports the effective comma-splitting setting for this bind
+// chain, falling back to the app's EnableSplittingOnParsers config when no
+// per-chain override has been set.
+func (b *Bind) splittingEnabled() bool {
+	if b.overrideSplitting != nil {
+		return *b.overrideSplitting
+	}
+	return b.ctx.App().config.EnableSplittingOnParsers
 }
 
 // Check WithAutoHandling/WithoutAutoHandling errors and return it by usage.
@@ -239,7 +264,7 @@ func (b *Bind) Custom(name string, dest any) error {
 // Returns *BindError on parse failure (manual mode) or *Error with status 400 (auto-handling mode).
 func (b *Bind) Header(out any) error {
 	bind := binder.GetFromThePool[*binder.HeaderBinding](&binder.HeaderBinderPool)
-	bind.EnableSplitting = b.ctx.App().config.EnableSplittingOnParsers
+	bind.EnableSplitting = b.splittingEnabled()
 
 	defer releasePooledBinder(&binder.HeaderBinderPool, bind)
 
@@ -254,7 +279,7 @@ func (b *Bind) Header(out any) error {
 // Returns *BindError on parse failure (manual mode) or *Error with status 400 (auto-handling mode).
 func (b *Bind) RespHeader(out any) error {
 	bind := binder.GetFromThePool[*binder.RespHeaderBinding](&binder.RespHeaderBinderPool)
-	bind.EnableSplitting = b.ctx.App().config.EnableSplittingOnParsers
+	bind.EnableSplitting = b.splittingEnabled()
 
 	defer releasePooledBinder(&binder.RespHeaderBinderPool, bind)
 
@@ -270,7 +295,7 @@ func (b *Bind) RespHeader(out any) error {
 // NOTE: If your cookie is like key=val1,val2; they'll be bound as a slice if your map is map[string][]string. Else, it'll use last element of cookie.
 func (b *Bind) Cookie(out any) error {
 	bind := binder.GetFromThePool[*binder.CookieBinding](&binder.CookieBinderPool)
-	bind.EnableSplitting = b.ctx.App().config.EnableSplittingOnParsers
+	bind.EnableSplitting = b.splittingEnabled()
 
 	defer releasePooledBinder(&binder.CookieBinderPool, bind)
 
@@ -285,7 +310,7 @@ func (b *Bind) Cookie(out any) error {
 // Returns *BindError on parse failure (manual mode) or *Error with status 400 (auto-handling mode).
 func (b *Bind) Query(out any) error {
 	bind := binder.GetFromThePool[*binder.QueryBinding](&binder.QueryBinderPool)
-	bind.EnableSplitting = b.ctx.App().config.EnableSplittingOnParsers
+	bind.EnableSplitting = b.splittingEnabled()
 
 	defer releasePooledBinder(&binder.QueryBinderPool, bind)
 
@@ -349,7 +374,7 @@ func (b *Bind) Form(out any) error {
 	// by doing it itself, so a fold here would be a second pass over the same
 	// header. Body still folds, because it must read the media type to dispatch.
 	bind := binder.GetFromThePool[*binder.FormBinding](&binder.FormBinderPool)
-	bind.EnableSplitting = b.ctx.App().config.EnableSplittingOnParsers
+	bind.EnableSplitting = b.splittingEnabled()
 	bind.MaxBodySize = b.ctx.App().config.BodyLimit
 
 	defer releasePooledBinder(&binder.FormBinderPool, bind)
