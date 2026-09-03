@@ -1,6 +1,6 @@
 module github.com/gofiber/fiber/v3
 
-go 1.25.0
+go 1.26.0
 
 require (
 	github.com/gofiber/schema v1.8.5
@@ -13,7 +13,7 @@ require (
 	github.com/tinylib/msgp v1.6.4
 	github.com/valyala/bytebufferpool v1.0.0
 	github.com/valyala/fasthttp v1.73.0
-	golang.org/x/crypto v0.55.0
+	golang.org/x/crypto v0.56.0
 )
 
 require go.yaml.in/yaml/v3 v3.0.5 // indirect
