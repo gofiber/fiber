@@ -895,13 +895,25 @@ func Test_IsDigits(t *testing.T) {
 	require.True(t, isDigits("120"))
 }
 
-func Test_StructKeyKind_NestedCacheTypeMismatch(t *testing.T) {
-	cache := getFieldCache("query")
-	typ := reflect.TypeFor[walkInner]()
-	cache.Store(typ, 1)
-	defer cache.Delete(typ)
+// Types of their own, so poisoning the cache entry below cannot reach a type
+// another test binds.
+type mismatchInner struct {
+	Tags []string `query:"tags"`
+}
 
-	var out walkTarget
+type mismatchOuter struct {
+	Inner mismatchInner `query:"inner"`
+}
+
+func Test_StructKeyKind_NestedCacheTypeMismatch(t *testing.T) {
+	t.Parallel()
+
+	cache := getFieldCache("query")
+	typ := reflect.TypeFor[mismatchInner]()
+	cache.Store(typ, 1)
+	t.Cleanup(func() { cache.Delete(typ) })
+
+	var out mismatchOuter
 	require.False(t, equalFieldType(&out, reflect.Slice, "inner.tags", "query"))
 }
 
