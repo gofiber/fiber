@@ -899,6 +899,42 @@ func Test_ShutdownServices_ReverseStartOrder(t *testing.T) {
 	require.Zero(t, app.state.ServicesLen())
 }
 
+// uncomparableService is a Service stored by value whose slice field makes its
+// dynamic type uncomparable; shutting one down must not panic.
+type uncomparableService struct {
+	name string
+	tags []string
+}
+
+func (uncomparableService) Start(context.Context) error { return nil }
+
+func (s uncomparableService) String() string { return s.name }
+
+func (uncomparableService) State(context.Context) (string, error) { return "running", nil }
+
+func (uncomparableService) Terminate(context.Context) error { return nil }
+
+func Test_ShutdownServices_UncomparableService(t *testing.T) {
+	t.Parallel()
+
+	services := []Service{
+		uncomparableService{name: "first", tags: []string{"a"}},
+		uncomparableService{name: "second", tags: []string{"b"}},
+	}
+	app := &App{
+		configured: Config{Services: services},
+		state:      newState(),
+	}
+
+	require.NoError(t, app.startServices(context.Background()))
+	require.Equal(t, 2, app.state.ServicesLen())
+
+	require.NotPanics(t, func() {
+		require.NoError(t, app.shutdownServices(context.Background()))
+	})
+	require.Zero(t, app.state.ServicesLen())
+}
+
 func Test_StartServices_DuplicateNames(t *testing.T) {
 	t.Parallel()
 

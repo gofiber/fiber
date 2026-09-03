@@ -259,9 +259,14 @@ func (s *State) setService(srv Service) {
 func (s *State) deleteService(srv Service) {
 	s.Delete(s.serviceKey(srv.String()))
 
+	// Match by name, not by interface equality: a Service whose dynamic type is
+	// uncomparable (one holding a slice or map, stored by value) panics on ==.
+	// Names are unique, which startServices validates before starting anything.
+	name := srv.String()
+
 	s.servicesMu.Lock()
 	for i, started := range s.services {
-		if started == srv {
+		if started.String() == name {
 			s.services = append(s.services[:i], s.services[i+1:]...)
 			break
 		}
