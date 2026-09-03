@@ -160,5 +160,11 @@ func normalizeNewlines(value string) string {
 
 // retryMilliseconds converts a delay to whole milliseconds, rounding up so it never becomes "retry: 0".
 func retryMilliseconds(d time.Duration) int64 {
-	return int64((d + time.Millisecond - 1) / time.Millisecond)
+	// Divide before rounding up: adding a millisecond first overflows for a
+	// duration near the top of the range and wraps to a negative count.
+	ms := d / time.Millisecond
+	if d%time.Millisecond != 0 {
+		ms++
+	}
+	return int64(ms)
 }

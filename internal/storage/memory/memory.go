@@ -248,7 +248,12 @@ func wrapContextError(ctx context.Context, op string) error {
 
 // ceilSeconds converts a positive duration to whole seconds, rounding up.
 func ceilSeconds(d time.Duration) uint32 {
-	secs := (d + time.Second - 1) / time.Second
+	// Divide before rounding up: adding a second first overflows for a duration
+	// near the top of the range and wraps into a tiny, immediately expired value.
+	secs := d / time.Second
+	if d%time.Second != 0 {
+		secs++
+	}
 	if secs > math.MaxUint32 {
 		return math.MaxUint32
 	}

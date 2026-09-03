@@ -2,6 +2,7 @@ package memory
 
 import (
 	"context"
+	"math"
 	"sync"
 	"testing"
 	"time"
@@ -615,4 +616,14 @@ func Benchmark_Memory_SetAndDelete_Asserted_Parallel(b *testing.B) {
 			require.NoError(b, err)
 		}
 	})
+}
+
+func Test_Storage_Memory_CeilSecondsSaturates(t *testing.T) {
+	t.Parallel()
+
+	// Rounding must not overflow into a wrapped, tiny expiration.
+	require.Equal(t, uint32(math.MaxUint32), ceilSeconds(time.Duration(math.MaxInt64)))
+	require.Equal(t, uint32(math.MaxUint32), ceilSeconds(time.Duration(math.MaxInt64)-1))
+	require.Equal(t, uint32(1), ceilSeconds(time.Nanosecond))
+	require.Equal(t, uint32(2), ceilSeconds(time.Second+time.Nanosecond))
 }

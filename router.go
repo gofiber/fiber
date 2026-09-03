@@ -1057,7 +1057,6 @@ func (app *App) register(methods []string, pathRaw string, group *Group, handler
 	}
 
 	isMount := group != nil && group.app != app
-	registered := make([]string, 0, len(methods))
 	routeID := routeIDs.Add(1)
 
 	for _, method := range methods {
@@ -1067,7 +1066,6 @@ func (app *App) register(methods []string, pathRaw string, group *Group, handler
 		}
 
 		isUse := method == methodUse
-		registered = append(registered, method)
 		// Derived from the pattern with its escapes intact: "/\*" is a literal path.
 		isStar := pathPretty == "/*"
 		isRoot := pathPretty == "/"
@@ -1107,11 +1105,6 @@ func (app *App) register(methods []string, pathRaw string, group *Group, handler
 			app.addRoute(method, &route)
 		}
 	}
-
-	// Name applies to every route this call registered, whatever the method.
-	app.mutex.Lock()
-	app.latestRouteMethods = registered
-	app.mutex.Unlock()
 }
 
 func (app *App) addRoute(method string, route *Route) {

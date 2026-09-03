@@ -18,6 +18,7 @@ import (
 	"reflect"
 	"regexp"
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -4710,6 +4711,32 @@ func Test_App_Add_MultipleMethods_Name(t *testing.T) {
 	}
 	require.True(t, named[MethodGet], "GET /x must carry the name")
 	require.True(t, named[MethodPost], "POST /x must carry the name")
+}
+
+func Test_App_Name_OnlyLatestRegistration(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	h := func(c Ctx) error { return c.SendString("ok") }
+
+	app.Get("/x", h).Name("first")
+	app.Post("/x", h).Name("first")
+	// Registering another path moves /x off the tail of both stacks, so the
+	// routes above survive rather than being merged into the ones below.
+	app.Get("/y", h)
+	app.Add([]string{MethodGet, MethodPost}, "/x", h).Name("second")
+
+	var names []string
+	for _, route := range app.GetRoutes() {
+		if route.Path == "/x" {
+			names = append(names, route.Method+":"+route.Name)
+		}
+	}
+	slices.Sort(names)
+
+	// The earlier registrations keep their own name; only the routes the latest
+	// Add created are renamed.
+	require.Equal(t, []string{"GET:first", "GET:second", "POST:second"}, names)
 }
 
 func Test_App_Use_MultiplePrefixes_MountsEachPrefix(t *testing.T) {

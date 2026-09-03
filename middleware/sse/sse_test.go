@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -624,4 +625,14 @@ func Test_SSE_Retry_SubMillisecondRoundsUp(t *testing.T) {
 	require.NoError(t, writeEvent(w, Event{Data: "x", Retry: 500 * time.Microsecond}))
 	require.NoError(t, w.Flush())
 	require.Contains(t, buf.String(), "retry: 1\n")
+}
+
+func Test_SSE_RetryMillisecondsStaysPositive(t *testing.T) {
+	t.Parallel()
+
+	// Rounding must not overflow into a negative "retry:" value.
+	require.Positive(t, retryMilliseconds(time.Duration(math.MaxInt64)))
+	require.Positive(t, retryMilliseconds(time.Duration(math.MaxInt64)-1))
+	require.Equal(t, int64(1), retryMilliseconds(time.Nanosecond))
+	require.Equal(t, int64(2), retryMilliseconds(time.Millisecond+time.Nanosecond))
 }

@@ -20,7 +20,6 @@ import (
 	"net/http/httputil"
 	"os"
 	"reflect"
-	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -88,8 +87,7 @@ type App struct {
 	// Hooks
 	hooks *Hooks
 	// Latest route & group
-	latestRoute        *Route
-	latestRouteMethods []string
+	latestRoute *Route
 	// newCtxFunc
 	newCtxFunc func(app *App) CustomCtx
 	// TLS handler
@@ -963,9 +961,12 @@ func (app *App) Name(name string) Router {
 
 	for _, routes := range app.stack {
 		for _, route := range routes {
-			isMethodValid := route.Method == app.latestRoute.Method || app.latestRoute.use ||
-				(app.latestRoute.Method == MethodGet && route.Method == MethodHead) ||
-				slices.Contains(app.latestRouteMethods, route.Method)
+			// The shared registration id covers the other methods of a multi-method
+			// Add; matching on the method alone would rename an older route that
+			// merely shares the path.
+			isMethodValid := route.id == app.latestRoute.id ||
+				route.Method == app.latestRoute.Method || app.latestRoute.use ||
+				(app.latestRoute.Method == MethodGet && route.Method == MethodHead)
 
 			if route.Path == app.latestRoute.Path && isMethodValid {
 				route.Name = name

@@ -1,6 +1,7 @@
 package memory
 
 import (
+	"math"
 	"testing"
 	"time"
 
@@ -145,4 +146,14 @@ func Benchmark_Memory(b *testing.B) {
 			}
 		}
 	})
+}
+
+func Test_Memory_CeilSecondsSaturates(t *testing.T) {
+	t.Parallel()
+
+	// Rounding must not overflow into a wrapped, tiny TTL.
+	require.Equal(t, uint32(math.MaxUint32), ceilSeconds(time.Duration(math.MaxInt64)))
+	require.Equal(t, uint32(math.MaxUint32), ceilSeconds(time.Duration(math.MaxInt64)-1))
+	require.Equal(t, uint32(1), ceilSeconds(time.Nanosecond))
+	require.Equal(t, uint32(2), ceilSeconds(time.Second+time.Nanosecond))
 }
