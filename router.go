@@ -877,6 +877,10 @@ func (app *App) addPrefixToRoute(prefix string, route *Route, regexHandler any, 
 // instead, so no placeholder is ever cloned.
 func (*App) copyRoute(route *Route) *Route {
 	return &Route{
+		// Shared with the registration this route came from, so a copy can
+		// still be found in another method's tree (see routeIndexInTree).
+		id: route.id,
+
 		// Leading-byte filter
 		prefix:     route.prefix,
 		prefixMask: route.prefixMask,

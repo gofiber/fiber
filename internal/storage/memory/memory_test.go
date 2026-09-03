@@ -627,3 +627,18 @@ func Test_Storage_Memory_CeilSecondsSaturates(t *testing.T) {
 	require.Equal(t, uint32(1), ceilSeconds(time.Nanosecond))
 	require.Equal(t, uint32(2), ceilSeconds(time.Second+time.Nanosecond))
 }
+
+func Test_Storage_Memory_MaxExpirationDoesNotWrap(t *testing.T) {
+	t.Parallel()
+
+	store := New()
+	t.Cleanup(func() { require.NoError(t, store.Close()) })
+	require.NoError(t, store.Set("max", []byte("v"), time.Duration(math.MaxInt64)))
+
+	// The absolute expiry must saturate rather than wrap past the current
+	// timestamp, which would expire an effectively infinite TTL at once.
+	got, err := store.Get("max")
+	require.NoError(t, err)
+	require.Equal(t, []byte("v"), got)
+	require.Equal(t, uint32(math.MaxUint32), expiryOf(store, "max"))
+}

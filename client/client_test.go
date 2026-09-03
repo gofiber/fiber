@@ -2639,6 +2639,21 @@ func Test_CookieJar_MaxAge(t *testing.T) {
 	require.Empty(t, get("/echo"), "the cookie must expire after Max-Age seconds")
 }
 
+func Test_Client_PreHookError_ReleasesOwnedRequest(t *testing.T) {
+	t.Parallel()
+
+	client := New()
+	client.AddRequestHook(func(_ *Client, _ *Request) error {
+		return errors.New("boom")
+	})
+
+	// The helper's own request must not be stranded: nothing dispatched, so no
+	// response will ever carry it back to the pool.
+	_, err := client.Get("http://example.com")
+	require.Error(t, err)
+	require.ErrorContains(t, err, "boom")
+}
+
 func Test_CookieJar_InvalidMaxAgeIgnored(t *testing.T) {
 	t.Parallel()
 

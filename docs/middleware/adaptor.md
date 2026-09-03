@@ -296,9 +296,10 @@ func handleRequest(w http.ResponseWriter, r *http.Request) {
 `fasthttp.RequestCtx`. The function is marked deprecated in code because it uses
 reflection and unsafe operations—prefer explicit parameter passing when possible.
 When you do need it, call it immediately after you add values to the `net/http`
-context so Fiber can read them via `c.Locals()`. Values are copied from the whole
-chain of derived contexts (`WithValue`, `WithCancel`, `WithTimeout`, `WithDeadline`,
-`WithoutCancel`, `AfterFunc`), the innermost value winning for a key set twice:
+context so Fiber can read them via `c.Locals()`. Values are copied from the
+chain of derived contexts (`WithValue`, `WithCancel`, `WithTimeout`,
+`WithDeadline`, `WithoutCancel`), the innermost value winning for a key set
+twice. The walk up the chain stops after 64 levels:
 
 ```go
 package main

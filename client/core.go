@@ -241,6 +241,11 @@ func (c *core) execute(ctx context.Context, client *Client, req *Request) (*Resp
 
 	// Execute pre request hooks (user-defined and built-in).
 	if err := c.preHooks(); err != nil {
+		// Nothing has been dispatched yet, so a request the client created for
+		// this call goes back to the pool: no response will carry it there.
+		if req.clientOwned {
+			ReleaseRequest(req)
+		}
 		return nil, err
 	}
 

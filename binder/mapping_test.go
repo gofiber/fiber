@@ -665,6 +665,33 @@ func Test_EqualFieldType_RecursiveType(t *testing.T) {
 	require.False(t, equalFieldType(&node, reflect.Slice, "next.next.value", "query"))
 }
 
+type diamondCommon struct {
+	Tags []string `query:"tags"`
+}
+
+// DiamondLeft and DiamondRight must be exported for their fields to promote.
+type DiamondLeft struct{ diamondCommon }
+
+type DiamondRight struct{ diamondCommon }
+
+type DiamondMid struct {
+	DiamondLeft
+	DiamondRight
+}
+
+func Test_EqualFieldType_DiamondEmbedding(t *testing.T) {
+	t.Parallel()
+
+	type Outer struct {
+		DiamondMid
+	}
+
+	// Both sibling branches reach the same tagged field at the same depth, so
+	// Go itself cannot resolve the selector and neither may the binder.
+	var out Outer
+	require.False(t, equalFieldType(&out, reflect.Slice, "tags", "query"))
+}
+
 func Test_EqualFieldType_InvalidDestination(t *testing.T) {
 	t.Parallel()
 

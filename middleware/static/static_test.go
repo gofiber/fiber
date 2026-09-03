@@ -1406,6 +1406,20 @@ func Test_Static_Download_KeepsDetectedContentType(t *testing.T) {
 	require.Equal(t, `attachment; filename="fiberpng"`, resp.Header.Get(fiber.HeaderContentDisposition))
 }
 
+func Test_Static_Download_NoAttachmentOnRangeError(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Get("/docs*", New("../../.github/testdata/fs/img", Config{Download: true, ByteRange: true}))
+
+	req := httptest.NewRequest(fiber.MethodGet, "/docs/fiberpng", http.NoBody)
+	req.Header.Set(fiber.HeaderRange, "bytes=99999999-99999999")
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusRequestedRangeNotSatisfiable, resp.StatusCode)
+	require.Empty(t, resp.Header.Get(fiber.HeaderContentDisposition))
+}
+
 func Test_Static_SameHandlerUnderTwoPrefixes(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()

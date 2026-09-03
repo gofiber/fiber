@@ -336,12 +336,15 @@ func buildFieldInfo(t reflect.Type, aliasTag string) fieldInfo {
 }
 
 // collectPromoted records the fields of an embedded struct, and of the structs
-// it embeds, as promoted fields of the outer type. visited stops cycles.
+// it embeds, as promoted fields of the outer type. visited stops cycles, and is
+// scoped to the path being walked: a type two sibling branches both embed has
+// to be seen through each of them for the alias to come out ambiguous.
 func (info *fieldInfo) collectPromoted(t reflect.Type, aliasTag string, depth int, visited map[reflect.Type]struct{}) {
 	if _, seen := visited[t]; seen {
 		return
 	}
 	visited[t] = struct{}{}
+	defer delete(visited, t)
 
 	for i := 0; i < t.NumField(); i++ {
 		f := t.Field(i)

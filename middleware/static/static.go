@@ -316,8 +316,9 @@ func New(root string, cfg ...Config) fiber.Handler {
 		status := c.RequestCtx().Response.StatusCode()
 
 		if status != fiber.StatusNotFound && status != fiber.StatusForbidden {
-			// Only a served file is an attachment; the header must not leak onto a miss.
-			if config.Download {
+			// Only a served file is an attachment; the header must not leak onto a
+			// miss, a redirect, or an error such as 416.
+			if config.Download && status >= fiber.StatusOK && status < fiber.StatusMultipleChoices {
 				name := filepath.Base(c.Path())
 				if rootIsFile {
 					name = filepath.Base(root)

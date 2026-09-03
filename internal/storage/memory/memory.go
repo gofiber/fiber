@@ -89,7 +89,7 @@ func (s *Storage) Set(key string, val []byte, exp time.Duration) error {
 
 	var expire uint32
 	if exp > 0 {
-		expire = ceilSeconds(exp) + utils.Timestamp()
+		expire = absoluteExpiry(exp)
 	}
 
 	// Copy both key and value to avoid unsafe reuse from sync.Pool
@@ -244,6 +244,18 @@ func wrapContextError(ctx context.Context, op string) error {
 		return fmt.Errorf("memory storage %s: %w", op, err)
 	}
 	return nil
+}
+
+// absoluteExpiry turns a positive expiration into the whole-second timestamp an
+// entry expires at, saturating instead of wrapping: a near-maximum value added
+// to the current timestamp would otherwise land in the past and expire at once.
+func absoluteExpiry(exp time.Duration) uint32 {
+	now := utils.Timestamp()
+	secs := ceilSeconds(exp)
+	if secs > math.MaxUint32-now {
+		return math.MaxUint32
+	}
+	return secs + now
 }
 
 // ceilSeconds converts a positive duration to whole seconds, rounding up.

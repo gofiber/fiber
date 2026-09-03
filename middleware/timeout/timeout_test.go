@@ -739,12 +739,17 @@ func Test_Timeout_DefaultReturnsErrRequestTimeout(t *testing.T) {
 		seen <- err
 		return err
 	})
+	// Hold the handler past the deadline, so the middleware always selects the
+	// timeout rather than racing it against the handler returning.
+	release := make(chan struct{})
 	app.Get("/slow", New(func(c fiber.Ctx) error {
 		<-c.Context().Done()
+		<-release
 		return nil
 	}, Config{Timeout: 20 * time.Millisecond}))
 
 	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/slow", http.NoBody))
+	close(release)
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusRequestTimeout, resp.StatusCode)
 
@@ -760,8 +765,10 @@ func Test_Timeout_OnTimeoutReturnedErrorShapesResponse(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
 
+	release := make(chan struct{})
 	app.Get("/slow", New(func(c fiber.Ctx) error {
 		<-c.Context().Done()
+		<-release
 		return nil
 	}, Config{
 		Timeout: 20 * time.Millisecond,
@@ -771,6 +778,7 @@ func Test_Timeout_OnTimeoutReturnedErrorShapesResponse(t *testing.T) {
 	}))
 
 	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/slow", http.NoBody))
+	close(release)
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusGatewayTimeout, resp.StatusCode)
 	body, err := io.ReadAll(resp.Body)
@@ -795,15 +803,18 @@ func Test_Timeout_ErrorHandlerSkippedAfterTimeout(t *testing.T) {
 		seen <- err
 		return err
 	})
+	release := make(chan struct{})
 	app.Get("/partial", New(func(c fiber.Ctx) error {
 		if err := c.SendString("partial output"); err != nil {
 			return err
 		}
 		<-c.Context().Done()
+		<-release
 		return c.Context().Err()
 	}, Config{Timeout: 20 * time.Millisecond}))
 
 	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/partial", http.NoBody))
+	close(release)
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusRequestTimeout, resp.StatusCode)
 	body, err := io.ReadAll(resp.Body)
