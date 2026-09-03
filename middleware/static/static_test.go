@@ -1395,17 +1395,15 @@ func Test_Static_Download_NotFoundLeavesNoAttachment(t *testing.T) {
 func Test_Static_Download_KeepsDetectedContentType(t *testing.T) {
 	t.Parallel()
 
-	dir := t.TempDir()
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "README"), []byte("plain words\n"), 0o644))
-
 	app := fiber.New()
-	app.Get("/docs*", New(dir, Config{Download: true}))
+	// fiberpng is a PNG without an extension, so only content detection can type it.
+	app.Get("/docs*", New("../../.github/testdata/fs/img", Config{Download: true}))
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/docs/README", http.NoBody))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/docs/fiberpng", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
-	require.Contains(t, resp.Header.Get(fiber.HeaderContentType), "text/plain")
-	require.Equal(t, `attachment; filename="README"`, resp.Header.Get(fiber.HeaderContentDisposition))
+	require.Contains(t, resp.Header.Get(fiber.HeaderContentType), "image/png")
+	require.Equal(t, `attachment; filename="fiberpng"`, resp.Header.Get(fiber.HeaderContentDisposition))
 }
 
 func Test_Static_SameHandlerUnderTwoPrefixes(t *testing.T) {
