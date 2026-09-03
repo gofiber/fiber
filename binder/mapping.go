@@ -500,8 +500,13 @@ func equalFieldType(out any, kind reflect.Kind, key, aliasTag string) bool {
 	typ := val.Type()
 	switch typ.Kind() {
 	case reflect.Map:
-		// Only a slice-valued map can hold more than one value per key.
-		return !val.IsNil() && typ.Key().Kind() == reflect.String &&
+		// Only a slice-valued map can hold more than one value per key. A nil
+		// map counts when a pointer to it was passed, since the decoder
+		// allocates it before filling it; a nil one by value stays unfillable.
+		if val.IsNil() && !isPointer {
+			return false
+		}
+		return typ.Key().Kind() == reflect.String &&
 			typ.Elem().Kind() == reflect.Slice && kind == reflect.Slice
 	case reflect.Struct:
 		// A struct is decoded through a pointer; a plain value cannot be set.

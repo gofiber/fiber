@@ -457,6 +457,25 @@ func Test_QueryBinder_Bind_Splitting_EmptyAliasWithOptions(t *testing.T) {
 	require.Equal(t, []string{"x", "y"}, defaulted.Tags)
 }
 
+func Test_QueryBinder_Bind_Splitting_NilSliceMap(t *testing.T) {
+	t.Parallel()
+
+	b := &QueryBinding{EnableSplitting: true}
+
+	req := fasthttp.AcquireRequest()
+	t.Cleanup(func() { fasthttp.ReleaseRequest(req) })
+	req.URI().SetQueryString("ids=1,2")
+
+	// The decoder allocates the map, so a nil one still splits.
+	var sliceMap map[string][]string
+	require.NoError(t, b.Bind(req, &sliceMap))
+	require.Equal(t, []string{"1", "2"}, sliceMap["ids"])
+
+	var stringMap map[string]string
+	require.NoError(t, b.Bind(req, &stringMap))
+	require.Equal(t, "1,2", stringMap["ids"])
+}
+
 func Test_QueryBinder_Bind_Splitting_InvalidDestination(t *testing.T) {
 	t.Parallel()
 

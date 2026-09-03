@@ -2639,6 +2639,30 @@ func Test_CookieJar_MaxAge(t *testing.T) {
 	require.Empty(t, get("/echo"), "the cookie must expire after Max-Age seconds")
 }
 
+func Test_CookieJar_InvalidMaxAgeIgnored(t *testing.T) {
+	t.Parallel()
+
+	jar := AcquireCookieJar()
+	t.Cleanup(jar.Release)
+
+	uri := fasthttp.AcquireURI()
+	t.Cleanup(func() { fasthttp.ReleaseURI(uri) })
+	require.NoError(t, uri.Parse(nil, []byte("http://example.com/")))
+
+	resp := fasthttp.AcquireResponse()
+	t.Cleanup(func() { fasthttp.ReleaseResponse(resp) })
+	expires := time.Now().Add(time.Hour).UTC().Format(time.RFC1123)
+	resp.Header.Add("Set-Cookie", "sid=x; Max-Age=bogus; Expires="+expires)
+
+	jar.parseCookiesFromResp([]byte("example.com"), []byte("/"), resp)
+
+	// RFC 6265 §5.2.2: a Max-Age that is not an integer is ignored, so the
+	// cookie keeps the future Expires rather than being deleted.
+	cookies := jar.Get(uri)
+	require.Len(t, cookies, 1)
+	require.Equal(t, "x", string(cookies[0].Value()))
+}
+
 func Test_Request_CancelledContext_NoRace(t *testing.T) {
 	t.Parallel()
 

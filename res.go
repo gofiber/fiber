@@ -121,9 +121,12 @@ func sameFS(a, b fs.FS) bool {
 	}
 
 	switch va.Kind() {
-	case reflect.Map, reflect.Slice, reflect.Func, reflect.Chan, reflect.Pointer, reflect.UnsafePointer:
+	case reflect.Map, reflect.Slice, reflect.Chan, reflect.Pointer, reflect.UnsafePointer:
 		return va.Pointer() == vb.Pointer()
 	default:
+		// A func's pointer is its code entry, shared by every closure over the
+		// same body, so two file systems capturing different roots would look
+		// like one. Treat them as distinct rather than serve the wrong root.
 		return false
 	}
 }

@@ -3904,3 +3904,34 @@ func Test_App_ErrorHandler_SkipsCommittedTimeoutResponse(t *testing.T) {
 	require.Equal(t, int32(1), calls.Load())
 	require.Equal(t, StatusTeapot, plain.Response().StatusCode())
 }
+
+// Test_App_Shutdown_HookRegistrationNoRace registers shutdown hooks while a
+// shutdown is running; the drain no longer holds the app mutex, so the hook
+// slices must be snapshotted rather than iterated in place.
+func Test_App_Shutdown_HookRegistrationNoRace(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	app.Hooks().OnPreShutdown(func() error { return nil })
+	app.Hooks().OnPostShutdown(func(error) error { return nil })
+
+	ln := fasthttputil.NewInmemoryListener()
+	served := make(chan struct{})
+	go func() {
+		close(served)
+		assert.NoError(t, app.Listener(ln, ListenConfig{DisableStartupMessage: true}))
+	}()
+	<-served
+
+	var wg sync.WaitGroup
+	wg.Go(func() {
+		for range 50 {
+			app.Hooks().OnPreShutdown(func() error { return nil })
+			app.Hooks().OnPostShutdown(func(error) error { return nil })
+		}
+	})
+	wg.Go(func() {
+		assert.NoError(t, app.Shutdown())
+	})
+	wg.Wait()
+}

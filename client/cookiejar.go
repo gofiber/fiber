@@ -6,6 +6,7 @@ import (
 	"cmp"
 	"net"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -539,7 +540,7 @@ func (cj *CookieJar) parseCookiesFromResp(host, path []byte, resp *fasthttp.Resp
 	for _, value := range resp.Header.Cookies() {
 		tmp := fasthttp.AcquireCookie()
 		_ = tmp.ParseBytes(value) //nolint:errcheck // ignore error
-		applyMaxAge(tmp, now, hasMaxAgeAttr(value))
+		applyMaxAge(tmp, now, expiresNowMaxAge(value))
 
 		// A Set-Cookie whose Path attribute is missing — or does not begin
 		// with '/', which fasthttp's ParseBytes stores verbatim — is scoped to
@@ -836,9 +837,11 @@ func isPublicSuffixDomain(domain string) bool {
 	return suffix == domain
 }
 
-// hasMaxAgeAttr reports whether a Set-Cookie value carries a Max-Age attribute;
-// fasthttp parses it as 0 both when absent and when set to 0.
-func hasMaxAgeAttr(value []byte) bool {
+// expiresNowMaxAge reports whether a Set-Cookie value carries a Max-Age that
+// asks for immediate expiry. fasthttp parses MaxAge as 0 whether the attribute
+// is absent, zero or negative, so the raw value decides; one that is not an
+// integer is ignored altogether (RFC 6265 §5.2.2).
+func expiresNowMaxAge(value []byte) bool {
 	_, rest, found := bytes.Cut(value, []byte{';'})
 	if !found {
 		return false
@@ -850,21 +853,26 @@ func hasMaxAgeAttr(value []byte) bool {
 		} else {
 			rest = nil
 		}
-		name, _, _ := bytes.Cut(part, []byte{'='})
-		if utils.EqualFold(utils.UnsafeString(utils.TrimSpace(name)), "max-age") {
-			return true
+		name, raw, hasValue := bytes.Cut(part, []byte{'='})
+		if !utils.EqualFold(utils.UnsafeString(utils.TrimSpace(name)), "max-age") {
+			continue
 		}
+		if !hasValue {
+			return false
+		}
+		seconds, err := strconv.Atoi(utils.UnsafeString(utils.TrimSpace(raw)))
+		return err == nil && seconds <= 0
 	}
 	return false
 }
 
 // applyMaxAge turns Max-Age into the absolute expiry the jar keeps. It takes
 // precedence over Expires, and zero or less expires the cookie at once (RFC 6265 §5.2.2).
-func applyMaxAge(c *fasthttp.Cookie, now time.Time, hasAttr bool) {
+func applyMaxAge(c *fasthttp.Cookie, now time.Time, expiresNow bool) {
 	switch {
 	case c.MaxAge() > 0:
 		c.SetExpire(now.Add(time.Duration(c.MaxAge()) * time.Second))
-	case hasAttr:
+	case expiresNow:
 		c.SetExpire(now.Add(-time.Second))
 	}
 }
