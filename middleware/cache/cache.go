@@ -922,6 +922,7 @@ func New(config ...Config) fiber.Handler {
 		var (
 			replaced   evictionCandidate
 			replacedOK bool
+			rawWritten bool
 			stored     bool
 		)
 		defer func() {
@@ -934,7 +935,12 @@ func New(config ...Config) fiber.Handler {
 			if spaceReserved {
 				storedBytes -= bodySize
 			}
-			restore := replacedOK && !stored
+			// A replacement body that landed overwrote the one the old entry
+			// pointed at, and the store-error cleanup then deletes it, so that
+			// entry can no longer be served: restoring its accounting would
+			// count bytes nothing can read. The next request for the key finds
+			// metadata without a body and drops it.
+			restore := replacedOK && !stored && !rawWritten
 			if restore {
 				replaced.heapIdx = heap.put(replaced.key, replaced.exp, replaced.size)
 				storedBytes += replaced.size
@@ -1081,6 +1087,7 @@ func New(config ...Config) fiber.Handler {
 				}
 				return err
 			}
+			rawWritten = true
 			// avoid body msgp encoding
 			e.body = nil
 			if err := manager.set(reqCtx, key, e, storageExpiration); err != nil {

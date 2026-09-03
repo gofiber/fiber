@@ -2321,6 +2321,46 @@ func Test_Cache_FailedRefreshKeepsOldEntryTracked(t *testing.T) {
 	require.Equal(t, nodes, probe.nodes())
 }
 
+func Test_Cache_FailedRefreshAfterBodyWriteDropsOldEntry(t *testing.T) {
+	t.Parallel()
+
+	const metaKey = "set|" + cacheKeyVersion + "|GET|/|q=|h=accept:0|accept-encoding:0|accept-language:0"
+
+	storage := newFailingCacheStorage()
+	probe := &accountingProbe{}
+	app := fiber.New()
+	app.Use(New(Config{
+		Storage:    storage,
+		MaxBytes:   1500,
+		Expiration: time.Hour,
+		accounting: probe.record,
+	}))
+	app.Get("/", func(c fiber.Ctx) error {
+		return c.Send(make([]byte, 600))
+	})
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	require.NotZero(t, probe.counted())
+
+	// Refresh the entry, letting the replacement body land but failing its
+	// metadata: the cleanup deletes that body, so the entry the refresh
+	// superseded can no longer be served and must not keep its accounting.
+	storage.mu.Lock()
+	storage.errs[metaKey] = errors.New("boom")
+	storage.mu.Unlock()
+
+	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+	req.Header.Set(fiber.HeaderCacheControl, noCache)
+	resp, err = app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusInternalServerError, resp.StatusCode)
+
+	require.Zero(t, probe.counted())
+	require.Zero(t, probe.nodes())
+}
+
 func Test_Cache_UncacheableResponseDoesNotEvict(t *testing.T) {
 	t.Parallel()
 
