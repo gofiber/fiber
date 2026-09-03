@@ -16,7 +16,6 @@ import (
 	"unsafe"
 
 	"github.com/gofiber/fiber/v3"
-	"github.com/gofiber/fiber/v3/internal/contextvalue"
 	"github.com/gofiber/fiber/v3/internal/headerlist"
 	"github.com/gofiber/utils/v2"
 	"github.com/valyala/fasthttp"
@@ -100,6 +99,10 @@ var ctxPool = sync.Pool{
 // disabledLogger is shared: it is stateless, and reusing one value keeps
 // the logger interface conversion off the per-request path.
 var disabledLogger = &disableLogger{}
+
+// LocalContextKey is the key used to store the user's context.Context in the fasthttp request context.
+// Adapted http.Handler functions can retrieve this context using r.Context().Value(adaptor.LocalContextKey)
+var localContextKey = &struct{}{}
 
 const (
 	bufferSize = 32 * 1024
@@ -226,13 +229,7 @@ func HTTPHandlerFunc(h http.HandlerFunc) fiber.Handler {
 	return HTTPHandler(h)
 }
 
-// HTTPHandler wraps net/http handler to fiber handler.
-//
-// The adapted handler runs with the *fasthttp.RequestCtx as its request
-// context, so a user context that Fiber middleware stored with c.SetContext is
-// reachable through LocalContextFromHTTPRequest without anything being copied
-// per request. net/http handlers registered directly on the router are adapted
-// the same way.
+// HTTPHandler wraps net/http handler to fiber handler
 func HTTPHandler(h http.Handler) fiber.Handler {
 	handler := fasthttpadaptor.NewFastHTTPHandler(h)
 	return func(c fiber.Ctx) error {
@@ -241,35 +238,27 @@ func HTTPHandler(h http.Handler) fiber.Handler {
 	}
 }
 
-// HTTPHandlerWithContext is like HTTPHandler, but additionally guarantees that
-// LocalContextFromHTTPRequest finds a user context inside the adapted handler
-// even when no Fiber middleware set one: c.Context() stores its default
-// context.Background() before the handler runs.
+// HTTPHandlerWithContext is like HTTPHandler, but additionally stores Fiber’s user context in the request context
 func HTTPHandlerWithContext(h http.Handler) fiber.Handler {
 	handler := fasthttpadaptor.NewFastHTTPHandler(h)
 	return func(c fiber.Ctx) error {
-		// Context() stores context.Background() when nothing was set yet; the
-		// value itself is not needed here.
-		c.Context()
+		// Store the Fiber user context (c.Context()) in the fasthttp request context
+		// so adapted net/http handlers can retrieve it via adaptor.LocalContextFromHTTPRequest(r)
+		c.RequestCtx().SetUserValue(localContextKey, c.Context())
 
 		handler(c.RequestCtx())
 		return nil
 	}
 }
 
-// LocalContextFromHTTPRequest returns the Fiber user context, what c.Context()
-// returns on the Fiber side, from a request served through HTTPHandler,
-// HTTPHandlerWithContext, HTTPMiddleware or a net/http handler registered
-// directly on the router. ok is false when r is nil, when r did not come
-// through Fiber, or when no middleware set a context and the handler was not
-// wrapped with HTTPHandlerWithContext.
+// LocalContextFromHTTPRequest extracts the Fiber user context previously stored into r.Context() by the adaptor.
 func LocalContextFromHTTPRequest(r *http.Request) (context.Context, bool) {
 	if r == nil {
 		return nil, false
 	}
 
-	ctx, ok := r.Context().Value(contextvalue.UserContextKey).(context.Context)
-	return ctx, ok
+	ctx, err := r.Context().Value(localContextKey).(context.Context)
+	return ctx, err
 }
 
 // ConvertRequest converts a fiber.Ctx to a http.Request.
@@ -424,10 +413,7 @@ func isFramingHeader(name string) bool {
 	return false
 }
 
-// HTTPMiddleware wraps net/http middleware to fiber middleware.
-//
-// Like HTTPHandler, the wrapped middleware can reach a user context that Fiber
-// middleware stored earlier in the chain through LocalContextFromHTTPRequest.
+// HTTPMiddleware wraps net/http middleware to fiber middleware
 func HTTPMiddleware(mw func(http.Handler) http.Handler) fiber.Handler {
 	return func(c fiber.Ctx) error {
 		var next bool

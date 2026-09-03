@@ -36,7 +36,7 @@ Fiber has no Express-style four-argument error handler (`func(err, req, res, nex
 - **Case 15.** `func(http.ResponseWriter, *http.Request)`
 
 :::caution Compatibility overhead
-Fiber adapts these handlers through `fasthttpadaptor`. They do not receive `fiber.Ctx`, cannot call `c.Next()`, and therefore always terminate the handler chain. They can still read the user context set with `c.SetContext` through `adaptor.LocalContextFromHTTPRequest`. The compatibility layer also adds more overhead than running a native Fiber handler, so prefer the other forms when possible.
+Fiber adapts these handlers through `fasthttpadaptor`. They do not receive `fiber.Ctx`, cannot call `c.Next()`, and therefore always terminate the handler chain. The compatibility layer also adds more overhead than running a native Fiber handler, so prefer the other forms when possible.
 :::
 
 ### fasthttp handlers (cases 16-17)

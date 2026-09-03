@@ -11,22 +11,19 @@ Fiber can register plain `net/http` handlers directly—just pass an `http.Handl
 `http.HandlerFunc`, or `func(http.ResponseWriter, *http.Request)` to any router
 method and it will be adapted automatically. The adaptor helpers remain valuable
 when you need to convert middleware, swap handler directions, or transform
-requests explicitly. Either way, the adapted handler can read the user context set
-with `c.SetContext` through `LocalContextFromHTTPRequest`.
+requests explicitly.
 :::
 
 :::caution Fiber features are unavailable
 Even when you register them directly, adapted `net/http` handlers still run with standard
-library semantics. They don't have access to `fiber.Ctx` (only to its user context, through
-`LocalContextFromHTTPRequest`), and the compatibility layer comes with additional overhead
-compared to native Fiber handlers. Use them for interop and legacy
+library semantics. They don't have access to `fiber.Ctx`, and the compatibility layer comes
+with additional overhead compared to native Fiber handlers. Use them for interop and legacy
 scenarios, but prefer Fiber handlers when performance or Fiber-specific APIs matter.
 :::
 
 ## Features
 
 - Convert `net/http` handlers and middleware to Fiber handlers
-- Read Fiber's user context from inside adapted `net/http` handlers and middleware
 - Convert Fiber handlers to `net/http` handlers
 - Convert a Fiber context (`fiber.Ctx`) into an `http.Request`
 - Copy values stored in a `context.Context` onto a `fasthttp.RequestCtx`
@@ -41,14 +38,14 @@ or `FiberApp`, the adaptor enforces the app's configured `BodyLimit`. The app's 
 | Name                          | Signature                                                                     | Description                                                                   |
 |-------------------------------|-------------------------------------------------------------------------------|-------------------------------------------------------------------------------|
 | `HTTPHandler`                 | `HTTPHandler(h http.Handler) fiber.Handler`                                   | Converts `http.Handler` to `fiber.Handler`                                    |
-| `HTTPHandlerWithContext`      | `HTTPHandlerWithContext(h http.Handler) fiber.Handler`                        | Like `HTTPHandler`, but guarantees a user context exists even if none was set |
+| `HTTPHandlerWithContext`      | `HTTPHandlerWithContext(h http.Handler) fiber.Handler`                        | Converts `http.Handler` to `fiber.Handler`, propagating Fiber's local context |
 | `HTTPHandlerFunc`             | `HTTPHandlerFunc(h http.HandlerFunc) fiber.Handler`                           | Converts `http.HandlerFunc` to `fiber.Handler`                                |
 | `HTTPMiddleware`              | `HTTPMiddleware(mw func(http.Handler) http.Handler) fiber.Handler`            | Converts `http.Handler` middleware to `fiber.Handler` middleware              |
 | `FiberHandler`                | `FiberHandler(h fiber.Handler) http.Handler`                                  | Converts `fiber.Handler` to `http.Handler`                                    |
 | `FiberHandlerFunc`            | `FiberHandlerFunc(h fiber.Handler) http.HandlerFunc`                          | Converts `fiber.Handler` to `http.HandlerFunc`                                |
 | `FiberApp`                    | `FiberApp(app *fiber.App) http.HandlerFunc`                                   | Converts an entire Fiber app to a `http.HandlerFunc`                          |
 | `ConvertRequest`              | `ConvertRequest(c fiber.Ctx, forServer bool) (*http.Request, error)`          | Converts `fiber.Ctx` into a `http.Request`                                    |
-| `LocalContextFromHTTPRequest` | `LocalContextFromHTTPRequest(r *http.Request) (context.Context, bool)`        | Returns Fiber's user context (`c.Context()`) from an adapted `http.Request`   |
+| `LocalContextFromHTTPRequest` | `LocalContextFromHTTPRequest(r *http.Request) (context.Context, bool)`        | Extracts the propagated `context.Context` from an adapted `http.Request`      |
 | `CopyContextToFiberContext`   | `CopyContextToFiberContext(context any, requestContext *fasthttp.RequestCtx)` | Copies `context.Context` to `fasthttp.RequestCtx`                             |
 
 ---
@@ -244,15 +241,7 @@ func handleRequest(c fiber.Ctx) error {
 
 ### 7. Passing Fiber user context into `net/http`
 
-Every `net/http` handler that runs inside Fiber sees the user context set with `c.SetContext`,
-whether it was registered directly on the router, wrapped with `HTTPHandler`, or run through
-`HTTPMiddleware`. Fiber keeps that context on the underlying request, and the adapted handler
-runs with that request as its `r.Context()`, so nothing is copied per request.
-`LocalContextFromHTTPRequest` reads it back; it reports `false` when no middleware set a
-context. Use `HTTPHandlerWithContext` when the handler should always find one (it falls back
-to `context.Background()`).
-
-This example shows a realistic flow: a Fiber middleware sets a request-scoped `context.Context` (with a `request_id`) on the Fiber context, then a directly registered `net/http` handler retrieves it via `LocalContextFromHTTPRequest`.
+This example shows a realistic flow: a Fiber middleware sets a request-scoped `context.Context` (with a `request_id`) on the Fiber context, then an adapted `net/http` handler retrieves it via `LocalContextFromHTTPRequest`.
 
 ```go
 package main
@@ -283,12 +272,8 @@ func main() {
         return c.Next()
     })
 
-    // 2) Run a standard net/http handler; Fiber's user context travels with the request.
-    app.Get("/hello", http.HandlerFunc(handleRequest))
-
-    // adaptor.HTTPHandler and adaptor.HTTPMiddleware expose it the same way.
-    // adaptor.HTTPHandlerWithContext additionally guarantees that ok is true
-    // even when no middleware called c.SetContext.
+    // 2) Run a standard net/http handler that includes Fiber's user context propagated.
+    app.Get("/hello", adaptor.HTTPHandlerWithContext(http.HandlerFunc(handleRequest)))
 
     app.Listen(":3000")
 }

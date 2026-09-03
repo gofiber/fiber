@@ -1,7 +1,6 @@
 package fiber
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -12,7 +11,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gofiber/fiber/v3/internal/contextvalue"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
@@ -1034,63 +1032,5 @@ func TestCollectHandlers_Nil(t *testing.T) {
 
 	require.PanicsWithValue(t, "nil: invalid handler #0 (<nil>)\n", func() {
 		collectHandlers("nil", nil)
-	})
-}
-
-// TestWrapHTTPHandler_UserContext checks that a net/http handler registered
-// directly on the router finds the user context Fiber middleware stored with
-// SetContext under the key the adaptor package reads, and that nothing is stored
-// on its behalf when no middleware set one: the propagation costs the request
-// nothing.
-func TestWrapHTTPHandler_UserContext(t *testing.T) {
-	t.Parallel()
-
-	type key struct{}
-
-	newApp := func(setContext bool) *App {
-		app := New()
-		if setContext {
-			app.Use(func(c Ctx) error {
-				c.SetContext(context.WithValue(c.Context(), key{}, "from-fiber"))
-				return c.Next()
-			})
-		}
-		app.Get("/", func(w http.ResponseWriter, r *http.Request) {
-			ctx, ok := r.Context().Value(contextvalue.UserContextKey).(context.Context)
-			if !ok {
-				w.WriteHeader(StatusNoContent)
-				return
-			}
-			val, ok := ctx.Value(key{}).(string)
-			if !ok {
-				http.Error(w, "value missing from user context", StatusInternalServerError)
-				return
-			}
-			_, _ = w.Write([]byte(val)) //nolint:errcheck // not needed
-		})
-		return app
-	}
-
-	t.Run("set by middleware", func(t *testing.T) {
-		t.Parallel()
-
-		resp, err := newApp(true).Test(httptest.NewRequest(MethodGet, "/", http.NoBody))
-		require.NoError(t, err)
-		defer resp.Body.Close() //nolint:errcheck // not needed
-
-		require.Equal(t, StatusOK, resp.StatusCode)
-		body, err := io.ReadAll(resp.Body)
-		require.NoError(t, err)
-		require.Equal(t, "from-fiber", string(body))
-	})
-
-	t.Run("absent when never set", func(t *testing.T) {
-		t.Parallel()
-
-		resp, err := newApp(false).Test(httptest.NewRequest(MethodGet, "/", http.NoBody))
-		require.NoError(t, err)
-		defer resp.Body.Close() //nolint:errcheck // not needed
-
-		require.Equal(t, StatusNoContent, resp.StatusCode)
 	})
 }

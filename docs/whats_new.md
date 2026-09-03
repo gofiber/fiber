@@ -1438,8 +1438,6 @@ Incoming body sizes now respect the Fiber app's configured `BodyLimit` (falling 
 
 The adaptor also propagates the request's protocol version, normalized to Fiber's convention (`HTTP/2.0` → `HTTP/2`, `HTTP/3.0` → `HTTP/3`), so `c.Protocol()` reports the real version instead of always `HTTP/1.1`. Interim responses such as `SendEarlyHints`' `103` are silently skipped through the adaptor — there is no client connection to write them to — while the `Link` headers still reach the final response.
 
-Fiber's user context (`c.Context()`) is visible to every `net/http` handler that runs inside Fiber, whether it was registered directly on the router, wrapped with `HTTPHandler`, or run through `HTTPMiddleware`: `adaptor.LocalContextFromHTTPRequest` reads it from the adapted `*http.Request` at no per-request cost. `HTTPHandlerWithContext` remains for handlers that should always find a context, even when no middleware set one.
-
 | Payload Size | Metric         | V2           | V3          | Percent Change |
 | ------------ | -------------- | ------------ | ----------- | -------------- |
 | 100KB        | Execution Time | 1056 ns/op   | 588.6 ns/op | -44.25%        |
@@ -2073,7 +2071,6 @@ required for these common cases.
 
 :::note Compatibility considerations
 Adapted handlers stick to `net/http` semantics. They do not interact with `fiber.Ctx`
-(only its user context reaches them, through `adaptor.LocalContextFromHTTPRequest`)
 and are slower than native Fiber handlers because of the extra conversion layer. Use
 them to ease migrations, but prefer Fiber handlers in performance-critical paths.
 :::

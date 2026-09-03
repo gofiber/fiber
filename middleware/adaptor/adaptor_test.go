@@ -21,7 +21,6 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v3"
-	"github.com/gofiber/fiber/v3/internal/contextvalue"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
@@ -288,7 +287,7 @@ func Test_LocalContextFromHTTPRequest(t *testing.T) {
 
 		expectedCtx := context.WithValue(context.Background(), contextKey("k"), "v")
 		req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody).WithContext(
-			context.WithValue(context.Background(), contextvalue.UserContextKey, expectedCtx),
+			context.WithValue(context.Background(), localContextKey, expectedCtx),
 		)
 
 		ctx, ok := LocalContextFromHTTPRequest(req)
@@ -2555,129 +2554,6 @@ func Test_HTTPMiddleware_JoinsRepeatedConnectionValues(t *testing.T) {
 			require.Equal(t, tc.want, afterNext, "the complete Connection field must outlive the downstream chain")
 			require.Equal(t, tc.want == "close", gotClose, "the request flag stands in only for a bare close")
 			require.Equal(t, tc.wantClose, finalClose, "the transport close instruction rides on the response")
-		})
-	}
-}
-
-// Test_LocalContextFromHTTPRequest_Propagation checks that every way of running
-// a net/http handler inside Fiber exposes the user context stored with
-// c.SetContext, and that only HTTPHandlerWithContext manufactures one when no
-// middleware set any.
-func Test_LocalContextFromHTTPRequest_Propagation(t *testing.T) {
-	t.Parallel()
-
-	type key struct{}
-	const value = "gofiber"
-
-	// readContext answers 204 when no user context is reachable, "background"
-	// when the default one is, and the stored value otherwise.
-	readContext := func(w http.ResponseWriter, r *http.Request) {
-		ctx, ok := LocalContextFromHTTPRequest(r)
-		if !ok {
-			w.WriteHeader(http.StatusNoContent)
-			return
-		}
-		body := "background"
-		if ctx != context.Background() {
-			val, isString := ctx.Value(key{}).(string)
-			if !isString {
-				http.Error(w, "value missing from user context", http.StatusInternalServerError)
-				return
-			}
-			body = val
-		}
-		if _, err := w.Write([]byte(body)); err != nil {
-			t.Logf("write failed: %v", err)
-		}
-	}
-
-	tests := []struct {
-		register func(app *fiber.App)
-		name     string
-		// unsetBody is what the handler reports when no middleware set a
-		// context; empty means a 204 without a body.
-		unsetBody string
-	}{
-		{
-			name: "direct registration",
-			register: func(app *fiber.App) {
-				app.Get("/", http.HandlerFunc(readContext))
-			},
-		},
-		{
-			name: "HTTPHandler",
-			register: func(app *fiber.App) {
-				app.Get("/", HTTPHandler(http.HandlerFunc(readContext)))
-			},
-		},
-		{
-			name: "HTTPHandlerFunc",
-			register: func(app *fiber.App) {
-				app.Get("/", HTTPHandlerFunc(readContext))
-			},
-		},
-		{
-			name: "HTTPHandlerWithContext",
-			register: func(app *fiber.App) {
-				app.Get("/", HTTPHandlerWithContext(http.HandlerFunc(readContext)))
-			},
-			unsetBody: "background",
-		},
-		{
-			name: "HTTPMiddleware",
-			register: func(app *fiber.App) {
-				app.Use(HTTPMiddleware(func(http.Handler) http.Handler {
-					// Answer from the middleware itself; next is deliberately
-					// not called so the response is what the middleware saw.
-					return http.HandlerFunc(readContext)
-				}))
-			},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			t.Run("set by middleware", func(t *testing.T) {
-				t.Parallel()
-
-				app := fiber.New()
-				app.Use(func(c fiber.Ctx) error {
-					c.SetContext(context.WithValue(c.Context(), key{}, value))
-					return c.Next()
-				})
-				tt.register(app)
-
-				resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-				require.NoError(t, err)
-				defer resp.Body.Close() //nolint:errcheck // not needed
-
-				require.Equal(t, fiber.StatusOK, resp.StatusCode)
-				body, err := io.ReadAll(resp.Body)
-				require.NoError(t, err)
-				require.Equal(t, value, string(body))
-			})
-
-			t.Run("never set", func(t *testing.T) {
-				t.Parallel()
-
-				app := fiber.New()
-				tt.register(app)
-
-				resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-				require.NoError(t, err)
-				defer resp.Body.Close() //nolint:errcheck // not needed
-
-				if tt.unsetBody == "" {
-					require.Equal(t, fiber.StatusNoContent, resp.StatusCode)
-					return
-				}
-				require.Equal(t, fiber.StatusOK, resp.StatusCode)
-				body, err := io.ReadAll(resp.Body)
-				require.NoError(t, err)
-				require.Equal(t, tt.unsetBody, string(body))
-			})
 		})
 	}
 }
