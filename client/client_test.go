@@ -2639,10 +2639,14 @@ func Test_CookieJar_MaxAge(t *testing.T) {
 	require.Empty(t, get("/echo"), "the cookie must expire after Max-Age seconds")
 }
 
-// requireOwnedRequestReleased sends until the client hands the same pooled
-// request out twice. Only a release puts a pointer back where Acquire can find
-// it, so a repeat proves it happened and a stranded request can never produce
-// one however many sends follow.
+// requireOwnedRequestReleased sends until the client hands a pooled request out
+// twice. Only a release puts one back where Acquire can find it, so a repeat is
+// proof that a failing send releases; with the release gone no send returns one
+// to the pool, so no pointer can ever repeat however many follow.
+//
+// Which pointer comes back is not assertable: sync.Pool promises no relation
+// between what is put and what a later Get returns, and under -race with these
+// tests in parallel a specific request does not come back to a specific caller.
 func requireOwnedRequestReleased(t *testing.T, send func() (*Request, error)) {
 	t.Helper()
 
