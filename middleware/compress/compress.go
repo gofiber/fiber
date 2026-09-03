@@ -166,9 +166,10 @@ func encodingQuality(accept, offer string) float64 {
 		if token != "*" && !utils.EqualFold(token, offer) {
 			continue
 		}
+		// An element carries other parameters than the weight, and an absent or
+		// malformed q leaves the default weight of 1 (RFC 9110 §12.4.2).
 		quality := 1.0
 		if params != "" {
-			quality = 0
 			fasthttp.VisitHeaderParams(utils.UnsafeBytes(params), func(key, value []byte) bool {
 				if len(key) == 1 && (key[0] == 'q' || key[0] == 'Q') {
 					if parsed, err := fasthttp.ParseUfloat(value); err == nil {

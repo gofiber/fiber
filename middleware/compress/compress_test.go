@@ -997,6 +997,10 @@ func Test_Compress_AcceptEncoding_Negotiation(t *testing.T) {
 		{accept: "br;q=0.5, gzip;q=1", encoding: "gzip"},
 		{accept: "identity;q=0, gzip;q=0.5", encoding: "gzip"},
 		{accept: "gzip;q=0", encoding: ""},
+		{accept: "gzip;foo=bar;q=0.4, br;q=0.2", encoding: "gzip"},
+		{accept: "gzip;foo=bar", encoding: "gzip"},
+		{accept: "gzip;q=bogus", encoding: "gzip"},
+		{accept: "*;foo=bar", encoding: "br"},
 		{accept: "identity", encoding: ""},
 		{accept: "", encoding: ""},
 	}
