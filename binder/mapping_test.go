@@ -800,3 +800,126 @@ func Benchmark_equalFieldType(b *testing.B) {
 		equalFieldType(&user, reflect.String, "user.name", "query")
 	}
 }
+
+func Test_FieldInfo_ResolveKindsAgreesWithResolve(t *testing.T) {
+	t.Parallel()
+
+	type Inner struct {
+		Name string `query:"name"`
+	}
+	type Sample struct {
+		DiamondMid
+		Inner   Inner    `query:"inner"`
+		Title   string   `query:"title"`
+		Labels  []string `query:"labels"`
+		Numbers []int    `query:"numbers"`
+	}
+
+	info := buildFieldInfo(reflect.TypeFor[Sample](), "query")
+
+	for name, kind := range info.kinds {
+		typ, resolved := info.resolve(name, false)
+		if kind == reflect.Invalid {
+			require.False(t, resolved, "name=%q", name)
+			continue
+		}
+		require.True(t, resolved, "name=%q", name)
+		require.Equal(t, kind, typ.Kind(), "name=%q", name)
+	}
+
+	for _, names := range []map[string]reflect.Type{info.fields, info.embedded} {
+		for name := range names {
+			require.Contains(t, info.kinds, name)
+		}
+	}
+	for name := range info.promoted {
+		require.Contains(t, info.kinds, name)
+	}
+	require.Equal(t, reflect.Invalid, info.kinds["tags"], "an ambiguous alias stays unresolvable")
+	require.Equal(t, reflect.Slice, info.kinds["labels"])
+	require.Equal(t, reflect.Struct, info.kinds["inner"])
+}
+
+type walkInner struct {
+	Name string   `query:"name"`
+	Tags []string `query:"tags"`
+	Age  int      `query:"age"`
+}
+
+type walkTarget struct {
+	Lookup map[string]walkInner  `query:"lookup"`
+	Deep   map[string][]struct{} `query:"deep"`
+	Title  string                `query:"title"`
+	List   []walkInner           `query:"list"`
+	Inner  walkInner             `query:"inner"`
+}
+
+func Test_StructKeyKind_NestedPaths(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		key  string
+		kind reflect.Kind
+		want bool
+	}{
+		{key: "title", kind: reflect.String, want: true},
+		{key: "inner.name", kind: reflect.String, want: true},
+		{key: "inner.tags", kind: reflect.Slice, want: true},
+		{key: "inner.age", kind: reflect.Slice, want: false},
+		{key: "[inner].tags", kind: reflect.Slice, want: true},
+		{key: "inner[tags]", kind: reflect.Slice, want: true},
+		{key: "list.0.tags", kind: reflect.Slice, want: true},
+		{key: "list.abc.tags", kind: reflect.Slice, want: false},
+		{key: "lookup.anything.tags", kind: reflect.Slice, want: true},
+		{key: "title.sub", kind: reflect.String, want: false},
+		{key: "deep.k.0", kind: reflect.Struct, want: true},
+		{key: "", kind: reflect.String, want: false},
+		{key: "unknown.tags", kind: reflect.Slice, want: true},
+		{key: "unknown.tags", kind: reflect.Bool, want: false},
+	}
+
+	var out walkTarget
+	for _, tc := range tests {
+		require.Equal(t, tc.want, equalFieldType(&out, tc.kind, tc.key, "query"),
+			"key=%q kind=%s", tc.key, tc.kind)
+	}
+}
+
+func Test_IsDigits(t *testing.T) {
+	t.Parallel()
+
+	require.False(t, isDigits(""))
+	require.False(t, isDigits("12a"))
+	require.False(t, isDigits("-1"))
+	require.True(t, isDigits("0"))
+	require.True(t, isDigits("120"))
+}
+
+func Test_StructKeyKind_NestedCacheTypeMismatch(t *testing.T) {
+	cache := getFieldCache("query")
+	typ := reflect.TypeFor[walkInner]()
+	cache.Store(typ, 1)
+	defer cache.Delete(typ)
+
+	var out walkTarget
+	require.False(t, equalFieldType(&out, reflect.Slice, "inner.tags", "query"))
+}
+
+// MutualOuter and MutualInner embed each other, so the promotion walk has to
+// stop itself; both must be exported for their fields to promote at all.
+type MutualOuter struct {
+	MutualInner
+}
+
+type MutualInner struct {
+	*MutualOuter
+	Names []string `query:"names"`
+}
+
+func Test_CollectPromoted_MutualEmbedding(t *testing.T) {
+	t.Parallel()
+
+	var out MutualOuter
+	require.True(t, equalFieldType(&out, reflect.Slice, "names", "query"))
+	require.False(t, equalFieldType(&out, reflect.Bool, "names", "query"))
+}

@@ -248,6 +248,7 @@ type fieldInfo struct {
 	fields      map[string]reflect.Type
 	embedded    map[string]reflect.Type
 	promoted    map[string]promotedField
+	kinds       map[string]reflect.Kind
 	nestedKinds map[reflect.Kind]struct{}
 }
 
@@ -331,8 +332,36 @@ func buildFieldInfo(t reflect.Type, aliasTag string) fieldInfo {
 			info.nestedKinds[p.typ.Kind()] = struct{}{}
 		}
 	}
+	info.resolveKinds()
 
 	return info
+}
+
+// resolveKinds records what resolve answers for a key naming a single field, so
+// that common lookup costs one map hit rather than a walk down the type. It asks
+// resolve rather than reading the maps, keeping the precedence in one place; an
+// unresolvable name is kept as reflect.Invalid, which a missing one is not.
+func (info *fieldInfo) resolveKinds() {
+	info.kinds = make(map[string]reflect.Kind, len(info.fields)+len(info.embedded)+len(info.promoted))
+	record := func(name string) {
+		if _, done := info.kinds[name]; done {
+			return
+		}
+		kind := reflect.Invalid
+		if t, ok := info.resolve(name, false); ok {
+			kind = t.Kind()
+		}
+		info.kinds[name] = kind
+	}
+	for name := range info.fields {
+		record(name)
+	}
+	for name := range info.embedded {
+		record(name)
+	}
+	for name := range info.promoted {
+		record(name)
+	}
 }
 
 // collectPromoted records the fields of an embedded struct, and of the structs
@@ -369,14 +398,15 @@ func (info *fieldInfo) collectPromoted(t reflect.Type, aliasTag string, depth in
 	}
 }
 
-func cachedFieldInfo(t reflect.Type, aliasTag string) (fieldInfo, bool) {
+func cachedFieldInfo(t reflect.Type, aliasTag string) (*fieldInfo, bool) {
 	cache := getFieldCache(aliasTag)
 	val, ok := cache.Load(t)
 	if !ok {
-		val, _ = cache.LoadOrStore(t, buildFieldInfo(t, aliasTag))
+		info := buildFieldInfo(t, aliasTag)
+		val, _ = cache.LoadOrStore(t, &info)
 	}
 
-	info, ok := val.(fieldInfo)
+	info, ok := val.(*fieldInfo)
 	return info, ok
 }
 
@@ -417,19 +447,34 @@ func isDigits(s string) bool {
 // given kind. An unknown first segment falls back to the coarse nested-kind check.
 func structKeyKind(t reflect.Type, kind reflect.Kind, key, aliasTag string) bool {
 	cur := t
+	segment, rest, ok := nextKeySegment(key)
+	if !ok {
+		return cur.Kind() == kind
+	}
+	// A key naming a field of this struct directly is the common case, and
+	// resolveKinds already answered it: no walk down the type, and no second
+	// pass over the key to find out there is nothing after this segment.
+	if rest == "" && cur.Kind() == reflect.Struct {
+		info, found := cachedFieldInfo(cur, aliasTag)
+		if !found {
+			return false
+		}
+		if k, resolved := info.kinds[segment]; resolved && k != reflect.Invalid {
+			return k == kind
+		}
+		_, ok := info.nestedKinds[kind]
+		return ok
+	}
+	// One segment of lookahead: whether a segment has more after it decides how
+	// an embedded struct's own alias resolves, and it ends the walk.
 	first := true
 	for {
-		segment, rest, ok := nextKeySegment(key)
-		if !ok {
-			break
-		}
-		key = rest
-		_, _, hasMore := nextKeySegment(rest)
+		nextSegment, nextRest, hasMore := nextKeySegment(rest)
 
 		switch cur.Kind() {
 		case reflect.Struct:
-			info, ok := cachedFieldInfo(cur, aliasTag)
-			if !ok {
+			info, found := cachedFieldInfo(cur, aliasTag)
+			if !found {
 				return false
 			}
 			next, resolved := info.resolve(segment, hasMore)
@@ -453,6 +498,11 @@ func structKeyKind(t reflect.Type, kind reflect.Kind, key, aliasTag string) bool
 			// A scalar has nothing below it.
 			return false
 		}
+
+		if !hasMore {
+			break
+		}
+		segment, rest = nextSegment, nextRest
 		first = false
 	}
 
