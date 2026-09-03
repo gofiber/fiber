@@ -121,8 +121,10 @@ type App struct {
 	// Precomputed unmatched-route indexes, rebuilt with the tree (router_skip.go)
 	skip skipRouteIndex
 	// sendfilesMutex is a mutex used for sendfile operations
-	sendfilesMutex sync.RWMutex
-	mutex          sync.Mutex
+	sendfilesMutex   sync.RWMutex
+	mutex            sync.Mutex
+	autoHeadRouteID  uint64
+	autoHeadStackLen int
 	// Amount of registered handlers
 	handlersCount uint32
 	// contains the information if the route stack has been changed to build the optimized tree

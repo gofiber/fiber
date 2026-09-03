@@ -935,6 +935,30 @@ func Test_ShutdownServices_UncomparableService(t *testing.T) {
 	require.Zero(t, app.state.ServicesLen())
 }
 
+func Test_ShutdownServices_StartedTwiceTerminatesOnce(t *testing.T) {
+	t.Parallel()
+
+	// App.init already starts configured services, so a second startServices
+	// call registers each of them again, as the shutdown benchmarks do.
+	var terminated []string
+	services := []Service{
+		&orderedService{mockService: mockService{name: "dep1"}, terminated: &terminated},
+		&orderedService{mockService: mockService{name: "dep2"}, terminated: &terminated},
+	}
+	app := &App{
+		configured: Config{Services: services},
+		state:      newState(),
+	}
+
+	require.NoError(t, app.startServices(context.Background()))
+	require.NoError(t, app.startServices(context.Background()))
+	require.Equal(t, 2, app.state.ServicesLen())
+
+	require.NoError(t, app.shutdownServices(context.Background()))
+	require.Equal(t, []string{"dep2", "dep1"}, terminated)
+	require.Zero(t, app.state.ServicesLen())
+}
+
 func Test_StartServices_DuplicateNames(t *testing.T) {
 	t.Parallel()
 

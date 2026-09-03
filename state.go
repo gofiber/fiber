@@ -248,9 +248,20 @@ func (s *State) serviceKey(key string) string {
 // setService sets a service in the State.
 func (s *State) setService(srv Service) {
 	// Always prepend the service key with the servicesStateKey to avoid collisions
-	s.Set(s.serviceKey(srv.String()), srv)
+	name := srv.String()
+	s.Set(s.serviceKey(name), srv)
 
 	s.servicesMu.Lock()
+	// The order is keyed by name like the map above, so registering a service
+	// again replaces it in place rather than adding a second entry that
+	// shutdown would terminate twice.
+	for i, started := range s.services {
+		if started.String() == name {
+			s.services[i] = srv
+			s.servicesMu.Unlock()
+			return
+		}
+	}
 	s.services = append(s.services, srv)
 	s.servicesMu.Unlock()
 }

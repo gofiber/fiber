@@ -1186,6 +1186,18 @@ func (app *App) ensureAutoHeadRoutesLocked() {
 		return
 	}
 
+	// Nothing can need a new companion while no route has been registered since
+	// the last pass and the HEAD stack still holds the ones it produced, so the
+	// scan below is skipped rather than rebuilt on every RebuildTree call.
+	currentRouteID := routeIDs.Load()
+	if app.autoHeadRouteID == currentRouteID && app.autoHeadStackLen == len(app.stack[headIndex]) {
+		return
+	}
+	defer func() {
+		app.autoHeadRouteID = routeIDs.Load()
+		app.autoHeadStackLen = len(app.stack[headIndex])
+	}()
+
 	headStack := app.stack[headIndex]
 	existing := make(map[autoHeadKey]struct{}, len(headStack))
 	for _, route := range headStack {
