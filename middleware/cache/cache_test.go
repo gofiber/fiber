@@ -6515,3 +6515,155 @@ func Benchmark_hasDirective(b *testing.B) {
 	}
 	_ = got
 }
+
+func Test_Cache_OrphanedMetadataWithoutBody(t *testing.T) {
+	t.Parallel()
+
+	for _, maxBytes := range []uint{0, 4096} {
+		t.Run(fmt.Sprintf("maxbytes-%d", maxBytes), func(t *testing.T) {
+			t.Parallel()
+
+			storage := newFailingCacheStorage()
+			app := fiber.New()
+			app.Use(New(Config{Storage: storage, Expiration: time.Hour, MaxBytes: maxBytes}))
+
+			served := 0
+			app.Get("/", func(c fiber.Ctx) error {
+				served++
+				return c.SendString(fmt.Sprintf("body %d", served))
+			})
+
+			first, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+			require.NoError(t, err)
+			require.Equal(t, cacheMiss, first.Header.Get("X-Cache"))
+
+			var metadataKey string
+			storage.mu.Lock()
+			for key := range storage.data {
+				if trimmed, ok := strings.CutSuffix(key, "_body"); ok {
+					metadataKey = trimmed
+					delete(storage.data, key)
+					break
+				}
+			}
+			storage.mu.Unlock()
+			require.NotEmpty(t, metadataKey)
+
+			second, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+			require.NoError(t, err)
+			require.Equal(t, cacheMiss, second.Header.Get("X-Cache"))
+			body, err := io.ReadAll(second.Body)
+			require.NoError(t, err)
+			require.Equal(t, "body 2", string(body))
+
+			third, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+			require.NoError(t, err)
+			require.Equal(t, cacheHit, third.Header.Get("X-Cache"))
+			cached, err := io.ReadAll(third.Body)
+			require.NoError(t, err)
+			require.Equal(t, "body 2", string(cached))
+		})
+	}
+}
+
+func Test_Cache_BodyFetchFailure(t *testing.T) {
+	t.Parallel()
+
+	newApp := func(storage fiber.Storage) *fiber.App {
+		app := fiber.New()
+		app.Use(New(Config{Storage: storage, Expiration: time.Hour}))
+		app.Get("/", func(c fiber.Ctx) error { return c.SendString("cached") })
+		return app
+	}
+
+	prime := func(t *testing.T, app *fiber.App, storage *failingCacheStorage) string {
+		t.Helper()
+
+		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, cacheMiss, resp.Header.Get("X-Cache"))
+
+		var metadataKey string
+		storage.mu.RLock()
+		for key := range storage.data {
+			if trimmed, ok := strings.CutSuffix(key, "_body"); ok {
+				metadataKey = trimmed
+				break
+			}
+		}
+		storage.mu.RUnlock()
+		require.NotEmpty(t, metadataKey)
+		return metadataKey
+	}
+
+	t.Run("body read fails", func(t *testing.T) {
+		t.Parallel()
+
+		storage := newFailingCacheStorage()
+		app := newApp(storage)
+		key := prime(t, app, storage)
+
+		storage.mu.Lock()
+		storage.errs["get|"+key+"_body"] = errors.New("boom")
+		storage.mu.Unlock()
+
+		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, fiber.StatusInternalServerError, resp.StatusCode)
+	})
+
+	t.Run("orphaned metadata delete fails", func(t *testing.T) {
+		t.Parallel()
+
+		storage := newFailingCacheStorage()
+		app := newApp(storage)
+		key := prime(t, app, storage)
+
+		storage.mu.Lock()
+		delete(storage.data, key+"_body")
+		storage.errs["del|"+key] = errors.New("boom")
+		storage.mu.Unlock()
+
+		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, fiber.StatusInternalServerError, resp.StatusCode)
+	})
+}
+
+func Test_Cache_VaryManifestStoreFailureUnreservesSpace(t *testing.T) {
+	t.Parallel()
+
+	const body = "0123456789abcdef"
+	storage := newFailingCacheStorage()
+	app := fiber.New()
+	app.Use(New(Config{Storage: storage, Expiration: time.Hour, MaxBytes: 2 * uint(len(body))}))
+	app.Get("/:name", func(c fiber.Ctx) error {
+		c.Response().Header.Set(fiber.HeaderVary, "Accept-Language")
+		return c.SendString(body)
+	})
+
+	manifestKey := cacheKeyVersion + "|GET|/a|q=|h=accept:0|accept-encoding:0|accept-language:0|vary"
+	storage.mu.Lock()
+	storage.errs["set|"+manifestKey] = errors.New("boom")
+	storage.mu.Unlock()
+
+	failed, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/a", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusInternalServerError, failed.StatusCode)
+
+	storage.mu.Lock()
+	delete(storage.errs, "set|"+manifestKey)
+	storage.mu.Unlock()
+
+	// The abandoned reservation must be gone, or the second entry evicts the first.
+	for _, path := range []string{"/a", "/b"} {
+		resp, testErr := app.Test(httptest.NewRequest(fiber.MethodGet, path, http.NoBody))
+		require.NoError(t, testErr)
+		require.Equal(t, cacheMiss, resp.Header.Get("X-Cache"), "path=%q", path)
+	}
+	for _, path := range []string{"/a", "/b"} {
+		resp, testErr := app.Test(httptest.NewRequest(fiber.MethodGet, path, http.NoBody))
+		require.NoError(t, testErr)
+		require.Equal(t, cacheHit, resp.Header.Get("X-Cache"), "path=%q", path)
+	}
+}

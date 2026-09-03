@@ -723,3 +723,21 @@ func Test_executeOnMountHooks_Error(t *testing.T) {
 	err := app.hooks.executeOnMountHooks(parent)
 	require.EqualError(t, err, "mount error")
 }
+
+func Test_Hooks_ShutdownSnapshot_WithoutApp(t *testing.T) {
+	t.Parallel()
+
+	var pre, post int
+	h := &Hooks{
+		onPreShutdown:  []OnPreShutdownHandler{func() error { pre++; return nil }},
+		onPostShutdown: []OnPostShutdownHandler{func(error) error { post++; return nil }},
+	}
+
+	require.Len(t, h.snapshotOnPreShutdown(), 1)
+	require.Len(t, h.snapshotOnPostShutdown(), 1)
+
+	h.executeOnPreShutdownHooks()
+	h.executeOnPostShutdownHooks(nil)
+	require.Equal(t, 1, pre)
+	require.Equal(t, 1, post)
+}

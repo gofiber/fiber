@@ -1456,3 +1456,25 @@ func Test_Static_MaxAge_NotOnErrorResponses(t *testing.T) {
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
 	require.Equal(t, "public, max-age=3600", resp.Header.Get(fiber.HeaderCacheControl))
 }
+
+func Test_Static_NonGetMethod_PassesThrough(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Use("/", New("../../.github"))
+	app.Post("/index.html", func(c fiber.Ctx) error { return c.SendString("posted") })
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodPost, "/index.html", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "posted", string(body))
+
+	get, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/index.html", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, get.StatusCode)
+	served, err := io.ReadAll(get.Body)
+	require.NoError(t, err)
+	require.Contains(t, string(served), "Hello, World!")
+}

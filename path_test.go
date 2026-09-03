@@ -1132,3 +1132,55 @@ func Test_RoutePatternMatch_MatchesRouter(t *testing.T) {
 		})
 	}
 }
+
+func Test_UnescapePath_MalformedEscape(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		in, out string
+	}{
+		{in: "/no-escape", out: "/no-escape"},
+		{in: "/a%2Fb", out: "/a/b"},
+		{in: "/a%2fb", out: "/a/b"},
+		{in: "/a%2Ab", out: "/a*b"},
+		{in: "/a%zzb", out: "/a%zzb"},
+		{in: "/a%2zb", out: "/a%2zb"},
+		{in: "/a%z2b", out: "/a%z2b"},
+		{in: "/trailing%2", out: "/trailing%2"},
+		{in: "/plus+kept%20", out: "/plus+kept "},
+	}
+
+	for _, tc := range tests {
+		require.Equal(t, tc.out, string(unescapePath([]byte(tc.in))), "in=%q", tc.in)
+	}
+}
+
+func Test_RouteParser_AdoptConstraints_Mismatch(t *testing.T) {
+	t.Parallel()
+
+	var pretty, raw routeParser
+	pretty.parseRoute("/:id<int>/:name", nil)
+	raw.parseRoute("/:id<int>", nil)
+
+	before := make([]int, len(pretty.segs))
+	for i, seg := range pretty.segs {
+		before[i] = len(seg.Constraints)
+	}
+
+	pretty.adoptConstraints(&raw)
+
+	for i, seg := range pretty.segs {
+		require.Len(t, seg.Constraints, before[i])
+	}
+}
+
+func Test_RouteParser_AdoptConstraints_FewerRawSegments(t *testing.T) {
+	t.Parallel()
+
+	var pretty, raw routeParser
+	pretty.parseRoute("/a/:id<int>/b/:name<int>", nil)
+	raw.parseRoute("/:id<int>", nil)
+	raw.params = append(raw.params, "name")
+
+	require.NotPanics(t, func() { pretty.adoptConstraints(&raw) })
+}

@@ -17,6 +17,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"math"
 	"mime/multipart"
 	"net"
@@ -11520,4 +11521,28 @@ func Test_Ctx_Body_With_Compression_IdentityChain(t *testing.T) {
 			app.ReleaseCtx(c)
 		}
 	}
+}
+
+type funcFS func(string) (fs.File, error)
+
+func (f funcFS) Open(name string) (fs.File, error) { return f(name) }
+
+func Test_SameFS(t *testing.T) {
+	t.Parallel()
+
+	dirA, dirB := os.DirFS("."), os.DirFS("..")
+	mapA := fstest.MapFS{"a": &fstest.MapFile{}}
+	openA := funcFS(func(string) (fs.File, error) { return nil, fs.ErrNotExist })
+	openB := funcFS(func(string) (fs.File, error) { return nil, fs.ErrNotExist })
+
+	require.True(t, sameFS(nil, nil))
+	require.False(t, sameFS(dirA, nil))
+	require.False(t, sameFS(nil, dirA))
+	require.True(t, sameFS(dirA, dirA))
+	require.False(t, sameFS(dirA, dirB))
+	require.False(t, sameFS(dirA, mapA))
+	require.True(t, sameFS(mapA, mapA))
+	require.False(t, sameFS(mapA, fstest.MapFS{"a": &fstest.MapFile{}}))
+	require.False(t, sameFS(openA, openB))
+	require.False(t, sameFS(openA, openA))
 }

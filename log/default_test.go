@@ -686,3 +686,24 @@ func Test_DefaultLogger_FatalExitsAboveLevel(t *testing.T) {
 	logger.Fatalw("fatal", "k", "v")
 	require.Equal(t, []int{1, 1, 1}, exited)
 }
+
+func Test_DefaultLogger_FatalExitsAfterWrite(t *testing.T) {
+	// Not parallel: it swaps the package-level exit hook.
+	var exited []int
+	original := osExit
+	osExit = func(code int) { exited = append(exited, code) }
+	t.Cleanup(func() { osExit = original })
+
+	var buf bytes.Buffer
+	logger := &defaultLogger{
+		stdlog: log.New(&buf, "", 0),
+		level:  LevelTrace,
+		depth:  4,
+	}
+
+	logger.Fatal("fatal")
+	logger.Fatalf("fatal %d", 1)
+	logger.Fatalw("fatal", "k", "v")
+	require.Equal(t, []int{1, 1, 1}, exited)
+	require.Contains(t, buf.String(), "[Fatal] fatal")
+}

@@ -375,12 +375,14 @@ func contextOf(v reflect.Value) (context.Context, bool) {
 			return ctx, true
 		}
 	case reflect.Struct:
+		// A pointer's method set contains the value's, so the addressable form
+		// answers for both receiver kinds; a value this walk cannot address
+		// still answers for value receivers.
+		val := v
 		if v.CanAddr() {
-			if ctx, ok := v.Addr().Interface().(context.Context); ok {
-				return ctx, true
-			}
+			val = v.Addr()
 		}
-		if ctx, ok := v.Interface().(context.Context); ok {
+		if ctx, ok := val.Interface().(context.Context); ok {
 			return ctx, true
 		}
 	default:

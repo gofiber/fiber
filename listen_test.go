@@ -1709,3 +1709,44 @@ func Test_Listener_TLS_ClientHelloInfo_PerConnection(t *testing.T) {
 	require.NoError(t, app.Shutdown())
 	require.NoError(t, <-errs)
 }
+
+func Test_Listener_ConnState_UserCallbackPreserved(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	app.Get("/", func(c Ctx) error { return c.SendString("ok") })
+
+	closed := make(chan struct{}, 1)
+	app.Server().ConnState = func(_ net.Conn, state fasthttp.ConnState) {
+		if state == fasthttp.StateClosed {
+			select {
+			case closed <- struct{}{}:
+			default:
+			}
+		}
+	}
+	app.SetTLSHandler(&TLSHandler{})
+
+	ln := fasthttputil.NewInmemoryListener()
+	errs := make(chan error, 1)
+	go func() {
+		errs <- app.Listener(ln, ListenConfig{DisableStartupMessage: true})
+	}()
+
+	conn, err := ln.Dial()
+	require.NoError(t, err)
+	_, err = conn.Write([]byte("GET / HTTP/1.1\r\nHost: example.com\r\nConnection: close\r\n\r\n"))
+	require.NoError(t, err)
+	_, err = io.ReadAll(conn)
+	require.NoError(t, err)
+	require.NoError(t, conn.Close())
+
+	select {
+	case <-closed:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the user ConnState callback was not called")
+	}
+
+	require.NoError(t, app.Shutdown())
+	require.NoError(t, <-errs)
+}

@@ -953,3 +953,50 @@ func Benchmark_Parser_Request_URL_PathParams(b *testing.B) {
 		ReleaseRequest(req)
 	}
 }
+
+func Test_Client_Logger_StreamedBodiesLogHeadersOnly(t *testing.T) {
+	t.Parallel()
+
+	var buf bytes.Buffer
+	client := New()
+	client.Debug().SetLogger(&dummyLogger{buf: &buf})
+
+	req := AcquireRequest()
+	t.Cleanup(func() { ReleaseRequest(req) })
+	req.RawRequest.SetRequestURI("http://example.com/")
+	req.RawRequest.Header.SetMethod(fiber.MethodPost)
+	req.RawRequest.SetBodyStream(bytes.NewBufferString("request body"), len("request body"))
+
+	resp := AcquireResponse()
+	t.Cleanup(func() { ReleaseResponse(resp) })
+	resp.RawResponse.SetBodyStream(bytes.NewBufferString("response body"), len("response body"))
+
+	require.NoError(t, logger(client, resp, req))
+
+	out := buf.String()
+	require.Contains(t, out, "POST http://example.com/ HTTP/1.1")
+	require.Contains(t, out, "HTTP/1.1 200 OK")
+	require.NotContains(t, out, "request body", "a streamed body is consumed by its first reader")
+	require.NotContains(t, out, "response body")
+	require.True(t, req.RawRequest.IsBodyStream())
+	require.True(t, resp.RawResponse.IsBodyStream())
+}
+
+func Test_Client_ResponseCookie_UnparsableAttribute(t *testing.T) {
+	t.Parallel()
+
+	client := New()
+
+	req := AcquireRequest()
+	t.Cleanup(func() { ReleaseRequest(req) })
+	req.RawRequest.SetRequestURI("http://example.com/")
+
+	resp := AcquireResponse()
+	t.Cleanup(func() { ReleaseResponse(resp) })
+	resp.RawResponse.Header.Add("Set-Cookie", "sid=abc; Expires=notadate; Path=/")
+
+	require.NoError(t, parserResponseCookie(client, resp, req))
+	require.Len(t, resp.cookie, 1)
+	require.Equal(t, "sid", string(resp.cookie[0].Key()))
+	require.Equal(t, "abc", string(resp.cookie[0].Value()))
+}

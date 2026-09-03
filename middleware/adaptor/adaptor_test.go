@@ -2642,3 +2642,66 @@ func Test_HTTPMiddleware_URLRewrite(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "users at /users", string(body))
 }
+
+func Test_HTTPHandler_TLSConnectionStateCarried(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Get("/", func(c fiber.Ctx) error {
+		state := c.RequestCtx().TLSConnectionState()
+		if state == nil {
+			return c.SendString("none")
+		}
+		return c.SendString(state.ServerName + " " + state.NegotiatedProtocol)
+	})
+
+	handler := FiberApp(app)
+
+	req := httptest.NewRequest(http.MethodGet, "https://example.com/", http.NoBody)
+	req.TLS = &tls.ConnectionState{Version: tls.VersionTLS13, ServerName: "example.com", NegotiatedProtocol: "h2"}
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	require.Equal(t, "example.com h2", rec.Body.String())
+
+	plain := httptest.NewRequest(http.MethodGet, "http://example.com/", http.NoBody)
+	rec = httptest.NewRecorder()
+	handler.ServeHTTP(rec, plain)
+	require.Equal(t, "none", rec.Body.String())
+}
+
+func Test_TLSNoopConn_HandshakeIsNoop(t *testing.T) {
+	t.Parallel()
+
+	conn := &tlsNoopConn{state: tls.ConnectionState{ServerName: "example.com"}}
+	require.NoError(t, conn.Handshake())
+	require.Equal(t, "example.com", conn.ConnectionState().ServerName)
+}
+
+func Test_HTTPMiddleware_NextCalledAfterReturn(t *testing.T) {
+	t.Parallel()
+
+	saved := make(chan http.Handler, 1)
+	mw := func(h http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			saved <- h
+			w.WriteHeader(http.StatusAccepted)
+		})
+	}
+
+	app := fiber.New()
+	app.Use(HTTPMiddleware(mw))
+	app.Get("/", func(c fiber.Ctx) error { return c.SendString("downstream") })
+
+	resp, err := app.Test(httptest.NewRequest(http.MethodGet, "/", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, http.StatusAccepted, resp.StatusCode)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Empty(t, string(body))
+
+	// The Fiber context is released by now, so a late next must be a no-op.
+	next := <-saved
+	require.NotPanics(t, func() {
+		next.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodPost, "/late", http.NoBody))
+	})
+}

@@ -1637,3 +1637,22 @@ func Test_Proxy_Forward_RestoresHost(t *testing.T) {
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
 	require.Equal(t, "public.example.com", <-seen)
 }
+
+func Test_Proxy_HostWithoutPort(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		in, out string
+	}{
+		{in: "example.com", out: "example.com"},
+		{in: "example.com:8080", out: "example.com"},
+		{in: "[::1]:8080", out: "[::1]"},
+		{in: "[::1]", out: "[::1]"},
+		{in: "[::1", out: "[::1"},
+		{in: "::1", out: "::1"},
+	}
+
+	for _, tc := range tests {
+		require.Equal(t, tc.out, hostWithoutPort(tc.in), "in=%q", tc.in)
+	}
+}

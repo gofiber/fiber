@@ -199,6 +199,9 @@ func Test_Storage_Memory_GCInterval_SubSecond(t *testing.T) {
 	t.Parallel()
 
 	require.Equal(t, 100*time.Millisecond, configDefault(Config{GCInterval: 100 * time.Millisecond}).GCInterval)
+	require.Equal(t, ConfigDefault.GCInterval, configDefault(Config{}).GCInterval)
+	require.Equal(t, ConfigDefault.GCInterval, configDefault(Config{GCInterval: -time.Second}).GCInterval)
+	require.Equal(t, ConfigDefault.GCInterval, configDefault().GCInterval)
 
 	testStore := New(Config{GCInterval: 100 * time.Millisecond})
 	require.Equal(t, 100*time.Millisecond, testStore.gcInterval)

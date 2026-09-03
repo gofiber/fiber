@@ -226,3 +226,25 @@ func Test_ExponentialBackoff_Retry_Concurrent(t *testing.T) {
 	}
 	wg.Wait()
 }
+
+func Test_ExponentialBackoff_Retry_UnsetInitialInterval(t *testing.T) {
+	t.Parallel()
+
+	backoff := &ExponentialBackoff{
+		MaxBackoffTime:  time.Millisecond,
+		Multiplier:      2,
+		MaxRetryCount:   2,
+		currentInterval: time.Microsecond,
+	}
+
+	attempts := 0
+	require.NoError(t, backoff.Retry(func() error {
+		attempts++
+		if attempts < 2 {
+			return errors.New("once more")
+		}
+		return nil
+	}))
+	require.Equal(t, 2, attempts)
+	require.Equal(t, time.Microsecond, backoff.currentInterval)
+}

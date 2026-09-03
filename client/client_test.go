@@ -2654,28 +2654,76 @@ func Test_Client_PreHookError_ReleasesOwnedRequest(t *testing.T) {
 	require.ErrorContains(t, err, "boom")
 }
 
-func Test_CookieJar_InvalidMaxAgeIgnored(t *testing.T) {
+func Test_Client_AfterHookError_ReleasesOwnedRequest(t *testing.T) {
 	t.Parallel()
 
-	jar := AcquireCookieJar()
-	t.Cleanup(jar.Release)
+	server := startTestServer(t, func(app *fiber.App) {
+		app.Get("/", func(c fiber.Ctx) error {
+			return c.SendString("ok")
+		})
+	})
+	defer server.stop()
 
-	uri := fasthttp.AcquireURI()
-	t.Cleanup(func() { fasthttp.ReleaseURI(uri) })
-	require.NoError(t, uri.Parse(nil, []byte("http://example.com/")))
+	var owned, called bool
+	client := New().SetDial(server.dial())
+	client.AddResponseHook(func(_ *Client, _ *Response, req *Request) error {
+		called, owned = true, req.clientOwned
+		return errors.New("boom")
+	})
 
-	resp := fasthttp.AcquireResponse()
-	t.Cleanup(func() { fasthttp.ReleaseResponse(resp) })
-	expires := time.Now().Add(time.Hour).UTC().Format(time.RFC1123)
-	resp.Header.Add("Set-Cookie", "sid=x; Max-Age=bogus; Expires="+expires)
+	// No response reaches the caller, so the helper's own request has to go back
+	// to the pool here or it is stranded.
+	_, err := client.Get("http://example.com/")
+	require.ErrorContains(t, err, "boom")
+	require.True(t, called)
+	require.True(t, owned)
+}
 
-	jar.parseCookiesFromResp([]byte("example.com"), []byte("/"), resp)
+func Test_CookieJar_MaxAgePrecedence(t *testing.T) {
+	t.Parallel()
 
-	// RFC 6265 §5.2.2: a Max-Age that is not an integer is ignored, so the
-	// cookie keeps the future Expires rather than being deleted.
-	cookies := jar.Get(uri)
-	require.Len(t, cookies, 1)
-	require.Equal(t, "x", string(cookies[0].Value()))
+	tests := []struct {
+		name   string
+		maxAge string
+		kept   bool
+	}{
+		{name: "not an integer", maxAge: "Max-Age=bogus", kept: true},
+		{name: "no value", maxAge: "Max-Age", kept: true},
+		{name: "empty value", maxAge: "Max-Age=", kept: true},
+		{name: "padded", maxAge: "Max-Age= 3600 ", kept: true},
+		{name: "zero", maxAge: "Max-Age=0", kept: false},
+		{name: "negative", maxAge: "Max-Age=-1", kept: false},
+		{name: "lowercase zero", maxAge: "max-age=0", kept: false},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			jar := AcquireCookieJar()
+			t.Cleanup(jar.Release)
+
+			uri := fasthttp.AcquireURI()
+			t.Cleanup(func() { fasthttp.ReleaseURI(uri) })
+			require.NoError(t, uri.Parse(nil, []byte("http://example.com/")))
+
+			resp := fasthttp.AcquireResponse()
+			t.Cleanup(func() { fasthttp.ReleaseResponse(resp) })
+			expires := time.Now().Add(time.Hour).UTC().Format(time.RFC1123)
+			resp.Header.Add("Set-Cookie", "sid=x; "+tc.maxAge+"; Expires="+expires)
+
+			jar.parseCookiesFromResp([]byte("example.com"), []byte("/"), resp)
+
+			// RFC 6265 §5.2.2: Max-Age wins over Expires, but only when it is an integer.
+			cookies := jar.Get(uri)
+			if !tc.kept {
+				require.Empty(t, cookies)
+				return
+			}
+			require.Len(t, cookies, 1)
+			require.Equal(t, "x", string(cookies[0].Value()))
+		})
+	}
 }
 
 func Test_Request_CancelledContext_NoRace(t *testing.T) {
