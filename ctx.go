@@ -17,6 +17,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/gofiber/fiber/v3/internal/contextvalue"
 	"github.com/gofiber/utils/v2"
 	"github.com/valyala/bytebufferpool"
 	"github.com/valyala/fasthttp"
@@ -38,15 +39,6 @@ var (
 	_                  context.Context = (*DefaultCtx)(nil) // Compile-time check
 	emptyRouteHandlers [0]Handler
 	emptyRouteParams   [0]string
-)
-
-// The contextKey type is unexported to prevent collisions with context keys defined in
-// other packages.
-type contextKey int
-
-// userContextKey define the key name for storing context.Context in *fasthttp.RequestCtx
-const (
-	userContextKey contextKey = iota // __local_user_context__
 )
 
 // DefaultCtx is the default implementation of the Ctx interface
@@ -137,7 +129,7 @@ func (c *DefaultCtx) Context() context.Context {
 	if c.fasthttp == nil {
 		return context.Background()
 	}
-	if ctx, ok := c.fasthttp.UserValue(userContextKey).(context.Context); ok && ctx != nil {
+	if ctx, ok := c.fasthttp.UserValue(contextvalue.UserContextKey).(context.Context); ok && ctx != nil {
 		return ctx
 	}
 	ctx := context.Background()
@@ -150,7 +142,7 @@ func (c *DefaultCtx) SetContext(ctx context.Context) {
 	if c.fasthttp == nil {
 		return
 	}
-	c.fasthttp.SetUserValue(userContextKey, ctx)
+	c.fasthttp.SetUserValue(contextvalue.UserContextKey, ctx)
 	c.isUserContextSet = true
 }
 
@@ -778,7 +770,7 @@ func (c *DefaultCtx) Reset(fctx *fasthttp.RequestCtx) {
 func (c *DefaultCtx) release() {
 	if c.isUserContextSet {
 		if c.fasthttp != nil {
-			c.fasthttp.SetUserValue(userContextKey, nil)
+			c.fasthttp.SetUserValue(contextvalue.UserContextKey, nil)
 		}
 		c.isUserContextSet = false
 	}
