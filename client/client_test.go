@@ -2639,19 +2639,44 @@ func Test_CookieJar_MaxAge(t *testing.T) {
 	require.Empty(t, get("/echo"), "the cookie must expire after Max-Age seconds")
 }
 
+// requireOwnedRequestReleased sends until the client hands the same pooled
+// request out twice. Only a release puts a pointer back where Acquire can find
+// it, so a repeat proves it happened and a stranded request can never produce
+// one however many sends follow.
+func requireOwnedRequestReleased(t *testing.T, send func() (*Request, error)) {
+	t.Helper()
+
+	seen := make(map[*Request]struct{}, 64)
+	for range 64 {
+		req, err := send()
+		require.ErrorContains(t, err, "boom")
+		require.NotNil(t, req)
+		if _, repeat := seen[req]; repeat {
+			return
+		}
+		seen[req] = struct{}{}
+	}
+	t.Fatal("the client never reused a pooled request: the failing send strands it")
+}
+
 func Test_Client_PreHookError_ReleasesOwnedRequest(t *testing.T) {
 	t.Parallel()
 
+	var seen *Request
 	client := New()
-	client.AddRequestHook(func(_ *Client, _ *Request) error {
+	client.AddRequestHook(func(_ *Client, req *Request) error {
+		seen = req
+		require.True(t, req.clientOwned)
 		return errors.New("boom")
 	})
 
-	// The helper's own request must not be stranded: nothing dispatched, so no
-	// response will ever carry it back to the pool.
-	_, err := client.Get("http://example.com")
-	require.Error(t, err)
-	require.ErrorContains(t, err, "boom")
+	// Nothing is dispatched, so no response will ever carry the helper's own
+	// request back to the pool.
+	requireOwnedRequestReleased(t, func() (*Request, error) {
+		seen = nil
+		_, err := client.Get("http://example.com")
+		return seen, err
+	})
 }
 
 func Test_Client_AfterHookError_ReleasesOwnedRequest(t *testing.T) {
@@ -2664,19 +2689,20 @@ func Test_Client_AfterHookError_ReleasesOwnedRequest(t *testing.T) {
 	})
 	defer server.stop()
 
-	var owned, called bool
+	var seen *Request
 	client := New().SetDial(server.dial())
 	client.AddResponseHook(func(_ *Client, _ *Response, req *Request) error {
-		called, owned = true, req.clientOwned
+		seen = req
+		require.True(t, req.clientOwned)
 		return errors.New("boom")
 	})
 
-	// No response reaches the caller, so the helper's own request has to go back
-	// to the pool here or it is stranded.
-	_, err := client.Get("http://example.com/")
-	require.ErrorContains(t, err, "boom")
-	require.True(t, called)
-	require.True(t, owned)
+	// No response reaches the caller, so the request has to go back here.
+	requireOwnedRequestReleased(t, func() (*Request, error) {
+		seen = nil
+		_, err := client.Get("http://example.com/")
+		return seen, err
+	})
 }
 
 func Test_CookieJar_MaxAgePrecedence(t *testing.T) {
