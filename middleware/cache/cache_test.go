@@ -2279,6 +2279,48 @@ func Test_Cache_NoCacheRefresh_KeepsAccounting(t *testing.T) {
 	}
 }
 
+func Test_Cache_FailedRefreshKeepsOldEntryTracked(t *testing.T) {
+	t.Parallel()
+
+	const bodyKey = "set|" + cacheKeyVersion + "|GET|/|q=|h=accept:0|accept-encoding:0|accept-language:0_body"
+
+	storage := newFailingCacheStorage()
+	probe := &accountingProbe{}
+	app := fiber.New()
+	app.Use(New(Config{
+		Storage:    storage,
+		MaxBytes:   1500,
+		Expiration: time.Hour,
+		accounting: probe.record,
+	}))
+	app.Get("/", func(c fiber.Ctx) error {
+		return c.Send(make([]byte, 600))
+	})
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	counted, nodes := probe.counted(), probe.nodes()
+	require.NotZero(t, counted)
+	require.Equal(t, 1, nodes)
+
+	// Refresh the entry, failing the replacement's body store: the entry it
+	// superseded stays in the backend, so it must stay counted and tracked
+	// rather than leaking its bytes and its expiry.
+	storage.mu.Lock()
+	storage.errs[bodyKey] = errors.New("boom")
+	storage.mu.Unlock()
+
+	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+	req.Header.Set(fiber.HeaderCacheControl, noCache)
+	resp, err = app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusInternalServerError, resp.StatusCode)
+
+	require.Equal(t, counted, probe.counted())
+	require.Equal(t, nodes, probe.nodes())
+}
+
 func Test_Cache_UncacheableResponseDoesNotEvict(t *testing.T) {
 	t.Parallel()
 

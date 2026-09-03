@@ -19,6 +19,7 @@ import (
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/internal/fieldname"
 	"github.com/gofiber/fiber/v3/internal/headerlookup"
+	"github.com/gofiber/fiber/v3/log"
 )
 
 // hexLen is the hex-encoded length of a SHA-256 sum, shared by the auth and vary hashers.
@@ -184,27 +185,32 @@ func New(config ...Config) fiber.Handler {
 		return nil
 	}
 
-	removeHeapEntry := func(entryKey string, heapIdx int) {
+	// removeHeapEntry drops a tracked entry and reports it, so a caller that
+	// removes one before storing its replacement can put it back on failure.
+	removeHeapEntry := func(entryKey string, heapIdx int) (evictionCandidate, bool) {
 		if cfg.MaxBytes == 0 {
-			return
+			return evictionCandidate{}, false
 		}
 
 		if heapIdx < 0 || heapIdx >= len(heap.indices) {
-			return
+			return evictionCandidate{}, false
 		}
 
 		indexedIdx := heap.indices[heapIdx]
 		if indexedIdx < 0 || indexedIdx >= len(heap.entries) {
-			return
+			return evictionCandidate{}, false
 		}
 
 		entry := heap.entries[indexedIdx]
 		if entry.idx != heapIdx || entry.key != entryKey {
-			return
+			return evictionCandidate{}, false
 		}
 
+		exp := entry.exp
 		_, size := heap.remove(heapIdx)
 		storedBytes -= size
+
+		return evictionCandidate{key: entryKey, size: size, exp: exp, heapIdx: heapIdx}, true
 	}
 
 	refreshHeapIndex := func(ctx context.Context, candidate evictionCandidate) error {
@@ -910,12 +916,35 @@ func New(config ...Config) fiber.Handler {
 		// 3. On deletion failure: restore storedBytes and return error
 		// 4. Track reservation with a flag; unreserve on early return via defer
 		var spaceReserved bool
+		// The entry being replaced is untracked before its replacement is
+		// stored, so a later failure has to put it back: otherwise it can stay
+		// in the backend counting toward nothing and never expiring.
+		var (
+			replaced   evictionCandidate
+			replacedOK bool
+			stored     bool
+		)
 		defer func() {
+			if cfg.MaxBytes == 0 {
+				return
+			}
+
+			mux.Lock()
 			// If we reserved space but the entry was not successfully added to heap, unreserve it
-			if cfg.MaxBytes > 0 && spaceReserved {
-				mux.Lock()
+			if spaceReserved {
 				storedBytes -= bodySize
-				mux.Unlock()
+			}
+			restore := replacedOK && !stored
+			if restore {
+				replaced.heapIdx = heap.put(replaced.key, replaced.exp, replaced.size)
+				storedBytes += replaced.size
+			}
+			mux.Unlock()
+
+			if restore {
+				if err := refreshHeapIndex(reqCtx, replaced); err != nil {
+					log.Warnf("cache: %v", err)
+				}
 			}
 		}()
 
@@ -923,7 +952,7 @@ func New(config ...Config) fiber.Handler {
 			mux.Lock()
 			// The replaced entry hands its bookkeeping over first, so a key is never tracked twice.
 			if oldHeapIdx >= 0 {
-				removeHeapEntry(key, oldHeapIdx)
+				replaced, replacedOK = removeHeapEntry(key, oldHeapIdx)
 				oldHeapIdx = -1
 			}
 			// Reserve space for the new entry first
@@ -1069,6 +1098,10 @@ func New(config ...Config) fiber.Handler {
 				return err
 			}
 		}
+
+		// The replacement is in the backend now, so the entry it superseded
+		// must not be restored by the deferred cleanup.
+		stored = true
 
 		c.Set(cfg.CacheHeader, cacheMiss)
 
