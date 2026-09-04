@@ -159,7 +159,7 @@ Access-Control-Allow-Credentials => true
 
 ## Cookies
 
-**Cookies** returns a slice of all cookies set by the server in this response. The slice is only valid until the response is released.
+**Cookies** returns a slice of all cookies set by the server in this response. The slice is only valid until the response is released. An attribute the parser cannot read — a `Max-Age` that is not an integer, an `Expires` in an unrecognized format — is ignored on its own (RFC 6265 §5.2); the cookie keeps its name, its value and every other attribute rather than being dropped.
 
 ```go title="Signature"
 func (r *Response) Cookies() []*fasthttp.Cookie

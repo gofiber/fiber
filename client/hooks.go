@@ -563,10 +563,7 @@ func parserResponseCookie(c *Client, resp *Response, req *Request) error {
 	for key, value := range resp.RawResponse.Header.Cookies() {
 		cookie := fasthttp.AcquireCookie()
 		if err := cookie.ParseBytes(value); err != nil {
-			// An attribute fasthttp cannot parse is ignored (RFC 6265 §5.2): keep the name and value.
-			cookie.Reset()
-			pair, _, _ := bytes.Cut(value, []byte{';'})
-			if err := cookie.ParseBytes(pair); err != nil {
+			if err := parseCookieIgnoringBadAttrs(cookie, value); err != nil {
 				fasthttp.ReleaseCookie(cookie)
 				continue
 			}
@@ -584,6 +581,35 @@ func parserResponseCookie(c *Client, resp *Response, req *Request) error {
 	}
 
 	return nil
+}
+
+// parseCookieIgnoringBadAttrs parses a Set-Cookie value, dropping only the
+// attributes fasthttp cannot parse. RFC 6265 §5.2 has an unparsable attribute
+// ignored, while fasthttp abandons the cookie at the first one — losing the
+// name, the value, and every attribute it had already accepted. Each attribute
+// is offered against the ones kept so far, so those on either side of a bad one
+// survive. Only a name/value pair that will not parse fails the cookie.
+func parseCookieIgnoringBadAttrs(cookie *fasthttp.Cookie, value []byte) error {
+	pair, rest, _ := bytes.Cut(value, []byte{';'})
+	kept := append([]byte(nil), pair...)
+
+	// ParseBytes resets the cookie, so a rejected attempt leaves nothing behind.
+	trial := fasthttp.AcquireCookie()
+	defer fasthttp.ReleaseCookie(trial)
+	if err := trial.ParseBytes(kept); err != nil {
+		return err
+	}
+
+	for len(rest) > 0 {
+		var attr []byte
+		attr, rest, _ = bytes.Cut(rest, []byte{';'})
+		candidate := append(append(append([]byte(nil), kept...), ';'), attr...)
+		if err := trial.ParseBytes(candidate); err == nil {
+			kept = candidate
+		}
+	}
+
+	return cookie.ParseBytes(kept)
 }
 
 // logger is a response hook that logs request and response data if debug mode is enabled.

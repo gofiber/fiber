@@ -982,6 +982,47 @@ func Test_Client_Logger_StreamedBodiesLogHeadersOnly(t *testing.T) {
 	require.True(t, resp.RawResponse.IsBodyStream())
 }
 
+func Test_ParseCookieIgnoringBadAttrs(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		value    string
+		wantVal  string
+		wantPath string
+		wantErr  bool
+		secure   bool
+		httpOnly bool
+	}{
+		{name: "trailing bad attr", value: "a=1; Secure; Expires=bogus", wantVal: "1", secure: true},
+		{name: "leading bad attr", value: "a=1; Expires=bogus; Secure", wantVal: "1", secure: true},
+		{name: "bad attr between", value: "a=1; Secure; Max-Age=abc; HttpOnly", wantVal: "1", secure: true, httpOnly: true},
+		{name: "two bad attrs", value: "a=1; Expires=bogus; Path=/p; Max-Age=abc", wantVal: "1", wantPath: "/p"},
+		{name: "no attrs", value: "a=1", wantVal: "1"},
+		{name: "value only", value: "1", wantVal: "1"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			cookie := fasthttp.AcquireCookie()
+			t.Cleanup(func() { fasthttp.ReleaseCookie(cookie) })
+
+			err := parseCookieIgnoringBadAttrs(cookie, []byte(tc.value))
+			if tc.wantErr {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, tc.wantVal, string(cookie.Value()))
+			require.Equal(t, tc.wantPath, string(cookie.Path()))
+			require.Equal(t, tc.secure, cookie.Secure())
+			require.Equal(t, tc.httpOnly, cookie.HTTPOnly())
+		})
+	}
+}
+
 func Test_Client_ResponseCookie_UnparsableAttribute(t *testing.T) {
 	t.Parallel()
 
@@ -993,10 +1034,18 @@ func Test_Client_ResponseCookie_UnparsableAttribute(t *testing.T) {
 
 	resp := AcquireResponse()
 	t.Cleanup(func() { ReleaseResponse(resp) })
-	resp.RawResponse.Header.Add("Set-Cookie", "sid=abc; Expires=notadate; Path=/")
+	resp.RawResponse.Header.Add("Set-Cookie", "sid=abc; Secure; HttpOnly; Expires=notadate; Path=/api")
 
 	require.NoError(t, parserResponseCookie(client, resp, req))
 	require.Len(t, resp.cookie, 1)
-	require.Equal(t, "sid", string(resp.cookie[0].Key()))
-	require.Equal(t, "abc", string(resp.cookie[0].Value()))
+
+	// Only the malformed attribute is ignored (RFC 6265 §5.2); the ones before
+	// and after it survive, as does an expiry that never parsed.
+	got := resp.cookie[0]
+	require.Equal(t, "sid", string(got.Key()))
+	require.Equal(t, "abc", string(got.Value()))
+	require.True(t, got.Secure())
+	require.True(t, got.HTTPOnly())
+	require.Equal(t, "/api", string(got.Path()))
+	require.True(t, got.Expire().IsZero() || got.Expire().Equal(fasthttp.CookieExpireUnlimited))
 }
