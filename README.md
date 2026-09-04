@@ -74,7 +74,7 @@
 <!-- skip-docs -->
 ## ⚙️ Installation
 
-Fiber requires **Go version `1.25` or higher** to run. If you need to install or upgrade Go, visit the [official Go download page](https://go.dev/dl/). To start setting up your project, create a new directory for your project and navigate into it. Then, initialize your project with Go modules by executing the following command in your terminal:
+Fiber requires **Go version `1.26` or higher** to run. If you need to install or upgrade Go, visit the [official Go download page](https://go.dev/dl/). To start setting up your project, create a new directory for your project and navigate into it. Then, initialize your project with Go modules by executing the following command in your terminal:
 
 ```bash
 go mod init github.com/your/repo
@@ -159,7 +159,7 @@ We **listen** to our users in [issues](https://github.com/gofiber/fiber/issues),
 
 ## ⚠️ Limitations
 
-- Due to Fiber's usage of unsafe, the library may not always be compatible with the latest Go version. Fiber v3 has been tested with Go version 1.25 or higher.
+- Due to Fiber's usage of unsafe, the library may not always be compatible with the latest Go version. Fiber v3 has been tested with Go version 1.26 or higher.
 - Fiber automatically adapts common `net/http` handler shapes when you register them on the router, and you can still use the [adaptor middleware](https://docs.gofiber.io/next/middleware/adaptor/) when you need to bridge entire apps or `net/http` middleware.
 
 ### net/http compatibility
