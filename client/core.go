@@ -258,6 +258,13 @@ func (c *core) execute(ctx context.Context, client *Client, req *Request) (*Resp
 	// Perform the actual HTTP request.
 	resp, err := c.execFunc()
 	if err != nil {
+		// Nothing carries the request back to the pool: no response reaches the
+		// caller. A streamed body is the exception — the transport goroutine was
+		// handed that reader itself, so a canceled send may still be reading it
+		// and releasing here would close it mid-read.
+		if req.clientOwned && !req.RawRequest.IsBodyStream() {
+			ReleaseRequest(req)
+		}
 		return nil, err
 	}
 

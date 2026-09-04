@@ -2683,6 +2683,27 @@ func Test_Client_PreHookError_ReleasesOwnedRequest(t *testing.T) {
 	})
 }
 
+func Test_Client_DispatchError_ReleasesOwnedRequest(t *testing.T) {
+	t.Parallel()
+
+	var seen *Request
+	client := New().SetDial(func(_ string) (net.Conn, error) {
+		return nil, errors.New("boom")
+	})
+	client.AddRequestHook(func(_ *Client, req *Request) error {
+		seen = req
+		return nil
+	})
+
+	// The send never produces a response, so the helper's own request is
+	// stranded unless this path releases it too.
+	requireOwnedRequestReleased(t, func() (*Request, error) {
+		seen = nil
+		_, err := client.Get("http://example.com")
+		return seen, err
+	})
+}
+
 func Test_Client_AfterHookError_ReleasesOwnedRequest(t *testing.T) {
 	t.Parallel()
 
