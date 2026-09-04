@@ -1750,3 +1750,70 @@ func Test_Listener_ConnState_UserCallbackPreserved(t *testing.T) {
 	require.NoError(t, app.Shutdown())
 	require.NoError(t, <-errs)
 }
+
+func Test_Listener_TLS_ClientHelloInfo_MaxConnsPerIP(t *testing.T) {
+	t.Parallel()
+
+	cert, err := tls.LoadX509KeyPair("./.github/testdata/ssl.pem", "./.github/testdata/ssl.key")
+	require.NoError(t, err)
+
+	tlsHandler := &TLSHandler{}
+	app := New()
+	app.SetTLSHandler(tlsHandler)
+	// fasthttp wraps every accepted connection for this accounting, and the
+	// wrapper is what the request side sees.
+	app.Server().MaxConnsPerIP = 8
+	app.Get("/", func(c Ctx) error {
+		if info := c.ClientHelloInfo(); info != nil {
+			return c.SendString(info.ServerName)
+		}
+		return c.SendString("<nil>")
+	})
+
+	raw, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	tlsLn := tls.NewListener(raw, &tls.Config{
+		MinVersion:     tls.VersionTLS12,
+		Certificates:   []tls.Certificate{cert},
+		GetCertificate: tlsHandler.GetClientInfo,
+	})
+
+	errs := make(chan error, 1)
+	go func() {
+		errs <- app.Listener(tlsLn, ListenConfig{DisableStartupMessage: true})
+	}()
+
+	addr := raw.Addr().String()
+	dial := func(serverName string) *tls.Conn {
+		t.Helper()
+
+		conn, dialErr := tls.Dial("tcp", addr, &tls.Config{
+			ServerName:         serverName,
+			InsecureSkipVerify: true, // self-signed test certificate
+			MinVersion:         tls.VersionTLS12,
+		})
+		require.NoError(t, dialErr)
+		return conn
+	}
+	serverNameSeenBy := func(conn *tls.Conn) string {
+		t.Helper()
+
+		_, writeErr := conn.Write([]byte("GET / HTTP/1.1\r\nHost: example.com\r\nConnection: close\r\n\r\n"))
+		require.NoError(t, writeErr)
+		resp := fasthttp.AcquireResponse()
+		defer fasthttp.ReleaseResponse(resp)
+		require.NoError(t, resp.Read(bufio.NewReader(conn)))
+		return string(resp.Body())
+	}
+
+	first := dial("first.example")
+	t.Cleanup(func() { _ = first.Close() }) //nolint:errcheck // not needed
+	second := dial("second.example")
+	t.Cleanup(func() { _ = second.Close() }) //nolint:errcheck // not needed
+
+	require.Equal(t, "first.example", serverNameSeenBy(first))
+	require.Equal(t, "second.example", serverNameSeenBy(second))
+
+	require.NoError(t, app.Shutdown())
+	require.NoError(t, <-errs)
+}

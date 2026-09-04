@@ -11546,3 +11546,25 @@ func Test_SameFS(t *testing.T) {
 	require.False(t, sameFS(openA, openB))
 	require.False(t, sameFS(openA, openA))
 }
+
+// perIPConnStub mirrors fasthttp's perIPTLSConn, which wraps an accepted TLS
+// connection when Server.MaxConnsPerIP is set.
+type perIPConnStub struct {
+	*tls.Conn
+}
+
+func Test_UnderlyingConn_UnwrapsTLSWrapper(t *testing.T) {
+	t.Parallel()
+
+	raw, peer := net.Pipe()
+	t.Cleanup(func() {
+		require.NoError(t, raw.Close())
+		require.NoError(t, peer.Close())
+	})
+
+	// No handshake runs; the connection is only unwrapped.
+	tlsConn := tls.Client(raw, &tls.Config{InsecureSkipVerify: true})
+	require.Equal(t, raw, underlyingConn(tlsConn))
+	require.Equal(t, raw, underlyingConn(perIPConnStub{Conn: tlsConn}))
+	require.Equal(t, raw, underlyingConn(raw))
+}

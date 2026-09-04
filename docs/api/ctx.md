@@ -1301,7 +1301,7 @@ app.Post("/", func(c fiber.Ctx) error {
 
 ### ClientHelloInfo
 
-`ClientHelloInfo` contains information from the ClientHello message of the TLS connection the request arrived on, to guide application logic in the `GetCertificate` and `GetConfigForClient` callbacks. It is recorded per connection, so concurrent connections never see each other's handshake, and it is `nil` when the app has no TLS handler or the request did not come in over a connection it negotiated.
+`ClientHelloInfo` contains information from the ClientHello message of the TLS connection the request arrived on, to guide application logic in the `GetCertificate` and `GetConfigForClient` callbacks. It is recorded per connection, so concurrent connections never see each other's handshake, and it is `nil` when the app has no TLS handler or the request did not come in over a connection it negotiated. With `Server.MaxConnsPerIP` set, the record for a connection is only dropped once the same connection object is seen again rather than when it closes, because fasthttp recycles the wrapper it reports the close on.
 Refer to the [ClientHelloInfo](https://golang.org/pkg/crypto/tls/#ClientHelloInfo) struct documentation for details on the returned struct.
 
 ```go title="Signature"

@@ -119,17 +119,30 @@ func (t *TLSHandler) clientHelloInfo(conn net.Conn) *tls.ClientHelloInfo {
 	return t.connless.Load()
 }
 
-// forget drops the record kept for a closed connection.
+// forget drops the record kept for a closed connection. It unwraps only a
+// *tls.Conn, never a wrapper around one: fasthttp closes its MaxConnsPerIP
+// wrapper and returns it to a pool before reporting the close, clearing the
+// embedded connection on the way, so asking such a wrapper for what it wrapped
+// dereferences a nil *tls.Conn. Under that setting the entry is dropped when
+// the same connection object is seen again rather than at close.
 func (t *TLSHandler) forget(conn net.Conn) {
-	if key := underlyingConn(conn); key != nil {
+	key := conn
+	if tc, ok := conn.(*tls.Conn); ok {
+		key = tc.NetConn()
+	}
+	if key != nil {
 		t.clientHelloInfos.Delete(key)
 	}
 }
 
 // underlyingConn returns the net.Conn a TLS handshake ran on; crypto/tls hands
-// GetCertificate the raw connection, while the server sees the *tls.Conn.
+// GetCertificate the raw connection, while the server sees the *tls.Conn — or a
+// wrapper around one, as fasthttp installs for Server.MaxConnsPerIP accounting.
+// Matching the method rather than the concrete type unwraps both, so the two
+// sides key on the same connection. Only call this for a connection still in
+// use; see forget for why a closed one cannot be unwrapped this way.
 func underlyingConn(conn net.Conn) net.Conn {
-	if tc, ok := conn.(*tls.Conn); ok {
+	if tc, ok := conn.(interface{ NetConn() net.Conn }); ok {
 		return tc.NetConn()
 	}
 	return conn
