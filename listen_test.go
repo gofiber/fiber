@@ -1751,6 +1751,61 @@ func Test_Listener_ConnState_UserCallbackPreserved(t *testing.T) {
 	require.NoError(t, <-errs)
 }
 
+func Test_Listener_TLS_ClientHelloInfo_MaxConnsPerIP_NoLeak(t *testing.T) {
+	t.Parallel()
+
+	cert, err := tls.LoadX509KeyPair("./.github/testdata/ssl.pem", "./.github/testdata/ssl.key")
+	require.NoError(t, err)
+
+	tlsHandler := &TLSHandler{}
+	app := New()
+	app.SetTLSHandler(tlsHandler)
+	app.Server().MaxConnsPerIP = 8
+	app.Get("/", func(c Ctx) error { return c.SendString("ok") })
+
+	raw, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	tlsLn := tls.NewListener(raw, &tls.Config{
+		MinVersion:     tls.VersionTLS12,
+		Certificates:   []tls.Certificate{cert},
+		GetCertificate: tlsHandler.GetClientInfo,
+	})
+
+	errs := make(chan error, 1)
+	go func() {
+		errs <- app.Listener(tlsLn, ListenConfig{DisableStartupMessage: true})
+	}()
+
+	// Sequential handshakes: the per-IP cap bounds concurrency, not the total.
+	for range 12 {
+		conn, dialErr := tls.Dial("tcp", raw.Addr().String(), &tls.Config{
+			ServerName:         "example.com",
+			InsecureSkipVerify: true, // self-signed test certificate
+			MinVersion:         tls.VersionTLS12,
+		})
+		require.NoError(t, dialErr)
+		_, writeErr := conn.Write([]byte("GET / HTTP/1.1\r\nHost: example.com\r\nConnection: close\r\n\r\n"))
+		require.NoError(t, writeErr)
+		resp := fasthttp.AcquireResponse()
+		require.NoError(t, resp.Read(bufio.NewReader(conn)))
+		fasthttp.ReleaseResponse(resp)
+		require.NoError(t, conn.Close())
+	}
+
+	count := func(m *sync.Map) int {
+		n := 0
+		m.Range(func(_, _ any) bool { n++; return true })
+		return n
+	}
+	require.Eventually(t, func() bool {
+		return count(&tlsHandler.clientHelloInfos) == 0 && count(&tlsHandler.serverConns) == 0
+	}, 5*time.Second, 20*time.Millisecond, "closed connections left %d ClientHelloInfo and %d wrapper entries behind",
+		count(&tlsHandler.clientHelloInfos), count(&tlsHandler.serverConns))
+
+	require.NoError(t, app.Shutdown())
+	require.NoError(t, <-errs)
+}
+
 func Test_Listener_TLS_ClientHelloInfo_MaxConnsPerIP(t *testing.T) {
 	t.Parallel()
 

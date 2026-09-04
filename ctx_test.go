@@ -11568,3 +11568,42 @@ func Test_UnderlyingConn_UnwrapsTLSWrapper(t *testing.T) {
 	require.Equal(t, raw, underlyingConn(perIPConnStub{Conn: tlsConn}))
 	require.Equal(t, raw, underlyingConn(raw))
 }
+
+func Test_TLSHandler_ForgetsRecycledWrapper(t *testing.T) {
+	t.Parallel()
+
+	newConn := func() (net.Conn, *tls.Conn) {
+		raw, peer := net.Pipe()
+		t.Cleanup(func() {
+			require.NoError(t, raw.Close())
+			require.NoError(t, peer.Close())
+		})
+		// No handshake runs; the connections only carry identity.
+		return raw, tls.Client(raw, &tls.Config{InsecureSkipVerify: true})
+	}
+
+	handler := &TLSHandler{}
+	raw1, tls1 := newConn()
+	wrapper := &perIPConnStub{Conn: tls1}
+
+	handler.track(wrapper)
+	_, err := handler.GetClientInfo(&tls.ClientHelloInfo{Conn: raw1, ServerName: "first"})
+	require.NoError(t, err)
+	require.NotNil(t, handler.clientHelloInfo(wrapper))
+
+	// fasthttp recycles the wrapper before it reports the close of what it carried.
+	raw2, tls2 := newConn()
+	wrapper.Conn = tls2
+	handler.track(wrapper)
+	_, ok := handler.clientHelloInfos.Load(raw1)
+	require.False(t, ok, "the recycled wrapper stranded the record of the connection it dropped")
+
+	_, err = handler.GetClientInfo(&tls.ClientHelloInfo{Conn: raw2, ServerName: "second"})
+	require.NoError(t, err)
+	require.Equal(t, "second", handler.clientHelloInfo(wrapper).ServerName)
+
+	handler.forget(wrapper)
+	require.Nil(t, handler.clientHelloInfo(tls2))
+	_, ok = handler.serverConns.Load(wrapper)
+	require.False(t, ok)
+}

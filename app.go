@@ -1755,8 +1755,10 @@ func (app *App) startupProcess() {
 	app.buildTree()
 }
 
-// hookConnState makes the server report closed connections to the TLS handler,
-// keeping a user ConnState callback. Idempotent; the caller holds app.mutex.
+// hookConnState makes the server report new and closed connections to the TLS
+// handler, keeping a user ConnState callback. A connection is reported new
+// while it can still say what it wraps, which is what lets its record be found
+// again at close. Idempotent; the caller holds app.mutex.
 func (app *App) hookConnState() {
 	if app.connStateHooked || app.server == nil {
 		return
@@ -1764,12 +1766,16 @@ func (app *App) hookConnState() {
 	app.connStateHooked = true
 	user := app.server.ConnState
 	app.server.ConnState = func(conn net.Conn, state fasthttp.ConnState) {
-		if state == fasthttp.StateClosed {
+		if state == fasthttp.StateNew || state == fasthttp.StateClosed {
 			app.mutex.Lock()
 			handler := app.tlsHandler
 			app.mutex.Unlock()
 			if handler != nil {
-				handler.forget(conn)
+				if state == fasthttp.StateNew {
+					handler.track(conn)
+				} else {
+					handler.forget(conn)
+				}
 			}
 		}
 		if user != nil {
