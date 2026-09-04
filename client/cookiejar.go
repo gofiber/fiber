@@ -4,6 +4,7 @@ package client
 import (
 	"bytes"
 	"cmp"
+	"math"
 	"net"
 	"slices"
 	"strconv"
@@ -540,7 +541,7 @@ func (cj *CookieJar) parseCookiesFromResp(host, path []byte, resp *fasthttp.Resp
 	for _, value := range resp.Header.Cookies() {
 		tmp := fasthttp.AcquireCookie()
 		_ = tmp.ParseBytes(value) //nolint:errcheck // ignore error
-		applyMaxAge(tmp, now, expiresNowMaxAge(value))
+		applyMaxAge(tmp, now, value)
 
 		// A Set-Cookie whose Path attribute is missing — or does not begin
 		// with '/', which fasthttp's ParseBytes stores verbatim — is scoped to
@@ -837,42 +838,52 @@ func isPublicSuffixDomain(domain string) bool {
 	return suffix == domain
 }
 
-// expiresNowMaxAge reports whether a Set-Cookie value carries a Max-Age that
-// asks for immediate expiry. fasthttp parses MaxAge as 0 whether the attribute
-// is absent, zero or negative, so the raw value decides; one that is not an
-// integer is ignored altogether (RFC 6265 §5.2.2).
-func expiresNowMaxAge(value []byte) bool {
+// lastMaxAge returns the Max-Age a Set-Cookie value asks for: the last
+// occurrence that is an integer, since a repeated attribute is resolved by the
+// last one and a value that is not an integer is ignored (RFC 6265 §5.2.2).
+// The raw value has to be read because fasthttp cannot answer this — it parses
+// MaxAge as 0 whether the attribute is absent, zero or negative.
+func lastMaxAge(value []byte) (int, bool) {
 	_, rest, found := bytes.Cut(value, []byte{';'})
 	if !found {
-		return false
+		return 0, false
 	}
+
+	seconds, ok := 0, false
 	for len(rest) > 0 {
-		part := rest
-		if i := bytes.IndexByte(rest, ';'); i >= 0 {
-			part, rest = rest[:i], rest[i+1:]
-		} else {
-			rest = nil
-		}
+		var part []byte
+		part, rest, _ = bytes.Cut(rest, []byte{';'})
 		name, raw, hasValue := bytes.Cut(part, []byte{'='})
-		if !utils.EqualFold(utils.UnsafeString(utils.TrimSpace(name)), "max-age") {
+		if !hasValue || !utils.EqualFold(utils.UnsafeString(utils.TrimSpace(name)), "max-age") {
 			continue
 		}
-		if !hasValue {
-			return false
+		if n, err := strconv.Atoi(utils.UnsafeString(utils.TrimSpace(raw))); err == nil {
+			seconds, ok = n, true
 		}
-		seconds, err := strconv.Atoi(utils.UnsafeString(utils.TrimSpace(raw)))
-		return err == nil && seconds <= 0
 	}
-	return false
+
+	return seconds, ok
 }
 
 // applyMaxAge turns Max-Age into the absolute expiry the jar keeps. It takes
 // precedence over Expires, and zero or less expires the cookie at once (RFC 6265 §5.2.2).
-func applyMaxAge(c *fasthttp.Cookie, now time.Time, expiresNow bool) {
+func applyMaxAge(c *fasthttp.Cookie, now time.Time, value []byte) {
+	seconds, ok := lastMaxAge(value)
 	switch {
-	case c.MaxAge() > 0:
-		c.SetExpire(now.Add(time.Duration(c.MaxAge()) * time.Second))
-	case expiresNow:
+	case !ok:
+	case seconds <= 0:
 		c.SetExpire(now.Add(-time.Second))
+	default:
+		c.SetExpire(now.Add(maxAgeDuration(seconds)))
 	}
+}
+
+// maxAgeDuration converts Max-Age seconds to a duration, saturating at the
+// longest one a time.Duration holds: a lifetime too far out to express is still
+// a lifetime, not the expiry in the past that overflowing would produce.
+func maxAgeDuration(seconds int) time.Duration {
+	if int64(seconds) > int64(math.MaxInt64/time.Second) {
+		return math.MaxInt64
+	}
+	return time.Duration(seconds) * time.Second
 }

@@ -294,14 +294,25 @@ func ConvertRequest(c fiber.Ctx, forServer bool) (*http.Request, error) {
 //
 // Deprecated: This function uses reflection and unsafe pointers; consider using explicit context passing.
 func CopyContextToFiberContext(src any, requestContext *fasthttp.RequestCtx) {
-	copyContextValues(src, requestContext, 0)
+	copyContextValues(src, requestContext, make(map[visitedContext]struct{}))
 }
 
-// maxContextDepth bounds the walk up a context chain.
-const maxContextDepth = 64
+// visitedContext identifies a context already walked. The address alone would
+// not: an embedded first field shares the address of the struct holding it, and
+// context's own types nest that way.
+type visitedContext struct {
+	typ reflect.Type
+	ptr uintptr
+}
 
-func copyContextValues(src any, requestContext *fasthttp.RequestCtx, depth int) {
-	if requestContext == nil || depth > maxContextDepth {
+// copyContextValues walks the chain to its end, stopping only where it would
+// repeat itself. A chain that points back at a context already walked is a
+// cycle; depth cannot tell one from a legitimately deep middleware stack, whose
+// outermost values a bound would silently drop. Every cycle runs through a
+// pointer — a struct cannot contain itself by value — so remembering those is
+// enough.
+func copyContextValues(src any, requestContext *fasthttp.RequestCtx, seen map[visitedContext]struct{}) {
+	if requestContext == nil {
 		return
 	}
 
@@ -314,6 +325,11 @@ func copyContextValues(src any, requestContext *fasthttp.RequestCtx, depth int) 
 		if v.IsNil() {
 			return
 		}
+		visited := visitedContext{typ: v.Type(), ptr: v.Pointer()}
+		if _, walked := seen[visited]; walked {
+			return
+		}
+		seen[visited] = struct{}{}
 		v = v.Elem()
 	}
 	t := v.Type()
@@ -359,7 +375,7 @@ func copyContextValues(src any, requestContext *fasthttp.RequestCtx, depth int) 
 		// Any other context-typed field carries the parent chain; parents are
 		// copied first, so a child's value for the same key wins.
 		if parent, ok := contextOf(reflectValue); ok {
-			copyContextValues(parent, requestContext, depth+1)
+			copyContextValues(parent, requestContext, seen)
 		}
 	}
 }

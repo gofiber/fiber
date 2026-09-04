@@ -45,7 +45,7 @@ app.Get("/", func(c fiber.Ctx) error {
 })
 ```
 
-A matching `If-None-Match` yields `304 Not Modified` only for `GET` and `HEAD` requests, the methods RFC 9110 defines it for. Other methods pass through unchanged, with the `ETag` header still set.
+A matching `If-None-Match` yields `304 Not Modified` only for `GET` and `HEAD` requests, the methods RFC 9110 defines it for. Other methods pass through unchanged, with the `ETag` header still set. They are not answered with `412 Precondition Failed`: the middleware runs after the handler, over the response it produced, so the method has already been applied and the status whose purpose is to prevent that would misreport what happened.
 
 Entity tags in requests must be quoted per RFC 9110. For example:
 

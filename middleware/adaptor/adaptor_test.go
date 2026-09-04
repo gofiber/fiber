@@ -2705,3 +2705,40 @@ func Test_HTTPMiddleware_NextCalledAfterReturn(t *testing.T) {
 		next.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodPost, "/late", http.NoBody))
 	})
 }
+
+func Test_CopyContextToFiberContext_DeepChain(t *testing.T) {
+	t.Parallel()
+
+	type key string
+	const depth = 200
+
+	ctx := context.Background()
+	for i := range depth {
+		ctx = context.WithValue(ctx, key(strconv.Itoa(i)), i)
+	}
+
+	var fctx fasthttp.RequestCtx
+	CopyContextToFiberContext(ctx, &fctx)
+
+	for i := range depth {
+		require.Equal(t, i, fctx.UserValue(key(strconv.Itoa(i))), "value %d was dropped", i)
+	}
+}
+
+// cyclicContext lets a chain point back at itself, the shape the walk must not
+// follow forever.
+type cyclicContext struct {
+	context.Context //nolint:containedctx // the cycle is the point
+}
+
+func Test_CopyContextToFiberContext_Cycle(t *testing.T) {
+	t.Parallel()
+
+	type key string
+	loop := &cyclicContext{Context: context.Background()}
+	loop.Context = context.WithValue(loop, key("a"), "1")
+
+	var fctx fasthttp.RequestCtx
+	require.NotPanics(t, func() { CopyContextToFiberContext(loop, &fctx) })
+	require.Equal(t, "1", fctx.UserValue(key("a")))
+}

@@ -2745,6 +2745,10 @@ func Test_CookieJar_MaxAgePrecedence(t *testing.T) {
 		{name: "zero", maxAge: "Max-Age=0", kept: false},
 		{name: "negative", maxAge: "Max-Age=-1", kept: false},
 		{name: "lowercase zero", maxAge: "max-age=0", kept: false},
+		{name: "last of duplicates wins", maxAge: "Max-Age=3600; Max-Age=0", kept: false},
+		{name: "last of duplicates revives", maxAge: "Max-Age=0; Max-Age=3600", kept: true},
+		{name: "unparsable duplicate ignored", maxAge: "Max-Age=0; Max-Age=bogus", kept: false},
+		{name: "seconds beyond a duration", maxAge: "Max-Age=10000000000", kept: true},
 	}
 
 	for _, tc := range tests {
