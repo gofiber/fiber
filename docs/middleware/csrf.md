@@ -104,7 +104,7 @@ SPAs require `CookieHTTPOnly: false` to access tokens via JavaScript. This sligh
 
 ### Cross-Origin Protection Without Tokens
 
-For APIs that do not use browser-readable CSRF tokens, enable `CrossOriginProtectionOnly`. This mode follows the request decision matrix of Go's [`net/http.CrossOriginProtection.Check`](https://pkg.go.dev/net/http#CrossOriginProtection.Check) for safe methods, Fetch Metadata, origin-host matching, and exact trusted origins. `Sec-Fetch-Site` values are case-sensitive; mixed-case or otherwise malformed nonempty values are rejected unless the request origin is trusted. Fiber's configuration API, wildcard trusted origins, and returned error are Fiber-specific.
+For APIs that do not use browser-readable CSRF tokens, enable `CrossOriginProtectionOnly`. This mode follows the request decision matrix of Go's [`net/http.CrossOriginProtection.Check`](https://pkg.go.dev/net/http#CrossOriginProtection.Check) for safe methods, Fetch Metadata, origin-host matching, and exact trusted origins. `Sec-Fetch-Site` values are case-sensitive; mixed-case or otherwise malformed nonempty values are rejected unless the request origin is trusted. Fiber's configuration API, wildcard trusted origins, and returned error are Fiber-specific. Unlike token-based configurations, this mode does not validate CSRF tokens or use the token-mode `Referer` fallback checks.
 
 ```go
 app.Use(csrf.New(csrf.Config{

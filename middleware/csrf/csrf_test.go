@@ -292,8 +292,8 @@ func Test_CSRF_CrossOriginProtectionOnly(t *testing.T) {
 func Test_CSRF_CrossOriginProtectionOnly_matches_netHTTP_Check(t *testing.T) {
 	t.Parallel()
 
-	if version.Compare(runtime.Version(), "go1.26") < 0 {
-		t.Skip("net/http.CrossOriginProtection requires Go 1.26")
+	if version.Compare(runtime.Version(), "go1.25") < 0 {
+		t.Skip("net/http.CrossOriginProtection requires Go 1.25")
 	}
 
 	tests := []struct {
