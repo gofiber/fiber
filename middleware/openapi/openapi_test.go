@@ -1857,8 +1857,6 @@ func Test_OpenAPI_GETExplicitRequestBodySuppressed(t *testing.T) {
 	require.NotContains(t, op, "requestBody")
 }
 
-func openapiBoolPtr(b bool) *bool { return &b }
-
 //nolint:gocritic // hugeParam: Config is passed by value to mirror the public New signature.
 func fetchSpecWithConfig(t *testing.T, cfg Config, register func(app *fiber.App)) map[string]any {
 	t.Helper()
@@ -1880,7 +1878,7 @@ func Test_OpenAPI_ParameterSerialization(t *testing.T) {
 			In:              "query",
 			Description:     "Item ids",
 			Style:           "form",
-			Explode:         openapiBoolPtr(false),
+			Explode:         new(false),
 			Deprecated:      true,
 			AllowEmptyValue: true,
 			AllowReserved:   true,

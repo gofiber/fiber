@@ -250,7 +250,7 @@ func Test_OpenAPI_GeneratedSpecIsValid(t *testing.T) {
 
 		app.Get("/users/:id", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) }).
 			AddParameter(fiber.RouteParameter{
-				Name: "fields", In: "query", Style: "form", Explode: openapiBoolPtr(true),
+				Name: "fields", In: "query", Style: "form", Explode: new(true),
 				Deprecated: true, AllowEmptyValue: true, AllowReserved: true,
 				Schema: map[string]any{"type": "array"},
 			})
