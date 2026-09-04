@@ -8,6 +8,8 @@ import (
 
 // go test -run -v Test_NormalizeOrigin
 func Test_Normalize_AnyScheme(t *testing.T) {
+	t.Parallel()
+
 	testCases := []struct {
 		origin         string
 		expectedOrigin string
