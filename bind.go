@@ -12,6 +12,7 @@ import (
 	"github.com/gofiber/fiber/v3/binder"
 	"github.com/gofiber/fiber/v3/internal/nilerror"
 	"github.com/gofiber/schema"
+	"github.com/gofiber/utils/v2"
 )
 
 // CustomBinder An interface to register custom binders.
