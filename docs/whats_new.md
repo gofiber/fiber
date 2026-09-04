@@ -64,7 +64,7 @@ Here's a quick overview of the changes in Fiber `v3`:
 
 ## Dropping support for old Go versions
 
-Fiber `v3` requires Go `1.25` or later. Update your toolchain to `1.25+` before upgrading so the module `go` directive and standard library features align with the new minimum version.
+Fiber `v3` requires Go `1.26` or later. Update your toolchain to `1.26+` before upgrading so the module `go` directive and standard library features align with the new minimum version.
 
 ## 🚀 App
 
