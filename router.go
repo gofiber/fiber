@@ -45,65 +45,30 @@ type Router interface {
 	Route(prefix string, fn func(router Router), name ...string) Router
 
 	Name(name string) Router
-	// Summary sets a short summary for the most recently registered route.
+
+	// Route documentation helpers. They target the most recently
+	// registered route; see the App methods of the same name.
+
 	Summary(sum string) Router
-	// Description sets a human-readable description for the most recently
-	// registered route.
 	Description(desc string) Router
-	// Consumes sets the request media type for the most recently
-	// registered route.
 	Consumes(typ string) Router
-	// Produces sets the response media type for the most recently
-	// registered route.
 	Produces(typ string) Router
-	// RequestBody documents the request body for the most recently
-	// registered route.
 	RequestBody(description string, required bool, mediaTypes ...string) Router
-	// RequestBodyWithExample documents the request body for the most recently
-	// registered route with schema references and examples.
 	RequestBodyWithExample(description string, required bool, schema map[string]any, schemaRef string, example any, examples map[string]any, mediaTypes ...string) Router
-	// Parameter documents an input parameter for the most recently
-	// registered route.
 	Parameter(name, in string, required bool, schema map[string]any, description string) Router
-	// ParameterWithExample documents an input parameter for the most recently
-	// registered route, including schema references and examples.
 	ParameterWithExample(name, in string, required bool, schema map[string]any, schemaRef, description string, example any, examples map[string]any) Router
-	// Response documents an HTTP response for the most recently
-	// registered route.
 	Response(status int, description string, mediaTypes ...string) Router
-	// ResponseWithExample documents an HTTP response for the most recently
-	// registered route, including schema references and examples.
 	ResponseWithExample(status int, description string, schema map[string]any, schemaRef string, example any, examples map[string]any, mediaTypes ...string) Router
-	// Tags sets the tags for the most recently registered route.
 	Tags(tags ...string) Router
-	// Deprecated marks the most recently registered route as deprecated.
 	Deprecated() Router
-	// Security sets the requirements for the most recently registered route,
-	// combined with OR semantics. An empty requirement documents "no auth".
 	Security(requirements ...map[string][]string) Router
-	// ResponseHeader documents a response header for the given status code on the
-	// most recently registered route, creating the response entry if needed.
 	ResponseHeader(status int, name, description string, schema map[string]any) Router
-	// Hidden excludes the most recently registered route from the generated
-	// OpenAPI specification.
 	Hidden() Router
-	// AddParameter documents a parameter using the full RouteParameter, exposing
-	// fields the simpler Parameter helpers do not.
 	AddParameter(param RouteParameter) Router
-	// OperationExternalDocs sets the externalDocs of the most recently registered
-	// operation.
 	OperationExternalDocs(description, url string) Router
-	// RequestBodyContent documents a request body with a different schema/example/
-	// encoding per media type.
 	RequestBodyContent(description string, required bool, content map[string]RouteMediaType) Router
-	// ResponseContent documents a response with a different schema/example/encoding
-	// per media type for the given status code.
 	ResponseContent(status int, description string, content map[string]RouteMediaType) Router
-	// ResponseLink documents a response link for the given status code, creating the
-	// response entry if needed.
 	ResponseLink(status int, name string, link map[string]any) Router
-	// OperationExtension shallow-merges arbitrary fields (e.g. servers, callbacks,
-	// x-* extensions) into the most recently registered operation object.
 	OperationExtension(fields map[string]any) Router
 }
 
@@ -148,16 +113,11 @@ type Route struct {
 	//nolint:revive // Having both a Path (uppercase) and a path (lowercase) is fine
 	Path string `json:"path"` // Original registered route path
 
-	// domain is the host pattern from app.Domain(), empty otherwise. It keeps
-	// same-path routes on different domains from merging. Registration-time only.
-	domain string
+	domain string // Host pattern from app.Domain(), empty otherwise
 
-	// regID identifies the register() call that created this route, so chainable
-	// helpers can reach every stack entry of the same registration.
-	regID uint64
+	regID uint64 // Identifies the register() call that created this route
 
-	// OpenAPI documentation metadata. The request scan never reads any of it,
-	// so it stays below the routing state above.
+	// OpenAPI documentation metadata
 	Summary     string `json:"summary,omitempty"`
 	Description string `json:"description,omitempty"`
 	Consumes    string `json:"consumes,omitempty"`
@@ -1274,8 +1234,8 @@ func copyAnyValueDepth(src any, depth int) any {
 }
 
 // copyCompositeValue clones map and slice values of any named type, which the
-// typed switch above cannot name. depth continues the caller's count: restarting
-// it here would let a cycle inside a named type recurse past maxCopyDepth.
+// typed switch above cannot name. depth continues the caller's count so a cycle
+// inside a named type still hits maxCopyDepth.
 func copyCompositeValue(src any, depth int) any {
 	value := reflect.ValueOf(src)
 
@@ -1373,9 +1333,8 @@ func (app *App) deleteRoute(methods []string, matchFunc func(r *Route) bool) {
 		}
 	}
 
-	// matchFunc runs without the lock so it may call locking app methods such
-	// as GetRoute; the matches are then removed by identity under the lock, so
-	// an entry removed in between is simply not found.
+	// matchFunc runs unlocked so it may call locking app methods such as
+	// GetRoute; matches are then removed by identity under the lock.
 	app.mutex.Lock()
 	candidates := make([]*Route, 0)
 	for _, m := range indexes {
@@ -1422,9 +1381,8 @@ func (app *App) deleteRoute(methods []string, matchFunc func(r *Route) bool) {
 				app.latestBatchID = 0
 			}
 
-			// Decrement global handler count. In middleware routes, only decrement once
-			// Keyed by domain as well as path: same-path middleware on two
-			// domains are separate registrations, each counted once.
+			// Decrement global handler count. Middleware routes decrement once,
+			// keyed by domain as well as path.
 			useKey := app.autoHeadKey(route)
 			if _, ok := removedUseRoutes[useKey]; (route.use && slices.Equal(methods, app.config.RequestMethods) && !ok) || !route.use {
 				if route.use {
@@ -1598,10 +1556,8 @@ func (app *App) addRoute(method string, route *Route) {
 		!route.mount && !app.stack[m][l-1].mount && app.stack[m][l-1].domain == route.domain {
 		preRoute := app.stack[m][l-1]
 		preRoute.Handlers = append(preRoute.Handlers, route.Handlers...)
-		// The entry carries the latest registration so the batch fast path and
-		// the stack scan agree, and stays reachable from the superseded one
-		// through mergedEntries, so the earlier scope's helpers still hit the
-		// entry they registered and nothing else.
+		// The entry carries the latest registration, and mergedEntries keeps it
+		// reachable from the superseded one so both scopes hit exactly it.
 		if preRoute.regID != 0 && preRoute.regID != route.regID {
 			if app.mergedEntries == nil {
 				app.mergedEntries = make(map[uint64][]*Route, 1)
@@ -1619,14 +1575,12 @@ func (app *App) addRoute(method string, route *Route) {
 
 	app.bumpRoutesRevision()
 
-	// Concurrent registrations interleave here, one method at a time. Only the
-	// newest one owns the batch; an older one's late entries stay out of it and
-	// its helpers fall back to the stack scan, which still finds them.
+	// Concurrent registrations interleave one method at a time. Only the newest
+	// owns the batch; an older one's helpers fall back to the stack scan.
 	if route.regID == app.latestBatchID {
 		app.latestBatch = append(app.latestBatch, liveRoute)
 		// Tracked so chained helpers target it. Mounts are tracked too, or a
-		// helper chained onto one would mutate the previous route; their hooks
-		// stay unfired.
+		// helper chained onto one would mutate the previous route.
 		app.latestRoute = liveRoute
 	}
 
@@ -1654,8 +1608,7 @@ func (app *App) resetBatchIfNewRegistrationLocked(regID uint64) {
 }
 
 // ensureAutoHeadRoutes creates the missing automatic HEAD routes and returns
-// them without firing their hooks: the caller does that once it holds no lock
-// the hooks might take (see startupProcess).
+// them without firing their hooks; the caller does that once unlocked.
 func (app *App) ensureAutoHeadRoutes() []*Route {
 	app.mutex.Lock()
 	defer app.mutex.Unlock()

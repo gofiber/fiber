@@ -2984,8 +2984,6 @@ func Test_Route_URL(t *testing.T) {
 	})
 }
 
-// Test_App_MetadataUseDoesNotClobberConcreteRoutes verifies helpers chained on a
-// Use() only touch middleware entries, never concrete routes on that path.
 func Test_App_MetadataUseDoesNotClobberConcreteRoutes(t *testing.T) {
 	t.Parallel()
 	app := New()
@@ -2998,8 +2996,6 @@ func Test_App_MetadataUseDoesNotClobberConcreteRoutes(t *testing.T) {
 	require.False(t, route.IsHidden())
 }
 
-// Test_App_MetadataDoesNotClobberExplicitHead verifies helpers chained on a GET
-// do not overwrite an explicitly registered HEAD route at the same path.
 func Test_App_MetadataDoesNotClobberExplicitHead(t *testing.T) {
 	t.Parallel()
 	app := New()
@@ -3013,8 +3009,6 @@ func Test_App_MetadataDoesNotClobberExplicitHead(t *testing.T) {
 	require.Equal(t, "Download", getRoute.Summary)
 }
 
-// Test_App_ResponseKeepsHeadersAndLinks verifies a Response call merges with
-// headers and links documented earlier for the same status code.
 func Test_App_ResponseKeepsHeadersAndLinks(t *testing.T) {
 	t.Parallel()
 	app := New()
@@ -3032,8 +3026,6 @@ func Test_App_ResponseKeepsHeadersAndLinks(t *testing.T) {
 	require.Contains(t, resp.Links, "next")
 }
 
-// Test_App_ResponseKeepsExplicitProduces verifies Response only adopts its
-// media type as Produces when the user has not set one explicitly.
 func Test_App_ResponseKeepsExplicitProduces(t *testing.T) {
 	t.Parallel()
 	app := New()
@@ -3051,8 +3043,6 @@ func Test_App_ResponseKeepsExplicitProduces(t *testing.T) {
 	require.Equal(t, "text/csv", route2.Produces)
 }
 
-// Test_App_RequestBodyKeepsExplicitConsumes verifies RequestBody only adopts
-// its media type as Consumes when the user has not set one explicitly.
 func Test_App_RequestBodyKeepsExplicitConsumes(t *testing.T) {
 	t.Parallel()
 	app := New()
@@ -3065,8 +3055,6 @@ func Test_App_RequestBodyKeepsExplicitConsumes(t *testing.T) {
 	require.Equal(t, MIMEApplicationJSON, route.Consumes)
 }
 
-// Test_App_MetadataDoesNotClobberShadowedRoute verifies helpers chained on a
-// duplicate registration do not rewrite the earlier registration's metadata.
 func Test_App_MetadataDoesNotClobberShadowedRoute(t *testing.T) {
 	t.Parallel()
 	app := New()
@@ -3079,8 +3067,6 @@ func Test_App_MetadataDoesNotClobberShadowedRoute(t *testing.T) {
 	require.Equal(t, "second", getStack[2].Summary)
 }
 
-// Test_App_MetadataSecondUseDoesNotClobberFirst verifies documenting a second
-// Use() registration leaves the first registration's metadata alone.
 func Test_App_MetadataSecondUseDoesNotClobberFirst(t *testing.T) {
 	t.Parallel()
 	app := New()
@@ -3098,8 +3084,6 @@ func Test_App_MetadataSecondUseDoesNotClobberFirst(t *testing.T) {
 	require.Equal(t, 1, summaries["rate"])
 }
 
-// Test_App_MetadataAfterMountDoesNotTouchPreviousRoute verifies helpers chained
-// onto a sub-app mount do not mutate the route registered before the mount.
 func Test_App_MetadataAfterMountDoesNotTouchPreviousRoute(t *testing.T) {
 	t.Parallel()
 	sub := New()
@@ -3118,8 +3102,6 @@ func Test_App_MetadataAfterMountDoesNotTouchPreviousRoute(t *testing.T) {
 	}
 }
 
-// Test_App_NameOnUseDoesNotRenameConcreteRoutes verifies naming a Use()
-// registration no longer renames concrete routes sharing the path.
 func Test_App_NameOnUseDoesNotRenameConcreteRoutes(t *testing.T) {
 	t.Parallel()
 	app := New()
@@ -3135,8 +3117,6 @@ func Test_App_NameOnUseDoesNotRenameConcreteRoutes(t *testing.T) {
 	}
 }
 
-// Test_App_OperationExtensionNilElements verifies deep-copying metadata with
-// nil elements in typed slices and maps neither panics nor drops entries.
 func Test_App_OperationExtensionNilElements(t *testing.T) {
 	t.Parallel()
 	app := New()
@@ -3156,8 +3136,6 @@ func Test_App_OperationExtensionNilElements(t *testing.T) {
 	require.Contains(t, m, "e")
 }
 
-// Test_App_MetadataNoCollisionWithMountedRoutes verifies expanded mount route IDs
-// never collide with parent registrations, so later docs cannot touch them.
 func Test_App_MetadataNoCollisionWithMountedRoutes(t *testing.T) {
 	t.Parallel()
 	sub := New()
@@ -3167,7 +3145,6 @@ func Test_App_MetadataNoCollisionWithMountedRoutes(t *testing.T) {
 	app := New()
 	app.Use("/api", sub)
 
-	// Trigger startup so the mount expands into the parent stack.
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/api/a", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, StatusOK, resp.StatusCode)
@@ -3177,7 +3154,6 @@ func Test_App_MetadataNoCollisionWithMountedRoutes(t *testing.T) {
 	for _, routes := range app.stack {
 		for _, route := range routes {
 			if route.Path == "/api/b" {
-				// Auto-HEAD twins deliberately carry no documentation.
 				if !route.IsAutoHead() {
 					require.Equal(t, "sub b", route.Summary, route.Method)
 				}
@@ -3187,8 +3163,6 @@ func Test_App_MetadataNoCollisionWithMountedRoutes(t *testing.T) {
 	}
 }
 
-// Test_App_MetadataReachesAllMethodsOfAdd verifies helpers chained on a
-// multi-method Add registration document every method's route.
 func Test_App_MetadataReachesAllMethodsOfAdd(t *testing.T) {
 	t.Parallel()
 	app := New()

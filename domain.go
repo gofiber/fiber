@@ -266,9 +266,7 @@ type domainRouter struct {
 	group   *Group // non-nil when created from a Group
 	matcher domainMatcher
 
-	// lastRegID is this router's most recent registration, so the doc helpers
-	// target it rather than the app-global latest route. Accessed atomically.
-	lastRegID uint64
+	lastRegID uint64 // Most recent registration, targeted by the doc helpers. Accessed atomically.
 }
 
 // pattern returns the canonical domain form, which identifies the domain on
@@ -986,9 +984,7 @@ type domainRegistering struct {
 	domain *domainRouter
 	path   string
 
-	// lastRegID is this chain's most recent registration, so the doc helpers
-	// target it rather than the app-global latest route. Accessed atomically.
-	lastRegID uint64
+	lastRegID uint64 // Most recent registration, targeted by the doc helpers. Accessed atomically.
 }
 
 // Verify domainRegistering implements Register at compile time.

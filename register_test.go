@@ -1,7 +1,3 @@
-// ⚡️ Fiber is an Express inspired web framework written in Go with ☕️
-// 🤖 GitHub Repository: https://github.com/gofiber/fiber
-// 📌 API Documentation: https://docs.gofiber.io
-
 package fiber
 
 import (
@@ -10,8 +6,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// Test_RouteChain_OpenAPI_Helpers exercises the doc helpers on the RouteChain
-// fluent API, which target the chain's own registration.
 func Test_RouteChain_OpenAPI_Helpers(t *testing.T) {
 	t.Parallel()
 	app := New()
@@ -57,7 +51,6 @@ func Test_RouteChain_OpenAPI_Helpers(t *testing.T) {
 	require.Equal(t, "https://example.com/docs", route.ExternalDocs["url"])
 	require.Equal(t, "core", route.OperationExtensions["x-team"])
 
-	// Request-body variants overwrite one another, so exercise each separately.
 	app.RouteChain("/rb-plain").Put(testEmptyHandler).RequestBody("Body", true, MIMEApplicationJSON)
 	require.Equal(t, []string{MIMEApplicationJSON}, app.stack[app.methodInt(MethodPut)][0].RequestBody.MediaTypes)
 
@@ -70,8 +63,6 @@ func Test_RouteChain_OpenAPI_Helpers(t *testing.T) {
 	require.Contains(t, app.stack[app.methodInt(MethodDelete)][0].RequestBody.Content, MIMEApplicationJSON)
 }
 
-// Test_RouteChain_Nested verifies a nested RouteChain inherits the parent
-// path as a prefix and documents its own route.
 func Test_RouteChain_Nested(t *testing.T) {
 	t.Parallel()
 	app := New()

@@ -30,7 +30,6 @@ func Test_PathParamSchema(t *testing.T) {
 		{map[string]any{"type": "string"}, "unknown constraint", "totallyMadeUp"},
 		{map[string]any{"type": "string"}, "custom with args", "myConstraint(1,2)"},
 
-		// datetime maps only the layouts with an exact OpenAPI format.
 		{map[string]any{"type": "string", "format": "date-time"}, "datetime rfc3339", "datetime(" + time.RFC3339 + ")"},
 		{map[string]any{"type": "string", "format": "date-time"}, "datetime rfc3339 nano", "datetime(" + time.RFC3339Nano + ")"},
 		{map[string]any{"type": "string", "format": "date"}, "datetime date only", "datetime(" + time.DateOnly + ")"},
@@ -38,12 +37,10 @@ func Test_PathParamSchema(t *testing.T) {
 		{map[string]any{"type": "string"}, "datetime custom layout", "datetime(2006/01/02)"},
 		{map[string]any{"type": "string"}, "datetime without layout", "datetime"},
 
-		// regex passes the author's pattern through untouched.
 		{map[string]any{"type": "string", "pattern": "^[a-z]+$"}, "regex", "regex(^[a-z]+$)"},
 		{map[string]any{"type": "string"}, "regex without pattern", "regex()"},
 		{map[string]any{"type": "string"}, "regex bare", "regex"},
 
-		// length constraints
 		{map[string]any{"type": "string", "minLength": 3}, "minLen", "minLen(3)"},
 		{map[string]any{"type": "string", "minLength": 3}, "minLen lowercase alias", "minlen(3)"},
 		{map[string]any{"type": "string", "maxLength": 9}, "maxLen", "maxLen(9)"},
@@ -56,19 +53,16 @@ func Test_PathParamSchema(t *testing.T) {
 		{map[string]any{"type": "string"}, "minLen with non-numeric argument", "minLen(abc)"},
 		{map[string]any{"type": "string", "minLength": 3}, "argument is trimmed", "minLen( 3 )"},
 
-		// numeric constraints
 		{map[string]any{"type": "integer", "minimum": 5}, "min", "min(5)"},
 		{map[string]any{"type": "integer", "maximum": 7}, "max", "max(7)"},
 		{map[string]any{"type": "integer", "minimum": 1, "maximum": 10}, "range", "range(1,10)"},
 		{map[string]any{"type": "integer", "minimum": -3}, "negative bound", "min(-3)"},
 
-		// chains: the first constraint to set a keyword keeps it
 		{map[string]any{"type": "integer", "minimum": 5}, "chain type then bound", "int;min(5)"},
 		{map[string]any{"type": "integer", "minimum": 5}, "chain bound then type", "min(5);int"},
 		{map[string]any{"type": "string", "minLength": 2}, "conflicting type is ignored", "minLen(2);int"},
 		{map[string]any{"type": "integer", "minimum": 1}, "first bound wins", "min(1);min(9)"},
 
-		// escaping mirrors the router's grammar
 		{map[string]any{"type": "string", "pattern": `a\;b`}, "escaped separator", `regex(a\;b)`},
 		{map[string]any{"type": "string", "pattern": `a\,b`}, "escaped argument separator", `regex(a\,b)`},
 	}
@@ -93,8 +87,6 @@ func Test_ScanConstraintSpan(t *testing.T) {
 	}{
 		{"simple", "<int>rest", "int", 0, 5},
 		{"empty span", "<>", "", 0, 2},
-		// The router closes the span at the first unescaped '>', so a '<'
-		// inside does not nest; the rest of the pattern is literal.
 		{"inner angle bracket closes at first '>'", "<regex(^<a>$)>", "regex(^<a", 0, 11},
 		{"escaped close", `<regex(a\>b)>`, `regex(a\>b)`, 0, 13},
 		{"unterminated runs to end", "<int", "int", 0, 4},
@@ -126,9 +118,7 @@ func Test_SplitConstraintEntry(t *testing.T) {
 
 	require.Equal(t, parsedConstraint{name: "int"}, splitConstraintEntry("int"))
 	require.Equal(t, parsedConstraint{name: "range", args: []string{"1", "10"}}, splitConstraintEntry("range(1,10)"))
-	// The argument list runs to the LAST ')', so nested parens survive.
 	require.Equal(t, parsedConstraint{name: "regex", args: []string{"(a|b)+"}}, splitConstraintEntry("regex((a|b)+)"))
-	// A stray ')' before any '(' is not an argument list.
 	require.Equal(t, parsedConstraint{name: "odd)name"}, splitConstraintEntry("odd)name"))
 	require.Equal(t, parsedConstraint{name: "int"}, splitConstraintEntry("  int  "))
 }
@@ -136,8 +126,6 @@ func Test_SplitConstraintEntry(t *testing.T) {
 func Test_IsPlainJSONTagName(t *testing.T) {
 	t.Parallel()
 
-	// The fast path: names every encoding/json release has taken as written —
-	// letters, digits and the punctuation isValidTag has always allowed.
 	require.True(t, isPlainJSONTagName("name"))
 	require.True(t, isPlainJSONTagName("a b"))
 	require.True(t, isPlainJSONTagName("a-b_c.d"))
@@ -145,16 +133,11 @@ func Test_IsPlainJSONTagName(t *testing.T) {
 	require.True(t, isPlainJSONTagName("Ünïcøde"))
 	require.False(t, isPlainJSONTagName(""))
 
-	// Version-dependent names are deferred to the running toolchain instead of
-	// being judged here: Go 1.27 accepts a backslash or tab that 1.26 rejected,
-	// and truncates at an apostrophe or backtick.
 	for _, name := range []string{`a\b`, `a"b`, "a'b", "a`b", "a\tb"} {
 		require.Falsef(t, isPlainJSONTagName(name), "%q should take the probe path", name)
 	}
 }
 
-// Test_EffectiveJSONTagName pins the probe against the toolchain compiling it,
-// rather than against a hard-coded expectation that a Go release can invalidate.
 func Test_EffectiveJSONTagName(t *testing.T) {
 	t.Parallel()
 
@@ -165,8 +148,6 @@ func Test_EffectiveJSONTagName(t *testing.T) {
 	}
 }
 
-// wireNameFor marshals a struct tagged with name and returns the property it
-// lands under, or "" when the tag was ignored and the field name was used.
 func wireNameFor(t *testing.T, name string) string {
 	t.Helper()
 

@@ -22,8 +22,6 @@ func specBodyOf(t *testing.T, app *fiber.App, path string) (int, string) {
 	return resp.StatusCode, string(b)
 }
 
-// Test_OpenAPI_ReviewRegressions covers defects found in review: each subtest
-// reproduces a case that produced a wrong or unreachable document.
 func Test_OpenAPI_ReviewRegressions(t *testing.T) {
 	t.Parallel()
 
@@ -130,8 +128,6 @@ func Test_OpenAPI_ReviewRegressions(t *testing.T) {
 		require.Contains(t, body, "My custom description")
 	})
 
-	// RFC 9110 9.3.2: HEAD answers as GET would minus the content, so an
-	// undocumented HEAD must not claim 204 where its GET twin says 200.
 	t.Run("HeadDefaultMirrorsGet", func(t *testing.T) {
 		t.Parallel()
 		app := fiber.New()

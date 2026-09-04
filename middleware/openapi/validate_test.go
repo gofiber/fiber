@@ -14,35 +14,27 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// validOperationMethods is the set of OpenAPI Path Item operation keys
-// (query is added in OpenAPI 3.2).
 var validOperationMethods = map[string]struct{}{
 	"get": {}, "put": {}, "post": {}, "delete": {},
 	"options": {}, "head": {}, "patch": {}, "trace": {}, "query": {},
 }
 
-// validParameterLocations is the set of OpenAPI parameter locations
-// (querystring is added in OpenAPI 3.2).
 var validParameterLocations = map[string]struct{}{
 	"path": {}, "query": {}, "header": {}, "cookie": {}, "querystring": {},
 }
 
 var pathTemplateRe = regexp.MustCompile(`\{([^}]+)\}`)
 
-// validateOpenAPIDocument asserts raw is structurally valid for the subset this
-// middleware emits. A dependency-free guard, not a meta-schema validator.
 func validateOpenAPIDocument(t *testing.T, raw []byte) {
 	t.Helper()
 
 	var doc map[string]any
 	require.NoError(t, json.Unmarshal(raw, &doc))
 
-	// openapi version
 	version, ok := doc["openapi"].(string)
 	require.True(t, ok, "openapi version must be a string")
 	require.Contains(t, []string{"3.0.0", "3.1.0", "3.2.0"}, version)
 
-	// info
 	info, ok := doc["info"].(map[string]any)
 	require.True(t, ok, "info must be an object")
 	title, ok := info["title"].(string)
@@ -77,7 +69,6 @@ func validateOpenAPIDocument(t *testing.T, raw []byte) {
 func validateOperation(t *testing.T, method, pathKey string, op map[string]any, templateParams, securitySchemes, operationIDs map[string]struct{}) {
 	t.Helper()
 
-	// operationId uniqueness
 	if rawID, present := op["operationId"]; present {
 		id, ok := rawID.(string)
 		require.Truef(t, ok && id != "", "%s %s operationId must be a non-empty string", method, pathKey)
@@ -86,7 +77,6 @@ func validateOperation(t *testing.T, method, pathKey string, op map[string]any, 
 		operationIDs[id] = struct{}{}
 	}
 
-	// responses: required, non-empty, each has a description
 	responses, ok := op["responses"].(map[string]any)
 	require.Truef(t, ok, "%s %s must have a responses object", method, pathKey)
 	require.NotEmptyf(t, responses, "%s %s responses must not be empty", method, pathKey)
@@ -98,16 +88,13 @@ func validateOperation(t *testing.T, method, pathKey string, op map[string]any, 
 		require.Truef(t, ok && desc != "", "%s %s response %q needs a description", method, pathKey, code)
 	}
 
-	// parameters
 	declaredPathParams := validateParameters(t, method, pathKey, op)
 
-	// every {template} in the path must be declared as an in:path parameter
 	for name := range templateParams {
 		_, declared := declaredPathParams[name]
 		require.Truef(t, declared, "%s %s missing path parameter %q for template", method, pathKey, name)
 	}
 
-	// requestBody rules
 	if rawBody, present := op["requestBody"]; present {
 		require.Falsef(t, method == "get" || method == "head", "%s %s must not have a requestBody", method, pathKey)
 		body, ok := rawBody.(map[string]any)
@@ -116,12 +103,9 @@ func validateOperation(t *testing.T, method, pathKey string, op map[string]any, 
 		require.Truef(t, ok && len(content) > 0, "%s %s requestBody.content must be a non-empty object", method, pathKey)
 	}
 
-	// per-operation security must reference defined schemes
 	validateSecurityRequirements(t, op["security"], securitySchemes, method+" "+pathKey)
 }
 
-// validateParameters checks each parameter and returns the set of declared path
-// parameter names.
 func validateParameters(t *testing.T, method, pathKey string, op map[string]any) map[string]struct{} {
 	t.Helper()
 
@@ -150,8 +134,6 @@ func validateParameters(t *testing.T, method, pathKey string, op map[string]any)
 		require.Falsef(t, dup, "%s %s duplicate parameter %s", method, pathKey, key)
 		seen[key] = struct{}{}
 
-		// A Parameter Object must carry exactly one of "schema" or "content",
-		// and a content map is restricted to a single media type entry.
 		_, hasSchema := param["schema"]
 		rawContent, hasContent := param["content"]
 		require.NotEqualf(t, hasSchema, hasContent,
@@ -161,7 +143,6 @@ func validateParameters(t *testing.T, method, pathKey string, op map[string]any)
 			require.Truef(t, ok && len(content) == 1,
 				"%s %s parameter %q content must hold exactly one media type", method, pathKey, name)
 		}
-		// The 3.2 "querystring" location is only describable via content.
 		if in == "querystring" {
 			require.Truef(t, hasContent,
 				"%s %s querystring parameter %q must use content", method, pathKey, name)
@@ -275,7 +256,6 @@ func Test_OpenAPI_GeneratedSpecIsValid(t *testing.T) {
 			})
 		app.Get("/files/*", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
 		app.Get("/items/:id?", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
-		// QUERY routes are only representable in OpenAPI 3.2+.
 		app.Query("/search", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) }).
 			RequestBody("Query payload", true, fiber.MIMEApplicationJSON)
 		app.Delete("/users/:id", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusNoContent) }).Deprecated()

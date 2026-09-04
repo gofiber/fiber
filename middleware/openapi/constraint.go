@@ -22,9 +22,8 @@ const (
 )
 
 // scanConstraintSpan reads the "<...>" span at open, returning its inner text
-// and the index past it. As in path.go, the span closes at the first '>' that
-// is not escaped; a '<' inside it is literal, so both parsers agree on where a
-// regex ends.
+// and the index past it. As in path.go the span closes at the first unescaped
+// '>', so a '<' inside it is literal.
 //
 //nolint:nonamedreturns // gocritic requires names to tell the two results apart
 func scanConstraintSpan(pattern string, open int) (raw string, next int) {
@@ -174,10 +173,9 @@ type parsedConstraint struct {
 	args []string
 }
 
-// splitConstraintEntry separates a constraint's name from its arguments: they
-// run from the first non-escaped '(' to the last ')', as in path.go. The router
-// hands a regex its argument whole, so a comma inside one (a "{1,3}" quantifier)
-// is part of the pattern; every other constraint splits and unescapes its list.
+// splitConstraintEntry separates a constraint's name from its arguments, which
+// run from the first non-escaped '(' to the last ')', as in path.go. A regex
+// keeps its argument whole; every other constraint splits and unescapes its list.
 func splitConstraintEntry(entry string) parsedConstraint {
 	entry = strings.TrimSpace(entry)
 	start := indexNonEscaped(entry, constraintArgsStart)

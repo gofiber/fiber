@@ -13,61 +13,38 @@ import (
 	"github.com/gofiber/utils/v2"
 )
 
-// SchemaOf generates an OpenAPI JSON Schema from a Go value using reflection.
-// It inspects struct fields, their types, and json tags to produce a schema
-// suitable for use with route helpers like ResponseWithExample, RequestBodyWithExample,
-// and ParameterWithExample, or for inclusion in Config.Components.
+// SchemaOf generates an OpenAPI JSON Schema from a Go value using reflection,
+// suitable for the route helpers (ResponseWithExample, RequestBodyWithExample,
+// ParameterWithExample) or for Config.Components.
 //
 // Supported types:
 //   - Primitives: string, bool, int*, uint*, float*
 //   - time.Time → {"type": "string", "format": "date-time"}
-//   - []byte → {"type": "string", "format": "byte"} (Go marshals it as base64)
+//   - []byte → {"type": "string", "format": "byte"}
 //   - Slices/arrays → {"type": "array", "items": {...}}
 //   - Maps with string keys → {"type": "object", "additionalProperties": {...}}
 //   - Structs → {"type": "object", "properties": {...}, "required": [...]}
-//   - Pointers → schema of the pointed-to type (nullable fields are not required)
-//   - interface{}/any → {} (accepts any value)
+//   - Pointers → schema of the pointed-to type (not required)
+//   - interface{}/any → {}
 //   - json.Number → {"type": "number"}
-//   - Types implementing json.Marshaler → {} (custom output cannot be predicted)
+//   - Types implementing json.Marshaler → {}
 //   - Types implementing encoding.TextMarshaler → {"type": "string"}
 //
-// Embedded structs and embedded pointers to structs are flattened into the
-// parent object (matching encoding/json). Self-referential or mutually
-// recursive structs are handled by emitting a bare {"type": "object"} at the
-// point the cycle repeats, so reflection never recurses forever. Fields whose
-// type has no JSON representation (chan, func, complex, ...) are skipped.
+// Embedded structs are flattened as encoding/json does, recursive types emit a
+// bare {"type": "object"} where the cycle repeats, and fields with no JSON
+// representation (chan, func, complex) are skipped.
 //
 // Struct field tags:
 //   - `json:"name"` sets the property name; `json:"-"` skips the field
-//   - `json:",omitempty"` and `json:",omitzero"` make the field optional (not
-//     added to required)
-//   - `json:",string"` documents the field as a string, as encoding/json writes it
+//   - `json:",omitempty"` and `json:",omitzero"` make the field optional
+//   - `json:",string"` documents the field as a string
 //   - `openapi:"description:text"` sets the property description
 //   - `openapi:"example:value"` sets the property example
-//   - `openapi:"format:fmt"` overrides the format (e.g., "email", "uuid")
+//   - `openapi:"format:fmt"` overrides the format (e.g. "email", "uuid")
 //   - `openapi:"enum:a|b|c"` sets the enum values
 //
-// openapi directives are comma-separated and a value may contain commas and
-// colons; the only limitation is that a value cannot contain a comma immediately
-// followed by another directive key (e.g. ",description:").
-//
-// Example:
-//
-//	type User struct {
-//	    ID    int    `json:"id"`
-//	    Name  string `json:"name"`
-//	    Email string `json:"email" openapi:"format:email,description:User email"`
-//	}
-//	schema := openapi.SchemaOf(User{})
-//	// Returns: map[string]any{
-//	//   "type": "object",
-//	//   "properties": map[string]any{
-//	//     "id":    map[string]any{"type": "integer"},
-//	//     "name":  map[string]any{"type": "string"},
-//	//     "email": map[string]any{"type": "string", "format": "email", "description": "User email"},
-//	//   },
-//	//   "required": []string{"id", "name", "email"},
-//	// }
+// openapi directives are comma-separated; a value may contain commas and colons,
+// but not a comma immediately followed by another directive key.
 func SchemaOf(v any) map[string]any {
 	t := reflect.TypeOf(v)
 	if t == nil {
@@ -400,8 +377,7 @@ func parseJSONTag(field *reflect.StructField) jsonTagInfo {
 
 // isPlainJSONTagName reports whether every encoding/json release has taken name
 // as written: letters, digits and the punctuation isValidTag has always allowed.
-// Anything else is left to effectiveJSONTagName, since the treatment of the
-// remaining characters has changed between Go releases.
+// Anything else is left to effectiveJSONTagName.
 func isPlainJSONTagName(name string) bool {
 	if name == "" {
 		return false
@@ -419,14 +395,8 @@ func isPlainJSONTagName(name string) bool {
 
 // effectiveJSONTagName returns the property name encoding/json actually gives a
 // field tagged with name, or "" when the tag is ignored and the Go field name is
-// used instead.
-//
-// The rules for unusual names are version-dependent — Go 1.27 accepts a
-// backslash or a tab that earlier releases rejected, and truncates at an
-// apostrophe or backtick where they fell back to the field name — so the answer
-// is read from the toolchain in use rather than reimplemented here. Only names
-// isPlainJSONTagName rejects reach this, which real struct tags do not have, so
-// the marshal never lands on a hot path.
+// used instead. The rules for unusual names changed in Go 1.27, so the answer is
+// read from the toolchain in use rather than reimplemented here.
 func effectiveJSONTagName(name string) string {
 	// Quoted, not spliced: a struct tag value is an unquoted Go string literal,
 	// so a name carrying a backslash or a quote has to be re-escaped or it

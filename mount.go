@@ -786,15 +786,10 @@ func (app *App) processSubAppsRoutes() {
 
 			subApp := route.group.app
 
-			// Snapshot under the sub-app's lock, then leave it: registering a
-			// route the sub-app already serves appends to that route's handlers
-			// in place, so the stack and the routes themselves both have to be
-			// read guarded. Only clones cross the boundary, which keeps the
-			// re-parsing below from ever holding two apps' locks.
-			//
-			// Read by method rather than by stack index: an app is free to
-			// configure its own RequestMethods, and the two tables then neither
-			// line up nor have to be the same length.
+			// Snapshot under the sub-app's lock, then leave it: only clones
+			// cross the boundary, so the re-parsing below never holds two
+			// apps' locks. Read by method, not stack index: an app may
+			// configure its own RequestMethods, so the tables need not line up.
 			type sourceRoute struct {
 				clone        *Route
 				owner        *App
@@ -818,10 +813,8 @@ func (app *App) processSubAppsRoutes() {
 				// could collide, so clear it rather than let helpers match.
 				clone.regID = 0
 
-				// Carry the app each route came from over as well. The sub-app
-				// here is the wrapper the domain router built when the mount is
-				// a domain one, and the apps behind it are the ones whose config
-				// has to answer; an ordinary mount is its own routes' owner.
+				// Carry over the app each route came from: for a domain mount
+				// the sub-app is a wrapper, and the apps behind it own the config.
 				owner := subApp.routeOwner(subAppRoute)
 				if owner == nil {
 					owner = subApp

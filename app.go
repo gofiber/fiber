@@ -90,14 +90,8 @@ type App struct {
 	// Hooks
 	hooks *Hooks
 	// Latest route & group
-	latestRoute *Route
-	// latestBatch holds the live entries of latestBatchID, so chained helpers
-	// apply in O(batch) instead of scanning the stack. Guarded by mutex.
-	latestBatch []*Route
-	// mergedEntries maps a registration that compression merged away onto the
-	// stack entries it shares with a later registration, so the earlier scope's
-	// helpers still reach exactly the entries it registered. Entries are dropped
-	// again when deleteRoute removes them.
+	latestRoute   *Route
+	latestBatch   []*Route
 	mergedEntries map[uint64][]*Route
 	// newCtxFunc
 	newCtxFunc func(app *App) CustomCtx
@@ -132,14 +126,8 @@ type App struct {
 	// sendfilesMutex is a mutex used for sendfile operations
 	sendfilesMutex sync.RWMutex
 	mutex          sync.Mutex
-	// latestBatchID identifies the registration whose stack entries are held
-	// in latestBatch. Guarded by mutex.
-	latestBatchID uint64
-	// routesRevision increments on every route or route-metadata mutation and
-	// lets consumers (e.g. the OpenAPI middleware) cheaply detect staleness.
+	latestBatchID  uint64
 	routesRevision atomic.Uint64
-	// Monotonic counter identifying each register() call, used to find every
-	// stack entry created by the most recent registration
 	registrationID uint64
 	// Amount of registered handlers
 	handlersCount uint32
@@ -970,9 +958,8 @@ func (app *App) SetTLSHandler(tlsHandler *TLSHandler) {
 func (app *App) Name(name string) Router {
 	app.mutex.Lock()
 
-	// Snapshot under the lock and fire hooks after releasing it, so they may call
-	// locking methods without their reads racing the live route. Nothing fires
-	// when nothing was named: a mount placeholder or a removed route is skipped.
+	// Snapshot under the lock; hooks fire after it is released. Nothing fires
+	// when nothing was named.
 	var named *Route
 	if app.latestRoute != nil && app.nameRoutesLocked(app.latestBatchID, name, nil) {
 		app.bumpRoutesRevision()
@@ -1574,8 +1561,7 @@ func (app *App) applyToRegistration(regID uint64, apply func(route *Route)) {
 }
 
 // applyToLatestRouteLocked runs apply on every entry of the most recent
-// registration. Routes that merely share a path, method or domain are left
-// alone, so documenting one registration never clobbers another's.
+// registration, leaving routes that merely share a path or method alone.
 func (app *App) applyToLatestRouteLocked(apply func(route *Route)) {
 	if app.latestRoute == nil || apply == nil {
 		return
@@ -1586,10 +1572,8 @@ func (app *App) applyToLatestRouteLocked(apply func(route *Route)) {
 }
 
 // applyToRegIDLocked applies a mutation to every entry of regID, preferring the
-// O(batch) fast path. Entries that compression merged into a later registration
-// are stamped with that registration's ID and reached through mergedEntries, so
-// a scope never touches an entry it did not register. Reports whether anything
-// was touched; holds app.mutex.
+// O(batch) fast path and falling back to mergedEntries for compression-merged
+// entries. Reports whether anything was touched; holds app.mutex.
 func (app *App) applyToRegIDLocked(regID uint64, apply func(route *Route)) bool {
 	if regID == 0 {
 		return false
@@ -1622,9 +1606,8 @@ func (app *App) applyToRegIDLocked(regID uint64, apply func(route *Route)) bool 
 	return applied
 }
 
-// nameRoutesLocked names every entry of regID and, as Name always has, the
-// automatic HEAD twin of each GET entry, so the pair stays reachable by one
-// name. The caller must hold app.mutex.
+// nameRoutesLocked names every entry of regID plus the automatic HEAD twin of
+// each GET entry. The caller must hold app.mutex.
 func (app *App) nameRoutesLocked(regID uint64, name string, visit func(route *Route)) bool {
 	var gets []*Route
 	applied := app.applyToRegIDLocked(regID, func(route *Route) {
@@ -1657,9 +1640,8 @@ func (app *App) nameRoutesLocked(regID uint64, name string, visit func(route *Ro
 	return applied
 }
 
-// routeForURL finds a named route for URL composition. Only the routing fields
-// are copied: a request-path caller has no use for the documentation, and the
-// deep copy GetRoute makes would cost every redirect an allocation per example.
+// routeForURL finds a named route for URL composition, copying only the routing
+// fields so a redirect does not pay for a documentation deep copy.
 func (app *App) routeForURL(name string) Route {
 	app.mutex.Lock()
 	defer app.mutex.Unlock()
@@ -2464,9 +2446,8 @@ func (app *App) startupProcess() {
 	// build route tree stack
 	app.buildTree()
 
-	// Fire hooks after releasing the lock so they may safely call locking app
-	// methods (GetRoutes, documentation helpers, RemoveRoute, ...). A sub-app's
-	// hooks wait as well: they may reach into this app.
+	// Fire hooks after releasing the lock so they may call locking app methods.
+	// A sub-app's hooks wait too: they may reach into this app.
 	app.mutex.Unlock()
 	app.fireOnRouteHooks(twins)
 	for _, sub := range subTwins {

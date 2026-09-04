@@ -204,8 +204,7 @@ func resolveTargets(c fiber.Ctx, specPath, uiPath string, equal func(a, b string
 	prefix := routePrefix(route.Path, c.Path())
 	// Optional or greedy segments consume a varying number of request segments,
 	// so the truncation above cannot say where the mount ends. The request is
-	// compared trimmed, as the handler trims it, so a trailing slash still
-	// resolves.
+	// compared trimmed so a trailing slash still resolves.
 	if resolved, ok := resolveDynamicMountPrefix(route.Path, utils.TrimRight(c.Path(), '/'), specPath, uiPath, equal); ok {
 		prefix = resolved
 	}
@@ -389,9 +388,8 @@ func normalizePathHierarchy(path string) string {
 }
 
 // resolveDynamicMountPrefix picks the mount prefix when the pattern has optional
-// or greedy segments. The route already matched, so only the split is unknown:
-// every split the segment bounds allow is tried, shortest first, and the one
-// whose remainder is a target wins. None leaves the static truncation in place.
+// or greedy segments. Every split the segment bounds allow is tried, shortest
+// first, and the one whose remainder is a target wins.
 func resolveDynamicMountPrefix(pattern, requestPath, specPath, uiPath string, equal func(a, b string) bool) (string, bool) {
 	minSegments, maxSegments, dynamic := prefixSegmentBounds(pattern)
 	if !dynamic {
@@ -569,14 +567,10 @@ type operation struct {
 	Responses    map[string]response `json:"responses"`
 	RequestBody  *requestBody        `json:"requestBody,omitempty"`  //nolint:tagliatelle // OpenAPI spec uses camelCase
 	ExternalDocs map[string]any      `json:"externalDocs,omitempty"` //nolint:tagliatelle // OpenAPI spec uses camelCase
-	// extensions holds arbitrary operation-object fields (servers, callbacks,
-	// x-* extensions) merged at marshal time. Excluded from normal marshaling.
-	extensions map[string]any
+	extensions   map[string]any      // Arbitrary operation-object fields, merged at marshal time
 
 	OperationID string `json:"operationId,omitempty"` //nolint:tagliatelle // OpenAPI spec uses camelCase
 	Summary     string `json:"summary"`
-	// description is optional in the Operation Object, so an undocumented
-	// operation omits the key instead of emitting an empty string.
 	Description string `json:"description,omitempty"`
 
 	Parameters []parameter           `json:"parameters,omitempty"`
@@ -682,9 +676,7 @@ type requestBody struct {
 
 type pathVariant struct {
 	PathParamAliases map[string]string
-	// ParamConstraints maps an emitted path parameter name to the raw text of
-	// its route-pattern "<...>" constraint span, when it had one.
-	ParamConstraints map[string]string
+	ParamConstraints map[string]string // Parameter name -> raw "<...>" constraint text
 	Path             string
 	ParamNames       []string
 }
@@ -1398,10 +1390,8 @@ func defaultResponseForMethod(method, mediaType string) (string, response) {
 // pathState carries the in-progress OpenAPI path while walking a Fiber route
 // pattern; optional parameters fork the walk into include/exclude branches.
 type pathState struct {
-	aliases map[string]string
-	// constraints maps an emitted parameter name to the raw text of its
-	// "<...>" span, which types the generated schema.
-	constraints map[string]string
+	aliases     map[string]string
+	constraints map[string]string // Parameter name -> raw "<...>" constraint text
 	path        string
 	params      []string
 	paramIdx    int

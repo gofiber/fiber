@@ -19,9 +19,7 @@ type Group struct {
 
 	Prefix string
 
-	// lastRegID is the group's most recent registration, so the doc helpers
-	// target it rather than the app-global latest route. Accessed atomically.
-	lastRegID uint64
+	lastRegID uint64 // Most recent registration, targeted by the doc helpers. Accessed atomically.
 
 	hasAnyRoute bool
 }

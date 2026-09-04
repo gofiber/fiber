@@ -18,7 +18,6 @@ import (
 
 func testHandlerOK(c Ctx) error { return c.SendStatus(StatusOK) }
 
-// routesFor returns the non-use routes registered for path, keyed by method.
 func routesFor(app *App, path string) map[string]Route {
 	out := make(map[string]Route)
 	routes := app.GetRoutes()
@@ -34,8 +33,6 @@ func Test_RouteDocs_MultiMethodRegistration(t *testing.T) {
 	t.Parallel()
 	app := New()
 
-	// Metadata after a multi-method registration must reach every method
-	// variant, not only the last-registered one.
 	app.Add([]string{MethodGet, MethodPost}, "/multi", testHandlerOK).
 		Summary("multi summary").
 		Security(map[string][]string{"auth": {}})
@@ -61,7 +58,6 @@ func Test_RouteDocs_AllMethodsRegistration(t *testing.T) {
 			tagged++
 		}
 	}
-	// All() registers a use-style route per request method; every copy must be tagged.
 	require.Equal(t, len(DefaultMethods), tagged)
 }
 
@@ -71,7 +67,6 @@ func Test_RouteDocs_UseDoesNotLeakToEndpoints(t *testing.T) {
 
 	app.Post("/shared", testHandlerOK)
 	app.Use("/shared", func(c Ctx) error { return c.Next() })
-	// Documenting the middleware route must not touch the POST endpoint.
 	app.Produces(MIMEApplicationJSON)
 
 	routes := app.GetRoutes()
@@ -108,7 +103,6 @@ func Test_RoutesRevision_Bumps(t *testing.T) {
 func Test_CopyAnyMap_NilInterfaceElement(t *testing.T) {
 	t.Parallel()
 
-	// A typed interface slice/map with nil elements must clone without panicking.
 	var nilStringer fmt.Stringer
 	src := map[string]any{
 		"slice": []fmt.Stringer{nilStringer},
@@ -120,8 +114,6 @@ func Test_CopyAnyMap_NilInterfaceElement(t *testing.T) {
 	})
 }
 
-// fullyPopulatedRoute sets every exported Route field non-zero, so adding one
-// without updating this fixture and copyRoute fails Test_CopyRoute_Complete.
 func fullyPopulatedRoute() *Route {
 	return &Route{
 		Method:      MethodPost,
@@ -164,8 +156,6 @@ func Test_CopyRoute_Complete(t *testing.T) {
 
 	original := fullyPopulatedRoute()
 
-	// Guard: every exported Route field must be non-zero in the fixture, so a
-	// newly added field forces this test (and copyRoute) to be updated.
 	value := reflect.ValueOf(*original)
 	typ := value.Type()
 	for i := range typ.NumField() {
@@ -179,13 +169,11 @@ func Test_CopyRoute_Complete(t *testing.T) {
 
 	clone := app.copyRoute(original)
 
-	// Handlers are funcs (not comparable); compare the rest for equality.
 	require.Len(t, clone.Handlers, len(original.Handlers))
 	origCmp, cloneCmp := *original, *clone
 	origCmp.Handlers, cloneCmp.Handlers = nil, nil
 	require.Equal(t, origCmp, cloneCmp)
 
-	// Mutating the original's composite metadata must not affect the clone.
 	original.Tags[0] = "mutated"
 	original.Security[0]["auth"] = append(original.Security[0]["auth"], "write")
 	original.Parameters[0].Schema["type"] = "integer"
@@ -222,8 +210,6 @@ func Test_RouteChain_DocumentationHelpers(t *testing.T) {
 	require.Equal(t, []string{"chained"}, routes[MethodGet].Tags)
 }
 
-// Test_Shutdown_WithInflightGetRoutes verifies shutdown completes while a
-// handler calls GetRoutes; both used to wait on app.mutex forever.
 func Test_Shutdown_WithInflightGetRoutes(t *testing.T) {
 	t.Parallel()
 	app := New()
@@ -257,8 +243,6 @@ func Test_Shutdown_WithInflightGetRoutes(t *testing.T) {
 	done := make(chan error, 1)
 	go func() { done <- app.Shutdown() }()
 
-	// Give Shutdown time to start waiting on the in-flight request, then let
-	// the handler proceed into GetRoutes.
 	time.Sleep(100 * time.Millisecond)
 	close(proceed)
 
@@ -270,8 +254,6 @@ func Test_Shutdown_WithInflightGetRoutes(t *testing.T) {
 	}
 }
 
-// Test_Hooks_MayCallLockingAppMethods verifies hooks can call GetRoutes and the
-// doc helpers without deadlocking, since they fire unlocked.
 func Test_Hooks_MayCallLockingAppMethods(t *testing.T) {
 	t.Parallel()
 	app := New()
@@ -301,8 +283,6 @@ func Test_Hooks_MayCallLockingAppMethods(t *testing.T) {
 	require.Positive(t, onNameSaw)
 }
 
-// Test_GetRoute_DeepCopy verifies GetRoute (singular) returns a deep copy like
-// GetRoutes, so mutating the returned metadata cannot corrupt the live route.
 func Test_GetRoute_DeepCopy(t *testing.T) {
 	t.Parallel()
 	app := New()
@@ -319,8 +299,6 @@ func Test_GetRoute_DeepCopy(t *testing.T) {
 	require.NotContains(t, fresh.Responses, "999")
 }
 
-// Test_Mount_StartupConcurrentSubAppDocHelpers verifies startup clones sub-app
-// routes under its lock, so concurrent doc helpers cannot race the clone.
 func Test_Mount_StartupConcurrentSubAppDocHelpers(t *testing.T) {
 	t.Parallel()
 	sub := New()
@@ -350,8 +328,6 @@ func Test_Mount_StartupConcurrentSubAppDocHelpers(t *testing.T) {
 	wg.Wait()
 }
 
-// Test_ScopedDocHelpers_TargetOwnRegistration verifies scoped helpers document
-// their own last registration, not the app-global latest route.
 func Test_ScopedDocHelpers_TargetOwnRegistration(t *testing.T) {
 	t.Parallel()
 
@@ -398,8 +374,6 @@ func Test_ScopedDocHelpers_TargetOwnRegistration(t *testing.T) {
 		app.Get("/a", testHandlerOK)
 		rev := app.RoutesRevision()
 
-		// No registration happened through these scopes yet, so their helpers
-		// must not touch anything (previously they hit GET /a).
 		app.RouteChain("/x").Summary("nope")
 		app.Group("/g").Summary("nope")
 		app.Domain("d.example.com").Summary("nope")
@@ -409,8 +383,6 @@ func Test_ScopedDocHelpers_TargetOwnRegistration(t *testing.T) {
 	})
 }
 
-// Test_Domain_SamePathKeepsSeparateRoutes verifies same-path routes on different
-// domains never merge, so each keeps its own handlers and documentation.
 func Test_Domain_SamePathKeepsSeparateRoutes(t *testing.T) {
 	t.Parallel()
 	app := New()
@@ -441,8 +413,6 @@ func Test_Domain_SamePathKeepsSeparateRoutes(t *testing.T) {
 	}
 }
 
-// Test_DocCursor_InvalidatedByRemovalAndStartup verifies stray helpers cannot
-// re-document removed routes or an arbitrary auto-HEAD twin's origin.
 func Test_DocCursor_InvalidatedByRemovalAndStartup(t *testing.T) {
 	t.Parallel()
 
@@ -453,7 +423,7 @@ func Test_DocCursor_InvalidatedByRemovalAndStartup(t *testing.T) {
 		app.RemoveRoute("/a", MethodGet)
 		rev := app.RoutesRevision()
 
-		app.Summary("dangling") // must be a no-op, not a dead-object write
+		app.Summary("dangling")
 		require.Equal(t, rev, app.RoutesRevision())
 	})
 
@@ -467,16 +437,12 @@ func Test_DocCursor_InvalidatedByRemovalAndStartup(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, StatusOK, resp.StatusCode)
 
-		// The cursor still points at the last registration (POST /c), not at
-		// the auto-HEAD twin created for GET /a during startup.
 		app.Summary("late")
 		require.Equal(t, "sum-a", routesFor(app, "/a")[MethodGet].Summary)
 		require.Equal(t, "late", routesFor(app, "/c")[MethodPost].Summary)
 	})
 }
 
-// Test_MountRegistration_DocHelpersAreNoOps verifies metadata chained onto a
-// mount neither survives startup nor pretends to: the helpers are no-ops.
 func Test_MountRegistration_DocHelpersAreNoOps(t *testing.T) {
 	t.Parallel()
 	sub := New()
@@ -485,7 +451,7 @@ func Test_MountRegistration_DocHelpersAreNoOps(t *testing.T) {
 	app := New()
 	rev := app.RoutesRevision()
 	app.Use("/api", sub).Summary("mount summary").Tags("mount")
-	require.Greater(t, app.RoutesRevision(), rev) // registration bumped...
+	require.Greater(t, app.RoutesRevision(), rev)
 
 	for _, route := range app.GetRoutes() {
 		require.NotEqual(t, "mount summary", route.Summary, route.Path)
@@ -501,8 +467,6 @@ func Test_MountRegistration_DocHelpersAreNoOps(t *testing.T) {
 	}
 }
 
-// Test_Security_EmptyScopesStayNonNil verifies an empty (non-nil) scope list
-// survives cloning, so the generated document can emit [] rather than null.
 func Test_Security_EmptyScopesStayNonNil(t *testing.T) {
 	t.Parallel()
 	app := New()
@@ -516,8 +480,6 @@ func Test_Security_EmptyScopesStayNonNil(t *testing.T) {
 	require.Empty(t, scopes)
 }
 
-// Test_ExampleFields_DeepCopied verifies user-held maps passed as Example are
-// not aliased between the live route and GetRoutes snapshots.
 func Test_ExampleFields_DeepCopied(t *testing.T) {
 	t.Parallel()
 	app := New()
@@ -530,14 +492,12 @@ func Test_ExampleFields_DeepCopied(t *testing.T) {
 	snapshot, ok := route.RequestBody.Example.(map[string]any)
 	require.True(t, ok)
 
-	// Mutating the snapshot must not write through to the live route...
 	snapshot["name"] = "tampered"
 	fresh := routesFor(app, "/x")[MethodPost]
 	freshExample, ok := fresh.RequestBody.Example.(map[string]any)
 	require.True(t, ok)
 	require.Equal(t, "original", freshExample["name"])
 
-	// ...and neither must mutating the map the caller passed in.
 	example["name"] = "caller-mutated"
 	fresh = routesFor(app, "/x")[MethodPost]
 	freshExample, ok = fresh.RequestBody.Example.(map[string]any)
@@ -545,8 +505,6 @@ func Test_ExampleFields_DeepCopied(t *testing.T) {
 	require.Equal(t, "original", freshExample["name"])
 }
 
-// Test_AutoHeadTwins_CarryNoDocumentation verifies startup-created HEAD twins
-// are uniformly undocumented instead of half-copied.
 func Test_AutoHeadTwins_CarryNoDocumentation(t *testing.T) {
 	t.Parallel()
 	app := New()
@@ -573,8 +531,6 @@ func Test_AutoHeadTwins_CarryNoDocumentation(t *testing.T) {
 	require.Empty(t, twin.Responses)
 }
 
-// Test_Hooks_OutsideRouterLock verifies hooks inspecting the app do not deadlock:
-// they all take app.mutex, so every hook must fire with it released.
 func Test_Hooks_OutsideRouterLock(t *testing.T) {
 	t.Parallel()
 
@@ -622,8 +578,6 @@ func Test_Hooks_OutsideRouterLock(t *testing.T) {
 	})
 }
 
-// Test_DocMetadata_CyclicValueDoesNotCrash verifies a self-referential example
-// value cannot turn a route snapshot into an unrecoverable stack overflow.
 func Test_DocMetadata_CyclicValueDoesNotCrash(t *testing.T) {
 	t.Parallel()
 	cyclic := map[string]any{"k": 1}
@@ -637,8 +591,6 @@ func Test_DocMetadata_CyclicValueDoesNotCrash(t *testing.T) {
 	})
 }
 
-// Test_ScopedName_TargetsOwnRegistration verifies Name is scoped like the other
-// helpers: it names that router's own last registration.
 func Test_ScopedName_TargetsOwnRegistration(t *testing.T) {
 	t.Parallel()
 
@@ -681,14 +633,12 @@ func Test_ScopedName_TargetsOwnRegistration(t *testing.T) {
 	})
 }
 
-// Test_ScopedHelpers_AfterMergedRegistration verifies a scoped helper still
-// reaches a merged registration once later ones moved the batch on.
 func Test_ScopedHelpers_AfterMergedRegistration(t *testing.T) {
 	t.Parallel()
 	app := New()
 	api := app.Group("/api")
 	api.Get("/users", testHandlerOK)
-	api.Get("/users", testHandlerOK) // merged into the entry above
+	api.Get("/users", testHandlerOK)
 	app.Get("/health", testHandlerOK)
 
 	rev := app.RoutesRevision()
@@ -700,8 +650,6 @@ func Test_ScopedHelpers_AfterMergedRegistration(t *testing.T) {
 	require.Greater(t, app.RoutesRevision(), rev)
 }
 
-// Test_Group_SubGroupDoesNotStealParentCursor verifies a sub-group with
-// middleware leaves the parent's helpers on the parent's own last route.
 func Test_Group_SubGroupDoesNotStealParentCursor(t *testing.T) {
 	t.Parallel()
 	app := New()
@@ -715,9 +663,6 @@ func Test_Group_SubGroupDoesNotStealParentCursor(t *testing.T) {
 	require.Equal(t, []string{"users"}, route.Tags)
 }
 
-// Test_AddParameter_ExampleDetached pins the parameter example against caller
-// mutation, matching what the response helpers already guarantee. A live alias
-// would change the served document without bumping the route revision.
 func Test_AddParameter_ExampleDetached(t *testing.T) {
 	t.Parallel()
 
@@ -735,8 +680,6 @@ func Test_AddParameter_ExampleDetached(t *testing.T) {
 	require.Equal(t, map[string]any{"nested": map[string]any{"k": "original"}}, stored)
 }
 
-// Test_AddParameter_SchemaSelection covers how docAddParameter decides between a
-// content map, a schema reference, the querystring location and a plain schema.
 func Test_AddParameter_SchemaSelection(t *testing.T) {
 	t.Parallel()
 
@@ -813,7 +756,6 @@ func Test_AddParameter_SchemaSelection(t *testing.T) {
 		param := routesFor(app, "/explode")[MethodGet].Parameters[0]
 		require.NotNil(t, param.Explode)
 		require.True(t, *param.Explode)
-		// The route must not share the caller's pointer.
 		explode = false
 		param = routesFor(app, "/explode")[MethodGet].Parameters[0]
 		require.True(t, *param.Explode)
@@ -836,8 +778,6 @@ func Test_AddParameter_SchemaSelection(t *testing.T) {
 	})
 }
 
-// Test_AddParameter_ContentSingleMediaType asserts a content map holds exactly
-// one entry and that its key is a real media type.
 func Test_AddParameter_ContentSingleMediaType(t *testing.T) {
 	t.Parallel()
 
@@ -881,8 +821,6 @@ func Test_AddParameter_ContentSingleMediaType(t *testing.T) {
 	})
 }
 
-// Test_ContentHelpers_ValidateMediaTypes asserts RequestBodyContent and
-// ResponseContent reject a bad key, like the simpler helpers already do.
 func Test_ContentHelpers_ValidateMediaTypes(t *testing.T) {
 	t.Parallel()
 
@@ -915,8 +853,6 @@ func Test_ContentHelpers_ValidateMediaTypes(t *testing.T) {
 	})
 }
 
-// Test_RemoveRoute_HandlerCountPerDomain asserts removing a path registered on
-// two domains decrements the handler count for each, not just the first.
 func Test_RemoveRoute_HandlerCountPerDomain(t *testing.T) {
 	t.Parallel()
 
@@ -929,9 +865,6 @@ func Test_RemoveRoute_HandlerCountPerDomain(t *testing.T) {
 	require.Equal(t, uint32(0), app.HandlersCount())
 }
 
-// Test_ScopedHelpers_SurviveCompression pins the earlier scope's helper against
-// route compression: two routers registering the same method and path share one
-// stack entry, and the first scope must still reach it.
 func Test_ScopedHelpers_SurviveCompression(t *testing.T) {
 	t.Parallel()
 
@@ -956,9 +889,6 @@ func Test_ScopedHelpers_SurviveCompression(t *testing.T) {
 	require.Equal(t, "from-g2", found.Description)
 }
 
-// Test_GroupMount_DoesNotRetargetPreviousRoute pins a group mount as the helper
-// cursor, so a chained helper is a no-op rather than documenting the route
-// registered before the mount.
 func Test_GroupMount_DoesNotRetargetPreviousRoute(t *testing.T) {
 	t.Parallel()
 
@@ -979,9 +909,6 @@ func Test_GroupMount_DoesNotRetargetPreviousRoute(t *testing.T) {
 	}
 }
 
-// Test_CopyAnyValue_NamedMapCycle pins the depth counter across the reflected
-// copier: a cycle inside a named map type must hit maxCopyDepth rather than
-// recursing until the stack overflows.
 func Test_CopyAnyValue_NamedMapCycle(t *testing.T) {
 	t.Parallel()
 
@@ -996,7 +923,6 @@ func Test_CopyAnyValue_NamedMapCycle(t *testing.T) {
 	require.NotPanics(t, func() { _ = copyAnyValue(cyclicList) })
 }
 
-// findRoute returns the copy of the first route with the given method and path.
 func findRoute(t *testing.T, app *App, method, path string) Route {
 	t.Helper()
 	routes := app.GetRoutes()
@@ -1009,9 +935,6 @@ func findRoute(t *testing.T, app *App, method, path string) Route {
 	return Route{}
 }
 
-// Test_ScopedHelpers_MergeReachesOnlyOwnEntries pins that a compression merge
-// keeps each scope's helpers on exactly the entries that scope registered: the
-// earlier one neither loses its unmerged entries nor gains the later one's.
 func Test_ScopedHelpers_MergeReachesOnlyOwnEntries(t *testing.T) {
 	t.Parallel()
 
@@ -1054,9 +977,6 @@ func Test_ScopedHelpers_MergeReachesOnlyOwnEntries(t *testing.T) {
 	})
 }
 
-// Test_ConcurrentRegistrations_KeepBatchesWhole pins that two scoped
-// registrations interleaving one method at a time still document every entry
-// of their own, whether the scope's registration owns the batch or not.
 func Test_ConcurrentRegistrations_KeepBatchesWhole(t *testing.T) {
 	t.Parallel()
 
@@ -1079,9 +999,6 @@ func Test_ConcurrentRegistrations_KeepBatchesWhole(t *testing.T) {
 	}
 }
 
-// Test_AutoHeadTwin_OutsideRegistrations pins that a twin created at startup
-// belongs to no registration, so a scoped helper that falls back to the stack
-// scan does not document it.
 func Test_AutoHeadTwin_OutsideRegistrations(t *testing.T) {
 	t.Parallel()
 
@@ -1102,8 +1019,6 @@ func Test_AutoHeadTwin_OutsideRegistrations(t *testing.T) {
 	require.False(t, head.Deprecated)
 }
 
-// Test_Name_ReachesAutoHeadTwin pins that naming a GET route names the HEAD
-// twin it already has, so the pair stays reachable by one name.
 func Test_Name_ReachesAutoHeadTwin(t *testing.T) {
 	t.Parallel()
 
@@ -1124,8 +1039,6 @@ func Test_Name_ReachesAutoHeadTwin(t *testing.T) {
 	require.Equal(t, "things", findRoute(t, app, MethodHead, "/g/b").Name)
 }
 
-// Test_Name_NoHookForMountPlaceholder pins that OnName fires only for a route
-// that was actually named: a mount placeholder is skipped, not reported.
 func Test_Name_NoHookForMountPlaceholder(t *testing.T) {
 	t.Parallel()
 
@@ -1145,8 +1058,6 @@ func Test_Name_NoHookForMountPlaceholder(t *testing.T) {
 	require.Equal(t, []string{"GET /c c"}, fired)
 }
 
-// Test_GroupMiddleware_ReachableFromGroup pins that a group created from the
-// app keeps its middleware registration, like one created from a group does.
 func Test_GroupMiddleware_ReachableFromGroup(t *testing.T) {
 	t.Parallel()
 
@@ -1165,9 +1076,6 @@ func Test_GroupMiddleware_ReachableFromGroup(t *testing.T) {
 	require.Equal(t, "mw", findRoute(t, app, MethodPost, "/v1").Summary)
 }
 
-// Test_LockingLookups_FromCallbacks pins that callbacks the router runs may call
-// the locking lookups: a RemoveRouteFunc matcher and a sub-app's OnRoute hook
-// fired during the parent's startup.
 func Test_LockingLookups_FromCallbacks(t *testing.T) {
 	t.Parallel()
 
@@ -1218,8 +1126,6 @@ func Test_LockingLookups_FromCallbacks(t *testing.T) {
 	})
 }
 
-// Test_CopyAnyMap_KeepsNestedEmptyMaps pins that an empty nested object is
-// copied as an object, not dropped to nil and served as null.
 func Test_CopyAnyMap_KeepsNestedEmptyMaps(t *testing.T) {
 	t.Parallel()
 
@@ -1239,8 +1145,6 @@ func Test_CopyAnyMap_KeepsNestedEmptyMaps(t *testing.T) {
 	require.Nil(t, copyAnyMap(map[string]any{}), "a top-level empty map still reads as unset")
 }
 
-// Test_ResponseExample_NotSharedAcrossBatch pins that each route of a
-// multi-method registration gets its own copy of a response example.
 func Test_ResponseExample_NotSharedAcrossBatch(t *testing.T) {
 	t.Parallel()
 
@@ -1265,8 +1169,6 @@ func Test_ResponseExample_NotSharedAcrossBatch(t *testing.T) {
 	require.Equal(t, "v", examples[1]["k"])
 }
 
-// Test_RouteForURL_SkipsDocumentation pins the request-path lookup: it finds
-// the named route without cloning the documentation.
 func Test_RouteForURL_SkipsDocumentation(t *testing.T) {
 	t.Parallel()
 

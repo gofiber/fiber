@@ -137,8 +137,6 @@ func Test_Group_OpenAPI_Helpers(t *testing.T) {
 	})
 }
 
-// Test_Group_OpenAPI_Helpers_Advanced covers the Group documentation helpers
-// not exercised by Test_Group_OpenAPI_Helpers.
 func Test_Group_OpenAPI_Helpers_Advanced(t *testing.T) {
 	t.Parallel()
 

@@ -313,7 +313,6 @@ func Test_OpenAPI_SchemaRefsAndExamples(t *testing.T) {
 	require.Len(t, params, 1)
 	param := requireMap(t, params[0])
 	require.Equal(t, "search query", param["description"])
-	// OpenAPI spec: "example" and "examples" are mutually exclusive; "examples" takes precedence.
 	require.Nil(t, param["example"])
 	require.Equal(t, map[string]any{"sample": "abc"}, requireMap(t, param["examples"]))
 	paramSchema := requireMap(t, param["schema"])
@@ -324,7 +323,6 @@ func Test_OpenAPI_SchemaRefsAndExamples(t *testing.T) {
 	jsonContent := requireMap(t, bodyContent[fiber.MIMEApplicationJSON])
 	bodySchema := requireMap(t, jsonContent["schema"])
 	require.Equal(t, "#/components/schemas/User", bodySchema["$ref"])
-	// OpenAPI spec: "example" and "examples" are mutually exclusive; "examples" takes precedence.
 	require.Nil(t, jsonContent["example"])
 	require.Equal(t, map[string]any{"sample": map[string]any{"name": "doe"}}, requireMap(t, jsonContent["examples"]))
 
@@ -333,13 +331,10 @@ func Test_OpenAPI_SchemaRefsAndExamples(t *testing.T) {
 	respJSON := requireMap(t, respContent[fiber.MIMEApplicationJSON])
 	respSchema := requireMap(t, respJSON["schema"])
 	require.Equal(t, "#/components/schemas/UserResponse", respSchema["$ref"])
-	// OpenAPI spec: "example" and "examples" are mutually exclusive; "examples" takes precedence.
 	require.Nil(t, respJSON["example"])
 	require.Equal(t, map[string]any{"sample": map[string]any{"id": float64(2)}}, requireMap(t, respJSON["examples"]))
 }
 
-// getPaths is a helper that mounts the middleware, performs the request and
-// decodes the resulting OpenAPI specification paths.
 func getPaths(t *testing.T, app *fiber.App) map[string]map[string]any {
 	t.Helper()
 
@@ -475,8 +470,6 @@ func Test_OpenAPI_NoRoutes(t *testing.T) {
 
 	paths := getPaths(t, app)
 
-	// Middleware routes registered via Use() are excluded, so an app with
-	// only the openapi middleware has no paths in the generated spec.
 	require.Empty(t, paths)
 }
 
@@ -728,7 +721,6 @@ func Test_OpenAPI_VersionDefault(t *testing.T) {
 
 	app.Get("/test", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
 
-	// No version specified, should default to 3.1.0
 	app.Use(New())
 
 	req := httptest.NewRequest(fiber.MethodGet, "/openapi.json", http.NoBody)
@@ -747,7 +739,6 @@ func Test_OpenAPI_VersionInvalid(t *testing.T) {
 
 	app.Get("/test", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
 
-	// Invalid version should fall back to default 3.1.0
 	cfg := Config{
 		OpenAPIVersion: "2.0.0",
 	}
@@ -840,8 +831,6 @@ func Test_OpenAPI_NoRequestBodyForGET(t *testing.T) {
 	require.NotContains(t, op, "requestBody")
 }
 
-// Test_OpenAPI_Cache verifies the spec is regenerated per request, so routes
-// added after the first request are reflected without a process restart.
 func Test_OpenAPI_Cache(t *testing.T) {
 	t.Parallel()
 
@@ -879,8 +868,6 @@ func requireMap(t *testing.T, value any) map[string]any {
 	return m
 }
 
-// fetchJSON requests the generated OpenAPI spec and decodes the JSON body into a
-// generic map. The middleware must already be registered on the app.
 func fetchJSON(t *testing.T, app *fiber.App) map[string]any {
 	t.Helper()
 
@@ -943,7 +930,6 @@ func Test_OpenAPI_SecuritySchemes_MergeWithComponents(t *testing.T) {
 
 	spec := fetchJSON(t, app)
 	components := requireMap(t, spec["components"])
-	// User-provided components are preserved alongside the injected securitySchemes.
 	require.Contains(t, components, "schemas")
 	require.Contains(t, components, "securitySchemes")
 }
@@ -954,7 +940,6 @@ func Test_OpenAPI_RouteSecurity(t *testing.T) {
 	app := fiber.New()
 	app.Get("/private", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) }).
 		Security(map[string][]string{"bearerAuth": {"read"}})
-	// An explicit empty requirement documents "no authentication".
 	app.Get("/public", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) }).
 		Security(map[string][]string{})
 
@@ -1054,7 +1039,6 @@ func Test_OpenAPI_TopLevelTagsAndExternalDocs(t *testing.T) {
 func Test_OpenAPI_SwaggerUI_StandalonePreset(t *testing.T) {
 	t.Parallel()
 
-	// Default config loads the standalone preset and uses StandaloneLayout.
 	app := fiber.New()
 	app.Get("/users", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
 	app.Use(New())
@@ -1067,7 +1051,6 @@ func Test_OpenAPI_SwaggerUI_StandalonePreset(t *testing.T) {
 	require.Contains(t, string(body), `src="https://unpkg.com/swagger-ui-dist@5.32.6/swagger-ui-standalone-preset.js"`)
 	require.Contains(t, string(body), "StandaloneLayout")
 
-	// A custom standalone preset URL is honored (self-hosting scenario).
 	app2 := fiber.New()
 	app2.Get("/users", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
 	app2.Use(New(Config{SwaggerStandalonePresetURL: "https://cdn.example.com/standalone.js"}))
@@ -1113,14 +1096,11 @@ func Test_OpenAPI_MiddlewareRoutesExcluded(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
 
-	// Register a middleware using Use() — should be excluded from spec
 	app.Use(func(c fiber.Ctx) error { return c.Next() })
-	// Register an actual route — should be included
 	app.Get("/health", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
 
 	paths := getPaths(t, app)
 	require.Contains(t, paths, "/health")
-	// The middleware path "/" should NOT appear
 	require.NotContains(t, paths, "/")
 }
 
@@ -1128,8 +1108,6 @@ func Test_OpenAPI_DefaultRequestBodyForPOST(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
 
-	// Without body metadata a POST gets NO implicit request body; declaring
-	// Consumes explicitly opts in to one.
 	app.Post("/webhook", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
 	app.Post("/typed", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) }).
 		Consumes(fiber.MIMEApplicationJSON)
@@ -1152,8 +1130,6 @@ func Test_OpenAPI_AutoHeadExcluded(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
 
-	// Registering a GET route automatically creates a HEAD route.
-	// The auto-generated HEAD should NOT appear in the spec.
 	app.Get("/items", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
 
 	paths := getPaths(t, app)
@@ -1253,7 +1229,6 @@ func Test_BuildOpenAPIPathVariants(t *testing.T) {
 
 	t.Run("wildcard uses openapi-compatible parameter name", func(t *testing.T) {
 		t.Parallel()
-		// "*" also matches no segment, so the bare path is a variant too.
 		variants := buildOpenAPIPathVariants("/files/*", []string{"*1"})
 		require.Len(t, variants, 2)
 		require.Equal(t, "/files/{wildcard1}", variants[0].Path)
@@ -1299,7 +1274,6 @@ func Test_OpenAPI_WildcardPathParameterNameMatchesTemplate(t *testing.T) {
 
 	paths := getPaths(t, app)
 	require.Len(t, paths, 2)
-	// The route also answers /files, since "*" may match nothing.
 	require.Nil(t, requireMap(t, paths["/files"]["get"])["parameters"])
 	delete(paths, "/files")
 	for template, ops := range paths {
@@ -1317,7 +1291,6 @@ func Test_OpenAPI_RequestBodyFromRoute(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
 
-	// Route-level requestBody should be reflected in the generated spec.
 	app.Post("/users", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusCreated) }).
 		RequestBodyWithExample("User from route", true, map[string]any{"type": "object"}, "", map[string]any{"name": "Alice"}, nil, fiber.MIMEApplicationJSON)
 	app.Use(New())
@@ -1365,7 +1338,6 @@ func Test_OpenAPI_ResponseContentFromRoute(t *testing.T) {
 	schema, ok := jsonContent["schema"].(map[string]any)
 	require.True(t, ok, "schema should be a map")
 	require.Equal(t, "#/components/schemas/DefaultSchema", schema["$ref"])
-	// OpenAPI spec: "example" and "examples" are mutually exclusive; "examples" takes precedence.
 	require.NotContains(t, jsonContent, "example")
 	require.Contains(t, jsonContent, "examples")
 }
@@ -1420,7 +1392,6 @@ func Test_OpenAPI_ParameterEdgeCases(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
 
-	// Route parameter helpers should force path parameters to required=true.
 	app.Get("/test/:id", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) }).
 		Parameter("id", "path", false, nil, "resource identifier")
 	app.Use(New())
@@ -1491,7 +1462,7 @@ func Test_OpenAPI_ShouldIncludeRequestBody(t *testing.T) {
 			name:       "GET never has a body even with explicit consumes",
 			method:     fiber.MethodGet,
 			consumes:   fiber.MIMEApplicationJSON,
-			expectBody: false, // GET/HEAD never carry a request body
+			expectBody: false,
 		},
 		{
 			name:       "HEAD never has a body",
@@ -1600,7 +1571,6 @@ func Test_OpenAPI_MediaTypesToContentEmptyMediaType(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
 
-	// Test that empty media types in the list are skipped
 	app.Get("/test", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) }).
 		Response(200, "Success", fiber.MIMEApplicationJSON, "", fiber.MIMETextPlain)
 
@@ -1623,8 +1593,6 @@ func Test_OpenAPI_NilParameterInAppend(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
 
-	// Test the defensive nil check in appendOrReplaceParameter
-	// This is primarily for code coverage of the nil check branch
 	app.Get("/test", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) }).
 		Parameter("valid", "query", false, nil, "A valid parameter")
 
@@ -1646,17 +1614,14 @@ func Test_OpenAPI_MarshalError(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
 
-	// Create a route that will cause JSON marshal to be called
 	app.Get("/test", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
 	app.Use(New())
 
-	// First request generates the spec
 	req1 := httptest.NewRequest(fiber.MethodGet, "/openapi.json", http.NoBody)
 	resp1, err := app.Test(req1)
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusOK, resp1.StatusCode)
 
-	// Second request regenerates it successfully as well
 	req2 := httptest.NewRequest(fiber.MethodGet, "/openapi.json", http.NoBody)
 	resp2, err := app.Test(req2)
 	require.NoError(t, err)
@@ -1690,7 +1655,6 @@ func Test_OpenAPI_ResponseWithSchemaRefAndExamples(t *testing.T) {
 	content := resp200.Content[fiber.MIMEApplicationJSON]
 
 	require.Contains(t, content, "schema")
-	// OpenAPI spec: "example" and "examples" are mutually exclusive; "examples" takes precedence.
 	require.NotContains(t, content, "example")
 	require.Contains(t, content, "examples")
 }
@@ -1733,7 +1697,6 @@ func Test_OpenAPI_ExampleWithoutExamples(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
 
-	// When only "example" is provided (no "examples"), "example" should appear.
 	app.Get("/test", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) }).
 		ParameterWithExample("q", "query", false, nil, "", "search", "abc", nil).
 		ResponseWithExample(fiber.StatusOK, "OK", nil, "", map[string]any{"id": 1}, nil, fiber.MIMEApplicationJSON)
@@ -1771,7 +1734,6 @@ func Test_OpenAPI_SchemaOfIntegration(t *testing.T) {
 
 	paths := getPaths(t, app)
 
-	// Verify GET /users/:id response schema
 	getOp := requireMap(t, paths["/users/{id}"]["get"])
 	getResp := requireMap(t, requireMap(t, getOp["responses"])["200"])
 	getContent := requireMap(t, getResp["content"])
@@ -1782,7 +1744,6 @@ func Test_OpenAPI_SchemaOfIntegration(t *testing.T) {
 	require.Contains(t, props, "id")
 	require.Contains(t, props, "name")
 
-	// Verify POST /users request body schema
 	postOp := requireMap(t, paths["/users"]["post"])
 	reqBody := requireMap(t, postOp["requestBody"])
 	reqContent := requireMap(t, reqBody["content"])
@@ -1798,7 +1759,6 @@ func Test_OpenAPI_OperationID_GeneratedAndUnique(t *testing.T) {
 	t.Parallel()
 
 	app := fiber.New()
-	// Two unnamed routes -> generated, non-empty, unique operationIds.
 	app.Get("/users", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
 	app.Get("/users/:id", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
 
@@ -1826,7 +1786,6 @@ func Test_OpenAPI_OperationID_DuplicateNamesDeduped(t *testing.T) {
 	require.True(t, ok)
 
 	ids := map[string]bool{idA: true, idB: true}
-	// Both routes asked for "dup"; the generated document must keep them unique.
 	require.Len(t, ids, 2)
 	require.Contains(t, ids, "dup")
 	require.Contains(t, ids, "dup_2")
@@ -1840,7 +1799,6 @@ func Test_OpenAPI_AutoSummaryUsesOpenAPIPath(t *testing.T) {
 
 	paths := getPaths(t, app)
 	op := requireMap(t, paths["/users/{id}"]["get"])
-	// Auto-generated summary uses the OpenAPI path template, not Fiber syntax.
 	require.Equal(t, "GET /users/{id}", op["summary"])
 }
 
@@ -1877,7 +1835,6 @@ func Test_OpenAPI_ResponseHeaderCreatesResponse(t *testing.T) {
 	t.Parallel()
 
 	app := fiber.New()
-	// ResponseHeader without a preceding Response() should still create the entry.
 	app.Get("/users", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) }).
 		ResponseHeader(200, "X-Trace-Id", "Trace identifier", nil)
 
@@ -1902,9 +1859,6 @@ func Test_OpenAPI_GETExplicitRequestBodySuppressed(t *testing.T) {
 
 func openapiBoolPtr(b bool) *bool { return &b }
 
-// fetchSpecWithConfig registers routes, mounts the middleware with cfg, and
-// returns the decoded /openapi.json document.
-//
 //nolint:gocritic // hugeParam: Config is passed by value to mirror the public New signature.
 func fetchSpecWithConfig(t *testing.T, cfg Config, register func(app *fiber.App)) map[string]any {
 	t.Helper()
@@ -2095,7 +2049,6 @@ func Test_OpenAPI_OperationExtension(t *testing.T) {
 		OperationExtension(map[string]any{
 			"servers":   []any{map[string]any{"url": "https://op.example.com"}},
 			"callbacks": map[string]any{"onData": map[string]any{}},
-			// Must not clobber a generated key:
 			"responses": map[string]any{"999": map[string]any{"description": "ignored"}},
 		})
 
@@ -2105,7 +2058,6 @@ func Test_OpenAPI_OperationExtension(t *testing.T) {
 	require.True(t, ok)
 	require.Len(t, servers, 1)
 	require.Contains(t, op, "callbacks")
-	// Generated responses must win over the extension's "responses".
 	require.NotContains(t, requireMap(t, op["responses"]), "999")
 }
 
@@ -2117,7 +2069,6 @@ func Test_OpenAPI_QueryMethod_Gated(t *testing.T) {
 			RequestBody("query", true, fiber.MIMEApplicationJSON)
 	}
 
-	// 3.2: QUERY emits a `query` operation that carries a request body.
 	spec32 := fetchSpecWithConfig(t, Config{OpenAPIVersion: "3.2.0"}, register)
 	paths32 := requireMap(t, spec32["paths"])
 	search := requireMap(t, paths32["/search"])
@@ -2125,7 +2076,6 @@ func Test_OpenAPI_QueryMethod_Gated(t *testing.T) {
 	queryOp := requireMap(t, search["query"])
 	require.Contains(t, queryOp, "requestBody")
 
-	// 3.1 / 3.0: no `query` operation key exists, so the route is skipped.
 	for _, version := range []string{"3.1.0", "3.0.0"} {
 		spec := fetchSpecWithConfig(t, Config{OpenAPIVersion: version}, register)
 		paths := requireMap(t, spec["paths"])
@@ -2143,7 +2093,6 @@ func Test_OpenAPI_Version32Accepted(t *testing.T) {
 	spec := fetchSpecWithConfig(t, Config{OpenAPIVersion: "3.2.0"}, register)
 	require.Equal(t, "3.2.0", spec["openapi"])
 
-	// Unknown versions still fall back to the default.
 	fallback := fetchSpecWithConfig(t, Config{OpenAPIVersion: "9.9.9"}, register)
 	require.Equal(t, "3.1.0", fallback["openapi"])
 }
@@ -2200,32 +2149,26 @@ func Test_OpenAPI_QueryStringParameterLocation(t *testing.T) {
 			AddParameter(fiber.RouteParameter{Name: "q", In: "querystring", Schema: map[string]any{"type": "string"}})
 	}
 
-	// The querystring location only exists in OpenAPI 3.2+.
 	spec := fetchSpecWithConfig(t, Config{OpenAPIVersion: "3.2.0"}, register)
 	op := requireMap(t, requireMap(t, requireMap(t, spec["paths"])["/search"])["get"])
 	params, ok := op["parameters"].([]any)
 	require.True(t, ok)
 	param := requireMap(t, params[0])
 	require.Equal(t, "querystring", param["in"])
-	// A querystring parameter is described via content, never via schema.
 	require.NotContains(t, param, "schema")
 	content := requireMap(t, param["content"])
 	entry := requireMap(t, content["application/x-www-form-urlencoded"])
 	require.Equal(t, map[string]any{"type": "string"}, requireMap(t, entry["schema"]))
 
-	// For earlier versions the parameter would make the document invalid and
-	// must be dropped.
 	spec = fetchSpecWithConfig(t, Config{OpenAPIVersion: "3.1.0"}, register)
 	op = requireMap(t, requireMap(t, requireMap(t, spec["paths"])["/search"])["get"])
 	require.NotContains(t, op, "parameters")
 }
 
-// Test_OpenAPI_CaseInsensitivePaths verifies the spec and UI paths match with
-// the same case sensitivity as the app's routing.
 func Test_OpenAPI_CaseInsensitivePaths(t *testing.T) {
 	t.Parallel()
 
-	app := fiber.New() // CaseSensitive: false by default
+	app := fiber.New()
 	app.Get("/users", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
 	app.Use(New())
 
@@ -2246,8 +2189,6 @@ func Test_OpenAPI_CaseInsensitivePaths(t *testing.T) {
 	require.Equal(t, fiber.StatusNotFound, resp.StatusCode)
 }
 
-// Test_OpenAPI_ExactRouteRegistration verifies the handler also works when it
-// is registered on exact method routes instead of as prefix middleware.
 func Test_OpenAPI_ExactRouteRegistration(t *testing.T) {
 	t.Parallel()
 
@@ -2275,8 +2216,6 @@ func Test_OpenAPI_ExactRouteRegistration(t *testing.T) {
 	require.Contains(t, string(body), `url: "\/openapi.json"`)
 }
 
-// Test_OpenAPI_SpecReflectsRouteRemoval verifies the spec is not stale after a
-// route is removed and another added (same total route count).
 func Test_OpenAPI_SpecReflectsRouteRemoval(t *testing.T) {
 	t.Parallel()
 
@@ -2304,8 +2243,6 @@ func Test_OpenAPI_SpecReflectsRouteRemoval(t *testing.T) {
 	require.NotContains(t, spec.Paths, "/old")
 }
 
-// Test_OpenAPI_MultiPrefixUIPages verifies one handler instance mounted on
-// several prefixes serves a UI page pointing at each prefix's own spec URL.
 func Test_OpenAPI_MultiPrefixUIPages(t *testing.T) {
 	t.Parallel()
 
@@ -2324,8 +2261,6 @@ func Test_OpenAPI_MultiPrefixUIPages(t *testing.T) {
 	}
 }
 
-// Test_OpenAPI_OptionalVariantDoesNotOverwrite verifies a variant never
-// overwrites an earlier route's docs, matching router dispatch precedence.
 func Test_OpenAPI_OptionalVariantDoesNotOverwrite(t *testing.T) {
 	t.Parallel()
 
@@ -2340,8 +2275,6 @@ func Test_OpenAPI_OptionalVariantDoesNotOverwrite(t *testing.T) {
 	require.Equal(t, "Get user", requireMap(t, paths["/users/{id}"]["get"])["summary"])
 }
 
-// Test_OpenAPI_EscapedRoutePath verifies escaped special characters in route
-// paths are treated as literals, matching the router's grammar.
 func Test_OpenAPI_EscapedRoutePath(t *testing.T) {
 	t.Parallel()
 
@@ -2351,8 +2284,6 @@ func Test_OpenAPI_EscapedRoutePath(t *testing.T) {
 	require.Empty(t, variants[0].ParamNames)
 }
 
-// Test_OpenAPI_MountedSubAppExactRoute verifies the handler works when it is
-// registered on an exact route inside a sub-app that is mounted under a prefix.
 func Test_OpenAPI_MountedSubAppExactRoute(t *testing.T) {
 	t.Parallel()
 
@@ -2383,8 +2314,6 @@ func Test_OpenAPI_MountedSubAppExactRoute(t *testing.T) {
 	require.Contains(t, string(body), `url: "\/api\/openapi.json"`)
 }
 
-// Test_OpenAPI_ParameterizedMountPrefix verifies the middleware resolves
-// concrete prefixes when mounted under a path with parameters.
 func Test_OpenAPI_ParameterizedMountPrefix(t *testing.T) {
 	t.Parallel()
 
@@ -2401,13 +2330,11 @@ func Test_OpenAPI_ParameterizedMountPrefix(t *testing.T) {
 	require.NoError(t, json.NewDecoder(resp.Body).Decode(&spec))
 	require.Contains(t, spec.Paths, "/users")
 
-	// Deeper paths must not be treated as the spec endpoint.
 	req = httptest.NewRequest(fiber.MethodGet, "/acme/foo/openapi.json", http.NoBody)
 	resp, err = app.Test(req)
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusNotFound, resp.StatusCode)
 
-	// The UI page points at the tenant's own spec URL.
 	req = httptest.NewRequest(fiber.MethodGet, "/acme/swagger", http.NoBody)
 	resp, err = app.Test(req)
 	require.NoError(t, err)
@@ -2417,8 +2344,6 @@ func Test_OpenAPI_ParameterizedMountPrefix(t *testing.T) {
 	require.Contains(t, string(body), `url: "\/acme\/openapi.json"`)
 }
 
-// Test_OpenAPI_MountedParamPrefixPathParams verifies path parameters introduced
-// by a parameterized mount prefix are named correctly in the generated paths.
 func Test_OpenAPI_MountedParamPrefixPathParams(t *testing.T) {
 	t.Parallel()
 
@@ -2432,8 +2357,6 @@ func Test_OpenAPI_MountedParamPrefixPathParams(t *testing.T) {
 	require.Contains(t, paths, "/tenant/{tid}/users/{id}")
 }
 
-// Test_OpenAPI_ResponseSchemaWithoutMediaType verifies a schema or example with
-// no media type falls back to the route's Produces instead of being dropped.
 func Test_OpenAPI_ResponseSchemaWithoutMediaType(t *testing.T) {
 	t.Parallel()
 
@@ -2451,8 +2374,6 @@ func Test_OpenAPI_ResponseSchemaWithoutMediaType(t *testing.T) {
 	require.Equal(t, "object", requireMap(t, entry["schema"])["type"])
 }
 
-// Test_OpenAPI_ExactRouteUnderParameterizedMount verifies an exact spec route
-// inside a sub-app mounted under a parameterized prefix resolves per request.
 func Test_OpenAPI_ExactRouteUnderParameterizedMount(t *testing.T) {
 	t.Parallel()
 
@@ -2473,8 +2394,6 @@ func Test_OpenAPI_ExactRouteUnderParameterizedMount(t *testing.T) {
 	require.Contains(t, spec.Paths, "/{tenant}/users")
 }
 
-// Test_OpenAPI_DuplicateSanitizedParamNames verifies parameters that sanitize
-// alike get unique template names, as the specification requires.
 func Test_OpenAPI_DuplicateSanitizedParamNames(t *testing.T) {
 	t.Parallel()
 
@@ -2484,8 +2403,6 @@ func Test_OpenAPI_DuplicateSanitizedParamNames(t *testing.T) {
 	require.Equal(t, []string{"na_ve", "na_ve_2"}, variants[0].ParamNames)
 }
 
-// Test_OpenAPI_ConcurrentDocsAndSpecRequests guards the locking contract:
-// serving the spec while other goroutines document routes must be race-free.
 func Test_OpenAPI_ConcurrentDocsAndSpecRequests(t *testing.T) {
 	t.Parallel()
 
@@ -2516,7 +2433,6 @@ func Test_OpenAPI_ConcurrentDocsAndSpecRequests(t *testing.T) {
 func Test_OpenAPI_ExactRouteMount(t *testing.T) {
 	t.Parallel()
 
-	// Registering the middleware as an exact GET route must serve the spec.
 	app := fiber.New()
 	app.Get("/users", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
 	app.Get("/openapi.json", New())
@@ -2530,7 +2446,6 @@ func Test_OpenAPI_ExactRouteMount(t *testing.T) {
 	require.NoError(t, json.NewDecoder(resp.Body).Decode(&spec))
 	require.Contains(t, requireMap(t, spec["paths"]), "/users")
 
-	// Same for a Use mount whose prefix already ends in the configured path.
 	app2 := fiber.New()
 	app2.Get("/users", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
 	app2.Use("/v1/openapi.json", New())
@@ -2545,7 +2460,6 @@ func Test_OpenAPI_SanitizedParamCollision(t *testing.T) {
 	t.Parallel()
 
 	app := fiber.New()
-	// Both params sanitize to "a_"; the generated names must stay unique.
 	app.Get("/x/:a#/:a$", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
 
 	paths := getPaths(t, app)
@@ -2573,15 +2487,12 @@ func Test_OpenAPI_MetadataChangesAfterFirstServe(t *testing.T) {
 
 	app := fiber.New()
 	app.Use(New())
-	// Registered last, so the chainable doc helper below targets this route.
 	app.Get("/late", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
 
-	// Prime the cache.
 	paths := requireMap(t, fetchJSON(t, app)["paths"])
 	op := requireMap(t, requireMap(t, paths["/late"])["get"])
 	require.NotContains(t, requireMap(t, op["responses"]), "201")
 
-	// Documenting an existing route bumps the revision and refreshes the spec.
 	app.Response(fiber.StatusCreated, "Created", fiber.MIMEApplicationJSON)
 
 	paths = requireMap(t, fetchJSON(t, app)["paths"])
@@ -2589,8 +2500,6 @@ func Test_OpenAPI_MetadataChangesAfterFirstServe(t *testing.T) {
 	require.Contains(t, requireMap(t, op["responses"]), "201")
 }
 
-// Test_OpenAPI_SecurityEmptyScopesEmitArray verifies referencing a non-OAuth2
-// scheme with an empty scope list emits the spec-required [] and never null.
 func Test_OpenAPI_SecurityEmptyScopesEmitArray(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
@@ -2613,8 +2522,6 @@ func Test_OpenAPI_SecurityEmptyScopesEmitArray(t *testing.T) {
 	require.NotContains(t, string(body), `"bearerAuth":null`)
 }
 
-// Test_OpenAPI_MultiOptionalParamsSingleHierarchy verifies several optional
-// parameters emit one templated path per hierarchy level, as the spec requires.
 func Test_OpenAPI_MultiOptionalParamsSingleHierarchy(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
@@ -2637,8 +2544,6 @@ func Test_OpenAPI_MultiOptionalParamsSingleHierarchy(t *testing.T) {
 	require.NotContains(t, spec.Paths, "/files/{name}")
 }
 
-// Test_OpenAPI_MountPrefixWithConstraintsAndEscapes verifies '*'/'+' inside a
-// constraint or escape is not read as a wildcard, which hid the spec target.
 func Test_OpenAPI_MountPrefixWithConstraintsAndEscapes(t *testing.T) {
 	t.Parallel()
 
@@ -2673,8 +2578,6 @@ func Test_OpenAPI_MountPrefixWithConstraintsAndEscapes(t *testing.T) {
 	})
 }
 
-// Test_OpenAPI_SharedHandlerAcrossApps verifies one handler on two apps serves
-// each app's own spec, even when their route revisions coincide.
 func Test_OpenAPI_SharedHandlerAcrossApps(t *testing.T) {
 	t.Parallel()
 	handler := New()
@@ -2709,8 +2612,6 @@ func Test_OpenAPI_SharedHandlerAcrossApps(t *testing.T) {
 	require.NotContains(t, paths2, "/only-in-app1")
 }
 
-// Test_OpenAPI_SwaggerPageUsesAppJSONEncoder verifies the Swagger UI options
-// are marshaled with the app's configured JSON encoder, like the spec itself.
 func Test_OpenAPI_SwaggerPageUsesAppJSONEncoder(t *testing.T) {
 	t.Parallel()
 	encoderUsed := false
@@ -2729,11 +2630,6 @@ func Test_OpenAPI_SwaggerPageUsesAppJSONEncoder(t *testing.T) {
 	require.True(t, encoderUsed)
 }
 
-// Gap-audit regressions: each test below pins a defect found auditing the
-// middleware for missing features and spec-conformance bugs.
-
-// Test_OpenAPI_ParameterContent covers describing a parameter by media type,
-// which any location allows and 3.2 "querystring" requires.
 func Test_OpenAPI_ParameterContent(t *testing.T) {
 	t.Parallel()
 
@@ -2747,9 +2643,7 @@ func Test_OpenAPI_ParameterContent(t *testing.T) {
 					In:          "query",
 					Description: "JSON encoded filter",
 					Required:    true,
-					// A schema alongside content is discarded: the Parameter
-					// Object carries exactly one of the two.
-					Schema: map[string]any{"type": "string"},
+					Schema:      map[string]any{"type": "string"},
 					Content: map[string]fiber.RouteMediaType{
 						fiber.MIMEApplicationJSON: {
 							Schema:  map[string]any{"type": "object"},
@@ -2790,7 +2684,6 @@ func Test_OpenAPI_ParameterContent(t *testing.T) {
 		param := requireMap(t, params[0])
 		require.NotContains(t, param, "schema")
 		entry := requireMap(t, requireMap(t, param["content"])[querystringMediaType])
-		// A bare querystring parameter still has to describe something.
 		require.Equal(t, map[string]any{"type": "string"}, requireMap(t, entry["schema"]))
 	})
 
@@ -2828,7 +2721,6 @@ func Test_OpenAPI_ParameterContent(t *testing.T) {
 		app.Get("/x", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) }).
 			AddParameter(fiber.RouteParameter{Name: "p", In: "query", Content: content})
 
-		// Mutating the caller's map after registration must not reach the route.
 		content[fiber.MIMEApplicationJSON].Schema["type"] = "array"
 		delete(content, fiber.MIMEApplicationJSON)
 
@@ -2839,8 +2731,6 @@ func Test_OpenAPI_ParameterContent(t *testing.T) {
 	})
 }
 
-// Test_OpenAPI_OperationDescriptionOmitted asserts that an operation without a
-// description omits the optional key instead of emitting an empty string.
 func Test_OpenAPI_OperationDescriptionOmitted(t *testing.T) {
 	t.Parallel()
 
@@ -2858,8 +2748,6 @@ func Test_OpenAPI_OperationDescriptionOmitted(t *testing.T) {
 	require.Equal(t, "has one", documented["description"])
 }
 
-// Test_SchemaOf_OmitZero asserts that a field encoding/json omits when zero is
-// not reported as required.
 func Test_SchemaOf_OmitZero(t *testing.T) {
 	t.Parallel()
 
@@ -2879,13 +2767,9 @@ func Test_SchemaOf_OmitZero(t *testing.T) {
 	require.Contains(t, props, "empty")
 }
 
-// Test_SchemaOf_InvalidJSONTagName asserts a tag name encoding/json rejects
-// falls back to the field name here too, so schema and wire agree.
 func Test_SchemaOf_InvalidJSONTagName(t *testing.T) {
 	t.Parallel()
 
-	// Built reflectively: `go vet`'s structtag check rejects a literal tag
-	// carrying a reserved character.
 	typ := reflect.StructOf([]reflect.StructField{
 		{Name: "Reserved", Type: reflect.TypeFor[string](), Tag: `json:"a\\b"`},
 		{Name: "Punctuated", Type: reflect.TypeFor[string](), Tag: `json:"a b"`},
@@ -2905,16 +2789,9 @@ func Test_SchemaOf_InvalidJSONTagName(t *testing.T) {
 		require.Containsf(t, props, name, "schema is missing wire property %q", name)
 	}
 	require.Len(t, props, len(wire))
-	// A space is accepted by every release, so that rename always lands.
 	require.Contains(t, props, "a b")
-	// The backslash name is deliberately not asserted literally: releases
-	// disagree on whether it is accepted, truncated, or ignored in favor of the
-	// field name, and the loop above already pins the schema to whichever the
-	// running toolchain does.
 }
 
-// Test_SchemaOf_UintptrDocumented pins uintptr, which encoding/json writes as a
-// bare number: dropping it would document fewer fields than the wire carries.
 func Test_SchemaOf_UintptrDocumented(t *testing.T) {
 	t.Parallel()
 
@@ -2935,8 +2812,6 @@ func Test_SchemaOf_UintptrDocumented(t *testing.T) {
 	require.Equal(t, map[string]any{"type": "integer"}, props["pointer"])
 }
 
-// Test_OpenAPI_PathParameterConstraintSchema asserts a "<...>" constraint types
-// the path parameter schema instead of reporting every one as a string.
 func Test_OpenAPI_PathParameterConstraintSchema(t *testing.T) {
 	t.Parallel()
 
@@ -2958,11 +2833,8 @@ func Test_OpenAPI_PathParameterConstraintSchema(t *testing.T) {
 		{map[string]any{"type": "integer", "minimum": 1.0, "maximum": 10.0}, "/l/:v<range(1,10)>"},
 		{map[string]any{"type": "string", "pattern": "^[a-z]+$"}, `/m/:v<regex(^[a-z]+$)>`},
 		{map[string]any{"type": "string", "format": "date"}, "/n/:v<datetime(2006-01-02)>"},
-		// An unknown constraint must not invent a type.
 		{map[string]any{"type": "string"}, "/o/:v<nonexistent>"},
-		// The first constraint that pins a type keeps it.
 		{map[string]any{"type": "integer", "minimum": 5.0}, "/p/:v<int;min(5)>"},
-		// A lowercase alias resolves like the router resolves it.
 		{map[string]any{"type": "string", "minLength": 2.0}, "/q/:v<minlen(2)>"},
 	}
 
@@ -2983,8 +2855,6 @@ func Test_OpenAPI_PathParameterConstraintSchema(t *testing.T) {
 	}
 }
 
-// Test_OpenAPI_ConstraintSchemaKeepsExplicitParameter asserts that AddParameter
-// still overrides a constraint-derived schema for the same path parameter.
 func Test_OpenAPI_ConstraintSchemaKeepsExplicitParameter(t *testing.T) {
 	t.Parallel()
 
@@ -3008,8 +2878,6 @@ func Test_OpenAPI_ConstraintSchemaKeepsExplicitParameter(t *testing.T) {
 	require.Equal(t, map[string]any{"type": "integer", "format": "int64"}, requireMap(t, param["schema"]))
 }
 
-// Test_OpenAPI_ConstraintSchemaOptionalParameter asserts the constraint survives
-// the optional-parameter fork, which clones the walk state per variant.
 func Test_OpenAPI_ConstraintSchemaOptionalParameter(t *testing.T) {
 	t.Parallel()
 
@@ -3023,13 +2891,10 @@ func Test_OpenAPI_ConstraintSchemaOptionalParameter(t *testing.T) {
 	require.True(t, ok)
 	require.Equal(t, map[string]any{"type": "integer"}, requireMap(t, requireMap(t, params[0])["schema"]))
 
-	// The variant that omits the optional parameter declares none.
 	bare := requireMap(t, requireMap(t, paths["/pages"])["get"])
 	require.NotContains(t, bare, "parameters")
 }
 
-// Test_OpenAPI_EscapedConstraintDelimiter asserts an escaped '>' does not close
-// the span early, which used to leak constraint text into the path.
 func Test_OpenAPI_EscapedConstraintDelimiter(t *testing.T) {
 	t.Parallel()
 
@@ -3048,8 +2913,6 @@ func Test_OpenAPI_EscapedConstraintDelimiter(t *testing.T) {
 	require.Equal(t, "v", requireMap(t, params[0])["name"])
 }
 
-// Test_OpenAPI_SelfHostedSwaggerAssets locks the documented offline behavior:
-// all three URLs overridden leaves no outbound request; empty means default.
 func Test_OpenAPI_SelfHostedSwaggerAssets(t *testing.T) {
 	t.Parallel()
 
@@ -3080,7 +2943,6 @@ func Test_OpenAPI_SelfHostedSwaggerAssets(t *testing.T) {
 		app.Use(New(Config{
 			SwaggerCSSURL:    "/swagger-ui/swagger-ui.css",
 			SwaggerBundleURL: "/swagger-ui/swagger-ui-bundle.js",
-			// Left empty on purpose: this is the offline footgun.
 		}))
 
 		_, body := specBodyOf(t, app, "/swagger")
@@ -3088,8 +2950,6 @@ func Test_OpenAPI_SelfHostedSwaggerAssets(t *testing.T) {
 	})
 }
 
-// Test_OpenAPI_CanonicalPathAdoptsParamNames asserts an operation folded onto an
-// equivalent template adopts its names, or the document is invalid.
 func Test_OpenAPI_CanonicalPathAdoptsParamNames(t *testing.T) {
 	t.Parallel()
 
@@ -3112,8 +2972,6 @@ func Test_OpenAPI_CanonicalPathAdoptsParamNames(t *testing.T) {
 	}
 }
 
-// Test_OpenAPI_ServerVariableEnumDetached asserts the config detaches server
-// variable enum slices from the caller, which maps.Clone alone did not do.
 func Test_OpenAPI_ServerVariableEnumDetached(t *testing.T) {
 	t.Parallel()
 
@@ -3127,7 +2985,6 @@ func Test_OpenAPI_ServerVariableEnumDetached(t *testing.T) {
 		}},
 	}))
 
-	// Mutating the caller's slice after New must not reach the served document.
 	enum[0] = "mutated"
 
 	_, body := specBodyOf(t, app, "/openapi.json")
@@ -3135,8 +2992,6 @@ func Test_OpenAPI_ServerVariableEnumDetached(t *testing.T) {
 	require.NotContains(t, body, "mutated")
 }
 
-// Test_AdoptCanonicalParamNames covers the rename directly, including constraint
-// keys and the guard a hierarchy match makes unreachable in practice.
 func Test_AdoptCanonicalParamNames(t *testing.T) {
 	t.Parallel()
 
@@ -3170,8 +3025,6 @@ func Test_AdoptCanonicalParamNames(t *testing.T) {
 	})
 }
 
-// Test_OpenAPI_CanonicalPathKeepsConstraintSchema asserts the adopted names
-// keep their constraint-derived schemas through the rename.
 func Test_OpenAPI_CanonicalPathKeepsConstraintSchema(t *testing.T) {
 	t.Parallel()
 
@@ -3187,12 +3040,9 @@ func Test_OpenAPI_CanonicalPathKeepsConstraintSchema(t *testing.T) {
 
 	param := requireMap(t, params[0])
 	require.Equal(t, "id", param["name"])
-	// The constraint traveled with the rename.
 	require.Equal(t, map[string]any{"type": "integer"}, requireMap(t, param["schema"]))
 }
 
-// Test_OpenAPI_DynamicMountPrefix covers a mount whose segment count varies;
-// truncating at the first variable segment answered 404 on served paths.
 func Test_OpenAPI_DynamicMountPrefix(t *testing.T) {
 	t.Parallel()
 
@@ -3214,17 +3064,12 @@ func Test_OpenAPI_DynamicMountPrefix(t *testing.T) {
 		{"optional segment present", "/:tenant?", "/acme/openapi.json", fiber.StatusOK},
 		{"optional segment omitted", "/:tenant?", "/openapi.json", fiber.StatusOK},
 		{"optional segment serves the ui too", "/:tenant?", "/acme/swagger", fiber.StatusOK},
-		// One optional segment cannot consume two, so this is not a target.
 		{"beyond the segment bound", "/:tenant?", "/a/b/openapi.json", fiber.StatusNotFound},
 		{"required parameter", "/:tenant", "/acme/openapi.json", fiber.StatusOK},
 		{"optional between literals", "/api/:tenant?/docs", "/api/acme/docs/openapi.json", fiber.StatusOK},
 		{"greedy segment", "/files/*", "/files/a/b/openapi.json", fiber.StatusOK},
-		// Under a greedy mount every split is tried and none is a target.
 		{"greedy segment with no target", "/files/*", "/files/a/b", fiber.StatusNotFound},
-		// No split of a "+" mount leaves a target here, so resolution reports
-		// nothing and the static truncation ("/files") still serves it.
 		{"greedy segment falls back to the static prefix", "/files/+", "/files/openapi.json", fiber.StatusOK},
-		// Static mounts keep their exact-path behavior.
 		{"static mount", "/v1", "/v1/openapi.json", fiber.StatusOK},
 		{"static mount is not global", "/v1", "/openapi.json", fiber.StatusNotFound},
 		{"global mount", "/", "/openapi.json", fiber.StatusOK},
@@ -3239,8 +3084,6 @@ func Test_OpenAPI_DynamicMountPrefix(t *testing.T) {
 	}
 }
 
-// Test_PrefixSegmentBounds pins how many request segments each mount shape can
-// consume; -1 means a greedy segment leaves it unbounded.
 func Test_PrefixSegmentBounds(t *testing.T) {
 	t.Parallel()
 
@@ -3258,7 +3101,6 @@ func Test_PrefixSegmentBounds(t *testing.T) {
 		{"/api/:tenant?/docs", 2, 3, true},
 		{"/files/*", 1, -1, true},
 		{"/files/+", 2, -1, true},
-		// A constraint is not a parameter marker of its own.
 		{"/:id<int>", 1, 1, true},
 	}
 
@@ -3273,8 +3115,6 @@ func Test_PrefixSegmentBounds(t *testing.T) {
 	}
 }
 
-// Test_PathPrefixSegments covers the split helper, including asking for more
-// segments than the path has.
 func Test_PathPrefixSegments(t *testing.T) {
 	t.Parallel()
 
@@ -3293,7 +3133,6 @@ func Test_PathPrefixSegments(t *testing.T) {
 	_, ok = pathPrefixSegments("/acme/openapi.json", 2)
 	require.False(t, ok)
 
-	// An empty path has no segment to give.
 	_, ok = pathPrefixSegments("", 1)
 	require.False(t, ok)
 
@@ -3302,8 +3141,6 @@ func Test_PathPrefixSegments(t *testing.T) {
 	require.Equal(t, 3, countPathSegments("/a/b/c"))
 }
 
-// Test_OpenAPI_LiteralBracesEncoded asserts braces from a route's literal text
-// are percent-encoded, since OpenAPI would read them as an undeclared template.
 func Test_OpenAPI_LiteralBracesEncoded(t *testing.T) {
 	t.Parallel()
 
@@ -3315,12 +3152,9 @@ func Test_OpenAPI_LiteralBracesEncoded(t *testing.T) {
 	paths := requireMap(t, spec["paths"])
 	require.Contains(t, paths, "/files/%7Braw%7D")
 	require.NotContains(t, paths, "/files/{raw}")
-	// Braces introduced for a real parameter are untouched.
 	require.Contains(t, paths, "/users/{id}")
 }
 
-// Test_OpenAPI_LicenseIdentifierExcludesURL asserts the License Object emits
-// identifier or url but never both, and that 3.0 still drops the identifier.
 func Test_OpenAPI_LicenseIdentifierExcludesURL(t *testing.T) {
 	t.Parallel()
 
@@ -3334,19 +3168,15 @@ func Test_OpenAPI_LicenseIdentifierExcludesURL(t *testing.T) {
 	require.Equal(t, "MIT", got["identifier"])
 	require.NotContains(t, got, "url")
 
-	// 3.0 has no identifier, so the url survives there instead.
 	spec = fetchSpecWithConfig(t, Config{OpenAPIVersion: "3.0.0", License: license}, register)
 	got = requireMap(t, requireMap(t, spec["info"])["license"])
 	require.NotContains(t, got, "identifier")
 	require.Equal(t, "https://example.com/license", got["url"])
 
-	// The caller's License is never mutated.
 	require.Equal(t, "MIT", license.Identifier)
 	require.Equal(t, "https://example.com/license", license.URL)
 }
 
-// Test_OpenAPI_TypedConfigContainersDetached asserts the config deep copy reaches
-// typed maps and slices, not only the built-in any-keyed ones.
 func Test_OpenAPI_TypedConfigContainersDetached(t *testing.T) {
 	t.Parallel()
 
@@ -3360,7 +3190,6 @@ func Test_OpenAPI_TypedConfigContainersDetached(t *testing.T) {
 	app.Get("/x", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
 	app.Use(New(Config{Components: map[string]any{"schemas": typed, "list": slice}}))
 
-	// Mutating the caller's containers after New must not reach the document.
 	typed["User"] = schema{Type: "mutated"}
 	slice[0] = schema{Type: "mutated"}
 
@@ -3370,8 +3199,6 @@ func Test_OpenAPI_TypedConfigContainersDetached(t *testing.T) {
 	require.Contains(t, body, `"array"`)
 }
 
-// Test_DeepCopyReflected covers the container clone directly: nil and non-container
-// values pass through, and nested containers inside an `any` are cloned too.
 func Test_DeepCopyReflected(t *testing.T) {
 	t.Parallel()
 
@@ -3382,7 +3209,6 @@ func Test_DeepCopyReflected(t *testing.T) {
 	var nilSlice []int
 	require.Nil(t, deepCopyReflected(nilSlice, 0))
 
-	// A typed map holding `any` values must clone the nested container.
 	nested := map[string]any{"inner": map[string]any{"k": "v"}}
 	src := map[string]map[string]any{"outer": nested}
 	cloned, ok := deepCopyReflected(src, 0).(map[string]map[string]any)
@@ -3390,7 +3216,6 @@ func Test_DeepCopyReflected(t *testing.T) {
 	requireMap(t, nested["inner"])["k"] = "mutated"
 	require.Equal(t, "v", requireMap(t, cloned["outer"]["inner"])["k"])
 
-	// Slices of slices clone element by element.
 	rows := [][]int{{1, 2}}
 	clonedRows, ok := deepCopyReflected(rows, 0).([][]int)
 	require.True(t, ok)
@@ -3398,17 +3223,12 @@ func Test_DeepCopyReflected(t *testing.T) {
 	require.Equal(t, 1, clonedRows[0][0])
 }
 
-// Unit tests for the unexported helpers, covering branches the request-level
-// tests above cannot reach directly.
-
 func Test_uniqueOperationID(t *testing.T) {
 	t.Parallel()
 
 	used := map[string]struct{}{}
-	// Empty id falls back to "operation".
 	require.Equal(t, "operation", uniqueOperationID("", used))
 
-	// Collisions get numeric suffixes.
 	require.Equal(t, "op", uniqueOperationID("op", used))
 	require.Equal(t, "op_2", uniqueOperationID("op", used))
 	require.Equal(t, "op_3", uniqueOperationID("op", used))
@@ -3420,17 +3240,14 @@ func Test_appendOrReplaceParameter_Guards(t *testing.T) {
 	params := []parameter{{Name: "a", In: "query"}}
 	index := map[string]int{"query:a": 0}
 
-	// nil / empty Name / empty In are no-ops.
 	require.Len(t, appendOrReplaceParameter(params, index, nil), 1)
 	require.Len(t, appendOrReplaceParameter(params, index, &parameter{In: "query"}), 1)
 	require.Len(t, appendOrReplaceParameter(params, index, &parameter{Name: "a"}), 1)
 
-	// Existing key is replaced in place.
 	replaced := appendOrReplaceParameter(params, index, &parameter{Name: "a", In: "query", Description: "x"})
 	require.Len(t, replaced, 1)
 	require.Equal(t, "x", replaced[0].Description)
 
-	// New key is appended.
 	added := appendOrReplaceParameter(params, index, &parameter{Name: "b", In: "query"})
 	require.Len(t, added, 2)
 }
@@ -3440,16 +3257,13 @@ func Test_schemaFrom(t *testing.T) {
 
 	require.Equal(t, map[string]any{"$ref": "#/x"}, schemaFrom(nil, "#/x", "string"))
 	require.Equal(t, map[string]any{"type": "string"}, schemaFrom(nil, "", "string"))
-	// No schema and no default type yields nil.
 	require.Nil(t, schemaFrom(nil, "", ""))
-	// Existing type is preserved.
 	require.Equal(t, map[string]any{"type": "integer"}, schemaFrom(map[string]any{"type": "integer"}, "", "string"))
 }
 
 func Test_mediaTypesToContent(t *testing.T) {
 	t.Parallel()
 
-	// Empty list and only-empty entries both yield nil.
 	require.Nil(t, mediaTypesToContent(nil, nil, "", nil, nil))
 	require.Nil(t, mediaTypesToContent([]string{""}, nil, "", nil, nil))
 
@@ -3462,12 +3276,11 @@ func Test_routeMediaTypeContent(t *testing.T) {
 	t.Parallel()
 
 	require.Nil(t, routeMediaTypeContent(nil))
-	// Only an empty media-type key -> nothing emitted.
 	require.Nil(t, routeMediaTypeContent(map[string]fiber.RouteMediaType{"": {Schema: map[string]any{"type": "string"}}}))
 
 	out := routeMediaTypeContent(map[string]fiber.RouteMediaType{
-		"":                 {Schema: map[string]any{"type": "string"}}, // skipped
-		"application/json": {},                                         // empty entry -> {}
+		"":                 {Schema: map[string]any{"type": "string"}},
+		"application/json": {},
 	})
 	require.Len(t, out, 1)
 	require.Empty(t, out["application/json"])
@@ -3477,7 +3290,6 @@ func Test_buildRequestBody_Guards(t *testing.T) {
 	t.Parallel()
 
 	require.Nil(t, buildRequestBody(nil))
-	// Content that resolves to nothing -> no request body.
 	require.Nil(t, buildRequestBody(&fiber.RouteRequestBody{Content: map[string]fiber.RouteMediaType{"": {}}}))
 }
 
@@ -3487,8 +3299,6 @@ func Test_shouldIncludeRequestBody(t *testing.T) {
 	require.False(t, shouldIncludeRequestBody("", nil))
 	require.False(t, shouldIncludeRequestBody("", &fiber.Route{Method: fiber.MethodPost}))
 	require.False(t, shouldIncludeRequestBody(fiber.MIMEApplicationJSON, nil))
-	// Any explicitly declared media type opts in, regardless of method; the
-	// GET/HEAD strip in generateSpec owns the method rule.
 	require.True(t, shouldIncludeRequestBody(fiber.MIMEApplicationJSON, &fiber.Route{Method: fiber.MethodPost}))
 	require.True(t, shouldIncludeRequestBody(fiber.MIMETextPlain, &fiber.Route{Method: fiber.MethodPost, Consumes: fiber.MIMETextPlain}))
 }
@@ -3500,8 +3310,6 @@ func Test_defaultResponseForMethod(t *testing.T) {
 	require.Equal(t, "200", status)
 	require.Contains(t, resp.Content, fiber.MIMEApplicationJSON)
 
-	// RFC 9110: HEAD answers as GET would, minus the content, so it mirrors the
-	// GET status rather than claiming 204.
 	headStatus, headResp := defaultResponseForMethod(fiber.MethodHead, fiber.MIMEApplicationJSON)
 	require.Equal(t, status, headStatus)
 	require.Equal(t, resp, headResp)
@@ -3518,7 +3326,6 @@ func Test_defaultResponseForMethod(t *testing.T) {
 func Test_buildServers_Internal(t *testing.T) {
 	t.Parallel()
 
-	// Empty-URL servers are skipped; Name kept for 3.2.
 	servers := buildServers(&Config{
 		OpenAPIVersion: versionOpenAPI32,
 		Servers:        []Server{{URL: ""}, {URL: "https://x", Name: "n"}},
@@ -3526,7 +3333,6 @@ func Test_buildServers_Internal(t *testing.T) {
 	require.Len(t, servers, 1)
 	require.Equal(t, "n", servers[0].Name)
 
-	// Name cleared below 3.2.
 	servers = buildServers(&Config{
 		OpenAPIVersion: versionOpenAPI31,
 		Servers:        []Server{{URL: "https://x", Name: "n"}},
@@ -3534,7 +3340,6 @@ func Test_buildServers_Internal(t *testing.T) {
 	require.Len(t, servers, 1)
 	require.Empty(t, servers[0].Name)
 
-	// All servers invalid -> fall back to ServerURL.
 	servers = buildServers(&Config{OpenAPIVersion: versionOpenAPI31, Servers: []Server{{URL: ""}}, ServerURL: "https://y"})
 	require.Equal(t, "https://y", servers[0].URL)
 }
@@ -3558,9 +3363,9 @@ func Test_mergeRouteParameters_Internal(t *testing.T) {
 
 	index := map[string]int{}
 	out := mergeRouteParameters(nil, index, []fiber.RouteParameter{
-		{Name: "  "},              // blank name -> skipped
-		{Name: "q"},               // empty In -> defaults to query
-		{Name: "h", In: "Header"}, // normalized to lowercase
+		{Name: "  "},
+		{Name: "q"},
+		{Name: "h", In: "Header"},
 	})
 	require.Len(t, out, 2)
 	require.Equal(t, "query", out[0].In)
@@ -3572,8 +3377,8 @@ func Test_remapRouteParameters_DropsUnknownPathParam(t *testing.T) {
 
 	out := remapRouteParameters(
 		[]fiber.RouteParameter{
-			{Name: "ghost", In: "path"}, // not a real path param -> dropped
-			{Name: "q", In: "query"},    // kept
+			{Name: "ghost", In: "path"},
+			{Name: "q", In: "query"},
 		},
 		map[string]string{},
 		[]string{"id"},
@@ -3585,10 +3390,7 @@ func Test_remapRouteParameters_DropsUnknownPathParam(t *testing.T) {
 func Test_sanitizeParamNames(t *testing.T) {
 	t.Parallel()
 
-	// "*"/"+" are trimmed (so trimmed falls back to the original), then each
-	// disallowed char becomes "_".
 	require.Equal(t, "___", sanitizeOpenAPIParamName("***", 1))
-	// A fully empty name sanitizes to the positional fallback.
 	require.Equal(t, "param1", sanitizeOpenAPIParamName("", 1))
 	require.Equal(t, "id", sanitizeOpenAPIParamName("id", 1))
 
@@ -3601,16 +3403,13 @@ func Test_sanitizeParamNames(t *testing.T) {
 func Test_resolveParamNames(t *testing.T) {
 	t.Parallel()
 
-	// Blank extracted + blank params entry keeps raw empty, sanitizes to paramN.
 	resolved := resolveOpenAPIPathParamName(0, "", []string{""})
 	require.Empty(t, resolved.raw)
 	require.Equal(t, "param1", resolved.openAPI)
 
-	// Provided param name overrides the extracted token.
 	resolved = resolveOpenAPIPathParamName(0, "x", []string{"override"})
 	require.Equal(t, "override", resolved.raw)
 
-	// Wildcard with a provided name.
 	wild := resolveOpenAPIWildcardParamName(0, []string{"rest"})
 	require.Equal(t, "rest", wild.raw)
 	require.Contains(t, wild.openAPI, wildcardParamName)
@@ -3619,19 +3418,15 @@ func Test_resolveParamNames(t *testing.T) {
 func Test_buildOpenAPIPathVariants_Edge(t *testing.T) {
 	t.Parallel()
 
-	// Empty path -> single "/" variant.
 	variants := buildOpenAPIPathVariants("", nil)
 	require.Len(t, variants, 1)
 	require.Equal(t, "/", variants[0].Path)
 
-	// Nested angle-bracket constraint exercises the depth counter.
 	variants = buildOpenAPIPathVariants("/:id<range(1<2)>", nil)
 	require.Equal(t, "/{id}", variants[0].Path)
 
-	// A simple parameterized path yields exactly its template as the first variant.
 	require.Equal(t, "/{id}", buildOpenAPIPathVariants("/:id", nil)[0].Path)
 
-	// Generated variants must always be unique.
 	dup := buildOpenAPIPathVariants("/:a?/:a?", nil)
 	seen := map[string]struct{}{}
 	for _, v := range dup {
@@ -3645,7 +3440,6 @@ func Test_buildOpenAPIPathVariants_Edge(t *testing.T) {
 func Test_inferExampleValue_NoType(t *testing.T) {
 	t.Parallel()
 
-	// Missing/!string type returns the raw value unchanged.
 	require.Equal(t, "x", inferExampleValue("x", map[string]any{}))
 	require.Equal(t, "x", inferExampleValue("x", map[string]any{"type": 123}))
 }
@@ -3659,8 +3453,6 @@ func Test_SchemaOf_UnsupportedSliceAndMapElements(t *testing.T) {
 		Ch []chan int          `json:"ch"`
 	}
 
-	// encoding/json fails outright on these values, so the fields are skipped
-	// rather than documented as something the handler could never produce.
 	schema := SchemaOf(withUnsupported{})
 	props := requireMap(t, schema["properties"])
 
@@ -3672,8 +3464,6 @@ func Test_SchemaOf_UnsupportedSliceAndMapElements(t *testing.T) {
 func Test_SchemaOf_SelfReferentialTypes(t *testing.T) {
 	t.Parallel()
 
-	// Recursive slice, map and pointer types are legal Go; reflection must
-	// terminate on them instead of overflowing the stack.
 	type recMap map[string]recMap
 	type recSlice []recSlice
 
@@ -3687,7 +3477,6 @@ func Test_OpenAPI_SpecMarshalError(t *testing.T) {
 	t.Parallel()
 
 	app := fiber.New()
-	// A non-marshalable operation extension makes spec marshaling fail.
 	app.Get("/x", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) }).
 		OperationExtension(map[string]any{"bad": func() {}})
 	app.Use(New())
@@ -3711,8 +3500,6 @@ func Test_OpenAPI_SwaggerOptionsMarshalError(t *testing.T) {
 	require.Equal(t, fiber.StatusInternalServerError, resp.StatusCode)
 }
 
-// Test_StringKeyedEntries covers reading an existing components value that the
-// caller may have typed however they like.
 func Test_StringKeyedEntries(t *testing.T) {
 	t.Parallel()
 
@@ -3732,8 +3519,6 @@ func Test_StringKeyedEntries(t *testing.T) {
 	require.Equal(t, map[string]any{"bearer": scheme{Type: "http"}}, stringKeyedEntries(typed))
 }
 
-// Test_OpenAPI_TypedSecuritySchemesMerge pins a typed Components securityScheme
-// map against Config.SecuritySchemes: the two must merge, not overwrite.
 func Test_OpenAPI_TypedSecuritySchemesMerge(t *testing.T) {
 	t.Parallel()
 
@@ -3758,8 +3543,6 @@ func Test_OpenAPI_TypedSecuritySchemesMerge(t *testing.T) {
 	require.Contains(t, schemes, "fromConfig")
 }
 
-// Test_SchemaOf_SelfReferentialPointerField pins that a field of a
-// self-referential pointer type terminates like the top-level walk does.
 func Test_SchemaOf_SelfReferentialPointerField(t *testing.T) {
 	t.Parallel()
 
@@ -3778,8 +3561,6 @@ func Test_SchemaOf_SelfReferentialPointerField(t *testing.T) {
 	}
 }
 
-// Test_Constraint_RegexArgumentKeptWhole pins that a regex constraint reaches
-// the schema whole, as the router compiles it: a comma inside is not a separator.
 func Test_Constraint_RegexArgumentKeptWhole(t *testing.T) {
 	t.Parallel()
 
@@ -3796,8 +3577,6 @@ func Test_Constraint_RegexArgumentKeptWhole(t *testing.T) {
 	require.Equal(t, parsedConstraint{name: "range", args: []string{"1,9"}}, splitConstraintEntry(`range(1\,9)`))
 }
 
-// Test_OpenAPI_DynamicMountTrailingSlash pins that a trailing slash on the
-// request does not defeat prefix resolution under an optional mount segment.
 func Test_OpenAPI_DynamicMountTrailingSlash(t *testing.T) {
 	t.Parallel()
 
@@ -3810,8 +3589,6 @@ func Test_OpenAPI_DynamicMountTrailingSlash(t *testing.T) {
 	}
 }
 
-// Test_OpenAPI_WildcardDocumentsBarePath pins that "*" is documented like an
-// optional parameter, since the router matches the path without it too.
 func Test_OpenAPI_WildcardDocumentsBarePath(t *testing.T) {
 	t.Parallel()
 
@@ -3826,8 +3603,6 @@ func Test_OpenAPI_WildcardDocumentsBarePath(t *testing.T) {
 	require.Contains(t, paths, "/strict/{wildcard1}")
 }
 
-// Test_OpenAPI_AddParameterKeepsConstraintSchema pins that describing a
-// constrained path parameter keeps the schema the constraint derived.
 func Test_OpenAPI_AddParameterKeepsConstraintSchema(t *testing.T) {
 	t.Parallel()
 
@@ -3846,8 +3621,6 @@ func Test_OpenAPI_AddParameterKeepsConstraintSchema(t *testing.T) {
 	require.Equal(t, map[string]any{"type": "string", "pattern": "^[0-9]+$"}, explicit["schema"])
 }
 
-// Test_Config_CyclicOptionsDoNotOverflow pins the depth guard on the
-// configuration copy.
 func Test_Config_CyclicOptionsDoNotOverflow(t *testing.T) {
 	t.Parallel()
 

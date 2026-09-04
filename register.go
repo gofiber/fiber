@@ -26,8 +26,8 @@ type Register interface {
 
 	RouteChain(path string) Register
 
-	// Documentation helpers mirror the Router interface so metadata can be set
-	// fluently on the most recently registered route.
+	// Route documentation helpers. They target the most recently
+	// registered route; see the App methods of the same name.
 
 	Name(name string) Register
 	Summary(sum string) Register
@@ -63,9 +63,7 @@ type Registering struct {
 
 	path string
 
-	// lastRegID is this chain's most recent registration, so the doc helpers
-	// target it rather than the app-global latest route. Accessed atomically.
-	lastRegID uint64
+	lastRegID uint64 // Most recent registration, targeted by the doc helpers. Accessed atomically.
 }
 
 // All registers a middleware route that will match requests

@@ -18,8 +18,6 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
-// errTestDomainHook is a sentinel error returned by hooks to assert that the
-// domain router propagates hook failures as panics.
 var errTestDomainHook = errors.New("domain hook failure")
 
 func Test_Domain_Basic(t *testing.T) {
@@ -4354,8 +4352,6 @@ func Test_Domain_Security_PatternLengthLimits(t *testing.T) {
 	})
 }
 
-// Test_Domain_OpenAPI_Helpers_Advanced covers the domainRouter documentation
-// helpers not exercised by Test_Domain_OpenAPI_Helpers.
 func Test_Domain_OpenAPI_Helpers_Advanced(t *testing.T) {
 	t.Parallel()
 
@@ -4449,8 +4445,6 @@ func Test_Domain_OpenAPI_Helpers_Advanced(t *testing.T) {
 	})
 }
 
-// Test_Domain_RouteChain_OpenAPI_Helpers covers the doc helpers on a
-// domain-scoped RouteChain, which target the chain's own registration.
 func Test_Domain_RouteChain_OpenAPI_Helpers(t *testing.T) {
 	t.Parallel()
 	app := New()
@@ -4495,8 +4489,6 @@ func Test_Domain_RouteChain_OpenAPI_Helpers(t *testing.T) {
 	require.Equal(t, "https://example.com/docs", post.ExternalDocs["url"])
 	require.Equal(t, "core", post.OperationExtensions["x-team"])
 
-	// Request-body variants overwrite one another, so exercise each on its own
-	// registration.
 	domain.RouteChain("/rb-plain").Put(testEmptyHandler).RequestBody("Body", true, MIMEApplicationJSON)
 	require.Equal(t, []string{MIMEApplicationJSON}, app.stack[app.methodInt(MethodPut)][0].RequestBody.MediaTypes)
 
@@ -4508,18 +4500,15 @@ func Test_Domain_RouteChain_OpenAPI_Helpers(t *testing.T) {
 		RequestBodyContent("Body", true, map[string]RouteMediaType{MIMEApplicationJSON: {Schema: map[string]any{"type": "object"}}})
 	require.Contains(t, app.stack[app.methodInt(MethodDelete)][0].RequestBody.Content, MIMEApplicationJSON)
 
-	// Hidden on its own registration so it is the only route in its stack.
 	domain.RouteChain("/secret").Get(testEmptyHandler).Hidden()
 	require.True(t, app.stack[app.methodInt(MethodGet)][0].IsHidden())
 }
 
-// Test_Domain_Group_Use_EmptyHandlers exercises a prefix-only Use: the
-// empty-handler fast path and the group's hasAnyRoute bookkeeping.
 func Test_Domain_Group_Use_EmptyHandlers(t *testing.T) {
 	t.Parallel()
 	app := New()
 	dg := app.Domain("api.example.com").Group("/api")
-	dg.Use("/sub") // prefix only, no handlers
+	dg.Use("/sub")
 	dg.Get("/users", func(c Ctx) error { return c.SendString("ok") })
 
 	req := httptest.NewRequest(MethodGet, "/api/users", http.NoBody)
@@ -4532,7 +4521,6 @@ func Test_Domain_Group_Use_EmptyHandlers(t *testing.T) {
 	require.Equal(t, "ok", string(body))
 }
 
-// Test_Domain_Use_InvalidHandler verifies Use panics on a non-handler argument.
 func Test_Domain_Use_InvalidHandler(t *testing.T) {
 	t.Parallel()
 	app := New()
@@ -4541,8 +4529,6 @@ func Test_Domain_Use_InvalidHandler(t *testing.T) {
 	})
 }
 
-// Test_Domain_Group_HookError verifies domainRouter.Group panics when an
-// OnGroup hook returns an error.
 func Test_Domain_Group_HookError(t *testing.T) {
 	t.Parallel()
 	app := New()
@@ -4552,8 +4538,6 @@ func Test_Domain_Group_HookError(t *testing.T) {
 	})
 }
 
-// Test_Domain_Mount_HookError verifies mounting a sub-app on a domain panics
-// when the sub-app's OnMount hook returns an error.
 func Test_Domain_Mount_HookError(t *testing.T) {
 	t.Parallel()
 	app := New()
@@ -4564,8 +4548,6 @@ func Test_Domain_Mount_HookError(t *testing.T) {
 	})
 }
 
-// Test_Domain_AutoHead_PerDomain asserts each domain's GET gets its own HEAD
-// twin; keying on the path alone left the second domain answering 404.
 func Test_Domain_AutoHead_PerDomain(t *testing.T) {
 	t.Parallel()
 
