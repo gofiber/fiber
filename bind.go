@@ -134,7 +134,7 @@ func (b *Bind) release() {
 	b.shouldSkipValidation = false
 }
 
-// WithJSONDecoder selects the JSON decoder for this bind operation.
+// WithJSONDecoder selects the JSON decoder for the current bind chain.
 // A nil decoder uses the application decoder.
 func (b *Bind) WithJSONDecoder(decoder utils.JSONUnmarshal) *Bind {
 	b.jsonDecoder = decoder

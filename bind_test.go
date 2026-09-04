@@ -87,14 +87,12 @@ func Test_AcquireReleaseBind(t *testing.T) {
 	b.shouldSkipValidation = true
 	b.jsonDecoder = json.Unmarshal
 	b.ctx = &DefaultCtx{}
+	b.release()
+	require.Nil(t, b.ctx)
+	require.Nil(t, b.jsonDecoder)
+	require.True(t, b.shouldSkipErrHandling)
+	require.False(t, b.shouldSkipValidation)
 	ReleaseBind(b)
-
-	b2 := AcquireBind()
-	require.Nil(t, b2.ctx)
-	require.Nil(t, b2.jsonDecoder)
-	require.True(t, b2.shouldSkipErrHandling)
-	require.False(t, b2.shouldSkipValidation)
-	ReleaseBind(b2)
 }
 
 func Test_Bind_WithJSONDecoder_OverridesAppDecoder(t *testing.T) {
