@@ -24,6 +24,8 @@ jobs:
   benchmark:
     uses: gofiber/.github/.github/workflows/benchmark.yml@main
     with:
+      # the reusable default is still 1.25.x; keep in sync with go.mod
+      go-version: 1.26.x
       # ~9 months of main pushes; the columnar data.js keeps this at a few MB
       max-items-in-chart: 555
       # ~15 min of benchmark time against ~20s of compile, so this scales close to
