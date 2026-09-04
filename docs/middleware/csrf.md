@@ -4,7 +4,7 @@ id: csrf
 
 # CSRF
 
-The CSRF middleware protects against [Cross-Site Request Forgery](https://en.wikipedia.org/wiki/Cross-site_request_forgery) attacks by validating tokens on unsafe HTTP methods such as POST, PUT, and DELETE. It responds with 403 Forbidden when validation fails. Safe methods (`GET`, `HEAD`, `OPTIONS`, `TRACE`, `QUERY`) are not validated; note that `QUERY` is classified as safe per RFC 10008, so do not perform state changes in `QUERY` handlers.
+The CSRF middleware protects against [Cross-Site Request Forgery](https://en.wikipedia.org/wiki/Cross-Site_Request_Forgery) attacks by validating tokens on unsafe HTTP methods such as POST, PUT, and DELETE. It responds with 403 Forbidden when validation fails. Safe methods (`GET`, `HEAD`, `OPTIONS`, `TRACE`, `QUERY`) are not validated; note that `QUERY` is classified as safe per RFC 10008, so do not perform state changes in `QUERY` handlers. With `CrossOriginProtectionOnly`, token validation and token-related state are disabled; requests are protected by cross-origin checks instead.
 
 ## Table of Contents
 
@@ -58,11 +58,11 @@ app.Use(csrf.New(csrf.Config{
 :::
 
 1. **Always use HTTPS** in production
-2. **Use sessions** for authenticated applications
+2. **Use sessions** for authenticated applications when token-based CSRF protection is enabled
 3. **Set `CookieSecure: true`** and appropriate SameSite values
 4. **Implement XSS protection** alongside CSRF
 5. **Regenerate tokens** after auth changes
-6. **Use `__Host-` cookie prefix** when possible
+6. **Use `__Host-` cookie prefix** when possible for token-based protection
 
 :::warning BREACH Protection
 To mitigate BREACH attacks, ensure your pages are served over HTTPS, disable HTTP compression, and implement rate limiting for requests. The CSRF token is sent as a header on every request, so if you include the token in a page that is vulnerable to BREACH, an attacker may be able to extract the token.

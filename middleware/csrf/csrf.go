@@ -91,7 +91,7 @@ func New(config ...Config) fiber.Handler {
 				panic("[CSRF] Invalid origin format in configuration:" + maskValue(origin))
 			}
 			trustedOrigins = append(trustedOrigins, normalizedOrigin)
-			crossOriginTrustedOrigins = append(crossOriginTrustedOrigins, trimmedOrigin)
+			crossOriginTrustedOrigins = append(crossOriginTrustedOrigins, normalizedOrigin)
 		}
 	}
 
@@ -396,8 +396,10 @@ func validateCrossOriginProtection(c fiber.Ctx, trustedOrigins []string, trusted
 	if origin == "" {
 		return nil
 	}
-	if originURL, err := url.Parse(origin); err == nil && originURL.Host == c.Host() {
-		return nil
+	if host := c.Host(); host != "" {
+		if originURL, err := url.Parse(origin); err == nil && originURL.Host == host {
+			return nil
+		}
 	}
 	if isCrossOriginTrusted(origin, trustedOrigins, trustedSubOrigins) {
 		return nil

@@ -179,8 +179,10 @@ func configDefault(config ...Config) Config {
 	if cfg.Extractor.Extract == nil {
 		cfg.Extractor = ConfigDefault.Extractor
 	}
-	// Validate extractor security configurations
-	validateExtractorSecurity(&cfg)
+	// Tokenless protection does not read an extractor or store tokens.
+	if !cfg.CrossOriginProtectionOnly {
+		validateExtractorSecurity(&cfg)
+	}
 
 	return cfg
 }
