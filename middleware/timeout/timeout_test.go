@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -653,4 +654,178 @@ func TestTimeout_AbandonWithoutReclaimNotPooled(t *testing.T) {
 	ctx.Abandon()
 	app.ReleaseCtx(ctx)
 	require.True(t, ctx.IsAbandoned(), "abandoned, un-armed context must not be auto-reclaimed")
+}
+
+type neverReturningReader struct{}
+
+func (neverReturningReader) Read(_ []byte) (int, error) { select {} }
+
+// Test_Timeout_ResponseUnwritten covers the OnTimeout fallback's decision on its
+// own. Driving it through a served request would mean reading the response while
+// the timed-out handler still writes to it, which is a race this middleware has
+// either way: the handler is abandoned by design and keeps running.
+func Test_Timeout_ResponseUnwritten(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		setup func(resp *fasthttp.Response)
+		name  string
+		want  bool
+	}{
+		{
+			name:  "nothing written",
+			setup: func(_ *fasthttp.Response) {},
+			want:  true,
+		},
+		{
+			name:  "stream with a payload",
+			setup: func(resp *fasthttp.Response) { resp.SetBodyStream(strings.NewReader("streamed"), -1) },
+			want:  true,
+		},
+		{
+			name:  "stream that yields nothing",
+			setup: func(resp *fasthttp.Response) { resp.SetBodyStream(strings.NewReader(""), -1) },
+			want:  true,
+		},
+		{
+			name:  "reader that never returns",
+			setup: func(resp *fasthttp.Response) { resp.SetBodyStream(neverReturningReader{}, -1) },
+			want:  true,
+		},
+		{
+			name:  "buffered body the handler already wrote",
+			setup: func(resp *fasthttp.Response) { resp.SetBodyString("handler-body") },
+			want:  false,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			resp := &fasthttp.Response{}
+			tc.setup(resp)
+			require.Equal(t, tc.want, timeoutResponseUnwritten(resp))
+		})
+	}
+}
+
+func Test_Timeout_OnTimeout_ResetsBodyStream(t *testing.T) {
+	t.Parallel()
+
+	resp := &fasthttp.Response{}
+	resp.SetBodyStream(neverReturningReader{}, -1)
+
+	require.True(t, timeoutResponseUnwritten(resp))
+
+	// What handleTimeout does once the check passes. ResetBody closes the stream
+	// instead of draining it, so this returns rather than blocking on the reader.
+	resp.ResetBody()
+	resp.SetStatusCode(fiber.StatusRequestTimeout)
+	resp.SetBodyString(fiber.ErrRequestTimeout.Message)
+
+	require.False(t, resp.IsBodyStream())
+	require.Equal(t, fiber.StatusRequestTimeout, resp.StatusCode())
+	require.Equal(t, fiber.ErrRequestTimeout.Message, string(resp.Body()))
+}
+
+func Test_Timeout_DefaultReturnsErrRequestTimeout(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+
+	seen := make(chan error, 1)
+	app.Use(func(c fiber.Ctx) error {
+		err := c.Next()
+		seen <- err
+		return err
+	})
+	// Hold the handler past the deadline, so the middleware always selects the
+	// timeout rather than racing it against the handler returning.
+	release := make(chan struct{})
+	app.Get("/slow", New(func(c fiber.Ctx) error {
+		<-c.Context().Done()
+		<-release
+		return nil
+	}, Config{Timeout: 20 * time.Millisecond}))
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/slow", http.NoBody))
+	close(release)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusRequestTimeout, resp.StatusCode)
+
+	select {
+	case err := <-seen:
+		require.ErrorIs(t, err, fiber.ErrRequestTimeout)
+	case <-time.After(time.Second):
+		t.Fatal("outer middleware never observed the result")
+	}
+}
+
+func Test_Timeout_OnTimeoutReturnedErrorShapesResponse(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+
+	release := make(chan struct{})
+	app.Get("/slow", New(func(c fiber.Ctx) error {
+		<-c.Context().Done()
+		<-release
+		return nil
+	}, Config{
+		Timeout: 20 * time.Millisecond,
+		OnTimeout: func(_ fiber.Ctx) error {
+			return fiber.NewError(fiber.StatusGatewayTimeout, "upstream too slow")
+		},
+	}))
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/slow", http.NoBody))
+	close(release)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusGatewayTimeout, resp.StatusCode)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "upstream too slow", string(body))
+}
+
+func Test_Timeout_ErrorHandlerSkippedAfterTimeout(t *testing.T) {
+	t.Parallel()
+
+	var errorHandlerCalls atomic.Int32
+	app := fiber.New(fiber.Config{
+		ErrorHandler: func(c fiber.Ctx, err error) error {
+			errorHandlerCalls.Add(1)
+			return c.Status(fiber.StatusTeapot).SendString(err.Error())
+		},
+	})
+
+	seen := make(chan error, 1)
+	app.Use(func(c fiber.Ctx) error {
+		err := c.Next()
+		seen <- err
+		return err
+	})
+	release := make(chan struct{})
+	app.Get("/partial", New(func(c fiber.Ctx) error {
+		if err := c.SendString("partial output"); err != nil {
+			return err
+		}
+		<-c.Context().Done()
+		<-release
+		return c.Context().Err()
+	}, Config{Timeout: 20 * time.Millisecond}))
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/partial", http.NoBody))
+	close(release)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusRequestTimeout, resp.StatusCode)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, fiber.ErrRequestTimeout.Message, string(body))
+
+	select {
+	case err := <-seen:
+		require.ErrorIs(t, err, fiber.ErrRequestTimeout)
+	case <-time.After(time.Second):
+		t.Fatal("outer middleware never observed the result")
+	}
+	require.Equal(t, int32(0), errorHandlerCalls.Load())
 }

@@ -42,7 +42,12 @@ func New(config ...Config) fiber.Handler {
 			limit = cfg.MaxLimit
 		}
 
-		sorts := parseSortQuery(c.Query(cfg.SortKey), cfg.AllowedSorts, cfg.DefaultSort)
+		// Without a SortKey the query is not consulted: c.Query("") would read a nameless parameter.
+		sortQuery := ""
+		if cfg.SortKey != "" {
+			sortQuery = c.Query(cfg.SortKey)
+		}
+		sorts := parseSortQuery(sortQuery, cfg.AllowedSorts, cfg.DefaultSort)
 
 		cursorRaw := c.Query(cfg.CursorKey)
 		if cursorRaw == "" && cfg.CursorParam != "" {

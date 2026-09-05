@@ -50,7 +50,7 @@ or `FiberApp`, the adaptor enforces the app's configured `BodyLimit`. The app's 
 
 ---
 
-## Usage Examples
+## Examples
 
 ### 1. Using `net/http` handlers in Fiber (`HTTPHandler`, `HTTPHandlerFunc`)
 
@@ -296,7 +296,12 @@ func handleRequest(w http.ResponseWriter, r *http.Request) {
 `fasthttp.RequestCtx`. The function is marked deprecated in code because it uses
 reflection and unsafe operations—prefer explicit parameter passing when possible.
 When you do need it, call it immediately after you add values to the `net/http`
-context so Fiber can read them via `c.Context()`:
+context so Fiber can read them via `c.Locals()`. Values are copied from the
+chain of derived contexts (`WithValue`, `WithCancel`, `WithTimeout`,
+`WithDeadline`, `WithoutCancel`), the innermost value winning for a key set
+twice. The walk follows the chain to its end and stops only where it would
+repeat itself, so a deep middleware stack keeps its outermost values and a
+context pointing back at itself still terminates:
 
 ```go
 package main
@@ -328,7 +333,7 @@ func main() {
     })
 
     app.Get("/", func(c fiber.Ctx) error {
-        if id, ok := c.Context().Value(contextKey("requestID")).(string); ok {
+        if id, ok := c.Locals(contextKey("requestID")).(string); ok {
             return c.SendString("Request ID: " + id)
         }
         return c.SendStatus(fiber.StatusNotFound)
@@ -339,6 +344,12 @@ func main() {
 ```
 
 ---
+
+## Notes and limitations
+
+- A request that `net/http` served over TLS is seen as TLS by Fiber: `c.Scheme()` is `https`, `c.Secure()` is true and `c.RequestCtx().TLSConnectionState()` carries the state from `r.TLS`.
+- `c.StartTime()` (and so `c.Elapsed()`) is not set for requests that reach Fiber through `FiberHandler`, `FiberApp` or `HTTPMiddleware`: fasthttp only records the request time inside its own server loop.
+- `HTTPMiddleware` routes the request the wrapped middleware hands to `next`, including a rewritten `r.URL` such as the one `http.StripPrefix` produces. The middleware must call `next` before it flushes or hijacks the response; after that the response has left Fiber's hands and the call is ignored.
 
 ## Summary
 

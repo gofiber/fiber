@@ -17,6 +17,7 @@
 package memory
 
 import (
+	"math"
 	"sync"
 	"time"
 
@@ -76,7 +77,7 @@ func (s *Storage) Get(key string) any {
 func (s *Storage) Set(key string, val any, ttl time.Duration) {
 	var exp uint32
 	if ttl > 0 {
-		exp = uint32(ttl.Seconds()) + utils.Timestamp()
+		exp = absoluteExpiry(ttl)
 	}
 
 	// Defensive copies to prevent unsafe reuse from sync.Pool
@@ -140,4 +141,30 @@ func (s *Storage) gc(sleep time.Duration) {
 		}
 		s.mu.Unlock()
 	}
+}
+
+// absoluteExpiry turns a positive TTL into the whole-second timestamp an entry
+// expires at, saturating instead of wrapping: a near-maximum TTL added to the
+// current timestamp would otherwise land in the past and expire at once.
+func absoluteExpiry(ttl time.Duration) uint32 {
+	now := utils.Timestamp()
+	secs := ceilSeconds(ttl)
+	if secs > math.MaxUint32-now {
+		return math.MaxUint32
+	}
+	return secs + now
+}
+
+// ceilSeconds converts a positive duration to whole seconds, rounding up.
+func ceilSeconds(d time.Duration) uint32 {
+	// Divide before rounding up: adding a second first overflows for a duration
+	// near the top of the range and wraps into a tiny, immediately expired value.
+	secs := d / time.Second
+	if d%time.Second != 0 {
+		secs++
+	}
+	if secs > math.MaxUint32 {
+		return math.MaxUint32
+	}
+	return uint32(secs) //nolint:gosec // G115: bounded by the MaxUint32 check above
 }

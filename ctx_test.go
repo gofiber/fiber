@@ -17,6 +17,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"math"
 	"mime/multipart"
 	"net"
@@ -29,11 +30,13 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"testing/fstest"
 	"text/template"
 	"time"
 
 	"github.com/fxamacker/cbor/v2"
 	"github.com/gofiber/utils/v2"
+	utilsstrings "github.com/gofiber/utils/v2/strings"
 	"github.com/shamaton/msgpack/v3"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/bytebufferpool"
@@ -399,6 +402,26 @@ func (c *customCtx) Params(key string, defaultValue ...string) string { //revive
 	return "prefix_" + c.DefaultCtx.Params(key)
 }
 
+// jsonEnvelopeCustomCtx overrides JSON to wrap payloads in a standard API envelope.
+// Used to regression-test #3319 (CustomCtx methods must survive middleware / Next).
+type jsonEnvelopeCustomCtx struct {
+	DefaultCtx
+}
+
+type jsonEnvelope struct {
+	Data    any    `json:"data"`
+	Message string `json:"message"`
+	Code    int    `json:"code"`
+}
+
+func (c *jsonEnvelopeCustomCtx) JSON(data any, ctype ...string) error {
+	return c.DefaultCtx.JSON(jsonEnvelope{
+		Code:    StatusOK,
+		Data:    data,
+		Message: "OK",
+	}, ctype...)
+}
+
 // go test -run Test_Ctx_CustomCtx
 func Test_Ctx_CustomCtx(t *testing.T) {
 	t.Parallel()
@@ -486,6 +509,53 @@ func Test_Ctx_CustomCtx_WithMiddleware(t *testing.T) {
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err, "io.ReadAll(resp.Body)")
 	require.Equal(t, "prefix_", string(body))
+}
+
+// go test -run Test_Ctx_CustomCtx_JSON_WithMiddleware
+func Test_Ctx_CustomCtx_JSON_WithMiddleware(t *testing.T) {
+	t.Parallel()
+
+	newCtx := func(app *App) CustomCtx {
+		return &jsonEnvelopeCustomCtx{DefaultCtx: *NewDefaultCtx(app)}
+	}
+
+	t.Run("without middleware", func(t *testing.T) {
+		t.Parallel()
+
+		app := NewWithCustomCtx(newCtx)
+		app.Get("/vvv", func(c Ctx) error {
+			return c.JSON(Map{"a": "b"})
+		})
+
+		resp, err := app.Test(httptest.NewRequest(MethodGet, "/vvv", http.NoBody))
+		require.NoError(t, err, "app.Test(req)")
+		defer func() { require.NoError(t, resp.Body.Close()) }()
+
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err, "io.ReadAll(resp.Body)")
+		require.JSONEq(t, `{"code":200,"data":{"a":"b"},"message":"OK"}`, string(body))
+	})
+
+	t.Run("with middleware", func(t *testing.T) {
+		t.Parallel()
+
+		app := NewWithCustomCtx(newCtx)
+		app.Use(func(c Ctx) error {
+			return c.Next()
+		})
+		app.Get("/vvv", func(c Ctx) error {
+			return c.JSON(Map{"a": "b"})
+		})
+
+		resp, err := app.Test(httptest.NewRequest(MethodGet, "/vvv", http.NoBody))
+		require.NoError(t, err, "app.Test(req)")
+		defer func() { require.NoError(t, resp.Body.Close()) }()
+
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err, "io.ReadAll(resp.Body)")
+		// Middleware must not drop the custom JSON wrapper (#3319).
+		require.JSONEq(t, `{"code":200,"data":{"a":"b"},"message":"OK"}`, string(body))
+	})
 }
 
 // go test -run Test_Ctx_CustomCtx
@@ -2732,6 +2802,45 @@ func Test_Ctx_FormValue_NonMultipart(t *testing.T) {
 	require.Equal(t, "fallback", c.FormValue("missing", "fallback"))
 }
 
+// Test_Ctx_Form_MixedCaseContentType asserts that Ctx's own form accessors
+// accept the media type and parameter names in any case (RFC 9110 Sections
+// 8.3.1 and 5.6.6). fasthttp matches both case-sensitively, so without the
+// normalization these return nothing at all — and a handler should not have to
+// call Bind first to get its own form back.
+func Test_Ctx_Form_MixedCaseContentType(t *testing.T) {
+	t.Parallel()
+
+	t.Run("urlencoded", func(t *testing.T) {
+		t.Parallel()
+
+		app := New()
+		c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck,forcetypeassert // not needed
+
+		c.Request().Header.SetMethod(MethodPost)
+		c.Request().Header.Set(HeaderContentType, "Application/X-WWW-Form-Urlencoded")
+		c.Request().SetBodyString("name=carol")
+
+		require.Equal(t, "carol", c.FormValue("name"))
+	})
+
+	t.Run("multipart", func(t *testing.T) {
+		t.Parallel()
+
+		app := New()
+		c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck,forcetypeassert // not needed
+
+		// The boundary parameter *name* is folded, its value is not.
+		c.Request().Header.SetMethod(MethodPost)
+		c.Request().Header.Set(HeaderContentType, `Multipart/Form-Data; BOUNDARY=AbC`)
+		c.Request().SetBodyString("--AbC\r\nContent-Disposition: form-data; name=\"name\"\r\n\r\ncarol\r\n--AbC--\r\n")
+
+		form, err := c.MultipartForm()
+		require.NoError(t, err)
+		require.Equal(t, []string{"carol"}, form.Value["name"])
+		require.Equal(t, "carol", c.FormValue("name"))
+	})
+}
+
 func Benchmark_Ctx_Fresh_StaleEtag(b *testing.B) {
 	app := New()
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
@@ -4944,11 +5053,13 @@ func Test_Ctx_ClientHelloInfo(t *testing.T) {
 		pssWithSHA256 = 0x0804
 		versionTLS13  = 0x0304
 	)
-	app.tlsHandler = &TLSHandler{clientHelloInfo: &tls.ClientHelloInfo{
+	app.tlsHandler = &TLSHandler{}
+	_, err = app.tlsHandler.GetClientInfo(&tls.ClientHelloInfo{
 		ServerName:        "example.golang",
 		SignatureSchemes:  []tls.SignatureScheme{pssWithSHA256},
 		SupportedVersions: []uint16{versionTLS13},
-	}}
+	})
+	require.NoError(t, err)
 
 	// Test ServerName
 	resp, err = app.Test(httptest.NewRequest(MethodGet, "/ServerName", http.NoBody))
@@ -5348,6 +5459,45 @@ func Test_Ctx_Scheme_HeaderNormalization(t *testing.T) {
 	c.Request().Header.Set("x-Forwarded-ProToCol", " HTTPS ")
 	require.Equal(t, schemeHTTPS, c.Scheme())
 	c.Request().Header.Reset()
+}
+
+// go test -run Test_Ctx_Scheme_RejectsForeignSchemes
+func Test_Ctx_Scheme_RejectsForeignSchemes(t *testing.T) {
+	t.Parallel()
+
+	app := New(Config{
+		TrustProxy: true,
+		TrustProxyConfig: TrustProxyConfig{
+			Proxies: []string{"0.0.0.0"},
+		},
+	})
+
+	freq := &fasthttp.RequestCtx{}
+	freq.SetRemoteAddr(net.Addr(&net.TCPAddr{IP: net.ParseIP("0.0.0.0")}))
+
+	c := app.AcquireCtx(freq)
+
+	// A scheme Fiber does not serve must never reach BaseURL or the
+	// same-origin comparisons that consume Scheme.
+	for _, header := range []string{HeaderXForwardedProto, HeaderXForwardedProtocol, HeaderXUrlScheme} {
+		for _, value := range []string{"javascript", "ftp", "data", "HTTPS evil", ""} {
+			c.Request().Header.Set(header, value)
+			require.Equal(t, schemeHTTP, c.Scheme(), "%s: %q", header, value)
+			c.Request().Header.Reset()
+		}
+	}
+
+	// A rejected value must not clobber a valid one supplied by another header.
+	c.Request().Header.Set(HeaderXForwardedProto, schemeHTTPS)
+	c.Request().Header.Set(HeaderXUrlScheme, "javascript")
+	require.Equal(t, schemeHTTPS, c.Scheme())
+	c.Request().Header.Reset()
+
+	// BaseURL is the reason this matters: a foreign scheme spliced in here
+	// yields a URL an application may hand to a browser.
+	c.Request().URI().SetHost("example.com")
+	c.Request().Header.Set(HeaderXForwardedProto, "javascript")
+	require.Equal(t, "http://example.com", c.BaseURL())
 }
 
 // go test -v -run=^$ -bench=Benchmark_Ctx_Scheme -benchmem -count=4
@@ -5922,6 +6072,278 @@ func Test_Ctx_FullPath_Middleware(t *testing.T) {
 
 	require.Equal(t, StatusOK, resp.StatusCode)
 	require.Equal(t, []string{"/", "/test"}, recorded)
+}
+
+// go test -run Test_Ctx_Endpoint_Middleware
+func Test_Ctx_Endpoint_Middleware(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+
+	var recorded []string
+
+	app.Use(func(c Ctx) error {
+		if route := c.Endpoint(); route != nil {
+			recorded = append(recorded, route.Path, route.Name)
+		}
+		return c.Next()
+	})
+
+	app.Get("/users/:id", func(c Ctx) error {
+		require.Equal(t, "/users/:id", c.Endpoint().Path)
+		require.Equal(t, "user.show", c.Endpoint().Name)
+		return c.SendStatus(StatusOK)
+	}).Name("user.show")
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/users/42", http.NoBody))
+	require.NoError(t, err, "app.Test(req)")
+	defer func() { require.NoError(t, resp.Body.Close()) }()
+
+	require.Equal(t, StatusOK, resp.StatusCode)
+	require.Equal(t, []string{"/users/:id", "user.show"}, recorded)
+}
+
+// go test -run Test_Ctx_Endpoint_NotFound
+func Test_Ctx_Endpoint_NotFound(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+
+	app.Use(func(c Ctx) error {
+		require.Nil(t, c.Endpoint())
+		return c.Next()
+	})
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/not-found", http.NoBody))
+	require.NoError(t, err, "app.Test(req)")
+	defer func() { require.NoError(t, resp.Body.Close()) }()
+
+	require.Equal(t, StatusNotFound, resp.StatusCode)
+}
+
+// go test -run Test_Ctx_Endpoint_RepeatedAndSkipped
+func Test_Ctx_Endpoint_RepeatedAndSkipped(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+
+	var calls int
+	app.Use(func(c Ctx) error {
+		// Repeated calls resolve to the same *Route out of the tree, without a
+		// cached copy in between.
+		first := c.Endpoint()
+		second := c.Endpoint()
+		require.Same(t, first, second)
+		calls++
+		return c.Next()
+	})
+	// A route with a non-matching prefix exercises prefixRejects skip.
+	app.Get("/other/:id", func(c Ctx) error { return c.SendStatus(StatusOK) })
+	// A middleware route registered ahead of the target exercises the use/mount skip.
+	app.Use("/users", func(c Ctx) error { return c.Next() })
+	app.Get("/users/:id", func(c Ctx) error {
+		return c.SendStatus(StatusOK)
+	}).Name("user.show")
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/users/42", http.NoBody))
+	require.NoError(t, err, "app.Test(req)")
+	defer func() { require.NoError(t, resp.Body.Close()) }()
+
+	require.Equal(t, StatusOK, resp.StatusCode)
+	require.Equal(t, 1, calls)
+}
+
+// go test -bench=Benchmark_Ctx_Endpoint -benchmem -count=4
+func Benchmark_Ctx_Endpoint(b *testing.B) {
+	app := New()
+	app.Use(func(c Ctx) error { return c.Next() })
+	registerDummyRoutes(app)
+	app.startupProcess()
+
+	fctx := &fasthttp.RequestCtx{}
+	fctx.Request.Header.SetMethod(MethodDelete)
+	fctx.Request.SetRequestURI("/user/keys/1337")
+	c := app.AcquireCtx(fctx).(*DefaultCtx) //nolint:errcheck,forcetypeassert // matches the other ctx benchmarks
+	defer app.ReleaseCtx(c)
+	c.Reset(fctx)
+
+	var route *Route
+	b.ReportAllocs()
+	for b.Loop() {
+		route = c.Endpoint()
+	}
+	require.NotNil(b, route)
+}
+
+// go test -run Test_Ctx_Endpoint_NilWhenNoEndpointCanRun
+// serverErrorHandler replays the chain for protocol-level errors with
+// shouldSkipNonUseRoutes set, and next() then runs no endpoint at all.
+func Test_Ctx_Endpoint_NilWhenNoEndpointCanRun(t *testing.T) {
+	t.Parallel()
+
+	app := New(Config{BodyLimit: 8})
+
+	var reported []*Route
+	endpointRan := false
+	app.Use(func(c Ctx) error {
+		reported = append(reported, c.Endpoint())
+		return c.Next()
+	})
+	app.Post("/big", func(c Ctx) error {
+		endpointRan = true
+		return c.SendString("endpoint")
+	}).Name("big.post")
+
+	req := httptest.NewRequest(MethodPost, "/big", bytes.NewReader(bytes.Repeat([]byte("x"), 4096)))
+	_, err := app.Test(req)
+	require.Error(t, err, "the body limit should reject this request")
+
+	require.False(t, endpointRan)
+	require.NotEmpty(t, reported, "the middleware chain should still have run")
+	for _, r := range reported {
+		require.Nil(t, r, "no endpoint can run in this pass, so none may be named")
+	}
+}
+
+// go test -run Test_Ctx_Endpoint_MatchesTheRouteThatRuns
+// Sweeps the whole route fixture: whatever the look-ahead names in middleware
+// must be the endpoint next() then executes, or nil when none does. prefixRejects
+// warns that hand-written scan copies drift unnoticed; this is that guard.
+func Test_Ctx_Endpoint_MatchesTheRouteThatRuns(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+
+	var predicted, actual *Route
+	app.Use(func(c Ctx) error {
+		predicted = c.Endpoint()
+		return c.Next()
+	})
+	// A middleware between the observer and the endpoints: the scan has to skip it,
+	// and the sweep has to notice if it ever stops doing so.
+	app.Use("/repos", func(c Ctx) error { return c.Next() })
+	registerDummyRoutes(app)
+	// Record what really ran, from inside the endpoint's own chain position.
+	for _, r := range app.stack {
+		for _, route := range r {
+			if route.use || route.mount || len(route.Handlers) == 0 {
+				continue
+			}
+			handler := route.Handlers[len(route.Handlers)-1]
+			route.Handlers[len(route.Handlers)-1] = func(c Ctx) error {
+				actual = c.Route()
+				return handler(c)
+			}
+		}
+	}
+
+	for i := range routesFixture.TestRoutes {
+		tr := routesFixture.TestRoutes[i]
+		predicted, actual = nil, nil
+
+		req := httptest.NewRequest(tr.Method, tr.Path, http.NoBody)
+		resp, err := app.Test(req)
+		require.NoError(t, err, "%s %s", tr.Method, tr.Path)
+		require.NoError(t, resp.Body.Close())
+
+		require.Same(t, actual, predicted,
+			"%s %s: look-ahead named %v but %v ran", tr.Method, tr.Path,
+			routeName(predicted), routeName(actual))
+	}
+}
+
+func routeName(r *Route) any {
+	if r == nil {
+		return nil
+	}
+	return r.Method + " " + r.Path
+}
+
+// go test -run Test_Ctx_Endpoint_FollowsMethodOverride
+func Test_Ctx_Endpoint_FollowsMethodOverride(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+
+	var before, after string
+	app.Use(func(c Ctx) error {
+		if r := c.Endpoint(); r != nil {
+			before = r.Name
+		}
+		c.Request().Header.SetMethod(MethodPost)
+		c.Req().Method(MethodPost)
+		if r := c.Endpoint(); r != nil {
+			after = r.Name
+		}
+		return c.Next()
+	})
+	app.Get("/x", func(c Ctx) error { return c.SendStatus(StatusOK) }).Name("x.get")
+	app.Post("/x", func(c Ctx) error { return c.SendStatus(StatusOK) }).Name("x.post")
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/x", http.NoBody))
+	require.NoError(t, err, "app.Test(req)")
+	defer func() { require.NoError(t, resp.Body.Close()) }()
+
+	require.Equal(t, "x.get", before)
+	require.Equal(t, "x.post", after, "Endpoint must follow a method override, not report the route the old method would have hit")
+}
+
+// go test -run Test_Ctx_Endpoint_LooksPastTheCurrentRoute
+// A middleware placed behind an endpoint that already ran must be told the next
+// endpoint, not the one the chain has passed. Both endpoints are parametric so
+// that SkipUnmatchedRoutes resolves a firstMatchIndex at all: a static hit
+// short-circuits resolveSkip before it records one.
+func Test_Ctx_Endpoint_LooksPastTheCurrentRoute(t *testing.T) {
+	t.Parallel()
+
+	for _, skipUnmatched := range []bool{false, true} {
+		t.Run(fmt.Sprintf("SkipUnmatchedRoutes=%v", skipUnmatched), func(t *testing.T) {
+			t.Parallel()
+
+			app := New(Config{SkipUnmatchedRoutes: skipUnmatched})
+
+			var seen *Route
+			app.Get("/:first", func(c Ctx) error { return c.Next() })
+			app.Use(func(c Ctx) error {
+				seen = c.Endpoint()
+				return c.Next()
+			})
+			app.Get("/:second", func(c Ctx) error { return c.SendStatus(StatusOK) })
+
+			resp, err := app.Test(httptest.NewRequest(MethodGet, "/x", http.NoBody))
+			require.NoError(t, err, "app.Test(req)")
+			defer func() { require.NoError(t, resp.Body.Close()) }()
+
+			require.Equal(t, StatusOK, resp.StatusCode)
+			require.NotNil(t, seen, "an endpoint is still ahead")
+			require.Equal(t, "/:second", seen.Path, "the /:first endpoint already ran")
+		})
+	}
+}
+
+// go test -run Test_Ctx_Endpoint_SkipUnmatchedRoutes
+func Test_Ctx_Endpoint_SkipUnmatchedRoutes(t *testing.T) {
+	t.Parallel()
+
+	app := New(Config{SkipUnmatchedRoutes: true})
+
+	var path string
+	app.Use(func(c Ctx) error {
+		if route := c.Endpoint(); route != nil {
+			path = route.Path
+		}
+		return c.Next()
+	})
+	app.Get("/items/:id", func(c Ctx) error {
+		return c.SendStatus(StatusOK)
+	})
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/items/7", http.NoBody))
+	require.NoError(t, err, "app.Test(req)")
+	defer func() { require.NoError(t, resp.Body.Close()) }()
+
+	require.Equal(t, StatusOK, resp.StatusCode)
+	require.Equal(t, "/items/:id", path)
 }
 
 // go test -run Test_Ctx_RouteNormalized
@@ -7827,6 +8249,119 @@ func Test_Ctx_JSONP(t *testing.T) {
 	})
 }
 
+// go test -run Test_Ctx_JSONP_SanitizesCallback
+func Test_Ctx_JSONP_SanitizesCallback(t *testing.T) {
+	t.Parallel()
+
+	// The callback name is emitted verbatim into a same-origin
+	// text/javascript body, and JSONP callers take it from the query string by
+	// design, so anything that could open a statement, a string, or a comment
+	// has to be stripped before it gets there.
+	tests := []struct {
+		name     string
+		callback string
+		expected string
+	}{
+		{name: "statement injection", callback: "alert(1);//", expected: "alert1"},
+		{name: "markup injection", callback: "</script><img src=x onerror=alert(1)>", expected: "scriptimgsrcxonerroralert1"},
+		{name: "eval payload", callback: "eval(atob('YWxlcnQoMSk='));x", expected: "evalatobYWxlcnQoMSkx"},
+		{name: "newline", callback: "cb\nalert(1)", expected: "cbalert1"},
+		{name: "quote", callback: `cb"+alert(1)+"`, expected: "cbalert1"},
+
+		// Legitimate member expressions must survive untouched.
+		{name: "plain identifier", callback: "cb", expected: "cb"},
+		{name: "property access", callback: "window.cb", expected: "window.cb"},
+		{name: "bracket index", callback: "ns.cb[0]", expected: "ns.cb[0]"},
+		{name: "dollar and underscore", callback: "$.jsonp_1", expected: "$.jsonp_1"},
+
+		// Nothing callable left: fall back rather than emit a body that throws.
+		{name: "fully stripped", callback: "()+-;", expected: "callback"},
+		{name: "empty", callback: "", expected: "callback"},
+		{name: "bare number", callback: "123", expected: "callback"},
+		{name: "leading digit", callback: "0.0", expected: "callback"},
+		{name: "dots only", callback: "...", expected: "callback"},
+		{name: "unbalanced bracket", callback: "a[", expected: "callback"},
+		{name: "empty index", callback: "a[]", expected: "callback"},
+		{name: "empty label", callback: "a..b", expected: "callback"},
+
+		// An identifier may not resume straight after a closing bracket; only
+		// '.', '[' or another ']' may follow one.
+		{name: "identifier after index", callback: "cb[0]x", expected: "callback"},
+		{name: "digit after index", callback: "cb[0]1", expected: "callback"},
+		{name: "index after index", callback: "cb[0][1]", expected: "cb[0][1]"},
+		{name: "property after index", callback: "cb[0].x", expected: "cb[0].x"},
+		{name: "nested index", callback: "a[b[0]]", expected: "a[b[0]]"},
+
+		// An index that opens with a digit is a number, so it is digits to the
+		// closing bracket. Anything else there is made of allowed bytes and still
+		// emits a body that throws.
+		{name: "multi digit index", callback: "cb[10]", expected: "cb[10]"},
+		{name: "identifier index", callback: "cb[i]", expected: "cb[i]"},
+		{name: "index with trailing letters", callback: "cb[0foo]", expected: "callback"},
+		{name: "hex-looking index", callback: "ns[0x]", expected: "callback"},
+		{name: "dotted number index", callback: "ns[1.2.3]", expected: "callback"},
+		{name: "index into a number", callback: "cb[0[1]]", expected: "callback"},
+
+		// Only a token opened by '[' may be a number. A property named after a dot
+		// may not, however deep in brackets the dot sits.
+		{name: "numeric property in index", callback: "cb[a.0]", expected: "callback"},
+		{name: "numeric property nested", callback: "cb[x[a.1]]", expected: "callback"},
+		{name: "numeric property trailing", callback: "cb[a.b.0]", expected: "callback"},
+		{name: "identifier property in index", callback: "cb[a.b]", expected: "cb[a.b]"},
+
+		// A reserved word is refused only where the word is read as a name: the
+		// head of the expression and the head inside each index. After a dot it is
+		// a property name, which any word may be.
+		{name: "reserved word alone", callback: "for", expected: "callback"},
+		{name: "reserved word in index", callback: "cb[new]", expected: "callback"},
+
+		// A keyword that is itself a complete expression parses where one is
+		// read, so these are left alone.
+		{name: "this heads the expression", callback: "this.cb", expected: "this.cb"},
+		{name: "literal heads the expression", callback: "null.x", expected: "null.x"},
+		{name: "literal in an index", callback: "cb[true]", expected: "cb[true]"},
+		{name: "this in an index", callback: "cb[this]", expected: "cb[this]"},
+		{name: "reserved word heads an index", callback: "cb[new.a]", expected: "callback"},
+		{name: "reserved word as property", callback: "cb.new", expected: "cb.new"},
+		{name: "reserved word as nested property", callback: "cb[a.class]", expected: "cb[a.class]"},
+		{name: "reserved word as prefix", callback: "news", expected: "news"},
+
+		// "let" is a keyword only where a "[" follows it at the head of the
+		// statement the body is: "let[a](…);" is read as a destructuring
+		// declaration and throws, while every other position is a call.
+		{name: "let indexed at the head", callback: "let[a]", expected: "callback"},
+		{name: "let indexed by a number", callback: "let[0]", expected: "callback"},
+		{name: "let alone", callback: "let", expected: "let"},
+		{name: "let with a property", callback: "let.a", expected: "let.a"},
+		{name: "let indexed deeper", callback: "cb[let[a]]", expected: "cb[let[a]]"},
+
+		// A JSONP body is parsed as a classic script in sloppy mode, where
+		// "await" is an identifier unless it stands in a module or an async
+		// function, and "yield" unless in strict mode or a generator. Both are
+		// callable names here; V8 parses every one of these.
+		{name: "await heads the expression", callback: "await.cb", expected: "await.cb"},
+		{name: "await in an index", callback: "cb[await]", expected: "cb[await]"},
+		{name: "yield heads the expression", callback: "yield.cb", expected: "yield.cb"},
+		{name: "yield in an index", callback: "cb[yield]", expected: "cb[yield]"},
+		{name: "let as a property", callback: "cb.let[0]", expected: "cb.let[0]"},
+	}
+
+	app := New()
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			c := app.AcquireCtx(&fasthttp.RequestCtx{})
+			defer app.ReleaseCtx(c)
+
+			require.NoError(t, c.JSONP(Map{"a": 1}, tc.callback))
+			require.Equal(t, tc.expected+`({"a":1});`, string(c.Response().Body()))
+			require.Equal(t, "text/javascript; charset=utf-8", string(c.Response().Header.Peek(HeaderContentType)))
+			require.Equal(t, "nosniff", string(c.Response().Header.Peek(HeaderXContentTypeOptions)))
+		})
+	}
+}
+
 // go test -v  -run=^$ -bench=Benchmark_Ctx_JSONP -benchmem -count=4
 func Benchmark_Ctx_JSONP(b *testing.B) {
 	app := New()
@@ -7951,6 +8486,11 @@ func Test_Ctx_Links(t *testing.T) {
 	// quoted-string stays grammar-valid (RFC 9110 §5.6.4).
 	c.Links("http://example.com", `next" x`)
 	require.Equal(t, `<http://example.com>; rel="next\" x"`, string(c.Response().Header.Peek(HeaderLink)))
+
+	// Unlike Attachment filenames, rel values are not sanitized first, so the
+	// shared serializer must also encode controls here.
+	c.Links("http://example.com", "next\t\x01\n\r\x7f")
+	require.Equal(t, `<http://example.com>; rel="next%09%01\n\r%7F"`, string(c.Response().Header.Peek(HeaderLink)))
 }
 
 // go test -v  -run=^$ -bench=Benchmark_Ctx_Links -benchmem -count=4
@@ -9293,6 +9833,157 @@ func Benchmark_Ctx_XHR(b *testing.B) {
 	require.True(b, equal)
 }
 
+// headerReadBenchCtx builds the request a browser sends, eight field lines, for
+// the header reads below. Names are stored the way the peer spelled them, so the
+// non-normalizing case exercises the case-insensitive walk rather than a store
+// fasthttp has already canonicalized.
+//
+//nolint:revive // flag-parameter: this selects which header store shape is measured
+func headerReadBenchCtx(b *testing.B, disableNormalizing bool) Ctx {
+	b.Helper()
+
+	app := New(Config{DisableHeaderNormalizing: disableNormalizing})
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+
+	fields := [][2]string{
+		{HeaderUserAgent, "Mozilla/5.0"},
+		{HeaderAccept, "text/html,application/xhtml+xml"},
+		{HeaderAcceptLanguage, "en-US,en;q=0.9"},
+		{HeaderAcceptEncoding, "gzip, deflate, br"},
+		{HeaderConnection, "keep-alive"},
+		{HeaderCacheControl, "max-age=0"},
+		{"Sec-Fetch-Site", "same-origin"},
+		{HeaderXRequestID, "3f0c1a"},
+	}
+	if disableNormalizing {
+		c.Request().Header.DisableNormalizing()
+		for _, f := range fields {
+			c.Request().Header.Set(utilsstrings.ToLower(f[0]), f[1])
+		}
+		return c
+	}
+
+	for _, f := range fields {
+		c.Request().Header.Set(f[0], f[1])
+	}
+	return c
+}
+
+func benchHeaderReadModes(b *testing.B, f func(b *testing.B, c Ctx)) {
+	b.Helper()
+
+	b.Run("Normalizing", func(b *testing.B) {
+		c := headerReadBenchCtx(b, false)
+		b.ReportAllocs()
+		f(b, c)
+	})
+	b.Run("WithoutNormalizing", func(b *testing.B) {
+		c := headerReadBenchCtx(b, true)
+		b.ReportAllocs()
+		f(b, c)
+	})
+}
+
+// go test -v -run=^$ -bench=Benchmark_Ctx_Get_Header -benchmem -count=4
+func Benchmark_Ctx_Get_Header(b *testing.B) {
+	benchHeaderReadModes(b, func(b *testing.B, c Ctx) {
+		b.Helper()
+		var v string
+		for b.Loop() {
+			v = c.Get(HeaderXRequestID)
+		}
+		require.Equal(b, "3f0c1a", v)
+	})
+}
+
+// go test -v -run=^$ -bench=Benchmark_Ctx_Get_HeaderAbsent -benchmem -count=4
+func Benchmark_Ctx_Get_HeaderAbsent(b *testing.B) {
+	benchHeaderReadModes(b, func(b *testing.B, c Ctx) {
+		b.Helper()
+		var v string
+		for b.Loop() {
+			v = c.Get("X-Not-Sent")
+		}
+		require.Empty(b, v)
+	})
+}
+
+// go test -v -run=^$ -bench=Benchmark_Ctx_HasHeader -benchmem -count=4
+func Benchmark_Ctx_HasHeader(b *testing.B) {
+	benchHeaderReadModes(b, func(b *testing.B, c Ctx) {
+		b.Helper()
+		var ok bool
+		for b.Loop() {
+			ok = c.HasHeader(HeaderXRequestID)
+		}
+		require.True(b, ok)
+	})
+}
+
+// go test -v -run=^$ -bench=Benchmark_Ctx_HasHeaderAbsent -benchmem -count=4
+func Benchmark_Ctx_HasHeaderAbsent(b *testing.B) {
+	benchHeaderReadModes(b, func(b *testing.B, c Ctx) {
+		b.Helper()
+		var ok bool
+		for b.Loop() {
+			ok = c.HasHeader("X-Not-Sent")
+		}
+		require.False(b, ok)
+	})
+}
+
+// go test -v -run=^$ -bench=Benchmark_Ctx_GetReqHeader -benchmem -count=4
+func Benchmark_Ctx_GetReqHeader(b *testing.B) {
+	benchHeaderReadModes(b, func(b *testing.B, c Ctx) {
+		b.Helper()
+		var v string
+		for b.Loop() {
+			v = GetReqHeader[string](c, HeaderXRequestID)
+		}
+		require.Equal(b, "3f0c1a", v)
+	})
+}
+
+// go test -v -run=^$ -bench=Benchmark_Ctx_IsWebSocket -benchmem -count=4
+//
+// Covered under both settings because the two paths differ in kind, not degree:
+// the canonical one peeks, while the case-insensitive one walks the store and
+// collects the field lines, which allocates.
+func Benchmark_Ctx_IsWebSocket(b *testing.B) {
+	for _, tc := range []struct {
+		name               string
+		disableNormalizing bool
+		handshake          bool
+	}{
+		{"Normalizing/handshake", false, true},
+		{"Normalizing/no-upgrade", false, false},
+		{"WithoutNormalizing/handshake", true, true},
+		{"WithoutNormalizing/no-upgrade", true, false},
+	} {
+		b.Run(tc.name, func(b *testing.B) {
+			app := New(Config{DisableHeaderNormalizing: tc.disableNormalizing})
+			c := app.AcquireCtx(&fasthttp.RequestCtx{})
+
+			connection, upgrade := HeaderConnection, HeaderUpgrade
+			if tc.disableNormalizing {
+				c.Request().Header.DisableNormalizing()
+				connection, upgrade = utilsstrings.ToLower(connection), utilsstrings.ToLower(upgrade)
+			}
+			c.Request().Header.Set(connection, "upgrade")
+			if tc.handshake {
+				c.Request().Header.Set(upgrade, "websocket")
+			}
+
+			b.ReportAllocs()
+			var got bool
+			for b.Loop() {
+				got = c.IsWebSocket()
+			}
+			require.Equal(b, tc.handshake, got)
+		})
+	}
+}
+
 // go test -v  -run=^$ -bench=Benchmark_Ctx_SendString_B -benchmem -count=4
 func Benchmark_Ctx_SendString_B(b *testing.B) {
 	app := New()
@@ -10603,4 +11294,361 @@ func Test_Ctx_Cookie_DoesNotMutateArgument(t *testing.T) {
 	c.Cookie(part)
 	require.False(t, part.Secure, "Partitioned must not write Secure back to the caller")
 	require.Equal(t, "/scoped", part.Path)
+}
+
+func Test_Ctx_SendFile_UncomparableFS(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	first := fstest.MapFS{"hello.txt": &fstest.MapFile{Data: []byte("hello")}}
+	second := fstest.MapFS{"hello.txt": &fstest.MapFile{Data: []byte("other")}}
+	app.Get("/", func(c Ctx) error {
+		return c.SendFile("hello.txt", SendFile{FS: first})
+	})
+	app.Get("/other", func(c Ctx) error {
+		return c.SendFile("hello.txt", SendFile{FS: second})
+	})
+
+	for _, tc := range []struct{ path, body string }{
+		{path: "/", body: "hello"},
+		{path: "/", body: "hello"},
+		{path: "/other", body: "other"},
+		{path: "/", body: "hello"},
+	} {
+		resp, err := app.Test(httptest.NewRequest(MethodGet, tc.path, http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, StatusOK, resp.StatusCode)
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		require.Equal(t, tc.body, string(body))
+	}
+}
+
+func Test_Ctx_SendFile_KeepsAcceptEncoding(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	var seen string
+	app.Use(func(c Ctx) error {
+		err := c.Next()
+		seen = c.Get(HeaderAcceptEncoding)
+		return err
+	})
+	app.Get("/", func(c Ctx) error {
+		return c.SendFile("./ctx.go")
+	})
+
+	req := httptest.NewRequest(MethodGet, "/", http.NoBody)
+	req.Header.Set(HeaderAcceptEncoding, "gzip")
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, StatusOK, resp.StatusCode)
+	require.Equal(t, "gzip", seen)
+	require.Empty(t, resp.Header.Get(HeaderContentEncoding), "Compress is off, so the file is served as-is")
+}
+
+func Test_Ctx_SendFile_CompressedByMiddleware(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	// compress decides on the request's Accept-Encoding after Next, so SendFile must leave it.
+	compressor := fasthttp.CompressHandlerBrotliLevel(func(*fasthttp.RequestCtx) {},
+		fasthttp.CompressBrotliDefaultCompression, fasthttp.CompressDefaultCompression)
+	app.Use(func(c Ctx) error {
+		if err := c.Next(); err != nil {
+			return err
+		}
+		compressor(c.RequestCtx())
+		return nil
+	})
+	app.Get("/", func(c Ctx) error {
+		return c.SendFile("./ctx.go")
+	})
+
+	req := httptest.NewRequest(MethodGet, "/", http.NoBody)
+	req.Header.Set(HeaderAcceptEncoding, "gzip")
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, StatusOK, resp.StatusCode)
+	require.Equal(t, "gzip", resp.Header.Get(HeaderContentEncoding))
+}
+
+func Test_Ctx_AutoFormat_NoAcceptHeader(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	app.Get("/", func(c Ctx) error {
+		return c.AutoFormat("Hello, World!")
+	})
+
+	testCases := []struct {
+		name        string
+		accept      string
+		contentType string
+		body        string
+	}{
+		{name: "no header", accept: "", contentType: "text/plain; charset=utf-8", body: "Hello, World!"},
+		{name: "nothing matches", accept: "application/unsupported", contentType: "text/plain; charset=utf-8", body: "Hello, World!"},
+		{name: "wildcard picks the first format", accept: "*/*", contentType: "text/html; charset=utf-8", body: "<p>Hello, World!</p>"},
+		{name: "json", accept: MIMEApplicationJSON, contentType: "application/json; charset=utf-8", body: `"Hello, World!"`},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			req := httptest.NewRequest(MethodGet, "/", http.NoBody)
+			if tc.accept != "" {
+				req.Header.Set(HeaderAccept, tc.accept)
+			}
+			resp, err := app.Test(req)
+			require.NoError(t, err)
+			require.Equal(t, StatusOK, resp.StatusCode)
+			require.Equal(t, tc.contentType, resp.Header.Get(HeaderContentType))
+			body, err := io.ReadAll(resp.Body)
+			require.NoError(t, err)
+			require.Equal(t, tc.body, string(body))
+		})
+	}
+}
+
+func Test_Ctx_IP_IPv4MappedIPv6InProxyHeader(t *testing.T) {
+	t.Parallel()
+
+	app := New(Config{
+		ProxyHeader:        HeaderXForwardedFor,
+		TrustProxy:         true,
+		EnableIPValidation: true,
+		TrustProxyConfig:   TrustProxyConfig{Private: true},
+	})
+	fctx := &fasthttp.RequestCtx{}
+	fctx.SetRemoteAddr(&net.TCPAddr{IP: net.ParseIP("10.0.0.2"), Port: 8080})
+	c := app.AcquireCtx(fctx)
+	defer app.ReleaseCtx(c)
+
+	c.Request().Header.Set(HeaderXForwardedFor, "::ffff:203.0.113.5, 10.0.0.1")
+	require.Equal(t, "::ffff:203.0.113.5", c.IP())
+	require.Equal(t, []string{"::ffff:203.0.113.5", "10.0.0.1"}, c.IPs())
+
+	// A mapped proxy address is still stripped as a trusted proxy.
+	c.Request().Header.Set(HeaderXForwardedFor, "203.0.113.5, ::ffff:10.0.0.1")
+	require.Equal(t, "203.0.113.5", c.IP())
+}
+
+func Test_Ctx_Accepts_MostSpecificRangeSetsQuality(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+
+	c.Request().Header.Set(HeaderAccept, "text/*;q=1, text/html;q=0.5")
+	require.Equal(t, "text/plain", c.Accepts("text/html", "text/plain"))
+	require.Equal(t, "text/html", c.Accepts("text/html"), "a lowered quality is still acceptable")
+
+	c.Request().Header.Set(HeaderAccept, "text/html;q=0.5, text/*;q=1")
+	require.Equal(t, "text/plain", c.Accepts("text/html", "text/plain"))
+
+	c.Request().Header.Set(HeaderAccept, "*/*;q=1, application/json;q=0.2")
+	require.Equal(t, "text/plain", c.Accepts("application/json", "text/plain"))
+
+	c.Request().Header.Set(HeaderAcceptEncoding, "gzip;q=0.5, *;q=1")
+	require.Equal(t, "br", c.AcceptsEncodings("gzip", "br"))
+
+	c.Request().Header.Set(HeaderAcceptLanguage, "en;q=0.5, *")
+	require.Equal(t, "fr", c.AcceptsLanguages("en", "fr"))
+	require.Equal(t, "fr", c.AcceptsLanguagesExtended("en", "fr"))
+
+	c.Request().Header.Set(HeaderAcceptCharset, "utf-8;q=0.5, *")
+	require.Equal(t, "iso-8859-1", c.AcceptsCharsets("utf-8", "iso-8859-1"))
+}
+
+func Test_Ctx_Format_CustomCtx(t *testing.T) {
+	t.Parallel()
+
+	app := NewWithCustomCtx(func(app *App) CustomCtx {
+		return &customCtx{
+			DefaultCtx: *NewDefaultCtx(app),
+		}
+	})
+	describe := func(c Ctx) error {
+		if _, ok := c.(*customCtx); ok {
+			return c.SendString("custom")
+		}
+		return c.SendString("default")
+	}
+	app.Get("/", func(c Ctx) error {
+		return c.Format(
+			ResFmt{MediaType: MIMETextPlain, Handler: describe},
+			ResFmt{MediaType: "default", Handler: describe},
+		)
+	})
+
+	for _, accept := range []string{"", MIMETextPlain, "application/unsupported"} {
+		req := httptest.NewRequest(MethodGet, "/", http.NoBody)
+		if accept != "" {
+			req.Header.Set(HeaderAccept, accept)
+		}
+		resp, err := app.Test(req)
+		require.NoError(t, err)
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		require.Equal(t, "custom", string(body), "Accept %q", accept)
+	}
+}
+
+// The identity step must not re-set the body with a slice aliasing it.
+func Test_Ctx_Body_With_Compression_IdentityChain(t *testing.T) {
+	t.Parallel()
+
+	var buf bytes.Buffer
+	gz := gzip.NewWriter(&buf)
+	_, err := gz.Write([]byte("john=doe"))
+	require.NoError(t, err)
+	require.NoError(t, gz.Close())
+	compressed := buf.Bytes()
+
+	for _, reduce := range []bool{false, true} {
+		app := New(Config{ReduceMemoryUsage: reduce})
+		for _, encoding := range []string{"gzip, identity", "identity, gzip", "identity, gzip, identity"} {
+			c := app.AcquireCtx(&fasthttp.RequestCtx{})
+			c.Request().Header.Set(HeaderContentEncoding, encoding)
+			c.Request().SetBody(compressed)
+
+			require.Equal(t, []byte("john=doe"), c.Body(), "ReduceMemoryUsage=%v %q", reduce, encoding)
+			require.Equal(t, compressed, c.Request().Body(), "the original body is restored")
+			require.Equal(t, []byte("john=doe"), c.Body(), "decoding again still works")
+			app.ReleaseCtx(c)
+		}
+	}
+}
+
+type funcFS func(string) (fs.File, error)
+
+func (f funcFS) Open(name string) (fs.File, error) { return f(name) }
+
+func Test_SameFS(t *testing.T) {
+	t.Parallel()
+
+	dirA, dirB := os.DirFS("."), os.DirFS("..")
+	mapA := fstest.MapFS{"a": &fstest.MapFile{}}
+	openA := funcFS(func(string) (fs.File, error) { return nil, fs.ErrNotExist })
+	openB := funcFS(func(string) (fs.File, error) { return nil, fs.ErrNotExist })
+
+	require.True(t, sameFS(nil, nil))
+	require.False(t, sameFS(dirA, nil))
+	require.False(t, sameFS(nil, dirA))
+	require.True(t, sameFS(dirA, dirA))
+	require.False(t, sameFS(dirA, dirB))
+	require.False(t, sameFS(dirA, mapA))
+	require.True(t, sameFS(mapA, mapA))
+	require.False(t, sameFS(mapA, fstest.MapFS{"a": &fstest.MapFile{}}))
+	require.False(t, sameFS(openA, openB))
+	require.False(t, sameFS(openA, openA))
+}
+
+// perIPConnStub mirrors fasthttp's perIPTLSConn, which wraps an accepted TLS
+// connection when Server.MaxConnsPerIP is set.
+type perIPConnStub struct {
+	*tls.Conn
+}
+
+func Test_UnderlyingConn_UnwrapsTLSWrapper(t *testing.T) {
+	t.Parallel()
+
+	raw, peer := net.Pipe()
+	t.Cleanup(func() {
+		require.NoError(t, raw.Close())
+		require.NoError(t, peer.Close())
+	})
+
+	// No handshake runs; the connection is only unwrapped.
+	tlsConn := tls.Client(raw, &tls.Config{InsecureSkipVerify: true})
+	require.Equal(t, raw, underlyingConn(tlsConn))
+	require.Equal(t, raw, underlyingConn(perIPConnStub{Conn: tlsConn}))
+	require.Equal(t, raw, underlyingConn(raw))
+}
+
+func Test_TLSHandler_ForgetsRecycledWrapper(t *testing.T) {
+	t.Parallel()
+
+	newConn := func() (net.Conn, *tls.Conn) {
+		raw, peer := net.Pipe()
+		t.Cleanup(func() {
+			require.NoError(t, raw.Close())
+			require.NoError(t, peer.Close())
+		})
+		// No handshake runs; the connections only carry identity.
+		return raw, tls.Client(raw, &tls.Config{InsecureSkipVerify: true})
+	}
+
+	handler := &TLSHandler{}
+	raw1, tls1 := newConn()
+	wrapper := &perIPConnStub{Conn: tls1}
+
+	handler.track(wrapper)
+	_, err := handler.GetClientInfo(&tls.ClientHelloInfo{Conn: raw1, ServerName: "first"})
+	require.NoError(t, err)
+	require.NotNil(t, handler.clientHelloInfo(wrapper))
+
+	// fasthttp recycles the wrapper before it reports the close of what it carried.
+	raw2, tls2 := newConn()
+	wrapper.Conn = tls2
+	handler.track(wrapper)
+	_, ok := handler.clientHelloInfos.Load(raw1)
+	require.False(t, ok, "the recycled wrapper stranded the record of the connection it dropped")
+
+	_, err = handler.GetClientInfo(&tls.ClientHelloInfo{Conn: raw2, ServerName: "second"})
+	require.NoError(t, err)
+	require.Equal(t, "second", handler.clientHelloInfo(wrapper).ServerName)
+
+	handler.forget(wrapper)
+	require.Nil(t, handler.clientHelloInfo(tls2))
+	_, ok = handler.serverConns.Load(wrapper)
+	require.False(t, ok)
+}
+
+func Test_TLSHandler_ForgetsHijackedConnection(t *testing.T) {
+	t.Parallel()
+
+	raw, peer := net.Pipe()
+	t.Cleanup(func() {
+		require.NoError(t, raw.Close())
+		require.NoError(t, peer.Close())
+	})
+	// No handshake runs; the connection only carries identity.
+	tlsConn := tls.Client(raw, &tls.Config{InsecureSkipVerify: true})
+
+	app := New()
+	app.SetTLSHandler(&TLSHandler{})
+	app.mutex.Lock()
+	app.hookConnState()
+	app.mutex.Unlock()
+	report := app.Server().ConnState
+
+	handler := app.tlsHandler
+	report(tlsConn, fasthttp.StateNew)
+	_, err := handler.GetClientInfo(&tls.ClientHelloInfo{Conn: raw, ServerName: "ws"})
+	require.NoError(t, err)
+	require.NotNil(t, handler.clientHelloInfo(tlsConn))
+
+	// fasthttp never reports StateClosed after a hijack, so it has to be terminal here.
+	report(tlsConn, fasthttp.StateHijacked)
+	require.Nil(t, handler.clientHelloInfo(tlsConn))
+	_, ok := handler.serverConns.Load(tlsConn)
+	require.False(t, ok)
+}
+
+// sliceFS is a file system whose identity lives in a slice header, so two
+// prefixes of one backing array share an element pointer.
+type sliceFS []string
+
+func (sliceFS) Open(string) (fs.File, error) { return nil, fs.ErrNotExist }
+
+func Test_SameFS_SliceLength(t *testing.T) {
+	t.Parallel()
+
+	backing := sliceFS{"a", "b", "c"}
+	require.False(t, sameFS(backing[:1], backing[:2]))
+	require.True(t, sameFS(backing[:2], backing[:2]))
 }

@@ -24,6 +24,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 	"unsafe"
@@ -1112,6 +1113,57 @@ func Test_App_GETOnly(t *testing.T) {
 	require.Equal(t, StatusMethodNotAllowed, resp.StatusCode, "Status code")
 }
 
+// go test -run Test_App_GETOnly_Middleware_Status
+func Test_App_GETOnly_Middleware_Status(t *testing.T) {
+	t.Parallel()
+	app := New(Config{
+		GETOnly: true,
+	})
+
+	observed := make(chan int, 1)
+	app.Use(func(c Ctx) error {
+		err := c.Next()
+		observed <- c.Response().StatusCode()
+		return err
+	})
+
+	app.Post("/", func(c Ctx) error {
+		return c.SendString("Hello 👋!")
+	})
+
+	req := httptest.NewRequest(MethodPost, "/", http.NoBody)
+	resp, err := app.Test(req)
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, StatusMethodNotAllowed, resp.StatusCode, "Status code")
+	require.Equal(t, StatusMethodNotAllowed, <-observed, "Status code seen by middleware")
+}
+
+// An ErrorHandler that writes only a body used to answer a transport-refused
+// request with 200. Seeding the status changes that, so pin it.
+// go test -run Test_App_GETOnly_ErrorHandler_WithoutStatus
+func Test_App_GETOnly_ErrorHandler_WithoutStatus(t *testing.T) {
+	t.Parallel()
+	app := New(Config{
+		GETOnly: true,
+		ErrorHandler: func(c Ctx, err error) error {
+			return c.SendString(err.Error())
+		},
+	})
+
+	app.Post("/", func(c Ctx) error {
+		return c.SendString("Hello 👋!")
+	})
+
+	req := httptest.NewRequest(MethodPost, "/", http.NoBody)
+	resp, err := app.Test(req)
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, StatusMethodNotAllowed, resp.StatusCode, "Status code")
+
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "Method Not Allowed", string(body), "Body")
+}
+
 func Test_App_Use_Params_Group(t *testing.T) {
 	t.Parallel()
 	app := New()
@@ -1489,6 +1541,139 @@ func Test_App_ShutdownWithTimeout(t *testing.T) {
 			t.Fatalf("unexpected err %v. Expecting %v", err, context.DeadlineExceeded)
 		}
 	}
+}
+
+// A streamed body is written after the handler has already returned, so the
+// shutdown tests above, which block inside the handler, say nothing about it.
+// Reported as #3370 against v3.0.0-beta.4: a download was cut off instead of
+// being allowed to finish within the timeout.
+func Test_App_ShutdownWithTimeout_WaitsForStreamedBody(t *testing.T) {
+	t.Parallel()
+
+	const chunks = 5
+
+	streaming := make(chan struct{})
+	finished := make(chan struct{})
+
+	app := New()
+	app.Get("/stream", func(c Ctx) error {
+		c.Response().SetBodyStreamWriter(func(w *bufio.Writer) {
+			defer close(finished)
+			for i := range chunks {
+				_, err := w.WriteString("chunk")
+				assert.NoError(t, err)
+				assert.NoError(t, w.Flush())
+				if i == 0 {
+					close(streaming)
+				}
+				time.Sleep(50 * time.Millisecond)
+			}
+		})
+		return nil
+	})
+
+	ln := fasthttputil.NewInmemoryListener()
+	serverReady := make(chan struct{})
+	go func() {
+		close(serverReady)
+		assert.NoError(t, app.Listener(ln))
+	}()
+	<-serverReady
+
+	conn, err := ln.Dial()
+	require.NoError(t, err)
+	_, err = conn.Write([]byte("GET /stream HTTP/1.1\r\nHost: example.com\r\n\r\n"))
+	require.NoError(t, err)
+
+	// Shut down mid-stream, which is the point: the handler is long gone by now.
+	<-streaming
+	// Sampled where shutdown returns, not after the read below: reading the whole
+	// body first closes finished, and the check would then hold either way.
+	streamDone := make(chan bool, 1)
+	go func() {
+		assert.NoError(t, app.ShutdownWithTimeout(10*time.Second))
+		select {
+		case <-finished:
+			streamDone <- true
+		default:
+			streamDone <- false
+		}
+	}()
+
+	var resp fasthttp.Response
+	require.NoError(t, resp.Read(bufio.NewReader(conn)))
+	require.Equal(t, strings.Repeat("chunk", chunks), string(resp.Body()))
+
+	require.True(t, <-streamDone, "shutdown returned while the body was still being written")
+}
+
+// Test_App_Shutdown_ContextNotCanceled pins #3431: c.Context() stays usable for
+// in-flight work during graceful shutdown (unlike RequestCtx.Done()).
+func Test_App_Shutdown_ContextNotCanceled(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	handlerStarted := make(chan struct{})
+	// Results observed inside the handler after shutdown has begun.
+	contextErr := make(chan error, 1)
+	requestCtxCanceled := make(chan bool, 1)
+
+	app.Get("/slow", func(c Ctx) error {
+		close(handlerStarted)
+
+		// Waiting on RequestCtx first is what gives the second check meaning: it
+		// proves shutdown has actually started, so a c.Context() that is still
+		// alive afterwards cannot just be one that shutdown has yet to reach.
+		select {
+		case <-c.RequestCtx().Done():
+			requestCtxCanceled <- true
+		case <-time.After(5 * time.Second):
+			requestCtxCanceled <- false
+		}
+
+		select {
+		case <-c.Context().Done():
+			contextErr <- c.Context().Err()
+		default:
+			contextErr <- nil
+		}
+
+		return c.SendString("ok")
+	})
+
+	ln := fasthttputil.NewInmemoryListener()
+	serverReady := make(chan struct{})
+	go func() {
+		close(serverReady)
+		assert.NoError(t, app.Listener(ln))
+	}()
+	<-serverReady
+
+	clientDone := make(chan struct{})
+	go func() {
+		defer close(clientDone)
+		conn, err := ln.Dial()
+		if !assert.NoError(t, err) {
+			return
+		}
+		_, err = conn.Write([]byte("GET /slow HTTP/1.1\r\nHost: example.com\r\n\r\n"))
+		assert.NoError(t, err)
+		// Drain response so the connection can finish cleanly.
+		_, copyErr := io.Copy(io.Discard, conn)
+		assert.NoError(t, copyErr)
+		assert.NoError(t, conn.Close())
+	}()
+
+	select {
+	case <-handlerStarted:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the handler never ran; the client goroutine could not reach it")
+	}
+	require.NoError(t, app.ShutdownWithTimeout(5*time.Second))
+	<-clientDone
+
+	require.True(t, <-requestCtxCanceled, "RequestCtx.Done() is closed when the server shuts down")
+	require.NoError(t, <-contextErr, "c.Context() must not be canceled by graceful shutdown")
 }
 
 func Test_App_ShutdownWithContext(t *testing.T) {
@@ -2479,6 +2664,42 @@ func Test_App_ReloadViews_MountedViews_MultipleApps(t *testing.T) {
 	require.Equal(t, initialLoadsB+1, viewB.loads)
 }
 
+func Test_App_ReloadViews_MountedViews_ConcurrentMount(t *testing.T) {
+	t.Parallel()
+	view := &countingView{}
+	subApp := New()
+	app := New(Config{Views: view})
+	app.Use("/sub", subApp)
+
+	// The walk down the mount tree reads every app's mount metadata, so it has
+	// to take each app's own lock rather than only the one it started from.
+	initialLoads := view.loads
+
+	var (
+		wg        sync.WaitGroup
+		reloadErr error
+	)
+
+	wg.Go(func() {
+		for range 200 {
+			if err := app.ReloadViews(); err != nil {
+				reloadErr = err
+				return
+			}
+		}
+	})
+
+	wg.Go(func() {
+		for range 200 {
+			subApp.Use("/nested", New())
+		}
+	})
+
+	wg.Wait()
+	require.NoError(t, reloadErr)
+	require.Equal(t, initialLoads+200, view.loads)
+}
+
 func Test_App_ReloadViews_MountedViews_SharedEngineBlocksSiblingRender(t *testing.T) {
 	t.Parallel()
 
@@ -3087,9 +3308,11 @@ func Test_App_Test_CloseFail(t *testing.T) {
 
 func Test_App_SetTLSHandler(t *testing.T) {
 	t.Parallel()
-	tlsHandler := &TLSHandler{clientHelloInfo: &tls.ClientHelloInfo{
+	tlsHandler := &TLSHandler{}
+	_, err := tlsHandler.GetClientInfo(&tls.ClientHelloInfo{
 		ServerName: "example.golang",
-	}}
+	})
+	require.NoError(t, err)
 
 	app := New()
 	app.SetTLSHandler(tlsHandler)
@@ -3540,4 +3763,210 @@ func Test_App_Test_SmallTimeout_WithFailOnTimeoutTrue(t *testing.T) {
 	})
 
 	require.ErrorIs(t, err, os.ErrDeadlineExceeded)
+}
+
+func Test_App_ShutdownWithTimeout_HandlerTakesAppMutex(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	inHandler := make(chan struct{})
+	shutdownStarted := make(chan struct{})
+	app.Get("/", func(c Ctx) error {
+		close(inHandler)
+		<-shutdownStarted
+		app.RebuildTree()
+		return c.SendString("ok")
+	})
+	app.Hooks().OnPreShutdown(func() error {
+		close(shutdownStarted)
+		return nil
+	})
+
+	ln := fasthttputil.NewInmemoryListener()
+	errs := make(chan error, 1)
+	go func() {
+		errs <- app.Listener(ln, ListenConfig{DisableStartupMessage: true})
+	}()
+
+	conn, err := ln.Dial()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = conn.Close() }) //nolint:errcheck // not needed
+	_, err = conn.Write([]byte("GET / HTTP/1.1\r\nHost: example.com\r\nConnection: close\r\n\r\n"))
+	require.NoError(t, err)
+
+	select {
+	case <-inHandler:
+	case <-time.After(2 * time.Second):
+		t.Fatal("request never reached the handler")
+	}
+
+	const timeout = 3 * time.Second
+	start := time.Now()
+	require.NoError(t, app.ShutdownWithTimeout(timeout))
+	require.Less(t, time.Since(start), timeout, "shutdown waited for the whole timeout: the handler deadlocked on the app mutex")
+	require.NoError(t, <-errs)
+}
+
+func Test_App_IsProxyTrusted_CanonicalIPForms(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		proxy  string
+		remote net.IP
+	}{
+		{name: "uppercase IPv6", proxy: "2001:DB8::1", remote: net.ParseIP("2001:db8::1")},
+		{name: "zero-padded IPv6", proxy: "2001:0db8::1", remote: net.ParseIP("2001:db8::1")},
+		{name: "uncompressed IPv6", proxy: "0:0:0:0:0:0:0:1", remote: net.ParseIP("::1")},
+		{name: "IPv4-mapped IPv6 with 4-byte peer", proxy: "::ffff:10.0.0.1", remote: net.ParseIP("10.0.0.1").To4()},
+		{name: "IPv4-mapped IPv6 with 16-byte peer", proxy: "::ffff:10.0.0.1", remote: net.ParseIP("10.0.0.1")},
+		{name: "IPv4 with IPv4-mapped peer", proxy: "10.0.0.1", remote: net.ParseIP("::ffff:10.0.0.1")},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			app := New(Config{
+				TrustProxy:       true,
+				TrustProxyConfig: TrustProxyConfig{Proxies: []string{tc.proxy}},
+			})
+			c := app.AcquireCtx(&fasthttp.RequestCtx{})
+			defer app.ReleaseCtx(c)
+			c.RequestCtx().SetRemoteAddr(&net.TCPAddr{IP: tc.remote, Port: 8080})
+
+			require.True(t, c.IsProxyTrusted())
+		})
+	}
+}
+
+func Test_App_IP_StripTrustedProxies_CanonicalIPForms(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		proxy    string
+		remote   string
+		header   string
+		expected string
+	}{
+		{name: "IPv4-mapped proxy spelling", proxy: "::ffff:10.0.0.1", remote: "10.0.0.1", header: "203.0.113.50, 10.0.0.1", expected: "203.0.113.50"},
+		{name: "uppercase IPv6 proxy", proxy: "2001:DB8::1", remote: "2001:db8::1", header: "203.0.113.50, 2001:db8::1", expected: "203.0.113.50"},
+		{name: "uncompressed IPv6 proxy", proxy: "0:0:0:0:0:0:0:1", remote: "::1", header: "203.0.113.50, ::1", expected: "203.0.113.50"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			app := New(Config{
+				ProxyHeader:        HeaderXForwardedFor,
+				TrustProxy:         true,
+				EnableIPValidation: true,
+				TrustProxyConfig:   TrustProxyConfig{Proxies: []string{tc.proxy}},
+			})
+			fastCtx := &fasthttp.RequestCtx{}
+			fastCtx.SetRemoteAddr(&net.TCPAddr{IP: net.ParseIP(tc.remote), Port: 8080})
+			c := app.AcquireCtx(fastCtx)
+			defer app.ReleaseCtx(c)
+			c.Request().Header.Set(HeaderXForwardedFor, tc.header)
+
+			require.Equal(t, tc.expected, c.IP())
+		})
+	}
+}
+
+func Test_App_ErrorHandler_SkipsCommittedTimeoutResponse(t *testing.T) {
+	t.Parallel()
+
+	var calls atomic.Int32
+	app := New(Config{
+		ErrorHandler: func(c Ctx, err error) error {
+			calls.Add(1)
+			return c.Status(StatusTeapot).SendString(err.Error())
+		},
+	})
+
+	rctx := &fasthttp.RequestCtx{}
+	rctx.TimeoutErrorWithCode(ErrRequestTimeout.Message, StatusRequestTimeout)
+	c := app.AcquireCtx(rctx)
+	defer app.ReleaseCtx(c)
+
+	require.NoError(t, app.ErrorHandler(c, ErrRequestTimeout))
+	require.Equal(t, int32(0), calls.Load())
+	require.Equal(t, StatusOK, c.Response().StatusCode())
+	require.Empty(t, c.Response().Body())
+
+	// Without a committed response the configured handler runs as usual.
+	plain := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(plain)
+	require.NoError(t, app.ErrorHandler(plain, ErrRequestTimeout))
+	require.Equal(t, int32(1), calls.Load())
+	require.Equal(t, StatusTeapot, plain.Response().StatusCode())
+}
+
+// Test_App_Shutdown_HookRegistrationNoRace registers shutdown hooks while a
+// shutdown is running; the drain no longer holds the app mutex, so the hook
+// slices must be snapshotted rather than iterated in place.
+func Test_App_Shutdown_HookRegistrationNoRace(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	app.Hooks().OnPreShutdown(func() error { return nil })
+	app.Hooks().OnPostShutdown(func(error) error { return nil })
+
+	ln := fasthttputil.NewInmemoryListener()
+	served := make(chan struct{})
+	go func() {
+		close(served)
+		assert.NoError(t, app.Listener(ln, ListenConfig{DisableStartupMessage: true}))
+	}()
+	<-served
+
+	var wg sync.WaitGroup
+	wg.Go(func() {
+		for range 50 {
+			app.Hooks().OnPreShutdown(func() error { return nil })
+			app.Hooks().OnPostShutdown(func(error) error { return nil })
+		}
+	})
+	wg.Go(func() {
+		assert.NoError(t, app.Shutdown())
+	})
+	wg.Wait()
+}
+
+func Test_Group_Use_MultiplePrefixes_MountsEachPrefix(t *testing.T) {
+	t.Parallel()
+
+	sub := New()
+	sub.Get("/ping", func(c Ctx) error { return c.SendString("pong") })
+
+	app := New()
+	grp := app.Group("/g")
+	grp.Use([]string{"/one", "/two"}, sub)
+
+	for _, prefix := range []string{"/g/one/ping", "/g/two/ping"} {
+		resp, err := app.Test(httptest.NewRequest(MethodGet, prefix, http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, StatusOK, resp.StatusCode, "%s was not mounted", prefix)
+	}
+}
+
+func Test_Domain_Use_MultiplePrefixes_MountsEachPrefix(t *testing.T) {
+	t.Parallel()
+
+	sub := New()
+	sub.Get("/ping", func(c Ctx) error { return c.SendString("pong") })
+
+	app := New()
+	app.Domain("example.com").Use([]string{"/one", "/two"}, sub)
+
+	for _, prefix := range []string{"/one/ping", "/two/ping"} {
+		req := httptest.NewRequest(MethodGet, prefix, http.NoBody)
+		req.Host = "example.com"
+		resp, err := app.Test(req)
+		require.NoError(t, err)
+		require.Equal(t, StatusOK, resp.StatusCode, "%s was not mounted", prefix)
+	}
 }

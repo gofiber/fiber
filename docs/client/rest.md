@@ -105,7 +105,7 @@ func NewWithClient(c *fasthttp.Client) *Client
 
 ## REST Methods
 
-These helpers mirror axios-style method names and send HTTP requests using the configured client:
+These helpers mirror axios-style method names and send HTTP requests using the configured client. Each helper acquires its own `Request`, which `Response.Close` releases together with the response:
 
 ### Get
 
@@ -207,6 +207,8 @@ type Config struct {
 }
 ```
 
+`MaxRedirects` is honored for `GET`, `HEAD` and `QUERY` requests only; other methods receive the redirect response as-is.
+
 ## R
 
 **R** gets a `Request` object from the pool. Call `ReleaseRequest` when finished.
@@ -241,6 +243,26 @@ Adds one or more user-defined request hooks.
 
 ```go title="Signature"
 func (c *Client) AddRequestHook(h ...RequestHook) *Client
+```
+
+### FinalRequestHook
+
+Returns final request hooks. These run after Fiber has serialized the URL,
+headers, and body, immediately before the transport sends the request.
+
+```go title="Signature"
+func (c *Client) FinalRequestHook() []RequestHook
+```
+
+### AddFinalRequestHook
+
+Adds final request hooks. Use these when request signing or authentication must
+inspect the serialized request body together with the merged headers. See
+[Final Request Hooks](./hooks.md#final-request-hooks) for what is already set at
+that point and what fasthttp adds afterward.
+
+```go title="Signature"
+func (c *Client) AddFinalRequestHook(h ...RequestHook) *Client
 ```
 
 ### AddResponseHook
@@ -511,7 +533,7 @@ func (c *Client) BaseURL() string
 
 ### SetBaseURL
 
-Sets a base URL prefix for all requests made by the client.
+Sets a base URL prefix for all requests made by the client. A request URL that already carries an `http://` or `https://` scheme, in any letter case, is used as-is; any other URL is appended to the base URL.
 
 ```go title="Signature"
 func (c *Client) SetBaseURL(url string) *Client
@@ -544,6 +566,8 @@ fmt.Println(string(resp.Body()))
 </details>
 
 ## Headers
+
+Client-level headers are applied to every request when it is sent. A header set on the request itself with the same key replaces the client's values rather than being added to them, and each send starts from those keys cleared, so re-sending a request does not accumulate values.
 
 ### Header
 
@@ -786,7 +810,7 @@ func (c *Client) SetTimeout(t time.Duration) *Client
 
 ### Debug
 
-Enables debug-level logging output.
+Enables debug-level logging output. With debug enabled, the raw request and response are logged through the client's logger after each response. When either body is a stream, only its headers are logged so the stream stays readable for the caller. Nothing is logged when the client has no logger.
 
 ```go title="Signature"
 func (c *Client) Debug() *Client
@@ -804,7 +828,7 @@ func (c *Client) DisableDebug() *Client
 
 ### SetCookieJar
 
-Assigns a cookie jar to the client to store and manage cookies across requests.
+Assigns a cookie jar to the client to store and manage cookies across requests. A cookie received with a `Max-Age` attribute expires that many seconds after it was received, taking precedence over `Expires`; a `Max-Age` of zero or less expires it immediately (RFC 6265). Cookies for the same host and path are stored under the origin that answered, so a redirect cannot plant cookies for another host.
 
 ```go title="Signature"
 func (c *Client) SetCookieJar(cookieJar *CookieJar) *Client

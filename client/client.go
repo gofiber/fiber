@@ -63,6 +63,7 @@ type Client struct {
 	referer              string
 	userRequestHooks     []RequestHook
 	builtinRequestHooks  []RequestHook
+	finalRequestHooks    []RequestHook
 	userResponseHooks    []ResponseHook
 	builtinResponseHooks []ResponseHook
 
@@ -143,6 +144,13 @@ func (c *Client) R() *Request {
 	return AcquireRequest().SetClient(c)
 }
 
+// ownedRequest acquires a Request for a client helper call; Response.Close releases it.
+func (c *Client) ownedRequest() *Request {
+	req := AcquireRequest().SetClient(c)
+	req.clientOwned = true
+	return req
+}
+
 // RequestHook returns a copy of the user-defined request hooks.
 func (c *Client) RequestHook() []RequestHook {
 	c.mu.RLock()
@@ -157,6 +165,24 @@ func (c *Client) AddRequestHook(h ...RequestHook) *Client {
 	defer c.mu.Unlock()
 
 	c.userRequestHooks = append(c.userRequestHooks, h...)
+	return c
+}
+
+// FinalRequestHook returns a copy of the user-defined final request hooks.
+func (c *Client) FinalRequestHook() []RequestHook {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	return slices.Clone(c.finalRequestHooks)
+}
+
+// AddFinalRequestHook registers hooks for the point after request serialization
+// and immediately before transport execution.
+func (c *Client) AddFinalRequestHook(h ...RequestHook) *Client {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	c.finalRequestHooks = append(c.finalRequestHooks, h...)
 	return c
 }
 
@@ -709,63 +735,63 @@ func (c *Client) SetCookieJar(cookieJar *CookieJar) *Client {
 
 // Get sends a GET request to the specified URL, similar to axios.
 func (c *Client) Get(url string, cfg ...Config) (*Response, error) {
-	req := AcquireRequest().SetClient(c)
+	req := c.ownedRequest()
 	setConfigToRequest(req, cfg...)
 	return req.Get(url)
 }
 
 // Post sends a POST request to the specified URL, similar to axios.
 func (c *Client) Post(url string, cfg ...Config) (*Response, error) {
-	req := AcquireRequest().SetClient(c)
+	req := c.ownedRequest()
 	setConfigToRequest(req, cfg...)
 	return req.Post(url)
 }
 
 // Head sends a HEAD request to the specified URL, similar to axios.
 func (c *Client) Head(url string, cfg ...Config) (*Response, error) {
-	req := AcquireRequest().SetClient(c)
+	req := c.ownedRequest()
 	setConfigToRequest(req, cfg...)
 	return req.Head(url)
 }
 
 // Put sends a PUT request to the specified URL, similar to axios.
 func (c *Client) Put(url string, cfg ...Config) (*Response, error) {
-	req := AcquireRequest().SetClient(c)
+	req := c.ownedRequest()
 	setConfigToRequest(req, cfg...)
 	return req.Put(url)
 }
 
 // Delete sends a DELETE request to the specified URL, similar to axios.
 func (c *Client) Delete(url string, cfg ...Config) (*Response, error) {
-	req := AcquireRequest().SetClient(c)
+	req := c.ownedRequest()
 	setConfigToRequest(req, cfg...)
 	return req.Delete(url)
 }
 
 // Options sends an OPTIONS request to the specified URL, similar to axios.
 func (c *Client) Options(url string, cfg ...Config) (*Response, error) {
-	req := AcquireRequest().SetClient(c)
+	req := c.ownedRequest()
 	setConfigToRequest(req, cfg...)
 	return req.Options(url)
 }
 
 // Patch sends a PATCH request to the specified URL, similar to axios.
 func (c *Client) Patch(url string, cfg ...Config) (*Response, error) {
-	req := AcquireRequest().SetClient(c)
+	req := c.ownedRequest()
 	setConfigToRequest(req, cfg...)
 	return req.Patch(url)
 }
 
 // Query sends a QUERY request to the specified URL, similar to axios.
 func (c *Client) Query(url string, cfg ...Config) (*Response, error) {
-	req := AcquireRequest().SetClient(c)
+	req := c.ownedRequest()
 	setConfigToRequest(req, cfg...)
 	return req.Query(url)
 }
 
 // Custom sends a request with a custom method to the specified URL, similar to axios.
 func (c *Client) Custom(url, method string, cfg ...Config) (*Response, error) {
-	req := AcquireRequest().SetClient(c)
+	req := c.ownedRequest()
 	setConfigToRequest(req, cfg...)
 	return req.Custom(url, method)
 }
@@ -968,6 +994,7 @@ func newClient(transport httpClientTransport) *Client {
 
 		userRequestHooks:     []RequestHook{},
 		builtinRequestHooks:  []RequestHook{parserRequestURL, parserRequestHeader, parserRequestBody},
+		finalRequestHooks:    []RequestHook{},
 		userResponseHooks:    []ResponseHook{},
 		builtinResponseHooks: []ResponseHook{parserResponseCookie, logger},
 		jsonMarshal:          json.Marshal,

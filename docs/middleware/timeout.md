@@ -25,12 +25,17 @@ If a handler panics, the middleware catches it and returns `500 Internal Server 
 
 ## Known limitations
 
+- The timed-out handler keeps running in its own goroutine while the middleware returns `fiber.ErrRequestTimeout` (or runs `OnTimeout`). A handler must stop using the context once `c.Context()` is done: one that keeps writing the response races with `OnTimeout`.
+
+- The error is returned to the outer middleware, but the app's `ErrorHandler` is not run for a timed-out request: fasthttp already holds the response it will send, so the handler could not change it, and the timed-out handler may still be writing to the context.
+
 - Timed-out requests abandon their `fiber.Ctx` to avoid data races with the core
-  request handler (including the `ErrorHandler`). These contexts are **not**
-  returned to the pool, so each timed-out request leaks a context. Calling
-  `ForceRelease` is only safe if you can guarantee that no goroutine (including
-  Fiber internals) will touch the context anymore; the timeout middleware
-  intentionally does not call it.
+  request handler. A `*fiber.DefaultCtx` is reclaimed once both the timed-out
+  handler has finished and Fiber has released the context, so it does return to
+  the pool. A **custom `Ctx` implementation** has no such wiring: its context
+  stays out of the pool, and each timed-out request leaks one. Calling
+  `ForceRelease` yourself is only safe if you can guarantee that no goroutine
+  (including Fiber internals) will touch the context anymore.
 
 :::caution
 `timeout.New` wraps your final handler and can't be added with `app.Use` or
@@ -106,7 +111,7 @@ curl -i http://localhost:3000/sleep/3000   # returns 408 Request Timeout
 |:------------|:-------------------|:---------------------------------------------------------------------|:-------|
 | Next        | `func(fiber.Ctx) bool` | Function to skip this middleware when it returns `true`.            | `nil`  |
 | Timeout     | `time.Duration`    | Timeout duration for requests. `0` or a negative value disables the timeout. | `0`    |
-| OnTimeout   | `fiber.Handler`    | Handler executed when a timeout occurs. Defaults to returning `fiber.ErrRequestTimeout`. | `nil`  |
+| OnTimeout   | `fiber.Handler`    | Handler executed when a timeout occurs. It may write the response itself or return a `*fiber.Error`, whose status and message then form the response; otherwise the default 408 is sent. Defaults to returning `fiber.ErrRequestTimeout`. | `nil`  |
 | Errors      | `[]error`          | Custom errors treated as timeout errors.                            | `nil`  |
 
 ### Use with a custom error

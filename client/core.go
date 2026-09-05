@@ -53,12 +53,24 @@ func (c *core) execFunc() (*Response, error) {
 	respChan := acquireResponseChan()
 
 	cfg := c.getRetryConfig()
+
+	// Copy the request before the goroutine starts: a caller whose context is
+	// already done gets ErrTimeoutOrCancel at once and may release its request.
+	reqv := fasthttp.AcquireRequest()
+	c.req.RawRequest.CopyTo(reqv)
+	if bodyStream := c.req.RawRequest.BodyStream(); bodyStream != nil {
+		reqv.SetBodyStream(bodyStream, c.req.RawRequest.Header.ContentLength())
+	}
+	// Read what the goroutine needs now; only its own copy is safe to touch later.
+	maxRedirects := c.req.maxRedirects
+	method := string(reqv.Header.Method())
+	followRedirects := maxRedirects > 0 && (method == fiber.MethodGet || method == fiber.MethodHead || method == fiber.MethodQuery)
+
 	go func() {
 		// retain both channels until they are drained
 		defer releaseErrChan(errChan)
 		defer releaseResponseChan(respChan)
 
-		reqv := fasthttp.AcquireRequest()
 		defer fasthttp.ReleaseRequest(reqv)
 
 		respv := fasthttp.AcquireResponse()
@@ -78,23 +90,18 @@ func (c *core) execFunc() (*Response, error) {
 			}
 		}()
 
-		c.req.RawRequest.CopyTo(reqv)
-		if bodyStream := c.req.RawRequest.BodyStream(); bodyStream != nil {
-			reqv.SetBodyStream(bodyStream, c.req.RawRequest.Header.ContentLength())
-		}
-
 		var err error
 		if cfg != nil {
 			// Use an exponential backoff retry strategy.
 			err = retry.NewExponentialBackoff(*cfg).Retry(func() error {
-				if c.req.maxRedirects > 0 && (string(reqv.Header.Method()) == fiber.MethodGet || string(reqv.Header.Method()) == fiber.MethodHead || string(reqv.Header.Method()) == fiber.MethodQuery) {
-					return c.client.DoRedirects(reqv, respv, c.req.maxRedirects)
+				if followRedirects {
+					return c.client.DoRedirects(reqv, respv, maxRedirects)
 				}
 				return c.client.Do(reqv, respv)
 			})
 		} else {
-			if c.req.maxRedirects > 0 && (string(reqv.Header.Method()) == fiber.MethodGet || string(reqv.Header.Method()) == fiber.MethodHead || string(reqv.Header.Method()) == fiber.MethodQuery) {
-				err = c.client.DoRedirects(reqv, respv, c.req.maxRedirects)
+			if followRedirects {
+				err = c.client.DoRedirects(reqv, respv, maxRedirects)
 			} else {
 				err = c.client.Do(reqv, respv)
 			}
@@ -108,6 +115,13 @@ func (c *core) execFunc() (*Response, error) {
 		resp = AcquireResponse()
 		resp.setClient(c.client)
 		resp.setRequest(c.req)
+		// reqv carries the URI of the hop that produced this response, which after a
+		// redirect is not c.req's. Record it before reqv is pooled so the response
+		// hooks can attribute cookies to its real origin — and only where a jar
+		// will read it, since the copy is otherwise pure cost on every request.
+		if c.client != nil && c.client.cookieJar != nil {
+			resp.setRespondedURI(reqv.URI())
+		}
 
 		// Swap the fasthttp response with the Fiber response's RawResponse field.
 		// This is required, as (*fasthttp.Response).CopyTo() explicitly does not
@@ -142,6 +156,7 @@ func (c *core) execFunc() (*Response, error) {
 func (c *core) preHooks() error {
 	c.client.mu.RLock()
 	userHooks := slices.Clone(c.client.userRequestHooks)
+	finalHooks := slices.Clone(c.client.finalRequestHooks)
 	c.client.mu.RUnlock()
 
 	for _, f := range userHooks {
@@ -150,6 +165,22 @@ func (c *core) preHooks() error {
 		}
 	}
 
+	if err := c.runBuiltinRequestHooks(); err != nil {
+		return err
+	}
+
+	for _, f := range finalHooks {
+		if err := f(c.client, c.req); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// runBuiltinRequestHooks serializes the request under the client lock, as the
+// built-in hooks read client-level state while they fill in RawRequest.
+func (c *core) runBuiltinRequestHooks() error {
 	c.client.mu.Lock()
 	defer c.client.mu.Unlock()
 
@@ -210,6 +241,11 @@ func (c *core) execute(ctx context.Context, client *Client, req *Request) (*Resp
 
 	// Execute pre request hooks (user-defined and built-in).
 	if err := c.preHooks(); err != nil {
+		// Nothing has been dispatched yet, so a request the client created for
+		// this call goes back to the pool: no response will carry it there.
+		if req.clientOwned {
+			ReleaseRequest(req)
+		}
 		return nil, err
 	}
 
@@ -222,12 +258,24 @@ func (c *core) execute(ctx context.Context, client *Client, req *Request) (*Resp
 	// Perform the actual HTTP request.
 	resp, err := c.execFunc()
 	if err != nil {
+		// Nothing carries the request back to the pool: no response reaches the
+		// caller. A streamed body is the exception — the transport goroutine was
+		// handed that reader itself, so a canceled send may still be reading it
+		// and releasing here would close it mid-read.
+		if req.clientOwned && !req.RawRequest.IsBodyStream() {
+			ReleaseRequest(req)
+		}
 		return nil, err
 	}
 
 	// Execute after response hooks (built-in and then user-defined).
 	if err := c.afterHooks(resp); err != nil {
-		resp.Close()
+		// No response reaches the caller, so only what the client created is released.
+		resp.request = nil
+		ReleaseResponse(resp)
+		if req.clientOwned {
+			ReleaseRequest(req)
+		}
 		return nil, err
 	}
 
@@ -292,6 +340,8 @@ func newCore() *core {
 var (
 	ErrTimeoutOrCancel      = errors.New("timeout or cancel")
 	ErrURLFormat            = errors.New("the URL is incorrect")
+	ErrPathParamInHost      = errors.New("the path parameter value is not valid in a host")
+	ErrPathParamInPath      = errors.New("the path parameter value is not a single path segment")
 	ErrNotSupportSchema     = errors.New("protocol not supported; only http or https are allowed")
 	ErrFileNoName           = errors.New("the file should have a name")
 	ErrBodyType             = errors.New("the body type should be []byte")

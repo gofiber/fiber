@@ -1,6 +1,7 @@
 package proxy
 
 import (
+	"bufio"
 	"crypto/tls"
 	"io"
 	"net"
@@ -13,6 +14,7 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	clientpkg "github.com/gofiber/fiber/v3/client"
+	"github.com/gofiber/utils/v2"
 	"github.com/stretchr/testify/require"
 
 	"github.com/gofiber/fiber/v3/internal/tlstest"
@@ -379,6 +381,111 @@ func Test_Proxy_Forward(t *testing.T) {
 	b, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
 	require.Equal(t, "forwarded", string(b))
+}
+
+// go test -run Test_Proxy_Forward_ReplacesClientSuppliedRealIP
+func Test_Proxy_Forward_ReplacesClientSuppliedRealIP(t *testing.T) {
+	t.Parallel()
+
+	// The forwarders overwrite X-Real-IP so the upstream can attribute the
+	// request to the peer Fiber actually saw. Header.Set replaces the first
+	// field line with a given name and leaves any others in place, so a client
+	// that sends the header twice used to keep one of its own values on the
+	// wire — and the upstream, which may read the last line or join the pair
+	// per RFC 9110 Section 5.2, would attribute the request to an address the
+	// client chose.
+	for _, tc := range []struct {
+		handler func(addr string) fiber.Handler
+		name    string
+	}{
+		{
+			name:    "Forward",
+			handler: func(addr string) fiber.Handler { return Forward("http://" + addr) },
+		},
+		{
+			name: "DomainForward",
+			handler: func(addr string) fiber.Handler {
+				return DomainForward("example.com", "http://"+addr)
+			},
+		},
+		{
+			name: "BalancerForward",
+			handler: func(addr string) fiber.Handler {
+				return BalancerForward([]string{"http://" + addr})
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			_, addr := createProxyTestServerIPv4(t, func(c fiber.Ctx) error {
+				seen := c.Request().Header.PeekAll("X-Real-IP")
+				out := make([]string, 0, len(seen))
+				for _, v := range seen {
+					out = append(out, string(v))
+				}
+				return c.SendString(strings.Join(out, "|"))
+			})
+
+			app := fiber.New()
+			app.Use(tc.handler(addr))
+
+			req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+			req.Host = "example.com"
+			req.Header.Add("X-Real-IP", "7.7.7.7")
+			req.Header.Add("X-Real-IP", "8.8.8.8")
+
+			resp, err := app.Test(req)
+			require.NoError(t, err)
+			require.Equal(t, fiber.StatusOK, resp.StatusCode)
+
+			b, err := io.ReadAll(resp.Body)
+			require.NoError(t, err)
+
+			got := string(b)
+			require.NotContains(t, got, "7.7.7.7", "client-supplied X-Real-IP reached the upstream")
+			require.NotContains(t, got, "8.8.8.8", "client-supplied X-Real-IP reached the upstream")
+			require.NotContains(t, got, "|", "more than one X-Real-IP field line reached the upstream")
+			require.NotEmpty(t, got)
+		})
+	}
+}
+
+// Test_Proxy_Forward_RealIPFromProxyHeader pins that replacing X-Real-IP does
+// not destroy the value it is derived from.
+//
+// With Config.ProxyHeader set to "X-Real-IP", c.IP() reads that very header, so
+// deleting it before resolving the address left the upstream with an empty
+// X-Real-IP instead of the client's.
+func Test_Proxy_Forward_RealIPFromProxyHeader(t *testing.T) {
+	t.Parallel()
+
+	_, addr := createProxyTestServerIPv4(t, func(c fiber.Ctx) error {
+		seen := c.Request().Header.PeekAll("X-Real-IP")
+		out := make([]string, 0, len(seen))
+		for _, v := range seen {
+			out = append(out, string(v))
+		}
+		return c.SendString(strings.Join(out, "|"))
+	})
+
+	app := fiber.New(fiber.Config{
+		TrustProxy:       true,
+		TrustProxyConfig: fiber.TrustProxyConfig{Proxies: []string{"0.0.0.0/0"}},
+		ProxyHeader:      "X-Real-IP",
+	})
+	app.Use(Forward("http://" + addr))
+
+	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+	req.Header.Set("X-Real-IP", "203.0.113.9")
+
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+
+	b, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "203.0.113.9", string(b))
 }
 
 // go test -run Test_Proxy_Forward_WithClient_TLSConfig
@@ -1249,4 +1356,303 @@ func Test_Proxy_DomainForward_HostMatchIsCaseInsensitive(t *testing.T) {
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
 	require.Equal(t, "proxied", string(body), "mixed-case Host must still be proxied")
+}
+
+// sendRawUnnormalized drives one request whose header names are kept exactly as
+// written, the way a front end translating HTTP/2 down to HTTP/1.1 leaves them,
+// and returns the response body.
+func sendRawUnnormalized(t *testing.T, app *fiber.App, raw string) string {
+	t.Helper()
+
+	req := fasthttp.AcquireRequest()
+	defer fasthttp.ReleaseRequest(req)
+	req.Header.DisableNormalizing()
+	require.NoError(t, req.Read(bufio.NewReader(strings.NewReader(raw))))
+
+	fctx := &fasthttp.RequestCtx{}
+	fctx.Init(req, nil, nil)
+	app.Handler()(fctx)
+
+	return string(fctx.Response.Body())
+}
+
+// loopbackAlias returns addr with its host rewritten to "localhost", naming the
+// same listener under a different authority.
+//
+// A cross-host redirect is decided by comparing the authority as written, not
+// by where it resolves, so this is enough to make the hop cross an origin
+// without binding a second loopback address.
+func loopbackAlias(t *testing.T, addr string) string {
+	t.Helper()
+
+	_, port, err := net.SplitHostPort(addr)
+	require.NoError(t, err)
+	return net.JoinHostPort("localhost", port)
+}
+
+// matchingFieldLines reports every field line whose name matches one of names,
+// in the spelling the header store holds.
+func matchingFieldLines(c fiber.Ctx, names ...string) []string {
+	var found []string
+	for k, v := range c.Request().Header.All() {
+		for _, name := range names {
+			if utils.EqualFold(utils.UnsafeString(k), name) {
+				found = append(found, string(k)+"="+string(v))
+			}
+		}
+	}
+	return found
+}
+
+// Test_Proxy_HopByHopHeadersStrippedWhateverTheirCase checks that the RFC 7230
+// Section 6.1 strip holds for a peer that spells the names in lower case, which
+// is what HTTP/2 and HTTP/3 require on the wire.
+//
+// Del matches the stored key byte for byte, so under DisableHeaderNormalizing
+// it removed nothing: the hop-by-hop headers reached the upstream, and so did a
+// field named in Connection, which is a peer smuggling a connection-scoped
+// header through an intermediary required to drop it.
+func Test_Proxy_HopByHopHeadersStrippedWhateverTheirCase(t *testing.T) {
+	t.Parallel()
+
+	seen := make(chan []string, 1)
+	_, addr := createProxyTestServerIPv4(t, func(c fiber.Ctx) error {
+		seen <- matchingFieldLines(c, "Upgrade", "TE", "Keep-Alive", "Connection", "X-Smuggled")
+		return c.SendString("upstream")
+	})
+
+	app := fiber.New(fiber.Config{DisableHeaderNormalizing: true})
+	app.Use(Forward("http://" + addr))
+
+	body := sendRawUnnormalized(t, app, "GET / HTTP/1.1\r\nHost: front\r\n"+
+		"connection: x-smuggled\r\n"+
+		"x-smuggled: through-the-proxy\r\n"+
+		"upgrade: websocket\r\n"+
+		"te: trailers\r\n"+
+		"keep-alive: timeout=5\r\n\r\n")
+	require.Equal(t, "upstream", body)
+
+	require.Empty(t, <-seen, "no hop-by-hop or Connection-listed header may reach the upstream")
+}
+
+// Test_Proxy_RealIPReplacedWhateverTheirCase checks that the client cannot keep
+// a claim of its own beside the address this hop writes.
+func Test_Proxy_RealIPReplacedWhateverTheirCase(t *testing.T) {
+	t.Parallel()
+
+	seen := make(chan []string, 1)
+	_, addr := createProxyTestServerIPv4(t, func(c fiber.Ctx) error {
+		seen <- matchingFieldLines(c, realIPHeader)
+		return c.SendString("upstream")
+	})
+
+	app := fiber.New(fiber.Config{DisableHeaderNormalizing: true})
+	app.Use(Forward("http://" + addr))
+
+	body := sendRawUnnormalized(t, app, "GET / HTTP/1.1\r\nHost: front\r\n"+
+		"x-real-ip: 6.6.6.6\r\n"+
+		"X-Real-IP: 7.7.7.7\r\n\r\n")
+	require.Equal(t, "upstream", body)
+
+	lines := <-seen
+	require.Len(t, lines, 1, "exactly one X-Real-IP reaches the upstream: %v", lines)
+	require.NotContains(t, lines[0], "6.6.6.6")
+	require.NotContains(t, lines[0], "7.7.7.7")
+}
+
+// Test_Proxy_CrossHostCredentialsStrippedWhateverTheirCase checks that a
+// redirect leaving the host the caller addressed does not carry the caller's
+// credentials to wherever it points.
+func Test_Proxy_CrossHostCredentialsStrippedWhateverTheirCase(t *testing.T) {
+	t.Parallel()
+
+	seen := make(chan []string, 1)
+	_, finalAddr := createProxyTestServerIPv4(t, func(c fiber.Ctx) error {
+		seen <- matchingFieldLines(c, fiber.HeaderAuthorization, fiber.HeaderCookie)
+		return c.SendString("final")
+	})
+
+	// The redirect has to cross to a different host, and that is decided by
+	// comparing the authority as written rather than where it resolves — so
+	// name the same listener "localhost" instead of binding a second loopback
+	// address. 127.0.0.2 is bound by default only on Linux.
+	_, redirectAddr := createProxyTestServerIPv4(t, func(c fiber.Ctx) error {
+		c.Location("http://" + loopbackAlias(t, finalAddr) + "/")
+		return c.SendStatus(fiber.StatusFound)
+	})
+
+	app := fiber.New(fiber.Config{DisableHeaderNormalizing: true})
+	app.Use(func(c fiber.Ctx) error {
+		return DoRedirects(c, "http://"+redirectAddr, 3)
+	})
+
+	body := sendRawUnnormalized(t, app, "GET / HTTP/1.1\r\nHost: front\r\n"+
+		"authorization: Bearer caller-token\r\n"+
+		"cookie: session=caller\r\n\r\n")
+	require.Equal(t, "final", body)
+
+	require.Empty(t, <-seen, "credentials must not follow a redirect off the host they were sent to")
+}
+
+// Test_Proxy_CrossHostStripsEveryCredentialHeader checks that the set dropped
+// on a redirect off the addressed host is the one the client package drops:
+// Cookie2 carries a session exactly as Cookie does, and a list that covers one
+// but not the other leaks through the gap.
+func Test_Proxy_CrossHostStripsEveryCredentialHeader(t *testing.T) {
+	t.Parallel()
+
+	seen := make(chan []string, 1)
+	_, finalAddr := createProxyTestServerIPv4(t, func(c fiber.Ctx) error {
+		seen <- matchingFieldLines(c,
+			fiber.HeaderAuthorization,
+			fiber.HeaderProxyAuthorization,
+			fiber.HeaderProxyAuthenticate,
+			fiber.HeaderWWWAuthenticate,
+			fiber.HeaderCookie,
+			"Cookie2",
+		)
+		return c.SendString("final")
+	})
+
+	_, redirectAddr := createProxyTestServerIPv4(t, func(c fiber.Ctx) error {
+		c.Location("http://" + loopbackAlias(t, finalAddr) + "/")
+		return c.SendStatus(fiber.StatusFound)
+	})
+
+	app := fiber.New()
+	app.Use(func(c fiber.Ctx) error {
+		return DoRedirects(c, "http://"+redirectAddr, 3)
+	})
+
+	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+	req.Header.Set(fiber.HeaderAuthorization, "Bearer caller-token")
+	req.Header.Set(fiber.HeaderProxyAuthorization, "Basic proxy")
+	req.Header.Set(fiber.HeaderProxyAuthenticate, "Basic realm=x")
+	req.Header.Set(fiber.HeaderWWWAuthenticate, "Basic realm=y")
+	req.Header.Set(fiber.HeaderCookie, "session=caller")
+	req.Header.Set("Cookie2", `$Version="1"`)
+
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+
+	require.Empty(t, <-seen, "no credential header may follow a redirect off the addressed host")
+}
+
+// Test_Proxy_ResponseStripIgnoresTheAppsNormalizationSetting checks the
+// response-side hop-by-hop strip against a proxy whose outbound client
+// preserves upstream header casing while the app itself normalizes.
+//
+// The two settings are independent — the client stamps its own onto the
+// response header on every hop — so reading the app's told the strip nothing
+// about the keys it was about to match, and it removed nothing: the upstream's
+// connection-scoped headers reached the client unchanged.
+func Test_Proxy_ResponseStripIgnoresTheAppsNormalizationSetting(t *testing.T) {
+	t.Parallel()
+
+	// The upstream preserves the casing it writes, and writes its hop-by-hop
+	// headers in lower case.
+	upstream := fiber.New(fiber.Config{DisableHeaderNormalizing: true})
+	upstream.Get("/", func(c fiber.Ctx) error {
+		c.Response().Header.Set("keep-alive", "timeout=5")
+		c.Response().Header.Set("upgrade", "websocket")
+		c.Response().Header.Set("te", "trailers")
+		return c.SendString("upstream")
+	})
+	ln, err := net.Listen(fiber.NetworkTCP4, "127.0.0.1:0")
+	require.NoError(t, err)
+	addr := ln.Addr().String()
+	startServer(upstream, ln)
+
+	cli := &fasthttp.Client{DisableHeaderNamesNormalizing: true}
+
+	// ...while the app takes the default, so the two settings disagree.
+	app := fiber.New()
+	app.Use(Forward("http://"+addr, cli))
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+
+	for _, name := range []string{fiber.HeaderKeepAlive, fiber.HeaderUpgrade, fiber.HeaderTE} {
+		require.Empty(t, resp.Header.Values(name),
+			"%s must not reach the client whatever case the upstream wrote it in", name)
+	}
+}
+
+func Test_Proxy_DomainForward_NonMatchingHostContinues(t *testing.T) {
+	t.Parallel()
+
+	_, addr := createProxyTestServerIPv4(t, func(c fiber.Ctx) error {
+		return c.SendString("forwarded")
+	})
+
+	app := fiber.New()
+	app.Use(DomainForward("api.example.com", "http://"+addr))
+	app.Get("/", func(c fiber.Ctx) error {
+		return c.SendString("local")
+	})
+
+	testCases := []struct {
+		host string
+		body string
+	}{
+		{host: "api.example.com", body: "forwarded"},
+		{host: "API.Example.com:8080", body: "forwarded"},
+		{host: "www.example.com", body: "local"},
+		{host: "www.example.com:8080", body: "local"},
+	}
+	for _, tc := range testCases {
+		req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+		req.Host = tc.host
+		resp, err := app.Test(req)
+		require.NoError(t, err)
+		require.Equal(t, fiber.StatusOK, resp.StatusCode, "Host %s", tc.host)
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		require.Equal(t, tc.body, string(body), "Host %s", tc.host)
+	}
+}
+
+func Test_Proxy_Forward_RestoresHost(t *testing.T) {
+	t.Parallel()
+
+	_, addr := createProxyTestServerIPv4(t, func(c fiber.Ctx) error {
+		return c.SendString("forwarded")
+	})
+
+	app := fiber.New()
+	seen := make(chan string, 1)
+	app.Use(func(c fiber.Ctx) error {
+		err := c.Next()
+		seen <- c.Hostname()
+		return err
+	})
+	app.Use(Forward("http://" + addr))
+
+	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+	req.Host = "public.example.com"
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	require.Equal(t, "public.example.com", <-seen)
+}
+
+func Test_Proxy_HostWithoutPort(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		in, out string
+	}{
+		{in: "example.com", out: "example.com"},
+		{in: "example.com:8080", out: "example.com"},
+		{in: "[::1]:8080", out: "[::1]"},
+		{in: "[::1]", out: "[::1]"},
+		{in: "[::1", out: "[::1"},
+		{in: "::1", out: "::1"},
+	}
+
+	for _, tc := range tests {
+		require.Equal(t, tc.out, hostWithoutPort(tc.in), "in=%q", tc.in)
+	}
 }

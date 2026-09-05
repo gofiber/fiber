@@ -2,6 +2,8 @@ package favicon
 
 import (
 	"bytes"
+	"io"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -226,4 +228,18 @@ func Test_Favicon_Next(t *testing.T) {
 	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusNotFound, resp.StatusCode)
+}
+
+func Test_Favicon_MaxBytes_MaxInt64(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Use(New(Config{File: "../../.github/testdata/favicon.ico", MaxBytes: math.MaxInt64}))
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/favicon.ico", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.NotEmpty(t, body)
 }

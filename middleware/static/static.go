@@ -148,11 +148,18 @@ func sanitizePath(p []byte, filesystem fs.FS) ([]byte, error) {
 func New(root string, cfg ...Config) fiber.Handler {
 	config := configDefault(cfg...)
 
-	var createFS sync.Once
-	var fileHandler fasthttp.RequestHandler
-	var cacheControlValue string
-	var rootCheckErr error
-	var rootIsFile bool
+	var (
+		rootCheck    sync.Once
+		rootCheckErr error
+		rootIsFile   bool
+		// handlers holds one file server per route path, since the stripped prefix is the route's.
+		handlers   sync.Map
+		handlersMu sync.Mutex
+	)
+	cacheControlValue := ""
+	if config.MaxAge > 0 {
+		cacheControlValue = "public, max-age=" + strconv.Itoa(config.MaxAge)
+	}
 
 	// adjustments for io/fs compatibility: io/fs paths are always relative and
 	// slash-separated, so a leading slash (e.g. "/" or "/dist") is never a valid
@@ -163,6 +170,129 @@ func New(root string, cfg ...Config) fiber.Handler {
 		if root == "" {
 			root = "."
 		}
+	}
+
+	// newFileHandler builds the fasthttp file server for one route prefix.
+	newFileHandler := func(prefix string, compressedFileSuffixes map[string]string) fasthttp.RequestHandler {
+		// Is prefix a partial wildcard?
+		if before, _, found := strings.Cut(prefix, "*"); found {
+			// /john* -> /john
+			prefix = before
+		}
+
+		prefixLen := len(prefix)
+		if prefixLen > 1 && prefix[prefixLen-1:] == "/" {
+			// /john/ -> /john
+			prefixLen--
+		}
+
+		// For io/fs.FS, Root must be empty so fasthttp's pathToFilePath
+		// returns clean relative paths without prefixing the root.
+		// PathRewrite already handles file-root and subdirectory cases.
+		fsRoot := root
+		if config.FS != nil {
+			fsRoot = ""
+		}
+
+		var fsRootPrefix []byte
+		if config.FS != nil && root != "" && root != "." && !rootIsFile {
+			// fasthttp.FS.Root is forced to "" for io/fs.FS so pathToFilePath
+			// returns clean relative paths. PathRewrite prepends the caller's
+			// configured subdirectory after sanitizing the request path.
+			fsRootPrefix = make([]byte, len(root)+1)
+			fsRootPrefix[0] = '/'
+			copy(fsRootPrefix[1:], root)
+		}
+
+		fileServer := &fasthttp.FS{
+			Root:                   fsRoot,
+			FS:                     config.FS,
+			AllowEmptyRoot:         true,
+			GenerateIndexPages:     config.Browse,
+			AcceptByteRange:        config.ByteRange,
+			Compress:               config.Compress,
+			CompressBrotli:         config.Compress, // Brotli compression won't work without this
+			CompressZstd:           config.Compress, // Zstd compression won't work without this
+			CompressedFileSuffixes: compressedFileSuffixes,
+			CacheDuration:          config.CacheDuration,
+			SkipCache:              config.CacheDuration < 0,
+			IndexNames:             config.IndexNames,
+			PathNotFound: func(fctx *fasthttp.RequestCtx) {
+				fctx.Response.SetStatusCode(fiber.StatusNotFound)
+			},
+		}
+
+		fileServer.PathRewrite = func(fctx *fasthttp.RequestCtx) []byte {
+			path := fctx.Path()
+
+			if len(path) >= prefixLen {
+				if rootCheckErr != nil && fileServer.FS != nil {
+					return []byte(invalidPathSentinel)
+				}
+
+				// If the root is a file, we need to reset the path to "/" always.
+				switch {
+				case rootIsFile && fileServer.FS == nil:
+					path = []byte("/")
+				case rootIsFile && fileServer.FS != nil:
+					path = utils.UnsafeBytes(root)
+				default:
+					path = path[prefixLen:]
+					if len(fsRootPrefix) > 0 {
+						hasTraversal, err := hasParentDirSegment(path)
+						if err != nil || hasTraversal {
+							return []byte(invalidPathSentinel)
+						}
+					}
+					if len(path) == 0 || path[len(path)-1] != '/' {
+						path = append(path, '/')
+					}
+				}
+			}
+
+			if len(path) > 0 && path[0] != '/' {
+				path = append([]byte("/"), path...)
+			}
+
+			sanitized, err := sanitizePath(path, fileServer.FS)
+			if err != nil {
+				// return a guaranteed-missing path so fs responds with 404
+				return []byte(invalidPathSentinel)
+			}
+			if len(fsRootPrefix) > 0 {
+				rewrittenPath := make([]byte, len(fsRootPrefix)+len(sanitized))
+				copy(rewrittenPath, fsRootPrefix)
+				copy(rewrittenPath[len(fsRootPrefix):], sanitized)
+				return rewrittenPath
+			}
+			return sanitized
+		}
+
+		return fileServer.NewRequestHandler()
+	}
+
+	// fileHandlerFor returns the file server for the route serving c, built on first use.
+	fileHandlerFor := func(c fiber.Ctx) fasthttp.RequestHandler {
+		routePath := c.Route().Path
+		if h, ok := handlers.Load(routePath); ok {
+			if handler, ok := h.(fasthttp.RequestHandler); ok {
+				return handler
+			}
+		}
+
+		handlersMu.Lock()
+		defer handlersMu.Unlock()
+		if h, ok := handlers.Load(routePath); ok {
+			if handler, ok := h.(fasthttp.RequestHandler); ok {
+				return handler
+			}
+		}
+		rootCheck.Do(func() {
+			rootIsFile, rootCheckErr = isFile(root, config.FS)
+		})
+		handler := newFileHandler(routePath, c.App().Config().CompressedFileSuffixes)
+		handlers.Store(routePath, handler)
+		return handler
 	}
 
 	return func(c fiber.Ctx) error {
@@ -177,131 +307,32 @@ func New(root string, cfg ...Config) fiber.Handler {
 			return c.Next()
 		}
 
-		// Initialize FS
-		createFS.Do(func() {
-			prefix := c.Route().Path
-
-			rootIsFile, rootCheckErr = isFile(root, config.FS)
-
-			// Is prefix a partial wildcard?
-			if before, _, found := strings.Cut(prefix, "*"); found {
-				// /john* -> /john
-				prefix = before
-			}
-
-			prefixLen := len(prefix)
-			if prefixLen > 1 && prefix[prefixLen-1:] == "/" {
-				// /john/ -> /john
-				prefixLen--
-			}
-
-			// For io/fs.FS, Root must be empty so fasthttp's pathToFilePath
-			// returns clean relative paths without prefixing the root.
-			// PathRewrite already handles file-root and subdirectory cases.
-			fsRoot := root
-			if config.FS != nil {
-				fsRoot = ""
-			}
-
-			var fsRootPrefix []byte
-			if config.FS != nil && root != "" && root != "." && !rootIsFile {
-				// fasthttp.FS.Root is forced to "" for io/fs.FS so pathToFilePath
-				// returns clean relative paths. PathRewrite prepends the caller's
-				// configured subdirectory after sanitizing the request path.
-				fsRootPrefix = make([]byte, len(root)+1)
-				fsRootPrefix[0] = '/'
-				copy(fsRootPrefix[1:], root)
-			}
-
-			fileServer := &fasthttp.FS{
-				Root:                   fsRoot,
-				FS:                     config.FS,
-				AllowEmptyRoot:         true,
-				GenerateIndexPages:     config.Browse,
-				AcceptByteRange:        config.ByteRange,
-				Compress:               config.Compress,
-				CompressBrotli:         config.Compress, // Brotli compression won't work without this
-				CompressZstd:           config.Compress, // Zstd compression won't work without this
-				CompressedFileSuffixes: c.App().Config().CompressedFileSuffixes,
-				CacheDuration:          config.CacheDuration,
-				SkipCache:              config.CacheDuration < 0,
-				IndexNames:             config.IndexNames,
-				PathNotFound: func(fctx *fasthttp.RequestCtx) {
-					fctx.Response.SetStatusCode(fiber.StatusNotFound)
-				},
-			}
-
-			fileServer.PathRewrite = func(fctx *fasthttp.RequestCtx) []byte {
-				path := fctx.Path()
-
-				if len(path) >= prefixLen {
-					if rootCheckErr != nil && fileServer.FS != nil {
-						return []byte(invalidPathSentinel)
-					}
-
-					// If the root is a file, we need to reset the path to "/" always.
-					switch {
-					case rootIsFile && fileServer.FS == nil:
-						path = []byte("/")
-					case rootIsFile && fileServer.FS != nil:
-						path = utils.UnsafeBytes(root)
-					default:
-						path = path[prefixLen:]
-						if len(fsRootPrefix) > 0 {
-							hasTraversal, err := hasParentDirSegment(path)
-							if err != nil || hasTraversal {
-								return []byte(invalidPathSentinel)
-							}
-						}
-						if len(path) == 0 || path[len(path)-1] != '/' {
-							path = append(path, '/')
-						}
-					}
-				}
-
-				if len(path) > 0 && path[0] != '/' {
-					path = append([]byte("/"), path...)
-				}
-
-				sanitized, err := sanitizePath(path, fileServer.FS)
-				if err != nil {
-					// return a guaranteed-missing path so fs responds with 404
-					return []byte(invalidPathSentinel)
-				}
-				if len(fsRootPrefix) > 0 {
-					rewrittenPath := make([]byte, len(fsRootPrefix)+len(sanitized))
-					copy(rewrittenPath, fsRootPrefix)
-					copy(rewrittenPath[len(fsRootPrefix):], sanitized)
-					return rewrittenPath
-				}
-				return sanitized
-			}
-
-			maxAge := config.MaxAge
-			if maxAge > 0 {
-				cacheControlValue = "public, max-age=" + strconv.Itoa(maxAge)
-			}
-
-			fileHandler = fileServer.NewRequestHandler()
-		})
+		fileHandler := fileHandlerFor(c)
 
 		// Serve file
 		fileHandler(c.RequestCtx())
-
-		// Sets the response Content-Disposition header to attachment if the Download option is true
-		if config.Download {
-			name := filepath.Base(c.Path())
-			if rootIsFile {
-				name = filepath.Base(root)
-			}
-			c.Attachment(name)
-		}
 
 		// Return request if found and not forbidden
 		status := c.RequestCtx().Response.StatusCode()
 
 		if status != fiber.StatusNotFound && status != fiber.StatusForbidden {
-			if cacheControlValue != "" {
+			// Only a served file is an attachment; the header must not leak onto a
+			// miss, a redirect, or an error such as 416.
+			if config.Download && status >= fiber.StatusOK && status < fiber.StatusMultipleChoices {
+				name := filepath.Base(c.Path())
+				if rootIsFile {
+					name = filepath.Base(root)
+				}
+				// Attachment derives a Content-Type from the extension; keep the detected one.
+				contentType := utils.CopyString(c.GetRespHeader(fiber.HeaderContentType))
+				c.Attachment(name)
+				if contentType != "" {
+					c.Set(fiber.HeaderContentType, contentType)
+				}
+			}
+
+			// An error response such as 416 must not be cached under the file's MaxAge.
+			if cacheControlValue != "" && status >= fiber.StatusOK && status < fiber.StatusBadRequest {
 				c.RequestCtx().Response.Header.Set(fiber.HeaderCacheControl, cacheControlValue)
 			}
 

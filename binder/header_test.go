@@ -98,3 +98,30 @@ func Test_HeaderBinder_Bind_ParseError(t *testing.T) {
 	err := b.Bind(req, &user)
 	require.Error(t, err)
 }
+
+func Test_HeaderBinder_Bind_Splitting_StringMapNotSplit(t *testing.T) {
+	t.Parallel()
+
+	b := &HeaderBinding{
+		EnableSplitting: true,
+	}
+
+	const userAgent = "Mozilla/5.0 (X11; Linux) AppleWebKit/537.36 (KHTML, like Gecko)"
+
+	req := fasthttp.AcquireRequest()
+	req.Header.Set("User-Agent", userAgent)
+
+	t.Cleanup(func() {
+		fasthttp.ReleaseRequest(req)
+	})
+
+	// A map[string]string keeps one value per key, so nothing is split.
+	stringMap := make(map[string]string)
+	require.NoError(t, b.Bind(req, &stringMap))
+	require.Equal(t, userAgent, stringMap["User-Agent"])
+
+	// A map[string][]string holds every piece.
+	sliceMap := make(map[string][]string)
+	require.NoError(t, b.Bind(req, &sliceMap))
+	require.Equal(t, []string{"Mozilla/5.0 (X11; Linux) AppleWebKit/537.36 (KHTML", " like Gecko)"}, sliceMap["User-Agent"])
+}

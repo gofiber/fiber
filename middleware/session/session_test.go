@@ -3,7 +3,6 @@ package session
 import (
 	"context"
 	"errors"
-	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -1095,69 +1094,79 @@ func Test_Session_Cookie(t *testing.T) {
 	require.Regexp(t, `^session_id=[A-Za-z0-9\-_]{43}; max-age=\d+; path=/; SameSite=Lax$`, string(cookie))
 }
 
-// go test -run Test_Session_Cookie_SameSite
+// Test_Session_Cookie_SameSite verifies every supported mode's emitted
+// attribute and interaction with the Secure flag.
 func Test_Session_Cookie_SameSite(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		expectedInHeader string
 		name             string
 		sameSite         string
+		expectedSameSite string
 		initialSecure    bool
+		expectSecure     bool
 	}{
 		{
 			name:             "Lax should not force secure",
 			sameSite:         "Lax",
-			initialSecure:    false,
-			expectedInHeader: "SameSite=Lax",
+			expectedSameSite: "SameSite=Lax",
 		},
 		{
 			name:             "Lax with secure should stay secure",
 			sameSite:         "Lax",
+			expectedSameSite: "SameSite=Lax",
 			initialSecure:    true,
-			expectedInHeader: "SameSite=Lax; secure",
+			expectSecure:     true,
 		},
 		{
 			name:             "Strict should not force secure",
 			sameSite:         "Strict",
-			initialSecure:    false,
-			expectedInHeader: "SameSite=Strict",
+			expectedSameSite: "SameSite=Strict",
 		},
 		{
 			name:             "Strict with secure should stay secure",
 			sameSite:         "Strict",
+			expectedSameSite: "SameSite=Strict",
 			initialSecure:    true,
-			expectedInHeader: "SameSite=Strict; secure",
+			expectSecure:     true,
 		},
 		{
 			name:             "None should force secure",
 			sameSite:         "None",
-			initialSecure:    false,
-			expectedInHeader: "SameSite=None; secure",
+			expectedSameSite: "SameSite=None",
+			expectSecure:     true,
 		},
 		{
 			name:             "None with secure should stay secure",
 			sameSite:         "None",
+			expectedSameSite: "SameSite=None",
 			initialSecure:    true,
-			expectedInHeader: "SameSite=None; secure",
+			expectSecure:     true,
 		},
 		{
 			name:             "Case-insensitive none should force secure",
 			sameSite:         "none",
-			initialSecure:    false,
-			expectedInHeader: "SameSite=None; secure",
+			expectedSameSite: "SameSite=None",
+			expectSecure:     true,
 		},
 		{
 			name:             "Case-insensitive strict should not force secure",
 			sameSite:         "strict",
-			initialSecure:    false,
-			expectedInHeader: "SameSite=Strict",
+			expectedSameSite: "SameSite=Strict",
 		},
 		{
-			name:             "Default should be Lax",
-			sameSite:         "invalid",
-			initialSecure:    false,
-			expectedInHeader: "SameSite=Lax",
+			name:     "Disabled should omit SameSite",
+			sameSite: fiber.CookieSameSiteDisabled,
+		},
+		{
+			name:          "Case-insensitive disabled should preserve secure",
+			sameSite:      "DISABLED",
+			initialSecure: true,
+			expectSecure:  true,
+		},
+		{
+			name:             "Empty should default to Lax",
+			expectedSameSite: "SameSite=Lax",
 		},
 	}
 
@@ -1188,15 +1197,15 @@ func Test_Session_Cookie_SameSite(t *testing.T) {
 
 			// check cookie
 			cookie := string(ctx.Response().Header.PeekCookie("session_id"))
-			// The order of attributes in the cookie string is not guaranteed.
-			// Instead of checking for a single substring, we check for the presence of each part.
-			parts := strings.SplitSeq(tc.expectedInHeader, "; ")
-			for part := range parts {
-				require.Contains(t, cookie, part)
+			if tc.expectedSameSite == "" {
+				require.NotContains(t, cookie, "SameSite")
+			} else {
+				require.Contains(t, cookie, tc.expectedSameSite)
 			}
 
-			// Also check that secure is NOT present when it shouldn't be
-			if !tc.initialSecure && tc.sameSite != "None" && tc.sameSite != "none" {
+			if tc.expectSecure {
+				require.Contains(t, cookie, "secure")
+			} else {
 				require.NotContains(t, cookie, "secure")
 			}
 		})
@@ -1343,6 +1352,75 @@ func Test_Session_Reset(t *testing.T) {
 
 		app.ReleaseCtx(ctx)
 	})
+}
+
+func Test_Session_Reset_KeepsAbsoluteTimeout(t *testing.T) {
+	t.Parallel()
+
+	const absoluteTimeout = time.Second
+
+	// newSessionStore keeps the storage TTL out of the way; only the absolute timeout expires the session.
+	newSessionStore := func() *Store {
+		store := NewStore(Config{
+			IdleTimeout:     absoluteTimeout,
+			AbsoluteTimeout: absoluteTimeout,
+		})
+		store.IdleTimeout = 10 * time.Second
+		return store
+	}
+
+	testCases := []struct {
+		rotate func(*Session) error
+		name   string
+	}{
+		{name: "Reset arms a new absolute expiration", rotate: (*Session).Reset},
+		{name: "Regenerate keeps the absolute expiration", rotate: (*Session).Regenerate},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			store := newSessionStore()
+			app := fiber.New()
+
+			ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+			sess, err := store.Get(ctx)
+			require.NoError(t, err)
+			require.True(t, sess.Fresh())
+			sess.Set("name", "john")
+			require.NoError(t, sess.Save())
+			token := sess.ID()
+			sess.Release()
+			app.ReleaseCtx(ctx)
+
+			ctx = app.AcquireCtx(&fasthttp.RequestCtx{})
+			ctx.Request().Header.SetCookie("session_id", token)
+			sess, err = store.Get(ctx)
+			require.NoError(t, err)
+			require.False(t, sess.Fresh())
+			require.NoError(t, tc.rotate(sess))
+			require.NotEqual(t, token, sess.ID())
+			require.IsType(t, time.Time{}, sess.Get(absExpirationKey), "the rotated session must carry an absolute expiration")
+			sess.Set("name", "jane")
+			require.NoError(t, sess.Save())
+			token = sess.ID()
+			sess.Release()
+			app.ReleaseCtx(ctx)
+
+			time.Sleep(absoluteTimeout + 200*time.Millisecond)
+
+			ctx = app.AcquireCtx(&fasthttp.RequestCtx{})
+			defer app.ReleaseCtx(ctx)
+			ctx.Request().Header.SetCookie("session_id", token)
+			sess, err = store.Get(ctx)
+			require.NoError(t, err)
+			defer sess.Release()
+			require.True(t, sess.Fresh(), "the rotated session must expire absolutely")
+			require.Nil(t, sess.Get("name"))
+			require.NotEqual(t, token, sess.ID())
+		})
+	}
 }
 
 // go test -run Test_Session_Regenerate

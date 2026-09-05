@@ -246,7 +246,15 @@ The jar follows RFC 6265 for storage and retrieval:
   specific first, so a host cannot inflate the `Cookie` header by spreading
   cookies across the `Domain=` keys of its parent labels.
 - Cookies are attached once per request, before any redirect is followed, so a
-  redirect chain carries the cookies selected for the original URL.
+  redirect chain carries the cookies selected for the original URL. A hop to an
+  unrelated host drops them, but a hop to a subdomain keeps them — matching
+  `net/http`, which permits `Cookie` from `foo.com` to `sub.foo.com`. That is
+  wider than the jar's own rule: a cookie set without a `Domain=` attribute is
+  host-only and the jar would not send it to `sub.foo.com`, yet a redirect
+  there carries it. This only arises once redirects are being followed, which
+  is not the default: leave `MaxRedirects` unset — or set `0`, via
+  `Request.SetMaxRedirects` or `Config{MaxRedirects: 0}` — and issue each hop
+  yourself, so the jar decides for each one.
 
 ### Request
 

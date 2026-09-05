@@ -10,6 +10,7 @@ import (
 	"slices"
 	"sync/atomic"
 
+	"github.com/gofiber/fiber/v3/internal/urlnorm"
 	"github.com/gofiber/utils/v2"
 	utilsstrings "github.com/gofiber/utils/v2/strings"
 	"github.com/gofiber/utils/v2/swar"
@@ -48,7 +49,7 @@ type Router interface {
 // Route is a struct that holds all metadata for each registered handler.
 //
 //nolint:govet // fieldalignment: the router's scan dictates this order, see below
-type Route struct {
+type Route struct { // betteralign:ignore - see below
 	// ### important: always keep in sync with the copy method "app.copyRoute" and all creations of Route struct ###
 	//
 	// Field order is load-bearing. App.next scans a bucket of routes and
@@ -75,6 +76,8 @@ type Route struct {
 	caseSensitive bool // Whether parameter matching is case-sensitive
 
 	routeParser routeParser // Parameter parser
+
+	id uint64
 
 	Handlers []Handler `json:"-"` // Ctx handlers
 
@@ -232,8 +235,24 @@ func (r Route) URL(params Map) (string, error) {
 //  2. Case-insensitive fallback picking the lexicographically-smallest matching key (when !caseSensitive)
 //  3. Greedy parameter fallback for wildcard (*) and plus (+) parameters
 func buildRouteURL(route *Route, params Map) (string, error) {
+	// No relative URL names such a route. Two leading slashes open an authority,
+	// so "//internal" resolves to the host "internal" rather than a path here,
+	// and one leading slash reaches a different route. Say so instead of
+	// composing either.
+	//
+	// Judged after the parser's own input handling, since that is what a client
+	// applies to whatever is composed: a tab, CR or LF is deleted anywhere in the
+	// URL, and a run of controls or spaces is stripped from either end. So a
+	// route registered at "/\t/internal" reads as "//internal", and one at
+	// "/internal " — reachable through "/internal%20" under UnescapePath — reads
+	// as "/internal", a different route. No URL names either.
+	normalized := urlnorm.AsBrowserReads(route.Path)
+	if normalized != route.Path || urlnorm.LeadingSlashes(normalized) > 1 {
+		return "", ErrRouteNotRepresentable
+	}
+
 	if len(route.routeParser.segs) == 0 {
-		return route.Path, nil
+		return urlnorm.RootedPath(route.Path), nil
 	}
 
 	buf := bytebufferpool.Get()
@@ -287,7 +306,7 @@ func buildRouteURL(route *Route, params Map) (string, error) {
 		}
 	}
 
-	return buf.String(), nil
+	return urlnorm.RootedPath(buf.String()), nil
 }
 
 // preferredGreedyParameters returns the generic greedy fallback lookup order
@@ -335,10 +354,7 @@ func pathHeadWord(s string) uint64 {
 //   - '*' matches every path, and a first segment that is itself a parameter
 //     constrains nothing, so both disable the filter
 //
-// The star check has to come first, before the parametric branch. star is
-// derived from the unescaped path (isStar in register), while Params comes from
-// parsing the escaped one, so a route registered as `/\*` arrives here with
-// star set and no params — and match returns true for it unconditionally.
+// The star check comes first: match accepts a star route before looking at parameters.
 //
 // Anything that changes a route's path, params or parser must run this again.
 // The three places that can are register, which builds the route, copyRoute,
@@ -379,18 +395,7 @@ func computePrefixFilter(r *Route) (word, mask uint64) {
 		}
 	}
 
-	if len(prefix) > swar.WordLen {
-		prefix = prefix[:swar.WordLen]
-	}
-	if prefix == "" {
-		return 0, 0
-	}
-
-	mask = ^uint64(0)
-	if n := len(prefix); n < swar.WordLen {
-		mask = uint64(1)<<(8*n) - 1
-	}
-	return pathHeadWord(prefix), mask
+	return packConst(prefix)
 }
 
 // prefixRejects reports whether the leading bytes of a detection path, packed
@@ -422,16 +427,7 @@ func (r *Route) match(detectionPath, path string, params *[maxParams]string, pat
 
 	// Does this route have parameters?
 	if len(r.Params) > 0 {
-		// Quick-reject on the precomputed slash-count bounds before walking segments.
-		// pathSlashes 0 means the count is unknown and the filter must stay out of
-		// the way; prefix (use) routes may extend past the pattern, so only the
-		// lower bound applies to them.
-		p := &r.routeParser
-		if pathSlashes > 0 && (pathSlashes < int(p.minSlashes) || (!r.use && p.maxBounded && pathSlashes > int(p.maxSlashes))) {
-			return false
-		}
-		// Match params using precomputed routeParser
-		return p.getMatch(detectionPath, path, params, r.use)
+		return r.matchParams(detectionPath, path, params, pathSlashes)
 	}
 
 	// Middleware route?
@@ -455,6 +451,27 @@ func (r *Route) match(detectionPath, path string, params *[maxParams]string, pat
 
 	// No match
 	return false
+}
+
+// matchParams is the parametric branch of match, kept out of line so match
+// stays small on the middleware and static-endpoint paths every request takes.
+func (r *Route) matchParams(detectionPath, path string, params *[maxParams]string, pathSlashes int) bool {
+	// Quick-reject on the precomputed slash-count bounds before walking segments.
+	// pathSlashes 0 means the count is unknown and the filters must stay out of
+	// the way; prefix (use) routes may extend past the pattern, so only the
+	// lower bound applies to them.
+	p := &r.routeParser
+	if pathSlashes > 0 {
+		if pathSlashes < int(p.minSlashes) || (!r.use && p.maxBounded && pathSlashes > int(p.maxSlashes)) {
+			return false
+		}
+		// Then the probe constant, one masked compare; see constProbe.
+		if p.probe.mask != 0 && p.probe.rejects(detectionPath) {
+			return false
+		}
+	}
+	// Match params using precomputed routeParser
+	return p.getMatch(detectionPath, path, params, r.use)
 }
 
 func (app *App) next(c *DefaultCtx) (bool, error) {
@@ -736,7 +753,7 @@ func (app *App) defaultRequestHandler(rctx *fasthttp.RequestCtx) {
 
 	// Optional: check flash messages (hot path, see hasFlashCookie); before the
 	// short-circuit so a skipped 404/405 still clears them.
-	if hasFlashCookie(&ctx.fasthttp.Request.Header) {
+	if !app.config.DisableFlashMessages && hasFlashCookie(&ctx.fasthttp.Request.Header) {
 		ctx.Redirect().parseAndClearFlashMessages()
 	}
 
@@ -778,7 +795,7 @@ func (app *App) customRequestHandler(rctx *fasthttp.RequestCtx) {
 
 	// Optional: check flash messages (hot path, see hasFlashCookie); before the
 	// short-circuit so a skipped 404/405 still clears them.
-	if hasFlashCookie(&ctx.Request().Header) {
+	if !app.config.DisableFlashMessages && hasFlashCookie(&ctx.Request().Header) {
 		ctx.Redirect().parseAndClearFlashMessages()
 	}
 
@@ -808,7 +825,7 @@ func (app *App) customRequestHandler(rctx *fasthttp.RequestCtx) {
 	}
 }
 
-func (app *App) addPrefixToRoute(prefix string, route *Route, regexHandler any, customConstraints ...CustomConstraint) *Route {
+func (app *App) addPrefixToRoute(prefix string, route *Route, regexHandler any, customConstraints ...CustomConstraint) {
 	prefixedPath := getGroupPath(prefix, route.Path)
 	prettyPath := prefixedPath
 	// Case-sensitive routing, all to lowercase
@@ -823,6 +840,23 @@ func (app *App) addPrefixToRoute(prefix string, route *Route, regexHandler any, 
 	route.Path = prefixedPath
 	route.path = RemoveEscapeChar(prettyPath)
 	route.routeParser = parseRoute(prettyPath, regexHandler, customConstraints...)
+	// As in register: the constraints come from the pattern as written.
+	rawParser := parseRoute(prefixedPath, regexHandler, customConstraints...)
+	route.routeParser.adoptConstraints(&rawParser)
+	if app.config.StrictRouting {
+		route.routeParser.applyStrictRouting()
+	}
+	// A prefix can introduce parameters of its own — a sub-app mounted at
+	// "/v1/:version" is prefixing every one of its routes with one. Params
+	// decides whether the router matches a route by pattern or by string
+	// equality, so it has to be rebuilt along with the parser or the route
+	// stops matching entirely. Read from the unprettified path, as register
+	// does, so parameter names keep the case they were registered with.
+	if prettyPath == prefixedPath {
+		route.Params = route.routeParser.params
+	} else {
+		route.Params = parseRoute(prefixedPath, regexHandler, customConstraints...).params
+	}
 	route.root = false
 	route.star = false
 	route.caseSensitive = app.config.CaseSensitive
@@ -830,12 +864,24 @@ func (app *App) addPrefixToRoute(prefix string, route *Route, regexHandler any, 
 	// path and parser a filter is derived from, so refresh it here too rather
 	// than depend on a caller marking the routes refreshed.
 	route.buildPrefixFilter()
-
-	return route
 }
 
+// copyRoute clones a route, deliberately leaving group behind: a clone belongs
+// to whichever app it is being placed in, and Name() would otherwise prefix it
+// with the group name of the app it came from. Callers that do want the group —
+// ensureAutoHeadRoutesLocked, which copies a route in place — assign it back.
+//
+// The omission is load-bearing for a mount placeholder, whose target app lives
+// in group.app: carrying it over would let a clone of the placeholder expand
+// the mounted app's handlers verbatim, which for a domain mount means serving
+// them on every host. domainRouter.cloneRoutesForDomain expands the mount
+// instead, so no placeholder is ever cloned.
 func (*App) copyRoute(route *Route) *Route {
 	return &Route{
+		// Shared with the registration this route came from, so a copy can
+		// still be found in another method's tree (see routeIndexInTree).
+		id: route.id,
+
 		// Leading-byte filter
 		prefix:     route.prefix,
 		prefixMask: route.prefixMask,
@@ -975,6 +1021,9 @@ func (app *App) pruneAutoHeadRouteLocked(path string) {
 	}
 }
 
+// routeIDs hands out the ids shared by the per-method copies of a registration.
+var routeIDs atomic.Uint64
+
 func (app *App) register(methods []string, pathRaw string, group *Group, handlers ...Handler) {
 	// A regular route requires at least one ctx handler
 	if len(handlers) == 0 && group == nil {
@@ -1005,8 +1054,15 @@ func (app *App) register(methods []string, pathRaw string, group *Group, handler
 
 	parsedRaw := parseRoute(pathRaw, app.config.RegexHandler, app.customConstraints...)
 	parsedPretty := parseRoute(pathPretty, app.config.RegexHandler, app.customConstraints...)
+	// The pretty pattern is matched against, but its constraints must come
+	// from the raw one (see routeParser.adoptConstraints).
+	parsedPretty.adoptConstraints(&parsedRaw)
+	if app.config.StrictRouting {
+		parsedPretty.applyStrictRouting()
+	}
 
 	isMount := group != nil && group.app != app
+	routeID := routeIDs.Add(1)
 
 	for _, method := range methods {
 		method = utilsstrings.ToUpper(method)
@@ -1015,8 +1071,9 @@ func (app *App) register(methods []string, pathRaw string, group *Group, handler
 		}
 
 		isUse := method == methodUse
-		isStar := pathClean == "/*"
-		isRoot := pathClean == "/"
+		// Derived from the pattern with its escapes intact: "/\*" is a literal path.
+		isStar := pathPretty == "/*"
+		isRoot := pathPretty == "/"
 
 		route := Route{
 			use:           isUse,
@@ -1024,6 +1081,7 @@ func (app *App) register(methods []string, pathRaw string, group *Group, handler
 			star:          isStar,
 			root:          isRoot,
 			caseSensitive: app.config.CaseSensitive,
+			id:            routeID,
 
 			path:        pathClean,
 			routeParser: parsedPretty,
@@ -1093,6 +1151,28 @@ func (app *App) ensureAutoHeadRoutes() {
 	app.ensureAutoHeadRoutesLocked()
 }
 
+// autoHeadKey identifies the route an automatic HEAD companion would collide
+// with.
+type autoHeadKey struct {
+	// owner is set only where routes are host-scoped, and is what keeps the
+	// HEAD route of one mounted app from standing in for another app's GET
+	owner *App
+	path  string
+}
+
+// autoHeadKey returns the key route is deduplicated under. Where an app's
+// routes are host-scoped — the wrapper a domain mount builds — a HEAD route
+// only covers the GET routes of the same mounted app: on a hostname that app's
+// pattern rejects it declines, leaving a GET route of another one there without
+// a companion to answer for it.
+func (app *App) autoHeadKey(route *Route) autoHeadKey {
+	if !app.mountFields.hostScopedRoutes {
+		return autoHeadKey{path: route.path}
+	}
+
+	return autoHeadKey{owner: app.routeOwner(route), path: route.path}
+}
+
 func (app *App) ensureAutoHeadRoutesLocked() {
 	if app.config.DisableHeadAutoRegister {
 		return
@@ -1104,16 +1184,32 @@ func (app *App) ensureAutoHeadRoutesLocked() {
 		return
 	}
 
+	// Nothing can need a new companion while no route has been registered since
+	// the last pass and the HEAD stack still holds the ones it produced, so the
+	// scan below is skipped rather than rebuilt on every RebuildTree call.
+	currentRouteID := routeIDs.Load()
+	if app.autoHeadRouteID == currentRouteID && app.autoHeadStackLen == len(app.stack[headIndex]) {
+		return
+	}
+	// Recorded on the normal exits only: a panicking OnRoute hook must not leave
+	// an aborted scan marked complete, which would keep every HEAD request that
+	// needed a companion at 405 for the lifetime of the process.
+	recordScan := func() {
+		app.autoHeadRouteID = routeIDs.Load()
+		app.autoHeadStackLen = len(app.stack[headIndex])
+	}
+
 	headStack := app.stack[headIndex]
-	existing := make(map[string]struct{}, len(headStack))
+	existing := make(map[autoHeadKey]struct{}, len(headStack))
 	for _, route := range headStack {
 		if route.mount || route.use {
 			continue
 		}
-		existing[route.path] = struct{}{}
+		existing[app.autoHeadKey(route)] = struct{}{}
 	}
 
 	if len(app.stack[getIndex]) == 0 {
+		recordScan()
 		return
 	}
 
@@ -1123,7 +1219,10 @@ func (app *App) ensureAutoHeadRoutesLocked() {
 		if route.mount || route.use {
 			continue
 		}
-		if _, ok := existing[route.path]; ok {
+		if _, ok := existing[app.autoHeadKey(route)]; ok {
+			continue
+		}
+		if app.skipsAutoHeadFor(route) {
 			continue
 		}
 
@@ -1131,12 +1230,19 @@ func (app *App) ensureAutoHeadRoutesLocked() {
 		headRoute.group = route.group
 		headRoute.Method = MethodHead
 		headRoute.autoHead = true
+		// The synthesized route belongs to whichever app the GET route came
+		// from, so a HEAD request resolves the same config a GET one does, and
+		// an app re-parsing it later holds it to the same constraints.
+		if owner := app.routeOwner(route); owner != nil {
+			app.markRouteOwner(headRoute, owner)
+		}
+		app.markRouteConstraints(headRoute, app.mountFields.routeConstraints[route])
 		// Fasthttp automatically omits response bodies when transmitting
 		// HEAD responses, so the copied GET handler stack can execute
 		// unchanged while still producing an empty body on the wire.
 
 		headStack = append(headStack, headRoute)
-		existing[route.path] = struct{}{}
+		existing[app.autoHeadKey(route)] = struct{}{}
 		app.hasRoutesRefreshed = true
 		added = true
 
@@ -1151,6 +1257,7 @@ func (app *App) ensureAutoHeadRoutesLocked() {
 	if added {
 		app.stack[headIndex] = headStack
 	}
+	recordScan()
 }
 
 // RebuildTree rebuilds the prefix tree from the previously registered routes.
@@ -1165,7 +1272,24 @@ func (app *App) RebuildTree() *App {
 	app.mutex.Lock()
 	defer app.mutex.Unlock()
 
+	// Routes registered since startup get their automatic HEAD companions here.
+	app.ensureAutoHeadRoutesLocked()
+
 	return app.buildTree()
+}
+
+// routeIndexInTree returns the position of route in another method's tree
+// bucket, or current when it is not there; copies are told apart by their shared id.
+func (app *App) routeIndexInTree(methodInt, treeHash int, route *Route, current int) int {
+	if route == nil || methodInt < 0 || methodInt >= len(app.treeIndex) {
+		return current
+	}
+	for i, candidate := range app.treeIndex[methodInt].lookup(treeHash) {
+		if candidate.id == route.id {
+			return i
+		}
+	}
+	return current
 }
 
 // buildTree build the prefix tree from the previously registered routes

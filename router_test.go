@@ -13,10 +13,13 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	neturl "net/url"
 	"os"
 	"reflect"
 	"regexp"
 	"runtime"
+	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -92,9 +95,14 @@ func Test_hasFlashCookieExactMatch(t *testing.T) {
 	req = buildRequestWithCookie(t, FlashCookieName+"=valid")
 	require.True(t, hasFlashCookie(&req.Header))
 
+	// A programmatic request carries no raw headers, so the cookie lookup decides.
 	var syntheticReq fasthttp.Request
 	syntheticReq.Header.Set(HeaderCookie, FlashCookieName+"=valid")
-	require.False(t, hasFlashCookie(&syntheticReq.Header))
+	require.True(t, hasFlashCookie(&syntheticReq.Header))
+
+	var syntheticOther fasthttp.Request
+	syntheticOther.Header.Set(HeaderCookie, FlashCookieName+"X=not-the-flash-cookie")
+	require.False(t, hasFlashCookie(&syntheticOther.Header))
 }
 
 func Test_Route_MixedFiberAndHTTPHandlers(t *testing.T) {
@@ -1321,8 +1329,9 @@ func Test_Route_Registration_Prevent_Duplicate_With_Middleware(t *testing.T) {
 	verifyRequest(t, app, "/dynamically-defined", StatusNotFound)
 	require.Equal(t, uint32(6), app.handlersCount)
 
+	// RebuildTree registers the automatic HEAD companion right away, hence two.
 	verifyRequest(t, app, "/test", StatusOK)
-	require.Equal(t, uint32(7), app.handlersCount)
+	require.Equal(t, uint32(8), app.handlersCount)
 
 	verifyRequest(t, app, "/dynamically-defined", StatusOK)
 	require.Equal(t, uint32(8), app.handlersCount)
@@ -1564,9 +1573,11 @@ func registerDummyRoutes(app *App) {
 	}
 }
 
+// acquireDefaultCtxForRouterBenchmark acquires a *DefaultCtx inside a benchmark
+// loop. It skips b.Helper(), whose stack walk was a quarter of the samples.
+//
+//nolint:thelper // b.Helper() is the cost being avoided
 func acquireDefaultCtxForRouterBenchmark(b *testing.B, app *App, fctx *fasthttp.RequestCtx) *DefaultCtx {
-	b.Helper()
-
 	ctx := app.AcquireCtx(fctx)
 	defaultCtx, ok := ctx.(*DefaultCtx)
 	if !ok {
@@ -3865,6 +3876,7 @@ func Test_Route_PrefixFilter_Rejects(t *testing.T) {
 func Test_Route_PrefixFilter_EscapedStar(t *testing.T) {
 	t.Parallel()
 
+	// An escaped star is a literal "*", for a plain route and a Use prefix alike.
 	for _, caseSensitive := range []bool{false, true} {
 		for _, use := range []bool{false, true} {
 			app := New(Config{CaseSensitive: caseSensitive})
@@ -3875,11 +3887,11 @@ func Test_Route_PrefixFilter_EscapedStar(t *testing.T) {
 				app.Get(`/\*`, handler)
 			}
 
-			for _, path := range []string{"/*", "/foo", "/bar/baz", "/"} {
+			for path, status := range map[string]int{"/*": StatusOK, "/foo": StatusNotFound, "/bar/baz": StatusNotFound, "/": StatusNotFound} {
 				resp, err := app.Test(httptest.NewRequest(MethodGet, path, http.NoBody))
 				require.NoError(t, err)
-				require.Equal(t, StatusOK, resp.StatusCode,
-					"escaped star route must still match %q (caseSensitive=%v, use=%v)",
+				require.Equal(t, status, resp.StatusCode,
+					"escaped star route is a literal path: %q (caseSensitive=%v, use=%v)",
 					path, caseSensitive, use)
 			}
 		}
@@ -4448,4 +4460,432 @@ func Test_Route_OptionalSlash_SingleCharSegment(t *testing.T) {
 			require.Equal(t, StatusOK, resp.StatusCode)
 		})
 	}
+}
+
+// Test_Route_URL_RefusesUnrepresentableRoute covers a route whose own path
+// starts more than one slash. No relative URL names it: two leading slashes open
+// an authority, so "//internal" resolves to the host "internal" rather than a
+// path here, and collapsing to one reaches a different route. Both silently
+// composed the wrong thing, one of them an open redirect, so it errors instead.
+func Test_Route_URL_RefusesUnrepresentableRoute(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	app.Get("//internal", func(c Ctx) error { return c.SendString("internal") }).Name("dbl")
+	app.Get("//*", func(c Ctx) error { return c.SendString("wild") }).Name("dblwild")
+	// The parser deletes the tab, so this path is read as "//internal" too. The
+	// byte is not there to be seen by the time anything acts on the composition.
+	app.Get("/\t/internal", func(c Ctx) error { return c.SendString("tabbed") }).Name("tab")
+	// A trailing space goes the same way: the parser strips a run of controls or
+	// spaces from either end, so this route is read as "/internal", which is a
+	// different one. Reachable as "/internal%20" under UnescapePath, but no URL
+	// composed here can name it.
+	app.Get("/internal ", func(c Ctx) error { return c.SendString("spaced") }).Name("space")
+	app.Get("/*", func(c Ctx) error { return c.SendString("ok") }).Name("wild")
+
+	for _, name := range []string{"dbl", "dblwild", "tab", "space"} {
+		url, err := app.GetRoute(name).URL(Map{"*": "evil.com"})
+		require.ErrorIs(t, err, ErrRouteNotRepresentable, name)
+		require.Empty(t, url, name)
+	}
+
+	// An ordinary route still composes, and a value cannot open an authority.
+	url, err := app.GetRoute("wild").URL(Map{"*": "/evil.com"})
+	require.NoError(t, err)
+	require.Equal(t, "/evil.com", url)
+
+	// What that composed reaches is this origin, not evil.com.
+	ref, err := neturl.Parse(url)
+	require.NoError(t, err)
+	require.Empty(t, ref.Host)
+}
+
+// Constraints must not be lowercased along with the pattern.
+func Test_Router_Constraints_CaseInsensitiveRouting(t *testing.T) {
+	t.Parallel()
+
+	for _, caseSensitive := range []bool{false, true} {
+		t.Run(fmt.Sprintf("CaseSensitive=%v", caseSensitive), func(t *testing.T) {
+			t.Parallel()
+
+			app := New(Config{CaseSensitive: caseSensitive})
+			app.RegisterCustomConstraint(&evenConstraint{})
+			sub := New(Config{CaseSensitive: caseSensitive})
+			sub.Get("/:code<regex([A-Z]{2})>", func(c Ctx) error { return c.SendString(c.Params("code")) })
+			app.Use("/api", sub)
+
+			app.Get("/code/:code<regex([A-Z]{2})>", func(c Ctx) error { return c.SendString(c.Params("code")) })
+			app.Get(`/word/:w<regex(^\D+$)>`, func(c Ctx) error { return c.SendString(c.Params("w")) })
+			app.Get("/when/:d<datetime(2006-01-02T15\\:04\\:05Z07\\:00)>", func(c Ctx) error { return c.SendString(c.Params("d")) })
+			app.Get("/even/:n<isEven>", func(c Ctx) error { return c.SendString(c.Params("n")) })
+
+			testCases := []struct {
+				path   string
+				status int
+			}{
+				{path: "/code/US", status: StatusOK},
+				{path: "/code/us", status: StatusNotFound},
+				{path: "/api/US", status: StatusOK},
+				{path: "/api/us", status: StatusNotFound},
+				{path: "/word/abc", status: StatusOK},
+				{path: "/word/123", status: StatusNotFound},
+				{path: "/when/2024-01-02T15:04:05Z", status: StatusOK},
+				{path: "/when/not-a-date", status: StatusNotFound},
+				{path: "/even/4", status: StatusOK},
+				{path: "/even/3", status: StatusNotFound},
+				{path: "/even/abc", status: StatusNotFound},
+			}
+			for _, tc := range testCases {
+				resp, err := app.Test(httptest.NewRequest(MethodGet, tc.path, http.NoBody))
+				require.NoError(t, err)
+				require.Equal(t, tc.status, resp.StatusCode, "GET %s", tc.path)
+			}
+
+			cfg := Config{CaseSensitive: caseSensitive}
+			require.True(t, RoutePatternMatch("/US", "/:code<regex([A-Z]{2})>", cfg))
+			require.False(t, RoutePatternMatch("/us", "/:code<regex([A-Z]{2})>", cfg))
+		})
+	}
+}
+
+// evenConstraint accepts even integers; its mixed-case name is the point.
+type evenConstraint struct{}
+
+func (*evenConstraint) Name() string {
+	return "isEven"
+}
+
+func (*evenConstraint) Execute(param string, _ ...string) bool {
+	n, err := strconv.Atoi(param)
+	return err == nil && n%2 == 0
+}
+
+func Test_Router_MethodOverride_ContinuesInNewMethodTree(t *testing.T) {
+	t.Parallel()
+
+	build := func(app *App) {
+		app.Get("/a", func(c Ctx) error { return c.SendString("a") })
+		app.Use(func(c Ctx) error {
+			c.Method(MethodPost)
+			return c.Next()
+		})
+		app.Post("/x", func(c Ctx) error { return c.SendString("post x") })
+	}
+
+	testCases := []struct {
+		app  *App
+		name string
+	}{
+		{name: "default ctx", app: New()},
+		{name: "custom ctx", app: NewWithCustomCtx(func(app *App) CustomCtx {
+			return &customCtx{DefaultCtx: *NewDefaultCtx(app)}
+		})},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			build(tc.app)
+			resp, err := tc.app.Test(httptest.NewRequest(MethodGet, "/x", http.NoBody))
+			require.NoError(t, err)
+			require.Equal(t, StatusOK, resp.StatusCode)
+			body, err := io.ReadAll(resp.Body)
+			require.NoError(t, err)
+			require.Equal(t, "post x", string(body))
+		})
+	}
+
+	// SkipUnmatchedRoutes answers 405 before middleware runs, so no override happens.
+	t.Run("skip unmatched routes", func(t *testing.T) {
+		t.Parallel()
+
+		app := New(Config{SkipUnmatchedRoutes: true})
+		build(app)
+		resp, err := app.Test(httptest.NewRequest(MethodGet, "/x", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, StatusMethodNotAllowed, resp.StatusCode)
+	})
+}
+
+func Test_Router_EscapedStar_IsLiteral(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	app.Get(`/\*`, func(c Ctx) error { return c.SendString("star") })
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/*", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, StatusOK, resp.StatusCode)
+
+	for _, path := range []string{"/anything", "/a/b/c", "/"} {
+		resp, err = app.Test(httptest.NewRequest(MethodGet, path, http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, StatusNotFound, resp.StatusCode, "GET %s", path)
+	}
+
+	require.True(t, RoutePatternMatch("/*", `/\*`))
+	require.False(t, RoutePatternMatch("/anything", `/\*`))
+	require.True(t, RoutePatternMatch("/anything", "/*"))
+}
+
+func Test_Router_StrictRouting_ParamTrailingSlash(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name   string
+		path   string
+		status int
+		strict bool
+	}{
+		{name: "strict with slash", strict: true, path: "/a/x/", status: StatusOK},
+		{name: "strict without slash", strict: true, path: "/a/x", status: StatusNotFound},
+		{name: "strict static with slash", strict: true, path: "/b/c/", status: StatusOK},
+		{name: "strict static without slash", strict: true, path: "/b/c", status: StatusNotFound},
+		{name: "lenient with slash", strict: false, path: "/a/x/", status: StatusOK},
+		{name: "lenient without slash", strict: false, path: "/a/x", status: StatusOK},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			app := New(Config{StrictRouting: tc.strict})
+			app.Get("/a/:id/", func(c Ctx) error { return c.SendString(c.Params("id")) })
+			app.Get("/b/c/", func(c Ctx) error { return c.SendString("c") })
+
+			resp, err := app.Test(httptest.NewRequest(MethodGet, tc.path, http.NoBody))
+			require.NoError(t, err)
+			require.Equal(t, tc.status, resp.StatusCode)
+
+			cfg := Config{StrictRouting: tc.strict}
+			pattern := "/a/:id/"
+			if strings.HasPrefix(tc.path, "/b") {
+				pattern = "/b/c/"
+			}
+			require.Equal(t, tc.status == StatusOK, RoutePatternMatch(tc.path, pattern, cfg))
+		})
+	}
+}
+
+func Test_Router_UnescapePath_PlusIsLiteral(t *testing.T) {
+	t.Parallel()
+
+	app := New(Config{UnescapePath: true})
+	app.Get("/u/:name", func(c Ctx) error {
+		return c.SendString(c.Params("name") + "|" + c.Path())
+	})
+
+	testCases := []struct {
+		path string
+		body string
+	}{
+		{path: "/u/john+doe", body: "john+doe|/u/john+doe"},
+		{path: "/u/john%2Bdoe", body: "john+doe|/u/john+doe"},
+		{path: "/u/john%20doe", body: "john doe|/u/john doe"},
+		{path: "/u/a%zzb", body: "a%zzb|/u/a%zzb"},
+		{path: "/u/end%2", body: "end%2|/u/end%2"},
+	}
+	// Through the raw handler: net/http rejects malformed escapes.
+	handler := app.Handler()
+	for _, tc := range testCases {
+		fctx := &fasthttp.RequestCtx{}
+		fctx.Request.Header.SetMethod(MethodGet)
+		fctx.Request.SetRequestURI(tc.path)
+		handler(fctx)
+		require.Equal(t, StatusOK, fctx.Response.StatusCode(), "GET %s", tc.path)
+		require.Equal(t, tc.body, string(fctx.Response.Body()), "GET %s", tc.path)
+	}
+
+	require.True(t, RoutePatternMatch("/u/john+doe", "/u/john+doe", Config{UnescapePath: true}))
+	require.False(t, RoutePatternMatch("/u/john+doe", "/u/john doe", Config{UnescapePath: true}))
+}
+
+func Test_App_Add_MultipleMethods_Name(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	app.Add([]string{MethodGet, MethodPost}, "/x", func(c Ctx) error { return c.SendString("x") }).Name("x")
+
+	named := map[string]bool{}
+	for _, route := range app.GetRoutes() {
+		if route.Path == "/x" && route.Name == "x" {
+			named[route.Method] = true
+		}
+	}
+	require.True(t, named[MethodGet], "GET /x must carry the name")
+	require.True(t, named[MethodPost], "POST /x must carry the name")
+}
+
+func Test_App_Name_OnlyLatestRegistration(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	h := func(c Ctx) error { return c.SendString("ok") }
+
+	app.Get("/x", h).Name("first")
+	app.Post("/x", h).Name("first")
+	// Registering another path moves /x off the tail of both stacks, so the
+	// routes above survive rather than being merged into the ones below.
+	app.Get("/y", h)
+	app.Add([]string{MethodGet, MethodPost}, "/x", h).Name("second")
+
+	var names []string
+	for _, route := range app.GetRoutes() {
+		if route.Path == "/x" {
+			names = append(names, route.Method+":"+route.Name)
+		}
+	}
+	slices.Sort(names)
+
+	// The earlier registrations keep their own name; only the routes the latest
+	// Add created are renamed.
+	require.Equal(t, []string{"GET:first", "GET:second", "POST:second"}, names)
+}
+
+func Test_App_Use_MultiplePrefixes_MountsEachPrefix(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	sub := New()
+	sub.Get("/x", func(c Ctx) error { return c.SendString("x") })
+	app.Use([]string{"/a", "/b"}, sub)
+
+	for _, path := range []string{"/a/x", "/b/x"} {
+		resp, err := app.Test(httptest.NewRequest(MethodGet, path, http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, StatusOK, resp.StatusCode, "GET %s", path)
+	}
+}
+
+func Test_App_Mount_Self_Panics(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	require.Panics(t, func() { app.Use("/x", app) })
+}
+
+func Test_App_RebuildTree_RegistersAutoHead(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	app.Get("/early", func(c Ctx) error { return c.SendString("early") })
+	handler := app.Handler()
+
+	app.Get("/late", func(c Ctx) error { return c.SendString("late") })
+	app.RebuildTree()
+
+	for _, path := range []string{"/early", "/late"} {
+		fctx := &fasthttp.RequestCtx{}
+		fctx.Request.Header.SetMethod(MethodHead)
+		fctx.Request.SetRequestURI(path)
+		handler(fctx)
+		require.Equal(t, StatusOK, fctx.Response.StatusCode(), "HEAD %s", path)
+	}
+}
+
+func Test_Mount_Nested_AutoHead_SingleStartup(t *testing.T) {
+	t.Parallel()
+
+	nested := New()
+	nested.Get("/x", func(c Ctx) error { return c.SendString("x") })
+	sub := New()
+	app := New()
+	// Mount the parent first: a sub-app nested afterwards is only discovered at startup.
+	app.Use("/a", sub)
+	sub.Use("/b", nested)
+
+	// One startup, then the very first request.
+	handler := app.Handler()
+	for _, method := range []string{MethodHead, MethodGet} {
+		fctx := &fasthttp.RequestCtx{}
+		fctx.Request.Header.SetMethod(method)
+		fctx.Request.SetRequestURI("/a/b/x")
+		handler(fctx)
+		require.Equal(t, StatusOK, fctx.Response.StatusCode(), "%s /a/b/x", method)
+	}
+}
+
+func Test_Router_PathOverride_ContinuesInNewBucket(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	app.Get("/zzz/other", func(c Ctx) error { return c.SendString("other") })
+	app.Use(func(c Ctx) error {
+		if c.Path() == "/zzz/y" {
+			c.Path("/aaa/x")
+		}
+		return c.Next()
+	})
+	app.Get("/aaa/x", func(c Ctx) error { return c.SendString("aaa x") })
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/zzz/y", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, StatusOK, resp.StatusCode)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "aaa x", string(body))
+}
+
+func Test_Router_Constraints_MixedCaseNames(t *testing.T) {
+	t.Parallel()
+
+	// Built-in constraint names are matched case-insensitively, whatever the
+	// pattern spells them, and through every entry point that parses one.
+	//nolint:usestdlibvars // route constraint names, not go/constant kinds
+	names := []string{"INT", "Int", "iNt", "int", "BOOL", "Guid", "ALPHA", "Float", "minLen(3)", "Range(5,10)"}
+	//nolint:usestdlibvars // route constraint names, not go/constant kinds
+	reject := map[string]string{
+		"INT": "abc", "Int": "abc", "iNt": "abc", "int": "abc",
+		"BOOL": "abc", "Guid": "abc", "ALPHA": "123", "Float": "abc",
+		"minLen(3)": "ab", "Range(5,10)": "99",
+	}
+
+	for _, name := range names {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			app := New()
+			pattern := "/:id<" + name + ">"
+			app.Get(pattern, func(c Ctx) error { return c.SendString(c.Params("id")) })
+
+			sub := New()
+			sub.Get(pattern, func(c Ctx) error { return c.SendString(c.Params("id")) })
+			app.Use("/api", sub)
+
+			bad := "/" + reject[name]
+			resp, err := app.Test(httptest.NewRequest(MethodGet, bad, http.NoBody))
+			require.NoError(t, err)
+			require.Equal(t, StatusNotFound, resp.StatusCode, "%s did not enforce %q", pattern, bad)
+
+			resp, err = app.Test(httptest.NewRequest(MethodGet, "/api"+bad, http.NoBody))
+			require.NoError(t, err)
+			require.Equal(t, StatusNotFound, resp.StatusCode, "mounted %s did not enforce %q", pattern, bad)
+
+			require.False(t, RoutePatternMatch(bad, pattern), "RoutePatternMatch accepted %q for %s", bad, pattern)
+		})
+	}
+}
+
+func Test_App_AutoHead_PanickingHookLeavesScanIncomplete(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	fail := true
+	// Only the synthesized companion fails, so registration itself succeeds.
+	app.Hooks().OnRoute(func(r Route) error {
+		if fail && r.Method == MethodHead {
+			return errors.New("boom")
+		}
+		return nil
+	})
+	app.Get("/ping", func(c Ctx) error { return c.SendString("pong") })
+
+	require.Panics(t, func() { app.RebuildTree() })
+
+	// The aborted scan must not be recorded as complete, or HEAD stays 405.
+	fail = false
+	app.RebuildTree()
+
+	resp, err := app.Test(httptest.NewRequest(MethodHead, "/ping", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, StatusOK, resp.StatusCode)
 }

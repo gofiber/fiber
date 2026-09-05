@@ -32,7 +32,7 @@ func New(config ...Config) fiber.Handler {
 // getEffectiveStatusCode returns the actual status code, considering both the error and response status
 func getEffectiveStatusCode(c fiber.Ctx, err error) int {
 	if nilerror.IsNil(err) {
-		return c.Response().StatusCode()
+		return c.Res().StatusCode()
 	}
 
 	// If there's an error and it's a *fiber.Error, use its status code
@@ -42,5 +42,5 @@ func getEffectiveStatusCode(c fiber.Ctx, err error) int {
 	}
 
 	// Otherwise, use the response status code
-	return c.Response().StatusCode()
+	return c.Res().StatusCode()
 }

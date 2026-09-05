@@ -5,6 +5,8 @@ import (
 	"errors"
 	"runtime/debug"
 
+	"github.com/valyala/fasthttp"
+
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/log"
 )
@@ -113,16 +115,27 @@ func handleTimeout(
 		// TimeoutErrorWithCode constructs a fresh fasthttp.Response internally, so
 		// the active RequestCtx response is never read.
 		ctx.RequestCtx().TimeoutErrorWithCode(fiber.ErrRequestTimeout.Message, fiber.StatusRequestTimeout)
+		timeoutErr = fiber.ErrRequestTimeout
 	} else {
 		// Prepare the timeout response before marking the RequestCtx as timed out so
 		// custom OnTimeout handlers can shape the response body.
 		timeoutErr = invokeOnTimeout(ctx, cfg)
 
 		// If the response is still the default 200/empty, ensure a sensible timeout
-		// response is captured for fasthttp to send.
-		if ctx.Response().StatusCode() == fiber.StatusOK && len(ctx.Response().Body()) == 0 {
-			ctx.Response().SetStatusCode(fiber.StatusRequestTimeout)
-			ctx.Response().SetBodyString(fiber.ErrRequestTimeout.Message)
+		// response is captured for fasthttp to send. ResetBody closes a body
+		// stream rather than draining it, so a reader the timed-out handler never
+		// finishes writing cannot block this path.
+		resp := ctx.Response()
+		if resp.StatusCode() == fiber.StatusOK && timeoutResponseUnwritten(resp) {
+			resp.ResetBody()
+			// An error OnTimeout returned is the response the client will see.
+			status, message := fiber.StatusRequestTimeout, fiber.ErrRequestTimeout.Message
+			var fiberErr *fiber.Error
+			if errors.As(timeoutErr, &fiberErr) && fiberErr != nil {
+				status, message = fiberErr.Code, fiberErr.Message
+			}
+			resp.SetStatusCode(status)
+			resp.SetBodyString(message)
 		}
 
 		// Tell fasthttp to not recycle the RequestCtx - it will acquire a new one
@@ -161,6 +174,13 @@ func handleTimeout(
 	}()
 
 	return timeoutErr
+}
+
+// timeoutResponseUnwritten reports whether the response still carries nothing a
+// client could use. A stream counts as unwritten, since Response.CopyTo does not
+// carry one over, and is checked first because Body would drain it.
+func timeoutResponseUnwritten(resp *fasthttp.Response) bool {
+	return resp.IsBodyStream() || len(resp.Body()) == 0
 }
 
 // invokeOnTimeout calls the OnTimeout handler if configured
