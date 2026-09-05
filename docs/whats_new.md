@@ -1027,6 +1027,10 @@ app.Get("/new", func(c fiber.Ctx) error {
 
 </details>
 
+### Disabling flash messages
+
+Flash messages travel in the `fiber_flash` cookie, which only a browser following a redirect sends back, and every request is scanned for it. Deployments that serve no browsers can turn the feature off with `fiber.Config{DisableFlashMessages: true}`: `Redirect().With` and `WithInput` then set no cookie, `Messages` and `OldInput` report nothing, and the scan is skipped.
+
 ### Changed behavior
 
 :::info
