@@ -394,17 +394,17 @@ func (parser *routeParser) computeProbe() {
 			// getMatch may match this constant without its trailing '/'
 			c = c[:len(c)-1]
 		}
+		// The parameter before this constant passed the gate above, and its
+		// compare part is derived from this constant, so c starts with '/'.
 		if len(c) > 1 {
-			if c[0] != slashDelimiter {
-				return
-			}
 			parser.probe = newConstProbe(c, from, skip)
 			return
 		}
 		if seg.HasOptionalSlash {
 			return
 		}
-		skip += strings.Count(seg.Const, string(slashDelimiter))
+		// A constant this short is exactly "/": one more slash to pass over.
+		skip++
 	}
 }
 
