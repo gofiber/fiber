@@ -142,6 +142,8 @@ func (r *DefaultRes) App() *App {
 // If the header is not already set, it creates the header with the specified value.
 // Empty values are skipped: a sender must not generate empty list elements
 // (RFC 9110 Section 5.6.1.2).
+// Members are compared byte-exactly, because some lists (Link, Cache-Control)
+// are not all field names. For Vary field names, use Vary, which folds case.
 func (r *DefaultRes) Append(field string, values ...string) {
 	if len(values) == 0 {
 		return
@@ -1473,6 +1475,7 @@ func shouldIncludeCharset(mimeType string) bool {
 
 // Vary adds the given header field to the Vary response header.
 // This will append the header, if not already listed; otherwise, leaves it listed in the current location.
+// Field names are compared case-insensitively (RFC 9110 Section 5.1); the first spelling is kept.
 // Per RFC 9110 Section 12.5.5 the wildcard "*" only has meaning as the sole member of the field:
 // once "*" is added (or already present), the header is collapsed to a single "*".
 func (r *DefaultRes) Vary(fields ...string) {
@@ -1492,7 +1495,7 @@ func (r *DefaultRes) Vary(fields ...string) {
 		r.setCanonical(HeaderVary, "*")
 		return
 	}
-	updated := headerlist.AppendUnique(existingStr, fields)
+	updated := headerlist.AppendUniqueFold(existingStr, fields)
 	if updated == "" {
 		return
 	}
