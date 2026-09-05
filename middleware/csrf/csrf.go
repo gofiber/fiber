@@ -25,16 +25,17 @@ import (
 const csrfSchemes = originpkg.WebSchemesOnly
 
 var (
-	ErrTokenNotFound    = errors.New("csrf: token not found")
-	ErrTokenInvalid     = errors.New("csrf: token invalid")
-	ErrFetchSiteInvalid = errors.New("csrf: sec-fetch-site header invalid")
-	ErrRefererNotFound  = errors.New("csrf: referer header missing")
-	ErrRefererInvalid   = errors.New("csrf: referer header invalid")
-	ErrRefererNoMatch   = errors.New("csrf: referer does not match host or trusted origins")
-	ErrOriginInvalid    = errors.New("csrf: origin header invalid")
-	ErrOriginNoMatch    = errors.New("csrf: origin does not match host or trusted origins")
-	errOriginNotFound   = errors.New("origin not supplied or is null") // internal error, will not be returned to the user
-	dummyValue          = []byte{'+'}                                  // dummyValue is a placeholder value stored in token storage. The actual token validation relies on the key, not this value.
+	ErrTokenNotFound      = errors.New("csrf: token not found")
+	ErrTokenInvalid       = errors.New("csrf: token invalid")
+	ErrFetchSiteInvalid   = errors.New("csrf: sec-fetch-site header invalid")
+	ErrRefererNotFound    = errors.New("csrf: referer header missing")
+	ErrRefererInvalid     = errors.New("csrf: referer header invalid")
+	ErrRefererNoMatch     = errors.New("csrf: referer does not match host or trusted origins")
+	ErrOriginInvalid      = errors.New("csrf: origin header invalid")
+	ErrOriginNoMatch      = errors.New("csrf: origin does not match host or trusted origins")
+	ErrCrossOriginRequest = errors.New("csrf: cross-origin request denied")
+	errOriginNotFound     = errors.New("origin not supplied or is null") // internal error, will not be returned to the user
+	dummyValue            = []byte{'+'}                                  // dummyValue is a placeholder value stored in token storage. The actual token validation relies on the key, not this value.
 
 )
 
@@ -73,18 +74,10 @@ func New(config ...Config) fiber.Handler {
 		return value
 	}
 
-	// Create manager to simplify storage operations ( see *_manager.go )
-	var sessionManager *sessionManager
-	var storageManager *storageManager
-	if cfg.Session != nil {
-		sessionManager = newSessionManager(cfg.Session)
-	} else {
-		storageManager = newStorageManager(cfg.Storage, redactKeys)
-	}
-
 	// Pre-parse trusted origins
 	trustedOrigins := []string{}
-	trustedSubOrigins := []originpkg.Subdomain{}
+	crossOriginTrustedOrigins := []string{}
+	trustedSubOrigins := []subdomain{}
 
 	for _, origin := range cfg.TrustedOrigins {
 		trimmedOrigin := utils.TrimSpace(origin)
@@ -95,8 +88,34 @@ func New(config ...Config) fiber.Handler {
 		if pattern.Wildcard {
 			trustedSubOrigins = append(trustedSubOrigins, pattern.Subdomain)
 		} else {
-			trustedOrigins = append(trustedOrigins, pattern.Origin)
+			isValid, normalizedOrigin := normalizeOrigin(trimmedOrigin)
+			if !isValid {
+				panic("[CSRF] Invalid origin format in configuration:" + maskValue(origin))
+			}
+			trustedOrigins = append(trustedOrigins, normalizedOrigin)
+			crossOriginTrustedOrigins = append(crossOriginTrustedOrigins, normalizedOrigin)
 		}
+	}
+
+	if cfg.CrossOriginProtectionOnly {
+		return func(c fiber.Ctx) error {
+			if cfg.Next != nil && cfg.Next(c) {
+				return c.Next()
+			}
+			if err := validateCrossOriginProtection(c, crossOriginTrustedOrigins, trustedSubOrigins); err != nil {
+				return cfg.ErrorHandler(c, err)
+			}
+			return c.Next()
+		}
+	}
+
+	// Create manager to simplify storage operations ( see *_manager.go )
+	var sessionManager *sessionManager
+	var storageManager *storageManager
+	if cfg.Session != nil {
+		sessionManager = newSessionManager(cfg.Session)
+	} else {
+		storageManager = newStorageManager(cfg.Storage, redactKeys)
 	}
 
 	// Create the handler outside of the returned function
@@ -367,6 +386,45 @@ func validateSecFetchSite(c fiber.Ctx) error {
 	default:
 		return ErrFetchSiteInvalid
 	}
+}
+
+func validateCrossOriginProtection(c fiber.Ctx, trustedOrigins []string, trustedSubOrigins []subdomain) error {
+	switch c.Method() {
+	case fiber.MethodGet, fiber.MethodHead, fiber.MethodOptions:
+		return nil
+	}
+
+	origin := c.Get(fiber.HeaderOrigin)
+	switch c.Get(fiber.HeaderSecFetchSite) {
+	case "":
+	case "same-origin", "none":
+		return nil
+	default:
+		if isCrossOriginTrusted(origin, trustedOrigins, trustedSubOrigins) {
+			return nil
+		}
+		return ErrCrossOriginRequest
+	}
+
+	if origin == "" {
+		return nil
+	}
+	if host := c.Host(); host != "" {
+		if originURL, err := url.Parse(origin); err == nil && originURL.Host == host {
+			return nil
+		}
+	}
+	if isCrossOriginTrusted(origin, trustedOrigins, trustedSubOrigins) {
+		return nil
+	}
+	return ErrCrossOriginRequest
+}
+
+func isCrossOriginTrusted(origin string, trustedOrigins []string, trustedSubOrigins []subdomain) bool {
+	if origin == "" {
+		return false
+	}
+	return slices.Contains(trustedOrigins, origin) || matchSubdomainOrigin(trustedSubOrigins, utilsstrings.ToLower(origin))
 }
 
 // originMatchesHost checks that the origin header matches the host header
