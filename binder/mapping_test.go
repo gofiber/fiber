@@ -8,7 +8,6 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/gofiber/schema"
 	"github.com/stretchr/testify/require"
 )
 
@@ -415,9 +414,7 @@ func Test_decoderBuilder(t *testing.T) {
 		IgnoreUnknownKeys: false,
 		ZeroEmpty:         false,
 	}
-	decAny := decoderBuilder(bindingForm, parserConfig)
-	dec, ok := decAny.(*schema.Decoder)
-	require.True(t, ok)
+	dec := decoderBuilder(bindingForm, parserConfig)
 	var out struct {
 		X customInt `custom:"x"`
 	}
@@ -452,10 +449,166 @@ func Test_decoderPoolMapInit(t *testing.T) {
 
 	for _, tag := range tags {
 		decAny := getDecoderPool(tag).Get()
-		dec, ok := decAny.(*schema.Decoder)
+		dec, ok := decAny.(*pooledDecoder)
 		require.True(t, ok)
-		require.NotNil(t, dec)
+		require.NotNil(t, dec.decoder)
 		getDecoderPool(tag).Put(decAny)
+	}
+}
+
+func Test_newDecoderPool(t *testing.T) {
+	t.Parallel()
+
+	pool := newDecoderPool(bindingQuery, ParserConfig{
+		IgnoreUnknownKeys: true,
+		ZeroEmpty:         true,
+	})
+	decoder, ok := pool.Get().(*pooledDecoder)
+	require.True(t, ok)
+	require.NotNil(t, decoder.decoder)
+}
+
+func Test_releaseDecoder(t *testing.T) {
+	t.Parallel()
+
+	type customInt int
+	converter := func(value string) reflect.Value {
+		parsed, err := strconv.Atoi(value)
+		require.NoError(t, err)
+		return reflect.ValueOf(customInt(parsed))
+	}
+
+	decoder := &pooledDecoder{
+		decoder: decoderBuilder(bindingForm, ParserConfig{
+			ParserType: []ParserType{{
+				CustomType: customInt(0),
+				Converter:  converter,
+			}},
+			IgnoreUnknownKeys: true,
+			ZeroEmpty:         true,
+		}),
+		keysSinceReset: decoderCacheKeyLimit - 1,
+	}
+
+	pool := new(sync.Pool)
+	releaseDecoder(pool, decoder, bindingQuery, 1)
+	require.Zero(t, decoder.keysSinceReset)
+
+	var result struct {
+		Empty string    `query:"empty"`
+		Count customInt `query:"count"`
+	}
+	require.NoError(t, decoder.decoder.Decode(&result, map[string][]string{
+		"count":   {"42"},
+		"empty":   {""},
+		"unknown": {"ignored"},
+	}))
+	require.Equal(t, customInt(42), result.Count)
+	require.Empty(t, result.Empty)
+}
+
+func Test_releaseDecoder_RetainsCacheWithinBudget(t *testing.T) {
+	t.Parallel()
+
+	decoder := &pooledDecoder{
+		decoder:        decoderBuilder(bindingForm, ParserConfig{}),
+		keysSinceReset: 2,
+	}
+
+	releaseDecoder(new(sync.Pool), decoder, bindingForm, 3)
+
+	require.Equal(t, 5, decoder.keysSinceReset)
+}
+
+func Test_decoderInputSize(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		data  map[string][]string
+		files []map[string][]*multipart.FileHeader
+		want  int
+	}{
+		{
+			name: "empty",
+		},
+		{
+			name: "values",
+			data: map[string][]string{"name": {"fiber"}, "age": {"7"}},
+			want: 2,
+		},
+		{
+			name:  "values and files",
+			data:  map[string][]string{"name": {"fiber"}},
+			files: []map[string][]*multipart.FileHeader{{"avatar": nil}, {"resume": nil}},
+			want:  3,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, tt.want, decoderInputSize(tt.data, tt.files))
+		})
+	}
+}
+
+func Test_parseToStruct_ReleasesDecoderAfterError(t *testing.T) {
+	t.Parallel()
+
+	type payload struct {
+		Count int `query:"count"`
+	}
+
+	require.Error(t, parseToStruct(bindingQuery, new(payload), map[string][]string{
+		"count": {"not-an-integer"},
+	}))
+
+	var result payload
+	require.NoError(t, parseToStruct(bindingQuery, &result, map[string][]string{
+		"count": {"42"},
+	}))
+	require.Equal(t, 42, result.Count)
+}
+
+func Test_parseToStruct_InvalidDecoderPoolEntry(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		new  func() any
+		name string
+	}{
+		{
+			name: "wrong type",
+			new:  func() any { return struct{}{} },
+		},
+		{
+			name: "nil pooled decoder",
+			new:  func() any { return (*pooledDecoder)(nil) },
+		},
+		{
+			name: "nil schema decoder",
+			new:  func() any { return &pooledDecoder{} },
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			tag := "invalid-" + tt.name
+			decoderPoolMu.Lock()
+			decoderPoolMap[tag] = &sync.Pool{New: tt.new}
+			decoderPoolMu.Unlock()
+			t.Cleanup(func() {
+				decoderPoolMu.Lock()
+				delete(decoderPoolMap, tag)
+				decoderPoolMu.Unlock()
+			})
+
+			err := parseToStruct(tag, &struct{}{}, nil)
+			require.EqualError(t, err, fmt.Sprintf("binder: invalid decoder pool entry for tag %q", tag))
+		})
 	}
 }
 
@@ -611,5 +764,45 @@ func Benchmark_equalFieldType(b *testing.B) {
 		equalFieldType(&user, reflect.String, "name", "query")
 		equalFieldType(&user, reflect.Int, "age", "query")
 		equalFieldType(&user, reflect.String, "user.name", "query")
+	}
+}
+
+func Benchmark_parseToStruct_DynamicPaths(b *testing.B) {
+	type item struct {
+		Name string `query:"name"`
+	}
+	type payload struct {
+		Items []item `query:"items"`
+	}
+
+	const pathCount = 128
+	paths := make([]map[string][]string, pathCount)
+	for i := range pathCount {
+		path := "items." + strconv.Itoa(i) + ".name"
+		paths[i] = map[string][]string{path: {"fiber"}}
+	}
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; b.Loop(); i++ {
+		var result payload
+		if err := parseToStruct(bindingQuery, &result, paths[i%pathCount]); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+func Benchmark_parseToStruct_DirectPath(b *testing.B) {
+	type payload struct {
+		Name string `query:"name"`
+	}
+	data := map[string][]string{"name": {"fiber"}}
+
+	b.ReportAllocs()
+	for b.Loop() {
+		var result payload
+		if err := parseToStruct(bindingQuery, &result, data); err != nil {
+			b.Fatal(err)
+		}
 	}
 }

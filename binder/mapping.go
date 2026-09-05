@@ -38,6 +38,13 @@ var (
 	tags = []string{bindingHeader, bindingRespHeader, bindingCookie, bindingQuery, bindingForm, bindingURI}
 )
 
+const decoderCacheKeyLimit = 512
+
+type pooledDecoder struct {
+	decoder        *schema.Decoder
+	keysSinceReset int
+}
+
 func getDecoderPool(tag string) *sync.Pool {
 	decoderPoolMu.RLock()
 	pool := decoderPoolMap[tag]
@@ -50,19 +57,23 @@ func getDecoderPool(tag string) *sync.Pool {
 	return pool
 }
 
+func newDecoderPool(aliasTag string, parserConfig ParserConfig) *sync.Pool {
+	return &sync.Pool{New: func() any {
+		return &pooledDecoder{decoder: decoderBuilder(aliasTag, parserConfig)}
+	}}
+}
+
 // SetParserDecoder allow globally change the option of form decoder, update decoderPool
 func SetParserDecoder(parserConfig ParserConfig) {
 	decoderPoolMu.Lock()
 	defer decoderPoolMu.Unlock()
 
 	for _, tag := range tags {
-		decoderPoolMap[tag] = &sync.Pool{New: func() any {
-			return decoderBuilder(tag, parserConfig)
-		}}
+		decoderPoolMap[tag] = newDecoderPool(tag, parserConfig)
 	}
 }
 
-func decoderBuilder(aliasTag string, parserConfig ParserConfig) any {
+func decoderBuilder(aliasTag string, parserConfig ParserConfig) *schema.Decoder {
 	decoder := schema.NewDecoder()
 	decoder.IgnoreUnknownKeys(parserConfig.IgnoreUnknownKeys)
 	// Bake the per-source tag once (pools are keyed per tag); doing it per
@@ -81,12 +92,10 @@ func init() {
 	defer decoderPoolMu.Unlock()
 
 	for _, tag := range tags {
-		decoderPoolMap[tag] = &sync.Pool{New: func() any {
-			return decoderBuilder(tag, ParserConfig{
-				IgnoreUnknownKeys: true,
-				ZeroEmpty:         true,
-			})
-		}}
+		decoderPoolMap[tag] = newDecoderPool(tag, ParserConfig{
+			IgnoreUnknownKeys: true,
+			ZeroEmpty:         true,
+		})
 	}
 }
 
@@ -112,16 +121,37 @@ func parse(aliasTag string, out any, data map[string][]string, files ...map[stri
 func parseToStruct(aliasTag string, out any, data map[string][]string, files ...map[string][]*multipart.FileHeader) error {
 	// Get decoder from pool
 	pool := getDecoderPool(aliasTag)
-	schemaDecoder := pool.Get().(*schema.Decoder) //nolint:errcheck,forcetypeassert // not needed
-	defer pool.Put(schemaDecoder)
+	decoder, ok := pool.Get().(*pooledDecoder)
+	if !ok || decoder == nil || decoder.decoder == nil {
+		return fmt.Errorf("binder: invalid decoder pool entry for tag %q", aliasTag)
+	}
+	defer releaseDecoder(pool, decoder, aliasTag, decoderInputSize(data, files))
 
-	// Alias tag is baked in at build time (see decoderBuilder); setting it here
-	// would reset the decoder's type cache on every request.
-	if err := schemaDecoder.Decode(out, data, files...); err != nil {
+	if err := decoder.decoder.Decode(out, data, files...); err != nil {
 		return fmt.Errorf("%w", err)
 	}
 
 	return nil
+}
+
+func decoderInputSize(data map[string][]string, files []map[string][]*multipart.FileHeader) int {
+	size := len(data)
+	for _, fileData := range files {
+		size += len(fileData)
+	}
+	return size
+}
+
+func releaseDecoder(pool *sync.Pool, decoder *pooledDecoder, aliasTag string, inputSize int) {
+	// Count request keys instead of scanning them on this hot path. Resetting at
+	// the budget bounds request-derived paths retained across pooled uses.
+	if inputSize >= decoderCacheKeyLimit-decoder.keysSinceReset {
+		decoder.decoder.SetAliasTag(aliasTag)
+		decoder.keysSinceReset = 0
+	} else {
+		decoder.keysSinceReset += inputSize
+	}
+	pool.Put(decoder)
 }
 
 // Parse data into the map
