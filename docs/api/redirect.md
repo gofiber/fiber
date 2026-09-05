@@ -190,7 +190,7 @@ Similar to [Laravel](https://laravel.com/docs/11.x/redirects#redirecting-with-fl
 
 :::note
 
-Flash messages travel in the `fiber_flash` cookie, which only a browser following the redirect sends back, and every request is scanned for it. Deployments that serve no browsers can turn the feature off with `fiber.Config{DisableFlashMessages: true}`: `With` and `WithInput` then set no cookie, `Messages` and `OldInput` report nothing, and the scan is skipped.
+Flash messages travel in the `fiber_flash` cookie, so only a client that keeps cookies across the redirect (a browser, typically) receives them, and every request is scanned for the cookie. Deployments whose clients keep no cookies can turn the feature off with `fiber.Config{DisableFlashMessages: true}`: `With` and `WithInput` then set no cookie, `Messages` and `OldInput` report nothing, and the scan is skipped.
 
 :::
 
