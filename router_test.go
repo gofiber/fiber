@@ -1565,9 +1565,14 @@ func registerDummyRoutes(app *App) {
 	}
 }
 
+// acquireDefaultCtxForRouterBenchmark acquires a *DefaultCtx for a benchmark
+// loop body. It deliberately does not call b.Helper(): that walks the stack
+// (runtime.Callers) on every call, and from inside a hot loop it accounted for a
+// quarter of Benchmark_Router_GitHub_API_Serial's samples, burying the router
+// it is meant to measure.
+//
+//nolint:thelper // b.Helper() is the cost being avoided; see above
 func acquireDefaultCtxForRouterBenchmark(b *testing.B, app *App, fctx *fasthttp.RequestCtx) *DefaultCtx {
-	b.Helper()
-
 	ctx := app.AcquireCtx(fctx)
 	defaultCtx, ok := ctx.(*DefaultCtx)
 	if !ok {
