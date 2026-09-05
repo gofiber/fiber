@@ -35,6 +35,7 @@ func Test_Path_parseRoute(t *testing.T) {
 		minSlashes: 5,
 		maxSlashes: 5,
 		maxBounded: true,
+		probe:      newConstProbe("/color:", 3),
 	}, rp)
 
 	rp = parseRoute("/api/v1/:param/abc/*", regexp.MustCompile)
@@ -48,6 +49,7 @@ func Test_Path_parseRoute(t *testing.T) {
 		params:        []string{"param", "*1"},
 		wildCardCount: 1,
 		minSlashes:    4,
+		probe:         newConstProbe("/abc", 3),
 	}, rp)
 
 	rp = parseRoute("/v1/some/resource/name\\:customVerb", regexp.MustCompile)
@@ -211,12 +213,14 @@ func Test_RouteParser_SlashBounds(t *testing.T) {
 	}
 }
 
-// Test_Route_Match_SlashBoundsDifferential generatively proves the slash-count
-// quick-reject in Route.match is transparent: for every generated pattern and
-// path, the filtered Route.match must agree with a raw getMatch on the same
-// input. Unlike the fixture-driven tests this needs no hand-authored
-// expectations, so it also binds pattern shapes nobody thought to add to the
-// fixture — if findParamLen ever lets a new shape swallow '/', this fails.
+// Test_Route_Match_SlashBoundsDifferential generatively proves the two
+// slash-index filters in Route.match — the slash-count quick-reject and the
+// probe compare — are transparent: for every generated pattern and path, the
+// filtered Route.match must agree with a raw getMatch on the same input.
+// Unlike the fixture-driven tests this needs no hand-authored expectations, so
+// it also binds pattern shapes nobody thought to add to the fixture — if
+// findParamLen ever lets a new shape swallow '/', or computeProbe ever admits
+// a segment shape whose constant can move, this fails.
 // go test -race -run Test_Route_Match_SlashBoundsDifferential
 func Test_Route_Match_SlashBoundsDifferential(t *testing.T) {
 	t.Parallel()
@@ -224,6 +228,10 @@ func Test_Route_Match_SlashBoundsDifferential(t *testing.T) {
 	segments := []string{
 		"/api", "/foo/", "/:a", "/:b?", "/*", "/+", "/:a-:b", "/:f.:e?",
 		":tail", "/::c", "/:x:y", "/name\\:verb", "/:p/fixed",
+		// probe shapes: constants after parameters, longer than a word, with
+		// optional slashes, and behind adjacent, optional or greedy parameters
+		"/:a/:b/fixed", "/:p/verylongconstantsegment", "/x/:y/z/", "/:q/a/b/c",
+		"/:a?/fixed", "/:x:y/fixed", "/*/fixed", "/:s<int>/x",
 	}
 	// patterns: every single segment and every ordered pair
 	patterns := make([]string, 0, len(segments)*(len(segments)+1))
@@ -237,6 +245,8 @@ func Test_Route_Match_SlashBoundsDifferential(t *testing.T) {
 	pieces := []string{
 		"", "/a", "/a/b", "/a-b", "/a.b", "/x/y-z", "/enti/ty-x", "/a/",
 		"/:c", "/api", "/api/foo/bar", "/name:verb", "/fixed",
+		"/a/fixed", "/a/b/fixed", "/fixedx", "/verylongconstantsegment",
+		"/verylongconstantsegmentx", "/x/1/z", "/x/1/z/", "/1/a/b/c", "//fixed",
 	}
 	// paths: every ordered pair of pieces (skipping the empty result)
 	paths := make([]string, 0, len(pieces)*len(pieces))
@@ -264,14 +274,14 @@ func Test_Route_Match_SlashBoundsDifferential(t *testing.T) {
 		for _, use := range []bool{false, true} {
 			route.use = use
 			for _, path := range paths {
-				// 0 is the "count unknown" state and must bypass the filter
-				for _, pathSlashes := range []int{strings.Count(path, "/"), 0} {
+				// an empty index is the "unknown" state and must bypass the filters
+				for _, slashes := range []*slashIndex{slashIndexOf(path), {}} {
 					var filteredParams, rawParams [maxParams]string
-					filtered := route.match(path, path, &filteredParams, pathSlashes)
+					filtered := route.match(path, path, &filteredParams, slashes)
 					raw := parser.getMatch(path, path, &rawParams, use)
 					if filtered != raw {
-						t.Fatalf("filter changed outcome: pattern %q, path %q, use %v, pathSlashes %d: filtered=%v raw=%v",
-							pattern, path, use, pathSlashes, filtered, raw)
+						t.Fatalf("filter changed outcome: pattern %q, path %q, use %v, slashes %d: filtered=%v raw=%v",
+							pattern, path, use, slashes.count, filtered, raw)
 					}
 					if raw {
 						require.Equal(t, rawParams[:len(parser.params)], filteredParams[:len(parser.params)],
@@ -303,7 +313,7 @@ func Test_Route_Match_SlashBoundsConsistency(t *testing.T) {
 		for _, c := range testCollection.testCases {
 			route.use = c.partialCheck
 			var ctxParams [maxParams]string
-			match := route.match(c.url, c.url, &ctxParams, strings.Count(c.url, "/"))
+			match := route.match(c.url, c.url, &ctxParams, slashIndexOf(c.url))
 			require.Equal(t, c.match, match, "route: '%s', url: '%s'", testCollection.pattern, c.url)
 			if match && len(c.params) > 0 {
 				require.Equal(t, c.params[0:len(c.params)], ctxParams[0:len(c.params)], "route: '%s', url: '%s'", testCollection.pattern, c.url)
@@ -986,6 +996,263 @@ func Test_RouteParser_ConstParamShape(t *testing.T) {
 	for _, pattern := range generic {
 		parser := parseRoute(pattern, regexp.MustCompile)
 		require.False(t, parser.constParam, "unexpected specialization for %q", pattern)
+	}
+}
+
+// slashIndexOf builds the slash index a request for path carries, already
+// counted so the filters in Route.match are live; offsets are located from
+// path on demand, exactly as in the router.
+func slashIndexOf(path string) *slashIndex {
+	return &slashIndex{count: strings.Count(path, "/")}
+}
+
+// Test_RouteParser_Probe pins computeProbe's gate: which segment shapes yield
+// a probe, which constant it packs and at which slash it is tested.
+// go test -race -run Test_RouteParser_Probe
+func Test_RouteParser_Probe(t *testing.T) {
+	t.Parallel()
+	testCases := []struct {
+		pattern string
+		want    constProbe
+	}{
+		// no parameter, or nothing after it
+		{pattern: "/", want: constProbe{}},
+		{pattern: "/api/v1/const", want: constProbe{}},
+		{pattern: "/api/:id", want: constProbe{}},
+		{pattern: "/api/:id/", want: constProbe{}},
+		{pattern: "/repos/:owner/:repo", want: constProbe{}},
+		// the first constant after a parameter, at the slash the constants
+		// before it add up to
+		{pattern: "/:p/fixed", want: newConstProbe("/fixed", 1)},
+		{pattern: "/repos/:owner/:repo/issues", want: newConstProbe("/issues", 3)},
+		{pattern: "/repos/:owner/:repo/issues/:number", want: newConstProbe("/issues/", 3)},
+		{pattern: "/api/:a/b/:c/dd/:e", want: newConstProbe("/b/", 2)},
+		{pattern: "/api/:a<int>/x", want: newConstProbe("/x", 2)},
+		{pattern: "/v1/some/resource/:name/x", want: newConstProbe("/x", 4)},
+		// longer than a word: the first word is the probe
+		{pattern: "/api/:v/collaborators/:user", want: newConstProbe("/collabo", 2)},
+		// a trailing '/' getMatch may drop is left out of the probe
+		{pattern: "/user/:name/keys/", want: newConstProbe("/keys", 2)},
+		{pattern: "/api/:a/x/:b?/y", want: newConstProbe("/x", 2)},
+		// parameters that do not end at the next '/'
+		{pattern: "/api/*/x", want: constProbe{}},
+		{pattern: "/api/+/x", want: constProbe{}},
+		{pattern: "/api/:a?/x", want: constProbe{}},
+		{pattern: "/api/:a:b/x", want: constProbe{}},
+		{pattern: "/api/:a-:b/x", want: constProbe{}},
+		{pattern: "/files/:name.json/:x", want: constProbe{}},
+		{pattern: "/v1/some/resource/:name\\:customVerb", want: constProbe{}},
+		// the slash the probe would need is past what a slashIndex records
+		{pattern: "/a/b/c/d/e/f/g/h/i/j/k/l/m/n/o/:x/y", want: constProbe{}},
+		{pattern: "/a/b/c/d/e/f/g/h/i/j/k/l/m/n/:x/y", want: newConstProbe("/y", 15)},
+	}
+	for _, tc := range testCases {
+		parser := parseRoute(tc.pattern, regexp.MustCompile)
+		require.Equal(t, tc.want, parser.probe, "route: '%s'", tc.pattern)
+	}
+
+	// RoutePatternMatch's pooled parser never computes a probe, and reset
+	// must not carry one over from parseRoute either.
+	parser := parseRoute("/:p/fixed", regexp.MustCompile)
+	require.NotZero(t, parser.probe.mask)
+	parser.reset()
+	require.Equal(t, constProbe{}, parser.probe)
+}
+
+// Test_ConstProbe_Rejects pins the probe compare itself, including the slash
+// index states that have to stand it down.
+// go test -race -run Test_ConstProbe_Rejects
+func Test_ConstProbe_Rejects(t *testing.T) {
+	t.Parallel()
+	probe := newConstProbe("/issues/", 3)
+
+	require.False(t, probe.rejects("/repos/a/b/issues/1", slashIndexOf("/repos/a/b/issues/1")))
+	require.True(t, probe.rejects("/repos/a/b/pulls/1", slashIndexOf("/repos/a/b/pulls/1")))
+	// the constant is compared in full, so a shorter tail cannot pass
+	require.True(t, probe.rejects("/repos/a/b/issues", slashIndexOf("/repos/a/b/issues")))
+	require.True(t, probe.rejects("/repos/a/b/issue", slashIndexOf("/repos/a/b/issue")))
+	// the slash it needs is not there: getMatch decides
+	require.False(t, probe.rejects("/repos/a/b", slashIndexOf("/repos/a/b")))
+
+	// a probe shorter than a word masks the lanes past it
+	short := newConstProbe("/x", 1)
+	require.False(t, short.rejects("/a/x", slashIndexOf("/a/x")))
+	require.False(t, short.rejects("/a/xyz/q", slashIndexOf("/a/xyz/q")))
+	require.True(t, short.rejects("/a/y", slashIndexOf("/a/y")))
+	require.True(t, short.rejects("/a/", slashIndexOf("/a/")))
+}
+
+// Test_wordAt pins the packed-word loads the probe compare reads: every
+// offset of a few strings, against the obvious byte loop, including the
+// overlapping tail load and the sub-word fallback.
+// go test -race -run Test_wordAt
+func Test_wordAt(t *testing.T) {
+	t.Parallel()
+	pack := func(s string) uint64 {
+		var w uint64
+		for i := 0; i < len(s) && i < 8; i++ {
+			w |= uint64(s[i]) << (8 * i)
+		}
+		return w
+	}
+	for _, s := range []string{"", "/", "/a", "/abcdef", "/abcdefg", "/abcdefgh", "/abcdefghi", "/repos/a/b/issues/1"} {
+		for i := 0; i <= len(s); i++ {
+			require.Equal(t, pack(s[i:]), wordAt(s, i), "s=%q i=%d", s, i)
+		}
+	}
+}
+
+// Test_packConst pins the word and mask packConst derives, which both the
+// prefix filter and the probes are built from.
+// go test -race -run Test_packConst
+func Test_packConst(t *testing.T) {
+	t.Parallel()
+	word, mask := packConst("")
+	require.Zero(t, word)
+	require.Zero(t, mask)
+
+	word, mask = packConst("/ab")
+	require.Equal(t, uint64('/')|uint64('a')<<8|uint64('b')<<16, word)
+	require.Equal(t, uint64(0xFFFFFF), mask)
+
+	word, mask = packConst("/abcdefghij")
+	require.Equal(t, pathHeadWord("/abcdefg"), word)
+	require.Equal(t, ^uint64(0), mask)
+}
+
+// legacyFindParamLen is findParamLen as it stood before the slash-stop
+// shortcut: a multi-byte compare part was located with a substring search, and
+// a non-greedy parameter then rejected when a '/' preceded the hit.
+func legacyFindParamLen(s string, segment *routeSegment) int {
+	if segment.IsLast {
+		return findParamLenForLastSegment(s, segment)
+	}
+
+	if segment.Length != 0 && len(s) >= segment.Length {
+		return segment.Length
+	} else if segment.IsGreedy {
+		searchCount := strings.Count(s, segment.ComparePart)
+		if searchCount > 1 {
+			return findGreedyParamLen(s, searchCount, segment)
+		}
+	}
+
+	if len(segment.ComparePart) == 1 {
+		if constPosition := strings.IndexByte(s, segment.ComparePart[0]); constPosition != -1 {
+			return constPosition
+		}
+	} else if constPosition := strings.Index(s, segment.ComparePart); constPosition != -1 {
+		if !segment.IsGreedy && strings.IndexByte(s[:constPosition], slashDelimiter) != -1 {
+			return 0
+		}
+		return constPosition
+	}
+
+	return len(s)
+}
+
+// legacyGetMatch is getMatch's generic segment walk with legacyFindParamLen in
+// place of findParamLen and without the "/const/:param" specialization.
+//
+//nolint:revive // flag-parameter: mirrors getMatch's signature
+func legacyGetMatch(parser *routeParser, detectionPath, path string, params *[maxParams]string, partialCheck bool) bool {
+	originalDetectionPath := detectionPath
+	var i, paramsIterator, partLen, offset int
+	for _, segment := range parser.segs {
+		partLen = len(detectionPath)
+		if !segment.IsParam {
+			i = segment.Length
+			if segment.HasOptionalSlash && partLen == i-1 && detectionPath == segment.Const[:i-1] {
+				i--
+			} else if uint(i) > uint(len(detectionPath)) || detectionPath[:i] != segment.Const {
+				return false
+			}
+		} else {
+			i = legacyFindParamLen(detectionPath, segment)
+			if !segment.IsOptional && i == 0 {
+				return false
+			}
+			params[paramsIterator] = path[offset : offset+i]
+			if !segment.IsOptional || i != 0 {
+				for _, c := range segment.Constraints {
+					if !c.matchConstraint(params[paramsIterator]) {
+						return false
+					}
+				}
+			}
+			paramsIterator++
+		}
+		if partLen > 0 {
+			detectionPath = detectionPath[i:]
+			offset += i
+		}
+	}
+	if detectionPath != "" {
+		if !partialCheck {
+			return false
+		}
+		if !hasPartialMatchBoundary(originalDetectionPath, len(originalDetectionPath)-len(detectionPath)) {
+			return false
+		}
+	}
+	return true
+}
+
+// Test_Path_FindParamLen_SlashStopDifferential proves the slash-stop shortcut
+// in findParamLen is transparent: for every generated pattern and path, the
+// current getMatch and a copy of the segment walk running the substring search
+// it replaced agree on the outcome and the captured parameters. The shortcut
+// answers 0 where the search answered len(s) for an absent compare part, so
+// the equivalence holds at the match level, which is what is pinned here.
+// go test -race -run Test_Path_FindParamLen_SlashStopDifferential
+func Test_Path_FindParamLen_SlashStopDifferential(t *testing.T) {
+	t.Parallel()
+
+	segments := []string{
+		"/api", "/foo/", "/:a", "/:b?", "/*", "/+", "/:a-:b", "/:f.:e?",
+		"/::c", "/:x:y", "/:p/fixed", "/:p/keys/:k", "/:p/verylongconstantsegment",
+		"/:q/a/", "/:r/.json", "/:s<int>/x", "/:o?/keys", "/*/keys", "/:m/k/:n/k",
+	}
+	patterns := make([]string, 0, len(segments)*(len(segments)+1))
+	for _, s1 := range segments {
+		patterns = append(patterns, s1)
+		for _, s2 := range segments {
+			patterns = append(patterns, s1+s2)
+		}
+	}
+
+	pieces := []string{
+		"", "/a", "/a/b", "/a/fixed", "/a/b/fixed", "/fixed", "/fixed/a",
+		"/a/keys/1", "/a/b/keys/1", "/a/keys", "/a/keysx", "/a/xkeys",
+		"/a/verylongconstantsegment", "/a/verylongconstantsegmentx",
+		"/a-b", "/a.b", "/a/.json", "/a/b/.json", "/1/x", "/1/x/", "/a/",
+		"//a", "/a//fixed", "/x/y/fixed/z", "/k/k/k", "/a/k/b/k",
+	}
+	paths := make([]string, 0, len(pieces)*len(pieces))
+	for _, p1 := range pieces {
+		for _, p2 := range pieces {
+			paths = append(paths, p1+p2)
+		}
+	}
+
+	for _, pattern := range patterns {
+		parser := parseRoute(pattern, regexp.MustCompile)
+		if len(parser.params) == 0 {
+			continue
+		}
+		for _, path := range paths {
+			for _, partialCheck := range []bool{false, true} {
+				var got, want [maxParams]string
+				gotOK := parser.getMatch(path, path, &got, partialCheck)
+				wantOK := legacyGetMatch(&parser, path, path, &want, partialCheck)
+				require.Equal(t, wantOK, gotOK,
+					"outcome diverged: pattern %q, path %q, partialCheck %v", pattern, path, partialCheck)
+				if wantOK {
+					require.Equal(t, want[:len(parser.params)], got[:len(parser.params)],
+						"params diverged: pattern %q, path %q, partialCheck %v", pattern, path, partialCheck)
+				}
+			}
+		}
 	}
 }
 

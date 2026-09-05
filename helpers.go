@@ -201,6 +201,101 @@ func appendLowerASCII(dst, src []byte) []byte {
 	return dst
 }
 
+// maxSlashPos is how many leading '/' offsets a slashIndex locates. A route
+// probe (see constProbe) addresses a slash by index, and a route whose probe
+// would need one past this many is built without a probe instead, so the array
+// stays small enough to live in the context next to the count.
+const maxSlashPos = 16
+
+// slashLocateLen is the length of the path prefix a slashIndex locates slashes
+// in; the offsets are stored as bytes. Slashes past it are counted but cannot
+// be located.
+const slashLocateLen = 256
+
+// slashIndex answers questions about the '/' bytes of a detection path on
+// demand and caches the answers for the request: how many there are, and
+// where the leading ones sit. Route.match uses the count to bound parametric
+// candidates and the offsets to test a route's probe constant, both without
+// walking the route's segments.
+//
+// Each answer is computed on first use from the path it is asked about, so a
+// request that never reaches a parametric candidate never counts, and one
+// whose candidates never reach a probe never locates. Deriving them eagerly
+// alongside the detection path was measured and rejected: a fused SWAR scan
+// cost more per word than the stdlib's vector count it replaced. The zero
+// value knows nothing and answers 0 slashes, which stands the filters down;
+// reset arms it for a new path.
+type slashIndex struct {
+	count    int                // number of '/' in the path; -1 until counted
+	pos      [maxSlashPos]uint8 // offsets of the leading slashes; valid once located
+	recorded uint8              // how many entries of pos are valid
+	located  bool               // pos and recorded are filled
+}
+
+// reset forgets the previous path's answers.
+func (s *slashIndex) reset() {
+	s.count = -1
+	s.located = false
+}
+
+// total returns the number of '/' in path, counting on first use.
+func (s *slashIndex) total(path string) int {
+	if s.count < 0 {
+		s.count = strings.Count(path, string(slashDelimiter))
+	}
+	return s.count
+}
+
+// nth returns the byte offset of the n-th '/' of path, counting from 0, or -1
+// when the index cannot locate it: n is at least maxSlashPos, or the slash
+// lies past slashLocateLen.
+func (s *slashIndex) nth(path string, n int) int {
+	if !s.located {
+		s.locate(path)
+	}
+	if n >= int(s.recorded) {
+		return -1
+	}
+	return int(s.pos[n])
+}
+
+// locate fills pos with the offsets of the leading slashes of path — at most
+// maxSlashPos of them, within its first slashLocateLen bytes — with a SWAR
+// scan: a swar.MatchByteMask per word whose set lanes are stepped through in
+// address order. Inputs of a word or more finish with one overlapping word
+// at n-8, with the lanes the loop already scanned masked out; shorter ones go
+// byte-wise. It runs at most once per request, on the first probe that needs
+// an offset.
+func (s *slashIndex) locate(path string) {
+	n := min(len(path), slashLocateLen)
+	k := 0
+	i := 0
+	for ; i+swar.WordLen <= n && k < maxSlashPos; i += swar.WordLen {
+		for m := swar.MatchByteMask(swar.Load8(path, i), slashDelimiter); m != 0 && k < maxSlashPos; m &= m - 1 {
+			s.pos[k] = uint8(i + swar.FirstLane(m)) //nolint:gosec // G115 - offsets stay below slashLocateLen
+			k++
+		}
+	}
+	switch {
+	case i == n || k == maxSlashPos:
+	case n >= swar.WordLen:
+		from := n - swar.WordLen
+		for m := swar.MatchByteMask(swar.Load8(path, from), slashDelimiter) & (^uint64(0) << (8 * (i - from))); m != 0 && k < maxSlashPos; m &= m - 1 {
+			s.pos[k] = uint8(from + swar.FirstLane(m)) //nolint:gosec // G115 - offsets stay below slashLocateLen
+			k++
+		}
+	default:
+		for ; i < n && k < maxSlashPos; i++ {
+			if path[i] == slashDelimiter {
+				s.pos[k] = uint8(i)
+				k++
+			}
+		}
+	}
+	s.recorded = uint8(k)
+	s.located = true
+}
+
 // defaultString returns the value or a default value if it is set
 func defaultString(value string, defaultValue []string) string {
 	if value == "" && len(defaultValue) > 0 {

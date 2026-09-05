@@ -115,8 +115,9 @@ When a request is processed, Fiber uses its pre‑computed route tree (the treeS
 
 1. Normalization: The URL is normalized (converted to lowercase, trailing slashes trimmed) to create a “detection path.”
 2. Tree Traversal: The route tree, grouped by common prefixes, is traversed based on the HTTP method.
-3. Matching: Constant segments are compared exactly, while parameter segments extract dynamic values.
-4. Constraint Validation: Extracted parameter values are validated against any defined constraints.
+3. Candidate Filtering: Before a route's segments are walked, cheap precomputed checks discard most candidates: the leading bytes of the path are compared against the route's first constant, the number of `/` bytes in the path is checked against the bounds the pattern allows, and for parametric routes the first constant segment that follows a parameter is compared at the `/` it has to start at. The slash count and offsets are derived from the detection path on demand and cached for the request.
+4. Matching: Constant segments are compared exactly, while parameter segments extract dynamic values.
+5. Constraint Validation: Extracted parameter values are validated against any defined constraints.
 
 ```mermaid
 flowchart TD
@@ -124,6 +125,7 @@ flowchart TD
     B["Normalize URL<br/>(lowercase, trim trailing slashes)"]
     C["Detection Path"]
     D["Traverse Route Tree<br/>(treeStack based on method)"]
+    D2["Filter Candidates<br/>(leading bytes, slash count, probe constant)"]
     E["Match Constant Segments"]
     F["Identify Parameter Segments<br/>(e.g., ':userId')"]
     G["Extract Parameter Values"]
@@ -133,7 +135,8 @@ flowchart TD
     A --> B
     B --> C
     C --> D
-    D --> E
+    D --> D2
+    D2 --> E
     E --> F
     F --> G
     G --> H

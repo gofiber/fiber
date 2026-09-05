@@ -49,7 +49,7 @@ type Router interface {
 // Route is a struct that holds all metadata for each registered handler.
 //
 //nolint:govet // fieldalignment: the router's scan dictates this order, see below
-type Route struct {
+type Route struct { // betteralign:ignore - the router's scan dictates this order, see below
 	// ### important: always keep in sync with the copy method "app.copyRoute" and all creations of Route struct ###
 	//
 	// Field order is load-bearing. App.next scans a bucket of routes and
@@ -396,18 +396,7 @@ func computePrefixFilter(r *Route) (word, mask uint64) {
 		}
 	}
 
-	if len(prefix) > swar.WordLen {
-		prefix = prefix[:swar.WordLen]
-	}
-	if prefix == "" {
-		return 0, 0
-	}
-
-	mask = ^uint64(0)
-	if n := len(prefix); n < swar.WordLen {
-		mask = uint64(1)<<(8*n) - 1
-	}
-	return pathHeadWord(prefix), mask
+	return packConst(prefix)
 }
 
 // prefixRejects reports whether the leading bytes of a detection path, packed
@@ -421,7 +410,7 @@ func (r *Route) prefixRejects(head uint64) bool {
 	return (head^r.prefix)&r.prefixMask != 0
 }
 
-func (r *Route) match(detectionPath, path string, params *[maxParams]string, pathSlashes int) bool {
+func (r *Route) match(detectionPath, path string, params *[maxParams]string, slashes *slashIndex) bool {
 	// root detectionPath check
 	if r.root && len(detectionPath) == 1 && detectionPath[0] == '/' {
 		return true
@@ -440,12 +429,19 @@ func (r *Route) match(detectionPath, path string, params *[maxParams]string, pat
 	// Does this route have parameters?
 	if len(r.Params) > 0 {
 		// Quick-reject on the precomputed slash-count bounds before walking segments.
-		// pathSlashes 0 means the count is unknown and the filter must stay out of
-		// the way; prefix (use) routes may extend past the pattern, so only the
-		// lower bound applies to them.
+		// A count of 0 means the slashes are unknown and both filters must stay
+		// out of the way; prefix (use) routes may extend past the pattern, so
+		// only the lower bound applies to them.
 		p := &r.routeParser
-		if pathSlashes > 0 && (pathSlashes < int(p.minSlashes) || (!r.use && p.maxBounded && pathSlashes > int(p.maxSlashes))) {
-			return false
+		if n := slashes.total(detectionPath); n > 0 {
+			if n < int(p.minSlashes) || (!r.use && p.maxBounded && n > int(p.maxSlashes)) {
+				return false
+			}
+			// Then one masked compare of the route's probe constant at the
+			// slash it has to start at; see constProbe.
+			if p.probe.mask != 0 && p.probe.rejects(detectionPath, slashes) {
+				return false
+			}
 		}
 		// Match params using precomputed routeParser
 		return p.getMatch(detectionPath, path, params, r.use)
@@ -484,7 +480,7 @@ func (app *App) next(c *DefaultCtx) (bool, error) {
 	head := pathHeadWord(detectionPath)
 	indexRoute := max(c.indexRoute+1, 0)
 	// Hoist loop invariants: route.match takes &c.values, so these would reload each iteration.
-	pathSlashes := c.pathSlashCount(app)
+	slashes := &c.slashes
 	firstMatchIndex := c.firstMatchIndex
 	skipNonUse := c.shouldSkipNonUseRoutes
 	skipHasParamUse := app.skip.hasParamUse
@@ -523,7 +519,7 @@ func (app *App) next(c *DefaultCtx) (bool, error) {
 		}
 
 		// Check if it matches the request path
-		if !route.match(detectionPath, path, &c.values, pathSlashes) {
+		if !route.match(detectionPath, path, &c.values, slashes) {
 			continue
 		}
 
@@ -589,7 +585,7 @@ func (app *App) next(c *DefaultCtx) (bool, error) {
 			}
 			// Check if it matches the request path
 			// No match, next route
-			if route.match(detectionPath, path, &c.values, pathSlashes) {
+			if route.match(detectionPath, path, &c.values, slashes) {
 				// We matched
 				exists = true
 				// Add method to Allow header
@@ -617,7 +613,7 @@ func (app *App) nextCustom(c CustomCtx) (bool, error) {
 	head := pathHeadWord(detectionPath)
 	path := c.Path()
 	values := c.getValues()
-	pathSlashes := c.pathSlashCount(app)
+	slashes := c.pathSlashIndex()
 	firstMatchIndex := c.getFirstMatchIndex()
 	skipNonUse := c.getSkipNonUseRoutes()
 	skipHasParamUse := app.skip.hasParamUse
@@ -656,7 +652,7 @@ func (app *App) nextCustom(c CustomCtx) (bool, error) {
 		}
 
 		// Check if it matches the request path
-		if !route.match(detectionPath, path, values, pathSlashes) {
+		if !route.match(detectionPath, path, values, slashes) {
 			continue
 		}
 		if skipNonUse && !route.use {
@@ -720,7 +716,7 @@ func (app *App) nextCustom(c CustomCtx) (bool, error) {
 			}
 			// Check if it matches the request path
 			// No match, next route
-			if route.match(detectionPath, path, values, pathSlashes) {
+			if route.match(detectionPath, path, values, slashes) {
 				// We matched
 				exists = true
 				// Add method to Allow header
@@ -761,7 +757,7 @@ func (app *App) defaultRequestHandler(rctx *fasthttp.RequestCtx) {
 	// (without middleware next() already answers 404/405 cheaply). CORS preflight is
 	// exempt so cors middleware can answer paths that lack an explicit OPTIONS route.
 	if app.skip.enabled && !ctx.IsPreflight() {
-		res := app.resolveSkip(ctx.methodInt, ctx.treePathHash, ctx.pathSlashCount(app),
+		res := app.resolveSkip(ctx.methodInt, ctx.treePathHash, &ctx.slashes,
 			utils.UnsafeString(ctx.detectionPath), utils.UnsafeString(ctx.path), &ctx.values)
 		switch res.decision {
 		case skipNotFound:
@@ -803,7 +799,7 @@ func (app *App) customRequestHandler(rctx *fasthttp.RequestCtx) {
 	// (without middleware next() already answers 404/405 cheaply). CORS preflight is
 	// exempt so cors middleware can answer paths that lack an explicit OPTIONS route.
 	if app.skip.enabled && !ctx.IsPreflight() {
-		res := app.resolveSkip(ctx.getMethodInt(), ctx.getTreePathHash(), ctx.pathSlashCount(app),
+		res := app.resolveSkip(ctx.getMethodInt(), ctx.getTreePathHash(), ctx.pathSlashIndex(),
 			ctx.getDetectionPath(), ctx.Path(), ctx.getValues())
 		switch res.decision {
 		case skipNotFound:
@@ -1244,7 +1240,6 @@ func (app *App) buildTree() *App {
 	}
 
 	// 1) First loop: determine all possible 3-char prefixes ("treePaths") for each method
-	hasParamRoutes := false
 	for method := range app.config.RequestMethods {
 		routes := app.stack[method]
 		treePaths := make([]int, len(routes))
@@ -1255,12 +1250,6 @@ func (app *App) buildTree() *App {
 		for i, route := range routes {
 			// The leading-byte filter is deliberately not rebuilt here; see
 			// buildPrefixFilter. These routes are live for in-flight requests.
-
-			// Star routes resolve before the slash-count quick-reject in
-			// Route.match, so only non-star parametric routes consult it.
-			if len(route.Params) > 0 && !route.star {
-				hasParamRoutes = true
-			}
 
 			if len(route.routeParser.segs) > 0 && len(route.routeParser.segs[0].Const) >= maxDetectionPaths &&
 				!dropsOptionalSlashBelowTreeHash(route.routeParser.segs[0]) {
@@ -1317,7 +1306,6 @@ func (app *App) buildTree() *App {
 		app.treeStack[method] = tsMap
 		app.treeIndex[method] = buildRouteTree(tsMap)
 	}
-	app.hasParamRoutes = hasParamRoutes
 
 	app.buildSkipIndexes()
 
