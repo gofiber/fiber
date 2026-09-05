@@ -178,16 +178,16 @@ func (idx *skipRouteIndex) buildLookahead(app *App) {
 
 // resolveSkip decides 404/405/run-chain. values is scratch: param/wildcard
 // middleware may overwrite it before the endpoint runs, so next() re-matches then.
-func (app *App) resolveSkip(methodInt, treeHash int, slashes *slashIndex, detectionPath, path string, values *[maxParams]string) skipResult {
+func (app *App) resolveSkip(methodInt, treeHash, pathSlashes int, detectionPath, path string, values *[maxParams]string) skipResult {
 	skip := &app.skip
 	methodBit := uint64(1) << methodInt
 
 	// Hashing detectionPath for the static index costs a pass over the whole
 	// path, and static endpoints match by exact compare, so a differing '/'
-	// count rules them all out before the map is touched. A count of 0 means
-	// the path holds no slash, which stands the filter down.
+	// count rules them all out before the map is touched. pathSlashes 0 means
+	// the count was never computed, which stands the filter down.
 	var staticMask uint64
-	if n := slashes.total(detectionPath); n == 0 || n >= 64 || skip.staticSlashes&(uint64(1)<<n) != 0 {
+	if pathSlashes == 0 || pathSlashes >= 64 || skip.staticSlashes&(uint64(1)<<pathSlashes) != 0 {
 		staticMask = skip.staticMethods[detectionPath]
 	}
 
@@ -210,7 +210,7 @@ func (app *App) resolveSkip(methodInt, treeHash int, slashes *slashIndex, detect
 		if cand.route.prefixRejects(head) {
 			continue
 		}
-		if cand.route.match(detectionPath, path, values, slashes) {
+		if cand.route.match(detectionPath, path, values, pathSlashes) {
 			return skipResult{decision: skipRunChain, matchIndex: cand.idx}
 		}
 	}
@@ -234,7 +234,7 @@ func (app *App) resolveSkip(methodInt, treeHash int, slashes *slashIndex, detect
 			if cand.route.prefixRejects(head) {
 				continue
 			}
-			if cand.route.match(detectionPath, path, values, slashes) {
+			if cand.route.match(detectionPath, path, values, pathSlashes) {
 				allow |= bit
 				break
 			}

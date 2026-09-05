@@ -5,6 +5,7 @@
 package fiber
 
 import (
+	"bytes"
 	"context"
 	"crypto/tls"
 	"fmt"
@@ -71,7 +72,7 @@ type DefaultCtx struct {
 	path                   []byte               // HTTP path with the modifications by the configuration
 	detectionPath          []byte               // Route detection path
 	treePathHash           int                  // Hash of the path for the search in the tree
-	slashes                slashIndex           // '/' count and offsets of the detection path, on demand, used to quick-reject routes
+	pathSlashes            int                  // Number of '/' in the detection path, used to quick-reject routes
 	indexRoute             int                  // Index of the current route
 	indexHandler           int                  // Index of the current handler
 	firstMatchIndex        int                  // Pre-resolved endpoint index from the SkipUnmatchedRoutes lookahead; -1 when unused
@@ -425,7 +426,7 @@ func (c *DefaultCtx) Endpoint() *Route {
 	detectionPath := utils.UnsafeString(c.detectionPath)
 	path := utils.UnsafeString(c.path)
 	head := pathHeadWord(detectionPath)
-	slashes := &c.slashes
+	pathSlashes := c.pathSlashCount(c.app)
 
 	// SkipUnmatchedRoutes already resolved the endpoint, but the index only answers
 	// while routing has not walked past it, and a route registered mid-request can
@@ -450,7 +451,7 @@ func (c *DefaultCtx) Endpoint() *Route {
 		if route.prefixRejects(head) {
 			continue
 		}
-		if route.match(detectionPath, path, &scratch, slashes) {
+		if route.match(detectionPath, path, &scratch, pathSlashes) {
 			return route
 		}
 	}
@@ -743,9 +744,9 @@ func (c *DefaultCtx) configDependentPaths() {
 			int(c.detectionPath[2])
 	}
 
-	// The slash index answers from the final detection path on demand; forget
-	// what it knew about the previous one.
-	c.slashes.reset()
+	// Invalidate the cached slash count of the detection path; pathSlashCount
+	// recomputes it lazily when route matching first needs it.
+	c.pathSlashes = 0
 }
 
 // Reset is a method to reset context fields by given request when to use server handlers.
@@ -936,11 +937,18 @@ func (c *DefaultCtx) getTreePathHash() int {
 	return c.treePathHash
 }
 
-// pathSlashIndex returns the request's slash index, which answers the '/'
-// count and offsets of the detection path on demand; matching uses them to
-// reject route candidates without walking their segments.
-func (c *DefaultCtx) pathSlashIndex() *slashIndex {
-	return &c.slashes
+// pathSlashCount lazily counts the '/' bytes of the detection path and caches
+// the result for the request; matching uses it to reject route candidates
+// without walking their segments. app is the serving App, which can differ
+// from c.app when an App value was copied. When it registers no route that
+// consults the count, counting is skipped and 0 is returned — a real detection
+// path always contains a '/', so 0 doubles as the "unknown" state that makes
+// Route.match skip the quick-reject entirely.
+func (c *DefaultCtx) pathSlashCount(app *App) int {
+	if c.pathSlashes == 0 && app.hasParamRoutes {
+		c.pathSlashes = bytes.Count(c.detectionPath, slashDelimiterBytes)
+	}
+	return c.pathSlashes
 }
 
 func (c *DefaultCtx) getDetectionPath() string {

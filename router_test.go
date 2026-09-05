@@ -295,11 +295,11 @@ func Test_Route_Match_SlashInParams(t *testing.T) {
 	}
 }
 
-// Test_App_SlashIndex verifies the slash index every request carries: it is
-// derived along with the detection path whatever routes are registered, so a
-// parametric route added after startup matches as soon as the tree is rebuilt,
-// and it follows the trailing-slash trim of the detection path.
-func Test_App_SlashIndex(t *testing.T) {
+// Test_App_HasParamRoutes verifies the slash-count gate: apps whose routes
+// never consult the per-request slash count (static and star only) skip the
+// counting, and rebuilding the tree after adding a parametric route re-enables
+// it so param routes still match.
+func Test_App_HasParamRoutes(t *testing.T) {
 	t.Parallel()
 
 	app := New()
@@ -308,7 +308,9 @@ func Test_App_SlashIndex(t *testing.T) {
 		return c.SendString(c.Params("*"))
 	})
 	app.startupProcess()
+	require.False(t, app.hasParamRoutes)
 
+	// static and star routing work without the per-request count
 	verifyRequest(t, app, "/static/route", StatusOK)
 	resp := verifyRequest(t, app, "/anything/else", StatusOK)
 	body, err := io.ReadAll(resp.Body)
@@ -316,28 +318,18 @@ func Test_App_SlashIndex(t *testing.T) {
 	require.Equal(t, "anything/else", app.toString(body))
 
 	// the GET star route would shadow a GET param route, so use POST
-	var seen slashIndex
-	app.Post("/users/:id/", func(c Ctx) error {
-		defaultCtx, ok := c.(*DefaultCtx)
-		require.True(t, ok)
-		seen = defaultCtx.slashes
+	app.Post("/users/:id", func(c Ctx) error {
 		return c.SendString(c.Params("id"))
 	})
 	app.RebuildTree()
+	require.True(t, app.hasParamRoutes)
 
-	resp, err = app.Test(httptest.NewRequest(MethodPost, "/Users/42/", http.NoBody))
+	resp, err = app.Test(httptest.NewRequest(MethodPost, "/users/42", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, StatusOK, resp.StatusCode)
 	body, err = io.ReadAll(resp.Body)
 	require.NoError(t, err)
 	require.Equal(t, "42", app.toString(body))
-
-	// "/Users/42/" is detected as "/users/42", which the handler's own match
-	// already counted: two slashes, at 0 and 6
-	require.Equal(t, 2, seen.total("/users/42"))
-	require.Equal(t, 0, seen.nth("/users/42", 0))
-	require.Equal(t, 6, seen.nth("/users/42", 1))
-	require.Equal(t, -1, seen.nth("/users/42", 2))
 }
 
 func Test_Route_Match_Star(t *testing.T) {
@@ -373,17 +365,17 @@ func Test_Route_Match_Star(t *testing.T) {
 		routeParser: routeParser{},
 	}
 	params := [maxParams]string{}
-	match := route.match("", "", &params, &slashIndex{})
+	match := route.match("", "", &params, 0)
 	require.True(t, match)
 	require.Equal(t, [maxParams]string{}, params)
 
 	// with parameter
-	match = route.match("/favicon.ico", "/favicon.ico", &params, slashIndexOf("/favicon.ico"))
+	match = route.match("/favicon.ico", "/favicon.ico", &params, 1)
 	require.True(t, match)
 	require.Equal(t, [maxParams]string{"favicon.ico"}, params)
 
 	// without parameter again
-	match = route.match("", "", &params, &slashIndex{})
+	match = route.match("", "", &params, 0)
 	require.True(t, match)
 	require.Equal(t, [maxParams]string{}, params)
 }
@@ -1861,9 +1853,8 @@ func Benchmark_Route_Match(b *testing.B) {
 	route.Handlers = append(route.Handlers, func(_ Ctx) error {
 		return nil
 	})
-	slashes := slashIndexOf("/user/keys/1337")
 	for b.Loop() {
-		match = route.match("/user/keys/1337", "/user/keys/1337", &params, slashes)
+		match = route.match("/user/keys/1337", "/user/keys/1337", &params, 3)
 	}
 
 	require.True(b, match)
@@ -1890,10 +1881,9 @@ func Benchmark_Route_Match_Star(b *testing.B) {
 	route.Handlers = append(route.Handlers, func(_ Ctx) error {
 		return nil
 	})
-	slashes := slashIndexOf("/user/keys/bla")
 
 	for b.Loop() {
-		match = route.match("/user/keys/bla", "/user/keys/bla", &params, slashes)
+		match = route.match("/user/keys/bla", "/user/keys/bla", &params, 3)
 	}
 
 	require.True(b, match)
@@ -1920,10 +1910,9 @@ func Benchmark_Route_Match_Root(b *testing.B) {
 	route.Handlers = append(route.Handlers, func(_ Ctx) error {
 		return nil
 	})
-	slashes := slashIndexOf("/")
 
 	for b.Loop() {
-		match = route.match("/", "/", &params, slashes)
+		match = route.match("/", "/", &params, 1)
 	}
 
 	require.True(b, match)
@@ -2375,18 +2364,17 @@ func Benchmark_Route_Match_Parallel(b *testing.B) {
 	route.Handlers = append(route.Handlers, func(_ Ctx) error {
 		return nil
 	})
-	slashes := slashIndexOf("/user/keys/1337")
 	b.RunParallel(func(pb *testing.PB) {
 		// Each worker gets its own local variables to avoid data races
 		var params [maxParams]string
 		for pb.Next() {
-			_ = route.match("/user/keys/1337", "/user/keys/1337", &params, slashes)
+			_ = route.match("/user/keys/1337", "/user/keys/1337", &params, 3)
 		}
 	})
 
 	// Single-threaded verification to preserve correctness checks
 	var verifyParams [maxParams]string
-	match := route.match("/user/keys/1337", "/user/keys/1337", &verifyParams, slashes)
+	match := route.match("/user/keys/1337", "/user/keys/1337", &verifyParams, 3)
 	require.True(b, match)
 	require.Equal(b, []string{"1337"}, verifyParams[0:len(parsed.params)])
 }
@@ -2399,10 +2387,9 @@ func Benchmark_Route_Match_Star_Parallel(b *testing.B) {
 	route.Handlers = append(route.Handlers, func(_ Ctx) error {
 		return nil
 	})
-	slashes := slashIndexOf("/user/keys/bla")
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
-			match = route.match("/user/keys/bla", "/user/keys/bla", &params, slashes)
+			match = route.match("/user/keys/bla", "/user/keys/bla", &params, 3)
 		}
 	})
 	require.True(b, match)
@@ -2417,10 +2404,9 @@ func Benchmark_Route_Match_Root_Parallel(b *testing.B) {
 	route.Handlers = append(route.Handlers, func(_ Ctx) error {
 		return nil
 	})
-	slashes := slashIndexOf("/")
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
-			match = route.match("/", "/", &params, slashes)
+			match = route.match("/", "/", &params, 1)
 		}
 	})
 	require.True(b, match)
@@ -3755,7 +3741,7 @@ func Test_Route_PrefixFilter_Differential(t *testing.T) {
 		for _, route := range registerFilterRoutes(t, patterns, use) {
 			for _, path := range paths {
 				var params [maxParams]string
-				if !route.match(path, path, &params, slashIndexOf(path)) {
+				if !route.match(path, path, &params, strings.Count(path, "/")) {
 					continue
 				}
 				if routeFilterRejects(route, path) {
@@ -3842,7 +3828,7 @@ func Test_Route_PrefixFilter_Fixture(t *testing.T) {
 				// the fixture records what getMatch returns, while match wraps
 				// it in the root/star/exact branches the filter stays behind.
 				var params [maxParams]string
-				if !route.match(c.url, c.url, &params, slashIndexOf(c.url)) {
+				if !route.match(c.url, c.url, &params, strings.Count(c.url, "/")) {
 					continue
 				}
 				require.False(t, routeFilterRejects(route, c.url),
@@ -3981,7 +3967,7 @@ func referenceEndpoint(app *App, method int, detectionPath, path string) (*Route
 		ref.routeParser.constParam = false
 
 		var got [maxParams]string
-		if ref.match(detectionPath, path, &got, &slashIndex{}) {
+		if ref.match(detectionPath, path, &got, 0) {
 			return route, got
 		}
 	}

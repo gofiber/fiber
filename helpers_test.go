@@ -12,7 +12,6 @@ import (
 	"net"
 	"os"
 	"strconv"
-	"strings"
 	"testing"
 	"time"
 	"unsafe"
@@ -1701,7 +1700,7 @@ func Test_appendLowerASCII(t *testing.T) {
 		{"multi word", "/API/V1/UsersAndGroups", "/api/v1/usersandgroups"},
 		{"word plus tail", "/ABCDEFGH/XYZ", "/abcdefgh/xyz"},
 		{"non-letters unchanged", "/a1-B2_c3{~}", "/a1-b2_c3{~}"},
-		{"non-ascii passthrough", "/CAF\xC3\xA9\xC3\xA9/\xC3\x89", "/caf\xC3\xA9\xC3\xA9/\xC3\x89"},
+		{"non-ascii passthrough", "/CAFé\xC3\xA9/É", "/caf\xC3\xA9\xC3\xA9/\xC3\x89"},
 	}
 
 	for _, tc := range cases {
@@ -1717,96 +1716,5 @@ func Test_appendLowerASCII(t *testing.T) {
 				require.Equal(t, 128, cap(got), "reused buffer must not be reallocated")
 			}
 		})
-	}
-}
-
-// requireSlashIndex checks a fresh index against the slashes of path counted
-// and located by a byte loop: the count is exact, and the n-th slash resolves
-// to its offset when it lies within slashLocateLen and among the first
-// maxSlashPos, and to -1 otherwise.
-func requireSlashIndex(t *testing.T, path string) {
-	t.Helper()
-	var positions []int
-	for i := 0; i < len(path); i++ {
-		if path[i] == '/' {
-			positions = append(positions, i)
-		}
-	}
-	var idx slashIndex
-	idx.reset()
-	require.Equal(t, len(positions), idx.total(path), "count for %q", path)
-	for n := range maxSlashPos + 2 {
-		want := -1
-		if n < len(positions) && n < maxSlashPos && positions[n] < slashLocateLen {
-			want = positions[n]
-		}
-		require.Equal(t, want, idx.nth(path, n), "slash %d of %q", n, path)
-	}
-}
-
-// Test_slashIndex pins the index's bookkeeping: the zero value, reset, the
-// on-demand answers, the locating cap and the offset window.
-func Test_slashIndex(t *testing.T) {
-	t.Parallel()
-
-	// the zero value knows nothing and stands the filters down
-	var idx slashIndex
-	require.Equal(t, 0, idx.total("/a/b/c"))
-
-	// reset arms it: the count and the offsets come from the path asked about
-	idx.reset()
-	require.Equal(t, 3, idx.total("/a/b/c"))
-	require.Equal(t, 0, idx.nth("/a/b/c", 0))
-	require.Equal(t, 4, idx.nth("/a/b/c", 2))
-	require.Equal(t, -1, idx.nth("/a/b/c", 3))
-	// answers are cached for the request, not recomputed per call
-	require.Equal(t, 3, idx.total("/x"))
-	require.Equal(t, 4, idx.nth("/x", 2))
-	idx.reset()
-	require.Equal(t, 1, idx.total("/x"))
-	require.Equal(t, -1, idx.nth("/x", 1))
-
-	for _, path := range []string{
-		"", "/", "/a", "//", "/a/b//", "/ABCDEFG", "ABCDEFG/HIJKLMN/O", "ABCDEFGH/", "/abcdefgh/xyz",
-		// more slashes than the array locates
-		strings.Repeat("/ab", maxSlashPos+3),
-		// slashes past the locating window are counted but cannot be located
-		strings.Repeat("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789/", 5),
-		strings.Repeat("a", slashLocateLen-1) + "/x/y",
-		strings.Repeat("a", slashLocateLen) + "/x/y",
-	} {
-		requireSlashIndex(t, path)
-	}
-}
-
-// Test_slashIndex_LocateSweep runs locate over every length up to a few dozen
-// words with slashes placed on varying lanes, so that no lane of the word
-// loop, the overlapping tail or the byte-wise remainder goes untested.
-func Test_slashIndex_LocateSweep(t *testing.T) {
-	t.Parallel()
-	for n := range 70 {
-		for shift := range 8 {
-			in := make([]byte, n)
-			for i := range in {
-				if (i+shift)%5 == 0 {
-					in[i] = '/'
-				} else {
-					in[i] = byte('a' + i%26)
-				}
-			}
-			requireSlashIndex(t, string(in))
-		}
-	}
-	// sparse slashes across a long path, straddling the locating window
-	for n := range 300 {
-		in := make([]byte, n)
-		for i := range in {
-			if i%37 == 3 {
-				in[i] = '/'
-			} else {
-				in[i] = 'q'
-			}
-		}
-		requireSlashIndex(t, string(in))
 	}
 }

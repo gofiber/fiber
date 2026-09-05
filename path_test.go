@@ -35,7 +35,7 @@ func Test_Path_parseRoute(t *testing.T) {
 		minSlashes: 5,
 		maxSlashes: 5,
 		maxBounded: true,
-		probe:      newConstProbe("/color:", 3),
+		probe:      newConstProbe("/color:", 15, 0),
 	}, rp)
 
 	rp = parseRoute("/api/v1/:param/abc/*", regexp.MustCompile)
@@ -49,7 +49,7 @@ func Test_Path_parseRoute(t *testing.T) {
 		params:        []string{"param", "*1"},
 		wildCardCount: 1,
 		minSlashes:    4,
-		probe:         newConstProbe("/abc", 3),
+		probe:         newConstProbe("/abc", 8, 0),
 	}, rp)
 
 	rp = parseRoute("/v1/some/resource/name\\:customVerb", regexp.MustCompile)
@@ -274,14 +274,14 @@ func Test_Route_Match_SlashBoundsDifferential(t *testing.T) {
 		for _, use := range []bool{false, true} {
 			route.use = use
 			for _, path := range paths {
-				// an empty index is the "unknown" state and must bypass the filters
-				for _, slashes := range []*slashIndex{slashIndexOf(path), {}} {
+				// 0 is the "count unknown" state and must bypass the filters
+				for _, pathSlashes := range []int{strings.Count(path, "/"), 0} {
 					var filteredParams, rawParams [maxParams]string
-					filtered := route.match(path, path, &filteredParams, slashes)
+					filtered := route.match(path, path, &filteredParams, pathSlashes)
 					raw := parser.getMatch(path, path, &rawParams, use)
 					if filtered != raw {
-						t.Fatalf("filter changed outcome: pattern %q, path %q, use %v, slashes %d: filtered=%v raw=%v",
-							pattern, path, use, slashes.count, filtered, raw)
+						t.Fatalf("filter changed outcome: pattern %q, path %q, use %v, pathSlashes %d: filtered=%v raw=%v",
+							pattern, path, use, pathSlashes, filtered, raw)
 					}
 					if raw {
 						require.Equal(t, rawParams[:len(parser.params)], filteredParams[:len(parser.params)],
@@ -313,7 +313,7 @@ func Test_Route_Match_SlashBoundsConsistency(t *testing.T) {
 		for _, c := range testCollection.testCases {
 			route.use = c.partialCheck
 			var ctxParams [maxParams]string
-			match := route.match(c.url, c.url, &ctxParams, slashIndexOf(c.url))
+			match := route.match(c.url, c.url, &ctxParams, strings.Count(c.url, "/"))
 			require.Equal(t, c.match, match, "route: '%s', url: '%s'", testCollection.pattern, c.url)
 			if match && len(c.params) > 0 {
 				require.Equal(t, c.params[0:len(c.params)], ctxParams[0:len(c.params)], "route: '%s', url: '%s'", testCollection.pattern, c.url)
@@ -999,15 +999,9 @@ func Test_RouteParser_ConstParamShape(t *testing.T) {
 	}
 }
 
-// slashIndexOf builds the slash index a request for path carries, already
-// counted so the filters in Route.match are live; offsets are located from
-// path on demand, exactly as in the router.
-func slashIndexOf(path string) *slashIndex {
-	return &slashIndex{count: strings.Count(path, "/")}
-}
-
 // Test_RouteParser_Probe pins computeProbe's gate: which segment shapes yield
-// a probe, which constant it packs and at which slash it is tested.
+// a probe, which constant it packs, where the search for its slash starts and
+// how many slashes it passes over.
 // go test -race -run Test_RouteParser_Probe
 func Test_RouteParser_Probe(t *testing.T) {
 	t.Parallel()
@@ -1021,19 +1015,20 @@ func Test_RouteParser_Probe(t *testing.T) {
 		{pattern: "/api/:id", want: constProbe{}},
 		{pattern: "/api/:id/", want: constProbe{}},
 		{pattern: "/repos/:owner/:repo", want: constProbe{}},
-		// the first constant after a parameter, at the slash the constants
-		// before it add up to
-		{pattern: "/:p/fixed", want: newConstProbe("/fixed", 1)},
-		{pattern: "/repos/:owner/:repo/issues", want: newConstProbe("/issues", 3)},
-		{pattern: "/repos/:owner/:repo/issues/:number", want: newConstProbe("/issues/", 3)},
-		{pattern: "/api/:a/b/:c/dd/:e", want: newConstProbe("/b/", 2)},
-		{pattern: "/api/:a<int>/x", want: newConstProbe("/x", 2)},
-		{pattern: "/v1/some/resource/:name/x", want: newConstProbe("/x", 4)},
+		// the first constant after a parameter, reached from the end of the
+		// leading constant by passing over one slash per lone '/' in between
+		{pattern: "/:p/fixed", want: newConstProbe("/fixed", 1, 0)},
+		{pattern: "/repos/:owner/:repo/issues", want: newConstProbe("/issues", 7, 1)},
+		{pattern: "/repos/:owner/:repo/issues/:number", want: newConstProbe("/issues/", 7, 1)},
+		{pattern: "/:a/:b/:c/fixed", want: newConstProbe("/fixed", 1, 2)},
+		{pattern: "/api/:a/b/:c/dd/:e", want: newConstProbe("/b/", 5, 0)},
+		{pattern: "/api/:a<int>/x", want: newConstProbe("/x", 5, 0)},
+		{pattern: "/v1/some/resource/:name/x", want: newConstProbe("/x", 18, 0)},
 		// longer than a word: the first word is the probe
-		{pattern: "/api/:v/collaborators/:user", want: newConstProbe("/collabo", 2)},
+		{pattern: "/api/:v/collaborators/:user", want: newConstProbe("/collabo", 5, 0)},
 		// a trailing '/' getMatch may drop is left out of the probe
-		{pattern: "/user/:name/keys/", want: newConstProbe("/keys", 2)},
-		{pattern: "/api/:a/x/:b?/y", want: newConstProbe("/x", 2)},
+		{pattern: "/user/:name/keys/", want: newConstProbe("/keys", 6, 0)},
+		{pattern: "/api/:a/x/:b?/y", want: newConstProbe("/x", 5, 0)},
 		// parameters that do not end at the next '/'
 		{pattern: "/api/*/x", want: constProbe{}},
 		{pattern: "/api/+/x", want: constProbe{}},
@@ -1042,9 +1037,9 @@ func Test_RouteParser_Probe(t *testing.T) {
 		{pattern: "/api/:a-:b/x", want: constProbe{}},
 		{pattern: "/files/:name.json/:x", want: constProbe{}},
 		{pattern: "/v1/some/resource/:name\\:customVerb", want: constProbe{}},
-		// the slash the probe would need is past what a slashIndex records
-		{pattern: "/a/b/c/d/e/f/g/h/i/j/k/l/m/n/o/:x/y", want: constProbe{}},
-		{pattern: "/a/b/c/d/e/f/g/h/i/j/k/l/m/n/:x/y", want: newConstProbe("/y", 15)},
+		// a leading constant whose trailing '/' may be dropped moves the
+		// first parameter, so nothing after it can be located
+		{pattern: "/api/:a?/:b/x", want: constProbe{}},
 	}
 	for _, tc := range testCases {
 		parser := parseRoute(tc.pattern, regexp.MustCompile)
@@ -1059,27 +1054,62 @@ func Test_RouteParser_Probe(t *testing.T) {
 	require.Equal(t, constProbe{}, parser.probe)
 }
 
-// Test_ConstProbe_Rejects pins the probe compare itself, including the slash
-// index states that have to stand it down.
+// Test_ConstProbe_Rejects pins the probe compare itself, including the path
+// shapes that cannot hold the constant at all.
 // go test -race -run Test_ConstProbe_Rejects
 func Test_ConstProbe_Rejects(t *testing.T) {
 	t.Parallel()
-	probe := newConstProbe("/issues/", 3)
+	probe := newConstProbe("/issues/", 7, 1)
 
-	require.False(t, probe.rejects("/repos/a/b/issues/1", slashIndexOf("/repos/a/b/issues/1")))
-	require.True(t, probe.rejects("/repos/a/b/pulls/1", slashIndexOf("/repos/a/b/pulls/1")))
+	require.False(t, probe.rejects("/repos/a/b/issues/1"))
+	require.False(t, probe.rejects("/repos/a/b/issues/"))
+	require.True(t, probe.rejects("/repos/a/b/pulls/1"))
 	// the constant is compared in full, so a shorter tail cannot pass
-	require.True(t, probe.rejects("/repos/a/b/issues", slashIndexOf("/repos/a/b/issues")))
-	require.True(t, probe.rejects("/repos/a/b/issue", slashIndexOf("/repos/a/b/issue")))
-	// the slash it needs is not there: getMatch decides
-	require.False(t, probe.rejects("/repos/a/b", slashIndexOf("/repos/a/b")))
+	require.True(t, probe.rejects("/repos/a/b/issues"))
+	require.True(t, probe.rejects("/repos/a/b/issue"))
+	// too few slashes after the leading constant, or no room for it at all
+	require.True(t, probe.rejects("/repos/a/b"))
+	require.True(t, probe.rejects("/repos/a"))
+	require.True(t, probe.rejects("/repos/"))
+	require.True(t, probe.rejects("/repos"))
+	require.True(t, probe.rejects(""))
+	// the search starts after the leading constant, whatever those bytes are
+	require.False(t, probe.rejects("/xxxxx/a/b/issues/1"))
+	// slashes found in a later word, in the overlapping final word, and at
+	// the very end of the path
+	require.False(t, probe.rejects("/repos/abcdefghijklmnop/b/issues/1"))
+	require.False(t, probe.rejects("/repos/abcdefghijklmnop/qrstuvwxyz/issues/"))
+	require.True(t, probe.rejects("/repos/abcdefghijklmnop/qrstuvwxyz"))
+	require.True(t, probe.rejects("/repos/abcdefghijklmnop/qrstuvwxyz/"))
+	require.True(t, probe.rejects("/repos/abcdefghijklmnop/"))
+	require.True(t, probe.rejects("/repos/abcdefghi/"))
+	require.True(t, probe.rejects("/repos/abcdefghi"))
 
-	// a probe shorter than a word masks the lanes past it
-	short := newConstProbe("/x", 1)
-	require.False(t, short.rejects("/a/x", slashIndexOf("/a/x")))
-	require.False(t, short.rejects("/a/xyz/q", slashIndexOf("/a/xyz/q")))
-	require.True(t, short.rejects("/a/y", slashIndexOf("/a/y")))
-	require.True(t, short.rejects("/a/", slashIndexOf("/a/")))
+	// a probe shorter than a word masks the lanes past it, and needs no
+	// slash to pass over when it follows the first parameter directly
+	short := newConstProbe("/x", 3, 0)
+	require.False(t, short.rejects("/a/b/x"))
+	require.False(t, short.rejects("/a/b/xyz/q"))
+	require.True(t, short.rejects("/a/b/y"))
+	require.True(t, short.rejects("/a/b/"))
+	require.True(t, short.rejects("/a/b"))
+	require.True(t, short.rejects("/a/"))
+	require.True(t, short.rejects("/a/bcdefghijklmnop"))
+	require.False(t, short.rejects("/a/bcdefghijklmnop/x"))
+
+	// every slash offset and path length around the word boundaries: the
+	// probe passes exactly when the constant sits at the slash after the
+	// first parameter, wherever the scan has to find it
+	deep := newConstProbe("/k", 3, 1)
+	for paramLen := range 20 {
+		for tailLen := range 20 {
+			path := "/a/" + strings.Repeat("p", paramLen) + "/" + strings.Repeat("q", tailLen)
+			require.True(t, deep.rejects(path), "path %q lacks a second slash after the parameter", path)
+			require.False(t, deep.rejects(path+"/k"), "path %q has the constant at the second slash", path+"/k")
+			require.False(t, deep.rejects(path+"/kj"), "path %q: the bytes after the constant are getMatch's business", path+"/kj")
+			require.True(t, deep.rejects(path+"/j"), "path %q has a different byte at the second slash", path+"/j")
+		}
+	}
 }
 
 // Test_wordAt pins the packed-word loads the probe compare reads: every
