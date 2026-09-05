@@ -31,8 +31,8 @@ func StripTabCRLF(s string) string {
 }
 
 // RootedPath returns location as what a URL composed from a named route can only
-// be: a path on the origin now being served. A parameter is spliced in raw, so
-// on "/*" "/evil.com" composed "//evil.com" and "\evil.com" folded to the same.
+// be: a path on the origin now being served. Parameter values are escaped before
+// this check; normalization still protects route author text and direct callers.
 //
 // Exactly one leading slash, never two: "//evil.com" is a network-path reference
 // whose host is whatever follows, so it resolves against "https://good.example"

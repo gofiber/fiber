@@ -2693,6 +2693,21 @@ func Test_Route_URL(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, "/api/v1/users/user123/posts/post456/comments", url)
 	})
+
+	t.Run("parameter values are path escaped", func(t *testing.T) {
+		t.Parallel()
+		app := New()
+		app.Get("/value/:value", emptyHandler).Name("Value")
+
+		const value = "a/b?c#d% e"
+		location, err := app.GetRoute("Value").URL(Map{"value": value})
+		require.NoError(t, err)
+		require.Equal(t, "/value/a%2Fb%3Fc%23d%25%20e", location)
+
+		decoded, err := neturl.PathUnescape(strings.TrimPrefix(location, "/value/"))
+		require.NoError(t, err)
+		require.Equal(t, value, decoded)
+	})
 }
 
 // newSkipApp builds an app with SkipUnmatchedRoutes enabled plus a benign
@@ -4483,7 +4498,7 @@ func Test_Route_URL_RefusesUnrepresentableRoute(t *testing.T) {
 	// An ordinary route still composes, and a value cannot open an authority.
 	url, err := app.GetRoute("wild").URL(Map{"*": "/evil.com"})
 	require.NoError(t, err)
-	require.Equal(t, "/evil.com", url)
+	require.Equal(t, "/%2Fevil.com", url)
 
 	// What that composed reaches is this origin, not evil.com.
 	ref, err := neturl.Parse(url)

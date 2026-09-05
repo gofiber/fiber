@@ -156,23 +156,21 @@ func Test_Redirect_Route_ParamCannotMoveTheQuery(t *testing.T) {
 			want:  "/user/fiber?q=1",
 		},
 		{
-			// A second "?" reads as one query string, so appending it folded
-			// q=1 into the earlier parameter's value instead of adding it.
+			// A parameter cannot introduce an earlier query string.
 			name:  "param opens a query",
 			param: "a?b=2",
-			want:  "/user/a?b=2&q=1",
+			want:  "/user/a%3Fb=2?q=1",
 		},
 		{
-			// Everything after "#" is a fragment, which the client never
-			// sends, so appending the query there dropped it outright.
+			// A parameter cannot turn the query into a fragment.
 			name:  "param opens a fragment",
 			param: "a#b",
-			want:  "/user/a?q=1#b",
+			want:  "/user/a%23b?q=1",
 		},
 		{
 			name:  "param opens both",
 			param: "a?b=2#c",
-			want:  "/user/a?b=2&q=1#c",
+			want:  "/user/a%3Fb=2%23c?q=1",
 		},
 	}
 
@@ -205,47 +203,43 @@ func Test_Redirect_Route_ParamCannotLeaveTheOrigin(t *testing.T) {
 		want  string
 	}{
 		{
-			name:  "plain",
+			name:  "embedded slash",
 			param: "docs/index.html",
-			want:  "/docs/index.html",
+			want:  "/docs%2Findex.html",
 		},
 		{
-			// "//evil.com" is a network-path reference: the browser reads
-			// evil.com as the host and never comes back to this origin.
+			// A slash is data in one parameter, not a path delimiter.
 			name:  "leading slash",
 			param: "/evil.com",
-			want:  "/evil.com",
+			want:  "/%2Fevil.com",
 		},
 		{
 			name:  "leading slash run",
 			param: "//evil.com",
-			want:  "/evil.com",
+			want:  "/%2F%2Fevil.com",
 		},
 		{
-			// The WHATWG URL parser folds a backslash to a slash here, so this
-			// reaches evil.com exactly as "//evil.com" does.
+			// A backslash is encoded before a WHATWG parser can fold it.
 			name:  "leading backslash",
 			param: `\evil.com`,
-			want:  "/evil.com",
+			want:  "/%5Cevil.com",
 		},
 		{
 			name:  "mixed slash run",
 			param: `/\/evil.com`,
-			want:  "/evil.com",
+			want:  "/%2F%5C%2Fevil.com",
 		},
 		{
-			// Tab, LF and CR are removed before the URL is parsed, so a leading
-			// one hides the slash run that follows it.
+			// Controls are encoded before URL input preprocessing can remove them.
 			name:  "tab before the slash",
 			param: "\t/evil.com",
-			want:  "/evil.com",
+			want:  "/%09%2Fevil.com",
 		},
 		{
-			// A scheme cannot start here — the route is rooted at "/" — so this
-			// stays the path segment the route asked for.
+			// A scheme stays path data; its slashes are encoded.
 			name:  "absolute URL is a path segment",
 			param: "https://evil.com",
-			want:  "/https://evil.com",
+			want:  "/https:%2F%2Fevil.com",
 		},
 	}
 
@@ -328,7 +322,7 @@ func Test_Redirect_Route_WithGreedyParameters(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.Equal(t, StatusSeeOther, c.Response().StatusCode())
-	require.Equal(t, "/user/test/routes", string(c.Response().Header.Peek(HeaderLocation)))
+	require.Equal(t, "/user/test%2Froutes", string(c.Response().Header.Peek(HeaderLocation)))
 }
 
 // go test -run Test_Redirect_Back

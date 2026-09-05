@@ -353,8 +353,8 @@ func (r *Redirect) Route(name string, config ...RedirectConfig) error {
 		cfg = config[0]
 	}
 
-	// Get location from route name. The composed path is already held to this
-	// origin — see asRoutePath — so only the query is left to place.
+	// Get location from route name. buildRouteURL already holds the composed
+	// path to this origin, so only the query is left to place.
 	route := r.c.App().GetRoute(name)
 	location, err := r.c.getLocationFromRoute(&route, cfg.Params)
 	if err != nil {
@@ -395,8 +395,7 @@ func (r *Redirect) Route(name string, config ...RedirectConfig) error {
 }
 
 // queryMergePoint says where a query belongs in location: the separator that
-// introduces it, and where the fragment starts, or -1. A parameter spliced into
-// a route path may hold both, and appending "?" folded them into one value.
+// introduces it, and where the fragment starts, or -1.
 func queryMergePoint(location string) (separator string, fragment int) { //nolint:nonamedreturns // the two results are easy to swap without names
 	fragment = strings.IndexByte(location, '#')
 

@@ -325,17 +325,10 @@ app.Get("/test", func(c fiber.Ctx) error {
 ```
 
 :::note
-A named route belongs to this application, so what comes back is always a path
-on this origin: a `params` value that would open an authority — `"/evil.com"`
-or `"\evil.com"` under a `/*` route — is kept as the path segment the route
-asked for. [`Route.URL`](./app.md#getroute) and
-[`Redirect().Route`](./redirect.md#route) return the same answer for the same
-input, so it does not matter which one puts it in a `Location` header or an
-`href`.
-
-The values themselves are still written into the path as given. Where they come
-from the request, escape them with [`url.PathEscape`](https://pkg.go.dev/net/url#PathEscape)
-if the route expects one segment per parameter.
+Each `params` value is automatically percent-encoded with URL path-segment
+rules. Delimiters such as `/`, `?`, and `#` therefore remain parameter data
+instead of adding a path segment, query, or fragment. [`Route.URL`](./app.md#getroute)
+and [`Redirect().Route`](./redirect.md#route) apply the same encoding.
 :::
 
 ### Hijack
