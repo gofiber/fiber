@@ -428,24 +428,7 @@ func (r *Route) match(detectionPath, path string, params *[maxParams]string, pat
 
 	// Does this route have parameters?
 	if len(r.Params) > 0 {
-		// Quick-reject on the precomputed slash-count bounds before walking segments.
-		// pathSlashes 0 means the count is unknown and the filters must stay out
-		// of the way; prefix (use) routes may extend past the pattern, so only
-		// the lower bound applies to them.
-		p := &r.routeParser
-		if pathSlashes > 0 {
-			if pathSlashes < int(p.minSlashes) || (!r.use && p.maxBounded && pathSlashes > int(p.maxSlashes)) {
-				return false
-			}
-			// Then one masked compare of the route's probe constant at the
-			// slash it has to start at; see constProbe. It shares the gate
-			// above so that an unknown count switches both filters off.
-			if p.probe.mask != 0 && p.probe.rejects(detectionPath) {
-				return false
-			}
-		}
-		// Match params using precomputed routeParser
-		return p.getMatch(detectionPath, path, params, r.use)
+		return r.matchParams(detectionPath, path, params, pathSlashes)
 	}
 
 	// Middleware route?
@@ -469,6 +452,31 @@ func (r *Route) match(detectionPath, path string, params *[maxParams]string, pat
 
 	// No match
 	return false
+}
+
+// matchParams is the parametric branch of match: the two quick-rejects that
+// need no segment walk, then the walk itself. It is a function of its own so
+// that match stays small on the paths that never take it, the middleware and
+// static-endpoint compares that every request pays for.
+func (r *Route) matchParams(detectionPath, path string, params *[maxParams]string, pathSlashes int) bool {
+	// Quick-reject on the precomputed slash-count bounds before walking segments.
+	// pathSlashes 0 means the count is unknown and the filters must stay out
+	// of the way; prefix (use) routes may extend past the pattern, so only
+	// the lower bound applies to them.
+	p := &r.routeParser
+	if pathSlashes > 0 {
+		if pathSlashes < int(p.minSlashes) || (!r.use && p.maxBounded && pathSlashes > int(p.maxSlashes)) {
+			return false
+		}
+		// Then one masked compare of the route's probe constant at the
+		// slash it has to start at; see constProbe. It shares the gate
+		// above so that an unknown count switches both filters off.
+		if p.probe.mask != 0 && p.probe.rejects(detectionPath) {
+			return false
+		}
+	}
+	// Match params using precomputed routeParser
+	return p.getMatch(detectionPath, path, params, r.use)
 }
 
 func (app *App) next(c *DefaultCtx) (bool, error) {
