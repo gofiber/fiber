@@ -63,7 +63,7 @@ Here's a quick overview of the changes in Fiber `v3`:
 
 ## Dropping support for old Go versions
 
-Fiber `v3` requires Go `1.25` or later. Update your toolchain to `1.25+` before upgrading so the module `go` directive and standard library features align with the new minimum version.
+Fiber `v3` requires Go `1.26` or later. Update your toolchain to `1.26+` before upgrading so the module `go` directive and standard library features align with the new minimum version.
 
 ## 🚀 App
 
@@ -1026,6 +1026,10 @@ app.Get("/new", func(c fiber.Ctx) error {
 ```
 
 </details>
+
+### Disabling flash messages
+
+Flash messages travel in the `fiber_flash` cookie, so only a client that keeps cookies across the redirect (a browser, typically) receives them, and every request is scanned for the cookie. Deployments whose clients keep no cookies can turn the feature off with `fiber.Config{DisableFlashMessages: true}`: `Redirect().With` and `WithInput` then set no cookie, `Messages` and `OldInput` report nothing, and the scan is skipped.
 
 ### Changed behavior
 
