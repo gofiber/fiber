@@ -571,6 +571,47 @@ func Test_parseToStruct_ReleasesDecoderAfterError(t *testing.T) {
 	require.Equal(t, 42, result.Count)
 }
 
+func Test_parseToStruct_InvalidDecoderPoolEntry(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		new  func() any
+		name string
+	}{
+		{
+			name: "wrong type",
+			new:  func() any { return struct{}{} },
+		},
+		{
+			name: "nil pooled decoder",
+			new:  func() any { return (*pooledDecoder)(nil) },
+		},
+		{
+			name: "nil schema decoder",
+			new:  func() any { return &pooledDecoder{} },
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			tag := "invalid-" + tt.name
+			decoderPoolMu.Lock()
+			decoderPoolMap[tag] = &sync.Pool{New: tt.new}
+			decoderPoolMu.Unlock()
+			t.Cleanup(func() {
+				decoderPoolMu.Lock()
+				delete(decoderPoolMap, tag)
+				decoderPoolMu.Unlock()
+			})
+
+			err := parseToStruct(tag, &struct{}{}, nil)
+			require.EqualError(t, err, fmt.Sprintf("binder: invalid decoder pool entry for tag %q", tag))
+		})
+	}
+}
+
 func TestSetParserDecoderConcurrentAccess(t *testing.T) {
 	t.Parallel()
 

@@ -121,7 +121,10 @@ func parse(aliasTag string, out any, data map[string][]string, files ...map[stri
 func parseToStruct(aliasTag string, out any, data map[string][]string, files ...map[string][]*multipart.FileHeader) error {
 	// Get decoder from pool
 	pool := getDecoderPool(aliasTag)
-	decoder := pool.Get().(*pooledDecoder) //nolint:errcheck,forcetypeassert // pool entries are initialized above
+	decoder, ok := pool.Get().(*pooledDecoder)
+	if !ok || decoder == nil || decoder.decoder == nil {
+		return fmt.Errorf("binder: invalid decoder pool entry for tag %q", aliasTag)
+	}
 	defer releaseDecoder(pool, decoder, aliasTag, decoderInputSize(data, files))
 
 	if err := decoder.decoder.Decode(out, data, files...); err != nil {
