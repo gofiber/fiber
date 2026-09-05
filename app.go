@@ -229,6 +229,16 @@ type Config struct { //nolint:govet // Aligning the struct fields is not necessa
 	// Default: false
 	DisableHeadAutoRegister bool `json:"disable_head_auto_register"`
 
+	// When set to true, disables redirect flash messages: Redirect().With and
+	// WithInput set no cookie, Messages and OldInput report nothing, and the
+	// scan of every request's headers for an incoming flash cookie is skipped.
+	// Flash messages travel in the fiber_flash cookie, so only clients that
+	// keep cookies across a redirect, browsers above all, ever receive them;
+	// deployments whose clients do not lose nothing by turning them off.
+	//
+	// Default: false
+	DisableFlashMessages bool `json:"disable_flash_messages"`
+
 	// When set to true, this relinquishes the 0-allocation promise in certain
 	// cases in order to access the handler values (e.g. request bodies) in an
 	// immutable fashion so that these values are available even if you return

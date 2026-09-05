@@ -160,6 +160,7 @@ func (r *Redirect) Status(code int) *Redirect {
 // They will be sent as a cookie.
 // You can get them by using: Redirect().Messages(), Redirect().Message()
 // Note: You must use escape char before using ',' and ':' chars to avoid wrong parsing.
+// No cookie is set when Config.DisableFlashMessages is on.
 func (r *Redirect) With(key, value string, level ...uint8) *Redirect {
 	// Get level
 	var msgLevel uint8
@@ -190,7 +191,12 @@ func (r *Redirect) With(key, value string, level ...uint8) *Redirect {
 // They will be sent as a cookie.
 // This method can send form, multipart form, query data to redirected route.
 // You can get them by using: Redirect().OldInputs(), Redirect().OldInput()
+// It does nothing when Config.DisableFlashMessages is on.
 func (r *Redirect) WithInput() *Redirect {
+	if r.c.app.config.DisableFlashMessages {
+		return r
+	}
+
 	ctype := bindMediaType(&r.c.RequestCtx().Request.Header)
 
 	oldInput := acquireOldInput()
@@ -561,7 +567,7 @@ func (r *Redirect) parseAndClearFlashMessages() {
 // The payload is hex-encoded, not signed, and WithInput copies the whole form
 // into it — so the cookie is HTTPOnly, and Secure whenever the request was TLS.
 func (r *Redirect) processFlashMessages() {
-	if len(r.messages) == 0 {
+	if len(r.messages) == 0 || r.c.app.config.DisableFlashMessages {
 		return
 	}
 
