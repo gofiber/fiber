@@ -1565,9 +1565,11 @@ func registerDummyRoutes(app *App) {
 	}
 }
 
+// acquireDefaultCtxForRouterBenchmark acquires a *DefaultCtx inside a benchmark
+// loop. It skips b.Helper(), whose stack walk was a quarter of the samples.
+//
+//nolint:thelper // b.Helper() is the cost being avoided
 func acquireDefaultCtxForRouterBenchmark(b *testing.B, app *App, fctx *fasthttp.RequestCtx) *DefaultCtx {
-	b.Helper()
-
 	ctx := app.AcquireCtx(fctx)
 	defaultCtx, ok := ctx.(*DefaultCtx)
 	if !ok {
