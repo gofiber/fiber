@@ -49,7 +49,7 @@ type Router interface {
 // Route is a struct that holds all metadata for each registered handler.
 //
 //nolint:govet // fieldalignment: the router's scan dictates this order, see below
-type Route struct {
+type Route struct { // betteralign:ignore - see below
 	// ### important: always keep in sync with the copy method "app.copyRoute" and all creations of Route struct ###
 	//
 	// Field order is load-bearing. App.next scans a bucket of routes and
@@ -396,18 +396,7 @@ func computePrefixFilter(r *Route) (word, mask uint64) {
 		}
 	}
 
-	if len(prefix) > swar.WordLen {
-		prefix = prefix[:swar.WordLen]
-	}
-	if prefix == "" {
-		return 0, 0
-	}
-
-	mask = ^uint64(0)
-	if n := len(prefix); n < swar.WordLen {
-		mask = uint64(1)<<(8*n) - 1
-	}
-	return pathHeadWord(prefix), mask
+	return packConst(prefix)
 }
 
 // prefixRejects reports whether the leading bytes of a detection path, packed
@@ -439,16 +428,7 @@ func (r *Route) match(detectionPath, path string, params *[maxParams]string, pat
 
 	// Does this route have parameters?
 	if len(r.Params) > 0 {
-		// Quick-reject on the precomputed slash-count bounds before walking segments.
-		// pathSlashes 0 means the count is unknown and the filter must stay out of
-		// the way; prefix (use) routes may extend past the pattern, so only the
-		// lower bound applies to them.
-		p := &r.routeParser
-		if pathSlashes > 0 && (pathSlashes < int(p.minSlashes) || (!r.use && p.maxBounded && pathSlashes > int(p.maxSlashes))) {
-			return false
-		}
-		// Match params using precomputed routeParser
-		return p.getMatch(detectionPath, path, params, r.use)
+		return r.matchParams(detectionPath, path, params, pathSlashes)
 	}
 
 	// Middleware route?
@@ -472,6 +452,27 @@ func (r *Route) match(detectionPath, path string, params *[maxParams]string, pat
 
 	// No match
 	return false
+}
+
+// matchParams is the parametric branch of match, kept out of line so match
+// stays small on the middleware and static-endpoint paths every request takes.
+func (r *Route) matchParams(detectionPath, path string, params *[maxParams]string, pathSlashes int) bool {
+	// Quick-reject on the precomputed slash-count bounds before walking segments.
+	// pathSlashes 0 means the count is unknown and the filters must stay out of
+	// the way; prefix (use) routes may extend past the pattern, so only the
+	// lower bound applies to them.
+	p := &r.routeParser
+	if pathSlashes > 0 {
+		if pathSlashes < int(p.minSlashes) || (!r.use && p.maxBounded && pathSlashes > int(p.maxSlashes)) {
+			return false
+		}
+		// Then the probe constant, one masked compare; see constProbe.
+		if p.probe.mask != 0 && p.probe.rejects(detectionPath) {
+			return false
+		}
+	}
+	// Match params using precomputed routeParser
+	return p.getMatch(detectionPath, path, params, r.use)
 }
 
 func (app *App) next(c *DefaultCtx) (bool, error) {
@@ -753,7 +754,7 @@ func (app *App) defaultRequestHandler(rctx *fasthttp.RequestCtx) {
 
 	// Optional: check flash messages (hot path, see hasFlashCookie); before the
 	// short-circuit so a skipped 404/405 still clears them.
-	if hasFlashCookie(&ctx.fasthttp.Request.Header) {
+	if !app.config.DisableFlashMessages && hasFlashCookie(&ctx.fasthttp.Request.Header) {
 		ctx.Redirect().parseAndClearFlashMessages()
 	}
 
@@ -795,7 +796,7 @@ func (app *App) customRequestHandler(rctx *fasthttp.RequestCtx) {
 
 	// Optional: check flash messages (hot path, see hasFlashCookie); before the
 	// short-circuit so a skipped 404/405 still clears them.
-	if hasFlashCookie(&ctx.Request().Header) {
+	if !app.config.DisableFlashMessages && hasFlashCookie(&ctx.Request().Header) {
 		ctx.Redirect().parseAndClearFlashMessages()
 	}
 
