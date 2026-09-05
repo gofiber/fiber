@@ -49,7 +49,7 @@ type Router interface {
 // Route is a struct that holds all metadata for each registered handler.
 //
 //nolint:govet // fieldalignment: the router's scan dictates this order, see below
-type Route struct { // betteralign:ignore - the router's scan dictates this order, see below
+type Route struct { // betteralign:ignore - see below
 	// ### important: always keep in sync with the copy method "app.copyRoute" and all creations of Route struct ###
 	//
 	// Field order is load-bearing. App.next scans a bucket of routes and
@@ -454,23 +454,19 @@ func (r *Route) match(detectionPath, path string, params *[maxParams]string, pat
 	return false
 }
 
-// matchParams is the parametric branch of match: the two quick-rejects that
-// need no segment walk, then the walk itself. It is a function of its own so
-// that match stays small on the paths that never take it, the middleware and
-// static-endpoint compares that every request pays for.
+// matchParams is the parametric branch of match, kept out of line so match
+// stays small on the middleware and static-endpoint paths every request takes.
 func (r *Route) matchParams(detectionPath, path string, params *[maxParams]string, pathSlashes int) bool {
 	// Quick-reject on the precomputed slash-count bounds before walking segments.
-	// pathSlashes 0 means the count is unknown and the filters must stay out
-	// of the way; prefix (use) routes may extend past the pattern, so only
-	// the lower bound applies to them.
+	// pathSlashes 0 means the count is unknown and the filters must stay out of
+	// the way; prefix (use) routes may extend past the pattern, so only the
+	// lower bound applies to them.
 	p := &r.routeParser
 	if pathSlashes > 0 {
 		if pathSlashes < int(p.minSlashes) || (!r.use && p.maxBounded && pathSlashes > int(p.maxSlashes)) {
 			return false
 		}
-		// Then one masked compare of the route's probe constant at the
-		// slash it has to start at; see constProbe. It shares the gate
-		// above so that an unknown count switches both filters off.
+		// Then the probe constant, one masked compare; see constProbe.
 		if p.probe.mask != 0 && p.probe.rejects(detectionPath) {
 			return false
 		}

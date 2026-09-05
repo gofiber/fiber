@@ -213,14 +213,11 @@ func Test_RouteParser_SlashBounds(t *testing.T) {
 	}
 }
 
-// Test_Route_Match_SlashBoundsDifferential generatively proves the two
-// slash-index filters in Route.match — the slash-count quick-reject and the
-// probe compare — are transparent: for every generated pattern and path, the
-// filtered Route.match must agree with a raw getMatch on the same input.
-// Unlike the fixture-driven tests this needs no hand-authored expectations, so
-// it also binds pattern shapes nobody thought to add to the fixture — if
-// findParamLen ever lets a new shape swallow '/', or computeProbe ever admits
-// a segment shape whose constant can move, this fails.
+// Test_Route_Match_SlashBoundsDifferential generatively proves the slash-count
+// quick-reject and the probe compare in Route.match are transparent: for every
+// generated pattern and path, the filtered Route.match must agree with a raw
+// getMatch. It needs no hand-authored expectations, so it also binds pattern
+// shapes nobody thought to add to the fixture.
 // go test -race -run Test_Route_Match_SlashBoundsDifferential
 func Test_Route_Match_SlashBoundsDifferential(t *testing.T) {
 	t.Parallel()
@@ -228,8 +225,7 @@ func Test_Route_Match_SlashBoundsDifferential(t *testing.T) {
 	segments := []string{
 		"/api", "/foo/", "/:a", "/:b?", "/*", "/+", "/:a-:b", "/:f.:e?",
 		":tail", "/::c", "/:x:y", "/name\\:verb", "/:p/fixed",
-		// probe shapes: constants after parameters, longer than a word, with
-		// optional slashes, and behind adjacent, optional or greedy parameters
+		// probe shapes
 		"/:a/:b/fixed", "/:p/verylongconstantsegment", "/x/:y/z/", "/:q/a/b/c",
 		"/:a?/fixed", "/:x:y/fixed", "/*/fixed", "/:s<int>/x",
 	}
@@ -999,9 +995,7 @@ func Test_RouteParser_ConstParamShape(t *testing.T) {
 	}
 }
 
-// Test_RouteParser_Probe pins computeProbe's gate: which segment shapes yield
-// a probe, which constant it packs, where the search for its slash starts and
-// how many slashes it passes over.
+// Test_RouteParser_Probe pins which patterns get a probe and what it holds.
 // go test -race -run Test_RouteParser_Probe
 func Test_RouteParser_Probe(t *testing.T) {
 	t.Parallel()
@@ -1015,8 +1009,7 @@ func Test_RouteParser_Probe(t *testing.T) {
 		{pattern: "/api/:id", want: constProbe{}},
 		{pattern: "/api/:id/", want: constProbe{}},
 		{pattern: "/repos/:owner/:repo", want: constProbe{}},
-		// the first constant after a parameter, reached from the end of the
-		// leading constant by passing over one slash per lone '/' in between
+		// first constant after a parameter; skip counts the lone '/' in between
 		{pattern: "/:p/fixed", want: newConstProbe("/fixed", 1, 0)},
 		{pattern: "/repos/:owner/:repo/issues", want: newConstProbe("/issues", 7, 1)},
 		{pattern: "/repos/:owner/:repo/issues/:number", want: newConstProbe("/issues/", 7, 1)},
@@ -1037,8 +1030,7 @@ func Test_RouteParser_Probe(t *testing.T) {
 		{pattern: "/api/:a-:b/x", want: constProbe{}},
 		{pattern: "/files/:name.json/:x", want: constProbe{}},
 		{pattern: "/v1/some/resource/:name\\:customVerb", want: constProbe{}},
-		// a leading constant whose trailing '/' may be dropped moves the
-		// first parameter, so nothing after it can be located
+		// a droppable trailing '/' on the leading constant moves the first parameter
 		{pattern: "/api/:a?/:b/x", want: constProbe{}},
 	}
 	for _, tc := range testCases {
@@ -1046,16 +1038,14 @@ func Test_RouteParser_Probe(t *testing.T) {
 		require.Equal(t, tc.want, parser.probe, "route: '%s'", tc.pattern)
 	}
 
-	// RoutePatternMatch's pooled parser never computes a probe, and reset
-	// must not carry one over from parseRoute either.
+	// reset must not carry a probe over into RoutePatternMatch's pooled parser
 	parser := parseRoute("/:p/fixed", regexp.MustCompile)
 	require.NotZero(t, parser.probe.mask)
 	parser.reset()
 	require.Equal(t, constProbe{}, parser.probe)
 }
 
-// Test_ConstProbe_Rejects pins the probe compare itself, including the path
-// shapes that cannot hold the constant at all.
+// Test_ConstProbe_Rejects pins the probe compare and the paths it rejects outright.
 // go test -race -run Test_ConstProbe_Rejects
 func Test_ConstProbe_Rejects(t *testing.T) {
 	t.Parallel()
@@ -1064,19 +1054,18 @@ func Test_ConstProbe_Rejects(t *testing.T) {
 	require.False(t, probe.rejects("/repos/a/b/issues/1"))
 	require.False(t, probe.rejects("/repos/a/b/issues/"))
 	require.True(t, probe.rejects("/repos/a/b/pulls/1"))
-	// the constant is compared in full, so a shorter tail cannot pass
+	// compared in full
 	require.True(t, probe.rejects("/repos/a/b/issues"))
 	require.True(t, probe.rejects("/repos/a/b/issue"))
-	// too few slashes after the leading constant, or no room for it at all
+	// too few slashes, or too short for the leading constant
 	require.True(t, probe.rejects("/repos/a/b"))
 	require.True(t, probe.rejects("/repos/a"))
 	require.True(t, probe.rejects("/repos/"))
 	require.True(t, probe.rejects("/repos"))
 	require.True(t, probe.rejects(""))
-	// the search starts after the leading constant, whatever those bytes are
+	// the leading constant's own bytes are not compared here
 	require.False(t, probe.rejects("/xxxxx/a/b/issues/1"))
-	// slashes found in a later word, in the overlapping final word, and at
-	// the very end of the path
+	// slashes in a later word, in the overlapping tail, and at the end
 	require.False(t, probe.rejects("/repos/abcdefghijklmnop/b/issues/1"))
 	require.False(t, probe.rejects("/repos/abcdefghijklmnop/qrstuvwxyz/issues/"))
 	require.True(t, probe.rejects("/repos/abcdefghijklmnop/qrstuvwxyz"))
@@ -1085,8 +1074,7 @@ func Test_ConstProbe_Rejects(t *testing.T) {
 	require.True(t, probe.rejects("/repos/abcdefghi/"))
 	require.True(t, probe.rejects("/repos/abcdefghi"))
 
-	// a probe shorter than a word masks the lanes past it, and needs no
-	// slash to pass over when it follows the first parameter directly
+	// a short probe masks the lanes past it; skip 0 follows the first parameter
 	short := newConstProbe("/x", 3, 0)
 	require.False(t, short.rejects("/a/b/x"))
 	require.False(t, short.rejects("/a/b/xyz/q"))
@@ -1097,9 +1085,7 @@ func Test_ConstProbe_Rejects(t *testing.T) {
 	require.True(t, short.rejects("/a/bcdefghijklmnop"))
 	require.False(t, short.rejects("/a/bcdefghijklmnop/x"))
 
-	// every slash offset and path length around the word boundaries: the
-	// probe passes exactly when the constant sits at the slash after the
-	// first parameter, wherever the scan has to find it
+	// every parameter and tail length around the word boundaries
 	deep := newConstProbe("/k", 3, 1)
 	for paramLen := range 20 {
 		for tailLen := range 20 {
@@ -1112,9 +1098,7 @@ func Test_ConstProbe_Rejects(t *testing.T) {
 	}
 }
 
-// Test_wordAt pins the packed-word loads the probe compare reads: every
-// offset of a few strings, against the obvious byte loop, including the
-// overlapping tail load and the sub-word fallback.
+// Test_wordAt checks every offset of a few strings against a byte loop.
 // go test -race -run Test_wordAt
 func Test_wordAt(t *testing.T) {
 	t.Parallel()
@@ -1132,8 +1116,7 @@ func Test_wordAt(t *testing.T) {
 	}
 }
 
-// Test_packConst pins the word and mask packConst derives, which both the
-// prefix filter and the probes are built from.
+// Test_packConst pins the word and mask the prefix filter and probes are built from.
 // go test -race -run Test_packConst
 func Test_packConst(t *testing.T) {
 	t.Parallel()
@@ -1150,9 +1133,8 @@ func Test_packConst(t *testing.T) {
 	require.Equal(t, ^uint64(0), mask)
 }
 
-// legacyFindParamLen is findParamLen as it stood before the slash-stop
-// shortcut: a multi-byte compare part was located with a substring search, and
-// a non-greedy parameter then rejected when a '/' preceded the hit.
+// legacyFindParamLen is findParamLen before the slash-stop shortcut: a
+// substring search, rejected when a '/' preceded the hit.
 func legacyFindParamLen(s string, segment *routeSegment) int {
 	if segment.IsLast {
 		return findParamLenForLastSegment(s, segment)
@@ -1181,8 +1163,8 @@ func legacyFindParamLen(s string, segment *routeSegment) int {
 	return len(s)
 }
 
-// legacyGetMatch is getMatch's generic segment walk with legacyFindParamLen in
-// place of findParamLen and without the "/const/:param" specialization.
+// legacyGetMatch is getMatch's generic walk over legacyFindParamLen, without
+// the "/const/:param" specialization.
 //
 //nolint:revive // flag-parameter: mirrors getMatch's signature
 func legacyGetMatch(parser *routeParser, detectionPath, path string, params *[maxParams]string, partialCheck bool) bool {
@@ -1229,11 +1211,8 @@ func legacyGetMatch(parser *routeParser, detectionPath, path string, params *[ma
 }
 
 // Test_Path_FindParamLen_SlashStopDifferential proves the slash-stop shortcut
-// in findParamLen is transparent: for every generated pattern and path, the
-// current getMatch and a copy of the segment walk running the substring search
-// it replaced agree on the outcome and the captured parameters. The shortcut
-// answers 0 where the search answered len(s) for an absent compare part, so
-// the equivalence holds at the match level, which is what is pinned here.
+// is transparent: getMatch and a copy of the walk over the substring search it
+// replaced must agree on outcome and parameters for every generated input.
 // go test -race -run Test_Path_FindParamLen_SlashStopDifferential
 func Test_Path_FindParamLen_SlashStopDifferential(t *testing.T) {
 	t.Parallel()

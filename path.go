@@ -29,12 +29,12 @@ import (
 // scanning. Keep them first when adding fields.
 //
 //nolint:govet // fieldalignment: the slash bounds lead deliberately, see above
-type routeParser struct { // betteralign:ignore - the slash bounds lead deliberately, see above
+type routeParser struct { // betteralign:ignore - see above
 	minSlashes    int32           // minimum number of '/' a matching detection path can contain
 	maxSlashes    int32           // maximum number of '/' a matching detection path can contain; only valid when maxBounded is true
 	maxBounded    bool            // false when a parameter can swallow '/', making the maximum unknowable; false also disables the max check
 	constParam    bool            // route is exactly one const segment + one plain trailing param; see matchConstParam
-	probe         constProbe      // discriminator constant tested at a known '/' before getMatch; see computeProbe
+	probe         constProbe      // first constant after a parameter, checked before getMatch; see computeProbe
 	segs          []*routeSegment // the parsed segments of the route
 	params        []string        // that parameter names the parsed route
 	wildCardCount int             // number of wildcard parameters, used internally to give the wildcard parameter its number
@@ -353,41 +353,26 @@ func (parser *routeParser) computeSlashBounds() {
 	}
 }
 
-// constProbe is a route's discriminator: the leading bytes, at most a word,
-// of the first constant segment that follows a parameter, packed the way
-// pathHeadWord packs a path, and where in the detection path that constant
-// has to start. Route.match tests it with one masked compare before paying
-// for getMatch, which is where most candidates that survive the prefix filter
-// and the slash bounds of a REST-shaped route set are told apart:
-// "/repos/:owner/:repo/issues/:number" and "/repos/:owner/:repo/pulls/:number"
-// agree on both and differ here.
-//
-// The position is found rather than stored, since it depends on the request:
-// a non-greedy parameter ends at the next '/', so with the leading constant
-// matched in full the first parameter starts at from, and each parameter and
-// lone '/' between it and the probe accounts for one more slash to pass over,
-// which is skip. A byte search from from, repeated skip times, therefore lands
-// on the slash the constant starts at. computeProbe builds a probe only from
-// segments that guarantee this. A zero mask means the route has none.
+// constProbe is the first constant after a parameter, packed like
+// pathHeadWord, which Route.match tests at the slash it must start at before
+// walking the segments: "/repos/:owner/:repo/issues/:number" and
+// "/repos/:owner/:repo/pulls/:number" pass the prefix filter and the slash
+// bounds alike and differ here. The slash is found per request: the first
+// parameter starts at from and ends at the next '/', and skip more slashes
+// separate it from the constant. A zero mask means no probe.
 type constProbe struct {
 	word uint64 // the constant's leading bytes, packed little-endian
 	mask uint64 // covers the packed bytes; 0 means no probe
-	from int    // where the first parameter starts: the length of the leading constant
-	skip int    // slashes after from to pass over before the one the constant starts at
+	from int    // length of the leading constant, where the first parameter starts
+	skip int    // slashes to pass over after from before the constant's own
 }
 
-// computeProbe derives the parser's constProbe from its segments, leaving it
-// empty when no constant qualifies. It walks the segments after the leading
-// constant in order, counting the slashes of each constant it passes, and
-// stops at the first constant after a parameter that is longer than a lone
-// '/'. Every parameter passed on the way has to end at the next '/' of the
-// path: greedy parameters span slashes, optional ones may be absent,
-// fixed-length ones (adjacent parameters) take a byte whatever it is, and a
-// compare part not led by '/' stops the parameter elsewhere — any of those
-// ends the walk without a probe, as does a constant whose trailing '/'
-// getMatch may drop, since what follows it is then uncertain.
-// Test_RouteParser_Probe pins the gate, and the differential tests in
-// path_test.go prove the probe never rejects what getMatch accepts.
+// computeProbe picks the first constant after a parameter that is longer than
+// a lone '/'. Every segment before it must keep that constant's slash
+// predictable: parameters end at the next '/' (not greedy, optional or
+// fixed-length, and a compare part led by '/'), and no constant drops an
+// optional trailing '/'. Otherwise the route gets no probe.
+// Test_RouteParser_Probe pins the gate.
 func (parser *routeParser) computeProbe() {
 	parser.probe = constProbe{}
 	segs := parser.segs
@@ -423,17 +408,14 @@ func (parser *routeParser) computeProbe() {
 	}
 }
 
-// newConstProbe packs the first word of c, a constant that starts at the
-// slash reached by passing over skip slashes from from, into a probe.
+// newConstProbe packs the first word of c into a probe located by from and skip.
 func newConstProbe(c string, from, skip int) constProbe {
 	word, mask := packConst(c)
 	return constProbe{word: word, mask: mask, from: from, skip: skip}
 }
 
-// packConst packs the leading bytes of s, at most a word of them, the way
-// pathHeadWord packs a path, and returns the word with the mask covering the
-// packed lanes. An empty s yields a zero mask, which every filter reads as
-// "no constraint".
+// packConst packs up to a word of s like pathHeadWord and returns it with the
+// mask covering its lanes; an empty s yields a zero mask.
 //
 //nolint:nonamedreturns // the pair is easier to read named than by position
 func packConst(s string) (word, mask uint64) {
@@ -450,17 +432,11 @@ func packConst(s string) (word, mask uint64) {
 	return pathHeadWord(s), mask
 }
 
-// rejects reports whether detectionPath cannot match the probe's route because
-// the constant is not at the slash it has to start at. A path too short to
-// hold the leading constant, or with too few slashes after it, cannot match
-// either.
-//
-// The slashes are found with a swar.MatchByteMask scan written out here
-// rather than with strings.IndexByte: a parameter spans a few bytes, so the
-// slash is nearly always in the first word loaded, and the fixed cost of the
-// IndexByte call was most of the check. Inputs of a word or more finish with
-// one overlapping word at len-8 whose already-scanned lanes are masked out;
-// shorter ones go byte-wise.
+// rejects reports whether the probe's constant is not at its slash in
+// detectionPath, or the path is too short to reach it. The slashes are found
+// with an inline swar.MatchByteMask scan rather than strings.IndexByte: a
+// parameter spans a few bytes, so the slash is nearly always in the first
+// word and the call was most of the check.
 func (p *constProbe) rejects(detectionPath string) bool {
 	n := len(detectionPath)
 	i := p.from
@@ -497,8 +473,7 @@ func (p *constProbe) rejects(detectionPath string) bool {
 		}
 		i++
 	}
-	// A whole word after the slash is the common case; keep its load inline
-	// and leave the end-of-path shapes to wordAt.
+	// common case inline; wordAt handles the end of the path
 	var w uint64
 	if i+swar.WordLen <= n {
 		w = swar.Load8(detectionPath, i)
@@ -508,11 +483,9 @@ func (p *constProbe) rejects(detectionPath string) bool {
 	return w&p.mask != p.word
 }
 
-// wordAt packs s[i:i+8] little-endian, zero-padding the lanes past the end of
-// s, without reading past s. It requires 0 <= i <= len(s). When fewer than
-// eight bytes follow i but s itself holds a word, the word ending at len(s) is
-// loaded and shifted so that lane 0 is s[i] — the overlapping load the SWAR
-// helpers in utils use for their tails.
+// wordAt packs s[i:i+8] little-endian without reading past s: lanes past the
+// end are zero, and when s holds a word the tail is an overlapping load
+// shifted so that lane 0 is s[i]. Requires 0 <= i <= len(s).
 func wordAt(s string, i int) uint64 {
 	rest := len(s) - i
 	if rest >= swar.WordLen {
@@ -529,9 +502,8 @@ func wordAt(s string, i int) uint64 {
 func parseRoute(pattern string, regexHandler any, customConstraints ...CustomConstraint) routeParser {
 	parser := routeParser{}
 	parser.parseRoute(pattern, regexHandler, customConstraints...)
-	// The slash bounds and the probe only speed up the router's candidate scan;
-	// computing them here keeps them off RoutePatternMatch's per-call path,
-	// which never reads them.
+	// The slash bounds and the probe only speed up the router's scan, so they
+	// are computed here rather than on RoutePatternMatch's per-call path.
 	parser.computeSlashBounds()
 	parser.computeProbe()
 
@@ -915,15 +887,11 @@ func findParamLen(s string, segment *routeSegment) int {
 			return constPosition
 		}
 	} else if len(segment.ComparePart) > 1 && !segment.IsGreedy && segment.ComparePart[0] == slashDelimiter {
-		// A non-greedy parameter cannot span a '/', so it can only end at the
-		// first '/' of s, and only if the compare part sits right there: any
-		// later occurrence would put a slash inside the parameter. That turns
-		// the substring search into one byte scan and one prefix compare.
-		// When the compare part is not at that slash the answer is 0 (no
-		// match) whether it occurs later or not at all; the substring search
-		// returned len(s) in the latter case, which the constant segment
-		// after the parameter then failed on all the same.
-		// Test_Path_FindParamLen_SlashStopDifferential pins the equivalence.
+		// A non-greedy parameter cannot span a '/', so it ends at the first
+		// '/' of s, and only if the compare part sits there. Otherwise the
+		// answer is 0 whether the compare part occurs later or not at all:
+		// the constant after the parameter fails either way, which
+		// Test_Path_FindParamLen_SlashStopDifferential pins.
 		slash := strings.IndexByte(s, slashDelimiter)
 		if slash == -1 {
 			return len(s)
