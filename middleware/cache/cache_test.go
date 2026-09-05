@@ -3775,6 +3775,224 @@ func Test_CachePrivateDirectiveInvalidatesExistingEntry(t *testing.T) {
 	require.Equal(t, "public", string(body))
 }
 
+func Test_CacheStorage_UncacheableRevalidationDeletesStaleEntry(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		setUncacheableHeaders func(fiber.Ctx)
+		name                  string
+	}{
+		{
+			name: "private",
+			setUncacheableHeaders: func(c fiber.Ctx) {
+				c.Set(fiber.HeaderCacheControl, "private")
+			},
+		},
+		{
+			name: "no-cache",
+			setUncacheableHeaders: func(c fiber.Ctx) {
+				c.Set(fiber.HeaderCacheControl, "no-cache")
+			},
+		},
+		{
+			name: "vary-star",
+			setUncacheableHeaders: func(c fiber.Ctx) {
+				c.Set(fiber.HeaderVary, "*")
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			storage := newContextRecorderStorage()
+			var returnUncacheable atomic.Bool
+
+			app := fiber.New()
+			app.Use(New(Config{
+				CacheInvalidator: func(c fiber.Ctx) bool {
+					return fiber.Query[bool](c, "invalidate")
+				},
+				Expiration: time.Hour,
+				KeyGenerator: func(c fiber.Ctx) string {
+					return c.Path()
+				},
+				MaxBytes: 5,
+				Storage:  storage,
+			}))
+			app.Get("/cached", func(c fiber.Ctx) error {
+				if returnUncacheable.Load() {
+					tt.setUncacheableHeaders(c)
+					return c.SendString("newer")
+				}
+
+				c.Set(fiber.HeaderCacheControl, "public, max-age=60, must-revalidate")
+				return c.SendString("stale")
+			})
+			app.Get("/next", func(c fiber.Ctx) error {
+				c.Set(fiber.HeaderCacheControl, "public, max-age=60")
+				return c.SendString("fresh")
+			})
+
+			resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/cached", http.NoBody))
+			require.NoError(t, err)
+			require.Equal(t, cacheMiss, resp.Header.Get("X-Cache"))
+			require.NoError(t, resp.Body.Close())
+
+			key := "GET|/cached"
+			bodyKey := key + "_body"
+			storage.mu.RLock()
+			require.Contains(t, storage.data, key)
+			require.Contains(t, storage.data, bodyKey)
+			storage.mu.RUnlock()
+
+			returnUncacheable.Store(true)
+			resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/cached?invalidate=true", http.NoBody))
+			require.NoError(t, err)
+			require.Equal(t, cacheUnreachable, resp.Header.Get("X-Cache"))
+			require.NoError(t, resp.Body.Close())
+
+			storage.mu.RLock()
+			require.NotContains(t, storage.data, key)
+			require.NotContains(t, storage.data, bodyKey)
+			storage.mu.RUnlock()
+
+			deletes := storage.recordedDeletes()
+			require.Equal(t, []contextRecord{{key: key}, {key: bodyKey}}, deletes)
+			for _, get := range storage.recordedGets() {
+				require.NotEqual(t, bodyKey, get.key, "revalidation must not fetch the stale body")
+			}
+
+			// If heap accounting retained the deleted entry, caching /next would
+			// try to evict it and encounter these sentinel errors.
+			storage.mu.Lock()
+			storage.errs["del|"+key] = errors.New("stale metadata remained in heap")
+			storage.errs["del|"+bodyKey] = errors.New("stale body remained in heap")
+			storage.mu.Unlock()
+
+			resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/next", http.NoBody))
+			require.NoError(t, err)
+			require.Equal(t, cacheMiss, resp.Header.Get("X-Cache"))
+			require.NoError(t, resp.Body.Close())
+
+			resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/next", http.NoBody))
+			require.NoError(t, err)
+			require.Equal(t, cacheHit, resp.Header.Get("X-Cache"))
+			require.NoError(t, resp.Body.Close())
+		})
+	}
+}
+
+func Test_CacheStorage_UncacheableRevalidationDeletionErrors(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name              string
+		failedKeySuffix   string
+		wantDeletes       []string
+		metadataRemaining bool
+	}{
+		{
+			name:              "metadata",
+			metadataRemaining: true,
+			wantDeletes:       []string{"GET|/cached"},
+		},
+		{
+			name:            "body",
+			failedKeySuffix: "_body",
+			wantDeletes:     []string{"GET|/cached", "GET|/cached_body"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			storage := newContextRecorderStorage()
+			var returnNoCache atomic.Bool
+
+			app := fiber.New()
+			app.Use(New(Config{
+				CacheInvalidator: func(c fiber.Ctx) bool {
+					return fiber.Query[bool](c, "invalidate")
+				},
+				Expiration: time.Hour,
+				KeyGenerator: func(c fiber.Ctx) string {
+					return c.Path()
+				},
+				MaxBytes: 5,
+				Storage:  storage,
+			}))
+			app.Get("/cached", func(c fiber.Ctx) error {
+				if returnNoCache.Load() {
+					c.Set(fiber.HeaderCacheControl, "no-cache")
+					return c.SendString("newer")
+				}
+
+				c.Set(fiber.HeaderCacheControl, "public, max-age=60, must-revalidate")
+				return c.SendString("stale")
+			})
+			app.Get("/next", func(c fiber.Ctx) error {
+				c.Set(fiber.HeaderCacheControl, "public, max-age=60")
+				return c.SendString("fresh")
+			})
+
+			resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/cached", http.NoBody))
+			require.NoError(t, err)
+			require.Equal(t, cacheMiss, resp.Header.Get("X-Cache"))
+			require.NoError(t, resp.Body.Close())
+
+			key := "GET|/cached"
+			bodyKey := key + "_body"
+			storage.mu.Lock()
+			storage.errs["del|"+key+tt.failedKeySuffix] = errors.New("delete failed")
+			storage.mu.Unlock()
+			returnNoCache.Store(true)
+
+			resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/cached?invalidate=true", http.NoBody))
+			require.NoError(t, err)
+			require.Equal(t, fiber.StatusInternalServerError, resp.StatusCode)
+			responseBody, err := io.ReadAll(resp.Body)
+			require.NoError(t, err)
+			require.Contains(t, string(responseBody), "failed to delete cached response")
+			require.NoError(t, resp.Body.Close())
+
+			storage.mu.RLock()
+			_, metadataRemaining := storage.data[key]
+			_, bodyRemaining := storage.data[bodyKey]
+			storage.mu.RUnlock()
+			require.Equal(t, tt.metadataRemaining, metadataRemaining)
+			require.True(t, bodyRemaining)
+
+			deletes := storage.recordedDeletes()
+			deleteKeys := make([]string, 0, len(deletes))
+			for _, deleteRecord := range deletes {
+				deleteKeys = append(deleteKeys, deleteRecord.key)
+			}
+			require.Equal(t, tt.wantDeletes, deleteKeys)
+			for _, get := range storage.recordedGets() {
+				require.NotEqual(t, bodyKey, get.key, "revalidation must not fetch the stale body")
+			}
+
+			// The old heap entry remains tracked after a deletion error so a later
+			// eviction can retry cleanup and restore byte accounting.
+			storage.mu.Lock()
+			delete(storage.errs, "del|"+key+tt.failedKeySuffix)
+			storage.mu.Unlock()
+			resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/next", http.NoBody))
+			require.NoError(t, err)
+			require.Equal(t, cacheMiss, resp.Header.Get("X-Cache"))
+			require.NoError(t, resp.Body.Close())
+
+			storage.mu.RLock()
+			require.NotContains(t, storage.data, key)
+			require.NotContains(t, storage.data, bodyKey)
+			storage.mu.RUnlock()
+		})
+	}
+}
+
 func Test_CacheControlNotOverwritten(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
