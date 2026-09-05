@@ -713,8 +713,9 @@ func Test_equalFieldType_CacheTypeMismatch(t *testing.T) {
 	}
 	cache := getFieldCache("query")
 	typ := reflect.TypeFor[Sample]()
-	cache.Store(typ, 1)
-	defer cache.Delete(typ)
+	cache.types.Store(typ, 1)
+	cache.slot(typ).Store(nil)
+	defer cache.types.Delete(typ)
 	var s Sample
 	require.False(t, equalFieldType(&s, reflect.String, "field", "query"))
 }
@@ -910,8 +911,9 @@ func Test_StructKeyKind_NestedCacheTypeMismatch(t *testing.T) {
 
 	cache := getFieldCache("query")
 	typ := reflect.TypeFor[mismatchInner]()
-	cache.Store(typ, 1)
-	t.Cleanup(func() { cache.Delete(typ) })
+	cache.types.Store(typ, 1)
+	cache.slot(typ).Store(nil)
+	t.Cleanup(func() { cache.types.Delete(typ) })
 
 	var out mismatchOuter
 	require.False(t, equalFieldType(&out, reflect.Slice, "inner.tags", "query"))

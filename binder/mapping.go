@@ -7,6 +7,8 @@ import (
 	"reflect"
 	"strings"
 	"sync"
+	"sync/atomic"
+	"unsafe"
 
 	"github.com/gofiber/utils/v2"
 	utilsstrings "github.com/gofiber/utils/v2/strings"
@@ -265,16 +267,35 @@ func unwrapType(t reflect.Type) reflect.Type {
 	return t
 }
 
+// fieldCache holds the field information of the struct types bound through
+// one alias tag. It is consulted for every key of every bound request, and the
+// interface-keyed hash of a sync.Map lookup was most of what that cost, so a
+// small direct-mapped cache in front answers a type seen before in a few
+// loads. A collision only falls through to the map; nothing is ever wrong,
+// just slower.
+type fieldCache struct {
+	slots [fieldCacheSlots]atomic.Pointer[fieldCacheEntry]
+	types sync.Map // reflect.Type -> *fieldInfo
+}
+
+type fieldCacheEntry struct {
+	info *fieldInfo
+	id   uintptr
+}
+
+// fieldCacheSlots is a power of two, so a slot is a mask rather than a division.
+const fieldCacheSlots = 64
+
 var (
-	headerFieldCache     sync.Map
-	respHeaderFieldCache sync.Map
-	cookieFieldCache     sync.Map
-	queryFieldCache      sync.Map
-	formFieldCache       sync.Map
-	uriFieldCache        sync.Map
+	headerFieldCache     fieldCache
+	respHeaderFieldCache fieldCache
+	cookieFieldCache     fieldCache
+	queryFieldCache      fieldCache
+	formFieldCache       fieldCache
+	uriFieldCache        fieldCache
 )
 
-func getFieldCache(aliasTag string) *sync.Map {
+func getFieldCache(aliasTag string) *fieldCache {
 	switch aliasTag {
 	case bindingHeader:
 		return &headerFieldCache
@@ -398,15 +419,38 @@ func (info *fieldInfo) collectPromoted(t reflect.Type, aliasTag string, depth in
 	}
 }
 
-func cachedFieldInfo(t reflect.Type, aliasTag string) (*fieldInfo, bool) {
-	cache := getFieldCache(aliasTag)
-	val, ok := cache.Load(t)
+// typeID identifies a type by the address of its descriptor, which is stable
+// and unique for the life of the program. It is the data word of the
+// interface, read directly: reflect.ValueOf(t).Pointer() yields the same
+// word at several times the cost, and this runs for every key of every
+// bound request.
+func typeID(t reflect.Type) uintptr {
+	return (*[2]uintptr)(unsafe.Pointer(&t))[1] //nolint:gosec // G103: reading the interface's data word, see above
+}
+
+// slot returns the direct-mapped slot a type hashes to.
+func (c *fieldCache) slot(t reflect.Type) *atomic.Pointer[fieldCacheEntry] {
+	return &c.slots[(typeID(t)>>4)&(fieldCacheSlots-1)]
+}
+
+// get returns the field information of a struct type, building it on first use.
+func (c *fieldCache) get(t reflect.Type, aliasTag string) (*fieldInfo, bool) {
+	id := typeID(t)
+	slot := &c.slots[(id>>4)&(fieldCacheSlots-1)]
+	if e := slot.Load(); e != nil && e.id == id {
+		return e.info, true
+	}
+
+	val, ok := c.types.Load(t)
 	if !ok {
 		info := buildFieldInfo(t, aliasTag)
-		val, _ = cache.LoadOrStore(t, &info)
+		val, _ = c.types.LoadOrStore(t, &info)
 	}
 
 	info, ok := val.(*fieldInfo)
+	if ok {
+		slot.Store(&fieldCacheEntry{id: id, info: info})
+	}
 	return info, ok
 }
 
@@ -444,18 +488,18 @@ func isDigits(s string) bool {
 }
 
 // structKeyKind reports whether the field a key names in a struct type has the
-// given kind. An unknown first segment falls back to the coarse nested-kind check.
-func structKeyKind(t reflect.Type, kind reflect.Kind, key, aliasTag string) bool {
-	cur := t
+// given kind. An unknown first segment falls back to the coarse nested-kind
+// check. t is a struct type; equalFieldType has established that.
+func structKeyKind(cache *fieldCache, t reflect.Type, kind reflect.Kind, key, aliasTag string) bool {
 	segment, rest, ok := nextKeySegment(key)
 	if !ok {
-		return cur.Kind() == kind
+		return kind == reflect.Struct
 	}
 	// A key naming a field of this struct directly is the common case, and
 	// resolveKinds already answered it: no walk down the type, and no second
 	// pass over the key to find out there is nothing after this segment.
-	if rest == "" && cur.Kind() == reflect.Struct {
-		info, found := cachedFieldInfo(cur, aliasTag)
+	if rest == "" {
+		info, found := cache.get(t, aliasTag)
 		if !found {
 			return false
 		}
@@ -466,14 +510,16 @@ func structKeyKind(t reflect.Type, kind reflect.Kind, key, aliasTag string) bool
 		return ok
 	}
 	// One segment of lookahead: whether a segment has more after it decides how
-	// an embedded struct's own alias resolves, and it ends the walk.
+	// an embedded struct's own alias resolves, and it ends the walk. The kind
+	// travels with the type, so each level asks it once.
+	cur, curKind := t, reflect.Struct
 	first := true
 	for {
 		nextSegment, nextRest, hasMore := nextKeySegment(rest)
 
-		switch cur.Kind() {
+		switch curKind {
 		case reflect.Struct:
-			info, found := cachedFieldInfo(cur, aliasTag)
+			info, found := cache.get(cur, aliasTag)
 			if !found {
 				return false
 			}
@@ -498,6 +544,7 @@ func structKeyKind(t reflect.Type, kind reflect.Kind, key, aliasTag string) bool
 			// A scalar has nothing below it.
 			return false
 		}
+		curKind = cur.Kind()
 
 		if !hasMore {
 			break
@@ -506,7 +553,7 @@ func structKeyKind(t reflect.Type, kind reflect.Kind, key, aliasTag string) bool
 		first = false
 	}
 
-	return cur.Kind() == kind
+	return curKind == kind
 }
 
 // resolve returns the type a key segment names within this struct: its own
@@ -541,22 +588,22 @@ func equalFieldType(out any, kind reflect.Kind, key, aliasTag string) bool {
 		return false
 	}
 
-	val := reflect.ValueOf(out)
-	isPointer := val.Kind() == reflect.Pointer
-	for val.Kind() == reflect.Pointer {
-		if val.IsNil() {
-			return false
-		}
-		val = val.Elem()
+	// The type answers everything here; a reflect.Value is only taken to tell
+	// a nil map from one the decoder can fill.
+	typ := reflect.TypeOf(out)
+	typKind := typ.Kind()
+	isPointer := typKind == reflect.Pointer
+	for typKind == reflect.Pointer {
+		typ = typ.Elem()
+		typKind = typ.Kind()
 	}
 
-	typ := val.Type()
-	switch typ.Kind() {
+	switch typKind {
 	case reflect.Map:
 		// Only a slice-valued map can hold more than one value per key. A nil
 		// map counts when a pointer to it was passed, since the decoder
 		// allocates it before filling it; a nil one by value stays unfillable.
-		if val.IsNil() && !isPointer {
+		if !isPointer && reflect.ValueOf(out).IsNil() {
 			return false
 		}
 		return typ.Key().Kind() == reflect.String &&
@@ -571,7 +618,7 @@ func equalFieldType(out any, kind reflect.Kind, key, aliasTag string) bool {
 	}
 
 	// Lower the key only once a struct lookup is needed.
-	return structKeyKind(typ, kind, utilsstrings.ToLower(key), aliasTag)
+	return structKeyKind(getFieldCache(aliasTag), typ, kind, utilsstrings.ToLower(key), aliasTag)
 }
 
 // FilterFlags returns the media type value by trimming any parameters from a Content-Type header.
