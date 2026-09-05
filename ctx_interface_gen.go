@@ -8,6 +8,7 @@ import (
 	"crypto/tls"
 	"io"
 	"mime/multipart"
+	"net"
 	"time"
 
 	"github.com/valyala/fasthttp"
@@ -53,6 +54,22 @@ type Ctx interface {
 	// https://godoc.org/github.com/valyala/fasthttp#Response
 	// Returns nil if the context has been released.
 	Response() *fasthttp.Response
+	// Body returns the request body, decompressing it when the request declares a
+	// Content-Encoding the app accepts. Req and Res both carry a Body, so on Ctx
+	// the request wins, as it does for Get; use Res().Body() for the response.
+	Body() []byte
+	// ContentLength returns the value of the Content-Length request header. Req and
+	// Res both carry one, so on Ctx the request wins, as it does for Get; use
+	// Res().ContentLength() for the response.
+	ContentLength() int
+	// ContentType returns the Content-Type request header, parameters included. Req
+	// and Res both carry one, so on Ctx the request wins, as it does for Get; use
+	// Res().ContentType() for the response.
+	ContentType() string
+	// Cookies returns the request cookie with the given key, or defaultValue. Only
+	// valid within the handler unless Immutable is set. For the cookies the response
+	// is set to send, use Res().GetCookies().
+	Cookies(key string, defaultValue ...string) string
 	// Get returns the HTTP request header specified by field.
 	// Field names are case-insensitive
 	// Returned value is only valid within the handler. Do not store any references.
@@ -75,22 +92,21 @@ type Ctx interface {
 	// Returned value is only valid within the handler. Do not store any references.
 	// Make copies or use the Immutable setting instead.
 	GetRespHeaders() map[string][]string
-	// ClientHelloInfo return CHI from context
+	// ClientHelloInfo returns the TLS ClientHelloInfo of the connection this request arrived on, or nil.
 	ClientHelloInfo() *tls.ClientHelloInfo
 	// Next executes the next method in the stack that matches the current route.
 	Next() error
 	// RestartRouting instead of going to the next handler. This may be useful after
 	// changing the request path. Note that handlers might be executed again.
 	RestartRouting() error
+	// ctxForHandlers returns the context user code is handed: the custom context
+	// when the app uses one, otherwise the DefaultCtx itself, as Next does.
+	ctxForHandlers() Ctx
 	setHandlerCtx(ctx CustomCtx)
 	// OriginalURL contains the original request URL.
 	// Returned value is only valid within the handler. Do not store any references.
 	// Make copies or use the Immutable setting to use the value outside the Handler.
 	OriginalURL() string
-	// Path returns the path part of the request URL.
-	// Optionally, you could override the path.
-	// Make copies or use the Immutable setting to use the value outside the Handler.
-	Path(override ...string) string
 	// RequestID returns the request identifier from the response header or request header.
 	RequestID() string
 	// Req returns a convenience type whose API is limited to operations
@@ -114,30 +130,76 @@ type Ctx interface {
 	// fallback for unregistered methods) so Route and Method always agree.
 	// Never inlined: inlining it would push Route over the inlining budget.
 	routeFallback() *Route
+	// Endpoint returns the route that will handle this request, without advancing the
+	// handler chain, so global middleware can read its Path or Name before calling
+	// Next. Returns nil when no endpoint will run: 404, 405, and while the error
+	// handler replays the chain for a request rejected at the protocol level.
+	//
+	// It looks ahead, where the neighboring accessors look back: Route reports the
+	// route currently executing, which inside middleware is the middleware itself,
+	// and Matched reports whether an endpoint has been selected yet.
+	//
+	// It scans the remaining routes in the request's tree bucket, so calling it from
+	// global middleware costs a second router scan per request.
+	Endpoint() *Route
 	// FullPath returns the matched route path, including any group prefixes.
 	FullPath() string
+	// RouteName returns the name of the route currently executing, or "" when it is
+	// unnamed. Inside middleware that is the middleware's own route; use
+	// Endpoint().Name to look ahead to the one that will handle the request.
+	RouteName() string
+	// MountPath returns the prefix the sub-app owning the current route was mounted
+	// under, or "" for a top-level route. Path is not relative to it. One *App
+	// mounted twice reports its last prefix, as App.MountPath does.
+	MountPath() string
 	// Matched returns true if the current request path was matched by the router.
 	Matched() bool
 	// IsMiddleware returns true if the current request handler was registered as middleware.
 	IsMiddleware() bool
-	// HasBody returns true if the request declares a body via Content-Length, Transfer-Encoding, or already buffered payload data.
-	HasBody() bool
+	// IsFinal reports whether this is the last handler of a matched non-middleware
+	// route, so nothing further on that route runs. It describes the route, not the
+	// request: another route can still match, and a Use route is never final.
+	IsFinal() bool
 	// OverrideParam overwrites a route parameter value by name.
 	// If the parameter name does not exist in the route, this method does nothing.
 	OverrideParam(name, value string)
-	// IsWebSocket returns true if the request includes a WebSocket upgrade handshake.
-	IsWebSocket() bool
-	// IsPreflight returns true if the request is a CORS preflight.
-	IsPreflight() bool
 	// SaveFile saves any multipart file to disk.
 	SaveFile(fileheader *multipart.FileHeader, path string) error
 	// SaveFileToStorage saves any multipart file to an external storage system.
 	SaveFileToStorage(fileheader *multipart.FileHeader, path string, storage Storage) error
-	// Secure returns whether a secure connection was established.
-	Secure() bool
+	// Error returns an *Error carrying the given status code, defaulting the message
+	// to the status text. Returning it hands it to the app's ErrorHandler, which
+	// writes the response; Error itself sets nothing.
+	Error(status int, message ...string) error
 	// Status sets the HTTP status for the response.
 	// This method is chainable.
 	Status(status int) Ctx
+	// ID returns the connection-unique identifier fasthttp assigned to this request,
+	// unlike RequestID, which reads a header. It is not unique across processes or
+	// restarts, so use it to correlate log lines within one server run.
+	ID() uint64
+	// StartTime returns the time the server began handling this request. It is the
+	// reference point Elapsed measures from.
+	StartTime() time.Time
+	// Elapsed returns how long this request has been handled so far, measured from
+	// StartTime. Called after the handler chain has run, it is the request latency.
+	Elapsed() time.Duration
+	// LocalAddr returns the server-side address of the connection this request
+	// arrived on. IP returns the client address as a string; this is the full
+	// net.Addr, so the port, network, and unix socket path survive.
+	LocalAddr() net.Addr
+	// RemoteAddr returns the address of the immediate peer, which is the proxy
+	// rather than the client when the app sits behind one. Use IP or IPs for the
+	// client address a trusted proxy forwarded.
+	RemoteAddr() net.Addr
+	// Hijack registers a handler that takes over the connection once the response is
+	// sent, for protocols Fiber does not speak. The connection then closes unless
+	// KeepHijackedConns is set, and the handler must not touch the pooled Ctx.
+	Hijack(handler fasthttp.HijackHandler)
+	// Hijacked returns true if Hijack has been called on this request, so a later
+	// handler can tell that the connection is already spoken for and leave the
+	// response alone.
+	Hijacked() bool
 	// String returns unique string representation of the ctx.
 	//
 	// The returned value may be useful for logging.
@@ -146,9 +208,6 @@ type Ctx interface {
 	// and therefore available to all following routes that match the request. If the context
 	// has been released and c.fasthttp is nil (for example, after ReleaseCtx), Value returns nil.
 	Value(key any) any
-	// XHR returns a Boolean property, that is true, if the request's X-Requested-With header field is XMLHttpRequest,
-	// indicating that the request was issued by a client library (such as jQuery).
-	XHR() bool
 	// configDependentPaths set paths for route recognition and prepared paths for the user,
 	// here the features for caseSensitive, decoded paths, strict paths are evaluated
 	configDependentPaths()
@@ -225,21 +284,56 @@ type Ctx interface {
 	setFirstMatchIndex(index int)
 	setRoute(route *Route)
 	getPathOriginal() string
+	// Accepts checks if the specified extensions or content types are acceptable.
+	Accepts(offers ...string) string
+	// AcceptsCharsets checks if the specified charset is acceptable.
+	AcceptsCharsets(offers ...string) string
+	// AcceptsEncodings checks if the specified encoding is acceptable.
+	AcceptsEncodings(offers ...string) string
+	// AcceptsLanguages checks if the specified language is acceptable using
+	// RFC 4647 Basic Filtering.
+	AcceptsLanguages(offers ...string) string
+	// AcceptsLanguagesExtended checks if the specified language is acceptable using
+	// RFC 4647 Extended Filtering.
+	AcceptsLanguagesExtended(offers ...string) string
+	// BodyRaw contains the raw body submitted in a POST request.
+	// Returned value is only valid within the handler. Do not store any references.
+	// Make copies or use the Immutable setting instead.
+	BodyRaw() []byte
+	//nolint:nonamedreturns // gocritic unnamedResult prefers naming decoded body, decode count, and error
+	tryDecodeBodyInOrder(originalBody *[]byte, encodings []string) (body []byte, decodesRealized uint8, err error)
+	// BodyStream returns the request body as a stream, non-nil only when
+	// Config.StreamRequestBody is enabled and the body is not already buffered.
+	// Reading it consumes the body, so a later Body call will not see it.
+	BodyStream() io.Reader
 	// FullURL returns the full request URL (protocol + host + original URL).
 	FullURL() string
 	// UserAgent returns the User-Agent request header.
 	UserAgent() string
 	// Referer returns the Referer request header.
 	Referer() string
+	// Origin returns the Origin request header.
+	// Returned value is only valid within the handler. Do not store any references.
+	// Make copies or use the Immutable setting to use the value outside the Handler.
+	Origin() string
+	// headerField returns a request header's first non-empty field value, matching
+	// the field name case-insensitively (RFC 9110 Section 5.1). fieldname.First
+	// also steps over a present-but-empty first line, so a value on a later line
+	// is found and this agrees with GetAll on whether the field is there.
+	headerField(name string) []byte
 	// AcceptLanguage returns the Accept-Language request header.
-	// Repeated field lines are combined into one comma-joined list
-	// (RFC 9110 Section 5.2), matching what AcceptsLanguages negotiates on.
+	// Repeated field lines are combined into one comma-joined list (RFC 9110
+	// Section 5.2) and the field name matches case-insensitively (Section 5.1),
+	// matching what AcceptsLanguages negotiates on.
 	AcceptLanguage() string
 	// AcceptEncoding returns the Accept-Encoding request header.
-	// Repeated field lines are combined into one comma-joined list
-	// (RFC 9110 Section 5.2), matching what AcceptsEncodings negotiates on.
+	// Repeated field lines are combined into one comma-joined list (RFC 9110
+	// Section 5.2) and the field name matches case-insensitively (Section 5.1),
+	// matching what AcceptsEncodings negotiates on.
 	AcceptEncoding() string
 	// HasHeader reports whether the request includes a header with the given key.
+	// The field name matches case-insensitively (RFC 9110 Section 5.1), so this
+	// agrees with GetAll on whether the field is there.
 	HasHeader(key string) bool
 	// MediaType returns the MIME type from the Content-Type header without parameters.
 	MediaType() string
@@ -259,36 +353,14 @@ type Ctx interface {
 	AcceptsXML() bool
 	// AcceptsEventStream reports whether the Accept header allows text/event-stream.
 	AcceptsEventStream() bool
-	// Accepts checks if the specified extensions or content types are acceptable.
-	Accepts(offers ...string) string
-	// AcceptsCharsets checks if the specified charset is acceptable.
-	AcceptsCharsets(offers ...string) string
-	// AcceptsEncodings checks if the specified encoding is acceptable.
-	AcceptsEncodings(offers ...string) string
-	// AcceptsLanguages checks if the specified language is acceptable using
-	// RFC 4647 Basic Filtering.
-	AcceptsLanguages(offers ...string) string
-	// AcceptsLanguagesExtended checks if the specified language is acceptable using
-	// RFC 4647 Extended Filtering.
-	AcceptsLanguagesExtended(offers ...string) string
-	// BodyRaw contains the raw body submitted in a POST request.
-	// Returned value is only valid within the handler. Do not store any references.
-	// Make copies or use the Immutable setting instead.
-	BodyRaw() []byte
-	//nolint:nonamedreturns // gocritic unnamedResult prefers naming decoded body, decode count, and error
-	tryDecodeBodyInOrder(originalBody *[]byte, encodings []string) (body []byte, decodesRealized uint8, err error)
-	// Body contains the raw body submitted in a POST request.
-	// This method will decompress the body if the 'Content-Encoding' header is provided.
-	// It returns the original (or decompressed) body data which is valid only within the handler.
-	// Don't store direct references to the returned data.
-	// If you need to keep the body's data later, make a copy or use the Immutable option.
-	Body() []byte
-	// Cookies are used for getting a cookie value by key.
-	// Defaults to the empty string "" if the cookie doesn't exist.
-	// If a default value is given, it will return that value if the cookie doesn't exist.
-	// The returned value is only valid within the handler. Do not store any references.
-	// Make copies or use the Immutable setting to use the value outside the Handler.
-	Cookies(key string, defaultValue ...string) string
+	// CookieNames returns the request cookie names in header order, or nil when
+	// there are none. A repeated name appears once per occurrence, which is how the
+	// shadowing AllCookies collapses is detected. The strings are copies.
+	CookieNames() []string
+	// AllCookies returns the request cookies as a name/value map, or nil when there
+	// are none. A repeated name resolves to its first occurrence, as Cookies does,
+	// so a shadowed cookie cannot be validated in one and consumed in the other.
+	AllCookies() map[string]string
 	// FormFile returns the first file by key from a MultipartForm.
 	// The multipart form is parsed using the application's BodyLimit to prevent
 	// unbounded memory usage.
@@ -301,6 +373,11 @@ type Ctx interface {
 	// Make copies or use the Immutable setting instead.
 	// When the request is a multipart form, it is parsed using the application's
 	// BodyLimit so the configured limit is consistently enforced.
+	//
+	// On a form request this lowercases the case-insensitive parts of the request's
+	// own Content-Type, so a value obtained earlier from Get(HeaderContentType) —
+	// which aliases those bytes unless Immutable is set — can change during the
+	// call. Copy it first if you need it to outlive one.
 	FormValue(key string, defaultValue ...string) string
 	// Fresh returns true when the response is still “fresh” in the client's cache,
 	// otherwise false is returned to indicate that the client cache is now stale
@@ -312,6 +389,30 @@ type Ctx interface {
 	// reload request, this module will return false to make handling these requests transparent.
 	// https://github.com/jshttp/fresh/blob/master/index.js#L33
 	Fresh() bool
+	// IfNoneMatch returns the entity tags in the If-None-Match request header,
+	// verbatim and unvalidated; a comma inside a quoted opaque-tag does not split
+	// one. Fresh already compares them. Only valid within the handler.
+	IfNoneMatch() []string
+	// IfModifiedSince returns the time carried by the If-Modified-Since request
+	// header, ErrHeaderNotFound when it is absent or empty, and a parse error when
+	// it is none of the HTTP-date formats RFC 9110 Section 5.6.7 requires.
+	IfModifiedSince() (time.Time, error)
+	// GetAll returns every field line stored under key, where Get returns only the
+	// first, or nil when the header is absent. Empty lines are skipped, so its
+	// presence answers as HasHeader does. Only valid within the handler.
+	GetAll(key string) []string
+	// Authorization splits the Authorization header into auth-scheme and credentials
+	// (RFC 9110 Section 11.6.2), neither decoded nor validated. They view the request
+	// buffer: a credential kept past the handler becomes another request's.
+	Authorization() (scheme, credentials string)
+	// authorizationParts splits the Authorization header at the first space or tab
+	// (RFC 9110 Section 11.4), on raw bytes so each caller materializes only the
+	// strings it needs. A lone token is a scheme without credentials.
+	authorizationParts() (scheme, credentials []byte)
+	// Bearer returns the credentials of a Bearer Authorization header (RFC 6750
+	// Section 2.1), unverified, or "" for another scheme. It views the request
+	// buffer: a token kept past the handler becomes another request's.
+	Bearer() string
 	// Host contains the host derived from the X-Forwarded-Host or Host HTTP header.
 	// Returned value is only valid within the handler. Do not store any references.
 	// In a network context, `Host` refers to the combination of a hostname and potentially a port number used for connecting,
@@ -353,6 +454,17 @@ type Ctx interface {
 	// Is returns the matching content type,
 	// if the incoming request's Content-Type HTTP header field matches the MIME type specified by the type parameter
 	Is(extension string) bool
+	// HasBody returns true if the request declares a body via Content-Length, Transfer-Encoding, or already buffered payload data.
+	HasBody() bool
+	// IsWebSocket returns true if the request includes a WebSocket upgrade handshake.
+	IsWebSocket() bool
+	// IsPreflight returns true if the request is a CORS preflight.
+	IsPreflight() bool
+	// Secure returns whether a secure connection was established.
+	Secure() bool
+	// XHR returns a Boolean property, that is true, if the request's X-Requested-With header field is XMLHttpRequest,
+	// indicating that the request was issued by a client library (such as jQuery).
+	XHR() bool
 	// Locals makes it possible to pass any values under keys scoped to the request
 	// and therefore available to all following routes that match the request.
 	//
@@ -364,9 +476,29 @@ type Ctx interface {
 	// If no override is given or if the provided override is not a valid HTTP method, it returns the current method from the context.
 	// Otherwise, it updates the context's method and returns the overridden method as a string.
 	Method(override ...string) string
+	// IsSafe reports whether the request method is safe, meaning it is not expected
+	// to change server state (RFC 9110 Section 9.2.1).
+	IsSafe() bool
+	// IsIdempotent reports whether the request method is idempotent, meaning
+	// repeating it has the same intended effect as making it once (RFC 9110
+	// Section 9.2.2). Every safe method is also idempotent.
+	IsIdempotent() bool
 	// MultipartForm parse form entries from binary.
 	// This returns a map[string][]string, so given a key, the value will be a string slice.
+	//
+	// On a form request this lowercases the case-insensitive parts of the request's
+	// own Content-Type, so a value obtained earlier from Get(HeaderContentType) —
+	// which aliases those bytes unless Immutable is set — can change during the
+	// call. Copy it first if you need it to outlive one.
 	MultipartForm() (*multipart.Form, error)
+	// URI returns the parsed *fasthttp.URI of the request, giving access to all
+	// fasthttp URI methods. It is owned by the request and rewritten by a Path
+	// override, so it is only valid within the handler.
+	URI() *fasthttp.URI
+	// Path returns the path part of the request URL.
+	// Optionally, you could override the path.
+	// Make copies or use the Immutable setting to use the value outside the Handler.
+	Path(override ...string) string
 	// Params is used to get the route parameters.
 	// Defaults to empty string "" if the param doesn't exist.
 	// If a default value is given, it will return that value if the param doesn't exist.
@@ -428,6 +560,11 @@ type Ctx interface {
 	// Empty values are skipped: a sender must not generate empty list elements
 	// (RFC 9110 Section 5.6.1.2).
 	Append(field string, values ...string)
+	// Add appends the value as a new field line, where Append folds values into one
+	// comma-separated line. The headers fasthttp keeps in a slot of their own are
+	// the exception: Content-Type, Server and the rest are replaced and Date and TE
+	// ignored, though Set-Cookie is slotted and does append. Use Cookie for that.
+	Add(key, val string)
 	// Attachment sets the HTTP response Content-Disposition header field to attachment.
 	Attachment(filename ...string)
 	// ClearCookie expires a specific cookie by key on the client side.
@@ -440,6 +577,18 @@ type Ctx interface {
 	// Partitioned) happens on a local copy, so a caller may reuse the same *Cookie
 	// template across requests.
 	Cookie(cookie *Cookie)
+	// GetCookie reads back a cookie this response is set to send, false when the
+	// name is unset or its value does not parse. Names are case-sensitive and a
+	// repeat resolves to the first. Writing the copy back through Cookie stamps
+	// Path=/ on a cookie that carried none, widening its scope — set Path first.
+	GetCookie(name string) (*Cookie, bool)
+	// GetCookies returns a copy of every cookie this response is set to send, in
+	// order, or nil when there are none. Repeated names are kept apart, and an
+	// unparsable one is skipped. For what the client sent, use Req.Cookies.
+	//
+	// Named for GetCookie beside it rather than Cookies, which would collide with
+	// Req.Cookies under a different signature and stop Ctx satisfying Res.
+	GetCookies() []*Cookie
 	// Download transfers the file from path as an attachment.
 	// Typically, browsers will prompt the user for download.
 	// By default, the Content-Disposition header filename= parameter is the filepath (this typically appears in the browser dialog).
@@ -459,6 +608,10 @@ type Ctx interface {
 	// For more flexible content negotiation, use Format.
 	// If the header is not specified or there is no proper format, text/plain is used.
 	AutoFormat(body any) error
+	// Del removes every field line stored under key, whatever case it is spelled in,
+	// and is a no-op for a header that was never set. Del(HeaderSetCookie) withdraws
+	// the pending cookies, where ClearCookie expires one in the client's jar.
+	Del(key string)
 	// JSON converts any interface or string to JSON.
 	// Array and slice values encode as JSON arrays,
 	// except that []byte encodes as a base64-encoded string,
@@ -480,6 +633,12 @@ type Ctx interface {
 	// JSONP sends a JSON response with JSONP support.
 	// This method is identical to JSON, except that it opts-in to JSONP callback support.
 	// By default, the callback name is simply callback.
+	//
+	// The callback name is reduced to a JavaScript member expression: everything
+	// outside [A-Za-z0-9_$.[]] is dropped. Callers routinely take the name straight
+	// from the query string, which is what JSONP is for, and the name lands
+	// verbatim in a same-origin text/javascript body — so an unfiltered one would
+	// let a request supply arbitrary script for the app's own origin.
 	JSONP(data any, callback ...string) error
 	// XML converts any interface or string to XML.
 	// This method also sets the content header to application/xml; charset=utf-8.
@@ -496,6 +655,14 @@ type Ctx interface {
 	// Render a template with data and sends a text/html response.
 	// We support the following engines: https://github.com/gofiber/template
 	Render(name string, bind any, layouts ...string) error
+	// ResetBody discards the response body, keeping the status and headers.
+	// Use it before replacing a partially written body — an error page over a
+	// half-rendered view, a cached body over a fresh one.
+	ResetBody()
+	// Written reports whether anything has been written to the response body, so a
+	// handler that produced one can be told from a handler that did not. A stream
+	// counts without being drained; a status or header alone does not.
+	Written() bool
 	// Send sets the HTTP response body without copying it.
 	// From this point onward the body argument must not be changed.
 	Send(body []byte) error
@@ -515,6 +682,10 @@ type Ctx interface {
 	// The Content-Type response HTTP header field is set based on the file's extension.
 	// If the file extension is missing or invalid, the Content-Type is detected from the file's format.
 	SendFile(file string, config ...SendFile) error
+	// NoContent replies 204 No Content. SendStatus already discards the body; this
+	// drops the Content-Type too, since RFC 9110 Section 6.4.1 gives a 204 no
+	// content to describe. SendStatus(204) keeps it, so the two differ.
+	NoContent() error
 	// SendStatus sets the HTTP status code and if the response body is empty,
 	// it sets the correct status message in the body.
 	SendStatus(status int) error
@@ -528,6 +699,10 @@ type Ctx interface {
 	// Set sets the response's HTTP header field to the specified key, value.
 	Set(key, val string)
 	setCanonical(key, val string)
+	// StatusCode returns the status code set on the response, the read side of
+	// Status, and reports 200 until something sets another. After Next it is the
+	// status the chain settled on.
+	StatusCode() int
 	// Type sets the Content-Type HTTP header to the MIME type specified by the file extension.
 	Type(extension string, charset ...string) Ctx
 	// Vary adds the given header field to the Vary response header.

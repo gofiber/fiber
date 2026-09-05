@@ -57,7 +57,7 @@ func writeEvent(w *bufio.Writer, event Event, jsonMarshal ...utils.JSONMarshal) 
 		}
 	}
 	if event.Retry > 0 {
-		appendField(&frame, "retry", utils.FormatInt(event.Retry.Milliseconds()))
+		appendField(&frame, "retry", utils.FormatInt(retryMilliseconds(event.Retry)))
 	}
 	if data.hasData {
 		appendData(&frame, data.data)
@@ -156,4 +156,15 @@ func normalizeNewlines(value string) string {
 	}
 	value = strings.ReplaceAll(value, "\r\n", "\n")
 	return strings.ReplaceAll(value, "\r", "\n")
+}
+
+// retryMilliseconds converts a delay to whole milliseconds, rounding up so it never becomes "retry: 0".
+func retryMilliseconds(d time.Duration) int64 {
+	// Divide before rounding up: adding a millisecond first overflows for a
+	// duration near the top of the range and wraps to a negative count.
+	ms := d / time.Millisecond
+	if d%time.Millisecond != 0 {
+		ms++
+	}
+	return int64(ms)
 }

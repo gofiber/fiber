@@ -22,6 +22,12 @@ type Response struct {
 
 	RawResponse *fasthttp.Response
 	cookie      []*fasthttp.Cookie
+
+	// respondedHost and respondedPath record where the response was actually served
+	// from, which cookie storage must follow or a redirect target plants cookies
+	// for an origin it does not control. Byte slices: a URI would cost ~296 bytes.
+	respondedHost []byte
+	respondedPath []byte
 }
 
 // setClient sets the client instance in the response. The client object is used by core functionalities.
@@ -32,6 +38,42 @@ func (r *Response) setClient(c *Client) {
 // setRequest sets the request object in the response. The request is released when Response.Close is called.
 func (r *Response) setRequest(req *Request) {
 	r.request = req
+}
+
+// setRespondedURI records where the response was served from, copying into the
+// pooled Response's own buffers so the values stay valid after the caller
+// releases its request.
+func (r *Response) setRespondedURI(uri *fasthttp.URI) {
+	if uri == nil {
+		return
+	}
+	r.respondedHost = append(r.respondedHost[:0], uri.Host()...)
+	r.respondedPath = append(r.respondedPath[:0], uri.Path()...)
+}
+
+// maxOriginBuf bounds the recorded-origin buffers kept on a pooled Response. A
+// redirect target chooses the path these hold, so a run of long ones would
+// otherwise leave every pooled Response holding a buffer sized to the longest
+// it ever saw.
+const maxOriginBuf = 4 * 1024
+
+// resetOriginBuf empties b for reuse, dropping it outright when it grew past
+// what is worth carrying between requests.
+func resetOriginBuf(b []byte) []byte {
+	if cap(b) > maxOriginBuf {
+		return nil
+	}
+	return b[:0]
+}
+
+// respondedOrigin returns the host and path the response was served from,
+// falling back to fallback when they were not recorded — a Response assembled
+// outside the normal execution path.
+func (r *Response) respondedOrigin(fallback *fasthttp.URI) (host, path []byte) { //nolint:nonamedreturns // names document the two results
+	if len(r.respondedHost) == 0 {
+		return fallback.Host(), fallback.Path()
+	}
+	return r.respondedHost, r.respondedPath
 }
 
 // Status returns the HTTP status message of the executed request.
@@ -51,7 +93,7 @@ func (r *Response) Protocol() string {
 
 // Header returns the value of the specified response header field.
 func (r *Response) Header(key string) string {
-	return utils.UnsafeString(r.RawResponse.Header.Peek(key))
+	return string(r.RawResponse.Header.Peek(key))
 }
 
 // Headers returns all headers in the response using an iterator.
@@ -193,6 +235,8 @@ func (r *Response) Save(v any) error {
 func (r *Response) Reset() {
 	r.client = nil
 	r.request = nil
+	r.respondedHost = resetOriginBuf(r.respondedHost)
+	r.respondedPath = resetOriginBuf(r.respondedPath)
 
 	for len(r.cookie) != 0 {
 		t := r.cookie[0]
@@ -203,13 +247,16 @@ func (r *Response) Reset() {
 	r.RawResponse.Reset()
 }
 
-// Close releases both the Request and Response objects back to their pools.
+// Close releases the Response back to its pool, along with the Request when a
+// client helper created it. A Request from AcquireRequest stays the caller's.
 // After calling Close, do not use these objects.
 func (r *Response) Close() {
 	if r.request != nil {
 		tmp := r.request
 		r.request = nil
-		ReleaseRequest(tmp)
+		if tmp.clientOwned {
+			ReleaseRequest(tmp)
+		}
 	}
 	ReleaseResponse(r)
 }

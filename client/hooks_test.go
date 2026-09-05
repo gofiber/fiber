@@ -156,6 +156,116 @@ func Test_Parser_Request_URL(t *testing.T) {
 		require.Equal(t, "http://example.com/api/12/fiber/val", req.RawRequest.URI().String())
 	})
 
+	t.Run("path param does not match a longer placeholder", func(t *testing.T) {
+		t.Parallel()
+		client := New().
+			SetBaseURL("http://example.com/api/:idx").
+			SetPathParam("id", "5")
+		req := AcquireRequest()
+
+		err := parserRequestURL(client, req)
+		require.NoError(t, err)
+		require.Equal(t, "http://example.com/api/:idx", req.RawRequest.URI().String())
+	})
+
+	t.Run("path params sharing a prefix are resolved independently", func(t *testing.T) {
+		t.Parallel()
+		client := New().SetBaseURL("http://example.com/api/:idx/:id")
+		req := AcquireRequest().
+			SetPathParams(map[string]string{
+				"id":  "5",
+				"idx": "9",
+			})
+
+		err := parserRequestURL(client, req)
+		require.NoError(t, err)
+		require.Equal(t, "http://example.com/api/9/5", req.RawRequest.URI().String())
+	})
+
+	t.Run("path param value cannot open a query", func(t *testing.T) {
+		t.Parallel()
+		client := New()
+		req := AcquireRequest().
+			SetURL("http://example.com/api/:id").
+			SetPathParam("id", "a?b")
+
+		err := parserRequestURL(client, req)
+		require.NoError(t, err)
+		require.Equal(t, "http://example.com/api/a%3Fb", req.RawRequest.URI().String())
+	})
+
+	t.Run("path param value keeps its escaped separator when normalizing is off", func(t *testing.T) {
+		t.Parallel()
+		client := New()
+		req := AcquireRequest().
+			SetURL("http://example.com/api/:id").
+			SetPathParam("id", "a/b").
+			SetDisablePathNormalizing(true)
+
+		err := parserRequestURL(client, req)
+		require.NoError(t, err)
+		require.Equal(t, "http://example.com/api/a%2Fb", req.RawRequest.URI().String())
+	})
+
+	t.Run("a separator in a value is rejected when normalizing will decode it", func(t *testing.T) {
+		t.Parallel()
+		client := New()
+		req := AcquireRequest().
+			SetURL("http://example.com/api/:id").
+			SetPathParam("id", "a/b")
+
+		// The value would be escaped to "a%2Fb", but fasthttp percent-decodes
+		// the path while normalizing it, so an encoded "/" is indistinguishable
+		// from a real separator on the wire. Escaping still contains "?" and
+		// "#", which normalizing does not decode.
+		err := parserRequestURL(client, req)
+		require.ErrorIs(t, err, ErrPathParamInPath)
+	})
+
+	t.Run("path param value cannot rewrite the host", func(t *testing.T) {
+		t.Parallel()
+		client := New()
+		req := AcquireRequest().
+			SetURL("http://:host/api").
+			SetPathParam("host", "x@evil.com")
+
+		// "@" ends a userinfo section, so this used to resolve to the host
+		// "evil.com" and the request left for another server.
+		err := parserRequestURL(client, req)
+		require.ErrorIs(t, err, ErrPathParamInHost)
+	})
+
+	t.Run("a host path param keeps the rest of the URL intact", func(t *testing.T) {
+		t.Parallel()
+		client := New()
+		req := AcquireRequest().
+			SetURL("http://:host/api/v1?a=b").
+			SetPathParam("host", "\u00fcn\u00efcode.example.com")
+
+		err := parserRequestURL(client, req)
+		require.NoError(t, err)
+		require.Equal(t, "\u00fcn\u00efcode.example.com", string(req.RawRequest.URI().Host()))
+		// A percent-escape in the host makes fasthttp abandon the rest of the
+		// URI, so this pins that a host value never gets escaped.
+		require.Equal(t, "/api/v1", string(req.RawRequest.URI().Path()))
+		require.Equal(t, "a=b", string(req.RawRequest.URI().QueryString()))
+	})
+
+	t.Run("a substituted value is not substituted again", func(t *testing.T) {
+		t.Parallel()
+		client := New()
+		req := AcquireRequest().
+			SetURL("http://example.com/api/:id").
+			SetPathParams(map[string]string{
+				"id":   ":name",
+				"name": "fiber",
+			})
+
+		err := parserRequestURL(client, req)
+		require.NoError(t, err)
+		require.Equal(t, "http://example.com/api/:name", req.RawRequest.URI().String())
+	})
+
 	t.Run("query params from client should be set", func(t *testing.T) {
 		t.Parallel()
 		client := New().
@@ -821,4 +931,121 @@ func releaseBenchmarkRequest(req *Request) {
 	for _, f := range req.files {
 		ReleaseFile(f)
 	}
+}
+
+func Benchmark_Parser_Request_URL_PathParams(b *testing.B) {
+	client := New().SetBaseURL("http://example.com/api/:version")
+	client.SetPathParam("version", "v1")
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for b.Loop() {
+		req := AcquireRequest().
+			SetURL("/users/:id/posts/:postID").
+			SetPathParams(map[string]string{
+				"id":     "12345",
+				"postID": "67890",
+			})
+		if err := parserRequestURL(client, req); err != nil {
+			b.Fatal(err)
+		}
+		ReleaseRequest(req)
+	}
+}
+
+func Test_Client_Logger_StreamedBodiesLogHeadersOnly(t *testing.T) {
+	t.Parallel()
+
+	var buf bytes.Buffer
+	client := New()
+	client.Debug().SetLogger(&dummyLogger{buf: &buf})
+
+	req := AcquireRequest()
+	t.Cleanup(func() { ReleaseRequest(req) })
+	req.RawRequest.SetRequestURI("http://example.com/")
+	req.RawRequest.Header.SetMethod(fiber.MethodPost)
+	req.RawRequest.SetBodyStream(bytes.NewBufferString("request body"), len("request body"))
+
+	resp := AcquireResponse()
+	t.Cleanup(func() { ReleaseResponse(resp) })
+	resp.RawResponse.SetBodyStream(bytes.NewBufferString("response body"), len("response body"))
+
+	require.NoError(t, logger(client, resp, req))
+
+	out := buf.String()
+	require.Contains(t, out, "POST http://example.com/ HTTP/1.1")
+	require.Contains(t, out, "HTTP/1.1 200 OK")
+	require.NotContains(t, out, "request body", "a streamed body is consumed by its first reader")
+	require.NotContains(t, out, "response body")
+	require.True(t, req.RawRequest.IsBodyStream())
+	require.True(t, resp.RawResponse.IsBodyStream())
+}
+
+func Test_ParseCookieIgnoringBadAttrs(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		value    string
+		wantVal  string
+		wantPath string
+		wantErr  bool
+		secure   bool
+		httpOnly bool
+	}{
+		{name: "trailing bad attr", value: "a=1; Secure; Expires=bogus", wantVal: "1", secure: true},
+		{name: "leading bad attr", value: "a=1; Expires=bogus; Secure", wantVal: "1", secure: true},
+		{name: "bad attr between", value: "a=1; Secure; Max-Age=abc; HttpOnly", wantVal: "1", secure: true, httpOnly: true},
+		{name: "two bad attrs", value: "a=1; Expires=bogus; Path=/p; Max-Age=abc", wantVal: "1", wantPath: "/p"},
+		{name: "no attrs", value: "a=1", wantVal: "1"},
+		{name: "value only", value: "1", wantVal: "1"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			cookie := fasthttp.AcquireCookie()
+			t.Cleanup(func() { fasthttp.ReleaseCookie(cookie) })
+
+			err := parseCookieIgnoringBadAttrs(cookie, []byte(tc.value))
+			if tc.wantErr {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, tc.wantVal, string(cookie.Value()))
+			require.Equal(t, tc.wantPath, string(cookie.Path()))
+			require.Equal(t, tc.secure, cookie.Secure())
+			require.Equal(t, tc.httpOnly, cookie.HTTPOnly())
+		})
+	}
+}
+
+func Test_Client_ResponseCookie_UnparsableAttribute(t *testing.T) {
+	t.Parallel()
+
+	client := New()
+
+	req := AcquireRequest()
+	t.Cleanup(func() { ReleaseRequest(req) })
+	req.RawRequest.SetRequestURI("http://example.com/")
+
+	resp := AcquireResponse()
+	t.Cleanup(func() { ReleaseResponse(resp) })
+	resp.RawResponse.Header.Add("Set-Cookie", "sid=abc; Secure; HttpOnly; Expires=notadate; Path=/api")
+
+	require.NoError(t, parserResponseCookie(client, resp, req))
+	require.Len(t, resp.cookie, 1)
+
+	// Only the malformed attribute is ignored (RFC 6265 §5.2); the ones before
+	// and after it survive, as does an expiry that never parsed.
+	got := resp.cookie[0]
+	require.Equal(t, "sid", string(got.Key()))
+	require.Equal(t, "abc", string(got.Value()))
+	require.True(t, got.Secure())
+	require.True(t, got.HTTPOnly())
+	require.Equal(t, "/api", string(got.Path()))
+	require.True(t, got.Expire().IsZero() || got.Expire().Equal(fasthttp.CookieExpireUnlimited))
 }

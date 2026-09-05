@@ -9,10 +9,10 @@ import (
 	"errors"
 	"fmt"
 	"sort"
-	"strconv"
 	"strings"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/quotedstring"
 	"github.com/gofiber/utils/v2"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -166,9 +166,9 @@ func configDefault(config ...Config) Config {
 
 	if cfg.Unauthorized == nil {
 		cfg.Unauthorized = func(c fiber.Ctx) error {
-			header := "Basic realm=" + strconv.Quote(cfg.Realm)
+			header := `Basic realm="` + quotedstring.Escape(cfg.Realm) + `"`
 			if cfg.Charset != "" {
-				header += ", charset=" + strconv.Quote(cfg.Charset)
+				header += `, charset="` + quotedstring.Escape(cfg.Charset) + `"`
 			}
 			c.Set(fiber.HeaderWWWAuthenticate, header)
 			c.Set(fiber.HeaderCacheControl, "no-store")

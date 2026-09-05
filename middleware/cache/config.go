@@ -50,6 +50,8 @@ type Config struct {
 	// make time-dependent tests deterministic. When nil, time.Now is used.
 	clock func() time.Time
 
+	accounting func(storedBytes uint, heapLen int)
+
 	// CacheHeader header on response header, indicate cache status, with the following possible return value
 	//
 	// hit, miss, unreachable
@@ -117,6 +119,12 @@ type Config struct {
 	//
 	// Default: false
 	StoreResponseHeaders bool
+
+	// usesDefaultKeyGenerator records that KeyGenerator above is the one this
+	// package installed, which lets the handler build that key straight into the
+	// buffer holding the rest of the cache key. Set only by configDefault, so a
+	// KeyGenerator the user supplied is always called through the field.
+	usesDefaultKeyGenerator bool
 }
 
 // ConfigDefault is the default config
@@ -147,6 +155,7 @@ func configDefault(config ...Config) Config {
 		cfg.KeyHeaders = normalizeHeaderDimensions(cfg.KeyHeaders, ConfigDefault.KeyHeaders)
 		cfg.KeyCookies = normalizeCookieDimensions(cfg.KeyCookies, nil)
 		if cfg.KeyGenerator == nil {
+			cfg.usesDefaultKeyGenerator = true
 			cfg.KeyGenerator = func(c fiber.Ctx) string {
 				return defaultKeyGenerator(c, &cfg)
 			}
@@ -183,9 +192,14 @@ func configDefault(config ...Config) Config {
 		cfg.Methods = normalized
 	}
 	if cfg.KeyGenerator == nil {
+		cfg.usesDefaultKeyGenerator = true
 		cfg.KeyGenerator = func(c fiber.Ctx) string {
 			return defaultKeyGenerator(c, &cfg)
 		}
+	} else {
+		// A Config the caller built may carry the flag from a copy of one this
+		// package filled in, while naming a generator of its own.
+		cfg.usesDefaultKeyGenerator = false
 	}
 	return cfg
 }

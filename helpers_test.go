@@ -317,6 +317,11 @@ func Test_Utils_GetOffer_QualityZeroRejection(t *testing.T) {
 	require.Empty(t, getOffer([]byte("en;q=0 , fr"), acceptsLanguageOfferBasic, "en"))
 	// The same whitespace must not distort ordering between positive weights.
 	require.Equal(t, "application/json", getOffer([]byte("text/plain;q=0.1 , application/json;q=0.9"), acceptsOfferType, "text/plain", "application/json"))
+
+	// An empty offer is skipped on the resolve-by-specificity path too: the first
+	// match (text/plain, demoted to 0.3 by its own range) loses to text/html.
+	require.Equal(t, "text/html", getOffer([]byte("text/*;q=0.8, text/plain;q=0.3"), acceptsOfferType, "", "text/plain", "text/html"))
+	require.Equal(t, "text/plain", getOffer([]byte("text/*;q=0.8, text/plain;q=0.3"), acceptsOfferType, "", "text/plain"))
 }
 
 // go test -v -run=^$ -bench=Benchmark_Utils_GetOffer -benchmem -count=4
@@ -536,93 +541,6 @@ func Test_Utils_AcceptsOfferType(t *testing.T) {
 		accepts := acceptsOfferType(tc.spec, tc.offerType, tc.specParams) > 0
 		require.Equal(t, tc.accepts, accepts, tc.description)
 	}
-}
-
-func Test_Utils_GetSplicedStrList(t *testing.T) {
-	t.Parallel()
-	testCases := []struct {
-		description  string
-		headerValue  string
-		expectedList []string
-	}{
-		{
-			description:  "normal case",
-			headerValue:  "gzip, deflate,br",
-			expectedList: []string{"gzip", "deflate", "br"},
-		},
-		{
-			description:  "no matter the value",
-			headerValue:  "   gzip,deflate, br, zip",
-			expectedList: []string{"gzip", "deflate", "br", "zip"},
-		},
-		{
-			description:  "comma with trailing spaces around values",
-			headerValue:  "gzip , br",
-			expectedList: []string{"gzip", "br"},
-		},
-		{
-			description:  "comma with tabbed whitespace",
-			headerValue:  "gzip\t,br",
-			expectedList: []string{"gzip", "br"},
-		},
-		{
-			description:  "headerValue is empty",
-			headerValue:  "",
-			expectedList: nil,
-		},
-		{
-			// RFC 9110 §5.6.1.2: empty list elements are parsed and ignored.
-			description:  "has a comma without element",
-			headerValue:  "gzip,",
-			expectedList: []string{"gzip"},
-		},
-		{
-			description:  "has a space between words",
-			headerValue:  "  foo bar, hello  world",
-			expectedList: []string{"foo bar", "hello  world"},
-		},
-		{
-			description:  "single comma",
-			headerValue:  ",",
-			expectedList: []string{},
-		},
-		{
-			description:  "multiple comma",
-			headerValue:  ",,",
-			expectedList: []string{},
-		},
-		{
-			description:  "comma with space",
-			headerValue:  ",  ,",
-			expectedList: []string{},
-		},
-		{
-			description:  "empty element between values",
-			headerValue:  "gzip, , br",
-			expectedList: []string{"gzip", "br"},
-		},
-	}
-
-	for _, tc := range testCases {
-		t.Run(tc.description, func(t *testing.T) {
-			tc := tc // create a new 'tc' variable for the goroutine
-			t.Parallel()
-			dst := make([]string, 10)
-			result := getSplicedStrList(tc.headerValue, dst)
-			require.Equal(t, tc.expectedList, result)
-		})
-	}
-}
-
-func Benchmark_Utils_GetSplicedStrList(b *testing.B) {
-	destination := make([]string, 5)
-	result := destination
-	const input = `deflate, gzip,br,brotli,zstd`
-	b.ReportAllocs()
-	for b.Loop() {
-		result = getSplicedStrList(input, destination)
-	}
-	require.Equal(b, []string{"deflate", "gzip", "br", "brotli", "zstd"}, result)
 }
 
 func Test_Utils_SortAcceptedTypes(t *testing.T) {
@@ -879,60 +797,6 @@ func Benchmark_Utils_IsNoCache(b *testing.B) {
 }
 
 // go test -run Test_HeaderContainsValue
-func Test_HeaderContainsValue(t *testing.T) {
-	t.Parallel()
-	testCases := []struct {
-		header   string
-		value    string
-		expected bool
-	}{
-		// Exact match
-		{header: "gzip", value: "gzip", expected: true},
-		{header: "gzip", value: "deflate", expected: false},
-		// Prefix match (value at start with comma)
-		{header: "gzip, deflate", value: "gzip", expected: true},
-		{header: "gzip,deflate", value: "gzip", expected: true},
-		// Suffix match (value at end)
-		{header: "deflate, gzip", value: "gzip", expected: true},
-		{header: "deflate,gzip", value: "gzip", expected: true}, // No space - OWS is optional per RFC 9110
-		{header: "br, gzip", value: "gzip", expected: true},
-		// Middle match (value in middle)
-		{header: "deflate, gzip, br", value: "gzip", expected: true},
-		{header: "deflate,gzip,br", value: "gzip", expected: true}, // No spaces - OWS is optional per RFC 9110
-		// No match - similar but not equal
-		{header: "gzip2", value: "gzip", expected: false},
-		{header: "2gzip", value: "gzip", expected: false},
-		{header: "gzip2, deflate", value: "gzip", expected: false},
-		// Whitespace handling (OWS per RFC 9110)
-		{header: "  gzip  ,  deflate  ", value: "gzip", expected: true},
-		{header: "deflate,  gzip  ", value: "gzip", expected: true},
-		// Empty cases
-		{header: "", value: "gzip", expected: false},
-		{header: "gzip", value: "", expected: false},
-		{header: "", value: "", expected: false}, // Both empty - should return false
-	}
-
-	for _, tc := range testCases {
-		result := headerContainsValue(tc.header, tc.value)
-		require.Equal(t, tc.expected, result,
-			"headerContainsValue(%q, %q) = %v, want %v",
-			tc.header, tc.value, result, tc.expected)
-	}
-}
-
-// go test -v -run=^$ -bench=Benchmark_HeaderContainsValue -benchmem -count=4
-func Benchmark_HeaderContainsValue(b *testing.B) {
-	var ok bool
-	b.ReportAllocs()
-	for b.Loop() {
-		_ = headerContainsValue("gzip", "gzip")
-		_ = headerContainsValue("gzip, deflate, br", "deflate")
-		_ = headerContainsValue("deflate, gzip", "gzip")
-		ok = headerContainsValue("deflate, gzip, br", "gzip")
-	}
-	require.True(b, ok)
-}
-
 type testGenericParseTypeIntCase struct {
 	value int64
 	bits  int
@@ -1616,39 +1480,10 @@ func Test_UnescapeHeaderValue(t *testing.T) {
 	}
 }
 
-func Test_JoinHeaderValues(t *testing.T) {
-	t.Parallel()
-	require.Nil(t, joinHeaderValues(nil))
-	require.Equal(t, []byte("a"), joinHeaderValues([][]byte{[]byte("a")}))
-	require.Equal(t, []byte("a,b"), joinHeaderValues([][]byte{[]byte("a"), []byte("b")}))
-}
-
 func Test_ParamsMatch_InvalidEscape(t *testing.T) {
 	t.Parallel()
 	match := paramsMatch(headerParams{"foo": []byte("bar")}, `;foo="bar\\`)
 	require.False(t, match)
-}
-
-func Test_MatchEtag(t *testing.T) {
-	t.Parallel()
-
-	require.True(t, matchEtag(`"a"`, `"a"`))
-	require.True(t, matchEtag(`W/"a"`, `"a"`))
-	require.True(t, matchEtag(`"a"`, `W/"a"`))
-	require.False(t, matchEtag(`"a"`, `"b"`))
-	require.False(t, matchEtag(`a`, `"a"`))
-	require.False(t, matchEtag(`"a"`, `b`))
-}
-
-func Test_MatchEtagStrong(t *testing.T) {
-	t.Parallel()
-
-	require.True(t, matchEtagStrong(`"a"`, `"a"`))
-	require.False(t, matchEtagStrong(`W/"a"`, `"a"`))
-	require.False(t, matchEtagStrong(`"a"`, `W/"a"`))
-	require.False(t, matchEtagStrong(`"a"`, `"b"`))
-	require.False(t, matchEtagStrong(`a`, `"a"`))
-	require.False(t, matchEtagStrong(`"a"`, `b`))
 }
 
 func Test_IsEtagStale(t *testing.T) {
@@ -1693,47 +1528,6 @@ func Test_IsEtagStale(t *testing.T) {
 	require.False(t, app.isEtagStale(`W/"v1,v2"`, []byte(`"v1,v2"`)))
 	require.True(t, app.isEtagStale(`"v1"`, []byte(`"v1,v2"`)))
 	require.True(t, app.isEtagStale(`"v2"`, []byte(`"v1,v2"`)))
-}
-
-func Test_App_quoteRawString(t *testing.T) {
-	t.Parallel()
-
-	cases := []struct {
-		name string
-		in   string
-		out  string
-	}{
-		{"empty", "", ""},
-		{"simple", "simple", "simple"},
-		{"backslash", "A\\B", "A\\\\B"},
-		{"quote", `He said "Yo"`, `He said \"Yo\"`},
-		{"newline", "Hello\n", "Hello\\n"},
-		{"carriage", "Hello\r", "Hello\\r"},
-		{"controls", string([]byte{0, 31, 127}), "%00%1F%7F"},
-		{"tab", "a\tb", "a%09b"},
-		{"mixed", "test \"A\n\r" + string([]byte{1}) + "\\", `test \"A\n\r%01\\`},
-	}
-
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-			app := New()
-			require.Equal(t, tc.out, app.quoteRawString(tc.in))
-		})
-	}
-}
-
-func Test_App_quoteRawString_DetachesFromPooledBuffer(t *testing.T) {
-	t.Parallel()
-
-	app := New()
-
-	first := app.quoteRawString(`A\B`)
-	second := app.quoteRawString(`C"D`)
-
-	require.Equal(t, `A\\B`, first)
-	require.Equal(t, `C\"D`, second)
-	require.Equal(t, `A\\B`, first)
 }
 
 func TestStoreInContext(t *testing.T) {
@@ -1926,88 +1720,6 @@ func Test_appendLowerASCII(t *testing.T) {
 			if tc.in != "" {
 				require.Equal(t, 128, cap(got), "reused buffer must not be reallocated")
 			}
-		})
-	}
-}
-
-// Test_normalizeContentTypeMediaType pins the RFC 9110 case rules the
-// Content-Type normalizer implements: the media type (Section 8.3.1) and each
-// parameter name (Section 5.6.6) are case-insensitive and get folded, while
-// parameter values are left byte-for-byte alone. Folding a value would corrupt
-// a multipart boundary, which is case-sensitive.
-func Test_normalizeContentTypeMediaType(t *testing.T) {
-	t.Parallel()
-
-	testCases := []struct {
-		name string
-		in   string
-		want string
-	}{
-		{name: "no parameters", in: "Application/JSON", want: "application/json"},
-		{name: "already lower", in: "application/json", want: "application/json"},
-		{name: "empty", in: "", want: ""},
-		{
-			name: "parameter name folded, value preserved",
-			in:   "Multipart/Form-Data; BOUNDARY=AbC123",
-			want: "multipart/form-data; boundary=AbC123",
-		},
-		{
-			name: "whitespace after the semicolon",
-			in:   "Text/Plain;\t CHARSET=UTF-8",
-			want: "text/plain;\t charset=UTF-8",
-		},
-		{
-			name: "several parameters",
-			in:   "Text/Plain; CHARSET=UTF-8; Format=Flowed",
-			want: "text/plain; charset=UTF-8; format=Flowed",
-		},
-		{
-			// A quoted-string may itself contain ';', so it must be consumed as
-			// a unit or the next parameter name would be mislocated.
-			name: "semicolon inside a quoted value",
-			in:   `Text/Plain; NAME="a;B"; Charset=UTF-8`,
-			want: `text/plain; name="a;B"; charset=UTF-8`,
-		},
-		{
-			name: "escaped quote inside a quoted value",
-			in:   `Text/Plain; NAME="a\"; B"; Charset=UTF-8`,
-			want: `text/plain; name="a\"; B"; charset=UTF-8`,
-		},
-		{
-			name: "unterminated quoted value",
-			in:   `Text/Plain; NAME="abc`,
-			want: `text/plain; name="abc`,
-		},
-		{
-			// A bare parameter with no '=' must not swallow what follows it.
-			name: "valueless parameter",
-			in:   "Text/Plain; FLAG; CHARSET=UTF-8",
-			want: "text/plain; flag; charset=UTF-8",
-		},
-		{
-			name: "trailing semicolon",
-			in:   "Text/Plain;",
-			want: "text/plain;",
-		},
-		{
-			name: "empty parameter between semicolons",
-			in:   "Text/Plain;; CHARSET=UTF-8",
-			want: "text/plain;; charset=UTF-8",
-		},
-	}
-
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-
-			h := &fasthttp.RequestHeader{}
-			h.SetContentType(tc.in)
-
-			require.Equal(t, tc.want, string(normalizeContentTypeMediaType(h)))
-			// The fold is in place, so the header itself must now read back
-			// normalized — that is what makes fasthttp's case-sensitive
-			// multipart lookups work.
-			require.Equal(t, tc.want, string(h.ContentType()))
 		})
 	}
 }

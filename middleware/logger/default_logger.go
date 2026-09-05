@@ -53,7 +53,7 @@ func defaultLoggerInstance(c fiber.Ctx, data *Data, cfg *Config) error {
 				buf,
 				"%s |%s %3d %s| %13v | %15s |%s %-7s %s| %-"+data.ErrPaddingStr+"s %s\n",
 				data.Timestamp,
-				statusColor(c.Response().StatusCode(), &colors), c.Response().StatusCode(), colors.Reset,
+				statusColor(c.Res().StatusCode(), &colors), c.Res().StatusCode(), colors.Reset,
 				data.Stop.Sub(data.Start),
 				sanitizeLogValue(c.IP()),
 				methodColor(c.Method(), &colors), c.Method(), colors.Reset,
@@ -86,7 +86,7 @@ func defaultLoggerInstance(c fiber.Ctx, data *Data, cfg *Config) error {
 
 			// Status Code with 3 fixed width, right aligned; appended digit-wise
 			// to avoid the per-request Itoa string.
-			appendIntPadded(buf, c.Response().StatusCode(), 3)
+			appendIntPadded(buf, c.Res().StatusCode(), 3)
 			buf.WriteString(" | ")
 
 			// Duration with 13 fixed width, right aligned

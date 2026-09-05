@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"math"
 	"slices"
+	"strconv"
 	"sync"
 	"time"
 
@@ -16,11 +17,28 @@ import (
 	"github.com/valyala/fasthttp"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/fieldname"
+	"github.com/gofiber/fiber/v3/internal/headerlookup"
+	"github.com/gofiber/fiber/v3/log"
 )
 
-// buffer size for hexpool
 // hexLen is the hex-encoded length of a SHA-256 sum, shared by the auth and vary hashers.
 const hexLen = sha256.Size * 2
+
+// Sizes for the local arrays the response headers are formatted into, so the
+// values reach the header store — which copies them — without a heap
+// allocation each. Both are upper bounds; an append past one still produces the
+// same bytes, only more slowly.
+const (
+	// httpDateLen holds an IMF-fixdate, "Mon, 02 Jan 2006 15:04:05 GMT".
+	httpDateLen = 32
+	// maxUintDigits holds the decimal form of any uint64.
+	maxUintDigits = 20
+)
+
+// publicMaxAge is the Cache-Control this middleware writes on a hit when the
+// entry carries none of its own, less the delta-seconds appended after it.
+const publicMaxAge = "public, max-age="
 
 // cache status
 // unreachable: when cache is bypass, or invalid
@@ -31,6 +49,19 @@ const (
 	cacheHit         = "hit"
 	cacheMiss        = "miss"
 )
+
+// cacheKeyVersion namespaces every key this version writes, so an entry a
+// previous one stored is never read rather than being reinterpreted.
+//
+// Bumped because the rules for what shares a partition changed. An earlier
+// version detected Authorization byte-exactly, so under DisableHeaderNormalizing
+// a request bearing a lower-case "authorization" was taken for anonymous and its
+// response cached under the anonymous key. Only lookups that carry the header
+// now move to a partition of their own — so on an external store that survived
+// the upgrade, an anonymous request would still find that entry and be served an
+// authenticated body. Bump this whenever what a key stands for changes; the cost
+// is one cold cache after a deploy.
+const cacheKeyVersion = "v2"
 
 type expirationSource uint8
 
@@ -75,17 +106,24 @@ var ignoreHeaders = map[string]struct{}{
 	"Keep-Alive":          {},
 	"Proxy-Authenticate":  {},
 	"Proxy-Authorization": {},
-	"TE":                  {},
-	"Trailers":            {},
-	"Transfer-Encoding":   {},
-	"Upgrade":             {},
+	// Served to every client matching the key, so a captured Set-Cookie hands one
+	// client's session to all the others. It still reaches the client that caused
+	// the miss. Set-Cookie2 is the obsolete RFC 2965 spelling and leaks the same.
+	"Set-Cookie":  {},
+	"Set-Cookie2": {},
+	"TE":          {},
+	// "Trailer", not "Trailers": the hop-by-hop header is Trailer (RFC 9110
+	// §6.6.2), so the old spelling matched nothing and replayed one connection's
+	// chunked framing to every later hit.
+	"Trailer":           {},
+	"Transfer-Encoding": {},
+	"Upgrade":           {},
 }
 
 var cacheableStatusCodes = map[int]struct{}{
 	fiber.StatusOK:                          {},
 	fiber.StatusNonAuthoritativeInformation: {},
 	fiber.StatusNoContent:                   {},
-	fiber.StatusPartialContent:              {},
 	fiber.StatusMultipleChoices:             {},
 	fiber.StatusMovedPermanently:            {},
 	fiber.StatusPermanentRedirect:           {},
@@ -132,15 +170,6 @@ func New(config ...Config) fiber.Handler {
 	heap := &indexedHeap{}
 	// count stored bytes (sizes of response bodies)
 	var storedBytes uint
-	// Pool for hex encoding buffers
-	hexBufPool := &sync.Pool{
-		New: func() any {
-			buf := make([]byte, hexLen)
-			return &buf
-		},
-	}
-	hashAuthorization := makeHashAuthFunc(hexBufPool)
-	buildVaryKey := makeBuildVaryKeyFunc(hexBufPool)
 
 	// Delete key from both manager and storage
 	deleteKey := func(ctx context.Context, dkey string) error {
@@ -156,27 +185,32 @@ func New(config ...Config) fiber.Handler {
 		return nil
 	}
 
-	removeHeapEntry := func(entryKey string, heapIdx int) {
+	// removeHeapEntry drops a tracked entry and reports it, so a caller that
+	// removes one before storing its replacement can put it back on failure.
+	removeHeapEntry := func(entryKey string, heapIdx int) (evictionCandidate, bool) {
 		if cfg.MaxBytes == 0 {
-			return
+			return evictionCandidate{}, false
 		}
 
 		if heapIdx < 0 || heapIdx >= len(heap.indices) {
-			return
+			return evictionCandidate{}, false
 		}
 
 		indexedIdx := heap.indices[heapIdx]
 		if indexedIdx < 0 || indexedIdx >= len(heap.entries) {
-			return
+			return evictionCandidate{}, false
 		}
 
 		entry := heap.entries[indexedIdx]
 		if entry.idx != heapIdx || entry.key != entryKey {
-			return
+			return evictionCandidate{}, false
 		}
 
+		exp := entry.exp
 		_, size := heap.remove(heapIdx)
 		storedBytes -= size
+
+		return evictionCandidate{key: entryKey, size: size, exp: exp, heapIdx: heapIdx}, true
 	}
 
 	refreshHeapIndex := func(ctx context.Context, candidate evictionCandidate) error {
@@ -201,11 +235,22 @@ func New(config ...Config) fiber.Handler {
 
 	// Return new handler
 	return func(c fiber.Ctx) error {
-		hasAuthorization := len(c.Request().Header.Peek(fiber.HeaderAuthorization)) > 0
-		reqCacheControl := c.Request().Header.Peek(fiber.HeaderCacheControl)
+		// Every field line, like the hash below: an empty first Authorization line
+		// would otherwise read as anonymous. canonical is app config, fixed for the
+		// life of the handler, so read it once.
+		canonical := headerlookup.Canonical(c)
+
+		hasAuthorization := false
+		for _, v := range fieldname.Lines(&c.Request().Header, fiber.HeaderAuthorization, canonical) {
+			if len(v) > 0 {
+				hasAuthorization = true
+				break
+			}
+		}
+		reqCacheControl := joinedHeader(&c.Request().Header, fiber.HeaderCacheControl, canonical)
 		reqDirectives := parseRequestCacheControl(reqCacheControl)
 		if !reqDirectives.noCache {
-			reqPragma := utils.UnsafeString(c.Request().Header.Peek(fiber.HeaderPragma))
+			reqPragma := utils.UnsafeString(joinedHeader(&c.Request().Header, fiber.HeaderPragma, canonical))
 			if hasDirective(reqPragma, noCache) {
 				reqDirectives.noCache = true
 			}
@@ -224,13 +269,40 @@ func New(config ...Config) fiber.Handler {
 			return c.Next()
 		}
 
-		// Get key from request
-		baseKey := requestMethod + "|" + cfg.KeyGenerator(c)
-		manifestKey := baseKey + "|vary"
+		// Get key from request. Assembled in one pooled buffer so the whole key
+		// costs a single allocation: the pieces used to be concatenated one at a
+		// time, and every join copied the key built so far into a fresh string.
+		keyBufPtr := acquireKeyBuffer()
+		keyBuf := (*keyBufPtr)[:0]
+		keyBuf = append(keyBuf, cacheKeyVersion...)
+		keyBuf = append(keyBuf, '|')
+		keyBuf = append(keyBuf, requestMethod...)
+		keyBuf = append(keyBuf, '|')
+		keyBuf = appendGeneratedKey(keyBuf, c, &cfg)
 		if hasAuthorization {
-			authHash := hashAuthorization(c.Request().Header.Peek(fiber.HeaderAuthorization))
-			baseKey += "|auth=" + authHash
-			manifestKey = baseKey + "|vary"
+			// Read at the point of use: the result aliases the header's storage, and
+			// cfg.KeyGenerator is user code that may recycle the slot. Every field
+			// line, or two credentials differing past the first would share a key.
+			//
+			// Length-prefixed, not comma-joined: a lone "Bearer a,Bearer b" renders
+			// the same as two lines carrying one each, and the two are different
+			// principals, so a comma would put them in one partition.
+			authLines := fieldname.Lines(&c.Request().Header, fiber.HeaderAuthorization, canonical)
+			keyBuf = append(keyBuf, "|auth="...)
+			keyBuf = appendAuthHash(keyBuf, authLines)
+		}
+		baseLen := len(keyBuf)
+
+		// baseKey and manifestKey differ only by the suffix, so one string holds
+		// both: slicing a string off the front of another shares its bytes rather
+		// than copying them, which the separate concatenation could not do.
+		var baseKey, manifestKey string
+		if cfg.DisableVaryHeaders {
+			baseKey = string(keyBuf)
+		} else {
+			keyBuf = append(keyBuf, "|vary"...)
+			manifestKey = string(keyBuf)
+			baseKey = manifestKey[:baseLen]
 		}
 		key := baseKey
 
@@ -242,12 +314,15 @@ func New(config ...Config) fiber.Handler {
 		if !cfg.DisableVaryHeaders {
 			varyNames, hasVaryManifest, err = loadVaryManifest(reqCtx, manager, manifestKey)
 			if err != nil {
+				releaseKeyBuffer(keyBufPtr, keyBuf)
 				return err
 			}
 			if len(varyNames) > 0 {
-				key += buildVaryKey(varyNames, &c.Request().Header)
+				keyBuf = appendVaryKey(keyBuf[:baseLen], varyNames, &c.Request().Header, canonical)
+				key = string(keyBuf)
 			}
 		}
+		releaseKeyBuffer(keyBufPtr, keyBuf)
 
 		// Get entry from pool
 		e, err := manager.get(reqCtx, key)
@@ -340,18 +415,25 @@ func New(config ...Config) fiber.Handler {
 					entryHasPrivate = true
 				}
 			}
+			// An entry written before Set-Cookie joined ignoreHeaders carries one
+			// beside a body that is personalized for whoever caused that miss.
+			// Dropping the cookie on replay leaves that body, so the entry goes.
+			if !entryHasPrivate && len(e.headers) > 0 && cachedHeadersSetCookie(e.headers) {
+				entryHasPrivate = true
+			}
 			requestNoCache := reqDirectives.noCache
 
-			// Invalidate cache if requested
+			// Invalidate on a local copy: the in-memory item is shared with concurrent hits.
+			entryExp := e.exp
 			if cfg.CacheInvalidator != nil && cfg.CacheInvalidator(c) {
-				e.exp = ts - 1
+				entryExp = ts - 1
 			}
 
-			entryHasExpiration := e != nil && e.exp != 0
-			entryExpired := entryHasExpiration && ts >= e.exp
+			entryHasExpiration := entryExp != 0
+			entryExpired := entryHasExpiration && ts >= entryExp
 			staleness := uint64(0)
 			if entryExpired {
-				staleness = ts - e.exp
+				staleness = ts - entryExp
 			}
 			allowStale := entryExpired && (reqDirectives.maxStaleAny || (reqDirectives.maxStaleSet && staleness <= reqDirectives.maxStale))
 
@@ -411,6 +493,13 @@ func New(config ...Config) fiber.Handler {
 					return c.SendStatus(fiber.StatusGatewayTimeout)
 				}
 				return c.Next()
+			case entryHasExpiration && hasAuthorization && !e.shareable && reqDirectives.onlyIfCached:
+				if cfg.Storage != nil {
+					manager.release(e)
+				}
+				unlock()
+				c.Set(cfg.CacheHeader, cacheUnreachable)
+				return c.SendStatus(fiber.StatusGatewayTimeout)
 			case entryHasExpiration && !requestNoCache:
 				servedStale = entryExpired
 				if hasAuthorization && !e.shareable {
@@ -428,8 +517,22 @@ func New(config ...Config) fiber.Handler {
 					unlock()
 					rawBody, err := manager.getRaw(reqCtx, key+"_body")
 					if err != nil {
+						if !errors.Is(err, errCacheMiss) {
+							manager.release(e)
+							return cacheBodyFetchError(maskKey, key, err)
+						}
+						// The backend dropped the body but kept the metadata: a miss, so
+						// drop the orphaned metadata.
+						if err := deleteKey(reqCtx, key); err != nil {
+							manager.release(e)
+							return fmt.Errorf("cache: failed to delete key %q without a body: %w", maskKey(key), err)
+						}
+						relock()
+						removeHeapEntry(key, e.heapidx)
+						unlock()
 						manager.release(e)
-						return cacheBodyFetchError(maskKey, key, err)
+						e = nil
+						goto continueRequest
 					}
 					e.body = rawBody
 				} else {
@@ -443,37 +546,63 @@ func New(config ...Config) fiber.Handler {
 					c.Response().Header.SetBytesV(fiber.HeaderContentEncoding, e.cencoding)
 				}
 				if len(e.cacheControl) > 0 {
-					c.Response().Header.SetBytesV(fiber.HeaderCacheControl, e.cacheControl)
+					setFieldLine(&c.Response().Header, fiber.HeaderCacheControl, e.cacheControl, canonical)
 				}
 				if len(e.expires) > 0 {
-					c.Response().Header.SetBytesV(fiber.HeaderExpires, e.expires)
+					setFieldLine(&c.Response().Header, fiber.HeaderExpires, e.expires, canonical)
 				}
 				if len(e.etag) > 0 {
-					c.Response().Header.SetBytesV(fiber.HeaderETag, e.etag)
+					setFieldLine(&c.Response().Header, fiber.HeaderETag, e.etag, canonical)
 				}
 				clampedDate := clampDateSeconds(e.date, ts)
-				dateValue := utils.AppendHTTPDate(nil, secondsToTime(clampedDate))
-				c.Response().Header.SetBytesV(fiber.HeaderDate, dateValue)
+				// Formatted into a local array rather than a fresh slice: the value
+				// is copied into the header store, so nothing outlives this line and
+				// the nil destination was an allocation on every cache hit.
+				var dateBuf [httpDateLen]byte
+				dateValue := utils.AppendHTTPDate(dateBuf[:0], secondsToTime(clampedDate))
+				setFieldLine(&c.Response().Header, fiber.HeaderDate, dateValue, canonical)
+				// One entry per field line, so Set collapsed a repeated name — a Vary
+				// sent twice came back varying only on the second. Clear every stored
+				// name first, then append; a per-entry scan would be quadratic here.
 				for i := range e.headers {
-					h := e.headers[i]
-					c.Response().Header.SetBytesKV(h.key, h.value)
+					if isIgnoredHeader(e.headers[i].key) {
+						// An entry stored before Set-Cookie joined ignoreHeaders still
+						// carries one, and DelBytes on it clears fasthttp's whole cookie
+						// store — wiping the session an outer middleware just set.
+						continue
+					}
+					if !canonical {
+						// DelBytes is byte-exact, so a line under another spelling survives
+						// it and the append lands beside it — the pair this clear prevents.
+						fieldname.DelOthers(&c.Response().Header, utils.UnsafeString(e.headers[i].key))
+					}
+					c.Response().Header.DelBytes(e.headers[i].key)
+				}
+				for i := range e.headers {
+					if isIgnoredHeader(e.headers[i].key) {
+						continue
+					}
+					c.Response().Header.AddBytesKV(e.headers[i].key, e.headers[i].value)
 				}
 				// Set Cache-Control header if not disabled and not already set
-				if !cfg.DisableCacheControl && len(c.Response().Header.Peek(fiber.HeaderCacheControl)) == 0 {
+				if !cfg.DisableCacheControl && len(fieldname.First(&c.Response().Header, fiber.HeaderCacheControl, canonical)) == 0 {
 					remaining := uint64(0)
-					if e.exp > ts {
-						remaining = e.exp - ts
+					if entryExp > ts {
+						remaining = entryExp - ts
 					}
-					maxAge := utils.FormatUint(remaining)
-					c.Set(fiber.HeaderCacheControl, "public, max-age="+maxAge)
+					// Built in a local array: FormatUint and the join were two
+					// allocations, and the header store copies the bytes anyway.
+					var ccBuf [len(publicMaxAge) + maxUintDigits]byte
+					cacheControlValue := strconv.AppendUint(append(ccBuf[:0], publicMaxAge...), remaining, 10)
+					setFieldLine(&c.Response().Header, fiber.HeaderCacheControl, cacheControlValue, canonical)
 				}
 
 				const maxDeltaSeconds = uint64(math.MaxInt32)
 				ageSeconds := min(entryAge, maxDeltaSeconds)
 
 				// RFC-compliant Age header (RFC 9111)
-				age := utils.FormatUint(ageSeconds)
-				c.Response().Header.Set(fiber.HeaderAge, age)
+				var ageBuf [maxUintDigits]byte
+				setFieldLine(&c.Response().Header, fiber.HeaderAge, strconv.AppendUint(ageBuf[:0], ageSeconds, 10), canonical)
 				appendWarningHeaders(&c.Response().Header, servedStale, isHeuristicFreshness(e, &cfg, entryAge))
 
 				c.Set(cfg.CacheHeader, cacheHit)
@@ -505,6 +634,11 @@ func New(config ...Config) fiber.Handler {
 			return c.SendStatus(fiber.StatusGatewayTimeout)
 		}
 
+		// Remember the superseded entry's heap node so the replacement takes over its accounting.
+		if e != nil {
+			oldHeapIdx = e.heapidx
+		}
+
 		// make sure we're not blocking concurrent requests - do unlock
 		unlock()
 
@@ -514,16 +648,39 @@ func New(config ...Config) fiber.Handler {
 			return err
 		}
 
-		cacheControlBytes := c.Response().Header.Peek(fiber.HeaderCacheControl)
+		if cfg.accounting != nil {
+			defer func() {
+				mux.Lock()
+				cfg.accounting(storedBytes, heap.Len())
+				mux.Unlock()
+			}()
+		}
+
+		markUnreachable := func() {
+			// manager.release is a no-op for in-memory storage, so no guard.
+			if e != nil {
+				manager.release(e)
+				e = nil
+			}
+			c.Set(cfg.CacheHeader, cacheUnreachable)
+		}
+
+		// The response's own spelling, not the app's: a proxy hands c.Response()
+		// to an outbound fasthttp.Client, which stamps its own normalizing setting
+		// on it. Reading a lower-case "cache-control: private" as absent cached
+		// one client's body and replayed it to the next under "public, max-age".
+		respCanonical := fieldname.Canonical(&c.Response().Header)
+
+		cacheControlBytes := joinedHeader(&c.Response().Header, fiber.HeaderCacheControl, respCanonical)
 		respCacheControl := parseResponseCacheControl(cacheControlBytes)
-		varyHeader := utils.UnsafeString(c.Response().Header.Peek(fiber.HeaderVary))
+		varyHeader := utils.UnsafeString(joinedHeader(&c.Response().Header, fiber.HeaderVary, respCanonical))
 		hasPrivate := respCacheControl.hasPrivate
 		hasNoCache := respCacheControl.hasNoCache
 		varyNames, varyHasStar := parseVary(varyHeader)
 
 		// Respect server cache-control: no-store
 		if respCacheControl.hasNoStore {
-			c.Set(cfg.CacheHeader, cacheUnreachable)
+			markUnreachable()
 			return nil
 		}
 
@@ -559,7 +716,7 @@ func New(config ...Config) fiber.Handler {
 		shouldStoreVaryManifest := !cfg.DisableVaryHeaders && len(varyNames) > 0
 		if !cfg.DisableVaryHeaders && len(varyNames) > 0 {
 			if key == baseKey {
-				key += buildVaryKey(varyNames, &c.Request().Header)
+				key = varyKey(baseKey, varyNames, &c.Request().Header, canonical)
 			}
 		} else if !cfg.DisableVaryHeaders && hasVaryManifest {
 			if err := manager.del(reqCtx, manifestKey); err != nil {
@@ -567,51 +724,243 @@ func New(config ...Config) fiber.Handler {
 			}
 		}
 
+		// unreachable marks the response uncacheable and hands back any entry still
+		// held from the lookup: each decision below is a decision not to store, so
+		// the unmarshalled copy would otherwise be dropped rather than pooled.
 		isSharedCacheAllowed := allowsSharedCacheDirectives(respCacheControl)
 		if hasAuthorization && !isSharedCacheAllowed {
-			c.Set(cfg.CacheHeader, cacheUnreachable)
+			markUnreachable()
+			return nil
+		}
+
+		// A cookie personalizes the response for the one client that caused this
+		// miss, and the body is the payload. Stricter than the test above: RFC 9111
+		// §3.5 allows must-revalidate on a cache that re-checks, and this never does.
+		if !allowsSharedCacheStorage(respCacheControl) && responseSetsCookie(&c.Response().Header, respCanonical) {
+			markUnreachable()
 			return nil
 		}
 
 		sharedCacheMode := !hasAuthorization || isSharedCacheAllowed
 
 		// Don't cache response if status code is not cacheable
-		if _, ok := cacheableStatusCodes[c.Response().StatusCode()]; !ok {
-			c.Set(cfg.CacheHeader, cacheUnreachable)
+		if _, ok := cacheableStatusCodes[c.Res().StatusCode()]; !ok {
+			markUnreachable()
 			return nil
 		}
 
 		// Don't cache response if Next returns true
 		if cfg.Next != nil && cfg.Next(c) {
-			c.Set(cfg.CacheHeader, cacheUnreachable)
+			markUnreachable()
 			return nil
 		}
 
 		// Don't try to cache if body won't fit into cache
 		bodySize := uint(len(c.Response().Body()))
 		if cfg.MaxBytes > 0 && bodySize > cfg.MaxBytes {
-			c.Set(cfg.CacheHeader, cacheUnreachable)
+			markUnreachable()
 			return nil
 		}
 
-		// Eviction loop: atomically reserve space for new entry and evict old entries.
+		// Hand back whatever the lookup left holding. A stale entry survives to here
+		// whenever the request said no-cache or it carried no expiry, and dropping
+		// it would leak one pooled item per such request.
+		if e != nil {
+			manager.release(e)
+		}
+		e = manager.acquire()
+		// Cache response
+		e.body = utils.CopyBytes(c.Response().Body())
+		e.status = c.Res().StatusCode()
+		e.ctype = utils.CopyBytes(c.Response().Header.ContentType())
+		e.cencoding = utils.CopyBytes(c.Response().Header.Peek(fiber.HeaderContentEncoding))
+		e.private = false
+		e.cacheControl = utils.CopyBytes(cacheControlBytes)
+		e.expires = utils.CopyBytes(fieldname.First(&c.Response().Header, fiber.HeaderExpires, respCanonical))
+		e.etag = utils.CopyBytes(fieldname.First(&c.Response().Header, fiber.HeaderETag, respCanonical))
+		e.date = 0
+
+		ageVal := uint64(0)
+		if b := fieldname.First(&c.Response().Header, fiber.HeaderAge, respCanonical); len(b) > 0 {
+			if v, err := fasthttp.ParseUint(b); err == nil {
+				if v >= 0 {
+					ageVal = uint64(v)
+				}
+			}
+		} else {
+			setFieldLine(&c.Response().Header, fiber.HeaderAge, []byte("0"), respCanonical)
+		}
+		e.age = ageVal
+		e.shareable = isSharedCacheAllowed
+		now := cfg.now().UTC()
+		nowUnix := safeUnixSeconds(now)
+		dateHeader := fieldname.First(&c.Response().Header, fiber.HeaderDate, respCanonical)
+		// The second result says whether the date parsed, which is not asked: an
+		// absent or unparsable Date leaves parsedDate zero, which clampDateSeconds
+		// resolves to the receipt timestamp — the same answer either way.
+		parsedDate, _ := parseHTTPDate(dateHeader)
+		e.date = clampDateSeconds(parsedDate, nowUnix)
+		var dateBuf [httpDateLen]byte
+		dateBytes := utils.AppendHTTPDate(dateBuf[:0], secondsToTime(e.date))
+		setFieldLine(&c.Response().Header, fiber.HeaderDate, dateBytes, respCanonical)
+
+		// Store all response headers
+		// (more: https://datatracker.ietf.org/doc/html/rfc2616#section-13.5.1)
+		if cfg.StoreResponseHeaders {
+			allHeaders := c.Response().Header.All()
+			e.headers = e.headers[:0]
+			for key, value := range allHeaders {
+				if isIgnoredHeader(key) {
+					continue
+				}
+
+				e.headers = append(e.headers, cachedHeader{
+					key:   utils.CopyBytes(key),
+					value: utils.CopyBytes(value),
+				})
+			}
+		} else {
+			// Keep a redirect's destination even when headers are not stored: 300 and
+			// 301 are cacheable, so without this the first client got
+			// "301 Location: /new" and every one after it a bare 301.
+			e.headers = e.headers[:0]
+			if location := fieldname.First(&c.Response().Header, fiber.HeaderLocation, respCanonical); len(location) > 0 {
+				e.headers = append(e.headers, cachedHeader{
+					key:   utils.CopyBytes(utils.UnsafeBytes(fiber.HeaderLocation)),
+					value: utils.CopyBytes(location),
+				})
+			}
+		}
+
+		expirationSource := expirationSourceConfig
+		expiresParseError := false
+		mustRevalidate := respCacheControl.mustRevalidate || respCacheControl.proxyRevalidate
+		// default cache expiration
+		expiration := cfg.Expiration
+		if sharedCacheMode && respCacheControl.sMaxAgeSet {
+			expiration = secondsToDuration(respCacheControl.sMaxAge)
+			expirationSource = expirationSourceSMaxAge
+		}
+		if expirationSource == expirationSourceConfig {
+			if respCacheControl.maxAgeSet {
+				expiration = secondsToDuration(respCacheControl.maxAge)
+				expirationSource = expirationSourceMaxAge
+			} else if expiresBytes := fieldname.First(&c.Response().Header, fiber.HeaderExpires, respCanonical); len(expiresBytes) > 0 {
+				// Same parser as the Date header (utils.go parseHTTPDate) so
+				// both share one acceptance set: IMF-fixdate plus the obsolete
+				// RFC 850 and asctime forms RFC 9110 §5.6.7 requires.
+				expiresAt, err := utils.ParseHTTPDate(expiresBytes)
+				if err != nil {
+					expiration = time.Nanosecond
+					expiresParseError = true
+				} else {
+					// Measured from the receipt timestamp, not a fresh read, so the
+					// lifetime stays anchored to the same instant as Date and e.exp
+					expiration = expiresAt.Sub(now)
+				}
+				expirationSource = expirationSourceExpires
+			}
+		}
+		// Calculate expiration by response header or other setting
+		if cfg.ExpirationGenerator != nil {
+			expiration = cfg.ExpirationGenerator(c, &cfg)
+			expirationSource = expirationSourceGenerator
+		}
+		e.forceRevalidate = expiresParseError
+		e.revalidate = mustRevalidate
+
+		storageExpiration := expiration
+		if expiresParseError || storageExpiration < cfg.Expiration {
+			storageExpiration = cfg.Expiration
+		}
+
+		if expiration <= 0 && !expiresParseError {
+			markUnreachable()
+			return nil
+		}
+
+		// Reuse the receipt timestamp the Date header was clamped against: a
+		// fresh read here charges Fiber's own processing time to the response as age
+		responseTS := nowUnix
+
+		maxAgeSeconds := uint64(time.Duration(math.MaxInt64) / time.Second)
+		var ageDuration time.Duration
+		apparentAge := e.age
+		if e.date > 0 && responseTS > e.date {
+			dateAge := responseTS - e.date
+			if dateAge > apparentAge {
+				apparentAge = dateAge
+			}
+		}
+		if expirationSource != expirationSourceExpires {
+			if apparentAge > maxAgeSeconds {
+				ageDuration = expiration + time.Second
+			} else {
+				ageDuration = time.Duration(apparentAge) * time.Second
+			}
+		}
+		remainingExpiration := expiration - ageDuration
+		if remainingExpiration <= 0 {
+			if expirationSource != expirationSourceExpires {
+				markUnreachable()
+				return nil
+			}
+			remainingExpiration = 0
+		}
+
+		// Eviction loop: atomically reserve space for the new entry and evict old entries.
+		// It runs only once the response is known to be stored.
 		// Strategy:
 		// 1. Under lock: reserve space by pre-incrementing storedBytes, then collect entries to evict
 		// 2. Outside lock: perform I/O deletions
 		// 3. On deletion failure: restore storedBytes and return error
 		// 4. Track reservation with a flag; unreserve on early return via defer
 		var spaceReserved bool
+		// The entry being replaced is untracked before its replacement is
+		// stored, so a later failure has to put it back: otherwise it can stay
+		// in the backend counting toward nothing and never expiring.
+		var (
+			replaced   evictionCandidate
+			replacedOK bool
+			rawWritten bool
+			stored     bool
+		)
 		defer func() {
+			if cfg.MaxBytes == 0 {
+				return
+			}
+
+			mux.Lock()
 			// If we reserved space but the entry was not successfully added to heap, unreserve it
-			if cfg.MaxBytes > 0 && spaceReserved {
-				mux.Lock()
+			if spaceReserved {
 				storedBytes -= bodySize
-				mux.Unlock()
+			}
+			// A replacement body that landed overwrote the one the old entry
+			// pointed at, and the store-error cleanup then deletes it, so that
+			// entry can no longer be served: restoring its accounting would
+			// count bytes nothing can read. The next request for the key finds
+			// metadata without a body and drops it.
+			restore := replacedOK && !stored && !rawWritten
+			if restore {
+				replaced.heapIdx = heap.put(replaced.key, replaced.exp, replaced.size)
+				storedBytes += replaced.size
+			}
+			mux.Unlock()
+
+			if restore {
+				if err := refreshHeapIndex(reqCtx, replaced); err != nil {
+					log.Warnf("cache: %v", err)
+				}
 			}
 		}()
 
 		if cfg.MaxBytes > 0 {
 			mux.Lock()
+			// The replaced entry hands its bookkeeping over first, so a key is never tracked twice.
+			if oldHeapIdx >= 0 {
+				replaced, replacedOK = removeHeapEntry(key, oldHeapIdx)
+				oldHeapIdx = -1
+			}
 			// Reserve space for the new entry first
 			storedBytes += bodySize
 			spaceReserved = true
@@ -686,132 +1035,6 @@ func New(config ...Config) fiber.Handler {
 			}
 		}
 
-		e = manager.acquire()
-		// Cache response
-		e.body = utils.CopyBytes(c.Response().Body())
-		e.status = c.Response().StatusCode()
-		e.ctype = utils.CopyBytes(c.Response().Header.ContentType())
-		e.cencoding = utils.CopyBytes(c.Response().Header.Peek(fiber.HeaderContentEncoding))
-		e.private = false
-		e.cacheControl = utils.CopyBytes(cacheControlBytes)
-		e.expires = utils.CopyBytes(c.Response().Header.Peek(fiber.HeaderExpires))
-		e.etag = utils.CopyBytes(c.Response().Header.Peek(fiber.HeaderETag))
-		e.date = 0
-
-		ageVal := uint64(0)
-		if b := c.Response().Header.Peek(fiber.HeaderAge); len(b) > 0 {
-			if v, err := fasthttp.ParseUint(b); err == nil {
-				if v >= 0 {
-					ageVal = uint64(v)
-				}
-			}
-		} else {
-			c.Response().Header.Set(fiber.HeaderAge, "0")
-		}
-		e.age = ageVal
-		e.shareable = isSharedCacheAllowed
-		now := cfg.now().UTC()
-		nowUnix := safeUnixSeconds(now)
-		dateHeader := c.Response().Header.Peek(fiber.HeaderDate)
-		parsedDate, _ := parseHTTPDate(dateHeader)
-		e.date = clampDateSeconds(parsedDate, nowUnix)
-		dateBytes := utils.AppendHTTPDate(nil, secondsToTime(e.date))
-		c.Response().Header.SetBytesV(fiber.HeaderDate, dateBytes)
-
-		// Store all response headers
-		// (more: https://datatracker.ietf.org/doc/html/rfc2616#section-13.5.1)
-		if cfg.StoreResponseHeaders {
-			allHeaders := c.Response().Header.All()
-			e.headers = e.headers[:0]
-			for key, value := range allHeaders {
-				keyStr := string(key)
-				if _, ok := ignoreHeaders[keyStr]; ok {
-					continue
-				}
-
-				e.headers = append(e.headers, cachedHeader{
-					key:   utils.CopyBytes(utils.UnsafeBytes(keyStr)),
-					value: utils.CopyBytes(value),
-				})
-			}
-		}
-
-		expirationSource := expirationSourceConfig
-		expiresParseError := false
-		mustRevalidate := respCacheControl.mustRevalidate || respCacheControl.proxyRevalidate
-		// default cache expiration
-		expiration := cfg.Expiration
-		if sharedCacheMode && respCacheControl.sMaxAgeSet {
-			expiration = secondsToDuration(respCacheControl.sMaxAge)
-			expirationSource = expirationSourceSMaxAge
-		}
-		if expirationSource == expirationSourceConfig {
-			if respCacheControl.maxAgeSet {
-				expiration = secondsToDuration(respCacheControl.maxAge)
-				expirationSource = expirationSourceMaxAge
-			} else if expiresBytes := c.Response().Header.Peek(fiber.HeaderExpires); len(expiresBytes) > 0 {
-				// Same parser as the Date header (utils.go parseHTTPDate) so
-				// both share one acceptance set: IMF-fixdate plus the obsolete
-				// RFC 850 and asctime forms RFC 9110 §5.6.7 requires.
-				expiresAt, err := utils.ParseHTTPDate(expiresBytes)
-				if err != nil {
-					expiration = time.Nanosecond
-					expiresParseError = true
-				} else {
-					// Measured from the receipt timestamp, not a fresh read, so the
-					// lifetime stays anchored to the same instant as Date and e.exp
-					expiration = expiresAt.Sub(now)
-				}
-				expirationSource = expirationSourceExpires
-			}
-		}
-		// Calculate expiration by response header or other setting
-		if cfg.ExpirationGenerator != nil {
-			expiration = cfg.ExpirationGenerator(c, &cfg)
-			expirationSource = expirationSourceGenerator
-		}
-		e.forceRevalidate = expiresParseError
-		e.revalidate = mustRevalidate
-
-		storageExpiration := expiration
-		if expiresParseError || storageExpiration < cfg.Expiration {
-			storageExpiration = cfg.Expiration
-		}
-
-		if expiration <= 0 && !expiresParseError {
-			c.Set(cfg.CacheHeader, cacheUnreachable)
-			return nil
-		}
-
-		// Reuse the receipt timestamp the Date header was clamped against: a
-		// fresh read here charges Fiber's own processing time to the response as age
-		responseTS := nowUnix
-
-		maxAgeSeconds := uint64(time.Duration(math.MaxInt64) / time.Second)
-		var ageDuration time.Duration
-		apparentAge := e.age
-		if e.date > 0 && responseTS > e.date {
-			dateAge := responseTS - e.date
-			if dateAge > apparentAge {
-				apparentAge = dateAge
-			}
-		}
-		if expirationSource != expirationSourceExpires {
-			if apparentAge > maxAgeSeconds {
-				ageDuration = expiration + time.Second
-			} else {
-				ageDuration = time.Duration(apparentAge) * time.Second
-			}
-		}
-		remainingExpiration := expiration - ageDuration
-		if remainingExpiration <= 0 {
-			if expirationSource != expirationSourceExpires {
-				c.Set(cfg.CacheHeader, cacheUnreachable)
-				return nil
-			}
-			remainingExpiration = 0
-		}
-
 		if !cfg.DisableVaryHeaders && shouldStoreVaryManifest {
 			if err := storeVaryManifest(reqCtx, manager, manifestKey, varyNames, storageExpiration); err != nil {
 				return err
@@ -864,6 +1087,7 @@ func New(config ...Config) fiber.Handler {
 				}
 				return err
 			}
+			rawWritten = true
 			// avoid body msgp encoding
 			e.body = nil
 			if err := manager.set(reqCtx, key, e, storageExpiration); err != nil {
@@ -882,12 +1106,9 @@ func New(config ...Config) fiber.Handler {
 			}
 		}
 
-		// If revalidating, remove old heap entry now that replacement is successfully stored
-		if cfg.MaxBytes > 0 && revalidate && oldHeapIdx >= 0 {
-			mux.Lock()
-			removeHeapEntry(key, oldHeapIdx)
-			mux.Unlock()
-		}
+		// The replacement is in the backend now, so the entry it superseded
+		// must not be restored by the deferred cleanup.
+		stored = true
 
 		c.Set(cfg.CacheHeader, cacheMiss)
 

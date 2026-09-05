@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"slices"
 
 	utilsstrings "github.com/gofiber/utils/v2/strings"
 )
@@ -35,10 +36,17 @@ func (app *App) validateConfiguredServices() error {
 }
 
 func validateServicesSlice(services []Service) error {
+	seen := make(map[string]int, len(services))
 	for idx, srv := range services {
 		if srv == nil {
 			return fmt.Errorf("fiber: service at index %d is nil", idx)
 		}
+		// Services are keyed by name in the State, so two sharing one would overwrite each other.
+		name := srv.String()
+		if first, dup := seen[name]; dup {
+			return fmt.Errorf("fiber: duplicate service name %q: services at index %d and %d share it, but service names must be unique", name, first, idx)
+		}
+		seen[name] = idx
 	}
 	return nil
 }
@@ -83,11 +91,13 @@ func (app *App) startServices(ctx context.Context) error {
 		return nil
 	}
 
+	// Validate the whole slice first, so nothing is started when an entry is invalid.
+	if err := validateServicesSlice(app.configured.Services); err != nil {
+		return err
+	}
+
 	var errs []error
-	for idx, srv := range app.configured.Services {
-		if srv == nil {
-			return fmt.Errorf("fiber: service at index %d is nil", idx)
-		}
+	for _, srv := range app.configured.Services {
 		if err := ctx.Err(); err != nil {
 			// Context is canceled, return an error the soonest possible, so that
 			// the user can see the context cancellation error and act on it.
@@ -111,18 +121,17 @@ func (app *App) startServices(ctx context.Context) error {
 }
 
 // shutdownServices Handles the shutdown process of services for the current application.
-// Iterates over all the started services in reverse order and tries to terminate them,
+// Iterates over all the started services in reverse start order and tries to terminate them,
 // returning an error if any error occurs.
 func (app *App) shutdownServices(ctx context.Context) error {
-	if app.state.ServicesLen() == 0 {
+	services := app.state.takeStartedServices()
+	if len(services) == 0 {
 		return nil
 	}
 
 	var errs []error
-	for key, srv := range app.state.Services() {
-		if srv == nil {
-			return fmt.Errorf("fiber: service %q is nil", key)
-		}
+	terminated := make([]bool, len(services))
+	for i, srv := range slices.Backward(services) {
 		if err := ctx.Err(); err != nil {
 			// Context is canceled, do a best effort to terminate the services.
 			errs = append(errs, fmt.Errorf("service %s terminate: %w", srv.String(), err))
@@ -136,9 +145,20 @@ func (app *App) shutdownServices(ctx context.Context) error {
 			continue
 		}
 
+		terminated[i] = true
 		// Remove the service from the State
 		app.state.deleteService(srv)
 	}
+
+	// One that would not terminate goes back, so a later shutdown retries it.
+	var remaining []Service
+	for i, srv := range services {
+		if !terminated[i] {
+			remaining = append(remaining, srv)
+		}
+	}
+	app.state.restoreStartedServices(remaining)
+
 	return errors.Join(errs...)
 }
 

@@ -87,12 +87,41 @@ app.Get("/user/:name", func(c fiber.Ctx) error {
 }).Name("user")
 ```
 
+:::note
+A named route is a route in this application, so the redirect always stays on
+this origin: a `Params` value that would open an authority — `"/evil.com"` or
+`"\evil.com"` under a `/*` route — is kept as the path segment the route asked
+for. [`Route.URL`](./app.md#getroute) and [`GetRouteURL`](./ctx.md#getrouteurl)
+answer the same for the same input.
+
+`Queries` are merged into whatever query the composed path already holds and
+placed ahead of any fragment, so a `Params` value carrying `?` or `#` cannot
+absorb or discard them.
+
+The values themselves are still written into the path as given. Where they come
+from the request, escape them with [`url.PathEscape`](https://pkg.go.dev/net/url#PathEscape)
+if the route expects one segment per parameter.
+:::
+
 ### Back
 
 Redirects to the referer. If it's missing, fall back to the provided URL. You can also set the status code.
 
 :::info
 If unspecified, status defaults to **303 See Other**.
+:::
+
+:::note
+
+The referer is only used when it is same-origin with the current request, and
+the value sent in `Location` is a normalized form of it, not the raw header.
+The check reads the referer the way a browser does — folding backslashes,
+dropping ASCII tab, CR and LF, and collapsing a leading run of slashes — so a
+value like `/\evil.com`, which a browser resolves to `//evil.com`, is not
+mistaken for a local path. A referer that is missing, cross-origin, or
+unparsable falls back to the provided URL, and `Back` returns an error if
+there is no fallback.
+
 :::
 
 ```go title="Signature"
@@ -158,6 +187,12 @@ type RedirectConfig struct {
 ### Flash Message
 
 Similar to [Laravel](https://laravel.com/docs/11.x/redirects#redirecting-with-flashed-session-data), we can flash a message and retrieve it in the next request.
+
+:::note
+
+Flash messages travel in the `fiber_flash` cookie, so only a client that keeps cookies across the redirect (a browser, typically) receives them, and every request is scanned for the cookie. Deployments whose clients keep no cookies can turn the feature off with `fiber.Config{DisableFlashMessages: true}`: `With` and `WithInput` then set no cookie, `Messages` and `OldInput` report nothing, and the scan is skipped.
+
+:::
 
 #### Messages
 
@@ -243,6 +278,20 @@ app.Get("/", func(c fiber.Ctx) error {
 Send input data with `WithInput`, which stores them in a cookie.
 
 It captures form, multipart, or query data depending on the request content type.
+
+:::caution
+
+`WithInput` copies the whole submitted body into the `fiber_flash` cookie — a
+rejected login carries the password the user just typed. The payload is
+hex-encoded, not encrypted or signed, so anything sensitive in the request goes
+back to the browser as a cookie value. Prefer `With` for the specific fields you
+need to carry across the redirect.
+
+The cookie is `HttpOnly`, and `Secure` when the request that produced it arrived
+over TLS — so script cannot read it and it is not replayed in the clear. Neither
+attribute protects the payload from whoever is at the browser.
+
+:::
 
 ```go title="Signature"
 func (r *Redirect) WithInput() *Redirect

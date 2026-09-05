@@ -12,6 +12,8 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/fieldname"
+	"github.com/gofiber/fiber/v3/internal/headerlist"
 	"github.com/gofiber/utils/v2"
 	"github.com/valyala/fasthttp"
 )
@@ -224,43 +226,38 @@ var hopByHopHeaders = []string{
 // headers — used by the legacy KeepConnectionHeader option to retain the
 // literal Connection header while still dropping the other hop-by-hop
 // headers.
-func stripHopByHopRequestHeaders(req *fasthttp.Request, except ...string) {
+func stripHopByHopRequestHeaders(req *fasthttp.Request, normalized bool, except ...string) { //nolint:revive // flag-parameter: normalized is a property of the header store
 	// Headers listed in Connection must be removed first so the
 	// listing is honored before the Connection field itself is dropped.
-	delConnectionListedHeaders(&req.Header, req.Header.PeekAll(fiber.HeaderConnection))
+	delConnectionListedHeaders(&req.Header, fieldname.Lines(&req.Header, fiber.HeaderConnection, normalized), normalized)
 	for _, h := range hopByHopHeaders {
-		if containsFold(except, h) {
+		if fieldname.ContainsFold(except, h) {
 			continue
 		}
-		req.Header.Del(h)
+		fieldname.Del(&req.Header, h, normalized)
 	}
 }
 
-// stripHopByHopResponseHeaders applies the same filtering on the way
-// back, so upstream cannot leak connection-scoped state to the client.
+// stripHopByHopResponseHeaders applies the same filtering on the way back.
+//
+// It takes no normalized argument: a proxied response is parsed by the outbound
+// fasthttp.Client, whose own setting is independent of the app's, so ask the
+// header. One pass finds every spelling, cheaper than the per-name scan.
 func stripHopByHopResponseHeaders(res *fasthttp.Response, except ...string) {
-	delConnectionListedHeaders(&res.Header, res.Header.PeekAll(fiber.HeaderConnection))
-	for _, h := range hopByHopHeaders {
-		if containsFold(except, h) {
-			continue
-		}
-		res.Header.Del(h)
-	}
-}
+	// Headers listed in Connection must be removed first so the listing is
+	// honored before the Connection field itself is dropped.
+	delConnectionListedHeaders(&res.Header, fieldname.Lines(&res.Header, fiber.HeaderConnection, false), false)
 
-func containsFold(haystack []string, needle string) bool {
-	for _, h := range haystack {
-		if utils.EqualFold(h, needle) {
-			return true
+	names := hopByHopHeaders
+	if len(except) > 0 {
+		names = make([]string, 0, len(hopByHopHeaders))
+		for _, h := range hopByHopHeaders {
+			if !fieldname.ContainsFold(except, h) {
+				names = append(names, h)
+			}
 		}
 	}
-	return false
-}
-
-// headerDeleter is the Del method shared by fasthttp's request and
-// response header types.
-type headerDeleter interface {
-	Del(key string)
+	fieldname.DelSet(&res.Header, names)
 }
 
 // delConnectionListedHeaders deletes every comma-separated header name
@@ -270,14 +267,9 @@ type headerDeleter interface {
 // because fasthttp's Del only re-slices the header's entry list — it never
 // rewrites other entries' key/value buffers — and Del does not retain the
 // name after returning.
-func delConnectionListedHeaders(h headerDeleter, values [][]byte) {
-	for _, v := range values {
-		for name := range strings.SplitSeq(utils.UnsafeString(v), ",") {
-			name = utils.TrimSpace(name)
-			if name != "" {
-				h.Del(name)
-			}
-		}
+func delConnectionListedHeaders(h fieldname.Deleter, values [][]byte, normalized bool) { //nolint:revive // flag-parameter: normalized is a property of the header store
+	for name := range headerlist.AllLines(values) {
+		fieldname.Del(h, name, normalized)
 	}
 }
 

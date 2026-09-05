@@ -77,6 +77,12 @@ func newManager(storage fiber.Storage, shouldRedactKeys bool) *manager {
 
 // acquire returns an *entry from the sync.Pool
 func (m *manager) acquire() *item {
+	// The in-memory store keeps the entry itself, so release never hands one
+	// back and the pool is empty every time. Going through it only pays for the
+	// lookup before landing on the same allocation.
+	if m.storage == nil {
+		return new(item)
+	}
 	return m.pool.Get().(*item) //nolint:forcetypeassert,errcheck // We store nothing else in the pool
 }
 

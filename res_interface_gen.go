@@ -18,6 +18,11 @@ type Res interface {
 	// Empty values are skipped: a sender must not generate empty list elements
 	// (RFC 9110 Section 5.6.1.2).
 	Append(field string, values ...string)
+	// Add appends the value as a new field line, where Append folds values into one
+	// comma-separated line. The headers fasthttp keeps in a slot of their own are
+	// the exception: Content-Type, Server and the rest are replaced and Date and TE
+	// ignored, though Set-Cookie is slotted and does append. Use Cookie for that.
+	Add(key, val string)
 	// Attachment sets the HTTP response Content-Disposition header field to attachment.
 	Attachment(filename ...string)
 	// ClearCookie expires a specific cookie by key on the client side.
@@ -33,6 +38,18 @@ type Res interface {
 	// Partitioned) happens on a local copy, so a caller may reuse the same *Cookie
 	// template across requests.
 	Cookie(cookie *Cookie)
+	// GetCookie reads back a cookie this response is set to send, false when the
+	// name is unset or its value does not parse. Names are case-sensitive and a
+	// repeat resolves to the first. Writing the copy back through Cookie stamps
+	// Path=/ on a cookie that carried none, widening its scope — set Path first.
+	GetCookie(name string) (*Cookie, bool)
+	// GetCookies returns a copy of every cookie this response is set to send, in
+	// order, or nil when there are none. Repeated names are kept apart, and an
+	// unparsable one is skipped. For what the client sent, use Req.Cookies.
+	//
+	// Named for GetCookie beside it rather than Cookies, which would collide with
+	// Req.Cookies under a different signature and stop Ctx satisfying Res.
+	GetCookies() []*Cookie
 	// Download transfers the file from path as an attachment.
 	// Typically, browsers will prompt the user for download.
 	// By default, the Content-Disposition header filename= parameter is the filepath (this typically appears in the browser dialog).
@@ -56,6 +73,18 @@ type Res interface {
 	// For more flexible content negotiation, use Format.
 	// If the header is not specified or there is no proper format, text/plain is used.
 	AutoFormat(body any) error
+	// ContentLength returns what the Content-Length response header declares: a
+	// length a handler or upstream set, -1 for an unknown-length stream, 0 when
+	// none is declared. fasthttp fills it in on serialization; see also Res.Body.
+	ContentLength() int
+	// ContentType returns the Content-Type response header, the read side of Type.
+	// With none set it reports what would be sent: fasthttp's default, or "" under
+	// Config.DisableDefaultContentType. Only valid within the handler.
+	ContentType() string
+	// Del removes every field line stored under key, whatever case it is spelled in,
+	// and is a no-op for a header that was never set. Del(HeaderSetCookie) withdraws
+	// the pending cookies, where ClearCookie expires one in the client's jar.
+	Del(key string)
 	// Get (a.k.a. GetRespHeader) returns the HTTP response header specified by field.
 	// Field names are case-insensitive
 	// Returned value is only valid within the handler. Do not store any references.
@@ -86,6 +115,12 @@ type Res interface {
 	// JSONP sends a JSON response with JSONP support.
 	// This method is identical to JSON, except that it opts-in to JSONP callback support.
 	// By default, the callback name is simply callback.
+	//
+	// The callback name is reduced to a JavaScript member expression: everything
+	// outside [A-Za-z0-9_$.[]] is dropped. Callers routinely take the name straight
+	// from the query string, which is what JSONP is for, and the name lands
+	// verbatim in a same-origin text/javascript body — so an unfiltered one would
+	// let a request supply arbitrary script for the app's own origin.
 	JSONP(data any, callback ...string) error
 	// XML converts any interface or string to XML.
 	// This method also sets the content header to application/xml; charset=utf-8.
@@ -115,6 +150,18 @@ type Res interface {
 	// We support the following engines: https://github.com/gofiber/template
 	Render(name string, bind any, layouts ...string) error
 	renderExtensions(bind any)
+	// Body returns the response body buffered so far, or nil for a streamed one,
+	// which draining would de-stream; Written tells those apart. The buffer is live,
+	// so writing to it writes to the response, and the next write voids it.
+	Body() []byte
+	// ResetBody discards the response body, keeping the status and headers.
+	// Use it before replacing a partially written body — an error page over a
+	// half-rendered view, a cached body over a fresh one.
+	ResetBody()
+	// Written reports whether anything has been written to the response body, so a
+	// handler that produced one can be told from a handler that did not. A stream
+	// counts without being drained; a status or header alone does not.
+	Written() bool
 	// Send sets the HTTP response body without copying it.
 	// From this point onward the body argument must not be changed.
 	Send(body []byte) error
@@ -134,6 +181,10 @@ type Res interface {
 	// The Content-Type response HTTP header field is set based on the file's extension.
 	// If the file extension is missing or invalid, the Content-Type is detected from the file's format.
 	SendFile(file string, config ...SendFile) error
+	// NoContent replies 204 No Content. SendStatus already discards the body; this
+	// drops the Content-Type too, since RFC 9110 Section 6.4.1 gives a 204 no
+	// content to describe. SendStatus(204) keeps it, so the two differ.
+	NoContent() error
 	// SendStatus sets the HTTP status code and if the response body is empty,
 	// it sets the correct status message in the body.
 	SendStatus(status int) error
@@ -150,6 +201,10 @@ type Res interface {
 	// Status sets the HTTP status for the response.
 	// This method is chainable.
 	Status(status int) Ctx
+	// StatusCode returns the status code set on the response, the read side of
+	// Status, and reports 200 until something sets another. After Next it is the
+	// status the chain settled on.
+	StatusCode() int
 	// Type sets the Content-Type HTTP header to the MIME type specified by the file extension.
 	Type(extension string, charset ...string) Ctx
 	// Vary adds the given header field to the Vary response header.

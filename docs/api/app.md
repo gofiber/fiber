@@ -60,6 +60,8 @@ func main() {
 Unlike Express, Fiber does not strip the mount prefix. Inside the mounted app, `c.Path()` still returns the full request path (`/john/doe`, not `/doe`); there is no `req.baseUrl` equivalent.
 :::
 
+Passing a slice of prefixes mounts the sub-app under each of them (`app.Use([]string{"/john", "/jane"}, micro)`). Mounting an app onto itself panics.
+
 ### MountPath
 
 The `MountPath` property contains one or more path patterns on which a sub-app was mounted.
@@ -249,6 +251,10 @@ Because domain filtering is applied at handler-execution time (not during route 
 
 :::note
 When mounting sub-applications via `Domain(...).Use(*fiber.App)`, routes are cloned from the sub-app at mount time. This means the same sub-app can safely be mounted on multiple domains without double-wrapping, but routes registered on the sub-app **after** mounting will not inherit domain filtering. Register all sub-app routes before mounting.
+
+Apps that the sub-app has mounted itself are cloned along with it, so nested routes are domain-filtered as well. The same "register before mounting" rule applies to them.
+
+A domain-mounted sub-app's `ErrorHandler` and `Views` are host-scoped like its routes: they apply to requests whose hostname matches the pattern, and requests on other hosts fall back to the parent's. Two sub-apps mounted at the same path on different domains therefore keep their own configuration.
 :::
 
 ```go title="Signature"
@@ -403,7 +409,7 @@ func main() {
 
 ### Name
 
-This method assigns the name to the latest created route.
+This method assigns the name to the latest created route. When the latest call registered several methods at once, as `Add` or `All` do, every one of those routes receives the name.
 
 ```go title="Signature"
 func (app *App) Name(name string) Router
@@ -645,6 +651,8 @@ func (app *App) Handler() fasthttp.RequestHandler
 func (app *App) ErrorHandler(ctx Ctx, err error) error
 ```
 
+A request whose response fasthttp already holds as a timeout response, as after the [timeout middleware](../middleware/timeout.md) has answered it, is left alone: `ErrorHandler` returns `nil` without running the configured handler, since anything written now would be ignored and the handler that timed out may still be using the context. The error still reaches the outer middleware.
+
 ## NewWithCustomCtx
 
 `NewWithCustomCtx` creates a new `*App` and sets the custom context factory
@@ -685,6 +693,57 @@ func main() {
     log.Fatal(app.Listen(":3000"))
 }
 ```
+
+`NewWithCustomCtx` works with global and route middleware. Fiber passes your custom context through `c.Next()`, so overridden methods (for example a custom `JSON`) still run after `app.Use(...)`.
+
+```go title="Custom JSON with middleware"
+package main
+
+import (
+    "log"
+
+    "github.com/gofiber/fiber/v3"
+)
+
+type APICtx struct {
+    fiber.DefaultCtx
+}
+
+type envelope struct {
+    Code    int    `json:"code"`
+    Data    any    `json:"data"`
+    Message string `json:"message"`
+}
+
+func (c *APICtx) JSON(data any, ctype ...string) error {
+    return c.DefaultCtx.JSON(envelope{
+        Code:    fiber.StatusOK,
+        Data:    data,
+        Message: "OK",
+    }, ctype...)
+}
+
+func main() {
+    app := fiber.NewWithCustomCtx(func(app *fiber.App) fiber.CustomCtx {
+        return &APICtx{DefaultCtx: *fiber.NewDefaultCtx(app)}
+    })
+
+    app.Use(func(c fiber.Ctx) error {
+        return c.Next()
+    })
+
+    app.Get("/vvv", func(c fiber.Ctx) error {
+        // Uses APICtx.JSON even though middleware called Next
+        return c.JSON(fiber.Map{"a": "b"})
+    })
+
+    log.Fatal(app.Listen(":3000"))
+}
+```
+
+:::tip
+Prefer embedding `fiber.DefaultCtx` (by value or pointer) and constructing it with `fiber.NewDefaultCtx(app)`. Overridden methods are resolved on the concrete `CustomCtx` type Fiber stores for the request.
+:::
 
 ## RegisterCustomBinder
 
@@ -865,7 +924,7 @@ Routes are normally defined before the app starts. You can also add or remove th
 
 ### RebuildTree
 
-The `RebuildTree` method is designed to rebuild the route tree and enable dynamic route registration. It returns a pointer to the `App` instance.
+The `RebuildTree` method is designed to rebuild the route tree and enable dynamic route registration. It returns a pointer to the `App` instance. GET routes registered since the last rebuild also receive their [automatic HEAD route](../guide/routing.md#automatic-head-routes) here.
 
 ```go title="Signature"
 func (app *App) RebuildTree() *App

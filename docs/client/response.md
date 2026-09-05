@@ -92,7 +92,7 @@ HTTP/1.1
 
 ## Header
 
-**Header** retrieves the value of a specific response header by key. If multiple values exist for the same header, this returns the first one.
+**Header** retrieves the value of a specific response header by key. If multiple values exist for the same header, this returns the first one. The returned string is a copy, so it stays valid after the response is released.
 
 ```go title="Signature"
 func (r *Response) Header(key string) string
@@ -159,7 +159,7 @@ Access-Control-Allow-Credentials => true
 
 ## Cookies
 
-**Cookies** returns a slice of all cookies set by the server in this response. The slice is only valid until the response is released.
+**Cookies** returns a slice of all cookies set by the server in this response. The slice is only valid until the response is released. An attribute the parser cannot read — a `Max-Age` that is not an integer, an `Expires` in an unrecognized format — is ignored on its own (RFC 6265 §5.2); the cookie keeps its name, its value and every other attribute rather than being dropped.
 
 ```go title="Signature"
 func (r *Response) Cookies() []*fasthttp.Cookie
@@ -355,10 +355,10 @@ func (r *Response) Reset()
 
 ## Close
 
-**Close** releases both the associated `Request` and `Response` objects back to their pools.
+**Close** releases the `Response` back to its pool, along with the `Request` when the client created it for this call (`Client.Get` and the other REST helpers). A `Request` you acquired yourself, with `AcquireRequest` or `Client.R()`, stays yours to release with `ReleaseRequest`.
 
 :::warning
-After calling `Close`, any attempt to use the request or response may result in data races or undefined behavior. Ensure all processing is complete before closing.
+After calling `Close`, any attempt to use the response, or a request it released, may result in data races or undefined behavior. Ensure all processing is complete before closing.
 :::
 
 ```go title="Signature"

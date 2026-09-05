@@ -84,6 +84,12 @@ app.Get("/", func(c fiber.Ctx) error {
 })
 ```
 
+:::info Graceful shutdown
+The default `Context()` is **not** canceled when the app shuts down. In-flight handlers that pass `c.Context()` to database clients or other cancellation-aware work keep running until they finish (or until you cancel a derived context yourself).
+
+[`RequestCtx`](#requestctx) implements `context.Context` differently: its `Done()` channel is closed when the underlying fasthttp server starts shutting down. Prefer `c.Context()` (or a context you derive with `context.WithCancel` / timeouts) for work that must outlive the start of graceful shutdown.
+:::
+
 ### context.Context
 
 `Ctx` implements `context.Context`, but as a context that can never be canceled: `Deadline()` reports no deadline, `Done()` returns `nil` and `Err()` returns `nil`, regardless of what you pass to [`SetContext`](#setcontext). The `fiber.Ctx` instance is pooled and reused after the handler returns, which is why it cannot carry cancellation of its own. Call [`Context`](#context) within the handler to obtain a real `context.Context`, and pass that to anything that is cancellation-aware or that outlives the handler.
@@ -140,24 +146,75 @@ app.Get("/", func(c fiber.Ctx) error {
 })
 ```
 
-### Drop
+### Elapsed
 
-Terminates the client connection silently without sending any HTTP headers or response body.
-
-This can be used for scenarios where you want to block certain requests without notifying the client, such as mitigating
-DDoS attacks or protecting sensitive endpoints from unauthorized access.
+Returns how long this request has been handled so far, measured from [`StartTime`](#starttime). Called after the handler chain has run, it is the request latency.
 
 ```go title="Signature"
-func (c fiber.Ctx) Drop() error
+func (c fiber.Ctx) Elapsed() time.Duration
 ```
 
 ```go title="Example"
-app.Get("/", func(c fiber.Ctx) error {
-  if c.IP() == "192.168.1.1" {
-    return c.Drop()
+app.Use(func(c fiber.Ctx) error {
+  err := c.Next()
+  metrics.Observe(c.Route().Path, c.Elapsed())
+  return err
+})
+```
+
+### Endpoint
+
+Returns the route that will handle this request, without advancing the handler chain. Useful inside global middleware for access control or logging when you need the target route's `Path` or `Name` before calling `Next`.
+
+Returns `nil` when no endpoint will run: on `404` and `405`, and while the error handler replays the chain for a request rejected at the protocol level, such as one over `BodyLimit`.
+
+```go title="Signature"
+func (c fiber.Ctx) Endpoint() *Route
+```
+
+```go title="Example"
+app.Use(func(c fiber.Ctx) error {
+  route := c.Endpoint() // e.g. "/api/users/:id" named "user.show"
+  if route == nil {
+    return c.Next()
+  }
+  // enforce access control using route.Path or route.Name
+  return c.Next()
+})
+
+app.Get("/api/users/:id", handler).Name("user.show")
+```
+
+:::info
+`Endpoint` looks ahead, while its neighbors look back: [`Route`](#route) is the route currently executing, which inside middleware is the middleware itself, and [`Matched`](#matched) reports whether an endpoint has been selected yet.
+
+Mounted sub-apps report the flattened, prefixed route. The result is the route the router *would* reach, not a promise that it runs: an earlier middleware can still end the request first.
+
+It scans the remaining routes in the request's tree bucket, so calling it from global middleware costs a second router scan per request. That is cheap for routes spread over many prefixes and noticeable when a hundred or more share one, as with everything under `/api/v1`.
+:::
+
+### Error
+
+Returns an [`*fiber.Error`](./fiber.md#newerror) carrying the given status code, so a handler can reject a request in one line. The message defaults to the status text when omitted.
+
+Returning the error hands it to the app's `ErrorHandler`, which is what writes the response; `Error` itself sets nothing on the response.
+
+```go title="Signature"
+func (c fiber.Ctx) Error(status int, message ...string) error
+```
+
+```go title="Example"
+app.Get("/user/:id", func(c fiber.Ctx) error {
+  id, err := strconv.Atoi(c.Params("id"))
+  if err != nil {
+    return c.Error(fiber.StatusBadRequest, "id must be numeric")
   }
 
-  return c.SendString("Hello World!")
+  if !exists(id) {
+    return c.Error(fiber.StatusNotFound) // => "Not Found"
+  }
+
+  return c.JSON(load(id))
 })
 ```
 
@@ -267,20 +324,105 @@ app.Get("/test", func(c fiber.Ctx) error {
 // /test returns "/user/1"
 ```
 
-### HasBody
+:::note
+A named route belongs to this application, so what comes back is always a path
+on this origin: a `params` value that would open an authority — `"/evil.com"`
+or `"\evil.com"` under a `/*` route — is kept as the path segment the route
+asked for. [`Route.URL`](./app.md#getroute) and
+[`Redirect().Route`](./redirect.md#route) return the same answer for the same
+input, so it does not matter which one puts it in a `Location` header or an
+`href`.
 
-Returns `true` if the incoming request contains a body or a `Content-Length` header greater than zero.
+The values themselves are still written into the path as given. Where they come
+from the request, escape them with [`url.PathEscape`](https://pkg.go.dev/net/url#PathEscape)
+if the route expects one segment per parameter.
+:::
+
+### Hijack
+
+Registers a handler that takes over the connection once the current response is sent, for protocols Fiber does not speak itself. The handler runs on the connection's own goroutine, after which the connection is closed unless the server has `KeepHijackedConns` set.
+
+:::caution
+The `Ctx` is pooled and reused, so the hijack handler must not touch it.
+:::
 
 ```go title="Signature"
-func (c fiber.Ctx) HasBody() bool
+func (c fiber.Ctx) Hijack(handler fasthttp.HijackHandler)
 ```
 
 ```go title="Example"
-app.Post("/", func(c fiber.Ctx) error {
-  if !c.HasBody() {
-    return c.SendStatus(fiber.StatusBadRequest)
+app.Get("/raw", func(c fiber.Ctx) error {
+  c.Hijack(func(conn net.Conn) {
+    _, _ = conn.Write([]byte("speaking something else now"))
+  })
+
+  return c.SendStatus(fiber.StatusSwitchingProtocols)
+})
+```
+
+### Hijacked
+
+Returns `true` if [`Hijack`](#hijack) has been called on this request, so a later handler can tell that the connection is already spoken for and leave the response alone.
+
+```go title="Signature"
+func (c fiber.Ctx) Hijacked() bool
+```
+
+```go title="Example"
+app.Use(func(c fiber.Ctx) error {
+  if err := c.Next(); err != nil {
+    return err
   }
-  return c.SendString("OK")
+
+  if c.Hijacked() {
+    return nil // Nothing to add to a hijacked connection.
+  }
+
+  c.Set("X-Served-By", "fiber")
+  return nil
+})
+```
+
+### ID
+
+Returns the connection-unique identifier assigned to this request. It is cheap and always present, unlike [`RequestID`](#requestid), which reads a header a client or proxy has to have set.
+
+:::note
+The value is not unique across processes or restarts, so it is for correlating log lines within one server run.
+:::
+
+```go title="Signature"
+func (c fiber.Ctx) ID() uint64
+```
+
+```go title="Example"
+app.Use(func(c fiber.Ctx) error {
+  log.Printf("[%d] %s %s", c.ID(), c.Method(), c.Path())
+  return c.Next()
+})
+```
+
+### IsFinal
+
+Returns `true` only for the last handler of a matched, non-middleware route, so nothing further on that route runs. It is `false` when no route matched at all — as [`IsMiddleware`](#ismiddleware) also is, so the two are not exact complements.
+
+:::caution
+This describes the route, not the whole request. A route registered with `Use` is never final even when it is the last thing that runs, and another route can still match after a final handler calls [`Next`](#next) — a specific path followed by a catch-all is the ordinary case. Use it to tell an endpoint handler from a middleware one, not to decide that the response is finished.
+:::
+
+```go title="Signature"
+func (c fiber.Ctx) IsFinal() bool
+```
+
+```go title="Example"
+app.Use(func(c fiber.Ctx) error {
+  c.IsFinal() // => false, there is always a c.Next() from here
+  return c.Next()
+})
+
+app.Get("/", func(c fiber.Ctx) error {
+  c.IsFinal() // => true
+  return nil
 })
 ```
 
@@ -302,37 +444,19 @@ app.Get("/route", func(c fiber.Ctx) error {
 })
 ```
 
-### IsPreflight
+### LocalAddr
 
-Returns `true` if the request is a CORS preflight (`OPTIONS` + `Access-Control-Request-Method` + `Origin`).
-
-```go title="Signature"
-func (c fiber.Ctx) IsPreflight() bool
-```
-
-```go title="Example"
-app.Use(func(c fiber.Ctx) error {
-  if c.IsPreflight() {
-    return c.SendStatus(fiber.StatusNoContent)
-  }
-  return c.Next()
-})
-```
-
-### IsWebSocket
-
-Returns `true` if the request includes a WebSocket upgrade handshake.
+Returns the server-side address of the connection this request arrived on. [`IP`](#ip) returns the client address as a string; this is the full `net.Addr`, so the port, network, and unix socket path survive.
 
 ```go title="Signature"
-func (c fiber.Ctx) IsWebSocket() bool
+func (c fiber.Ctx) LocalAddr() net.Addr
 ```
 
 ```go title="Example"
 app.Get("/", func(c fiber.Ctx) error {
-  if c.IsWebSocket() {
-    // handle websocket
-  }
-  return c.Next()
+  c.LocalAddr().String() // => "127.0.0.1:3000"
+
+  // ...
 })
 ```
 
@@ -412,6 +536,37 @@ app.Use(func(c fiber.Ctx) error {
   }
   return c.Status(fiber.StatusNotFound).SendString("Not Found")
 })
+```
+
+### MountPath
+
+Returns the prefix the sub-app owning the current route was mounted under, or an empty string when the route belongs to the top-level app.
+
+Fiber mounts by cloning a sub-app's routes into the app that serves them with the prefix already baked in, so [`Path`](#path) inside a mounted handler is the whole requested path, not one relative to the mount. `MountPath` is what tells such a handler which prefix it is living under, to build links back into its own app or to strip the prefix itself.
+
+:::note
+It answers from the route that is running, unlike [`App.MountPath`](./app.md#mountpath), which describes the app it is called on however that app is being served — a sub-app that is mounted *and* listened on directly reports its mount prefix there even for its own traffic, where this reports `""`.
+:::
+
+:::caution
+The prefix is the owning app's, so mounting one `*fiber.App` at two prefixes reports the one it was mounted at last — the same limitation `App.MountPath` has, since that is where the prefix is recorded. Mount separate instances when each needs to know its own prefix.
+:::
+
+```go title="Signature"
+func (c fiber.Ctx) MountPath() string
+```
+
+```go title="Example"
+micro := fiber.New()
+micro.Get("/doe", func(c fiber.Ctx) error {
+  c.MountPath() // => "/john"
+  c.Path()      // => "/john/doe"
+
+  // ...
+})
+
+app := fiber.New()
+app.Use("/john", micro)
 ```
 
 ### Next
@@ -500,6 +655,22 @@ app.Get("/coffee", func(c fiber.Ctx) error {
 
 app.Get("/teapot", func(c fiber.Ctx) error {
     return c.Status(fiber.StatusTeapot).Send("🍵 short and stout 🍵")
+})
+```
+
+### RemoteAddr
+
+Returns the address of the immediate peer, which is the proxy rather than the client when the app sits behind one. Use [`IP`](#ip) or [`IPs`](#ips) for the client address a trusted proxy forwarded.
+
+```go title="Signature"
+func (c fiber.Ctx) RemoteAddr() net.Addr
+```
+
+```go title="Example"
+app.Get("/", func(c fiber.Ctx) error {
+  c.RemoteAddr().String() // => "192.168.1.10:54321"
+
+  // ...
 })
 ```
 
@@ -604,7 +775,7 @@ app.Get("/hello/:name", func(c fiber.Ctx) error {
 ```
 
 :::caution
-Do not rely on `c.Route()` in middlewares **before** calling `c.Next()` - `c.Route()` returns the **last executed route**.
+`c.Route()` returns the **last executed route**. Inside middleware that runs before your handler it reflects the middleware route itself. Use [`c.Endpoint()`](#endpoint) to look up the downstream handler without advancing the chain.
 :::
 
 ```go title="Example"
@@ -616,6 +787,22 @@ func MyMiddleware() fiber.Handler {
     return err
   }
 }
+```
+
+### RouteName
+
+Returns the name of the route currently executing, or an empty string when the route is unnamed. Inside middleware this is the middleware's own route; use `Endpoint().Name` to look ahead to the route that will handle the request.
+
+```go title="Signature"
+func (c fiber.Ctx) RouteName() string
+```
+
+```go title="Example"
+app.Get("/home", func(c fiber.Ctx) error {
+  c.RouteName() // => "home"
+
+  // ...
+}).Name("home")
 ```
 
 ### SetContext
@@ -633,6 +820,22 @@ app.Get("/", func(c fiber.Ctx) error {
   ctx := c.Context()
   go doWork(ctx)
   return nil
+})
+```
+
+### StartTime
+
+Returns the time the server began handling this request. It is the reference point [`Elapsed`](#elapsed) measures from.
+
+```go title="Signature"
+func (c fiber.Ctx) StartTime() time.Time
+```
+
+```go title="Example"
+app.Get("/", func(c fiber.Ctx) error {
+  deadline := c.StartTime().Add(2 * time.Second)
+
+  // ...
 })
 ```
 
@@ -682,12 +885,17 @@ Methods which operate on the incoming request.
 Use `c.Req()` to limit gopls suggestions to only these methods!
 :::
 
+Each entry lists both forms it can be called in. `DefaultCtx` embeds `DefaultReq`, so the method is promoted: `c.UserAgent()` and `c.Req().UserAgent()` are the same call, and the second is what the `Req` interface exposes on its own.
+
+Four entries here are request-related but live on `Ctx` alone and so list only the `fiber.Ctx` form: [`ClientHelloInfo`](#clienthelloinfo), [`RequestID`](#requestid), [`SaveFile`](#savefile) and [`SaveFileToStorage`](#savefiletostorage).
+
 ### AcceptEncoding
 
 Returns the `Accept-Encoding` request header.
 
 ```go title="Signature"
 func (c fiber.Ctx) AcceptEncoding() string
+func (r fiber.Req) AcceptEncoding() string
 ```
 
 ```go title="Example"
@@ -703,6 +911,7 @@ Returns the `Accept-Language` request header.
 
 ```go title="Signature"
 func (c fiber.Ctx) AcceptLanguage() string
+func (r fiber.Req) AcceptLanguage() string
 ```
 
 ```go title="Example"
@@ -726,6 +935,11 @@ func (c fiber.Ctx) AcceptsCharsets(offers ...string) string
 func (c fiber.Ctx) AcceptsEncodings(offers ...string) string
 func (c fiber.Ctx) AcceptsLanguages(offers ...string) string
 func (c fiber.Ctx) AcceptsLanguagesExtended(offers ...string) string
+func (r fiber.Req) Accepts(offers ...string) string
+func (r fiber.Req) AcceptsCharsets(offers ...string) string
+func (r fiber.Req) AcceptsEncodings(offers ...string) string
+func (r fiber.Req) AcceptsLanguages(offers ...string) string
+func (r fiber.Req) AcceptsLanguagesExtended(offers ...string) string
 ```
 
 ```go title="Example"
@@ -748,6 +962,18 @@ app.Get("/", func(c fiber.Ctx) error {
   c.Accepts("text/plain", "application/json") // "application/json", due to specificity
   c.Accepts("application/json", "text/html") // "text/html", due to first match
   c.Accepts("image/png")                      // "", due to */* with q=0 is Not Acceptable
+  // ...
+})
+```
+
+The weight of an offer is the one of the most specific range matching it (RFC 9110 §12.5.1), so a broad range with a higher weight never overrides a more specific range that lowers or rejects that offer:
+
+```go title="Example 3"
+// Accept: text/*;q=1, text/html;q=0.5
+
+app.Get("/", func(c fiber.Ctx) error {
+  c.Accepts("text/html", "text/plain") // "text/plain": text/html weighs 0.5, text/plain 1
+  c.Accepts("text/html")               // "text/html": a lowered weight is still acceptable
   // ...
 })
 ```
@@ -817,6 +1043,7 @@ Returns `true` when the `Accept` header allows `text/event-stream`.
 
 ```go title="Signature"
 func (c fiber.Ctx) AcceptsEventStream() bool
+func (r fiber.Req) AcceptsEventStream() bool
 ```
 
 ```go title="Example"
@@ -834,6 +1061,7 @@ Returns `true` when the `Accept` header allows HTML.
 
 ```go title="Signature"
 func (c fiber.Ctx) AcceptsHTML() bool
+func (r fiber.Req) AcceptsHTML() bool
 ```
 
 ```go title="Example"
@@ -851,6 +1079,7 @@ Returns `true` when the `Accept` header allows JSON.
 
 ```go title="Signature"
 func (c fiber.Ctx) AcceptsJSON() bool
+func (r fiber.Req) AcceptsJSON() bool
 ```
 
 ```go title="Example"
@@ -868,6 +1097,7 @@ Returns `true` when the `Accept` header allows XML.
 
 ```go title="Signature"
 func (c fiber.Ctx) AcceptsXML() bool
+func (r fiber.Req) AcceptsXML() bool
 ```
 
 ```go title="Example"
@@ -879,12 +1109,63 @@ app.Get("/", func(c fiber.Ctx) error {
 })
 ```
 
+### AllCookies
+
+Returns the cookies sent with the request as a name/value map, or `nil` when the client sent none.
+
+A repeated name resolves to its **first** occurrence, which is the one [`Cookies`](#cookies) answers with too. The two have to agree: a client can shadow a cookie by sending the name twice, and code that validated one value while consuming the other would validate the wrong one. Use [`CookieNames`](#cookienames) to see that a name was repeated at all.
+
+:::note
+The keys and values are copies rather than views into the request buffer, so they stay valid past the handler. fasthttp rewrites those bytes in place when a handler edits a request cookie, which would not merely stale the map but rehash it into one whose own keys no longer find their entries.
+:::
+
+```go title="Signature"
+func (c fiber.Ctx) AllCookies() map[string]string
+func (r fiber.Req) AllCookies() map[string]string
+```
+
+```go title="Example"
+app.Get("/", func(c fiber.Ctx) error {
+  // Cookie: session=abc; theme=dark
+  c.AllCookies() // => map[session:abc theme:dark]
+
+  // ...
+})
+```
+
+### Authorization
+
+Splits the `Authorization` request header into its auth-scheme and the credentials that follow (RFC 9110, Section 11.6.2). Both are empty when the header is absent.
+
+:::caution
+The credentials are returned verbatim — `token68` or an `auth-param` list — and are neither decoded nor validated.
+
+Returned values are only valid within the handler. Do not store any references: they view the request buffer, which the next request on the connection overwrites, so a credential cached past the handler silently becomes another request's. Make copies or use the [**`Immutable`**](./fiber.md#config) setting instead.
+:::
+
+```go title="Signature"
+func (c fiber.Ctx) Authorization() (scheme, credentials string)
+func (r fiber.Req) Authorization() (scheme, credentials string)
+```
+
+```go title="Example"
+app.Get("/", func(c fiber.Ctx) error {
+  // Authorization: Basic dXNlcjpwYXNz
+  scheme, credentials := c.Authorization()
+  // scheme      => "Basic"
+  // credentials => "dXNlcjpwYXNz"
+
+  // ...
+})
+```
+
 ### BaseURL
 
 Returns the base URL (**protocol** + **host**) as a `string`.
 
 ```go title="Signature"
 func (c fiber.Ctx) BaseURL() string
+func (r fiber.Req) BaseURL() string
 ```
 
 ```go title="Example"
@@ -896,12 +1177,40 @@ app.Get("/", func(c fiber.Ctx) error {
 })
 ```
 
+### Bearer
+
+Returns the credentials of a `Bearer` `Authorization` header (RFC 6750, Section 2.1), or an empty string when the header is absent or names a different auth-scheme.
+
+:::caution
+The token is returned verbatim: it is not validated, decoded, or verified, so it still has to be authenticated before it is trusted. Use the [keyauth](../middleware/keyauth.md) middleware when you want that done for you.
+
+Returned value is only valid within the handler. Do not store any references: it views the request buffer, which the next request on the connection overwrites, so a token cached past the handler — or used as a key in a shared map — silently becomes another request's.
+:::
+
+```go title="Signature"
+func (c fiber.Ctx) Bearer() string
+func (r fiber.Req) Bearer() string
+```
+
+```go title="Example"
+app.Get("/", func(c fiber.Ctx) error {
+  // Authorization: Bearer abc123
+  c.Bearer() // => "abc123"
+
+  // Authorization: Basic dXNlcjpwYXNz
+  c.Bearer() // => ""
+
+  // ...
+})
+```
+
 ### Body
 
 As per the header `Content-Encoding`, this method will try to perform a file decompression from the **body** bytes. In case no `Content-Encoding` header is sent (or when it is set to `identity`), it will perform as [BodyRaw](#bodyraw). If an unknown or unsupported encoding is encountered, the response status will be `415 Unsupported Media Type` or `501 Not Implemented`. Decompression is bounded by the app [BodyLimit](./fiber.md#bodylimit).
 
 ```go title="Signature"
 func (c fiber.Ctx) Body() []byte
+func (r fiber.Req) Body() []byte
 ```
 
 ```go title="Example"
@@ -924,6 +1233,7 @@ Returns the raw request **body**.
 
 ```go title="Signature"
 func (c fiber.Ctx) BodyRaw() []byte
+func (r fiber.Req) BodyRaw() []byte
 ```
 
 ```go title="Example"
@@ -940,12 +1250,44 @@ The returned value is valid only within the handler. Do not store references.
 Make copies or use the [**`Immutable`**](./fiber.md#immutable) setting instead. [Read more...](../#zero-allocation)
 :::
 
+### BodyStream
+
+Returns the request body as a stream. It is only non-`nil` when [`StreamRequestBody`](./fiber.md#config) is enabled and the body has not already been buffered.
+
+:::caution
+Reading from the returned reader consumes the body, so a later [`Body`](#body) call will not see it.
+:::
+
+```go title="Signature"
+func (c fiber.Ctx) BodyStream() io.Reader
+func (r fiber.Req) BodyStream() io.Reader
+```
+
+```go title="Example"
+app := fiber.New(fiber.Config{StreamRequestBody: true})
+
+app.Post("/upload", func(c fiber.Ctx) error {
+  stream := c.BodyStream()
+  if stream == nil {
+    return c.Send(c.Body()) // Already buffered.
+  }
+
+  written, err := io.Copy(dst, stream)
+  if err != nil {
+    return err
+  }
+
+  return c.JSON(fiber.Map{"written": written})
+})
+```
+
 ### Charset
 
 Returns the `charset` parameter from the `Content-Type` header.
 
 ```go title="Signature"
 func (c fiber.Ctx) Charset() string
+func (r fiber.Req) Charset() string
 ```
 
 ```go title="Example"
@@ -959,7 +1301,7 @@ app.Post("/", func(c fiber.Ctx) error {
 
 ### ClientHelloInfo
 
-`ClientHelloInfo` contains information from a ClientHello message to guide application logic in the `GetCertificate` and `GetConfigForClient` callbacks.
+`ClientHelloInfo` contains information from the ClientHello message of the TLS connection the request arrived on, to guide application logic in the `GetCertificate` and `GetConfigForClient` callbacks. It is recorded per connection, so concurrent connections never see each other's handshake, and it is `nil` when the app has no TLS handler or the request did not come in over a connection it negotiated. With `Server.MaxConnsPerIP` set, the record for a connection is only dropped once the same connection object is seen again rather than when it closes, because fasthttp recycles the wrapper it reports the close on.
 Refer to the [ClientHelloInfo](https://golang.org/pkg/crypto/tls/#ClientHelloInfo) struct documentation for details on the returned struct.
 
 ```go title="Signature"
@@ -974,12 +1316,87 @@ app.Get("/hello", func(c fiber.Ctx) error {
 })
 ```
 
+### ContentLength
+
+Returns the value of the `Content-Length` request header.
+
+A negative result is **not a length**: `-1` is reported for a chunked body and `-2` for `Transfer-Encoding: identity`, which is also what an ordinary `GET` with no body reports. So `-2`, not `0`, is the common case for a bodyless request — use [`HasBody`](#hasbody) to test whether there is a body at all, and read this only to find out how large a declared one is.
+
+:::note
+`Req` and `Res` both carry a `ContentLength`, so on `Ctx` the request wins, as it does for [`Get`](#get). Use `c.Res().ContentLength()` for the length of the response.
+:::
+
+```go title="Signature"
+func (c fiber.Ctx) ContentLength() int
+func (r fiber.Req) ContentLength() int
+```
+
+```go title="Example"
+app.Post("/", func(c fiber.Ctx) error {
+  if c.ContentLength() > maxUpload {
+    return c.Error(fiber.StatusRequestEntityTooLarge)
+  }
+
+  // ...
+})
+```
+
+### ContentType
+
+Returns the `Content-Type` request header, parameters included. [`MediaType`](#mediatype) returns the same header with the parameters stripped, and [`Charset`](#charset) returns just the charset one.
+
+:::note
+`Req` and `Res` both carry a `ContentType`, so on `Ctx` the request wins, as it does for [`Get`](#get). Use `c.Res().ContentType()` for the type the response will send.
+:::
+
+:::caution
+Returned value is only valid within the handler. Do not store any references. Make copies or use the [**`Immutable`**](./fiber.md#config) setting to use the value outside the handler.
+:::
+
+```go title="Signature"
+func (c fiber.Ctx) ContentType() string
+func (r fiber.Req) ContentType() string
+```
+
+```go title="Example"
+app.Post("/", func(c fiber.Ctx) error {
+  // Content-Type: application/json; charset=utf-8
+  c.ContentType() // => "application/json; charset=utf-8"
+  c.MediaType()   // => "application/json"
+
+  // ...
+})
+```
+
+### CookieNames
+
+Returns the names of the cookies sent with the request, in the order they appear in the `Cookie` header, or `nil` when the client sent none. A name the client repeated is returned once per occurrence, which is how a caller detects the shadowing [`AllCookies`](#allcookies) collapses.
+
+:::note
+Unlike [`Cookies`](#cookies), the returned strings are copies rather than views into the request buffer, so they stay valid past the handler.
+:::
+
+```go title="Signature"
+func (c fiber.Ctx) CookieNames() []string
+func (r fiber.Req) CookieNames() []string
+```
+
+```go title="Example"
+app.Get("/", func(c fiber.Ctx) error {
+  // Cookie: session=abc; theme=dark
+  c.CookieNames() // => ["session", "theme"]
+
+  // ...
+})
+```
+
 ### Cookies
 
 Gets a cookie value by key. You can pass an optional default value that will be returned if the cookie key does not exist.
 
 ```go title="Signature"
 func (c fiber.Ctx) Cookies(key string, defaultValue ...string) string
+func (r fiber.Req) Cookies(key string, defaultValue ...string) string
 ```
 
 ```go title="Example"
@@ -1002,6 +1419,7 @@ MultipartForm files can be retrieved by name, the **first** file from the given 
 
 ```go title="Signature"
 func (c fiber.Ctx) FormFile(key string) (*multipart.FileHeader, error)
+func (r fiber.Req) FormFile(key string) (*multipart.FileHeader, error)
 ```
 
 ```go title="Example"
@@ -1018,8 +1436,18 @@ app.Post("/", func(c fiber.Ctx) error {
 
 Form values can be retrieved by name, the **first** value for the given key is returned.
 
+:::caution
+
+On a form request this lowercases the case-insensitive parts of the request's
+own `Content-Type`, so a value obtained earlier from `Get(HeaderContentType)` —
+which aliases those bytes unless [Immutable](./fiber.md#immutable) is set — can
+change during the call. Copy it first if you need it to outlive one.
+
+:::
+
 ```go title="Signature"
 func (c fiber.Ctx) FormValue(key string, defaultValue ...string) string
+func (r fiber.Req) FormValue(key string, defaultValue ...string) string
 ```
 
 ```go title="Example"
@@ -1051,6 +1479,7 @@ Read more on [https://expressjs.com/en/4x/api.html\#req.fresh](https://expressjs
 
 ```go title="Signature"
 func (c fiber.Ctx) Fresh() bool
+func (r fiber.Req) Fresh() bool
 ```
 
 ### FullURL
@@ -1059,6 +1488,7 @@ Returns the full request URL (protocol + host + original URL).
 
 ```go title="Signature"
 func (c fiber.Ctx) FullURL() string
+func (r fiber.Req) FullURL() string
 ```
 
 ```go title="Example"
@@ -1080,6 +1510,7 @@ The match is **case-insensitive**.
 
 ```go title="Signature"
 func (c fiber.Ctx) Get(key string, defaultValue ...string) string
+func (r fiber.Req) Get(key string, defaultValue ...string) string
 ```
 
 ```go title="Example"
@@ -1096,12 +1527,61 @@ The returned value is valid only within the handler. Do not store references.
 Make copies or use the [**`Immutable`**](./fiber.md#immutable) setting instead. [Read more...](../#zero-allocation)
 :::
 
+### GetAll
+
+Returns every field line of the request header specified by `key`. Field names are case-insensitive.
+
+A header repeated across field lines is semantically one comma-joined list (RFC 9110, Section 5.2). `GetAll` keeps the lines apart so a caller can inspect them individually, where [`Get`](#get) returns only the first and [`GetReqHeaders`](#getreqheaders) builds a map of the whole header block. It returns `nil` when the header is absent.
+
+:::note
+Empty field lines are skipped, so `len(c.GetAll(k)) > 0` answers the same question as [`HasHeader`](#hasheader). Without that, the headers fasthttp keeps in a slot of their own (`Content-Length`, `Trailer`) report one empty line when they are not present at all.
+:::
+
+:::caution
+Returned values are only valid within the handler. Do not store any references. Make copies or use the [**`Immutable`**](./fiber.md#config) setting instead.
+:::
+
+```go title="Signature"
+func (c fiber.Ctx) GetAll(key string) []string
+func (r fiber.Req) GetAll(key string) []string
+```
+
+```go title="Example"
+app.Get("/", func(c fiber.Ctx) error {
+  // X-Forwarded-For: 10.0.0.1
+  // X-Forwarded-For: 10.0.0.2
+  c.GetAll("X-Forwarded-For") // => ["10.0.0.1", "10.0.0.2"]
+  c.Get("X-Forwarded-For")    // => "10.0.0.1"
+
+  // ...
+})
+```
+
+### HasBody
+
+Returns `true` if the incoming request contains a body or a `Content-Length` header greater than zero.
+
+```go title="Signature"
+func (c fiber.Ctx) HasBody() bool
+func (r fiber.Req) HasBody() bool
+```
+
+```go title="Example"
+app.Post("/", func(c fiber.Ctx) error {
+  if !c.HasBody() {
+    return c.SendStatus(fiber.StatusBadRequest)
+  }
+  return c.SendString("OK")
+})
+```
+
 ### HasHeader
 
 Reports whether the request includes a header with the given key.
 
 ```go title="Signature"
 func (c fiber.Ctx) HasHeader(key string) bool
+func (r fiber.Req) HasHeader(key string) bool
 ```
 
 ```go title="Example"
@@ -1119,6 +1599,7 @@ In a network context, [`Host`](#host) refers to the combination of a hostname an
 
 ```go title="Signature"
 func (c fiber.Ctx) Host() string
+func (r fiber.Req) Host() string
 ```
 
 ```go title="Example"
@@ -1143,6 +1624,7 @@ Returns the hostname derived from the [Host](https://developer.mozilla.org/en-US
 
 ```go title="Signature"
 func (c fiber.Ctx) Hostname() string
+func (r fiber.Req) Hostname() string
 ```
 
 ```go title="Example"
@@ -1160,12 +1642,62 @@ The returned value is valid only within the handler. Do not store references.
 Make copies or use the [**`Immutable`**](./fiber.md#immutable) setting instead. [Read more...](../#zero-allocation)
 :::
 
+### IfModifiedSince
+
+Returns the time carried by the `If-Modified-Since` request header. It returns `fiber.ErrHeaderNotFound` when the header is absent, and a parse error when the value is none of the three HTTP-date formats RFC 9110, Section 5.6.7 requires recipients to accept.
+
+```go title="Signature"
+func (c fiber.Ctx) IfModifiedSince() (time.Time, error)
+func (r fiber.Req) IfModifiedSince() (time.Time, error)
+```
+
+```go title="Example"
+app.Get("/report", func(c fiber.Ctx) error {
+  since, err := c.IfModifiedSince()
+  switch {
+  case errors.Is(err, fiber.ErrHeaderNotFound):
+    // Unconditional request.
+  case err != nil:
+    return c.Error(fiber.StatusBadRequest, "malformed If-Modified-Since")
+  case !report.ModTime().After(since):
+    return c.SendStatus(fiber.StatusNotModified)
+  }
+
+  return c.JSON(report)
+})
+```
+
+### IfNoneMatch
+
+Returns the entity tags listed in the `If-None-Match` request header. Repeated field lines are combined into one list (RFC 9110, Section 5.2), and a comma inside a quoted opaque-tag does not split it, so `"v1,v2"` stays one tag. A wildcard header returns a single `*` element.
+
+:::note
+Tags are returned verbatim, weak `W/` prefix included, and are not validated; empty list elements are dropped as RFC 9110, Section 5.6.1 requires, so a trailing comma is not an extra tag. [`Fresh`](#fresh) already applies these tags to the response `ETag`; reach for this only to implement a comparison of your own.
+
+Returned values are only valid within the handler. Do not store any references.
+:::
+
+```go title="Signature"
+func (c fiber.Ctx) IfNoneMatch() []string
+func (r fiber.Req) IfNoneMatch() []string
+```
+
+```go title="Example"
+app.Get("/", func(c fiber.Ctx) error {
+  // If-None-Match: W/"a", "b,c"
+  c.IfNoneMatch() // => [`W/"a"`, `"b,c"`]
+
+  // ...
+})
+```
+
 ### IP
 
 Returns the remote IP address of the request.
 
 ```go title="Signature"
 func (c fiber.Ctx) IP() string
+func (r fiber.Req) IP() string
 ```
 
 ```go title="Example"
@@ -1221,10 +1753,11 @@ See [`TrustProxy`](fiber.md#trustproxy) and [`TrustProxyConfig`](fiber.md#trustp
 
 ### IPs
 
-Returns an array of IP addresses specified in the [X-Forwarded-For](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/X-Forwarded-For) request header.
+Returns an array of IP addresses specified in the [X-Forwarded-For](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/X-Forwarded-For) request header. With `EnableIPValidation`, IPv4, IPv6 and IPv4-mapped IPv6 addresses (`::ffff:203.0.113.5`, as dual-stack proxies forward IPv4 clients) are all accepted.
 
 ```go title="Signature"
 func (c fiber.Ctx) IPs() []string
+func (r fiber.Req) IPs() []string
 ```
 
 ```go title="Example"
@@ -1251,6 +1784,7 @@ If the request has **no** body, it returns **false**.
 
 ```go title="Signature"
 func (c fiber.Ctx) Is(extension string) bool
+func (r fiber.Req) Is(extension string) bool
 ```
 
 ```go title="Example"
@@ -1271,6 +1805,7 @@ Reports whether the `Content-Type` header is form-encoded.
 
 ```go title="Signature"
 func (c fiber.Ctx) IsForm() bool
+func (r fiber.Req) IsForm() bool
 ```
 
 ```go title="Example"
@@ -1288,6 +1823,7 @@ Returns `true` if the request came from localhost.
 
 ```go title="Signature"
 func (c fiber.Ctx) IsFromLocal() bool
+func (r fiber.Req) IsFromLocal() bool
 ```
 
 ```go title="Example"
@@ -1305,6 +1841,7 @@ Returns `true` if the request came in over a Unix domain socket.
 
 ```go title="Signature"
 func (c fiber.Ctx) IsFromUnixSocket() bool
+func (r fiber.Req) IsFromUnixSocket() bool
 ```
 
 ```go title="Example"
@@ -1316,12 +1853,34 @@ app.Get("/", func(c fiber.Ctx) error {
 })
 ```
 
+### IsIdempotent
+
+Reports whether the request method is idempotent, meaning repeating it has the same intended effect as making it once (RFC 9110, Section 9.2.2). Every safe method is also idempotent.
+
+```go title="Signature"
+func (c fiber.Ctx) IsIdempotent() bool
+func (r fiber.Req) IsIdempotent() bool
+```
+
+```go title="Example"
+app.Use(func(c fiber.Ctx) error {
+  // GET, HEAD, OPTIONS, TRACE, PUT, DELETE => true
+  // POST, PATCH                            => false
+  if c.IsIdempotent() {
+    return retryable(c)
+  }
+
+  return c.Next()
+})
+```
+
 ### IsJSON
 
 Reports whether the `Content-Type` header is JSON.
 
 ```go title="Signature"
 func (c fiber.Ctx) IsJSON() bool
+func (r fiber.Req) IsJSON() bool
 ```
 
 ```go title="Example"
@@ -1339,6 +1898,7 @@ Reports whether the `Content-Type` header is multipart form data.
 
 ```go title="Signature"
 func (c fiber.Ctx) IsMultipart() bool
+func (r fiber.Req) IsMultipart() bool
 ```
 
 ```go title="Example"
@@ -1350,14 +1910,33 @@ app.Post("/", func(c fiber.Ctx) error {
 })
 ```
 
+### IsPreflight
+
+Returns `true` if the request is a CORS preflight (`OPTIONS` + `Access-Control-Request-Method` + `Origin`).
+
+```go title="Signature"
+func (c fiber.Ctx) IsPreflight() bool
+func (r fiber.Req) IsPreflight() bool
+```
+
+```go title="Example"
+app.Use(func(c fiber.Ctx) error {
+  if c.IsPreflight() {
+    return c.SendStatus(fiber.StatusNoContent)
+  }
+  return c.Next()
+})
+```
+
 ### IsProxyTrusted
 
 Checks the trustworthiness of the remote IP.
-If [`TrustProxy`](fiber.md#trustproxy) is `false`, it returns `true`.
+If [`TrustProxy`](fiber.md#trustproxy) is `false`, it returns `false`.
 `IsProxyTrusted` can check the remote IP by proxy ranges and IP map.
 
 ```go title="Signature"
 func (c fiber.Ctx) IsProxyTrusted() bool
+func (r fiber.Req) IsProxyTrusted() bool
 ```
 
 ```go title="Example"
@@ -1381,12 +1960,52 @@ app.Get("/", func(c fiber.Ctx) error {
 })
 ```
 
+### IsSafe
+
+Reports whether the request method is safe, meaning it is not expected to change server state (RFC 9110, Section 9.2.1).
+
+```go title="Signature"
+func (c fiber.Ctx) IsSafe() bool
+func (r fiber.Req) IsSafe() bool
+```
+
+```go title="Example"
+app.Use(func(c fiber.Ctx) error {
+  // GET, HEAD, OPTIONS, TRACE => true
+  // POST, PUT, PATCH, DELETE  => false
+  if !c.IsSafe() {
+    return requireCSRFToken(c)
+  }
+
+  return c.Next()
+})
+```
+
+### IsWebSocket
+
+Returns `true` if the request includes a WebSocket upgrade handshake.
+
+```go title="Signature"
+func (c fiber.Ctx) IsWebSocket() bool
+func (r fiber.Req) IsWebSocket() bool
+```
+
+```go title="Example"
+app.Get("/", func(c fiber.Ctx) error {
+  if c.IsWebSocket() {
+    // handle websocket
+  }
+  return c.Next()
+})
+```
+
 ### MediaType
 
 Returns the MIME type from the `Content-Type` header without parameters.
 
 ```go title="Signature"
 func (c fiber.Ctx) MediaType() string
+func (r fiber.Req) MediaType() string
 ```
 
 ```go title="Example"
@@ -1411,6 +2030,7 @@ Route registration (`app.Get`, `app.Add`, …) uppercases method names before va
 
 ```go title="Signature"
 func (c fiber.Ctx) Method(override ...string) string
+func (r fiber.Req) Method(override ...string) string
 ```
 
 ```go title="Example"
@@ -1428,8 +2048,18 @@ app.Post("/override", func(c fiber.Ctx) error {
 
 To access multipart form entries, you can parse the binary with `MultipartForm()`. This returns a `*multipart.Form`, allowing you to access form values and files. Parsing is bounded by the app [BodyLimit](./fiber.md#bodylimit).
 
+:::caution
+
+On a form request this lowercases the case-insensitive parts of the request's
+own `Content-Type`, so a value obtained earlier from `Get(HeaderContentType)` —
+which aliases those bytes unless [Immutable](./fiber.md#immutable) is set — can
+change during the call. Copy it first if you need it to outlive one.
+
+:::
+
 ```go title="Signature"
 func (c fiber.Ctx) MultipartForm() (*multipart.Form, error)
+func (r fiber.Req) MultipartForm() (*multipart.Form, error)
 ```
 
 ```go title="Example"
@@ -1463,12 +2093,35 @@ app.Post("/", func(c fiber.Ctx) error {
 })
 ```
 
+### Origin
+
+Returns the `Origin` request header.
+
+:::caution
+Returned value is only valid within the handler. Do not store any references. Make copies or use the [**`Immutable`**](./fiber.md#config) setting to use the value outside the handler.
+:::
+
+```go title="Signature"
+func (c fiber.Ctx) Origin() string
+func (r fiber.Req) Origin() string
+```
+
+```go title="Example"
+app.Get("/", func(c fiber.Ctx) error {
+  // Origin: https://example.com
+  c.Origin() // => "https://example.com"
+
+  // ...
+})
+```
+
 ### OriginalURL
 
 Returns the original request URL.
 
 ```go title="Signature"
 func (c fiber.Ctx) OriginalURL() string
+func (r fiber.Req) OriginalURL() string
 ```
 
 ```go title="Example"
@@ -1496,6 +2149,7 @@ Defaults to an empty string \(`""`\) if the param **doesn't** exist.
 
 ```go title="Signature"
 func (c fiber.Ctx) Params(key string, defaultValue ...string) string
+func (r fiber.Req) Params(key string, defaultValue ...string) string
 ```
 
 ```go title="Example"
@@ -1570,6 +2224,7 @@ Contains the path part of the request URL. Optionally, you can override the path
 
 ```go title="Signature"
 func (c fiber.Ctx) Path(override ...string) string
+func (r fiber.Req) Path(override ...string) string
 ```
 
 ```go title="Example"
@@ -1591,6 +2246,7 @@ Returns the remote port of the request.
 
 ```go title="Signature"
 func (c fiber.Ctx) Port() string
+func (r fiber.Req) Port() string
 ```
 
 ```go title="Example"
@@ -1613,6 +2269,7 @@ To get the request scheme (`http` or `https`), use [`Scheme`](#scheme) instead.
 
 ```go title="Signature"
 func (c fiber.Ctx) Protocol() string
+func (r fiber.Req) Protocol() string
 ```
 
 ```go title="Example"
@@ -1631,6 +2288,7 @@ app.Get("/", func(c fiber.Ctx) error {
 
 ```go title="Signature"
 func (c fiber.Ctx) Queries() map[string]string
+func (r fiber.Req) Queries() map[string]string
 ```
 
 ```go title="Example"
@@ -1699,6 +2357,7 @@ If there is **no** query string, it returns an **empty string**.
 
 ```go title="Signature"
 func (c fiber.Ctx) Query(key string, defaultValue ...string) string
+func (r fiber.Req) Query(key string, defaultValue ...string) string
 ```
 
 ```go title="Example"
@@ -1771,6 +2430,7 @@ populates the `Content-Range` header with the current representation size.
 
 ```go title="Signature"
 func (c fiber.Ctx) Range(size int64) (Range, error)
+func (r fiber.Req) Range(size int64) (Range, error)
 ```
 
 ```go title="Example"
@@ -1792,6 +2452,7 @@ Returns the `Referer` request header.
 
 ```go title="Signature"
 func (c fiber.Ctx) Referer() string
+func (r fiber.Req) Referer() string
 ```
 
 ```go title="Example"
@@ -1890,8 +2551,22 @@ Contains the request protocol string: `http` or `https` for TLS requests.
 Please use [`Config.TrustProxy`](fiber.md#trustproxy) to prevent header spoofing if your app is behind a proxy.
 :::
 
+:::note
+
+Only `http` and `https` are ever returned. When the proxy is trusted, the
+forwarding headers (`X-Forwarded-Proto`, `X-Forwarded-Protocol`,
+`X-Forwarded-Ssl`, `X-Url-Scheme`) are read, but a value naming anything else is
+ignored rather than passed through — the result is spliced into
+[`BaseURL`](#baseurl) and compared for origin equality by CSRF and
+`Redirect().Back()`, so a header announcing, say, `javascript` must not become
+part of a URL. A proxy that terminates a different protocol should send the
+scheme the client used to reach it.
+
+:::
+
 ```go title="Signature"
 func (c fiber.Ctx) Scheme() string
+func (r fiber.Req) Scheme() string
 ```
 
 ```go title="Example"
@@ -1910,6 +2585,7 @@ A boolean property that is `true` if a **TLS** connection is established.
 
 ```go title="Signature"
 func (c fiber.Ctx) Secure() bool
+func (r fiber.Req) Secure() bool
 ```
 
 ```go title="Example"
@@ -1927,6 +2603,7 @@ representation is still valid.
 
 ```go title="Signature"
 func (c fiber.Ctx) Stale() bool
+func (r fiber.Req) Stale() bool
 ```
 
 ### Subdomains
@@ -1962,12 +2639,37 @@ app.Get("/", func(c fiber.Ctx) error {
 })
 ```
 
+### URI
+
+Returns the parsed [`*fasthttp.URI`](https://pkg.go.dev/github.com/valyala/fasthttp#URI) of the request, which gives access to every fasthttp URI method.
+
+:::caution
+The returned value is owned by the request and is rewritten by a [`Path`](#path) override, so it is only valid within the handler. Do not store any references.
+:::
+
+```go title="Signature"
+func (c fiber.Ctx) URI() *fasthttp.URI
+func (r fiber.Req) URI() *fasthttp.URI
+```
+
+```go title="Example"
+app.Get("/", func(c fiber.Ctx) error {
+  // GET http://example.com/search?q=fiber#results
+  uri := c.URI()
+  uri.QueryString() // => "q=fiber"
+  uri.Hash()        // => "results"
+
+  // ...
+})
+```
+
 ### UserAgent
 
 Returns the `User-Agent` request header.
 
 ```go title="Signature"
 func (c fiber.Ctx) UserAgent() string
+func (r fiber.Req) UserAgent() string
 ```
 
 ```go title="Example"
@@ -1983,6 +2685,7 @@ A boolean property that is `true` if the request’s [X-Requested-With](https://
 
 ```go title="Signature"
 func (c fiber.Ctx) XHR() bool
+func (r fiber.Req) XHR() bool
 ```
 
 ```go title="Example"
@@ -2003,6 +2706,38 @@ Methods which modify the response object.
 Use `c.Res()` to limit gopls suggestions to only these methods!
 :::
 
+Each entry lists both forms it can be called in. `DefaultCtx` embeds `DefaultRes`, so the method is promoted: `c.Del(key)` and `c.Res().Del(key)` are the same call.
+
+:::caution
+Three names are defined on both `Req` and `Res`: `Body`, `ContentLength` and `ContentType`. On `Ctx` the **request wins**, the way [`Get`](#get) already does, so `c.Body()` reads the request body. The response counterparts are listed below as [`Body (Res)`](#body-res), [`ContentLength (Res)`](#contentlength-res) and [`ContentType (Res)`](#contenttype-res), and are reachable only through `c.Res()` — which is why they list a single `fiber.Res` signature. The response cookies are [`GetCookies`](#getcookies): named apart from `Req.Cookies` so that a `Ctx` still satisfies `fiber.Res`, which a same-name/different-signature pair would prevent.
+:::
+
+### Add
+
+Appends the given value to the response header field as a **new field line**, leaving any existing lines untouched.
+
+This differs from [`Append`](#append), which folds values into a single comma-separated line: headers whose values may themselves contain commas — `WWW-Authenticate`, `Link` — have to be sent as separate lines to stay unambiguous (RFC 9110, Section 5.3).
+
+:::caution
+`Add` does not append for most of the headers fasthttp stores in a slot of their own: `Content-Type`, `Content-Encoding`, `Content-Length`, `Connection`, `Server` and `Trailer` are **replaced**, and `Transfer-Encoding` and `Date` are **ignored** because fasthttp writes them itself. Use [`Set`](#set) for those. `Set-Cookie` is slotted too but does repeat, so `Add` appends a line — prefer [`Cookie`](#cookie), which builds the field value for you.
+:::
+
+```go title="Signature"
+func (c fiber.Ctx) Add(key, val string)
+func (r fiber.Res) Add(key, val string)
+```
+
+```go title="Example"
+app.Get("/", func(c fiber.Ctx) error {
+  c.Add(fiber.HeaderWWWAuthenticate, `Basic realm="api"`)
+  c.Add(fiber.HeaderWWWAuthenticate, `Bearer realm="api"`)
+  // => WWW-Authenticate: Basic realm="api"
+  // => WWW-Authenticate: Bearer realm="api"
+
+  return c.SendStatus(fiber.StatusUnauthorized)
+})
+```
+
 ### Append
 
 Appends the specified **value** to the HTTP response header field.
@@ -2015,6 +2750,7 @@ Empty values are skipped, since a sender must not generate empty list elements (
 
 ```go title="Signature"
 func (c fiber.Ctx) Append(field string, values ...string)
+func (r fiber.Res) Append(field string, values ...string)
 ```
 
 ```go title="Example"
@@ -2035,6 +2771,7 @@ Sets the HTTP response [Content-Disposition](https://developer.mozilla.org/en-US
 
 ```go title="Signature"
 func (c fiber.Ctx) Attachment(filename ...string)
+func (r fiber.Res) Attachment(filename ...string)
 ```
 
 ```go title="Example"
@@ -2078,6 +2815,7 @@ If the header is **not** specified or there is **no** proper format, **text/plai
 
 ```go title="Signature"
 func (c fiber.Ctx) AutoFormat(body any) error
+func (r fiber.Res) AutoFormat(body any) error
 ```
 
 ```go title="Example"
@@ -2114,6 +2852,35 @@ app.Get("/", func(c fiber.Ctx) error {
 })
 ```
 
+### Body (Res)
+
+Returns the response body buffered so far, which lets middleware inspect or checksum what a handler produced before it is written out.
+
+Reached through `c.Res()`: `Req` and `Res` both carry a `Body`, so `c.Body()` is the **request** body.
+
+:::note
+A streamed body returns `nil` rather than being drained. Reading it would pull the whole stream into memory and turn the response into a buffered one, which would hang an SSE route and defeat a large [`SendFile`](#sendfile). Use [`Written`](#written) to tell a streaming response from one that produced nothing, and the underlying `c.Response().Body()` if you really do want to materialize the stream.
+:::
+
+:::caution
+The returned slice is the response's live buffer, not a copy — writing through it writes to the response, as it does for the request-side [`Body`](#body). It is only valid within the handler and is invalidated by the next write to the response. Do not store any references; copy it instead.
+:::
+
+```go title="Signature"
+func (r fiber.Res) Body() []byte
+```
+
+```go title="Example"
+app.Use(func(c fiber.Ctx) error {
+  if err := c.Next(); err != nil {
+    return err
+  }
+
+  c.Set(fiber.HeaderETag, etag.Generate(c.Res().Body()))
+  return nil
+})
+```
+
 ### CBOR
 
 CBOR converts any interface or string to CBOR encoded bytes.
@@ -2126,6 +2893,7 @@ CBOR also sets the content header to the `ctype` parameter. If no `ctype` is pas
 
 ```go title="Signature"
 func (c fiber.Ctx) CBOR(data any, ctype ...string) error
+func (r fiber.Res) CBOR(data any, ctype ...string) error
 ```
 
 ```go title="Example"
@@ -2170,6 +2938,7 @@ Expires a client cookie (or all cookies if left empty).
 
 ```go title="Signature"
 func (c fiber.Ctx) ClearCookie(key ...string)
+func (r fiber.Res) ClearCookie(key ...string)
 ```
 
 ```go title="Example"
@@ -2231,12 +3000,66 @@ app.Get("/logout", func(c fiber.Ctx) error {
 })
 ```
 
+### ContentLength (Res)
+
+Returns the value of the `Content-Length` response header.
+
+Reached through `c.Res()`: `Req` and `Res` both carry a `ContentLength`, so `c.ContentLength()` is the **request** header.
+
+:::note
+It reports what the header **declares** — a length a handler, middleware or upstream response set, and `-1` once the body is a stream of unknown length. It is not a count of buffered bytes: fasthttp fills `Content-Length` in as it serializes the response, so this is `0` inside a handler unless something set it explicitly. Use `len(c.Res().Body())` for the bytes buffered so far.
+:::
+
+```go title="Signature"
+func (r fiber.Res) ContentLength() int
+```
+
+```go title="Example"
+app.Use(func(c fiber.Ctx) error {
+  if err := c.Next(); err != nil {
+    return err
+  }
+
+  log.Printf("declared %d bytes, buffered %d", c.Res().ContentLength(), len(c.Res().Body()))
+  return nil
+})
+```
+
+### ContentType (Res)
+
+Returns the `Content-Type` response header, parameters included. It is the read side of [`Type`](#type), and of the content type Fiber sets for you when a `JSON`, `XML`, or `SendFile` response goes out.
+
+:::note
+When nothing has set one it reports what would be sent: fasthttp's default, `text/plain; charset=utf-8`, or an empty string under [`DisableDefaultContentType`](./fiber.md#config).
+
+`Req` and `Res` both carry a `ContentType`, so on `Ctx` the request wins, as it does for [`Get`](#get). This section is the response side, reached through `c.Res()`.
+:::
+
+```go title="Signature"
+func (r fiber.Res) ContentType() string
+```
+
+```go title="Example"
+app.Use(func(c fiber.Ctx) error {
+  if err := c.Next(); err != nil {
+    return err
+  }
+
+  if strings.HasPrefix(c.Res().ContentType(), fiber.MIMEApplicationJSON) {
+    c.Set("X-Content-Type-Options", "nosniff")
+  }
+
+  return nil
+})
+```
+
 ### Cookie
 
 Sets a cookie.
 
 ```go title="Signature"
 func (c fiber.Ctx) Cookie(cookie *Cookie)
+func (r fiber.Res) Cookie(cookie *Cookie)
 ```
 
 ```go
@@ -2297,6 +3120,30 @@ app.Get("/", func(c fiber.Ctx) error {
 })
 ```
 
+### Del
+
+Removes every field line of the response header specified by `key`. Field names are case-insensitive. Deleting a header that was never set is a no-op.
+
+:::caution
+`Del(fiber.HeaderSetCookie)` withdraws every cookie this response was going to set, which is not what [`ClearCookie`](#clearcookie) does: `ClearCookie` adds a `Set-Cookie` that expires the cookie already in the client's jar.
+:::
+
+```go title="Signature"
+func (c fiber.Ctx) Del(key string)
+func (r fiber.Res) Del(key string)
+```
+
+```go title="Example"
+app.Use(func(c fiber.Ctx) error {
+  if err := c.Next(); err != nil {
+    return err
+  }
+
+  c.Del("X-Powered-By")
+  return nil
+})
+```
+
 ### Download
 
 Transfers the file from the given path as an `attachment`.
@@ -2306,6 +3153,7 @@ Override this default with the `filename` parameter.
 
 ```go title="Signature"
 func (c fiber.Ctx) Download(file string, filename ...string) error
+func (r fiber.Res) Download(file string, filename ...string) error
 ```
 
 ```go title="Example"
@@ -2331,12 +3179,35 @@ app.Get("/non-ascii", func(c fiber.Ctx) error {
 })
 ```
 
+### Drop
+
+Terminates the client connection silently without sending any HTTP headers or response body.
+
+This can be used for scenarios where you want to block certain requests without notifying the client, such as mitigating
+DDoS attacks or protecting sensitive endpoints from unauthorized access.
+
+```go title="Signature"
+func (c fiber.Ctx) Drop() error
+func (r fiber.Res) Drop() error
+```
+
+```go title="Example"
+app.Get("/", func(c fiber.Ctx) error {
+  if c.IP() == "192.168.1.1" {
+    return c.Drop()
+  }
+
+  return c.SendString("Hello World!")
+})
+```
+
 ### End
 
 End immediately flushes the current response and closes the underlying connection.
 
 ```go title="Signature"
 func (c fiber.Ctx) End() error
+func (r fiber.Res) End() error
 ```
 
 ```go title="Example"
@@ -2395,6 +3266,7 @@ If the Accept header is **not** specified, the first handler with a real media t
 
 ```go title="Signature"
 func (c fiber.Ctx) Format(handlers ...ResFmt) error
+func (r fiber.Res) Format(handlers ...ResFmt) error
 ```
 
 ```go title="Example"
@@ -2438,6 +3310,68 @@ app.Get("/default", func(c fiber.Ctx) error {
 })
 ```
 
+### GetCookie
+
+Reads back a cookie this response is already set to send, so a later handler or middleware can inspect or re-emit what an earlier one wrote. The second result is `false` when no cookie of that name has been set, or when its `Set-Cookie` field value does not parse.
+
+Cookie names are case-sensitive (RFC 6265, Section 4.1.1). A name written more than once resolves to the **first** occurrence; use [`GetCookies`](#getcookies) to see them all.
+
+:::note
+The returned `Cookie` is a copy: changing it does not change the response. Pass it to [`Cookie`](#cookie) to write the change back.
+:::
+
+:::caution
+A `Set-Cookie` that carried no `Path` comes back with `Path` empty, and [`Cookie`](#cookie) writes an empty `Path` as `/`. Re-emitting such a cookie therefore widens it from the browser's RFC 6265 default-path — the directory of the request URI — to the whole origin. Set `Path` explicitly before writing one back. Cookies written through [`Cookie`](#cookie) always carry a `Path`, so this only arises for a `Set-Cookie` added with [`Add`](#add) or copied from an upstream response.
+:::
+
+```go title="Signature"
+func (c fiber.Ctx) GetCookie(name string) (*fiber.Cookie, bool)
+func (r fiber.Res) GetCookie(name string) (*fiber.Cookie, bool)
+```
+
+```go title="Example"
+app.Use(func(c fiber.Ctx) error {
+  if err := c.Next(); err != nil {
+    return err
+  }
+
+  // Encrypt a session cookie an inner handler set, keeping its attributes.
+  if cookie, ok := c.GetCookie("session"); ok {
+    cookie.Value = encrypt(cookie.Value)
+    c.Cookie(cookie)
+  }
+
+  return nil
+})
+```
+
+### GetCookies
+
+Returns a copy of every cookie this response is set to send, in the order they were added. It returns `nil` when none have been set.
+
+Repeated names are kept apart, so a response that sets one name at two paths yields both. A `Set-Cookie` whose field value does not parse is skipped.
+
+Named to sit beside [`GetCookie`](#getcookie) rather than mirroring `Req.Cookies`: the same name under a different signature would stop `fiber.Ctx` satisfying `fiber.Res`. `c.Cookies(key)` reads what the **client** sent.
+
+```go title="Signature"
+func (c fiber.Ctx) GetCookies() []*fiber.Cookie
+func (r fiber.Res) GetCookies() []*fiber.Cookie
+```
+
+```go title="Example"
+app.Use(func(c fiber.Ctx) error {
+  if err := c.Next(); err != nil {
+    return err
+  }
+
+  for _, cookie := range c.Res().GetCookies() {
+    log.Printf("setting %s on %s", cookie.Name, cookie.Path)
+  }
+
+  return nil
+})
+```
+
 ### JSON
 
 Converts any **interface** or **string** to JSON using the [encoding/json](https://pkg.go.dev/encoding/json) package.
@@ -2448,6 +3382,7 @@ JSON also sets the content header to the `ctype` parameter. If no `ctype` is pas
 
 ```go title="Signature"
 func (c fiber.Ctx) JSON(data any, ctype ...string) error
+func (r fiber.Res) JSON(data any, ctype ...string) error
 ```
 
 ```go title="Example"
@@ -2498,8 +3433,11 @@ Sends a JSON response with JSONP support. This method is identical to [JSON](ctx
 
 Override this by passing a **named string** in the method.
 
+The callback name is reduced to a JavaScript member expression: every character outside `[A-Za-z0-9_$.[]]` is dropped, so names like `window.cb`, `ns.cb[0]`, and `$.jsonp_1` pass through unchanged. Because the name is written straight into a same-origin `text/javascript` body — and JSONP callers normally take it from the query string — leaving it unfiltered would let a request supply arbitrary script for your own origin. If what survives is not a valid member expression, the default `callback` is used: `cb[0]` is emitted, `cb[0x]` is not.
+
 ```go title="Signature"
 func (c fiber.Ctx) JSONP(data any, callback ...string) error
+func (r fiber.Res) JSONP(data any, callback ...string) error
 ```
 
 ```go title="Example"
@@ -2530,6 +3468,7 @@ Quotes and backslashes in the `rel` value are escaped so the emitted quoted-stri
 
 ```go title="Signature"
 func (c fiber.Ctx) Links(link ...string)
+func (r fiber.Res) Links(link ...string)
 ```
 
 ```go title="Example"
@@ -2551,6 +3490,7 @@ Sets the response [Location](https://developer.mozilla.org/en-US/docs/Web/HTTP/H
 
 ```go title="Signature"
 func (c fiber.Ctx) Location(path string)
+func (r fiber.Res) Location(path string)
 ```
 
 ```go title="Example"
@@ -2577,6 +3517,7 @@ MsgPack also sets the content header to the `ctype` parameter. If no `ctype` is 
 
 ```go title="Signature"
 func (c fiber.Ctx) MsgPack(data any, ctype ...string) error
+func (r fiber.Res) MsgPack(data any, ctype ...string) error
 ```
 
 ```go title="Example"
@@ -2616,12 +3557,56 @@ app.Get("/msgpack", func(c fiber.Ctx) error {
 // 85 A4 74 79 70 65 D9 27 68 74 74 70 73 3A 2F 2F 65 78 61 6D 70 6C 65 2E 63 6F 6D 2F 70 72 6F 62 73 2F 6F 75 74 2D 6F 66 2D 63 72 65 64 69 74 A5 74 69 74 6C 65 BE 59 6F 75 20 64 6F 20 6E 6F 74 20 68 61 76 65 20 65 6E 6F 75 67 68 20 63 72 65 64 69 74 2E A6 73 74 61 74 75 73 CD 01 93 A6 64 65 74 61 69 6C D9 2E 59 6F 75 72 20 63 75 72 72 65 6E 74 20 62 61 6C 61 6E 63 65 20 69 73 20 33 30 2C 20 62 75 74 20 74 68 61 74 20 63 6F 73 74 73 20 35 30 2E A8 69 6E 73 74 61 6E 63 65 B7 2F 61 63 63 6F 75 6E 74 2F 31 32 33 34 35 2F 6D 73 67 73 2F 61 62 63
 ```
 
+### NoContent
+
+Replies `204 No Content`. [`SendStatus`](#sendstatus) already discards the body for every status that disallows one; this drops the `Content-Type` as well, since RFC 9110, Section 6.4.1 gives a `204` no content to describe.
+
+:::note
+`c.SendStatus(fiber.StatusNoContent)` leaves a `Content-Type` a handler had set, so the two are not interchangeable — this is the one that sends nothing about content.
+:::
+
+```go title="Signature"
+func (c fiber.Ctx) NoContent() error
+func (r fiber.Res) NoContent() error
+```
+
+```go title="Example"
+app.Delete("/item/:id", func(c fiber.Ctx) error {
+  if err := delete(c.Params("id")); err != nil {
+    return err
+  }
+
+  return c.NoContent() // => 204, no body
+})
+```
+
 ### Render
 
 Renders a view with data and sends a `text/html` response. By default, `Render` uses the default [**Go Template engine**](https://pkg.go.dev/html/template/). If you want to use another view engine, please take a look at our [**Template middleware**](https://docs.gofiber.io/template).
 
 ```go title="Signature"
 func (c fiber.Ctx) Render(name string, bind any, layouts ...string) error
+func (r fiber.Res) Render(name string, bind any, layouts ...string) error
+```
+
+### ResetBody
+
+Discards the response body, keeping the status and headers. Use it before replacing a partially written body — an error page over a half-rendered view, a cached body over a fresh one.
+
+```go title="Signature"
+func (c fiber.Ctx) ResetBody()
+func (r fiber.Res) ResetBody()
+```
+
+```go title="Example"
+app.Use(func(c fiber.Ctx) error {
+  if err := c.Next(); err == nil {
+    return nil
+  }
+
+  c.ResetBody() // Drop whatever the handler managed to write.
+  return c.Status(fiber.StatusInternalServerError).SendString("something went wrong")
+})
 ```
 
 ### Send
@@ -2630,6 +3615,7 @@ Sets the HTTP response body.
 
 ```go title="Signature"
 func (c fiber.Ctx) Send(body []byte) error
+func (r fiber.Res) Send(body []byte) error
 ```
 
 ```go title="Example"
@@ -2647,6 +3633,8 @@ Use this if you **don't need** type assertion, recommended for **faster** perfor
 ```go title="Signature"
 func (c fiber.Ctx) SendString(body string) error
 func (c fiber.Ctx) SendStream(stream io.Reader, size ...int) error
+func (r fiber.Res) SendString(body string) error
+func (r fiber.Res) SendStream(stream io.Reader, size ...int) error
 ```
 
 ```go title="Example"
@@ -2685,6 +3673,7 @@ still delivered on the final response.
 
 ```go title="Signature"
 func (c fiber.Ctx) SendEarlyHints(hints []string) error
+func (r fiber.Res) SendEarlyHints(hints []string) error
 ```
 
 ```go title="Example"
@@ -2714,6 +3703,8 @@ type SendFile struct {
   // This works differently than the github.com/gofiber/compression middleware.
   // You have to set Content-Encoding header to compress the file.
   // Available compression methods are gzip, br, and zstd.
+  // The request's Accept-Encoding header is left untouched either way, so the
+  // compress middleware can still compress the response when this is false.
   //
   // Optional. Default: false
   Compress bool `json:"compress"`
@@ -2744,15 +3735,18 @@ type SendFile struct {
 
 ```go title="Signature" title="Signature"
 func (c fiber.Ctx) SendFile(file string, config ...SendFile) error
+func (r fiber.Res) SendFile(file string, config ...SendFile) error
 ```
 
 ```go title="Example"
 app.Get("/not-found", func(c fiber.Ctx) error {
   return c.SendFile("./public/404.html")
 
-  // Disable compression
+  // Serve pre-compressed copies, caching them to save CPU. This is the file
+  // server's own compression, not the compress middleware, which keeps
+  // compressing the response either way.
   return c.SendFile("./static/index.html", fiber.SendFile{
-    Compress: false,
+    Compress: true,
   })
 })
 ```
@@ -2821,6 +3815,7 @@ You can find all used status codes and messages [in the Fiber source code](https
 
 ```go title="Signature"
 func (c fiber.Ctx) SendStatus(status int) error
+func (r fiber.Res) SendStatus(status int) error
 ```
 
 ```go title="Example"
@@ -2840,6 +3835,7 @@ Sets the response body to a stream of data and adds an optional body size.
 
 ```go title="Signature"
 func (c fiber.Ctx) SendStream(stream io.Reader, size ...int) error
+func (r fiber.Res) SendStream(stream io.Reader, size ...int) error
 ```
 
 :::info
@@ -2895,7 +3891,8 @@ the response body using a buffered stream writer.
 :::
 
 ```go title="Signature"
-func (c Ctx) SendStreamWriter(streamWriter func(*bufio.Writer)) error
+func (c fiber.Ctx) SendStreamWriter(streamWriter func(*bufio.Writer)) error
+func (r fiber.Res) SendStreamWriter(streamWriter func(*bufio.Writer)) error
 ```
 
 ```go title="Example"
@@ -2951,6 +3948,7 @@ Sets the response body to a string.
 
 ```go title="Signature"
 func (c fiber.Ctx) SendString(body string) error
+func (r fiber.Res) SendString(body string) error
 ```
 
 ```go title="Example"
@@ -2966,6 +3964,7 @@ Sets the response’s HTTP header field to the specified `key`, `value`.
 
 ```go title="Signature"
 func (c fiber.Ctx) Set(key string, val string)
+func (r fiber.Res) Set(key string, val string)
 ```
 
 ```go title="Example"
@@ -2987,6 +3986,7 @@ This method is **chainable**.
 
 ```go title="Signature"
 func (c fiber.Ctx) Status(status int) fiber.Ctx
+func (r fiber.Res) Status(status int) fiber.Ctx
 ```
 
 ```go title="Example"
@@ -3004,6 +4004,29 @@ app.Get("/world", func(c fiber.Ctx) error {
 })
 ```
 
+### StatusCode
+
+Returns the status code currently set on the response. It is the read side of [`Status`](#status), and reports `200` until something sets another code.
+
+Called after [`Next`](#next) it is the status the chain settled on, which is what logging, metrics, and caching middleware key off.
+
+```go title="Signature"
+func (c fiber.Ctx) StatusCode() int
+func (r fiber.Res) StatusCode() int
+```
+
+```go title="Example"
+app.Use(func(c fiber.Ctx) error {
+  err := c.Next()
+
+  if c.StatusCode() >= fiber.StatusInternalServerError {
+    alert(c.Route().Path, c.StatusCode())
+  }
+
+  return err
+})
+```
+
 ### Type
 
 Sets the [Content-Type](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Type) HTTP header to the MIME type listed [in the Nginx MIME types configuration](https://github.com/nginx/nginx/blob/master/conf/mime.types) specified by the file **extension**.
@@ -3014,6 +4037,7 @@ This method is **chainable**.
 
 ```go title="Signature"
 func (c fiber.Ctx) Type(ext string, charset ...string) fiber.Ctx
+func (r fiber.Res) Type(ext string, charset ...string) fiber.Ctx
 ```
 
 ```go title="Example"
@@ -3038,6 +4062,7 @@ Multiple fields are **allowed**. Per RFC 9110, the wildcard `"*"` is only meanin
 
 ```go title="Signature"
 func (c fiber.Ctx) Vary(fields ...string)
+func (r fiber.Res) Vary(fields ...string)
 ```
 
 ```go title="Example"
@@ -3063,6 +4088,7 @@ Adopts the `Writer` interface.
 
 ```go title="Signature"
 func (c fiber.Ctx) Write(p []byte) (n int, err error)
+func (r fiber.Res) Write(p []byte) (n int, err error)
 ```
 
 ```go title="Example"
@@ -3079,6 +4105,7 @@ Writes a formatted string using a format specifier.
 
 ```go title="Signature"
 func (c fiber.Ctx) Writef(format string, a ...any) (n int, err error)
+func (r fiber.Res) Writef(format string, a ...any) (n int, err error)
 ```
 
 ```go title="Example"
@@ -3096,12 +4123,40 @@ Writes a string to the response body.
 
 ```go title="Signature"
 func (c fiber.Ctx) WriteString(s string) (n int, err error)
+func (r fiber.Res) WriteString(s string) (n int, err error)
 ```
 
 ```go title="Example"
 app.Get("/", func(c fiber.Ctx) error {
   return c.WriteString("Hello, World!")
   // => "Hello, World!"
+})
+```
+
+### Written
+
+Reports whether anything has been written to the response body yet, so middleware can tell a handler that produced a response from one that left it untouched. A streamed body counts as written without draining the stream, which is the case [`Body`](#body-res) deliberately answers `nil` for.
+
+:::note
+Status and headers are not body writes: a handler that only called [`Status`](#status) leaves this `false`.
+:::
+
+```go title="Signature"
+func (c fiber.Ctx) Written() bool
+func (r fiber.Res) Written() bool
+```
+
+```go title="Example"
+app.Use(func(c fiber.Ctx) error {
+  if err := c.Next(); err != nil {
+    return err
+  }
+
+  if !c.Written() {
+    return c.NoContent()
+  }
+
+  return nil
 })
 ```
 
@@ -3115,6 +4170,7 @@ XML also sets the content header to `application/xml; charset=utf-8`.
 
 ```go title="Signature"
 func (c fiber.Ctx) XML(data any) error
+func (r fiber.Res) XML(data any) error
 ```
 
 ```go title="Example"

@@ -114,6 +114,34 @@ app.Use(logger.New(logger.Config{
 }))
 ```
 
+### Logging Handler Errors
+
+The `${error}` tag reports a non-nil error returned by a downstream handler or middleware. When no error is returned, it renders `-`. A response status alone is not an error: `return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "..."})` sets `${status}` to `500`, but `${error}` remains `-`.
+
+To include an error in the log, return it and let Fiber's `ErrorHandler` create the response. The logger invokes the configured error handler before rendering the log, so a custom handler can return JSON while `${error}` keeps the original error message:
+
+```go
+app := fiber.New(fiber.Config{
+    ErrorHandler: func(c fiber.Ctx, err error) error {
+        code := fiber.StatusInternalServerError
+        if fiberErr, ok := err.(*fiber.Error); ok {
+            code = fiberErr.Code
+        }
+        return c.Status(code).JSON(fiber.Map{"error": "request failed"})
+    },
+})
+
+app.Use(logger.New(logger.Config{
+    Format: "${status} ${method} ${path} ${error}\n",
+}))
+
+app.Get("/reports", func(_ fiber.Ctx) error {
+    return fiber.NewError(fiber.StatusInternalServerError, "report generation failed")
+})
+```
+
+Register the logger before routes and downstream middleware whose returned errors it should observe. Use `${status}` when code writes a complete response directly; status codes by themselves do not populate `${error}`.
+
 ### Auto-Registered Tags
 
 Some Fiber middleware registers logger middleware tags automatically. Register the producing middleware before `logger.New()` and then use the tag in `Format`.
@@ -296,8 +324,37 @@ Logger provides predefined formats that you can use by name or directly by speci
 | `ECSFormat` | `"{\"@timestamp\":\"${time}\",\"ecs\":{\"version\":\"1.6.0\"},\"client\":{\"ip\":\"${ip}\"},\"http\":{\"request\":{\"method\":\"${method}\",\"url\":\"${url}\",\"protocol\":\"${protocol}\"},\"response\":{\"status_code\":${status},\"body\":{\"bytes\":${bytesSent}}}},\"log\":{\"level\":\"INFO\",\"logger\":\"fiber\"},\"message\":\"${method} ${url} responded with ${status}\"}\n"` | Elastic Common Schema (ECS) format for structured logging. |
 
 :::tip
-`${bytesSent}` returns the value of the `Content-Length` response header. If the header is missing or the response is streaming (e.g., chunked encoding), the value will be `-1`. Fiber does not calculate the actual response body size for performance reasons.
+`${bytesSent}` returns the value the `Content-Length` response header declares when the logger runs. For an ordinary buffered response fasthttp fills the header in on write, after the logger, so `0` is logged; a streaming response of unknown length (chunked encoding) logs `-1`. Likewise `${bytesReceived}` reports the request's declared `Content-Length`: `-2` for a request without a body and `-1` for a chunked one. Fiber does not calculate the actual body sizes for performance reasons.
 :::
+
+:::tip
+`${resBody}` logs nothing for a streamed response (`SendStream`, `SendStreamWriter`, and `SendFile` for a large file). Reading such a body would pull the whole stream into memory and turn the response into a buffered one — an SSE route would deliver nothing until its writer finished — so logging leaves it alone.
+:::
+
+## The `${ips}` tag
+
+`${ips}` logs the chain the framework parsed, `Ctx.IPs()`, joined with `,`.
+Reading `X-Forwarded-For` here separately meant reading it a second way, and
+under [`DisableHeaderNormalizing`](../api/fiber.md#config) a lower-case
+`x-forwarded-for:` logged an empty chain while `Ctx.IPs()` went on returning it.
+
+It is not the list any trust decision is made from. `Ctx.IPs()` parses
+`X-Forwarded-For` unconditionally, while `Ctx.IP()` consults
+[`TrustProxy`](../api/fiber.md#config) and reads
+[`ProxyHeader`](../api/fiber.md#config), which need not be `X-Forwarded-For` at
+all — so `${ips}` and the address Fiber acted on can name different hosts.
+
+Because the entries are split and trimmed rather than echoed as sent, repeated
+`X-Forwarded-For` header lines and a single comma-joined one log identically,
+which is what [RFC 9110 §5.2](https://www.rfc-editor.org/rfc/rfc9110.html#section-5.2)
+says they are.
+
+Treat a logged chain as attacker-controlled, trusted peer or not. A proxy you
+trust appends the address it saw to whatever the client already put in
+`X-Forwarded-For`, and `Ctx.IPs()` returns every element without the
+right-to-left walk `Ctx.IP()` uses, so the entries to the left of the ones your
+own infrastructure added are still the client's to choose. Use `${ip}`, which is
+the peer address, when you need one you can rely on.
 
 ## Control-Character Sanitization
 
@@ -312,11 +369,10 @@ Tags whose values the framework controls — `${status}`, `${method}`, `${protoc
 Only ASCII controls are replaced. Bytes at or above `0x80` pass through untouched, so C1 controls (U+0080–U+009F, including NEL U+0085, which some log pipelines treat as a line break) survive scrubbing. Handle those yourself if your values can carry them.
 
 :::caution
-Four paths bypass the built-in scrubbing, because each one replaces the renderer rather than wrapping it:
+Three paths bypass the built-in scrubbing, because each one replaces the renderer rather than wrapping it:
 
 - `Config.CustomTags`
 - `RegisterTag` / `MustRegisterTag`
-- `RegisterContextTag`
 - `Config.LoggerFunc`, which replaces the rendering pipeline wholesale
 
 Anything request-derived that you write from one of these needs scrubbing. Use `logger.SanitizeValue`, which applies exactly what the built-in tags apply:
@@ -327,7 +383,7 @@ logger.MustRegisterTag("tenant", func(output logger.Buffer, c fiber.Ctx, _ *logg
 })
 ```
 
-Fiber's own context tags — `${username}`, `${api-key}`, `${csrf-token}`, `${requestid}`, `${session-id}` — are safe because the middleware behind each one validates or redacts at the source, not because `RegisterContextTag` scrubs.
+`RegisterContextTag` is not on that list: it wraps your extractor rather than being one, so what the extractor returns is scrubbed on the way out — in both the access-log renderer and the `log` package one. Fiber's own context tags — `${username}`, `${api-key}`, `${csrf-token}`, `${requestid}`, `${session-id}` — are registered through it, and the middleware behind each one validates or redacts at the source as well.
 :::
 
 ## Constants

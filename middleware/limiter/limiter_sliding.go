@@ -108,7 +108,7 @@ func (SlidingWindow) New(cfg *Config) fiber.Handler {
 			return cfg.LimitReached(c)
 		}
 
-		// Continue stack for reaching c.Response().StatusCode()
+		// Continue stack for reaching c.Res().StatusCode()
 		// Store err for returning
 		err = c.Next()
 

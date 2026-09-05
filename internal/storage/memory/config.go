@@ -28,7 +28,7 @@ func configDefault(config ...Config) Config {
 	cfg := config[0]
 
 	// Set default values
-	if int(cfg.GCInterval.Seconds()) <= 0 {
+	if cfg.GCInterval <= 0 {
 		cfg.GCInterval = ConfigDefault.GCInterval
 	}
 	return cfg

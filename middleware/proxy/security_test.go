@@ -421,7 +421,7 @@ func Test_Security_FollowRedirects_StripsCredentialsCrossHost(t *testing.T) {
 		req.Header.Set(fiber.HeaderAuthorization, "Bearer secret")
 		req.Header.Set(fiber.HeaderCookie, "session=abc")
 
-		require.NoError(t, followRedirects(client.client, req, resp, 3, mustParseTestURL(t, "http://first.example/"), policy))
+		require.NoError(t, followRedirects(client.client, req, resp, 3, mustParseTestURL(t, "http://first.example/"), policy, true))
 		require.Empty(t, sawAuth, "Authorization must be stripped cross-host")
 		require.Empty(t, sawCookie, "Cookie must be stripped cross-host")
 	})
@@ -446,7 +446,7 @@ func Test_Security_FollowRedirects_StripsCredentialsCrossHost(t *testing.T) {
 		req.Header.SetMethod(fasthttp.MethodGet)
 		req.Header.Set(fiber.HeaderAuthorization, "Bearer secret")
 
-		require.NoError(t, followRedirects(client.client, req, resp, 3, mustParseTestURL(t, "http://same.example/"), policy))
+		require.NoError(t, followRedirects(client.client, req, resp, 3, mustParseTestURL(t, "http://same.example/"), policy, true))
 		require.Equal(t, "Bearer secret", sawAuth, "Authorization must survive same-host redirect")
 	})
 }
@@ -479,7 +479,7 @@ func Test_Security_FollowRedirects_ReappliesSchemePerHop(t *testing.T) {
 	req.SetRequestURI("http://origin.example/")
 	req.Header.SetMethod(fasthttp.MethodGet)
 
-	require.NoError(t, followRedirects(client.client, req, resp, 3, mustParseTestURL(t, "http://origin.example/"), policy))
+	require.NoError(t, followRedirects(client.client, req, resp, 3, mustParseTestURL(t, "http://origin.example/"), policy, true))
 	require.Equal(t, "https", secondHopScheme, "scheme upgrade must carry through to the next hop")
 }
 
@@ -741,7 +741,7 @@ func Test_Security_FollowRedirects_NegativeMaxBecomesZero(t *testing.T) {
 
 	policy := DefaultSecurityPolicy()
 	policy.AllowPrivateIPs = true
-	err := followRedirects(client.client, req, resp, -1, mustParseTestURL(t, "http://example.com/start"), policy)
+	err := followRedirects(client.client, req, resp, -1, mustParseTestURL(t, "http://example.com/start"), policy, true)
 	require.ErrorIs(t, err, fasthttp.ErrTooManyRedirects)
 	require.Equal(t, 1, *hits)
 }
@@ -765,7 +765,7 @@ func Test_Security_FollowRedirects_MissingLocation(t *testing.T) {
 
 	policy := DefaultSecurityPolicy()
 	policy.AllowPrivateIPs = true
-	err := followRedirects(client.client, req, resp, 3, mustParseTestURL(t, "http://example.com/start"), policy)
+	err := followRedirects(client.client, req, resp, 3, mustParseTestURL(t, "http://example.com/start"), policy, true)
 	require.ErrorIs(t, err, fasthttp.ErrMissingLocation)
 }
 
@@ -791,7 +791,7 @@ func Test_Security_FollowRedirects_PostBecomesGetOn303(t *testing.T) {
 
 	policy := DefaultSecurityPolicy()
 	policy.AllowPrivateIPs = true
-	require.NoError(t, followRedirects(client.client, req, resp, 3, mustParseTestURL(t, "http://example.com/start"), policy))
+	require.NoError(t, followRedirects(client.client, req, resp, 3, mustParseTestURL(t, "http://example.com/start"), policy, true))
 	require.Equal(t, fasthttp.MethodGet, string(req.Header.Method()))
 	require.Empty(t, req.Body())
 	require.Empty(t, req.Header.ContentType())
@@ -814,7 +814,7 @@ func Test_Security_FollowRedirects_PropagatesClientError(t *testing.T) {
 	req.SetRequestURI("http://example.com/")
 	req.Header.SetMethod(fasthttp.MethodGet)
 
-	err := followRedirects(cli, req, resp, 1, mustParseTestURL(t, "http://example.com/"), DefaultSecurityPolicy())
+	err := followRedirects(cli, req, resp, 1, mustParseTestURL(t, "http://example.com/"), DefaultSecurityPolicy(), true)
 	require.ErrorIs(t, err, sentinel)
 }
 

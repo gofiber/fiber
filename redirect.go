@@ -15,7 +15,7 @@ import (
 	"github.com/valyala/bytebufferpool"
 	"github.com/valyala/fasthttp"
 
-	"github.com/gofiber/fiber/v3/binder"
+	"github.com/gofiber/fiber/v3/internal/fieldname"
 	"github.com/gofiber/fiber/v3/internal/schemehost"
 )
 
@@ -50,12 +50,8 @@ var flashCookieNeedle = []byte(FlashCookieName + "=")
 // 1) a fast raw-header prefilter to avoid unnecessary cookie parsing,
 // 2) an exact cookie lookup to avoid prefix false positives (e.g. fiber_flashX).
 func hasFlashCookie(header *fasthttp.RequestHeader) bool {
-	rawHeaders := header.RawHeaders()
-	if len(rawHeaders) == 0 {
-		return false
-	}
-
-	if !bytes.Contains(rawHeaders, flashCookieNeedle) {
+	// A request built programmatically has no raw headers, so the prefilter cannot answer for it.
+	if rawHeaders := header.RawHeaders(); len(rawHeaders) > 0 && !bytes.Contains(rawHeaders, flashCookieNeedle) {
 		return false
 	}
 
@@ -126,6 +122,10 @@ func ReleaseRedirect(r *Redirect) {
 
 func (r *Redirect) release() {
 	r.status = StatusSeeOther
+	// Zero before truncating: WithInput copies the whole request body into these
+	// entries, and a bare [:0] leaves those strings reachable from the backing
+	// array for as long as the pooled *Redirect lives.
+	clear(r.messages[:cap(r.messages)])
 	r.messages = r.messages[:0]
 	r.c = nil
 }
@@ -160,6 +160,7 @@ func (r *Redirect) Status(code int) *Redirect {
 // They will be sent as a cookie.
 // You can get them by using: Redirect().Messages(), Redirect().Message()
 // Note: You must use escape char before using ',' and ':' chars to avoid wrong parsing.
+// No cookie is set when Config.DisableFlashMessages is on.
 func (r *Redirect) With(key, value string, level ...uint8) *Redirect {
 	// Get level
 	var msgLevel uint8
@@ -190,11 +191,13 @@ func (r *Redirect) With(key, value string, level ...uint8) *Redirect {
 // They will be sent as a cookie.
 // This method can send form, multipart form, query data to redirected route.
 // You can get them by using: Redirect().OldInputs(), Redirect().OldInput()
+// It does nothing when Config.DisableFlashMessages is on.
 func (r *Redirect) WithInput() *Redirect {
-	// Get content-type, folding only the media type so the case-sensitive
-	// multipart boundary survives (see normalizeContentTypeMediaType).
-	raw := utils.UnsafeString(normalizeContentTypeMediaType(&r.c.RequestCtx().Request.Header))
-	ctype := binder.FilterFlags(utils.ParseVendorSpecificContentType(raw))
+	if r.c.app.config.DisableFlashMessages {
+		return r
+	}
+
+	ctype := bindMediaType(&r.c.RequestCtx().Request.Header)
 
 	oldInput := acquireOldInput()
 	defer releaseOldInput(oldInput)
@@ -346,7 +349,8 @@ func (r *Redirect) Route(name string, config ...RedirectConfig) error {
 		cfg = config[0]
 	}
 
-	// Get location from route name
+	// Get location from route name. The composed path is already held to this
+	// origin — see asRoutePath — so only the query is left to place.
 	route := r.c.App().GetRoute(name)
 	location, err := r.c.getLocationFromRoute(&route, cfg.Params)
 	if err != nil {
@@ -372,24 +376,50 @@ func (r *Redirect) Route(name string, config ...RedirectConfig) error {
 			queryText.B = utils.AppendQueryEscape(queryText.B, v)
 		}
 
-		return r.To(location + "?" + r.c.app.toString(queryText.Bytes()))
+		// Concatenated here rather than in a helper: the result goes straight to
+		// To, so escape analysis can build it on the stack. Returning it from a
+		// function cost an allocation per redirect.
+		query := r.c.app.toString(queryText.Bytes())
+		separator, fragment := queryMergePoint(location)
+		if fragment < 0 {
+			return r.To(location + separator + query)
+		}
+		return r.To(location[:fragment] + separator + query + location[fragment:])
 	}
 
 	return r.To(location)
+}
+
+// queryMergePoint says where a query belongs in location: the separator that
+// introduces it, and where the fragment starts, or -1. A parameter spliced into
+// a route path may hold both, and appending "?" folded them into one value.
+func queryMergePoint(location string) (separator string, fragment int) { //nolint:nonamedreturns // the two results are easy to swap without names
+	fragment = strings.IndexByte(location, '#')
+
+	query := location
+	if fragment >= 0 {
+		query = location[:fragment]
+	}
+	if strings.IndexByte(query, '?') >= 0 {
+		return "&", fragment
+	}
+	return "?", fragment
 }
 
 // Back redirect to the URL to referer.
 // It validates that the Referer is same-origin to prevent open redirect attacks.
 // If the Referer is missing, invalid, or cross-origin, the fallback URL is used.
 func (r *Redirect) Back(fallback ...string) error {
-	location := r.c.Get(HeaderReferer)
+	location := r.refererHeader()
 	if location != "" {
-		if !strings.HasPrefix(location, "/") || strings.HasPrefix(location, "//") {
-			parsed, err := url.Parse(location)
-			if err != nil || (parsed.Scheme != "" && parsed.Host == "") || (parsed.Host != "" && !schemehost.Match(parsed.Scheme, parsed.Host, r.c.Scheme(), r.c.Host())) {
-				location = "" // Reject invalid or cross-origin referrers
-			}
+		// Reject invalid or cross-origin referrers, and redirect to the
+		// normalized form so every client resolves it the same way the
+		// same-origin check did.
+		normalized, ok := r.sameOriginReferer(location)
+		if !ok {
+			normalized = ""
 		}
+		location = normalized
 	}
 
 	if location == "" {
@@ -406,31 +436,138 @@ func (r *Redirect) Back(fallback ...string) error {
 	return r.To(location)
 }
 
+// refererHeader returns the Referer, matching the field name the way a recipient
+// must (RFC 9110 §5.1). Ctx.Get is byte-exact, so under DisableHeaderNormalizing
+// a lower-case "referer:" read as absent and Back always took the fallback.
+func (r *Redirect) refererHeader() string {
+	if v := r.c.Get(HeaderReferer); v != "" {
+		return v
+	}
+	if !r.c.app.config.DisableHeaderNormalizing {
+		return ""
+	}
+
+	return r.c.app.toString(fieldname.First(&r.c.fasthttp.Request.Header, HeaderReferer, false))
+}
+
+// sameOriginReferer reports whether the Referer resolves back to the origin now
+// being served, returning the normalized form safe to echo. A browser's
+// normalization decides that, not net/url: " //evil.com", "/\evil.com", "///x".
+func (r *Redirect) sameOriginReferer(location string) (string, bool) {
+	// The normalized value is what gets redirected to, so a client that does
+	// not apply these rules itself cannot resolve a different origin than the
+	// one validated here.
+	location = normalizeRefererURL(location)
+	if location == "" {
+		return "", false
+	}
+
+	// An absolute path stays on the current origin, but "//host" is a
+	// network-path reference that switches to another one.
+	if location[0] == '/' && !strings.HasPrefix(location, "//") {
+		return location, true
+	}
+
+	parsed, err := url.Parse(location)
+	if err != nil {
+		return "", false
+	}
+	if parsed.Host == "" {
+		// A scheme with no authority ("javascript:", "mailto:") is no same-origin
+		// reference; anything else is a relative path — except an empty authority
+		// ("//?x", "//#f", "//@"), which names no origin and resolves nowhere.
+		return location, parsed.Scheme == "" && !strings.HasPrefix(location, "//")
+	}
+
+	return location, schemehost.Match(parsed.Scheme, parsed.Host, r.c.Scheme(), r.c.Host())
+}
+
+// normalizeRefererURL applies the parts of the WHATWG parser that decide which
+// origin a Referer resolves to: strip surrounding C0 controls, drop tab and
+// newline, fold backslashes, collapse a leading slash run to two.
+func normalizeRefererURL(location string) string {
+	location = strings.TrimFunc(location, func(c rune) bool { return c <= ' ' })
+
+	var b []byte
+	inPath := true
+	for i := 0; i < len(location); i++ {
+		c := location[i]
+		switch {
+		case c == '\t' || c == '\n' || c == '\r':
+			if b == nil {
+				b = append(make([]byte, 0, len(location)), location[:i]...)
+			}
+			continue
+		case c == '?' || c == '#':
+			inPath = false
+		case c == '\\' && inPath:
+			if b == nil {
+				b = append(make([]byte, 0, len(location)), location[:i]...)
+			}
+			b = append(b, '/')
+			continue
+		}
+		if b != nil {
+			b = append(b, c)
+		}
+	}
+	if b != nil {
+		location = string(b)
+	}
+
+	// "///evil.com" reaches the same authority state as "//evil.com", so keep
+	// at most the two slashes that introduce it.
+	if strings.HasPrefix(location, "//") {
+		n := 0
+		for n < len(location) && location[n] == '/' {
+			n++
+		}
+		if n == len(location) {
+			return "/"
+		}
+		location = location[n-2:]
+	}
+
+	return location
+}
+
 // parseAndClearFlashMessages is a method to get flash messages before they are getting removed
 func (r *Redirect) parseAndClearFlashMessages() {
+	// UnmarshalMsg re-slices this capacity rather than allocating, and the
+	// generated decoder assigns only the fields the message carries — so an empty
+	// map keeps whatever the slot held, and the destination must arrive zeroed.
+	clear(r.c.flashMessages[:cap(r.c.flashMessages)])
+	r.c.flashMessages = r.c.flashMessages[:0]
+
 	// parse flash messages
-	cookieValue, err := hex.DecodeString(r.c.Cookies(FlashCookieName))
-	if err != nil {
-		return
+	if cookieValue, err := hex.DecodeString(r.c.Cookies(FlashCookieName)); err == nil {
+		if _, err := r.c.flashMessages.UnmarshalMsg(cookieValue); err != nil {
+			// UnmarshalMsg re-slices to the length the payload declared before
+			// it decodes any element, so a failure partway leaves the slice
+			// holding zero-valued entries. Drop them.
+			r.c.flashMessages = r.c.flashMessages[:0]
+		}
 	}
 
-	_, err = r.c.flashMessages.UnmarshalMsg(cookieValue)
-	if err != nil {
-		return
-	}
-
+	// Expire the cookie whatever the payload turned out to be, including the
+	// hex-decode failure above. A value this application cannot decode it never
+	// will, so leaving it means re-running hex and msgp on every later request.
 	r.c.Cookie(&Cookie{
-		Name:   FlashCookieName,
-		Value:  "",
-		Path:   "/",
-		MaxAge: -1,
+		Name:     FlashCookieName,
+		Value:    "",
+		Path:     "/",
+		MaxAge:   -1,
+		HTTPOnly: true,
+		Secure:   r.c.Secure(),
 	})
 }
 
-// processFlashMessages is a helper function to process flash messages and old input data
-// and set them as cookies
+// processFlashMessages sets the flash messages and old input data as cookies.
+//
+// The payload is hex-encoded, not signed, and WithInput copies the whole form
+// into it — so the cookie is HTTPOnly, and Secure whenever the request was TLS.
 func (r *Redirect) processFlashMessages() {
-	if len(r.messages) == 0 {
+	if len(r.messages) == 0 || r.c.app.config.DisableFlashMessages {
 		return
 	}
 
@@ -446,5 +583,7 @@ func (r *Redirect) processFlashMessages() {
 		Name:        FlashCookieName,
 		Value:       r.c.app.toString(dst),
 		SessionOnly: true,
+		HTTPOnly:    true,
+		Secure:      r.c.Secure(),
 	})
 }

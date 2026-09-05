@@ -634,3 +634,469 @@ func Test_Ctx_Render_MountGroup(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "<h1>Hello doe!</h1>", string(body))
 }
+
+// Test_App_Mount_FewerRequestMethods verifies that a sub-app serving only some
+// of the parent's request methods can be mounted: the parent must read the
+// sub-app's routes by method, not by its own stack index.
+func Test_App_Mount_FewerRequestMethods(t *testing.T) {
+	t.Parallel()
+
+	micro := New(Config{RequestMethods: []string{MethodGet}})
+	micro.Get("/doe", func(c Ctx) error {
+		return c.SendString("doe")
+	})
+
+	app := New()
+	app.Use("/john", micro)
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/john/doe", http.NoBody))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
+
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "doe", string(body))
+}
+
+// Test_App_Mount_FewerRequestMethodsNested verifies the same for a sub-app
+// reached through another mount.
+func Test_App_Mount_FewerRequestMethodsNested(t *testing.T) {
+	t.Parallel()
+
+	micro := New(Config{RequestMethods: []string{MethodGet}})
+	micro.Get("/doe", func(c Ctx) error {
+		return c.SendString("doe")
+	})
+
+	sub := New()
+	sub.Use("/v1", micro)
+
+	app := New()
+	app.Use("/john", sub)
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/john/v1/doe", http.NoBody))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
+
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "doe", string(body))
+}
+
+// Test_App_Mount_ReorderedRequestMethods verifies that a sub-app which lists
+// the same request methods in a different order keeps serving each route under
+// the method it was registered with.
+func Test_App_Mount_ReorderedRequestMethods(t *testing.T) {
+	t.Parallel()
+
+	// Swap GET and POST, so the two apps' stack indexes disagree.
+	methods := append([]string{}, DefaultMethods...)
+	for i, method := range methods {
+		switch method {
+		case MethodGet:
+			methods[i] = MethodPost
+		case MethodPost:
+			methods[i] = MethodGet
+		}
+	}
+
+	micro := New(Config{RequestMethods: methods})
+	micro.Get("/doe", func(c Ctx) error {
+		return c.SendString("get doe")
+	})
+	micro.Post("/doe", func(c Ctx) error {
+		return c.SendString("post doe")
+	})
+
+	app := New()
+	app.Use("/john", micro)
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/john/doe", http.NoBody))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "get doe", string(body))
+
+	resp, err = app.Test(httptest.NewRequest(MethodPost, "/john/doe", http.NoBody))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
+	body, err = io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "post doe", string(body))
+}
+
+// onlyFooConstraint and onlyBarConstraint are custom constraints used to check
+// that a mounted app's constraints survive the mount's route expansion.
+type onlyFooConstraint struct{}
+
+func (*onlyFooConstraint) Name() string { return "onlyfoo" }
+
+func (*onlyFooConstraint) Execute(param string, _ ...string) bool { return param == "foo" }
+
+type onlyBarConstraint struct{}
+
+func (*onlyBarConstraint) Name() string { return "onlybar" }
+
+func (*onlyBarConstraint) Execute(param string, _ ...string) bool { return param == "bar" }
+
+// sameNameFooConstraint and sameNameBarConstraint share a name and accept
+// different values, as two apps mounted side by side are free to do.
+type sameNameFooConstraint struct{}
+
+func (*sameNameFooConstraint) Name() string { return "same" }
+
+func (*sameNameFooConstraint) Execute(param string, _ ...string) bool { return param == "foo" }
+
+type sameNameBarConstraint struct{}
+
+func (*sameNameBarConstraint) Name() string { return "same" }
+
+func (*sameNameBarConstraint) Execute(param string, _ ...string) bool { return param == "bar" }
+
+// Test_App_Mount_SiblingConstraintNames verifies that a constraint binds only
+// the routes of the app that registered it: two apps mounted side by side can
+// name one differently, and the app above them must not hold either to the
+// other's.
+func Test_App_Mount_SiblingConstraintNames(t *testing.T) {
+	t.Parallel()
+
+	// A fresh tree per case: mounting one app on two parents would have the
+	// first expand it before the second cloned it.
+	build := func() *App {
+		handler := func(c Ctx) error { return c.SendString("ok") }
+
+		foo := New()
+		foo.RegisterCustomConstraint(&sameNameFooConstraint{})
+		foo.Get("/:value<same>", handler)
+
+		bar := New()
+		bar.RegisterCustomConstraint(&sameNameBarConstraint{})
+		bar.Get("/:value<same>", handler)
+
+		subApp := New()
+		subApp.Use("/foo", foo)
+		subApp.Use("/bar", bar)
+
+		return subApp
+	}
+
+	plain := New()
+	plain.Use("/sub", build())
+
+	domain := New()
+	domain.Domain("api.example.com").Use("/sub", build())
+
+	want := map[string]int{
+		"/sub/foo/foo": StatusOK,
+		"/sub/foo/bar": StatusNotFound,
+		"/sub/bar/bar": StatusOK,
+		"/sub/bar/foo": StatusNotFound,
+	}
+
+	for path, status := range want {
+		resp, err := plain.Test(httptest.NewRequest(MethodGet, path, http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, status, resp.StatusCode, "plain "+path)
+
+		req := httptest.NewRequest(MethodGet, path, http.NoBody)
+		req.Host = "api.example.com"
+		resp, err = domain.Test(req)
+		require.NoError(t, err)
+		require.Equal(t, status, resp.StatusCode, "domain "+path)
+	}
+}
+
+// Test_App_Mount_PreservesNestedCustomConstraint verifies that a custom
+// constraint registered on an app reached through two mounts still validates.
+// Expanding a mount re-parses the routes against the app above, so the
+// constraint has to travel with them or it silently stops rejecting anything.
+func Test_App_Mount_PreservesNestedCustomConstraint(t *testing.T) {
+	t.Parallel()
+
+	micro := New()
+	micro.RegisterCustomConstraint(&onlyFooConstraint{})
+	micro.Get("/doe/:name<onlyfoo>", func(c Ctx) error {
+		return c.SendString(c.Params("name"))
+	})
+
+	sub := New()
+	sub.Use("/v1", micro)
+
+	app := New()
+	app.Use("/john", sub)
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/john/v1/doe/foo", http.NoBody))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
+
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/john/v1/doe/bar", http.NoBody))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, StatusNotFound, resp.StatusCode, "Status code")
+}
+
+// Test_App_Mount_CarriesDomainMount verifies that mounting an app which has a
+// domain mount of its own carries that mount's config along, host check
+// included.
+func Test_App_Mount_CarriesDomainMount(t *testing.T) {
+	t.Parallel()
+
+	micro := New(Config{
+		ErrorHandler: func(c Ctx, _ error) error {
+			return c.Status(596).SendString("micro error")
+		},
+	})
+	micro.Get("/doe", func(_ Ctx) error {
+		return errors.New("boom")
+	})
+
+	sub := New()
+	sub.Domain("api.example.com").Use("/v1", micro)
+
+	app := New()
+	app.Use("/john", sub)
+
+	req := httptest.NewRequest(MethodGet, "/john/v1/doe", http.NoBody)
+	req.Host = "api.example.com"
+	resp, err := app.Test(req)
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, 596, resp.StatusCode, "Status code")
+
+	// The route does not match on another host, and the sub-app's error
+	// handler must not answer for it either.
+	req = httptest.NewRequest(MethodGet, "/john/v1/doe", http.NoBody)
+	req.Host = "www.example.com"
+	resp, err = app.Test(req)
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, StatusNotFound, resp.StatusCode, "Status code")
+}
+
+// Test_App_Mount_AutoHeadKeepsMiddleware verifies that a mounted app which does
+// not serve HEAD gets no synthesized HEAD routes once its routes are expanded
+// into the parent — they would run without the middleware it registered.
+func Test_App_Mount_AutoHeadKeepsMiddleware(t *testing.T) {
+	t.Parallel()
+
+	micro := New(Config{RequestMethods: []string{MethodGet, MethodPost}})
+	micro.Use(func(c Ctx) error {
+		return c.SendStatus(StatusUnauthorized)
+	})
+	micro.Get("/doe", func(c Ctx) error {
+		c.Set("X-Secret", "leaked")
+		return c.SendString("doe")
+	})
+
+	app := New()
+	app.Use("/john", micro)
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/john/doe", http.NoBody))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, StatusUnauthorized, resp.StatusCode, "Status code")
+
+	// Twice: app.Test runs the startup process on every call, and the second
+	// pass sees the mount already expanded into the parent's stack.
+	for range 2 {
+		resp, err = app.Test(httptest.NewRequest(MethodHead, "/john/doe", http.NoBody))
+		require.NoError(t, err, "app.Test(req)")
+		require.Equal(t, StatusMethodNotAllowed, resp.StatusCode, "Status code")
+		require.Empty(t, resp.Header.Get("X-Secret"))
+	}
+}
+
+// Test_App_Mount_RootMountKeepsParentAutoHead verifies that a mounted app which
+// does not serve HEAD only withholds automatic HEAD routes from its own routes.
+// A mount at "/" covers every path, and the app above keeps its own.
+func Test_App_Mount_RootMountKeepsParentAutoHead(t *testing.T) {
+	t.Parallel()
+
+	micro := New(Config{RequestMethods: []string{MethodGet, MethodPost}})
+	micro.Get("/doe", func(c Ctx) error {
+		return c.SendString("doe")
+	})
+
+	app := New()
+	app.Get("/own", func(c Ctx) error {
+		return c.SendString("own")
+	})
+	app.Use("/", micro)
+
+	resp, err := app.Test(httptest.NewRequest(MethodHead, "/own", http.NoBody))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, StatusOK, resp.StatusCode, "the app's own route keeps its HEAD route")
+
+	resp, err = app.Test(httptest.NewRequest(MethodHead, "/doe", http.NoBody))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, StatusMethodNotAllowed, resp.StatusCode, "the mounted app serves no HEAD")
+}
+
+// Test_App_Mount_ParametricPrefix verifies that a mount prefix carrying a
+// parameter is matched as a pattern. The prefix rewrites every route of the
+// mounted app, so the parameters it introduces have to be rebuilt onto them.
+func Test_App_Mount_ParametricPrefix(t *testing.T) {
+	t.Parallel()
+
+	micro := New()
+	micro.Get("/doe", func(c Ctx) error {
+		return c.SendString("version=" + c.Params("Version"))
+	})
+
+	app := New()
+	app.Use("/v1/:Version", micro)
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/v1/42/doe", http.NoBody))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
+
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "version=42", string(body))
+}
+
+// Test_App_Mount_ParametricPrefixNested verifies the same when the prefix is
+// applied a second time, by an outer mount.
+func Test_App_Mount_ParametricPrefixNested(t *testing.T) {
+	t.Parallel()
+
+	micro := New()
+	micro.Get("/doe", func(c Ctx) error {
+		return c.SendString("version=" + c.Params("version"))
+	})
+
+	sub := New()
+	sub.Use("/v1/:version", micro)
+
+	app := New()
+	app.Use("/john", sub)
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/john/v1/42/doe", http.NoBody))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
+
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "version=42", string(body))
+}
+
+// Test_App_Mount_CaseInsensitivePath verifies that a mount path is matched by
+// the app's own routing rules when its config is resolved: a case-insensitive
+// app serves "/api/doe" from a mount registered as "/API", so the mounted app's
+// error handler has to answer for it too.
+func Test_App_Mount_CaseInsensitivePath(t *testing.T) {
+	t.Parallel()
+
+	micro := New(Config{
+		ErrorHandler: func(c Ctx, _ error) error {
+			return c.Status(599).SendString("micro error")
+		},
+	})
+	micro.Get("/doe", func(_ Ctx) error {
+		return errors.New("boom")
+	})
+
+	app := New()
+	app.Use("/API", micro)
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/api/doe", http.NoBody))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, 599, resp.StatusCode, "Status code")
+
+	// A case-sensitive app keeps the two apart.
+	strict := New(Config{CaseSensitive: true})
+	strict.Use("/API", micro)
+
+	resp, err = strict.Test(httptest.NewRequest(MethodGet, "/API/doe", http.NoBody))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, 599, resp.StatusCode, "Status code")
+
+	resp, err = strict.Test(httptest.NewRequest(MethodGet, "/api/doe", http.NoBody))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, StatusNotFound, resp.StatusCode, "Status code")
+}
+
+// Test_App_Mount_ViewsPathOnly verifies that a mounted app's views are chosen
+// by the request path, not by its mount path appearing anywhere in the URL.
+func Test_App_Mount_ViewsPathOnly(t *testing.T) {
+	t.Parallel()
+
+	subEngine := &testTemplateEngine{path: "testdata2"}
+	require.NoError(t, subEngine.Load())
+
+	parentEngine := &testTemplateEngine{}
+	require.NoError(t, parentEngine.Load())
+
+	micro := New(Config{Views: subEngine})
+	micro.Get("/view", func(c Ctx) error {
+		return c.Render("bruh.tmpl", Map{})
+	})
+
+	app := New(Config{Views: parentEngine})
+	app.Use("/john", micro)
+	app.Get("/elsewhere", func(c Ctx) error {
+		return c.Render("index.tmpl", Map{"Title": "parent"})
+	})
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/elsewhere?next=/john/view", http.NoBody))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
+
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "<h1>parent</h1>", string(body))
+}
+
+// Test_App_Mount_ParametricPrefixConstraint verifies that a constraint named in
+// a mount prefix is enforced. The prefix belongs to the app doing the mounting,
+// so its constraints have to reach the re-parse of the mounted routes.
+func Test_App_Mount_ParametricPrefixConstraint(t *testing.T) {
+	t.Parallel()
+
+	micro := New()
+	micro.Get("/doe", func(c Ctx) error {
+		return c.SendString("name=" + c.Params("name"))
+	})
+
+	app := New()
+	app.RegisterCustomConstraint(&onlyFooConstraint{})
+	app.Use("/:name<onlyfoo>", micro)
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/foo/doe", http.NoBody))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
+
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/bar/doe", http.NoBody))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, StatusNotFound, resp.StatusCode, "the prefix constraint still rejects")
+}
+
+func Test_App_Mount_StrictRouting(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		path   string
+		strict int
+		loose  int
+	}{
+		{path: "/api/sub", strict: StatusOK, loose: StatusOK},
+		{path: "/api/sub/", strict: StatusNotFound, loose: StatusOK},
+		{path: "/api/p/7", strict: StatusOK, loose: StatusOK},
+		{path: "/api/p/7/", strict: StatusNotFound, loose: StatusOK},
+	}
+
+	for _, strict := range []bool{false, true} {
+		app := New(Config{StrictRouting: strict})
+		sub := New()
+		sub.Get("/sub", func(c Ctx) error { return c.SendString("plain") })
+		sub.Get("/p/:id", func(c Ctx) error { return c.SendString("param") })
+		app.Use("/api", sub)
+
+		for _, tc := range tests {
+			want := tc.loose
+			if strict {
+				want = tc.strict
+			}
+			resp, err := app.Test(httptest.NewRequest(MethodGet, tc.path, http.NoBody))
+			require.NoError(t, err)
+			require.Equal(t, want, resp.StatusCode, "strict=%v path=%q", strict, tc.path)
+		}
+	}
+}

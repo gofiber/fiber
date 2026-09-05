@@ -15,3 +15,7 @@ labels:
     matcher:
       baseBranch: '/^v2$/'
       title: '/(?<![\w/.-])v2\b/i'
+  # Same two-alternative shape as the shared config: "perf:" prefix anywhere, free-text only before the first ":".
+  - label: '⚡️ Performance'
+    matcher:
+      title: '/(perf(\([^)]+\))?!?:|^[^:]*\b(perf|performances?|performant|optimi[sz](e[sd]?|ing|ations?)|benchmark(s|ed|ing)?|speed[- ]?ups?|faster)\b)/i'

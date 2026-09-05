@@ -28,8 +28,11 @@ package extractors
 import (
 	"errors"
 	"net/url"
+	"strings"
+	"unsafe"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/headerlookup"
 	"github.com/gofiber/utils/v2"
 )
 
@@ -73,6 +76,204 @@ type Extractor struct {
 	AuthScheme string      // The auth scheme used, e.g., "Bearer"
 	Chain      []Extractor // For chained extractors, stores all extractors in the chain
 	Source     Source      // The type of source being extracted from
+}
+
+// ExtractWithSource returns the extracted value together with its source.
+//
+// Prefer this over Extract when the caller needs the source that actually
+// supplied a value. Source on Extractor is declared/static metadata (for a
+// chain, the first child); SourceHeader is the zero value, so a hand-rolled
+// Extract without an explicit Source reports SourceHeader. No extra struct
+// field is required, so existing unkeyed Extractor literals keep compiling.
+//
+// Behavior:
+//   - Extract set (leaf or chain): call Extract so legacy overrides /
+//     decoration (validation, normalization) are honored. For built-in
+//     Chain, the winning Source is pushed on a request-local stack during
+//     that Extract (no second child walk; survives public Chain reassignment).
+//     If Extract succeeds without a capture (custom replacement, or leaf),
+//     the declared e.Source is returned — e.Chain is not re-walked.
+//   - Chain with nil Extract: walk children (same success rules as Chain.Extract),
+//     skip nil Extract, return the winning child's Source.
+//   - Neither: ErrNotFound.
+//
+// The returned Source is meaningful for security decisions only when err is nil.
+// On failure it may be static or last-child fallback metadata and must not be
+// treated as the origin of a value. Extract is not deprecated in this release.
+func ExtractWithSource(e Extractor, c fiber.Ctx) (string, Source, error) {
+	// Mark this request frame so Chain.Extract only pushes winner captures when
+	// a source-aware caller is active. Bare chain.Extract must not leave stack
+	// entries that a later ExtractWithSource on an unrelated leaf would consume.
+	enterChainWinCapture(c)
+	defer leaveChainWinCapture(c)
+
+	if e.Extract != nil {
+		v, err := e.Extract(c)
+		// Prefer source captured during Extract. Built-in Chain pushes on
+		// success while capture is active, even if e.Chain was cleared.
+		if src, ok := popChainWinningSource(c); ok {
+			if err != nil {
+				return "", e.Source, err
+			}
+			if v == "" {
+				return "", e.Source, ErrNotFound
+			}
+			return v, src, nil
+		}
+		// No capture: use declared Source. Do not re-walk e.Chain after a
+		// successful custom/replaced Extract — that would attribute the
+		// replacement's value to whichever child happens to succeed on peek.
+		if err != nil {
+			return "", e.Source, err
+		}
+		if v == "" {
+			return "", e.Source, ErrNotFound
+		}
+		return v, e.Source, nil
+	}
+	if len(e.Chain) > 0 {
+		return extractChainWithSource(e, c)
+	}
+	return "", e.Source, ErrNotFound
+}
+
+// chainGuardFor returns a Locals key shared by Chain.Extract and
+// extractChainWithSource for the public Chain backing array.
+func chainGuardFor(chain []Extractor) (chainGuardKey, bool) {
+	if len(chain) == 0 {
+		return chainGuardKey{}, false
+	}
+	// Address of the first element is stable for the shared backing array.
+	return chainGuardKey{id: (*byte)(unsafe.Pointer(&chain[0]))}, true //nolint:gosec // G103: identity key for Locals cycle guard only
+}
+
+// chainWinStackKey is a request-local stack of Sources recorded by Chain.Extract.
+// A stack (not a key derived from e.Chain) is required so nested chains can
+// propagate the true winning child Source outward, and so clearing/reassigning
+// the public Chain field cannot orphan or retarget the capture.
+type chainWinStackKey struct{}
+
+// chainWinDepthKey counts nested ExtractWithSource frames. Chain.Extract only
+// pushes winners while depth > 0 so legacy Extract-only calls leave no stale
+// entries for a later source-aware call on the same Ctx.
+type chainWinDepthKey struct{}
+
+func chainWinDepth(c fiber.Ctx) int {
+	depth, ok := c.Locals(chainWinDepthKey{}).(int)
+	if !ok {
+		return 0
+	}
+	return depth
+}
+
+func enterChainWinCapture(c fiber.Ctx) {
+	c.Locals(chainWinDepthKey{}, chainWinDepth(c)+1)
+}
+
+func leaveChainWinCapture(c fiber.Ctx) {
+	depth := chainWinDepth(c)
+	if depth <= 1 {
+		c.Locals(chainWinDepthKey{}, nil)
+		return
+	}
+	c.Locals(chainWinDepthKey{}, depth-1)
+}
+
+func chainWinCaptureActive(c fiber.Ctx) bool {
+	return chainWinDepth(c) > 0
+}
+
+func chainWinStack(c fiber.Ctx) []Source {
+	prev, ok := c.Locals(chainWinStackKey{}).([]Source)
+	if !ok {
+		return nil
+	}
+	return prev
+}
+
+func chainWinStackLen(c fiber.Ctx) int {
+	return len(chainWinStack(c))
+}
+
+func truncateChainWinStack(c fiber.Ctx, n int) {
+	prev := chainWinStack(c)
+	if len(prev) == 0 {
+		return
+	}
+	if n <= 0 {
+		c.Locals(chainWinStackKey{}, nil)
+		return
+	}
+	if len(prev) > n {
+		c.Locals(chainWinStackKey{}, prev[:n])
+	}
+}
+
+func pushChainWinningSource(c fiber.Ctx, src Source) {
+	stack := append(append([]Source(nil), chainWinStack(c)...), src)
+	c.Locals(chainWinStackKey{}, stack)
+}
+
+func popChainWinningSource(c fiber.Ctx) (Source, bool) {
+	prev := chainWinStack(c)
+	if len(prev) == 0 {
+		return 0, false
+	}
+	src := prev[len(prev)-1]
+	prev = prev[:len(prev)-1]
+	if len(prev) == 0 {
+		c.Locals(chainWinStackKey{}, nil)
+	} else {
+		c.Locals(chainWinStackKey{}, prev)
+	}
+	return src, true
+}
+
+func extractChainWithSource(e Extractor, c fiber.Ctx) (string, Source, error) {
+	guard, ok := chainGuardFor(e.Chain)
+	if !ok {
+		return "", SourceCustom, ErrNotFound
+	}
+	if active, ok := c.Locals(guard).(bool); ok && active {
+		return "", e.Source, ErrChainCycle
+	}
+	c.Locals(guard, true)
+	defer c.Locals(guard, false)
+
+	var lastErr error
+	lastSource := e.Source
+	for _, extractor := range e.Chain {
+		if extractor.Extract == nil && len(extractor.Chain) == 0 {
+			continue
+		}
+		// Nested chains and leaves both go through ExtractWithSource.
+		if extractor.Extract == nil && len(extractor.Chain) > 0 {
+			v, src, err := ExtractWithSource(extractor, c)
+			if err == nil && v != "" {
+				return v, src, nil
+			}
+			if err != nil {
+				lastErr = err
+				lastSource = src
+			}
+			continue
+		}
+		if extractor.Extract == nil {
+			continue
+		}
+		v, src, err := ExtractWithSource(extractor, c)
+		if err == nil && v != "" {
+			return v, src, nil
+		}
+		if err != nil {
+			lastErr = err
+			lastSource = src
+		}
+	}
+	if lastErr != nil {
+		return "", lastSource, lastErr
+	}
+	return "", e.Source, ErrNotFound
 }
 
 // Contains reports whether this extractor, or any extractor in its chain, matches pred.
@@ -155,39 +356,43 @@ type chainGuardKey struct {
 //	extractor := FromAuthHeader("")
 //	// Input: "CustomAuth token123" -> Output: "CustomAuth token123"
 func FromAuthHeader(authScheme string) Extractor {
-	return Extractor{
-		Extract: func(c fiber.Ctx) (string, error) {
-			authHeader := c.Get(fiber.HeaderAuthorization)
-			if authHeader == "" {
+	fn := func(c fiber.Ctx) (string, error) {
+		// A second Authorization line, whatever it is spelled like, makes
+		// the credential ambiguous — including where middleware cleared this
+		// field and a line the client sent stayed behind it.
+		authHeader, ok := headerlookup.Value(c, fiber.HeaderAuthorization)
+		if !ok || authHeader == "" {
+			return "", ErrNotFound
+		}
+
+		// Check if the header starts with the specified auth scheme
+		if authScheme != "" {
+			schemeLen := len(authScheme)
+			if len(authHeader) <= schemeLen || !utils.EqualFold(authHeader[:schemeLen], authScheme) {
+				return "", ErrNotFound
+			}
+			rest := authHeader[schemeLen:]
+			if rest == "" || rest[0] != ' ' {
 				return "", ErrNotFound
 			}
 
-			// Check if the header starts with the specified auth scheme
-			if authScheme != "" {
-				schemeLen := len(authScheme)
-				if len(authHeader) <= schemeLen || !utils.EqualFold(authHeader[:schemeLen], authScheme) {
-					return "", ErrNotFound
-				}
-				rest := authHeader[schemeLen:]
-				if rest == "" || rest[0] != ' ' {
-					return "", ErrNotFound
-				}
-
-				// Extract token after the required space
-				token := rest[1:]
-				if token == "" {
-					return "", ErrNotFound
-				}
-
-				if !isValidToken68(token) {
-					return "", ErrNotFound
-				}
-
-				return token, nil
+			// Extract token after the required space
+			token := rest[1:]
+			if token == "" {
+				return "", ErrNotFound
 			}
 
-			return authHeader, nil
-		},
+			if !isValidToken68(token) {
+				return "", ErrNotFound
+			}
+
+			return token, nil
+		}
+
+		return authHeader, nil
+	}
+	return Extractor{
+		Extract:    fn,
 		Key:        fiber.HeaderAuthorization,
 		Source:     SourceAuthHeader,
 		AuthScheme: authScheme,
@@ -220,16 +425,17 @@ func FromAuthHeader(authScheme string) Extractor {
 //	// Cookie: "session_id=abc123" -> Output: "abc123"
 //	// Missing cookie -> Output: ErrNotFound
 func FromCookie(key string) Extractor {
+	fn := func(c fiber.Ctx) (string, error) {
+		value := c.Cookies(key)
+		if value == "" {
+			return "", ErrNotFound
+		}
+		return value, nil
+	}
 	return Extractor{
-		Extract: func(c fiber.Ctx) (string, error) {
-			value := c.Cookies(key)
-			if value == "" {
-				return "", ErrNotFound
-			}
-			return value, nil
-		},
-		Key:    key,
-		Source: SourceCookie,
+		Extract: fn,
+		Key:     key,
+		Source:  SourceCookie,
 	}
 }
 
@@ -260,20 +466,34 @@ func FromCookie(key string) Extractor {
 //	postExtractor := FromParam("postId")
 //	// URL: /users/123/posts/456 -> userId: "123", postId: "456"
 func FromParam(param string) Extractor {
+	fn := func(c fiber.Ctx) (string, error) {
+		value := c.Params(param)
+		if value == "" {
+			return "", ErrNotFound
+		}
+		// Without a percent sign there is nothing to decode, and this is
+		// the common case, so it skips the config read below.
+		if !strings.Contains(value, "%") {
+			return value, nil
+		}
+		// UnescapePath already decoded the path once in the router, so
+		// decoding again here would spend the client's escaping twice: a
+		// literal "%20" sent as "%2520" would arrive as a space. Decode
+		// only when the router left the value raw, which keeps the number
+		// of decodes at one whatever the config says.
+		if c.App().Config().UnescapePath {
+			return value, nil
+		}
+		unescapedValue, err := url.PathUnescape(value)
+		if err != nil {
+			return "", ErrNotFound
+		}
+		return unescapedValue, nil
+	}
 	return Extractor{
-		Extract: func(c fiber.Ctx) (string, error) {
-			value := c.Params(param)
-			if value == "" {
-				return "", ErrNotFound
-			}
-			unescapedValue, err := url.PathUnescape(value)
-			if err != nil {
-				return "", ErrNotFound
-			}
-			return unescapedValue, nil
-		},
-		Key:    param,
-		Source: SourceParam,
+		Extract: fn,
+		Key:     param,
+		Source:  SourceParam,
 	}
 }
 
@@ -303,16 +523,17 @@ func FromParam(param string) Extractor {
 //	// Form data: "username=john_doe&password=secret" -> Output: "john_doe"
 //	// Missing field -> Output: ErrNotFound
 func FromForm(param string) Extractor {
+	fn := func(c fiber.Ctx) (string, error) {
+		value := c.FormValue(param)
+		if value == "" {
+			return "", ErrNotFound
+		}
+		return value, nil
+	}
 	return Extractor{
-		Extract: func(c fiber.Ctx) (string, error) {
-			value := c.FormValue(param)
-			if value == "" {
-				return "", ErrNotFound
-			}
-			return value, nil
-		},
-		Key:    param,
-		Source: SourceForm,
+		Extract: fn,
+		Key:     param,
+		Source:  SourceForm,
 	}
 }
 
@@ -342,16 +563,26 @@ func FromForm(param string) Extractor {
 //	// Header: "X-API-Key: abc123" -> Output: "abc123"
 //	// Missing header -> Output: ErrNotFound
 func FromHeader(header string) Extractor {
+	fn := func(c fiber.Ctx) (string, error) {
+		// Not Ctx.Get: it is byte-exact, so under DisableHeaderNormalizing a token
+		// sent under the lower-case name HTTP/2 and 3 use was not found, and the
+		// request refused for carrying no token when it carried one.
+		// Combined, not Value: the name comes from the application's
+		// config, and a field it names may be a list one a peer is allowed
+		// to send twice — Accept and Forwarded among them. Two lines there
+		// are one value rather than two answers, so they are joined the way
+		// RFC 9110 §5.3 says a recipient may. A repeated token still fails
+		// the comparison the caller makes, so nothing is loosened.
+		value := headerlookup.Combined(c, header)
+		if value == "" {
+			return "", ErrNotFound
+		}
+		return value, nil
+	}
 	return Extractor{
-		Extract: func(c fiber.Ctx) (string, error) {
-			value := c.Get(header)
-			if value == "" {
-				return "", ErrNotFound
-			}
-			return value, nil
-		},
-		Key:    header,
-		Source: SourceHeader,
+		Extract: fn,
+		Key:     header,
+		Source:  SourceHeader,
 	}
 }
 
@@ -383,16 +614,17 @@ func FromHeader(header string) Extractor {
 //	// URL: /api/data?token=abc123&format=json -> Output: "abc123"
 //	// URL: /api/data?format=json -> Output: ErrNotFound
 func FromQuery(param string) Extractor {
+	fn := func(c fiber.Ctx) (string, error) {
+		value := c.Query(param)
+		if value == "" {
+			return "", ErrNotFound
+		}
+		return value, nil
+	}
 	return Extractor{
-		Extract: func(c fiber.Ctx) (string, error) {
-			value := c.Query(param)
-			if value == "" {
-				return "", ErrNotFound
-			}
-			return value, nil
-		},
-		Key:    param,
-		Source: SourceQuery,
+		Extract: fn,
+		Key:     param,
+		Source:  SourceQuery,
 	}
 }
 
@@ -462,9 +694,10 @@ func FromCustom(key string, fn func(fiber.Ctx) (string, error)) Extractor {
 // The function:
 //   - Tries each extractor in the order provided
 //   - Returns the first successful extraction (non-empty value with no error)
-//   - Skips extractors with nil Extract functions
+//   - Skips children with a nil Extract function
 //   - Returns the last error encountered if all extractors fail
 //   - Returns ErrNotFound if no extractors are provided or all return empty values
+//   - ExtractWithSource on a chain walks the same children and reports the winning Source
 //
 // Parameters:
 //   - extractors: A variadic list of Extractor instances to try in sequence.
@@ -473,13 +706,17 @@ func FromCustom(key string, fn func(fiber.Ctx) (string, error)) Extractor {
 // Returns:
 //
 //	An Extractor that attempts each provided extractor in order.
-//	The returned extractor uses the Source and Key from the first extractor for metadata.
+//	The returned extractor uses the Source and Key from the first extractor for
+//	static metadata. ExtractWithSource reports the winning child's Source.
 //
 // Behavior:
 //   - Success: Returns the first non-empty value with no error
 //   - Partial failure: Continues to next extractor if current returns error or empty value
 //   - Total failure: Returns last error encountered, or ErrNotFound if no errors
 //   - Empty chain: Always returns ErrNotFound
+//   - Extract and ExtractWithSource share one cycle guard so a child that
+//     re-enters the same chain still returns ErrChainCycle. The guard is cleared
+//     on return, so sequential Extract then ExtractWithSource is fine.
 //
 // Examples:
 //
@@ -502,40 +739,73 @@ func FromCustom(key string, fn func(fiber.Ctx) (string, error)) Extractor {
 //	Order extractors by security preference. Most secure sources (headers, cookies)
 //	should be attempted before less secure ones (query params, form data).
 func Chain(extractors ...Extractor) Extractor {
+	notFound := func(fiber.Ctx) (string, error) {
+		return "", ErrNotFound
+	}
+
 	if len(extractors) == 0 {
 		return Extractor{
-			Extract: func(fiber.Ctx) (string, error) {
-				return "", ErrNotFound
-			},
-			Source: SourceCustom,
-			Key:    "",
-			Chain:  []Extractor{},
+			Extract: notFound,
+			Source:  SourceCustom,
+			Key:     "",
+			Chain:   []Extractor{},
 		}
 	}
 
-	// Use the source and key from the first extractor as the primary
-	primarySource := extractors[0].Source
-	primaryKey := extractors[0].Key
-	guardKey := chainGuardKey{id: new(byte)}
+	// Private execution list captured by Extract. Public Chain is a separate
+	// defensive copy so callers can inspect/rewrite metadata without changing
+	// which children Extract actually runs.
+	kids := append([]Extractor(nil), extractors...)
+	pub := append([]Extractor(nil), kids...)
+	primarySource := kids[0].Source
+	primaryKey := kids[0].Key
 
 	return Extractor{
 		Extract: func(c fiber.Ctx) (string, error) {
-			if active, ok := c.Locals(guardKey).(bool); ok && active {
+			// Guard on the public Chain array so ExtractWithSource / peek share
+			// the same cycle identity (private kids stay execution-only).
+			guard, ok := chainGuardFor(pub)
+			if !ok {
+				return "", ErrNotFound
+			}
+			if active, ok := c.Locals(guard).(bool); ok && active {
 				return "", ErrChainCycle
 			}
 
-			c.Locals(guardKey, true)
-			defer c.Locals(guardKey, false)
+			c.Locals(guard, true)
+			defer c.Locals(guard, false)
 
 			var lastErr error // last error encountered (including ErrNotFound)
 
-			for _, extractor := range extractors {
+			capture := chainWinCaptureActive(c)
+			for _, extractor := range kids {
 				if extractor.Extract == nil {
 					continue
 				}
+				// Snapshot stack only in source-aware frames so legacy
+				// Chain.Extract hot paths skip Locals bookkeeping.
+				stackBefore := 0
+				if capture {
+					stackBefore = chainWinStackLen(c)
+				}
 				v, err := extractor.Extract(c)
 				if err == nil && v != "" {
+					if capture {
+						// Prefer a Source pushed by a nested Chain.Extract;
+						// otherwise the child's declared Source (leaves).
+						src := extractor.Source
+						if nested, ok := popChainWinningSource(c); ok {
+							src = nested
+						}
+						// Drop any extra leftover pushes from this child.
+						truncateChainWinStack(c, stackBefore)
+						pushChainWinningSource(c, src)
+					}
 					return v, nil
+				}
+				if capture {
+					// Child pushed then failed/rejected — discard its capture.
+					truncateChainWinStack(c, stackBefore)
 				}
 				if err != nil {
 					lastErr = err
@@ -548,7 +818,7 @@ func Chain(extractors ...Extractor) Extractor {
 		},
 		Source: primarySource,
 		Key:    primaryKey,
-		Chain:  append([]Extractor(nil), extractors...), // Defensive copy for introspection
+		Chain:  pub,
 	}
 }
 

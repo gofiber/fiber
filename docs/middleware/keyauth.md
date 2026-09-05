@@ -281,7 +281,7 @@ Refer to the [Extractors Guide](../guide/extractors) for details, security notes
 |:----------------|:-----------------------------------------|:-------------------------------------------------------------------------------------------------------|:------------------------------|
 | Next            | `func(fiber.Ctx) bool`                   | Next defines a function to skip this middleware when it returns true.                                    | `nil`                         |
 | SuccessHandler  | `fiber.Handler`                          | SuccessHandler defines a function which is executed for a valid key.                                   | `c.Next()`                         |
-| ErrorHandler    | `fiber.ErrorHandler`                     | ErrorHandler defines a function which is executed for an invalid key. By default a 401 response with a `WWW-Authenticate` challenge is sent. | Default error handler  |
+| ErrorHandler    | `fiber.ErrorHandler`                     | ErrorHandler defines a function which is executed for an invalid key. By default a 401 response with a `WWW-Authenticate` challenge is sent. The challenge is also added when a custom handler returns a `*fiber.Error` instead of writing the response itself: as `WWW-Authenticate` for status 401, and as `Proxy-Authenticate` for status 407. | Default error handler  |
 | Validator       | `func(fiber.Ctx, string) (bool, error)`  | **Required.** Validator is a function to validate the key.                                                           | `nil` (panic) |
 | Extractor       | `extractors.Extractor`                 | Extractor defines how to retrieve the key from the request. Use helper functions from the shared extractors package, e.g. `extractors.FromAuthHeader("Bearer")` or `extractors.FromCookie("access_token")`. | `extractors.FromAuthHeader("Bearer")` |
 | Realm           | `string`                                 | Realm specifies the protected area name used in the `WWW-Authenticate` header. | `"Restricted"` |
@@ -290,6 +290,9 @@ Refer to the [Extractors Guide](../guide/extractors) for details, security notes
 | ErrorDescription| `string`                                 | Human-readable text for the `error_description` parameter in Bearer challenges. Requires `Error`. | `""` |
 | ErrorURI        | `string`                                 | URI identifying a human-readable web page with information about the `error` in Bearer challenges. Requires `Error` and must be an absolute URI. | `""` |
 | Scope           | `string`                                 | Space-delimited list of scopes for the `scope` parameter in Bearer challenges. Each token must conform to the RFC 6750 `scope-token` syntax and requires `Error` set to `insufficient_scope`. | `""` |
+
+Generated challenge parameter values are escaped as RFC 9110 HTTP quoted
+strings. A custom `Challenge` value is emitted verbatim.
 
 ## Default Config
 

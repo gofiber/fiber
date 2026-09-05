@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/gofiber/fiber/v3"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
 	"golang.org/x/net/publicsuffix"
@@ -1607,4 +1608,76 @@ func Test_CookieJar_BoundsCookiesPerRequest(t *testing.T) {
 	for _, c := range got {
 		fasthttp.ReleaseCookie(c)
 	}
+}
+
+// Test_CookieJar_AttributesCookiesToRespondingHost asserts that Set-Cookie from
+// a redirect target is stored against that target, not against the host the
+// caller originally addressed. Crediting it to the original host would let any
+// redirect target plant cookies for an origin it does not control, and those
+// cookies would then ride along on every later request to that origin.
+func Test_CookieJar_AttributesCookiesToRespondingHost(t *testing.T) {
+	t.Parallel()
+
+	server := startTestServer(t, func(app *fiber.App) {
+		app.Get("/start", func(c fiber.Ctx) error {
+			return c.Redirect().Status(fiber.StatusFound).To("http://attacker.example/plant")
+		})
+		app.Get("/plant", func(c fiber.Ctx) error {
+			c.Cookie(&fiber.Cookie{Name: "session", Value: "planted"})
+			return c.SendString("ok")
+		})
+		app.Get("/direct", func(c fiber.Ctx) error {
+			c.Cookie(&fiber.Cookie{Name: "session", Value: "legitimate"})
+			return c.SendString("ok")
+		})
+	})
+	// Cleanup, not defer: the parallel subtests below resume only after this
+	// function returns, so a deferred stop would race them.
+	t.Cleanup(server.stop)
+
+	jarCookies := func(t *testing.T, jar *CookieJar, host string) map[string]string {
+		t.Helper()
+
+		uri := fasthttp.AcquireURI()
+		defer fasthttp.ReleaseURI(uri)
+		uri.SetScheme("http")
+		uri.SetHost(host)
+		uri.SetPath("/")
+
+		out := make(map[string]string)
+		for _, ck := range jar.Get(uri) {
+			out[string(ck.Key())] = string(ck.Value())
+			fasthttp.ReleaseCookie(ck) // Get hands back copies it acquired from the pool.
+		}
+		return out
+	}
+
+	t.Run("redirect target cannot plant cookies for the origin", func(t *testing.T) {
+		t.Parallel()
+
+		jar := AcquireCookieJar()
+		defer ReleaseCookieJar(jar)
+		client := New().SetDial(server.dial()).SetCookieJar(jar)
+
+		resp, err := client.Get("http://good.example/start", Config{MaxRedirects: 5})
+		require.NoError(t, err)
+		defer resp.Close()
+
+		require.Empty(t, jarCookies(t, jar, "good.example"))
+		require.Equal(t, map[string]string{"session": "planted"}, jarCookies(t, jar, "attacker.example"))
+	})
+
+	t.Run("a response with no redirect is still stored", func(t *testing.T) {
+		t.Parallel()
+
+		jar := AcquireCookieJar()
+		defer ReleaseCookieJar(jar)
+		client := New().SetDial(server.dial()).SetCookieJar(jar)
+
+		resp, err := client.Get("http://good.example/direct")
+		require.NoError(t, err)
+		defer resp.Close()
+
+		require.Equal(t, map[string]string{"session": "legitimate"}, jarCookies(t, jar, "good.example"))
+	})
 }

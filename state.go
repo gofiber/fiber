@@ -21,6 +21,8 @@ func init() {
 type State struct {
 	dependencies  sync.Map
 	servicePrefix string
+	services      []Service
+	servicesMu    sync.Mutex
 }
 
 // NewState creates a new instance of State.
@@ -246,12 +248,68 @@ func (s *State) serviceKey(key string) string {
 // setService sets a service in the State.
 func (s *State) setService(srv Service) {
 	// Always prepend the service key with the servicesStateKey to avoid collisions
-	s.Set(s.serviceKey(srv.String()), srv)
+	name := srv.String()
+	s.Set(s.serviceKey(name), srv)
+
+	s.servicesMu.Lock()
+	// The order is keyed by name like the map above, so registering a service
+	// again replaces it in place rather than adding a second entry that
+	// shutdown would terminate twice.
+	for i, started := range s.services {
+		if started.String() == name {
+			s.services[i] = srv
+			s.servicesMu.Unlock()
+			return
+		}
+	}
+	s.services = append(s.services, srv)
+	s.servicesMu.Unlock()
 }
 
 // Delete removes a key-value pair from the State.
 func (s *State) deleteService(srv Service) {
 	s.Delete(s.serviceKey(srv.String()))
+
+	// Match by name, not by interface equality: a Service whose dynamic type is
+	// uncomparable (one holding a slice or map, stored by value) panics on ==.
+	// Names are unique, which startServices validates before starting anything.
+	name := srv.String()
+
+	s.servicesMu.Lock()
+	for i, started := range s.services {
+		if started.String() == name {
+			s.services = append(s.services[:i], s.services[i+1:]...)
+			break
+		}
+	}
+	s.servicesMu.Unlock()
+}
+
+// takeStartedServices removes the started services and returns them in start
+// order. Shutdown drains rather than copies: two callers handed the same copy
+// each terminate every service, and a service is only removed once it has
+// already been terminated, too late to stop the second call.
+func (s *State) takeStartedServices() []Service {
+	s.servicesMu.Lock()
+	defer s.servicesMu.Unlock()
+
+	services := s.services
+	s.services = nil
+
+	return services
+}
+
+// restoreStartedServices puts services that would not terminate back at the
+// front, in start order, so a later shutdown retries them.
+func (s *State) restoreStartedServices(services []Service) {
+	if len(services) == 0 {
+		return
+	}
+
+	s.servicesMu.Lock()
+	defer s.servicesMu.Unlock()
+
+	s.services = append(services, s.services...)
 }
 
 // serviceKeys returns a slice containing all keys present for services in the application's State.

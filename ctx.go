@@ -12,7 +12,7 @@ import (
 	"io"
 	"maps"
 	"mime/multipart"
-	"strings"
+	"net"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -85,16 +85,104 @@ type DefaultCtx struct {
 
 // TLSHandler hosts the callback hooks Fiber invokes while negotiating TLS
 // connections, including optional client certificate lookups.
+//
+// It records the ClientHelloInfo of every connection, keyed by the connection,
+// and releases it when the server reports the connection closed.
 type TLSHandler struct {
-	clientHelloInfo *tls.ClientHelloInfo
+	connless         atomic.Pointer[tls.ClientHelloInfo]
+	clientHelloInfos sync.Map // underlying net.Conn -> *tls.ClientHelloInfo
+	serverConns      sync.Map // server-visible net.Conn -> underlying net.Conn
 }
 
 // GetClientInfo Callback function to set ClientHelloInfo
 // Must comply with the method structure of https://cs.opensource.google/go/go/+/refs/tags/go1.20:src/crypto/tls/common.go;l=554-563
 // Since we overlay the method of the TLS config in the listener method
 func (t *TLSHandler) GetClientInfo(info *tls.ClientHelloInfo) (*tls.Certificate, error) {
-	t.clientHelloInfo = info
+	switch {
+	case info == nil:
+	case info.Conn != nil:
+		t.clientHelloInfos.Store(info.Conn, info)
+	default:
+		t.connless.Store(info)
+	}
 	return nil, nil //nolint:nilnil // Not returning anything useful here is probably fine
+}
+
+// clientHelloInfo returns the ClientHelloInfo recorded for a connection, or nil.
+func (t *TLSHandler) clientHelloInfo(conn net.Conn) *tls.ClientHelloInfo {
+	if key := underlyingConn(conn); key != nil {
+		if v, ok := t.clientHelloInfos.Load(key); ok {
+			if info, ok := v.(*tls.ClientHelloInfo); ok {
+				return info
+			}
+		}
+	}
+	return t.connless.Load()
+}
+
+// track notes what a server-visible connection wraps while that connection is
+// still open, so its record can be found again once it is not. A *tls.Conn
+// needs no note: it answers for what it wraps at any time. The wrapper fasthttp
+// installs for Server.MaxConnsPerIP does not — it is closed and returned to a
+// pool before the close is reported, and clears the connection it embeds on the
+// way, so asking it then dereferences a nil *tls.Conn.
+func (t *TLSHandler) track(conn net.Conn) {
+	if conn == nil {
+		return
+	}
+	if _, ok := conn.(*tls.Conn); ok {
+		return
+	}
+	key := underlyingConn(conn)
+	if key == nil || key == conn {
+		return
+	}
+
+	// Reaching a wrapper that still holds a note means it was recycled before
+	// the close of the connection it carried was reported. That connection is
+	// closed — only Close returns a wrapper to the pool — so drop the record it
+	// would otherwise strand.
+	if prev, loaded := t.serverConns.Swap(conn, key); loaded {
+		if stale, ok := prev.(net.Conn); ok && stale != key {
+			t.clientHelloInfos.Delete(stale)
+		}
+	}
+}
+
+// forget drops the record kept for a closed connection, resolving it through
+// the note track left when the connection could still be asked what it wrapped.
+func (t *TLSHandler) forget(conn net.Conn) {
+	if conn == nil {
+		return
+	}
+
+	if noted, ok := t.serverConns.LoadAndDelete(conn); ok {
+		if key, ok := noted.(net.Conn); ok {
+			t.clientHelloInfos.Delete(key)
+		}
+		return
+	}
+
+	key := conn
+	if tc, ok := conn.(*tls.Conn); ok {
+		key = tc.NetConn()
+	}
+	if key != nil {
+		t.clientHelloInfos.Delete(key)
+	}
+}
+
+// underlyingConn returns the net.Conn a TLS handshake ran on; crypto/tls hands
+// GetCertificate the raw connection, while the server sees the *tls.Conn — or a
+// wrapper around one, as fasthttp installs for Server.MaxConnsPerIP accounting.
+// Matching the method rather than the concrete type unwraps both, so the two
+// sides key on the same connection. Only call this for a connection still in
+// use; see track for why a closed one cannot be unwrapped this way.
+func underlyingConn(conn net.Conn) net.Conn {
+	if tc, ok := conn.(interface{ NetConn() net.Conn }); ok {
+		return tc.NetConn()
+	}
+	return conn
 }
 
 // Views is the interface that wraps the Render function.
@@ -200,6 +288,34 @@ func (c *DefaultCtx) Response() *fasthttp.Response {
 	return &c.fasthttp.Response
 }
 
+// Body returns the request body, decompressing it when the request declares a
+// Content-Encoding the app accepts. Req and Res both carry a Body, so on Ctx
+// the request wins, as it does for Get; use Res().Body() for the response.
+func (c *DefaultCtx) Body() []byte {
+	return c.DefaultReq.Body()
+}
+
+// ContentLength returns the value of the Content-Length request header. Req and
+// Res both carry one, so on Ctx the request wins, as it does for Get; use
+// Res().ContentLength() for the response.
+func (c *DefaultCtx) ContentLength() int {
+	return c.DefaultReq.ContentLength()
+}
+
+// ContentType returns the Content-Type request header, parameters included. Req
+// and Res both carry one, so on Ctx the request wins, as it does for Get; use
+// Res().ContentType() for the response.
+func (c *DefaultCtx) ContentType() string {
+	return c.DefaultReq.ContentType()
+}
+
+// Cookies returns the request cookie with the given key, or defaultValue. Only
+// valid within the handler unless Immutable is set. For the cookies the response
+// is set to send, use Res().GetCookies().
+func (c *DefaultCtx) Cookies(key string, defaultValue ...string) string {
+	return c.DefaultReq.Cookies(key, defaultValue...)
+}
+
 // Get returns the HTTP request header specified by field.
 // Field names are case-insensitive
 // Returned value is only valid within the handler. Do not store any references.
@@ -237,10 +353,10 @@ func (c *DefaultCtx) GetRespHeaders() map[string][]string {
 	return c.DefaultRes.GetHeaders()
 }
 
-// ClientHelloInfo return CHI from context
+// ClientHelloInfo returns the TLS ClientHelloInfo of the connection this request arrived on, or nil.
 func (c *DefaultCtx) ClientHelloInfo() *tls.ClientHelloInfo {
-	if c.app.tlsHandler != nil {
-		return c.app.tlsHandler.clientHelloInfo
+	if c.app.tlsHandler != nil && c.fasthttp != nil {
+		return c.app.tlsHandler.clientHelloInfo(c.fasthttp.Conn())
 	}
 
 	return nil
@@ -281,6 +397,15 @@ func (c *DefaultCtx) RestartRouting() error {
 	return err
 }
 
+// ctxForHandlers returns the context user code is handed: the custom context
+// when the app uses one, otherwise the DefaultCtx itself, as Next does.
+func (c *DefaultCtx) ctxForHandlers() Ctx {
+	if c.handlerCtx != nil {
+		return c.handlerCtx
+	}
+	return c
+}
+
 func (c *DefaultCtx) setHandlerCtx(ctx CustomCtx) {
 	if ctx == nil {
 		c.handlerCtx = nil
@@ -298,24 +423,6 @@ func (c *DefaultCtx) setHandlerCtx(ctx CustomCtx) {
 // Make copies or use the Immutable setting to use the value outside the Handler.
 func (c *DefaultCtx) OriginalURL() string {
 	return c.app.toString(c.fasthttp.Request.Header.RequestURI())
-}
-
-// Path returns the path part of the request URL.
-// Optionally, you could override the path.
-// Make copies or use the Immutable setting to use the value outside the Handler.
-func (c *DefaultCtx) Path(override ...string) string {
-	if len(override) != 0 && string(c.path) != override[0] {
-		// Set new path to context
-		c.pathOriginal = override[0]
-
-		// Set new path to request context
-		c.fasthttp.Request.URI().SetPath(c.pathOriginal)
-		// Prettify path
-		c.configDependentPaths()
-		// The detection path/tree hash changed; invalidate the lookahead index.
-		c.firstMatchIndex = -1
-	}
-	return c.app.toString(c.path)
 }
 
 // RequestID returns the request identifier from the response header or request header.
@@ -387,9 +494,101 @@ func (c *DefaultCtx) routeFallback() *Route {
 	}
 }
 
+// Endpoint returns the route that will handle this request, without advancing the
+// handler chain, so global middleware can read its Path or Name before calling
+// Next. Returns nil when no endpoint will run: 404, 405, and while the error
+// handler replays the chain for a request rejected at the protocol level.
+//
+// It looks ahead, where the neighboring accessors look back: Route reports the
+// route currently executing, which inside middleware is the middleware itself,
+// and Matched reports whether an endpoint has been selected yet.
+//
+// It scans the remaining routes in the request's tree bucket, so calling it from
+// global middleware costs a second router scan per request.
+func (c *DefaultCtx) Endpoint() *Route {
+	// Already on a non-middleware endpoint.
+	if c.route != nil && !c.route.use && !c.route.mount {
+		return c.route
+	}
+	if c.methodInt == -1 || c.app == nil {
+		return nil
+	}
+	// serverErrorHandler replays the chain with this set, and next() then lets no
+	// endpoint run, so naming one here would promise a handler that cannot run.
+	if c.shouldSkipNonUseRoutes {
+		return nil
+	}
+
+	tree := c.app.treeIndex[c.methodInt].lookup(c.treePathHash)
+	detectionPath := utils.UnsafeString(c.detectionPath)
+	path := utils.UnsafeString(c.path)
+	head := pathHeadWord(detectionPath)
+	pathSlashes := c.pathSlashCount(c.app)
+
+	// SkipUnmatchedRoutes already resolved the endpoint, but the index only answers
+	// while routing has not walked past it, and a route registered mid-request can
+	// shift the bucket under it, so it still has to clear the prefix filter.
+	if c.firstMatchIndex > c.indexRoute && c.firstMatchIndex < len(tree) {
+		if route := tree[c.firstMatchIndex]; route != nil && !route.use && !route.mount &&
+			!route.prefixRejects(head) {
+			return route
+		}
+	}
+
+	// Use a scratch params buffer so look-ahead does not clobber c.values.
+	var scratch [maxParams]string
+
+	// Starting past indexRoute follows the chain, which is why the result needs no
+	// cache: every mutation that would invalidate one already moves a field read here.
+	for i := c.indexRoute + 1; i < len(tree); i++ {
+		route := tree[i]
+		if route.mount || route.use {
+			continue
+		}
+		if route.prefixRejects(head) {
+			continue
+		}
+		if route.match(detectionPath, path, &scratch, pathSlashes) {
+			return route
+		}
+	}
+
+	return nil
+}
+
 // FullPath returns the matched route path, including any group prefixes.
 func (c *DefaultCtx) FullPath() string {
 	return c.Route().Path
+}
+
+// RouteName returns the name of the route currently executing, or "" when it is
+// unnamed. Inside middleware that is the middleware's own route; use
+// Endpoint().Name to look ahead to the one that will handle the request.
+func (c *DefaultCtx) RouteName() string {
+	// Route() builds a synthetic Route when none matched, and that one never
+	// carries a Name — so the allocation could only ever produce "".
+	if c.route == nil {
+		return ""
+	}
+	return c.route.Name
+}
+
+// MountPath returns the prefix the sub-app owning the current route was mounted
+// under, or "" for a top-level route. Path is not relative to it. One *App
+// mounted twice reports its last prefix, as App.MountPath does.
+func (c *DefaultCtx) MountPath() string {
+	if c.app == nil {
+		return ""
+	}
+	// A route with no recorded owner is this app's own, so it is not under a
+	// mount at all — reading the app's own prefix here would answer with a
+	// mount the request never went through.
+	owner := c.app.routeOwner(c.route)
+	if owner == nil {
+		return ""
+	}
+
+	return owner.MountPath()
 }
 
 // Matched returns true if the current request path was matched by the router.
@@ -409,23 +608,11 @@ func (c *DefaultCtx) IsMiddleware() bool {
 	return c.indexHandler+1 < len(c.route.Handlers)
 }
 
-// HasBody returns true if the request declares a body via Content-Length, Transfer-Encoding, or already buffered payload data.
-func (c *DefaultCtx) HasBody() bool {
-	hdr := &c.fasthttp.Request.Header
-
-	switch cl := hdr.ContentLength(); {
-	case cl > 0:
-		return true
-	case cl == -1:
-		// fasthttp reports -1 for Transfer-Encoding: chunked bodies.
-		return true
-	case cl == 0:
-		if hasTransferEncodingBody(hdr) {
-			return true
-		}
-	}
-
-	return len(c.fasthttp.Request.Body()) > 0
+// IsFinal reports whether this is the last handler of a matched non-middleware
+// route, so nothing further on that route runs. It describes the route, not the
+// request: another route can still match, and a Use route is never final.
+func (c *DefaultCtx) IsFinal() bool {
+	return c.route != nil && !c.IsMiddleware()
 }
 
 // OverrideParam overwrites a route parameter value by name.
@@ -459,98 +646,6 @@ func (c *DefaultCtx) OverrideParam(name, value string) {
 			return
 		}
 	}
-}
-
-func hasTransferEncodingBody(hdr *fasthttp.RequestHeader) bool {
-	// Repeated field lines form one combined list (RFC 9110 Section 5.2),
-	// so every Transfer-Encoding line must be inspected, not just the first.
-	if lines := hdr.PeekAll(HeaderTransferEncoding); len(lines) > 0 {
-		for _, line := range lines {
-			if transferEncodingLineHasBody(utils.UnsafeString(line)) {
-				return true
-			}
-		}
-		return false
-	}
-
-	// Fallback scan for non-normalized header keys.
-	for key, value := range hdr.All() {
-		if !utils.EqualFold(utils.UnsafeString(key), HeaderTransferEncoding) {
-			continue
-		}
-		if transferEncodingLineHasBody(utils.UnsafeString(value)) {
-			return true
-		}
-	}
-
-	return false
-}
-
-// transferEncodingLineHasBody reports whether a single Transfer-Encoding
-// field line contains a transfer coding other than "identity".
-func transferEncodingLineHasBody(te string) bool {
-	for raw := range strings.SplitSeq(te, ",") {
-		token := utils.TrimSpace(raw)
-		if token == "" {
-			continue
-		}
-		if idx := strings.IndexByte(token, ';'); idx >= 0 {
-			token = utils.TrimSpace(token[:idx])
-		}
-		if token == "" {
-			continue
-		}
-		if utils.EqualFold(token, "identity") {
-			continue
-		}
-		return true
-	}
-	return false
-}
-
-// IsWebSocket returns true if the request includes a WebSocket upgrade handshake.
-func (c *DefaultCtx) IsWebSocket() bool {
-	// Repeated field lines are equivalent to one combined comma-separated
-	// list (RFC 9110 Section 5.2), so inspect every Connection and Upgrade
-	// field line, not just the first.
-	if !headerListContainsToken(c.fasthttp.Request.Header.PeekAll(HeaderConnection), "upgrade") {
-		return false
-	}
-	// Upgrade is a list of protocols, each optionally carrying a "/version"
-	// suffix (RFC 9110 Section 7.8), e.g. "Upgrade: websocket, h2c".
-	return headerListContainsToken(c.fasthttp.Request.Header.PeekAll(HeaderUpgrade), "websocket")
-}
-
-// headerListContainsToken reports whether any comma-separated element across
-// the given field lines equals token case-insensitively. An optional
-// "/version" suffix (Upgrade protocol syntax, RFC 9110 Section 7.8) is
-// ignored when comparing; valid Connection members never contain "/", so
-// this is safe for both headers.
-func headerListContainsToken(lines [][]byte, token string) bool {
-	for _, line := range lines {
-		for v := range strings.SplitSeq(utils.UnsafeString(line), ",") {
-			element := utils.TrimSpace(v)
-			if i := strings.IndexByte(element, '/'); i >= 0 {
-				element = element[:i]
-			}
-			if utils.EqualFold(element, token) {
-				return true
-			}
-		}
-	}
-	return false
-}
-
-// IsPreflight returns true if the request is a CORS preflight.
-func (c *DefaultCtx) IsPreflight() bool {
-	if c.Method() != MethodOptions {
-		return false
-	}
-	hdr := &c.fasthttp.Request.Header
-	if len(hdr.Peek(HeaderAccessControlRequestMethod)) == 0 {
-		return false
-	}
-	return len(hdr.Peek(HeaderOrigin)) > 0
 }
 
 // SaveFile saves any multipart file to disk.
@@ -603,9 +698,11 @@ func (c *DefaultCtx) SaveFileToStorage(fileheader *multipart.FileHeader, path st
 	return nil
 }
 
-// Secure returns whether a secure connection was established.
-func (c *DefaultCtx) Secure() bool {
-	return c.Scheme() == schemeHTTPS
+// Error returns an *Error carrying the given status code, defaulting the message
+// to the status text. Returning it hands it to the app's ErrorHandler, which
+// writes the response; Error itself sets nothing.
+func (*DefaultCtx) Error(status int, message ...string) error {
+	return NewError(status, message...)
 }
 
 // Status sets the HTTP status for the response.
@@ -613,6 +710,53 @@ func (c *DefaultCtx) Secure() bool {
 func (c *DefaultCtx) Status(status int) Ctx {
 	c.fasthttp.Response.SetStatusCode(status)
 	return c
+}
+
+// ID returns the connection-unique identifier fasthttp assigned to this request,
+// unlike RequestID, which reads a header. It is not unique across processes or
+// restarts, so use it to correlate log lines within one server run.
+func (c *DefaultCtx) ID() uint64 {
+	return c.fasthttp.ID()
+}
+
+// StartTime returns the time the server began handling this request. It is the
+// reference point Elapsed measures from.
+func (c *DefaultCtx) StartTime() time.Time {
+	return c.fasthttp.Time()
+}
+
+// Elapsed returns how long this request has been handled so far, measured from
+// StartTime. Called after the handler chain has run, it is the request latency.
+func (c *DefaultCtx) Elapsed() time.Duration {
+	return time.Since(c.fasthttp.Time())
+}
+
+// LocalAddr returns the server-side address of the connection this request
+// arrived on. IP returns the client address as a string; this is the full
+// net.Addr, so the port, network, and unix socket path survive.
+func (c *DefaultCtx) LocalAddr() net.Addr {
+	return c.fasthttp.LocalAddr()
+}
+
+// RemoteAddr returns the address of the immediate peer, which is the proxy
+// rather than the client when the app sits behind one. Use IP or IPs for the
+// client address a trusted proxy forwarded.
+func (c *DefaultCtx) RemoteAddr() net.Addr {
+	return c.fasthttp.RemoteAddr()
+}
+
+// Hijack registers a handler that takes over the connection once the response is
+// sent, for protocols Fiber does not speak. The connection then closes unless
+// KeepHijackedConns is set, and the handler must not touch the pooled Ctx.
+func (c *DefaultCtx) Hijack(handler fasthttp.HijackHandler) {
+	c.fasthttp.Hijack(handler)
+}
+
+// Hijacked returns true if Hijack has been called on this request, so a later
+// handler can tell that the connection is already spoken for and leave the
+// response alone.
+func (c *DefaultCtx) Hijacked() bool {
+	return c.fasthttp.Hijacked()
 }
 
 // String returns unique string representation of the ctx.
@@ -665,22 +809,14 @@ func (c *DefaultCtx) Value(key any) any {
 	return c.fasthttp.UserValue(key)
 }
 
-// xmlHTTPRequestBytes is precomputed for XHR detection
-var xmlHTTPRequestBytes = []byte("xmlhttprequest")
-
-// XHR returns a Boolean property, that is true, if the request's X-Requested-With header field is XMLHttpRequest,
-// indicating that the request was issued by a client library (such as jQuery).
-func (c *DefaultCtx) XHR() bool {
-	return utils.EqualFold(c.fasthttp.Request.Header.Peek(HeaderXRequestedWith), xmlHTTPRequestBytes)
-}
-
 // configDependentPaths set paths for route recognition and prepared paths for the user,
 // here the features for caseSensitive, decoded paths, strict paths are evaluated
 func (c *DefaultCtx) configDependentPaths() {
 	c.path = append(c.path[:0], c.pathOriginal...)
-	// If UnescapePath enabled, we decode the path and save it for the framework user
+	// If UnescapePath enabled, we decode the path and save it for the framework user.
+	// Decoded as a path, so a "+" stays a "+".
 	if c.app.config.UnescapePath {
-		c.path = fasthttp.AppendUnquotedArg(c.path[:0], c.path)
+		c.path = unescapePath(c.path)
 	}
 
 	// another path is specified which is for routing recognition only
@@ -720,6 +856,7 @@ func (c *DefaultCtx) Reset(fctx *fasthttp.RequestCtx) {
 	c.isMatched = false
 	c.shouldSkipNonUseRoutes = false
 	c.firstMatchIndex = -1
+	c.route = nil
 	// Set paths
 	c.pathOriginal = c.app.toString(fctx.URI().PathOriginal())
 	// Set method
@@ -749,6 +886,10 @@ func (c *DefaultCtx) release() {
 		ReleaseBind(c.bind)
 		c.bind = nil
 	}
+	// Zero the whole backing array before pooling: what lives here is the previous
+	// request's flash data, which for WithInput is its entire form.
+	// parseAndClearFlashMessages clears too, since UnmarshalMsg re-slices this.
+	clear(c.flashMessages[:cap(c.flashMessages)])
 	c.flashMessages = c.flashMessages[:0]
 	// Clear viewBindMap by deleting all keys (reuse underlying map if possible)
 	if c.viewBindMap != nil {
@@ -877,7 +1018,7 @@ func (c *DefaultCtx) Bind() *Bind {
 	if c.bind == nil {
 		c.bind = AcquireBind()
 	}
-	c.bind.ctx = c
+	c.bind.ctx = c.ctxForHandlers()
 	return c.bind
 }
 

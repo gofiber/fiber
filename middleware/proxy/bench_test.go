@@ -145,7 +145,7 @@ func BenchmarkStripHopByHop_NoConnection(b *testing.B) {
 		req.Reset()
 		seedNoConnectionRequest(req)
 		b.StartTimer()
-		stripHopByHopRequestHeaders(req)
+		stripHopByHopRequestHeaders(req, true)
 	}
 }
 
@@ -158,7 +158,7 @@ func BenchmarkStripHopByHop_WithConnection(b *testing.B) {
 		req.Reset()
 		seedWithConnectionRequest(req)
 		b.StartTimer()
-		stripHopByHopRequestHeaders(req)
+		stripHopByHopRequestHeaders(req, true)
 	}
 }
 
@@ -222,7 +222,7 @@ func BenchmarkFollowRedirects_NoRedirect(b *testing.B) {
 		req.Reset()
 		req.SetRequestURI(initialURL.String())
 		req.Header.SetMethod(fasthttp.MethodGet)
-		if err := followRedirects(cli, req, resp, 3, initialURL, policy); err != nil {
+		if err := followRedirects(cli, req, resp, 3, initialURL, policy, true); err != nil {
 			b.Fatal(err)
 		}
 	}

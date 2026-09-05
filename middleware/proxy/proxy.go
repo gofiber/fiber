@@ -13,7 +13,10 @@ import (
 	"github.com/gofiber/utils/v2/swar"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/crosshost"
 
+	"github.com/gofiber/fiber/v3/internal/fieldname"
+	"github.com/gofiber/fiber/v3/internal/headerlookup"
 	"github.com/valyala/fasthttp"
 )
 
@@ -80,12 +83,13 @@ func Balancer(config ...Config) fiber.Handler {
 		// Set request and response
 		req := c.Request()
 		res := c.Response()
+		normalized := headerlookup.Canonical(c)
 
 		if !policy.KeepHopByHopHeaders {
 			if cfg.KeepConnectionHeader {
-				stripHopByHopRequestHeaders(req, fiber.HeaderConnection)
+				stripHopByHopRequestHeaders(req, normalized, fiber.HeaderConnection)
 			} else {
-				stripHopByHopRequestHeaders(req)
+				stripHopByHopRequestHeaders(req, normalized)
 			}
 		}
 
@@ -234,6 +238,26 @@ func WithClient(cli *fasthttp.Client) {
 	client.Store(cli)
 }
 
+// realIPHeader is the field the proxy overwrites with the peer address Fiber
+// derived, so an upstream reading it sees this hop's view rather than the
+// client's claim.
+const realIPHeader = "X-Real-IP"
+
+// setRealIP replaces every inbound X-Real-IP field line with the peer address
+// Fiber derived. Set alone overwrites the first and leaves the rest, so a client
+// sending it twice kept a value of its own on the wire.
+func setRealIP(c fiber.Ctx) {
+	// Resolve the address before deleting anything: with ProxyHeader set to
+	// "X-Real-IP", c.IP() reads the very header being replaced, and deleting first
+	// handed the upstream an empty value.
+	ip := c.IP()
+	// Add, not Set: nothing is left to replace, and Add says what is meant.
+	// fieldname.Del rather than Del so a differently-spelled line does not
+	// survive beside it.
+	fieldname.Del(&c.Request().Header, realIPHeader, headerlookup.Canonical(c))
+	c.Request().Header.Add(realIPHeader, ip)
+}
+
 // Forward performs the given http request and fills the given http response.
 // This method will return a fiber.Handler
 //
@@ -244,7 +268,7 @@ func WithClient(cli *fasthttp.Client) {
 // a private one between validation and connection.
 func Forward(addr string, clients ...*fasthttp.Client) fiber.Handler {
 	return func(c fiber.Ctx) error {
-		c.Request().Header.Set("X-Real-IP", c.IP())
+		setRealIP(c)
 		return Do(c, addr, clients...)
 	}
 }
@@ -286,8 +310,9 @@ func Do(c fiber.Ctx, addr string, clients ...*fasthttp.Client) error {
 // cannot be rebound to a private IP between validation and connection.
 func DoRedirects(c fiber.Ctx, addr string, maxRedirectsCount int, clients ...*fasthttp.Client) error {
 	policy := currentSecurityPolicy()
+	normalized := headerlookup.Canonical(c)
 	return doActionWithPolicy(c, addr, policy, func(cli *fasthttp.Client, req *fasthttp.Request, resp *fasthttp.Response, u *url.URL) error {
-		return followRedirects(cli, req, resp, maxRedirectsCount, u, policy)
+		return followRedirects(cli, req, resp, maxRedirectsCount, u, policy, normalized)
 	}, clients...)
 }
 
@@ -368,8 +393,14 @@ func doActionWithPolicy(
 
 	req := c.Request()
 	res := c.Response()
+	normalized := headerlookup.Canonical(c)
 	originalURL := utils.CopyString(c.OriginalURL())
-	defer req.SetRequestURI(originalURL)
+	// fasthttp rewrote the Host header to the upstream's; put the client's back for later middleware.
+	originalHost := utils.CopyBytes(req.Header.Host())
+	defer func() {
+		req.SetRequestURI(originalURL)
+		req.Header.SetHostBytes(originalHost)
+	}()
 
 	req.SetRequestURI(u.String())
 	// SetScheme takes the string directly (fasthttp appends its bytes),
@@ -380,7 +411,7 @@ func doActionWithPolicy(
 	req.URI().SetScheme(u.Scheme)
 
 	if !policy.KeepHopByHopHeaders {
-		stripHopByHopRequestHeaders(req)
+		stripHopByHopRequestHeaders(req, normalized)
 	}
 	// The upstream connection speaks HTTP/1.1: reset a protocol token
 	// inherited from the inbound request (e.g. "HTTP/2" propagated by the
@@ -406,7 +437,7 @@ func doActionWithPolicy(
 // guaranteeing every SetRequestURI is fed a string from a
 // validateUpstream output — the property CodeQL's go/request-forgery
 // query needs to see.
-func followRedirects(cli *fasthttp.Client, req *fasthttp.Request, resp *fasthttp.Response, maxRedirects int, initialURL *url.URL, policy SecurityPolicy) error {
+func followRedirects(cli *fasthttp.Client, req *fasthttp.Request, resp *fasthttp.Response, maxRedirects int, initialURL *url.URL, policy SecurityPolicy, normalized bool) error { //nolint:revive // flag-parameter: normalized is a property of the header store
 	if maxRedirects < 0 {
 		maxRedirects = 0
 	}
@@ -453,24 +484,16 @@ func followRedirects(cli *fasthttp.Client, req *fasthttp.Request, resp *fasthttp
 		// secrets bound to the original origin are not leaked to a third
 		// party (RFC 9110 §15.4 advisory; matches browser behavior).
 		if !utils.EqualFold(nextURL.Host, currentHost) {
-			stripCrossHostHeaders(req)
+			stripCrossHostHeaders(req, normalized)
 			currentHost = nextURL.Host
 		}
 		currentURL = nextURL
 	}
 }
 
-// crossHostSensitiveHeaders lists headers that carry credentials bound to
-// a specific origin and must not survive a redirect to a different host.
-var crossHostSensitiveHeaders = []string{
-	fiber.HeaderAuthorization,
-	fiber.HeaderProxyAuthorization,
-	fiber.HeaderCookie,
-}
-
-func stripCrossHostHeaders(req *fasthttp.Request) {
-	for _, h := range crossHostSensitiveHeaders {
-		req.Header.Del(h)
+func stripCrossHostHeaders(req *fasthttp.Request, normalized bool) { //nolint:revive // flag-parameter: normalized is a property of the header store
+	for _, h := range crosshost.SensitiveHeaders {
+		fieldname.Del(&req.Header, h, normalized)
 	}
 }
 
@@ -570,6 +593,20 @@ func selectClient(globalClient *fasthttp.Client, clients ...*fasthttp.Client) (*
 // when AllowPrivateIPs is false the dispatching client's dial-time guard
 // re-validates the resolved IP at connect time — so a rebinding-capable
 // resolver cannot reach a private address through this handler.
+// hostWithoutPort strips the port from a Host header value, keeping a bracketed IPv6 literal.
+func hostWithoutPort(host string) string {
+	if strings.HasPrefix(host, "[") {
+		if end := strings.IndexByte(host, ']'); end != -1 {
+			return host[:end+1]
+		}
+		return host
+	}
+	if i := strings.LastIndexByte(host, ':'); i != -1 && strings.IndexByte(host[:i], ':') == -1 {
+		return host[:i]
+	}
+	return host
+}
+
 func DomainForward(hostname, addr string, clients ...*fasthttp.Client) fiber.Handler {
 	base, err := validateUpstream(addr, currentSecurityPolicy())
 	if err != nil {
@@ -581,11 +618,12 @@ func DomainForward(hostname, addr string, clients ...*fasthttp.Client) fiber.Han
 		// EqualFold — otherwise "API.Example.com" would slip past a
 		// DomainForward("api.example.com", ...) gate and be passed
 		// through unproxied.
+		// Match the host with or without its port; another host is passed on to the next handler.
 		host := utils.UnsafeString(c.Request().Host())
-		if !utils.EqualFold(host, hostname) {
-			return nil
+		if !utils.EqualFold(host, hostname) && !utils.EqualFold(hostWithoutPort(host), hostname) {
+			return c.Next()
 		}
-		c.Request().Header.Set("X-Real-IP", c.IP())
+		setRealIP(c)
 		return doActionWithPolicy(c, joinUpstreamPath(base, c.OriginalURL()), currentSecurityPolicy(),
 			func(cli *fasthttp.Client, req *fasthttp.Request, resp *fasthttp.Response, _ *url.URL) error {
 				return cli.Do(req, resp)
@@ -602,6 +640,9 @@ type urlRoundrobin struct {
 	next atomic.Uint64
 }
 
+// Compare-and-swap rather than a bare Add, so the counter holds the next index
+// already reduced into the pool and the sequence stays a strict round-robin
+// across a wrap. The modulo also reduces a counter this loop did not produce.
 func (r *urlRoundrobin) get() *url.URL {
 	poolSize := uint64(len(r.pool))
 	for {
@@ -644,7 +685,7 @@ func BalancerForward(servers []string, clients ...*fasthttp.Client) fiber.Handle
 	r := &urlRoundrobin{pool: bases}
 	return func(c fiber.Ctx) error {
 		base := r.get()
-		c.Request().Header.Set("X-Real-IP", c.IP())
+		setRealIP(c)
 		return doActionWithPolicy(c, joinUpstreamPath(base, c.OriginalURL()), currentSecurityPolicy(),
 			func(cli *fasthttp.Client, req *fasthttp.Request, resp *fasthttp.Response, _ *url.URL) error {
 				return cli.Do(req, resp)

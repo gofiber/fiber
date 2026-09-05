@@ -197,10 +197,13 @@ func Test_Logger_TimeUpdaterStopsOnDone(t *testing.T) {
 
 	initial, ok := timestamp.Load().(string)
 	require.True(t, ok)
-	time.Sleep(20 * time.Millisecond)
-	updated, ok := timestamp.Load().(string)
-	require.True(t, ok)
-	require.NotEqual(t, initial, updated)
+	// Wait for a tick rather than assume one lands inside a fixed sleep: the
+	// updater is a goroutine on a 5ms ticker, and a loaded machine ran the whole
+	// sleep before scheduling it.
+	require.Eventually(t, func() bool {
+		updated, isString := timestamp.Load().(string)
+		return isString && updated != initial
+	}, time.Second, time.Millisecond, "timestamp was never updated")
 
 	close(done)
 	select {
@@ -2027,4 +2030,243 @@ func Test_SanitizeValue(t *testing.T) {
 			require.Equal(t, sanitizeLogValue(tc.in), SanitizeValue(tc.in))
 		})
 	}
+}
+
+// Test_Logger_IPs_RepeatedFieldLines asserts ${ips} logs every X-Forwarded-For
+// field line, not just the first.
+//
+// A recipient may combine repeated field lines into the comma-joined form (RFC
+// 9110 §5.2), and Fiber's proxy-header accessors do exactly that — so reading
+// only the first here logged a shorter chain than the one c.IP() and c.IPs()
+// parsed, and the access log did not explain what was actually enforced.
+func Test_Logger_IPs_RepeatedFieldLines(t *testing.T) {
+	t.Parallel()
+
+	buf := bytebufferpool.Get()
+	defer bytebufferpool.Put(buf)
+
+	app := fiber.New(fiber.Config{TrustProxy: true})
+	app.Use(New(Config{Format: "${ips}", Stream: buf}))
+	app.Get("/", func(c fiber.Ctx) error { return c.SendString("hi") })
+
+	raw := "GET / HTTP/1.1\r\nHost: example.com\r\n" +
+		"X-Forwarded-For: 1.1.1.1\r\n" +
+		"X-Forwarded-For: 2.2.2.2, 3.3.3.3\r\n\r\n"
+
+	req := fasthttp.AcquireRequest()
+	defer fasthttp.ReleaseRequest(req)
+	require.NoError(t, req.Read(bufio.NewReader(strings.NewReader(raw))))
+
+	fctx := &fasthttp.RequestCtx{}
+	fctx.Init(req, nil, nil)
+	app.Handler()(fctx)
+
+	require.Equal(t, "1.1.1.1,2.2.2.2,3.3.3.3", buf.String(),
+		"every field line must be logged, as the chain the framework parsed")
+}
+
+// Test_Logger_IPs_WithoutHeaderNormalizing asserts the tag logs the chain the
+// framework acted on, whatever case the field name arrived in.
+//
+// Reading the header here rather than asking c.IPs() meant reading it a second
+// way, and PeekAll compares stored names byte for byte — so under
+// DisableHeaderNormalizing a lower-case "x-forwarded-for:" matched nothing and
+// the tag logged an empty chain, while c.IPs() went on parsing it and the trust
+// decisions went on using it.
+func Test_Logger_IPs_WithoutHeaderNormalizing(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name    string
+		lines   []string
+		disable bool
+	}{
+		{"normalized, one line", []string{"X-Forwarded-For: 1.1.1.1, 2.2.2.2"}, false},
+		{"raw, lower-case name", []string{"x-forwarded-for: 1.1.1.1, 2.2.2.2"}, true},
+		{"normalized, two lines", []string{"X-Forwarded-For: 1.1.1.1", "X-Forwarded-For: 2.2.2.2"}, false},
+		{"raw, mixed-case names", []string{"x-forwarded-for: 1.1.1.1", "X-Forwarded-For: 2.2.2.2"}, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			buf := bytebufferpool.Get()
+			defer bytebufferpool.Put(buf)
+
+			app := fiber.New(fiber.Config{
+				TrustProxy:               true,
+				DisableHeaderNormalizing: tc.disable,
+			})
+			app.Use(New(Config{Format: "${ips}", Stream: buf}))
+			app.Get("/", func(c fiber.Ctx) error { return c.SendString("hi") })
+
+			parts := []string{"GET / HTTP/1.1\r\nHost: example.com\r\n"}
+			for _, l := range tc.lines {
+				parts = append(parts, l+"\r\n")
+			}
+			raw := strings.Join(append(parts, "\r\n"), "")
+
+			req := fasthttp.AcquireRequest()
+			defer fasthttp.ReleaseRequest(req)
+			if tc.disable {
+				req.Header.DisableNormalizing()
+			}
+			require.NoError(t, req.Read(bufio.NewReader(strings.NewReader(raw))))
+
+			fctx := &fasthttp.RequestCtx{}
+			fctx.Init(req, nil, nil)
+			app.Handler()(fctx)
+
+			require.Equal(t, "1.1.1.1,2.2.2.2", buf.String(),
+				"the log must show the chain the trust decisions used")
+		})
+	}
+}
+
+// Test_Logger_RegisterContextTag_Sanitizes pins that a value rendered by a
+// registered context tag cannot close the log line it is written on.
+//
+// Every built-in tag passes through the sanitizer; this path did not, so a CR
+// or LF in whatever the application pulled out of the context — in practice
+// request data — started a second entry the reader has no way to tell from a
+// real one.
+func Test_Logger_RegisterContextTag_Sanitizes(t *testing.T) {
+	t.Parallel()
+
+	// Both registries are mutex-guarded and re-registering replaces rather
+	// than fails, so this runs in parallel like every other registry test in
+	// the package. The name has to be its own, though: registration is global
+	// and outlives the test whether or not it is parallel.
+	RegisterContextTag("sanitize-probe", func(_ any) string {
+		return "before\r\nGET /forged HTTP/1.1\nafter"
+	})
+
+	var buf bytes.Buffer
+	app := fiber.New()
+	app.Use(New(Config{
+		Format: "${sanitize-probe}\n",
+		Stream: &buf,
+	}))
+	app.Get("/", func(c fiber.Ctx) error { return c.SendString("ok") })
+
+	_, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+	require.NoError(t, err)
+
+	line := buf.String()
+	require.NotContains(t, line, "\r", "a CR must not reach the log")
+	require.Equal(t, 1, strings.Count(line, "\n"), "the entry must occupy one line: %q", line)
+	require.Contains(t, line, "before")
+	require.Contains(t, line, "after")
+}
+
+// Test_TagIPs_PropagatesWriteErrors pins the short-circuits in the ${ips} tag.
+// A sink that fails partway must stop and surface the error rather than
+// carrying on, and the count returned must reflect only what reached the sink.
+func Test_TagIPs_PropagatesWriteErrors(t *testing.T) {
+	t.Parallel()
+
+	// A trusted proxy, so c.IPs() returns the forwarded chain rather than
+	// nothing at all — the tag needs more than one entry to reach the
+	// separator between them.
+	app := fiber.New(fiber.Config{
+		TrustProxy:       true,
+		TrustProxyConfig: fiber.TrustProxyConfig{Loopback: true},
+	})
+	tag := createTagMap(&ConfigDefault)[TagIPs]
+
+	withChain := func(t *testing.T, chain string) fiber.Ctx {
+		t.Helper()
+		fctx := &fasthttp.RequestCtx{}
+		fctx.Request.Header.SetMethod(fiber.MethodGet)
+		fctx.Request.SetRequestURI("/")
+		fctx.Request.Header.Set(fiber.HeaderXForwardedFor, chain)
+		c := app.AcquireCtx(fctx)
+		t.Cleanup(func() { app.ReleaseCtx(c) })
+		return c
+	}
+
+	t.Run("the whole chain is written", func(t *testing.T) {
+		t.Parallel()
+
+		buf := bytebufferpool.Get()
+		defer bytebufferpool.Put(buf)
+
+		n, err := tag(buf, withChain(t, "1.1.1.1, 2.2.2.2"), nil, "")
+		require.NoError(t, err)
+		require.Equal(t, "1.1.1.1,2.2.2.2", buf.String())
+		require.Equal(t, len(buf.String()), n)
+	})
+
+	t.Run("the first entry fails", func(t *testing.T) {
+		t.Parallel()
+
+		buf := &failingBuffer{ByteBuffer: bytebufferpool.Get(), failAfter: 0}
+		defer bytebufferpool.Put(buf.ByteBuffer)
+
+		n, err := tag(buf, withChain(t, "1.1.1.1, 2.2.2.2"), nil, "")
+		require.ErrorIs(t, err, errWriteFailed)
+		require.Zero(t, n)
+	})
+
+	t.Run("the separator fails", func(t *testing.T) {
+		t.Parallel()
+
+		// One successful write for the first address, then the "," fails.
+		buf := &failingBuffer{ByteBuffer: bytebufferpool.Get(), failAfter: 1}
+		defer bytebufferpool.Put(buf.ByteBuffer)
+
+		n, err := tag(buf, withChain(t, "1.1.1.1, 2.2.2.2"), nil, "")
+		require.ErrorIs(t, err, errWriteFailed)
+		require.Equal(t, len("1.1.1.1"), n, "only the first address reached the sink")
+	})
+
+	t.Run("the second entry fails", func(t *testing.T) {
+		t.Parallel()
+
+		// The first address and the separator succeed; the second fails.
+		buf := &failingBuffer{ByteBuffer: bytebufferpool.Get(), failAfter: 2}
+		defer bytebufferpool.Put(buf.ByteBuffer)
+
+		n, err := tag(buf, withChain(t, "1.1.1.1, 2.2.2.2"), nil, "")
+		require.ErrorIs(t, err, errWriteFailed)
+		require.Equal(t, len("1.1.1.1,"), n)
+	})
+}
+
+func Test_Logger_ResBody_DoesNotDrainStream(t *testing.T) {
+	t.Parallel()
+
+	var logged bytes.Buffer
+	app := fiber.New()
+	app.Use(New(Config{
+		Format: "[${resBody}]",
+		Stream: &logged,
+	}))
+	app.Get("/events", func(c fiber.Ctx) error {
+		return c.SendStreamWriter(func(w *bufio.Writer) {
+			w.WriteString("data: one\n\n") //nolint:errcheck // nothing to do with a stream-writer error here
+			w.Flush()                      //nolint:errcheck // same
+		})
+	})
+
+	fctx := &fasthttp.RequestCtx{}
+	fctx.Request.SetRequestURI("/events")
+	fctx.Request.Header.SetMethod(fiber.MethodGet)
+	app.Handler()(fctx)
+
+	require.True(t, fctx.Response.IsBodyStream(), "logging must leave a streamed response streamed")
+	require.Equal(t, "[]", logged.String(), "and it logs nothing rather than the buffered stream")
+
+	logged.Reset()
+	buffered := fiber.New()
+	buffered.Use(New(Config{Format: "[${resBody}]", Stream: &logged}))
+	buffered.Get("/", func(c fiber.Ctx) error {
+		return c.SendString("hello")
+	})
+
+	bctx := &fasthttp.RequestCtx{}
+	bctx.Request.SetRequestURI("/")
+	bctx.Request.Header.SetMethod(fiber.MethodGet)
+	buffered.Handler()(bctx)
+
+	require.Equal(t, "[hello]", logged.String())
 }
