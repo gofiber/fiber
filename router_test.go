@@ -4824,3 +4824,68 @@ func Test_Router_PathOverride_ContinuesInNewBucket(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "aaa x", string(body))
 }
+
+func Test_Router_Constraints_MixedCaseNames(t *testing.T) {
+	t.Parallel()
+
+	// Built-in constraint names are matched case-insensitively, whatever the
+	// pattern spells them, and through every entry point that parses one.
+	//nolint:usestdlibvars // route constraint names, not go/constant kinds
+	names := []string{"INT", "Int", "iNt", "int", "BOOL", "Guid", "ALPHA", "Float", "minLen(3)", "Range(5,10)"}
+	//nolint:usestdlibvars // route constraint names, not go/constant kinds
+	reject := map[string]string{
+		"INT": "abc", "Int": "abc", "iNt": "abc", "int": "abc",
+		"BOOL": "abc", "Guid": "abc", "ALPHA": "123", "Float": "abc",
+		"minLen(3)": "ab", "Range(5,10)": "99",
+	}
+
+	for _, name := range names {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			app := New()
+			pattern := "/:id<" + name + ">"
+			app.Get(pattern, func(c Ctx) error { return c.SendString(c.Params("id")) })
+
+			sub := New()
+			sub.Get(pattern, func(c Ctx) error { return c.SendString(c.Params("id")) })
+			app.Use("/api", sub)
+
+			bad := "/" + reject[name]
+			resp, err := app.Test(httptest.NewRequest(MethodGet, bad, http.NoBody))
+			require.NoError(t, err)
+			require.Equal(t, StatusNotFound, resp.StatusCode, "%s did not enforce %q", pattern, bad)
+
+			resp, err = app.Test(httptest.NewRequest(MethodGet, "/api"+bad, http.NoBody))
+			require.NoError(t, err)
+			require.Equal(t, StatusNotFound, resp.StatusCode, "mounted %s did not enforce %q", pattern, bad)
+
+			require.False(t, RoutePatternMatch(bad, pattern), "RoutePatternMatch accepted %q for %s", bad, pattern)
+		})
+	}
+}
+
+func Test_App_AutoHead_PanickingHookLeavesScanIncomplete(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	fail := true
+	// Only the synthesized companion fails, so registration itself succeeds.
+	app.Hooks().OnRoute(func(r Route) error {
+		if fail && r.Method == MethodHead {
+			return errors.New("boom")
+		}
+		return nil
+	})
+	app.Get("/ping", func(c Ctx) error { return c.SendString("pong") })
+
+	require.Panics(t, func() { app.RebuildTree() })
+
+	// The aborted scan must not be recorded as complete, or HEAD stays 405.
+	fail = false
+	app.RebuildTree()
+
+	resp, err := app.Test(httptest.NewRequest(MethodHead, "/ping", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, StatusOK, resp.StatusCode)
+}

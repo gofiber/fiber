@@ -377,7 +377,8 @@ func (d *domainRouter) Use(args ...any) Router {
 
 	for _, prefix := range prefixes {
 		if subApp != nil {
-			return d.mount(prefix, subApp)
+			d.mount(prefix, subApp)
+			continue
 		}
 
 		wrapped := d.wrapHandlers(handlers)

@@ -1776,7 +1776,10 @@ func (app *App) hookConnState() {
 	app.connStateHooked = true
 	user := app.server.ConnState
 	app.server.ConnState = func(conn net.Conn, state fasthttp.ConnState) {
-		if state == fasthttp.StateNew || state == fasthttp.StateClosed {
+		// StateHijacked is terminal too: fasthttp never reports StateClosed after
+		// it, so a hijacked connection (every WebSocket upgrade) would strand its
+		// record.
+		if state == fasthttp.StateNew || state == fasthttp.StateClosed || state == fasthttp.StateHijacked {
 			app.mutex.Lock()
 			handler := app.tlsHandler
 			app.mutex.Unlock()

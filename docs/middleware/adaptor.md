@@ -299,7 +299,9 @@ When you do need it, call it immediately after you add values to the `net/http`
 context so Fiber can read them via `c.Locals()`. Values are copied from the
 chain of derived contexts (`WithValue`, `WithCancel`, `WithTimeout`,
 `WithDeadline`, `WithoutCancel`), the innermost value winning for a key set
-twice. The walk up the chain stops after 64 levels:
+twice. The walk follows the chain to its end and stops only where it would
+repeat itself, so a deep middleware stack keeps its outermost values and a
+context pointing back at itself still terminates:
 
 ```go
 package main

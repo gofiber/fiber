@@ -514,17 +514,22 @@ func HTTPMiddleware(mw func(http.Handler) http.Handler) fiber.Handler {
 			fhdr.SetMethod(r.Method)
 			// A rewrite of r.URL (http.StripPrefix) leaves RequestURI untouched; route the URL.
 			requestURI := r.RequestURI
+			newPath := ""
 			if r.URL != nil {
 				if rewritten := r.URL.RequestURI(); rewritten != "" && rewritten != requestURI {
 					requestURI = rewritten
+					// Clone now: r.URL aliases the storage SetRequestURI overwrites.
+					newPath = strings.Clone(r.URL.EscapedPath())
 				}
 			}
 			freq.SetRequestURI(requestURI)
 			freq.SetHost(r.Host)
 			fhdr.SetHost(r.Host)
-			// The router matches the path derived at request start, so install the rewritten one too.
-			if path := string(freq.URI().Path()); path != c.Path() {
-				c.Path(path)
+			// Only a genuine rewrite re-routes. The decoded path differs from the raw
+			// one for every escaped or non-canonical request, and overriding it there
+			// re-buckets the tree, resuming the chain past middleware that already ran.
+			if newPath != "" && newPath != c.Path() {
+				c.Path(newPath)
 			}
 
 			// Remove all cookies before setting, see https://github.com/valyala/fasthttp/pull/1864

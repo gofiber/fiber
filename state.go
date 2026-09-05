@@ -285,12 +285,31 @@ func (s *State) deleteService(srv Service) {
 	s.servicesMu.Unlock()
 }
 
-// startedServices returns a copy of the started services in start order.
-func (s *State) startedServices() []Service {
+// takeStartedServices removes the started services and returns them in start
+// order. Shutdown drains rather than copies: two callers handed the same copy
+// each terminate every service, and a service is only removed once it has
+// already been terminated, too late to stop the second call.
+func (s *State) takeStartedServices() []Service {
 	s.servicesMu.Lock()
 	defer s.servicesMu.Unlock()
 
-	return append([]Service(nil), s.services...)
+	services := s.services
+	s.services = nil
+
+	return services
+}
+
+// restoreStartedServices puts services that would not terminate back at the
+// front, in start order, so a later shutdown retries them.
+func (s *State) restoreStartedServices(services []Service) {
+	if len(services) == 0 {
+		return
+	}
+
+	s.servicesMu.Lock()
+	defer s.servicesMu.Unlock()
+
+	s.services = append(services, s.services...)
 }
 
 // serviceKeys returns a slice containing all keys present for services in the application's State.

@@ -988,3 +988,52 @@ func Test_StartServices_DuplicateNames(t *testing.T) {
 		})
 	})
 }
+
+// countingService records how many times it was terminated.
+type countingService struct {
+	terminations *atomic.Int32
+	mockService
+}
+
+func (s *countingService) Terminate(ctx context.Context) error {
+	s.terminations.Add(1)
+	return s.mockService.Terminate(ctx)
+}
+
+func Test_ShutdownServices_ConcurrentCallersTerminateOnce(t *testing.T) {
+	t.Parallel()
+
+	const (
+		count   = 3
+		callers = 4
+	)
+	counters := make([]*atomic.Int32, count)
+	services := make([]Service, 0, count)
+	for i := range count {
+		counters[i] = &atomic.Int32{}
+		services = append(services, &countingService{
+			mockService:  mockService{name: fmt.Sprintf("dep%d", i), terminateDelay: 10 * time.Millisecond},
+			terminations: counters[i],
+		})
+	}
+
+	app := &App{configured: Config{Services: services}, state: newState()}
+	require.NoError(t, app.startServices(context.Background()))
+
+	var wg sync.WaitGroup
+	errs := make([]error, callers)
+	for i := range callers {
+		wg.Go(func() {
+			errs[i] = app.shutdownServices(context.Background())
+		})
+	}
+	wg.Wait()
+
+	for _, err := range errs {
+		require.NoError(t, err)
+	}
+	for i, counter := range counters {
+		require.Equal(t, int32(1), counter.Load(), "dep%d was terminated %d times", i, counter.Load())
+	}
+	require.Zero(t, app.state.ServicesLen())
+}

@@ -1191,10 +1191,13 @@ func (app *App) ensureAutoHeadRoutesLocked() {
 	if app.autoHeadRouteID == currentRouteID && app.autoHeadStackLen == len(app.stack[headIndex]) {
 		return
 	}
-	defer func() {
+	// Recorded on the normal exits only: a panicking OnRoute hook must not leave
+	// an aborted scan marked complete, which would keep every HEAD request that
+	// needed a companion at 405 for the lifetime of the process.
+	recordScan := func() {
 		app.autoHeadRouteID = routeIDs.Load()
 		app.autoHeadStackLen = len(app.stack[headIndex])
-	}()
+	}
 
 	headStack := app.stack[headIndex]
 	existing := make(map[autoHeadKey]struct{}, len(headStack))
@@ -1206,6 +1209,7 @@ func (app *App) ensureAutoHeadRoutesLocked() {
 	}
 
 	if len(app.stack[getIndex]) == 0 {
+		recordScan()
 		return
 	}
 
@@ -1253,6 +1257,7 @@ func (app *App) ensureAutoHeadRoutesLocked() {
 	if added {
 		app.stack[headIndex] = headStack
 	}
+	recordScan()
 }
 
 // RebuildTree rebuilds the prefix tree from the previously registered routes.

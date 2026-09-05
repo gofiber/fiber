@@ -11607,3 +11607,48 @@ func Test_TLSHandler_ForgetsRecycledWrapper(t *testing.T) {
 	_, ok = handler.serverConns.Load(wrapper)
 	require.False(t, ok)
 }
+
+func Test_TLSHandler_ForgetsHijackedConnection(t *testing.T) {
+	t.Parallel()
+
+	raw, peer := net.Pipe()
+	t.Cleanup(func() {
+		require.NoError(t, raw.Close())
+		require.NoError(t, peer.Close())
+	})
+	// No handshake runs; the connection only carries identity.
+	tlsConn := tls.Client(raw, &tls.Config{InsecureSkipVerify: true})
+
+	app := New()
+	app.SetTLSHandler(&TLSHandler{})
+	app.mutex.Lock()
+	app.hookConnState()
+	app.mutex.Unlock()
+	report := app.Server().ConnState
+
+	handler := app.tlsHandler
+	report(tlsConn, fasthttp.StateNew)
+	_, err := handler.GetClientInfo(&tls.ClientHelloInfo{Conn: raw, ServerName: "ws"})
+	require.NoError(t, err)
+	require.NotNil(t, handler.clientHelloInfo(tlsConn))
+
+	// fasthttp never reports StateClosed after a hijack, so it has to be terminal here.
+	report(tlsConn, fasthttp.StateHijacked)
+	require.Nil(t, handler.clientHelloInfo(tlsConn))
+	_, ok := handler.serverConns.Load(tlsConn)
+	require.False(t, ok)
+}
+
+// sliceFS is a file system whose identity lives in a slice header, so two
+// prefixes of one backing array share an element pointer.
+type sliceFS []string
+
+func (sliceFS) Open(string) (fs.File, error) { return nil, fs.ErrNotExist }
+
+func Test_SameFS_SliceLength(t *testing.T) {
+	t.Parallel()
+
+	backing := sliceFS{"a", "b", "c"}
+	require.False(t, sameFS(backing[:1], backing[:2]))
+	require.True(t, sameFS(backing[:2], backing[:2]))
+}

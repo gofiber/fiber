@@ -3742,9 +3742,11 @@ func (r fiber.Res) SendFile(file string, config ...SendFile) error
 app.Get("/not-found", func(c fiber.Ctx) error {
   return c.SendFile("./public/404.html")
 
-  // Disable compression
+  // Serve pre-compressed copies, caching them to save CPU. This is the file
+  // server's own compression, not the compress middleware, which keeps
+  // compressing the response either way.
   return c.SendFile("./static/index.html", fiber.SendFile{
-    Compress: false,
+    Compress: true,
   })
 })
 ```

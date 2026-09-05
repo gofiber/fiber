@@ -124,13 +124,14 @@ func (app *App) startServices(ctx context.Context) error {
 // Iterates over all the started services in reverse start order and tries to terminate them,
 // returning an error if any error occurs.
 func (app *App) shutdownServices(ctx context.Context) error {
-	services := app.state.startedServices()
+	services := app.state.takeStartedServices()
 	if len(services) == 0 {
 		return nil
 	}
 
 	var errs []error
-	for _, srv := range slices.Backward(services) {
+	terminated := make([]bool, len(services))
+	for i, srv := range slices.Backward(services) {
 		if err := ctx.Err(); err != nil {
 			// Context is canceled, do a best effort to terminate the services.
 			errs = append(errs, fmt.Errorf("service %s terminate: %w", srv.String(), err))
@@ -144,9 +145,20 @@ func (app *App) shutdownServices(ctx context.Context) error {
 			continue
 		}
 
+		terminated[i] = true
 		// Remove the service from the State
 		app.state.deleteService(srv)
 	}
+
+	// One that would not terminate goes back, so a later shutdown retries it.
+	var remaining []Service
+	for i, srv := range services {
+		if !terminated[i] {
+			remaining = append(remaining, srv)
+		}
+	}
+	app.state.restoreStartedServices(remaining)
+
 	return errors.Join(errs...)
 }
 

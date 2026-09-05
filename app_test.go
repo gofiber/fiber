@@ -3935,3 +3935,38 @@ func Test_App_Shutdown_HookRegistrationNoRace(t *testing.T) {
 	})
 	wg.Wait()
 }
+
+func Test_Group_Use_MultiplePrefixes_MountsEachPrefix(t *testing.T) {
+	t.Parallel()
+
+	sub := New()
+	sub.Get("/ping", func(c Ctx) error { return c.SendString("pong") })
+
+	app := New()
+	grp := app.Group("/g")
+	grp.Use([]string{"/one", "/two"}, sub)
+
+	for _, prefix := range []string{"/g/one/ping", "/g/two/ping"} {
+		resp, err := app.Test(httptest.NewRequest(MethodGet, prefix, http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, StatusOK, resp.StatusCode, "%s was not mounted", prefix)
+	}
+}
+
+func Test_Domain_Use_MultiplePrefixes_MountsEachPrefix(t *testing.T) {
+	t.Parallel()
+
+	sub := New()
+	sub.Get("/ping", func(c Ctx) error { return c.SendString("pong") })
+
+	app := New()
+	app.Domain("example.com").Use([]string{"/one", "/two"}, sub)
+
+	for _, prefix := range []string{"/one/ping", "/two/ping"} {
+		req := httptest.NewRequest(MethodGet, prefix, http.NoBody)
+		req.Host = "example.com"
+		resp, err := app.Test(req)
+		require.NoError(t, err)
+		require.Equal(t, StatusOK, resp.StatusCode, "%s was not mounted", prefix)
+	}
+}

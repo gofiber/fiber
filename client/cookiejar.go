@@ -843,13 +843,16 @@ func isPublicSuffixDomain(domain string) bool {
 // last one and a value that is not an integer is ignored (RFC 6265 §5.2.2).
 // The raw value has to be read because fasthttp cannot answer this — it parses
 // MaxAge as 0 whether the attribute is absent, zero or negative.
-func lastMaxAge(value []byte) (int, bool) {
+func lastMaxAge(value []byte) (int64, bool) {
 	_, rest, found := bytes.Cut(value, []byte{';'})
 	if !found {
 		return 0, false
 	}
 
-	seconds, ok := 0, false
+	// Parsed at 64 bits: int is 32 bits on 386 and arm, where a Max-Age past
+	// two billion would fail to parse and silently downgrade a persistent
+	// cookie to a session one.
+	seconds, ok := int64(0), false
 	for len(rest) > 0 {
 		var part []byte
 		part, rest, _ = bytes.Cut(rest, []byte{';'})
@@ -857,7 +860,7 @@ func lastMaxAge(value []byte) (int, bool) {
 		if !hasValue || !utils.EqualFold(utils.UnsafeString(utils.TrimSpace(name)), "max-age") {
 			continue
 		}
-		if n, err := strconv.Atoi(utils.UnsafeString(utils.TrimSpace(raw))); err == nil {
+		if n, err := strconv.ParseInt(utils.UnsafeString(utils.TrimSpace(raw)), 10, 64); err == nil {
 			seconds, ok = n, true
 		}
 	}
@@ -881,8 +884,8 @@ func applyMaxAge(c *fasthttp.Cookie, now time.Time, value []byte) {
 // maxAgeDuration converts Max-Age seconds to a duration, saturating at the
 // longest one a time.Duration holds: a lifetime too far out to express is still
 // a lifetime, not the expiry in the past that overflowing would produce.
-func maxAgeDuration(seconds int) time.Duration {
-	if int64(seconds) > int64(math.MaxInt64/time.Second) {
+func maxAgeDuration(seconds int64) time.Duration {
+	if seconds > int64(math.MaxInt64/time.Second) {
 		return math.MaxInt64
 	}
 	return time.Duration(seconds) * time.Second

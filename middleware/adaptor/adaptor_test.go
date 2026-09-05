@@ -2742,3 +2742,43 @@ func Test_CopyContextToFiberContext_Cycle(t *testing.T) {
 	require.NotPanics(t, func() { CopyContextToFiberContext(loop, &fctx) })
 	require.Equal(t, "1", fctx.UserValue(key("a")))
 }
+
+func Test_HTTPMiddleware_NoRewriteKeepsChainPosition(t *testing.T) {
+	t.Parallel()
+
+	// Spellings whose decoded path differs from the raw one the router matched.
+	paths := []string{
+		"/api%2Fadmin/secret",
+		"//admin/secret",
+		"/./admin/secret",
+		"/x/../admin/secret",
+		"/adm%69n/secret",
+	}
+
+	for _, path := range paths {
+		t.Run(path, func(t *testing.T) {
+			t.Parallel()
+
+			var authRan atomic.Bool
+			app := fiber.New()
+			app.Use("/api/admin", func(_ fiber.Ctx) error {
+				authRan.Store(true)
+				return fiber.ErrForbidden
+			})
+			app.Use(HTTPMiddleware(func(next http.Handler) http.Handler {
+				return next
+			}))
+			app.Get("/api/admin/secret", func(c fiber.Ctx) error {
+				return c.SendString("SECRET")
+			})
+
+			resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, path, http.NoBody))
+			require.NoError(t, err)
+			body, err := io.ReadAll(resp.Body)
+			require.NoError(t, err)
+			require.NotEqual(t, "SECRET", string(body), "the adaptor resumed past the guard that already ran")
+			require.Equal(t, fiber.StatusNotFound, resp.StatusCode)
+			require.False(t, authRan.Load())
+		})
+	}
+}

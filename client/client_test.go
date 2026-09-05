@@ -2912,3 +2912,14 @@ func Test_Client_UppercaseScheme(t *testing.T) {
 	defer resp.Close()
 	require.Equal(t, "ok", resp.String())
 }
+
+func Test_CookieJar_MaxAgeBeyond32Bit(t *testing.T) {
+	t.Parallel()
+
+	// int is 32 bits on 386 and arm, where this used to fail to parse and leave
+	// a session cookie behind.
+	seconds, ok := lastMaxAge([]byte("sid=x; Max-Age=3000000000"))
+	require.True(t, ok)
+	require.Equal(t, int64(3000000000), seconds)
+	require.Equal(t, 3000000000*time.Second, maxAgeDuration(seconds))
+}

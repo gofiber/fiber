@@ -116,12 +116,16 @@ func sameFS(a, b fs.FS) bool {
 	if va.Type() != vb.Type() {
 		return false
 	}
-	if va.Comparable() && vb.Comparable() {
+	if va.Type().Comparable() {
 		return a == b
 	}
 
 	switch va.Kind() {
-	case reflect.Map, reflect.Slice, reflect.Chan, reflect.Pointer, reflect.UnsafePointer:
+	case reflect.Slice:
+		// Pointer() is &elem[0] and ignores the length, so two prefixes of one
+		// backing array would otherwise look like the same file system.
+		return va.Pointer() == vb.Pointer() && va.Len() == vb.Len()
+	case reflect.Map, reflect.Chan, reflect.Pointer, reflect.UnsafePointer:
 		return va.Pointer() == vb.Pointer()
 	default:
 		// A func's pointer is its code entry, shared by every closure over the
