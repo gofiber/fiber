@@ -355,7 +355,7 @@ func (r *Redirect) Route(name string, config ...RedirectConfig) error {
 
 	// Get location from route name. The composed path is already held to this
 	// origin — see asRoutePath — so only the query is left to place.
-	route := r.c.App().GetRoute(name)
+	route := r.c.App().routeForURL(name)
 	location, err := r.c.getLocationFromRoute(&route, cfg.Params)
 	if err != nil {
 		return err

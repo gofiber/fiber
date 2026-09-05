@@ -187,7 +187,7 @@ func (app *App) mount(prefix string, subApp *App) Router {
 
 	// register mounted group
 	mountGroup := &Group{Prefix: prefix, app: subApp}
-	app.register([]string{methodUse}, prefix, mountGroup)
+	app.register([]string{methodUse}, prefix, mountGroup, "")
 
 	// Execute onMount hooks
 	if err := subApp.hooks.executeOnMountHooks(app); err != nil {
@@ -219,7 +219,9 @@ func (grp *Group) mount(prefix string, subApp *App) Router {
 
 	// register mounted group
 	mountGroup := &Group{Prefix: groupPath, app: subApp}
-	grp.app.register([]string{methodUse}, groupPath, mountGroup)
+	// Advance the group's cursor onto the mount, matching App.Use. Leaving it
+	// behind would retarget a chained helper at the route registered before it.
+	atomic.StoreUint64(&grp.lastRegID, grp.app.register([]string{methodUse}, groupPath, mountGroup, ""))
 
 	// Execute onMount hooks
 	if err := subApp.hooks.executeOnMountHooks(grp.app); err != nil {
@@ -782,62 +784,82 @@ func (app *App) processSubAppsRoutes() {
 				continue
 			}
 
-			// Read the sub-app's routes by method rather than by stack index:
-			// an app is free to configure its own RequestMethods, and the two
-			// tables then neither line up nor have to be the same length.
-			subAppRoutes := route.group.app.routesForMethod(app.method(m))
+			subApp := route.group.app
 
-			// The sub-app's routes are about to be re-parsed against this app,
-			// so its constraints have to be resolvable here too.
-			app.customConstraints = mergeCustomConstraints(app.customConstraints, route.group.app.customConstraints)
+			// Snapshot under the sub-app's lock, then leave it: only clones
+			// cross the boundary, so the re-parsing below never holds two
+			// apps' locks. Read by method, not stack index: an app may
+			// configure its own RequestMethods, so the tables need not line up.
+			type sourceRoute struct {
+				clone        *Route
+				owner        *App
+				constraints  []CustomConstraint
+				skipAutoHead bool
+			}
 
+			subApp.mutex.Lock()
+			subAppRoutes := subApp.routesForMethod(app.method(m))
+			subConstraints := slices.Clone(subApp.customConstraints)
 			// A sub-app that registers no automatic HEAD routes of its own
 			// must not be given them here either: its middleware is
 			// registered for the methods it serves, and a HEAD route
 			// synthesized from the GET one would run without it.
-			skipsAutoHead := route.group.app.config.DisableHeadAutoRegister || route.group.app.methodInt(MethodHead) < 0
+			skipsAutoHead := subApp.config.DisableHeadAutoRegister || subApp.methodInt(MethodHead) < 0
+			sources := make([]sourceRoute, len(subAppRoutes))
+			for j, subAppRoute := range subAppRoutes {
+				clone := app.copyRoute(subAppRoute)
+
+				// The clone's registration ID comes from another counter and
+				// could collide, so clear it rather than let helpers match.
+				clone.regID = 0
+
+				// Carry over the app each route came from: for a domain mount
+				// the sub-app is a wrapper, and the apps behind it own the config.
+				owner := subApp.routeOwner(subAppRoute)
+				if owner == nil {
+					owner = subApp
+				}
+
+				sources[j] = sourceRoute{
+					clone:        clone,
+					owner:        owner,
+					constraints:  slices.Clone(subApp.routeConstraintsFor(subAppRoute)),
+					skipAutoHead: skipsAutoHead || subApp.skipsAutoHeadFor(subAppRoute),
+				}
+			}
+			subApp.mutex.Unlock()
+
+			// The sub-app's routes are about to be re-parsed against this app,
+			// so its constraints have to be resolvable here too.
+			app.customConstraints = mergeCustomConstraints(app.customConstraints, subConstraints)
 
 			// Create a slice to hold the sub-app's routes
-			subRoutes := make([]*Route, len(subAppRoutes))
+			subRoutes := make([]*Route, len(sources))
 
-			// Iterate over the sub-app's routes
-			for j, subAppRoute := range subAppRoutes {
-				// Clone the sub-app's route
-				subAppRouteClone := app.copyRoute(subAppRoute)
+			for j := range sources {
+				source := &sources[j]
 
 				// The prefix is this app's, and may name a constraint only this
 				// app knows; the route brings the constraints of the apps that
 				// composed its path, and those win where a name is defined
 				// twice. Kept per route: two apps mounted side by side can name
 				// one constraint differently, and neither binds the other.
-				constraints := mergeCustomConstraints(
-					slices.Clone(route.group.app.routeConstraintsFor(subAppRoute)),
-					app.customConstraints,
-				)
+				constraints := mergeCustomConstraints(source.constraints, app.customConstraints)
 
 				// Add the parent route's path as a prefix to the sub-app's route
-				app.addPrefixToRoute(route.path, subAppRouteClone, route.group.app.config.RegexHandler, constraints...)
-				app.markRouteConstraints(subAppRouteClone, constraints)
+				app.addPrefixToRoute(route.path, source.clone, subApp.config.RegexHandler, constraints...)
+				app.markRouteConstraints(source.clone, constraints)
 
 				// Carry the sub-app's stance on automatic HEAD routes over to
 				// the clone, so this app's own routes at the same path keep
 				// theirs and the sub-app's descendants keep skipping.
-				if skipsAutoHead || route.group.app.skipsAutoHeadFor(subAppRoute) {
-					app.markSkipAutoHead(subAppRouteClone)
+				if source.skipAutoHead {
+					app.markSkipAutoHead(source.clone)
 				}
-
-				// Carry the app each route came from over as well. The sub-app
-				// here is the wrapper the domain router built when the mount is
-				// a domain one, and the apps behind it are the ones whose config
-				// has to answer; an ordinary mount is its own routes' owner.
-				owner := route.group.app.routeOwner(subAppRoute)
-				if owner == nil {
-					owner = route.group.app
-				}
-				app.markRouteOwner(subAppRouteClone, owner)
+				app.markRouteOwner(source.clone, source.owner)
 
 				// Add the cloned sub-app's route to the slice of sub-app routes
-				subRoutes[j] = subAppRouteClone
+				subRoutes[j] = source.clone
 			}
 
 			// Insert the sub-app's routes into the parent app's stack
@@ -851,6 +873,7 @@ func (app *App) processSubAppsRoutes() {
 
 			// Mark the parent app's routes as refreshed
 			app.hasRoutesRefreshed = true
+			app.bumpRoutesRevision()
 			// update stackLen after appending subRoutes to app.stack[m]
 			stackLen = len(app.stack[m])
 		}

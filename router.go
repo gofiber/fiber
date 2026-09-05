@@ -7,6 +7,7 @@ package fiber
 import (
 	"fmt"
 	"math/bits"
+	"reflect"
 	"slices"
 	"sync/atomic"
 
@@ -44,6 +45,31 @@ type Router interface {
 	Route(prefix string, fn func(router Router), name ...string) Router
 
 	Name(name string) Router
+
+	// Route documentation helpers. They target the most recently
+	// registered route; see the App methods of the same name.
+
+	Summary(sum string) Router
+	Description(desc string) Router
+	Consumes(typ string) Router
+	Produces(typ string) Router
+	RequestBody(description string, required bool, mediaTypes ...string) Router
+	RequestBodyWithExample(description string, required bool, schema map[string]any, schemaRef string, example any, examples map[string]any, mediaTypes ...string) Router
+	Parameter(name, in string, required bool, schema map[string]any, description string) Router
+	ParameterWithExample(name, in string, required bool, schema map[string]any, schemaRef, description string, example any, examples map[string]any) Router
+	Response(status int, description string, mediaTypes ...string) Router
+	ResponseWithExample(status int, description string, schema map[string]any, schemaRef string, example any, examples map[string]any, mediaTypes ...string) Router
+	Tags(tags ...string) Router
+	Deprecated() Router
+	Security(requirements ...map[string][]string) Router
+	ResponseHeader(status int, name, description string, schema map[string]any) Router
+	Hidden() Router
+	AddParameter(param RouteParameter) Router
+	OperationExternalDocs(description, url string) Router
+	RequestBodyContent(description string, required bool, content map[string]RouteMediaType) Router
+	ResponseContent(status int, description string, content map[string]RouteMediaType) Router
+	ResponseLink(status int, name string, link map[string]any) Router
+	OperationExtension(fields map[string]any) Router
 }
 
 // Route is a struct that holds all metadata for each registered handler.
@@ -86,6 +112,28 @@ type Route struct { // betteralign:ignore - see below
 	Name   string `json:"name"`   // Route's name
 	//nolint:revive // Having both a Path (uppercase) and a path (lowercase) is fine
 	Path string `json:"path"` // Original registered route path
+
+	domain string // Host pattern from app.Domain(), empty otherwise
+
+	regID uint64 // Identifies the register() call that created this route
+
+	// OpenAPI documentation metadata
+	Summary     string `json:"summary,omitempty"`
+	Description string `json:"description,omitempty"`
+	Consumes    string `json:"consumes,omitempty"`
+	Produces    string `json:"produces,omitempty"`
+
+	Responses   map[string]RouteResponse `json:"responses,omitempty"`
+	RequestBody *RouteRequestBody        `json:"requestBody,omitempty"` //nolint:tagliatelle // OpenAPI spec uses camelCase
+
+	Parameters          []RouteParameter      `json:"parameters,omitempty"`
+	Tags                []string              `json:"tags,omitempty"`
+	Security            []map[string][]string `json:"security,omitempty"`            // OpenAPI security requirements
+	ExternalDocs        map[string]any        `json:"externalDocs,omitempty"`        //nolint:tagliatelle // OpenAPI operation externalDocs
+	OperationExtensions map[string]any        `json:"operationExtensions,omitempty"` //nolint:tagliatelle // internal route metadata
+
+	Deprecated bool `json:"deprecated,omitempty"`
+	hidden     bool // Excluded from the generated OpenAPI specification
 }
 
 var (
@@ -322,6 +370,78 @@ func preferredGreedyParameters(paramName string) []string {
 	}
 
 	return defaultGreedyParameterKeys
+}
+
+// IsMiddleware reports whether the route was registered via Use() and so matches
+// prefixes, which lets generated specifications filter it out.
+func (r *Route) IsMiddleware() bool {
+	return r.use
+}
+
+// IsAutoHead reports whether this route was automatically generated as a
+// HEAD counterpart of a GET route.
+func (r *Route) IsAutoHead() bool {
+	return r.autoHead
+}
+
+// IsHidden reports whether this route is excluded from the generated OpenAPI
+// specification (set via the Hidden helper).
+func (r *Route) IsHidden() bool {
+	return r.hidden
+}
+
+// RouteParameter describes an input captured by a route. Schema/SchemaRef and
+// Content are mutually exclusive; Content wins, and 3.2 "querystring" needs it.
+type RouteParameter struct {
+	Schema          map[string]any            `json:"schema"`
+	Content         map[string]RouteMediaType `json:"content,omitempty"`
+	SchemaRef       string                    `json:"schemaRef,omitempty"` //nolint:tagliatelle // OpenAPI spec uses camelCase
+	Example         any                       `json:"example,omitempty"`
+	Examples        map[string]any            `json:"examples,omitempty"`
+	Explode         *bool                     `json:"explode,omitempty"`
+	Description     string                    `json:"description"`
+	Name            string                    `json:"name"`
+	In              string                    `json:"in"`
+	Style           string                    `json:"style,omitempty"`
+	Required        bool                      `json:"required"`
+	Deprecated      bool                      `json:"deprecated,omitempty"`
+	AllowEmptyValue bool                      `json:"allowEmptyValue,omitempty"` //nolint:tagliatelle // OpenAPI spec uses camelCase
+	AllowReserved   bool                      `json:"allowReserved,omitempty"`   //nolint:tagliatelle // OpenAPI spec uses camelCase
+}
+
+// RouteMediaType describes one media type entry, so a body or response can carry
+// a different schema, examples and encoding per content type.
+type RouteMediaType struct {
+	Schema    map[string]any `json:"schema,omitempty"`
+	Example   any            `json:"example,omitempty"`
+	Examples  map[string]any `json:"examples,omitempty"`
+	Encoding  map[string]any `json:"encoding,omitempty"`
+	SchemaRef string         `json:"schemaRef,omitempty"` //nolint:tagliatelle // OpenAPI spec uses camelCase
+}
+
+// RouteResponse describes a response emitted by a route.
+type RouteResponse struct {
+	Example     any                       `json:"example,omitempty"`
+	Schema      map[string]any            `json:"schema,omitempty"`
+	Examples    map[string]any            `json:"examples,omitempty"`
+	Headers     map[string]any            `json:"headers,omitempty"`
+	Links       map[string]any            `json:"links,omitempty"`
+	Content     map[string]RouteMediaType `json:"content,omitempty"`
+	SchemaRef   string                    `json:"schemaRef,omitempty"` //nolint:tagliatelle // OpenAPI spec uses camelCase
+	Description string                    `json:"description"`
+	MediaTypes  []string                  `json:"mediaTypes"` //nolint:tagliatelle // OpenAPI spec uses camelCase
+}
+
+// RouteRequestBody describes the request payload accepted by a route.
+type RouteRequestBody struct {
+	Example     any                       `json:"example,omitempty"`
+	Schema      map[string]any            `json:"schema,omitempty"`
+	Examples    map[string]any            `json:"examples,omitempty"`
+	Content     map[string]RouteMediaType `json:"content,omitempty"`
+	SchemaRef   string                    `json:"schemaRef,omitempty"` //nolint:tagliatelle // OpenAPI spec uses camelCase
+	Description string                    `json:"description"`
+	MediaTypes  []string                  `json:"mediaTypes"` //nolint:tagliatelle // OpenAPI spec uses camelCase
+	Required    bool                      `json:"required"`
 }
 
 // pathHeadWord packs the first swar.WordLen bytes of a detection path into a
@@ -871,30 +991,287 @@ func (app *App) addPrefixToRoute(prefix string, route *Route, regexHandler any, 
 // the mounted app's handlers verbatim, which for a domain mount means serving
 // them on every host. domainRouter.cloneRoutesForDomain expands the mount
 // instead, so no placeholder is ever cloned.
-func (*App) copyRoute(route *Route) *Route {
-	return &Route{
-		// Leading-byte filter
-		prefix:     route.prefix,
-		prefixMask: route.prefixMask,
+func (app *App) copyRoute(route *Route) *Route {
+	copied := app.copyRouteValue(route)
+	return &copied
+}
 
-		// Router booleans
-		use:           route.use,
-		mount:         route.mount,
-		star:          route.star,
-		root:          route.root,
-		autoHead:      route.autoHead,
-		caseSensitive: route.caseSensitive,
+// copyRouteValue is copyRoute without the heap allocation, for callers that
+// return the clone by value (GetRoute, GetRoutes).
+func (app *App) copyRouteValue(route *Route) (copied Route) { //nolint:nonamedreturns // the named result is what keeps this to a single struct copy
+	app.copyRouteInto(&copied, route)
+	return copied
+}
 
-		// Path data
-		path:        route.path,
-		routeParser: route.routeParser,
+// isDocumented reports whether the route carries metadata a copy must clone.
+// Small enough to inline, so the common case never calls out of line.
+func (r *Route) isDocumented() bool {
+	return r.RequestBody != nil || r.Parameters != nil || r.Responses != nil ||
+		r.Tags != nil || r.Security != nil || r.ExternalDocs != nil ||
+		r.OperationExtensions != nil
+}
 
-		// Public data
-		Path:     route.Path,
-		Params:   route.Params,
-		Name:     route.Name,
-		Method:   route.Method,
-		Handlers: route.Handlers,
+// copyRouteInto deep-copies route into dst. It writes through a pointer so the
+// caller's slot is filled once: Route is large and every hop costs a full move.
+func (app *App) copyRouteInto(dst, route *Route) {
+	*dst = *route
+	dst.group = nil
+
+	if !route.isDocumented() {
+		return
+	}
+
+	app.cloneRouteDocInto(dst, route)
+}
+
+// cloneRouteDocInto deep-clones the documentation containers of route into dst.
+// Kept out of line so the undocumented fast path stays small.
+func (*App) cloneRouteDocInto(dst, route *Route) {
+	dst.RequestBody = cloneRouteRequestBody(route.RequestBody)
+	dst.Parameters = cloneRouteParameters(route.Parameters)
+	dst.Responses = cloneRouteResponses(route.Responses)
+	dst.Tags = append([]string(nil), route.Tags...)
+	dst.Security = cloneRouteSecurity(route.Security)
+	dst.ExternalDocs = copyAnyMap(route.ExternalDocs)
+	dst.OperationExtensions = copyAnyMap(route.OperationExtensions)
+}
+
+// copyRouteBase copies routing data but skips the documentation clone, which
+// auto-HEAD twins never need: their metadata is never read.
+func (app *App) copyRouteBase(route *Route) *Route {
+	copied := app.copyRouteBaseValue(route)
+	return &copied
+}
+
+// copyRouteBaseValue is copyRouteBase without the heap allocation. Copying
+// wholesale then clearing beats two dozen field writes on a struct this large.
+func (*App) copyRouteBaseValue(route *Route) Route {
+	copied := *route
+
+	copied.group = nil
+	copied.RequestBody = nil
+	copied.Parameters = nil
+	copied.Responses = nil
+	copied.Tags = nil
+	copied.Security = nil
+	copied.ExternalDocs = nil
+	copied.OperationExtensions = nil
+
+	return copied
+}
+
+func cloneRouteSecurity(requirements []map[string][]string) []map[string][]string {
+	if len(requirements) == 0 {
+		return nil
+	}
+	cloned := make([]map[string][]string, len(requirements))
+	for i, requirement := range requirements {
+		entry := make(map[string][]string, len(requirement))
+		for scheme, scopes := range requirement {
+			// make+copy keeps an empty scope list non-nil so it marshals as
+			// the spec-required [] rather than null.
+			cloned := make([]string, len(scopes))
+			copy(cloned, scopes)
+			entry[scheme] = cloned
+		}
+		cloned[i] = entry
+	}
+	return cloned
+}
+
+func cloneRouteRequestBody(body *RouteRequestBody) *RouteRequestBody {
+	if body == nil {
+		return nil
+	}
+	clone := &RouteRequestBody{
+		Description: body.Description,
+		Required:    body.Required,
+	}
+	if len(body.Schema) > 0 {
+		clone.Schema = copyAnyMap(body.Schema)
+	}
+	clone.SchemaRef = body.SchemaRef
+	if len(body.Examples) > 0 {
+		clone.Examples = copyAnyMap(body.Examples)
+	}
+	clone.Example = copyAnyValue(body.Example)
+	if len(body.MediaTypes) > 0 {
+		clone.MediaTypes = append([]string(nil), body.MediaTypes...)
+	}
+	clone.Content = cloneRouteMediaTypeMap(body.Content)
+	return clone
+}
+
+func cloneRouteMediaTypeMap(content map[string]RouteMediaType) map[string]RouteMediaType {
+	if len(content) == 0 {
+		return nil
+	}
+	cloned := make(map[string]RouteMediaType, len(content))
+	for mediaType, mt := range content {
+		cloned[mediaType] = RouteMediaType{
+			Schema:    copyAnyMap(mt.Schema),
+			SchemaRef: mt.SchemaRef,
+			Example:   copyAnyValue(mt.Example),
+			Examples:  copyAnyMap(mt.Examples),
+			Encoding:  copyAnyMap(mt.Encoding),
+		}
+	}
+	return cloned
+}
+
+func cloneRouteParameters(params []RouteParameter) []RouteParameter {
+	if len(params) == 0 {
+		return nil
+	}
+	cloned := make([]RouteParameter, len(params))
+	for i := range params {
+		p := &params[i]
+		cloned[i] = RouteParameter{
+			Name:            p.Name,
+			In:              p.In,
+			Required:        p.Required,
+			Description:     p.Description,
+			Deprecated:      p.Deprecated,
+			Style:           p.Style,
+			AllowEmptyValue: p.AllowEmptyValue,
+			AllowReserved:   p.AllowReserved,
+			Schema:          copyAnyMap(p.Schema),
+			SchemaRef:       p.SchemaRef,
+			Examples:        copyAnyMap(p.Examples),
+			Example:         copyAnyValue(p.Example),
+			Content:         cloneRouteMediaTypeMap(p.Content),
+		}
+		if p.Explode != nil {
+			explode := *p.Explode
+			cloned[i].Explode = &explode
+		}
+	}
+	return cloned
+}
+
+func cloneRouteResponses(responses map[string]RouteResponse) map[string]RouteResponse {
+	if len(responses) == 0 {
+		return nil
+	}
+	cloned := make(map[string]RouteResponse, len(responses))
+	for code, resp := range responses {
+		copyResp := RouteResponse{
+			Description: resp.Description,
+			Schema:      copyAnyMap(resp.Schema),
+			SchemaRef:   resp.SchemaRef,
+			Examples:    copyAnyMap(resp.Examples),
+			Example:     copyAnyValue(resp.Example),
+			Headers:     copyAnyMap(resp.Headers),
+			Links:       copyAnyMap(resp.Links),
+			Content:     cloneRouteMediaTypeMap(resp.Content),
+		}
+		if len(resp.MediaTypes) > 0 {
+			copyResp.MediaTypes = append([]string(nil), resp.MediaTypes...)
+		}
+		cloned[code] = copyResp
+	}
+	return cloned
+}
+
+// maxCopyDepth bounds the documentation deep copy: users can store cyclic values
+// there, which would otherwise make GetRoutes overflow the stack.
+const maxCopyDepth = 100
+
+func copyAnyMap(src map[string]any) map[string]any {
+	// Top-level empties stay nil so unset documentation keeps reading as unset.
+	if len(src) == 0 {
+		return nil
+	}
+	return copyAnyMapDepth(src, 0)
+}
+
+func copyAnyMapDepth(src map[string]any, depth int) map[string]any {
+	// An empty nested map is kept, so "properties": {} does not turn into null.
+	if src == nil {
+		return nil
+	}
+	if depth >= maxCopyDepth {
+		// Cyclic or pathologically deep metadata: sharing the reference is the
+		// lesser evil, and encoding/json reports the cycle itself.
+		return src
+	}
+	dst := make(map[string]any, len(src))
+	for key, value := range src {
+		dst[key] = copyAnyValueDepth(value, depth+1)
+	}
+	return dst
+}
+
+func copyAnyValue(src any) any {
+	return copyAnyValueDepth(src, 0)
+}
+
+func copyAnyValueDepth(src any, depth int) any {
+	if src == nil {
+		return nil
+	}
+	if depth >= maxCopyDepth {
+		return src
+	}
+
+	switch value := src.(type) {
+	case map[string]any:
+		return copyAnyMapDepth(value, depth)
+	case []any:
+		copied := make([]any, len(value))
+		for i := range value {
+			copied[i] = copyAnyValueDepth(value[i], depth+1)
+		}
+		return copied
+	case []map[string]any:
+		copied := make([]map[string]any, len(value))
+		for i := range value {
+			copied[i] = copyAnyMapDepth(value[i], depth+1)
+		}
+		return copied
+	default:
+		return copyCompositeValue(src, depth)
+	}
+}
+
+// copyCompositeValue clones map and slice values of any named type, which the
+// typed switch above cannot name. depth continues the caller's count so a cycle
+// inside a named type still hits maxCopyDepth.
+func copyCompositeValue(src any, depth int) any {
+	value := reflect.ValueOf(src)
+
+	switch value.Kind() {
+	case reflect.Slice:
+		if value.IsNil() {
+			return src
+		}
+		copied := reflect.MakeSlice(value.Type(), value.Len(), value.Len())
+		for i := range value.Len() {
+			// A nil element yields an invalid reflect.Value; leave the zero
+			// value in place instead of panicking in Set.
+			if elem := copyAnyValueDepth(value.Index(i).Interface(), depth+1); elem != nil {
+				copied.Index(i).Set(reflect.ValueOf(elem))
+			}
+		}
+		return copied.Interface()
+	case reflect.Map:
+		if value.IsNil() {
+			return src
+		}
+		copied := reflect.MakeMapWithSize(value.Type(), value.Len())
+		iter := value.MapRange()
+		for iter.Next() {
+			// SetMapIndex with an invalid value deletes the key, so map a nil
+			// element to the element type's zero value to preserve it.
+			val := reflect.Zero(value.Type().Elem())
+			if elem := copyAnyValueDepth(iter.Value().Interface(), depth+1); elem != nil {
+				val = reflect.ValueOf(elem)
+			}
+			copied.SetMapIndex(iter.Key(), val)
+		}
+		return copied.Interface()
+	default:
+		return src
 	}
 }
 
@@ -948,34 +1325,69 @@ func (app *App) deleteRoute(methods []string, matchFunc func(r *Route) bool) {
 		methods = app.config.RequestMethods
 	}
 
+	// Uppercase HTTP methods
+	indexes := make([]int, 0, len(methods))
+	for _, method := range methods {
+		// Get unique HTTP method identifier; invalid methods are skipped.
+		if m := app.methodInt(utilsstrings.ToUpper(method)); m != -1 {
+			indexes = append(indexes, m)
+		}
+	}
+
+	// matchFunc runs unlocked so it may call locking app methods such as
+	// GetRoute; matches are then removed by identity under the lock.
+	app.mutex.Lock()
+	candidates := make([]*Route, 0)
+	for _, m := range indexes {
+		candidates = append(candidates, app.stack[m]...)
+	}
+	app.mutex.Unlock()
+
+	matched := make(map[*Route]struct{})
+	for _, route := range candidates {
+		if matchFunc(route) {
+			matched[route] = struct{}{}
+		}
+	}
+	if len(matched) == 0 {
+		return
+	}
+
 	app.mutex.Lock()
 	defer app.mutex.Unlock()
 
-	removedUseRoutes := make(map[string]struct{})
+	removedUseRoutes := make(map[autoHeadKey]struct{})
 
-	for _, method := range methods {
-		// Uppercase HTTP methods
-		method = utilsstrings.ToUpper(method)
-
-		// Get unique HTTP method identifier
-		m := app.methodInt(method)
-		if m == -1 {
-			continue // Skip invalid HTTP methods
-		}
+	for _, m := range indexes {
+		method := app.config.RequestMethods[m]
 
 		for i := len(app.stack[m]) - 1; i >= 0; i-- { //nolint:modernize // false positive
 			route := app.stack[m][i]
-			if !matchFunc(route) {
+			if _, ok := matched[route]; !ok {
 				continue // Skip if route does not match
 			}
 
 			app.stack[m] = append(app.stack[m][:i], app.stack[m][i+1:]...)
 			app.hasRoutesRefreshed = true
+			app.bumpRoutesRevision()
+			app.forgetMergedEntryLocked(route)
 
-			// Decrement global handler count. In middleware routes, only decrement once
-			if _, ok := removedUseRoutes[route.path]; (route.use && slices.Equal(methods, app.config.RequestMethods) && !ok) || !route.use {
+			// Invalidate the registration cursor and batch so later chained
+			// helpers become no-ops instead of mutating a removed route.
+			if route == app.latestRoute {
+				app.latestRoute = nil
+			}
+			if slices.Contains(app.latestBatch, route) {
+				app.latestBatch = app.latestBatch[:0]
+				app.latestBatchID = 0
+			}
+
+			// Decrement global handler count. Middleware routes decrement once,
+			// keyed by domain as well as path.
+			useKey := app.autoHeadKey(route)
+			if _, ok := removedUseRoutes[useKey]; (route.use && slices.Equal(methods, app.config.RequestMethods) && !ok) || !route.use {
 				if route.use {
-					removedUseRoutes[route.path] = struct{}{}
+					removedUseRoutes[useKey] = struct{}{}
 				}
 
 				atomic.AddUint32(&app.handlersCount, ^uint32(len(route.Handlers)-1)) //nolint:gosec // G115 - handler count is always small
@@ -985,6 +1397,19 @@ func (app *App) deleteRoute(methods []string, matchFunc func(r *Route) bool) {
 				app.pruneAutoHeadRouteLocked(route.path)
 			}
 		}
+	}
+}
+
+// forgetMergedEntryLocked drops a removed stack entry from every registration
+// that reached it through a compression merge. The caller must hold app.mutex.
+func (app *App) forgetMergedEntryLocked(route *Route) {
+	for regID, entries := range app.mergedEntries {
+		entries = slices.DeleteFunc(entries, func(entry *Route) bool { return entry == route })
+		if len(entries) == 0 {
+			delete(app.mergedEntries, regID)
+			continue
+		}
+		app.mergedEntries[regID] = entries
 	}
 }
 
@@ -1007,12 +1432,15 @@ func (app *App) pruneAutoHeadRouteLocked(path string) {
 
 		app.stack[headIndex] = append(headStack[:i], headStack[i+1:]...)
 		app.hasRoutesRefreshed = true
+		app.bumpRoutesRevision()
 		atomic.AddUint32(&app.handlersCount, ^uint32(len(headRoute.Handlers)-1)) //nolint:gosec // G115 - handler count is always small
 		return
 	}
 }
 
-func (app *App) register(methods []string, pathRaw string, group *Group, handlers ...Handler) {
+// register creates one stack entry per method and returns the ID stamped on each,
+// so scoped helpers can target this registration. domain is app.Domain()'s host.
+func (app *App) register(methods []string, pathRaw string, group *Group, domain string, handlers ...Handler) uint64 {
 	// A regular route requires at least one ctx handler
 	if len(handlers) == 0 && group == nil {
 		panic(fmt.Sprintf("missing handler/middleware in route: %s\n", pathRaw))
@@ -1023,6 +1451,10 @@ func (app *App) register(methods []string, pathRaw string, group *Group, handler
 			panic(fmt.Sprintf("nil handler in route: %s\n", pathRaw))
 		}
 	}
+
+	// One registration ID for the whole call, so chainable helpers reach the
+	// routes of every method registered together.
+	regID := atomic.AddUint64(&app.registrationID, 1)
 
 	// Precompute path normalization ONCE
 	if pathRaw == "" {
@@ -1061,15 +1493,23 @@ func (app *App) register(methods []string, pathRaw string, group *Group, handler
 			star:          isStar,
 			root:          isRoot,
 			caseSensitive: app.config.CaseSensitive,
+			regID:         regID,
+			domain:        domain,
 
 			path:        pathClean,
 			routeParser: parsedPretty,
 			Params:      parsedRaw.params,
 			group:       group,
 
-			Path:     pathRaw,
-			Method:   method,
-			Handlers: handlers,
+			Path:        pathRaw,
+			Method:      method,
+			Handlers:    handlers,
+			Summary:     "",
+			Description: "",
+			// Consumes/Produces stay empty until set explicitly; the OpenAPI
+			// middleware treats empty as "unspecified" and emits no media type.
+			Consumes: "",
+			Produces: "",
 		}
 		route.buildPrefixFilter()
 
@@ -1089,11 +1529,12 @@ func (app *App) register(methods []string, pathRaw string, group *Group, handler
 			app.addRoute(method, &route)
 		}
 	}
+
+	return regID
 }
 
 func (app *App) addRoute(method string, route *Route) {
 	app.mutex.Lock()
-	defer app.mutex.Unlock()
 
 	// Get unique HTTP method identifier
 	m := app.methodInt(method)
@@ -1102,11 +1543,30 @@ func (app *App) addRoute(method string, route *Route) {
 		app.pruneAutoHeadRouteLocked(route.path)
 	}
 
+	// The stack entry the registration ends up in: the route itself, or the
+	// pre-existing entry it was compression-merged into.
+	liveRoute := route
+
+	// A new registration always starts a fresh helper-target batch, even when
+	// every one of its entries ends up compression-merged away.
+	app.resetBatchIfNewRegistrationLocked(route.regID)
+
 	// prevent identically route registration
 	l := len(app.stack[m])
-	if l > 0 && app.stack[m][l-1].Path == route.Path && route.use == app.stack[m][l-1].use && !route.mount && !app.stack[m][l-1].mount {
+	if l > 0 && app.stack[m][l-1].Path == route.Path && route.use == app.stack[m][l-1].use &&
+		!route.mount && !app.stack[m][l-1].mount && app.stack[m][l-1].domain == route.domain {
 		preRoute := app.stack[m][l-1]
 		preRoute.Handlers = append(preRoute.Handlers, route.Handlers...)
+		// The entry carries the latest registration, and mergedEntries keeps it
+		// reachable from the superseded one so both scopes hit exactly it.
+		if preRoute.regID != 0 && preRoute.regID != route.regID {
+			if app.mergedEntries == nil {
+				app.mergedEntries = make(map[uint64][]*Route, 1)
+			}
+			app.mergedEntries[preRoute.regID] = append(app.mergedEntries[preRoute.regID], preRoute)
+		}
+		preRoute.regID = route.regID
+		liveRoute = preRoute
 	} else {
 		route.Method = method
 		// Add route to the stack
@@ -1114,20 +1574,46 @@ func (app *App) addRoute(method string, route *Route) {
 		app.hasRoutesRefreshed = true
 	}
 
-	// Execute onRoute hooks & change latestRoute if not adding mounted route
-	if !route.mount {
-		app.latestRoute = route
-		if err := app.hooks.executeOnRouteHooks(route); err != nil {
+	app.bumpRoutesRevision()
+
+	// Concurrent registrations interleave one method at a time. Only the newest
+	// owns the batch; an older one's helpers fall back to the stack scan.
+	if route.regID == app.latestBatchID {
+		app.latestBatch = append(app.latestBatch, liveRoute)
+		// Tracked so chained helpers target it. Mounts are tracked too, or a
+		// helper chained onto one would mutate the previous route.
+		app.latestRoute = liveRoute
+	}
+
+	// Snapshot under the lock and fire hooks after releasing it, so they may call
+	// locking methods without their reads racing the live route.
+	var hookRoute *Route
+	if !route.mount && len(app.hooks.onRoute) > 0 {
+		hookRoute = app.copyRoute(liveRoute)
+	}
+	app.mutex.Unlock()
+	if hookRoute != nil {
+		if err := app.hooks.executeOnRouteHooks(hookRoute); err != nil {
 			panic(err)
 		}
 	}
 }
 
-func (app *App) ensureAutoHeadRoutes() {
+// resetBatchIfNewRegistrationLocked starts a fresh batch for a new registration,
+// letting helpers reach its entries in O(batch). The caller holds app.mutex.
+func (app *App) resetBatchIfNewRegistrationLocked(regID uint64) {
+	if regID > app.latestBatchID {
+		app.latestBatchID = regID
+		app.latestBatch = app.latestBatch[:0]
+	}
+}
+
+// ensureAutoHeadRoutes creates the missing automatic HEAD routes and returns
+// them without firing their hooks; the caller does that once unlocked.
+func (app *App) ensureAutoHeadRoutes() []*Route {
 	app.mutex.Lock()
 	defer app.mutex.Unlock()
-
-	app.ensureAutoHeadRoutesLocked()
+	return app.ensureAutoHeadRoutesLocked()
 }
 
 // autoHeadKey identifies the route an automatic HEAD companion would collide
@@ -1136,7 +1622,10 @@ type autoHeadKey struct {
 	// owner is set only where routes are host-scoped, and is what keeps the
 	// HEAD route of one mounted app from standing in for another app's GET
 	owner *App
-	path  string
+	// domain separates same-path routes registered on different domain
+	// routers, which each need their own twin
+	domain string
+	path   string
 }
 
 // autoHeadKey returns the key route is deduplicated under. Where an app's
@@ -1145,22 +1634,25 @@ type autoHeadKey struct {
 // pattern rejects it declines, leaving a GET route of another one there without
 // a companion to answer for it.
 func (app *App) autoHeadKey(route *Route) autoHeadKey {
-	if !app.mountFields.hostScopedRoutes {
-		return autoHeadKey{path: route.path}
+	key := autoHeadKey{domain: route.domain, path: route.path}
+	if app.mountFields.hostScopedRoutes {
+		key.owner = app.routeOwner(route)
 	}
 
-	return autoHeadKey{owner: app.routeOwner(route), path: route.path}
+	return key
 }
 
-func (app *App) ensureAutoHeadRoutesLocked() {
+// ensureAutoHeadRoutesLocked creates the missing auto-HEAD twins and returns
+// snapshots; the caller holds app.mutex and fires their hooks after releasing.
+func (app *App) ensureAutoHeadRoutesLocked() []*Route {
 	if app.config.DisableHeadAutoRegister {
-		return
+		return nil
 	}
 
 	headIndex := app.methodInt(MethodHead)
 	getIndex := app.methodInt(MethodGet)
 	if headIndex == -1 || getIndex == -1 {
-		return
+		return nil
 	}
 
 	headStack := app.stack[headIndex]
@@ -1173,10 +1665,13 @@ func (app *App) ensureAutoHeadRoutesLocked() {
 	}
 
 	if len(app.stack[getIndex]) == 0 {
-		return
+		return nil
 	}
 
-	var added bool
+	var (
+		twins []*Route
+		added bool
+	)
 
 	for _, route := range app.stack[getIndex] {
 		if route.mount || route.use {
@@ -1189,10 +1684,12 @@ func (app *App) ensureAutoHeadRoutesLocked() {
 			continue
 		}
 
-		headRoute := app.copyRoute(route)
+		headRoute := app.copyRouteBase(route)
 		headRoute.group = route.group
 		headRoute.Method = MethodHead
 		headRoute.autoHead = true
+		// No registration created the twin, so no scope's helpers reach it.
+		headRoute.regID = 0
 		// The synthesized route belongs to whichever app the GET route came
 		// from, so a HEAD request resolves the same config a GET one does, and
 		// an app re-parsing it later holds it to the same constraints.
@@ -1200,6 +1697,13 @@ func (app *App) ensureAutoHeadRoutesLocked() {
 			app.markRouteOwner(headRoute, owner)
 		}
 		app.markRouteConstraints(headRoute, app.mountFields.routeConstraints[route])
+		// Twins carry no documentation: the containers are skipped and the scalars
+		// blanked, so nothing exposes a half-documented HEAD route.
+		headRoute.Summary = ""
+		headRoute.Description = ""
+		headRoute.Consumes = ""
+		headRoute.Produces = ""
+		headRoute.Deprecated = false
 		// Fasthttp automatically omits response bodies when transmitting
 		// HEAD responses, so the copied GET handler stack can execute
 		// unchanged while still producing an empty body on the wire.
@@ -1208,17 +1712,32 @@ func (app *App) ensureAutoHeadRoutesLocked() {
 		existing[app.autoHeadKey(route)] = struct{}{}
 		app.hasRoutesRefreshed = true
 		added = true
+		// Snapshot for the onRoute hooks, which run unlocked and must not read the
+		// live route. Nothing to snapshot when no hook will observe it.
+		if len(app.hooks.onRoute) > 0 {
+			twins = append(twins, app.copyRoute(headRoute))
+		}
 
 		atomic.AddUint32(&app.handlersCount, uint32(len(headRoute.Handlers))) //nolint:gosec // G115 - handler count is always small
 
-		app.latestRoute = headRoute
-		if err := app.hooks.executeOnRouteHooks(headRoute); err != nil {
-			panic(err)
-		}
+		// The twin stays out of the batch and never becomes latestRoute: letting a
+		// later helper reach it would re-document an arbitrary route.
 	}
 
 	if added {
 		app.stack[headIndex] = headStack
+		app.bumpRoutesRevision()
+	}
+	return twins
+}
+
+// fireOnRouteHooks runs the onRoute hooks for each route, panicking on error
+// exactly like route registration does. Callers must not hold app.mutex.
+func (app *App) fireOnRouteHooks(routes []*Route) {
+	for _, route := range routes {
+		if err := app.hooks.executeOnRouteHooks(route); err != nil {
+			panic(err)
+		}
 	}
 }
 
