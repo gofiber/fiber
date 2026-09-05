@@ -3309,3 +3309,100 @@ func Test_Bind_Form_ContentTypeNormalization(t *testing.T) {
 		require.Equal(t, StatusOK, resp.StatusCode)
 	})
 }
+
+// Test_Bind_WithSplitting covers the per-chain override of the
+// EnableSplittingOnParsers config flag. It verifies:
+//  1. With no override, the chain inherits the app config.
+//  2. WithSplitting(true) forces splitting even when the app config is off.
+//  3. WithSplitting(false) suppresses splitting even when the app config is on.
+//  4. The override is scoped to the bind chain: it does not leak across
+//     requests that reuse the same pool entry.
+func Test_Bind_WithSplitting(t *testing.T) {
+	t.Parallel()
+
+	type filter struct {
+		Colors []string `query:"colors"`
+	}
+
+	t.Run("override on, app config off", func(t *testing.T) {
+		t.Parallel()
+
+		app := New(Config{EnableSplittingOnParsers: false})
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		t.Cleanup(func() { app.ReleaseCtx(c) })
+
+		c.Request().URI().SetQueryString("colors=red,blue")
+
+		f := new(filter)
+		require.NoError(t, c.Bind().WithSplitting(true).Query(f))
+		require.Equal(t, []string{"red", "blue"}, f.Colors)
+	})
+
+	t.Run("override off, app config on", func(t *testing.T) {
+		t.Parallel()
+
+		app := New(Config{EnableSplittingOnParsers: true})
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		t.Cleanup(func() { app.ReleaseCtx(c) })
+
+		c.Request().URI().SetQueryString("colors=red,blue")
+
+		f := new(filter)
+		require.NoError(t, c.Bind().WithSplitting(false).Query(f))
+		require.Equal(t, []string{"red,blue"}, f.Colors)
+	})
+
+	t.Run("no override honors app config", func(t *testing.T) {
+		t.Parallel()
+
+		app := New(Config{EnableSplittingOnParsers: true})
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		t.Cleanup(func() { app.ReleaseCtx(c) })
+
+		c.Request().URI().SetQueryString("colors=red,blue")
+
+		f := new(filter)
+		require.NoError(t, c.Bind().Query(f))
+		require.Equal(t, []string{"red", "blue"}, f.Colors)
+	})
+
+	t.Run("override does not leak across reused pool entries", func(t *testing.T) {
+		t.Parallel()
+
+		app := New(Config{EnableSplittingOnParsers: false})
+
+		// First request sets a per-chain override to true.
+		c1 := app.AcquireCtx(&fasthttp.RequestCtx{})
+		c1.Request().URI().SetQueryString("colors=red,blue")
+		f1 := new(filter)
+		require.NoError(t, c1.Bind().WithSplitting(true).Query(f1))
+		require.Equal(t, []string{"red", "blue"}, f1.Colors)
+		app.ReleaseCtx(c1)
+
+		// A second request must not inherit the first request's override.
+		c2 := app.AcquireCtx(&fasthttp.RequestCtx{})
+		t.Cleanup(func() { app.ReleaseCtx(c2) })
+		c2.Request().URI().SetQueryString("colors=red,blue")
+		f2 := new(filter)
+		require.NoError(t, c2.Bind().Query(f2))
+		require.Equal(t, []string{"red,blue"}, f2.Colors)
+	})
+
+	t.Run("override applies to header binding", func(t *testing.T) {
+		t.Parallel()
+
+		type hdr struct {
+			Posts []string `header:"Posts"`
+		}
+
+		app := New(Config{EnableSplittingOnParsers: false})
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		t.Cleanup(func() { app.ReleaseCtx(c) })
+
+		c.Request().Header.Set("Posts", "post1,post2,post3")
+
+		h := new(hdr)
+		require.NoError(t, c.Bind().WithSplitting(true).Header(h))
+		require.Equal(t, []string{"post1", "post2", "post3"}, h.Posts)
+	})
+}
