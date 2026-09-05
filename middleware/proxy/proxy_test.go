@@ -1579,3 +1579,80 @@ func Test_Proxy_ResponseStripIgnoresTheAppsNormalizationSetting(t *testing.T) {
 			"%s must not reach the client whatever case the upstream wrote it in", name)
 	}
 }
+
+func Test_Proxy_DomainForward_NonMatchingHostContinues(t *testing.T) {
+	t.Parallel()
+
+	_, addr := createProxyTestServerIPv4(t, func(c fiber.Ctx) error {
+		return c.SendString("forwarded")
+	})
+
+	app := fiber.New()
+	app.Use(DomainForward("api.example.com", "http://"+addr))
+	app.Get("/", func(c fiber.Ctx) error {
+		return c.SendString("local")
+	})
+
+	testCases := []struct {
+		host string
+		body string
+	}{
+		{host: "api.example.com", body: "forwarded"},
+		{host: "API.Example.com:8080", body: "forwarded"},
+		{host: "www.example.com", body: "local"},
+		{host: "www.example.com:8080", body: "local"},
+	}
+	for _, tc := range testCases {
+		req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+		req.Host = tc.host
+		resp, err := app.Test(req)
+		require.NoError(t, err)
+		require.Equal(t, fiber.StatusOK, resp.StatusCode, "Host %s", tc.host)
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		require.Equal(t, tc.body, string(body), "Host %s", tc.host)
+	}
+}
+
+func Test_Proxy_Forward_RestoresHost(t *testing.T) {
+	t.Parallel()
+
+	_, addr := createProxyTestServerIPv4(t, func(c fiber.Ctx) error {
+		return c.SendString("forwarded")
+	})
+
+	app := fiber.New()
+	seen := make(chan string, 1)
+	app.Use(func(c fiber.Ctx) error {
+		err := c.Next()
+		seen <- c.Hostname()
+		return err
+	})
+	app.Use(Forward("http://" + addr))
+
+	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+	req.Host = "public.example.com"
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	require.Equal(t, "public.example.com", <-seen)
+}
+
+func Test_Proxy_HostWithoutPort(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		in, out string
+	}{
+		{in: "example.com", out: "example.com"},
+		{in: "example.com:8080", out: "example.com"},
+		{in: "[::1]:8080", out: "[::1]"},
+		{in: "[::1]", out: "[::1]"},
+		{in: "[::1", out: "[::1"},
+		{in: "::1", out: "::1"},
+	}
+
+	for _, tc := range tests {
+		require.Equal(t, tc.out, hostWithoutPort(tc.in), "in=%q", tc.in)
+	}
+}

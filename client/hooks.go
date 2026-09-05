@@ -1,6 +1,7 @@
 package client
 
 import (
+	"bytes"
 	"crypto/rand"
 	"fmt"
 	"io"
@@ -17,7 +18,7 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
-var protocolCheck = regexp.MustCompile(`^https?://.*$`)
+var protocolCheck = regexp.MustCompile(`(?i)^https?://.*$`)
 
 var fileBufPool = sync.Pool{
 	New: func() any {
@@ -349,12 +350,18 @@ func parserRequestHeader(c *Client, req *Request) error {
 	// Set HTTP method.
 	req.RawRequest.Header.SetMethod(req.Method())
 
-	// Merge headers from the client.
+	// Merge headers from the client, clearing each key first so a resend does not accumulate values.
+	for key := range c.header.All() {
+		req.RawRequest.Header.DelBytes(key)
+	}
 	for key, value := range c.header.All() {
 		req.RawRequest.Header.AddBytesKV(key, value)
 	}
 
-	// Merge headers from the request.
+	// Merge headers from the request; they override the client's for the same key.
+	for key := range req.header.All() {
+		req.RawRequest.Header.DelBytes(key)
+	}
 	for key, value := range req.header.All() {
 		req.RawRequest.Header.AddBytesKV(key, value)
 	}
@@ -553,19 +560,16 @@ func addFormFile(mw *multipart.Writer, f *File, fileBuf *[]byte) error {
 
 // parserResponseCookie parses the Set-Cookie headers from the response and stores them.
 func parserResponseCookie(c *Client, resp *Response, req *Request) error {
-	var err error
 	for key, value := range resp.RawResponse.Header.Cookies() {
 		cookie := fasthttp.AcquireCookie()
-		if err = cookie.ParseBytes(value); err != nil {
-			fasthttp.ReleaseCookie(cookie)
-			break
+		if err := cookie.ParseBytes(value); err != nil {
+			if err := parseCookieIgnoringBadAttrs(cookie, value); err != nil {
+				fasthttp.ReleaseCookie(cookie)
+				continue
+			}
 		}
 		cookie.SetKeyBytes(key)
 		resp.cookie = append(resp.cookie, cookie)
-	}
-
-	if err != nil {
-		return err
 	}
 
 	// Store cookies in the jar if available, keyed by the responding URI rather
@@ -579,14 +583,52 @@ func parserResponseCookie(c *Client, resp *Response, req *Request) error {
 	return nil
 }
 
+// parseCookieIgnoringBadAttrs parses a Set-Cookie value, dropping only the
+// attributes fasthttp cannot parse. RFC 6265 §5.2 has an unparsable attribute
+// ignored, while fasthttp abandons the cookie at the first one — losing the
+// name, the value, and every attribute it had already accepted. Each attribute
+// is offered against the ones kept so far, so those on either side of a bad one
+// survive. Only a name/value pair that will not parse fails the cookie.
+func parseCookieIgnoringBadAttrs(cookie *fasthttp.Cookie, value []byte) error {
+	pair, rest, _ := bytes.Cut(value, []byte{';'})
+	kept := append([]byte(nil), pair...)
+
+	// ParseBytes resets the cookie, so a rejected attempt leaves nothing behind.
+	trial := fasthttp.AcquireCookie()
+	defer fasthttp.ReleaseCookie(trial)
+	if err := trial.ParseBytes(kept); err != nil {
+		return err
+	}
+
+	for len(rest) > 0 {
+		var attr []byte
+		attr, rest, _ = bytes.Cut(rest, []byte{';'})
+		candidate := append(append(append([]byte(nil), kept...), ';'), attr...)
+		if err := trial.ParseBytes(candidate); err == nil {
+			kept = candidate
+		}
+	}
+
+	return cookie.ParseBytes(kept)
+}
+
 // logger is a response hook that logs request and response data if debug mode is enabled.
 func logger(c *Client, resp *Response, req *Request) error {
-	if !c.isDebug {
+	if !c.isDebug || c.logger == nil {
 		return nil
 	}
 
-	c.logger.Debugf("%s\n", req.RawRequest.String())
-	c.logger.Debugf("%s\n", resp.RawResponse.String())
+	// A streamed body is consumed by its first reader, so only the headers are logged.
+	if req.RawRequest.IsBodyStream() {
+		c.logger.Debugf("%s\n", req.RawRequest.Header.String())
+	} else {
+		c.logger.Debugf("%s\n", req.RawRequest.String())
+	}
+	if resp.RawResponse.IsBodyStream() {
+		c.logger.Debugf("%s\n", resp.RawResponse.Header.String())
+	} else {
+		c.logger.Debugf("%s\n", resp.RawResponse.String())
+	}
 
 	return nil
 }

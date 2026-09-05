@@ -11,6 +11,7 @@ import (
 	"os"
 	pathpkg "path"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"time"
@@ -77,7 +78,7 @@ type sendFileStore struct {
 //
 // Here we don't use reflect.DeepEqual because it is quite slow compared to manual comparison.
 func (sf *sendFileStore) configEqual(cfg SendFile) bool {
-	if sf.config.FS != cfg.FS {
+	if !sameFS(sf.config.FS, cfg.FS) {
 		return false
 	}
 
@@ -102,6 +103,36 @@ func (sf *sendFileStore) configEqual(cfg SendFile) bool {
 	}
 
 	return true
+}
+
+// sameFS reports whether two file systems are the same one. Values of an
+// uncomparable dynamic type (fstest.MapFS) are compared by what they reference.
+func sameFS(a, b fs.FS) bool {
+	if a == nil || b == nil {
+		return a == nil && b == nil
+	}
+
+	va, vb := reflect.ValueOf(a), reflect.ValueOf(b)
+	if va.Type() != vb.Type() {
+		return false
+	}
+	if va.Type().Comparable() {
+		return a == b
+	}
+
+	switch va.Kind() {
+	case reflect.Slice:
+		// Pointer() is &elem[0] and ignores the length, so two prefixes of one
+		// backing array would otherwise look like the same file system.
+		return va.Pointer() == vb.Pointer() && va.Len() == vb.Len()
+	case reflect.Map, reflect.Chan, reflect.Pointer, reflect.UnsafePointer:
+		return va.Pointer() == vb.Pointer()
+	default:
+		// A func's pointer is its code entry, shared by every closure over the
+		// same body, so two file systems capturing different roots would look
+		// like one. Treat them as distinct rather than serve the wrong root.
+		return false
+	}
 }
 
 // Cookie defines the values used when configuring cookies emitted by
@@ -492,6 +523,9 @@ func (r *DefaultRes) Format(handlers ...ResFmt) error {
 		}
 	}
 
+	// Handlers must see the custom context when the app uses one, as Next does.
+	handlerCtx := r.c.ctxForHandlers()
+
 	r.Vary(HeaderAccept)
 
 	// Absent means the combined Accept view (RFC 9110 Section 5.2) is empty:
@@ -507,10 +541,10 @@ func (r *DefaultRes) Format(handlers ...ResFmt) error {
 		for _, h := range handlers {
 			if h.MediaType != formatDefaultMediaType {
 				r.c.fasthttp.Response.Header.SetContentType(h.MediaType)
-				return h.Handler(r.c)
+				return h.Handler(handlerCtx)
 			}
 		}
-		return handlers[0].Handler(r.c)
+		return handlers[0].Handler(handlerCtx)
 	}
 
 	// Using an int literal as the slice capacity allows for the slice to be
@@ -532,13 +566,13 @@ func (r *DefaultRes) Format(handlers ...ResFmt) error {
 		if defaultHandler == nil {
 			return r.SendStatus(StatusNotAcceptable)
 		}
-		return defaultHandler(r.c)
+		return defaultHandler(handlerCtx)
 	}
 
 	for _, h := range handlers {
 		if h.MediaType == accept {
 			r.c.fasthttp.Response.Header.SetContentType(h.MediaType)
-			return h.Handler(r.c)
+			return h.Handler(handlerCtx)
 		}
 	}
 
@@ -556,8 +590,13 @@ func (r *DefaultRes) AutoFormat(body any) error {
 	// (RFC 9110 Section 12.5.5).
 	r.Vary(HeaderAccept)
 
-	// Get accepted content type
-	accept := r.c.DefaultReq.Accepts("html", "json", "txt", "xml", "msgpack", "cbor") //nolint:staticcheck // It is fine to ignore the static check
+	// Get accepted content type; text/plain when nothing matches.
+	accept := "txt"
+	if len(peekJoinedRequestHeader(&r.c.fasthttp.Request.Header, HeaderAccept)) > 0 {
+		if negotiated := r.c.DefaultReq.Accepts("html", "json", "txt", "xml", "msgpack", "cbor"); negotiated != "" { //nolint:staticcheck // It is fine to ignore the static check
+			accept = negotiated
+		}
+	}
 
 	// Set accepted content type
 	r.Type(accept)
@@ -1225,11 +1264,7 @@ func (r *DefaultRes) SendFile(file string, config ...SendFile) error {
 
 	request := &r.c.fasthttp.Request
 
-	// Delete the Accept-Encoding header if compression is disabled
-	if !cfg.Compress {
-		// https://github.com/valyala/fasthttp/blob/7cc6f4c513f9e0d3686142e0a1a5aa2f76b3194a/fs.go#L55
-		request.Header.Del(HeaderAcceptEncoding)
-	}
+	// Keep the request's Accept-Encoding: middleware running after this call still needs it.
 
 	// copy of https://github.com/valyala/fasthttp/blob/7cc6f4c513f9e0d3686142e0a1a5aa2f76b3194a/fs.go#L103-L121 with small adjustments
 	if file == "" || (!filepath.IsAbs(file) && cfg.FS == nil) {

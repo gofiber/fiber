@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"runtime"
@@ -665,4 +666,46 @@ func Benchmark_LogfKeyAndValues_Parallel(b *testing.B) {
 			})
 		})
 	}
+}
+
+func Test_DefaultLogger_FatalExitsAboveLevel(t *testing.T) {
+	t.Parallel()
+
+	var exited []int
+	logger := &defaultLogger{
+		stdlog: log.New(io.Discard, "", 0),
+		exit:   func(code int) { exited = append(exited, code) },
+		level:  LevelPanic,
+		depth:  4,
+	}
+
+	logger.Fatal("fatal")
+	logger.Fatalf("fatal %d", 1)
+	logger.Fatalw("fatal", "k", "v")
+	require.Equal(t, []int{1, 1, 1}, exited)
+
+	// A derived logger keeps the hook, or it would exit the test process.
+	derived, ok := logger.WithContext(t.Context()).(*defaultLogger)
+	require.True(t, ok)
+	derived.Fatal("fatal")
+	require.Equal(t, []int{1, 1, 1, 1}, exited)
+}
+
+func Test_DefaultLogger_FatalExitsAfterWrite(t *testing.T) {
+	t.Parallel()
+
+	var exited []int
+	var buf bytes.Buffer
+	logger := &defaultLogger{
+		stdlog: log.New(&buf, "", 0),
+		exit:   func(code int) { exited = append(exited, code) },
+		level:  LevelTrace,
+		depth:  4,
+	}
+
+	logger.Fatal("fatal")
+	logger.Fatalf("fatal %d", 1)
+	logger.Fatalw("fatal", "k", "v")
+	require.Equal(t, []int{1, 1, 1}, exited)
+	require.Contains(t, buf.String(), "[Fatal] fatal")
 }

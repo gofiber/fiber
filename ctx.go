@@ -85,16 +85,104 @@ type DefaultCtx struct {
 
 // TLSHandler hosts the callback hooks Fiber invokes while negotiating TLS
 // connections, including optional client certificate lookups.
+//
+// It records the ClientHelloInfo of every connection, keyed by the connection,
+// and releases it when the server reports the connection closed.
 type TLSHandler struct {
-	clientHelloInfo *tls.ClientHelloInfo
+	connless         atomic.Pointer[tls.ClientHelloInfo]
+	clientHelloInfos sync.Map // underlying net.Conn -> *tls.ClientHelloInfo
+	serverConns      sync.Map // server-visible net.Conn -> underlying net.Conn
 }
 
 // GetClientInfo Callback function to set ClientHelloInfo
 // Must comply with the method structure of https://cs.opensource.google/go/go/+/refs/tags/go1.20:src/crypto/tls/common.go;l=554-563
 // Since we overlay the method of the TLS config in the listener method
 func (t *TLSHandler) GetClientInfo(info *tls.ClientHelloInfo) (*tls.Certificate, error) {
-	t.clientHelloInfo = info
+	switch {
+	case info == nil:
+	case info.Conn != nil:
+		t.clientHelloInfos.Store(info.Conn, info)
+	default:
+		t.connless.Store(info)
+	}
 	return nil, nil //nolint:nilnil // Not returning anything useful here is probably fine
+}
+
+// clientHelloInfo returns the ClientHelloInfo recorded for a connection, or nil.
+func (t *TLSHandler) clientHelloInfo(conn net.Conn) *tls.ClientHelloInfo {
+	if key := underlyingConn(conn); key != nil {
+		if v, ok := t.clientHelloInfos.Load(key); ok {
+			if info, ok := v.(*tls.ClientHelloInfo); ok {
+				return info
+			}
+		}
+	}
+	return t.connless.Load()
+}
+
+// track notes what a server-visible connection wraps while that connection is
+// still open, so its record can be found again once it is not. A *tls.Conn
+// needs no note: it answers for what it wraps at any time. The wrapper fasthttp
+// installs for Server.MaxConnsPerIP does not — it is closed and returned to a
+// pool before the close is reported, and clears the connection it embeds on the
+// way, so asking it then dereferences a nil *tls.Conn.
+func (t *TLSHandler) track(conn net.Conn) {
+	if conn == nil {
+		return
+	}
+	if _, ok := conn.(*tls.Conn); ok {
+		return
+	}
+	key := underlyingConn(conn)
+	if key == nil || key == conn {
+		return
+	}
+
+	// Reaching a wrapper that still holds a note means it was recycled before
+	// the close of the connection it carried was reported. That connection is
+	// closed — only Close returns a wrapper to the pool — so drop the record it
+	// would otherwise strand.
+	if prev, loaded := t.serverConns.Swap(conn, key); loaded {
+		if stale, ok := prev.(net.Conn); ok && stale != key {
+			t.clientHelloInfos.Delete(stale)
+		}
+	}
+}
+
+// forget drops the record kept for a closed connection, resolving it through
+// the note track left when the connection could still be asked what it wrapped.
+func (t *TLSHandler) forget(conn net.Conn) {
+	if conn == nil {
+		return
+	}
+
+	if noted, ok := t.serverConns.LoadAndDelete(conn); ok {
+		if key, ok := noted.(net.Conn); ok {
+			t.clientHelloInfos.Delete(key)
+		}
+		return
+	}
+
+	key := conn
+	if tc, ok := conn.(*tls.Conn); ok {
+		key = tc.NetConn()
+	}
+	if key != nil {
+		t.clientHelloInfos.Delete(key)
+	}
+}
+
+// underlyingConn returns the net.Conn a TLS handshake ran on; crypto/tls hands
+// GetCertificate the raw connection, while the server sees the *tls.Conn — or a
+// wrapper around one, as fasthttp installs for Server.MaxConnsPerIP accounting.
+// Matching the method rather than the concrete type unwraps both, so the two
+// sides key on the same connection. Only call this for a connection still in
+// use; see track for why a closed one cannot be unwrapped this way.
+func underlyingConn(conn net.Conn) net.Conn {
+	if tc, ok := conn.(interface{ NetConn() net.Conn }); ok {
+		return tc.NetConn()
+	}
+	return conn
 }
 
 // Views is the interface that wraps the Render function.
@@ -265,10 +353,10 @@ func (c *DefaultCtx) GetRespHeaders() map[string][]string {
 	return c.DefaultRes.GetHeaders()
 }
 
-// ClientHelloInfo return CHI from context
+// ClientHelloInfo returns the TLS ClientHelloInfo of the connection this request arrived on, or nil.
 func (c *DefaultCtx) ClientHelloInfo() *tls.ClientHelloInfo {
-	if c.app.tlsHandler != nil {
-		return c.app.tlsHandler.clientHelloInfo
+	if c.app.tlsHandler != nil && c.fasthttp != nil {
+		return c.app.tlsHandler.clientHelloInfo(c.fasthttp.Conn())
 	}
 
 	return nil
@@ -307,6 +395,15 @@ func (c *DefaultCtx) RestartRouting() error {
 	}
 	_, err := c.app.next(c)
 	return err
+}
+
+// ctxForHandlers returns the context user code is handed: the custom context
+// when the app uses one, otherwise the DefaultCtx itself, as Next does.
+func (c *DefaultCtx) ctxForHandlers() Ctx {
+	if c.handlerCtx != nil {
+		return c.handlerCtx
+	}
+	return c
 }
 
 func (c *DefaultCtx) setHandlerCtx(ctx CustomCtx) {
@@ -716,9 +813,10 @@ func (c *DefaultCtx) Value(key any) any {
 // here the features for caseSensitive, decoded paths, strict paths are evaluated
 func (c *DefaultCtx) configDependentPaths() {
 	c.path = append(c.path[:0], c.pathOriginal...)
-	// If UnescapePath enabled, we decode the path and save it for the framework user
+	// If UnescapePath enabled, we decode the path and save it for the framework user.
+	// Decoded as a path, so a "+" stays a "+".
 	if c.app.config.UnescapePath {
-		c.path = fasthttp.AppendUnquotedArg(c.path[:0], c.path)
+		c.path = unescapePath(c.path)
 	}
 
 	// another path is specified which is for routing recognition only
@@ -920,7 +1018,7 @@ func (c *DefaultCtx) Bind() *Bind {
 	if c.bind == nil {
 		c.bind = AcquireBind()
 	}
-	c.bind.ctx = c
+	c.bind.ctx = c.ctxForHandlers()
 	return c.bind
 }
 

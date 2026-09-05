@@ -21,7 +21,7 @@ type ExponentialBackoff struct {
 	// MaxRetryCount is the maximum number of retry count.
 	MaxRetryCount int
 
-	// currentInterval tracks the current sleep time.
+	// currentInterval is the starting interval when InitialInterval is unset; Retry never modifies it.
 	currentInterval time.Duration
 }
 
@@ -40,9 +40,12 @@ func NewExponentialBackoff(config ...Config) *ExponentialBackoff {
 // Retry is the core logic of the retry mechanism. If the calling function returns
 // nil as an error, then the Retry method is terminated with returning nil. Otherwise,
 // if all function calls are returned error, then the method returns this error.
+//
+// Each call starts from InitialInterval with its own state, so one ExponentialBackoff can be shared.
 func (e *ExponentialBackoff) Retry(f func() error) error {
-	if e.currentInterval <= 0 {
-		e.currentInterval = e.InitialInterval
+	interval := e.InitialInterval
+	if interval <= 0 {
+		interval = e.currentInterval
 	}
 	var err error
 	for i := 0; i < e.MaxRetryCount; i++ {
@@ -51,25 +54,25 @@ func (e *ExponentialBackoff) Retry(f func() error) error {
 			return nil
 		}
 		if i < e.MaxRetryCount-1 {
-			next := e.next()
-			time.Sleep(next)
+			var sleep time.Duration
+			sleep, interval = e.next(interval)
+			time.Sleep(sleep)
 		}
 	}
 	return err
 }
 
-// next calculates the next sleeping time interval.
-func (e *ExponentialBackoff) next() time.Duration {
+// next returns the sleep for the current interval and the interval of the following attempt.
+func (e *ExponentialBackoff) next(current time.Duration) (sleep, following time.Duration) { //nolint:nonamedreturns // gocritic unnamedResult requires naming the pair for clarity
 	// generate a random value between [0, 1000)
 	n, err := rand.Int(rand.Reader, big.NewInt(1000))
 	if err != nil {
-		return e.MaxBackoffTime
+		return e.MaxBackoffTime, e.MaxBackoffTime
 	}
-	t := e.currentInterval + (time.Duration(n.Int64()) * time.Millisecond)
-	e.currentInterval = time.Duration(float64(e.currentInterval) * e.Multiplier)
+	t := current + (time.Duration(n.Int64()) * time.Millisecond)
+	following = time.Duration(float64(current) * e.Multiplier)
 	if t >= e.MaxBackoffTime {
-		e.currentInterval = e.MaxBackoffTime
-		return e.MaxBackoffTime
+		return e.MaxBackoffTime, e.MaxBackoffTime
 	}
-	return t
+	return t, following
 }

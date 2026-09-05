@@ -23,7 +23,7 @@ func testSimpleHandler(c Ctx) error {
 }
 
 func Test_Hook_OnRoute(t *testing.T) {
-	t.Parallel()
+	// Not parallel: redirects the process-wide logger output.
 	app := New()
 
 	app.Hooks().OnRoute(func(r Route) error {
@@ -689,12 +689,13 @@ func Test_executeOnPreShutdownHooks_Error(t *testing.T) {
 
 	var buf bytes.Buffer
 	log.SetOutput(&buf)
+	t.Cleanup(func() { log.SetOutput(os.Stderr) })
 	app.hooks.executeOnPreShutdownHooks()
 	require.NotZero(t, buf.Len())
 }
 
 func Test_executeOnForkHooks_Error(t *testing.T) {
-	t.Parallel()
+	// Not parallel: redirects the process-wide logger output.
 	app := New()
 
 	app.Hooks().OnFork(func(pid int) error {
@@ -704,6 +705,7 @@ func Test_executeOnForkHooks_Error(t *testing.T) {
 
 	var buf bytes.Buffer
 	log.SetOutput(&buf)
+	t.Cleanup(func() { log.SetOutput(os.Stderr) })
 	app.hooks.executeOnForkHooks(1)
 	require.NotZero(t, buf.Len())
 }
@@ -720,4 +722,22 @@ func Test_executeOnMountHooks_Error(t *testing.T) {
 
 	err := app.hooks.executeOnMountHooks(parent)
 	require.EqualError(t, err, "mount error")
+}
+
+func Test_Hooks_ShutdownSnapshot_WithoutApp(t *testing.T) {
+	t.Parallel()
+
+	var pre, post int
+	h := &Hooks{
+		onPreShutdown:  []OnPreShutdownHandler{func() error { pre++; return nil }},
+		onPostShutdown: []OnPostShutdownHandler{func(error) error { post++; return nil }},
+	}
+
+	require.Len(t, h.snapshotOnPreShutdown(), 1)
+	require.Len(t, h.snapshotOnPostShutdown(), 1)
+
+	h.executeOnPreShutdownHooks()
+	h.executeOnPostShutdownHooks(nil)
+	require.Equal(t, 1, pre)
+	require.Equal(t, 1, post)
 }

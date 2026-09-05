@@ -1,6 +1,7 @@
 package client
 
 import (
+	"bufio"
 	"context"
 	"crypto/tls"
 	"encoding/hex"
@@ -10,6 +11,8 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -2507,4 +2510,416 @@ func Test_Client_StreamResponseBody(t *testing.T) {
 		require.True(t, client.StreamResponseBody())
 		require.True(t, hostClient.StreamResponseBody)
 	})
+}
+
+func Test_Client_UnparsableCookieAttributesIgnored(t *testing.T) {
+	t.Parallel()
+
+	server := startTestServer(t, func(app *fiber.App) {
+		app.Get("/", func(c fiber.Ctx) error {
+			c.Response().Header.Add(fiber.HeaderSetCookie, "a=1; Max-Age=-1")
+			c.Response().Header.Add(fiber.HeaderSetCookie, "b=2; Expires=not-a-date")
+			c.Response().Header.Add(fiber.HeaderSetCookie, "c=3")
+			return c.SendString("ok")
+		})
+	})
+	defer server.stop()
+
+	client := New().SetDial(server.dial())
+	resp, err := client.Get("http://example.com/")
+	require.NoError(t, err)
+	defer resp.Close()
+	require.Equal(t, fiber.StatusOK, resp.StatusCode())
+	require.Equal(t, "ok", resp.String())
+
+	values := map[string]string{}
+	for _, cookie := range resp.Cookies() {
+		values[string(cookie.Key())] = string(cookie.Value())
+	}
+	require.Equal(t, map[string]string{"a": "1", "b": "2", "c": "3"}, values)
+}
+
+func Test_Client_ResponseHookError_KeepsCallerRequest(t *testing.T) {
+	t.Parallel()
+
+	server := startTestServer(t, func(app *fiber.App) {
+		app.Get("/", func(c fiber.Ctx) error { return c.SendString("ok") })
+	})
+	defer server.stop()
+
+	client := New().SetDial(server.dial())
+	client.AddResponseHook(func(_ *Client, _ *Response, _ *Request) error {
+		return errors.New("hook failed")
+	})
+
+	req := AcquireRequest()
+	defer ReleaseRequest(req)
+	req.SetClient(client).SetURL("http://example.com/")
+
+	_, err := req.Send()
+	require.ErrorContains(t, err, "hook failed")
+	require.Equal(t, "http://example.com/", req.URL(), "the caller's request must be left intact")
+	require.Same(t, client, req.Client())
+}
+
+func Test_Request_Reset_ClearsClient(t *testing.T) {
+	t.Parallel()
+
+	custom := New()
+	req := AcquireRequest()
+	req.SetClient(custom)
+	req.Reset()
+	require.Nil(t, req.Client(), "a reset request must not keep the previous owner's client")
+	ReleaseRequest(req)
+}
+
+func Test_Client_Debug_DoesNotDrainStream(t *testing.T) {
+	t.Parallel()
+
+	server := startTestServer(t, func(app *fiber.App) {
+		app.Get("/", func(c fiber.Ctx) error {
+			c.Set(fiber.HeaderContentType, fiber.MIMETextPlain)
+			return c.SendStreamWriter(func(w *bufio.Writer) {
+				_, _ = w.WriteString("chunk") //nolint:errcheck // not needed
+				_ = w.Flush()                 //nolint:errcheck // not needed
+			})
+		})
+	})
+	defer server.stop()
+
+	client := New().SetDial(server.dial()).SetStreamResponseBody(true).Debug()
+
+	resp, err := client.Get("http://example.com/")
+	require.NoError(t, err)
+	defer resp.Close()
+	stream := resp.BodyStream()
+	require.NotNil(t, stream, "the debug log must not consume the streamed body")
+	body, err := io.ReadAll(stream)
+	require.NoError(t, err)
+	require.Equal(t, "chunk", string(body))
+}
+
+func Test_CookieJar_MaxAge(t *testing.T) {
+	t.Parallel()
+
+	server := startTestServer(t, func(app *fiber.App) {
+		app.Get("/set", func(c fiber.Ctx) error {
+			c.Response().Header.Add(fiber.HeaderSetCookie, "sid=abc; Max-Age=1")
+			return c.SendString("set")
+		})
+		app.Get("/del", func(c fiber.Ctx) error {
+			c.Response().Header.Add(fiber.HeaderSetCookie, "sid=abc; Max-Age=0")
+			return c.SendString("del")
+		})
+		app.Get("/echo", func(c fiber.Ctx) error {
+			return c.SendString(c.Cookies("sid"))
+		})
+	})
+	defer server.stop()
+
+	jar := AcquireCookieJar()
+	defer ReleaseCookieJar(jar)
+	client := New().SetDial(server.dial()).SetCookieJar(jar)
+
+	get := func(path string) string {
+		resp, err := client.Get("http://example.com" + path)
+		require.NoError(t, err)
+		defer resp.Close()
+		return resp.String()
+	}
+
+	get("/set")
+	require.Equal(t, "abc", get("/echo"))
+	get("/del")
+	require.Empty(t, get("/echo"), "Max-Age=0 must delete the cookie")
+
+	get("/set")
+	require.Equal(t, "abc", get("/echo"))
+	time.Sleep(1500 * time.Millisecond)
+	require.Empty(t, get("/echo"), "the cookie must expire after Max-Age seconds")
+}
+
+// requireOwnedRequestReleased sends until the client hands a pooled request out
+// twice. Only a release puts one back where Acquire can find it, so a repeat is
+// proof that a failing send releases; with the release gone no send returns one
+// to the pool, so no pointer can ever repeat however many follow.
+//
+// Which pointer comes back is not assertable: sync.Pool promises no relation
+// between what is put and what a later Get returns, and under -race with these
+// tests in parallel a specific request does not come back to a specific caller.
+func requireOwnedRequestReleased(t *testing.T, send func() (*Request, error)) {
+	t.Helper()
+
+	seen := make(map[*Request]struct{}, 64)
+	for range 64 {
+		req, err := send()
+		require.ErrorContains(t, err, "boom")
+		require.NotNil(t, req)
+		if _, repeat := seen[req]; repeat {
+			return
+		}
+		seen[req] = struct{}{}
+	}
+	t.Fatal("the client never reused a pooled request: the failing send strands it")
+}
+
+func Test_Client_PreHookError_ReleasesOwnedRequest(t *testing.T) {
+	t.Parallel()
+
+	var seen *Request
+	client := New()
+	client.AddRequestHook(func(_ *Client, req *Request) error {
+		seen = req
+		require.True(t, req.clientOwned)
+		return errors.New("boom")
+	})
+
+	// Nothing is dispatched, so no response will ever carry the helper's own
+	// request back to the pool.
+	requireOwnedRequestReleased(t, func() (*Request, error) {
+		seen = nil
+		_, err := client.Get("http://example.com")
+		return seen, err
+	})
+}
+
+func Test_Client_DispatchError_ReleasesOwnedRequest(t *testing.T) {
+	t.Parallel()
+
+	var seen *Request
+	client := New().SetDial(func(_ string) (net.Conn, error) {
+		return nil, errors.New("boom")
+	})
+	client.AddRequestHook(func(_ *Client, req *Request) error {
+		seen = req
+		return nil
+	})
+
+	// The send never produces a response, so the helper's own request is
+	// stranded unless this path releases it too.
+	requireOwnedRequestReleased(t, func() (*Request, error) {
+		seen = nil
+		_, err := client.Get("http://example.com")
+		return seen, err
+	})
+}
+
+func Test_Client_AfterHookError_ReleasesOwnedRequest(t *testing.T) {
+	t.Parallel()
+
+	server := startTestServer(t, func(app *fiber.App) {
+		app.Get("/", func(c fiber.Ctx) error {
+			return c.SendString("ok")
+		})
+	})
+	defer server.stop()
+
+	var seen *Request
+	client := New().SetDial(server.dial())
+	client.AddResponseHook(func(_ *Client, _ *Response, req *Request) error {
+		seen = req
+		require.True(t, req.clientOwned)
+		return errors.New("boom")
+	})
+
+	// No response reaches the caller, so the request has to go back here.
+	requireOwnedRequestReleased(t, func() (*Request, error) {
+		seen = nil
+		_, err := client.Get("http://example.com/")
+		return seen, err
+	})
+}
+
+func Test_CookieJar_MaxAgePrecedence(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		maxAge string
+		kept   bool
+	}{
+		{name: "not an integer", maxAge: "Max-Age=bogus", kept: true},
+		{name: "no value", maxAge: "Max-Age", kept: true},
+		{name: "empty value", maxAge: "Max-Age=", kept: true},
+		{name: "padded", maxAge: "Max-Age= 3600 ", kept: true},
+		{name: "zero", maxAge: "Max-Age=0", kept: false},
+		{name: "negative", maxAge: "Max-Age=-1", kept: false},
+		{name: "lowercase zero", maxAge: "max-age=0", kept: false},
+		{name: "last of duplicates wins", maxAge: "Max-Age=3600; Max-Age=0", kept: false},
+		{name: "last of duplicates revives", maxAge: "Max-Age=0; Max-Age=3600", kept: true},
+		{name: "unparsable duplicate ignored", maxAge: "Max-Age=0; Max-Age=bogus", kept: false},
+		{name: "seconds beyond a duration", maxAge: "Max-Age=10000000000", kept: true},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			jar := AcquireCookieJar()
+			t.Cleanup(jar.Release)
+
+			uri := fasthttp.AcquireURI()
+			t.Cleanup(func() { fasthttp.ReleaseURI(uri) })
+			require.NoError(t, uri.Parse(nil, []byte("http://example.com/")))
+
+			resp := fasthttp.AcquireResponse()
+			t.Cleanup(func() { fasthttp.ReleaseResponse(resp) })
+			expires := time.Now().Add(time.Hour).UTC().Format(time.RFC1123)
+			resp.Header.Add("Set-Cookie", "sid=x; "+tc.maxAge+"; Expires="+expires)
+
+			jar.parseCookiesFromResp([]byte("example.com"), []byte("/"), resp)
+
+			// RFC 6265 §5.2.2: Max-Age wins over Expires, but only when it is an integer.
+			cookies := jar.Get(uri)
+			if !tc.kept {
+				require.Empty(t, cookies)
+				return
+			}
+			require.Len(t, cookies, 1)
+			require.Equal(t, "x", string(cookies[0].Value()))
+		})
+	}
+}
+
+func Test_Request_CancelledContext_NoRace(t *testing.T) {
+	t.Parallel()
+
+	server := startTestServer(t, func(app *fiber.App) {
+		app.Get("/", func(c fiber.Ctx) error {
+			// Slow enough that the response never beats the canceled context.
+			time.Sleep(50 * time.Millisecond)
+			return c.SendString("ok")
+		})
+	})
+	defer server.stop()
+
+	client := New().SetDial(server.dial())
+
+	// A live request first, so the server is serving before it is shut down.
+	warm, err := client.Get("http://example.com/")
+	require.NoError(t, err)
+	warm.Close()
+
+	for range 20 {
+		ctx, cancel := context.WithCancel(t.Context())
+		cancel()
+		req := AcquireRequest()
+		req.SetClient(client).SetURL("http://example.com/").SetContext(ctx)
+		_, err := req.Send()
+		require.ErrorIs(t, err, ErrTimeoutOrCancel)
+		ReleaseRequest(req)
+	}
+}
+
+func Test_Client_RequestHeaderOverridesClientHeader(t *testing.T) {
+	t.Parallel()
+
+	server := startTestServer(t, func(app *fiber.App) {
+		app.Get("/", func(c fiber.Ctx) error {
+			return c.SendString(strings.Join(c.GetReqHeaders()["X-Level"], "|"))
+		})
+	})
+	defer server.stop()
+
+	client := New().SetDial(server.dial()).SetHeader("X-Level", "client")
+
+	resp, err := client.Get("http://example.com/")
+	require.NoError(t, err)
+	require.Equal(t, "client", resp.String())
+	resp.Close()
+
+	req := AcquireRequest()
+	defer ReleaseRequest(req)
+	req.SetClient(client).SetURL("http://example.com/").SetHeader("X-Level", "request")
+	resp, err = req.Send()
+	require.NoError(t, err)
+	defer resp.Close()
+	require.Equal(t, "request", resp.String(), "a request-level header overrides the client-level one")
+}
+
+func Test_Request_Params_KeepInsertionOrder(t *testing.T) {
+	t.Parallel()
+
+	req := AcquireRequest()
+	defer ReleaseRequest(req)
+	want := make([]string, 0, 20)
+	for i := range 20 {
+		v := strconv.Itoa(i)
+		req.AddParam("a", v)
+		want = append(want, v)
+	}
+	for key, values := range req.Params() {
+		require.Equal(t, "a", key)
+		require.Equal(t, want, values)
+	}
+}
+
+func Test_Response_Header_CopiesValue(t *testing.T) {
+	t.Parallel()
+
+	server := startTestServer(t, func(app *fiber.App) {
+		app.Get("/", func(c fiber.Ctx) error {
+			c.Set("X-Test", "value")
+			return c.SendString("ok")
+		})
+	})
+	defer server.stop()
+
+	client := New().SetDial(server.dial())
+	resp, err := client.Get("http://example.com/")
+	require.NoError(t, err)
+	defer resp.Close()
+
+	header := resp.Header("X-Test")
+	resp.RawResponse.Header.Set("X-Test", "other")
+	require.Equal(t, "value", header, "the returned string must not alias the header storage")
+}
+
+func Test_Request_Resend_DoesNotAccumulateHeaders(t *testing.T) {
+	t.Parallel()
+
+	server := startTestServer(t, func(app *fiber.App) {
+		app.Get("/", func(c fiber.Ctx) error {
+			return c.SendString(strconv.Itoa(len(c.GetReqHeaders()["X-A"])))
+		})
+	})
+	defer server.stop()
+
+	client := New().SetDial(server.dial())
+	req := AcquireRequest()
+	defer ReleaseRequest(req)
+	req.SetClient(client).SetURL("http://example.com/").SetHeader("X-A", "1")
+
+	for range 3 {
+		resp, err := req.Send()
+		require.NoError(t, err)
+		require.Equal(t, "1", resp.String(), "each send must carry the header once")
+		resp.Close()
+	}
+}
+
+func Test_Client_UppercaseScheme(t *testing.T) {
+	t.Parallel()
+
+	server := startTestServer(t, func(app *fiber.App) {
+		app.Get("/", func(c fiber.Ctx) error { return c.SendString("ok") })
+	})
+	defer server.stop()
+
+	client := New().SetDial(server.dial())
+	resp, err := client.Get("HTTP://example.com/")
+	require.NoError(t, err)
+	defer resp.Close()
+	require.Equal(t, "ok", resp.String())
+}
+
+func Test_CookieJar_MaxAgeBeyond32Bit(t *testing.T) {
+	t.Parallel()
+
+	// int is 32 bits on 386 and arm, where this used to fail to parse and leave
+	// a session cookie behind.
+	seconds, ok := lastMaxAge([]byte("sid=x; Max-Age=3000000000"))
+	require.True(t, ok)
+	require.Equal(t, int64(3000000000), seconds)
+	require.Equal(t, 3000000000*time.Second, maxAgeDuration(seconds))
 }

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"math"
 	"os"
 	"strconv"
 
@@ -101,7 +102,11 @@ func New(config ...Config) fiber.Handler {
 }
 
 func readLimited(reader io.Reader, maxBytes int64) ([]byte, error) {
-	limit := maxBytes + 1
+	// One byte past the limit tells a too-large file apart, without overflowing.
+	limit := maxBytes
+	if limit < math.MaxInt64 {
+		limit++
+	}
 	data, err := io.ReadAll(io.LimitReader(reader, limit))
 	if err != nil {
 		return nil, fmt.Errorf("favicon: read limited: %w", err)

@@ -1067,3 +1067,36 @@ func Test_App_Mount_ParametricPrefixConstraint(t *testing.T) {
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, StatusNotFound, resp.StatusCode, "the prefix constraint still rejects")
 }
+
+func Test_App_Mount_StrictRouting(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		path   string
+		strict int
+		loose  int
+	}{
+		{path: "/api/sub", strict: StatusOK, loose: StatusOK},
+		{path: "/api/sub/", strict: StatusNotFound, loose: StatusOK},
+		{path: "/api/p/7", strict: StatusOK, loose: StatusOK},
+		{path: "/api/p/7/", strict: StatusNotFound, loose: StatusOK},
+	}
+
+	for _, strict := range []bool{false, true} {
+		app := New(Config{StrictRouting: strict})
+		sub := New()
+		sub.Get("/sub", func(c Ctx) error { return c.SendString("plain") })
+		sub.Get("/p/:id", func(c Ctx) error { return c.SendString("param") })
+		app.Use("/api", sub)
+
+		for _, tc := range tests {
+			want := tc.loose
+			if strict {
+				want = tc.strict
+			}
+			resp, err := app.Test(httptest.NewRequest(MethodGet, tc.path, http.NoBody))
+			require.NoError(t, err)
+			require.Equal(t, want, resp.StatusCode, "strict=%v path=%q", strict, tc.path)
+		}
+	}
+}

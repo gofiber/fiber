@@ -728,3 +728,104 @@ func Test_Timeout_OnTimeout_ResetsBodyStream(t *testing.T) {
 	require.Equal(t, fiber.StatusRequestTimeout, resp.StatusCode())
 	require.Equal(t, fiber.ErrRequestTimeout.Message, string(resp.Body()))
 }
+
+func Test_Timeout_DefaultReturnsErrRequestTimeout(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+
+	seen := make(chan error, 1)
+	app.Use(func(c fiber.Ctx) error {
+		err := c.Next()
+		seen <- err
+		return err
+	})
+	// Hold the handler past the deadline, so the middleware always selects the
+	// timeout rather than racing it against the handler returning.
+	release := make(chan struct{})
+	app.Get("/slow", New(func(c fiber.Ctx) error {
+		<-c.Context().Done()
+		<-release
+		return nil
+	}, Config{Timeout: 20 * time.Millisecond}))
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/slow", http.NoBody))
+	close(release)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusRequestTimeout, resp.StatusCode)
+
+	select {
+	case err := <-seen:
+		require.ErrorIs(t, err, fiber.ErrRequestTimeout)
+	case <-time.After(time.Second):
+		t.Fatal("outer middleware never observed the result")
+	}
+}
+
+func Test_Timeout_OnTimeoutReturnedErrorShapesResponse(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+
+	release := make(chan struct{})
+	app.Get("/slow", New(func(c fiber.Ctx) error {
+		<-c.Context().Done()
+		<-release
+		return nil
+	}, Config{
+		Timeout: 20 * time.Millisecond,
+		OnTimeout: func(_ fiber.Ctx) error {
+			return fiber.NewError(fiber.StatusGatewayTimeout, "upstream too slow")
+		},
+	}))
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/slow", http.NoBody))
+	close(release)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusGatewayTimeout, resp.StatusCode)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "upstream too slow", string(body))
+}
+
+func Test_Timeout_ErrorHandlerSkippedAfterTimeout(t *testing.T) {
+	t.Parallel()
+
+	var errorHandlerCalls atomic.Int32
+	app := fiber.New(fiber.Config{
+		ErrorHandler: func(c fiber.Ctx, err error) error {
+			errorHandlerCalls.Add(1)
+			return c.Status(fiber.StatusTeapot).SendString(err.Error())
+		},
+	})
+
+	seen := make(chan error, 1)
+	app.Use(func(c fiber.Ctx) error {
+		err := c.Next()
+		seen <- err
+		return err
+	})
+	release := make(chan struct{})
+	app.Get("/partial", New(func(c fiber.Ctx) error {
+		if err := c.SendString("partial output"); err != nil {
+			return err
+		}
+		<-c.Context().Done()
+		<-release
+		return c.Context().Err()
+	}, Config{Timeout: 20 * time.Millisecond}))
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/partial", http.NoBody))
+	close(release)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusRequestTimeout, resp.StatusCode)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, fiber.ErrRequestTimeout.Message, string(body))
+
+	select {
+	case err := <-seen:
+		require.ErrorIs(t, err, fiber.ErrRequestTimeout)
+	case <-time.After(time.Second):
+		t.Fatal("outer middleware never observed the result")
+	}
+	require.Equal(t, int32(0), errorHandlerCalls.Load())
+}

@@ -887,6 +887,77 @@ func Test_Limiter_Sliding_ExpirationFunc_FallbackOnNegativeDuration(t *testing.T
 	require.Equal(t, fiber.StatusTooManyRequests, resp.StatusCode)
 }
 
+func Test_Limiter_SubSecondExpirationIsOneSecondWindow(t *testing.T) {
+	t.Parallel()
+
+	// A positive Expiration below one second is a one-second window.
+	require.Equal(t, 500*time.Millisecond, configDefault(Config{Expiration: 500 * time.Millisecond}).Expiration)
+
+	t.Run("fixed", func(t *testing.T) {
+		t.Parallel()
+
+		clock := newTestClock(time.Now().Truncate(time.Second))
+		app := fiber.New()
+		app.Use(New(Config{
+			Max:               1,
+			Expiration:        500 * time.Millisecond,
+			LimiterMiddleware: FixedWindow{},
+			clock:             clock.Now,
+		}))
+		app.Get("/", func(c fiber.Ctx) error {
+			return c.SendStatus(fiber.StatusOK)
+		})
+
+		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, fiber.StatusOK, resp.StatusCode)
+
+		resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, fiber.StatusTooManyRequests, resp.StatusCode)
+		require.Equal(t, "1", resp.Header.Get(fiber.HeaderRetryAfter))
+
+		// Past the one-second window the client is admitted again.
+		clock.Add(1300 * time.Millisecond)
+
+		resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	})
+
+	t.Run("sliding", func(t *testing.T) {
+		t.Parallel()
+
+		clock := newTestClock(time.Now().Truncate(time.Second))
+		app := fiber.New()
+		app.Use(New(Config{
+			Max:               1,
+			Expiration:        500 * time.Millisecond,
+			LimiterMiddleware: SlidingWindow{},
+			clock:             clock.Now,
+		}))
+		app.Get("/", func(c fiber.Ctx) error {
+			return c.SendStatus(fiber.StatusOK)
+		})
+
+		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, fiber.StatusOK, resp.StatusCode)
+
+		resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, fiber.StatusTooManyRequests, resp.StatusCode)
+		require.Equal(t, "1", resp.Header.Get(fiber.HeaderRetryAfter))
+
+		// Two whole windows on, the previous window carries no weight.
+		clock.Add(2300 * time.Millisecond)
+
+		resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	})
+}
+
 // go test -run Test_Limiter_Concurrency_Store -race -v
 func Test_Limiter_Concurrency_Store(t *testing.T) {
 	t.Parallel()
@@ -1235,20 +1306,26 @@ func Test_Limiter_Sliding_Window_SkipFailedRequests_DecrementsPreviousWindow(t *
 // go test -run Test_Limiter_Fixed_Window_SkipSuccessfulRequests_DoesNotCreditNextWindow -v
 func Test_Limiter_Fixed_Window_SkipSuccessfulRequests_DoesNotCreditNextWindow(t *testing.T) {
 	t.Parallel()
+
+	clock := newTestClock(time.Now().Truncate(time.Second))
 	app := fiber.New()
 
 	app.Use(New(Config{
 		Max:                    2,
-		Expiration:             300 * time.Millisecond,
+		Expiration:             time.Second,
 		SkipSuccessfulRequests: true,
 		LimiterMiddleware:      FixedWindow{},
+		clock:                  clock.Now,
 	}))
 
+	started := make(chan struct{})
+	release := make(chan struct{})
 	app.Get("/:mode", func(c fiber.Ctx) error {
 		switch c.Params("mode") {
 		case "slow":
 			// Hold the successful request open until the window has rolled over.
-			time.Sleep(600 * time.Millisecond)
+			close(started)
+			<-release
 			return c.SendStatus(fiber.StatusOK)
 		case "fail":
 			// A failed request is not skipped, so it seeds the new window.
@@ -1271,16 +1348,19 @@ func Test_Limiter_Fixed_Window_SkipSuccessfulRequests_DoesNotCreditNextWindow(t 
 	go func() {
 		resp, err := app.Test(
 			httptest.NewRequest(fiber.MethodGet, "/slow", http.NoBody),
-			fiber.TestConfig{Timeout: 2 * time.Second},
+			fiber.TestConfig{Timeout: 5 * time.Second},
 		)
 		slowCh <- respErr{resp: resp, err: err}
 	}()
 
-	// Let the first window expire, then seed the new window with one counted hit.
-	time.Sleep(400 * time.Millisecond)
+	// Roll the window over only once the slow request holds a hit in the old one,
+	// then seed the new window with one counted hit before releasing it.
+	<-started
+	clock.Add(1500 * time.Millisecond)
 	failResp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/fail", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusInternalServerError, failResp.StatusCode)
+	close(release)
 
 	result := <-slowCh
 	require.NoError(t, result.err)

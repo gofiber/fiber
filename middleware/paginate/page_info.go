@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"net/url"
 	"slices"
 
@@ -85,7 +86,11 @@ func (p *PageInfo) SortBy(field string, order SortOrder) *PageInfo {
 
 // NextPageURLWithKeys returns the URL for the next page using custom query keys.
 func (p *PageInfo) NextPageURLWithKeys(baseURL, pageKey, limitKey string) string {
-	return buildPaginationURL(baseURL, pageKey, utils.FormatInt(int64(p.Page+1)), limitKey, utils.FormatInt(int64(p.Limit)))
+	next := p.Page
+	if next < math.MaxInt {
+		next++
+	}
+	return buildPaginationURL(baseURL, pageKey, utils.FormatInt(int64(next)), limitKey, utils.FormatInt(int64(p.Limit)))
 }
 
 // NextPageURL returns the URL for the next page.

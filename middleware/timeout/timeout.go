@@ -115,6 +115,7 @@ func handleTimeout(
 		// TimeoutErrorWithCode constructs a fresh fasthttp.Response internally, so
 		// the active RequestCtx response is never read.
 		ctx.RequestCtx().TimeoutErrorWithCode(fiber.ErrRequestTimeout.Message, fiber.StatusRequestTimeout)
+		timeoutErr = fiber.ErrRequestTimeout
 	} else {
 		// Prepare the timeout response before marking the RequestCtx as timed out so
 		// custom OnTimeout handlers can shape the response body.
@@ -127,8 +128,14 @@ func handleTimeout(
 		resp := ctx.Response()
 		if resp.StatusCode() == fiber.StatusOK && timeoutResponseUnwritten(resp) {
 			resp.ResetBody()
-			resp.SetStatusCode(fiber.StatusRequestTimeout)
-			resp.SetBodyString(fiber.ErrRequestTimeout.Message)
+			// An error OnTimeout returned is the response the client will see.
+			status, message := fiber.StatusRequestTimeout, fiber.ErrRequestTimeout.Message
+			var fiberErr *fiber.Error
+			if errors.As(timeoutErr, &fiberErr) && fiberErr != nil {
+				status, message = fiberErr.Code, fiberErr.Message
+			}
+			resp.SetStatusCode(status)
+			resp.SetBodyString(message)
 		}
 
 		// Tell fasthttp to not recycle the RequestCtx - it will acquire a new one

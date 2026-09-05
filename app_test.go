@@ -24,6 +24,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 	"unsafe"
@@ -3307,9 +3308,11 @@ func Test_App_Test_CloseFail(t *testing.T) {
 
 func Test_App_SetTLSHandler(t *testing.T) {
 	t.Parallel()
-	tlsHandler := &TLSHandler{clientHelloInfo: &tls.ClientHelloInfo{
+	tlsHandler := &TLSHandler{}
+	_, err := tlsHandler.GetClientInfo(&tls.ClientHelloInfo{
 		ServerName: "example.golang",
-	}}
+	})
+	require.NoError(t, err)
 
 	app := New()
 	app.SetTLSHandler(tlsHandler)
@@ -3760,4 +3763,210 @@ func Test_App_Test_SmallTimeout_WithFailOnTimeoutTrue(t *testing.T) {
 	})
 
 	require.ErrorIs(t, err, os.ErrDeadlineExceeded)
+}
+
+func Test_App_ShutdownWithTimeout_HandlerTakesAppMutex(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	inHandler := make(chan struct{})
+	shutdownStarted := make(chan struct{})
+	app.Get("/", func(c Ctx) error {
+		close(inHandler)
+		<-shutdownStarted
+		app.RebuildTree()
+		return c.SendString("ok")
+	})
+	app.Hooks().OnPreShutdown(func() error {
+		close(shutdownStarted)
+		return nil
+	})
+
+	ln := fasthttputil.NewInmemoryListener()
+	errs := make(chan error, 1)
+	go func() {
+		errs <- app.Listener(ln, ListenConfig{DisableStartupMessage: true})
+	}()
+
+	conn, err := ln.Dial()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = conn.Close() }) //nolint:errcheck // not needed
+	_, err = conn.Write([]byte("GET / HTTP/1.1\r\nHost: example.com\r\nConnection: close\r\n\r\n"))
+	require.NoError(t, err)
+
+	select {
+	case <-inHandler:
+	case <-time.After(2 * time.Second):
+		t.Fatal("request never reached the handler")
+	}
+
+	const timeout = 3 * time.Second
+	start := time.Now()
+	require.NoError(t, app.ShutdownWithTimeout(timeout))
+	require.Less(t, time.Since(start), timeout, "shutdown waited for the whole timeout: the handler deadlocked on the app mutex")
+	require.NoError(t, <-errs)
+}
+
+func Test_App_IsProxyTrusted_CanonicalIPForms(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		proxy  string
+		remote net.IP
+	}{
+		{name: "uppercase IPv6", proxy: "2001:DB8::1", remote: net.ParseIP("2001:db8::1")},
+		{name: "zero-padded IPv6", proxy: "2001:0db8::1", remote: net.ParseIP("2001:db8::1")},
+		{name: "uncompressed IPv6", proxy: "0:0:0:0:0:0:0:1", remote: net.ParseIP("::1")},
+		{name: "IPv4-mapped IPv6 with 4-byte peer", proxy: "::ffff:10.0.0.1", remote: net.ParseIP("10.0.0.1").To4()},
+		{name: "IPv4-mapped IPv6 with 16-byte peer", proxy: "::ffff:10.0.0.1", remote: net.ParseIP("10.0.0.1")},
+		{name: "IPv4 with IPv4-mapped peer", proxy: "10.0.0.1", remote: net.ParseIP("::ffff:10.0.0.1")},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			app := New(Config{
+				TrustProxy:       true,
+				TrustProxyConfig: TrustProxyConfig{Proxies: []string{tc.proxy}},
+			})
+			c := app.AcquireCtx(&fasthttp.RequestCtx{})
+			defer app.ReleaseCtx(c)
+			c.RequestCtx().SetRemoteAddr(&net.TCPAddr{IP: tc.remote, Port: 8080})
+
+			require.True(t, c.IsProxyTrusted())
+		})
+	}
+}
+
+func Test_App_IP_StripTrustedProxies_CanonicalIPForms(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		proxy    string
+		remote   string
+		header   string
+		expected string
+	}{
+		{name: "IPv4-mapped proxy spelling", proxy: "::ffff:10.0.0.1", remote: "10.0.0.1", header: "203.0.113.50, 10.0.0.1", expected: "203.0.113.50"},
+		{name: "uppercase IPv6 proxy", proxy: "2001:DB8::1", remote: "2001:db8::1", header: "203.0.113.50, 2001:db8::1", expected: "203.0.113.50"},
+		{name: "uncompressed IPv6 proxy", proxy: "0:0:0:0:0:0:0:1", remote: "::1", header: "203.0.113.50, ::1", expected: "203.0.113.50"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			app := New(Config{
+				ProxyHeader:        HeaderXForwardedFor,
+				TrustProxy:         true,
+				EnableIPValidation: true,
+				TrustProxyConfig:   TrustProxyConfig{Proxies: []string{tc.proxy}},
+			})
+			fastCtx := &fasthttp.RequestCtx{}
+			fastCtx.SetRemoteAddr(&net.TCPAddr{IP: net.ParseIP(tc.remote), Port: 8080})
+			c := app.AcquireCtx(fastCtx)
+			defer app.ReleaseCtx(c)
+			c.Request().Header.Set(HeaderXForwardedFor, tc.header)
+
+			require.Equal(t, tc.expected, c.IP())
+		})
+	}
+}
+
+func Test_App_ErrorHandler_SkipsCommittedTimeoutResponse(t *testing.T) {
+	t.Parallel()
+
+	var calls atomic.Int32
+	app := New(Config{
+		ErrorHandler: func(c Ctx, err error) error {
+			calls.Add(1)
+			return c.Status(StatusTeapot).SendString(err.Error())
+		},
+	})
+
+	rctx := &fasthttp.RequestCtx{}
+	rctx.TimeoutErrorWithCode(ErrRequestTimeout.Message, StatusRequestTimeout)
+	c := app.AcquireCtx(rctx)
+	defer app.ReleaseCtx(c)
+
+	require.NoError(t, app.ErrorHandler(c, ErrRequestTimeout))
+	require.Equal(t, int32(0), calls.Load())
+	require.Equal(t, StatusOK, c.Response().StatusCode())
+	require.Empty(t, c.Response().Body())
+
+	// Without a committed response the configured handler runs as usual.
+	plain := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(plain)
+	require.NoError(t, app.ErrorHandler(plain, ErrRequestTimeout))
+	require.Equal(t, int32(1), calls.Load())
+	require.Equal(t, StatusTeapot, plain.Response().StatusCode())
+}
+
+// Test_App_Shutdown_HookRegistrationNoRace registers shutdown hooks while a
+// shutdown is running; the drain no longer holds the app mutex, so the hook
+// slices must be snapshotted rather than iterated in place.
+func Test_App_Shutdown_HookRegistrationNoRace(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	app.Hooks().OnPreShutdown(func() error { return nil })
+	app.Hooks().OnPostShutdown(func(error) error { return nil })
+
+	ln := fasthttputil.NewInmemoryListener()
+	served := make(chan struct{})
+	go func() {
+		close(served)
+		assert.NoError(t, app.Listener(ln, ListenConfig{DisableStartupMessage: true}))
+	}()
+	<-served
+
+	var wg sync.WaitGroup
+	wg.Go(func() {
+		for range 50 {
+			app.Hooks().OnPreShutdown(func() error { return nil })
+			app.Hooks().OnPostShutdown(func(error) error { return nil })
+		}
+	})
+	wg.Go(func() {
+		assert.NoError(t, app.Shutdown())
+	})
+	wg.Wait()
+}
+
+func Test_Group_Use_MultiplePrefixes_MountsEachPrefix(t *testing.T) {
+	t.Parallel()
+
+	sub := New()
+	sub.Get("/ping", func(c Ctx) error { return c.SendString("pong") })
+
+	app := New()
+	grp := app.Group("/g")
+	grp.Use([]string{"/one", "/two"}, sub)
+
+	for _, prefix := range []string{"/g/one/ping", "/g/two/ping"} {
+		resp, err := app.Test(httptest.NewRequest(MethodGet, prefix, http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, StatusOK, resp.StatusCode, "%s was not mounted", prefix)
+	}
+}
+
+func Test_Domain_Use_MultiplePrefixes_MountsEachPrefix(t *testing.T) {
+	t.Parallel()
+
+	sub := New()
+	sub.Get("/ping", func(c Ctx) error { return c.SendString("pong") })
+
+	app := New()
+	app.Domain("example.com").Use([]string{"/one", "/two"}, sub)
+
+	for _, prefix := range []string{"/one/ping", "/two/ping"} {
+		req := httptest.NewRequest(MethodGet, prefix, http.NoBody)
+		req.Host = "example.com"
+		resp, err := app.Test(req)
+		require.NoError(t, err)
+		require.Equal(t, StatusOK, resp.StatusCode, "%s was not mounted", prefix)
+	}
 }

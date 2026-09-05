@@ -2,6 +2,7 @@ package adaptor
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"io"
@@ -37,6 +38,22 @@ func (*disableLogger) Printf(string, ...any) {
 // through the http.ResponseWriter copy-back.
 type noopConn struct {
 	remoteAddr net.Addr
+}
+
+// tlsNoopConn is the connection handed to fasthttp for a request net/http
+// served over TLS; fasthttp detects TLS by a ConnectionState method.
+type tlsNoopConn struct {
+	noopConn
+	state tls.ConnectionState
+}
+
+func (c *tlsNoopConn) ConnectionState() tls.ConnectionState {
+	return c.state
+}
+
+// Handshake is a no-op; net/http already performed the real one.
+func (*tlsNoopConn) Handshake() error {
+	return nil
 }
 
 func (*noopConn) Read([]byte) (int, error)    { return 0, io.EOF }
@@ -85,9 +102,10 @@ func newTCPAddr(ip []byte, port int, zone string) *net.TCPAddr {
 // request path stays allocation-free. The conn comes first to keep the
 // struct's trailing pointer span minimal (govet fieldalignment).
 type pooledCtx struct {
-	conn noopConn
-	lr   io.LimitedReader
-	fctx fasthttp.RequestCtx
+	conn    noopConn
+	tlsConn tlsNoopConn
+	lr      io.LimitedReader
+	fctx    fasthttp.RequestCtx
 }
 
 var ctxPool = sync.Pool{
@@ -276,6 +294,24 @@ func ConvertRequest(c fiber.Ctx, forServer bool) (*http.Request, error) {
 //
 // Deprecated: This function uses reflection and unsafe pointers; consider using explicit context passing.
 func CopyContextToFiberContext(src any, requestContext *fasthttp.RequestCtx) {
+	copyContextValues(src, requestContext, make(map[visitedContext]struct{}))
+}
+
+// visitedContext identifies a context already walked. The address alone would
+// not: an embedded first field shares the address of the struct holding it, and
+// context's own types nest that way.
+type visitedContext struct {
+	typ reflect.Type
+	ptr uintptr
+}
+
+// copyContextValues walks the chain to its end, stopping only where it would
+// repeat itself. A chain that points back at a context already walked is a
+// cycle; depth cannot tell one from a legitimately deep middleware stack, whose
+// outermost values a bound would silently drop. Every cycle runs through a
+// pointer — a struct cannot contain itself by value — so remembering those is
+// enough.
+func copyContextValues(src any, requestContext *fasthttp.RequestCtx, seen map[visitedContext]struct{}) {
 	if requestContext == nil {
 		return
 	}
@@ -289,6 +325,11 @@ func CopyContextToFiberContext(src any, requestContext *fasthttp.RequestCtx) {
 		if v.IsNil() {
 			return
 		}
+		visited := visitedContext{typ: v.Type(), ptr: v.Pointer()}
+		if _, walked := seen[visited]; walked {
+			return
+		}
+		seen[visited] = struct{}{}
 		v = v.Elem()
 	}
 	t := v.Type()
@@ -320,19 +361,49 @@ func CopyContextToFiberContext(src any, requestContext *fasthttp.RequestCtx) {
 		}
 
 		switch reflectField.Name {
-		case "Context":
-			CopyContextToFiberContext(reflectValue.Interface(), requestContext)
 		case "key":
 			lastKey = reflectValue.Interface()
+			continue
 		case "val":
 			if lastKey != nil {
 				requestContext.SetUserValue(lastKey, reflectValue.Interface())
 				lastKey = nil
 			}
-		default:
 			continue
 		}
+
+		// Any other context-typed field carries the parent chain; parents are
+		// copied first, so a child's value for the same key wins.
+		if parent, ok := contextOf(reflectValue); ok {
+			copyContextValues(parent, requestContext, seen)
+		}
 	}
+}
+
+// contextOf returns the context a struct field holds, as an interface, a pointer or an embedded struct.
+func contextOf(v reflect.Value) (context.Context, bool) {
+	switch v.Kind() {
+	case reflect.Interface, reflect.Pointer:
+		if v.IsNil() {
+			return nil, false
+		}
+		if ctx, ok := v.Interface().(context.Context); ok {
+			return ctx, true
+		}
+	case reflect.Struct:
+		// A pointer's method set contains the value's, so the addressable form
+		// answers for both receiver kinds; a value this walk cannot address
+		// still answers for value receivers.
+		val := v
+		if v.CanAddr() {
+			val = v.Addr()
+		}
+		if ctx, ok := val.Interface().(context.Context); ok {
+			return ctx, true
+		}
+	default:
+	}
+	return nil, false
 }
 
 // framingHeaders delimit and address the message rather than describe what it
@@ -416,9 +487,20 @@ func isFramingHeader(name string) bool {
 // HTTPMiddleware wraps net/http middleware to fiber middleware
 func HTTPMiddleware(mw func(http.Handler) http.Handler) fiber.Handler {
 	return func(c fiber.Ctx) error {
-		var next bool
-		var connectionClose bool
+		var (
+			mu              sync.Mutex
+			next            bool
+			connectionClose bool
+			returned        bool
+		)
 		nextHandler := http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+			mu.Lock()
+			defer mu.Unlock()
+			if returned {
+				// The middleware flushed or hijacked before calling next, so the
+				// Fiber context is no longer ours.
+				return
+			}
 			next = true
 
 			freq := c.Request()
@@ -430,9 +512,25 @@ func HTTPMiddleware(mw func(http.Handler) http.Handler) fiber.Handler {
 			pairs := snapshotHeaders(r.Header)
 
 			fhdr.SetMethod(r.Method)
-			freq.SetRequestURI(r.RequestURI)
+			// A rewrite of r.URL (http.StripPrefix) leaves RequestURI untouched; route the URL.
+			requestURI := r.RequestURI
+			newPath := ""
+			if r.URL != nil {
+				if rewritten := r.URL.RequestURI(); rewritten != "" && rewritten != requestURI {
+					requestURI = rewritten
+					// Clone now: r.URL aliases the storage SetRequestURI overwrites.
+					newPath = strings.Clone(r.URL.EscapedPath())
+				}
+			}
+			freq.SetRequestURI(requestURI)
 			freq.SetHost(r.Host)
 			fhdr.SetHost(r.Host)
+			// Only a genuine rewrite re-routes. The decoded path differs from the raw
+			// one for every escaped or non-canonical request, and overriding it there
+			// re-buckets the tree, resuming the chain past middleware that already ran.
+			if newPath != "" && newPath != c.Path() {
+				c.Path(newPath)
+			}
 
 			// Remove all cookies before setting, see https://github.com/valyala/fasthttp/pull/1864
 			fhdr.DelAllCookies()
@@ -473,12 +571,17 @@ func HTTPMiddleware(mw func(http.Handler) http.Handler) fiber.Handler {
 		// error result is always nil.
 		fasthttpadaptor.NewFastHTTPHandler(mw(nextHandler))(c.RequestCtx())
 
+		mu.Lock()
+		returned = true
+		ranNext, closeConnection := next, connectionClose
+		mu.Unlock()
+
 		var err error
-		if next {
+		if ranNext {
 			err = c.Next()
 		}
 
-		if connectionClose {
+		if closeConnection {
 			// The close instruction rides on the response so the request keeps the
 			// complete field for every observer — downstream handlers, middleware
 			// resuming after Next, and the app's ErrorHandler alike. It also has to
@@ -601,6 +704,13 @@ func handlerFunc(app *fiber.App, h ...fiber.Handler) http.HandlerFunc {
 			remoteAddr = nil // Fallback to nil
 		}
 		pctx.conn.remoteAddr = remoteAddr
+		var conn net.Conn = &pctx.conn
+		if r.TLS != nil {
+			// Carry the TLS state over, so c.Scheme() and c.Secure() describe the connection.
+			pctx.tlsConn.noopConn = pctx.conn
+			pctx.tlsConn.state = *r.TLS
+			conn = &pctx.tlsConn
+		}
 
 		// Init2 mirrors fasthttp's RequestCtx.Init, but with a no-op
 		// connection instead of fasthttp's fakeAddrer, whose Write panics.
@@ -610,7 +720,7 @@ func handlerFunc(app *fiber.App, h ...fiber.Handler) http.HandlerFunc {
 		// touches connection metadata and buffer-retention flags, so the
 		// request is built directly into fctx.Request afterwards — the same
 		// order fasthttp's Init uses, minus its full request copy.
-		fctx.Init2(&pctx.conn, disabledLogger, true)
+		fctx.Init2(conn, disabledLogger, true)
 		req := &fctx.Request
 
 		// Convert net/http -> fasthttp request with size limit

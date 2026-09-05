@@ -381,6 +381,50 @@ func Test_ETag_WeakComparison(t *testing.T) {
 	}
 }
 
+func Test_ETag_IfNoneMatchOnlyForGetHead(t *testing.T) {
+	t.Parallel()
+
+	// RFC 9110 §13.1.2 reserves 304 for GET and HEAD.
+	testCases := []struct {
+		method         string
+		expectedStatus int
+	}{
+		{method: fiber.MethodGet, expectedStatus: fiber.StatusNotModified},
+		{method: fiber.MethodHead, expectedStatus: fiber.StatusNotModified},
+		{method: fiber.MethodPost, expectedStatus: fiber.StatusOK},
+		{method: fiber.MethodPut, expectedStatus: fiber.StatusOK},
+		{method: fiber.MethodPatch, expectedStatus: fiber.StatusOK},
+		{method: fiber.MethodDelete, expectedStatus: fiber.StatusOK},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.method, func(t *testing.T) {
+			t.Parallel()
+
+			app := fiber.New()
+			app.Use(New())
+			app.All("/", func(c fiber.Ctx) error {
+				return c.SendString("Hello, World!")
+			})
+
+			req := httptest.NewRequest(tc.method, "/", http.NoBody)
+			req.Header.Set(fiber.HeaderIfNoneMatch, `"13-1831710635"`)
+			resp, err := app.Test(req)
+			require.NoError(t, err)
+			require.Equal(t, tc.expectedStatus, resp.StatusCode)
+			require.Equal(t, `"13-1831710635"`, resp.Header.Get(fiber.HeaderETag))
+
+			body, err := io.ReadAll(resp.Body)
+			require.NoError(t, err)
+			if tc.expectedStatus == fiber.StatusOK {
+				require.Equal(t, "Hello, World!", string(body))
+			} else {
+				require.Empty(t, body)
+			}
+		})
+	}
+}
+
 func Test_ETag_SplitIfNoneMatch(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()

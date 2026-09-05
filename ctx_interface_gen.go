@@ -92,13 +92,16 @@ type Ctx interface {
 	// Returned value is only valid within the handler. Do not store any references.
 	// Make copies or use the Immutable setting instead.
 	GetRespHeaders() map[string][]string
-	// ClientHelloInfo return CHI from context
+	// ClientHelloInfo returns the TLS ClientHelloInfo of the connection this request arrived on, or nil.
 	ClientHelloInfo() *tls.ClientHelloInfo
 	// Next executes the next method in the stack that matches the current route.
 	Next() error
 	// RestartRouting instead of going to the next handler. This may be useful after
 	// changing the request path. Note that handlers might be executed again.
 	RestartRouting() error
+	// ctxForHandlers returns the context user code is handed: the custom context
+	// when the app uses one, otherwise the DefaultCtx itself, as Next does.
+	ctxForHandlers() Ctx
 	setHandlerCtx(ctx CustomCtx)
 	// OriginalURL contains the original request URL.
 	// Returned value is only valid within the handler. Do not store any references.

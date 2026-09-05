@@ -1,6 +1,7 @@
 package fiber
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"crypto/tls"
@@ -12,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -1437,4 +1439,436 @@ func Test_Listen_StaleTLSMinVersionReachesTheDiagnostics(t *testing.T) {
 		require.Equal(t, uint16(tls.VersionTLS12), cfg.TLSMinVersion)
 		require.NotPanics(t, func() { validateTLSMinVersion(&cfg) })
 	})
+}
+
+func Test_Listen_GracefulShutdown_HooksOnce(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	app.Get("/", func(c Ctx) error { return c.SendString("ok") })
+
+	var preShutdown, postShutdown atomic.Int32
+	app.Hooks().OnPreShutdown(func() error {
+		preShutdown.Add(1)
+		return nil
+	})
+	app.Hooks().OnPostShutdown(func(_ error) error {
+		postShutdown.Add(1)
+		return nil
+	})
+
+	gctx := t.Context()
+
+	ln := fasthttputil.NewInmemoryListener()
+	errs := make(chan error, 1)
+	go func() {
+		errs <- app.Listener(ln, ListenConfig{DisableStartupMessage: true, GracefulContext: gctx}) //nolint:contextcheck // the context is the shutdown trigger, not a request context
+	}()
+
+	require.Eventually(t, func() bool {
+		conn, err := ln.Dial()
+		if err == nil {
+			_ = conn.Close() //nolint:errcheck // not needed
+			return true
+		}
+		return false
+	}, time.Second, 20*time.Millisecond, "server failed to become ready")
+
+	require.NoError(t, app.Shutdown())
+
+	select {
+	case err := <-errs:
+		require.NoError(t, err)
+	case <-time.After(2 * time.Second):
+		t.Fatal("Listener did not return after Shutdown")
+	}
+
+	// Leave the graceful-shutdown goroutine time to misfire before asserting.
+	time.Sleep(300 * time.Millisecond)
+	require.Equal(t, int32(1), preShutdown.Load(), "OnPreShutdown must fire exactly once")
+	require.Equal(t, int32(1), postShutdown.Load(), "OnPostShutdown must fire exactly once")
+}
+
+func Test_Listen_GracefulShutdown_NoHooksOnListenError(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+
+	var fired atomic.Int32
+	app.Hooks().OnPreShutdown(func() error {
+		fired.Add(1)
+		return nil
+	})
+	app.Hooks().OnPostShutdown(func(_ error) error {
+		fired.Add(1)
+		return nil
+	})
+
+	gctx := t.Context()
+
+	require.Error(t, app.Listen(":99999", ListenConfig{DisableStartupMessage: true, GracefulContext: gctx}))
+
+	time.Sleep(300 * time.Millisecond)
+	require.Zero(t, fired.Load(), "shutdown hooks must not run for a server that never started")
+}
+
+func Test_ListenConfigDefault_ShutdownTimeout(t *testing.T) {
+	t.Parallel()
+
+	t.Run("without config", func(t *testing.T) {
+		t.Parallel()
+
+		require.Equal(t, 10*time.Second, listenConfigDefault().ShutdownTimeout)
+	})
+
+	t.Run("user config with zero value gets the default", func(t *testing.T) {
+		t.Parallel()
+
+		cfg := listenConfigDefault(ListenConfig{GracefulContext: context.Background()})
+		require.Equal(t, 10*time.Second, cfg.ShutdownTimeout)
+	})
+
+	t.Run("explicit value is kept", func(t *testing.T) {
+		t.Parallel()
+
+		cfg := listenConfigDefault(ListenConfig{ShutdownTimeout: 3 * time.Second})
+		require.Equal(t, 3*time.Second, cfg.ShutdownTimeout)
+	})
+
+	t.Run("negative value disables the timeout", func(t *testing.T) {
+		t.Parallel()
+
+		cfg := listenConfigDefault(ListenConfig{ShutdownTimeout: -1})
+		require.Equal(t, time.Duration(-1), cfg.ShutdownTimeout)
+	})
+}
+
+func Test_GracefulShutdown_NegativeTimeoutWaitsIndefinitely(t *testing.T) {
+	t.Parallel()
+
+	inHandler := make(chan struct{}, 1)
+	app := New()
+	app.Get("/", func(c Ctx) error {
+		inHandler <- struct{}{}
+		time.Sleep(300 * time.Millisecond)
+		return c.SendString("ok")
+	})
+
+	hookErr := make(chan error, 1)
+	app.Hooks().OnPostShutdown(func(err error) error {
+		hookErr <- err
+		return nil
+	})
+
+	gctx, gcancel := context.WithCancel(context.Background())
+	defer gcancel()
+
+	ln := fasthttputil.NewInmemoryListener()
+	errs := make(chan error, 1)
+	go func() {
+		errs <- app.Listener(ln, ListenConfig{ //nolint:contextcheck // the context is the shutdown trigger, not a request context
+			DisableStartupMessage: true,
+			GracefulContext:       gctx,
+			ShutdownTimeout:       -1,
+		})
+	}()
+
+	require.Eventually(t, func() bool {
+		conn, err := ln.Dial()
+		if err == nil {
+			_ = conn.Close() //nolint:errcheck // not needed
+			return true
+		}
+		return false
+	}, time.Second, 20*time.Millisecond, "server failed to become ready")
+
+	// Keep a request in flight while the context is canceled.
+	conn, err := ln.Dial()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = conn.Close() }) //nolint:errcheck // not needed
+	_, err = conn.Write([]byte("GET / HTTP/1.1\r\nHost: example.com\r\nConnection: close\r\n\r\n"))
+	require.NoError(t, err)
+
+	select {
+	case <-inHandler:
+	case <-time.After(2 * time.Second):
+		t.Fatal("request never reached the handler")
+	}
+
+	gcancel()
+
+	select {
+	case err := <-hookErr:
+		require.NoError(t, err)
+	case <-time.After(3 * time.Second):
+		t.Fatal("OnPostShutdown was not called")
+	}
+	require.NoError(t, <-errs)
+}
+
+func Test_Listen_TLS_PartialCertConfig(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		cfg  ListenConfig
+	}{
+		{name: "CertFile only", cfg: ListenConfig{CertFile: "./.github/testdata/ssl.pem"}},
+		{name: "CertKeyFile only", cfg: ListenConfig{CertKeyFile: "./.github/testdata/ssl.key"}},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			app := New()
+			cfg := tc.cfg
+			cfg.DisableStartupMessage = true
+			// Fail instead of serving plaintext.
+			cfg.BeforeServeFunc = func(_ *App) error {
+				return errors.New("server would have served plaintext HTTP")
+			}
+
+			err := app.Listen("127.0.0.1:0", cfg)
+			require.ErrorIs(t, err, ErrCertFileAndKeyRequired)
+			require.Nil(t, app.tlsHandler)
+		})
+	}
+}
+
+func Test_Listener_TLS_ClientHelloInfo_PerConnection(t *testing.T) {
+	t.Parallel()
+
+	cert, err := tls.LoadX509KeyPair("./.github/testdata/ssl.pem", "./.github/testdata/ssl.key")
+	require.NoError(t, err)
+
+	tlsHandler := &TLSHandler{}
+	app := New()
+	app.SetTLSHandler(tlsHandler)
+	app.Get("/", func(c Ctx) error {
+		if info := c.ClientHelloInfo(); info != nil {
+			return c.SendString(info.ServerName)
+		}
+		return c.SendString("<nil>")
+	})
+
+	ln := fasthttputil.NewInmemoryListener()
+	tlsLn := tls.NewListener(ln, &tls.Config{
+		MinVersion:     tls.VersionTLS12,
+		Certificates:   []tls.Certificate{cert},
+		GetCertificate: tlsHandler.GetClientInfo,
+	})
+
+	errs := make(chan error, 1)
+	go func() {
+		errs <- app.Listener(tlsLn, ListenConfig{DisableStartupMessage: true})
+	}()
+
+	require.Eventually(t, func() bool {
+		conn, dialErr := ln.Dial()
+		if dialErr == nil {
+			_ = conn.Close() //nolint:errcheck // not needed
+			return true
+		}
+		return false
+	}, time.Second, 20*time.Millisecond, "server failed to become ready")
+
+	dial := func(serverName string) *tls.Conn {
+		t.Helper()
+
+		raw, dialErr := ln.Dial()
+		require.NoError(t, dialErr)
+		conn := tls.Client(raw, &tls.Config{
+			ServerName:         serverName,
+			InsecureSkipVerify: true, // self-signed test certificate
+			MinVersion:         tls.VersionTLS12,
+		})
+		require.NoError(t, conn.Handshake())
+		return conn
+	}
+	serverNameSeenBy := func(conn *tls.Conn) string {
+		t.Helper()
+
+		_, writeErr := conn.Write([]byte("GET / HTTP/1.1\r\nHost: example.com\r\nConnection: close\r\n\r\n"))
+		require.NoError(t, writeErr)
+		resp := fasthttp.AcquireResponse()
+		defer fasthttp.ReleaseResponse(resp)
+		require.NoError(t, resp.Read(bufio.NewReader(conn)))
+		return string(resp.Body())
+	}
+
+	first := dial("first.example")
+	t.Cleanup(func() { _ = first.Close() }) //nolint:errcheck // not needed
+	second := dial("second.example")
+	t.Cleanup(func() { _ = second.Close() }) //nolint:errcheck // not needed
+
+	// Both handshakes complete before either request, so a shared value would report second.example twice.
+	require.Equal(t, "first.example", serverNameSeenBy(first))
+	require.Equal(t, "second.example", serverNameSeenBy(second))
+
+	require.NoError(t, app.Shutdown())
+	require.NoError(t, <-errs)
+}
+
+func Test_Listener_ConnState_UserCallbackPreserved(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	app.Get("/", func(c Ctx) error { return c.SendString("ok") })
+
+	closed := make(chan struct{}, 1)
+	app.Server().ConnState = func(_ net.Conn, state fasthttp.ConnState) {
+		if state == fasthttp.StateClosed {
+			select {
+			case closed <- struct{}{}:
+			default:
+			}
+		}
+	}
+	app.SetTLSHandler(&TLSHandler{})
+
+	ln := fasthttputil.NewInmemoryListener()
+	errs := make(chan error, 1)
+	go func() {
+		errs <- app.Listener(ln, ListenConfig{DisableStartupMessage: true})
+	}()
+
+	conn, err := ln.Dial()
+	require.NoError(t, err)
+	_, err = conn.Write([]byte("GET / HTTP/1.1\r\nHost: example.com\r\nConnection: close\r\n\r\n"))
+	require.NoError(t, err)
+	_, err = io.ReadAll(conn)
+	require.NoError(t, err)
+	require.NoError(t, conn.Close())
+
+	select {
+	case <-closed:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the user ConnState callback was not called")
+	}
+
+	require.NoError(t, app.Shutdown())
+	require.NoError(t, <-errs)
+}
+
+func Test_Listener_TLS_ClientHelloInfo_MaxConnsPerIP_NoLeak(t *testing.T) {
+	t.Parallel()
+
+	cert, err := tls.LoadX509KeyPair("./.github/testdata/ssl.pem", "./.github/testdata/ssl.key")
+	require.NoError(t, err)
+
+	tlsHandler := &TLSHandler{}
+	app := New()
+	app.SetTLSHandler(tlsHandler)
+	app.Server().MaxConnsPerIP = 8
+	app.Get("/", func(c Ctx) error { return c.SendString("ok") })
+
+	raw, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	tlsLn := tls.NewListener(raw, &tls.Config{
+		MinVersion:     tls.VersionTLS12,
+		Certificates:   []tls.Certificate{cert},
+		GetCertificate: tlsHandler.GetClientInfo,
+	})
+
+	errs := make(chan error, 1)
+	go func() {
+		errs <- app.Listener(tlsLn, ListenConfig{DisableStartupMessage: true})
+	}()
+
+	// Sequential handshakes: the per-IP cap bounds concurrency, not the total.
+	for range 12 {
+		conn, dialErr := tls.Dial("tcp", raw.Addr().String(), &tls.Config{
+			ServerName:         "example.com",
+			InsecureSkipVerify: true, // self-signed test certificate
+			MinVersion:         tls.VersionTLS12,
+		})
+		require.NoError(t, dialErr)
+		_, writeErr := conn.Write([]byte("GET / HTTP/1.1\r\nHost: example.com\r\nConnection: close\r\n\r\n"))
+		require.NoError(t, writeErr)
+		resp := fasthttp.AcquireResponse()
+		require.NoError(t, resp.Read(bufio.NewReader(conn)))
+		fasthttp.ReleaseResponse(resp)
+		require.NoError(t, conn.Close())
+	}
+
+	count := func(m *sync.Map) int {
+		n := 0
+		m.Range(func(_, _ any) bool { n++; return true })
+		return n
+	}
+	require.Eventually(t, func() bool {
+		return count(&tlsHandler.clientHelloInfos) == 0 && count(&tlsHandler.serverConns) == 0
+	}, 5*time.Second, 20*time.Millisecond, "closed connections left %d ClientHelloInfo and %d wrapper entries behind",
+		count(&tlsHandler.clientHelloInfos), count(&tlsHandler.serverConns))
+
+	require.NoError(t, app.Shutdown())
+	require.NoError(t, <-errs)
+}
+
+func Test_Listener_TLS_ClientHelloInfo_MaxConnsPerIP(t *testing.T) {
+	t.Parallel()
+
+	cert, err := tls.LoadX509KeyPair("./.github/testdata/ssl.pem", "./.github/testdata/ssl.key")
+	require.NoError(t, err)
+
+	tlsHandler := &TLSHandler{}
+	app := New()
+	app.SetTLSHandler(tlsHandler)
+	// fasthttp wraps every accepted connection for this accounting, and the
+	// wrapper is what the request side sees.
+	app.Server().MaxConnsPerIP = 8
+	app.Get("/", func(c Ctx) error {
+		if info := c.ClientHelloInfo(); info != nil {
+			return c.SendString(info.ServerName)
+		}
+		return c.SendString("<nil>")
+	})
+
+	raw, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	tlsLn := tls.NewListener(raw, &tls.Config{
+		MinVersion:     tls.VersionTLS12,
+		Certificates:   []tls.Certificate{cert},
+		GetCertificate: tlsHandler.GetClientInfo,
+	})
+
+	errs := make(chan error, 1)
+	go func() {
+		errs <- app.Listener(tlsLn, ListenConfig{DisableStartupMessage: true})
+	}()
+
+	addr := raw.Addr().String()
+	dial := func(serverName string) *tls.Conn {
+		t.Helper()
+
+		conn, dialErr := tls.Dial("tcp", addr, &tls.Config{
+			ServerName:         serverName,
+			InsecureSkipVerify: true, // self-signed test certificate
+			MinVersion:         tls.VersionTLS12,
+		})
+		require.NoError(t, dialErr)
+		return conn
+	}
+	serverNameSeenBy := func(conn *tls.Conn) string {
+		t.Helper()
+
+		_, writeErr := conn.Write([]byte("GET / HTTP/1.1\r\nHost: example.com\r\nConnection: close\r\n\r\n"))
+		require.NoError(t, writeErr)
+		resp := fasthttp.AcquireResponse()
+		defer fasthttp.ReleaseResponse(resp)
+		require.NoError(t, resp.Read(bufio.NewReader(conn)))
+		return string(resp.Body())
+	}
+
+	first := dial("first.example")
+	t.Cleanup(func() { _ = first.Close() }) //nolint:errcheck // not needed
+	second := dial("second.example")
+	t.Cleanup(func() { _ = second.Close() }) //nolint:errcheck // not needed
+
+	require.Equal(t, "first.example", serverNameSeenBy(first))
+	require.Equal(t, "second.example", serverNameSeenBy(second))
+
+	require.NoError(t, app.Shutdown())
+	require.NoError(t, <-errs)
 }

@@ -324,7 +324,7 @@ Logger provides predefined formats that you can use by name or directly by speci
 | `ECSFormat` | `"{\"@timestamp\":\"${time}\",\"ecs\":{\"version\":\"1.6.0\"},\"client\":{\"ip\":\"${ip}\"},\"http\":{\"request\":{\"method\":\"${method}\",\"url\":\"${url}\",\"protocol\":\"${protocol}\"},\"response\":{\"status_code\":${status},\"body\":{\"bytes\":${bytesSent}}}},\"log\":{\"level\":\"INFO\",\"logger\":\"fiber\"},\"message\":\"${method} ${url} responded with ${status}\"}\n"` | Elastic Common Schema (ECS) format for structured logging. |
 
 :::tip
-`${bytesSent}` returns the value of the `Content-Length` response header. If the header is missing or the response is streaming (e.g., chunked encoding), the value will be `-1`. Fiber does not calculate the actual response body size for performance reasons.
+`${bytesSent}` returns the value the `Content-Length` response header declares when the logger runs. For an ordinary buffered response fasthttp fills the header in on write, after the logger, so `0` is logged; a streaming response of unknown length (chunked encoding) logs `-1`. Likewise `${bytesReceived}` reports the request's declared `Content-Length`: `-2` for a request without a body and `-1` for a chunked one. Fiber does not calculate the actual body sizes for performance reasons.
 :::
 
 :::tip

@@ -8,6 +8,7 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -40,9 +41,15 @@ const (
 	globalIpv4Addr = "0.0.0.0"
 )
 
+// ErrCertFileAndKeyRequired indicates that only one of CertFile and CertKeyFile was set.
+var ErrCertFileAndKeyRequired = errors.New("tls: CertFile and CertKeyFile must both be set to serve TLS")
+
 // ListenConfig is a struct to customize startup of Fiber.
 type ListenConfig struct {
 	// GracefulContext is a field to shutdown Fiber by given context gracefully.
+	//
+	// With EnablePrefork the context stops only the process it is canceled in;
+	// deliver the signal to every process so each child drains its own connections.
 	//
 	// Default: nil
 	GracefulContext context.Context `json:"graceful_context"` //nolint:containedctx // It's needed to set context inside Listen.
@@ -110,7 +117,7 @@ type ListenConfig struct {
 
 	// When the graceful shutdown begins, use this field to set the timeout
 	// duration. If the timeout is reached, OnPostShutdown will be called with the error.
-	// Set to 0 to disable the timeout and wait indefinitely.
+	// Negative disables the timeout and waits indefinitely; zero applies the default.
 	//
 	// Default: 10 * time.Second
 	ShutdownTimeout time.Duration `json:"shutdown_timeout"`
@@ -189,6 +196,10 @@ func listenConfigDefault(config ...ListenConfig) ListenConfig {
 		cfg.TLSMinVersion = tls.VersionTLS12
 	}
 
+	if cfg.ShutdownTimeout == 0 {
+		cfg.ShutdownTimeout = 10 * time.Second
+	}
+
 	return cfg
 }
 
@@ -239,6 +250,10 @@ func (app *App) Listen(addr string, config ...ListenConfig) error {
 				GetCertificate: tlsHandler.GetClientInfo,
 			}
 
+		case cfg.CertFile != "" || cfg.CertKeyFile != "":
+			// Half a key pair is a misconfiguration: refuse rather than serve plaintext.
+			return ErrCertFileAndKeyRequired
+
 		case cfg.AutoCertManager != nil:
 			tlsConfig = &tls.Config{
 				MinVersion:     cfg.TLSMinVersion,
@@ -266,10 +281,10 @@ func (app *App) Listen(addr string, config ...ListenConfig) error {
 
 	// Graceful shutdown
 	if cfg.GracefulContext != nil {
-		ctx, cancel := context.WithCancel(cfg.GracefulContext)
-		defer cancel()
+		stop := make(chan struct{})
+		defer close(stop)
 
-		go app.gracefulShutdown(ctx, &cfg)
+		go app.gracefulShutdown(cfg.GracefulContext, stop, &cfg)
 	}
 
 	// Start prefork
@@ -422,10 +437,10 @@ func (app *App) Listener(ln net.Listener, config ...ListenConfig) error {
 
 	// Graceful shutdown
 	if cfg.GracefulContext != nil {
-		ctx, cancel := context.WithCancel(cfg.GracefulContext)
-		defer cancel()
+		stop := make(chan struct{})
+		defer close(stop)
 
-		go app.gracefulShutdown(ctx, &cfg)
+		go app.gracefulShutdown(cfg.GracefulContext, stop, &cfg)
 	}
 
 	// prepare the server for the start
@@ -709,15 +724,20 @@ func (app *App) printRoutesMessage() {
 	_ = w.Flush() //nolint:errcheck // It is fine to ignore the error here
 }
 
-// shutdown goroutine
-func (app *App) gracefulShutdown(ctx context.Context, cfg *ListenConfig) {
-	<-ctx.Done()
+// gracefulShutdown shuts the app down once ctx is done. stop is closed when
+// Listen returns on its own, which ends the goroutine without a second shutdown.
+func (app *App) gracefulShutdown(ctx context.Context, stop <-chan struct{}, cfg *ListenConfig) {
+	select {
+	case <-ctx.Done():
+	case <-stop:
+		return
+	}
 
 	// The OnPostShutdown hooks are fired by ShutdownWithContext (via
 	// Shutdown/ShutdownWithTimeout) with the real error, so we must not fire
 	// them again here or they would run twice. That error is already delivered
 	// to those hooks, so it is intentionally ignored here.
-	if cfg != nil && cfg.ShutdownTimeout != 0 {
+	if cfg != nil && cfg.ShutdownTimeout > 0 {
 		_ = app.ShutdownWithTimeout(cfg.ShutdownTimeout) //nolint:errcheck,contextcheck // error is delivered to OnPostShutdown hooks
 	} else {
 		_ = app.Shutdown() //nolint:errcheck,contextcheck // error is delivered to OnPostShutdown hooks

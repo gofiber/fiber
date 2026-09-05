@@ -3,6 +3,7 @@ package retry
 import (
 	"crypto/rand"
 	"errors"
+	"sync"
 	"testing"
 	"time"
 
@@ -133,8 +134,10 @@ func Test_ExponentialBackoff_Next(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
+			interval := tt.expBackoff.currentInterval
 			for i := range tt.expBackoff.MaxRetryCount {
-				next := tt.expBackoff.next()
+				var next time.Duration
+				next, interval = tt.expBackoff.next(interval)
 				if next < tt.expNextTimeIntervals[i] || next > tt.expNextTimeIntervals[i]+1*time.Second {
 					t.Errorf("wrong next time:\n"+
 						"actual:%v\n"+
@@ -159,12 +162,89 @@ func Test_ExponentialBackoff_NextRandFailure(t *testing.T) {
 		MaxRetryCount:   3,
 		currentInterval: 1 * time.Second,
 	}
-	next := expBackoff.next()
+	next, following := expBackoff.next(expBackoff.currentInterval)
 	require.Equal(t, expBackoff.MaxBackoffTime, next)
-	// currentInterval should not change when random fails
+	require.Equal(t, expBackoff.MaxBackoffTime, following)
+	// the shared state never changes, random failure or not
 	require.Equal(t, 1*time.Second, expBackoff.currentInterval)
 }
 
 type failingReader struct{}
 
 func (failingReader) Read(_ []byte) (int, error) { return 0, errors.New("fail") }
+
+func Test_ExponentialBackoff_Retry_StartsFromInitialInterval(t *testing.T) {
+	t.Parallel()
+
+	backoff := NewExponentialBackoff(Config{
+		InitialInterval: time.Millisecond,
+		MaxBackoffTime:  50 * time.Millisecond,
+		Multiplier:      100,
+		MaxRetryCount:   3,
+	})
+	failing := func() error { return errors.New("nope") }
+
+	require.Error(t, backoff.Retry(failing))
+
+	// One sleep, starting over at the initial interval plus up to a second of jitter.
+	start := time.Now()
+	attempts := 0
+	require.NoError(t, backoff.Retry(func() error {
+		attempts++
+		if attempts < 2 {
+			return errors.New("once more")
+		}
+		return nil
+	}))
+	require.Equal(t, 2, attempts)
+	require.Equal(t, time.Millisecond, backoff.currentInterval, "the shared state must not drift between calls")
+	require.Less(t, time.Since(start), 5*time.Second)
+}
+
+func Test_ExponentialBackoff_Retry_Concurrent(t *testing.T) {
+	t.Parallel()
+
+	backoff := NewExponentialBackoff(Config{
+		InitialInterval: time.Millisecond,
+		MaxBackoffTime:  2 * time.Millisecond,
+		Multiplier:      2,
+		MaxRetryCount:   3,
+	})
+
+	var wg sync.WaitGroup
+	for range 8 {
+		wg.Go(func() {
+			calls := 0
+			require.NoError(t, backoff.Retry(func() error {
+				calls++
+				if calls < 2 {
+					return errors.New("retry")
+				}
+				return nil
+			}))
+		})
+	}
+	wg.Wait()
+}
+
+func Test_ExponentialBackoff_Retry_UnsetInitialInterval(t *testing.T) {
+	t.Parallel()
+
+	backoff := &ExponentialBackoff{
+		MaxBackoffTime:  time.Millisecond,
+		Multiplier:      2,
+		MaxRetryCount:   2,
+		currentInterval: time.Microsecond,
+	}
+
+	attempts := 0
+	require.NoError(t, backoff.Retry(func() error {
+		attempts++
+		if attempts < 2 {
+			return errors.New("once more")
+		}
+		return nil
+	}))
+	require.Equal(t, 2, attempts)
+	require.Equal(t, time.Microsecond, backoff.currentInterval)
+}
