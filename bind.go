@@ -12,6 +12,7 @@ import (
 	"github.com/gofiber/fiber/v3/binder"
 	"github.com/gofiber/fiber/v3/internal/nilerror"
 	"github.com/gofiber/schema"
+	"github.com/gofiber/utils/v2"
 )
 
 // CustomBinder An interface to register custom binders.
@@ -39,6 +40,7 @@ var bindPool = sync.Pool{
 // With WithAutoHandling(), parsing failures set HTTP 400 and return *Error instead.
 type Bind struct {
 	ctx                   Ctx
+	jsonDecoder           utils.JSONUnmarshal
 	shouldSkipErrHandling bool
 	shouldSkipValidation  bool
 }
@@ -128,8 +130,17 @@ func releasePooledBinder[T interface{ Reset() }](pool *sync.Pool, bind T) {
 
 func (b *Bind) release() {
 	b.ctx = nil
+	b.jsonDecoder = nil
 	b.shouldSkipErrHandling = true
 	b.shouldSkipValidation = false
+}
+
+// WithJSONDecoder selects the JSON decoder for the current bind chain.
+// A nil decoder uses the application decoder.
+func (b *Bind) WithJSONDecoder(decoder utils.JSONUnmarshal) *Bind {
+	b.jsonDecoder = decoder
+
+	return b
 }
 
 // WithoutAutoHandling If you want to handle binder errors manually, you can use `WithoutAutoHandling`.
@@ -300,7 +311,10 @@ func (b *Bind) Query(out any) error {
 // Returns *BindError on parse failure (manual mode) or *Error with status 400 (auto-handling mode).
 func (b *Bind) JSON(out any) error {
 	bind := binder.GetFromThePool[*binder.JSONBinding](&binder.JSONBinderPool)
-	bind.JSONDecoder = b.ctx.App().Config().JSONDecoder
+	bind.JSONDecoder = b.jsonDecoder
+	if bind.JSONDecoder == nil {
+		bind.JSONDecoder = b.ctx.App().Config().JSONDecoder
+	}
 
 	defer releasePooledBinder(&binder.JSONBinderPool, bind)
 
