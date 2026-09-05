@@ -14,6 +14,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/gofiber/fiber/v3/internal/paramdelim"
 	"github.com/gofiber/utils/v2"
 	utilsbytes "github.com/gofiber/utils/v2/bytes"
 	utilsstrings "github.com/gofiber/utils/v2/strings"
@@ -170,14 +171,7 @@ var (
 	// list of chars of delimiters and the starting parameter name char
 	parameterDelimiterChars = append([]byte{paramStarterChar, escapeChar}, routeDelimiter...)
 	// list of chars to find the end of a parameter
-	parameterEndChars = [256]bool{
-		optionalParam:    true,
-		paramStarterChar: true,
-		escapeChar:       true,
-		slashDelimiter:   true,
-		'-':              true,
-		'.':              true,
-	}
+	parameterEndChars = paramdelim.PathEndChars()
 )
 
 // RoutePatternMatch reports whether path matches the provided Fiber route pattern.

@@ -13,6 +13,7 @@ import (
 	"sync"
 	"unicode/utf8"
 
+	"github.com/gofiber/fiber/v3/internal/paramdelim"
 	"github.com/gofiber/utils/v2"
 	"github.com/valyala/fasthttp"
 )
@@ -119,18 +120,13 @@ func parserRequestURL(c *Client, req *Request) error {
 }
 
 // pathParamEndChars marks the bytes that terminate a ":name" placeholder in a
-// request URL. The set mirrors the route parser's parameterEndChars (path.go),
-// so a client placeholder is delimited exactly like a server route parameter,
-// plus '#', which ends the path client-side.
-var pathParamEndChars = [256]bool{
-	'/':  true,
-	'-':  true,
-	'.':  true,
-	':':  true,
-	'\\': true,
-	'?':  true,
-	'#':  true,
-}
+// request URL. The shared path delimiters live in internal/paramdelim; '#'
+// additionally ends the path client-side.
+var pathParamEndChars = func() [256]bool {
+	s := paramdelim.PathEndChars()
+	s['#'] = true
+	return s
+}()
 
 // substitutePathParams replaces every ":name" placeholder in uri with the value
 // found in sources, searched in order. A placeholder ends at a path-segment
