@@ -185,6 +185,20 @@ func getViewsLock(views Views) *sync.RWMutex {
 	return globalViewsLocks.get(views)
 }
 
+func isNilViews(views any) bool {
+	if views == nil {
+		return true
+	}
+
+	value := reflect.ValueOf(views)
+	switch value.Kind() {
+	case reflect.Pointer, reflect.Map, reflect.Slice, reflect.Chan, reflect.Func, reflect.Interface, reflect.UnsafePointer:
+		return value.IsNil()
+	default:
+		return false
+	}
+}
+
 // Config is a struct holding the server settings.
 type Config struct { //nolint:govet // Aligning the struct fields is not necessary. betteralign:ignore
 	// Enables the "Server: value" HTTP header.
@@ -924,11 +938,7 @@ func (app *App) ReloadViews() error {
 
 	var reloaded bool
 	for _, targetApp := range apps {
-		if targetApp == nil || targetApp.config.Views == nil {
-			continue
-		}
-
-		if viewValue := reflect.ValueOf(targetApp.config.Views); viewValue.Kind() == reflect.Pointer && viewValue.IsNil() {
+		if targetApp == nil || isNilViews(targetApp.config.Views) {
 			continue
 		}
 
@@ -951,6 +961,27 @@ func (app *App) ReloadViews() error {
 
 	if !reloaded {
 		return ErrNoViewEngineConfigured
+	}
+
+	return nil
+}
+
+// Render writes a template through the configured view engine.
+func (app *App) Render(out io.Writer, name string, binding any, layouts ...string) error {
+	views := app.config.Views
+	if isNilViews(views) {
+		return ErrNoViewEngineConfigured
+	}
+	if len(layouts) == 0 && app.config.ViewsLayout != "" {
+		layouts = []string{app.config.ViewsLayout}
+	}
+
+	viewsLock := getViewsLock(views)
+	viewsLock.RLock()
+	defer viewsLock.RUnlock()
+
+	if err := views.Render(out, name, binding, layouts...); err != nil {
+		return fmt.Errorf("fiber: failed to render views: %w", err)
 	}
 
 	return nil
@@ -1553,7 +1584,7 @@ func (app *App) init() *App {
 		app.initServices()
 
 		// Only load templates if a view engine is specified
-		if app.config.Views != nil {
+		if !isNilViews(app.config.Views) {
 			if err := app.config.Views.Load(); err != nil {
 				log.Warnf("failed to load views: %v", err)
 			}

@@ -1066,3 +1066,29 @@ app.Get("/dev/reload", func(c fiber.Ctx) error {
     return c.SendString("Templates reloaded")
 })
 ```
+
+### Render
+
+`Render` writes a template through the configured view engine without creating
+an HTTP response. It applies `ViewsLayout` when no layout is supplied and is
+safe to use concurrently with `ReloadViews`.
+
+```go title="Signature"
+func (app *App) Render(out io.Writer, name string, binding any, layouts ...string) error
+```
+
+Capture the app, rather than a pooled request context, when rendering from an
+asynchronous stream writer:
+
+```go
+app.Get("/events", func(c fiber.Ctx) error {
+    return c.SendStreamWriter(func(w *bufio.Writer) {
+        if err := app.Render(w, "partial", fiber.Map{"Title": "update"}); err != nil {
+            return
+        }
+        if err := w.Flush(); err != nil {
+            return
+        }
+    })
+})
+```
