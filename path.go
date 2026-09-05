@@ -890,8 +890,7 @@ func findParamLen(s string, segment *routeSegment) int {
 		// A non-greedy parameter cannot span a '/', so it ends at the first
 		// '/' of s, and only if the compare part sits there. Otherwise the
 		// answer is 0 whether the compare part occurs later or not at all:
-		// the constant after the parameter fails either way, which
-		// Test_Path_FindParamLen_SlashStopDifferential pins.
+		// the constant after the parameter fails either way.
 		slash := strings.IndexByte(s, slashDelimiter)
 		if slash == -1 {
 			return len(s)
