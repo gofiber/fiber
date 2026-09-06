@@ -4,9 +4,12 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strconv"
 	"testing"
 
 	"github.com/gofiber/fiber/v3"
@@ -1249,4 +1252,34 @@ func Benchmark_PaginateCursorMiddleware(b *testing.B) {
 		}
 		resp.Body.Close() //nolint:errcheck // close error not relevant in tests
 	}
+}
+
+func Test_Paginate_EmptySortKey_IgnoresQuery(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Use(New(Config{AllowedSorts: []string{"name", "id"}, DefaultSort: "id"}))
+	app.Get("/", func(c fiber.Ctx) error {
+		info, ok := FromContext(c)
+		if !ok {
+			return c.SendString("missing")
+		}
+		return c.SendString(strconv.Itoa(len(info.Sort)) + " " + info.Sort[0].Field + " " + string(info.Sort[0].Order))
+	})
+
+	for _, target := range []string{"/", "/?=-name"} {
+		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, target, http.NoBody))
+		require.NoError(t, err)
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		require.Equal(t, "1 id asc", string(body), "GET %s must use the default sort", target)
+	}
+}
+
+func Test_PageInfo_NextPageURL_NoOverflow(t *testing.T) {
+	t.Parallel()
+
+	p := &PageInfo{Page: math.MaxInt, Limit: 10}
+	require.NotContains(t, p.NextPageURL("/items"), "-")
+	require.Contains(t, p.NextPageURL("/items"), "page="+strconv.Itoa(math.MaxInt))
 }

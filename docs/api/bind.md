@@ -9,8 +9,9 @@ toc_max_heading_level: 4
 Bindings parse request and response bodies, query parameters, cookies, and more into structs.
 
 :::info
-Binder-returned values are valid only within the handler. To keep them, copy the data
-or enable the [**`Immutable`**](./ctx.md) setting. [Read more...](../#zero-allocation)
+Bound string values alias the request buffers, so they are valid only within the handler:
+copy the data you need to keep. The [**`Immutable`**](./ctx.md) setting does not apply to
+bound values. [Read more...](../#zero-allocation)
 :::
 
 ## Binders
@@ -935,7 +936,7 @@ type ParserConfig struct {
     IgnoreUnknownKeys bool
     ParserType        []ParserType
     ZeroEmpty         bool
-    SetAliasTag       string
+    SetAliasTag       string // ignored: every binder uses its own tag (query, form, header, ...)
 }
 
 type ParserType struct {

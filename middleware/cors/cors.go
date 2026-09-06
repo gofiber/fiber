@@ -5,10 +5,17 @@ import (
 	"strings"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/headerlookup"
+	originpkg "github.com/gofiber/fiber/v3/internal/origin"
 	"github.com/gofiber/fiber/v3/log"
 	"github.com/gofiber/utils/v2"
 	utilsstrings "github.com/gofiber/utils/v2/strings"
 )
+
+// corsSchemes is the scheme policy for Access-Control-Allow-Origin: any
+// scheme, since the browser is the party enforcing the check and CORS is
+// used beyond http(s).
+const corsSchemes = originpkg.AnyScheme
 
 const redactedValue = "[redacted]"
 
@@ -19,7 +26,7 @@ func isOriginSerializedOrNull(originHeaderRaw string) (isSerialized, isNull bool
 		return false, true
 	}
 
-	originIsSerialized, _ := normalizeOrigin(originHeaderRaw)
+	_, originIsSerialized := originpkg.Normalize(originHeaderRaw, corsSchemes)
 	return originIsSerialized, false
 }
 
@@ -55,7 +62,7 @@ func New(config ...Config) fiber.Handler {
 	// allowOrigins is a set of strings that contains the allowed origins
 	// defined in the 'AllowOrigins' configuration.
 	allowOrigins := make(map[string]struct{}, len(cfg.AllowOrigins))
-	allowSubOrigins := []subdomain{}
+	allowSubOrigins := []originpkg.Subdomain{}
 
 	// Validate and normalize static AllowOrigins
 	allowAllOrigins := len(cfg.AllowOrigins) == 0 && cfg.AllowOriginsFunc == nil
@@ -66,24 +73,14 @@ func New(config ...Config) fiber.Handler {
 		}
 
 		trimmedOrigin := utils.TrimSpace(origin)
-		if before, after, found := strings.Cut(trimmedOrigin, "://*."); found {
-			withoutWildcard := before + "://" + after
-			isValid, normalizedOrigin := normalizeOrigin(withoutWildcard)
-			if !isValid {
-				panic("[CORS] Invalid origin format in configuration: " + maskValue(trimmedOrigin))
-			}
-			scheme, host, ok := strings.Cut(normalizedOrigin, "://")
-			if !ok {
-				panic("[CORS] Invalid origin format after normalization:" + maskValue(trimmedOrigin))
-			}
-			sd := subdomain{prefix: scheme + "://", suffix: host}
-			allowSubOrigins = append(allowSubOrigins, sd)
+		pattern, ok := originpkg.ParsePattern(trimmedOrigin, corsSchemes)
+		if !ok {
+			panic("[CORS] Invalid origin format in configuration: " + maskValue(trimmedOrigin))
+		}
+		if pattern.Wildcard {
+			allowSubOrigins = append(allowSubOrigins, pattern.Subdomain)
 		} else {
-			isValid, normalizedOrigin := normalizeOrigin(trimmedOrigin)
-			if !isValid {
-				panic("[CORS] Invalid origin format in configuration: " + maskValue(trimmedOrigin))
-			}
-			allowOrigins[normalizedOrigin] = struct{}{}
+			allowOrigins[pattern.Origin] = struct{}{}
 		}
 	}
 
@@ -107,8 +104,11 @@ func New(config ...Config) fiber.Handler {
 			return c.Next()
 		}
 
-		// Get origin header preserving the original case for the response
-		originHeaderRaw := c.Get(fiber.HeaderOrigin)
+		// Every request header here is read case-insensitively, as csrf already
+		// does: Ctx.Get is byte-exact, so under DisableHeaderNormalizing the
+		// lower-case names HTTP/2 sends read as absent and CORS never applied.
+		// Origin, with the original case kept for the response.
+		originHeaderRaw, _ := headerlookup.Value(c, fiber.HeaderOrigin)
 		originHeader := utilsstrings.ToLower(originHeaderRaw)
 
 		// If the request does not have Origin header, the request is outside the scope of CORS
@@ -122,8 +122,13 @@ func New(config ...Config) fiber.Handler {
 			return c.Next()
 		}
 
-		// If it's a preflight request and doesn't have Access-Control-Request-Method header, it's outside the scope of CORS
-		if c.Method() == fiber.MethodOptions && c.Get(fiber.HeaderAccessControlRequestMethod) == "" {
+		// If it's a preflight request and doesn't have Access-Control-Request-Method header, it's outside the scope of CORS.
+		// The header is read only for OPTIONS, so plain cross-origin requests skip the lookup.
+		requestMethod := ""
+		if c.Method() == fiber.MethodOptions {
+			requestMethod, _ = headerlookup.Value(c, fiber.HeaderAccessControlRequestMethod)
+		}
+		if c.Method() == fiber.MethodOptions && requestMethod == "" {
 			// Response to OPTIONS request should not be cached but,
 			// some caching can be configured to cache such responses.
 			// To Avoid poisoning the cache, we include the Vary header
@@ -145,7 +150,7 @@ func New(config ...Config) fiber.Handler {
 			}
 
 			// Check if the origin is in the list of allowed subdomains
-			if allowOrigin == "" && matchSubdomainOrigin(allowSubOrigins, originHeader) {
+			if allowOrigin == "" && originpkg.MatchAny(allowSubOrigins, originHeader, corsSchemes) {
 				allowOrigin = originHeaderRaw
 			}
 		}
@@ -178,7 +183,14 @@ func New(config ...Config) fiber.Handler {
 		// To avoid poisoning the cache, we include the Vary header
 		// of preflight responses, set in a single variadic Vary call
 		// per branch since every Vary call scans all response headers.
-		if cfg.AllowPrivateNetwork && c.Get(fiber.HeaderAccessControlRequestPrivateNetwork) == "true" {
+		privateNetworkRequested := false
+		if cfg.AllowPrivateNetwork {
+			// Read only when the feature is on: with the default config the
+			// header's value is discarded, so the lookup would be pure cost.
+			privateNetwork, _ := headerlookup.Value(c, fiber.HeaderAccessControlRequestPrivateNetwork)
+			privateNetworkRequested = privateNetwork == "true"
+		}
+		if privateNetworkRequested {
 			c.Vary(fiber.HeaderAccessControlRequestMethod, fiber.HeaderAccessControlRequestHeaders, fiber.HeaderAccessControlRequestPrivateNetwork, fiber.HeaderOrigin)
 			c.Set(fiber.HeaderAccessControlAllowPrivateNetwork, "true")
 		} else {
@@ -194,7 +206,9 @@ func New(config ...Config) fiber.Handler {
 		if len(cfg.AllowHeaders) > 0 {
 			c.Set(fiber.HeaderAccessControlAllowHeaders, strings.Join(cfg.AllowHeaders, ", "))
 		} else {
-			h := c.Get(fiber.HeaderAccessControlRequestHeaders)
+			// Combined, not Value: this one is a list field, so a peer may
+			// legally split it over two lines and both name headers to allow.
+			h := headerlookup.Combined(c, fiber.HeaderAccessControlRequestHeaders)
 			if h != "" {
 				c.Set(fiber.HeaderAccessControlAllowHeaders, h)
 			}

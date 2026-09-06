@@ -796,6 +796,40 @@ func init() {
 					{url: "/mw", params: nil, match: false, partialCheck: true},
 				},
 			},
+			// a non-greedy parameter followed by a multi-byte constant ends at
+			// the first '/' of the remainder, and only if the constant sits there
+			{
+				pattern: "/:owner/keys/:id",
+				testCases: []routeTestCase{
+					{url: "/a/keys/1", params: []string{"a", "1"}, match: true},
+					{url: "/a/b/keys/1", params: nil, match: false},
+					{url: "/a/keysx/1", params: nil, match: false},
+					{url: "/a/xkeys/1", params: nil, match: false},
+					{url: "/a/1", params: nil, match: false},
+					{url: "/a", params: nil, match: false},
+				},
+			},
+			{
+				pattern: "/:p/verylongconstantsegment",
+				testCases: []routeTestCase{
+					{url: "/a/verylongconstantsegment", params: []string{"a"}, match: true},
+					{url: "/a/verylongconstantsegmen", params: nil, match: false},
+					{url: "/a/verylongconstantsegmentx", params: nil, match: false},
+					{url: "/a/b/verylongconstantsegment", params: nil, match: false},
+					{url: "/a/verylongconstantsegment/b", params: nil, match: false},
+					{url: "/a/verylongconstantsegment/b", params: []string{"a"}, match: true, partialCheck: true},
+				},
+			},
+			// the trailing slash of a constant after a parameter stays optional
+			{
+				pattern: "/:q/a/",
+				testCases: []routeTestCase{
+					{url: "/x/a/", params: []string{"x"}, match: true},
+					{url: "/x/a", params: []string{"x"}, match: true},
+					{url: "/x/ab", params: nil, match: false},
+					{url: "/x/b/a/", params: nil, match: false},
+				},
+			},
 		}...,
 	)
 }

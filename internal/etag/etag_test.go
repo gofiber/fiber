@@ -107,3 +107,78 @@ func Test_AnyMatch(t *testing.T) {
 		})
 	}
 }
+
+func Test_Split(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		header string
+		want   []string
+	}{
+		{name: "empty", header: ""},
+		{name: "whitespace only", header: "   "},
+		{name: "single", header: `"abc"`, want: []string{`"abc"`}},
+		{name: "list", header: `"a", "b"`, want: []string{`"a"`, `"b"`}},
+		{name: "weak", header: `W/"a", "b"`, want: []string{`W/"a"`, `"b"`}},
+		{name: "wildcard", header: "*", want: []string{"*"}},
+		{name: "comma inside tag", header: `"v1,v2"`, want: []string{`"v1,v2"`}},
+		{name: "comma inside and after", header: `"v1,v2", "v3"`, want: []string{`"v1,v2"`, `"v3"`}},
+		{name: "untrimmed", header: `  "a" ,  "b"  `, want: []string{`"a"`, `"b"`}},
+		{name: "unquoted", header: `abc`, want: []string{"abc"}},
+		{name: "trailing comma", header: `"a",`, want: []string{`"a"`}},
+		{name: "trailing comma and space", header: `"a", `, want: []string{`"a"`}},
+		{name: "leading comma", header: `,"a"`, want: []string{`"a"`}},
+		{name: "doubled comma", header: `"a",,"b"`, want: []string{`"a"`, `"b"`}},
+		{name: "only commas", header: `,,`},
+		{name: "only a comma", header: `,`},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, tc.want, Split(tc.header))
+		})
+	}
+}
+
+func Test_AnyMatch_IgnoresEmptyElements(t *testing.T) {
+	t.Parallel()
+
+	require.True(t, AnyMatch(`"a",`, `"a"`))
+	require.True(t, AnyMatch(`,"a"`, `"a"`))
+	require.True(t, AnyMatch(`"a",,"b"`, `"b"`))
+	require.False(t, AnyMatch(`,,`, `"a"`))
+	require.False(t, AnyMatch(`"a",`, ""))
+	require.False(t, AnyMatch(`,`, ""))
+}
+
+func Benchmark_AnyMatch(b *testing.B) {
+	benchmarks := []struct {
+		name   string
+		header string
+		etag   string
+	}{
+		{name: "hit", header: `"abc123"`, etag: `"abc123"`},
+		{name: "miss", header: `"abc123"`, etag: `"xyz789"`},
+		{name: "list_miss", header: `"a", "b", "c", "d", "e"`, etag: `"z"`},
+		{name: "weak", header: `W/"abcdefghijklmnop"`, etag: `W/"abcdefghijklmnop"`},
+		{name: "empty", header: "", etag: `"a"`},
+	}
+
+	for _, bm := range benchmarks {
+		b.Run(bm.name, func(b *testing.B) {
+			b.ReportAllocs()
+			for b.Loop() {
+				_ = AnyMatch(bm.header, bm.etag)
+			}
+		})
+	}
+}
+
+func Benchmark_Split(b *testing.B) {
+	b.ReportAllocs()
+	for b.Loop() {
+		_ = Split(`"a", "b", "c"`)
+	}
+}

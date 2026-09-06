@@ -861,3 +861,179 @@ func Benchmark_ServicesMemory(b *testing.B) {
 		})
 	})
 }
+
+// orderedService records the order in which services are terminated.
+type orderedService struct {
+	terminated *[]string
+	mockService
+}
+
+func (s *orderedService) Terminate(ctx context.Context) error {
+	*s.terminated = append(*s.terminated, s.name)
+	return s.mockService.Terminate(ctx)
+}
+
+func Test_ShutdownServices_ReverseStartOrder(t *testing.T) {
+	t.Parallel()
+
+	const count = 8
+	var terminated []string
+	services := make([]Service, 0, count)
+	expected := make([]string, 0, count)
+	for i := range count {
+		name := fmt.Sprintf("dep%d", i)
+		services = append(services, &orderedService{mockService: mockService{name: name}, terminated: &terminated})
+		expected = append([]string{name}, expected...)
+	}
+
+	app := &App{
+		configured: Config{Services: services},
+		state:      newState(),
+	}
+
+	require.NoError(t, app.startServices(context.Background()))
+	require.Equal(t, count, app.state.ServicesLen())
+
+	require.NoError(t, app.shutdownServices(context.Background()))
+	require.Equal(t, expected, terminated)
+	require.Zero(t, app.state.ServicesLen())
+}
+
+// uncomparableService is a Service stored by value whose slice field makes its
+// dynamic type uncomparable; shutting one down must not panic.
+type uncomparableService struct {
+	name string
+	tags []string
+}
+
+func (uncomparableService) Start(context.Context) error { return nil }
+
+func (s uncomparableService) String() string { return s.name }
+
+func (uncomparableService) State(context.Context) (string, error) { return "running", nil }
+
+func (uncomparableService) Terminate(context.Context) error { return nil }
+
+func Test_ShutdownServices_UncomparableService(t *testing.T) {
+	t.Parallel()
+
+	services := []Service{
+		uncomparableService{name: "first", tags: []string{"a"}},
+		uncomparableService{name: "second", tags: []string{"b"}},
+	}
+	app := &App{
+		configured: Config{Services: services},
+		state:      newState(),
+	}
+
+	require.NoError(t, app.startServices(context.Background()))
+	require.Equal(t, 2, app.state.ServicesLen())
+
+	require.NotPanics(t, func() {
+		require.NoError(t, app.shutdownServices(context.Background()))
+	})
+	require.Zero(t, app.state.ServicesLen())
+}
+
+func Test_ShutdownServices_StartedTwiceTerminatesOnce(t *testing.T) {
+	t.Parallel()
+
+	// App.init already starts configured services, so a second startServices
+	// call registers each of them again, as the shutdown benchmarks do.
+	var terminated []string
+	services := []Service{
+		&orderedService{mockService: mockService{name: "dep1"}, terminated: &terminated},
+		&orderedService{mockService: mockService{name: "dep2"}, terminated: &terminated},
+	}
+	app := &App{
+		configured: Config{Services: services},
+		state:      newState(),
+	}
+
+	require.NoError(t, app.startServices(context.Background()))
+	require.NoError(t, app.startServices(context.Background()))
+	require.Equal(t, 2, app.state.ServicesLen())
+
+	require.NoError(t, app.shutdownServices(context.Background()))
+	require.Equal(t, []string{"dep2", "dep1"}, terminated)
+	require.Zero(t, app.state.ServicesLen())
+}
+
+func Test_StartServices_DuplicateNames(t *testing.T) {
+	t.Parallel()
+
+	t.Run("startServices fails before starting anything", func(t *testing.T) {
+		t.Parallel()
+
+		first := &mockService{name: "dup"}
+		second := &mockService{name: "dup"}
+		app := &App{
+			configured: Config{Services: []Service{first, &mockService{name: "other"}, second}},
+			state:      newState(),
+		}
+
+		err := app.startServices(context.Background())
+		require.Error(t, err)
+		require.Contains(t, err.Error(), `duplicate service name "dup"`)
+		require.False(t, first.started)
+		require.False(t, second.started)
+		require.Zero(t, app.state.ServicesLen())
+	})
+
+	t.Run("New panics", func(t *testing.T) {
+		t.Parallel()
+
+		require.PanicsWithError(t, `fiber: duplicate service name "dup": services at index 0 and 2 share it, but service names must be unique`, func() {
+			New(Config{Services: []Service{&mockService{name: "dup"}, &mockService{name: "other"}, &mockService{name: "dup"}}})
+		})
+	})
+}
+
+// countingService records how many times it was terminated.
+type countingService struct {
+	terminations *atomic.Int32
+	mockService
+}
+
+func (s *countingService) Terminate(ctx context.Context) error {
+	s.terminations.Add(1)
+	return s.mockService.Terminate(ctx)
+}
+
+func Test_ShutdownServices_ConcurrentCallersTerminateOnce(t *testing.T) {
+	t.Parallel()
+
+	const (
+		count   = 3
+		callers = 4
+	)
+	counters := make([]*atomic.Int32, count)
+	services := make([]Service, 0, count)
+	for i := range count {
+		counters[i] = &atomic.Int32{}
+		services = append(services, &countingService{
+			mockService:  mockService{name: fmt.Sprintf("dep%d", i), terminateDelay: 10 * time.Millisecond},
+			terminations: counters[i],
+		})
+	}
+
+	app := &App{configured: Config{Services: services}, state: newState()}
+	require.NoError(t, app.startServices(context.Background()))
+
+	var wg sync.WaitGroup
+	errs := make([]error, callers)
+	for i := range callers {
+		wg.Go(func() {
+			errs[i] = app.shutdownServices(context.Background())
+		})
+	}
+	wg.Wait()
+
+	for _, err := range errs {
+		require.NoError(t, err)
+	}
+	for i, counter := range counters {
+		require.Equal(t, int32(1), counter.Load(), "dep%d was terminated %d times", i, counter.Load())
+	}
+	require.Zero(t, app.state.ServicesLen())
+}

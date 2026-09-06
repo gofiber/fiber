@@ -1375,3 +1375,106 @@ func Test_SanitizePath_Error(t *testing.T) {
 		})
 	}
 }
+
+func Test_Static_Download_NotFoundLeavesNoAttachment(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+
+	app.Get("/files*", New("../../.github/testdata/fs", Config{Download: true}))
+	app.Get("/files/users", func(c fiber.Ctx) error {
+		return c.JSON(fiber.Map{"ok": true})
+	})
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/files/users", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	require.Equal(t, fiber.MIMEApplicationJSONCharsetUTF8, resp.Header.Get(fiber.HeaderContentType))
+	require.Empty(t, resp.Header.Get(fiber.HeaderContentDisposition))
+}
+
+func Test_Static_Download_KeepsDetectedContentType(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	// fiberpng is a PNG without an extension, so only content detection can type it.
+	app.Get("/docs*", New("../../.github/testdata/fs/img", Config{Download: true}))
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/docs/fiberpng", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	require.Contains(t, resp.Header.Get(fiber.HeaderContentType), "image/png")
+	require.Equal(t, `attachment; filename="fiberpng"`, resp.Header.Get(fiber.HeaderContentDisposition))
+}
+
+func Test_Static_Download_NoAttachmentOnRangeError(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Get("/docs*", New("../../.github/testdata/fs/img", Config{Download: true, ByteRange: true}))
+
+	req := httptest.NewRequest(fiber.MethodGet, "/docs/fiberpng", http.NoBody)
+	req.Header.Set(fiber.HeaderRange, "bytes=99999999-99999999")
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusRequestedRangeNotSatisfiable, resp.StatusCode)
+	require.Empty(t, resp.Header.Get(fiber.HeaderContentDisposition))
+}
+
+func Test_Static_SameHandlerUnderTwoPrefixes(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+
+	handler := New("../../.github/testdata/fs")
+	app.Get("/static/*", handler)
+	app.Get("/s/*", handler)
+
+	for _, path := range []string{"/static/index.html", "/s/index.html", "/static/index.html"} {
+		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, path, http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, fiber.StatusOK, resp.StatusCode, "GET %s", path)
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		require.Contains(t, string(body), "<h1>Hello, World!</h1>", "GET %s", path)
+	}
+}
+
+func Test_Static_MaxAge_NotOnErrorResponses(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+
+	app.Get("/static/*", New("../../.github/testdata/fs", Config{ByteRange: true, MaxAge: 3600}))
+
+	req := httptest.NewRequest(fiber.MethodGet, "/static/index.html", http.NoBody)
+	req.Header.Set(fiber.HeaderRange, "bytes=999999-9999999")
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusRequestedRangeNotSatisfiable, resp.StatusCode)
+	require.Empty(t, resp.Header.Get(fiber.HeaderCacheControl))
+
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/static/index.html", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	require.Equal(t, "public, max-age=3600", resp.Header.Get(fiber.HeaderCacheControl))
+}
+
+func Test_Static_NonGetMethod_PassesThrough(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Use("/", New("../../.github"))
+	app.Post("/index.html", func(c fiber.Ctx) error { return c.SendString("posted") })
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodPost, "/index.html", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "posted", string(body))
+
+	get, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/index.html", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, get.StatusCode)
+	served, err := io.ReadAll(get.Body)
+	require.NoError(t, err)
+	require.Contains(t, string(served), "Hello, World!")
+}
