@@ -1224,6 +1224,13 @@ func Test_ContentHelpers_KeyByTrimmedMediaType(t *testing.T) {
 		})
 	})
 
+	t.Run("empty content is left alone", func(t *testing.T) {
+		t.Parallel()
+		app := New()
+		app.Post("/d", testHandlerOK).RequestBodyContent("payload", true, nil)
+		require.Empty(t, findRoute(t, app, MethodPost, "/d").RequestBody.Content)
+	})
+
 	t.Run("parameter content is trimmed", func(t *testing.T) {
 		t.Parallel()
 		app := New()
@@ -1234,6 +1241,15 @@ func Test_ContentHelpers_KeyByTrimmedMediaType(t *testing.T) {
 		})
 
 		require.Contains(t, findRoute(t, app, MethodGet, "/c").Parameters[0].Content, MIMEApplicationJSON)
+	})
+}
+
+func Test_ResponseHeader_RequiresName(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	require.Panics(t, func() {
+		app.Get("/a", testHandlerOK).ResponseHeader(StatusOK, "  ", "blank", nil)
 	})
 }
 
