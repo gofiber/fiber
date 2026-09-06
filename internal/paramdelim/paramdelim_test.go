@@ -1,15 +1,23 @@
 package paramdelim
 
-import "testing"
+import (
+	"testing"
 
-func TestPathEndChars(t *testing.T) {
-	s := PathEndChars()
+	"github.com/stretchr/testify/require"
+)
+
+// Test_PathEndChars pins the shared set to the router's grammar: the six bytes
+// that end a ":name", and not '#', which only the client treats as a terminator.
+func Test_PathEndChars(t *testing.T) {
+	t.Parallel()
+
+	set := PathEndChars()
 	for _, c := range []byte{'/', '-', '.', ':', '\\', '?'} {
-		if !s[c] {
-			t.Fatalf("expected %q to be a path-end char", c)
-		}
+		require.True(t, set[c], "%q must end a path parameter", c)
 	}
-	if s['#'] {
-		t.Fatal("# is a client-only delimiter, not part of the shared set")
-	}
+	require.False(t, set['#'], "'#' is a client-only terminator")
+
+	// The client adds '#' to what it gets back, so this must hand out a copy.
+	set['#'] = true
+	require.False(t, PathEndChars()['#'])
 }

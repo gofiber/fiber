@@ -13,6 +13,7 @@ import (
 
 	"github.com/fxamacker/cbor/v2"
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/paramdelim"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
@@ -54,6 +55,18 @@ func Test_Rand_String(t *testing.T) {
 			require.Contains(t, letterBytes, string(got[i]))
 		}
 	})
+}
+
+// Test_PathParamEndChars_MatchesSharedSet pins the client's terminator set to
+// the shared route grammar plus '#', which ends the path only client-side, so a
+// router delimiter cannot be added without the client following (#4635).
+func Test_PathParamEndChars_MatchesSharedSet(t *testing.T) {
+	t.Parallel()
+
+	want := paramdelim.PathEndChars()
+	want['#'] = true
+
+	require.Equal(t, want, pathParamEndChars)
 }
 
 func Test_Parser_Request_URL(t *testing.T) {
