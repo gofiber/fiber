@@ -11324,6 +11324,30 @@ func Test_Ctx_SendFile_UncomparableFS(t *testing.T) {
 	}
 }
 
+func Test_Ctx_SendFile_FunctionFSDoesNotGrowHandlerCache(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	files := fstest.MapFS{"hello.txt": &fstest.MapFile{Data: []byte("hello")}}
+	open := funcFS(files.Open)
+	app.Get("/", func(c Ctx) error {
+		return c.SendFile("hello.txt", SendFile{FS: open})
+	})
+
+	for range 10 {
+		resp, err := app.Test(httptest.NewRequest(MethodGet, "/", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, StatusOK, resp.StatusCode)
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		require.Equal(t, "hello", string(body))
+	}
+
+	app.sendfilesMutex.RLock()
+	defer app.sendfilesMutex.RUnlock()
+	require.Empty(t, app.sendfiles)
+}
+
 func Test_Ctx_SendFile_KeepsAcceptEncoding(t *testing.T) {
 	t.Parallel()
 
