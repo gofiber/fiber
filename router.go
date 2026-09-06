@@ -1131,6 +1131,7 @@ func (app *App) addRoute(method string, route *Route) {
 		// The merged route now represents this registration. Preserve its shared
 		// id so Name can find every method registered by the same Add call.
 		preRoute.id = route.id
+		route = preRoute
 	} else {
 		route.Method = method
 		// Add route to the stack
