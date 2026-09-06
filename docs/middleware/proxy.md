@@ -67,7 +67,7 @@ When a redirect crosses to a **different host**, `DoRedirects` strips `Authoriza
 
 ### X-Real-IP spoof prevention
 
-`Forward`, `DomainForward`, and `BalancerForward` automatically overwrite the `X-Real-IP` header with `c.IP()` before forwarding, so clients cannot spoof their address. `DomainForward` only applies the overwrite when the request host matches the configured hostname (matched case-insensitively per RFC 9110 §4.2.3); non-matching requests are passed through unchanged.
+`Forward`, `DomainForward`, and `BalancerForward` automatically overwrite the `X-Real-IP` header with `c.IP()` before forwarding, so clients cannot spoof their address. `DomainForward` only applies the overwrite when the request host matches the configured hostname (matched case-insensitively per RFC 9110 §4.2.3, with or without a port in the `Host` header); non-matching requests are passed on to the next handler unchanged. After any of the forwarding helpers returns, the request carries its original URI and `Host` again, so middleware running after `Next` still sees the request the client sent.
 
 If you're using `Balancer` with the `Config` struct, you can replicate the protection in `ModifyRequest`. When using `Do`, `DoRedirects`, `DoDeadline`, or `DoTimeout` directly, the `X-Real-IP` header is not set automatically — set it manually if needed:
 

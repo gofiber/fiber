@@ -309,6 +309,10 @@ func (s *Session) ResetWithContext(ctx context.Context) error {
 	// canceled/failed delete leaves the session data intact.
 	if s.data != nil {
 		s.data.Reset()
+		// Reset wiped the absolute expiration, so the rotated session must be armed again.
+		if s.config != nil && s.config.AbsoluteTimeout > 0 {
+			s.setAbsExpiration(time.Now().Add(s.config.AbsoluteTimeout))
+		}
 	}
 	s.idleTimeout = 0
 
@@ -524,7 +528,7 @@ func (s *Session) delSession() {
 		switch ext.Source {
 		case extractors.SourceHeader:
 			s.ctx.Request().Header.Del(ext.Key)
-			s.ctx.Response().Header.Del(ext.Key)
+			s.ctx.Res().Del(ext.Key)
 		case extractors.SourceCookie:
 			s.ctx.Request().Header.DelCookie(ext.Key)
 			s.ctx.Response().Header.DelCookie(ext.Key)

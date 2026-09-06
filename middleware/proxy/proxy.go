@@ -395,7 +395,12 @@ func doActionWithPolicy(
 	res := c.Response()
 	normalized := headerlookup.Canonical(c)
 	originalURL := utils.CopyString(c.OriginalURL())
-	defer req.SetRequestURI(originalURL)
+	// fasthttp rewrote the Host header to the upstream's; put the client's back for later middleware.
+	originalHost := utils.CopyBytes(req.Header.Host())
+	defer func() {
+		req.SetRequestURI(originalURL)
+		req.Header.SetHostBytes(originalHost)
+	}()
 
 	req.SetRequestURI(u.String())
 	// SetScheme takes the string directly (fasthttp appends its bytes),
@@ -588,6 +593,20 @@ func selectClient(globalClient *fasthttp.Client, clients ...*fasthttp.Client) (*
 // when AllowPrivateIPs is false the dispatching client's dial-time guard
 // re-validates the resolved IP at connect time — so a rebinding-capable
 // resolver cannot reach a private address through this handler.
+// hostWithoutPort strips the port from a Host header value, keeping a bracketed IPv6 literal.
+func hostWithoutPort(host string) string {
+	if strings.HasPrefix(host, "[") {
+		if end := strings.IndexByte(host, ']'); end != -1 {
+			return host[:end+1]
+		}
+		return host
+	}
+	if i := strings.LastIndexByte(host, ':'); i != -1 && strings.IndexByte(host[:i], ':') == -1 {
+		return host[:i]
+	}
+	return host
+}
+
 func DomainForward(hostname, addr string, clients ...*fasthttp.Client) fiber.Handler {
 	base, err := validateUpstream(addr, currentSecurityPolicy())
 	if err != nil {
@@ -599,9 +618,10 @@ func DomainForward(hostname, addr string, clients ...*fasthttp.Client) fiber.Han
 		// EqualFold — otherwise "API.Example.com" would slip past a
 		// DomainForward("api.example.com", ...) gate and be passed
 		// through unproxied.
+		// Match the host with or without its port; another host is passed on to the next handler.
 		host := utils.UnsafeString(c.Request().Host())
-		if !utils.EqualFold(host, hostname) {
-			return nil
+		if !utils.EqualFold(host, hostname) && !utils.EqualFold(hostWithoutPort(host), hostname) {
+			return c.Next()
 		}
 		setRealIP(c)
 		return doActionWithPolicy(c, joinUpstreamPath(base, c.OriginalURL()), currentSecurityPolicy(),

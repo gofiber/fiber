@@ -81,7 +81,7 @@ func appendDefaultKey(dst []byte, c fiber.Ctx, cfg *Config) []byte {
 
 	if !cfg.DisableQueryKeys {
 		dst = append(dst, '|', 'q', '=')
-		dst = appendCanonicalQueryString(dst, c.Request().URI())
+		dst = appendCanonicalQueryString(dst, c.Req().URI())
 	}
 
 	if len(cfg.KeyHeaders) > 0 {

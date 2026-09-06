@@ -22,7 +22,7 @@ jobs:
   unit:
     strategy:
       matrix:
-        go-version: [1.25.x, 1.26.x]
+        go-version: [1.26.x, 1.27.x]
         platform: [blacksmith-4vcpu-ubuntu-2404, blacksmith-4vcpu-windows-2025, blacksmith-6vcpu-macos-latest]
     runs-on: ${{ matrix.platform }}
     timeout-minutes: 30
@@ -44,7 +44,7 @@ jobs:
           args: -race -count=1 -coverprofile=coverage.txt -covermode=atomic -shuffle=on
 
       - name: Upload coverage reports to Codecov
-        if: ${{ runner.os == 'Linux' && matrix.go-version == '1.25.x' }}
+        if: ${{ runner.os == 'Linux' && matrix.go-version == '1.26.x' }}
         uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
         with:
           token: ${{ secrets.CODECOV_TOKEN }}

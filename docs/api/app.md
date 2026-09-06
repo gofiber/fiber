@@ -60,6 +60,8 @@ func main() {
 Unlike Express, Fiber does not strip the mount prefix. Inside the mounted app, `c.Path()` still returns the full request path (`/john/doe`, not `/doe`); there is no `req.baseUrl` equivalent.
 :::
 
+Passing a slice of prefixes mounts the sub-app under each of them (`app.Use([]string{"/john", "/jane"}, micro)`). Mounting an app onto itself panics.
+
 ### MountPath
 
 The `MountPath` property contains one or more path patterns on which a sub-app was mounted.
@@ -407,7 +409,7 @@ func main() {
 
 ### Name
 
-This method assigns the name to the latest created route.
+This method assigns the name to the latest created route. When the latest call registered several methods at once, as `Add` or `All` do, every one of those routes receives the name.
 
 ```go title="Signature"
 func (app *App) Name(name string) Router
@@ -648,6 +650,8 @@ func (app *App) Handler() fasthttp.RequestHandler
 ```go title="Signature"
 func (app *App) ErrorHandler(ctx Ctx, err error) error
 ```
+
+A request whose response fasthttp already holds as a timeout response, as after the [timeout middleware](../middleware/timeout.md) has answered it, is left alone: `ErrorHandler` returns `nil` without running the configured handler, since anything written now would be ignored and the handler that timed out may still be using the context. The error still reaches the outer middleware.
 
 ## NewWithCustomCtx
 
@@ -920,7 +924,7 @@ Routes are normally defined before the app starts. You can also add or remove th
 
 ### RebuildTree
 
-The `RebuildTree` method is designed to rebuild the route tree and enable dynamic route registration. It returns a pointer to the `App` instance.
+The `RebuildTree` method is designed to rebuild the route tree and enable dynamic route registration. It returns a pointer to the `App` instance. GET routes registered since the last rebuild also receive their [automatic HEAD route](../guide/routing.md#automatic-head-routes) here.
 
 ```go title="Signature"
 func (app *App) RebuildTree() *App
@@ -1060,5 +1064,31 @@ app.Get("/dev/reload", func(c fiber.Ctx) error {
         return err
     }
     return c.SendString("Templates reloaded")
+})
+```
+
+### Render
+
+`Render` writes a template through the configured view engine without creating
+an HTTP response. It applies `ViewsLayout` when no layout is supplied and is
+safe to use concurrently with `ReloadViews`.
+
+```go title="Signature"
+func (app *App) Render(out io.Writer, name string, binding any, layouts ...string) error
+```
+
+Capture the app, rather than a pooled request context, when rendering from an
+asynchronous stream writer:
+
+```go
+app.Get("/events", func(c fiber.Ctx) error {
+    return c.SendStreamWriter(func(w *bufio.Writer) {
+        if err := app.Render(w, "partial", fiber.Map{"Title": "update"}); err != nil {
+            return
+        }
+        if err := w.Flush(); err != nil {
+            return
+        }
+    })
 })
 ```

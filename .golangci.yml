@@ -128,6 +128,11 @@ linters:
       no-printf-like: true
     misspell:
       locale: US
+    modernize:
+      disable:
+        # reflect's Fields()/Methods() iterators cost a closure per loop
+        # (~40B, 3 allocs); the index form stays allocation-free
+        - stditerators
     nolintlint:
       require-explanation: true
       require-specific: true

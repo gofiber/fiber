@@ -110,12 +110,16 @@ func First(h Peeker, name string, canonical bool) []byte {
 // firstFold answers First for a store whose field names are spelled however the
 // peer sent them.
 func firstFold(h Peeker, name string) []byte {
-	for k, v := range h.All() {
-		if len(v) > 0 && utils.EqualFold(utils.UnsafeString(k), name) {
-			return v
+	// Walked rather than ranged, for the reason Lines gives: All builds a
+	// heap-allocated iterator per call. Scanning past the match costs less than
+	// the early exit ranging would buy.
+	var found []byte
+	h.VisitAll(func(k, v []byte) {
+		if found == nil && len(v) > 0 && utils.EqualFold(utils.UnsafeString(k), name) {
+			found = v
 		}
-	}
-	return nil
+	})
+	return found
 }
 
 // Canonical reports whether every field name in h is spelled the way fasthttp
@@ -165,21 +169,21 @@ func Del(h Deleter, name string, canonical bool) {
 		return
 	}
 
-	// Restart after each removal rather than deleting while ranging over the
-	// store being modified. A field arrives under one spelling essentially
-	// always, so this repeats only for a peer that sent several.
-	for {
-		other := ""
-		for k := range h.All() {
-			if utils.EqualFold(utils.UnsafeString(k), name) {
-				other = string(k)
-				break
-			}
+	// Collected before deleting, like DelOthers, rather than rescanning after
+	// each removal: ResponseHeader.All reports a default Content-Type whenever
+	// the slot is empty, so a rescan would keep finding the name it just
+	// deleted. A name stored non-canonically in a normalizing store is the same
+	// shape, since Del normalizes the key before matching and so cannot remove
+	// it at all.
+	var others []string
+	for k := range h.All() {
+		if utils.EqualFold(utils.UnsafeString(k), name) {
+			others = append(others, string(k))
 		}
-		if other == "" {
-			return
-		}
-		h.Del(other)
+	}
+
+	for _, k := range others {
+		h.Del(k)
 	}
 }
 
