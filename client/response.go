@@ -36,12 +36,14 @@ func (r *Response) setClient(c *Client) {
 	r.client = c
 }
 
-// setRequest sets the request object in the response and snapshots its
-// ownership. Request objects are pooled, so their fields may belong to a new
-// logical request by the time Response.Close is called.
-func (r *Response) setRequest(req *Request) {
+// setRequest sets the request object in the response along with a snapshot of
+// its ownership. The caller reads owned before the transport goroutine starts:
+// Request objects are pooled, so req.clientOwned may already be reset, or
+// belong to a new logical request, by the time the response is built or
+// Response.Close is called.
+func (r *Response) setRequest(req *Request, owned bool) {
 	r.request = req
-	r.requestOwned = req.clientOwned
+	r.requestOwned = owned
 }
 
 // setRespondedURI records where the response was served from, copying into the

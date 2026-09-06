@@ -76,7 +76,7 @@ func Test_Response_CloseUsesSnapshottedRequestOwnership(t *testing.T) {
 
 	req := AcquireRequest()
 	resp := AcquireResponse()
-	resp.setRequest(req)
+	resp.setRequest(req, false)
 
 	// Simulate the caller releasing this request and a helper reusing the pooled
 	// object. The stale response must not release the helper's logical request.

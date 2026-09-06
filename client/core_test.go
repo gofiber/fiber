@@ -169,6 +169,38 @@ func Test_Exec_Func(t *testing.T) {
 		}
 	})
 
+	t.Run("timeout snapshots ownership before transport", func(t *testing.T) {
+		t.Parallel()
+		core, client, req := newCore(), New(), AcquireRequest()
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
+		defer cancel()
+
+		// A helper-owned request: execute releases it as soon as the caller
+		// times out, while the transport goroutine is still completing on its
+		// own clock. Nothing orders that release before the goroutine builds
+		// its response, so any read of req there is a data race.
+		req.clientOwned = true
+		req.SetURL("http://example.com/owned-timeout")
+
+		transport := newDelayedTransport(150 * time.Millisecond)
+		client.transport = transport
+
+		// Once execute returns, req is back in the pool, so the test must not
+		// touch it again either: another test may already own the same object.
+		resp, err := core.execute(ctx, client, req)
+		require.Nil(t, resp)
+		require.ErrorIs(t, err, ErrTimeoutOrCancel)
+
+		select {
+		case <-transport.finished:
+		case <-time.After(time.Second):
+			t.Fatal("transport Do did not finish")
+		}
+
+		// Let the goroutine build and hand off its response after Do returned.
+		time.Sleep(50 * time.Millisecond)
+	})
+
 	t.Run("panic in transport returns error", func(t *testing.T) {
 		t.Parallel()
 		core, client, req := newCore(), New(), AcquireRequest()
@@ -555,6 +587,61 @@ func Test_AfterHooks_ReturnsUserHookError(t *testing.T) {
 	defer ReleaseResponse(resp)
 
 	require.ErrorIs(t, core.afterHooks(resp), wantErr)
+}
+
+// delayedTransport completes successfully after a fixed delay, without any
+// synchronization with the caller, mirroring a slow upstream that answers after
+// the client has already given up.
+type delayedTransport struct {
+	finished chan struct{}
+	delay    time.Duration
+}
+
+func newDelayedTransport(delay time.Duration) *delayedTransport {
+	return &delayedTransport{delay: delay, finished: make(chan struct{})}
+}
+
+func (d *delayedTransport) Do(_ *fasthttp.Request, resp *fasthttp.Response) error {
+	time.Sleep(d.delay)
+	resp.SetStatusCode(fasthttp.StatusOK)
+	close(d.finished)
+	return nil
+}
+
+func (d *delayedTransport) DoTimeout(req *fasthttp.Request, resp *fasthttp.Response, _ time.Duration) error {
+	return d.Do(req, resp)
+}
+
+func (d *delayedTransport) DoDeadline(req *fasthttp.Request, resp *fasthttp.Response, _ time.Time) error {
+	return d.Do(req, resp)
+}
+
+func (d *delayedTransport) DoRedirects(req *fasthttp.Request, resp *fasthttp.Response, _ int) error {
+	return d.Do(req, resp)
+}
+
+func (*delayedTransport) CloseIdleConnections() {
+}
+
+func (*delayedTransport) TLSConfig() *tls.Config {
+	return nil
+}
+
+func (*delayedTransport) SetTLSConfig(_ *tls.Config) {
+}
+
+func (*delayedTransport) SetDial(_ fasthttp.DialFunc) {
+}
+
+func (*delayedTransport) Client() any {
+	return nil
+}
+
+func (*delayedTransport) StreamResponseBody() bool {
+	return false
+}
+
+func (*delayedTransport) SetStreamResponseBody(_ bool) {
 }
 
 type blockingErrTransport struct {

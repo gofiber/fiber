@@ -62,6 +62,10 @@ func (c *core) execFunc() (*Response, error) {
 		reqv.SetBodyStream(bodyStream, c.req.RawRequest.Header.ContentLength())
 	}
 	// Read what the goroutine needs now; only its own copy is safe to touch later.
+	// Ownership is included: once the caller times out, execute releases a
+	// client-owned request and the pool may hand it to another call while the
+	// transport is still finishing, so reading the flag from the goroutine races.
+	reqOwned := c.req.clientOwned
 	maxRedirects := c.req.maxRedirects
 	method := string(reqv.Header.Method())
 	followRedirects := maxRedirects > 0 && (method == fiber.MethodGet || method == fiber.MethodHead || method == fiber.MethodQuery)
@@ -114,7 +118,7 @@ func (c *core) execFunc() (*Response, error) {
 
 		resp = AcquireResponse()
 		resp.setClient(c.client)
-		resp.setRequest(c.req)
+		resp.setRequest(c.req, reqOwned)
 		// reqv carries the URI of the hop that produced this response, which after a
 		// redirect is not c.req's. Record it before reqv is pooled so the response
 		// hooks can attribute cookies to its real origin — and only where a jar
