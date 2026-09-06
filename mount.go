@@ -286,7 +286,7 @@ func domainMountRender(owner domainOwner) (*App, string) { //nolint:gocritic // 
 	}
 
 	layout := owner.app.config.ViewsLayout
-	if owner.app.config.Views != nil {
+	if !isNilViews(owner.app.config.Views) {
 		return owner.app, layout
 	}
 
@@ -295,7 +295,7 @@ func domainMountRender(owner domainOwner) (*App, string) { //nolint:gocritic // 
 			layout = ancestor.config.ViewsLayout
 		}
 
-		if ancestor.config.Views != nil {
+		if !isNilViews(ancestor.config.Views) {
 			return ancestor, layout
 		}
 	}

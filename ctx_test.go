@@ -9134,6 +9134,20 @@ func Test_Ctx_Render_Engine(t *testing.T) {
 	require.Equal(t, "<h1>Hello, World!</h1>", string(c.Response().Body()))
 }
 
+func Test_Ctx_Render_TypedNilEngine(t *testing.T) {
+	t.Parallel()
+
+	var engine *testTemplateEngine
+	app := New(Config{Views: engine})
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+
+	err := c.Render("./.github/testdata/index.tmpl", Map{
+		"Title": "Hello, World!",
+	})
+	require.NoError(t, err)
+	require.Equal(t, "<h1>Hello, World!</h1>", string(c.Response().Body()))
+}
+
 // go test -run Test_Ctx_Render_Engine_With_View_Layout
 func Test_Ctx_Render_Engine_With_View_Layout(t *testing.T) {
 	t.Parallel()
