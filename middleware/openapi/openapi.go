@@ -281,7 +281,6 @@ var swaggerUITemplate = htemplate.Must(htemplate.New("swagger-ui").Parse(`<!doct
         const config = {
           url: "{{ .OpenAPIURL }}",
           dom_id: "#swagger-ui",
-          persistAuthorization: true,
         };
         if (typeof SwaggerUIStandalonePreset !== "undefined") {
           presets.push(SwaggerUIStandalonePreset);

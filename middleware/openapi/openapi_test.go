@@ -619,6 +619,22 @@ func Test_OpenAPI_SwaggerUI_DefaultTemplate(t *testing.T) {
 	require.Contains(t, bodyText, `src="https://unpkg.com/swagger-ui-dist@5.32.6/swagger-ui-bundle.js"`)
 	require.Contains(t, bodyText, `url: "\/openapi.json"`)
 	require.Contains(t, bodyText, `id="swagger-ui" data-swagger-options='{}'`)
+	require.NotContains(t, bodyText, "persistAuthorization")
+}
+
+func Test_OpenAPI_SwaggerUI_PersistAuthorizationIsOptIn(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Use(New(Config{SwaggerOptions: map[string]any{"persistAuthorization": true}}))
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/swagger", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Contains(t, string(body), "persistAuthorization")
 }
 
 func Test_OpenAPI_SwaggerUI_ConfigurableAssetsAndOptions(t *testing.T) {

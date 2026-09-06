@@ -1158,7 +1158,7 @@ func docAddParameter(param RouteParameter) func(route *Route) {
 		if len(param.Content) > 1 {
 			panic("parameter content must contain exactly one media type: " + param.Name)
 		}
-		validateContentMediaTypes(param.Content)
+		param.Content = sanitizeContentMediaTypes(param.Content)
 		param.Schema = nil
 		param.SchemaRef = ""
 	case param.SchemaRef != "":
@@ -1396,6 +1396,11 @@ func docResponseHeader(status int, name, description string, schema map[string]a
 	}
 	if len(schema) > 0 {
 		header["schema"] = schema
+	} else {
+		// A Header Object follows the Parameter Object, which carries a schema
+		// or a content map: fall back to the same default the parameter
+		// helpers inject rather than emitting an invalid header.
+		header["schema"] = map[string]any{"type": openapiTypeString}
 	}
 
 	return docSetResponseEntry(status, name, header, func(resp *RouteResponse) *map[string]any { return &resp.Headers })
@@ -1426,16 +1431,29 @@ func docOperationExtension(fields map[string]any) func(route *Route) {
 	}
 }
 
-// validateContentMediaTypes panics on a key the content map cannot legally use,
-// matching the validation the simpler RequestBody/Response helpers already do.
-func validateContentMediaTypes(content map[string]RouteMediaType) {
-	for mediaType := range content {
-		validateMediaType(utils.TrimSpace(mediaType))
+// sanitizeContentMediaTypes returns content keyed by its trimmed media types,
+// panicking on a key the map cannot legally use, matching the validation the
+// simpler RequestBody/Response helpers already do. Keying by the validated
+// value keeps a padded key from reaching the generated document.
+func sanitizeContentMediaTypes(content map[string]RouteMediaType) map[string]RouteMediaType {
+	if len(content) == 0 {
+		return content
 	}
+
+	sanitized := make(map[string]RouteMediaType, len(content))
+	for mediaType, entry := range content {
+		trimmed := utils.TrimSpace(mediaType)
+		validateMediaType(trimmed)
+		if _, ok := sanitized[trimmed]; ok {
+			panic("duplicate media type in content: " + trimmed)
+		}
+		sanitized[trimmed] = entry
+	}
+	return sanitized
 }
 
 func docRequestBodyContent(description string, required bool, content map[string]RouteMediaType) func(route *Route) {
-	validateContentMediaTypes(content)
+	content = sanitizeContentMediaTypes(content)
 
 	// cloneRouteRequestBody performs the per-route deep copy, so the caller's
 	// content map is referenced but never stored.
@@ -1450,7 +1468,7 @@ func docRequestBodyContent(description string, required bool, content map[string
 }
 
 func docResponseContent(status int, description string, content map[string]RouteMediaType) func(route *Route) {
-	validateContentMediaTypes(content)
+	content = sanitizeContentMediaTypes(content)
 
 	key := responseKey(status)
 	return func(route *Route) {

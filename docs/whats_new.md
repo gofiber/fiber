@@ -512,7 +512,7 @@ app := fiber.New(fiber.Config{DisableHeadAutoRegister: true})
 app.Get("/health", handler) // HEAD /health now returns 405 unless you add it manually.
 ```
 
-Auto-generated `HEAD` routes appear in tooling such as `app.Stack()` and cover the same routing scenarios as their `GET` counterparts, including groups, mounted apps, dynamic parameters, and static file handlers. They deliberately carry no name or documentation metadata of their own (filter them via `Route.IsAutoHead()`).
+Auto-generated `HEAD` routes appear in tooling such as `app.Stack()` and cover the same routing scenarios as their `GET` counterparts, including groups, mounted apps, dynamic parameters, and static file handlers. They mirror the name of the `GET` route they were built from, but carry no documentation metadata of their own (filter them via `Route.IsAutoHead()`).
 
 :::caution
 `Name()` (and the documentation helpers) now target only the routes created by the most recent registration. Naming a `GET` route no longer also names an **explicitly registered** `HEAD` route on the same path — name that route in its own registration chain instead.

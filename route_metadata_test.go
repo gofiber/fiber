@@ -1196,3 +1196,107 @@ func Test_DuplicateMethodRegistration_IndexedOnce(t *testing.T) {
 
 	require.Len(t, findRoute(t, app, MethodGet, "/d").Parameters, 1)
 }
+
+func Test_ContentHelpers_KeyByTrimmedMediaType(t *testing.T) {
+	t.Parallel()
+
+	t.Run("padded keys are trimmed", func(t *testing.T) {
+		t.Parallel()
+		app := New()
+		app.Post("/a", testHandlerOK).
+			RequestBodyContent("payload", true, map[string]RouteMediaType{" " + MIMEApplicationJSON + " ": {}}).
+			ResponseContent(StatusOK, "ok", map[string]RouteMediaType{"\t" + MIMEApplicationXML: {}})
+
+		route := findRoute(t, app, MethodPost, "/a")
+		require.Contains(t, route.RequestBody.Content, MIMEApplicationJSON)
+		require.Contains(t, route.Responses["200"].Content, MIMEApplicationXML)
+	})
+
+	t.Run("collision after trimming panics", func(t *testing.T) {
+		t.Parallel()
+		app := New()
+		require.Panics(t, func() {
+			app.Post("/b", testHandlerOK).
+				RequestBodyContent("payload", true, map[string]RouteMediaType{
+					MIMEApplicationJSON:       {},
+					" " + MIMEApplicationJSON: {},
+				})
+		})
+	})
+
+	t.Run("parameter content is trimmed", func(t *testing.T) {
+		t.Parallel()
+		app := New()
+		app.Get("/c", testHandlerOK).AddParameter(RouteParameter{
+			Name:    "filter",
+			In:      "query",
+			Content: map[string]RouteMediaType{" " + MIMEApplicationJSON: {}},
+		})
+
+		require.Contains(t, findRoute(t, app, MethodGet, "/c").Parameters[0].Content, MIMEApplicationJSON)
+	})
+}
+
+func Test_ResponseHeader_DefaultsToStringSchema(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	app.Get("/a", testHandlerOK).
+		ResponseHeader(StatusOK, "X-Rate-Limit", "requests left", nil).
+		ResponseHeader(StatusOK, "X-Trace", "", map[string]any{"type": "integer"})
+
+	headers := findRoute(t, app, MethodGet, "/a").Responses["200"].Headers
+	rateLimit, ok := headers["X-Rate-Limit"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, map[string]any{"type": "string"}, rateLimit["schema"])
+
+	trace, ok := headers["X-Trace"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, map[string]any{"type": "integer"}, trace["schema"])
+}
+
+func Test_RemoveRouteFunc_MatchesAgainstSnapshot(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	app.Get("/a", testHandlerOK).Name("keep").Summary("original")
+
+	app.RemoveRouteFunc(func(r *Route) bool {
+		r.Summary = "mutated"
+		r.Name = "renamed"
+		return false
+	})
+
+	route := findRoute(t, app, MethodGet, "/a")
+	require.Equal(t, "original", route.Summary)
+	require.Equal(t, "keep", route.Name)
+}
+
+func Test_AutoHeadPrune_IsDomainScoped(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	app.Domain("a.example").Get("/x", testHandlerOK)
+	app.Domain("b.example").Get("/x", testHandlerOK)
+
+	_, err := app.Test(httptest.NewRequest(MethodGet, "/x", http.NoBody))
+	require.NoError(t, err)
+
+	app.Domain("a.example").Head("/x", testHandlerOK)
+	app.RebuildTree()
+
+	twins := map[string]int{}
+	explicit := map[string]int{}
+	for _, route := range app.stack[app.methodInt(MethodHead)] {
+		if route.path != "/x" {
+			continue
+		}
+		if route.autoHead {
+			twins[route.domain]++
+			continue
+		}
+		explicit[route.domain]++
+	}
+	require.Equal(t, map[string]int{"b.example": 1}, twins)
+	require.Equal(t, map[string]int{"a.example": 1}, explicit)
+}

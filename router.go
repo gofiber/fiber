@@ -1343,22 +1343,28 @@ func (app *App) deleteRoute(methods []string, matchFunc func(r *Route) bool) {
 	}
 
 	// matchFunc runs unlocked so it may call locking app methods such as
-	// GetRoute; matches are then removed by identity under the lock.
+	// GetRoute, and so it sees a snapshot rather than a live entry a concurrent
+	// registration could still be writing to. The live pointers stay alongside
+	// it, and matches are removed by identity under the lock.
 	app.mutex.Lock()
 	n := 0
 	for _, m := range indexes {
 		n += len(app.stack[m])
 	}
 	candidates := make([]*Route, 0, n)
+	snapshots := make([]Route, 0, n)
 	for _, m := range indexes {
-		candidates = append(candidates, app.stack[m]...)
+		for _, route := range app.stack[m] {
+			candidates = append(candidates, route)
+			snapshots = append(snapshots, app.copyRouteValue(route))
+		}
 	}
 	app.mutex.Unlock()
 
 	matched := make(map[*Route]struct{})
-	for _, route := range candidates {
-		if matchFunc(route) {
-			matched[route] = struct{}{}
+	for i := range snapshots {
+		if matchFunc(&snapshots[i]) {
+			matched[candidates[i]] = struct{}{}
 		}
 	}
 	if len(matched) == 0 {
@@ -1396,7 +1402,7 @@ func (app *App) deleteRoute(methods []string, matchFunc func(r *Route) bool) {
 			}
 
 			if method == MethodGet && !route.use && !route.mount {
-				app.pruneAutoHeadRouteLocked(route.path)
+				app.pruneAutoHeadRouteLocked(route)
 			}
 		}
 	}
@@ -1419,17 +1425,20 @@ func (app *App) unindexRouteLocked(route *Route) {
 // pruneAutoHeadRouteLocked removes an automatically generated HEAD route so a
 // later explicit registration can take its place without duplicating handler
 // chains. The caller must already hold app.mutex.
-func (app *App) pruneAutoHeadRouteLocked(path string) {
+func (app *App) pruneAutoHeadRouteLocked(route *Route) {
 	headIndex := app.methodInt(MethodHead)
 	if headIndex == -1 {
 		return
 	}
 
-	norm := app.normalizePath(path)
+	// Twins are created per autoHeadKey, so matching on the path alone would
+	// let one domain's registration drop another domain's twin.
+	key := app.autoHeadKey(route)
+	key.path = app.normalizePath(key.path)
 
 	headStack := app.stack[headIndex]
 	for i, headRoute := range slices.Backward(headStack) {
-		if headRoute.path != norm || headRoute.mount || headRoute.use || !headRoute.autoHead {
+		if headRoute.mount || headRoute.use || !headRoute.autoHead || app.autoHeadKey(headRoute) != key {
 			continue
 		}
 
@@ -1553,7 +1562,7 @@ func (app *App) addRoute(method string, route *Route) {
 	m := app.methodInt(method)
 
 	if method == MethodHead && !route.mount && !route.use {
-		app.pruneAutoHeadRouteLocked(route.path)
+		app.pruneAutoHeadRouteLocked(route)
 	}
 
 	// The stack entry the registration ends up in: the route itself, or the
