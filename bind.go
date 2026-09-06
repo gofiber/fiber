@@ -38,9 +38,7 @@ var bindPool = sync.Pool{
 // By default (manual mode), parsing failures are returned as *BindError; use errors.As to extract source and field details.
 // With WithAutoHandling(), parsing failures set HTTP 400 and return *Error instead.
 type Bind struct {
-	ctx Ctx
-	// overrideSplitting tri-state: nil falls back to the app's
-	// EnableSplittingOnParsers config; non-nil forces the value for this chain.
+	ctx                   Ctx
 	overrideSplitting     *bool
 	shouldSkipErrHandling bool
 	shouldSkipValidation  bool
@@ -160,20 +158,13 @@ func (b *Bind) SkipValidation(skip bool) *Bind {
 	return b
 }
 
-// WithSplitting overrides the app's EnableSplittingOnParsers config for the
-// current bind chain. When enabled, comma-separated values are split into
-// individual elements for fields whose target type is a slice.
-// Pass true to force splitting on, false to force it off; the override applies
-// until the Bind instance is released back to the pool.
+// WithSplitting overrides the app's EnableSplittingOnParsers config for the current bind chain.
 func (b *Bind) WithSplitting(enable bool) *Bind {
 	b.overrideSplitting = &enable
 
 	return b
 }
 
-// splittingEnabled reports the effective comma-splitting setting for this bind
-// chain, falling back to the app's EnableSplittingOnParsers config when no
-// per-chain override has been set.
 func (b *Bind) splittingEnabled() bool {
 	if b.overrideSplitting != nil {
 		return *b.overrideSplitting

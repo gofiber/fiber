@@ -3310,13 +3310,7 @@ func Test_Bind_Form_ContentTypeNormalization(t *testing.T) {
 	})
 }
 
-// Test_Bind_WithSplitting covers the per-chain override of the
-// EnableSplittingOnParsers config flag. It verifies:
-//  1. With no override, the chain inherits the app config.
-//  2. WithSplitting(true) forces splitting even when the app config is off.
-//  3. WithSplitting(false) suppresses splitting even when the app config is on.
-//  4. The override is scoped to the bind chain: it does not leak across
-//     requests that reuse the same pool entry.
+// Test_Bind_WithSplitting covers the per-chain override of the EnableSplittingOnParsers config flag.
 func Test_Bind_WithSplitting(t *testing.T) {
 	t.Parallel()
 

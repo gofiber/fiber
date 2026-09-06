@@ -668,6 +668,7 @@ When you don't want to flip `EnableSplittingOnParsers` for the whole app, overri
 type Query struct {
     Hobby []string `query:"hobby"`
 }
+var q Query
 
 // Comma split just for this request, regardless of the app config:
 c.Bind().WithSplitting(true).Query(&q)
