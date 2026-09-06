@@ -1209,17 +1209,24 @@ func (r *DefaultRes) SendFile(file string, config ...SendFile) error {
 
 	var fsHandler fasthttp.RequestHandler
 	var cacheControlValue string
+	// Function values have no safe identity in Go: reflect.Value.Pointer only
+	// identifies their shared code, not captured closure data. Do not retain
+	// handlers for function-backed file systems, since they can never be safely
+	// matched and would otherwise grow the application cache on every request.
+	cacheHandler := cfg.FS == nil || reflect.ValueOf(cfg.FS).Kind() != reflect.Func
 
 	app := r.c.app
-	app.sendfilesMutex.RLock()
-	for _, sf := range app.sendfiles {
-		if sf.configEqual(cfg) {
-			fsHandler = sf.handler
-			cacheControlValue = sf.cacheControlValue
-			break
+	if cacheHandler {
+		app.sendfilesMutex.RLock()
+		for _, sf := range app.sendfiles {
+			if sf.configEqual(cfg) {
+				fsHandler = sf.handler
+				cacheControlValue = sf.cacheControlValue
+				break
+			}
 		}
+		app.sendfilesMutex.RUnlock()
 	}
-	app.sendfilesMutex.RUnlock()
 
 	if fsHandler == nil {
 		fasthttpFS := &fasthttp.FS{
@@ -1233,7 +1240,7 @@ func (r *DefaultRes) SendFile(file string, config ...SendFile) error {
 			CompressZstd:           cfg.Compress,
 			CompressedFileSuffixes: app.config.CompressedFileSuffixes,
 			CacheDuration:          cfg.CacheDuration,
-			SkipCache:              cfg.CacheDuration < 0,
+			SkipCache:              cfg.CacheDuration < 0 || !cacheHandler,
 			IndexNames:             []string{"index.html"},
 			PathNotFound: func(ctx *fasthttp.RequestCtx) {
 				ctx.Response.SetStatusCode(StatusNotFound)
@@ -1254,9 +1261,11 @@ func (r *DefaultRes) SendFile(file string, config ...SendFile) error {
 		fsHandler = sf.handler
 		cacheControlValue = sf.cacheControlValue
 
-		app.sendfilesMutex.Lock()
-		app.sendfiles = append(app.sendfiles, sf)
-		app.sendfilesMutex.Unlock()
+		if cacheHandler {
+			app.sendfilesMutex.Lock()
+			app.sendfiles = append(app.sendfiles, sf)
+			app.sendfilesMutex.Unlock()
+		}
 	}
 
 	// Keep original path for mutable params
