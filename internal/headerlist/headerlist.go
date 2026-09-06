@@ -9,9 +9,9 @@
 // be rediscovered per call site:
 //
 //   - Case. [Contains] compares exactly, [ContainsFold] under ASCII case
-//     folding. Both exist because the callers genuinely differ: a Vary field
-//     name is echoed back to the client as it was written, while a token like
-//     "close" or "gzip" is matched however it arrives.
+//     folding. [AppendUnique] and [AppendUniqueFold] follow the same split.
+//     [Append] echoes list members as written. Vary members are HTTP field
+//     names and must match however they arrive (RFC 9110 Section 5.1).
 //   - Quoting. [All] treats every comma as a separator, which is what a list of
 //     bare tokens wants. [AllQuoted] keeps commas that sit inside a quoted
 //     string, which is what a list of entity tags or media-type parameters
@@ -211,7 +211,20 @@ func Join(lines [][]byte) []byte {
 // Presence is decided by [Contains], byte for byte: a value already listed in
 // another case is added again rather than silently dropped, since the field
 // this serves is echoed to the client as written.
+//
+// Use [AppendUniqueFold] when the members are HTTP field names.
 func AppendUnique(list string, values []string) string {
+	return appendIfAbsent(list, values, Contains)
+}
+
+// AppendUniqueFold is [AppendUnique] with presence decided by [ContainsFold].
+// Use it when the list members are HTTP field names, which RFC 9110 Section 5.1
+// treats as case-insensitive. The first spelling is kept.
+func AppendUniqueFold(list string, values []string) string {
+	return appendIfAbsent(list, values, ContainsFold)
+}
+
+func appendIfAbsent(list string, values []string, present func(list, value string) bool) string {
 	original := list
 	for _, value := range values {
 		if value == "" {
@@ -220,7 +233,7 @@ func AppendUnique(list string, values []string) string {
 		switch {
 		case list == "":
 			list = value
-		case !Contains(list, value):
+		case !present(list, value):
 			list += ", " + value
 		}
 	}
