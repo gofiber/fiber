@@ -50,6 +50,8 @@ type Config struct {
 	// make time-dependent tests deterministic. When nil, time.Now is used.
 	clock func() time.Time
 
+	accounting func(storedBytes uint, heapLen int)
+
 	// CacheHeader header on response header, indicate cache status, with the following possible return value
 	//
 	// hit, miss, unreachable

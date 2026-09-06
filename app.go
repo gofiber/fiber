@@ -124,15 +124,17 @@ type App struct {
 	// Precomputed unmatched-route indexes, rebuilt with the tree (router_skip.go)
 	skip skipRouteIndex
 	// sendfilesMutex is a mutex used for sendfile operations
-	sendfilesMutex sync.RWMutex
-	mutex          sync.Mutex
-	latestBatchID  uint64
-	routesRevision atomic.Uint64
-	registrationID uint64
+	sendfilesMutex   sync.RWMutex
+	mutex            sync.Mutex
+	latestBatchID    uint64
+	routesRevision   atomic.Uint64
+	autoHeadRouteID  uint64
+	autoHeadStackLen int
 	// Amount of registered handlers
 	handlersCount uint32
 	// contains the information if the route stack has been changed to build the optimized tree
 	hasRoutesRefreshed bool
+	connStateHooked    bool
 	// hasCustomCtx tracks whether app uses a custom context implementation
 	hasCustomCtx bool
 	// hasParamRoutes tracks whether any route consults the per-request slash
@@ -885,7 +887,12 @@ func (app *App) handleTrustedProxy(ipAddress string) {
 		if ip == nil {
 			log.Warnf("IP address %q could not be parsed", ipAddress)
 		} else {
-			app.config.TrustProxyConfig.ips[ipAddress] = struct{}{}
+			// Store the canonical spelling, which lookups compare against.
+			app.config.TrustProxyConfig.ips[ip.String()] = struct{}{}
+			if ip4 := ip.To4(); ip4 != nil {
+				// netip keeps the IPv4-mapped spelling apart from the dotted one.
+				app.config.TrustProxyConfig.ips["::ffff:"+ip4.String()] = struct{}{}
+			}
 		}
 	}
 }
@@ -1603,7 +1610,7 @@ func (app *App) applyToRegIDLocked(regID uint64, apply func(route *Route)) bool 
 
 	for _, routes := range app.stack {
 		for _, route := range routes {
-			if !route.mount && route.regID == regID {
+			if !route.mount && !route.autoHead && route.id == regID {
 				apply(route)
 				applied = true
 			}
@@ -1773,7 +1780,9 @@ func (app *App) Use(args ...any) Router {
 
 	for _, prefix := range prefixes {
 		if subApp != nil {
-			return app.mount(prefix, subApp)
+			// Every prefix mounts the sub-app, as every prefix registers a handler.
+			app.mount(prefix, subApp)
+			continue
 		}
 
 		app.register([]string{methodUse}, prefix, nil, "", handlers...)
@@ -2058,8 +2067,8 @@ func (app *App) ShutdownWithContext(ctx context.Context) error {
 		return ErrNotRunning
 	}
 
-	// Execute the Shutdown hook outside the lock: a hook is free to inspect the
-	// app (GetRoutes and the documentation helpers take the same mutex).
+	// The drain waits for in-flight handlers, so the mutex must not be held
+	// meanwhile: a handler taking it (RebuildTree, Name, ...) would never finish.
 	app.hooks.executeOnPreShutdownHooks()
 
 	var err error
@@ -2308,6 +2317,12 @@ func (app *App) init() *App {
 // error handler. Otherwise, it uses the configured error handler for
 // the app, which if not set is the DefaultErrorHandler.
 func (app *App) ErrorHandler(ctx Ctx, err error) error {
+	// Once fasthttp holds a timeout response, writes are ignored and the
+	// timed-out handler may still be writing: leave the context alone.
+	if ctx.RequestCtx().LastTimeoutErrorResponse() != nil {
+		return nil
+	}
+
 	// Fast path: no mounted sub-apps, so no prefix lookup is needed
 	if len(app.mountFields.appListKeys) == 0 && len(app.mountFields.domainAppList) == 0 {
 		return app.config.ErrorHandler(ctx, err)
@@ -2441,6 +2456,9 @@ func (app *App) serverErrorHandler(fctx *fasthttp.RequestCtx, err error) {
 func (app *App) startupProcess() {
 	app.mutex.Lock()
 
+	app.hookConnState()
+	// Collect every mounted app first, nested ones included, so all get their automatic HEAD routes.
+	app.collectSubApps()
 	twins := app.ensureAutoHeadRoutesLocked()
 	var subTwins []subAppTwins
 	for prefix, subApp := range app.mountFields.appList {
@@ -2470,6 +2488,38 @@ func (app *App) startupProcess() {
 type subAppTwins struct {
 	app   *App
 	twins []*Route
+}
+
+// hookConnState makes the server report new and closed connections to the TLS
+// handler, keeping a user ConnState callback. A connection is reported new
+// while it can still say what it wraps, which is what lets its record be found
+// again at close. Idempotent; the caller holds app.mutex.
+func (app *App) hookConnState() {
+	if app.connStateHooked || app.server == nil {
+		return
+	}
+	app.connStateHooked = true
+	user := app.server.ConnState
+	app.server.ConnState = func(conn net.Conn, state fasthttp.ConnState) {
+		// StateHijacked is terminal too: fasthttp never reports StateClosed after
+		// it, so a hijacked connection (every WebSocket upgrade) would strand its
+		// record.
+		if state == fasthttp.StateNew || state == fasthttp.StateClosed || state == fasthttp.StateHijacked {
+			app.mutex.Lock()
+			handler := app.tlsHandler
+			app.mutex.Unlock()
+			if handler != nil {
+				if state == fasthttp.StateNew {
+					handler.track(conn)
+				} else {
+					handler.forget(conn)
+				}
+			}
+		}
+		if user != nil {
+			user(conn, state)
+		}
+	}
 }
 
 // Run onListen hooks. If they return an error, panic.

@@ -50,12 +50,8 @@ var flashCookieNeedle = []byte(FlashCookieName + "=")
 // 1) a fast raw-header prefilter to avoid unnecessary cookie parsing,
 // 2) an exact cookie lookup to avoid prefix false positives (e.g. fiber_flashX).
 func hasFlashCookie(header *fasthttp.RequestHeader) bool {
-	rawHeaders := header.RawHeaders()
-	if len(rawHeaders) == 0 {
-		return false
-	}
-
-	if !bytes.Contains(rawHeaders, flashCookieNeedle) {
+	// A request built programmatically has no raw headers, so the prefilter cannot answer for it.
+	if rawHeaders := header.RawHeaders(); len(rawHeaders) > 0 && !bytes.Contains(rawHeaders, flashCookieNeedle) {
 		return false
 	}
 

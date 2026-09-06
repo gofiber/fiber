@@ -6,10 +6,16 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/internal/headerlookup"
+	originpkg "github.com/gofiber/fiber/v3/internal/origin"
 	"github.com/gofiber/fiber/v3/log"
 	"github.com/gofiber/utils/v2"
 	utilsstrings "github.com/gofiber/utils/v2/strings"
 )
+
+// corsSchemes is the scheme policy for Access-Control-Allow-Origin: any
+// scheme, since the browser is the party enforcing the check and CORS is
+// used beyond http(s).
+const corsSchemes = originpkg.AnyScheme
 
 const redactedValue = "[redacted]"
 
@@ -20,7 +26,7 @@ func isOriginSerializedOrNull(originHeaderRaw string) (isSerialized, isNull bool
 		return false, true
 	}
 
-	originIsSerialized, _ := normalizeOrigin(originHeaderRaw)
+	_, originIsSerialized := originpkg.Normalize(originHeaderRaw, corsSchemes)
 	return originIsSerialized, false
 }
 
@@ -56,7 +62,7 @@ func New(config ...Config) fiber.Handler {
 	// allowOrigins is a set of strings that contains the allowed origins
 	// defined in the 'AllowOrigins' configuration.
 	allowOrigins := make(map[string]struct{}, len(cfg.AllowOrigins))
-	allowSubOrigins := []subdomain{}
+	allowSubOrigins := []originpkg.Subdomain{}
 
 	// Validate and normalize static AllowOrigins
 	allowAllOrigins := len(cfg.AllowOrigins) == 0 && cfg.AllowOriginsFunc == nil
@@ -67,24 +73,14 @@ func New(config ...Config) fiber.Handler {
 		}
 
 		trimmedOrigin := utils.TrimSpace(origin)
-		if before, after, found := strings.Cut(trimmedOrigin, "://*."); found {
-			withoutWildcard := before + "://" + after
-			isValid, normalizedOrigin := normalizeOrigin(withoutWildcard)
-			if !isValid {
-				panic("[CORS] Invalid origin format in configuration: " + maskValue(trimmedOrigin))
-			}
-			scheme, host, ok := strings.Cut(normalizedOrigin, "://")
-			if !ok {
-				panic("[CORS] Invalid origin format after normalization:" + maskValue(trimmedOrigin))
-			}
-			sd := subdomain{prefix: scheme + "://", suffix: host}
-			allowSubOrigins = append(allowSubOrigins, sd)
+		pattern, ok := originpkg.ParsePattern(trimmedOrigin, corsSchemes)
+		if !ok {
+			panic("[CORS] Invalid origin format in configuration: " + maskValue(trimmedOrigin))
+		}
+		if pattern.Wildcard {
+			allowSubOrigins = append(allowSubOrigins, pattern.Subdomain)
 		} else {
-			isValid, normalizedOrigin := normalizeOrigin(trimmedOrigin)
-			if !isValid {
-				panic("[CORS] Invalid origin format in configuration: " + maskValue(trimmedOrigin))
-			}
-			allowOrigins[normalizedOrigin] = struct{}{}
+			allowOrigins[pattern.Origin] = struct{}{}
 		}
 	}
 
@@ -154,7 +150,7 @@ func New(config ...Config) fiber.Handler {
 			}
 
 			// Check if the origin is in the list of allowed subdomains
-			if allowOrigin == "" && matchSubdomainOrigin(allowSubOrigins, originHeader) {
+			if allowOrigin == "" && originpkg.MatchAny(allowSubOrigins, originHeader, corsSchemes) {
 				allowOrigin = originHeaderRaw
 			}
 		}

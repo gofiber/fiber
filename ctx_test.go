@@ -17,6 +17,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"math"
 	"mime/multipart"
 	"net"
@@ -29,6 +30,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"testing/fstest"
 	"text/template"
 	"time"
 
@@ -5051,11 +5053,13 @@ func Test_Ctx_ClientHelloInfo(t *testing.T) {
 		pssWithSHA256 = 0x0804
 		versionTLS13  = 0x0304
 	)
-	app.tlsHandler = &TLSHandler{clientHelloInfo: &tls.ClientHelloInfo{
+	app.tlsHandler = &TLSHandler{}
+	_, err = app.tlsHandler.GetClientInfo(&tls.ClientHelloInfo{
 		ServerName:        "example.golang",
 		SignatureSchemes:  []tls.SignatureScheme{pssWithSHA256},
 		SupportedVersions: []uint16{versionTLS13},
-	}}
+	})
+	require.NoError(t, err)
 
 	// Test ServerName
 	resp, err = app.Test(httptest.NewRequest(MethodGet, "/ServerName", http.NoBody))
@@ -11290,4 +11294,361 @@ func Test_Ctx_Cookie_DoesNotMutateArgument(t *testing.T) {
 	c.Cookie(part)
 	require.False(t, part.Secure, "Partitioned must not write Secure back to the caller")
 	require.Equal(t, "/scoped", part.Path)
+}
+
+func Test_Ctx_SendFile_UncomparableFS(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	first := fstest.MapFS{"hello.txt": &fstest.MapFile{Data: []byte("hello")}}
+	second := fstest.MapFS{"hello.txt": &fstest.MapFile{Data: []byte("other")}}
+	app.Get("/", func(c Ctx) error {
+		return c.SendFile("hello.txt", SendFile{FS: first})
+	})
+	app.Get("/other", func(c Ctx) error {
+		return c.SendFile("hello.txt", SendFile{FS: second})
+	})
+
+	for _, tc := range []struct{ path, body string }{
+		{path: "/", body: "hello"},
+		{path: "/", body: "hello"},
+		{path: "/other", body: "other"},
+		{path: "/", body: "hello"},
+	} {
+		resp, err := app.Test(httptest.NewRequest(MethodGet, tc.path, http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, StatusOK, resp.StatusCode)
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		require.Equal(t, tc.body, string(body))
+	}
+}
+
+func Test_Ctx_SendFile_KeepsAcceptEncoding(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	var seen string
+	app.Use(func(c Ctx) error {
+		err := c.Next()
+		seen = c.Get(HeaderAcceptEncoding)
+		return err
+	})
+	app.Get("/", func(c Ctx) error {
+		return c.SendFile("./ctx.go")
+	})
+
+	req := httptest.NewRequest(MethodGet, "/", http.NoBody)
+	req.Header.Set(HeaderAcceptEncoding, "gzip")
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, StatusOK, resp.StatusCode)
+	require.Equal(t, "gzip", seen)
+	require.Empty(t, resp.Header.Get(HeaderContentEncoding), "Compress is off, so the file is served as-is")
+}
+
+func Test_Ctx_SendFile_CompressedByMiddleware(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	// compress decides on the request's Accept-Encoding after Next, so SendFile must leave it.
+	compressor := fasthttp.CompressHandlerBrotliLevel(func(*fasthttp.RequestCtx) {},
+		fasthttp.CompressBrotliDefaultCompression, fasthttp.CompressDefaultCompression)
+	app.Use(func(c Ctx) error {
+		if err := c.Next(); err != nil {
+			return err
+		}
+		compressor(c.RequestCtx())
+		return nil
+	})
+	app.Get("/", func(c Ctx) error {
+		return c.SendFile("./ctx.go")
+	})
+
+	req := httptest.NewRequest(MethodGet, "/", http.NoBody)
+	req.Header.Set(HeaderAcceptEncoding, "gzip")
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, StatusOK, resp.StatusCode)
+	require.Equal(t, "gzip", resp.Header.Get(HeaderContentEncoding))
+}
+
+func Test_Ctx_AutoFormat_NoAcceptHeader(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	app.Get("/", func(c Ctx) error {
+		return c.AutoFormat("Hello, World!")
+	})
+
+	testCases := []struct {
+		name        string
+		accept      string
+		contentType string
+		body        string
+	}{
+		{name: "no header", accept: "", contentType: "text/plain; charset=utf-8", body: "Hello, World!"},
+		{name: "nothing matches", accept: "application/unsupported", contentType: "text/plain; charset=utf-8", body: "Hello, World!"},
+		{name: "wildcard picks the first format", accept: "*/*", contentType: "text/html; charset=utf-8", body: "<p>Hello, World!</p>"},
+		{name: "json", accept: MIMEApplicationJSON, contentType: "application/json; charset=utf-8", body: `"Hello, World!"`},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			req := httptest.NewRequest(MethodGet, "/", http.NoBody)
+			if tc.accept != "" {
+				req.Header.Set(HeaderAccept, tc.accept)
+			}
+			resp, err := app.Test(req)
+			require.NoError(t, err)
+			require.Equal(t, StatusOK, resp.StatusCode)
+			require.Equal(t, tc.contentType, resp.Header.Get(HeaderContentType))
+			body, err := io.ReadAll(resp.Body)
+			require.NoError(t, err)
+			require.Equal(t, tc.body, string(body))
+		})
+	}
+}
+
+func Test_Ctx_IP_IPv4MappedIPv6InProxyHeader(t *testing.T) {
+	t.Parallel()
+
+	app := New(Config{
+		ProxyHeader:        HeaderXForwardedFor,
+		TrustProxy:         true,
+		EnableIPValidation: true,
+		TrustProxyConfig:   TrustProxyConfig{Private: true},
+	})
+	fctx := &fasthttp.RequestCtx{}
+	fctx.SetRemoteAddr(&net.TCPAddr{IP: net.ParseIP("10.0.0.2"), Port: 8080})
+	c := app.AcquireCtx(fctx)
+	defer app.ReleaseCtx(c)
+
+	c.Request().Header.Set(HeaderXForwardedFor, "::ffff:203.0.113.5, 10.0.0.1")
+	require.Equal(t, "::ffff:203.0.113.5", c.IP())
+	require.Equal(t, []string{"::ffff:203.0.113.5", "10.0.0.1"}, c.IPs())
+
+	// A mapped proxy address is still stripped as a trusted proxy.
+	c.Request().Header.Set(HeaderXForwardedFor, "203.0.113.5, ::ffff:10.0.0.1")
+	require.Equal(t, "203.0.113.5", c.IP())
+}
+
+func Test_Ctx_Accepts_MostSpecificRangeSetsQuality(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+
+	c.Request().Header.Set(HeaderAccept, "text/*;q=1, text/html;q=0.5")
+	require.Equal(t, "text/plain", c.Accepts("text/html", "text/plain"))
+	require.Equal(t, "text/html", c.Accepts("text/html"), "a lowered quality is still acceptable")
+
+	c.Request().Header.Set(HeaderAccept, "text/html;q=0.5, text/*;q=1")
+	require.Equal(t, "text/plain", c.Accepts("text/html", "text/plain"))
+
+	c.Request().Header.Set(HeaderAccept, "*/*;q=1, application/json;q=0.2")
+	require.Equal(t, "text/plain", c.Accepts("application/json", "text/plain"))
+
+	c.Request().Header.Set(HeaderAcceptEncoding, "gzip;q=0.5, *;q=1")
+	require.Equal(t, "br", c.AcceptsEncodings("gzip", "br"))
+
+	c.Request().Header.Set(HeaderAcceptLanguage, "en;q=0.5, *")
+	require.Equal(t, "fr", c.AcceptsLanguages("en", "fr"))
+	require.Equal(t, "fr", c.AcceptsLanguagesExtended("en", "fr"))
+
+	c.Request().Header.Set(HeaderAcceptCharset, "utf-8;q=0.5, *")
+	require.Equal(t, "iso-8859-1", c.AcceptsCharsets("utf-8", "iso-8859-1"))
+}
+
+func Test_Ctx_Format_CustomCtx(t *testing.T) {
+	t.Parallel()
+
+	app := NewWithCustomCtx(func(app *App) CustomCtx {
+		return &customCtx{
+			DefaultCtx: *NewDefaultCtx(app),
+		}
+	})
+	describe := func(c Ctx) error {
+		if _, ok := c.(*customCtx); ok {
+			return c.SendString("custom")
+		}
+		return c.SendString("default")
+	}
+	app.Get("/", func(c Ctx) error {
+		return c.Format(
+			ResFmt{MediaType: MIMETextPlain, Handler: describe},
+			ResFmt{MediaType: "default", Handler: describe},
+		)
+	})
+
+	for _, accept := range []string{"", MIMETextPlain, "application/unsupported"} {
+		req := httptest.NewRequest(MethodGet, "/", http.NoBody)
+		if accept != "" {
+			req.Header.Set(HeaderAccept, accept)
+		}
+		resp, err := app.Test(req)
+		require.NoError(t, err)
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		require.Equal(t, "custom", string(body), "Accept %q", accept)
+	}
+}
+
+// The identity step must not re-set the body with a slice aliasing it.
+func Test_Ctx_Body_With_Compression_IdentityChain(t *testing.T) {
+	t.Parallel()
+
+	var buf bytes.Buffer
+	gz := gzip.NewWriter(&buf)
+	_, err := gz.Write([]byte("john=doe"))
+	require.NoError(t, err)
+	require.NoError(t, gz.Close())
+	compressed := buf.Bytes()
+
+	for _, reduce := range []bool{false, true} {
+		app := New(Config{ReduceMemoryUsage: reduce})
+		for _, encoding := range []string{"gzip, identity", "identity, gzip", "identity, gzip, identity"} {
+			c := app.AcquireCtx(&fasthttp.RequestCtx{})
+			c.Request().Header.Set(HeaderContentEncoding, encoding)
+			c.Request().SetBody(compressed)
+
+			require.Equal(t, []byte("john=doe"), c.Body(), "ReduceMemoryUsage=%v %q", reduce, encoding)
+			require.Equal(t, compressed, c.Request().Body(), "the original body is restored")
+			require.Equal(t, []byte("john=doe"), c.Body(), "decoding again still works")
+			app.ReleaseCtx(c)
+		}
+	}
+}
+
+type funcFS func(string) (fs.File, error)
+
+func (f funcFS) Open(name string) (fs.File, error) { return f(name) }
+
+func Test_SameFS(t *testing.T) {
+	t.Parallel()
+
+	dirA, dirB := os.DirFS("."), os.DirFS("..")
+	mapA := fstest.MapFS{"a": &fstest.MapFile{}}
+	openA := funcFS(func(string) (fs.File, error) { return nil, fs.ErrNotExist })
+	openB := funcFS(func(string) (fs.File, error) { return nil, fs.ErrNotExist })
+
+	require.True(t, sameFS(nil, nil))
+	require.False(t, sameFS(dirA, nil))
+	require.False(t, sameFS(nil, dirA))
+	require.True(t, sameFS(dirA, dirA))
+	require.False(t, sameFS(dirA, dirB))
+	require.False(t, sameFS(dirA, mapA))
+	require.True(t, sameFS(mapA, mapA))
+	require.False(t, sameFS(mapA, fstest.MapFS{"a": &fstest.MapFile{}}))
+	require.False(t, sameFS(openA, openB))
+	require.False(t, sameFS(openA, openA))
+}
+
+// perIPConnStub mirrors fasthttp's perIPTLSConn, which wraps an accepted TLS
+// connection when Server.MaxConnsPerIP is set.
+type perIPConnStub struct {
+	*tls.Conn
+}
+
+func Test_UnderlyingConn_UnwrapsTLSWrapper(t *testing.T) {
+	t.Parallel()
+
+	raw, peer := net.Pipe()
+	t.Cleanup(func() {
+		require.NoError(t, raw.Close())
+		require.NoError(t, peer.Close())
+	})
+
+	// No handshake runs; the connection is only unwrapped.
+	tlsConn := tls.Client(raw, &tls.Config{InsecureSkipVerify: true})
+	require.Equal(t, raw, underlyingConn(tlsConn))
+	require.Equal(t, raw, underlyingConn(perIPConnStub{Conn: tlsConn}))
+	require.Equal(t, raw, underlyingConn(raw))
+}
+
+func Test_TLSHandler_ForgetsRecycledWrapper(t *testing.T) {
+	t.Parallel()
+
+	newConn := func() (net.Conn, *tls.Conn) {
+		raw, peer := net.Pipe()
+		t.Cleanup(func() {
+			require.NoError(t, raw.Close())
+			require.NoError(t, peer.Close())
+		})
+		// No handshake runs; the connections only carry identity.
+		return raw, tls.Client(raw, &tls.Config{InsecureSkipVerify: true})
+	}
+
+	handler := &TLSHandler{}
+	raw1, tls1 := newConn()
+	wrapper := &perIPConnStub{Conn: tls1}
+
+	handler.track(wrapper)
+	_, err := handler.GetClientInfo(&tls.ClientHelloInfo{Conn: raw1, ServerName: "first"})
+	require.NoError(t, err)
+	require.NotNil(t, handler.clientHelloInfo(wrapper))
+
+	// fasthttp recycles the wrapper before it reports the close of what it carried.
+	raw2, tls2 := newConn()
+	wrapper.Conn = tls2
+	handler.track(wrapper)
+	_, ok := handler.clientHelloInfos.Load(raw1)
+	require.False(t, ok, "the recycled wrapper stranded the record of the connection it dropped")
+
+	_, err = handler.GetClientInfo(&tls.ClientHelloInfo{Conn: raw2, ServerName: "second"})
+	require.NoError(t, err)
+	require.Equal(t, "second", handler.clientHelloInfo(wrapper).ServerName)
+
+	handler.forget(wrapper)
+	require.Nil(t, handler.clientHelloInfo(tls2))
+	_, ok = handler.serverConns.Load(wrapper)
+	require.False(t, ok)
+}
+
+func Test_TLSHandler_ForgetsHijackedConnection(t *testing.T) {
+	t.Parallel()
+
+	raw, peer := net.Pipe()
+	t.Cleanup(func() {
+		require.NoError(t, raw.Close())
+		require.NoError(t, peer.Close())
+	})
+	// No handshake runs; the connection only carries identity.
+	tlsConn := tls.Client(raw, &tls.Config{InsecureSkipVerify: true})
+
+	app := New()
+	app.SetTLSHandler(&TLSHandler{})
+	app.mutex.Lock()
+	app.hookConnState()
+	app.mutex.Unlock()
+	report := app.Server().ConnState
+
+	handler := app.tlsHandler
+	report(tlsConn, fasthttp.StateNew)
+	_, err := handler.GetClientInfo(&tls.ClientHelloInfo{Conn: raw, ServerName: "ws"})
+	require.NoError(t, err)
+	require.NotNil(t, handler.clientHelloInfo(tlsConn))
+
+	// fasthttp never reports StateClosed after a hijack, so it has to be terminal here.
+	report(tlsConn, fasthttp.StateHijacked)
+	require.Nil(t, handler.clientHelloInfo(tlsConn))
+	_, ok := handler.serverConns.Load(tlsConn)
+	require.False(t, ok)
+}
+
+// sliceFS is a file system whose identity lives in a slice header, so two
+// prefixes of one backing array share an element pointer.
+type sliceFS []string
+
+func (sliceFS) Open(string) (fs.File, error) { return nil, fs.ErrNotExist }
+
+func Test_SameFS_SliceLength(t *testing.T) {
+	t.Parallel()
+
+	backing := sliceFS{"a", "b", "c"}
+	require.False(t, sameFS(backing[:1], backing[:2]))
+	require.True(t, sameFS(backing[:2], backing[:2]))
 }

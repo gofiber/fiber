@@ -170,6 +170,10 @@ func newMountFields(app *App) *mountFields {
 // any of the fiber's sub apps are added to the application's error handlers
 // to be invoked on errors that happen within the prefix route.
 func (app *App) mount(prefix string, subApp *App) Router {
+	if subApp == app {
+		panic("fiber: an app cannot be mounted onto itself")
+	}
+
 	prefix = utils.TrimRight(prefix, '/')
 	if prefix == "" {
 		prefix = "/"
@@ -698,16 +702,23 @@ func (app *App) hasMountedApps() bool {
 // mountStartupProcess Handles the startup process of mounted apps by appending sub-app routes, generating app list keys, and processing sub-app routes.
 func (app *App) mountStartupProcess() {
 	if app.hasMountedApps() {
-		// add routes of sub-apps
-		app.mountFields.subAppsProcessed.Do(func() {
-			app.appendSubAppLists(app.mountFields.appList)
-			app.mountFields.appListKeysOnce.Do(app.generateAppListKeys)
-		})
+		app.collectSubApps()
 		// adds the routes of the sub-apps to the current application.
 		app.mountFields.subAppsRoutesAdded.Do(func() {
 			app.processSubAppsRoutes()
 		})
 	}
+}
+
+// collectSubApps gathers the sub-apps mounted at any depth into appList. It runs once.
+func (app *App) collectSubApps() {
+	if !app.hasMountedApps() {
+		return
+	}
+	app.mountFields.subAppsProcessed.Do(func() {
+		app.appendSubAppLists(app.mountFields.appList)
+		app.mountFields.appListKeysOnce.Do(app.generateAppListKeys)
+	})
 }
 
 // generateAppListKeys generates app list keys for Render, should work after appendSubAppLists
@@ -808,10 +819,6 @@ func (app *App) processSubAppsRoutes() {
 			sources := make([]sourceRoute, len(subAppRoutes))
 			for j, subAppRoute := range subAppRoutes {
 				clone := app.copyRoute(subAppRoute)
-
-				// The clone's registration ID comes from another counter and
-				// could collide, so clear it rather than let helpers match.
-				clone.regID = 0
 
 				// Carry over the app each route came from: for a domain mount
 				// the sub-app is a wrapper, and the apps behind it own the config.

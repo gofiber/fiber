@@ -19,6 +19,7 @@ import (
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/internal/fieldname"
 	"github.com/gofiber/fiber/v3/internal/headerlookup"
+	"github.com/gofiber/fiber/v3/log"
 )
 
 // hexLen is the hex-encoded length of a SHA-256 sum, shared by the auth and vary hashers.
@@ -123,7 +124,6 @@ var cacheableStatusCodes = map[int]struct{}{
 	fiber.StatusOK:                          {},
 	fiber.StatusNonAuthoritativeInformation: {},
 	fiber.StatusNoContent:                   {},
-	fiber.StatusPartialContent:              {},
 	fiber.StatusMultipleChoices:             {},
 	fiber.StatusMovedPermanently:            {},
 	fiber.StatusPermanentRedirect:           {},
@@ -185,27 +185,32 @@ func New(config ...Config) fiber.Handler {
 		return nil
 	}
 
-	removeHeapEntry := func(entryKey string, heapIdx int) {
+	// removeHeapEntry drops a tracked entry and reports it, so a caller that
+	// removes one before storing its replacement can put it back on failure.
+	removeHeapEntry := func(entryKey string, heapIdx int) (evictionCandidate, bool) {
 		if cfg.MaxBytes == 0 {
-			return
+			return evictionCandidate{}, false
 		}
 
 		if heapIdx < 0 || heapIdx >= len(heap.indices) {
-			return
+			return evictionCandidate{}, false
 		}
 
 		indexedIdx := heap.indices[heapIdx]
 		if indexedIdx < 0 || indexedIdx >= len(heap.entries) {
-			return
+			return evictionCandidate{}, false
 		}
 
 		entry := heap.entries[indexedIdx]
 		if entry.idx != heapIdx || entry.key != entryKey {
-			return
+			return evictionCandidate{}, false
 		}
 
+		exp := entry.exp
 		_, size := heap.remove(heapIdx)
 		storedBytes -= size
+
+		return evictionCandidate{key: entryKey, size: size, exp: exp, heapIdx: heapIdx}, true
 	}
 
 	refreshHeapIndex := func(ctx context.Context, candidate evictionCandidate) error {
@@ -418,16 +423,17 @@ func New(config ...Config) fiber.Handler {
 			}
 			requestNoCache := reqDirectives.noCache
 
-			// Invalidate cache if requested
+			// Invalidate on a local copy: the in-memory item is shared with concurrent hits.
+			entryExp := e.exp
 			if cfg.CacheInvalidator != nil && cfg.CacheInvalidator(c) {
-				e.exp = ts - 1
+				entryExp = ts - 1
 			}
 
-			entryHasExpiration := e != nil && e.exp != 0
-			entryExpired := entryHasExpiration && ts >= e.exp
+			entryHasExpiration := entryExp != 0
+			entryExpired := entryHasExpiration && ts >= entryExp
 			staleness := uint64(0)
 			if entryExpired {
-				staleness = ts - e.exp
+				staleness = ts - entryExp
 			}
 			allowStale := entryExpired && (reqDirectives.maxStaleAny || (reqDirectives.maxStaleSet && staleness <= reqDirectives.maxStale))
 
@@ -511,8 +517,22 @@ func New(config ...Config) fiber.Handler {
 					unlock()
 					rawBody, err := manager.getRaw(reqCtx, key+"_body")
 					if err != nil {
+						if !errors.Is(err, errCacheMiss) {
+							manager.release(e)
+							return cacheBodyFetchError(maskKey, key, err)
+						}
+						// The backend dropped the body but kept the metadata: a miss, so
+						// drop the orphaned metadata.
+						if err := deleteKey(reqCtx, key); err != nil {
+							manager.release(e)
+							return fmt.Errorf("cache: failed to delete key %q without a body: %w", maskKey(key), err)
+						}
+						relock()
+						removeHeapEntry(key, e.heapidx)
+						unlock()
 						manager.release(e)
-						return cacheBodyFetchError(maskKey, key, err)
+						e = nil
+						goto continueRequest
 					}
 					e.body = rawBody
 				} else {
@@ -567,8 +587,8 @@ func New(config ...Config) fiber.Handler {
 				// Set Cache-Control header if not disabled and not already set
 				if !cfg.DisableCacheControl && len(fieldname.First(&c.Response().Header, fiber.HeaderCacheControl, canonical)) == 0 {
 					remaining := uint64(0)
-					if e.exp > ts {
-						remaining = e.exp - ts
+					if entryExp > ts {
+						remaining = entryExp - ts
 					}
 					// Built in a local array: FormatUint and the join were two
 					// allocations, and the header store copies the bytes anyway.
@@ -614,6 +634,11 @@ func New(config ...Config) fiber.Handler {
 			return c.SendStatus(fiber.StatusGatewayTimeout)
 		}
 
+		// Remember the superseded entry's heap node so the replacement takes over its accounting.
+		if e != nil {
+			oldHeapIdx = e.heapidx
+		}
+
 		// make sure we're not blocking concurrent requests - do unlock
 		unlock()
 
@@ -621,6 +646,14 @@ func New(config ...Config) fiber.Handler {
 		// Continue stack, return err to Fiber if exist
 		if err := c.Next(); err != nil {
 			return err
+		}
+
+		if cfg.accounting != nil {
+			defer func() {
+				mux.Lock()
+				cfg.accounting(storedBytes, heap.Len())
+				mux.Unlock()
+			}()
 		}
 
 		markUnreachable := func() {
@@ -727,98 +760,6 @@ func New(config ...Config) fiber.Handler {
 		if cfg.MaxBytes > 0 && bodySize > cfg.MaxBytes {
 			markUnreachable()
 			return nil
-		}
-
-		// Eviction loop: atomically reserve space for new entry and evict old entries.
-		// Strategy:
-		// 1. Under lock: reserve space by pre-incrementing storedBytes, then collect entries to evict
-		// 2. Outside lock: perform I/O deletions
-		// 3. On deletion failure: restore storedBytes and return error
-		// 4. Track reservation with a flag; unreserve on early return via defer
-		var spaceReserved bool
-		defer func() {
-			// If we reserved space but the entry was not successfully added to heap, unreserve it
-			if cfg.MaxBytes > 0 && spaceReserved {
-				mux.Lock()
-				storedBytes -= bodySize
-				mux.Unlock()
-			}
-		}()
-
-		if cfg.MaxBytes > 0 {
-			mux.Lock()
-			// Reserve space for the new entry first
-			storedBytes += bodySize
-			spaceReserved = true
-
-			// Now evict entries until we're under the limit
-			var keysToRemove []string
-			var sizesToRemove []uint
-			var candidates []evictionCandidate
-
-			for storedBytes > cfg.MaxBytes {
-				if heap.Len() == 0 {
-					// Can't evict more, unreserve space and fail
-					storedBytes -= bodySize
-					// Set spaceReserved to false so the deferred cleanup does not unreserve again
-					spaceReserved = false
-					mux.Unlock()
-					return errors.New("cache: insufficient space and no entries to evict")
-				}
-				next := heap.entries[0]
-				keyToRemove, size := heap.removeFirst()
-				keysToRemove = append(keysToRemove, keyToRemove)
-				sizesToRemove = append(sizesToRemove, size)
-				candidates = append(candidates, evictionCandidate{
-					key:  keyToRemove,
-					size: size,
-					exp:  next.exp,
-				})
-				storedBytes -= size
-			}
-			mux.Unlock()
-
-			// Perform deletions outside the lock
-			if len(keysToRemove) > 0 {
-				for i, keyToRemove := range keysToRemove {
-					delErr := deleteKey(reqCtx, keyToRemove)
-					if delErr == nil {
-						continue
-					}
-
-					// Deletion failed: restore storedBytes for failed deletions
-					mux.Lock()
-					// Restore sizes of entries we failed to delete
-					for j := i; j < len(sizesToRemove); j++ {
-						storedBytes += sizesToRemove[j]
-					}
-					// Unreserve space for the new entry
-					storedBytes -= bodySize
-					spaceReserved = false
-
-					// Re-add entries to the heap to keep expiration tracking consistent
-					var restored []evictionCandidate
-					for j := i; j < len(candidates); j++ {
-						candidate := candidates[j]
-						candidate.heapIdx = heap.put(candidate.key, candidate.exp, candidate.size)
-						restored = append(restored, candidate)
-					}
-					mux.Unlock()
-
-					var restoreErr error
-					for _, candidate := range restored {
-						if err := refreshHeapIndex(reqCtx, candidate); err != nil {
-							restoreErr = errors.Join(restoreErr, err)
-						}
-					}
-
-					if restoreErr != nil {
-						return errors.Join(fmt.Errorf("cache: failed to delete key %q while evicting: %w", maskKey(keyToRemove), delErr), restoreErr)
-					}
-
-					return fmt.Errorf("cache: failed to delete key %q while evicting: %w", maskKey(keyToRemove), delErr)
-				}
-			}
 		}
 
 		// Hand back whatever the lookup left holding. A stale entry survives to here
@@ -967,6 +908,133 @@ func New(config ...Config) fiber.Handler {
 			remainingExpiration = 0
 		}
 
+		// Eviction loop: atomically reserve space for the new entry and evict old entries.
+		// It runs only once the response is known to be stored.
+		// Strategy:
+		// 1. Under lock: reserve space by pre-incrementing storedBytes, then collect entries to evict
+		// 2. Outside lock: perform I/O deletions
+		// 3. On deletion failure: restore storedBytes and return error
+		// 4. Track reservation with a flag; unreserve on early return via defer
+		var spaceReserved bool
+		// The entry being replaced is untracked before its replacement is
+		// stored, so a later failure has to put it back: otherwise it can stay
+		// in the backend counting toward nothing and never expiring.
+		var (
+			replaced   evictionCandidate
+			replacedOK bool
+			rawWritten bool
+			stored     bool
+		)
+		defer func() {
+			if cfg.MaxBytes == 0 {
+				return
+			}
+
+			mux.Lock()
+			// If we reserved space but the entry was not successfully added to heap, unreserve it
+			if spaceReserved {
+				storedBytes -= bodySize
+			}
+			// A replacement body that landed overwrote the one the old entry
+			// pointed at, and the store-error cleanup then deletes it, so that
+			// entry can no longer be served: restoring its accounting would
+			// count bytes nothing can read. The next request for the key finds
+			// metadata without a body and drops it.
+			restore := replacedOK && !stored && !rawWritten
+			if restore {
+				replaced.heapIdx = heap.put(replaced.key, replaced.exp, replaced.size)
+				storedBytes += replaced.size
+			}
+			mux.Unlock()
+
+			if restore {
+				if err := refreshHeapIndex(reqCtx, replaced); err != nil {
+					log.Warnf("cache: %v", err)
+				}
+			}
+		}()
+
+		if cfg.MaxBytes > 0 {
+			mux.Lock()
+			// The replaced entry hands its bookkeeping over first, so a key is never tracked twice.
+			if oldHeapIdx >= 0 {
+				replaced, replacedOK = removeHeapEntry(key, oldHeapIdx)
+				oldHeapIdx = -1
+			}
+			// Reserve space for the new entry first
+			storedBytes += bodySize
+			spaceReserved = true
+
+			// Now evict entries until we're under the limit
+			var keysToRemove []string
+			var sizesToRemove []uint
+			var candidates []evictionCandidate
+
+			for storedBytes > cfg.MaxBytes {
+				if heap.Len() == 0 {
+					// Can't evict more, unreserve space and fail
+					storedBytes -= bodySize
+					// Set spaceReserved to false so the deferred cleanup does not unreserve again
+					spaceReserved = false
+					mux.Unlock()
+					return errors.New("cache: insufficient space and no entries to evict")
+				}
+				next := heap.entries[0]
+				keyToRemove, size := heap.removeFirst()
+				keysToRemove = append(keysToRemove, keyToRemove)
+				sizesToRemove = append(sizesToRemove, size)
+				candidates = append(candidates, evictionCandidate{
+					key:  keyToRemove,
+					size: size,
+					exp:  next.exp,
+				})
+				storedBytes -= size
+			}
+			mux.Unlock()
+
+			// Perform deletions outside the lock
+			if len(keysToRemove) > 0 {
+				for i, keyToRemove := range keysToRemove {
+					delErr := deleteKey(reqCtx, keyToRemove)
+					if delErr == nil {
+						continue
+					}
+
+					// Deletion failed: restore storedBytes for failed deletions
+					mux.Lock()
+					// Restore sizes of entries we failed to delete
+					for j := i; j < len(sizesToRemove); j++ {
+						storedBytes += sizesToRemove[j]
+					}
+					// Unreserve space for the new entry
+					storedBytes -= bodySize
+					spaceReserved = false
+
+					// Re-add entries to the heap to keep expiration tracking consistent
+					var restored []evictionCandidate
+					for j := i; j < len(candidates); j++ {
+						candidate := candidates[j]
+						candidate.heapIdx = heap.put(candidate.key, candidate.exp, candidate.size)
+						restored = append(restored, candidate)
+					}
+					mux.Unlock()
+
+					var restoreErr error
+					for _, candidate := range restored {
+						if err := refreshHeapIndex(reqCtx, candidate); err != nil {
+							restoreErr = errors.Join(restoreErr, err)
+						}
+					}
+
+					if restoreErr != nil {
+						return errors.Join(fmt.Errorf("cache: failed to delete key %q while evicting: %w", maskKey(keyToRemove), delErr), restoreErr)
+					}
+
+					return fmt.Errorf("cache: failed to delete key %q while evicting: %w", maskKey(keyToRemove), delErr)
+				}
+			}
+		}
+
 		if !cfg.DisableVaryHeaders && shouldStoreVaryManifest {
 			if err := storeVaryManifest(reqCtx, manager, manifestKey, varyNames, storageExpiration); err != nil {
 				return err
@@ -1019,6 +1087,7 @@ func New(config ...Config) fiber.Handler {
 				}
 				return err
 			}
+			rawWritten = true
 			// avoid body msgp encoding
 			e.body = nil
 			if err := manager.set(reqCtx, key, e, storageExpiration); err != nil {
@@ -1037,12 +1106,9 @@ func New(config ...Config) fiber.Handler {
 			}
 		}
 
-		// If revalidating, remove old heap entry now that replacement is successfully stored
-		if cfg.MaxBytes > 0 && revalidate && oldHeapIdx >= 0 {
-			mux.Lock()
-			removeHeapEntry(key, oldHeapIdx)
-			mux.Unlock()
-		}
+		// The replacement is in the backend now, so the entry it superseded
+		// must not be restored by the deferred cleanup.
+		stored = true
 
 		c.Set(cfg.CacheHeader, cacheMiss)
 

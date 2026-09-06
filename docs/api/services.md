@@ -43,7 +43,7 @@ func (s *SomeService) Start(ctx context.Context) error
 
 ### String
 
-Returns a string representation of the service, used to print the service in the startup message.
+Returns a string representation of the service, used to print the service in the startup message and as the key the service is registered under in the application state. Names must be unique across the configured services: `fiber.New` panics when two services report the same name, since one would otherwise overwrite the other and never be terminated.
 
 ```go
 func (s *SomeService) String() string
@@ -59,7 +59,7 @@ func (s *SomeService) State(ctx context.Context) (string, error)
 
 ### Terminate
 
-Stops the service after the application shuts down using a post-shutdown hook.
+Stops the service after the application shuts down using a post-shutdown hook. Services are terminated in reverse start order, so a service can rely on the ones started before it still being available while it shuts down.
 
 ```go
 func (s *SomeService) Terminate(ctx context.Context) error

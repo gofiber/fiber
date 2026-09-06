@@ -317,6 +317,11 @@ func Test_Utils_GetOffer_QualityZeroRejection(t *testing.T) {
 	require.Empty(t, getOffer([]byte("en;q=0 , fr"), acceptsLanguageOfferBasic, "en"))
 	// The same whitespace must not distort ordering between positive weights.
 	require.Equal(t, "application/json", getOffer([]byte("text/plain;q=0.1 , application/json;q=0.9"), acceptsOfferType, "text/plain", "application/json"))
+
+	// An empty offer is skipped on the resolve-by-specificity path too: the first
+	// match (text/plain, demoted to 0.3 by its own range) loses to text/html.
+	require.Equal(t, "text/html", getOffer([]byte("text/*;q=0.8, text/plain;q=0.3"), acceptsOfferType, "", "text/plain", "text/html"))
+	require.Equal(t, "text/plain", getOffer([]byte("text/*;q=0.8, text/plain;q=0.3"), acceptsOfferType, "", "text/plain"))
 }
 
 // go test -v -run=^$ -bench=Benchmark_Utils_GetOffer -benchmem -count=4

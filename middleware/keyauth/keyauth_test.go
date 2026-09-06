@@ -760,6 +760,43 @@ func Test_DefaultErrorHandlerChallenge(t *testing.T) {
 	require.Equal(t, "Bearer realm=\"Restricted\"", res.Header.Get("WWW-Authenticate"))
 }
 
+func Test_ErrorHandlerReturnsErrorChallenge(t *testing.T) {
+	t.Parallel()
+
+	// The challenge must be set when the ErrorHandler returns the *fiber.Error instead of writing it.
+	testCases := []struct {
+		err            error
+		name           string
+		expectedHeader string
+		expectedStatus int
+	}{
+		{name: "unauthorized", err: fiber.ErrUnauthorized, expectedHeader: fiber.HeaderWWWAuthenticate, expectedStatus: fiber.StatusUnauthorized},
+		{name: "proxy auth required", err: fiber.ErrProxyAuthRequired, expectedHeader: fiber.HeaderProxyAuthenticate, expectedStatus: fiber.StatusProxyAuthRequired},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			app := fiber.New()
+			app.Use(New(Config{
+				Validator: func(_ fiber.Ctx, _ string) (bool, error) {
+					return false, ErrMissingOrMalformedAPIKey
+				},
+				ErrorHandler: func(_ fiber.Ctx, _ error) error {
+					return tc.err
+				},
+			}))
+			app.Get("/", func(c fiber.Ctx) error { return c.SendString("OK") })
+
+			res, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+			require.NoError(t, err)
+			require.Equal(t, tc.expectedStatus, res.StatusCode)
+			require.Equal(t, `Bearer realm="Restricted"`, res.Header.Get(tc.expectedHeader))
+		})
+	}
+}
+
 func Test_DefaultErrorHandlerInvalid(t *testing.T) {
 	app := fiber.New()
 	app.Use(New(Config{

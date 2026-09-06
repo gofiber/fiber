@@ -103,6 +103,8 @@ type Route struct { // betteralign:ignore - see below
 
 	routeParser routeParser // Parameter parser
 
+	id uint64
+
 	Handlers []Handler `json:"-"` // Ctx handlers
 
 	group *Group // Group instance. used for routes in groups
@@ -114,8 +116,6 @@ type Route struct { // betteralign:ignore - see below
 	Path string `json:"path"` // Original registered route path
 
 	domain string // Host pattern from app.Domain(), empty otherwise
-
-	regID uint64 // Identifies the register() call that created this route
 
 	// OpenAPI documentation metadata
 	Summary     string `json:"summary,omitempty"`
@@ -472,10 +472,7 @@ func pathHeadWord(s string) uint64 {
 //   - '*' matches every path, and a first segment that is itself a parameter
 //     constrains nothing, so both disable the filter
 //
-// The star check has to come first, before the parametric branch. star is
-// derived from the unescaped path (isStar in register), while Params comes from
-// parsing the escaped one, so a route registered as `/\*` arrives here with
-// star set and no params — and match returns true for it unconditionally.
+// The star check comes first: match accepts a star route before looking at parameters.
 //
 // Anything that changes a route's path, params or parser must run this again.
 // The three places that can are register, which builds the route, copyRoute,
@@ -961,6 +958,12 @@ func (app *App) addPrefixToRoute(prefix string, route *Route, regexHandler any, 
 	route.Path = prefixedPath
 	route.path = RemoveEscapeChar(prettyPath)
 	route.routeParser = parseRoute(prettyPath, regexHandler, customConstraints...)
+	// As in register: the constraints come from the pattern as written.
+	rawParser := parseRoute(prefixedPath, regexHandler, customConstraints...)
+	route.routeParser.adoptConstraints(&rawParser)
+	if app.config.StrictRouting {
+		route.routeParser.applyStrictRouting()
+	}
 	// A prefix can introduce parameters of its own — a sub-app mounted at
 	// "/v1/:version" is prefixing every one of its routes with one. Params
 	// decides whether the router matches a route by pattern or by string
@@ -1438,6 +1441,9 @@ func (app *App) pruneAutoHeadRouteLocked(path string) {
 	}
 }
 
+// routeIDs hands out the ids shared by the per-method copies of a registration.
+var routeIDs atomic.Uint64
+
 // register creates one stack entry per method and returns the ID stamped on each,
 // so scoped helpers can target this registration. domain is app.Domain()'s host.
 func (app *App) register(methods []string, pathRaw string, group *Group, domain string, handlers ...Handler) uint64 {
@@ -1454,7 +1460,7 @@ func (app *App) register(methods []string, pathRaw string, group *Group, domain 
 
 	// One registration ID for the whole call, so chainable helpers reach the
 	// routes of every method registered together.
-	regID := atomic.AddUint64(&app.registrationID, 1)
+	routeID := routeIDs.Add(1)
 
 	// Precompute path normalization ONCE
 	if pathRaw == "" {
@@ -1474,6 +1480,12 @@ func (app *App) register(methods []string, pathRaw string, group *Group, domain 
 
 	parsedRaw := parseRoute(pathRaw, app.config.RegexHandler, app.customConstraints...)
 	parsedPretty := parseRoute(pathPretty, app.config.RegexHandler, app.customConstraints...)
+	// The pretty pattern is matched against, but its constraints must come
+	// from the raw one (see routeParser.adoptConstraints).
+	parsedPretty.adoptConstraints(&parsedRaw)
+	if app.config.StrictRouting {
+		parsedPretty.applyStrictRouting()
+	}
 
 	isMount := group != nil && group.app != app
 
@@ -1484,8 +1496,9 @@ func (app *App) register(methods []string, pathRaw string, group *Group, domain 
 		}
 
 		isUse := method == methodUse
-		isStar := pathClean == "/*"
-		isRoot := pathClean == "/"
+		// Derived from the pattern with its escapes intact: "/\*" is a literal path.
+		isStar := pathPretty == "/*"
+		isRoot := pathPretty == "/"
 
 		route := Route{
 			use:           isUse,
@@ -1493,7 +1506,7 @@ func (app *App) register(methods []string, pathRaw string, group *Group, domain 
 			star:          isStar,
 			root:          isRoot,
 			caseSensitive: app.config.CaseSensitive,
-			regID:         regID,
+			id:            routeID,
 			domain:        domain,
 
 			path:        pathClean,
@@ -1530,7 +1543,7 @@ func (app *App) register(methods []string, pathRaw string, group *Group, domain 
 		}
 	}
 
-	return regID
+	return routeID
 }
 
 func (app *App) addRoute(method string, route *Route) {
@@ -1549,7 +1562,7 @@ func (app *App) addRoute(method string, route *Route) {
 
 	// A new registration always starts a fresh helper-target batch, even when
 	// every one of its entries ends up compression-merged away.
-	app.resetBatchIfNewRegistrationLocked(route.regID)
+	app.resetBatchIfNewRegistrationLocked(route.id)
 
 	// prevent identically route registration
 	l := len(app.stack[m])
@@ -1559,13 +1572,13 @@ func (app *App) addRoute(method string, route *Route) {
 		preRoute.Handlers = append(preRoute.Handlers, route.Handlers...)
 		// The entry carries the latest registration, and mergedEntries keeps it
 		// reachable from the superseded one so both scopes hit exactly it.
-		if preRoute.regID != 0 && preRoute.regID != route.regID {
+		if preRoute.id != 0 && preRoute.id != route.id {
 			if app.mergedEntries == nil {
 				app.mergedEntries = make(map[uint64][]*Route, 1)
 			}
-			app.mergedEntries[preRoute.regID] = append(app.mergedEntries[preRoute.regID], preRoute)
+			app.mergedEntries[preRoute.id] = append(app.mergedEntries[preRoute.id], preRoute)
 		}
-		preRoute.regID = route.regID
+		preRoute.id = route.id
 		liveRoute = preRoute
 	} else {
 		route.Method = method
@@ -1578,7 +1591,7 @@ func (app *App) addRoute(method string, route *Route) {
 
 	// Concurrent registrations interleave one method at a time. Only the newest
 	// owns the batch; an older one's helpers fall back to the stack scan.
-	if route.regID == app.latestBatchID {
+	if route.id == app.latestBatchID {
 		app.latestBatch = append(app.latestBatch, liveRoute)
 		// Tracked so chained helpers target it. Mounts are tracked too, or a
 		// helper chained onto one would mutate the previous route.
@@ -1655,6 +1668,21 @@ func (app *App) ensureAutoHeadRoutesLocked() []*Route {
 		return nil
 	}
 
+	// Nothing can need a new companion while no route has been registered since
+	// the last pass and the HEAD stack still holds the ones it produced, so the
+	// scan below is skipped rather than rebuilt on every RebuildTree call.
+	currentRouteID := routeIDs.Load()
+	if app.autoHeadRouteID == currentRouteID && app.autoHeadStackLen == len(app.stack[headIndex]) {
+		return nil
+	}
+	// Recorded on the normal exits only: a panicking OnRoute hook must not leave
+	// an aborted scan marked complete, which would keep every HEAD request that
+	// needed a companion at 405 for the lifetime of the process.
+	recordScan := func() {
+		app.autoHeadRouteID = routeIDs.Load()
+		app.autoHeadStackLen = len(app.stack[headIndex])
+	}
+
 	headStack := app.stack[headIndex]
 	existing := make(map[autoHeadKey]struct{}, len(headStack))
 	for _, route := range headStack {
@@ -1665,6 +1693,7 @@ func (app *App) ensureAutoHeadRoutesLocked() []*Route {
 	}
 
 	if len(app.stack[getIndex]) == 0 {
+		recordScan()
 		return nil
 	}
 
@@ -1688,8 +1717,6 @@ func (app *App) ensureAutoHeadRoutesLocked() []*Route {
 		headRoute.group = route.group
 		headRoute.Method = MethodHead
 		headRoute.autoHead = true
-		// No registration created the twin, so no scope's helpers reach it.
-		headRoute.regID = 0
 		// The synthesized route belongs to whichever app the GET route came
 		// from, so a HEAD request resolves the same config a GET one does, and
 		// an app re-parsing it later holds it to the same constraints.
@@ -1728,17 +1755,37 @@ func (app *App) ensureAutoHeadRoutesLocked() []*Route {
 		app.stack[headIndex] = headStack
 		app.bumpRoutesRevision()
 	}
+	recordScan()
 	return twins
 }
 
 // fireOnRouteHooks runs the onRoute hooks for each route, panicking on error
 // exactly like route registration does. Callers must not hold app.mutex.
+//
+// A hook that does not return clears the scan markers: the companions it never
+// saw must be looked for again, or HEAD stays 405 for the process's lifetime.
 func (app *App) fireOnRouteHooks(routes []*Route) {
+	if len(routes) == 0 {
+		return
+	}
+
+	completed := false
+	defer func() {
+		if completed {
+			return
+		}
+		app.mutex.Lock()
+		app.autoHeadRouteID = 0
+		app.autoHeadStackLen = 0
+		app.mutex.Unlock()
+	}()
+
 	for _, route := range routes {
 		if err := app.hooks.executeOnRouteHooks(route); err != nil {
 			panic(err)
 		}
 	}
+	completed = true
 }
 
 // RebuildTree rebuilds the prefix tree from the previously registered routes.
@@ -1751,16 +1798,35 @@ func (app *App) fireOnRouteHooks(routes []*Route) {
 // https://github.com/gofiber/fiber/issues/2769#issuecomment-2227385283
 func (app *App) RebuildTree() *App {
 	app.mutex.Lock()
-	defer app.mutex.Unlock()
+	// Routes registered since startup get their automatic HEAD companions here.
+	twins := app.ensureAutoHeadRoutesLocked()
+	app.buildTree()
+	app.mutex.Unlock()
 
-	return app.buildTree()
+	// Fired unlocked so a hook may call locking app methods.
+	app.fireOnRouteHooks(twins)
+	return app
+}
+
+// routeIndexInTree returns the position of route in another method's tree
+// bucket, or current when it is not there; copies are told apart by their shared id.
+func (app *App) routeIndexInTree(methodInt, treeHash int, route *Route, current int) int {
+	if route == nil || methodInt < 0 || methodInt >= len(app.treeIndex) {
+		return current
+	}
+	for i, candidate := range app.treeIndex[methodInt].lookup(treeHash) {
+		if candidate.id == route.id {
+			return i
+		}
+	}
+	return current
 }
 
 // buildTree build the prefix tree from the previously registered routes
-func (app *App) buildTree() *App {
+func (app *App) buildTree() {
 	// If routes haven't been refreshed, nothing to do
 	if !app.hasRoutesRefreshed {
-		return app
+		return
 	}
 
 	// 1) First loop: determine all possible 3-char prefixes ("treePaths") for each method
@@ -1841,9 +1907,8 @@ func (app *App) buildTree() *App {
 
 	app.buildSkipIndexes()
 
-	// reset the flag and return
+	// reset the flag
 	app.hasRoutesRefreshed = false
-	return app
 }
 
 // dropsOptionalSlashBelowTreeHash reports whether a route's leading constant
