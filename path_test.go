@@ -176,6 +176,23 @@ func Test_Path_matchParams(t *testing.T) {
 	}
 }
 
+// Test_Path_ParameterEndChars_MatchesRouteGrammar pins the shared set against
+// the delimiter constants it is built from but no longer names, so widening the
+// route grammar has to reach the client's copy too (#4635).
+func Test_Path_ParameterEndChars_MatchesRouteGrammar(t *testing.T) {
+	t.Parallel()
+
+	var want [256]bool
+	want[optionalParam] = true
+	want[paramStarterChar] = true
+	want[escapeChar] = true
+	for _, delimiter := range routeDelimiter {
+		want[delimiter] = true
+	}
+
+	require.Equal(t, want, parameterEndChars)
+}
+
 // go test -race -run Test_RouteParser_SlashBounds
 func Test_RouteParser_SlashBounds(t *testing.T) {
 	t.Parallel()

@@ -17,6 +17,8 @@ type Res interface {
 	// If the header is not already set, it creates the header with the specified value.
 	// Empty values are skipped: a sender must not generate empty list elements
 	// (RFC 9110 Section 5.6.1.2).
+	// Members are compared byte-exactly, because some lists (Link, Cache-Control)
+	// are not all field names. For Vary field names, use Vary, which folds case.
 	Append(field string, values ...string)
 	// Add appends the value as a new field line, where Append folds values into one
 	// comma-separated line. The headers fasthttp keeps in a slot of their own are

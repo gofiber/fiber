@@ -13,6 +13,7 @@ import (
 
 	"github.com/fxamacker/cbor/v2"
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/paramdelim"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
@@ -54,6 +55,18 @@ func Test_Rand_String(t *testing.T) {
 			require.Contains(t, letterBytes, string(got[i]))
 		}
 	})
+}
+
+// Test_PathParamEndChars_MatchesSharedSet pins the client's terminator set to
+// the shared route grammar plus '#', which ends the path only client-side, so a
+// router delimiter cannot be added without the client following (#4635).
+func Test_PathParamEndChars_MatchesSharedSet(t *testing.T) {
+	t.Parallel()
+
+	want := paramdelim.PathEndChars()
+	want['#'] = true
+
+	require.Equal(t, want, pathParamEndChars)
 }
 
 func Test_Parser_Request_URL(t *testing.T) {
@@ -1020,6 +1033,43 @@ func Test_ParseCookieIgnoringBadAttrs(t *testing.T) {
 			require.Equal(t, tc.secure, cookie.Secure())
 			require.Equal(t, tc.httpOnly, cookie.HTTPOnly())
 		})
+	}
+}
+
+func Test_ParseCookieIgnoringBadAttrs_ManyAttributes(t *testing.T) {
+	t.Parallel()
+
+	value := make([]byte, 0, 16*1024)
+	value = append(value, "a=1; Expires=bogus"...)
+	for range 4_000 {
+		value = append(value, "; x"...)
+	}
+	value = append(value, "; Secure"...)
+
+	cookie := fasthttp.AcquireCookie()
+	t.Cleanup(func() { fasthttp.ReleaseCookie(cookie) })
+
+	require.NoError(t, parseCookieIgnoringBadAttrs(cookie, value))
+	require.Equal(t, "1", string(cookie.Value()))
+	require.True(t, cookie.Secure())
+}
+
+func Benchmark_ParseCookieIgnoringBadAttrs(b *testing.B) {
+	value := make([]byte, 0, 16*1024)
+	value = append(value, "a=1; Expires=bogus"...)
+	for range 4_000 {
+		value = append(value, "; x"...)
+	}
+
+	b.ReportAllocs()
+	b.SetBytes(int64(len(value)))
+	b.ResetTimer()
+	for range b.N {
+		cookie := fasthttp.AcquireCookie()
+		if err := parseCookieIgnoringBadAttrs(cookie, value); err != nil {
+			b.Fatal(err)
+		}
+		fasthttp.ReleaseCookie(cookie)
 	}
 }
 
