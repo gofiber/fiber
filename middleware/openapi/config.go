@@ -293,12 +293,6 @@ func configDefault(config ...Config) Config {
 	if cfg.Version == "" {
 		cfg.Version = ConfigDefault.Version
 	}
-	if cfg.Description == "" {
-		cfg.Description = ConfigDefault.Description
-	}
-	if cfg.ServerURL == "" {
-		cfg.ServerURL = ConfigDefault.ServerURL
-	}
 	if cfg.Path == "" {
 		cfg.Path = ConfigDefault.Path
 	}

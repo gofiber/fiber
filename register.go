@@ -60,6 +60,10 @@ var _ Register = (*Registering)(nil)
 type Registering struct {
 	app   *App
 	group *Group
+	// wrap adapts the handlers before registration; a domain chain uses it to
+	// filter them by host. domain is that chain's host pattern, else empty.
+	wrap   func([]Handler) []Handler
+	domain string
 
 	path string
 
@@ -81,9 +85,7 @@ type Registering struct {
 //
 // This method will match all HTTP verbs: GET, POST, PUT, HEAD etc...
 func (r *Registering) All(handler any, handlers ...any) Register {
-	converted := collectHandlers("register", append([]any{handler}, handlers...)...)
-	atomic.StoreUint64(&r.lastRegID, r.app.register([]string{methodUse}, r.path, r.group, "", converted...))
-	return r
+	return r.Add([]string{methodUse}, handler, handlers...)
 }
 
 // Get registers a route for GET methods that requests a representation
@@ -149,7 +151,10 @@ func (r *Registering) Query(handler any, handlers ...any) Register {
 // The provided handlers are executed in order, starting with `handler` and then the variadic `handlers`.
 func (r *Registering) Add(methods []string, handler any, handlers ...any) Register {
 	converted := collectHandlers("register", append([]any{handler}, handlers...)...)
-	atomic.StoreUint64(&r.lastRegID, r.app.register(methods, r.path, r.group, "", converted...))
+	if r.wrap != nil {
+		converted = r.wrap(converted)
+	}
+	atomic.StoreUint64(&r.lastRegID, r.app.register(methods, r.path, r.group, r.domain, converted...))
 	return r
 }
 
@@ -157,7 +162,7 @@ func (r *Registering) Add(methods []string, handler any, handlers ...any) Regist
 // the path in the current instance as its prefix.
 func (r *Registering) RouteChain(path string) Register {
 	// Create new group
-	route := &Registering{app: r.app, group: r.group, path: getGroupPath(r.path, path)}
+	route := &Registering{app: r.app, group: r.group, wrap: r.wrap, domain: r.domain, path: getGroupPath(r.path, path)}
 
 	return route
 }
@@ -194,8 +199,7 @@ func (r *Registering) Produces(typ string) Register {
 
 // RequestBody documents the request payload for the most recently registered route.
 func (r *Registering) RequestBody(description string, required bool, mediaTypes ...string) Register {
-	r.app.applyToRegistration(atomic.LoadUint64(&r.lastRegID), docRequestBodyWithExample(description, required, nil, "", nil, nil, mediaTypes...))
-	return r
+	return r.RequestBodyWithExample(description, required, nil, "", nil, nil, mediaTypes...)
 }
 
 // RequestBodyWithExample documents the request payload with schema references and examples.
@@ -206,13 +210,12 @@ func (r *Registering) RequestBodyWithExample(description string, required bool, 
 
 // Parameter documents an input parameter for the most recently registered route.
 func (r *Registering) Parameter(name, in string, required bool, schema map[string]any, description string) Register {
-	r.app.applyToRegistration(atomic.LoadUint64(&r.lastRegID), docAddParameter(RouteParameter{Name: name, In: in, Required: required, Schema: schema, Description: description}))
-	return r
+	return r.AddParameter(RouteParameter{Name: name, In: in, Required: required, Schema: schema, Description: description})
 }
 
 // ParameterWithExample documents an input parameter, including schema references and examples.
 func (r *Registering) ParameterWithExample(name, in string, required bool, schema map[string]any, schemaRef, description string, example any, examples map[string]any) Register {
-	r.app.applyToRegistration(atomic.LoadUint64(&r.lastRegID), docAddParameter(RouteParameter{
+	return r.AddParameter(RouteParameter{
 		Name:        name,
 		In:          in,
 		Required:    required,
@@ -221,8 +224,7 @@ func (r *Registering) ParameterWithExample(name, in string, required bool, schem
 		Description: description,
 		Example:     example,
 		Examples:    examples,
-	}))
-	return r
+	})
 }
 
 // AddParameter documents an input parameter using the full RouteParameter.
@@ -235,8 +237,7 @@ func (r *Registering) AddParameter(param RouteParameter) Register {
 
 // Response documents an HTTP response for the most recently registered route.
 func (r *Registering) Response(status int, description string, mediaTypes ...string) Register {
-	r.app.applyToRegistration(atomic.LoadUint64(&r.lastRegID), docAddResponse(status, description, nil, "", nil, nil, mediaTypes...))
-	return r
+	return r.ResponseWithExample(status, description, nil, "", nil, nil, mediaTypes...)
 }
 
 // ResponseWithExample documents an HTTP response with schema references and examples.

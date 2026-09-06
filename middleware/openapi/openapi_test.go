@@ -3291,16 +3291,6 @@ func Test_buildRequestBody_Guards(t *testing.T) {
 	require.Nil(t, buildRequestBody(&fiber.RouteRequestBody{Content: map[string]fiber.RouteMediaType{"": {}}}))
 }
 
-func Test_shouldIncludeRequestBody(t *testing.T) {
-	t.Parallel()
-
-	require.False(t, shouldIncludeRequestBody("", nil))
-	require.False(t, shouldIncludeRequestBody("", &fiber.Route{Method: fiber.MethodPost}))
-	require.False(t, shouldIncludeRequestBody(fiber.MIMEApplicationJSON, nil))
-	require.True(t, shouldIncludeRequestBody(fiber.MIMEApplicationJSON, &fiber.Route{Method: fiber.MethodPost}))
-	require.True(t, shouldIncludeRequestBody(fiber.MIMETextPlain, &fiber.Route{Method: fiber.MethodPost, Consumes: fiber.MIMETextPlain}))
-}
-
 func Test_defaultResponseForMethod(t *testing.T) {
 	t.Parallel()
 
@@ -3630,4 +3620,25 @@ func Test_Config_CyclicOptionsDoNotOverflow(t *testing.T) {
 	components := map[string]any{}
 	components["schemas"] = nested{"self": components}
 	require.NotPanics(t, func() { _ = New(Config{Components: components}) })
+}
+
+func Test_OpenAPI_SharedHandlerResolvesCaseRulePerApp(t *testing.T) {
+	t.Parallel()
+
+	handler := New()
+	folding := fiber.New()
+	folding.Use(handler)
+	strict := fiber.New(fiber.Config{CaseSensitive: true})
+	strict.Use(handler)
+
+	get := func(app *fiber.App) int {
+		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/OPENAPI.JSON", http.NoBody))
+		require.NoError(t, err)
+		return resp.StatusCode
+	}
+
+	require.Equal(t, fiber.StatusOK, get(folding))
+	require.Equal(t, fiber.StatusNotFound, get(strict))
+	require.Equal(t, fiber.StatusOK, get(folding))
+	require.Equal(t, fiber.StatusNotFound, get(strict))
 }

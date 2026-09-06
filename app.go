@@ -89,10 +89,9 @@ type App struct {
 	toString func(b []byte) string
 	// Hooks
 	hooks *Hooks
-	// Latest route & group
-	latestRoute   *Route
-	latestBatch   []*Route
-	mergedEntries map[uint64][]*Route
+	// regEntries maps a registration id to its live stack entries, a shared
+	// entry sitting under every registration it belongs to. Guarded by mutex.
+	regEntries map[uint64][]*Route
 	// newCtxFunc
 	newCtxFunc func(app *App) CustomCtx
 	// TLS handler
@@ -126,7 +125,7 @@ type App struct {
 	// sendfilesMutex is a mutex used for sendfile operations
 	sendfilesMutex   sync.RWMutex
 	mutex            sync.Mutex
-	latestBatchID    uint64
+	latestRegID      uint64
 	routesRevision   atomic.Uint64
 	autoHeadRouteID  uint64
 	autoHeadStackLen int
@@ -718,7 +717,6 @@ func New(config ...Config) *App {
 		// Create config
 		config:        Config{},
 		toString:      utils.UnsafeString,
-		latestRoute:   &Route{},
 		customBinders: []CustomBinder{},
 		sendfiles:     []*sendFileStore{},
 	}
@@ -974,24 +972,10 @@ func (app *App) SetTLSHandler(tlsHandler *TLSHandler) {
 // Name Assign name to specific route.
 func (app *App) Name(name string) Router {
 	app.mutex.Lock()
-
-	// Snapshot under the lock; hooks fire after it is released. Nothing fires
-	// when nothing was named.
-	var named *Route
-	if app.latestRoute != nil && app.nameRoutesLocked(app.latestBatchID, name, nil) {
-		app.bumpRoutesRevision()
-		if !app.latestRoute.mount && len(app.hooks.onName) > 0 {
-			named = app.copyRoute(app.latestRoute)
-		}
-	}
+	named := app.nameRegistrationLocked(app.latestRegID, name)
 	app.mutex.Unlock()
 
-	if named != nil {
-		if err := app.hooks.executeOnNameHooks(named); err != nil {
-			panic(err)
-		}
-	}
-
+	app.fireOnNameHooks(named)
 	return app
 }
 
@@ -1067,18 +1051,20 @@ func (app *App) RequestBody(description string, required bool, mediaTypes ...str
 func docRequestBodyWithExample(description string, required bool, schema map[string]any, schemaRef string, example any, examples map[string]any, mediaTypes ...string) func(route *Route) {
 	sanitized := sanitizeRequiredMediaTypes(mediaTypes)
 
+	// Holds the caller's values; cloneRouteRequestBody makes each route its
+	// own deep copy.
 	body := &RouteRequestBody{
 		Description: description,
 		Required:    required,
-		MediaTypes:  append([]string(nil), sanitized...),
+		MediaTypes:  sanitized,
 		SchemaRef:   schemaRef,
 		Example:     example,
-		Examples:    copyAnyMap(examples),
+		Examples:    examples,
 	}
 	if schemaRef != "" {
 		body.Schema = map[string]any{openapiRefKey: schemaRef}
 	} else if len(schema) > 0 {
-		body.Schema = copyAnyMap(schema)
+		body.Schema = schema
 	}
 
 	return func(route *Route) {
@@ -1131,8 +1117,9 @@ func docAddParameter(param RouteParameter) func(route *Route) {
 	}
 	param.In = location
 
-	// Normalize the schema into a fresh map so the caller's map is never
-	// mutated; the per-route copies below keep routes from aliasing each other.
+	// The per-route copy below is the only one; the caller's map is never
+	// written, and a route's default type is injected into its own copy.
+	injectType := false
 	switch {
 	case len(param.Content) > 0:
 		// A Parameter Object carries a schema or a content map, never both, and
@@ -1148,16 +1135,8 @@ func docAddParameter(param RouteParameter) func(route *Route) {
 	case location == "querystring":
 		// 3.2 querystring parameters use content, so no default schema is
 		// injected; the middleware wraps whatever was supplied.
-		param.Schema = copyAnyMap(param.Schema)
 	default:
-		schema := copyAnyMap(param.Schema)
-		if schema == nil {
-			schema = map[string]any{}
-		}
-		if _, ok := schema["type"]; !ok {
-			schema["type"] = openapiTypeString
-		}
-		param.Schema = schema
+		injectType = true
 	}
 
 	if location == "path" {
@@ -1167,6 +1146,14 @@ func docAddParameter(param RouteParameter) func(route *Route) {
 	return func(route *Route) {
 		paramCopy := param
 		paramCopy.Schema = copyAnyMap(param.Schema)
+		if injectType {
+			if paramCopy.Schema == nil {
+				paramCopy.Schema = map[string]any{}
+			}
+			if _, ok := paramCopy.Schema["type"]; !ok {
+				paramCopy.Schema["type"] = openapiTypeString
+			}
+		}
 		// Example is an `any`: a map or slice would otherwise stay aliased to
 		// the caller, as the response helpers already guard against.
 		paramCopy.Example = copyAnyValue(param.Example)
@@ -1248,18 +1235,14 @@ func docAddResponse(status int, description string, schema map[string]any, schem
 
 	key := responseKey(status)
 
-	resp := RouteResponse{Description: description}
-	if len(sanitized) > 0 {
-		resp.MediaTypes = append([]string(nil), sanitized...)
-	}
+	// Holds the caller's values; the closure copies them for each route.
+	resp := RouteResponse{Description: description, MediaTypes: sanitized, Example: example, Examples: examples}
 	if schemaRef != "" {
 		resp.SchemaRef = schemaRef
 		resp.Schema = map[string]any{openapiRefKey: schemaRef}
 	} else if len(schema) > 0 {
-		resp.Schema = copyAnyMap(schema)
+		resp.Schema = schema
 	}
-	resp.Example = copyAnyValue(example)
-	resp.Examples = copyAnyMap(examples)
 
 	return func(route *Route) {
 		if route.Responses == nil {
@@ -1374,10 +1357,8 @@ func docResponseHeader(status int, name, description string, schema map[string]a
 		panic("response header name is required")
 	}
 
-	key := responseKey(status)
-
-	// The per-route copyAnyMap below deep-copies the header (including the
-	// caller's schema map), so no defensive copy is needed here.
+	// The per-route copy in docSetResponseEntry deep-copies the header (the
+	// caller's schema map included), so no defensive copy is needed here.
 	header := map[string]any{}
 	if description != "" {
 		header["description"] = description
@@ -1386,18 +1367,7 @@ func docResponseHeader(status int, name, description string, schema map[string]a
 		header["schema"] = schema
 	}
 
-	return func(route *Route) {
-		resp := getOrCreateResponse(route, key, status)
-		if resp.Headers == nil {
-			resp.Headers = make(map[string]any)
-		}
-		hdr := copyAnyMap(header)
-		if hdr == nil {
-			hdr = map[string]any{}
-		}
-		resp.Headers[name] = hdr
-		route.Responses[key] = resp
-	}
+	return docSetResponseEntry(status, name, header, func(resp *RouteResponse) *map[string]any { return &resp.Headers })
 }
 
 func docOperationExternalDocs(description, url string) func(route *Route) {
@@ -1468,17 +1438,24 @@ func docResponseLink(status int, name string, link map[string]any) func(route *R
 	if utils.TrimSpace(name) == "" {
 		panic("response link name is required")
 	}
+	return docSetResponseEntry(status, name, link, func(resp *RouteResponse) *map[string]any { return &resp.Links })
+}
+
+// docSetResponseEntry stores a copy of entry under name in the map of a
+// status's response that pick selects, creating the response when absent.
+func docSetResponseEntry(status int, name string, entry map[string]any, pick func(*RouteResponse) *map[string]any) func(route *Route) {
 	key := responseKey(status)
 	return func(route *Route) {
 		resp := getOrCreateResponse(route, key, status)
-		if resp.Links == nil {
-			resp.Links = make(map[string]any)
+		entries := pick(&resp)
+		if *entries == nil {
+			*entries = make(map[string]any)
 		}
-		linkCopy := copyAnyMap(link)
-		if linkCopy == nil {
-			linkCopy = map[string]any{}
+		copied := copyAnyMap(entry)
+		if copied == nil {
+			copied = map[string]any{}
 		}
-		resp.Links[name] = linkCopy
+		(*entries)[name] = copied
 		route.Responses[key] = resp
 	}
 }
@@ -1528,7 +1505,9 @@ func (app *App) ResponseLink(status int, name string, link map[string]any) Route
 // most recent registration.
 func (app *App) applyToLatest(apply func(route *Route)) {
 	app.mutex.Lock()
-	app.applyToLatestRouteLocked(apply)
+	if app.applyToRegIDLocked(app.latestRegID, apply) {
+		app.bumpRoutesRevision()
+	}
 	app.mutex.Unlock()
 }
 
@@ -1540,27 +1519,37 @@ func (app *App) applyNameToRegistration(regID uint64, name string) {
 	}
 
 	app.mutex.Lock()
-	var named *Route
-	applied := app.nameRoutesLocked(regID, name, func(route *Route) {
-		if named == nil {
-			named = route
-		}
-	})
-	var snapshot *Route
-	if applied {
-		app.bumpRoutesRevision()
-		if named != nil && len(app.hooks.onName) > 0 {
-			// Snapshot under the lock; the hook runs without it and must not
-			// read the live route.
-			snapshot = app.copyRoute(named)
-		}
-	}
+	named := app.nameRegistrationLocked(regID, name)
 	app.mutex.Unlock()
 
-	if snapshot != nil {
-		if err := app.hooks.executeOnNameHooks(snapshot); err != nil {
-			panic(err)
-		}
+	app.fireOnNameHooks(named)
+}
+
+// nameRegistrationLocked names every entry of regID and returns a snapshot of
+// the last one for the OnName hooks, or nil when nothing was named (a removed
+// registration, or a mount placeholder). The caller must hold app.mutex.
+func (app *App) nameRegistrationLocked(regID uint64, name string) *Route {
+	named := app.nameRoutesLocked(regID, name)
+	if named == nil {
+		return nil
+	}
+	app.bumpRoutesRevision()
+	if len(app.hooks.onName) == 0 {
+		return nil
+	}
+	// Snapshot under the lock; the hook runs without it and must not read the
+	// live route.
+	return app.copyRoute(named)
+}
+
+// fireOnNameHooks runs the OnName hooks for a named route, panicking on error
+// exactly like route registration does. Callers must not hold app.mutex.
+func (app *App) fireOnNameHooks(named *Route) {
+	if named == nil {
+		return
+	}
+	if err := app.hooks.executeOnNameHooks(named); err != nil {
+		panic(err)
 	}
 }
 
@@ -1577,46 +1566,15 @@ func (app *App) applyToRegistration(regID uint64, apply func(route *Route)) {
 	app.mutex.Unlock()
 }
 
-// applyToLatestRouteLocked runs apply on every entry of the most recent
-// registration, leaving routes that merely share a path or method alone.
-func (app *App) applyToLatestRouteLocked(apply func(route *Route)) {
-	if app.latestRoute == nil || apply == nil {
-		return
-	}
-	if app.applyToRegIDLocked(app.latestBatchID, apply) {
-		app.bumpRoutesRevision()
-	}
-}
-
-// applyToRegIDLocked applies a mutation to every entry of regID, preferring the
-// O(batch) fast path and falling back to mergedEntries for compression-merged
-// entries. Reports whether anything was touched; holds app.mutex.
+// applyToRegIDLocked applies a mutation to every entry of regID. Mount
+// placeholders are indexed so a helper chained onto one is a no-op, but never
+// mutated. Reports whether anything was touched; holds app.mutex.
 func (app *App) applyToRegIDLocked(regID uint64, apply func(route *Route)) bool {
-	if regID == 0 {
-		return false
-	}
-
 	applied := false
-	if regID == app.latestBatchID {
-		for _, route := range app.latestBatch {
-			if route.mount {
-				continue
-			}
-			apply(route)
-			applied = true
+	for _, route := range app.regEntries[regID] {
+		if route.mount {
+			continue
 		}
-		return applied
-	}
-
-	for _, routes := range app.stack {
-		for _, route := range routes {
-			if !route.mount && !route.autoHead && route.id == regID {
-				apply(route)
-				applied = true
-			}
-		}
-	}
-	for _, route := range app.mergedEntries[regID] {
 		apply(route)
 		applied = true
 	}
@@ -1624,10 +1582,14 @@ func (app *App) applyToRegIDLocked(regID uint64, apply func(route *Route)) bool 
 }
 
 // nameRoutesLocked names every entry of regID plus the automatic HEAD twin of
-// each GET entry. The caller must hold app.mutex.
-func (app *App) nameRoutesLocked(regID uint64, name string, visit func(route *Route)) bool {
-	var gets []*Route
-	applied := app.applyToRegIDLocked(regID, func(route *Route) {
+// each GET entry, and returns the last entry named, or nil when there was
+// none. The caller must hold app.mutex.
+func (app *App) nameRoutesLocked(regID uint64, name string) *Route {
+	var (
+		gets  []*Route
+		named *Route
+	)
+	app.applyToRegIDLocked(regID, func(route *Route) {
 		route.Name = name
 		if route.group != nil {
 			route.Name = route.group.name + route.Name
@@ -1635,16 +1597,14 @@ func (app *App) nameRoutesLocked(regID uint64, name string, visit func(route *Ro
 		if route.Method == MethodGet && !route.use {
 			gets = append(gets, route)
 		}
-		if visit != nil {
-			visit(route)
-		}
+		named = route
 	})
 	if len(gets) == 0 {
-		return applied
+		return named
 	}
 	headIndex := app.methodInt(MethodHead)
 	if headIndex == -1 {
-		return applied
+		return named
 	}
 	for _, get := range gets {
 		key := app.autoHeadKey(get)
@@ -1654,7 +1614,7 @@ func (app *App) nameRoutesLocked(regID uint64, name string, visit func(route *Ro
 			}
 		}
 	}
-	return applied
+	return named
 }
 
 // routeForURL finds a named route for URL composition, copying only the routing
@@ -1707,13 +1667,20 @@ func (app *App) GetRoutes(filterUseOption ...bool) []Route {
 	app.mutex.Lock()
 	defer app.mutex.Unlock()
 
-	var rs []Route
+	n := 0
+	for _, routes := range app.stack {
+		n += len(routes)
+	}
+	rs := make([]Route, 0, n)
 	for _, routes := range app.stack {
 		for _, route := range routes {
 			if filterUse && route.use {
 				continue
 			}
-			rs = append(rs, app.copyRouteValue(route))
+			// Filled in place: Route is large, and a value-returning helper
+			// would move the whole struct an extra time per entry.
+			rs = append(rs, Route{})
+			app.copyRouteInto(&rs[len(rs)-1], route)
 		}
 	}
 	return rs

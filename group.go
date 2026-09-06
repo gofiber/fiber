@@ -79,8 +79,7 @@ func (grp *Group) Produces(typ string) Router {
 
 // RequestBody documents the request payload for the most recently added route in the group.
 func (grp *Group) RequestBody(description string, required bool, mediaTypes ...string) Router {
-	grp.app.applyToRegistration(atomic.LoadUint64(&grp.lastRegID), docRequestBodyWithExample(description, required, nil, "", nil, nil, mediaTypes...))
-	return grp
+	return grp.RequestBodyWithExample(description, required, nil, "", nil, nil, mediaTypes...)
 }
 
 // RequestBodyWithExample documents the request payload for the most recently added route in the group with schema references and examples.
@@ -91,13 +90,12 @@ func (grp *Group) RequestBodyWithExample(description string, required bool, sche
 
 // Parameter documents an input parameter for the most recently added route in the group.
 func (grp *Group) Parameter(name, in string, required bool, schema map[string]any, description string) Router {
-	grp.app.applyToRegistration(atomic.LoadUint64(&grp.lastRegID), docAddParameter(RouteParameter{Name: name, In: in, Required: required, Schema: schema, Description: description}))
-	return grp
+	return grp.AddParameter(RouteParameter{Name: name, In: in, Required: required, Schema: schema, Description: description})
 }
 
 // ParameterWithExample documents an input parameter for the most recently added route in the group with schema references and examples.
 func (grp *Group) ParameterWithExample(name, in string, required bool, schema map[string]any, schemaRef, description string, example any, examples map[string]any) Router {
-	grp.app.applyToRegistration(atomic.LoadUint64(&grp.lastRegID), docAddParameter(RouteParameter{
+	return grp.AddParameter(RouteParameter{
 		Name:        name,
 		In:          in,
 		Required:    required,
@@ -106,14 +104,12 @@ func (grp *Group) ParameterWithExample(name, in string, required bool, schema ma
 		Description: description,
 		Example:     example,
 		Examples:    examples,
-	}))
-	return grp
+	})
 }
 
 // Response documents an HTTP response for the most recently added route in the group.
 func (grp *Group) Response(status int, description string, mediaTypes ...string) Router {
-	grp.app.applyToRegistration(atomic.LoadUint64(&grp.lastRegID), docAddResponse(status, description, nil, "", nil, nil, mediaTypes...))
-	return grp
+	return grp.ResponseWithExample(status, description, nil, "", nil, nil, mediaTypes...)
 }
 
 // ResponseWithExample documents an HTTP response for the most recently added route in the group with schema references and examples.

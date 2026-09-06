@@ -1052,6 +1052,11 @@ func (*App) copyRouteBaseValue(route *Route) Route {
 	copied := *route
 
 	copied.group = nil
+	copied.Summary = ""
+	copied.Description = ""
+	copied.Consumes = ""
+	copied.Produces = ""
+	copied.Deprecated = false
 	copied.RequestBody = nil
 	copied.Parameters = nil
 	copied.Responses = nil
@@ -1340,7 +1345,11 @@ func (app *App) deleteRoute(methods []string, matchFunc func(r *Route) bool) {
 	// matchFunc runs unlocked so it may call locking app methods such as
 	// GetRoute; matches are then removed by identity under the lock.
 	app.mutex.Lock()
-	candidates := make([]*Route, 0)
+	n := 0
+	for _, m := range indexes {
+		n += len(app.stack[m])
+	}
+	candidates := make([]*Route, 0, n)
 	for _, m := range indexes {
 		candidates = append(candidates, app.stack[m]...)
 	}
@@ -1373,17 +1382,7 @@ func (app *App) deleteRoute(methods []string, matchFunc func(r *Route) bool) {
 			app.stack[m] = append(app.stack[m][:i], app.stack[m][i+1:]...)
 			app.hasRoutesRefreshed = true
 			app.bumpRoutesRevision()
-			app.forgetMergedEntryLocked(route)
-
-			// Invalidate the registration cursor and batch so later chained
-			// helpers become no-ops instead of mutating a removed route.
-			if route == app.latestRoute {
-				app.latestRoute = nil
-			}
-			if slices.Contains(app.latestBatch, route) {
-				app.latestBatch = app.latestBatch[:0]
-				app.latestBatchID = 0
-			}
+			app.unindexRouteLocked(route)
 
 			// Decrement global handler count. Middleware routes decrement once,
 			// keyed by domain as well as path.
@@ -1403,16 +1402,17 @@ func (app *App) deleteRoute(methods []string, matchFunc func(r *Route) bool) {
 	}
 }
 
-// forgetMergedEntryLocked drops a removed stack entry from every registration
-// that reached it through a compression merge. The caller must hold app.mutex.
-func (app *App) forgetMergedEntryLocked(route *Route) {
-	for regID, entries := range app.mergedEntries {
+// unindexRouteLocked drops a removed entry from every registration it belonged
+// to, so later chained helpers become no-ops instead of mutating it. The caller
+// must hold app.mutex.
+func (app *App) unindexRouteLocked(route *Route) {
+	for id, entries := range app.regEntries {
 		entries = slices.DeleteFunc(entries, func(entry *Route) bool { return entry == route })
 		if len(entries) == 0 {
-			delete(app.mergedEntries, regID)
+			delete(app.regEntries, id)
 			continue
 		}
-		app.mergedEntries[regID] = entries
+		app.regEntries[id] = entries
 	}
 }
 
@@ -1560,25 +1560,14 @@ func (app *App) addRoute(method string, route *Route) {
 	// pre-existing entry it was compression-merged into.
 	liveRoute := route
 
-	// A new registration always starts a fresh helper-target batch, even when
-	// every one of its entries ends up compression-merged away.
-	app.resetBatchIfNewRegistrationLocked(route.id)
-
 	// prevent identically route registration
 	l := len(app.stack[m])
 	if l > 0 && app.stack[m][l-1].Path == route.Path && route.use == app.stack[m][l-1].use &&
 		!route.mount && !app.stack[m][l-1].mount && app.stack[m][l-1].domain == route.domain {
 		preRoute := app.stack[m][l-1]
 		preRoute.Handlers = append(preRoute.Handlers, route.Handlers...)
-		// The entry carries the latest registration, and mergedEntries keeps it
-		// reachable from the superseded one so both scopes hit exactly it.
-		if preRoute.id != 0 && preRoute.id != route.id {
-			if app.mergedEntries == nil {
-				app.mergedEntries = make(map[uint64][]*Route, 1)
-			}
-			app.mergedEntries[preRoute.id] = append(app.mergedEntries[preRoute.id], preRoute)
-		}
-		preRoute.id = route.id
+		// The entry keeps its own id and is indexed under this registration
+		// as well, so both scopes' helpers reach it and nothing else.
 		liveRoute = preRoute
 	} else {
 		route.Method = method
@@ -1588,14 +1577,9 @@ func (app *App) addRoute(method string, route *Route) {
 	}
 
 	app.bumpRoutesRevision()
-
-	// Concurrent registrations interleave one method at a time. Only the newest
-	// owns the batch; an older one's helpers fall back to the stack scan.
-	if route.id == app.latestBatchID {
-		app.latestBatch = append(app.latestBatch, liveRoute)
-		// Tracked so chained helpers target it. Mounts are tracked too, or a
-		// helper chained onto one would mutate the previous route.
-		app.latestRoute = liveRoute
+	app.indexRouteLocked(route.id, liveRoute)
+	if route.id > app.latestRegID {
+		app.latestRegID = route.id
 	}
 
 	// Snapshot under the lock and fire hooks after releasing it, so they may call
@@ -1612,13 +1596,18 @@ func (app *App) addRoute(method string, route *Route) {
 	}
 }
 
-// resetBatchIfNewRegistrationLocked starts a fresh batch for a new registration,
-// letting helpers reach its entries in O(batch). The caller holds app.mutex.
-func (app *App) resetBatchIfNewRegistrationLocked(regID uint64) {
-	if regID > app.latestBatchID {
-		app.latestBatchID = regID
-		app.latestBatch = app.latestBatch[:0]
+// indexRouteLocked records route as an entry of registration id. The caller
+// must hold app.mutex.
+func (app *App) indexRouteLocked(id uint64, route *Route) {
+	if app.regEntries == nil {
+		app.regEntries = make(map[uint64][]*Route)
 	}
+	entries := app.regEntries[id]
+	// The same entry twice would apply an appending helper twice.
+	if n := len(entries); n > 0 && entries[n-1] == route {
+		return
+	}
+	app.regEntries[id] = append(entries, route)
 }
 
 // ensureAutoHeadRoutes creates the missing automatic HEAD routes and returns
@@ -1675,9 +1664,6 @@ func (app *App) ensureAutoHeadRoutesLocked() []*Route {
 	if app.autoHeadRouteID == currentRouteID && app.autoHeadStackLen == len(app.stack[headIndex]) {
 		return nil
 	}
-	// Recorded on the normal exits only: a panicking OnRoute hook must not leave
-	// an aborted scan marked complete, which would keep every HEAD request that
-	// needed a companion at 405 for the lifetime of the process.
 	recordScan := func() {
 		app.autoHeadRouteID = routeIDs.Load()
 		app.autoHeadStackLen = len(app.stack[headIndex])
@@ -1724,13 +1710,6 @@ func (app *App) ensureAutoHeadRoutesLocked() []*Route {
 			app.markRouteOwner(headRoute, owner)
 		}
 		app.markRouteConstraints(headRoute, app.mountFields.routeConstraints[route])
-		// Twins carry no documentation: the containers are skipped and the scalars
-		// blanked, so nothing exposes a half-documented HEAD route.
-		headRoute.Summary = ""
-		headRoute.Description = ""
-		headRoute.Consumes = ""
-		headRoute.Produces = ""
-		headRoute.Deprecated = false
 		// Fasthttp automatically omits response bodies when transmitting
 		// HEAD responses, so the copied GET handler stack can execute
 		// unchanged while still producing an empty body on the wire.
@@ -1747,8 +1726,8 @@ func (app *App) ensureAutoHeadRoutesLocked() []*Route {
 
 		atomic.AddUint32(&app.handlersCount, uint32(len(headRoute.Handlers))) //nolint:gosec // G115 - handler count is always small
 
-		// The twin stays out of the batch and never becomes latestRoute: letting a
-		// later helper reach it would re-document an arbitrary route.
+		// The twin is never indexed: letting a later helper reach it would
+		// re-document an arbitrary route.
 	}
 
 	if added {
@@ -1761,31 +1740,12 @@ func (app *App) ensureAutoHeadRoutesLocked() []*Route {
 
 // fireOnRouteHooks runs the onRoute hooks for each route, panicking on error
 // exactly like route registration does. Callers must not hold app.mutex.
-//
-// A hook that does not return clears the scan markers: the companions it never
-// saw must be looked for again, or HEAD stays 405 for the process's lifetime.
 func (app *App) fireOnRouteHooks(routes []*Route) {
-	if len(routes) == 0 {
-		return
-	}
-
-	completed := false
-	defer func() {
-		if completed {
-			return
-		}
-		app.mutex.Lock()
-		app.autoHeadRouteID = 0
-		app.autoHeadStackLen = 0
-		app.mutex.Unlock()
-	}()
-
 	for _, route := range routes {
 		if err := app.hooks.executeOnRouteHooks(route); err != nil {
 			panic(err)
 		}
 	}
-	completed = true
 }
 
 // RebuildTree rebuilds the prefix tree from the previously registered routes.

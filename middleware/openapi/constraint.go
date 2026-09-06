@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/utils/v2"
 	utilsstrings "github.com/gofiber/utils/v2/strings"
 )
 
@@ -113,7 +114,8 @@ func applyConstraintToSchema(schema map[string]any, name string, args []string) 
 // resolveConstraintName folds the lowercase aliases the router accepts onto the
 // canonical constraint names, mirroring path.go's resolveConstraintName.
 func resolveConstraintName(name string) string {
-	switch strings.ToLower(name) {
+	lower := utilsstrings.ToLower(name)
+	switch lower {
 	case fiber.ConstraintMinLenLower:
 		return fiber.ConstraintMinLen
 	case fiber.ConstraintMaxLenLower:
@@ -121,7 +123,7 @@ func resolveConstraintName(name string) string {
 	case fiber.ConstraintBetweenLenLower:
 		return fiber.ConstraintBetweenLen
 	default:
-		return utilsstrings.ToLower(name)
+		return lower
 	}
 }
 
@@ -159,7 +161,7 @@ func setIntSchemaKey(schema map[string]any, key string, args []string, idx int) 
 	if idx >= len(args) {
 		return
 	}
-	n, err := strconv.Atoi(strings.TrimSpace(args[idx]))
+	n, err := strconv.Atoi(utils.TrimSpace(args[idx]))
 	if err != nil {
 		return
 	}
@@ -177,7 +179,7 @@ type parsedConstraint struct {
 // run from the first non-escaped '(' to the last ')', as in path.go. A regex
 // keeps its argument whole; every other constraint splits and unescapes its list.
 func splitConstraintEntry(entry string) parsedConstraint {
-	entry = strings.TrimSpace(entry)
+	entry = utils.TrimSpace(entry)
 	start := indexNonEscaped(entry, constraintArgsStart)
 	end := strings.LastIndexByte(entry, constraintArgsEnd)
 	if start == -1 || end == -1 || end < start {

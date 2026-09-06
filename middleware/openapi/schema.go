@@ -80,17 +80,23 @@ func markVisited(visited map[reflect.Type]bool, t reflect.Type) map[reflect.Type
 	return visited
 }
 
-// typeSchema builds the schema for a single type. visited tracks the composite
-// types currently on the recursion stack so that cyclic types terminate.
-func typeSchema(t reflect.Type, visited map[reflect.Type]bool) map[string]any {
-	// A self-referential pointer type (type P *P) never stops being a pointer,
-	// so bound the walk instead of dereferencing forever.
+// derefType strips pointer indirections. The walk is bounded because a
+// self-referential pointer type (type P *P) never stops being a pointer; the
+// result is still a pointer in that case.
+func derefType(t reflect.Type) reflect.Type {
 	for range maxPointerDepth {
 		if t.Kind() != reflect.Pointer {
 			break
 		}
 		t = t.Elem()
 	}
+	return t
+}
+
+// typeSchema builds the schema for a single type. visited tracks the composite
+// types currently on the recursion stack so that cyclic types terminate.
+func typeSchema(t reflect.Type, visited map[reflect.Type]bool) map[string]any {
+	t = derefType(t)
 	if t.Kind() == reflect.Pointer {
 		return map[string]any{}
 	}
@@ -173,8 +179,8 @@ func typeSchema(t reflect.Type, visited map[reflect.Type]bool) map[string]any {
 		// An interface value (e.g. any) accepts any JSON value.
 		return map[string]any{}
 	default:
-		// Unsupported kinds (chan, func, complex, uintptr, unsafe.Pointer) have
-		// no JSON representation.
+		// Unsupported kinds (chan, func, complex, unsafe.Pointer) have no JSON
+		// representation.
 		return nil
 	}
 }
@@ -185,10 +191,7 @@ func structSchema(t reflect.Type, visited map[reflect.Type]bool) map[string]any 
 	if visited[t] {
 		return map[string]any{schemaKeyType: schemaTypeObject}
 	}
-	if visited == nil {
-		visited = make(map[reflect.Type]bool)
-	}
-	visited[t] = true
+	visited = markVisited(visited, t)
 	defer delete(visited, t)
 
 	properties := make(map[string]any)
@@ -229,15 +232,7 @@ func structSchema(t reflect.Type, visited map[reflect.Type]bool) map[string]any 
 				}
 				name := tagInfo.name
 
-				embeddedType := field.Type
-				// Bounded like typeSchema: a self-referential pointer type
-				// (type P *P) never stops being a pointer.
-				for range maxPointerDepth {
-					if embeddedType.Kind() != reflect.Pointer {
-						break
-					}
-					embeddedType = embeddedType.Elem()
-				}
+				embeddedType := derefType(field.Type)
 				isEmbeddedStruct := field.Anonymous && embeddedType.Kind() == reflect.Struct && embeddedType != timeType && name == ""
 
 				// encoding/json ignores unexported fields but still promotes

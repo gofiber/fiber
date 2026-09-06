@@ -973,7 +973,7 @@ func Test_ScopedHelpers_MergeReachesOnlyOwnEntries(t *testing.T) {
 		require.NotPanics(t, func() { g1.Summary("gone") })
 		app.mutex.Lock()
 		defer app.mutex.Unlock()
-		require.Empty(t, app.mergedEntries)
+		require.Empty(t, app.regEntries)
 	})
 }
 
@@ -1185,4 +1185,14 @@ func Test_RouteForURL_SkipsDocumentation(t *testing.T) {
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/go", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, "/users/7", resp.Header.Get(HeaderLocation))
+}
+
+func Test_DuplicateMethodRegistration_IndexedOnce(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	app.Add([]string{MethodGet, MethodGet}, "/d", testHandlerOK).
+		Parameter("q", "query", false, nil, "")
+
+	require.Len(t, findRoute(t, app, MethodGet, "/d").Parameters, 1)
 }

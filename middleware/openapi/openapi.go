@@ -9,11 +9,18 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/utils/v2"
 	utilsstrings "github.com/gofiber/utils/v2/strings"
 )
+
+// appEquality is the path comparison an app's CaseSensitive setting selects.
+type appEquality struct {
+	app   *fiber.App
+	equal func(a, b string) bool
+}
 
 // maxCachedSwaggerPages bounds the UI page cache so a parameterized mount cannot
 // grow it without limit. The same bound applies to the per-app cache map.
@@ -66,7 +73,7 @@ func New(config ...Config) fiber.Handler {
 		if cache.specData == nil || cache.specRev != rev {
 			// GetRoutes deep-copies under the router lock, so generation never
 			// races registration or the documentation helpers.
-			spec := generateSpec(app.GetRoutes(), &cfg)
+			spec := generateSpec(app.GetRoutes(true), &cfg)
 			data, err := app.Config().JSONEncoder(spec)
 			if err != nil {
 				return nil, fmt.Errorf("openapi: marshal spec: %w", err)
@@ -102,6 +109,21 @@ func New(config ...Config) fiber.Handler {
 	specPath := utils.TrimRight(normalizedPath(cfg.Path), '/')
 	uiPath := utils.TrimRight(normalizedPath(cfg.UIPath), '/')
 
+	// Config() copies the whole struct, so the case rule is resolved once per
+	// app rather than on every request that passes through the middleware.
+	var lastEquality atomic.Pointer[appEquality]
+	equalityFor := func(app *fiber.App) func(a, b string) bool {
+		if e := lastEquality.Load(); e != nil && e.app == app {
+			return e.equal
+		}
+		equal := utils.EqualFold[string]
+		if app.Config().CaseSensitive {
+			equal = stringsEqual
+		}
+		lastEquality.Store(&appEquality{app: app, equal: equal})
+		return equal
+	}
+
 	return func(c fiber.Ctx) error {
 		if cfg.Next != nil && cfg.Next(c) {
 			return c.Next()
@@ -111,10 +133,7 @@ func New(config ...Config) fiber.Handler {
 			return c.Next()
 		}
 
-		equal := utils.EqualFold[string]
-		if c.App().Config().CaseSensitive {
-			equal = stringsEqual
-		}
+		equal := equalityFor(c.App())
 
 		request := utils.TrimRight(c.Path(), '/')
 		route := c.Route()
@@ -522,21 +541,12 @@ func routePrefix(pattern, requestPath string) string {
 	if segments == 0 {
 		return ""
 	}
-
-	idx := 0
-	for range segments {
-		if idx+1 >= len(requestPath) {
-			return requestPath
-		}
-		next := strings.IndexByte(requestPath[idx+1:], '/')
-		if next < 0 {
-			// The request path ends inside the prefix (e.g. a request for the
-			// bare mount path).
-			return requestPath
-		}
-		idx += 1 + next
+	// A request that ends inside the prefix (the bare mount path) is its own
+	// prefix.
+	if prefix, ok := pathPrefixSegments(requestPath, segments); ok {
+		return prefix
 	}
-	return requestPath[:idx]
+	return requestPath
 }
 
 type openAPISpec struct {
@@ -866,11 +876,8 @@ func generateSpec(routes []fiber.Route, cfg *Config) openAPISpec {
 			}
 
 			reqBody := buildRequestBody(r.RequestBody)
-			if reqBody == nil {
-				reqType := r.Consumes
-				if shouldIncludeRequestBody(reqType, r) {
-					reqBody = &requestBody{Content: map[string]map[string]any{reqType: {}}}
-				}
+			if reqType := r.Consumes; reqBody == nil && reqType != "" {
+				reqBody = &requestBody{Content: map[string]map[string]any{reqType: {}}}
 			}
 			// GET and HEAD operations never carry a request body, and a
 			// TRACE request MUST NOT include content (RFC 9110).
@@ -892,8 +899,8 @@ func generateSpec(routes []fiber.Route, cfg *Config) openAPISpec {
 				RequestBody:  reqBody,
 				Responses:    responses,
 				Security:     r.Security,
-				ExternalDocs: maps.Clone(r.ExternalDocs),
-				extensions:   maps.Clone(r.OperationExtensions),
+				ExternalDocs: r.ExternalDocs,
+				extensions:   r.OperationExtensions,
 			}
 		}
 	}
@@ -1067,8 +1074,8 @@ func mergeRouteParameters(params []parameter, index map[string]int, extras []fib
 		// Prefer "examples" when both are provided.
 		var paramExample any
 		var paramExamples map[string]any
-		if copiedExamples := maps.Clone(extra.Examples); len(copiedExamples) > 0 {
-			paramExamples = copiedExamples
+		if len(extra.Examples) > 0 {
+			paramExamples = extra.Examples
 		} else {
 			paramExample = extra.Example
 		}
@@ -1199,11 +1206,8 @@ func routeMediaTypeContent(content map[string]fiber.RouteMediaType) map[string]m
 			continue
 		}
 		entry := contentEntry(mt.Schema, mt.SchemaRef, mt.Example, mt.Examples)
-		if enc := maps.Clone(mt.Encoding); len(enc) > 0 {
-			entry["encoding"] = enc
-		}
-		if len(entry) == 0 {
-			entry = map[string]any{}
+		if len(mt.Encoding) > 0 {
+			entry["encoding"] = mt.Encoding
 		}
 		out[mediaType] = entry
 	}
@@ -1216,31 +1220,31 @@ func routeMediaTypeContent(content map[string]fiber.RouteMediaType) map[string]m
 // convertRouteResponses converts response metadata, falling back to the route's
 // Produces when a schema or example names no media type.
 func convertRouteResponses(routeResponses map[string]fiber.RouteResponse, fallbackMediaType string) map[string]response {
-	var merged map[string]response
-	if len(routeResponses) > 0 {
-		merged = make(map[string]response, len(routeResponses))
-		for code, resp := range routeResponses {
-			content := routeMediaTypeContent(resp.Content)
-			if content == nil {
-				mediaTypes := resp.MediaTypes
-				if len(mediaTypes) == 0 &&
-					(len(resp.Schema) > 0 || resp.SchemaRef != "" || resp.Example != nil || len(resp.Examples) > 0) {
-					// A schema or example with no media type would be discarded,
-					// so fall back to Produces, then to JSON.
-					if fallbackMediaType != "" {
-						mediaTypes = []string{fallbackMediaType}
-					} else {
-						mediaTypes = []string{fiber.MIMEApplicationJSON}
-					}
+	if len(routeResponses) == 0 {
+		return nil
+	}
+	merged := make(map[string]response, len(routeResponses))
+	for code, resp := range routeResponses {
+		content := routeMediaTypeContent(resp.Content)
+		if content == nil {
+			mediaTypes := resp.MediaTypes
+			if len(mediaTypes) == 0 &&
+				(len(resp.Schema) > 0 || resp.SchemaRef != "" || resp.Example != nil || len(resp.Examples) > 0) {
+				// A schema or example with no media type would be discarded,
+				// so fall back to Produces, then to JSON.
+				if fallbackMediaType != "" {
+					mediaTypes = []string{fallbackMediaType}
+				} else {
+					mediaTypes = []string{fiber.MIMEApplicationJSON}
 				}
-				content = mediaTypesToContent(mediaTypes, resp.Schema, resp.SchemaRef, resp.Example, resp.Examples)
 			}
-			merged[code] = response{
-				Description: resp.Description,
-				Content:     content,
-				Headers:     maps.Clone(resp.Headers),
-				Links:       maps.Clone(resp.Links),
-			}
+			content = mediaTypesToContent(mediaTypes, resp.Schema, resp.SchemaRef, resp.Example, resp.Examples)
+		}
+		merged[code] = response{
+			Description: resp.Description,
+			Content:     content,
+			Headers:     resp.Headers,
+			Links:       resp.Links,
 		}
 	}
 	return merged
@@ -1328,9 +1332,6 @@ func mediaTypesToContent(mediaTypes []string, schema map[string]any, schemaRef s
 			continue
 		}
 		entry := contentEntry(schema, schemaRef, example, examples)
-		if len(entry) == 0 {
-			entry = map[string]any{}
-		}
 		content[mediaType] = entry
 	}
 	if len(content) == 0 {
@@ -1358,12 +1359,6 @@ func buildRequestBody(routeBody *fiber.RouteRequestBody) *requestBody {
 		return nil
 	}
 	return merged
-}
-
-// shouldIncludeRequestBody reports whether an undocumented route gets an implicit
-// body: only when Consumes declared a media type. generateSpec gates methods.
-func shouldIncludeRequestBody(reqType string, route *fiber.Route) bool {
-	return reqType != "" && route != nil
 }
 
 // defaultResponseForMethod is the response an undocumented route gets. HEAD
@@ -1397,6 +1392,24 @@ type pathState struct {
 	paramIdx    int
 }
 
+// addParam appends the resolved parameter to the state in place.
+func (s *pathState) addParam(resolved resolvedParamName, tokenName, rawConstraints string) {
+	name := uniquePathParamName(resolved.openAPI, s.params)
+	s.path += "{" + name + "}"
+	s.params = append(s.params, name)
+	s.aliases[resolved.raw] = name
+	if tokenName != "" {
+		s.aliases[tokenName] = name
+	}
+	if rawConstraints != "" {
+		if s.constraints == nil {
+			s.constraints = make(map[string]string, 1)
+		}
+		s.constraints[name] = rawConstraints
+	}
+	s.paramIdx++
+}
+
 func (s pathState) clone() pathState {
 	return pathState{
 		path:        s.path,
@@ -1416,6 +1429,11 @@ func buildOpenAPIPathVariants(fiberPath string, params []string) []pathVariant {
 	var walk func(i int, current pathState)
 	walk = func(i int, current pathState) {
 		for i < length {
+			var (
+				resolved                  resolvedParamName
+				tokenName, rawConstraints string
+				isOptional                bool
+			)
 			switch fiberPath[i] {
 			case ':':
 				tokenStart := i + 1
@@ -1429,71 +1447,24 @@ func buildOpenAPIPathVariants(fiberPath string, params []string) []pathVariant {
 					}
 					i++
 				}
-				tokenName := fiberPath[tokenStart:i]
+				tokenName = fiberPath[tokenStart:i]
 
-				var rawConstraints string
 				if i < length && fiberPath[i] == '<' {
 					rawConstraints, i = scanConstraintSpan(fiberPath, i)
 				}
 
-				isOptional := i < length && fiberPath[i] == '?'
+				isOptional = i < length && fiberPath[i] == '?'
 				if isOptional {
 					i++
 				}
-
-				resolved := resolveOpenAPIPathParamName(current.paramIdx, tokenName, params)
-				includeState := current.clone()
-				name := uniquePathParamName(resolved.openAPI, includeState.params)
-				includeState.path += "{" + name + "}"
-				includeState.params = append(includeState.params, name)
-				includeState.aliases[resolved.raw] = name
-				if tokenName != "" {
-					includeState.aliases[tokenName] = name
-				}
-				if rawConstraints != "" {
-					if includeState.constraints == nil {
-						includeState.constraints = make(map[string]string, 1)
-					}
-					includeState.constraints[name] = rawConstraints
-				}
-				includeState.paramIdx++
-
-				if isOptional {
-					excludeState := current.clone()
-					excludeState.paramIdx++
-					walk(i, includeState)
-					// Each optional parameter doubles the walk, so forking stops
-					// at the cap; the fully-populated variant is always emitted.
-					if len(variants) < maxPathVariants {
-						walk(i, excludeState)
-					}
-					return
-				}
-				current = includeState
+				resolved = resolveOpenAPIPathParamName(current.paramIdx, tokenName, params)
 
 			case '*', '+':
-				isOptional := fiberPath[i] == '*'
-				resolved := resolveOpenAPIWildcardParamName(current.paramIdx, params)
-				includeState := current.clone()
-				name := uniquePathParamName(resolved.openAPI, includeState.params)
-				includeState.path += "{" + name + "}"
-				includeState.params = append(includeState.params, name)
-				includeState.aliases[resolved.raw] = name
-				includeState.paramIdx++
-				i++
-
 				// "*" also matches no segment at all, so the route serves the
 				// path without it; "+" needs at least one.
-				if isOptional {
-					excludeState := current.clone()
-					excludeState.paramIdx++
-					walk(i, includeState)
-					if len(variants) < maxPathVariants {
-						walk(i, excludeState)
-					}
-					return
-				}
-				current = includeState
+				isOptional = fiberPath[i] == '*'
+				resolved = resolveOpenAPIWildcardParamName(current.paramIdx, params)
+				i++
 
 			case '\\':
 				// The route grammar escapes the next character, matching it
@@ -1504,6 +1475,7 @@ func buildOpenAPIPathVariants(fiberPath string, params []string) []pathVariant {
 					current.path += fiberPath[i+1 : i+2]
 				}
 				i += 2
+				continue
 
 			default:
 				// Append the whole literal run rather than one byte at a time.
@@ -1516,7 +1488,25 @@ func buildOpenAPIPathVariants(fiberPath string, params []string) []pathVariant {
 					i++
 				}
 				current.path += encodeLiteralBraces(fiberPath[runStart:i])
+				continue
 			}
+
+			// Each walk owns its state, so a parameter is appended in place; only
+			// an optional one forks, and the exclude branch is copied off before
+			// the include branch is written.
+			if isOptional {
+				exclude := current.clone()
+				exclude.paramIdx++
+				current.addParam(resolved, tokenName, rawConstraints)
+				walk(i, current)
+				// Each optional parameter doubles the walk, so forking stops
+				// at the cap; the fully-populated variant is always emitted.
+				if len(variants) < maxPathVariants {
+					walk(i, exclude)
+				}
+				return
+			}
+			current.addParam(resolved, tokenName, rawConstraints)
 		}
 
 		finalPath := current.path
@@ -1525,7 +1515,7 @@ func buildOpenAPIPathVariants(fiberPath string, params []string) []pathVariant {
 		}
 		variants = append(variants, pathVariant{
 			Path:             finalPath,
-			ParamNames:       append([]string(nil), current.params...),
+			ParamNames:       current.params,
 			PathParamAliases: current.aliases,
 			ParamConstraints: current.constraints,
 		})
@@ -1588,9 +1578,6 @@ func resolveOpenAPIPathParamName(paramIdx int, extracted string, params []string
 	if paramIdx < len(params) && params[paramIdx] != "" {
 		raw = params[paramIdx]
 	}
-	if raw == "" {
-		raw = extracted
-	}
 	return resolvedParamName{
 		raw:     raw,
 		openAPI: sanitizeOpenAPIParamName(raw, paramIdx+1),
@@ -1616,9 +1603,6 @@ func sanitizeOpenAPIWildcardParamName(name string, idx int) string {
 	trimmed = strings.TrimLeft(trimmed, "_.-")
 	if trimmed == "" {
 		trimmed = wildcardParamName
-	}
-	if trimmed[0] >= '0' && trimmed[0] <= '9' {
-		trimmed = wildcardParamName + trimmed
 	}
 	if !strings.HasPrefix(trimmed, wildcardParamName) {
 		trimmed = wildcardParamName + trimmed
