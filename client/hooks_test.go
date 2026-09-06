@@ -1023,6 +1023,43 @@ func Test_ParseCookieIgnoringBadAttrs(t *testing.T) {
 	}
 }
 
+func Test_ParseCookieIgnoringBadAttrs_ManyAttributes(t *testing.T) {
+	t.Parallel()
+
+	value := make([]byte, 0, 16*1024)
+	value = append(value, "a=1; Expires=bogus"...)
+	for range 4_000 {
+		value = append(value, "; x"...)
+	}
+	value = append(value, "; Secure"...)
+
+	cookie := fasthttp.AcquireCookie()
+	t.Cleanup(func() { fasthttp.ReleaseCookie(cookie) })
+
+	require.NoError(t, parseCookieIgnoringBadAttrs(cookie, value))
+	require.Equal(t, "1", string(cookie.Value()))
+	require.True(t, cookie.Secure())
+}
+
+func Benchmark_ParseCookieIgnoringBadAttrs(b *testing.B) {
+	value := make([]byte, 0, 16*1024)
+	value = append(value, "a=1; Expires=bogus"...)
+	for range 4_000 {
+		value = append(value, "; x"...)
+	}
+
+	b.ReportAllocs()
+	b.SetBytes(int64(len(value)))
+	b.ResetTimer()
+	for range b.N {
+		cookie := fasthttp.AcquireCookie()
+		if err := parseCookieIgnoringBadAttrs(cookie, value); err != nil {
+			b.Fatal(err)
+		}
+		fasthttp.ReleaseCookie(cookie)
+	}
+}
+
 func Test_Client_ResponseCookie_UnparsableAttribute(t *testing.T) {
 	t.Parallel()
 

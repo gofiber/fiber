@@ -587,25 +587,32 @@ func parserResponseCookie(c *Client, resp *Response, req *Request) error {
 // attributes fasthttp cannot parse. RFC 6265 §5.2 has an unparsable attribute
 // ignored, while fasthttp abandons the cookie at the first one — losing the
 // name, the value, and every attribute it had already accepted. Each attribute
-// is offered against the ones kept so far, so those on either side of a bad one
-// survive. Only a name/value pair that will not parse fails the cookie.
+// is validated independently before the retained attributes are parsed once,
+// keeping the fallback's work linear in the header length. Only a name/value
+// pair that will not parse fails the cookie.
 func parseCookieIgnoringBadAttrs(cookie *fasthttp.Cookie, value []byte) error {
 	pair, rest, _ := bytes.Cut(value, []byte{';'})
-	kept := append([]byte(nil), pair...)
+	kept := make([]byte, len(pair), len(value))
+	copy(kept, pair)
 
-	// ParseBytes resets the cookie, so a rejected attempt leaves nothing behind.
 	trial := fasthttp.AcquireCookie()
 	defer fasthttp.ReleaseCookie(trial)
 	if err := trial.ParseBytes(kept); err != nil {
 		return err
 	}
 
+	// A fixed valid pair lets fasthttp validate each attribute without repeatedly
+	// copying and parsing the growing cookie. ParseBytes resets trial each time.
+	const probePair = "_=_;"
+	probe := make([]byte, len(probePair), len(probePair)+len(rest))
+	copy(probe, probePair)
 	for len(rest) > 0 {
 		var attr []byte
 		attr, rest, _ = bytes.Cut(rest, []byte{';'})
-		candidate := append(append(append([]byte(nil), kept...), ';'), attr...)
-		if err := trial.ParseBytes(candidate); err == nil {
-			kept = candidate
+		probe = append(probe[:len(probePair)], attr...)
+		if err := trial.ParseBytes(probe); err == nil {
+			kept = append(kept, ';')
+			kept = append(kept, attr...)
 		}
 	}
 
