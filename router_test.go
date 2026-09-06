@@ -4715,6 +4715,26 @@ func Test_App_Add_MultipleMethods_Name(t *testing.T) {
 	require.True(t, named[MethodPost], "POST /x must carry the name")
 }
 
+func Test_App_Add_MultipleMethods_NameMergedRoutes(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	h := func(c Ctx) error { return c.SendString("ok") }
+
+	app.Get("/x", h).Name("first")
+	app.Post("/x", h).Name("first")
+	app.Add([]string{MethodGet, MethodPost}, "/x", h).Name("second")
+
+	names := map[string]string{}
+	for _, route := range app.GetRoutes() {
+		if route.Path == "/x" {
+			names[route.Method] = route.Name
+		}
+	}
+	require.Equal(t, "second", names[MethodGet])
+	require.Equal(t, "second", names[MethodPost])
+}
+
 func Test_App_Name_OnlyLatestRegistration(t *testing.T) {
 	t.Parallel()
 

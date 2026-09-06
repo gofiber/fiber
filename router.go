@@ -1128,6 +1128,9 @@ func (app *App) addRoute(method string, route *Route) {
 	if l > 0 && app.stack[m][l-1].Path == route.Path && route.use == app.stack[m][l-1].use && !route.mount && !app.stack[m][l-1].mount {
 		preRoute := app.stack[m][l-1]
 		preRoute.Handlers = append(preRoute.Handlers, route.Handlers...)
+		// The merged route now represents this registration. Preserve its shared
+		// id so Name can find every method registered by the same Add call.
+		preRoute.id = route.id
 	} else {
 		route.Method = method
 		// Add route to the stack
