@@ -4821,6 +4821,33 @@ func Test_App_Name_OnlyLatestRegistration(t *testing.T) {
 	require.Equal(t, []string{"GET:first", "GET:second", "POST:second"}, names)
 }
 
+// Test_App_Name_OnlyLatestRegistration_ReverseMethodOrder is the test above
+// with the methods of the last Add swapped: which method it finishes on is not
+// allowed to decide whether the older GET route is renamed too.
+func Test_App_Name_OnlyLatestRegistration_ReverseMethodOrder(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	h := func(c Ctx) error { return c.SendString("ok") }
+
+	app.Get("/x", h).Name("first")
+	app.Get("/y", h)
+	app.Add([]string{MethodPost, MethodGet}, "/x", h).Name("second")
+
+	var names []string
+	for _, route := range app.GetRoutes() {
+		if route.Path == "/x" {
+			names = append(names, route.Method+":"+route.Name)
+		}
+	}
+	slices.Sort(names)
+
+	require.Equal(t, []string{"GET:first", "GET:second", "POST:second"}, names)
+	// The older route keeps its own name, so looking either name up lands on
+	// the registration that carries it.
+	require.Equal(t, "/x", app.GetRoute("first").Path)
+}
+
 func Test_App_Use_MultiplePrefixes_MountsEachPrefix(t *testing.T) {
 	t.Parallel()
 
