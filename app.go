@@ -1004,8 +1004,10 @@ func (app *App) Name(name string) Router {
 		for _, route := range routes {
 			// The shared registration id covers the other methods of a multi-method
 			// Add; matching on the method alone would rename an older route that
-			// merely shares the path.
-			isMethodValid := route.id == app.latestRoute.id ||
+			// merely shares the path. It is latestID rather than id because a
+			// method whose route the registration merged into keeps the id of
+			// the registration that created it.
+			isMethodValid := route.latestID == app.latestRoute.latestID ||
 				route.Method == app.latestRoute.Method || app.latestRoute.use ||
 				(app.latestRoute.Method == MethodGet && route.Method == MethodHead)
 

@@ -77,7 +77,16 @@ type Route struct { // betteralign:ignore - see below
 
 	routeParser routeParser // Parameter parser
 
+	// id identifies the registration this route was created by and is shared
+	// by its per-method copies, so one of them can be found again in another
+	// method's tree (see routeIndexInTree). It never changes once assigned.
 	id uint64
+	// latestID is the id of the most recent registration whose handlers this
+	// route carries: its own, until a later Add merges into it. Name matches on
+	// it to reach every method of that registration, which id cannot do — a
+	// merge only appends handlers, leaving each method's route with the id of
+	// the registration that first created it.
+	latestID uint64
 
 	Handlers []Handler `json:"-"` // Ctx handlers
 
@@ -880,7 +889,8 @@ func (*App) copyRoute(route *Route) *Route {
 	return &Route{
 		// Shared with the registration this route came from, so a copy can
 		// still be found in another method's tree (see routeIndexInTree).
-		id: route.id,
+		id:       route.id,
+		latestID: route.latestID,
 
 		// Leading-byte filter
 		prefix:     route.prefix,
@@ -1082,6 +1092,7 @@ func (app *App) register(methods []string, pathRaw string, group *Group, handler
 			root:          isRoot,
 			caseSensitive: app.config.CaseSensitive,
 			id:            routeID,
+			latestID:      routeID,
 
 			path:        pathClean,
 			routeParser: parsedPretty,
@@ -1128,9 +1139,16 @@ func (app *App) addRoute(method string, route *Route) {
 	if l > 0 && app.stack[m][l-1].Path == route.Path && route.use == app.stack[m][l-1].use && !route.mount && !app.stack[m][l-1].mount {
 		preRoute := app.stack[m][l-1]
 		preRoute.Handlers = append(preRoute.Handlers, route.Handlers...)
-		// The merged route now represents this registration. Preserve its shared
-		// id so Name can find every method registered by the same Add call.
-		preRoute.id = route.id
+		// The merged route now carries this registration's handlers, so Name has
+		// to reach it — and the routes the same Add merged into under the other
+		// methods — through the id they now share. id itself stays put: the
+		// per-method copies of the registration that created this route still
+		// hold it, and routeIndexInTree pairs them by it when a handler switches
+		// method mid-request.
+		preRoute.latestID = route.id
+		// Name prefixes with the group of the route it renames, which for this
+		// name is the group the merging registration was made through.
+		preRoute.group = route.group
 		route = preRoute
 	} else {
 		route.Method = method
