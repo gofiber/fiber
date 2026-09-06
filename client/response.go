@@ -28,6 +28,7 @@ type Response struct {
 	// for an origin it does not control. Byte slices: a URI would cost ~296 bytes.
 	respondedHost []byte
 	respondedPath []byte
+	requestOwned  bool
 }
 
 // setClient sets the client instance in the response. The client object is used by core functionalities.
@@ -35,9 +36,12 @@ func (r *Response) setClient(c *Client) {
 	r.client = c
 }
 
-// setRequest sets the request object in the response. The request is released when Response.Close is called.
+// setRequest sets the request object in the response and snapshots its
+// ownership. Request objects are pooled, so their fields may belong to a new
+// logical request by the time Response.Close is called.
 func (r *Response) setRequest(req *Request) {
 	r.request = req
+	r.requestOwned = req.clientOwned
 }
 
 // setRespondedURI records where the response was served from, copying into the
@@ -235,6 +239,7 @@ func (r *Response) Save(v any) error {
 func (r *Response) Reset() {
 	r.client = nil
 	r.request = nil
+	r.requestOwned = false
 	r.respondedHost = resetOriginBuf(r.respondedHost)
 	r.respondedPath = resetOriginBuf(r.respondedPath)
 
@@ -254,9 +259,10 @@ func (r *Response) Close() {
 	if r.request != nil {
 		tmp := r.request
 		r.request = nil
-		if tmp.clientOwned {
+		if r.requestOwned {
 			ReleaseRequest(tmp)
 		}
+		r.requestOwned = false
 	}
 	ReleaseResponse(r)
 }
