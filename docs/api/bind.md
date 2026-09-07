@@ -886,8 +886,55 @@ app.Post("/custom", func(c fiber.Ctx) error {
 })
 ```
 
-Internally, custom binders are also used in the [Body](#body) method.
-The `MIMETypes` method is used to check if the custom binder should be used for the given content type.
+### MIMETypes and Body
+
+[`Body`](#body) consults the registered custom binders before its own content-type
+switch, so `MIMETypes` decides how a binder can be reached:
+
+| `MIMETypes()` returns              | `Bind().Custom(name, dest)` | `Bind().Body(dest)`               |
+| ---------------------------------- | --------------------------- | --------------------------------- |
+| a content type no built-in handles | yes                         | yes, for that content type        |
+| a content type a built-in handles  | yes                         | yes, the built-in no longer runs  |
+| `nil`                              | yes                         | no                                |
+
+Returning `nil` makes a binder opt-in: it is reachable only by name, and the
+built-in decoders keep handling `Body`.
+
+### Overriding a built-in format
+
+Claiming a content type that already has a decoder takes precedence over the
+built-in one for every `Bind().Body()` call in the application, not only on the
+route you had in mind. `Body` uses the first registered binder whose `MIMETypes()`
+contains the request's content type, so a second binder claiming
+`fiber.MIMEApplicationJSON` never runs.
+
+To decode strictly on selected routes instead, return `nil` and call the binder
+by name:
+
+```go title="Example"
+type strictJSON struct{}
+
+func (strictJSON) Name() string        { return "strict" }
+func (strictJSON) MIMETypes() []string { return nil }
+
+func (strictJSON) Parse(c fiber.Ctx, out any) error {
+    d := json.NewDecoder(bytes.NewReader(c.Body()))
+    d.DisallowUnknownFields()
+    return d.Decode(out)
+}
+
+app.RegisterCustomBinder(strictJSON{})
+
+// curl -X POST http://localhost:3000/strict -H "Content-Type: application/json" -d '{"name":"John","admin":true}'
+app.Post("/strict", func(c fiber.Ctx) error {
+    var user User
+    // Rejects the unknown "admin" field; c.Bind().JSON(&user) still accepts it
+    if err := c.Bind().Custom("strict", &user); err != nil {
+        return err
+    }
+    return c.JSON(user)
+})
+```
 
 ## Options
 

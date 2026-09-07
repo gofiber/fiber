@@ -5199,6 +5199,86 @@ func Test_App_Add_MultipleMethods_Name(t *testing.T) {
 	require.True(t, named[MethodPost], "POST /x must carry the name")
 }
 
+func Test_App_Add_MultipleMethods_NameMergedRoutes(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	h := func(c Ctx) error { return c.SendString("ok") }
+
+	app.Get("/x", h).Name("first")
+	app.Post("/x", h).Name("first")
+	app.Add([]string{MethodGet, MethodPost}, "/x", h).Name("second")
+
+	names := map[string]string{}
+	for _, route := range app.GetRoutes() {
+		if route.Path == "/x" {
+			names[route.Method] = route.Name
+		}
+	}
+	require.Equal(t, "second", names[MethodGet])
+	require.Equal(t, "second", names[MethodPost])
+}
+
+// Test_App_Add_MergedRoute_KeepsRegistrationID covers what a merge must not
+// cost the route it merges into: its id pairs it with the copies the same
+// registration filed under the other methods, which is how routeIndexInTree
+// resumes the scan when a handler switches method mid-request.
+func Test_App_Add_MergedRoute_KeepsRegistrationID(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	// Sits ahead of /x in the GET bucket only, so the index the GET match
+	// leaves behind is past the one POST /x holds in its own bucket: carrying
+	// it over unchanged would step over the wildcard below.
+	app.Get("/a", func(c Ctx) error { return c.SendString("a") })
+	app.Add([]string{MethodGet, MethodPost}, "/x", func(c Ctx) error { return c.Next() })
+	app.Post("/*", func(c Ctx) error { return c.SendString("wildcard") })
+	// Merges into the GET route of the registration above, whose POST copy is
+	// the one the switch below has to find.
+	app.Get("/x", func(c Ctx) error {
+		c.Method(MethodPost)
+		return c.Next()
+	})
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/x", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, StatusOK, resp.StatusCode)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.NoError(t, resp.Body.Close())
+	require.Equal(t, "wildcard", string(body))
+}
+
+// Test_App_Name_MergedRouteUsesLatestGroup checks the name a merged route ends
+// up with: two groups share a path, so the second registration merges into the
+// first group's route, and the name it is given belongs to the group it was
+// registered through.
+func Test_App_Name_MergedRouteUsesLatestGroup(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	h := func(c Ctx) error { return c.SendString("ok") }
+
+	one := app.Group("/api")
+	one.Name("one.")
+	two := app.Group("/api")
+	two.Name("two.")
+
+	one.Get("/x", h).Name("first")
+	two.Add([]string{MethodGet, MethodPost}, "/x", h).Name("second")
+
+	names := map[string]string{}
+	for _, route := range app.GetRoutes() {
+		if route.Path == "/api/x" {
+			names[route.Method] = route.Name
+		}
+	}
+	require.Equal(t, "two.second", names[MethodGet])
+	require.Equal(t, "two.second", names[MethodPost])
+	require.Equal(t, "/api/x", app.GetRoute("two.second").Path)
+	require.Empty(t, app.GetRoute("one.second").Path)
+}
+
 func Test_App_Name_OnlyLatestRegistration(t *testing.T) {
 	t.Parallel()
 
@@ -5223,6 +5303,33 @@ func Test_App_Name_OnlyLatestRegistration(t *testing.T) {
 	// The earlier registrations keep their own name; only the routes the latest
 	// Add created are renamed.
 	require.Equal(t, []string{"GET:first", "GET:second", "POST:second"}, names)
+}
+
+// Test_App_Name_OnlyLatestRegistration_ReverseMethodOrder is the test above
+// with the methods of the last Add swapped: which method it finishes on is not
+// allowed to decide whether the older GET route is renamed too.
+func Test_App_Name_OnlyLatestRegistration_ReverseMethodOrder(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	h := func(c Ctx) error { return c.SendString("ok") }
+
+	app.Get("/x", h).Name("first")
+	app.Get("/y", h)
+	app.Add([]string{MethodPost, MethodGet}, "/x", h).Name("second")
+
+	var names []string
+	for _, route := range app.GetRoutes() {
+		if route.Path == "/x" {
+			names = append(names, route.Method+":"+route.Name)
+		}
+	}
+	slices.Sort(names)
+
+	require.Equal(t, []string{"GET:first", "GET:second", "POST:second"}, names)
+	// The older route keeps its own name, so looking either name up lands on
+	// the registration that carries it.
+	require.Equal(t, "/x", app.GetRoute("first").Path)
 }
 
 func Test_App_Use_MultiplePrefixes_MountsEachPrefix(t *testing.T) {

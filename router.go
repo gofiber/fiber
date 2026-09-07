@@ -103,6 +103,9 @@ type Route struct { // betteralign:ignore - see below
 
 	routeParser routeParser // Parameter parser
 
+	// id identifies the registration this route was created by and is shared
+	// by its per-method copies, so one of them can be found again in another
+	// method's tree (see routeIndexInTree). It never changes once assigned.
 	id uint64
 
 	Handlers []Handler `json:"-"` // Ctx handlers
@@ -1577,6 +1580,9 @@ func (app *App) addRoute(method string, route *Route) {
 		preRoute.Handlers = append(preRoute.Handlers, route.Handlers...)
 		// The entry keeps its own id and is indexed under this registration
 		// as well, so both scopes' helpers reach it and nothing else.
+		// Name prefixes with the group of the route it renames, which for this
+		// name is the group the merging registration was made through.
+		preRoute.group = route.group
 		liveRoute = preRoute
 	} else {
 		route.Method = method
