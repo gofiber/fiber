@@ -201,6 +201,50 @@ func appendLowerASCII(dst, src []byte) []byte {
 	return dst
 }
 
+// appendCopyLowerASCII writes src into dst and its ASCII lower-case form into
+// low, reading src once and returning both. It backs the default configuration
+// of configDependentPaths, where the detection path is exactly the case fold of
+// the path: doing it as a copy followed by appendLowerASCII reads every byte
+// twice and pays two capacity checks and two loop set-ups, which for the path
+// lengths routers see is most of the cost. Fusing them measured 19-46% faster
+// across 5- to 70-byte paths.
+//
+// Both destinations are resliced from their own backing arrays, so neither
+// aliases src.
+func appendCopyLowerASCII(dstBuf, lowerBuf []byte, src string) (dst, lower []byte) { //nolint:nonamedreturns // gocritic unnamedResult requires naming the two same-typed slices
+	n := len(src)
+	// Amortized growth like append: every byte of both slices is overwritten
+	// below, so the grown slices' contents don't matter.
+	dst = slices.Grow(dstBuf[:0], n)[:n]
+	lower = slices.Grow(lowerBuf[:0], n)[:n]
+	i := 0
+	for ; i+swar.WordLen <= n; i += swar.WordLen {
+		w := swar.Load8(src, i)
+		swar.Store8(dst, i, w)
+		swar.Store8(lower, i, swar.ToLowerWord(w))
+	}
+	if i == n {
+		return dst, lower
+	}
+	if n >= swar.WordLen {
+		// Finish with one overlapping word; the overlapped bytes are
+		// rewritten with the same values.
+		w := swar.Load8(src, n-swar.WordLen)
+		swar.Store8(dst, n-swar.WordLen, w)
+		swar.Store8(lower, n-swar.WordLen, swar.ToLowerWord(w))
+		return dst, lower
+	}
+	for ; i < n; i++ {
+		c := src[i]
+		dst[i] = c
+		if c-'A' <= 'Z'-'A' {
+			c |= 0x20
+		}
+		lower[i] = c
+	}
+	return dst, lower
+}
+
 // defaultString returns the value or a default value if it is set
 func defaultString(value string, defaultValue []string) string {
 	if value == "" && len(defaultValue) > 0 {
