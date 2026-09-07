@@ -4,7 +4,7 @@ go 1.26.0
 
 require (
 	github.com/gofiber/schema v1.8.5
-	github.com/gofiber/utils/v2 v2.5.0
+	github.com/gofiber/utils/v2 v2.5.1
 	github.com/google/uuid v1.6.0
 	github.com/mattn/go-colorable v0.1.15
 	github.com/mattn/go-isatty v0.0.24
