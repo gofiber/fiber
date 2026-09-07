@@ -2582,5 +2582,84 @@ func Test_LatencyColumns_MatchFmt(t *testing.T) {
 		s := d.String()
 		want = strings.Repeat(" ", max(0, 13-len(s))) + s
 		require.Equal(t, want, padBuf.String(), "appendDurationPadded(%d)", int64(d))
+
+		// The colored default format's column counts runes like "%13v" does.
+		padBuf.Reset()
+		appendDurationColumns(padBuf, d, 13)
+		require.Equal(t, fmt.Sprintf("%13v", d), padBuf.String(), "appendDurationColumns(%d)", int64(d))
+	}
+}
+
+// Test_Logger_DefaultFormat_WithColor_MatchesFmt pins the colored default
+// line, byte for byte, to the Fprintf call it was written with until that call
+// was replaced by in-place writes. The old format string is kept here as the
+// oracle, so every detail of fmt's output — rune-counted padding for the
+// latency and path columns, the colors wrapping " NNN " and " GET     " with
+// their spaces inside, the error padding parsed from the format — stays what
+// it was. The cases cover the two places bytes and columns differ: a
+// sub-millisecond latency ("µs") and a non-ASCII path.
+func Test_Logger_DefaultFormat_WithColor_MatchesFmt(t *testing.T) {
+	t.Parallel()
+
+	fixedStart := time.Unix(0, 0)
+	testCases := []struct {
+		err     error
+		name    string
+		target  string
+		latency time.Duration
+		status  int
+	}{
+		{name: "ascii path, ms latency", target: "/api/v1/users", latency: 1500 * time.Microsecond, status: fiber.StatusOK},
+		{name: "micro latency is one column wide", target: "/x", latency: 145 * time.Microsecond, status: fiber.StatusNotFound},
+		{name: "non-ascii path pads by runes", target: "/caf%C3%A9/%C3%A9t%C3%A9", latency: 3 * time.Millisecond, status: fiber.StatusOK},
+		{name: "chain error", target: "/boom", latency: 2 * time.Second, err: errors.New("kaboom")},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			buf := bytebufferpool.Get()
+			defer bytebufferpool.Put(buf)
+
+			var want string
+			app := fiber.New(fiber.Config{UnescapePath: true})
+			app.Use(New(Config{
+				Stream:      buf,
+				ForceColors: true,
+				LoggerFunc: func(c fiber.Ctx, data *Data, cfg *Config) error {
+					data.Start = fixedStart
+					data.Stop = fixedStart.Add(tc.latency)
+
+					colors := c.App().Config().ColorScheme
+					formatErr := ""
+					if data.ChainErr != nil {
+						formatErr = colors.Red + " | " + sanitizeLogValue(data.ChainErr.Error()) + colors.Reset
+					}
+					want = fmt.Sprintf(
+						"%s |%s %3d %s| %13v | %15s |%s %-7s %s| %-"+data.ErrPaddingStr+"s %s\n",
+						data.Timestamp,
+						statusColor(c.Res().StatusCode(), &colors), c.Res().StatusCode(), colors.Reset,
+						data.Stop.Sub(data.Start),
+						sanitizeLogValue(c.IP()),
+						methodColor(c.Method(), &colors), c.Method(), colors.Reset,
+						sanitizeLogValue(c.Path()),
+						formatErr,
+					)
+					return defaultLoggerInstance(c, data, cfg)
+				},
+			}))
+			app.Get("/*", func(c fiber.Ctx) error {
+				if tc.err != nil {
+					return tc.err
+				}
+				return c.SendStatus(tc.status)
+			})
+
+			_, err := app.Test(httptest.NewRequest(fiber.MethodGet, tc.target, http.NoBody))
+			require.NoError(t, err)
+			require.NotEmpty(t, want, "the logger must have run")
+			require.Equal(t, want, buf.String())
+		})
 	}
 }

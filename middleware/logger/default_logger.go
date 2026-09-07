@@ -51,17 +51,47 @@ func defaultLoggerInstance(c fiber.Ctx, data *Data, cfg *Config) error {
 			if data.ChainErr != nil {
 				formatErr = colors.Red + " | " + sanitizeLogValue(data.ChainErr.Error()) + colors.Reset
 			}
-			fmt.Fprintf(
-				buf,
-				"%s |%s %3d %s| %13v | %15s |%s %-7s %s| %-"+data.ErrPaddingStr+"s %s\n",
-				data.Timestamp,
-				statusColor(c.Res().StatusCode(), &colors), c.Res().StatusCode(), colors.Reset,
-				data.Stop.Sub(data.Start),
-				sanitizeLogValue(c.IP()),
-				methodColor(c.Method(), &colors), c.Method(), colors.Reset,
-				sanitizeLogValue(c.Path()),
-				formatErr,
-			)
+
+			// The same line the uncolored branch below writes, with the
+			// status and method wrapped in their colors. It was one Fprintf
+			// with the format
+			//
+			//	"%s |%s %3d %s| %13v | %15s |%s %-7s %s| %-<pad>s %s\n"
+			//
+			// which reflects over eleven arguments and boxes each: eleven
+			// allocations and ~2.5x the time of the uncolored branch, on the
+			// path every terminal user sees. Written in place instead. Two
+			// details of fmt's output are kept deliberately: it pads by
+			// runes, so the latency and path columns here count runes where
+			// the uncolored branch has always counted bytes, and the
+			// concatenated format string's error padding is parsed the same
+			// way the uncolored branch parses it.
+			status := c.Res().StatusCode()
+			method := c.Method()
+			errPadding, _ := strconv.Atoi(data.ErrPaddingStr) //nolint:errcheck // It is fine to ignore the error
+
+			buf.WriteString(data.Timestamp)
+			buf.WriteString(" |")
+			buf.WriteString(statusColor(status, &colors))
+			buf.WriteByte(' ')
+			appendIntPadded(buf, status, 3)
+			buf.WriteByte(' ')
+			buf.WriteString(colors.Reset)
+			buf.WriteString("| ")
+			appendDurationColumns(buf, data.Stop.Sub(data.Start), 13)
+			buf.WriteString(" | ")
+			writeColumnRight(buf, sanitizeLogValue(c.IP()), 15)
+			buf.WriteString(" |")
+			buf.WriteString(methodColor(method, &colors))
+			buf.WriteByte(' ')
+			writeColumnLeft(buf, method, 7)
+			buf.WriteByte(' ')
+			buf.WriteString(colors.Reset)
+			buf.WriteString("| ")
+			writeColumnLeft(buf, sanitizeLogValue(c.Path()), errPadding)
+			buf.WriteByte(' ')
+			buf.WriteString(formatErr)
+			buf.WriteByte('\n')
 		} else {
 			if data.ChainErr != nil {
 				formatErr = " | " + sanitizeLogValue(data.ChainErr.Error())
@@ -244,6 +274,38 @@ func appendDurationPadded(buf *bytebufferpool.ByteBuffer, d time.Duration, width
 		buf.WriteByte(' ')
 	}
 	buf.Write(s)
+}
+
+// appendDurationColumns is appendDurationPadded with the padding counted in
+// columns rather than bytes, the width "%13v" produced for the colored default
+// format: a sub-millisecond latency renders "µs", whose 'µ' is two bytes but
+// one column.
+func appendDurationColumns(buf *bytebufferpool.ByteBuffer, d time.Duration, width int) {
+	var scratch [maxDurationLen]byte
+	s := utils.AppendDuration(scratch[:0], d)
+	for i := utf8.RuneCount(s); i < width; i++ {
+		buf.WriteByte(' ')
+	}
+	buf.Write(s)
+}
+
+// writeColumnRight appends s to buf right-aligned in width columns, the shape
+// fmt's "%15s" produced for the colored default format. Columns are runes, as
+// fmt counted them, so a multi-byte rune takes the one column it displays as.
+func writeColumnRight(buf *bytebufferpool.ByteBuffer, s string, width int) {
+	for pad := width - utf8.RuneCountInString(s); pad > 0; pad-- {
+		buf.WriteByte(' ')
+	}
+	buf.WriteString(s)
+}
+
+// writeColumnLeft is writeColumnRight with the padding after s, the shape
+// fmt's "%-7s" produced.
+func writeColumnLeft(buf *bytebufferpool.ByteBuffer, s string, width int) {
+	buf.WriteString(s)
+	for pad := width - utf8.RuneCountInString(s); pad > 0; pad-- {
+		buf.WriteByte(' ')
+	}
 }
 
 // appendDurationTag is appendDurationPadded for the Buffer interface the
