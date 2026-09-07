@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"math"
+	"math/rand/v2"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -2533,4 +2535,52 @@ func Test_Logger_ResBody_DoesNotDrainStream(t *testing.T) {
 	buffered.Handler()(bctx)
 
 	require.Equal(t, "[hello]", logged.String())
+}
+
+// Test_LatencyColumns_MatchFmt pins the two latency renderers against the
+// fmt-based forms they replaced, over random durations spread across every
+// magnitude Duration.String distinguishes. appendDurationTag, behind
+// ${latency}, must match "%13v": fmt pads by runes, so a sub-millisecond
+// value's two-byte 'µ' takes one column. appendDurationPadded, behind the
+// default format, must match the byte-counted fixedWidth(d.String(), 13,
+// true) it replaced, so that column is unchanged byte for byte.
+func Test_LatencyColumns_MatchFmt(t *testing.T) {
+	t.Parallel()
+
+	r := rand.New(rand.NewPCG(0x1a7e, 0xc0de))
+	durations := []time.Duration{
+		0, 1, -1, 999, 1000, 1001, 999999, 1000000, 1000001,
+		time.Second - 1, time.Second, time.Second + 1, time.Minute, time.Hour, 61 * time.Minute,
+		145 * time.Microsecond, -145 * time.Microsecond, 1500 * time.Microsecond, 999 * time.Millisecond,
+		math.MaxInt64, math.MinInt64, math.MinInt64 + 1,
+	}
+	for range 20000 {
+		// A random bit width first, so nanoseconds and hours are equally likely.
+		bits := 1 + r.IntN(63)
+		d := time.Duration(r.Uint64() & (1<<uint(bits) - 1))
+		if r.IntN(8) == 0 {
+			d = -d
+		}
+		durations = append(durations, d)
+	}
+
+	tagBuf := bytebufferpool.Get()
+	defer bytebufferpool.Put(tagBuf)
+	padBuf := bytebufferpool.Get()
+	defer bytebufferpool.Put(padBuf)
+
+	for _, d := range durations {
+		tagBuf.Reset()
+		n, err := appendDurationTag(tagBuf, d, 13)
+		require.NoError(t, err)
+		want := fmt.Sprintf("%13v", d)
+		require.Equal(t, want, tagBuf.String(), "appendDurationTag(%d)", int64(d))
+		require.Equal(t, len(want), n, "appendDurationTag(%d) byte count", int64(d))
+
+		padBuf.Reset()
+		appendDurationPadded(padBuf, d, 13)
+		s := d.String()
+		want = strings.Repeat(" ", max(0, 13-len(s))) + s
+		require.Equal(t, want, padBuf.String(), "appendDurationPadded(%d)", int64(d))
+	}
 }
