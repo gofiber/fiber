@@ -92,7 +92,8 @@ func StoreInContext(c Ctx, key, value any) {
 // ID, a session, a CSRF token or an authenticated user.
 //
 // A custom Ctx fails the assertion and keeps the interface call, so an
-// overridden Locals is still the one that runs.
+// overridden Locals is still the one that runs. internal/ctxlocal.Set is the
+// same function for the packages that cannot reach this one.
 func setLocal(c Ctx, key, value any) any {
 	if dc, ok := c.(*DefaultCtx); ok {
 		return dc.Locals(key, value)

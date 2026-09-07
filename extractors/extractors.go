@@ -32,6 +32,7 @@ import (
 	"unsafe"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/ctxlocal"
 	"github.com/gofiber/fiber/v3/internal/headerlookup"
 	"github.com/gofiber/utils/v2"
 )
@@ -167,16 +168,16 @@ func chainWinDepth(c fiber.Ctx) int {
 }
 
 func enterChainWinCapture(c fiber.Ctx) {
-	c.Locals(chainWinDepthKey{}, chainWinDepth(c)+1)
+	ctxlocal.Set(c, chainWinDepthKey{}, chainWinDepth(c)+1)
 }
 
 func leaveChainWinCapture(c fiber.Ctx) {
 	depth := chainWinDepth(c)
 	if depth <= 1 {
-		c.Locals(chainWinDepthKey{}, nil)
+		ctxlocal.Set(c, chainWinDepthKey{}, nil)
 		return
 	}
-	c.Locals(chainWinDepthKey{}, depth-1)
+	ctxlocal.Set(c, chainWinDepthKey{}, depth-1)
 }
 
 func chainWinCaptureActive(c fiber.Ctx) bool {
@@ -201,17 +202,17 @@ func truncateChainWinStack(c fiber.Ctx, n int) {
 		return
 	}
 	if n <= 0 {
-		c.Locals(chainWinStackKey{}, nil)
+		ctxlocal.Set(c, chainWinStackKey{}, nil)
 		return
 	}
 	if len(prev) > n {
-		c.Locals(chainWinStackKey{}, prev[:n])
+		ctxlocal.Set(c, chainWinStackKey{}, prev[:n])
 	}
 }
 
 func pushChainWinningSource(c fiber.Ctx, src Source) {
 	stack := append(append([]Source(nil), chainWinStack(c)...), src)
-	c.Locals(chainWinStackKey{}, stack)
+	ctxlocal.Set(c, chainWinStackKey{}, stack)
 }
 
 func popChainWinningSource(c fiber.Ctx) (Source, bool) {
@@ -222,9 +223,9 @@ func popChainWinningSource(c fiber.Ctx) (Source, bool) {
 	src := prev[len(prev)-1]
 	prev = prev[:len(prev)-1]
 	if len(prev) == 0 {
-		c.Locals(chainWinStackKey{}, nil)
+		ctxlocal.Set(c, chainWinStackKey{}, nil)
 	} else {
-		c.Locals(chainWinStackKey{}, prev)
+		ctxlocal.Set(c, chainWinStackKey{}, prev)
 	}
 	return src, true
 }
@@ -237,8 +238,8 @@ func extractChainWithSource(e Extractor, c fiber.Ctx) (string, Source, error) {
 	if active, ok := c.Locals(guard).(bool); ok && active {
 		return "", e.Source, ErrChainCycle
 	}
-	c.Locals(guard, true)
-	defer c.Locals(guard, false)
+	ctxlocal.Set(c, guard, true)
+	defer ctxlocal.Set(c, guard, false)
 
 	var lastErr error
 	lastSource := e.Source
@@ -772,8 +773,8 @@ func Chain(extractors ...Extractor) Extractor {
 				return "", ErrChainCycle
 			}
 
-			c.Locals(guard, true)
-			defer c.Locals(guard, false)
+			ctxlocal.Set(c, guard, true)
+			defer ctxlocal.Set(c, guard, false)
 
 			var lastErr error // last error encountered (including ErrNotFound)
 
