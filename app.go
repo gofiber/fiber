@@ -1397,9 +1397,9 @@ func docResponseHeader(status int, name, description string, schema map[string]a
 	if len(schema) > 0 {
 		header["schema"] = schema
 	} else {
-		// A Header Object follows the Parameter Object, which carries a schema
-		// or a content map: fall back to the same default the parameter
-		// helpers inject rather than emitting an invalid header.
+		// A Header Object follows the Parameter Object and needs a schema or a
+		// content map, so an omitted schema becomes a string one rather than
+		// an invalid header. A supplied schema is stored as given.
 		header["schema"] = map[string]any{"type": openapiTypeString}
 	}
 
@@ -1436,14 +1436,19 @@ func docOperationExtension(fields map[string]any) func(route *Route) {
 // simpler RequestBody/Response helpers already do. Keying by the validated
 // value keeps a padded key from reaching the generated document.
 func sanitizeContentMediaTypes(content map[string]RouteMediaType) map[string]RouteMediaType {
-	if len(content) == 0 {
+	rekey := false
+	for mediaType := range content {
+		if validateMediaType(utils.TrimSpace(mediaType)) != mediaType {
+			rekey = true
+		}
+	}
+	if !rekey {
 		return content
 	}
 
 	sanitized := make(map[string]RouteMediaType, len(content))
 	for mediaType, entry := range content {
 		trimmed := utils.TrimSpace(mediaType)
-		validateMediaType(trimmed)
 		if _, ok := sanitized[trimmed]; ok {
 			panic("duplicate media type in content: " + trimmed)
 		}
@@ -1656,11 +1661,8 @@ func (app *App) nameRoutesLocked(regID uint64, name string) *Route {
 		return named
 	}
 	for _, get := range gets {
-		key := app.autoHeadKey(get)
-		for _, head := range app.stack[headIndex] {
-			if head.autoHead && app.autoHeadKey(head) == key {
-				head.Name = get.Name
-			}
+		if _, twin := app.autoHeadTwinLocked(headIndex, app.autoHeadKey(get)); twin != nil {
+			twin.Name = get.Name
 		}
 	}
 	return named

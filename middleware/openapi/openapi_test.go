@@ -622,21 +622,6 @@ func Test_OpenAPI_SwaggerUI_DefaultTemplate(t *testing.T) {
 	require.NotContains(t, bodyText, "persistAuthorization")
 }
 
-func Test_OpenAPI_SwaggerUI_PersistAuthorizationIsOptIn(t *testing.T) {
-	t.Parallel()
-
-	app := fiber.New()
-	app.Use(New(Config{SwaggerOptions: map[string]any{"persistAuthorization": true}}))
-
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/swagger", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
-
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Contains(t, string(body), "persistAuthorization")
-}
-
 func Test_OpenAPI_SwaggerUI_ConfigurableAssetsAndOptions(t *testing.T) {
 	t.Parallel()
 
@@ -649,8 +634,9 @@ func Test_OpenAPI_SwaggerUI_ConfigurableAssetsAndOptions(t *testing.T) {
 		SwaggerCSSURL:    "https://cdn.example.com/swagger-ui.css",
 		SwaggerBundleURL: "https://cdn.example.com/swagger-ui-bundle.js",
 		SwaggerOptions: map[string]any{
-			"docExpansion": "list",
-			"deepLinking":  true,
+			"docExpansion":         "list",
+			"deepLinking":          true,
+			"persistAuthorization": true,
 		},
 	}))
 
@@ -670,6 +656,7 @@ func Test_OpenAPI_SwaggerUI_ConfigurableAssetsAndOptions(t *testing.T) {
 	require.Contains(t, bodyText, `id="swagger-ui" data-swagger-options='{&#34;`)
 	require.Contains(t, bodyText, `&#34;docExpansion&#34;:&#34;list&#34;`)
 	require.Contains(t, bodyText, `&#34;deepLinking&#34;:true`)
+	require.Contains(t, bodyText, `&#34;persistAuthorization&#34;:true`)
 }
 
 func Test_OpenAPI_SwaggerUI_GroupPath(t *testing.T) {

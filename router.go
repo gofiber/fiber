@@ -1327,39 +1327,50 @@ func (app *App) RemoveRouteByName(name string, methods ...string) {
 // If no methods are specified, it will remove the route for all methods defined in the app.
 // You should call RebuildTree after using this to ensure consistency of the tree.
 // Note: The route.Path is original path, not the normalized path.
+// The matcher receives a copy of each route; writes to it are discarded.
 func (app *App) RemoveRouteFunc(matchFunc func(r *Route) bool, methods ...string) {
-	app.deleteRoute(methods, matchFunc)
+	app.deleteRouteSnapshot(methods, matchFunc)
 }
 
+// deleteRoute removes the routes matchFunc selects from the given methods, or
+// from every configured method when none is given. matchFunc runs under
+// app.mutex against the live entries, so it must be a plain field comparison;
+// a user-supplied matcher goes through deleteRouteSnapshot instead.
 func (app *App) deleteRoute(methods []string, matchFunc func(r *Route) bool) {
-	if len(methods) == 0 {
-		methods = app.config.RequestMethods
-	}
+	methods, indexes := app.removalScope(methods)
 
-	// Uppercase HTTP methods
-	indexes := make([]int, 0, len(methods))
-	for _, method := range methods {
-		// Get unique HTTP method identifier; invalid methods are skipped.
-		if m := app.methodInt(utilsstrings.ToUpper(method)); m != -1 {
-			indexes = append(indexes, m)
+	app.mutex.Lock()
+	defer app.mutex.Unlock()
+
+	matched := make(map[*Route]struct{})
+	for _, m := range indexes {
+		for _, route := range app.stack[m] {
+			if matchFunc(route) {
+				matched[route] = struct{}{}
+			}
 		}
 	}
+	app.removeMatchedLocked(methods, indexes, matched)
+}
 
-	// matchFunc runs unlocked so it may call locking app methods such as
-	// GetRoute, and so it sees a snapshot rather than a live entry a concurrent
-	// registration could still be writing to. The live pointers stay alongside
-	// it, and matches are removed by identity under the lock.
+// deleteRouteSnapshot is deleteRoute for a matcher that is user code: it runs
+// unlocked so it may call locking app methods such as GetRoute, and sees a
+// snapshot rather than a live entry a concurrent registration could still be
+// writing to. Matches are then removed by identity under the lock.
+func (app *App) deleteRouteSnapshot(methods []string, matchFunc func(r *Route) bool) {
+	methods, indexes := app.removalScope(methods)
+
 	app.mutex.Lock()
 	n := 0
 	for _, m := range indexes {
 		n += len(app.stack[m])
 	}
 	candidates := make([]*Route, 0, n)
-	snapshots := make([]Route, 0, n)
+	snapshots := make([]Route, n)
 	for _, m := range indexes {
 		for _, route := range app.stack[m] {
+			app.copyRouteInto(&snapshots[len(candidates)], route)
 			candidates = append(candidates, route)
-			snapshots = append(snapshots, app.copyRouteValue(route))
 		}
 	}
 	app.mutex.Unlock()
@@ -1376,7 +1387,36 @@ func (app *App) deleteRoute(methods []string, matchFunc func(r *Route) bool) {
 
 	app.mutex.Lock()
 	defer app.mutex.Unlock()
+	app.removeMatchedLocked(methods, indexes, matched)
+}
 
+// removalScope resolves the methods a removal covers, every configured one
+// when none is given, to those methods and their stack indexes, skipping
+// invalid methods.
+func (app *App) removalScope(methods []string) ([]string, []int) { //nolint:gocritic // unnamedResult: named returns conflict with nonamedreturns linter
+	if len(methods) == 0 {
+		methods = app.config.RequestMethods
+	}
+
+	indexes := make([]int, 0, len(methods))
+	for _, method := range methods {
+		if m := app.methodInt(utilsstrings.ToUpper(method)); m != -1 {
+			indexes = append(indexes, m)
+		}
+	}
+	return methods, indexes
+}
+
+// removeMatchedLocked drops the matched entries from the given method stacks.
+// The caller must hold app.mutex.
+func (app *App) removeMatchedLocked(methods []string, indexes []int, matched map[*Route]struct{}) {
+	if len(matched) == 0 {
+		return
+	}
+
+	// A middleware route sits in every method stack; when the removal spans
+	// them all its handlers are counted down once.
+	all := slices.Equal(methods, app.config.RequestMethods)
 	removedUseRoutes := make(map[autoHeadKey]struct{})
 
 	for _, m := range indexes {
@@ -1396,7 +1436,7 @@ func (app *App) deleteRoute(methods []string, matchFunc func(r *Route) bool) {
 			// Decrement global handler count. Middleware routes decrement once,
 			// keyed by domain as well as path.
 			useKey := app.autoHeadKey(route)
-			if _, ok := removedUseRoutes[useKey]; (route.use && slices.Equal(methods, app.config.RequestMethods) && !ok) || !route.use {
+			if _, ok := removedUseRoutes[useKey]; (route.use && all && !ok) || !route.use {
 				if route.use {
 					removedUseRoutes[useKey] = struct{}{}
 				}
@@ -1434,23 +1474,34 @@ func (app *App) pruneAutoHeadRouteLocked(route *Route) {
 		return
 	}
 
-	// Twins are created per autoHeadKey, so matching on the path alone would
-	// let one domain's registration drop another domain's twin.
-	key := app.autoHeadKey(route)
-	key.path = app.normalizePath(key.path)
-
-	headStack := app.stack[headIndex]
-	for i, headRoute := range slices.Backward(headStack) {
-		if headRoute.mount || headRoute.use || !headRoute.autoHead || app.autoHeadKey(headRoute) != key {
-			continue
-		}
-
-		app.stack[headIndex] = append(headStack[:i], headStack[i+1:]...)
-		app.hasRoutesRefreshed = true
-		app.bumpRoutesRevision()
-		atomic.AddUint32(&app.handlersCount, ^uint32(len(headRoute.Handlers)-1)) //nolint:gosec // G115 - handler count is always small
+	i, twin := app.autoHeadTwinLocked(headIndex, app.autoHeadKey(route))
+	if twin == nil {
 		return
 	}
+
+	app.stack[headIndex] = slices.Delete(app.stack[headIndex], i, i+1)
+	app.hasRoutesRefreshed = true
+	app.bumpRoutesRevision()
+	atomic.AddUint32(&app.handlersCount, ^uint32(len(twin.Handlers)-1)) //nolint:gosec // G115 - handler count is always small
+}
+
+// autoHeadTwinLocked finds the automatic HEAD route built for key and returns
+// it with its index in the HEAD stack, or -1 and nil when there is none. Twins
+// are created per key (see ensureAutoHeadRoutesLocked), so matching on the
+// path alone would let one domain's registration reach another domain's twin.
+// The string fields reject a route before the owner lookup, which is a map hit
+// per route where routes are host-scoped. The caller must hold app.mutex.
+func (app *App) autoHeadTwinLocked(headIndex int, key autoHeadKey) (int, *Route) {
+	for i, head := range app.stack[headIndex] {
+		if !head.autoHead || head.path != key.path || head.domain != key.domain {
+			continue
+		}
+		if app.mountFields.hostScopedRoutes && app.routeOwner(head) != key.owner {
+			continue
+		}
+		return i, head
+	}
+	return -1, nil
 }
 
 // routeIDs hands out the ids shared by the per-method copies of a registration.

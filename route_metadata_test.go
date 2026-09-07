@@ -1262,13 +1262,8 @@ func Test_ResponseHeader_DefaultsToStringSchema(t *testing.T) {
 		ResponseHeader(StatusOK, "X-Trace", "", map[string]any{"type": "integer"})
 
 	headers := findRoute(t, app, MethodGet, "/a").Responses["200"].Headers
-	rateLimit, ok := headers["X-Rate-Limit"].(map[string]any)
-	require.True(t, ok)
-	require.Equal(t, map[string]any{"type": "string"}, rateLimit["schema"])
-
-	trace, ok := headers["X-Trace"].(map[string]any)
-	require.True(t, ok)
-	require.Equal(t, map[string]any{"type": "integer"}, trace["schema"])
+	require.Equal(t, map[string]any{"description": "requests left", "schema": map[string]any{"type": "string"}}, headers["X-Rate-Limit"])
+	require.Equal(t, map[string]any{"schema": map[string]any{"type": "integer"}}, headers["X-Trace"])
 }
 
 func Test_RemoveRouteFunc_MatchesAgainstSnapshot(t *testing.T) {
@@ -1294,9 +1289,7 @@ func Test_AutoHeadPrune_IsDomainScoped(t *testing.T) {
 	app := New()
 	app.Domain("a.example").Get("/x", testHandlerOK)
 	app.Domain("b.example").Get("/x", testHandlerOK)
-
-	_, err := app.Test(httptest.NewRequest(MethodGet, "/x", http.NoBody))
-	require.NoError(t, err)
+	app.RebuildTree()
 
 	app.Domain("a.example").Head("/x", testHandlerOK)
 	app.RebuildTree()
@@ -1307,7 +1300,7 @@ func Test_AutoHeadPrune_IsDomainScoped(t *testing.T) {
 		if route.path != "/x" {
 			continue
 		}
-		if route.autoHead {
+		if route.IsAutoHead() {
 			twins[route.domain]++
 			continue
 		}
