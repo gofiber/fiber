@@ -1715,7 +1715,7 @@ func Test_CORS_setSimpleHeaders_NilConfig(t *testing.T) {
 	defer app.ReleaseCtx(c)
 
 	require.NotPanics(t, func() {
-		setSimpleHeaders(c, "https://example.com", nil)
+		setSimpleHeaders(c, "https://example.com", nil, nil)
 	})
 	require.Empty(t, string(c.Response().Header.Peek(fiber.HeaderAccessControlAllowOrigin)))
 }
@@ -1733,7 +1733,7 @@ func Test_CORS_setSimpleHeaders_WildcardWithCredentials(t *testing.T) {
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(c)
 
-	setSimpleHeaders(c, "*", &Config{AllowCredentials: true})
+	setSimpleHeaders(c, "*", &Config{AllowCredentials: true}, nil)
 
 	require.Equal(t, "*", string(c.Response().Header.Peek(fiber.HeaderAccessControlAllowOrigin)))
 	require.Empty(t, string(c.Response().Header.Peek(fiber.HeaderAccessControlAllowCredentials)))
@@ -1750,7 +1750,7 @@ func Test_CORS_setPreflightHeaders_NilConfig(t *testing.T) {
 	defer app.ReleaseCtx(c)
 
 	require.NotPanics(t, func() {
-		setPreflightHeaders(c, "https://example.com", "600", nil)
+		setPreflightHeaders(c, "https://example.com", "600", nil, nil)
 	})
 	require.Empty(t, string(c.Response().Header.Peek(fiber.HeaderAccessControlMaxAge)))
 }

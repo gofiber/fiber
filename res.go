@@ -194,6 +194,14 @@ func (r *DefaultRes) Append(field string, values ...string) {
 	r.Set(field, updated)
 }
 
+// varyAccept is the field list Format and AutoFormat add to Vary. It is
+// hoisted because a fresh "..." argument list is a slice the compiler has to
+// heap-allocate — Vary's result reaches the header store, so escape analysis
+// marks the elements as leaking even though fasthttp copies the bytes — while
+// passing an existing slice hands over its backing array. Vary never mutates
+// what it is given, so sharing it across requests is safe.
+var varyAccept = []string{HeaderAccept}
+
 func sanitizeFilename(filename string) string {
 	// unicode.IsControl matches C0, DEL and the C1 range. The first two are
 	// single bytes utils.IndexControl finds word-at-a-time, and C1 can only
@@ -537,7 +545,7 @@ func (r *DefaultRes) Format(handlers ...ResFmt) error {
 	// Handlers must see the custom context when the app uses one, as Next does.
 	handlerCtx := r.c.ctxForHandlers()
 
-	r.Vary(HeaderAccept)
+	r.Vary(varyAccept...)
 
 	// Absent means the combined Accept view (RFC 9110 Section 5.2) is empty:
 	// no field line, or only empty ones. The joined read matches the field name
@@ -599,7 +607,7 @@ func (r *DefaultRes) Format(handlers ...ResFmt) error {
 func (r *DefaultRes) AutoFormat(body any) error {
 	// The response is selected based on the Accept header, so let caches know
 	// (RFC 9110 Section 12.5.5).
-	r.Vary(HeaderAccept)
+	r.Vary(varyAccept...)
 
 	// Get accepted content type; text/plain when nothing matches.
 	accept := "txt"
