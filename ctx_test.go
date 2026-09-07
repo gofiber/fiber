@@ -9134,6 +9134,20 @@ func Test_Ctx_Render_Engine(t *testing.T) {
 	require.Equal(t, "<h1>Hello, World!</h1>", string(c.Response().Body()))
 }
 
+func Test_Ctx_Render_TypedNilEngine(t *testing.T) {
+	t.Parallel()
+
+	var engine *testTemplateEngine
+	app := New(Config{Views: engine})
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+
+	err := c.Render("./.github/testdata/index.tmpl", Map{
+		"Title": "Hello, World!",
+	})
+	require.NoError(t, err)
+	require.Equal(t, "<h1>Hello, World!</h1>", string(c.Response().Body()))
+}
+
 // go test -run Test_Ctx_Render_Engine_With_View_Layout
 func Test_Ctx_Render_Engine_With_View_Layout(t *testing.T) {
 	t.Parallel()
@@ -9728,6 +9742,41 @@ func Test_Ctx_Vary_Wildcard(t *testing.T) {
 	require.Equal(t, [][]byte{[]byte("Accept"), []byte("Origin")}, c.Response().Header.PeekAll(HeaderVary))
 	c.Vary("Accept-Encoding") // rewrite folds both lines into one
 	require.Equal(t, [][]byte{[]byte("Accept,Origin, Accept-Encoding")}, c.Response().Header.PeekAll(HeaderVary))
+}
+
+// Test_Ctx_Vary_CaseInsensitive verifies RFC 9110 §5.1: Vary members are field
+// names, so they are compared case-insensitively and the first spelling is kept.
+func Test_Ctx_Vary_CaseInsensitive(t *testing.T) {
+	t.Parallel()
+	app := New()
+
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	c.Vary("accept")
+	c.Vary("Accept")
+	require.Equal(t, "accept", string(c.Response().Header.Peek("Vary")))
+
+	c = app.AcquireCtx(&fasthttp.RequestCtx{})
+	c.Vary("Accept-Encoding")
+	c.Vary("accept-encoding")
+	require.Equal(t, "Accept-Encoding", string(c.Response().Header.Peek("Vary")))
+
+	c = app.AcquireCtx(&fasthttp.RequestCtx{})
+	c.Vary("accept", "Accept")
+	require.Equal(t, "accept", string(c.Response().Header.Peek("Vary")))
+
+	// AutoFormat adds Vary("Accept"); a lowercase listing must not be duplicated.
+	c = app.AcquireCtx(&fasthttp.RequestCtx{})
+	c.Request().Header.Set(HeaderAccept, MIMETextPlain)
+	c.Vary("accept")
+	require.NoError(t, c.AutoFormat("hello"))
+	require.Equal(t, "accept", string(c.Response().Header.Peek("Vary")))
+
+	// A case-insensitive match on a later field line is still a no-op.
+	c = app.AcquireCtx(&fasthttp.RequestCtx{})
+	c.Response().Header.Add(HeaderVary, "Accept")
+	c.Response().Header.Add(HeaderVary, "Origin")
+	c.Vary("origin")
+	require.Equal(t, [][]byte{[]byte("Accept"), []byte("Origin")}, c.Response().Header.PeekAll(HeaderVary))
 }
 
 // go test -v  -run=^$ -bench=Benchmark_Ctx_Vary -benchmem -count=4
@@ -11322,6 +11371,30 @@ func Test_Ctx_SendFile_UncomparableFS(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, tc.body, string(body))
 	}
+}
+
+func Test_Ctx_SendFile_FunctionFSDoesNotGrowHandlerCache(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	files := fstest.MapFS{"hello.txt": &fstest.MapFile{Data: []byte("hello")}}
+	open := funcFS(files.Open)
+	app.Get("/", func(c Ctx) error {
+		return c.SendFile("hello.txt", SendFile{FS: open})
+	})
+
+	for range 10 {
+		resp, err := app.Test(httptest.NewRequest(MethodGet, "/", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, StatusOK, resp.StatusCode)
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		require.Equal(t, "hello", string(body))
+	}
+
+	app.sendfilesMutex.RLock()
+	defer app.sendfilesMutex.RUnlock()
+	require.Empty(t, app.sendfiles)
 }
 
 func Test_Ctx_SendFile_KeepsAcceptEncoding(t *testing.T) {

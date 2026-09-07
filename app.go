@@ -185,6 +185,20 @@ func getViewsLock(views Views) *sync.RWMutex {
 	return globalViewsLocks.get(views)
 }
 
+func isNilViews(views any) bool {
+	if views == nil {
+		return true
+	}
+
+	value := reflect.ValueOf(views)
+	switch value.Kind() {
+	case reflect.Pointer, reflect.Map, reflect.Slice, reflect.Chan, reflect.Func, reflect.Interface, reflect.UnsafePointer:
+		return value.IsNil()
+	default:
+		return false
+	}
+}
+
 // Config is a struct holding the server settings.
 type Config struct { //nolint:govet // Aligning the struct fields is not necessary. betteralign:ignore
 	// Enables the "Server: value" HTTP header.
@@ -924,11 +938,7 @@ func (app *App) ReloadViews() error {
 
 	var reloaded bool
 	for _, targetApp := range apps {
-		if targetApp == nil || targetApp.config.Views == nil {
-			continue
-		}
-
-		if viewValue := reflect.ValueOf(targetApp.config.Views); viewValue.Kind() == reflect.Pointer && viewValue.IsNil() {
+		if targetApp == nil || isNilViews(targetApp.config.Views) {
 			continue
 		}
 
@@ -956,6 +966,27 @@ func (app *App) ReloadViews() error {
 	return nil
 }
 
+// Render writes a template through the configured view engine.
+func (app *App) Render(out io.Writer, name string, binding any, layouts ...string) error {
+	views := app.config.Views
+	if isNilViews(views) {
+		return ErrNoViewEngineConfigured
+	}
+	if len(layouts) == 0 && app.config.ViewsLayout != "" {
+		layouts = []string{app.config.ViewsLayout}
+	}
+
+	viewsLock := getViewsLock(views)
+	viewsLock.RLock()
+	defer viewsLock.RUnlock()
+
+	if err := views.Render(out, name, binding, layouts...); err != nil {
+		return fmt.Errorf("fiber: failed to render views: %w", err)
+	}
+
+	return nil
+}
+
 // SetTLSHandler Can be used to set ClientHelloInfo when using TLS with Listener.
 func (app *App) SetTLSHandler(tlsHandler *TLSHandler) {
 	// Attach the tlsHandler to the config
@@ -971,11 +1002,15 @@ func (app *App) Name(name string) Router {
 
 	for _, routes := range app.stack {
 		for _, route := range routes {
-			// The shared registration id covers the other methods of a multi-method
-			// Add; matching on the method alone would rename an older route that
-			// merely shares the path.
-			isMethodValid := route.id == app.latestRoute.id ||
-				route.Method == app.latestRoute.Method || app.latestRoute.use ||
+			// The shared registration id covers every method of a multi-method
+			// Add, and only those: matching on the method as well would rename
+			// an older route that merely shares the path, and would do it only
+			// when the registration happened to finish on that method. It is
+			// latestID rather than id because a method whose route the
+			// registration merged into keeps the id of the registration that
+			// created it.
+			isMethodValid := route.latestID == app.latestRoute.latestID ||
+				app.latestRoute.use ||
 				(app.latestRoute.Method == MethodGet && route.Method == MethodHead)
 
 			if route.Path == app.latestRoute.Path && isMethodValid {
@@ -1553,7 +1588,7 @@ func (app *App) init() *App {
 		app.initServices()
 
 		// Only load templates if a view engine is specified
-		if app.config.Views != nil {
+		if !isNilViews(app.config.Views) {
 			if err := app.config.Views.Load(); err != nil {
 				log.Warnf("failed to load views: %v", err)
 			}

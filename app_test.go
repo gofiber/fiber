@@ -2311,6 +2311,50 @@ func (v *countingView) Load() error {
 
 func (*countingView) Render(io.Writer, string, any, ...string) error { return nil }
 
+type writerView struct {
+	renderErr error
+}
+
+func (*writerView) Load() error { return nil }
+
+func (v *writerView) Render(out io.Writer, name string, binding any, layouts ...string) error {
+	if v.renderErr != nil {
+		return v.renderErr
+	}
+	bind, ok := binding.(Map)
+	if !ok {
+		return errors.New("unexpected binding type")
+	}
+	if _, err := fmt.Fprintf(out, "%s:%s:%s", name, bind["title"], strings.Join(layouts, ",")); err != nil {
+		return fmt.Errorf("write rendered view: %w", err)
+	}
+	return nil
+}
+
+type mapViews map[string]struct{}
+
+func (mapViews) Load() error { return nil }
+
+func (mapViews) Render(io.Writer, string, any, ...string) error { return nil }
+
+type sliceViews []struct{}
+
+func (sliceViews) Load() error { return nil }
+
+func (sliceViews) Render(io.Writer, string, any, ...string) error { return nil }
+
+type chanViews chan struct{}
+
+func (chanViews) Load() error { return nil }
+
+func (chanViews) Render(io.Writer, string, any, ...string) error { return nil }
+
+type funcViews func()
+
+func (funcViews) Load() error { return nil }
+
+func (funcViews) Render(io.Writer, string, any, ...string) error { return nil }
+
 type blockingView struct {
 	loadStarted   chan struct{}
 	loadRelease   chan struct{}
@@ -2608,6 +2652,161 @@ func Test_App_ReloadViews_InterfaceNilPointer(t *testing.T) {
 
 	err := app.ReloadViews()
 	require.ErrorIs(t, err, ErrNoViewEngineConfigured)
+}
+
+func Test_App_Render_WritesConfiguredView(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name    string
+		want    string
+		layouts []string
+	}{
+		{name: "default layout", want: "partial:Fiber:base"},
+		{name: "explicit layout", layouts: []string{"override"}, want: "partial:Fiber:override"},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Parallel()
+
+			app := New(Config{Views: &writerView{}, ViewsLayout: "base"})
+			var out bytes.Buffer
+
+			err := app.Render(&out, "partial", Map{"title": "Fiber"}, testCase.layouts...)
+
+			require.NoError(t, err)
+			require.Equal(t, testCase.want, out.String())
+		})
+	}
+}
+
+func Test_App_Render_ReturnsViewErrors(t *testing.T) {
+	t.Parallel()
+
+	t.Run("no view engine", func(t *testing.T) {
+		t.Parallel()
+
+		app := New()
+
+		err := app.Render(io.Discard, "partial", nil)
+
+		require.ErrorIs(t, err, ErrNoViewEngineConfigured)
+	})
+
+	t.Run("typed nil view engine", func(t *testing.T) {
+		t.Parallel()
+
+		var view *writerView
+		app := &App{config: Config{Views: view}}
+
+		err := app.Render(io.Discard, "partial", nil)
+
+		require.ErrorIs(t, err, ErrNoViewEngineConfigured)
+	})
+
+	t.Run("render failure", func(t *testing.T) {
+		t.Parallel()
+
+		wantErr := errors.New("render failed")
+		app := New(Config{Views: &writerView{renderErr: wantErr}})
+
+		err := app.Render(io.Discard, "partial", Map{})
+
+		require.ErrorIs(t, err, wantErr)
+	})
+}
+
+func Test_App_RenderAndReloadViews_ReturnNoViewEngineForNilViews(t *testing.T) {
+	t.Parallel()
+
+	var (
+		pointerView  *writerView
+		mapView      mapViews
+		sliceView    sliceViews
+		channelView  chanViews
+		functionView funcViews
+	)
+
+	testCases := []struct {
+		view Views
+		name string
+	}{
+		{name: "nil interface"},
+		{name: "pointer", view: pointerView},
+		{name: "map", view: mapView},
+		{name: "slice", view: sliceView},
+		{name: "channel", view: channelView},
+		{name: "function", view: functionView},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Parallel()
+
+			app := New(Config{Views: testCase.view})
+
+			renderErr := app.Render(io.Discard, "partial", nil)
+			reloadErr := app.ReloadViews()
+
+			require.ErrorIs(t, renderErr, ErrNoViewEngineConfigured)
+			require.ErrorIs(t, reloadErr, ErrNoViewEngineConfigured)
+		})
+	}
+}
+
+func Test_isNilViews_ReturnsTrueForNilUnsafePointer(t *testing.T) {
+	t.Parallel()
+
+	var view unsafe.Pointer
+
+	require.True(t, isNilViews(view))
+}
+
+func Test_App_Render_WaitsForReloadViews(t *testing.T) {
+	t.Parallel()
+
+	view := &blockingView{
+		loadStarted:   make(chan struct{}),
+		loadRelease:   make(chan struct{}),
+		renderEntered: make(chan struct{}),
+	}
+	app := New(Config{Views: view})
+	view.loads = 1
+
+	reloadDone := make(chan error, 1)
+	go func() {
+		reloadDone <- app.ReloadViews()
+	}()
+
+	<-view.loadStarted
+
+	renderDone := make(chan error, 1)
+	go func() {
+		renderDone <- app.Render(io.Discard, "partial", nil)
+	}()
+
+	select {
+	case <-view.renderEntered:
+		t.Fatal("Render should wait until ReloadViews Load finishes")
+	case <-time.After(20 * time.Millisecond):
+	}
+
+	close(view.loadRelease)
+
+	select {
+	case err := <-reloadDone:
+		require.NoError(t, err)
+	case <-time.After(time.Second):
+		t.Fatal("reload did not finish")
+	}
+
+	select {
+	case err := <-renderDone:
+		require.NoError(t, err)
+	case <-time.After(time.Second):
+		t.Fatal("Render did not finish")
+	}
 }
 
 func Test_App_ReloadViews_MountedViews(t *testing.T) {

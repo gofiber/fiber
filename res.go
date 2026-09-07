@@ -173,6 +173,8 @@ func (r *DefaultRes) App() *App {
 // If the header is not already set, it creates the header with the specified value.
 // Empty values are skipped: a sender must not generate empty list elements
 // (RFC 9110 Section 5.6.1.2).
+// Members are compared byte-exactly, because some lists (Link, Cache-Control)
+// are not all field names. For Vary field names, use Vary, which folds case.
 func (r *DefaultRes) Append(field string, values ...string) {
 	if len(values) == 0 {
 		return
@@ -1055,7 +1057,7 @@ func (r *DefaultRes) Render(name string, bind any, layouts ...string) error {
 			}
 
 			// Render template from Views
-			if app.config.Views != nil {
+			if !isNilViews(app.config.Views) {
 				if err := func() error {
 					viewsLock := getViewsLock(app.config.Views)
 					viewsLock.RLock()
@@ -1209,17 +1211,24 @@ func (r *DefaultRes) SendFile(file string, config ...SendFile) error {
 
 	var fsHandler fasthttp.RequestHandler
 	var cacheControlValue string
+	// Function values have no safe identity in Go: reflect.Value.Pointer only
+	// identifies their shared code, not captured closure data. Do not retain
+	// handlers for function-backed file systems, since they can never be safely
+	// matched and would otherwise grow the application cache on every request.
+	cacheHandler := cfg.FS == nil || reflect.ValueOf(cfg.FS).Kind() != reflect.Func
 
 	app := r.c.app
-	app.sendfilesMutex.RLock()
-	for _, sf := range app.sendfiles {
-		if sf.configEqual(cfg) {
-			fsHandler = sf.handler
-			cacheControlValue = sf.cacheControlValue
-			break
+	if cacheHandler {
+		app.sendfilesMutex.RLock()
+		for _, sf := range app.sendfiles {
+			if sf.configEqual(cfg) {
+				fsHandler = sf.handler
+				cacheControlValue = sf.cacheControlValue
+				break
+			}
 		}
+		app.sendfilesMutex.RUnlock()
 	}
-	app.sendfilesMutex.RUnlock()
 
 	if fsHandler == nil {
 		fasthttpFS := &fasthttp.FS{
@@ -1233,7 +1242,7 @@ func (r *DefaultRes) SendFile(file string, config ...SendFile) error {
 			CompressZstd:           cfg.Compress,
 			CompressedFileSuffixes: app.config.CompressedFileSuffixes,
 			CacheDuration:          cfg.CacheDuration,
-			SkipCache:              cfg.CacheDuration < 0,
+			SkipCache:              cfg.CacheDuration < 0 || !cacheHandler,
 			IndexNames:             []string{"index.html"},
 			PathNotFound: func(ctx *fasthttp.RequestCtx) {
 				ctx.Response.SetStatusCode(StatusNotFound)
@@ -1254,9 +1263,11 @@ func (r *DefaultRes) SendFile(file string, config ...SendFile) error {
 		fsHandler = sf.handler
 		cacheControlValue = sf.cacheControlValue
 
-		app.sendfilesMutex.Lock()
-		app.sendfiles = append(app.sendfiles, sf)
-		app.sendfilesMutex.Unlock()
+		if cacheHandler {
+			app.sendfilesMutex.Lock()
+			app.sendfiles = append(app.sendfiles, sf)
+			app.sendfilesMutex.Unlock()
+		}
 	}
 
 	// Keep original path for mutable params
@@ -1508,6 +1519,7 @@ func shouldIncludeCharset(mimeType string) bool {
 
 // Vary adds the given header field to the Vary response header.
 // This will append the header, if not already listed; otherwise, leaves it listed in the current location.
+// Field names are compared case-insensitively (RFC 9110 Section 5.1); the first spelling is kept.
 // Per RFC 9110 Section 12.5.5 the wildcard "*" only has meaning as the sole member of the field:
 // once "*" is added (or already present), the header is collapsed to a single "*".
 func (r *DefaultRes) Vary(fields ...string) {
@@ -1527,7 +1539,7 @@ func (r *DefaultRes) Vary(fields ...string) {
 		r.setCanonical(HeaderVary, "*")
 		return
 	}
-	updated := headerlist.AppendUnique(existingStr, fields)
+	updated := headerlist.AppendUniqueFold(existingStr, fields)
 	if updated == "" {
 		return
 	}
