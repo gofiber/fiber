@@ -902,10 +902,11 @@ built-in decoders keep handling `Body`.
 
 ### Overriding a built-in format
 
-Claiming a content type that already has a decoder replaces it for every
-`Bind().Body()` call in the application, not only on the route you had in mind.
-A binder returning `[]string{fiber.MIMEApplicationJSON}` handles all JSON bodies
-from then on.
+Claiming a content type that already has a decoder takes precedence over the
+built-in one for every `Bind().Body()` call in the application, not only on the
+route you had in mind. `Body` uses the first registered binder whose `MIMETypes()`
+contains the request's content type, so a second binder claiming
+`fiber.MIMEApplicationJSON` never runs.
 
 To decode strictly on selected routes instead, return `nil` and call the binder
 by name:
