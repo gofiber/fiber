@@ -198,8 +198,10 @@ func (r *DefaultRes) Append(field string, values ...string) {
 // hoisted because a fresh "..." argument list is a slice the compiler has to
 // heap-allocate — Vary's result reaches the header store, so escape analysis
 // marks the elements as leaking even though fasthttp copies the bytes — while
-// passing an existing slice hands over its backing array. Vary never mutates
-// what it is given, so sharing it across requests is safe.
+// passing an existing slice hands over its backing array. Both callers are
+// methods on *DefaultRes, so the Vary they reach is the one below and not
+// something a custom Res could substitute; it only reads the field list, which
+// makes sharing one array across every request safe.
 var varyAccept = []string{HeaderAccept}
 
 func sanitizeFilename(filename string) string {

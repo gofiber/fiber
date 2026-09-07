@@ -1,6 +1,7 @@
 package cors
 
 import (
+	"slices"
 	"strconv"
 	"strings"
 
@@ -43,8 +44,9 @@ type headerLists struct {
 // store, so escape analysis marks the elements as leaking even though fasthttp
 // copies the bytes. Passing a package-level slice with "..." hands the callee
 // the existing backing array instead, which removed the only allocation on the
-// simple-request path and three of the four on preflight. Vary never mutates
-// what it is given, so sharing these across requests is safe.
+// simple-request path and three of the four on preflight. They are only ever
+// passed through vary below, which keeps the shared arrays away from a Ctx
+// that might write to them.
 var (
 	varyOrigin           = []string{fiber.HeaderOrigin}
 	varyPreflight        = []string{fiber.HeaderAccessControlRequestMethod, fiber.HeaderAccessControlRequestHeaders, fiber.HeaderOrigin}
@@ -55,6 +57,22 @@ var (
 		fiber.HeaderOrigin,
 	}
 )
+
+// vary adds fields to the Vary response header.
+//
+// The lists above are shared by every request this middleware serves, so they
+// must not reach an implementation that could write to them: a custom Ctx is
+// free to sort or otherwise rewrite its variadic argument, and doing that to a
+// package-level array would corrupt the field names of later responses and
+// race with the requests running alongside. DefaultCtx only reads what Vary is
+// given, so it gets the shared slice; anything else gets a copy of its own.
+func vary(c fiber.Ctx, fields []string) {
+	if dc, ok := c.(*fiber.DefaultCtx); ok {
+		dc.Vary(fields...)
+		return
+	}
+	c.Vary(slices.Clone(fields)...)
+}
 
 // isOriginSerializedOrNull checks if the origin is a serialized origin or the literal "null".
 // It returns two booleans: (isSerialized, isNull).
@@ -172,7 +190,7 @@ func New(config ...Config) fiber.Handler {
 			// See https://fetch.spec.whatwg.org/#cors-protocol-and-http-caches
 			// Unless all origins are allowed, we include the Vary header to cache the response correctly
 			if !allowAllOrigins {
-				c.Vary(varyOrigin...)
+				vary(c, varyOrigin)
 			}
 
 			return c.Next()
@@ -189,7 +207,7 @@ func New(config ...Config) fiber.Handler {
 			// some caching can be configured to cache such responses.
 			// To Avoid poisoning the cache, we include the Vary header
 			// for non-CORS OPTIONS requests:
-			c.Vary(varyOrigin...)
+			vary(c, varyOrigin)
 			return c.Next()
 		}
 
@@ -226,7 +244,7 @@ func New(config ...Config) fiber.Handler {
 		if c.Method() != fiber.MethodOptions {
 			if !allowAllOrigins {
 				// See https://fetch.spec.whatwg.org/#cors-protocol-and-http-caches
-				c.Vary(varyOrigin...)
+				vary(c, varyOrigin)
 			}
 			setSimpleHeaders(c, allowOrigin, &cfg, &lists)
 			return c.Next()
@@ -247,10 +265,10 @@ func New(config ...Config) fiber.Handler {
 			privateNetworkRequested = privateNetwork == "true"
 		}
 		if privateNetworkRequested {
-			c.Vary(varyPreflightPrivate...)
+			vary(c, varyPreflightPrivate)
 			c.Set(fiber.HeaderAccessControlAllowPrivateNetwork, "true")
 		} else {
-			c.Vary(varyPreflight...)
+			vary(c, varyPreflight)
 		}
 
 		setPreflightHeaders(c, allowOrigin, maxAge, &cfg, &lists)

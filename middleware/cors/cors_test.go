@@ -2006,3 +2006,67 @@ func Test_CORS_ConfiguredEmptyAllowHeaders(t *testing.T) {
 			"a configured list must not fall back to the requested headers")
 	})
 }
+
+// varyMutatingCtx is a custom context whose Vary rewrites the field list it is
+// handed. Nothing in Ctx's contract forbids that, so the middleware must not
+// hand it a slice that outlives the request.
+type varyMutatingCtx struct {
+	fiber.DefaultCtx
+}
+
+func (c *varyMutatingCtx) Vary(fields ...string) {
+	for i := range fields {
+		fields[i] = "X-Mutated"
+	}
+	c.DefaultCtx.Vary(fields...)
+}
+
+// Test_CORS_VaryDoesNotShareFieldsWithCustomCtx pins that the package-level
+// field lists survive a custom context. They are shared by every request the
+// middleware serves, so a Vary implementation that writes to its argument
+// would otherwise corrupt the field names of every later response and race
+// with the requests running alongside it.
+func Test_CORS_VaryDoesNotShareFieldsWithCustomCtx(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.NewWithCustomCtx(func(app *fiber.App) fiber.CustomCtx {
+		return &varyMutatingCtx{DefaultCtx: *fiber.NewDefaultCtx(app)}
+	})
+	app.Use(New(Config{AllowPrivateNetwork: true}))
+	handler := app.Handler()
+
+	// One request down each branch that emits a Vary header.
+	simple := &fasthttp.RequestCtx{}
+	simple.Request.SetRequestURI("/")
+	simple.Request.Header.SetMethod(fiber.MethodGet)
+	simple.Request.Header.Set(fiber.HeaderOrigin, "http://localhost")
+	handler(simple)
+
+	preflight := &fasthttp.RequestCtx{}
+	preflight.Request.SetRequestURI("/")
+	preflight.Request.Header.SetMethod(fiber.MethodOptions)
+	preflight.Request.Header.Set(fiber.HeaderOrigin, "http://localhost")
+	preflight.Request.Header.Set(fiber.HeaderAccessControlRequestMethod, fiber.MethodGet)
+	handler(preflight)
+
+	private := &fasthttp.RequestCtx{}
+	private.Request.SetRequestURI("/")
+	private.Request.Header.SetMethod(fiber.MethodOptions)
+	private.Request.Header.Set(fiber.HeaderOrigin, "http://localhost")
+	private.Request.Header.Set(fiber.HeaderAccessControlRequestMethod, fiber.MethodGet)
+	private.Request.Header.Set(fiber.HeaderAccessControlRequestPrivateNetwork, "true")
+	handler(private)
+
+	require.Equal(t, []string{fiber.HeaderOrigin}, varyOrigin)
+	require.Equal(t, []string{
+		fiber.HeaderAccessControlRequestMethod,
+		fiber.HeaderAccessControlRequestHeaders,
+		fiber.HeaderOrigin,
+	}, varyPreflight)
+	require.Equal(t, []string{
+		fiber.HeaderAccessControlRequestMethod,
+		fiber.HeaderAccessControlRequestHeaders,
+		fiber.HeaderAccessControlRequestPrivateNetwork,
+		fiber.HeaderOrigin,
+	}, varyPreflightPrivate)
+}
