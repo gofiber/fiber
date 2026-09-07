@@ -1771,6 +1771,9 @@ func (b *failingBuffer) WriteString(s string) (int, error) {
 	return n, nil
 }
 
+// WriteByte fails after failAfter successful writes, counting against the
+// same budget as WriteString, so the byte-at-a-time scratch writer can be
+// made to fail mid-column.
 func (b *failingBuffer) WriteByte(c byte) error {
 	if b.calls >= b.failAfter {
 		return errWriteFailed

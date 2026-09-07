@@ -1698,6 +1698,8 @@ type localsRecordingCtx struct {
 	calls int
 }
 
+// Locals counts each call before forwarding it, so a test can tell whether
+// the override ran or the concrete fast path bypassed it.
 func (c *localsRecordingCtx) Locals(key any, value ...any) any {
 	c.calls++
 	return c.DefaultCtx.Locals(key, value...)
@@ -1740,6 +1742,9 @@ func Test_setLocal_UsesDefaultCtxDirectly(t *testing.T) {
 	require.Equal(t, 42, c.Locals("n"))
 }
 
+// Test_appendCopyLowerASCII pins appendCopyLowerASCII against the copy and the
+// fold it fuses, at every length across the SWAR word boundaries, on fresh and
+// on reused destinations.
 func Test_appendCopyLowerASCII(t *testing.T) {
 	t.Parallel()
 

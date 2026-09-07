@@ -3682,6 +3682,8 @@ type varyMutatingCtx struct {
 	fiber.DefaultCtx
 }
 
+// Vary overwrites every field it is handed before forwarding the call — the
+// most a custom Vary can do to a slice its caller still holds.
 func (c *varyMutatingCtx) Vary(fields ...string) {
 	for i := range fields {
 		fields[i] = "X-Mutated"

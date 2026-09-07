@@ -15,6 +15,8 @@ type recordingCtx struct {
 	calls int
 }
 
+// Locals counts each call before forwarding it, so a test can tell whether
+// the override ran or the concrete fast path bypassed it.
 func (c *recordingCtx) Locals(key any, value ...any) any {
 	c.calls++
 	return c.DefaultCtx.Locals(key, value...)
@@ -58,6 +60,8 @@ func Test_Set_UsesDefaultCtxDirectly(t *testing.T) {
 	require.Nil(t, c.Locals("n"))
 }
 
+// Benchmark_Set measures Set on the default context, the path on which the
+// variadic slice must stay in the frame.
 func Benchmark_Set(b *testing.B) {
 	app := fiber.New()
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
