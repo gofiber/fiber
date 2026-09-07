@@ -1691,6 +1691,55 @@ func Test_IsMethodIdempotent(t *testing.T) {
 	}
 }
 
+// localsRecordingCtx is a custom context whose Locals is observable, so the
+// interface fallback in setLocal can be told apart from the concrete fast path.
+type localsRecordingCtx struct {
+	DefaultCtx
+	calls int
+}
+
+func (c *localsRecordingCtx) Locals(key any, value ...any) any {
+	c.calls++
+	return c.DefaultCtx.Locals(key, value...)
+}
+
+// Test_setLocal_UsesCustomCtxLocals pins the fallback in setLocal. The concrete
+// *DefaultCtx path exists only to keep the variadic slice off the heap; it must
+// never take precedence over a custom context's own Locals, which a type
+// embedding DefaultCtx is entitled to override.
+func Test_setLocal_UsesCustomCtxLocals(t *testing.T) {
+	t.Parallel()
+
+	app := NewWithCustomCtx(func(app *App) CustomCtx {
+		return &localsRecordingCtx{DefaultCtx: *NewDefaultCtx(app)}
+	})
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+
+	custom, ok := c.(*localsRecordingCtx)
+	require.True(t, ok, "the app must hand out the custom context")
+
+	require.Equal(t, "v", setLocal(c, "k", "v"), "setLocal returns what Locals returned")
+	require.Equal(t, 1, custom.calls, "the overridden Locals must be the one that ran")
+	require.Equal(t, "v", c.Locals("k"), "and the value must actually be stored")
+}
+
+// Test_setLocal_UsesDefaultCtxDirectly is the other half: the default context
+// takes the concrete path, and the value is stored and returned unchanged.
+func Test_setLocal_UsesDefaultCtxDirectly(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+
+	_, isDefault := c.(*DefaultCtx)
+	require.True(t, isDefault, "the default app must hand out *DefaultCtx")
+
+	require.Equal(t, 42, setLocal(c, "n", 42))
+	require.Equal(t, 42, c.Locals("n"))
+}
+
 func Test_appendCopyLowerASCII(t *testing.T) {
 	t.Parallel()
 

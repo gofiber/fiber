@@ -1769,6 +1769,17 @@ func (b *failingBuffer) WriteString(s string) (int, error) {
 	return n, nil
 }
 
+func (b *failingBuffer) WriteByte(c byte) error {
+	if b.calls >= b.failAfter {
+		return errWriteFailed
+	}
+	b.calls++
+	if err := b.ByteBuffer.WriteByte(c); err != nil {
+		return fmt.Errorf("failingBuffer write byte: %w", err)
+	}
+	return nil
+}
+
 func (b *failingBuffer) Write(p []byte) (int, error) {
 	if b.calls >= b.failAfter {
 		return 0, errWriteFailed
@@ -1838,6 +1849,259 @@ func Test_writeSanitizedColored_PropagatesWriteErrors(t *testing.T) {
 		require.Equal(t, len(color)+len(value)+len(reset), n)
 		require.Equal(t, "<c>va lue<r>", buf.String(),
 			"the value is scrubbed but the color escapes pass through verbatim")
+	})
+}
+
+// Buffer is a public type — Config.LoggerFunc is handed one — so a sink that
+// fails partway through a column is reachable by anything a user plugs in. The
+// tests below pin the same contract Test_writeSanitizedColored_PropagatesWriteErrors
+// pins for the sanitized writer: the column stops at the failure, the error
+// surfaces, and the returned byte count covers only what actually reached the
+// sink.
+
+// Test_appendIntTag_PropagatesWriteErrors covers the padded integer column the
+// colored ${status} tag writes through. 7 in a width of 3 needs two padding
+// spaces, so the padding and the digit can fail independently.
+func Test_appendIntTag_PropagatesWriteErrors(t *testing.T) {
+	t.Parallel()
+
+	t.Run("padding write fails", func(t *testing.T) {
+		t.Parallel()
+
+		buf := &failingBuffer{ByteBuffer: bytebufferpool.Get(), failAfter: 0}
+		defer bytebufferpool.Put(buf.ByteBuffer)
+
+		n, err := appendIntTag(buf, 7, 3)
+		require.ErrorIs(t, err, errWriteFailed)
+		require.Zero(t, n)
+		require.Empty(t, buf.String())
+	})
+
+	t.Run("digit write fails", func(t *testing.T) {
+		t.Parallel()
+
+		buf := &failingBuffer{ByteBuffer: bytebufferpool.Get(), failAfter: 2}
+		defer bytebufferpool.Put(buf.ByteBuffer)
+
+		n, err := appendIntTag(buf, 7, 3)
+		require.ErrorIs(t, err, errWriteFailed)
+		require.Equal(t, 2, n, "both padding spaces made it out, the digit did not")
+		require.Equal(t, "  ", buf.String())
+	})
+
+	t.Run("all writes succeed", func(t *testing.T) {
+		t.Parallel()
+
+		buf := &failingBuffer{ByteBuffer: bytebufferpool.Get(), failAfter: 99}
+		defer bytebufferpool.Put(buf.ByteBuffer)
+
+		n, err := appendIntTag(buf, 7, 3)
+		require.NoError(t, err)
+		require.Equal(t, 3, n)
+		require.Equal(t, "  7", buf.String())
+	})
+}
+
+// Test_appendInt_PropagatesWriteErrors covers the unpadded integer the
+// uncolored ${status}, ${bytesSent} and ${bytesReceived} tags write.
+func Test_appendInt_PropagatesWriteErrors(t *testing.T) {
+	t.Parallel()
+
+	buf := &failingBuffer{ByteBuffer: bytebufferpool.Get(), failAfter: 1}
+	defer bytebufferpool.Put(buf.ByteBuffer)
+
+	n, err := appendInt(buf, 200)
+	require.ErrorIs(t, err, errWriteFailed)
+	require.Equal(t, 1, n, "only the first digit made it out")
+	require.Equal(t, "2", buf.String())
+}
+
+// Test_appendDurationTag_PropagatesWriteErrors covers the ${latency} column.
+// Its padding is counted in runes, so a duration rendering "µs" still has to
+// stop and report in bytes.
+func Test_appendDurationTag_PropagatesWriteErrors(t *testing.T) {
+	t.Parallel()
+
+	const width = 13
+	d := 145 * time.Microsecond // "145µs": 5 runes, 6 bytes
+
+	t.Run("padding write fails", func(t *testing.T) {
+		t.Parallel()
+
+		buf := &failingBuffer{ByteBuffer: bytebufferpool.Get(), failAfter: 0}
+		defer bytebufferpool.Put(buf.ByteBuffer)
+
+		n, err := appendDurationTag(buf, d, width)
+		require.ErrorIs(t, err, errWriteFailed)
+		require.Zero(t, n)
+		require.Empty(t, buf.String())
+	})
+
+	t.Run("duration write fails", func(t *testing.T) {
+		t.Parallel()
+
+		// Eight spaces pad "145µs" to 13 columns; the ninth write is the
+		// first byte of the duration itself.
+		buf := &failingBuffer{ByteBuffer: bytebufferpool.Get(), failAfter: 8}
+		defer bytebufferpool.Put(buf.ByteBuffer)
+
+		n, err := appendDurationTag(buf, d, width)
+		require.ErrorIs(t, err, errWriteFailed)
+		require.Equal(t, 8, n, "the padding made it out, the duration did not")
+		require.Equal(t, "        ", buf.String())
+	})
+
+	t.Run("all writes succeed", func(t *testing.T) {
+		t.Parallel()
+
+		buf := &failingBuffer{ByteBuffer: bytebufferpool.Get(), failAfter: 99}
+		defer bytebufferpool.Put(buf.ByteBuffer)
+
+		n, err := appendDurationTag(buf, d, width)
+		require.NoError(t, err)
+		require.Equal(t, "        145µs", buf.String(),
+			"padded to 13 columns, which is 14 bytes because of the two-byte micro sign")
+		require.Equal(t, len(buf.String()), n)
+	})
+
+	t.Run("value wider than the column", func(t *testing.T) {
+		t.Parallel()
+
+		buf := &failingBuffer{ByteBuffer: bytebufferpool.Get(), failAfter: 99}
+		defer bytebufferpool.Put(buf.ByteBuffer)
+
+		n, err := appendDurationTag(buf, d, 2)
+		require.NoError(t, err)
+		require.Equal(t, "145µs", buf.String(),
+			"a latency past the column width is written whole, with no padding")
+		require.Equal(t, len(buf.String()), n)
+	})
+}
+
+// Test_writeColored_PropagatesWriteErrors covers the colored ${method} tag.
+func Test_writeColored_PropagatesWriteErrors(t *testing.T) {
+	t.Parallel()
+
+	const color, value, reset = "<c>", "GET", "<r>"
+
+	t.Run("color write fails", func(t *testing.T) {
+		t.Parallel()
+
+		buf := &failingBuffer{ByteBuffer: bytebufferpool.Get(), failAfter: 0}
+		defer bytebufferpool.Put(buf.ByteBuffer)
+
+		n, err := writeColored(buf, color, value, reset)
+		require.ErrorIs(t, err, errWriteFailed)
+		require.Zero(t, n)
+		require.Empty(t, buf.String())
+	})
+
+	t.Run("value write fails", func(t *testing.T) {
+		t.Parallel()
+
+		buf := &failingBuffer{ByteBuffer: bytebufferpool.Get(), failAfter: 1}
+		defer bytebufferpool.Put(buf.ByteBuffer)
+
+		n, err := writeColored(buf, color, value, reset)
+		require.ErrorIs(t, err, errWriteFailed)
+		require.Equal(t, len(color), n)
+		require.Equal(t, color, buf.String(), "the reset must not follow a failed value")
+	})
+
+	t.Run("reset write fails", func(t *testing.T) {
+		t.Parallel()
+
+		buf := &failingBuffer{ByteBuffer: bytebufferpool.Get(), failAfter: 2}
+		defer bytebufferpool.Put(buf.ByteBuffer)
+
+		n, err := writeColored(buf, color, value, reset)
+		require.ErrorIs(t, err, errWriteFailed)
+		require.Equal(t, len(color)+len(value), n)
+		require.Equal(t, color+value, buf.String())
+	})
+
+	t.Run("all writes succeed", func(t *testing.T) {
+		t.Parallel()
+
+		buf := &failingBuffer{ByteBuffer: bytebufferpool.Get(), failAfter: 99}
+		defer bytebufferpool.Put(buf.ByteBuffer)
+
+		n, err := writeColored(buf, color, value, reset)
+		require.NoError(t, err)
+		require.Equal(t, len(color)+len(value)+len(reset), n)
+		require.Equal(t, color+value+reset, buf.String(),
+			"the method is written verbatim, as the uncolored branch writes it")
+	})
+}
+
+// Test_writeColoredInt_PropagatesWriteErrors covers the colored ${status} tag,
+// which wraps the padded integer column in the two color escapes.
+func Test_writeColoredInt_PropagatesWriteErrors(t *testing.T) {
+	t.Parallel()
+
+	const color, reset = "<c>", "<r>"
+
+	t.Run("color write fails", func(t *testing.T) {
+		t.Parallel()
+
+		buf := &failingBuffer{ByteBuffer: bytebufferpool.Get(), failAfter: 0}
+		defer bytebufferpool.Put(buf.ByteBuffer)
+
+		n, err := writeColoredInt(buf, color, 200, 3, reset)
+		require.ErrorIs(t, err, errWriteFailed)
+		require.Zero(t, n)
+		require.Empty(t, buf.String())
+	})
+
+	t.Run("status write fails", func(t *testing.T) {
+		t.Parallel()
+
+		buf := &failingBuffer{ByteBuffer: bytebufferpool.Get(), failAfter: 1}
+		defer bytebufferpool.Put(buf.ByteBuffer)
+
+		n, err := writeColoredInt(buf, color, 200, 3, reset)
+		require.ErrorIs(t, err, errWriteFailed)
+		require.Equal(t, len(color), n)
+		require.Equal(t, color, buf.String(), "the reset must not follow a failed status")
+	})
+
+	t.Run("reset write fails", func(t *testing.T) {
+		t.Parallel()
+
+		// One WriteString for the color, then three WriteByte calls for the
+		// digits; the fifth write is the reset.
+		buf := &failingBuffer{ByteBuffer: bytebufferpool.Get(), failAfter: 4}
+		defer bytebufferpool.Put(buf.ByteBuffer)
+
+		n, err := writeColoredInt(buf, color, 200, 3, reset)
+		require.ErrorIs(t, err, errWriteFailed)
+		require.Equal(t, len(color)+3, n)
+		require.Equal(t, color+"200", buf.String())
+	})
+
+	t.Run("all writes succeed", func(t *testing.T) {
+		t.Parallel()
+
+		buf := &failingBuffer{ByteBuffer: bytebufferpool.Get(), failAfter: 99}
+		defer bytebufferpool.Put(buf.ByteBuffer)
+
+		n, err := writeColoredInt(buf, color, 200, 3, reset)
+		require.NoError(t, err)
+		require.Equal(t, len(color)+3+len(reset), n)
+		require.Equal(t, color+"200"+reset, buf.String())
+	})
+
+	t.Run("value wider than the column", func(t *testing.T) {
+		t.Parallel()
+
+		buf := &failingBuffer{ByteBuffer: bytebufferpool.Get(), failAfter: 99}
+		defer bytebufferpool.Put(buf.ByteBuffer)
+
+		n, err := writeColoredInt(buf, color, 200, 1, reset)
+		require.NoError(t, err)
+		require.Equal(t, len(color)+3+len(reset), n)
+		require.Equal(t, color+"200"+reset, buf.String(),
+			"a status past the column width is written whole, with no padding")
 	})
 }
 
