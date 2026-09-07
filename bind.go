@@ -394,8 +394,9 @@ func (b *Bind) MsgPack(out any) error {
 // Returns *BindError on parse failure (manual mode) or *Error with status 400 (auto-handling mode).
 // It supports decoding the following content types based on the Content-Type header:
 // application/json, application/xml, application/x-www-form-urlencoded, multipart/form-data
-// If none of the content types above are matched, it'll take a look custom binders by checking the MIMETypes() method of custom binder.
-// If there is no custom binder for mime type of body, it will return a ErrUnprocessableEntity error.
+// Custom binders are checked first, so one whose MIMETypes() holds the request's
+// content type runs instead of the built-in decoder for that type.
+// If neither matches the content type, it will return a ErrUnprocessableEntity error.
 func (b *Bind) Body(out any) error {
 	ctype := bindMediaType(&b.ctx.RequestCtx().Request.Header)
 
