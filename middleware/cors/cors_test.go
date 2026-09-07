@@ -1968,3 +1968,41 @@ func Test_CORS_PreflightSplitRequestHeaders(t *testing.T) {
 	require.Equal(t, fiber.StatusNoContent, fctx.Response.StatusCode())
 	require.Equal(t, "X-One, X-Two", string(fctx.Response.Header.Peek(fiber.HeaderAccessControlAllowHeaders)))
 }
+
+// Test_CORS_ConfiguredEmptyAllowHeaders pins the difference between an
+// unconfigured AllowHeaders and one configured with nothing usable in it. An
+// absent list means "echo whatever the request asked for"; a configured list
+// that happens to join to the empty string must not be mistaken for one, or a
+// malformed or environment-derived entry would silently authorize every header
+// the request names.
+func Test_CORS_ConfiguredEmptyAllowHeaders(t *testing.T) {
+	t.Parallel()
+
+	preflight := func(t *testing.T, cfg Config) string {
+		t.Helper()
+
+		app := fiber.New()
+		app.Use(New(cfg))
+
+		ctx := &fasthttp.RequestCtx{}
+		ctx.Request.SetRequestURI("/")
+		ctx.Request.Header.SetMethod(fiber.MethodOptions)
+		ctx.Request.Header.Set(fiber.HeaderOrigin, "http://localhost")
+		ctx.Request.Header.Set(fiber.HeaderAccessControlRequestMethod, fiber.MethodGet)
+		ctx.Request.Header.Set(fiber.HeaderAccessControlRequestHeaders, "X-Requested-Header")
+		app.Handler()(ctx)
+
+		return string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowHeaders))
+	}
+
+	t.Run("unconfigured echoes the request", func(t *testing.T) {
+		t.Parallel()
+		require.Equal(t, "X-Requested-Header", preflight(t, Config{}))
+	})
+
+	t.Run("configured empty authorizes nothing", func(t *testing.T) {
+		t.Parallel()
+		require.Empty(t, preflight(t, Config{AllowHeaders: []string{""}}),
+			"a configured list must not fall back to the requested headers")
+	})
+}

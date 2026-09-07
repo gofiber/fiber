@@ -26,6 +26,16 @@ type headerLists struct {
 	allowMethods  string
 	allowHeaders  string
 	exposeHeaders string
+
+	// Whether each list was configured at all, which is not the same question
+	// as whether its joined form is empty: AllowHeaders: []string{""} is a
+	// configured list that joins to "". For Access-Control-Allow-Headers the
+	// difference decides the response — an empty value authorizes no headers,
+	// while an absent list falls back to echoing whatever the request asked
+	// for in Access-Control-Request-Headers.
+	hasAllowMethods  bool
+	hasAllowHeaders  bool
+	hasExposeHeaders bool
 }
 
 // Vary takes its field names variadically, and a fresh "..." argument list is
@@ -128,14 +138,18 @@ func New(config ...Config) fiber.Handler {
 	// cannot change once New returns, so they are joined here rather than on
 	// every request. strings.Join was the only remaining allocation on the
 	// preflight path.
-	lists := headerLists{}
-	if len(cfg.AllowMethods) > 0 {
+	lists := headerLists{
+		hasAllowMethods:  len(cfg.AllowMethods) > 0,
+		hasAllowHeaders:  len(cfg.AllowHeaders) > 0,
+		hasExposeHeaders: len(cfg.ExposeHeaders) > 0,
+	}
+	if lists.hasAllowMethods {
 		lists.allowMethods = strings.Join(cfg.AllowMethods, ", ")
 	}
-	if len(cfg.AllowHeaders) > 0 {
+	if lists.hasAllowHeaders {
 		lists.allowHeaders = strings.Join(cfg.AllowHeaders, ", ")
 	}
-	if len(cfg.ExposeHeaders) > 0 {
+	if lists.hasExposeHeaders {
 		lists.exposeHeaders = strings.Join(cfg.ExposeHeaders, ", ")
 	}
 
@@ -242,10 +256,10 @@ func New(config ...Config) fiber.Handler {
 		setPreflightHeaders(c, allowOrigin, maxAge, &cfg, &lists)
 
 		// Set Preflight headers
-		if lists.allowMethods != "" {
+		if lists.hasAllowMethods {
 			c.Set(fiber.HeaderAccessControlAllowMethods, lists.allowMethods)
 		}
-		if lists.allowHeaders != "" {
+		if lists.hasAllowHeaders {
 			c.Set(fiber.HeaderAccessControlAllowHeaders, lists.allowHeaders)
 		} else {
 			// Combined, not Value: this one is a list field, so a peer may
@@ -283,7 +297,7 @@ func setSimpleHeaders(c fiber.Ctx, allowOrigin string, cfg *Config, lists *heade
 
 	// Set Expose-Headers if not empty. lists is nil-tolerant for the same
 	// reason cfg is: the helper is called directly by tests.
-	if lists != nil && lists.exposeHeaders != "" {
+	if lists != nil && lists.hasExposeHeaders {
 		c.Set(fiber.HeaderAccessControlExposeHeaders, lists.exposeHeaders)
 	}
 }
