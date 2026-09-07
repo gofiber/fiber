@@ -1192,7 +1192,9 @@ func Locals[V any](c Ctx, key any, value ...V) V {
 	if len(value) == 0 {
 		v, ok = c.Locals(key).(V)
 	} else {
-		v, ok = c.Locals(key, value[0]).(V)
+		// Set through setLocal so the store does not pay for the
+		// heap-allocated one-element slice an interface Locals call costs.
+		v, ok = setLocal(c, key, value[0]).(V)
 	}
 	if !ok {
 		return v // return zero of type V
