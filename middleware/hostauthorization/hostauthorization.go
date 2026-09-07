@@ -2,7 +2,6 @@ package hostauthorization
 
 import (
 	"fmt"
-	"net"
 	"strings"
 
 	"github.com/gofiber/fiber/v3"
@@ -84,14 +83,14 @@ func validateHostLength(host string) {
 // normalizeHost strips port, trailing dot, and IPv6 brackets, lowercases,
 // and converts IDN labels to Punycode (matching what browsers send).
 func normalizeHost(host string) string {
-	// Fast path for plain hostnames — avoids net.SplitHostPort's error allocation.
+	// Fast path for plain hostnames — skips the split and the bracket trims.
 	if host != "" && host[0] != '[' && strings.IndexByte(host, ':') < 0 {
 		host = trimOneTrailingDot(host)
 		host = utilsstrings.ToLower(host)
 		return toPunycode(host)
 	}
 
-	if h, _, err := net.SplitHostPort(host); err == nil {
+	if h, _, ok := utils.SplitHostPort(host); ok {
 		host = h
 	} else {
 		host = utils.TrimLeft(host, '[')

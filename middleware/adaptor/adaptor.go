@@ -650,7 +650,7 @@ func resolveRemoteAddr(remoteAddr string, localAddr any) (net.Addr, error) {
 	// Request.RemoteAddr — build the TCPAddr directly instead of going
 	// through net.ResolveTCPAddr's resolver machinery. Hostnames, service
 	// port names, and anything else fall through to the resolver below.
-	if host, portStr, err := net.SplitHostPort(remoteAddr); err == nil {
+	if host, portStr, hasPort := utils.SplitHostPort(remoteAddr); hasPort {
 		if port, ok := parseDecimalPort(portStr); ok {
 			if ip, ok := utils.ParseIPv4(host); ok {
 				a := ip.As4()

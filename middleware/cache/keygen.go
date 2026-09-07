@@ -6,7 +6,6 @@ import (
 	"encoding/hex"
 	"net/url"
 	"sort"
-	"strconv"
 	"strings"
 	"sync"
 
@@ -211,7 +210,7 @@ func appendCanonicalHeaderSubset(dst []byte, header *fasthttp.RequestHeader, nam
 		// The count keeps the framing injective: without it an absent header and
 		// an empty one both emit nothing, and a list could not be told from a
 		// single value containing the separator.
-		dst = strconv.AppendInt(dst, int64(len(values)), 10)
+		dst = utils.AppendInt(dst, int64(len(values)))
 
 		// Each value is bounded, but not how many there are, and a few hundred field
 		// lines build a multi-kilobyte map key. Hash past the bound; the hash covers

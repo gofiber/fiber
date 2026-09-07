@@ -20,7 +20,6 @@ import (
 	"net/http/httputil"
 	"os"
 	"reflect"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -1458,7 +1457,7 @@ func (app *App) Test(req *http.Request, config ...TestConfig) (*http.Response, e
 
 	// Add Content-Length if not provided with body
 	if req.Body != http.NoBody && req.Header.Get(HeaderContentLength) == "" {
-		req.Header.Add(HeaderContentLength, strconv.FormatInt(req.ContentLength, 10))
+		req.Header.Add(HeaderContentLength, utils.FormatInt(req.ContentLength))
 	}
 
 	// Ensure Host header is present in the dump (required by fasthttp)
