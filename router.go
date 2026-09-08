@@ -228,7 +228,9 @@ func (r Route) URL(params Map) (string, error) {
 // buildRouteURL generates a URL from route segments and parameters.
 // This shared helper is used by both Route.URL() and DefaultRes.getLocationFromRoute()
 // to ensure consistent URL generation behavior across APIs. Substituted values
-// are encoded as path segments before they enter the composed URL.
+// are encoded as path segments before they enter the composed URL. Greedy
+// parameters keep literal slashes because they match path tails rather than one
+// segment.
 //
 // Parameter resolution uses a deterministic three-step lookup:
 //  1. Exact key match on segment.ParamName
@@ -299,11 +301,28 @@ func buildRouteURL(route *Route, params Map) (string, error) {
 		}
 
 		if found {
+			if segment.IsGreedy {
+				buf.B = appendGreedyPathEscape(buf.B, utils.ToString(val))
+				continue
+			}
 			buf.B = utils.AppendPathEscape(buf.B, utils.ToString(val))
 		}
 	}
 
 	return urlnorm.RootedPath(buf.String()), nil
+}
+
+func appendGreedyPathEscape(dst []byte, value string) []byte {
+	start := 0
+	for i := 0; i < len(value); i++ {
+		if value[i] != '/' {
+			continue
+		}
+		dst = utils.AppendPathEscape(dst, value[start:i])
+		dst = append(dst, '/')
+		start = i + 1
+	}
+	return utils.AppendPathEscape(dst, value[start:])
 }
 
 // preferredGreedyParameters returns the generic greedy fallback lookup order

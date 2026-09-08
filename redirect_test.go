@@ -204,18 +204,33 @@ func Test_Redirect_Route_ParamCannotLeaveTheOrigin(t *testing.T) {
 		{
 			name:  "embedded slash",
 			param: "docs/index.html",
-			want:  "/docs%2Findex.html",
+			want:  "/docs/index.html",
 		},
 		{
-			// A slash is data in one parameter, not a path delimiter.
+			name:  "query delimiter",
+			param: "a?b=2",
+			want:  "/a%3Fb=2",
+		},
+		{
+			name:  "fragment delimiter",
+			param: "a#b",
+			want:  "/a%23b",
+		},
+		{
+			name:  "percent",
+			param: "100%",
+			want:  "/100%25",
+		},
+		{
+			// A leading slash stays on-origin after URL normalization.
 			name:  "leading slash",
 			param: "/evil.com",
-			want:  "/%2Fevil.com",
+			want:  "/evil.com",
 		},
 		{
 			name:  "leading slash run",
 			param: "//evil.com",
-			want:  "/%2F%2Fevil.com",
+			want:  "/evil.com",
 		},
 		{
 			// A backslash is encoded before a WHATWG parser can fold it.
@@ -226,19 +241,19 @@ func Test_Redirect_Route_ParamCannotLeaveTheOrigin(t *testing.T) {
 		{
 			name:  "mixed slash run",
 			param: `/\/evil.com`,
-			want:  "/%2F%5C%2Fevil.com",
+			want:  "/%5C/evil.com",
 		},
 		{
 			// Controls are encoded before URL input preprocessing can remove them.
 			name:  "tab before the slash",
 			param: "\t/evil.com",
-			want:  "/%09%2Fevil.com",
+			want:  "/%09/evil.com",
 		},
 		{
-			// A scheme stays path data; its slashes are encoded.
+			// A scheme stays path data.
 			name:  "absolute URL is a path segment",
 			param: "https://evil.com",
-			want:  "/https:%2F%2Fevil.com",
+			want:  "/https://evil.com",
 		},
 	}
 
@@ -321,7 +336,7 @@ func Test_Redirect_Route_WithGreedyParameters(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.Equal(t, StatusSeeOther, c.Response().StatusCode())
-	require.Equal(t, "/user/test%2Froutes", string(c.Response().Header.Peek(HeaderLocation)))
+	require.Equal(t, "/user/test/routes", string(c.Response().Header.Peek(HeaderLocation)))
 }
 
 // go test -run Test_Redirect_Back

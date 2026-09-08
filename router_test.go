@@ -2543,6 +2543,30 @@ func Test_Route_URL(t *testing.T) {
 		require.Equal(t, "/23456789/sms/send", url)
 	})
 
+	t.Run("wildcard parameters preserve slashes", func(t *testing.T) {
+		t.Parallel()
+		app := New()
+		app.Get("/files/*", func(c Ctx) error {
+			return c.SendString(c.Params("*"))
+		}).Name("Files")
+
+		route := app.GetRoute("Files")
+		url, err := route.URL(Map{"*": "docs/index.html"})
+		require.NoError(t, err)
+		require.Equal(t, "/files/docs/index.html", url)
+
+		resp, err := app.Test(httptest.NewRequest(MethodGet, url, http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, StatusOK, resp.StatusCode)
+		defer func() {
+			require.NoError(t, resp.Body.Close())
+		}()
+
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		require.Equal(t, "docs/index.html", string(body))
+	})
+
 	t.Run("plus parameters prefer plus fallback", func(t *testing.T) {
 		t.Parallel()
 		app := New()
@@ -4493,10 +4517,10 @@ func Test_Route_URL_RefusesUnrepresentableRoute(t *testing.T) {
 		require.Empty(t, url, name)
 	}
 
-	// An ordinary route still composes, and a value cannot open an authority.
+	// A wildcard route still composes, and a value cannot open an authority.
 	url, err := app.GetRoute("wild").URL(Map{"*": "/evil.com"})
 	require.NoError(t, err)
-	require.Equal(t, "/%2Fevil.com", url)
+	require.Equal(t, "/evil.com", url)
 
 	// What that composed reaches is this origin, not evil.com.
 	ref, err := neturl.Parse(url)

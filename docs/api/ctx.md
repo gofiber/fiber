@@ -269,9 +269,10 @@ app.Get("/test", func(c fiber.Ctx) error {
 
 :::note
 Each `params` value is automatically percent-encoded with URL path-segment
-rules. Delimiters such as `/`, `?`, and `#` therefore remain parameter data
-instead of adding a path segment, query, or fragment. [`Route.URL`](./app.md#getroute)
-and [`Redirect().Route`](./redirect.md#route) apply the same encoding.
+rules. Greedy parameters (`*` and `+`) preserve `/` inside the matched path
+tail; delimiters such as `?` and `#` remain parameter data instead of adding a
+query or fragment. [`Route.URL`](./app.md#getroute) and
+[`Redirect().Route`](./redirect.md#route) apply the same encoding.
 :::
 
 ### HasBody
