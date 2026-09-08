@@ -1,0 +1,40 @@
+name: Version comparison fixtures
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "benchmarks/versioncompare/**"
+      - ".github/workflows/version-comparison.yml"
+  push:
+    branches: [main]
+    paths:
+      - "benchmarks/versioncompare/**"
+      - ".github/workflows/version-comparison.yml"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  correctness:
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    timeout-minutes: 15
+    steps:
+      - name: Fetch Repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: "1.26.x"
+
+      - name: Test runner
+        run: python3 -m unittest discover -s benchmarks/versioncompare -p test_run.py -v
+
+      - name: Validate all pinned versions and build benchmark binaries
+        # Correctness only. Shared CI runners are not a source of release timings.
+        run: python3 benchmarks/versioncompare/run.py prepare "$RUNNER_TEMP/fiber-version-compare"

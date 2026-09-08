@@ -1,0 +1,1340 @@
+{
+  "schema": 1,
+  "phase": "complete",
+  "created_at": "2026-09-08T07:56:38.232768+00:00",
+  "config": {
+    "toolchain": "go1.26.8",
+    "benchstat": "golang.org/x/perf/cmd/benchstat@v0.0.0-20260825160852-19be9d8e6c70",
+    "variants": [
+      {
+        "name": "v2",
+        "label": "Fiber v2.52.15",
+        "module": "github.com/gofiber/fiber/v2",
+        "version": "v2.52.15",
+        "commit": "5c7a80b327c130e93041e569e685825f804d5f15",
+        "major": 2
+      },
+      {
+        "name": "v3",
+        "label": "Fiber v3.5.0",
+        "module": "github.com/gofiber/fiber/v3",
+        "version": "v3.5.0",
+        "commit": "741d8511a75f408ddf93eb41b175df0165714f11",
+        "major": 3
+      },
+      {
+        "name": "snapshot",
+        "label": "v3 snapshot f73d37f",
+        "module": "github.com/gofiber/fiber/v3",
+        "version": "v3.5.1-0.20260907141705-f73d37fb732f",
+        "commit": "f73d37fb732fd431339b8a250d84314f02d215a5",
+        "major": 3
+      }
+    ],
+    "separate_cases": [
+      "fasthttp_floor",
+      "not_found_version_default"
+    ],
+    "expected_cases": 22
+  },
+  "config_sha256": "8809deaa7e22e1433212f1357d4e80542e02451a1f06a3055971d163ddfd1d91",
+  "prepare_runner_sha256": "055b2f3b6c3f605bf5f47a4f7ede0e611b12539e8626de2c883669fee5f15fae",
+  "template_sha256": "ef1532d3b83c34a1dfaf887c3dc86d30c55b5bdc3a718f5f70477e85a64b19bf",
+  "variants": [
+    {
+      "name": "v2",
+      "label": "Fiber v2.52.15",
+      "module": "github.com/gofiber/fiber/v2",
+      "version": "v2.52.15",
+      "commit": "5c7a80b327c130e93041e569e685825f804d5f15",
+      "major": 2,
+      "binary": "modules/v2/benchmark.test",
+      "binary_sha256": "ff06d3bc5c26462ec2d13709812d36d7e847460fe3ef3b7ccdc83acab1465c72",
+      "go_mod_sha256": "ea50cb5d9e7983ba95f8fd3edb4d9788f58cba3b14c250c28bb8b51cb55f7e6e",
+      "go_sum_sha256": "23a7c7f1269c9e3aa89cead00a2edf28626a5b92be48e0f3a634b4272035fa1b",
+      "source_sha256": "fac983bb3a2fb72c70b6d1e6fca2b3fa8f953779f74a20c229fc5803cff20e8e",
+      "cases": [
+        "cors_preflight",
+        "cors_simple",
+        "fasthttp_floor",
+        "header_lookup",
+        "json_bind",
+        "json_bind_1024",
+        "json_bind_16384",
+        "json_response",
+        "json_response_1024",
+        "json_response_16384",
+        "locals",
+        "middleware_chain",
+        "not_found_matched_response",
+        "not_found_version_default",
+        "parameter",
+        "query_bind",
+        "query_lookup",
+        "recover_no_panic",
+        "static",
+        "static_routes_100",
+        "static_routes_1000",
+        "wildcard"
+      ],
+      "modules": [
+        {
+          "Path": "example.com/fiber-version-benchmark",
+          "GoVersion": "1.26.8"
+        },
+        {
+          "Path": "github.com/andybalholm/brotli",
+          "Version": "v1.1.0",
+          "GoVersion": "1.13",
+          "Sum": "h1:eLKJA0d02Lf0mVpIDgYnqXcUn0GqVmEFny3VuID1U3M=",
+          "GoModSum": "h1:sms7XGricyQI9K10gOSf56VKKWS4oLer58Q+mhRPtnY="
+        },
+        {
+          "Path": "github.com/gofiber/fiber/v2",
+          "Version": "v2.52.15",
+          "GoVersion": "1.20",
+          "Sum": "h1:Cov1uKeVPyu9q0jSrN60W+A8XNX+/WK8J7cy5osHLIk=",
+          "GoModSum": "h1:YEcBbO/FB+5M1IZNBP9FO3J9281zgPAreiI1oqg8nDw="
+        },
+        {
+          "Path": "github.com/google/uuid",
+          "Version": "v1.6.0",
+          "Sum": "h1:NIvaJDMOsjHA8n1jAhLSgzrAzy1Hgr+hNrb57e+94F0=",
+          "GoModSum": "h1:TIyPZe4MgqvfeYDBFedMoGGpEw/LqOeaOT+nhxU+yHo="
+        },
+        {
+          "Path": "github.com/klauspost/compress",
+          "Version": "v1.17.9",
+          "GoVersion": "1.20",
+          "Sum": "h1:6KIumPrER1LHsvBVuDa0r5xaG0Es51mhhB9BQB2qeMA=",
+          "GoModSum": "h1:Di0epgTjJY877eYKx5yC51cX2A2Vl2ibi7bDH9ttBbw="
+        },
+        {
+          "Path": "github.com/mattn/go-colorable",
+          "Version": "v0.1.13",
+          "GoVersion": "1.15",
+          "Sum": "h1:fFA4WZxdEF4tXPZVKMLwD8oUnCTTo08duU7wxecdEvA=",
+          "GoModSum": "h1:7S9/ev0klgBDR4GtXTXX8a3vIGJpMovkB8vQcUbaXHg="
+        },
+        {
+          "Path": "github.com/mattn/go-isatty",
+          "Version": "v0.0.20",
+          "GoVersion": "1.15",
+          "Sum": "h1:xfD0iDuEKnDkl03q4limB+vH+GxLEtL/jb4xVJSWWEY=",
+          "GoModSum": "h1:W+V8PltTTMOvKvAeJH7IuucS94S2C6jfK/D7dTCTo3Y="
+        },
+        {
+          "Path": "github.com/mattn/go-runewidth",
+          "Version": "v0.0.16",
+          "GoVersion": "1.9",
+          "Sum": "h1:E5ScNMtiwvlvB5paMFdw9p4kSQzbXFikJ5SQO6TULQc=",
+          "GoModSum": "h1:Jdepj2loyihRzMpdS35Xk/zdY8IAYHsh153qUoGf23w="
+        },
+        {
+          "Path": "github.com/philhofer/fwd",
+          "Version": "v1.1.3-0.20240916144458-20a13a1f6b7c"
+        },
+        {
+          "Path": "github.com/rivo/uniseg",
+          "Version": "v0.2.0",
+          "GoVersion": "1.12",
+          "Sum": "h1:S1pD9weZBuJdFmowNwbpi7BJ8TNftyUImj/0WQi72jY=",
+          "GoModSum": "h1:J6wj4VEh+S6ZtnVlnTBMWIodfgj8LQOQFoIToxlJtxc="
+        },
+        {
+          "Path": "github.com/tinylib/msgp",
+          "Version": "v1.2.5"
+        },
+        {
+          "Path": "github.com/valyala/bytebufferpool",
+          "Version": "v1.0.0",
+          "Sum": "h1:GqA5TC/0021Y/b9FG4Oi9Mr3q7XYx6KllzawFIhcdPw=",
+          "GoModSum": "h1:6bBcMArwyJ5K/AmCkWv1jt77kVWyCJ6HpOuEn7z0Csc="
+        },
+        {
+          "Path": "github.com/valyala/fasthttp",
+          "Version": "v1.51.0",
+          "GoVersion": "1.20",
+          "Sum": "h1:8b30A5JlZ6C7AS81RsWjYMQmrZG6feChmgAolCl1SqA=",
+          "GoModSum": "h1:oI2XroL+lI7vdXyYoQk03bXBThfFl2cVdIA3Xl7cH8g="
+        },
+        {
+          "Path": "github.com/valyala/tcplisten",
+          "Version": "v1.0.0",
+          "GoVersion": "1.12",
+          "Sum": "h1:rBHj/Xf+E1tRGZyWIWwJDiRY0zc1Js+CV5DqwacVSA8=",
+          "GoModSum": "h1:T0xQ8SeCZGxckz9qRXTfG43PvQ/mcWh7FwZEA7Ioqkc="
+        },
+        {
+          "Path": "golang.org/x/crypto",
+          "Version": "v0.14.0"
+        },
+        {
+          "Path": "golang.org/x/net",
+          "Version": "v0.17.0"
+        },
+        {
+          "Path": "golang.org/x/sys",
+          "Version": "v0.28.0",
+          "GoVersion": "1.18",
+          "Sum": "h1:Fksou7UEQUWlKvIdsqzJmUmCX3cZuD2+P3XyyzwMhlA=",
+          "GoModSum": "h1:/VUhepiaJMQUp4+oa/7Zr1D23ma6VTLIYjOOTFZPUcA="
+        },
+        {
+          "Path": "golang.org/x/text",
+          "Version": "v0.13.0"
+        }
+      ]
+    },
+    {
+      "name": "v3",
+      "label": "Fiber v3.5.0",
+      "module": "github.com/gofiber/fiber/v3",
+      "version": "v3.5.0",
+      "commit": "741d8511a75f408ddf93eb41b175df0165714f11",
+      "major": 3,
+      "binary": "modules/v3/benchmark.test",
+      "binary_sha256": "38b577a1e70afba76ed266e5e7c6ac83810e0ca7cbfca4970f5e303878861e81",
+      "go_mod_sha256": "69402ad25d92e410a750a49ffb4ab75dacb54a80487cc7caeababa2b7a75e52c",
+      "go_sum_sha256": "4ba6c55b940aa4ebdd9dfc7f81bab43c1b4ab0bb18ad195be4324cf76939ebf9",
+      "source_sha256": "59eb3ee85d9e0aaaaac656c169eaa61d7f5a1295c068e91f2d2d19ed233cfa8b",
+      "cases": [
+        "cors_preflight",
+        "cors_simple",
+        "fasthttp_floor",
+        "header_lookup",
+        "json_bind",
+        "json_bind_1024",
+        "json_bind_16384",
+        "json_response",
+        "json_response_1024",
+        "json_response_16384",
+        "locals",
+        "middleware_chain",
+        "not_found_matched_response",
+        "not_found_version_default",
+        "parameter",
+        "query_bind",
+        "query_lookup",
+        "recover_no_panic",
+        "static",
+        "static_routes_100",
+        "static_routes_1000",
+        "wildcard"
+      ],
+      "modules": [
+        {
+          "Path": "example.com/fiber-version-benchmark",
+          "GoVersion": "1.26.8"
+        },
+        {
+          "Path": "github.com/andybalholm/brotli",
+          "Version": "v1.2.2",
+          "GoVersion": "1.22",
+          "Sum": "h1:HzTuoo2ErYQqf5qvcJInB8uvqSVxRttzkFexPWtnceM=",
+          "GoModSum": "h1:rzTDkvFWvIrjDXZHkuS16NPggd91W3kUSvPlQ1pLaKY="
+        },
+        {
+          "Path": "github.com/davecgh/go-spew",
+          "Version": "v1.1.1",
+          "Sum": "h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=",
+          "GoModSum": "h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38="
+        },
+        {
+          "Path": "github.com/fxamacker/cbor/v2",
+          "Version": "v2.9.2",
+          "GoVersion": "1.20",
+          "Sum": "h1:X4Ksno9+x3cz0TZv69ec1hxP/+tymuR8PXQJyDwfh78=",
+          "GoModSum": "h1:vM4b+DJCtHn+zz7h3FFp/hDAI9WNWCsZj23V5ytsSxQ="
+        },
+        {
+          "Path": "github.com/gofiber/fiber/v3",
+          "Version": "v3.5.0",
+          "GoVersion": "1.25.0",
+          "Sum": "h1:dk7TOUH6DXJGtOLsN2XEG+0ZML7cznzHILTVozbNEK8=",
+          "GoModSum": "h1:GOVDTW+gjJvfe0iJyVujbQ1Lnx+JUjFySJRI/9/xX/w="
+        },
+        {
+          "Path": "github.com/gofiber/schema",
+          "Version": "v1.8.3",
+          "GoVersion": "1.25.0",
+          "Sum": "h1:06ZedxIYjngzc0095PYy7uWnFnbRflWFpikvZH61fDc=",
+          "GoModSum": "h1:jWnnZdhcW1mHyV+VnfRxKJDPNcepJsTZ9RIWxrr32Ng="
+        },
+        {
+          "Path": "github.com/gofiber/utils/v2",
+          "Version": "v2.4.1",
+          "GoVersion": "1.25.0",
+          "Sum": "h1:E2X9G8O5Mn7b2GDb0JU3IUk42Rw2npuhhepIbuJQ2po=",
+          "GoModSum": "h1:I+RTsgMUdzFuifVc3LOEkfh32wQW9BfRl7l5RYjamW4="
+        },
+        {
+          "Path": "github.com/google/uuid",
+          "Version": "v1.6.0",
+          "Sum": "h1:NIvaJDMOsjHA8n1jAhLSgzrAzy1Hgr+hNrb57e+94F0=",
+          "GoModSum": "h1:TIyPZe4MgqvfeYDBFedMoGGpEw/LqOeaOT+nhxU+yHo="
+        },
+        {
+          "Path": "github.com/klauspost/compress",
+          "Version": "v1.19.2",
+          "GoVersion": "1.24",
+          "Sum": "h1:hMRETovs/pu/dVWN7zIT1PGG8t509MwT6bO7XSi26R8=",
+          "GoModSum": "h1:cwPg85FWrGar70rWktvGQj8/hthj3wpl0PGDogxkrSQ="
+        },
+        {
+          "Path": "github.com/mattn/go-colorable",
+          "Version": "v0.1.15",
+          "GoVersion": "1.18",
+          "Sum": "h1:+u9SLTRGnXv73cEsnsmoZBom+dMU88B2M0aDcWy0/jY=",
+          "GoModSum": "h1:6LmQG8QLFO4G5z1gPvYEzlUgJ2wF+stgPZH1UqBm1s8="
+        },
+        {
+          "Path": "github.com/mattn/go-isatty",
+          "Version": "v0.0.24",
+          "GoVersion": "1.20",
+          "Sum": "h1:tGZZoVgT/KiqK1c8ocVLeDS8BSWMRd47J3Lbz7vsReI=",
+          "GoModSum": "h1:nMCL3Zebbrt45jsMDgnfIwz6ydEQApk5oEI3HqDio6A="
+        },
+        {
+          "Path": "github.com/philhofer/fwd",
+          "Version": "v1.2.0",
+          "GoVersion": "1.20",
+          "Sum": "h1:e6DnBTl7vGY+Gz322/ASL4Gyp1FspeMvx1RNDoToZuM=",
+          "GoModSum": "h1:RqIHx9QI14HlwKwm98g9Re5prTQ6LdeRQn+gXJFxsJM="
+        },
+        {
+          "Path": "github.com/pmezard/go-difflib",
+          "Version": "v1.0.0",
+          "Sum": "h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZbAQM=",
+          "GoModSum": "h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4="
+        },
+        {
+          "Path": "github.com/shamaton/msgpack/v3",
+          "Version": "v3.2.0",
+          "GoVersion": "1.24",
+          "Sum": "h1:1q2Ms+MWmuRju+PuDMSFDB7p7621npeX4zprJN5Zck8=",
+          "GoModSum": "h1:sgBYvEiyz8JR1NC3yGRoPVME9xXovpnh3l/plW1nfRo="
+        },
+        {
+          "Path": "github.com/stretchr/testify",
+          "Version": "v1.11.1",
+          "GoVersion": "1.17",
+          "Sum": "h1:7s2iGBzp5EwR7/aIZr8ao5+dra3wiQyKjjFuvgVKu7U=",
+          "GoModSum": "h1:wZwfW3scLgRK+23gO65QZefKpKQRnfz6sD981Nm4B6U="
+        },
+        {
+          "Path": "github.com/tinylib/msgp",
+          "Version": "v1.6.4",
+          "GoVersion": "1.24",
+          "Sum": "h1:mOwYbyYDLPj35mkA2BjjYejgJk9BuHxDdvRnb6v2ZcQ=",
+          "GoModSum": "h1:RSp0LW9oSxFut3KzESt5Voq4GVWyS+PSulT77roAqEA="
+        },
+        {
+          "Path": "github.com/valyala/bytebufferpool",
+          "Version": "v1.0.0",
+          "Sum": "h1:GqA5TC/0021Y/b9FG4Oi9Mr3q7XYx6KllzawFIhcdPw=",
+          "GoModSum": "h1:6bBcMArwyJ5K/AmCkWv1jt77kVWyCJ6HpOuEn7z0Csc="
+        },
+        {
+          "Path": "github.com/valyala/fasthttp",
+          "Version": "v1.73.0",
+          "GoVersion": "1.25.0",
+          "Sum": "h1:ocTOORnBWtJ+P8t/6wAjdkchMzdfHmWx2VD/DPbgZ7s=",
+          "GoModSum": "h1:EtXQDHaR+5P18p8wqDRFpUhxr108Ga9mXvVJXHRrN2k="
+        },
+        {
+          "Path": "github.com/x448/float16",
+          "Version": "v0.8.4",
+          "GoVersion": "1.11",
+          "Sum": "h1:qLwI1I70+NjRFUR3zs1JPUCgaCXSh3SW62uAKT1mSBM=",
+          "GoModSum": "h1:14CWIYCyZA/cWjXOioeEpHeN/83MdbZDRQHoFcYsOfg="
+        },
+        {
+          "Path": "github.com/xyproto/randomstring",
+          "Version": "v1.0.5",
+          "GoVersion": "1.17",
+          "Sum": "h1:YtlWPoRdgMu3NZtP45drfy1GKoojuR7hmRcnhZqKjWU=",
+          "GoModSum": "h1:rgmS5DeNXLivK7YprL0pY+lTuhNQW3iGxZ18UQApw/E="
+        },
+        {
+          "Path": "golang.org/x/crypto",
+          "Version": "v0.54.0",
+          "GoVersion": "1.25.0",
+          "Sum": "h1:YLIA59K4fiNzHzjnZt2tUJQjQtUWfWbeHBqKtk3eScw=",
+          "GoModSum": "h1:KWL8ny2AZdGR2cWmzeHrp2azQPGogOv+HeQaVEXC2dk="
+        },
+        {
+          "Path": "golang.org/x/mod",
+          "Version": "v0.37.0"
+        },
+        {
+          "Path": "golang.org/x/net",
+          "Version": "v0.57.0",
+          "GoVersion": "1.25.0",
+          "Sum": "h1:K5+3DljvIuDG9/Jv9rvyMywYNFCQ9RSUY6OOTTkT+tE=",
+          "GoModSum": "h1:KpXc8iv+r3XplLAG/f7Jsf9RPszJzdR0f58q9vGOuEU="
+        },
+        {
+          "Path": "golang.org/x/sync",
+          "Version": "v0.22.0"
+        },
+        {
+          "Path": "golang.org/x/sys",
+          "Version": "v0.47.0",
+          "GoVersion": "1.25.0",
+          "Sum": "h1:o7XGOvZQCADBQQ4Y7VNq2dRWQR7JmOUW8Kxx4ZsNgWs=",
+          "GoModSum": "h1:4GL1E5IUh+htKOUEOaiffhrAeqysfVGipDYzABqnCmw="
+        },
+        {
+          "Path": "golang.org/x/term",
+          "Version": "v0.45.0"
+        },
+        {
+          "Path": "golang.org/x/text",
+          "Version": "v0.40.0",
+          "GoVersion": "1.25.0",
+          "Sum": "h1:Ub2Z6/xjgF1WrYQz2nuITOEegKFtiIy+rieRJ5lHZKs=",
+          "GoModSum": "h1:hpnzDAfGV753zIKo+wk3u1bVKCGPbrnF7+7LBF/UHVY="
+        },
+        {
+          "Path": "golang.org/x/tools",
+          "Version": "v0.47.0"
+        },
+        {
+          "Path": "gopkg.in/yaml.v3",
+          "Version": "v3.0.1",
+          "Sum": "h1:fxVm/GzAzEWqLHuvctI91KS9hhNmmWOoWu0XTYJS7CA=",
+          "GoModSum": "h1:K4uyk7z7BCEPqu6E+C64Yfv1cQ7kz7rIZviUmN+EgEM="
+        }
+      ]
+    },
+    {
+      "name": "snapshot",
+      "label": "v3 snapshot f73d37f",
+      "module": "github.com/gofiber/fiber/v3",
+      "version": "v3.5.1-0.20260907141705-f73d37fb732f",
+      "commit": "f73d37fb732fd431339b8a250d84314f02d215a5",
+      "major": 3,
+      "binary": "modules/snapshot/benchmark.test",
+      "binary_sha256": "bf05e9a74976d3f683891763af63a8f3f2f251be22e34881ead2d669fc59a7b5",
+      "go_mod_sha256": "399ab03fdf075af8407416249e4bf531e0e5c649e9c7caa222f7654db005c77f",
+      "go_sum_sha256": "0bf25f9f5126a5d2df91b7b7144220627ae8c0a42c334b94cdcbd4413de48eea",
+      "source_sha256": "59eb3ee85d9e0aaaaac656c169eaa61d7f5a1295c068e91f2d2d19ed233cfa8b",
+      "cases": [
+        "cors_preflight",
+        "cors_simple",
+        "fasthttp_floor",
+        "header_lookup",
+        "json_bind",
+        "json_bind_1024",
+        "json_bind_16384",
+        "json_response",
+        "json_response_1024",
+        "json_response_16384",
+        "locals",
+        "middleware_chain",
+        "not_found_matched_response",
+        "not_found_version_default",
+        "parameter",
+        "query_bind",
+        "query_lookup",
+        "recover_no_panic",
+        "static",
+        "static_routes_100",
+        "static_routes_1000",
+        "wildcard"
+      ],
+      "modules": [
+        {
+          "Path": "example.com/fiber-version-benchmark",
+          "GoVersion": "1.26.8"
+        },
+        {
+          "Path": "github.com/fxamacker/cbor/v2",
+          "Version": "v2.9.3",
+          "GoVersion": "1.20",
+          "Sum": "h1:oQBnFATpNdY8gJHTndDDv5Xl4QqNaz51G5LLEPhng3Q=",
+          "GoModSum": "h1:vM4b+DJCtHn+zz7h3FFp/hDAI9WNWCsZj23V5ytsSxQ="
+        },
+        {
+          "Path": "github.com/gofiber/fiber/v3",
+          "Version": "v3.5.1-0.20260907141705-f73d37fb732f",
+          "GoVersion": "1.26.0",
+          "Sum": "h1:1Ou4T8etvKERjU2V4o2W5c8yXNjqFDdqen/XFkZCPoM=",
+          "GoModSum": "h1:x08J5AnYiKPp4lcZE2J+cW+9jCOrp2AcsJdOa6SIWFM="
+        },
+        {
+          "Path": "github.com/gofiber/schema",
+          "Version": "v1.8.5",
+          "GoVersion": "1.25.0",
+          "Sum": "h1:f5J8jjPH5Q6ZJIb8oJxzRh+K8TxPx9Zm478Xkjj0dMg=",
+          "GoModSum": "h1:85qQG6r0X0g4vKWxDdPgEVOH2eY+0mlBd950Nq+NldY="
+        },
+        {
+          "Path": "github.com/gofiber/utils/v2",
+          "Version": "v2.5.1",
+          "GoVersion": "1.25.0",
+          "Sum": "h1:Yrt/ljbfsgnDSHymoMvVX5PFrb9kCV/OJnDu6sYuT4A=",
+          "GoModSum": "h1:5GyHTNQA1I6Qwlw7BWxQsZl8iuFS4yPjLFck+wYR304="
+        },
+        {
+          "Path": "github.com/google/uuid",
+          "Version": "v1.6.0",
+          "Sum": "h1:NIvaJDMOsjHA8n1jAhLSgzrAzy1Hgr+hNrb57e+94F0=",
+          "GoModSum": "h1:TIyPZe4MgqvfeYDBFedMoGGpEw/LqOeaOT+nhxU+yHo="
+        },
+        {
+          "Path": "github.com/klauspost/compress",
+          "Version": "v1.20.0",
+          "GoVersion": "1.25",
+          "Sum": "h1:a3C1ke2ohxFymNlb2HWAHjDeKCI90scRskErZkR0ezA=",
+          "GoModSum": "h1:LUdAzn7YLVvxLpc7y3V1m40wESHTgc1422pwwBSKYuI="
+        },
+        {
+          "Path": "github.com/mattn/go-colorable",
+          "Version": "v0.1.15",
+          "GoVersion": "1.18",
+          "Sum": "h1:+u9SLTRGnXv73cEsnsmoZBom+dMU88B2M0aDcWy0/jY=",
+          "GoModSum": "h1:6LmQG8QLFO4G5z1gPvYEzlUgJ2wF+stgPZH1UqBm1s8="
+        },
+        {
+          "Path": "github.com/mattn/go-isatty",
+          "Version": "v0.0.24",
+          "GoVersion": "1.20",
+          "Sum": "h1:tGZZoVgT/KiqK1c8ocVLeDS8BSWMRd47J3Lbz7vsReI=",
+          "GoModSum": "h1:nMCL3Zebbrt45jsMDgnfIwz6ydEQApk5oEI3HqDio6A="
+        },
+        {
+          "Path": "github.com/molecule-man/go-brrr",
+          "Version": "v1.0.1",
+          "GoVersion": "1.22.0",
+          "Sum": "h1:cEjgx8hgNw6UGdhQ94SPDbPkKuRbkUcxBO3IzbGpA/o=",
+          "GoModSum": "h1:7ybW6/7gA3oKY45jOfVNjSJDtrr6ea4tzbsTkjmQDC4="
+        },
+        {
+          "Path": "github.com/philhofer/fwd",
+          "Version": "v1.2.0",
+          "GoVersion": "1.20",
+          "Sum": "h1:e6DnBTl7vGY+Gz322/ASL4Gyp1FspeMvx1RNDoToZuM=",
+          "GoModSum": "h1:RqIHx9QI14HlwKwm98g9Re5prTQ6LdeRQn+gXJFxsJM="
+        },
+        {
+          "Path": "github.com/shamaton/msgpack/v3",
+          "Version": "v3.2.2",
+          "GoVersion": "1.24",
+          "Sum": "h1:lZITRsXLQkdJ9J2qvh6gjGpWxci/dwuiUf+jm9AudJM=",
+          "GoModSum": "h1:sgBYvEiyz8JR1NC3yGRoPVME9xXovpnh3l/plW1nfRo="
+        },
+        {
+          "Path": "github.com/stretchr/testify",
+          "Version": "v1.12.1",
+          "GoVersion": "1.17",
+          "Sum": "h1:EuwCh5fleGS7H32xRwO3wRGT7DxrDhLAT6FF8MpWDWE=",
+          "GoModSum": "h1:MDEgiDPPsNp5cuIrHPPCyornHKgEVbtFUmoNlxoYthg="
+        },
+        {
+          "Path": "github.com/tinylib/msgp",
+          "Version": "v1.6.4",
+          "GoVersion": "1.24",
+          "Sum": "h1:mOwYbyYDLPj35mkA2BjjYejgJk9BuHxDdvRnb6v2ZcQ=",
+          "GoModSum": "h1:RSp0LW9oSxFut3KzESt5Voq4GVWyS+PSulT77roAqEA="
+        },
+        {
+          "Path": "github.com/valyala/bytebufferpool",
+          "Version": "v1.0.0",
+          "Sum": "h1:GqA5TC/0021Y/b9FG4Oi9Mr3q7XYx6KllzawFIhcdPw=",
+          "GoModSum": "h1:6bBcMArwyJ5K/AmCkWv1jt77kVWyCJ6HpOuEn7z0Csc="
+        },
+        {
+          "Path": "github.com/valyala/fasthttp",
+          "Version": "v1.74.0",
+          "GoVersion": "1.25.0",
+          "Sum": "h1:wMS9fnO2QTALozYx5pId2Vi7ZwU/epUkY8i/KPWCHoU=",
+          "GoModSum": "h1:3ARmLamUcw7ElxVtC8PXaGzQ6VEuvnetlkrwIklQBSE="
+        },
+        {
+          "Path": "github.com/x448/float16",
+          "Version": "v0.8.4",
+          "GoVersion": "1.11",
+          "Sum": "h1:qLwI1I70+NjRFUR3zs1JPUCgaCXSh3SW62uAKT1mSBM=",
+          "GoModSum": "h1:14CWIYCyZA/cWjXOioeEpHeN/83MdbZDRQHoFcYsOfg="
+        },
+        {
+          "Path": "go.yaml.in/yaml/v3",
+          "Version": "v3.0.5",
+          "GoVersion": "1.16",
+          "Sum": "h1:N6y/pJk8buWs9NY5ERU2HSMfm+IuD/OtfdAnq6kESPw=",
+          "GoModSum": "h1:HVTZu1O7/Vkt2N+BFy8Zza+lnLsABggaTM2ZpNIGuKg="
+        },
+        {
+          "Path": "golang.org/x/crypto",
+          "Version": "v0.56.0",
+          "GoVersion": "1.26.0",
+          "Sum": "h1:GUh5Ii4J5jtcseSMiRqr1jXCNHoxjeV9Fmekc2oLy6Y=",
+          "GoModSum": "h1:OMW5y6CY9l38uPLmxU6l6pwcXp1obtLo3e6gT7gQR2I="
+        },
+        {
+          "Path": "golang.org/x/mod",
+          "Version": "v0.38.0"
+        },
+        {
+          "Path": "golang.org/x/net",
+          "Version": "v0.58.0",
+          "GoVersion": "1.25.0",
+          "Sum": "h1:ynWG7rqYi4ccpTEuPZ2QGWHktVEM9DMCj9yzDE0Q7To=",
+          "GoModSum": "h1:YwCddHnFlT7eLQqVprV19OnhLGtc5xOKgE0RyqgfWAU="
+        },
+        {
+          "Path": "golang.org/x/sync",
+          "Version": "v0.22.0"
+        },
+        {
+          "Path": "golang.org/x/sys",
+          "Version": "v0.47.0",
+          "GoVersion": "1.25.0",
+          "Sum": "h1:o7XGOvZQCADBQQ4Y7VNq2dRWQR7JmOUW8Kxx4ZsNgWs=",
+          "GoModSum": "h1:4GL1E5IUh+htKOUEOaiffhrAeqysfVGipDYzABqnCmw="
+        },
+        {
+          "Path": "golang.org/x/term",
+          "Version": "v0.45.0"
+        },
+        {
+          "Path": "golang.org/x/text",
+          "Version": "v0.41.0",
+          "GoVersion": "1.25.0",
+          "Sum": "h1:vz/seA0lnX87Othu2f/0L24RcgrXD9/YFTSuGjj3rH8=",
+          "GoModSum": "h1:jvf1O8ajNzZqhSrQBPbutR/EB83Cc0CFrezNQIwbb5M="
+        },
+        {
+          "Path": "golang.org/x/tools",
+          "Version": "v0.48.0",
+          "GoVersion": "1.25.0",
+          "Sum": "h1:3+hClM1aLL5mjMKm5ovokw9epgRXPuu2tILgismM6RE=",
+          "GoModSum": "h1:08xX0orndb/F7jJxGDicx061tyd5pcMto75YMAXr6lk="
+        }
+      ]
+    }
+  ],
+  "runs": [
+    {
+      "variant": "snapshot",
+      "sample": 0,
+      "raw": "raw/00-snapshot.txt",
+      "raw_sha256": "e95ed4f7eba133d542168834db369775331475d9a2bc0d6869e131dd1e0b612a",
+      "elapsed_seconds": 19.123583022039384,
+      "loadavg_before": [
+        2.43310546875,
+        5.6142578125,
+        5.4365234375
+      ],
+      "loadavg_after": [
+        2.54736328125,
+        5.4423828125,
+        5.38427734375
+      ]
+    },
+    {
+      "variant": "v3",
+      "sample": 0,
+      "raw": "raw/00-v3.txt",
+      "raw_sha256": "29686371ea7285b62b312225f310d40e94f02c08745da2f85d4e152d5792b0da",
+      "elapsed_seconds": 18.107508684974164,
+      "loadavg_before": [
+        2.54736328125,
+        5.4423828125,
+        5.38427734375
+      ],
+      "loadavg_after": [
+        2.4716796875,
+        5.23486328125,
+        5.31689453125
+      ]
+    },
+    {
+      "variant": "v2",
+      "sample": 0,
+      "raw": "raw/00-v2.txt",
+      "raw_sha256": "ba02d1554c0ee67bc75183d236136860b418f0c4c569d461a743b23c7464a1cf",
+      "elapsed_seconds": 17.508509271778166,
+      "loadavg_before": [
+        2.4716796875,
+        5.23486328125,
+        5.31689453125
+      ],
+      "loadavg_after": [
+        2.3056640625,
+        5.06005859375,
+        5.2578125
+      ]
+    },
+    {
+      "variant": "v2",
+      "sample": 1,
+      "raw": "raw/01-v2.txt",
+      "raw_sha256": "78cbbdff89b35eeff476acd53bfc3780a60a4b3cc0f5e7ee2f2694c590185b7c",
+      "elapsed_seconds": 19.030590947717428,
+      "loadavg_before": [
+        2.3056640625,
+        5.06005859375,
+        5.2578125
+      ],
+      "loadavg_after": [
+        2.05908203125,
+        4.82763671875,
+        5.1767578125
+      ]
+    },
+    {
+      "variant": "snapshot",
+      "sample": 1,
+      "raw": "raw/01-snapshot.txt",
+      "raw_sha256": "6824e9ed5e8a705c93e8e65f8e786c2e3575c072339b9cb7392e7313191e7d92",
+      "elapsed_seconds": 18.23735838010907,
+      "loadavg_before": [
+        2.05908203125,
+        4.82763671875,
+        5.1767578125
+      ],
+      "loadavg_after": [
+        1.82568359375,
+        4.5947265625,
+        5.09228515625
+      ]
+    },
+    {
+      "variant": "v3",
+      "sample": 1,
+      "raw": "raw/01-v3.txt",
+      "raw_sha256": "9c34b2d710c4f31605273474f59f1909e116493808a041b53b3fe74e2cdd2ed7",
+      "elapsed_seconds": 18.723207300994545,
+      "loadavg_before": [
+        1.82568359375,
+        4.5947265625,
+        5.09228515625
+      ],
+      "loadavg_after": [
+        2.0712890625,
+        4.46044921875,
+        5.03662109375
+      ]
+    },
+    {
+      "variant": "v3",
+      "sample": 2,
+      "raw": "raw/02-v3.txt",
+      "raw_sha256": "56b61d0bb46e9f8a5e39675f92ace0571fddd215384e1c7a2ddab18a26175466",
+      "elapsed_seconds": 17.370923396665603,
+      "loadavg_before": [
+        2.0712890625,
+        4.46044921875,
+        5.03662109375
+      ],
+      "loadavg_after": [
+        2.48681640625,
+        4.4375,
+        5.01904296875
+      ]
+    },
+    {
+      "variant": "v2",
+      "sample": 2,
+      "raw": "raw/02-v2.txt",
+      "raw_sha256": "380ba3fc48e63496a2b6bb355fcf5f0e548de7b84018727b0feffb8f630d9077",
+      "elapsed_seconds": 18.09776223776862,
+      "loadavg_before": [
+        2.48681640625,
+        4.4375,
+        5.01904296875
+      ],
+      "loadavg_after": [
+        2.53564453125,
+        4.326171875,
+        4.9697265625
+      ]
+    },
+    {
+      "variant": "snapshot",
+      "sample": 2,
+      "raw": "raw/02-snapshot.txt",
+      "raw_sha256": "6cfe18f1064aa78a4d74022d130b96cb1ef6bb0b385ec99719c85f6c4b7fd362",
+      "elapsed_seconds": 18.13128705462441,
+      "loadavg_before": [
+        2.53564453125,
+        4.326171875,
+        4.9697265625
+      ],
+      "loadavg_after": [
+        2.41650390625,
+        4.2109375,
+        4.92138671875
+      ]
+    },
+    {
+      "variant": "v2",
+      "sample": 3,
+      "raw": "raw/03-v2.txt",
+      "raw_sha256": "93821e514ac3aae270934427595117590816330a6ce7f88497c5dbe1a4367e15",
+      "elapsed_seconds": 19.49818704230711,
+      "loadavg_before": [
+        2.41650390625,
+        4.2109375,
+        4.92138671875
+      ],
+      "loadavg_after": [
+        4.5458984375,
+        4.58544921875,
+        5.029296875
+      ]
+    },
+    {
+      "variant": "v3",
+      "sample": 3,
+      "raw": "raw/03-v3.txt",
+      "raw_sha256": "0a3743a75de759173d29a0309307732e9d93d4c2f64645d4016a6bad161a947f",
+      "elapsed_seconds": 17.270386917050928,
+      "loadavg_before": [
+        4.5458984375,
+        4.58544921875,
+        5.029296875
+      ],
+      "loadavg_after": [
+        3.6005859375,
+        4.3681640625,
+        4.94775390625
+      ]
+    },
+    {
+      "variant": "snapshot",
+      "sample": 3,
+      "raw": "raw/03-snapshot.txt",
+      "raw_sha256": "8503c997a18498a225b17d4f015849e796b99d87a66469fdc4c235dab7d7ff50",
+      "elapsed_seconds": 19.841233140788972,
+      "loadavg_before": [
+        3.6005859375,
+        4.3681640625,
+        4.94775390625
+      ],
+      "loadavg_after": [
+        2.94189453125,
+        4.166015625,
+        4.8681640625
+      ]
+    },
+    {
+      "variant": "snapshot",
+      "sample": 4,
+      "raw": "raw/04-snapshot.txt",
+      "raw_sha256": "9727ed96cde40e6c256696c8ce5e890d92170042057b0d47a292a71e2624c7b7",
+      "elapsed_seconds": 18.878563357051462,
+      "loadavg_before": [
+        2.94189453125,
+        4.166015625,
+        4.8681640625
+      ],
+      "loadavg_after": [
+        2.71484375,
+        4.05859375,
+        4.8212890625
+      ]
+    },
+    {
+      "variant": "v2",
+      "sample": 4,
+      "raw": "raw/04-v2.txt",
+      "raw_sha256": "d89aef67eec1f223f75cdf171b52715a854013da378669cc93de0487e8df7ef0",
+      "elapsed_seconds": 19.23700317274779,
+      "loadavg_before": [
+        2.71484375,
+        4.05859375,
+        4.8212890625
+      ],
+      "loadavg_after": [
+        2.35205078125,
+        3.8916015625,
+        4.74951171875
+      ]
+    },
+    {
+      "variant": "v3",
+      "sample": 4,
+      "raw": "raw/04-v3.txt",
+      "raw_sha256": "81a72490ba3fa64ae9917c3c4e27118b74c3a434a442aac81f093ff19e9c6c4d",
+      "elapsed_seconds": 19.10783490492031,
+      "loadavg_before": [
+        2.35205078125,
+        3.8916015625,
+        4.74951171875
+      ],
+      "loadavg_after": [
+        2.4873046875,
+        3.81787109375,
+        4.70654296875
+      ]
+    },
+    {
+      "variant": "v3",
+      "sample": 5,
+      "raw": "raw/05-v3.txt",
+      "raw_sha256": "d8bef30b6c0838f376d31d41ac405b988682f07a14af98165a784c498a431909",
+      "elapsed_seconds": 18.16530678467825,
+      "loadavg_before": [
+        2.4873046875,
+        3.81787109375,
+        4.70654296875
+      ],
+      "loadavg_after": [
+        2.064453125,
+        3.63427734375,
+        4.62646484375
+      ]
+    },
+    {
+      "variant": "snapshot",
+      "sample": 5,
+      "raw": "raw/05-snapshot.txt",
+      "raw_sha256": "5071ba9d3fbb609f7c063bdcb56618d796d143b4104b85511b81cc3d0a44c1dc",
+      "elapsed_seconds": 17.869355293922126,
+      "loadavg_before": [
+        2.064453125,
+        3.63427734375,
+        4.62646484375
+      ],
+      "loadavg_after": [
+        2.03759765625,
+        3.552734375,
+        4.583984375
+      ]
+    },
+    {
+      "variant": "v2",
+      "sample": 5,
+      "raw": "raw/05-v2.txt",
+      "raw_sha256": "c5c77dcab1942b294ff5f37188a1f7aadefee00454068a0282ef3f6138ceb07c",
+      "elapsed_seconds": 18.824450409971178,
+      "loadavg_before": [
+        2.03759765625,
+        3.552734375,
+        4.583984375
+      ],
+      "loadavg_after": [
+        1.8779296875,
+        3.41845703125,
+        4.51708984375
+      ]
+    },
+    {
+      "variant": "snapshot",
+      "sample": 6,
+      "raw": "raw/06-snapshot.txt",
+      "raw_sha256": "e0276c9c8e4580accd040c8e0efb77bd91e9527b647796128d75fced30a46e3a",
+      "elapsed_seconds": 19.38742221100256,
+      "loadavg_before": [
+        1.8779296875,
+        3.41845703125,
+        4.51708984375
+      ],
+      "loadavg_after": [
+        1.6279296875,
+        3.2607421875,
+        4.44091796875
+      ]
+    },
+    {
+      "variant": "v3",
+      "sample": 6,
+      "raw": "raw/06-v3.txt",
+      "raw_sha256": "9b77014fe238966d268ad7112b23b9419e0b2e1a1d0fdf18adf80370a66aa1de",
+      "elapsed_seconds": 19.65682436292991,
+      "loadavg_before": [
+        1.6279296875,
+        3.2607421875,
+        4.44091796875
+      ],
+      "loadavg_after": [
+        1.51708984375,
+        3.1298828125,
+        4.3720703125
+      ]
+    },
+    {
+      "variant": "v2",
+      "sample": 6,
+      "raw": "raw/06-v2.txt",
+      "raw_sha256": "cdd01b2437bca20457b9d352e7e9316b7cd767599779f61c89469aaee8880caf",
+      "elapsed_seconds": 18.78725152090192,
+      "loadavg_before": [
+        1.51708984375,
+        3.1298828125,
+        4.3720703125
+      ],
+      "loadavg_after": [
+        1.5244140625,
+        3.0234375,
+        4.31005859375
+      ]
+    },
+    {
+      "variant": "v2",
+      "sample": 7,
+      "raw": "raw/07-v2.txt",
+      "raw_sha256": "0259a6496b9495bc5427b1602065e223a4fefa59e33d42047e7572ea6b3d774f",
+      "elapsed_seconds": 19.238822504412383,
+      "loadavg_before": [
+        1.5244140625,
+        3.0234375,
+        4.31005859375
+      ],
+      "loadavg_after": [
+        1.48779296875,
+        2.9404296875,
+        4.26123046875
+      ]
+    },
+    {
+      "variant": "v3",
+      "sample": 7,
+      "raw": "raw/07-v3.txt",
+      "raw_sha256": "8a6873b508ee076504e2bf9cd56b4e80d552fc7ea505164fb2fc4cf8c6ea0b39",
+      "elapsed_seconds": 18.954139075241983,
+      "loadavg_before": [
+        1.48779296875,
+        2.9404296875,
+        4.26123046875
+      ],
+      "loadavg_after": [
+        2.05810546875,
+        2.9765625,
+        4.2451171875
+      ]
+    },
+    {
+      "variant": "snapshot",
+      "sample": 7,
+      "raw": "raw/07-snapshot.txt",
+      "raw_sha256": "df555461557e1819a67d7f4bffa4034b23dd6d177a47bb563f8f14863ff485ea",
+      "elapsed_seconds": 18.05412365589291,
+      "loadavg_before": [
+        2.05810546875,
+        2.9765625,
+        4.2451171875
+      ],
+      "loadavg_after": [
+        1.8251953125,
+        2.86328125,
+        4.18017578125
+      ]
+    },
+    {
+      "variant": "v3",
+      "sample": 8,
+      "raw": "raw/08-v3.txt",
+      "raw_sha256": "a2458bfddaa11e957b127dbd1a23ae1ef5861a829263ca8d3789ec460323a556",
+      "elapsed_seconds": 18.66176628274843,
+      "loadavg_before": [
+        1.8251953125,
+        2.86328125,
+        4.18017578125
+      ],
+      "loadavg_after": [
+        1.6640625,
+        2.7578125,
+        4.1171875
+      ]
+    },
+    {
+      "variant": "v2",
+      "sample": 8,
+      "raw": "raw/08-v2.txt",
+      "raw_sha256": "bf77fdc4917dbd219ec9a396a924c85a463959520bcfb1a7498c11630e15ca28",
+      "elapsed_seconds": 18.116466319654137,
+      "loadavg_before": [
+        1.6640625,
+        2.7578125,
+        4.1171875
+      ],
+      "loadavg_after": [
+        1.58447265625,
+        2.68701171875,
+        4.07177734375
+      ]
+    },
+    {
+      "variant": "snapshot",
+      "sample": 8,
+      "raw": "raw/08-snapshot.txt",
+      "raw_sha256": "a2ee472e8319c96a57ed06637016f52d01d576f1ef5bb5d3ff7e56fac8abeeca",
+      "elapsed_seconds": 18.16553932102397,
+      "loadavg_before": [
+        1.58447265625,
+        2.68701171875,
+        4.07177734375
+      ],
+      "loadavg_after": [
+        1.49169921875,
+        2.5927734375,
+        4.0107421875
+      ]
+    },
+    {
+      "variant": "v3",
+      "sample": 9,
+      "raw": "raw/09-v3.txt",
+      "raw_sha256": "c26b68ecfda4877d574fde35b9185f3e1941c4793bfa580b72c09db3806b200c",
+      "elapsed_seconds": 21.292475033085793,
+      "loadavg_before": [
+        1.49169921875,
+        2.5927734375,
+        4.0107421875
+      ],
+      "loadavg_after": [
+        1.35107421875,
+        2.48828125,
+        3.94580078125
+      ]
+    },
+    {
+      "variant": "snapshot",
+      "sample": 9,
+      "raw": "raw/09-snapshot.txt",
+      "raw_sha256": "900ec6e23ba92948f712d3a4509608a42ea884640ecb99c5b9da8bcc4ad27e34",
+      "elapsed_seconds": 19.168033371213824,
+      "loadavg_before": [
+        1.35107421875,
+        2.48828125,
+        3.94580078125
+      ],
+      "loadavg_after": [
+        1.37548828125,
+        2.4228515625,
+        3.892578125
+      ]
+    },
+    {
+      "variant": "v2",
+      "sample": 9,
+      "raw": "raw/09-v2.txt",
+      "raw_sha256": "32628178f7548ace402742466ccb7f128b5042de7f74de1a160f60571aa3f1ca",
+      "elapsed_seconds": 18.837623448111117,
+      "loadavg_before": [
+        1.37548828125,
+        2.4228515625,
+        3.892578125
+      ],
+      "loadavg_after": [
+        1.341796875,
+        2.34619140625,
+        3.83544921875
+      ]
+    },
+    {
+      "variant": "v2",
+      "sample": 10,
+      "raw": "raw/10-v2.txt",
+      "raw_sha256": "9f3dbf38d364f24c5fdf9be3e92f262ed36da29dd43f46c969822eb8069a3e59",
+      "elapsed_seconds": 19.026154580060393,
+      "loadavg_before": [
+        1.341796875,
+        2.34619140625,
+        3.83544921875
+      ],
+      "loadavg_after": [
+        1.4140625,
+        2.3125,
+        3.7998046875
+      ]
+    },
+    {
+      "variant": "snapshot",
+      "sample": 10,
+      "raw": "raw/10-snapshot.txt",
+      "raw_sha256": "d90cc83f7907c3e8de130d81c13b3dc4b11dc1762fdaa82e42b6db92b9b6d311",
+      "elapsed_seconds": 19.85934681398794,
+      "loadavg_before": [
+        1.4140625,
+        2.3125,
+        3.7998046875
+      ],
+      "loadavg_after": [
+        1.4267578125,
+        2.25830078125,
+        3.75
+      ]
+    },
+    {
+      "variant": "v3",
+      "sample": 10,
+      "raw": "raw/10-v3.txt",
+      "raw_sha256": "70c5cd837e8c64ef5a589a977aad2d6d64edaf22517159f1bb88e097888e305c",
+      "elapsed_seconds": 17.64793116878718,
+      "loadavg_before": [
+        1.4267578125,
+        2.25830078125,
+        3.75
+      ],
+      "loadavg_after": [
+        1.6015625,
+        2.24169921875,
+        3.7119140625
+      ]
+    },
+    {
+      "variant": "snapshot",
+      "sample": 11,
+      "raw": "raw/11-snapshot.txt",
+      "raw_sha256": "db6416945a41a20daac8095c8162821351c44218b88acdbab1a9aa043e90b23a",
+      "elapsed_seconds": 18.57602465292439,
+      "loadavg_before": [
+        1.6015625,
+        2.24169921875,
+        3.7119140625
+      ],
+      "loadavg_after": [
+        2.1962890625,
+        2.32568359375,
+        3.70751953125
+      ]
+    },
+    {
+      "variant": "v2",
+      "sample": 11,
+      "raw": "raw/11-v2.txt",
+      "raw_sha256": "6c3dc9e36827840297ee6b1d8db5ac5edb6c7406e18edfcc5eb72dc49e6a7ef2",
+      "elapsed_seconds": 18.704632016830146,
+      "loadavg_before": [
+        2.1962890625,
+        2.32568359375,
+        3.70751953125
+      ],
+      "loadavg_after": [
+        2.29345703125,
+        2.341796875,
+        3.69091796875
+      ]
+    },
+    {
+      "variant": "v3",
+      "sample": 11,
+      "raw": "raw/11-v3.txt",
+      "raw_sha256": "afd1efc25c64532eee76cbae9222217b597183ffb71cf7e2f8b9d095b9f70a73",
+      "elapsed_seconds": 18.155864430125803,
+      "loadavg_before": [
+        2.29345703125,
+        2.341796875,
+        3.69091796875
+      ],
+      "loadavg_after": [
+        1.9873046875,
+        2.27001953125,
+        3.6376953125
+      ]
+    }
+  ],
+  "scope": "pooled request/response/user-value reset and request preparation plus in-process handler execution; no sockets, kernel/network, or app construction",
+  "go_version": "go version go1.26.8 linux/amd64",
+  "go_environment": {
+    "CGO_ENABLED": "1",
+    "GOAMD64": "v1",
+    "GOARCH": "amd64",
+    "GOEXPERIMENT": "",
+    "GOFLAGS": "",
+    "GOOS": "linux",
+    "GOVERSION": "go1.26.8"
+  },
+  "runtime_environment": {
+    "GOMAXPROCS": "1",
+    "GODEBUG": "unset",
+    "GOGC": "unset",
+    "GOMEMLIMIT": "unset",
+    "GOFLAGS": "unset",
+    "GOEXPERIMENT": "unset"
+  },
+  "prepared_at": "2026-09-08T07:59:17.759294+00:00",
+  "rounds": 12,
+  "benchtime": "500ms",
+  "cpu_affinity": [
+    7
+  ],
+  "seed": 2714,
+  "orders": [
+    [
+      "snapshot",
+      "v3",
+      "v2"
+    ],
+    [
+      "v2",
+      "snapshot",
+      "v3"
+    ],
+    [
+      "v3",
+      "v2",
+      "snapshot"
+    ],
+    [
+      "v2",
+      "v3",
+      "snapshot"
+    ],
+    [
+      "snapshot",
+      "v2",
+      "v3"
+    ],
+    [
+      "v3",
+      "snapshot",
+      "v2"
+    ],
+    [
+      "snapshot",
+      "v3",
+      "v2"
+    ],
+    [
+      "v2",
+      "v3",
+      "snapshot"
+    ],
+    [
+      "v3",
+      "v2",
+      "snapshot"
+    ],
+    [
+      "v3",
+      "snapshot",
+      "v2"
+    ],
+    [
+      "v2",
+      "snapshot",
+      "v3"
+    ],
+    [
+      "snapshot",
+      "v2",
+      "v3"
+    ]
+  ],
+  "sampling_started_at": "2026-09-08T07:59:45.382685+00:00",
+  "sample_runner_sha256": "055b2f3b6c3f605bf5f47a4f7ede0e611b12539e8626de2c883669fee5f15fae",
+  "host": {
+    "system": "Linux",
+    "release": "6.12.96+deb13-amd64",
+    "machine": "x86_64",
+    "logical_cpus": 8,
+    "available_cpus": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7
+    ]
+  },
+  "completed_at": "2026-09-08T08:10:58.803885+00:00"
+}

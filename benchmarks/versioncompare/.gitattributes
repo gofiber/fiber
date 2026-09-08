@@ -1,0 +1,6 @@
+benchmark_test.go.in linguist-language=Go
+results/** linguist-generated=true
+# Preserve Go's padded CPU label in verbatim measurement/statistics output.
+results/*/raw/*.txt whitespace=-blank-at-eol
+results/*/benchstat-*.txt whitespace=-blank-at-eol
+results/*/benchstat-*.csv whitespace=-blank-at-eol

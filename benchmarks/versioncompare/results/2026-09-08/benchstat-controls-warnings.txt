@@ -1,0 +1,14 @@
+F13: all samples are equal
+J13: all samples are equal
+B15: summaries must be >0 to compute geomean
+D15: summaries must be >0 to compute geomean
+D15: ratios must be >0 to compute geomean
+H15: summaries must be >0 to compute geomean
+H15: ratios must be >0 to compute geomean
+F19: all samples are equal
+J19: all samples are equal
+B21: summaries must be >0 to compute geomean
+D21: summaries must be >0 to compute geomean
+D21: ratios must be >0 to compute geomean
+H21: summaries must be >0 to compute geomean
+H21: ratios must be >0 to compute geomean

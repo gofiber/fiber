@@ -1,0 +1,271 @@
+package versionbench
+
+import (
+	"bufio"
+	"bytes"
+	"encoding/json"
+	"errors"
+	"io"
+	"net/http"
+	"strconv"
+	"strings"
+	"testing"
+
+	fiber "__FIBER__"
+	"__FIBER__/middleware/cors"
+	recoverer "__FIBER__/middleware/recover"
+	"github.com/valyala/fasthttp"
+)
+
+type payload struct {
+	ID     int    `json:"id" query:"id"`
+	Name   string `json:"name" query:"name"`
+	Active bool   `json:"active"`
+}
+
+type header struct{ name, value string }
+type scenario struct {
+	name, method, uri, body, wantBody string
+	headers, wantHeaders              []header
+	wantStatus                        int
+	setup                             func(*fiber.App)
+	matchedError                      bool
+}
+
+func scenarios() []scenario {
+	cases := []scenario{
+		{name: "fasthttp_floor", method: "GET", uri: "/hello", wantStatus: 200, wantBody: "hello"},
+		{name: "static", method: "GET", uri: "/hello", wantStatus: 200, wantBody: "hello",
+			setup: func(a *fiber.App) { a.Get("/hello", func(c __CTX__) error { return c.SendString("hello") }) }},
+		{name: "parameter", method: "GET", uri: "/users/42", wantStatus: 200, wantBody: "42",
+			setup: func(a *fiber.App) { a.Get("/users/:id", func(c __CTX__) error { return c.SendString(c.Params("id")) }) }},
+		{name: "wildcard", method: "GET", uri: "/files/a/b", wantStatus: 200, wantBody: "a/b",
+			setup: func(a *fiber.App) { a.Get("/files/*", func(c __CTX__) error { return c.SendString(c.Params("*")) }) }},
+		{name: "query_lookup", method: "GET", uri: "/query?name=alice", wantStatus: 200, wantBody: "alice",
+			setup: func(a *fiber.App) { a.Get("/query", func(c __CTX__) error { return c.SendString(c.Query("name")) }) }},
+		{name: "header_lookup", method: "GET", uri: "/header", headers: []header{{"X-Bench", "hello"}}, wantStatus: 200, wantBody: "hello",
+			setup: func(a *fiber.App) { a.Get("/header", func(c __CTX__) error { return c.SendString(c.Get("X-Bench")) }) }},
+		{name: "locals", method: "GET", uri: "/locals", wantStatus: 200, wantBody: "alice",
+			setup: func(a *fiber.App) {
+				a.Use(func(c __CTX__) error { c.Locals("name", "alice"); return c.Next() })
+				a.Get("/locals", func(c __CTX__) error {
+					name, ok := c.Locals("name").(string)
+					if !ok {
+						return c.SendStatus(http.StatusInternalServerError)
+					}
+					return c.SendString(name)
+				})
+			}},
+		{name: "json_response", method: "GET", uri: "/json", wantStatus: 200, wantBody: "{\"id\":42,\"name\":\"alice\",\"active\":true}",
+			setup: func(a *fiber.App) {
+				a.Get("/json", func(c __CTX__) error { return c.JSON(payload{ID: 42, Name: "alice", Active: true}) })
+			}},
+		{name: "json_bind", method: "POST", uri: "/bind", body: "{\"id\":42,\"name\":\"alice\",\"active\":true}",
+			headers: []header{{"Content-Type", "application/json"}}, wantStatus: 200, wantBody: "ok",
+			setup: func(a *fiber.App) {
+				a.Post("/bind", func(c __CTX__) error {
+					var p payload
+					if err := __BODY_BIND__; err != nil {
+						return err
+					}
+					if p.ID != 42 || p.Name != "alice" || !p.Active {
+						return c.SendStatus(http.StatusBadRequest)
+					}
+					return c.SendString("ok")
+				})
+			}},
+		{name: "query_bind", method: "GET", uri: "/bind?id=42&name=alice", wantStatus: 200, wantBody: "ok",
+			setup: func(a *fiber.App) {
+				a.Get("/bind", func(c __CTX__) error {
+					var p payload
+					if err := __QUERY_BIND__; err != nil {
+						return err
+					}
+					if p.ID != 42 || p.Name != "alice" {
+						return c.SendStatus(http.StatusBadRequest)
+					}
+					return c.SendString("ok")
+				})
+			}},
+		{name: "middleware_chain", method: "GET", uri: "/chain", wantStatus: 200, wantBody: "ok",
+			setup: func(a *fiber.App) {
+				for i := 0; i < 3; i++ {
+					a.Use(func(c __CTX__) error { return c.Next() })
+				}
+				a.Get("/chain", func(c __CTX__) error { return c.SendString("ok") })
+			}},
+		{name: "cors_simple", method: "GET", uri: "/cors", headers: []header{{"Origin", "https://bench.invalid"}},
+			wantStatus: 200, wantBody: "ok", wantHeaders: []header{{"Access-Control-Allow-Origin", "https://bench.invalid"}},
+			setup: func(a *fiber.App) {
+				a.Use(cors.New(cors.Config{AllowOrigins: __ORIGINS__, AllowMethods: __METHODS__}))
+				a.Get("/cors", func(c __CTX__) error { return c.SendString("ok") })
+			}},
+		{name: "cors_preflight", method: "OPTIONS", uri: "/cors",
+			headers:    []header{{"Origin", "https://bench.invalid"}, {"Access-Control-Request-Method", "POST"}},
+			wantStatus: 204, wantHeaders: []header{{"Access-Control-Allow-Origin", "https://bench.invalid"}, {"Access-Control-Allow-Methods", __METHODS_HEADER__}},
+			setup: func(a *fiber.App) { a.Use(cors.New(cors.Config{AllowOrigins: __ORIGINS__, AllowMethods: __METHODS__})) }},
+		{name: "recover_no_panic", method: "GET", uri: "/recover", wantStatus: 200, wantBody: "ok",
+			setup: func(a *fiber.App) {
+				a.Use(recoverer.New())
+				a.Get("/recover", func(c __CTX__) error { return c.SendString("ok") })
+			}},
+		{name: "not_found_version_default", method: "GET", uri: "/missing", wantStatus: 404, wantBody: __NOT_FOUND__,
+			setup: func(a *fiber.App) { a.Get("/exists", func(c __CTX__) error { return c.SendString("ok") }) }},
+		{name: "not_found_matched_response", method: "GET", uri: "/missing", wantStatus: 404, wantBody: "not found", matchedError: true,
+			setup: func(a *fiber.App) { a.Get("/exists", func(c __CTX__) error { return c.SendString("ok") }) }},
+	}
+	for _, size := range []int{1024, 16384} {
+		p := payload{ID: 42, Name: strings.Repeat("x", size), Active: true}
+		encoded, err := json.Marshal(p)
+		if err != nil {
+			panic(err)
+		}
+		wire := string(encoded)
+		expectedName := p.Name
+		cases = append(cases,
+			scenario{name: "json_response_" + strconv.Itoa(size), method: "GET", uri: "/json", wantStatus: 200, wantBody: wire,
+				setup: func(a *fiber.App) { a.Get("/json", func(c __CTX__) error { return c.JSON(p) }) }},
+			scenario{name: "json_bind_" + strconv.Itoa(size), method: "POST", uri: "/bind", body: wire,
+				headers: []header{{"Content-Type", "application/json"}}, wantStatus: 200, wantBody: "ok",
+				setup: func(a *fiber.App) {
+					a.Post("/bind", func(c __CTX__) error {
+						var p payload
+						if err := __BODY_BIND__; err != nil {
+							return err
+						}
+						if p.ID != 42 || p.Name != expectedName || !p.Active {
+							return c.SendStatus(http.StatusBadRequest)
+						}
+						return c.SendString("ok")
+					})
+				}},
+		)
+	}
+	for _, count := range []int{100, 1000} {
+		cases = append(cases, scenario{
+			name: "static_routes_" + strconv.Itoa(count), method: "GET",
+			uri: "/routes/" + strconv.Itoa(count-1), wantStatus: 200, wantBody: "ok",
+			setup: func(a *fiber.App) {
+				for i := 0; i < count; i++ {
+					a.Get("/routes/"+strconv.Itoa(i), func(c __CTX__) error { return c.SendString("ok") })
+				}
+			},
+		})
+	}
+	return cases
+}
+
+func handlerFor(s scenario) fasthttp.RequestHandler {
+	if s.setup == nil {
+		return func(c *fasthttp.RequestCtx) {
+			c.Response.SetStatusCode(http.StatusOK)
+			c.Response.SetBodyString("hello")
+		}
+	}
+	config := fiber.Config{Immutable: false}
+	if s.matchedError {
+		config.ErrorHandler = func(c __CTX__, err error) error {
+			var e *fiber.Error
+			if errors.As(err, &e) && e.Code == http.StatusNotFound {
+				return c.Status(http.StatusNotFound).SendString("not found")
+			}
+			return fiber.DefaultErrorHandler(c, err)
+		}
+	}
+	app := fiber.New(config)
+	s.setup(app)
+	return app.Handler()
+}
+
+func prepare(c *fasthttp.RequestCtx, s scenario) {
+	c.Request.Reset()
+	c.Response.Reset()
+	c.ResetUserValues()
+	c.Request.Header.SetMethod(s.method)
+	c.Request.SetRequestURI(s.uri)
+	for _, h := range s.headers {
+		c.Request.Header.Set(h.name, h.value)
+	}
+	if s.body != "" {
+		c.Request.SetBodyString(s.body)
+	}
+}
+
+func verify(tb testing.TB, c *fasthttp.RequestCtx, s scenario) {
+	tb.Helper()
+	if got := c.Response.StatusCode(); got != s.wantStatus {
+		tb.Fatalf("status=%d want=%d", got, s.wantStatus)
+	}
+	var wire bytes.Buffer
+	writer := bufio.NewWriter(&wire)
+	if err := c.Response.Write(writer); err != nil {
+		tb.Fatal(err)
+	}
+	if err := writer.Flush(); err != nil {
+		tb.Fatal(err)
+	}
+	reader := bufio.NewReader(&wire)
+	response, err := http.ReadResponse(reader, &http.Request{Method: s.method})
+	if err != nil {
+		tb.Fatal(err)
+	}
+	body, readErr := io.ReadAll(response.Body)
+	closeErr := response.Body.Close()
+	if readErr != nil {
+		tb.Fatal(readErr)
+	}
+	if closeErr != nil {
+		tb.Fatal(closeErr)
+	}
+	trailing, err := io.ReadAll(reader)
+	if err != nil {
+		tb.Fatal(err)
+	}
+	if len(trailing) != 0 {
+		tb.Fatalf("unexpected trailing HTTP bytes: %q", trailing)
+	}
+	if got := string(body); got != s.wantBody {
+		tb.Fatalf("wire body=%q want=%q", got, s.wantBody)
+	}
+	for _, h := range s.wantHeaders {
+		if got := response.Header.Get(h.name); got != h.value {
+			tb.Fatalf("header %s=%q want=%q", h.name, got, h.value)
+		}
+	}
+}
+
+func TestScenarios(t *testing.T) {
+	t.Parallel()
+	for _, s := range scenarios() {
+		t.Run(s.name, func(t *testing.T) {
+			t.Parallel()
+			h := handlerFor(s)
+			var c fasthttp.RequestCtx
+			for i := 0; i < 3; i++ {
+				prepare(&c, s)
+				h(&c)
+				verify(t, &c, s)
+			}
+		})
+	}
+}
+
+func BenchmarkRequest(b *testing.B) {
+	for _, s := range scenarios() {
+		b.Run(s.name, func(b *testing.B) {
+			h := handlerFor(s)
+			var c fasthttp.RequestCtx
+			prepare(&c, s)
+			h(&c)
+			verify(b, &c, s)
+			b.ReportAllocs()
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				prepare(&c, s)
+				h(&c)
+			}
+			b.StopTimer()
+			verify(b, &c, s)
+		})
+	}
+}

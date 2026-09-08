@@ -7,6 +7,12 @@ description: >-
 sidebar_position: 2
 ---
 
+## Version-to-version microbenchmarks
+
+A [reproducible v2/v3 feature comparison](https://github.com/gofiber/fiber/blob/main/benchmarks/versioncompare/REPORT.md) covers routing, request access, JSON binding and responses, and representative middleware with pinned releases and a separate development snapshot.
+
+The report includes native-API fixtures, independent module graphs, correctness checks, repeated interleaved measurements, and raw samples. Results are mixed: some workloads improve while others have additional costs. These are in-process microbenchmarks, not production throughput measurements or a general claim that one version is faster. Read the workload definitions and limitations before applying the numbers to an application.
+
 ## TechEmpower
 
 [TechEmpower](https://www.techempower.com/benchmarks/#section=test&runid=1d5bfc8a-5c4a-4fb2-a792-ad967f1eb138) provides a performance comparison of many web application frameworks that execute fundamental tasks such as JSON serialization, database access, and server-side template rendering.

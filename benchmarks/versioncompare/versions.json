@@ -1,0 +1,35 @@
+{
+  "toolchain": "go1.26.8",
+  "benchstat": "golang.org/x/perf/cmd/benchstat@v0.0.0-20260825160852-19be9d8e6c70",
+  "variants": [
+    {
+      "name": "v2",
+      "label": "Fiber v2.52.15",
+      "module": "github.com/gofiber/fiber/v2",
+      "version": "v2.52.15",
+      "commit": "5c7a80b327c130e93041e569e685825f804d5f15",
+      "major": 2
+    },
+    {
+      "name": "v3",
+      "label": "Fiber v3.5.0",
+      "module": "github.com/gofiber/fiber/v3",
+      "version": "v3.5.0",
+      "commit": "741d8511a75f408ddf93eb41b175df0165714f11",
+      "major": 3
+    },
+    {
+      "name": "snapshot",
+      "label": "v3 snapshot f73d37f",
+      "module": "github.com/gofiber/fiber/v3",
+      "version": "v3.5.1-0.20260907141705-f73d37fb732f",
+      "commit": "f73d37fb732fd431339b8a250d84314f02d215a5",
+      "major": 3
+    }
+  ],
+  "separate_cases": [
+    "fasthttp_floor",
+    "not_found_version_default"
+  ],
+  "expected_cases": 22
+}

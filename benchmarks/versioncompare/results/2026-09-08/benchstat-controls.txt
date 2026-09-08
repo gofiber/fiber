@@ -1,0 +1,27 @@
+goos: linux
+goarch: amd64
+pkg: example.com/fiber-version-benchmark
+cpu: AMD EPYC 9645 96-Core Processor                
+                                  │    v2.txt    │                v3.txt                │             snapshot.txt              │
+                                  │    sec/op    │    sec/op     vs base                │    sec/op      vs base                │
+Request/fasthttp_floor               72.52n ± 9%   102.67n ± 9%  +41.56% (p=0.000 n=12)   100.20n ±  3%  +38.16% (p=0.000 n=12)
+Request/not_found_version_default   1199.0n ± 9%    496.6n ± 9%  -58.58% (p=0.000 n=12)    446.8n ± 17%  -62.74% (p=0.000 n=12)
+geomean                              294.9n         225.8n       -23.43%                   211.6n        -28.25%
+
+                                  │    v2.txt    │                 v3.txt                  │              snapshot.txt               │
+                                  │     B/op     │    B/op     vs base                     │    B/op     vs base                     │
+Request/fasthttp_floor              0.000 ± 0%     0.000 ± 0%         ~ (p=1.000 n=12) ¹     0.000 ± 0%         ~ (p=1.000 n=12) ¹
+Request/not_found_version_default   56.00 ± 0%      0.00 ± 0%  -100.00% (p=0.000 n=12)        0.00 ± 0%  -100.00% (p=0.000 n=12)
+geomean                                        ²               ?                       ² ³               ?                       ² ³
+¹ all samples are equal
+² summaries must be >0 to compute geomean
+³ ratios must be >0 to compute geomean
+
+                                  │    v2.txt    │                 v3.txt                  │              snapshot.txt               │
+                                  │  allocs/op   │ allocs/op   vs base                     │ allocs/op   vs base                     │
+Request/fasthttp_floor              0.000 ± 0%     0.000 ± 0%         ~ (p=1.000 n=12) ¹     0.000 ± 0%         ~ (p=1.000 n=12) ¹
+Request/not_found_version_default   3.000 ± 0%     0.000 ± 0%  -100.00% (p=0.000 n=12)       0.000 ± 0%  -100.00% (p=0.000 n=12)
+geomean                                        ²               ?                       ² ³               ?                       ² ³
+¹ all samples are equal
+² summaries must be >0 to compute geomean
+³ ratios must be >0 to compute geomean
