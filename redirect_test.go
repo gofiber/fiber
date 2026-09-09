@@ -147,9 +147,10 @@ func Test_Redirect_Route_ParamCannotMoveTheQuery(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name  string
-		param string
-		want  string
+		name    string
+		param   string
+		want    string
+		wantErr bool
 	}{
 		{
 			name:  "plain",
@@ -189,6 +190,19 @@ func Test_Redirect_Route_ParamCannotMoveTheQuery(t *testing.T) {
 			param: "50%",
 			want:  "/user/50%25?q=1",
 		},
+		{
+			// "." and ".." are special path segments in the WHATWG URL
+			// Standard: the client's parser shortens them even when encoded,
+			// so the composed URL would silently target another route.
+			name:    "param cannot be a dot",
+			param:   ".",
+			wantErr: true,
+		},
+		{
+			name:    "param cannot be a double dot",
+			param:   "..",
+			wantErr: true,
+		},
 	}
 
 	for _, tc := range tests {
@@ -204,6 +218,10 @@ func Test_Redirect_Route_ParamCannotMoveTheQuery(t *testing.T) {
 				Params:  Map{"name": tc.param},
 				Queries: map[string]string{"q": "1"},
 			})
+			if tc.wantErr {
+				require.ErrorIs(t, err, ErrRouteNotRepresentable)
+				return
+			}
 			require.NoError(t, err)
 			require.Equal(t, tc.want, string(c.Response().Header.Peek(HeaderLocation)))
 		})
@@ -215,9 +233,10 @@ func Test_Redirect_Route_ParamCannotLeaveTheOrigin(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name  string
-		param string
-		want  string
+		name    string
+		param   string
+		want    string
+		wantErr bool
 	}{
 		{
 			name:  "plain",
@@ -275,6 +294,23 @@ func Test_Redirect_Route_ParamCannotLeaveTheOrigin(t *testing.T) {
 			param: "a#b",
 			want:  "/a%23b",
 		},
+		{
+			// Dot segments are also structure: the client's parser shortens
+			// them even when encoded, so they must not appear in any segment.
+			name:    "greedy interior dot segment",
+			param:   "a/../admin",
+			wantErr: true,
+		},
+		{
+			name:    "greedy leading dot segment",
+			param:   "../admin",
+			wantErr: true,
+		},
+		{
+			name:    "greedy single dot segment",
+			param:   "a/./b",
+			wantErr: true,
+		},
 	}
 
 	for _, tc := range tests {
@@ -289,6 +325,17 @@ func Test_Redirect_Route_ParamCannotLeaveTheOrigin(t *testing.T) {
 			err := c.Redirect().Route("wildcard", RedirectConfig{
 				Params: Map{"*": tc.param},
 			})
+			if tc.wantErr {
+				require.ErrorIs(t, err, ErrRouteNotRepresentable)
+				// The same question asked the other two ways: a caller who
+				// puts either answer in a Location header or an href reaches
+				// the same place, so all three have to agree.
+				_, err = app.GetRoute("wildcard").URL(Map{"*": tc.param})
+				require.ErrorIs(t, err, ErrRouteNotRepresentable)
+				_, err = c.GetRouteURL("wildcard", Map{"*": tc.param})
+				require.ErrorIs(t, err, ErrRouteNotRepresentable)
+				return
+			}
 			require.NoError(t, err)
 			require.Equal(t, tc.want, string(c.Response().Header.Peek(HeaderLocation)))
 

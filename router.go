@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"math/bits"
 	"slices"
+	"strings"
 	"sync/atomic"
 
 	"github.com/gofiber/fiber/v3/internal/urlnorm"
@@ -317,11 +318,38 @@ func buildRouteURL(route *Route, params Map) (string, error) {
 			if segment.IsGreedy {
 				mode = escapePathParamGreedy
 			}
-			buf.B = appendEscapedPathParam(buf.B, utils.ToString(val), mode)
+			value := utils.ToString(val)
+			if !routeParamRepresentable(value, mode) {
+				return "", ErrRouteNotRepresentable
+			}
+			buf.B = appendEscapedPathParam(buf.B, value, mode)
 		}
 	}
 
 	return urlnorm.RootedPath(buf.String()), nil
+}
+
+// routeParamRepresentable reports whether a substituted parameter value keeps
+// the composed URL on the route it belongs to once the client parses it. "."
+// and ".." are special path segments in the WHATWG URL Standard: the parser
+// shortens them even when percent-encoded, because decoding runs first. A
+// plain ".." value would turn "/user/.." into "/", and a greedy "a/../admin"
+// into "/admin", so values carrying a dot-only segment cannot be represented
+// and must be rejected instead of silently retargeted.
+func routeParamRepresentable(value string, mode pathParamEscapeMode) bool {
+	if value == "." || value == ".." {
+		return false
+	}
+	if mode == escapePathParamSegment {
+		return true
+	}
+	for segment := range strings.SplitSeq(value, "/") {
+		if segment == "." || segment == ".." {
+			return false
+		}
+	}
+
+	return true
 }
 
 // pathParamEscapeMode selects the escape set a substituted route parameter
