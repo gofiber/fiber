@@ -16,6 +16,8 @@ import (
 
 	"github.com/gofiber/fiber/v3/internal/fieldname"
 	"github.com/gofiber/fiber/v3/internal/headerlookup"
+	"github.com/gofiber/fiber/v3/internal/idnafold"
+	utilsstrings "github.com/gofiber/utils/v2/strings"
 	"github.com/valyala/fasthttp"
 )
 
@@ -568,6 +570,19 @@ func selectClient(globalClient *fasthttp.Client, clients ...*fasthttp.Client) (*
 // when AllowPrivateIPs is false the dispatching client's dial-time guard
 // re-validates the resolved IP at connect time — so a rebinding-capable
 // resolver cannot reach a private address through this handler.
+
+// foldHostnameLabel returns hostname with its host label folded to lowercase
+// Punycode, preserving an explicit port unchanged. It is the construction-time
+// counterpart to hostWithoutPort: that strips a port from the per-request wire
+// value, this normalizes the configured value once so the two sides compare
+// correctly regardless of how the operator spelled the domain.
+func foldHostnameLabel(hostname string) string {
+	if host, port, ok := utils.SplitHostPort(hostname); ok {
+		return idnafold.ToASCII(utilsstrings.ToLower(host)) + ":" + port
+	}
+	return idnafold.ToASCII(utilsstrings.ToLower(hostname))
+}
+
 // hostWithoutPort strips the port from a Host header value, keeping a bracketed IPv6 literal.
 func hostWithoutPort(host string) string {
 	if strings.HasPrefix(host, "[") {
@@ -587,6 +602,11 @@ func DomainForward(hostname, addr string, clients ...*fasthttp.Client) fiber.Han
 	if err != nil {
 		panic(err)
 	}
+	// A Unicode hostname literal — entirely natural to write for a non-ASCII
+	// domain — never appears on the wire: a conforming client always sends
+	// the Punycode form (RFC 5891), so folding once here, rather than on
+	// every request, is what makes the two sides comparable at all.
+	hostname = foldHostnameLabel(hostname)
 	return func(c fiber.Ctx) error {
 		// Host names are case-insensitive (RFC 9110 §4.2.3) and fasthttp
 		// does not case-fold the raw Host header, so compare with
