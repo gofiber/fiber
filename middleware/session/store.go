@@ -9,6 +9,7 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/extractors"
+	"github.com/gofiber/fiber/v3/internal/ctxlocal"
 	"github.com/gofiber/fiber/v3/internal/storage/memory"
 	"github.com/gofiber/fiber/v3/log"
 )
@@ -154,7 +155,7 @@ func (s *Store) getSession(c fiber.Ctx) (*Session, error) {
 	if id == "" {
 		isFresh = true // The session is fresh if a new ID is generated
 		id = s.KeyGenerator()
-		c.Locals(sessionIDContextKey, id)
+		ctxlocal.Set(c, sessionIDContextKey, id)
 	}
 
 	// Create session object
@@ -212,7 +213,7 @@ func (s *Store) getSessionID(c fiber.Ctx) string {
 		for _, chainExtractor := range extractor.Chain {
 			sessionID, err := chainExtractor.Extract(c)
 			if err == nil && sessionID != "" {
-				c.Locals(sessionExtractorContextKey, chainExtractor)
+				ctxlocal.Set(c, sessionExtractorContextKey, chainExtractor)
 				return sessionID
 			}
 		}
@@ -225,7 +226,7 @@ func (s *Store) getSessionID(c fiber.Ctx) string {
 		return ""
 	}
 	if sessionID != "" {
-		c.Locals(sessionExtractorContextKey, extractor)
+		ctxlocal.Set(c, sessionExtractorContextKey, extractor)
 	}
 	return sessionID
 }

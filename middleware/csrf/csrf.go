@@ -20,6 +20,25 @@ import (
 	"github.com/gofiber/fiber/v3/middleware/logger"
 )
 
+// varyCookie is hoisted so the "..." argument list is not a slice the compiler
+// has to heap-allocate on every response; see the note on cors.varyOrigin.
+// Because it is shared by every response, it only ever reaches Vary through
+// vary below.
+var varyCookie = []string{fiber.HeaderCookie}
+
+// vary adds fields to the Vary response header. varyCookie is package-level so
+// the call does not allocate, which also means a custom Ctx that rewrote its
+// variadic argument in place would corrupt it for every later response and
+// race with the requests running alongside. DefaultCtx only reads what Vary is
+// given, so it gets the shared slice; anything else gets a copy of its own.
+func vary(c fiber.Ctx, fields []string) {
+	if dc, ok := c.(*fiber.DefaultCtx); ok {
+		dc.Vary(fields...)
+		return
+	}
+	c.Vary(slices.Clone(fields)...)
+}
+
 // csrfSchemes is the scheme policy for CSRF: only http and https, since a
 // non-web scheme has no business authorizing a state-changing request.
 const csrfSchemes = originpkg.WebSchemesOnly
@@ -219,7 +238,7 @@ func New(config ...Config) fiber.Handler {
 		updateCSRFCookie(c, &cfg, token)
 
 		// Tell the browser that a new header value is generated
-		c.Vary(fiber.HeaderCookie)
+		vary(c, varyCookie)
 
 		// Store the token in the context
 		fiber.StoreInContext(c, tokenKey, token)

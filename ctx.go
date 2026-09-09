@@ -812,21 +812,32 @@ func (c *DefaultCtx) Value(key any) any {
 // configDependentPaths set paths for route recognition and prepared paths for the user,
 // here the features for caseSensitive, decoded paths, strict paths are evaluated
 func (c *DefaultCtx) configDependentPaths() {
-	c.path = append(c.path[:0], c.pathOriginal...)
-	// If UnescapePath enabled, we decode the path and save it for the framework user.
-	// Decoded as a path, so a "+" stays a "+".
-	if c.app.config.UnescapePath {
-		c.path = unescapePath(c.path)
-	}
-
-	// another path is specified which is for routing recognition only
-	// use the path that was changed by the previous configuration flags
-	// If CaseSensitive is disabled, we lowercase the original path while
-	// copying it, fusing the copy and the case fold into a single pass.
-	if !c.app.config.CaseSensitive {
-		c.detectionPath = appendLowerASCII(c.detectionPath[:0], c.path)
+	// The detection path is the path a route is recognized by; it differs from
+	// the user-visible path only by the configuration flags applied below.
+	//
+	// Under the default configuration — paths left escaped and matched
+	// case-insensitively — it is exactly the case fold of the path, so both
+	// are written from a single pass over the original rather than copying
+	// once and folding the copy.
+	if !c.app.config.UnescapePath && !c.app.config.CaseSensitive {
+		c.path, c.detectionPath = appendCopyLowerASCII(c.path, c.detectionPath, c.pathOriginal)
 	} else {
-		c.detectionPath = append(c.detectionPath[:0], c.path...)
+		c.path = append(c.path[:0], c.pathOriginal...)
+		// If UnescapePath enabled, we decode the path and save it for the framework user.
+		// Decoded as a path, so a "+" stays a "+".
+		if c.app.config.UnescapePath {
+			c.path = unescapePath(c.path)
+		}
+
+		// another path is specified which is for routing recognition only
+		// use the path that was changed by the previous configuration flags
+		// If CaseSensitive is disabled, we lowercase the path while copying
+		// it, fusing the copy and the case fold into a single pass.
+		if !c.app.config.CaseSensitive {
+			c.detectionPath = appendLowerASCII(c.detectionPath[:0], c.path)
+		} else {
+			c.detectionPath = append(c.detectionPath[:0], c.path...)
+		}
 	}
 	// If StrictRouting is disabled, we strip all trailing slashes
 	if !c.app.config.StrictRouting && len(c.detectionPath) > 1 && c.detectionPath[len(c.detectionPath)-1] == '/' {

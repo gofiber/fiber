@@ -318,7 +318,7 @@ func (r *DefaultReq) MediaType() string {
 // Charset returns the charset parameter from the Content-Type header.
 func (r *DefaultReq) Charset() string {
 	contentType := r.c.fasthttp.Request.Header.ContentType()
-	_, params, ok := bytes.Cut(contentType, []byte{';'})
+	_, params, ok := utils.CutByte(contentType, ';')
 	if !ok {
 		return ""
 	}
@@ -366,7 +366,7 @@ func (r *DefaultReq) Charset() string {
 			params = nil
 		}
 
-		name, value, ok := bytes.Cut(param, []byte{'='})
+		name, value, ok := utils.CutByte(param, '=')
 		if !ok || !utils.EqualFold(utils.TrimSpace(name), []byte("charset")) {
 			continue
 		}
@@ -758,7 +758,7 @@ func (r *DefaultReq) GetHeaders() map[string][]string {
 func (r *DefaultReq) Host() string {
 	if r.IsProxyTrusted() {
 		if host := r.Get(HeaderXForwardedHost); host != "" {
-			if before, _, found := strings.Cut(host, ","); found {
+			if before, _, found := utils.CutByte(host, ','); found {
 				return utils.TrimSpace(before)
 			}
 			return utils.TrimSpace(host)
@@ -791,8 +791,10 @@ func (r *DefaultReq) Port() string {
 		return ""
 	}
 
-	_, port, err := net.SplitHostPort(addr.String())
-	if err != nil {
+	// utils.SplitHostPort applies net.SplitHostPort's rules but reports a
+	// miss as ok == false, so an address without a port costs no *net.AddrError.
+	_, port, ok := utils.SplitHostPort(addr.String())
+	if !ok {
 		return ""
 	}
 
@@ -1190,7 +1192,9 @@ func Locals[V any](c Ctx, key any, value ...V) V {
 	if len(value) == 0 {
 		v, ok = c.Locals(key).(V)
 	} else {
-		v, ok = c.Locals(key, value[0]).(V)
+		// Set through setLocal so the store does not pay for the
+		// heap-allocated one-element slice an interface Locals call costs.
+		v, ok = setLocal(c, key, value[0]).(V)
 	}
 	if !ok {
 		return v // return zero of type V
@@ -1395,7 +1399,7 @@ func (r *DefaultReq) Scheme() string {
 			if utils.EqualFold(key, xForwardedProtoBytes) ||
 				utils.EqualFold(key, xForwardedProtocolBytes) {
 				v := app.toString(val)
-				if before, _, found := strings.Cut(v, ","); found {
+				if before, _, found := utils.CutByte(v, ','); found {
 					v = before
 				}
 				if forwarded, ok := forwardedScheme(v); ok {
@@ -1535,7 +1539,7 @@ func (r *DefaultReq) Range(size int64) (Range, error) {
 		return int64(parsed), nil
 	}
 
-	before, after, found := strings.Cut(rangeStr, "=")
+	before, after, found := utils.CutByte(rangeStr, '=')
 	if !found {
 		return Range{}, ErrRangeMalformed
 	}

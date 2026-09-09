@@ -103,21 +103,21 @@ func parseSortQuery(query string, allowedSorts []string, defaultSort string) []S
 		return []SortField{{Field: defaultSort, Order: ASC}}
 	}
 
-	fields := strings.Split(query, ",")
-	sortFields := make([]SortField, 0, len(fields))
+	// One comma-separated element per sort field, so the comma count bounds
+	// the result; counting is allocation-free, unlike the []string that
+	// strings.Split materialized for the same number on every request.
+	sortFields := make([]SortField, 0, strings.Count(query, ",")+1)
 
-	for _, field := range fields {
-		field = utils.TrimSpace(field)
-		if field == "" {
-			continue
-		}
+	// SplitTrimSeq walks the elements of an HTTP list field (RFC 9110
+	// Section 5.6.1) in place: already trimmed, empty elements skipped.
+	for field := range utils.SplitTrimSeq(query, ',') {
 		order := ASC
-		if strings.HasPrefix(field, "-") {
+		if field[0] == '-' {
 			order = DESC
 			field = utils.TrimSpace(field[1:])
-		}
-		if field == "" {
-			continue
+			if field == "" {
+				continue
+			}
 		}
 		if slices.Contains(allowedSorts, field) {
 			sortFields = append(sortFields, SortField{Field: field, Order: order})

@@ -100,7 +100,7 @@ func New(config ...Config) fiber.Handler {
 
 		// Check if the credentials are in the correct form
 		// which is "username:password".
-		username, password, found := strings.Cut(creds, ":")
+		username, password, found := utils.CutByte(creds, ':')
 		if !found {
 			return cfg.BadRequest(c)
 		}

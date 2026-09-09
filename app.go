@@ -21,7 +21,6 @@ import (
 	"net/http/httputil"
 	"os"
 	"reflect"
-	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -1229,7 +1228,7 @@ func responseKey(status int) string {
 	if status < 100 || status > 599 {
 		panic("invalid status code")
 	}
-	return strconv.Itoa(status)
+	return utils.FormatInt(int64(status))
 }
 
 // defaultResponseDescription returns a human-readable description for a response
@@ -1241,7 +1240,7 @@ func defaultResponseDescription(status int) string {
 	if text := utils.StatusMessage(status); text != "" {
 		return text
 	}
-	return "Status " + strconv.Itoa(status)
+	return "Status " + utils.FormatInt(int64(status))
 }
 
 // getOrCreateResponse returns the response entry for key, creating it with a
@@ -2153,7 +2152,7 @@ func (app *App) Test(req *http.Request, config ...TestConfig) (*http.Response, e
 
 	// Add Content-Length if not provided with body
 	if req.Body != http.NoBody && req.Header.Get(HeaderContentLength) == "" {
-		req.Header.Add(HeaderContentLength, strconv.FormatInt(req.ContentLength, 10))
+		req.Header.Add(HeaderContentLength, utils.FormatInt(req.ContentLength))
 	}
 
 	// Ensure Host header is present in the dump (required by fasthttp)

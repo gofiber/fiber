@@ -1872,3 +1872,57 @@ func Test_FromParam_DecodesOnce(t *testing.T) {
 		})
 	}
 }
+
+// Test_ExtractWithSource_BareChain covers an Extractor built with only its
+// Chain set and no Extract func, the one shape that reaches
+// extractChainWithSource directly: the winner's own source is reported, the
+// cycle guard is released when the walk ends so the same ctx can be walked
+// again, and a chain that contains itself is still refused.
+func Test_ExtractWithSource_BareChain(t *testing.T) {
+	t.Parallel()
+
+	t.Run("winner reports its own source", func(t *testing.T) {
+		t.Parallel()
+
+		app := fiber.New()
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+		t.Cleanup(func() { app.ReleaseCtx(ctx) })
+		ctx.Request().SetRequestURI("/?token=from-query")
+
+		bare := Extractor{Chain: []Extractor{FromHeader("X-Token"), FromQuery("token")}}
+
+		v, src, err := ExtractWithSource(bare, ctx)
+		require.NoError(t, err)
+		require.Equal(t, "from-query", v)
+		require.Equal(t, SourceQuery, src)
+
+		// The guard set for the walk must be cleared afterwards, or the next
+		// walk on this ctx would be mistaken for a cycle.
+		guard, ok := chainGuardFor(bare.Chain)
+		require.True(t, ok)
+		require.Equal(t, false, ctx.Locals(guard))
+
+		v, src, err = ExtractWithSource(bare, ctx)
+		require.NoError(t, err)
+		require.Equal(t, "from-query", v)
+		require.Equal(t, SourceQuery, src)
+	})
+
+	t.Run("self-referencing chain is refused", func(t *testing.T) {
+		t.Parallel()
+
+		app := fiber.New()
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+		t.Cleanup(func() { app.ReleaseCtx(ctx) })
+
+		bare := Extractor{Chain: make([]Extractor, 1)}
+		bare.Chain[0] = bare
+
+		_, _, err := ExtractWithSource(bare, ctx)
+		require.ErrorIs(t, err, ErrChainCycle)
+
+		guard, ok := chainGuardFor(bare.Chain)
+		require.True(t, ok)
+		require.Equal(t, false, ctx.Locals(guard), "the guard is released even after a refused walk")
+	})
+}

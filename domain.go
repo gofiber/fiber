@@ -317,7 +317,7 @@ func (d *domainRouter) wrapHandlers(handlers []Handler) []Handler {
 						values: values,
 					}
 				}
-				c.Locals(cacheKey, check)
+				setLocal(c, cacheKey, check)
 			}
 
 			if !check.isMatched {
@@ -326,7 +326,7 @@ func (d *domainRouter) wrapHandlers(handlers []Handler) []Handler {
 
 			// Reuse the cached domainParams (or nil to clear stale values)
 			// instead of allocating a new struct per handler invocation.
-			c.Locals(domainLocalsKey, check.params)
+			setLocal(c, domainLocalsKey, check.params)
 
 			return origHandler(c)
 		}

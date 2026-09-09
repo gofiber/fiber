@@ -3674,3 +3674,42 @@ func Test_CSRF_CrossSiteWithoutOriginOverPlaintext(t *testing.T) {
 	require.Equal(t, fiber.StatusForbidden, post(false),
 		"and without it nothing else lets the request through")
 }
+
+// varyMutatingCtx is a custom context whose Vary rewrites the field list it is
+// handed. Nothing in Ctx's contract forbids that, so the middleware must not
+// hand it a slice that outlives the request.
+type varyMutatingCtx struct {
+	fiber.DefaultCtx
+}
+
+// Vary overwrites every field it is handed before forwarding the call — the
+// most a custom Vary can do to a slice its caller still holds.
+func (c *varyMutatingCtx) Vary(fields ...string) {
+	for i := range fields {
+		fields[i] = "X-Mutated"
+	}
+	c.DefaultCtx.Vary(fields...)
+}
+
+// Test_CSRF_VaryDoesNotShareFieldsWithCustomCtx pins that varyCookie survives a
+// custom context. It is shared by every response that mints a token, so a Vary
+// implementation writing to its argument would otherwise corrupt the field name
+// for every later response and race with the requests running alongside it.
+func Test_CSRF_VaryDoesNotShareFieldsWithCustomCtx(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.NewWithCustomCtx(func(app *fiber.App) fiber.CustomCtx {
+		return &varyMutatingCtx{DefaultCtx: *fiber.NewDefaultCtx(app)}
+	})
+	app.Use(New())
+	app.Get("/", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
+
+	ctx := &fasthttp.RequestCtx{}
+	ctx.Request.SetRequestURI("/")
+	ctx.Request.Header.SetMethod(fiber.MethodGet)
+	app.Handler()(ctx)
+
+	require.Contains(t, string(ctx.Response.Header.Peek(fiber.HeaderVary)), "X-Mutated",
+		"the custom Vary must still be the one that ran")
+	require.Equal(t, []string{fiber.HeaderCookie}, varyCookie)
+}
