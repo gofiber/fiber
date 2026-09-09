@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"math"
 	"slices"
-	"strconv"
 	"sync"
 	"time"
 
@@ -593,7 +592,7 @@ func New(config ...Config) fiber.Handler {
 					// Built in a local array: FormatUint and the join were two
 					// allocations, and the header store copies the bytes anyway.
 					var ccBuf [len(publicMaxAge) + maxUintDigits]byte
-					cacheControlValue := strconv.AppendUint(append(ccBuf[:0], publicMaxAge...), remaining, 10)
+					cacheControlValue := utils.AppendUint(append(ccBuf[:0], publicMaxAge...), remaining)
 					setFieldLine(&c.Response().Header, fiber.HeaderCacheControl, cacheControlValue, canonical)
 				}
 
@@ -602,7 +601,7 @@ func New(config ...Config) fiber.Handler {
 
 				// RFC-compliant Age header (RFC 9111)
 				var ageBuf [maxUintDigits]byte
-				setFieldLine(&c.Response().Header, fiber.HeaderAge, strconv.AppendUint(ageBuf[:0], ageSeconds, 10), canonical)
+				setFieldLine(&c.Response().Header, fiber.HeaderAge, utils.AppendUint(ageBuf[:0], ageSeconds), canonical)
 				appendWarningHeaders(&c.Response().Header, servedStale, isHeuristicFreshness(e, &cfg, entryAge))
 
 				c.Set(cfg.CacheHeader, cacheHit)

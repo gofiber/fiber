@@ -194,7 +194,26 @@ func (r *DefaultRes) Append(field string, values ...string) {
 	r.Set(field, updated)
 }
 
+// varyAccept is the field list Format and AutoFormat add to Vary. It is
+// hoisted because a fresh "..." argument list is a slice the compiler has to
+// heap-allocate — Vary's result reaches the header store, so escape analysis
+// marks the elements as leaking even though fasthttp copies the bytes — while
+// passing an existing slice hands over its backing array. Both callers are
+// methods on *DefaultRes, so the Vary they reach is the one below and not
+// something a custom Res could substitute; it only reads the field list, which
+// makes sharing one array across every request safe.
+var varyAccept = []string{HeaderAccept}
+
 func sanitizeFilename(filename string) string {
+	// unicode.IsControl matches C0, DEL and the C1 range. The first two are
+	// single bytes utils.IndexControl finds word-at-a-time, and C1 can only
+	// appear in non-ASCII input, so an all-ASCII name that clears both scans
+	// is clean without decoding a rune. That pair measures 24-58% faster than
+	// the rune loop across 13- to 90-byte names.
+	if utils.IndexControl(filename) == -1 && utils.IsASCII(filename) {
+		return utils.TrimSpace(filename)
+	}
+
 	for _, r := range filename {
 		if unicode.IsControl(r) {
 			b := make([]byte, 0, len(filename))
@@ -435,7 +454,7 @@ func (r *DefaultRes) GetCookies() []*Cookie {
 // attribute. RFC 6265 Section 4.1.1 excludes ";" from cookie-value, so splitting
 // on it is safe; the first element is the name=value pair and is skipped.
 func cookieAttrPresent(value []byte, attr string) bool {
-	_, rest, found := bytes.Cut(value, []byte{';'})
+	_, rest, found := utils.CutByte(value, ';')
 	if !found {
 		return false
 	}
@@ -447,7 +466,7 @@ func cookieAttrPresent(value []byte, attr string) bool {
 		} else {
 			rest = nil
 		}
-		name, _, _ := bytes.Cut(part, []byte{'='})
+		name, _, _ := utils.CutByte(part, '=')
 		if utils.EqualFold(utils.UnsafeString(utils.TrimSpace(name)), attr) {
 			return true
 		}
@@ -528,7 +547,7 @@ func (r *DefaultRes) Format(handlers ...ResFmt) error {
 	// Handlers must see the custom context when the app uses one, as Next does.
 	handlerCtx := r.c.ctxForHandlers()
 
-	r.Vary(HeaderAccept)
+	r.Vary(varyAccept...)
 
 	// Absent means the combined Accept view (RFC 9110 Section 5.2) is empty:
 	// no field line, or only empty ones. The joined read matches the field name
@@ -590,7 +609,7 @@ func (r *DefaultRes) Format(handlers ...ResFmt) error {
 func (r *DefaultRes) AutoFormat(body any) error {
 	// The response is selected based on the Accept header, so let caches know
 	// (RFC 9110 Section 12.5.5).
-	r.Vary(HeaderAccept)
+	r.Vary(varyAccept...)
 
 	// Get accepted content type; text/plain when nothing matches.
 	accept := "txt"

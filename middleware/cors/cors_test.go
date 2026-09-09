@@ -1715,7 +1715,7 @@ func Test_CORS_setSimpleHeaders_NilConfig(t *testing.T) {
 	defer app.ReleaseCtx(c)
 
 	require.NotPanics(t, func() {
-		setSimpleHeaders(c, "https://example.com", nil)
+		setSimpleHeaders(c, "https://example.com", nil, nil)
 	})
 	require.Empty(t, string(c.Response().Header.Peek(fiber.HeaderAccessControlAllowOrigin)))
 }
@@ -1733,7 +1733,7 @@ func Test_CORS_setSimpleHeaders_WildcardWithCredentials(t *testing.T) {
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(c)
 
-	setSimpleHeaders(c, "*", &Config{AllowCredentials: true})
+	setSimpleHeaders(c, "*", &Config{AllowCredentials: true}, nil)
 
 	require.Equal(t, "*", string(c.Response().Header.Peek(fiber.HeaderAccessControlAllowOrigin)))
 	require.Empty(t, string(c.Response().Header.Peek(fiber.HeaderAccessControlAllowCredentials)))
@@ -1750,7 +1750,7 @@ func Test_CORS_setPreflightHeaders_NilConfig(t *testing.T) {
 	defer app.ReleaseCtx(c)
 
 	require.NotPanics(t, func() {
-		setPreflightHeaders(c, "https://example.com", "600", nil)
+		setPreflightHeaders(c, "https://example.com", "600", nil, nil)
 	})
 	require.Empty(t, string(c.Response().Header.Peek(fiber.HeaderAccessControlMaxAge)))
 }
@@ -1967,4 +1967,108 @@ func Test_CORS_PreflightSplitRequestHeaders(t *testing.T) {
 
 	require.Equal(t, fiber.StatusNoContent, fctx.Response.StatusCode())
 	require.Equal(t, "X-One, X-Two", string(fctx.Response.Header.Peek(fiber.HeaderAccessControlAllowHeaders)))
+}
+
+// Test_CORS_ConfiguredEmptyAllowHeaders pins the difference between an
+// unconfigured AllowHeaders and one configured with nothing usable in it. An
+// absent list means "echo whatever the request asked for"; a configured list
+// that happens to join to the empty string must not be mistaken for one, or a
+// malformed or environment-derived entry would silently authorize every header
+// the request names.
+func Test_CORS_ConfiguredEmptyAllowHeaders(t *testing.T) {
+	t.Parallel()
+
+	preflight := func(t *testing.T, cfg Config) string {
+		t.Helper()
+
+		app := fiber.New()
+		app.Use(New(cfg))
+
+		ctx := &fasthttp.RequestCtx{}
+		ctx.Request.SetRequestURI("/")
+		ctx.Request.Header.SetMethod(fiber.MethodOptions)
+		ctx.Request.Header.Set(fiber.HeaderOrigin, "http://localhost")
+		ctx.Request.Header.Set(fiber.HeaderAccessControlRequestMethod, fiber.MethodGet)
+		ctx.Request.Header.Set(fiber.HeaderAccessControlRequestHeaders, "X-Requested-Header")
+		app.Handler()(ctx)
+
+		return string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowHeaders))
+	}
+
+	t.Run("unconfigured echoes the request", func(t *testing.T) {
+		t.Parallel()
+		require.Equal(t, "X-Requested-Header", preflight(t, Config{}))
+	})
+
+	t.Run("configured empty authorizes nothing", func(t *testing.T) {
+		t.Parallel()
+		require.Empty(t, preflight(t, Config{AllowHeaders: []string{""}}),
+			"a configured list must not fall back to the requested headers")
+	})
+}
+
+// varyMutatingCtx is a custom context whose Vary rewrites the field list it is
+// handed. Nothing in Ctx's contract forbids that, so the middleware must not
+// hand it a slice that outlives the request.
+type varyMutatingCtx struct {
+	fiber.DefaultCtx
+}
+
+// Vary overwrites every field it is handed before forwarding the call — the
+// most a custom Vary can do to a slice its caller still holds.
+func (c *varyMutatingCtx) Vary(fields ...string) {
+	for i := range fields {
+		fields[i] = "X-Mutated"
+	}
+	c.DefaultCtx.Vary(fields...)
+}
+
+// Test_CORS_VaryDoesNotShareFieldsWithCustomCtx pins that the package-level
+// field lists survive a custom context. They are shared by every request the
+// middleware serves, so a Vary implementation that writes to its argument
+// would otherwise corrupt the field names of every later response and race
+// with the requests running alongside it.
+func Test_CORS_VaryDoesNotShareFieldsWithCustomCtx(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.NewWithCustomCtx(func(app *fiber.App) fiber.CustomCtx {
+		return &varyMutatingCtx{DefaultCtx: *fiber.NewDefaultCtx(app)}
+	})
+	app.Use(New(Config{AllowPrivateNetwork: true}))
+	handler := app.Handler()
+
+	// One request down each branch that emits a Vary header.
+	simple := &fasthttp.RequestCtx{}
+	simple.Request.SetRequestURI("/")
+	simple.Request.Header.SetMethod(fiber.MethodGet)
+	simple.Request.Header.Set(fiber.HeaderOrigin, "http://localhost")
+	handler(simple)
+
+	preflight := &fasthttp.RequestCtx{}
+	preflight.Request.SetRequestURI("/")
+	preflight.Request.Header.SetMethod(fiber.MethodOptions)
+	preflight.Request.Header.Set(fiber.HeaderOrigin, "http://localhost")
+	preflight.Request.Header.Set(fiber.HeaderAccessControlRequestMethod, fiber.MethodGet)
+	handler(preflight)
+
+	private := &fasthttp.RequestCtx{}
+	private.Request.SetRequestURI("/")
+	private.Request.Header.SetMethod(fiber.MethodOptions)
+	private.Request.Header.Set(fiber.HeaderOrigin, "http://localhost")
+	private.Request.Header.Set(fiber.HeaderAccessControlRequestMethod, fiber.MethodGet)
+	private.Request.Header.Set(fiber.HeaderAccessControlRequestPrivateNetwork, "true")
+	handler(private)
+
+	require.Equal(t, []string{fiber.HeaderOrigin}, varyOrigin)
+	require.Equal(t, []string{
+		fiber.HeaderAccessControlRequestMethod,
+		fiber.HeaderAccessControlRequestHeaders,
+		fiber.HeaderOrigin,
+	}, varyPreflight)
+	require.Equal(t, []string{
+		fiber.HeaderAccessControlRequestMethod,
+		fiber.HeaderAccessControlRequestHeaders,
+		fiber.HeaderAccessControlRequestPrivateNetwork,
+		fiber.HeaderOrigin,
+	}, varyPreflightPrivate)
 }

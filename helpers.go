@@ -74,11 +74,31 @@ func ValueFromContext[T any](ctx, key any) (T, bool) {
 // This is useful when values need to be available via both c.Locals() and
 // context.Context lookups throughout middleware and handlers.
 func StoreInContext(c Ctx, key, value any) {
-	c.Locals(key, value)
+	setLocal(c, key, value)
 
 	if c.App().config.PassLocalsToContext {
 		c.SetContext(context.WithValue(c.Context(), key, value))
 	}
+}
+
+// setLocal stores key/value on c, preferring the concrete context, and
+// returns what Locals returned so callers keep its result.
+//
+// Locals takes its value variadically, and reached through the Ctx interface
+// the compiler cannot see that it only reads that argument, so the
+// one-element "..." slice is heap-allocated on every call. Calling the
+// concrete method lets it inline and keeps the slice in the frame: 50ns with
+// an allocation becomes 11ns without, on every request that stores a request
+// ID, a session, a CSRF token or an authenticated user.
+//
+// A custom Ctx fails the assertion and keeps the interface call, so an
+// overridden Locals is still the one that runs. internal/ctxlocal.Set is the
+// same function for the packages that cannot reach this one.
+func setLocal(c Ctx, key, value any) any {
+	if dc, ok := c.(*DefaultCtx); ok {
+		return dc.Locals(key, value)
+	}
+	return c.Locals(key, value)
 }
 
 // getTLSConfig returns a net listener's tls config
@@ -199,6 +219,50 @@ func appendLowerASCII(dst, src []byte) []byte {
 		dst[i] = c
 	}
 	return dst
+}
+
+// appendCopyLowerASCII writes src into dst and its ASCII lower-case form into
+// low, reading src once and returning both. It backs the default configuration
+// of configDependentPaths, where the detection path is exactly the case fold of
+// the path: doing it as a copy followed by appendLowerASCII reads every byte
+// twice and pays two capacity checks and two loop set-ups, which for the path
+// lengths routers see is most of the cost. Fusing them measured 19-46% faster
+// across 5- to 70-byte paths.
+//
+// Both destinations are resliced from their own backing arrays, so neither
+// aliases src.
+func appendCopyLowerASCII(dstBuf, lowerBuf []byte, src string) (dst, lower []byte) { //nolint:nonamedreturns // gocritic unnamedResult requires naming the two same-typed slices
+	n := len(src)
+	// Amortized growth like append: every byte of both slices is overwritten
+	// below, so the grown slices' contents don't matter.
+	dst = slices.Grow(dstBuf[:0], n)[:n]
+	lower = slices.Grow(lowerBuf[:0], n)[:n]
+	i := 0
+	for ; i+swar.WordLen <= n; i += swar.WordLen {
+		w := swar.Load8(src, i)
+		swar.Store8(dst, i, w)
+		swar.Store8(lower, i, swar.ToLowerWord(w))
+	}
+	if i == n {
+		return dst, lower
+	}
+	if n >= swar.WordLen {
+		// Finish with one overlapping word; the overlapped bytes are
+		// rewritten with the same values.
+		w := swar.Load8(src, n-swar.WordLen)
+		swar.Store8(dst, n-swar.WordLen, w)
+		swar.Store8(lower, n-swar.WordLen, swar.ToLowerWord(w))
+		return dst, lower
+	}
+	for ; i < n; i++ {
+		c := src[i]
+		dst[i] = c
+		if c-'A' <= 'Z'-'A' {
+			c |= 0x20
+		}
+		lower[i] = c
+	}
+	return dst, lower
 }
 
 // defaultString returns the value or a default value if it is set

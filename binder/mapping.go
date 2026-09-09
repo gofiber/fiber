@@ -234,7 +234,7 @@ func fieldName(f *reflect.StructField, aliasTag string) string {
 	}
 
 	name := f.Tag.Get(aliasTag)
-	if first, _, found := strings.Cut(name, ","); found {
+	if first, _, found := utils.CutByte(name, ','); found {
 		name = first
 	}
 	if name == "" {

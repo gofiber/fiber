@@ -390,7 +390,9 @@ func isSlash(c byte) bool {
 // one every other special scheme takes.
 func isFileScheme(target string) bool {
 	i := schemeEnd(target)
-	return i > 0 && strings.EqualFold(target[:i], "file")
+	// schemeEnd only ever returns a span of ASCII scheme characters, so the
+	// ASCII-only fold agrees with strings.EqualFold on every input it sees.
+	return i > 0 && utils.EqualFold(target[:i], "file")
 }
 
 // isSpecialScheme reports whether scheme is one of them. A scheme is

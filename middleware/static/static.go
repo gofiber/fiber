@@ -9,7 +9,6 @@ import (
 	"os"
 	pathpkg "path"
 	"path/filepath"
-	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -60,19 +59,25 @@ func hasParentDirSegment(p []byte) (bool, error) {
 		return false, err
 	}
 
-	trimmed := utils.TrimLeft(filepath.ToSlash(s), '/')
-	for trimmed != "" {
-		segment, rest, found := strings.Cut(trimmed, "/")
+	return hasDotDotSegment(utils.TrimLeft(filepath.ToSlash(s), '/')), nil
+}
+
+// hasDotDotSegment reports whether any "/"-separated segment of p is "..".
+// The segments are only compared, so it walks them with utils.CutByte rather
+// than materializing the []string strings.Split would allocate per request.
+func hasDotDotSegment(p string) bool {
+	for rest := p; rest != ""; {
+		segment, more, found := utils.CutByte(rest, '/')
 		if segment == ".." {
-			return true, nil
+			return true
 		}
 		if !found {
-			return false, nil
+			return false
 		}
-		trimmed = rest
+		rest = more
 	}
 
-	return false, nil
+	return false
 }
 
 // sanitizePath validates and cleans the requested path.
@@ -98,10 +103,8 @@ func sanitizePath(p []byte, filesystem fs.FS) ([]byte, error) {
 	s = pathpkg.Clean("/" + normalized)
 
 	trimmed := utils.TrimLeft(s, '/')
-	if trimmed != "" {
-		if slices.Contains(strings.Split(trimmed, "/"), "..") {
-			return nil, ErrInvalidPath
-		}
+	if hasDotDotSegment(trimmed) {
+		return nil, ErrInvalidPath
 	}
 
 	if filesystem == nil {
@@ -175,7 +178,7 @@ func New(root string, cfg ...Config) fiber.Handler {
 	// newFileHandler builds the fasthttp file server for one route prefix.
 	newFileHandler := func(prefix string, compressedFileSuffixes map[string]string) fasthttp.RequestHandler {
 		// Is prefix a partial wildcard?
-		if before, _, found := strings.Cut(prefix, "*"); found {
+		if before, _, found := utils.CutByte(prefix, '*'); found {
 			// /john* -> /john
 			prefix = before
 		}
