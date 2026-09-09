@@ -157,23 +157,37 @@ func Test_Redirect_Route_ParamCannotMoveTheQuery(t *testing.T) {
 			want:  "/user/fiber?q=1",
 		},
 		{
-			// A second "?" reads as one query string, so appending it folded
-			// q=1 into the earlier parameter's value instead of adding it.
-			name:  "param opens a query",
+			// A "?" is path-escaped, so the query Fiber appends stays the
+			// only query rather than being folded into the parameter value.
+			name:  "param cannot open a query",
 			param: "a?b=2",
-			want:  "/user/a?b=2&q=1",
+			want:  "/user/a%3Fb=2?q=1",
 		},
 		{
-			// Everything after "#" is a fragment, which the client never
-			// sends, so appending the query there dropped it outright.
-			name:  "param opens a fragment",
+			// Everything after "#" used to be a fragment the appended query
+			// could never reach; the escaped value keeps it plain data.
+			name:  "param cannot open a fragment",
 			param: "a#b",
-			want:  "/user/a?q=1#b",
+			want:  "/user/a%23b?q=1",
 		},
 		{
-			name:  "param opens both",
+			name:  "param cannot open a query and a fragment",
 			param: "a?b=2#c",
-			want:  "/user/a?b=2&q=1#c",
+			want:  "/user/a%3Fb=2%23c?q=1",
+		},
+		{
+			// A plain parameter is one segment: a slash in the value must
+			// not turn it into extra route segments.
+			name:  "param cannot add a segment",
+			param: "a/b",
+			want:  "/user/a%2Fb?q=1",
+		},
+		{
+			// A percent is data, not an escape: the value is escaped again
+			// rather than letting "%" pass and shape the path.
+			name:  "param percent sign",
+			param: "50%",
+			want:  "/user/50%25?q=1",
 		},
 	}
 
@@ -223,30 +237,43 @@ func Test_Redirect_Route_ParamCannotLeaveTheOrigin(t *testing.T) {
 			want:  "/evil.com",
 		},
 		{
-			// The WHATWG URL parser folds a backslash to a slash here, so this
-			// reaches evil.com exactly as "//evil.com" does.
-			name:  "leading backslash",
+			// The WHATWG URL parser folds a backslash to a slash, so a raw
+			// value could walk it to "//evil.com".
+			name:  "leading backslash is escaped",
 			param: `\evil.com`,
-			want:  "/evil.com",
+			want:  "/%5Cevil.com",
 		},
 		{
 			name:  "mixed slash run",
 			param: `/\/evil.com`,
-			want:  "/evil.com",
+			want:  "/%5C/evil.com",
 		},
 		{
-			// Tab, LF and CR are removed before the URL is parsed, so a leading
-			// one hides the slash run that follows it.
+			// A tab is also a control byte a browser would silently drop,
+			// hiding the slash run that follows it; produced as data it cannot.
 			name:  "tab before the slash",
 			param: "\t/evil.com",
-			want:  "/evil.com",
+			want:  "/%09/evil.com",
 		},
 		{
-			// A scheme cannot start here — the route is rooted at "/" — so this
-			// stays the path segment the route asked for.
+			// A scheme cannot start here — the route is rooted at "/" — so
+			// this stays the path segment the route asked for ("." and "/"
+			// are pchar; the "?"-free path holds no structure).
 			name:  "absolute URL is a path segment",
 			param: "https://evil.com",
 			want:  "/https://evil.com",
+		},
+		{
+			// Greedy parameters keep their slashes, but not structure: a "?"
+			// in the value still cannot move the composed path into a query.
+			name:  "greedy value with a question mark",
+			param: "a?b",
+			want:  "/a%3Fb",
+		},
+		{
+			name:  "greedy value with a fragment",
+			param: "a#b",
+			want:  "/a%23b",
 		},
 	}
 

@@ -308,14 +308,68 @@ func buildRouteURL(route *Route, params Map) (string, error) {
 		}
 
 		if found {
-			_, err := buf.WriteString(utils.ToString(val))
-			if err != nil {
-				return "", fmt.Errorf("failed to write string: %w", err)
+			// A substituted parameter is user data, so it is escaped as a path
+			// segment: spliced in raw, a "?", "#" or "%" in the value would
+			// restructure the composed URL, and a "/" in a plain parameter would
+			// add route segments. Greedy parameters carry a multi-segment value,
+			// so their slashes are preserved.
+			mode := escapePathParamSegment
+			if segment.IsGreedy {
+				mode = escapePathParamGreedy
 			}
+			buf.B = appendEscapedPathParam(buf.B, utils.ToString(val), mode)
 		}
 	}
 
 	return urlnorm.RootedPath(buf.String()), nil
+}
+
+// pathParamEscapeMode selects the escape set a substituted route parameter
+// value is produced with.
+type pathParamEscapeMode uint8
+
+const (
+	// escapePathParamSegment escapes slashes: a plain parameter is a single
+	// path segment.
+	escapePathParamSegment pathParamEscapeMode = iota
+	// escapePathParamGreedy keeps slashes: a greedy parameter's value spans
+	// several segments.
+	escapePathParamGreedy
+)
+
+// appendEscapedPathParam appends src to dst with every byte that may not
+// appear raw in a URL path segment percent-encoded (RFC 3986 pchar).  A
+// parameter spliced into a composed URL is user data: keeping the value on
+// the route it belongs to means a "?", "#", "%", whitespace or control byte
+// can no longer restructure the URL, and neither can a "/" for ordinary
+// parameters.
+func appendEscapedPathParam(dst []byte, src string, mode pathParamEscapeMode) []byte {
+	const hexDigits = "0123456789ABCDEF"
+	for i := 0; i < len(src); i++ {
+		c := src[i]
+		switch {
+		case isPathParamByte(c):
+			dst = append(dst, c)
+		case mode == escapePathParamGreedy && c == '/':
+			dst = append(dst, c)
+		default:
+			dst = append(dst, '%', hexDigits[c>>4], hexDigits[c&0xf])
+		}
+	}
+
+	return dst
+}
+
+// isPathParamByte reports whether c may stay raw inside a substituted route
+// parameter: the RFC 3986 path-segment set (pchar), which never restructures
+// a URL.
+func isPathParamByte(c byte) bool {
+	switch c {
+	case '-', '_', '.', '~', '!', '$', '&', '\'', '(', ')', '*', '+', ',', ';', '=', ':', '@':
+		return true
+	}
+
+	return c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9'
 }
 
 // preferredGreedyParameters returns the generic greedy fallback lookup order
