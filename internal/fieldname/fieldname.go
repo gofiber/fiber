@@ -131,7 +131,10 @@ func firstFold(h Peeker, name string) []byte {
 // one walk, against one per field for the case-insensitive reads it saves.
 func Canonical(h *fasthttp.ResponseHeader) bool {
 	canonical := true
-	//nolint:staticcheck // All allocates an iterator per call; this runs per response
+	// Walked rather than ranged, for the reason Lines gives: All allocates an
+	// iterator per call, and this runs per response. The deprecation is excluded
+	// in .golangci.yml rather than by an inline directive, which the lint cache
+	// leaves reported as unused on some runs.
 	h.VisitAll(func(k, _ []byte) {
 		if canonical && !isCanonicalName(k) {
 			canonical = false
