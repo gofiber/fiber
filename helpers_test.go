@@ -1785,6 +1785,17 @@ func Test_appendCopyLowerASCII(t *testing.T) {
 	}
 }
 
+func Test_appendCopyLowerASCII_AliasedSubstring(t *testing.T) {
+	t.Parallel()
+
+	path := []byte("/api/bar/fooX")
+	src := utils.UnsafeString(path[4:])
+	gotPath, gotLower := appendCopyLowerASCII(path[:0], nil, src)
+
+	require.Equal(t, "/bar/fooX", string(gotPath))
+	require.Equal(t, "/bar/foox", string(gotLower))
+}
+
 func Test_appendLowerASCII(t *testing.T) {
 	t.Parallel()
 

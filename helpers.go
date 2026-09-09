@@ -229,14 +229,20 @@ func appendLowerASCII(dst, src []byte) []byte {
 // lengths routers see is most of the cost. Fusing them measured 19-46% faster
 // across 5- to 70-byte paths.
 //
-// Both destinations are resliced from their own backing arrays, so neither
-// aliases src.
+// lowerBuf must not alias src. src may alias dstBuf at a higher offset, as it
+// does when Path is overridden with a substring of its current value.
 func appendCopyLowerASCII(dstBuf, lowerBuf []byte, src string) (dst, lower []byte) { //nolint:nonamedreturns // gocritic unnamedResult requires naming the two same-typed slices
 	n := len(src)
 	// Amortized growth like append: every byte of both slices is overwritten
 	// below, so the grown slices' contents don't matter.
 	dst = slices.Grow(dstBuf[:0], n)[:n]
 	lower = slices.Grow(lowerBuf[:0], n)[:n]
+	// Load the overlapping tail before writing dst. If src is a substring of
+	// dstBuf, an earlier store may otherwise overwrite bytes in this word.
+	var tail uint64
+	if n >= swar.WordLen && n%swar.WordLen != 0 {
+		tail = swar.Load8(src, n-swar.WordLen)
+	}
 	i := 0
 	for ; i+swar.WordLen <= n; i += swar.WordLen {
 		w := swar.Load8(src, i)
@@ -249,9 +255,8 @@ func appendCopyLowerASCII(dstBuf, lowerBuf []byte, src string) (dst, lower []byt
 	if n >= swar.WordLen {
 		// Finish with one overlapping word; the overlapped bytes are
 		// rewritten with the same values.
-		w := swar.Load8(src, n-swar.WordLen)
-		swar.Store8(dst, n-swar.WordLen, w)
-		swar.Store8(lower, n-swar.WordLen, swar.ToLowerWord(w))
+		swar.Store8(dst, n-swar.WordLen, tail)
+		swar.Store8(lower, n-swar.WordLen, swar.ToLowerWord(tail))
 		return dst, lower
 	}
 	for ; i < n; i++ {
