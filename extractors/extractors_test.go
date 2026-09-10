@@ -2155,3 +2155,71 @@ func Test_Chain_Concurrent(t *testing.T) {
 	}
 	wg.Wait()
 }
+
+// isValidToken68Reference is the range-compare scan the table replaced. It is
+// kept as the definition the table is checked against, byte for byte.
+func isValidToken68Reference(token string) bool {
+	if token == "" {
+		return false
+	}
+	paddingStarted := false
+	for i := 0; i < len(token); i++ {
+		c := token[i]
+		switch {
+		case (c >= 'A' && c <= 'Z') ||
+			(c >= 'a' && c <= 'z') ||
+			(c >= '0' && c <= '9') ||
+			c == '-' || c == '.' || c == '_' || c == '~' || c == '+' || c == '/':
+			if paddingStarted {
+				return false // No characters allowed after padding starts
+			}
+		case c == '=':
+			if i == 0 {
+				return false // Cannot start with padding
+			}
+			paddingStarted = true
+		default:
+			return false // Invalid character
+		}
+	}
+	return true
+}
+
+// Test_isValidToken68_MatchesReference checks the table against the scan it
+// replaced on every byte, in every position that distinguishes them, and on
+// the padding shapes the two disagree about most easily.
+func Test_isValidToken68_MatchesReference(t *testing.T) {
+	t.Parallel()
+
+	t.Run("every byte in every position", func(t *testing.T) {
+		t.Parallel()
+
+		for c := range 256 {
+			// Built from the byte, not from rune(c), so the high half is one
+			// invalid byte rather than two UTF-8 ones.
+			b := string([]byte{byte(c)})
+			for _, in := range []string{
+				b,             // alone
+				b + "aA",      // at the start
+				"a" + b + "A", // in the middle
+				"aA" + b,      // at the end
+				"aA" + b + "==",
+				"aA==" + b,
+			} {
+				require.Equal(t, isValidToken68Reference(in), isValidToken68(in), "input %q", in)
+			}
+		}
+	})
+
+	t.Run("padding shapes", func(t *testing.T) {
+		t.Parallel()
+
+		for _, in := range []string{
+			"", "=", "==", "===", "=a", "a", "a=", "a==", "a===", "a=b", "a==b",
+			"dXNlcjpwYXNzd29yZA==", "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0In0",
+			"-._~+/", "a b", "a\tb", "a\nb",
+		} {
+			require.Equal(t, isValidToken68Reference(in), isValidToken68(in), "input %q", in)
+		}
+	})
+}
