@@ -34,6 +34,7 @@ import (
 	"unsafe"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/appconfig"
 	"github.com/gofiber/fiber/v3/internal/ctxlocal"
 	"github.com/gofiber/fiber/v3/internal/headerlookup"
 	"github.com/gofiber/utils/v2"
@@ -470,7 +471,7 @@ func FromParam(param string) Extractor {
 		// literal "%20" sent as "%2520" would arrive as a space. Decode
 		// only when the router left the value raw, which keeps the number
 		// of decodes at one whatever the config says.
-		if c.App().Config().UnescapePath {
+		if unescapePath(c) {
 			return value, nil
 		}
 		unescapedValue, err := url.PathUnescape(value)
@@ -484,6 +485,17 @@ func FromParam(param string) Extractor {
 		Key:     param,
 		Source:  SourceParam,
 	}
+}
+
+// unescapePath reports whether the router already percent-decoded the path.
+//
+// Read off the app rather than through Config(), which copies over 600 bytes
+// to answer one boolean.
+func unescapePath(c fiber.Ctx) bool {
+	if h, ok := appconfig.Lookup(c.App()); ok {
+		return h.UnescapePath
+	}
+	return c.App().Config().UnescapePath
 }
 
 // FromForm creates an Extractor that retrieves a value from a specified form field in the request.

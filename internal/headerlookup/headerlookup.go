@@ -5,6 +5,7 @@ package headerlookup
 
 import (
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/appconfig"
 	"github.com/gofiber/fiber/v3/internal/fieldname"
 	"github.com/gofiber/utils/v2"
 	"github.com/valyala/fasthttp"
@@ -16,7 +17,30 @@ import (
 // it. This answers for the request store only: a proxied response is parsed by
 // an outbound fasthttp.Client carrying its own setting.
 func Canonical(c fiber.Ctx) bool {
-	return !c.App().Config().DisableHeaderNormalizing
+	return !hot(c).DisableHeaderNormalizing
+}
+
+// hot returns the Config bits this package reads per request. Config() copies
+// over 600 bytes to answer a boolean, and these are read on every header
+// extraction, so they come off the app directly where it is fiber's own.
+func hot(c fiber.Ctx) appconfig.Hot {
+	if h, ok := appconfig.Lookup(c.App()); ok {
+		return h
+	}
+	cfg := c.App().Config()
+	return hotFromConfig(&cfg)
+}
+
+// hotFromConfig is the by-value fallback, kept apart so it can be tested
+// without replacing the lookup other tests are reading. It takes a pointer
+// because Config is the 600 bytes this whole path exists to stop copying, and
+// the one copy Config() already returned is enough.
+func hotFromConfig(cfg *fiber.Config) appconfig.Hot {
+	return appconfig.Hot{
+		Immutable:                cfg.Immutable,
+		DisableHeaderNormalizing: cfg.DisableHeaderNormalizing,
+		UnescapePath:             cfg.UnescapePath,
+	}
 }
 
 // Value returns the named request header, matching the field name
@@ -42,7 +66,7 @@ func Canonical(c fiber.Ctx) bool {
 // The value is empty whenever ok is false, so a caller that only refuses empty
 // values still fails closed.
 func Value(c fiber.Ctx, name string) (string, bool) {
-	cfg := c.App().Config()
+	cfg := hot(c)
 	h := &c.Request().Header
 
 	var (
@@ -78,7 +102,7 @@ func Value(c fiber.Ctx, name string) (string, bool) {
 // another does not match the one that was issued, so a caller comparing it
 // refuses, which is the outcome Value reaches directly.
 func Combined(c fiber.Ctx, name string) string {
-	cfg := c.App().Config()
+	cfg := hot(c)
 	h := &c.Request().Header
 
 	if utils.EqualFold(name, fiber.HeaderCookie) {
