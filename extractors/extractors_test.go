@@ -1212,7 +1212,7 @@ func Test_isValidToken68(t *testing.T) {
 // go test -v -run=^$ -bench=Benchmark_isValidToken68 -benchmem -count=4
 func Benchmark_isValidToken68(b *testing.B) {
 	inputs := []string{
-		"eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0In0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9P", // JWT-like
+		benchToken,             // JWT-sized credential
 		"dXNlcjpwYXNzd29yZA==", // short base64 credential
 		"token@invalid",        // early reject
 	}
@@ -1902,9 +1902,7 @@ func Test_ExtractWithSource_BareChain(t *testing.T) {
 
 		// The guard set for the walk must be cleared afterwards, or the next
 		// walk on this ctx would be mistaken for a cycle.
-		guard, ok := chainGuardFor(bare.Chain)
-		require.True(t, ok)
-		require.False(t, chainStateFor(ctx).isActive(guard))
+		require.NotContains(t, chainStateFor(ctx).active, chainGuard(bare.Chain))
 
 		v, src, err = ExtractWithSource(bare, ctx)
 		require.NoError(t, err)
@@ -1925,11 +1923,13 @@ func Test_ExtractWithSource_BareChain(t *testing.T) {
 		_, _, err := ExtractWithSource(bare, ctx)
 		require.ErrorIs(t, err, ErrChainCycle)
 
-		guard, ok := chainGuardFor(bare.Chain)
-		require.True(t, ok)
-		require.False(t, chainStateFor(ctx).isActive(guard), "the guard is released even after a refused walk")
+		require.NotContains(t, chainStateFor(ctx).active, chainGuard(bare.Chain), "the guard is released even after a refused walk")
 	})
 }
+
+// The state is reclaimed by the request store calling Close on it, so it has
+// to satisfy io.Closer for that to ever happen.
+var _ io.Closer = (*chainState)(nil)
 
 // closeRecorder reports whether the request store closed it. The pooled chain
 // state relies on that contract, so it is pinned here directly rather than
@@ -1988,10 +1988,8 @@ func Test_Chain_StateIsRecycledOnRequestReset(t *testing.T) {
 		app.Handler()(fctx)
 		require.Equal(t, fiber.StatusNoContent, fctx.Response.StatusCode())
 
-		stored, ok := fctx.UserValue(chainStateKey{}).(*chainState)
+		_, ok := fctx.UserValue(chainStateKey{}).(*chainState)
 		require.True(t, ok, "the state must be stored in the request, which is what gets closed")
-		var closer io.Closer = stored
-		require.NotNil(t, closer)
 
 		fctx.Request.Reset()
 		require.Nil(t, fctx.UserValue(chainStateKey{}), "the reset must drop the state")
@@ -2156,6 +2154,15 @@ func Test_Chain_Concurrent(t *testing.T) {
 	wg.Wait()
 }
 
+// token68Samples are the shapes the table and the scan it replaced could most
+// easily disagree about. The fuzz target seeds its corpus with them, so an
+// input worth remembering is written down once.
+var token68Samples = []string{
+	"", "=", "==", "===", "=a", "a", "a=", "a==", "a===", "a=b", "a==b",
+	"dXNlcjpwYXNzd29yZA==", "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0In0",
+	benchToken, "-._~+/", "a b", "a\tb", "a\nb", "token@invalid",
+}
+
 // isValidToken68Reference is the range-compare scan the table replaced. It is
 // kept as the definition the table is checked against, byte for byte.
 func isValidToken68Reference(token string) bool {
@@ -2214,11 +2221,7 @@ func Test_isValidToken68_MatchesReference(t *testing.T) {
 	t.Run("padding shapes", func(t *testing.T) {
 		t.Parallel()
 
-		for _, in := range []string{
-			"", "=", "==", "===", "=a", "a", "a=", "a==", "a===", "a=b", "a==b",
-			"dXNlcjpwYXNzd29yZA==", "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0In0",
-			"-._~+/", "a b", "a\tb", "a\nb",
-		} {
+		for _, in := range token68Samples {
 			require.Equal(t, isValidToken68Reference(in), isValidToken68(in), "input %q", in)
 		}
 	})

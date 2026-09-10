@@ -17,30 +17,22 @@ import (
 // it. This answers for the request store only: a proxied response is parsed by
 // an outbound fasthttp.Client carrying its own setting.
 func Canonical(c fiber.Ctx) bool {
-	return !hot(c).DisableHeaderNormalizing
+	return !appconfig.Of(c.App()).DisableHeaderNormalizing
 }
 
-// hot returns the Config bits this package reads per request. Config() copies
-// over 600 bytes to answer a boolean, and these are read on every header
-// extraction, so they come off the app directly where it is fiber's own.
-func hot(c fiber.Ctx) appconfig.Hot {
-	if h, ok := appconfig.Lookup(c.App()); ok {
-		return h
+// singleLine returns one field line as a string: empty where the line is
+// present and empty, and copied only where Immutable promises the caller a
+// value that outlives the request's buffer.
+//
+//nolint:revive // flag-parameter: immutable is a property of the app's config, not a mode of operation
+func singleLine(line []byte, immutable bool) string {
+	if len(line) == 0 {
+		return ""
 	}
-	cfg := c.App().Config()
-	return hotFromConfig(&cfg)
-}
-
-// hotFromConfig is the by-value fallback, kept apart so it can be tested
-// without replacing the lookup other tests are reading. It takes a pointer
-// because Config is the 600 bytes this whole path exists to stop copying, and
-// the one copy Config() already returned is enough.
-func hotFromConfig(cfg *fiber.Config) appconfig.Hot {
-	return appconfig.Hot{
-		Immutable:                cfg.Immutable,
-		DisableHeaderNormalizing: cfg.DisableHeaderNormalizing,
-		UnescapePath:             cfg.UnescapePath,
+	if immutable {
+		return string(line)
 	}
+	return utils.UnsafeString(line)
 }
 
 // Value returns the named request header, matching the field name
@@ -66,7 +58,7 @@ func hotFromConfig(cfg *fiber.Config) appconfig.Hot {
 // The value is empty whenever ok is false, so a caller that only refuses empty
 // values still fails closed.
 func Value(c fiber.Ctx, name string) (string, bool) {
-	cfg := hot(c)
+	cfg := appconfig.Of(c.App())
 	h := &c.Request().Header
 
 	var (
@@ -78,16 +70,10 @@ func Value(c fiber.Ctx, name string) (string, bool) {
 	} else {
 		found, ok = canonicalValue(h, name)
 	}
-	if !ok || len(found) == 0 {
-		return "", ok
+	if !ok {
+		return "", false
 	}
-
-	// The bytes live as long as the request, so a copy is made only where
-	// Immutable promises the caller one — matching what Ctx.Get hands back.
-	if cfg.Immutable {
-		return string(found), true
-	}
-	return utils.UnsafeString(found), true
+	return singleLine(found, cfg.Immutable), true
 }
 
 // Combined returns the named request header as the one value RFC 9110 §5.3
@@ -102,7 +88,7 @@ func Value(c fiber.Ctx, name string) (string, bool) {
 // another does not match the one that was issued, so a caller comparing it
 // refuses, which is the outcome Value reaches directly.
 func Combined(c fiber.Ctx, name string) string {
-	cfg := hot(c)
+	cfg := appconfig.Of(c.App())
 	h := &c.Request().Header
 
 	if utils.EqualFold(name, fiber.HeaderCookie) {
@@ -127,13 +113,7 @@ func Combined(c fiber.Ctx, name string) string {
 	case 0:
 		return ""
 	case 1:
-		if len(lines[0]) == 0 {
-			return ""
-		}
-		if cfg.Immutable {
-			return string(lines[0])
-		}
-		return utils.UnsafeString(lines[0])
+		return singleLine(lines[0], cfg.Immutable)
 	}
 
 	n := 2 * (len(lines) - 1)
@@ -181,15 +161,7 @@ func foldCombined(h *fasthttp.RequestHeader, name string, immutable bool) string
 	case 0:
 		return ""
 	case 1:
-		if len(first) == 0 {
-			return ""
-		}
-		// The bytes live as long as the request, so a copy is made only where
-		// Immutable promises the caller one.
-		if immutable {
-			return string(first)
-		}
-		return utils.UnsafeString(first)
+		return singleLine(first, immutable)
 	}
 
 	joined := make([]byte, 0, size+2*(lines-1))

@@ -106,12 +106,22 @@ type Extractor struct {
 // On failure it may be static or last-child fallback metadata and must not be
 // treated as the origin of a value. Extract is not deprecated in this release.
 func ExtractWithSource(e Extractor, c fiber.Ctx) (string, Source, error) {
+	return resolveWithSource(&e, c, nil)
+}
+
+// resolveWithSource is ExtractWithSource over an extractor the caller owns,
+// carrying the request's chain state so that a walk of a tree looks it up once
+// rather than once per child, and passes a pointer where the exported entry
+// point copies the 72-byte Extractor. A nil st is resolved on first need.
+func resolveWithSource(e *Extractor, c fiber.Ctx, st *chainState) (string, Source, error) {
 	if e.Extract != nil {
 		// Mark this request frame so Chain.Extract only records winners when
 		// a source-aware caller is active. Bare chain.Extract must not leave
 		// a winner that a later ExtractWithSource on an unrelated leaf would
 		// consume.
-		st := chainStateFor(c)
+		if st == nil {
+			st = chainStateFor(c)
+		}
 		st.enterCapture()
 		defer st.leaveCapture()
 
@@ -135,19 +145,21 @@ func ExtractWithSource(e Extractor, c fiber.Ctx) (string, Source, error) {
 		return v, e.Source, nil
 	}
 	if len(e.Chain) > 0 {
-		return extractChainWithSource(&e, c)
+		if st == nil {
+			st = chainStateFor(c)
+		}
+		return extractChainWithSource(e, c, st)
 	}
 	return "", e.Source, ErrNotFound
 }
 
-// chainGuardFor returns the identity Chain.Extract and extractChainWithSource
+// chainGuard returns the identity Chain.Extract and extractChainWithSource
 // share for the public Chain backing array: the address of its first element,
 // which is stable for the life of the array.
-func chainGuardFor(chain []Extractor) (*byte, bool) {
-	if len(chain) == 0 {
-		return nil, false
-	}
-	return (*byte)(unsafe.Pointer(&chain[0])), true //nolint:gosec // G103: identity for the cycle guard only, never dereferenced
+//
+// chain must not be empty; both callers reach it only past a length check.
+func chainGuard(chain []Extractor) *byte {
+	return (*byte)(unsafe.Pointer(&chain[0])) //nolint:gosec // G103: identity for the cycle guard only, never dereferenced
 }
 
 // chainState is the bookkeeping every chain on one request shares: the chains
@@ -193,10 +205,11 @@ func chainStateFor(c fiber.Ctx) *chainState {
 // request-local value implementing io.Closer, when the request is reset; it is
 // not for callers.
 func (s *chainState) Close() error {
-	s.active = s.active[:0]
-	s.win = 0
-	s.depth = 0
-	s.hasWin = false
+	// Reset as a whole, not field by field: a field added later and forgotten
+	// here would carry one request's state into the next through the pool,
+	// which is the one thing this type must never do. The buffer is kept: the
+	// literal's right-hand side is evaluated before the assignment.
+	*s = chainState{active: s.active[:0]}
 	chainStatePool.Put(s)
 	return nil
 }
@@ -218,11 +231,6 @@ func (s *chainState) leave() {
 	}
 }
 
-// isActive reports whether the chain identified by guard is executing.
-func (s *chainState) isActive(guard *byte) bool {
-	return slices.Contains(s.active, guard)
-}
-
 // enterCapture opens an ExtractWithSource frame. Any winner a previous frame
 // left is forgotten, so a leaf extracted next is not attributed to it.
 func (s *chainState) enterCapture() {
@@ -236,13 +244,8 @@ func (s *chainState) leaveCapture() {
 	s.hasWin = false
 }
 
-func extractChainWithSource(e *Extractor, c fiber.Ctx) (string, Source, error) {
-	guard, ok := chainGuardFor(e.Chain)
-	if !ok {
-		return "", SourceCustom, ErrNotFound
-	}
-	st := chainStateFor(c)
-	if !st.enter(guard) {
+func extractChainWithSource(e *Extractor, c fiber.Ctx, st *chainState) (string, Source, error) {
+	if !st.enter(chainGuard(e.Chain)) {
 		return "", e.Source, ErrChainCycle
 	}
 	defer st.leave()
@@ -254,8 +257,8 @@ func extractChainWithSource(e *Extractor, c fiber.Ctx) (string, Source, error) {
 		if child.Extract == nil && len(child.Chain) == 0 {
 			continue
 		}
-		// Nested chains and leaves both go through ExtractWithSource.
-		v, src, err := ExtractWithSource(*child, c)
+		// Nested chains and leaves both go through the same walk.
+		v, src, err := resolveWithSource(child, c, st)
 		if err == nil && v != "" {
 			return v, src, nil
 		}
@@ -471,7 +474,9 @@ func FromParam(param string) Extractor {
 		// literal "%20" sent as "%2520" would arrive as a space. Decode
 		// only when the router left the value raw, which keeps the number
 		// of decodes at one whatever the config says.
-		if unescapePath(c) {
+		// Read off the app rather than through Config(), which copies over
+		// 600 bytes to answer one boolean.
+		if appconfig.Of(c.App()).UnescapePath {
 			return value, nil
 		}
 		unescapedValue, err := url.PathUnescape(value)
@@ -485,17 +490,6 @@ func FromParam(param string) Extractor {
 		Key:     param,
 		Source:  SourceParam,
 	}
-}
-
-// unescapePath reports whether the router already percent-decoded the path.
-//
-// Read off the app rather than through Config(), which copies over 600 bytes
-// to answer one boolean.
-func unescapePath(c fiber.Ctx) bool {
-	if h, ok := appconfig.Lookup(c.App()); ok {
-		return h.UnescapePath
-	}
-	return c.App().Config().UnescapePath
 }
 
 // FromForm creates an Extractor that retrieves a value from a specified form field in the request.
@@ -761,17 +755,8 @@ func Chain(extractors ...Extractor) Extractor {
 	primarySource := kids[0].Source
 	primaryKey := kids[0].Key
 	// Guard on the public Chain array so ExtractWithSource shares the same
-	// cycle identity (private kids stay execution-only). pub is non-empty
-	// here, so the identity always exists.
-	guard, ok := chainGuardFor(pub)
-	if !ok {
-		return Extractor{
-			Extract: notFound,
-			Source:  SourceCustom,
-			Key:     "",
-			Chain:   []Extractor{},
-		}
-	}
+	// cycle identity (private kids stay execution-only).
+	guard := chainGuard(pub)
 
 	return Extractor{
 		Extract: func(c fiber.Ctx) (string, error) {

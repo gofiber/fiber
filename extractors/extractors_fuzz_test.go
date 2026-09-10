@@ -9,12 +9,7 @@ import (
 //
 // go test -v -run=^$ -fuzz=FuzzIsValidToken68
 func FuzzIsValidToken68(f *testing.F) {
-	for _, seed := range []string{
-		"", "=", "a", "a=", "a==", "a==b", "=a", "-._~+/",
-		"dXNlcjpwYXNzd29yZA==",
-		"eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0In0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9P",
-		"token@invalid", "with space", "with\ttab",
-	} {
+	for _, seed := range token68Samples {
 		f.Add(seed)
 	}
 	f.Fuzz(func(t *testing.T, token string) {

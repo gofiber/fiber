@@ -42,6 +42,30 @@ func benchExtractWithSource(b *testing.B, e Extractor, c fiber.Ctx) {
 	}
 }
 
+// benchExtractFresh resets the request's user values after every extraction,
+// as fasthttp does between requests (Request.Reset calls Close on any stored
+// io.Closer), so the per-request cost of whatever an extractor keeps in Locals
+// is measured rather than amortized over a reused context.
+func benchExtractFresh(b *testing.B, e Extractor, c fiber.Ctx) {
+	b.Helper()
+	b.ReportAllocs()
+	for b.Loop() {
+		benchSink.value, benchSink.err = e.Extract(c)
+		c.RequestCtx().ResetUserValues()
+	}
+}
+
+// benchExtractWithSourceFresh is benchExtractFresh for the source-aware entry
+// point.
+func benchExtractWithSourceFresh(b *testing.B, e Extractor, c fiber.Ctx) {
+	b.Helper()
+	b.ReportAllocs()
+	for b.Loop() {
+		benchSink.value, benchSink.source, benchSink.err = ExtractWithSource(e, c)
+		c.RequestCtx().ResetUserValues()
+	}
+}
+
 func benchChain3() Extractor {
 	return Chain(FromHeader("X-API-Key"), FromCookie("api_key"), FromQuery("api_key"))
 }
@@ -278,53 +302,29 @@ func Benchmark_Extractor_ExtractWithSource_BareChain_HitLast(b *testing.B) {
 }
 
 // --- fresh request -----------------------------------------------------------
-//
-// The user values are reset after every extraction, as fasthttp does between
-// requests (Request.Reset calls Close on any stored io.Closer), so these
-// measure the per-request cost of whatever a chain keeps in Locals.
 
 func Benchmark_Extractor_FromHeader_Hit_FreshRequest(b *testing.B) {
 	c := newBenchCtx(b)
 	c.Request().Header.Set("X-API-Key", benchToken)
-	e := FromHeader("X-API-Key")
-	b.ReportAllocs()
-	for b.Loop() {
-		benchSink.value, benchSink.err = e.Extract(c)
-		c.RequestCtx().ResetUserValues()
-	}
+	benchExtractFresh(b, FromHeader("X-API-Key"), c)
 }
 
 func Benchmark_Extractor_Chain1_Hit_FreshRequest(b *testing.B) {
 	c := newBenchCtx(b)
 	c.Request().Header.Set("X-API-Key", benchToken)
-	e := Chain(FromHeader("X-API-Key"))
-	b.ReportAllocs()
-	for b.Loop() {
-		benchSink.value, benchSink.err = e.Extract(c)
-		c.RequestCtx().ResetUserValues()
-	}
+	benchExtractFresh(b, Chain(FromHeader("X-API-Key")), c)
 }
 
 func Benchmark_Extractor_Chain3_HitLast_FreshRequest(b *testing.B) {
 	c := newBenchCtx(b)
 	c.Request().SetRequestURI("/api?api_key=abc123")
-	e := benchChain3()
-	b.ReportAllocs()
-	for b.Loop() {
-		benchSink.value, benchSink.err = e.Extract(c)
-		c.RequestCtx().ResetUserValues()
-	}
+	benchExtractFresh(b, benchChain3(), c)
 }
 
 func Benchmark_Extractor_ExtractWithSource_Chain3_HitFirst_FreshRequest(b *testing.B) {
 	c := newBenchCtx(b)
 	c.Request().Header.Set("X-API-Key", benchToken)
-	e := benchChain3()
-	b.ReportAllocs()
-	for b.Loop() {
-		benchSink.value, benchSink.source, benchSink.err = ExtractWithSource(e, c)
-		c.RequestCtx().ResetUserValues()
-	}
+	benchExtractWithSourceFresh(b, benchChain3(), c)
 }
 
 // --- token68 ------------------------------------------------------------------

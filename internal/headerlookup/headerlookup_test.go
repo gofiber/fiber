@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	"github.com/gofiber/fiber/v3"
-	"github.com/gofiber/fiber/v3/internal/appconfig"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
 )
@@ -38,29 +37,6 @@ func Test_Canonical(t *testing.T) {
 
 	require.True(t, Canonical(newCtx(t)))
 	require.False(t, Canonical(newCtx(t, fiber.Config{DisableHeaderNormalizing: true})))
-}
-
-func Test_Hot(t *testing.T) {
-	t.Parallel()
-
-	t.Run("reads the app", func(t *testing.T) {
-		t.Parallel()
-
-		c := newCtx(t, fiber.Config{Immutable: true, DisableHeaderNormalizing: true, UnescapePath: true})
-		require.Equal(t, appconfig.Hot{Immutable: true, DisableHeaderNormalizing: true, UnescapePath: true}, hot(c))
-		require.Equal(t, appconfig.Hot{}, hot(newCtx(t)))
-	})
-
-	t.Run("fallback matches the app read", func(t *testing.T) {
-		t.Parallel()
-
-		// The by-value path answers the same as the direct read, so a caller
-		// reaching it is not told anything different.
-		cfg := fiber.Config{Immutable: true, UnescapePath: true}
-		app := fiber.New(cfg)
-		live := app.Config()
-		require.Equal(t, hotFromConfig(&live), hot(newCtx(t, cfg)))
-	})
 }
 
 func Test_Value(t *testing.T) {

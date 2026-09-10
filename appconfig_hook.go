@@ -10,15 +10,17 @@ import (
 // them cannot do themselves: config is unexported, and importing them here
 // would be a cycle.
 func init() {
-	appconfig.Lookup = func(a any) (appconfig.Hot, bool) {
+	appconfig.Of = func(a any) appconfig.Hot {
 		app, ok := a.(*App)
-		if !ok || app == nil {
-			return appconfig.Hot{}, false
+		if !ok {
+			return appconfig.Hot{}
 		}
+		// A nil app faults here, as reading Config() off one did for the
+		// callers this replaced.
 		return appconfig.Hot{
 			Immutable:                app.config.Immutable,
 			DisableHeaderNormalizing: app.config.DisableHeaderNormalizing,
 			UnescapePath:             app.config.UnescapePath,
-		}, true
+		}
 	}
 }
