@@ -132,9 +132,11 @@ func (s *Store) getSession(c fiber.Ctx) (*Session, error) {
 		id = s.getSessionID(c)
 	}
 
-	selectedExtractor, hasExtractor := c.Locals(sessionExtractorContextKey).(extractors.Extractor)
-	if !hasExtractor {
-		selectedExtractor = extractors.Extractor{}
+	// A pointer into the Store's own extractor, so recording which one
+	// supplied the ID does not box 72 bytes onto the heap per request.
+	var selectedExtractor extractors.Extractor
+	if stored, ok := c.Locals(sessionExtractorContextKey).(*extractors.Extractor); ok && stored != nil {
+		selectedExtractor = *stored
 	}
 
 	isFresh := false // Session is not fresh initially; only set to true if we generate a new ID
@@ -208,12 +210,12 @@ func (s *Store) getSession(c fiber.Ctx) (*Session, error) {
 //
 //	id := store.getSessionID(c)
 func (s *Store) getSessionID(c fiber.Ctx) string {
-	extractor := s.Extractor
-	if len(extractor.Chain) > 0 {
-		for _, chainExtractor := range extractor.Chain {
-			// Chain skips a child that carries no Extract; walking the public
-			// chain here has to do the same, or a zero-value child is a nil
-			// call rather than a source that had nothing to give.
+	// Walked by index, and recorded as a pointer: the extractor is 72 bytes,
+	// so both the copy per child and the box per request are worth skipping.
+	// Everything pointed at belongs to the Store and outlives the request.
+	if len(s.Extractor.Chain) > 0 {
+		for i := range s.Extractor.Chain {
+			chainExtractor := &s.Extractor.Chain[i]
 			if chainExtractor.Extract == nil {
 				continue
 			}
@@ -226,16 +228,16 @@ func (s *Store) getSessionID(c fiber.Ctx) string {
 		return ""
 	}
 
-	if extractor.Extract == nil {
+	if s.Extractor.Extract == nil {
 		return ""
 	}
-	sessionID, err := extractor.Extract(c)
+	sessionID, err := s.Extractor.Extract(c)
 	if err != nil {
 		// If extraction fails, return empty string to generate a new session
 		return ""
 	}
 	if sessionID != "" {
-		ctxlocal.Set(c, sessionExtractorContextKey, extractor)
+		ctxlocal.Set(c, sessionExtractorContextKey, &s.Extractor)
 	}
 	return sessionID
 }
