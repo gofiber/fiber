@@ -211,6 +211,12 @@ func (s *Store) getSessionID(c fiber.Ctx) string {
 	extractor := s.Extractor
 	if len(extractor.Chain) > 0 {
 		for _, chainExtractor := range extractor.Chain {
+			// Chain skips a child that carries no Extract; walking the public
+			// chain here has to do the same, or a zero-value child is a nil
+			// call rather than a source that had nothing to give.
+			if chainExtractor.Extract == nil {
+				continue
+			}
 			sessionID, err := chainExtractor.Extract(c)
 			if err == nil && sessionID != "" {
 				ctxlocal.Set(c, sessionExtractorContextKey, chainExtractor)
@@ -220,6 +226,9 @@ func (s *Store) getSessionID(c fiber.Ctx) string {
 		return ""
 	}
 
+	if extractor.Extract == nil {
+		return ""
+	}
 	sessionID, err := extractor.Extract(c)
 	if err != nil {
 		// If extraction fails, return empty string to generate a new session
