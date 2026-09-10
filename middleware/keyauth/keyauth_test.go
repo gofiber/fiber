@@ -3,6 +3,7 @@ package keyauth
 import (
 	"bytes"
 	"context"
+	"crypto/subtle"
 	"errors"
 	"io"
 	"net/http"
@@ -13,6 +14,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/valyala/fasthttp"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/extractors"
@@ -1268,4 +1270,72 @@ func Test_New_ErrorURIAbsolute(t *testing.T) {
 			ErrorURI:  "/docs",
 		})
 	})
+}
+
+// benchKey is a JWT-sized token68 credential, the shape a Bearer token has in
+// practice and the one the token68 scan is measured against.
+const benchKey = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0In0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9P"
+
+// benchValidator compares in constant time, as a real deployment must, and
+// without hashing, so the benchmark measures the middleware rather than a
+// digest.
+func benchValidator(_ fiber.Ctx, key string) (bool, error) {
+	return subtle.ConstantTimeCompare([]byte(key), []byte(benchKey)) == 1, nil
+}
+
+// benchApp registers the middleware with cfg on a route that answers 418, and
+// returns the request handler. cfg is taken by pointer because Config is 200
+// bytes, which gocritic will not have copied into a call.
+func benchApp(cfg *Config) fasthttp.RequestHandler {
+	app := fiber.New()
+	app.Use(New(*cfg))
+	app.Get("/", func(c fiber.Ctx) error {
+		return c.SendStatus(fiber.StatusTeapot)
+	})
+	return app.Handler()
+}
+
+// go test -v -run=^$ -bench=Benchmark_KeyAuth_Bearer -benchmem -count=4
+func Benchmark_KeyAuth_Bearer(b *testing.B) {
+	h := benchApp(&Config{Validator: benchValidator})
+
+	ctx := &fasthttp.RequestCtx{}
+	ctx.Request.Header.SetMethod(fiber.MethodGet)
+	ctx.Request.SetRequestURI("/")
+	ctx.Request.Header.Set(fiber.HeaderAuthorization, "Bearer "+benchKey)
+
+	b.ReportAllocs()
+
+	for b.Loop() {
+		h(ctx)
+	}
+
+	require.Equal(b, fiber.StatusTeapot, ctx.Response.Header.StatusCode())
+}
+
+// Chained sources with the credential in the last one, so the walk pays for
+// both misses before it succeeds.
+//
+// go test -v -run=^$ -bench=Benchmark_KeyAuth_Chain -benchmem -count=4
+func Benchmark_KeyAuth_Chain(b *testing.B) {
+	h := benchApp(&Config{
+		Validator: benchValidator,
+		Extractor: extractors.Chain(
+			extractors.FromAuthHeader("Bearer"),
+			extractors.FromHeader("X-API-Key"),
+			extractors.FromQuery("api_key"),
+		),
+	})
+
+	ctx := &fasthttp.RequestCtx{}
+	ctx.Request.Header.SetMethod(fiber.MethodGet)
+	ctx.Request.SetRequestURI("/?api_key=" + benchKey)
+
+	b.ReportAllocs()
+
+	for b.Loop() {
+		h(ctx)
+	}
+
+	require.Equal(b, fiber.StatusTeapot, ctx.Response.Header.StatusCode())
 }
