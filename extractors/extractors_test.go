@@ -5,11 +5,15 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
 )
@@ -1900,7 +1904,7 @@ func Test_ExtractWithSource_BareChain(t *testing.T) {
 		// walk on this ctx would be mistaken for a cycle.
 		guard, ok := chainGuardFor(bare.Chain)
 		require.True(t, ok)
-		require.Equal(t, false, ctx.Locals(guard))
+		require.False(t, chainStateFor(ctx).isActive(guard))
 
 		v, src, err = ExtractWithSource(bare, ctx)
 		require.NoError(t, err)
@@ -1923,6 +1927,231 @@ func Test_ExtractWithSource_BareChain(t *testing.T) {
 
 		guard, ok := chainGuardFor(bare.Chain)
 		require.True(t, ok)
-		require.Equal(t, false, ctx.Locals(guard), "the guard is released even after a refused walk")
+		require.False(t, chainStateFor(ctx).isActive(guard), "the guard is released even after a refused walk")
 	})
+}
+
+// closeRecorder reports whether the request store closed it. The pooled chain
+// state relies on that contract, so it is pinned here directly rather than
+// through the state, whose pointer is back in the pool by the time a test
+// could look at it.
+type closeRecorder struct {
+	closed *atomic.Bool
+}
+
+// Close records the call fasthttp makes when it resets the request.
+func (r closeRecorder) Close() error {
+	r.closed.Store(true)
+	return nil
+}
+
+// Test_Chain_StateIsRecycledOnRequestReset pins the whole recycling story: the
+// state is kept in the request's own user values, fasthttp closes such a value
+// when the request resets, the slot is cleared, and a state handed out
+// afterwards is clean.
+func Test_Chain_StateIsRecycledOnRequestReset(t *testing.T) {
+	t.Parallel()
+
+	t.Run("request store closes values on reset", func(t *testing.T) {
+		t.Parallel()
+
+		var closed atomic.Bool
+		fctx := &fasthttp.RequestCtx{}
+		fctx.SetUserValue("recorder", closeRecorder{closed: &closed})
+		require.False(t, closed.Load())
+
+		fctx.Request.Reset()
+		require.True(t, closed.Load(), "fasthttp must close request-local values that implement io.Closer")
+	})
+
+	t.Run("chain state lives in the request store and is dropped on reset", func(t *testing.T) {
+		t.Parallel()
+
+		app := fiber.New()
+		chain := Chain(FromHeader("X-Token"), FromQuery("token"))
+		app.Get("/t", func(c fiber.Ctx) error {
+			v, err := chain.Extract(c)
+			require.NoError(t, err)
+			require.Equal(t, "tok", v)
+			// Dirty the state so a stale one would be visible to whoever
+			// takes it out of the pool next.
+			st := chainStateFor(c)
+			st.win = SourceQuery
+			st.hasWin = true
+			return c.SendStatus(fiber.StatusNoContent)
+		})
+
+		fctx := &fasthttp.RequestCtx{}
+		fctx.Request.Header.SetMethod(fiber.MethodGet)
+		fctx.Request.SetRequestURI("/t")
+		fctx.Request.Header.Set("X-Token", "tok")
+		app.Handler()(fctx)
+		require.Equal(t, fiber.StatusNoContent, fctx.Response.StatusCode())
+
+		stored, ok := fctx.UserValue(chainStateKey{}).(*chainState)
+		require.True(t, ok, "the state must be stored in the request, which is what gets closed")
+		var closer io.Closer = stored
+		require.NotNil(t, closer)
+
+		fctx.Request.Reset()
+		require.Nil(t, fctx.UserValue(chainStateKey{}), "the reset must drop the state")
+	})
+
+	t.Run("a state handed out is clean", func(t *testing.T) {
+		t.Parallel()
+
+		app := fiber.New()
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+		t.Cleanup(func() { app.ReleaseCtx(ctx) })
+
+		// Whether this state is new or recycled, it must carry nothing from
+		// the request that used it before.
+		st := chainStateFor(ctx)
+		require.Empty(t, st.active)
+		require.Zero(t, st.depth)
+		require.False(t, st.hasWin)
+		require.Same(t, st, chainStateFor(ctx), "one state per request")
+	})
+}
+
+// Test_Chain_NoAllocations is the regression guard for the pooled state: the
+// source-aware path allocated a []Source per winning child before it existed.
+//
+// Deliberately not parallel: AllocsPerRun counts allocations process-wide, so
+// it must not run beside another test. Go pauses parallel tests for the
+// duration of a sequential one, which is what makes this reliable.
+func Test_Chain_NoAllocations(t *testing.T) {
+	app := fiber.New()
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+	t.Cleanup(func() { app.ReleaseCtx(ctx) })
+	ctx.Request().Header.Set("X-Token", "from-header")
+	ctx.Request().SetRequestURI("/?token=from-query")
+
+	flat := Chain(FromCookie("token"), FromQuery("token"))
+	nested := Chain(FromHeader("X-Missing"), Chain(FromCookie("token"), FromQuery("token")))
+
+	cases := []struct {
+		run  func()
+		name string
+	}{
+		{name: "Extract", run: func() {
+			if _, err := flat.Extract(ctx); err != nil {
+				t.Error(err)
+			}
+		}},
+		{name: "ExtractWithSource", run: func() {
+			if _, _, err := ExtractWithSource(flat, ctx); err != nil {
+				t.Error(err)
+			}
+		}},
+		{name: "ExtractWithSource_nested", run: func() {
+			if _, _, err := ExtractWithSource(nested, ctx); err != nil {
+				t.Error(err)
+			}
+		}},
+		{name: "ExtractWithSource_bare_chain", run: func() {
+			bare := Extractor{Chain: flat.Chain}
+			if _, _, err := ExtractWithSource(bare, ctx); err != nil {
+				t.Error(err)
+			}
+		}},
+	}
+
+	for _, tc := range cases {
+		tc.run() // warm the state into the request store
+		require.Zero(t, testing.AllocsPerRun(100, tc.run), "%s must not allocate", tc.name)
+	}
+}
+
+// countingCtx makes the Locals override observable, so a custom context can be
+// told apart from the concrete fast path.
+type countingCtx struct {
+	fiber.DefaultCtx
+	calls atomic.Int64
+}
+
+// Locals counts each call before forwarding it.
+func (c *countingCtx) Locals(key any, value ...any) any {
+	c.calls.Add(1)
+	return c.DefaultCtx.Locals(key, value...)
+}
+
+// Test_Chain_CustomCtx keeps the chain state reachable through a context that
+// overrides Locals: its store may never close the state, which costs an
+// allocation but must not change any answer.
+func Test_Chain_CustomCtx(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.NewWithCustomCtx(func(app *fiber.App) fiber.CustomCtx {
+		return &countingCtx{DefaultCtx: *fiber.NewDefaultCtx(app)}
+	})
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+	t.Cleanup(func() { app.ReleaseCtx(ctx) })
+	ctx.Request().SetRequestURI("/?token=from-query")
+
+	custom, ok := ctx.(*countingCtx)
+	require.True(t, ok, "the app must hand out the custom context")
+
+	chain := Chain(FromHeader("X-Token"), FromQuery("token"))
+
+	v, err := chain.Extract(ctx)
+	require.NoError(t, err)
+	require.Equal(t, "from-query", v)
+
+	// Sequential reuse: the guard is released, so the second walk is not a cycle.
+	sv, src, serr := ExtractWithSource(chain, ctx)
+	require.NoError(t, serr)
+	require.Equal(t, "from-query", sv)
+	require.Equal(t, SourceQuery, src)
+
+	var cyclic Extractor
+	cyclic = Chain(FromCustom("cycle", func(c fiber.Ctx) (string, error) {
+		return cyclic.Extract(c)
+	}))
+	_, err = cyclic.Extract(ctx)
+	require.ErrorIs(t, err, ErrChainCycle)
+
+	require.Positive(t, custom.calls.Load(), "the overridden Locals must be the one that ran")
+}
+
+// Test_Chain_Concurrent runs chains on many requests at once, so the race
+// detector sees the pooled state cross goroutines.
+func Test_Chain_Concurrent(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	chain := Chain(FromHeader("X-Token"), FromQuery("token"))
+
+	var cyclic Extractor
+	cyclic = Chain(FromCustom("cycle", func(c fiber.Ctx) (string, error) {
+		return cyclic.Extract(c)
+	}))
+
+	const workers = 64
+	var wg sync.WaitGroup
+	wg.Add(workers)
+	for range workers {
+		go func() {
+			defer wg.Done()
+			for range 50 {
+				fctx := &fasthttp.RequestCtx{}
+				fctx.Request.SetRequestURI("/?token=from-query")
+				c := app.AcquireCtx(fctx)
+
+				v, src, err := ExtractWithSource(chain, c)
+				assert.NoError(t, err)
+				assert.Equal(t, "from-query", v)
+				assert.Equal(t, SourceQuery, src)
+
+				_, err = cyclic.Extract(c)
+				assert.ErrorIs(t, err, ErrChainCycle)
+
+				app.ReleaseCtx(c)
+				// What the server does between requests: the state goes back
+				// to the pool for another goroutine to pick up.
+				fctx.Request.Reset()
+			}
+		}()
+	}
+	wg.Wait()
 }
