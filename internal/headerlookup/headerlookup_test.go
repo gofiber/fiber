@@ -169,6 +169,19 @@ func Test_Combined(t *testing.T) {
 		}
 	})
 
+	t.Run("an empty line among repeated ones keeps its place", func(t *testing.T) {
+		t.Parallel()
+
+		// Both halves of Combined join every line they were sent, so a line
+		// that is present and empty is a value of nothing rather than a line
+		// that was not there.
+		for _, normalize := range []bool{true, false} {
+			c := newCtx(t, fiber.Config{DisableHeaderNormalizing: !normalize})
+			readRequest(t, c, "GET / HTTP/1.1\r\nHost: e.com\r\nAccept:\r\naccept: application/json\r\n\r\n")
+			require.Equal(t, ", application/json", Combined(c, "Accept"), "normalize=%v", normalize)
+		}
+	})
+
 	t.Run("Cookie keeps its own separator", func(t *testing.T) {
 		t.Parallel()
 
@@ -186,4 +199,33 @@ func Test_Combined(t *testing.T) {
 		c.Request().Header.Set("X-Token", "xyz")
 		require.Equal(t, "abc", v)
 	})
+}
+
+// Test_Combined_DoesNotAllocate pins the fold path, which collected its matches
+// through a callback into a slice and so allocated three times for every header
+// read by an application that keeps the spelling its peers sent.
+//
+// Deliberately not parallel, and top level rather than a subtest: AllocsPerRun
+// counts allocations process-wide and refuses to run under a parallel parent.
+func Test_Combined_DoesNotAllocate(t *testing.T) {
+	for _, mode := range []struct {
+		name string
+		cfg  fiber.Config
+		raw  string
+	}{
+		{name: "normalized", cfg: fiber.Config{}, raw: "GET / HTTP/1.1\r\nHost: e.com\r\nX-API-Key: abc123\r\n\r\n"},
+		{name: "as sent", cfg: fiber.Config{DisableHeaderNormalizing: true}, raw: "GET / HTTP/1.1\r\nHost: e.com\r\nx-api-key: abc123\r\n\r\n"},
+	} {
+		c := newCtx(t, mode.cfg)
+		readRequest(t, c, mode.raw)
+
+		read := func() {
+			if v := Combined(c, "X-API-Key"); v != "abc123" {
+				t.Errorf("%s: got %q", mode.name, v)
+			}
+		}
+		read() // warm anything the header store collects once
+
+		require.Zero(t, testing.AllocsPerRun(100, read), "%s", mode.name)
+	}
 }

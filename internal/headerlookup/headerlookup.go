@@ -117,7 +117,11 @@ func Combined(c fiber.Ctx, name string) string {
 		h.Cookie("")
 	}
 
-	lines := fieldname.Lines(h, name, !cfg.DisableHeaderNormalizing)
+	if cfg.DisableHeaderNormalizing {
+		return foldCombined(h, name, cfg.Immutable)
+	}
+
+	lines := fieldname.Lines(h, name, true)
 
 	switch len(lines) {
 	case 0:
@@ -142,6 +146,66 @@ func Combined(c fiber.Ctx, name string) string {
 			joined = append(joined, ',', ' ')
 		}
 		joined = append(joined, line...)
+	}
+	// The buffer is this function's own, so no copy is owed to Immutable.
+	return utils.UnsafeString(joined)
+}
+
+// foldCombined answers Combined for a store keeping whatever spelling the peer
+// sent, which is what HTTP/2 and 3 put on the wire.
+//
+// Written as its own walk rather than through fieldname.Lines: that collects
+// the matches into a slice through a callback, and the callback and the slice
+// both escape, so reading one header cost three allocations. Nothing here
+// outlives the call except the value returned, so the single-line case — every
+// request that is not malformed — allocates nothing at all. The price is
+// walking the store twice for the repeated case, which is rare and already
+// pays for the join.
+//
+//nolint:revive // flag-parameter: immutable is a property of the app's config, not a mode of operation
+func foldCombined(h *fasthttp.RequestHeader, name string, immutable bool) string {
+	var first []byte
+	lines, size := 0, 0
+	for k, v := range h.All() {
+		if !utils.EqualFold(utils.UnsafeString(k), name) {
+			continue
+		}
+		if lines == 0 {
+			first = v
+		}
+		lines++
+		size += len(v)
+	}
+
+	switch lines {
+	case 0:
+		return ""
+	case 1:
+		if len(first) == 0 {
+			return ""
+		}
+		// The bytes live as long as the request, so a copy is made only where
+		// Immutable promises the caller one.
+		if immutable {
+			return string(first)
+		}
+		return utils.UnsafeString(first)
+	}
+
+	joined := make([]byte, 0, size+2*(lines-1))
+	// Counted rather than read off the buffer's length: a first line that is
+	// present and empty writes nothing, and the line after it still needs the
+	// separator.
+	written := 0
+	for k, v := range h.All() {
+		if !utils.EqualFold(utils.UnsafeString(k), name) {
+			continue
+		}
+		if written > 0 {
+			joined = append(joined, ',', ' ')
+		}
+		joined = append(joined, v...)
+		written++
 	}
 	// The buffer is this function's own, so no copy is owed to Immutable.
 	return utils.UnsafeString(joined)
