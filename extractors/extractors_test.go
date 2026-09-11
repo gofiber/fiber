@@ -1927,14 +1927,12 @@ func Test_ExtractWithSource_BareChain(t *testing.T) {
 	})
 }
 
-// The state is reclaimed by the request store calling Close on it, so it has
-// to satisfy io.Closer for that to ever happen.
+// The state is reclaimed by the request store calling Close on it.
 var _ io.Closer = (*chainState)(nil)
 
-// closeRecorder reports whether the request store closed it. The pooled chain
-// state relies on that contract, so it is pinned here directly rather than
-// through the state, whose pointer is back in the pool by the time a test
-// could look at it.
+// closeRecorder reports whether the request store closed it. The contract is
+// pinned here rather than through the chain state, whose pointer is back in
+// the pool by the time a test could look at it.
 type closeRecorder struct {
 	closed *atomic.Bool
 }
@@ -1945,10 +1943,9 @@ func (r closeRecorder) Close() error {
 	return nil
 }
 
-// Test_Chain_StateIsRecycledOnRequestReset pins the whole recycling story: the
-// state is kept in the request's own user values, fasthttp closes such a value
-// when the request resets, the slot is cleared, and a state handed out
-// afterwards is clean.
+// Test_Chain_StateIsRecycledOnRequestReset pins the recycling: fasthttp closes
+// request-local io.Closers on reset, the state is stored where that happens,
+// and one handed out afterwards is clean.
 func Test_Chain_StateIsRecycledOnRequestReset(t *testing.T) {
 	t.Parallel()
 
@@ -1973,8 +1970,7 @@ func Test_Chain_StateIsRecycledOnRequestReset(t *testing.T) {
 			v, err := chain.Extract(c)
 			require.NoError(t, err)
 			require.Equal(t, "tok", v)
-			// Dirty the state so a stale one would be visible to whoever
-			// takes it out of the pool next.
+			// Dirty it, so a stale state would show up in the next holder.
 			st := chainStateFor(c)
 			st.win = SourceQuery
 			st.hasWin = true
@@ -2012,12 +2008,11 @@ func Test_Chain_StateIsRecycledOnRequestReset(t *testing.T) {
 	})
 }
 
-// Test_Chain_NoAllocations is the regression guard for the pooled state: the
-// source-aware path allocated a []Source per winning child before it existed.
+// Test_Chain_NoAllocations guards the pooled state: the source-aware path
+// allocated a []Source per winning child before it existed.
 //
-// Deliberately not parallel: AllocsPerRun counts allocations process-wide, so
-// it must not run beside another test. Go pauses parallel tests for the
-// duration of a sequential one, which is what makes this reliable.
+// Not parallel: AllocsPerRun counts allocations process-wide, and Go pauses
+// parallel tests while a sequential one runs.
 func Test_Chain_NoAllocations(t *testing.T) {
 	app := fiber.New()
 	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
@@ -2061,8 +2056,7 @@ func Test_Chain_NoAllocations(t *testing.T) {
 	}
 }
 
-// countingCtx makes the Locals override observable, so a custom context can be
-// told apart from the concrete fast path.
+// countingCtx makes the Locals override observable.
 type countingCtx struct {
 	fiber.DefaultCtx
 	calls atomic.Int64
@@ -2075,7 +2069,7 @@ func (c *countingCtx) Locals(key any, value ...any) any {
 }
 
 // Test_Chain_CustomCtx keeps the chain state reachable through a context that
-// overrides Locals: its store may never close the state, which costs an
+// overrides Locals. Such a store may never close the state, which costs an
 // allocation but must not change any answer.
 func Test_Chain_CustomCtx(t *testing.T) {
 	t.Parallel()
@@ -2145,8 +2139,7 @@ func Test_Chain_Concurrent(t *testing.T) {
 				assert.ErrorIs(t, err, ErrChainCycle)
 
 				app.ReleaseCtx(c)
-				// What the server does between requests: the state goes back
-				// to the pool for another goroutine to pick up.
+				// What the server does between requests.
 				fctx.Request.Reset()
 			}
 		}()
@@ -2155,16 +2148,15 @@ func Test_Chain_Concurrent(t *testing.T) {
 }
 
 // token68Samples are the shapes the table and the scan it replaced could most
-// easily disagree about. The fuzz target seeds its corpus with them, so an
-// input worth remembering is written down once.
+// easily disagree about. The fuzz target seeds its corpus with them.
 var token68Samples = []string{
 	"", "=", "==", "===", "=a", "a", "a=", "a==", "a===", "a=b", "a==b",
 	"dXNlcjpwYXNzd29yZA==", "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0In0",
 	benchToken, "-._~+/", "a b", "a\tb", "a\nb", "token@invalid",
 }
 
-// isValidToken68Reference is the range-compare scan the table replaced. It is
-// kept as the definition the table is checked against, byte for byte.
+// isValidToken68Reference is the range-compare scan the table replaced, kept
+// as the definition it is checked against.
 func isValidToken68Reference(token string) bool {
 	if token == "" {
 		return false
@@ -2193,8 +2185,7 @@ func isValidToken68Reference(token string) bool {
 }
 
 // Test_isValidToken68_MatchesReference checks the table against the scan it
-// replaced on every byte, in every position that distinguishes them, and on
-// the padding shapes the two disagree about most easily.
+// replaced, on every byte in every position that could distinguish them.
 func Test_isValidToken68_MatchesReference(t *testing.T) {
 	t.Parallel()
 
@@ -2202,8 +2193,8 @@ func Test_isValidToken68_MatchesReference(t *testing.T) {
 		t.Parallel()
 
 		for c := range 256 {
-			// Built from the byte, not from rune(c), so the high half is one
-			// invalid byte rather than two UTF-8 ones.
+			// From the byte, not rune(c): the high half must be one invalid
+			// byte, not two UTF-8 ones.
 			b := string([]byte{byte(c)})
 			for _, in := range []string{
 				b,             // alone

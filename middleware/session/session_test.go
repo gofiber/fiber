@@ -1516,10 +1516,10 @@ func Benchmark_Session(b *testing.B) {
 	})
 }
 
-// Benchmark_Session_ChainExtractor measures the lookup a chain-configured
-// store does per request. The user values are reset every iteration because a
-// reused context answers from the cached session-ID local and never reaches
-// the extractor at all.
+// Benchmark_Session_ChainExtractor measures the lookup a chain-configured store
+// does per request. The user values are reset every iteration because a reused
+// context answers from the cached session-ID local and never reaches the
+// extractor.
 //
 // go test -v -run=^$ -bench=Benchmark_Session_ChainExtractor -benchmem -count=4
 func Benchmark_Session_ChainExtractor(b *testing.B) {

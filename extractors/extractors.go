@@ -109,26 +109,21 @@ func ExtractWithSource(e Extractor, c fiber.Ctx) (string, Source, error) {
 	return resolveWithSource(&e, c, nil)
 }
 
-// resolveWithSource is ExtractWithSource over an extractor the caller owns,
-// carrying the request's chain state so that a walk of a tree looks it up once
-// rather than once per child, and passes a pointer where the exported entry
-// point copies the 72-byte Extractor. A nil st is resolved on first need.
+// resolveWithSource is ExtractWithSource by pointer, carrying the request's
+// chain state so a walk looks it up once rather than once per child. A nil st
+// is resolved on first need.
 func resolveWithSource(e *Extractor, c fiber.Ctx, st *chainState) (string, Source, error) {
 	if e.Extract != nil {
-		// Mark this request frame so Chain.Extract only records winners when
-		// a source-aware caller is active. Bare chain.Extract must not leave
-		// a winner that a later ExtractWithSource on an unrelated leaf would
-		// consume.
 		if st == nil {
 			st = chainStateFor(c)
 		}
+		// Marks the frame, so Chain.Extract records a winner only while a
+		// source-aware caller is active.
 		st.enterCapture()
 		defer st.leaveCapture()
 
 		v, err := e.Extract(c)
-		// Read the capture before the deferred clear runs. Built-in Chain
-		// records a winner on success while capture is active, even if
-		// e.Chain was cleared.
+		// Read before the deferred clear runs.
 		src, captured := st.win, st.hasWin
 		if err != nil {
 			return "", e.Source, err
@@ -136,9 +131,8 @@ func resolveWithSource(e *Extractor, c fiber.Ctx, st *chainState) (string, Sourc
 		if v == "" {
 			return "", e.Source, ErrNotFound
 		}
-		// No capture: use the declared Source. Do not re-walk e.Chain after a
-		// successful custom/replaced Extract — that would attribute the
-		// replacement's value to whichever child happens to succeed on peek.
+		// Without a capture the declared Source stands: re-walking e.Chain
+		// would credit a replaced Extract to whichever child answers on peek.
 		if captured {
 			return v, src, nil
 		}
@@ -153,23 +147,17 @@ func resolveWithSource(e *Extractor, c fiber.Ctx, st *chainState) (string, Sourc
 	return "", e.Source, ErrNotFound
 }
 
-// chainGuard returns the identity Chain.Extract and extractChainWithSource
-// share for the public Chain backing array: the address of its first element,
-// which is stable for the life of the array.
-//
-// chain must not be empty; both callers reach it only past a length check.
+// chainGuard returns the cycle-guard identity of a chain: the address of the
+// first element of its public Chain array, which survives the value copies an
+// Extractor makes. chain must not be empty.
 func chainGuard(chain []Extractor) *byte {
 	return (*byte)(unsafe.Pointer(&chain[0])) //nolint:gosec // G103: identity for the cycle guard only, never dereferenced
 }
 
-// chainState is the bookkeeping every chain on one request shares: the chains
-// currently executing (the cycle guard), how many ExtractWithSource frames are
-// open (whether winners are recorded at all) and the Source of the last child
-// that won while one was.
-//
-// One request-local entry holds all of it, so a chain call costs a single
-// Locals lookup rather than one per guard, depth and winner operation, and
-// recording a winner is a field write rather than a re-allocated []Source.
+// chainState is what every chain on one request shares. Holding it in a single
+// request-local entry costs a chain one Locals lookup rather than one per
+// guard, depth and winner operation, and makes recording a winner a field
+// write rather than a re-allocated []Source.
 type chainState struct {
 	active []*byte // guards of the chains executing right now, innermost last
 	win    Source  // Source of the innermost winning child while hasWin
@@ -185,10 +173,8 @@ var chainStatePool = sync.Pool{
 }
 
 // chainStateFor returns the request's chainState, creating it on first use.
-//
-// The state is a Locals value, so fasthttp hands it back through Close when it
-// resets the request's user values, which returns it to the pool: a request
-// that runs any number of chains costs no allocation for them.
+// Being a Locals value, it comes back through Close when fasthttp resets the
+// request, so a request running any number of chains allocates for none.
 func chainStateFor(c fiber.Ctx) *chainState {
 	if st, ok := c.Locals(chainStateKey{}).(*chainState); ok && st != nil {
 		return st
@@ -201,21 +187,18 @@ func chainStateFor(c fiber.Ctx) *chainState {
 	return st
 }
 
-// Close returns the state to the pool. fasthttp calls it, as it does for every
-// request-local value implementing io.Closer, when the request is reset; it is
-// not for callers.
+// Close returns the state to the pool. fasthttp calls it on every
+// request-local io.Closer when it resets the request; callers should not.
 func (s *chainState) Close() error {
-	// Reset as a whole, not field by field: a field added later and forgotten
-	// here would carry one request's state into the next through the pool,
-	// which is the one thing this type must never do. The buffer is kept: the
-	// literal's right-hand side is evaluated before the assignment.
+	// Whole-struct, so a field added later cannot leak one request's state
+	// into the next. The buffer survives: the literal is evaluated first.
 	*s = chainState{active: s.active[:0]}
 	chainStatePool.Put(s)
 	return nil
 }
 
-// enter marks the chain identified by guard as executing and reports false,
-// leaving the state untouched, if it already is — a cycle.
+// enter marks a chain as executing, or reports false if it already is: a
+// cycle.
 func (s *chainState) enter(guard *byte) bool {
 	if slices.Contains(s.active, guard) {
 		return false
@@ -231,8 +214,8 @@ func (s *chainState) leave() {
 	}
 }
 
-// enterCapture opens an ExtractWithSource frame. Any winner a previous frame
-// left is forgotten, so a leaf extracted next is not attributed to it.
+// enterCapture opens an ExtractWithSource frame, forgetting any winner left by
+// the last one so a leaf is not attributed to it.
 func (s *chainState) enterCapture() {
 	s.depth++
 	s.hasWin = false
@@ -474,8 +457,6 @@ func FromParam(param string) Extractor {
 		// literal "%20" sent as "%2520" would arrive as a space. Decode
 		// only when the router left the value raw, which keeps the number
 		// of decodes at one whatever the config says.
-		// Read off the app rather than through Config(), which copies over
-		// 600 bytes to answer one boolean.
 		if appconfig.Of(c.App()).UnescapePath {
 			return value, nil
 		}
@@ -747,15 +728,13 @@ func Chain(extractors ...Extractor) Extractor {
 		}
 	}
 
-	// Private execution list captured by Extract. Public Chain is a separate
-	// defensive copy so callers can inspect/rewrite metadata without changing
-	// which children Extract actually runs.
+	// Extract runs kids; Chain exposes pub, a separate copy, so rewriting
+	// metadata cannot change which children run.
 	kids := append([]Extractor(nil), extractors...)
 	pub := append([]Extractor(nil), kids...)
 	primarySource := kids[0].Source
 	primaryKey := kids[0].Key
-	// Guard on the public Chain array so ExtractWithSource shares the same
-	// cycle identity (private kids stay execution-only).
+	// Keyed on pub, so ExtractWithSource shares the cycle identity.
 	guard := chainGuard(pub)
 
 	return Extractor{
@@ -768,8 +747,8 @@ func Chain(extractors ...Extractor) Extractor {
 
 			var lastErr error // last error encountered (including ErrNotFound)
 
-			// Winners are recorded only inside an ExtractWithSource frame, so
-			// a bare Extract pays for nothing but the cycle guard.
+			// Only inside an ExtractWithSource frame, so a bare Extract pays
+			// for nothing but the guard.
 			capture := st.depth > 0
 			for i := range kids {
 				kid := &kids[i]
@@ -777,13 +756,11 @@ func Chain(extractors ...Extractor) Extractor {
 					continue
 				}
 				if capture {
-					// Forget whatever the previous child left behind.
-					st.hasWin = false
+					st.hasWin = false // forget the previous child
 				}
 				v, err := kid.Extract(c)
 				if err == nil && v != "" {
-					// Prefer a Source a nested Chain.Extract recorded;
-					// otherwise the child's declared Source (leaves).
+					// A nested chain's own record wins over the declared one.
 					if capture && !st.hasWin {
 						st.win = kid.Source
 						st.hasWin = true
@@ -810,8 +787,8 @@ func Chain(extractors ...Extractor) Extractor {
 }
 
 // token68Chars marks the bytes token68 allows before padding: ALPHA, DIGIT and
-// "-._~+/" (RFC 7235 Section 2.1). "=" is left out because it is only valid as
-// trailing padding, which the scan below handles separately.
+// "-._~+/" (RFC 7235 Section 2.1). "=" is only valid as trailing padding, which
+// the scan handles separately.
 var token68Chars = [256]bool{
 	'-': true, '.': true, '_': true, '~': true, '+': true, '/': true,
 	'0': true, '1': true, '2': true, '3': true, '4': true, '5': true, '6': true, '7': true, '8': true, '9': true,
@@ -824,14 +801,11 @@ var token68Chars = [256]bool{
 }
 
 // isValidToken68 checks if a string is a valid token68 per RFC 7235/9110: one
-// or more token68 characters, then optional "=" padding, and nothing after the
-// padding.
+// or more token68 characters, then optional "=" padding, and nothing after it.
 //
-// NOTE: a swar.MatchRangeMask-based rewrite of this scan benchmarked 16%
-// slower than a scalar loop (the six-mask character class costs more per word
-// than the compiler's optimized switch costs per byte). The table below is the
-// other direction and does pay: one indexed load per byte instead of the
-// switch's range compares, which halved the scan on a JWT-sized credential.
+// NOTE: a swar.MatchRangeMask rewrite benchmarked 16% slower than a scalar
+// loop. The table is the other direction and does pay, halving the scan on a
+// JWT-sized credential against the range-compare switch it replaced.
 func isValidToken68(token string) bool {
 	if token == "" || token[0] == '=' {
 		return false // Empty, or starting with padding
@@ -840,8 +814,7 @@ func isValidToken68(token string) bool {
 	for i < len(token) && token68Chars[token[i]] {
 		i++
 	}
-	// Whatever stopped the scan must be padding, and so must the rest: no
-	// characters are allowed once padding starts.
+	// Whatever stopped the scan must be padding, and so must the rest.
 	for ; i < len(token); i++ {
 		if token[i] != '=' {
 			return false

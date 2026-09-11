@@ -8,8 +8,8 @@ import (
 )
 
 // Test_AppConfigReader covers the read the internal hot paths use instead of
-// Config(): it must report what the app was configured with, answer nothing
-// for anything that is not an app, and stay the reader this package installed.
+// Config(): what the app was configured with, nothing for what is not an app,
+// and no way to replace it.
 func Test_AppConfigReader(t *testing.T) {
 	t.Parallel()
 
@@ -54,9 +54,8 @@ func Test_AppConfigReader(t *testing.T) {
 	t.Run("the reader cannot be replaced", func(t *testing.T) {
 		t.Parallel()
 
-		// This package installed the reader in its init, so a later caller —
-		// here, or anywhere else in the module — must not be able to change
-		// what Immutable means for the rest of the process.
+		// init installed the reader, so no later caller can change what
+		// Immutable means for the rest of the process.
 		appconfig.SetReader(func(any) appconfig.Hot {
 			return appconfig.Hot{Immutable: true, DisableHeaderNormalizing: true, UnescapePath: true}
 		})

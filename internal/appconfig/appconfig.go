@@ -1,12 +1,10 @@
 // Package appconfig hands request hot paths the few Config bits they read on
 // every call, without the copy App.Config returns by value.
 //
-// Config is over 600 bytes and Config() returns it whole, so a caller that
-// wants one boolean out of it pays for all of it — measured at 25ns against
-// 2ns for the App call itself, which is a third of a header extraction.
-// Package fiber installs a reader that takes the bits straight off the app it
-// owns. It cannot be done the other way around: config is unexported, and this
-// package importing fiber would be a cycle.
+// Config is over 600 bytes, so reading one boolean out of it cost 25ns against
+// 2ns for the App call itself. Package fiber installs a reader that takes the
+// bits off the app directly; it cannot be done from here, because config is
+// unexported and importing fiber would be a cycle.
 package appconfig
 
 import (
@@ -21,21 +19,18 @@ type Hot struct {
 }
 
 var (
-	// read answers Of. Until package fiber installs the real one it reports
-	// the zero Config, which no caller here can reach: each holds a fiber.Ctx
-	// and so has imported fiber, whose init is ordered before them.
+	// read answers Of. Every caller holds a fiber.Ctx and so has imported
+	// fiber, whose init is ordered before them, and none can see this one.
 	read = func(any) Hot { return Hot{} }
 
-	// readOnce makes "installed once, before main" a property of the code
-	// rather than a promise in a comment. Without it any package in the
-	// module could retarget what Immutable means for the whole process, and
-	// could do it while requests are being served.
+	// readOnce makes "installed once, before main" true of the code rather
+	// than of a comment: without it any package could retarget what Immutable
+	// means, and could do it while requests are being served.
 	readOnce sync.Once
 )
 
-// SetReader installs the function Of answers with. The first call wins and
-// later calls are ignored, so the reader cannot be replaced once requests are
-// running; a nil reader is refused outright.
+// SetReader installs the function Of answers with. The first call wins, later
+// calls and a nil reader are ignored.
 //
 // Package fiber calls this from its init. Nothing else should call it.
 func SetReader(fn func(any) Hot) {

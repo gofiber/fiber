@@ -24,8 +24,8 @@ func newCtx(t *testing.T, cfg ...fiber.Config) fiber.Ctx {
 	return c
 }
 
-// readRequest parses raw into c's request, which is the only way to build a
-// message carrying a field the way a peer would rather than the way Set does.
+// readRequest parses raw into c's request, the only way to build a message
+// carrying a field the way a peer would rather than the way Set does.
 func readRequest(t *testing.T, c fiber.Ctx, raw string) {
 	t.Helper()
 
@@ -109,7 +109,7 @@ func Test_Value(t *testing.T) {
 		require.True(t, ok)
 		require.Equal(t, "abc", v)
 
-		// Same length, so fasthttp may write it over the bytes just read.
+		// Same length, so fasthttp may write over the bytes just read.
 		c.Request().Header.Set("X-Token", "xyz")
 		require.Equal(t, "abc", v, "Immutable promises a value that outlives the request's buffer")
 	})
@@ -148,9 +148,8 @@ func Test_Combined(t *testing.T) {
 	t.Run("an empty line among repeated ones keeps its place", func(t *testing.T) {
 		t.Parallel()
 
-		// Both halves of Combined join every line they were sent, so a line
-		// that is present and empty is a value of nothing rather than a line
-		// that was not there.
+		// Both halves join every line they were sent, so a present-and-empty
+		// line is a value of nothing, not an absent line.
 		for _, normalize := range []bool{true, false} {
 			c := newCtx(t, fiber.Config{DisableHeaderNormalizing: !normalize})
 			readRequest(t, c, "GET / HTTP/1.1\r\nHost: e.com\r\nAccept:\r\naccept: application/json\r\n\r\n")
@@ -177,12 +176,11 @@ func Test_Combined(t *testing.T) {
 	})
 }
 
-// Test_Combined_DoesNotAllocate pins the fold path, which collected its matches
-// through a callback into a slice and so allocated three times for every header
-// read by an application that keeps the spelling its peers sent.
+// Test_Combined_DoesNotAllocate pins the fold path, which allocated three
+// times per header read before it walked the store itself.
 //
-// Deliberately not parallel, and top level rather than a subtest: AllocsPerRun
-// counts allocations process-wide and refuses to run under a parallel parent.
+// Not parallel, and top level: AllocsPerRun counts allocations process-wide
+// and refuses to run under a parallel parent.
 func Test_Combined_DoesNotAllocate(t *testing.T) {
 	for _, mode := range []struct {
 		name string

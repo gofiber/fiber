@@ -20,9 +20,8 @@ func Canonical(c fiber.Ctx) bool {
 	return !appconfig.Of(c.App()).DisableHeaderNormalizing
 }
 
-// singleLine returns one field line as a string: empty where the line is
-// present and empty, and copied only where Immutable promises the caller a
-// value that outlives the request's buffer.
+// singleLine returns one field line as a string, copied only where Immutable
+// promises the caller a value that outlives the request's buffer.
 //
 //nolint:revive // flag-parameter: immutable is a property of the app's config, not a mode of operation
 func singleLine(line []byte, immutable bool) string {
@@ -134,13 +133,10 @@ func Combined(c fiber.Ctx, name string) string {
 // foldCombined answers Combined for a store keeping whatever spelling the peer
 // sent, which is what HTTP/2 and 3 put on the wire.
 //
-// Written as its own walk rather than through fieldname.Lines: that collects
-// the matches into a slice through a callback, and the callback and the slice
-// both escape, so reading one header cost three allocations. Nothing here
-// outlives the call except the value returned, so the single-line case — every
-// request that is not malformed — allocates nothing at all. The price is
-// walking the store twice for the repeated case, which is rare and already
-// pays for the join.
+// Its own walk rather than fieldname.Lines, whose callback and result slice
+// both escape, costing three allocations per header read. The single-line case
+// allocates nothing; repeated lines walk twice, which is rare and already pays
+// for the join.
 //
 //nolint:revive // flag-parameter: immutable is a property of the app's config, not a mode of operation
 func foldCombined(h *fasthttp.RequestHeader, name string, immutable bool) string {
@@ -165,9 +161,8 @@ func foldCombined(h *fasthttp.RequestHeader, name string, immutable bool) string
 	}
 
 	joined := make([]byte, 0, size+2*(lines-1))
-	// Counted rather than read off the buffer's length: a first line that is
-	// present and empty writes nothing, and the line after it still needs the
-	// separator.
+	// Counted, not read off the buffer: a first line that is present and empty
+	// writes nothing, and the next still needs its separator.
 	written := 0
 	for k, v := range h.All() {
 		if !utils.EqualFold(utils.UnsafeString(k), name) {

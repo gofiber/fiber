@@ -43,9 +43,8 @@ func benchExtractWithSource(b *testing.B, e Extractor, c fiber.Ctx) {
 }
 
 // benchExtractFresh resets the request's user values after every extraction,
-// as fasthttp does between requests (Request.Reset calls Close on any stored
-// io.Closer), so the per-request cost of whatever an extractor keeps in Locals
-// is measured rather than amortized over a reused context.
+// as fasthttp does between requests, so what an extractor keeps in Locals is
+// paid for per request rather than amortized over a reused context.
 func benchExtractFresh(b *testing.B, e Extractor, c fiber.Ctx) {
 	b.Helper()
 	b.ReportAllocs()
@@ -179,8 +178,8 @@ func Benchmark_Extractor_FromForm_Miss(b *testing.B) {
 	benchExtract(b, FromForm("token"), c)
 }
 
-// benchParam runs the loop inside a matched route, on the benchmark goroutine,
-// because route parameters exist only there.
+// benchParam runs the loop inside a matched route, where route parameters are
+// the only place they exist.
 func benchParam(b *testing.B, uri string) {
 	b.Helper()
 	app := fiber.New()
@@ -248,7 +247,7 @@ func Benchmark_Extractor_ChainNested_HitInner(b *testing.B) {
 	benchExtract(b, outer, c)
 }
 
-// Locals a real request accumulates before the extractor runs; every
+// The locals a real request accumulates before the extractor runs; every
 // request-local lookup scans past them.
 func Benchmark_Extractor_Chain3_HitFirst_WithLocals(b *testing.B) {
 	c := newBenchCtx(b)

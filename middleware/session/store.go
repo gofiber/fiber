@@ -132,8 +132,8 @@ func (s *Store) getSession(c fiber.Ctx) (*Session, error) {
 		id = s.getSessionID(c)
 	}
 
-	// A pointer into the Store's own extractor, so recording which one
-	// supplied the ID does not box 72 bytes onto the heap per request.
+	// Recorded as a pointer into the Store's own extractor, so it is not
+	// boxed onto the heap per request.
 	var selectedExtractor extractors.Extractor
 	if stored, ok := c.Locals(sessionExtractorContextKey).(*extractors.Extractor); ok && stored != nil {
 		selectedExtractor = *stored
@@ -210,12 +210,13 @@ func (s *Store) getSession(c fiber.Ctx) (*Session, error) {
 //
 //	id := store.getSessionID(c)
 func (s *Store) getSessionID(c fiber.Ctx) string {
-	// Walked by index, and recorded as a pointer: the extractor is 72 bytes,
-	// so both the copy per child and the box per request are worth skipping.
-	// Everything pointed at belongs to the Store and outlives the request.
+	// By index, and recorded by address: an Extractor is 72 bytes, and what is
+	// pointed at belongs to the Store and outlives the request.
 	if len(s.Extractor.Chain) > 0 {
 		for i := range s.Extractor.Chain {
 			chainExtractor := &s.Extractor.Chain[i]
+			// Chain skips a child with no Extract, so this walk must too, or
+			// a zero-value child is a nil call.
 			if chainExtractor.Extract == nil {
 				continue
 			}

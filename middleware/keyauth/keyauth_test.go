@@ -1273,19 +1273,17 @@ func Test_New_ErrorURIAbsolute(t *testing.T) {
 }
 
 // benchKey is a JWT-sized token68 credential, the shape a Bearer token has in
-// practice and the one the token68 scan is measured against.
+// practice.
 const benchKey = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0In0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9P"
 
-// benchValidator compares in constant time, as a real deployment must, and
-// without hashing, so the benchmark measures the middleware rather than a
-// digest.
+// benchValidator compares in constant time, as a real deployment must, but
+// without hashing, so the numbers are the middleware and not a digest.
 func benchValidator(_ fiber.Ctx, key string) (bool, error) {
 	return subtle.ConstantTimeCompare([]byte(key), []byte(benchKey)) == 1, nil
 }
 
-// benchApp registers the middleware with cfg on a route that answers 418, and
-// returns the request handler. cfg is taken by pointer because Config is 200
-// bytes, which gocritic will not have copied into a call.
+// benchApp registers the middleware with cfg on a route that answers 418. cfg
+// is a pointer because Config is 200 bytes and gocritic refuses the copy.
 func benchApp(cfg *Config) fasthttp.RequestHandler {
 	app := fiber.New()
 	app.Use(New(*cfg))
@@ -1313,8 +1311,7 @@ func Benchmark_KeyAuth_Bearer(b *testing.B) {
 	require.Equal(b, fiber.StatusTeapot, ctx.Response.Header.StatusCode())
 }
 
-// Chained sources with the credential in the last one, so the walk pays for
-// both misses before it succeeds.
+// The credential is in the last source, so the walk pays for both misses.
 //
 // go test -v -run=^$ -bench=Benchmark_KeyAuth_Chain -benchmem -count=4
 func Benchmark_KeyAuth_Chain(b *testing.B) {

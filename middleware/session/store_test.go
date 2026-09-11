@@ -227,8 +227,8 @@ func Test_Store_GetByID(t *testing.T) {
 }
 
 // Test_Store_getSessionID_SkipsChildrenWithoutExtract covers a chain carrying a
-// zero-value child, which Chain itself skips but the store used to call
-// straight through, panicking on the nil function.
+// zero-value child, which Chain skips but the store used to call straight
+// through, panicking on the nil function.
 func Test_Store_getSessionID_SkipsChildrenWithoutExtract(t *testing.T) {
 	t.Parallel()
 
