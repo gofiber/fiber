@@ -7,10 +7,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// Test_AppConfigHook covers the read the internal hot paths use instead of
-// Config(): it must report what the app was configured with, and answer
-// nothing for anything that is not an app.
-func Test_AppConfigHook(t *testing.T) {
+// Test_AppConfigReader covers the read the internal hot paths use instead of
+// Config(): it must report what the app was configured with, answer nothing
+// for anything that is not an app, and stay the reader this package installed.
+func Test_AppConfigReader(t *testing.T) {
 	t.Parallel()
 
 	t.Run("reports the configured bits", func(t *testing.T) {
@@ -49,5 +49,19 @@ func Test_AppConfigHook(t *testing.T) {
 		t.Parallel()
 
 		require.Panics(t, func() { appconfig.Of((*App)(nil)) })
+	})
+
+	t.Run("the reader cannot be replaced", func(t *testing.T) {
+		t.Parallel()
+
+		// This package installed the reader in its init, so a later caller —
+		// here, or anywhere else in the module — must not be able to change
+		// what Immutable means for the rest of the process.
+		appconfig.SetReader(func(any) appconfig.Hot {
+			return appconfig.Hot{Immutable: true, DisableHeaderNormalizing: true, UnescapePath: true}
+		})
+		appconfig.SetReader(nil)
+
+		require.Equal(t, appconfig.Hot{}, appconfig.Of(New()))
 	})
 }

@@ -9,8 +9,11 @@ import (
 // each one. This reads them off the app directly, which the packages that need
 // them cannot do themselves: config is unexported, and importing them here
 // would be a cycle.
+//
+// Installed from init rather than from New, because a request can reach those
+// packages through any app and they must never see the uninstalled reader.
 func init() {
-	appconfig.Of = func(a any) appconfig.Hot {
+	appconfig.SetReader(func(a any) appconfig.Hot {
 		app, ok := a.(*App)
 		if !ok {
 			return appconfig.Hot{}
@@ -22,5 +25,5 @@ func init() {
 			DisableHeaderNormalizing: app.config.DisableHeaderNormalizing,
 			UnescapePath:             app.config.UnescapePath,
 		}
-	}
+	})
 }

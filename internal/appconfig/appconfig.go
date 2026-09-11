@@ -9,6 +9,10 @@
 // package importing fiber would be a cycle.
 package appconfig
 
+import (
+	"sync"
+)
+
 // Hot is the subset of fiber.Config that request hot paths read.
 type Hot struct {
 	Immutable                bool
@@ -16,11 +20,32 @@ type Hot struct {
 	UnescapePath             bool
 }
 
-// Of returns the Hot bits of app, which must be a *fiber.App.
+var (
+	// read answers Of. Until package fiber installs the real one it reports
+	// the zero Config, which no caller here can reach: each holds a fiber.Ctx
+	// and so has imported fiber, whose init is ordered before them.
+	read = func(any) Hot { return Hot{} }
+
+	// readOnce makes "installed once, before main" a property of the code
+	// rather than a promise in a comment. Without it any package in the
+	// module could retarget what Immutable means for the whole process, and
+	// could do it while requests are being served.
+	readOnce sync.Once
+)
+
+// SetReader installs the function Of answers with. The first call wins and
+// later calls are ignored, so the reader cannot be replaced once requests are
+// running; a nil reader is refused outright.
 //
-// Package fiber replaces this in its init, and every caller holds a fiber.Ctx
-// and so has imported fiber, which makes that init ordered before any call
-// here. The value below is only what something that managed to run first would
-// see, and it is the zero Config. It is written once, before main, and read
-// afterwards.
-var Of = func(any) Hot { return Hot{} }
+// Package fiber calls this from its init. Nothing else should call it.
+func SetReader(fn func(any) Hot) {
+	if fn == nil {
+		return
+	}
+	readOnce.Do(func() { read = fn })
+}
+
+// Of returns the Hot bits of app, which must be a *fiber.App.
+func Of(app any) Hot {
+	return read(app)
+}
