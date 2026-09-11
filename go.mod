@@ -13,11 +13,11 @@ require (
 	github.com/tinylib/msgp v1.6.4
 	github.com/valyala/bytebufferpool v1.0.0
 	github.com/valyala/fasthttp v1.74.0
-	golang.org/x/crypto v0.56.0
+	golang.org/x/crypto v0.57.0
 )
 
 require (
-	github.com/molecule-man/go-brrr v1.0.1 // indirect
+	github.com/molecule-man/go-brrr v1.1.0 // indirect
 	go.yaml.in/yaml/v3 v3.0.5 // indirect
 )
 
@@ -26,7 +26,7 @@ require (
 	github.com/klauspost/compress v1.20.0 // indirect
 	github.com/philhofer/fwd v1.2.0 // indirect
 	github.com/x448/float16 v0.8.4 // indirect
-	golang.org/x/net v0.58.0
+	golang.org/x/net v0.59.0
 	golang.org/x/sys v0.48.0 // indirect
-	golang.org/x/text v0.41.0
+	golang.org/x/text v0.42.0
 )
