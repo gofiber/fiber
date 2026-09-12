@@ -1973,9 +1973,15 @@ func assertSubSecondWindowIsFloored(t *testing.T, strategy Handler) {
 	clock := newTestClock(time.Now().Truncate(time.Second))
 	app := fiber.New()
 	app.Use(New(Config{
-		Max:               5,
-		ExpirationFunc:    func(fiber.Ctx) time.Duration { return 500 * time.Millisecond },
-		clock:             clock.Now,
+		Max:            5,
+		ExpirationFunc: func(fiber.Ctx) time.Duration { return 500 * time.Millisecond },
+		clock:          clock.Now,
+		// clock freezes the limiter's own window, but the default store expires
+		// entries on real time, so a slow runner could drop the counter between
+		// requests and let the 6th open a fresh window. This storage keeps what
+		// it is given (it only fails when errs says so), leaving the flooring
+		// itself as the only thing under test.
+		Storage:           newFailingLimiterStorage(),
 		LimiterMiddleware: strategy,
 	}))
 	app.Get("/", func(c fiber.Ctx) error { return c.SendString("Hello tester!") })
