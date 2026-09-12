@@ -3,10 +3,12 @@ package limiter
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -1991,4 +1993,50 @@ func assertSubSecondWindowIsFloored(t *testing.T, strategy Handler) {
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusTooManyRequests, resp.StatusCode)
 	require.Equal(t, "1", resp.Header.Get(fiber.HeaderRetryAfter))
+}
+
+// Test_Limiter_OversizedKeyGeneratorIsBounded proves the property manager's
+// boundKey exists for: an oversized key — the shape a raw, unvalidated
+// ProxyHeader value or an unchecked custom KeyGenerator would produce — never
+// reaches the storage backend verbatim. Runs both window strategies, since
+// each calls the manager independently.
+func Test_Limiter_OversizedKeyGeneratorIsBounded(t *testing.T) {
+	t.Parallel()
+
+	for _, strategy := range []Handler{FixedWindow{}, SlidingWindow{}} {
+		t.Run(fmt.Sprintf("%T", strategy), func(t *testing.T) {
+			t.Parallel()
+
+			oversizedKey := strings.Repeat("x", maxKeyLength*4)
+			storage := newFailingLimiterStorage()
+			app := fiber.New()
+			app.Use(New(Config{
+				Storage:           storage,
+				Max:               1,
+				Expiration:        time.Minute,
+				LimiterMiddleware: strategy,
+				KeyGenerator:      func(fiber.Ctx) string { return oversizedKey },
+			}))
+			app.Get("/", func(c fiber.Ctx) error { return c.SendString("ok") })
+
+			resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+			require.NoError(t, err)
+			require.Equal(t, fiber.StatusOK, resp.StatusCode)
+
+			require.Len(t, storage.data, 1, "exactly one bucket should have been written")
+			for storedKey := range storage.data {
+				require.NotEqual(t, oversizedKey, storedKey, "the raw oversized key must never reach storage")
+				require.LessOrEqual(t, len(storedKey), maxKeyLength)
+				require.True(t, strings.HasPrefix(storedKey, hashPrefix))
+			}
+
+			// The same oversized key must still be recognized as the same client on
+			// the next request, so rate limiting keeps working for it rather than
+			// silently exempting it or colliding it with someone else's bucket.
+			resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+			require.NoError(t, err)
+			require.Equal(t, fiber.StatusTooManyRequests, resp.StatusCode)
+			require.Len(t, storage.data, 1, "the second request must land in the same bucket, not a new one")
+		})
+	}
 }
