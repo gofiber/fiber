@@ -77,8 +77,37 @@
     "**/*_msgp_test.go",
     "go.mod",
     "go.sum",
+    ".cspell.json",
     ".golangci.yml",
     ".markdownlint.yml",
-    "AGENTS.md"
+    "AGENTS.md",
+    "benchmarks/versioncompare/results/**"
+  ],
+  "overrides": [
+    {
+      "filename": "benchmarks/versioncompare/**",
+      "words": [
+        "benchstat",
+        "benchtime",
+        "fasthttp",
+        "getaffinity",
+        "getloadavg",
+        "gofiber",
+        "microbenchmark",
+        "microbenchmarks",
+        "taskset",
+        "valyala",
+        "versionbench",
+        "versioncompare"
+      ]
+    },
+    {
+      "filename": "docs/extra/benchmarks.md",
+      "words": [
+        "microbenchmarks",
+        "ProLiant",
+        "Mellanox"
+      ]
+    }
   ]
 }

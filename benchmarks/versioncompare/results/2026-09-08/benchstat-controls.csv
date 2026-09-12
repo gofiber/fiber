@@ -1,0 +1,21 @@
+goos: linux
+goarch: amd64
+pkg: example.com/fiber-version-benchmark
+cpu: AMD EPYC 9645 96-Core Processor                
+,v2.txt,,v3.txt,,,,snapshot.txt,,,
+,sec/op,CI,sec/op,CI,vs base,P,sec/op,CI,vs base,P
+Request/fasthttp_floor,7.2525e-08,9%,1.0266500000000001e-07,9%,+41.56%,p=0.000 n=12,1.0020000000000001e-07,3%,+38.16%,p=0.000 n=12
+Request/not_found_version_default,1.199e-06,9%,4.966499999999999e-07,9%,-58.58%,p=0.000 n=12,4.4675e-07,17%,-62.74%,p=0.000 n=12
+geomean,2.9488552863780876e-07,,2.258064929314478e-07,,-23.43%,,2.115758729156044e-07,,-28.25%,
+
+,v2.txt,,v3.txt,,,,snapshot.txt,,,
+,B/op,CI,B/op,CI,vs base,P,B/op,CI,vs base,P
+Request/fasthttp_floor,0,0%,0,0%,~,p=1.000 n=12,0,0%,~,p=1.000 n=12
+Request/not_found_version_default,56,0%,0,0%,-100.00%,p=0.000 n=12,0,0%,-100.00%,p=0.000 n=12
+geomean,,,,,?,,,,?,
+
+,v2.txt,,v3.txt,,,,snapshot.txt,,,
+,allocs/op,CI,allocs/op,CI,vs base,P,allocs/op,CI,vs base,P
+Request/fasthttp_floor,0,0%,0,0%,~,p=1.000 n=12,0,0%,~,p=1.000 n=12
+Request/not_found_version_default,3,0%,0,0%,-100.00%,p=0.000 n=12,0,0%,-100.00%,p=0.000 n=12
+geomean,,,,,?,,,,?,

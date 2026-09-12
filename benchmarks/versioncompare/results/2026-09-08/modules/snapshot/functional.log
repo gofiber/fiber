@@ -1,0 +1,95 @@
+-test.shuffle 1788854340568715725
+=== RUN   TestScenarios
+=== PAUSE TestScenarios
+=== CONT  TestScenarios
+=== RUN   TestScenarios/fasthttp_floor
+=== PAUSE TestScenarios/fasthttp_floor
+=== RUN   TestScenarios/static
+=== PAUSE TestScenarios/static
+=== RUN   TestScenarios/parameter
+=== PAUSE TestScenarios/parameter
+=== RUN   TestScenarios/wildcard
+=== PAUSE TestScenarios/wildcard
+=== RUN   TestScenarios/query_lookup
+=== PAUSE TestScenarios/query_lookup
+=== RUN   TestScenarios/header_lookup
+=== PAUSE TestScenarios/header_lookup
+=== RUN   TestScenarios/locals
+=== PAUSE TestScenarios/locals
+=== RUN   TestScenarios/json_response
+=== PAUSE TestScenarios/json_response
+=== RUN   TestScenarios/json_bind
+=== PAUSE TestScenarios/json_bind
+=== RUN   TestScenarios/query_bind
+=== PAUSE TestScenarios/query_bind
+=== RUN   TestScenarios/middleware_chain
+=== PAUSE TestScenarios/middleware_chain
+=== RUN   TestScenarios/cors_simple
+=== PAUSE TestScenarios/cors_simple
+=== RUN   TestScenarios/cors_preflight
+=== PAUSE TestScenarios/cors_preflight
+=== RUN   TestScenarios/recover_no_panic
+=== PAUSE TestScenarios/recover_no_panic
+=== RUN   TestScenarios/not_found_version_default
+=== PAUSE TestScenarios/not_found_version_default
+=== RUN   TestScenarios/not_found_matched_response
+=== PAUSE TestScenarios/not_found_matched_response
+=== RUN   TestScenarios/json_response_1024
+=== PAUSE TestScenarios/json_response_1024
+=== RUN   TestScenarios/json_bind_1024
+=== PAUSE TestScenarios/json_bind_1024
+=== RUN   TestScenarios/json_response_16384
+=== PAUSE TestScenarios/json_response_16384
+=== RUN   TestScenarios/json_bind_16384
+=== PAUSE TestScenarios/json_bind_16384
+=== RUN   TestScenarios/static_routes_100
+=== PAUSE TestScenarios/static_routes_100
+=== RUN   TestScenarios/static_routes_1000
+=== PAUSE TestScenarios/static_routes_1000
+=== CONT  TestScenarios/fasthttp_floor
+=== CONT  TestScenarios/static_routes_100
+=== CONT  TestScenarios/json_bind_16384
+=== CONT  TestScenarios/static_routes_1000
+=== CONT  TestScenarios/json_bind_1024
+=== CONT  TestScenarios/json_response_1024
+=== CONT  TestScenarios/json_response_16384
+=== CONT  TestScenarios/not_found_matched_response
+=== CONT  TestScenarios/not_found_version_default
+=== CONT  TestScenarios/cors_preflight
+=== CONT  TestScenarios/cors_simple
+=== CONT  TestScenarios/recover_no_panic
+=== CONT  TestScenarios/query_bind
+=== CONT  TestScenarios/middleware_chain
+=== CONT  TestScenarios/json_response
+=== CONT  TestScenarios/json_bind
+=== CONT  TestScenarios/header_lookup
+=== CONT  TestScenarios/locals
+=== CONT  TestScenarios/wildcard
+=== CONT  TestScenarios/query_lookup
+=== CONT  TestScenarios/static
+=== CONT  TestScenarios/parameter
+--- PASS: TestScenarios (0.01s)
+    --- PASS: TestScenarios/fasthttp_floor (0.00s)
+    --- PASS: TestScenarios/static_routes_100 (0.00s)
+    --- PASS: TestScenarios/json_bind_16384 (0.01s)
+    --- PASS: TestScenarios/static_routes_1000 (0.02s)
+    --- PASS: TestScenarios/json_bind_1024 (0.00s)
+    --- PASS: TestScenarios/json_response_1024 (0.00s)
+    --- PASS: TestScenarios/json_response_16384 (0.00s)
+    --- PASS: TestScenarios/not_found_matched_response (0.00s)
+    --- PASS: TestScenarios/not_found_version_default (0.00s)
+    --- PASS: TestScenarios/cors_preflight (0.00s)
+    --- PASS: TestScenarios/cors_simple (0.00s)
+    --- PASS: TestScenarios/recover_no_panic (0.00s)
+    --- PASS: TestScenarios/query_bind (0.00s)
+    --- PASS: TestScenarios/middleware_chain (0.00s)
+    --- PASS: TestScenarios/json_response (0.00s)
+    --- PASS: TestScenarios/json_bind (0.00s)
+    --- PASS: TestScenarios/header_lookup (0.00s)
+    --- PASS: TestScenarios/locals (0.00s)
+    --- PASS: TestScenarios/wildcard (0.00s)
+    --- PASS: TestScenarios/query_lookup (0.00s)
+    --- PASS: TestScenarios/static (0.00s)
+    --- PASS: TestScenarios/parameter (0.00s)
+PASS
+ok  	example.com/fiber-version-benchmark	1.080s

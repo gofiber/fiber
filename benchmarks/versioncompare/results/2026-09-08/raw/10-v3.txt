@@ -1,0 +1,27 @@
+goos: linux
+goarch: amd64
+pkg: example.com/fiber-version-benchmark
+cpu: AMD EPYC 9645 96-Core Processor                
+BenchmarkRequest/fasthttp_floor         	 6283585	        94.88 ns/op	       0 B/op	       0 allocs/op
+BenchmarkRequest/static                 	 1918850	       322.5 ns/op	       0 B/op	       0 allocs/op
+BenchmarkRequest/parameter              	 1983062	       305.9 ns/op	       0 B/op	       0 allocs/op
+BenchmarkRequest/wildcard               	 1563202	       393.1 ns/op	       2 B/op	       1 allocs/op
+BenchmarkRequest/query_lookup           	 1738665	       350.5 ns/op	       0 B/op	       0 allocs/op
+BenchmarkRequest/header_lookup          	 1000000	       522.1 ns/op	       0 B/op	       0 allocs/op
+BenchmarkRequest/locals                 	 1368337	       393.5 ns/op	      16 B/op	       1 allocs/op
+BenchmarkRequest/json_response          	 1000000	       639.7 ns/op	      48 B/op	       1 allocs/op
+BenchmarkRequest/json_bind              	  226618	      2882 ns/op	     256 B/op	       6 allocs/op
+BenchmarkRequest/query_bind             	  391394	      1609 ns/op	      64 B/op	       3 allocs/op
+BenchmarkRequest/middleware_chain       	 1696098	       317.0 ns/op	       0 B/op	       0 allocs/op
+BenchmarkRequest/cors_simple            	  546333	      1004 ns/op	      16 B/op	       1 allocs/op
+BenchmarkRequest/cors_preflight         	  288480	      2057 ns/op	     208 B/op	       4 allocs/op
+BenchmarkRequest/recover_no_panic       	 2163001	       290.2 ns/op	       0 B/op	       0 allocs/op
+BenchmarkRequest/not_found_version_default         	 1501788	       414.2 ns/op	       0 B/op	       0 allocs/op
+BenchmarkRequest/not_found_matched_response        	 1255771	       482.4 ns/op	       8 B/op	       1 allocs/op
+BenchmarkRequest/json_response_1024                	  216763	      3036 ns/op	    1184 B/op	       2 allocs/op
+BenchmarkRequest/json_bind_1024                    	   44602	     13893 ns/op	    2159 B/op	       8 allocs/op
+BenchmarkRequest/json_response_16384               	   19836	     29939 ns/op	   18465 B/op	       2 allocs/op
+BenchmarkRequest/json_bind_16384                   	    3949	    141019 ns/op	   37145 B/op	       9 allocs/op
+BenchmarkRequest/static_routes_100                 	  539475	      1617 ns/op	       0 B/op	       0 allocs/op
+BenchmarkRequest/static_routes_1000                	   46888	     12281 ns/op	       0 B/op	       0 allocs/op
+PASS

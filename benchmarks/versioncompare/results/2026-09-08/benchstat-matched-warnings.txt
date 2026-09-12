@@ -1,0 +1,60 @@
+F31: all samples are equal
+J31: all samples are equal
+F32: all samples are equal
+J32: all samples are equal
+F33: all samples are equal
+J33: all samples are equal
+F34: all samples are equal
+J34: all samples are equal
+F35: all samples are equal
+J35: all samples are equal
+F37: all samples are equal
+J37: all samples are equal
+F38: all samples are equal
+J38: all samples are equal
+F40: all samples are equal
+J40: all samples are equal
+F43: all samples are equal
+J43: all samples are equal
+F45: all samples are equal
+J45: all samples are equal
+F47: all samples are equal
+J47: all samples are equal
+F49: all samples are equal
+J49: all samples are equal
+F50: all samples are equal
+J50: all samples are equal
+B51: summaries must be >0 to compute geomean
+D51: summaries must be >0 to compute geomean
+H51: summaries must be >0 to compute geomean
+F55: all samples are equal
+J55: all samples are equal
+F56: all samples are equal
+J56: all samples are equal
+F57: all samples are equal
+J57: all samples are equal
+F58: all samples are equal
+J58: all samples are equal
+F59: all samples are equal
+J59: all samples are equal
+F61: all samples are equal
+J61: all samples are equal
+F62: all samples are equal
+J62: all samples are equal
+F64: all samples are equal
+J64: all samples are equal
+F67: all samples are equal
+J67: all samples are equal
+F69: all samples are equal
+J69: all samples are equal
+F71: all samples are equal
+J71: all samples are equal
+F72: all samples are equal
+J72: all samples are equal
+F73: all samples are equal
+J73: all samples are equal
+F74: all samples are equal
+J74: all samples are equal
+B75: summaries must be >0 to compute geomean
+D75: summaries must be >0 to compute geomean
+H75: summaries must be >0 to compute geomean
