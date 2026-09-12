@@ -10,13 +10,14 @@ import (
 	"time"
 
 	"github.com/gofiber/utils/v2"
-	"github.com/gofiber/utils/v2/swar"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/internal/crosshost"
 
 	"github.com/gofiber/fiber/v3/internal/fieldname"
 	"github.com/gofiber/fiber/v3/internal/headerlookup"
+	"github.com/gofiber/fiber/v3/internal/idnafold"
+	utilsstrings "github.com/gofiber/utils/v2/strings"
 	"github.com/valyala/fasthttp"
 )
 
@@ -395,7 +396,12 @@ func doActionWithPolicy(
 	res := c.Response()
 	normalized := headerlookup.Canonical(c)
 	originalURL := utils.CopyString(c.OriginalURL())
-	defer req.SetRequestURI(originalURL)
+	// fasthttp rewrote the Host header to the upstream's; put the client's back for later middleware.
+	originalHost := utils.CopyBytes(req.Header.Host())
+	defer func() {
+		req.SetRequestURI(originalURL)
+		req.Header.SetHostBytes(originalHost)
+	}()
 
 	req.SetRequestURI(u.String())
 	// SetScheme takes the string directly (fasthttp appends its bytes),
@@ -492,37 +498,13 @@ func stripCrossHostHeaders(req *fasthttp.Request, normalized bool) { //nolint:re
 	}
 }
 
-// ctlOrDELMask marks the lanes of w holding control bytes that must not
-// appear in a redirect Location value: anything < 0x20 (including HTAB) or
-// DEL. Bytes >= 0x80 are never marked; they are handled by URI parsing, not
-// header-injection checks.
-func ctlOrDELMask(w uint64) uint64 {
-	return swar.MatchRangeMask(w, 0x00, 0x1f) | swar.MatchByteMask(w, 0x7f)
-}
-
-// containsCTLOrDEL reports whether b holds any byte ctlOrDELMask matches.
-// It scans eight bytes at a time, finishing inputs of 8+ bytes with one
-// overlapping word; shorter inputs are checked byte-wise.
+// containsCTLOrDEL reports whether b holds a control byte that must not appear
+// in a redirect Location value: anything < 0x20 (including HTAB) or DEL. Bytes
+// >= 0x80 never match; they are handled by URI parsing, not header-injection
+// checks. That is exactly utils.IndexControl's set, and its two-words-per-branch
+// scan beats the single-word loop this replaced.
 func containsCTLOrDEL(b []byte) bool {
-	n := len(b)
-	i := 0
-	for ; i+swar.WordLen <= n; i += swar.WordLen {
-		if ctlOrDELMask(swar.Load8(b, i)) != 0 {
-			return true
-		}
-	}
-	if i == n {
-		return false
-	}
-	if n >= swar.WordLen {
-		return ctlOrDELMask(swar.Load8(b, n-swar.WordLen)) != 0
-	}
-	for ; i < n; i++ {
-		if b[i] < 0x20 || b[i] == 0x7f {
-			return true
-		}
-	}
-	return false
+	return utils.IndexControl(b) != -1
 }
 
 // resolveRedirect parses a redirect target relative to the current URL
@@ -588,20 +570,53 @@ func selectClient(globalClient *fasthttp.Client, clients ...*fasthttp.Client) (*
 // when AllowPrivateIPs is false the dispatching client's dial-time guard
 // re-validates the resolved IP at connect time — so a rebinding-capable
 // resolver cannot reach a private address through this handler.
+
+// foldHostnameLabel returns hostname with its host label folded to lowercase
+// Punycode, preserving an explicit port unchanged. It is the construction-time
+// counterpart to hostWithoutPort: that strips a port from the per-request wire
+// value, this normalizes the configured value once so the two sides compare
+// correctly regardless of how the operator spelled the domain.
+func foldHostnameLabel(hostname string) string {
+	if host, port, ok := utils.SplitHostPort(hostname); ok {
+		return idnafold.ToASCII(utilsstrings.ToLower(host)) + ":" + port
+	}
+	return idnafold.ToASCII(utilsstrings.ToLower(hostname))
+}
+
+// hostWithoutPort strips the port from a Host header value, keeping a bracketed IPv6 literal.
+func hostWithoutPort(host string) string {
+	if strings.HasPrefix(host, "[") {
+		if end := strings.IndexByte(host, ']'); end != -1 {
+			return host[:end+1]
+		}
+		return host
+	}
+	if i := strings.LastIndexByte(host, ':'); i != -1 && strings.IndexByte(host[:i], ':') == -1 {
+		return host[:i]
+	}
+	return host
+}
+
 func DomainForward(hostname, addr string, clients ...*fasthttp.Client) fiber.Handler {
 	base, err := validateUpstream(addr, currentSecurityPolicy())
 	if err != nil {
 		panic(err)
 	}
+	// A Unicode hostname literal — entirely natural to write for a non-ASCII
+	// domain — never appears on the wire: a conforming client always sends
+	// the Punycode form (RFC 5891), so folding once here, rather than on
+	// every request, is what makes the two sides comparable at all.
+	hostname = foldHostnameLabel(hostname)
 	return func(c fiber.Ctx) error {
 		// Host names are case-insensitive (RFC 9110 §4.2.3) and fasthttp
 		// does not case-fold the raw Host header, so compare with
 		// EqualFold — otherwise "API.Example.com" would slip past a
 		// DomainForward("api.example.com", ...) gate and be passed
 		// through unproxied.
+		// Match the host with or without its port; another host is passed on to the next handler.
 		host := utils.UnsafeString(c.Request().Host())
-		if !utils.EqualFold(host, hostname) {
-			return nil
+		if !utils.EqualFold(host, hostname) && !utils.EqualFold(hostWithoutPort(host), hostname) {
+			return c.Next()
 		}
 		setRealIP(c)
 		return doActionWithPolicy(c, joinUpstreamPath(base, c.OriginalURL()), currentSecurityPolicy(),

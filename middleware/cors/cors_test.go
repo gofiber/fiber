@@ -1,6 +1,7 @@
 package cors
 
 import (
+	"bufio"
 	"bytes"
 	"net/http"
 	"net/http/httptest"
@@ -1714,7 +1715,7 @@ func Test_CORS_setSimpleHeaders_NilConfig(t *testing.T) {
 	defer app.ReleaseCtx(c)
 
 	require.NotPanics(t, func() {
-		setSimpleHeaders(c, "https://example.com", nil)
+		setSimpleHeaders(c, "https://example.com", nil, nil)
 	})
 	require.Empty(t, string(c.Response().Header.Peek(fiber.HeaderAccessControlAllowOrigin)))
 }
@@ -1732,7 +1733,7 @@ func Test_CORS_setSimpleHeaders_WildcardWithCredentials(t *testing.T) {
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(c)
 
-	setSimpleHeaders(c, "*", &Config{AllowCredentials: true})
+	setSimpleHeaders(c, "*", &Config{AllowCredentials: true}, nil)
 
 	require.Equal(t, "*", string(c.Response().Header.Peek(fiber.HeaderAccessControlAllowOrigin)))
 	require.Empty(t, string(c.Response().Header.Peek(fiber.HeaderAccessControlAllowCredentials)))
@@ -1749,7 +1750,7 @@ func Test_CORS_setPreflightHeaders_NilConfig(t *testing.T) {
 	defer app.ReleaseCtx(c)
 
 	require.NotPanics(t, func() {
-		setPreflightHeaders(c, "https://example.com", "600", nil)
+		setPreflightHeaders(c, "https://example.com", "600", nil, nil)
 	})
 	require.Empty(t, string(c.Response().Header.Peek(fiber.HeaderAccessControlMaxAge)))
 }
@@ -1871,4 +1872,203 @@ func Test_CORS_Security_NoOriginReflectionForDisallowed(t *testing.T) {
 	got := resp.Header.Get(fiber.HeaderAccessControlAllowOrigin)
 	require.Empty(t, got)
 	require.NotEqual(t, "https://attacker.example.net", got)
+}
+
+func Test_CORS_OriginWithoutHeaderNormalizing(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New(fiber.Config{DisableHeaderNormalizing: true})
+	app.Use(New(Config{AllowOrigins: []string{"http://example.com"}}))
+	app.Get("/", func(c fiber.Ctx) error {
+		return c.SendString("ok")
+	})
+
+	do := func(header string) *fasthttp.RequestCtx {
+		raw := "GET / HTTP/1.1\r\nHost: example.com\r\n" + header + "\r\n\r\n"
+
+		req := fasthttp.AcquireRequest()
+		defer fasthttp.ReleaseRequest(req)
+		req.Header.DisableNormalizing()
+		require.NoError(t, req.Read(bufio.NewReader(strings.NewReader(raw))))
+
+		fctx := &fasthttp.RequestCtx{}
+		fctx.Init(req, nil, nil)
+		app.Handler()(fctx)
+		return fctx
+	}
+
+	lower := do("origin: http://example.com")
+	require.Equal(t, "http://example.com", string(lower.Response.Header.Peek(fiber.HeaderAccessControlAllowOrigin)))
+
+	canonical := do("Origin: http://example.com")
+	require.Equal(t, "http://example.com", string(canonical.Response.Header.Peek(fiber.HeaderAccessControlAllowOrigin)))
+
+	other := do("origin: http://evil.example")
+	require.Empty(t, string(other.Response.Header.Peek(fiber.HeaderAccessControlAllowOrigin)))
+}
+
+func Test_CORS_PreflightWithoutHeaderNormalizing(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New(fiber.Config{DisableHeaderNormalizing: true})
+	app.Use(New(Config{
+		AllowOrigins: []string{"http://example.com"},
+		AllowMethods: []string{fiber.MethodGet, fiber.MethodPut},
+	}))
+	app.Put("/", func(c fiber.Ctx) error {
+		return c.SendString("ok")
+	})
+
+	raw := "OPTIONS / HTTP/1.1\r\nHost: example.com\r\n" +
+		"origin: http://example.com\r\n" +
+		"access-control-request-method: PUT\r\n" +
+		"access-control-request-headers: X-Custom\r\n\r\n"
+
+	req := fasthttp.AcquireRequest()
+	defer fasthttp.ReleaseRequest(req)
+	req.Header.DisableNormalizing()
+	require.NoError(t, req.Read(bufio.NewReader(strings.NewReader(raw))))
+
+	fctx := &fasthttp.RequestCtx{}
+	fctx.Init(req, nil, nil)
+	app.Handler()(fctx)
+
+	require.Equal(t, fiber.StatusNoContent, fctx.Response.StatusCode())
+	require.Equal(t, "http://example.com", string(fctx.Response.Header.Peek(fiber.HeaderAccessControlAllowOrigin)))
+	require.Contains(t, string(fctx.Response.Header.Peek(fiber.HeaderAccessControlAllowMethods)), fiber.MethodPut)
+	require.Equal(t, "X-Custom", string(fctx.Response.Header.Peek(fiber.HeaderAccessControlAllowHeaders)))
+}
+
+func Test_CORS_PreflightSplitRequestHeaders(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Use(New(Config{
+		AllowOrigins: []string{"http://example.com"},
+		AllowMethods: []string{fiber.MethodGet, fiber.MethodPut},
+	}))
+	app.Put("/", func(c fiber.Ctx) error {
+		return c.SendString("ok")
+	})
+
+	raw := "OPTIONS / HTTP/1.1\r\nHost: example.com\r\n" +
+		"Origin: http://example.com\r\n" +
+		"Access-Control-Request-Method: PUT\r\n" +
+		"Access-Control-Request-Headers: X-One\r\n" +
+		"Access-Control-Request-Headers: X-Two\r\n\r\n"
+
+	req := fasthttp.AcquireRequest()
+	defer fasthttp.ReleaseRequest(req)
+	require.NoError(t, req.Read(bufio.NewReader(strings.NewReader(raw))))
+
+	fctx := &fasthttp.RequestCtx{}
+	fctx.Init(req, nil, nil)
+	app.Handler()(fctx)
+
+	require.Equal(t, fiber.StatusNoContent, fctx.Response.StatusCode())
+	require.Equal(t, "X-One, X-Two", string(fctx.Response.Header.Peek(fiber.HeaderAccessControlAllowHeaders)))
+}
+
+// Test_CORS_ConfiguredEmptyAllowHeaders pins the difference between an
+// unconfigured AllowHeaders and one configured with nothing usable in it. An
+// absent list means "echo whatever the request asked for"; a configured list
+// that happens to join to the empty string must not be mistaken for one, or a
+// malformed or environment-derived entry would silently authorize every header
+// the request names.
+func Test_CORS_ConfiguredEmptyAllowHeaders(t *testing.T) {
+	t.Parallel()
+
+	preflight := func(t *testing.T, cfg Config) string {
+		t.Helper()
+
+		app := fiber.New()
+		app.Use(New(cfg))
+
+		ctx := &fasthttp.RequestCtx{}
+		ctx.Request.SetRequestURI("/")
+		ctx.Request.Header.SetMethod(fiber.MethodOptions)
+		ctx.Request.Header.Set(fiber.HeaderOrigin, "http://localhost")
+		ctx.Request.Header.Set(fiber.HeaderAccessControlRequestMethod, fiber.MethodGet)
+		ctx.Request.Header.Set(fiber.HeaderAccessControlRequestHeaders, "X-Requested-Header")
+		app.Handler()(ctx)
+
+		return string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowHeaders))
+	}
+
+	t.Run("unconfigured echoes the request", func(t *testing.T) {
+		t.Parallel()
+		require.Equal(t, "X-Requested-Header", preflight(t, Config{}))
+	})
+
+	t.Run("configured empty authorizes nothing", func(t *testing.T) {
+		t.Parallel()
+		require.Empty(t, preflight(t, Config{AllowHeaders: []string{""}}),
+			"a configured list must not fall back to the requested headers")
+	})
+}
+
+// varyMutatingCtx is a custom context whose Vary rewrites the field list it is
+// handed. Nothing in Ctx's contract forbids that, so the middleware must not
+// hand it a slice that outlives the request.
+type varyMutatingCtx struct {
+	fiber.DefaultCtx
+}
+
+// Vary overwrites every field it is handed before forwarding the call — the
+// most a custom Vary can do to a slice its caller still holds.
+func (c *varyMutatingCtx) Vary(fields ...string) {
+	for i := range fields {
+		fields[i] = "X-Mutated"
+	}
+	c.DefaultCtx.Vary(fields...)
+}
+
+// Test_CORS_VaryDoesNotShareFieldsWithCustomCtx pins that the package-level
+// field lists survive a custom context. They are shared by every request the
+// middleware serves, so a Vary implementation that writes to its argument
+// would otherwise corrupt the field names of every later response and race
+// with the requests running alongside it.
+func Test_CORS_VaryDoesNotShareFieldsWithCustomCtx(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.NewWithCustomCtx(func(app *fiber.App) fiber.CustomCtx {
+		return &varyMutatingCtx{DefaultCtx: *fiber.NewDefaultCtx(app)}
+	})
+	app.Use(New(Config{AllowPrivateNetwork: true}))
+	handler := app.Handler()
+
+	// One request down each branch that emits a Vary header.
+	simple := &fasthttp.RequestCtx{}
+	simple.Request.SetRequestURI("/")
+	simple.Request.Header.SetMethod(fiber.MethodGet)
+	simple.Request.Header.Set(fiber.HeaderOrigin, "http://localhost")
+	handler(simple)
+
+	preflight := &fasthttp.RequestCtx{}
+	preflight.Request.SetRequestURI("/")
+	preflight.Request.Header.SetMethod(fiber.MethodOptions)
+	preflight.Request.Header.Set(fiber.HeaderOrigin, "http://localhost")
+	preflight.Request.Header.Set(fiber.HeaderAccessControlRequestMethod, fiber.MethodGet)
+	handler(preflight)
+
+	private := &fasthttp.RequestCtx{}
+	private.Request.SetRequestURI("/")
+	private.Request.Header.SetMethod(fiber.MethodOptions)
+	private.Request.Header.Set(fiber.HeaderOrigin, "http://localhost")
+	private.Request.Header.Set(fiber.HeaderAccessControlRequestMethod, fiber.MethodGet)
+	private.Request.Header.Set(fiber.HeaderAccessControlRequestPrivateNetwork, "true")
+	handler(private)
+
+	require.Equal(t, []string{fiber.HeaderOrigin}, varyOrigin)
+	require.Equal(t, []string{
+		fiber.HeaderAccessControlRequestMethod,
+		fiber.HeaderAccessControlRequestHeaders,
+		fiber.HeaderOrigin,
+	}, varyPreflight)
+	require.Equal(t, []string{
+		fiber.HeaderAccessControlRequestMethod,
+		fiber.HeaderAccessControlRequestHeaders,
+		fiber.HeaderAccessControlRequestPrivateNetwork,
+		fiber.HeaderOrigin,
+	}, varyPreflightPrivate)
 }

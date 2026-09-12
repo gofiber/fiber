@@ -104,3 +104,10 @@ var (
 	ErrFileRead      = errors.New("file: failed to read file")
 	ErrFileStore     = errors.New("file: failed to store file")
 )
+
+// Header errors
+var (
+	// ErrHeaderNotFound is returned by request header accessors that parse a
+	// value, to tell an absent header apart from one that failed to parse.
+	ErrHeaderNotFound = errors.New("header: field not present in the request")
+)

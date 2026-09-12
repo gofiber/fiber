@@ -71,6 +71,22 @@ func Test_Response_Status(t *testing.T) {
 	})
 }
 
+func Test_Response_CloseUsesSnapshottedRequestOwnership(t *testing.T) {
+	t.Parallel()
+
+	req := AcquireRequest()
+	resp := AcquireResponse()
+	resp.setRequest(req, false)
+
+	// Simulate the caller releasing this request and a helper reusing the pooled
+	// object. The stale response must not release the helper's logical request.
+	req.clientOwned = true
+	resp.Close()
+	require.True(t, req.clientOwned)
+
+	ReleaseRequest(req)
+}
+
 func Test_Response_Status_Code(t *testing.T) {
 	t.Parallel()
 

@@ -169,6 +169,38 @@ func Test_Exec_Func(t *testing.T) {
 		}
 	})
 
+	t.Run("timeout snapshots ownership before transport", func(t *testing.T) {
+		t.Parallel()
+		core, client, req := newCore(), New(), AcquireRequest()
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
+		defer cancel()
+
+		// A helper-owned request: execute releases it as soon as the caller
+		// times out, while the transport goroutine is still completing on its
+		// own clock. Nothing orders that release before the goroutine builds
+		// its response, so any read of req there is a data race.
+		req.clientOwned = true
+		req.SetURL("http://example.com/owned-timeout")
+
+		transport := newDelayedTransport(150 * time.Millisecond)
+		client.transport = transport
+
+		// Once execute returns, req is back in the pool, so the test must not
+		// touch it again either: another test may already own the same object.
+		resp, err := core.execute(ctx, client, req)
+		require.Nil(t, resp)
+		require.ErrorIs(t, err, ErrTimeoutOrCancel)
+
+		select {
+		case <-transport.finished:
+		case <-time.After(time.Second):
+			t.Fatal("transport Do did not finish")
+		}
+
+		// Let the goroutine build and hand off its response after Do returned.
+		time.Sleep(50 * time.Millisecond)
+	})
+
 	t.Run("panic in transport returns error", func(t *testing.T) {
 		t.Parallel()
 		core, client, req := newCore(), New(), AcquireRequest()
@@ -448,6 +480,95 @@ func Test_PreHooks_AllowsUserHookClientConfigMutation(t *testing.T) {
 	require.Contains(t, string(core.req.RawRequest.Header.Cookie("session")), "abc")
 }
 
+func Test_PreHooks_FinalRequestHookSeesSerializedRequest(t *testing.T) {
+	t.Parallel()
+
+	client := New()
+	client.AddFinalRequestHook(func(_ *Client, req *Request) error {
+		require.Equal(t, "POST", string(req.RawRequest.Header.Method()))
+		require.Equal(t, "application/json", string(req.RawRequest.Header.ContentType()))
+		require.JSONEq(t, `{"name":"fiber"}`, string(req.RawRequest.Body()))
+		req.RawRequest.Header.Set("X-Signature", "signed")
+		return nil
+	})
+
+	core := newCore()
+	core.client = client
+	core.req = AcquireRequest()
+	defer ReleaseRequest(core.req)
+	core.req.SetMethod("POST").SetURL("http://example.com").SetJSON(map[string]string{"name": "fiber"})
+
+	require.NoError(t, core.preHooks())
+	require.Equal(t, "signed", string(core.req.RawRequest.Header.Peek("X-Signature")))
+}
+
+func Test_PreHooks_ReturnsFinalRequestHookError(t *testing.T) {
+	t.Parallel()
+
+	client := New()
+	wantErr := errors.New("final request hook failed")
+	client.AddFinalRequestHook(func(_ *Client, _ *Request) error { return wantErr })
+
+	core := newCore()
+	core.client = client
+	core.req = AcquireRequest()
+	defer ReleaseRequest(core.req)
+	core.req.SetURL("http://example.com")
+
+	require.ErrorIs(t, core.preHooks(), wantErr)
+}
+
+func Test_PreHooks_ReleasesClientLockWhenBuiltinHookPanics(t *testing.T) {
+	t.Parallel()
+
+	client := New()
+	callCount := 0
+	client.builtinRequestHooks = []RequestHook{func(_ *Client, _ *Request) error {
+		callCount++
+		if callCount == 1 {
+			panic("built-in request hook panic")
+		}
+		return nil
+	}}
+
+	firstCore := newCore()
+	firstCore.client = client
+	firstCore.req = AcquireRequest()
+	defer ReleaseRequest(firstCore.req)
+
+	require.PanicsWithValue(t, "built-in request hook panic", func() {
+		require.NoError(t, firstCore.preHooks())
+	})
+
+	secondCore := newCore()
+	secondCore.client = client
+	secondCore.req = AcquireRequest()
+	defer ReleaseRequest(secondCore.req)
+
+	require.NoError(t, secondCore.preHooks())
+	require.Equal(t, 2, callCount)
+}
+
+func Test_PreHooks_RunsFinalRequestHooksOutsideClientLock(t *testing.T) {
+	t.Parallel()
+
+	client := New()
+	hookCount := 0
+	client.AddFinalRequestHook(func(c *Client, _ *Request) error {
+		hookCount = len(c.FinalRequestHook())
+		return nil
+	})
+
+	core := newCore()
+	core.client = client
+	core.req = AcquireRequest()
+	defer ReleaseRequest(core.req)
+	core.req.SetURL("http://example.com")
+
+	require.NoError(t, core.preHooks())
+	require.Equal(t, 1, hookCount)
+}
+
 // Test_AfterHooks_ReturnsUserHookError verifies a failing user response hook
 // aborts afterHooks and its error is propagated.
 func Test_AfterHooks_ReturnsUserHookError(t *testing.T) {
@@ -466,6 +587,61 @@ func Test_AfterHooks_ReturnsUserHookError(t *testing.T) {
 	defer ReleaseResponse(resp)
 
 	require.ErrorIs(t, core.afterHooks(resp), wantErr)
+}
+
+// delayedTransport completes successfully after a fixed delay, without any
+// synchronization with the caller, mirroring a slow upstream that answers after
+// the client has already given up.
+type delayedTransport struct {
+	finished chan struct{}
+	delay    time.Duration
+}
+
+func newDelayedTransport(delay time.Duration) *delayedTransport {
+	return &delayedTransport{delay: delay, finished: make(chan struct{})}
+}
+
+func (d *delayedTransport) Do(_ *fasthttp.Request, resp *fasthttp.Response) error {
+	time.Sleep(d.delay)
+	resp.SetStatusCode(fasthttp.StatusOK)
+	close(d.finished)
+	return nil
+}
+
+func (d *delayedTransport) DoTimeout(req *fasthttp.Request, resp *fasthttp.Response, _ time.Duration) error {
+	return d.Do(req, resp)
+}
+
+func (d *delayedTransport) DoDeadline(req *fasthttp.Request, resp *fasthttp.Response, _ time.Time) error {
+	return d.Do(req, resp)
+}
+
+func (d *delayedTransport) DoRedirects(req *fasthttp.Request, resp *fasthttp.Response, _ int) error {
+	return d.Do(req, resp)
+}
+
+func (*delayedTransport) CloseIdleConnections() {
+}
+
+func (*delayedTransport) TLSConfig() *tls.Config {
+	return nil
+}
+
+func (*delayedTransport) SetTLSConfig(_ *tls.Config) {
+}
+
+func (*delayedTransport) SetDial(_ fasthttp.DialFunc) {
+}
+
+func (*delayedTransport) Client() any {
+	return nil
+}
+
+func (*delayedTransport) StreamResponseBody() bool {
+	return false
+}
+
+func (*delayedTransport) SetStreamResponseBody(_ bool) {
 }
 
 type blockingErrTransport struct {

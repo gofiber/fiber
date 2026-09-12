@@ -9,6 +9,7 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/extractors"
+	"github.com/gofiber/fiber/v3/internal/ctxlocal"
 	"github.com/gofiber/fiber/v3/internal/storage/memory"
 	"github.com/gofiber/fiber/v3/log"
 )
@@ -131,9 +132,11 @@ func (s *Store) getSession(c fiber.Ctx) (*Session, error) {
 		id = s.getSessionID(c)
 	}
 
-	selectedExtractor, hasExtractor := c.Locals(sessionExtractorContextKey).(extractors.Extractor)
-	if !hasExtractor {
-		selectedExtractor = extractors.Extractor{}
+	// Recorded as a pointer into the Store's own extractor, so it is not
+	// boxed onto the heap per request.
+	var selectedExtractor extractors.Extractor
+	if stored, ok := c.Locals(sessionExtractorContextKey).(*extractors.Extractor); ok && stored != nil {
+		selectedExtractor = *stored
 	}
 
 	isFresh := false // Session is not fresh initially; only set to true if we generate a new ID
@@ -154,7 +157,7 @@ func (s *Store) getSession(c fiber.Ctx) (*Session, error) {
 	if id == "" {
 		isFresh = true // The session is fresh if a new ID is generated
 		id = s.KeyGenerator()
-		c.Locals(sessionIDContextKey, id)
+		ctxlocal.Set(c, sessionIDContextKey, id)
 	}
 
 	// Create session object
@@ -207,25 +210,35 @@ func (s *Store) getSession(c fiber.Ctx) (*Session, error) {
 //
 //	id := store.getSessionID(c)
 func (s *Store) getSessionID(c fiber.Ctx) string {
-	extractor := s.Extractor
-	if len(extractor.Chain) > 0 {
-		for _, chainExtractor := range extractor.Chain {
+	// By index, and recorded by address: an Extractor is 72 bytes, and what is
+	// pointed at belongs to the Store and outlives the request.
+	if len(s.Extractor.Chain) > 0 {
+		for i := range s.Extractor.Chain {
+			chainExtractor := &s.Extractor.Chain[i]
+			// Chain skips a child with no Extract, so this walk must too, or
+			// a zero-value child is a nil call.
+			if chainExtractor.Extract == nil {
+				continue
+			}
 			sessionID, err := chainExtractor.Extract(c)
 			if err == nil && sessionID != "" {
-				c.Locals(sessionExtractorContextKey, chainExtractor)
+				ctxlocal.Set(c, sessionExtractorContextKey, chainExtractor)
 				return sessionID
 			}
 		}
 		return ""
 	}
 
-	sessionID, err := extractor.Extract(c)
+	if s.Extractor.Extract == nil {
+		return ""
+	}
+	sessionID, err := s.Extractor.Extract(c)
 	if err != nil {
 		// If extraction fails, return empty string to generate a new session
 		return ""
 	}
 	if sessionID != "" {
-		c.Locals(sessionExtractorContextKey, extractor)
+		ctxlocal.Set(c, sessionExtractorContextKey, &s.Extractor)
 	}
 	return sessionID
 }

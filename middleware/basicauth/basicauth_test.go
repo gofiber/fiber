@@ -244,6 +244,27 @@ func Test_BasicAuth_WWWAuthenticateHeader_UTF8(t *testing.T) {
 	require.Equal(t, `Basic realm="Restricted", charset="UTF-8"`, resp.Header.Get(fiber.HeaderWWWAuthenticate))
 }
 
+// Test_BasicAuth_WWWAuthenticateHeader_QuotedString verifies that generated
+// challenge parameters use HTTP quoted-string escaping rather than Go syntax.
+func Test_BasicAuth_WWWAuthenticateHeader_QuotedString(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Use(New(Config{
+		Users: map[string]string{"john": sha256Hash("doe")},
+		Realm: "area \"A\"\\\x01\t\n\r\x7f café",
+	}))
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusUnauthorized, resp.StatusCode)
+	require.Equal(
+		t,
+		`Basic realm="area \"A\"\\%01%09\n\r%7F café", charset="UTF-8"`,
+		resp.Header.Get(fiber.HeaderWWWAuthenticate),
+	)
+}
+
 func Test_BasicAuth_InvalidHeader(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()

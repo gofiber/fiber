@@ -12,6 +12,7 @@ import (
 	"net"
 	"os"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 	"unsafe"
@@ -317,6 +318,11 @@ func Test_Utils_GetOffer_QualityZeroRejection(t *testing.T) {
 	require.Empty(t, getOffer([]byte("en;q=0 , fr"), acceptsLanguageOfferBasic, "en"))
 	// The same whitespace must not distort ordering between positive weights.
 	require.Equal(t, "application/json", getOffer([]byte("text/plain;q=0.1 , application/json;q=0.9"), acceptsOfferType, "text/plain", "application/json"))
+
+	// An empty offer is skipped on the resolve-by-specificity path too: the first
+	// match (text/plain, demoted to 0.3 by its own range) loses to text/html.
+	require.Equal(t, "text/html", getOffer([]byte("text/*;q=0.8, text/plain;q=0.3"), acceptsOfferType, "", "text/plain", "text/html"))
+	require.Equal(t, "text/plain", getOffer([]byte("text/*;q=0.8, text/plain;q=0.3"), acceptsOfferType, "", "text/plain"))
 }
 
 // go test -v -run=^$ -bench=Benchmark_Utils_GetOffer -benchmem -count=4
@@ -536,93 +542,6 @@ func Test_Utils_AcceptsOfferType(t *testing.T) {
 		accepts := acceptsOfferType(tc.spec, tc.offerType, tc.specParams) > 0
 		require.Equal(t, tc.accepts, accepts, tc.description)
 	}
-}
-
-func Test_Utils_GetSplicedStrList(t *testing.T) {
-	t.Parallel()
-	testCases := []struct {
-		description  string
-		headerValue  string
-		expectedList []string
-	}{
-		{
-			description:  "normal case",
-			headerValue:  "gzip, deflate,br",
-			expectedList: []string{"gzip", "deflate", "br"},
-		},
-		{
-			description:  "no matter the value",
-			headerValue:  "   gzip,deflate, br, zip",
-			expectedList: []string{"gzip", "deflate", "br", "zip"},
-		},
-		{
-			description:  "comma with trailing spaces around values",
-			headerValue:  "gzip , br",
-			expectedList: []string{"gzip", "br"},
-		},
-		{
-			description:  "comma with tabbed whitespace",
-			headerValue:  "gzip\t,br",
-			expectedList: []string{"gzip", "br"},
-		},
-		{
-			description:  "headerValue is empty",
-			headerValue:  "",
-			expectedList: nil,
-		},
-		{
-			// RFC 9110 §5.6.1.2: empty list elements are parsed and ignored.
-			description:  "has a comma without element",
-			headerValue:  "gzip,",
-			expectedList: []string{"gzip"},
-		},
-		{
-			description:  "has a space between words",
-			headerValue:  "  foo bar, hello  world",
-			expectedList: []string{"foo bar", "hello  world"},
-		},
-		{
-			description:  "single comma",
-			headerValue:  ",",
-			expectedList: []string{},
-		},
-		{
-			description:  "multiple comma",
-			headerValue:  ",,",
-			expectedList: []string{},
-		},
-		{
-			description:  "comma with space",
-			headerValue:  ",  ,",
-			expectedList: []string{},
-		},
-		{
-			description:  "empty element between values",
-			headerValue:  "gzip, , br",
-			expectedList: []string{"gzip", "br"},
-		},
-	}
-
-	for _, tc := range testCases {
-		t.Run(tc.description, func(t *testing.T) {
-			tc := tc // create a new 'tc' variable for the goroutine
-			t.Parallel()
-			dst := make([]string, 10)
-			result := getSplicedStrList(tc.headerValue, dst)
-			require.Equal(t, tc.expectedList, result)
-		})
-	}
-}
-
-func Benchmark_Utils_GetSplicedStrList(b *testing.B) {
-	destination := make([]string, 5)
-	result := destination
-	const input = `deflate, gzip,br,brotli,zstd`
-	b.ReportAllocs()
-	for b.Loop() {
-		result = getSplicedStrList(input, destination)
-	}
-	require.Equal(b, []string{"deflate", "gzip", "br", "brotli", "zstd"}, result)
 }
 
 func Test_Utils_SortAcceptedTypes(t *testing.T) {
@@ -879,60 +798,6 @@ func Benchmark_Utils_IsNoCache(b *testing.B) {
 }
 
 // go test -run Test_HeaderContainsValue
-func Test_HeaderContainsValue(t *testing.T) {
-	t.Parallel()
-	testCases := []struct {
-		header   string
-		value    string
-		expected bool
-	}{
-		// Exact match
-		{header: "gzip", value: "gzip", expected: true},
-		{header: "gzip", value: "deflate", expected: false},
-		// Prefix match (value at start with comma)
-		{header: "gzip, deflate", value: "gzip", expected: true},
-		{header: "gzip,deflate", value: "gzip", expected: true},
-		// Suffix match (value at end)
-		{header: "deflate, gzip", value: "gzip", expected: true},
-		{header: "deflate,gzip", value: "gzip", expected: true}, // No space - OWS is optional per RFC 9110
-		{header: "br, gzip", value: "gzip", expected: true},
-		// Middle match (value in middle)
-		{header: "deflate, gzip, br", value: "gzip", expected: true},
-		{header: "deflate,gzip,br", value: "gzip", expected: true}, // No spaces - OWS is optional per RFC 9110
-		// No match - similar but not equal
-		{header: "gzip2", value: "gzip", expected: false},
-		{header: "2gzip", value: "gzip", expected: false},
-		{header: "gzip2, deflate", value: "gzip", expected: false},
-		// Whitespace handling (OWS per RFC 9110)
-		{header: "  gzip  ,  deflate  ", value: "gzip", expected: true},
-		{header: "deflate,  gzip  ", value: "gzip", expected: true},
-		// Empty cases
-		{header: "", value: "gzip", expected: false},
-		{header: "gzip", value: "", expected: false},
-		{header: "", value: "", expected: false}, // Both empty - should return false
-	}
-
-	for _, tc := range testCases {
-		result := headerContainsValue(tc.header, tc.value)
-		require.Equal(t, tc.expected, result,
-			"headerContainsValue(%q, %q) = %v, want %v",
-			tc.header, tc.value, result, tc.expected)
-	}
-}
-
-// go test -v -run=^$ -bench=Benchmark_HeaderContainsValue -benchmem -count=4
-func Benchmark_HeaderContainsValue(b *testing.B) {
-	var ok bool
-	b.ReportAllocs()
-	for b.Loop() {
-		_ = headerContainsValue("gzip", "gzip")
-		_ = headerContainsValue("gzip, deflate, br", "deflate")
-		_ = headerContainsValue("deflate, gzip", "gzip")
-		ok = headerContainsValue("deflate, gzip, br", "gzip")
-	}
-	require.True(b, ok)
-}
-
 type testGenericParseTypeIntCase struct {
 	value int64
 	bits  int
@@ -1616,39 +1481,10 @@ func Test_UnescapeHeaderValue(t *testing.T) {
 	}
 }
 
-func Test_JoinHeaderValues(t *testing.T) {
-	t.Parallel()
-	require.Nil(t, joinHeaderValues(nil))
-	require.Equal(t, []byte("a"), joinHeaderValues([][]byte{[]byte("a")}))
-	require.Equal(t, []byte("a,b"), joinHeaderValues([][]byte{[]byte("a"), []byte("b")}))
-}
-
 func Test_ParamsMatch_InvalidEscape(t *testing.T) {
 	t.Parallel()
 	match := paramsMatch(headerParams{"foo": []byte("bar")}, `;foo="bar\\`)
 	require.False(t, match)
-}
-
-func Test_MatchEtag(t *testing.T) {
-	t.Parallel()
-
-	require.True(t, matchEtag(`"a"`, `"a"`))
-	require.True(t, matchEtag(`W/"a"`, `"a"`))
-	require.True(t, matchEtag(`"a"`, `W/"a"`))
-	require.False(t, matchEtag(`"a"`, `"b"`))
-	require.False(t, matchEtag(`a`, `"a"`))
-	require.False(t, matchEtag(`"a"`, `b`))
-}
-
-func Test_MatchEtagStrong(t *testing.T) {
-	t.Parallel()
-
-	require.True(t, matchEtagStrong(`"a"`, `"a"`))
-	require.False(t, matchEtagStrong(`W/"a"`, `"a"`))
-	require.False(t, matchEtagStrong(`"a"`, `W/"a"`))
-	require.False(t, matchEtagStrong(`"a"`, `"b"`))
-	require.False(t, matchEtagStrong(`a`, `"a"`))
-	require.False(t, matchEtagStrong(`"a"`, `b`))
 }
 
 func Test_IsEtagStale(t *testing.T) {
@@ -1693,47 +1529,6 @@ func Test_IsEtagStale(t *testing.T) {
 	require.False(t, app.isEtagStale(`W/"v1,v2"`, []byte(`"v1,v2"`)))
 	require.True(t, app.isEtagStale(`"v1"`, []byte(`"v1,v2"`)))
 	require.True(t, app.isEtagStale(`"v2"`, []byte(`"v1,v2"`)))
-}
-
-func Test_App_quoteRawString(t *testing.T) {
-	t.Parallel()
-
-	cases := []struct {
-		name string
-		in   string
-		out  string
-	}{
-		{"empty", "", ""},
-		{"simple", "simple", "simple"},
-		{"backslash", "A\\B", "A\\\\B"},
-		{"quote", `He said "Yo"`, `He said \"Yo\"`},
-		{"newline", "Hello\n", "Hello\\n"},
-		{"carriage", "Hello\r", "Hello\\r"},
-		{"controls", string([]byte{0, 31, 127}), "%00%1F%7F"},
-		{"tab", "a\tb", "a%09b"},
-		{"mixed", "test \"A\n\r" + string([]byte{1}) + "\\", `test \"A\n\r%01\\`},
-	}
-
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-			app := New()
-			require.Equal(t, tc.out, app.quoteRawString(tc.in))
-		})
-	}
-}
-
-func Test_App_quoteRawString_DetachesFromPooledBuffer(t *testing.T) {
-	t.Parallel()
-
-	app := New()
-
-	first := app.quoteRawString(`A\B`)
-	second := app.quoteRawString(`C"D`)
-
-	require.Equal(t, `A\\B`, first)
-	require.Equal(t, `C\"D`, second)
-	require.Equal(t, `A\\B`, first)
 }
 
 func TestStoreInContext(t *testing.T) {
@@ -1894,6 +1689,111 @@ func Test_IsMethodIdempotent(t *testing.T) {
 	for _, m := range notIdempotent {
 		require.False(t, IsMethodIdempotent(m), "%s should not be idempotent", m)
 	}
+}
+
+// localsRecordingCtx is a custom context whose Locals is observable, so the
+// interface fallback in setLocal can be told apart from the concrete fast path.
+type localsRecordingCtx struct {
+	DefaultCtx
+	calls int
+}
+
+// Locals counts each call before forwarding it, so a test can tell whether
+// the override ran or the concrete fast path bypassed it.
+func (c *localsRecordingCtx) Locals(key any, value ...any) any {
+	c.calls++
+	return c.DefaultCtx.Locals(key, value...)
+}
+
+// Test_setLocal_UsesCustomCtxLocals pins the fallback in setLocal. The concrete
+// *DefaultCtx path exists only to keep the variadic slice off the heap; it must
+// never take precedence over a custom context's own Locals, which a type
+// embedding DefaultCtx is entitled to override.
+func Test_setLocal_UsesCustomCtxLocals(t *testing.T) {
+	t.Parallel()
+
+	app := NewWithCustomCtx(func(app *App) CustomCtx {
+		return &localsRecordingCtx{DefaultCtx: *NewDefaultCtx(app)}
+	})
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+
+	custom, ok := c.(*localsRecordingCtx)
+	require.True(t, ok, "the app must hand out the custom context")
+
+	require.Equal(t, "v", setLocal(c, "k", "v"), "setLocal returns what Locals returned")
+	require.Equal(t, 1, custom.calls, "the overridden Locals must be the one that ran")
+	require.Equal(t, "v", c.Locals("k"), "and the value must actually be stored")
+}
+
+// Test_setLocal_UsesDefaultCtxDirectly is the other half: the default context
+// takes the concrete path, and the value is stored and returned unchanged.
+func Test_setLocal_UsesDefaultCtxDirectly(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+
+	_, isDefault := c.(*DefaultCtx)
+	require.True(t, isDefault, "the default app must hand out *DefaultCtx")
+
+	require.Equal(t, 42, setLocal(c, "n", 42))
+	require.Equal(t, 42, c.Locals("n"))
+}
+
+// Test_appendCopyLowerASCII pins appendCopyLowerASCII against the copy and the
+// fold it fuses, at every length across the SWAR word boundaries, on fresh and
+// on reused destinations.
+func Test_appendCopyLowerASCII(t *testing.T) {
+	t.Parallel()
+
+	cases := []string{
+		"", "/", "A", "/abc", "/AbC", "/ABCDEFG", "/ABCDEFGH/XYZ",
+		"/API/V1/UsersAndGroups", "/a1-B2_c3{~}", "/CAF\xC3\xA9/\xC3\x89",
+		"/repos/GoFiber/Fiber/issues/4662/comments",
+	}
+	// Every length across the word boundaries, so the main loop, the
+	// overlapping tail word and the byte-wise path are all covered.
+	for n := range 40 {
+		cases = append(cases, strings.Repeat("aB/", n))
+	}
+
+	for _, in := range cases {
+		t.Run(strconv.Itoa(len(in)), func(t *testing.T) {
+			t.Parallel()
+			// It must agree with the two operations it replaces.
+			wantPath := append([]byte(nil), in...)
+			wantLower := appendLowerASCII(nil, wantPath)
+
+			// Fresh destinations (forces growth) and reused oversized ones
+			// (exercises the cap(dst) >= n path).
+			gotPath, gotLower := appendCopyLowerASCII(nil, nil, in)
+			require.Equal(t, string(wantPath), string(gotPath))
+			require.Equal(t, string(wantLower), string(gotLower))
+
+			reusedPath := make([]byte, 0, 128)
+			reusedLower := make([]byte, 0, 128)
+			gotPath, gotLower = appendCopyLowerASCII(reusedPath, reusedLower, in)
+			require.Equal(t, string(wantPath), string(gotPath))
+			require.Equal(t, string(wantLower), string(gotLower))
+			if in != "" {
+				require.Equal(t, 128, cap(gotPath), "reused buffer must not be reallocated")
+				require.Equal(t, 128, cap(gotLower), "reused buffer must not be reallocated")
+			}
+		})
+	}
+}
+
+func Test_appendCopyLowerASCII_AliasedSubstring(t *testing.T) {
+	t.Parallel()
+
+	path := []byte("/api/bar/fooX")
+	src := utils.UnsafeString(path[4:])
+	gotPath, gotLower := appendCopyLowerASCII(path[:0], nil, src)
+
+	require.Equal(t, "/bar/fooX", string(gotPath))
+	require.Equal(t, "/bar/foox", string(gotLower))
 }
 
 func Test_appendLowerASCII(t *testing.T) {

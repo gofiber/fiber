@@ -265,6 +265,11 @@ Escape special parameter characters with `\\` to treat them literally. This is u
 app.Get(`/v1/some/resource/name\:customVerb`, func(c fiber.Ctx) error {
     return c.SendString("Hello, Community")
 })
+
+// Matches only the literal path "/*"; an escaped star is not the catch-all route
+app.Get(`/\*`, func(c fiber.Ctx) error {
+    return c.SendString("literal star")
+})
 ```
 
 </TabItem>
@@ -328,6 +333,8 @@ Constraints are matching rules, not input validation: if a value fails a constra
 | alpha             | `:name<alpha>`                   | Rick (String must consist of one or more alphabetical characters, a-z and case-insensitive) |
 | datetime          | `:dob<datetime(2006\\-01\\-02)>` | 2005-11-01                                                                                  |
 | regex(expression) | `:date<regex(\d{4}-\d{2}-\d{2})>` | 2022-08-27 (Must match regular expression)                                                  |
+
+Constraint names and arguments are always taken from the pattern as written, even with the default case-insensitive routing: `:code<regex([A-Z]{2})>` keeps matching uppercase codes only, a `datetime` layout keeps its `T` and `Z`, and a custom constraint registered under a mixed-case name is found.
 
 #### Examples
 
@@ -588,7 +595,7 @@ Pick the helper that fits: a single endpoint uses `Get`/`Post`/…; a fixed set 
 
 ## Automatic HEAD routes
 
-Fiber automatically registers a `HEAD` route for every `GET` route you add. The generated handler chain mirrors the `GET` chain, so `HEAD` requests reuse middleware, status codes, and headers while the response body is suppressed.
+Fiber automatically registers a `HEAD` route for every `GET` route you add. The generated handler chain mirrors the `GET` chain, so `HEAD` requests reuse middleware, status codes, and headers while the response body is suppressed. This covers the routes of mounted sub-apps at any nesting depth, and routes added at runtime get their `HEAD` companion when [`RebuildTree`](../api/app.md#rebuildtree) publishes them.
 
 ```go title="GET handlers automatically expose HEAD"
 app := fiber.New()

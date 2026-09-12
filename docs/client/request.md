@@ -129,7 +129,7 @@ func (r *Request) Custom(url, method string) (*Response, error)
 
 ## AcquireRequest
 
-**AcquireRequest** returns a new pooled `Request`. Call `ReleaseRequest` when you're finished to return it to the pool and limit allocations.
+**AcquireRequest** returns a new pooled `Request`. Call `ReleaseRequest` when you're finished to return it to the pool and limit allocations. A request acquired this way stays yours: `Response.Close` releases only the response for it. Requests that the client's REST helpers (`Client.Get`, `Client.Post`, ...) create on your behalf are released by `Response.Close`.
 
 ```go title="Signature"
 func AcquireRequest() *Request
@@ -214,6 +214,10 @@ func (r *Request) SetContext(ctx context.Context) *Request
 ```go title="Signature"
 func (r *Request) Header(key string) []string
 ```
+
+:::info
+When the request is sent, the client's headers are applied first and the request's own headers with the same key replace them rather than being appended. Each send clears those keys before applying them again, so sending the same request twice does not accumulate values.
+:::
 
 ### Headers
 
@@ -650,6 +654,14 @@ func (r *Request) PathParams() iter.Seq2[string, string]
 
 **SetPathParam** sets a single path parameter key-value pair, overriding previously set values.
 
+Placeholders are matched as `:name`, and where several registered names fit, the longest one wins, so a name holding a `-`, `.` or `:` resolves as itself. A name otherwise ends at a path-segment boundary (`/`, `-`, `.`, `:`, `\`, `?` or `#`), so `:id` does not also match the start of `:idx`. Values are percent-encoded with path-segment rules, and each placeholder is resolved once — a substituted value is never scanned for further placeholders.
+
+A value stays inside the one path segment its placeholder occupies. Path normalizing percent-decodes the path before it collapses `.` and `..`, so escaping a separator is not enough on its own: a value containing `/` or `\`, a value that is exactly `.` or `..`, or an empty value — which leaves a `//` that collapses and drops the segment — fails the request with `ErrPathParamInPath` rather than changing the path the template set. A `%2F` you write yourself is not a separator — it is escaped to `%252F` and decodes back to the literal text `%2F`.
+
+The host can be templated too (`https://:tenant.example.com/api`). A placeholder in the authority whose name is only digits is treated as the port and is left unchanged, and the colons inside an IPv6 literal such as `http://[2001:db8::1]/api` are part of the address rather than placeholders. A value substituted into the authority is **not** escaped — a `%XX` below `0x80` inside a host makes the URL parser discard the rest of the URL — so it must already be a valid host: unreserved characters, `$`, `&`, `+`, `=` and valid UTF-8 for an IDN label. Malformed UTF-8 is rejected too — the bytes reach the `Host` header verbatim, and an overlong sequence such as `%C0%AF` is a `/` to a lenient decoder. Anything else, including a `:` or `@` that would add a port or a userinfo section and send the request to another host, fails the request with `ErrPathParamInHost`. A port can still be templated by giving the placeholder a name that is not all digits, as in `https://example.com::port/api`.
+
+`SetDisablePathNormalizing(true)` on the client or request turns that check off: nothing decodes the path afterwards, so a `/` in a value is emitted as `%2F` and the value is sent as one segment. Whether it stays one segment is then up to the server — one that unescapes paths, including a Fiber server configured with `UnescapePath`, decodes it again while routing. A `?` or `#` in a value is always contained; normalizing does not decode those.
+
 ```go title="Signature"
 func (r *Request) SetPathParam(key, val string) *Request
 ```
@@ -711,7 +723,7 @@ func (r *Request) ResetPathParams() *Request
 
 ## SetJSON
 
-**SetJSON** sets the request body to a JSON-encoded payload.
+**SetJSON** sets the request body to a JSON-encoded payload. When the request is sent, the `Content-Type` and `Accept` headers are set to `application/json`, replacing any values set on the client or the request.
 
 ```go title="Signature"
 func (r *Request) SetJSON(v any) *Request
@@ -719,7 +731,7 @@ func (r *Request) SetJSON(v any) *Request
 
 ## SetXML
 
-**SetXML** sets the request body to an XML-encoded payload.
+**SetXML** sets the request body to an XML-encoded payload. When the request is sent, the `Content-Type` header is set to `application/xml`.
 
 ```go title="Signature"
 func (r *Request) SetXML(v any) *Request
@@ -1074,6 +1086,10 @@ func (r *Request) MaxRedirects() int
 ```go title="Signature"
 func (r *Request) SetMaxRedirects(count int) *Request
 ```
+
+:::info
+Redirects are followed only for `GET`, `HEAD` and `QUERY` requests. Other methods receive the redirect response as-is, whatever the limit.
+:::
 
 ## Send
 

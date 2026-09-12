@@ -2,10 +2,12 @@ package memory
 
 import (
 	"context"
+	"math"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/gofiber/utils/v2"
 	"github.com/stretchr/testify/require"
 )
 
@@ -130,6 +132,88 @@ func Test_Storage_Memory_Set_Expiration(t *testing.T) {
 	keys, err := testStore.Keys()
 	require.NoError(t, err)
 	require.Nil(t, keys)
+}
+
+// setWithinSecond stores key while the cached clock holds still.
+func setWithinSecond(t *testing.T, store *Storage, key string, val []byte, exp time.Duration) uint32 {
+	t.Helper()
+	for range 100 {
+		now := utils.Timestamp()
+		require.NoError(t, store.Set(key, val, exp))
+		if utils.Timestamp() == now {
+			return now
+		}
+	}
+	t.Fatal("cached clock kept ticking during Set")
+	return 0
+}
+
+// expiryOf returns the whole-second expiry stored for key.
+func expiryOf(store *Storage, key string) uint32 {
+	store.mux.RLock()
+	defer store.mux.RUnlock()
+	return store.db[key].expiry
+}
+
+func Test_Storage_Memory_Set_ExpirationRoundsUp(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name string
+		exp  time.Duration
+		// want is the expiry in seconds after the current one; 0 keeps it forever.
+		want uint32
+	}{
+		{name: "sub-second rounds up to one second", exp: 500 * time.Millisecond, want: 1},
+		{name: "whole seconds are kept", exp: time.Second, want: 1},
+		{name: "fractions round up rather than down", exp: 1900 * time.Millisecond, want: 2},
+		{name: "zero keeps the entry forever", exp: 0, want: 0},
+		{name: "negative keeps the entry forever", exp: -time.Second, want: 0},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			testStore := New()
+			now := setWithinSecond(t, testStore, "john", []byte("doe"), tc.exp)
+
+			want := tc.want
+			if want != 0 {
+				want += now
+			}
+			require.Equal(t, want, expiryOf(testStore, "john"))
+
+			result, err := testStore.Get("john")
+			require.NoError(t, err)
+			require.Equal(t, []byte("doe"), result, "a positive expiration must not be stored already expired")
+
+			keys, err := testStore.Keys()
+			require.NoError(t, err)
+			require.Len(t, keys, 1)
+		})
+	}
+}
+
+func Test_Storage_Memory_GCInterval_SubSecond(t *testing.T) {
+	t.Parallel()
+
+	require.Equal(t, 100*time.Millisecond, configDefault(Config{GCInterval: 100 * time.Millisecond}).GCInterval)
+	require.Equal(t, ConfigDefault.GCInterval, configDefault(Config{}).GCInterval)
+	require.Equal(t, ConfigDefault.GCInterval, configDefault(Config{GCInterval: -time.Second}).GCInterval)
+	require.Equal(t, ConfigDefault.GCInterval, configDefault().GCInterval)
+
+	testStore := New(Config{GCInterval: 100 * time.Millisecond})
+	require.Equal(t, 100*time.Millisecond, testStore.gcInterval)
+	require.NoError(t, testStore.Set("john", []byte("doe"), time.Second))
+
+	// The collector, not just Get's own expiry check, must drop the entry.
+	require.Eventually(t, func() bool {
+		testStore.mux.RLock()
+		defer testStore.mux.RUnlock()
+		_, ok := testStore.db["john"]
+		return !ok
+	}, 5*time.Second, 50*time.Millisecond)
 }
 
 func Test_Storage_Memory_Set_Long_Expiration_with_Keys(t *testing.T) {
@@ -535,4 +619,29 @@ func Benchmark_Memory_SetAndDelete_Asserted_Parallel(b *testing.B) {
 			require.NoError(b, err)
 		}
 	})
+}
+
+func Test_Storage_Memory_CeilSecondsSaturates(t *testing.T) {
+	t.Parallel()
+
+	// Rounding must not overflow into a wrapped, tiny expiration.
+	require.Equal(t, uint32(math.MaxUint32), ceilSeconds(time.Duration(math.MaxInt64)))
+	require.Equal(t, uint32(math.MaxUint32), ceilSeconds(time.Duration(math.MaxInt64)-1))
+	require.Equal(t, uint32(1), ceilSeconds(time.Nanosecond))
+	require.Equal(t, uint32(2), ceilSeconds(time.Second+time.Nanosecond))
+}
+
+func Test_Storage_Memory_MaxExpirationDoesNotWrap(t *testing.T) {
+	t.Parallel()
+
+	store := New()
+	t.Cleanup(func() { require.NoError(t, store.Close()) })
+	require.NoError(t, store.Set("max", []byte("v"), time.Duration(math.MaxInt64)))
+
+	// The absolute expiry must saturate rather than wrap past the current
+	// timestamp, which would expire an effectively infinite TTL at once.
+	got, err := store.Get("max")
+	require.NoError(t, err)
+	require.Equal(t, []byte("v"), got)
+	require.Equal(t, uint32(math.MaxUint32), expiryOf(store, "max"))
 }

@@ -2,7 +2,6 @@ package logger
 
 import (
 	"errors"
-	"fmt"
 	"maps"
 	"strings"
 	"sync"
@@ -145,10 +144,10 @@ func createTagMap(cfg *Config) map[string]LogFunc {
 			return writeSanitized(output, c.Body())
 		},
 		TagBytesReceived: func(output Buffer, c fiber.Ctx, _ *Data, _ string) (int, error) {
-			return appendInt(output, c.Request().Header.ContentLength())
+			return appendInt(output, c.Req().ContentLength())
 		},
 		TagBytesSent: func(output Buffer, c fiber.Ctx, _ *Data, _ string) (int, error) {
-			return appendInt(output, c.Response().Header.ContentLength())
+			return appendInt(output, c.Res().ContentLength())
 		},
 		TagRoute: func(output Buffer, c fiber.Ctx, _ *Data, _ string) (int, error) {
 			// Normally the registered pattern, but Ctx.Route falls back to a
@@ -157,7 +156,10 @@ func createTagMap(cfg *Config) map[string]LogFunc {
 			return writeSanitizedString(output, c.Route().Path)
 		},
 		TagResBody: func(output Buffer, c fiber.Ctx, _ *Data, _ string) (int, error) {
-			return writeSanitized(output, c.Response().Body())
+			// Res.Body answers nil for a streamed response rather than draining
+			// it, so logging cannot buffer an SSE or SendFile body it was only
+			// meant to observe.
+			return writeSanitized(output, c.Res().Body())
 		},
 		TagReqHeaders: func(output Buffer, c fiber.Ctx, _ *Data, _ string) (int, error) {
 			out := make(map[string][]string)
@@ -172,7 +174,7 @@ func createTagMap(cfg *Config) map[string]LogFunc {
 			return writeSanitizedString(output, strings.Join(reqHeaders, "&"))
 		},
 		TagQueryStringParams: func(output Buffer, c fiber.Ctx, _ *Data, _ string) (int, error) {
-			return writeSanitizedString(output, c.Request().URI().QueryArgs().String())
+			return writeSanitizedString(output, c.Req().URI().QueryArgs().String())
 		},
 
 		TagBlack: func(output Buffer, c fiber.Ctx, _ *Data, _ string) (int, error) {
@@ -242,25 +244,32 @@ func createTagMap(cfg *Config) map[string]LogFunc {
 			}
 		},
 		TagStatus: func(output Buffer, c fiber.Ctx, _ *Data, _ string) (int, error) {
+			status := c.Res().StatusCode()
 			if cfg.areColorsEnabled {
+				// Written in place rather than with fmt: "%s%3d%s" reflects
+				// over three arguments and boxes the status, which measured
+				// well over twice the cost of the same three writes.
 				colors := c.App().Config().ColorScheme
-				return fmt.Fprintf(output, "%s%3d%s", statusColor(c.Response().StatusCode(), &colors), c.Response().StatusCode(), colors.Reset)
+				return writeColoredInt(output, statusColor(status, &colors), status, 3, colors.Reset)
 			}
-			return appendInt(output, c.Response().StatusCode())
+			return appendInt(output, status)
 		},
 		TagMethod: func(output Buffer, c fiber.Ctx, _ *Data, _ string) (int, error) {
+			method := c.Method()
 			if cfg.areColorsEnabled {
 				colors := c.App().Config().ColorScheme
-				return fmt.Fprintf(output, "%s%s%s", methodColor(c.Method(), &colors), c.Method(), colors.Reset)
+				return writeColored(output, methodColor(method, &colors), method, colors.Reset)
 			}
-			return output.WriteString(c.Method())
+			return output.WriteString(method)
 		},
 		TagPid: func(output Buffer, _ fiber.Ctx, data *Data, _ string) (int, error) {
 			return output.WriteString(data.Pid)
 		},
 		TagLatency: func(output Buffer, _ fiber.Ctx, data *Data, _ string) (int, error) {
-			latency := data.Stop.Sub(data.Start)
-			return fmt.Fprintf(output, "%13v", latency)
+			// Rendered digit-wise rather than with fmt: "%13v" reflects over
+			// the Duration, allocates its String, and boxes it, which measured
+			// ~5x the cost of appending the same 13 columns in place.
+			return appendDurationTag(output, data.Stop.Sub(data.Start), 13)
 		},
 		TagTime: func(output Buffer, _ fiber.Ctx, data *Data, _ string) (int, error) {
 			return output.WriteString(data.Timestamp)

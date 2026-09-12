@@ -170,6 +170,10 @@ func newMountFields(app *App) *mountFields {
 // any of the fiber's sub apps are added to the application's error handlers
 // to be invoked on errors that happen within the prefix route.
 func (app *App) mount(prefix string, subApp *App) Router {
+	if subApp == app {
+		panic("fiber: an app cannot be mounted onto itself")
+	}
+
 	prefix = utils.TrimRight(prefix, '/')
 	if prefix == "" {
 		prefix = "/"
@@ -282,7 +286,7 @@ func domainMountRender(owner domainOwner) (*App, string) { //nolint:gocritic // 
 	}
 
 	layout := owner.app.config.ViewsLayout
-	if owner.app.config.Views != nil {
+	if !isNilViews(owner.app.config.Views) {
 		return owner.app, layout
 	}
 
@@ -291,7 +295,7 @@ func domainMountRender(owner domainOwner) (*App, string) { //nolint:gocritic // 
 			layout = ancestor.config.ViewsLayout
 		}
 
-		if ancestor.config.Views != nil {
+		if !isNilViews(ancestor.config.Views) {
 			return ancestor, layout
 		}
 	}
@@ -696,16 +700,23 @@ func (app *App) hasMountedApps() bool {
 // mountStartupProcess Handles the startup process of mounted apps by appending sub-app routes, generating app list keys, and processing sub-app routes.
 func (app *App) mountStartupProcess() {
 	if app.hasMountedApps() {
-		// add routes of sub-apps
-		app.mountFields.subAppsProcessed.Do(func() {
-			app.appendSubAppLists(app.mountFields.appList)
-			app.mountFields.appListKeysOnce.Do(app.generateAppListKeys)
-		})
+		app.collectSubApps()
 		// adds the routes of the sub-apps to the current application.
 		app.mountFields.subAppsRoutesAdded.Do(func() {
 			app.processSubAppsRoutes()
 		})
 	}
+}
+
+// collectSubApps gathers the sub-apps mounted at any depth into appList. It runs once.
+func (app *App) collectSubApps() {
+	if !app.hasMountedApps() {
+		return
+	}
+	app.mountFields.subAppsProcessed.Do(func() {
+		app.appendSubAppLists(app.mountFields.appList)
+		app.mountFields.appListKeysOnce.Do(app.generateAppListKeys)
+	})
 }
 
 // generateAppListKeys generates app list keys for Render, should work after appendSubAppLists

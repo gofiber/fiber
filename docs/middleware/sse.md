@@ -130,4 +130,4 @@ Every write is flushed. A failed flush closes `Done`, stores the error returned 
 
 Automatic heartbeat comments keep idle streams active and make silent client disconnects observable through the next flush error. If heartbeats are disabled, a handler waiting on an external source might not notice a disconnected client until it writes again. Stopping a stream waits for an in-flight heartbeat write to finish, so a very slow client can delay shutdown until the underlying write unblocks.
 
-`Config.Retry` sends the initial reconnect delay when the stream opens. `Event.Retry` changes the reconnect delay for a specific event, following the SSE wire format.
+`Config.Retry` sends the initial reconnect delay when the stream opens. `Event.Retry` changes the reconnect delay for a specific event, following the SSE wire format. The delay is sent in whole milliseconds, rounded up, so a value below one millisecond becomes `retry: 1` rather than `retry: 0`.

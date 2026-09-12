@@ -15,6 +15,7 @@ var _ AllLogger[*log.Logger] = (*defaultLogger)(nil)
 
 type defaultLogger struct {
 	stdlog *log.Logger
+	exit   func(int)
 	ctx    retainedContext
 	level  Level
 	depth  int
@@ -53,10 +54,25 @@ func newRetainedContext(value any) retainedContext {
 	return retainedContext{value: value, isOk: true}
 }
 
+// exitFatal ends the program the way Fatal must. A logger may carry a hook of
+// its own, so a test can intercept the exit without reaching for global state;
+// nil, the zero value a directly constructed logger has, means os.Exit.
+func (l *defaultLogger) exitFatal() {
+	if l.exit != nil {
+		l.exit(1)
+		return
+	}
+	os.Exit(1) //nolint:revive // exiting is what Fatal is for
+}
+
 // privateLog logs a message at a given level log the default logger.
 // when the level is fatal, it will exit the program.
 func (l *defaultLogger) privateLog(lv Level, fmtArgs []any) {
 	if l.level > lv {
+		if lv == LevelFatal {
+			// Fatal exits even when its line is not written.
+			l.exitFatal()
+		}
 		return
 	}
 	level := lv.toString()
@@ -73,7 +89,7 @@ func (l *defaultLogger) privateLog(lv Level, fmtArgs []any) {
 	buf.Reset()
 	bytebufferpool.Put(buf)
 	if lv == LevelFatal {
-		os.Exit(1) //nolint:revive // we want to exit the program when Fatal is called
+		l.exitFatal()
 	}
 }
 
@@ -81,6 +97,10 @@ func (l *defaultLogger) privateLog(lv Level, fmtArgs []any) {
 // when the level is fatal, it will exit the program.
 func (l *defaultLogger) privateLogf(lv Level, format string, fmtArgs []any) {
 	if l.level > lv {
+		if lv == LevelFatal {
+			// Fatal exits even when its line is not written.
+			l.exitFatal()
+		}
 		return
 	}
 	level := lv.toString()
@@ -101,7 +121,7 @@ func (l *defaultLogger) privateLogf(lv Level, format string, fmtArgs []any) {
 	buf.Reset()
 	bytebufferpool.Put(buf)
 	if lv == LevelFatal {
-		os.Exit(1) //nolint:revive // we want to exit the program when Fatal is called
+		l.exitFatal()
 	}
 }
 
@@ -109,6 +129,10 @@ func (l *defaultLogger) privateLogf(lv Level, format string, fmtArgs []any) {
 // when the level is fatal, it will exit the program.
 func (l *defaultLogger) privateLogw(lv Level, format string, keysAndValues []any) {
 	if l.level > lv {
+		if lv == LevelFatal {
+			// Fatal exits even when its line is not written.
+			l.exitFatal()
+		}
 		return
 	}
 	level := lv.toString()
@@ -148,7 +172,7 @@ func (l *defaultLogger) privateLogw(lv Level, format string, keysAndValues []any
 	buf.Reset()
 	bytebufferpool.Put(buf)
 	if lv == LevelFatal {
-		os.Exit(1) //nolint:revive // we want to exit the program when Fatal is called
+		l.exitFatal()
 	}
 }
 
@@ -294,6 +318,7 @@ func (l *defaultLogger) writeContext(buf Buffer) {
 func (l *defaultLogger) WithContext(ctx any) CommonLogger {
 	return &defaultLogger{
 		stdlog: l.stdlog,
+		exit:   l.exit,
 		ctx:    newRetainedContext(ctx),
 		level:  l.level,
 		depth:  l.depth - 1,

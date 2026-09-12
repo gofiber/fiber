@@ -427,8 +427,34 @@ func (h *Hooks) executeOnPostStartupMessageHooks(data *PostStartupMessageData) e
 	return nil
 }
 
+// snapshotOnPreShutdown copies the registered pre-shutdown hooks under the app
+// mutex, so a hook may register others without deadlocking on the iteration.
+func (h *Hooks) snapshotOnPreShutdown() []OnPreShutdownHandler {
+	if h.app == nil {
+		return h.onPreShutdown
+	}
+	h.app.mutex.Lock()
+	defer h.app.mutex.Unlock()
+
+	return append([]OnPreShutdownHandler(nil), h.onPreShutdown...)
+}
+
+// snapshotOnPostShutdown copies the registered post-shutdown hooks under the
+// app mutex, for the same reason as snapshotOnPreShutdown.
+func (h *Hooks) snapshotOnPostShutdown() []OnPostShutdownHandler {
+	if h.app == nil {
+		return h.onPostShutdown
+	}
+	h.app.mutex.Lock()
+	defer h.app.mutex.Unlock()
+
+	return append([]OnPostShutdownHandler(nil), h.onPostShutdown...)
+}
+
 func (h *Hooks) executeOnPreShutdownHooks() {
-	for _, v := range h.onPreShutdown {
+	// Snapshot under the app mutex the registration appends under: shutdown no
+	// longer holds it while draining, so iterating the slice directly races.
+	for _, v := range h.snapshotOnPreShutdown() {
 		if err := v(); err != nil {
 			log.Errorf("failed to call pre shutdown hook: %v", err)
 		}
@@ -436,7 +462,7 @@ func (h *Hooks) executeOnPreShutdownHooks() {
 }
 
 func (h *Hooks) executeOnPostShutdownHooks(err error) {
-	for _, v := range h.onPostShutdown {
+	for _, v := range h.snapshotOnPostShutdown() {
 		if hookErr := v(err); hookErr != nil {
 			log.Errorf("failed to call post shutdown hook: %v", hookErr)
 		}

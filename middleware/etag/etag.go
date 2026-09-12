@@ -1,13 +1,16 @@
 package etag
 
 import (
-	"bytes"
 	"hash/crc32"
 	"math"
 	"slices"
 	"strings"
 
 	"github.com/gofiber/fiber/v3"
+	internaletag "github.com/gofiber/fiber/v3/internal/etag"
+	"github.com/gofiber/fiber/v3/internal/fieldname"
+	"github.com/gofiber/fiber/v3/internal/headerlist"
+	"github.com/gofiber/fiber/v3/internal/headerlookup"
 	"github.com/gofiber/utils/v2"
 	"github.com/valyala/bytebufferpool"
 )
@@ -68,7 +71,7 @@ func New(config ...Config) fiber.Handler {
 		}
 
 		// Don't generate ETags for invalid responses
-		if c.Response().StatusCode() != fiber.StatusOK {
+		if c.Res().StatusCode() != fiber.StatusOK {
 			return nil
 		}
 		body := c.Response().Body()
@@ -76,8 +79,15 @@ func New(config ...Config) fiber.Handler {
 		if len(body) == 0 {
 			return nil
 		}
-		// Skip ETag if header is already present
-		if c.Response().Header.PeekBytes(normalizedHeaderETag) != nil {
+		// Skip ETag if any field line is already present, whatever case the
+		// handler spelled the name in — a second line would be a conflicting
+		// validator (RFC 9110 Section 8.8.3).
+		//
+		// Both halves of the guard are needed: fasthttp canonicalizes ETag to
+		// "Etag", so a store of canonical names still holds a spelling the
+		// byte-exact PeekAll(fiber.HeaderETag) misses while normalizing is off.
+		respHeader := &c.Response().Header
+		if len(fieldname.Lines(respHeader, fiber.HeaderETag, headerlookup.Canonical(c) && fieldname.Canonical(respHeader))) > 0 {
 			return nil
 		}
 
@@ -96,58 +106,26 @@ func New(config ...Config) fiber.Handler {
 		// The ETag header is sent on both 200 and 304 responses (RFC 9110 §15.4.5).
 		c.Response().Header.SetCanonical(normalizedHeaderETag, etag)
 
-		// Get ETag header from request
-		clientEtag := c.Request().Header.Peek(fiber.HeaderIfNoneMatch)
+		// 304 is defined for GET and HEAD only (RFC 9110 §13.1.2); other methods pass through.
+		if method := c.Method(); method != fiber.MethodGet && method != fiber.MethodHead {
+			return nil
+		}
 
-		if isNoneMatch(clientEtag, etag) {
-			c.RequestCtx().ResetBody()
+		// Get ETag header from request. If-None-Match is a list field: repeated
+		// lines are one combined list (RFC 9110 Section 5.2) and the name
+		// matches case-insensitively, agreeing with the core Fresh path.
+		clientEtag := headerlist.Join(fieldname.Lines(&c.Request().Header, fiber.HeaderIfNoneMatch, headerlookup.Canonical(c)))
+
+		// Both slices are only read for the duration of the comparison and
+		// neither is retained, so the unsafe views cannot outlive them.
+		if internaletag.AnyMatch(utils.UnsafeString(clientEtag), utils.UnsafeString(etag)) {
+			c.Res().ResetBody()
 
 			return c.SendStatus(fiber.StatusNotModified)
 		}
 
 		return nil
 	}
-}
-
-// isNoneMatch reports whether any entity tag in the If-None-Match header value
-// matches the response ETag, using the weak comparison required for
-// If-None-Match by RFC 9110 §8.8.3.2.
-func isNoneMatch(header, etag []byte) bool {
-	header = utils.TrimSpace(header)
-	if len(header) == 0 {
-		return false
-	}
-	if len(header) == 1 && header[0] == '*' {
-		return true
-	}
-
-	for len(header) > 0 {
-		// RFC 9110 allows a comma inside an opaque-tag, so this split can
-		// mis-parse such tags. It fails open and Fiber's ETags never contain
-		// commas, so it is acceptable here.
-		entry, rest, _ := bytes.Cut(header, []byte(","))
-		header = rest
-		if etagWeakMatch(utils.TrimSpace(entry), etag) {
-			return true
-		}
-	}
-
-	return false
-}
-
-// etagWeakMatch compares two entity tags, ignoring weak indicators
-// (RFC 9110 §8.8.3.2). Both tags must be quoted to match.
-func etagWeakMatch(a, b []byte) bool {
-	a = bytes.TrimPrefix(a, weakPrefix)
-	b = bytes.TrimPrefix(b, weakPrefix)
-	if len(a) < 2 || a[0] != '"' || a[len(a)-1] != '"' {
-		return false
-	}
-	if len(b) < 2 || b[0] != '"' || b[len(b)-1] != '"' {
-		return false
-	}
-
-	return bytes.Equal(a, b)
 }
 
 // isEventStream reports whether the response is a Server-Sent Events stream.

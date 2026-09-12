@@ -11,6 +11,7 @@ import (
 	"time"
 	"unicode"
 
+	"github.com/gofiber/utils/v2"
 	"github.com/gofiber/utils/v2/swar"
 	"github.com/google/uuid"
 )
@@ -163,11 +164,15 @@ func findConstraintHandler(name string, regexHandler any, customs []CustomConstr
 			return &customConstraintWrapper{CustomConstraint: cc}
 		}
 	}
-	if name == ConstraintRegex {
+	// A built-in name matches however the pattern spells it: the pattern is now
+	// adopted as written, where it used to arrive lowercased. Custom constraints
+	// keep the exact match above, so two customs differing only in case stay
+	// distinct and a custom cannot capture a built-in name in another case.
+	if utils.EqualFold(name, ConstraintRegex) {
 		return regexConstraintType{regexHandler: regexHandler}
 	}
 	for _, bc := range builtinConstraints {
-		if bc.Name() == name {
+		if utils.EqualFold(bc.Name(), name) {
 			return bc
 		}
 	}

@@ -29,10 +29,10 @@ import (
 
 	"github.com/gofiber/fiber/v3/binder"
 	"github.com/gofiber/fiber/v3/internal/contextvalue"
+	etagpkg "github.com/gofiber/fiber/v3/internal/etag"
 	"github.com/gofiber/fiber/v3/internal/mediatype"
 	"github.com/gofiber/fiber/v3/log"
 
-	"github.com/valyala/bytebufferpool"
 	"github.com/valyala/fasthttp"
 )
 
@@ -74,11 +74,31 @@ func ValueFromContext[T any](ctx, key any) (T, bool) {
 // This is useful when values need to be available via both c.Locals() and
 // context.Context lookups throughout middleware and handlers.
 func StoreInContext(c Ctx, key, value any) {
-	c.Locals(key, value)
+	setLocal(c, key, value)
 
 	if c.App().config.PassLocalsToContext {
 		c.SetContext(context.WithValue(c.Context(), key, value))
 	}
+}
+
+// setLocal stores key/value on c, preferring the concrete context, and
+// returns what Locals returned so callers keep its result.
+//
+// Locals takes its value variadically, and reached through the Ctx interface
+// the compiler cannot see that it only reads that argument, so the
+// one-element "..." slice is heap-allocated on every call. Calling the
+// concrete method lets it inline and keeps the slice in the frame: 50ns with
+// an allocation becomes 11ns without, on every request that stores a request
+// ID, a session, a CSRF token or an authenticated user.
+//
+// A custom Ctx fails the assertion and keeps the interface call, so an
+// overridden Locals is still the one that runs. internal/ctxlocal.Set is the
+// same function for the packages that cannot reach this one.
+func setLocal(c Ctx, key, value any) any {
+	if dc, ok := c.(*DefaultCtx); ok {
+		return dc.Locals(key, value)
+	}
+	return c.Locals(key, value)
 }
 
 // getTLSConfig returns a net listener's tls config
@@ -169,90 +189,6 @@ func readContent(rf io.ReaderFrom, name string) (int64, error) {
 	return n, nil
 }
 
-// quoteEscapeMask marks the lanes of w holding bytes quoteRawString must
-// escape: '\\', '"', any C0 control (including HTAB), or DEL. Lanes >= 0x80
-// are never marked; non-ASCII bytes pass through verbatim. This is
-// utils.IndexNonQuotable's RFC 9110 set widened by HTAB, which the RFC
-// permits as qdtext but this function has always percent-encoded.
-func quoteEscapeMask(w uint64) uint64 {
-	return swar.MatchByteMask(w, '\\') | swar.MatchByteMask(w, '"') |
-		swar.MatchRangeMask(w, 0x00, 0x1f) | swar.MatchByteMask(w, 0x7f)
-}
-
-// indexQuoteEscape returns the index of the first byte quoteEscapeMask
-// matches, or -1 if raw needs no escaping. It scans eight bytes at a time,
-// finishing inputs of 8+ bytes with one overlapping word; shorter inputs
-// are checked byte-wise.
-func indexQuoteEscape(raw string) int {
-	n := len(raw)
-	i := 0
-	for ; i+swar.WordLen <= n; i += swar.WordLen {
-		if m := quoteEscapeMask(swar.Load8(raw, i)); m != 0 {
-			return i + swar.FirstLane(m)
-		}
-	}
-	if i == n {
-		return -1
-	}
-	if n >= swar.WordLen {
-		if m := quoteEscapeMask(swar.Load8(raw, n-swar.WordLen)); m != 0 {
-			return n - swar.WordLen + swar.FirstLane(m)
-		}
-		return -1
-	}
-	for ; i < n; i++ {
-		if c := raw[i]; c == '\\' || c == '"' || c < 0x20 || c == 0x7f {
-			return i
-		}
-	}
-	return -1
-}
-
-// quoteRawString escapes the characters that need quoting inside an RFC 9110
-// quoted-string (https://www.rfc-editor.org/rfc/rfc9110#section-5.6.4), plus
-// HTAB, which the RFC permits as qdtext but this function has always
-// percent-encoded. The result may contain non-ASCII bytes.
-func (*App) quoteRawString(raw string) string {
-	// Fast path: most values need no escaping at all; avoid the pooled
-	// buffer and the string allocation entirely.
-	end := indexQuoteEscape(raw)
-	if end == -1 {
-		return raw
-	}
-
-	const hex = "0123456789ABCDEF"
-	bb := bytebufferpool.Get()
-	defer bytebufferpool.Put(bb)
-
-	// Every byte before end is quotable and tab-free, so it hits the
-	// verbatim case of the switch below; copy it in one append.
-	bb.B = append(bb.B, raw[:end]...)
-	for i := end; i < len(raw); i++ {
-		c := raw[i]
-		switch {
-		case c == '\\' || c == '"':
-			// escape backslash and quote
-			bb.B = append(bb.B, '\\', c)
-		case c == '\n':
-			bb.B = append(bb.B, '\\', 'n')
-		case c == '\r':
-			bb.B = append(bb.B, '\\', 'r')
-		case c < 0x20 || c == 0x7f:
-			// percent-encode control and DEL
-			bb.B = append(
-				bb.B,
-				'%',
-				hex[c>>4],
-				hex[c&0x0f],
-			)
-		default:
-			bb.B = append(bb.B, c)
-		}
-	}
-
-	return string(bb.B)
-}
-
 // appendLowerASCII writes the ASCII-lowercased bytes of src into dst[:0],
 // growing dst as needed, in a single pass over src (instead of a copy
 // followed by an in-place case fold). Bytes outside 'A'..'Z', including
@@ -283,6 +219,55 @@ func appendLowerASCII(dst, src []byte) []byte {
 		dst[i] = c
 	}
 	return dst
+}
+
+// appendCopyLowerASCII writes src into dst and its ASCII lower-case form into
+// low, reading src once and returning both. It backs the default configuration
+// of configDependentPaths, where the detection path is exactly the case fold of
+// the path: doing it as a copy followed by appendLowerASCII reads every byte
+// twice and pays two capacity checks and two loop set-ups, which for the path
+// lengths routers see is most of the cost. Fusing them measured 19-46% faster
+// across 5- to 70-byte paths.
+//
+// lowerBuf must not alias src. src may alias dstBuf at a higher offset, as it
+// does when Path is overridden with a substring of its current value.
+func appendCopyLowerASCII(dstBuf, lowerBuf []byte, src string) (dst, lower []byte) { //nolint:nonamedreturns // gocritic unnamedResult requires naming the two same-typed slices
+	n := len(src)
+	// Amortized growth like append: every byte of both slices is overwritten
+	// below, so the grown slices' contents don't matter.
+	dst = slices.Grow(dstBuf[:0], n)[:n]
+	lower = slices.Grow(lowerBuf[:0], n)[:n]
+	// Load the overlapping tail before writing dst. If src is a substring of
+	// dstBuf, an earlier store may otherwise overwrite bytes in this word.
+	var tail uint64
+	if n >= swar.WordLen && n%swar.WordLen != 0 {
+		tail = swar.Load8(src, n-swar.WordLen)
+	}
+	i := 0
+	for ; i+swar.WordLen <= n; i += swar.WordLen {
+		w := swar.Load8(src, i)
+		swar.Store8(dst, i, w)
+		swar.Store8(lower, i, swar.ToLowerWord(w))
+	}
+	if i == n {
+		return dst, lower
+	}
+	if n >= swar.WordLen {
+		// Finish with one overlapping word; the overlapped bytes are
+		// rewritten with the same values.
+		swar.Store8(dst, n-swar.WordLen, tail)
+		swar.Store8(lower, n-swar.WordLen, swar.ToLowerWord(tail))
+		return dst, lower
+	}
+	for ; i < n; i++ {
+		c := src[i]
+		dst[i] = c
+		if c-'A' <= 'Z'-'A' {
+			c |= 0x20
+		}
+		lower[i] = c
+	}
+	return dst, lower
 }
 
 // defaultString returns the value or a default value if it is set
@@ -538,47 +523,6 @@ func paramsMatch(specParamStr headerParams, offerParams string) bool {
 	return allSpecParamsMatch
 }
 
-// getSplicedStrList function takes a string and a string slice as an argument, divides the string into different
-// elements divided by ',' and stores these elements in the string slice.
-// It returns the populated string slice as an output.
-//
-// Empty list elements are parsed and ignored, as required by
-// RFC 9110 Section 5.6.1.2 for all comma-separated field values.
-//
-// If the given slice hasn't enough space, it will allocate more and return.
-func getSplicedStrList(headerValue string, dst []string) []string {
-	if headerValue == "" {
-		return nil
-	}
-
-	dst = dst[:0]
-	segmentStart := 0
-	for i := 0; i < len(headerValue); i++ {
-		if headerValue[i] == ',' {
-			if segment := utils.TrimSpace(headerValue[segmentStart:i]); segment != "" {
-				dst = append(dst, segment)
-			}
-			segmentStart = i + 1
-		}
-	}
-	if segment := utils.TrimSpace(headerValue[segmentStart:]); segment != "" {
-		dst = append(dst, segment)
-	}
-
-	return dst
-}
-
-func joinHeaderValues(headers [][]byte) []byte {
-	switch len(headers) {
-	case 0:
-		return nil
-	case 1:
-		return headers[0]
-	default:
-		return bytes.Join(headers, []byte{','})
-	}
-}
-
 // joinedHeaderValue accumulates the combined value of a header's field lines
 // (RFC 9110 Section 5.2). It allocates only in the rare multi-line case; the
 // single-line result aliases the header storage.
@@ -740,9 +684,9 @@ func getOffer(header []byte, isAccepted func(spec, offer string, specParams head
 
 	acceptedTypes := make([]acceptedType, 0, 8)
 	order := 0
-	// Whether any range carries an explicit q=0 rejection. When none do, the
-	// more-specific-rejection scan can be skipped entirely on the hot path.
-	hasRejections := false
+	// Whether every range carries the same weight, in which case first-match selection is exact.
+	uniformQuality := true
+	var firstQuality float64
 
 	// Parse header and get accepted types with their quality and specificity
 	// See: https://www.rfc-editor.org/rfc/rfc9110#name-content-negotiation-fields
@@ -809,8 +753,10 @@ func getOffer(header []byte, isAccepted func(spec, offer string, specParams head
 			specificity = 4
 		}
 
-		if quality == 0 {
-			hasRejections = true
+		if order == 1 {
+			firstQuality = quality
+		} else if quality != firstQuality {
+			uniformQuality = false
 		}
 
 		// Add to accepted types
@@ -828,50 +774,41 @@ func getOffer(header []byte, isAccepted func(spec, offer string, specParams head
 		sortAcceptedTypes(acceptedTypes)
 	}
 
-	// Find the best offer that matches the accepted types.
-	//
-	// Per RFC 9110 §12.5.1 the most specific matching media range determines an
-	// offer's acceptability, and a quality of 0 means the client explicitly
-	// rejects that range. An offer is therefore only acceptable if its most
-	// specific matching range has a quality greater than 0 — a broader range
-	// with a higher quality (e.g. "*" or "text/*") must not override a more
-	// specific q=0 rejection.
-	// See: https://www.rfc-editor.org/rfc/rfc9110#section-12.5.1
+	// Find the best offer that matches the accepted types. Per RFC 9110 §12.5.1
+	// the most specific matching range determines an offer's weight, and q=0 rejects it.
 	result := ""
-	if !hasRejections {
-		// Fast path: without any q=0 rejection this is the plain "first matching
-		// range in preference order wins" selection, identical to the algorithm
-		// before q=0 handling, so there is no need to compute or compare match
-		// specificity.
-	selectFast:
-		for _, acceptedType := range acceptedTypes {
-			for _, offer := range offers {
-				if offer != "" && isAccepted(acceptedType.spec, offer, acceptedType.params) > 0 {
-					result = offer
-					break selectFast
-				}
-			}
+	switch {
+	case uniformQuality && firstQuality == 0:
+		// Every range rejects: nothing is acceptable.
+	case uniformQuality:
+		// Fast path: with equal weights the first matching range in preference order wins.
+		result, _ = firstMatchingOffer(acceptedTypes, isAccepted, offers)
+	default:
+		// The first match stands unless a more specific range later demotes
+		// that offer; only such a demotion can let another offer win.
+		offer, rank := firstMatchingOffer(acceptedTypes, isAccepted, offers)
+		if offer == "" {
+			break
 		}
-	} else {
-		// Rejection-aware path: an offer is only acceptable if its matching range
-		// is not overridden by a q=0 range that matches it at least as
-		// specifically (RFC 9110 §12.5.1).
-	selectWithRejections:
-		for _, acceptedType := range acceptedTypes {
-			if acceptedType.quality == 0 {
-				// A q=0 range never selects an offer; it can only reject one.
+		// The ranges before rank matched nothing, so only the rest can demote.
+		if quality, _, ok := offerQuality(acceptedTypes[rank:], isAccepted, offer); ok && quality == acceptedTypes[rank].quality {
+			result = offer
+			break
+		}
+
+		// Resolve each offer from its most specific matching range and keep the heaviest.
+		var bestQuality float64
+		bestRank := 0
+		for _, offer := range offers {
+			if offer == "" {
 				continue
 			}
-			for _, offer := range offers {
-				if offer == "" {
-					continue
-				}
-				matchSpecificity := isAccepted(acceptedType.spec, offer, acceptedType.params)
-				if matchSpecificity > 0 &&
-					!rejectedByMoreSpecificRange(acceptedTypes, isAccepted, offer, matchSpecificity) {
-					result = offer
-					break selectWithRejections
-				}
+			quality, rank, ok := offerQuality(acceptedTypes, isAccepted, offer)
+			if !ok {
+				continue
+			}
+			if result == "" || quality > bestQuality || (quality == bestQuality && rank < bestRank) {
+				result, bestQuality, bestRank = offer, quality, rank
 			}
 		}
 	}
@@ -885,21 +822,39 @@ func getOffer(header []byte, isAccepted func(spec, offer string, specParams head
 	return result
 }
 
-// rejectedByMoreSpecificRange reports whether a q=0 range matches the offer at
-// least as specifically as the positive match at baseSpecificity, i.e. the
-// client explicitly rejected the offer per RFC 9110 §12.5.1. Comparing the
-// effective match specificity (rather than the coarse parsed bucket) lets a
-// same-class rejection win — e.g. "en-US;q=0" over "en", "utf-8;q=0" over an
-// earlier "utf-8", or "text/html;level=1;q=0" over "text/html" — while a less
-// specific rejection such as "text/*;q=0" still does not override "text/html".
-func rejectedByMoreSpecificRange(types []acceptedType, isAccepted func(spec, offer string, specParams headerParams) int, offer string, baseSpecificity int) bool {
+// firstMatchingOffer returns the first offer matched by the first range that
+// matches any offer, with that range's index; "" when nothing matches.
+func firstMatchingOffer(types []acceptedType, isAccepted func(spec, offer string, specParams headerParams) int, offers []string) (offer string, rank int) { //nolint:nonamedreturns // gocritic unnamedResult requires naming the pair for clarity
 	for i := range types {
-		if types[i].quality == 0 &&
-			isAccepted(types[i].spec, offer, types[i].params) >= baseSpecificity {
-			return true
+		for _, candidate := range offers {
+			if candidate != "" && isAccepted(types[i].spec, candidate, types[i].params) > 0 {
+				return candidate, i
+			}
 		}
 	}
-	return false
+	return "", 0
+}
+
+// offerQuality resolves an offer against the ranges, in preference order: the
+// weight of the most specific matching range (RFC 9110 §12.5.1), an explicit
+// q=0 winning among equally specific ones. rank is the first matching range's
+// position; ok is false when nothing matches or the weight is 0.
+func offerQuality(types []acceptedType, isAccepted func(spec, offer string, specParams headerParams) int, offer string) (quality float64, rank int, ok bool) { //nolint:nonamedreturns // gocritic unnamedResult requires naming the results for clarity
+	bestSpecificity := 0
+	for i := range types {
+		specificity := isAccepted(types[i].spec, offer, types[i].params)
+		if specificity == 0 {
+			continue
+		}
+		if bestSpecificity == 0 {
+			rank = i
+		}
+		if specificity > bestSpecificity || (specificity == bestSpecificity && types[i].quality == 0) {
+			bestSpecificity = specificity
+			quality = types[i].quality
+		}
+	}
+	return quality, rank, bestSpecificity > 0 && quality > 0
 }
 
 // sortAcceptedTypes sorts accepted types by quality and specificity, preserving order of equal elements
@@ -926,82 +881,11 @@ func sortAcceptedTypes(at []acceptedType) {
 	}
 }
 
-// normalizeEtag validates an entity tag and returns the
-// value without quotes. weak is true if the tag has the "W/" prefix.
-func normalizeEtag(t string) (value string, weak, ok bool) { //nolint:nonamedreturns // gocritic unnamedResult requires naming the parsed ETag components
-	weak = strings.HasPrefix(t, "W/")
-	if weak {
-		t = t[2:]
-	}
-
-	if len(t) < 2 || t[0] != '"' || t[len(t)-1] != '"' {
-		return "", weak, false
-	}
-	return t[1 : len(t)-1], weak, true
-}
-
-// matchEtag performs a weak comparison of entity tags according to
-// RFC 9110 §8.8.3.2. The weak indicator ("W/") is ignored, but both tags must
-// be properly quoted. Invalid tags result in a mismatch.
-func matchEtag(s, etag string) bool {
-	n1, _, ok1 := normalizeEtag(s)
-	n2, _, ok2 := normalizeEtag(etag)
-	if !ok1 || !ok2 {
-		return false
-	}
-
-	return n1 == n2
-}
-
-// matchEtagStrong performs a strong entity-tag comparison following
-// RFC 9110 §8.8.3.1. A weak tag never matches a strong one, even if the quoted
-// values are identical.
-func matchEtagStrong(s, etag string) bool {
-	n1, w1, ok1 := normalizeEtag(s)
-	n2, w2, ok2 := normalizeEtag(etag)
-	if !ok1 || !ok2 || w1 || w2 {
-		return false
-	}
-
-	return n1 == n2
-}
-
 // isEtagStale reports whether a response with the given ETag would be considered
 // stale when presented with the raw If-None-Match header value. Comparison is
 // weak as defined by RFC 9110 §8.8.3.2.
 func (app *App) isEtagStale(etag string, noneMatchBytes []byte) bool {
-	header := utils.TrimSpace(app.toString(noneMatchBytes))
-
-	// Short-circuit the wildcard case: "*" never counts as stale.
-	if header == "*" {
-		return false
-	}
-
-	// Split the header on commas that sit outside DQUOTE-delimited opaque-tags:
-	// etagc permits "," inside the quoted tag (RFC 9110 §8.8.3), so `"v1,v2"`
-	// is a single entity tag, not two list elements. Only '"' and ','
-	// affect the split, so jump between them instead of visiting every byte.
-	start := 0
-	pos := 0
-	inQuotes := false
-	for {
-		i := utils.IndexAny2(header[pos:], '"', ',')
-		if i == -1 {
-			break
-		}
-		i += pos
-		pos = i + 1
-		if header[i] == '"' {
-			inQuotes = !inQuotes
-		} else if !inQuotes {
-			if matchEtag(utils.TrimSpace(header[start:i]), etag) {
-				return false
-			}
-			start = i + 1
-		}
-	}
-
-	return !matchEtag(utils.TrimSpace(header[start:]), etag)
+	return !etagpkg.AnyMatch(app.toString(noneMatchBytes), etag)
 }
 
 func parseAddr(raw string) (host, port string) { //nolint:nonamedreturns // gocritic unnamedResult requires naming host and port parts for clarity

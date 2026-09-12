@@ -5,6 +5,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"io"
@@ -2554,6 +2555,230 @@ func Test_HTTPMiddleware_JoinsRepeatedConnectionValues(t *testing.T) {
 			require.Equal(t, tc.want, afterNext, "the complete Connection field must outlive the downstream chain")
 			require.Equal(t, tc.want == "close", gotClose, "the request flag stands in only for a bare close")
 			require.Equal(t, tc.wantClose, finalClose, "the transport close instruction rides on the response")
+		})
+	}
+}
+
+func Test_CopyContextToFiberContext_DerivedContexts(t *testing.T) {
+	t.Parallel()
+
+	type key string
+	base := context.WithValue(context.Background(), key("a"), "1")
+
+	withCancel, cancel := context.WithCancel(base)
+	t.Cleanup(cancel)
+	withTimeout, cancelTimeout := context.WithTimeout(base, time.Hour)
+	t.Cleanup(cancelTimeout)
+	withDeadline, cancelDeadline := context.WithDeadline(base, time.Now().Add(time.Hour))
+	t.Cleanup(cancelDeadline)
+	afterFunc, stop := context.WithCancel(base)
+	t.Cleanup(stop)
+	context.AfterFunc(afterFunc, func() {})
+
+	testCases := []struct {
+		ctx  context.Context //nolint:containedctx // test table
+		name string
+	}{
+		{name: "WithCancel", ctx: context.WithValue(withCancel, key("b"), "2")},
+		{name: "WithTimeout", ctx: context.WithValue(withTimeout, key("b"), "2")},
+		{name: "WithDeadline", ctx: context.WithValue(withDeadline, key("b"), "2")},
+		{name: "WithoutCancel", ctx: context.WithValue(context.WithoutCancel(withTimeout), key("b"), "2")},
+		{name: "value below timeout", ctx: func() context.Context {
+			ctx, cancelInner := context.WithTimeout(context.WithValue(base, key("b"), "2"), time.Hour)
+			t.Cleanup(cancelInner)
+			return ctx
+		}()},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			var fctx fasthttp.RequestCtx
+			CopyContextToFiberContext(tc.ctx, &fctx)
+			require.Equal(t, "1", fctx.UserValue(key("a")))
+			require.Equal(t, "2", fctx.UserValue(key("b")))
+		})
+	}
+}
+
+func Test_HTTPHandler_TLSPropagated(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Get("/", func(c fiber.Ctx) error {
+		return c.SendString(c.Scheme() + " " + strconv.FormatBool(c.Secure()))
+	})
+
+	handler := FiberApp(app)
+
+	req := httptest.NewRequest(http.MethodGet, "https://example.com/", http.NoBody)
+	req.TLS = &tls.ConnectionState{Version: tls.VersionTLS13, ServerName: "example.com"}
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, "https true", rec.Body.String())
+
+	plain := httptest.NewRequest(http.MethodGet, "http://example.com/", http.NoBody)
+	rec = httptest.NewRecorder()
+	handler.ServeHTTP(rec, plain)
+	require.Equal(t, "http false", rec.Body.String())
+}
+
+func Test_HTTPMiddleware_URLRewrite(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Use(HTTPMiddleware(func(next http.Handler) http.Handler {
+		return http.StripPrefix("/api", next)
+	}))
+	app.Get("/users", func(c fiber.Ctx) error {
+		return c.SendString("users at " + c.Path())
+	})
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/api/users?x=1", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "users at /users", string(body))
+}
+
+func Test_HTTPHandler_TLSConnectionStateCarried(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Get("/", func(c fiber.Ctx) error {
+		state := c.RequestCtx().TLSConnectionState()
+		if state == nil {
+			return c.SendString("none")
+		}
+		return c.SendString(state.ServerName + " " + state.NegotiatedProtocol)
+	})
+
+	handler := FiberApp(app)
+
+	req := httptest.NewRequest(http.MethodGet, "https://example.com/", http.NoBody)
+	req.TLS = &tls.ConnectionState{Version: tls.VersionTLS13, ServerName: "example.com", NegotiatedProtocol: "h2"}
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	require.Equal(t, "example.com h2", rec.Body.String())
+
+	plain := httptest.NewRequest(http.MethodGet, "http://example.com/", http.NoBody)
+	rec = httptest.NewRecorder()
+	handler.ServeHTTP(rec, plain)
+	require.Equal(t, "none", rec.Body.String())
+}
+
+func Test_TLSNoopConn_HandshakeIsNoop(t *testing.T) {
+	t.Parallel()
+
+	conn := &tlsNoopConn{state: tls.ConnectionState{ServerName: "example.com"}}
+	require.NoError(t, conn.Handshake())
+	require.Equal(t, "example.com", conn.ConnectionState().ServerName)
+}
+
+func Test_HTTPMiddleware_NextCalledAfterReturn(t *testing.T) {
+	t.Parallel()
+
+	saved := make(chan http.Handler, 1)
+	mw := func(h http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			saved <- h
+			w.WriteHeader(http.StatusAccepted)
+		})
+	}
+
+	app := fiber.New()
+	app.Use(HTTPMiddleware(mw))
+	app.Get("/", func(c fiber.Ctx) error { return c.SendString("downstream") })
+
+	resp, err := app.Test(httptest.NewRequest(http.MethodGet, "/", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, http.StatusAccepted, resp.StatusCode)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Empty(t, string(body))
+
+	// The Fiber context is released by now, so a late next must be a no-op.
+	next := <-saved
+	require.NotPanics(t, func() {
+		next.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodPost, "/late", http.NoBody))
+	})
+}
+
+func Test_CopyContextToFiberContext_DeepChain(t *testing.T) {
+	t.Parallel()
+
+	type key string
+	const depth = 200
+
+	ctx := context.Background()
+	for i := range depth {
+		ctx = context.WithValue(ctx, key(strconv.Itoa(i)), i)
+	}
+
+	var fctx fasthttp.RequestCtx
+	CopyContextToFiberContext(ctx, &fctx)
+
+	for i := range depth {
+		require.Equal(t, i, fctx.UserValue(key(strconv.Itoa(i))), "value %d was dropped", i)
+	}
+}
+
+// cyclicContext lets a chain point back at itself, the shape the walk must not
+// follow forever.
+type cyclicContext struct {
+	context.Context //nolint:containedctx // the cycle is the point
+}
+
+func Test_CopyContextToFiberContext_Cycle(t *testing.T) {
+	t.Parallel()
+
+	type key string
+	loop := &cyclicContext{Context: context.Background()}
+	loop.Context = context.WithValue(loop, key("a"), "1")
+
+	var fctx fasthttp.RequestCtx
+	require.NotPanics(t, func() { CopyContextToFiberContext(loop, &fctx) })
+	require.Equal(t, "1", fctx.UserValue(key("a")))
+}
+
+func Test_HTTPMiddleware_NoRewriteKeepsChainPosition(t *testing.T) {
+	t.Parallel()
+
+	// Spellings whose decoded path differs from the raw one the router matched.
+	paths := []string{
+		"/api%2Fadmin/secret",
+		"//admin/secret",
+		"/./admin/secret",
+		"/x/../admin/secret",
+		"/adm%69n/secret",
+	}
+
+	for _, path := range paths {
+		t.Run(path, func(t *testing.T) {
+			t.Parallel()
+
+			var authRan atomic.Bool
+			app := fiber.New()
+			app.Use("/api/admin", func(_ fiber.Ctx) error {
+				authRan.Store(true)
+				return fiber.ErrForbidden
+			})
+			app.Use(HTTPMiddleware(func(next http.Handler) http.Handler {
+				return next
+			}))
+			app.Get("/api/admin/secret", func(c fiber.Ctx) error {
+				return c.SendString("SECRET")
+			})
+
+			resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, path, http.NoBody))
+			require.NoError(t, err)
+			body, err := io.ReadAll(resp.Body)
+			require.NoError(t, err)
+			require.NotEqual(t, "SECRET", string(body), "the adaptor resumed past the guard that already ran")
+			require.Equal(t, fiber.StatusNotFound, resp.StatusCode)
+			require.False(t, authRan.Load())
 		})
 	}
 }

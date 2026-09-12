@@ -69,6 +69,7 @@ type Request struct {
 	bodyType bodyType
 
 	isPathNormalizingDisabled bool
+	clientOwned               bool
 }
 
 // Method returns the HTTP method set in the Request.
@@ -235,7 +236,7 @@ func (r *Request) Params() iter.Seq2[string, []string] {
 			p.k = append(p.k, utils.UnsafeString(k))
 			p.v = append(p.v, utils.UnsafeString(v))
 		}
-		sort.Sort(&p)
+		sort.Stable(&p)
 
 		j := 0
 		for i := range vals {
@@ -474,7 +475,7 @@ func (r *Request) AllFormData() iter.Seq2[string, []string] {
 			p.k = append(p.k, utils.UnsafeString(k))
 			p.v = append(p.v, utils.UnsafeString(v))
 		}
-		sort.Sort(&p)
+		sort.Stable(&p)
 
 		j := 0
 		for i := range vals {
@@ -682,6 +683,8 @@ func (r *Request) Send() (*Response, error) {
 // Reset clears the Request object, returning it to its default state.
 // Used by ReleaseRequest to recycle the object.
 func (r *Request) Reset() {
+	r.client = nil
+	r.clientOwned = false
 	r.url = ""
 	r.method = fiber.MethodGet
 	r.userAgent = ""

@@ -20,7 +20,6 @@ import (
 	"net/http/httputil"
 	"os"
 	"reflect"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -119,12 +118,15 @@ type App struct {
 	// Precomputed unmatched-route indexes, rebuilt with the tree (router_skip.go)
 	skip skipRouteIndex
 	// sendfilesMutex is a mutex used for sendfile operations
-	sendfilesMutex sync.RWMutex
-	mutex          sync.Mutex
+	sendfilesMutex   sync.RWMutex
+	mutex            sync.Mutex
+	autoHeadRouteID  uint64
+	autoHeadStackLen int
 	// Amount of registered handlers
 	handlersCount uint32
 	// contains the information if the route stack has been changed to build the optimized tree
 	hasRoutesRefreshed bool
+	connStateHooked    bool
 	// hasCustomCtx tracks whether app uses a custom context implementation
 	hasCustomCtx bool
 	// hasParamRoutes tracks whether any route consults the per-request slash
@@ -182,6 +184,20 @@ func getViewsLock(views Views) *sync.RWMutex {
 	return globalViewsLocks.get(views)
 }
 
+func isNilViews(views any) bool {
+	if views == nil {
+		return true
+	}
+
+	value := reflect.ValueOf(views)
+	switch value.Kind() {
+	case reflect.Pointer, reflect.Map, reflect.Slice, reflect.Chan, reflect.Func, reflect.Interface, reflect.UnsafePointer:
+		return value.IsNil()
+	default:
+		return false
+	}
+}
+
 // Config is a struct holding the server settings.
 type Config struct { //nolint:govet // Aligning the struct fields is not necessary. betteralign:ignore
 	// Enables the "Server: value" HTTP header.
@@ -225,6 +241,16 @@ type Config struct { //nolint:govet // Aligning the struct fields is not necessa
 	//
 	// Default: false
 	DisableHeadAutoRegister bool `json:"disable_head_auto_register"`
+
+	// When set to true, disables redirect flash messages: Redirect().With and
+	// WithInput set no cookie, Messages and OldInput report nothing, and the
+	// scan of every request's headers for an incoming flash cookie is skipped.
+	// Flash messages travel in the fiber_flash cookie, so only clients that
+	// keep cookies across a redirect, browsers above all, ever receive them;
+	// deployments whose clients do not lose nothing by turning them off.
+	//
+	// Default: false
+	DisableFlashMessages bool `json:"disable_flash_messages"`
 
 	// When set to true, this relinquishes the 0-allocation promise in certain
 	// cases in order to access the handler values (e.g. request bodies) in an
@@ -867,7 +893,12 @@ func (app *App) handleTrustedProxy(ipAddress string) {
 		if ip == nil {
 			log.Warnf("IP address %q could not be parsed", ipAddress)
 		} else {
-			app.config.TrustProxyConfig.ips[ipAddress] = struct{}{}
+			// Store the canonical spelling, which lookups compare against.
+			app.config.TrustProxyConfig.ips[ip.String()] = struct{}{}
+			if ip4 := ip.To4(); ip4 != nil {
+				// netip keeps the IPv4-mapped spelling apart from the dotted one.
+				app.config.TrustProxyConfig.ips["::ffff:"+ip4.String()] = struct{}{}
+			}
 		}
 	}
 }
@@ -906,11 +937,7 @@ func (app *App) ReloadViews() error {
 
 	var reloaded bool
 	for _, targetApp := range apps {
-		if targetApp == nil || targetApp.config.Views == nil {
-			continue
-		}
-
-		if viewValue := reflect.ValueOf(targetApp.config.Views); viewValue.Kind() == reflect.Pointer && viewValue.IsNil() {
+		if targetApp == nil || isNilViews(targetApp.config.Views) {
 			continue
 		}
 
@@ -938,6 +965,27 @@ func (app *App) ReloadViews() error {
 	return nil
 }
 
+// Render writes a template through the configured view engine.
+func (app *App) Render(out io.Writer, name string, binding any, layouts ...string) error {
+	views := app.config.Views
+	if isNilViews(views) {
+		return ErrNoViewEngineConfigured
+	}
+	if len(layouts) == 0 && app.config.ViewsLayout != "" {
+		layouts = []string{app.config.ViewsLayout}
+	}
+
+	viewsLock := getViewsLock(views)
+	viewsLock.RLock()
+	defer viewsLock.RUnlock()
+
+	if err := views.Render(out, name, binding, layouts...); err != nil {
+		return fmt.Errorf("fiber: failed to render views: %w", err)
+	}
+
+	return nil
+}
+
 // SetTLSHandler Can be used to set ClientHelloInfo when using TLS with Listener.
 func (app *App) SetTLSHandler(tlsHandler *TLSHandler) {
 	// Attach the tlsHandler to the config
@@ -953,7 +1001,15 @@ func (app *App) Name(name string) Router {
 
 	for _, routes := range app.stack {
 		for _, route := range routes {
-			isMethodValid := route.Method == app.latestRoute.Method || app.latestRoute.use ||
+			// The shared registration id covers every method of a multi-method
+			// Add, and only those: matching on the method as well would rename
+			// an older route that merely shares the path, and would do it only
+			// when the registration happened to finish on that method. It is
+			// latestID rather than id because a method whose route the
+			// registration merged into keeps the id of the registration that
+			// created it.
+			isMethodValid := route.latestID == app.latestRoute.latestID ||
+				app.latestRoute.use ||
 				(app.latestRoute.Method == MethodGet && route.Method == MethodHead)
 
 			if route.Path == app.latestRoute.Path && isMethodValid {
@@ -1053,7 +1109,9 @@ func (app *App) Use(args ...any) Router {
 
 	for _, prefix := range prefixes {
 		if subApp != nil {
-			return app.mount(prefix, subApp)
+			// Every prefix mounts the sub-app, as every prefix registers a handler.
+			app.mount(prefix, subApp)
+			continue
 		}
 
 		app.register([]string{methodUse}, prefix, nil, handlers...)
@@ -1327,13 +1385,16 @@ func (app *App) ShutdownWithTimeout(timeout time.Duration) error {
 // ShutdownWithContext does not close keepalive connections so its recommended to set ReadTimeout to something else than 0.
 func (app *App) ShutdownWithContext(ctx context.Context) error {
 	app.mutex.Lock()
-	defer app.mutex.Unlock()
+	server := app.server
+	app.mutex.Unlock()
 
-	var err error
-
-	if app.server == nil {
+	if server == nil {
 		return ErrNotRunning
 	}
+
+	// The drain waits for in-flight handlers, so the mutex must not be held
+	// meanwhile: a handler taking it (RebuildTree, Name, ...) would never finish.
+	var err error
 
 	// Execute the Shutdown hook
 	app.hooks.executeOnPreShutdownHooks()
@@ -1341,7 +1402,7 @@ func (app *App) ShutdownWithContext(ctx context.Context) error {
 	// `defer ...(err)` would capture the nil value at registration time.
 	defer func() { app.hooks.executeOnPostShutdownHooks(err) }()
 
-	err = app.server.ShutdownWithContext(ctx)
+	err = server.ShutdownWithContext(ctx)
 	return err
 }
 
@@ -1400,7 +1461,7 @@ func (app *App) Test(req *http.Request, config ...TestConfig) (*http.Response, e
 
 	// Add Content-Length if not provided with body
 	if req.Body != http.NoBody && req.Header.Get(HeaderContentLength) == "" {
-		req.Header.Add(HeaderContentLength, strconv.FormatInt(req.ContentLength, 10))
+		req.Header.Add(HeaderContentLength, utils.FormatInt(req.ContentLength))
 	}
 
 	// Ensure Host header is present in the dump (required by fasthttp)
@@ -1526,7 +1587,7 @@ func (app *App) init() *App {
 		app.initServices()
 
 		// Only load templates if a view engine is specified
-		if app.config.Views != nil {
+		if !isNilViews(app.config.Views) {
 			if err := app.config.Views.Load(); err != nil {
 				log.Warnf("failed to load views: %v", err)
 			}
@@ -1582,6 +1643,12 @@ func (app *App) init() *App {
 // error handler. Otherwise, it uses the configured error handler for
 // the app, which if not set is the DefaultErrorHandler.
 func (app *App) ErrorHandler(ctx Ctx, err error) error {
+	// Once fasthttp holds a timeout response, writes are ignored and the
+	// timed-out handler may still be writing: leave the context alone.
+	if ctx.RequestCtx().LastTimeoutErrorResponse() != nil {
+		return nil
+	}
+
 	// Fast path: no mounted sub-apps, so no prefix lookup is needed
 	if len(app.mountFields.appListKeys) == 0 && len(app.mountFields.domainAppList) == 0 {
 		return app.config.ErrorHandler(ctx, err)
@@ -1716,6 +1783,9 @@ func (app *App) startupProcess() {
 	app.mutex.Lock()
 	defer app.mutex.Unlock()
 
+	app.hookConnState()
+	// Collect every mounted app first, nested ones included, so all get their automatic HEAD routes.
+	app.collectSubApps()
 	app.ensureAutoHeadRoutesLocked()
 	for prefix, subApp := range app.mountFields.appList {
 		if prefix == "" {
@@ -1727,6 +1797,38 @@ func (app *App) startupProcess() {
 
 	// build route tree stack
 	app.buildTree()
+}
+
+// hookConnState makes the server report new and closed connections to the TLS
+// handler, keeping a user ConnState callback. A connection is reported new
+// while it can still say what it wraps, which is what lets its record be found
+// again at close. Idempotent; the caller holds app.mutex.
+func (app *App) hookConnState() {
+	if app.connStateHooked || app.server == nil {
+		return
+	}
+	app.connStateHooked = true
+	user := app.server.ConnState
+	app.server.ConnState = func(conn net.Conn, state fasthttp.ConnState) {
+		// StateHijacked is terminal too: fasthttp never reports StateClosed after
+		// it, so a hijacked connection (every WebSocket upgrade) would strand its
+		// record.
+		if state == fasthttp.StateNew || state == fasthttp.StateClosed || state == fasthttp.StateHijacked {
+			app.mutex.Lock()
+			handler := app.tlsHandler
+			app.mutex.Unlock()
+			if handler != nil {
+				if state == fasthttp.StateNew {
+					handler.track(conn)
+				} else {
+					handler.forget(conn)
+				}
+			}
+		}
+		if user != nil {
+			user(conn, state)
+		}
+	}
 }
 
 // Run onListen hooks. If they return an error, panic.

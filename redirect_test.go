@@ -5,6 +5,7 @@
 package fiber
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/hex"
 	"encoding/json"
@@ -16,6 +17,7 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
@@ -1203,6 +1205,105 @@ func Benchmark_Redirect_Route_WithFlashMessages(b *testing.B) {
 	require.Contains(b, msgs, redirectionMsg{key: "message", value: "test", level: 0, isOldInput: false})
 }
 
+// Test_Redirect_DisableFlashMessages pins the switch on both request handlers:
+// with it set, With and WithInput set no cookie, an incoming flash cookie is
+// neither read nor expired, and the accessors report nothing.
+func Test_Redirect_DisableFlashMessages(t *testing.T) {
+	t.Parallel()
+
+	payload, err := testredirectionMsgs.MarshalMsg(nil)
+	require.NoError(t, err)
+	incoming := FlashCookieName + "=" + hex.EncodeToString(payload)
+
+	apps := []struct {
+		newApp func(cfg Config) *App
+		name   string
+	}{
+		{newApp: func(cfg Config) *App { return New(cfg) }, name: "default ctx"},
+		{newApp: func(cfg Config) *App {
+			return NewWithCustomCtx(func(app *App) CustomCtx {
+				return &customCtx{DefaultCtx: *NewDefaultCtx(app)}
+			}, cfg)
+		}, name: "custom ctx"},
+	}
+	for _, tc := range apps {
+		for _, disabled := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/disabled=%v", tc.name, disabled), func(t *testing.T) {
+				t.Parallel()
+
+				app := tc.newApp(Config{DisableFlashMessages: disabled})
+				app.Get("/source", func(c Ctx) error {
+					return c.Redirect().With("status", "ok").WithInput().To("/target")
+				})
+				app.Get("/target", func(c Ctx) error {
+					return c.SendString(fmt.Sprintf("%d/%d", len(c.Redirect().Messages()), len(c.Redirect().OldInputs())))
+				})
+
+				resp, err := app.Test(httptest.NewRequest(MethodGet, "/source?name=john", http.NoBody))
+				require.NoError(t, err)
+				require.Equal(t, StatusSeeOther, resp.StatusCode)
+				if disabled {
+					require.Empty(t, resp.Header.Get(HeaderSetCookie), "no flash cookie may be set")
+				} else {
+					require.Contains(t, resp.Header.Get(HeaderSetCookie), FlashCookieName+"=")
+				}
+
+				req := httptest.NewRequest(MethodGet, "/target", http.NoBody)
+				req.Header.Set(HeaderCookie, incoming)
+				resp, err = app.Test(req)
+				require.NoError(t, err)
+				require.Equal(t, StatusOK, resp.StatusCode)
+				body, err := io.ReadAll(resp.Body)
+				require.NoError(t, err)
+				if disabled {
+					require.Equal(t, "0/0", string(body))
+					require.Empty(t, resp.Header.Get(HeaderSetCookie), "the incoming cookie must be left alone")
+				} else {
+					require.Equal(t, "2/2", string(body))
+					assertFlashCookieCleared(t, resp.Header.Get(HeaderSetCookie))
+				}
+			})
+		}
+	}
+}
+
+// Benchmark_Redirect_FlashCookieCheck measures the per-request scan for an
+// incoming flash cookie on a parsed browser-style request, which the other
+// handler benchmarks miss because their hand-built requests carry no raw
+// header block.
+// go test -v -run=^$ -bench=Benchmark_Redirect_FlashCookieCheck -benchmem -count=4
+func Benchmark_Redirect_FlashCookieCheck(b *testing.B) {
+	const raw = "GET /user HTTP/1.1\r\n" +
+		"Host: example.com\r\n" +
+		"User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36\r\n" +
+		"Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8\r\n" +
+		"Accept-Language: en-US,en;q=0.9\r\n" +
+		"Accept-Encoding: gzip, deflate, br, zstd\r\n" +
+		"Connection: keep-alive\r\n" +
+		"Cookie: session_id=abcdef1234567890; theme=dark; _ga=GA1.2.123456789.1700000000\r\n" +
+		"Cache-Control: max-age=0\r\n" +
+		"Sec-Fetch-Dest: document\r\n" +
+		"Sec-Fetch-Mode: navigate\r\n" +
+		"Sec-Fetch-Site: none\r\n\r\n"
+
+	for _, disabled := range []bool{false, true} {
+		b.Run(fmt.Sprintf("disabled=%v", disabled), func(b *testing.B) {
+			app := New(Config{DisableFlashMessages: disabled})
+			app.Get("/user", func(_ Ctx) error { return nil })
+			handler := app.Handler()
+
+			ctx := &fasthttp.RequestCtx{}
+			require.NoError(b, ctx.Request.Read(bufio.NewReader(strings.NewReader(raw))))
+
+			b.ReportAllocs()
+			for b.Loop() {
+				handler(ctx)
+			}
+			require.Equal(b, StatusOK, ctx.Response.StatusCode())
+		})
+	}
+}
+
 var testredirectionMsgs = redirectionMsgs{
 	{
 		key:   "success",
@@ -1700,4 +1801,39 @@ func Test_Redirect_parseAndClearFlashMessages_UndecodablePayload(t *testing.T) {
 			assertFlashCookieCleared(t, c.GetRespHeader(HeaderSetCookie))
 		})
 	}
+}
+
+func Test_Redirect_Messages_ProgrammaticCookieHeader(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	app.Get("/", func(c Ctx) error {
+		return c.SendString(c.Redirect().Message("success").Value + "," + c.Redirect().OldInput("id").Value)
+	})
+
+	msgs := redirectionMsgs{
+		{key: "success", value: "1"},
+		{key: "id", value: "42", isOldInput: true},
+	}
+	val, err := msgs.MarshalMsg(nil)
+	require.NoError(t, err)
+
+	fctx := &fasthttp.RequestCtx{}
+	fctx.Request.Header.SetMethod(MethodGet)
+	fctx.Request.SetRequestURI("/")
+	// Set, not parsed from the wire: RawHeaders stays empty.
+	fctx.Request.Header.Set(HeaderCookie, FlashCookieName+"="+hex.EncodeToString(val))
+	require.Empty(t, fctx.Request.Header.RawHeaders())
+
+	app.Handler()(fctx)
+
+	require.Equal(t, StatusOK, fctx.Response.StatusCode())
+	require.Equal(t, "1,42", string(fctx.Response.Body()))
+
+	cookie := fasthttp.AcquireCookie()
+	defer fasthttp.ReleaseCookie(cookie)
+	cookie.SetKey(FlashCookieName)
+	require.True(t, fctx.Response.Header.Cookie(cookie), "the consumed flash cookie must be expired on the client")
+	require.Empty(t, cookie.Value())
+	require.True(t, cookie.Expire().Before(time.Now()), "expiry must lie in the past")
 }

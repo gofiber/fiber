@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/gofiber/fiber/v3/internal/headerlist"
 	"github.com/gofiber/utils/v2"
 	utilsstrings "github.com/gofiber/utils/v2/strings"
 	"github.com/valyala/fasthttp"
@@ -40,11 +41,8 @@ func parseVary(vary string) ([]string, bool) {
 	// exact size bought one allocation over this in a case that does not arise.
 	names := make([]string, 0, defaultVaryNames)
 	count := 0
-	for part := range strings.SplitSeq(vary, ",") {
-		name := utils.TrimSpace(utilsstrings.ToLower(part))
-		if name == "" {
-			continue
-		}
+	for part := range headerlist.All(vary) {
+		name := utilsstrings.ToLower(part)
 		if name == "*" {
 			return nil, true
 		}
