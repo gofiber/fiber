@@ -5,9 +5,9 @@ import (
 	"strings"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/idnafold"
 	"github.com/gofiber/utils/v2"
 	utilsstrings "github.com/gofiber/utils/v2/strings"
-	"golang.org/x/net/idna"
 )
 
 // RFC 1035 length limits.
@@ -87,7 +87,7 @@ func normalizeHost(host string) string {
 	if host != "" && host[0] != '[' && strings.IndexByte(host, ':') < 0 {
 		host = trimOneTrailingDot(host)
 		host = utilsstrings.ToLower(host)
-		return toPunycode(host)
+		return idnafold.ToASCII(host)
 	}
 
 	if h, _, ok := utils.SplitHostPort(host); ok {
@@ -99,7 +99,7 @@ func normalizeHost(host string) string {
 
 	host = trimOneTrailingDot(host)
 	host = utilsstrings.ToLower(host)
-	return toPunycode(host)
+	return idnafold.ToASCII(host)
 }
 
 func trimOneTrailingDot(host string) string {
@@ -107,18 +107,6 @@ func trimOneTrailingDot(host string) string {
 		return host[:len(host)-1]
 	}
 
-	return host
-}
-
-func toPunycode(host string) string {
-	if host == "" || strings.IndexByte(host, ':') >= 0 || utils.IsASCII(host) {
-		return host
-	}
-	if ascii, err := idna.Lookup.ToASCII(host); err == nil {
-		return ascii
-	}
-	// Non-convertible input falls through; it won't match any Punycode entry,
-	// which is the correct security default.
 	return host
 }
 
