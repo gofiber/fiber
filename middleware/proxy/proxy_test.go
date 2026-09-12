@@ -1358,6 +1358,65 @@ func Test_Proxy_DomainForward_HostMatchIsCaseInsensitive(t *testing.T) {
 	require.Equal(t, "proxied", string(body), "mixed-case Host must still be proxied")
 }
 
+// Test_Proxy_DomainForward_HostMatchFoldsIDN verifies that a Unicode hostname
+// literal — the natural way to write a non-ASCII domain in Go source — still
+// matches the request a real client sends, which is always the Punycode form
+// (RFC 5891). Before this was fixed, the rule silently never matched: every
+// real request for the configured domain fell through unproxied.
+func Test_Proxy_DomainForward_HostMatchFoldsIDN(t *testing.T) {
+	t.Parallel()
+
+	_, addr := createProxyTestServerIPv4(t, func(c fiber.Ctx) error {
+		return c.SendString("proxied")
+	})
+
+	app := fiber.New()
+	// Handler configured with the Unicode literal a developer would write...
+	app.Use(DomainForward("münchen.example.com", "http://"+addr))
+
+	// ...but every real client sends the Punycode form on the wire.
+	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+	req.Host = "xn--mnchen-3ya.example.com"
+
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "proxied", string(body), "a Unicode-literal hostname config must match the Punycode form on the wire")
+}
+
+// Test_Proxy_DomainForward_HostMatchFoldsIDN_WithPort verifies that folding
+// preserves an explicit port on the configured hostname, so
+// DomainForward("münchen.example.com:8080", ...) keeps requiring that port
+// rather than silently dropping the restriction.
+func Test_Proxy_DomainForward_HostMatchFoldsIDN_WithPort(t *testing.T) {
+	t.Parallel()
+
+	_, addr := createProxyTestServerIPv4(t, func(c fiber.Ctx) error {
+		return c.SendString("proxied")
+	})
+
+	app := fiber.New()
+	app.Use(DomainForward("münchen.example.com:8080", "http://"+addr))
+
+	matching := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+	matching.Host = "xn--mnchen-3ya.example.com:8080"
+	resp, err := app.Test(matching)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "proxied", string(body))
+
+	wrongPort := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+	wrongPort.Host = "xn--mnchen-3ya.example.com:9090"
+	resp, err = app.Test(wrongPort)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusNotFound, resp.StatusCode, "a different port must still fall through unproxied")
+}
+
 // sendRawUnnormalized drives one request whose header names are kept exactly as
 // written, the way a front end translating HTTP/2 down to HTTP/1.1 leaves them,
 // and returns the response body.
