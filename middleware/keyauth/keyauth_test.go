@@ -1305,6 +1305,10 @@ func Benchmark_KeyAuth_Bearer(b *testing.B) {
 	b.ReportAllocs()
 
 	for b.Loop() {
+		// What fasthttp does between requests. Without it the extractor's
+		// request-local state is installed once and reused, and the per-request
+		// cost of installing and recycling it is not in the number.
+		ctx.ResetUserValues()
 		h(ctx)
 	}
 
@@ -1331,6 +1335,7 @@ func Benchmark_KeyAuth_Chain(b *testing.B) {
 	b.ReportAllocs()
 
 	for b.Loop() {
+		ctx.ResetUserValues()
 		h(ctx)
 	}
 

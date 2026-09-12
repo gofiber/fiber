@@ -16,9 +16,11 @@ var uninstalled = Of("no reader installed yet")
 // Test_Reader covers the reader's contract in the order it depends on: what Of
 // answers before an installation, the one that wins, and every call after it.
 //
-// One function, and not parallel, because SetReader is once-only and the
-// assertions mean nothing out of order.
+// One function, because SetReader is once-only and the assertions mean nothing
+// out of order.
 func Test_Reader(t *testing.T) {
+	t.Parallel()
+
 	require.Equal(t, Hot{}, uninstalled)
 
 	// A nil reader must not spend the single installation, which the real one

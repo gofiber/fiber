@@ -2351,3 +2351,61 @@ func Test_ChainState_PoolHoldsSomethingElse(t *testing.T) {
 		app.ReleaseCtx(ctx)
 	}
 }
+
+// Test_ExtractWithSource_NestedCapturePreservesWinner covers a decorated chain
+// that calls its base and then makes another source-aware call before
+// returning the base's value. The nested frame must not consume the winner the
+// base recorded, or the value is reported against the decorator's declared
+// source instead of the child that supplied it.
+func Test_ExtractWithSource_NestedCapturePreservesWinner(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+	t.Cleanup(func() { app.ReleaseCtx(ctx) })
+	ctx.Request().SetRequestURI("/?token=from-query")
+	ctx.Request().Header.SetCookie("other", "cookie-value")
+
+	chain := Chain(FromHeader("X-Missing"), FromQuery("token"))
+	base := chain.Extract
+	chain.Extract = func(c fiber.Ctx) (string, error) {
+		v, err := base(c)
+		if err != nil {
+			return "", err
+		}
+		// An unrelated source-aware lookup, after the winner was recorded.
+		if _, _, err := ExtractWithSource(FromCookie("other"), c); err != nil {
+			return "", err
+		}
+		return v, nil
+	}
+
+	v, src, err := ExtractWithSource(chain, ctx)
+	require.NoError(t, err)
+	require.Equal(t, "from-query", v)
+	require.Equal(t, SourceQuery, src, "the query child supplied the value")
+}
+
+// Test_ChainState_CloseClearsGuards covers the guards a finished request leaves
+// in the buffer past its length: a retained one keeps a chain's Extractor array
+// alive for as long as the pool holds the state.
+func Test_ChainState_CloseClearsGuards(t *testing.T) {
+	t.Parallel()
+
+	st := &chainState{active: make([]*byte, 0, 4)}
+	first := Chain(FromHeader("X-One")).Chain
+	second := Chain(FromHeader("X-Two")).Chain
+	require.True(t, st.enter(chainGuard(first)))
+	require.True(t, st.enter(chainGuard(second)))
+	st.leave()
+	st.leave()
+	require.Empty(t, st.active, "both are released")
+
+	buffer := st.active[:cap(st.active)]
+	require.NotNil(t, buffer[0], "released guards are still in the buffer")
+
+	require.NoError(t, st.Close())
+	for i, guard := range buffer {
+		require.Nil(t, guard, "guard %d must not outlive the request", i)
+	}
+}

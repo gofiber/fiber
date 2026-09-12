@@ -119,8 +119,8 @@ func resolveWithSource(e *Extractor, c fiber.Ctx, st *chainState) (string, Sourc
 		}
 		// Marks the frame, so Chain.Extract records a winner only while a
 		// source-aware caller is active.
-		st.enterCapture()
-		defer st.leaveCapture()
+		parentWin, parentHasWin := st.enterCapture()
+		defer st.leaveCapture(parentWin, parentHasWin)
 
 		v, err := e.Extract(c)
 		// Read before the deferred clear runs.
@@ -190,6 +190,11 @@ func chainStateFor(c fiber.Ctx) *chainState {
 // Close returns the state to the pool. fasthttp calls it on every
 // request-local io.Closer when it resets the request; callers should not.
 func (s *chainState) Close() error {
+	// Cleared to the buffer's capacity, not its length: leave() reslices, so
+	// entries past the end still hold guards, and a retained one keeps a
+	// chain's Extractor array and whatever its closures captured alive for as
+	// long as the pool holds this state.
+	clear(s.active[:cap(s.active)])
 	// Whole-struct, so a field added later cannot leak one request's state
 	// into the next. The buffer survives: the literal is evaluated first.
 	*s = chainState{active: s.active[:0]}
@@ -214,17 +219,23 @@ func (s *chainState) leave() {
 	}
 }
 
-// enterCapture opens an ExtractWithSource frame, forgetting any winner left by
-// the last one so a leaf is not attributed to it.
-func (s *chainState) enterCapture() {
+// enterCapture opens an ExtractWithSource frame and returns the winner the
+// enclosing one had recorded, which the frame hides so a leaf is not
+// attributed to it. Pass it back to leaveCapture.
+func (s *chainState) enterCapture() (Source, bool) {
 	s.depth++
+	win, hasWin := s.win, s.hasWin
 	s.hasWin = false
+	return win, hasWin
 }
 
-// leaveCapture closes an ExtractWithSource frame and forgets its winner.
-func (s *chainState) leaveCapture() {
+// leaveCapture closes an ExtractWithSource frame, dropping its own winner and
+// restoring the enclosing frame's. A decorated chain can call its base and then
+// make another source-aware call before returning, and the winner the base
+// recorded has to survive that.
+func (s *chainState) leaveCapture(win Source, hasWin bool) {
 	s.depth--
-	s.hasWin = false
+	s.win, s.hasWin = win, hasWin
 }
 
 func extractChainWithSource(e *Extractor, c fiber.Ctx, st *chainState) (string, Source, error) {
