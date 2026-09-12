@@ -30,7 +30,8 @@ func Test_Store_getSessionID(t *testing.T) {
 		// set cookie
 		ctx.Request().Header.SetCookie(store.Extractor.Key, expectedID)
 
-		require.Equal(t, expectedID, store.getSessionID(ctx))
+		id, _ := store.getSessionID(ctx)
+		require.Equal(t, expectedID, id)
 	})
 
 	t.Run("from header", func(t *testing.T) {
@@ -46,7 +47,8 @@ func Test_Store_getSessionID(t *testing.T) {
 		// set header
 		ctx.Request().Header.Set(store.Extractor.Key, expectedID)
 
-		require.Equal(t, expectedID, store.getSessionID(ctx))
+		id, _ := store.getSessionID(ctx)
+		require.Equal(t, expectedID, id)
 	})
 
 	t.Run("from url query", func(t *testing.T) {
@@ -62,7 +64,8 @@ func Test_Store_getSessionID(t *testing.T) {
 		// set url parameter
 		ctx.Request().SetRequestURI(fmt.Sprintf("/path?%s=%s", store.Extractor.Key, expectedID))
 
-		require.Equal(t, expectedID, store.getSessionID(ctx))
+		id, _ := store.getSessionID(ctx)
+		require.Equal(t, expectedID, id)
 	})
 }
 
@@ -241,7 +244,8 @@ func Test_Store_getSessionID_SkipsChildrenWithoutExtract(t *testing.T) {
 	defer app.ReleaseCtx(ctx)
 	ctx.Request().Header.SetCookie("session_id", "abc123")
 
-	require.Equal(t, "abc123", store.getSessionID(ctx))
+	id, _ := store.getSessionID(ctx)
+	require.Equal(t, "abc123", id)
 }
 
 // Test_Store_getSessionID_WithoutExtractor covers a Store built directly rather
@@ -256,5 +260,145 @@ func Test_Store_getSessionID_WithoutExtractor(t *testing.T) {
 	ctx.Request().Header.SetCookie("session_id", "abc123")
 
 	store := &Store{}
-	require.Empty(t, store.getSessionID(ctx))
+	emptyID, _ := store.getSessionID(ctx)
+	require.Empty(t, emptyID)
+}
+
+// Test_Store_getSessionID_HonorsChainLevelExtract pins the contract the
+// extractors package documents: "Extract set (leaf or chain): call Extract so
+// legacy overrides / decoration (validation, normalization) are honored."
+//
+// The store used to walk Extractor.Chain itself, which called the children
+// directly and never the chain-level Extract, so a decorator wrapping a chain
+// — the documented way to validate or normalize an ID — was silently skipped.
+// No test could catch that: extractors tested Chain, session tested its own
+// walk, and both passed.
+func Test_Store_getSessionID_HonorsChainLevelExtract(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+
+	t.Run("decoration runs and children do not run twice", func(t *testing.T) {
+		t.Parallel()
+
+		var childCalls, overrideCalls int
+
+		base := extractors.Chain(
+			extractors.FromCookie("session_id"),
+			extractors.FromCustom("probe", func(fiber.Ctx) (string, error) {
+				childCalls++
+				return "raw-id", nil
+			}),
+		)
+
+		// Decorate the chain the way the package documents: keep the chain's
+		// own resolution, then normalize what it produced.
+		decorated := base
+		decorated.Extract = func(c fiber.Ctx) (string, error) {
+			overrideCalls++
+			v, err := base.Extract(c)
+			if err != nil {
+				return "", err
+			}
+			return "normalized-" + v, nil
+		}
+
+		store := NewStore(Config{Extractor: decorated})
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+		defer app.ReleaseCtx(ctx)
+
+		id, from := store.getSessionID(ctx)
+
+		require.Equal(t, "normalized-raw-id", id, "the chain-level Extract must produce the ID")
+		require.Equal(t, 1, overrideCalls, "the override must run exactly once")
+		require.Equal(t, 1, childCalls, "the children must run once, through the override")
+		require.Equal(t, extractors.SourceCustom, from.Source, "the winning child must be reported")
+		require.Equal(t, "probe", from.Key)
+	})
+
+	t.Run("a rejecting decorator refuses the id", func(t *testing.T) {
+		t.Parallel()
+
+		base := extractors.Chain(extractors.FromHeader("X-Session"))
+
+		// The security-relevant shape: a decorator that validates, and refuses
+		// an ID it does not like. Skipping it silently accepted the raw value.
+		decorated := base
+		decorated.Extract = func(c fiber.Ctx) (string, error) {
+			v, err := base.Extract(c)
+			if err != nil {
+				return "", err
+			}
+			if v != "trusted" {
+				return "", extractors.ErrNotFound
+			}
+			return v, nil
+		}
+
+		store := NewStore(Config{Extractor: decorated})
+
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+		defer app.ReleaseCtx(ctx)
+		ctx.Request().Header.Set("X-Session", "attacker-supplied")
+		id, _ := store.getSessionID(ctx)
+		require.Empty(t, id, "the validator must be able to refuse an ID")
+
+		ok := app.AcquireCtx(&fasthttp.RequestCtx{})
+		defer app.ReleaseCtx(ok)
+		ok.Request().Header.Set("X-Session", "trusted")
+		acceptedID, acceptedFrom := store.getSessionID(ok)
+		require.Equal(t, "trusted", acceptedID)
+		require.Equal(t, extractors.SourceHeader, acceptedFrom.Source)
+		require.Equal(t, "X-Session", acceptedFrom.Key)
+	})
+}
+
+// Test_Store_getSessionID_ReportsWinnerForWriteBack pins that the extractor
+// reported is the one that actually supplied the ID, which is what decides
+// where setSession writes it back to.
+func Test_Store_getSessionID_ReportsWinnerForWriteBack(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	chain := extractors.Chain(
+		extractors.FromCookie("sid_cookie"),
+		extractors.FromHeader("X-Sid"),
+	)
+
+	t.Run("cookie wins", func(t *testing.T) {
+		t.Parallel()
+		store := NewStore(Config{Extractor: chain})
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+		defer app.ReleaseCtx(ctx)
+		ctx.Request().Header.SetCookie("sid_cookie", "from-cookie")
+
+		id, from := store.getSessionID(ctx)
+		require.Equal(t, "from-cookie", id)
+		require.Equal(t, extractors.SourceCookie, from.Source)
+		require.Equal(t, "sid_cookie", from.Key)
+	})
+
+	t.Run("header wins when the cookie is absent", func(t *testing.T) {
+		t.Parallel()
+		store := NewStore(Config{Extractor: chain})
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+		defer app.ReleaseCtx(ctx)
+		ctx.Request().Header.Set("X-Sid", "from-header")
+
+		id, from := store.getSessionID(ctx)
+		require.Equal(t, "from-header", id)
+		require.Equal(t, extractors.SourceHeader, from.Source)
+		require.Equal(t, "X-Sid", from.Key)
+	})
+
+	t.Run("nothing matches", func(t *testing.T) {
+		t.Parallel()
+		store := NewStore(Config{Extractor: chain})
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+		defer app.ReleaseCtx(ctx)
+
+		id, from := store.getSessionID(ctx)
+		require.Empty(t, id)
+		require.Equal(t, extractors.Result{}, from)
+	})
 }

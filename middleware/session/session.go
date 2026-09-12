@@ -19,14 +19,14 @@ import (
 // Session serializes access to its internal state with mutexes, but it is
 // request-scoped and must not be used after the request lifecycle ends.
 type Session struct {
-	ctx         fiber.Ctx            // fiber context
-	config      *Store               // store configuration
-	data        *data                // key value data
-	id          string               // session id
-	extractor   extractors.Extractor // extractor that supplied the session ID
-	idleTimeout time.Duration        // idleTimeout of this session
-	mu          sync.RWMutex         // Mutex to protect non-data fields
-	isFresh     bool                 // if new session
+	ctx         fiber.Ctx         // fiber context
+	config      *Store            // store configuration
+	data        *data             // key value data
+	id          string            // session id
+	extractor   extractors.Result // provenance of the extractor that supplied the session ID
+	idleTimeout time.Duration     // idleTimeout of this session
+	mu          sync.RWMutex      // Mutex to protect non-data fields
+	isFresh     bool              // if new session
 }
 
 type absExpirationKeyType int
@@ -96,7 +96,7 @@ func releaseSession(s *Session) {
 	s.idleTimeout = 0
 	s.ctx = nil
 	s.config = nil
-	s.extractor = extractors.Extractor{}
+	s.extractor = extractors.Result{}
 	if s.data != nil {
 		s.data.Reset()
 	}
@@ -448,7 +448,7 @@ func (s *Session) getExtractorInfo() []extractors.Extractor {
 		switch s.extractor.Source {
 		case extractors.SourceCookie, extractors.SourceHeader:
 			// The ID came from a writable sink; write it back to the same place.
-			return []extractors.Extractor{s.extractor}
+			return []extractors.Extractor{{Key: s.extractor.Key, Source: s.extractor.Source}}
 		default:
 			// The ID came from a read-only source (query/form/param/custom).
 			// For an existing session this would be an attacker-controlled ID,

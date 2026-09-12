@@ -14,6 +14,7 @@ const benchToken = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0In0.dozjgNryP4J3jVmNHl0
 var benchSink struct {
 	err    error
 	value  string
+	result Result
 	source Source
 	ok     bool
 }
@@ -34,11 +35,11 @@ func benchExtract(b *testing.B, e Extractor, c fiber.Ctx) {
 	}
 }
 
-func benchExtractWithSource(b *testing.B, e Extractor, c fiber.Ctx) {
+func benchResolve(b *testing.B, e Extractor, c fiber.Ctx) {
 	b.Helper()
 	b.ReportAllocs()
 	for b.Loop() {
-		benchSink.value, benchSink.source, benchSink.err = ExtractWithSource(e, c)
+		benchSink.result, benchSink.err = Resolve(e, c)
 	}
 }
 
@@ -54,13 +55,12 @@ func benchExtractFresh(b *testing.B, e Extractor, c fiber.Ctx) {
 	}
 }
 
-// benchExtractWithSourceFresh is benchExtractFresh for the source-aware entry
-// point.
-func benchExtractWithSourceFresh(b *testing.B, e Extractor, c fiber.Ctx) {
+// benchResolveFresh is benchExtractFresh for the source-aware entry point.
+func benchResolveFresh(b *testing.B, e Extractor, c fiber.Ctx) {
 	b.Helper()
 	b.ReportAllocs()
 	for b.Loop() {
-		benchSink.value, benchSink.source, benchSink.err = ExtractWithSource(e, c)
+		benchSink.result, benchSink.err = Resolve(e, c)
 		c.RequestCtx().ResetUserValues()
 	}
 }
@@ -260,44 +260,44 @@ func Benchmark_Extractor_Chain3_HitFirst_WithLocals(b *testing.B) {
 
 // --- source-aware -------------------------------------------------------------
 
-func Benchmark_Extractor_ExtractWithSource_Leaf(b *testing.B) {
+func Benchmark_Extractor_Resolve_Leaf(b *testing.B) {
 	c := newBenchCtx(b)
 	c.Request().Header.Set("X-API-Key", benchToken)
-	benchExtractWithSource(b, FromHeader("X-API-Key"), c)
+	benchResolve(b, FromHeader("X-API-Key"), c)
 }
 
-func Benchmark_Extractor_ExtractWithSource_Chain3_HitFirst(b *testing.B) {
+func Benchmark_Extractor_Resolve_Chain3_HitFirst(b *testing.B) {
 	c := newBenchCtx(b)
 	c.Request().Header.Set("X-API-Key", benchToken)
-	benchExtractWithSource(b, benchChain3(), c)
+	benchResolve(b, benchChain3(), c)
 }
 
-func Benchmark_Extractor_ExtractWithSource_Chain3_HitLast(b *testing.B) {
+func Benchmark_Extractor_Resolve_Chain3_HitLast(b *testing.B) {
 	c := newBenchCtx(b)
 	c.Request().SetRequestURI("/api?api_key=abc123")
-	benchExtractWithSource(b, benchChain3(), c)
+	benchResolve(b, benchChain3(), c)
 }
 
-func Benchmark_Extractor_ExtractWithSource_Chain3_Miss(b *testing.B) {
+func Benchmark_Extractor_Resolve_Chain3_Miss(b *testing.B) {
 	c := newBenchCtx(b)
-	benchExtractWithSource(b, benchChain3(), c)
+	benchResolve(b, benchChain3(), c)
 }
 
-func Benchmark_Extractor_ExtractWithSource_Nested_HitInner(b *testing.B) {
+func Benchmark_Extractor_Resolve_Nested_HitInner(b *testing.B) {
 	c := newBenchCtx(b)
 	c.Request().SetRequestURI("/api?api_key=abc123")
 	outer := Chain(FromHeader("X-API-Key"), Chain(FromCookie("api_key"), FromQuery("api_key")))
-	benchExtractWithSource(b, outer, c)
+	benchResolve(b, outer, c)
 }
 
-func Benchmark_Extractor_ExtractWithSource_BareChain_HitLast(b *testing.B) {
+func Benchmark_Extractor_Resolve_BareChain_HitLast(b *testing.B) {
 	c := newBenchCtx(b)
 	c.Request().SetRequestURI("/api?api_key=abc123")
 	bare := Extractor{
 		Chain:  []Extractor{FromHeader("X-API-Key"), FromCookie("api_key"), FromQuery("api_key")},
 		Source: SourceHeader,
 	}
-	benchExtractWithSource(b, bare, c)
+	benchResolve(b, bare, c)
 }
 
 // --- fresh request -----------------------------------------------------------
@@ -320,10 +320,10 @@ func Benchmark_Extractor_Chain3_HitLast_FreshRequest(b *testing.B) {
 	benchExtractFresh(b, benchChain3(), c)
 }
 
-func Benchmark_Extractor_ExtractWithSource_Chain3_HitFirst_FreshRequest(b *testing.B) {
+func Benchmark_Extractor_Resolve_Chain3_HitFirst_FreshRequest(b *testing.B) {
 	c := newBenchCtx(b)
 	c.Request().Header.Set("X-API-Key", benchToken)
-	benchExtractWithSourceFresh(b, benchChain3(), c)
+	benchResolveFresh(b, benchChain3(), c)
 }
 
 // --- token68 ------------------------------------------------------------------

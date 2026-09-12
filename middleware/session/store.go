@@ -127,16 +127,18 @@ func (s *Store) getSession(c fiber.Ctx) (*Session, error) {
 	var rawData []byte
 	var err error
 
+	var selectedExtractor extractors.Result
 	id, ok := c.Locals(sessionIDContextKey).(string)
 	if !ok {
-		id = s.getSessionID(c)
-	}
-
-	// Recorded as a pointer into the Store's own extractor, so it is not
-	// boxed onto the heap per request.
-	var selectedExtractor extractors.Extractor
-	if stored, ok := c.Locals(sessionExtractorContextKey).(*extractors.Extractor); ok && stored != nil {
-		selectedExtractor = *stored
+		id, selectedExtractor = s.getSessionID(c)
+		if id != "" {
+			// Kept for a second getSession on the same request: that call
+			// takes the cached-ID path above and would otherwise lose the
+			// provenance needed to write the ID back to its own sink.
+			ctxlocal.Set(c, sessionExtractorContextKey, selectedExtractor)
+		}
+	} else if stored, found := c.Locals(sessionExtractorContextKey).(extractors.Result); found {
+		selectedExtractor = stored
 	}
 
 	isFresh := false // Session is not fresh initially; only set to true if we generate a new ID
@@ -197,50 +199,32 @@ func (s *Store) getSession(c fiber.Ctx) (*Session, error) {
 	return sess, nil
 }
 
-// getSessionID returns the session ID using the configured extractor.
-// The extractor is provided by the shared extractors package.
+// getSessionID returns the session ID using the configured extractor, together
+// with the provenance of the extractor that supplied it.
 //
 // Parameters:
 //   - c: The Fiber context.
 //
 // Returns:
-//   - string: The session ID.
+//   - string: The session ID, empty when nothing was extracted.
+//   - extractors.Result: which extractor supplied it, zero when none did.
 //
 // Usage:
 //
-//	id := store.getSessionID(c)
-func (s *Store) getSessionID(c fiber.Ctx) string {
-	// By index, and recorded by address: an Extractor is 72 bytes, and what is
-	// pointed at belongs to the Store and outlives the request.
-	if len(s.Extractor.Chain) > 0 {
-		for i := range s.Extractor.Chain {
-			chainExtractor := &s.Extractor.Chain[i]
-			// Chain skips a child with no Extract, so this walk must too, or
-			// a zero-value child is a nil call.
-			if chainExtractor.Extract == nil {
-				continue
-			}
-			sessionID, err := chainExtractor.Extract(c)
-			if err == nil && sessionID != "" {
-				ctxlocal.Set(c, sessionExtractorContextKey, chainExtractor)
-				return sessionID
-			}
-		}
-		return ""
-	}
-
-	if s.Extractor.Extract == nil {
-		return ""
-	}
-	sessionID, err := s.Extractor.Extract(c)
+//	id, from := store.getSessionID(c)
+func (s *Store) getSessionID(c fiber.Ctx) (string, extractors.Result) {
+	// Resolved through the extractors package rather than by walking
+	// Extractor.Chain here: a chain-level Extract — a legacy override, or
+	// decoration that validates or normalizes the ID — must run, and walking
+	// the public Chain directly would skip it. Resolve also reports which
+	// extractor won, which setSession needs to write the ID back to the sink
+	// it came from.
+	res, err := extractors.Resolve(s.Extractor, c)
 	if err != nil {
-		// If extraction fails, return empty string to generate a new session
-		return ""
+		// No value, or extraction failed: an empty ID generates a new session.
+		return "", extractors.Result{}
 	}
-	if sessionID != "" {
-		ctxlocal.Set(c, sessionExtractorContextKey, &s.Extractor)
-	}
-	return sessionID
+	return res.Value, res
 }
 
 // Reset deletes all sessions from the storage.
