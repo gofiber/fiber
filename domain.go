@@ -9,6 +9,7 @@ import (
 	"reflect"
 	"slices"
 	"strings"
+	"sync/atomic"
 
 	"github.com/gofiber/utils/v2"
 	utilsstrings "github.com/gofiber/utils/v2/strings"
@@ -37,6 +38,7 @@ type domainCheckResult struct {
 
 // domainMatcher holds the parsed domain pattern for matching against request hostnames.
 type domainMatcher struct {
+	pattern    string   // parts joined back with ".", the canonical host form
 	parts      []string // domain parts split by "."
 	paramIdx   []int    // indices of parameter parts
 	paramNames []string // parameter names (without ":")
@@ -130,6 +132,7 @@ func parseDomainPattern(pattern string) domainMatcher {
 			pattern, len(m.paramNames), maxParams))
 	}
 
+	m.pattern = strings.Join(m.parts, ".")
 	return m
 }
 
@@ -264,6 +267,14 @@ type domainRouter struct {
 	app     *App
 	group   *Group // non-nil when created from a Group
 	matcher domainMatcher
+
+	lastRegID uint64 // Most recent registration, targeted by the doc helpers. Accessed atomically.
+}
+
+// pattern returns the canonical domain form, which identifies the domain on
+// routes so same-path routes on different domains are never merged.
+func (d *domainRouter) pattern() string {
+	return d.matcher.pattern
 }
 
 // Verify domainRouter implements Router at compile time.
@@ -382,7 +393,7 @@ func (d *domainRouter) Use(args ...any) Router {
 		}
 
 		wrapped := d.wrapHandlers(handlers)
-		d.app.register([]string{methodUse}, d.registerPath(prefix), d.registerGroup(), wrapped...)
+		atomic.StoreUint64(&d.lastRegID, d.app.register([]string{methodUse}, d.registerPath(prefix), d.registerGroup(), d.pattern(), wrapped...))
 	}
 
 	// Mark the underlying group so Name() can distinguish between
@@ -450,7 +461,7 @@ func (d *domainRouter) mount(prefix string, subApp *App) Router {
 	//
 	// The routes marked while cloning are passed over, and the marks travel on
 	// to the app this one is mounted on, so it withholds them there as well.
-	wrapperApp.ensureAutoHeadRoutes()
+	wrapperApp.fireOnRouteHooks(wrapperApp.ensureAutoHeadRoutes())
 
 	// Register the sub-app, and every app it has mounted, as domain mounts of
 	// the parent. They are kept out of appList so that their ErrorHandler and
@@ -500,7 +511,7 @@ func (d *domainRouter) mount(prefix string, subApp *App) Router {
 	mountGroup := &Group{Prefix: mountPath, app: wrapperApp}
 
 	// Register the mount point - the routes will be expanded during startup
-	d.app.register([]string{methodUse}, mountPath, mountGroup)
+	atomic.StoreUint64(&d.lastRegID, d.app.register([]string{methodUse}, mountPath, mountGroup, d.pattern()))
 
 	// Execute onMount hooks
 	if err := subApp.hooks.executeOnMountHooks(d.app); err != nil {
@@ -739,7 +750,7 @@ func (d *domainRouter) Query(path string, handler any, handlers ...any) Router {
 func (d *domainRouter) Add(methods []string, path string, handler any, handlers ...any) Router {
 	converted := collectHandlers("domain", append([]any{handler}, handlers...)...)
 	wrapped := d.wrapHandlers(converted)
-	d.app.register(methods, d.registerPath(path), d.registerGroup(), wrapped...)
+	atomic.StoreUint64(&d.lastRegID, d.app.register(methods, d.registerPath(path), d.registerGroup(), d.pattern(), wrapped...))
 
 	// Mark the underlying group so Name() can distinguish between
 	// group-name-prefix calls (before routes) and route-name calls (after routes).
@@ -761,10 +772,13 @@ func (d *domainRouter) All(path string, handler any, handlers ...any) Router {
 func (d *domainRouter) Group(prefix string, handlers ...any) Router {
 	fullPrefix := d.registerPath(prefix)
 
+	// The middleware belongs to the new router; writing it to this one would
+	// retarget its later doc helpers at the Use route.
+	var regID uint64
 	if len(handlers) > 0 {
 		converted := collectHandlers("domain", handlers...)
 		wrapped := d.wrapHandlers(converted)
-		d.app.register([]string{methodUse}, fullPrefix, d.registerGroup(), wrapped...)
+		regID = d.app.register([]string{methodUse}, fullPrefix, d.registerGroup(), d.pattern(), wrapped...)
 	}
 
 	// Create a new group on the app
@@ -774,16 +788,20 @@ func (d *domainRouter) Group(prefix string, handlers ...any) Router {
 	}
 
 	return &domainRouter{
-		app:     d.app,
-		group:   newGrp,
-		matcher: d.matcher,
+		app:       d.app,
+		group:     newGrp,
+		matcher:   d.matcher,
+		lastRegID: regID,
 	}
 }
 
 // RouteChain creates a Registering instance for the domain router.
 func (d *domainRouter) RouteChain(path string) Register {
-	return &domainRegistering{
-		domain: d,
+	return &Registering{
+		app:    d.app,
+		group:  d.registerGroup(),
+		wrap:   d.wrapHandlers,
+		domain: d.pattern(),
 		path:   d.registerPath(path),
 	}
 }
@@ -809,11 +827,13 @@ func (d *domainRouter) Route(prefix string, fn func(router Router), name ...stri
 // When the domain router was created from a Group, this delegates to the
 // group's Name method so that group name prefixes are applied correctly.
 func (d *domainRouter) Name(name string) Router {
-	if d.group != nil {
+	// Before the first route this sets the group's name prefix; afterwards it
+	// names this router's own latest registration, like the other helpers.
+	if d.group != nil && !d.group.hasAnyRoute {
 		d.group.Name(name)
-	} else {
-		d.app.Name(name)
+		return d
 	}
+	d.app.applyNameToRegistration(atomic.LoadUint64(&d.lastRegID), name)
 	return d
 }
 
@@ -827,75 +847,135 @@ func (d *domainRouter) Domain(host string) Router {
 	}
 }
 
-// domainRegistering provides route registration helpers for a specific path
-// on a domain router, implementing the [Register] interface.
-type domainRegistering struct {
-	domain *domainRouter
-	path   string
+// Summary assigns a short summary to the most recently added route.
+func (d *domainRouter) Summary(sum string) Router {
+	d.app.applyToRegistration(atomic.LoadUint64(&d.lastRegID), docSetSummary(sum))
+	return d
 }
 
-// Verify domainRegistering implements Register at compile time.
-var _ Register = (*domainRegistering)(nil)
-
-func (r *domainRegistering) All(handler any, handlers ...any) Register {
-	converted := collectHandlers("domain", append([]any{handler}, handlers...)...)
-	wrapped := r.domain.wrapHandlers(converted)
-	r.domain.app.register([]string{methodUse}, r.path, r.domain.registerGroup(), wrapped...)
-
-	return r
+// Description assigns a description to the most recently added route.
+func (d *domainRouter) Description(desc string) Router {
+	d.app.applyToRegistration(atomic.LoadUint64(&d.lastRegID), docSetDescription(desc))
+	return d
 }
 
-func (r *domainRegistering) Get(handler any, handlers ...any) Register {
-	return r.Add([]string{MethodGet}, handler, handlers...)
+// Consumes assigns a request media type to the most recently added route.
+func (d *domainRouter) Consumes(typ string) Router {
+	d.app.applyToRegistration(atomic.LoadUint64(&d.lastRegID), docSetConsumes(typ))
+	return d
 }
 
-func (r *domainRegistering) Head(handler any, handlers ...any) Register {
-	return r.Add([]string{MethodHead}, handler, handlers...)
+// Produces assigns a response media type to the most recently added route.
+func (d *domainRouter) Produces(typ string) Router {
+	d.app.applyToRegistration(atomic.LoadUint64(&d.lastRegID), docSetProduces(typ))
+	return d
 }
 
-func (r *domainRegistering) Post(handler any, handlers ...any) Register {
-	return r.Add([]string{MethodPost}, handler, handlers...)
+// RequestBody documents the request payload for the most recently added route.
+func (d *domainRouter) RequestBody(description string, required bool, mediaTypes ...string) Router {
+	return d.RequestBodyWithExample(description, required, nil, "", nil, nil, mediaTypes...)
 }
 
-func (r *domainRegistering) Put(handler any, handlers ...any) Register {
-	return r.Add([]string{MethodPut}, handler, handlers...)
+// RequestBodyWithExample documents the request payload for the most recently added route with schema references and examples.
+func (d *domainRouter) RequestBodyWithExample(description string, required bool, schema map[string]any, schemaRef string, example any, examples map[string]any, mediaTypes ...string) Router {
+	d.app.applyToRegistration(atomic.LoadUint64(&d.lastRegID), docRequestBodyWithExample(description, required, schema, schemaRef, example, examples, mediaTypes...))
+	return d
 }
 
-func (r *domainRegistering) Delete(handler any, handlers ...any) Register {
-	return r.Add([]string{MethodDelete}, handler, handlers...)
+// Parameter documents an input parameter for the most recently added route.
+func (d *domainRouter) Parameter(name, in string, required bool, schema map[string]any, description string) Router {
+	return d.AddParameter(RouteParameter{Name: name, In: in, Required: required, Schema: schema, Description: description})
 }
 
-func (r *domainRegistering) Connect(handler any, handlers ...any) Register {
-	return r.Add([]string{MethodConnect}, handler, handlers...)
+// ParameterWithExample documents an input parameter for the most recently added route with schema references and examples.
+func (d *domainRouter) ParameterWithExample(name, in string, required bool, schema map[string]any, schemaRef, description string, example any, examples map[string]any) Router {
+	return d.AddParameter(RouteParameter{
+		Name:        name,
+		In:          in,
+		Required:    required,
+		Schema:      schema,
+		SchemaRef:   schemaRef,
+		Description: description,
+		Example:     example,
+		Examples:    examples,
+	})
 }
 
-func (r *domainRegistering) Options(handler any, handlers ...any) Register {
-	return r.Add([]string{MethodOptions}, handler, handlers...)
+// Response documents an HTTP response for the most recently added route.
+func (d *domainRouter) Response(status int, description string, mediaTypes ...string) Router {
+	return d.ResponseWithExample(status, description, nil, "", nil, nil, mediaTypes...)
 }
 
-func (r *domainRegistering) Trace(handler any, handlers ...any) Register {
-	return r.Add([]string{MethodTrace}, handler, handlers...)
+// ResponseWithExample documents an HTTP response for the most recently added route with schema references and examples.
+func (d *domainRouter) ResponseWithExample(status int, description string, schema map[string]any, schemaRef string, example any, examples map[string]any, mediaTypes ...string) Router {
+	d.app.applyToRegistration(atomic.LoadUint64(&d.lastRegID), docAddResponse(status, description, schema, schemaRef, example, examples, mediaTypes...))
+	return d
 }
 
-func (r *domainRegistering) Patch(handler any, handlers ...any) Register {
-	return r.Add([]string{MethodPatch}, handler, handlers...)
+// Tags assigns tags to the most recently added route.
+func (d *domainRouter) Tags(tags ...string) Router {
+	d.app.applyToRegistration(atomic.LoadUint64(&d.lastRegID), docSetTags(tags...))
+	return d
 }
 
-func (r *domainRegistering) Query(handler any, handlers ...any) Register {
-	return r.Add([]string{MethodQuery}, handler, handlers...)
+// Deprecated marks the most recently added route as deprecated.
+func (d *domainRouter) Deprecated() Router {
+	d.app.applyToRegistration(atomic.LoadUint64(&d.lastRegID), docSetDeprecated())
+	return d
 }
 
-func (r *domainRegistering) Add(methods []string, handler any, handlers ...any) Register {
-	converted := collectHandlers("domain", append([]any{handler}, handlers...)...)
-	wrapped := r.domain.wrapHandlers(converted)
-	r.domain.app.register(methods, r.path, r.domain.registerGroup(), wrapped...)
-
-	return r
+// Security sets the OpenAPI security requirements for the most recently added route.
+func (d *domainRouter) Security(requirements ...map[string][]string) Router {
+	d.app.applyToRegistration(atomic.LoadUint64(&d.lastRegID), docSetSecurity(requirements...))
+	return d
 }
 
-func (r *domainRegistering) RouteChain(path string) Register {
-	return &domainRegistering{
-		domain: r.domain,
-		path:   getGroupPath(r.path, path),
-	}
+// Hidden excludes the most recently added route from the generated specification.
+func (d *domainRouter) Hidden() Router {
+	d.app.applyToRegistration(atomic.LoadUint64(&d.lastRegID), docSetHidden())
+	return d
+}
+
+// ResponseHeader documents a response header for the most recently added route.
+func (d *domainRouter) ResponseHeader(status int, name, description string, schema map[string]any) Router {
+	d.app.applyToRegistration(atomic.LoadUint64(&d.lastRegID), docResponseHeader(status, name, description, schema))
+	return d
+}
+
+// AddParameter documents an input parameter using the full RouteParameter.
+//
+//nolint:gocritic // hugeParam: by-value keeps the chainable route-helper API ergonomic.
+func (d *domainRouter) AddParameter(param RouteParameter) Router {
+	d.app.applyToRegistration(atomic.LoadUint64(&d.lastRegID), docAddParameter(param))
+	return d
+}
+
+// OperationExternalDocs sets the externalDocs of the most recently added route.
+func (d *domainRouter) OperationExternalDocs(description, url string) Router {
+	d.app.applyToRegistration(atomic.LoadUint64(&d.lastRegID), docOperationExternalDocs(description, url))
+	return d
+}
+
+// RequestBodyContent documents a per-media-type request body on the latest route.
+func (d *domainRouter) RequestBodyContent(description string, required bool, content map[string]RouteMediaType) Router {
+	d.app.applyToRegistration(atomic.LoadUint64(&d.lastRegID), docRequestBodyContent(description, required, content))
+	return d
+}
+
+// ResponseContent documents a per-media-type response on the latest route.
+func (d *domainRouter) ResponseContent(status int, description string, content map[string]RouteMediaType) Router {
+	d.app.applyToRegistration(atomic.LoadUint64(&d.lastRegID), docResponseContent(status, description, content))
+	return d
+}
+
+// ResponseLink documents a response link on the most recently added route.
+func (d *domainRouter) ResponseLink(status int, name string, link map[string]any) Router {
+	d.app.applyToRegistration(atomic.LoadUint64(&d.lastRegID), docResponseLink(status, name, link))
+	return d
+}
+
+// OperationExtension merges arbitrary operation-object fields on the latest route.
+func (d *domainRouter) OperationExtension(fields map[string]any) Router {
+	d.app.applyToRegistration(atomic.LoadUint64(&d.lastRegID), docOperationExtension(fields))
+	return d
 }

@@ -1025,6 +1025,7 @@ func (app *App) RemoveRouteByName(name string, methods ...string)
 
 This method removes a route by function having `*Route` parameter.
 If no methods are specified, the route will be removed for all HTTP methods defined in the app. To limit removal to specific methods, provide them as additional arguments.
+The matcher receives a copy of each route, so it may call other `App` methods, and any writes to the copy are discarded.
 
 ```go title="Signature"
 func (app *App) RemoveRouteFunc(matchFunc func(r *Route) bool, methods ...string)
