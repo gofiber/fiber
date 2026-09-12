@@ -190,6 +190,15 @@ func chainStateFor(c fiber.Ctx) *chainState {
 // Close returns the state to the pool. fasthttp calls it on every
 // request-local io.Closer when it resets the request; callers should not.
 func (s *chainState) Close() error {
+	s.reset()
+	chainStatePool.Put(s)
+	return nil
+}
+
+// reset returns the state to the shape a fresh one has. Split from Close so it
+// can be tested without handing the state to the pool, where another request
+// may already own it.
+func (s *chainState) reset() {
 	// Cleared to the buffer's capacity, not its length: leave() reslices, so
 	// entries past the end still hold guards, and a retained one keeps a
 	// chain's Extractor array and whatever its closures captured alive for as
@@ -198,8 +207,6 @@ func (s *chainState) Close() error {
 	// Whole-struct, so a field added later cannot leak one request's state
 	// into the next. The buffer survives: the literal is evaluated first.
 	*s = chainState{active: s.active[:0]}
-	chainStatePool.Put(s)
-	return nil
 }
 
 // enter marks a chain as executing, or reports false if it already is: a

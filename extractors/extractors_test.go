@@ -2404,7 +2404,9 @@ func Test_ChainState_CloseClearsGuards(t *testing.T) {
 	buffer := st.active[:cap(st.active)]
 	require.NotNil(t, buffer[0], "released guards are still in the buffer")
 
-	require.NoError(t, st.Close())
+	// reset rather than Close: Close hands the state to the pool, where another
+	// request may take it and write the very buffer this reads.
+	st.reset()
 	for i, guard := range buffer {
 		require.Nil(t, guard, "guard %d must not outlive the request", i)
 	}
