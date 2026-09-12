@@ -574,6 +574,14 @@ func main() {
 
 </details>
 
+:::note
+`Route.URL` automatically percent-encodes parameter values with URL
+path-segment rules. Greedy parameters (`*` and `+`) preserve `/` inside the
+matched path tail; delimiters such as `?` and `#` remain parameter data instead
+of restructuring the generated URL. [`GetRouteURL`](./ctx.md#getrouteurl) and
+[`Redirect().Route`](./redirect.md#route) apply the same encoding.
+:::
+
 ### GetRoutes
 
 This method retrieves all routes.

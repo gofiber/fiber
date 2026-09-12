@@ -2553,6 +2553,30 @@ func Test_Route_URL(t *testing.T) {
 		require.Equal(t, "/23456789/sms/send", url)
 	})
 
+	t.Run("wildcard parameters preserve slashes", func(t *testing.T) {
+		t.Parallel()
+		app := New()
+		app.Get("/files/*", func(c Ctx) error {
+			return c.SendString(c.Params("*"))
+		}).Name("Files")
+
+		route := app.GetRoute("Files")
+		url, err := route.URL(Map{"*": "docs/index.html"})
+		require.NoError(t, err)
+		require.Equal(t, "/files/docs/index.html", url)
+
+		resp, err := app.Test(httptest.NewRequest(MethodGet, url, http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, StatusOK, resp.StatusCode)
+		defer func() {
+			require.NoError(t, resp.Body.Close())
+		}()
+
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		require.Equal(t, "docs/index.html", string(body))
+	})
+
 	t.Run("plus parameters prefer plus fallback", func(t *testing.T) {
 		t.Parallel()
 		app := New()
@@ -2700,6 +2724,21 @@ func Test_Route_URL(t *testing.T) {
 		url, err := route.URL(Map{"userId": "user123", "postId": "post456"})
 		require.NoError(t, err)
 		require.Equal(t, "/api/v1/users/user123/posts/post456/comments", url)
+	})
+
+	t.Run("parameter values are path escaped", func(t *testing.T) {
+		t.Parallel()
+		app := New()
+		app.Get("/value/:value", emptyHandler).Name("Value")
+
+		const value = "a/b?c#d% e"
+		location, err := app.GetRoute("Value").URL(Map{"value": value})
+		require.NoError(t, err)
+		require.Equal(t, "/value/a%2Fb%3Fc%23d%25%20e", location)
+
+		decoded, err := neturl.PathUnescape(strings.TrimPrefix(location, "/value/"))
+		require.NoError(t, err)
+		require.Equal(t, value, decoded)
 	})
 }
 
@@ -4489,7 +4528,7 @@ func Test_Route_URL_RefusesUnrepresentableRoute(t *testing.T) {
 		require.Empty(t, url, name)
 	}
 
-	// An ordinary route still composes, and a value cannot open an authority.
+	// A wildcard route still composes, and a value cannot open an authority.
 	url, err := app.GetRoute("wild").URL(Map{"*": "/evil.com"})
 	require.NoError(t, err)
 	require.Equal(t, "/evil.com", url)
