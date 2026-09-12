@@ -245,6 +245,10 @@ func (s *chainState) leaveCapture(win Source, hasWin bool) {
 	s.win, s.hasWin = win, hasWin
 }
 
+// extractChainWithSource walks e.Chain in order and returns the first non-empty
+// value with the source that produced it. A chain that re-enters itself fails with
+// ErrChainCycle. If nothing matched, the last error seen wins over ErrNotFound, so
+// the caller learns why the chain failed rather than only that it did.
 func extractChainWithSource(e *Extractor, c fiber.Ctx, st *chainState) (string, Source, error) {
 	if !st.enter(chainGuard(e.Chain)) {
 		return "", e.Source, ErrChainCycle
