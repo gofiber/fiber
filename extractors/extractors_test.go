@@ -2217,3 +2217,137 @@ func Test_isValidToken68_MatchesReference(t *testing.T) {
 		}
 	})
 }
+
+// Test_ExtractWithSource_EmptyValue covers an Extract that succeeds and hands
+// back nothing, which is a miss rather than a value.
+func Test_ExtractWithSource_EmptyValue(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+	t.Cleanup(func() { app.ReleaseCtx(ctx) })
+
+	v, src, err := ExtractWithSource(Extractor{
+		Extract: func(fiber.Ctx) (string, error) { return "", nil },
+		Source:  SourceForm,
+		Key:     "empty",
+	}, ctx)
+	require.Empty(t, v)
+	require.Equal(t, SourceForm, src, "a miss reports the declared source")
+	require.ErrorIs(t, err, ErrNotFound)
+}
+
+// Test_ExtractWithSource_BareChain_EmptyChildren covers a walked chain whose
+// children have nothing to run: each is stepped over, and a chain that ran
+// nothing reports ErrNotFound rather than a child's error.
+func Test_ExtractWithSource_BareChain_EmptyChildren(t *testing.T) {
+	t.Parallel()
+
+	// A context each: a walk writes the chain state into the one it is given.
+	newCtx := func(t *testing.T) fiber.Ctx {
+		t.Helper()
+
+		app := fiber.New()
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+		t.Cleanup(func() { app.ReleaseCtx(ctx) })
+		ctx.Request().Header.Set("X-Token", "from-header")
+		return ctx
+	}
+
+	t.Run("every child is skipped", func(t *testing.T) {
+		t.Parallel()
+
+		v, src, err := ExtractWithSource(Extractor{
+			Chain:  []Extractor{{}, {Key: "no extract, no chain"}},
+			Source: SourceCookie,
+		}, newCtx(t))
+		require.Empty(t, v)
+		require.Equal(t, SourceCookie, src)
+		require.ErrorIs(t, err, ErrNotFound)
+	})
+
+	t.Run("a skipped child does not stop the walk", func(t *testing.T) {
+		t.Parallel()
+
+		v, src, err := ExtractWithSource(Extractor{
+			Chain:  []Extractor{{}, FromHeader("X-Token")},
+			Source: SourceCookie,
+		}, newCtx(t))
+		require.NoError(t, err)
+		require.Equal(t, "from-header", v)
+		require.Equal(t, SourceHeader, src)
+	})
+}
+
+// Test_Extractor_FromAuthHeader_SchemeWithoutCredential covers a header that is
+// the scheme and its separating space and nothing else, which is a scheme
+// naming no credential rather than a credential that happens to be empty.
+func Test_Extractor_FromAuthHeader_SchemeWithoutCredential(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+	t.Cleanup(func() { app.ReleaseCtx(ctx) })
+	// Set rather than read from the wire: parsing strips the trailing space,
+	// so only a field written in process carries one. Middleware rewriting
+	// Authorization writes this shape.
+	ctx.Request().Header.Set(fiber.HeaderAuthorization, "Bearer ")
+	require.Equal(t, "Bearer ", string(ctx.Request().Header.Peek(fiber.HeaderAuthorization)))
+
+	value, err := FromAuthHeader("Bearer").Extract(ctx)
+	require.Empty(t, value)
+	require.ErrorIs(t, err, ErrNotFound)
+}
+
+// Test_FromParam_RefusesUndecodableValue covers a parameter the router left
+// raw and that percent-decoding cannot make sense of.
+func Test_FromParam_RefusesUndecodableValue(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	extractor := FromParam("id")
+	ran := false
+	app.Get("/users/:id", func(c fiber.Ctx) error {
+		ran = true
+		value, err := extractor.Extract(c)
+		require.Empty(t, value)
+		require.ErrorIs(t, err, ErrNotFound)
+		return c.SendStatus(fiber.StatusNoContent)
+	})
+
+	// Driven through the handler rather than app.Test, whose URL parsing
+	// refuses the escape before the router ever sees it.
+	fctx := &fasthttp.RequestCtx{}
+	fctx.Request.Header.SetMethod(fiber.MethodGet)
+	fctx.Request.SetRequestURI("/users/%zz")
+	app.Handler()(fctx)
+
+	require.Equal(t, fiber.StatusNoContent, fctx.Response.StatusCode())
+	require.True(t, ran, "the route must have matched")
+}
+
+// Test_ChainState_PoolHoldsSomethingElse covers the guard on what the pool
+// hands back. sync.Pool is typed as any, so a state is rebuilt rather than
+// trusted; this drives that branch by putting sentinels in front of it.
+//
+// Not parallel: it borrows the shared pool, and it takes back out everything
+// it puts in.
+func Test_ChainState_PoolHoldsSomethingElse(t *testing.T) {
+	app := fiber.New()
+
+	const sentinels = 8
+	for range sentinels {
+		// Pointer-like, so parking it in the pool does not allocate.
+		chainStatePool.Put(new(struct{}))
+	}
+
+	for range sentinels {
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+		st := chainStateFor(ctx)
+		require.NotNil(t, st, "a usable state whatever the pool held")
+		require.Empty(t, st.active)
+		require.Zero(t, st.depth)
+		require.False(t, st.hasWin)
+		app.ReleaseCtx(ctx)
+	}
+}

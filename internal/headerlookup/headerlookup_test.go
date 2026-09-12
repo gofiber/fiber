@@ -129,10 +129,12 @@ func Test_Combined(t *testing.T) {
 	t.Run("absent and empty both read as nothing", func(t *testing.T) {
 		t.Parallel()
 
-		c := newCtx(t)
-		require.Empty(t, Combined(c, "X-API-Key"))
-		c.Request().Header.Set("X-API-Key", "")
-		require.Empty(t, Combined(c, "X-API-Key"))
+		for _, normalize := range []bool{true, false} {
+			c := newCtx(t, fiber.Config{DisableHeaderNormalizing: !normalize})
+			require.Empty(t, Combined(c, "X-API-Key"), "normalize=%v", normalize)
+			c.Request().Header.Set("X-API-Key", "")
+			require.Empty(t, Combined(c, "X-API-Key"), "normalize=%v", normalize)
+		}
 	})
 
 	t.Run("repeated lines are one value", func(t *testing.T) {

@@ -243,3 +243,18 @@ func Test_Store_getSessionID_SkipsChildrenWithoutExtract(t *testing.T) {
 
 	require.Equal(t, "abc123", store.getSessionID(ctx))
 }
+
+// Test_Store_getSessionID_WithoutExtractor covers a Store built directly rather
+// than through NewStore, which would have replaced the zero-value extractor
+// with the default. There is nothing to run, so there is no session ID.
+func Test_Store_getSessionID_WithoutExtractor(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(ctx)
+	ctx.Request().Header.SetCookie("session_id", "abc123")
+
+	store := &Store{}
+	require.Empty(t, store.getSessionID(ctx))
+}
