@@ -147,9 +147,10 @@ func Test_Redirect_Route_ParamCannotMoveTheQuery(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name  string
-		param string
-		want  string
+		name    string
+		param   string
+		want    string
+		wantErr bool
 	}{
 		{
 			name:  "plain",
@@ -157,23 +158,50 @@ func Test_Redirect_Route_ParamCannotMoveTheQuery(t *testing.T) {
 			want:  "/user/fiber?q=1",
 		},
 		{
-			// A second "?" reads as one query string, so appending it folded
-			// q=1 into the earlier parameter's value instead of adding it.
-			name:  "param opens a query",
+			// A "?" is path-escaped, so the query Fiber appends stays the
+			// only query rather than being folded into the parameter value.
+			name:  "param cannot open a query",
 			param: "a?b=2",
-			want:  "/user/a?b=2&q=1",
+			want:  "/user/a%3Fb=2?q=1",
 		},
 		{
-			// Everything after "#" is a fragment, which the client never
-			// sends, so appending the query there dropped it outright.
-			name:  "param opens a fragment",
+			// Everything after "#" used to be a fragment the appended query
+			// could never reach; the escaped value keeps it plain data.
+			name:  "param cannot open a fragment",
 			param: "a#b",
-			want:  "/user/a?q=1#b",
+			want:  "/user/a%23b?q=1",
 		},
 		{
-			name:  "param opens both",
+			name:  "param cannot open a query and a fragment",
 			param: "a?b=2#c",
-			want:  "/user/a?b=2&q=1#c",
+			want:  "/user/a%3Fb=2%23c?q=1",
+		},
+		{
+			// A plain parameter is one segment: a slash in the value must
+			// not turn it into extra route segments.
+			name:  "param cannot add a segment",
+			param: "a/b",
+			want:  "/user/a%2Fb?q=1",
+		},
+		{
+			// A percent is data, not an escape: the value is escaped again
+			// rather than letting "%" pass and shape the path.
+			name:  "param percent sign",
+			param: "50%",
+			want:  "/user/50%25?q=1",
+		},
+		{
+			// "." and ".." are special path segments in the WHATWG URL
+			// Standard: the client's parser shortens them even when encoded,
+			// so the composed URL would silently target another route.
+			name:    "param cannot be a dot",
+			param:   ".",
+			wantErr: true,
+		},
+		{
+			name:    "param cannot be a double dot",
+			param:   "..",
+			wantErr: true,
 		},
 	}
 
@@ -190,6 +218,10 @@ func Test_Redirect_Route_ParamCannotMoveTheQuery(t *testing.T) {
 				Params:  Map{"name": tc.param},
 				Queries: map[string]string{"q": "1"},
 			})
+			if tc.wantErr {
+				require.ErrorIs(t, err, ErrRouteNotRepresentable)
+				return
+			}
 			require.NoError(t, err)
 			require.Equal(t, tc.want, string(c.Response().Header.Peek(HeaderLocation)))
 		})
@@ -201,9 +233,10 @@ func Test_Redirect_Route_ParamCannotLeaveTheOrigin(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name  string
-		param string
-		want  string
+		name    string
+		param   string
+		want    string
+		wantErr bool
 	}{
 		{
 			name:  "plain",
@@ -223,30 +256,60 @@ func Test_Redirect_Route_ParamCannotLeaveTheOrigin(t *testing.T) {
 			want:  "/evil.com",
 		},
 		{
-			// The WHATWG URL parser folds a backslash to a slash here, so this
-			// reaches evil.com exactly as "//evil.com" does.
-			name:  "leading backslash",
+			// The WHATWG URL parser folds a backslash to a slash, so a raw
+			// value could walk it to "//evil.com".
+			name:  "leading backslash is escaped",
 			param: `\evil.com`,
-			want:  "/evil.com",
+			want:  "/%5Cevil.com",
 		},
 		{
 			name:  "mixed slash run",
 			param: `/\/evil.com`,
-			want:  "/evil.com",
+			want:  "/%5C/evil.com",
 		},
 		{
-			// Tab, LF and CR are removed before the URL is parsed, so a leading
-			// one hides the slash run that follows it.
+			// A tab is also a control byte a browser would silently drop,
+			// hiding the slash run that follows it; produced as data it cannot.
 			name:  "tab before the slash",
 			param: "\t/evil.com",
-			want:  "/evil.com",
+			want:  "/%09/evil.com",
 		},
 		{
-			// A scheme cannot start here — the route is rooted at "/" — so this
-			// stays the path segment the route asked for.
+			// A scheme cannot start here — the route is rooted at "/" — so
+			// this stays the path segment the route asked for ("." and "/"
+			// are pchar; the "?"-free path holds no structure).
 			name:  "absolute URL is a path segment",
 			param: "https://evil.com",
 			want:  "/https://evil.com",
+		},
+		{
+			// Greedy parameters keep their slashes, but not structure: a "?"
+			// in the value still cannot move the composed path into a query.
+			name:  "greedy value with a question mark",
+			param: "a?b",
+			want:  "/a%3Fb",
+		},
+		{
+			name:  "greedy value with a fragment",
+			param: "a#b",
+			want:  "/a%23b",
+		},
+		{
+			// Dot segments are also structure: the client's parser shortens
+			// them even when encoded, so they must not appear in any segment.
+			name:    "greedy interior dot segment",
+			param:   "a/../admin",
+			wantErr: true,
+		},
+		{
+			name:    "greedy leading dot segment",
+			param:   "../admin",
+			wantErr: true,
+		},
+		{
+			name:    "greedy single dot segment",
+			param:   "a/./b",
+			wantErr: true,
 		},
 	}
 
@@ -262,6 +325,17 @@ func Test_Redirect_Route_ParamCannotLeaveTheOrigin(t *testing.T) {
 			err := c.Redirect().Route("wildcard", RedirectConfig{
 				Params: Map{"*": tc.param},
 			})
+			if tc.wantErr {
+				require.ErrorIs(t, err, ErrRouteNotRepresentable)
+				// The same question asked the other two ways: a caller who
+				// puts either answer in a Location header or an href reaches
+				// the same place, so all three have to agree.
+				_, err = app.GetRoute("wildcard").URL(Map{"*": tc.param})
+				require.ErrorIs(t, err, ErrRouteNotRepresentable)
+				_, err = c.GetRouteURL("wildcard", Map{"*": tc.param})
+				require.ErrorIs(t, err, ErrRouteNotRepresentable)
+				return
+			}
 			require.NoError(t, err)
 			require.Equal(t, tc.want, string(c.Response().Header.Peek(HeaderLocation)))
 

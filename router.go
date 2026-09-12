@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"math/bits"
 	"slices"
+	"strings"
 	"sync/atomic"
 
 	"github.com/gofiber/fiber/v3/internal/urlnorm"
@@ -308,14 +309,95 @@ func buildRouteURL(route *Route, params Map) (string, error) {
 		}
 
 		if found {
-			_, err := buf.WriteString(utils.ToString(val))
-			if err != nil {
-				return "", fmt.Errorf("failed to write string: %w", err)
+			// A substituted parameter is user data, so it is escaped as a path
+			// segment: spliced in raw, a "?", "#" or "%" in the value would
+			// restructure the composed URL, and a "/" in a plain parameter would
+			// add route segments. Greedy parameters carry a multi-segment value,
+			// so their slashes are preserved.
+			mode := escapePathParamSegment
+			if segment.IsGreedy {
+				mode = escapePathParamGreedy
 			}
+			value := utils.ToString(val)
+			if !routeParamRepresentable(value, mode) {
+				return "", ErrRouteNotRepresentable
+			}
+			buf.B = appendEscapedPathParam(buf.B, value, mode)
 		}
 	}
 
 	return urlnorm.RootedPath(buf.String()), nil
+}
+
+// routeParamRepresentable reports whether a substituted parameter value keeps
+// the composed URL on the route it belongs to once the client parses it. "."
+// and ".." are special path segments in the WHATWG URL Standard: the parser
+// shortens them even when percent-encoded, because decoding runs first. A
+// plain ".." value would turn "/user/.." into "/", and a greedy "a/../admin"
+// into "/admin", so values carrying a dot-only segment cannot be represented
+// and must be rejected instead of silently retargeted.
+func routeParamRepresentable(value string, mode pathParamEscapeMode) bool {
+	if value == "." || value == ".." {
+		return false
+	}
+	if mode == escapePathParamSegment {
+		return true
+	}
+	for segment := range strings.SplitSeq(value, "/") {
+		if segment == "." || segment == ".." {
+			return false
+		}
+	}
+
+	return true
+}
+
+// pathParamEscapeMode selects the escape set a substituted route parameter
+// value is produced with.
+type pathParamEscapeMode uint8
+
+const (
+	// escapePathParamSegment escapes slashes: a plain parameter is a single
+	// path segment.
+	escapePathParamSegment pathParamEscapeMode = iota
+	// escapePathParamGreedy keeps slashes: a greedy parameter's value spans
+	// several segments.
+	escapePathParamGreedy
+)
+
+// appendEscapedPathParam appends src to dst with every byte that may not
+// appear raw in a URL path segment percent-encoded (RFC 3986 pchar).  A
+// parameter spliced into a composed URL is user data: keeping the value on
+// the route it belongs to means a "?", "#", "%", whitespace or control byte
+// can no longer restructure the URL, and neither can a "/" for ordinary
+// parameters.
+func appendEscapedPathParam(dst []byte, src string, mode pathParamEscapeMode) []byte {
+	const hexDigits = "0123456789ABCDEF"
+	for i := 0; i < len(src); i++ {
+		c := src[i]
+		switch {
+		case isPathParamByte(c):
+			dst = append(dst, c)
+		case mode == escapePathParamGreedy && c == '/':
+			dst = append(dst, c)
+		default:
+			dst = append(dst, '%', hexDigits[c>>4], hexDigits[c&0xf])
+		}
+	}
+
+	return dst
+}
+
+// isPathParamByte reports whether c may stay raw inside a substituted route
+// parameter: the RFC 3986 path-segment set (pchar), which never restructures
+// a URL.
+func isPathParamByte(c byte) bool {
+	switch c {
+	case '-', '_', '.', '~', '!', '$', '&', '\'', '(', ')', '*', '+', ',', ';', '=', ':', '@':
+		return true
+	}
+
+	return c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9'
 }
 
 // preferredGreedyParameters returns the generic greedy fallback lookup order
