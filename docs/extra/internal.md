@@ -115,8 +115,9 @@ When a request is processed, Fiber uses its pre‑computed route tree (the treeS
 
 1. Normalization: The URL is normalized (converted to lowercase, trailing slashes trimmed) to create a “detection path.”
 2. Tree Traversal: The route tree, grouped by common prefixes, is traversed based on the HTTP method.
-3. Matching: Constant segments are compared exactly, while parameter segments extract dynamic values.
-4. Constraint Validation: Extracted parameter values are validated against any defined constraints.
+3. Candidate Filtering: Before a route's segments are walked, cheap precomputed checks discard most candidates: the leading bytes of the path are compared against the route's first constant, the number of `/` bytes in the path is checked against the bounds the pattern allows, and for parametric routes the first constant segment that follows a parameter is compared at the `/` it has to start at.
+4. Matching: Constant segments are compared exactly, while parameter segments extract dynamic values.
+5. Constraint Validation: Extracted parameter values are validated against any defined constraints.
 
 ```mermaid
 flowchart TD
@@ -124,6 +125,7 @@ flowchart TD
     B["Normalize URL<br/>(lowercase, trim trailing slashes)"]
     C["Detection Path"]
     D["Traverse Route Tree<br/>(treeStack based on method)"]
+    D2["Filter Candidates<br/>(leading bytes, slash count, probe constant)"]
     E["Match Constant Segments"]
     F["Identify Parameter Segments<br/>(e.g., ':userId')"]
     G["Extract Parameter Values"]
@@ -133,7 +135,8 @@ flowchart TD
     A --> B
     B --> C
     C --> D
-    D --> E
+    D --> D2
+    D2 --> E
     E --> F
     F --> G
     G --> H
@@ -364,8 +367,8 @@ When performing redirections, Fiber can send flash messages or preserve old inpu
 
 1. Collecting Flash Data: When a redirect is initiated, developers can add flash messages via Redirect.With() or old input data via Redirect.WithInput().
 2. Serialization: The flash messages and input data are serialized (using a fast marshalling method) into a byte sequence.
-3. Setting a Cookie: The serialized data is stored in a special cookie (named fiber_flash) that will be sent to the client.
-4. Retrieval & Clearing: On the subsequent request, the flash data is read from the cookie, deserialized, and then cleared.
+3. Setting a Cookie: The serialized data is stored in a special cookie (named fiber_flash) that will be sent to the client. The cookie is set `HttpOnly`, so the payload stays out of `document.cookie`. It is `Secure` only when the request that produced it arrived over TLS: a redirect that starts on plain HTTP sets a cookie without that attribute, which the browser will send over HTTP as well. It is hex-encoded rather than encrypted or signed, so treat everything in it as visible to the client.
+4. Retrieval & Clearing: On the subsequent request, the flash data is read from the cookie, deserialized, and then cleared. The cookie is expired on every read, including when the stored value fails to decode, so a malformed payload is not re-parsed on later requests.
 
 ```mermaid
 flowchart TD

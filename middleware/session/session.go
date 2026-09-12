@@ -10,6 +10,7 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/extractors"
+	internalcookie "github.com/gofiber/fiber/v3/internal/cookie"
 	"github.com/gofiber/utils/v2"
 	"github.com/valyala/fasthttp"
 )
@@ -308,6 +309,10 @@ func (s *Session) ResetWithContext(ctx context.Context) error {
 	// canceled/failed delete leaves the session data intact.
 	if s.data != nil {
 		s.data.Reset()
+		// Reset wiped the absolute expiration, so the rotated session must be armed again.
+		if s.config != nil && s.config.AbsoluteTimeout > 0 {
+			s.setAbsExpiration(time.Now().Add(s.config.AbsoluteTimeout))
+		}
 	}
 	s.idleTimeout = 0
 
@@ -523,7 +528,7 @@ func (s *Session) delSession() {
 		switch ext.Source {
 		case extractors.SourceHeader:
 			s.ctx.Request().Header.Del(ext.Key)
-			s.ctx.Response().Header.Del(ext.Key)
+			s.ctx.Res().Del(ext.Key)
 		case extractors.SourceCookie:
 			s.ctx.Request().Header.DelCookie(ext.Key)
 			s.ctx.Response().Header.DelCookie(ext.Key)
@@ -547,22 +552,11 @@ func (s *Session) delSession() {
 
 // setCookieAttributes sets the cookie attributes based on the session config.
 func (s *Session) setCookieAttributes(fcookie *fasthttp.Cookie) {
-	// Set SameSite attribute
-	switch {
-	case utils.EqualFold(s.config.CookieSameSite, fiber.CookieSameSiteStrictMode):
-		fcookie.SetSameSite(fasthttp.CookieSameSiteStrictMode)
-	case utils.EqualFold(s.config.CookieSameSite, fiber.CookieSameSiteNoneMode):
-		fcookie.SetSameSite(fasthttp.CookieSameSiteNoneMode)
-	default:
-		fcookie.SetSameSite(fasthttp.CookieSameSiteLaxMode)
-	}
-
-	// The Secure attribute is required for SameSite=None
-	if fcookie.SameSite() == fasthttp.CookieSameSiteNoneMode {
-		fcookie.SetSecure(true)
-	} else {
-		fcookie.SetSecure(s.config.CookieSecure)
-	}
+	sameSite, _ := internalcookie.ParseSameSite(s.config.CookieSameSite)
+	fcookie.SetSameSite(sameSite.FastHTTPMode)
+	// The Secure attribute is required for SameSite=None; every other mode
+	// preserves the configured value.
+	fcookie.SetSecure(s.config.CookieSecure || sameSite.RequiresSecure)
 
 	fcookie.SetHTTPOnly(s.config.CookieHTTPOnly)
 }

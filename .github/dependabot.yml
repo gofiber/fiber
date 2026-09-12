@@ -11,6 +11,10 @@ updates:
     allow:
       # Allow both direct and indirect updates for all packages.
       - dependency-type: "all"
+    cooldown:
+      exclude:
+        - "github.com/gofiber/*"
+        - "github.com/valyala/fasthttp*"
     groups:
       fasthttp-modules:
           patterns:
@@ -29,7 +33,7 @@ updates:
               - "google.golang.org/**"
   - package-ecosystem: "github-actions"
     directory: "/"
-    schedule: 
+    schedule:
       interval: daily
-    labels: 
+    labels:
      - "🤖 Dependencies"

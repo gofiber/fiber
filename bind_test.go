@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
@@ -3308,4 +3309,61 @@ func Test_Bind_Form_ContentTypeNormalization(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, StatusOK, resp.StatusCode)
 	})
+}
+
+// ctxTypeBinder records the concrete context type handed to Parse.
+type ctxTypeBinder struct {
+	seen string
+}
+
+func (*ctxTypeBinder) Name() string {
+	return "ctxtype"
+}
+
+func (*ctxTypeBinder) MIMETypes() []string {
+	return []string{"application/x-ctxtype"}
+}
+
+func (b *ctxTypeBinder) Parse(c Ctx, _ any) error {
+	if _, ok := c.(*customCtx); ok {
+		b.seen = "custom"
+		return nil
+	}
+	b.seen = "default"
+	return nil
+}
+
+func Test_Bind_CustomBinder_CustomCtx(t *testing.T) {
+	t.Parallel()
+
+	app := NewWithCustomCtx(func(app *App) CustomCtx {
+		return &customCtx{
+			DefaultCtx: *NewDefaultCtx(app),
+		}
+	})
+	typeBinder := &ctxTypeBinder{}
+	app.RegisterCustomBinder(typeBinder)
+
+	app.Post("/", func(c Ctx) error {
+		var d struct {
+			Name string `json:"name"`
+		}
+		if err := c.Bind().Custom("ctxtype", &d); err != nil {
+			return err
+		}
+		viaCustom := typeBinder.seen
+		typeBinder.seen = ""
+		if err := c.Bind().Body(&d); err != nil {
+			return err
+		}
+		return c.SendString(viaCustom + "," + typeBinder.seen)
+	})
+
+	req := httptest.NewRequest(MethodPost, "/", strings.NewReader(`{"name":"john"}`))
+	req.Header.Set(HeaderContentType, "application/x-ctxtype")
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "custom,custom", string(body))
 }

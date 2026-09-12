@@ -1,12 +1,19 @@
 package extractors
 
 import (
+	"bufio"
 	"context"
+	"errors"
+	"fmt"
+	"io"
 	"net/http"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
 )
@@ -214,6 +221,123 @@ func Test_Extractor_Chain(t *testing.T) {
 		require.Empty(t, token)
 		require.ErrorIs(t, err, ErrNotFound)
 	})
+}
+
+// Test_Extractor_FromHeader_CombinesRepeatedLines covers a field carried on
+// several lines. FromHeader is given its name by the application, and a name it
+// is given may be a list field a peer may legally send twice, so the lines are
+// combined the way RFC 9110 §5.3 says a recipient may rather than refused as an
+// ambiguous single value.
+func Test_Extractor_FromHeader_CombinesRepeatedLines(t *testing.T) {
+	t.Parallel()
+
+	for _, normalize := range []bool{true, false} {
+		t.Run(fmt.Sprintf("normalize=%v", normalize), func(t *testing.T) {
+			t.Parallel()
+
+			app := fiber.New(fiber.Config{DisableHeaderNormalizing: !normalize})
+			ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+			defer app.ReleaseCtx(ctx)
+			if !normalize {
+				ctx.Request().Header.DisableNormalizing()
+			}
+
+			ctx.Request().Header.Add("Accept", "text/html")
+			// The second spelling is the one HTTP/2 and 3 put on the wire.
+			ctx.Request().Header.Add("accept", "application/json")
+
+			value, err := FromHeader("Accept").Extract(ctx)
+			require.NoError(t, err)
+			require.Equal(t, "text/html, application/json", value)
+		})
+	}
+}
+
+// Test_Extractor_FromHeader_CookieKeepsItsOwnSeparator covers FromHeader named
+// with Cookie, whose crumbs are joined with "; " (RFC 6265 §5.4) rather than
+// with the comma a list field takes.
+//
+// fasthttp keeps cookies in a store of their own that PeekAll enumerates one at
+// a time, so the generic join produced "a=1, b=2" for a request that said
+// "a=1; b=2" — a value no cookie parser downstream would read back.
+func Test_Extractor_FromHeader_CookieKeepsItsOwnSeparator(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(ctx)
+
+	// Read from the wire rather than Set: a request carrying Cookie twice, which
+	// is what an HTTP/1 gateway writes for the split field HTTP/2 permits. Only
+	// then does fasthttp hand the crumbs back one at a time.
+	raw := "GET / HTTP/1.1\r\nHost: example.com\r\nCookie: a=1\r\nCookie: b=2\r\n\r\n"
+	require.NoError(t, ctx.Request().Header.Read(bufio.NewReader(strings.NewReader(raw))))
+
+	value, err := FromHeader(fiber.HeaderCookie).Extract(ctx)
+	require.NoError(t, err)
+	require.Equal(t, "a=1; b=2", value)
+}
+
+// Test_Extractor_FromHeader_SingleLineIsUnchanged is the control for the test
+// above: one line is returned as it arrived, with no separator introduced.
+func Test_Extractor_FromHeader_SingleLineIsUnchanged(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(ctx)
+	ctx.Request().Header.Set("X-API-Key", "abc123")
+
+	value, err := FromHeader("X-API-Key").Extract(ctx)
+	require.NoError(t, err)
+	require.Equal(t, "abc123", value)
+}
+
+// Test_Extractor_FromAuthHeader_RepeatedLineIsNotACredential covers a message
+// carrying Authorization twice, which is what a middleware clearing the field
+// leaves behind when the client sent another spelling of it.
+//
+// Under DisableHeaderNormalizing a byte-exact Set writes the canonical name and
+// leaves the client's lower-case line — the spelling HTTP/2 and 3 put on the
+// wire — in place beside it. Reading either one lets whoever wrote the other
+// decide: the first line is the cleared value only where fasthttp happens to
+// store it first, and the first non-empty one is always the client's. Neither
+// is an answer, so no credential is extracted and the caller refuses.
+func Test_Extractor_FromAuthHeader_RepeatedLineIsNotACredential(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New(fiber.Config{DisableHeaderNormalizing: true})
+	extractor := FromAuthHeader("Bearer")
+
+	// Both orders fasthttp stores, depending on whether the client's line was
+	// already under the canonical name when the middleware cleared it.
+	for _, order := range [][2][2]string{
+		{{"authorization", "Bearer client"}, {"Authorization", ""}},
+		{{"Authorization", ""}, {"authorization", "Bearer client"}},
+	} {
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+		ctx.Request().Header.DisableNormalizing()
+		for _, line := range order {
+			ctx.Request().Header.Add(line[0], line[1])
+		}
+
+		token, err := extractor.Extract(ctx)
+		require.ErrorIs(t, err, ErrNotFound,
+			"a second Authorization line makes the credential ambiguous, whichever order it is stored in")
+		require.Empty(t, token)
+		app.ReleaseCtx(ctx)
+	}
+
+	// A single line is still extracted, so the assertions above cannot pass by
+	// refusing everything.
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(ctx)
+	ctx.Request().Header.DisableNormalizing()
+	ctx.Request().Header.Set("authorization", "Bearer client")
+
+	token, err := extractor.Extract(ctx)
+	require.NoError(t, err)
+	require.Equal(t, "client", token)
 }
 
 // go test -run Test_Extractor_FromAuthHeader_EdgeCases
@@ -1088,7 +1212,7 @@ func Test_isValidToken68(t *testing.T) {
 // go test -v -run=^$ -bench=Benchmark_isValidToken68 -benchmem -count=4
 func Benchmark_isValidToken68(b *testing.B) {
 	inputs := []string{
-		"eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0In0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9P", // JWT-like
+		benchToken,             // JWT-sized credential
 		"dXNlcjpwYXNzd29yZA==", // short base64 credential
 		"token@invalid",        // early reject
 	}
@@ -1100,4 +1224,1190 @@ func Benchmark_isValidToken68(b *testing.B) {
 		}
 	}
 	_ = got
+}
+
+// Test_FromHeader_IgnoresHeaderNameCase pins that a token is found under the
+// name it actually arrived as.
+//
+// Ctx.Get compares the stored key byte for byte, so under
+// DisableHeaderNormalizing a token sent under the lower-case name that HTTP/2
+// and HTTP/3 put on the wire was not found, and the request refused for
+// carrying no token when it carried one.
+func Test_FromHeader_IgnoresHeaderNameCase(t *testing.T) {
+	t.Parallel()
+
+	for _, normalize := range []bool{true, false} {
+		t.Run(fmt.Sprintf("normalize=%v", normalize), func(t *testing.T) {
+			t.Parallel()
+
+			for _, sent := range []string{"X-Csrf-Token", "x-csrf-token", "X-CSRF-TOKEN"} {
+				app := fiber.New(fiber.Config{DisableHeaderNormalizing: !normalize})
+				c := app.AcquireCtx(&fasthttp.RequestCtx{})
+				if !normalize {
+					c.Request().Header.DisableNormalizing()
+				}
+				c.Request().Header.Set(sent, "the-token")
+
+				got, err := FromHeader("X-Csrf-Token").Extract(c)
+				require.NoError(t, err, "sent as %q", sent)
+				require.Equal(t, "the-token", got, "sent as %q", sent)
+				app.ReleaseCtx(c)
+			}
+		})
+	}
+}
+
+// Test_FromAuthHeader_IgnoresHeaderNameCase pins the same for the Authorization
+// reader, which reaches every keyauth and bearer-token caller.
+//
+// FromHeader was fixed first and this one was missed: a lower-case
+// "authorization:" read as absent, so the scheme check never ran and the
+// request was refused for carrying no credential when it carried one.
+func Test_FromAuthHeader_IgnoresHeaderNameCase(t *testing.T) {
+	t.Parallel()
+
+	for _, normalize := range []bool{true, false} {
+		t.Run(fmt.Sprintf("normalize=%v", normalize), func(t *testing.T) {
+			t.Parallel()
+
+			for _, sent := range []string{"Authorization", "authorization", "AUTHORIZATION"} {
+				app := fiber.New(fiber.Config{DisableHeaderNormalizing: !normalize})
+				c := app.AcquireCtx(&fasthttp.RequestCtx{})
+				if !normalize {
+					c.Request().Header.DisableNormalizing()
+				}
+				c.Request().Header.Set(sent, "Bearer the-token")
+
+				got, err := FromAuthHeader("Bearer").Extract(c)
+				require.NoError(t, err, "sent as %q", sent)
+				require.Equal(t, "the-token", got, "sent as %q", sent)
+				app.ReleaseCtx(c)
+			}
+		})
+	}
+}
+
+// go test -run Test_ExtractWithSource
+func Test_ExtractWithSource(t *testing.T) {
+	t.Parallel()
+
+	t.Run("builtin_cookie_source", func(t *testing.T) {
+		t.Parallel()
+
+		app := fiber.New()
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+		t.Cleanup(func() { app.ReleaseCtx(ctx) })
+		ctx.Request().Header.SetCookie("session", "cookie-value")
+
+		v, src, err := ExtractWithSource(FromCookie("session"), ctx)
+		require.NoError(t, err)
+		require.Equal(t, "cookie-value", v)
+		require.Equal(t, SourceCookie, src)
+	})
+
+	t.Run("falls_back_to_Extract_with_static_Source", func(t *testing.T) {
+		t.Parallel()
+
+		app := fiber.New()
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+		t.Cleanup(func() { app.ReleaseCtx(ctx) })
+
+		handRolled := Extractor{
+			Extract: func(_ fiber.Ctx) (string, error) {
+				return "legacy-value", nil
+			},
+			Source: SourceHeader,
+			Key:    "X-Legacy",
+		}
+
+		v, src, err := ExtractWithSource(handRolled, ctx)
+		require.NoError(t, err)
+		require.Equal(t, "legacy-value", v)
+		require.Equal(t, SourceHeader, src)
+	})
+
+	t.Run("nil_both_returns_ErrNotFound", func(t *testing.T) {
+		t.Parallel()
+
+		app := fiber.New()
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+		t.Cleanup(func() { app.ReleaseCtx(ctx) })
+
+		empty := Extractor{Source: SourceCustom, Key: "empty"}
+		v, src, err := ExtractWithSource(empty, ctx)
+		require.Empty(t, v)
+		require.Equal(t, SourceCustom, src)
+		require.ErrorIs(t, err, ErrNotFound)
+	})
+
+	t.Run("builtins_report_static_source_via_ExtractWithSource", func(t *testing.T) {
+		t.Parallel()
+
+		app := fiber.New()
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+		t.Cleanup(func() { app.ReleaseCtx(ctx) })
+		ctx.Request().Header.Set("X-Token", "h")
+		ctx.Request().Header.SetCookie("token", "c")
+		ctx.Request().SetRequestURI("/?token=q")
+
+		_, src, err := ExtractWithSource(FromHeader("X-Token"), ctx)
+		require.NoError(t, err)
+		require.Equal(t, SourceHeader, src)
+		_, src, err = ExtractWithSource(FromCookie("token"), ctx)
+		require.NoError(t, err)
+		require.Equal(t, SourceCookie, src)
+		_, src, err = ExtractWithSource(FromQuery("token"), ctx)
+		require.NoError(t, err)
+		require.Equal(t, SourceQuery, src)
+		require.NotNil(t, Chain(FromHeader("X-Token")).Extract)
+		require.NotNil(t, Chain().Extract)
+	})
+
+	t.Run("unkeyed_literal_still_compiles_without_extra_fields", func(t *testing.T) {
+		t.Parallel()
+		// Positional form must match the public field set exactly. Keeping
+		// source-aware extraction field-free preserves this shape.
+		fn := func(_ fiber.Ctx) (string, error) { return "v", nil }
+		e := Extractor{fn, "k", "", nil, SourceCustom}
+		require.NotNil(t, e.Extract)
+		require.Equal(t, "k", e.Key)
+		require.Equal(t, SourceCustom, e.Source)
+	})
+
+	t.Run("honors_legacy_Extract_override", func(t *testing.T) {
+		t.Parallel()
+
+		app := fiber.New()
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+		t.Cleanup(func() { app.ReleaseCtx(ctx) })
+		ctx.Request().Header.Set("X-Token", "raw-header")
+
+		e := FromHeader("X-Token")
+		// Callers may decorate Extract for validation/normalization.
+		// ExtractWithSource always uses Extract for leaves, so the override wins.
+		e.Extract = func(c fiber.Ctx) (string, error) {
+			v, err := FromHeader("X-Token").Extract(c)
+			if err != nil {
+				return "", err
+			}
+			return "normalized:" + v, nil
+		}
+
+		v, src, err := ExtractWithSource(e, ctx)
+		require.NoError(t, err)
+		require.Equal(t, "normalized:raw-header", v)
+		require.Equal(t, SourceHeader, src)
+	})
+
+	t.Run("honors_chain_level_Extract_override", func(t *testing.T) {
+		t.Parallel()
+
+		app := fiber.New()
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+		t.Cleanup(func() { app.ReleaseCtx(ctx) })
+		// Only query is present. An undecorated chain would accept it; a
+		// chain-level Extract override that rejects query-sourced values must
+		// still win under ExtractWithSource.
+		ctx.Request().SetRequestURI("/?token=from-query")
+
+		chain := Chain(FromHeader("X-Token"), FromQuery("token"))
+		base := chain.Extract
+		rejectQuery := errors.New("query tokens not allowed")
+		chain.Extract = func(c fiber.Ctx) (string, error) {
+			v, err := base(c)
+			if err != nil {
+				return "", err
+			}
+			// Simulate a decorator that only permits header-sourced credentials.
+			// The value is present via query; reject it.
+			if c.Query("token") == v {
+				return "", rejectQuery
+			}
+			return v, nil
+		}
+
+		v, err := chain.Extract(ctx)
+		require.Empty(t, v)
+		require.ErrorIs(t, err, rejectQuery)
+
+		sv, src, serr := ExtractWithSource(chain, ctx)
+		require.Empty(t, sv)
+		require.Equal(t, SourceHeader, src) // static first-child metadata on error
+		require.ErrorIs(t, serr, rejectQuery)
+	})
+}
+
+// go test -run Test_Extractor_Chain_ExtractSource
+func Test_Extractor_Chain_ExtractSource(t *testing.T) {
+	t.Parallel()
+
+	t.Run("reports_winning_child_source", func(t *testing.T) {
+		t.Parallel()
+
+		app := fiber.New()
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+		t.Cleanup(func() { app.ReleaseCtx(ctx) })
+		// Header missing; query wins. Static chain Source stays SourceHeader,
+		// but ExtractSource must report SourceQuery.
+		ctx.Request().SetRequestURI("/?token=from-query")
+
+		chain := Chain(FromHeader("X-Token"), FromQuery("token"))
+		require.Equal(t, SourceHeader, chain.Source)
+
+		v, src, err := ExtractWithSource(chain, ctx)
+		require.NoError(t, err)
+		require.Equal(t, "from-query", v)
+		require.Equal(t, SourceQuery, src)
+	})
+
+	t.Run("first_child_source_when_first_wins", func(t *testing.T) {
+		t.Parallel()
+
+		app := fiber.New()
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+		t.Cleanup(func() { app.ReleaseCtx(ctx) })
+		ctx.Request().Header.Set("X-Token", "from-header")
+		ctx.Request().SetRequestURI("/?token=from-query")
+
+		v, src, err := ExtractWithSource(Chain(FromHeader("X-Token"), FromQuery("token")), ctx)
+		require.NoError(t, err)
+		require.Equal(t, "from-header", v)
+		require.Equal(t, SourceHeader, src)
+	})
+
+	t.Run("skips_empty_children_preserves_prior_error", func(t *testing.T) {
+		t.Parallel()
+
+		app := fiber.New()
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+		t.Cleanup(func() { app.ReleaseCtx(ctx) })
+
+		customErr := errors.New("custom failure")
+		customFailure := Extractor{
+			Extract: func(_ fiber.Ctx) (string, error) {
+				return "", customErr
+			},
+			Source: SourceCustom,
+			Key:    "fail",
+		}
+		// Zero-value trailing child must not rewrite the chain error to ErrNotFound
+		// under ExtractWithSource (Extract already skips nil Extract).
+		chain := Chain(customFailure, Extractor{})
+
+		v, err := chain.Extract(ctx)
+		require.Empty(t, v)
+		require.ErrorIs(t, err, customErr)
+
+		sv, src, serr := ExtractWithSource(chain, ctx)
+		require.Empty(t, sv)
+		require.Equal(t, SourceCustom, src)
+		require.ErrorIs(t, serr, customErr)
+	})
+
+	t.Run("hand_rolled_in_chain", func(t *testing.T) {
+		t.Parallel()
+
+		app := fiber.New()
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+		t.Cleanup(func() { app.ReleaseCtx(ctx) })
+
+		handRolled := Extractor{
+			Extract: func(_ fiber.Ctx) (string, error) {
+				return "hand-rolled", nil
+			},
+			Source: SourceForm,
+			Key:    "form-key",
+		}
+		chain := Chain(FromHeader("X-Token"), handRolled)
+
+		v, src, err := ExtractWithSource(chain, ctx)
+		require.NoError(t, err)
+		require.Equal(t, "hand-rolled", v)
+		require.Equal(t, SourceForm, src)
+	})
+
+	t.Run("shared_guard_allows_sequential_Extract_then_ExtractWithSource", func(t *testing.T) {
+		t.Parallel()
+
+		app := fiber.New()
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+		t.Cleanup(func() { app.ReleaseCtx(ctx) })
+		ctx.Request().Header.SetCookie("token", "cookie-token")
+
+		chain := Chain(FromHeader("X-Token"), FromCookie("token"))
+
+		// Guard is cleared on return, so a later entry point on the same
+		// request is not treated as a cycle.
+		v, err := chain.Extract(ctx)
+		require.NoError(t, err)
+		require.Equal(t, "cookie-token", v)
+
+		sv, src, serr := ExtractWithSource(chain, ctx)
+		require.NoError(t, serr)
+		require.Equal(t, "cookie-token", sv)
+		require.Equal(t, SourceCookie, src)
+	})
+
+	t.Run("source_path_detects_cycle", func(t *testing.T) {
+		t.Parallel()
+
+		app := fiber.New()
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+		t.Cleanup(func() { app.ReleaseCtx(ctx) })
+
+		var chainExtractor Extractor
+		chainExtractor = Chain(FromCustom("cycle", func(c fiber.Ctx) (string, error) {
+			// Re-enter via ExtractWithSource while Extract is already active.
+			_, _, err := ExtractWithSource(chainExtractor, c)
+			return "", err
+		}))
+
+		// Shared guard must treat the cross-API re-entry as a cycle.
+		v, src, err := ExtractWithSource(chainExtractor, ctx)
+		require.Empty(t, v)
+		require.Equal(t, SourceCustom, src)
+		require.ErrorIs(t, err, ErrChainCycle)
+	})
+
+	t.Run("cross_api_reentry_via_Extract_detects_cycle", func(t *testing.T) {
+		t.Parallel()
+
+		app := fiber.New()
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+		t.Cleanup(func() { app.ReleaseCtx(ctx) })
+
+		// Enter via Extract while a nested child hits ExtractWithSource.
+		var chainB Extractor
+		chainB = Chain(FromCustom("to-source", func(c fiber.Ctx) (string, error) {
+			_, _, err := ExtractWithSource(chainB, c)
+			return "", err
+		}))
+		token, err := chainB.Extract(ctx)
+		require.Empty(t, token)
+		require.ErrorIs(t, err, ErrChainCycle)
+	})
+
+	t.Run("empty_chain_source_path", func(t *testing.T) {
+		t.Parallel()
+
+		app := fiber.New()
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+		t.Cleanup(func() { app.ReleaseCtx(ctx) })
+
+		v, src, err := ExtractWithSource(Chain(), ctx)
+		require.Empty(t, v)
+		require.Equal(t, SourceCustom, src)
+		require.ErrorIs(t, err, ErrNotFound)
+	})
+
+	t.Run("public_Chain_slice_mutation_does_not_affect_Extract", func(t *testing.T) {
+		t.Parallel()
+
+		app := fiber.New()
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+		t.Cleanup(func() { app.ReleaseCtx(ctx) })
+		ctx.Request().Header.Set("X-Token", "from-header")
+		ctx.Request().SetRequestURI("/?token=from-query")
+
+		chain := Chain(FromHeader("X-Token"), FromQuery("token"))
+		require.Len(t, chain.Chain, 2)
+
+		// Mutating the public introspection slice must not change which
+		// children Extract runs (private execution list).
+		chain.Chain[0] = FromQuery("token")
+		chain.Chain[1] = FromHeader("X-Missing")
+
+		v, err := chain.Extract(ctx)
+		require.NoError(t, err)
+		require.Equal(t, "from-header", v)
+
+		// Value and source come from private kids via Extract capture, not
+		// a second walk of the mutated public Chain.
+		sv, src, serr := ExtractWithSource(chain, ctx)
+		require.NoError(t, serr)
+		require.Equal(t, "from-header", sv)
+		require.Equal(t, SourceHeader, src)
+	})
+
+	t.Run("recursive_public_Chain_metadata_uses_captured_source", func(t *testing.T) {
+		t.Parallel()
+
+		app := fiber.New()
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+		t.Cleanup(func() { app.ReleaseCtx(ctx) })
+		ctx.Request().Header.Set("X-Token", "from-header")
+
+		chain := Chain(FromHeader("X-Token"), FromQuery("token"))
+		// Corrupt introspection metadata after construction. Extract still
+		// succeeds via the private kids list and records the winner so
+		// ExtractWithSource does not need to walk the recursive public slice.
+		chain.Chain[0] = chain
+
+		v, err := chain.Extract(ctx)
+		require.NoError(t, err)
+		require.Equal(t, "from-header", v)
+
+		sv, src, serr := ExtractWithSource(chain, ctx)
+		require.NoError(t, serr)
+		require.Equal(t, "from-header", sv)
+		require.Equal(t, SourceHeader, src)
+	})
+
+	t.Run("replaced_Extract_without_base_uses_static_Source", func(t *testing.T) {
+		t.Parallel()
+
+		app := fiber.New()
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+		t.Cleanup(func() { app.ReleaseCtx(ctx) })
+		ctx.Request().Header.SetCookie("session", "cookie-value")
+		ctx.Request().SetRequestURI("/?token=from-query")
+
+		// Full Extract replacement (does not call base): must not peek Chain
+		// children and mis-tag the replacement value as SourceQuery.
+		chain := Chain(FromHeader("X-Missing"), FromQuery("token"))
+		chain.Extract = func(c fiber.Ctx) (string, error) {
+			return FromCookie("session").Extract(c)
+		}
+
+		sv, src, serr := ExtractWithSource(chain, ctx)
+		require.NoError(t, serr)
+		require.Equal(t, "cookie-value", sv)
+		require.Equal(t, SourceHeader, src) // static first-child metadata
+	})
+
+	t.Run("shared_guard_blocks_cross_entry_during_source_path", func(t *testing.T) {
+		t.Parallel()
+
+		app := fiber.New()
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+		t.Cleanup(func() { app.ReleaseCtx(ctx) })
+		ctx.Request().SetRequestURI("/?token=from-query")
+
+		// First child re-enters the outer chain via Extract while the chain's
+		// Extract is active; second child would succeed if the cycle were ignored.
+		var chain Extractor
+		chain = Chain(
+			FromCustom("reenter", func(c fiber.Ctx) (string, error) {
+				return chain.Extract(c)
+			}),
+			FromQuery("token"),
+		)
+
+		sv, src, serr := ExtractWithSource(chain, ctx)
+		require.NoError(t, serr)
+		require.Equal(t, "from-query", sv)
+		// Must not mis-attribute the query value to the custom re-entry child.
+		require.Equal(t, SourceQuery, src)
+	})
+
+	t.Run("no_double_extract_of_stateful_custom_child", func(t *testing.T) {
+		t.Parallel()
+
+		app := fiber.New()
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+		t.Cleanup(func() { app.ReleaseCtx(ctx) })
+
+		calls := 0
+		chain := Chain(
+			FromCustom("once", func(_ fiber.Ctx) (string, error) {
+				calls++
+				if calls == 1 {
+					return "only-once", nil
+				}
+				return "", ErrNotFound
+			}),
+			FromQuery("token"),
+		)
+
+		sv, src, serr := ExtractWithSource(chain, ctx)
+		require.NoError(t, serr)
+		require.Equal(t, "only-once", sv)
+		require.Equal(t, SourceCustom, src)
+		require.Equal(t, 1, calls, "stateful child must not run again during source resolution")
+	})
+
+	t.Run("nested_chain_reports_inner_winning_source", func(t *testing.T) {
+		t.Parallel()
+
+		app := fiber.New()
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+		t.Cleanup(func() { app.ReleaseCtx(ctx) })
+		ctx.Request().SetRequestURI("/?token=from-query")
+
+		// Outer chain has one child: an inner chain whose first child misses
+		// and second (query) wins. Must report SourceQuery, not the inner
+		// chain's static first-child SourceCookie.
+		inner := Chain(FromCookie("token"), FromQuery("token"))
+		outer := Chain(inner)
+
+		sv, src, serr := ExtractWithSource(outer, ctx)
+		require.NoError(t, serr)
+		require.Equal(t, "from-query", sv)
+		require.Equal(t, SourceQuery, src)
+	})
+
+	t.Run("clearing_public_Chain_still_returns_captured_source", func(t *testing.T) {
+		t.Parallel()
+
+		app := fiber.New()
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+		t.Cleanup(func() { app.ReleaseCtx(ctx) })
+		ctx.Request().SetRequestURI("/?token=from-query")
+
+		chain := Chain(FromHeader("X-Token"), FromQuery("token"))
+		// Mutating/clearing public metadata must not drop the source captured
+		// from the private execution list.
+		chain.Chain = nil
+
+		sv, src, serr := ExtractWithSource(chain, ctx)
+		require.NoError(t, serr)
+		require.Equal(t, "from-query", sv)
+		require.Equal(t, SourceQuery, src)
+	})
+
+	t.Run("bare_Extract_does_not_pollute_later_ExtractWithSource", func(t *testing.T) {
+		t.Parallel()
+
+		app := fiber.New()
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+		t.Cleanup(func() { app.ReleaseCtx(ctx) })
+		ctx.Request().Header.SetCookie("session", "cookie-value")
+		ctx.Request().SetRequestURI("/?token=from-query")
+
+		// Legacy path: Extract alone must not leave a winner that a later
+		// source-aware call on an unrelated leaf would mis-attribute.
+		chain := Chain(FromHeader("X-Missing"), FromQuery("token"))
+		v, err := chain.Extract(ctx)
+		require.NoError(t, err)
+		require.Equal(t, "from-query", v)
+
+		sv, src, serr := ExtractWithSource(FromCookie("session"), ctx)
+		require.NoError(t, serr)
+		require.Equal(t, "cookie-value", sv)
+		require.Equal(t, SourceCookie, src)
+	})
+
+	t.Run("rejected_nested_chain_does_not_poison_fallback_source", func(t *testing.T) {
+		t.Parallel()
+
+		app := fiber.New()
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+		t.Cleanup(func() { app.ReleaseCtx(ctx) })
+		ctx.Request().Header.SetCookie("session", "cookie-value")
+		ctx.Request().SetRequestURI("/?token=from-query")
+
+		// Nested chain would win via cookie, but a decorator rejects after
+		// base Extract. Outer fallback is query — source must be SourceQuery,
+		// not the rejected nested cookie capture.
+		inner := Chain(FromCookie("session"), FromHeader("X-Missing"))
+		base := inner.Extract
+		reject := errors.New("cookie rejected")
+		inner.Extract = func(c fiber.Ctx) (string, error) {
+			if _, err := base(c); err != nil {
+				return "", err
+			}
+			return "", reject
+		}
+		outer := Chain(inner, FromQuery("token"))
+
+		sv, src, serr := ExtractWithSource(outer, ctx)
+		require.NoError(t, serr)
+		require.Equal(t, "from-query", sv)
+		require.Equal(t, SourceQuery, src)
+	})
+
+	t.Run("chain_override_success_still_reports_winning_source", func(t *testing.T) {
+		t.Parallel()
+
+		app := fiber.New()
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+		t.Cleanup(func() { app.ReleaseCtx(ctx) })
+		ctx.Request().SetRequestURI("/?token=from-query")
+
+		chain := Chain(FromHeader("X-Token"), FromQuery("token"))
+		base := chain.Extract
+		chain.Extract = func(c fiber.Ctx) (string, error) {
+			v, err := base(c)
+			if err != nil {
+				return "", err
+			}
+			return "normalized:" + v, nil
+		}
+
+		v, src, err := ExtractWithSource(chain, ctx)
+		require.NoError(t, err)
+		require.Equal(t, "normalized:from-query", v)
+		require.Equal(t, SourceQuery, src)
+	})
+}
+
+// Test_FromParam_DecodesOnce pins that a parameter is percent-decoded exactly
+// once whatever UnescapePath is set to. With UnescapePath enabled the router
+// already decoded the path, so a second decode here turned "%2520" into a
+// space instead of the "%20" the client sent.
+func Test_FromParam_DecodesOnce(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name         string
+		unescapePath bool
+	}{
+		{name: "UnescapePath disabled", unescapePath: false},
+		{name: "UnescapePath enabled", unescapePath: true},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			app := fiber.New(fiber.Config{UnescapePath: tc.unescapePath})
+			app.Get("/test/:token", func(c fiber.Ctx) error {
+				token, err := FromParam("token").Extract(c)
+				require.NoError(t, err)
+				// The client sent "%2520", which stands for the literal
+				// four-character string "%20".
+				require.Equal(t, "%20", token)
+				return nil
+			})
+
+			resp, err := app.Test(newRequest("/test/%2520"))
+			require.NoError(t, err)
+			require.Equal(t, fiber.StatusOK, resp.StatusCode)
+		})
+	}
+}
+
+// Test_ExtractWithSource_BareChain covers an Extractor built with only its
+// Chain set and no Extract func, the one shape that reaches
+// extractChainWithSource directly: the winner's own source is reported, the
+// cycle guard is released when the walk ends so the same ctx can be walked
+// again, and a chain that contains itself is still refused.
+func Test_ExtractWithSource_BareChain(t *testing.T) {
+	t.Parallel()
+
+	t.Run("winner reports its own source", func(t *testing.T) {
+		t.Parallel()
+
+		app := fiber.New()
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+		t.Cleanup(func() { app.ReleaseCtx(ctx) })
+		ctx.Request().SetRequestURI("/?token=from-query")
+
+		bare := Extractor{Chain: []Extractor{FromHeader("X-Token"), FromQuery("token")}}
+
+		v, src, err := ExtractWithSource(bare, ctx)
+		require.NoError(t, err)
+		require.Equal(t, "from-query", v)
+		require.Equal(t, SourceQuery, src)
+
+		// The guard set for the walk must be cleared afterwards, or the next
+		// walk on this ctx would be mistaken for a cycle.
+		require.NotContains(t, chainStateFor(ctx).active, chainGuard(bare.Chain))
+
+		v, src, err = ExtractWithSource(bare, ctx)
+		require.NoError(t, err)
+		require.Equal(t, "from-query", v)
+		require.Equal(t, SourceQuery, src)
+	})
+
+	t.Run("self-referencing chain is refused", func(t *testing.T) {
+		t.Parallel()
+
+		app := fiber.New()
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+		t.Cleanup(func() { app.ReleaseCtx(ctx) })
+
+		bare := Extractor{Chain: make([]Extractor, 1)}
+		bare.Chain[0] = bare
+
+		_, _, err := ExtractWithSource(bare, ctx)
+		require.ErrorIs(t, err, ErrChainCycle)
+
+		require.NotContains(t, chainStateFor(ctx).active, chainGuard(bare.Chain), "the guard is released even after a refused walk")
+	})
+}
+
+// The state is reclaimed by the request store calling Close on it.
+var _ io.Closer = (*chainState)(nil)
+
+// closeRecorder reports whether the request store closed it. The contract is
+// pinned here rather than through the chain state, whose pointer is back in
+// the pool by the time a test could look at it.
+type closeRecorder struct {
+	closed *atomic.Bool
+}
+
+// Close records the call fasthttp makes when it resets the request.
+func (r closeRecorder) Close() error {
+	r.closed.Store(true)
+	return nil
+}
+
+// Test_Chain_StateIsRecycledOnRequestReset pins the recycling: fasthttp closes
+// request-local io.Closers on reset, the state is stored where that happens,
+// and one handed out afterwards is clean.
+func Test_Chain_StateIsRecycledOnRequestReset(t *testing.T) {
+	t.Parallel()
+
+	t.Run("request store closes values on reset", func(t *testing.T) {
+		t.Parallel()
+
+		var closed atomic.Bool
+		fctx := &fasthttp.RequestCtx{}
+		fctx.SetUserValue("recorder", closeRecorder{closed: &closed})
+		require.False(t, closed.Load())
+
+		fctx.Request.Reset()
+		require.True(t, closed.Load(), "fasthttp must close request-local values that implement io.Closer")
+	})
+
+	t.Run("chain state lives in the request store and is dropped on reset", func(t *testing.T) {
+		t.Parallel()
+
+		app := fiber.New()
+		chain := Chain(FromHeader("X-Token"), FromQuery("token"))
+		app.Get("/t", func(c fiber.Ctx) error {
+			v, err := chain.Extract(c)
+			require.NoError(t, err)
+			require.Equal(t, "tok", v)
+			// Dirty it, so a stale state would show up in the next holder.
+			st := chainStateFor(c)
+			st.win = SourceQuery
+			st.hasWin = true
+			return c.SendStatus(fiber.StatusNoContent)
+		})
+
+		fctx := &fasthttp.RequestCtx{}
+		fctx.Request.Header.SetMethod(fiber.MethodGet)
+		fctx.Request.SetRequestURI("/t")
+		fctx.Request.Header.Set("X-Token", "tok")
+		app.Handler()(fctx)
+		require.Equal(t, fiber.StatusNoContent, fctx.Response.StatusCode())
+
+		_, ok := fctx.UserValue(chainStateKey{}).(*chainState)
+		require.True(t, ok, "the state must be stored in the request, which is what gets closed")
+
+		fctx.Request.Reset()
+		require.Nil(t, fctx.UserValue(chainStateKey{}), "the reset must drop the state")
+	})
+
+	t.Run("a state handed out is clean", func(t *testing.T) {
+		t.Parallel()
+
+		app := fiber.New()
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+		t.Cleanup(func() { app.ReleaseCtx(ctx) })
+
+		// Whether this state is new or recycled, it must carry nothing from
+		// the request that used it before.
+		st := chainStateFor(ctx)
+		require.Empty(t, st.active)
+		require.Zero(t, st.depth)
+		require.False(t, st.hasWin)
+		require.Same(t, st, chainStateFor(ctx), "one state per request")
+	})
+}
+
+// Test_Chain_NoAllocations guards the pooled state: the source-aware path
+// allocated a []Source per winning child before it existed.
+//
+// Not parallel: AllocsPerRun counts allocations process-wide, and Go pauses
+// parallel tests while a sequential one runs.
+func Test_Chain_NoAllocations(t *testing.T) {
+	app := fiber.New()
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+	t.Cleanup(func() { app.ReleaseCtx(ctx) })
+	ctx.Request().Header.Set("X-Token", "from-header")
+	ctx.Request().SetRequestURI("/?token=from-query")
+
+	flat := Chain(FromCookie("token"), FromQuery("token"))
+	nested := Chain(FromHeader("X-Missing"), Chain(FromCookie("token"), FromQuery("token")))
+
+	cases := []struct {
+		run  func()
+		name string
+	}{
+		{name: "Extract", run: func() {
+			if _, err := flat.Extract(ctx); err != nil {
+				t.Error(err)
+			}
+		}},
+		{name: "ExtractWithSource", run: func() {
+			if _, _, err := ExtractWithSource(flat, ctx); err != nil {
+				t.Error(err)
+			}
+		}},
+		{name: "ExtractWithSource_nested", run: func() {
+			if _, _, err := ExtractWithSource(nested, ctx); err != nil {
+				t.Error(err)
+			}
+		}},
+		{name: "ExtractWithSource_bare_chain", run: func() {
+			bare := Extractor{Chain: flat.Chain}
+			if _, _, err := ExtractWithSource(bare, ctx); err != nil {
+				t.Error(err)
+			}
+		}},
+	}
+
+	for _, tc := range cases {
+		tc.run() // warm the state into the request store
+		require.Zero(t, testing.AllocsPerRun(100, tc.run), "%s must not allocate", tc.name)
+	}
+}
+
+// countingCtx makes the Locals override observable.
+type countingCtx struct {
+	fiber.DefaultCtx
+	calls atomic.Int64
+}
+
+// Locals counts each call before forwarding it.
+func (c *countingCtx) Locals(key any, value ...any) any {
+	c.calls.Add(1)
+	return c.DefaultCtx.Locals(key, value...)
+}
+
+// Test_Chain_CustomCtx keeps the chain state reachable through a context that
+// overrides Locals. Such a store may never close the state, which costs an
+// allocation but must not change any answer.
+func Test_Chain_CustomCtx(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.NewWithCustomCtx(func(app *fiber.App) fiber.CustomCtx {
+		return &countingCtx{DefaultCtx: *fiber.NewDefaultCtx(app)}
+	})
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+	t.Cleanup(func() { app.ReleaseCtx(ctx) })
+	ctx.Request().SetRequestURI("/?token=from-query")
+
+	custom, ok := ctx.(*countingCtx)
+	require.True(t, ok, "the app must hand out the custom context")
+
+	chain := Chain(FromHeader("X-Token"), FromQuery("token"))
+
+	v, err := chain.Extract(ctx)
+	require.NoError(t, err)
+	require.Equal(t, "from-query", v)
+
+	// Sequential reuse: the guard is released, so the second walk is not a cycle.
+	sv, src, serr := ExtractWithSource(chain, ctx)
+	require.NoError(t, serr)
+	require.Equal(t, "from-query", sv)
+	require.Equal(t, SourceQuery, src)
+
+	var cyclic Extractor
+	cyclic = Chain(FromCustom("cycle", func(c fiber.Ctx) (string, error) {
+		return cyclic.Extract(c)
+	}))
+	_, err = cyclic.Extract(ctx)
+	require.ErrorIs(t, err, ErrChainCycle)
+
+	require.Positive(t, custom.calls.Load(), "the overridden Locals must be the one that ran")
+}
+
+// Test_Chain_Concurrent runs chains on many requests at once, so the race
+// detector sees the pooled state cross goroutines.
+func Test_Chain_Concurrent(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	chain := Chain(FromHeader("X-Token"), FromQuery("token"))
+
+	var cyclic Extractor
+	cyclic = Chain(FromCustom("cycle", func(c fiber.Ctx) (string, error) {
+		return cyclic.Extract(c)
+	}))
+
+	const workers = 64
+	var wg sync.WaitGroup
+	wg.Add(workers)
+	for range workers {
+		go func() {
+			defer wg.Done()
+			for range 50 {
+				fctx := &fasthttp.RequestCtx{}
+				fctx.Request.SetRequestURI("/?token=from-query")
+				c := app.AcquireCtx(fctx)
+
+				v, src, err := ExtractWithSource(chain, c)
+				assert.NoError(t, err)
+				assert.Equal(t, "from-query", v)
+				assert.Equal(t, SourceQuery, src)
+
+				_, err = cyclic.Extract(c)
+				assert.ErrorIs(t, err, ErrChainCycle)
+
+				app.ReleaseCtx(c)
+				// What the server does between requests.
+				fctx.Request.Reset()
+			}
+		}()
+	}
+	wg.Wait()
+}
+
+// token68Samples are the shapes the table and the scan it replaced could most
+// easily disagree about. The fuzz target seeds its corpus with them.
+var token68Samples = []string{
+	"", "=", "==", "===", "=a", "a", "a=", "a==", "a===", "a=b", "a==b",
+	"dXNlcjpwYXNzd29yZA==", "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0In0",
+	benchToken, "-._~+/", "a b", "a\tb", "a\nb", "token@invalid",
+}
+
+// isValidToken68Reference is the range-compare scan the table replaced, kept
+// as the definition it is checked against.
+func isValidToken68Reference(token string) bool {
+	if token == "" {
+		return false
+	}
+	paddingStarted := false
+	for i := 0; i < len(token); i++ {
+		c := token[i]
+		switch {
+		case (c >= 'A' && c <= 'Z') ||
+			(c >= 'a' && c <= 'z') ||
+			(c >= '0' && c <= '9') ||
+			c == '-' || c == '.' || c == '_' || c == '~' || c == '+' || c == '/':
+			if paddingStarted {
+				return false // No characters allowed after padding starts
+			}
+		case c == '=':
+			if i == 0 {
+				return false // Cannot start with padding
+			}
+			paddingStarted = true
+		default:
+			return false // Invalid character
+		}
+	}
+	return true
+}
+
+// Test_isValidToken68_MatchesReference checks the table against the scan it
+// replaced, on every byte in every position that could distinguish them.
+func Test_isValidToken68_MatchesReference(t *testing.T) {
+	t.Parallel()
+
+	t.Run("every byte in every position", func(t *testing.T) {
+		t.Parallel()
+
+		for c := range 256 {
+			// From the byte, not rune(c): the high half must be one invalid
+			// byte, not two UTF-8 ones.
+			b := string([]byte{byte(c)})
+			for _, in := range []string{
+				b,             // alone
+				b + "aA",      // at the start
+				"a" + b + "A", // in the middle
+				"aA" + b,      // at the end
+				"aA" + b + "==",
+				"aA==" + b,
+			} {
+				require.Equal(t, isValidToken68Reference(in), isValidToken68(in), "input %q", in)
+			}
+		}
+	})
+
+	t.Run("padding shapes", func(t *testing.T) {
+		t.Parallel()
+
+		for _, in := range token68Samples {
+			require.Equal(t, isValidToken68Reference(in), isValidToken68(in), "input %q", in)
+		}
+	})
+}
+
+// Test_ExtractWithSource_EmptyValue covers an Extract that succeeds and hands
+// back nothing, which is a miss rather than a value.
+func Test_ExtractWithSource_EmptyValue(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+	t.Cleanup(func() { app.ReleaseCtx(ctx) })
+
+	v, src, err := ExtractWithSource(Extractor{
+		Extract: func(fiber.Ctx) (string, error) { return "", nil },
+		Source:  SourceForm,
+		Key:     "empty",
+	}, ctx)
+	require.Empty(t, v)
+	require.Equal(t, SourceForm, src, "a miss reports the declared source")
+	require.ErrorIs(t, err, ErrNotFound)
+}
+
+// Test_ExtractWithSource_BareChain_EmptyChildren covers a walked chain whose
+// children have nothing to run: each is stepped over, and a chain that ran
+// nothing reports ErrNotFound rather than a child's error.
+func Test_ExtractWithSource_BareChain_EmptyChildren(t *testing.T) {
+	t.Parallel()
+
+	// A context each: a walk writes the chain state into the one it is given.
+	newCtx := func(t *testing.T) fiber.Ctx {
+		t.Helper()
+
+		app := fiber.New()
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+		t.Cleanup(func() { app.ReleaseCtx(ctx) })
+		ctx.Request().Header.Set("X-Token", "from-header")
+		return ctx
+	}
+
+	t.Run("every child is skipped", func(t *testing.T) {
+		t.Parallel()
+
+		v, src, err := ExtractWithSource(Extractor{
+			Chain:  []Extractor{{}, {Key: "no extract, no chain"}},
+			Source: SourceCookie,
+		}, newCtx(t))
+		require.Empty(t, v)
+		require.Equal(t, SourceCookie, src)
+		require.ErrorIs(t, err, ErrNotFound)
+	})
+
+	t.Run("a skipped child does not stop the walk", func(t *testing.T) {
+		t.Parallel()
+
+		v, src, err := ExtractWithSource(Extractor{
+			Chain:  []Extractor{{}, FromHeader("X-Token")},
+			Source: SourceCookie,
+		}, newCtx(t))
+		require.NoError(t, err)
+		require.Equal(t, "from-header", v)
+		require.Equal(t, SourceHeader, src)
+	})
+}
+
+// Test_Extractor_FromAuthHeader_SchemeWithoutCredential covers a header that is
+// the scheme and its separating space and nothing else, which is a scheme
+// naming no credential rather than a credential that happens to be empty.
+func Test_Extractor_FromAuthHeader_SchemeWithoutCredential(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+	t.Cleanup(func() { app.ReleaseCtx(ctx) })
+	// Set rather than read from the wire: parsing strips the trailing space,
+	// so only a field written in process carries one. Middleware rewriting
+	// Authorization writes this shape.
+	ctx.Request().Header.Set(fiber.HeaderAuthorization, "Bearer ")
+	require.Equal(t, "Bearer ", string(ctx.Request().Header.Peek(fiber.HeaderAuthorization)))
+
+	value, err := FromAuthHeader("Bearer").Extract(ctx)
+	require.Empty(t, value)
+	require.ErrorIs(t, err, ErrNotFound)
+}
+
+// Test_FromParam_RefusesUndecodableValue covers a parameter the router left
+// raw and that percent-decoding cannot make sense of.
+func Test_FromParam_RefusesUndecodableValue(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	extractor := FromParam("id")
+	ran := false
+	app.Get("/users/:id", func(c fiber.Ctx) error {
+		ran = true
+		value, err := extractor.Extract(c)
+		require.Empty(t, value)
+		require.ErrorIs(t, err, ErrNotFound)
+		return c.SendStatus(fiber.StatusNoContent)
+	})
+
+	// Driven through the handler rather than app.Test, whose URL parsing
+	// refuses the escape before the router ever sees it.
+	fctx := &fasthttp.RequestCtx{}
+	fctx.Request.Header.SetMethod(fiber.MethodGet)
+	fctx.Request.SetRequestURI("/users/%zz")
+	app.Handler()(fctx)
+
+	require.Equal(t, fiber.StatusNoContent, fctx.Response.StatusCode())
+	require.True(t, ran, "the route must have matched")
+}
+
+// Test_ChainState_PoolHoldsSomethingElse covers the guard on what the pool
+// hands back. sync.Pool is typed as any, so a state is rebuilt rather than
+// trusted; this drives that branch by putting sentinels in front of it.
+//
+// Not parallel: it borrows the shared pool, and it takes back out everything
+// it puts in.
+func Test_ChainState_PoolHoldsSomethingElse(t *testing.T) {
+	app := fiber.New()
+
+	const sentinels = 8
+	for range sentinels {
+		// Pointer-like, so parking it in the pool does not allocate.
+		chainStatePool.Put(new(struct{}))
+	}
+
+	for range sentinels {
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+		st := chainStateFor(ctx)
+		require.NotNil(t, st, "a usable state whatever the pool held")
+		require.Empty(t, st.active)
+		require.Zero(t, st.depth)
+		require.False(t, st.hasWin)
+		app.ReleaseCtx(ctx)
+	}
+}
+
+// Test_ExtractWithSource_NestedCapturePreservesWinner covers a decorated chain
+// that calls its base and then makes another source-aware call before
+// returning the base's value. The nested frame must not consume the winner the
+// base recorded, or the value is reported against the decorator's declared
+// source instead of the child that supplied it.
+func Test_ExtractWithSource_NestedCapturePreservesWinner(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+	t.Cleanup(func() { app.ReleaseCtx(ctx) })
+	ctx.Request().SetRequestURI("/?token=from-query")
+	ctx.Request().Header.SetCookie("other", "cookie-value")
+
+	chain := Chain(FromHeader("X-Missing"), FromQuery("token"))
+	base := chain.Extract
+	chain.Extract = func(c fiber.Ctx) (string, error) {
+		v, err := base(c)
+		if err != nil {
+			return "", err
+		}
+		// An unrelated source-aware lookup, after the winner was recorded.
+		if _, _, err := ExtractWithSource(FromCookie("other"), c); err != nil {
+			return "", err
+		}
+		return v, nil
+	}
+
+	v, src, err := ExtractWithSource(chain, ctx)
+	require.NoError(t, err)
+	require.Equal(t, "from-query", v)
+	require.Equal(t, SourceQuery, src, "the query child supplied the value")
+}
+
+// Test_ChainState_CloseClearsGuards covers the guards a finished request leaves
+// in the buffer past its length: a retained one keeps a chain's Extractor array
+// alive for as long as the pool holds the state.
+func Test_ChainState_CloseClearsGuards(t *testing.T) {
+	t.Parallel()
+
+	st := &chainState{active: make([]*byte, 0, 4)}
+	first := Chain(FromHeader("X-One")).Chain
+	second := Chain(FromHeader("X-Two")).Chain
+	require.True(t, st.enter(chainGuard(first)))
+	require.True(t, st.enter(chainGuard(second)))
+	st.leave()
+	st.leave()
+	require.Empty(t, st.active, "both are released")
+
+	buffer := st.active[:cap(st.active)]
+	require.NotNil(t, buffer[0], "released guards are still in the buffer")
+
+	// reset rather than Close: Close hands the state to the pool, where another
+	// request may take it and write the very buffer this reads.
+	st.reset()
+	for i, guard := range buffer {
+		require.Nil(t, guard, "guard %d must not outlive the request", i)
+	}
 }

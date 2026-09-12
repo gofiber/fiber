@@ -7,6 +7,7 @@ import (
 	"github.com/gofiber/utils/v2"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/ctxlocal"
 	"github.com/gofiber/fiber/v3/log"
 )
 
@@ -90,7 +91,7 @@ func New(config ...Config) fiber.Handler {
 				}
 			}
 
-			_ = c.Locals(localsKeyIsFromCache, true)
+			_ = ctxlocal.Set(c, localsKeyIsFromCache, true)
 
 			return true, nil
 		}
@@ -146,7 +147,7 @@ func New(config ...Config) fiber.Handler {
 
 		// Construct response
 		res := &response{
-			StatusCode: c.Response().StatusCode(),
+			StatusCode: c.Res().StatusCode(),
 			Body:       c.Response().Body(),
 		}
 		{
@@ -180,7 +181,7 @@ func New(config ...Config) fiber.Handler {
 			return fmt.Errorf("failed to save response: %w", err)
 		}
 
-		_ = c.Locals(localsKeyWasPutToCache, true)
+		_ = ctxlocal.Set(c, localsKeyWasPutToCache, true)
 
 		return nil
 	}

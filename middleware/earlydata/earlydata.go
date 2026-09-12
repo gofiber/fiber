@@ -2,6 +2,7 @@ package earlydata
 
 import (
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/ctxlocal"
 )
 
 // The contextKey type is unexported to prevent collisions with context keys defined in
@@ -42,7 +43,7 @@ func New(config ...Config) fiber.Handler {
 
 		// Continue stack if we allow early-data for this request
 		if cfg.AllowEarlyData(c) {
-			_ = c.Locals(localsKeyAllowed, true)
+			_ = ctxlocal.Set(c, localsKeyAllowed, true)
 			return c.Next()
 		}
 

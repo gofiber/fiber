@@ -44,4 +44,4 @@ jobs:
           DIRECTORY: ${{ github.event.inputs.directory }}
           GITHUB_ACCESS_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          docker run -v $PWD:/src -e PROJECT_PATH=$GITHUB_REPOSITORY -e PACKAGE_MANAGER=$PACKAGE_MANAGER -e DIRECTORY=$DIRECTORY -e GITHUB_ACCESS_TOKEN=$GITHUB_ACCESS_TOKEN -e OPTIONS="$OPTIONS" dependabot/dependabot-script
+          docker run -v "$PWD:/src" -e "PROJECT_PATH=$GITHUB_REPOSITORY" -e "PACKAGE_MANAGER=$PACKAGE_MANAGER" -e "DIRECTORY=$DIRECTORY" -e "GITHUB_ACCESS_TOKEN=$GITHUB_ACCESS_TOKEN" -e OPTIONS="$OPTIONS" dependabot/dependabot-script

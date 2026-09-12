@@ -2,12 +2,12 @@ package keyauth
 
 import (
 	"errors"
-	"fmt"
 	"strings"
 	"sync"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/extractors"
+	"github.com/gofiber/fiber/v3/internal/quotedstring"
 	"github.com/gofiber/fiber/v3/internal/redact"
 	"github.com/gofiber/fiber/v3/middleware/logger"
 	"github.com/gofiber/utils/v2"
@@ -43,23 +43,34 @@ func New(config ...Config) fiber.Handler {
 	if len(authSchemes) > 0 {
 		challenges := make([]string, 0, len(authSchemes))
 		for _, scheme := range authSchemes {
-			var b strings.Builder
-			fmt.Fprintf(&b, "%s realm=%q", scheme, cfg.Realm)
+			b := make([]byte, 0, len(scheme)+len(cfg.Realm)+16)
+			b = append(b, scheme...)
+			b = append(b, ` realm="`...)
+			b = append(b, quotedstring.Escape(cfg.Realm)...)
+			b = append(b, '"')
 			if utils.EqualFold(scheme, "Bearer") {
 				if cfg.Error != "" {
-					fmt.Fprintf(&b, ", error=%q", cfg.Error)
+					b = append(b, `, error="`...)
+					b = append(b, quotedstring.Escape(cfg.Error)...)
+					b = append(b, '"')
 					if cfg.ErrorDescription != "" {
-						fmt.Fprintf(&b, ", error_description=%q", cfg.ErrorDescription)
+						b = append(b, `, error_description="`...)
+						b = append(b, quotedstring.Escape(cfg.ErrorDescription)...)
+						b = append(b, '"')
 					}
 					if cfg.ErrorURI != "" {
-						fmt.Fprintf(&b, ", error_uri=%q", cfg.ErrorURI)
+						b = append(b, `, error_uri="`...)
+						b = append(b, quotedstring.Escape(cfg.ErrorURI)...)
+						b = append(b, '"')
 					}
 					if cfg.Error == ErrorInsufficientScope {
-						fmt.Fprintf(&b, ", scope=%q", cfg.Scope)
+						b = append(b, `, scope="`...)
+						b = append(b, quotedstring.Escape(cfg.Scope)...)
+						b = append(b, '"')
 					}
 				}
 			}
-			challenges = append(challenges, b.String())
+			challenges = append(challenges, string(b))
 		}
 		challengeValue = strings.Join(challenges, ", ")
 	}
@@ -90,7 +101,12 @@ func New(config ...Config) fiber.Handler {
 		// Execute the error handler first
 		handlerErr := cfg.ErrorHandler(c, err)
 
-		status := c.Response().StatusCode()
+		status := c.Res().StatusCode()
+		// The ErrorHandler may return the error for the app to write; honor its status code too.
+		var fiberErr *fiber.Error
+		if errors.As(handlerErr, &fiberErr) && fiberErr != nil {
+			status = fiberErr.Code
+		}
 		if status == fiber.StatusUnauthorized || status == fiber.StatusProxyAuthRequired {
 			header := fiber.HeaderWWWAuthenticate
 			if status == fiber.StatusProxyAuthRequired {

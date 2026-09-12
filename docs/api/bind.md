@@ -9,8 +9,9 @@ toc_max_heading_level: 4
 Bindings parse request and response bodies, query parameters, cookies, and more into structs.
 
 :::info
-Binder-returned values are valid only within the handler. To keep them, copy the data
-or enable the [**`Immutable`**](./ctx.md) setting. [Read more...](../#zero-allocation)
+Bound string values alias the request buffers, so they are valid only within the handler:
+copy the data you need to keep. The [**`Immutable`**](./ctx.md) setting does not apply to
+bound values. [Read more...](../#zero-allocation)
 :::
 
 ## Binders
@@ -272,6 +273,63 @@ Run tests with the following `curl` command:
 curl -X POST -H "Content-Type: multipart/form-data" -F "name=john" -F "pass=doe" -F 'avatar=@filename' localhost:3000
 ```
 
+#### Nested and Array Form Fields
+
+A form body is a flat list of key/value pairs, so structure lives in the field name. The notations below work for both `application/x-www-form-urlencoded` and `multipart/form-data`, and identically for [query parameters](#query).
+
+| Notation           | Example                      | Binds to                             |
+| ------------------ | ---------------------------- | ------------------------------------ |
+| Repeated key       | `colors=red&colors=blue`     | slice of scalars                     |
+| Empty brackets     | `colors[]=red&colors[]=blue` | slice of scalars                     |
+| Bracket field      | `address[city]=Berlin`       | field of a nested struct             |
+| Dot field          | `address.city=Berlin`        | field of a nested struct             |
+| Indexed brackets   | `items[0][sku]=A1`           | field of a struct slice element      |
+| Dot index          | `items.0.sku=A1`             | field of a struct slice element      |
+| Mixed index/field  | `items[0].sku=A1`            | field of a struct slice element      |
+
+Bracket and dot notation are interchangeable and can be nested to any depth:
+
+```go title="Struct"
+type Address struct {
+    City string `form:"city"`
+    Zip  string `form:"zip"`
+}
+
+type Item struct {
+    SKU string `form:"sku"`
+    Qty int    `form:"qty"`
+}
+
+type Order struct {
+    Colors  []string `form:"colors"`
+    Address Address  `form:"address"`
+    Items   []Item   `form:"items"`
+}
+```
+
+```bash title="curl"
+curl -X POST http://localhost:3000/orders \
+  --data "colors[]=red&colors[]=blue" \
+  --data "address[city]=Berlin&address.zip=10115" \
+  --data "items[0][sku]=A1&items[0].qty=2&items.1.sku=B2&items.1.qty=5"
+```
+
+```go title="Result"
+Order{
+    Colors:  []string{"red", "blue"},
+    Address: Address{City: "Berlin", Zip: "10115"},
+    Items:   []Item{{SKU: "A1", Qty: 2}, {SKU: "B2", Qty: 5}},
+}
+```
+
+:::caution
+An index only ever addresses a struct field. `colors[0]=red` and `colors.0=red` do **not** fill a `[]string`. With the default decoder the value is dropped and no error is returned; after `SetParserDecoder(ParserConfig{IgnoreUnknownKeys: false})` the same input fails with `schema: invalid path "colors.0"`. Use a repeated key or `colors[]` for slices of scalars.
+:::
+
+:::note
+The struct field tag never contains the brackets or the index. `colors[]`, `colors[0]` and `colors.0` all resolve against `form:"colors"`.
+:::
+
 ### JSON
 
 Binds the request JSON body to a struct.
@@ -512,6 +570,7 @@ Fiber supports several formats for passing array values via query parameters. Th
 | Comma-separated          | `?colors=red,blue`                             | **Yes**                             |
 | Indexed bracket notation | `?posts[0][title]=Hello&posts[1][title]=World` | No                                  |
 | Nested bracket notation  | `?preferences[tags]=golang,api`                | No (comma splitting: **Yes**)       |
+| Dot notation             | `?user.name=Alice&posts.0.title=Hello`         | No                                  |
 
 ##### Repeated Key
 
@@ -653,6 +712,32 @@ curl "http://localhost:3000/api?preferences[tags]=golang,api"
 :::note
 Pointer fields (`*[]string`, `*Preferences`) let you distinguish between a missing parameter (`nil`) and an empty one. When the parameter is present, Fiber allocates the pointer automatically.
 :::
+
+##### Dot Notation
+
+Nested fields and indexes have a dot equivalent, and the two can be mixed within one request. Empty brackets are the exception, `colors[]` has no dot form:
+
+```text
+GET /api?user.name=Alice&posts.0.title=Hello&posts[1].title=World
+```
+
+```go title="Struct"
+type Post struct {
+    Title string `query:"title"`
+}
+
+type User struct {
+    Name string `query:"name"`
+}
+
+type Request struct {
+    User  User   `query:"user"`
+    Posts []Post `query:"posts"`
+}
+// Result: User = {Name: "Alice"}, Posts = [{Title: "Hello"}, {Title: "World"}]
+```
+
+Query and form binding share the same decoder, so the full notation reference in [Nested and Array Form Fields](#nested-and-array-form-fields) applies here too, including the caveat that an index never fills a slice of scalars.
 
 ### RespHeader
 
@@ -801,8 +886,55 @@ app.Post("/custom", func(c fiber.Ctx) error {
 })
 ```
 
-Internally, custom binders are also used in the [Body](#body) method.
-The `MIMETypes` method is used to check if the custom binder should be used for the given content type.
+### MIMETypes and Body
+
+[`Body`](#body) consults the registered custom binders before its own content-type
+switch, so `MIMETypes` decides how a binder can be reached:
+
+| `MIMETypes()` returns              | `Bind().Custom(name, dest)` | `Bind().Body(dest)`               |
+| ---------------------------------- | --------------------------- | --------------------------------- |
+| a content type no built-in handles | yes                         | yes, for that content type        |
+| a content type a built-in handles  | yes                         | yes, the built-in no longer runs  |
+| `nil`                              | yes                         | no                                |
+
+Returning `nil` makes a binder opt-in: it is reachable only by name, and the
+built-in decoders keep handling `Body`.
+
+### Overriding a built-in format
+
+Claiming a content type that already has a decoder takes precedence over the
+built-in one for every `Bind().Body()` call in the application, not only on the
+route you had in mind. `Body` uses the first registered binder whose `MIMETypes()`
+contains the request's content type, so a second binder claiming
+`fiber.MIMEApplicationJSON` never runs.
+
+To decode strictly on selected routes instead, return `nil` and call the binder
+by name:
+
+```go title="Example"
+type strictJSON struct{}
+
+func (strictJSON) Name() string        { return "strict" }
+func (strictJSON) MIMETypes() []string { return nil }
+
+func (strictJSON) Parse(c fiber.Ctx, out any) error {
+    d := json.NewDecoder(bytes.NewReader(c.Body()))
+    d.DisallowUnknownFields()
+    return d.Decode(out)
+}
+
+app.RegisterCustomBinder(strictJSON{})
+
+// curl -X POST http://localhost:3000/strict -H "Content-Type: application/json" -d '{"name":"John","admin":true}'
+app.Post("/strict", func(c fiber.Ctx) error {
+    var user User
+    // Rejects the unknown "admin" field; c.Bind().JSON(&user) still accepts it
+    if err := c.Bind().Custom("strict", &user); err != nil {
+        return err
+    }
+    return c.JSON(user)
+})
+```
 
 ## Options
 
@@ -851,7 +983,7 @@ type ParserConfig struct {
     IgnoreUnknownKeys bool
     ParserType        []ParserType
     ZeroEmpty         bool
-    SetAliasTag       string
+    SetAliasTag       string // ignored: every binder uses its own tag (query, form, header, ...)
 }
 
 type ParserType struct {

@@ -69,12 +69,14 @@ app.Use(session.New(session.Config{
     AbsoluteTimeout:   24 * time.Hour,    // Maximum session life
     Extractor:         extractors.FromCookie("__Host-session_id"),
 }))
+```
 
 Notes:
 
 - AbsoluteTimeout must be greater than or equal to IdleTimeout; otherwise, the middleware panics during configuration.
-- If CookieSameSite is set to "None", the middleware automatically forces CookieSecure=true when setting the cookie.
-```
+- CookieSameSite accepts `"Disabled"`, `"Lax"`, `"Strict"`, or `"None"` case-insensitively; other values panic during configuration.
+- If CookieSameSite is set to `"Disabled"`, the cookie omits the SameSite attribute and preserves `CookieSecure`.
+- If CookieSameSite is set to `"None"`, the middleware automatically forces `CookieSecure=true` when setting the cookie.
 
 ## Usage Patterns
 
@@ -719,7 +721,7 @@ extractors.Chain(extractors ...extractors.Extractor) extractors.Extractor
 | `AbsoluteTimeout`   | `time.Duration`             | Maximum session duration    | `0` (unlimited)                            |
 | `CookieSecure`      | `bool`                      | HTTPS only                  | `false`                                    |
 | `CookieHTTPOnly`    | `bool`                      | No JavaScript access        | `false`                                    |
-| `CookieSameSite`    | `string`                    | SameSite attribute          | `"Lax"`                                    |
+| `CookieSameSite`    | `string`                    | SameSite mode: `Disabled`, `Lax`, `Strict`, or `None` | `"Lax"`                    |
 | `CookiePath`        | `string`                    | Cookie path                 | `""`                                       |
 | `CookieDomain`      | `string`                    | Cookie domain               | `""`                                       |
 | `CookieSessionOnly` | `bool`                      | Session cookie              | `false`                                    |

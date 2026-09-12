@@ -63,7 +63,7 @@ Here's a quick overview of the changes in Fiber `v3`:
 
 ## Dropping support for old Go versions
 
-Fiber `v3` requires Go `1.25` or later. Update your toolchain to `1.25+` before upgrading so the module `go` directive and standard library features align with the new minimum version.
+Fiber `v3` requires Go `1.26` or later. Update your toolchain to `1.26+` before upgrading so the module `go` directive and standard library features align with the new minimum version.
 
 ## 🚀 App
 
@@ -422,7 +422,7 @@ Named routes retrieved with `app.GetRoute(name)` also support `route.URL(params)
 
 ### Domain routing
 
-`Domain` creates a router scoped to a specific hostname pattern. Routes registered through the returned `Router` only match requests whose hostname (from `c.Hostname()`) matches the pattern. When `TrustProxy` is enabled and the proxy is trusted (as defined by [`TrustProxyConfig`](./api/app#trustproxyconfig)), the hostname may be derived from the `X-Forwarded-Host` header. Be sure to configure `TrustProxyConfig` to restrict which proxies are trusted and prevent header spoofing when enabling `TrustProxy`.
+`Domain` creates a router scoped to a specific hostname pattern. Routes registered through the returned `Router` only match requests whose hostname (from `c.Hostname()`) matches the pattern. When `TrustProxy` is enabled and the proxy is trusted (as defined by [`TrustProxyConfig`](./api/fiber#trustproxyconfig)), the hostname may be derived from the `X-Forwarded-Host` header. Be sure to configure `TrustProxyConfig` to restrict which proxies are trusted and prevent header spoofing when enabling `TrustProxy`.
 
 The pattern can contain parameters prefixed with `:`, accessible via `fiber.DomainParam`.
 
@@ -704,6 +704,44 @@ The `TypeConstraint` type, `Constraint.ID`, and `Constraint.RegexCompiler` field
 - **OverrideParam**: Overwrites the value of an existing route parameter, or does nothing if the parameter does not exist
 - **IsWebSocket**: Reports if the request attempts a WebSocket upgrade.
 - **IsPreflight**: Identifies CORS preflight requests before handlers run.
+- **ID**: Returns the connection-unique identifier of the request, without depending on a header.
+- **StartTime** / **Elapsed**: Report when the server began handling the request and how long it has taken so far.
+- **LocalAddr** / **RemoteAddr**: Return the connection's addresses as `net.Addr`, where `IP` returns a string.
+- **Hijack** / **Hijacked**: Take over the connection after the response is sent, and report whether that has happened.
+- **RouteName**: Returns the name of the route currently executing.
+- **IsFinal**: Reports whether the current handler is the last one of a matched, non-middleware route.
+- **MountPath**: Returns the prefix the sub-app owning the current route was mounted under.
+- **Error**: Builds a `*fiber.Error` with the given status code, so a handler can reject a request in one line.
+- **GetAll**: Returns every field line of a request header, where `Get` returns only the first.
+- **Authorization** / **Bearer**: Split the `Authorization` header into scheme and credentials, and read a `Bearer` token.
+- **Origin**: Returns the `Origin` request header.
+- **ContentLength**: Returns the value of the `Content-Length` request header; `Res` carries one for the response.
+- **ContentType**: Returns the `Content-Type` request header with its parameters; `Res` carries one for the response.
+- **BodyStream**: Returns the request body as a stream when `StreamRequestBody` is enabled.
+- **URI**: Returns the parsed `*fasthttp.URI` of the request.
+- **CookieNames** / **AllCookies**: Enumerate the cookies the client sent.
+- **IfNoneMatch** / **IfModifiedSince**: Read the conditional-request headers, parsed.
+- **IsSafe** / **IsIdempotent**: Classify the request method per RFC 9110.
+- **Add**: Appends a response header as a new field line, where `Append` folds values into one.
+- **Del**: Removes a response header.
+- **StatusCode**: Returns the status code set on the response, the read side of `Status`.
+- **Body** (on `Res`): Returns the response body buffered so far.
+- **ResetBody**: Discards the response body, keeping the status and headers.
+- **Written**: Reports whether anything has been written to the response body yet.
+- **ContentType**: Returns the `Content-Type` response header, the read side of `Type`.
+- **GetCookie** / **Cookies** (on `Res`): Read back the cookies the response is set to send.
+- **NoContent**: Replies `204 No Content`, discarding any body and the `Content-Type`.
+
+### Req and Res Method Placement
+
+The request helpers listed above are defined on `Req`, so they are reachable both as `c.UserAgent()` and as
+`c.Req().UserAgent()`. This also applies to `Path`, `Secure`, `XHR`, `HasBody`, `IsWebSocket`, `IsPreflight`
+and the `Accept`/`Content-Type` helpers, which are request methods and are now on `Req` as well.
+
+`Req` and `Res` each define a `Body`, `ContentLength` and `ContentType`. On `Ctx` these resolve to the
+**request**, as `Get` already did; use `c.Res().Body()`, `c.Res().ContentLength()` and `c.Res().ContentType()`
+for the response. The response cookies are `c.Res().GetCookies()`, named apart from `Req.Cookies` so that a
+`Ctx` keeps satisfying `fiber.Res`.
 
 ### Removed Methods
 
@@ -735,6 +773,21 @@ The `TypeConstraint` type, `Constraint.ID`, and `Constraint.RegexCompiler` field
   `filename="report 2024.txt"` (previously `filename="report+2024.txt"`), with
   quotes and backslashes escaped as quoted-pairs, so browsers save files under
   their real names.
+- **Get, GetReqHeader and the request header helpers**: Field names are now matched case-insensitively, as
+  [RFC 9110, Section 5.1](https://www.rfc-editor.org/rfc/rfc9110#section-5.1) requires. This is only observable
+  under `DisableHeaderNormalizing: true`, where the store keeps the spelling the peer sent: with a
+  `x-test: yes` line, `c.Get("X-Test")` returned `""` in v2 and returns `"yes"` now. The default configuration
+  is unchanged, because fasthttp canonicalizes the names on the way in.
+- **Fresh()**: `If-None-Match`, `If-Modified-Since` and `Cache-Control` are read case-insensitively for the
+  same reason, so `c.Fresh()` can now return `true` where it returned `false` under `DisableHeaderNormalizing`.
+  That changes which requests are answered `304 Not Modified`.
+- **SendStatus()**: For a status that disallows a body — `1xx`, `204` and `304` — the response body and any
+  `Content-Length` already set are now dropped, per
+  [RFC 9110, Section 8.6](https://www.rfc-editor.org/rfc/rfc9110#section-8.6). `c.Set(fiber.HeaderContentLength, "42")`
+  followed by `c.SendStatus(204)` previously put `Content-Length: 42` on the wire, along with a `Content-Type`
+  fasthttp emits for a declared length; neither line is sent now. `205 Reset Content` still sends
+  `Content-Length: 0`, which [Section 15.3.6](https://www.rfc-editor.org/rfc/rfc9110#section-15.3.6) requires.
+  Unlike the two above, this applies under the default configuration.
 - **Context()**: Renamed to `RequestCtx()` to access the underlying `fasthttp.RequestCtx`.
 - **IP()**: When `EnableIPValidation` is `true` and `TrustProxyConfig` is set, `c.IP()` now walks the `X-Forwarded-For` chain from right to left and returns the first non-trusted IP, instead of the leftmost syntactically valid IP. This closes an IP-spoofing vector where an attacker could prepend a fake address and have it returned by `c.IP()`. Apps with `EnableIPValidation = false` (the default) are unaffected. See [`Ctx.IP`](./api/ctx.md#ip) and the [reverse proxy guide](./guide/reverse-proxy.md#getting-the-real-client-ip-address) for details.
 
@@ -974,6 +1027,10 @@ app.Get("/new", func(c fiber.Ctx) error {
 
 </details>
 
+### Disabling flash messages
+
+Flash messages travel in the `fiber_flash` cookie, so only a client that keeps cookies across the redirect (a browser, typically) receives them, and every request is scanned for the cookie. Deployments whose clients keep no cookies can turn the feature off with `fiber.Config{DisableFlashMessages: true}`: `Redirect().With` and `WithInput` then set no cookie, `Messages` and `OldInput` report nothing, and the scan is skipped.
+
 ### Changed behavior
 
 :::info
@@ -1011,6 +1068,16 @@ if err != nil {
 defer resp.Close()
 fmt.Println(resp.StatusCode(), resp.String())
 ```
+
+:::caution
+A path parameter value now fills exactly one path segment. A value holding `/`
+or `\`, a value that is exactly `.` or `..`, and an empty value are rejected
+with `ErrPathParamInPath`; a value substituted into the host must already be a
+valid host or the request fails with `ErrPathParamInHost`. Previously such a
+value was pasted in unchanged, so `SetPathParam("id", "../../admin")` on
+`/api/:id` quietly sent the request to `/admin`. Set
+`SetDisablePathNormalizing(true)` to send a multi-segment value on purpose.
+:::
 
 ### Fasthttp transport integration
 
@@ -2806,6 +2873,7 @@ jar.Set(uri, c)
 | Feature | v3 API |
 |---------|--------|
 | Request Hooks | `c.AddRequestHook(fn)` |
+| Final Request Hooks | `c.AddFinalRequestHook(fn)` |
 | Response Hooks | `c.AddResponseHook(fn)` |
 | Proxy | `c.SetProxyURL(url)` |
 | Context | `req.SetContext(ctx)` |
@@ -3027,6 +3095,34 @@ app.Use(cors.New(cors.Config{
 }))
 ```
 
+#### Redirect
+
+- **Ordered rules**: `Rules map[string]string` is deprecated in favour of `RuleList []Rule`. A map has no order, so which rule answered a path two rules both matched could not be expressed by the author. Rules in a `RuleList` are tried in the order written and the first match wins, exactly as routes are matched.
+
+```go
+// Before
+app.Use(redirect.New(redirect.Config{
+    Rules: map[string]string{
+        "/old":   "/new",
+        "/old/*": "/new/$1",
+    },
+}))
+
+// After
+app.Use(redirect.New(redirect.Config{
+    RuleList: []redirect.Rule{
+        {From: "/old", To: "/new"},
+        {From: "/old/*", To: "/new/$1"},
+    },
+}))
+```
+
+`Rules` keeps working for the whole of v3. Its order is now decided by a documented heuristic rather than by analysing each pattern: most path text pinned before the first `*`, then most path text overall, then fewest asterisks, then the key. Configurations written with path text and `*` are unaffected; rules relying on regular-expression syntax beyond `*` may order differently, and `RuleList` gives exact control. Setting both fields panics.
+
+Fiber now also warns at startup when a rule can never fire because an earlier one matches every path it does.
+
+- **A capture may no longer stand inside a target's authority**, which covers the host, the port and any userinfo: `"https://$1.cdn.example.com/"`, `"https://cdn.example.com:$1"` and `"https://$1"` are refused at startup with a warning, and those rules never fire. Whether such a value was safe depended on percent-decoding, IDNA mapping, numeric labels read as IPv4 addresses, IPv6 brackets and userinfo, and each of those was a way to move the host somewhere the target did not name. A capture in the path, query or fragment is unchanged. Where the destination host genuinely varies, pick it in a handler and use `c.Redirect()`, where the value is yours to validate.
+
 #### CSRF
 
 - **Field Renaming**: The `Expiration` field in the CSRF middleware configuration has been renamed to `IdleTimeout` to better describe its functionality. Additionally, the default value has been reduced from 1 hour to 30 minutes. Update your code as follows:
@@ -3237,6 +3333,32 @@ app.Get("/gif", proxy.Forward("https://i.imgur.com/IWaBepg.gif"))
 
 `proxy.Balancer` also adopts the common middleware signature pattern and now accepts an optional variadic config: call `proxy.Balancer()` to use the defaults or continue passing a single `proxy.Config` value as in v2.
 
+#### Rewrite
+
+- **Ordered rules**: `Rules map[string]string` is deprecated in favour of `RuleList []Rule`. A map has no order, so which rule answered a path two rules both matched was decided by map iteration, which Go randomizes per run: the same request could be rewritten differently from one call to the next. Rules in an `RuleList` list are tried in the order written and the first match wins, exactly as routes are matched.
+
+```go
+// Before
+app.Use(rewrite.New(rewrite.Config{
+    Rules: map[string]string{
+        "/old":   "/new",
+        "/old/*": "/new/$1",
+    },
+}))
+
+// After
+app.Use(rewrite.New(rewrite.Config{
+    RuleList: []rewrite.Rule{
+        {From: "/old", To: "/new"},
+        {From: "/old/*", To: "/new/$1"},
+    },
+}))
+```
+
+`Rules` keeps working for the whole of v3; its keys are ranked most path text before the first `*`, then most path text overall, then fewest asterisks, then the key. Setting both fields panics.
+
+- **A rule is path text**: `From` is no longer compiled as an unescaped regular expression. `*` matches a run of any bytes but a newline and every other byte stands for itself, so `/preis-1.000-euro` rewrites that path and no longer also `/preis-1X000-euro`, and `/faq?` no longer rewrites `/fa`. This also completes the anchoring fix from #4476: `"^" + "/a|/b" + "$"` parsed as `(^/a)|(/b$)`, so a rule could match by prefix or suffix alone. Rules written with path text and `*` are unaffected; a rule relying on regular-expression syntax now matches the literal characters it spells.
+
 #### Session
 
 `session.New()` now returns a middleware handler. When using the store pattern,
@@ -3261,6 +3383,17 @@ app.Use(session.New(session.Config{
     Store:     session.NewStore(),
 }))
 ```
+
+`CookieSameSite` is now read the same way as it is for `Ctx.Cookie`:
+
+- **`"Disabled"` omits the attribute.** The session used to ignore
+  `CookieSameSiteDisabled` and send `SameSite=Lax`, while `Ctx.Cookie` honored
+  it, so one constant meant two things. A session cookie configured this way now
+  carries no `SameSite` attribute, which is weaker than what was sent before. Set
+  `CookieSameSite: "Lax"` explicitly to keep the old cookie.
+- **Any other value panics** during configuration instead of silently falling
+  back to `Lax`, matching how `AbsoluteTimeout` is already validated. `Disabled`,
+  `Lax`, `Strict` and `None` are accepted case-insensitively.
 
 See the [Session Middleware Migration Guide](./middleware/session.md#migration-guide)
 for complete details.

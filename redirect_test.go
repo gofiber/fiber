@@ -5,9 +5,11 @@
 package fiber
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"io"
 	"mime/multipart"
 	"net/http"
@@ -15,6 +17,7 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
@@ -137,6 +140,143 @@ func Test_Redirect_Route_WithQueries_SpecialChars(t *testing.T) {
 	// The value must survive as a single query parameter, not be split into
 	// `q=a` and `b=c`.
 	require.Equal(t, url.Values{"q": []string{"a&b=c"}}, location.Query())
+}
+
+// go test -run Test_Redirect_Route_ParamCannotMoveTheQuery
+func Test_Redirect_Route_ParamCannotMoveTheQuery(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		param string
+		want  string
+	}{
+		{
+			name:  "plain",
+			param: "fiber",
+			want:  "/user/fiber?q=1",
+		},
+		{
+			// A second "?" reads as one query string, so appending it folded
+			// q=1 into the earlier parameter's value instead of adding it.
+			name:  "param opens a query",
+			param: "a?b=2",
+			want:  "/user/a?b=2&q=1",
+		},
+		{
+			// Everything after "#" is a fragment, which the client never
+			// sends, so appending the query there dropped it outright.
+			name:  "param opens a fragment",
+			param: "a#b",
+			want:  "/user/a?q=1#b",
+		},
+		{
+			name:  "param opens both",
+			param: "a?b=2#c",
+			want:  "/user/a?b=2&q=1#c",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			app := New()
+			app.Get("/user/:name", func(c Ctx) error {
+				return c.JSON(c.Params("name"))
+			}).Name("user")
+			c := app.AcquireCtx(&fasthttp.RequestCtx{})
+
+			err := c.Redirect().Route("user", RedirectConfig{
+				Params:  Map{"name": tc.param},
+				Queries: map[string]string{"q": "1"},
+			})
+			require.NoError(t, err)
+			require.Equal(t, tc.want, string(c.Response().Header.Peek(HeaderLocation)))
+		})
+	}
+}
+
+// go test -run Test_Redirect_Route_ParamCannotLeaveTheOrigin
+func Test_Redirect_Route_ParamCannotLeaveTheOrigin(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		param string
+		want  string
+	}{
+		{
+			name:  "plain",
+			param: "docs/index.html",
+			want:  "/docs/index.html",
+		},
+		{
+			// "//evil.com" is a network-path reference: the browser reads
+			// evil.com as the host and never comes back to this origin.
+			name:  "leading slash",
+			param: "/evil.com",
+			want:  "/evil.com",
+		},
+		{
+			name:  "leading slash run",
+			param: "//evil.com",
+			want:  "/evil.com",
+		},
+		{
+			// The WHATWG URL parser folds a backslash to a slash here, so this
+			// reaches evil.com exactly as "//evil.com" does.
+			name:  "leading backslash",
+			param: `\evil.com`,
+			want:  "/evil.com",
+		},
+		{
+			name:  "mixed slash run",
+			param: `/\/evil.com`,
+			want:  "/evil.com",
+		},
+		{
+			// Tab, LF and CR are removed before the URL is parsed, so a leading
+			// one hides the slash run that follows it.
+			name:  "tab before the slash",
+			param: "\t/evil.com",
+			want:  "/evil.com",
+		},
+		{
+			// A scheme cannot start here — the route is rooted at "/" — so this
+			// stays the path segment the route asked for.
+			name:  "absolute URL is a path segment",
+			param: "https://evil.com",
+			want:  "/https://evil.com",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			app := New()
+			app.Get("/*", func(c Ctx) error {
+				return c.JSON(c.Params("*"))
+			}).Name("wildcard")
+			c := app.AcquireCtx(&fasthttp.RequestCtx{})
+
+			err := c.Redirect().Route("wildcard", RedirectConfig{
+				Params: Map{"*": tc.param},
+			})
+			require.NoError(t, err)
+			require.Equal(t, tc.want, string(c.Response().Header.Peek(HeaderLocation)))
+
+			// The same question asked the other two ways. A caller who puts
+			// either answer in a Location header or an href reaches the same
+			// place, so all three have to agree.
+			fromRoute, err := app.GetRoute("wildcard").URL(Map{"*": tc.param})
+			require.NoError(t, err)
+			require.Equal(t, tc.want, fromRoute, "Route.URL")
+
+			fromCtx, err := c.GetRouteURL("wildcard", Map{"*": tc.param})
+			require.NoError(t, err)
+			require.Equal(t, tc.want, fromCtx, "GetRouteURL")
+		})
+	}
 }
 
 // go test -run Test_Redirect_Route_WithOptionalParams
@@ -339,6 +479,137 @@ func Test_Redirect_Back_WithCrossOriginReferer(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, StatusSeeOther, c.Response().StatusCode())
 	require.Equal(t, "/", string(c.Response().Header.Peek(HeaderLocation)))
+}
+
+// go test -run Test_Redirect_Back_RejectsEmptyAuthorityReferer
+//
+// Test_Redirect_Back_RejectsEmptyAuthorityReferer covers a network-path
+// reference whose authority came out empty.
+//
+// "//?x", "//#f" and "//@" reach net/url with an empty Host and no scheme, so
+// the relative-path branch called them same-origin — a different question than
+// the one asked. They name no origin at all, and the Location they produced is
+// one no client can resolve: a browser fails to parse "//?x" against its base
+// rather than going anywhere. Fall back instead of emitting a dead redirect.
+func Test_Redirect_Back_RejectsEmptyAuthorityReferer(t *testing.T) {
+	t.Parallel()
+
+	for _, referer := range []string{"//?x", "//#f", "//@"} {
+		t.Run(referer, func(t *testing.T) {
+			t.Parallel()
+
+			app := New()
+			app.Get("/back", func(c Ctx) error { return c.Redirect().Back("/fallback") })
+
+			req := httptest.NewRequest(MethodGet, "/back", http.NoBody)
+			req.Host = "victim.test"
+			req.Header.Set(HeaderReferer, referer)
+			resp, err := app.Test(req)
+			require.NoError(t, err)
+			require.Equal(t, "/fallback", resp.Header.Get(HeaderLocation))
+		})
+	}
+
+	// A reference that is only slashes normalizes to a plain absolute path and
+	// really is this origin, so it is still honored.
+	for _, referer := range []string{"//", "///"} {
+		t.Run(referer, func(t *testing.T) {
+			t.Parallel()
+
+			app := New()
+			app.Get("/back", func(c Ctx) error { return c.Redirect().Back("/fallback") })
+
+			req := httptest.NewRequest(MethodGet, "/back", http.NoBody)
+			req.Host = "victim.test"
+			req.Header.Set(HeaderReferer, referer)
+			resp, err := app.Test(req)
+			require.NoError(t, err)
+			require.Equal(t, "/", resp.Header.Get(HeaderLocation))
+		})
+	}
+}
+
+func Test_Redirect_Back_RejectsBrowserNormalizedReferer(t *testing.T) {
+	t.Parallel()
+
+	// Referer values that net/url reports as ordinary relative paths but that a
+	// browser resolves to another origin, because it folds backslashes onto
+	// forward slashes, drops ASCII tab/newline, and treats any leading run of
+	// slashes as the start of an authority.
+	crossOrigin := []string{
+		`/\evil.com`,
+		`/\/evil.com`,
+		`\\evil.com`,
+		`\/evil.com`,
+		"/\t/evil.com",
+		"\t//evil.com",
+		` //evil.com`,
+		`///evil.com`,
+		`/////evil.com`,
+		`https:///evil.com`,
+	}
+
+	app := New()
+	for _, referer := range crossOrigin {
+		t.Run(referer, func(t *testing.T) {
+			t.Parallel()
+
+			c := app.AcquireCtx(&fasthttp.RequestCtx{})
+			defer app.ReleaseCtx(c)
+
+			c.Request().Header.Set(HeaderReferer, referer)
+			c.Request().URI().SetHost("example.com")
+
+			require.NoError(t, c.Redirect().Back("/fallback"))
+			require.Equal(t, StatusSeeOther, c.Response().StatusCode())
+			require.Equal(t, "/fallback", string(c.Response().Header.Peek(HeaderLocation)))
+		})
+	}
+}
+
+// go test -run Test_Redirect_Back_NormalizesSameOriginReferer
+func Test_Redirect_Back_NormalizesSameOriginReferer(t *testing.T) {
+	t.Parallel()
+
+	// A same-origin referer is redirected to in its browser-normalized form, so
+	// a client that does not fold backslashes cannot resolve a different origin
+	// than the one that was validated.
+	tests := []struct {
+		referer  string
+		expected string
+	}{
+		{referer: `/back`, expected: `/back`},
+		{referer: `back`, expected: `back`},
+		{referer: `/a\b`, expected: `/a/b`},
+		{referer: `http://example.com\@evil.com`, expected: `http://example.com/@evil.com`},
+		{referer: "/back\t", expected: `/back`},
+
+		// The backslash fold belongs to the path; WHATWG treats "\\" as an
+		// ordinary character in the query and fragment, so rewriting it there
+		// would send the user back to a different query than they came from.
+		{referer: `/search?q=a\b`, expected: `/search?q=a\b`},
+		{referer: `/p?path=C:\Users\me`, expected: `/p?path=C:\Users\me`},
+		{referer: `/docs#a\b`, expected: `/docs#a\b`},
+		// Invalid UTF-8 must survive byte-for-byte rather than becoming U+FFFD.
+		{referer: "/back?x=caf\xe9\\y", expected: "/back?x=caf\xe9\\y"},
+	}
+
+	app := New()
+	for _, tc := range tests {
+		t.Run(tc.referer, func(t *testing.T) {
+			t.Parallel()
+
+			c := app.AcquireCtx(&fasthttp.RequestCtx{})
+			defer app.ReleaseCtx(c)
+
+			c.Request().Header.Set(HeaderReferer, tc.referer)
+			c.Request().URI().SetHost("example.com")
+
+			require.NoError(t, c.Redirect().Back("/fallback"))
+			require.Equal(t, StatusSeeOther, c.Response().StatusCode())
+			require.Equal(t, tc.expected, string(c.Response().Header.Peek(HeaderLocation)))
+		})
+	}
 }
 
 // go test -run Test_Redirect_Route_WithFlashMessages
@@ -632,8 +903,35 @@ func Test_Redirect_parseAndClearFlashMessages_InvalidHex(t *testing.T) {
 	// Verify that no flash messages are processed (should be empty)
 	require.Empty(t, r.messages)
 
+	// The cookie is expired even though hex decoding failed. A value this
+	// application cannot decode is one it will never decode, so leaving it in
+	// place would mean re-running hex and msgp over attacker-controlled bytes
+	// on every subsequent request for as long as the browser kept sending it.
+	assertFlashCookieCleared(t, string(c.Response().Header.Peek(HeaderSetCookie)))
+
 	// Release redirect
 	ReleaseRedirect(r)
+}
+
+// Test_Redirect_release_ZeroesMessages asserts that a *Redirect handed back to
+// the pool does not carry the submitted form with it. WithInput copies the
+// whole request body into r.messages — a rejected login puts the password the
+// user just typed in there — and truncating to [:0] leaves those strings
+// reachable from the backing array for the life of the process.
+func Test_Redirect_release_ZeroesMessages(t *testing.T) {
+	t.Parallel()
+
+	r := AcquireRedirect()
+	r.With("password", "hunter2")
+	r.With("token", "s3cr3t")
+	require.Len(t, r.messages, 2)
+
+	full := r.messages[:cap(r.messages)]
+	r.release()
+
+	for i := range full {
+		require.Equal(t, redirectionMsg{}, full[i], "index %d survived release", i)
+	}
 }
 
 func Test_Redirect_Messages_ClearsFlashMessages(t *testing.T) {
@@ -898,6 +1196,105 @@ func Benchmark_Redirect_Route_WithFlashMessages(b *testing.B) {
 	require.Contains(b, msgs, redirectionMsg{key: "message", value: "test", level: 0, isOldInput: false})
 }
 
+// Test_Redirect_DisableFlashMessages pins the switch on both request handlers:
+// with it set, With and WithInput set no cookie, an incoming flash cookie is
+// neither read nor expired, and the accessors report nothing.
+func Test_Redirect_DisableFlashMessages(t *testing.T) {
+	t.Parallel()
+
+	payload, err := testredirectionMsgs.MarshalMsg(nil)
+	require.NoError(t, err)
+	incoming := FlashCookieName + "=" + hex.EncodeToString(payload)
+
+	apps := []struct {
+		newApp func(cfg Config) *App
+		name   string
+	}{
+		{newApp: func(cfg Config) *App { return New(cfg) }, name: "default ctx"},
+		{newApp: func(cfg Config) *App {
+			return NewWithCustomCtx(func(app *App) CustomCtx {
+				return &customCtx{DefaultCtx: *NewDefaultCtx(app)}
+			}, cfg)
+		}, name: "custom ctx"},
+	}
+	for _, tc := range apps {
+		for _, disabled := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/disabled=%v", tc.name, disabled), func(t *testing.T) {
+				t.Parallel()
+
+				app := tc.newApp(Config{DisableFlashMessages: disabled})
+				app.Get("/source", func(c Ctx) error {
+					return c.Redirect().With("status", "ok").WithInput().To("/target")
+				})
+				app.Get("/target", func(c Ctx) error {
+					return c.SendString(fmt.Sprintf("%d/%d", len(c.Redirect().Messages()), len(c.Redirect().OldInputs())))
+				})
+
+				resp, err := app.Test(httptest.NewRequest(MethodGet, "/source?name=john", http.NoBody))
+				require.NoError(t, err)
+				require.Equal(t, StatusSeeOther, resp.StatusCode)
+				if disabled {
+					require.Empty(t, resp.Header.Get(HeaderSetCookie), "no flash cookie may be set")
+				} else {
+					require.Contains(t, resp.Header.Get(HeaderSetCookie), FlashCookieName+"=")
+				}
+
+				req := httptest.NewRequest(MethodGet, "/target", http.NoBody)
+				req.Header.Set(HeaderCookie, incoming)
+				resp, err = app.Test(req)
+				require.NoError(t, err)
+				require.Equal(t, StatusOK, resp.StatusCode)
+				body, err := io.ReadAll(resp.Body)
+				require.NoError(t, err)
+				if disabled {
+					require.Equal(t, "0/0", string(body))
+					require.Empty(t, resp.Header.Get(HeaderSetCookie), "the incoming cookie must be left alone")
+				} else {
+					require.Equal(t, "2/2", string(body))
+					assertFlashCookieCleared(t, resp.Header.Get(HeaderSetCookie))
+				}
+			})
+		}
+	}
+}
+
+// Benchmark_Redirect_FlashCookieCheck measures the per-request scan for an
+// incoming flash cookie on a parsed browser-style request, which the other
+// handler benchmarks miss because their hand-built requests carry no raw
+// header block.
+// go test -v -run=^$ -bench=Benchmark_Redirect_FlashCookieCheck -benchmem -count=4
+func Benchmark_Redirect_FlashCookieCheck(b *testing.B) {
+	const raw = "GET /user HTTP/1.1\r\n" +
+		"Host: example.com\r\n" +
+		"User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36\r\n" +
+		"Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8\r\n" +
+		"Accept-Language: en-US,en;q=0.9\r\n" +
+		"Accept-Encoding: gzip, deflate, br, zstd\r\n" +
+		"Connection: keep-alive\r\n" +
+		"Cookie: session_id=abcdef1234567890; theme=dark; _ga=GA1.2.123456789.1700000000\r\n" +
+		"Cache-Control: max-age=0\r\n" +
+		"Sec-Fetch-Dest: document\r\n" +
+		"Sec-Fetch-Mode: navigate\r\n" +
+		"Sec-Fetch-Site: none\r\n\r\n"
+
+	for _, disabled := range []bool{false, true} {
+		b.Run(fmt.Sprintf("disabled=%v", disabled), func(b *testing.B) {
+			app := New(Config{DisableFlashMessages: disabled})
+			app.Get("/user", func(_ Ctx) error { return nil })
+			handler := app.Handler()
+
+			ctx := &fasthttp.RequestCtx{}
+			require.NoError(b, ctx.Request.Read(bufio.NewReader(strings.NewReader(raw))))
+
+			b.ReportAllocs()
+			for b.Loop() {
+				handler(ctx)
+			}
+			require.Equal(b, StatusOK, ctx.Response.StatusCode())
+		})
+	}
+}
+
 var testredirectionMsgs = redirectionMsgs{
 	{
 		key:   "success",
@@ -1125,4 +1522,309 @@ func Benchmark_Redirect_OldInput(b *testing.B) {
 		Key:   "name",
 		Value: "tom",
 	}, input)
+}
+
+// go test -run Test_Redirect_FlashCookie_Attributes
+func Test_Redirect_FlashCookie_Attributes(t *testing.T) {
+	t.Parallel()
+
+	// The flash payload is hex-encoded, not encrypted, and WithInput copies the
+	// whole submitted form into it — including whatever the user typed into a
+	// password field. It is only ever read back on the server, so it must not be
+	// reachable from document.cookie, and must not travel in the clear when the
+	// request that produced it was served over TLS.
+	newApp := func() *App {
+		app := New(Config{
+			TrustProxy: true,
+			TrustProxyConfig: TrustProxyConfig{
+				Proxies: []string{"0.0.0.0"},
+			},
+		})
+		app.Post("/login", func(c Ctx) error {
+			return c.Redirect().With("error", "bad credentials").WithInput().To("/login")
+		})
+		return app
+	}
+
+	post := func(t *testing.T, app *App, scheme string) string {
+		t.Helper()
+
+		req := httptest.NewRequest(MethodPost, "/login", strings.NewReader("user=alice&password=hunter2"))
+		req.Header.Set(HeaderContentType, MIMEApplicationForm)
+		if scheme != "" {
+			req.Header.Set(HeaderXForwardedProto, scheme)
+		}
+		resp, err := app.Test(req)
+		require.NoError(t, err)
+
+		for _, cookie := range resp.Header.Values(HeaderSetCookie) {
+			if strings.HasPrefix(cookie, FlashCookieName+"=") {
+				return cookie
+			}
+		}
+		t.Fatalf("no %s cookie in response", FlashCookieName)
+		return ""
+	}
+
+	t.Run("plain http", func(t *testing.T) {
+		t.Parallel()
+
+		cookie := post(t, newApp(), "")
+		require.Contains(t, cookie, "HttpOnly")
+		// Secure would make the browser drop the cookie on a plaintext request.
+		require.NotContains(t, cookie, "secure")
+	})
+
+	t.Run("forwarded https", func(t *testing.T) {
+		t.Parallel()
+
+		cookie := post(t, newApp(), "https")
+		require.Contains(t, cookie, "HttpOnly")
+		require.Contains(t, cookie, "secure")
+	})
+}
+
+// go test -run Test_Redirect_FlashMessages_NoCrossRequestLeak
+func Test_Redirect_FlashMessages_NoCrossRequestLeak(t *testing.T) {
+	t.Parallel()
+
+	// The two requests below are sequential regardless, which is what makes the
+	// second reuse the first's pooled ctx. Running the test alongside others
+	// does not weaken that: mutation-verified with both clears reverted, this
+	// still fails under the full package's parallel load.
+	app := New()
+
+	app.Get("/read", func(c Ctx) error {
+		var sb strings.Builder
+		for _, m := range c.Redirect().Messages() {
+			sb.WriteString("MSG:" + m.Key + "=" + m.Value + ";") //nolint:errcheck // strings.Builder writes never fail
+		}
+		for _, in := range c.Redirect().OldInputs() {
+			sb.WriteString("OLD:" + in.Key + "=" + in.Value + ";") //nolint:errcheck // strings.Builder writes never fail
+		}
+		return c.SendString(sb.String())
+	})
+	// Deliberately does not consume the flash messages, so they are still in
+	// the context's slice when it is released back to the pool.
+	app.Get("/ignore", func(c Ctx) error { return c.SendString("ok") })
+
+	victim := redirectionMsgs{
+		{key: "user", value: "alice", isOldInput: true},
+		{key: "password", value: "hunter2", isOldInput: true},
+		{key: "error", value: "bad credentials"},
+	}
+	raw, err := victim.MarshalMsg(nil)
+	require.NoError(t, err)
+
+	get := func(t *testing.T, path, flashCookie string) string {
+		t.Helper()
+
+		req := httptest.NewRequest(MethodGet, path, http.NoBody)
+		if flashCookie != "" {
+			req.Header.Set(HeaderCookie, FlashCookieName+"="+flashCookie)
+		}
+		resp, err := app.Test(req)
+		require.NoError(t, err)
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		return string(body)
+	}
+
+	// One request carries real flash data and leaves it unread.
+	require.Equal(t, "ok", get(t, "/ignore", hex.EncodeToString(raw)))
+
+	// The next request asks for N messages encoded as empty msgp maps (0x9N
+	// fixarray of 0x80 fixmaps). Those decode to zero values; if the pooled
+	// slice were reused without being cleared, the fields absent from each map
+	// would come back holding the previous request's data instead.
+	for n := 1; n <= 4; n++ {
+		payload := fmt.Sprintf("9%d%s", n, strings.Repeat("80", n))
+
+		body := get(t, "/read", payload)
+		require.NotContains(t, body, "alice")
+		require.NotContains(t, body, "hunter2")
+		require.NotContains(t, body, "bad credentials")
+		require.Equal(t, strings.Repeat("MSG:=;", n), body)
+	}
+}
+
+// go test -run Test_Redirect_Back_IgnoresHeaderNameCase
+//
+// Ctx.Get compares the stored key byte for byte, so under
+// DisableHeaderNormalizing a "referer:" from a client behind an HTTP/2 or
+// HTTP/3 front end — where lower case is what the wire carries — read as no
+// referer at all, and Back went to the fallback instead of back.
+func Test_Redirect_Back_IgnoresHeaderNameCase(t *testing.T) {
+	t.Parallel()
+
+	for _, normalize := range []bool{true, false} {
+		t.Run(fmt.Sprintf("normalize=%v", normalize), func(t *testing.T) {
+			t.Parallel()
+
+			for _, sent := range []string{"Referer", "referer", "REFERER"} {
+				app := New(Config{DisableHeaderNormalizing: !normalize})
+				c := app.AcquireCtx(&fasthttp.RequestCtx{})
+				if !normalize {
+					c.Request().Header.DisableNormalizing()
+				}
+				c.Request().Header.Set(sent, "/previous")
+
+				require.NoError(t, c.Redirect().Back("/fallback"))
+				require.Equal(t, "/previous", string(c.Response().Header.Peek(HeaderLocation)),
+					"sent as %q", sent)
+				app.ReleaseCtx(c)
+			}
+		})
+	}
+}
+
+// go test -run Test_Redirect_Back_RejectsAnUnusableReferer
+//
+// Every referer that cannot be resolved back to this origin falls back rather
+// than being echoed into Location. These are the shapes that fail before the
+// same-origin comparison is even reached: one that normalizes away to nothing,
+// and one the URL parser refuses.
+func Test_Redirect_Back_RejectsAnUnusableReferer(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		referer string
+	}{
+		{name: "empty", referer: ""},
+		// Leading and trailing C0 controls and spaces are stripped before
+		// anything else, so these name no location at all.
+		{name: "only spaces", referer: " "},
+		{name: "only controls", referer: "\t\n "},
+		// url.Parse refuses these outright.
+		{name: "bad percent escape", referer: "%zz"},
+		{name: "control byte", referer: "http://a\x7fb"},
+		{name: "space in the scheme", referer: "ht tp://x"},
+		{name: "no scheme before the colon", referer: "://x"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			app := New()
+			c := app.AcquireCtx(&fasthttp.RequestCtx{})
+			defer app.ReleaseCtx(c)
+
+			if tc.referer != "" {
+				c.Request().Header.Set(HeaderReferer, tc.referer)
+			}
+
+			require.NoError(t, c.Redirect().Back("/fallback"))
+			require.Equal(t, "/fallback", string(c.Response().Header.Peek(HeaderLocation)))
+		})
+	}
+
+	t.Run("no referer at all, with names left as sent", func(t *testing.T) {
+		t.Parallel()
+
+		// The walk that matches the name case-insensitively finds nothing here,
+		// which is the same answer as the byte-for-byte lookup.
+		app := New(Config{DisableHeaderNormalizing: true})
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		defer app.ReleaseCtx(c)
+
+		c.Request().Header.DisableNormalizing()
+		c.Request().Header.Set("X-Not-A-Referer", "/nope")
+
+		require.NoError(t, c.Redirect().Back("/fallback"))
+		require.Equal(t, "/fallback", string(c.Response().Header.Peek(HeaderLocation)))
+	})
+
+	t.Run("no referer and no fallback is an error", func(t *testing.T) {
+		t.Parallel()
+
+		app := New()
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		defer app.ReleaseCtx(c)
+
+		require.ErrorIs(t, c.Redirect().Back(), ErrRedirectBackNoFallback)
+	})
+}
+
+// Test_Redirect_parseAndClearFlashMessages_UndecodablePayload covers a cookie
+// that decodes as hex but is not what this application wrote.
+//
+// UnmarshalMsg re-slices to the length the payload declares before it decodes
+// any element, so a failure partway leaves the slice holding zero-valued
+// entries. Reading those back would hand the handler empty messages nobody set,
+// which is why the slice is dropped rather than kept at whatever length the
+// payload claimed.
+func Test_Redirect_parseAndClearFlashMessages_UndecodablePayload(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		payload []byte
+	}{
+		// An array header claiming four elements, and then nothing.
+		{name: "truncated after the count", payload: []byte{0x94}},
+		// A byte message-pack never assigns.
+		{name: "never a valid type", payload: []byte{0xc1, 0xc1}},
+		// A long claimed length with no elements behind it, which is the shape
+		// that leaves the most zero-valued entries.
+		{name: "claims more than it carries", payload: []byte{0xdc, 0x01, 0x00}},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			app := New()
+			c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck,forcetypeassert // not needed
+			defer app.ReleaseCtx(c)
+
+			r := AcquireRedirect()
+			r.c = c
+			defer ReleaseRedirect(r)
+
+			c.Request().Header.SetCookie(FlashCookieName, hex.EncodeToString(tc.payload))
+
+			r.parseAndClearFlashMessages()
+
+			require.Empty(t, r.messages)
+			require.Empty(t, c.flashMessages, "a payload that failed to decode leaves nothing behind")
+			assertFlashCookieCleared(t, c.GetRespHeader(HeaderSetCookie))
+		})
+	}
+}
+
+func Test_Redirect_Messages_ProgrammaticCookieHeader(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	app.Get("/", func(c Ctx) error {
+		return c.SendString(c.Redirect().Message("success").Value + "," + c.Redirect().OldInput("id").Value)
+	})
+
+	msgs := redirectionMsgs{
+		{key: "success", value: "1"},
+		{key: "id", value: "42", isOldInput: true},
+	}
+	val, err := msgs.MarshalMsg(nil)
+	require.NoError(t, err)
+
+	fctx := &fasthttp.RequestCtx{}
+	fctx.Request.Header.SetMethod(MethodGet)
+	fctx.Request.SetRequestURI("/")
+	// Set, not parsed from the wire: RawHeaders stays empty.
+	fctx.Request.Header.Set(HeaderCookie, FlashCookieName+"="+hex.EncodeToString(val))
+	require.Empty(t, fctx.Request.Header.RawHeaders())
+
+	app.Handler()(fctx)
+
+	require.Equal(t, StatusOK, fctx.Response.StatusCode())
+	require.Equal(t, "1,42", string(fctx.Response.Body()))
+
+	cookie := fasthttp.AcquireCookie()
+	defer fasthttp.ReleaseCookie(cookie)
+	cookie.SetKey(FlashCookieName)
+	require.True(t, fctx.Response.Header.Cookie(cookie), "the consumed flash cookie must be expired on the client")
+	require.Empty(t, cookie.Value())
+	require.True(t, cookie.Expire().Before(time.Now()), "expiry must lie in the past")
 }

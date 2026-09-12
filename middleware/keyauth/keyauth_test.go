@@ -3,6 +3,7 @@ package keyauth
 import (
 	"bytes"
 	"context"
+	"crypto/subtle"
 	"errors"
 	"io"
 	"net/http"
@@ -13,6 +14,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/valyala/fasthttp"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/extractors"
@@ -760,6 +762,43 @@ func Test_DefaultErrorHandlerChallenge(t *testing.T) {
 	require.Equal(t, "Bearer realm=\"Restricted\"", res.Header.Get("WWW-Authenticate"))
 }
 
+func Test_ErrorHandlerReturnsErrorChallenge(t *testing.T) {
+	t.Parallel()
+
+	// The challenge must be set when the ErrorHandler returns the *fiber.Error instead of writing it.
+	testCases := []struct {
+		err            error
+		name           string
+		expectedHeader string
+		expectedStatus int
+	}{
+		{name: "unauthorized", err: fiber.ErrUnauthorized, expectedHeader: fiber.HeaderWWWAuthenticate, expectedStatus: fiber.StatusUnauthorized},
+		{name: "proxy auth required", err: fiber.ErrProxyAuthRequired, expectedHeader: fiber.HeaderProxyAuthenticate, expectedStatus: fiber.StatusProxyAuthRequired},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			app := fiber.New()
+			app.Use(New(Config{
+				Validator: func(_ fiber.Ctx, _ string) (bool, error) {
+					return false, ErrMissingOrMalformedAPIKey
+				},
+				ErrorHandler: func(_ fiber.Ctx, _ error) error {
+					return tc.err
+				},
+			}))
+			app.Get("/", func(c fiber.Ctx) error { return c.SendString("OK") })
+
+			res, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+			require.NoError(t, err)
+			require.Equal(t, tc.expectedStatus, res.StatusCode)
+			require.Equal(t, `Bearer realm="Restricted"`, res.Header.Get(tc.expectedHeader))
+		})
+	}
+}
+
 func Test_DefaultErrorHandlerInvalid(t *testing.T) {
 	app := fiber.New()
 	app.Use(New(Config{
@@ -1012,6 +1051,50 @@ func Test_BearerErrorFields(t *testing.T) {
 	require.Equal(t, `Bearer realm="Restricted", error="invalid_token", error_description="token expired", error_uri="https://example.com"`, res.Header.Get("WWW-Authenticate"))
 }
 
+// Test_ChallengeQuotedStringEscaping verifies both default ApiKey and Bearer
+// challenges use HTTP quoted-string escaping rather than Go syntax.
+func Test_ChallengeQuotedStringEscaping(t *testing.T) {
+	t.Parallel()
+
+	t.Run("default ApiKey challenge", func(t *testing.T) {
+		t.Parallel()
+
+		app := fiber.New()
+		app.Use(New(Config{
+			Extractor: extractors.FromQuery("key"),
+			Realm:     "area \"A\"\\\x01\n",
+			Validator: func(_ fiber.Ctx, _ string) (bool, error) { return false, errors.New("invalid") },
+		}))
+
+		res, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, `ApiKey realm="area \"A\"\\%01\n"`, res.Header.Get(fiber.HeaderWWWAuthenticate))
+	})
+
+	t.Run("Bearer parameters", func(t *testing.T) {
+		t.Parallel()
+
+		app := fiber.New()
+		app.Use(New(Config{
+			Realm:            "area \"A\"\\\x01",
+			Error:            ErrorInvalidToken,
+			ErrorDescription: "bad \"token\"\\\x02\n",
+			ErrorURI:         `https://example.com/docs?q="x"`,
+			Validator:        func(_ fiber.Ctx, _ string) (bool, error) { return false, errors.New("invalid") },
+		}))
+
+		req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+		req.Header.Set(fiber.HeaderAuthorization, "Bearer bad")
+		res, err := app.Test(req)
+		require.NoError(t, err)
+		require.Equal(
+			t,
+			`Bearer realm="area \"A\"\\%01", error="invalid_token", error_description="bad \"token\"\\%02\n", error_uri="https://example.com/docs?q=\"x\""`,
+			res.Header.Get(fiber.HeaderWWWAuthenticate),
+		)
+	})
+}
+
 func Test_BearerErrorURIOnly(t *testing.T) {
 	app := fiber.New()
 	app.Use(New(Config{
@@ -1187,4 +1270,74 @@ func Test_New_ErrorURIAbsolute(t *testing.T) {
 			ErrorURI:  "/docs",
 		})
 	})
+}
+
+// benchKey is a JWT-sized token68 credential, the shape a Bearer token has in
+// practice.
+const benchKey = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0In0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9P"
+
+// benchValidator compares in constant time, as a real deployment must, but
+// without hashing, so the numbers are the middleware and not a digest.
+func benchValidator(_ fiber.Ctx, key string) (bool, error) {
+	return subtle.ConstantTimeCompare([]byte(key), []byte(benchKey)) == 1, nil
+}
+
+// benchApp registers the middleware with cfg on a route that answers 418. cfg
+// is a pointer because Config is 200 bytes and gocritic refuses the copy.
+func benchApp(cfg *Config) fasthttp.RequestHandler {
+	app := fiber.New()
+	app.Use(New(*cfg))
+	app.Get("/", func(c fiber.Ctx) error {
+		return c.SendStatus(fiber.StatusTeapot)
+	})
+	return app.Handler()
+}
+
+// go test -v -run=^$ -bench=Benchmark_KeyAuth_Bearer -benchmem -count=4
+func Benchmark_KeyAuth_Bearer(b *testing.B) {
+	h := benchApp(&Config{Validator: benchValidator})
+
+	ctx := &fasthttp.RequestCtx{}
+	ctx.Request.Header.SetMethod(fiber.MethodGet)
+	ctx.Request.SetRequestURI("/")
+	ctx.Request.Header.Set(fiber.HeaderAuthorization, "Bearer "+benchKey)
+
+	b.ReportAllocs()
+
+	for b.Loop() {
+		// What fasthttp does between requests. Without it the extractor's
+		// request-local state is installed once and reused, and the per-request
+		// cost of installing and recycling it is not in the number.
+		ctx.ResetUserValues()
+		h(ctx)
+	}
+
+	require.Equal(b, fiber.StatusTeapot, ctx.Response.Header.StatusCode())
+}
+
+// The credential is in the last source, so the walk pays for both misses.
+//
+// go test -v -run=^$ -bench=Benchmark_KeyAuth_Chain -benchmem -count=4
+func Benchmark_KeyAuth_Chain(b *testing.B) {
+	h := benchApp(&Config{
+		Validator: benchValidator,
+		Extractor: extractors.Chain(
+			extractors.FromAuthHeader("Bearer"),
+			extractors.FromHeader("X-API-Key"),
+			extractors.FromQuery("api_key"),
+		),
+	})
+
+	ctx := &fasthttp.RequestCtx{}
+	ctx.Request.Header.SetMethod(fiber.MethodGet)
+	ctx.Request.SetRequestURI("/?api_key=" + benchKey)
+
+	b.ReportAllocs()
+
+	for b.Loop() {
+		ctx.ResetUserValues()
+		h(ctx)
+	}
+
+	require.Equal(b, fiber.StatusTeapot, ctx.Response.Header.StatusCode())
 }

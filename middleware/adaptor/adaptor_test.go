@@ -5,6 +5,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"io"
@@ -2232,5 +2233,552 @@ func Test_FiberApp_RemoteAddrSurvivesPooling(t *testing.T) {
 	require.Len(t, retained, len(addrs))
 	for i, addr := range addrs {
 		require.Equal(t, addr, retained[i].String())
+	}
+}
+
+// Test_HTTPMiddleware_PropagatesHeaderRemoval asserts that a header the wrapped
+// net/http middleware deletes stays deleted for the fiber handler. Copying only
+// what r.Header still holds would leave the original value in place, silently
+// defeating middleware whose purpose is to strip a header.
+func Test_HTTPMiddleware_PropagatesHeaderRemoval(t *testing.T) {
+	t.Parallel()
+
+	type seen struct {
+		forwardedFor  string
+		authorization string
+		kept          string
+		contentType   string
+		body          string
+	}
+
+	var got seen
+
+	app := fiber.New()
+	app.Use(HTTPMiddleware(func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			r.Header.Del("X-Forwarded-For")
+			r.Header.Del(fiber.HeaderAuthorization)
+			next.ServeHTTP(w, r)
+		})
+	}))
+	app.Post("/", func(c fiber.Ctx) error {
+		got = seen{
+			forwardedFor:  c.Get("X-Forwarded-For"),
+			authorization: c.Get(fiber.HeaderAuthorization),
+			kept:          c.Get("X-Kept"),
+			contentType:   c.Get(fiber.HeaderContentType),
+			body:          string(c.Body()),
+		}
+		return c.SendString("ok")
+	})
+
+	req := httptest.NewRequest(fiber.MethodPost, "/", strings.NewReader("a=1"))
+	req.Header.Set(fiber.HeaderContentType, "application/x-www-form-urlencoded")
+	req.Header.Set("X-Forwarded-For", "1.2.3.4")
+	req.Header.Set(fiber.HeaderAuthorization, "Bearer secret")
+	req.Header.Set("X-Kept", "still here")
+
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+
+	require.Empty(t, got.forwardedFor)
+	require.Empty(t, got.authorization)
+	// Headers the middleware left alone survive, and the framing headers it
+	// never touches must not be collateral damage.
+	require.Equal(t, "still here", got.kept)
+	require.Equal(t, "application/x-www-form-urlencoded", got.contentType)
+	require.Equal(t, "a=1", got.body)
+}
+
+// Test_HTTPMiddleware_HeaderFidelity asserts that the fiber request ends up
+// holding exactly what the wrapped net/http middleware left in r.Header.
+//
+// fasthttpadaptor builds r.Header from b2s views into fiber's own header
+// storage, so a copy-back that writes while reading corrupts itself: values got
+// duplicated, sanitized values kept their originals alongside them, and the
+// rewritten Host came back spliced with the bytes of the old one.
+func Test_HTTPMiddleware_HeaderFidelity(t *testing.T) {
+	t.Parallel()
+
+	forwardedFor := func(t *testing.T, mw func(http.Handler) http.Handler) ([]string, string, string) {
+		t.Helper()
+
+		var (
+			values  []string
+			uriHost string
+			hdrHost string
+		)
+		app := fiber.New()
+		app.Use(HTTPMiddleware(mw))
+		app.Get("/", func(c fiber.Ctx) error {
+			for _, v := range c.Request().Header.PeekAll("X-Forwarded-For") {
+				values = append(values, string(v))
+			}
+			uriHost, hdrHost = c.Host(), c.Get(fiber.HeaderHost)
+			return c.SendString("ok")
+		})
+
+		req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+		req.Host = "original.example"
+		req.Header.Add("X-Forwarded-For", "1.1.1.1")
+		req.Header.Add("X-Forwarded-For", "2.2.2.2")
+
+		resp, err := app.Test(req)
+		require.NoError(t, err)
+		require.Equal(t, fiber.StatusOK, resp.StatusCode)
+		return values, uriHost, hdrHost
+	}
+
+	t.Run("pass-through preserves every value exactly once", func(t *testing.T) {
+		t.Parallel()
+
+		got, _, _ := forwardedFor(t, func(next http.Handler) http.Handler { return next })
+		require.Equal(t, []string{"1.1.1.1", "2.2.2.2"}, got)
+	})
+
+	t.Run("collapsing a multi-valued header drops the originals", func(t *testing.T) {
+		t.Parallel()
+
+		got, _, _ := forwardedFor(t, func(next http.Handler) http.Handler {
+			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				r.Header.Set("X-Forwarded-For", "9.9.9.9")
+				next.ServeHTTP(w, r)
+			})
+		})
+		// Leaving "2.2.2.2" behind would hand the spoofed value straight to
+		// c.IPs() and the TrustProxy chain walk.
+		require.Equal(t, []string{"9.9.9.9"}, got)
+	})
+
+	t.Run("assigning nil removes the header", func(t *testing.T) {
+		t.Parallel()
+
+		got, _, _ := forwardedFor(t, func(next http.Handler) http.Handler {
+			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				r.Header["X-Forwarded-For"] = nil
+				next.ServeHTTP(w, r)
+			})
+		})
+		require.Empty(t, got)
+	})
+
+	t.Run("rewritten host is not spliced with the old one", func(t *testing.T) {
+		t.Parallel()
+
+		_, uriHost, hdrHost := forwardedFor(t, func(next http.Handler) http.Handler {
+			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				r.Host = "internal.svc"
+				next.ServeHTTP(w, r)
+			})
+		})
+		require.Equal(t, "internal.svc", uriHost)
+		require.Equal(t, "internal.svc", hdrHost)
+	})
+}
+
+// Test_HTTPMiddleware_PropagatesConnectionRewrite covers Connection, which names
+// the hop-by-hop fields a proxy is to strip.
+//
+// Middleware rewrites that list — dropping the edit left the handler, and any
+// proxy reading it downstream, working from the list the client sent. The header
+// also drives fasthttp's close flag, which has to survive the round trip.
+func Test_HTTPMiddleware_PropagatesConnectionRewrite(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name  string
+		sent  string
+		write string // "" leaves the header alone
+		want  string
+	}{
+		{name: "rewritten", sent: "keep-alive, X-Client-Token", write: "keep-alive", want: "keep-alive"},
+		{name: "extended", sent: "keep-alive", write: "keep-alive, X-Internal", want: "keep-alive, X-Internal"},
+		{name: "untouched close survives", sent: "close", want: "close"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			var got string
+			var gotClose bool
+
+			app := fiber.New()
+			app.Use(HTTPMiddleware(func(next http.Handler) http.Handler {
+				return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					if tc.write != "" {
+						r.Header.Set(fiber.HeaderConnection, tc.write)
+					}
+					next.ServeHTTP(w, r)
+				})
+			}))
+			app.Get("/", func(c fiber.Ctx) error {
+				got = c.Get(fiber.HeaderConnection)
+				gotClose = c.Request().Header.ConnectionClose()
+				return c.SendString("ok")
+			})
+
+			req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+			req.Header.Set(fiber.HeaderConnection, tc.sent)
+
+			resp, err := app.Test(req)
+			require.NoError(t, err)
+			require.Equal(t, fiber.StatusOK, resp.StatusCode)
+			require.Equal(t, tc.want, got)
+			require.Equal(t, tc.want == "close", gotClose, "the close flag follows the value")
+		})
+	}
+}
+
+// Test_HTTPMiddleware_ConnectionCloseSurvivesDownstream covers the close
+// instruction against a downstream chain that writes the response field itself.
+//
+// fasthttp holds one flag for the whole response, so a handler that resets the
+// response or sets a Connection value of its own clears it. Setting the flag
+// before c.Next left the connection reused despite the rewrite that asked for
+// it to close, so it is applied on the way out instead.
+func Test_HTTPMiddleware_ConnectionCloseSurvivesDownstream(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		handler func(fiber.Ctx) error
+		name    string
+		status  int
+	}{
+		{
+			name:    "plain handler",
+			handler: func(c fiber.Ctx) error { return c.SendString("ok") },
+			status:  fiber.StatusOK,
+		},
+		{
+			name: "handler resetting the response",
+			handler: func(c fiber.Ctx) error {
+				c.Response().Reset()
+				return c.SendString("ok")
+			},
+			status: fiber.StatusOK,
+		},
+		{
+			name: "handler asking to keep the connection",
+			handler: func(c fiber.Ctx) error {
+				c.Response().Header.Set(fiber.HeaderConnection, "keep-alive")
+				return c.SendString("ok")
+			},
+			status: fiber.StatusOK,
+		},
+		{
+			// The ErrorHandler writes the response after this middleware has
+			// returned, so the flag has to outlive that too.
+			name:    "handler returning an error",
+			handler: func(_ fiber.Ctx) error { return errors.New("boom") },
+			status:  fiber.StatusInternalServerError,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			app := fiber.New()
+			app.Use(HTTPMiddleware(func(next http.Handler) http.Handler {
+				return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					r.Header[http.CanonicalHeaderKey(fiber.HeaderConnection)] = []string{"close", "X-Internal"}
+					next.ServeHTTP(w, r)
+				})
+			}))
+			app.Get("/", tc.handler)
+
+			resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+			require.NoError(t, err)
+			require.Equal(t, tc.status, resp.StatusCode)
+			require.True(t, resp.Close, "the connection the middleware asked to close has to close")
+		})
+	}
+}
+
+// Test_HTTPMiddleware_JoinsRepeatedConnectionValues covers middleware that
+// writes Connection as several slice entries, which is how net/http represents a
+// combined value. fasthttp keeps the field in a slot of its own, so a second Add
+// replaced the first rather than appending: the earlier token vanished, taking
+// with it whatever it had marked hop-by-hop, and a "close" written that way
+// stopped closing the connection.
+func Test_HTTPMiddleware_JoinsRepeatedConnectionValues(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name      string
+		want      string
+		write     []string
+		wantClose bool
+	}{
+		{name: "token list", write: []string{"keep-alive", "X-Internal"}, want: "keep-alive, X-Internal"},
+		// Every observer must see the complete token list so a proxy can remove
+		// each named hop-by-hop field. Setting fasthttp's request flag would hide
+		// all tokens beside "close", so the close instruction is carried on the
+		// response instead.
+		{name: "close first", write: []string{"close", "X-Internal"}, want: "close, X-Internal", wantClose: true},
+		{name: "close last", write: []string{"X-Internal", "close"}, want: "X-Internal, close", wantClose: true},
+		{name: "close cased", write: []string{"X-Internal", "CLOSE"}, want: "X-Internal, CLOSE", wantClose: true},
+		{name: "close alone still closes", write: []string{"close"}, want: "close", wantClose: true},
+		{name: "single entry is unchanged", write: []string{"keep-alive"}, want: "keep-alive"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			var got, afterNext string
+			var gotClose, finalClose bool
+
+			app := fiber.New()
+			app.Use(func(c fiber.Ctx) error {
+				err := c.Next()
+				// A middleware resuming here — or the app's ErrorHandler, which
+				// runs once this returns — reads the same field a downstream
+				// proxy would, so it has to survive the whole chain intact.
+				afterNext = c.Get(fiber.HeaderConnection)
+				finalClose = c.Response().Header.ConnectionClose()
+				return err
+			})
+			app.Use(HTTPMiddleware(func(next http.Handler) http.Handler {
+				return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					r.Header[http.CanonicalHeaderKey(fiber.HeaderConnection)] = tc.write
+					next.ServeHTTP(w, r)
+				})
+			}))
+			app.Get("/", func(c fiber.Ctx) error {
+				got = c.Get(fiber.HeaderConnection)
+				gotClose = c.Request().Header.ConnectionClose()
+				return c.SendString("ok")
+			})
+
+			resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+			require.NoError(t, err)
+			require.Equal(t, fiber.StatusOK, resp.StatusCode)
+			require.Equal(t, tc.want, got)
+			require.Equal(t, tc.wantClose, resp.Close, "close has to reach the wire, not just the fiber context")
+			require.Equal(t, tc.want, afterNext, "the complete Connection field must outlive the downstream chain")
+			require.Equal(t, tc.want == "close", gotClose, "the request flag stands in only for a bare close")
+			require.Equal(t, tc.wantClose, finalClose, "the transport close instruction rides on the response")
+		})
+	}
+}
+
+func Test_CopyContextToFiberContext_DerivedContexts(t *testing.T) {
+	t.Parallel()
+
+	type key string
+	base := context.WithValue(context.Background(), key("a"), "1")
+
+	withCancel, cancel := context.WithCancel(base)
+	t.Cleanup(cancel)
+	withTimeout, cancelTimeout := context.WithTimeout(base, time.Hour)
+	t.Cleanup(cancelTimeout)
+	withDeadline, cancelDeadline := context.WithDeadline(base, time.Now().Add(time.Hour))
+	t.Cleanup(cancelDeadline)
+	afterFunc, stop := context.WithCancel(base)
+	t.Cleanup(stop)
+	context.AfterFunc(afterFunc, func() {})
+
+	testCases := []struct {
+		ctx  context.Context //nolint:containedctx // test table
+		name string
+	}{
+		{name: "WithCancel", ctx: context.WithValue(withCancel, key("b"), "2")},
+		{name: "WithTimeout", ctx: context.WithValue(withTimeout, key("b"), "2")},
+		{name: "WithDeadline", ctx: context.WithValue(withDeadline, key("b"), "2")},
+		{name: "WithoutCancel", ctx: context.WithValue(context.WithoutCancel(withTimeout), key("b"), "2")},
+		{name: "value below timeout", ctx: func() context.Context {
+			ctx, cancelInner := context.WithTimeout(context.WithValue(base, key("b"), "2"), time.Hour)
+			t.Cleanup(cancelInner)
+			return ctx
+		}()},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			var fctx fasthttp.RequestCtx
+			CopyContextToFiberContext(tc.ctx, &fctx)
+			require.Equal(t, "1", fctx.UserValue(key("a")))
+			require.Equal(t, "2", fctx.UserValue(key("b")))
+		})
+	}
+}
+
+func Test_HTTPHandler_TLSPropagated(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Get("/", func(c fiber.Ctx) error {
+		return c.SendString(c.Scheme() + " " + strconv.FormatBool(c.Secure()))
+	})
+
+	handler := FiberApp(app)
+
+	req := httptest.NewRequest(http.MethodGet, "https://example.com/", http.NoBody)
+	req.TLS = &tls.ConnectionState{Version: tls.VersionTLS13, ServerName: "example.com"}
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, "https true", rec.Body.String())
+
+	plain := httptest.NewRequest(http.MethodGet, "http://example.com/", http.NoBody)
+	rec = httptest.NewRecorder()
+	handler.ServeHTTP(rec, plain)
+	require.Equal(t, "http false", rec.Body.String())
+}
+
+func Test_HTTPMiddleware_URLRewrite(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Use(HTTPMiddleware(func(next http.Handler) http.Handler {
+		return http.StripPrefix("/api", next)
+	}))
+	app.Get("/users", func(c fiber.Ctx) error {
+		return c.SendString("users at " + c.Path())
+	})
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/api/users?x=1", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "users at /users", string(body))
+}
+
+func Test_HTTPHandler_TLSConnectionStateCarried(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Get("/", func(c fiber.Ctx) error {
+		state := c.RequestCtx().TLSConnectionState()
+		if state == nil {
+			return c.SendString("none")
+		}
+		return c.SendString(state.ServerName + " " + state.NegotiatedProtocol)
+	})
+
+	handler := FiberApp(app)
+
+	req := httptest.NewRequest(http.MethodGet, "https://example.com/", http.NoBody)
+	req.TLS = &tls.ConnectionState{Version: tls.VersionTLS13, ServerName: "example.com", NegotiatedProtocol: "h2"}
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	require.Equal(t, "example.com h2", rec.Body.String())
+
+	plain := httptest.NewRequest(http.MethodGet, "http://example.com/", http.NoBody)
+	rec = httptest.NewRecorder()
+	handler.ServeHTTP(rec, plain)
+	require.Equal(t, "none", rec.Body.String())
+}
+
+func Test_TLSNoopConn_HandshakeIsNoop(t *testing.T) {
+	t.Parallel()
+
+	conn := &tlsNoopConn{state: tls.ConnectionState{ServerName: "example.com"}}
+	require.NoError(t, conn.Handshake())
+	require.Equal(t, "example.com", conn.ConnectionState().ServerName)
+}
+
+func Test_HTTPMiddleware_NextCalledAfterReturn(t *testing.T) {
+	t.Parallel()
+
+	saved := make(chan http.Handler, 1)
+	mw := func(h http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			saved <- h
+			w.WriteHeader(http.StatusAccepted)
+		})
+	}
+
+	app := fiber.New()
+	app.Use(HTTPMiddleware(mw))
+	app.Get("/", func(c fiber.Ctx) error { return c.SendString("downstream") })
+
+	resp, err := app.Test(httptest.NewRequest(http.MethodGet, "/", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, http.StatusAccepted, resp.StatusCode)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Empty(t, string(body))
+
+	// The Fiber context is released by now, so a late next must be a no-op.
+	next := <-saved
+	require.NotPanics(t, func() {
+		next.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodPost, "/late", http.NoBody))
+	})
+}
+
+func Test_CopyContextToFiberContext_DeepChain(t *testing.T) {
+	t.Parallel()
+
+	type key string
+	const depth = 200
+
+	ctx := context.Background()
+	for i := range depth {
+		ctx = context.WithValue(ctx, key(strconv.Itoa(i)), i)
+	}
+
+	var fctx fasthttp.RequestCtx
+	CopyContextToFiberContext(ctx, &fctx)
+
+	for i := range depth {
+		require.Equal(t, i, fctx.UserValue(key(strconv.Itoa(i))), "value %d was dropped", i)
+	}
+}
+
+// cyclicContext lets a chain point back at itself, the shape the walk must not
+// follow forever.
+type cyclicContext struct {
+	context.Context //nolint:containedctx // the cycle is the point
+}
+
+func Test_CopyContextToFiberContext_Cycle(t *testing.T) {
+	t.Parallel()
+
+	type key string
+	loop := &cyclicContext{Context: context.Background()}
+	loop.Context = context.WithValue(loop, key("a"), "1")
+
+	var fctx fasthttp.RequestCtx
+	require.NotPanics(t, func() { CopyContextToFiberContext(loop, &fctx) })
+	require.Equal(t, "1", fctx.UserValue(key("a")))
+}
+
+func Test_HTTPMiddleware_NoRewriteKeepsChainPosition(t *testing.T) {
+	t.Parallel()
+
+	// Spellings whose decoded path differs from the raw one the router matched.
+	paths := []string{
+		"/api%2Fadmin/secret",
+		"//admin/secret",
+		"/./admin/secret",
+		"/x/../admin/secret",
+		"/adm%69n/secret",
+	}
+
+	for _, path := range paths {
+		t.Run(path, func(t *testing.T) {
+			t.Parallel()
+
+			var authRan atomic.Bool
+			app := fiber.New()
+			app.Use("/api/admin", func(_ fiber.Ctx) error {
+				authRan.Store(true)
+				return fiber.ErrForbidden
+			})
+			app.Use(HTTPMiddleware(func(next http.Handler) http.Handler {
+				return next
+			}))
+			app.Get("/api/admin/secret", func(c fiber.Ctx) error {
+				return c.SendString("SECRET")
+			})
+
+			resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, path, http.NoBody))
+			require.NoError(t, err)
+			body, err := io.ReadAll(resp.Body)
+			require.NoError(t, err)
+			require.NotEqual(t, "SECRET", string(body), "the adaptor resumed past the guard that already ran")
+			require.Equal(t, fiber.StatusNotFound, resp.StatusCode)
+			require.False(t, authRan.Load())
+		})
 	}
 }

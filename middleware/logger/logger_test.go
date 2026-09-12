@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"math"
+	"math/rand/v2"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -197,10 +199,13 @@ func Test_Logger_TimeUpdaterStopsOnDone(t *testing.T) {
 
 	initial, ok := timestamp.Load().(string)
 	require.True(t, ok)
-	time.Sleep(20 * time.Millisecond)
-	updated, ok := timestamp.Load().(string)
-	require.True(t, ok)
-	require.NotEqual(t, initial, updated)
+	// Wait for a tick rather than assume one lands inside a fixed sleep: the
+	// updater is a goroutine on a 5ms ticker, and a loaded machine ran the whole
+	// sleep before scheduling it.
+	require.Eventually(t, func() bool {
+		updated, isString := timestamp.Load().(string)
+		return isString && updated != initial
+	}, time.Second, time.Millisecond, "timestamp was never updated")
 
 	close(done)
 	select {
@@ -1766,6 +1771,20 @@ func (b *failingBuffer) WriteString(s string) (int, error) {
 	return n, nil
 }
 
+// WriteByte fails after failAfter successful writes, counting against the
+// same budget as WriteString, so the byte-at-a-time scratch writer can be
+// made to fail mid-column.
+func (b *failingBuffer) WriteByte(c byte) error {
+	if b.calls >= b.failAfter {
+		return errWriteFailed
+	}
+	b.calls++
+	if err := b.ByteBuffer.WriteByte(c); err != nil {
+		return fmt.Errorf("failingBuffer write byte: %w", err)
+	}
+	return nil
+}
+
 func (b *failingBuffer) Write(p []byte) (int, error) {
 	if b.calls >= b.failAfter {
 		return 0, errWriteFailed
@@ -1835,6 +1854,259 @@ func Test_writeSanitizedColored_PropagatesWriteErrors(t *testing.T) {
 		require.Equal(t, len(color)+len(value)+len(reset), n)
 		require.Equal(t, "<c>va lue<r>", buf.String(),
 			"the value is scrubbed but the color escapes pass through verbatim")
+	})
+}
+
+// Buffer is a public type — Config.LoggerFunc is handed one — so a sink that
+// fails partway through a column is reachable by anything a user plugs in. The
+// tests below pin the same contract Test_writeSanitizedColored_PropagatesWriteErrors
+// pins for the sanitized writer: the column stops at the failure, the error
+// surfaces, and the returned byte count covers only what actually reached the
+// sink.
+
+// Test_appendIntTag_PropagatesWriteErrors covers the padded integer column the
+// colored ${status} tag writes through. 7 in a width of 3 needs two padding
+// spaces, so the padding and the digit can fail independently.
+func Test_appendIntTag_PropagatesWriteErrors(t *testing.T) {
+	t.Parallel()
+
+	t.Run("padding write fails", func(t *testing.T) {
+		t.Parallel()
+
+		buf := &failingBuffer{ByteBuffer: bytebufferpool.Get(), failAfter: 0}
+		defer bytebufferpool.Put(buf.ByteBuffer)
+
+		n, err := appendIntTag(buf, 7, 3)
+		require.ErrorIs(t, err, errWriteFailed)
+		require.Zero(t, n)
+		require.Empty(t, buf.String())
+	})
+
+	t.Run("digit write fails", func(t *testing.T) {
+		t.Parallel()
+
+		buf := &failingBuffer{ByteBuffer: bytebufferpool.Get(), failAfter: 2}
+		defer bytebufferpool.Put(buf.ByteBuffer)
+
+		n, err := appendIntTag(buf, 7, 3)
+		require.ErrorIs(t, err, errWriteFailed)
+		require.Equal(t, 2, n, "both padding spaces made it out, the digit did not")
+		require.Equal(t, "  ", buf.String())
+	})
+
+	t.Run("all writes succeed", func(t *testing.T) {
+		t.Parallel()
+
+		buf := &failingBuffer{ByteBuffer: bytebufferpool.Get(), failAfter: 99}
+		defer bytebufferpool.Put(buf.ByteBuffer)
+
+		n, err := appendIntTag(buf, 7, 3)
+		require.NoError(t, err)
+		require.Equal(t, 3, n)
+		require.Equal(t, "  7", buf.String())
+	})
+}
+
+// Test_appendInt_PropagatesWriteErrors covers the unpadded integer the
+// uncolored ${status}, ${bytesSent} and ${bytesReceived} tags write.
+func Test_appendInt_PropagatesWriteErrors(t *testing.T) {
+	t.Parallel()
+
+	buf := &failingBuffer{ByteBuffer: bytebufferpool.Get(), failAfter: 1}
+	defer bytebufferpool.Put(buf.ByteBuffer)
+
+	n, err := appendInt(buf, 200)
+	require.ErrorIs(t, err, errWriteFailed)
+	require.Equal(t, 1, n, "only the first digit made it out")
+	require.Equal(t, "2", buf.String())
+}
+
+// Test_appendDurationTag_PropagatesWriteErrors covers the ${latency} column.
+// Its padding is counted in runes, so a duration rendering "µs" still has to
+// stop and report in bytes.
+func Test_appendDurationTag_PropagatesWriteErrors(t *testing.T) {
+	t.Parallel()
+
+	const width = 13
+	d := 145 * time.Microsecond // "145µs": 5 runes, 6 bytes
+
+	t.Run("padding write fails", func(t *testing.T) {
+		t.Parallel()
+
+		buf := &failingBuffer{ByteBuffer: bytebufferpool.Get(), failAfter: 0}
+		defer bytebufferpool.Put(buf.ByteBuffer)
+
+		n, err := appendDurationTag(buf, d, width)
+		require.ErrorIs(t, err, errWriteFailed)
+		require.Zero(t, n)
+		require.Empty(t, buf.String())
+	})
+
+	t.Run("duration write fails", func(t *testing.T) {
+		t.Parallel()
+
+		// Eight spaces pad "145µs" to 13 columns; the ninth write is the
+		// first byte of the duration itself.
+		buf := &failingBuffer{ByteBuffer: bytebufferpool.Get(), failAfter: 8}
+		defer bytebufferpool.Put(buf.ByteBuffer)
+
+		n, err := appendDurationTag(buf, d, width)
+		require.ErrorIs(t, err, errWriteFailed)
+		require.Equal(t, 8, n, "the padding made it out, the duration did not")
+		require.Equal(t, "        ", buf.String())
+	})
+
+	t.Run("all writes succeed", func(t *testing.T) {
+		t.Parallel()
+
+		buf := &failingBuffer{ByteBuffer: bytebufferpool.Get(), failAfter: 99}
+		defer bytebufferpool.Put(buf.ByteBuffer)
+
+		n, err := appendDurationTag(buf, d, width)
+		require.NoError(t, err)
+		require.Equal(t, "        145µs", buf.String(),
+			"padded to 13 columns, which is 14 bytes because of the two-byte micro sign")
+		require.Equal(t, len(buf.String()), n)
+	})
+
+	t.Run("value wider than the column", func(t *testing.T) {
+		t.Parallel()
+
+		buf := &failingBuffer{ByteBuffer: bytebufferpool.Get(), failAfter: 99}
+		defer bytebufferpool.Put(buf.ByteBuffer)
+
+		n, err := appendDurationTag(buf, d, 2)
+		require.NoError(t, err)
+		require.Equal(t, "145µs", buf.String(),
+			"a latency past the column width is written whole, with no padding")
+		require.Equal(t, len(buf.String()), n)
+	})
+}
+
+// Test_writeColored_PropagatesWriteErrors covers the colored ${method} tag.
+func Test_writeColored_PropagatesWriteErrors(t *testing.T) {
+	t.Parallel()
+
+	const color, value, reset = "<c>", "GET", "<r>"
+
+	t.Run("color write fails", func(t *testing.T) {
+		t.Parallel()
+
+		buf := &failingBuffer{ByteBuffer: bytebufferpool.Get(), failAfter: 0}
+		defer bytebufferpool.Put(buf.ByteBuffer)
+
+		n, err := writeColored(buf, color, value, reset)
+		require.ErrorIs(t, err, errWriteFailed)
+		require.Zero(t, n)
+		require.Empty(t, buf.String())
+	})
+
+	t.Run("value write fails", func(t *testing.T) {
+		t.Parallel()
+
+		buf := &failingBuffer{ByteBuffer: bytebufferpool.Get(), failAfter: 1}
+		defer bytebufferpool.Put(buf.ByteBuffer)
+
+		n, err := writeColored(buf, color, value, reset)
+		require.ErrorIs(t, err, errWriteFailed)
+		require.Equal(t, len(color), n)
+		require.Equal(t, color, buf.String(), "the reset must not follow a failed value")
+	})
+
+	t.Run("reset write fails", func(t *testing.T) {
+		t.Parallel()
+
+		buf := &failingBuffer{ByteBuffer: bytebufferpool.Get(), failAfter: 2}
+		defer bytebufferpool.Put(buf.ByteBuffer)
+
+		n, err := writeColored(buf, color, value, reset)
+		require.ErrorIs(t, err, errWriteFailed)
+		require.Equal(t, len(color)+len(value), n)
+		require.Equal(t, color+value, buf.String())
+	})
+
+	t.Run("all writes succeed", func(t *testing.T) {
+		t.Parallel()
+
+		buf := &failingBuffer{ByteBuffer: bytebufferpool.Get(), failAfter: 99}
+		defer bytebufferpool.Put(buf.ByteBuffer)
+
+		n, err := writeColored(buf, color, value, reset)
+		require.NoError(t, err)
+		require.Equal(t, len(color)+len(value)+len(reset), n)
+		require.Equal(t, color+value+reset, buf.String(),
+			"the method is written verbatim, as the uncolored branch writes it")
+	})
+}
+
+// Test_writeColoredInt_PropagatesWriteErrors covers the colored ${status} tag,
+// which wraps the padded integer column in the two color escapes.
+func Test_writeColoredInt_PropagatesWriteErrors(t *testing.T) {
+	t.Parallel()
+
+	const color, reset = "<c>", "<r>"
+
+	t.Run("color write fails", func(t *testing.T) {
+		t.Parallel()
+
+		buf := &failingBuffer{ByteBuffer: bytebufferpool.Get(), failAfter: 0}
+		defer bytebufferpool.Put(buf.ByteBuffer)
+
+		n, err := writeColoredInt(buf, color, 200, 3, reset)
+		require.ErrorIs(t, err, errWriteFailed)
+		require.Zero(t, n)
+		require.Empty(t, buf.String())
+	})
+
+	t.Run("status write fails", func(t *testing.T) {
+		t.Parallel()
+
+		buf := &failingBuffer{ByteBuffer: bytebufferpool.Get(), failAfter: 1}
+		defer bytebufferpool.Put(buf.ByteBuffer)
+
+		n, err := writeColoredInt(buf, color, 200, 3, reset)
+		require.ErrorIs(t, err, errWriteFailed)
+		require.Equal(t, len(color), n)
+		require.Equal(t, color, buf.String(), "the reset must not follow a failed status")
+	})
+
+	t.Run("reset write fails", func(t *testing.T) {
+		t.Parallel()
+
+		// One WriteString for the color, then three WriteByte calls for the
+		// digits; the fifth write is the reset.
+		buf := &failingBuffer{ByteBuffer: bytebufferpool.Get(), failAfter: 4}
+		defer bytebufferpool.Put(buf.ByteBuffer)
+
+		n, err := writeColoredInt(buf, color, 200, 3, reset)
+		require.ErrorIs(t, err, errWriteFailed)
+		require.Equal(t, len(color)+3, n)
+		require.Equal(t, color+"200", buf.String())
+	})
+
+	t.Run("all writes succeed", func(t *testing.T) {
+		t.Parallel()
+
+		buf := &failingBuffer{ByteBuffer: bytebufferpool.Get(), failAfter: 99}
+		defer bytebufferpool.Put(buf.ByteBuffer)
+
+		n, err := writeColoredInt(buf, color, 200, 3, reset)
+		require.NoError(t, err)
+		require.Equal(t, len(color)+3+len(reset), n)
+		require.Equal(t, color+"200"+reset, buf.String())
+	})
+
+	t.Run("value wider than the column", func(t *testing.T) {
+		t.Parallel()
+
+		buf := &failingBuffer{ByteBuffer: bytebufferpool.Get(), failAfter: 99}
+		defer bytebufferpool.Put(buf.ByteBuffer)
+
+		n, err := writeColoredInt(buf, color, 200, 1, reset)
+		require.NoError(t, err)
+		require.Equal(t, len(color)+3+len(reset), n)
+		require.Equal(t, color+"200"+reset, buf.String(),
+			"a status past the column width is written whole, with no padding")
 	})
 }
 
@@ -2025,6 +2297,372 @@ func Test_SanitizeValue(t *testing.T) {
 			// The exported helper must not diverge from the internal one the
 			// built-in tags use.
 			require.Equal(t, sanitizeLogValue(tc.in), SanitizeValue(tc.in))
+		})
+	}
+}
+
+// Test_Logger_IPs_RepeatedFieldLines asserts ${ips} logs every X-Forwarded-For
+// field line, not just the first.
+//
+// A recipient may combine repeated field lines into the comma-joined form (RFC
+// 9110 §5.2), and Fiber's proxy-header accessors do exactly that — so reading
+// only the first here logged a shorter chain than the one c.IP() and c.IPs()
+// parsed, and the access log did not explain what was actually enforced.
+func Test_Logger_IPs_RepeatedFieldLines(t *testing.T) {
+	t.Parallel()
+
+	buf := bytebufferpool.Get()
+	defer bytebufferpool.Put(buf)
+
+	app := fiber.New(fiber.Config{TrustProxy: true})
+	app.Use(New(Config{Format: "${ips}", Stream: buf}))
+	app.Get("/", func(c fiber.Ctx) error { return c.SendString("hi") })
+
+	raw := "GET / HTTP/1.1\r\nHost: example.com\r\n" +
+		"X-Forwarded-For: 1.1.1.1\r\n" +
+		"X-Forwarded-For: 2.2.2.2, 3.3.3.3\r\n\r\n"
+
+	req := fasthttp.AcquireRequest()
+	defer fasthttp.ReleaseRequest(req)
+	require.NoError(t, req.Read(bufio.NewReader(strings.NewReader(raw))))
+
+	fctx := &fasthttp.RequestCtx{}
+	fctx.Init(req, nil, nil)
+	app.Handler()(fctx)
+
+	require.Equal(t, "1.1.1.1,2.2.2.2,3.3.3.3", buf.String(),
+		"every field line must be logged, as the chain the framework parsed")
+}
+
+// Test_Logger_IPs_WithoutHeaderNormalizing asserts the tag logs the chain the
+// framework acted on, whatever case the field name arrived in.
+//
+// Reading the header here rather than asking c.IPs() meant reading it a second
+// way, and PeekAll compares stored names byte for byte — so under
+// DisableHeaderNormalizing a lower-case "x-forwarded-for:" matched nothing and
+// the tag logged an empty chain, while c.IPs() went on parsing it and the trust
+// decisions went on using it.
+func Test_Logger_IPs_WithoutHeaderNormalizing(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name    string
+		lines   []string
+		disable bool
+	}{
+		{"normalized, one line", []string{"X-Forwarded-For: 1.1.1.1, 2.2.2.2"}, false},
+		{"raw, lower-case name", []string{"x-forwarded-for: 1.1.1.1, 2.2.2.2"}, true},
+		{"normalized, two lines", []string{"X-Forwarded-For: 1.1.1.1", "X-Forwarded-For: 2.2.2.2"}, false},
+		{"raw, mixed-case names", []string{"x-forwarded-for: 1.1.1.1", "X-Forwarded-For: 2.2.2.2"}, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			buf := bytebufferpool.Get()
+			defer bytebufferpool.Put(buf)
+
+			app := fiber.New(fiber.Config{
+				TrustProxy:               true,
+				DisableHeaderNormalizing: tc.disable,
+			})
+			app.Use(New(Config{Format: "${ips}", Stream: buf}))
+			app.Get("/", func(c fiber.Ctx) error { return c.SendString("hi") })
+
+			parts := []string{"GET / HTTP/1.1\r\nHost: example.com\r\n"}
+			for _, l := range tc.lines {
+				parts = append(parts, l+"\r\n")
+			}
+			raw := strings.Join(append(parts, "\r\n"), "")
+
+			req := fasthttp.AcquireRequest()
+			defer fasthttp.ReleaseRequest(req)
+			if tc.disable {
+				req.Header.DisableNormalizing()
+			}
+			require.NoError(t, req.Read(bufio.NewReader(strings.NewReader(raw))))
+
+			fctx := &fasthttp.RequestCtx{}
+			fctx.Init(req, nil, nil)
+			app.Handler()(fctx)
+
+			require.Equal(t, "1.1.1.1,2.2.2.2", buf.String(),
+				"the log must show the chain the trust decisions used")
+		})
+	}
+}
+
+// Test_Logger_RegisterContextTag_Sanitizes pins that a value rendered by a
+// registered context tag cannot close the log line it is written on.
+//
+// Every built-in tag passes through the sanitizer; this path did not, so a CR
+// or LF in whatever the application pulled out of the context — in practice
+// request data — started a second entry the reader has no way to tell from a
+// real one.
+func Test_Logger_RegisterContextTag_Sanitizes(t *testing.T) {
+	t.Parallel()
+
+	// Both registries are mutex-guarded and re-registering replaces rather
+	// than fails, so this runs in parallel like every other registry test in
+	// the package. The name has to be its own, though: registration is global
+	// and outlives the test whether or not it is parallel.
+	RegisterContextTag("sanitize-probe", func(_ any) string {
+		return "before\r\nGET /forged HTTP/1.1\nafter"
+	})
+
+	var buf bytes.Buffer
+	app := fiber.New()
+	app.Use(New(Config{
+		Format: "${sanitize-probe}\n",
+		Stream: &buf,
+	}))
+	app.Get("/", func(c fiber.Ctx) error { return c.SendString("ok") })
+
+	_, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+	require.NoError(t, err)
+
+	line := buf.String()
+	require.NotContains(t, line, "\r", "a CR must not reach the log")
+	require.Equal(t, 1, strings.Count(line, "\n"), "the entry must occupy one line: %q", line)
+	require.Contains(t, line, "before")
+	require.Contains(t, line, "after")
+}
+
+// Test_TagIPs_PropagatesWriteErrors pins the short-circuits in the ${ips} tag.
+// A sink that fails partway must stop and surface the error rather than
+// carrying on, and the count returned must reflect only what reached the sink.
+func Test_TagIPs_PropagatesWriteErrors(t *testing.T) {
+	t.Parallel()
+
+	// A trusted proxy, so c.IPs() returns the forwarded chain rather than
+	// nothing at all — the tag needs more than one entry to reach the
+	// separator between them.
+	app := fiber.New(fiber.Config{
+		TrustProxy:       true,
+		TrustProxyConfig: fiber.TrustProxyConfig{Loopback: true},
+	})
+	tag := createTagMap(&ConfigDefault)[TagIPs]
+
+	withChain := func(t *testing.T, chain string) fiber.Ctx {
+		t.Helper()
+		fctx := &fasthttp.RequestCtx{}
+		fctx.Request.Header.SetMethod(fiber.MethodGet)
+		fctx.Request.SetRequestURI("/")
+		fctx.Request.Header.Set(fiber.HeaderXForwardedFor, chain)
+		c := app.AcquireCtx(fctx)
+		t.Cleanup(func() { app.ReleaseCtx(c) })
+		return c
+	}
+
+	t.Run("the whole chain is written", func(t *testing.T) {
+		t.Parallel()
+
+		buf := bytebufferpool.Get()
+		defer bytebufferpool.Put(buf)
+
+		n, err := tag(buf, withChain(t, "1.1.1.1, 2.2.2.2"), nil, "")
+		require.NoError(t, err)
+		require.Equal(t, "1.1.1.1,2.2.2.2", buf.String())
+		require.Equal(t, len(buf.String()), n)
+	})
+
+	t.Run("the first entry fails", func(t *testing.T) {
+		t.Parallel()
+
+		buf := &failingBuffer{ByteBuffer: bytebufferpool.Get(), failAfter: 0}
+		defer bytebufferpool.Put(buf.ByteBuffer)
+
+		n, err := tag(buf, withChain(t, "1.1.1.1, 2.2.2.2"), nil, "")
+		require.ErrorIs(t, err, errWriteFailed)
+		require.Zero(t, n)
+	})
+
+	t.Run("the separator fails", func(t *testing.T) {
+		t.Parallel()
+
+		// One successful write for the first address, then the "," fails.
+		buf := &failingBuffer{ByteBuffer: bytebufferpool.Get(), failAfter: 1}
+		defer bytebufferpool.Put(buf.ByteBuffer)
+
+		n, err := tag(buf, withChain(t, "1.1.1.1, 2.2.2.2"), nil, "")
+		require.ErrorIs(t, err, errWriteFailed)
+		require.Equal(t, len("1.1.1.1"), n, "only the first address reached the sink")
+	})
+
+	t.Run("the second entry fails", func(t *testing.T) {
+		t.Parallel()
+
+		// The first address and the separator succeed; the second fails.
+		buf := &failingBuffer{ByteBuffer: bytebufferpool.Get(), failAfter: 2}
+		defer bytebufferpool.Put(buf.ByteBuffer)
+
+		n, err := tag(buf, withChain(t, "1.1.1.1, 2.2.2.2"), nil, "")
+		require.ErrorIs(t, err, errWriteFailed)
+		require.Equal(t, len("1.1.1.1,"), n)
+	})
+}
+
+func Test_Logger_ResBody_DoesNotDrainStream(t *testing.T) {
+	t.Parallel()
+
+	var logged bytes.Buffer
+	app := fiber.New()
+	app.Use(New(Config{
+		Format: "[${resBody}]",
+		Stream: &logged,
+	}))
+	app.Get("/events", func(c fiber.Ctx) error {
+		return c.SendStreamWriter(func(w *bufio.Writer) {
+			w.WriteString("data: one\n\n") //nolint:errcheck // nothing to do with a stream-writer error here
+			w.Flush()                      //nolint:errcheck // same
+		})
+	})
+
+	fctx := &fasthttp.RequestCtx{}
+	fctx.Request.SetRequestURI("/events")
+	fctx.Request.Header.SetMethod(fiber.MethodGet)
+	app.Handler()(fctx)
+
+	require.True(t, fctx.Response.IsBodyStream(), "logging must leave a streamed response streamed")
+	require.Equal(t, "[]", logged.String(), "and it logs nothing rather than the buffered stream")
+
+	logged.Reset()
+	buffered := fiber.New()
+	buffered.Use(New(Config{Format: "[${resBody}]", Stream: &logged}))
+	buffered.Get("/", func(c fiber.Ctx) error {
+		return c.SendString("hello")
+	})
+
+	bctx := &fasthttp.RequestCtx{}
+	bctx.Request.SetRequestURI("/")
+	bctx.Request.Header.SetMethod(fiber.MethodGet)
+	buffered.Handler()(bctx)
+
+	require.Equal(t, "[hello]", logged.String())
+}
+
+// Test_LatencyColumns_MatchFmt pins the two latency renderers against the
+// fmt-based forms they replaced, over random durations spread across every
+// magnitude Duration.String distinguishes. appendDurationTag, behind
+// ${latency}, must match "%13v": fmt pads by runes, so a sub-millisecond
+// value's two-byte 'µ' takes one column. appendDurationPadded, behind the
+// default format, must match the byte-counted fixedWidth(d.String(), 13,
+// true) it replaced, so that column is unchanged byte for byte.
+func Test_LatencyColumns_MatchFmt(t *testing.T) {
+	t.Parallel()
+
+	r := rand.New(rand.NewPCG(0x1a7e, 0xc0de))
+	durations := []time.Duration{
+		0, 1, -1, 999, 1000, 1001, 999999, 1000000, 1000001,
+		time.Second - 1, time.Second, time.Second + 1, time.Minute, time.Hour, 61 * time.Minute,
+		145 * time.Microsecond, -145 * time.Microsecond, 1500 * time.Microsecond, 999 * time.Millisecond,
+		math.MaxInt64, math.MinInt64, math.MinInt64 + 1,
+	}
+	for range 20000 {
+		// A random bit width first, so nanoseconds and hours are equally likely.
+		bits := 1 + r.IntN(63)
+		d := time.Duration(r.Uint64() & (1<<uint(bits) - 1))
+		if r.IntN(8) == 0 {
+			d = -d
+		}
+		durations = append(durations, d)
+	}
+
+	tagBuf := bytebufferpool.Get()
+	defer bytebufferpool.Put(tagBuf)
+	padBuf := bytebufferpool.Get()
+	defer bytebufferpool.Put(padBuf)
+
+	for _, d := range durations {
+		tagBuf.Reset()
+		n, err := appendDurationTag(tagBuf, d, 13)
+		require.NoError(t, err)
+		want := fmt.Sprintf("%13v", d)
+		require.Equal(t, want, tagBuf.String(), "appendDurationTag(%d)", int64(d))
+		require.Equal(t, len(want), n, "appendDurationTag(%d) byte count", int64(d))
+
+		padBuf.Reset()
+		appendDurationPadded(padBuf, d, 13)
+		s := d.String()
+		want = strings.Repeat(" ", max(0, 13-len(s))) + s
+		require.Equal(t, want, padBuf.String(), "appendDurationPadded(%d)", int64(d))
+
+		// The colored default format's column counts runes like "%13v" does.
+		padBuf.Reset()
+		appendDurationColumns(padBuf, d, 13)
+		require.Equal(t, fmt.Sprintf("%13v", d), padBuf.String(), "appendDurationColumns(%d)", int64(d))
+	}
+}
+
+// Test_Logger_DefaultFormat_WithColor_MatchesFmt pins the colored default
+// line, byte for byte, to the Fprintf call it was written with until that call
+// was replaced by in-place writes. The old format string is kept here as the
+// oracle, so every detail of fmt's output — rune-counted padding for the
+// latency and path columns, the colors wrapping " NNN " and " GET     " with
+// their spaces inside, the error padding parsed from the format — stays what
+// it was. The cases cover the two places bytes and columns differ: a
+// sub-millisecond latency ("µs") and a non-ASCII path.
+func Test_Logger_DefaultFormat_WithColor_MatchesFmt(t *testing.T) {
+	t.Parallel()
+
+	fixedStart := time.Unix(0, 0)
+	testCases := []struct {
+		err     error
+		name    string
+		target  string
+		latency time.Duration
+		status  int
+	}{
+		{name: "ascii path, ms latency", target: "/api/v1/users", latency: 1500 * time.Microsecond, status: fiber.StatusOK},
+		{name: "micro latency is one column wide", target: "/x", latency: 145 * time.Microsecond, status: fiber.StatusNotFound},
+		{name: "non-ascii path pads by runes", target: "/caf%C3%A9/%C3%A9t%C3%A9", latency: 3 * time.Millisecond, status: fiber.StatusOK},
+		{name: "chain error", target: "/boom", latency: 2 * time.Second, err: errors.New("kaboom")},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			buf := bytebufferpool.Get()
+			defer bytebufferpool.Put(buf)
+
+			var want string
+			app := fiber.New(fiber.Config{UnescapePath: true})
+			app.Use(New(Config{
+				Stream:      buf,
+				ForceColors: true,
+				LoggerFunc: func(c fiber.Ctx, data *Data, cfg *Config) error {
+					data.Start = fixedStart
+					data.Stop = fixedStart.Add(tc.latency)
+
+					colors := c.App().Config().ColorScheme
+					formatErr := ""
+					if data.ChainErr != nil {
+						formatErr = colors.Red + " | " + sanitizeLogValue(data.ChainErr.Error()) + colors.Reset
+					}
+					want = fmt.Sprintf(
+						"%s |%s %3d %s| %13v | %15s |%s %-7s %s| %-"+data.ErrPaddingStr+"s %s\n",
+						data.Timestamp,
+						statusColor(c.Res().StatusCode(), &colors), c.Res().StatusCode(), colors.Reset,
+						data.Stop.Sub(data.Start),
+						sanitizeLogValue(c.IP()),
+						methodColor(c.Method(), &colors), c.Method(), colors.Reset,
+						sanitizeLogValue(c.Path()),
+						formatErr,
+					)
+					return defaultLoggerInstance(c, data, cfg)
+				},
+			}))
+			app.Get("/*", func(c fiber.Ctx) error {
+				if tc.err != nil {
+					return tc.err
+				}
+				return c.SendStatus(tc.status)
+			})
+
+			_, err := app.Test(httptest.NewRequest(fiber.MethodGet, tc.target, http.NoBody))
+			require.NoError(t, err)
+			require.NotEmpty(t, want, "the logger must have run")
+			require.Equal(t, want, buf.String())
 		})
 	}
 }

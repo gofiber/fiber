@@ -21,7 +21,7 @@ The table below shows the supported versions for Fiber which include security up
 ## Reporting security problems to Fiber
 
 **DO NOT CREATE AN ISSUE** to report a security problem. Instead, please
-send us an e-mail at `team@gofiber.io` or join our discord server via
+send us an e-mail at `rene@gofiber.io` or join our discord server via
 [this invite link](https://gofiber.io/discord) and send a private message
 to any of the maintainers.
 
