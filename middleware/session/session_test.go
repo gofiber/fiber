@@ -1516,6 +1516,38 @@ func Benchmark_Session(b *testing.B) {
 	})
 }
 
+// Benchmark_Session_ChainExtractor measures the lookup a chain-configured store
+// does per request. The user values are reset every iteration because a reused
+// context answers from the cached session-ID local and never reaches the
+// extractor.
+//
+// go test -v -run=^$ -bench=Benchmark_Session_ChainExtractor -benchmem -count=4
+func Benchmark_Session_ChainExtractor(b *testing.B) {
+	app := fiber.New()
+	store := NewStore(Config{
+		Extractor: extractors.Chain(
+			extractors.FromHeader("X-Session"),
+			extractors.FromCookie("session_id"),
+		),
+	})
+
+	fctx := &fasthttp.RequestCtx{}
+	c := app.AcquireCtx(fctx)
+	defer app.ReleaseCtx(c)
+	c.Request().Header.SetCookie("session_id", "12356789")
+
+	b.ReportAllocs()
+	for b.Loop() {
+		fctx.ResetUserValues()
+
+		sess, _ := store.Get(c) //nolint:errcheck // We're inside a benchmark
+		sess.Set("john", "doe")
+		_ = sess.Save() //nolint:errcheck // We're inside a benchmark
+
+		sess.Release()
+	}
+}
+
 // go test -v -run=^$ -bench=Benchmark_Session_Parallel -benchmem -count=4
 func Benchmark_Session_Parallel(b *testing.B) {
 	b.Run("default", func(b *testing.B) {

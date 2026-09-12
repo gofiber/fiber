@@ -225,3 +225,36 @@ func Test_Store_GetByID(t *testing.T) {
 		})
 	})
 }
+
+// Test_Store_getSessionID_SkipsChildrenWithoutExtract covers a chain carrying a
+// zero-value child, which Chain skips but the store used to call straight
+// through, panicking on the nil function.
+func Test_Store_getSessionID_SkipsChildrenWithoutExtract(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	store := NewStore(Config{
+		Extractor: extractors.Chain(extractors.Extractor{}, extractors.FromCookie("session_id")),
+	})
+
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(ctx)
+	ctx.Request().Header.SetCookie("session_id", "abc123")
+
+	require.Equal(t, "abc123", store.getSessionID(ctx))
+}
+
+// Test_Store_getSessionID_WithoutExtractor covers a Store built directly rather
+// than through NewStore, which would have replaced the zero-value extractor
+// with the default. There is nothing to run, so there is no session ID.
+func Test_Store_getSessionID_WithoutExtractor(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(ctx)
+	ctx.Request().Header.SetCookie("session_id", "abc123")
+
+	store := &Store{}
+	require.Empty(t, store.getSessionID(ctx))
+}
