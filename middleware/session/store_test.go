@@ -291,8 +291,11 @@ func Test_Store_getSessionID_HonorsChainLevelExtract(t *testing.T) {
 			}),
 		)
 
-		// Decorate the chain the way the package documents: keep the chain's
-		// own resolution, then normalize what it produced.
+		// Decorate the chain the way the store supports: keep the chain's own
+		// resolution and inspect what it produced, returning the value
+		// unchanged. The decorator must be value-preserving — the store writes
+		// the session ID back untransformed, so a decorator that rewrote it on
+		// read would never find its own session again.
 		decorated := base
 		decorated.Extract = func(c fiber.Ctx) (string, error) {
 			overrideCalls++
@@ -300,7 +303,7 @@ func Test_Store_getSessionID_HonorsChainLevelExtract(t *testing.T) {
 			if err != nil {
 				return "", err
 			}
-			return "normalized-" + v, nil
+			return v, nil
 		}
 
 		store := NewStore(Config{Extractor: decorated})
@@ -309,7 +312,7 @@ func Test_Store_getSessionID_HonorsChainLevelExtract(t *testing.T) {
 
 		id, from := store.getSessionID(ctx)
 
-		require.Equal(t, "normalized-raw-id", id, "the chain-level Extract must produce the ID")
+		require.Equal(t, "raw-id", id, "the chain-level Extract must produce the ID")
 		require.Equal(t, 1, overrideCalls, "the override must run exactly once")
 		require.Equal(t, 1, childCalls, "the children must run once, through the override")
 		require.Equal(t, extractors.SourceCustom, from.Source, "the winning child must be reported")
@@ -401,4 +404,78 @@ func Test_Store_getSessionID_ReportsWinnerForWriteBack(t *testing.T) {
 		require.Empty(t, id)
 		require.Equal(t, extractors.Result{}, from)
 	})
+}
+
+// Test_Store_UnattributableID_IsNotWrittenBack pins the session-fixation guard
+// against provenance the extractors package could not actually observe.
+//
+// A chain-level Extract that answers on its own leaves no child recorded, so
+// Resolve can only report the chain's DECLARED metadata — its first child. If
+// that first child happens to be a cookie extractor, treating the declared
+// metadata as provenance would classify a query-supplied ID as "came from a
+// writable sink" and pin the victim to an attacker-chosen session. Result
+// reports such metadata with Resolved false precisely so this cannot happen.
+func Test_Store_UnattributableID_IsNotWrittenBack(t *testing.T) {
+	t.Parallel()
+
+	base := extractors.Chain(
+		extractors.FromCookie("sid"), // declared metadata: cookie, a writable sink
+		extractors.FromQuery("sid"),
+	)
+	attackable := base
+	attackable.Extract = func(c fiber.Ctx) (string, error) {
+		return fiber.Query[string](c, "sid"), nil // reads the query, delegates to no child
+	}
+
+	store := NewStore(Config{Extractor: attackable})
+	app := fiber.New()
+
+	// Seed a real session, so the ID the attacker plants names an existing one.
+	seed := app.AcquireCtx(&fasthttp.RequestCtx{})
+	seeded, err := store.Get(seed)
+	require.NoError(t, err)
+	plantedID := seeded.ID()
+	require.NoError(t, seeded.Save())
+	app.ReleaseCtx(seed)
+
+	// The victim's request carries that ID in the query and no cookie.
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(ctx)
+	ctx.Request().SetRequestURI("/p?sid=" + plantedID)
+
+	sess, err := store.Get(ctx)
+	require.NoError(t, err)
+	require.False(t, sess.Fresh(), "the planted ID should load the existing session")
+	require.NoError(t, sess.Save())
+
+	require.NotContains(t, string(ctx.Response().Header.Peek(fiber.HeaderSetCookie)), plantedID,
+		"an ID whose origin cannot be attributed must never be pinned into a cookie")
+}
+
+// Test_Store_ForeignChainDoesNotSupplyProvenance pins that a leaf extractor
+// which happens to consult some other chain is not credited with that chain's
+// winning child. Crediting it would let the session middleware write the
+// session ID into an unrelated application cookie, and delete that cookie on
+// logout.
+func Test_Store_ForeignChainDoesNotSupplyProvenance(t *testing.T) {
+	t.Parallel()
+
+	tenant := extractors.Chain(extractors.FromHeader("X-Tenant"), extractors.FromCookie("tenant"))
+	leaf := extractors.FromCustom("sid", func(c fiber.Ctx) (string, error) {
+		//nolint:errcheck // the lookup's outcome is irrelevant; it runs only so a foreign chain records a winner
+		tenant.Extract(c) // an unrelated lookup, in the same Resolve frame
+		return fiber.Query[string](c, "sid"), nil
+	})
+
+	store := NewStore(Config{Extractor: leaf})
+	app := fiber.New()
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(ctx)
+	ctx.Request().SetRequestURI("/p?sid=planted")
+	ctx.Request().Header.SetCookie("tenant", "acme")
+
+	id, from := store.getSessionID(ctx)
+	require.Equal(t, "planted", id)
+	require.Equal(t, "sid", from.Key, "the leaf must not inherit the tenant chain's winner")
+	require.Equal(t, extractors.SourceCustom, from.Source)
 }

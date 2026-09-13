@@ -445,19 +445,28 @@ func (s *Session) getExtractorInfo() []extractors.Extractor {
 
 	// Prefer the extractor that actually supplied the incoming session ID.
 	if s.extractor.Key != "" {
-		switch s.extractor.Source {
-		case extractors.SourceCookie, extractors.SourceHeader:
-			// The ID came from a writable sink; write it back to the same place.
-			return []extractors.Extractor{{Key: s.extractor.Key, Source: s.extractor.Source}}
-		default:
-			// The ID came from a read-only source (query/form/param/custom).
-			// For an existing session this would be an attacker-controlled ID,
-			// so it must not be promoted into cookies/headers (session fixation).
-			// Fresh sessions carry a freshly generated ID, so they may still fall
-			// through to the configured cookie/header sinks below.
-			if !s.isFresh {
-				return nil
+		// Only provenance the extractors package could actually observe names a
+		// sink. A chain whose own Extract answered without a child winning
+		// reports its declared metadata — its first child — which says nothing
+		// about where the value came from, so it must not be read as one.
+		if s.extractor.Resolved {
+			switch s.extractor.Source {
+			case extractors.SourceCookie, extractors.SourceHeader:
+				// The ID came from a writable sink; write it back to the same place.
+				return []extractors.Extractor{{Key: s.extractor.Key, Source: s.extractor.Source}}
+			case extractors.SourceAuthHeader, extractors.SourceForm,
+				extractors.SourceQuery, extractors.SourceParam, extractors.SourceCustom:
+				// Read-only: fall through to the refusal below.
 			}
+		}
+		// A read-only source (query/form/param/custom), or an origin we cannot
+		// attribute. For an existing session either would be an
+		// attacker-controlled ID, so it must not be promoted into
+		// cookies/headers (session fixation). Fresh sessions carry a freshly
+		// generated ID, so they may still fall through to the configured
+		// cookie/header sinks below.
+		if !s.isFresh {
+			return nil
 		}
 	}
 

@@ -34,14 +34,24 @@ winning source.
 
 ```go
 type Result struct {
-  Value  string // The extracted value
-  Key    string // The parameter/header/cookie name the winning extractor read
-  Source Source // The kind of source the winning extractor read from
+  Value    string // The extracted value
+  Key      string // The parameter/header/cookie name the winning extractor read
+  Source   Source // The kind of source the winning extractor read from
+  Resolved bool   // Whether Key and Source name the extractor that actually produced Value
 }
 ```
 
 A `Result` carries metadata only — nothing runnable — so a chain's defensive copy
 of its children cannot be reached through it.
+
+`Resolved` is false when a chain's own `Extract` answered without any child being
+observed to win — a full replacement, or a decorator that does not delegate. `Key`
+and `Source` are then the chain's declared metadata (its first child), which says
+nothing about where the value came from. **Anything deciding from provenance that a
+value may be written back to where it was read from must treat `Resolved: false` as
+"origin unknown" and refuse**, exactly as it would a read-only source. A record only
+counts when the chain being resolved is the one that made it, so a value is never
+credited to a chain some unrelated helper happened to run.
 
 ### Available Functions
 
@@ -63,7 +73,7 @@ of its children cannot be reached through it.
 - For a single built-in extractor it matches that constructor's source.
 - For a `Chain`, static `Source` is always the **first** child's source.
 - `SourceHeader` is the zero value of `Source`. A legacy `Extract`-only extractor that omits `Source` therefore reports `SourceHeader` through `Resolve`.
-- On failure (`err != nil`), `Resolve` may still return static or last-child metadata even though no value was supplied. Treat the reported `Key` and `Source` as meaningful **only when `err == nil`**.
+- On failure (`err != nil`), `Resolve` may still return static or last-child metadata even though no value was supplied. Treat the reported `Key` and `Source` as meaningful **only when `err == nil` and `Resolved` is true**.
 - `Result` carries metadata only, never anything runnable, so a chain's defensive copy of its children cannot be reached through it.
 
 Prefer `Resolve` when security or audit decisions depend on which source actually produced the value, or when a value must be written back to where it was read from. Verify the reported source before acting on it:
@@ -110,7 +120,7 @@ The `Chain` function implements fallback logic:
 - Detects recursive chain re-entry and returns `ErrChainCycle` (shared guard across Extract and Resolve)
 - Preserves `Source` and `Key` from the first extractor for static introspection (not `AuthScheme`)
 - Exposes a **separate defensive copy** via the `Chain` field for introspection; mutating it does not change which children `Extract` runs
-- On success, `Resolve` reports the **winning child's** `Key` and `Source`
+- On success with `Resolved` true, `Resolve` reports the **winning child's** `Key` and `Source`
 - On failure, the returned source is fallback metadata only — do not treat it as the origin of an extracted value
 
 ### Chain Introspection

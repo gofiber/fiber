@@ -219,6 +219,10 @@ func (s *Store) getSessionID(c fiber.Ctx) (string, extractors.Result) {
 	// the public Chain directly would skip it. Resolve also reports which
 	// extractor won, which setSession needs to write the ID back to the sink
 	// it came from.
+	//
+	// A chain-level Extract must be value-preserving: validate or refuse, but
+	// do not rewrite. The ID is written back untransformed, so a decorator that
+	// rewrote it on read would never match its own stored session again.
 	res, err := extractors.Resolve(s.Extractor, c)
 	if err != nil {
 		// No value, or extraction failed: an empty ID generates a new session.

@@ -1746,7 +1746,7 @@ func Test_Extractor_Chain_ExtractSource(t *testing.T) {
 		require.Equal(t, SourceQuery, src)
 	})
 
-	t.Run("clearing_public_Chain_still_returns_captured_source", func(t *testing.T) {
+	t.Run("clearing_public_Chain_makes_provenance_unresolved", func(t *testing.T) {
 		t.Parallel()
 
 		app := fiber.New()
@@ -1755,14 +1755,18 @@ func Test_Extractor_Chain_ExtractSource(t *testing.T) {
 		ctx.Request().SetRequestURI("/?token=from-query")
 
 		chain := Chain(FromHeader("X-Token"), FromQuery("token"))
-		// Mutating/clearing public metadata must not drop the source captured
-		// from the private execution list.
+		// The public Chain is how a record is tied back to the chain that made
+		// it. Clearing it removes that identity, so the value still resolves
+		// from the private execution list but its provenance can no longer be
+		// vouched for. Reporting it as unresolved is the safe degradation: the
+		// alternative — honoring any record present in the frame — is what let
+		// an unrelated chain's winner be credited to this one.
 		chain.Chain = nil
 
-		sv, src, serr := resolveSource(chain, ctx)
-		require.NoError(t, serr)
-		require.Equal(t, "from-query", sv)
-		require.Equal(t, SourceQuery, src)
+		res, err := Resolve(chain, ctx)
+		require.NoError(t, err)
+		require.Equal(t, "from-query", res.Value)
+		require.False(t, res.Resolved, "a record that cannot be tied to this chain is not provenance")
 	})
 
 	t.Run("bare_Extract_does_not_pollute_later_Resolve", func(t *testing.T) {
@@ -1879,7 +1883,7 @@ func Test_FromParam_DecodesOnce(t *testing.T) {
 
 // Test_Resolve_BareChain covers an Extractor built with only its
 // Chain set and no Extract func, the one shape that reaches
-// extractChainWithSource directly: the winner's own source is reported, the
+// resolveChain directly: the winner's own source is reported, the
 // cycle guard is released when the walk ends so the same ctx can be walked
 // again, and a chain that contains itself is still refused.
 func Test_Resolve_BareChain(t *testing.T) {
@@ -1973,7 +1977,7 @@ func Test_Chain_StateIsRecycledOnRequestReset(t *testing.T) {
 			// Dirty it, so a stale state would show up in the next holder.
 			st := chainStateFor(c)
 			st.win = &Extractor{Source: SourceQuery}
-			st.hasWin = true
+			st.winGuard = new(byte)
 			return c.SendStatus(fiber.StatusNoContent)
 		})
 
@@ -2003,7 +2007,7 @@ func Test_Chain_StateIsRecycledOnRequestReset(t *testing.T) {
 		st := chainStateFor(ctx)
 		require.Empty(t, st.active)
 		require.Zero(t, st.depth)
-		require.False(t, st.hasWin)
+		require.Nil(t, st.win)
 		require.Same(t, st, chainStateFor(ctx), "one state per request")
 	})
 }
@@ -2347,7 +2351,7 @@ func Test_ChainState_PoolHoldsSomethingElse(t *testing.T) {
 		require.NotNil(t, st, "a usable state whatever the pool held")
 		require.Empty(t, st.active)
 		require.Zero(t, st.depth)
-		require.False(t, st.hasWin)
+		require.Nil(t, st.win)
 		app.ReleaseCtx(ctx)
 	}
 }
@@ -2443,7 +2447,7 @@ func Test_Resolve_Winner(t *testing.T) {
 
 		res, err := Resolve(FromCookie("sid"), ctx)
 		require.NoError(t, err)
-		require.Equal(t, Result{Value: "v", Key: "sid", Source: SourceCookie}, res)
+		require.Equal(t, Result{Value: "v", Key: "sid", Source: SourceCookie, Resolved: true}, res)
 	})
 
 	t.Run("chain reports the winning child, not the first", func(t *testing.T) {
@@ -2453,7 +2457,7 @@ func Test_Resolve_Winner(t *testing.T) {
 
 		res, err := Resolve(Chain(FromCookie("sid"), FromHeader("X-Sid")), ctx)
 		require.NoError(t, err)
-		require.Equal(t, Result{Value: "v", Key: "X-Sid", Source: SourceHeader}, res)
+		require.Equal(t, Result{Value: "v", Key: "X-Sid", Source: SourceHeader, Resolved: true}, res)
 	})
 
 	t.Run("nested chain reports the innermost winner", func(t *testing.T) {
@@ -2464,7 +2468,7 @@ func Test_Resolve_Winner(t *testing.T) {
 		inner := Chain(FromHeader("X-Nope"), FromQuery("tok"))
 		res, err := Resolve(Chain(FromCookie("sid"), inner), ctx)
 		require.NoError(t, err)
-		require.Equal(t, Result{Value: "v", Key: "tok", Source: SourceQuery}, res)
+		require.Equal(t, Result{Value: "v", Key: "tok", Source: SourceQuery, Resolved: true}, res)
 	})
 
 	t.Run("a decorated chain reports the child that answered", func(t *testing.T) {
@@ -2478,7 +2482,7 @@ func Test_Resolve_Winner(t *testing.T) {
 
 		res, err := Resolve(decorated, ctx)
 		require.NoError(t, err)
-		require.Equal(t, Result{Value: "v", Key: "X-Sid", Source: SourceHeader}, res)
+		require.Equal(t, Result{Value: "v", Key: "X-Sid", Source: SourceHeader, Resolved: true}, res)
 	})
 
 	t.Run("an Extract that replaces the chain reports the declared metadata", func(t *testing.T) {
@@ -2493,7 +2497,12 @@ func Test_Resolve_Winner(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, "made-up", res.Value)
 		// No child won, so e's own declared metadata stands rather than
-		// crediting whichever child would answer on a second walk.
+		// crediting whichever child would answer on a second walk — and it is
+		// reported as unresolved, because it names the chain's first child
+		// rather than wherever "made-up" actually came from. A caller deciding
+		// a write-back sink from this would be pinning a value to a place it
+		// never came from.
+		require.False(t, res.Resolved)
 		require.Equal(t, "sid", res.Key)
 		require.Equal(t, SourceCookie, res.Source)
 	})

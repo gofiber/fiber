@@ -53,11 +53,18 @@ type Extractor struct {
 
 ```go
 type Result struct {
-    Value  string // The extracted value
-    Key    string // The parameter/header/cookie name the winning extractor read
-    Source Source // The kind of source the winning extractor read from
+    Value    string // The extracted value
+    Key      string // The parameter/header/cookie name the winning extractor read
+    Source   Source // The kind of source the winning extractor read from
+    Resolved bool   // Whether Key and Source name the extractor that actually produced Value
 }
 ```
+
+`Resolved` is false when a chain's own `Extract` answered without any child being
+observed to win. `Key` and `Source` are then the chain's declared metadata (its
+first child) and say nothing about where the value came from, so a security
+decision — such as writing a value back to where it was read from — must refuse
+rather than trust them.
 
 - **Headers**: `Authorization`, `X-API-Key`, custom headers
 - **Cookies**: Session cookies, authentication tokens
@@ -105,7 +112,7 @@ The `Chain` function creates extractors that try multiple sources in order:
 - **Robust error handling**: Skips children with a `nil` `Extract` (and zero-value trailing children)
 - **Cycle prevention**: Detects recursive chain re-entry and returns `ErrChainCycle` (shared across `Extract` and `Resolve`)
 - Preserves `Source` and `Key` from the first extractor for static metadata (not `AuthScheme`)
-- On success, `Resolve` reports the winning child's `Key` and `Source` at runtime
+- On success with `Resolved` true, `Resolve` reports the winning child's `Key` and `Source` at runtime
 - On failure, the returned source is fallback metadata only — do not treat it as the origin of an extracted value
 - Exposes a **defensive copy** of children via the `Chain` field for introspection; mutating that slice does not change which children `Extract` runs
 

@@ -15,7 +15,6 @@ var benchSink struct {
 	err    error
 	value  string
 	result Result
-	source Source
 	ok     bool
 }
 
