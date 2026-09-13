@@ -101,6 +101,11 @@ absorb or discard them.
 Parameter values are automatically escaped with the RFC 3986 path-segment set (pchar),
 so values should be passed unescaped. Greedy parameters keep `/` so their value can span
 multiple segments.
+Values containing dot-only segments (`.` or `..`) return `ErrRouteNotRepresentable`
+when a browser would normalize them to another path. With `UnescapePath: true`,
+ordinary parameters containing `/` also return this error: decoding happens before
+route matching, so `%2F` cannot preserve a single segment. Greedy parameters still
+accept `/`.
 :::
 
 ### Back

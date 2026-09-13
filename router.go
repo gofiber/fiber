@@ -75,6 +75,7 @@ type Route struct { // betteralign:ignore - see below
 	root          bool // Path equals '/'
 	autoHead      bool // Automatically generated HEAD route
 	caseSensitive bool // Whether parameter matching is case-sensitive
+	unescapePath  bool // Whether the request path is decoded before matching
 
 	routeParser routeParser // Parameter parser
 
@@ -319,7 +320,10 @@ func buildRouteURL(route *Route, params Map) (string, error) {
 				mode = escapePathParamGreedy
 			}
 			value := utils.ToString(val)
-			if !routeParamRepresentable(value, mode) {
+			// UnescapePath decodes %2F before routing, so escaping cannot keep
+			// a slash inside an ordinary single-segment parameter.
+			if !routeParamRepresentable(value, mode) ||
+				(route.unescapePath && !segment.IsGreedy && strings.Contains(value, "/")) {
 				return "", ErrRouteNotRepresentable
 			}
 			buf.B = appendEscapedPathParam(buf.B, value, mode)
@@ -951,6 +955,7 @@ func (app *App) addPrefixToRoute(prefix string, route *Route, regexHandler any, 
 	route.root = false
 	route.star = false
 	route.caseSensitive = app.config.CaseSensitive
+	route.unescapePath = app.config.UnescapePath
 	// buildTree recomputes this for every route, but this function rewrites the
 	// path and parser a filter is derived from, so refresh it here too rather
 	// than depend on a caller marking the routes refreshed.
@@ -985,6 +990,7 @@ func (*App) copyRoute(route *Route) *Route {
 		root:          route.root,
 		autoHead:      route.autoHead,
 		caseSensitive: route.caseSensitive,
+		unescapePath:  route.unescapePath,
 
 		// Path data
 		path:        route.path,
@@ -1173,6 +1179,7 @@ func (app *App) register(methods []string, pathRaw string, group *Group, handler
 			star:          isStar,
 			root:          isRoot,
 			caseSensitive: app.config.CaseSensitive,
+			unescapePath:  app.config.UnescapePath,
 			id:            routeID,
 			latestID:      routeID,
 

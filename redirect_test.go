@@ -353,6 +353,89 @@ func Test_Redirect_Route_ParamCannotLeaveTheOrigin(t *testing.T) {
 	}
 }
 
+func Test_Redirect_Route_UnescapePath(t *testing.T) {
+	t.Parallel()
+
+	for _, unescape := range []bool{false, true} {
+		for _, greedy := range []bool{false, true} {
+			t.Run(fmt.Sprintf("unescape=%v/greedy=%v", unescape, greedy), func(t *testing.T) {
+				t.Parallel()
+
+				app := New(Config{UnescapePath: unescape})
+				pattern, key := "/user/:name", "name"
+				want := "/user/a%2Fb"
+				if greedy {
+					pattern, key = "/user/*", "*"
+					want = "/user/a/b"
+				}
+				app.Get(pattern, func(c Ctx) error { return c.SendString("matched") }).Name("user")
+				ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+				defer app.ReleaseCtx(ctx)
+				params := Map{key: "a/b"}
+
+				fromRoute, routeErr := app.GetRoute("user").URL(params)
+				fromCtx, ctxErr := ctx.GetRouteURL("user", params)
+				redirectErr := ctx.Redirect().Route("user", RedirectConfig{Params: params})
+				if unescape && !greedy {
+					require.ErrorIs(t, routeErr, ErrRouteNotRepresentable)
+					require.ErrorIs(t, ctxErr, ErrRouteNotRepresentable)
+					require.ErrorIs(t, redirectErr, ErrRouteNotRepresentable)
+					require.Empty(t, fromRoute)
+					require.Empty(t, fromCtx)
+					require.Empty(t, ctx.Response().Header.Peek(HeaderLocation))
+					return
+				}
+				require.NoError(t, routeErr)
+				require.NoError(t, ctxErr)
+				require.NoError(t, redirectErr)
+				require.Equal(t, want, fromRoute)
+				require.Equal(t, want, fromCtx)
+				require.Equal(t, want, string(ctx.Response().Header.Peek(HeaderLocation)))
+
+				response, err := app.Test(httptest.NewRequest(MethodGet, fromRoute, http.NoBody))
+				require.NoError(t, err)
+				defer func() { require.NoError(t, response.Body.Close()) }()
+				require.Equal(t, StatusOK, response.StatusCode)
+			})
+		}
+	}
+}
+
+func Test_Redirect_Route_MountedUnescapePath(t *testing.T) {
+	t.Parallel()
+
+	for _, unescape := range []bool{false, true} {
+		t.Run(fmt.Sprintf("unescape=%v", unescape), func(t *testing.T) {
+			t.Parallel()
+
+			app := New(Config{UnescapePath: unescape})
+			child := New(Config{UnescapePath: !unescape})
+			child.Get("/user/:name", func(c Ctx) error { return c.SendString("matched") }).Name("user")
+			app.Use("/api", child)
+			app.Handler()
+
+			ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+			defer app.ReleaseCtx(ctx)
+			params := Map{"name": "a/b"}
+			fromRoute, routeErr := app.GetRoute("user").URL(params)
+			fromCtx, ctxErr := ctx.GetRouteURL("user", params)
+			redirectErr := ctx.Redirect().Route("user", RedirectConfig{Params: params})
+			if unescape {
+				require.ErrorIs(t, routeErr, ErrRouteNotRepresentable)
+				require.ErrorIs(t, ctxErr, ErrRouteNotRepresentable)
+				require.ErrorIs(t, redirectErr, ErrRouteNotRepresentable)
+				return
+			}
+			require.NoError(t, routeErr)
+			require.NoError(t, ctxErr)
+			require.NoError(t, redirectErr)
+			require.Equal(t, "/api/user/a%2Fb", fromRoute)
+			require.Equal(t, fromRoute, fromCtx)
+			require.Equal(t, fromRoute, string(ctx.Response().Header.Peek(HeaderLocation)))
+		})
+	}
+}
+
 // go test -run Test_Redirect_Route_WithOptionalParams
 func Test_Redirect_Route_WithOptionalParams(t *testing.T) {
 	t.Parallel()
