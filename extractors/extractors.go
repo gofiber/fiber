@@ -85,12 +85,10 @@ type Extractor struct {
 // Result is a resolved extraction: the value, and the provenance of the
 // extractor that supplied it.
 //
-// It carries metadata only. A caller learns where a value came from without
-// receiving anything runnable, so the defensive copy a chain keeps of its
-// children can never be reached, let alone rewritten, through a Result.
+// It carries metadata only, so a chain's defensive copy of its children is
+// never reachable through it.
 type Result struct {
-	// Value is the extracted value. It is non-empty only when Resolve
-	// returned a nil error.
+	// Value is the extracted value, non-empty only when err was nil.
 	Value string
 
 	// Key is the parameter, header or cookie name the winning extractor read.
@@ -100,48 +98,30 @@ type Result struct {
 	Source Source
 
 	// Resolved reports whether Key and Source name the extractor that actually
-	// produced Value.
-	//
-	// It is false when the value came out of a chain whose own Extract answered
-	// without any child being observed to win — a full replacement, or a
-	// decorator that does not delegate. Key and Source are then the chain's
-	// declared metadata (its first child), which says nothing about where the
-	// value came from. A caller making a security decision from provenance —
-	// deciding a value may be written back to the place it was read from —
-	// must treat false as "origin unknown" and refuse, exactly as it would for
-	// a read-only source. Always false when err is non-nil.
+	// produced Value. It is false when a chain's own Extract answered without a
+	// child winning: Key and Source are then the chain's declared metadata (its
+	// first child) and say nothing about the value's origin, so a caller
+	// deciding where a value may be written back must refuse. Always false on
+	// error.
 	Resolved bool
 }
 
 // Resolve extracts a value and reports which extractor supplied it.
 //
-// Prefer this over Extract when the caller needs the provenance of a value —
-// its Key as well as its Source — for example to write a value back to the
-// same place it was read from. Extractor.Source is declared/static metadata
-// (for a chain, the first child); SourceHeader is the zero value, so a
-// hand-rolled Extract without an explicit Source reports SourceHeader. No
-// extra struct field is required, so existing unkeyed Extractor literals keep
-// compiling.
+// Prefer this over Extract when the caller needs a value's provenance — its Key
+// as well as its Source — such as to write the value back where it was read
+// from. It adds no field to Extractor, so unkeyed literals keep compiling.
 //
-// Behavior:
-//   - Leaf (Extract set, no Chain): Extract runs and e's own metadata is the
-//     provenance, with Resolved true.
-//   - Chain (Extract set and Chain non-empty): Extract runs, so legacy
-//     overrides and decoration (validation) are honored. A built-in Chain
-//     records its winning child while it runs, and that child is reported with
-//     Resolved true. If Extract answers without such a record — a full
-//     replacement, or a decorator that does not delegate — e's declared
-//     metadata is reported with Resolved FALSE, because which child (if any)
-//     produced the value is unknown; e.Chain is not re-walked to guess.
-//   - Chain with nil Extract: walk children (same success rules as
-//     Chain.Extract), skip nil Extract, report the winning child.
-//   - Neither: ErrNotFound.
+// Extract runs when set, so overrides and decoration are honored. A built-in
+// Chain records its winning child as it runs, and only a record made by the
+// chain being resolved counts, so a value is never credited to a chain some
+// unrelated helper ran. Without such a record the declared metadata is reported
+// with Resolved false rather than re-walking e.Chain to guess. A chain with no
+// Extract walks its children directly; an extractor with neither returns
+// ErrNotFound.
 //
-// A record only counts when it was made by the very chain being resolved, so a
-// value cannot be credited to a chain some unrelated helper happened to run.
-//
-// Key and Source are meaningful for security decisions only when err is nil
-// AND Resolved is true. Extract is not deprecated.
+// Key and Source are meaningful for security decisions only when err is nil and
+// Resolved is true.
 func Resolve(e Extractor, c fiber.Ctx) (Result, error) {
 	return resolveOne(&e, c, nil)
 }
@@ -154,15 +134,13 @@ func resolveOne(e *Extractor, c fiber.Ctx, st *chainState) (Result, error) {
 		if st == nil {
 			st = chainStateFor(c)
 		}
-		// Marks the frame, so Chain.Extract records a winner only while a
-		// source-aware caller is active.
+		// Marks the frame, so Chain.Extract records only while a source-aware
+		// caller is active.
 		parentWin, parentGuard := st.enterCapture()
 		defer st.leaveCapture(parentWin, parentGuard)
 
 		v, err := e.Extract(c)
-		// Read before the deferred restore runs, and only accept a record this
-		// very chain made: a leaf whose Extract consults some other chain must
-		// not inherit that chain's winner.
+		// Read before the deferred restore runs.
 		win := st.capturedFor(e.Chain)
 		if err != nil {
 			return Result{Key: e.Key, Source: e.Source}, err
@@ -173,12 +151,9 @@ func resolveOne(e *Extractor, c fiber.Ctx, st *chainState) (Result, error) {
 		if win != nil {
 			return Result{Value: v, Key: win.Key, Source: win.Source, Resolved: true}, nil
 		}
-		// No record we can vouch for. A leaf that ran no chain at all is its own
-		// origin. Anything else — a chain that answered without a child
-		// winning, a leaf that ran some other chain, or a chain whose public
-		// Chain was cleared so a record can no longer be tied to it — cannot
-		// say where the value came from, so the declared metadata is reported
-		// as unresolved rather than passed off as provenance.
+		// Only a leaf that ran no chain at all is its own origin. Anything else
+		// cannot say where the value came from, so its declared metadata is
+		// reported as unresolved rather than passed off as provenance.
 		resolved := len(e.Chain) == 0 && st.win == nil
 		return Result{Value: v, Key: e.Key, Source: e.Source, Resolved: resolved}, nil
 	}
@@ -271,8 +246,8 @@ func (s *chainState) leave() {
 }
 
 // enterCapture opens a Resolve frame and returns the record the enclosing one
-// held, which the frame hides so a leaf is not attributed to it. Pass both
-// results back to leaveCapture.
+// held, hidden so a leaf is not attributed to it. Pass both back to
+// leaveCapture.
 func (s *chainState) enterCapture() (win *Extractor, guard *byte) { //nolint:nonamedreturns // the pair is one record; names say which half is which
 	s.depth++
 	win, guard = s.win, s.winGuard
@@ -281,9 +256,9 @@ func (s *chainState) enterCapture() (win *Extractor, guard *byte) { //nolint:non
 }
 
 // capturedFor returns the child recorded by the chain whose children are chain,
-// or nil when the current record was made by some other chain, or none was.
-// Tying the record to its chain is what keeps a value from being credited to a
-// chain that merely ran somewhere inside the same frame.
+// or nil when the record belongs to another chain, or none was made. Tying a
+// record to its chain is what stops a value being credited to a chain that
+// merely ran inside the same frame.
 func (s *chainState) capturedFor(chain []Extractor) *Extractor {
 	if s.win == nil || len(chain) == 0 || s.winGuard != chainGuard(chain) {
 		return nil
@@ -291,10 +266,9 @@ func (s *chainState) capturedFor(chain []Extractor) *Extractor {
 	return s.win
 }
 
-// leaveCapture closes a Resolve frame, dropping its own record and restoring
-// the enclosing frame's. A decorated chain can call its base and then make
-// another source-aware call before returning, and the record the base made has
-// to survive that.
+// leaveCapture closes a Resolve frame, restoring the enclosing frame's record:
+// a decorator may make another source-aware call after its base, and the base's
+// record has to survive that.
 func (s *chainState) leaveCapture(win *Extractor, guard *byte) {
 	s.depth--
 	s.win, s.winGuard = win, guard
@@ -305,8 +279,8 @@ func (s *chainState) leaveCapture(win *Extractor, guard *byte) {
 // ErrChainCycle. If nothing matched, the last error seen wins over ErrNotFound, so
 // the caller learns why the chain failed rather than only that it did.
 func resolveChain(e *Extractor, c fiber.Ctx, st *chainState) (Result, error) {
-	// Snapshotted once: a child's Extract that reassigns the public slice
-	// mid-walk must not move the ground under the loop.
+	// Snapshotted so a child's Extract reassigning the public slice mid-walk
+	// cannot move the ground under the loop.
 	chain := e.Chain
 	if !st.enter(chainGuard(chain)) {
 		return Result{Key: e.Key, Source: e.Source}, ErrChainCycle
@@ -337,14 +311,11 @@ func resolveChain(e *Extractor, c fiber.Ctx, st *chainState) (Result, error) {
 }
 
 // Walk visits this extractor and every extractor nested in its Chain, depth
-// first and in chain order, calling fn for each. Walking stops early when fn
-// returns false. A chain that re-enters itself is visited once.
+// first and in chain order, stopping early when fn returns false. A chain that
+// re-enters itself is visited once. If fn is nil, Walk does nothing.
 //
-// Use this rather than ranging over Chain: that only sees direct children, and
-// judges a nested chain by its declared metadata (its first child) instead of
-// by the extractors actually inside it.
-//
-// If fn is nil, Walk does nothing.
+// Prefer this to ranging over Chain, which sees only direct children and judges
+// a nested chain by its declared metadata rather than by what is inside it.
 func (e Extractor) Walk(fn func(Extractor) bool) {
 	if fn == nil {
 		return
@@ -354,14 +325,14 @@ func (e Extractor) Walk(fn func(Extractor) bool) {
 }
 
 // walkGuard is Walk's cycle guard. Its map stays nil until a child with
-// children of its own appears: a chain can only re-enter itself through such a
-// child, so a flat chain — by far the common shape — walks without allocating.
+// children of its own appears — the only way a chain can re-enter itself — so
+// a flat chain walks without allocating.
 type walkGuard struct {
 	seen map[*Extractor]struct{}
 }
 
-// visit reports whether e still needs visiting, recording it when tracking has
-// started.
+// visit reports whether e still needs visiting, recording it once tracking has
+// begun.
 func (g *walkGuard) visit(e *Extractor) bool {
 	if g.seen == nil {
 		return true
@@ -889,8 +860,8 @@ func Chain(extractors ...Extractor) Extractor {
 				if kid.Extract == nil {
 					continue
 				}
-				// Only read while a source-aware caller is active: a bare
-				// Extract must pay nothing for bookkeeping it never reads.
+				// Read only under capture: a bare Extract pays nothing for
+				// bookkeeping it never reads.
 				var prevWin *Extractor
 				var prevGuard *byte
 				if capture {
@@ -900,21 +871,18 @@ func Chain(extractors ...Extractor) Extractor {
 				if err == nil && v != "" {
 					if capture {
 						if st.win == prevWin && st.winGuard == prevGuard {
-							// kid recorded nothing of its own, so kid is the
-							// origin. A nested chain that did record keeps its
-							// innermost child.
+							// kid recorded nothing, so kid is the origin; a
+							// nested chain keeps its own innermost child.
 							st.win = kid
 						}
-						// Tag the record as this chain's, so the caller
-						// resolving us accepts it and an unrelated chain does
-						// not.
+						// Tag it as this chain's, so only our caller accepts it.
 						st.winGuard = guard
 					}
 					return v, nil
 				}
 				if capture {
 					// A child that did not answer records nothing, and must not
-					// erase what a sibling chain already recorded.
+					// erase a sibling chain's record.
 					st.win, st.winGuard = prevWin, prevGuard
 				}
 				if err != nil {

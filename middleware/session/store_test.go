@@ -270,15 +270,9 @@ func Test_Store_getSessionID_WithoutExtractor(t *testing.T) {
 	require.Empty(t, emptyID)
 }
 
-// Test_Store_getSessionID_HonorsChainLevelExtract pins the contract the
-// extractors package documents: "Extract set (leaf or chain): call Extract so
-// legacy overrides / decoration (validation, normalization) are honored."
-//
-// The store used to walk Extractor.Chain itself, which called the children
-// directly and never the chain-level Extract, so a decorator wrapping a chain
-// — the documented way to validate or normalize an ID — was silently skipped.
-// No test could catch that: extractors tested Chain, session tested its own
-// walk, and both passed.
+// Test_Store_getSessionID_HonorsChainLevelExtract pins that a chain-level
+// Extract runs. The store used to walk Extractor.Chain itself, calling the
+// children directly, so a decorator wrapping a chain was silently skipped.
 func Test_Store_getSessionID_HonorsChainLevelExtract(t *testing.T) {
 	t.Parallel()
 
@@ -297,11 +291,9 @@ func Test_Store_getSessionID_HonorsChainLevelExtract(t *testing.T) {
 			}),
 		)
 
-		// Decorate the chain the way the store supports: keep the chain's own
-		// resolution and inspect what it produced, returning the value
-		// unchanged. The decorator must be value-preserving — the store writes
-		// the session ID back untransformed, so a decorator that rewrote it on
-		// read would never find its own session again.
+		// Value-preserving, as the store requires: the ID is written back
+		// untransformed, so a decorator that rewrote it on read would never
+		// find its own session again.
 		decorated := base
 		decorated.Extract = func(c fiber.Ctx) (string, error) {
 			overrideCalls++
@@ -331,8 +323,8 @@ func Test_Store_getSessionID_HonorsChainLevelExtract(t *testing.T) {
 
 		base := extractors.Chain(extractors.FromHeader("X-Session"))
 
-		// The security-relevant shape: a decorator that validates, and refuses
-		// an ID it does not like. Skipping it silently accepted the raw value.
+		// A validator refusing an ID it does not like. Skipping it silently
+		// accepted the raw value.
 		decorated := base
 		decorated.Extract = func(c fiber.Ctx) (string, error) {
 			v, err := base.Extract(c)
@@ -365,9 +357,9 @@ func Test_Store_getSessionID_HonorsChainLevelExtract(t *testing.T) {
 	})
 }
 
-// Test_Store_getSessionID_ReportsWinnerForWriteBack pins that the extractor
-// reported is the one that actually supplied the ID, which is what decides
-// where setSession writes it back to.
+// Test_Store_getSessionID_ReportsWinnerForWriteBack pins that the reported
+// extractor is the one that supplied the ID, which decides where it is written
+// back.
 func Test_Store_getSessionID_ReportsWinnerForWriteBack(t *testing.T) {
 	t.Parallel()
 
@@ -419,14 +411,11 @@ func Test_Store_getSessionID_ReportsWinnerForWriteBack(t *testing.T) {
 }
 
 // Test_Store_UnattributableID_IsNotWrittenBack pins the session-fixation guard
-// against provenance the extractors package could not actually observe.
-//
-// A chain-level Extract that answers on its own leaves no child recorded, so
-// Resolve can only report the chain's DECLARED metadata — its first child. If
-// that first child happens to be a cookie extractor, treating the declared
-// metadata as provenance would classify a query-supplied ID as "came from a
-// writable sink" and pin the victim to an attacker-chosen session. Result
-// reports such metadata with Resolved false precisely so this cannot happen.
+// against provenance that was never observed. A chain-level Extract answering
+// on its own records no child, so Resolve reports the chain's declared metadata
+// — its first child. Reading that as provenance would classify a query-supplied
+// ID as "came from a writable sink" and pin the victim to an attacker-chosen
+// session.
 func Test_Store_UnattributableID_IsNotWrittenBack(t *testing.T) {
 	t.Parallel()
 
@@ -464,11 +453,9 @@ func Test_Store_UnattributableID_IsNotWrittenBack(t *testing.T) {
 		"an ID whose origin cannot be attributed must never be pinned into a cookie")
 }
 
-// Test_Store_ForeignChainDoesNotSupplyProvenance pins that a leaf extractor
-// which happens to consult some other chain is not credited with that chain's
-// winning child. Crediting it would let the session middleware write the
-// session ID into an unrelated application cookie, and delete that cookie on
-// logout.
+// Test_Store_ForeignChainDoesNotSupplyProvenance pins that a leaf consulting
+// some other chain is not credited with that chain's winner, which would let
+// the session ID be written into an unrelated application cookie.
 func Test_Store_ForeignChainDoesNotSupplyProvenance(t *testing.T) {
 	t.Parallel()
 
@@ -494,13 +481,10 @@ func Test_Store_ForeignChainDoesNotSupplyProvenance(t *testing.T) {
 }
 
 // Test_Store_NestedChainCookieSinkIsWritten pins that a cookie extractor nested
-// inside an inner chain is still written back.
-//
-// getExtractorInfo used to range over the configured chain's direct children
-// and judge each by its static Source. A nested chain reports its FIRST child's
-// metadata, so an inner Chain(query, cookie) looked like a query extractor: the
-// cookie sink inside it was invisible, no Set-Cookie was ever emitted, and every
-// request silently began a brand-new session that could never be resumed.
+// inside an inner chain is still written back. getExtractorInfo used to range
+// over direct children and judge each by its static Source, so an inner
+// Chain(query, cookie) looked like a query extractor: no Set-Cookie was emitted
+// and every request began a session that could never be resumed.
 func Test_Store_NestedChainCookieSinkIsWritten(t *testing.T) {
 	t.Parallel()
 
@@ -526,10 +510,9 @@ func Test_Store_NestedChainCookieSinkIsWritten(t *testing.T) {
 		"a cookie sink nested one level down must still be written")
 }
 
-// Test_Store_ExtractorErrorReachesCaller pins that a chain-level validator's
-// refusal is reported rather than collapsed into "no session ID present". The
-// two are very different: one is a forged ID worth logging or rate-limiting,
-// the other is a first-time visitor.
+// Test_Store_ExtractorErrorReachesCaller pins that a validator's refusal is
+// reported rather than collapsed into "no session ID present" — a forged ID and
+// a first-time visitor must not look alike.
 func Test_Store_ExtractorErrorReachesCaller(t *testing.T) {
 	t.Parallel()
 
@@ -572,9 +555,8 @@ func Test_Store_ExtractorErrorReachesCaller(t *testing.T) {
 	})
 }
 
-// Test_Store_ProvenanceBoxIsRecycled pins that the pooled box carrying the
-// extractor provenance is returned to the pool when fasthttp resets the
-// request, which is what keeps it off the heap on the session hot path.
+// Test_Store_ProvenanceBoxIsRecycled pins that the pooled provenance box goes
+// back to the pool on request reset, which is what keeps it off the heap.
 func Test_Store_ProvenanceBoxIsRecycled(t *testing.T) {
 	t.Parallel()
 

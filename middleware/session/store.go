@@ -32,19 +32,17 @@ const (
 	sessionExtractorContextKey
 )
 
-// provenanceBox carries the resolved extractor provenance through request
-// locals behind a pointer. Storing the Result by value would box it onto the
-// heap on every request that carries a session ID; a pooled pointer costs
-// nothing, and fasthttp hands it back through Close when it resets the
-// request — the same arrangement the extractors package uses for its chain
-// state.
+// provenanceBox carries the resolved provenance through request locals behind a
+// pointer: storing the Result by value would box it onto the heap on every
+// request carrying a session ID. fasthttp hands it back through Close on
+// request reset, as it does the extractors package's chain state.
 type provenanceBox struct {
 	res extractors.Result
 }
 
 var provenancePool = sync.Pool{New: func() any { return new(provenanceBox) }}
 
-// acquireProvenance takes a box from the pool and fills it with res.
+// acquireProvenance takes a box from the pool and fills it.
 func acquireProvenance(res extractors.Result) *provenanceBox {
 	b, ok := provenancePool.Get().(*provenanceBox)
 	if !ok || b == nil {
@@ -167,9 +165,8 @@ func (s *Store) getSession(c fiber.Ctx) (*Session, error) {
 			return nil, resolveErr
 		}
 		if id != "" {
-			// Kept for a second getSession on the same request: that call
-			// takes the cached-ID path above and would otherwise lose the
-			// provenance needed to write the ID back to its own sink.
+			// Kept for a second getSession on the same request, which takes the
+			// cached-ID path above and would otherwise lose the provenance.
 			ctxlocal.Set(c, sessionExtractorContextKey, acquireProvenance(selectedExtractor))
 		}
 	} else if stored, found := c.Locals(sessionExtractorContextKey).(*provenanceBox); found && stored != nil {
@@ -249,29 +246,26 @@ func (s *Store) getSession(c fiber.Ctx) (*Session, error) {
 //
 //	id, from, err := store.getSessionID(c)
 func (s *Store) getSessionID(c fiber.Ctx) (string, extractors.Result, error) {
-	// Resolved through the extractors package rather than by walking
-	// Extractor.Chain here: a chain-level Extract — a legacy override, or
-	// decoration that validates or normalizes the ID — must run, and walking
-	// the public Chain directly would skip it. Resolve also reports which
-	// extractor won, which setSession needs to write the ID back to the sink
-	// it came from.
+	// Resolved through the extractors package rather than walked here: walking
+	// Extractor.Chain directly would skip a chain-level Extract, and Resolve
+	// also reports which extractor won, which setSession needs to write the ID
+	// back to the sink it came from.
 	//
-	// A chain-level Extract must be value-preserving: validate or refuse, but
-	// do not rewrite. The ID is written back untransformed, so a decorator that
-	// rewrote it on read would never match its own stored session again.
+	// That Extract must be value-preserving — validate or refuse, do not
+	// rewrite. The ID is written back untransformed, so a decorator that
+	// rewrote it on read would never match its own stored session.
 	res, err := extractors.Resolve(s.Extractor, c)
 	switch {
 	case err == nil:
 		return res.Value, res, nil
 	case errors.Is(err, extractors.ErrNotFound):
-		// Nothing supplied an ID. That is the ordinary first-visit case rather
-		// than a failure, and an empty ID generates a fresh session.
+		// The ordinary first-visit case, not a failure: an empty ID generates a
+		// fresh session.
 		return "", extractors.Result{}, nil
 	default:
-		// A chain-level validator refusing a forged ID, a cycle, or a custom
-		// extractor's own error. Reported rather than collapsed into "no ID
-		// present", so the application can log, rate-limit or reject it instead
-		// of handing the caller an indistinguishable fresh session.
+		// A validator refusing a forged ID, a cycle, or a custom extractor's own
+		// error. Reported rather than collapsed into "no ID present", which
+		// would be indistinguishable from a first-time visitor.
 		return "", extractors.Result{}, err
 	}
 }

@@ -445,10 +445,9 @@ func (s *Session) getExtractorInfo() []extractors.Extractor {
 
 	// Prefer the extractor that actually supplied the incoming session ID.
 	if s.extractor.Key != "" {
-		// Only provenance the extractors package could actually observe names a
-		// sink. A chain whose own Extract answered without a child winning
-		// reports its declared metadata — its first child — which says nothing
-		// about where the value came from, so it must not be read as one.
+		// Only observed provenance names a sink. A chain whose own Extract
+		// answered without a child winning reports its first child's declared
+		// metadata, which says nothing about where the value came from.
 		if s.extractor.Resolved {
 			switch s.extractor.Source {
 			case extractors.SourceCookie, extractors.SourceHeader:
@@ -459,26 +458,22 @@ func (s *Session) getExtractorInfo() []extractors.Extractor {
 				// Read-only: fall through to the refusal below.
 			}
 		}
-		// A read-only source (query/form/param/custom), or an origin we cannot
-		// attribute. For an existing session either would be an
-		// attacker-controlled ID, so it must not be promoted into
-		// cookies/headers (session fixation). Fresh sessions carry a freshly
-		// generated ID, so they may still fall through to the configured
-		// cookie/header sinks below.
+		// Read-only, or an origin we cannot attribute. For an existing session
+		// either would be an attacker-controlled ID, so it must not be promoted
+		// into cookies/headers (session fixation). A fresh session's ID is
+		// server-generated, so it may still fall through to the sinks below.
 		if !s.isFresh {
 			return nil
 		}
 	}
 
 	// Walked rather than ranged over Chain: a nested chain reports its first
-	// child's declared metadata, so ranging over direct children alone hides
-	// every sink inside it — a cookie extractor one level down would never be
-	// written, and the session could never be resumed.
+	// child's metadata, so direct children alone hide every sink inside it, and
+	// a cookie one level down would never be written.
 	var sinks []extractors.Extractor
 	s.config.Extractor.Walk(func(candidate extractors.Extractor) bool {
-		// Only a leaf names a place to write. A chain's own Source is its first
-		// child's metadata, not a sink of its own, and a keyless extractor
-		// would name a cookie or header with no name at all.
+		// Only a leaf names a place to write, and a keyless one would name a
+		// cookie or header with no name at all.
 		if len(candidate.Chain) > 0 || candidate.Key == "" {
 			return true
 		}

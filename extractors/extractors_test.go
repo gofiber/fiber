@@ -1756,11 +1756,10 @@ func Test_Extractor_Chain_ExtractSource(t *testing.T) {
 
 		chain := Chain(FromHeader("X-Token"), FromQuery("token"))
 		// The public Chain is how a record is tied back to the chain that made
-		// it. Clearing it removes that identity, so the value still resolves
-		// from the private execution list but its provenance can no longer be
-		// vouched for. Reporting it as unresolved is the safe degradation: the
-		// alternative — honoring any record present in the frame — is what let
-		// an unrelated chain's winner be credited to this one.
+		// it. Clearing it loses that identity, so the value still resolves but
+		// its provenance cannot be vouched for. Unresolved is the safe
+		// degradation; honoring any record in the frame is what let an
+		// unrelated chain's winner be credited to this one.
 		chain.Chain = nil
 
 		res, err := Resolve(chain, ctx)
@@ -2417,16 +2416,14 @@ func Test_ChainState_CloseClearsGuards(t *testing.T) {
 }
 
 // resolveSource adapts Resolve to the (value, Source, error) shape the tables
-// above were written against. Resolve itself returns the winning Extractor so
-// callers can read its Key as well; Test_Resolve_Winner covers that.
+// above were written against. Test_Resolve_Winner covers the rest of Result.
 func resolveSource(e Extractor, c fiber.Ctx) (string, Source, error) {
 	r, err := Resolve(e, c)
 	return r.Value, r.Source, err
 }
 
-// Test_Resolve_Winner covers what Result adds over the Source-only shape: the
-// Key of the extractor that actually supplied the value. A caller writing a
-// value back to where it came from needs the name as well as the kind.
+// Test_Resolve_Winner covers what Result adds over a Source alone: the Key of
+// the extractor that supplied the value, which a caller writing it back needs.
 func Test_Resolve_Winner(t *testing.T) {
 	t.Parallel()
 
@@ -2496,12 +2493,10 @@ func Test_Resolve_Winner(t *testing.T) {
 		res, err := Resolve(replaced, ctx)
 		require.NoError(t, err)
 		require.Equal(t, "made-up", res.Value)
-		// No child won, so e's own declared metadata stands rather than
-		// crediting whichever child would answer on a second walk — and it is
-		// reported as unresolved, because it names the chain's first child
-		// rather than wherever "made-up" actually came from. A caller deciding
-		// a write-back sink from this would be pinning a value to a place it
-		// never came from.
+		// No child won, so the declared metadata stands rather than crediting
+		// whichever child would answer on a second walk — and it is unresolved,
+		// because it names the first child rather than wherever "made-up" came
+		// from.
 		require.False(t, res.Resolved)
 		require.Equal(t, "sid", res.Key)
 		require.Equal(t, SourceCookie, res.Source)
@@ -2533,9 +2528,8 @@ func Test_Resolve_Winner(t *testing.T) {
 	})
 }
 
-// Test_Extractor_Walk covers the traversal Contains and both middleware now
-// share: chain order, descent into nested chains, early stop, and that a chain
-// re-entering itself is visited once rather than looping.
+// Test_Extractor_Walk covers the traversal Contains and both middleware share:
+// chain order, descent into nested chains, early stop, and cycle safety.
 func Test_Extractor_Walk(t *testing.T) {
 	t.Parallel()
 
