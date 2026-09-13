@@ -1975,8 +1975,8 @@ func Test_Chain_StateIsRecycledOnRequestReset(t *testing.T) {
 			require.Equal(t, "tok", v)
 			// Dirty it, so a stale state would show up in the next holder.
 			st := chainStateFor(c)
-			st.win = &Extractor{Source: SourceQuery}
-			st.winGuard = new(byte)
+			st.rec.win = &Extractor{Source: SourceQuery}
+			st.rec.guard = new(byte)
 			return c.SendStatus(fiber.StatusNoContent)
 		})
 
@@ -2006,7 +2006,7 @@ func Test_Chain_StateIsRecycledOnRequestReset(t *testing.T) {
 		st := chainStateFor(ctx)
 		require.Empty(t, st.active)
 		require.Zero(t, st.depth)
-		require.Nil(t, st.win)
+		require.Nil(t, st.rec.win)
 		require.Same(t, st, chainStateFor(ctx), "one state per request")
 	})
 }
@@ -2350,7 +2350,7 @@ func Test_ChainState_PoolHoldsSomethingElse(t *testing.T) {
 		require.NotNil(t, st, "a usable state whatever the pool held")
 		require.Empty(t, st.active)
 		require.Zero(t, st.depth)
-		require.Nil(t, st.win)
+		require.Nil(t, st.rec.win)
 		app.ReleaseCtx(ctx)
 	}
 }

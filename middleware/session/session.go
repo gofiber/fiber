@@ -444,11 +444,16 @@ func (s *Session) getExtractorInfo() []extractors.Extractor {
 	}
 
 	// Prefer the extractor that actually supplied the incoming session ID.
-	if s.extractor.Key != "" {
+	//
+	// Gated on Value, not Key: Key is the sink's name, and a keyless extractor
+	// — a hand-rolled child, or FromCustom("") — would otherwise skip this
+	// guard entirely and let a read-only ID reach the sinks below.
+	if s.extractor.Value != "" {
 		// Only observed provenance names a sink. A chain whose own Extract
 		// answered without a child winning reports its first child's declared
 		// metadata, which says nothing about where the value came from.
-		if s.extractor.Resolved {
+		// Key must name a sink for it to be writable at all.
+		if s.extractor.Resolved && s.extractor.Key != "" {
 			switch s.extractor.Source {
 			case extractors.SourceCookie, extractors.SourceHeader:
 				// The ID came from a writable sink; write it back to the same place.
