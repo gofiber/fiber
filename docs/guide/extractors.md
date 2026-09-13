@@ -33,6 +33,7 @@ Extractors are utilities that middleware uses to get values from different parts
 - `FromCustom(key string, fn func(fiber.Ctx) (string, error))`: Define custom extraction logic with metadata
 - `Chain(extractors ...Extractor)`: Chain multiple extractors with fallback logic
 - `Resolve(e Extractor, c fiber.Ctx) (Result, error)`: Return the value and which extractor supplied it — `Result.Value`, `Result.Key`, `Result.Source` (preferred for security decisions on chains)
+- `Extractor.Walk(fn func(Extractor) bool)`: Visit this extractor and every nested chained extractor, depth first and in chain order, stopping early when `fn` returns false
 - `Extractor.Contains(pred func(Extractor) bool)`: Check whether this extractor, or any nested chained extractor, matches a predicate
 
 ### Extractor Structure

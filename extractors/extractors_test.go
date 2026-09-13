@@ -2532,3 +2532,63 @@ func Test_Resolve_Winner(t *testing.T) {
 		require.Empty(t, res.Value)
 	})
 }
+
+// Test_Extractor_Walk covers the traversal Contains and both middleware now
+// share: chain order, descent into nested chains, early stop, and that a chain
+// re-entering itself is visited once rather than looping.
+func Test_Extractor_Walk(t *testing.T) {
+	t.Parallel()
+
+	keys := func(e Extractor) []string {
+		var seen []string
+		e.Walk(func(candidate Extractor) bool {
+			seen = append(seen, candidate.Key)
+			return true
+		})
+		return seen
+	}
+
+	t.Run("visits the root then children in chain order", func(t *testing.T) {
+		t.Parallel()
+		e := Chain(FromHeader("a"), FromQuery("b"), FromCookie("c"))
+		// The root reports its first child's Key as declared metadata.
+		require.Equal(t, []string{"a", "a", "b", "c"}, keys(e))
+	})
+
+	t.Run("descends into a nested chain", func(t *testing.T) {
+		t.Parallel()
+		inner := Chain(FromQuery("q"), FromCookie("deep"))
+		e := Chain(FromHeader("h"), inner)
+		require.Contains(t, keys(e), "deep", "a sink one level down must be reachable")
+	})
+
+	t.Run("stops early when fn returns false", func(t *testing.T) {
+		t.Parallel()
+		e := Chain(FromHeader("a"), FromQuery("b"), FromCookie("c"))
+		visits := 0
+		e.Walk(func(Extractor) bool {
+			visits++
+			return visits < 2
+		})
+		require.Equal(t, 2, visits)
+	})
+
+	t.Run("a self-referential chain terminates", func(t *testing.T) {
+		t.Parallel()
+		e := Chain(FromHeader("a"), FromQuery("b"))
+		// Point a child's chain back at the parent's children.
+		e.Chain[1].Chain = e.Chain
+
+		visits := 0
+		e.Walk(func(Extractor) bool {
+			visits++
+			return true
+		})
+		require.Less(t, visits, 16, "the cycle guard must stop the walk")
+	})
+
+	t.Run("a nil fn is a no-op", func(t *testing.T) {
+		t.Parallel()
+		require.NotPanics(t, func() { Chain(FromHeader("a")).Walk(nil) })
+	})
+}

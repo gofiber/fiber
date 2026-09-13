@@ -336,6 +336,73 @@ func resolveChain(e *Extractor, c fiber.Ctx, st *chainState) (Result, error) {
 	return Result{Key: e.Key, Source: e.Source}, ErrNotFound
 }
 
+// Walk visits this extractor and every extractor nested in its Chain, depth
+// first and in chain order, calling fn for each. Walking stops early when fn
+// returns false. A chain that re-enters itself is visited once.
+//
+// Use this rather than ranging over Chain: that only sees direct children, and
+// judges a nested chain by its declared metadata (its first child) instead of
+// by the extractors actually inside it.
+//
+// If fn is nil, Walk does nothing.
+func (e Extractor) Walk(fn func(Extractor) bool) {
+	if fn == nil {
+		return
+	}
+	var guard walkGuard
+	walkExtractor(&e, fn, &guard)
+}
+
+// walkGuard is Walk's cycle guard. Its map stays nil until a child with
+// children of its own appears: a chain can only re-enter itself through such a
+// child, so a flat chain — by far the common shape — walks without allocating.
+type walkGuard struct {
+	seen map[*Extractor]struct{}
+}
+
+// visit reports whether e still needs visiting, recording it when tracking has
+// started.
+func (g *walkGuard) visit(e *Extractor) bool {
+	if g.seen == nil {
+		return true
+	}
+	if _, seen := g.seen[e]; seen {
+		return false
+	}
+	g.seen[e] = struct{}{}
+	return true
+}
+
+// track begins cycle tracking, with parent already visited.
+func (g *walkGuard) track(parent *Extractor) {
+	if g.seen == nil {
+		g.seen = map[*Extractor]struct{}{parent: {}}
+	}
+}
+
+// walkExtractor is Walk's recursion.
+func walkExtractor(e *Extractor, fn func(Extractor) bool, guard *walkGuard) bool {
+	if !guard.visit(e) {
+		return true
+	}
+
+	if !fn(*e) {
+		return false
+	}
+
+	for i := range e.Chain {
+		child := &e.Chain[i]
+		if len(child.Chain) > 0 {
+			guard.track(e)
+		}
+		if !walkExtractor(child, fn, guard) {
+			return false
+		}
+	}
+
+	return true
+}
+
 // Contains reports whether this extractor, or any extractor in its chain, matches pred.
 //
 // If pred is nil, Contains returns false.
@@ -344,29 +411,16 @@ func (e Extractor) Contains(pred func(Extractor) bool) bool {
 		return false
 	}
 
-	stack := make([]*Extractor, 0, len(e.Chain)+1)
-	stack = append(stack, &e)
-	visited := make(map[*Extractor]struct{}, len(e.Chain)+1)
-
-	for len(stack) > 0 {
-		last := len(stack) - 1
-		curr := stack[last]
-		stack = stack[:last]
-		if _, ok := visited[curr]; ok {
-			continue
+	found := false
+	e.Walk(func(candidate Extractor) bool {
+		if pred(candidate) {
+			found = true
+			return false
 		}
-		visited[curr] = struct{}{}
+		return true
+	})
 
-		if pred(*curr) {
-			return true
-		}
-
-		for i := range curr.Chain {
-			stack = append(stack, &curr.Chain[i])
-		}
-	}
-
-	return false
+	return found
 }
 
 // FromAuthHeader extracts a value from the Authorization header with an optional prefix.

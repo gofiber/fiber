@@ -64,6 +64,7 @@ credited to a chain some unrelated helper happened to run.
 - `FromCustom(key string, fn func(fiber.Ctx) (string, error))`: Define custom extraction logic with metadata
 - `Chain(extractors ...Extractor)`: Chain multiple extractors with fallback
 - `Resolve(e Extractor, c fiber.Ctx) (Result, error)`: Extract a value and report which extractor supplied it (`Result.Value`, `Result.Key`, `Result.Source`)
+- `Extractor.Walk(fn func(Extractor) bool)`: Visit this extractor and every nested chained extractor, depth first and in chain order, stopping early when `fn` returns false
 - `Extractor.Contains(pred func(Extractor) bool)`: Check whether this extractor, or any nested chained extractor, matches a predicate
 
 ### Source Inspection
@@ -149,3 +150,23 @@ As described in the [Source Inspection](#source-inspection) section, the `Source
 - **Audit Trails**: Source information enables security analysis and compliance reporting
 
 However, when using `FromCustom`, middleware cannot determine the source of the extracted value, which can limit the ability of a middleware to provide warnings about potential security risks. Documentation and examples should clearly warn about these risks when using custom extractors.
+
+### Walking a chain
+
+Never range over the `Chain` field to find the extractors inside a tree. That
+sees only direct children, and judges a nested chain by its declared metadata —
+its first child — so everything below it is invisible. Use `Walk`, which
+descends the whole tree in chain order and carries the cycle guard:
+
+```go
+var sinks []extractors.Extractor
+cfg.Extractor.Walk(func(candidate extractors.Extractor) bool {
+    if len(candidate.Chain) > 0 || candidate.Key == "" {
+        return true // a chain is not itself a sink
+    }
+    if candidate.Source == extractors.SourceCookie {
+        sinks = append(sinks, candidate)
+    }
+    return true
+})
+```

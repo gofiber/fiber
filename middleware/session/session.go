@@ -470,22 +470,25 @@ func (s *Session) getExtractorInfo() []extractors.Extractor {
 		}
 	}
 
-	extractor := s.config.Extractor
-	if len(extractor.Chain) > 0 {
-		relevantExtractors := make([]extractors.Extractor, 0, len(extractor.Chain))
-		for _, chainExtractor := range extractor.Chain {
-			if chainExtractor.Source == extractors.SourceCookie || chainExtractor.Source == extractors.SourceHeader {
-				relevantExtractors = append(relevantExtractors, chainExtractor)
-			}
+	// Walked rather than ranged over Chain: a nested chain reports its first
+	// child's declared metadata, so ranging over direct children alone hides
+	// every sink inside it — a cookie extractor one level down would never be
+	// written, and the session could never be resumed.
+	var sinks []extractors.Extractor
+	s.config.Extractor.Walk(func(candidate extractors.Extractor) bool {
+		// Only a leaf names a place to write. A chain's own Source is its first
+		// child's metadata, not a sink of its own, and a keyless extractor
+		// would name a cookie or header with no name at all.
+		if len(candidate.Chain) > 0 || candidate.Key == "" {
+			return true
 		}
-		return relevantExtractors
-	}
+		if candidate.Source == extractors.SourceCookie || candidate.Source == extractors.SourceHeader {
+			sinks = append(sinks, candidate)
+		}
+		return true
+	})
 
-	if extractor.Source == extractors.SourceCookie || extractor.Source == extractors.SourceHeader {
-		return []extractors.Extractor{extractor}
-	}
-
-	return nil
+	return sinks
 }
 
 func (s *Session) setSession() {

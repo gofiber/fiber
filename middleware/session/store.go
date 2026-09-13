@@ -5,6 +5,7 @@ import (
 	"encoding/gob"
 	"errors"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/gofiber/fiber/v3"
@@ -30,6 +31,36 @@ const (
 	// sessionExtractorContextKey stores the extractor that provided the session ID.
 	sessionExtractorContextKey
 )
+
+// provenanceBox carries the resolved extractor provenance through request
+// locals behind a pointer. Storing the Result by value would box it onto the
+// heap on every request that carries a session ID; a pooled pointer costs
+// nothing, and fasthttp hands it back through Close when it resets the
+// request — the same arrangement the extractors package uses for its chain
+// state.
+type provenanceBox struct {
+	res extractors.Result
+}
+
+var provenancePool = sync.Pool{New: func() any { return new(provenanceBox) }}
+
+// acquireProvenance takes a box from the pool and fills it with res.
+func acquireProvenance(res extractors.Result) *provenanceBox {
+	b, ok := provenancePool.Get().(*provenanceBox)
+	if !ok || b == nil {
+		b = new(provenanceBox)
+	}
+	b.res = res
+	return b
+}
+
+// Close returns the box to the pool. fasthttp calls it on every request-local
+// io.Closer when it resets the request; callers should not.
+func (b *provenanceBox) Close() error {
+	b.res = extractors.Result{}
+	provenancePool.Put(b)
+	return nil
+}
 
 // Store manages session data using the configured storage backend.
 type Store struct {
@@ -130,15 +161,19 @@ func (s *Store) getSession(c fiber.Ctx) (*Session, error) {
 	var selectedExtractor extractors.Result
 	id, ok := c.Locals(sessionIDContextKey).(string)
 	if !ok {
-		id, selectedExtractor = s.getSessionID(c)
+		var resolveErr error
+		id, selectedExtractor, resolveErr = s.getSessionID(c)
+		if resolveErr != nil {
+			return nil, resolveErr
+		}
 		if id != "" {
 			// Kept for a second getSession on the same request: that call
 			// takes the cached-ID path above and would otherwise lose the
 			// provenance needed to write the ID back to its own sink.
-			ctxlocal.Set(c, sessionExtractorContextKey, selectedExtractor)
+			ctxlocal.Set(c, sessionExtractorContextKey, acquireProvenance(selectedExtractor))
 		}
-	} else if stored, found := c.Locals(sessionExtractorContextKey).(extractors.Result); found {
-		selectedExtractor = stored
+	} else if stored, found := c.Locals(sessionExtractorContextKey).(*provenanceBox); found && stored != nil {
+		selectedExtractor = stored.res
 	}
 
 	isFresh := false // Session is not fresh initially; only set to true if we generate a new ID
@@ -208,11 +243,12 @@ func (s *Store) getSession(c fiber.Ctx) (*Session, error) {
 // Returns:
 //   - string: The session ID, empty when nothing was extracted.
 //   - extractors.Result: which extractor supplied it, zero when none did.
+//   - error: why extraction failed, nil when nothing was supplied at all.
 //
 // Usage:
 //
-//	id, from := store.getSessionID(c)
-func (s *Store) getSessionID(c fiber.Ctx) (string, extractors.Result) {
+//	id, from, err := store.getSessionID(c)
+func (s *Store) getSessionID(c fiber.Ctx) (string, extractors.Result, error) {
 	// Resolved through the extractors package rather than by walking
 	// Extractor.Chain here: a chain-level Extract — a legacy override, or
 	// decoration that validates or normalizes the ID — must run, and walking
@@ -224,11 +260,20 @@ func (s *Store) getSessionID(c fiber.Ctx) (string, extractors.Result) {
 	// do not rewrite. The ID is written back untransformed, so a decorator that
 	// rewrote it on read would never match its own stored session again.
 	res, err := extractors.Resolve(s.Extractor, c)
-	if err != nil {
-		// No value, or extraction failed: an empty ID generates a new session.
-		return "", extractors.Result{}
+	switch {
+	case err == nil:
+		return res.Value, res, nil
+	case errors.Is(err, extractors.ErrNotFound):
+		// Nothing supplied an ID. That is the ordinary first-visit case rather
+		// than a failure, and an empty ID generates a fresh session.
+		return "", extractors.Result{}, nil
+	default:
+		// A chain-level validator refusing a forged ID, a cycle, or a custom
+		// extractor's own error. Reported rather than collapsed into "no ID
+		// present", so the application can log, rate-limit or reject it instead
+		// of handing the caller an indistinguishable fresh session.
+		return "", extractors.Result{}, err
 	}
-	return res.Value, res
 }
 
 // Reset deletes all sessions from the storage.
