@@ -401,6 +401,61 @@ func Test_Redirect_Route_UnescapePath(t *testing.T) {
 	}
 }
 
+func Test_Redirect_Route_ParameterBoundaries(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		params  Map
+		name    string
+		pattern string
+		want    string
+		wantErr bool
+	}{
+		{Map{"name": "."}, "suffix makes dot safe", "/files/:name.txt", "/files/..txt", false},
+		{Map{"name": ".."}, "prefix makes dots safe", "/files/pre:name", "/files/pre..", false},
+		{Map{"name": "a/b"}, "single-byte terminator accepts slashes", "/p/:name-", "/p/a/b-", false},
+		{Map{"name": "/", "tail": "rest"}, "adjacent parameter accepts a slash", "/p/:name:tail", "/p//rest", false},
+		{Map{"name": "a/../b"}, "slash-consuming parameter contains dots", "/p/:name-", "", true},
+		{Map{"name": "."}, "constant completes a dot segment", "/files/:name.", "", true},
+		{Map{"name": ""}, "empty parameter leaves a dot segment", "/files/:name.", "", true},
+		{Map{"name": "ok"}, "encoded constant is a dot segment", "/files/%2E/:name", "", true},
+	}
+	for _, unescape := range []bool{false, true} {
+		for _, tc := range tests {
+			t.Run(fmt.Sprintf("unescape=%v/%s", unescape, tc.name), func(t *testing.T) {
+				t.Parallel()
+
+				app := New(Config{UnescapePath: unescape})
+				app.Get(tc.pattern, func(c Ctx) error { return c.SendString(c.Params("name")) }).Name("target")
+				ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+				defer app.ReleaseCtx(ctx)
+				fromRoute, routeErr := app.GetRoute("target").URL(tc.params)
+				fromCtx, ctxErr := ctx.GetRouteURL("target", tc.params)
+				redirectErr := ctx.Redirect().Route("target", RedirectConfig{Params: tc.params})
+				if tc.wantErr {
+					require.ErrorIs(t, routeErr, ErrRouteNotRepresentable)
+					require.ErrorIs(t, ctxErr, ErrRouteNotRepresentable)
+					require.ErrorIs(t, redirectErr, ErrRouteNotRepresentable)
+					return
+				}
+				require.NoError(t, routeErr)
+				require.NoError(t, ctxErr)
+				require.NoError(t, redirectErr)
+				require.Equal(t, tc.want, fromRoute)
+				require.Equal(t, tc.want, fromCtx)
+				require.Equal(t, tc.want, string(ctx.Response().Header.Peek(HeaderLocation)))
+				response, err := app.Test(httptest.NewRequest(MethodGet, fromRoute, http.NoBody))
+				require.NoError(t, err)
+				defer func() { require.NoError(t, response.Body.Close()) }()
+				require.Equal(t, StatusOK, response.StatusCode)
+				body, err := io.ReadAll(response.Body)
+				require.NoError(t, err)
+				require.Equal(t, fmt.Sprint(tc.params["name"]), string(body))
+			})
+		}
+	}
+}
+
 func Test_Redirect_Route_MountedUnescapePath(t *testing.T) {
 	t.Parallel()
 

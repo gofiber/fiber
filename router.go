@@ -263,6 +263,9 @@ func buildRouteURL(route *Route, params Map) (string, error) {
 	}
 
 	if len(route.routeParser.segs) == 0 {
+		if !routeURLRepresentable(route.Path) {
+			return "", ErrRouteNotRepresentable
+		}
 		return urlnorm.RootedPath(route.Path), nil
 	}
 
@@ -313,43 +316,53 @@ func buildRouteURL(route *Route, params Map) (string, error) {
 			// A substituted parameter is user data, so it is escaped as a path
 			// segment: spliced in raw, a "?", "#" or "%" in the value would
 			// restructure the composed URL, and a "/" in a plain parameter would
-			// add route segments. Greedy parameters carry a multi-segment value,
-			// so their slashes are preserved.
+			// add route segments. Preserve slashes only for matcher branches
+			// that can consume them, including adjacent parameters and a
+			// single-byte non-slash terminator (see findParamLen).
 			mode := escapePathParamSegment
-			if segment.IsGreedy {
+			if segment.IsGreedy || (!segment.IsLast && (segment.Length == 1 ||
+				(len(segment.ComparePart) == 1 && segment.ComparePart[0] != slashDelimiter))) {
 				mode = escapePathParamGreedy
 			}
 			value := utils.ToString(val)
 			// UnescapePath decodes %2F before routing, so escaping cannot keep
 			// a slash inside an ordinary single-segment parameter.
-			if !routeParamRepresentable(value, mode) ||
-				(route.unescapePath && !segment.IsGreedy && strings.Contains(value, "/")) {
+			if route.unescapePath && mode == escapePathParamSegment && strings.Contains(value, "/") {
 				return "", ErrRouteNotRepresentable
 			}
 			buf.B = appendEscapedPathParam(buf.B, value, mode)
 		}
 	}
 
-	return urlnorm.RootedPath(buf.String()), nil
+	path := buf.String()
+	if !routeURLRepresentable(path) {
+		return "", ErrRouteNotRepresentable
+	}
+	return urlnorm.RootedPath(path), nil
 }
 
-// routeParamRepresentable reports whether a substituted parameter value keeps
-// the composed URL on the route it belongs to once the client parses it. "."
-// and ".." are special path segments in the WHATWG URL Standard: the parser
-// shortens them even when percent-encoded, because decoding runs first. A
-// plain ".." value would turn "/user/.." into "/", and a greedy "a/../admin"
-// into "/admin", so values carrying a dot-only segment cannot be represented
-// and must be rejected instead of silently retargeted.
-func routeParamRepresentable(value string, mode pathParamEscapeMode) bool {
-	if value == "." || value == ".." {
-		return false
-	}
-	if mode == escapePathParamSegment {
-		return true
-	}
-	for segment := range strings.SplitSeq(value, "/") {
-		if segment == "." || segment == ".." {
-			return false
+// A browser normalizes dot-only path segments, including encoded dots.
+// Validate after adjoining constants: ":name.txt" with name="." is safe,
+// whereas ":name." with name="." or name="" is not.
+func routeURLRepresentable(path string) bool {
+	for segment := range strings.SplitSeq(path, "/") {
+		switch len(segment) {
+		case 1, 2:
+			if segment == "." || segment == ".." {
+				return false
+			}
+		case 3:
+			if utils.EqualFold(segment, "%2e") {
+				return false
+			}
+		case 4:
+			if utils.EqualFold(segment, ".%2e") || utils.EqualFold(segment, "%2e.") {
+				return false
+			}
+		case 6:
+			if utils.EqualFold(segment, "%2e%2e") {
+				return false
+			}
 		}
 	}
 
@@ -364,8 +377,8 @@ const (
 	// escapePathParamSegment escapes slashes: a plain parameter is a single
 	// path segment.
 	escapePathParamSegment pathParamEscapeMode = iota
-	// escapePathParamGreedy keeps slashes: a greedy parameter's value spans
-	// several segments.
+	// escapePathParamGreedy keeps slashes for parameters whose matcher can
+	// consume them, including wildcard and plus parameters.
 	escapePathParamGreedy
 )
 
