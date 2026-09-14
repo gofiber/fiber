@@ -40,7 +40,8 @@ type provenanceBox struct {
 	res extractors.Result
 }
 
-var provenancePool = sync.Pool{New: func() any { return new(provenanceBox) }}
+// A pointer so a test can swap in a pool of its own; nothing else reassigns it.
+var provenancePool = &sync.Pool{New: func() any { return new(provenanceBox) }}
 
 // storeProvenance records res in the request, reusing the box already there.
 // Overwriting the local with a fresh box would strand the old one outside the

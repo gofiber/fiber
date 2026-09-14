@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 	"testing"
 
 	"github.com/gofiber/fiber/v3"
@@ -673,31 +674,29 @@ func Test_Store_ProvenanceBoxIsReused(t *testing.T) {
 
 // Test_ProvenanceBox_PoolHoldsSomethingElse covers the guard on what the pool
 // hands back. sync.Pool is typed as any, so a box is rebuilt rather than
-// trusted; this drives that branch by putting sentinels in front of it.
+// trusted, and a pool whose New answers with something else takes that branch
+// on every Get.
 //
-// Not parallel: it borrows the shared pool, and it takes back out everything
-// it puts in.
+// Putting sentinels into the shared pool would not: sync.Pool empties itself at
+// GC, so a collection between the Put and the Get leaves the assertions below
+// passing with the branch never reached. Not parallel, because swapping a
+// package-level var is only safe while nothing else runs.
 func Test_ProvenanceBox_PoolHoldsSomethingElse(t *testing.T) {
+	shared := provenancePool
+	// Pointer-like, so handing one out does not allocate.
+	provenancePool = &sync.Pool{New: func() any { return new(struct{}) }}
+	t.Cleanup(func() { provenancePool = shared })
+
 	store := NewStore()
 	app := fiber.New()
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(ctx)
+	ctx.Request().Header.SetCookie("session_id", "an-id")
 
-	const sentinels = 8
-	for range sentinels {
-		// Pointer-like, so parking it in the pool does not allocate.
-		provenancePool.Put(new(struct{}))
-	}
+	_, err := store.Get(ctx)
+	require.NoError(t, err)
 
-	for range sentinels {
-		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
-		ctx.Request().Header.SetCookie("session_id", "an-id")
-
-		_, err := store.Get(ctx)
-		require.NoError(t, err)
-
-		box, ok := ctx.Locals(sessionExtractorContextKey).(*provenanceBox)
-		require.True(t, ok, "a usable box whatever the pool held")
-		require.Equal(t, "an-id", box.res.Value)
-
-		app.ReleaseCtx(ctx)
-	}
+	box, ok := ctx.Locals(sessionExtractorContextKey).(*provenanceBox)
+	require.True(t, ok, "a usable box whatever the pool held")
+	require.Equal(t, "an-id", box.res.Value)
 }
