@@ -635,17 +635,31 @@ func Test_Store_KeylessExtractorStillGuarded(t *testing.T) {
 // from the pool. Overwriting the local would strand the first box outside the
 // pool, since fasthttp only reclaims the one the local holds — and a repeat
 // getSession is the case the box exists for.
+//
+// The cookie carries a saved session's ID so that both Get calls resolve it
+// from storage. An unknown ID would make the first Get generate a fresh one and
+// cache it, and the second would then read the cached ID and never reach
+// storeProvenance at all.
 func Test_Store_ProvenanceBoxIsReused(t *testing.T) {
 	t.Parallel()
 
 	store := NewStore()
 	app := fiber.New()
+
+	seed := app.AcquireCtx(&fasthttp.RequestCtx{})
+	seeded, err := store.Get(seed)
+	require.NoError(t, err)
+	require.NoError(t, seeded.Save())
+	savedID := seeded.ID()
+	app.ReleaseCtx(seed)
+
 	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(ctx)
-	ctx.Request().Header.SetCookie("session_id", "an-id")
+	ctx.Request().Header.SetCookie("session_id", savedID)
 
-	_, err := store.Get(ctx)
+	sess, err := store.Get(ctx)
 	require.NoError(t, err)
+	require.False(t, sess.Fresh(), "the saved ID must resolve from storage, not generate a new one")
 	first, ok := ctx.Locals(sessionExtractorContextKey).(*provenanceBox)
 	require.True(t, ok)
 
