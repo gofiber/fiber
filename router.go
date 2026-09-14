@@ -341,7 +341,8 @@ func buildRouteURL(route *Route, params Map) (string, error) {
 	return urlnorm.RootedPath(path), nil
 }
 
-// A browser normalizes dot-only path segments, including encoded dots.
+// routeURLRepresentable reports whether path avoids dot-only segments that a
+// browser would normalize, including encoded dots.
 // Validate after adjoining constants: ":name.txt" with name="." is safe,
 // whereas ":name." with name="." or name="" is not.
 func routeURLRepresentable(path string) bool {

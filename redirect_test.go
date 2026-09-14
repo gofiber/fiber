@@ -353,6 +353,7 @@ func Test_Redirect_Route_ParamCannotLeaveTheOrigin(t *testing.T) {
 	}
 }
 
+// go test -run Test_Redirect_Route_UnescapePath
 func Test_Redirect_Route_UnescapePath(t *testing.T) {
 	t.Parallel()
 
@@ -401,6 +402,7 @@ func Test_Redirect_Route_UnescapePath(t *testing.T) {
 	}
 }
 
+// go test -run Test_Redirect_Route_ParameterBoundaries
 func Test_Redirect_Route_ParameterBoundaries(t *testing.T) {
 	t.Parallel()
 
@@ -456,6 +458,7 @@ func Test_Redirect_Route_ParameterBoundaries(t *testing.T) {
 	}
 }
 
+// go test -run Test_Redirect_Route_MountedUnescapePath
 func Test_Redirect_Route_MountedUnescapePath(t *testing.T) {
 	t.Parallel()
 
