@@ -116,8 +116,9 @@ type Result struct {
 // Chain records its winning child as it runs, and only a record made by the
 // chain being resolved counts, so a value is never credited to a chain some
 // unrelated helper ran. Without such a record the declared metadata is reported
-// with Resolved false rather than re-walking e.Chain to guess. A chain with no
-// Extract walks its children directly; an extractor with neither returns
+// with Resolved false rather than re-walking e.Chain to guess. An extractor with
+// no Extract walks its own Chain instead, nested ones included; a built-in chain
+// still runs only the children it can run. An extractor with neither returns
 // ErrNotFound.
 //
 // Key and Source are meaningful for security decisions only when err is nil and
