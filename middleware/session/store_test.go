@@ -656,3 +656,34 @@ func Test_Store_ProvenanceBoxIsReused(t *testing.T) {
 
 	require.Same(t, first, second, "the second resolve must refill the box, not strand it")
 }
+
+// Test_ProvenanceBox_PoolHoldsSomethingElse covers the guard on what the pool
+// hands back. sync.Pool is typed as any, so a box is rebuilt rather than
+// trusted; this drives that branch by putting sentinels in front of it.
+//
+// Not parallel: it borrows the shared pool, and it takes back out everything
+// it puts in.
+func Test_ProvenanceBox_PoolHoldsSomethingElse(t *testing.T) {
+	store := NewStore()
+	app := fiber.New()
+
+	const sentinels = 8
+	for range sentinels {
+		// Pointer-like, so parking it in the pool does not allocate.
+		provenancePool.Put(new(struct{}))
+	}
+
+	for range sentinels {
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+		ctx.Request().Header.SetCookie("session_id", "an-id")
+
+		_, err := store.Get(ctx)
+		require.NoError(t, err)
+
+		box, ok := ctx.Locals(sessionExtractorContextKey).(*provenanceBox)
+		require.True(t, ok, "a usable box whatever the pool held")
+		require.Equal(t, "an-id", box.res.Value)
+
+		app.ReleaseCtx(ctx)
+	}
+}
