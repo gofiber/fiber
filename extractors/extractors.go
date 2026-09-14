@@ -875,13 +875,23 @@ func Chain(extractors ...Extractor) Extractor {
 				v, err := kid.Extract(c)
 				if err == nil && v != "" {
 					if capture {
-						if st.rec == prev {
-							// kid recorded nothing, so kid is the origin; a
-							// nested chain keeps its own innermost child.
-							st.rec.win = kid
+						// A record only carries over when kid's own chain made
+						// it. Anything else in the frame belongs to a chain kid
+						// merely ran, and crediting that would report an origin
+						// the value never came from.
+						switch {
+						case len(kid.Chain) == 0 && st.rec == prev:
+							// A leaf that recorded nothing is the origin.
+							st.rec = record{win: kid, guard: guard}
+						case len(kid.Chain) > 0 && st.rec.guard == chainGuard(kid.Chain):
+							// kid's own chain named its innermost child; keep
+							// it, retagged so only our caller accepts it.
+							st.rec.guard = guard
+						default:
+							// A foreign chain's record, or a chain that answered
+							// without one: no origin we can vouch for.
+							st.rec = record{guard: guard}
 						}
-						// Tag it as this chain's, so only our caller accepts it.
-						st.rec.guard = guard
 					}
 					return v, nil
 				}

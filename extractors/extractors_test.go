@@ -2512,6 +2512,30 @@ func Test_Resolve_Winner(t *testing.T) {
 		require.Empty(t, res.Value)
 	})
 
+	t.Run("a child that runs a foreign chain is not credited to it", func(t *testing.T) {
+		t.Parallel()
+		ctx := newCtx(func(f *fasthttp.RequestCtx) {
+			f.Request.SetRequestURI("/p?sid=planted")
+			f.Request.Header.SetCookie("tenant", "acme")
+		})
+		defer app.ReleaseCtx(ctx)
+
+		tenant := Chain(FromHeader("X-Tenant"), FromCookie("tenant"))
+		child := FromCustom("sid", func(c fiber.Ctx) (string, error) {
+			//nolint:errcheck // the lookup's outcome is irrelevant; it runs only so a foreign chain records
+			tenant.Extract(c)
+			return fiber.Query[string](c, "sid"), nil
+		})
+
+		res, err := Resolve(Chain(child, FromCookie("sid_cookie")), ctx)
+		require.NoError(t, err)
+		require.Equal(t, "planted", res.Value)
+		require.NotEqual(t, "tenant", res.Key,
+			"a record made by a chain the child merely ran must not become this chain's provenance")
+		require.False(t, res.Resolved,
+			"with no origin we can vouch for, the provenance must be unresolved")
+	})
+
 	t.Run("a chain that re-enters itself is reported as a cycle", func(t *testing.T) {
 		t.Parallel()
 		ctx := newCtx(nil)
