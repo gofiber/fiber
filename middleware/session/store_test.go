@@ -672,6 +672,39 @@ func Test_Store_ProvenanceBoxIsReused(t *testing.T) {
 	require.Same(t, first, second, "the second resolve must refill the box, not strand it")
 }
 
+// Test_Store_CachedIDKeepsProvenance pins the other side of the box: once an ID
+// has been cached on the request, a second getSession skips extraction
+// entirely, and the provenance has to come back from the box instead. Losing it
+// would leave the write-back guard with no origin for an ID it already
+// accepted.
+//
+// The cookie names an ID storage does not hold, which is what puts the request
+// in that state — the ID resolves and is recorded, then misses in storage, so a
+// fresh one is generated and cached.
+func Test_Store_CachedIDKeepsProvenance(t *testing.T) {
+	t.Parallel()
+
+	store := NewStore()
+	app := fiber.New()
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(ctx)
+	ctx.Request().Header.SetCookie("session_id", "not-in-storage")
+
+	first, err := store.Get(ctx)
+	require.NoError(t, err)
+	require.True(t, first.Fresh(), "an unknown ID must generate a fresh session")
+	require.Equal(t, "not-in-storage", first.extractor.Value)
+	require.Equal(t, extractors.SourceCookie, first.extractor.Source)
+
+	_, cached := ctx.Locals(sessionIDContextKey).(string)
+	require.True(t, cached, "the fresh ID is what sends the next resolve down the cached path")
+
+	second, err := store.Get(ctx)
+	require.NoError(t, err)
+	require.Equal(t, first.extractor, second.extractor,
+		"the cached path must recover the provenance from the box")
+}
+
 // Test_ProvenanceBox_PoolHoldsSomethingElse covers the guard on what the pool
 // hands back. sync.Pool is typed as any, so a box is rebuilt rather than
 // trusted, and a pool whose New answers with something else takes that branch
