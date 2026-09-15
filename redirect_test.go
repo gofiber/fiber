@@ -147,9 +147,10 @@ func Test_Redirect_Route_ParamCannotMoveTheQuery(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name  string
-		param string
-		want  string
+		name    string
+		param   string
+		want    string
+		wantErr bool
 	}{
 		{
 			name:  "plain",
@@ -157,23 +158,50 @@ func Test_Redirect_Route_ParamCannotMoveTheQuery(t *testing.T) {
 			want:  "/user/fiber?q=1",
 		},
 		{
-			// A second "?" reads as one query string, so appending it folded
-			// q=1 into the earlier parameter's value instead of adding it.
-			name:  "param opens a query",
+			// A "?" is path-escaped, so the query Fiber appends stays the
+			// only query rather than being folded into the parameter value.
+			name:  "param cannot open a query",
 			param: "a?b=2",
-			want:  "/user/a?b=2&q=1",
+			want:  "/user/a%3Fb=2?q=1",
 		},
 		{
-			// Everything after "#" is a fragment, which the client never
-			// sends, so appending the query there dropped it outright.
-			name:  "param opens a fragment",
+			// Everything after "#" used to be a fragment the appended query
+			// could never reach; the escaped value keeps it plain data.
+			name:  "param cannot open a fragment",
 			param: "a#b",
-			want:  "/user/a?q=1#b",
+			want:  "/user/a%23b?q=1",
 		},
 		{
-			name:  "param opens both",
+			name:  "param cannot open a query and a fragment",
 			param: "a?b=2#c",
-			want:  "/user/a?b=2&q=1#c",
+			want:  "/user/a%3Fb=2%23c?q=1",
+		},
+		{
+			// A plain parameter is one segment: a slash in the value must
+			// not turn it into extra route segments.
+			name:  "param cannot add a segment",
+			param: "a/b",
+			want:  "/user/a%2Fb?q=1",
+		},
+		{
+			// A percent is data, not an escape: the value is escaped again
+			// rather than letting "%" pass and shape the path.
+			name:  "param percent sign",
+			param: "50%",
+			want:  "/user/50%25?q=1",
+		},
+		{
+			// "." and ".." are special path segments in the WHATWG URL
+			// Standard: the client's parser shortens them even when encoded,
+			// so the composed URL would silently target another route.
+			name:    "param cannot be a dot",
+			param:   ".",
+			wantErr: true,
+		},
+		{
+			name:    "param cannot be a double dot",
+			param:   "..",
+			wantErr: true,
 		},
 	}
 
@@ -190,6 +218,10 @@ func Test_Redirect_Route_ParamCannotMoveTheQuery(t *testing.T) {
 				Params:  Map{"name": tc.param},
 				Queries: map[string]string{"q": "1"},
 			})
+			if tc.wantErr {
+				require.ErrorIs(t, err, ErrRouteNotRepresentable)
+				return
+			}
 			require.NoError(t, err)
 			require.Equal(t, tc.want, string(c.Response().Header.Peek(HeaderLocation)))
 		})
@@ -201,9 +233,10 @@ func Test_Redirect_Route_ParamCannotLeaveTheOrigin(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name  string
-		param string
-		want  string
+		name    string
+		param   string
+		want    string
+		wantErr bool
 	}{
 		{
 			name:  "plain",
@@ -223,30 +256,60 @@ func Test_Redirect_Route_ParamCannotLeaveTheOrigin(t *testing.T) {
 			want:  "/evil.com",
 		},
 		{
-			// The WHATWG URL parser folds a backslash to a slash here, so this
-			// reaches evil.com exactly as "//evil.com" does.
-			name:  "leading backslash",
+			// The WHATWG URL parser folds a backslash to a slash, so a raw
+			// value could walk it to "//evil.com".
+			name:  "leading backslash is escaped",
 			param: `\evil.com`,
-			want:  "/evil.com",
+			want:  "/%5Cevil.com",
 		},
 		{
 			name:  "mixed slash run",
 			param: `/\/evil.com`,
-			want:  "/evil.com",
+			want:  "/%5C/evil.com",
 		},
 		{
-			// Tab, LF and CR are removed before the URL is parsed, so a leading
-			// one hides the slash run that follows it.
+			// A tab is also a control byte a browser would silently drop,
+			// hiding the slash run that follows it; produced as data it cannot.
 			name:  "tab before the slash",
 			param: "\t/evil.com",
-			want:  "/evil.com",
+			want:  "/%09/evil.com",
 		},
 		{
-			// A scheme cannot start here — the route is rooted at "/" — so this
-			// stays the path segment the route asked for.
+			// A scheme cannot start here — the route is rooted at "/" — so
+			// this stays the path segment the route asked for ("." and "/"
+			// are pchar; the "?"-free path holds no structure).
 			name:  "absolute URL is a path segment",
 			param: "https://evil.com",
 			want:  "/https://evil.com",
+		},
+		{
+			// Greedy parameters keep their slashes, but not structure: a "?"
+			// in the value still cannot move the composed path into a query.
+			name:  "greedy value with a question mark",
+			param: "a?b",
+			want:  "/a%3Fb",
+		},
+		{
+			name:  "greedy value with a fragment",
+			param: "a#b",
+			want:  "/a%23b",
+		},
+		{
+			// Dot segments are also structure: the client's parser shortens
+			// them even when encoded, so they must not appear in any segment.
+			name:    "greedy interior dot segment",
+			param:   "a/../admin",
+			wantErr: true,
+		},
+		{
+			name:    "greedy leading dot segment",
+			param:   "../admin",
+			wantErr: true,
+		},
+		{
+			name:    "greedy single dot segment",
+			param:   "a/./b",
+			wantErr: true,
 		},
 	}
 
@@ -262,6 +325,17 @@ func Test_Redirect_Route_ParamCannotLeaveTheOrigin(t *testing.T) {
 			err := c.Redirect().Route("wildcard", RedirectConfig{
 				Params: Map{"*": tc.param},
 			})
+			if tc.wantErr {
+				require.ErrorIs(t, err, ErrRouteNotRepresentable)
+				// The same question asked the other two ways: a caller who
+				// puts either answer in a Location header or an href reaches
+				// the same place, so all three have to agree.
+				_, err = app.GetRoute("wildcard").URL(Map{"*": tc.param})
+				require.ErrorIs(t, err, ErrRouteNotRepresentable)
+				_, err = c.GetRouteURL("wildcard", Map{"*": tc.param})
+				require.ErrorIs(t, err, ErrRouteNotRepresentable)
+				return
+			}
 			require.NoError(t, err)
 			require.Equal(t, tc.want, string(c.Response().Header.Peek(HeaderLocation)))
 
@@ -275,6 +349,147 @@ func Test_Redirect_Route_ParamCannotLeaveTheOrigin(t *testing.T) {
 			fromCtx, err := c.GetRouteURL("wildcard", Map{"*": tc.param})
 			require.NoError(t, err)
 			require.Equal(t, tc.want, fromCtx, "GetRouteURL")
+		})
+	}
+}
+
+// go test -run Test_Redirect_Route_UnescapePath
+func Test_Redirect_Route_UnescapePath(t *testing.T) {
+	t.Parallel()
+
+	for _, unescape := range []bool{false, true} {
+		for _, greedy := range []bool{false, true} {
+			t.Run(fmt.Sprintf("unescape=%v/greedy=%v", unescape, greedy), func(t *testing.T) {
+				t.Parallel()
+
+				app := New(Config{UnescapePath: unescape})
+				pattern, key := "/user/:name", "name"
+				want := "/user/a%2Fb"
+				if greedy {
+					pattern, key = "/user/*", "*"
+					want = "/user/a/b"
+				}
+				app.Get(pattern, func(c Ctx) error { return c.SendString("matched") }).Name("user")
+				ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+				defer app.ReleaseCtx(ctx)
+				params := Map{key: "a/b"}
+
+				fromRoute, routeErr := app.GetRoute("user").URL(params)
+				fromCtx, ctxErr := ctx.GetRouteURL("user", params)
+				redirectErr := ctx.Redirect().Route("user", RedirectConfig{Params: params})
+				if unescape && !greedy {
+					require.ErrorIs(t, routeErr, ErrRouteNotRepresentable)
+					require.ErrorIs(t, ctxErr, ErrRouteNotRepresentable)
+					require.ErrorIs(t, redirectErr, ErrRouteNotRepresentable)
+					require.Empty(t, fromRoute)
+					require.Empty(t, fromCtx)
+					require.Empty(t, ctx.Response().Header.Peek(HeaderLocation))
+					return
+				}
+				require.NoError(t, routeErr)
+				require.NoError(t, ctxErr)
+				require.NoError(t, redirectErr)
+				require.Equal(t, want, fromRoute)
+				require.Equal(t, want, fromCtx)
+				require.Equal(t, want, string(ctx.Response().Header.Peek(HeaderLocation)))
+
+				response, err := app.Test(httptest.NewRequest(MethodGet, fromRoute, http.NoBody))
+				require.NoError(t, err)
+				defer func() { require.NoError(t, response.Body.Close()) }()
+				require.Equal(t, StatusOK, response.StatusCode)
+			})
+		}
+	}
+}
+
+// go test -run Test_Redirect_Route_ParameterBoundaries
+func Test_Redirect_Route_ParameterBoundaries(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		params  Map
+		name    string
+		pattern string
+		want    string
+		wantErr bool
+	}{
+		{Map{"name": "."}, "suffix makes dot safe", "/files/:name.txt", "/files/..txt", false},
+		{Map{"name": ".."}, "prefix makes dots safe", "/files/pre:name", "/files/pre..", false},
+		{Map{"name": "a/b"}, "single-byte terminator accepts slashes", "/p/:name-", "/p/a/b-", false},
+		{Map{"name": "/", "tail": "rest"}, "adjacent parameter accepts a slash", "/p/:name:tail", "/p//rest", false},
+		{Map{"name": "a/../b"}, "slash-consuming parameter contains dots", "/p/:name-", "", true},
+		{Map{"name": "."}, "constant completes a dot segment", "/files/:name.", "", true},
+		{Map{"name": ""}, "empty parameter leaves a dot segment", "/files/:name.", "", true},
+		{Map{"name": "ok"}, "encoded constant is a dot segment", "/files/%2E/:name", "", true},
+	}
+	for _, unescape := range []bool{false, true} {
+		for _, tc := range tests {
+			t.Run(fmt.Sprintf("unescape=%v/%s", unescape, tc.name), func(t *testing.T) {
+				t.Parallel()
+
+				app := New(Config{UnescapePath: unescape})
+				app.Get(tc.pattern, func(c Ctx) error { return c.SendString(c.Params("name")) }).Name("target")
+				ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+				defer app.ReleaseCtx(ctx)
+				fromRoute, routeErr := app.GetRoute("target").URL(tc.params)
+				fromCtx, ctxErr := ctx.GetRouteURL("target", tc.params)
+				redirectErr := ctx.Redirect().Route("target", RedirectConfig{Params: tc.params})
+				if tc.wantErr {
+					require.ErrorIs(t, routeErr, ErrRouteNotRepresentable)
+					require.ErrorIs(t, ctxErr, ErrRouteNotRepresentable)
+					require.ErrorIs(t, redirectErr, ErrRouteNotRepresentable)
+					return
+				}
+				require.NoError(t, routeErr)
+				require.NoError(t, ctxErr)
+				require.NoError(t, redirectErr)
+				require.Equal(t, tc.want, fromRoute)
+				require.Equal(t, tc.want, fromCtx)
+				require.Equal(t, tc.want, string(ctx.Response().Header.Peek(HeaderLocation)))
+				response, err := app.Test(httptest.NewRequest(MethodGet, fromRoute, http.NoBody))
+				require.NoError(t, err)
+				defer func() { require.NoError(t, response.Body.Close()) }()
+				require.Equal(t, StatusOK, response.StatusCode)
+				body, err := io.ReadAll(response.Body)
+				require.NoError(t, err)
+				require.Equal(t, fmt.Sprint(tc.params["name"]), string(body))
+			})
+		}
+	}
+}
+
+// go test -run Test_Redirect_Route_MountedUnescapePath
+func Test_Redirect_Route_MountedUnescapePath(t *testing.T) {
+	t.Parallel()
+
+	for _, unescape := range []bool{false, true} {
+		t.Run(fmt.Sprintf("unescape=%v", unescape), func(t *testing.T) {
+			t.Parallel()
+
+			app := New(Config{UnescapePath: unescape})
+			child := New(Config{UnescapePath: !unescape})
+			child.Get("/user/:name", func(c Ctx) error { return c.SendString("matched") }).Name("user")
+			app.Use("/api", child)
+			app.Handler()
+
+			ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+			defer app.ReleaseCtx(ctx)
+			params := Map{"name": "a/b"}
+			fromRoute, routeErr := app.GetRoute("user").URL(params)
+			fromCtx, ctxErr := ctx.GetRouteURL("user", params)
+			redirectErr := ctx.Redirect().Route("user", RedirectConfig{Params: params})
+			if unescape {
+				require.ErrorIs(t, routeErr, ErrRouteNotRepresentable)
+				require.ErrorIs(t, ctxErr, ErrRouteNotRepresentable)
+				require.ErrorIs(t, redirectErr, ErrRouteNotRepresentable)
+				return
+			}
+			require.NoError(t, routeErr)
+			require.NoError(t, ctxErr)
+			require.NoError(t, redirectErr)
+			require.Equal(t, "/api/user/a%2Fb", fromRoute)
+			require.Equal(t, fromRoute, fromCtx)
+			require.Equal(t, fromRoute, string(ctx.Response().Header.Peek(HeaderLocation)))
 		})
 	}
 }
