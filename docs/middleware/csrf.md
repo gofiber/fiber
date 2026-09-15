@@ -4,7 +4,7 @@ id: csrf
 
 # CSRF
 
-The CSRF middleware protects against [Cross-Site Request Forgery](https://en.wikipedia.org/wiki/Cross-site_request_forgery) attacks by validating tokens on unsafe HTTP methods such as POST, PUT, and DELETE. It responds with 403 Forbidden when validation fails. Safe methods (`GET`, `HEAD`, `OPTIONS`, `TRACE`, `QUERY`) are not validated; note that `QUERY` is classified as safe per RFC 10008, so do not perform state changes in `QUERY` handlers.
+The CSRF middleware protects against [Cross-Site Request Forgery](https://en.wikipedia.org/wiki/Cross-Site_Request_Forgery) attacks by validating tokens on unsafe HTTP methods such as POST, PUT, and DELETE. It responds with 403 Forbidden when validation fails. Safe methods (`GET`, `HEAD`, `OPTIONS`, `TRACE`, `QUERY`) are not validated; note that `QUERY` is classified as safe per RFC 10008, so do not perform state changes in `QUERY` handlers. With `CrossOriginProtectionOnly`, token validation and token-related state are disabled; requests are protected by cross-origin checks instead.
 
 ## Table of Contents
 
@@ -58,11 +58,11 @@ app.Use(csrf.New(csrf.Config{
 :::
 
 1. **Always use HTTPS** in production
-2. **Use sessions** for authenticated applications
+2. **Use sessions** for authenticated applications when token-based CSRF protection is enabled
 3. **Set `CookieSecure: true`** and appropriate SameSite values
 4. **Implement XSS protection** alongside CSRF
 5. **Regenerate tokens** after auth changes
-6. **Use `__Host-` cookie prefix** when possible
+6. **Use `__Host-` cookie prefix** when possible for token-based protection
 
 :::warning BREACH Protection
 To mitigate BREACH attacks, ensure your pages are served over HTTPS, disable HTTP compression, and implement rate limiting for requests. The CSRF token is sent as a header on every request, so if you include the token in a page that is vulnerable to BREACH, an attacker may be able to extract the token.
@@ -101,6 +101,22 @@ app.Use(csrf.New(csrf.Config{
 :::warning SPA Security Trade-off
 SPAs require `CookieHTTPOnly: false` to access tokens via JavaScript. This slightly increases XSS risk but is necessary for SPA functionality.
 :::
+
+### Cross-Origin Protection Without Tokens
+
+For APIs that do not use browser-readable CSRF tokens, enable `CrossOriginProtectionOnly`. This mode follows the request decision matrix of Go's [`net/http.CrossOriginProtection.Check`](https://pkg.go.dev/net/http#CrossOriginProtection.Check) for safe methods, Fetch Metadata, origin-host matching, and exact trusted origins. `Sec-Fetch-Site` values are case-sensitive; mixed-case or otherwise malformed nonempty values are rejected unless the request origin is trusted. Fiber's configuration API, wildcard trusted origins, and returned error are Fiber-specific. Unlike token-based configurations, this mode does not validate CSRF tokens or use the token-mode `Referer` fallback checks.
+
+```go
+app.Use(csrf.New(csrf.Config{
+    CrossOriginProtectionOnly: true,
+    TrustedOrigins: []string{
+        "https://admin.example.com",
+        "https://*.internal.example.com",
+    },
+}))
+```
+
+This mode does not create cookies, tokens, session entries, or storage entries. Requests without both `Sec-Fetch-Site` and `Origin` are treated as non-browser requests and allowed, so authentication and authorization remain required. Do not perform state changes in handlers for `GET`, `HEAD`, or `OPTIONS`.
 
 ## Recipes for Common Use Cases
 
@@ -416,6 +432,7 @@ func (h *csrf.Handler) DeleteToken(c fiber.Ctx) error
 | Storage           | `fiber.Storage`                    | Token storage (overridden by Session)                                                                                         | `nil`                        |
 | TrustedOrigins    | `[]string`                         | Trusted origins for cross-origin requests                                                                                     | `[]`                         |
 | SingleUseToken    | `bool`                             | Generate new token after each use                                                                                             | `false`                      |
+| CrossOriginProtectionOnly | `bool`                    | Reject unsafe cross-origin browser requests without creating or validating tokens                                            | `false`                      |
 
 ## Error Types
 
@@ -428,6 +445,7 @@ var (
     ErrRefererNoMatch  = errors.New("csrf: referer does not match host or trusted origins")
     ErrOriginInvalid   = errors.New("csrf: origin header invalid")
     ErrOriginNoMatch   = errors.New("csrf: origin does not match host or trusted origins")
+    ErrCrossOriginRequest = errors.New("csrf: cross-origin request denied")
 )
 ```
 
