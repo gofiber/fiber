@@ -5124,16 +5124,17 @@ func Test_Router_LargeBucket_RoutesCorrectly(t *testing.T) {
 	app.Get("/routes/:id/edit", func(c Ctx) error { return c.SendString("edit:" + c.Params("id")) })
 	app.Get("/routes/files/*", func(c Ctx) error { return c.SendString("star:" + c.Params("*")) })
 
+	last := "/routes/" + strconv.Itoa(fingerprintMinBucket*4-1)
 	for _, tc := range []struct {
 		path, want string
 		status     int
 	}{
 		{path: "/routes/0", want: "/routes/0", status: StatusOK},
-		{path: "/routes/63", want: "/routes/63", status: StatusOK},
+		{path: last, want: last, status: StatusOK},
 		{path: "/routes/7/edit", want: "edit:7", status: StatusOK},
 		{path: "/routes/files/a/b", want: "star:a/b", status: StatusOK},
 		{path: "/routes/missing", status: StatusNotFound},
-		{path: "/routes/64", status: StatusNotFound},
+		{path: "/routes/" + strconv.Itoa(fingerprintMinBucket*4), status: StatusNotFound},
 	} {
 		seen = nil
 		resp, err := app.Test(httptest.NewRequest(MethodGet, tc.path, http.NoBody))
@@ -5166,12 +5167,13 @@ func Test_Router_LargeBucket_SkipUnmatchedRoutes(t *testing.T) {
 	}
 	app.Get("/routes/:id/edit", func(c Ctx) error { return c.SendString("edit:" + c.Params("id")) })
 
+	last := "/routes/" + strconv.Itoa(fingerprintMinBucket*4-1)
 	for _, tc := range []struct {
 		path, want string
 		status     int
 	}{
 		{path: "/routes/0", want: "/routes/0", status: StatusOK},
-		{path: "/routes/63", want: "/routes/63", status: StatusOK},
+		{path: last, want: last, status: StatusOK},
 		{path: "/routes/5/edit", want: "edit:5", status: StatusOK},
 		{path: "/routes/missing", status: StatusNotFound},
 	} {
@@ -5203,4 +5205,78 @@ func Test_Router_LargeBucket_CaseInsensitive(t *testing.T) {
 		require.NoError(t, err, path)
 		require.Equal(t, StatusOK, resp.StatusCode, path)
 	}
+}
+
+// Test_Router_LargeBucket_StaticOnlyMiss covers the scan running off the end
+// of a bucket made entirely of static routes: the fingerprint loop rejects
+// every entry, the scan stops without loading a Route, and the request is a
+// 404 rather than a match against the last route in the bucket.
+func Test_Router_LargeBucket_StaticOnlyMiss(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	for i := range fingerprintMinBucket * 4 {
+		app.Get("/routes/"+strconv.Itoa(i), func(c Ctx) error { return c.SendString(c.Path()) })
+	}
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/routes/missing", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, StatusNotFound, resp.StatusCode)
+
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/routes/"+strconv.Itoa(fingerprintMinBucket*4-1), http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, StatusOK, resp.StatusCode)
+}
+
+// Test_Router_LargeBucket_CustomCtx drives the filter through nextCustom, the
+// scan a custom context takes, where the fingerprint is hashed per call rather
+// than read from the context. Same bucket shapes and outcomes as the default
+// context, including the miss that runs the scan off the end of the bucket.
+func Test_Router_LargeBucket_CustomCtx(t *testing.T) {
+	t.Parallel()
+
+	app := NewWithCustomCtx(func(app *App) CustomCtx {
+		return &localsRecordingCtx{DefaultCtx: *NewDefaultCtx(app)}
+	})
+	var seen []string
+	app.Use("/routes", func(c Ctx) error {
+		seen = append(seen, "mw")
+		return c.Next()
+	})
+	for i := range fingerprintMinBucket * 4 {
+		app.Get("/routes/"+strconv.Itoa(i), func(c Ctx) error { return c.SendString(c.Path()) })
+	}
+	app.Get("/routes/:id/edit", func(c Ctx) error { return c.SendString("edit:" + c.Params("id")) })
+
+	for _, tc := range []struct {
+		path, want string
+		status     int
+	}{
+		{path: "/routes/0", want: "/routes/0", status: StatusOK},
+		{path: "/routes/" + strconv.Itoa(fingerprintMinBucket*4-1), want: "/routes/" + strconv.Itoa(fingerprintMinBucket*4-1), status: StatusOK},
+		{path: "/routes/9/edit", want: "edit:9", status: StatusOK},
+		{path: "/routes/missing", status: StatusNotFound},
+	} {
+		seen = nil
+		resp, err := app.Test(httptest.NewRequest(MethodGet, tc.path, http.NoBody))
+		require.NoError(t, err, tc.path)
+		require.Equal(t, tc.status, resp.StatusCode, tc.path)
+		require.Equal(t, []string{"mw"}, seen, "middleware must still run for %s", tc.path)
+		if tc.want != "" {
+			body, err := io.ReadAll(resp.Body)
+			require.NoError(t, err)
+			require.Equal(t, tc.want, string(body), tc.path)
+		}
+	}
+
+	// the custom-context miss with no non-static route after the statics runs the scan off the end
+	only := NewWithCustomCtx(func(app *App) CustomCtx {
+		return &localsRecordingCtx{DefaultCtx: *NewDefaultCtx(app)}
+	})
+	for i := range fingerprintMinBucket * 2 {
+		only.Get("/routes/"+strconv.Itoa(i), func(c Ctx) error { return c.SendString("ok") })
+	}
+	resp, err := only.Test(httptest.NewRequest(MethodGet, "/routes/missing", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, StatusNotFound, resp.StatusCode)
 }
