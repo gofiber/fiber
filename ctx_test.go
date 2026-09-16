@@ -9661,6 +9661,20 @@ func Benchmark_Ctx_Set(b *testing.B) {
 	}
 }
 
+// go test -v -run=^$ -bench=Benchmark_Ctx_Set_Canonical -benchmem -count=4
+func Benchmark_Ctx_Set_Canonical(b *testing.B) {
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+
+	// A key already in canonical form, which is what the constants are; the
+	// one above is not, fasthttp stores it as X-Request-Id.
+	val := "https://example.com"
+	b.ReportAllocs()
+	for b.Loop() {
+		c.Set(HeaderAccessControlAllowOrigin, val)
+	}
+}
+
 // go test -run Test_Ctx_Status
 func Test_Ctx_Status(t *testing.T) {
 	t.Parallel()
@@ -10043,6 +10057,19 @@ func Benchmark_Ctx_Get_Header(b *testing.B) {
 			v = c.Get(HeaderXRequestID)
 		}
 		require.Equal(b, "3f0c1a", v)
+	})
+}
+
+// go test -v -run=^$ -bench=Benchmark_Ctx_Get_Header_Canonical -benchmem -count=4
+func Benchmark_Ctx_Get_Header_Canonical(b *testing.B) {
+	// A key already in canonical form, unlike X-Request-ID above.
+	benchHeaderReadModes(b, func(b *testing.B, c Ctx) {
+		b.Helper()
+		var v string
+		for b.Loop() {
+			v = c.Get(HeaderCacheControl)
+		}
+		require.Equal(b, "max-age=0", v)
 	})
 }
 
@@ -11825,4 +11852,87 @@ func Test_SameFS_SliceLength(t *testing.T) {
 	backing := sliceFS{"a", "b", "c"}
 	require.False(t, sameFS(backing[:1], backing[:2]))
 	require.True(t, sameFS(backing[:2], backing[:2]))
+}
+
+// Test_Res_Set_MatchesHeaderSet is the contract behind the canonical fast path
+// in Set: whatever the key or value, the field line it stores is byte for byte
+// the one fasthttp's own Set stores, with header normalization on and off.
+func Test_Res_Set_MatchesHeaderSet(t *testing.T) {
+	t.Parallel()
+
+	keys := []string{
+		"X-Request-Id", "x-request-id", "X-REQUEST-ID", "Content-Type", "content-type", "Content-Length",
+		"Server", "Connection", "Date", "Set-Cookie", "Transfer-Encoding", "Content-Encoding", "Trailer",
+		"Bad Key", "X-Key\r\nInjected", "Or\u00edgin", "", "etag", "X-REQUEST-ID", "x-upstream-id", strings.Repeat("Ab-", 21) + "C",
+	}
+	values := []string{"v", "", "a\r\nb", "with space", "42", "text/html; charset=utf-8", "k=v; Path=/"}
+	// storeNormalizes false with a normalizing app is the state a proxied
+	// response leaves behind when a caller-supplied client parsed it with
+	// header normalization off: the store keeps names as sent, so Set must
+	// still replace a lower-case field spelled exactly the same.
+	for _, normalizing := range []bool{true, false} {
+		for _, storeNormalizes := range []bool{true, false} {
+			app := New(Config{DisableHeaderNormalizing: !normalizing})
+			for _, key := range keys {
+				for _, val := range values {
+					c := app.AcquireCtx(&fasthttp.RequestCtx{})
+					if !storeNormalizes {
+						c.Response().Header.DisableNormalizing()
+					}
+					c.Response().Header.Set("x-upstream-id", "stale")
+					var want fasthttp.ResponseHeader
+					c.Response().Header.CopyTo(&want)
+					want.Set(key, val)
+					c.Set(key, val)
+					require.Equal(t, want.String(), c.Response().Header.String(),
+						"normalizing=%v storeNormalizes=%v key=%q val=%q", normalizing, storeNormalizes, key, val)
+					app.ReleaseCtx(c)
+				}
+			}
+		}
+	}
+}
+
+// Test_Res_Get_MatchesHeaderPeek is the read-side contract: Get answers what
+// fasthttp's Peek answers for every spelling, whether or not the store
+// normalizes.
+func Test_Res_Get_MatchesHeaderPeek(t *testing.T) {
+	t.Parallel()
+
+	names := []string{"X-Request-Id", "x-request-id", "X-REQUEST-ID", "x-lower", "X-Lower", "Content-Type", "Missing", "", "Bad Key"}
+	for _, storeNormalizes := range []bool{true, false} {
+		app := New()
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		h := &c.Response().Header
+		if !storeNormalizes {
+			h.DisableNormalizing()
+		}
+		h.Set("X-Request-Id", "a")
+		h.Set("x-lower", "b")
+		h.Set("Content-Type", "text/plain")
+		for _, name := range names {
+			require.Equal(t, string(h.Peek(name)), c.Res().Get(name), "storeNormalizes=%v %q", storeNormalizes, name)
+		}
+		require.Equal(t, "fallback", c.Res().Get("Missing", "fallback"))
+		app.ReleaseCtx(c)
+	}
+}
+
+// Test_Res_Set_CopiesArguments pins that the fast path lends fasthttp the key and
+// value only for the call: the stored line must not follow the caller's bytes.
+func Test_Res_Set_CopiesArguments(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+
+	keyBytes := []byte("X-Request-Id")
+	valBytes := []byte("first")
+	c.Set(utils.UnsafeString(keyBytes), utils.UnsafeString(valBytes))
+	copy(keyBytes, "X-Rewritten!")
+	copy(valBytes, "wrong")
+
+	require.Equal(t, "first", c.Res().Get("X-Request-Id"))
+	require.Empty(t, c.Res().Get("X-Rewritten!"))
 }
