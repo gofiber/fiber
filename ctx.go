@@ -73,6 +73,7 @@ type DefaultCtx struct {
 	detectionPath          []byte               // Route detection path
 	treePathHash           int                  // Hash of the path for the search in the tree
 	pathSlashes            int                  // Number of '/' in the detection path, used to quick-reject routes
+	pathPrint              uint64               // Fingerprint of the detection path, lazily filled by pathFingerprint
 	indexRoute             int                  // Index of the current route
 	indexHandler           int                  // Index of the current handler
 	firstMatchIndex        int                  // Pre-resolved endpoint index from the SkipUnmatchedRoutes lookahead; -1 when unused
@@ -519,7 +520,7 @@ func (c *DefaultCtx) Endpoint() *Route {
 		return nil
 	}
 
-	tree := c.app.treeIndex[c.methodInt].lookup(c.treePathHash)
+	tree, _ := c.app.treeIndex[c.methodInt].lookup(c.treePathHash)
 	detectionPath := utils.UnsafeString(c.detectionPath)
 	path := utils.UnsafeString(c.path)
 	head := pathHeadWord(detectionPath)
@@ -856,6 +857,8 @@ func (c *DefaultCtx) configDependentPaths() {
 	// Invalidate the cached slash count of the detection path; pathSlashCount
 	// recomputes it lazily when route matching first needs it.
 	c.pathSlashes = 0
+	// pathFingerprint never returns 0, so 0 is "not computed yet".
+	c.pathPrint = 0
 }
 
 // Reset is a method to reset context fields by given request when to use server handlers.
@@ -1053,6 +1056,16 @@ func (c *DefaultCtx) getTreePathHash() int {
 // consults the count, counting is skipped and 0 is returned — a real detection
 // path always contains a '/', so 0 doubles as the "unknown" state that makes
 // Route.match skip the quick-reject entirely.
+// pathFingerprint returns the detection path's fingerprint for the static-route
+// filter, hashing it on first use and reusing it for the rest of the request.
+// Only a bucket carrying fingerprints asks for it, so a small app never hashes.
+func (c *DefaultCtx) pathFingerprint() uint64 {
+	if c.pathPrint == 0 {
+		c.pathPrint = pathFingerprint(utils.UnsafeString(c.detectionPath))
+	}
+	return c.pathPrint
+}
+
 func (c *DefaultCtx) pathSlashCount(app *App) int {
 	if c.pathSlashes == 0 && app.hasParamRoutes {
 		c.pathSlashes = bytes.Count(c.detectionPath, slashDelimiterBytes)
