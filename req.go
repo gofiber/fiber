@@ -1165,6 +1165,9 @@ func (r *DefaultReq) XHR() bool {
 // All the values are removed from ctx after returning from the top
 // RequestHandler. Additionally, Close method is called on each value
 // implementing io.Closer before removing the value from ctx.
+//
+// Storing through the Ctx interface heap-allocates the one-element slice the
+// variadic value is packed into; SetLocal stores the same value without it.
 func (r *DefaultReq) Locals(key any, value ...any) any {
 	if r.c.fasthttp == nil {
 		if len(value) > 0 {
@@ -1177,6 +1180,23 @@ func (r *DefaultReq) Locals(key any, value ...any) any {
 	}
 	r.c.fasthttp.SetUserValue(key, value[0])
 	return value[0]
+}
+
+// SetLocal stores value under key scoped to the request, exactly as
+// Locals(key, value) does: the value is available to all following routes that
+// match the request, removed after the top RequestHandler returns, and its
+// Close method is called first if it implements io.Closer. Like Locals, it is
+// a no-op once the context has been released.
+//
+// Locals takes its value variadically, and reached through the Ctx interface
+// the compiler cannot see that the callee only reads that argument, so the
+// one-element "..." slice is heap-allocated on every call. SetLocal takes the
+// value directly, so the same store through the interface costs no allocation.
+func (r *DefaultReq) SetLocal(key, value any) {
+	if r.c.fasthttp == nil {
+		return
+	}
+	r.c.fasthttp.SetUserValue(key, value)
 }
 
 // Locals function utilizing Go's generics feature.

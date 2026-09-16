@@ -4623,6 +4623,85 @@ func Test_Ctx_Locals_AfterRelease(t *testing.T) {
 	})
 }
 
+// go test -run Test_Ctx_SetLocal
+func Test_Ctx_SetLocal(t *testing.T) {
+	t.Parallel()
+	app := New()
+	app.Use(func(c Ctx) error {
+		c.SetLocal("john", "doe")
+		c.SetLocal("age", 18)
+		c.SetLocal("age", 19) // an existing key is overwritten, as with Locals
+		return c.Next()
+	})
+	app.Get("/test", func(c Ctx) error {
+		require.Equal(t, "doe", c.Locals("john"))
+		require.Equal(t, "doe", c.Value("john"))
+		require.Equal(t, 19, c.Locals("age"))
+		require.Equal(t, 19, Locals[int](c, "age"))
+		return nil
+	})
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test", http.NoBody))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
+}
+
+// go test -run Test_Ctx_SetLocal_AfterRelease
+func Test_Ctx_SetLocal_AfterRelease(t *testing.T) {
+	t.Parallel()
+	app := New()
+	var ctx Ctx
+	app.Get("/test", func(c Ctx) error {
+		ctx = c
+		return nil
+	})
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test", http.NoBody))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
+
+	require.NotPanics(t, func() {
+		ctx.SetLocal("test", "value")
+		require.Nil(t, ctx.Locals("test"), "a released context stores nothing")
+	})
+}
+
+// Test_Ctx_SetLocal_NoAllocations pins what SetLocal exists for: storing a
+// local through the Ctx interface without the heap-allocated one-element
+// slice that the variadic Locals(key, value) costs on the same call.
+//
+// Not parallel: AllocsPerRun counts allocations process-wide, and Go pauses
+// parallel tests while a sequential one runs.
+func Test_Ctx_SetLocal_NoAllocations(t *testing.T) {
+	app := New()
+	var c Ctx = app.AcquireCtx(&fasthttp.RequestCtx{})
+	t.Cleanup(func() { app.ReleaseCtx(c) })
+
+	// boxing a constant costs nothing, so the slice is all a Locals call allocates
+	c.SetLocal("user", "alice")
+	require.Zero(t, testing.AllocsPerRun(100, func() { c.SetLocal("user", "alice") }))
+	require.Equal(t, "alice", c.Locals("user"))
+}
+
+// go test -v -run=^$ -bench=Benchmark_Ctx_SetLocal -benchmem -count=4
+func Benchmark_Ctx_SetLocal(b *testing.B) {
+	app := New()
+	var c Ctx = app.AcquireCtx(&fasthttp.RequestCtx{})
+	b.Cleanup(func() { app.ReleaseCtx(c) })
+
+	b.Run("Locals", func(b *testing.B) {
+		b.ReportAllocs()
+		for b.Loop() {
+			c.Locals("user", "alice")
+		}
+	})
+	b.Run("SetLocal", func(b *testing.B) {
+		b.ReportAllocs()
+		for b.Loop() {
+			c.SetLocal("user", "alice")
+		}
+	})
+	require.Equal(b, "alice", c.Locals("user"))
+}
+
 // go test -run Test_Ctx_Value_InGoroutine
 func Test_Ctx_Value_InGoroutine(t *testing.T) {
 	t.Parallel()

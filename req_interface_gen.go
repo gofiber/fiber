@@ -239,7 +239,21 @@ type Req interface {
 	// All the values are removed from ctx after returning from the top
 	// RequestHandler. Additionally, Close method is called on each value
 	// implementing io.Closer before removing the value from ctx.
+	//
+	// Storing through the Ctx interface heap-allocates the one-element slice the
+	// variadic value is packed into; SetLocal stores the same value without it.
 	Locals(key any, value ...any) any
+	// SetLocal stores value under key scoped to the request, exactly as
+	// Locals(key, value) does: the value is available to all following routes that
+	// match the request, removed after the top RequestHandler returns, and its
+	// Close method is called first if it implements io.Closer. Like Locals, it is
+	// a no-op once the context has been released.
+	//
+	// Locals takes its value variadically, and reached through the Ctx interface
+	// the compiler cannot see that the callee only reads that argument, so the
+	// one-element "..." slice is heap-allocated on every call. SetLocal takes the
+	// value directly, so the same store through the interface costs no allocation.
+	SetLocal(key, value any)
 	// Method returns the HTTP request method for the context, optionally overridden by the provided argument.
 	// If no override is given or if the provided override is not a valid HTTP method, it returns the current method from the context.
 	// Otherwise, it updates the context's method and returns the overridden method as a string.
