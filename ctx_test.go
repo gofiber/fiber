@@ -9661,6 +9661,20 @@ func Benchmark_Ctx_Set(b *testing.B) {
 	}
 }
 
+// go test -v -run=^$ -bench=Benchmark_Ctx_Set_Canonical -benchmem -count=4
+func Benchmark_Ctx_Set_Canonical(b *testing.B) {
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+
+	// A key already in canonical form, which is what the constants are; the
+	// one above is not, fasthttp stores it as X-Request-Id.
+	val := "https://example.com"
+	b.ReportAllocs()
+	for b.Loop() {
+		c.Set(HeaderAccessControlAllowOrigin, val)
+	}
+}
+
 // go test -run Test_Ctx_Status
 func Test_Ctx_Status(t *testing.T) {
 	t.Parallel()
@@ -10043,6 +10057,19 @@ func Benchmark_Ctx_Get_Header(b *testing.B) {
 			v = c.Get(HeaderXRequestID)
 		}
 		require.Equal(b, "3f0c1a", v)
+	})
+}
+
+// go test -v -run=^$ -bench=Benchmark_Ctx_Get_Header_Canonical -benchmem -count=4
+func Benchmark_Ctx_Get_Header_Canonical(b *testing.B) {
+	// A key already in canonical form, unlike X-Request-ID above.
+	benchHeaderReadModes(b, func(b *testing.B, c Ctx) {
+		b.Helper()
+		var v string
+		for b.Loop() {
+			v = c.Get(HeaderCacheControl)
+		}
+		require.Equal(b, "max-age=0", v)
 	})
 }
 
