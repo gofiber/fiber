@@ -73,6 +73,7 @@ type DefaultCtx struct {
 	detectionPath          []byte               // Route detection path
 	treePathHash           int                  // Hash of the path for the search in the tree
 	pathSlashes            int                  // Number of '/' in the detection path, used to quick-reject routes
+	pathPrint              uint64               // Fingerprint of the detection path; 0 until the route scan hashes it
 	indexRoute             int                  // Index of the current route
 	indexHandler           int                  // Index of the current handler
 	firstMatchIndex        int                  // Pre-resolved endpoint index from the SkipUnmatchedRoutes lookahead; -1 when unused
@@ -519,7 +520,7 @@ func (c *DefaultCtx) Endpoint() *Route {
 		return nil
 	}
 
-	tree := c.app.treeIndex[c.methodInt].lookup(c.treePathHash)
+	tree, _ := c.app.treeIndex[c.methodInt].lookup(c.treePathHash)
 	detectionPath := utils.UnsafeString(c.detectionPath)
 	path := utils.UnsafeString(c.path)
 	head := pathHeadWord(detectionPath)
@@ -856,6 +857,7 @@ func (c *DefaultCtx) configDependentPaths() {
 	// Invalidate the cached slash count of the detection path; pathSlashCount
 	// recomputes it lazily when route matching first needs it.
 	c.pathSlashes = 0
+	c.pathPrint = 0
 }
 
 // Reset is a method to reset context fields by given request when to use server handlers.
