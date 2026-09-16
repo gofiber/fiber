@@ -1185,18 +1185,29 @@ func (r *DefaultReq) Locals(key any, value ...any) any {
 // SetLocal stores value under key scoped to the request, exactly as
 // Locals(key, value) does: the value is available to all following routes that
 // match the request, removed after the top RequestHandler returns, and its
-// Close method is called first if it implements io.Closer. Like Locals, it is
-// a no-op once the context has been released.
+// Close method is called first if it implements io.Closer. Like Locals, it
+// stores nothing while the context is released. A Ctx must not be used past
+// its handler either way, because the pool hands the same one to the next
+// request.
 //
 // Locals takes its value variadically, and reached through the Ctx interface
 // the compiler cannot see that the callee only reads that argument, so the
 // one-element "..." slice is heap-allocated on every call. SetLocal takes the
-// value directly, so the same store through the interface costs no allocation.
+// value directly, so that slice is never built. Boxing a value that is not
+// already an interface still allocates, exactly as it does for Locals.
 func (r *DefaultReq) SetLocal(key, value any) {
-	if r.c.fasthttp == nil {
+	c := r.c
+	if c.fasthttp == nil {
 		return
 	}
-	r.c.fasthttp.SetUserValue(key, value)
+	// A custom Ctx is entitled to override Locals, and this stores what
+	// Locals(key, value) stores, so the override is the one that must run.
+	// It pays the slice the default path exists to avoid, as setLocal does.
+	if handlerCtx := c.handlerCtx; handlerCtx != nil {
+		handlerCtx.Locals(key, value)
+		return
+	}
+	c.fasthttp.SetUserValue(key, value)
 }
 
 // Locals function utilizing Go's generics feature.
