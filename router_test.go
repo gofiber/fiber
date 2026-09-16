@@ -5067,9 +5067,10 @@ func Test_PathFingerprint_Contract(t *testing.T) {
 	require.NotEqual(t, pathFingerprint("/routes/998"), pathFingerprint("/routes/999"))
 }
 
-// Test_RouteTree_Fingerprints_LineUp pins that a bucket's fingerprint slice is
-// the one built from that same bucket. next() indexes both with the same
-// counter, so a slice that drifted by one entry would reject live routes.
+// Test_RouteTree_Fingerprints_LineUp pins that a bucket's filter is the one
+// built from that same bucket. next() indexes both with the same counter, so a
+// slice that drifted by one entry would reject live routes; maxLen must come
+// from the static routes alone, as it stands the hash down for longer paths.
 func Test_RouteTree_Fingerprints_LineUp(t *testing.T) {
 	t.Parallel()
 
@@ -5082,17 +5083,19 @@ func Test_RouteTree_Fingerprints_LineUp(t *testing.T) {
 	app.RebuildTree()
 
 	treeHash := int('/')<<16 | int('r')<<8 | int('o')
-	routes, prints := app.treeIndex[app.methodInt(MethodGet)].lookup(treeHash)
-	require.NotNil(t, prints, "a bucket this size must carry fingerprints")
-	require.Len(t, prints, len(routes))
+	routes, filter := app.treeIndex[app.methodInt(MethodGet)].lookup(treeHash)
+	require.NotNil(t, filter, "a bucket this size must carry a filter")
+	require.Len(t, filter.prints, len(routes))
 	for i, route := range routes {
-		require.Equal(t, staticFingerprint(route), prints[i], "fingerprint %d is not this route's", i)
+		require.Equal(t, staticFingerprint(route), filter.prints[i], "fingerprint %d is not this route's", i)
 	}
+	require.Equal(t, len("/routes/"+strconv.Itoa(fingerprintMinBucket*2-1)), filter.maxLen,
+		"maxLen must be the longest static path, not the longer param route")
 }
 
 // Test_RouteTree_Fingerprints_SmallBucketNil pins the other half: a bucket below
-// the threshold carries no fingerprints, so a small app neither allocates the
-// slice nor hashes its detection paths.
+// the threshold carries no filter, so a small app neither allocates the slice
+// nor hashes its detection paths.
 func Test_RouteTree_Fingerprints_SmallBucketNil(t *testing.T) {
 	t.Parallel()
 
@@ -5101,9 +5104,77 @@ func Test_RouteTree_Fingerprints_SmallBucketNil(t *testing.T) {
 	app.RebuildTree()
 
 	treeHash := int('/')<<16 | int('h')<<8 | int('e')
-	routes, prints := app.treeIndex[app.methodInt(MethodGet)].lookup(treeHash)
+	routes, filter := app.treeIndex[app.methodInt(MethodGet)].lookup(treeHash)
 	require.Equal(t, []string{"/hello"}, routeTreePaths(routes))
-	require.Nil(t, prints, "a bucket below fingerprintMinBucket must not carry fingerprints")
+	require.Nil(t, filter, "a bucket below fingerprintMinBucket must not carry a filter")
+}
+
+// Test_RouteTree_Fingerprints_CountsStaticRoutes pins that the threshold counts
+// static routes, not bucket size: a bucket full of param routes has nothing
+// for the filter to reject, so it must not make every request hash its path.
+func Test_RouteTree_Fingerprints_CountsStaticRoutes(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	for i := range fingerprintMinBucket * 2 {
+		app.Get("/routes/:id/v"+strconv.Itoa(i), func(Ctx) error { return nil })
+	}
+	for i := range fingerprintMinBucket - 1 {
+		app.Get("/routes/"+strconv.Itoa(i), func(Ctx) error { return nil })
+	}
+	app.RebuildTree()
+
+	treeHash := int('/')<<16 | int('r')<<8 | int('o')
+	routes, filter := app.treeIndex[app.methodInt(MethodGet)].lookup(treeHash)
+	require.Len(t, routes, fingerprintMinBucket*3-1)
+	require.Nil(t, filter, "fewer static routes than fingerprintMinBucket must not carry a filter")
+
+	app.Get("/routes/"+strconv.Itoa(fingerprintMinBucket-1), func(Ctx) error { return nil })
+	app.RebuildTree()
+	_, filter = app.treeIndex[app.methodInt(MethodGet)].lookup(treeHash)
+	require.NotNil(t, filter, "fingerprintMinBucket static routes must carry a filter")
+}
+
+// Test_Router_Fingerprint_HashedOnDemand pins when the scan hashes the path:
+// never for a hit on the first candidate, never for a path longer than every
+// static route in the bucket, and once for anything that scans past a route.
+func Test_Router_Fingerprint_HashedOnDemand(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	for i := range fingerprintMinBucket * 2 {
+		app.Get("/routes/"+strconv.Itoa(i), func(Ctx) error { return nil })
+	}
+	app.startupProcess()
+
+	last := "/routes/" + strconv.Itoa(fingerprintMinBucket*2-1)
+	miss := "/routes/" + strconv.Itoa(fingerprintMinBucket*2)
+	long := "/routes/" + strings.Repeat("a", 64)
+	for _, tc := range []struct {
+		path      string
+		wantPrint uint64
+		matched   bool
+	}{
+		{path: "/routes/0", wantPrint: 0, matched: true},
+		{path: last, wantPrint: pathFingerprint(last), matched: true},
+		{path: miss, wantPrint: pathFingerprint(miss), matched: false},
+		{path: long, wantPrint: 0, matched: false},
+	} {
+		fctx := &fasthttp.RequestCtx{}
+		fctx.Request.Header.SetMethod(MethodGet)
+		fctx.Request.SetRequestURI(tc.path)
+		ctx := app.AcquireCtx(fctx).(*DefaultCtx) //nolint:errcheck,forcetypeassert // default app returns DefaultCtx
+
+		matched, err := app.next(ctx)
+		require.Equal(t, tc.matched, matched, tc.path)
+		if tc.matched {
+			require.NoError(t, err, tc.path)
+		} else {
+			require.ErrorIs(t, err, ErrNotFound, tc.path)
+		}
+		require.Equal(t, tc.wantPrint, ctx.pathPrint, "hashed state after routing %s", tc.path)
+		app.ReleaseCtx(ctx)
+	}
 }
 
 // Test_Router_LargeBucket_RoutesCorrectly drives the filter through the real
@@ -5207,6 +5278,41 @@ func Test_Router_LargeBucket_CaseInsensitive(t *testing.T) {
 	}
 }
 
+// Test_Router_LargeBucket_LongPath covers requests longer than every static
+// route in the bucket, which the scan rejects without hashing: they must still
+// reach the param route behind the statics, a static route as long as the
+// bound must still match, and a miss is a 404.
+func Test_Router_LargeBucket_LongPath(t *testing.T) {
+	t.Parallel()
+
+	longest := "/routes/" + strings.Repeat("s", 40)
+	app := New()
+	for i := range fingerprintMinBucket * 2 {
+		app.Get("/routes/"+strconv.Itoa(i), func(c Ctx) error { return c.SendString(c.Path()) })
+	}
+	app.Get(longest, func(c Ctx) error { return c.SendString(c.Path()) })
+	app.Get("/routes/:name", func(c Ctx) error { return c.SendString("name:" + c.Params("name")) })
+
+	name := strings.Repeat("n", 64)
+	for _, tc := range []struct {
+		path, want string
+		status     int
+	}{
+		{path: longest, want: longest, status: StatusOK},
+		{path: "/routes/" + name, want: "name:" + name, status: StatusOK},
+		{path: "/routes/" + name + "/deeper", status: StatusNotFound},
+	} {
+		resp, err := app.Test(httptest.NewRequest(MethodGet, tc.path, http.NoBody))
+		require.NoError(t, err, tc.path)
+		require.Equal(t, tc.status, resp.StatusCode, tc.path)
+		if tc.want != "" {
+			body, err := io.ReadAll(resp.Body)
+			require.NoError(t, err)
+			require.Equal(t, tc.want, string(body), tc.path)
+		}
+	}
+}
+
 // Test_Router_LargeBucket_StaticOnlyMiss covers the scan running off the end
 // of a bucket made entirely of static routes: the fingerprint loop rejects
 // every entry, the scan stops without loading a Route, and the request is a
@@ -5230,8 +5336,9 @@ func Test_Router_LargeBucket_StaticOnlyMiss(t *testing.T) {
 
 // Test_Router_LargeBucket_CustomCtx drives the filter through nextCustom, the
 // scan a custom context takes, where the fingerprint is hashed per call rather
-// than read from the context. Same bucket shapes and outcomes as the default
-// context, including the miss that runs the scan off the end of the bucket.
+// than kept on the context. Same bucket shapes and outcomes as the default
+// context, including the long paths the scan rejects without hashing and the
+// miss that runs the scan off the end of the bucket.
 func Test_Router_LargeBucket_CustomCtx(t *testing.T) {
 	t.Parallel()
 
@@ -5255,7 +5362,9 @@ func Test_Router_LargeBucket_CustomCtx(t *testing.T) {
 		{path: "/routes/0", want: "/routes/0", status: StatusOK},
 		{path: "/routes/" + strconv.Itoa(fingerprintMinBucket*4-1), want: "/routes/" + strconv.Itoa(fingerprintMinBucket*4-1), status: StatusOK},
 		{path: "/routes/9/edit", want: "edit:9", status: StatusOK},
+		{path: "/routes/" + strings.Repeat("e", 64) + "/edit", want: "edit:" + strings.Repeat("e", 64), status: StatusOK},
 		{path: "/routes/missing", status: StatusNotFound},
+		{path: "/routes/" + strings.Repeat("m", 64), status: StatusNotFound},
 	} {
 		seen = nil
 		resp, err := app.Test(httptest.NewRequest(MethodGet, tc.path, http.NoBody))

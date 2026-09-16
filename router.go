@@ -19,9 +19,15 @@ import (
 )
 
 const (
-	// fingerprintMinBucket is the bucket size from which App.next filters by
-	// path fingerprint; below it the leading-byte filter is cheaper than a hash.
+	// fingerprintMinBucket is the number of static routes from which a bucket
+	// carries a fingerprint filter; below it the leading-byte filter is cheaper
+	// than a hash.
 	fingerprintMinBucket = 8
+
+	// fingerprintNone is even, so no route fingerprint equals it: the scan uses
+	// it as the request fingerprint when no static route in the bucket is as
+	// long as the path, which rejects them all without hashing.
+	fingerprintNone = 2
 
 	// 64-bit FNV-1a offset basis and prime, used by pathFingerprint.
 	fingerprintBasis = 0xcbf29ce484222325
@@ -128,13 +134,13 @@ type routeTree struct {
 	hashes []int32
 	// buckets is parallel to hashes and holds the routes of each occupied slot
 	buckets [][]*Route
-	// prints is parallel to buckets: the static-path fingerprint of each route,
-	// 0 when the filter cannot speak for it; nil below fingerprintMinBucket.
-	prints [][]uint64
+	// filters is parallel to buckets: each slot's fingerprint filter, nil for
+	// a bucket below fingerprintMinBucket static routes
+	filters []*fingerprintFilter
+	// globalFilter is the fingerprint filter of globals
+	globalFilter *fingerprintFilter
 	// globals is the bucket for tree hash 0, which is also where misses go
 	globals []*Route
-	// globalPrints is the fingerprint slice of globals
-	globalPrints []uint64
 	// mask is len(hashes)-1, used to wrap the probe
 	mask uint32
 	// shift is 32-log2(len(hashes)), so slot keeps the high bits of the
@@ -164,7 +170,7 @@ const routeTreeHashMul = 0x9E3779B1
 // RebuildTree's own doc states the contract.
 func buildRouteTree(buckets map[int][]*Route) *routeTree {
 	tree := &routeTree{globals: buckets[0]}
-	tree.globalPrints = buildFingerprints(tree.globals)
+	tree.globalFilter = newFingerprintFilter(tree.globals)
 
 	prefixed := len(buckets)
 	if _, ok := buckets[0]; ok {
@@ -183,7 +189,7 @@ func buildRouteTree(buckets map[int][]*Route) *routeTree {
 
 	tree.hashes = make([]int32, size)
 	tree.buckets = make([][]*Route, size)
-	tree.prints = make([][]uint64, size)
+	tree.filters = make([]*fingerprintFilter, size)
 	tree.mask = uint32(size - 1) //nolint:gosec // G115 - size is a small power of two
 	// size is a power of two, so its trailing-zero count is log2(size).
 	tree.shift = uint32(32 - bits.TrailingZeros32(uint32(size))) //nolint:gosec // G115 - size is a small power of two
@@ -198,7 +204,7 @@ func buildRouteTree(buckets map[int][]*Route) *routeTree {
 		}
 		tree.hashes[i] = int32(hash) //nolint:gosec // G115 - tree hashes are 24-bit, built from three path bytes
 		tree.buckets[i] = routes
-		tree.prints[i] = buildFingerprints(routes)
+		tree.filters[i] = newFingerprintFilter(routes)
 	}
 
 	return tree
@@ -219,18 +225,18 @@ func (t *routeTree) slot(hash int) uint32 {
 // globals bucket when that hash has no bucket of its own.
 //
 //nolint:nonamedreturns // the pair reads better named than by position
-func (t *routeTree) lookup(hash int) (routes []*Route, prints []uint64) {
+func (t *routeTree) lookup(hash int) (routes []*Route, filter *fingerprintFilter) {
 	if hash == 0 || t.hashes == nil {
-		return t.globals, t.globalPrints
+		return t.globals, t.globalFilter
 	}
 
 	want := int32(hash) //nolint:gosec // G115 - tree hashes are 24-bit, built from three path bytes
 	for i := t.slot(hash); ; i = (i + 1) & t.mask {
 		switch t.hashes[i] {
 		case want:
-			return t.buckets[i], t.prints[i]
+			return t.buckets[i], t.filters[i]
 		case 0:
-			return t.globals, t.globalPrints
+			return t.globals, t.globalFilter
 		}
 	}
 }
@@ -468,18 +474,42 @@ func staticFingerprint(r *Route) uint64 {
 	return pathFingerprint(r.path)
 }
 
-// buildFingerprints returns a bucket's fingerprint slice, or nil below the
-// threshold. Built from the finished bucket so the tree's pointer swap
-// publishes routes and fingerprints together.
-func buildFingerprints(routes []*Route) []uint64 {
+// fingerprintFilter lets the scan reject a bucket's static routes by path
+// fingerprint before loading them.
+type fingerprintFilter struct {
+	// prints is parallel to the bucket: each static route's fingerprint, 0 for
+	// a route the filter cannot speak for
+	prints []uint64
+	// maxLen is the longest static path in the bucket; a longer request
+	// matches none of them, so the scan need not hash it
+	maxLen int
+}
+
+// newFingerprintFilter builds a bucket's filter, or returns nil when fewer than
+// fingerprintMinBucket of its routes are static. Built from the finished bucket
+// so the tree's pointer swap publishes routes and filter together.
+func newFingerprintFilter(routes []*Route) *fingerprintFilter {
 	if len(routes) < fingerprintMinBucket {
 		return nil
 	}
-	prints := make([]uint64, len(routes))
-	for i, route := range routes {
-		prints[i] = staticFingerprint(route)
+	static := 0
+	for _, route := range routes {
+		if staticFingerprint(route) != 0 {
+			static++
+		}
 	}
-	return prints
+	if static < fingerprintMinBucket {
+		return nil
+	}
+
+	f := &fingerprintFilter{prints: make([]uint64, len(routes))}
+	for i, route := range routes {
+		f.prints[i] = staticFingerprint(route)
+		if f.prints[i] != 0 {
+			f.maxLen = max(f.maxLen, len(route.path))
+		}
+	}
+	return f
 }
 
 func (r *Route) match(detectionPath, path string, params *[maxParams]string, pathSlashes int) bool {
@@ -553,26 +583,38 @@ func (app *App) next(c *DefaultCtx) (bool, error) {
 	detectionPath := utils.UnsafeString(c.detectionPath)
 	path := utils.UnsafeString(c.path)
 	// Get the route bucket for this method and tree path
-	tree, prints := app.treeIndex[methodInt].lookup(treeHash)
+	tree, filter := app.treeIndex[methodInt].lookup(treeHash)
 	head := pathHeadWord(detectionPath)
-	// Cached on the context, so a middleware chain hashes once per request.
+	// The request fingerprint: fingerprintNone when no static route in the
+	// bucket is as long as the path, else c.pathPrint, which the scan hashes
+	// once per request the first time it needs it.
+	var prints []uint64
 	var wantPrint uint64
-	if prints != nil {
-		wantPrint = c.pathFingerprint()
+	if filter != nil {
+		prints = filter.prints
+		wantPrint = c.pathPrint
+		if len(detectionPath) > filter.maxLen {
+			wantPrint = fingerprintNone
+		}
 	}
 	indexRoute := max(c.indexRoute+1, 0)
+	start := indexRoute
 	// Hoist loop invariants: route.match takes &c.values, so these would reload each iteration.
 	pathSlashes := c.pathSlashCount(app)
 	firstMatchIndex := c.firstMatchIndex
 	skipNonUse := c.shouldSkipNonUseRoutes
 	skipHasParamUse := app.skip.hasParamUse
 
-	// Loop over the route stack starting from previous index;
-	// the clamp above plus the len(tree) guard keep tree[indexRoute] bounds-check free
+	// Loop over the route stack starting from previous index
 	for ; indexRoute < len(tree); indexRoute++ {
-		// Reject static routes by fingerprint before loading the Route. prints
-		// is nil below the threshold; 0 marks a route the filter cannot judge.
-		if indexRoute < len(prints) {
+		// Reject static routes by fingerprint before loading the Route. The
+		// first candidate is checked directly, so a hit there never hashes;
+		// prints is nil without a filter; 0 marks a route it cannot judge.
+		if indexRoute > start && indexRoute < len(prints) {
+			if wantPrint == 0 {
+				wantPrint = pathFingerprint(detectionPath)
+				c.pathPrint = wantPrint
+			}
 			skip := 0
 			for _, fp := range prints[indexRoute:] {
 				if fp == 0 || fp == wantPrint {
@@ -704,15 +746,22 @@ func (app *App) nextCustom(c CustomCtx) (bool, error) {
 	methodInt := c.getMethodInt()
 	treeHash := c.getTreePathHash()
 	// Get the route bucket for this method and tree path
-	tree, prints := app.treeIndex[methodInt].lookup(treeHash)
+	tree, filter := app.treeIndex[methodInt].lookup(treeHash)
 	indexRoute := max(c.getIndexRoute()+1, 0)
+	start := indexRoute
 	// Hoist loop-invariant accessors; nothing changes mid-loop (Next()/RestartRouting re-enter with fresh reads).
 	detectionPath := c.getDetectionPath()
 	head := pathHeadWord(detectionPath)
-	// A custom context has nowhere to cache this, so it is hashed per call.
+	// The request fingerprint: fingerprintNone when no static route in the
+	// bucket is as long as the path, else hashed by the scan when it first
+	// needs it; a custom context has nowhere to keep it across calls.
+	var prints []uint64
 	var wantPrint uint64
-	if prints != nil {
-		wantPrint = pathFingerprint(detectionPath)
+	if filter != nil {
+		prints = filter.prints
+		if len(detectionPath) > filter.maxLen {
+			wantPrint = fingerprintNone
+		}
 	}
 	path := c.Path()
 	values := c.getValues()
@@ -721,12 +770,15 @@ func (app *App) nextCustom(c CustomCtx) (bool, error) {
 	skipNonUse := c.getSkipNonUseRoutes()
 	skipHasParamUse := app.skip.hasParamUse
 
-	// Loop over the route stack starting from previous index;
-	// the clamp above plus the len(tree) guard keep tree[indexRoute] bounds-check free
+	// Loop over the route stack starting from previous index
 	for ; indexRoute < len(tree); indexRoute++ {
-		// Reject static routes by fingerprint before loading the Route. prints
-		// is nil below the threshold; 0 marks a route the filter cannot judge.
-		if indexRoute < len(prints) {
+		// Reject static routes by fingerprint before loading the Route. The
+		// first candidate is checked directly, so a hit there never hashes;
+		// prints is nil without a filter; 0 marks a route it cannot judge.
+		if indexRoute > start && indexRoute < len(prints) {
+			if wantPrint == 0 {
+				wantPrint = pathFingerprint(detectionPath)
+			}
 			skip := 0
 			for _, fp := range prints[indexRoute:] {
 				if fp == 0 || fp == wantPrint {

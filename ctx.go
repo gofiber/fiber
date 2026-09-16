@@ -73,7 +73,7 @@ type DefaultCtx struct {
 	detectionPath          []byte               // Route detection path
 	treePathHash           int                  // Hash of the path for the search in the tree
 	pathSlashes            int                  // Number of '/' in the detection path, used to quick-reject routes
-	pathPrint              uint64               // Fingerprint of the detection path; 0 until pathFingerprint fills it
+	pathPrint              uint64               // Fingerprint of the detection path; 0 until the route scan hashes it
 	indexRoute             int                  // Index of the current route
 	indexHandler           int                  // Index of the current handler
 	firstMatchIndex        int                  // Pre-resolved endpoint index from the SkipUnmatchedRoutes lookahead; -1 when unused
@@ -1055,15 +1055,6 @@ func (c *DefaultCtx) getTreePathHash() int {
 // consults the count, counting is skipped and 0 is returned — a real detection
 // path always contains a '/', so 0 doubles as the "unknown" state that makes
 // Route.match skip the quick-reject entirely.
-// pathFingerprint returns the detection path's fingerprint, hashed on first use
-// and reused for the rest of the request.
-func (c *DefaultCtx) pathFingerprint() uint64 {
-	if c.pathPrint == 0 {
-		c.pathPrint = pathFingerprint(utils.UnsafeString(c.detectionPath))
-	}
-	return c.pathPrint
-}
-
 func (c *DefaultCtx) pathSlashCount(app *App) int {
 	if c.pathSlashes == 0 && app.hasParamRoutes {
 		c.pathSlashes = bytes.Count(c.detectionPath, slashDelimiterBytes)
