@@ -18,6 +18,23 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
+const (
+	// fingerprintMinBucket is the bucket size from which the fingerprint filter
+	// in App.next earns its keep. Below it the leading-byte filter already
+	// rejects in one masked compare, and hashing the detection path would cost
+	// more than the scan it saves; at or above it a bucket is built with
+	// fingerprints and a request pays one hash to skip most of the bucket.
+	// Measured on buckets of routes sharing a leading word, requesting the last
+	// one: 8 and 12 routes ran 8.5% faster filtered than not, 4 routes were a
+	// wash, so the line sits at 8.
+	fingerprintMinBucket = 8
+
+	// fingerprintBasis and fingerprintPrime are the 64-bit FNV-1a offset basis
+	// and prime that pathFingerprint mixes path bytes with.
+	fingerprintBasis = 0xcbf29ce484222325
+	fingerprintPrime = 0x100000001b3
+)
+
 // Router defines all router handle interface, including app and group router.
 type Router interface {
 	Use(args ...any) Router
@@ -431,21 +448,6 @@ func computePrefixFilter(r *Route) (word, mask uint64) {
 func (r *Route) prefixRejects(head uint64) bool {
 	return (head^r.prefix)&r.prefixMask != 0
 }
-
-// fingerprintMinBucket is the bucket size from which the fingerprint filter
-// earns its keep. Below it the leading-byte filter already rejects in one
-// masked compare, and hashing the detection path would cost more than the scan
-// it saves; at or above it a bucket is built with fingerprints and a request
-// pays one hash to skip most of the bucket. Measured on buckets of routes
-// sharing a leading word, requesting the last one: 8 and 12 routes ran 8.5%
-// faster filtered than not, 4 routes were a wash, so the line sits at 8.
-const fingerprintMinBucket = 8
-
-// fingerprint mixing constants: the 64-bit FNV-1a offset basis and prime.
-const (
-	fingerprintBasis = 0xcbf29ce484222325
-	fingerprintPrime = 0x100000001b3
-)
 
 // pathFingerprint hashes a path for the static-route filter in the scan loops.
 //
