@@ -1461,6 +1461,17 @@ func (r *DefaultRes) SendStreamWriter(streamWriter func(*bufio.Writer)) error {
 
 // Set sets the response's HTTP header field to the specified key, value.
 func (r *DefaultRes) Set(key, val string) {
+	// The key is normalized here in one pass and handed to SetCanonical, which
+	// spares fasthttp's Set its three passes over the key and its second copy
+	// of the value. Test_Res_Set_MatchesHeaderSet keeps the two storing the
+	// same line; keys fasthttp would not normalize take its own path.
+	if !r.c.app.config.DisableHeaderNormalizing {
+		var buf [fieldname.KeyBufSize]byte
+		if key, ok := fieldname.Normalize(key, &buf); ok {
+			r.c.fasthttp.Response.Header.SetCanonical(key, utils.UnsafeBytes(val))
+			return
+		}
+	}
 	r.c.fasthttp.Response.Header.Set(key, val)
 }
 

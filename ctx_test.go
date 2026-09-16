@@ -35,6 +35,7 @@ import (
 	"time"
 
 	"github.com/fxamacker/cbor/v2"
+	"github.com/gofiber/fiber/v3/internal/fieldname"
 	"github.com/gofiber/utils/v2"
 	utilsstrings "github.com/gofiber/utils/v2/strings"
 	"github.com/shamaton/msgpack/v3"
@@ -11825,4 +11826,52 @@ func Test_SameFS_SliceLength(t *testing.T) {
 	backing := sliceFS{"a", "b", "c"}
 	require.False(t, sameFS(backing[:1], backing[:2]))
 	require.True(t, sameFS(backing[:2], backing[:2]))
+}
+
+// Test_Res_Set_MatchesHeaderSet is the contract behind the canonical fast path
+// in Set: whatever the key or value, the field line it stores is byte for byte
+// the one fasthttp's own Set stores, with header normalization on and off.
+func Test_Res_Set_MatchesHeaderSet(t *testing.T) {
+	t.Parallel()
+
+	keys := []string{
+		"X-Request-Id", "x-request-id", "X-REQUEST-ID", "Content-Type", "content-type", "Content-Length",
+		"Server", "Connection", "Date", "Set-Cookie", "Transfer-Encoding", "Content-Encoding", "Trailer",
+		"Bad Key", "X-Key\r\nInjected", "Or\u00edgin", "", "etag", "X-REQUEST-ID", strings.Repeat("Ab-", 21) + "C",
+		strings.Repeat("a", fieldname.KeyBufSize+1),
+	}
+	values := []string{"v", "", "a\r\nb", "with space", "42", "text/html; charset=utf-8", "k=v; Path=/"}
+	for _, normalizing := range []bool{true, false} {
+		app := New(Config{DisableHeaderNormalizing: !normalizing})
+		for _, key := range keys {
+			for _, val := range values {
+				c := app.AcquireCtx(&fasthttp.RequestCtx{})
+				var want fasthttp.ResponseHeader
+				c.Response().Header.CopyTo(&want)
+				want.Set(key, val)
+				c.Set(key, val)
+				require.Equal(t, want.String(), c.Response().Header.String(), "normalizing=%v key=%q val=%q", normalizing, key, val)
+				app.ReleaseCtx(c)
+			}
+		}
+	}
+}
+
+// Test_Res_Set_CopiesArguments pins that the fast path lends fasthttp the key and
+// value only for the call: the stored line must not follow the caller's bytes.
+func Test_Res_Set_CopiesArguments(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+
+	keyBytes := []byte("X-Request-Id")
+	valBytes := []byte("first")
+	c.Set(utils.UnsafeString(keyBytes), utils.UnsafeString(valBytes))
+	copy(keyBytes, "X-Rewritten!")
+	copy(valBytes, "wrong")
+
+	require.Equal(t, "first", c.Res().Get("X-Request-Id"))
+	require.Empty(t, c.Res().Get("X-Rewritten!"))
 }

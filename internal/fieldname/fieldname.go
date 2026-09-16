@@ -76,7 +76,7 @@ func Lines(h Peeker, name string, canonical bool) [][]byte {
 //nolint:revive // flag-parameter: canonical is a property of the header store
 func First(h Peeker, name string, canonical bool) []byte {
 	if canonical {
-		v := h.Peek(name)
+		v := Peek(h, name, true)
 		if len(v) > 0 {
 			return v
 		}
@@ -232,4 +232,95 @@ func ContainsFold(haystack []string, needle string) bool {
 		}
 	}
 	return false
+}
+
+// KeyBufSize bounds the field names Normalize handles on the stack; a
+// longer one takes fasthttp's own path.
+const KeyBufSize = 64
+
+// Byte classes of a field name, for Normalize.
+const (
+	keyOther   byte = iota // a token byte that is not a letter
+	keyLower               // a-z
+	keyUpper               // A-Z
+	keyInvalid             // not a token byte (RFC 9110 Section 5.6.2)
+)
+
+// keyClass classifies every byte a field name can hold. The token set is the
+// one fasthttp normalizes; any other byte makes it store the name as sent.
+var keyClass = func() [256]byte {
+	var t [256]byte
+	for i := range t {
+		t[i] = keyInvalid
+	}
+	for _, c := range []byte("!#$%&'*+-.^_`|~0123456789") {
+		t[c] = keyOther
+	}
+	for c := byte('a'); c <= 'z'; c++ {
+		t[c] = keyLower
+		t[c-'a'+'A'] = keyUpper
+	}
+	return t
+}()
+
+// Normalize returns name in fasthttp's canonical form: an upper-case letter
+// first and after each '-', lower case elsewhere. fasthttp derives that again
+// on every keyed call, three passes and a copy; here it is one pass, and a
+// name already canonical is returned as its own bytes rather than a copy.
+// ok is false for a name fasthttp would not normalize, one with a byte outside
+// a token or none at all, and for one longer than buf; those take fasthttp's
+// own path. Test_Normalize_MatchesFasthttp keeps the form in step.
+//
+//nolint:nonamedreturns // ok reads better named next to the key it qualifies
+func Normalize(name string, buf *[KeyBufSize]byte) (key []byte, ok bool) {
+	if name == "" || len(name) > len(buf) {
+		return nil, false
+	}
+	changed := false
+	upper := true
+	for i := 0; i < len(name); i++ {
+		c := name[i]
+		switch keyClass[c] {
+		case keyInvalid:
+			return nil, false
+		case keyLower:
+			if upper {
+				c -= 'a' - 'A'
+				changed = true
+			}
+		case keyUpper:
+			if !upper {
+				c += 'a' - 'A'
+				changed = true
+			}
+		}
+		upper = c == '-'
+		buf[i] = c
+	}
+	if !changed {
+		return utils.UnsafeBytes(name), true
+	}
+	return buf[:len(name)], true
+}
+
+// Peek is fasthttp's byte-exact Peek with the key normalization done here in
+// one pass when the store canonicalizes; Test_Peek_MatchesFasthttp keeps the
+// two answering alike.
+//
+//nolint:revive // flag-parameter: canonical is a property of the header store
+func Peek(h Peeker, name string, canonical bool) []byte {
+	if canonical {
+		var buf [KeyBufSize]byte
+		if key, ok := Normalize(name, &buf); ok {
+			// Concrete calls only: through the interface the key would escape
+			// and take buf to the heap with it, an allocation per read.
+			switch h := h.(type) {
+			case *fasthttp.RequestHeader:
+				return h.PeekCanonical(key)
+			case *fasthttp.ResponseHeader:
+				return h.PeekCanonical(key)
+			}
+		}
+	}
+	return h.Peek(name)
 }
