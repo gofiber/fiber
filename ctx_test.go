@@ -35,7 +35,6 @@ import (
 	"time"
 
 	"github.com/fxamacker/cbor/v2"
-	"github.com/gofiber/fiber/v3/internal/fieldname"
 	"github.com/gofiber/utils/v2"
 	utilsstrings "github.com/gofiber/utils/v2/strings"
 	"github.com/shamaton/msgpack/v3"
@@ -11837,23 +11836,58 @@ func Test_Res_Set_MatchesHeaderSet(t *testing.T) {
 	keys := []string{
 		"X-Request-Id", "x-request-id", "X-REQUEST-ID", "Content-Type", "content-type", "Content-Length",
 		"Server", "Connection", "Date", "Set-Cookie", "Transfer-Encoding", "Content-Encoding", "Trailer",
-		"Bad Key", "X-Key\r\nInjected", "Or\u00edgin", "", "etag", "X-REQUEST-ID", strings.Repeat("Ab-", 21) + "C",
-		strings.Repeat("a", fieldname.KeyBufSize+1),
+		"Bad Key", "X-Key\r\nInjected", "Or\u00edgin", "", "etag", "X-REQUEST-ID", "x-upstream-id", strings.Repeat("Ab-", 21) + "C",
 	}
 	values := []string{"v", "", "a\r\nb", "with space", "42", "text/html; charset=utf-8", "k=v; Path=/"}
+	// storeNormalizes false with a normalizing app is the state a proxied
+	// response leaves behind when a caller-supplied client parsed it with
+	// header normalization off: the store keeps names as sent, so Set must
+	// still replace a lower-case field spelled exactly the same.
 	for _, normalizing := range []bool{true, false} {
-		app := New(Config{DisableHeaderNormalizing: !normalizing})
-		for _, key := range keys {
-			for _, val := range values {
-				c := app.AcquireCtx(&fasthttp.RequestCtx{})
-				var want fasthttp.ResponseHeader
-				c.Response().Header.CopyTo(&want)
-				want.Set(key, val)
-				c.Set(key, val)
-				require.Equal(t, want.String(), c.Response().Header.String(), "normalizing=%v key=%q val=%q", normalizing, key, val)
-				app.ReleaseCtx(c)
+		for _, storeNormalizes := range []bool{true, false} {
+			app := New(Config{DisableHeaderNormalizing: !normalizing})
+			for _, key := range keys {
+				for _, val := range values {
+					c := app.AcquireCtx(&fasthttp.RequestCtx{})
+					if !storeNormalizes {
+						c.Response().Header.DisableNormalizing()
+					}
+					c.Response().Header.Set("x-upstream-id", "stale")
+					var want fasthttp.ResponseHeader
+					c.Response().Header.CopyTo(&want)
+					want.Set(key, val)
+					c.Set(key, val)
+					require.Equal(t, want.String(), c.Response().Header.String(),
+						"normalizing=%v storeNormalizes=%v key=%q val=%q", normalizing, storeNormalizes, key, val)
+					app.ReleaseCtx(c)
+				}
 			}
 		}
+	}
+}
+
+// Test_Res_Get_MatchesHeaderPeek is the read-side contract: Get answers what
+// fasthttp's Peek answers for every spelling, whether or not the store
+// normalizes.
+func Test_Res_Get_MatchesHeaderPeek(t *testing.T) {
+	t.Parallel()
+
+	names := []string{"X-Request-Id", "x-request-id", "X-REQUEST-ID", "x-lower", "X-Lower", "Content-Type", "Missing", "", "Bad Key"}
+	for _, storeNormalizes := range []bool{true, false} {
+		app := New()
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		h := &c.Response().Header
+		if !storeNormalizes {
+			h.DisableNormalizing()
+		}
+		h.Set("X-Request-Id", "a")
+		h.Set("x-lower", "b")
+		h.Set("Content-Type", "text/plain")
+		for _, name := range names {
+			require.Equal(t, string(h.Peek(name)), c.Res().Get(name), "storeNormalizes=%v %q", storeNormalizes, name)
+		}
+		require.Equal(t, "fallback", c.Res().Get("Missing", "fallback"))
+		app.ReleaseCtx(c)
 	}
 }
 

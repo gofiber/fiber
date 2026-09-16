@@ -6,7 +6,6 @@ import (
 	"strings"
 	"testing"
 	"time"
-	"unsafe"
 
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
@@ -169,18 +168,18 @@ func Test_Del_RemovesEverySpelling(t *testing.T) {
 	require.Equal(t, "k", string(First(h, "X-Keep", false)))
 }
 
-// Test_Normalize_MatchesFasthttp checks the form against fasthttp itself: for a
-// token name, Canonical must produce the key Set stores, and any other name
-// must be declined, because fasthttp stores such a key as sent.
-func Test_Normalize_MatchesFasthttp(t *testing.T) {
+// Test_IsCanonical_MatchesFasthttp checks the form against fasthttp itself: a
+// token name is canonical exactly when Set stores it unchanged, and any other
+// name is not, because fasthttp stores such a key as sent.
+func Test_IsCanonical_MatchesFasthttp(t *testing.T) {
 	t.Parallel()
 
 	for _, name := range []string{
 		"Origin", "Content-Type", "X-Request-Id", "Sec-Websocket-Key", "A", "X-1", "Etag",
 		"Www-Authenticate", "X-_a", "X--Y", "-", "X_Under.Score", "origin", "ORIGIN", "content-type",
 		"Content-type", "content-Type", "X-Request-ID", "ETag", "WWW-Authenticate", "Sec-WebSocket-Key",
-		"x-request-id", "X-REQUEST-ID", "cONTENT-tYPE", "x--y", "a-b-c-d-e-f", "1-a", "*-a",
-		strings.Repeat("Ab-", 21) + "C",
+		"x-request-id", "X-REQUEST-ID", "cONTENT-tYPE", "x--y", "a-b-c-d-e-f", "1-a", "*-a", "X-Real-IP",
+		"Content-MD5", "DNT", "TE", "X-A", "X-a", "Ab", "aB", strings.Repeat("Ab-", 21) + "C",
 	} {
 		h := &fasthttp.ResponseHeader{}
 		h.Set(name, "v")
@@ -190,24 +189,11 @@ func Test_Normalize_MatchesFasthttp(t *testing.T) {
 				stored = string(k)
 			}
 		}
-
-		var buf [KeyBufSize]byte
-		key, ok := Normalize(name, &buf)
-		require.True(t, ok, "Normalize(%q)", name)
-		require.Equal(t, stored, string(key), "Normalize(%q) against fasthttp", name)
-		if stored == name {
-			require.Equal(t, unsafe.Pointer(unsafe.StringData(name)), unsafe.Pointer(&key[0]),
-				"an already canonical %q must come back as its own bytes, not a copy", name)
-		}
+		require.Equal(t, stored == name, IsCanonical(name), "IsCanonical(%q); fasthttp stores it as %q", name, stored)
 	}
 
-	for _, name := range []string{
-		"", "Origin:", "Origin ", " Origin", "Ori gin", "Origin\r\nX", "Or\u00edgin", "Origin\x00", "X/Y", "(A)",
-		strings.Repeat("a", KeyBufSize+1),
-	} {
-		var buf [KeyBufSize]byte
-		_, ok := Normalize(name, &buf)
-		require.False(t, ok, "Normalize(%q)", name)
+	for _, name := range []string{"", "Origin:", "Origin ", " Origin", "Ori gin", "Origin\r\nX", "Or\u00edgin", "Origin\x00", "X/Y", "(A)"} {
+		require.False(t, IsCanonical(name), "IsCanonical(%q)", name)
 	}
 }
 
@@ -233,8 +219,8 @@ func Test_Peek_MatchesFasthttp(t *testing.T) {
 		res.Set("x-lower", "b")
 		res.Set("Empty", "")
 		for _, name := range names {
-			require.Equal(t, req.Peek(name), Peek(req, name, canonical), "request, canonical=%v, %q", canonical, name)
-			require.Equal(t, res.Peek(name), Peek(res, name, canonical), "response, canonical=%v, %q", canonical, name)
+			require.Equal(t, req.Peek(name), Peek(req, name), "request, canonical=%v, %q", canonical, name)
+			require.Equal(t, res.Peek(name), Peek(res, name), "response, canonical=%v, %q", canonical, name)
 		}
 	}
 }

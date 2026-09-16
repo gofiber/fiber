@@ -76,7 +76,7 @@ func Lines(h Peeker, name string, canonical bool) [][]byte {
 //nolint:revive // flag-parameter: canonical is a property of the header store
 func First(h Peeker, name string, canonical bool) []byte {
 	if canonical {
-		v := Peek(h, name, true)
+		v := Peek(h, name)
 		if len(v) > 0 {
 			return v
 		}
@@ -234,11 +234,7 @@ func ContainsFold(haystack []string, needle string) bool {
 	return false
 }
 
-// KeyBufSize bounds the field names Normalize handles on the stack; a
-// longer one takes fasthttp's own path.
-const KeyBufSize = 64
-
-// Byte classes of a field name, for Normalize.
+// Byte classes of a field name, for IsCanonical.
 const (
 	keyOther   byte = iota // a token byte that is not a letter
 	keyLower               // a-z
@@ -263,63 +259,55 @@ var keyClass = func() [256]byte {
 	return t
 }()
 
-// Normalize returns name in fasthttp's canonical form: an upper-case letter
-// first and after each '-', lower case elsewhere. fasthttp derives that again
-// on every keyed call, three passes and a copy; here it is one pass, and a
-// name already canonical is returned as its own bytes rather than a copy.
-// ok is false for a name fasthttp would not normalize, one with a byte outside
-// a token or none at all, and for one longer than buf; those take fasthttp's
-// own path. Test_Normalize_MatchesFasthttp keeps the form in step.
-//
-//nolint:nonamedreturns // ok reads better named next to the key it qualifies
-func Normalize(name string, buf *[KeyBufSize]byte) (key []byte, ok bool) {
-	if name == "" || len(name) > len(buf) {
-		return nil, false
+// IsCanonical reports whether name is already in fasthttp's canonical form: a
+// token with an upper-case letter first and after each '-' and lower case
+// elsewhere. fasthttp derives that form again on every keyed call, three
+// passes and a copy, only to arrive at the same bytes; a name that already has
+// it can take the *Canonical methods instead, which store and find exactly what
+// the normalizing ones would whether or not the store normalizes.
+// Test_IsCanonical_MatchesFasthttp keeps the form in step.
+func IsCanonical(name string) bool {
+	n := len(name)
+	if n == 0 {
+		return false
 	}
-	changed := false
+	// Names such as X-Request-ID fail only at their last byte, so the tail is
+	// checked first: an upper-case letter not following a '-' cannot end a
+	// canonical name.
+	if n > 1 && name[n-1] >= 'A' && name[n-1] <= 'Z' && name[n-2] != '-' {
+		return false
+	}
 	upper := true
-	for i := 0; i < len(name); i++ {
+	for i := range n {
 		c := name[i]
 		switch keyClass[c] {
 		case keyInvalid:
-			return nil, false
+			return false
 		case keyLower:
 			if upper {
-				c -= 'a' - 'A'
-				changed = true
+				return false
 			}
 		case keyUpper:
 			if !upper {
-				c += 'a' - 'A'
-				changed = true
+				return false
 			}
 		}
 		upper = c == '-'
-		buf[i] = c
 	}
-	if !changed {
-		return utils.UnsafeBytes(name), true
-	}
-	return buf[:len(name)], true
+	return true
 }
 
-// Peek is fasthttp's byte-exact Peek with the key normalization done here in
-// one pass when the store canonicalizes; Test_Peek_MatchesFasthttp keeps the
-// two answering alike.
-//
-//nolint:revive // flag-parameter: canonical is a property of the header store
-func Peek(h Peeker, name string, canonical bool) []byte {
-	if canonical {
-		var buf [KeyBufSize]byte
-		if key, ok := Normalize(name, &buf); ok {
-			// Concrete calls only: through the interface the key would escape
-			// and take buf to the heap with it, an allocation per read.
-			switch h := h.(type) {
-			case *fasthttp.RequestHeader:
-				return h.PeekCanonical(key)
-			case *fasthttp.ResponseHeader:
-				return h.PeekCanonical(key)
-			}
+// Peek is fasthttp's byte-exact Peek, minus the key normalization when name is
+// already canonical; Test_Peek_MatchesFasthttp keeps the two answering alike in
+// both store modes.
+func Peek(h Peeker, name string) []byte {
+	if IsCanonical(name) {
+		// Concrete calls only: through the interface the key would escape.
+		switch h := h.(type) {
+		case *fasthttp.RequestHeader:
+			return h.PeekCanonical(utils.UnsafeBytes(name))
+		case *fasthttp.ResponseHeader:
+			return h.PeekCanonical(utils.UnsafeBytes(name))
 		}
 	}
 	return h.Peek(name)
