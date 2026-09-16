@@ -472,6 +472,10 @@ This is useful if you want to pass some **specific** data to the next middleware
 func (c fiber.Ctx) Locals(key any, value ...any) any
 ```
 
+:::note
+Storing a value with `c.Locals(key, value)` allocates the one-element slice its variadic parameter is packed into on every call, because the call goes through the `Ctx` interface. On hot paths use [`SetLocal`](#setlocal), which stores the same value without building that slice.
+:::
+
 ```go title="Example"
 
 // keyType is an unexported type for keys defined in this package.
@@ -820,6 +824,31 @@ app.Get("/", func(c fiber.Ctx) error {
   ctx := c.Context()
   go doWork(ctx)
   return nil
+})
+```
+
+### SetLocal
+
+Stores a value under a key scoped to the request, exactly like [`Locals`](#locals) with a value. It is available to all following routes that match the request, removed after the request completes, and `Close` is called on it first if it implements `io.Closer`.
+
+Unlike `Locals(key, value)`, the value is not passed variadically, so the one-element slice that call allocates is never built. Boxing the value itself can still allocate, exactly as it does for `Locals`. Prefer it in middleware and other per-request code.
+
+```go title="Signature"
+func (c fiber.Ctx) SetLocal(key, value any)
+```
+
+```go title="Example"
+app.Use(func(c fiber.Ctx) error {
+  c.SetLocal(userKey, "admin")
+  return c.Next()
+})
+
+app.Get("/admin", func(c fiber.Ctx) error {
+  user, ok := c.Locals(userKey).(string)
+  if ok && user == "admin" {
+    return c.SendString("Welcome, admin!")
+  }
+  return c.SendStatus(fiber.StatusForbidden)
 })
 ```
 
