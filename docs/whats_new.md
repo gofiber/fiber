@@ -357,6 +357,12 @@ func main() {
 
 We have slightly adapted our router interface
 
+### Path normalization
+
+The router normalizes every request path before matching, as [RFC 3986 Section 6.2.2](https://www.rfc-editor.org/rfc/rfc3986#section-6.2.2) describes. Percent-encoded characters that cannot change the structure of the path are decoded, so `/%70rivate` is matched as `/private`, and `.`, `..` and empty segments are removed, so `/static/x/../private`, `/static/./private` and `/static//private` are all matched as `/static/private`. Middleware mounted on a prefix therefore sees every spelling of a path under it, and the static middleware serves the file that same path names. Reserved characters such as an encoded slash (`%2F`) stay encoded and do not split a segment; `UnescapePath` decodes them as well, as before. Decoding happens exactly once, so `/%2570rivate` never becomes `/private`.
+
+`c.Path()` returns the normalized path. `c.OriginalURL()` still returns the request target as the client sent it.
+
 ### Handler compatibility
 
 Fiber now ships with a routing adapter (see `adapter.go`) that understands native Fiber handlers alongside `net/http` and `fasthttp` handlers. Route registration helpers accept a required `handler` argument plus optional additional `handlers`, all typed as `any`, and the adapter transparently converts supported handler styles so you can keep using the ecosystem functions you're familiar with.

@@ -143,10 +143,10 @@ curl http://localhost:3000/web
 To define static routes using `Get`, append the wildcard (`*`) operator at the end of the route.
 :::
 
-:::caution
-Routes are matched against the path as the client sent it unless [`UnescapePath`](../api/fiber.md#config) is enabled, while the file server works on that path decoded once. Without `UnescapePath`, a request for `/static/%70rivate/secret.txt` passes a middleware mounted on `/static/private` and still serves `private/secret.txt`. Enable `UnescapePath` when route middleware protects part of a static tree, or keep protected files out of any directory a broader static route serves.
+:::info
+The file server resolves the path the router matched. Fiber normalizes request paths before routing (see [Path normalization](../guide/routing.md#path-normalization)), so middleware mounted on `/static/private` also guards `/static/%70rivate/secret.txt`, `/static/x/../private/secret.txt` and `/static//private/secret.txt`.
 
-The middleware never decodes a path a second time. A percent sign that is still present after that single decoding is an ordinary character, as [RFC 3986](https://www.rfc-editor.org/rfc/rfc3986#section-2.4) requires, so `/static/%2570rivate/secret.txt` looks for a directory literally named `%70rivate` and never reaches `private`. A file named `100%.txt` is served for `/static/100%25.txt`.
+Escapes the router leaves encoded, such as `%40` or `%25`, are decoded once more to obtain the file name: `/static/photo%402x.png` serves `photo@2x.png` and `/static/100%25.txt` serves `100%.txt`. An escape that would produce a slash, a backslash or a control character cannot name a file and is answered with `404 Not Found`, so `/static/private%2Fsecret.txt` never reaches `private/secret.txt` unless [`UnescapePath`](../api/fiber.md#config) decodes it for the router as well. A percent sign that remains after that single decoding is an ordinary character, as [RFC 3986](https://www.rfc-editor.org/rfc/rfc3986#section-2.4) requires, so `/static/%2570rivate/secret.txt` looks for a directory literally named `%70rivate` and never reaches `private`.
 :::
 
 ## Config

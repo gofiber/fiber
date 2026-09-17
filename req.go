@@ -1334,7 +1334,11 @@ func (r *DefaultReq) URI() *fasthttp.URI {
 	return r.c.fasthttp.Request.URI()
 }
 
-// Path returns the path part of the request URL.
+// Path returns the path part of the request URL, normalized as RFC 3986
+// Section 6.2.2 describes before routing: percent escapes of characters that
+// cannot change the path's structure are decoded (all of them under
+// UnescapePath), and ".", ".." and empty segments are removed. OriginalURL
+// returns the request target as the client sent it.
 // Optionally, you could override the path.
 // Make copies or use the Immutable setting to use the value outside the Handler.
 func (r *DefaultReq) Path(override ...string) string {

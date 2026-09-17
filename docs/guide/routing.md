@@ -197,6 +197,15 @@ The order in which you declare routes matters: like Express.js, routes are match
 Place routes with variable parameters after fixed paths to avoid unintended matches.
 :::
 
+### Path normalization
+
+Before a request is matched, Fiber normalizes its path as [RFC 3986 Section 6.2.2](https://www.rfc-editor.org/rfc/rfc3986#section-6.2.2) describes:
+
+- Percent-encoded characters that cannot change the structure of the path are decoded, so `/%70rivate` is matched as `/private`. Reserved characters such as an encoded slash (`%2F`) stay encoded and do not split a segment, unless [`UnescapePath`](../api/fiber.md#config) is enabled, which decodes them as well.
+- `.` and `..` segments are resolved and empty segments are removed, so `/static/x/../private`, `/static/./private` and `/static//private` are all matched as `/static/private`. A `..` never climbs above the root.
+
+Middleware mounted on a prefix therefore sees every spelling of a path under it, and [`c.Path()`](../api/ctx.md#path) returns the normalized path. Decoding happens exactly once, so `/%2570rivate` stays `/%2570rivate` and never becomes `/private`. [`c.OriginalURL()`](../api/ctx.md#originalurl) still returns the request target as the client sent it.
+
 ## Parameters
 
 Route parameters are dynamic segments in a path, either named or unnamed, used to capture values from the URL. Retrieve them with the [Params](../api/ctx.md#params) function using the parameter name or, for unnamed parameters, the wildcard (`*`) or plus (`+`) symbol with an index.

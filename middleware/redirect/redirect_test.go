@@ -203,14 +203,17 @@ func Test_Redirect_SameOriginTargets(t *testing.T) {
 		request string
 		want    string
 	}{
+		// The router removes empty segments before the capture is taken, so a
+		// slash run never opens an authority: "/api//evil.com" is captured as
+		// "evil.com" and "https://evil.com" as "https:/evil.com".
 		{"protocol relative", "/api/*", "/$1", "/api//evil.com", "/evil.com"},
-		{"long slash run", "/redirect/*", "$1", "/redirect///evil.com", "/evil.com"},
-		{"absolute url", "/redirect/*", "$1", "/redirect/https://evil.com", "/https://evil.com"},
+		{"long slash run", "/redirect/*", "$1", "/redirect///evil.com", "evil.com"},
+		{"absolute url", "/redirect/*", "$1", "/redirect/https://evil.com", "/https:/evil.com"},
 		{"non fetch scheme", "/redirect/*", "$1", "/redirect/javascript:x", "/javascript:x"},
 
 		// Same-origin composition is untouched.
 		{"ordinary capture", "/api/*", "/$1", "/api/users", "/users"},
-		{"capture below a prefix", "/old/*", "/new/$1", "/old//evil.com", "/new//evil.com"},
+		{"capture below a prefix", "/old/*", "/new/$1", "/old//evil.com", "/new/evil.com"},
 		{"relative reference", "/g", "google.com", "/g", "google.com"},
 
 		// A target naming its own authority is the author's call, so it is left as configured.
@@ -240,7 +243,7 @@ func Test_Redirect_SameOriginTargets_Unescaped(t *testing.T) {
 	}{
 		{"leading space", "/r/*", "$1", "/r/%20//evil.com", "/evil.com"},
 		{"leading tab", "/r/*", "$1", "/r/%09//evil.com", "/evil.com"},
-		{"tab before scheme", "/r/*", "$1", "/r/%09https://evil.com", "/https://evil.com"},
+		{"tab before scheme", "/r/*", "$1", "/r/%09https://evil.com", "/https:/evil.com"},
 		{"interior tab", "/api/*", "/$1", "/api/%09/evil.com", "/evil.com"},
 
 		// A space is percent-encoded rather than removed, so an interior one forms no authority.

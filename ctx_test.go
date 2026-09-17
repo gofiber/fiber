@@ -6447,17 +6447,21 @@ func Test_Ctx_Endpoint_SkipUnmatchedRoutes(t *testing.T) {
 	require.Equal(t, "/items/:id", path)
 }
 
-// go test -run Test_Ctx_RouteNormalized
+// Test_Ctx_RouteNormalized pins that the router removes the empty segment of
+// "//test" before matching, so the request reaches "/test" and reports the
+// normalized path.
 func Test_Ctx_RouteNormalized(t *testing.T) {
 	t.Parallel()
 	app := New()
 	app.Get("/test", func(c Ctx) error {
 		require.Equal(t, "/test", c.Route().Path)
+		require.Equal(t, "/test", c.Path())
+		require.Equal(t, "//test", c.OriginalURL())
 		return nil
 	})
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "//test", http.NoBody))
 	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, StatusNotFound, resp.StatusCode, "Status code")
+	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
 }
 
 // go test -run Test_Ctx_SaveFile

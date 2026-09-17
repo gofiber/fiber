@@ -205,14 +205,15 @@ func RoutePatternMatch(path, pattern string, cfg ...Config) bool {
 
 	patternPretty := []byte(pattern)
 
-	// Mirror DefaultCtx.configDependentPaths: the router derives a separate
-	// detection path (percent-decoded when UnescapePath is set, lowercased when
-	// CaseSensitive is off, trailing slashes stripped when StrictRouting is
-	// off) and keeps c.path untouched. getMatch takes both — the detection path
-	// to match against and the untouched path to slice parameter values out of
-	// — so constraints see the same bytes here as they do in the router.
-	if config.UnescapePath {
-		path = utils.UnsafeString(unescapePath([]byte(path)))
+	// Mirror DefaultCtx.configDependentPaths: the router normalizes the request
+	// path (see normalizeRequestPath) and derives a separate detection path
+	// from it (lowercased when CaseSensitive is off, trailing slashes stripped
+	// when StrictRouting is off), keeping c.path otherwise untouched. getMatch
+	// takes both — the detection path to match against and the path to slice
+	// parameter values out of — so constraints see the same bytes here as they
+	// do in the router.
+	if needsPathNormalization(path) {
+		path = utils.UnsafeString(normalizeRequestPath([]byte(path), config.UnescapePath))
 	}
 
 	detectionPath := path
@@ -332,6 +333,224 @@ func unhex(c byte) int {
 	default:
 		return -1
 	}
+}
+
+// pathKeepEncoded marks the bytes whose percent-encoded form the router keeps
+// as the client sent it when it normalizes a request path. Decoding any other
+// byte cannot change what the path identifies (RFC 3986 Sections 2.3 and
+// 6.2.2.2), so "/%70rivate" and "/private" match the same routes. The reserved
+// characters of Section 2.2 stay encoded because their encoded and literal
+// forms are different URIs: an encoded slash must not split a segment. So do
+// the percent sign, since decoding it would open a second decoding pass, the
+// backslash, which Windows reads as a path separator, and control characters.
+var pathKeepEncoded = newPathKeepEncoded()
+
+func newPathKeepEncoded() [256]bool {
+	var keep [256]bool
+	for _, c := range []byte(":/?#[]@!$&'()*+,;=%\\") {
+		keep[c] = true
+	}
+	for c := range 0x20 {
+		keep[c] = true
+	}
+	keep[0x7f] = true
+	return keep
+}
+
+// unescapeSafePath decodes, in place, the percent escapes of a path that stand
+// for bytes outside pathKeepEncoded, and leaves every other escape and any
+// malformed escape as it is. It is the decoding step of normalizeRequestPath
+// under the default configuration; UnescapePath uses unescapePath instead,
+// which decodes everything.
+func unescapeSafePath(b []byte) []byte {
+	i := bytes.IndexByte(b, '%')
+	if i == -1 {
+		return b
+	}
+	n := len(b)
+	dst := i
+	for i < n {
+		if b[i] == '%' && i+2 < n {
+			if hi, lo := unhex(b[i+1]), unhex(b[i+2]); hi >= 0 && lo >= 0 {
+				if v := byte(hi<<4 | lo); !pathKeepEncoded[v] { //nolint:gosec // G115: both nibbles are 0-15
+					b[dst] = v
+					dst++
+					i += 3
+					continue
+				}
+				b[dst], b[dst+1], b[dst+2] = b[i], b[i+1], b[i+2]
+				dst += 3
+				i += 3
+				continue
+			}
+		}
+		b[dst] = b[i]
+		dst++
+		i++
+	}
+	return b[:dst]
+}
+
+// cleanPathSegments removes the "." and ".." segments of a path, as
+// remove_dot_segments in RFC 3986 Section 5.2.4 does, and its empty segments,
+// in place. ".." never climbs above the root, so "/../x" is "/x", and a path
+// that ends in a removed segment keeps a trailing slash, so "/a/b/.." is "/a/".
+func cleanPathSegments(b []byte) []byte {
+	if !hasDotOrEmptySegment(b) {
+		return b
+	}
+	n := len(b)
+	rooted := b[0] == '/'
+	i := 0
+	if rooted {
+		i = 1
+	}
+	w := 0
+	trailingSlash := false
+	for i <= n {
+		j := i
+		for j < n && b[j] != '/' {
+			j++
+		}
+		seg := b[i:j]
+		last := j == n
+		switch {
+		case len(seg) == 0:
+			// From "//", or from the trailing slash of a directory path; only
+			// the latter is kept.
+			trailingSlash = last
+		case len(seg) == 1 && seg[0] == '.':
+			trailingSlash = last
+		case len(seg) == 2 && seg[0] == '.' && seg[1] == '.':
+			if k := bytes.LastIndexByte(b[:w], '/'); k >= 0 {
+				w = k
+			} else {
+				w = 0
+			}
+			trailingSlash = last
+		default:
+			if rooted || w > 0 {
+				b[w] = '/'
+				w++
+			}
+			w += copy(b[w:], seg)
+			trailingSlash = false
+		}
+		i = j + 1
+	}
+	if trailingSlash && (w == 0 || b[w-1] != '/') {
+		b[w] = '/'
+		w++
+	}
+	return b[:w]
+}
+
+// slashPairLanes flags the lanes of w that hold a '/' followed, within w, by
+// a '/' or a '.', which is where an empty or a dot segment begins. Load8 puts
+// byte k in lane k, so shifting a lane mask right by one lane compares every
+// byte with its successor; the pair straddling two words is left to the
+// caller, which overlaps its words by one byte.
+func slashPairLanes(w uint64) uint64 {
+	slash := swar.MatchByteMask(w, '/')
+	return slash & ((slash | swar.MatchByteMask(w, '.')) >> 8)
+}
+
+// needsPathNormalization reports whether normalizeRequestPath could change s:
+// it carries a percent escape, an empty segment, or a segment that starts with
+// a dot. It keeps the usual request on the copy-only fast path of
+// configDependentPaths, so it scans a word at a time; a false positive such
+// as "/.well-known/x" only pays for the normalization pass.
+func needsPathNormalization(s string) bool {
+	n := len(s)
+	if n == 0 {
+		return false
+	}
+	if s[0] == '.' {
+		return true
+	}
+	if n >= swar.WordLen {
+		// Consecutive words overlap by one byte so that every pair of adjacent
+		// bytes falls inside a word. ZeroLanes is exact for "any lane" checks,
+		// which is all the percent sign needs.
+		percent := swar.Broadcast('%')
+		i := 0
+		for ; i+swar.WordLen <= n; i += swar.WordLen - 1 {
+			w := swar.Load8(s, i)
+			if swar.ZeroLanes(w^percent)|slashPairLanes(w) != 0 {
+				return true
+			}
+		}
+		// The loop covered the bytes up to and including i; a word aligned to
+		// the end picks up the rest.
+		if i >= n-1 {
+			return false
+		}
+		w := swar.Load8(s, n-swar.WordLen)
+		return swar.ZeroLanes(w^percent)|slashPairLanes(w) != 0
+	}
+	for i := range n {
+		switch s[i] {
+		case '%':
+			return true
+		case '/':
+			if i+1 < n && (s[i+1] == '/' || s[i+1] == '.') {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// hasDotOrEmptySegment reports whether cleanPathSegments would change b: it
+// starts with a dot or contains "//" or "/.". It scans a word at a time, as
+// needsPathNormalization does.
+func hasDotOrEmptySegment(b []byte) bool {
+	n := len(b)
+	if n == 0 {
+		return false
+	}
+	if b[0] == '.' {
+		return true
+	}
+	if n >= swar.WordLen {
+		i := 0
+		for ; i+swar.WordLen <= n; i += swar.WordLen - 1 {
+			if slashPairLanes(swar.Load8(b, i)) != 0 {
+				return true
+			}
+		}
+		if i >= n-1 {
+			return false
+		}
+		return slashPairLanes(swar.Load8(b, n-swar.WordLen)) != 0
+	}
+	for i := range n - 1 {
+		if b[i] == '/' && (b[i+1] == '/' || b[i+1] == '.') {
+			return true
+		}
+	}
+	return false
+}
+
+// normalizeRequestPath applies the syntax-based normalization of RFC 3986
+// Section 6.2.2 to a request path, in place, before the router matches it:
+// percent escapes are decoded, all of them when unescapeAll (the UnescapePath
+// configuration) is set and otherwise only those that cannot alter the path's
+// structure (see pathKeepEncoded), and then ".", ".." and empty segments are
+// removed. The result identifies the same resource as the request, so a route
+// or route middleware matches by what a request identifies rather than by how
+// the client spelled it: "/static/%70rivate", "/static/./private",
+// "/static/x/../private" and "/static//private" all reach a guard mounted on
+// "/static/private". Decoding runs first, so an encoded dot segment such as
+// "%2E%2E" is removed as well, and it runs exactly once (Section 2.4), which
+// keeps "%2570rivate" a literal name.
+func normalizeRequestPath(b []byte, unescapeAll bool) []byte { //nolint:revive // the flag mirrors Config.UnescapePath
+	if unescapeAll {
+		b = unescapePath(b)
+	} else {
+		b = unescapeSafePath(b)
+	}
+	return cleanPathSegments(b)
 }
 
 func (parser *routeParser) reset() {

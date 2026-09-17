@@ -725,11 +725,98 @@ func Test_Route_Match_UnescapedPath(t *testing.T) {
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
 
-	// check deactivated behavior
+	// Non-ASCII bytes cannot change the structure of a path, so the router
+	// decodes them for matching whatever the flag says.
 	app.config.UnescapePath = false
 	resp, err = app.Test(httptest.NewRequest(MethodGet, "/cr%C3%A9er", http.NoBody))
 	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
+
+	// A reserved character is only decoded with the flag on: an encoded slash
+	// splits "/cr%2F%C3%A9er" into the segments "cr" and "éer" under
+	// UnescapePath and stays part of a single segment without it.
+	app.config.UnescapePath = true
+	app.Use("/cr/éer", func(c Ctx) error {
+		return c.SendString("split")
+	})
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/cr%2F%C3%A9er", http.NoBody))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
+
+	body, err = io.ReadAll(resp.Body)
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, "split", app.toString(body))
+
+	app.config.UnescapePath = false
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/cr%2F%C3%A9er", http.NoBody))
+	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, StatusNotFound, resp.StatusCode, "Status code")
+}
+
+// Test_Route_Match_NormalizedPath pins the RFC 3986 normalization the router
+// applies before matching: escapes of characters that cannot change a path's
+// structure are decoded, dot and empty segments are removed, and an encoded
+// slash stays part of its segment unless UnescapePath decodes it. Middleware
+// mounted on a prefix therefore sees every spelling of a path under it.
+func Test_Route_Match_NormalizedPath(t *testing.T) {
+	t.Parallel()
+
+	newApp := func(cfg Config) *App {
+		app := New(cfg)
+		app.Use("/static/private", func(c Ctx) error {
+			return c.SendStatus(StatusForbidden)
+		})
+		app.Get("/static/*", func(c Ctx) error {
+			return c.SendString(c.Path() + "|" + c.Params("*"))
+		})
+		app.Get("/users/:id", func(c Ctx) error {
+			return c.SendString(c.Params("id"))
+		})
+		return app
+	}
+
+	tests := []struct {
+		name       string
+		target     string
+		wantBody   string
+		wantStatus int
+		unescape   bool
+	}{
+		{name: "plain", target: "/static/public.txt", wantStatus: StatusOK, wantBody: "/static/public.txt|public.txt"},
+		{name: "guarded", target: "/static/private/secret.txt", wantStatus: StatusForbidden},
+		{name: "encoded unreserved character", target: "/static/%70rivate/secret.txt", wantStatus: StatusForbidden},
+		{name: "parent segment", target: "/static/x/../private/secret.txt", wantStatus: StatusForbidden},
+		{name: "current segment", target: "/static/./private/secret.txt", wantStatus: StatusForbidden},
+		{name: "empty segment", target: "/static//private/secret.txt", wantStatus: StatusForbidden},
+		{name: "encoded dot segment", target: "/static/x/%2E%2E/private/secret.txt", wantStatus: StatusForbidden},
+		{name: "parent segment above the prefix", target: "/static/../static/private/secret.txt", wantStatus: StatusForbidden},
+		{name: "parent segment leaves the route", target: "/static/../other", wantStatus: StatusNotFound},
+		{name: "decoded space in path and params", target: "/static/a%20b.txt", wantStatus: StatusOK, wantBody: "/static/a b.txt|a b.txt"},
+		{name: "non-ascii decoded", target: "/users/%C3%A9", wantStatus: StatusOK, wantBody: "é"},
+		{name: "encoded slash stays in the segment", target: "/users/a%2Fb", wantStatus: StatusOK, wantBody: "a%2Fb"},
+		{name: "encoded slash splits the segment under UnescapePath", target: "/users/a%2Fb", unescape: true, wantStatus: StatusNotFound},
+		{name: "reserved character kept", target: "/users/a%40b", wantStatus: StatusOK, wantBody: "a%40b"},
+		{name: "reserved character decoded under UnescapePath", target: "/users/a%40b", unescape: true, wantStatus: StatusOK, wantBody: "a@b"},
+		{name: "percent sign decoded once", target: "/static/%2570rivate/x", wantStatus: StatusOK, wantBody: "/static/%2570rivate/x|%2570rivate/x"},
+		{name: "percent sign decoded once under UnescapePath", target: "/static/%2570rivate/x", unescape: true, wantStatus: StatusOK, wantBody: "/static/%70rivate/x|%70rivate/x"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			app := newApp(Config{UnescapePath: tc.unescape})
+			resp, err := app.Test(httptest.NewRequest(MethodGet, tc.target, http.NoBody))
+			require.NoError(t, err, "app.Test(req)")
+			require.Equal(t, tc.wantStatus, resp.StatusCode, "Status code")
+
+			body, err := io.ReadAll(resp.Body)
+			require.NoError(t, err)
+			if tc.wantBody != "" {
+				require.Equal(t, tc.wantBody, string(body))
+			}
+		})
+	}
 }
 
 func Test_Route_Match_WithEscapeChar(t *testing.T) {
