@@ -15,6 +15,7 @@ import (
 	"net/http/httptest"
 	neturl "net/url"
 	"os"
+	pathpkg "path"
 	"reflect"
 	"regexp"
 	"runtime"
@@ -725,16 +726,13 @@ func Test_Route_Match_UnescapedPath(t *testing.T) {
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
 
-	// Non-ASCII bytes cannot change the structure of a path, so the router
-	// decodes them for matching whatever the flag says.
+	// non-ASCII bytes are decoded for matching whatever the flag says
 	app.config.UnescapePath = false
 	resp, err = app.Test(httptest.NewRequest(MethodGet, "/cr%C3%A9er", http.NoBody))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
 
-	// A reserved character is only decoded with the flag on: an encoded slash
-	// splits "/cr%2F%C3%A9er" into the segments "cr" and "éer" under
-	// UnescapePath and stays part of a single segment without it.
+	// an encoded slash splits the segment only with the flag on
 	app.config.UnescapePath = true
 	app.Use("/cr/éer", func(c Ctx) error {
 		return c.SendString("split")
@@ -754,10 +752,8 @@ func Test_Route_Match_UnescapedPath(t *testing.T) {
 }
 
 // Test_Route_Match_NormalizedPath pins the RFC 3986 normalization the router
-// applies before matching: escapes of characters that cannot change a path's
-// structure are decoded, dot and empty segments are removed, and an encoded
-// slash stays part of its segment unless UnescapePath decodes it. Middleware
-// mounted on a prefix therefore sees every spelling of a path under it.
+// applies before matching, so a guard on a prefix sees every spelling of a
+// path under it.
 func Test_Route_Match_NormalizedPath(t *testing.T) {
 	t.Parallel()
 
@@ -816,6 +812,132 @@ func Test_Route_Match_NormalizedPath(t *testing.T) {
 				require.Equal(t, tc.wantBody, string(body))
 			}
 		})
+	}
+}
+
+// Test_Route_Match_AgreesWithNetHTTP sends the same requests to a net/http
+// ServeMux and to Fiber and expects the same route, path and parameters.
+// ServeMux unescapes each segment of the escaped path and redirects a path
+// with dot or empty segments to its clean form, which the harness routes as
+// the redirect would. Two spellings are left out because the two routers
+// disagree on purpose: ServeMux keeps "a%2Fb" one segment where UnescapePath
+// splits it, and it reads "%2E%2E" as a literal name where Fiber decodes the
+// unreserved dots first and removes the segment.
+func Test_Route_Match_AgreesWithNetHTTP(t *testing.T) {
+	t.Parallel()
+
+	routes := []struct {
+		mux, fiber string
+		params     []string // wildcard names; "rest" reads Fiber's "*"
+	}{
+		{mux: "/private/secret.txt", fiber: "/private/secret.txt"},
+		{mux: "/créer", fiber: "/créer"},
+		{mux: "/tag@2x", fiber: "/tag@2x"},
+		{mux: "/users/{id}", fiber: "/users/:id", params: []string{"id"}},
+		{mux: "/files/{rest...}", fiber: "/files/*", params: []string{"rest"}},
+	}
+
+	newMux := func() *http.ServeMux {
+		mux := http.NewServeMux()
+		for i, r := range routes {
+			mux.HandleFunc("GET "+r.mux, func(w http.ResponseWriter, req *http.Request) {
+				values := make([]string, len(r.params))
+				for j, name := range r.params {
+					values[j] = req.PathValue(name)
+				}
+				fmt.Fprintf(w, "%d %s %q", i, req.URL.Path, values)
+			})
+		}
+		return mux
+	}
+	newFiber := func(unescape bool) *App {
+		app := New(Config{UnescapePath: unescape, CaseSensitive: true, StrictRouting: true})
+		for i, r := range routes {
+			app.Get(r.fiber, func(c Ctx) error {
+				values := make([]string, len(r.params))
+				for j, name := range r.params {
+					if name == "rest" {
+						name = "*"
+					}
+					values[j] = c.Params(name)
+				}
+				return c.SendString(fmt.Sprintf("%d %s %q", i, c.Path(), values))
+			})
+		}
+		return app
+	}
+
+	// viaMux routes target as ServeMux does: a path that is not clean is
+	// answered with a redirect to its clean form (net/http's cleanPath), so
+	// the clean form is what gets routed.
+	viaMux := func(mux *http.ServeMux, target string) (int, string) {
+		req := httptest.NewRequest(MethodGet, target, http.NoBody)
+		escaped := req.URL.EscapedPath()
+		clean := pathpkg.Clean(escaped)
+		if strings.HasSuffix(escaped, "/") && clean != "/" {
+			clean += "/"
+		}
+		if clean != escaped {
+			req = httptest.NewRequest(MethodGet, clean, http.NoBody)
+		}
+		rec := httptest.NewRecorder()
+		mux.ServeHTTP(rec, req)
+		return rec.Code, rec.Body.String()
+	}
+	viaFiber := func(app *App, target string) (int, string) {
+		resp, err := app.Test(httptest.NewRequest(MethodGet, target, http.NoBody))
+		require.NoError(t, err, "app.Test(req)")
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		return resp.StatusCode, string(body)
+	}
+
+	requests := []struct {
+		target string
+		// reserved characters and the percent sign stay encoded without
+		// UnescapePath, so these only agree with the flag on
+		needsUnescape bool
+	}{
+		{target: "/private/secret.txt"},
+		{target: "/%70rivate/secret.txt"},
+		{target: "/x/../private/secret.txt"},
+		{target: "/./private/secret.txt"},
+		{target: "//private/secret.txt"},
+		{target: "/private/x/../secret.txt"},
+		{target: "/cr%C3%A9er"},
+		{target: "/créer"},
+		{target: "/users/%C3%A9"},
+		{target: "/users/a%20b"},
+		{target: "/users/a%40b", needsUnescape: true},
+		{target: "/tag%402x", needsUnescape: true},
+		{target: "/users/100%2525", needsUnescape: true},
+		{target: "/users/%2570rivate", needsUnescape: true},
+		{target: "/files/a/b/c.txt"},
+		{target: "/files/a/../c.txt"},
+		{target: "/files/%61/b"},
+		{target: "/files/../private/secret.txt"},
+		{target: "/users/"},
+		{target: "/nope"},
+	}
+
+	for _, unescape := range []bool{false, true} {
+		app := newFiber(unescape)
+		mux := newMux()
+		for _, tc := range requests {
+			if tc.needsUnescape && !unescape {
+				continue
+			}
+			t.Run(fmt.Sprintf("unescape=%v/%s", unescape, tc.target), func(t *testing.T) {
+				t.Parallel()
+
+				wantStatus, wantBody := viaMux(mux, tc.target)
+				gotStatus, gotBody := viaFiber(app, tc.target)
+				require.Equal(t, wantStatus, gotStatus, "status for %s", tc.target)
+				if wantStatus == StatusOK {
+					require.Equal(t, wantBody, gotBody, "route, path and params for %s", tc.target)
+				}
+			})
+		}
 	}
 }
 

@@ -6447,9 +6447,7 @@ func Test_Ctx_Endpoint_SkipUnmatchedRoutes(t *testing.T) {
 	require.Equal(t, "/items/:id", path)
 }
 
-// Test_Ctx_RouteNormalized pins that the router removes the empty segment of
-// "//test" before matching, so the request reaches "/test" and reports the
-// normalized path.
+// Test_Ctx_RouteNormalized pins that "//test" is matched and reported as "/test".
 func Test_Ctx_RouteNormalized(t *testing.T) {
 	t.Parallel()
 	app := New()

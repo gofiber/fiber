@@ -813,25 +813,15 @@ func (c *DefaultCtx) Value(key any) any {
 // configDependentPaths set paths for route recognition and prepared paths for the user,
 // here the features for caseSensitive, decoded paths, strict paths are evaluated
 func (c *DefaultCtx) configDependentPaths() {
-	// Both paths start from the request path normalized as RFC 3986
-	// Section 6.2.2 describes (see normalizeRequestPath), so that a route or
-	// route middleware matches what a request identifies rather than how the
-	// client spelled it. The detection path is the path a route is recognized
-	// by; it differs from the user-visible path only by the configuration
-	// flags applied below.
-	//
-	// Most requests need no normalization, and under the default configuration
-	// — matched case-insensitively — the detection path is then exactly the
-	// case fold of the path, so both are written from a single pass over the
-	// original rather than copying once and folding the copy.
+	// The path is normalized as RFC 3986 Section 6.2.2 describes before any
+	// route sees it (see normalizeRequestPath). The detection path is what a
+	// route is matched against: the case fold of the path unless CaseSensitive
+	// is set. Most requests need no normalization, and under the default
+	// configuration both are then written in a single pass over the original.
 	switch {
 	case needsPathNormalization(c.pathOriginal):
 		c.path = append(c.path[:0], c.pathOriginal...)
-		// Decoded as a path, so a "+" stays a "+".
 		c.path = normalizeRequestPath(c.path, c.app.config.UnescapePath)
-		// The detection path is for routing recognition only. If CaseSensitive
-		// is disabled, we lowercase the path while copying it, fusing the copy
-		// and the case fold into a single pass.
 		if c.app.config.CaseSensitive {
 			c.detectionPath = append(c.detectionPath[:0], c.path...)
 		} else {

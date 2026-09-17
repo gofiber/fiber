@@ -1325,15 +1325,13 @@ func Test_UnescapeSafePath(t *testing.T) {
 		in, out string
 	}{
 		{in: "/no-escape", out: "/no-escape"},
-		// Unreserved characters, and everything else that cannot alter the
-		// structure of the path, are decoded.
+		// bytes that cannot alter the path's structure are decoded
 		{in: "/%41%62%63", out: "/Abc"},
 		{in: "/%7e/%2D%2e%5f", out: "/~/-._"},
 		{in: "/cr%C3%A9er", out: "/créer"},
 		{in: "/a%20b", out: "/a b"},
 		{in: "/%7B%7D%22", out: "/{}\""},
-		// Reserved characters, the percent sign, the backslash and control
-		// characters stay as sent.
+		// reserved characters, "%", the backslash and control characters stay as sent
 		{in: "/a%2Fb%2fc", out: "/a%2Fb%2fc"},
 		{in: "/a%3Fb%23c%40d%2Be", out: "/a%3Fb%23c%40d%2Be"},
 		{in: "/100%2525", out: "/100%2525"},
@@ -1414,9 +1412,8 @@ func Test_NormalizeRequestPath(t *testing.T) {
 	}
 }
 
-// forEachPathSample calls fn with every string of length 0 to 9 over an
-// alphabet that exercises the scanners' cases, plus a few longer ones that
-// cross word boundaries.
+// forEachPathSample calls fn with every string of length 0 to 9 over "/.%a"
+// and a few longer ones that cross word boundaries.
 func forEachPathSample(fn func(string)) {
 	const alphabet = "/.%a"
 	var walk func(prefix string, depth int)

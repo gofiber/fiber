@@ -203,9 +203,7 @@ func Test_Redirect_SameOriginTargets(t *testing.T) {
 		request string
 		want    string
 	}{
-		// The router removes empty segments before the capture is taken, so a
-		// slash run never opens an authority: "/api//evil.com" is captured as
-		// "evil.com" and "https://evil.com" as "https:/evil.com".
+		// the router collapses slash runs before the capture is taken
 		{"protocol relative", "/api/*", "/$1", "/api//evil.com", "/evil.com"},
 		{"long slash run", "/redirect/*", "$1", "/redirect///evil.com", "evil.com"},
 		{"absolute url", "/redirect/*", "$1", "/redirect/https://evil.com", "/https:/evil.com"},

@@ -23,13 +23,11 @@ var ErrInvalidPath = errors.New("invalid path")
 
 const invalidPathSentinel = "/__fiber_invalid__"
 
-// ctxKey is the fasthttp user-value key under which the handler hands its
-// fiber.Ctx to PathRewrite, which fasthttp calls with the RequestCtx alone.
+// ctxKey is the fasthttp user-value key that hands the fiber.Ctx to PathRewrite.
 type ctxKey struct{}
 
-// hasParentDirSegment reports whether the routed path still carries a ".."
-// segment. The router removes dot segments before matching, so this only
-// catches a path set by hand through Ctx.Path.
+// hasParentDirSegment reports whether the routed path still has a ".."
+// segment; the router removes them, so only a Ctx.Path override can.
 func hasParentDirSegment(p string) bool {
 	return hasDotDotSegment(utils.TrimLeft(p, '/'))
 }
@@ -52,13 +50,9 @@ func hasDotDotSegment(p string) bool {
 	return false
 }
 
-// decodeFileName turns the routed path into a file name and reports whether
-// it can be one: a backslash and control characters including NUL cannot,
-// whether decoded or sent raw, and neither can a slash produced by decoding,
-// which would move the name into another directory. With decodeEscapes set,
-// the percent escapes the router left in p are decoded exactly once; without
-// it, the router already decoded everything (UnescapePath), so a remaining "%"
-// is a literal character. A malformed escape is kept as it is.
+// decodeFileName decodes the escapes the router left in p once, or none when
+// decodeEscapes is off (UnescapePath already decoded everything), and rejects
+// a name holding a backslash, a control character or a decoded slash.
 func decodeFileName(p []byte, decodeEscapes bool) (string, error) { //nolint:revive // the flag mirrors UnescapePath; see sanitizePath
 	if !decodeEscapes || bytes.IndexByte(p, '%') < 0 {
 		if slices.ContainsFunc(p, isUnsafeNameByte) {
@@ -89,8 +83,7 @@ func decodeFileName(p []byte, decodeEscapes bool) (string, error) { //nolint:rev
 	return utils.UnsafeString(out), nil
 }
 
-// isUnsafeNameByte reports whether c can never be part of a served file name:
-// a backslash, which Windows reads as a separator, or a control character.
+// isUnsafeNameByte reports whether c can never be part of a served file name.
 func isUnsafeNameByte(c byte) bool {
 	return c == '\\' || c < 0x20 || c == 0x7f
 }
@@ -109,23 +102,12 @@ func unhex(c byte) int {
 	}
 }
 
-// sanitizePath turns the path the router matched, with the route's prefix
-// stripped, into the path the file server opens, and returns ErrInvalidPath
-// when it cannot name a file inside the root.
-//
-// The router normalized p as RFC 3986 Section 6.2.2 describes: ".", ".." and
-// empty segments are gone and every escape that cannot change the path's
-// structure is decoded. What is still encoded — reserved characters such as
-// "%2F" or "%40", "%25" itself, "%5C" and control characters — is decoded here
-// exactly once to obtain the file name, so "photo%402x.png" opens
-// "photo@2x.png" and "100%25.txt" opens "100%.txt". A slash, backslash or
-// control character produced by that decoding cannot be part of a file name
-// and is rejected rather than treated as a separator: "private%2Fsecret.txt"
-// stays one, non-existent name and never reaches "private/secret.txt", which
-// the router did not match. A "%" left after this pass is data, never a second
-// escape to decode; decoding again is what once let "/%2570rivate/secret.txt"
-// past a guard mounted on "/static/private". Under UnescapePath the router
-// decoded every escape already, so decodeEscapes is false and p is used as is.
+// sanitizePath turns the routed path, with the route's prefix stripped, into
+// the path the file server opens, and returns ErrInvalidPath when it cannot
+// name a file inside the root. Escapes the router left encoded are decoded
+// exactly once, so "100%25.txt" opens "100%.txt", and an escape that would
+// produce a separator is refused: "private%2Fsecret.txt" never reaches
+// "private/secret.txt", which the router did not match.
 func sanitizePath(p []byte, filesystem fs.FS, decodeEscapes bool) ([]byte, error) {
 	hasTrailingSlash := len(p) > 0 && p[len(p)-1] == '/'
 
@@ -213,9 +195,8 @@ func New(root string, cfg ...Config) fiber.Handler {
 		}
 	}
 
-	// newFileHandler builds the fasthttp file server for one route prefix.
-	// decodeEscapes is false under UnescapePath, where the router decodes every
-	// escape and a "%" in the routed path is a literal character.
+	// newFileHandler builds the fasthttp file server for one route prefix;
+	// decodeEscapes is off under UnescapePath, which already decoded everything.
 	newFileHandler := func(prefix string, compressedFileSuffixes map[string]string, decodeEscapes bool) fasthttp.RequestHandler {
 		// Is prefix a partial wildcard?
 		if before, _, found := utils.CutByte(prefix, '*'); found {
@@ -270,9 +251,7 @@ func New(root string, cfg ...Config) fiber.Handler {
 			if !ok {
 				return []byte(invalidPathSentinel)
 			}
-			// The path the router matched, not fasthttp's own decoding of the
-			// request, so the file server resolves exactly what the route and
-			// the middleware in front of it saw.
+			// serve the path the router matched, not fasthttp's own decoding
 			path := c.Path()
 			addTrailingSlash := false
 
@@ -292,8 +271,7 @@ func New(root string, cfg ...Config) fiber.Handler {
 					if len(fsRootPrefix) > 0 && hasParentDirSegment(path) {
 						return []byte(invalidPathSentinel)
 					}
-					// A trailing slash lets fasthttp serve a directory's index
-					// without redirecting to the slash form first.
+					// a trailing slash lets fasthttp serve a directory index without a redirect
 					addTrailingSlash = true
 				}
 			}
@@ -363,8 +341,7 @@ func New(root string, cfg ...Config) fiber.Handler {
 
 		fileHandler := fileHandlerFor(c)
 
-		// PathRewrite only receives the fasthttp context; hand it the fiber.Ctx
-		// so the file server resolves the path the router matched.
+		// PathRewrite only receives the fasthttp context; hand it the fiber.Ctx.
 		c.RequestCtx().SetUserValue(ctxKey{}, c)
 
 		// Serve file

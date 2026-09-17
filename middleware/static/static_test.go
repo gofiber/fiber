@@ -1315,9 +1315,7 @@ func Test_SanitizePath(t *testing.T) {
 		{name: "leading dot segment", input: []byte("/./foo/bar.txt"), expectPath: "/foo/bar.txt"},
 		{name: "decoded space", input: []byte("/foo bar/baz.txt"), expectPath: "/foo bar/baz.txt"},
 		{name: "plus literal", input: []byte("/foo+bar/baz.txt"), expectPath: "/foo+bar/baz.txt"},
-		// The router leaves reserved characters, the percent sign and any
-		// escape a Ctx.Path override carries encoded; they are decoded here
-		// exactly once to obtain the file name.
+		// escapes the router left encoded are decoded once
 		{name: "encoded space", input: []byte("/foo%20bar/baz.txt"), expectPath: "/foo bar/baz.txt"},
 		{name: "encoded reserved character", input: []byte("/photo%402x.png"), expectPath: "/photo@2x.png"},
 		{name: "encoded percent sign", input: []byte("/100%25.txt"), expectPath: "/100%.txt"},
@@ -1344,9 +1342,8 @@ func Test_SanitizePath(t *testing.T) {
 	}
 }
 
-// Test_SanitizePath_NoDecode covers the UnescapePath configuration, where the
-// router decoded every escape and a "%" in the routed path is a literal
-// character that must not be decoded a second time.
+// Test_SanitizePath_NoDecode covers UnescapePath, where a "%" left in the
+// routed path is literal and must not be decoded again.
 func Test_SanitizePath_NoDecode(t *testing.T) {
 	t.Parallel()
 
@@ -1377,11 +1374,7 @@ func Test_SanitizePath_Error(t *testing.T) {
 	}
 
 	testCases := []testCase{
-		// A file name must not contain a separator produced by decoding, a
-		// backslash or a control character, whether decoded or sent raw. The
-		// router treats none of these as a separator, so the file server must
-		// not either: "/..\\private/x" is one name to the router and stays one
-		// here rather than becoming "/../private/x".
+		// a decoded slash, a backslash or a control character cannot be part of a name
 		{name: "null byte", input: []byte("/foo/bar.txt\x00")},
 		{name: "encoded null byte", input: []byte("/foo/bar.txt%00")},
 		{name: "control character", input: []byte("/foo\x1fbar.txt")},
@@ -1418,20 +1411,15 @@ func Test_HasParentDirSegment(t *testing.T) {
 		require.True(t, hasParentDirSegment(input), "Expected a parent segment in: %s", input)
 	}
 
-	// Only a "/"-separated ".." is a parent segment: a backslash is an ordinary
-	// character to the router, and an escape left by it is a literal name.
+	// a backslash is an ordinary character and an escape a literal name
 	for _, input := range []string{"/foo/secret.txt", "/..foo/secret.txt", "/foo\\..\\secret.txt", "/%2e%2e/secret.txt", "/%252e%252e/secret.txt"} {
 		require.False(t, hasParentDirSegment(input), "Expected no parent segment in: %s", input)
 	}
 }
 
-// Test_Static_ServesRoutedPath pins that the file server resolves the path the
-// router matched, so middleware mounted on "/static/private" guards every
-// spelling of a path under it. The router normalizes the request per RFC 3986
-// before matching, which folds "%70rivate", "x/../private", "./private" and
-// "//private" into "private", and the file server decodes what the router left
-// encoded exactly once: "%2570rivate" is a literal name, "%2F" never becomes a
-// separator, and "100%25.txt" and "photo%402x.png" reach their files.
+// Test_Static_ServesRoutedPath pins that the file server resolves the path
+// the router matched, so a guard on "/static/private" covers every spelling
+// of a path under it, and that what the router left encoded is decoded once.
 func Test_Static_ServesRoutedPath(t *testing.T) {
 	t.Parallel()
 
@@ -1516,12 +1504,9 @@ func Test_Static_ServesRoutedPath(t *testing.T) {
 	}
 }
 
-// Test_Static_RawBackslashIsNotASeparator sends a request line httptest would
-// not produce on its own, since net/url encodes a backslash. The router reads
-// a backslash as an ordinary character, so "/static/..\private/secret.txt" is
-// one segment that no guard on "/static/private" matches; the file server must
-// therefore not turn it into "/../private/secret.txt" and serve the guarded
-// file, and it must not escape the root either.
+// Test_Static_RawBackslashIsNotASeparator pins that a raw backslash, an
+// ordinary character to the router, never becomes a separator for the file
+// server either. httptest would encode it, so the request line is set by hand.
 func Test_Static_RawBackslashIsNotASeparator(t *testing.T) {
 	t.Parallel()
 
@@ -1529,8 +1514,7 @@ func Test_Static_RawBackslashIsNotASeparator(t *testing.T) {
 	require.NoError(t, os.Mkdir(filepath.Join(root, "private"), 0o750))
 	require.NoError(t, os.WriteFile(filepath.Join(root, "private", "secret.txt"), []byte("SECRET"), 0o600))
 
-	// rawRequest keeps the request line verbatim: app.Test writes the URL's
-	// opaque form as given rather than the escaped form of the parsed path.
+	// app.Test writes the URL's opaque form verbatim
 	rawRequest := func(target string) *http.Request {
 		req := httptest.NewRequest(fiber.MethodGet, "/static/", http.NoBody)
 		req.URL.Opaque = target
