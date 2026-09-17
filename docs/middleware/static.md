@@ -143,6 +143,12 @@ curl http://localhost:3000/web
 To define static routes using `Get`, append the wildcard (`*`) operator at the end of the route.
 :::
 
+:::caution
+Routes are matched against the path as the client sent it unless [`UnescapePath`](../api/fiber.md#config) is enabled, while the file server works on that path decoded once. Without `UnescapePath`, a request for `/static/%70rivate/secret.txt` passes a middleware mounted on `/static/private` and still serves `private/secret.txt`. Enable `UnescapePath` when route middleware protects part of a static tree, or keep protected files out of any directory a broader static route serves.
+
+The middleware never decodes a path a second time. A request that still contains a percent escape after the first decoding, such as `/static/%2570rivate/secret.txt`, is answered with `404 Not Found`. This also means a file whose name contains a literal `%` cannot be served.
+:::
+
 ## Config
 
 | Property   | Type                    | Description                                                                                                                | Default                |

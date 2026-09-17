@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
-	"net/url"
 	"os"
 	pathpkg "path"
 	"path/filepath"
@@ -38,24 +37,28 @@ func bytesToPathString(p []byte) string {
 	return utils.UnsafeString(p)
 }
 
-func unescapePathString(s string) (string, error) {
-	for strings.IndexByte(s, '%') >= 0 {
-		us, err := url.PathUnescape(s)
-		if err != nil {
-			return "", ErrInvalidPath
-		}
-		if us == s {
-			break
-		}
-		s = us
+// rejectResidualEscapes returns ErrInvalidPath when s still contains a percent
+// escape.
+//
+// fasthttp decodes the request path exactly once before PathRewrite sees it,
+// and the router matched the request against at most that one decoding (none
+// at all unless fiber.Config.UnescapePath is set). Decoding again here would let the
+// file server resolve a path the router never matched: a guard mounted on
+// "/static/private" does not see "/static/%2570rivate/secret.txt", yet a second
+// pass turns "%70" into "p" and would serve the protected file. So whatever
+// fasthttp left encoded is either another encoding layer or a malformed escape,
+// and neither names a file this handler may serve.
+func rejectResidualEscapes(s string) error {
+	if strings.IndexByte(s, '%') >= 0 {
+		return ErrInvalidPath
 	}
 
-	return s, nil
+	return nil
 }
 
 func hasParentDirSegment(p []byte) (bool, error) {
-	s, err := unescapePathString(bytesToPathString(p))
-	if err != nil {
+	s := bytesToPathString(p)
+	if err := rejectResidualEscapes(s); err != nil {
 		return false, err
 	}
 
@@ -85,8 +88,8 @@ func hasDotDotSegment(p string) bool {
 func sanitizePath(p []byte, filesystem fs.FS) ([]byte, error) {
 	hasTrailingSlash := len(p) > 0 && p[len(p)-1] == '/'
 
-	s, err := unescapePathString(bytesToPathString(p))
-	if err != nil {
+	s := bytesToPathString(p)
+	if err := rejectResidualEscapes(s); err != nil {
 		return nil, err
 	}
 

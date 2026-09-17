@@ -1291,9 +1291,9 @@ func Benchmark_SanitizePath(b *testing.B) {
 		})
 	}
 
-	bench("nilFS - urlencoded chars", nil, []byte("/foo%2Fbar/../baz%20qux/index.html"))
-	bench("dirFS - urlencoded chars", os.DirFS("."), []byte("/foo%2Fbar/../baz%20qux/index.html"))
-	bench("nilFS - slashes", nil, []byte("\\foo%2Fbar\\baz%20qux\\index.html"))
+	bench("nilFS - decoded chars", nil, []byte("/foo/bar/../baz qux/index.html"))
+	bench("dirFS - decoded chars", os.DirFS("."), []byte("/foo/bar/../baz qux/index.html"))
+	bench("nilFS - slashes", nil, []byte("\\foo/bar\\baz qux\\index.html"))
 }
 
 func Test_SanitizePath(t *testing.T) {
@@ -1309,21 +1309,17 @@ func Test_SanitizePath(t *testing.T) {
 	testCases := []testCase{
 		{name: "simple path", input: []byte("/foo/bar.txt"), expectPath: "/foo/bar.txt"},
 		{name: "traversal attempt", input: []byte("/foo/../../bar.txt"), expectPath: "/bar.txt"},
-		{name: "encoded traversal", input: []byte("/foo/%2e%2e/bar.txt"), expectPath: "/bar.txt"},
-		{name: "double encoded traversal", input: []byte("/%252e%252e/bar.txt"), expectPath: "/bar.txt"},
 		{name: "current dir reference", input: []byte("/foo/./bar.txt"), expectPath: "/foo/bar.txt"},
-		{name: "encoded slash", input: []byte("/foo%2Fbar.txt"), expectPath: "/foo/bar.txt"},
 		{name: "empty path", input: []byte(""), expectPath: "/"},
 		{name: "dot segments", input: []byte("/foo/./bar/../baz.txt"), expectPath: "/foo/baz.txt"},
 		{name: "leading dot segment", input: []byte("/./foo/bar.txt"), expectPath: "/foo/bar.txt"},
-		{name: "encoded space", input: []byte("/foo%20bar/baz.txt"), expectPath: "/foo bar/baz.txt"},
-		{name: "encoded plus literal", input: []byte("/foo+bar/baz.txt"), expectPath: "/foo+bar/baz.txt"},
+		{name: "decoded space", input: []byte("/foo bar/baz.txt"), expectPath: "/foo bar/baz.txt"},
+		{name: "plus literal", input: []byte("/foo+bar/baz.txt"), expectPath: "/foo+bar/baz.txt"},
 		// windows-specific paths
 		{name: "backslash path", input: []byte("\\foo\\bar.txt"), expectPath: "/foo/bar.txt"},
 		{name: "backslash traversal", input: []byte("\\foo\\..\\..\\bar.txt"), expectPath: "/bar.txt"},
 		{name: "mixed slashes", input: []byte("/foo\\bar.txt"), expectPath: "/foo/bar.txt"},
 		{name: "trailing slash preserved", input: []byte("/foo/bar/"), expectPath: "/foo/bar/"},
-		{name: "encoded trailing slash", input: []byte("/foo/bar%2F"), expectPath: "/foo/bar"},
 		{filesystem: os.DirFS("."), name: "filesystem empty path", input: []byte(""), expectPath: "/"},
 		{filesystem: os.DirFS("."), name: "filesystem trailing slash", input: []byte("/foo/"), expectPath: "/foo/"},
 		{filesystem: os.DirFS("."), name: "filesystem traversal clean", input: []byte("/foo/../bar.txt"), expectPath: "/bar.txt"},
@@ -1349,6 +1345,19 @@ func Test_SanitizePath_Error(t *testing.T) {
 	}
 
 	testCases := []testCase{
+		// fasthttp decodes the request path once before PathRewrite runs, so an
+		// escape that survives is a second encoding layer the router never
+		// matched, or a malformed one; sanitizePath refuses both instead of
+		// decoding again.
+		{name: "residual escape", input: []byte("/%70rivate/secret.txt")},
+		{name: "double encoded segment", input: []byte("/%2570rivate/secret.txt")},
+		{name: "encoded space", input: []byte("/foo%20bar/baz.txt")},
+		{name: "encoded slash", input: []byte("/foo%2Fbar.txt")},
+		{name: "encoded trailing slash", input: []byte("/foo/bar%2F")},
+		{name: "encoded traversal", input: []byte("/foo/%2e%2e/bar.txt")},
+		{name: "double encoded traversal", input: []byte("/%252e%252e/bar.txt")},
+		{name: "malformed escape", input: []byte("/100%.txt")},
+		{name: "trailing percent", input: []byte("/foo%")},
 		{name: "null byte", input: []byte("/foo/bar.txt%00")},
 		{name: "encoded backslash traversal", input: []byte("/foo%5C..%5Cbar.txt")},
 		{name: "double encoded backslash traversal", input: []byte("/%255C..%255C..%255CWindows%255Cwin.ini")},
@@ -1373,6 +1382,97 @@ func Test_SanitizePath_Error(t *testing.T) {
 			_, err := sanitizePath(tc.input, tc.filesystem)
 			require.ErrorIs(t, err, ErrInvalidPath, "Expected ErrInvalidPath for input: %s", tc.input)
 		})
+	}
+}
+
+func Test_HasParentDirSegment(t *testing.T) {
+	t.Parallel()
+
+	for _, input := range []string{"/%2e%2e/secret.txt", "/%252e%252e/secret.txt", "/%70rivate/secret.txt"} {
+		_, err := hasParentDirSegment([]byte(input))
+		require.ErrorIs(t, err, ErrInvalidPath, "Expected ErrInvalidPath for input: %s", input)
+	}
+
+	found, err := hasParentDirSegment([]byte("/../secret.txt"))
+	require.NoError(t, err)
+	require.True(t, found)
+
+	found, err = hasParentDirSegment([]byte("/foo/secret.txt"))
+	require.NoError(t, err)
+	require.False(t, found)
+}
+
+// Test_Static_ResidualEscapeDoesNotBypassRouteGuard covers a request such as
+// "/static/%2570rivate/secret.txt". The router matches the path as sent, or
+// decoded once under UnescapePath, so a guard mounted on "/static/private"
+// never sees it, while fasthttp hands the static handler "%70rivate". Decoding
+// that a second time would resolve "private" and serve the guarded file, so the
+// handler has to refuse a path that is still encoded after fasthttp's pass.
+func Test_Static_ResidualEscapeDoesNotBypassRouteGuard(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	require.NoError(t, os.Mkdir(filepath.Join(root, "private"), 0o750))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "private", "secret.txt"), []byte("SECRET"), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "public.txt"), []byte("PUBLIC"), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "hello world.txt"), []byte("HELLO"), 0o600))
+
+	mounts := []struct {
+		mount func(app *fiber.App)
+		name  string
+	}{
+		{name: "get wildcard", mount: func(app *fiber.App) { app.Get("/static/*", New(root)) }},
+		{name: "use prefix", mount: func(app *fiber.App) { app.Use("/static", New(root)) }},
+		{name: "fs root", mount: func(app *fiber.App) { app.Get("/static/*", New("", Config{FS: os.DirFS(root)})) }},
+		// A subdirectory root goes through hasParentDirSegment as well.
+		{name: "fs subdirectory root", mount: func(app *fiber.App) {
+			app.Get("/static/*", New(filepath.Base(root), Config{FS: os.DirFS(filepath.Dir(root))}))
+		}},
+	}
+
+	requests := []struct {
+		name       string
+		target     string
+		wantBody   string
+		wantStatus int
+		unescape   bool
+	}{
+		{name: "public file", target: "/static/public.txt", wantStatus: fiber.StatusOK, wantBody: "PUBLIC"},
+		{name: "guarded file", target: "/static/private/secret.txt", wantStatus: fiber.StatusForbidden, wantBody: "Forbidden"},
+		{name: "single encoding serves the decoded name", target: "/static/hello%20world.txt", wantStatus: fiber.StatusOK, wantBody: "HELLO"},
+		{name: "double encoding is not decoded again", target: "/static/hello%2520world.txt", wantStatus: fiber.StatusNotFound},
+		{name: "double encoded guarded segment", target: "/static/%2570rivate/secret.txt", wantStatus: fiber.StatusNotFound},
+		{name: "triple encoded guarded segment", target: "/static/%252570rivate/secret.txt", wantStatus: fiber.StatusNotFound},
+		{name: "unescaped routing guards single encoding", target: "/static/%70rivate/secret.txt", unescape: true, wantStatus: fiber.StatusForbidden, wantBody: "Forbidden"},
+		{name: "unescaped routing double encoded guarded segment", target: "/static/%2570rivate/secret.txt", unescape: true, wantStatus: fiber.StatusNotFound},
+	}
+
+	for _, m := range mounts {
+		for _, tc := range requests {
+			t.Run(m.name+"/"+tc.name, func(t *testing.T) {
+				t.Parallel()
+
+				app := fiber.New(fiber.Config{UnescapePath: tc.unescape})
+				app.Use("/static/private", func(c fiber.Ctx) error {
+					return c.SendStatus(fiber.StatusForbidden)
+				})
+				m.mount(app)
+
+				resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, tc.target, http.NoBody))
+				require.NoError(t, err, "app.Test(req)")
+				require.Equal(t, tc.wantStatus, resp.StatusCode, "Status code")
+
+				body, err := io.ReadAll(resp.Body)
+				require.NoError(t, err)
+				if tc.wantBody != "" {
+					require.Equal(t, tc.wantBody, string(body))
+				}
+				if tc.wantStatus != fiber.StatusOK {
+					require.NotContains(t, string(body), "SECRET")
+					require.NotContains(t, string(body), "HELLO")
+				}
+			})
+		}
 	}
 }
 
