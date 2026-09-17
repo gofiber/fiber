@@ -589,3 +589,25 @@ func Test_Rewrite_DeprecatedRulesAreQuotedToo(t *testing.T) {
 	require.Equal(t, "/preis-1X000-euro", rewritten(t, cfg, "/preis-1X000-euro"))
 	require.Equal(t, "/hit", rewritten(t, cfg, "/preis-1.000-euro"))
 }
+
+// Test_Rewrite_TwoDigitCaptures pins that "$10" names the tenth capture rather than "$1" followed by "0".
+func Test_Rewrite_TwoDigitCaptures(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Use(New(Config{
+		RuleList: []Rule{{From: "/t/*/*/*/*/*/*/*/*/*/*/*", To: "/r/$11/$10/$1"}},
+	}))
+	app.Get("/r/:a/:b/:c", func(c fiber.Ctx) error {
+		return c.SendString(c.Params("a") + " " + c.Params("b") + " " + c.Params("c"))
+	})
+
+	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/t/a/b/c/d/e/f/g/h/i/j/k", http.NoBody)
+	require.NoError(t, err)
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "k j a", string(body))
+}
