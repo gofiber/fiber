@@ -4,12 +4,14 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"fmt"
+	"go/version"
 	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"regexp"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -203,6 +205,208 @@ func TestCSRFStorageDeleteError(t *testing.T) {
 	require.Equal(t, fiber.StatusTeapot, resp.StatusCode)
 	require.Error(t, captured)
 	require.ErrorContains(t, captured, "csrf: failed to delete token from storage")
+}
+
+func Test_CSRF_CrossOriginProtectionOnly(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name           string
+		method         string
+		secFetchSite   string
+		origin         string
+		trustedOrigins []string
+		bypass         bool
+		allowed        bool
+	}{
+		{name: "safe get", method: fiber.MethodGet, secFetchSite: "cross-site", allowed: true},
+		{name: "safe head", method: fiber.MethodHead, secFetchSite: "cross-site", allowed: true},
+		{name: "safe options", method: fiber.MethodOptions, secFetchSite: "cross-site", allowed: true},
+		{name: "same origin fetch metadata", method: fiber.MethodPost, secFetchSite: "same-origin", allowed: true},
+		{name: "browser navigation", method: fiber.MethodPost, secFetchSite: "none", allowed: true},
+		{name: "non browser request", method: fiber.MethodPost, allowed: true},
+		{name: "matching origin host", method: fiber.MethodPost, origin: "http://example.com", allowed: true},
+		{name: "cross site fetch metadata", method: fiber.MethodPost, secFetchSite: "cross-site"},
+		{name: "same site fetch metadata", method: fiber.MethodPost, secFetchSite: "same-site"},
+		{name: "mixed case fetch metadata", method: fiber.MethodPost, secFetchSite: "Same-Origin"},
+		{name: "malformed fetch metadata", method: fiber.MethodPost, secFetchSite: "invalid"},
+		{name: "cross site overrides matching origin host", method: fiber.MethodPost, secFetchSite: "cross-site", origin: "https://example.com"},
+		{name: "trace is unsafe", method: fiber.MethodTrace, secFetchSite: "cross-site"},
+		{name: "query is unsafe", method: fiber.MethodQuery, secFetchSite: "cross-site"},
+		{name: "mismatched origin host", method: fiber.MethodPost, origin: "https://evil.example"},
+		{name: "origin host case mismatch", method: fiber.MethodPost, origin: "https://EXAMPLE.com"},
+		{name: "malformed origin", method: fiber.MethodPost, origin: "://invalid"},
+		{name: "null origin", method: fiber.MethodPost, origin: "null"},
+		{name: "trusted origin", method: fiber.MethodPost, secFetchSite: "cross-site", origin: "https://trusted.example", trustedOrigins: []string{"https://trusted.example"}, allowed: true},
+		{name: "trusted origin exempts malformed fetch metadata", method: fiber.MethodPost, secFetchSite: "invalid", origin: "https://trusted.example", trustedOrigins: []string{"https://trusted.example"}, allowed: true},
+		{name: "trusted origin match is exact", method: fiber.MethodPost, secFetchSite: "cross-site", origin: "https://TRUSTED.example", trustedOrigins: []string{"https://trusted.example"}},
+		{name: "trusted subdomain", method: fiber.MethodPost, secFetchSite: "cross-site", origin: "https://api.example.net", trustedOrigins: []string{"https://*.example.net"}, allowed: true},
+		{name: "next bypass", method: fiber.MethodPost, secFetchSite: "cross-site", bypass: true, allowed: true},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			var captured error
+			app := fiber.New()
+			app.Use(New(Config{
+				CrossOriginProtectionOnly: true,
+				TrustedOrigins:            test.trustedOrigins,
+				Next: func(fiber.Ctx) bool {
+					return test.bypass
+				},
+				ErrorHandler: func(_ fiber.Ctx, err error) error {
+					captured = err
+					return fiber.ErrForbidden
+				},
+			}))
+			app.All("/", func(c fiber.Ctx) error {
+				return c.SendStatus(fiber.StatusNoContent)
+			})
+
+			req := httptest.NewRequest(test.method, "https://example.com/", http.NoBody)
+			if test.secFetchSite != "" {
+				req.Header.Set(fiber.HeaderSecFetchSite, test.secFetchSite)
+			}
+			if test.origin != "" {
+				req.Header.Set(fiber.HeaderOrigin, test.origin)
+			}
+
+			resp, err := app.Test(req)
+			require.NoError(t, err)
+			defer func() { require.NoError(t, resp.Body.Close()) }()
+
+			if test.allowed {
+				require.Equal(t, fiber.StatusNoContent, resp.StatusCode)
+				require.Empty(t, resp.Header.Values(fiber.HeaderSetCookie))
+				require.NoError(t, captured)
+				return
+			}
+			require.Equal(t, fiber.StatusForbidden, resp.StatusCode)
+			require.ErrorIs(t, captured, ErrCrossOriginRequest)
+		})
+	}
+}
+
+func Test_CSRF_CrossOriginProtectionOnly_matches_netHTTP_Check(t *testing.T) {
+	t.Parallel()
+
+	if version.Compare(runtime.Version(), "go1.25") < 0 {
+		t.Skip("net/http.CrossOriginProtection requires Go 1.25")
+	}
+
+	tests := []struct {
+		name          string
+		method        string
+		host          string
+		secFetchSite  string
+		origin        string
+		trustedOrigin string
+	}{
+		{name: "safe method", method: fiber.MethodGet, host: "example.com", secFetchSite: "cross-site"},
+		{name: "same origin fetch metadata", method: fiber.MethodPost, host: "example.com", secFetchSite: "same-origin"},
+		{name: "browser navigation", method: fiber.MethodPost, host: "example.com", secFetchSite: "none"},
+		{name: "no browser headers", method: fiber.MethodPost, host: "example.com"},
+		{name: "matching origin host", method: fiber.MethodPost, host: "example.com", origin: "https://example.com"},
+		{name: "matching origin host with port", method: fiber.MethodPost, host: "example.com:8443", origin: "https://example.com:8443"},
+		{name: "cross site", method: fiber.MethodPost, host: "example.com", secFetchSite: "cross-site"},
+		{name: "same site", method: fiber.MethodPost, host: "example.com", secFetchSite: "same-site"},
+		{name: "mixed case fetch metadata", method: fiber.MethodPost, host: "example.com", secFetchSite: "Same-Origin"},
+		{name: "malformed fetch metadata", method: fiber.MethodPost, host: "example.com", secFetchSite: "invalid"},
+		{name: "cross site with matching host", method: fiber.MethodPost, host: "example.com", secFetchSite: "cross-site", origin: "https://example.com"},
+		{name: "mismatched origin host", method: fiber.MethodPost, host: "example.com", origin: "https://evil.example"},
+		{name: "origin host case mismatch", method: fiber.MethodPost, host: "example.com", origin: "https://EXAMPLE.com"},
+		{name: "malformed origin", method: fiber.MethodPost, host: "example.com", origin: "://invalid"},
+		{name: "null origin", method: fiber.MethodPost, host: "example.com", origin: "null"},
+		{name: "trusted origin", method: fiber.MethodPost, host: "example.com", secFetchSite: "cross-site", origin: "https://trusted.example", trustedOrigin: "https://trusted.example"},
+		{name: "trusted origin exact mismatch", method: fiber.MethodPost, host: "example.com", secFetchSite: "cross-site", origin: "https://TRUSTED.example", trustedOrigin: "https://trusted.example"},
+	}
+
+	var source strings.Builder
+	writeSource := func(value string) {
+		_, err := source.WriteString(value)
+		require.NoError(t, err)
+	}
+	writeSource("package main\nimport (\"fmt\"; \"net/http\")\nfunc main() {\n")
+	for _, test := range tests {
+		writeSource("{ protection := http.NewCrossOriginProtection()\n")
+		if test.trustedOrigin != "" {
+			writeSource("if err := protection.AddTrustedOrigin(" + strconv.Quote(test.trustedOrigin) + "); err != nil { panic(err) }\n")
+		}
+		writeSource("request := &http.Request{Method: " + strconv.Quote(test.method) + ", Host: " + strconv.Quote(test.host) + ", Header: http.Header{\"Sec-Fetch-Site\": []string{" + strconv.Quote(test.secFetchSite) + "}, \"Origin\": []string{" + strconv.Quote(test.origin) + "}}}\n")
+		writeSource("fmt.Println(protection.Check(request) == nil) }\n")
+	}
+	writeSource("}\n")
+
+	sourcePath := t.TempDir() + "/main.go"
+	require.NoError(t, os.WriteFile(sourcePath, []byte(source.String()), 0o600))
+	output, err := exec.Command("go", "run", sourcePath).CombinedOutput()
+	require.NoError(t, err, string(output))
+	stdlibResults := strings.Fields(string(output))
+	require.Len(t, stdlibResults, len(tests))
+
+	for i, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			stdlibAllowed, err := strconv.ParseBool(stdlibResults[i])
+			require.NoError(t, err)
+
+			var captured error
+			app := fiber.New()
+			config := Config{
+				CrossOriginProtectionOnly: true,
+				ErrorHandler: func(_ fiber.Ctx, err error) error {
+					captured = err
+					return fiber.ErrForbidden
+				},
+			}
+			if test.trustedOrigin != "" {
+				config.TrustedOrigins = []string{test.trustedOrigin}
+			}
+			app.Use(New(config))
+			app.All("/", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusNoContent) })
+
+			req := httptest.NewRequest(test.method, "https://"+test.host+"/", http.NoBody)
+			req.Header.Set(fiber.HeaderSecFetchSite, test.secFetchSite)
+			req.Header.Set(fiber.HeaderOrigin, test.origin)
+			resp, err := app.Test(req)
+			require.NoError(t, err)
+			defer func() { require.NoError(t, resp.Body.Close()) }()
+
+			fiberAllowed := resp.StatusCode == fiber.StatusNoContent
+			require.Equal(t, stdlibAllowed, fiberAllowed)
+			if !fiberAllowed {
+				require.ErrorIs(t, captured, ErrCrossOriginRequest)
+			}
+		})
+	}
+}
+
+func Test_CSRF_CrossOriginProtectionOnly_bypasses_token_state(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Use(New(Config{
+		CrossOriginProtectionOnly: true,
+		KeyGenerator: func() string {
+			panic("cross-origin-only mode generated a token")
+		},
+	}))
+	app.Post("/", func(c fiber.Ctx) error {
+		require.Empty(t, TokenFromContext(c))
+		require.Nil(t, HandlerFromContext(c))
+		return c.SendStatus(fiber.StatusNoContent)
+	})
+
+	req := httptest.NewRequest(fiber.MethodPost, "https://example.com/", http.NoBody)
+	req.Header.Set(fiber.HeaderSecFetchSite, "same-origin")
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	defer func() { require.NoError(t, resp.Body.Close()) }()
+	require.Equal(t, fiber.StatusNoContent, resp.StatusCode)
+	require.Empty(t, resp.Header.Values(fiber.HeaderSetCookie))
 }
 
 func Test_CSRF(t *testing.T) {
@@ -2054,6 +2258,29 @@ func Benchmark_Middleware_CSRF_Check(b *testing.B) {
 	ctx.Request.Header.Set(fiber.HeaderReferer, "https://example.com")
 	ctx.Request.Header.Set(HeaderName, token)
 	ctx.Request.Header.SetCookie(ConfigDefault.CookieName, token)
+
+	b.ReportAllocs()
+
+	for b.Loop() {
+		h(ctx)
+	}
+
+	require.Equal(b, fiber.StatusTeapot, ctx.Response.Header.StatusCode())
+}
+
+func Benchmark_Middleware_CSRF_CrossOriginProtectionOnly(b *testing.B) {
+	app := fiber.New()
+
+	app.Use(New(Config{CrossOriginProtectionOnly: true}))
+	app.Post("/", func(c fiber.Ctx) error {
+		return c.SendStatus(fiber.StatusTeapot)
+	})
+
+	h := app.Handler()
+	ctx := &fasthttp.RequestCtx{}
+	ctx.Request.Header.SetMethod(fiber.MethodPost)
+	ctx.Request.Header.SetHost("example.com")
+	ctx.Request.Header.Set(fiber.HeaderSecFetchSite, "same-origin")
 
 	b.ReportAllocs()
 
