@@ -37,32 +37,10 @@ func bytesToPathString(p []byte) string {
 	return utils.UnsafeString(p)
 }
 
-// rejectResidualEscapes returns ErrInvalidPath when s still contains a percent
-// escape.
-//
-// fasthttp decodes the request path exactly once before PathRewrite sees it,
-// and the router matched the request against at most that one decoding (none
-// at all unless fiber.Config.UnescapePath is set). Decoding again here would let the
-// file server resolve a path the router never matched: a guard mounted on
-// "/static/private" does not see "/static/%2570rivate/secret.txt", yet a second
-// pass turns "%70" into "p" and would serve the protected file. So whatever
-// fasthttp left encoded is either another encoding layer or a malformed escape,
-// and neither names a file this handler may serve.
-func rejectResidualEscapes(s string) error {
-	if strings.IndexByte(s, '%') >= 0 {
-		return ErrInvalidPath
-	}
-
-	return nil
-}
-
-func hasParentDirSegment(p []byte) (bool, error) {
-	s := bytesToPathString(p)
-	if err := rejectResidualEscapes(s); err != nil {
-		return false, err
-	}
-
-	return hasDotDotSegment(utils.TrimLeft(filepath.ToSlash(s), '/')), nil
+// hasParentDirSegment reports whether the request path, read the way
+// sanitizePath reads it, contains a ".." segment.
+func hasParentDirSegment(p []byte) bool {
+	return hasDotDotSegment(utils.TrimLeft(filepath.ToSlash(bytesToPathString(p)), '/'))
 }
 
 // hasDotDotSegment reports whether any "/"-separated segment of p is "..".
@@ -85,16 +63,23 @@ func hasDotDotSegment(p string) bool {
 
 // sanitizePath validates and cleans the requested path.
 // It returns an error if the path attempts to traverse directories.
+//
+// p is the request path as fasthttp hands it to PathRewrite: decoded exactly
+// once and with its dot segments collapsed. It is used as is. A percent sign
+// that survives that single decoding is data (RFC 3986 Section 2.4), so
+// "/%2570rivate/x" names a directory literally called "%70rivate", never
+// "private", and a file called "100%.txt" is reached as "/100%25.txt".
+// Decoding again here would let the file server resolve a path the router
+// never matched: a guard mounted on "/static/private" does not see
+// "/static/%2570rivate/secret.txt", yet a second pass would turn "%70" into
+// "p" and serve the protected file.
 func sanitizePath(p []byte, filesystem fs.FS) ([]byte, error) {
 	hasTrailingSlash := len(p) > 0 && p[len(p)-1] == '/'
 
+	// bytesToPathString turned every backslash into a slash, so only a null
+	// byte, which fasthttp decodes from %00, is left to reject here.
 	s := bytesToPathString(p)
-	if err := rejectResidualEscapes(s); err != nil {
-		return nil, err
-	}
-
-	// reject backslashes and null bytes in a single scan
-	if utils.IndexAny2(s, '\\', '\x00') >= 0 {
+	if strings.IndexByte(s, '\x00') >= 0 {
 		return nil, ErrInvalidPath
 	}
 
@@ -244,11 +229,8 @@ func New(root string, cfg ...Config) fiber.Handler {
 					path = utils.UnsafeBytes(root)
 				default:
 					path = path[prefixLen:]
-					if len(fsRootPrefix) > 0 {
-						hasTraversal, err := hasParentDirSegment(path)
-						if err != nil || hasTraversal {
-							return []byte(invalidPathSentinel)
-						}
+					if len(fsRootPrefix) > 0 && hasParentDirSegment(path) {
+						return []byte(invalidPathSentinel)
 					}
 					if len(path) == 0 || path[len(path)-1] != '/' {
 						path = append(path, '/')

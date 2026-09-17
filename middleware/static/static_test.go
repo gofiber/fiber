@@ -1315,12 +1315,27 @@ func Test_SanitizePath(t *testing.T) {
 		{name: "leading dot segment", input: []byte("/./foo/bar.txt"), expectPath: "/foo/bar.txt"},
 		{name: "decoded space", input: []byte("/foo bar/baz.txt"), expectPath: "/foo bar/baz.txt"},
 		{name: "plus literal", input: []byte("/foo+bar/baz.txt"), expectPath: "/foo+bar/baz.txt"},
+		// fasthttp decoded the path once before PathRewrite ran, so a percent
+		// sign that is still here is data (RFC 3986 Section 2.4): it names the
+		// file literally and is never decoded a second time.
+		{name: "literal percent", input: []byte("/100%.txt"), expectPath: "/100%.txt"},
+		{name: "trailing percent", input: []byte("/foo%"), expectPath: "/foo%"},
+		{name: "escape kept literally", input: []byte("/%70rivate/secret.txt"), expectPath: "/%70rivate/secret.txt"},
+		{name: "double encoded segment kept literally", input: []byte("/%2570rivate/secret.txt"), expectPath: "/%2570rivate/secret.txt"},
+		{name: "encoded space kept literally", input: []byte("/foo%20bar/baz.txt"), expectPath: "/foo%20bar/baz.txt"},
+		{name: "encoded slash kept literally", input: []byte("/foo%2Fbar.txt"), expectPath: "/foo%2Fbar.txt"},
+		{name: "encoded trailing slash kept literally", input: []byte("/foo/bar%2F"), expectPath: "/foo/bar%2F"},
+		{name: "encoded traversal kept literally", input: []byte("/foo/%2e%2e/bar.txt"), expectPath: "/foo/%2e%2e/bar.txt"},
+		{name: "double encoded traversal kept literally", input: []byte("/%252e%252e/bar.txt"), expectPath: "/%252e%252e/bar.txt"},
+		{name: "encoded backslash kept literally", input: []byte("/foo%5C..%5Cbar.txt"), expectPath: "/foo%5C..%5Cbar.txt"},
 		// windows-specific paths
 		{name: "backslash path", input: []byte("\\foo\\bar.txt"), expectPath: "/foo/bar.txt"},
 		{name: "backslash traversal", input: []byte("\\foo\\..\\..\\bar.txt"), expectPath: "/bar.txt"},
+		{name: "backslash parent segments confined to root", input: []byte("/..\\..\\etc\\passwd"), expectPath: "/etc/passwd"},
 		{name: "mixed slashes", input: []byte("/foo\\bar.txt"), expectPath: "/foo/bar.txt"},
 		{name: "trailing slash preserved", input: []byte("/foo/bar/"), expectPath: "/foo/bar/"},
 		{filesystem: os.DirFS("."), name: "filesystem empty path", input: []byte(""), expectPath: "/"},
+		{filesystem: os.DirFS("."), name: "filesystem literal percent", input: []byte("/100%.txt"), expectPath: "/100%.txt"},
 		{filesystem: os.DirFS("."), name: "filesystem trailing slash", input: []byte("/foo/"), expectPath: "/foo/"},
 		{filesystem: os.DirFS("."), name: "filesystem traversal clean", input: []byte("/foo/../bar.txt"), expectPath: "/bar.txt"},
 	}
@@ -1345,35 +1360,18 @@ func Test_SanitizePath_Error(t *testing.T) {
 	}
 
 	testCases := []testCase{
-		// fasthttp decodes the request path once before PathRewrite runs, so an
-		// escape that survives is a second encoding layer the router never
-		// matched, or a malformed one; sanitizePath refuses both instead of
-		// decoding again.
-		{name: "residual escape", input: []byte("/%70rivate/secret.txt")},
-		{name: "double encoded segment", input: []byte("/%2570rivate/secret.txt")},
-		{name: "encoded space", input: []byte("/foo%20bar/baz.txt")},
-		{name: "encoded slash", input: []byte("/foo%2Fbar.txt")},
-		{name: "encoded trailing slash", input: []byte("/foo/bar%2F")},
-		{name: "encoded traversal", input: []byte("/foo/%2e%2e/bar.txt")},
-		{name: "double encoded traversal", input: []byte("/%252e%252e/bar.txt")},
-		{name: "malformed escape", input: []byte("/100%.txt")},
-		{name: "trailing percent", input: []byte("/foo%")},
-		{name: "null byte", input: []byte("/foo/bar.txt%00")},
-		{name: "encoded backslash traversal", input: []byte("/foo%5C..%5Cbar.txt")},
-		{name: "double encoded backslash traversal", input: []byte("/%255C..%255C..%255CWindows%255Cwin.ini")},
-		{name: "encoded backslash absolute", input: []byte("/%5CWindows%5CSystem32%5Cdrivers%5Cetc%5Chosts")},
-		{name: "double encoded backslash absolute", input: []byte("/%255CWindows%255CSystem32%255Cdrivers%255Cetc%255Chosts")},
-		{name: "encoded backslash mixed slashes", input: []byte("/..%5C..%5Cetc%5Cpasswd")},
-		{name: "encoded backslash mixed encoding", input: []byte("/%2e%2e%5c%2e%2e%5cetc%5cpasswd")},
-		{name: "encoded backslash with encoded slash", input: []byte("/%2e%2e%2f%2e%2e%5cetc%5cpasswd")},
-		{name: "encoded backslash unc path", input: []byte("//server%5Cshare%5Csecret.txt")},
-		{name: "encoded backslash drive letter", input: []byte("/C:%5CWindows%5CSystem32%5Ccmd.exe")},
+		// The inputs are what fasthttp hands to PathRewrite, so an escape such
+		// as %5C or %00 has already become the character it stands for.
+		{name: "null byte", input: []byte("/foo/bar.txt\x00")},
+		{name: "backslash absolute", input: []byte("/\\Windows\\System32\\drivers\\etc\\hosts")},
+		{name: "backslash unc path", input: []byte("\\\\server\\share\\secret.txt")},
+		{name: "backslash unc path with leading slash", input: []byte("/\\\\server\\share\\secret.txt")},
+		{name: "backslash drive letter", input: []byte("/C:\\Windows\\System32\\cmd.exe")},
 		{name: "double slash path", input: []byte("//foo//bar.txt")},
+		{name: "triple slash path", input: []byte("///server/share/secret.txt")},
 		{name: "drive letter", input: []byte("C:/Windows/System32/cmd.exe")},
 		{name: "drive letter with leading slash", input: []byte("/C:/Windows/System32/cmd.exe")},
-		{name: "encoded drive letter", input: []byte("/%43:%5CWindows%5CSystem32%5Ccmd.exe")},
 		{name: "unc path", input: []byte("//server/share/secret.txt")},
-		{name: "encoded unc path", input: []byte("/%2F%2Fserver%2Fshare%2Fsecret.txt")},
 	}
 
 	for _, tc := range testCases {
@@ -1388,27 +1386,25 @@ func Test_SanitizePath_Error(t *testing.T) {
 func Test_HasParentDirSegment(t *testing.T) {
 	t.Parallel()
 
-	for _, input := range []string{"/%2e%2e/secret.txt", "/%252e%252e/secret.txt", "/%70rivate/secret.txt"} {
-		_, err := hasParentDirSegment([]byte(input))
-		require.ErrorIs(t, err, ErrInvalidPath, "Expected ErrInvalidPath for input: %s", input)
+	for _, input := range []string{"/../secret.txt", "/foo/../../secret.txt", "\\..\\secret.txt"} {
+		require.True(t, hasParentDirSegment([]byte(input)), "Expected a parent segment in: %s", input)
 	}
 
-	found, err := hasParentDirSegment([]byte("/../secret.txt"))
-	require.NoError(t, err)
-	require.True(t, found)
-
-	found, err = hasParentDirSegment([]byte("/foo/secret.txt"))
-	require.NoError(t, err)
-	require.False(t, found)
+	// A percent sign left after fasthttp's single decode is data, so an encoded
+	// ".." is an ordinary name rather than a parent segment.
+	for _, input := range []string{"/foo/secret.txt", "/..foo/secret.txt", "/%2e%2e/secret.txt", "/%252e%252e/secret.txt"} {
+		require.False(t, hasParentDirSegment([]byte(input)), "Expected no parent segment in: %s", input)
+	}
 }
 
-// Test_Static_ResidualEscapeDoesNotBypassRouteGuard covers a request such as
+// Test_Static_PathIsDecodedOnce covers a request such as
 // "/static/%2570rivate/secret.txt". The router matches the path as sent, or
 // decoded once under UnescapePath, so a guard mounted on "/static/private"
 // never sees it, while fasthttp hands the static handler "%70rivate". Decoding
-// that a second time would resolve "private" and serve the guarded file, so the
-// handler has to refuse a path that is still encoded after fasthttp's pass.
-func Test_Static_ResidualEscapeDoesNotBypassRouteGuard(t *testing.T) {
+// that a second time would resolve "private" and serve the guarded file. The
+// handler instead uses fasthttp's single decoding as is: "%70rivate" names a
+// directory literally, and a file called "100%.txt" is reached as "100%25.txt".
+func Test_Static_PathIsDecodedOnce(t *testing.T) {
 	t.Parallel()
 
 	root := t.TempDir()
@@ -1416,6 +1412,7 @@ func Test_Static_ResidualEscapeDoesNotBypassRouteGuard(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(root, "private", "secret.txt"), []byte("SECRET"), 0o600))
 	require.NoError(t, os.WriteFile(filepath.Join(root, "public.txt"), []byte("PUBLIC"), 0o600))
 	require.NoError(t, os.WriteFile(filepath.Join(root, "hello world.txt"), []byte("HELLO"), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "100%.txt"), []byte("PERCENT"), 0o600))
 
 	mounts := []struct {
 		mount func(app *fiber.App)
@@ -1440,6 +1437,7 @@ func Test_Static_ResidualEscapeDoesNotBypassRouteGuard(t *testing.T) {
 		{name: "public file", target: "/static/public.txt", wantStatus: fiber.StatusOK, wantBody: "PUBLIC"},
 		{name: "guarded file", target: "/static/private/secret.txt", wantStatus: fiber.StatusForbidden, wantBody: "Forbidden"},
 		{name: "single encoding serves the decoded name", target: "/static/hello%20world.txt", wantStatus: fiber.StatusOK, wantBody: "HELLO"},
+		{name: "literal percent in the name", target: "/static/100%25.txt", wantStatus: fiber.StatusOK, wantBody: "PERCENT"},
 		{name: "double encoding is not decoded again", target: "/static/hello%2520world.txt", wantStatus: fiber.StatusNotFound},
 		{name: "double encoded guarded segment", target: "/static/%2570rivate/secret.txt", wantStatus: fiber.StatusNotFound},
 		{name: "triple encoded guarded segment", target: "/static/%252570rivate/secret.txt", wantStatus: fiber.StatusNotFound},
@@ -1470,6 +1468,7 @@ func Test_Static_ResidualEscapeDoesNotBypassRouteGuard(t *testing.T) {
 				if tc.wantStatus != fiber.StatusOK {
 					require.NotContains(t, string(body), "SECRET")
 					require.NotContains(t, string(body), "HELLO")
+					require.NotContains(t, string(body), "PERCENT")
 				}
 			})
 		}
