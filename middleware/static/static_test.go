@@ -1382,6 +1382,8 @@ func Test_SanitizePath_Error(t *testing.T) {
 		{name: "empty segment before the trailing slash", input: []byte("/foo//")},
 		{filesystem: os.DirFS("."), name: "filesystem parent segment", input: []byte("/foo/../bar.txt")},
 		{filesystem: os.DirFS("."), name: "filesystem empty segment", input: []byte("/foo//bar.txt")},
+		// fs.FS names must be valid UTF-8 (fs.ValidPath)
+		{filesystem: os.DirFS("."), name: "filesystem invalid utf-8", input: []byte("/foo%FF.txt")},
 		// a malformed escape is not a valid spelling of any name
 		{name: "malformed escape", input: []byte("/a%zzb.txt")},
 		{name: "truncated escape", input: []byte("/foo%2")},
