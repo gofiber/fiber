@@ -201,10 +201,10 @@ Place routes with variable parameters after fixed paths to avoid unintended matc
 
 Before a request is matched, Fiber normalizes its path as [RFC 3986 Section 6.2.2](https://www.rfc-editor.org/rfc/rfc3986#section-6.2.2) describes:
 
-- Percent-encoded characters that cannot change the structure of the path are decoded, so `/%70rivate` is matched as `/private`. Reserved characters such as an encoded slash (`%2F`) stay encoded and do not split a segment, unless [`UnescapePath`](../api/fiber.md#config) is enabled, which decodes them as well.
-- `.` and `..` segments are resolved and empty segments are removed, so `/static/x/../private`, `/static/./private` and `/static//private` are all matched as `/static/private`. A `..` never climbs above the root.
+- Percent-encoded unreserved characters (letters, digits, `-`, `.`, `_` and `~`) are decoded, so `/%70rivate` is matched as `/private`. Every other escape stays encoded with uppercase hex digits, so an encoded slash (`%2F`) never splits a segment and `/a%2fb` is matched as `/a%2Fb`. With [`UnescapePath`](../api/fiber.md#config) enabled, every escape is decoded instead.
+- `.` and `..` segments are resolved, so `/static/x/../private` and `/static/./private` are both matched as `/static/private`. A `..` never climbs above the root. Empty segments are kept: `/static//private` is a different path from `/static/private`.
 
-Middleware mounted on a prefix therefore sees every spelling of a path under it, and [`c.Path()`](../api/ctx.md#path) returns the normalized path. Decoding happens exactly once, so `/%2570rivate` stays `/%2570rivate` and never becomes `/private`. [`c.OriginalURL()`](../api/ctx.md#originalurl) still returns the request target as the client sent it.
+Middleware mounted on a prefix therefore sees these spellings of a path under it, and [`c.Path()`](../api/ctx.md#path) returns the normalized path. Decoding happens exactly once: `/%2570rivate` is matched as `/%2570rivate` by default and as `/%70rivate` with `UnescapePath`, and neither becomes `/private`. [`c.OriginalURL()`](../api/ctx.md#originalurl) still returns the request target as the client sent it.
 
 ## Parameters
 

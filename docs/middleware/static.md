@@ -144,9 +144,9 @@ To define static routes using `Get`, append the wildcard (`*`) operator at the e
 :::
 
 :::info
-The file server resolves the path the router matched. Fiber normalizes request paths before routing (see [Path normalization](../guide/routing.md#path-normalization)), so middleware mounted on `/static/private` also guards `/static/%70rivate/secret.txt`, `/static/x/../private/secret.txt` and `/static//private/secret.txt`.
+The file server resolves the path the router matched. Fiber normalizes request paths before routing (see [Path normalization](../guide/routing.md#path-normalization)), so middleware mounted on `/static/private` also guards `/static/%70rivate/secret.txt` and `/static/x/../private/secret.txt`.
 
-Escapes the router leaves encoded, such as `%40` or `%25`, are decoded once more to obtain the file name: `/static/photo%402x.png` serves `photo@2x.png` and `/static/100%25.txt` serves `100%.txt`. An escape that would produce a slash, a backslash or a control character cannot name a file and is answered with `404 Not Found`, so `/static/private%2Fsecret.txt` never reaches `private/secret.txt` unless [`UnescapePath`](../api/fiber.md#config) decodes it for the router as well. A percent sign that remains after that single decoding is an ordinary character, as [RFC 3986](https://www.rfc-editor.org/rfc/rfc3986#section-2.4) requires, so `/static/%2570rivate/secret.txt` looks for a directory literally named `%70rivate` and never reaches `private`.
+Escapes the router leaves encoded, such as `%20`, `%40` or `%25`, are decoded once to obtain the file name: `/static/hello%20world.txt` serves `hello world.txt` and `/static/100%25.txt` serves `100%.txt`. A path that cannot name a file inside the root is answered with `404 Not Found`: an escape that would produce a slash, a backslash or a control character, a malformed escape, and an empty, `.` or `..` segment. So `/static/private%2Fsecret.txt` never reaches `private/secret.txt` unless [`UnescapePath`](../api/fiber.md#config) decodes it for the router as well, and `/static//private/secret.txt` is not found. A percent sign that remains after that single decoding is an ordinary character, as [RFC 3986](https://www.rfc-editor.org/rfc/rfc3986#section-2.4) requires, so `/static/%2570rivate/secret.txt` looks for a directory literally named `%70rivate` and never reaches `private`.
 :::
 
 ## Config

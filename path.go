@@ -332,27 +332,31 @@ func unhex(c byte) int {
 	}
 }
 
-// pathKeepEncoded marks the bytes the router leaves percent-encoded when it
-// normalizes a request path: the reserved characters of RFC 3986 Section 2.2,
-// whose encoded form is a different URI (an encoded slash must not split a
-// segment), the percent sign, the backslash and control characters.
-var pathKeepEncoded = newPathKeepEncoded()
+// pathUnreserved marks the unreserved characters of RFC 3986 Section 2.3.
+// Only their percent-encoded forms name the same resource as the characters
+// themselves (Section 6.2.2.2), so they are the escapes the router decodes.
+var pathUnreserved = newPathUnreserved()
 
-func newPathKeepEncoded() [256]bool {
-	var keep [256]bool
-	for _, c := range []byte(":/?#[]@!$&'()*+,;=%\\") {
-		keep[c] = true
+func newPathUnreserved() [256]bool {
+	var unreserved [256]bool
+	for c := byte('a'); c <= 'z'; c++ {
+		unreserved[c] = true
+		unreserved[c-'a'+'A'] = true
 	}
-	for c := range 0x20 {
-		keep[c] = true
+	for c := byte('0'); c <= '9'; c++ {
+		unreserved[c] = true
 	}
-	keep[0x7f] = true
-	return keep
+	for _, c := range []byte("-._~") {
+		unreserved[c] = true
+	}
+	return unreserved
 }
 
-// unescapeSafePath decodes, in place, the escapes of bytes outside
-// pathKeepEncoded and keeps every other or malformed escape as sent.
+// unescapeSafePath normalizes the percent escapes of b in place (RFC 3986
+// Section 6.2.2): an escape of an unreserved character is decoded, any other
+// escape is kept with uppercase hex digits, and a malformed one stays as sent.
 func unescapeSafePath(b []byte) []byte {
+	const upperhex = "0123456789ABCDEF"
 	i := bytes.IndexByte(b, '%')
 	if i == -1 {
 		return b
@@ -362,14 +366,13 @@ func unescapeSafePath(b []byte) []byte {
 	for i < n {
 		if b[i] == '%' && i+2 < n {
 			if hi, lo := unhex(b[i+1]), unhex(b[i+2]); hi >= 0 && lo >= 0 {
-				if v := byte(hi<<4 | lo); !pathKeepEncoded[v] { //nolint:gosec // G115: both nibbles are 0-15
+				if v := byte(hi<<4 | lo); pathUnreserved[v] { //nolint:gosec // G115: both nibbles are 0-15
 					b[dst] = v
 					dst++
-					i += 3
-					continue
+				} else {
+					b[dst], b[dst+1], b[dst+2] = '%', upperhex[hi], upperhex[lo]
+					dst += 3
 				}
-				b[dst], b[dst+1], b[dst+2] = b[i], b[i+1], b[i+2]
-				dst += 3
 				i += 3
 				continue
 			}
@@ -381,11 +384,12 @@ func unescapeSafePath(b []byte) []byte {
 	return b[:dst]
 }
 
-// cleanPathSegments removes "." and ".." segments (RFC 3986 Section 5.2.4)
-// and empty segments in place. ".." never climbs above the root, and a path
-// ending in a removed segment keeps its trailing slash: "/a/b/.." is "/a/".
+// cleanPathSegments removes the "." and ".." segments of b in place, as
+// RFC 3986 Section 5.2.4 describes. ".." never climbs above the root, a path
+// ending in a removed segment keeps its trailing slash ("/a/b/.." is "/a/"),
+// and empty segments stay: "/a//b" and "/a/b" are different paths.
 func cleanPathSegments(b []byte) []byte {
-	if !hasDotOrEmptySegment(b) {
+	if !hasDotSegment(b) {
 		return b
 	}
 	n := len(b)
@@ -404,9 +408,6 @@ func cleanPathSegments(b []byte) []byte {
 		seg := b[i:j]
 		last := j == n
 		switch {
-		case len(seg) == 0:
-			// only the trailing slash of a directory path is kept
-			trailingSlash = last
 		case len(seg) == 1 && seg[0] == '.':
 			trailingSlash = last
 		case len(seg) == 2 && seg[0] == '.' && seg[1] == '.':
@@ -436,19 +437,18 @@ func cleanPathSegments(b []byte) []byte {
 // pairWindow is the span two words that overlap by one byte cover.
 const pairWindow = 2*swar.WordLen - 1
 
-// slashPairLanes flags the lanes of w holding a '/' followed within w by a
-// '/' or a '.'. Load8 puts byte k in lane k, so a shift by one lane compares
-// each byte with its successor; callers overlap words by one byte for the
-// pair that straddles two words.
-func slashPairLanes(w uint64) uint64 {
-	slash := swar.MatchByteMask(w, '/')
-	return slash & ((slash | swar.MatchByteMask(w, '.')) >> 8)
+// slashDotLanes flags the lanes of w holding a '/' followed within w by a
+// '.'. Load8 puts byte k in lane k, so a shift by one lane compares each byte
+// with its successor; callers overlap words by one byte for the pair that
+// straddles two words.
+func slashDotLanes(w uint64) uint64 {
+	return swar.MatchByteMask(w, '/') & (swar.MatchByteMask(w, '.') >> 8)
 }
 
 // needsPathNormalization reports whether normalizeRequestPath could change s:
-// it holds a percent escape, an empty segment or a segment starting with a
-// dot. It scans a word at a time and serves where fasthttp's own normalization
-// cannot answer the question (see DefaultCtx.pathNeedsNormalization).
+// it holds a percent escape or a segment starting with a dot. It scans a word
+// at a time and serves where fasthttp's own normalization cannot answer the
+// question (see DefaultCtx.pathNeedsNormalization).
 func needsPathNormalization(s string) bool {
 	n := len(s)
 	if n == 0 {
@@ -465,13 +465,13 @@ func needsPathNormalization(s string) bool {
 		for ; i+pairWindow <= n; i += pairWindow - 1 {
 			win := s[i : i+pairWindow]
 			w0, w1 := swar.Load8(win, 0), swar.Load8(win, swar.WordLen-1)
-			if swar.ZeroLanes(w0^percent)|swar.ZeroLanes(w1^percent)|slashPairLanes(w0)|slashPairLanes(w1) != 0 {
+			if swar.ZeroLanes(w0^percent)|swar.ZeroLanes(w1^percent)|slashDotLanes(w0)|slashDotLanes(w1) != 0 {
 				return true
 			}
 		}
 		for ; i+swar.WordLen <= n; i += swar.WordLen - 1 {
 			w := swar.Load8(s, i)
-			if swar.ZeroLanes(w^percent)|slashPairLanes(w) != 0 {
+			if swar.ZeroLanes(w^percent)|slashDotLanes(w) != 0 {
 				return true
 			}
 		}
@@ -480,14 +480,14 @@ func needsPathNormalization(s string) bool {
 			return false
 		}
 		w := swar.Load8(s, n-swar.WordLen)
-		return swar.ZeroLanes(w^percent)|slashPairLanes(w) != 0
+		return swar.ZeroLanes(w^percent)|slashDotLanes(w) != 0
 	}
 	for i := range n {
 		switch s[i] {
 		case '%':
 			return true
 		case '/':
-			if i+1 < n && (s[i+1] == '/' || s[i+1] == '.') {
+			if i+1 < n && s[i+1] == '.' {
 				return true
 			}
 		}
@@ -495,8 +495,9 @@ func needsPathNormalization(s string) bool {
 	return false
 }
 
-// hasDotOrEmptySegment reports whether cleanPathSegments would change b.
-func hasDotOrEmptySegment(b []byte) bool {
+// hasDotSegment reports whether cleanPathSegments could change b: it holds a
+// segment starting with a dot.
+func hasDotSegment(b []byte) bool {
 	n := len(b)
 	if n == 0 {
 		return false
@@ -508,22 +509,22 @@ func hasDotOrEmptySegment(b []byte) bool {
 		i := 0
 		for ; i+pairWindow <= n; i += pairWindow - 1 {
 			win := b[i : i+pairWindow : i+pairWindow]
-			if slashPairLanes(swar.Load8(win, 0))|slashPairLanes(swar.Load8(win, swar.WordLen-1)) != 0 {
+			if slashDotLanes(swar.Load8(win, 0))|slashDotLanes(swar.Load8(win, swar.WordLen-1)) != 0 {
 				return true
 			}
 		}
 		for ; i+swar.WordLen <= n; i += swar.WordLen - 1 {
-			if slashPairLanes(swar.Load8(b, i)) != 0 {
+			if slashDotLanes(swar.Load8(b, i)) != 0 {
 				return true
 			}
 		}
 		if i >= n-1 {
 			return false
 		}
-		return slashPairLanes(swar.Load8(b, n-swar.WordLen)) != 0
+		return slashDotLanes(swar.Load8(b, n-swar.WordLen)) != 0
 	}
 	for i := range n - 1 {
-		if b[i] == '/' && (b[i+1] == '/' || b[i+1] == '.') {
+		if b[i] == '/' && b[i+1] == '.' {
 			return true
 		}
 	}
@@ -531,11 +532,12 @@ func hasDotOrEmptySegment(b []byte) bool {
 }
 
 // normalizeRequestPath normalizes a request path in place as RFC 3986
-// Section 6.2.2 describes: escapes are decoded, all of them when unescapeAll
-// (UnescapePath) is set and otherwise only those outside pathKeepEncoded, and
-// then ".", ".." and empty segments are removed. Decoding runs exactly once,
-// so "%2570rivate" stays a literal name, while "/%70rivate", "/./private" and
-// "//private" all match a route or guard on "/private".
+// Section 6.2.2 describes: percent escapes are normalized, all of them decoded
+// when unescapeAll (UnescapePath) is set and otherwise only those of
+// unreserved characters, and then "." and ".." segments are removed. Decoding
+// runs exactly once, so "%2570rivate" stays a literal name, while
+// "/%70rivate", "/./private" and "/x/../private" all match a route or guard
+// on "/private".
 func normalizeRequestPath(b []byte, unescapeAll bool) []byte { //nolint:revive // the flag mirrors Config.UnescapePath
 	if unescapeAll {
 		b = unescapePath(b)

@@ -1325,22 +1325,25 @@ func Test_UnescapeSafePath(t *testing.T) {
 		in, out string
 	}{
 		{in: "/no-escape", out: "/no-escape"},
-		// bytes that cannot alter the path's structure are decoded
+		// escapes of unreserved characters are decoded (RFC 3986 Section 6.2.2.2)
 		{in: "/%41%62%63", out: "/Abc"},
 		{in: "/%7e/%2D%2e%5f", out: "/~/-._"},
-		{in: "/cr%C3%A9er", out: "/créer"},
-		{in: "/a%20b", out: "/a b"},
-		{in: "/%7B%7D%22", out: "/{}\""},
-		// reserved characters, "%", the backslash and control characters stay as sent
-		{in: "/a%2Fb%2fc", out: "/a%2Fb%2fc"},
+		{in: "/%30%39", out: "/09"},
+		// every other escape is kept with uppercase hex digits (Section 6.2.2.1)
+		{in: "/cr%C3%A9er", out: "/cr%C3%A9er"},
+		{in: "/cr%c3%a9er", out: "/cr%C3%A9er"},
+		{in: "/a%20b", out: "/a%20b"},
+		{in: "/%7B%7d%22", out: "/%7B%7D%22"},
+		{in: "/a%2Fb%2fc", out: "/a%2Fb%2Fc"},
 		{in: "/a%3Fb%23c%40d%2Be", out: "/a%3Fb%23c%40d%2Be"},
 		{in: "/100%2525", out: "/100%2525"},
-		{in: "/a%5Cb", out: "/a%5Cb"},
-		{in: "/%00%1f%7f", out: "/%00%1f%7f"},
+		{in: "/a%5cb", out: "/a%5Cb"},
+		{in: "/%00%1f%7f", out: "/%00%1F%7F"},
 		// Malformed escapes are kept.
 		{in: "/a%zzb", out: "/a%zzb"},
 		{in: "/trailing%2", out: "/trailing%2"},
 		{in: "/%", out: "/%"},
+		{in: "/%2g%41", out: "/%2gA"},
 		// Decoding runs once: "%25" never becomes a new escape.
 		{in: "/%2570rivate", out: "/%2570rivate"},
 		{in: "/%2E%2E/%70", out: "/../p"},
@@ -1372,11 +1375,15 @@ func Test_CleanPathSegments(t *testing.T) {
 		{in: "/a/b/.", out: "/a/b/"},
 		{in: "/a/../..", out: "/"},
 		{in: "/a/../../b", out: "/b"},
-		{in: "//", out: "/"},
-		{in: "//a", out: "/a"},
-		{in: "/a//b", out: "/a/b"},
-		{in: "/a//", out: "/a/"},
-		{in: "/a/b//../c", out: "/a/c"},
+		// empty segments are not dot segments and stay (Section 5.2.4)
+		{in: "//", out: "//"},
+		{in: "//a", out: "//a"},
+		{in: "/a//b", out: "/a//b"},
+		{in: "/a//", out: "/a//"},
+		{in: "/a/.//b", out: "/a//b"},
+		{in: "/a//..", out: "/a/"},
+		{in: "/a/b//../c", out: "/a/b/c"},
+		{in: "/..//..//etc", out: "//etc"},
 		{in: "/..a/.b/c..", out: "/..a/.b/c.."},
 		{in: "/a/.../b", out: "/a/.../b"},
 		{in: "a/./b", out: "a/b"},
@@ -1396,7 +1403,10 @@ func Test_NormalizeRequestPath(t *testing.T) {
 	}{
 		{in: "/static/%2E%2E/x", out: "/x"},
 		{in: "/static/%2e/x", out: "/static/x"},
-		{in: "/static/%70rivate//x/./y/../z", out: "/static/private/x/z"},
+		{in: "/static/%70rivate//x/./y/../z", out: "/static/private//x/z"},
+		// Only unreserved characters are decoded unless UnescapePath is set.
+		{in: "/cr%c3%a9er/a%20b", out: "/cr%C3%A9er/a%20b"},
+		{in: "/cr%c3%a9er/a%20b", unescape: true, out: "/créer/a b"},
 		// An encoded slash is not a separator unless UnescapePath decodes it.
 		{in: "/a%2F..%2Fb", out: "/a%2F..%2Fb"},
 		{in: "/a%2F..%2Fb", unescape: true, out: "/b"},
@@ -1444,7 +1454,7 @@ func Test_NeedsPathNormalization_MatchesReference(t *testing.T) {
 		if s != "" && s[0] == '.' {
 			return true
 		}
-		return strings.Contains(s, "%") || strings.Contains(s, "//") || strings.Contains(s, "/.")
+		return strings.Contains(s, "%") || strings.Contains(s, "/.")
 	}
 	count := 0
 	forEachPathSample(func(s string) {
@@ -1454,19 +1464,19 @@ func Test_NeedsPathNormalization_MatchesReference(t *testing.T) {
 	require.Greater(t, count, 300000)
 }
 
-// Test_HasDotOrEmptySegment_MatchesReference does the same for the scan that
-// gates cleanPathSegments.
-func Test_HasDotOrEmptySegment_MatchesReference(t *testing.T) {
+// Test_HasDotSegment_MatchesReference does the same for the scan that gates
+// cleanPathSegments.
+func Test_HasDotSegment_MatchesReference(t *testing.T) {
 	t.Parallel()
 
 	ref := func(s string) bool {
 		if s != "" && s[0] == '.' {
 			return true
 		}
-		return strings.Contains(s, "//") || strings.Contains(s, "/.")
+		return strings.Contains(s, "/.")
 	}
 	forEachPathSample(func(s string) {
-		require.Equal(t, ref(s), hasDotOrEmptySegment([]byte(s)), "path=%q", s)
+		require.Equal(t, ref(s), hasDotSegment([]byte(s)), "path=%q", s)
 	})
 }
 
@@ -1488,10 +1498,10 @@ func Benchmark_NeedsPathNormalization(b *testing.B) {
 func Test_NeedsPathNormalization(t *testing.T) {
 	t.Parallel()
 
-	for _, s := range []string{"/a//b", "/a/./b", "/a/../b", "/%41", "/.", "/..", "./x", "../x", "/.well-known/x"} {
+	for _, s := range []string{"/a/./b", "/a/../b", "/%41", "/%2F", "/.", "/..", "./x", "../x", "/.well-known/x"} {
 		require.True(t, needsPathNormalization(s), "path=%q", s)
 	}
-	for _, s := range []string{"", "/", "/a", "/a/b", "/a/b/", "/a.b/c", "/a-b_c~d", "/a/b.", "/a..b", "/user/keys/1337"} {
+	for _, s := range []string{"", "/", "/a", "/a/b", "/a/b/", "/a//b", "//", "/a.b/c", "/a-b_c~d", "/a/b.", "/a..b", "/user/keys/1337"} {
 		require.False(t, needsPathNormalization(s), "path=%q", s)
 	}
 }

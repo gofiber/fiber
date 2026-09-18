@@ -856,9 +856,9 @@ func (c *DefaultCtx) configDependentPaths() {
 // pathNeedsNormalization reports whether normalizeRequestPath could change
 // the original path. fasthttp already normalized the request path when it
 // parsed it, decoding escapes and removing dot and empty segments, and each of
-// those shortens the path, so one that kept its length is clean apart from a
-// trailing "/." that fasthttp leaves in place. The path is scanned instead
-// when fasthttp's normalization is off.
+// those shortens the path, so one that kept its length holds no escape and no
+// dot segment, apart from a trailing "/." that fasthttp leaves in place. The
+// path is scanned instead when fasthttp's normalization is off.
 func (c *DefaultCtx) pathNeedsNormalization() bool {
 	uri := c.fasthttp.URI()
 	if uri.DisablePathNormalizing {

@@ -726,11 +726,11 @@ func Test_Route_Match_UnescapedPath(t *testing.T) {
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
 
-	// non-ASCII bytes are decoded for matching whatever the flag says
+	// check deactivated behavior
 	app.config.UnescapePath = false
 	resp, err = app.Test(httptest.NewRequest(MethodGet, "/cr%C3%A9er", http.NoBody))
 	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
+	require.Equal(t, StatusNotFound, resp.StatusCode, "Status code")
 
 	// an encoded slash splits the segment only with the flag on
 	app.config.UnescapePath = true
@@ -752,8 +752,8 @@ func Test_Route_Match_UnescapedPath(t *testing.T) {
 }
 
 // Test_Route_Match_NormalizedPath pins the RFC 3986 normalization the router
-// applies before matching, so a guard on a prefix sees every spelling of a
-// path under it.
+// applies before matching, so a guard on a prefix sees the spellings of a path
+// under it that name the same resource, and only those.
 func Test_Route_Match_NormalizedPath(t *testing.T) {
 	t.Parallel()
 
@@ -767,6 +767,10 @@ func Test_Route_Match_NormalizedPath(t *testing.T) {
 		})
 		app.Get("/users/:id", func(c Ctx) error {
 			return c.SendString(c.Params("id"))
+		})
+		// a name outside the unreserved set is routed in its encoded spelling
+		app.Get("/enc/a%7Bb%7D", func(c Ctx) error {
+			return c.SendString(c.Path())
 		})
 		return app
 	}
@@ -783,15 +787,20 @@ func Test_Route_Match_NormalizedPath(t *testing.T) {
 		{name: "encoded unreserved character", target: "/static/%70rivate/secret.txt", wantStatus: StatusForbidden},
 		{name: "parent segment", target: "/static/x/../private/secret.txt", wantStatus: StatusForbidden},
 		{name: "current segment", target: "/static/./private/secret.txt", wantStatus: StatusForbidden},
-		{name: "empty segment", target: "/static//private/secret.txt", wantStatus: StatusForbidden},
+		{name: "empty segment is kept", target: "/static//private/secret.txt", wantStatus: StatusOK, wantBody: "/static//private/secret.txt|/private/secret.txt"},
 		{name: "encoded dot segment", target: "/static/x/%2E%2E/private/secret.txt", wantStatus: StatusForbidden},
+		{name: "parent segment after an empty one", target: "/static/x//../private/secret.txt", wantStatus: StatusOK, wantBody: "/static/x/private/secret.txt|x/private/secret.txt"},
 		{name: "parent segment above the prefix", target: "/static/../static/private/secret.txt", wantStatus: StatusForbidden},
 		{name: "parent segment leaves the route", target: "/static/../other", wantStatus: StatusNotFound},
 		{name: "trailing current segment", target: "/users/john/.", wantStatus: StatusOK, wantBody: "john"},
 		{name: "trailing parent segment", target: "/static/private/x/..", wantStatus: StatusForbidden},
-		{name: "decoded space in path and params", target: "/static/a%20b.txt", wantStatus: StatusOK, wantBody: "/static/a b.txt|a b.txt"},
-		{name: "non-ascii decoded", target: "/users/%C3%A9", wantStatus: StatusOK, wantBody: "é"},
-		{name: "encoded slash stays in the segment", target: "/users/a%2Fb", wantStatus: StatusOK, wantBody: "a%2Fb"},
+		{name: "encoded unreserved characters in params", target: "/users/%6Aohn%2Edoe%7E", wantStatus: StatusOK, wantBody: "john.doe~"},
+		{name: "encoded space kept", target: "/static/a%20b.txt", wantStatus: StatusOK, wantBody: "/static/a%20b.txt|a%20b.txt"},
+		{name: "encoded space decoded under UnescapePath", target: "/static/a%20b.txt", unescape: true, wantStatus: StatusOK, wantBody: "/static/a b.txt|a b.txt"},
+		{name: "non-ascii kept with uppercase hex digits", target: "/users/%c3%a9", wantStatus: StatusOK, wantBody: "%C3%A9"},
+		{name: "non-ascii decoded under UnescapePath", target: "/users/%c3%a9", unescape: true, wantStatus: StatusOK, wantBody: "é"},
+		{name: "hex case does not split a route", target: "/enc/a%7bb%7d", wantStatus: StatusOK, wantBody: "/enc/a%7Bb%7D"},
+		{name: "encoded slash stays in the segment", target: "/users/a%2fb", wantStatus: StatusOK, wantBody: "a%2Fb"},
 		{name: "encoded slash splits the segment under UnescapePath", target: "/users/a%2Fb", unescape: true, wantStatus: StatusNotFound},
 		{name: "reserved character kept", target: "/users/a%40b", wantStatus: StatusOK, wantBody: "a%40b"},
 		{name: "reserved character decoded under UnescapePath", target: "/users/a%40b", unescape: true, wantStatus: StatusOK, wantBody: "a@b"},
@@ -821,10 +830,11 @@ func Test_Route_Match_NormalizedPath(t *testing.T) {
 // ServeMux and to Fiber and expects the same route, path and parameters.
 // ServeMux unescapes each segment of the escaped path and redirects a path
 // with dot or empty segments to its clean form, which the harness routes as
-// the redirect would. Two spellings are left out because the two routers
+// the redirect would. Three spellings are left out because the two routers
 // disagree on purpose: ServeMux keeps "a%2Fb" one segment where UnescapePath
-// splits it, and it reads "%2E%2E" as a literal name where Fiber decodes the
-// unreserved dots first and removes the segment.
+// splits it, it reads "%2E%2E" as a literal name where Fiber decodes the
+// unreserved dots first and removes the segment, and it redirects "//a" to
+// "/a" where Fiber keeps the empty segment RFC 3986 leaves in place.
 func Test_Route_Match_AgreesWithNetHTTP(t *testing.T) {
 	t.Parallel()
 
@@ -896,7 +906,7 @@ func Test_Route_Match_AgreesWithNetHTTP(t *testing.T) {
 
 	requests := []struct {
 		target string
-		// reserved characters and the percent sign stay encoded without
+		// only escapes of unreserved characters are decoded without
 		// UnescapePath, so these only agree with the flag on
 		needsUnescape bool
 	}{
@@ -904,12 +914,12 @@ func Test_Route_Match_AgreesWithNetHTTP(t *testing.T) {
 		{target: "/%70rivate/secret.txt"},
 		{target: "/x/../private/secret.txt"},
 		{target: "/./private/secret.txt"},
-		{target: "//private/secret.txt"},
 		{target: "/private/x/../secret.txt"},
-		{target: "/cr%C3%A9er"},
-		{target: "/créer"},
-		{target: "/users/%C3%A9"},
-		{target: "/users/a%20b"},
+		{target: "/cr%C3%A9er", needsUnescape: true},
+		{target: "/cr%c3%a9er", needsUnescape: true},
+		{target: "/créer", needsUnescape: true},
+		{target: "/users/%C3%A9", needsUnescape: true},
+		{target: "/users/a%20b", needsUnescape: true},
 		{target: "/users/a%40b", needsUnescape: true},
 		{target: "/tag%402x", needsUnescape: true},
 		{target: "/users/100%2525", needsUnescape: true},

@@ -6447,19 +6447,47 @@ func Test_Ctx_Endpoint_SkipUnmatchedRoutes(t *testing.T) {
 	require.Equal(t, "/items/:id", path)
 }
 
-// Test_Ctx_RouteNormalized pins that "//test" is matched and reported as "/test".
+// Test_Ctx_Path_DisablePathNormalizing pins the scan fallback of
+// pathNeedsNormalization: with fasthttp's normalization switched off on the
+// URI, a Path override is still normalized before routing.
+func Test_Ctx_Path_DisablePathNormalizing(t *testing.T) {
+	t.Parallel()
+	app := New()
+	app.Get("/a/b", func(c Ctx) error {
+		return c.SendString(c.Path())
+	})
+	for _, tc := range []struct{ mount, override string }{
+		{mount: "/dotted", override: "/a/./b"},
+		{mount: "/plain", override: "/a/b"},
+	} {
+		app.Use(tc.mount, func(c Ctx) error {
+			c.Request().URI().DisablePathNormalizing = true
+			c.Path(tc.override)
+			return c.RestartRouting()
+		})
+	}
+
+	for _, target := range []string{"/dotted", "/plain"} {
+		resp, err := app.Test(httptest.NewRequest(MethodGet, target, http.NoBody))
+		require.NoError(t, err, "app.Test(req)")
+		require.Equal(t, StatusOK, resp.StatusCode, "Status code for %s", target)
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		require.Equal(t, "/a/b", string(body), "path for %s", target)
+	}
+}
+
+// go test -run Test_Ctx_RouteNormalized
 func Test_Ctx_RouteNormalized(t *testing.T) {
 	t.Parallel()
 	app := New()
 	app.Get("/test", func(c Ctx) error {
 		require.Equal(t, "/test", c.Route().Path)
-		require.Equal(t, "/test", c.Path())
-		require.Equal(t, "//test", c.OriginalURL())
 		return nil
 	})
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "//test", http.NoBody))
 	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
+	require.Equal(t, StatusNotFound, resp.StatusCode, "Status code")
 }
 
 // go test -run Test_Ctx_SaveFile

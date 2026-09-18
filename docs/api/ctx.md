@@ -2249,7 +2249,7 @@ The generic `Params` function supports returning the following data types based 
 
 ### Path
 
-Contains the path part of the request URL, normalized before routing as [RFC 3986 Section 6.2.2](https://www.rfc-editor.org/rfc/rfc3986#section-6.2.2) describes: percent-encoded characters that cannot change the structure of the path are decoded, and `.`, `..` and empty segments are removed, so a request for `/users/../users//john` reports `/users/john`. Reserved characters such as an encoded slash stay encoded unless [`UnescapePath`](fiber.md#config) is enabled. Use [OriginalURL](#originalurl) for the request target as the client sent it. Optionally, you can override the path by passing a string. For internal redirects, you might want to call [RestartRouting](ctx.md#restartrouting) instead of [Next](ctx.md#next).
+Contains the path part of the request URL, normalized before routing as [RFC 3986 Section 6.2.2](https://www.rfc-editor.org/rfc/rfc3986#section-6.2.2) describes: percent-encoded unreserved characters are decoded, other escapes keep their encoding with uppercase hex digits, and `.` and `..` segments are removed, so a request for `/users/../users/%6Aohn` reports `/users/john`. An encoded slash stays encoded and empty segments are kept unless [`UnescapePath`](fiber.md#config) decodes every escape. Use [OriginalURL](#originalurl) for the request target as the client sent it. Optionally, you can override the path by passing a string. For internal redirects, you might want to call [RestartRouting](ctx.md#restartrouting) instead of [Next](ctx.md#next).
 
 ```go title="Signature"
 func (c fiber.Ctx) Path(override ...string) string

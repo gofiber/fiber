@@ -261,11 +261,11 @@ type Config struct { //nolint:govet // Aligning the struct fields is not necessa
 	Immutable bool `json:"immutable"`
 
 	// The router always normalizes the request path before matching (RFC 3986
-	// Section 6.2.2): escapes that cannot change the path's structure are
-	// decoded and ".", ".." and empty segments are removed, while reserved
-	// characters such as an encoded slash (%2F) stay encoded. When set to
-	// true, the reserved characters are decoded as well, so the routing,
-	// `ctx.Path()` and `ctx.Params(%key%)` see the fully decoded path.
+	// Section 6.2.2): escapes of unreserved characters are decoded, other
+	// escapes keep their encoding with uppercase hex digits, and "." and ".."
+	// segments are removed. When set to true, every escape is decoded, so the
+	// routing, `ctx.Path()` and `ctx.Params(%key%)` see the fully decoded
+	// path.
 	//
 	// Default: false
 	UnescapePath bool `json:"unescape_path"`
