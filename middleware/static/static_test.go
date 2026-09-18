@@ -1613,6 +1613,36 @@ func Test_Static_MalformedEscapeIsNotAName(t *testing.T) {
 	}
 }
 
+// Test_Static_SharedHandlerAcrossApps pins that one handler value mounted in
+// two apps decodes as each app's UnescapePath says, whichever app served
+// first: under the flag the router already decoded "%2561" to "%61", and the
+// file server must not decode it again into "a.txt".
+func Test_Static_SharedHandlerAcrossApps(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(root, "a.txt"), []byte("A"), 0o600))
+	handler := New(root, Config{CacheDuration: -1})
+
+	plain := fiber.New()
+	plain.Get("/static/*", handler)
+	unescaped := fiber.New(fiber.Config{UnescapePath: true})
+	unescaped.Get("/static/*", handler)
+
+	serve := func(app *fiber.App, target string) int {
+		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, target, http.NoBody))
+		require.NoError(t, err, "app.Test(req)")
+		require.NoError(t, resp.Body.Close())
+		return resp.StatusCode
+	}
+
+	// the app that serves first must not fix the decoding mode of the other
+	require.Equal(t, fiber.StatusNotFound, serve(plain, "/static/%2561.txt"))
+	require.Equal(t, fiber.StatusOK, serve(plain, "/static/%61.txt"))
+	require.Equal(t, fiber.StatusNotFound, serve(unescaped, "/static/%2561.txt"))
+	require.Equal(t, fiber.StatusOK, serve(unescaped, "/static/%61.txt"))
+}
+
 func Test_Static_Download_NotFoundLeavesNoAttachment(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
