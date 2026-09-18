@@ -8,7 +8,6 @@ import (
 	"os"
 	pathpkg "path"
 	"path/filepath"
-	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -55,7 +54,7 @@ func hasDotDotSegment(p string) bool {
 // a name holding a backslash, a control character or a decoded slash.
 func decodeFileName(p []byte, decodeEscapes bool) (string, error) { //nolint:revive // the flag mirrors UnescapePath; see sanitizePath
 	if !decodeEscapes || bytes.IndexByte(p, '%') < 0 {
-		if slices.ContainsFunc(p, isUnsafeNameByte) {
+		if utils.IndexControl(p) >= 0 || bytes.IndexByte(p, '\\') >= 0 {
 			return "", ErrInvalidPath
 		}
 		return utils.UnsafeString(p), nil

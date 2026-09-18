@@ -433,6 +433,9 @@ func cleanPathSegments(b []byte) []byte {
 	return b[:w]
 }
 
+// pairWindow is the span two words that overlap by one byte cover.
+const pairWindow = 2*swar.WordLen - 1
+
 // slashPairLanes flags the lanes of w holding a '/' followed within w by a
 // '/' or a '.'. Load8 puts byte k in lane k, so a shift by one lane compares
 // each byte with its successor; callers overlap words by one byte for the
@@ -455,16 +458,24 @@ func needsPathNormalization(s string) bool {
 		return true
 	}
 	if n >= swar.WordLen {
-		// words overlap by one byte so every adjacent pair shares a word
+		// Words overlap by one byte so every adjacent pair shares a word; a
+		// pinned two-word window keeps the loads at constant offsets.
 		percent := swar.Broadcast('%')
 		i := 0
+		for ; i+pairWindow <= n; i += pairWindow - 1 {
+			win := s[i : i+pairWindow]
+			w0, w1 := swar.Load8(win, 0), swar.Load8(win, swar.WordLen-1)
+			if swar.ZeroLanes(w0^percent)|swar.ZeroLanes(w1^percent)|slashPairLanes(w0)|slashPairLanes(w1) != 0 {
+				return true
+			}
+		}
 		for ; i+swar.WordLen <= n; i += swar.WordLen - 1 {
 			w := swar.Load8(s, i)
 			if swar.ZeroLanes(w^percent)|slashPairLanes(w) != 0 {
 				return true
 			}
 		}
-		// the loop covered the bytes up to i; a word aligned to the end takes the rest
+		// the loops covered the bytes up to i; a word aligned to the end takes the rest
 		if i >= n-1 {
 			return false
 		}
@@ -495,6 +506,12 @@ func hasDotOrEmptySegment(b []byte) bool {
 	}
 	if n >= swar.WordLen {
 		i := 0
+		for ; i+pairWindow <= n; i += pairWindow - 1 {
+			win := b[i : i+pairWindow : i+pairWindow]
+			if slashPairLanes(swar.Load8(win, 0))|slashPairLanes(swar.Load8(win, swar.WordLen-1)) != 0 {
+				return true
+			}
+		}
 		for ; i+swar.WordLen <= n; i += swar.WordLen - 1 {
 			if slashPairLanes(swar.Load8(b, i)) != 0 {
 				return true
