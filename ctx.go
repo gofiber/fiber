@@ -819,7 +819,7 @@ func (c *DefaultCtx) configDependentPaths() {
 	// is set. Most requests need no normalization, and under the default
 	// configuration both are then written in a single pass over the original.
 	switch {
-	case needsPathNormalization(c.pathOriginal):
+	case c.pathNeedsNormalization():
 		c.path = append(c.path[:0], c.pathOriginal...)
 		c.path = normalizeRequestPath(c.path, c.app.config.UnescapePath)
 		if c.app.config.CaseSensitive {
@@ -851,6 +851,21 @@ func (c *DefaultCtx) configDependentPaths() {
 	// recomputes it lazily when route matching first needs it.
 	c.pathSlashes = 0
 	c.pathPrint = 0
+}
+
+// pathNeedsNormalization reports whether normalizeRequestPath could change
+// the original path. fasthttp already normalized the request path when it
+// parsed it, decoding escapes and removing dot and empty segments, and each of
+// those shortens the path, so one that kept its length is clean apart from a
+// trailing "/." that fasthttp leaves in place. The path is scanned instead
+// when fasthttp's normalization is off.
+func (c *DefaultCtx) pathNeedsNormalization() bool {
+	uri := c.fasthttp.URI()
+	if uri.DisablePathNormalizing {
+		return needsPathNormalization(c.pathOriginal)
+	}
+	n := len(c.pathOriginal)
+	return len(uri.Path()) != n || (n >= 2 && c.pathOriginal[n-2] == '/' && c.pathOriginal[n-1] == '.')
 }
 
 // Reset is a method to reset context fields by given request when to use server handlers.

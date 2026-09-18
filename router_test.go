@@ -787,6 +787,8 @@ func Test_Route_Match_NormalizedPath(t *testing.T) {
 		{name: "encoded dot segment", target: "/static/x/%2E%2E/private/secret.txt", wantStatus: StatusForbidden},
 		{name: "parent segment above the prefix", target: "/static/../static/private/secret.txt", wantStatus: StatusForbidden},
 		{name: "parent segment leaves the route", target: "/static/../other", wantStatus: StatusNotFound},
+		{name: "trailing current segment", target: "/users/john/.", wantStatus: StatusOK, wantBody: "john"},
+		{name: "trailing parent segment", target: "/static/private/x/..", wantStatus: StatusForbidden},
 		{name: "decoded space in path and params", target: "/static/a%20b.txt", wantStatus: StatusOK, wantBody: "/static/a b.txt|a b.txt"},
 		{name: "non-ascii decoded", target: "/users/%C3%A9", wantStatus: StatusOK, wantBody: "é"},
 		{name: "encoded slash stays in the segment", target: "/users/a%2Fb", wantStatus: StatusOK, wantBody: "a%2Fb"},

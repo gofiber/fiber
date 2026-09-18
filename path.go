@@ -444,7 +444,8 @@ func slashPairLanes(w uint64) uint64 {
 
 // needsPathNormalization reports whether normalizeRequestPath could change s:
 // it holds a percent escape, an empty segment or a segment starting with a
-// dot. It scans a word at a time to keep the usual request on the fast path.
+// dot. It scans a word at a time and serves where fasthttp's own normalization
+// cannot answer the question (see DefaultCtx.pathNeedsNormalization).
 func needsPathNormalization(s string) bool {
 	n := len(s)
 	if n == 0 {

@@ -1470,6 +1470,21 @@ func Test_HasDotOrEmptySegment_MatchesReference(t *testing.T) {
 	})
 }
 
+func Benchmark_NeedsPathNormalization(b *testing.B) {
+	for _, s := range []string{"/", "/user/keys/1337", "/api/v1/entity/1", "/aaaaaaa/bbbbbbb/ccccccc/ddddddd/e"} {
+		b.Run(s, func(b *testing.B) {
+			b.ReportAllocs()
+			var r bool
+			for b.Loop() {
+				r = needsPathNormalization(s)
+			}
+			if r {
+				b.Fatal("unexpected normalization")
+			}
+		})
+	}
+}
+
 func Test_NeedsPathNormalization(t *testing.T) {
 	t.Parallel()
 
