@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"errors"
+	"net"
 	"net/url"
 	"reflect"
 	"strings"
@@ -578,7 +579,7 @@ func selectClient(globalClient *fasthttp.Client, clients ...*fasthttp.Client) (*
 // correctly regardless of how the operator spelled the domain.
 func foldHostnameLabel(hostname string) string {
 	if host, port, ok := utils.SplitHostPort(hostname); ok {
-		return idnafold.ToASCII(utilsstrings.ToLower(host)) + ":" + port
+		return net.JoinHostPort(idnafold.ToASCII(utilsstrings.ToLower(host)), port)
 	}
 	return idnafold.ToASCII(utilsstrings.ToLower(hostname))
 }

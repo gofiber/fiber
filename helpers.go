@@ -1267,17 +1267,39 @@ type GenericTypeFloat interface {
 	float32 | float64
 }
 
+// hasMediaType reports whether ct names mime in its canonical spelling, alone
+// or followed by parameters, which is what the folding below would produce.
+func hasMediaType(ct []byte, mime string) bool {
+	if len(ct) < len(mime) || string(ct[:len(mime)]) != mime {
+		return false
+	}
+	return len(ct) == len(mime) || ct[len(mime)] == ';' || ct[len(mime)] == ' '
+}
+
 // bindMediaType returns the request's media type, lowered for comparison against
 // the MIME constants. The request's own bytes are folded only for a form, the
 // one case needing it in place; anything else is compared on a copy.
 func bindMediaType(h *fasthttp.RequestHeader) string {
-	if mediatype.IsForm(h.ContentType()) {
+	ct := h.ContentType()
+
+	// The canonical spellings need no folding or parsing, so they answer before
+	// the case-insensitive walk below; every other spelling still takes it. The
+	// form type is matched bare because its parameters are folded in place for
+	// fasthttp's own parser, which the walk keeps doing.
+	if hasMediaType(ct, MIMEApplicationJSON) {
+		return MIMEApplicationJSON
+	}
+	if string(ct) == MIMEApplicationForm {
+		return MIMEApplicationForm
+	}
+
+	if mediatype.IsForm(ct) {
 		raw := utils.UnsafeString(mediatype.NormalizeRequestContentType(h))
 		return binder.FilterFlags(utils.ParseVendorSpecificContentType(raw))
 	}
 
 	// ToLower returns its input unchanged when there is nothing to fold, so the
 	// common path costs no allocation.
-	lowered := utilsstrings.ToLower(utils.UnsafeString(h.ContentType()))
+	lowered := utilsstrings.ToLower(utils.UnsafeString(ct))
 	return binder.FilterFlags(utils.ParseVendorSpecificContentType(lowered))
 }

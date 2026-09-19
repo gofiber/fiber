@@ -4623,6 +4623,107 @@ func Test_Ctx_Locals_AfterRelease(t *testing.T) {
 	})
 }
 
+// go test -run Test_Ctx_SetLocal
+func Test_Ctx_SetLocal(t *testing.T) {
+	t.Parallel()
+	app := New()
+	app.Use(func(c Ctx) error {
+		c.SetLocal("john", "doe")
+		c.SetLocal("age", 18)
+		c.SetLocal("age", 19) // an existing key is overwritten, as with Locals
+		return c.Next()
+	})
+	app.Get("/test", func(c Ctx) error {
+		require.Equal(t, "doe", c.Locals("john"))
+		require.Equal(t, "doe", c.Value("john"))
+		require.Equal(t, 19, c.Locals("age"))
+		require.Equal(t, 19, Locals[int](c, "age"))
+		return nil
+	})
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test", http.NoBody))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
+}
+
+// go test -run Test_Ctx_SetLocal_AfterRelease
+func Test_Ctx_SetLocal_AfterRelease(t *testing.T) {
+	t.Parallel()
+	app := New()
+	var ctx Ctx
+	app.Get("/test", func(c Ctx) error {
+		ctx = c
+		return nil
+	})
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test", http.NoBody))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
+
+	require.NotPanics(t, func() {
+		ctx.SetLocal("test", "value")
+		require.Nil(t, ctx.Locals("test"), "a released context stores nothing")
+	})
+}
+
+// Test_Ctx_SetLocal_NoAllocations pins what SetLocal exists for: storing a
+// local through the Ctx interface without the heap-allocated one-element
+// slice that the variadic Locals(key, value) costs on the same call.
+//
+// Not parallel: AllocsPerRun counts allocations process-wide, and Go pauses
+// parallel tests while a sequential one runs.
+func Test_Ctx_SetLocal_NoAllocations(t *testing.T) {
+	app := New()
+	var c Ctx = app.AcquireCtx(&fasthttp.RequestCtx{})
+	t.Cleanup(func() { app.ReleaseCtx(c) })
+
+	// boxing a constant costs nothing, so the slice is all a Locals call allocates
+	c.SetLocal("user", "alice")
+	require.Zero(t, testing.AllocsPerRun(100, func() { c.SetLocal("user", "alice") }))
+	require.Equal(t, "alice", c.Locals("user"))
+}
+
+// Test_Ctx_SetLocal_UsesCustomCtxLocals is the counterpart to
+// Test_setLocal_UsesCustomCtxLocals: the direct store exists only to keep the
+// variadic slice off the heap, so it must never take precedence over a custom
+// context's own Locals, which a type embedding DefaultCtx is entitled to
+// override.
+func Test_Ctx_SetLocal_UsesCustomCtxLocals(t *testing.T) {
+	t.Parallel()
+
+	app := NewWithCustomCtx(func(app *App) CustomCtx {
+		return &localsRecordingCtx{DefaultCtx: *NewDefaultCtx(app)}
+	})
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+
+	custom, ok := c.(*localsRecordingCtx)
+	require.True(t, ok, "the app must hand out the custom context")
+
+	c.SetLocal("k", "v")
+	require.Equal(t, 1, custom.calls, "the overridden Locals must be the one that ran")
+	require.Equal(t, "v", c.Locals("k"), "and the value must actually be stored")
+}
+
+// go test -v -run=^$ -bench=Benchmark_Ctx_SetLocal -benchmem -count=4
+func Benchmark_Ctx_SetLocal(b *testing.B) {
+	app := New()
+	var c Ctx = app.AcquireCtx(&fasthttp.RequestCtx{})
+	b.Cleanup(func() { app.ReleaseCtx(c) })
+
+	b.Run("Locals", func(b *testing.B) {
+		b.ReportAllocs()
+		for b.Loop() {
+			c.Locals("user", "alice")
+		}
+	})
+	b.Run("SetLocal", func(b *testing.B) {
+		b.ReportAllocs()
+		for b.Loop() {
+			c.SetLocal("user", "alice")
+		}
+	})
+	require.Equal(b, "alice", c.Locals("user"))
+}
+
 // go test -run Test_Ctx_Value_InGoroutine
 func Test_Ctx_Value_InGoroutine(t *testing.T) {
 	t.Parallel()
@@ -9560,6 +9661,20 @@ func Benchmark_Ctx_Set(b *testing.B) {
 	}
 }
 
+// go test -v -run=^$ -bench=Benchmark_Ctx_Set_Canonical -benchmem -count=4
+func Benchmark_Ctx_Set_Canonical(b *testing.B) {
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+
+	// A key already in canonical form, which is what the constants are; the
+	// one above is not, fasthttp stores it as X-Request-Id.
+	val := "https://example.com"
+	b.ReportAllocs()
+	for b.Loop() {
+		c.Set(HeaderAccessControlAllowOrigin, val)
+	}
+}
+
 // go test -run Test_Ctx_Status
 func Test_Ctx_Status(t *testing.T) {
 	t.Parallel()
@@ -9942,6 +10057,19 @@ func Benchmark_Ctx_Get_Header(b *testing.B) {
 			v = c.Get(HeaderXRequestID)
 		}
 		require.Equal(b, "3f0c1a", v)
+	})
+}
+
+// go test -v -run=^$ -bench=Benchmark_Ctx_Get_Header_Canonical -benchmem -count=4
+func Benchmark_Ctx_Get_Header_Canonical(b *testing.B) {
+	// A key already in canonical form, unlike X-Request-ID above.
+	benchHeaderReadModes(b, func(b *testing.B, c Ctx) {
+		b.Helper()
+		var v string
+		for b.Loop() {
+			v = c.Get(HeaderCacheControl)
+		}
+		require.Equal(b, "max-age=0", v)
 	})
 }
 
@@ -11724,4 +11852,87 @@ func Test_SameFS_SliceLength(t *testing.T) {
 	backing := sliceFS{"a", "b", "c"}
 	require.False(t, sameFS(backing[:1], backing[:2]))
 	require.True(t, sameFS(backing[:2], backing[:2]))
+}
+
+// Test_Res_Set_MatchesHeaderSet is the contract behind the canonical fast path
+// in Set: whatever the key or value, the field line it stores is byte for byte
+// the one fasthttp's own Set stores, with header normalization on and off.
+func Test_Res_Set_MatchesHeaderSet(t *testing.T) {
+	t.Parallel()
+
+	keys := []string{
+		"X-Request-Id", "x-request-id", "X-REQUEST-ID", "Content-Type", "content-type", "Content-Length",
+		"Server", "Connection", "Date", "Set-Cookie", "Transfer-Encoding", "Content-Encoding", "Trailer",
+		"Bad Key", "X-Key\r\nInjected", "Or\u00edgin", "", "etag", "X-REQUEST-ID", "x-upstream-id", strings.Repeat("Ab-", 21) + "C",
+	}
+	values := []string{"v", "", "a\r\nb", "with space", "42", "text/html; charset=utf-8", "k=v; Path=/"}
+	// storeNormalizes false with a normalizing app is the state a proxied
+	// response leaves behind when a caller-supplied client parsed it with
+	// header normalization off: the store keeps names as sent, so Set must
+	// still replace a lower-case field spelled exactly the same.
+	for _, normalizing := range []bool{true, false} {
+		for _, storeNormalizes := range []bool{true, false} {
+			app := New(Config{DisableHeaderNormalizing: !normalizing})
+			for _, key := range keys {
+				for _, val := range values {
+					c := app.AcquireCtx(&fasthttp.RequestCtx{})
+					if !storeNormalizes {
+						c.Response().Header.DisableNormalizing()
+					}
+					c.Response().Header.Set("x-upstream-id", "stale")
+					var want fasthttp.ResponseHeader
+					c.Response().Header.CopyTo(&want)
+					want.Set(key, val)
+					c.Set(key, val)
+					require.Equal(t, want.String(), c.Response().Header.String(),
+						"normalizing=%v storeNormalizes=%v key=%q val=%q", normalizing, storeNormalizes, key, val)
+					app.ReleaseCtx(c)
+				}
+			}
+		}
+	}
+}
+
+// Test_Res_Get_MatchesHeaderPeek is the read-side contract: Get answers what
+// fasthttp's Peek answers for every spelling, whether or not the store
+// normalizes.
+func Test_Res_Get_MatchesHeaderPeek(t *testing.T) {
+	t.Parallel()
+
+	names := []string{"X-Request-Id", "x-request-id", "X-REQUEST-ID", "x-lower", "X-Lower", "Content-Type", "Missing", "", "Bad Key"}
+	for _, storeNormalizes := range []bool{true, false} {
+		app := New()
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		h := &c.Response().Header
+		if !storeNormalizes {
+			h.DisableNormalizing()
+		}
+		h.Set("X-Request-Id", "a")
+		h.Set("x-lower", "b")
+		h.Set("Content-Type", "text/plain")
+		for _, name := range names {
+			require.Equal(t, string(h.Peek(name)), c.Res().Get(name), "storeNormalizes=%v %q", storeNormalizes, name)
+		}
+		require.Equal(t, "fallback", c.Res().Get("Missing", "fallback"))
+		app.ReleaseCtx(c)
+	}
+}
+
+// Test_Res_Set_CopiesArguments pins that the fast path lends fasthttp the key and
+// value only for the call: the stored line must not follow the caller's bytes.
+func Test_Res_Set_CopiesArguments(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+
+	keyBytes := []byte("X-Request-Id")
+	valBytes := []byte("first")
+	c.Set(utils.UnsafeString(keyBytes), utils.UnsafeString(valBytes))
+	copy(keyBytes, "X-Rewritten!")
+	copy(valBytes, "wrong")
+
+	require.Equal(t, "first", c.Res().Get("X-Request-Id"))
+	require.Empty(t, c.Res().Get("X-Rewritten!"))
 }

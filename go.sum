@@ -1,9 +1,9 @@
-github.com/fxamacker/cbor/v2 v2.9.3 h1:oQBnFATpNdY8gJHTndDDv5Xl4QqNaz51G5LLEPhng3Q=
-github.com/fxamacker/cbor/v2 v2.9.3/go.mod h1:vM4b+DJCtHn+zz7h3FFp/hDAI9WNWCsZj23V5ytsSxQ=
-github.com/gofiber/schema v1.8.6 h1:xVlbSg3vsyKVlfzRBps2tJ7pHx1d8mSgiaJye6Lb3xs=
-github.com/gofiber/schema v1.8.6/go.mod h1:Cxh3loYVG3FLA7FzW4C5G83pL/pmCmAnuaIJ5y2HwkU=
-github.com/gofiber/utils/v2 v2.5.1 h1:Yrt/ljbfsgnDSHymoMvVX5PFrb9kCV/OJnDu6sYuT4A=
-github.com/gofiber/utils/v2 v2.5.1/go.mod h1:5GyHTNQA1I6Qwlw7BWxQsZl8iuFS4yPjLFck+wYR304=
+github.com/fxamacker/cbor/v2 v2.9.4 h1:xwjVlxEMR3S605oUlgBjKLTTeGFciYPGYCtF/35LKGo=
+github.com/fxamacker/cbor/v2 v2.9.4/go.mod h1:vM4b+DJCtHn+zz7h3FFp/hDAI9WNWCsZj23V5ytsSxQ=
+github.com/gofiber/schema v1.8.7 h1:7cSagr2ObiUVFuitCOqjKMqIhV+oVbkanP4Ge/wHsnI=
+github.com/gofiber/schema v1.8.7/go.mod h1:fBz4T6uOepH3L+dYlz/yzQ0bFHPnfExkp/B3Qrk2VBI=
+github.com/gofiber/utils/v2 v2.5.2 h1:bX+iACKsCGm2+dW7jvkYSiWIsBaKqFy5slFSxJSIL/s=
+github.com/gofiber/utils/v2 v2.5.2/go.mod h1:EaVDjy4JJv0m0lg6x4owJ1GG8j1pMO8XriqCgVns1ZQ=
 github.com/google/uuid v1.6.0 h1:NIvaJDMOsjHA8n1jAhLSgzrAzy1Hgr+hNrb57e+94F0=
 github.com/google/uuid v1.6.0/go.mod h1:TIyPZe4MgqvfeYDBFedMoGGpEw/LqOeaOT+nhxU+yHo=
 github.com/klauspost/compress v1.20.0 h1:a3C1ke2ohxFymNlb2HWAHjDeKCI90scRskErZkR0ezA=
@@ -16,8 +16,8 @@ github.com/molecule-man/go-brrr v1.1.0 h1:rLBGSXA393y+5ttCBLkW34CHESop5tahrOFxVv
 github.com/molecule-man/go-brrr v1.1.0/go.mod h1:7ybW6/7gA3oKY45jOfVNjSJDtrr6ea4tzbsTkjmQDC4=
 github.com/philhofer/fwd v1.2.0 h1:e6DnBTl7vGY+Gz322/ASL4Gyp1FspeMvx1RNDoToZuM=
 github.com/philhofer/fwd v1.2.0/go.mod h1:RqIHx9QI14HlwKwm98g9Re5prTQ6LdeRQn+gXJFxsJM=
-github.com/shamaton/msgpack/v3 v3.2.2 h1:lZITRsXLQkdJ9J2qvh6gjGpWxci/dwuiUf+jm9AudJM=
-github.com/shamaton/msgpack/v3 v3.2.2/go.mod h1:sgBYvEiyz8JR1NC3yGRoPVME9xXovpnh3l/plW1nfRo=
+github.com/shamaton/msgpack/v3 v3.2.3 h1:0r0aZtrXDFOPpwWJTEOpFq+Ih/JmMLm0pqLN5mSilrw=
+github.com/shamaton/msgpack/v3 v3.2.3/go.mod h1:sgBYvEiyz8JR1NC3yGRoPVME9xXovpnh3l/plW1nfRo=
 github.com/stretchr/testify v1.12.1 h1:EuwCh5fleGS7H32xRwO3wRGT7DxrDhLAT6FF8MpWDWE=
 github.com/stretchr/testify v1.12.1/go.mod h1:MDEgiDPPsNp5cuIrHPPCyornHKgEVbtFUmoNlxoYthg=
 github.com/tinylib/msgp v1.6.4 h1:mOwYbyYDLPj35mkA2BjjYejgJk9BuHxDdvRnb6v2ZcQ=
