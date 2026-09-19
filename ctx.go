@@ -813,32 +813,25 @@ func (c *DefaultCtx) Value(key any) any {
 // configDependentPaths set paths for route recognition and prepared paths for the user,
 // here the features for caseSensitive, decoded paths, strict paths are evaluated
 func (c *DefaultCtx) configDependentPaths() {
-	// The detection path is the path a route is recognized by; it differs from
-	// the user-visible path only by the configuration flags applied below.
-	//
-	// Under the default configuration — paths left escaped and matched
-	// case-insensitively — it is exactly the case fold of the path, so both
-	// are written from a single pass over the original rather than copying
-	// once and folding the copy.
-	if !c.app.config.UnescapePath && !c.app.config.CaseSensitive {
-		c.path, c.detectionPath = appendCopyLowerASCII(c.path, c.detectionPath, c.pathOriginal)
-	} else {
+	// The path is normalized as RFC 3986 Section 6.2.2 describes before any
+	// route sees it (see normalizeRequestPath). The detection path is what a
+	// route is matched against: the case fold of the path unless CaseSensitive
+	// is set. Most requests need no normalization, and under the default
+	// configuration both are then written in a single pass over the original.
+	switch {
+	case c.pathNeedsNormalization():
 		c.path = append(c.path[:0], c.pathOriginal...)
-		// If UnescapePath enabled, we decode the path and save it for the framework user.
-		// Decoded as a path, so a "+" stays a "+".
-		if c.app.config.UnescapePath {
-			c.path = unescapePath(c.path)
-		}
-
-		// another path is specified which is for routing recognition only
-		// use the path that was changed by the previous configuration flags
-		// If CaseSensitive is disabled, we lowercase the path while copying
-		// it, fusing the copy and the case fold into a single pass.
-		if !c.app.config.CaseSensitive {
-			c.detectionPath = appendLowerASCII(c.detectionPath[:0], c.path)
-		} else {
+		c.path = normalizeRequestPath(c.path, c.app.config.UnescapePath)
+		if c.app.config.CaseSensitive {
 			c.detectionPath = append(c.detectionPath[:0], c.path...)
+		} else {
+			c.detectionPath = appendLowerASCII(c.detectionPath[:0], c.path)
 		}
+	case !c.app.config.CaseSensitive:
+		c.path, c.detectionPath = appendCopyLowerASCII(c.path, c.detectionPath, c.pathOriginal)
+	default:
+		c.path = append(c.path[:0], c.pathOriginal...)
+		c.detectionPath = append(c.detectionPath[:0], c.path...)
 	}
 	// If StrictRouting is disabled, we strip all trailing slashes
 	if !c.app.config.StrictRouting && len(c.detectionPath) > 1 && c.detectionPath[len(c.detectionPath)-1] == '/' {
@@ -858,6 +851,21 @@ func (c *DefaultCtx) configDependentPaths() {
 	// recomputes it lazily when route matching first needs it.
 	c.pathSlashes = 0
 	c.pathPrint = 0
+}
+
+// pathNeedsNormalization reports whether normalizeRequestPath could change
+// the original path. fasthttp already normalized the request path when it
+// parsed it, decoding escapes and removing dot and empty segments, and each of
+// those shortens the path, so one that kept its length holds no escape and no
+// dot segment, apart from a trailing "/." that fasthttp leaves in place. The
+// path is scanned instead when fasthttp's normalization is off.
+func (c *DefaultCtx) pathNeedsNormalization() bool {
+	uri := c.fasthttp.URI()
+	if uri.DisablePathNormalizing {
+		return needsPathNormalization(c.pathOriginal)
+	}
+	n := len(c.pathOriginal)
+	return len(uri.Path()) != n || (n >= 2 && c.pathOriginal[n-2] == '/' && c.pathOriginal[n-1] == '.')
 }
 
 // Reset is a method to reset context fields by given request when to use server handlers.

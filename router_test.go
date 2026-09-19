@@ -15,6 +15,7 @@ import (
 	"net/http/httptest"
 	neturl "net/url"
 	"os"
+	pathpkg "path"
 	"reflect"
 	"regexp"
 	"runtime"
@@ -730,6 +731,226 @@ func Test_Route_Match_UnescapedPath(t *testing.T) {
 	resp, err = app.Test(httptest.NewRequest(MethodGet, "/cr%C3%A9er", http.NoBody))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, StatusNotFound, resp.StatusCode, "Status code")
+
+	// an encoded slash splits the segment only with the flag on
+	app.config.UnescapePath = true
+	app.Use("/cr/éer", func(c Ctx) error {
+		return c.SendString("split")
+	})
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/cr%2F%C3%A9er", http.NoBody))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
+
+	body, err = io.ReadAll(resp.Body)
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, "split", app.toString(body))
+
+	app.config.UnescapePath = false
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/cr%2F%C3%A9er", http.NoBody))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, StatusNotFound, resp.StatusCode, "Status code")
+}
+
+// Test_Route_Match_NormalizedPath pins the RFC 3986 normalization the router
+// applies before matching, so a guard on a prefix sees the spellings of a path
+// under it that name the same resource, and only those.
+func Test_Route_Match_NormalizedPath(t *testing.T) {
+	t.Parallel()
+
+	newApp := func(cfg Config) *App {
+		app := New(cfg)
+		app.Use("/static/private", func(c Ctx) error {
+			return c.SendStatus(StatusForbidden)
+		})
+		app.Get("/static/*", func(c Ctx) error {
+			return c.SendString(c.Path() + "|" + c.Params("*"))
+		})
+		app.Get("/users/:id", func(c Ctx) error {
+			return c.SendString(c.Params("id"))
+		})
+		// a name outside the unreserved set is routed in its encoded spelling
+		app.Get("/enc/a%7Bb%7D", func(c Ctx) error {
+			return c.SendString(c.Path())
+		})
+		return app
+	}
+
+	tests := []struct {
+		name       string
+		target     string
+		wantBody   string
+		wantStatus int
+		unescape   bool
+	}{
+		{name: "plain", target: "/static/public.txt", wantStatus: StatusOK, wantBody: "/static/public.txt|public.txt"},
+		{name: "guarded", target: "/static/private/secret.txt", wantStatus: StatusForbidden},
+		{name: "encoded unreserved character", target: "/static/%70rivate/secret.txt", wantStatus: StatusForbidden},
+		{name: "parent segment", target: "/static/x/../private/secret.txt", wantStatus: StatusForbidden},
+		{name: "current segment", target: "/static/./private/secret.txt", wantStatus: StatusForbidden},
+		{name: "empty segment is kept", target: "/static//private/secret.txt", wantStatus: StatusOK, wantBody: "/static//private/secret.txt|/private/secret.txt"},
+		{name: "encoded dot segment", target: "/static/x/%2E%2E/private/secret.txt", wantStatus: StatusForbidden},
+		{name: "parent segment after an empty one", target: "/static/x//../private/secret.txt", wantStatus: StatusOK, wantBody: "/static/x/private/secret.txt|x/private/secret.txt"},
+		{name: "parent segment above the prefix", target: "/static/../static/private/secret.txt", wantStatus: StatusForbidden},
+		{name: "parent segment leaves the route", target: "/static/../other", wantStatus: StatusNotFound},
+		{name: "trailing current segment", target: "/users/john/.", wantStatus: StatusOK, wantBody: "john"},
+		{name: "trailing parent segment", target: "/static/private/x/..", wantStatus: StatusForbidden},
+		{name: "encoded unreserved characters in params", target: "/users/%6Aohn%2Edoe%7E", wantStatus: StatusOK, wantBody: "john.doe~"},
+		{name: "encoded space kept", target: "/static/a%20b.txt", wantStatus: StatusOK, wantBody: "/static/a%20b.txt|a%20b.txt"},
+		{name: "encoded space decoded under UnescapePath", target: "/static/a%20b.txt", unescape: true, wantStatus: StatusOK, wantBody: "/static/a b.txt|a b.txt"},
+		{name: "non-ascii kept with uppercase hex digits", target: "/users/%c3%a9", wantStatus: StatusOK, wantBody: "%C3%A9"},
+		{name: "non-ascii decoded under UnescapePath", target: "/users/%c3%a9", unescape: true, wantStatus: StatusOK, wantBody: "é"},
+		{name: "hex case does not split a route", target: "/enc/a%7bb%7d", wantStatus: StatusOK, wantBody: "/enc/a%7Bb%7D"},
+		{name: "encoded slash stays in the segment", target: "/users/a%2fb", wantStatus: StatusOK, wantBody: "a%2Fb"},
+		{name: "encoded slash splits the segment under UnescapePath", target: "/users/a%2Fb", unescape: true, wantStatus: StatusNotFound},
+		{name: "reserved character kept", target: "/users/a%40b", wantStatus: StatusOK, wantBody: "a%40b"},
+		{name: "reserved character decoded under UnescapePath", target: "/users/a%40b", unescape: true, wantStatus: StatusOK, wantBody: "a@b"},
+		{name: "percent sign decoded once", target: "/static/%2570rivate/x", wantStatus: StatusOK, wantBody: "/static/%2570rivate/x|%2570rivate/x"},
+		{name: "percent sign decoded once under UnescapePath", target: "/static/%2570rivate/x", unescape: true, wantStatus: StatusOK, wantBody: "/static/%70rivate/x|%70rivate/x"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			app := newApp(Config{UnescapePath: tc.unescape})
+			resp, err := app.Test(httptest.NewRequest(MethodGet, tc.target, http.NoBody))
+			require.NoError(t, err, "app.Test(req)")
+			require.Equal(t, tc.wantStatus, resp.StatusCode, "Status code")
+
+			body, err := io.ReadAll(resp.Body)
+			require.NoError(t, err)
+			if tc.wantBody != "" {
+				require.Equal(t, tc.wantBody, string(body))
+			}
+		})
+	}
+}
+
+// Test_Route_Match_AgreesWithNetHTTP sends the same requests to a net/http
+// ServeMux and to Fiber and expects the same route, path and parameters.
+// ServeMux unescapes each segment of the escaped path and redirects a path
+// with dot or empty segments to its clean form, which the harness routes as
+// the redirect would. Three spellings are left out because the two routers
+// disagree on purpose: ServeMux keeps "a%2Fb" one segment where UnescapePath
+// splits it, it reads "%2E%2E" as a literal name where Fiber decodes the
+// unreserved dots first and removes the segment, and it redirects "//a" to
+// "/a" where Fiber keeps the empty segment RFC 3986 leaves in place.
+func Test_Route_Match_AgreesWithNetHTTP(t *testing.T) {
+	t.Parallel()
+
+	routes := []struct {
+		mux, fiber string
+		params     []string // wildcard names; "rest" reads Fiber's "*"
+	}{
+		{mux: "/private/secret.txt", fiber: "/private/secret.txt"},
+		{mux: "/créer", fiber: "/créer"},
+		{mux: "/tag@2x", fiber: "/tag@2x"},
+		{mux: "/users/{id}", fiber: "/users/:id", params: []string{"id"}},
+		{mux: "/files/{rest...}", fiber: "/files/*", params: []string{"rest"}},
+	}
+
+	newMux := func() *http.ServeMux {
+		mux := http.NewServeMux()
+		for i, r := range routes {
+			mux.HandleFunc("GET "+r.mux, func(w http.ResponseWriter, req *http.Request) {
+				values := make([]string, len(r.params))
+				for j, name := range r.params {
+					values[j] = req.PathValue(name)
+				}
+				fmt.Fprintf(w, "%d %s %q", i, req.URL.Path, values)
+			})
+		}
+		return mux
+	}
+	newFiber := func(unescape bool) *App {
+		app := New(Config{UnescapePath: unescape, CaseSensitive: true, StrictRouting: true})
+		for i, r := range routes {
+			app.Get(r.fiber, func(c Ctx) error {
+				values := make([]string, len(r.params))
+				for j, name := range r.params {
+					if name == "rest" {
+						name = "*"
+					}
+					values[j] = c.Params(name)
+				}
+				return c.SendString(fmt.Sprintf("%d %s %q", i, c.Path(), values))
+			})
+		}
+		return app
+	}
+
+	// viaMux routes target as ServeMux does: a path that is not clean is
+	// answered with a redirect to its clean form (net/http's cleanPath), so
+	// the clean form is what gets routed.
+	viaMux := func(mux *http.ServeMux, target string) (int, string) {
+		req := httptest.NewRequest(MethodGet, target, http.NoBody)
+		escaped := req.URL.EscapedPath()
+		clean := pathpkg.Clean(escaped)
+		if strings.HasSuffix(escaped, "/") && clean != "/" {
+			clean += "/"
+		}
+		if clean != escaped {
+			req = httptest.NewRequest(MethodGet, clean, http.NoBody)
+		}
+		rec := httptest.NewRecorder()
+		mux.ServeHTTP(rec, req)
+		return rec.Code, rec.Body.String()
+	}
+	viaFiber := func(app *App, target string) (int, string) {
+		resp, err := app.Test(httptest.NewRequest(MethodGet, target, http.NoBody))
+		require.NoError(t, err, "app.Test(req)")
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		return resp.StatusCode, string(body)
+	}
+
+	requests := []struct {
+		target string
+		// only escapes of unreserved characters are decoded without
+		// UnescapePath, so these only agree with the flag on
+		needsUnescape bool
+	}{
+		{target: "/private/secret.txt"},
+		{target: "/%70rivate/secret.txt"},
+		{target: "/x/../private/secret.txt"},
+		{target: "/./private/secret.txt"},
+		{target: "/private/x/../secret.txt"},
+		{target: "/cr%C3%A9er", needsUnescape: true},
+		{target: "/cr%c3%a9er", needsUnescape: true},
+		{target: "/créer", needsUnescape: true},
+		{target: "/users/%C3%A9", needsUnescape: true},
+		{target: "/users/a%20b", needsUnescape: true},
+		{target: "/users/a%40b", needsUnescape: true},
+		{target: "/tag%402x", needsUnescape: true},
+		{target: "/users/100%2525", needsUnescape: true},
+		{target: "/users/%2570rivate", needsUnescape: true},
+		{target: "/files/a/b/c.txt"},
+		{target: "/files/a/../c.txt"},
+		{target: "/files/%61/b"},
+		{target: "/files/../private/secret.txt"},
+		{target: "/users/"},
+		{target: "/nope"},
+	}
+
+	for _, unescape := range []bool{false, true} {
+		app := newFiber(unescape)
+		mux := newMux()
+		for _, tc := range requests {
+			if tc.needsUnescape && !unescape {
+				continue
+			}
+			t.Run(fmt.Sprintf("unescape=%v/%s", unescape, tc.target), func(t *testing.T) {
+				t.Parallel()
+
+				wantStatus, wantBody := viaMux(mux, tc.target)
+				gotStatus, gotBody := viaFiber(app, tc.target)
+				require.Equal(t, wantStatus, gotStatus, "status for %s", tc.target)
+				if wantStatus == StatusOK {
+					require.Equal(t, wantBody, gotBody, "route, path and params for %s", tc.target)
+				}
+			})
+		}
+	}
 }
 
 func Test_Route_Match_WithEscapeChar(t *testing.T) {
