@@ -77,7 +77,7 @@ func New(config ...Config) fiber.Handler {
 	// Pre-parse trusted origins
 	trustedOrigins := []string{}
 	crossOriginTrustedOrigins := []string{}
-	trustedSubOrigins := []subdomain{}
+	trustedSubOrigins := []originpkg.Subdomain{}
 
 	for _, origin := range cfg.TrustedOrigins {
 		trimmedOrigin := utils.TrimSpace(origin)
@@ -88,12 +88,8 @@ func New(config ...Config) fiber.Handler {
 		if pattern.Wildcard {
 			trustedSubOrigins = append(trustedSubOrigins, pattern.Subdomain)
 		} else {
-			isValid, normalizedOrigin := normalizeOrigin(trimmedOrigin)
-			if !isValid {
-				panic("[CSRF] Invalid origin format in configuration:" + maskValue(origin))
-			}
-			trustedOrigins = append(trustedOrigins, normalizedOrigin)
-			crossOriginTrustedOrigins = append(crossOriginTrustedOrigins, normalizedOrigin)
+			trustedOrigins = append(trustedOrigins, pattern.Origin)
+			crossOriginTrustedOrigins = append(crossOriginTrustedOrigins, pattern.Origin)
 		}
 	}
 
@@ -388,7 +384,7 @@ func validateSecFetchSite(c fiber.Ctx) error {
 	}
 }
 
-func validateCrossOriginProtection(c fiber.Ctx, trustedOrigins []string, trustedSubOrigins []subdomain) error {
+func validateCrossOriginProtection(c fiber.Ctx, trustedOrigins []string, trustedSubOrigins []originpkg.Subdomain) error {
 	switch c.Method() {
 	case fiber.MethodGet, fiber.MethodHead, fiber.MethodOptions:
 		return nil
@@ -420,11 +416,11 @@ func validateCrossOriginProtection(c fiber.Ctx, trustedOrigins []string, trusted
 	return ErrCrossOriginRequest
 }
 
-func isCrossOriginTrusted(origin string, trustedOrigins []string, trustedSubOrigins []subdomain) bool {
+func isCrossOriginTrusted(origin string, trustedOrigins []string, trustedSubOrigins []originpkg.Subdomain) bool {
 	if origin == "" {
 		return false
 	}
-	return slices.Contains(trustedOrigins, origin) || matchSubdomainOrigin(trustedSubOrigins, utilsstrings.ToLower(origin))
+	return slices.Contains(trustedOrigins, origin) || originpkg.MatchAny(trustedSubOrigins, utilsstrings.ToLower(origin), csrfSchemes)
 }
 
 // originMatchesHost checks that the origin header matches the host header
