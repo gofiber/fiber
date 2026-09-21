@@ -678,7 +678,7 @@ sess.SaveWithContext(ctx context.Context) error
 
 ### Session with Context (timeouts/cancellation)
 
-The `*WithContext` variants let you propagate a `context.Context` to the underlying storage call so that slow or unresponsive backends can be bounded by a deadline or cancelled. This mirrors the `Storage` and `SharedState` `WithContext` convention.
+The `*WithContext` variants let you propagate a `context.Context` to the underlying storage call so that slow or unresponsive backends can be bounded by a deadline or canceled. This mirrors the `Storage` and `SharedState` `WithContext` convention.
 
 ```go
 ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)

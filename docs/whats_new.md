@@ -3098,7 +3098,7 @@ app.Use(cors.New(cors.Config{
 
 #### Redirect
 
-- **Ordered rules**: `Rules map[string]string` is deprecated in favour of `RuleList []Rule`. A map has no order, so which rule answered a path two rules both matched could not be expressed by the author. Rules in a `RuleList` are tried in the order written and the first match wins, exactly as routes are matched.
+- **Ordered rules**: `Rules map[string]string` is deprecated in favor of `RuleList []Rule`. A map has no order, so which rule answered a path two rules both matched could not be expressed by the author. Rules in a `RuleList` are tried in the order written and the first match wins, exactly as routes are matched.
 
 ```go
 // Before
@@ -3118,7 +3118,7 @@ app.Use(redirect.New(redirect.Config{
 }))
 ```
 
-`Rules` keeps working for the whole of v3. Its order is now decided by a documented heuristic rather than by analysing each pattern: most path text pinned before the first `*`, then most path text overall, then fewest asterisks, then the key. Configurations written with path text and `*` are unaffected; rules relying on regular-expression syntax beyond `*` may order differently, and `RuleList` gives exact control. Setting both fields panics.
+`Rules` keeps working for the whole of v3. Its order is now decided by a documented heuristic rather than by analyzing each pattern: most path text pinned before the first `*`, then most path text overall, then fewest asterisks, then the key. Configurations written with path text and `*` are unaffected; rules relying on regular-expression syntax beyond `*` may order differently, and `RuleList` gives exact control. Setting both fields panics.
 
 Fiber now also warns at startup when a rule can never fire because an earlier one matches every path it does.
 
@@ -3336,7 +3336,7 @@ app.Get("/gif", proxy.Forward("https://i.imgur.com/IWaBepg.gif"))
 
 #### Rewrite
 
-- **Ordered rules**: `Rules map[string]string` is deprecated in favour of `RuleList []Rule`. A map has no order, so which rule answered a path two rules both matched was decided by map iteration, which Go randomizes per run: the same request could be rewritten differently from one call to the next. Rules in an `RuleList` list are tried in the order written and the first match wins, exactly as routes are matched.
+- **Ordered rules**: `Rules map[string]string` is deprecated in favor of `RuleList []Rule`. A map has no order, so which rule answered a path two rules both matched was decided by map iteration, which Go randomizes per run: the same request could be rewritten differently from one call to the next. Rules in an `RuleList` list are tried in the order written and the first match wins, exactly as routes are matched.
 
 ```go
 // Before
