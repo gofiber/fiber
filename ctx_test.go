@@ -6475,9 +6475,32 @@ func Test_Ctx_Endpoint_SkipUnmatchedRoutes(t *testing.T) {
 	require.Equal(t, "/items/:id", path)
 }
 
-// Test_Ctx_Path_DisablePathNormalizing pins the scan fallback of
-// pathNeedsNormalization: with fasthttp's normalization switched off on the
-// URI, a Path override is still normalized before routing.
+// Test_Ctx_Reset_DisablePathNormalizing covers the branch Reset takes when the
+// request URI has DisablePathNormalizing set: the caller asked for the path to
+// be treated as sent, so Reset scans the original instead of trusting the
+// parsed copy. fasthttp parses with the flag cleared and only honors it when
+// it writes a request line back out, so the two agree today; the scan is what
+// keeps that an implementation detail of fasthttp rather than a dependency.
+func Test_Ctx_Reset_DisablePathNormalizing(t *testing.T) {
+	t.Parallel()
+	app := New()
+
+	fctx := &fasthttp.RequestCtx{}
+	fctx.Request.Header.SetMethod(MethodGet)
+	fctx.Request.SetRequestURI("/a/./b")
+
+	// Parsing clears the flag, so set it afterwards, as a handler would.
+	fctx.Request.URI().DisablePathNormalizing = true
+
+	c := app.AcquireCtx(fctx)
+	defer app.ReleaseCtx(c)
+
+	require.Equal(t, "/a/./b", c.OriginalURL(), "the target is untouched")
+	require.Equal(t, "/a/b", c.Path(), "the router still sees the normalized path")
+}
+
+// Test_Ctx_Path_DisablePathNormalizing pins that a Path override is normalized
+// before routing even with fasthttp's normalization switched off on the URI.
 func Test_Ctx_Path_DisablePathNormalizing(t *testing.T) {
 	t.Parallel()
 	app := New()

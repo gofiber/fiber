@@ -862,8 +862,9 @@ func (c *DefaultCtx) configDependentPaths() {
 // in place.
 //
 // It takes that length rather than the URI so that it stays inlinable in the
-// request hot path. With fasthttp's normalization off there is no such length,
-// and the caller scans the path with needsPathNormalization instead.
+// request hot path. A caller that switched DisablePathNormalizing on has asked
+// for the path to be treated as sent, so it does not trust the parsed copy and
+// scans the original with needsPathNormalization instead.
 func pathNeedsNormalization(normalizedLen int, path string) bool {
 	n := len(path)
 	return normalizedLen != n || (n >= 2 && path[n-2] == '/' && path[n-1] == '.')
