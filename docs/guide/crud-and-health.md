@@ -2,7 +2,7 @@
 id: crud-and-health
 title: 🚀 Minimal CRUD and Health Check
 description: >-
-  A minimal in-memory CRUD example with a /health endpoint. Useful as a
+  A minimal in-memory CRUD example with healthcheck probes. Useful as a
   starting point for learning, smoke tests, and CI checks. Not for production
   persistence.
 sidebar_position: 12
@@ -10,13 +10,17 @@ sidebar_position: 12
 
 import Tabs from '@theme/Tabs';
 import TabItem from '@theme/TabItem';
-This guide shows a minimal Fiber app with two things most "hello world" examples leave out:
 
-- A `/health` endpoint that returns `{ "status": "ok" }`
+This guide shows a minimal Fiber app with two things most "hello world"
+examples leave out:
+
+- Liveness, readiness, and startup probes using the `healthcheck` middleware
 - A tiny in-memory CRUD for `Item` (`list`, `create`, `get`, `update`, `delete`)
 
 :::caution
-This example stores data in memory. It is intended for **learning, smoke tests, and CI checks**, not for production persistence. Restarting the app clears all data.
+This example stores data in memory. It is intended for **learning, smoke
+tests, and CI checks**, not for production persistence. Restarting the app
+clears all data.
 :::
 
 ## Full example
@@ -32,6 +36,7 @@ import (
 	"sync"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/middleware/healthcheck"
 )
 
 type Item struct {
@@ -101,9 +106,9 @@ func main() {
 	app := fiber.New()
 	s := newStore()
 
-	app.Get("/health", func(c fiber.Ctx) error {
-		return c.JSON(fiber.Map{"status": "ok"})
-	})
+	app.Get(healthcheck.LivenessEndpoint, healthcheck.New())
+	app.Get(healthcheck.ReadinessEndpoint, healthcheck.New())
+	app.Get(healthcheck.StartupEndpoint, healthcheck.New())
 
 	app.Get("/items", func(c fiber.Ctx) error {
 		return c.JSON(s.list())
@@ -174,11 +179,12 @@ Start the app:
 go run main.go
 ```
 
-Check the health endpoint:
+Check the probes:
 
 ```bash
-curl http://localhost:3000/health
-# {"status":"ok"}
+curl http://localhost:3000/livez
+curl http://localhost:3000/readyz
+curl http://localhost:3000/startupz
 ```
 
 Create an item:
