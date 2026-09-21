@@ -122,11 +122,10 @@ func captureTokens(pattern *regexp.Regexp, input string) *strings.Replacer {
 	}
 	values := groups[1:]
 	replace := make([]string, 0, 2*len(values))
-	// Highest index first: a Replacer takes the earliest listed key that matches
-	// at a position, so "$1" ahead of "$10" read the tenth capture as the first
-	// followed by "0".
-	for i := len(values) - 1; i >= 0; i-- {
-		replace = append(replace, "$"+strconv.Itoa(i+1), values[i])
+	// Highest index first: a Replacer takes the earliest listed key that matches,
+	// so "$1" ahead of "$10" read the tenth capture as the first followed by "0".
+	for i, v := range slices.Backward(values) {
+		replace = append(replace, "$"+strconv.Itoa(i+1), v)
 	}
 	return strings.NewReplacer(replace...)
 }
