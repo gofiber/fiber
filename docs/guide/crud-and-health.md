@@ -172,3 +172,37 @@ Start the app:
 
 ```bash
 go run main.go
+```
+
+Check the health endpoint:
+
+```bash
+curl http://localhost:3000/health
+# {"status":"ok"}
+```
+
+Create an item:
+
+```bash
+curl -X POST http://localhost:3000/items \
+  -H "Content-Type: application/json" \
+  -d '{"name":"first"}'
+# {"id":1,"name":"first"}
+```
+
+List, get, update, delete:
+
+```bash
+curl http://localhost:3000/items
+curl http://localhost:3000/items/1
+curl -X PUT http://localhost:3000/items/1 \
+  -H "Content-Type: application/json" \
+  -d '{"name":"updated"}'
+curl -X DELETE http://localhost:3000/items/1
+```
+
+## Notes
+
+- Storage is in-memory only; restarting the app clears all items.
+- The store uses a `sync.Mutex` so it is safe to call from multiple handlers.
+- For production persistence, replace the `store` with a database of your choice.
