@@ -163,3 +163,12 @@ func main() {
 	log.Fatal(app.Listen(":3000"))
 }
 ```
+</TabItem>
+</Tabs>
+
+## Try it out
+
+Start the app:
+
+```bash
+go run main.go
