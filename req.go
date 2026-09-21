@@ -1345,6 +1345,9 @@ func (r *DefaultReq) Path(override ...string) string {
 
 		// Set new path to request context
 		r.c.fasthttp.Request.URI().SetPath(r.c.pathOriginal)
+		// An override is off the request hot path, so scan the new path rather
+		// than repeat the length comparison Reset makes.
+		r.c.pathNeedsNorm = needsPathNormalization(r.c.pathOriginal)
 		// Prettify path
 		r.c.configDependentPaths()
 		// The detection path/tree hash changed; invalidate the lookahead index.

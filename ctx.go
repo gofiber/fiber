@@ -82,6 +82,7 @@ type DefaultCtx struct {
 	isMatched              bool                 // Non use route matched
 	shouldSkipNonUseRoutes bool                 // Skip non-use routes while iterating middleware
 	isUserContextSet       bool                 // User context was stored in fasthttp user values
+	pathNeedsNorm          bool                 // pathOriginal holds an escape or a dot segment; set wherever pathOriginal is
 }
 
 // TLSHandler hosts the callback hooks Fiber invokes while negotiating TLS
@@ -819,7 +820,7 @@ func (c *DefaultCtx) configDependentPaths() {
 	// is set. Most requests need no normalization, and under the default
 	// configuration both are then written in a single pass over the original.
 	switch {
-	case c.pathNeedsNormalization():
+	case c.pathNeedsNorm:
 		c.path = append(c.path[:0], c.pathOriginal...)
 		c.path = normalizeRequestPath(c.path, c.app.config.UnescapePath)
 		if c.app.config.CaseSensitive {
@@ -854,18 +855,18 @@ func (c *DefaultCtx) configDependentPaths() {
 }
 
 // pathNeedsNormalization reports whether normalizeRequestPath could change
-// the original path. fasthttp already normalized the request path when it
-// parsed it, decoding escapes and removing dot and empty segments, and each of
-// those shortens the path, so one that kept its length holds no escape and no
-// dot segment, apart from a trailing "/." that fasthttp leaves in place. The
-// path is scanned instead when fasthttp's normalization is off.
-func (c *DefaultCtx) pathNeedsNormalization() bool {
-	uri := c.fasthttp.URI()
-	if uri.DisablePathNormalizing {
-		return needsPathNormalization(c.pathOriginal)
-	}
-	n := len(c.pathOriginal)
-	return len(uri.Path()) != n || (n >= 2 && c.pathOriginal[n-2] == '/' && c.pathOriginal[n-1] == '.')
+// path, given the length of the path fasthttp normalized when it parsed the
+// request. Parsing decoded the escapes and removed the dot and empty segments,
+// and each of those shortens the path, so one that kept its length holds no
+// escape and no dot segment, apart from a trailing "/." that fasthttp leaves
+// in place.
+//
+// It takes that length rather than the URI so that it stays inlinable in the
+// request hot path. With fasthttp's normalization off there is no such length,
+// and the caller scans the path with needsPathNormalization instead.
+func pathNeedsNormalization(normalizedLen int, path string) bool {
+	n := len(path)
+	return normalizedLen != n || (n >= 2 && path[n-2] == '/' && path[n-1] == '.')
 }
 
 // Reset is a method to reset context fields by given request when to use server handlers.
@@ -879,7 +880,13 @@ func (c *DefaultCtx) Reset(fctx *fasthttp.RequestCtx) {
 	c.firstMatchIndex = -1
 	c.route = nil
 	// Set paths
-	c.pathOriginal = c.app.toString(fctx.URI().PathOriginal())
+	uri := fctx.URI()
+	c.pathOriginal = c.app.toString(uri.PathOriginal())
+	if uri.DisablePathNormalizing {
+		c.pathNeedsNorm = needsPathNormalization(c.pathOriginal)
+	} else {
+		c.pathNeedsNorm = pathNeedsNormalization(len(uri.Path()), c.pathOriginal)
+	}
 	// Set method
 	c.methodInt = c.app.methodInt(utils.UnsafeString(fctx.Request.Header.Method()))
 	// Attach *fasthttp.RequestCtx to ctx

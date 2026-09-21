@@ -5457,6 +5457,34 @@ func Test_Ctx_Path(t *testing.T) {
 	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
 }
 
+// Test_Ctx_Path_OverrideNormalizes pins that an overridden path is normalized
+// from what the override says, not from what the request arrived with. Reset
+// records whether the request path needs normalizing, so an override has to
+// record it again in both directions: a plain request overridden with a dot
+// segment or an escape, and an escaped request overridden with a plain path.
+func Test_Ctx_Path_OverrideNormalizes(t *testing.T) {
+	t.Parallel()
+	app := New()
+	app.Get("/plain", func(c Ctx) error {
+		require.Equal(t, "/a/b", c.Path("/a/./b"))
+		require.Equal(t, "/x/y", c.Path("/%78/y"))
+		require.Equal(t, "/a/b", c.Path("/a/c/../b"))
+		return c.SendString("ok")
+	})
+	app.Get("/x", func(c Ctx) error {
+		require.Equal(t, "/x", c.Path())
+		require.Equal(t, "/plain", c.Path("/plain"))
+		require.Equal(t, "/plain", string(c.Request().URI().Path()))
+		return c.SendString("ok")
+	})
+
+	for _, target := range []string{"/plain", "/%78"} {
+		resp, err := app.Test(httptest.NewRequest(MethodGet, target, http.NoBody))
+		require.NoError(t, err, target)
+		require.Equal(t, StatusOK, resp.StatusCode, target)
+	}
+}
+
 // go test -run Test_Ctx_Protocol
 func Test_Ctx_Protocol(t *testing.T) {
 	t.Parallel()
