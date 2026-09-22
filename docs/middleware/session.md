@@ -535,6 +535,7 @@ if ok {
 - Registration must happen during application startup
 - All instances of the application must register the same types
 - Types are encoded using Go's `gob` package
+- Reading a struct back out costs a full re-encode on save, because the value could be mutated in place. Sessions holding only scalars are written back without re-encoding
 
 ## Migration Guide
 
@@ -641,6 +642,8 @@ sess.Store() *session.Store
 ```
 
 `FromContext` accepts a `fiber.CustomCtx`, `fiber.Ctx`, a `*fasthttp.RequestCtx`, or a `context.Context`.
+
+A session that was only read is written back to storage without being re-encoded. `Get` and `Keys` give that up when the value or key they return can alias the session (a map, slice, pointer or struct), because the caller can then mutate it in place without calling `Set`.
 
 ### Store Methods
 
