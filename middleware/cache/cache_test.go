@@ -4143,7 +4143,7 @@ func Test_CacheStorage_UncacheableRevalidationDeletesStaleEntry(t *testing.T) {
 			require.Equal(t, cacheMiss, resp.Header.Get("X-Cache"))
 			require.NoError(t, resp.Body.Close())
 
-			key := "GET|/cached"
+			key := cacheKeyVersion + "|GET|/cached"
 			bodyKey := key + "_body"
 			storage.mu.RLock()
 			require.Contains(t, storage.data, key)
@@ -4199,12 +4199,12 @@ func Test_CacheStorage_UncacheableRevalidationDeletionErrors(t *testing.T) {
 		{
 			name:              "metadata",
 			metadataRemaining: true,
-			wantDeletes:       []string{"GET|/cached"},
+			wantDeletes:       []string{cacheKeyVersion + "|GET|/cached"},
 		},
 		{
 			name:            "body",
 			failedKeySuffix: "_body",
-			wantDeletes:     []string{"GET|/cached", "GET|/cached_body"},
+			wantDeletes:     []string{cacheKeyVersion + "|GET|/cached", cacheKeyVersion + "|GET|/cached_body"},
 		},
 	}
 
@@ -4246,7 +4246,7 @@ func Test_CacheStorage_UncacheableRevalidationDeletionErrors(t *testing.T) {
 			require.Equal(t, cacheMiss, resp.Header.Get("X-Cache"))
 			require.NoError(t, resp.Body.Close())
 
-			key := "GET|/cached"
+			key := cacheKeyVersion + "|GET|/cached"
 			bodyKey := key + "_body"
 			storage.mu.Lock()
 			storage.errs["del|"+key+tt.failedKeySuffix] = errors.New("delete failed")
