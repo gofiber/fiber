@@ -35,6 +35,7 @@ go get github.com/gofiber/fiber/v3
 package main
 
 import (
+    "cmp"
     "log"
     "slices"
     "strconv"
@@ -68,7 +69,7 @@ func (s *store) list() []Item {
         out = append(out, it)
     }
     // Map iteration is unordered, so sort before answering.
-    slices.SortFunc(out, func(a, b Item) int { return a.ID - b.ID })
+    slices.SortFunc(out, func(a, b Item) int { return cmp.Compare(a.ID, b.ID) })
     return out
 }
 
@@ -114,19 +115,14 @@ func main() {
     app := fiber.New()
     s := newStore()
 
-    // A probe that always answers "healthy" can never take the instance out of
-    // rotation, so readiness and startup report this flag instead.
+    // Readiness needs a probe of its own: the default one always answers
+    // "healthy", so it could never take this instance out of rotation.
     var ready atomic.Bool
-    isReady := func(fiber.Ctx) bool { return ready.Load() }
+    readiness := healthcheck.Config{Probe: func(fiber.Ctx) bool { return ready.Load() }}
 
-    // Liveness answers as long as the process serves at all.
-    app.Get(healthcheck.LivenessEndpoint, healthcheck.New()) // /livez
-    app.Get(healthcheck.ReadinessEndpoint, healthcheck.New(healthcheck.Config{
-        Probe: isReady,
-    })) // /readyz
-    app.Get(healthcheck.StartupEndpoint, healthcheck.New(healthcheck.Config{
-        Probe: isReady,
-    })) // /startupz
+    app.Get(healthcheck.LivenessEndpoint, healthcheck.New())
+    app.Get(healthcheck.ReadinessEndpoint, healthcheck.New(readiness))
+    app.Get(healthcheck.StartupEndpoint, healthcheck.New())
 
     app.Get("/items", func(c fiber.Ctx) error {
         return c.JSON(s.list())
@@ -183,8 +179,8 @@ func main() {
         return c.SendStatus(fiber.StatusNoContent)
     })
 
-    // Everything this app needs is in memory, so it is ready right away. A real
-    // service flips this once its database or queue is connected.
+    // In memory, so ready right away and the flag is never observed false. A
+    // real service starts Listen first and flips this once its database is up.
     ready.Store(true)
 
     log.Fatal(app.Listen(":3000"))
@@ -195,7 +191,8 @@ The route path `:id` is a parameter; see
 [Routing](./routing.md#parameters). `c.Bind().Body` maps the request body onto
 a struct, see [Bind](../api/bind.md#body), and `fiber.NewError` hands the
 status and message to the central error handler, see
-[Error handling](./error-handling.md).
+[Error handling](./error-handling.md). `atomic.Bool` is a flag that is safe to
+read and write from many requests at once.
 
 ## Try it out
 
@@ -205,14 +202,19 @@ Start the app:
 go run main.go
 ```
 
-Check the probes. `-f` makes `curl` exit non-zero on an error status, which is
-what lets a CI step fail:
+Check the probes. Each answers `OK` as plain text, and `-f` makes `curl` exit
+non-zero on a 4xx or 5xx, which is what lets a CI step fail. Use
+`--fail-with-body` instead when the log should also carry the error message:
 
 ```bash
-curl -fsS http://localhost:3000/livez    # OK
-curl -fsS http://localhost:3000/readyz   # OK
-curl -fsS http://localhost:3000/startupz # OK
+curl -fsS http://localhost:3000/livez
+curl -fsS http://localhost:3000/readyz
+curl -fsS http://localhost:3000/startupz
 ```
+
+Pass `ResponseFormat: healthcheck.FormatJSON` in the config to answer
+`{"status":"OK"}` instead; see
+[Healthcheck](../middleware/healthcheck.md).
 
 Create an item:
 
@@ -234,24 +236,20 @@ curl -fsS -X PUT http://localhost:3000/items/1 \
 curl -fsS -X DELETE http://localhost:3000/items/1
 ```
 
-A request for an item that is gone answers with the status and the message,
-not with JSON:
+A request for an item that is gone answers `404` with the message as plain
+text, not as JSON. [Error handling](./error-handling.md) shows how to answer
+JSON instead:
 
 ```bash
-curl -sS -o /dev/null -w '%{http_code}\n' http://localhost:3000/items/1
-# 404
+curl -sS http://localhost:3000/items/1
+# not found
 ```
 
 ## Notes
 
-- Storage is in-memory only; restarting the app clears all items.
 - The store uses a `sync.Mutex` so it is safe to call from multiple handlers.
-- Errors travel through the default error handler, which answers `text/plain`.
-  [Error handling](./error-handling.md) shows how to answer JSON instead.
 - The handlers accept any name, including an empty one. See
   [Validation](./validation.md) for rejecting bad input.
-- `Content-Type` decides which parser `c.Bind().Body` uses, and `curl -d` sends
-  `application/x-www-form-urlencoded` unless told otherwise. Dropping the `-H`
-  line above therefore does not fail: the JSON text is read as a form and the
-  item is created with an empty name.
+- Store `false` in `ready` while shutting down so a load balancer drains this
+  instance; `app.Hooks().OnPreShutdown` runs while the server still answers.
 - For production persistence, replace the `store` with a database of your choice.
