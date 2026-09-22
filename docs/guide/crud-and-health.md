@@ -8,13 +8,11 @@ description: >-
 sidebar_position: 12
 ---
 
-import Tabs from '@theme/Tabs';
-import TabItem from '@theme/TabItem';
-
 This guide shows a minimal Fiber app with two things most "hello world"
 examples leave out:
 
-- Liveness, readiness, and startup probes using the `healthcheck` middleware
+- Liveness, readiness, and startup probes using the
+  [`healthcheck`](../middleware/healthcheck.md) middleware
 - A tiny in-memory CRUD for `Item` (`list`, `create`, `get`, `update`, `delete`)
 
 :::caution
@@ -23,18 +21,25 @@ tests, and CI checks**, not for production persistence. Restarting the app
 clears all data.
 :::
 
-## Full example
+## Set up the module
 
-<Tabs>
-<TabItem value="example" label="Example">
+```bash
+mkdir crud && cd crud
+go mod init example.com/crud
+go get github.com/gofiber/fiber/v3
+```
+
+## Full example
 
 ```go title="main.go"
 package main
 
 import (
     "log"
+    "slices"
     "strconv"
     "sync"
+    "sync/atomic"
 
     "github.com/gofiber/fiber/v3"
     "github.com/gofiber/fiber/v3/middleware/healthcheck"
@@ -62,6 +67,8 @@ func (s *store) list() []Item {
     for _, it := range s.items {
         out = append(out, it)
     }
+    // Map iteration is unordered, so sort before answering.
+    slices.SortFunc(out, func(a, b Item) int { return a.ID - b.ID })
     return out
 }
 
@@ -107,9 +114,19 @@ func main() {
     app := fiber.New()
     s := newStore()
 
-    app.Get(healthcheck.LivenessEndpoint, healthcheck.New())
-    app.Get(healthcheck.ReadinessEndpoint, healthcheck.New())
-    app.Get(healthcheck.StartupEndpoint, healthcheck.New())
+    // A probe that always answers "healthy" can never take the instance out of
+    // rotation, so readiness and startup report this flag instead.
+    var ready atomic.Bool
+    isReady := func(fiber.Ctx) bool { return ready.Load() }
+
+    // Liveness answers as long as the process serves at all.
+    app.Get(healthcheck.LivenessEndpoint, healthcheck.New()) // /livez
+    app.Get(healthcheck.ReadinessEndpoint, healthcheck.New(healthcheck.Config{
+        Probe: isReady,
+    })) // /readyz
+    app.Get(healthcheck.StartupEndpoint, healthcheck.New(healthcheck.Config{
+        Probe: isReady,
+    })) // /startupz
 
     app.Get("/items", func(c fiber.Ctx) error {
         return c.JSON(s.list())
@@ -166,12 +183,19 @@ func main() {
         return c.SendStatus(fiber.StatusNoContent)
     })
 
+    // Everything this app needs is in memory, so it is ready right away. A real
+    // service flips this once its database or queue is connected.
+    ready.Store(true)
+
     log.Fatal(app.Listen(":3000"))
 }
 ```
 
-</TabItem>
-</Tabs>
+The route path `:id` is a parameter; see
+[Routing](./routing.md#parameters). `c.Bind().Body` maps the request body onto
+a struct, see [Bind](../api/bind.md#body), and `fiber.NewError` hands the
+status and message to the central error handler, see
+[Error handling](./error-handling.md).
 
 ## Try it out
 
@@ -181,18 +205,19 @@ Start the app:
 go run main.go
 ```
 
-Check the probes:
+Check the probes. `-f` makes `curl` exit non-zero on an error status, which is
+what lets a CI step fail:
 
 ```bash
-curl http://localhost:3000/livez
-curl http://localhost:3000/readyz
-curl http://localhost:3000/startupz
+curl -fsS http://localhost:3000/livez    # OK
+curl -fsS http://localhost:3000/readyz   # OK
+curl -fsS http://localhost:3000/startupz # OK
 ```
 
 Create an item:
 
 ```bash
-curl -X POST http://localhost:3000/items \
+curl -fsS -X POST http://localhost:3000/items \
   -H "Content-Type: application/json" \
   -d '{"name":"first"}'
 # {"id":1,"name":"first"}
@@ -201,16 +226,32 @@ curl -X POST http://localhost:3000/items \
 List, get, update, delete:
 
 ```bash
-curl http://localhost:3000/items
-curl http://localhost:3000/items/1
-curl -X PUT http://localhost:3000/items/1 \
+curl -fsS http://localhost:3000/items
+curl -fsS http://localhost:3000/items/1
+curl -fsS -X PUT http://localhost:3000/items/1 \
   -H "Content-Type: application/json" \
   -d '{"name":"updated"}'
-curl -X DELETE http://localhost:3000/items/1
+curl -fsS -X DELETE http://localhost:3000/items/1
+```
+
+A request for an item that is gone answers with the status and the message,
+not with JSON:
+
+```bash
+curl -sS -o /dev/null -w '%{http_code}\n' http://localhost:3000/items/1
+# 404
 ```
 
 ## Notes
 
 - Storage is in-memory only; restarting the app clears all items.
 - The store uses a `sync.Mutex` so it is safe to call from multiple handlers.
+- Errors travel through the default error handler, which answers `text/plain`.
+  [Error handling](./error-handling.md) shows how to answer JSON instead.
+- The handlers accept any name, including an empty one. See
+  [Validation](./validation.md) for rejecting bad input.
+- `Content-Type` decides which parser `c.Bind().Body` uses, and `curl -d` sends
+  `application/x-www-form-urlencoded` unless told otherwise. Dropping the `-H`
+  line above therefore does not fail: the JSON text is read as a form and the
+  item is created with an empty name.
 - For production persistence, replace the `store` with a database of your choice.

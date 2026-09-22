@@ -195,11 +195,12 @@ Work through these in order and you will have touched everything a typical produ
 1. [Routing](./guide/routing.md): parameters, wildcards, and constraints; try them live in the [Route Matcher](./extra/route-matcher.md)
 2. [Grouping](./guide/grouping.md) and the [middleware catalog](https://docs.gofiber.io/category/-middleware): structure the app and its cross-cutting concerns
 3. [Error handling](./guide/error-handling.md): central error handlers and status codes
-4. [Request binding](./api/bind.md) and [validation](./guide/validation.md): map request data onto structs safely
-5. [Templates](./guide/templates.md): render views with your favorite template engine
-6. [HTTP client](./client/rest.md): call other services with the same performance philosophy
-7. [Performance](./guide/faster-fiber.md): custom JSON encoders and the tricks behind the benchmarks
-8. [Testing](./api/app.md#test): test handlers without a running server using `app.Test`
+4. [Minimal CRUD and health check](./guide/crud-and-health.md): a runnable starter with probes, for learning and CI smoke tests
+5. [Request binding](./api/bind.md) and [validation](./guide/validation.md): map request data onto structs safely
+6. [Templates](./guide/templates.md): render views with your favorite template engine
+7. [HTTP client](./client/rest.md): call other services with the same performance philosophy
+8. [Performance](./guide/faster-fiber.md): custom JSON encoders and the tricks behind the benchmarks
+9. [Testing](./api/app.md#test): test handlers without a running server using `app.Test`
 
 The [configuration reference](./api/fiber.md) lists every option accepted by `fiber.New`, and the [learning resources](./extra/learning-resources.md) page collects tutorials and hands-on challenges.
 
