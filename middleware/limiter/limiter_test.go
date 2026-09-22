@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -1880,6 +1881,37 @@ func Benchmark_Limiter(b *testing.B) {
 	for b.Loop() {
 		h(fctx)
 	}
+}
+
+// go test -v -run=^$ -bench=Benchmark_Limiter_Parallel_Keys -benchmem -count=4
+func Benchmark_Limiter_Parallel_Keys(b *testing.B) {
+	var clients atomic.Uint64
+
+	app := fiber.New()
+
+	app.Use(New(Config{
+		Max:          1_000_000,
+		Expiration:   60 * time.Second,
+		KeyGenerator: func(c fiber.Ctx) string { return c.Get("X-Client") },
+	}))
+
+	app.Get("/", func(c fiber.Ctx) error {
+		return c.SendString("Hello, World!")
+	})
+
+	h := app.Handler()
+
+	// One distinct key per goroutine: unrelated clients must not serialize.
+	b.RunParallel(func(pb *testing.PB) {
+		fctx := &fasthttp.RequestCtx{}
+		fctx.Request.Header.SetMethod(fiber.MethodGet)
+		fctx.Request.SetRequestURI("/")
+		fctx.Request.Header.Set("X-Client", strconv.FormatUint(clients.Add(1), 10))
+
+		for pb.Next() {
+			h(fctx)
+		}
+	})
 }
 
 // go test -run Test_Sliding_Window -race -v
