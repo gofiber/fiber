@@ -136,6 +136,11 @@ type Route struct { // betteralign:ignore - see below
 
 	domain string // Host pattern from app.Domain(), empty otherwise
 
+	// The group the route was registered through, captured as plain values so
+	// a copy handed out by GetRoutes still carries them after group is cleared.
+	groupPrefix string
+	groupName   string
+
 	// OpenAPI documentation metadata
 	Summary     string `json:"summary,omitempty"`
 	Description string `json:"description,omitempty"`
@@ -417,6 +422,28 @@ func (r *Route) IsAutoHead() bool {
 // specification (set via the Hidden helper).
 func (r *Route) IsHidden() bool {
 	return r.hidden
+}
+
+// captureGroupLocked records the group's prefix and name on the route. Name
+// writes the group's name under app.mutex, so the caller must hold it.
+func (r *Route) captureGroupLocked() {
+	if r.group == nil {
+		r.groupPrefix, r.groupName = "", ""
+		return
+	}
+	r.groupPrefix, r.groupName = r.group.Prefix, r.group.name
+}
+
+// GroupPrefix returns the prefix of the group the route was registered through,
+// or "" for a route registered on the app itself.
+func (r *Route) GroupPrefix() string {
+	return r.groupPrefix
+}
+
+// GroupName returns the name the group carried when the route was registered,
+// or "" when the route has no group or the group was not named.
+func (r *Route) GroupName() string {
+	return r.groupName
 }
 
 // RouteParameter describes an input captured by a route. Schema/SchemaRef and
@@ -1770,6 +1797,8 @@ func (app *App) register(methods []string, pathRaw string, group *Group, domain 
 func (app *App) addRoute(method string, route *Route) {
 	app.mutex.Lock()
 
+	route.captureGroupLocked()
+
 	// Get unique HTTP method identifier
 	m := app.methodInt(method)
 
@@ -1792,6 +1821,7 @@ func (app *App) addRoute(method string, route *Route) {
 		// Name prefixes with the group of the route it renames, which for this
 		// name is the group the merging registration was made through.
 		preRoute.group = route.group
+		preRoute.captureGroupLocked()
 		liveRoute = preRoute
 	} else {
 		route.Method = method

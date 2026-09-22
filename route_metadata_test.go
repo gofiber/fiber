@@ -1309,3 +1309,43 @@ func Test_AutoHeadPrune_IsDomainScoped(t *testing.T) {
 	require.Equal(t, map[string]int{"b.example": 1}, twins)
 	require.Equal(t, map[string]int{"a.example": 1}, explicit)
 }
+
+func Test_Route_GroupIdentity(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	app.Get("/plain", testHandlerOK)
+	app.Group("/api").Name("api.").Group("/users").Name("users.").Get("/:id", testHandlerOK)
+	app.Group("/anon").Get("/x", testHandlerOK)
+
+	plain := findRoute(t, app, MethodGet, "/plain")
+	require.Empty(t, plain.GroupPrefix())
+	require.Empty(t, plain.GroupName())
+
+	user := findRoute(t, app, MethodGet, "/api/users/:id")
+	require.Equal(t, "/api/users", user.GroupPrefix())
+	require.Equal(t, "api.users.", user.GroupName())
+
+	anon := findRoute(t, app, MethodGet, "/anon/x")
+	require.Equal(t, "/anon", anon.GroupPrefix())
+	require.Empty(t, anon.GroupName())
+}
+
+func Test_Route_GroupIdentity_MergedRegistrationTakesLatestGroup(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	app.Group("/x").Name("first.").Get("/y", testHandlerOK)
+	app.Group("/x").Name("second.").Get("/y", testHandlerOK)
+
+	routes := app.GetRoutes()
+	var merged []Route
+	for i := range routes {
+		if routes[i].Method == MethodGet && routes[i].Path == "/x/y" {
+			merged = append(merged, routes[i])
+		}
+	}
+	require.Len(t, merged, 1)
+	require.Equal(t, "second.", merged[0].GroupName())
+	require.Equal(t, "/x", merged[0].GroupPrefix())
+}

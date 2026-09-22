@@ -801,6 +801,23 @@ func generateSpec(routes []fiber.Route, cfg *Config) openAPISpec {
 			continue
 		}
 
+		// What the route does not say is filled from what the router knows:
+		// the handler's name, the enclosing group and the app-wide media type.
+		summary := r.Summary
+		if summary == "" && !cfg.DisableHandlerSummaries {
+			summary = handlerSummary(r.Handlers)
+		}
+		tags := r.Tags
+		if len(tags) == 0 && !cfg.DisableGroupTags {
+			if tag := groupTag(r); tag != "" {
+				tags = []string{tag}
+			}
+		}
+		respType := r.Produces
+		if respType == "" {
+			respType = cfg.DefaultProduces
+		}
+
 		variants := buildOpenAPIPathVariants(r.Path, r.Params)
 		for _, variant := range variants {
 			methodLower := utilsstrings.ToLower(r.Method)
@@ -854,9 +871,9 @@ func generateSpec(routes []fiber.Route, cfg *Config) openAPISpec {
 			}
 			params = mergeRouteParameters(params, paramIndex, extras)
 
-			summary := r.Summary
-			if summary == "" {
-				summary = r.Method + " " + variant.Path
+			opSummary := summary
+			if opSummary == "" {
+				opSummary = r.Method + " " + variant.Path
 			}
 			description := r.Description
 
@@ -865,8 +882,6 @@ func generateSpec(routes []fiber.Route, cfg *Config) openAPISpec {
 				operationID = generateOperationID(r.Method, variant.Path)
 			}
 			operationID = uniqueOperationID(operationID, usedOperationIDs)
-
-			respType := r.Produces
 
 			responses := convertRouteResponses(r.Responses, respType)
 			if len(responses) == 0 {
@@ -890,9 +905,9 @@ func generateSpec(routes []fiber.Route, cfg *Config) openAPISpec {
 
 			paths[variant.Path][methodLower] = operation{
 				OperationID:  operationID,
-				Summary:      summary,
+				Summary:      opSummary,
 				Description:  description,
-				Tags:         r.Tags,
+				Tags:         tags,
 				Deprecated:   r.Deprecated,
 				Parameters:   params,
 				RequestBody:  reqBody,
@@ -1227,14 +1242,20 @@ func convertRouteResponses(routeResponses map[string]fiber.RouteResponse, fallba
 		content := routeMediaTypeContent(resp.Content)
 		if content == nil {
 			mediaTypes := resp.MediaTypes
-			if len(mediaTypes) == 0 &&
-				(len(resp.Schema) > 0 || resp.SchemaRef != "" || resp.Example != nil || len(resp.Examples) > 0) {
-				// A schema or example with no media type would be discarded,
-				// so fall back to Produces, then to JSON.
-				if fallbackMediaType != "" {
+			if len(mediaTypes) == 0 {
+				switch {
+				case len(resp.Schema) > 0 || resp.SchemaRef != "" || resp.Example != nil || len(resp.Examples) > 0:
+					// A schema or example with no media type would be discarded,
+					// so fall back to Produces, then to JSON.
+					if fallbackMediaType != "" {
+						mediaTypes = []string{fallbackMediaType}
+					} else {
+						mediaTypes = []string{fiber.MIMEApplicationJSON}
+					}
+				case fallbackMediaType != "" && !statusHasNoBody(code):
+					// A response declared with a description alone still has a
+					// body on the wire, so it documents the app-wide media type.
 					mediaTypes = []string{fallbackMediaType}
-				} else {
-					mediaTypes = []string{fiber.MIMEApplicationJSON}
 				}
 			}
 			content = mediaTypesToContent(mediaTypes, resp.Schema, resp.SchemaRef, resp.Example, resp.Examples)

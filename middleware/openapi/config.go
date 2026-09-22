@@ -145,6 +145,9 @@ type Config struct {
 	// SwaggerCSSURL is the stylesheet URL used by the generated Swagger UI page. Optional. Default: "https://unpkg.com/swagger-ui-dist@5.32.6/swagger-ui.css"
 	SwaggerCSSURL string
 
+	// DefaultProduces is the response media type documented for a response that declares none. Optional. Default: "application/json"
+	DefaultProduces string
+
 	// Tags lists top-level tag definitions (with descriptions) used by operations. Optional. Default: nil
 	Tags []Tag
 
@@ -153,6 +156,12 @@ type Config struct {
 
 	// Servers lists the servers hosting the API; it takes precedence over ServerURL. Optional. Default: nil
 	Servers []Server
+
+	// DisableGroupTags stops tagging an untagged route with its group's name or last static prefix segment. Optional. Default: false
+	DisableGroupTags bool
+
+	// DisableHandlerSummaries stops deriving a missing summary from the handler function's name. Optional. Default: false
+	DisableHandlerSummaries bool
 }
 
 // ConfigDefault is the default config.
@@ -169,6 +178,9 @@ var ConfigDefault = Config{
 	SwaggerStandalonePresetURL: "https://unpkg.com/swagger-ui-dist@5.32.6/swagger-ui-standalone-preset.js",
 	SwaggerOptions:             nil,
 	OpenAPIVersion:             versionOpenAPI31,
+	DefaultProduces:            fiber.MIMEApplicationJSON,
+	DisableGroupTags:           false,
+	DisableHandlerSummaries:    false,
 }
 
 // maxCopyDepth bounds the configuration deep copy: a cyclic value in
@@ -349,6 +361,9 @@ func configDefault(config ...Config) Config {
 	}
 	if cfg.OpenAPIVersion == "" {
 		cfg.OpenAPIVersion = ConfigDefault.OpenAPIVersion
+	}
+	if cfg.DefaultProduces == "" {
+		cfg.DefaultProduces = ConfigDefault.DefaultProduces
 	}
 	switch cfg.OpenAPIVersion {
 	case versionOpenAPI30, versionOpenAPI31, versionOpenAPI32:

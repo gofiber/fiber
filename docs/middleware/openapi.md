@@ -43,6 +43,12 @@ the routes themselves and from `Config` — the tag groups, the server list and 
 
 ![Swagger UI page served by the OpenAPI middleware, listing the documented operations grouped by tag](./img/openapi-swagger-ui.png)
 
+Most of the document exists before a single route is documented: each
+operation's summary is derived from its handler's function name, its tags from
+the enclosing group, and every response carries `application/json` unless the
+route says otherwise. The helpers further down refine those defaults; see
+[Behavior and defaults](#behavior-and-defaults) for the exact rules.
+
 The middleware inspects the app's routes and generates the spec on the first
 matching request. The spec is cached, but the cache is automatically invalidated
 whenever the route table changes — routes added or removed, or route
@@ -583,15 +589,32 @@ route's media type.
 
 - If a route declares no responses, a sensible default is added: `200 OK` for most
   methods and `204 No Content` for `DELETE`, one of the statuses RFC 9110 names
-  for a successful delete. `HEAD` mirrors `GET` (`200 OK`, plus the `Produces`
-  media type if set) because RFC 9110 has a `HEAD` response carry the same header
-  fields as the `GET` would, minus the content. Declaring any response via the
-  helpers disables the automatic default.
-- Operations without metadata default to a summary of `"METHOD /path"`, no
-  `description` key at all, no tags and not deprecated. No request body or response content
-  type is invented: a request body appears only when `Consumes`/`RequestBody*` is
-  set explicitly, and default responses carry a description only until
-  `Produces`/`Response*` declares a media type.
+  for a successful delete. `HEAD` mirrors `GET` (`200 OK`, plus the `GET`'s media
+  type) because RFC 9110 has a `HEAD` response carry the same header fields as
+  the `GET` would, minus the content. Declaring any response via the helpers
+  disables the automatic default.
+- What a route does not say is filled from what the router already knows, and
+  anything set explicitly always wins:
+  - The summary comes from the final handler's function name:
+    `app.Get("/users", listUsers)` documents as `List users`, and a method value
+    such as `(*Server).GetUserByID` as `Get user by ID`. A closure has no usable
+    name, so its summary falls back to `"METHOD /path"`. `DisableHandlerSummaries`
+    keeps that fallback everywhere.
+  - Tags come from the enclosing group. A named group contributes the last
+    segment of its name, so `app.Group("/u").Name("users.")` tags `users`;
+    otherwise the last static segment of the prefix does, skipping parameters
+    and version markers such as `v1`, so routes under `app.Group("/api/v1/users")`
+    are tagged `users` and routes under `app.Group("/api/v1")` are tagged `api`.
+    Nested groups use the innermost one, and a route registered on the app
+    itself gets no tag. `DisableGroupTags` turns this off.
+  - A response that declares no media type documents `DefaultProduces`, which is
+    `application/json` unless configured; `Produces` and the `Response*` media
+    types override it per route, and a status that carries no body (`1xx`,
+    `204`, `205`, `304`) never gets one. No request body is invented: it appears
+    only when `Consumes`/`RequestBody*` is set explicitly, since documenting
+    one would claim the handler reads it.
+- Operations without metadata have no `description` key at all and are not
+  deprecated.
 - A route's `Consumes`/`Produces` are inferred from the first media type passed
   to `RequestBody*` and to a `200` `Response*`, but only when `Consumes()` or
   `Produces()` did not set one explicitly.
@@ -679,6 +702,9 @@ route's media type.
 | Webhooks       | `map[string]any`        | Webhook definitions (`webhooks`, OpenAPI 3.1+).              | `nil` |
 | JSONSchemaDialect | `string`             | Default JSON Schema dialect (`jsonSchemaDialect`, OpenAPI 3.1+). | `""` |
 | Self           | `string`                | Self-assigned document URI (`$self`, OpenAPI 3.2+).          | `""` |
+| DefaultProduces | `string`               | Response media type documented for a response that declares none; `Produces` and the `Response*` media types override it per route. | `"application/json"` |
+| DisableGroupTags | `bool`                | Stops tagging an untagged route with its group's name or last static prefix segment. | `false` |
+| DisableHandlerSummaries | `bool`         | Stops deriving a missing summary from the handler function's name. | `false` |
 
 `Summary`, `Webhooks` and `JSONSchemaDialect` require OpenAPI 3.1+; `Self`,
 `Server.Name` and `License.Identifier` are emitted only for the versions that
@@ -722,6 +748,9 @@ var ConfigDefault = Config{
     SwaggerStandalonePresetURL: "https://unpkg.com/swagger-ui-dist@5.32.6/swagger-ui-standalone-preset.js",
     SwaggerOptions:             nil,
     OpenAPIVersion:             "3.1.0",
+    DefaultProduces:            "application/json",
+    DisableGroupTags:           false,
+    DisableHandlerSummaries:    false,
 }
 ```
 

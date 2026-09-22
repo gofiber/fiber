@@ -504,7 +504,7 @@ func Test_SchemaOf_EmbeddedFieldDoesNotShadowParent(t *testing.T) {
 		ID   string `json:"id"`
 		Note string `json:"note"`
 	}
-	type Outer struct { //nolint:govet // fieldalignment: the embedded struct must follow the parent field to exercise shadowing
+	type Outer struct { //nolint:govet // fieldalignment: the embedded struct must follow the parent field to exercise shadowing; betteralign:ignore
 		ID int `json:"id"`
 		Inner
 	}
@@ -621,7 +621,7 @@ func Test_SchemaOf_TaggedFieldWinsConflict(t *testing.T) {
 	props := requireProps(t, SchemaOf(embedStruct([]any{E1{}, E3{}})))
 	require.NotContains(t, props, "v")
 
-	type P2 struct { //nolint:govet // fieldalignment: embed order mirrors the documented scenario
+	type P2 struct { //nolint:govet // fieldalignment: embed order mirrors the documented scenario; betteralign:ignore
 		E1
 		E2
 	}
@@ -637,7 +637,7 @@ type unexportedBase struct {
 func Test_SchemaOf_UnexportedEmbeddedStruct(t *testing.T) {
 	t.Parallel()
 
-	type User struct { //nolint:govet // fieldalignment: embed order mirrors the documented scenario
+	type User struct { //nolint:govet // fieldalignment: embed order mirrors the documented scenario; betteralign:ignore
 		unexportedBase
 		Name string `json:"name"`
 	}
