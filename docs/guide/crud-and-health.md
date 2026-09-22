@@ -1,6 +1,6 @@
 ---
 id: crud-and-health
-title: 🚀 Minimal CRUD and Health Check
+title: 🚀 Minimal CRUD
 description: >-
   A minimal in-memory CRUD example with healthcheck probes. Useful as a
   starting point for learning, smoke tests, and CI checks. Not for production
