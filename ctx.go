@@ -82,6 +82,7 @@ type DefaultCtx struct {
 	isMatched              bool                 // Non use route matched
 	shouldSkipNonUseRoutes bool                 // Skip non-use routes while iterating middleware
 	isUserContextSet       bool                 // User context was stored in fasthttp user values
+	pathNeedsNorm          bool                 // pathOriginal holds an escape or a dot segment; set wherever pathOriginal is
 }
 
 // TLSHandler hosts the callback hooks Fiber invokes while negotiating TLS
@@ -813,32 +814,25 @@ func (c *DefaultCtx) Value(key any) any {
 // configDependentPaths set paths for route recognition and prepared paths for the user,
 // here the features for caseSensitive, decoded paths, strict paths are evaluated
 func (c *DefaultCtx) configDependentPaths() {
-	// The detection path is the path a route is recognized by; it differs from
-	// the user-visible path only by the configuration flags applied below.
-	//
-	// Under the default configuration — paths left escaped and matched
-	// case-insensitively — it is exactly the case fold of the path, so both
-	// are written from a single pass over the original rather than copying
-	// once and folding the copy.
-	if !c.app.config.UnescapePath && !c.app.config.CaseSensitive {
-		c.path, c.detectionPath = appendCopyLowerASCII(c.path, c.detectionPath, c.pathOriginal)
-	} else {
+	// The path is normalized as RFC 3986 Section 6.2.2 describes before any
+	// route sees it (see normalizeRequestPath). The detection path is what a
+	// route is matched against: the case fold of the path unless CaseSensitive
+	// is set. Most requests need no normalization, and under the default
+	// configuration both are then written in a single pass over the original.
+	switch {
+	case c.pathNeedsNorm:
 		c.path = append(c.path[:0], c.pathOriginal...)
-		// If UnescapePath enabled, we decode the path and save it for the framework user.
-		// Decoded as a path, so a "+" stays a "+".
-		if c.app.config.UnescapePath {
-			c.path = unescapePath(c.path)
-		}
-
-		// another path is specified which is for routing recognition only
-		// use the path that was changed by the previous configuration flags
-		// If CaseSensitive is disabled, we lowercase the path while copying
-		// it, fusing the copy and the case fold into a single pass.
-		if !c.app.config.CaseSensitive {
-			c.detectionPath = appendLowerASCII(c.detectionPath[:0], c.path)
-		} else {
+		c.path = normalizeRequestPath(c.path, c.app.config.UnescapePath)
+		if c.app.config.CaseSensitive {
 			c.detectionPath = append(c.detectionPath[:0], c.path...)
+		} else {
+			c.detectionPath = appendLowerASCII(c.detectionPath[:0], c.path)
 		}
+	case !c.app.config.CaseSensitive:
+		c.path, c.detectionPath = appendCopyLowerASCII(c.path, c.detectionPath, c.pathOriginal)
+	default:
+		c.path = append(c.path[:0], c.pathOriginal...)
+		c.detectionPath = append(c.detectionPath[:0], c.path...)
 	}
 	// If StrictRouting is disabled, we strip all trailing slashes
 	if !c.app.config.StrictRouting && len(c.detectionPath) > 1 && c.detectionPath[len(c.detectionPath)-1] == '/' {
@@ -860,6 +854,22 @@ func (c *DefaultCtx) configDependentPaths() {
 	c.pathPrint = 0
 }
 
+// pathNeedsNormalization reports whether normalizeRequestPath could change
+// path, given the length of the path fasthttp normalized when it parsed the
+// request. Parsing decoded the escapes and removed the dot and empty segments,
+// and each of those shortens the path, so one that kept its length holds no
+// escape and no dot segment, apart from a trailing "/." that fasthttp leaves
+// in place.
+//
+// It takes that length rather than the URI so that it stays inlinable in the
+// request hot path. A caller that switched DisablePathNormalizing on has asked
+// for the path to be treated as sent, so it does not trust the parsed copy and
+// scans the original with needsPathNormalization instead.
+func pathNeedsNormalization(normalizedLen int, path string) bool {
+	n := len(path)
+	return normalizedLen != n || (n >= 2 && path[n-2] == '/' && path[n-1] == '.')
+}
+
 // Reset is a method to reset context fields by given request when to use server handlers.
 func (c *DefaultCtx) Reset(fctx *fasthttp.RequestCtx) {
 	// Reset route and handler index
@@ -871,7 +881,13 @@ func (c *DefaultCtx) Reset(fctx *fasthttp.RequestCtx) {
 	c.firstMatchIndex = -1
 	c.route = nil
 	// Set paths
-	c.pathOriginal = c.app.toString(fctx.URI().PathOriginal())
+	uri := fctx.URI()
+	c.pathOriginal = c.app.toString(uri.PathOriginal())
+	if uri.DisablePathNormalizing {
+		c.pathNeedsNorm = needsPathNormalization(c.pathOriginal)
+	} else {
+		c.pathNeedsNorm = pathNeedsNormalization(len(uri.Path()), c.pathOriginal)
+	}
 	// Set method
 	c.methodInt = c.app.methodInt(utils.UnsafeString(fctx.Request.Header.Method()))
 	// Attach *fasthttp.RequestCtx to ctx
