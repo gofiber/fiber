@@ -94,6 +94,12 @@ tail; delimiters such as `?` and `#` remain parameter data instead of adding a
 query or fragment, and cannot absorb or discard `Queries`.
 [`Route.URL`](./app.md#getroute) and [`GetRouteURL`](./ctx.md#getrouteurl) apply
 the same encoding.
+
+These take the value as data, not as URL text, so the same call yields the same
+URL under any configuration. With `UnescapePath` off (the default) `c.Params`
+returns the value still percent-encoded, so forwarding it straight back encodes
+the `%` a second time. Turn `UnescapePath` on, or decode with
+[`url.PathUnescape`](https://pkg.go.dev/net/url#PathUnescape) first.
 :::
 
 ### Back
