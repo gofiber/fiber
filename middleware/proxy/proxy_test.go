@@ -1417,6 +1417,32 @@ func Test_Proxy_DomainForward_HostMatchFoldsIDN_WithPort(t *testing.T) {
 	require.Equal(t, fiber.StatusNotFound, resp.StatusCode, "a different port must still fall through unproxied")
 }
 
+// Test_Proxy_DomainForward_HostMatchPreservesIPv6Brackets verifies that
+// construction-time hostname folding keeps the brackets required around an
+// IPv6 literal when it has an explicit port (RFC 3986, section 3.2.2).
+func Test_Proxy_DomainForward_HostMatchPreservesIPv6Brackets(t *testing.T) {
+	t.Parallel()
+
+	_, addr := createProxyTestServerIPv4(t, func(c fiber.Ctx) error {
+		return c.SendString("proxied")
+	})
+
+	app := fiber.New()
+	app.Use(DomainForward("[::1]:8080", "http://"+addr))
+	app.Use(func(c fiber.Ctx) error {
+		return c.SendString("fallthrough")
+	})
+
+	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+	req.Host = "[::1]:8080"
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "proxied", string(body))
+}
+
 // sendRawUnnormalized drives one request whose header names are kept exactly as
 // written, the way a front end translating HTTP/2 down to HTTP/1.1 leaves them,
 // and returns the response body.

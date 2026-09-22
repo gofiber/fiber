@@ -49,5 +49,6 @@ jobs:
         - gofiber/cli
         - gofiber/boilerplate
         - gofiber/recipes
+        - gofiber/benchmarks
     secrets:
       dispatch-token: ${{ secrets.DISPATCH_TOKEN }}

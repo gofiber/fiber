@@ -76,7 +76,7 @@ func Lines(h Peeker, name string, canonical bool) [][]byte {
 //nolint:revive // flag-parameter: canonical is a property of the header store
 func First(h Peeker, name string, canonical bool) []byte {
 	if canonical {
-		v := h.Peek(name)
+		v := Peek(h, name)
 		if len(v) > 0 {
 			return v
 		}
@@ -232,4 +232,83 @@ func ContainsFold(haystack []string, needle string) bool {
 		}
 	}
 	return false
+}
+
+// Byte classes of a field name, for IsCanonical.
+const (
+	keyOther   byte = iota // a token byte that is not a letter
+	keyLower               // a-z
+	keyUpper               // A-Z
+	keyInvalid             // not a token byte (RFC 9110 Section 5.6.2)
+)
+
+// keyClass classifies every byte a field name can hold. The token set is the
+// one fasthttp normalizes; any other byte makes it store the name as sent.
+var keyClass = func() [256]byte {
+	var t [256]byte
+	for i := range t {
+		t[i] = keyInvalid
+	}
+	for _, c := range []byte("!#$%&'*+-.^_`|~0123456789") {
+		t[c] = keyOther
+	}
+	for c := byte('a'); c <= 'z'; c++ {
+		t[c] = keyLower
+		t[c-'a'+'A'] = keyUpper
+	}
+	return t
+}()
+
+// IsCanonical reports whether name is already in fasthttp's canonical form: a
+// token with an upper-case letter first and after each '-' and lower case
+// elsewhere. fasthttp derives that form again on every keyed call, three
+// passes and a copy, only to arrive at the same bytes; a name that already has
+// it can take the *Canonical methods instead, which store and find exactly what
+// the normalizing ones would whether or not the store normalizes.
+// Test_IsCanonical_MatchesFasthttp keeps the form in step.
+func IsCanonical(name string) bool {
+	n := len(name)
+	if n == 0 {
+		return false
+	}
+	// Names such as X-Request-ID fail only at their last byte, so the tail is
+	// checked first: an upper-case letter not following a '-' cannot end a
+	// canonical name.
+	if n > 1 && name[n-1] >= 'A' && name[n-1] <= 'Z' && name[n-2] != '-' {
+		return false
+	}
+	upper := true
+	for i := range n {
+		c := name[i]
+		switch keyClass[c] {
+		case keyInvalid:
+			return false
+		case keyLower:
+			if upper {
+				return false
+			}
+		case keyUpper:
+			if !upper {
+				return false
+			}
+		}
+		upper = c == '-'
+	}
+	return true
+}
+
+// Peek is fasthttp's byte-exact Peek, minus the key normalization when name is
+// already canonical; Test_Peek_MatchesFasthttp keeps the two answering alike in
+// both store modes.
+func Peek(h Peeker, name string) []byte {
+	if IsCanonical(name) {
+		// Concrete calls only: through the interface the key would escape.
+		switch h := h.(type) {
+		case *fasthttp.RequestHeader:
+			return h.PeekCanonical(utils.UnsafeBytes(name))
+		case *fasthttp.ResponseHeader:
+			return h.PeekCanonical(utils.UnsafeBytes(name))
+		}
+	}
+	return h.Peek(name)
 }

@@ -1165,6 +1165,9 @@ func (r *DefaultReq) XHR() bool {
 // All the values are removed from ctx after returning from the top
 // RequestHandler. Additionally, Close method is called on each value
 // implementing io.Closer before removing the value from ctx.
+//
+// Storing through the Ctx interface heap-allocates the one-element slice the
+// variadic value is packed into; SetLocal stores the same value without it.
 func (r *DefaultReq) Locals(key any, value ...any) any {
 	if r.c.fasthttp == nil {
 		if len(value) > 0 {
@@ -1177,6 +1180,34 @@ func (r *DefaultReq) Locals(key any, value ...any) any {
 	}
 	r.c.fasthttp.SetUserValue(key, value[0])
 	return value[0]
+}
+
+// SetLocal stores value under key scoped to the request, exactly as
+// Locals(key, value) does: the value is available to all following routes that
+// match the request, removed after the top RequestHandler returns, and its
+// Close method is called first if it implements io.Closer. Like Locals, it
+// stores nothing while the context is released. A Ctx must not be used past
+// its handler either way, because the pool hands the same one to the next
+// request.
+//
+// Locals takes its value variadically, and reached through the Ctx interface
+// the compiler cannot see that the callee only reads that argument, so the
+// one-element "..." slice is heap-allocated on every call. SetLocal takes the
+// value directly, so that slice is never built. Boxing a value that is not
+// already an interface still allocates, exactly as it does for Locals.
+func (r *DefaultReq) SetLocal(key, value any) {
+	c := r.c
+	if c.fasthttp == nil {
+		return
+	}
+	// A custom Ctx is entitled to override Locals, and this stores what
+	// Locals(key, value) stores, so the override is the one that must run.
+	// It pays the slice the default path exists to avoid, as setLocal does.
+	if handlerCtx := c.handlerCtx; handlerCtx != nil {
+		handlerCtx.Locals(key, value)
+		return
+	}
+	c.fasthttp.SetUserValue(key, value)
 }
 
 // Locals function utilizing Go's generics feature.
@@ -1303,7 +1334,8 @@ func (r *DefaultReq) URI() *fasthttp.URI {
 	return r.c.fasthttp.Request.URI()
 }
 
-// Path returns the path part of the request URL.
+// Path returns the path part of the request URL, normalized before routing
+// (see Config.UnescapePath); OriginalURL returns the request target as sent.
 // Optionally, you could override the path.
 // Make copies or use the Immutable setting to use the value outside the Handler.
 func (r *DefaultReq) Path(override ...string) string {
@@ -1313,6 +1345,9 @@ func (r *DefaultReq) Path(override ...string) string {
 
 		// Set new path to request context
 		r.c.fasthttp.Request.URI().SetPath(r.c.pathOriginal)
+		// An override is off the request hot path, so scan the new path rather
+		// than repeat the length comparison Reset makes.
+		r.c.pathNeedsNorm = needsPathNormalization(r.c.pathOriginal)
 		// Prettify path
 		r.c.configDependentPaths()
 		// The detection path/tree hash changed; invalidate the lookahead index.

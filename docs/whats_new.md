@@ -357,6 +357,12 @@ func main() {
 
 We have slightly adapted our router interface
 
+### Path normalization
+
+The router normalizes every request path before matching, as [RFC 3986 Section 6.2.2](https://www.rfc-editor.org/rfc/rfc3986#section-6.2.2) describes. Percent-encoded unreserved characters are decoded, so `/%70rivate` is matched as `/private`; every other escape keeps its encoding with uppercase hex digits; and `.` and `..` segments are removed, so `/static/x/../private` and `/static/./private` are both matched as `/static/private`. Middleware mounted on a prefix therefore sees those spellings of a path under it, and the static middleware serves the file that same path names. An encoded slash (`%2F`) still does not split a segment, so `/static%2Fprivate` does not match `/static/private`, and empty segments are kept, so neither does `/static//private`. `UnescapePath` decodes every escape, as before. Decoding happens exactly once, so `/%2570rivate` never becomes `/private`.
+
+`c.Path()` returns the normalized path. `c.OriginalURL()` still returns the request target as the client sent it.
+
 ### Handler compatibility
 
 Fiber now ships with a routing adapter (see `adapter.go`) that understands native Fiber handlers alongside `net/http` and `fasthttp` handlers. Route registration helpers accept a required `handler` argument plus optional additional `handlers`, all typed as `any`, and the adapter transparently converts supported handler styles so you can keep using the ecosystem functions you're familiar with.
@@ -676,6 +682,7 @@ The `TypeConstraint` type, `Constraint.ID`, and `Constraint.RegexCompiler` field
 - **Value**: For implementing `context.Context`. Returns request-scoped value from Locals.
 - **Context()**: Returns a `context.Context` that can be used outside the handler.
 - **SetContext**: Sets the base `context.Context` returned by `Context()` for propagating deadlines or values.
+- **SetLocal**: Stores a request-scoped value like `Locals(key, value)`, without building the one-element slice the variadic call allocates through the `Ctx` interface.
 - **ViewBind**: Binds data to a view, replacing the old `Bind` method.
 - **CBOR**: Introducing [CBOR](https://cbor.io/) binary encoding format for both request & response body. CBOR is a binary data serialization format which is both compact and efficient, making it ideal for use in web applications.
 - **MsgPack**: Introducing [MsgPack](https://msgpack.org/) binary encoding format for both request & response body. MsgPack is a binary serialization format that is more efficient than JSON, making it ideal for high-performance applications.
@@ -3097,7 +3104,7 @@ app.Use(cors.New(cors.Config{
 
 #### Redirect
 
-- **Ordered rules**: `Rules map[string]string` is deprecated in favour of `RuleList []Rule`. A map has no order, so which rule answered a path two rules both matched could not be expressed by the author. Rules in a `RuleList` are tried in the order written and the first match wins, exactly as routes are matched.
+- **Ordered rules**: `Rules map[string]string` is deprecated in favor of `RuleList []Rule`. A map has no order, so which rule answered a path two rules both matched could not be expressed by the author. Rules in a `RuleList` are tried in the order written and the first match wins, exactly as routes are matched.
 
 ```go
 // Before
@@ -3117,7 +3124,7 @@ app.Use(redirect.New(redirect.Config{
 }))
 ```
 
-`Rules` keeps working for the whole of v3. Its order is now decided by a documented heuristic rather than by analysing each pattern: most path text pinned before the first `*`, then most path text overall, then fewest asterisks, then the key. Configurations written with path text and `*` are unaffected; rules relying on regular-expression syntax beyond `*` may order differently, and `RuleList` gives exact control. Setting both fields panics.
+`Rules` keeps working for the whole of v3. Its order is now decided by a documented heuristic rather than by analyzing each pattern: most path text pinned before the first `*`, then most path text overall, then fewest asterisks, then the key. Configurations written with path text and `*` are unaffected; rules relying on regular-expression syntax beyond `*` may order differently, and `RuleList` gives exact control. Setting both fields panics.
 
 Fiber now also warns at startup when a rule can never fire because an earlier one matches every path it does.
 
@@ -3335,7 +3342,7 @@ app.Get("/gif", proxy.Forward("https://i.imgur.com/IWaBepg.gif"))
 
 #### Rewrite
 
-- **Ordered rules**: `Rules map[string]string` is deprecated in favour of `RuleList []Rule`. A map has no order, so which rule answered a path two rules both matched was decided by map iteration, which Go randomizes per run: the same request could be rewritten differently from one call to the next. Rules in an `RuleList` list are tried in the order written and the first match wins, exactly as routes are matched.
+- **Ordered rules**: `Rules map[string]string` is deprecated in favor of `RuleList []Rule`. A map has no order, so which rule answered a path two rules both matched was decided by map iteration, which Go randomizes per run: the same request could be rewritten differently from one call to the next. Rules in an `RuleList` list are tried in the order written and the first match wins, exactly as routes are matched.
 
 ```go
 // Before

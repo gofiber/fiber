@@ -683,7 +683,7 @@ func (r *DefaultRes) Del(key string) {
 // Returned value is only valid within the handler. Do not store any references.
 // Make copies or use the Immutable setting instead.
 func (r *DefaultRes) Get(key string, defaultValue ...string) string {
-	return defaultString(r.c.app.toString(r.c.fasthttp.Response.Header.Peek(key)), defaultValue)
+	return defaultString(r.c.app.toString(fieldname.Peek(&r.c.fasthttp.Response.Header, key)), defaultValue)
 }
 
 // GetHeaders (a.k.a GetRespHeaders) returns the HTTP response headers.
@@ -1461,6 +1461,14 @@ func (r *DefaultRes) SendStreamWriter(streamWriter func(*bufio.Writer)) error {
 
 // Set sets the response's HTTP header field to the specified key, value.
 func (r *DefaultRes) Set(key, val string) {
+	// A key already in canonical form skips the normalization fasthttp's Set
+	// runs only to arrive at the same bytes, and the second copy of the value
+	// it makes on the way; the line stored is the same in either store mode.
+	// Test_Res_Set_MatchesHeaderSet keeps the two paths storing it alike.
+	if fieldname.IsCanonical(key) {
+		r.setCanonical(key, val)
+		return
+	}
 	r.c.fasthttp.Response.Header.Set(key, val)
 }
 

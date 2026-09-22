@@ -151,9 +151,14 @@ func New(config ...Config) fiber.Handler {
 			Body:       c.Response().Body(),
 		}
 		{
+			// Read the header lines as the handler wrote them. The response
+			// header binder would split values on commas whenever the app sets
+			// EnableSplittingOnParsers, turning one Set-Cookie with an Expires
+			// date into two broken lines on replay.
 			headers := make(map[string][]string)
-			if err := c.Bind().RespHeader(headers); err != nil {
-				return fmt.Errorf("failed to bind to response headers: %w", err)
+			for k, v := range c.Response().Header.All() {
+				name := string(k)
+				headers[name] = append(headers[name], string(v))
 			}
 
 			if keepResponseHeaders == nil {

@@ -142,12 +142,14 @@ func TokenFromContext(ctx any) string {
 // used by FromAuthHeader. It returns a slice of schemes, or an empty slice if
 // none are found.
 func getAuthSchemes(e extractors.Extractor) []string {
+	// Walked through the extractors package so the traversal, and its cycle
+	// guard, live in one place.
 	var schemes []string
-	if e.Source == extractors.SourceAuthHeader && e.AuthScheme != "" {
-		schemes = append(schemes, e.AuthScheme)
-	}
-	for _, ex := range e.Chain {
-		schemes = append(schemes, getAuthSchemes(ex)...)
-	}
+	e.Walk(func(candidate extractors.Extractor) bool {
+		if candidate.Source == extractors.SourceAuthHeader && candidate.AuthScheme != "" {
+			schemes = append(schemes, candidate.AuthScheme)
+		}
+		return true
+	})
 	return schemes
 }

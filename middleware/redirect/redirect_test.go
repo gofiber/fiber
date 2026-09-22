@@ -257,12 +257,20 @@ func Test_Redirect_SameOriginTargets_Unescaped(t *testing.T) {
 	}
 }
 
-// Test_Redirect_TenthCaptureInAuthority pins the guard on what the Replacer splices in, "$10" being "$1" then "0".
+// Test_Redirect_TenthCaptureInAuthority pins the guard on a two-digit "$N" token inside the authority.
 func Test_Redirect_TenthCaptureInAuthority(t *testing.T) {
 	t.Parallel()
 
 	requireRule(t, false, "/t/*/*/*/*/*/*/*/*/*/*", "https://$10.cdn.example.com/",
 		"/t/evil.com/x/b/c/d/e/f/g/h/i/tenant", "")
+}
+
+// Test_Redirect_TwoDigitCaptures pins that "$10" names the tenth capture rather than "$1" followed by "0".
+func Test_Redirect_TwoDigitCaptures(t *testing.T) {
+	t.Parallel()
+
+	requireRule(t, false, "/t/*/*/*/*/*/*/*/*/*/*/*", "/r/$11/$10/$1",
+		"/t/a/b/c/d/e/f/g/h/i/j/k", "/r/k/j/a")
 }
 
 // Test_Redirect_ExtraSlashesBeforeTheCapture covers a target opening its authority with more than two slashes.
