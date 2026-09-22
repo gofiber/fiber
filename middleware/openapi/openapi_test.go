@@ -3338,12 +3338,12 @@ func Test_buildServers_Internal(t *testing.T) {
 func Test_buildComponents_MergeSecuritySchemes(t *testing.T) {
 	t.Parallel()
 
-	require.Nil(t, buildComponents(&Config{}, nil))
+	require.Nil(t, buildComponents(&Config{}, nil, nil))
 
 	components := buildComponents(&Config{
 		Components:      map[string]any{"securitySchemes": map[string]any{"a": map[string]any{"type": "http"}}},
 		SecuritySchemes: map[string]any{"b": map[string]any{"type": "apiKey"}},
-	}, nil)
+	}, nil, nil)
 	schemes := requireMap(t, components["securitySchemes"])
 	require.Contains(t, schemes, "a")
 	require.Contains(t, schemes, "b")
@@ -3529,7 +3529,7 @@ func Test_OpenAPI_TypedSecuritySchemesMerge(t *testing.T) {
 		},
 	})
 
-	schemes := requireMap(t, buildComponents(&cfg, nil)["securitySchemes"])
+	schemes := requireMap(t, buildComponents(&cfg, nil, nil)["securitySchemes"])
 	require.Contains(t, schemes, "fromComponents", "the caller's typed schemes were dropped")
 	require.Contains(t, schemes, "fromConfig")
 }

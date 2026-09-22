@@ -1433,3 +1433,15 @@ func Test_Parameter_ModelSchemaKeepsItsType(t *testing.T) {
 	require.Equal(t, routeModelQuery{}, params[0].Schema)
 	require.Equal(t, map[string]any{"type": "string"}, params[1].Schema)
 }
+
+func Test_Route_Domain(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	app.Get("/plain", testHandlerOK)
+	app.Domain("api.example").Get("/scoped", testHandlerOK)
+	plain := findRoute(t, app, MethodGet, "/plain")
+	scoped := findRoute(t, app, MethodGet, "/scoped")
+	require.Empty(t, plain.Domain())
+	require.Equal(t, "api.example", scoped.Domain())
+}

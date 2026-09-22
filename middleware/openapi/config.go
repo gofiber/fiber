@@ -79,6 +79,9 @@ type ExternalDocs struct {
 // Config defines the config for middleware. It controls top-level document
 // metadata only; operation metadata comes from the route helpers.
 type Config struct {
+	// ErrorSchema is the schema, or a Go value reflected into one, documented for those error responses. Optional. Default: nil
+	ErrorSchema any
+
 	// ExternalDocs references external documentation for the API. Optional. Default: nil
 	ExternalDocs *ExternalDocs
 
@@ -151,6 +154,9 @@ type Config struct {
 	// DefaultConsumes is the request media type documented for a request body that declares none. Optional. Default: "application/json"
 	DefaultConsumes string
 
+	// ErrorProduces is the media type documented for the responses the app's error handler writes. Optional. Default: "text/plain; charset=utf-8"
+	ErrorProduces string
+
 	// Tags lists top-level tag definitions (with descriptions) used by operations. Optional. Default: nil
 	Tags []Tag
 
@@ -159,6 +165,12 @@ type Config struct {
 
 	// Servers lists the servers hosting the API; it takes precedence over ServerURL. Optional. Default: nil
 	Servers []Server
+
+	// DisableMiddlewareInference stops documenting the security, headers, parameters and responses of recognized middleware on a route's path. Optional. Default: false
+	DisableMiddlewareInference bool
+
+	// DisableValidationResponses stops documenting the 400 response a configured StructValidator makes possible on routes with a body or parameters. Optional. Default: false
+	DisableValidationResponses bool
 
 	// DisableGroupTags stops tagging an untagged route with its group's name or last static prefix segment. Optional. Default: false
 	DisableGroupTags bool
@@ -183,6 +195,7 @@ var ConfigDefault = Config{
 	OpenAPIVersion:             versionOpenAPI31,
 	DefaultProduces:            fiber.MIMEApplicationJSON,
 	DefaultConsumes:            fiber.MIMEApplicationJSON,
+	ErrorProduces:              fiber.MIMETextPlainCharsetUTF8,
 	DisableGroupTags:           false,
 	DisableHandlerSummaries:    false,
 }
@@ -371,6 +384,12 @@ func configDefault(config ...Config) Config {
 	}
 	if cfg.DefaultConsumes == "" {
 		cfg.DefaultConsumes = ConfigDefault.DefaultConsumes
+	}
+	if cfg.ErrorProduces == "" {
+		cfg.ErrorProduces = ConfigDefault.ErrorProduces
+	}
+	if schema, ok := cfg.ErrorSchema.(map[string]any); ok {
+		cfg.ErrorSchema = deepCopyAnyMap(schema)
 	}
 	switch cfg.OpenAPIVersion {
 	case versionOpenAPI30, versionOpenAPI31, versionOpenAPI32:

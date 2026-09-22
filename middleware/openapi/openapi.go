@@ -73,7 +73,7 @@ func New(config ...Config) fiber.Handler {
 		if cache.specData == nil || cache.specRev != rev {
 			// GetRoutes deep-copies under the router lock, so generation never
 			// races registration or the documentation helpers.
-			spec := generateSpec(app.GetRoutes(true), &cfg)
+			spec := generateSpec(app.GetRoutes(false), &cfg, app.Config().StructValidator)
 			data, err := app.Config().JSONEncoder(spec)
 			if err != nil {
 				return nil, fmt.Errorf("openapi: marshal spec: %w", err)
@@ -772,8 +772,12 @@ func versionAtLeast(version, minimum string) bool {
 
 // generateSpec builds the OpenAPI document from a snapshot of routes (deep
 // copies from App.GetRoutes, safe to read without further locking).
-func generateSpec(routes []fiber.Route, cfg *Config) openAPISpec {
+func generateSpec(routes []fiber.Route, cfg *Config, validator fiber.StructValidator) openAPISpec {
 	reg := newSchemaRegistry(cfg)
+	schemes := newSecuritySchemes()
+	// Only a validator can reject what a route binds, and only then is a 400
+	// the route's own outcome rather than a guess.
+	validates := validator != nil && !cfg.DisableValidationResponses
 	paths := make(map[string]map[string]operation)
 	// usedOperationIDs guarantees operationId uniqueness across the document,
 	// which the OpenAPI specification requires.
@@ -782,8 +786,27 @@ func generateSpec(routes []fiber.Route, cfg *Config) openAPISpec {
 	// for it: the spec forbids two paths differing only in parameter names.
 	hierarchyPaths := make(map[string]canonicalPathItem)
 
+	// Use routes sit in every method's stack ahead of the routes they cover,
+	// so the ones seen so far in a method's stack are the ones a request to a
+	// later route passes through.
+	var (
+		coveredMethod string
+		covering      []coveringMiddleware
+	)
 	for i := range routes {
 		r := &routes[i]
+		if r.Method != coveredMethod {
+			coveredMethod = r.Method
+			covering = covering[:0]
+		}
+		if r.IsMiddleware() {
+			if !cfg.DisableMiddlewareInference {
+				if set := handlerMiddleware(r.Handlers); set != 0 {
+					covering = append(covering, coveringMiddleware{prefix: r.Path, domain: r.Domain(), set: set})
+				}
+			}
+			continue
+		}
 		// A Path Item has a fixed set of operation keys, so a custom method has
 		// no valid representation and is skipped. CONNECT has none either.
 		if !isOpenAPIOperationMethod(r.Method) {
@@ -792,9 +815,6 @@ func generateSpec(routes []fiber.Route, cfg *Config) openAPISpec {
 		// The OpenAPI `query` operation key exists only in 3.2+; skip QUERY
 		// routes for earlier versions, where it cannot be represented.
 		if r.Method == fiber.MethodQuery && !versionAtLeast(cfg.OpenAPIVersion, versionOpenAPI32) {
-			continue
-		}
-		if r.IsMiddleware() {
 			continue
 		}
 		if r.IsAutoHead() {
@@ -819,6 +839,23 @@ func generateSpec(routes []fiber.Route, cfg *Config) openAPISpec {
 		respType := r.Produces
 		if respType == "" {
 			respType = cfg.DefaultProduces
+		}
+		// The recognized middleware a request passes through documents the
+		// security it demands, the headers it sets and the responses it sends.
+		var chain middlewareSet
+		if !cfg.DisableMiddlewareInference {
+			chain = middlewareOn(covering, r)
+		}
+		security := r.Security
+		if len(security) == 0 {
+			if requirement := schemes.requirement(chain); requirement != nil {
+				security = []map[string][]string{requirement}
+			}
+		}
+		documentsInput := r.RequestBody != nil || len(r.ParameterModels) > 0 || len(r.Parameters) > 0
+		declared := expandParameterModels(r.ParameterModels, reg)
+		if chain.has(kindCSRF) && !isSafeMethod(r.Method) {
+			declared = append([]fiber.RouteParameter{csrfParameter()}, declared...)
 		}
 
 		variants := buildOpenAPIPathVariants(r.Path, r.Params)
@@ -866,9 +903,9 @@ func generateSpec(routes []fiber.Route, cfg *Config) openAPISpec {
 				paramIndex[param.In+":"+param.Name] = len(params) - 1
 			}
 
-			// Declared models expand first so an explicit AddParameter for the
-			// same name still overrides what the model says.
-			extras := remapRouteParameters(append(expandParameterModels(r.ParameterModels, reg), r.Parameters...), variant.PathParamAliases, variant.ParamNames)
+			// Middleware and declared models come first so an explicit
+			// AddParameter for the same name still overrides what they say.
+			extras := remapRouteParameters(append(append([]fiber.RouteParameter(nil), declared...), r.Parameters...), variant.PathParamAliases, variant.ParamNames)
 			// The "querystring" location exists only in 3.2+; emitting it
 			// earlier would make the document invalid.
 			if !versionAtLeast(cfg.OpenAPIVersion, versionOpenAPI32) {
@@ -892,6 +929,14 @@ func generateSpec(routes []fiber.Route, cfg *Config) openAPISpec {
 			if len(responses) == 0 {
 				status, defaultResp := defaultResponseForMethod(r.Method, respType)
 				responses = map[string]response{status: defaultResp}
+			}
+			if chain != 0 {
+				applyMiddlewareResponses(responses, r.Method, chain, cfg, reg)
+			}
+			if validates && documentsInput {
+				if _, ok := responses["400"]; !ok {
+					responses["400"] = errorResponse("Bad Request", cfg, reg)
+				}
 			}
 
 			reqBody := buildRequestBody(r.RequestBody, cfg.DefaultConsumes, reg)
@@ -917,7 +962,7 @@ func generateSpec(routes []fiber.Route, cfg *Config) openAPISpec {
 				Parameters:   params,
 				RequestBody:  reqBody,
 				Responses:    responses,
-				Security:     r.Security,
+				Security:     security,
 				ExternalDocs: r.ExternalDocs,
 				extensions:   r.OperationExtensions,
 			}
@@ -979,7 +1024,7 @@ func generateSpec(routes []fiber.Route, cfg *Config) openAPISpec {
 		spec.Self = cfg.Self
 	}
 
-	spec.Components = buildComponents(cfg, reg)
+	spec.Components = buildComponents(cfg, reg, schemes)
 
 	return spec
 }
@@ -1012,9 +1057,10 @@ func buildServers(cfg *Config) []Server {
 
 // buildComponents merges the user-provided Components with the configured
 // SecuritySchemes without mutating either input.
-func buildComponents(cfg *Config, reg *schemaRegistry) map[string]any {
+func buildComponents(cfg *Config, reg *schemaRegistry, schemes *securitySchemes) map[string]any {
 	registered := reg.componentSchemas()
-	if len(cfg.Components) == 0 && len(cfg.SecuritySchemes) == 0 && len(registered) == 0 {
+	inferred := schemes.declarations()
+	if len(cfg.Components) == 0 && len(cfg.SecuritySchemes) == 0 && len(registered) == 0 && len(inferred) == 0 {
 		return nil
 	}
 
@@ -1030,13 +1076,15 @@ func buildComponents(cfg *Config, reg *schemaRegistry) map[string]any {
 		components["schemas"] = schemas
 	}
 
-	if len(cfg.SecuritySchemes) > 0 {
-		// Preserve any securitySchemes the user already placed in Components by
-		// merging rather than overwriting.
-		schemes := make(map[string]any, len(cfg.SecuritySchemes))
-		maps.Copy(schemes, stringKeyedEntries(components["securitySchemes"]))
-		maps.Copy(schemes, cfg.SecuritySchemes)
-		components["securitySchemes"] = schemes
+	if len(cfg.SecuritySchemes) > 0 || len(inferred) > 0 {
+		// The schemes the recognized middleware asked for go in first, so a
+		// scheme the user placed in Components or SecuritySchemes under the
+		// same name replaces them rather than the other way round.
+		merged := make(map[string]any, len(cfg.SecuritySchemes)+len(inferred))
+		maps.Copy(merged, inferred)
+		maps.Copy(merged, stringKeyedEntries(components["securitySchemes"]))
+		maps.Copy(merged, cfg.SecuritySchemes)
+		components["securitySchemes"] = merged
 	}
 
 	return components

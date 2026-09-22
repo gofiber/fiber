@@ -658,6 +658,33 @@ route's media type.
     explicitly, since documenting one would claim the handler reads it.
 - Operations without metadata have no `description` key at all and are not
   deprecated.
+- The middleware a request passes through documents itself. A route's own
+  handlers and the `Use` routes registered ahead of it whose prefix covers its
+  path (so `app.Group("/admin", keyauth.New(...))` covers `/admin/x` but not
+  `/administrators`) are recognized by the source file their handler was
+  compiled from, which survives inlining and forks:
+  - `keyauth` and `gofiber/contrib/jwt` add a `bearerAuth` requirement and an
+    `http`/`bearer` scheme (with `bearerFormat: JWT` when only the JWT
+    middleware uses it); `basicauth` adds `basicAuth` with `http`/`basic`. A
+    chained pair becomes one requirement naming both. Each adds a `401`
+    response carrying `WWW-Authenticate`. `keyauth` is documented as a bearer
+    token because that is its default extractor; with another `KeyLookup`,
+    define `bearerAuth` yourself under `SecuritySchemes` and it replaces the
+    inferred scheme. An explicit `Security()` on the route always wins.
+  - `csrf` adds a required `X-Csrf-Token` header parameter and a `403` on the
+    methods it protects (everything but `GET`, `HEAD`, `OPTIONS`, `TRACE` and
+    `QUERY`).
+  - `requestid` adds the `X-Request-ID` header, `limiter` the `X-RateLimit-*`
+    headers plus a `429` with `Retry-After`, `etag` an `ETag` header on `2xx`
+    responses plus a `304` on `GET` and `HEAD`, and `cache` the `X-Cache`
+    header. Headers and responses a route already documents are kept.
+  - Middleware registered through a domain router is wrapped per host and
+    therefore not recognized.
+  - With a `StructValidator` configured, a route that declares a body or
+    parameters gets a `400` response, since binding can reject the request.
+  Error responses use `ErrorProduces` and `ErrorSchema`, matching the app's
+  error handler. `DisableMiddlewareInference` and `DisableValidationResponses`
+  turn the two halves off.
 - A route's `Consumes`/`Produces` are inferred from the first media type passed
   to `RequestBody*` and to a `200` `Response*`, but only when `Consumes()` or
   `Produces()` did not set one explicitly.
@@ -747,6 +774,10 @@ route's media type.
 | Self           | `string`                | Self-assigned document URI (`$self`, OpenAPI 3.2+).          | `""` |
 | DefaultProduces | `string`               | Response media type documented for a response that declares none; `Produces` and the `Response*` media types override it per route. | `"application/json"` |
 | DefaultConsumes | `string`               | Request media type documented for a request body that declares none; `Consumes` and the `RequestBody*` media types override it per route. | `"application/json"` |
+| ErrorProduces  | `string`                | Media type documented for the responses the app's error handler writes (`400`, `401`, `403`, `429`). | `"text/plain; charset=utf-8"` |
+| ErrorSchema    | `any`                   | Schema, or a Go value reflected into one, documented for those error responses. | `nil` |
+| DisableMiddlewareInference | `bool`      | Stops documenting the security, headers, parameters and responses of recognized middleware on a route's path. | `false` |
+| DisableValidationResponses | `bool`      | Stops documenting the `400` response a configured `StructValidator` makes possible on routes with a body or parameters. | `false` |
 | DisableGroupTags | `bool`                | Stops tagging an untagged route with its group's name or last static prefix segment. | `false` |
 | DisableHandlerSummaries | `bool`         | Stops deriving a missing summary from the handler function's name. | `false` |
 
@@ -796,6 +827,10 @@ var ConfigDefault = Config{
     DefaultConsumes:            "application/json",
     DisableGroupTags:           false,
     DisableHandlerSummaries:    false,
+    ErrorProduces:              "text/plain; charset=utf-8",
+    ErrorSchema:                nil,
+    DisableMiddlewareInference: false,
+    DisableValidationResponses: false,
 }
 ```
 
@@ -895,6 +930,9 @@ has no JSON representation (channels, functions, etc.) are skipped.
 - **`openapi:"example:value"`** — sets the property example (auto-converted to the correct type)
 - **`openapi:"format:fmt"`** — sets the format (e.g., `email`, `uuid`, `date-time`)
 - **`openapi:"enum:a|b|c"`** — sets allowed enum values (pipe-separated)
+- **`openapi:"readOnly"`**, **`openapi:"writeOnly"`** and **`openapi:"deprecated"`**
+  — set the flag of the same name, so one `User` type can serve both a
+  request body and a response with `id` marked read-only
 - **`validate:"..."`** — the rules a `StructValidator` enforces become
   constraints: `required` marks the property required even with `omitempty`;
   `min`, `max`, `len`, `gte` and `lte` become `minimum`/`maximum` for numbers,
@@ -915,3 +953,7 @@ type Product struct {
 A directive value may itself contain commas and colons (for example a
 description); the only limitation is that a value cannot contain a comma
 immediately followed by another directive key such as `,description:`.
+
+A struct whose fields carry examples gets an object-level `example` assembled
+from them, nested models included, so Swagger UI shows a value for the model
+rather than its shape.

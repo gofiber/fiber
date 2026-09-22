@@ -5,12 +5,14 @@ import (
 	"encoding/json"
 	"reflect"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
 	"unicode"
 
 	"github.com/gofiber/utils/v2"
+	utilsstrings "github.com/gofiber/utils/v2/strings"
 )
 
 // SchemaOf generates an OpenAPI JSON Schema from a Go value using reflection,
@@ -42,6 +44,8 @@ import (
 //   - `openapi:"example:value"` sets the property example
 //   - `openapi:"format:fmt"` overrides the format (e.g. "email", "uuid")
 //   - `openapi:"enum:a|b|c"` sets the enum values
+//   - `openapi:"readOnly"`, `openapi:"writeOnly"` and `openapi:"deprecated"`
+//     set the flag of the same name
 //   - `validate:"..."` rules the validator enforces become constraints:
 //     required, min/max/len/gte/lte (as minimum/maximum, minLength/maxLength,
 //     minItems/maxItems or minProperties/maxProperties by type), oneof (as
@@ -348,7 +352,37 @@ func structSchema(t reflect.Type, visited map[reflect.Type]bool, reg *schemaRegi
 	if len(required) > 0 {
 		schema["required"] = required
 	}
+	if example := structExample(properties, reg); len(example) > 0 {
+		schema["example"] = example
+	}
 	return schema
+}
+
+// structExample assembles an example object from the examples of the
+// properties that have one, following a reference to a registered type for
+// its own example, so a documented model shows a value rather than a shape.
+func structExample(properties map[string]any, reg *schemaRegistry) map[string]any {
+	example := make(map[string]any)
+	for name, raw := range properties {
+		prop, ok := raw.(map[string]any)
+		if !ok {
+			continue
+		}
+		if value, found := prop["example"]; found {
+			example[name] = value
+			continue
+		}
+		ref, isRef := prop[schemaKeyRef].(string)
+		if !isRef || reg == nil {
+			continue
+		}
+		if target := reg.schemas[strings.TrimPrefix(ref, componentsSchemasRef)]; target != nil {
+			if value, found := target["example"]; found {
+				example[name] = value
+			}
+		}
+	}
+	return example
 }
 
 // jsonTagInfo carries the parsed pieces of a field's json tag.
@@ -439,9 +473,10 @@ func effectiveJSONTagName(name string) string {
 	return ""
 }
 
-// openapiDirectiveRe locates each directive's start. Its value runs from the
-// colon to the next directive, so values may contain commas and colons.
-var openapiDirectiveRe = regexp.MustCompile(`(?:^|,)\s*(description|example|format|enum):`)
+// openapiDirectiveRe locates each directive's start. A valued directive's
+// value runs from the colon to the next directive, so values may contain
+// commas and colons; a flag directive stands alone.
+var openapiDirectiveRe = regexp.MustCompile(`(?:^|,)\s*(description|example|format|enum):|(?:^|,)\s*(readOnly|readonly|writeOnly|writeonly|deprecated)\s*`)
 
 func applyOpenAPITag(field *reflect.StructField, schema map[string]any) {
 	tag := field.Tag.Get("openapi")
@@ -449,8 +484,27 @@ func applyOpenAPITag(field *reflect.StructField, schema map[string]any) {
 		return
 	}
 
+	// A flag is a directive only when a comma or the end follows it; the word
+	// inside a value ("description:Old, deprecated field") is not one, and
+	// must not end the value it belongs to either.
 	locs := openapiDirectiveRe.FindAllStringSubmatchIndex(tag, -1)
+	locs = slices.DeleteFunc(locs, func(loc []int) bool {
+		return loc[2] < 0 && loc[1] < len(tag) && tag[loc[1]] != ','
+	})
 	for i, loc := range locs {
+		if loc[2] < 0 {
+			switch utilsstrings.ToLower(tag[loc[4]:loc[5]]) {
+			case "readonly":
+				schema["readOnly"] = true
+			case "writeonly":
+				schema["writeOnly"] = true
+			case "deprecated":
+				schema["deprecated"] = true
+			default:
+				// Unreachable: the regexp only matches the flags handled above.
+			}
+			continue
+		}
 		key := tag[loc[2]:loc[3]]
 		valStart := loc[1]
 		valEnd := len(tag)

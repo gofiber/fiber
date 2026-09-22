@@ -450,6 +450,12 @@ func (r *Route) GroupName() string {
 	return r.groupName
 }
 
+// Domain returns the host pattern the route was registered under through
+// app.Domain, or "" for a route that answers on every host.
+func (r *Route) Domain() string {
+	return r.domain
+}
+
 // RouteParameter describes an input captured by a route. Schema/SchemaRef and
 // Content are mutually exclusive; Content wins, and 3.2 "querystring" needs it.
 type RouteParameter struct {
