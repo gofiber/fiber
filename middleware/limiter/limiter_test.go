@@ -70,12 +70,16 @@ func newFailingLimiterStorage() *failingLimiterStorage {
 	}
 }
 
-// countingFailStorage fails set operations after a specified number of successful calls
+// countingFailStorage fails set operations, and optionally get operations,
+// after a specified number of successful calls
 type countingFailStorage struct {
 	*failingLimiterStorage
-	setFailErr error
-	setCount   int
-	failAfterN int
+	setFailErr    error
+	getFailErr    error
+	setCount      int
+	failAfterN    int
+	getCount      int
+	getFailAfterN int
 }
 
 func newCountingFailStorage(failAfterN int, err error) *countingFailStorage {
@@ -84,6 +88,14 @@ func newCountingFailStorage(failAfterN int, err error) *countingFailStorage {
 		failAfterN:            failAfterN,
 		setFailErr:            err,
 	}
+}
+
+func (s *countingFailStorage) GetWithContext(ctx context.Context, key string) ([]byte, error) {
+	s.getCount++
+	if s.getFailErr != nil && s.getCount > s.getFailAfterN {
+		return nil, s.getFailErr
+	}
+	return s.failingLimiterStorage.GetWithContext(ctx, key)
 }
 
 func (s *countingFailStorage) SetWithContext(ctx context.Context, key string, val []byte, exp time.Duration) error {
@@ -438,6 +450,103 @@ func TestLimiterFixedStorageSetErrorDisableRedaction(t *testing.T) {
 	require.Error(t, captured)
 	require.ErrorContains(t, captured, testLimiterClientKey)
 	require.NotContains(t, captured.Error(), "[redacted]")
+}
+
+// The sliding window runs its second lock whenever headers are enabled, so both
+// of its storage calls can fail on an ordinary request.
+func TestLimiterStorageErrorsOnSecondLock(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		newStorage  func() fiber.Storage
+		middleware  Handler
+		name        string
+		wantErr     string
+		skipOnSkipH bool
+	}{
+		{
+			name:       "sliding first get",
+			middleware: SlidingWindow{},
+			newStorage: func() fiber.Storage {
+				st := newFailingLimiterStorage()
+				st.errs["get|"+testLimiterClientKey] = errors.New("boom")
+				return st
+			},
+			wantErr: "limiter: failed to get key",
+		},
+		{
+			name:       "sliding first set",
+			middleware: SlidingWindow{},
+			newStorage: func() fiber.Storage {
+				st := newFailingLimiterStorage()
+				st.errs["set|"+testLimiterClientKey] = errors.New("boom")
+				return st
+			},
+			wantErr: "limiter: failed to persist state",
+		},
+		{
+			name:       "sliding header get",
+			middleware: SlidingWindow{},
+			newStorage: func() fiber.Storage {
+				st := newCountingFailStorage(0, nil)
+				st.getFailErr = errors.New("second get failed")
+				st.getFailAfterN = 1
+				return st
+			},
+			wantErr: "limiter: failed to get key",
+		},
+		{
+			name:       "sliding header set",
+			middleware: SlidingWindow{},
+			newStorage: func() fiber.Storage {
+				return newCountingFailStorage(1, errors.New("second set failed"))
+			},
+			wantErr: "limiter: failed to persist state",
+		},
+		{
+			name:       "fixed skip get",
+			middleware: FixedWindow{},
+			newStorage: func() fiber.Storage {
+				st := newCountingFailStorage(0, nil)
+				st.getFailErr = errors.New("second get failed")
+				st.getFailAfterN = 1
+				return st
+			},
+			wantErr:     "limiter: failed to get key",
+			skipOnSkipH: true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			var captured error
+			app := fiber.New(fiber.Config{
+				ErrorHandler: func(c fiber.Ctx, err error) error {
+					captured = err
+					return c.Status(fiber.StatusInternalServerError).SendString("storage failure")
+				},
+			})
+
+			app.Use(New(Config{
+				Storage:                tc.newStorage(),
+				LimiterMiddleware:      tc.middleware,
+				Max:                    10,
+				Expiration:             time.Second,
+				SkipSuccessfulRequests: tc.skipOnSkipH,
+				KeyGenerator:           func(fiber.Ctx) string { return testLimiterClientKey },
+			}))
+			app.Get("/", func(c fiber.Ctx) error {
+				return c.SendStatus(fiber.StatusOK)
+			})
+
+			resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+			require.NoError(t, err)
+			require.Equal(t, fiber.StatusInternalServerError, resp.StatusCode)
+			require.ErrorContains(t, captured, tc.wantErr)
+		})
+	}
 }
 
 func TestLimiterFixedStorageSetErrorOnSkipSuccessfulRequests(t *testing.T) {
