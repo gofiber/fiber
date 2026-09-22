@@ -70,15 +70,15 @@ type Router interface {
 	Consumes(typ string) Router
 	Produces(typ string) Router
 	RequestBody(description string, required bool, mediaTypes ...string) Router
-	RequestBodyWithExample(description string, required bool, schema map[string]any, schemaRef string, example any, examples map[string]any, mediaTypes ...string) Router
-	Parameter(name, in string, required bool, schema map[string]any, description string) Router
-	ParameterWithExample(name, in string, required bool, schema map[string]any, schemaRef, description string, example any, examples map[string]any) Router
+	RequestBodyWithExample(description string, required bool, schema any, schemaRef string, example any, examples map[string]any, mediaTypes ...string) Router
+	Parameter(name, in string, required bool, schema any, description string) Router
+	ParameterWithExample(name, in string, required bool, schema any, schemaRef, description string, example any, examples map[string]any) Router
 	Response(status int, description string, mediaTypes ...string) Router
-	ResponseWithExample(status int, description string, schema map[string]any, schemaRef string, example any, examples map[string]any, mediaTypes ...string) Router
+	ResponseWithExample(status int, description string, schema any, schemaRef string, example any, examples map[string]any, mediaTypes ...string) Router
 	Tags(tags ...string) Router
 	Deprecated() Router
 	Security(requirements ...map[string][]string) Router
-	ResponseHeader(status int, name, description string, schema map[string]any) Router
+	ResponseHeader(status int, name, description string, schema any) Router
 	Hidden() Router
 	AddParameter(param RouteParameter) Router
 	OperationExternalDocs(description, url string) Router
@@ -86,6 +86,9 @@ type Router interface {
 	ResponseContent(status int, description string, content map[string]RouteMediaType) Router
 	ResponseLink(status int, name string, link map[string]any) Router
 	OperationExtension(fields map[string]any) Router
+	Accepts(model any, mediaTypes ...string) Router
+	Returns(status int, model any, mediaTypes ...string) Router
+	Params(in string, model any) Router
 }
 
 // Route is a struct that holds all metadata for each registered handler.
@@ -151,6 +154,7 @@ type Route struct { // betteralign:ignore - see below
 	RequestBody *RouteRequestBody        `json:"requestBody,omitempty"` //nolint:tagliatelle // OpenAPI spec uses camelCase
 
 	Parameters          []RouteParameter      `json:"parameters,omitempty"`
+	ParameterModels     []RouteParameterModel `json:"parameterModels,omitempty"` //nolint:tagliatelle // OpenAPI spec uses camelCase
 	Tags                []string              `json:"tags,omitempty"`
 	Security            []map[string][]string `json:"security,omitempty"`            // OpenAPI security requirements
 	ExternalDocs        map[string]any        `json:"externalDocs,omitempty"`        //nolint:tagliatelle // OpenAPI operation externalDocs
@@ -449,7 +453,7 @@ func (r *Route) GroupName() string {
 // RouteParameter describes an input captured by a route. Schema/SchemaRef and
 // Content are mutually exclusive; Content wins, and 3.2 "querystring" needs it.
 type RouteParameter struct {
-	Schema          map[string]any            `json:"schema"`
+	Schema          any                       `json:"schema"`
 	Content         map[string]RouteMediaType `json:"content,omitempty"`
 	SchemaRef       string                    `json:"schemaRef,omitempty"` //nolint:tagliatelle // OpenAPI spec uses camelCase
 	Example         any                       `json:"example,omitempty"`
@@ -465,10 +469,20 @@ type RouteParameter struct {
 	AllowReserved   bool                      `json:"allowReserved,omitempty"`   //nolint:tagliatelle // OpenAPI spec uses camelCase
 }
 
+// RouteParameterModel declares parameters through a Go struct: each exported
+// field becomes a parameter of the In location, named by the field's tag for
+// that location (query, header, cookie or uri) or by the field name, with its
+// schema reflected from the field type. The OpenAPI middleware expands the
+// struct when it generates the document.
+type RouteParameterModel struct {
+	Model any    `json:"model"`
+	In    string `json:"in"`
+}
+
 // RouteMediaType describes one media type entry, so a body or response can carry
 // a different schema, examples and encoding per content type.
 type RouteMediaType struct {
-	Schema    map[string]any `json:"schema,omitempty"`
+	Schema    any            `json:"schema,omitempty"`
 	Example   any            `json:"example,omitempty"`
 	Examples  map[string]any `json:"examples,omitempty"`
 	Encoding  map[string]any `json:"encoding,omitempty"`
@@ -478,7 +492,7 @@ type RouteMediaType struct {
 // RouteResponse describes a response emitted by a route.
 type RouteResponse struct {
 	Example     any                       `json:"example,omitempty"`
-	Schema      map[string]any            `json:"schema,omitempty"`
+	Schema      any                       `json:"schema,omitempty"`
 	Examples    map[string]any            `json:"examples,omitempty"`
 	Headers     map[string]any            `json:"headers,omitempty"`
 	Links       map[string]any            `json:"links,omitempty"`
@@ -491,7 +505,7 @@ type RouteResponse struct {
 // RouteRequestBody describes the request payload accepted by a route.
 type RouteRequestBody struct {
 	Example     any                       `json:"example,omitempty"`
-	Schema      map[string]any            `json:"schema,omitempty"`
+	Schema      any                       `json:"schema,omitempty"`
 	Examples    map[string]any            `json:"examples,omitempty"`
 	Content     map[string]RouteMediaType `json:"content,omitempty"`
 	SchemaRef   string                    `json:"schemaRef,omitempty"` //nolint:tagliatelle // OpenAPI spec uses camelCase
@@ -1197,9 +1211,9 @@ func (app *App) copyRouteValue(route *Route) (copied Route) { //nolint:nonamedre
 // isDocumented reports whether the route carries metadata a copy must clone.
 // Small enough to inline, so the common case never calls out of line.
 func (r *Route) isDocumented() bool {
-	return r.RequestBody != nil || r.Parameters != nil || r.Responses != nil ||
-		r.Tags != nil || r.Security != nil || r.ExternalDocs != nil ||
-		r.OperationExtensions != nil
+	return r.RequestBody != nil || r.Parameters != nil || r.ParameterModels != nil ||
+		r.Responses != nil || r.Tags != nil || r.Security != nil ||
+		r.ExternalDocs != nil || r.OperationExtensions != nil
 }
 
 // copyRouteInto deep-copies route into dst. It writes through a pointer so the
@@ -1220,6 +1234,7 @@ func (app *App) copyRouteInto(dst, route *Route) {
 func (*App) cloneRouteDocInto(dst, route *Route) {
 	dst.RequestBody = cloneRouteRequestBody(route.RequestBody)
 	dst.Parameters = cloneRouteParameters(route.Parameters)
+	dst.ParameterModels = slices.Clone(route.ParameterModels)
 	dst.Responses = cloneRouteResponses(route.Responses)
 	dst.Tags = append([]string(nil), route.Tags...)
 	dst.Security = cloneRouteSecurity(route.Security)
@@ -1247,6 +1262,7 @@ func (*App) copyRouteBaseValue(route *Route) Route {
 	copied.Deprecated = false
 	copied.RequestBody = nil
 	copied.Parameters = nil
+	copied.ParameterModels = nil
 	copied.Responses = nil
 	copied.Tags = nil
 	copied.Security = nil
@@ -1283,9 +1299,7 @@ func cloneRouteRequestBody(body *RouteRequestBody) *RouteRequestBody {
 		Description: body.Description,
 		Required:    body.Required,
 	}
-	if len(body.Schema) > 0 {
-		clone.Schema = copyAnyMap(body.Schema)
-	}
+	clone.Schema = copySchema(body.Schema)
 	clone.SchemaRef = body.SchemaRef
 	if len(body.Examples) > 0 {
 		clone.Examples = copyAnyMap(body.Examples)
@@ -1305,7 +1319,7 @@ func cloneRouteMediaTypeMap(content map[string]RouteMediaType) map[string]RouteM
 	cloned := make(map[string]RouteMediaType, len(content))
 	for mediaType, mt := range content {
 		cloned[mediaType] = RouteMediaType{
-			Schema:    copyAnyMap(mt.Schema),
+			Schema:    copySchema(mt.Schema),
 			SchemaRef: mt.SchemaRef,
 			Example:   copyAnyValue(mt.Example),
 			Examples:  copyAnyMap(mt.Examples),
@@ -1331,7 +1345,7 @@ func cloneRouteParameters(params []RouteParameter) []RouteParameter {
 			Style:           p.Style,
 			AllowEmptyValue: p.AllowEmptyValue,
 			AllowReserved:   p.AllowReserved,
-			Schema:          copyAnyMap(p.Schema),
+			Schema:          copySchema(p.Schema),
 			SchemaRef:       p.SchemaRef,
 			Examples:        copyAnyMap(p.Examples),
 			Example:         copyAnyValue(p.Example),
@@ -1353,7 +1367,7 @@ func cloneRouteResponses(responses map[string]RouteResponse) map[string]RouteRes
 	for code, resp := range responses {
 		copyResp := RouteResponse{
 			Description: resp.Description,
-			Schema:      copyAnyMap(resp.Schema),
+			Schema:      copySchema(resp.Schema),
 			SchemaRef:   resp.SchemaRef,
 			Examples:    copyAnyMap(resp.Examples),
 			Example:     copyAnyValue(resp.Example),

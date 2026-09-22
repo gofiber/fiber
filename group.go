@@ -83,18 +83,18 @@ func (grp *Group) RequestBody(description string, required bool, mediaTypes ...s
 }
 
 // RequestBodyWithExample documents the request payload for the most recently added route in the group with schema references and examples.
-func (grp *Group) RequestBodyWithExample(description string, required bool, schema map[string]any, schemaRef string, example any, examples map[string]any, mediaTypes ...string) Router {
+func (grp *Group) RequestBodyWithExample(description string, required bool, schema any, schemaRef string, example any, examples map[string]any, mediaTypes ...string) Router {
 	grp.app.applyToRegistration(atomic.LoadUint64(&grp.lastRegID), docRequestBodyWithExample(description, required, schema, schemaRef, example, examples, mediaTypes...))
 	return grp
 }
 
 // Parameter documents an input parameter for the most recently added route in the group.
-func (grp *Group) Parameter(name, in string, required bool, schema map[string]any, description string) Router {
+func (grp *Group) Parameter(name, in string, required bool, schema any, description string) Router {
 	return grp.AddParameter(RouteParameter{Name: name, In: in, Required: required, Schema: schema, Description: description})
 }
 
 // ParameterWithExample documents an input parameter for the most recently added route in the group with schema references and examples.
-func (grp *Group) ParameterWithExample(name, in string, required bool, schema map[string]any, schemaRef, description string, example any, examples map[string]any) Router {
+func (grp *Group) ParameterWithExample(name, in string, required bool, schema any, schemaRef, description string, example any, examples map[string]any) Router {
 	return grp.AddParameter(RouteParameter{
 		Name:        name,
 		In:          in,
@@ -113,7 +113,7 @@ func (grp *Group) Response(status int, description string, mediaTypes ...string)
 }
 
 // ResponseWithExample documents an HTTP response for the most recently added route in the group with schema references and examples.
-func (grp *Group) ResponseWithExample(status int, description string, schema map[string]any, schemaRef string, example any, examples map[string]any, mediaTypes ...string) Router {
+func (grp *Group) ResponseWithExample(status int, description string, schema any, schemaRef string, example any, examples map[string]any, mediaTypes ...string) Router {
 	grp.app.applyToRegistration(atomic.LoadUint64(&grp.lastRegID), docAddResponse(status, description, schema, schemaRef, example, examples, mediaTypes...))
 	return grp
 }
@@ -146,8 +146,26 @@ func (grp *Group) Hidden() Router {
 
 // ResponseHeader documents a response header for the most recently added route
 // in the group.
-func (grp *Group) ResponseHeader(status int, name, description string, schema map[string]any) Router {
+func (grp *Group) ResponseHeader(status int, name, description string, schema any) Router {
 	grp.app.applyToRegistration(atomic.LoadUint64(&grp.lastRegID), docResponseHeader(status, name, description, schema))
+	return grp
+}
+
+// Accepts documents the request body as the schema of model; see App.Accepts.
+func (grp *Group) Accepts(model any, mediaTypes ...string) Router {
+	grp.app.applyToRegistration(atomic.LoadUint64(&grp.lastRegID), docRequestBodyWithExample("", true, model, "", nil, nil, mediaTypes...))
+	return grp
+}
+
+// Returns documents a response as the schema of model; see App.Returns.
+func (grp *Group) Returns(status int, model any, mediaTypes ...string) Router {
+	grp.app.applyToRegistration(atomic.LoadUint64(&grp.lastRegID), docAddResponse(status, "", model, "", nil, nil, mediaTypes...))
+	return grp
+}
+
+// Params documents the fields of model as parameters; see App.Params.
+func (grp *Group) Params(in string, model any) Router {
+	grp.app.applyToRegistration(atomic.LoadUint64(&grp.lastRegID), docAddParameterModel(in, model))
 	return grp
 }
 

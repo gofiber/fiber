@@ -147,6 +147,7 @@ func fullyPopulatedRoute() *Route {
 		},
 		ExternalDocs:        map[string]any{"url": "https://example.com"},
 		OperationExtensions: map[string]any{"x-custom": "v"},
+		ParameterModels:     []RouteParameterModel{{In: "query", Model: routeModelQuery{}}},
 	}
 }
 
@@ -168,6 +169,8 @@ func Test_CopyRoute_Complete(t *testing.T) {
 	}
 
 	clone := app.copyRoute(original)
+	require.Equal(t, original.ParameterModels, clone.ParameterModels)
+	require.NotSame(t, &original.ParameterModels[0], &clone.ParameterModels[0])
 
 	require.Len(t, clone.Handlers, len(original.Handlers))
 	origCmp, cloneCmp := *original, *clone
@@ -176,8 +179,8 @@ func Test_CopyRoute_Complete(t *testing.T) {
 
 	original.Tags[0] = "mutated"
 	original.Security[0]["auth"] = append(original.Security[0]["auth"], "write")
-	original.Parameters[0].Schema["type"] = "integer"
-	original.RequestBody.Schema["type"] = "mutated"
+	schemaMap(t, original.Parameters[0].Schema)["type"] = "integer"
+	schemaMap(t, original.RequestBody.Schema)["type"] = "mutated"
 	resp := original.Responses["200"]
 	resp.Headers["X-H"] = "mutated"
 	resp.Links["next"] = "mutated"
@@ -186,8 +189,8 @@ func Test_CopyRoute_Complete(t *testing.T) {
 
 	require.Equal(t, "tag", clone.Tags[0])
 	require.Equal(t, []string{"read"}, clone.Security[0]["auth"])
-	require.Equal(t, "string", clone.Parameters[0].Schema["type"])
-	require.Equal(t, "object", clone.RequestBody.Schema["type"])
+	require.Equal(t, "string", schemaMap(t, clone.Parameters[0].Schema)["type"])
+	require.Equal(t, "object", schemaMap(t, clone.RequestBody.Schema)["type"])
 	cloneResp := clone.Responses["200"]
 	require.IsType(t, map[string]any{}, cloneResp.Headers["X-H"])
 	require.IsType(t, map[string]any{}, cloneResp.Links["next"])
@@ -1136,8 +1139,8 @@ func Test_CopyAnyMap_KeepsNestedEmptyMaps(t *testing.T) {
 	}, "", []any{map[string]any{}}, nil, MIMEApplicationJSON)
 
 	resp := findRoute(t, app, MethodPost, "/x").Responses["200"]
-	require.NotNil(t, resp.Schema["properties"])
-	require.Equal(t, map[string]any{}, resp.Schema["properties"])
+	require.NotNil(t, schemaMap(t, resp.Schema)["properties"])
+	require.Equal(t, map[string]any{}, schemaMap(t, resp.Schema)["properties"])
 	example, ok := resp.Example.([]any)
 	require.True(t, ok)
 	require.Equal(t, map[string]any{}, example[0])
@@ -1348,4 +1351,85 @@ func Test_Route_GroupIdentity_MergedRegistrationTakesLatestGroup(t *testing.T) {
 	require.Len(t, merged, 1)
 	require.Equal(t, "second.", merged[0].GroupName())
 	require.Equal(t, "/x", merged[0].GroupPrefix())
+}
+
+func schemaMap(t *testing.T, schema any) map[string]any {
+	t.Helper()
+	m, ok := schema.(map[string]any)
+	require.True(t, ok)
+	return m
+}
+
+type routeModelIn struct {
+	Name string `json:"name"`
+}
+
+type routeModelOut struct {
+	ID int `json:"id"`
+}
+
+type routeModelQuery struct {
+	Page int `query:"page"`
+}
+
+func Test_ModelHelpers_OnEveryRouter(t *testing.T) {
+	t.Parallel()
+
+	cases := map[string]func(app *App){
+		"app": func(app *App) {
+			app.Post("/m", testHandlerOK).Accepts(routeModelIn{}).Returns(StatusCreated, routeModelOut{}).Params("query", routeModelQuery{})
+		},
+		"group": func(app *App) {
+			app.Group("/g").Post("/m", testHandlerOK).Accepts(routeModelIn{}).Returns(StatusCreated, routeModelOut{}).Params("query", routeModelQuery{})
+		},
+		"route chain": func(app *App) {
+			app.RouteChain("/m").Post(testHandlerOK).Accepts(routeModelIn{}).Returns(StatusCreated, routeModelOut{}).Params("query", routeModelQuery{})
+		},
+		"domain": func(app *App) {
+			app.Domain("api.example").Post("/m", testHandlerOK).Accepts(routeModelIn{}).Returns(StatusCreated, routeModelOut{}).Params("query", routeModelQuery{})
+		},
+	}
+	for name, register := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			app := New()
+			register(app)
+
+			var route Route
+			for _, r := range app.GetRoutes() {
+				if r.Method == MethodPost && r.RequestBody != nil {
+					route = r
+				}
+			}
+			require.NotNil(t, route.RequestBody)
+			require.Equal(t, routeModelIn{}, route.RequestBody.Schema)
+			require.True(t, route.RequestBody.Required)
+			require.Equal(t, routeModelOut{}, route.Responses["201"].Schema)
+			require.Equal(t, "Created", route.Responses["201"].Description)
+			require.Equal(t, []RouteParameterModel{{In: "query", Model: routeModelQuery{}}}, route.ParameterModels)
+		})
+	}
+}
+
+func Test_Params_Validation(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	require.Panics(t, func() { app.Get("/a", testHandlerOK).Params("body", routeModelQuery{}) })
+	require.Panics(t, func() { app.Get("/b", testHandlerOK).Params("query", 42) })
+	require.Panics(t, func() { app.Get("/c", testHandlerOK).Params("query", nil) })
+	app.Get("/d", testHandlerOK).Params(" Header ", &routeModelQuery{})
+	require.Equal(t, []RouteParameterModel{{In: "header", Model: &routeModelQuery{}}}, findRoute(t, app, MethodGet, "/d").ParameterModels)
+}
+
+func Test_Parameter_ModelSchemaKeepsItsType(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	app.Get("/a", testHandlerOK).
+		Parameter("filter", "query", false, routeModelQuery{}, "").
+		Parameter("plain", "query", false, nil, "")
+	params := findRoute(t, app, MethodGet, "/a").Parameters
+	require.Equal(t, routeModelQuery{}, params[0].Schema)
+	require.Equal(t, map[string]any{"type": "string"}, params[1].Schema)
 }

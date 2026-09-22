@@ -2299,12 +2299,16 @@ func Test_Route_InvalidMediaType(t *testing.T) {
 			app.Post("/", testEmptyHandler).RequestBody("payload", true, "invalid")
 		})
 	})
-	t.Run("request body missing type", func(t *testing.T) {
+	t.Run("request body missing type is documented with the default", func(t *testing.T) {
 		t.Parallel()
 		app := New()
-		require.Panics(t, func() {
+		require.NotPanics(t, func() {
 			app.Post("/", testEmptyHandler).RequestBody("payload", true)
 		})
+		body := findRoute(t, app, MethodPost, "/").RequestBody
+		require.NotNil(t, body)
+		require.Empty(t, body.MediaTypes)
+		require.Empty(t, findRoute(t, app, MethodPost, "/").Consumes)
 	})
 	t.Run("response", func(t *testing.T) {
 		t.Parallel()
@@ -2377,14 +2381,14 @@ func Test_App_Parameter(t *testing.T) {
 	require.Equal(t, "id", pathParam.Name)
 	require.Equal(t, "path", pathParam.In)
 	require.True(t, pathParam.Required)
-	require.Equal(t, "integer", pathParam.Schema["type"])
+	require.Equal(t, "integer", schemaMap(t, pathParam.Schema)["type"])
 	require.Equal(t, "identifier", pathParam.Description)
 
 	queryParam := route.Parameters[1]
 	require.Equal(t, "filter", queryParam.Name)
 	require.Equal(t, "query", queryParam.In)
 	require.True(t, queryParam.Required)
-	require.Equal(t, "string", queryParam.Schema["type"])
+	require.Equal(t, "string", schemaMap(t, queryParam.Schema)["type"])
 	require.Equal(t, "Filter results", queryParam.Description)
 }
 

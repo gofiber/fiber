@@ -282,9 +282,51 @@ separate origin (an internal CDN, a different port), that origin must send
 
 ### Document a route
 
-Routes can document themselves with `Summary`, `Description`, `RequestBody`,
-`Parameter`, `Response`, `Tags`, `Deprecated`, `Produces` and `Consumes`. Use the
-`*WithExample` helpers to attach schemas and examples (including `$ref`):
+The shortest way to document a route is to hand it the Go types it already
+binds. `Accepts` documents the request body, `Returns` a response and `Params`
+the parameters of one location, each from a struct:
+
+```go
+type CreateUser struct {
+    Name  string `json:"name" validate:"required,min=3"`
+    Email string `json:"email" validate:"required,email"`
+}
+
+type User struct {
+    ID    int    `json:"id"`
+    Name  string `json:"name"`
+    Email string `json:"email"`
+}
+
+type ListFilter struct {
+    Page    int `query:"page" validate:"gte=1" openapi:"description:Page number"`
+    PerPage int `query:"per_page" validate:"lte=100"`
+}
+
+app.Post("/users", createUser).
+    Accepts(CreateUser{}).
+    Returns(fiber.StatusCreated, User{})
+
+app.Get("/users", listUsers).
+    Params("query", ListFilter{}).
+    Returns(fiber.StatusOK, []User{})
+```
+
+A named struct is emitted once under `components.schemas` and referenced with
+`$ref` wherever it appears, nested structs included, so the **Schemas** panel in
+Swagger UI lists your models; an anonymous struct is inlined. `validate` tags
+become constraints (`required`, `min`/`max`/`len`, `gte`/`lte`, `oneof`, and the
+format rules such as `email` and `uuid`), and `Params` reads the same `query`,
+`header`, `cookie` and `uri` tags that `Bind` does, so the documented names
+cannot drift from the bound ones. Media types come from `DefaultConsumes` and
+`DefaultProduces` unless passed explicitly, and an explicit `Parameter` for the
+same name overrides what the model says.
+
+Any helper that takes a schema accepts a Go value in its place, so
+`Parameter("filter", "query", false, ListFilter{}, "")` works too. For full
+control, `Summary`, `Description`, `RequestBody`, `Parameter`, `Response`,
+`Tags`, `Deprecated`, `Produces` and `Consumes` remain, and the `*WithExample`
+helpers attach schemas and examples (including `$ref`) explicitly:
 
 ```go
 app.Post("/users", createUser).
@@ -610,9 +652,10 @@ route's media type.
   - A response that declares no media type documents `DefaultProduces`, which is
     `application/json` unless configured; `Produces` and the `Response*` media
     types override it per route, and a status that carries no body (`1xx`,
-    `204`, `205`, `304`) never gets one. No request body is invented: it appears
-    only when `Consumes`/`RequestBody*` is set explicitly, since documenting
-    one would claim the handler reads it.
+    `204`, `205`, `304`) never gets one. A request body declared without a
+    media type documents `DefaultConsumes` the same way. No request body is
+    invented: it appears only when `Consumes`/`Accepts`/`RequestBody*` is set
+    explicitly, since documenting one would claim the handler reads it.
 - Operations without metadata have no `description` key at all and are not
   deprecated.
 - A route's `Consumes`/`Produces` are inferred from the first media type passed
@@ -703,6 +746,7 @@ route's media type.
 | JSONSchemaDialect | `string`             | Default JSON Schema dialect (`jsonSchemaDialect`, OpenAPI 3.1+). | `""` |
 | Self           | `string`                | Self-assigned document URI (`$self`, OpenAPI 3.2+).          | `""` |
 | DefaultProduces | `string`               | Response media type documented for a response that declares none; `Produces` and the `Response*` media types override it per route. | `"application/json"` |
+| DefaultConsumes | `string`               | Request media type documented for a request body that declares none; `Consumes` and the `RequestBody*` media types override it per route. | `"application/json"` |
 | DisableGroupTags | `bool`                | Stops tagging an untagged route with its group's name or last static prefix segment. | `false` |
 | DisableHandlerSummaries | `bool`         | Stops deriving a missing summary from the handler function's name. | `false` |
 
@@ -749,6 +793,7 @@ var ConfigDefault = Config{
     SwaggerOptions:             nil,
     OpenAPIVersion:             "3.1.0",
     DefaultProduces:            "application/json",
+    DefaultConsumes:            "application/json",
     DisableGroupTags:           false,
     DisableHandlerSummaries:    false,
 }
@@ -763,8 +808,12 @@ Schema references (`SchemaRef`) are emitted as `$ref` entries in the generated J
 
 ## Automatic Schema Inference
 
-The `SchemaOf` helper generates an OpenAPI JSON Schema from a Go struct using
-reflection. Given a struct:
+A Go value passed to `Accepts`, `Returns`, `Params` or any helper that takes a
+schema is reflected into an OpenAPI JSON Schema when the document is generated.
+The `SchemaOf` helper exposes the same reflection for a schema you want to build
+or inspect yourself, the one difference being that `SchemaOf` inlines nested
+structs while the route helpers register named types under `components.schemas`
+and reference them. Given a struct:
 
 ```go
 type User struct {
@@ -846,6 +895,14 @@ has no JSON representation (channels, functions, etc.) are skipped.
 - **`openapi:"example:value"`** — sets the property example (auto-converted to the correct type)
 - **`openapi:"format:fmt"`** — sets the format (e.g., `email`, `uuid`, `date-time`)
 - **`openapi:"enum:a|b|c"`** — sets allowed enum values (pipe-separated)
+- **`validate:"..."`** — the rules a `StructValidator` enforces become
+  constraints: `required` marks the property required even with `omitempty`;
+  `min`, `max`, `len`, `gte` and `lte` become `minimum`/`maximum` for numbers,
+  `minLength`/`maxLength` for strings, `minItems`/`maxItems` for arrays and
+  `minProperties`/`maxProperties` for objects; `oneof=a b` becomes `enum`; and
+  `email`, `uuid`, `url`, `uri`, `ipv4`, `ipv6`, `hostname`, `base64` and an
+  RFC 3339 `datetime` set `format` unless the `openapi` tag already did. Rules
+  the schema cannot express, such as `gt` or `dive`, are ignored
 
 Multiple `openapi` directives can be combined with commas:
 

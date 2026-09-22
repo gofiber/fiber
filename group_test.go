@@ -78,7 +78,7 @@ func Test_Group_OpenAPI_Helpers(t *testing.T) {
 		require.Len(t, route.Parameters, 1)
 		require.Equal(t, "id", route.Parameters[0].Name)
 		require.True(t, route.Parameters[0].Required)
-		require.Equal(t, "integer", route.Parameters[0].Schema["type"])
+		require.Equal(t, "integer", schemaMap(t, route.Parameters[0].Schema)["type"])
 	})
 
 	t.Run("ParameterWithExample", func(t *testing.T) {

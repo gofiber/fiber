@@ -148,6 +148,9 @@ type Config struct {
 	// DefaultProduces is the response media type documented for a response that declares none. Optional. Default: "application/json"
 	DefaultProduces string
 
+	// DefaultConsumes is the request media type documented for a request body that declares none. Optional. Default: "application/json"
+	DefaultConsumes string
+
 	// Tags lists top-level tag definitions (with descriptions) used by operations. Optional. Default: nil
 	Tags []Tag
 
@@ -179,6 +182,7 @@ var ConfigDefault = Config{
 	SwaggerOptions:             nil,
 	OpenAPIVersion:             versionOpenAPI31,
 	DefaultProduces:            fiber.MIMEApplicationJSON,
+	DefaultConsumes:            fiber.MIMEApplicationJSON,
 	DisableGroupTags:           false,
 	DisableHandlerSummaries:    false,
 }
@@ -364,6 +368,9 @@ func configDefault(config ...Config) Config {
 	}
 	if cfg.DefaultProduces == "" {
 		cfg.DefaultProduces = ConfigDefault.DefaultProduces
+	}
+	if cfg.DefaultConsumes == "" {
+		cfg.DefaultConsumes = ConfigDefault.DefaultConsumes
 	}
 	switch cfg.OpenAPIVersion {
 	case versionOpenAPI30, versionOpenAPI31, versionOpenAPI32:

@@ -2722,7 +2722,7 @@ func Test_OpenAPI_ParameterContent(t *testing.T) {
 		app.Get("/x", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) }).
 			AddParameter(fiber.RouteParameter{Name: "p", In: "query", Content: content})
 
-		content[fiber.MIMEApplicationJSON].Schema["type"] = "array"
+		requireMap(t, content[fiber.MIMEApplicationJSON].Schema)["type"] = "array"
 		delete(content, fiber.MIMEApplicationJSON)
 
 		app.Use(New())
@@ -3256,19 +3256,19 @@ func Test_appendOrReplaceParameter_Guards(t *testing.T) {
 func Test_schemaFrom(t *testing.T) {
 	t.Parallel()
 
-	require.Equal(t, map[string]any{"$ref": "#/x"}, schemaFrom(nil, "#/x", "string"))
-	require.Equal(t, map[string]any{"type": "string"}, schemaFrom(nil, "", "string"))
-	require.Nil(t, schemaFrom(nil, "", ""))
-	require.Equal(t, map[string]any{"type": "integer"}, schemaFrom(map[string]any{"type": "integer"}, "", "string"))
+	require.Equal(t, map[string]any{"$ref": "#/x"}, schemaFrom(nil, "#/x", "string", nil))
+	require.Equal(t, map[string]any{"type": "string"}, schemaFrom(nil, "", "string", nil))
+	require.Nil(t, schemaFrom(nil, "", "", nil))
+	require.Equal(t, map[string]any{"type": "integer"}, schemaFrom(map[string]any{"type": "integer"}, "", "string", nil))
 }
 
 func Test_mediaTypesToContent(t *testing.T) {
 	t.Parallel()
 
-	require.Nil(t, mediaTypesToContent(nil, nil, "", nil, nil))
-	require.Nil(t, mediaTypesToContent([]string{""}, nil, "", nil, nil))
+	require.Nil(t, mediaTypesToContent(nil, nil, "", nil, nil, nil))
+	require.Nil(t, mediaTypesToContent([]string{""}, nil, "", nil, nil, nil))
 
-	content := mediaTypesToContent([]string{"application/json"}, nil, "", nil, nil)
+	content := mediaTypesToContent([]string{"application/json"}, nil, "", nil, nil, nil)
 	require.Contains(t, content, "application/json")
 	require.Empty(t, content["application/json"])
 }
@@ -3276,13 +3276,13 @@ func Test_mediaTypesToContent(t *testing.T) {
 func Test_routeMediaTypeContent(t *testing.T) {
 	t.Parallel()
 
-	require.Nil(t, routeMediaTypeContent(nil))
-	require.Nil(t, routeMediaTypeContent(map[string]fiber.RouteMediaType{"": {Schema: map[string]any{"type": "string"}}}))
+	require.Nil(t, routeMediaTypeContent(nil, nil))
+	require.Nil(t, routeMediaTypeContent(map[string]fiber.RouteMediaType{"": {Schema: map[string]any{"type": "string"}}}, nil))
 
 	out := routeMediaTypeContent(map[string]fiber.RouteMediaType{
 		"":                 {Schema: map[string]any{"type": "string"}},
 		"application/json": {},
-	})
+	}, nil)
 	require.Len(t, out, 1)
 	require.Empty(t, out["application/json"])
 }
@@ -3290,8 +3290,8 @@ func Test_routeMediaTypeContent(t *testing.T) {
 func Test_buildRequestBody_Guards(t *testing.T) {
 	t.Parallel()
 
-	require.Nil(t, buildRequestBody(nil))
-	require.Nil(t, buildRequestBody(&fiber.RouteRequestBody{Content: map[string]fiber.RouteMediaType{"": {}}}))
+	require.Nil(t, buildRequestBody(nil, "", nil))
+	require.Nil(t, buildRequestBody(&fiber.RouteRequestBody{Content: map[string]fiber.RouteMediaType{"": {}}}, "", nil))
 }
 
 func Test_defaultResponseForMethod(t *testing.T) {
@@ -3338,12 +3338,12 @@ func Test_buildServers_Internal(t *testing.T) {
 func Test_buildComponents_MergeSecuritySchemes(t *testing.T) {
 	t.Parallel()
 
-	require.Nil(t, buildComponents(&Config{}))
+	require.Nil(t, buildComponents(&Config{}, nil))
 
 	components := buildComponents(&Config{
 		Components:      map[string]any{"securitySchemes": map[string]any{"a": map[string]any{"type": "http"}}},
 		SecuritySchemes: map[string]any{"b": map[string]any{"type": "apiKey"}},
-	})
+	}, nil)
 	schemes := requireMap(t, components["securitySchemes"])
 	require.Contains(t, schemes, "a")
 	require.Contains(t, schemes, "b")
@@ -3357,7 +3357,7 @@ func Test_mergeRouteParameters_Internal(t *testing.T) {
 		{Name: "  "},
 		{Name: "q"},
 		{Name: "h", In: "Header"},
-	})
+	}, nil)
 	require.Len(t, out, 2)
 	require.Equal(t, "query", out[0].In)
 	require.Equal(t, "header", out[1].In)
@@ -3529,7 +3529,7 @@ func Test_OpenAPI_TypedSecuritySchemesMerge(t *testing.T) {
 		},
 	})
 
-	schemes := requireMap(t, buildComponents(&cfg)["securitySchemes"])
+	schemes := requireMap(t, buildComponents(&cfg, nil)["securitySchemes"])
 	require.Contains(t, schemes, "fromComponents", "the caller's typed schemes were dropped")
 	require.Contains(t, schemes, "fromConfig")
 }

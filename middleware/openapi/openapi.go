@@ -707,6 +707,8 @@ const (
 	querystringMediaType = "application/x-www-form-urlencoded"
 
 	schemaKeyType     = "type"
+	schemaKeyRef      = "$ref"
+	schemaTypeArray   = "array"
 	schemaKeyFormat   = "format"
 	schemaTypeString  = "string"
 	schemaTypeObject  = "object"
@@ -771,6 +773,7 @@ func versionAtLeast(version, minimum string) bool {
 // generateSpec builds the OpenAPI document from a snapshot of routes (deep
 // copies from App.GetRoutes, safe to read without further locking).
 func generateSpec(routes []fiber.Route, cfg *Config) openAPISpec {
+	reg := newSchemaRegistry(cfg)
 	paths := make(map[string]map[string]operation)
 	// usedOperationIDs guarantees operationId uniqueness across the document,
 	// which the OpenAPI specification requires.
@@ -863,13 +866,15 @@ func generateSpec(routes []fiber.Route, cfg *Config) openAPISpec {
 				paramIndex[param.In+":"+param.Name] = len(params) - 1
 			}
 
-			extras := remapRouteParameters(r.Parameters, variant.PathParamAliases, variant.ParamNames)
+			// Declared models expand first so an explicit AddParameter for the
+			// same name still overrides what the model says.
+			extras := remapRouteParameters(append(expandParameterModels(r.ParameterModels, reg), r.Parameters...), variant.PathParamAliases, variant.ParamNames)
 			// The "querystring" location exists only in 3.2+; emitting it
 			// earlier would make the document invalid.
 			if !versionAtLeast(cfg.OpenAPIVersion, versionOpenAPI32) {
 				extras = dropQuerystringParameters(extras)
 			}
-			params = mergeRouteParameters(params, paramIndex, extras)
+			params = mergeRouteParameters(params, paramIndex, extras, reg)
 
 			opSummary := summary
 			if opSummary == "" {
@@ -883,13 +888,13 @@ func generateSpec(routes []fiber.Route, cfg *Config) openAPISpec {
 			}
 			operationID = uniqueOperationID(operationID, usedOperationIDs)
 
-			responses := convertRouteResponses(r.Responses, respType)
+			responses := convertRouteResponses(r.Responses, respType, reg)
 			if len(responses) == 0 {
 				status, defaultResp := defaultResponseForMethod(r.Method, respType)
 				responses = map[string]response{status: defaultResp}
 			}
 
-			reqBody := buildRequestBody(r.RequestBody)
+			reqBody := buildRequestBody(r.RequestBody, cfg.DefaultConsumes, reg)
 			if reqType := r.Consumes; reqBody == nil && reqType != "" {
 				reqBody = &requestBody{Content: map[string]map[string]any{reqType: {}}}
 			}
@@ -974,7 +979,7 @@ func generateSpec(routes []fiber.Route, cfg *Config) openAPISpec {
 		spec.Self = cfg.Self
 	}
 
-	spec.Components = buildComponents(cfg)
+	spec.Components = buildComponents(cfg, reg)
 
 	return spec
 }
@@ -1007,13 +1012,23 @@ func buildServers(cfg *Config) []Server {
 
 // buildComponents merges the user-provided Components with the configured
 // SecuritySchemes without mutating either input.
-func buildComponents(cfg *Config) map[string]any {
-	if len(cfg.Components) == 0 && len(cfg.SecuritySchemes) == 0 {
+func buildComponents(cfg *Config, reg *schemaRegistry) map[string]any {
+	registered := reg.componentSchemas()
+	if len(cfg.Components) == 0 && len(cfg.SecuritySchemes) == 0 && len(registered) == 0 {
 		return nil
 	}
 
-	components := make(map[string]any, len(cfg.Components)+1)
+	components := make(map[string]any, len(cfg.Components)+2)
 	maps.Copy(components, cfg.Components)
+
+	if len(registered) > 0 {
+		// The types met while generating join the user's schemas, which keep
+		// their names: the registry never claims one of them.
+		schemas := make(map[string]any, len(registered))
+		maps.Copy(schemas, registered)
+		maps.Copy(schemas, stringKeyedEntries(components["schemas"]))
+		components["schemas"] = schemas
+	}
 
 	if len(cfg.SecuritySchemes) > 0 {
 		// Preserve any securitySchemes the user already placed in Components by
@@ -1071,7 +1086,7 @@ func dropQuerystringParameters(extras []fiber.RouteParameter) []fiber.RouteParam
 	return extras
 }
 
-func mergeRouteParameters(params []parameter, index map[string]int, extras []fiber.RouteParameter) []parameter {
+func mergeRouteParameters(params []parameter, index map[string]int, extras []fiber.RouteParameter, reg *schemaRegistry) []parameter {
 	if len(extras) == 0 {
 		return params
 	}
@@ -1107,7 +1122,7 @@ func mergeRouteParameters(params []parameter, index map[string]int, extras []fib
 		}
 		// A Parameter Object describes its value either with "schema" or with
 		// "content", never both and never neither.
-		switch content := routeMediaTypeContent(extra.Content); {
+		switch content := routeMediaTypeContent(extra.Content, reg); {
 		case content != nil:
 			param.Content = content
 			// "example"/"examples" belong to the media type object when content
@@ -1119,14 +1134,14 @@ func mergeRouteParameters(params []parameter, index map[string]int, extras []fib
 			// schema is wrapped rather than emitting neither key.
 			param.Content = map[string]map[string]any{
 				querystringMediaType: contentEntry(
-					schemaFrom(extra.Schema, extra.SchemaRef, schemaTypeString),
-					"", paramExample, paramExamples,
+					schemaFrom(extra.Schema, extra.SchemaRef, schemaTypeString, reg),
+					"", paramExample, paramExamples, reg,
 				),
 			}
 			param.Example = nil
 			param.Examples = nil
 		default:
-			param.Schema = schemaFrom(extra.Schema, extra.SchemaRef, schemaTypeString)
+			param.Schema = schemaFrom(extra.Schema, extra.SchemaRef, schemaTypeString, reg)
 		}
 		if extra.Explode != nil {
 			explode := *extra.Explode
@@ -1148,7 +1163,18 @@ func mergeRouteParameters(params []parameter, index map[string]int, extras []fib
 
 // isDefaultStringSchema reports whether a schema says nothing beyond the string
 // default the route helpers inject.
-func isDefaultStringSchema(schema map[string]any) bool {
+func isDefaultStringSchema(schema any) bool {
+	if schema == nil {
+		return true
+	}
+	values, ok := schema.(map[string]any)
+	if !ok {
+		return false
+	}
+	return isDefaultStringSchemaMap(values)
+}
+
+func isDefaultStringSchemaMap(schema map[string]any) bool {
 	switch len(schema) {
 	case 0:
 		return true
@@ -1173,17 +1199,21 @@ func appendOrReplaceParameter(params []parameter, index map[string]int, p *param
 	return append(params, *p)
 }
 
-func schemaFrom(schema map[string]any, schemaRef, defaultType string) map[string]any {
+func schemaFrom(schema any, schemaRef, defaultType string, reg *schemaRegistry) map[string]any {
 	if schemaRef != "" {
-		return map[string]any{"$ref": schemaRef}
+		return map[string]any{schemaKeyRef: schemaRef}
 	}
 
-	copied := maps.Clone(schema)
+	copied := reg.resolve(schema)
 	if copied == nil {
 		copied = map[string]any{}
 	}
-	if _, ok := copied[schemaKeyType]; !ok && defaultType != "" {
-		copied[schemaKeyType] = defaultType
+	// A reference describes its type elsewhere; only a bare schema takes the
+	// default.
+	if _, isRef := copied[schemaKeyRef]; !isRef {
+		if _, ok := copied[schemaKeyType]; !ok && defaultType != "" {
+			copied[schemaKeyType] = defaultType
+		}
 	}
 	if len(copied) == 0 {
 		return nil
@@ -1191,12 +1221,12 @@ func schemaFrom(schema map[string]any, schemaRef, defaultType string) map[string
 	return copied
 }
 
-func contentEntry(schema map[string]any, schemaRef string, example any, examples map[string]any) map[string]any {
+func contentEntry(schema any, schemaRef string, example any, examples map[string]any, reg *schemaRegistry) map[string]any {
 	entry := map[string]any{}
 	if schemaRef != "" {
-		entry["schema"] = map[string]any{"$ref": schemaRef}
-	} else if copied := maps.Clone(schema); len(copied) > 0 {
-		entry["schema"] = copied
+		entry["schema"] = map[string]any{schemaKeyRef: schemaRef}
+	} else if resolved := reg.resolve(schema); len(resolved) > 0 {
+		entry["schema"] = resolved
 	}
 	// OpenAPI spec: "example" and "examples" are mutually exclusive.
 	// Prefer "examples" when both are provided.
@@ -1210,7 +1240,7 @@ func contentEntry(schema map[string]any, schemaRef string, example any, examples
 
 // routeMediaTypeContent builds an OpenAPI content map from per-media-type
 // entries, allowing a different schema/example/encoding per content type.
-func routeMediaTypeContent(content map[string]fiber.RouteMediaType) map[string]map[string]any {
+func routeMediaTypeContent(content map[string]fiber.RouteMediaType, reg *schemaRegistry) map[string]map[string]any {
 	if len(content) == 0 {
 		return nil
 	}
@@ -1219,7 +1249,7 @@ func routeMediaTypeContent(content map[string]fiber.RouteMediaType) map[string]m
 		if mediaType == "" {
 			continue
 		}
-		entry := contentEntry(mt.Schema, mt.SchemaRef, mt.Example, mt.Examples)
+		entry := contentEntry(mt.Schema, mt.SchemaRef, mt.Example, mt.Examples, reg)
 		if len(mt.Encoding) > 0 {
 			entry["encoding"] = mt.Encoding
 		}
@@ -1233,18 +1263,18 @@ func routeMediaTypeContent(content map[string]fiber.RouteMediaType) map[string]m
 
 // convertRouteResponses converts response metadata, falling back to the route's
 // Produces when a schema or example names no media type.
-func convertRouteResponses(routeResponses map[string]fiber.RouteResponse, fallbackMediaType string) map[string]response {
+func convertRouteResponses(routeResponses map[string]fiber.RouteResponse, fallbackMediaType string, reg *schemaRegistry) map[string]response {
 	if len(routeResponses) == 0 {
 		return nil
 	}
 	merged := make(map[string]response, len(routeResponses))
 	for code, resp := range routeResponses {
-		content := routeMediaTypeContent(resp.Content)
+		content := routeMediaTypeContent(resp.Content, reg)
 		if content == nil {
 			mediaTypes := resp.MediaTypes
 			if len(mediaTypes) == 0 {
 				switch {
-				case len(resp.Schema) > 0 || resp.SchemaRef != "" || resp.Example != nil || len(resp.Examples) > 0:
+				case hasSchemaValue(resp.Schema) || resp.SchemaRef != "" || resp.Example != nil || len(resp.Examples) > 0:
 					// A schema or example with no media type would be discarded,
 					// so fall back to Produces, then to JSON.
 					if fallbackMediaType != "" {
@@ -1258,12 +1288,12 @@ func convertRouteResponses(routeResponses map[string]fiber.RouteResponse, fallba
 					mediaTypes = []string{fallbackMediaType}
 				}
 			}
-			content = mediaTypesToContent(mediaTypes, resp.Schema, resp.SchemaRef, resp.Example, resp.Examples)
+			content = mediaTypesToContent(mediaTypes, resp.Schema, resp.SchemaRef, resp.Example, resp.Examples, reg)
 		}
 		merged[code] = response{
 			Description: resp.Description,
 			Content:     content,
-			Headers:     resp.Headers,
+			Headers:     resolveHeaderSchemas(resp.Headers, reg),
 			Links:       resp.Links,
 		}
 	}
@@ -1342,7 +1372,7 @@ func remapRouteParameters(extras []fiber.RouteParameter, aliases map[string]stri
 	return out
 }
 
-func mediaTypesToContent(mediaTypes []string, schema map[string]any, schemaRef string, example any, examples map[string]any) map[string]map[string]any {
+func mediaTypesToContent(mediaTypes []string, schema any, schemaRef string, example any, examples map[string]any, reg *schemaRegistry) map[string]map[string]any {
 	if len(mediaTypes) == 0 {
 		return nil
 	}
@@ -1351,8 +1381,7 @@ func mediaTypesToContent(mediaTypes []string, schema map[string]any, schemaRef s
 		if mediaType == "" {
 			continue
 		}
-		entry := contentEntry(schema, schemaRef, example, examples)
-		content[mediaType] = entry
+		content[mediaType] = contentEntry(schema, schemaRef, example, examples, reg)
 	}
 	if len(content) == 0 {
 		return nil
@@ -1360,13 +1389,19 @@ func mediaTypesToContent(mediaTypes []string, schema map[string]any, schemaRef s
 	return content
 }
 
-func buildRequestBody(routeBody *fiber.RouteRequestBody) *requestBody {
+func buildRequestBody(routeBody *fiber.RouteRequestBody, defaultMediaType string, reg *schemaRegistry) *requestBody {
 	if routeBody == nil {
 		return nil
 	}
-	content := routeMediaTypeContent(routeBody.Content)
+	content := routeMediaTypeContent(routeBody.Content, reg)
 	if content == nil {
-		content = mediaTypesToContent(routeBody.MediaTypes, routeBody.Schema, routeBody.SchemaRef, routeBody.Example, routeBody.Examples)
+		mediaTypes := routeBody.MediaTypes
+		// A body declared without a media type is still a body on the wire,
+		// so it documents the app-wide request media type.
+		if len(mediaTypes) == 0 && defaultMediaType != "" {
+			mediaTypes = []string{defaultMediaType}
+		}
+		content = mediaTypesToContent(mediaTypes, routeBody.Schema, routeBody.SchemaRef, routeBody.Example, routeBody.Examples, reg)
 	}
 	merged := &requestBody{
 		Description: routeBody.Description,
@@ -1650,4 +1685,41 @@ func sanitizeOpenAPIParamName(name string, idx int) string {
 		return fmt.Sprintf("param%d", idx)
 	}
 	return sanitized
+}
+
+// hasSchemaValue reports whether a schema argument carries anything: a map
+// with entries, or a Go value that reflects into a schema.
+func hasSchemaValue(schema any) bool {
+	switch value := schema.(type) {
+	case nil:
+		return false
+	case map[string]any:
+		return len(value) > 0
+	default:
+		return true
+	}
+}
+
+// resolveHeaderSchemas reflects any Go value used as a header's schema, leaving
+// every other header field as documented.
+func resolveHeaderSchemas(headers map[string]any, reg *schemaRegistry) map[string]any {
+	if len(headers) == 0 {
+		return headers
+	}
+	resolved := make(map[string]any, len(headers))
+	for name, raw := range headers {
+		header, ok := raw.(map[string]any)
+		if !ok {
+			resolved[name] = raw
+			continue
+		}
+		if schema, ok := header["schema"]; ok {
+			if _, isMap := schema.(map[string]any); !isMap {
+				header = maps.Clone(header)
+				header["schema"] = reg.resolve(schema)
+			}
+		}
+		resolved[name] = header
+	}
+	return resolved
 }

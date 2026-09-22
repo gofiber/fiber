@@ -42,15 +42,25 @@ import (
 //   - `openapi:"example:value"` sets the property example
 //   - `openapi:"format:fmt"` overrides the format (e.g. "email", "uuid")
 //   - `openapi:"enum:a|b|c"` sets the enum values
+//   - `validate:"..."` rules the validator enforces become constraints:
+//     required, min/max/len/gte/lte (as minimum/maximum, minLength/maxLength,
+//     minItems/maxItems or minProperties/maxProperties by type), oneof (as
+//     enum) and the email, uuid, url, uri, ipv4, ipv6, hostname and base64
+//     rules (as format, unless the openapi tag set one)
 //
 // openapi directives are comma-separated; a value may contain commas and colons,
 // but not a comma immediately followed by another directive key.
+//
+// SchemaOf inlines every nested struct. A Go value passed to the route helpers
+// instead of a schema map is reflected the same way when the document is
+// generated, except that named struct types are emitted once under
+// components.schemas and referenced from where they appear.
 func SchemaOf(v any) map[string]any {
 	t := reflect.TypeOf(v)
 	if t == nil {
 		return nil
 	}
-	return typeSchema(t, nil)
+	return typeSchema(t, nil, nil)
 }
 
 var (
@@ -95,7 +105,7 @@ func derefType(t reflect.Type) reflect.Type {
 
 // typeSchema builds the schema for a single type. visited tracks the composite
 // types currently on the recursion stack so that cyclic types terminate.
-func typeSchema(t reflect.Type, visited map[reflect.Type]bool) map[string]any {
+func typeSchema(t reflect.Type, visited map[reflect.Type]bool, reg *schemaRegistry) map[string]any {
 	t = derefType(t)
 	if t.Kind() == reflect.Pointer {
 		return map[string]any{}
@@ -145,17 +155,17 @@ func typeSchema(t reflect.Type, visited map[reflect.Type]bool) map[string]any {
 		}
 		// A recursive element type (type L []L) would expand forever.
 		if visited[t] {
-			return map[string]any{schemaKeyType: "array"}
+			return map[string]any{schemaKeyType: schemaTypeArray}
 		}
 		visited = markVisited(visited, t)
-		items := typeSchema(t.Elem(), visited)
+		items := typeSchema(t.Elem(), visited, reg)
 		delete(visited, t)
 		if items == nil {
 			// With no JSON representation for the element there is none for the
 			// slice: encoding/json fails outright rather than emitting one.
 			return nil
 		}
-		return map[string]any{schemaKeyType: "array", "items": items}
+		return map[string]any{schemaKeyType: schemaTypeArray, "items": items}
 	case reflect.Map:
 		if t.Key().Kind() != reflect.String {
 			return map[string]any{schemaKeyType: schemaTypeObject}
@@ -165,7 +175,7 @@ func typeSchema(t reflect.Type, visited map[reflect.Type]bool) map[string]any {
 			return map[string]any{schemaKeyType: schemaTypeObject}
 		}
 		visited = markVisited(visited, t)
-		additional := typeSchema(t.Elem(), visited)
+		additional := typeSchema(t.Elem(), visited, reg)
 		delete(visited, t)
 		if additional == nil {
 			// See the slice branch: an unmarshalable element makes the whole
@@ -174,7 +184,12 @@ func typeSchema(t reflect.Type, visited map[reflect.Type]bool) map[string]any {
 		}
 		return map[string]any{schemaKeyType: schemaTypeObject, "additionalProperties": additional}
 	case reflect.Struct:
-		return structSchema(t, visited)
+		// With a registry, a named type is emitted once under components and
+		// referenced; anonymous structs are always inlined.
+		if reg != nil && t.Name() != "" {
+			return reg.ref(t, visited)
+		}
+		return structSchema(t, visited, reg)
 	case reflect.Interface:
 		// An interface value (e.g. any) accepts any JSON value.
 		return map[string]any{}
@@ -185,7 +200,7 @@ func typeSchema(t reflect.Type, visited map[reflect.Type]bool) map[string]any {
 	}
 }
 
-func structSchema(t reflect.Type, visited map[reflect.Type]bool) map[string]any {
+func structSchema(t reflect.Type, visited map[reflect.Type]bool, reg *schemaRegistry) map[string]any {
 	// Break reference cycles: if this struct type is already being expanded
 	// further up the stack, emit a bare object instead of recursing forever.
 	if visited[t] {
@@ -256,7 +271,7 @@ func structSchema(t reflect.Type, visited map[reflect.Type]bool) map[string]any 
 					name = field.Name
 				}
 
-				fieldSchema := typeSchema(field.Type, visited)
+				fieldSchema := typeSchema(field.Type, visited, reg)
 				if fieldSchema == nil {
 					// The field type has no JSON representation; skip it
 					// entirely rather than emitting a meaningless empty schema.
@@ -274,13 +289,16 @@ func structSchema(t reflect.Type, visited map[reflect.Type]bool) map[string]any 
 				}
 
 				applyOpenAPITag(&field, fieldSchema)
+				// The validator decides what must be present regardless of how
+				// the field is encoded, so its rule outranks omitempty.
+				mustValidate := applyValidateTag(&field, fieldSchema)
 
 				if _, ok := candidates[name]; !ok {
 					order = append(order, name)
 				}
 				candidates[name] = append(candidates[name], fieldCandidate{
 					schema:   fieldSchema,
-					required: !tagInfo.omit && field.Type.Kind() != reflect.Pointer && !ref.optional,
+					required: mustValidate || (!tagInfo.omit && field.Type.Kind() != reflect.Pointer && !ref.optional),
 					tagged:   tagInfo.name != "",
 				})
 			}
@@ -485,4 +503,139 @@ func inferExampleValue(val string, schema map[string]any) any {
 		// String and other types use the raw string value.
 	}
 	return val
+}
+
+// JSON Schema formats the validator's rules map onto.
+const (
+	formatEmail    = "email"
+	formatUUID     = "uuid"
+	formatURI      = "uri"
+	formatIPv4     = "ipv4"
+	formatIPv6     = "ipv6"
+	formatHostname = "hostname"
+	formatByte     = "byte"
+)
+
+// validateFormats maps the validator's format rules to the JSON Schema formats
+// that describe the same values.
+var validateFormats = map[string]string{
+	formatEmail:        formatEmail,
+	formatUUID:         formatUUID,
+	"uuid3":            formatUUID,
+	"uuid4":            formatUUID,
+	"uuid5":            formatUUID,
+	"url":              formatURI,
+	formatURI:          formatURI,
+	formatIPv4:         formatIPv4,
+	formatIPv6:         formatIPv6,
+	formatHostname:     formatHostname,
+	"hostname_rfc1123": formatHostname,
+	"fqdn":             formatHostname,
+	"base64":           formatByte,
+}
+
+// applyValidateTag translates the rules of a validate tag into schema
+// constraints, and reports whether the field is required. Rules the schema
+// cannot express, or whose value does not parse, are ignored.
+func applyValidateTag(field *reflect.StructField, schema map[string]any) bool {
+	tag := field.Tag.Get("validate")
+	if tag == "" {
+		return false
+	}
+	required := false
+	for rule := range strings.SplitSeq(tag, ",") {
+		key, value, _ := strings.Cut(utils.TrimSpace(rule), "=")
+		switch key {
+		case "required":
+			required = true
+		case "min", "gte":
+			setBound(schema, value, lowerBound)
+		case "max", "lte":
+			setBound(schema, value, upperBound)
+		case "len":
+			setBound(schema, value, lowerBound)
+			setBound(schema, value, upperBound)
+		case "oneof":
+			values := strings.Fields(value)
+			enum := make([]any, len(values))
+			for i, v := range values {
+				enum[i] = inferExampleValue(strings.Trim(v, "'"), schema)
+			}
+			if len(enum) > 0 {
+				schema["enum"] = enum
+			}
+		case "datetime":
+			if value == time.RFC3339 {
+				setFormat(schema, "date-time")
+			}
+		default:
+			if format, ok := validateFormats[key]; ok {
+				setFormat(schema, format)
+			}
+		}
+	}
+	return required
+}
+
+func setFormat(schema map[string]any, format string) {
+	if _, ok := schema[schemaKeyFormat]; !ok {
+		schema[schemaKeyFormat] = format
+	}
+}
+
+// boundSide selects which end of a range a validate rule constrains.
+type boundSide uint8
+
+const (
+	lowerBound boundSide = iota
+	upperBound
+)
+
+// boundKeywords lists the schema keywords for each type's lower and upper
+// limit: length for strings, value for numbers, count for arrays and objects.
+var boundKeywords = map[string][2]string{
+	schemaTypeString:  {"minLength", "maxLength"},
+	schemaTypeArray:   {"minItems", "maxItems"},
+	schemaTypeObject:  {"minProperties", "maxProperties"},
+	schemaTypeInteger: {"minimum", "maximum"},
+	schemaTypeNumber:  {"minimum", "maximum"},
+}
+
+// setBound writes a validate rule's limit under the keyword the schema's type
+// uses, or nothing when the type has no such keyword or the value does not
+// parse.
+func setBound(schema map[string]any, value string, side boundSide) {
+	schemaType, ok := schema[schemaKeyType].(string)
+	if !ok {
+		return
+	}
+	keywords, ok := boundKeywords[schemaType]
+	if !ok {
+		return
+	}
+	key := keywords[side]
+	var bound any
+	switch schemaType {
+	case schemaTypeInteger:
+		n, err := utils.ParseInt(value)
+		if err != nil {
+			return
+		}
+		bound = n
+	case schemaTypeNumber:
+		f, err := utils.ParseFloat64(value)
+		if err != nil {
+			return
+		}
+		bound = f
+	default:
+	}
+	if bound == nil {
+		n, err := utils.ParseInt(value)
+		if err != nil || n < 0 {
+			return
+		}
+		bound = n
+	}
+	schema[key] = bound
 }

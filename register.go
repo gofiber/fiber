@@ -35,13 +35,13 @@ type Register interface {
 	Consumes(typ string) Register
 	Produces(typ string) Register
 	RequestBody(description string, required bool, mediaTypes ...string) Register
-	RequestBodyWithExample(description string, required bool, schema map[string]any, schemaRef string, example any, examples map[string]any, mediaTypes ...string) Register
-	Parameter(name, in string, required bool, schema map[string]any, description string) Register
-	ParameterWithExample(name, in string, required bool, schema map[string]any, schemaRef, description string, example any, examples map[string]any) Register
+	RequestBodyWithExample(description string, required bool, schema any, schemaRef string, example any, examples map[string]any, mediaTypes ...string) Register
+	Parameter(name, in string, required bool, schema any, description string) Register
+	ParameterWithExample(name, in string, required bool, schema any, schemaRef, description string, example any, examples map[string]any) Register
 	AddParameter(param RouteParameter) Register
 	Response(status int, description string, mediaTypes ...string) Register
-	ResponseWithExample(status int, description string, schema map[string]any, schemaRef string, example any, examples map[string]any, mediaTypes ...string) Register
-	ResponseHeader(status int, name, description string, schema map[string]any) Register
+	ResponseWithExample(status int, description string, schema any, schemaRef string, example any, examples map[string]any, mediaTypes ...string) Register
+	ResponseHeader(status int, name, description string, schema any) Register
 	ResponseContent(status int, description string, content map[string]RouteMediaType) Register
 	ResponseLink(status int, name string, link map[string]any) Register
 	RequestBodyContent(description string, required bool, content map[string]RouteMediaType) Register
@@ -51,6 +51,9 @@ type Register interface {
 	Hidden() Register
 	OperationExternalDocs(description, url string) Register
 	OperationExtension(fields map[string]any) Register
+	Accepts(model any, mediaTypes ...string) Register
+	Returns(status int, model any, mediaTypes ...string) Register
+	Params(in string, model any) Register
 }
 
 var _ Register = (*Registering)(nil)
@@ -203,18 +206,18 @@ func (r *Registering) RequestBody(description string, required bool, mediaTypes 
 }
 
 // RequestBodyWithExample documents the request payload with schema references and examples.
-func (r *Registering) RequestBodyWithExample(description string, required bool, schema map[string]any, schemaRef string, example any, examples map[string]any, mediaTypes ...string) Register {
+func (r *Registering) RequestBodyWithExample(description string, required bool, schema any, schemaRef string, example any, examples map[string]any, mediaTypes ...string) Register {
 	r.app.applyToRegistration(atomic.LoadUint64(&r.lastRegID), docRequestBodyWithExample(description, required, schema, schemaRef, example, examples, mediaTypes...))
 	return r
 }
 
 // Parameter documents an input parameter for the most recently registered route.
-func (r *Registering) Parameter(name, in string, required bool, schema map[string]any, description string) Register {
+func (r *Registering) Parameter(name, in string, required bool, schema any, description string) Register {
 	return r.AddParameter(RouteParameter{Name: name, In: in, Required: required, Schema: schema, Description: description})
 }
 
 // ParameterWithExample documents an input parameter, including schema references and examples.
-func (r *Registering) ParameterWithExample(name, in string, required bool, schema map[string]any, schemaRef, description string, example any, examples map[string]any) Register {
+func (r *Registering) ParameterWithExample(name, in string, required bool, schema any, schemaRef, description string, example any, examples map[string]any) Register {
 	return r.AddParameter(RouteParameter{
 		Name:        name,
 		In:          in,
@@ -241,14 +244,32 @@ func (r *Registering) Response(status int, description string, mediaTypes ...str
 }
 
 // ResponseWithExample documents an HTTP response with schema references and examples.
-func (r *Registering) ResponseWithExample(status int, description string, schema map[string]any, schemaRef string, example any, examples map[string]any, mediaTypes ...string) Register {
+func (r *Registering) ResponseWithExample(status int, description string, schema any, schemaRef string, example any, examples map[string]any, mediaTypes ...string) Register {
 	r.app.applyToRegistration(atomic.LoadUint64(&r.lastRegID), docAddResponse(status, description, schema, schemaRef, example, examples, mediaTypes...))
 	return r
 }
 
 // ResponseHeader documents a response header for the most recently registered route.
-func (r *Registering) ResponseHeader(status int, name, description string, schema map[string]any) Register {
+func (r *Registering) ResponseHeader(status int, name, description string, schema any) Register {
 	r.app.applyToRegistration(atomic.LoadUint64(&r.lastRegID), docResponseHeader(status, name, description, schema))
+	return r
+}
+
+// Accepts documents the request body as the schema of model; see App.Accepts.
+func (r *Registering) Accepts(model any, mediaTypes ...string) Register {
+	r.app.applyToRegistration(atomic.LoadUint64(&r.lastRegID), docRequestBodyWithExample("", true, model, "", nil, nil, mediaTypes...))
+	return r
+}
+
+// Returns documents a response as the schema of model; see App.Returns.
+func (r *Registering) Returns(status int, model any, mediaTypes ...string) Register {
+	r.app.applyToRegistration(atomic.LoadUint64(&r.lastRegID), docAddResponse(status, "", model, "", nil, nil, mediaTypes...))
+	return r
+}
+
+// Params documents the fields of model as parameters; see App.Params.
+func (r *Registering) Params(in string, model any) Register {
+	r.app.applyToRegistration(atomic.LoadUint64(&r.lastRegID), docAddParameterModel(in, model))
 	return r
 }
 

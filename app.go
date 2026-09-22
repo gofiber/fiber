@@ -1011,8 +1011,11 @@ func (app *App) Name(name string) Router {
 
 // OpenAPI schema literals reused by the route documentation helpers below.
 const (
-	openapiRefKey     = "$ref"
-	openapiTypeString = "string"
+	openapiRefKey = "$ref"
+	// openapiLocationPath is the parameter location the router fills from the
+	// path pattern; it has no bind source of its own.
+	openapiLocationPath = "path"
+	openapiTypeString   = "string"
 )
 
 // The doc* factories below build each helper's mutation, validating and copying
@@ -1078,8 +1081,34 @@ func (app *App) RequestBody(description string, required bool, mediaTypes ...str
 	return app.RequestBodyWithExample(description, required, nil, "", nil, nil, mediaTypes...)
 }
 
-func docRequestBodyWithExample(description string, required bool, schema map[string]any, schemaRef string, example any, examples map[string]any, mediaTypes ...string) func(route *Route) {
-	sanitized := sanitizeRequiredMediaTypes(mediaTypes)
+// hasSchema reports whether a schema argument carries anything: a map with
+// entries, or a Go value the OpenAPI middleware reflects into a schema.
+func hasSchema(schema any) bool {
+	switch value := schema.(type) {
+	case nil:
+		return false
+	case map[string]any:
+		return len(value) > 0
+	default:
+		return true
+	}
+}
+
+// copySchema detaches a schema map from its caller. A Go value used as a model
+// is kept as is: only its type is read, so nothing can alias into the route.
+func copySchema(schema any) any {
+	if value, ok := schema.(map[string]any); ok {
+		if len(value) == 0 {
+			return nil
+		}
+		return copyAnyMap(value)
+	}
+	return schema
+}
+
+func docRequestBodyWithExample(description string, required bool, schema any, schemaRef string, example any, examples map[string]any, mediaTypes ...string) func(route *Route) {
+	// No media type is fine: the middleware documents its DefaultConsumes.
+	sanitized := sanitizeMediaTypes(mediaTypes)
 
 	// Holds the caller's values; cloneRouteRequestBody makes each route its
 	// own deep copy.
@@ -1093,7 +1122,7 @@ func docRequestBodyWithExample(description string, required bool, schema map[str
 	}
 	if schemaRef != "" {
 		body.Schema = map[string]any{openapiRefKey: schemaRef}
-	} else if len(schema) > 0 {
+	} else if hasSchema(schema) {
 		body.Schema = schema
 	}
 
@@ -1107,18 +1136,18 @@ func docRequestBodyWithExample(description string, required bool, schema map[str
 }
 
 // RequestBodyWithExample documents the request payload with schema references and examples.
-func (app *App) RequestBodyWithExample(description string, required bool, schema map[string]any, schemaRef string, example any, examples map[string]any, mediaTypes ...string) Router {
+func (app *App) RequestBodyWithExample(description string, required bool, schema any, schemaRef string, example any, examples map[string]any, mediaTypes ...string) Router {
 	app.applyToLatest(docRequestBodyWithExample(description, required, schema, schemaRef, example, examples, mediaTypes...))
 	return app
 }
 
 // Parameter documents an input parameter for the most recently added route.
-func (app *App) Parameter(name, in string, required bool, schema map[string]any, description string) Router {
+func (app *App) Parameter(name, in string, required bool, schema any, description string) Router {
 	return app.AddParameter(RouteParameter{Name: name, In: in, Required: required, Schema: schema, Description: description})
 }
 
 // ParameterWithExample documents an input parameter, including schema references and examples.
-func (app *App) ParameterWithExample(name, in string, required bool, schema map[string]any, schemaRef, description string, example any, examples map[string]any) Router {
+func (app *App) ParameterWithExample(name, in string, required bool, schema any, schemaRef, description string, example any, examples map[string]any) Router {
 	return app.AddParameter(RouteParameter{
 		Name:        name,
 		In:          in,
@@ -1141,7 +1170,7 @@ func docAddParameter(param RouteParameter) func(route *Route) {
 	switch location {
 	// "querystring" is an OpenAPI 3.2 location that treats the whole query
 	// string as a single value (paired with content rather than schema).
-	case "path", "query", "header", "cookie", "querystring":
+	case openapiLocationPath, "query", "header", "cookie", "querystring":
 	default:
 		panic("invalid parameter location: " + param.In)
 	}
@@ -1169,19 +1198,25 @@ func docAddParameter(param RouteParameter) func(route *Route) {
 		injectType = true
 	}
 
-	if location == "path" {
+	if location == openapiLocationPath {
 		param.Required = true
 	}
 
 	return func(route *Route) {
 		paramCopy := param
-		paramCopy.Schema = copyAnyMap(param.Schema)
+		paramCopy.Schema = copySchema(param.Schema)
 		if injectType {
+			// A Go value used as the schema documents its own type; only a
+			// map, or no schema at all, takes the string default.
+			schema, ok := paramCopy.Schema.(map[string]any)
 			if paramCopy.Schema == nil {
-				paramCopy.Schema = map[string]any{}
+				schema, ok = map[string]any{}, true
 			}
-			if _, ok := paramCopy.Schema["type"]; !ok {
-				paramCopy.Schema["type"] = openapiTypeString
+			if ok {
+				if _, has := schema["type"]; !has {
+					schema["type"] = openapiTypeString
+				}
+				paramCopy.Schema = schema
 			}
 		}
 		// Example is an `any`: a map or slice would otherwise stay aliased to
@@ -1212,7 +1247,7 @@ func (app *App) Response(status int, description string, mediaTypes ...string) R
 }
 
 // ResponseWithExample documents an HTTP response with schema references and examples.
-func (app *App) ResponseWithExample(status int, description string, schema map[string]any, schemaRef string, example any, examples map[string]any, mediaTypes ...string) Router {
+func (app *App) ResponseWithExample(status int, description string, schema any, schemaRef string, example any, examples map[string]any, mediaTypes ...string) Router {
 	return app.addResponse(status, description, schema, schemaRef, example, examples, mediaTypes...)
 }
 
@@ -1256,7 +1291,7 @@ func getOrCreateResponse(route *Route, key string, status int) RouteResponse {
 	return resp
 }
 
-func docAddResponse(status int, description string, schema map[string]any, schemaRef string, example any, examples map[string]any, mediaTypes ...string) func(route *Route) {
+func docAddResponse(status int, description string, schema any, schemaRef string, example any, examples map[string]any, mediaTypes ...string) func(route *Route) {
 	sanitized := sanitizeMediaTypes(mediaTypes)
 
 	if description == "" {
@@ -1270,7 +1305,7 @@ func docAddResponse(status int, description string, schema map[string]any, schem
 	if schemaRef != "" {
 		resp.SchemaRef = schemaRef
 		resp.Schema = map[string]any{openapiRefKey: schemaRef}
-	} else if len(schema) > 0 {
+	} else if hasSchema(schema) {
 		resp.Schema = schema
 	}
 
@@ -1280,7 +1315,7 @@ func docAddResponse(status int, description string, schema map[string]any, schem
 		}
 		copyResp := resp
 		copyResp.MediaTypes = append([]string(nil), resp.MediaTypes...)
-		copyResp.Schema = copyAnyMap(resp.Schema)
+		copyResp.Schema = copySchema(resp.Schema)
 		copyResp.Example = copyAnyValue(resp.Example)
 		copyResp.Examples = copyAnyMap(resp.Examples)
 		// Headers, links and content documented earlier belong to the same entry
@@ -1298,7 +1333,7 @@ func docAddResponse(status int, description string, schema map[string]any, schem
 	}
 }
 
-func (app *App) addResponse(status int, description string, schema map[string]any, schemaRef string, example any, examples map[string]any, mediaTypes ...string) Router {
+func (app *App) addResponse(status int, description string, schema any, schemaRef string, example any, examples map[string]any, mediaTypes ...string) Router {
 	app.applyToLatest(docAddResponse(status, description, schema, schemaRef, example, examples, mediaTypes...))
 	return app
 }
@@ -1324,14 +1359,6 @@ func sanitizeMediaTypes(mediaTypes []string) []string {
 	}
 	if len(sanitized) == 0 {
 		return nil
-	}
-	return sanitized
-}
-
-func sanitizeRequiredMediaTypes(mediaTypes []string) []string {
-	sanitized := sanitizeMediaTypes(mediaTypes)
-	if len(sanitized) == 0 {
-		panic("at least one media type must be provided")
 	}
 	return sanitized
 }
@@ -1382,7 +1409,7 @@ func (app *App) Hidden() Router {
 	return app
 }
 
-func docResponseHeader(status int, name, description string, schema map[string]any) func(route *Route) {
+func docResponseHeader(status int, name, description string, schema any) func(route *Route) {
 	if utils.TrimSpace(name) == "" {
 		panic("response header name is required")
 	}
@@ -1393,7 +1420,7 @@ func docResponseHeader(status int, name, description string, schema map[string]a
 	if description != "" {
 		header["description"] = description
 	}
-	if len(schema) > 0 {
+	if hasSchema(schema) {
 		header["schema"] = schema
 	} else {
 		// A Header Object follows the Parameter Object and needs a schema or a
@@ -1515,9 +1542,58 @@ func docSetResponseEntry(status int, name string, entry map[string]any, pick fun
 
 // ResponseHeader documents a response header for a status code, creating the
 // response entry if needed. A status of 0 documents the "default" response.
-func (app *App) ResponseHeader(status int, name, description string, schema map[string]any) Router {
+func (app *App) ResponseHeader(status int, name, description string, schema any) Router {
 	app.applyToLatest(docResponseHeader(status, name, description, schema))
 	return app
+}
+
+// Accepts documents the request body of the most recently added route as the
+// schema of model, a Go value the OpenAPI middleware reflects, under the given
+// media types or the middleware's DefaultConsumes when none is given. The body
+// is documented as required.
+func (app *App) Accepts(model any, mediaTypes ...string) Router {
+	app.applyToLatest(docRequestBodyWithExample("", true, model, "", nil, nil, mediaTypes...))
+	return app
+}
+
+// Returns documents a response of the most recently added route as the schema
+// of model, a Go value the OpenAPI middleware reflects, under the given media
+// types or the middleware's DefaultProduces when none is given. The description
+// is the status text, and a nil model documents the status alone.
+func (app *App) Returns(status int, model any, mediaTypes ...string) Router {
+	app.applyToLatest(docAddResponse(status, "", model, "", nil, nil, mediaTypes...))
+	return app
+}
+
+// Params documents the exported fields of model, a struct or pointer to one, as
+// parameters of the most recently added route in the given location: "query",
+// "header", "cookie" or "path". Each field is named by its tag for that
+// location, the tag Bind reads, or by its name, typed by reflection, and marked
+// required by a validate:"required" tag. Path parameters are always required.
+func (app *App) Params(in string, model any) Router {
+	app.applyToLatest(docAddParameterModel(in, model))
+	return app
+}
+
+// docAddParameterModel records a struct whose fields the OpenAPI middleware
+// documents as parameters of the given location.
+func docAddParameterModel(in string, model any) func(route *Route) {
+	location := utilsstrings.ToLower(utils.TrimSpace(in))
+	switch location {
+	case BindSourceQuery, BindSourceHeader, BindSourceCookie, openapiLocationPath:
+	default:
+		panic("invalid parameter location: " + in)
+	}
+	t := reflect.TypeOf(model)
+	for t != nil && t.Kind() == reflect.Pointer {
+		t = t.Elem()
+	}
+	if t == nil || t.Kind() != reflect.Struct {
+		panic("parameter model must be a struct: " + fmt.Sprint(model))
+	}
+	return func(route *Route) {
+		route.ParameterModels = append(route.ParameterModels, RouteParameterModel{In: location, Model: model})
+	}
 }
 
 // OperationExternalDocs sets the externalDocs of the most recently added operation.

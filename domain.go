@@ -877,18 +877,18 @@ func (d *domainRouter) RequestBody(description string, required bool, mediaTypes
 }
 
 // RequestBodyWithExample documents the request payload for the most recently added route with schema references and examples.
-func (d *domainRouter) RequestBodyWithExample(description string, required bool, schema map[string]any, schemaRef string, example any, examples map[string]any, mediaTypes ...string) Router {
+func (d *domainRouter) RequestBodyWithExample(description string, required bool, schema any, schemaRef string, example any, examples map[string]any, mediaTypes ...string) Router {
 	d.app.applyToRegistration(atomic.LoadUint64(&d.lastRegID), docRequestBodyWithExample(description, required, schema, schemaRef, example, examples, mediaTypes...))
 	return d
 }
 
 // Parameter documents an input parameter for the most recently added route.
-func (d *domainRouter) Parameter(name, in string, required bool, schema map[string]any, description string) Router {
+func (d *domainRouter) Parameter(name, in string, required bool, schema any, description string) Router {
 	return d.AddParameter(RouteParameter{Name: name, In: in, Required: required, Schema: schema, Description: description})
 }
 
 // ParameterWithExample documents an input parameter for the most recently added route with schema references and examples.
-func (d *domainRouter) ParameterWithExample(name, in string, required bool, schema map[string]any, schemaRef, description string, example any, examples map[string]any) Router {
+func (d *domainRouter) ParameterWithExample(name, in string, required bool, schema any, schemaRef, description string, example any, examples map[string]any) Router {
 	return d.AddParameter(RouteParameter{
 		Name:        name,
 		In:          in,
@@ -907,7 +907,7 @@ func (d *domainRouter) Response(status int, description string, mediaTypes ...st
 }
 
 // ResponseWithExample documents an HTTP response for the most recently added route with schema references and examples.
-func (d *domainRouter) ResponseWithExample(status int, description string, schema map[string]any, schemaRef string, example any, examples map[string]any, mediaTypes ...string) Router {
+func (d *domainRouter) ResponseWithExample(status int, description string, schema any, schemaRef string, example any, examples map[string]any, mediaTypes ...string) Router {
 	d.app.applyToRegistration(atomic.LoadUint64(&d.lastRegID), docAddResponse(status, description, schema, schemaRef, example, examples, mediaTypes...))
 	return d
 }
@@ -937,8 +937,26 @@ func (d *domainRouter) Hidden() Router {
 }
 
 // ResponseHeader documents a response header for the most recently added route.
-func (d *domainRouter) ResponseHeader(status int, name, description string, schema map[string]any) Router {
+func (d *domainRouter) ResponseHeader(status int, name, description string, schema any) Router {
 	d.app.applyToRegistration(atomic.LoadUint64(&d.lastRegID), docResponseHeader(status, name, description, schema))
+	return d
+}
+
+// Accepts documents the request body as the schema of model; see App.Accepts.
+func (d *domainRouter) Accepts(model any, mediaTypes ...string) Router {
+	d.app.applyToRegistration(atomic.LoadUint64(&d.lastRegID), docRequestBodyWithExample("", true, model, "", nil, nil, mediaTypes...))
+	return d
+}
+
+// Returns documents a response as the schema of model; see App.Returns.
+func (d *domainRouter) Returns(status int, model any, mediaTypes ...string) Router {
+	d.app.applyToRegistration(atomic.LoadUint64(&d.lastRegID), docAddResponse(status, "", model, "", nil, nil, mediaTypes...))
+	return d
+}
+
+// Params documents the fields of model as parameters; see App.Params.
+func (d *domainRouter) Params(in string, model any) Router {
+	d.app.applyToRegistration(atomic.LoadUint64(&d.lastRegID), docAddParameterModel(in, model))
 	return d
 }
 
