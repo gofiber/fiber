@@ -63,12 +63,13 @@ func newStore() *store {
 
 func (s *store) list() []Item {
     s.mu.Lock()
-    defer s.mu.Unlock()
     out := make([]Item, 0, len(s.items))
     for _, it := range s.items {
         out = append(out, it)
     }
-    // Map iteration is unordered, so sort before answering.
+    s.mu.Unlock()
+    // Map iteration is unordered, so sort before answering, and do it off the
+    // lock: out is local from here on.
     slices.SortFunc(out, func(a, b Item) int { return cmp.Compare(a.ID, b.ID) })
     return out
 }
@@ -241,8 +242,9 @@ text, not as JSON. [Error handling](./error-handling.md) shows how to answer
 JSON instead:
 
 ```bash
-curl -sS http://localhost:3000/items/1
+curl -sS -w '\n%{http_code}\n' http://localhost:3000/items/1
 # not found
+# 404
 ```
 
 ## Notes
