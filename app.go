@@ -260,10 +260,12 @@ type Config struct { //nolint:govet // Aligning the struct fields is not necessa
 	// Default: false
 	Immutable bool `json:"immutable"`
 
-	// When set to true, converts all encoded characters in the route back
-	// before setting the path for the context, so that the routing,
-	// the returning of the current url from the context `ctx.Path()`
-	// and the parameters `ctx.Params(%key%)` with decoded characters will work
+	// The router always normalizes the request path before matching (RFC 3986
+	// Section 6.2.2): escapes of unreserved characters are decoded, other
+	// escapes keep their encoding with uppercase hex digits, and "." and ".."
+	// segments are removed. When set to true, every escape is decoded, so the
+	// routing, `ctx.Path()` and `ctx.Params(%key%)` see the fully decoded
+	// path.
 	//
 	// Default: false
 	UnescapePath bool `json:"unescape_path"`

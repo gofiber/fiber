@@ -1258,6 +1258,8 @@ func Test_RoutePatternMatch_MatchesRouter(t *testing.T) {
 		"/a-b", "/a.b", "/b", "/api/v1/9/x", "/a/x/b", "/abc", "/ab",
 		"/a/b/c/d", "//", "/a//b", "/ab/", "/A", "/A/",
 		"/ABC", "/Abc", "/user/John", "/a%2Fb", "/a%20b", "/a%41b",
+		// Spellings the router normalizes before matching.
+		"/a/./b", "/a/../b", "/./a", "/a/b/..", "/%61", "/a/%2e%2e/b", "/a%2e/b", "/%2561",
 	}
 	configs := []Config{
 		{},
@@ -1313,6 +1315,194 @@ func Test_UnescapePath_MalformedEscape(t *testing.T) {
 
 	for _, tc := range tests {
 		require.Equal(t, tc.out, string(unescapePath([]byte(tc.in))), "in=%q", tc.in)
+	}
+}
+
+func Test_UnescapeSafePath(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		in, out string
+	}{
+		{in: "/no-escape", out: "/no-escape"},
+		// escapes of unreserved characters are decoded (RFC 3986 Section 6.2.2.2)
+		{in: "/%41%62%63", out: "/Abc"},
+		{in: "/%7e/%2D%2e%5f", out: "/~/-._"},
+		{in: "/%30%39", out: "/09"},
+		// every other escape is kept with uppercase hex digits (Section 6.2.2.1)
+		{in: "/cr%C3%A9er", out: "/cr%C3%A9er"},
+		{in: "/cr%c3%a9er", out: "/cr%C3%A9er"},
+		{in: "/a%20b", out: "/a%20b"},
+		{in: "/%7B%7d%22", out: "/%7B%7D%22"},
+		{in: "/a%2Fb%2fc", out: "/a%2Fb%2Fc"},
+		{in: "/a%3Fb%23c%40d%2Be", out: "/a%3Fb%23c%40d%2Be"},
+		{in: "/100%2525", out: "/100%2525"},
+		{in: "/a%5cb", out: "/a%5Cb"},
+		{in: "/%00%1f%7f", out: "/%00%1F%7F"},
+		// Malformed escapes are kept.
+		{in: "/a%zzb", out: "/a%zzb"},
+		{in: "/trailing%2", out: "/trailing%2"},
+		{in: "/%", out: "/%"},
+		{in: "/%2g%41", out: "/%2gA"},
+		// Decoding runs once: "%25" never becomes a new escape.
+		{in: "/%2570rivate", out: "/%2570rivate"},
+		{in: "/%2E%2E/%70", out: "/../p"},
+	}
+
+	for _, tc := range tests {
+		require.Equal(t, tc.out, string(unescapeSafePath([]byte(tc.in))), "in=%q", tc.in)
+	}
+}
+
+func Test_CleanPathSegments(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		in, out string
+	}{
+		{in: "", out: ""},
+		{in: "/", out: "/"},
+		{in: "/a", out: "/a"},
+		{in: "/a/", out: "/a/"},
+		{in: "/a/b/c/./../../g", out: "/a/g"},
+		{in: "mid/content=5/../6", out: "mid/6"},
+		{in: "/./a", out: "/a"},
+		{in: "/../a", out: "/a"},
+		{in: "/.", out: "/"},
+		{in: "/..", out: "/"},
+		{in: "/a/..", out: "/"},
+		{in: "/a/b/..", out: "/a/"},
+		{in: "/a/b/.", out: "/a/b/"},
+		{in: "/a/../..", out: "/"},
+		{in: "/a/../../b", out: "/b"},
+		// empty segments are not dot segments and stay (Section 5.2.4)
+		{in: "//", out: "//"},
+		{in: "//a", out: "//a"},
+		{in: "/a//b", out: "/a//b"},
+		{in: "/a//", out: "/a//"},
+		{in: "/a/.//b", out: "/a//b"},
+		{in: "/a//..", out: "/a/"},
+		{in: "/a/b//../c", out: "/a/b/c"},
+		{in: "/..//..//etc", out: "//etc"},
+		{in: "/..a/.b/c..", out: "/..a/.b/c.."},
+		{in: "/a/.../b", out: "/a/.../b"},
+		{in: "a/./b", out: "a/b"},
+	}
+
+	for _, tc := range tests {
+		require.Equal(t, tc.out, string(cleanPathSegments([]byte(tc.in))), "in=%q", tc.in)
+	}
+}
+
+func Test_NormalizeRequestPath(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		in, out  string
+		unescape bool
+	}{
+		{in: "/static/%2E%2E/x", out: "/x"},
+		{in: "/static/%2e/x", out: "/static/x"},
+		{in: "/static/%70rivate//x/./y/../z", out: "/static/private//x/z"},
+		// Only unreserved characters are decoded unless UnescapePath is set.
+		{in: "/cr%c3%a9er/a%20b", out: "/cr%C3%A9er/a%20b"},
+		{in: "/cr%c3%a9er/a%20b", unescape: true, out: "/créer/a b"},
+		// An encoded slash is not a separator unless UnescapePath decodes it.
+		{in: "/a%2F..%2Fb", out: "/a%2F..%2Fb"},
+		{in: "/a%2F..%2Fb", unescape: true, out: "/b"},
+		// Decoding runs once, so "%25" never turns into a new escape.
+		{in: "/%2570rivate", out: "/%2570rivate"},
+		{in: "/%2570rivate", unescape: true, out: "/%70rivate"},
+		{in: "/%252e%252e/x", unescape: true, out: "/%2e%2e/x"},
+	}
+
+	for _, tc := range tests {
+		got := string(normalizeRequestPath([]byte(tc.in), tc.unescape))
+		require.Equal(t, tc.out, got, "in=%q unescape=%v", tc.in, tc.unescape)
+	}
+}
+
+// forEachPathSample calls fn with every string of length 0 to 9 over "/.%a"
+// and a few longer ones that cross word boundaries.
+func forEachPathSample(fn func(string)) {
+	const alphabet = "/.%a"
+	var walk func(prefix string, depth int)
+	walk = func(prefix string, depth int) {
+		fn(prefix)
+		if depth == 0 {
+			return
+		}
+		for i := range len(alphabet) {
+			walk(prefix+alphabet[i:i+1], depth-1)
+		}
+	}
+	walk("", 9)
+	for _, s := range []string{
+		"/user/keys/1337", "/aaaaaaa//", "/aaaaaa/.", "/aaaaaaa/./b", "/aaaaaaaa%", "%aaaaaaaaaaaaaa",
+		"/aaaaaaa/aaaaaaa/aaaaaaa/../b", "/aaaaaaa/aaaaaaa/aaaaaaa/aaaaaaa", "/aaaaaaa/aaaaaaa/aaaaaaa//",
+	} {
+		fn(s)
+	}
+}
+
+// Test_NeedsPathNormalization_MatchesReference checks the word-at-a-time scan
+// against a byte-at-a-time definition of what it must find.
+func Test_NeedsPathNormalization_MatchesReference(t *testing.T) {
+	t.Parallel()
+
+	ref := func(s string) bool {
+		if s != "" && s[0] == '.' {
+			return true
+		}
+		return strings.Contains(s, "%") || strings.Contains(s, "/.")
+	}
+	count := 0
+	forEachPathSample(func(s string) {
+		count++
+		require.Equal(t, ref(s), needsPathNormalization(s), "path=%q", s)
+	})
+	require.Greater(t, count, 300000)
+}
+
+// Test_HasDotSegment_MatchesReference does the same for the scan that gates
+// cleanPathSegments.
+func Test_HasDotSegment_MatchesReference(t *testing.T) {
+	t.Parallel()
+
+	ref := func(s string) bool {
+		if s != "" && s[0] == '.' {
+			return true
+		}
+		return strings.Contains(s, "/.")
+	}
+	forEachPathSample(func(s string) {
+		require.Equal(t, ref(s), hasDotSegment([]byte(s)), "path=%q", s)
+	})
+}
+
+func Benchmark_NeedsPathNormalization(b *testing.B) {
+	for _, s := range []string{"/", "/user/keys/1337", "/api/v1/entity/1", "/aaaaaaa/bbbbbbb/ccccccc/ddddddd/e"} {
+		b.Run(s, func(b *testing.B) {
+			b.ReportAllocs()
+			var r bool
+			for b.Loop() {
+				r = needsPathNormalization(s)
+			}
+			if r {
+				b.Fatal("unexpected normalization")
+			}
+		})
+	}
+}
+
+func Test_NeedsPathNormalization(t *testing.T) {
+	t.Parallel()
+
+	for _, s := range []string{"/a/./b", "/a/../b", "/%41", "/%2F", "/.", "/..", "./x", "../x", "/.well-known/x"} {
+		require.True(t, needsPathNormalization(s), "path=%q", s)
+	}
+	for _, s := range []string{"", "/", "/a", "/a/b", "/a/b/", "/a//b", "//", "/a.b/c", "/a-b_c~d", "/a/b.", "/a..b", "/user/keys/1337"} {
+		require.False(t, needsPathNormalization(s), "path=%q", s)
 	}
 }
 

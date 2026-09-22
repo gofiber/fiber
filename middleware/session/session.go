@@ -19,14 +19,14 @@ import (
 // Session serializes access to its internal state with mutexes, but it is
 // request-scoped and must not be used after the request lifecycle ends.
 type Session struct {
-	ctx         fiber.Ctx            // fiber context
-	config      *Store               // store configuration
-	data        *data                // key value data
-	id          string               // session id
-	extractor   extractors.Extractor // extractor that supplied the session ID
-	idleTimeout time.Duration        // idleTimeout of this session
-	mu          sync.RWMutex         // Mutex to protect non-data fields
-	isFresh     bool                 // if new session
+	ctx         fiber.Ctx         // fiber context
+	config      *Store            // store configuration
+	data        *data             // key value data
+	id          string            // session id
+	extractor   extractors.Result // provenance of the extractor that supplied the session ID
+	idleTimeout time.Duration     // idleTimeout of this session
+	mu          sync.RWMutex      // Mutex to protect non-data fields
+	isFresh     bool              // if new session
 }
 
 type absExpirationKeyType int
@@ -96,7 +96,7 @@ func releaseSession(s *Session) {
 	s.idleTimeout = 0
 	s.ctx = nil
 	s.config = nil
-	s.extractor = extractors.Extractor{}
+	s.extractor = extractors.Result{}
 	if s.data != nil {
 		s.data.Reset()
 	}
@@ -444,39 +444,51 @@ func (s *Session) getExtractorInfo() []extractors.Extractor {
 	}
 
 	// Prefer the extractor that actually supplied the incoming session ID.
-	if s.extractor.Key != "" {
-		switch s.extractor.Source {
-		case extractors.SourceCookie, extractors.SourceHeader:
-			// The ID came from a writable sink; write it back to the same place.
-			return []extractors.Extractor{s.extractor}
-		default:
-			// The ID came from a read-only source (query/form/param/custom).
-			// For an existing session this would be an attacker-controlled ID,
-			// so it must not be promoted into cookies/headers (session fixation).
-			// Fresh sessions carry a freshly generated ID, so they may still fall
-			// through to the configured cookie/header sinks below.
-			if !s.isFresh {
-				return nil
+	//
+	// Gated on Value, not Key: Key is the sink's name, and a keyless extractor
+	// — a hand-rolled child, or FromCustom("") — would otherwise skip this
+	// guard entirely and let a read-only ID reach the sinks below.
+	if s.extractor.Value != "" {
+		// Only observed provenance names a sink. A chain whose own Extract
+		// answered without a child winning reports its first child's declared
+		// metadata, which says nothing about where the value came from.
+		// Key must name a sink for it to be writable at all.
+		if s.extractor.Resolved && s.extractor.Key != "" {
+			switch s.extractor.Source {
+			case extractors.SourceCookie, extractors.SourceHeader:
+				// The ID came from a writable sink; write it back to the same place.
+				return []extractors.Extractor{{Key: s.extractor.Key, Source: s.extractor.Source}}
+			case extractors.SourceAuthHeader, extractors.SourceForm,
+				extractors.SourceQuery, extractors.SourceParam, extractors.SourceCustom:
+				// Read-only: fall through to the refusal below.
 			}
+		}
+		// Read-only, or an origin we cannot attribute. For an existing session
+		// either would be an attacker-controlled ID, so it must not be promoted
+		// into cookies/headers (session fixation). A fresh session's ID is
+		// server-generated, so it may still fall through to the sinks below.
+		if !s.isFresh {
+			return nil
 		}
 	}
 
-	extractor := s.config.Extractor
-	if len(extractor.Chain) > 0 {
-		relevantExtractors := make([]extractors.Extractor, 0, len(extractor.Chain))
-		for _, chainExtractor := range extractor.Chain {
-			if chainExtractor.Source == extractors.SourceCookie || chainExtractor.Source == extractors.SourceHeader {
-				relevantExtractors = append(relevantExtractors, chainExtractor)
-			}
+	// Walked rather than ranged over Chain: a nested chain reports its first
+	// child's metadata, so direct children alone hide every sink inside it, and
+	// a cookie one level down would never be written.
+	var sinks []extractors.Extractor
+	s.config.Extractor.Walk(func(candidate extractors.Extractor) bool {
+		// Only a leaf names a place to write, and a keyless one would name a
+		// cookie or header with no name at all.
+		if len(candidate.Chain) > 0 || candidate.Key == "" {
+			return true
 		}
-		return relevantExtractors
-	}
+		if candidate.Source == extractors.SourceCookie || candidate.Source == extractors.SourceHeader {
+			sinks = append(sinks, candidate)
+		}
+		return true
+	})
 
-	if extractor.Source == extractors.SourceCookie || extractor.Source == extractors.SourceHeader {
-		return []extractors.Extractor{extractor}
-	}
-
-	return nil
+	return sinks
 }
 
 func (s *Session) setSession() {

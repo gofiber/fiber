@@ -1829,3 +1829,61 @@ func Test_appendLowerASCII(t *testing.T) {
 		})
 	}
 }
+
+// Test_bindMediaType pins the media type Bind dispatches on: the canonical
+// spellings answer directly, every other spelling is folded, vendor suffixes
+// resolve, and parameters are dropped, with and without the fast path.
+func Test_bindMediaType(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		ct, want string
+	}{
+		{ct: "application/json", want: MIMEApplicationJSON},
+		{ct: "application/json; charset=utf-8", want: MIMEApplicationJSON},
+		{ct: "application/json;charset=utf-8", want: MIMEApplicationJSON},
+		{ct: "application/json ", want: MIMEApplicationJSON},
+		{ct: "Application/JSON", want: MIMEApplicationJSON},
+		{ct: "APPLICATION/JSON; CHARSET=UTF-8", want: MIMEApplicationJSON},
+		{ct: "application/vnd.api+json", want: MIMEApplicationJSON},
+		{ct: "application/jsonx", want: "application/jsonx"},
+		{ct: "application/x-www-form-urlencoded", want: MIMEApplicationForm},
+		{ct: "application/x-www-form-urlencoded; charset=UTF-8", want: MIMEApplicationForm},
+		{ct: "Application/X-WWW-Form-Urlencoded", want: MIMEApplicationForm},
+		{ct: "multipart/form-data; boundary=X", want: MIMEMultipartForm},
+		{ct: "text/xml", want: MIMETextXML},
+		{ct: "", want: ""},
+	} {
+		h := &fasthttp.RequestHeader{}
+		h.SetContentType(tc.ct)
+		require.Equal(t, tc.want, bindMediaType(h), "content type %q", tc.ct)
+	}
+
+	// A parameterized form type still takes the folding walk, which lowercases
+	// the parameter names in place for fasthttp's own parser.
+	h := &fasthttp.RequestHeader{}
+	h.SetContentType("application/x-www-form-urlencoded; Charset=UTF-8")
+	require.Equal(t, MIMEApplicationForm, bindMediaType(h))
+	require.Equal(t, "application/x-www-form-urlencoded; charset=UTF-8", string(h.ContentType()))
+}
+
+// go test -v -run=^$ -bench=Benchmark_bindMediaType -benchmem -count=4
+func Benchmark_bindMediaType(b *testing.B) {
+	for _, ct := range []string{
+		"application/json",
+		"application/json; charset=utf-8",
+		"Application/JSON",
+		"application/x-www-form-urlencoded",
+	} {
+		b.Run(ct, func(b *testing.B) {
+			h := &fasthttp.RequestHeader{}
+			h.SetContentType(ct)
+			b.ReportAllocs()
+			var got string
+			for b.Loop() {
+				got = bindMediaType(h)
+			}
+			require.NotEmpty(b, got)
+		})
+	}
+}

@@ -121,7 +121,7 @@ h.Add("X-Real-IP", ip)
 
 ### Path concatenation safety
 
-`DomainForward` and `BalancerForward` previously concatenated the configured upstream with `c.OriginalURL()`. Crafted request paths beginning with `//` could exploit URL parsing to redirect the proxy at a different host (network-path reference injection). The proxy now sanitises the joined path so the upstream host pinned in configuration is preserved regardless of the inbound request.
+`DomainForward` and `BalancerForward` previously concatenated the configured upstream with `c.OriginalURL()`. Crafted request paths beginning with `//` could exploit URL parsing to redirect the proxy at a different host (network-path reference injection). The proxy now sanitizes the joined path so the upstream host pinned in configuration is preserved regardless of the inbound request.
 
 ## Examples
 
