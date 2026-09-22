@@ -353,7 +353,7 @@ func (app *App) ShutdownWithContext(ctx context.Context) error
 
 Call `Shutdown*` from a separate goroutine while `Listen` / `Listener` runs, and keep the process alive until `Shutdown*` returns. Set a non-zero `ReadTimeout` / `IdleTimeout` so idle keepalive connections do not block shutdown forever.
 
-`ListenConfig.ShutdownTimeout` is applied only when Fiber runs its **built-in** graceful shutdown path (for example with `GracefulContext`). If you call `app.ShutdownWithTimeout` yourself, that argument is the one that applies. The `OnPreShutdown` and `OnPostShutdown` hooks run exactly once per shutdown, whether it was started by the context or by an explicit `Shutdown*` call, and not at all when `Listen` fails before serving.
+`ListenConfig.ShutdownTimeout` is applied only when Fiber runs its **built-in** graceful shutdown path (for example with `GracefulContext`). If you call `app.ShutdownWithTimeout` yourself, that argument is the one that applies. On that built-in path `Listen` / `Listener` returns only once the shutdown has finished, so the caller may exit as soon as it returns; an explicit `Shutdown*` call still needs the process kept alive until it returns. The `OnPreShutdown` and `OnPostShutdown` hooks run exactly once per shutdown, whether it was started by the context or by an explicit `Shutdown*` call, and not at all when `Listen` fails before serving.
 
 With prefork enabled, `Shutdown*` and `GracefulContext` act only on the process they run in; see [Prefork](#prefork).
 :::

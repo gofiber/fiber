@@ -280,12 +280,8 @@ func (app *App) Listen(addr string, config ...ListenConfig) error {
 	}
 
 	// Graceful shutdown
-	if cfg.GracefulContext != nil {
-		stop := make(chan struct{})
-		defer close(stop)
-
-		go app.gracefulShutdown(cfg.GracefulContext, stop, &cfg)
-	}
+	waitForShutdown := app.startGracefulShutdown(&cfg)
+	defer waitForShutdown()
 
 	// Start prefork
 	if cfg.EnablePrefork {
@@ -436,12 +432,8 @@ func (app *App) Listener(ln net.Listener, config ...ListenConfig) error {
 	warnIgnoredTLSFieldsOnListener(&cfg, ln)
 
 	// Graceful shutdown
-	if cfg.GracefulContext != nil {
-		stop := make(chan struct{})
-		defer close(stop)
-
-		go app.gracefulShutdown(cfg.GracefulContext, stop, &cfg)
-	}
+	waitForShutdown := app.startGracefulShutdown(&cfg)
+	defer waitForShutdown()
 
 	// prepare the server for the start
 	app.startupProcess()
@@ -722,6 +714,29 @@ func (app *App) printRoutesMessage() {
 	}
 
 	_ = w.Flush() //nolint:errcheck // It is fine to ignore the error here
+}
+
+// startGracefulShutdown watches cfg.GracefulContext and returns the cleanup
+// Listen has to defer. fasthttp's Serve returns the moment the listener closes,
+// so without waiting here Listen would hand control back while requests are
+// still being drained and the caller would exit out from under them.
+func (app *App) startGracefulShutdown(cfg *ListenConfig) func() {
+	if cfg.GracefulContext == nil {
+		return func() {}
+	}
+
+	stop := make(chan struct{})
+	done := make(chan struct{})
+
+	go func() {
+		defer close(done)
+		app.gracefulShutdown(cfg.GracefulContext, stop, cfg)
+	}()
+
+	return func() {
+		close(stop)
+		<-done
+	}
 }
 
 // gracefulShutdown shuts the app down once ctx is done. stop is closed when

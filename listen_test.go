@@ -1489,6 +1489,68 @@ func Test_Listen_GracefulShutdown_HooksOnce(t *testing.T) {
 	require.Equal(t, int32(1), postShutdown.Load(), "OnPostShutdown must fire exactly once")
 }
 
+// Issue #3370: Listen must not hand control back while requests are draining.
+func Test_Listen_GracefulShutdown_DrainsBeforeReturn(t *testing.T) {
+	t.Parallel()
+
+	var handlerDone atomic.Bool
+	inHandler := make(chan struct{}, 1)
+
+	app := New()
+	app.Get("/", func(c Ctx) error {
+		inHandler <- struct{}{}
+		time.Sleep(500 * time.Millisecond)
+		handlerDone.Store(true)
+		return c.SendString("ok")
+	})
+
+	gctx, gcancel := context.WithCancel(context.Background())
+	defer gcancel()
+
+	ln := fasthttputil.NewInmemoryListener()
+	errs := make(chan error, 1)
+	go func() {
+		errs <- app.Listener(ln, ListenConfig{ //nolint:contextcheck // the context is the shutdown trigger, not a request context
+			DisableStartupMessage: true,
+			GracefulContext:       gctx,
+			ShutdownTimeout:       5 * time.Second,
+		})
+	}()
+
+	require.Eventually(t, func() bool {
+		conn, err := ln.Dial()
+		if err == nil {
+			_ = conn.Close() //nolint:errcheck // not needed
+			return true
+		}
+		return false
+	}, time.Second, 20*time.Millisecond, "server failed to become ready")
+
+	client := fasthttp.HostClient{Dial: func(_ string) (net.Conn, error) { return ln.Dial() }}
+	go func() {
+		req, resp := fasthttp.AcquireRequest(), fasthttp.AcquireResponse()
+		defer fasthttp.ReleaseRequest(req)
+		defer fasthttp.ReleaseResponse(resp)
+		req.SetRequestURI("http://example.com/")
+		_ = client.Do(req, resp) //nolint:errcheck // the response is irrelevant here
+	}()
+
+	select {
+	case <-inHandler:
+	case <-time.After(2 * time.Second):
+		t.Fatal("request never reached the handler")
+	}
+	gcancel()
+
+	select {
+	case err := <-errs:
+		require.NoError(t, err)
+		require.True(t, handlerDone.Load(), "Listener returned while a request was still in flight")
+	case <-time.After(3 * time.Second):
+		t.Fatal("Listener did not return")
+	}
+}
+
 func Test_Listen_GracefulShutdown_NoHooksOnListenError(t *testing.T) {
 	t.Parallel()
 
