@@ -22,8 +22,7 @@ type data struct {
 }
 
 // valueMayAlias reports whether the caller could mutate the session through v
-// without calling Set. Scalars are handed out as copies; anything else may
-// share memory with the stored data and is treated as aliasing.
+// without calling Set. Scalars are copies; anything else may share memory with Data.
 func valueMayAlias(v any) bool {
 	if _, ok := v.(time.Time); ok {
 		// A copy, and its *Location is a shared immutable. Excluded because the

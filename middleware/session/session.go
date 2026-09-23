@@ -601,16 +601,18 @@ func (s *Session) setCookieAttributes(fcookie *fasthttp.Cookie) {
 //
 //	err := s.decodeSessionData(rawData)
 func (s *Session) decodeSessionData(rawData []byte) error {
+	// Copied before decoding: the storage owns rawData and may reuse it after Get
+	// returns, so the decode and the snapshot Save writes back read the same bytes.
+	raw := utils.CopyBytes(rawData)
 	byteBuffer := byteBufferPool.Get().(*bytes.Buffer) //nolint:forcetypeassert,errcheck // We store nothing else in the pool
 	defer byteBufferPool.Put(byteBuffer)
 	defer byteBuffer.Reset()
-	_, _ = byteBuffer.Write(rawData)
+	_, _ = byteBuffer.Write(raw)
 	decCache := gob.NewDecoder(byteBuffer)
 	if err := decCache.Decode(&s.data.Data); err != nil {
 		return fmt.Errorf("failed to decode session data: %w", err)
 	}
-	// Copied because the storage owns rawData and may reuse it after Get returns.
-	s.rawData = utils.CopyBytes(rawData)
+	s.rawData = raw
 	s.data.dirty.Store(false)
 	return nil
 }
