@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"hash/maphash"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -452,17 +453,17 @@ func TestLimiterFixedStorageSetErrorDisableRedaction(t *testing.T) {
 	require.NotContains(t, captured.Error(), "[redacted]")
 }
 
-// The sliding window runs its second lock whenever headers are enabled, so both
-// of its storage calls can fail on an ordinary request.
-func TestLimiterStorageErrorsOnSecondLock(t *testing.T) {
+// Every storage error path must release the key's shard, or the next request
+// for that key hangs.
+func TestLimiterStorageErrorsReleaseShard(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		newStorage  func() fiber.Storage
-		middleware  Handler
-		name        string
-		wantErr     string
-		skipOnSkipH bool
+		newStorage     func() fiber.Storage
+		middleware     Handler
+		name           string
+		wantErr        string
+		skipSuccessful bool
 	}{
 		{
 			name:       "sliding first get",
@@ -504,6 +505,26 @@ func TestLimiterStorageErrorsOnSecondLock(t *testing.T) {
 			wantErr: "limiter: failed to persist state",
 		},
 		{
+			name:       "fixed first get",
+			middleware: FixedWindow{},
+			newStorage: func() fiber.Storage {
+				st := newFailingLimiterStorage()
+				st.errs["get|"+testLimiterClientKey] = errors.New("boom")
+				return st
+			},
+			wantErr: "limiter: failed to get key",
+		},
+		{
+			name:       "fixed first set",
+			middleware: FixedWindow{},
+			newStorage: func() fiber.Storage {
+				st := newFailingLimiterStorage()
+				st.errs["set|"+testLimiterClientKey] = errors.New("boom")
+				return st
+			},
+			wantErr: "limiter: failed to persist state",
+		},
+		{
 			name:       "fixed skip get",
 			middleware: FixedWindow{},
 			newStorage: func() fiber.Storage {
@@ -512,8 +533,17 @@ func TestLimiterStorageErrorsOnSecondLock(t *testing.T) {
 				st.getFailAfterN = 1
 				return st
 			},
-			wantErr:     "limiter: failed to get key",
-			skipOnSkipH: true,
+			wantErr:        "limiter: failed to get key",
+			skipSuccessful: true,
+		},
+		{
+			name:       "fixed skip set",
+			middleware: FixedWindow{},
+			newStorage: func() fiber.Storage {
+				return newCountingFailStorage(1, errors.New("second set failed"))
+			},
+			wantErr:        "limiter: failed to persist state",
+			skipSuccessful: true,
 		},
 	}
 
@@ -534,7 +564,7 @@ func TestLimiterStorageErrorsOnSecondLock(t *testing.T) {
 				LimiterMiddleware:      tc.middleware,
 				Max:                    10,
 				Expiration:             time.Second,
-				SkipSuccessfulRequests: tc.skipOnSkipH,
+				SkipSuccessfulRequests: tc.skipSuccessful,
 				KeyGenerator:           func(fiber.Ctx) string { return testLimiterClientKey },
 			}))
 			app.Get("/", func(c fiber.Ctx) error {
@@ -545,6 +575,11 @@ func TestLimiterStorageErrorsOnSecondLock(t *testing.T) {
 			require.NoError(t, err)
 			require.Equal(t, fiber.StatusInternalServerError, resp.StatusCode)
 			require.ErrorContains(t, captured, tc.wantErr)
+
+			// A shard left locked by the error path would hang this same-key request.
+			resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+			require.NoError(t, err)
+			require.Equal(t, fiber.StatusInternalServerError, resp.StatusCode)
 		})
 	}
 }
@@ -1151,6 +1186,72 @@ func Test_Limiter_Concurrency(t *testing.T) {
 	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, 200, resp.StatusCode)
+}
+
+// stallingStorage parks Get for stallKey until release is closed.
+type stallingStorage struct {
+	fiber.Storage
+	entered  chan struct{}
+	release  chan struct{}
+	stallKey string
+	once     sync.Once
+}
+
+func (s *stallingStorage) GetWithContext(ctx context.Context, key string) ([]byte, error) {
+	if key == s.stallKey {
+		s.once.Do(func() { close(s.entered) })
+		<-s.release
+	}
+	return s.Storage.GetWithContext(ctx, key)
+}
+
+// A key stuck in a storage round-trip must not hold up requests for other keys.
+//
+// go test -run Test_Limiter_Concurrency_UnrelatedKeys -race -v
+func Test_Limiter_Concurrency_UnrelatedKeys(t *testing.T) {
+	t.Parallel()
+
+	shard := func(key string) uint64 { return maphash.String(keySeed, key) & (lockShards - 1) }
+	fast := "fast"
+	for i := 0; shard(fast) == shard("slow"); i++ {
+		fast = "fast" + strconv.Itoa(i)
+	}
+
+	newReq := func(client string) *http.Request {
+		req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+		req.Header.Set("X-Client", client)
+		return req
+	}
+
+	for _, mw := range []Handler{FixedWindow{}, SlidingWindow{}} {
+		st := &stallingStorage{Storage: memory.New(), stallKey: "slow", entered: make(chan struct{}), release: make(chan struct{})}
+		app := fiber.New()
+		app.Use(New(Config{
+			Storage:           st,
+			LimiterMiddleware: mw,
+			KeyGenerator:      func(c fiber.Ctx) string { return c.Get("X-Client") },
+		}))
+		app.Get("/", func(c fiber.Ctx) error {
+			return c.SendStatus(fiber.StatusOK)
+		})
+
+		done := make(chan error, 1)
+		go func() {
+			_, err := app.Test(newReq("slow"), fiber.TestConfig{}) // no timeout, it waits for release
+			done <- err
+		}()
+		select {
+		case <-st.entered:
+		case <-time.After(time.Second):
+			t.Fatalf("%T: the slow request never reached the storage", mw)
+		}
+
+		resp, err := app.Test(newReq(fast))
+		close(st.release)
+		require.NoError(t, err, "%T: a request for an unrelated key waited on the stalled one", mw)
+		require.Equal(t, fiber.StatusOK, resp.StatusCode)
+		require.NoError(t, <-done)
+	}
 }
 
 // go test -run Test_Limiter_Fixed_Window_No_Skip_Choices -v
