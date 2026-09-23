@@ -1527,12 +1527,17 @@ func Test_Listen_GracefulShutdown_DrainsBeforeReturn(t *testing.T) {
 	}, time.Second, 20*time.Millisecond, "server failed to become ready")
 
 	client := fasthttp.HostClient{Dial: func(_ string) (net.Conn, error) { return ln.Dial() }}
+	responses := make(chan string, 1)
 	go func() {
 		req, resp := fasthttp.AcquireRequest(), fasthttp.AcquireResponse()
 		defer fasthttp.ReleaseRequest(req)
 		defer fasthttp.ReleaseResponse(resp)
 		req.SetRequestURI("http://example.com/")
-		_ = client.Do(req, resp) //nolint:errcheck // the response is irrelevant here
+		if err := client.Do(req, resp); err != nil {
+			responses <- err.Error()
+			return
+		}
+		responses <- fmt.Sprintf("%d %s", resp.StatusCode(), resp.Body())
 	}()
 
 	select {
@@ -1548,6 +1553,14 @@ func Test_Listen_GracefulShutdown_DrainsBeforeReturn(t *testing.T) {
 		require.True(t, handlerDone.Load(), "Listener returned while a request was still in flight")
 	case <-time.After(3 * time.Second):
 		t.Fatal("Listener did not return")
+	}
+
+	// Awaited rather than checked at the return: the client reads on its own goroutine.
+	select {
+	case got := <-responses:
+		require.Equal(t, "200 ok", got, "the drained request lost its response")
+	case <-time.After(time.Second):
+		t.Fatal("client never received the response")
 	}
 }
 

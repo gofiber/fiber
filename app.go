@@ -1367,8 +1367,8 @@ func (app *App) Shutdown() error {
 	return app.ShutdownWithContext(context.Background())
 }
 
-// ShutdownWithTimeout gracefully shuts down the server without interrupting any active connections. However, if the timeout is exceeded,
-// ShutdownWithTimeout will forcefully close any active connections.
+// ShutdownWithTimeout gracefully shuts down the server without interrupting any active connections. If the timeout is exceeded,
+// it stops waiting and returns context.DeadlineExceeded; connections still active are not closed.
 // ShutdownWithTimeout works by first closing all open listeners and then waiting for all connections to return to idle before shutting down.
 //
 // Make sure the program doesn't exit and waits instead for ShutdownWithTimeout to return.
@@ -1380,7 +1380,7 @@ func (app *App) ShutdownWithTimeout(timeout time.Duration) error {
 	return app.ShutdownWithContext(ctx)
 }
 
-// ShutdownWithContext shuts down the server including by force if the context's deadline is exceeded.
+// ShutdownWithContext shuts down the server and stops waiting once ctx is done; connections still active are not closed.
 //
 // Make sure the program doesn't exit and waits instead for ShutdownWithTimeout to return.
 //

@@ -117,6 +117,7 @@ type ListenConfig struct {
 
 	// When the graceful shutdown begins, use this field to set the timeout
 	// duration. If the timeout is reached, OnPostShutdown will be called with the error.
+	// It bounds the wait for connections only; Listen also waits for the shutdown hooks.
 	// Negative disables the timeout and waits indefinitely; zero applies the default.
 	//
 	// Default: 10 * time.Second
@@ -723,36 +724,27 @@ func (app *App) startGracefulShutdown(cfg *ListenConfig) func() {
 		return func() {}
 	}
 
-	stop := make(chan struct{})
 	done := make(chan struct{})
-
-	go func() {
+	stop := context.AfterFunc(cfg.GracefulContext, func() {
 		defer close(done)
-		app.gracefulShutdown(cfg.GracefulContext, stop, cfg)
-	}()
+		app.gracefulShutdown(cfg)
+	})
 
 	return func() {
-		close(stop)
-		<-done
+		if !stop() {
+			<-done
+		}
 	}
 }
 
-// gracefulShutdown shuts the app down once ctx is done. stop is closed when
-// Listen returns on its own, which ends the goroutine without a second shutdown.
-func (app *App) gracefulShutdown(ctx context.Context, stop <-chan struct{}, cfg *ListenConfig) {
-	select {
-	case <-ctx.Done():
-	case <-stop:
-		return
-	}
-
+func (app *App) gracefulShutdown(cfg *ListenConfig) {
 	// The OnPostShutdown hooks are fired by ShutdownWithContext (via
 	// Shutdown/ShutdownWithTimeout) with the real error, so we must not fire
 	// them again here or they would run twice. That error is already delivered
 	// to those hooks, so it is intentionally ignored here.
 	if cfg != nil && cfg.ShutdownTimeout > 0 {
-		_ = app.ShutdownWithTimeout(cfg.ShutdownTimeout) //nolint:errcheck,contextcheck // error is delivered to OnPostShutdown hooks
+		_ = app.ShutdownWithTimeout(cfg.ShutdownTimeout) //nolint:errcheck // error is delivered to OnPostShutdown hooks
 	} else {
-		_ = app.Shutdown() //nolint:errcheck,contextcheck // error is delivered to OnPostShutdown hooks
+		_ = app.Shutdown() //nolint:errcheck // error is delivered to OnPostShutdown hooks
 	}
 }
