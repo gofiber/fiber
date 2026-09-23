@@ -117,6 +117,7 @@ type ListenConfig struct {
 
 	// When the graceful shutdown begins, use this field to set the timeout
 	// duration. If the timeout is reached, OnPostShutdown will be called with the error.
+	// It bounds the wait for connections only; Listen also waits for the shutdown hooks.
 	// Negative disables the timeout and waits indefinitely; zero applies the default.
 	//
 	// Default: 10 * time.Second
@@ -280,12 +281,8 @@ func (app *App) Listen(addr string, config ...ListenConfig) error {
 	}
 
 	// Graceful shutdown
-	if cfg.GracefulContext != nil {
-		stop := make(chan struct{})
-		defer close(stop)
-
-		go app.gracefulShutdown(cfg.GracefulContext, stop, &cfg)
-	}
+	waitForShutdown := app.startGracefulShutdown(&cfg)
+	defer waitForShutdown()
 
 	// Start prefork
 	if cfg.EnablePrefork {
@@ -436,12 +433,8 @@ func (app *App) Listener(ln net.Listener, config ...ListenConfig) error {
 	warnIgnoredTLSFieldsOnListener(&cfg, ln)
 
 	// Graceful shutdown
-	if cfg.GracefulContext != nil {
-		stop := make(chan struct{})
-		defer close(stop)
-
-		go app.gracefulShutdown(cfg.GracefulContext, stop, &cfg)
-	}
+	waitForShutdown := app.startGracefulShutdown(&cfg)
+	defer waitForShutdown()
 
 	// prepare the server for the start
 	app.startupProcess()
@@ -724,22 +717,34 @@ func (app *App) printRoutesMessage() {
 	_ = w.Flush() //nolint:errcheck // It is fine to ignore the error here
 }
 
-// gracefulShutdown shuts the app down once ctx is done. stop is closed when
-// Listen returns on its own, which ends the goroutine without a second shutdown.
-func (app *App) gracefulShutdown(ctx context.Context, stop <-chan struct{}, cfg *ListenConfig) {
-	select {
-	case <-ctx.Done():
-	case <-stop:
-		return
+// startGracefulShutdown watches cfg.GracefulContext and returns the cleanup Listen
+// defers. Serve returns once the listener closes, so the cleanup waits out the drain.
+func (app *App) startGracefulShutdown(cfg *ListenConfig) func() {
+	if cfg.GracefulContext == nil {
+		return func() {}
 	}
 
+	done := make(chan struct{})
+	stop := context.AfterFunc(cfg.GracefulContext, func() {
+		defer close(done)
+		app.gracefulShutdown(cfg)
+	})
+
+	return func() {
+		if !stop() {
+			<-done
+		}
+	}
+}
+
+func (app *App) gracefulShutdown(cfg *ListenConfig) {
 	// The OnPostShutdown hooks are fired by ShutdownWithContext (via
 	// Shutdown/ShutdownWithTimeout) with the real error, so we must not fire
 	// them again here or they would run twice. That error is already delivered
 	// to those hooks, so it is intentionally ignored here.
 	if cfg != nil && cfg.ShutdownTimeout > 0 {
-		_ = app.ShutdownWithTimeout(cfg.ShutdownTimeout) //nolint:errcheck,contextcheck // error is delivered to OnPostShutdown hooks
+		_ = app.ShutdownWithTimeout(cfg.ShutdownTimeout) //nolint:errcheck // error is delivered to OnPostShutdown hooks
 	} else {
-		_ = app.Shutdown() //nolint:errcheck,contextcheck // error is delivered to OnPostShutdown hooks
+		_ = app.Shutdown() //nolint:errcheck // error is delivered to OnPostShutdown hooks
 	}
 }
