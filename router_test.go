@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	neturl "net/url"
@@ -24,6 +25,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"unsafe"
 
 	"github.com/gofiber/utils/v2"
 	"github.com/stretchr/testify/assert"
@@ -3993,7 +3995,7 @@ func routeFilterRejects(route *Route, path string) bool {
 	scan.init(path, head, strings.Count(path, "/"))
 	h := newScanHead(route)
 	return h.rejects(scan.head, scan.head2, scan.slash) ||
-		h.probe.mask != 0 && scan.probes.rejects(&h.probe, path)
+		h.probeLen != 0 && scan.probes.headRejects(&h, path)
 }
 
 // registerFilterRoutes registers patterns on a real App and returns the routes
@@ -5657,16 +5659,16 @@ func Test_Router_LargeBucket_CustomCtx(t *testing.T) {
 // count from it up for a prefix (use) one, the parser's bounds for a
 // parametric route, only the lower one when it is a prefix route, and every
 // count for star and root routes. Bit 0, which stands for a count the scan did
-// not compute, is always set, and bit 63 stands for 63 or more.
+// not compute, is always set, and bit 31 stands for 31 or more.
 // go test -race -run Test_ScanHead_SlashMask
 func Test_ScanHead_SlashMask(t *testing.T) {
 	t.Parallel()
 
 	// bits returns a mask with bits lo through hi set, plus bit 0.
-	bits := func(lo, hi int) uint64 {
-		var mask uint64 = 1
+	bits := func(lo, hi int) uint32 {
+		var mask uint32 = 1
 		for n := lo; n <= hi; n++ {
-			mask |= uint64(1) << n
+			mask |= uint32(1) << n
 		}
 		return mask
 	}
@@ -5686,17 +5688,17 @@ func Test_ScanHead_SlashMask(t *testing.T) {
 	app.Get(deep+"/:id", handler)
 	app.startupProcess()
 
-	want := map[string]uint64{
+	want := map[string]uint32{
 		"/a/b":        bits(2, 2),
-		"/mw":         bits(1, 63),
+		"/mw":         bits(1, 31),
 		"/p/:id":      bits(2, 2),
 		"/o/:id?":     bits(1, 2),
-		"/u/:id":      bits(2, 63),
-		"/w/*":        bits(1, 63),
-		"/*":          ^uint64(0),
-		"/":           ^uint64(0),
-		deep:          bits(63, 63),
-		deep + "/:id": bits(63, 63),
+		"/u/:id":      bits(2, 31),
+		"/w/*":        bits(1, 31),
+		"/*":          ^uint32(0),
+		"/":           ^uint32(0),
+		deep:          bits(31, 31),
+		deep + "/:id": bits(31, 31),
 	}
 	seen := 0
 	for _, route := range app.stack[app.methodInt(MethodGet)] {
@@ -5709,10 +5711,65 @@ func Test_ScanHead_SlashMask(t *testing.T) {
 	}
 	require.Len(t, want, seen, "every shape must have been registered")
 
-	require.Equal(t, uint64(1), slashBit(0))
-	require.Equal(t, uint64(1)<<5, slashBit(5))
-	require.Equal(t, uint64(1)<<63, slashBit(63))
-	require.Equal(t, uint64(1)<<63, slashBit(200))
+	require.Equal(t, uint32(1), slashBit(0))
+	require.Equal(t, uint32(1)<<5, slashBit(5))
+	require.Equal(t, uint32(1)<<31, slashBit(31))
+	require.Equal(t, uint32(1)<<31, slashBit(200))
+}
+
+// Test_ScanHead_Probe pins how a head holds a route's constant probe in its
+// narrow fields: a probe that fits comes back as it went in, and one they
+// cannot hold, an offset past them or a mask that does not cover leading
+// lanes, leaves the head without a probe, for match to check.
+// go test -race -run Test_ScanHead_Probe
+func Test_ScanHead_Probe(t *testing.T) {
+	t.Parallel()
+
+	word, mask := packConst("/issues")
+	fits := constProbe{word: word, mask: mask, from: 13, skip: 2}
+	// A filtered bucket holds a head per route: what a rebuild allocates
+	// grows with this.
+	require.Equal(t, uintptr(48), unsafe.Sizeof(scanHead{}))
+	var h scanHead
+	h.setProbe(fits)
+	require.Equal(t, uint8(7), h.probeLen)
+	require.Equal(t, fits, h.probe())
+
+	full, fullMask := packConst("/comments")
+	h = scanHead{}
+	h.setProbe(constProbe{word: full, mask: fullMask, from: 1})
+	require.Equal(t, uint8(8), h.probeLen)
+	require.Equal(t, constProbe{word: full, mask: fullMask, from: 1}, h.probe())
+
+	for _, p := range []constProbe{
+		{},
+		{word: word, mask: mask, from: math.MaxUint16 + 1},
+		{word: word, mask: mask, skip: math.MaxUint8 + 1},
+		{word: word, mask: mask, from: -1},
+		{word: word, mask: mask, from: 0},
+		{word: word, mask: mask &^ 0xff00},
+	} {
+		h = scanHead{}
+		h.setProbe(p)
+		require.Zero(t, h.probeLen, "probe %+v", p)
+	}
+
+	// Routes: the head's probe is the parser's.
+	app := New()
+	handler := func(c Ctx) error { return c.Next() }
+	app.Get("/repos/:owner/:repo/issues", handler)
+	app.startupProcess()
+	route := app.stack[app.methodInt(MethodGet)][0]
+	require.NotZero(t, route.routeParser.probe.mask)
+	head := newScanHead(route)
+	require.Equal(t, route.routeParser.probe, head.probe())
+
+	// headRejects agrees with the parser's probe, found or not.
+	for _, path := range []string{"/repos/gofiber/fiber/issues", "/repos/gofiber/fiber/pulls", "/repos/gofiber"} {
+		var byHead, byProbe probeMemo
+		probe := route.routeParser.probe
+		require.Equal(t, byProbe.rejects(&probe, path), byHead.headRejects(&head, path), path)
+	}
 }
 
 // Test_ScanHead_PrefixWords pins the two leading-byte words a head compares:

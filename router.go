@@ -1459,14 +1459,20 @@ func (app *App) buildTree() *App {
 		return app
 	}
 
-	// 1) First loop: determine all possible 3-char prefixes ("treePaths") for each method
+	// 1) First loop: determine all possible 3-char prefixes ("treePaths") for each method.
+	// The scratch below is shared by the methods, cleared between them: a
+	// method's routes share a few prefixes between them, so a map sized for
+	// the routes rather than the prefixes was most of what a rebuild allocated.
 	hasParamRoutes := false
+	var treePaths []int
+	prefixCounts := make(map[int]int)
 	for method := range app.config.RequestMethods {
 		routes := app.stack[method]
-		treePaths := make([]int, len(routes))
+		treePaths = slices.Grow(treePaths[:0], len(routes))[:len(routes)]
+		clear(treePaths)
+		clear(prefixCounts)
 
 		globalCount := 0
-		prefixCounts := make(map[int]int, len(routes))
 
 		for i, route := range routes {
 			// The leading-byte filter is deliberately not rebuilt here; see

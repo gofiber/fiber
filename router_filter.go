@@ -5,6 +5,8 @@
 package fiber
 
 import (
+	"math"
+	"math/bits"
 	"strings"
 
 	"github.com/gofiber/utils/v2/swar"
@@ -78,13 +80,25 @@ type scanHead struct {
 	prefixMask  uint64
 	prefix2     uint64
 	prefixMask2 uint64
+	// probeWord is what the route's constant probe compares, when match
+	// would consult one; see probe
+	probeWord uint64
 	// slashMask has bit n set when a detection path holding n '/' bytes can
-	// match, bit 63 standing for 63 or more; see newScanHead
-	slashMask uint64
-	// probe is the route's constant probe when match would consult it, zero
-	// otherwise
-	probe constProbe
+	// match, bit maxSlashBit standing for that many or more; see newScanHead
+	slashMask uint32
+	// probeFrom and probeSkip locate the probe as constProbe's from and skip
+	// do, and probeLen is how many bytes of probeWord it compares, 0 when the
+	// head has no probe. They are narrow so that a head takes 48 bytes, since
+	// a filtered bucket holds one per route; a probe they cannot hold is left
+	// to match, which checks it anyway.
+	probeFrom uint16
+	probeSkip uint8
+	probeLen  uint8
 }
+
+// maxSlashBit is the highest bit of a scanHead's slashMask, which stands for
+// that many '/' bytes or more.
+const maxSlashBit = 31
 
 // newScanHead derives a route's scanHead.
 //
@@ -97,7 +111,7 @@ type scanHead struct {
 // bit, as does every route for bit 0, which a scan uses for a count it did not
 // compute. The probe is taken where matchParams would consult it.
 func newScanHead(r *Route) scanHead {
-	h := scanHead{slashMask: ^uint64(0)}
+	h := scanHead{slashMask: ^uint32(0)}
 	prefix := knownPrefix(r)
 	h.prefix, h.prefixMask = packConst(prefix)
 	if len(prefix) > swar.WordLen {
@@ -107,42 +121,79 @@ func newScanHead(r *Route) scanHead {
 	case r.star || r.root:
 		return h
 	case len(r.Params) == 0:
-		n := min(strings.Count(r.path, string(slashDelimiter)), 63)
+		n := min(strings.Count(r.path, string(slashDelimiter)), maxSlashBit)
 		if r.use {
 			h.slashMask <<= n
 		} else {
-			h.slashMask = uint64(1) << n
+			h.slashMask = uint32(1) << n
 		}
 	default:
 		p := &r.routeParser
-		// Every count from the minimum up, capped at bit 63, which a count at
-		// or past the minimum always sets.
-		h.slashMask <<= min(max(p.minSlashes, 0), 63)
-		if !r.use && p.maxBounded && p.maxSlashes < 63 {
+		// Every count from the minimum up, capped at maxSlashBit, which a
+		// count at or past the minimum always sets.
+		h.slashMask <<= min(max(p.minSlashes, 0), maxSlashBit)
+		if !r.use && p.maxBounded && p.maxSlashes < maxSlashBit {
 			// ...and none past the maximum. A maximum below the minimum
 			// leaves no count at all, apart from bit 0 below.
-			h.slashMask &= uint64(1)<<(max(p.maxSlashes, -1)+1) - 1
+			h.slashMask &= uint32(1)<<(max(p.maxSlashes, -1)+1) - 1
 		}
-		h.probe = p.probe
+		h.setProbe(p.probe)
 	}
 	h.slashMask |= 1
 	return h
 }
 
+// setProbe stores p, a route's constant probe, in h, unless it has none or h's
+// narrow fields cannot hold it. A probe's mask covers the leading lanes of its
+// word (see packConst), so its length stands in for it.
+func (h *scanHead) setProbe(p constProbe) {
+	n := bits.Len64(p.mask) / 8
+	// A probe lies past the route's leading constant, so from is positive,
+	// which also keeps its memo key off the 0 that stands for none.
+	if n == 0 || p.mask != lanesMask(n) || p.from <= 0 || p.from > math.MaxUint16 || p.skip < 0 || p.skip > math.MaxUint8 {
+		return
+	}
+	h.probeWord = p.word
+	h.probeFrom = uint16(p.from)
+	h.probeSkip = uint8(p.skip)
+	h.probeLen = uint8(n) //nolint:gosec // G115 - at most a word's lanes
+}
+
+// probe returns the constant probe h holds, which h.probeLen says it does.
+func (h *scanHead) probe() constProbe {
+	return constProbe{word: h.probeWord, mask: lanesMask(int(h.probeLen)), from: int32(h.probeFrom), skip: int32(h.probeSkip)}
+}
+
+// headRejects is m.rejects for the constant probe h holds, which h.probeLen
+// says it does: the probe is only assembled when the memo has to search.
+func (m *probeMemo) headRejects(h *scanHead, detectionPath string) bool {
+	if k := uint64(h.probeFrom)<<32 | uint64(h.probeSkip); k != m.key {
+		p := h.probe()
+		m.word, m.ok = p.locate(detectionPath)
+		m.key = k
+	}
+	return !m.ok || m.word&lanesMask(int(h.probeLen)) != h.probeWord
+}
+
+// lanesMask covers the first n lanes of a word, 0 <= n <= 8.
+func lanesMask(n int) uint64 {
+	return ^uint64(0) >> (64 - 8*uint(n))
+}
+
 // slashBit is the bit a detection path's slash count selects in a scanHead's
-// slashMask: bit n for n '/' bytes, bit 63 for 63 or more, and bit 0 for a
-// count of 0, which is how pathSlashCount reports one it did not compute and
-// which every head accepts.
-func slashBit(pathSlashes int) uint64 {
-	return uint64(1) << min(pathSlashes, 63)
+// slashMask: bit n for n '/' bytes, bit maxSlashBit for that many or more, and
+// bit 0 for a count of 0, which is how pathSlashCount reports one it did not
+// compute and which every head accepts.
+func slashBit(pathSlashes int) uint32 {
+	return uint32(1) << min(pathSlashes, maxSlashBit)
 }
 
 // rejects reports whether the leading-byte filter or the slash-count filter
 // rules the head's route out for a detection path whose first two words are
 // head and head2, packed by pathHeadWord, and whose slash count selects slash
 // (see slashBit). The masked compares are combined without a branch.
-func (h *scanHead) rejects(head, head2, slash uint64) bool {
-	return (head^h.prefix)&h.prefixMask|(head2^h.prefix2)&h.prefixMask2|slash&^h.slashMask != 0
+func (h *scanHead) rejects(head, head2 uint64, slash uint32) bool {
+	return (head^h.prefix)&h.prefixMask|(head2^h.prefix2)&h.prefixMask2|uint64(slash&^h.slashMask) != 0
 }
 
 // routeScan is the request's side of a scan through filtered buckets: what
@@ -155,7 +206,7 @@ type routeScan struct {
 	head  uint64
 	head2 uint64
 	// slash is slashBit of the path's slash count
-	slash uint64
+	slash uint32
 	// probes shares the constant probes' slash search among candidates
 	probes probeMemo
 }
@@ -207,7 +258,7 @@ func (s *routeScan) skip(f *bucketFilter, i, first int, pathPrint *uint64) int {
 			}
 		}
 		if h := &heads[i]; h.rejects(s.head, s.head2, s.slash) ||
-			h.probe.mask != 0 && s.probes.rejects(&h.probe, s.detectionPath) {
+			h.probeLen != 0 && s.probes.headRejects(h, s.detectionPath) {
 			continue
 		}
 		return i
