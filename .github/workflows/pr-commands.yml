@@ -33,9 +33,6 @@ jobs:
     with:
       command: generate
       runs-on: blacksmith-4vcpu-ubuntu-2404
-      # Everything ifacemaker and msgp own, and nothing else: the command runs the
-      # pull request's own Makefile, so what it may commit is named here.
-      paths: '*_interface_gen.go *_msgp.go *_msgp_test.go'
       commit-message: 'chore: regenerate msgp and interface code'
       timeout-minutes: 20
       run: make generate
