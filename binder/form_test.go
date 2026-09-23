@@ -112,31 +112,43 @@ func Test_FormBinder_Bind_ParseError(t *testing.T) {
 	require.Error(t, err)
 }
 
-func Test_ReleaseDataMap(t *testing.T) {
+func Test_ReleaseBindData(t *testing.T) {
 	t.Parallel()
 
-	small := acquireDataMap()
-	small["name"] = []string{"john"}
-	releaseDataMap(small)
+	small := acquireBindDataMode(bindMap)
+	small.add("name", "john")
+	releaseBindData(small)
 
-	reused := acquireDataMap()
-	require.Empty(t, reused)
-	releaseDataMap(reused)
+	reused := acquireBindDataMode(bindMap)
+	require.Empty(t, reused.values)
+	require.Empty(t, reused.arena.buf)
+	releaseBindData(reused)
 
-	large := make(map[string][]string, maxPoolableDataMapSize+1)
+	pairs := acquireBindDataMode(bindPairs)
+	pairs.add("name", "john")
+	require.Equal(t, []string{"name"}, pairs.keys)
+	require.Equal(t, []string{"john"}, pairs.pairValues)
+	keys := pairs.keys
+	releaseBindData(pairs)
+	require.Empty(t, keys[:1][0], "release must drop the strings the pairs held")
+
+	large := &bindData{values: make(map[string][]string, maxPoolableDataMapSize+1), mode: bindMap}
 	for i := range maxPoolableDataMapSize + 1 {
-		large[strings.Repeat("a", i+1)] = []string{"value"}
+		large.add(strings.Repeat("a", i+1), "value")
 	}
 	firstKey := "a"
 
-	require.Len(t, large, maxPoolableDataMapSize+1)
-	require.Equal(t, []string{"value"}, large[firstKey])
+	require.Len(t, large.values, maxPoolableDataMapSize+1)
+	require.Equal(t, []string{"value"}, large.values[firstKey])
 
-	releaseDataMap(large)
+	releaseBindData(large)
+	// An oversized one is dropped rather than cleared for reuse.
+	require.Equal(t, []string{"value"}, large.values[firstKey])
 
-	after := acquireDataMap()
-	require.Empty(t, after)
-	releaseDataMap(after)
+	after := acquireBindDataMode(bindMap)
+	require.Empty(t, after.values)
+	require.Empty(t, after.keys)
+	releaseBindData(after)
 }
 
 func Benchmark_FormBinder_Bind(b *testing.B) {

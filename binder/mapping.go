@@ -33,36 +33,68 @@ type ParserType struct {
 	Converter  func(string) reflect.Value
 }
 
+// tags is used to classify parser's pool; a tag's position is its index in
+// decoderPoolSet
+var tags = [...]string{bindingHeader, bindingRespHeader, bindingCookie, bindingQuery, bindingForm, bindingURI}
+
+// decoderPoolSet holds the decoder pool of each tag, at the tag's index in
+// tags. A set is never written once published: SetParserDecoder publishes a
+// new one, so a bind finds its pool with one atomic load instead of the
+// read lock every bind used to take, whose shared reader count every core
+// contended on.
+type decoderPoolSet [len(tags)]*sync.Pool
+
 var (
-	decoderPoolMu sync.RWMutex
-	// decoderPoolMap helps to improve binders
-	decoderPoolMap = map[string]*sync.Pool{}
-	// tags is used to classify parser's pool
-	tags = []string{bindingHeader, bindingRespHeader, bindingCookie, bindingQuery, bindingForm, bindingURI}
+	// decoderPools is the published decoderPoolSet
+	decoderPools atomic.Pointer[decoderPoolSet]
+	// decoderPoolsMu serializes SetParserDecoder
+	decoderPoolsMu sync.Mutex
 )
 
-func getDecoderPool(tag string) *sync.Pool {
-	decoderPoolMu.RLock()
-	pool := decoderPoolMap[tag]
-	if pool == nil {
-		decoderPoolMu.RUnlock()
-		panic(fmt.Sprintf("decoder pool not initialized for tag %q", tag))
+// tagIndex returns the index of tag in tags, or -1.
+func tagIndex(tag string) int {
+	switch tag {
+	case bindingHeader:
+		return 0
+	case bindingRespHeader:
+		return 1
+	case bindingCookie:
+		return 2
+	case bindingQuery:
+		return 3
+	case bindingForm:
+		return 4
+	case bindingURI:
+		return 5
 	}
-	decoderPoolMu.RUnlock()
+	return -1
+}
 
-	return pool
+func getDecoderPool(tag string) *sync.Pool {
+	if i := tagIndex(tag); i >= 0 {
+		return decoderPools.Load()[i]
+	}
+	panic(fmt.Sprintf("decoder pool not initialized for tag %q", tag))
+}
+
+// newDecoderPools returns a decoderPoolSet whose decoders are built with
+// parserConfig.
+func newDecoderPools(parserConfig ParserConfig) *decoderPoolSet {
+	var pools decoderPoolSet
+	for i, tag := range tags {
+		pools[i] = &sync.Pool{New: func() any {
+			return decoderBuilder(tag, parserConfig)
+		}}
+	}
+	return &pools
 }
 
 // SetParserDecoder allow globally change the option of form decoder, update decoderPool
 func SetParserDecoder(parserConfig ParserConfig) {
-	decoderPoolMu.Lock()
-	defer decoderPoolMu.Unlock()
+	decoderPoolsMu.Lock()
+	defer decoderPoolsMu.Unlock()
 
-	for _, tag := range tags {
-		decoderPoolMap[tag] = &sync.Pool{New: func() any {
-			return decoderBuilder(tag, parserConfig)
-		}}
-	}
+	decoderPools.Store(newDecoderPools(parserConfig))
 }
 
 func decoderBuilder(aliasTag string, parserConfig ParserConfig) any {
@@ -80,17 +112,10 @@ func decoderBuilder(aliasTag string, parserConfig ParserConfig) any {
 }
 
 func init() {
-	decoderPoolMu.Lock()
-	defer decoderPoolMu.Unlock()
-
-	for _, tag := range tags {
-		decoderPoolMap[tag] = &sync.Pool{New: func() any {
-			return decoderBuilder(tag, ParserConfig{
-				IgnoreUnknownKeys: true,
-				ZeroEmpty:         true,
-			})
-		}}
-	}
+	decoderPools.Store(newDecoderPools(ParserConfig{
+		IgnoreUnknownKeys: true,
+		ZeroEmpty:         true,
+	}))
 }
 
 // parse data into the map or struct
@@ -127,6 +152,20 @@ func parseToStruct(aliasTag string, out any, data map[string][]string, files ...
 	return nil
 }
 
+// parseValuesToStruct is parseToStruct for key/value pairs: values[i] is a
+// value of keys[i].
+func parseValuesToStruct(aliasTag string, out any, keys, values []string) error {
+	pool := getDecoderPool(aliasTag)
+	schemaDecoder := pool.Get().(*schema.Decoder) //nolint:errcheck,forcetypeassert // not needed
+	defer pool.Put(schemaDecoder)
+
+	if err := schemaDecoder.DecodeValues(out, keys, values); err != nil {
+		return fmt.Errorf("%w", err)
+	}
+
+	return nil
+}
+
 // Parse data into the map
 // thanks to https://github.com/gin-gonic/gin/blob/master/binding/binding.go
 func parseToMap(target reflect.Value, data map[string][]string) error {
@@ -156,6 +195,8 @@ func parseToMap(target reflect.Value, data map[string][]string) error {
 			return ErrMapNotConvertible
 		}
 
+		// The value slices are the caller's to keep: the binders only carve
+		// them from their pooled arena for other destinations (see bindData).
 		maps.Copy(newMap, data)
 	case reflect.String:
 		newMap, ok := target.Interface().(map[string]string)
@@ -678,4 +719,158 @@ func assignBindData(aliasTag string, out any, data map[string][]string, key, val
 	} else {
 		data[key] = append(data[key], value)
 	}
+}
+
+// bindData is what a string binder files the values it reads under, pooled
+// so that filing a value costs no allocation of its own. What it keeps
+// depends on the destination, see bindMode: a struct is decoded straight from
+// the key/value pairs in the order read, and a map gets the source map
+// parseToMap copies.
+type bindData struct {
+	// values is the source map, for a map destination
+	values map[string][]string
+	// arena backs the value slices of values unless mode is bindOwnedMap
+	arena valueArena
+	// keys and pairValues are the pairs, for a struct destination
+	keys, pairValues []string
+	mode             bindMode
+}
+
+// bindMode is how a bindData keeps what is filed in it.
+type bindMode uint8
+
+const (
+	// bindPairs keeps key/value pairs for schema.Decoder.DecodeValues, which
+	// groups them itself: nothing has to build or hash a map.
+	bindPairs bindMode = iota
+	// bindMap keeps a map whose value slices are carved from the arena.
+	bindMap
+	// bindOwnedMap keeps a map whose value slices are appended as the
+	// destination's own, since a map of slices keeps the slices themselves
+	// (see parseToMap) and the arena's are only valid until release.
+	bindOwnedMap
+)
+
+// bindModeFor returns how a bind into out keeps its values. It dispatches as
+// parse does: a map with string keys, or a pointer to one, gets a map, and
+// everything else is decoded as a struct.
+func bindModeFor(out any) bindMode {
+	switch out.(type) {
+	case *map[string][]string, map[string][]string:
+		return bindOwnedMap
+	case *map[string]string, map[string]string:
+		return bindMap
+	}
+	t := reflect.TypeOf(out)
+	if t == nil {
+		return bindPairs
+	}
+	if t.Kind() == reflect.Pointer {
+		t = t.Elem()
+	}
+	if t.Kind() != reflect.Map || t.Key().Kind() != reflect.String {
+		return bindPairs
+	}
+	if t.Elem().Kind() == reflect.Slice {
+		return bindOwnedMap
+	}
+	return bindMap
+}
+
+// parse decodes what was filed into out.
+func (d *bindData) parse(aliasTag string, out any) error {
+	if d.mode == bindPairs {
+		return parseValuesToStruct(aliasTag, out, d.keys, d.pairValues)
+	}
+	return parse(aliasTag, out, d.values)
+}
+
+// bind files value under key as formatBindData does for a string value: a
+// key in bracket notation is rewritten to dots first, and a comma-separated
+// value is split when splitting is on and the key names a slice.
+func (d *bindData) bind(aliasTag string, out any, key, value string, enableSplitting, supportBracketNotation bool) error { //nolint:revive // mirrors formatBindData
+	if supportBracketNotation && strings.IndexByte(key, '[') >= 0 {
+		var err error
+		if key, err = parseParamSquareBrackets(key); err != nil {
+			return err
+		}
+	}
+	d.split(aliasTag, out, key, value, enableSplitting)
+	return nil
+}
+
+// bindAll is bind for several values of one key, rewriting the key once.
+func (d *bindData) bindAll(aliasTag string, out any, key string, values []string, enableSplitting, supportBracketNotation bool) error { //nolint:revive // mirrors formatBindData
+	if supportBracketNotation && strings.IndexByte(key, '[') >= 0 {
+		var err error
+		if key, err = parseParamSquareBrackets(key); err != nil {
+			return err
+		}
+	}
+	for _, value := range values {
+		d.split(aliasTag, out, key, value, enableSplitting)
+	}
+	return nil
+}
+
+// split files value under key, split at its commas when splitting is on and
+// the key names a slice; see assignBindData.
+func (d *bindData) split(aliasTag string, out any, key, value string, enableSplitting bool) { //nolint:revive // mirrors assignBindData
+	if enableSplitting && strings.IndexByte(value, ',') >= 0 && equalFieldType(out, reflect.Slice, key, aliasTag) {
+		for v := range strings.SplitSeq(value, ",") {
+			d.add(key, v)
+		}
+		return
+	}
+	d.add(key, value)
+}
+
+// add appends value to the values of key.
+func (d *bindData) add(key, value string) {
+	switch d.mode {
+	case bindPairs:
+		d.keys = append(d.keys, key)
+		d.pairValues = append(d.pairValues, value)
+	case bindMap:
+		d.values[key] = d.arena.add(d.values[key], value)
+	default:
+		d.values[key] = append(d.values[key], value)
+	}
+}
+
+// minArenaCap is the capacity an arena's first backing array starts with.
+const minArenaCap = 16
+
+// valueArena hands out the value slices of a bind's source map from shared
+// backing arrays. Each slice it returns is capped at its length, so an append
+// by anyone else copies rather than writing into a neighbor.
+type valueArena struct {
+	buf []string
+}
+
+// add returns vals, which is nil or a slice add returned earlier, with v
+// appended. The slice at the arena's end grows in place, which is where the
+// values of a key filed several times in a row stay; any other one is copied
+// to the end first. When the backing array is full the arena moves on to a
+// fresh one, twice as large, and the slices it handed out keep the old one.
+func (a *valueArena) add(vals []string, v string) []string {
+	n, k := len(a.buf), len(vals)
+	if k > 0 && n < cap(a.buf) && n >= k && &a.buf[n-1] == &vals[k-1] {
+		a.buf = append(a.buf, v)
+		return a.buf[n-k : n+1 : n+1]
+	}
+	if cap(a.buf)-n <= k {
+		a.buf = make([]string, 0, max(2*cap(a.buf), 2*(k+1), minArenaCap))
+		n = 0
+	}
+	a.buf = append(a.buf, vals...)
+	a.buf = append(a.buf, v)
+	return a.buf[n : n+k+1 : n+k+1]
+}
+
+// reset readies the arena for another bind, dropping the strings it holds so
+// they do not keep request memory alive while it sits in the pool.
+func (a *valueArena) reset() {
+	clear(a.buf)
+	a.buf = a.buf[:0]
 }

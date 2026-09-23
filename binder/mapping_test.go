@@ -10,6 +10,7 @@ import (
 
 	"github.com/gofiber/schema"
 	"github.com/stretchr/testify/require"
+	"github.com/valyala/fasthttp"
 )
 
 func Test_EqualFieldType(t *testing.T) {
@@ -936,4 +937,94 @@ func Test_CollectPromoted_MutualEmbedding(t *testing.T) {
 	var out MutualOuter
 	require.True(t, equalFieldType(&out, reflect.Slice, "names", "query"))
 	require.False(t, equalFieldType(&out, reflect.Bool, "names", "query"))
+}
+
+// Test_valueArena_Add pins the arena against the plain appends it stands in
+// for: keys filed interleaved, in runs and past the first backing array must
+// end up with exactly the values appended to them, in order, and a slice it
+// hands out must not reach into a neighbor when someone else appends to it.
+func Test_valueArena_Add(t *testing.T) {
+	t.Parallel()
+
+	keys := []string{"a", "b", "a", "c", "a", "a", "b", "d"}
+	for _, rounds := range []int{1, 3, 20} {
+		data := &bindData{values: make(map[string][]string), mode: bindMap}
+		want := make(map[string][]string)
+		for r := range rounds {
+			for i, key := range keys {
+				value := key + strconv.Itoa(r) + "-" + strconv.Itoa(i)
+				data.add(key, value)
+				want[key] = append(want[key], value)
+			}
+		}
+		require.Equal(t, want, data.values, "rounds %d", rounds)
+
+		for key, values := range data.values {
+			require.Equal(t, len(values), cap(values), "slice of %q must be capped at its length", key)
+		}
+		// An append past a handed-out slice copies, leaving the others intact.
+		grown := append(data.values["b"], "x") //nolint:gocritic // appendAssign: the copy is the point
+		require.Equal(t, "x", grown[len(grown)-1])
+		require.Equal(t, want, data.values, "rounds %d: an outside append leaked into the arena", rounds)
+
+		data.arena.reset()
+		require.Empty(t, data.arena.buf)
+		for _, s := range data.arena.buf[:cap(data.arena.buf)] {
+			require.Empty(t, s, "reset must drop the strings it held")
+		}
+	}
+}
+
+// Test_Bind_MapOfSlices_OwnsValues pins that a map-of-slices destination,
+// which keeps the value slices it is given, never gets the pooled arena's:
+// a later bind reusing the pool must leave its values as they were bound.
+func Test_Bind_MapOfSlices_OwnsValues(t *testing.T) {
+	t.Parallel()
+
+	require.Equal(t, bindOwnedMap, bindModeFor(&map[string][]string{}))
+	require.Equal(t, bindOwnedMap, bindModeFor(map[string][]string{}))
+	type named map[string][]string
+	require.Equal(t, bindOwnedMap, bindModeFor(&named{}))
+	require.Equal(t, bindMap, bindModeFor(&map[string]string{}))
+	type namedStrings map[string]string
+	require.Equal(t, bindMap, bindModeFor(namedStrings{}))
+	require.Equal(t, bindPairs, bindModeFor(&struct{ A []string }{}))
+	require.Equal(t, bindPairs, bindModeFor(&map[int]string{}), "parse decodes a map without string keys as a struct")
+	require.Equal(t, bindPairs, bindModeFor(nil))
+
+	req := fasthttp.AcquireRequest()
+	t.Cleanup(func() { fasthttp.ReleaseRequest(req) })
+	req.URI().SetQueryString("a=1&b=3&a=2")
+
+	dst := make(map[string][]string)
+	require.NoError(t, (&QueryBinding{}).Bind(req, &dst))
+	require.Equal(t, map[string][]string{"a": {"1", "2"}, "b": {"3"}}, dst)
+
+	// Bind again through the same pools, from another request: the values
+	// are views of their request's buffer, so reusing req would rewrite them.
+	other := fasthttp.AcquireRequest()
+	t.Cleanup(func() { fasthttp.ReleaseRequest(other) })
+	other.URI().SetQueryString("a=overwritten&b=overwritten&a=overwritten")
+	var into struct {
+		B string   `query:"b"`
+		A []string `query:"a"`
+	}
+	require.NoError(t, (&QueryBinding{}).Bind(other, &into))
+	intoMap := make(map[string]string)
+	require.NoError(t, (&QueryBinding{}).Bind(other, &intoMap))
+
+	require.Equal(t, map[string][]string{"a": {"1", "2"}, "b": {"3"}}, dst)
+}
+
+// Test_tagIndex_MatchesTags pins tagIndex's switch to the order of tags, which
+// is how getDecoderPool finds a tag's pool in a decoderPoolSet.
+func Test_tagIndex_MatchesTags(t *testing.T) {
+	t.Parallel()
+
+	for i, tag := range tags {
+		require.Equal(t, i, tagIndex(tag), tag)
+		require.NotNil(t, getDecoderPool(tag), tag)
+	}
+	require.Equal(t, -1, tagIndex("unknown"))
+	require.Panics(t, func() { getDecoderPool("unknown") })
 }
