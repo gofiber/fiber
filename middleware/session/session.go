@@ -142,9 +142,9 @@ func (s *Session) ID() string {
 // Returns:
 //   - any: The value associated with the key.
 //
-// Note: returning a value that can alias the session (map, slice, pointer,
-// struct) makes the next Save re-encode, since the caller may mutate it in
-// place without calling Set.
+// Note: returning a value that can alias the session (map, slice, array,
+// pointer, struct) makes every later Save re-encode, since the caller may
+// mutate it in place without calling Set.
 //
 // Usage:
 //

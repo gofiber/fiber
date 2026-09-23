@@ -2452,6 +2452,7 @@ func Test_Session_CleanSave_WritesSnapshotToStorage(t *testing.T) {
 	sess := loadSession(t, app, store, id)
 	require.Equal(t, "fenny", sess.Get("user"))
 	require.False(t, sess.data.dirty.Load(), "a scalar read must leave the session clean")
+	sess.data.Data["admin"] = false // bypasses Set, so only a re-encode would persist it
 	require.NoError(t, sess.Save())
 
 	written := rec.writes()
@@ -2626,6 +2627,7 @@ func Test_Session_CleanSave_Lifecycle(t *testing.T) {
 		require.NoError(t, sess.Regenerate())
 		newID := sess.ID()
 		require.NotEqual(t, id, newID)
+		sess.data.Data["user"] = "bypassed" // only a re-encode would persist it
 		require.NoError(t, sess.Save())
 
 		_, err := store.GetByID(t.Context(), id)
@@ -2693,16 +2695,18 @@ func Test_Session_CleanSave_Lifecycle(t *testing.T) {
 		require.NoError(t, err)
 		defer sess.Release()
 		require.False(t, sess.data.dirty.Load())
+		sess.data.Data["user"] = "bypassed" // only a re-encode would persist it
 		require.NoError(t, sess.Save())
 
 		written := rec.writes()
 		require.Len(t, written, 1)
 		require.Equal(t, id, written[0].key)
+		require.NotContains(t, string(written[0].value), "bypassed")
 	})
 }
 
-// The absolute expiration lives inside the session data, so a clean save must
-// carry it over unchanged rather than re-arming it.
+// With AbsoluteTimeout every load reads the deadline back as a time.Time, and that
+// read must neither dirty the session nor move the deadline.
 //
 // go test -run Test_Session_CleanSave_KeepsAbsoluteExpiration
 func Test_Session_CleanSave_KeepsAbsoluteExpiration(t *testing.T) {
