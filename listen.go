@@ -716,10 +716,8 @@ func (app *App) printRoutesMessage() {
 	_ = w.Flush() //nolint:errcheck // It is fine to ignore the error here
 }
 
-// startGracefulShutdown watches cfg.GracefulContext and returns the cleanup
-// Listen has to defer. fasthttp's Serve returns the moment the listener closes,
-// so without waiting here Listen would hand control back while requests are
-// still being drained and the caller would exit out from under them.
+// startGracefulShutdown watches cfg.GracefulContext and returns the cleanup Listen
+// defers. Serve returns once the listener closes, so the cleanup waits out the drain.
 func (app *App) startGracefulShutdown(cfg *ListenConfig) func() {
 	if cfg.GracefulContext == nil {
 		return func() {}
