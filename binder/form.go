@@ -135,14 +135,18 @@ func releaseBindData(d *bindData) {
 		return
 	}
 
+	d.reset()
+	bindDataPool.Put(d)
+}
+
+// reset empties d for another bind, dropping the strings it held so they do
+// not keep request memory alive while d sits in the pool.
+func (d *bindData) reset() {
 	clearDataMap(d.values)
 	d.arena.reset()
-	// Drop the strings the pairs held, so they do not keep request memory
-	// alive while the bindData sits in the pool.
 	clear(d.keys)
 	clear(d.pairValues)
 	d.keys, d.pairValues = d.keys[:0], d.pairValues[:0]
-	bindDataPool.Put(d)
 }
 
 func acquireFileHeaderMap() map[string][]*multipart.FileHeader {

@@ -128,9 +128,12 @@ func Test_ReleaseBindData(t *testing.T) {
 	pairs.add("name", "john")
 	require.Equal(t, []string{"name"}, pairs.keys)
 	require.Equal(t, []string{"john"}, pairs.pairValues)
+	// Checked on reset rather than after release: once pairs is back in the
+	// pool, a parallel test may take it and write the same array.
 	keys := pairs.keys
-	releaseBindData(pairs)
+	pairs.reset()
 	require.Empty(t, keys[:1][0], "release must drop the strings the pairs held")
+	releaseBindData(pairs)
 
 	large := &bindData{values: make(map[string][]string, maxPoolableDataMapSize+1), mode: bindMap}
 	for i := range maxPoolableDataMapSize + 1 {
