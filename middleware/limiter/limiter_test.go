@@ -1999,7 +1999,7 @@ func Benchmark_Limiter_Parallel_Keys(b *testing.B) {
 	app := fiber.New()
 
 	app.Use(New(Config{
-		Max:          1_000_000,
+		Max:          b.N, // no key can pass b.N hits, so no iteration takes the 429 path
 		Expiration:   60 * time.Second,
 		KeyGenerator: func(c fiber.Ctx) string { return c.Get("X-Client") },
 	}))

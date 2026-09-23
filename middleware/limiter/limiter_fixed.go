@@ -110,7 +110,7 @@ func (FixedWindow) New(cfg *Config) fiber.Handler {
 		if (cfg.SkipSuccessfulRequests && statusCode < fiber.StatusBadRequest) ||
 			(cfg.SkipFailedRequests && statusCode >= fiber.StatusBadRequest) {
 			// Lock entry
-			mu.Lock() // same key, same shard
+			mu = locks.lock(key) // rehash: c.Next() may have rewritten an unsafe key
 			entry, getErr := manager.get(reqCtx, key)
 			if getErr != nil {
 				mu.Unlock()

@@ -16,19 +16,16 @@ const (
 	xRateLimitReset     = "X-RateLimit-Reset"
 )
 
-// lockShards is a power of two so the shard index is a mask instead of a
-// modulo. A fixed array keeps the locks allocation-free and, unlike a per-key
-// map, gives a client no way to grow them with fresh keys.
+// lockShards is a power of two so the shard index is a mask. A fixed array stays
+// allocation-free and, unlike a per-key map, cannot be grown with fresh keys.
 const lockShards = 64
 
-// keySeed randomizes the shard mapping per process: the default KeyGenerator
-// returns the client IP, so without it a caller could pick keys that all land
-// on one shard.
+// keySeed randomizes the shard mapping per process, so a client cannot pick
+// keys (by default its IP) that all land on one shard.
 var keySeed = maphash.MakeSeed()
 
-// keyedMutex serializes the read-modify-write of a single key while letting
-// unrelated keys run in parallel, so one storage round-trip no longer blocks
-// every other client.
+// keyedMutex serializes the read-modify-write per key, so one client's storage
+// round-trip no longer blocks every other client.
 type keyedMutex [lockShards]sync.Mutex
 
 // lock acquires the shard owning key and returns it for unlocking.

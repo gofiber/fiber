@@ -119,7 +119,7 @@ func (SlidingWindow) New(cfg *Config) fiber.Handler {
 
 		if skipHit || !cfg.DisableHeaders {
 			// Lock entry
-			mu.Lock() // same key, same shard
+			mu = locks.lock(key) // rehash: c.Next() may have rewritten an unsafe key
 			entry, getErr := manager.get(reqCtx, key)
 			if getErr != nil {
 				mu.Unlock()
