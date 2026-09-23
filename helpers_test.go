@@ -1742,21 +1742,22 @@ func Test_setLocal_UsesDefaultCtxDirectly(t *testing.T) {
 	require.Equal(t, 42, c.Locals("n"))
 }
 
-// Test_appendCopyLowerASCII pins appendCopyLowerASCII against the copy and the
-// fold it fuses, at every length across the SWAR word boundaries, on fresh and
-// on reused destinations.
+// Test_appendCopyLowerASCII pins appendCopyLowerASCII against the copy, the
+// fold and the slash count it fuses, at every length across the SWAR word
+// boundaries, on fresh and on reused destinations.
 func Test_appendCopyLowerASCII(t *testing.T) {
 	t.Parallel()
 
 	cases := []string{
 		"", "/", "A", "/abc", "/AbC", "/ABCDEFG", "/ABCDEFGH/XYZ",
 		"/API/V1/UsersAndGroups", "/a1-B2_c3{~}", "/CAF\xC3\xA9/\xC3\x89",
-		"/repos/GoFiber/Fiber/issues/4662/comments",
+		"/repos/GoFiber/Fiber/issues/4662/comments", "////////", "/////////",
 	}
 	// Every length across the word boundaries, so the main loop, the
-	// overlapping tail word and the byte-wise path are all covered.
+	// overlapping tail word and the byte-wise path are all covered, with the
+	// slashes at every offset of the tail word.
 	for n := range 40 {
-		cases = append(cases, strings.Repeat("aB/", n))
+		cases = append(cases, strings.Repeat("aB/", n), "/"+strings.Repeat("aB/", n), "/x"+strings.Repeat("aB/", n))
 	}
 
 	for _, in := range cases {
@@ -1768,15 +1769,18 @@ func Test_appendCopyLowerASCII(t *testing.T) {
 
 			// Fresh destinations (forces growth) and reused oversized ones
 			// (exercises the cap(dst) >= n path).
-			gotPath, gotLower := appendCopyLowerASCII(nil, nil, in)
+			wantSlashes := strings.Count(in, "/")
+			gotPath, gotLower, gotSlashes := appendCopyLowerASCII(nil, nil, in)
 			require.Equal(t, string(wantPath), string(gotPath))
 			require.Equal(t, string(wantLower), string(gotLower))
+			require.Equal(t, wantSlashes, gotSlashes)
 
 			reusedPath := make([]byte, 0, 128)
 			reusedLower := make([]byte, 0, 128)
-			gotPath, gotLower = appendCopyLowerASCII(reusedPath, reusedLower, in)
+			gotPath, gotLower, gotSlashes = appendCopyLowerASCII(reusedPath, reusedLower, in)
 			require.Equal(t, string(wantPath), string(gotPath))
 			require.Equal(t, string(wantLower), string(gotLower))
+			require.Equal(t, wantSlashes, gotSlashes)
 			if in != "" {
 				require.Equal(t, 128, cap(gotPath), "reused buffer must not be reallocated")
 				require.Equal(t, 128, cap(gotLower), "reused buffer must not be reallocated")
@@ -1790,10 +1794,11 @@ func Test_appendCopyLowerASCII_AliasedSubstring(t *testing.T) {
 
 	path := []byte("/api/bar/fooX")
 	src := utils.UnsafeString(path[4:])
-	gotPath, gotLower := appendCopyLowerASCII(path[:0], nil, src)
+	gotPath, gotLower, gotSlashes := appendCopyLowerASCII(path[:0], nil, src)
 
 	require.Equal(t, "/bar/fooX", string(gotPath))
 	require.Equal(t, "/bar/foox", string(gotLower))
+	require.Equal(t, 2, gotSlashes)
 }
 
 func Test_appendLowerASCII(t *testing.T) {
