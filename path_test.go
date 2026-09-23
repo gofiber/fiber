@@ -1115,6 +1115,54 @@ func Test_ConstProbe_Rejects(t *testing.T) {
 	}
 }
 
+// Test_ProbeMemo_MatchesProbe pins that sharing locate among the probes of a
+// scan changes no answer: a memo carried across probes of different slashes,
+// in any order and back again, must reject exactly what each probe rejects on
+// its own.
+// go test -race -run Test_ProbeMemo_MatchesProbe
+func Test_ProbeMemo_MatchesProbe(t *testing.T) {
+	t.Parallel()
+
+	var probes []constProbe
+	for _, pattern := range []string{
+		"/repos/:owner/:repo/issues", "/repos/:owner/:repo/pulls/:number",
+		"/repos/:owner/:repo/issues/:number", "/repos/:owner/pulls",
+		"/:p/fixed", "/:a/:b/:c/fixed", "/api/:a/b/:c/dd/:e", "/api/:v/collaborators/:user",
+		"/user/:name/keys/", "/v1/some/resource/:name/x", "/:a/x", "/:a/:b/x",
+	} {
+		probe := parseRoute(pattern, regexp.MustCompile).probe
+		require.NotZero(t, probe.mask, "pattern %q must carry a probe", pattern)
+		probes = append(probes, probe)
+	}
+	paths := []string{
+		"", "/", "/repos", "/repos/a/b", "/repos/a/b/issues", "/repos/a/b/issues/1",
+		"/repos/a/b/pulls/2", "/repos/abcdefghijklmnop/qrstuvwxyz/issues/", "/repos/a/pulls",
+		"/p/fixed", "/a/b/c/fixed", "/api/1/b/2/dd/3", "/api/v1/collaborators/octocat",
+		"/user/bob/keys", "/user/bob/keys/", "/v1/some/resource/n/x", "/a/x", "/a/b/x", "/a/b/y",
+	}
+
+	for _, path := range paths {
+		// Forward, backward and interleaved, so the memo is both hit and
+		// replaced between probes that do and do not share a slash.
+		order := make([]int, 0, 3*len(probes))
+		for i := range probes {
+			order = append(order, i)
+		}
+		for i := range probes {
+			order = append(order, len(probes)-1-i)
+		}
+		for i := range probes {
+			order = append(order, (i*5)%len(probes))
+		}
+
+		var memo probeMemo
+		for _, i := range order {
+			require.Equal(t, probes[i].rejects(path), memo.rejects(&probes[i], path),
+				"probe %d (from %d, skip %d) on %q", i, probes[i].from, probes[i].skip, path)
+		}
+	}
+}
+
 // Test_wordAt checks every offset of a few strings against a byte loop.
 // go test -race -run Test_wordAt
 func Test_wordAt(t *testing.T) {
