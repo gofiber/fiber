@@ -36,7 +36,7 @@ func newBucketFilter(routes []*Route) *bucketFilter {
 	f := &bucketFilter{heads: make([]scanHead, len(routes))}
 	static := 0
 	for i, route := range routes {
-		f.heads[i] = newScanHead(route)
+		f.heads[i].init(route)
 		if staticFingerprint(route) != 0 {
 			static++
 		}
@@ -111,15 +111,25 @@ const maxSlashBit = 31
 // bit, as does every route for bit 0, which a scan uses for a count it did not
 // compute. The probe is taken where matchParams would consult it.
 func newScanHead(r *Route) scanHead {
-	h := scanHead{slashMask: ^uint32(0)}
-	prefix := knownPrefix(r)
-	h.prefix, h.prefixMask = packConst(prefix)
-	if len(prefix) > swar.WordLen {
+	var h scanHead
+	h.init(r)
+	return h
+}
+
+// init fills h, a zero scanHead, with the head of r, as newScanHead returns
+// it. newBucketFilter fills its heads in place with it, since copying each one
+// out of a constructor was a third of what building a filter cost. The first
+// prefix word is the route's own leading-byte filter, which buildPrefixFilter
+// computed when the route was registered.
+func (h *scanHead) init(r *Route) {
+	h.slashMask = ^uint32(0)
+	h.prefix, h.prefixMask = r.prefix, r.prefixMask
+	if prefix := knownPrefix(r); len(prefix) > swar.WordLen {
 		h.prefix2, h.prefixMask2 = packConst(prefix[swar.WordLen:])
 	}
 	switch {
 	case r.star || r.root:
-		return h
+		return
 	case len(r.Params) == 0:
 		n := min(strings.Count(r.path, string(slashDelimiter)), maxSlashBit)
 		if r.use {
@@ -140,7 +150,6 @@ func newScanHead(r *Route) scanHead {
 		h.setProbe(p.probe)
 	}
 	h.slashMask |= 1
-	return h
 }
 
 // setProbe stores p, a route's constant probe, in h, unless it has none or h's
