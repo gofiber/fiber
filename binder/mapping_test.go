@@ -959,19 +959,45 @@ func Test_valueArena_Add(t *testing.T) {
 		}
 		require.Equal(t, want, data.values, "rounds %d", rounds)
 
-		for key, values := range data.values {
-			require.Equal(t, len(values), cap(values), "slice of %q must be capped at its length", key)
+		// An append past a handed-out slice leaves every other key's values
+		// intact: it copies out of the arena, or writes past the end of a
+		// slice no other key shares.
+		for key := range data.values {
+			grown := append(data.values[key], "x") //nolint:gocritic // appendAssign: what it writes over is the point
+			require.Equal(t, "x", grown[len(grown)-1])
+			require.Equal(t, want, data.values, "rounds %d: an outside append to %q leaked into another key", rounds, key)
 		}
-		// An append past a handed-out slice copies, leaving the others intact.
-		grown := append(data.values["b"], "x") //nolint:gocritic // appendAssign: the copy is the point
-		require.Equal(t, "x", grown[len(grown)-1])
-		require.Equal(t, want, data.values, "rounds %d: an outside append leaked into the arena", rounds)
 
 		data.arena.reset()
 		require.Empty(t, data.arena.buf)
 		for _, s := range data.arena.buf[:cap(data.arena.buf)] {
 			require.Empty(t, s, "reset must drop the strings it held")
 		}
+	}
+}
+
+// Test_valueArena_AlternatingKeys pins that keys whose values alternate cost
+// time and memory linear in the number of pairs. Copying a key's values to
+// the arena's end whenever another key had followed it grew the arena of a
+// 5,000-pair body of two alternating keys to over four million slots.
+func Test_valueArena_AlternatingKeys(t *testing.T) {
+	t.Parallel()
+
+	const pairs = 5000
+	data := &bindData{values: make(map[string][]string), mode: bindMap}
+	want := make(map[string][]string)
+	for i := range pairs {
+		key := "ab"[i%2 : i%2+1]
+		value := strconv.Itoa(i)
+		data.add(key, value)
+		want[key] = append(want[key], value)
+	}
+	require.Equal(t, want, data.values)
+	// The arena keeps the first values of each key, and each key's slice of
+	// its own grows as append grows any slice.
+	require.LessOrEqual(t, cap(data.arena.buf), minArenaCap)
+	for key, values := range data.values {
+		require.LessOrEqual(t, cap(values), 2*len(values), "values of %q", key)
 	}
 }
 

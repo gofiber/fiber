@@ -842,30 +842,39 @@ func (d *bindData) add(key, value string) {
 const minArenaCap = 16
 
 // valueArena hands out the value slices of a bind's source map from shared
-// backing arrays. Each slice it returns is capped at its length, so an append
-// by anyone else copies rather than writing into a neighbor.
+// backing arrays. Each slice it hands out of one is capped at its length, so
+// an append by anyone else copies rather than writing into a neighbor.
 type valueArena struct {
 	buf []string
 }
 
 // add returns vals, which is nil or a slice add returned earlier, with v
-// appended. The slice at the arena's end grows in place, which is where the
-// values of a key filed several times in a row stay; any other one is copied
-// to the end first. When the backing array is full the arena moves on to a
-// fresh one, twice as large, and the slices it handed out keep the old one.
+// appended. A key's first value takes the next slot of the arena, and the
+// slice at the arena's end grows in place, which is where the values of a key
+// filed several times in a row stay. When the backing array is full the arena
+// moves on to a fresh one, twice as large, and the slices it handed out keep
+// the old one.
+//
+// A key filed again once another key has followed it leaves the arena for a
+// slice of its own, which append grows as it grows any slice. Copying such a
+// key's values to the arena's end instead would copy all of them on each new
+// one, and keys that alternate, as a request can make them, would cost time
+// and memory quadratic in the number of pairs.
 func (a *valueArena) add(vals []string, v string) []string {
 	n, k := len(a.buf), len(vals)
-	if k > 0 && n < cap(a.buf) && n >= k && &a.buf[n-1] == &vals[k-1] {
+	if k == 0 {
+		if n == cap(a.buf) {
+			a.buf = make([]string, 0, max(2*cap(a.buf), minArenaCap))
+			n = 0
+		}
+		a.buf = append(a.buf, v)
+		return a.buf[n : n+1 : n+1]
+	}
+	if n < cap(a.buf) && n >= k && &a.buf[n-1] == &vals[k-1] {
 		a.buf = append(a.buf, v)
 		return a.buf[n-k : n+1 : n+1]
 	}
-	if cap(a.buf)-n <= k {
-		a.buf = make([]string, 0, max(2*cap(a.buf), 2*(k+1), minArenaCap))
-		n = 0
-	}
-	a.buf = append(a.buf, vals...)
-	a.buf = append(a.buf, v)
-	return a.buf[n : n+k+1 : n+k+1]
+	return append(vals, v)
 }
 
 // reset readies the arena for another bind, dropping the strings it holds so

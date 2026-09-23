@@ -5744,10 +5744,10 @@ func Test_ScanHead_Probe(t *testing.T) {
 	for _, p := range []constProbe{
 		{},
 		{word: word, mask: mask, from: math.MaxUint16 + 1},
-		{word: word, mask: mask, skip: math.MaxUint8 + 1},
+		{word: word, mask: mask, from: 13, skip: math.MaxUint8 + 1},
 		{word: word, mask: mask, from: -1},
 		{word: word, mask: mask, from: 0},
-		{word: word, mask: mask &^ 0xff00},
+		{word: word, mask: mask &^ 0xff00, from: 13},
 	} {
 		h = scanHead{}
 		h.setProbe(p)
