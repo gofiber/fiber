@@ -3,6 +3,7 @@ package session
 import (
 	"context"
 	"errors"
+	"slices"
 	"sync"
 	"testing"
 	"time"
@@ -11,6 +12,7 @@ import (
 	"github.com/gofiber/fiber/v3/extractors"
 	"github.com/gofiber/fiber/v3/internal/clocktest"
 	"github.com/gofiber/fiber/v3/internal/storage/memory"
+	"github.com/gofiber/utils/v2"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
@@ -2351,4 +2353,430 @@ func Test_Session_WithContext_NilContext(t *testing.T) {
 		sess.Set("name", "fenny")
 		assertNoNilPanic(t, func() error { return sess.SaveWithContext(nil) }) //nolint:staticcheck // SA1012: nil is intentional — verifies the nil-context guard
 	})
+}
+
+// recordingStorage logs every Set so a test can assert what a save actually
+// wrote, then delegates to an in-memory backend.
+type recordingStorage struct {
+	fiber.Storage
+	setLog []storageWrite
+	mu     sync.Mutex
+}
+
+type storageWrite struct {
+	key   string
+	value []byte
+	exp   time.Duration
+}
+
+func newRecordingStorage() *recordingStorage {
+	return &recordingStorage{Storage: memory.New()}
+}
+
+func (s *recordingStorage) SetWithContext(ctx context.Context, key string, val []byte, exp time.Duration) error {
+	s.mu.Lock()
+	s.setLog = append(s.setLog, storageWrite{key: key, value: utils.CopyBytes(val), exp: exp})
+	s.mu.Unlock()
+	return s.Storage.SetWithContext(ctx, key, val, exp)
+}
+
+func (s *recordingStorage) Set(key string, val []byte, exp time.Duration) error {
+	return s.SetWithContext(context.Background(), key, val, exp)
+}
+
+func (s *recordingStorage) writes() []storageWrite {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return slices.Clone(s.setLog)
+}
+
+func (s *recordingStorage) reset() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.setLog = nil
+}
+
+// seedSession stores a session through the given store and returns its ID.
+func seedSession(t *testing.T, app *fiber.App, store *Store, fill func(*Session)) string {
+	t.Helper()
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(ctx)
+
+	sess, err := store.Get(ctx)
+	require.NoError(t, err)
+	fill(sess)
+	require.NoError(t, sess.Save())
+	id := sess.ID()
+	sess.Release()
+	return id
+}
+
+// loadSession returns the stored session for id through a request carrying its
+// cookie, which is the path that retains the decoded snapshot.
+func loadSession(t *testing.T, app *fiber.App, store *Store, id string) *Session {
+	t.Helper()
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+	ctx.Request().Header.SetCookie("session_id", id)
+
+	sess, err := store.Get(ctx)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		sess.Release()
+		app.ReleaseCtx(ctx)
+	})
+	return sess
+}
+
+// A save that changed nothing still has to refresh storage: the sliding idle
+// timeout is the entire safety argument for reusing the decoded snapshot.
+//
+// go test -run Test_Session_CleanSave_WritesSnapshotToStorage
+func Test_Session_CleanSave_WritesSnapshotToStorage(t *testing.T) {
+	t.Parallel()
+
+	const idleTimeout = 2 * time.Hour
+
+	app := fiber.New()
+	rec := newRecordingStorage()
+	store := NewStore(Config{Storage: rec, IdleTimeout: idleTimeout})
+
+	id := seedSession(t, app, store, func(sess *Session) {
+		sess.Set("user", "fenny")
+		sess.Set("admin", true)
+	})
+
+	seeded := rec.writes()
+	require.Len(t, seeded, 1)
+	rec.reset()
+
+	sess := loadSession(t, app, store, id)
+	require.Equal(t, "fenny", sess.Get("user"))
+	require.False(t, sess.data.dirty.Load(), "a scalar read must leave the session clean")
+	sess.data.Data["admin"] = false // bypasses Set, so only a re-encode would persist it
+	require.NoError(t, sess.Save())
+
+	written := rec.writes()
+	require.Len(t, written, 1, "a clean save must still write to storage")
+	require.Equal(t, id, written[0].key)
+	require.Equal(t, seeded[0].value, written[0].value, "the retained snapshot must be written back verbatim")
+	require.Equal(t, idleTimeout, written[0].exp, "a clean save must slide the idle timeout")
+
+	reloaded, err := store.GetByID(t.Context(), id)
+	require.NoError(t, err)
+	defer reloaded.Release()
+	require.Equal(t, "fenny", reloaded.Get("user"))
+	require.Equal(t, true, reloaded.Get("admin"))
+}
+
+// A value the caller still holds can be mutated in place without Set, so any
+// save after it was handed out must re-encode rather than reuse the snapshot.
+//
+// go test -run Test_Session_AliasedValueMutatedBetweenSaves
+func Test_Session_AliasedValueMutatedBetweenSaves(t *testing.T) {
+	t.Parallel()
+
+	newStore := func() (*fiber.App, *Store) {
+		app := fiber.New()
+		store := NewStore(Config{Storage: memory.New()})
+		store.RegisterType(map[string]string{})
+		return app, store
+	}
+
+	t.Run("mutated through Get", func(t *testing.T) {
+		t.Parallel()
+
+		app, store := newStore()
+		id := seedSession(t, app, store, func(sess *Session) {
+			sess.Set("prefs", map[string]string{"theme": "dark"})
+		})
+
+		sess := loadSession(t, app, store, id)
+		prefs, ok := sess.Get("prefs").(map[string]string)
+		require.True(t, ok)
+		prefs["theme"] = "light"
+		require.NoError(t, sess.Save())
+
+		reloaded, err := store.GetByID(t.Context(), id)
+		require.NoError(t, err)
+		defer reloaded.Release()
+		require.Equal(t, map[string]string{"theme": "light"}, reloaded.Get("prefs"))
+	})
+
+	t.Run("mutated after Set on a decoded session", func(t *testing.T) {
+		t.Parallel()
+
+		app, store := newStore()
+		id := seedSession(t, app, store, func(sess *Session) {
+			sess.Set("user", "fenny")
+		})
+
+		sess := loadSession(t, app, store, id)
+		prefs := map[string]string{"theme": "dark"}
+		sess.Set("prefs", prefs)
+		require.NoError(t, sess.Save())
+
+		// The caller still holds prefs, so the second save must encode again.
+		prefs["theme"] = "light"
+		require.NoError(t, sess.Save())
+
+		reloaded, err := store.GetByID(t.Context(), id)
+		require.NoError(t, err)
+		defer reloaded.Release()
+		require.Equal(t, map[string]string{"theme": "light"}, reloaded.Get("prefs"))
+		require.Equal(t, "fenny", reloaded.Get("user"))
+	})
+}
+
+// Benchmark_Session_ReadOnly measures the request shape the clean-save path
+// targets: load a stored session, read a scalar, save it unmodified.
+//
+// go test -v -run=^$ -bench=Benchmark_Session_ReadOnly -benchmem -count=4
+func Benchmark_Session_ReadOnly(b *testing.B) {
+	app := fiber.New()
+	store := NewStore(Config{Storage: memory.New()})
+
+	seed := app.AcquireCtx(&fasthttp.RequestCtx{})
+	sess, err := store.Get(seed)
+	require.NoError(b, err)
+	sess.Set("user_id", "3d2ab0a4b1f94d4c9a1b7c0e5f6a8b9c")
+	sess.Set("role", "admin")
+	require.NoError(b, sess.Save())
+	id := sess.ID()
+	sess.Release()
+	app.ReleaseCtx(seed)
+
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+	c.Request().Header.SetCookie("session_id", id)
+
+	b.ReportAllocs()
+	for b.Loop() {
+		s, _ := store.Get(c) //nolint:errcheck // We're inside a benchmark
+		_ = s.Get("user_id")
+		_ = s.Save() //nolint:errcheck // We're inside a benchmark
+
+		s.Release()
+	}
+}
+
+// scribbleStorage overwrites the buffer it handed out on the previous Get, the
+// way a backend reusing a read buffer would.
+type scribbleStorage struct {
+	fiber.Storage
+	last []byte
+}
+
+func (s *scribbleStorage) GetWithContext(ctx context.Context, key string) ([]byte, error) {
+	val, err := s.Storage.GetWithContext(ctx, key)
+	s.last = val
+	return val, err
+}
+
+func (s *scribbleStorage) Get(key string) ([]byte, error) {
+	return s.GetWithContext(context.Background(), key)
+}
+
+func (s *scribbleStorage) scribble() {
+	for i := range s.last {
+		s.last[i] = 0xFF
+	}
+}
+
+// The retained snapshot must be a copy: fiber.Storage promises nothing about
+// the lifetime of the slice its Get returns.
+//
+// go test -run Test_Session_RetainedSnapshotSurvivesStorageBufferReuse
+func Test_Session_RetainedSnapshotSurvivesStorageBufferReuse(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	scribbler := &scribbleStorage{Storage: memory.New()}
+	store := NewStore(Config{Storage: scribbler})
+
+	id := seedSession(t, app, store, func(sess *Session) {
+		sess.Set("user", "fenny")
+	})
+
+	sess := loadSession(t, app, store, id)
+	scribbler.scribble()
+	require.NoError(t, sess.Save())
+
+	reloaded, err := store.GetByID(t.Context(), id)
+	require.NoError(t, err)
+	defer reloaded.Release()
+	require.Equal(t, "fenny", reloaded.Get("user"))
+}
+
+// The snapshot outlives operations that do not touch the data, and must not
+// outlive the ones that do.
+//
+// go test -run Test_Session_CleanSave_Lifecycle
+func Test_Session_CleanSave_Lifecycle(t *testing.T) {
+	t.Parallel()
+
+	t.Run("Regenerate writes the snapshot under the new ID", func(t *testing.T) {
+		t.Parallel()
+
+		app := fiber.New()
+		store := NewStore(Config{Storage: memory.New()})
+		id := seedSession(t, app, store, func(sess *Session) {
+			sess.Set("user", "fenny")
+		})
+
+		sess := loadSession(t, app, store, id)
+		require.NoError(t, sess.Regenerate())
+		newID := sess.ID()
+		require.NotEqual(t, id, newID)
+		sess.data.Data["user"] = "bypassed" // only a re-encode would persist it
+		require.NoError(t, sess.Save())
+
+		_, err := store.GetByID(t.Context(), id)
+		require.ErrorIs(t, err, ErrSessionIDNotFoundInStore)
+
+		reloaded, err := store.GetByID(t.Context(), newID)
+		require.NoError(t, err)
+		defer reloaded.Release()
+		require.Equal(t, "fenny", reloaded.Get("user"))
+	})
+
+	t.Run("Reset drops the snapshot", func(t *testing.T) {
+		t.Parallel()
+
+		app := fiber.New()
+		store := NewStore(Config{Storage: memory.New()})
+		id := seedSession(t, app, store, func(sess *Session) {
+			sess.Set("user", "fenny")
+		})
+
+		sess := loadSession(t, app, store, id)
+		require.NoError(t, sess.Reset())
+		require.Nil(t, sess.rawData)
+		require.NoError(t, sess.Save())
+
+		reloaded, err := store.GetByID(t.Context(), sess.ID())
+		require.NoError(t, err)
+		defer reloaded.Release()
+		require.Nil(t, reloaded.Get("user"))
+	})
+
+	t.Run("Destroy drops the snapshot", func(t *testing.T) {
+		t.Parallel()
+
+		app := fiber.New()
+		store := NewStore(Config{Storage: memory.New()})
+		id := seedSession(t, app, store, func(sess *Session) {
+			sess.Set("user", "fenny")
+		})
+
+		sess := loadSession(t, app, store, id)
+		require.NoError(t, sess.Destroy())
+		require.Nil(t, sess.rawData)
+		require.NoError(t, sess.Save())
+
+		reloaded, err := store.GetByID(t.Context(), id)
+		require.NoError(t, err)
+		defer reloaded.Release()
+		require.Nil(t, reloaded.Get("user"))
+	})
+
+	t.Run("a session loaded by ID can take the fast path", func(t *testing.T) {
+		t.Parallel()
+
+		app := fiber.New()
+		rec := newRecordingStorage()
+		store := NewStore(Config{Storage: rec})
+		id := seedSession(t, app, store, func(sess *Session) {
+			sess.Set("user", "fenny")
+		})
+		rec.reset()
+
+		// GetByID leaves ctx nil, so this also covers saving without a request.
+		sess, err := store.GetByID(t.Context(), id)
+		require.NoError(t, err)
+		defer sess.Release()
+		require.False(t, sess.data.dirty.Load())
+		sess.data.Data["user"] = "bypassed" // only a re-encode would persist it
+		require.NoError(t, sess.Save())
+
+		written := rec.writes()
+		require.Len(t, written, 1)
+		require.Equal(t, id, written[0].key)
+		require.NotContains(t, string(written[0].value), "bypassed")
+	})
+}
+
+// With AbsoluteTimeout every load reads the deadline back as a time.Time, and that
+// read must neither dirty the session nor move the deadline.
+//
+// go test -run Test_Session_CleanSave_KeepsAbsoluteExpiration
+func Test_Session_CleanSave_KeepsAbsoluteExpiration(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	store := NewStore(Config{Storage: memory.New(), AbsoluteTimeout: time.Hour})
+
+	id := seedSession(t, app, store, func(sess *Session) {
+		sess.Set("user", "fenny")
+	})
+
+	first := loadSession(t, app, store, id)
+	deadline := first.absExpiration()
+	require.False(t, deadline.IsZero())
+	// The absolute-timeout probe reads a time.Time through Get on every load,
+	// so the session has to stay clean for the fast path to exist at all.
+	require.False(t, first.data.dirty.Load())
+	require.NoError(t, first.Save())
+
+	second := loadSession(t, app, store, id)
+	require.Equal(t, deadline, second.absExpiration())
+}
+
+// Get writes the dirty flag while holding only RLock, so a shared session must
+// stay race-free when a save runs next to a read.
+//
+// go test -race -run Test_Session_ConcurrentAliasedReadAndSave
+func Test_Session_ConcurrentAliasedReadAndSave(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	store := NewStore(Config{Storage: memory.New()})
+	store.RegisterType(map[string]string{})
+
+	id := seedSession(t, app, store, func(sess *Session) {
+		sess.Set("prefs", map[string]string{"theme": "dark"})
+		sess.Set("user", "fenny")
+	})
+
+	sess := loadSession(t, app, store, id)
+
+	var wg sync.WaitGroup
+	for range 8 {
+		wg.Go(func() {
+			for range 50 {
+				_ = sess.Get("prefs")
+				_ = sess.Get("user")
+				_ = sess.Keys()
+			}
+		})
+	}
+
+	saveErrs := make(chan error, 50)
+	wg.Go(func() {
+		for range 50 {
+			if err := sess.Save(); err != nil {
+				saveErrs <- err
+			}
+		}
+	})
+
+	wg.Wait()
+	close(saveErrs)
+	for err := range saveErrs {
+		require.NoError(t, err)
+	}
+
+	reloaded, err := store.GetByID(t.Context(), id)
+	require.NoError(t, err)
+	defer reloaded.Release()
+	require.Equal(t, "fenny", reloaded.Get("user"))
 }

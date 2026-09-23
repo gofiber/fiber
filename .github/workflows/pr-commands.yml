@@ -1,0 +1,43 @@
+name: PR Commands
+
+# Comment "/generate" on a pull request to re-run the code generators (msgp and
+# ifacemaker, see `make generate`) and push the regenerated files onto the branch,
+# so a change to Ctx, Req or Res does not need a local toolchain. Maintainers only.
+
+on:
+  issue_comment:
+    types: [created]
+  pull_request_target:
+    types: [opened]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  hint:
+    if: github.event_name == 'pull_request_target'
+    uses: gofiber/.github/.github/workflows/pr-command-hint.yml@main
+    with:
+      hint: '`/generate` re-runs the code generators on this branch'
+
+  generate:
+    # Skipped outright on a newly opened pull request, so it takes no concurrency slot.
+    if: github.event_name == 'issue_comment'
+    # On the job, not the workflow: every comment on the pull request starts a run,
+    # and a workflow-level group would let an unrelated one cancel a queued command.
+    concurrency:
+      group: ${{ github.workflow }}-generate-${{ github.event.issue.number }}
+      cancel-in-progress: false
+    uses: gofiber/.github/.github/workflows/pr-command.yml@main
+    with:
+      command: generate
+      runs-on: blacksmith-4vcpu-ubuntu-2404
+      commit-message: 'chore: regenerate msgp and interface code'
+      timeout-minutes: 20
+      run: make generate
+    # Same PAT the dependabot workflows use. It never meets pull request code (the
+    # job that runs the command has no credentials), and it is what lets the push
+    # reach a fork branch and start the repository's own checks.
+    secrets:
+      push-token: ${{ secrets.PR_TOKEN }}

@@ -3,6 +3,7 @@ package session
 import (
 	"reflect"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -279,5 +280,118 @@ func TestData_Delete(t *testing.T) {
 		defer releaseData(d)
 		d.Delete("nonexistent-key")
 		// No assertion needed, just ensure no panic or error
+	})
+}
+
+func Test_ValueMayAlias(t *testing.T) {
+	t.Parallel()
+
+	type userID int
+	type name string
+	type scalarStruct struct{ N int }
+
+	now := time.Now()
+
+	tests := []struct {
+		value any
+		name  string
+		alias bool
+	}{
+		{name: "nil", value: nil, alias: false},
+		{name: "string", value: "fenny", alias: false},
+		{name: "named string", value: name("fenny"), alias: false},
+		{name: "int", value: 42, alias: false},
+		{name: "named int", value: userID(42), alias: false},
+		{name: "bool", value: true, alias: false},
+		{name: "float", value: 1.5, alias: false},
+		{name: "duration", value: time.Hour, alias: false},
+		{name: "time", value: now, alias: false},
+		{name: "time pointer", value: &now, alias: true},
+		{name: "bytes", value: []byte("fenny"), alias: true},
+		{name: "slice", value: []string{"fenny"}, alias: true},
+		{name: "map", value: map[string]string{}, alias: true},
+		{name: "pointer", value: new(int), alias: true},
+		// A struct is copied, but a field could still alias, so it stays conservative.
+		{name: "struct", value: scalarStruct{}, alias: true},
+		{name: "array", value: [2]int{}, alias: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, tt.alias, valueMayAlias(tt.value))
+		})
+	}
+}
+
+func Test_Data_DirtyTracking(t *testing.T) {
+	t.Parallel()
+
+	// cleanData returns pooled data holding key/value with the dirty flag cleared,
+	// standing in for the state a successful decode leaves behind.
+	cleanData := func(t *testing.T, key, value any) *data {
+		t.Helper()
+		d := acquireData()
+		t.Cleanup(func() { releaseData(d) })
+		d.Set(key, value)
+		d.dirty.Store(false)
+		return d
+	}
+
+	t.Run("Set marks dirty", func(t *testing.T) {
+		t.Parallel()
+		d := cleanData(t, "user", "fenny")
+		d.Set("role", "admin")
+		require.True(t, d.dirty.Load())
+	})
+
+	t.Run("Delete marks dirty", func(t *testing.T) {
+		t.Parallel()
+		d := cleanData(t, "user", "fenny")
+		d.Delete("user")
+		require.True(t, d.dirty.Load())
+	})
+
+	t.Run("Reset marks dirty", func(t *testing.T) {
+		t.Parallel()
+		d := cleanData(t, "user", "fenny")
+		d.Reset()
+		require.True(t, d.dirty.Load())
+	})
+
+	t.Run("Get of a scalar stays clean", func(t *testing.T) {
+		t.Parallel()
+		d := cleanData(t, "user", "fenny")
+		require.Equal(t, "fenny", d.Get("user"))
+		require.False(t, d.dirty.Load())
+	})
+
+	t.Run("Get of a missing key stays clean", func(t *testing.T) {
+		t.Parallel()
+		d := cleanData(t, "user", "fenny")
+		require.Nil(t, d.Get("absent"))
+		require.False(t, d.dirty.Load())
+	})
+
+	t.Run("Get of an aliasable value marks dirty", func(t *testing.T) {
+		t.Parallel()
+		d := cleanData(t, "prefs", map[string]string{"theme": "dark"})
+		require.NotNil(t, d.Get("prefs"))
+		require.True(t, d.dirty.Load())
+	})
+
+	t.Run("Keys of scalar keys stays clean", func(t *testing.T) {
+		t.Parallel()
+		d := cleanData(t, "user", "fenny")
+		require.Equal(t, []any{"user"}, d.Keys())
+		require.False(t, d.dirty.Load())
+	})
+
+	t.Run("Keys of an aliasable key marks dirty", func(t *testing.T) {
+		t.Parallel()
+		key := new(int)
+		d := cleanData(t, key, "fenny")
+		require.Equal(t, []any{any(key)}, d.Keys())
+		require.True(t, d.dirty.Load())
 	})
 }
