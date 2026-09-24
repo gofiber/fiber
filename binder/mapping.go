@@ -166,11 +166,13 @@ func parseValuesToStruct(aliasTag string, out any, keys, values []string) error 
 	return nil
 }
 
-// Parse data into the map
-// thanks to https://github.com/gin-gonic/gin/blob/master/binding/binding.go
-func parseToMap(target reflect.Value, data map[string][]string) error {
+// mapTarget readies target, the destination parse was given, for filling: it
+// looks through an interface and allocates a nil map that can be set. It
+// returns false when there is nothing to fill, with the error to report, if
+// any: a destination that is not a map with string keys is left alone.
+func mapTarget(target reflect.Value) (reflect.Value, bool, error) {
 	if !target.IsValid() {
-		return ErrInvalidDestinationValue
+		return target, false, ErrInvalidDestinationValue
 	}
 
 	if target.Kind() == reflect.Interface && !target.IsNil() {
@@ -178,14 +180,39 @@ func parseToMap(target reflect.Value, data map[string][]string) error {
 	}
 
 	if target.Kind() != reflect.Map || target.Type().Key().Kind() != reflect.String {
-		return nil // nothing to do for non-map destinations
+		return target, false, nil // nothing to do for non-map destinations
 	}
 
 	if target.IsNil() {
 		if !target.CanSet() {
-			return ErrMapNilDestination
+			return target, false, ErrMapNilDestination
 		}
 		target.Set(reflect.MakeMap(target.Type()))
+	}
+	return target, true, nil
+}
+
+// parseLastToMap is parseToMap for a map[string]string destination, from the
+// last value filed under each key, which is all parseToMap keeps of them.
+func parseLastToMap(target reflect.Value, last map[string]string) error {
+	target, ok, err := mapTarget(target)
+	if !ok {
+		return err
+	}
+	newMap, ok := target.Interface().(map[string]string)
+	if !ok {
+		return ErrMapNotConvertible
+	}
+	maps.Copy(newMap, last)
+	return nil
+}
+
+// Parse data into the map
+// thanks to https://github.com/gin-gonic/gin/blob/master/binding/binding.go
+func parseToMap(target reflect.Value, data map[string][]string) error {
+	target, ok, err := mapTarget(target)
+	if !ok {
+		return err
 	}
 
 	switch target.Type().Elem().Kind() {
@@ -724,11 +751,14 @@ func assignBindData(aliasTag string, out any, data map[string][]string, key, val
 // bindData is what a string binder files the values it reads under, pooled
 // so that filing a value costs no allocation of its own. What it keeps
 // depends on the destination, see bindMode: a struct is decoded straight from
-// the key/value pairs in the order read, and a map gets the source map
-// parseToMap copies.
+// the key/value pairs in the order read, a map[string]string gets the last
+// value of each key, and any other map gets the source map parseToMap copies.
 type bindData struct {
 	// values is the source map, for a map destination
 	values map[string][]string
+	// last is the last value filed under each key, for a map[string]string
+	// destination
+	last map[string]string
 	// arena backs the value slices of values unless mode is bindOwnedMap
 	arena valueArena
 	// keys and pairValues are the pairs, for a struct destination
@@ -749,6 +779,10 @@ const (
 	// destination's own, since a map of slices keeps the slices themselves
 	// (see parseToMap) and the arena's are only valid until release.
 	bindOwnedMap
+	// bindLast keeps the last value filed under each key, which is all
+	// parseToMap puts in a map[string]string: its other values need no
+	// slice to be kept in.
+	bindLast
 )
 
 // bindModeFor returns how a bind into out keeps its values. It dispatches as
@@ -759,7 +793,7 @@ func bindModeFor(out any) bindMode {
 	case *map[string][]string, map[string][]string:
 		return bindOwnedMap
 	case *map[string]string, map[string]string:
-		return bindMap
+		return bindLast
 	}
 	t := reflect.TypeOf(out)
 	if t == nil {
@@ -779,10 +813,18 @@ func bindModeFor(out any) bindMode {
 
 // parse decodes what was filed into out.
 func (d *bindData) parse(aliasTag string, out any) error {
-	if d.mode == bindPairs {
+	switch d.mode {
+	case bindPairs:
 		return parseValuesToStruct(aliasTag, out, d.keys, d.pairValues)
+	case bindLast:
+		target := reflect.ValueOf(out)
+		if target.Kind() == reflect.Pointer {
+			target = target.Elem()
+		}
+		return parseLastToMap(target, d.last)
+	default:
+		return parse(aliasTag, out, d.values)
 	}
-	return parse(aliasTag, out, d.values)
 }
 
 // bind files value under key as formatBindData does for a string value: a
@@ -833,6 +875,8 @@ func (d *bindData) add(key, value string) {
 		d.pairValues = append(d.pairValues, value)
 	case bindMap:
 		d.values[key] = d.arena.add(d.values[key], value)
+	case bindLast:
+		d.last[key] = value
 	default:
 		d.values[key] = append(d.values[key], value)
 	}

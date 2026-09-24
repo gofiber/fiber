@@ -105,6 +105,10 @@ func (b *FormBinding) bindMultipart(req *fasthttp.Request, out any) error {
 		}
 	}
 
+	if data.mode == bindLast {
+		// A map[string]string keeps no files: parseToMap ignores them too.
+		return data.parse(b.Name(), out)
+	}
 	return parse(b.Name(), out, data.values, files)
 }
 
@@ -135,13 +139,16 @@ func acquireBindDataMode(mode bindMode) *bindData {
 	if !ok {
 		d = &bindData{values: make(map[string][]string, 8)}
 	}
+	if mode == bindLast && d.last == nil {
+		d.last = make(map[string]string, 8)
+	}
 	d.mode = mode
 	return d
 }
 
 func releaseBindData(d *bindData) {
-	if len(d.values) > maxPoolableDataMapSize || cap(d.arena.buf) > maxPoolableArenaSize ||
-		cap(d.keys) > maxPoolableArenaSize {
+	if len(d.values) > maxPoolableDataMapSize || len(d.last) > maxPoolableDataMapSize ||
+		cap(d.arena.buf) > maxPoolableArenaSize || cap(d.keys) > maxPoolableArenaSize {
 		return
 	}
 
@@ -153,6 +160,11 @@ func releaseBindData(d *bindData) {
 // not keep request memory alive while d sits in the pool.
 func (d *bindData) reset() {
 	clearDataMap(d.values)
+	// A map in use for another mode is empty, and clear would still call
+	// into the runtime for it.
+	if len(d.last) > 0 {
+		clear(d.last)
+	}
 	d.arena.reset()
 	clear(d.keys)
 	clear(d.pairValues)

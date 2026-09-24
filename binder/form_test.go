@@ -175,7 +175,7 @@ func Test_AcquireBindData_ReservesPairs(t *testing.T) {
 	releaseBindData(pairs)
 
 	m := acquireBindData(&map[string]string{}, n)
-	require.Equal(t, bindMap, m.mode)
+	require.Equal(t, bindLast, m.mode)
 	require.Less(t, cap(m.keys), n)
 	releaseBindData(m)
 }

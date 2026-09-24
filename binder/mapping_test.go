@@ -1,10 +1,14 @@
 package binder
 
 import (
+	"bytes"
 	"fmt"
+	"maps"
 	"mime/multipart"
 	"reflect"
+	"slices"
 	"strconv"
+	"strings"
 	"sync"
 	"testing"
 
@@ -1011,7 +1015,8 @@ func Test_Bind_MapOfSlices_OwnsValues(t *testing.T) {
 	require.Equal(t, bindOwnedMap, bindModeFor(map[string][]string{}))
 	type named map[string][]string
 	require.Equal(t, bindOwnedMap, bindModeFor(&named{}))
-	require.Equal(t, bindMap, bindModeFor(&map[string]string{}))
+	require.Equal(t, bindLast, bindModeFor(&map[string]string{}))
+	require.Equal(t, bindLast, bindModeFor(map[string]string{}))
 	type namedStrings map[string]string
 	require.Equal(t, bindMap, bindModeFor(namedStrings{}))
 	require.Equal(t, bindPairs, bindModeFor(&struct{ A []string }{}))
@@ -1040,6 +1045,91 @@ func Test_Bind_MapOfSlices_OwnsValues(t *testing.T) {
 	require.NoError(t, (&QueryBinding{}).Bind(other, &intoMap))
 
 	require.Equal(t, map[string][]string{"a": {"1", "2"}, "b": {"3"}}, dst)
+}
+
+// Test_Bind_StringMap_KeepsLastValue pins that a map[string]string, for which
+// the binders keep only the last value filed under each key, gets from each
+// of them the last value a map of slices gets under that key, unsplit, and
+// that the entries it already held stay unless overwritten.
+func Test_Bind_StringMap_KeepsLastValue(t *testing.T) {
+	t.Parallel()
+
+	pairs := [][2]string{{"a", "1"}, {"b", "2"}, {"a", "3"}, {"c", ""}, {"b", "4,5"}, {"a", "6"}}
+	encoded := make([]string, 0, len(pairs))
+	for _, p := range pairs {
+		encoded = append(encoded, p[0]+"="+p[1])
+	}
+	query := strings.Join(encoded, "&")
+
+	var multipartBody bytes.Buffer
+	mw := multipart.NewWriter(&multipartBody)
+	for _, p := range pairs {
+		require.NoError(t, mw.WriteField(p[0], p[1]))
+	}
+	require.NoError(t, mw.Close())
+
+	binders := []struct {
+		bind func(split bool, out any) error
+		name string
+	}{
+		{name: "query", bind: func(split bool, out any) error {
+			req := fasthttp.AcquireRequest()
+			defer fasthttp.ReleaseRequest(req)
+			req.URI().SetQueryString(query)
+			return (&QueryBinding{EnableSplitting: split}).Bind(req, out)
+		}},
+		{name: "form", bind: func(split bool, out any) error {
+			req := fasthttp.AcquireRequest()
+			defer fasthttp.ReleaseRequest(req)
+			req.Header.SetContentType("application/x-www-form-urlencoded")
+			req.SetBodyString(query)
+			return (&FormBinding{EnableSplitting: split}).Bind(req, out)
+		}},
+		{name: "multipart", bind: func(split bool, out any) error {
+			req := fasthttp.AcquireRequest()
+			defer fasthttp.ReleaseRequest(req)
+			req.Header.SetContentType(mw.FormDataContentType())
+			req.SetBody(multipartBody.Bytes())
+			return (&FormBinding{EnableSplitting: split}).Bind(req, out)
+		}},
+		{name: "header", bind: func(split bool, out any) error {
+			req := fasthttp.AcquireRequest()
+			defer fasthttp.ReleaseRequest(req)
+			for _, p := range pairs {
+				req.Header.Add(p[0], p[1])
+			}
+			return (&HeaderBinding{EnableSplitting: split}).Bind(req, out)
+		}},
+		{name: "resp_header", bind: func(split bool, out any) error {
+			resp := fasthttp.AcquireResponse()
+			defer fasthttp.ReleaseResponse(resp)
+			for _, p := range pairs {
+				resp.Header.Add(p[0], p[1])
+			}
+			return (&RespHeaderBinding{EnableSplitting: split}).Bind(resp, out)
+		}},
+		{name: "cookie", bind: func(split bool, out any) error {
+			req := fasthttp.AcquireRequest()
+			defer fasthttp.ReleaseRequest(req)
+			req.Header.Set(fasthttp.HeaderCookie, strings.ReplaceAll(query, "&", "; "))
+			return (&CookieBinding{EnableSplitting: split}).Bind(req, out)
+		}},
+	}
+	for _, b := range binders {
+		all := make(map[string][]string)
+		require.NoError(t, b.bind(false, &all), b.name)
+		want := map[string]string{"kept": "yes"}
+		for key, values := range all {
+			want[key] = values[len(values)-1]
+		}
+		require.Contains(t, slices.Collect(maps.Values(want)), "4,5", b.name)
+
+		for _, split := range []bool{false, true} {
+			got := map[string]string{"kept": "yes"}
+			require.NoError(t, b.bind(split, &got), "%s split=%v", b.name, split)
+			require.Equal(t, want, got, "%s split=%v", b.name, split)
+		}
+	}
 }
 
 // Test_tagIndex_MatchesTags pins tagIndex's switch to the order of tags, which
