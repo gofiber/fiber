@@ -173,8 +173,12 @@ func (h *scanHead) probe() constProbe {
 	return constProbe{word: h.probeWord, mask: lanesMask(int(h.probeLen)), from: int32(h.probeFrom), skip: int32(h.probeSkip)}
 }
 
-// headRejects is m.rejects for the constant probe h holds, which h.probeLen
-// says it does: the probe is only assembled when the memo has to search.
+// headRejects is constProbe.rejects for the constant probe h holds, which
+// h.probeLen says it does, searching for the slash only when the probe the
+// memo last served read another one: the key is the probe's from and its
+// skip, since probes that share a from can still differ in the slash they
+// read. The probe is only assembled when the memo has to search.
+// detectionPath must be the same on every call.
 func (m *probeMemo) headRejects(h *scanHead, detectionPath string) bool {
 	if k := uint64(h.probeFrom)<<32 | uint64(h.probeSkip); k != m.key {
 		p := h.probe()

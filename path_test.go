@@ -1116,14 +1116,17 @@ func Test_ConstProbe_Rejects(t *testing.T) {
 }
 
 // Test_ProbeMemo_MatchesProbe pins that sharing locate among the probes of a
-// scan changes no answer: a memo carried across probes of different slashes,
-// in any order and back again, must reject exactly what each probe rejects on
-// its own.
+// scan changes no answer: a memo carried across the scan heads of probes at
+// different slashes, in any order and back again, must reject exactly what
+// each probe rejects on its own. Probes that share their from but not their
+// skip, as "/:a/x" and "/:a/:b/x" do, read different slashes, so the memo
+// must tell them apart.
 // go test -race -run Test_ProbeMemo_MatchesProbe
 func Test_ProbeMemo_MatchesProbe(t *testing.T) {
 	t.Parallel()
 
 	var probes []constProbe
+	var heads []scanHead
 	for _, pattern := range []string{
 		"/repos/:owner/:repo/issues", "/repos/:owner/:repo/pulls/:number",
 		"/repos/:owner/:repo/issues/:number", "/repos/:owner/pulls",
@@ -1132,7 +1135,11 @@ func Test_ProbeMemo_MatchesProbe(t *testing.T) {
 	} {
 		probe := parseRoute(pattern, regexp.MustCompile).probe
 		require.NotZero(t, probe.mask, "pattern %q must carry a probe", pattern)
+		var head scanHead
+		head.setProbe(probe)
+		require.NotZero(t, head.probeLen, "pattern %q's probe must fit a scan head", pattern)
 		probes = append(probes, probe)
+		heads = append(heads, head)
 	}
 	paths := []string{
 		"", "/", "/repos", "/repos/a/b", "/repos/a/b/issues", "/repos/a/b/issues/1",
@@ -1157,7 +1164,7 @@ func Test_ProbeMemo_MatchesProbe(t *testing.T) {
 
 		var memo probeMemo
 		for _, i := range order {
-			require.Equal(t, probes[i].rejects(path), memo.rejects(&probes[i], path),
+			require.Equal(t, probes[i].rejects(path), memo.headRejects(&heads[i], path),
 				"probe %d (from %d, skip %d) on %q", i, probes[i].from, probes[i].skip, path)
 		}
 	}

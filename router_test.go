@@ -4141,19 +4141,36 @@ func Test_Route_PrefixFilter_Fixture(t *testing.T) {
 func Test_Route_PrefixFilter_Rejects(t *testing.T) {
 	t.Parallel()
 
-	rejects := func(pattern, path string) bool {
+	route := func(pattern string) *Route {
 		routes := registerFilterRoutes(t, []string{pattern}, false)
 		require.Len(t, routes, 1)
-		return routeFilterRejects(routes[0], path)
+		return routes[0]
+	}
+	rejects := func(pattern, path string) bool {
+		return routeFilterRejects(route(pattern), path)
+	}
+	// prefixRejects on its own, which routeFilterRejects would hide behind the
+	// scan head's first word: an unfiltered bucket relies on it alone.
+	prefixRejects := func(pattern, path string) bool {
+		return route(pattern).prefixRejects(pathHeadWord(path))
 	}
 
 	require.True(t, rejects("/user/subscriptions/:owner", "/user/keys/1337"))
+	require.True(t, prefixRejects("/user/subscriptions/:owner", "/user/keys/1337"))
 	require.True(t, rejects("/user/keys/:id", "/user/emails"))
+	require.True(t, prefixRejects("/user/keys/:id", "/user/emails"))
 	require.True(t, rejects("/repos/:owner", "/user/keys"))
+	require.True(t, prefixRejects("/repos/:owner", "/user/keys"))
 	require.False(t, rejects("/user/keys/:id", "/user/keys/1337"))
+	require.False(t, prefixRejects("/user/keys/:id", "/user/keys/1337"))
+	// Past the first word only the scan head's second word tells these apart.
+	require.True(t, rejects("/api/v1/users/:id", "/api/v1/teams/7"))
+	require.False(t, prefixRejects("/api/v1/users/:id", "/api/v1/teams/7"))
 	// wildcards and leading parameters constrain nothing, so they must not filter
 	require.False(t, rejects("/*", "/anything/at/all"))
+	require.False(t, prefixRejects("/*", "/anything/at/all"))
 	require.False(t, rejects("/:name", "/anything"))
+	require.False(t, prefixRejects("/:name", "/anything"))
 }
 
 // Test_Route_PrefixFilter_EscapedStar guards a routing regression the
@@ -5823,9 +5840,9 @@ func Test_ScanHead_Probe(t *testing.T) {
 
 	// headRejects agrees with the parser's probe, found or not.
 	for _, path := range []string{"/repos/gofiber/fiber/issues", "/repos/gofiber/fiber/pulls", "/repos/gofiber"} {
-		var byHead, byProbe probeMemo
+		var byHead probeMemo
 		probe := route.routeParser.probe
-		require.Equal(t, byProbe.rejects(&probe, path), byHead.headRejects(&head, path), path)
+		require.Equal(t, probe.rejects(path), byHead.headRejects(&head, path), path)
 	}
 }
 
@@ -5889,6 +5906,57 @@ func Test_ScanHead_PrefixWords(t *testing.T) {
 // request did not use. The Allow header must name exactly the methods with a
 // matching endpoint, through a default and a custom context alike.
 // go test -race -run Test_Router_FilteredBucket_MethodNotAllowed
+// Test_Router_FilteredBucket_SharedProbeFrom routes through a filtered bucket
+// whose probes share their from but read different slashes: "/foo/" follows
+// the first parameter's slash, "/bar" the second's. A scan that reused the
+// word one of them located for the other would reject the route it tests.
+// go test -race -run Test_Router_FilteredBucket_SharedProbeFrom
+func Test_Router_FilteredBucket_SharedProbeFrom(t *testing.T) {
+	t.Parallel()
+
+	apps := map[string]*App{
+		"default": New(),
+		"custom": NewWithCustomCtx(func(app *App) CustomCtx {
+			return &customCtx{DefaultCtx: *NewDefaultCtx(app)}
+		}),
+	}
+	for name, app := range apps {
+		handler := func(c Ctx) error { return c.SendString(c.Route().Path) }
+		for i := range filterMinBucket {
+			app.Get("/api/static"+strconv.Itoa(i), handler)
+		}
+		app.Get("/api/:x/foo/*", handler)
+		app.Get("/api/:x/:y/bar", handler)
+		app.startupProcess()
+
+		treeHash := int('/')<<16 | int('a')<<8 | int('p')
+		routes, filter := app.treeIndex[app.methodInt(MethodGet)].lookup(treeHash)
+		require.NotNil(t, filter, "%s: the bucket must be filtered for this test to mean anything", name)
+		foo, bar := filter.heads[len(routes)-2], filter.heads[len(routes)-1]
+		require.NotZero(t, foo.probeLen, name)
+		require.NotZero(t, bar.probeLen, name)
+		require.Equal(t, foo.probeFrom, bar.probeFrom, "%s: the probes must share their from", name)
+		require.NotEqual(t, foo.probeSkip, bar.probeSkip, name)
+
+		for path, want := range map[string]string{
+			"/api/1/2/bar":   "/api/:x/:y/bar",
+			"/api/1/foo/z":   "/api/:x/foo/*",
+			"/api/1/foo/bar": "/api/:x/foo/*",
+			"/api/static3":   "/api/static3",
+		} {
+			resp, err := app.Test(httptest.NewRequest(MethodGet, path, http.NoBody))
+			require.NoError(t, err)
+			body, err := io.ReadAll(resp.Body)
+			require.NoError(t, err)
+			require.Equal(t, StatusOK, resp.StatusCode, "%s: %s", name, path)
+			require.Equal(t, want, string(body), "%s: %s", name, path)
+		}
+		resp, err := app.Test(httptest.NewRequest(MethodGet, "/api/1/2/baz", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, StatusNotFound, resp.StatusCode, name)
+	}
+}
+
 func Test_Router_FilteredBucket_MethodNotAllowed(t *testing.T) {
 	t.Parallel()
 

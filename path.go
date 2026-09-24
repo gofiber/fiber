@@ -775,32 +775,18 @@ func (p *constProbe) locate(detectionPath string) (uint64, bool) {
 	return wordAt(detectionPath, i), true
 }
 
-// key identifies the slash the probe reads at: two probes with equal keys
-// locate the same word of any detection path. It is never 0, since from is at
-// least the leading '/', which lets a zero probeMemo mean an empty one.
-func (p *constProbe) key() uint64 {
-	return uint64(uint32(p.from))<<32 | uint64(uint32(p.skip)) //nolint:gosec // G115 - from and skip are non-negative offsets into a route pattern
-}
-
 // probeMemo shares constProbe.locate among the candidates of one route scan.
 // Routes that differ only after a parameter, as a REST resource's endpoints
 // do, probe the same slash, so the scan finds it once and each such candidate
 // costs a masked compare. The zero value is an empty memo.
 type probeMemo struct {
-	key  uint64 // the key of the probe locate last ran for; 0 when none has
+	// key is the from and skip of the probe locate last ran for, packed by
+	// probeMemo.headRejects: two probes with equal keys locate the same word
+	// of any detection path. It is 0 when none has, since a probe's from is
+	// never 0 (see scanHead.setProbe).
+	key  uint64
 	word uint64 // what locate returned for that probe
 	ok   bool   // what locate returned for that probe
-}
-
-// rejects is p.rejects(detectionPath), searching for the slash only when the
-// probe the memo last served looked elsewhere. detectionPath must be the same
-// on every call.
-func (m *probeMemo) rejects(p *constProbe, detectionPath string) bool {
-	if k := p.key(); k != m.key {
-		m.word, m.ok = p.locate(detectionPath)
-		m.key = k
-	}
-	return !m.ok || m.word&p.mask != p.word
 }
 
 // wordAt packs s[i:i+8] little-endian without reading past s: lanes past the
