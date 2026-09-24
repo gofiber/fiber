@@ -154,6 +154,32 @@ func Test_ReleaseBindData(t *testing.T) {
 	releaseBindData(after)
 }
 
+// Test_AcquireBindData_ReservesPairs pins that a bind into a struct gets room
+// for its pairs up front, so that a large one does not grow them by appending,
+// and that a bind into a map, which keeps no pairs, gets none.
+func Test_AcquireBindData_ReservesPairs(t *testing.T) {
+	t.Parallel()
+
+	type Demo struct {
+		Name string `form:"name"`
+	}
+	const n = 4 * maxPoolableArenaSize
+	pairs := acquireBindData(&Demo{}, n)
+	require.Equal(t, bindPairs, pairs.mode)
+	require.GreaterOrEqual(t, cap(pairs.keys), n)
+	require.GreaterOrEqual(t, cap(pairs.pairValues), n)
+	for range n {
+		pairs.add("name", "john")
+	}
+	require.Len(t, pairs.keys, n)
+	releaseBindData(pairs)
+
+	m := acquireBindData(&map[string]string{}, n)
+	require.Equal(t, bindMap, m.mode)
+	require.Less(t, cap(m.keys), n)
+	releaseBindData(m)
+}
+
 func Benchmark_FormBinder_Bind(b *testing.B) {
 	b.ReportAllocs()
 

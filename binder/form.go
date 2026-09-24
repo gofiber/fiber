@@ -57,10 +57,11 @@ func (b *FormBinding) Bind(req *fasthttp.Request, out any) error {
 		return b.bindMultipart(req, out)
 	}
 
-	data := acquireBindData(out)
+	args := req.PostArgs()
+	data := acquireBindData(out, args.Len())
 	defer releaseBindData(data)
 
-	for key, val := range req.PostArgs().All() {
+	for key, val := range args.All() {
 		k := utils.UnsafeString(key)
 		v := utils.UnsafeString(val)
 		if err := data.bind(b.Name(), out, k, v, b.EnableSplitting, true); err != nil {
@@ -113,9 +114,18 @@ func (b *FormBinding) Reset() {
 	b.MaxBodySize = 0
 }
 
-// acquireBindData returns a pooled bindData for a bind into out.
-func acquireBindData(out any) *bindData {
-	return acquireBindDataMode(bindModeFor(out))
+// acquireBindData returns a pooled bindData for a bind into out of n pairs,
+// 0 when the count is not known up front. A bind into a struct keeps its
+// pairs in two slices, which get room for n here, so that a large bind
+// allocates them once rather than growing them by appending: splitting can
+// file more pairs than n, and append makes room for those.
+func acquireBindData(out any, n int) *bindData {
+	d := acquireBindDataMode(bindModeFor(out))
+	if d.mode == bindPairs && n > cap(d.keys) {
+		d.keys = make([]string, 0, n)
+		d.pairValues = make([]string, 0, n)
+	}
+	return d
 }
 
 // acquireBindDataMode returns a pooled bindData that keeps its values as mode
