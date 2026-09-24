@@ -207,8 +207,8 @@ func (h *scanHead) rejects(head, head2 uint64, slash uint32) bool {
 
 // routeScan is the request's side of a scan through filtered buckets: what
 // their filters compare against. A scan sets it up when it first has to walk
-// a filtered bucket past a candidate, and skip then walks such a bucket to
-// the next route the filter lets through.
+// a filtered bucket past the candidates it tests inline (inlineCandidates),
+// and skip then walks such a bucket to the next route the filter lets through.
 type routeScan struct {
 	detectionPath string
 	// head and head2 are the path's first two words, packed by pathHeadWord

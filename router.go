@@ -24,6 +24,13 @@ const (
 	// sooner than it sets up the filter and calls out to it.
 	filterMinBucket = 8
 
+	// inlineCandidates is how many candidates a scan of a filtered bucket
+	// tests as an unfiltered bucket's are before it sets up the filter. A hop
+	// that its next route takes, as each hop of a middleware chain does, or
+	// that steps over one route to it, as a chain registered between a
+	// bucket's routes does, is over sooner than the filter is set up.
+	inlineCandidates = 2
+
 	// fingerprintMinBucket is the number of static routes from which a bucket
 	// filter carries fingerprints; below it the leading-byte filter is cheaper
 	// than a hash.
@@ -580,10 +587,9 @@ func (app *App) next(c *DefaultCtx) (bool, error) {
 	// and the probe before the route is loaded, so match is then passed
 	// skipSlashFilters, which stands its own copies of those filters down.
 	// The scan is only set up for one: a small app routes a few ns faster
-	// without it on the stack. Its first candidate is tested as an unfiltered
-	// bucket's are, and the scan is initialized only once the loop moves past
-	// it, since a hop that its next route takes, as each hop of a middleware
-	// chain does, gains nothing from the filter.
+	// without it on the stack. Its first inlineCandidates candidates are
+	// tested as an unfiltered bucket's are, and the scan is initialized only
+	// once the loop moves past them.
 	var scan *routeScan
 	scanReady := false
 	if filter != nil {
@@ -595,7 +601,7 @@ func (app *App) next(c *DefaultCtx) (bool, error) {
 		// Rule routes out before loading them where the bucket has a filter,
 		// else on the leading path bytes before touching the rest of the route
 		matchSlashes := pathSlashes
-		if scan != nil && indexRoute > start {
+		if scan != nil && indexRoute >= start+inlineCandidates {
 			if !scanReady {
 				scan.init(detectionPath, head, pathSlashes)
 				scanReady = true
@@ -767,7 +773,7 @@ func (app *App) nextCustom(c CustomCtx) (bool, error) {
 		// Rule routes out before loading them where the bucket has a filter,
 		// else on the leading path bytes before touching the rest of the route
 		matchSlashes := pathSlashes
-		if scan != nil && indexRoute > start {
+		if scan != nil && indexRoute >= start+inlineCandidates {
 			if !scanReady {
 				scan.init(detectionPath, head, pathSlashes)
 				scanReady = true
