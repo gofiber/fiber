@@ -534,13 +534,19 @@ func (r *Route) match(detectionPath, path string, params *[maxParams]string, pat
 	return false
 }
 
+// skipSlashFilters is the slash count to pass match for it to skip its quick
+// rejects on the route's slash bounds and probe, which is what 0 means to it:
+// a real detection path holds at least one '/'. pathSlashCount returns it when
+// no route consults the count, and a filtered bucket's scan passes it for a
+// route whose scan head already applied both filters.
+const skipSlashFilters = 0
+
 // matchParams is the parametric branch of match, kept out of line so match
 // stays small on the middleware and static-endpoint paths every request takes.
 func (r *Route) matchParams(detectionPath, path string, params *[maxParams]string, pathSlashes int) bool {
-	// Quick-reject on the precomputed slash-count bounds before walking segments.
-	// pathSlashes 0 means the count is unknown and the filters must stay out of
-	// the way; prefix (use) routes may extend past the pattern, so only the
-	// lower bound applies to them.
+	// Quick-reject on the precomputed slash-count bounds before walking segments,
+	// unless pathSlashes is skipSlashFilters; prefix (use) routes may extend
+	// past the pattern, so only the lower bound applies to them.
 	p := &r.routeParser
 	if pathSlashes > 0 {
 		if pathSlashes < int(p.minSlashes) || (!r.use && p.maxBounded && pathSlashes > int(p.maxSlashes)) {
@@ -571,8 +577,8 @@ func (app *App) next(c *DefaultCtx) (bool, error) {
 	skipNonUse := c.shouldSkipNonUseRoutes
 	skipHasParamUse := app.skip.hasParamUse
 	// A filtered bucket is walked by scan.skip, which applies the slash count
-	// and the probe before the route is loaded, so match is then told the
-	// count is unknown, which stands its own copies of those filters down.
+	// and the probe before the route is loaded, so match is then passed
+	// skipSlashFilters, which stands its own copies of those filters down.
 	// The scan is only set up for one: a small app routes a few ns faster
 	// without it on the stack. Its first candidate is tested as an unfiltered
 	// bucket's are, and the scan is initialized only once the loop moves past
@@ -597,7 +603,7 @@ func (app *App) next(c *DefaultCtx) (bool, error) {
 			if indexRoute = scan.skip(filter, indexRoute, start, &c.pathPrint); indexRoute >= len(tree) {
 				break
 			}
-			matchSlashes = 0
+			matchSlashes = skipSlashFilters
 		} else if tree[indexRoute].prefixRejects(head) {
 			continue
 		}
@@ -769,7 +775,7 @@ func (app *App) nextCustom(c CustomCtx) (bool, error) {
 			if indexRoute = scan.skip(filter, indexRoute, start, &pathPrint); indexRoute >= len(tree) {
 				break
 			}
-			matchSlashes = 0
+			matchSlashes = skipSlashFilters
 		} else if tree[indexRoute].prefixRejects(head) {
 			continue
 		}

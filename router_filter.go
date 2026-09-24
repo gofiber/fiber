@@ -89,8 +89,11 @@ type scanHead struct {
 	// probeFrom and probeSkip locate the probe as constProbe's from and skip
 	// do, and probeLen is how many bytes of probeWord it compares, 0 when the
 	// head has no probe. They are narrow so that a head takes 48 bytes, since
-	// a filtered bucket holds one per route; a probe they cannot hold is left
-	// to match, which checks it anyway.
+	// a filtered bucket holds one per route. A probe they cannot hold, which
+	// takes a leading constant over 64 KiB or more than 255 parameters before
+	// the probe, is not checked before the full match: match skips its own
+	// copy in a filtered bucket (see skipSlashFilters), and getMatch compares
+	// the same constant, so such a route only loses the quick reject.
 	probeFrom uint16
 	probeSkip uint8
 	probeLen  uint8
@@ -292,8 +295,8 @@ func (s *routeScan) endpoint(tree []*Route, f *bucketFilter, path string, values
 		if route.use {
 			continue
 		}
-		// skip applied the slash count and the probe: see next for the 0
-		if route.match(s.detectionPath, path, values, 0) {
+		// skip applied the slash count and the probe
+		if route.match(s.detectionPath, path, values, skipSlashFilters) {
 			return i, true
 		}
 	}
