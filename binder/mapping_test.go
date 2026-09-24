@@ -1006,6 +1006,37 @@ func Test_Bind_StringMap_KeepsLastValue(t *testing.T) {
 	}
 }
 
+// Test_Bind_StringMap_Destinations pins how a bind into a map[string]string
+// treats its destination, as parseToMap and parse do: a map given by value is
+// filled, a nil one given by value is an error, a pointer to a nil map gets
+// one, and a nil pointer fails as a nil pointer to a map of slices does.
+func Test_Bind_StringMap_Destinations(t *testing.T) {
+	t.Parallel()
+
+	req := fasthttp.AcquireRequest()
+	t.Cleanup(func() { fasthttp.ReleaseRequest(req) })
+	req.URI().SetQueryString("a=1&a=2&b=3")
+	b := &QueryBinding{}
+	want := map[string]string{"a": "2", "b": "3"}
+
+	byValue := map[string]string{}
+	require.NoError(t, b.Bind(req, byValue))
+	require.Equal(t, want, byValue)
+
+	var nilMap map[string]string
+	require.ErrorIs(t, b.Bind(req, nilMap), ErrMapNilDestination)
+
+	var viaPointer map[string]string
+	require.NoError(t, b.Bind(req, &viaPointer))
+	require.Equal(t, want, viaPointer)
+
+	var nilPointer *map[string]string
+	err := b.Bind(req, nilPointer)
+	require.Error(t, err)
+	var nilSlicesPointer *map[string][]string
+	require.EqualError(t, b.Bind(req, nilSlicesPointer), err.Error())
+}
+
 // Test_tagIndex_MatchesTags pins tagIndex's switch to the order of tags, which
 // is how getDecoderPool finds a tag's pool in a decoderPoolSet.
 func Test_tagIndex_MatchesTags(t *testing.T) {

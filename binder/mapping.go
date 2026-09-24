@@ -166,13 +166,35 @@ func parseValuesToStruct(aliasTag string, out any, keys, values []string) error 
 	return nil
 }
 
-// mapTarget readies target, the destination parse was given, for filling: it
-// looks through an interface and allocates a nil map that can be set. It
-// returns false when there is nothing to fill, with the error to report, if
-// any: a destination that is not a map with string keys is left alone.
-func mapTarget(target reflect.Value) (reflect.Value, bool, error) {
+// parseLast is parse for a map[string]string destination, from the last value
+// filed under each key, which is all parseToMap keeps of a key's values. It
+// handles the two types bindModeFor gives bindLast as parseToMap would, and a
+// nil pointer to one as parse does, by handing it to the struct decoder.
+func parseLast(aliasTag string, out any, last map[string]string) error {
+	switch m := out.(type) {
+	case *map[string]string:
+		if m != nil {
+			if *m == nil {
+				*m = make(map[string]string, len(last))
+			}
+			maps.Copy(*m, last)
+			return nil
+		}
+	case map[string]string:
+		if m == nil {
+			return ErrMapNilDestination
+		}
+		maps.Copy(m, last)
+		return nil
+	}
+	return parse(aliasTag, out, nil)
+}
+
+// Parse data into the map
+// thanks to https://github.com/gin-gonic/gin/blob/master/binding/binding.go
+func parseToMap(target reflect.Value, data map[string][]string) error {
 	if !target.IsValid() {
-		return target, false, ErrInvalidDestinationValue
+		return ErrInvalidDestinationValue
 	}
 
 	if target.Kind() == reflect.Interface && !target.IsNil() {
@@ -180,39 +202,14 @@ func mapTarget(target reflect.Value) (reflect.Value, bool, error) {
 	}
 
 	if target.Kind() != reflect.Map || target.Type().Key().Kind() != reflect.String {
-		return target, false, nil // nothing to do for non-map destinations
+		return nil // nothing to do for non-map destinations
 	}
 
 	if target.IsNil() {
 		if !target.CanSet() {
-			return target, false, ErrMapNilDestination
+			return ErrMapNilDestination
 		}
 		target.Set(reflect.MakeMap(target.Type()))
-	}
-	return target, true, nil
-}
-
-// parseLastToMap is parseToMap for a map[string]string destination, from the
-// last value filed under each key, which is all parseToMap keeps of them.
-func parseLastToMap(target reflect.Value, last map[string]string) error {
-	target, ok, err := mapTarget(target)
-	if !ok {
-		return err
-	}
-	newMap, ok := target.Interface().(map[string]string)
-	if !ok {
-		return ErrMapNotConvertible
-	}
-	maps.Copy(newMap, last)
-	return nil
-}
-
-// Parse data into the map
-// thanks to https://github.com/gin-gonic/gin/blob/master/binding/binding.go
-func parseToMap(target reflect.Value, data map[string][]string) error {
-	target, ok, err := mapTarget(target)
-	if !ok {
-		return err
 	}
 
 	switch target.Type().Elem().Kind() {
@@ -780,11 +777,7 @@ func (d *bindData) parse(aliasTag string, out any) error {
 	case bindPairs:
 		return parseValuesToStruct(aliasTag, out, d.keys, d.pairValues)
 	case bindLast:
-		target := reflect.ValueOf(out)
-		if target.Kind() == reflect.Pointer {
-			target = target.Elem()
-		}
-		return parseLastToMap(target, d.last)
+		return parseLast(aliasTag, out, d.last)
 	default:
 		return parse(aliasTag, out, d.values)
 	}
