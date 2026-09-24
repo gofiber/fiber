@@ -98,9 +98,8 @@ func (b *FormBinding) bindMultipart(req *fasthttp.Request, out any) error {
 	files := acquireFileHeaderMap()
 	defer releaseFileHeaderMap(files)
 
-	for key, values := range multipartForm.File {
-		err = formatBindData(b.Name(), out, files, key, values, b.EnableSplitting, true)
-		if err != nil {
+	for key, headers := range multipartForm.File {
+		if err := bindFiles(files, key, headers); err != nil {
 			return err
 		}
 	}

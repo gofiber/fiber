@@ -1,7 +1,6 @@
 package binder
 
 import (
-	"mime/multipart"
 	"reflect"
 	"strconv"
 	"testing"
@@ -168,13 +167,4 @@ func Test_SetParserDecoder_AliasTagIgnored(t *testing.T) {
 	err := parse("query", d, map[string][]string{"v": {"hello"}})
 	require.NoError(t, err)
 	require.Equal(t, "hello", d.Greeting)
-}
-
-func Test_formatBindData_typeMismatch(t *testing.T) {
-	t.Parallel()
-	out := struct{}{}
-	files := map[string][]*multipart.FileHeader{}
-	err := formatBindData("query", out, files, "file", 123, false, false)
-	require.Error(t, err)
-	require.Equal(t, "unsupported value type: int", err.Error())
 }

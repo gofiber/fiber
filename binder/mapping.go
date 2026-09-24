@@ -698,55 +698,24 @@ func FilterFlags(content string) string {
 	return content
 }
 
-func formatBindData[T, K any](aliasTag string, out any, data map[string][]T, key string, value K, enableSplitting, supportBracketNotation bool) error { //nolint:revive // it's okay
-	var err error
+// bindKey returns key as the binders file it: rewritten from bracket notation
+// to dots when the source supports that notation and key uses it.
+func bindKey(key string, supportBracketNotation bool) (string, error) { //nolint:revive // the flag is the source's setting
 	if supportBracketNotation && strings.IndexByte(key, '[') >= 0 {
-		key, err = parseParamSquareBrackets(key)
-		if err != nil {
-			return err
-		}
+		return parseParamSquareBrackets(key)
 	}
-
-	switch v := any(value).(type) {
-	case string:
-		dataMap, ok := any(data).(map[string][]string)
-		if !ok {
-			return fmt.Errorf("unsupported value type: %T", value)
-		}
-
-		assignBindData(aliasTag, out, dataMap, key, v, enableSplitting)
-	case []string:
-		dataMap, ok := any(data).(map[string][]string)
-		if !ok {
-			return fmt.Errorf("unsupported value type: %T", value)
-		}
-
-		for _, val := range v {
-			assignBindData(aliasTag, out, dataMap, key, val, enableSplitting)
-		}
-	case []*multipart.FileHeader:
-		for _, val := range v {
-			valT, ok := any(val).(T)
-			if !ok {
-				return fmt.Errorf("unsupported value type: %T", value)
-			}
-			data[key] = append(data[key], valT)
-		}
-	default:
-		return fmt.Errorf("unsupported value type: %T", value)
-	}
-
-	return err
+	return key, nil
 }
 
-func assignBindData(aliasTag string, out any, data map[string][]string, key, value string, enableSplitting bool) { //nolint:revive // it's okay
-	if enableSplitting && strings.IndexByte(value, ',') >= 0 && equalFieldType(out, reflect.Slice, key, aliasTag) {
-		for v := range strings.SplitSeq(value, ",") {
-			data[key] = append(data[key], v)
-		}
-	} else {
-		data[key] = append(data[key], value)
+// bindFiles files a multipart form's headers under key, which is rewritten
+// from bracket notation as a form's value keys are.
+func bindFiles(files map[string][]*multipart.FileHeader, key string, headers []*multipart.FileHeader) error {
+	key, err := bindKey(key, true)
+	if err != nil {
+		return err
 	}
+	files[key] = append(files[key], headers...)
+	return nil
 }
 
 // bindData is what a string binder files the values it reads under, pooled
@@ -821,27 +790,23 @@ func (d *bindData) parse(aliasTag string, out any) error {
 	}
 }
 
-// bind files value under key as formatBindData does for a string value: a
-// key in bracket notation is rewritten to dots first, and a comma-separated
-// value is split when splitting is on and the key names a slice.
-func (d *bindData) bind(aliasTag string, out any, key, value string, enableSplitting, supportBracketNotation bool) error { //nolint:revive // mirrors formatBindData
-	if supportBracketNotation && strings.IndexByte(key, '[') >= 0 {
-		var err error
-		if key, err = parseParamSquareBrackets(key); err != nil {
-			return err
-		}
+// bind files value under key: a key in bracket notation is rewritten to dots
+// first when supportBracketNotation is set, and a comma-separated value is
+// split when splitting is on and the key names a slice.
+func (d *bindData) bind(aliasTag string, out any, key, value string, enableSplitting, supportBracketNotation bool) error { //nolint:revive // the flags are the binder's settings
+	key, err := bindKey(key, supportBracketNotation)
+	if err != nil {
+		return err
 	}
 	d.split(aliasTag, out, key, value, enableSplitting)
 	return nil
 }
 
 // bindAll is bind for several values of one key, rewriting the key once.
-func (d *bindData) bindAll(aliasTag string, out any, key string, values []string, enableSplitting, supportBracketNotation bool) error { //nolint:revive // mirrors formatBindData
-	if supportBracketNotation && strings.IndexByte(key, '[') >= 0 {
-		var err error
-		if key, err = parseParamSquareBrackets(key); err != nil {
-			return err
-		}
+func (d *bindData) bindAll(aliasTag string, out any, key string, values []string, enableSplitting, supportBracketNotation bool) error { //nolint:revive // the flags are the binder's settings
+	key, err := bindKey(key, supportBracketNotation)
+	if err != nil {
+		return err
 	}
 	for _, value := range values {
 		d.split(aliasTag, out, key, value, enableSplitting)
@@ -850,8 +815,8 @@ func (d *bindData) bindAll(aliasTag string, out any, key string, values []string
 }
 
 // split files value under key, split at its commas when splitting is on and
-// the key names a slice; see assignBindData.
-func (d *bindData) split(aliasTag string, out any, key, value string, enableSplitting bool) { //nolint:revive // mirrors assignBindData
+// the key names a slice of out's.
+func (d *bindData) split(aliasTag string, out any, key, value string, enableSplitting bool) { //nolint:revive // the flag is the binder's setting
 	if enableSplitting && strings.IndexByte(value, ',') >= 0 && equalFieldType(out, reflect.Slice, key, aliasTag) {
 		for v := range strings.SplitSeq(value, ",") {
 			d.add(key, v)
