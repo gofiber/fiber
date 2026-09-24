@@ -4038,6 +4038,13 @@ func Test_Route_PrefixFilter_Differential(t *testing.T) {
 	}
 }
 
+// newScanHead returns the scanHead a filtered bucket holds for r.
+func newScanHead(r *Route) scanHead {
+	var h scanHead
+	h.init(r)
+	return h
+}
+
 // routeFilterRejects mirrors what the scan loops apply before calling
 // Route.match: the leading-byte filter App.next, App.nextCustom and resolveSkip
 // test on a Route, and the scanHead routeScan.skip tests for a filtered bucket
