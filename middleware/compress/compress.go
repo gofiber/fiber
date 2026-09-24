@@ -22,7 +22,7 @@ func shouldSkip(c fiber.Ctx) bool {
 		status == fiber.StatusNotModified ||
 		status == fiber.StatusPartialContent ||
 		c.Get(fiber.HeaderRange) != "" ||
-		containsFoldAny(c.GetAll(fiber.HeaderCacheControl), "no-transform") ||
+		c.HasHeaderValue(fiber.HeaderCacheControl, "no-transform") ||
 		headerlist.ContainsFold(c.GetRespHeader(fiber.HeaderCacheControl), "no-transform") {
 		return true
 	}
@@ -208,16 +208,4 @@ func compressWith(c fiber.Ctx, compressor fasthttp.RequestHandler, encoding stri
 	for _, line := range saved {
 		header.AddBytesV(fiber.HeaderAcceptEncoding, line)
 	}
-}
-
-// containsFoldAny reports whether any of the header field lines in values
-// contains the directive value, matching case-insensitively. A request may
-// carry a directive on any of several repeated lines of the same field.
-func containsFoldAny(values []string, value string) bool {
-	for _, v := range values {
-		if headerlist.ContainsFold(v, value) {
-			return true
-		}
-	}
-	return false
 }

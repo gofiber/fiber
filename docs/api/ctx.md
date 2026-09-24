@@ -1620,6 +1620,26 @@ app.Get("/", func(c fiber.Ctx) error {
 })
 ```
 
+### HasHeaderValue
+
+Reports whether the request header `key` lists `value` as one of its comma-separated members, on any of its field lines. Repeated field lines are treated as one list ([RFC 9110 Section 5.3](https://www.rfc-editor.org/rfc/rfc9110#section-5.3)) and the member is matched case-insensitively, which fits directive-style headers such as `Cache-Control` or `Connection`. An empty `value` is never present.
+
+```go title="Signature"
+func (c fiber.Ctx) HasHeaderValue(key, value string) bool
+func (r fiber.Req) HasHeaderValue(key, value string) bool
+```
+
+```go title="Example"
+// Cache-Control: public, max-age=60
+// Cache-Control: no-transform
+app.Get("/", func(c fiber.Ctx) error {
+  c.HasHeaderValue(fiber.HeaderCacheControl, "no-transform") // true
+  c.HasHeaderValue(fiber.HeaderCacheControl, "PUBLIC")       // true
+  c.HasHeaderValue(fiber.HeaderCacheControl, "max-age")      // false
+  return nil
+})
+```
+
 ### Host
 
 Returns the host derived from the [Host](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Host) HTTP header.

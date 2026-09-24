@@ -311,6 +311,32 @@ func Test_Ctx_HeaderHelpers(t *testing.T) {
 	require.False(t, c.HasHeader("X-Trace-Id"))
 }
 
+// go test -run Test_Ctx_HasHeaderValue
+func Test_Ctx_HasHeaderValue(t *testing.T) {
+	t.Parallel()
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	t.Cleanup(func() { app.ReleaseCtx(c) })
+
+	c.Request().Header.Set(HeaderCacheControl, "public, max-age=60")
+	require.True(t, c.HasHeaderValue(HeaderCacheControl, "public"))
+	require.True(t, c.HasHeaderValue("cache-control", "PUBLIC"))
+	require.True(t, c.HasHeaderValue(HeaderCacheControl, "max-age=60"))
+	require.False(t, c.HasHeaderValue(HeaderCacheControl, "no-transform"))
+	require.False(t, c.HasHeaderValue(HeaderCacheControl, "max-age"))
+	require.False(t, c.HasHeaderValue(HeaderCacheControl, ""))
+	require.False(t, c.HasHeaderValue(HeaderConnection, "close"))
+
+	// A member on a later field line counts: repeated lines are one list
+	// (RFC 9110 Section 5.3).
+	c.Request().Header.Add(HeaderCacheControl, "no-transform")
+	require.True(t, c.HasHeaderValue(HeaderCacheControl, "no-transform"))
+	require.True(t, c.Req().HasHeaderValue(HeaderCacheControl, "public"))
+
+	c.Request().Header.Del(HeaderCacheControl)
+	require.False(t, c.HasHeaderValue(HeaderCacheControl, "public"))
+}
+
 // go test -run Test_Ctx_FullURL_DoesNotAliasPooledBuffer
 func Test_Ctx_FullURL_DoesNotAliasPooledBuffer(t *testing.T) {
 	t.Parallel()
@@ -10166,7 +10192,18 @@ func Benchmark_Ctx_Get_HeaderAbsent(b *testing.B) {
 	})
 }
 
-// go test -v -run=^$ -bench=Benchmark_Ctx_HasHeader -benchmem -count=4
+// go test -v -run=^$ -bench=Benchmark_Ctx_HasHeaderValue -benchmem -count=4
+func Benchmark_Ctx_HasHeaderValue(b *testing.B) {
+	benchHeaderReadModes(b, func(b *testing.B, c Ctx) {
+		b.Helper()
+		var ok bool
+		for b.Loop() {
+			ok = c.HasHeaderValue(HeaderConnection, "keep-alive")
+		}
+		require.True(b, ok)
+	})
+}
+
 func Benchmark_Ctx_HasHeader(b *testing.B) {
 	benchHeaderReadModes(b, func(b *testing.B, c Ctx) {
 		b.Helper()
