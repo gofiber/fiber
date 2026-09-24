@@ -12017,3 +12017,42 @@ func Test_Res_Set_CopiesArguments(t *testing.T) {
 	require.Equal(t, "first", c.Res().Get("X-Request-Id"))
 	require.Empty(t, c.Res().Get("X-Rewritten!"))
 }
+
+// Test_Ctx_PathSlashCount pins the slash count routing filters on: whether the
+// path's single pass counted it or pathSlashCount counts it later, it must be
+// the number of '/' in the detection path, under every configuration that
+// shapes that path and after trailing slashes are trimmed from it.
+// go test -race -run Test_Ctx_PathSlashCount
+func Test_Ctx_PathSlashCount(t *testing.T) {
+	t.Parallel()
+
+	paths := []string{
+		"/", "//", "///", "/a", "/a/", "/a//", "/A/B/c", "/a/b/c/", "/a/b/c///",
+		"/ab/cd/ef/gh/ij", "/abcdefgh/ijklmnop/", "/x%2Fy/", "/x%41/", "/./a/../b/", "/a/./b//",
+	}
+	for _, caseSensitive := range []bool{false, true} {
+		for _, strictRouting := range []bool{false, true} {
+			for _, unescape := range []bool{false, true} {
+				app := New(Config{CaseSensitive: caseSensitive, StrictRouting: strictRouting, UnescapePath: unescape})
+				// A parametric route is what makes pathSlashCount count at all.
+				app.Get("/:p", func(c Ctx) error { return c.Next() })
+				app.startupProcess()
+
+				for _, path := range paths {
+					fctx := &fasthttp.RequestCtx{}
+					fctx.Request.Header.SetMethod(MethodGet)
+					fctx.Request.SetRequestURI(path)
+					c, ok := app.AcquireCtx(fctx).(*DefaultCtx)
+					require.True(t, ok)
+
+					want := strings.Count(string(c.detectionPath), "/")
+					name := fmt.Sprintf("cs=%v/sr=%v/unescape=%v %q (detection %q)",
+						caseSensitive, strictRouting, unescape, path, c.detectionPath)
+					require.Contains(t, []int{0, want}, c.pathSlashes, "cached count: %s", name)
+					require.Equal(t, want, c.pathSlashCount(app), "count: %s", name)
+					app.ReleaseCtx(c)
+				}
+			}
+		}
+	}
+}

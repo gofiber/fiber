@@ -18,18 +18,18 @@ func (*QueryBinding) Name() string {
 // Bind parses the request query and returns the result.
 func (b *QueryBinding) Bind(reqCtx *fasthttp.Request, out any) error {
 	args := reqCtx.URI().QueryArgs()
-	data := acquireDataMap()
-	defer releaseDataMap(data)
+	data := acquireBindData(out, args.Len())
+	defer releaseBindData(data)
 
 	for key, val := range args.All() {
 		k := utils.UnsafeString(key)
 		v := utils.UnsafeString(val)
-		if err := formatBindData(b.Name(), out, data, k, v, b.EnableSplitting, true); err != nil {
+		if err := data.bind(b.Name(), out, k, v, b.EnableSplitting, true); err != nil {
 			return err
 		}
 	}
 
-	return parse(b.Name(), out, data)
+	return data.parse(b.Name(), out)
 }
 
 // Reset resets the QueryBinding binder.

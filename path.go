@@ -649,8 +649,8 @@ func (parser *routeParser) computeSlashBounds() {
 type constProbe struct {
 	word uint64 // the constant's leading bytes, packed little-endian
 	mask uint64 // covers the packed bytes; 0 means no probe
-	from int    // length of the leading constant, where the first parameter starts
-	skip int    // slashes to pass over after from before the constant's own
+	from int32  // length of the leading constant, where the first parameter starts
+	skip int32  // slashes to pass over after from before the constant's own
 }
 
 // computeProbe picks the first constant after a parameter that is longer than
@@ -697,7 +697,7 @@ func (parser *routeParser) computeProbe() {
 // newConstProbe packs the first word of c into a probe located by from and skip.
 func newConstProbe(c string, from, skip int) constProbe {
 	word, mask := packConst(c)
-	return constProbe{word: word, mask: mask, from: from, skip: skip}
+	return constProbe{word: word, mask: mask, from: int32(from), skip: int32(skip)} //nolint:gosec // G115 - offsets into a route pattern
 }
 
 // packConst packs up to a word of s like pathHeadWord and returns it with the
@@ -719,15 +719,24 @@ func packConst(s string) (word, mask uint64) {
 }
 
 // rejects reports whether the probe's constant is not at its slash in
-// detectionPath, or the path is too short to reach it. The slashes are found
-// with an inline swar.MatchByteMask scan rather than strings.IndexByte: a
-// parameter spans a few bytes, so the slash is nearly always in the first
-// word and the call was most of the check.
+// detectionPath, or the path is too short to reach it.
 func (p *constProbe) rejects(detectionPath string) bool {
+	w, ok := p.locate(detectionPath)
+	return !ok || w&p.mask != p.word
+}
+
+// locate returns the word of detectionPath at the probe's slash, packed like
+// pathHeadWord, or false when the path is too short to reach that slash. It
+// depends on from and skip alone, which is what lets probeMemo share one
+// search among the routes of a bucket that probe the same slash. The slashes
+// are found with an inline swar.MatchByteMask scan rather than
+// strings.IndexByte: a parameter spans a few bytes, so the slash is nearly
+// always in the first word and the call was most of the check.
+func (p *constProbe) locate(detectionPath string) (uint64, bool) {
 	n := len(detectionPath)
-	i := p.from
+	i := int(p.from)
 	if i > n {
-		return true
+		return 0, false
 	}
 	for skip := p.skip; ; skip-- {
 		var m uint64
@@ -743,7 +752,7 @@ func (p *constProbe) rejects(detectionPath string) bool {
 			from := n - swar.WordLen
 			m = swar.MatchByteMask(swar.Load8(detectionPath, from), slashDelimiter) & (^uint64(0) << (8 * (i - from)))
 			if m == 0 {
-				return true
+				return 0, false
 			}
 			i = from + swar.FirstLane(m)
 		default:
@@ -751,7 +760,7 @@ func (p *constProbe) rejects(detectionPath string) bool {
 				i++
 			}
 			if i == n {
-				return true
+				return 0, false
 			}
 		}
 		if skip == 0 {
@@ -760,13 +769,24 @@ func (p *constProbe) rejects(detectionPath string) bool {
 		i++
 	}
 	// common case inline; wordAt handles the end of the path
-	var w uint64
 	if i+swar.WordLen <= n {
-		w = swar.Load8(detectionPath, i)
-	} else {
-		w = wordAt(detectionPath, i)
+		return swar.Load8(detectionPath, i), true
 	}
-	return w&p.mask != p.word
+	return wordAt(detectionPath, i), true
+}
+
+// probeMemo shares constProbe.locate among the candidates of one route scan.
+// Routes that differ only after a parameter, as a REST resource's endpoints
+// do, probe the same slash, so the scan finds it once and each such candidate
+// costs a masked compare. The zero value is an empty memo.
+type probeMemo struct {
+	// key is the from and skip of the probe locate last ran for, packed by
+	// probeMemo.headRejects: two probes with equal keys locate the same word
+	// of any detection path. It is 0 when none has, since a probe's from is
+	// never 0 (see scanHead.setProbe).
+	key  uint64
+	word uint64 // what locate returned for that probe
+	ok   bool   // what locate returned for that probe
 }
 
 // wordAt packs s[i:i+8] little-endian without reading past s: lanes past the

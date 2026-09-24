@@ -818,7 +818,10 @@ func (c *DefaultCtx) configDependentPaths() {
 	// route sees it (see normalizeRequestPath). The detection path is what a
 	// route is matched against: the case fold of the path unless CaseSensitive
 	// is set. Most requests need no normalization, and under the default
-	// configuration both are then written in a single pass over the original.
+	// configuration both are then written in a single pass over the original,
+	// which counts the detection path's slashes on the way. Elsewhere the
+	// count stays 0, which pathSlashCount takes as not computed yet.
+	slashes, counted := 0, false
 	switch {
 	case c.pathNeedsNorm:
 		c.path = append(c.path[:0], c.pathOriginal...)
@@ -829,14 +832,20 @@ func (c *DefaultCtx) configDependentPaths() {
 			c.detectionPath = appendLowerASCII(c.detectionPath[:0], c.path)
 		}
 	case !c.app.config.CaseSensitive:
-		c.path, c.detectionPath = appendCopyLowerASCII(c.path, c.detectionPath, c.pathOriginal)
+		c.path, c.detectionPath, slashes = appendCopyLowerASCII(c.path, c.detectionPath, c.pathOriginal)
+		counted = true
 	default:
 		c.path = append(c.path[:0], c.pathOriginal...)
 		c.detectionPath = append(c.detectionPath[:0], c.path...)
 	}
 	// If StrictRouting is disabled, we strip all trailing slashes
 	if !c.app.config.StrictRouting && len(c.detectionPath) > 1 && c.detectionPath[len(c.detectionPath)-1] == '/' {
+		n := len(c.detectionPath)
 		c.detectionPath = utils.TrimRight(c.detectionPath, '/')
+		if counted {
+			// every byte trimmed was a '/' the count included
+			slashes -= n - len(c.detectionPath)
+		}
 	}
 
 	// Define the path for dividing routes into areas for fast tree detection, so that fewer routes need to be traversed,
@@ -848,9 +857,10 @@ func (c *DefaultCtx) configDependentPaths() {
 			int(c.detectionPath[2])
 	}
 
-	// Invalidate the cached slash count of the detection path; pathSlashCount
-	// recomputes it lazily when route matching first needs it.
-	c.pathSlashes = 0
+	// The slash count of the detection path, or 0 when it was not counted
+	// above, in which case pathSlashCount counts it when route matching first
+	// needs it.
+	c.pathSlashes = slashes
 	c.pathPrint = 0
 }
 
