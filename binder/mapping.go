@@ -222,8 +222,9 @@ func parseToMap(target reflect.Value, data map[string][]string) error {
 			return ErrMapNotConvertible
 		}
 
-		// The value slices are the caller's to keep: the binders only carve
-		// them from their pooled arena for other destinations (see bindData).
+		// The value slices are the caller's to keep: the binders append them
+		// as any slice is appended, and drop them from their pooled map on
+		// release (see bindData).
 		maps.Copy(newMap, data)
 	case reflect.String:
 		newMap, ok := target.Interface().(map[string]string)
@@ -754,13 +755,12 @@ func assignBindData(aliasTag string, out any, data map[string][]string, key, val
 // the key/value pairs in the order read, a map[string]string gets the last
 // value of each key, and any other map gets the source map parseToMap copies.
 type bindData struct {
-	// values is the source map, for a map destination
+	// values is the source map, for a map destination other than a
+	// map[string]string, and for a multipart form
 	values map[string][]string
 	// last is the last value filed under each key, for a map[string]string
 	// destination
 	last map[string]string
-	// arena backs the value slices of values unless mode is bindOwnedMap
-	arena valueArena
 	// keys and pairValues are the pairs, for a struct destination
 	keys, pairValues []string
 	mode             bindMode
@@ -773,12 +773,9 @@ const (
 	// bindPairs keeps key/value pairs for schema.Decoder.DecodeValues, which
 	// groups them itself: nothing has to build or hash a map.
 	bindPairs bindMode = iota
-	// bindMap keeps a map whose value slices are carved from the arena.
+	// bindMap keeps a map of the values filed under each key, appended as
+	// any slice is: a map of slices keeps those slices (see parseToMap).
 	bindMap
-	// bindOwnedMap keeps a map whose value slices are appended as the
-	// destination's own, since a map of slices keeps the slices themselves
-	// (see parseToMap) and the arena's are only valid until release.
-	bindOwnedMap
 	// bindLast keeps the last value filed under each key, which is all
 	// parseToMap puts in a map[string]string: its other values need no
 	// slice to be kept in.
@@ -791,7 +788,7 @@ const (
 func bindModeFor(out any) bindMode {
 	switch out.(type) {
 	case *map[string][]string, map[string][]string:
-		return bindOwnedMap
+		return bindMap
 	case *map[string]string, map[string]string:
 		return bindLast
 	}
@@ -804,9 +801,6 @@ func bindModeFor(out any) bindMode {
 	}
 	if t.Kind() != reflect.Map || t.Key().Kind() != reflect.String {
 		return bindPairs
-	}
-	if t.Elem().Kind() == reflect.Slice {
-		return bindOwnedMap
 	}
 	return bindMap
 }
@@ -873,57 +867,9 @@ func (d *bindData) add(key, value string) {
 	case bindPairs:
 		d.keys = append(d.keys, key)
 		d.pairValues = append(d.pairValues, value)
-	case bindMap:
-		d.values[key] = d.arena.add(d.values[key], value)
 	case bindLast:
 		d.last[key] = value
 	default:
 		d.values[key] = append(d.values[key], value)
 	}
-}
-
-// minArenaCap is the capacity an arena's first backing array starts with.
-const minArenaCap = 16
-
-// valueArena hands out the value slices of a bind's source map from shared
-// backing arrays. Each slice it hands out of one is capped at its length, so
-// an append by anyone else copies rather than writing into a neighbor.
-type valueArena struct {
-	buf []string
-}
-
-// add returns vals, which is nil or a slice add returned earlier, with v
-// appended. A key's first value takes the next slot of the arena, and the
-// slice at the arena's end grows in place, which is where the values of a key
-// filed several times in a row stay. When the backing array is full the arena
-// moves on to a fresh one, twice as large, and the slices it handed out keep
-// the old one.
-//
-// A key filed again once another key has followed it leaves the arena for a
-// slice of its own, which append grows as it grows any slice. Copying such a
-// key's values to the arena's end instead would copy all of them on each new
-// one, and keys that alternate, as a request can make them, would cost time
-// and memory quadratic in the number of pairs.
-func (a *valueArena) add(vals []string, v string) []string {
-	n, k := len(a.buf), len(vals)
-	if k == 0 {
-		if n == cap(a.buf) {
-			a.buf = make([]string, 0, max(2*cap(a.buf), minArenaCap))
-			n = 0
-		}
-		a.buf = append(a.buf, v)
-		return a.buf[n : n+1 : n+1]
-	}
-	if n < cap(a.buf) && n >= k && &a.buf[n-1] == &vals[k-1] {
-		a.buf = append(a.buf, v)
-		return a.buf[n-k : n+1 : n+1]
-	}
-	return append(vals, v)
-}
-
-// reset readies the arena for another bind, dropping the strings it holds so
-// they do not keep request memory alive while it sits in the pool.
-func (a *valueArena) reset() {
-	clear(a.buf)
-	a.buf = a.buf[:0]
 }

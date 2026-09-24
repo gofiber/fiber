@@ -943,48 +943,11 @@ func Test_CollectPromoted_MutualEmbedding(t *testing.T) {
 	require.False(t, equalFieldType(&out, reflect.Bool, "names", "query"))
 }
 
-// Test_valueArena_Add pins the arena against the plain appends it stands in
-// for: keys filed interleaved, in runs and past the first backing array must
-// end up with exactly the values appended to them, in order, and a slice it
-// hands out must not reach into a neighbor when someone else appends to it.
-func Test_valueArena_Add(t *testing.T) {
-	t.Parallel()
-
-	keys := []string{"a", "b", "a", "c", "a", "a", "b", "d"}
-	for _, rounds := range []int{1, 3, 20} {
-		data := &bindData{values: make(map[string][]string), mode: bindMap}
-		want := make(map[string][]string)
-		for r := range rounds {
-			for i, key := range keys {
-				value := key + strconv.Itoa(r) + "-" + strconv.Itoa(i)
-				data.add(key, value)
-				want[key] = append(want[key], value)
-			}
-		}
-		require.Equal(t, want, data.values, "rounds %d", rounds)
-
-		// An append past a handed-out slice leaves every other key's values
-		// intact: it copies out of the arena, or writes past the end of a
-		// slice no other key shares.
-		for key := range data.values {
-			grown := append(data.values[key], "x") //nolint:gocritic // appendAssign: what it writes over is the point
-			require.Equal(t, "x", grown[len(grown)-1])
-			require.Equal(t, want, data.values, "rounds %d: an outside append to %q leaked into another key", rounds, key)
-		}
-
-		data.arena.reset()
-		require.Empty(t, data.arena.buf)
-		for _, s := range data.arena.buf[:cap(data.arena.buf)] {
-			require.Empty(t, s, "reset must drop the strings it held")
-		}
-	}
-}
-
-// Test_valueArena_AlternatingKeys pins that keys whose values alternate cost
-// time and memory linear in the number of pairs. Copying a key's values to
-// the arena's end whenever another key had followed it grew the arena of a
+// Test_BindData_AlternatingKeys pins that keys whose values alternate cost
+// time and memory linear in the number of pairs. An arena that copied a key's
+// values to its end whenever another key had followed it once grew for a
 // 5,000-pair body of two alternating keys to over four million slots.
-func Test_valueArena_AlternatingKeys(t *testing.T) {
+func Test_BindData_AlternatingKeys(t *testing.T) {
 	t.Parallel()
 
 	const pairs = 5000
@@ -997,24 +960,23 @@ func Test_valueArena_AlternatingKeys(t *testing.T) {
 		want[key] = append(want[key], value)
 	}
 	require.Equal(t, want, data.values)
-	// The arena keeps the first values of each key, and each key's slice of
-	// its own grows as append grows any slice.
-	require.LessOrEqual(t, cap(data.arena.buf), minArenaCap)
+	// Each key's values grow as append grows any slice.
 	for key, values := range data.values {
 		require.LessOrEqual(t, cap(values), 2*len(values), "values of %q", key)
 	}
 }
 
 // Test_Bind_MapOfSlices_OwnsValues pins that a map-of-slices destination,
-// which keeps the value slices it is given, never gets the pooled arena's:
-// a later bind reusing the pool must leave its values as they were bound.
+// which keeps the value slices it is given, gets slices of its own: a later
+// bind reusing the pool must leave its values as they were bound.
 func Test_Bind_MapOfSlices_OwnsValues(t *testing.T) {
 	t.Parallel()
 
-	require.Equal(t, bindOwnedMap, bindModeFor(&map[string][]string{}))
-	require.Equal(t, bindOwnedMap, bindModeFor(map[string][]string{}))
+	require.Equal(t, bindMap, bindModeFor(&map[string][]string{}))
+	require.Equal(t, bindMap, bindModeFor(map[string][]string{}))
 	type named map[string][]string
-	require.Equal(t, bindOwnedMap, bindModeFor(&named{}))
+	require.Equal(t, bindMap, bindModeFor(&named{}))
+	require.Equal(t, bindMap, bindModeFor(&map[string]any{}))
 	require.Equal(t, bindLast, bindModeFor(&map[string]string{}))
 	require.Equal(t, bindLast, bindModeFor(map[string]string{}))
 	type namedStrings map[string]string

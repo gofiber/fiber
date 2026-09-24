@@ -121,7 +121,6 @@ func Test_ReleaseBindData(t *testing.T) {
 
 	reused := acquireBindDataMode(bindMap)
 	require.Empty(t, reused.values)
-	require.Empty(t, reused.arena.buf)
 	releaseBindData(reused)
 
 	pairs := acquireBindDataMode(bindPairs)
@@ -163,7 +162,7 @@ func Test_AcquireBindData_ReservesPairs(t *testing.T) {
 	type Demo struct {
 		Name string `form:"name"`
 	}
-	const n = 4 * maxPoolableArenaSize
+	const n = 4 * maxPoolablePairs
 	pairs := acquireBindData(&Demo{}, n)
 	require.Equal(t, bindPairs, pairs.mode)
 	require.GreaterOrEqual(t, cap(pairs.keys), n)

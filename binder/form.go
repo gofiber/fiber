@@ -24,11 +24,11 @@ var (
 	}
 )
 
-// Keep oversized maps and arenas out of the pool so a rare large bind doesn't
-// get retained and reused across subsequent requests.
+// Keep oversized maps and pair slices out of the pool so a rare large bind
+// doesn't get retained and reused across subsequent requests.
 const (
 	maxPoolableDataMapSize = 256
-	maxPoolableArenaSize   = 1024
+	maxPoolablePairs       = 1024
 )
 
 // FormBinding is the form binder for form request body.
@@ -148,7 +148,7 @@ func acquireBindDataMode(mode bindMode) *bindData {
 
 func releaseBindData(d *bindData) {
 	if len(d.values) > maxPoolableDataMapSize || len(d.last) > maxPoolableDataMapSize ||
-		cap(d.arena.buf) > maxPoolableArenaSize || cap(d.keys) > maxPoolableArenaSize {
+		cap(d.keys) > maxPoolablePairs {
 		return
 	}
 
@@ -165,7 +165,6 @@ func (d *bindData) reset() {
 	if len(d.last) > 0 {
 		clear(d.last)
 	}
-	d.arena.reset()
 	clear(d.keys)
 	clear(d.pairValues)
 	d.keys, d.pairValues = d.keys[:0], d.pairValues[:0]
