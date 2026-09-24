@@ -1919,6 +1919,63 @@ func Benchmark_Router_Chain(b *testing.B) {
 	}
 }
 
+// Benchmark_Router_Chain_FilteredBucket runs middleware chains in front of an
+// endpoint whose bucket holds enough routes to carry a filter, so each hop
+// scans a filtered bucket from the middleware it left:
+//   - use: eight middlewares registered between routes of other buckets,
+//     which keeps them from merging into one route, so that each hop takes
+//     its first candidate
+//   - use_interleaved: the same with the routes in the middlewares' bucket,
+//     so that each hop steps over one
+//   - group: a global middleware, then two nested groups' middlewares
+//
+// go test -run=^$ -bench=Benchmark_Router_Chain_FilteredBucket -benchmem -count=4
+func Benchmark_Router_Chain_FilteredBucket(b *testing.B) {
+	handler := func(Ctx) error { return nil }
+	mw := func(c Ctx) error { return c.Next() }
+	for _, bench := range []struct {
+		register func(app *App)
+		name     string
+	}{
+		{name: "use", register: func(app *App) {
+			for i := range 8 {
+				app.Use("/api", mw)
+				app.Get("/web/r"+strconv.Itoa(i), handler)
+			}
+			app.Get("/api/v1/users", handler)
+		}},
+		{name: "use_interleaved", register: func(app *App) {
+			for i := range 8 {
+				app.Use("/api", mw)
+				app.Get("/api/v1/r"+strconv.Itoa(i), handler)
+			}
+			app.Get("/api/v1/users", handler)
+		}},
+		{name: "group", register: func(app *App) {
+			app.Use(mw)
+			v1 := app.Group("/api", mw).Group("/v1", mw)
+			for i := range 8 {
+				v1.Get("/r"+strconv.Itoa(i), handler)
+			}
+			v1.Get("/users", handler)
+		}},
+	} {
+		b.Run(bench.name, func(b *testing.B) {
+			app := New()
+			bench.register(app)
+			appHandler := app.Handler()
+			c := &fasthttp.RequestCtx{}
+			c.Request.Header.SetMethod(MethodGet)
+			c.URI().SetPath("/api/v1/users")
+			appHandler(c)
+			require.Equal(b, StatusOK, c.Response.StatusCode())
+			for b.Loop() {
+				appHandler(c)
+			}
+		})
+	}
+}
+
 // go test -v ./... -run=^$ -bench=Benchmark_Router_WithCompression -benchmem -count=4
 func Benchmark_Router_WithCompression(b *testing.B) {
 	app := New()

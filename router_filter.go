@@ -206,9 +206,9 @@ func (h *scanHead) rejects(head, head2 uint64, slash uint32) bool {
 }
 
 // routeScan is the request's side of a scan through filtered buckets: what
-// their filters compare against. A scan sets it up when it first meets a
-// filtered bucket, and skip then walks such a bucket to the next route the
-// filter lets through.
+// their filters compare against. A scan sets it up when it first has to walk
+// a filtered bucket past a candidate, and skip then walks such a bucket to
+// the next route the filter lets through.
 type routeScan struct {
 	detectionPath string
 	// head and head2 are the path's first two words, packed by pathHeadWord
@@ -227,8 +227,13 @@ type routeScan struct {
 func (s *routeScan) init(detectionPath string, head uint64, pathSlashes int) {
 	s.detectionPath = detectionPath
 	s.head = head
-	if len(detectionPath) > swar.WordLen {
-		s.head2 = pathHeadWord(detectionPath[swar.WordLen:])
+	if n := len(detectionPath); n > swar.WordLen {
+		// The second word as pathHeadWord packs it: a path under two words
+		// is loaded from its end, overlapping the first word, and shifted
+		// down so that its byte 8 lands in lane 0 and the lanes past its end
+		// are zero: one load in place of a byte loop or a call.
+		off := min(n, 2*swar.WordLen) - swar.WordLen
+		s.head2 = swar.Load8(detectionPath, off) >> (8 * (swar.WordLen - off))
 	}
 	s.slash = slashBit(pathSlashes)
 }

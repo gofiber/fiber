@@ -574,23 +574,30 @@ func (app *App) next(c *DefaultCtx) (bool, error) {
 	// and the probe before the route is loaded, so match is then told the
 	// count is unknown, which stands its own copies of those filters down.
 	// The scan is only set up for one: a small app routes a few ns faster
-	// without it on the stack.
+	// without it on the stack. Its first candidate is tested as an unfiltered
+	// bucket's are, and the scan is initialized only once the loop moves past
+	// it, since a hop that its next route takes, as each hop of a middleware
+	// chain does, gains nothing from the filter.
 	var scan *routeScan
-	matchSlashes := pathSlashes
+	scanReady := false
 	if filter != nil {
 		scan = &routeScan{}
-		scan.init(detectionPath, head, pathSlashes)
-		matchSlashes = 0
 	}
 
 	// Loop over the route stack starting from previous index
 	for ; indexRoute < len(tree); indexRoute++ {
 		// Rule routes out before loading them where the bucket has a filter,
 		// else on the leading path bytes before touching the rest of the route
-		if filter != nil {
+		matchSlashes := pathSlashes
+		if scan != nil && indexRoute > start {
+			if !scanReady {
+				scan.init(detectionPath, head, pathSlashes)
+				scanReady = true
+			}
 			if indexRoute = scan.skip(filter, indexRoute, start, &c.pathPrint); indexRoute >= len(tree) {
 				break
 			}
+			matchSlashes = 0
 		} else if tree[indexRoute].prefixRejects(head) {
 			continue
 		}
@@ -680,7 +687,10 @@ func (app *App) next(c *DefaultCtx) (bool, error) {
 			// A filtered bucket is walked as the scan above walks one
 			if scan == nil {
 				scan = &lateScan
+			}
+			if !scanReady {
 				scan.init(detectionPath, head, pathSlashes)
+				scanReady = true
 			}
 			var found bool
 			if indexRoute, found = scan.endpoint(tree, filter, path, &c.values, &c.pathPrint); found {
@@ -740,22 +750,26 @@ func (app *App) nextCustom(c CustomCtx) (bool, error) {
 	// As in next; a custom context has nowhere to keep the path's fingerprint
 	// across calls, so pathPrint only lasts this one.
 	var scan *routeScan
+	scanReady := false
 	var pathPrint uint64
-	matchSlashes := pathSlashes
 	if filter != nil {
 		scan = &routeScan{}
-		scan.init(detectionPath, head, pathSlashes)
-		matchSlashes = 0
 	}
 
 	// Loop over the route stack starting from previous index
 	for ; indexRoute < len(tree); indexRoute++ {
 		// Rule routes out before loading them where the bucket has a filter,
 		// else on the leading path bytes before touching the rest of the route
-		if filter != nil {
+		matchSlashes := pathSlashes
+		if scan != nil && indexRoute > start {
+			if !scanReady {
+				scan.init(detectionPath, head, pathSlashes)
+				scanReady = true
+			}
 			if indexRoute = scan.skip(filter, indexRoute, start, &pathPrint); indexRoute >= len(tree) {
 				break
 			}
+			matchSlashes = 0
 		} else if tree[indexRoute].prefixRejects(head) {
 			continue
 		}
@@ -842,7 +856,10 @@ func (app *App) nextCustom(c CustomCtx) (bool, error) {
 			// A filtered bucket is walked as the scan above walks one
 			if scan == nil {
 				scan = &lateScan
+			}
+			if !scanReady {
 				scan.init(detectionPath, head, pathSlashes)
+				scanReady = true
 			}
 			var found bool
 			if indexRoute, found = scan.endpoint(tree, filter, path, values, &pathPrint); found {
