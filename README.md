@@ -143,10 +143,10 @@ These tests are performed by [TechEmpower](https://www.techempower.com/benchmark
 - [Middleware](https://docs.gofiber.io/category/-middleware) & [Next](https://docs.gofiber.io/api/ctx#next) support
 - [Rapid](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497) server-side programming
 - [Template Engines](https://github.com/gofiber/template)
-- [WebSocket Support](https://github.com/gofiber/contrib/tree/main/websocket)
-- [Socket.io Support](https://github.com/gofiber/contrib/tree/main/socketio)
-- [Server-Sent Events](https://github.com/gofiber/recipes/tree/master/sse)
-- [Rate Limiter](https://docs.gofiber.io/api/middleware/limiter)
+- [WebSocket Support](https://docs.gofiber.io/contrib/websocket)
+- [Socket.io Support](https://docs.gofiber.io/contrib/socketio)
+- [Server-Sent Events](https://docs.gofiber.io/middleware/sse)
+- [Rate Limiter](https://docs.gofiber.io/middleware/limiter)
 - And much more, [explore Fiber](https://docs.gofiber.io/)
 
 ## 💡 Philosophy
@@ -160,7 +160,7 @@ We **listen** to our users in [issues](https://github.com/gofiber/fiber/issues),
 ## ⚠️ Limitations
 
 - Due to Fiber's usage of unsafe, the library may not always be compatible with the latest Go version. Fiber v3 has been tested with Go version 1.26 or higher.
-- Fiber automatically adapts common `net/http` handler shapes when you register them on the router, and you can still use the [adaptor middleware](https://docs.gofiber.io/next/middleware/adaptor/) when you need to bridge entire apps or `net/http` middleware.
+- Fiber automatically adapts common `net/http` handler shapes when you register them on the router, and you can still use the [adaptor middleware](https://docs.gofiber.io/middleware/adaptor/) when you need to bridge entire apps or `net/http` middleware.
 
 ### net/http compatibility
 
@@ -191,7 +191,7 @@ func main() {
 }
 ```
 
-When you need to convert entire applications or reuse `net/http` middleware chains, rely on the [adaptor middleware](https://docs.gofiber.io/next/middleware/adaptor/). It converts handlers and middlewares in both directions and even lets you mount a Fiber app in a `net/http` server.
+When you need to convert entire applications or reuse `net/http` middleware chains, rely on the [adaptor middleware](https://docs.gofiber.io/middleware/adaptor/). It converts handlers and middlewares in both directions and even lets you mount a Fiber app in a `net/http` server.
 
 ### Express-style handlers
 
@@ -468,7 +468,7 @@ func main() {
 
 ### Middleware Logger
 
-📖 [Logger](https://docs.gofiber.io/api/middleware/logger)
+📖 [Logger](https://docs.gofiber.io/middleware/logger)
 
 ```go title="Example"
 package main
@@ -497,7 +497,7 @@ func main() {
 
 ### Cross-Origin Resource Sharing (CORS)
 
-📖 [CORS](https://docs.gofiber.io/api/middleware/cors)
+📖 [CORS](https://docs.gofiber.io/middleware/cors)
 
 ```go title="Example"
 package main
@@ -608,7 +608,7 @@ func main() {
 
 ### WebSocket Upgrade
 
-📖 [Websocket](https://github.com/gofiber/websocket)
+📖 [Websocket](https://docs.gofiber.io/contrib/websocket)
 
 ```go title="Example"
 package main
@@ -698,7 +698,7 @@ func main() {
 
 ### Recover Middleware
 
-📖 [Recover](https://docs.gofiber.io/api/middleware/recover)
+📖 [Recover](https://docs.gofiber.io/middleware/recover)
 
 ```go title="Example"
 package main
