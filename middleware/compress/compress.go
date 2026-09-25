@@ -22,7 +22,7 @@ func shouldSkip(c fiber.Ctx) bool {
 		status == fiber.StatusNotModified ||
 		status == fiber.StatusPartialContent ||
 		c.Get(fiber.HeaderRange) != "" ||
-		headerlist.ContainsFold(c.Get(fiber.HeaderCacheControl), "no-transform") ||
+		c.HasHeaderValue(fiber.HeaderCacheControl, "no-transform") ||
 		headerlist.ContainsFold(c.GetRespHeader(fiber.HeaderCacheControl), "no-transform") {
 		return true
 	}
@@ -112,7 +112,9 @@ func New(config ...Config) fiber.Handler {
 		}
 
 		// Negotiate with weights, wildcards and lists honored (RFC 9110 §12.5.3).
-		encoding := negotiateEncoding(c.Get(fiber.HeaderAcceptEncoding))
+		// A request may carry several Accept-Encoding field lines; RFC 9110 §5.3
+		// treats them as one comma-separated list, which AcceptEncoding joins.
+		encoding := negotiateEncoding(c.AcceptEncoding())
 		if encoding == "" {
 			appendVaryAcceptEncoding(c)
 			return nil

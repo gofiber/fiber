@@ -1048,3 +1048,59 @@ func Test_Compress_RequestHeaderUntouched(t *testing.T) {
 	require.Equal(t, "gzip", resp.Header.Get(fiber.HeaderContentEncoding))
 	require.Equal(t, "br;q=0.5, gzip;q=1", <-seen, "the client's header must survive negotiation")
 }
+
+// go test -run Test_Compress_Repeated_Accept_Encoding_Lines
+func Test_Compress_Repeated_Accept_Encoding_Lines(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+
+	app.Use(New())
+
+	app.Get("/", func(c fiber.Ctx) error {
+		c.Set(fiber.HeaderContentType, fiber.MIMETextPlainCharsetUTF8)
+		return c.Send(filedata)
+	})
+
+	// RFC 9110 §5.3: repeated field lines are one comma-separated list, so an
+	// encoding on the second line must be negotiated like one on the first.
+	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+	req.Header.Add("Accept-Encoding", "identity")
+	req.Header.Add("Accept-Encoding", "gzip")
+
+	resp, err := app.Test(req, testConfig)
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, 200, resp.StatusCode, "Status code")
+	require.Equal(t, "gzip", resp.Header.Get(fiber.HeaderContentEncoding))
+
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Less(t, len(body), len(filedata))
+}
+
+// go test -run Test_Compress_Repeated_Cache_Control_Lines_No_Transform
+func Test_Compress_Repeated_Cache_Control_Lines_No_Transform(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+
+	app.Use(New())
+
+	app.Get("/", func(c fiber.Ctx) error {
+		c.Set(fiber.HeaderContentType, fiber.MIMETextPlainCharsetUTF8)
+		return c.Send(filedata)
+	})
+
+	// no-transform on a second Cache-Control line must still be honored.
+	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+	req.Header.Set("Accept-Encoding", "gzip")
+	req.Header.Add("Cache-Control", "public")
+	req.Header.Add("Cache-Control", "no-transform")
+
+	resp, err := app.Test(req, testConfig)
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, 200, resp.StatusCode, "Status code")
+	require.Empty(t, resp.Header.Get(fiber.HeaderContentEncoding))
+
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Len(t, body, len(filedata))
+}

@@ -335,6 +335,12 @@ type Ctx interface {
 	// The field name matches case-insensitively (RFC 9110 Section 5.1), so this
 	// agrees with GetAll on whether the field is there.
 	HasHeader(key string) bool
+	// HasHeaderValue reports whether the request header key lists value as one of
+	// its comma-separated members, on any of its field lines. Repeated field lines
+	// are one list (RFC 9110 Section 5.3) and the member matches under ASCII case
+	// folding, so it fits directive-style headers such as Cache-Control or
+	// Connection. An empty value is never present. Only valid within the handler.
+	HasHeaderValue(key, value string) bool
 	// MediaType returns the MIME type from the Content-Type header without parameters.
 	MediaType() string
 	// Charset returns the charset parameter from the Content-Type header.
@@ -577,6 +583,8 @@ type Ctx interface {
 	// If the header is not already set, it creates the header with the specified value.
 	// Empty values are skipped: a sender must not generate empty list elements
 	// (RFC 9110 Section 5.6.1.2).
+	// Members are compared byte-exactly, because some lists (Link, Cache-Control)
+	// are not all field names. For Vary field names, use Vary, which folds case.
 	Append(field string, values ...string)
 	// Add appends the value as a new field line, where Append folds values into one
 	// comma-separated line. The headers fasthttp keeps in a slot of their own are
@@ -725,6 +733,7 @@ type Ctx interface {
 	Type(extension string, charset ...string) Ctx
 	// Vary adds the given header field to the Vary response header.
 	// This will append the header, if not already listed; otherwise, leaves it listed in the current location.
+	// Field names are compared case-insensitively (RFC 9110 Section 5.1); the first spelling is kept.
 	// Per RFC 9110 Section 12.5.5 the wildcard "*" only has meaning as the sole member of the field:
 	// once "*" is added (or already present), the header is collapsed to a single "*".
 	Vary(fields ...string)
