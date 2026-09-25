@@ -6,6 +6,7 @@ package fiber
 
 import (
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
@@ -1346,6 +1347,79 @@ func Test_RoutePatternMatch_MatchesRouter(t *testing.T) {
 					require.Equal(t, matched, RoutePatternMatch(path, pattern, cfg),
 						"pattern=%q path=%q", pattern, path)
 				}
+			}
+		})
+	}
+}
+
+// Registration, mounting, removal and the standalone matcher must agree on
+// patterns while preserving the case of parameter names and regex arguments.
+func Test_RoutePatternNormalization_RegistrationMountAndRemoval(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		pattern string
+		path    string
+		param   string
+	}{
+		{pattern: "Users/", path: "/Users/"},
+		{pattern: "/Users/:UserID<regex(^[A-Z]+$)>/", path: "/Users/ABC/", param: "ABC"},
+		{pattern: `/Literal/\*/`, path: "/Literal/*/"},
+		{pattern: `/Literal/\:id/`, path: "/Literal/:id/"},
+		{pattern: "/File%20Name/", path: "/File%20Name/"},
+	}
+	configs := []Config{
+		{},
+		{CaseSensitive: true},
+		{StrictRouting: true},
+		{CaseSensitive: true, StrictRouting: true},
+	}
+	for _, cfg := range configs {
+		t.Run(fmt.Sprintf("case=%v/strict=%v", cfg.CaseSensitive, cfg.StrictRouting), func(t *testing.T) {
+			t.Parallel()
+			for _, tc := range tests {
+				t.Run(tc.pattern, func(t *testing.T) {
+					t.Parallel()
+					for _, prefix := range []string{"", "/API"} {
+						t.Run("prefix="+prefix, func(t *testing.T) {
+							t.Parallel()
+							app := New(cfg)
+							target := app
+							if prefix != "" {
+								target = New(cfg)
+								app.Use(prefix, target)
+							}
+							target.Get(tc.pattern, func(c Ctx) error {
+								return c.SendString(c.Params("UserID", "literal"))
+							})
+
+							pattern := tc.pattern
+							if prefix != "" {
+								pattern = prefix + "/" + strings.TrimPrefix(pattern, "/")
+							}
+							path := prefix + tc.path
+							require.True(t, RoutePatternMatch(path, pattern, cfg))
+							resp, err := app.Test(httptest.NewRequest(MethodGet, path, http.NoBody))
+							require.NoError(t, err)
+							require.Equal(t, StatusOK, resp.StatusCode)
+							body, err := io.ReadAll(resp.Body)
+							require.NoError(t, err)
+							require.NoError(t, resp.Body.Close())
+							want := tc.param
+							if want == "" {
+								want = "literal"
+							}
+							require.Equal(t, want, string(body))
+
+							app.RemoveRoute(pattern, MethodGet)
+							app.RebuildTree()
+							resp, err = app.Test(httptest.NewRequest(MethodGet, path, http.NoBody))
+							require.NoError(t, err)
+							require.Equal(t, StatusNotFound, resp.StatusCode)
+							require.NoError(t, resp.Body.Close())
+						})
+					}
+				})
 			}
 		})
 	}
