@@ -333,9 +333,14 @@ asked for. [`Route.URL`](./app.md#getroute) and
 input, so it does not matter which one puts it in a `Location` header or an
 `href`.
 
-The values themselves are still written into the path as given. Where they come
-from the request, escape them with [`url.PathEscape`](https://pkg.go.dev/net/url#PathEscape)
-if the route expects one segment per parameter.
+Parameter values are automatically escaped with the RFC 3986 path-segment set (pchar),
+so values should be passed unescaped. Greedy parameters keep `/` so their value can span
+multiple segments.
+Values that would create dot-only path segments (`.` or `..`) return
+`ErrRouteNotRepresentable` because a browser would normalize them to another path.
+With `UnescapePath: true`, parameters whose pattern consumes a single segment also
+return this error for values containing `/`: decoding happens before route matching,
+so `%2F` cannot preserve that segment. Patterns that can consume `/` still accept it.
 :::
 
 ### Hijack

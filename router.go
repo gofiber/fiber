@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"math/bits"
 	"slices"
+	"strings"
 	"sync/atomic"
 
 	"github.com/gofiber/fiber/v3/internal/urlnorm"
@@ -104,6 +105,7 @@ type Route struct { // betteralign:ignore - see below
 	root          bool // Path equals '/'
 	autoHead      bool // Automatically generated HEAD route
 	caseSensitive bool // Whether parameter matching is case-sensitive
+	unescapePath  bool // Whether the request path is decoded before matching
 
 	routeParser routeParser // Parameter parser
 
@@ -301,6 +303,9 @@ func buildRouteURL(route *Route, params Map) (string, error) {
 	}
 
 	if len(route.routeParser.segs) == 0 {
+		if !routeURLRepresentable(route.Path) {
+			return "", ErrRouteNotRepresentable
+		}
 		return urlnorm.RootedPath(route.Path), nil
 	}
 
@@ -348,14 +353,109 @@ func buildRouteURL(route *Route, params Map) (string, error) {
 		}
 
 		if found {
-			_, err := buf.WriteString(utils.ToString(val))
-			if err != nil {
-				return "", fmt.Errorf("failed to write string: %w", err)
+			// A substituted parameter is user data, so it is escaped as a path
+			// segment: spliced in raw, a "?", "#" or "%" in the value would
+			// restructure the composed URL, and a "/" in a plain parameter would
+			// add route segments. Preserve slashes only for matcher branches
+			// that can consume them, including adjacent parameters and a
+			// single-byte non-slash terminator (see findParamLen).
+			mode := escapePathParamSegment
+			if segment.IsGreedy || (!segment.IsLast && (segment.Length == 1 ||
+				(len(segment.ComparePart) == 1 && segment.ComparePart[0] != slashDelimiter))) {
+				mode = escapePathParamGreedy
+			}
+			value := utils.ToString(val)
+			// UnescapePath decodes %2F before routing, so escaping cannot keep
+			// a slash inside an ordinary single-segment parameter.
+			if route.unescapePath && mode == escapePathParamSegment && strings.Contains(value, "/") {
+				return "", ErrRouteNotRepresentable
+			}
+			buf.B = appendEscapedPathParam(buf.B, value, mode)
+		}
+	}
+
+	path := buf.String()
+	if !routeURLRepresentable(path) {
+		return "", ErrRouteNotRepresentable
+	}
+	return urlnorm.RootedPath(path), nil
+}
+
+// routeURLRepresentable reports whether path avoids dot-only segments that a
+// browser would normalize, including encoded dots.
+// Validate after adjoining constants: ":name.txt" with name="." is safe,
+// whereas ":name." with name="." or name="" is not.
+func routeURLRepresentable(path string) bool {
+	for segment := range strings.SplitSeq(path, "/") {
+		switch len(segment) {
+		case 1, 2:
+			if segment == "." || segment == ".." {
+				return false
+			}
+		case 3:
+			if utils.EqualFold(segment, "%2e") {
+				return false
+			}
+		case 4:
+			if utils.EqualFold(segment, ".%2e") || utils.EqualFold(segment, "%2e.") {
+				return false
+			}
+		case 6:
+			if utils.EqualFold(segment, "%2e%2e") {
+				return false
 			}
 		}
 	}
 
-	return urlnorm.RootedPath(buf.String()), nil
+	return true
+}
+
+// pathParamEscapeMode selects the escape set a substituted route parameter
+// value is produced with.
+type pathParamEscapeMode uint8
+
+const (
+	// escapePathParamSegment escapes slashes: a plain parameter is a single
+	// path segment.
+	escapePathParamSegment pathParamEscapeMode = iota
+	// escapePathParamGreedy keeps slashes for parameters whose matcher can
+	// consume them, including wildcard and plus parameters.
+	escapePathParamGreedy
+)
+
+// appendEscapedPathParam appends src to dst with every byte that may not
+// appear raw in a URL path segment percent-encoded (RFC 3986 pchar).  A
+// parameter spliced into a composed URL is user data: keeping the value on
+// the route it belongs to means a "?", "#", "%", whitespace or control byte
+// can no longer restructure the URL, and neither can a "/" for ordinary
+// parameters.
+func appendEscapedPathParam(dst []byte, src string, mode pathParamEscapeMode) []byte {
+	const hexDigits = "0123456789ABCDEF"
+	for i := 0; i < len(src); i++ {
+		c := src[i]
+		switch {
+		case isPathParamByte(c):
+			dst = append(dst, c)
+		case mode == escapePathParamGreedy && c == '/':
+			dst = append(dst, c)
+		default:
+			dst = append(dst, '%', hexDigits[c>>4], hexDigits[c&0xf])
+		}
+	}
+
+	return dst
+}
+
+// isPathParamByte reports whether c may stay raw inside a substituted route
+// parameter: the RFC 3986 path-segment set (pchar), which never restructures
+// a URL.
+func isPathParamByte(c byte) bool {
+	switch c {
+	case '-', '_', '.', '~', '!', '$', '&', '\'', '(', ')', '*', '+', ',', ';', '=', ':', '@':
+		return true
+	}
+
+	return c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9'
 }
 
 // preferredGreedyParameters returns the generic greedy fallback lookup order
@@ -1035,6 +1135,7 @@ func (app *App) addPrefixToRoute(prefix string, route *Route, regexHandler any, 
 	route.root = false
 	route.star = false
 	route.caseSensitive = app.config.CaseSensitive
+	route.unescapePath = app.config.UnescapePath
 	// buildTree recomputes this for every route, but this function rewrites the
 	// path and parser a filter is derived from, so refresh it here too rather
 	// than depend on a caller marking the routes refreshed.
@@ -1069,6 +1170,7 @@ func (*App) copyRoute(route *Route) *Route {
 		root:          route.root,
 		autoHead:      route.autoHead,
 		caseSensitive: route.caseSensitive,
+		unescapePath:  route.unescapePath,
 
 		// Path data
 		path:        route.path,
@@ -1257,6 +1359,7 @@ func (app *App) register(methods []string, pathRaw string, group *Group, handler
 			star:          isStar,
 			root:          isRoot,
 			caseSensitive: app.config.CaseSensitive,
+			unescapePath:  app.config.UnescapePath,
 			id:            routeID,
 			latestID:      routeID,
 
