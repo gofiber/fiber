@@ -54,6 +54,7 @@ Here's a quick overview of the changes in Fiber `v3`:
   - [KeyAuth](#keyauth)
   - [Logger](#logger)
   - [Monitor](#monitor)
+  - [OpenAPI](#openapi)
   - [Proxy](#proxy)
   - [Recover](#recover)
   - [Session](#session)
@@ -517,7 +518,11 @@ app := fiber.New(fiber.Config{DisableHeadAutoRegister: true})
 app.Get("/health", handler) // HEAD /health now returns 405 unless you add it manually.
 ```
 
-Auto-generated `HEAD` routes appear in tooling such as `app.Stack()` and cover the same routing scenarios as their `GET` counterparts, including groups, mounted apps, dynamic parameters, and static file handlers.
+Auto-generated `HEAD` routes appear in tooling such as `app.Stack()` and cover the same routing scenarios as their `GET` counterparts, including groups, mounted apps, dynamic parameters, and static file handlers. They mirror the name of the `GET` route they were built from, but carry no documentation metadata of their own (filter them via `Route.IsAutoHead()`).
+
+:::caution
+`Name()` (and the documentation helpers) now target only the routes created by the most recent registration. Naming a `GET` route no longer also names an **explicitly registered** `HEAD` route on the same path — name that route in its own registration chain instead.
+:::
 
 ### QUERY method (RFC 10008)
 
@@ -1801,6 +1806,10 @@ Deprecated fields `Duration`, `Store`, and `Key` have been removed in v3. Use `E
 ### Monitor
 
 Monitor middleware is migrated to the [Contrib package](https://github.com/gofiber/contrib/tree/main/monitor) with [PR #1172](https://github.com/gofiber/contrib/pull/1172).
+
+### OpenAPI
+
+Introduces an `openapi` middleware that inspects registered routes and serves a generated OpenAPI specification plus a Swagger UI page backed by that spec. The middleware supports **OpenAPI 3.0.0, 3.1.0 (default) and 3.2.0**. Each operation includes a summary and a default response (`200`, or `204 No Content` for `DELETE`). What a route does not declare is inferred from what the router knows: the summary from the handler's function name (`listUsers` becomes `List users`), the tags from the enclosing group, and the response media type from `Config.DefaultProduces` (`application/json` by default); explicit metadata always wins, and each inference can be switched off. `Route.GroupPrefix()` and `Route.GroupName()` expose the group a route was registered through, which is what the tag inference reads. Routes can also be documented from the types they bind: `Accepts(CreateUser{})`, `Returns(201, User{})` and `Params("query", ListFilter{})` reflect a struct into the request body, a response and the parameters of one location, named struct types are emitted once under `components.schemas` and referenced with `$ref`, `validate` tags become schema constraints, and any helper that takes a schema accepts a Go value in its place (the schema fields of `RouteParameter`, `RouteMediaType`, `RouteResponse` and `RouteRequestBody` are `any` for that reason). `Config.DefaultConsumes` documents the request media type a body declares none for, as `DefaultProduces` does for responses. The middleware a request passes through documents itself: `keyauth`, `basicauth` and `contrib/jwt` on a route's path add the matching security scheme, requirement and `401`; `csrf` a required `X-Csrf-Token` parameter and `403`; `requestid`, `limiter`, `etag` and `cache` the headers and responses they produce; and a configured `StructValidator` a `400` on routes that bind input, all described through `Config.ErrorProduces` and `ErrorSchema`. `openapi:"readOnly"`, `"writeOnly"` and `"deprecated"` field tags and object-level examples assembled from field examples round out the model support, and `Route.Domain()` exposes the host a route was registered under. Routes may attach descriptions, parameters, request bodies, and custom responses—alongside request/response media types—directly to route definitions. New helpers allow parameters, request bodies, and responses to include schema references and examples (including `$ref` targets under `components/schemas`), enabling richer generated documentation. Path parameters are typed from the route pattern's constraints (`:id<int>` becomes `{"type": "integer"}`), and a parameter may be described by media type through `RouteParameter.Content` instead of by schema.
 
 ### Proxy
 
