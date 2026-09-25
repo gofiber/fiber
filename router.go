@@ -1001,19 +1001,10 @@ func (app *App) customRequestHandler(rctx *fasthttp.RequestCtx) {
 }
 
 func (app *App) addPrefixToRoute(prefix string, route *Route, regexHandler any, customConstraints ...CustomConstraint) {
-	prefixedPath := getGroupPath(prefix, route.Path)
-	prettyPath := prefixedPath
-	// Case-sensitive routing, all to lowercase
-	if !app.config.CaseSensitive {
-		prettyPath = utilsstrings.ToLower(prettyPath)
-	}
-	// Strict routing, remove trailing slashes
-	if !app.config.StrictRouting && len(prettyPath) > 1 {
-		prettyPath = utils.TrimRight(prettyPath, '/')
-	}
+	prefixedPath, prettyPath, cleanPath := normalizeRoutePattern(getGroupPath(prefix, route.Path), &app.config)
 
 	route.Path = prefixedPath
-	route.path = RemoveEscapeChar(prettyPath)
+	route.path = cleanPath
 	route.routeParser = parseRoute(prettyPath, regexHandler, customConstraints...)
 	// As in register: the constraints come from the pattern as written.
 	rawParser := parseRoute(prefixedPath, regexHandler, customConstraints...)
@@ -1084,19 +1075,8 @@ func (*App) copyRoute(route *Route) *Route {
 }
 
 func (app *App) normalizePath(path string) string {
-	if path == "" {
-		path = "/"
-	}
-	if path[0] != '/' {
-		path = "/" + path
-	}
-	if !app.config.CaseSensitive {
-		path = utilsstrings.ToLower(path)
-	}
-	if !app.config.StrictRouting && len(path) > 1 {
-		path = utils.TrimRight(path, '/')
-	}
-	return RemoveEscapeChar(path)
+	_, _, clean := normalizeRoutePattern(path, &app.config)
+	return clean
 }
 
 // RemoveRoute is used to remove a route from the stack by path.
@@ -1213,20 +1193,7 @@ func (app *App) register(methods []string, pathRaw string, group *Group, handler
 	}
 
 	// Precompute path normalization ONCE
-	if pathRaw == "" {
-		pathRaw = "/"
-	}
-	if pathRaw[0] != '/' {
-		pathRaw = "/" + pathRaw
-	}
-	pathPretty := pathRaw
-	if !app.config.CaseSensitive {
-		pathPretty = utilsstrings.ToLower(pathPretty)
-	}
-	if !app.config.StrictRouting && len(pathPretty) > 1 {
-		pathPretty = utils.TrimRight(pathPretty, '/')
-	}
-	pathClean := RemoveEscapeChar(pathPretty)
+	pathRaw, pathPretty, pathClean := normalizeRoutePattern(pathRaw, &app.config)
 
 	parsedRaw := parseRoute(pathRaw, app.config.RegexHandler, app.customConstraints...)
 	parsedPretty := parseRoute(pathPretty, app.config.RegexHandler, app.customConstraints...)

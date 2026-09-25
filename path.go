@@ -16,7 +16,6 @@ import (
 
 	"github.com/gofiber/fiber/v3/internal/paramdelim"
 	"github.com/gofiber/utils/v2"
-	utilsbytes "github.com/gofiber/utils/v2/bytes"
 	utilsstrings "github.com/gofiber/utils/v2/strings"
 	"github.com/gofiber/utils/v2/swar"
 )
@@ -194,16 +193,7 @@ func RoutePatternMatch(path, pattern string, cfg ...Config) bool {
 		path = "/"
 	}
 
-	// Cannot have an empty pattern
-	if pattern == "" {
-		pattern = "/"
-	}
-	// Pattern always start with a '/'
-	if pattern[0] != '/' {
-		pattern = "/" + pattern
-	}
-
-	patternPretty := []byte(pattern)
+	pattern, patternPretty, patternClean := normalizeRoutePattern(pattern, &config)
 
 	// Mirror DefaultCtx.configDependentPaths: normalize the path, then derive
 	// the detection path (lowercased when CaseSensitive is off, trailing slash
@@ -215,12 +205,7 @@ func RoutePatternMatch(path, pattern string, cfg ...Config) bool {
 
 	detectionPath := path
 	if !config.CaseSensitive {
-		patternPretty = utilsbytes.UnsafeToLower(patternPretty)
 		detectionPath = utilsstrings.ToLower(detectionPath)
-	}
-	// Strict routing, remove trailing slashes
-	if !config.StrictRouting && len(patternPretty) > 1 {
-		patternPretty = utils.TrimRight(patternPretty, '/')
 	}
 	if !config.StrictRouting && len(detectionPath) > 1 {
 		detectionPath = utils.TrimRight(detectionPath, '/')
@@ -228,8 +213,7 @@ func RoutePatternMatch(path, pattern string, cfg ...Config) bool {
 
 	parser, _ := routerParserPool.Get().(*routeParser) //nolint:errcheck // only contains routeParser
 	parser.reset()
-	patternStr := string(patternPretty)
-	parser.parseRoute(patternStr, config.RegexHandler)
+	parser.parseRoute(patternPretty, config.RegexHandler)
 	defer routerParserPool.Put(parser)
 	if !config.CaseSensitive && strings.IndexByte(pattern, paramConstraintStart) >= 0 {
 		// The constraints come from the pattern as written; see adoptConstraints.
@@ -242,7 +226,7 @@ func RoutePatternMatch(path, pattern string, cfg ...Config) bool {
 	}
 
 	// '*' wildcard matches any path; the star flag keeps an escaped "/\*" literal.
-	if (RemoveEscapeChar(patternStr) == "/" && detectionPath == "/") || patternStr == "/*" {
+	if (patternClean == "/" && detectionPath == "/") || patternPretty == "/*" {
 		return true
 	}
 
@@ -253,9 +237,32 @@ func RoutePatternMatch(path, pattern string, cfg ...Config) bool {
 		}
 	}
 	// Check for a simple match
-	patternPretty = RemoveEscapeCharBytes(patternPretty)
+	return patternClean == detectionPath
+}
 
-	return string(patternPretty) == detectionPath
+// normalizeRoutePattern keeps the three forms needed by the router together:
+// raw preserves parameter names and constraint arguments, pretty applies the
+// routing configuration but retains escapes for parsing, and clean is the
+// literal comparison key. It does not decode or normalize request paths.
+//
+//nolint:nonamedreturns // names distinguish the three string representations
+func normalizeRoutePattern(pattern string, config *Config) (raw, pretty, clean string) {
+	if pattern == "" {
+		pattern = "/"
+	}
+	if pattern[0] != '/' {
+		pattern = "/" + pattern
+	}
+	raw = pattern
+	pretty = raw
+	if !config.CaseSensitive {
+		pretty = utilsstrings.ToLower(pretty)
+	}
+	if !config.StrictRouting && len(pretty) > 1 {
+		pretty = utils.TrimRight(pretty, '/')
+	}
+	clean = RemoveEscapeChar(pretty)
+	return raw, pretty, clean
 }
 
 // adoptConstraints takes the constraints of raw's parameters for this parser's.
@@ -1270,14 +1277,8 @@ func RemoveEscapeChar(word string) string {
 
 	// Slow path: copy and remove escape characters
 	b := []byte(word)
-	dst := escapeIdx
-	for src := escapeIdx + 1; src < len(b); src++ {
-		if b[src] != '\\' {
-			b[dst] = b[src]
-			dst++
-		}
-	}
-	return string(b[:dst])
+	tail := RemoveEscapeCharBytes(b[escapeIdx:])
+	return string(b[:escapeIdx+len(tail)])
 }
 
 // RemoveEscapeCharBytes removes escape characters
