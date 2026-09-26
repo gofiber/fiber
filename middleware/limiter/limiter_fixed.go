@@ -2,7 +2,6 @@ package limiter
 
 import (
 	"fmt"
-	"sync"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/utils/v2"
@@ -19,7 +18,7 @@ func (FixedWindow) New(cfg *Config) fiber.Handler {
 	}
 
 	// Limiter variables
-	mux := &sync.RWMutex{}
+	locks := new(keyedMutex)
 
 	// Create manager to simplify storage operations ( see manager.go )
 	manager := newManager(cfg.Storage, !cfg.DisableValueRedaction)
@@ -46,14 +45,14 @@ func (FixedWindow) New(cfg *Config) fiber.Handler {
 		key := cfg.KeyGenerator(c)
 
 		// Lock entry
-		mux.Lock()
+		mu := locks.lock(key)
 
 		reqCtx := c.Context()
 
 		// Get entry from pool and release when finished
 		e, err := manager.get(reqCtx, key)
 		if err != nil {
-			mux.Unlock()
+			mu.Unlock()
 			return err
 		}
 
@@ -81,12 +80,12 @@ func (FixedWindow) New(cfg *Config) fiber.Handler {
 
 		// Update storage
 		if setErr := manager.set(reqCtx, key, e, expirationDuration); setErr != nil {
-			mux.Unlock()
+			mu.Unlock()
 			return fmt.Errorf("limiter: failed to persist state: %w", setErr)
 		}
 
 		// Unlock entry
-		mux.Unlock()
+		mu.Unlock()
 
 		// Check if hits exceed the max
 		if remaining < 0 {
@@ -111,10 +110,10 @@ func (FixedWindow) New(cfg *Config) fiber.Handler {
 		if (cfg.SkipSuccessfulRequests && statusCode < fiber.StatusBadRequest) ||
 			(cfg.SkipFailedRequests && statusCode >= fiber.StatusBadRequest) {
 			// Lock entry
-			mux.Lock()
+			mu = locks.lock(key) // rehash: c.Next() may have rewritten an unsafe key
 			entry, getErr := manager.get(reqCtx, key)
 			if getErr != nil {
-				mux.Unlock()
+				mu.Unlock()
 				return getErr
 			}
 			e = entry
@@ -125,11 +124,11 @@ func (FixedWindow) New(cfg *Config) fiber.Handler {
 			}
 			remaining = maxRequests - e.currHits
 			if setErr := manager.set(reqCtx, key, e, expirationDuration); setErr != nil {
-				mux.Unlock()
+				mu.Unlock()
 				return fmt.Errorf("limiter: failed to persist state: %w", setErr)
 			}
 			// Unlock entry
-			mux.Unlock()
+			mu.Unlock()
 		}
 
 		// On the skip path currHits can exceed maxRequests (blocked requests

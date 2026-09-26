@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	neturl "net/url"
@@ -24,6 +25,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"unsafe"
 
 	"github.com/gofiber/utils/v2"
 	"github.com/stretchr/testify/assert"
@@ -1914,6 +1916,63 @@ func Benchmark_Router_Chain(b *testing.B) {
 	c.URI().SetPath("/")
 	for b.Loop() {
 		appHandler(c)
+	}
+}
+
+// Benchmark_Router_Chain_FilteredBucket runs middleware chains in front of an
+// endpoint whose bucket holds enough routes to carry a filter, so each hop
+// scans a filtered bucket from the middleware it left:
+//   - use: eight middlewares registered between routes of other buckets,
+//     which keeps them from merging into one route, so that each hop takes
+//     its first candidate
+//   - use_interleaved: the same with the routes in the middlewares' bucket,
+//     so that each hop steps over one
+//   - group: a global middleware, then two nested groups' middlewares
+//
+// go test -run=^$ -bench=Benchmark_Router_Chain_FilteredBucket -benchmem -count=4
+func Benchmark_Router_Chain_FilteredBucket(b *testing.B) {
+	handler := func(Ctx) error { return nil }
+	mw := func(c Ctx) error { return c.Next() }
+	for _, bench := range []struct {
+		register func(app *App)
+		name     string
+	}{
+		{name: "use", register: func(app *App) {
+			for i := range 8 {
+				app.Use("/api", mw)
+				app.Get("/web/r"+strconv.Itoa(i), handler)
+			}
+			app.Get("/api/v1/users", handler)
+		}},
+		{name: "use_interleaved", register: func(app *App) {
+			for i := range 8 {
+				app.Use("/api", mw)
+				app.Get("/api/v1/r"+strconv.Itoa(i), handler)
+			}
+			app.Get("/api/v1/users", handler)
+		}},
+		{name: "group", register: func(app *App) {
+			app.Use(mw)
+			v1 := app.Group("/api", mw).Group("/v1", mw)
+			for i := range 8 {
+				v1.Get("/r"+strconv.Itoa(i), handler)
+			}
+			v1.Get("/users", handler)
+		}},
+	} {
+		b.Run(bench.name, func(b *testing.B) {
+			app := New()
+			bench.register(app)
+			appHandler := app.Handler()
+			c := &fasthttp.RequestCtx{}
+			c.Request.Header.SetMethod(MethodGet)
+			c.URI().SetPath("/api/v1/users")
+			appHandler(c)
+			require.Equal(b, StatusOK, c.Response.StatusCode())
+			for b.Loop() {
+				appHandler(c)
+			}
+		})
 	}
 }
 
@@ -3925,10 +3984,10 @@ func Benchmark_Router_HandlerCustom_NotFound(b *testing.B) {
 	}
 }
 
-// Test_Route_PrefixFilter_Differential generatively proves the leading-byte
-// filter App.next applies before Route.match is transparent: for every
-// generated pattern and path, a route the filter rejects must be a route
-// Route.match would have rejected anyway. The filter only ever gets to skip
+// Test_Route_PrefixFilter_Differential generatively proves the filters App.next
+// applies before Route.match are transparent: for every generated pattern and
+// path, a route they reject must be a route Route.match, with its own filters
+// stood down, would have rejected anyway. The filters only ever get to skip
 // work, never to change an outcome, so a false reject here is a routing bug.
 // go test -race -run Test_Route_PrefixFilter_Differential
 func Test_Route_PrefixFilter_Differential(t *testing.T) {
@@ -3967,11 +4026,11 @@ func Test_Route_PrefixFilter_Differential(t *testing.T) {
 		for _, route := range registerFilterRoutes(t, patterns, use) {
 			for _, path := range paths {
 				var params [maxParams]string
-				if !route.match(path, path, &params, strings.Count(path, "/")) {
+				if !route.match(path, path, &params, 0) {
 					continue
 				}
 				if routeFilterRejects(route, path) {
-					t.Fatalf("prefix filter rejected a matching route: pattern %q, path %q, use %v",
+					t.Fatalf("scan filter rejected a matching route: pattern %q, path %q, use %v",
 						route.Path, path, use)
 				}
 			}
@@ -3979,11 +4038,28 @@ func Test_Route_PrefixFilter_Differential(t *testing.T) {
 	}
 }
 
-// routeFilterRejects mirrors the leading-byte reject the scan loops in
-// App.next, App.nextCustom and resolveSkip apply before calling Route.match.
-// The tests below assert it never rejects a route that Route.match accepts.
+// newScanHead returns the scanHead a filtered bucket holds for r.
+func newScanHead(r *Route) scanHead {
+	var h scanHead
+	h.init(r)
+	return h
+}
+
+// routeFilterRejects mirrors what the scan loops apply before calling
+// Route.match: the leading-byte filter App.next, App.nextCustom and resolveSkip
+// test on a Route, and the scanHead routeScan.skip tests for a filtered bucket
+// -- two words of the prefix, the slash count and the probe. The tests below
+// assert that neither rejects a route Route.match accepts.
 func routeFilterRejects(route *Route, path string) bool {
-	return route.prefixRejects(pathHeadWord(path))
+	head := pathHeadWord(path)
+	if route.prefixRejects(head) {
+		return true
+	}
+	var scan routeScan
+	scan.init(path, head, strings.Count(path, "/"))
+	h := newScanHead(route)
+	return h.rejects(scan.head, scan.head2, scan.slash) ||
+		h.probeLen != 0 && scan.probes.headRejects(&h, path)
 }
 
 // registerFilterRoutes registers patterns on a real App and returns the routes
@@ -4052,13 +4128,14 @@ func Test_Route_PrefixFilter_Fixture(t *testing.T) {
 				}
 				// Route.match is the oracle, not the fixture's expectation:
 				// the fixture records what getMatch returns, while match wraps
-				// it in the root/star/exact branches the filter stays behind.
+				// it in the root/star/exact branches the filters stay behind.
+				// A count of 0 stands match's own filters down.
 				var params [maxParams]string
-				if !route.match(c.url, c.url, &params, strings.Count(c.url, "/")) {
+				if !route.match(c.url, c.url, &params, 0) {
 					continue
 				}
 				require.False(t, routeFilterRejects(route, c.url),
-					"prefix filter rejected a matching route: '%s', url: '%s'", testCollection.pattern, c.url)
+					"scan filter rejected a matching route: '%s', url: '%s'", testCollection.pattern, c.url)
 			}
 		}
 	}
@@ -4071,19 +4148,36 @@ func Test_Route_PrefixFilter_Fixture(t *testing.T) {
 func Test_Route_PrefixFilter_Rejects(t *testing.T) {
 	t.Parallel()
 
-	rejects := func(pattern, path string) bool {
+	route := func(pattern string) *Route {
 		routes := registerFilterRoutes(t, []string{pattern}, false)
 		require.Len(t, routes, 1)
-		return routeFilterRejects(routes[0], path)
+		return routes[0]
+	}
+	rejects := func(pattern, path string) bool {
+		return routeFilterRejects(route(pattern), path)
+	}
+	// prefixRejects on its own, which routeFilterRejects would hide behind the
+	// scan head's first word: an unfiltered bucket relies on it alone.
+	prefixRejects := func(pattern, path string) bool {
+		return route(pattern).prefixRejects(pathHeadWord(path))
 	}
 
 	require.True(t, rejects("/user/subscriptions/:owner", "/user/keys/1337"))
+	require.True(t, prefixRejects("/user/subscriptions/:owner", "/user/keys/1337"))
 	require.True(t, rejects("/user/keys/:id", "/user/emails"))
+	require.True(t, prefixRejects("/user/keys/:id", "/user/emails"))
 	require.True(t, rejects("/repos/:owner", "/user/keys"))
+	require.True(t, prefixRejects("/repos/:owner", "/user/keys"))
 	require.False(t, rejects("/user/keys/:id", "/user/keys/1337"))
+	require.False(t, prefixRejects("/user/keys/:id", "/user/keys/1337"))
+	// Past the first word only the scan head's second word tells these apart.
+	require.True(t, rejects("/api/v1/users/:id", "/api/v1/teams/7"))
+	require.False(t, prefixRejects("/api/v1/users/:id", "/api/v1/teams/7"))
 	// wildcards and leading parameters constrain nothing, so they must not filter
 	require.False(t, rejects("/*", "/anything/at/all"))
+	require.False(t, prefixRejects("/*", "/anything/at/all"))
 	require.False(t, rejects("/:name", "/anything"))
+	require.False(t, prefixRejects("/:name", "/anything"))
 }
 
 // Test_Route_PrefixFilter_EscapedStar guards a routing regression the
@@ -4256,27 +4350,28 @@ func Test_Router_ScanMatchesReference(t *testing.T) {
 		for _, strictRouting := range []bool{false, true} {
 			for _, skipUnmatched := range []bool{false, true} {
 				for _, withMiddleware := range []bool{false, true} {
-					cfg := Config{
-						CaseSensitive:       caseSensitive,
-						StrictRouting:       strictRouting,
-						SkipUnmatchedRoutes: skipUnmatched,
-					}
-					name := fmt.Sprintf("cs=%v/sr=%v/skip=%v/mw=%v",
-						caseSensitive, strictRouting, skipUnmatched, withMiddleware)
+					for _, filtered := range []bool{false, true} {
+						cfg := Config{
+							CaseSensitive:       caseSensitive,
+							StrictRouting:       strictRouting,
+							SkipUnmatchedRoutes: skipUnmatched,
+						}
+						name := fmt.Sprintf("cs=%v/sr=%v/skip=%v/mw=%v/filtered=%v",
+							caseSensitive, strictRouting, skipUnmatched, withMiddleware, filtered)
 
-					t.Run(name, func(t *testing.T) {
-						t.Parallel()
-						assertScanMatchesReference(t, &cfg, withMiddleware, patterns, paths)
-					})
+						t.Run(name, func(t *testing.T) {
+							t.Parallel()
+							assertScanMatchesReference(t, &cfg, withMiddleware, filtered, patterns, paths)
+						})
+					}
 				}
 			}
 		}
 	}
 }
 
-//nolint:revive // flag-parameter: withMiddleware selects the app shape under test
-//nolint:revive // flag-parameter: withMiddleware selects the app shape under test
-func assertScanMatchesReference(t *testing.T, cfg *Config, withMiddleware bool, patterns, paths []string) {
+//nolint:revive // flag-parameter: withMiddleware and filtered select the app shape under test
+func assertScanMatchesReference(t *testing.T, cfg *Config, withMiddleware, filtered bool, patterns, paths []string) {
 	t.Helper()
 
 	app := New(*cfg)
@@ -4284,6 +4379,16 @@ func assertScanMatchesReference(t *testing.T, cfg *Config, withMiddleware bool, 
 		// Middleware changes which scan path App.next takes, and it is what
 		// enables the SkipUnmatchedRoutes lookahead, so both shapes matter.
 		app.Use(func(c Ctx) error { return c.Next() })
+	}
+	if filtered {
+		// Global routes land in every bucket, so filterMinBucket of them
+		// carry each bucket past the threshold, and the scan then walks it
+		// through routeScan.skip instead of loading every route. Registered
+		// first, every request is scanned past them, and they match no path
+		// of the corpus.
+		for i := range filterMinBucket {
+			app.Get("/:filler/zzfill"+strconv.Itoa(i), func(c Ctx) error { return c.Next() })
+		}
 	}
 
 	// Requests run through the real handler rather than App.next directly, so
@@ -4326,6 +4431,11 @@ func assertScanMatchesReference(t *testing.T, cfg *Config, withMiddleware bool, 
 
 	method := app.methodInt(MethodGet)
 	require.NotEqual(t, -1, method)
+	if _, filter := app.treeIndex[method].lookup(0); filtered {
+		require.NotNil(t, filter, "the fillers must carry the buckets past filterMinBucket")
+	} else {
+		require.Nil(t, filter, "the corpus alone must stay below filterMinBucket")
+	}
 
 	fctx := &fasthttp.RequestCtx{}
 	fctx.Request.Header.SetMethod(MethodGet)
@@ -4642,8 +4752,15 @@ func Test_Route_PrefixFilter_UnconstrainedShapes(t *testing.T) {
 
 	// A disabled filter must never reject, whatever the path.
 	for _, path := range []string{"", "/", "/anything", "/a/b/c"} {
-		require.False(t, routeFilterRejects(leadingParam, path), "path %q", path)
-		require.False(t, routeFilterRejects(empty, path), "path %q", path)
+		head := pathHeadWord(path)
+		require.False(t, leadingParam.prefixRejects(head), "path %q", path)
+		require.False(t, empty.prefixRejects(head), "path %q", path)
+	}
+	// Nor may either prefix word of the scanHead a filtered bucket holds.
+	for _, route := range []*Route{leadingParam, empty} {
+		h := newScanHead(route)
+		require.Zero(t, h.prefixMask)
+		require.Zero(t, h.prefixMask2)
 	}
 }
 
@@ -5292,6 +5409,7 @@ func Test_PathFingerprint_Contract(t *testing.T) {
 // built from that same bucket. next() indexes both with the same counter, so a
 // slice that drifted by one entry would reject live routes; maxLen must come
 // from the static routes alone, as it stands the hash down for longer paths.
+// The heads are held to the same line-up.
 func Test_RouteTree_Fingerprints_LineUp(t *testing.T) {
 	t.Parallel()
 
@@ -5307,16 +5425,18 @@ func Test_RouteTree_Fingerprints_LineUp(t *testing.T) {
 	routes, filter := app.treeIndex[app.methodInt(MethodGet)].lookup(treeHash)
 	require.NotNil(t, filter, "a bucket this size must carry a filter")
 	require.Len(t, filter.prints, len(routes))
+	require.Len(t, filter.heads, len(routes))
 	for i, route := range routes {
 		require.Equal(t, staticFingerprint(route), filter.prints[i], "fingerprint %d is not this route's", i)
+		require.Equal(t, newScanHead(route), filter.heads[i], "head %d is not this route's", i)
 	}
 	require.Equal(t, len("/routes/"+strconv.Itoa(fingerprintMinBucket*2-1)), filter.maxLen,
 		"maxLen must be the longest static path, not the longer param route")
 }
 
 // Test_RouteTree_Fingerprints_SmallBucketNil pins the other half: a bucket below
-// the threshold carries no filter, so a small app neither allocates the slice
-// nor hashes its detection paths.
+// the threshold carries no filter, so a small app neither allocates the slices
+// nor hashes its detection paths, and scans its routes directly.
 func Test_RouteTree_Fingerprints_SmallBucketNil(t *testing.T) {
 	t.Parallel()
 
@@ -5330,9 +5450,10 @@ func Test_RouteTree_Fingerprints_SmallBucketNil(t *testing.T) {
 	require.Nil(t, filter, "a bucket below fingerprintMinBucket must not carry a filter")
 }
 
-// Test_RouteTree_Fingerprints_CountsStaticRoutes pins that the threshold counts
-// static routes, not bucket size: a bucket full of param routes has nothing
-// for the filter to reject, so it must not make every request hash its path.
+// Test_RouteTree_Fingerprints_CountsStaticRoutes pins that the fingerprints'
+// threshold counts static routes, not bucket size: a bucket full of param
+// routes has nothing for them to reject, so it must not make every request
+// hash its path. Its filter still carries heads, which do reject param routes.
 func Test_RouteTree_Fingerprints_CountsStaticRoutes(t *testing.T) {
 	t.Parallel()
 
@@ -5348,12 +5469,15 @@ func Test_RouteTree_Fingerprints_CountsStaticRoutes(t *testing.T) {
 	treeHash := int('/')<<16 | int('r')<<8 | int('o')
 	routes, filter := app.treeIndex[app.methodInt(MethodGet)].lookup(treeHash)
 	require.Len(t, routes, fingerprintMinBucket*3-1)
-	require.Nil(t, filter, "fewer static routes than fingerprintMinBucket must not carry a filter")
+	require.NotNil(t, filter, "a bucket of filterMinBucket routes must carry a filter")
+	require.Len(t, filter.heads, len(routes))
+	require.Nil(t, filter.prints, "fewer static routes than fingerprintMinBucket must not carry fingerprints")
 
 	app.Get("/routes/"+strconv.Itoa(fingerprintMinBucket-1), func(Ctx) error { return nil })
 	app.RebuildTree()
 	_, filter = app.treeIndex[app.methodInt(MethodGet)].lookup(treeHash)
-	require.NotNil(t, filter, "fingerprintMinBucket static routes must carry a filter")
+	require.NotNil(t, filter, "a bucket of filterMinBucket routes must carry a filter")
+	require.NotNil(t, filter.prints, "fingerprintMinBucket static routes must carry fingerprints")
 }
 
 // Test_Router_Fingerprint_HashedOnDemand pins when the scan hashes the path:
@@ -5609,4 +5733,392 @@ func Test_Router_LargeBucket_CustomCtx(t *testing.T) {
 	resp, err := only.Test(httptest.NewRequest(MethodGet, "/routes/missing", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, StatusNotFound, resp.StatusCode)
+}
+
+// Test_ScanHead_SlashMask pins the slash counts newScanHead lets through for
+// each route shape: the count of its path for a route without parameters, any
+// count from it up for a prefix (use) one, the parser's bounds for a
+// parametric route, only the lower one when it is a prefix route, and every
+// count for star and root routes. Bit 0, which stands for a count the scan did
+// not compute, is always set, and bit 31 stands for 31 or more.
+// go test -race -run Test_ScanHead_SlashMask
+func Test_ScanHead_SlashMask(t *testing.T) {
+	t.Parallel()
+
+	// bits returns a mask with bits lo through hi set, plus bit 0.
+	bits := func(lo, hi int) uint32 {
+		var mask uint32 = 1
+		for n := lo; n <= hi; n++ {
+			mask |= uint32(1) << n
+		}
+		return mask
+	}
+	deep := strings.Repeat("/d", 70)
+
+	app := New()
+	handler := func(c Ctx) error { return c.Next() }
+	app.Get("/a/b", handler)
+	app.Use("/mw", handler)
+	app.Get("/p/:id", handler)
+	app.Get("/o/:id?", handler)
+	app.Use("/u/:id", handler)
+	app.Get("/w/*", handler)
+	app.Get("/*", handler)
+	app.Get("/", handler)
+	app.Get(deep, handler)
+	app.Get(deep+"/:id", handler)
+	app.startupProcess()
+
+	want := map[string]uint32{
+		"/a/b":        bits(2, 2),
+		"/mw":         bits(1, 31),
+		"/p/:id":      bits(2, 2),
+		"/o/:id?":     bits(1, 2),
+		"/u/:id":      bits(2, 31),
+		"/w/*":        bits(1, 31),
+		"/*":          ^uint32(0),
+		"/":           ^uint32(0),
+		deep:          bits(31, 31),
+		deep + "/:id": bits(31, 31),
+	}
+	seen := 0
+	for _, route := range app.stack[app.methodInt(MethodGet)] {
+		mask, ok := want[route.Path]
+		if !ok {
+			continue
+		}
+		seen++
+		require.Equal(t, mask, newScanHead(route).slashMask, "slash mask of %q (use %v)", route.Path, route.use)
+	}
+	require.Len(t, want, seen, "every shape must have been registered")
+
+	require.Equal(t, uint32(1), slashBit(0))
+	require.Equal(t, uint32(1)<<5, slashBit(5))
+	require.Equal(t, uint32(1)<<31, slashBit(31))
+	require.Equal(t, uint32(1)<<31, slashBit(200))
+}
+
+// Test_ScanHead_Probe pins how a head holds a route's constant probe in its
+// narrow fields: a probe that fits comes back as it went in, and one they
+// cannot hold, an offset past them or a mask that does not cover leading
+// lanes, leaves the head without a probe, for match to check.
+// go test -race -run Test_ScanHead_Probe
+func Test_ScanHead_Probe(t *testing.T) {
+	t.Parallel()
+
+	word, mask := packConst("/issues")
+	fits := constProbe{word: word, mask: mask, from: 13, skip: 2}
+	// A filtered bucket holds a head per route: what a rebuild allocates
+	// grows with this.
+	require.Equal(t, uintptr(48), unsafe.Sizeof(scanHead{}))
+	var h scanHead
+	h.setProbe(fits)
+	require.Equal(t, uint8(7), h.probeLen)
+	require.Equal(t, fits, h.probe())
+
+	full, fullMask := packConst("/comments")
+	h = scanHead{}
+	h.setProbe(constProbe{word: full, mask: fullMask, from: 1})
+	require.Equal(t, uint8(8), h.probeLen)
+	require.Equal(t, constProbe{word: full, mask: fullMask, from: 1}, h.probe())
+
+	for _, p := range []constProbe{
+		{},
+		{word: word, mask: mask, from: math.MaxUint16 + 1},
+		{word: word, mask: mask, from: 13, skip: math.MaxUint8 + 1},
+		{word: word, mask: mask, from: -1},
+		{word: word, mask: mask, from: 0},
+		{word: word, mask: mask &^ 0xff00, from: 13},
+	} {
+		h = scanHead{}
+		h.setProbe(p)
+		require.Zero(t, h.probeLen, "probe %+v", p)
+	}
+
+	// Routes: the head's probe is the parser's.
+	app := New()
+	handler := func(c Ctx) error { return c.Next() }
+	app.Get("/repos/:owner/:repo/issues", handler)
+	app.startupProcess()
+	route := app.stack[app.methodInt(MethodGet)][0]
+	require.NotZero(t, route.routeParser.probe.mask)
+	head := newScanHead(route)
+	require.Equal(t, route.routeParser.probe, head.probe())
+
+	// headRejects agrees with the parser's probe, found or not.
+	for _, path := range []string{"/repos/gofiber/fiber/issues", "/repos/gofiber/fiber/pulls", "/repos/gofiber"} {
+		var byHead probeMemo
+		probe := route.routeParser.probe
+		require.Equal(t, probe.rejects(path), byHead.headRejects(&head, path), path)
+	}
+}
+
+// Test_ScanHead_PrefixWords pins the two leading-byte words a head compares:
+// the first is the route's own leading-byte filter, and the second continues
+// knownPrefix past it, which is what tells apart the routes of an API that all
+// begin "/api/v1/".
+// go test -race -run Test_ScanHead_PrefixWords
+func Test_ScanHead_PrefixWords(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	handler := func(c Ctx) error { return c.Next() }
+	patterns := []string{
+		"/api/v1/users/:id", "/api/v1/users", "/api/v1/posts/:id/comments",
+		"/short/:x", "/:x", "/opt/:x?", "/api/v1/",
+	}
+	for _, pattern := range patterns {
+		app.Get(pattern, handler)
+	}
+	app.startupProcess()
+
+	byPath := make(map[string]*Route)
+	for _, route := range app.stack[app.methodInt(MethodGet)] {
+		byPath[route.Path] = route
+	}
+	for _, pattern := range patterns {
+		route := byPath[pattern]
+		require.NotNil(t, route, pattern)
+		h := newScanHead(route)
+		require.Equal(t, route.prefix, h.prefix, "first word of %q", pattern)
+		require.Equal(t, route.prefixMask, h.prefixMask, "first mask of %q", pattern)
+
+		prefix := knownPrefix(route)
+		wantWord, wantMask := uint64(0), uint64(0)
+		if len(prefix) > 8 {
+			wantWord, wantMask = packConst(prefix[8:])
+		}
+		require.Equal(t, wantWord, h.prefix2, "second word of %q", pattern)
+		require.Equal(t, wantMask, h.prefixMask2, "second mask of %q", pattern)
+	}
+
+	// The second word rejects what the first cannot tell apart.
+	users := newScanHead(byPath["/api/v1/users/:id"])
+	for path, rejected := range map[string]bool{
+		"/api/v1/users/1":       false,
+		"/api/v1/posts/1":       true,
+		"/api/v1/usersx/1":      true,
+		"/api/v1/":              true,
+		"/api/v2/users/1":       true,
+		"/api/v1/users/1/extra": true, // too many slashes for the endpoint
+	} {
+		var scan routeScan
+		scan.init(path, pathHeadWord(path), strings.Count(path, "/"))
+		require.Equal(t, rejected, users.rejects(scan.head, scan.head2, scan.slash), "path %q", path)
+	}
+}
+
+// Test_Router_FilteredBucket_MethodNotAllowed drives the 404/405 decision
+// through filtered buckets, which routeScan.endpoint walks for the methods the
+// request did not use. The Allow header must name exactly the methods with a
+// matching endpoint, through a default and a custom context alike.
+// go test -race -run Test_Router_FilteredBucket_MethodNotAllowed
+// Test_Router_FilteredBucket_SharedProbeFrom routes through a filtered bucket
+// whose probes share their from but read different slashes: "/foo/" follows
+// the first parameter's slash, "/bar" the second's. A scan that reused the
+// word one of them located for the other would reject the route it tests.
+// go test -race -run Test_Router_FilteredBucket_SharedProbeFrom
+func Test_Router_FilteredBucket_SharedProbeFrom(t *testing.T) {
+	t.Parallel()
+
+	apps := map[string]*App{
+		"default": New(),
+		"custom": NewWithCustomCtx(func(app *App) CustomCtx {
+			return &customCtx{DefaultCtx: *NewDefaultCtx(app)}
+		}),
+	}
+	for name, app := range apps {
+		handler := func(c Ctx) error { return c.SendString(c.Route().Path) }
+		for i := range filterMinBucket {
+			app.Get("/api/static"+strconv.Itoa(i), handler)
+		}
+		app.Get("/api/:x/foo/*", handler)
+		app.Get("/api/:x/:y/bar", handler)
+		app.startupProcess()
+
+		treeHash := int('/')<<16 | int('a')<<8 | int('p')
+		routes, filter := app.treeIndex[app.methodInt(MethodGet)].lookup(treeHash)
+		require.NotNil(t, filter, "%s: the bucket must be filtered for this test to mean anything", name)
+		foo, bar := filter.heads[len(routes)-2], filter.heads[len(routes)-1]
+		require.NotZero(t, foo.probeLen, name)
+		require.NotZero(t, bar.probeLen, name)
+		require.Equal(t, foo.probeFrom, bar.probeFrom, "%s: the probes must share their from", name)
+		require.NotEqual(t, foo.probeSkip, bar.probeSkip, name)
+
+		for path, want := range map[string]string{
+			"/api/1/2/bar":   "/api/:x/:y/bar",
+			"/api/1/foo/z":   "/api/:x/foo/*",
+			"/api/1/foo/bar": "/api/:x/foo/*",
+			"/api/static3":   "/api/static3",
+		} {
+			resp, err := app.Test(httptest.NewRequest(MethodGet, path, http.NoBody))
+			require.NoError(t, err)
+			body, err := io.ReadAll(resp.Body)
+			require.NoError(t, err)
+			require.Equal(t, StatusOK, resp.StatusCode, "%s: %s", name, path)
+			require.Equal(t, want, string(body), "%s: %s", name, path)
+		}
+		resp, err := app.Test(httptest.NewRequest(MethodGet, "/api/1/2/baz", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, StatusNotFound, resp.StatusCode, name)
+	}
+}
+
+func Test_Router_FilteredBucket_MethodNotAllowed(t *testing.T) {
+	t.Parallel()
+
+	register := func(app *App) {
+		handler := func(c Ctx) error { return c.SendString(c.Route().Path) }
+		for i := range filterMinBucket * 2 {
+			app.Get("/api/v1/res"+strconv.Itoa(i)+"/:id", handler)
+			app.Post("/api/v1/res"+strconv.Itoa(i)+"/:id/items", handler)
+		}
+		app.Put("/api/v1/res3/:id", handler)
+		app.Delete("/api/v1/static/path", handler)
+	}
+	apps := map[string]*App{
+		"default": New(),
+		"custom": NewWithCustomCtx(func(app *App) CustomCtx {
+			return &customCtx{DefaultCtx: *NewDefaultCtx(app)}
+		}),
+	}
+
+	for name, app := range apps {
+		register(app)
+		app.startupProcess()
+
+		treeHash := int('/')<<16 | int('a')<<8 | int('p')
+		for _, method := range []string{MethodGet, MethodPost} {
+			_, filter := app.treeIndex[app.methodInt(method)].lookup(treeHash)
+			require.NotNil(t, filter, "%s: the %s bucket must be filtered for this test to mean anything", name, method)
+		}
+
+		for _, tc := range []struct {
+			method, path, allow string
+			status              int
+		}{
+			{method: MethodGet, path: "/api/v1/res5/7", status: StatusOK},
+			{method: MethodPost, path: "/api/v1/res5/7/items", status: StatusOK},
+			{method: MethodPatch, path: "/api/v1/res3/7", status: StatusMethodNotAllowed, allow: "GET, HEAD, PUT"},
+			{method: MethodPatch, path: "/api/v1/res5/7/items", status: StatusMethodNotAllowed, allow: "POST"},
+			{method: MethodGet, path: "/api/v1/res5/7/items", status: StatusMethodNotAllowed, allow: "POST"},
+			{method: MethodPost, path: "/api/v1/res5/7", status: StatusMethodNotAllowed, allow: "GET, HEAD"},
+			{method: MethodGet, path: "/api/v1/static/path", status: StatusMethodNotAllowed, allow: "DELETE"},
+			{method: MethodGet, path: "/api/v1/nope/7", status: StatusNotFound},
+			{method: MethodGet, path: "/api/v1/res5", status: StatusNotFound},
+		} {
+			resp, err := app.Test(httptest.NewRequest(tc.method, tc.path, http.NoBody))
+			require.NoError(t, err)
+			require.Equal(t, tc.status, resp.StatusCode, "%s: %s %s", name, tc.method, tc.path)
+			require.Equal(t, tc.allow, resp.Header.Get(HeaderAllow), "%s: %s %s", name, tc.method, tc.path)
+		}
+	}
+}
+
+// Test_Router_FilteredBucket_CustomCtx runs the GitHub API corpus, whose
+// larger buckets are filtered, through nextCustom, the scan a custom context
+// takes, and requires the route and parameters App.next picks for each request.
+// go test -race -run Test_Router_FilteredBucket_CustomCtx
+func Test_Router_FilteredBucket_CustomCtx(t *testing.T) {
+	t.Parallel()
+
+	defaultApp := New()
+	registerDummyRoutes(defaultApp)
+	defaultApp.startupProcess()
+	customApp := NewWithCustomCtx(func(app *App) CustomCtx {
+		return &customCtx{DefaultCtx: *NewDefaultCtx(app)}
+	})
+	registerDummyRoutes(customApp)
+	customApp.startupProcess()
+
+	filtered := 0
+	for m := range defaultApp.config.RequestMethods {
+		tree := defaultApp.treeIndex[m]
+		for _, filter := range append([]*bucketFilter{tree.globalFilter}, tree.filters...) {
+			if filter != nil {
+				filtered++
+			}
+		}
+	}
+	require.NotZero(t, filtered, "the corpus must have filtered buckets for this test to mean anything")
+
+	for _, r := range routesFixture.TestRoutes {
+		fctx := &fasthttp.RequestCtx{}
+		fctx.Request.Header.SetMethod(r.Method)
+		fctx.URI().SetPath(r.Path)
+
+		want, ok := defaultApp.AcquireCtx(fctx).(*DefaultCtx)
+		require.True(t, ok)
+		wantMatched, wantErr := defaultApp.next(want)
+
+		got := customApp.AcquireCtx(fctx)
+		gotMatched, gotErr := customApp.nextCustom(got)
+
+		require.Equal(t, wantMatched, gotMatched, "%s %s", r.Method, r.Path)
+		require.Equal(t, wantErr, gotErr, "%s %s", r.Method, r.Path)
+		require.Equal(t, want.Route().Path, got.Route().Path, "%s %s", r.Method, r.Path)
+		n := len(want.Route().Params)
+		require.Equal(t, want.values[:n], got.getValues()[:n], "%s %s", r.Method, r.Path)
+
+		defaultApp.ReleaseCtx(want)
+		customApp.ReleaseCtx(got)
+	}
+}
+
+// Test_RouteTree_Heads_NotStale proves every filtered bucket's heads are the
+// ones its routes derive, after each way an app gains, loses or rewrites
+// routes. The heads are derived when the tree is built, from routes that are
+// final by then, so this guards that no path reaches a published tree without
+// a build.
+// go test -race -run Test_RouteTree_Heads_NotStale
+func Test_RouteTree_Heads_NotStale(t *testing.T) {
+	t.Parallel()
+
+	assertFresh := func(t *testing.T, app *App, stage string) {
+		t.Helper()
+		checked := 0
+		for m, tree := range app.treeIndex {
+			check := func(routes []*Route, filter *bucketFilter) {
+				if filter == nil {
+					require.Less(t, len(routes), filterMinBucket, "%s: a bucket this size must be filtered", stage)
+					return
+				}
+				require.Len(t, filter.heads, len(routes), stage)
+				for i, route := range routes {
+					require.Equal(t, newScanHead(route), filter.heads[i], "%s: stale head for %s %q",
+						stage, app.config.RequestMethods[m], route.Path)
+					checked++
+				}
+			}
+			check(tree.globals, tree.globalFilter)
+			for i, routes := range tree.buckets {
+				check(routes, tree.filters[i])
+			}
+		}
+		require.NotZero(t, checked, "%s: no filtered bucket to check", stage)
+	}
+
+	handler := func(c Ctx) error { return c.Next() }
+	app := New()
+	for i := range filterMinBucket {
+		app.Get("/api/v1/r"+strconv.Itoa(i)+"/:id", handler)
+		app.Get("/api/v1/s"+strconv.Itoa(i), handler)
+	}
+	app.Use("/api", handler)
+	group := app.Group("/api/v1/grp", handler)
+	group.Get("/:x/y", handler)
+
+	sub := New()
+	for i := range filterMinBucket {
+		sub.Get("/m"+strconv.Itoa(i)+"/:id", handler)
+	}
+	app.Use("/api/v1/mounted", sub)
+
+	app.startupProcess()
+	assertFresh(t, app, "after startup")
+
+	app.Get("/api/v1/late/:id", handler)
+	app.RemoveRoute("/api/v1/s0")
+	_ = app.RebuildTree()
+	assertFresh(t, app, "after runtime registration and RebuildTree")
 }

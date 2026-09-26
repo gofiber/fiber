@@ -19,8 +19,20 @@ import (
 )
 
 const (
+	// filterMinBucket is the number of routes from which a bucket carries a
+	// bucketFilter. The scan reaches the routes of a smaller bucket directly
+	// sooner than it sets up the filter and calls out to it.
+	filterMinBucket = 8
+
+	// inlineCandidates is how many candidates a scan of a filtered bucket
+	// tests as an unfiltered bucket's are before it sets up the filter. A hop
+	// that its next route takes, as each hop of a middleware chain does, or
+	// that steps over one route to it, as a chain registered between a
+	// bucket's routes does, is over sooner than the filter is set up.
+	inlineCandidates = 2
+
 	// fingerprintMinBucket is the number of static routes from which a bucket
-	// carries a fingerprint filter; below it the leading-byte filter is cheaper
+	// filter carries fingerprints; below it the leading-byte filter is cheaper
 	// than a hash.
 	fingerprintMinBucket = 8
 
@@ -74,7 +86,9 @@ type Route struct { // betteralign:ignore - see below
 	// whole thing. prefix/prefixMask come first because they alone reject the
 	// common case; path, Params' length, the routing flags and routeParser's
 	// slash bounds follow for the candidates that survive. Keep new routing
-	// state up here and everything else below routeParser.
+	// state up here and everything else below routeParser. (A bucket of
+	// filterMinBucket routes or more is filtered on its scanHeads instead, and
+	// only the candidates they let through are loaded.)
 
 	prefix     uint64 // leading path bytes packed little-endian, see buildPrefixFilter
 	prefixMask uint64 // covers the bytes of prefix that are known constants; 0 disables the filter
@@ -134,11 +148,11 @@ type routeTree struct {
 	hashes []int32
 	// buckets is parallel to hashes and holds the routes of each occupied slot
 	buckets [][]*Route
-	// filters is parallel to buckets: each slot's fingerprint filter, nil for
-	// a bucket below fingerprintMinBucket static routes
-	filters []*fingerprintFilter
-	// globalFilter is the fingerprint filter of globals
-	globalFilter *fingerprintFilter
+	// filters is parallel to buckets: each slot's filter, nil for a bucket
+	// below filterMinBucket routes
+	filters []*bucketFilter
+	// globalFilter is the filter of globals
+	globalFilter *bucketFilter
 	// globals is the bucket for tree hash 0, which is also where misses go
 	globals []*Route
 	// mask is len(hashes)-1, used to wrap the probe
@@ -170,7 +184,7 @@ const routeTreeHashMul = 0x9E3779B1
 // RebuildTree's own doc states the contract.
 func buildRouteTree(buckets map[int][]*Route) *routeTree {
 	tree := &routeTree{globals: buckets[0]}
-	tree.globalFilter = newFingerprintFilter(tree.globals)
+	tree.globalFilter = newBucketFilter(tree.globals)
 
 	prefixed := len(buckets)
 	if _, ok := buckets[0]; ok {
@@ -189,7 +203,7 @@ func buildRouteTree(buckets map[int][]*Route) *routeTree {
 
 	tree.hashes = make([]int32, size)
 	tree.buckets = make([][]*Route, size)
-	tree.filters = make([]*fingerprintFilter, size)
+	tree.filters = make([]*bucketFilter, size)
 	tree.mask = uint32(size - 1) //nolint:gosec // G115 - size is a small power of two
 	// size is a power of two, so its trailing-zero count is log2(size).
 	tree.shift = uint32(32 - bits.TrailingZeros32(uint32(size))) //nolint:gosec // G115 - size is a small power of two
@@ -204,7 +218,7 @@ func buildRouteTree(buckets map[int][]*Route) *routeTree {
 		}
 		tree.hashes[i] = int32(hash) //nolint:gosec // G115 - tree hashes are 24-bit, built from three path bytes
 		tree.buckets[i] = routes
-		tree.filters[i] = newFingerprintFilter(routes)
+		tree.filters[i] = newBucketFilter(routes)
 	}
 
 	return tree
@@ -225,7 +239,7 @@ func (t *routeTree) slot(hash int) uint32 {
 // globals bucket when that hash has no bucket of its own.
 //
 //nolint:nonamedreturns // the pair reads better named than by position
-func (t *routeTree) lookup(hash int) (routes []*Route, filter *fingerprintFilter) {
+func (t *routeTree) lookup(hash int) (routes []*Route, filter *bucketFilter) {
 	if hash == 0 || t.hashes == nil {
 		return t.globals, t.globalFilter
 	}
@@ -414,23 +428,32 @@ func (r *Route) buildPrefixFilter() {
 //
 //nolint:nonamedreturns // the pair is easier to read named than by position
 func computePrefixFilter(r *Route) (word, mask uint64) {
+	return packConst(knownPrefix(r))
+}
+
+// knownPrefix returns the leading bytes every detection path the route
+// matches begins with, as far as the first comparison match makes can tell:
+// all of r.path for a route without parameters, the constant of the first
+// segment otherwise, less a trailing '/' getMatch may drop, and nothing for a
+// star route or a first segment that is itself a parameter. See
+// buildPrefixFilter for why each case is what it is.
+func knownPrefix(r *Route) string {
 	if r.star {
-		return 0, 0
+		return ""
 	}
 
 	prefix := r.path
 	if len(r.Params) > 0 {
 		segs := r.routeParser.segs
 		if len(segs) == 0 || segs[0].IsParam {
-			return 0, 0
+			return ""
 		}
 		prefix = segs[0].Const
 		if segs[0].HasOptionalSlash {
 			prefix = prefix[:len(prefix)-1]
 		}
 	}
-
-	return packConst(prefix)
+	return prefix
 }
 
 // prefixRejects reports whether the leading bytes of a detection path, packed
@@ -472,44 +495,6 @@ func staticFingerprint(r *Route) uint64 {
 		return 0
 	}
 	return pathFingerprint(r.path)
-}
-
-// fingerprintFilter lets the scan reject a bucket's static routes by path
-// fingerprint before loading them.
-type fingerprintFilter struct {
-	// prints is parallel to the bucket: each static route's fingerprint, 0 for
-	// a route the filter cannot speak for
-	prints []uint64
-	// maxLen is the longest static path in the bucket; a longer request
-	// matches none of them, so the scan need not hash it
-	maxLen int
-}
-
-// newFingerprintFilter builds a bucket's filter, or returns nil when fewer than
-// fingerprintMinBucket of its routes are static. Built from the finished bucket
-// so the tree's pointer swap publishes routes and filter together.
-func newFingerprintFilter(routes []*Route) *fingerprintFilter {
-	if len(routes) < fingerprintMinBucket {
-		return nil
-	}
-	static := 0
-	for _, route := range routes {
-		if staticFingerprint(route) != 0 {
-			static++
-		}
-	}
-	if static < fingerprintMinBucket {
-		return nil
-	}
-
-	f := &fingerprintFilter{prints: make([]uint64, len(routes))}
-	for i, route := range routes {
-		f.prints[i] = staticFingerprint(route)
-		if f.prints[i] != 0 {
-			f.maxLen = max(f.maxLen, len(route.path))
-		}
-	}
-	return f
 }
 
 func (r *Route) match(detectionPath, path string, params *[maxParams]string, pathSlashes int) bool {
@@ -556,13 +541,19 @@ func (r *Route) match(detectionPath, path string, params *[maxParams]string, pat
 	return false
 }
 
+// skipSlashFilters is the slash count to pass match for it to skip its quick
+// rejects on the route's slash bounds and probe, which is what 0 means to it:
+// a real detection path holds at least one '/'. pathSlashCount returns it when
+// no route consults the count, and a filtered bucket's scan passes it for a
+// route whose scan head already applied both filters.
+const skipSlashFilters = 0
+
 // matchParams is the parametric branch of match, kept out of line so match
 // stays small on the middleware and static-endpoint paths every request takes.
 func (r *Route) matchParams(detectionPath, path string, params *[maxParams]string, pathSlashes int) bool {
-	// Quick-reject on the precomputed slash-count bounds before walking segments.
-	// pathSlashes 0 means the count is unknown and the filters must stay out of
-	// the way; prefix (use) routes may extend past the pattern, so only the
-	// lower bound applies to them.
+	// Quick-reject on the precomputed slash-count bounds before walking segments,
+	// unless pathSlashes is skipSlashFilters; prefix (use) routes may extend
+	// past the pattern, so only the lower bound applies to them.
 	p := &r.routeParser
 	if pathSlashes > 0 {
 		if pathSlashes < int(p.minSlashes) || (!r.use && p.maxBounded && pathSlashes > int(p.maxSlashes)) {
@@ -585,18 +576,6 @@ func (app *App) next(c *DefaultCtx) (bool, error) {
 	// Get the route bucket for this method and tree path
 	tree, filter := app.treeIndex[methodInt].lookup(treeHash)
 	head := pathHeadWord(detectionPath)
-	// The request fingerprint: fingerprintNone when no static route in the
-	// bucket is as long as the path, else c.pathPrint, which the scan hashes
-	// once per request the first time it needs it.
-	var prints []uint64
-	var wantPrint uint64
-	if filter != nil {
-		prints = filter.prints
-		wantPrint = c.pathPrint
-		if len(detectionPath) > filter.maxLen {
-			wantPrint = fingerprintNone
-		}
-	}
 	indexRoute := max(c.indexRoute+1, 0)
 	start := indexRoute
 	// Hoist loop invariants: route.match takes &c.values, so these would reload each iteration.
@@ -604,37 +583,39 @@ func (app *App) next(c *DefaultCtx) (bool, error) {
 	firstMatchIndex := c.firstMatchIndex
 	skipNonUse := c.shouldSkipNonUseRoutes
 	skipHasParamUse := app.skip.hasParamUse
+	// A filtered bucket is walked by scan.skip, which applies the slash count
+	// and the probe before the route is loaded, so match is then passed
+	// skipSlashFilters, which stands its own copies of those filters down.
+	// The scan is only set up for one: a small app routes a few ns faster
+	// without it on the stack. Its first inlineCandidates candidates are
+	// tested as an unfiltered bucket's are, and the scan is initialized only
+	// once the loop moves past them.
+	var scan *routeScan
+	scanReady := false
+	if filter != nil {
+		scan = &routeScan{}
+	}
 
 	// Loop over the route stack starting from previous index
 	for ; indexRoute < len(tree); indexRoute++ {
-		// Reject static routes by fingerprint before loading the Route. The
-		// first candidate is checked directly, so a hit there never hashes;
-		// prints is nil without a filter; 0 marks a route it cannot judge.
-		if indexRoute > start && indexRoute < len(prints) {
-			if wantPrint == 0 {
-				wantPrint = pathFingerprint(detectionPath)
-				c.pathPrint = wantPrint
+		// Rule routes out before loading them where the bucket has a filter,
+		// else on the leading path bytes before touching the rest of the route
+		matchSlashes := pathSlashes
+		if scan != nil && indexRoute >= start+inlineCandidates {
+			if !scanReady {
+				scan.init(detectionPath, head, pathSlashes)
+				scanReady = true
 			}
-			skip := 0
-			for _, fp := range prints[indexRoute:] {
-				if fp == 0 || fp == wantPrint {
-					break
-				}
-				skip++
-			}
-			indexRoute += skip
-			if indexRoute >= len(tree) {
+			if indexRoute = scan.skip(filter, indexRoute, start, &c.pathPrint); indexRoute >= len(tree) {
 				break
 			}
+			matchSlashes = skipSlashFilters
+		} else if tree[indexRoute].prefixRejects(head) {
+			continue
 		}
 
 		// Get *Route
 		route := tree[indexRoute]
-
-		// Reject on the leading path bytes before touching the rest of the route
-		if route.prefixRejects(head) {
-			continue
-		}
 
 		if route.mount {
 			continue
@@ -659,7 +640,7 @@ func (app *App) next(c *DefaultCtx) (bool, error) {
 		}
 
 		// Check if it matches the request path
-		if !route.match(detectionPath, path, &c.values, pathSlashes) {
+		if !route.match(detectionPath, path, &c.values, matchSlashes) {
 			continue
 		}
 
@@ -698,6 +679,9 @@ func (app *App) next(c *DefaultCtx) (bool, error) {
 	methods := app.config.RequestMethods
 	prune := app.skip.methodMaskValid
 	routeMethods := app.skip.routeMethods
+	// Where the scan meets its first filtered bucket here, it is set up in
+	// this, which is declared outside the loop so that it stays on the stack.
+	var lateScan routeScan
 	for i := range methods {
 		// Skip original method
 		if methodInt == i {
@@ -710,7 +694,24 @@ func (app *App) next(c *DefaultCtx) (bool, error) {
 		// Reset stack index
 		indexRoute := -1
 
-		tree, _ := app.treeIndex[i].lookup(treeHash)
+		tree, filter := app.treeIndex[i].lookup(treeHash)
+		if filter != nil {
+			// A filtered bucket is walked as the scan above walks one
+			if scan == nil {
+				scan = &lateScan
+			}
+			if !scanReady {
+				scan.init(detectionPath, head, pathSlashes)
+				scanReady = true
+			}
+			var found bool
+			if indexRoute, found = scan.endpoint(tree, filter, path, &c.values, &c.pathPrint); found {
+				exists = true
+				c.Append(HeaderAllow, methods[i])
+			}
+			c.indexRoute = indexRoute
+			continue
+		}
 		// Get stack length
 		lenr := len(tree) - 1
 		// Loop over the route stack starting from previous index
@@ -752,53 +753,41 @@ func (app *App) nextCustom(c CustomCtx) (bool, error) {
 	// Hoist loop-invariant accessors; nothing changes mid-loop (Next()/RestartRouting re-enter with fresh reads).
 	detectionPath := c.getDetectionPath()
 	head := pathHeadWord(detectionPath)
-	// The request fingerprint: fingerprintNone when no static route in the
-	// bucket is as long as the path, else hashed by the scan when it first
-	// needs it; a custom context has nowhere to keep it across calls.
-	var prints []uint64
-	var wantPrint uint64
-	if filter != nil {
-		prints = filter.prints
-		if len(detectionPath) > filter.maxLen {
-			wantPrint = fingerprintNone
-		}
-	}
 	path := c.Path()
 	values := c.getValues()
 	pathSlashes := c.pathSlashCount(app)
 	firstMatchIndex := c.getFirstMatchIndex()
 	skipNonUse := c.getSkipNonUseRoutes()
 	skipHasParamUse := app.skip.hasParamUse
+	// As in next; a custom context has nowhere to keep the path's fingerprint
+	// across calls, so pathPrint only lasts this one.
+	var scan *routeScan
+	scanReady := false
+	var pathPrint uint64
+	if filter != nil {
+		scan = &routeScan{}
+	}
 
 	// Loop over the route stack starting from previous index
 	for ; indexRoute < len(tree); indexRoute++ {
-		// Reject static routes by fingerprint before loading the Route. The
-		// first candidate is checked directly, so a hit there never hashes;
-		// prints is nil without a filter; 0 marks a route it cannot judge.
-		if indexRoute > start && indexRoute < len(prints) {
-			if wantPrint == 0 {
-				wantPrint = pathFingerprint(detectionPath)
+		// Rule routes out before loading them where the bucket has a filter,
+		// else on the leading path bytes before touching the rest of the route
+		matchSlashes := pathSlashes
+		if scan != nil && indexRoute >= start+inlineCandidates {
+			if !scanReady {
+				scan.init(detectionPath, head, pathSlashes)
+				scanReady = true
 			}
-			skip := 0
-			for _, fp := range prints[indexRoute:] {
-				if fp == 0 || fp == wantPrint {
-					break
-				}
-				skip++
-			}
-			indexRoute += skip
-			if indexRoute >= len(tree) {
+			if indexRoute = scan.skip(filter, indexRoute, start, &pathPrint); indexRoute >= len(tree) {
 				break
 			}
+			matchSlashes = skipSlashFilters
+		} else if tree[indexRoute].prefixRejects(head) {
+			continue
 		}
 
 		// Get *Route
 		route := tree[indexRoute]
-
-		// Reject on the leading path bytes before touching the rest of the route
-		if route.prefixRejects(head) {
-			continue
-		}
 
 		if route.mount {
 			continue
@@ -823,7 +812,7 @@ func (app *App) nextCustom(c CustomCtx) (bool, error) {
 		}
 
 		// Check if it matches the request path
-		if !route.match(detectionPath, path, values, pathSlashes) {
+		if !route.match(detectionPath, path, values, matchSlashes) {
 			continue
 		}
 		if skipNonUse && !route.use {
@@ -860,6 +849,8 @@ func (app *App) nextCustom(c CustomCtx) (bool, error) {
 	methods := app.config.RequestMethods
 	prune := app.skip.methodMaskValid
 	routeMethods := app.skip.routeMethods
+	// See next for lateScan.
+	var lateScan routeScan
 	for i := range methods {
 		// Skip original method
 		if methodInt == i {
@@ -872,7 +863,24 @@ func (app *App) nextCustom(c CustomCtx) (bool, error) {
 		// Reset stack index
 		indexRoute := -1
 
-		tree, _ := app.treeIndex[i].lookup(treeHash)
+		tree, filter := app.treeIndex[i].lookup(treeHash)
+		if filter != nil {
+			// A filtered bucket is walked as the scan above walks one
+			if scan == nil {
+				scan = &lateScan
+			}
+			if !scanReady {
+				scan.init(detectionPath, head, pathSlashes)
+				scanReady = true
+			}
+			var found bool
+			if indexRoute, found = scan.endpoint(tree, filter, path, values, &pathPrint); found {
+				exists = true
+				c.Append(HeaderAllow, methods[i])
+			}
+			c.setIndexRoute(indexRoute)
+			continue
+		}
 		// Get stack length
 		lenr := len(tree) - 1
 		// Loop over the route stack starting from previous index
@@ -1480,14 +1488,20 @@ func (app *App) buildTree() *App {
 		return app
 	}
 
-	// 1) First loop: determine all possible 3-char prefixes ("treePaths") for each method
+	// 1) First loop: determine all possible 3-char prefixes ("treePaths") for each method.
+	// The scratch below is shared by the methods, cleared between them: a
+	// method's routes share a few prefixes between them, so a map sized for
+	// the routes rather than the prefixes was most of what a rebuild allocated.
 	hasParamRoutes := false
+	var treePaths []int
+	prefixCounts := make(map[int]int)
 	for method := range app.config.RequestMethods {
 		routes := app.stack[method]
-		treePaths := make([]int, len(routes))
+		treePaths = slices.Grow(treePaths[:0], len(routes))[:len(routes)]
+		clear(treePaths)
+		clear(prefixCounts)
 
 		globalCount := 0
-		prefixCounts := make(map[int]int, len(routes))
 
 		for i, route := range routes {
 			// The leading-byte filter is deliberately not rebuilt here; see
