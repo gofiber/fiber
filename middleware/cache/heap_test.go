@@ -13,10 +13,13 @@ func TestIndexedHeapGenerationSurvivesIndexReuse(t *testing.T) {
 	firstIdx := h.put("same-key", 1, 10)
 	firstGen := h.generation(firstIdx)
 	require.True(t, h.matches("same-key", firstIdx, firstGen))
+	require.False(t, h.matches("same-key", -1, firstGen))
+	require.False(t, h.matches("same-key", len(h.indices), firstGen))
 
 	key, size := h.remove(firstIdx)
 	require.Equal(t, "same-key", key)
 	require.Equal(t, uint(10), size)
+	require.False(t, h.matches("same-key", firstIdx, firstGen))
 
 	secondIdx := h.put("same-key", 2, 20)
 	secondGen := h.generation(secondIdx)
