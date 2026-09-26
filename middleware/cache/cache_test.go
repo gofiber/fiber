@@ -216,6 +216,24 @@ type contextRecorderStorage struct {
 	sets    []contextRecord
 }
 
+// blockingDeleteStorage pauses the first stale metadata deletion while another
+// request replaces that entry and reuses its heap index.
+type blockingDeleteStorage struct {
+	*failingCacheStorage
+	deleteStarted  chan struct{}
+	continueDelete chan struct{}
+	key            string
+	blockOnce      atomic.Bool
+}
+
+func (s *blockingDeleteStorage) DeleteWithContext(ctx context.Context, key string) error {
+	if key == s.key && s.blockOnce.CompareAndSwap(false, true) {
+		close(s.deleteStarted)
+		<-s.continueDelete
+	}
+	return s.failingCacheStorage.DeleteWithContext(ctx, key)
+}
+
 func newContextRecorderStorage() *contextRecorderStorage {
 	return &contextRecorderStorage{failingCacheStorage: newFailingCacheStorage()}
 }
@@ -4098,6 +4116,12 @@ func Test_CacheStorage_UncacheableRevalidationDeletesStaleEntry(t *testing.T) {
 			},
 		},
 		{
+			name: "no-store",
+			setUncacheableHeaders: func(c fiber.Ctx) {
+				c.Set(fiber.HeaderCacheControl, "no-store")
+			},
+		},
+		{
 			name: "vary-star",
 			setUncacheableHeaders: func(c fiber.Ctx) {
 				c.Set(fiber.HeaderVary, "*")
@@ -4153,7 +4177,11 @@ func Test_CacheStorage_UncacheableRevalidationDeletesStaleEntry(t *testing.T) {
 			returnUncacheable.Store(true)
 			resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/cached?invalidate=true", http.NoBody))
 			require.NoError(t, err)
+			require.Equal(t, fiber.StatusOK, resp.StatusCode)
 			require.Equal(t, cacheUnreachable, resp.Header.Get("X-Cache"))
+			responseBody, err := io.ReadAll(resp.Body)
+			require.NoError(t, err)
+			require.Equal(t, "newer", string(responseBody))
 			require.NoError(t, resp.Body.Close())
 
 			storage.mu.RLock()
@@ -4182,6 +4210,14 @@ func Test_CacheStorage_UncacheableRevalidationDeletesStaleEntry(t *testing.T) {
 			resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/next", http.NoBody))
 			require.NoError(t, err)
 			require.Equal(t, cacheHit, resp.Header.Get("X-Cache"))
+			require.NoError(t, resp.Body.Close())
+
+			resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/cached", http.NoBody))
+			require.NoError(t, err)
+			require.NotEqual(t, cacheHit, resp.Header.Get("X-Cache"))
+			responseBody, err = io.ReadAll(resp.Body)
+			require.NoError(t, err)
+			require.Equal(t, "newer", string(responseBody))
 			require.NoError(t, resp.Body.Close())
 		})
 	}
@@ -4255,10 +4291,11 @@ func Test_CacheStorage_UncacheableRevalidationDeletionErrors(t *testing.T) {
 
 			resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/cached?invalidate=true", http.NoBody))
 			require.NoError(t, err)
-			require.Equal(t, fiber.StatusInternalServerError, resp.StatusCode)
+			require.Equal(t, fiber.StatusOK, resp.StatusCode)
+			require.Equal(t, cacheUnreachable, resp.Header.Get("X-Cache"))
 			responseBody, err := io.ReadAll(resp.Body)
 			require.NoError(t, err)
-			require.Contains(t, string(responseBody), "failed to delete cached response")
+			require.Equal(t, "newer", string(responseBody))
 			require.NoError(t, resp.Body.Close())
 
 			storage.mu.RLock()
@@ -4292,6 +4329,528 @@ func Test_CacheStorage_UncacheableRevalidationDeletionErrors(t *testing.T) {
 			require.NotContains(t, storage.data, key)
 			require.NotContains(t, storage.data, bodyKey)
 			storage.mu.RUnlock()
+		})
+	}
+}
+
+func Test_Cache_InMemoryUncacheableRevalidationRemovesStaleEntry(t *testing.T) {
+	t.Parallel()
+
+	probe := &accountingProbe{}
+	var uncacheable atomic.Bool
+	app := fiber.New()
+	app.Use(New(Config{
+		CacheInvalidator: func(c fiber.Ctx) bool {
+			return fiber.Query[bool](c, "invalidate")
+		},
+		Expiration: time.Hour,
+		KeyGenerator: func(c fiber.Ctx) string {
+			return c.Path()
+		},
+		MaxBytes:   10,
+		accounting: probe.record,
+	}))
+	app.Get("/cached", func(c fiber.Ctx) error {
+		if uncacheable.Load() {
+			c.Set(fiber.HeaderCacheControl, "no-cache")
+			return c.SendString("newer")
+		}
+		c.Set(fiber.HeaderCacheControl, "public, max-age=60, must-revalidate")
+		return c.SendString("stale")
+	})
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/cached", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, cacheMiss, resp.Header.Get("X-Cache"))
+	require.NoError(t, resp.Body.Close())
+	require.Equal(t, uint(5), probe.counted())
+	require.Equal(t, 1, probe.nodes())
+
+	uncacheable.Store(true)
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/cached?invalidate=true", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	require.Equal(t, cacheUnreachable, resp.Header.Get("X-Cache"))
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "newer", string(body))
+	require.NoError(t, resp.Body.Close())
+	require.Zero(t, probe.counted())
+	require.Zero(t, probe.nodes())
+
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/cached", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, cacheUnreachable, resp.Header.Get("X-Cache"))
+	body, err = io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "newer", string(body))
+	require.NoError(t, resp.Body.Close())
+}
+
+func Test_Cache_DefaultMemoryRevalidationDoesNotReplayUncacheableEntry(t *testing.T) {
+	t.Parallel()
+
+	var uncacheable atomic.Bool
+	app := fiber.New()
+	app.Use(New(Config{Expiration: time.Hour}))
+	app.Get("/cached", func(c fiber.Ctx) error {
+		if uncacheable.Load() {
+			c.Set(fiber.HeaderCacheControl, "no-cache")
+			return c.SendString("newer")
+		}
+		c.Set(fiber.HeaderCacheControl, "public, max-age=60")
+		return c.SendString("stale")
+	})
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/cached", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, cacheMiss, resp.Header.Get("X-Cache"))
+	require.NoError(t, resp.Body.Close())
+
+	uncacheable.Store(true)
+	request := httptest.NewRequest(fiber.MethodGet, "/cached", http.NoBody)
+	request.Header.Set(fiber.HeaderCacheControl, "max-age=0")
+	resp, err = app.Test(request)
+	require.NoError(t, err)
+	require.Equal(t, cacheUnreachable, resp.Header.Get("X-Cache"))
+	require.NoError(t, resp.Body.Close())
+
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/cached", http.NoBody))
+	require.NoError(t, err)
+	require.NotEqual(t, cacheHit, resp.Header.Get("X-Cache"))
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "newer", string(body))
+	require.NoError(t, resp.Body.Close())
+}
+
+func Test_Cache_ConcurrentUncacheableCleanupPreservesReplacementAccounting(t *testing.T) {
+	t.Parallel()
+
+	key := cacheKeyVersion + "|GET|/cached"
+	storage := &blockingDeleteStorage{
+		failingCacheStorage: newFailingCacheStorage(),
+		deleteStarted:       make(chan struct{}),
+		continueDelete:      make(chan struct{}),
+		key:                 key,
+	}
+	probe := &accountingProbe{}
+	app := fiber.New()
+	app.Use(New(Config{
+		Expiration: time.Hour,
+		KeyGenerator: func(c fiber.Ctx) string {
+			return c.Path()
+		},
+		MaxBytes:   20,
+		Storage:    storage,
+		accounting: probe.record,
+	}))
+	app.Get("/cached", func(c fiber.Ctx) error {
+		switch fiber.Query[string](c, "version") {
+		case "uncacheable":
+			c.Set(fiber.HeaderCacheControl, "no-cache")
+			return c.SendString("old origin")
+		case "replacement":
+			c.Set(fiber.HeaderCacheControl, "public, max-age=60")
+			return c.SendString("newer!")
+		default:
+			c.Set(fiber.HeaderCacheControl, "public, max-age=60")
+			return c.SendString("stale")
+		}
+	})
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/cached", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, cacheMiss, resp.Header.Get("X-Cache"))
+	require.NoError(t, resp.Body.Close())
+
+	oldDone := make(chan struct{})
+	var oldResp *http.Response
+	var oldErr error
+	oldRequest := httptest.NewRequest(fiber.MethodGet, "/cached?version=uncacheable", http.NoBody)
+	oldRequest.Header.Set(fiber.HeaderCacheControl, "max-age=0")
+	go func() {
+		oldResp, oldErr = app.Test(oldRequest)
+		close(oldDone)
+	}()
+	<-storage.deleteStarted
+
+	released := false
+	defer func() {
+		if !released {
+			close(storage.continueDelete)
+		}
+	}()
+
+	replacementRequest := httptest.NewRequest(fiber.MethodGet, "/cached?version=replacement", http.NoBody)
+	replacementRequest.Header.Set(fiber.HeaderCacheControl, "max-age=0")
+	resp, err = app.Test(replacementRequest)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	require.Equal(t, cacheMiss, resp.Header.Get("X-Cache"))
+	require.NoError(t, resp.Body.Close())
+	require.Equal(t, uint(6), probe.counted())
+	require.Equal(t, 1, probe.nodes())
+
+	close(storage.continueDelete)
+	released = true
+	<-oldDone
+	require.NoError(t, oldErr)
+	require.Equal(t, fiber.StatusOK, oldResp.StatusCode)
+	require.Equal(t, cacheUnreachable, oldResp.Header.Get("X-Cache"))
+	body, err := io.ReadAll(oldResp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "old origin", string(body))
+	require.NoError(t, oldResp.Body.Close())
+	require.Equal(t, uint(6), probe.counted(), "cleanup must not subtract a replacement's bytes")
+	require.Equal(t, 1, probe.nodes(), "cleanup must not remove a replacement's heap node")
+}
+
+func Test_Cache_InMemoryUncacheableRevalidationPreservesConcurrentReplacement(t *testing.T) {
+	t.Parallel()
+
+	originStarted := make(chan struct{})
+	continueOrigin := make(chan struct{})
+	probe := &accountingProbe{}
+	app := fiber.New()
+	app.Use(New(Config{
+		Expiration: time.Hour,
+		KeyGenerator: func(c fiber.Ctx) string {
+			return c.Path()
+		},
+		MaxBytes:   20,
+		accounting: probe.record,
+	}))
+	app.Get("/cached", func(c fiber.Ctx) error {
+		switch fiber.Query[string](c, "version") {
+		case "uncacheable":
+			close(originStarted)
+			<-continueOrigin
+			c.Set(fiber.HeaderCacheControl, "no-cache")
+			return c.SendString("old origin")
+		case "replacement":
+			c.Set(fiber.HeaderCacheControl, "public, max-age=60")
+			return c.SendString("newer!")
+		default:
+			c.Set(fiber.HeaderCacheControl, "public, max-age=60")
+			return c.SendString("stale")
+		}
+	})
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/cached", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, cacheMiss, resp.Header.Get("X-Cache"))
+	require.NoError(t, resp.Body.Close())
+
+	oldDone := make(chan struct{})
+	var oldResp *http.Response
+	var oldErr error
+	oldRequest := httptest.NewRequest(fiber.MethodGet, "/cached?version=uncacheable", http.NoBody)
+	oldRequest.Header.Set(fiber.HeaderCacheControl, "max-age=0")
+	go func() {
+		oldResp, oldErr = app.Test(oldRequest)
+		close(oldDone)
+	}()
+	<-originStarted
+
+	released := false
+	defer func() {
+		if !released {
+			close(continueOrigin)
+		}
+	}()
+
+	replacementRequest := httptest.NewRequest(fiber.MethodGet, "/cached?version=replacement", http.NoBody)
+	replacementRequest.Header.Set(fiber.HeaderCacheControl, "max-age=0")
+	resp, err = app.Test(replacementRequest)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	require.Equal(t, cacheMiss, resp.Header.Get("X-Cache"))
+	require.NoError(t, resp.Body.Close())
+	require.Equal(t, uint(6), probe.counted())
+	require.Equal(t, 1, probe.nodes())
+
+	close(continueOrigin)
+	released = true
+	<-oldDone
+	require.NoError(t, oldErr)
+	require.Equal(t, fiber.StatusOK, oldResp.StatusCode)
+	require.Equal(t, cacheUnreachable, oldResp.Header.Get("X-Cache"))
+	body, err := io.ReadAll(oldResp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "old origin", string(body))
+	require.NoError(t, oldResp.Body.Close())
+	require.Equal(t, uint(6), probe.counted())
+	require.Equal(t, 1, probe.nodes())
+
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/cached", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, cacheHit, resp.Header.Get("X-Cache"))
+	body, err = io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "newer!", string(body))
+	require.NoError(t, resp.Body.Close())
+}
+
+func Test_Cache_ExternalUncacheableRevalidationPreservesCompletedReplacement(t *testing.T) {
+	t.Parallel()
+
+	for _, tt := range []struct {
+		name     string
+		maxBytes uint
+	}{
+		{name: "with MaxBytes", maxBytes: 20},
+		{name: "without MaxBytes"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			originStarted := make(chan struct{})
+			continueOrigin := make(chan struct{})
+			storage := newFailingCacheStorage()
+			probe := &accountingProbe{}
+			app := fiber.New()
+			app.Use(New(Config{
+				Expiration: time.Hour,
+				KeyGenerator: func(c fiber.Ctx) string {
+					return c.Path()
+				},
+				MaxBytes:   tt.maxBytes,
+				Storage:    storage,
+				accounting: probe.record,
+			}))
+			app.Get("/cached", func(c fiber.Ctx) error {
+				switch fiber.Query[string](c, "version") {
+				case "uncacheable":
+					close(originStarted)
+					<-continueOrigin
+					c.Set(fiber.HeaderCacheControl, "no-cache")
+					return c.SendString("old origin")
+				case "replacement":
+					c.Set(fiber.HeaderCacheControl, "public, max-age=60")
+					return c.SendString("newer!")
+				default:
+					c.Set(fiber.HeaderCacheControl, "public, max-age=60")
+					return c.SendString("stale")
+				}
+			})
+
+			resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/cached", http.NoBody))
+			require.NoError(t, err)
+			require.Equal(t, cacheMiss, resp.Header.Get("X-Cache"))
+			require.NoError(t, resp.Body.Close())
+
+			oldDone := make(chan struct{})
+			var oldResp *http.Response
+			var oldErr error
+			oldRequest := httptest.NewRequest(fiber.MethodGet, "/cached?version=uncacheable", http.NoBody)
+			oldRequest.Header.Set(fiber.HeaderCacheControl, "max-age=0")
+			go func() {
+				oldResp, oldErr = app.Test(oldRequest)
+				close(oldDone)
+			}()
+			<-originStarted
+
+			released := false
+			defer func() {
+				if !released {
+					close(continueOrigin)
+				}
+			}()
+
+			replacementRequest := httptest.NewRequest(fiber.MethodGet, "/cached?version=replacement", http.NoBody)
+			replacementRequest.Header.Set(fiber.HeaderCacheControl, "max-age=0")
+			resp, err = app.Test(replacementRequest)
+			require.NoError(t, err)
+			require.Equal(t, fiber.StatusOK, resp.StatusCode)
+			require.Equal(t, cacheMiss, resp.Header.Get("X-Cache"))
+			require.NoError(t, resp.Body.Close())
+			if tt.maxBytes > 0 {
+				require.Equal(t, uint(6), probe.counted())
+				require.Equal(t, 1, probe.nodes())
+			}
+
+			close(continueOrigin)
+			released = true
+			<-oldDone
+			require.NoError(t, oldErr)
+			require.Equal(t, fiber.StatusOK, oldResp.StatusCode)
+			require.Equal(t, cacheUnreachable, oldResp.Header.Get("X-Cache"))
+			body, err := io.ReadAll(oldResp.Body)
+			require.NoError(t, err)
+			require.Equal(t, "old origin", string(body))
+			require.NoError(t, oldResp.Body.Close())
+			if tt.maxBytes > 0 {
+				require.Equal(t, uint(6), probe.counted())
+				require.Equal(t, 1, probe.nodes())
+			}
+
+			key := cacheKeyVersion + "|GET|/cached"
+			storage.mu.RLock()
+			require.Contains(t, storage.data, key)
+			require.Equal(t, []byte("newer!"), storage.data[key+"_body"])
+			storage.mu.RUnlock()
+
+			resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/cached", http.NoBody))
+			require.NoError(t, err)
+			require.Equal(t, cacheHit, resp.Header.Get("X-Cache"))
+			body, err = io.ReadAll(resp.Body)
+			require.NoError(t, err)
+			require.Equal(t, "newer!", string(body))
+			require.NoError(t, resp.Body.Close())
+		})
+	}
+}
+
+func Test_CacheStorage_UncacheableRevalidationPreservesCompletedReplacement(t *testing.T) {
+	t.Parallel()
+
+	for _, maxBytes := range []uint{0, 20} {
+		t.Run(fmt.Sprintf("MaxBytes=%d", maxBytes), func(t *testing.T) {
+			t.Parallel()
+
+			originStarted := make(chan struct{})
+			continueOrigin := make(chan struct{})
+			probe := &accountingProbe{}
+			app := fiber.New()
+			app.Use(New(Config{
+				Expiration: time.Hour,
+				KeyGenerator: func(c fiber.Ctx) string {
+					return c.Path()
+				},
+				MaxBytes:   maxBytes,
+				Storage:    newFailingCacheStorage(),
+				accounting: probe.record,
+			}))
+			app.Get("/cached", func(c fiber.Ctx) error {
+				switch fiber.Query[string](c, "version") {
+				case "uncacheable":
+					close(originStarted)
+					<-continueOrigin
+					c.Set(fiber.HeaderCacheControl, "no-cache")
+					return c.SendString("old origin")
+				case "replacement":
+					c.Set(fiber.HeaderCacheControl, "public, max-age=60")
+					return c.SendString("newer!")
+				default:
+					c.Set(fiber.HeaderCacheControl, "public, max-age=60")
+					return c.SendString("stale")
+				}
+			})
+
+			resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/cached", http.NoBody))
+			require.NoError(t, err)
+			require.Equal(t, cacheMiss, resp.Header.Get("X-Cache"))
+			require.NoError(t, resp.Body.Close())
+
+			oldRequest := httptest.NewRequest(fiber.MethodGet, "/cached?version=uncacheable", http.NoBody)
+			oldRequest.Header.Set(fiber.HeaderCacheControl, "max-age=0")
+			oldDone := make(chan struct{})
+			var oldResp *http.Response
+			var oldErr error
+			go func() {
+				oldResp, oldErr = app.Test(oldRequest)
+				close(oldDone)
+			}()
+			<-originStarted
+
+			released := false
+			defer func() {
+				if !released {
+					close(continueOrigin)
+				}
+			}()
+
+			replacementRequest := httptest.NewRequest(fiber.MethodGet, "/cached?version=replacement", http.NoBody)
+			replacementRequest.Header.Set(fiber.HeaderCacheControl, "max-age=0")
+			resp, err = app.Test(replacementRequest)
+			require.NoError(t, err)
+			require.Equal(t, fiber.StatusOK, resp.StatusCode)
+			require.NoError(t, resp.Body.Close())
+
+			close(continueOrigin)
+			released = true
+			<-oldDone
+			require.NoError(t, oldErr)
+			require.Equal(t, fiber.StatusOK, oldResp.StatusCode)
+			require.Equal(t, cacheUnreachable, oldResp.Header.Get("X-Cache"))
+			require.NoError(t, oldResp.Body.Close())
+
+			if maxBytes > 0 {
+				require.Equal(t, uint(6), probe.counted())
+				require.Equal(t, 1, probe.nodes())
+			}
+			resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/cached", http.NoBody))
+			require.NoError(t, err)
+			require.Equal(t, cacheHit, resp.Header.Get("X-Cache"))
+			body, err := io.ReadAll(resp.Body)
+			require.NoError(t, err)
+			require.Equal(t, "newer!", string(body))
+			require.NoError(t, resp.Body.Close())
+		})
+	}
+}
+
+func Test_CacheStorage_NoStoreRevalidationCleansVaryManifest(t *testing.T) {
+	t.Parallel()
+
+	for _, failDelete := range []bool{false, true} {
+		t.Run(fmt.Sprintf("deleteFailure=%t", failDelete), func(t *testing.T) {
+			t.Parallel()
+
+			storage := newFailingCacheStorage()
+			var noStore atomic.Bool
+			app := fiber.New()
+			app.Use(New(Config{
+				Expiration: time.Hour,
+				KeyGenerator: func(c fiber.Ctx) string {
+					return c.Path()
+				},
+				Storage: storage,
+			}))
+			app.Get("/cached", func(c fiber.Ctx) error {
+				if noStore.Load() {
+					c.Set(fiber.HeaderCacheControl, "no-store")
+					return c.SendString("newer")
+				}
+				c.Set(fiber.HeaderCacheControl, "public, max-age=60")
+				c.Set(fiber.HeaderVary, "Accept")
+				return c.SendString("stale")
+			})
+
+			request := httptest.NewRequest(fiber.MethodGet, "/cached", http.NoBody)
+			request.Header.Set(fiber.HeaderAccept, "application/json")
+			resp, err := app.Test(request)
+			require.NoError(t, err)
+			require.Equal(t, cacheMiss, resp.Header.Get("X-Cache"))
+			require.NoError(t, resp.Body.Close())
+
+			manifestKey := cacheKeyVersion + "|GET|/cached|vary"
+			storage.mu.Lock()
+			_, manifestStored := storage.data[manifestKey]
+			if failDelete {
+				storage.errs["del|"+manifestKey] = errors.New("manifest delete failed")
+			}
+			storage.mu.Unlock()
+			require.True(t, manifestStored)
+
+			noStore.Store(true)
+			request = httptest.NewRequest(fiber.MethodGet, "/cached", http.NoBody)
+			request.Header.Set(fiber.HeaderAccept, "application/json")
+			request.Header.Set(fiber.HeaderCacheControl, "max-age=0")
+			resp, err = app.Test(request)
+			require.NoError(t, err)
+			require.Equal(t, fiber.StatusOK, resp.StatusCode)
+			require.Equal(t, cacheUnreachable, resp.Header.Get("X-Cache"))
+			body, err := io.ReadAll(resp.Body)
+			require.NoError(t, err)
+			require.Equal(t, "newer", string(body))
+			require.NoError(t, resp.Body.Close())
+
+			storage.mu.RLock()
+			_, manifestRemains := storage.data[manifestKey]
+			storage.mu.RUnlock()
+			require.Equal(t, failDelete, manifestRemains)
 		})
 	}
 }
@@ -5040,7 +5599,7 @@ func Test_Cache_RevalidationWithMaxBytes(t *testing.T) {
 		require.Equal(t, cacheHit, resp7.Header.Get("X-Cache"))
 	})
 
-	t.Run("revalidation with non-cacheable response preserves old entry", func(t *testing.T) {
+	t.Run("no-store revalidation removes old in-memory entry", func(t *testing.T) {
 		t.Parallel()
 
 		app := fiber.New()
@@ -5079,16 +5638,17 @@ func Test_Cache_RevalidationWithMaxBytes(t *testing.T) {
 		body2, err := io.ReadAll(resp2.Body)
 		require.NoError(t, err)
 		require.Equal(t, "not-cacheable", string(body2))
+		require.Equal(t, cacheUnreachable, resp2.Header.Get("X-Cache"))
 
-		// Next request should still serve the OLD cached entry
-		// because the new response was not cacheable and old entry should remain tracked
+		// A later request must reach the origin instead of serving the stale body.
 		req3 := httptest.NewRequest(fiber.MethodGet, "/test", http.NoBody)
 		resp3, err := app.Test(req3)
 		require.NoError(t, err)
-		require.Equal(t, cacheHit, resp3.Header.Get("X-Cache"))
+		require.Equal(t, cacheUnreachable, resp3.Header.Get("X-Cache"))
 		body3, err := io.ReadAll(resp3.Body)
 		require.NoError(t, err)
-		require.Equal(t, "cacheable", string(body3), "Old entry should still be cached")
+		require.Equal(t, "not-cacheable", string(body3))
+		require.Equal(t, 3, requestCount)
 	})
 }
 

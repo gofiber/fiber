@@ -363,6 +363,12 @@ func (z *item) DecodeMsg(dc *msgp.Reader) (err error) {
 				err = msgp.WrapError(err, "heapidx")
 				return
 			}
+		case "heapgen":
+			z.heapgen, err = dc.ReadUint64()
+			if err != nil {
+				err = msgp.WrapError(err, "heapgen")
+				return
+			}
 		default:
 			err = dc.Skip()
 			if err != nil {
@@ -376,9 +382,9 @@ func (z *item) DecodeMsg(dc *msgp.Reader) (err error) {
 
 // EncodeMsg implements msgp.Encodable
 func (z *item) EncodeMsg(en *msgp.Writer) (err error) {
-	// map header, size 17
+	// map header, size 18
 	// write "headers"
-	err = en.Append(0xde, 0x0, 0x11, 0xa7, 0x68, 0x65, 0x61, 0x64, 0x65, 0x72, 0x73)
+	err = en.Append(0xde, 0x0, 0x12, 0xa7, 0x68, 0x65, 0x61, 0x64, 0x65, 0x72, 0x73)
 	if err != nil {
 		return
 	}
@@ -570,15 +576,25 @@ func (z *item) EncodeMsg(en *msgp.Writer) (err error) {
 		err = msgp.WrapError(err, "heapidx")
 		return
 	}
+	// write "heapgen"
+	err = en.Append(0xa7, 0x68, 0x65, 0x61, 0x70, 0x67, 0x65, 0x6e)
+	if err != nil {
+		return
+	}
+	err = en.WriteUint64(z.heapgen)
+	if err != nil {
+		err = msgp.WrapError(err, "heapgen")
+		return
+	}
 	return
 }
 
 // MarshalMsg implements msgp.Marshaler
 func (z *item) MarshalMsg(b []byte) (o []byte, err error) {
 	o = msgp.Require(b, z.Msgsize())
-	// map header, size 17
+	// map header, size 18
 	// string "headers"
-	o = append(o, 0xde, 0x0, 0x11, 0xa7, 0x68, 0x65, 0x61, 0x64, 0x65, 0x72, 0x73)
+	o = append(o, 0xde, 0x0, 0x12, 0xa7, 0x68, 0x65, 0x61, 0x64, 0x65, 0x72, 0x73)
 	o = msgp.AppendArrayHeader(o, uint32(len(z.headers)))
 	for za0001 := range z.headers {
 		// map header, size 2
@@ -637,6 +653,9 @@ func (z *item) MarshalMsg(b []byte) (o []byte, err error) {
 	// string "heapidx"
 	o = append(o, 0xa7, 0x68, 0x65, 0x61, 0x70, 0x69, 0x64, 0x78)
 	o = msgp.AppendInt(o, z.heapidx)
+	// string "heapgen"
+	o = append(o, 0xa7, 0x68, 0x65, 0x61, 0x70, 0x67, 0x65, 0x6e)
+	o = msgp.AppendUint64(o, z.heapgen)
 	return
 }
 
@@ -922,6 +941,12 @@ func (z *item) UnmarshalMsg(bts []byte) (o []byte, err error) {
 				err = msgp.WrapError(err, "heapidx")
 				return
 			}
+		case "heapgen":
+			z.heapgen, bts, err = msgp.ReadUint64Bytes(bts)
+			if err != nil {
+				err = msgp.WrapError(err, "heapgen")
+				return
+			}
 		default:
 			bts, err = msgp.Skip(bts)
 			if err != nil {
@@ -940,6 +965,6 @@ func (z *item) Msgsize() (s int) {
 	for za0001 := range z.headers {
 		s += 1 + 4 + msgp.BytesPrefixSize + len(z.headers[za0001].key) + 6 + msgp.BytesPrefixSize + len(z.headers[za0001].value)
 	}
-	s += 5 + msgp.BytesPrefixSize + len(z.body) + 6 + msgp.BytesPrefixSize + len(z.ctype) + 10 + msgp.BytesPrefixSize + len(z.cencoding) + 13 + msgp.BytesPrefixSize + len(z.cacheControl) + 8 + msgp.BytesPrefixSize + len(z.expires) + 5 + msgp.BytesPrefixSize + len(z.etag) + 5 + msgp.Uint64Size + 7 + msgp.IntSize + 4 + msgp.Uint64Size + 4 + msgp.Uint64Size + 4 + msgp.Uint64Size + 16 + msgp.BoolSize + 11 + msgp.BoolSize + 10 + msgp.BoolSize + 8 + msgp.BoolSize + 8 + msgp.IntSize
+	s += 5 + msgp.BytesPrefixSize + len(z.body) + 6 + msgp.BytesPrefixSize + len(z.ctype) + 10 + msgp.BytesPrefixSize + len(z.cencoding) + 13 + msgp.BytesPrefixSize + len(z.cacheControl) + 8 + msgp.BytesPrefixSize + len(z.expires) + 5 + msgp.BytesPrefixSize + len(z.etag) + 5 + msgp.Uint64Size + 7 + msgp.IntSize + 4 + msgp.Uint64Size + 4 + msgp.Uint64Size + 4 + msgp.Uint64Size + 16 + msgp.BoolSize + 11 + msgp.BoolSize + 10 + msgp.BoolSize + 8 + msgp.BoolSize + 8 + msgp.IntSize + 8 + msgp.Uint64Size
 	return
 }

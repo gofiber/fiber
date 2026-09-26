@@ -2,11 +2,35 @@ package cache
 
 import (
 	"container/heap"
+	"crypto/rand"
+	"encoding/binary"
+	"fmt"
+	"sync"
+	"sync/atomic"
 )
+
+var (
+	heapGenerationOnce sync.Once
+	heapGeneration     atomic.Uint64
+)
+
+func seedHeapGeneration() {
+	var seed [8]byte
+	if _, err := rand.Read(seed[:]); err != nil {
+		panic(fmt.Errorf("cache: failed to initialize heap generation: %w", err))
+	}
+	heapGeneration.Store(binary.LittleEndian.Uint64(seed[:]))
+}
+
+func newIndexedHeap() *indexedHeap {
+	heapGenerationOnce.Do(seedHeapGeneration)
+	return &indexedHeap{}
+}
 
 type heapEntry struct {
 	key   string
 	exp   uint64
+	gen   uint64
 	bytes uint
 	idx   int
 }
@@ -24,6 +48,18 @@ type indexedHeap struct {
 	indices []int
 	// Max index handed out
 	maxidx int
+}
+
+// nextGeneration is safe to call without the cache lock, including when
+// MaxBytes is disabled and no heap entries are tracked. A process-random
+// starting point keeps persisted entries from matching a new process's heap.
+func (*indexedHeap) nextGeneration() uint64 {
+	heapGenerationOnce.Do(seedHeapGeneration)
+	for {
+		if gen := heapGeneration.Add(1); gen != 0 {
+			return gen
+		}
+	}
 }
 
 // Len implements heap.Interface by reporting the number of entries in the heap.
@@ -62,6 +98,7 @@ func (h *indexedHeap) pushInternal(entry heapEntry) {
 
 // Returns index to track entry
 func (h *indexedHeap) put(key string, exp uint64, bytes uint) int {
+	gen := h.nextGeneration()
 	idx := 0
 	if len(h.entries) < h.maxidx {
 		// Steal index from previously removed entry
@@ -75,10 +112,28 @@ func (h *indexedHeap) put(key string, exp uint64, bytes uint) int {
 	}
 	// Push manually to avoid allocation
 	h.pushInternal(heapEntry{
-		key: key, exp: exp, idx: idx, bytes: bytes,
+		key: key, exp: exp, gen: gen, idx: idx, bytes: bytes,
 	})
 	heap.Fix(h, h.Len()-1)
 	return idx
+}
+
+// generation returns the identity of a live heap entry. Callers hold the cache lock.
+func (h *indexedHeap) generation(idx int) uint64 {
+	return h.entries[h.indices[idx]].gen
+}
+
+// matches checks both the recycled index and the lifetime of its current entry.
+func (h *indexedHeap) matches(key string, idx int, gen uint64) bool {
+	if idx < 0 || idx >= len(h.indices) {
+		return false
+	}
+	realIdx := h.indices[idx]
+	if realIdx < 0 || realIdx >= len(h.entries) {
+		return false
+	}
+	entry := h.entries[realIdx]
+	return entry.idx == idx && entry.key == key && entry.gen == gen
 }
 
 func (h *indexedHeap) removeInternal(realIdx int) (key string, size uint) { //nolint:nonamedreturns // gocritic unnamedResult prefers named key and size when removing heap entries
