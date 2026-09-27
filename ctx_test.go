@@ -7717,6 +7717,129 @@ func Test_Ctx_SendFile_404(t *testing.T) {
 	require.Equal(t, "sendfile: file ctx12.go not found", string(body))
 }
 
+// Test_Ctx_SendFile_NameIsLiteral pins that SendFile opens exactly the name it
+// is given, the way os.Open would. The file server reads the request URI,
+// which fasthttp decodes and splits at "?" and "#", so the name is escaped on
+// its way in: a "%", "?" or "#" is part of the name, and "100%25.txt" is not
+// "100%.txt".
+func Test_Ctx_SendFile_NameIsLiteral(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	names := []string{"100%25.txt", "100%.txt", "hash_sign_#.txt", "sp ace.txt", "café.txt", "plus+sign.txt"}
+	if runtime.GOOS != windowsOS {
+		names = append(names, "question?.txt")
+	}
+	for _, name := range names {
+		require.NoError(t, os.WriteFile(filepath.Join(dir, name), []byte("content of "+name), 0o600))
+	}
+
+	for _, name := range names {
+		app := New()
+		app.Get("/", func(c Ctx) error {
+			return c.SendFile(filepath.Join(dir, name))
+		})
+		resp, err := app.Test(httptest.NewRequest(MethodGet, "/", http.NoBody))
+		require.NoError(t, err, name)
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err, name)
+		require.Equal(t, StatusOK, resp.StatusCode, name)
+		require.Equal(t, "content of "+name, string(body), name)
+	}
+}
+
+// Test_Ctx_SendFile_EncodedSeparatorStaysInDirectory pins that a name built
+// from request input cannot leave the directory the handler joined it to. The
+// router keeps "%2F" encoded, so c.Params("*") of "/files/..%2Fsecret.txt" is
+// one segment that filepath.Join cannot clean; SendFile used to decode it
+// afterwards into "../secret.txt" and serve the file outside the directory.
+// An encoded "?" or "#" likewise stays part of the name.
+func Test_Ctx_SendFile_EncodedSeparatorStaysInDirectory(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	pub := filepath.Join(root, "public")
+	require.NoError(t, os.Mkdir(pub, 0o750))
+	require.NoError(t, os.WriteFile(filepath.Join(pub, "ok.txt"), []byte("OK"), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "secret.txt"), []byte("SECRET"), 0o600))
+
+	for _, unescape := range []bool{false, true} {
+		app := New(Config{UnescapePath: unescape})
+		app.Get("/files/*", func(c Ctx) error {
+			return c.SendFile(filepath.Join(pub, c.Params("*")))
+		})
+
+		resp, err := app.Test(httptest.NewRequest(MethodGet, "/files/ok.txt", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, StatusOK, resp.StatusCode, "unescape=%v", unescape)
+
+		for _, target := range []string{
+			"/files/..%2Fsecret.txt",
+			"/files/%2e%2e%2Fsecret.txt",
+			"/files/..%252Fsecret.txt",
+			"/files/ok.txt%3Fx",
+			"/files/ok.txt%23x",
+		} {
+			resp, err := app.Test(httptest.NewRequest(MethodGet, target, http.NoBody))
+			require.NoError(t, err, target)
+			body, err := io.ReadAll(resp.Body)
+			require.NoError(t, err, target)
+			require.Equal(t, StatusNotFound, resp.StatusCode, "unescape=%v target=%s", unescape, target)
+			require.NotContains(t, string(body), "SECRET", "unescape=%v target=%s", unescape, target)
+		}
+	}
+}
+
+// Test_Ctx_SendFile_DirectoryIsNotFound pins that a directory named without a
+// trailing slash is not found rather than redirected: fasthttp's redirect
+// would carry the directory's filesystem path in Location.
+func Test_Ctx_SendFile_DirectoryIsNotFound(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	require.NoError(t, os.Mkdir(filepath.Join(dir, "sub"), 0o750))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "sub", "index.html"), []byte("INDEX"), 0o600))
+
+	app := New()
+	app.Get("/", func(c Ctx) error {
+		return c.SendFile(filepath.Join(dir, "sub"))
+	})
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, StatusNotFound, resp.StatusCode)
+	require.Empty(t, resp.Header.Get(HeaderLocation))
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.NotContains(t, string(body), "INDEX")
+}
+
+// Test_Ctx_SendFile_ControlByteIsNotFound pins that a name holding a control
+// byte is not found. fasthttp's URI parser used to reject it silently, which
+// left the root path, so the root's index.html was served instead.
+func Test_Ctx_SendFile_ControlByteIsNotFound(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "index.html"), []byte("INDEX"), 0o600))
+
+	for _, cfg := range []SendFile{{}, {FS: os.DirFS(dir)}} {
+		app := New()
+		app.Get("/", func(c Ctx) error {
+			name := "nope\x00.txt"
+			if cfg.FS == nil {
+				name = filepath.Join(dir, name)
+			}
+			return c.SendFile(name, cfg)
+		})
+		resp, err := app.Test(httptest.NewRequest(MethodGet, "/", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, StatusNotFound, resp.StatusCode, "fs=%v", cfg.FS != nil)
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		require.NotContains(t, string(body), "INDEX", "fs=%v", cfg.FS != nil)
+	}
+}
+
 func Test_Ctx_SendFile_Multiple(t *testing.T) {
 	t.Parallel()
 

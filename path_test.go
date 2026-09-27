@@ -1480,6 +1480,12 @@ func Test_NormalizeRequestPath(t *testing.T) {
 		{in: "/%2570rivate", out: "/%2570rivate"},
 		{in: "/%2570rivate", unescape: true, out: "/%70rivate"},
 		{in: "/%252e%252e/x", unescape: true, out: "/%2e%2e/x"},
+		// An unrooted path is rooted first: the empty path of an absolute-form
+		// target, the asterisk form, and a relative path with a dot segment.
+		{in: "", out: "/"},
+		{in: "*", out: "/*"},
+		{in: "a/../b", out: "/b"},
+		{in: "", unescape: true, out: "/"},
 	}
 
 	for _, tc := range tests {
@@ -1517,7 +1523,7 @@ func Test_NeedsPathNormalization_MatchesReference(t *testing.T) {
 	t.Parallel()
 
 	ref := func(s string) bool {
-		if s != "" && s[0] == '.' {
+		if s == "" || s[0] != '/' {
 			return true
 		}
 		return strings.Contains(s, "%") || strings.Contains(s, "/.")
@@ -1564,10 +1570,11 @@ func Benchmark_NeedsPathNormalization(b *testing.B) {
 func Test_NeedsPathNormalization(t *testing.T) {
 	t.Parallel()
 
-	for _, s := range []string{"/a/./b", "/a/../b", "/%41", "/%2F", "/.", "/..", "./x", "../x", "/.well-known/x"} {
+	// an unrooted path needs rooting, so it counts as needing normalization
+	for _, s := range []string{"/a/./b", "/a/../b", "/%41", "/%2F", "/.", "/..", "./x", "../x", "/.well-known/x", "", "*", "a/b"} {
 		require.True(t, needsPathNormalization(s), "path=%q", s)
 	}
-	for _, s := range []string{"", "/", "/a", "/a/b", "/a/b/", "/a//b", "//", "/a.b/c", "/a-b_c~d", "/a/b.", "/a..b", "/user/keys/1337"} {
+	for _, s := range []string{"/", "/a", "/a/b", "/a/b/", "/a//b", "//", "/a.b/c", "/a-b_c~d", "/a/b.", "/a..b", "/user/keys/1337"} {
 		require.False(t, needsPathNormalization(s), "path=%q", s)
 	}
 }

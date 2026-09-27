@@ -5079,6 +5079,71 @@ func Test_Router_StrayPercent(t *testing.T) {
 	}
 }
 
+// Test_Router_UnrootedTargetIsRooted pins that a request target without a
+// leading slash, the absolute form with an empty path or the asterisk form,
+// is routed as the rooted path fasthttp reports for it. Unrooted, it slipped
+// past every root-level Use middleware while a "/*" route still matched it.
+// httptest rejects these targets, so the requests go through the raw handler.
+func Test_Router_UnrootedTargetIsRooted(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		method, target, path string
+	}{
+		{MethodGet, "http://example.com?x=1", "/"},
+		{MethodPost, "http://example.com#f", "/"},
+		{MethodOptions, "*", "/*"},
+		{MethodGet, "http://example.com/a/b", "/a/b"},
+	}
+	// with DisablePathNormalizing the scan, not fasthttp's parsed copy, has
+	// to notice the missing slash
+	for _, disable := range []bool{false, true} {
+		for _, tc := range testCases {
+			app := New()
+			guardRan, seen := false, ""
+			app.Use(func(c Ctx) error {
+				guardRan = true
+				return c.Next()
+			})
+			app.All("/*", func(c Ctx) error {
+				seen = c.Path()
+				return c.SendString("catch-all")
+			})
+
+			var req fasthttp.Request
+			req.Header.SetMethod(tc.method)
+			req.SetRequestURI(tc.target)
+			req.Header.SetHost("example.com")
+			var fctx fasthttp.RequestCtx
+			fctx.Init(&req, nil, nil)
+			if disable {
+				fctx.Request.URI().DisablePathNormalizing = true
+			}
+			app.Handler()(&fctx)
+
+			require.Equal(t, StatusOK, fctx.Response.StatusCode(), "disable=%v %s %s", disable, tc.method, tc.target)
+			require.True(t, guardRan, "disable=%v %s %s: root middleware skipped", disable, tc.method, tc.target)
+			require.Equal(t, tc.path, seen, "disable=%v %s %s", disable, tc.method, tc.target)
+		}
+	}
+
+	// an override is rooted the same way
+	app := New()
+	app.Use(func(c Ctx) error {
+		c.Path("rewritten")
+		return c.Next()
+	})
+	app.Get("/rewritten", func(c Ctx) error {
+		return c.SendString(c.Path())
+	})
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/original", http.NoBody))
+	require.NoError(t, err)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, StatusOK, resp.StatusCode)
+	require.Equal(t, "/rewritten", string(body))
+}
+
 func Test_App_Add_MultipleMethods_Name(t *testing.T) {
 	t.Parallel()
 

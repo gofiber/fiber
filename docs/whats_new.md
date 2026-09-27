@@ -771,7 +771,7 @@ for the response. The response cookies are `c.Res().GetCookies()`, named apart f
 - **Bind**: Now used for binding instead of view binding. Use `c.ViewBind()` for view binding.
 - **Format**: Parameter changed from `body any` to `handlers ...ResFmt`.
 - **Redirect**: Use `c.Redirect().To()` instead.
-- **SendFile**: Now supports different configurations using a config parameter.
+- **SendFile**: Now supports different configurations using a config parameter. The file name is taken literally, as `os.Open` takes it: it is no longer percent-decoded, and a `?` or `#` in it is part of the name, so drop any `url.PathEscape` applied to it. An encoded separator carried by a route parameter (`..%2Fsecret.txt`) no longer decodes into a step out of the directory the name was joined to, and a directory named without a trailing slash is not found instead of redirected to its filesystem path. `Download` follows, since it serves through `SendFile`.
 - **Attachment and Download**: Non-ASCII filenames now use `filename*` as
   specified by [RFC 6266](https://www.rfc-editor.org/rfc/rfc6266) and
   [RFC 8187](https://www.rfc-editor.org/rfc/rfc8187). The `filename` parameter

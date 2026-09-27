@@ -3783,14 +3783,8 @@ app.Get("/not-found", func(c fiber.Ctx) error {
 ```
 
 :::info
-If the file contains a URL-specific character, you have to escape it before passing the file path into the `SendFile` function.
+The name is taken as it is, the way `os.Open` takes it: a `%`, `?` or `#` in it is part of the name, so `c.SendFile("hash_sign_#.txt")` serves that file and nothing needs escaping. A name built from request input is served from wherever it points, so confine it yourself, for example with `filepath.Join(root, filepath.Clean("/"+name))`, or serve from an `fs.FS` root with the `FS` option. An encoded separator that a route parameter still holds, as in `..%2Fsecret.txt`, stays one name and is not found rather than decoded into a step out of the directory. A directory named without a trailing slash is not found; with one, its `index.html` is served.
 :::
-
-```go title="Example"
-app.Get("/file-with-url-chars", func(c fiber.Ctx) error {
-  return c.SendFile(url.PathEscape("hash_sign_#.txt"))
-})
-```
 
 :::info
 You can set the `CacheDuration` config property to `-1` to disable caching.
