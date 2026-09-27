@@ -7797,20 +7797,24 @@ func Test_Ctx_SendFile_DirectoryIsNotFound(t *testing.T) {
 	t.Parallel()
 
 	dir := t.TempDir()
-	require.NoError(t, os.Mkdir(filepath.Join(dir, "sub"), 0o750))
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "sub", "index.html"), []byte("INDEX"), 0o600))
+	// fasthttp escapes the name in the redirect it answers with, so a name it
+	// has to escape (a space, a percent, UTF-8) must be caught all the same.
+	for _, name := range []string{"sub", "sub dir", "100%", "café"} {
+		require.NoError(t, os.Mkdir(filepath.Join(dir, name), 0o750))
+		require.NoError(t, os.WriteFile(filepath.Join(dir, name, "index.html"), []byte("INDEX"), 0o600))
 
-	app := New()
-	app.Get("/", func(c Ctx) error {
-		return c.SendFile(filepath.Join(dir, "sub"))
-	})
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, StatusNotFound, resp.StatusCode)
-	require.Empty(t, resp.Header.Get(HeaderLocation))
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.NotContains(t, string(body), "INDEX")
+		app := New()
+		app.Get("/", func(c Ctx) error {
+			return c.SendFile(filepath.Join(dir, name))
+		})
+		resp, err := app.Test(httptest.NewRequest(MethodGet, "/", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, StatusNotFound, resp.StatusCode, name)
+		require.Empty(t, resp.Header.Get(HeaderLocation), name)
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		require.NotContains(t, string(body), "INDEX", name)
+	}
 }
 
 // Test_Ctx_SendFile_ControlByteIsNotFound pins that a name holding a control

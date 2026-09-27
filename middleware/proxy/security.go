@@ -754,6 +754,12 @@ func secureTLSConfig(cfg *tls.Config) *tls.Config {
 	return cloned
 }
 
+// placeholderOrigin is the authority joinUpstreamPath parses a request target
+// behind. Neither its scheme nor its host is what any request is sent to; it
+// only keeps the parser from reading the target's own leading "//" as an
+// authority.
+const placeholderOrigin = "https://h"
+
 // joinUpstreamPath returns a URL string formed by combining an already
 // validated upstream base with the request target the proxy forwards (see
 // wiretarget.Routed). The target can only ever be a path, a query and a
@@ -761,12 +767,6 @@ func secureTLSConfig(cfg *tls.Config) *tls.Config {
 // cannot change the host the proxy connects to, and a leading "//" stays the
 // empty segment the router kept apart from "/foo" rather than being
 // collapsed into a path the router never matched.
-// placeholderOrigin is the authority joinUpstreamPath parses a request target
-// behind. Neither its scheme nor its host is what any request is sent to; it
-// only keeps the parser from reading the target's own leading "//" as an
-// authority.
-const placeholderOrigin = "https://h"
-
 func joinUpstreamPath(base *url.URL, requestPath string) string {
 	if base == nil {
 		return ""

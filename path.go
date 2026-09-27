@@ -180,6 +180,11 @@ var (
 // The optional Config argument can be used to control case sensitivity and
 // strict routing behavior. This helper allows checking potential matches
 // without registering a route.
+//
+// path is a rooted path, as c.Path() returns one; a string without a leading
+// slash matches no pattern. Request routing differs in one respect: it roots
+// the request target it is handed before matching, so "OPTIONS *" is routed
+// as "/*", whereas RoutePatternMatch("*", "/*") is false.
 func RoutePatternMatch(path, pattern string, cfg ...Config) bool {
 	// See logic in (*Route).match and (*App).register
 	var ctxParams [maxParams]string

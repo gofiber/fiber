@@ -1368,10 +1368,12 @@ func (r *DefaultRes) SendFile(file string, config ...SendFile) error {
 	fsStatus := response.StatusCode()
 
 	// fasthttp answers a directory named without a trailing slash with a
-	// redirect to the name with one. Here that name is a filesystem path, not
-	// a route, so the redirect could only disclose it: the directory is not
-	// found. A name with the trailing slash serves the directory's index.html.
-	if fsStatus == StatusFound && bytes.HasSuffix(response.Header.Peek(HeaderLocation), utils.UnsafeBytes(file+"/")) {
+	// redirect to the name with one, the only redirect its file handler
+	// issues. Here that name is a filesystem path, not a route, so the
+	// redirect could only disclose it: the directory is not found. The
+	// Location carries the name escaped, so it is not compared with the
+	// name. A name with the trailing slash serves the directory's index.html.
+	if fsStatus == StatusFound {
 		response.Header.Del(HeaderLocation)
 		response.SetStatusCode(StatusNotFound)
 		fsStatus = StatusNotFound
