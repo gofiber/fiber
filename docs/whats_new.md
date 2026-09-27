@@ -1449,6 +1449,8 @@ Incoming body sizes now respect the Fiber app's configured `BodyLimit` (falling 
 
 The adaptor also propagates the request's protocol version, normalized to Fiber's convention (`HTTP/2.0` → `HTTP/2`, `HTTP/3.0` → `HTTP/3`), so `c.Protocol()` reports the real version instead of always `HTTP/1.1`. Interim responses such as `SendEarlyHints`' `103` are silently skipped through the adaptor — there is no client connection to write them to — while the `Link` headers still reach the final response.
 
+An adapted `net/http` handler, middleware or `ConvertRequest` request is built from the path the router matched, `c.Path()`, followed by the query, rather than from the request line as it arrived, so a `net/http` guard on `r.URL.Path` sees the `/admin/x` that `/a/../admin/x` was routed as. `HTTPHandler`, `HTTPHandlerFunc` and `HTTPHandlerWithContext` answer `404 Not Found` for a routed path with an empty segment or an escaped slash, such as `//admin/x` or `/public/..%2Fadmin/x`, which `net/http` would otherwise decode and clean into a path no Fiber middleware ran for. `FiberHandler`, `FiberHandlerFunc` and `FiberApp` route a rewritten `r.URL`, as `http.StripPrefix` produces, and a request built in code without a `RequestURI`. See the adaptor's [notes and limitations](./middleware/adaptor.md#notes-and-limitations).
+
 | Payload Size | Metric         | V2           | V3          | Percent Change |
 | ------------ | -------------- | ------------ | ----------- | -------------- |
 | 100KB        | Execution Time | 1056 ns/op   | 588.6 ns/op | -44.25%        |

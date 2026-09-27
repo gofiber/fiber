@@ -347,9 +347,13 @@ func main() {
 
 ## Notes and limitations
 
+- An adapted `net/http` handler, middleware or `ConvertRequest` request is built from the path the router matched, `c.Path()`, followed by the query, not from the request line as it arrived. The two differ for an escaped or non-canonical request, and `net/http` reads the raw line its own way: `/public/..%2Fadmin/x` decodes into a `URL.Path` that `http.FileServer` cleans to `/admin/x`, although no middleware mounted on `/admin` has run for it. Routed, `/a/../admin/x` reaches the handler as `/admin/x` (after the `/admin` middleware ran), `%41` as `A`, a stray `%` as `%25`, and with `UnescapePath` the decoded path is escaped again segment by segment.
+- `HTTPHandler`, `HTTPHandlerFunc` and `HTTPHandlerWithContext` answer `404 Not Found` for a routed path with an empty segment (`//admin/x`) or an escaped slash (`/public/..%2Fadmin/x`): `net/http` decodes `%2F` into a separator in `URL.Path` and its handlers clean `//` and `..` away, so the handler would serve a path the router never matched. `HTTPMiddleware` and `ConvertRequest` hand such a path on, with the escaped slash kept in `URL.RawPath`; a Fiber route behind the middleware still receives its `%2F`.
+- `HTTPHandler`, `HTTPHandlerFunc` and `HTTPHandlerWithContext` put the original request line back once a buffered handler has returned, so `c.OriginalURL()` in a middleware that runs afterwards is unchanged. A handler that flushed or hijacked is still running with a request whose URL aliases the request line, so the line is then left as the handler read it; `HTTPMiddleware` and `ConvertRequest` leave it as well.
 - A request that `net/http` served over TLS is seen as TLS by Fiber: `c.Scheme()` is `https`, `c.Secure()` is true and `c.RequestCtx().TLSConnectionState()` carries the state from `r.TLS`.
 - `c.StartTime()` (and so `c.Elapsed()`) is not set for requests that reach Fiber through `FiberHandler`, `FiberApp` or `HTTPMiddleware`: fasthttp only records the request time inside its own server loop.
 - `HTTPMiddleware` routes the request the wrapped middleware hands to `next`, including a rewritten `r.URL` such as the one `http.StripPrefix` produces. The middleware must call `next` before it flushes or hijacks the response; after that the response has left Fiber's hands and the call is ignored.
+- `FiberHandler`, `FiberHandlerFunc` and `FiberApp` route `r.URL` when it differs from `r.RequestURI`: the request an `http.StripPrefix` in front of them rewrote, and a request built in code, which has no `RequestURI` at all.
 
 ## Summary
 
