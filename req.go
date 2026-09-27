@@ -299,15 +299,20 @@ func (r *DefaultReq) HasHeader(key string) bool {
 // its comma-separated members, on any of its field lines. Repeated field lines
 // are one list (RFC 9110 Section 5.3) and the member matches under ASCII case
 // folding, so it fits directive-style headers such as Cache-Control or
-// Connection. An empty value is never present. Only valid within the handler.
+// Connection. A comma inside a quoted argument does not end a member, so
+// `ext="a,no-transform,b"` is one member and does not list no-transform
+// (RFC 9111 permits quoted directive arguments). An empty value is never
+// present. Only valid within the handler.
 func (r *DefaultReq) HasHeaderValue(key, value string) bool {
 	if value == "" {
 		return false
 	}
 	app := r.c.app
 	for _, line := range fieldname.Lines(&r.c.fasthttp.Request.Header, key, !app.config.DisableHeaderNormalizing) {
-		if headerlist.ContainsFold(app.toString(line), value) {
-			return true
+		for member := range headerlist.AllQuoted(app.toString(line)) {
+			if utils.EqualFold(member, value) {
+				return true
+			}
 		}
 	}
 	return false

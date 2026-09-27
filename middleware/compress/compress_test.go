@@ -1104,3 +1104,28 @@ func Test_Compress_Repeated_Cache_Control_Lines_No_Transform(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, body, len(filedata))
 }
+
+// go test -run Test_Compress_Quoted_Cache_Control_Argument_Is_Not_No_Transform
+func Test_Compress_Quoted_Cache_Control_Argument_Is_Not_No_Transform(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+
+	app.Use(New())
+
+	app.Get("/", func(c fiber.Ctx) error {
+		c.Set(fiber.HeaderContentType, fiber.MIMETextPlainCharsetUTF8)
+		return c.Send(filedata)
+	})
+
+	// "no-transform" only appears inside a quoted directive argument, which is
+	// one member, so the response must still be compressed.
+	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+	req.Header.Set("Accept-Encoding", "gzip")
+	req.Header.Add("Cache-Control", "public")
+	req.Header.Add("Cache-Control", `ext="x,no-transform,y"`)
+
+	resp, err := app.Test(req, testConfig)
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, 200, resp.StatusCode, "Status code")
+	require.Equal(t, "gzip", resp.Header.Get(fiber.HeaderContentEncoding))
+}

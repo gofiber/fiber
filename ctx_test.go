@@ -335,6 +335,17 @@ func Test_Ctx_HasHeaderValue(t *testing.T) {
 
 	c.Request().Header.Del(HeaderCacheControl)
 	require.False(t, c.HasHeaderValue(HeaderCacheControl, "public"))
+
+	// A comma inside a quoted directive argument is part of that member, not
+	// a separator (RFC 9111 allows quoted arguments), so no-transform is not
+	// listed here even though the bytes appear in the value.
+	c.Request().Header.Set(HeaderCacheControl, "public")
+	c.Request().Header.Add(HeaderCacheControl, `ext="x,no-transform,y"`)
+	require.False(t, c.HasHeaderValue(HeaderCacheControl, "no-transform"))
+	require.True(t, c.HasHeaderValue(HeaderCacheControl, `ext="x,no-transform,y"`))
+	require.True(t, c.HasHeaderValue(HeaderCacheControl, "public"))
+	c.Request().Header.Add(HeaderCacheControl, "no-transform")
+	require.True(t, c.HasHeaderValue(HeaderCacheControl, "no-transform"))
 }
 
 // go test -run Test_Ctx_FullURL_DoesNotAliasPooledBuffer
