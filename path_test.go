@@ -1407,6 +1407,9 @@ func Test_UnescapeSafePath(t *testing.T) {
 		{in: "/%%370rivate", out: "/%2570rivate"},
 		{in: "/%7%30rivate", out: "/%2570rivate"},
 		{in: "/%%32%65git", out: "/%252egit"},
+		// After a stray "%" a kept escape is still kept, with uppercase hex.
+		{in: "/%%20", out: "/%25%20"},
+		{in: "/%zz%2fb", out: "/%25zz%2Fb"},
 	}
 
 	for _, tc := range tests {
