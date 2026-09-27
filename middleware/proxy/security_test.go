@@ -368,9 +368,34 @@ func Test_Security_JoinUpstreamPath_BlocksNetworkPathInjection(t *testing.T) {
 	base, err := parseUpstream("http://upstream.example")
 	require.NoError(t, err)
 
-	out := joinUpstreamPath(base, "//attacker.example/path")
-	require.True(t, strings.HasPrefix(out, "http://upstream.example/"), "host must not change: %q", out)
-	require.NotContains(t, out, "//attacker.example/")
+	for _, target := range []string{
+		"//attacker.example/path",
+		"////attacker.example/path",
+		"/\\attacker.example",
+		"/?@evil.com",
+		"@evil.com",
+		"https://evil.com/path",
+	} {
+		out := joinUpstreamPath(base, target)
+		parsed, parseErr := url.Parse(out)
+		require.NoError(t, parseErr, target)
+		require.Equal(t, "http", parsed.Scheme, "scheme must not change for %q: %q", target, out)
+		require.Equal(t, "upstream.example", parsed.Host, "host must not change for %q: %q", target, out)
+	}
+
+	// The router keeps empty segments, so "//attacker.example/path" is not
+	// "/attacker.example/path" to it. Forwarding it collapsed would hand the
+	// upstream a path no middleware mounted on "/attacker.example" has seen.
+	parsed, err := url.Parse(joinUpstreamPath(base, "//attacker.example/path"))
+	require.NoError(t, err)
+	require.Equal(t, "//attacker.example/path", parsed.Path)
+
+	withPrefix, err := parseUpstream("http://upstream.example/api")
+	require.NoError(t, err)
+	parsed, err = url.Parse(joinUpstreamPath(withPrefix, "//attacker.example/path"))
+	require.NoError(t, err)
+	require.Equal(t, "upstream.example", parsed.Host)
+	require.Equal(t, "/api//attacker.example/path", parsed.Path)
 }
 
 // Test_Security_JoinUpstreamPath_PreservesBasePathPrefix ensures a path

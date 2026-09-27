@@ -184,10 +184,10 @@ func Test_Coverage_ResolveRedirect_RejectsHostlessTarget(t *testing.T) {
 	require.ErrorIs(t, err, fasthttp.ErrorInvalidURI)
 }
 
-// Test_Coverage_JoinUpstreamPath_RejectsAuthorityInjection covers the
-// fallback branch that fires when a parsed request path contains its
-// own scheme or host. The path is treated as opaque so the upstream
-// host pinned by base cannot be replaced.
+// Test_Coverage_JoinUpstreamPath_RejectsAuthorityInjection covers a
+// request path that spells a scheme and host of its own. Parsed behind
+// the placeholder authority it is a path and nothing else, so the
+// upstream host pinned by base cannot be replaced.
 func Test_Coverage_JoinUpstreamPath_RejectsAuthorityInjection(t *testing.T) {
 	t.Parallel()
 	base, err := url.Parse("http://upstream.example")
@@ -198,6 +198,7 @@ func Test_Coverage_JoinUpstreamPath_RejectsAuthorityInjection(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "http", parsed.Scheme)
 	require.Equal(t, "upstream.example", parsed.Host, "host must remain pinned")
+	require.Equal(t, "/foo://hijack.example/bar", parsed.Path)
 }
 
 // Test_Coverage_JoinUpstreamPath_FallbackPreservesBasePathPrefix is a
