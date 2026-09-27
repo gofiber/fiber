@@ -398,6 +398,26 @@ func Test_Security_JoinUpstreamPath_BlocksNetworkPathInjection(t *testing.T) {
 	require.Equal(t, "/api//attacker.example/path", parsed.Path)
 }
 
+// Test_Security_JoinUpstreamPath_MalformedFragmentFallsBack covers the
+// fallback for a target that is a fragment alone and does not parse: the
+// opaque path it becomes is rooted, and stays under the base's prefix.
+func Test_Security_JoinUpstreamPath_MalformedFragmentFallsBack(t *testing.T) {
+	t.Parallel()
+	base, err := parseUpstream("http://upstream.example")
+	require.NoError(t, err)
+	parsed, err := url.Parse(joinUpstreamPath(base, "#%zz"))
+	require.NoError(t, err)
+	require.Equal(t, "upstream.example", parsed.Host)
+	require.Equal(t, "/#%zz", parsed.Path)
+
+	withPrefix, err := parseUpstream("http://upstream.example/api")
+	require.NoError(t, err)
+	parsed, err = url.Parse(joinUpstreamPath(withPrefix, "#%zz"))
+	require.NoError(t, err)
+	require.Equal(t, "upstream.example", parsed.Host)
+	require.Equal(t, "/api/#%zz", parsed.Path)
+}
+
 // Test_Security_JoinUpstreamPath_PreservesBasePathPrefix ensures a path
 // prefix configured on the upstream base survives request joining instead
 // of being overwritten by the request path.
