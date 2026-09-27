@@ -1319,7 +1319,6 @@ func Test_SanitizePath(t *testing.T) {
 		{name: "encoded space", input: []byte("/foo%20bar/baz.txt"), expectPath: "/foo%20bar/baz.txt"},
 		{name: "encoded reserved character", input: []byte("/photo%402x.png"), expectPath: "/photo%402x.png"},
 		{name: "lowercase hex digits", input: []byte("/a%7bb%7d.txt"), expectPath: "/a%7bb%7d.txt"},
-		{name: "encoded unreserved characters", input: []byte("/%70rivate/%7Efile.txt"), expectPath: "/private/~file.txt"},
 		{name: "encoded percent sign", input: []byte("/100%25.txt"), expectPath: "/100%25.txt"},
 		{name: "percent sign stays encoded", input: []byte("/%2570rivate/secret.txt"), expectPath: "/%2570rivate/secret.txt"},
 		{name: "double encoded traversal stays a name", input: []byte("/%252e%252e/bar.txt"), expectPath: "/%252e%252e/bar.txt"},
@@ -1387,6 +1386,11 @@ func Test_SanitizePath_Error(t *testing.T) {
 		{name: "malformed escape", input: []byte("/a%zzb.txt")},
 		{name: "truncated escape", input: []byte("/foo%2")},
 		{name: "trailing percent", input: []byte("/foo%")},
+		// the router decodes every escape of an unreserved character, so one that
+		// reaches here was forged from a stray '%' and must not be decoded again
+		{name: "forged unreserved escape", input: []byte("/%70rivate/secret.txt")},
+		{name: "forged unreserved tilde", input: []byte("/%7Efile.txt")},
+		{name: "forged dot escape", input: []byte("/%2egit/config")},
 		// a decoded slash, a backslash or a control character cannot be part of a name
 		{name: "null byte", input: []byte("/foo/bar.txt\x00")},
 		{name: "encoded null byte", input: []byte("/foo/bar.txt%00")},
@@ -1574,6 +1578,66 @@ func Test_Static_RawBackslashIsNotASeparator(t *testing.T) {
 		resp, err := app.Test(rawRequest("/static/private/secret.txt"))
 		require.NoError(t, err, "app.Test(req)")
 		require.Equal(t, fiber.StatusForbidden, resp.StatusCode, "unescape=%v", unescape)
+	}
+}
+
+// Test_Static_ForgedEscapeCannotBypassGuard pins that a stray "%" the router
+// keeps literally cannot line up with the following bytes into an escape the
+// file server decodes a second time, reaching a guarded file the router never
+// matched. "%%370rivate" and "%7%30rivate" both normalize to "%70rivate", which
+// the guard on "/static/private" does not cover, so the file server must not
+// decode either to "private". Under UnescapePath the router decodes nothing
+// past its single pass, so the same spellings stay literal too. httptest
+// rejects these spellings, so the request line is set by hand.
+func Test_Static_ForgedEscapeCannotBypassGuard(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	require.NoError(t, os.Mkdir(filepath.Join(root, "private"), 0o750))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "private", "secret.txt"), []byte("SECRET"), 0o600))
+
+	// app.Test writes the URL's opaque form verbatim
+	rawRequest := func(target string) *http.Request {
+		req := httptest.NewRequest(fiber.MethodGet, "/static/", http.NoBody)
+		req.URL.Opaque = target
+		return req
+	}
+	serve := func(app *fiber.App, target string) (int, string) {
+		resp, err := app.Test(rawRequest(target))
+		require.NoError(t, err, "app.Test(req)")
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		return resp.StatusCode, string(body)
+	}
+
+	// both spellings normalize to "/static/%70rivate/secret.txt"
+	forged := []string{
+		"/static/%%370rivate/secret.txt",
+		"/static/%7%30rivate/secret.txt",
+	}
+
+	for _, unescape := range []bool{false, true} {
+		for _, mount := range []string{"wildcard", "prefix"} {
+			app := fiber.New(fiber.Config{UnescapePath: unescape})
+			app.Use("/static/private", func(c fiber.Ctx) error {
+				return c.SendStatus(fiber.StatusForbidden)
+			})
+			if mount == "wildcard" {
+				app.Get("/static/*", New(root, Config{CacheDuration: -1}))
+			} else {
+				app.Use("/static", New(root, Config{CacheDuration: -1}))
+			}
+
+			// the spelling the router does match the guard on still returns 403
+			status, _ := serve(app, "/static/private/secret.txt")
+			require.Equal(t, fiber.StatusForbidden, status, "unescape=%v mount=%s", unescape, mount)
+
+			for _, target := range forged {
+				status, body := serve(app, target)
+				require.Equal(t, fiber.StatusNotFound, status, "unescape=%v mount=%s target=%s", unescape, mount, target)
+				require.NotContains(t, body, "SECRET", "unescape=%v mount=%s target=%s", unescape, mount, target)
+			}
+		}
 	}
 }
 
