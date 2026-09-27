@@ -356,10 +356,14 @@ func newPathUnreserved() [256]bool {
 // Section 6.2.2): an escape of an unreserved character is decoded, any other
 // escape is kept with uppercase hex digits, and a stray "%" that begins no
 // escape is encoded as "%25". The result is a valid path that normalizes to
-// itself, so nothing that decodes it later can reach another resource. Kept as
-// sent, a stray "%" would line up with a following escape of a hex digit into
-// a fresh escape: "%%370rivate" would become "%70rivate", which decodes to
-// "private", a path the router never matched.
+// itself, so a stray "%" can never become an escape later. Kept as sent, it
+// would line up with a following escape of a hex digit into a fresh escape:
+// "%%370rivate" would become "%70rivate", which decodes to "private", a path
+// the router never matched. The escapes the router keeps, such as "%2F", are
+// still meant to stay encoded: the result is not a path to percent-decode.
+// The router runs this only on a path fasthttp changed while parsing, one
+// holding an escape or a dot segment; a path with nothing but a stray "%" is
+// matched as sent (see pathNeedsNormalization).
 func unescapeSafePath(b []byte) []byte {
 	const upperhex = "0123456789ABCDEF"
 	i := bytes.IndexByte(b, '%')

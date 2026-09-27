@@ -5037,6 +5037,48 @@ func Test_Router_UnescapePath_PlusIsLiteral(t *testing.T) {
 	require.False(t, RoutePatternMatch("/u/john+doe", "/u/john doe", Config{UnescapePath: true}))
 }
 
+// Test_Router_StrayPercent pins what a "%" that begins no escape becomes in
+// c.Path(). fasthttp copies it as sent, so a path holding nothing else to
+// decode or resolve keeps its parsed length, passes pathNeedsNormalization and
+// is matched as sent; it holds no escape at all, so nothing in it can decode.
+// A path normalized for another reason has the stray "%" encoded as "%25", so
+// it cannot line up with a decoded character into a new escape. Either way
+// c.Path() never holds an escape of an unreserved character. httptest rejects
+// these spellings, so the requests go through the raw handler.
+func Test_Router_StrayPercent(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		path string
+		body string
+	}{
+		// nothing to decode or resolve: matched as sent
+		{path: "/a%zzb", body: "/a%zzb"},
+		{path: "/trailing%2", body: "/trailing%2"},
+		{path: "/%", body: "/%"},
+		// normalized for a decoded escape or a dot segment: "%" becomes "%25"
+		{path: "/%2g%41", body: "/%252gA"},
+		{path: "/%%370rivate", body: "/%2570rivate"},
+		{path: "/x%zz/%41", body: "/x%25zz/A"},
+		{path: "/a%zzb/./c", body: "/a%25zzb/c"},
+	}
+	for _, caseSensitive := range []bool{false, true} {
+		app := New(Config{CaseSensitive: caseSensitive})
+		app.Use(func(c Ctx) error {
+			return c.SendString(c.Path())
+		})
+		handler := app.Handler()
+		for _, tc := range testCases {
+			fctx := &fasthttp.RequestCtx{}
+			fctx.Request.Header.SetMethod(MethodGet)
+			fctx.Request.SetRequestURI(tc.path)
+			handler(fctx)
+			require.Equal(t, StatusOK, fctx.Response.StatusCode(), "CaseSensitive=%v GET %s", caseSensitive, tc.path)
+			require.Equal(t, tc.body, string(fctx.Response.Body()), "CaseSensitive=%v GET %s", caseSensitive, tc.path)
+		}
+	}
+}
+
 func Test_App_Add_MultipleMethods_Name(t *testing.T) {
 	t.Parallel()
 

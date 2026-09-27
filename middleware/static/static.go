@@ -195,7 +195,10 @@ func hasDriveLetter(name string) bool {
 // "private./secret.txt" and "private /secret.txt" would open
 // "private/secret.txt": a path the router kept apart from "private", and one
 // that middleware guarding "private" never saw. Elsewhere such a name is an
-// ordinary file, so sanitizePath applies this only on Windows.
+// ordinary file, so sanitizePath applies this only on Windows, and there to
+// every root: an fs.FS may be OS-backed (os.DirFS) and cannot be told apart
+// from a virtual one such as embed.FS, so a virtual name ending in a dot or a
+// space is refused on Windows rather than leave the alias open for the rest.
 func hasTrailingDotOrSpaceSegment(p []byte) bool {
 	for i, c := range p {
 		if (c == '.' || c == ' ') && (i+1 == len(p) || p[i+1] == '/') {

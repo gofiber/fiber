@@ -869,7 +869,12 @@ func (c *DefaultCtx) configDependentPaths() {
 // request. Parsing decoded the escapes and removed the dot and empty segments,
 // and each of those shortens the path, so one that kept its length holds no
 // escape and no dot segment, apart from a trailing "/." that fasthttp leaves
-// in place.
+// in place. A stray "%" that begins no escape keeps the length too, since
+// fasthttp copies it as sent, and such a path is matched as sent: it holds
+// nothing that could decode, and scanning every request for one measured a
+// hot-path cost of several percent. normalizeRequestPath encodes a stray "%"
+// as "%25" in a path it normalizes for another reason, the only kind in which
+// one could line up with a decoded character into a new escape.
 //
 // It takes that length rather than the URI so that it stays inlinable in the
 // request hot path. A caller that switched DisablePathNormalizing on has asked
