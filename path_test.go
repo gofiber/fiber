@@ -1394,18 +1394,26 @@ func Test_UnescapeSafePath(t *testing.T) {
 		{in: "/100%2525", out: "/100%2525"},
 		{in: "/a%5cb", out: "/a%5Cb"},
 		{in: "/%00%1f%7f", out: "/%00%1F%7F"},
-		// Malformed escapes are kept.
-		{in: "/a%zzb", out: "/a%zzb"},
-		{in: "/trailing%2", out: "/trailing%2"},
-		{in: "/%", out: "/%"},
-		{in: "/%2g%41", out: "/%2gA"},
+		// A stray "%" that begins no escape is encoded as "%25".
+		{in: "/a%zzb", out: "/a%25zzb"},
+		{in: "/trailing%2", out: "/trailing%252"},
+		{in: "/%", out: "/%25"},
+		{in: "/%2g%41", out: "/%252gA"},
 		// Decoding runs once: "%25" never becomes a new escape.
 		{in: "/%2570rivate", out: "/%2570rivate"},
 		{in: "/%2E%2E/%70", out: "/../p"},
+		// A stray "%" cannot line up with a decoded hex digit into a fresh
+		// escape that a later decode would read as "private" or ".git".
+		{in: "/%%370rivate", out: "/%2570rivate"},
+		{in: "/%7%30rivate", out: "/%2570rivate"},
+		{in: "/%%32%65git", out: "/%252egit"},
 	}
 
 	for _, tc := range tests {
-		require.Equal(t, tc.out, string(unescapeSafePath([]byte(tc.in))), "in=%q", tc.in)
+		got := string(unescapeSafePath([]byte(tc.in)))
+		require.Equal(t, tc.out, got, "in=%q", tc.in)
+		// the normalized path normalizes to itself
+		require.Equal(t, tc.out, string(unescapeSafePath([]byte(got))), "in=%q normalized twice", tc.in)
 	}
 }
 

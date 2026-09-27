@@ -354,7 +354,12 @@ func newPathUnreserved() [256]bool {
 
 // unescapeSafePath normalizes the percent escapes of b in place (RFC 3986
 // Section 6.2.2): an escape of an unreserved character is decoded, any other
-// escape is kept with uppercase hex digits, and a malformed one stays as sent.
+// escape is kept with uppercase hex digits, and a stray "%" that begins no
+// escape is encoded as "%25". The result is a valid path that normalizes to
+// itself, so nothing that decodes it later can reach another resource. Kept as
+// sent, a stray "%" would line up with a following escape of a hex digit into
+// a fresh escape: "%%370rivate" would become "%70rivate", which decodes to
+// "private", a path the router never matched.
 func unescapeSafePath(b []byte) []byte {
 	const upperhex = "0123456789ABCDEF"
 	i := bytes.IndexByte(b, '%')
@@ -364,24 +369,60 @@ func unescapeSafePath(b []byte) []byte {
 	n := len(b)
 	dst := i
 	for i < n {
-		if b[i] == '%' && i+2 < n {
-			if hi, lo := unhex(b[i+1]), unhex(b[i+2]); hi >= 0 && lo >= 0 {
-				if v := byte(hi<<4 | lo); pathUnreserved[v] { //nolint:gosec // G115: both nibbles are 0-15
-					b[dst] = v
-					dst++
-				} else {
-					b[dst], b[dst+1], b[dst+2] = '%', upperhex[hi], upperhex[lo]
-					dst += 3
+		if b[i] == '%' {
+			if i+2 < n {
+				if hi, lo := unhex(b[i+1]), unhex(b[i+2]); hi >= 0 && lo >= 0 {
+					if v := byte(hi<<4 | lo); pathUnreserved[v] { //nolint:gosec // G115: both nibbles are 0-15
+						b[dst] = v
+						dst++
+					} else {
+						b[dst], b[dst+1], b[dst+2] = '%', upperhex[hi], upperhex[lo]
+						dst += 3
+					}
+					i += 3
+					continue
 				}
-				i += 3
-				continue
 			}
+			return escapeStrayPercent(b, dst, i)
 		}
 		b[dst] = b[i]
 		dst++
 		i++
 	}
 	return b[:dst]
+}
+
+// escapeStrayPercent finishes unescapeSafePath from the stray "%" at b[i], once
+// the in-place pass has written its result so far to b[:dst]. Encoding a stray
+// "%" as "%25" grows the path by two bytes, which the in-place pass cannot do
+// without overwriting input it has not read yet, so the rest is written to a
+// new slice. Only a malformed request path pays for the copy.
+func escapeStrayPercent(b []byte, dst, i int) []byte {
+	const upperhex = "0123456789ABCDEF"
+	n := len(b)
+	out := make([]byte, dst, n+2)
+	copy(out, b[:dst])
+	for i < n {
+		if b[i] == '%' {
+			if i+2 < n {
+				if hi, lo := unhex(b[i+1]), unhex(b[i+2]); hi >= 0 && lo >= 0 {
+					if v := byte(hi<<4 | lo); pathUnreserved[v] { //nolint:gosec // G115: both nibbles are 0-15
+						out = append(out, v)
+					} else {
+						out = append(out, '%', upperhex[hi], upperhex[lo])
+					}
+					i += 3
+					continue
+				}
+			}
+			out = append(out, '%', '2', '5')
+			i++
+			continue
+		}
+		out = append(out, b[i])
+		i++
+	}
+	return out
 }
 
 // cleanPathSegments removes the "." and ".." segments of b in place, as

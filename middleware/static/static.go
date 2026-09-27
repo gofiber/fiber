@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -20,6 +21,10 @@ import (
 var ErrInvalidPath = errors.New("invalid path")
 
 const invalidPathSentinel = "/__fiber_invalid__"
+
+// windowsOS is runtime.GOOS on Windows, where a path component loses its
+// trailing dots and spaces when a file is opened.
+const windowsOS = "windows"
 
 // rewrite carries the path the file server opens for one request. The handler
 // builds it before it calls fasthttp, so PathRewrite only has to read it.
@@ -185,6 +190,21 @@ func hasDriveLetter(name string) bool {
 	return (drive >= 'a' && drive <= 'z') || (drive >= 'A' && drive <= 'Z')
 }
 
+// hasTrailingDotOrSpaceSegment reports whether a segment of p ends in a dot or
+// a space. Windows drops both from a path component when it opens a file, so
+// "private./secret.txt" and "private /secret.txt" would open
+// "private/secret.txt": a path the router kept apart from "private", and one
+// that middleware guarding "private" never saw. Elsewhere such a name is an
+// ordinary file, so sanitizePath applies this only on Windows.
+func hasTrailingDotOrSpaceSegment(p []byte) bool {
+	for i, c := range p {
+		if (c == '.' || c == ' ') && (i+1 == len(p) || p[i+1] == '/') {
+			return true
+		}
+	}
+	return false
+}
+
 // sanitizePath validates the routed path p, with the route's prefix stripped,
 // and returns the path the file server opens, which is p unchanged. It fails
 // with ErrInvalidPath when p cannot name a file inside the root: an escape of a
@@ -192,14 +212,15 @@ func hasDriveLetter(name string) bool {
 // router did not match), an escape of an unreserved character (a stray '%' the
 // router kept that would otherwise double-decode past the route and middleware),
 // a malformed escape, a backslash, a control character, a ".", ".." or empty
-// segment, and a drive letter. Escapes the router kept remain encoded, keeping
-// file lookup aligned with route and middleware matching.
+// segment, a drive letter and, on Windows, a segment ending in a dot or a space
+// that the OS would strip. Escapes the router kept remain encoded, keeping file
+// lookup aligned with route and middleware matching.
 func sanitizePath(p []byte, filesystem fs.FS, decodeEscapes bool) ([]byte, error) { //nolint:revive // the flag mirrors UnescapePath
 	p, err := decodeFileName(p, decodeEscapes)
 	if err != nil {
 		return nil, err
 	}
-	if hasUnsafeSegment(p) {
+	if hasUnsafeSegment(p) || (runtime.GOOS == windowsOS && hasTrailingDotOrSpaceSegment(p)) {
 		return nil, ErrInvalidPath
 	}
 

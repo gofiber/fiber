@@ -1314,7 +1314,7 @@ func Test_SanitizePath(t *testing.T) {
 		{name: "root", input: []byte("/"), expectPath: "/"},
 		{name: "decoded space", input: []byte("/foo bar/baz.txt"), expectPath: "/foo bar/baz.txt"},
 		{name: "plus literal", input: []byte("/foo+bar/baz.txt"), expectPath: "/foo+bar/baz.txt"},
-		{name: "dots in names", input: []byte("/.well-known/..x/y.../z."), expectPath: "/.well-known/..x/y.../z."},
+		{name: "dots in names", input: []byte("/.well-known/..x/y..z/a.b"), expectPath: "/.well-known/..x/y..z/a.b"},
 		// escapes the router left encoded stay encoded for consistent authorization
 		{name: "encoded space", input: []byte("/foo%20bar/baz.txt"), expectPath: "/foo%20bar/baz.txt"},
 		{name: "encoded reserved character", input: []byte("/photo%402x.png"), expectPath: "/photo%402x.png"},
@@ -1431,6 +1431,44 @@ func Test_HasUnsafeSegment(t *testing.T) {
 	}
 	for _, p := range []string{"", "/", "/a", "/a/", "/a/b", "/.a/..b/c./d..", "/.../a", "/%2e%2e/a", "a/b"} {
 		require.False(t, hasUnsafeSegment([]byte(p)), "path=%q", p)
+	}
+}
+
+func Test_HasTrailingDotOrSpaceSegment(t *testing.T) {
+	t.Parallel()
+
+	for input, want := range map[string]bool{
+		"/":              false,
+		"/foo/bar.txt":   false,
+		"/.well-known/x": false,
+		"/..x/y":         false,
+		"/a.b/c":         false,
+		"/foo/":          false,
+		"/foo./bar":      true,
+		"/foo /bar":      true,
+		"/foo.":          true,
+		"/foo ":          true,
+		"/foo./":         true,
+		"/foo/bar. ":     true,
+	} {
+		require.Equal(t, want, hasTrailingDotOrSpaceSegment([]byte(input)), "input=%q", input)
+	}
+}
+
+// Test_SanitizePath_TrailingDotOrSpace pins that a segment ending in a dot or
+// a space names an ordinary file everywhere except Windows, which strips both
+// when it opens a file and would turn "private." into the guarded "private".
+func Test_SanitizePath_TrailingDotOrSpace(t *testing.T) {
+	t.Parallel()
+
+	for _, input := range []string{"/private./secret.txt", "/private /secret.txt", "/y.../z.", "/foo. /"} {
+		got, err := sanitizePath([]byte(input), nil, true)
+		if runtime.GOOS == winOS {
+			require.ErrorIs(t, err, ErrInvalidPath, "input=%q", input)
+			continue
+		}
+		require.NoError(t, err, "input=%q", input)
+		require.Equal(t, input, string(got), "input=%q", input)
 	}
 }
 
@@ -1637,6 +1675,45 @@ func Test_Static_ForgedEscapeCannotBypassGuard(t *testing.T) {
 				require.Equal(t, fiber.StatusNotFound, status, "unescape=%v mount=%s target=%s", unescape, mount, target)
 				require.NotContains(t, body, "SECRET", "unescape=%v mount=%s target=%s", unescape, mount, target)
 			}
+		}
+	}
+}
+
+// Test_Static_TrailingDotOrSpaceCannotBypassGuard pins that "private." and
+// "private " never open the guarded "private": Windows strips a trailing dot or
+// space from a path component, so the file server rejects such a segment there,
+// and everywhere else no such directory exists. Both answer 404 while the
+// spelling the guard covers stays 403.
+func Test_Static_TrailingDotOrSpaceCannotBypassGuard(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	require.NoError(t, os.Mkdir(filepath.Join(root, "private"), 0o750))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "private", "secret.txt"), []byte("SECRET"), 0o600))
+
+	for _, unescape := range []bool{false, true} {
+		app := fiber.New(fiber.Config{UnescapePath: unescape})
+		app.Use("/static/private", func(c fiber.Ctx) error {
+			return c.SendStatus(fiber.StatusForbidden)
+		})
+		app.Get("/static/*", New(root, Config{CacheDuration: -1}))
+
+		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/static/private/secret.txt", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, fiber.StatusForbidden, resp.StatusCode, "unescape=%v", unescape)
+
+		for _, target := range []string{
+			"/static/private./secret.txt",
+			"/static/private.../secret.txt",
+			"/static/private%20/secret.txt",
+			"/static/private%20./secret.txt",
+		} {
+			resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, target, http.NoBody))
+			require.NoError(t, err, "app.Test(req)")
+			body, err := io.ReadAll(resp.Body)
+			require.NoError(t, err)
+			require.Equal(t, fiber.StatusNotFound, resp.StatusCode, "unescape=%v target=%s", unescape, target)
+			require.NotContains(t, string(body), "SECRET", "unescape=%v target=%s", unescape, target)
 		}
 	}
 }
