@@ -17,6 +17,16 @@ import (
 )
 
 // go test -race -run Test_Path_parseRoute
+// Test_Path_parseRoute_TrailingEscape ensures a route pattern ending in a
+// trailing escape character (e.g. `/:id\\`) does not panic during parsing.
+// Regression test for a Const[-1] index-out-of-range in addParameterMetaInfo.
+func Test_Path_parseRoute_TrailingEscape(t *testing.T) {
+	t.Parallel()
+	require.NotPanics(t, func() {
+		_ = parseRoute(`/:id\\`, regexp.MustCompile)
+	})
+}
+
 func Test_Path_parseRoute(t *testing.T) {
 	t.Parallel()
 	var rp routeParser
