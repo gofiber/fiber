@@ -409,7 +409,7 @@ func Test_App_Custom_Middleware_404_Should_Not_SetMethodNotAllowed(t *testing.T)
 
 func Test_App_ServerErrorHandler_SmallReadBuffer(t *testing.T) {
 	t.Parallel()
-	app := New()
+	app := New(Config{ReadBufferSize: 4096})
 
 	app.Get("/", func(_ Ctx) error {
 		panic(errors.New("should never called"))
@@ -1425,6 +1425,15 @@ func Test_App_Config(t *testing.T) {
 		StrictRouting: true,
 	})
 	require.True(t, app.Config().StrictRouting)
+}
+
+func Test_App_Config_DefaultBufferSizes(t *testing.T) {
+	t.Parallel()
+	app := New()
+	require.Equal(t, 16384, app.Config().ReadBufferSize)
+	require.Equal(t, 16384, app.Config().WriteBufferSize)
+	require.Equal(t, DefaultReadBufferSize, app.Config().ReadBufferSize)
+	require.Equal(t, DefaultWriteBufferSize, app.Config().WriteBufferSize)
 }
 
 func Test_App_GetString(t *testing.T) {
