@@ -93,11 +93,10 @@ func (s *fileServer) requestPath(dst []byte, p string) []byte {
 	return dst[:start+len(sanitized)]
 }
 
-// decodeFileName decodes in place the escapes the router left in p, once, or
-// none when decodeEscapes is off (UnescapePath already decoded everything),
-// and returns the name, a prefix of p. It refuses a backslash, a control
-// character, a malformed escape and an escape that decodes to a separator,
-// none of which can be in a file name.
+// decodeFileName applies the router's unreserved-only decoding to p and leaves
+// every other escape encoded, so routing and file lookup use the same resource
+// name. It refuses a backslash, a control character, a malformed escape and an
+// escape that represents one of them.
 func decodeFileName(p []byte, decodeEscapes bool) ([]byte, error) { //nolint:revive // the flag mirrors UnescapePath; see sanitizePath
 	if utils.IndexControl(p) >= 0 || bytes.IndexByte(p, '\\') >= 0 {
 		return nil, ErrInvalidPath
@@ -108,8 +107,7 @@ func decodeFileName(p []byte, decodeEscapes bool) ([]byte, error) { //nolint:rev
 	}
 	dst := i
 	for i < len(p) {
-		c := p[i]
-		if c == '%' {
+		if p[i] == '%' {
 			if i+2 >= len(p) {
 				return nil, ErrInvalidPath
 			}
@@ -117,18 +115,30 @@ func decodeFileName(p []byte, decodeEscapes bool) ([]byte, error) { //nolint:rev
 			if hi < 0 || lo < 0 {
 				return nil, ErrInvalidPath
 			}
-			c = byte(hi<<4 | lo) //nolint:gosec // G115: both nibbles are 0-15
+			c := byte(hi<<4 | lo) //nolint:gosec // G115: both nibbles are 0-15
 			if c == '/' || c == '\\' || c < 0x20 || c == 0x7f {
 				return nil, ErrInvalidPath
 			}
+			if isUnreserved(c) {
+				p[dst] = c
+				dst++
+			} else {
+				copy(p[dst:dst+3], p[i:i+3])
+				dst += 3
+			}
 			i += 3
 		} else {
+			p[dst] = p[i]
+			dst++
 			i++
 		}
-		p[dst] = c
-		dst++
 	}
 	return p[:dst], nil
+}
+
+func isUnreserved(c byte) bool {
+	return c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' ||
+		c == '-' || c == '.' || c == '_' || c == '~'
 }
 
 // unhex returns the value of a hexadecimal digit, or -1 for any other byte.
@@ -183,8 +193,8 @@ func hasDriveLetter(name string) bool {
 // escape that decodes to a slash ("private%2Fsecret.txt" never reaches the
 // "private/secret.txt" the router did not match), a malformed escape, a
 // backslash, a control character, a ".", ".." or empty segment, and a drive
-// letter. Escapes the router kept are decoded exactly once, so "100%25.txt"
-// opens "100%.txt".
+// letter. Escapes the router kept remain encoded, keeping file lookup aligned
+// with route and middleware matching.
 func sanitizePath(p []byte, filesystem fs.FS, decodeEscapes bool) ([]byte, error) { //nolint:revive // the flag mirrors UnescapePath
 	p, err := decodeFileName(p, decodeEscapes)
 	if err != nil {
