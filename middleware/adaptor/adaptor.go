@@ -310,9 +310,16 @@ func LocalContextFromHTTPRequest(r *http.Request) (context.Context, bool) {
 // The request is built from the path the router matched (see
 // wiretarget.Routed), which the request line is set to; the returned request's
 // URL and RequestURI alias that line's storage, as they do in fasthttpadaptor,
-// so it is left in place.
+// so it is left in place. A routed path fasthttp would read as an authority
+// rather than a path (see wiretarget.ParsesAsPath) is answered with
+// fiber.ErrBadRequest instead of being set, since the request's host would
+// then be read out of it.
 func ConvertRequest(c fiber.Ctx, forServer bool) (*http.Request, error) {
-	c.Request().SetRequestURI(wiretarget.Routed(c))
+	target := wiretarget.Routed(c)
+	if !wiretarget.ParsesAsPath(target, c.Request().Header.Host()) {
+		return nil, fiber.ErrBadRequest
+	}
+	c.Request().SetRequestURI(target)
 	var req http.Request
 	if err := fasthttpadaptor.ConvertRequest(c.RequestCtx(), &req, forServer); err != nil {
 		return nil, err //nolint:wrapcheck // This must not be wrapped
@@ -601,8 +608,16 @@ func HTTPMiddleware(mw func(http.Handler) http.Handler) fiber.Handler {
 		// wiretarget.Routed), not the request line as it arrived: a guard on
 		// r.URL.Path has to see the "/admin/x" that "/a/../admin/x" was routed
 		// as. Escaped slashes are handed on, in r.URL.RawPath, so a Fiber
-		// route behind the middleware still receives its "%2F".
-		c.Request().SetRequestURI(wiretarget.Routed(c))
+		// route behind the middleware still receives its "%2F". A path
+		// fasthttp would read as an authority rather than a path (see
+		// wiretarget.ParsesAsPath) is refused: set as the request line, it
+		// would become the host of both the net/http request and the Fiber
+		// request behind the middleware.
+		target := wiretarget.Routed(c)
+		if !wiretarget.ParsesAsPath(target, c.Request().Header.Host()) {
+			return fiber.ErrBadRequest
+		}
+		c.Request().SetRequestURI(target)
 		// Call the fasthttp adaptor directly: HTTPHandler would wrap it in a
 		// second closure that has to be built on every request, and its
 		// error result is always nil.

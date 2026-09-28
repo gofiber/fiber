@@ -107,9 +107,17 @@ func Balancer(config ...Config) fiber.Handler {
 
 		// Forward the path the router matched (see wiretarget.Routed), and
 		// put the request line back for the middleware that runs afterwards.
+		// A target fasthttp would read as an authority rather than a path
+		// (see wiretarget.ParsesAsPath) is refused: set as the request line,
+		// it would hand the upstream a Host, and a Basic credential, taken
+		// from the path rather than from the application.
+		target := wiretarget.Routed(c)
+		if !wiretarget.ParsesAsPath(target, req.Header.Host()) {
+			return fiber.ErrBadRequest
+		}
 		originalURL := utils.CopyString(c.OriginalURL())
 		defer req.SetRequestURI(originalURL)
-		req.SetRequestURI(wiretarget.Routed(c))
+		req.SetRequestURI(target)
 
 		// Modify request
 		if cfg.ModifyRequest != nil {

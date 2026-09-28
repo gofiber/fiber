@@ -5094,6 +5094,13 @@ func Test_Router_UnrootedTargetIsRooted(t *testing.T) {
 		{MethodPost, "http://example.com#f", "/"},
 		{MethodOptions, "*", "/*"},
 		{MethodGet, "http://example.com/a/b", "/a/b"},
+		// the authority form fasthttp admits for CONNECT; with one doubled
+		// slash the parsed copy keeps the original's length, since the slash
+		// fasthttp adds in front is the one it takes out of the pair, so the
+		// length gate alone would not notice the missing slash
+		{MethodConnect, "admin//secret", "/admin//secret"},
+		{MethodConnect, "secret//", "/secret//"},
+		{MethodConnect, "example.com:443", "/example.com:443"},
 	}
 	// with DisablePathNormalizing the scan, not fasthttp's parsed copy, has
 	// to notice the missing slash

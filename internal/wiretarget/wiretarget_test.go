@@ -116,3 +116,20 @@ func Test_SegmentsAsRouted(t *testing.T) {
 		require.False(t, SegmentsAsRouted(target), target)
 	}
 }
+
+func Test_ParsesAsPath(t *testing.T) {
+	t.Parallel()
+
+	host := []byte("example.com")
+	for _, target := range []string{"/", "/a://b", "/a//b://c", "//evil.example/x", "//u:pw@evil.example/a:/b", "/x?u=http://y"} {
+		require.True(t, ParsesAsPath(target, host), target)
+	}
+	for _, target := range []string{"//u:pw@evil.example/a://b", "//evil.example/x?u=http://y", "//?x=1://"} {
+		require.False(t, ParsesAsPath(target, host), target)
+	}
+	// Without a Host header fasthttp reads any target that begins with "//"
+	// as an authority.
+	require.False(t, ParsesAsPath("//evil.example/x", nil))
+	require.True(t, ParsesAsPath("/x", nil))
+	require.True(t, ParsesAsPath("/a//b", nil))
+}

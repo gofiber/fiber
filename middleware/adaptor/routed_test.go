@@ -273,3 +273,42 @@ func Test_FiberHandler_RoutesTheURL(t *testing.T) {
 	FiberHandler(h).ServeHTTP(rec, httptest.NewRequest(fiber.MethodGet, "/served/%41?x=1", http.NoBody))
 	require.Equal(t, "/served/A|/served/%41?x=1", rec.Body.String())
 }
+
+// Test_HTTPMiddleware_RejectsAuthorityTarget pins that a routed target
+// fasthttp would read as an authority, one that begins with "//" and holds
+// "://", is refused rather than set on the request, where the next parse
+// would take the host and credentials from it.
+func Test_HTTPMiddleware_RejectsAuthorityTarget(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Use(HTTPMiddleware(func(next http.Handler) http.Handler { return next }))
+	app.Use(func(c fiber.Ctx) error {
+		return c.SendString(c.Hostname() + "|" + c.Path())
+	})
+
+	require.Equal(t, fiber.StatusBadRequest, rawCtx(t, app, "//u:pw@evil.example/a:/x/..//b").Response.StatusCode())
+
+	fctx := rawCtx(t, app, "//evil.example/a:/b")
+	require.Equal(t, fiber.StatusOK, fctx.Response.StatusCode())
+	require.Equal(t, "example.com|//evil.example/a:/b", string(fctx.Response.Body()))
+}
+
+func Test_ConvertRequest_RejectsAuthorityTarget(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Get("/*", func(c fiber.Ctx) error {
+		r, err := ConvertRequest(c, true)
+		if err != nil {
+			return err
+		}
+		return c.SendString(r.URL.Path + "|" + c.Hostname())
+	})
+
+	require.Equal(t, fiber.StatusBadRequest, rawCtx(t, app, "//u:pw@evil.example/a:/x/..//b").Response.StatusCode())
+
+	fctx := rawCtx(t, app, "//evil.example/a:/b")
+	require.Equal(t, fiber.StatusOK, fctx.Response.StatusCode())
+	require.Equal(t, "//evil.example/a:/b|example.com", string(fctx.Response.Body()))
+}

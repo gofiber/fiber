@@ -23,6 +23,10 @@ func rawRequest(t *testing.T, app *fiber.App, target, host string) *fasthttp.Res
 
 	var req fasthttp.Request
 	raw := fiber.MethodGet + " " + target + " HTTP/1.1\r\nHost: " + host + "\r\n\r\n"
+	if host == "" {
+		// HTTP/1.0 needs no Host header.
+		raw = fiber.MethodGet + " " + target + " HTTP/1.0\r\n\r\n"
+	}
 	require.NoError(t, req.Read(bufio.NewReader(strings.NewReader(raw))))
 
 	var fctx fasthttp.RequestCtx
@@ -300,4 +304,68 @@ func Test_Proxy_Do_UserClientForwardsTargetAsGiven(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
 	require.Equal(t, "/a%2Fb//c/..%2Fd?q=%2F", readBody(t, resp))
+}
+
+// Test_Proxy_Balancer_RejectsAuthorityTarget pins that a routed target
+// fasthttp would read as an authority never reaches the upstream: one that
+// begins with "//" and holds "://", here built by ".." resolution so that the
+// raw request line never held it and the server never split it, or one that
+// arrives without a Host header. Set as the request URI, fasthttp would take
+// the upstream's Host and a Basic credential from it, over the ones the
+// application pinned.
+func Test_Proxy_Balancer_RejectsAuthorityTarget(t *testing.T) {
+	t.Parallel()
+
+	var hits atomic.Int32
+	target := fiber.New()
+	target.Use(func(c fiber.Ctx) error {
+		hits.Add(1)
+		return c.SendString(c.OriginalURL() + "|" + string(c.Request().Header.Host()) + "|" + c.Get(fiber.HeaderAuthorization))
+	})
+	ln, err := net.Listen(fiber.NetworkTCP4, "127.0.0.1:0")
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		ln.Close() //nolint:errcheck // It is fine to ignore the error here
+	})
+	startServer(target, ln)
+	addr := ln.Addr().String()
+
+	for _, unescape := range []bool{false, true} {
+		app := fiber.New(fiber.Config{UnescapePath: unescape})
+		app.Use(Balancer(Config{
+			Servers: []string{addr},
+			ModifyRequest: func(c fiber.Ctx) error {
+				c.Request().Header.SetHost("backend.internal")
+				c.Request().Header.Set(fiber.HeaderAuthorization, "Bearer pinned")
+				return nil
+			},
+		}))
+
+		before := hits.Load()
+		// Neither raw line holds "://": fasthttp's server would read one that
+		// did as the absolute form and split the host off before routing.
+		rejected := []string{
+			"//u:pw@evil.example/a:/x/..//b",
+			"//u:pw@evil.example/a:/x/%2E%2E//b",
+		}
+		if unescape {
+			rejected = append(rejected, "//u:pw@evil.example/a%3A%2F%2Fb")
+		}
+		for _, tgt := range rejected {
+			resp := rawRequest(t, app, tgt, "example.com")
+			require.Equal(t, fiber.StatusBadRequest, resp.StatusCode(), "UnescapePath=%v %s", unescape, tgt)
+		}
+		// Without a Host header fasthttp reads the authority out of any
+		// target that begins with "//"; the ".." keeps the server from
+		// reading it out of the raw line first.
+		resp := rawRequest(t, app, "/x/..//u:pw@evil.example/y", "")
+		require.Equal(t, fiber.StatusBadRequest, resp.StatusCode(), "UnescapePath=%v, no Host", unescape)
+		require.Equal(t, before, hits.Load(), "UnescapePath=%v: the upstream must not see the request", unescape)
+
+		// The same shape without "://" is a path, forwarded as the router
+		// matched it, under the identity the application pinned.
+		resp = rawRequest(t, app, "//evil.example/a:/b", "example.com")
+		require.Equal(t, fiber.StatusOK, resp.StatusCode(), "UnescapePath=%v", unescape)
+		require.Equal(t, "//evil.example/a:/b|backend.internal|Bearer pinned", string(resp.Body()), "UnescapePath=%v", unescape)
+	}
 }
