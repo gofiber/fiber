@@ -5457,6 +5457,34 @@ func Test_Ctx_Path(t *testing.T) {
 	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
 }
 
+// Test_Ctx_Path_OverrideNormalizes pins that an overridden path is normalized
+// from what the override says, not from what the request arrived with. Reset
+// records whether the request path needs normalizing, so an override has to
+// record it again in both directions: a plain request overridden with a dot
+// segment or an escape, and an escaped request overridden with a plain path.
+func Test_Ctx_Path_OverrideNormalizes(t *testing.T) {
+	t.Parallel()
+	app := New()
+	app.Get("/plain", func(c Ctx) error {
+		require.Equal(t, "/a/b", c.Path("/a/./b"))
+		require.Equal(t, "/x/y", c.Path("/%78/y"))
+		require.Equal(t, "/a/b", c.Path("/a/c/../b"))
+		return c.SendString("ok")
+	})
+	app.Get("/x", func(c Ctx) error {
+		require.Equal(t, "/x", c.Path())
+		require.Equal(t, "/plain", c.Path("/plain"))
+		require.Equal(t, "/plain", string(c.Request().URI().Path()))
+		return c.SendString("ok")
+	})
+
+	for _, target := range []string{"/plain", "/%78"} {
+		resp, err := app.Test(httptest.NewRequest(MethodGet, target, http.NoBody))
+		require.NoError(t, err, target)
+		require.Equal(t, StatusOK, resp.StatusCode, target)
+	}
+}
+
 // go test -run Test_Ctx_Protocol
 func Test_Ctx_Protocol(t *testing.T) {
 	t.Parallel()
@@ -6445,6 +6473,59 @@ func Test_Ctx_Endpoint_SkipUnmatchedRoutes(t *testing.T) {
 
 	require.Equal(t, StatusOK, resp.StatusCode)
 	require.Equal(t, "/items/:id", path)
+}
+
+// Test_Ctx_Reset_DisablePathNormalizing covers the branch Reset takes when the
+// request URI has DisablePathNormalizing set: the caller asked for the path to
+// be treated as sent, so Reset scans the original instead of trusting the
+// parsed copy. fasthttp parses with the flag cleared and only honors it when
+// it writes a request line back out, so the two agree today; the scan is what
+// keeps that an implementation detail of fasthttp rather than a dependency.
+func Test_Ctx_Reset_DisablePathNormalizing(t *testing.T) {
+	t.Parallel()
+	app := New()
+
+	fctx := &fasthttp.RequestCtx{}
+	fctx.Request.Header.SetMethod(MethodGet)
+	fctx.Request.SetRequestURI("/a/./b")
+
+	// Parsing clears the flag, so set it afterwards, as a handler would.
+	fctx.Request.URI().DisablePathNormalizing = true
+
+	c := app.AcquireCtx(fctx)
+	defer app.ReleaseCtx(c)
+
+	require.Equal(t, "/a/./b", c.OriginalURL(), "the target is untouched")
+	require.Equal(t, "/a/b", c.Path(), "the router still sees the normalized path")
+}
+
+// Test_Ctx_Path_DisablePathNormalizing pins that a Path override is normalized
+// before routing even with fasthttp's normalization switched off on the URI.
+func Test_Ctx_Path_DisablePathNormalizing(t *testing.T) {
+	t.Parallel()
+	app := New()
+	app.Get("/a/b", func(c Ctx) error {
+		return c.SendString(c.Path())
+	})
+	for _, tc := range []struct{ mount, override string }{
+		{mount: "/dotted", override: "/a/./b"},
+		{mount: "/plain", override: "/a/b"},
+	} {
+		app.Use(tc.mount, func(c Ctx) error {
+			c.Request().URI().DisablePathNormalizing = true
+			c.Path(tc.override)
+			return c.RestartRouting()
+		})
+	}
+
+	for _, target := range []string{"/dotted", "/plain"} {
+		resp, err := app.Test(httptest.NewRequest(MethodGet, target, http.NoBody))
+		require.NoError(t, err, "app.Test(req)")
+		require.Equal(t, StatusOK, resp.StatusCode, "Status code for %s", target)
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		require.Equal(t, "/a/b", string(body), "path for %s", target)
+	}
 }
 
 // go test -run Test_Ctx_RouteNormalized
@@ -11935,4 +12016,43 @@ func Test_Res_Set_CopiesArguments(t *testing.T) {
 
 	require.Equal(t, "first", c.Res().Get("X-Request-Id"))
 	require.Empty(t, c.Res().Get("X-Rewritten!"))
+}
+
+// Test_Ctx_PathSlashCount pins the slash count routing filters on: whether the
+// path's single pass counted it or pathSlashCount counts it later, it must be
+// the number of '/' in the detection path, under every configuration that
+// shapes that path and after trailing slashes are trimmed from it.
+// go test -race -run Test_Ctx_PathSlashCount
+func Test_Ctx_PathSlashCount(t *testing.T) {
+	t.Parallel()
+
+	paths := []string{
+		"/", "//", "///", "/a", "/a/", "/a//", "/A/B/c", "/a/b/c/", "/a/b/c///",
+		"/ab/cd/ef/gh/ij", "/abcdefgh/ijklmnop/", "/x%2Fy/", "/x%41/", "/./a/../b/", "/a/./b//",
+	}
+	for _, caseSensitive := range []bool{false, true} {
+		for _, strictRouting := range []bool{false, true} {
+			for _, unescape := range []bool{false, true} {
+				app := New(Config{CaseSensitive: caseSensitive, StrictRouting: strictRouting, UnescapePath: unescape})
+				// A parametric route is what makes pathSlashCount count at all.
+				app.Get("/:p", func(c Ctx) error { return c.Next() })
+				app.startupProcess()
+
+				for _, path := range paths {
+					fctx := &fasthttp.RequestCtx{}
+					fctx.Request.Header.SetMethod(MethodGet)
+					fctx.Request.SetRequestURI(path)
+					c, ok := app.AcquireCtx(fctx).(*DefaultCtx)
+					require.True(t, ok)
+
+					want := strings.Count(string(c.detectionPath), "/")
+					name := fmt.Sprintf("cs=%v/sr=%v/unescape=%v %q (detection %q)",
+						caseSensitive, strictRouting, unescape, path, c.detectionPath)
+					require.Contains(t, []int{0, want}, c.pathSlashes, "cached count: %s", name)
+					require.Equal(t, want, c.pathSlashCount(app), "count: %s", name)
+					app.ReleaseCtx(c)
+				}
+			}
+		}
+	}
 }

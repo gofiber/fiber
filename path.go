@@ -205,14 +205,12 @@ func RoutePatternMatch(path, pattern string, cfg ...Config) bool {
 
 	patternPretty := []byte(pattern)
 
-	// Mirror DefaultCtx.configDependentPaths: the router derives a separate
-	// detection path (percent-decoded when UnescapePath is set, lowercased when
-	// CaseSensitive is off, trailing slashes stripped when StrictRouting is
-	// off) and keeps c.path untouched. getMatch takes both — the detection path
-	// to match against and the untouched path to slice parameter values out of
-	// — so constraints see the same bytes here as they do in the router.
-	if config.UnescapePath {
-		path = utils.UnsafeString(unescapePath([]byte(path)))
+	// Mirror DefaultCtx.configDependentPaths: normalize the path, then derive
+	// the detection path (lowercased when CaseSensitive is off, trailing slash
+	// stripped when StrictRouting is off). getMatch takes both, so constraints
+	// see the same bytes here as in the router.
+	if needsPathNormalization(path) {
+		path = utils.UnsafeString(normalizeRequestPath([]byte(path), config.UnescapePath))
 	}
 
 	detectionPath := path
@@ -334,6 +332,221 @@ func unhex(c byte) int {
 	}
 }
 
+// pathUnreserved marks the unreserved characters of RFC 3986 Section 2.3.
+// Only their percent-encoded forms name the same resource as the characters
+// themselves (Section 6.2.2.2), so they are the escapes the router decodes.
+var pathUnreserved = newPathUnreserved()
+
+func newPathUnreserved() [256]bool {
+	var unreserved [256]bool
+	for c := byte('a'); c <= 'z'; c++ {
+		unreserved[c] = true
+		unreserved[c-'a'+'A'] = true
+	}
+	for c := byte('0'); c <= '9'; c++ {
+		unreserved[c] = true
+	}
+	for _, c := range []byte("-._~") {
+		unreserved[c] = true
+	}
+	return unreserved
+}
+
+// unescapeSafePath normalizes the percent escapes of b in place (RFC 3986
+// Section 6.2.2): an escape of an unreserved character is decoded, any other
+// escape is kept with uppercase hex digits, and a malformed one stays as sent.
+func unescapeSafePath(b []byte) []byte {
+	const upperhex = "0123456789ABCDEF"
+	i := bytes.IndexByte(b, '%')
+	if i == -1 {
+		return b
+	}
+	n := len(b)
+	dst := i
+	for i < n {
+		if b[i] == '%' && i+2 < n {
+			if hi, lo := unhex(b[i+1]), unhex(b[i+2]); hi >= 0 && lo >= 0 {
+				if v := byte(hi<<4 | lo); pathUnreserved[v] { //nolint:gosec // G115: both nibbles are 0-15
+					b[dst] = v
+					dst++
+				} else {
+					b[dst], b[dst+1], b[dst+2] = '%', upperhex[hi], upperhex[lo]
+					dst += 3
+				}
+				i += 3
+				continue
+			}
+		}
+		b[dst] = b[i]
+		dst++
+		i++
+	}
+	return b[:dst]
+}
+
+// cleanPathSegments removes the "." and ".." segments of b in place, as
+// RFC 3986 Section 5.2.4 describes. ".." never climbs above the root, a path
+// ending in a removed segment keeps its trailing slash ("/a/b/.." is "/a/"),
+// and empty segments stay: "/a//b" and "/a/b" are different paths.
+func cleanPathSegments(b []byte) []byte {
+	if !hasDotSegment(b) {
+		return b
+	}
+	n := len(b)
+	rooted := b[0] == '/'
+	i := 0
+	if rooted {
+		i = 1
+	}
+	w := 0
+	trailingSlash := false
+	for i <= n {
+		j := i
+		for j < n && b[j] != '/' {
+			j++
+		}
+		seg := b[i:j]
+		last := j == n
+		switch {
+		case len(seg) == 1 && seg[0] == '.':
+			trailingSlash = last
+		case len(seg) == 2 && seg[0] == '.' && seg[1] == '.':
+			if k := bytes.LastIndexByte(b[:w], '/'); k >= 0 {
+				w = k
+			} else {
+				w = 0
+			}
+			trailingSlash = last
+		default:
+			if rooted || w > 0 {
+				b[w] = '/'
+				w++
+			}
+			w += copy(b[w:], seg)
+			trailingSlash = false
+		}
+		i = j + 1
+	}
+	if trailingSlash && (w == 0 || b[w-1] != '/') {
+		b[w] = '/'
+		w++
+	}
+	return b[:w]
+}
+
+// pairWindow is the span two words that overlap by one byte cover.
+const pairWindow = 2*swar.WordLen - 1
+
+// slashDotLanes flags the lanes of w holding a '/' followed within w by a
+// '.'. Load8 puts byte k in lane k, so a shift by one lane compares each byte
+// with its successor; callers overlap words by one byte for the pair that
+// straddles two words.
+func slashDotLanes(w uint64) uint64 {
+	return swar.MatchByteMask(w, '/') & (swar.MatchByteMask(w, '.') >> 8)
+}
+
+// needsPathNormalization reports whether normalizeRequestPath could change s:
+// it holds a percent escape or a segment starting with a dot. It scans a word
+// at a time and serves where fasthttp's own normalization cannot answer the
+// question (see DefaultCtx.pathNeedsNormalization).
+func needsPathNormalization(s string) bool {
+	n := len(s)
+	if n == 0 {
+		return false
+	}
+	if s[0] == '.' {
+		return true
+	}
+	if n >= swar.WordLen {
+		// Words overlap by one byte so every adjacent pair shares a word; a
+		// pinned two-word window keeps the loads at constant offsets.
+		percent := swar.Broadcast('%')
+		i := 0
+		for ; i+pairWindow <= n; i += pairWindow - 1 {
+			win := s[i : i+pairWindow]
+			w0, w1 := swar.Load8(win, 0), swar.Load8(win, swar.WordLen-1)
+			if swar.ZeroLanes(w0^percent)|swar.ZeroLanes(w1^percent)|slashDotLanes(w0)|slashDotLanes(w1) != 0 {
+				return true
+			}
+		}
+		for ; i+swar.WordLen <= n; i += swar.WordLen - 1 {
+			w := swar.Load8(s, i)
+			if swar.ZeroLanes(w^percent)|slashDotLanes(w) != 0 {
+				return true
+			}
+		}
+		// the loops covered the bytes up to i; a word aligned to the end takes the rest
+		if i >= n-1 {
+			return false
+		}
+		w := swar.Load8(s, n-swar.WordLen)
+		return swar.ZeroLanes(w^percent)|slashDotLanes(w) != 0
+	}
+	for i := range n {
+		switch s[i] {
+		case '%':
+			return true
+		case '/':
+			if i+1 < n && s[i+1] == '.' {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// hasDotSegment reports whether cleanPathSegments could change b: it holds a
+// segment starting with a dot.
+func hasDotSegment(b []byte) bool {
+	n := len(b)
+	if n == 0 {
+		return false
+	}
+	if b[0] == '.' {
+		return true
+	}
+	if n >= swar.WordLen {
+		i := 0
+		for ; i+pairWindow <= n; i += pairWindow - 1 {
+			win := b[i : i+pairWindow : i+pairWindow]
+			if slashDotLanes(swar.Load8(win, 0))|slashDotLanes(swar.Load8(win, swar.WordLen-1)) != 0 {
+				return true
+			}
+		}
+		for ; i+swar.WordLen <= n; i += swar.WordLen - 1 {
+			if slashDotLanes(swar.Load8(b, i)) != 0 {
+				return true
+			}
+		}
+		if i >= n-1 {
+			return false
+		}
+		return slashDotLanes(swar.Load8(b, n-swar.WordLen)) != 0
+	}
+	for i := range n - 1 {
+		if b[i] == '/' && b[i+1] == '.' {
+			return true
+		}
+	}
+	return false
+}
+
+// normalizeRequestPath normalizes a request path in place as RFC 3986
+// Section 6.2.2 describes: percent escapes are normalized, all of them decoded
+// when unescapeAll (UnescapePath) is set and otherwise only those of
+// unreserved characters, and then "." and ".." segments are removed. Decoding
+// runs exactly once, so "%2570rivate" stays a literal name, while
+// "/%70rivate", "/./private" and "/x/../private" all match a route or guard
+// on "/private".
+func normalizeRequestPath(b []byte, unescapeAll bool) []byte { //nolint:revive // the flag mirrors Config.UnescapePath
+	if unescapeAll {
+		b = unescapePath(b)
+	} else {
+		b = unescapeSafePath(b)
+	}
+	return cleanPathSegments(b)
+}
+
 func (parser *routeParser) reset() {
 	parser.segs = parser.segs[:0]
 	parser.params = parser.params[:0]
@@ -436,8 +649,8 @@ func (parser *routeParser) computeSlashBounds() {
 type constProbe struct {
 	word uint64 // the constant's leading bytes, packed little-endian
 	mask uint64 // covers the packed bytes; 0 means no probe
-	from int    // length of the leading constant, where the first parameter starts
-	skip int    // slashes to pass over after from before the constant's own
+	from int32  // length of the leading constant, where the first parameter starts
+	skip int32  // slashes to pass over after from before the constant's own
 }
 
 // computeProbe picks the first constant after a parameter that is longer than
@@ -484,7 +697,7 @@ func (parser *routeParser) computeProbe() {
 // newConstProbe packs the first word of c into a probe located by from and skip.
 func newConstProbe(c string, from, skip int) constProbe {
 	word, mask := packConst(c)
-	return constProbe{word: word, mask: mask, from: from, skip: skip}
+	return constProbe{word: word, mask: mask, from: int32(from), skip: int32(skip)} //nolint:gosec // G115 - offsets into a route pattern
 }
 
 // packConst packs up to a word of s like pathHeadWord and returns it with the
@@ -506,15 +719,24 @@ func packConst(s string) (word, mask uint64) {
 }
 
 // rejects reports whether the probe's constant is not at its slash in
-// detectionPath, or the path is too short to reach it. The slashes are found
-// with an inline swar.MatchByteMask scan rather than strings.IndexByte: a
-// parameter spans a few bytes, so the slash is nearly always in the first
-// word and the call was most of the check.
+// detectionPath, or the path is too short to reach it.
 func (p *constProbe) rejects(detectionPath string) bool {
+	w, ok := p.locate(detectionPath)
+	return !ok || w&p.mask != p.word
+}
+
+// locate returns the word of detectionPath at the probe's slash, packed like
+// pathHeadWord, or false when the path is too short to reach that slash. It
+// depends on from and skip alone, which is what lets probeMemo share one
+// search among the routes of a bucket that probe the same slash. The slashes
+// are found with an inline swar.MatchByteMask scan rather than
+// strings.IndexByte: a parameter spans a few bytes, so the slash is nearly
+// always in the first word and the call was most of the check.
+func (p *constProbe) locate(detectionPath string) (uint64, bool) {
 	n := len(detectionPath)
-	i := p.from
+	i := int(p.from)
 	if i > n {
-		return true
+		return 0, false
 	}
 	for skip := p.skip; ; skip-- {
 		var m uint64
@@ -530,7 +752,7 @@ func (p *constProbe) rejects(detectionPath string) bool {
 			from := n - swar.WordLen
 			m = swar.MatchByteMask(swar.Load8(detectionPath, from), slashDelimiter) & (^uint64(0) << (8 * (i - from)))
 			if m == 0 {
-				return true
+				return 0, false
 			}
 			i = from + swar.FirstLane(m)
 		default:
@@ -538,7 +760,7 @@ func (p *constProbe) rejects(detectionPath string) bool {
 				i++
 			}
 			if i == n {
-				return true
+				return 0, false
 			}
 		}
 		if skip == 0 {
@@ -547,13 +769,24 @@ func (p *constProbe) rejects(detectionPath string) bool {
 		i++
 	}
 	// common case inline; wordAt handles the end of the path
-	var w uint64
 	if i+swar.WordLen <= n {
-		w = swar.Load8(detectionPath, i)
-	} else {
-		w = wordAt(detectionPath, i)
+		return swar.Load8(detectionPath, i), true
 	}
-	return w&p.mask != p.word
+	return wordAt(detectionPath, i), true
+}
+
+// probeMemo shares constProbe.locate among the candidates of one route scan.
+// Routes that differ only after a parameter, as a REST resource's endpoints
+// do, probe the same slash, so the scan finds it once and each such candidate
+// costs a masked compare. The zero value is an empty memo.
+type probeMemo struct {
+	// key is the from and skip of the probe locate last ran for, packed by
+	// probeMemo.headRejects: two probes with equal keys locate the same word
+	// of any detection path. It is 0 when none has, since a probe's from is
+	// never 0 (see scanHead.setProbe).
+	key  uint64
+	word uint64 // what locate returned for that probe
+	ok   bool   // what locate returned for that probe
 }
 
 // wordAt packs s[i:i+8] little-endian without reading past s: lanes past the

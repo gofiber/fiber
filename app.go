@@ -266,10 +266,12 @@ type Config struct { //nolint:govet // Aligning the struct fields is not necessa
 	// Default: false
 	Immutable bool `json:"immutable"`
 
-	// When set to true, converts all encoded characters in the route back
-	// before setting the path for the context, so that the routing,
-	// the returning of the current url from the context `ctx.Path()`
-	// and the parameters `ctx.Params(%key%)` with decoded characters will work
+	// The router always normalizes the request path before matching (RFC 3986
+	// Section 6.2.2): escapes of unreserved characters are decoded, other
+	// escapes keep their encoding with uppercase hex digits, and "." and ".."
+	// segments are removed. When set to true, every escape is decoded, so the
+	// routing, `ctx.Path()` and `ctx.Params(%key%)` see the fully decoded
+	// path.
 	//
 	// Default: false
 	UnescapePath bool `json:"unescape_path"`
@@ -2131,8 +2133,8 @@ func (app *App) Shutdown() error {
 	return app.ShutdownWithContext(context.Background())
 }
 
-// ShutdownWithTimeout gracefully shuts down the server without interrupting any active connections. However, if the timeout is exceeded,
-// ShutdownWithTimeout will forcefully close any active connections.
+// ShutdownWithTimeout gracefully shuts down the server without interrupting any active connections. If the timeout is exceeded,
+// it stops waiting and returns context.DeadlineExceeded; connections still active are not closed.
 // ShutdownWithTimeout works by first closing all open listeners and then waiting for all connections to return to idle before shutting down.
 //
 // Make sure the program doesn't exit and waits instead for ShutdownWithTimeout to return.
@@ -2144,7 +2146,7 @@ func (app *App) ShutdownWithTimeout(timeout time.Duration) error {
 	return app.ShutdownWithContext(ctx)
 }
 
-// ShutdownWithContext shuts down the server including by force if the context's deadline is exceeded.
+// ShutdownWithContext shuts down the server and stops waiting once ctx is done; connections still active are not closed.
 //
 // Make sure the program doesn't exit and waits instead for ShutdownWithTimeout to return.
 //

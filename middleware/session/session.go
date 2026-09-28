@@ -22,6 +22,7 @@ type Session struct {
 	ctx         fiber.Ctx         // fiber context
 	config      *Store            // store configuration
 	data        *data             // key value data
+	rawData     []byte            // snapshot from the last decode, reused by Save while the data is unchanged
 	id          string            // session id
 	extractor   extractors.Result // provenance of the extractor that supplied the session ID
 	idleTimeout time.Duration     // idleTimeout of this session
@@ -97,6 +98,7 @@ func releaseSession(s *Session) {
 	s.ctx = nil
 	s.config = nil
 	s.extractor = extractors.Result{}
+	s.rawData = nil
 	if s.data != nil {
 		s.data.Reset()
 	}
@@ -139,6 +141,10 @@ func (s *Session) ID() string {
 //
 // Returns:
 //   - any: The value associated with the key.
+//
+// Note: returning a value that can alias the session (map, slice, array,
+// pointer, struct) makes every later Save re-encode, since the caller may
+// mutate it in place without calling Set.
 //
 // Usage:
 //
@@ -223,6 +229,7 @@ func (s *Session) DestroyWithContext(ctx context.Context) error {
 	// Reset local data only after the storage delete succeeded, so a
 	// canceled/failed delete leaves the session data intact.
 	s.data.Reset()
+	s.rawData = nil
 
 	// Expire session
 	s.delSession()
@@ -309,6 +316,7 @@ func (s *Session) ResetWithContext(ctx context.Context) error {
 	// canceled/failed delete leaves the session data intact.
 	if s.data != nil {
 		s.data.Reset()
+		s.rawData = nil
 		// Reset wiped the absolute expiration, so the rotated session must be armed again.
 		if s.config != nil && s.config.AbsoluteTimeout > 0 {
 			s.setAbsExpiration(time.Now().Add(s.config.AbsoluteTimeout))
@@ -396,6 +404,12 @@ func (s *Session) saveSessionWithContext(ctx context.Context) error {
 	// Update client cookie
 	s.setSession()
 
+	// Unchanged since the decode: write the snapshot back so the idle timeout still
+	// slides. Lock-free is enough; dirty is set before the mutation it reports.
+	if s.rawData != nil && !s.data.dirty.Load() {
+		return s.config.Storage.SetWithContext(ctx, s.id, s.rawData, s.idleTimeout)
+	}
+
 	// Encode session data
 	s.data.RLock()
 	encodedBytes, err := s.encodeSessionData()
@@ -412,6 +426,8 @@ func (s *Session) saveSessionWithContext(ctx context.Context) error {
 //
 // Returns:
 //   - []any: A slice of all keys in the session.
+//
+// Note: a key that can alias the session has the same effect as in Get.
 //
 // Usage:
 //
@@ -585,14 +601,19 @@ func (s *Session) setCookieAttributes(fcookie *fasthttp.Cookie) {
 //
 //	err := s.decodeSessionData(rawData)
 func (s *Session) decodeSessionData(rawData []byte) error {
+	// Copied before decoding: the storage owns rawData and may reuse it after Get
+	// returns, so the decode and the snapshot Save writes back read the same bytes.
+	raw := utils.CopyBytes(rawData)
 	byteBuffer := byteBufferPool.Get().(*bytes.Buffer) //nolint:forcetypeassert,errcheck // We store nothing else in the pool
 	defer byteBufferPool.Put(byteBuffer)
 	defer byteBuffer.Reset()
-	_, _ = byteBuffer.Write(rawData)
+	_, _ = byteBuffer.Write(raw)
 	decCache := gob.NewDecoder(byteBuffer)
 	if err := decCache.Decode(&s.data.Data); err != nil {
 		return fmt.Errorf("failed to decode session data: %w", err)
 	}
+	s.rawData = raw
+	s.data.dirty.Store(false)
 	return nil
 }
 

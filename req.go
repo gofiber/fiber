@@ -1334,7 +1334,8 @@ func (r *DefaultReq) URI() *fasthttp.URI {
 	return r.c.fasthttp.Request.URI()
 }
 
-// Path returns the path part of the request URL.
+// Path returns the path part of the request URL, normalized before routing
+// (see Config.UnescapePath); OriginalURL returns the request target as sent.
 // Optionally, you could override the path.
 // Make copies or use the Immutable setting to use the value outside the Handler.
 func (r *DefaultReq) Path(override ...string) string {
@@ -1344,6 +1345,9 @@ func (r *DefaultReq) Path(override ...string) string {
 
 		// Set new path to request context
 		r.c.fasthttp.Request.URI().SetPath(r.c.pathOriginal)
+		// An override is off the request hot path, so scan the new path rather
+		// than repeat the length comparison Reset makes.
+		r.c.pathNeedsNorm = needsPathNormalization(r.c.pathOriginal)
 		// Prettify path
 		r.c.configDependentPaths()
 		// The detection path/tree hash changed; invalidate the lookahead index.

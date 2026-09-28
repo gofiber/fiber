@@ -512,7 +512,8 @@ type Ctx interface {
 	// fasthttp URI methods. It is owned by the request and rewritten by a Path
 	// override, so it is only valid within the handler.
 	URI() *fasthttp.URI
-	// Path returns the path part of the request URL.
+	// Path returns the path part of the request URL, normalized before routing
+	// (see Config.UnescapePath); OriginalURL returns the request target as sent.
 	// Optionally, you could override the path.
 	// Make copies or use the Immutable setting to use the value outside the Handler.
 	Path(override ...string) string
