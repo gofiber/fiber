@@ -355,7 +355,7 @@ func main() {
 - A request that `net/http` served over TLS is seen as TLS by Fiber: `c.Scheme()` is `https`, `c.Secure()` is true and `c.RequestCtx().TLSConnectionState()` carries the state from `r.TLS`.
 - `c.StartTime()` (and so `c.Elapsed()`) is not set for requests that reach Fiber through `FiberHandler`, `FiberApp` or `HTTPMiddleware`: fasthttp only records the request time inside its own server loop.
 - `HTTPMiddleware` routes the request the wrapped middleware hands to `next`, including a rewritten `r.URL` such as the one `http.StripPrefix` produces. The middleware must call `next` before it flushes or hijacks the response; after that the response has left Fiber's hands and the call is ignored.
-- `FiberHandler`, `FiberHandlerFunc` and `FiberApp` route `r.URL` when it differs from `r.RequestURI`: the request an `http.StripPrefix` in front of them rewrote, and a request built in code, which has no `RequestURI` at all.
+- `FiberHandler`, `FiberHandlerFunc` and `FiberApp` route the request line `net/http` would write for `r` when it differs from `r.RequestURI`: the path an `http.StripPrefix` in front of them rewrote, the URL of a request built in code, which has no `RequestURI` at all, and, for a `CONNECT` request in the authority form, the authority `r.URL.Host` holds rather than the `/` that `r.URL.RequestURI()` reads for it.
 
 ## Summary
 

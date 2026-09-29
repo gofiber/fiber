@@ -280,6 +280,53 @@ func Test_FiberHandler_RoutesTheURL(t *testing.T) {
 	require.Equal(t, "/served/A|/served/%41?x=1", rec.Body.String())
 }
 
+// Test_FiberHandler_ConnectAuthorityForm pins that a CONNECT request in the
+// authority form, which net/http keeps in r.URL.Host with an empty path, is
+// routed as that authority, as the parent server received it, and not as the
+// "/" that r.URL.RequestURI() reads for it. The router may root the
+// authority, so both spellings of c.Path() are accepted.
+func Test_FiberHandler_ConnectAuthorityForm(t *testing.T) {
+	t.Parallel()
+
+	h := func(c fiber.Ctx) error {
+		return c.SendString(c.Path() + "|" + c.Host())
+	}
+	routed := func(t *testing.T, rec *httptest.ResponseRecorder) (string, string) {
+		t.Helper()
+		require.Equal(t, http.StatusOK, rec.Code)
+		path, host, ok := strings.Cut(rec.Body.String(), "|")
+		require.True(t, ok, rec.Body.String())
+		return strings.TrimPrefix(path, "/"), host
+	}
+
+	rec := httptest.NewRecorder()
+	FiberHandler(h).ServeHTTP(rec, httptest.NewRequest(fiber.MethodConnect, "backend.internal:443", http.NoBody))
+	path, host := routed(t, rec)
+	require.Equal(t, "backend.internal:443", path)
+	require.Equal(t, "backend.internal:443", host)
+
+	// A rewrite of the authority is routed like one of the path.
+	retarget := func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			r.URL.Host = "other.internal:8443"
+			r.Host = r.URL.Host
+			next.ServeHTTP(w, r)
+		})
+	}
+	rec = httptest.NewRecorder()
+	retarget(FiberHandler(h)).ServeHTTP(rec, httptest.NewRequest(fiber.MethodConnect, "backend.internal:443", http.NoBody))
+	path, host = routed(t, rec)
+	require.Equal(t, "other.internal:8443", path)
+	require.Equal(t, "other.internal:8443", host)
+
+	// The net/rpc form, a CONNECT with a path, is routed by that path.
+	rec = httptest.NewRecorder()
+	FiberHandler(h).ServeHTTP(rec, httptest.NewRequest(fiber.MethodConnect, "/rpc", http.NoBody))
+	path, host = routed(t, rec)
+	require.Equal(t, "rpc", path)
+	require.Equal(t, "example.com", host)
+}
+
 // Test_HTTPMiddleware_RejectsAuthorityTarget pins that a routed target
 // fasthttp would read as an authority, one that begins with "//" and holds
 // "://", is refused rather than set on the request, where the next parse

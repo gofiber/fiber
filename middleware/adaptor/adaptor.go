@@ -744,6 +744,28 @@ func resolveRemoteAddr(remoteAddr string, localAddr any) (net.Addr, error) {
 	return nil, fmt.Errorf("failed to resolve TCP address: %w", err)
 }
 
+// requestTarget is the request line net/http writes for r, as Request.write
+// spells it: URL.RequestURI(), except for a CONNECT request whose URL has no
+// path. net/http reads and writes such a request in the authority form,
+// keeping the target in URL.Host, and URL.RequestURI() reads "/" for it; the
+// line is then the authority, from URL.Opaque or the host, so a Fiber CONNECT
+// route sees the host the request names rather than "/".
+func requestTarget(r *http.Request) string {
+	if r.URL == nil {
+		return ""
+	}
+	if r.Method != http.MethodConnect || r.URL.Path != "" {
+		return r.URL.RequestURI()
+	}
+	if r.URL.Opaque != "" {
+		return r.URL.Opaque
+	}
+	if r.Host != "" {
+		return r.Host
+	}
+	return r.URL.Host
+}
+
 func handlerFunc(app *fiber.App, h ...fiber.Handler) http.HandlerFunc {
 	// App.Config returns the config by value, so read the body limit once at
 	// construction instead of copying the whole 624-byte struct on every
@@ -823,12 +845,11 @@ func handlerFunc(app *fiber.App, h ...fiber.Handler) http.HandlerFunc {
 		}
 		req.Header.SetMethod(r.Method)
 		// A rewrite of r.URL (http.StripPrefix) leaves RequestURI as it
-		// arrived, and a request built in code has none at all: route the URL.
+		// arrived, and a request built in code has none at all: route the
+		// request line net/http itself would write for r.
 		requestURI := r.RequestURI
-		if r.URL != nil {
-			if fromURL := r.URL.RequestURI(); fromURL != "" && fromURL != requestURI {
-				requestURI = fromURL
-			}
+		if fromURL := requestTarget(r); fromURL != "" && fromURL != requestURI {
+			requestURI = fromURL
 		}
 		req.SetRequestURI(requestURI)
 		req.SetHost(r.Host)
