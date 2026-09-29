@@ -33,15 +33,11 @@ var fallbackDummySHA512 = [sha512.Size]byte{
 
 type passwordVerifier func(string) bool
 
-type userVerifiers map[string]passwordVerifier
-
-// Verifier strengths are ordered by expected verification work:
-// bcrypt is strongest because it is adaptive and cost-based, SHA-512 follows
-// as the larger fixed-cost digest, and SHA-256 is the lightest fixed-cost hash.
+// Hash algorithms recognized in Users, see parseHashedPassword.
 const (
-	verifierStrengthSHA256 = iota + 1
-	verifierStrengthSHA512
-	verifierStrengthBcrypt
+	hashAlgorithmSHA256 = iota + 1
+	hashAlgorithmSHA512
+	hashAlgorithmBcrypt
 )
 
 // Config defines the config for middleware.
@@ -150,17 +146,12 @@ func configDefault(config ...Config) Config {
 	}
 
 	if cfg.Authorizer == nil {
-		verifiers, dummyVerify, err := buildVerifiers(cfg.Users)
+		verifiers, err := buildVerifiers(cfg.Users)
 		if err != nil {
 			panic(err)
 		}
 		cfg.Authorizer = func(user, pass string, _ fiber.Ctx) bool {
-			verify, ok := verifiers[user]
-			if !ok {
-				verify = dummyVerify
-			}
-			res := verify(pass)
-			return ok && res
+			return verifiers.verify(user, pass)
 		}
 	}
 
@@ -185,45 +176,85 @@ func configDefault(config ...Config) Config {
 	return cfg
 }
 
-type verifierStrength struct {
+// hashClass groups password hashes that take the same work to verify: the
+// same algorithm and, for bcrypt, the same cost. All SHA-256 encodings share
+// one class.
+type hashClass struct {
 	algorithm int
 	cost      int
 }
 
-// buildVerifiers parses each configured user hash, stores the verifier by user,
-// and selects the strongest configured verifier for the dummy verification path.
-// The dummy verifier is used for unknown-user requests to equalize timing.
-//
-// Note: in mixed-hash deployments (e.g. bcrypt + SHA-256), the dummy matches
-// the strongest configured hash. Users with weaker hashes may still be
-// distinguishable from unknown users by timing. This is an accepted trade-off
-// since running all verifier types per request would be prohibitively expensive.
-func buildVerifiers(users map[string]string) (userVerifiers, passwordVerifier, error) {
-	verifiers := make(userVerifiers, len(users))
-	dummyVerify := fallbackDummyVerify
+// userVerifier holds a user's password verifier and the index of its hash
+// class in credentialVerifier.dummies.
+type userVerifier struct {
+	verify passwordVerifier
+	class  int
+}
+
+// credentialVerifier checks credentials against the configured Users.
+type credentialVerifier struct {
+	users map[string]userVerifier
+	// dummies holds one verifier per hash class present in Users. They stand
+	// in for the classes a request's user does not use, and for every class
+	// when the user is unknown.
+	dummies []passwordVerifier
+}
+
+// verify reports whether pass is the password of user. Every call runs
+// exactly one verification per hash class: the user's own verifier for their
+// class and that class's dummy for every other class, or only dummies when
+// the user is unknown. The work therefore depends on the configuration alone,
+// so response timing reveals neither whether the user exists nor which hash
+// their password uses. Dummy results are discarded.
+func (v *credentialVerifier) verify(user, pass string) bool {
+	u, ok := v.users[user]
+	matched := false
+	for i, dummy := range v.dummies {
+		if ok && i == u.class {
+			matched = u.verify(pass)
+			continue
+		}
+		dummy(pass)
+	}
+	return matched
+}
+
+// buildVerifiers parses each configured user hash and groups the hashes into
+// classes of equal verification work. The first verifier seen for a class, in
+// sorted username order, becomes that class's dummy. With no users configured,
+// a fixed SHA-512 check is the only class, so unknown-user requests still do
+// hashing work.
+func buildVerifiers(users map[string]string) (*credentialVerifier, error) {
 	keys := make([]string, 0, len(users))
 	for user := range users {
 		keys = append(keys, user)
 	}
 	sort.Strings(keys)
 
-	var dummyStrength verifierStrength
+	v := &credentialVerifier{users: make(map[string]userVerifier, len(users))}
+	classIndex := make(map[hashClass]int)
 	for _, user := range keys {
 		hashedPassword := users[user]
 		verify, err := parseHashedPassword(hashedPassword)
 		if err != nil {
-			return nil, nil, err
+			return nil, err
 		}
-		verifiers[user] = verify
 
-		strength := verifierStrengthForHash(hashedPassword)
-		if strength.betterThan(dummyStrength) {
-			dummyVerify = verify
-			dummyStrength = strength
+		class := hashClassOf(hashedPassword)
+		idx, seen := classIndex[class]
+		if !seen {
+			idx = len(v.dummies)
+			classIndex[class] = idx
+			v.dummies = append(v.dummies, verify)
 		}
+		v.users[user] = userVerifier{verify: verify, class: idx}
 	}
 
-	return verifiers, dummyVerify, nil
+	if len(v.dummies) == 0 {
+		v.dummies = append(v.dummies, fallbackDummyVerify)
+	}
+
+	return v, nil
 }
 
 // fallbackDummyVerify provides fixed verification work when no users are
@@ -233,31 +264,23 @@ func fallbackDummyVerify(pass string) bool {
 	return subtle.ConstantTimeCompare(sum[:], fallbackDummySHA512[:]) == 1
 }
 
-// verifierStrengthForHash ranks a configured password hash by algorithm family
-// and cost so the middleware can choose the strongest verifier for dummy work.
-func verifierStrengthForHash(h string) verifierStrength {
+// hashClassOf returns the hash class of a configured password hash. It must
+// follow the same prefix rules as parseHashedPassword. A bcrypt hash whose
+// cost cannot be parsed fails verification before any hashing, so all such
+// hashes share the zero-cost class.
+func hashClassOf(h string) hashClass {
 	switch {
 	case strings.HasPrefix(h, "$2"):
 		cost, err := bcrypt.Cost([]byte(h))
 		if err != nil {
-			return verifierStrength{algorithm: verifierStrengthBcrypt}
+			return hashClass{algorithm: hashAlgorithmBcrypt}
 		}
-		return verifierStrength{algorithm: verifierStrengthBcrypt, cost: cost}
+		return hashClass{algorithm: hashAlgorithmBcrypt, cost: cost}
 	case strings.HasPrefix(h, "{SHA512}"):
-		return verifierStrength{algorithm: verifierStrengthSHA512}
+		return hashClass{algorithm: hashAlgorithmSHA512}
 	default:
-		return verifierStrength{algorithm: verifierStrengthSHA256}
+		return hashClass{algorithm: hashAlgorithmSHA256}
 	}
-}
-
-// betterThan prefers stronger hash families first (bcrypt > SHA-512 > SHA-256)
-// and uses the bcrypt cost as a tiebreaker within the same algorithm family.
-func (s verifierStrength) betterThan(other verifierStrength) bool {
-	if s.algorithm != other.algorithm {
-		return s.algorithm > other.algorithm
-	}
-
-	return s.cost > other.cost
 }
 
 func parseHashedPassword(h string) (passwordVerifier, error) {

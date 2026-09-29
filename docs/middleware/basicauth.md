@@ -100,6 +100,26 @@ Users: map[string]string{
 }
 ```
 
+#### Mixing hash types
+
+The default authorizer does the same verification work for every request, so
+response times reveal neither whether a username exists nor which hash its
+password uses. Each request runs one check for every hash type in `Users`,
+where a type is the algorithm and, for bcrypt, the cost. The named user's own
+hash is checked for their type and a stand-in hash for every other type; a
+request for an unknown username checks only stand-ins.
+
+Use a single hash type where you can, so each request costs one check. When
+`Users` mixes types, for example midway through a migration from SHA-256 to
+bcrypt or after raising the bcrypt cost, every request pays for all of them:
+requests for a SHA-256 user become as slow as a bcrypt check. Finishing the
+migration returns to one check per request. Accounts that need fast checks,
+such as high-volume API clients, can use a separate `basicauth` instance on
+their own routes.
+
+A custom `Authorizer` replaces this logic and is responsible for its own timing
+behavior.
+
 ## Config
 
 | Property        | Type                        | Description                                                                                                                                                           | Default               |

@@ -91,6 +91,20 @@ func Test_Middleware_BasicAuth(t *testing.T) {
 			username:   "ee",
 			password:   "123456",
 		},
+		// Each user's password only works for that user, although every
+		// request also runs the other user's hash algorithm.
+		{
+			url:        "/testauth",
+			statusCode: 401,
+			username:   "john",
+			password:   "123456",
+		},
+		{
+			url:        "/testauth",
+			statusCode: 401,
+			username:   "admin",
+			password:   "doe",
+		},
 	}
 
 	for _, tt := range tests {
@@ -653,35 +667,152 @@ func Test_parseHashedPassword(t *testing.T) {
 func Test_buildVerifiers(t *testing.T) {
 	t.Parallel()
 
-	t.Run("selects the strongest configured verifier deterministically", func(t *testing.T) {
+	t.Run("groups hashes by algorithm and bcrypt cost", func(t *testing.T) {
 		t.Parallel()
 
-		strongestPassword := "bcrypt-pass"
-		strongestHash, err := bcrypt.GenerateFromPassword([]byte(strongestPassword), bcrypt.MinCost+1)
+		bcryptA, err := bcrypt.GenerateFromPassword([]byte("bcrypt-a-pass"), bcrypt.MinCost)
+		require.NoError(t, err)
+		bcryptB, err := bcrypt.GenerateFromPassword([]byte("bcrypt-b-pass"), bcrypt.MinCost)
+		require.NoError(t, err)
+		bcryptHigher, err := bcrypt.GenerateFromPassword([]byte("bcrypt-higher-pass"), bcrypt.MinCost+1)
 		require.NoError(t, err)
 
-		verifiers, dummyVerify, err := buildVerifiers(map[string]string{
-			"zeta":  sha256Hash("sha256-pass"),
-			"alpha": string(strongestHash),
-			"beta":  sha512Hash("sha512-pass"),
+		v, err := buildVerifiers(map[string]string{
+			"sha256":        sha256Hash("sha256-pass"),
+			"sha256-hex":    hex.EncodeToString(sha256Sum("sha256-hex-pass")),
+			"sha256-b64":    base64.StdEncoding.EncodeToString(sha256Sum("sha256-b64-pass")),
+			"sha512":        sha512Hash("sha512-pass"),
+			"bcrypt-a":      string(bcryptA),
+			"bcrypt-b":      string(bcryptB),
+			"bcrypt-higher": string(bcryptHigher),
 		})
 		require.NoError(t, err)
-		require.Len(t, verifiers, 3)
-		require.True(t, dummyVerify(strongestPassword))
-		require.False(t, dummyVerify("sha512-pass"))
-		require.False(t, dummyVerify("sha256-pass"))
+		require.Len(t, v.users, 7)
+
+		// SHA-256 in any encoding, SHA-512, and bcrypt once per cost.
+		require.Len(t, v.dummies, 4)
+		class := func(user string) int { return v.users[user].class }
+		require.Equal(t, class("sha256"), class("sha256-hex"))
+		require.Equal(t, class("sha256"), class("sha256-b64"))
+		require.Equal(t, class("bcrypt-a"), class("bcrypt-b"))
+		require.NotEqual(t, class("bcrypt-a"), class("bcrypt-higher"))
+		require.NotEqual(t, class("sha256"), class("sha512"))
+		require.NotEqual(t, class("sha256"), class("bcrypt-a"))
+		require.NotEqual(t, class("sha512"), class("bcrypt-a"))
+
+		// Each class's dummy is the first verifier of that class in sorted
+		// username order.
+		require.True(t, v.dummies[class("bcrypt-a")]("bcrypt-a-pass"))
+		require.True(t, v.dummies[class("bcrypt-higher")]("bcrypt-higher-pass"))
+		require.True(t, v.dummies[class("sha256")]("sha256-pass"))
+		require.True(t, v.dummies[class("sha512")]("sha512-pass"))
 	})
 
 	t.Run("uses a fixed-work fallback when no users are configured", func(t *testing.T) {
 		t.Parallel()
 
-		verifiers, dummyVerify, err := buildVerifiers(nil)
+		v, err := buildVerifiers(nil)
 		require.NoError(t, err)
-		require.Empty(t, verifiers)
+		require.Empty(t, v.users)
+		require.Len(t, v.dummies, 1)
 		fallbackInput := "fiber-basicauth-dummy"
-		require.True(t, dummyVerify(fallbackInput))
-		require.False(t, dummyVerify("wrong"))
+		require.True(t, v.dummies[0](fallbackInput))
+		require.False(t, v.dummies[0]("wrong"))
+		require.False(t, v.verify("john", fallbackInput))
 	})
+}
+
+func Test_hashClassOf(t *testing.T) {
+	t.Parallel()
+
+	bcryptHash, err := bcrypt.GenerateFromPassword([]byte("pass"), bcrypt.MinCost+1)
+	require.NoError(t, err)
+
+	tests := []struct {
+		name string
+		hash string
+		want hashClass
+	}{
+		{"bcrypt", string(bcryptHash), hashClass{algorithm: hashAlgorithmBcrypt, cost: bcrypt.MinCost + 1}},
+		{"bcrypt with unparseable cost", "$2a$99$" + strings.Repeat("a", 53), hashClass{algorithm: hashAlgorithmBcrypt}},
+		{"sha512", sha512Hash("pass"), hashClass{algorithm: hashAlgorithmSHA512}},
+		{"sha256", sha256Hash("pass"), hashClass{algorithm: hashAlgorithmSHA256}},
+		{"sha256 hex", hex.EncodeToString(sha256Sum("pass")), hashClass{algorithm: hashAlgorithmSHA256}},
+		{"sha256 base64", base64.StdEncoding.EncodeToString(sha256Sum("pass")), hashClass{algorithm: hashAlgorithmSHA256}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, tt.want, hashClassOf(tt.hash))
+		})
+	}
+}
+
+// Test_credentialVerifier_EqualWork ensures every request runs exactly one
+// verification per hash class whichever user it names, so response timing
+// reveals neither whether a user exists nor which hash their password uses.
+func Test_credentialVerifier_EqualWork(t *testing.T) {
+	t.Parallel()
+
+	passwords := map[string]string{
+		"sha256":        "sha256-pass",
+		"sha512":        "sha512-pass",
+		"bcrypt":        "bcrypt-pass",
+		"bcrypt-higher": "bcrypt-higher-pass",
+	}
+	bcryptHash, err := bcrypt.GenerateFromPassword([]byte(passwords["bcrypt"]), bcrypt.MinCost)
+	require.NoError(t, err)
+	bcryptHigher, err := bcrypt.GenerateFromPassword([]byte(passwords["bcrypt-higher"]), bcrypt.MinCost+1)
+	require.NoError(t, err)
+
+	v, err := buildVerifiers(map[string]string{
+		"sha256":        sha256Hash(passwords["sha256"]),
+		"sha512":        sha512Hash(passwords["sha512"]),
+		"bcrypt":        string(bcryptHash),
+		"bcrypt-higher": string(bcryptHigher),
+	})
+	require.NoError(t, err)
+	require.Len(t, v.dummies, 4)
+
+	// Count the verifications a request runs in each hash class.
+	calls := make([]int, len(v.dummies))
+	counting := func(class int, verify passwordVerifier) passwordVerifier {
+		return func(p string) bool {
+			calls[class]++
+			return verify(p)
+		}
+	}
+	for i, dummy := range v.dummies {
+		v.dummies[i] = counting(i, dummy)
+	}
+	for name, u := range v.users {
+		u.verify = counting(u.class, u.verify)
+		v.users[name] = u
+	}
+
+	check := func(user, pass string, want bool) {
+		t.Helper()
+		clear(calls)
+		require.Equal(t, want, v.verify(user, pass), "user %q, password %q", user, pass)
+		for class, n := range calls {
+			require.Equal(t, 1, n, "user %q: verifications in hash class %d", user, class)
+		}
+	}
+
+	for user, pass := range passwords {
+		check(user, pass, true)
+		check(user, "wrong", false)
+		// Every user here is their class's dummy, so each other user's
+		// password makes a dummy match; that result must be discarded.
+		for other, otherPass := range passwords {
+			if other != user {
+				check(user, otherPass, false)
+			}
+		}
+		check("unknown", pass, false)
+	}
+	check("unknown", "wrong", false)
 }
 
 func Test_BasicAuth_HashVariants(t *testing.T) {
@@ -853,18 +984,18 @@ func Test_BasicAuth_RejectsWrongDigestLength(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			_, _, err := buildVerifiers(map[string]string{"john": tt.hash})
+			_, err := buildVerifiers(map[string]string{"john": tt.hash})
 			require.ErrorIs(t, err, tt.wantErr)
 		})
 	}
 
 	// A correctly sized digest still builds and verifies.
-	verifiers, _, err := buildVerifiers(map[string]string{
+	v, err := buildVerifiers(map[string]string{
 		"john": "{SHA512}" + base64.StdEncoding.EncodeToString(sha512Sum("doe")),
 	})
 	require.NoError(t, err)
-	require.True(t, verifiers["john"]("doe"))
-	require.False(t, verifiers["john"]("nope"))
+	require.True(t, v.verify("john", "doe"))
+	require.False(t, v.verify("john", "nope"))
 }
 
 func sha256Sum(s string) []byte {
