@@ -18,6 +18,7 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/internal/headerlist"
+	"github.com/gofiber/fiber/v3/internal/wiretarget"
 	"github.com/gofiber/utils/v2"
 	"github.com/valyala/fasthttp"
 	"github.com/valyala/fasthttp/fasthttpadaptor"
@@ -251,8 +252,7 @@ func HTTPHandlerFunc(h http.HandlerFunc) fiber.Handler {
 func HTTPHandler(h http.Handler) fiber.Handler {
 	handler := fasthttpadaptor.NewFastHTTPHandler(h)
 	return func(c fiber.Ctx) error {
-		handler(c.RequestCtx())
-		return nil
+		return serveRouted(c, handler)
 	}
 }
 
@@ -264,9 +264,34 @@ func HTTPHandlerWithContext(h http.Handler) fiber.Handler {
 		// so adapted net/http handlers can retrieve it via adaptor.LocalContextFromHTTPRequest(r)
 		c.RequestCtx().SetUserValue(localContextKey, c.Context())
 
-		handler(c.RequestCtx())
-		return nil
+		return serveRouted(c, handler)
 	}
+}
+
+// serveRouted runs handler, a net/http handler adapted by fasthttpadaptor, on
+// a request line that spells the path the router matched (wiretarget.Routed)
+// rather than the one that arrived, and puts the original back afterwards.
+// The two differ for an escaped or non-canonical request, and net/http reads
+// the raw one its own way: "/public/..%2Fadmin" decodes into a URL.Path that
+// http.FileServer cleans to "/admin", although no middleware mounted on
+// "/admin" has run. A routed path whose segments would not survive that
+// reading, one with an empty segment or an escaped slash, is not handed on.
+func serveRouted(c fiber.Ctx, handler fasthttp.RequestHandler) error {
+	target := wiretarget.Routed(c)
+	if !wiretarget.SegmentsAsRouted(target) {
+		return fiber.ErrNotFound
+	}
+	req := c.Request()
+	original := utils.CopyString(c.OriginalURL())
+	req.SetRequestURI(target)
+	handler(c.RequestCtx())
+	// Buffered, the handler has returned. Streaming or hijacked, it is still
+	// running with an http.Request whose URL aliases the request line's
+	// storage, so the line is left as the handler read it.
+	if !c.Response().IsBodyStream() && !c.RequestCtx().Hijacked() {
+		req.SetRequestURI(original)
+	}
+	return nil
 }
 
 // LocalContextFromHTTPRequest extracts the Fiber user context previously stored into r.Context() by the adaptor.
@@ -281,7 +306,20 @@ func LocalContextFromHTTPRequest(r *http.Request) (context.Context, bool) {
 
 // ConvertRequest converts a fiber.Ctx to a http.Request.
 // forServer should be set to true when the http.Request is going to be passed to a http.Handler.
+//
+// The request is built from the path the router matched (see
+// wiretarget.Routed), which the request line is set to; the returned request's
+// URL and RequestURI alias that line's storage, as they do in fasthttpadaptor,
+// so it is left in place. A routed path fasthttp would read as an authority
+// rather than a path (see wiretarget.ParsesAsPath) is answered with
+// fiber.ErrBadRequest instead of being set, since the request's host would
+// then be read out of it.
 func ConvertRequest(c fiber.Ctx, forServer bool) (*http.Request, error) {
+	target := wiretarget.Routed(c)
+	if !wiretarget.ParsesAsPath(target, c.Request().Header.Host()) {
+		return nil, fiber.ErrBadRequest
+	}
+	c.Request().SetRequestURI(target)
 	var req http.Request
 	if err := fasthttpadaptor.ConvertRequest(c.RequestCtx(), &req, forServer); err != nil {
 		return nil, err //nolint:wrapcheck // This must not be wrapped
@@ -566,6 +604,20 @@ func HTTPMiddleware(mw func(http.Handler) http.Handler) fiber.Handler {
 			CopyContextToFiberContext(r.Context(), c.RequestCtx())
 		})
 
+		// The middleware reads the path the router matched (see
+		// wiretarget.Routed), not the request line as it arrived: a guard on
+		// r.URL.Path has to see the "/admin/x" that "/a/../admin/x" was routed
+		// as. Escaped slashes are handed on, in r.URL.RawPath, so a Fiber
+		// route behind the middleware still receives its "%2F". A path
+		// fasthttp would read as an authority rather than a path (see
+		// wiretarget.ParsesAsPath) is refused: set as the request line, it
+		// would become the host of both the net/http request and the Fiber
+		// request behind the middleware.
+		target := wiretarget.Routed(c)
+		if !wiretarget.ParsesAsPath(target, c.Request().Header.Host()) {
+			return fiber.ErrBadRequest
+		}
+		c.Request().SetRequestURI(target)
 		// Call the fasthttp adaptor directly: HTTPHandler would wrap it in a
 		// second closure that has to be built on every request, and its
 		// error result is always nil.
@@ -761,7 +813,15 @@ func handlerFunc(app *fiber.App, h ...fiber.Handler) http.HandlerFunc {
 			req.Header.SetContentLength(int(n))
 		}
 		req.Header.SetMethod(r.Method)
-		req.SetRequestURI(r.RequestURI)
+		// A rewrite of r.URL (http.StripPrefix) leaves RequestURI as it
+		// arrived, and a request built in code has none at all: route the URL.
+		requestURI := r.RequestURI
+		if r.URL != nil {
+			if fromURL := r.URL.RequestURI(); fromURL != "" && fromURL != requestURI {
+				requestURI = fromURL
+			}
+		}
+		req.SetRequestURI(requestURI)
 		req.SetHost(r.Host)
 		req.Header.SetHost(r.Host)
 		// Propagate the real protocol version so protocol-dependent behavior
