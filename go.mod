@@ -23,7 +23,7 @@ require (
 
 require (
 	github.com/fxamacker/cbor/v2 v2.9.4 // direct
-	github.com/klauspost/compress v1.20.0 // indirect
+	github.com/klauspost/compress v1.20.1 // indirect
 	github.com/philhofer/fwd v1.2.0 // indirect
 	github.com/x448/float16 v0.8.4 // indirect
 	golang.org/x/net v0.59.0

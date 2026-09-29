@@ -1,15 +1,20 @@
 package binder
 
 import (
+	"bytes"
 	"fmt"
+	"maps"
 	"mime/multipart"
 	"reflect"
+	"slices"
 	"strconv"
+	"strings"
 	"sync"
 	"testing"
 
 	"github.com/gofiber/schema"
 	"github.com/stretchr/testify/require"
+	"github.com/valyala/fasthttp"
 )
 
 func Test_EqualFieldType(t *testing.T) {
@@ -243,95 +248,69 @@ func Benchmark_FilterFlags(b *testing.B) {
 	}
 }
 
-func TestFormatBindData(t *testing.T) {
+// Test_BindData_Bind pins how a binder files a string value: under its key,
+// and split at its commas only when splitting is on and the key names a slice
+// of the destination's.
+func Test_BindData_Bind(t *testing.T) {
 	t.Parallel()
 
-	t.Run("string value with valid key", func(t *testing.T) {
+	t.Run("value", func(t *testing.T) {
 		t.Parallel()
 
-		out := struct{}{}
-		data := make(map[string][]string)
-		err := formatBindData("query", out, data, "name", "John", false, false)
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if len(data["name"]) != 1 || data["name"][0] != "John" {
-			t.Fatalf("expected data[\"name\"] = [John], got %v", data["name"])
-		}
+		data := &bindData{values: make(map[string][]string), mode: bindMap}
+		require.NoError(t, data.bind("query", &map[string][]string{}, "name", "John", false, false))
+		require.Equal(t, map[string][]string{"name": {"John"}}, data.values)
 	})
-
-	t.Run("unsupported value type", func(t *testing.T) {
-		t.Parallel()
-
-		out := struct{}{}
-		data := make(map[string][]string)
-		err := formatBindData("query", out, data, "age", 30, false, false) // int is unsupported
-		if err == nil {
-			t.Fatal("expected an error, got nil")
-		}
-	})
-
-	t.Run("bracket notation parsing error", func(t *testing.T) {
-		t.Parallel()
-
-		out := struct{}{}
-		data := make(map[string][]string)
-		err := formatBindData("query", out, data, "invalid[", "value", false, true) // malformed bracket notation
-		if err == nil {
-			t.Fatal("expected an error, got nil")
-		}
-	})
-
-	t.Run("handling multipart file headers", func(t *testing.T) {
-		t.Parallel()
-
-		out := struct{}{}
-		data := make(map[string][]*multipart.FileHeader)
-		files := []*multipart.FileHeader{
-			{Filename: "file1.txt"},
-			{Filename: "file2.txt"},
-		}
-		err := formatBindData("query", out, data, "files", files, false, false)
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if len(data["files"]) != 2 {
-			t.Fatalf("expected 2 files, got %d", len(data["files"]))
-		}
-	})
-
-	t.Run("type casting error", func(t *testing.T) {
-		t.Parallel()
-
-		out := struct{}{}
-		data := map[string][]int{} // Incorrect type to force a casting error
-		err := formatBindData("query", out, data, "key", "value", false, false)
-		require.Equal(t, "unsupported value type: string", err.Error())
-	})
-}
-
-func TestAssignBindData(t *testing.T) {
-	t.Parallel()
 
 	t.Run("splitting enabled with comma", func(t *testing.T) {
 		t.Parallel()
 
 		out := struct {
+			Color  string   `query:"color"`
 			Colors []string `query:"colors"`
 		}{}
-		data := make(map[string][]string)
-		assignBindData("query", &out, data, "colors", "red,blue,green", true)
-		require.Len(t, data["colors"], 3)
+		data := &bindData{mode: bindPairs}
+		require.NoError(t, data.bind("query", &out, "colors", "red,blue,green", true, false))
+		require.NoError(t, data.bind("query", &out, "color", "red,blue", true, false))
+		require.Equal(t, []string{"colors", "colors", "colors", "color"}, data.keys)
+		require.Equal(t, []string{"red", "blue", "green", "red,blue"}, data.pairValues)
 	})
 
 	t.Run("splitting disabled", func(t *testing.T) {
 		t.Parallel()
 
-		var out []string
-		data := make(map[string][]string)
-		assignBindData("query", out, data, "color", "red,blue", false)
-		require.Len(t, data["color"], 1)
+		out := struct {
+			Colors []string `query:"colors"`
+		}{}
+		data := &bindData{mode: bindPairs}
+		require.NoError(t, data.bind("query", &out, "colors", "red,blue", false, false))
+		require.Equal(t, []string{"red,blue"}, data.pairValues)
 	})
+}
+
+// Test_BindData_BracketNotation pins the key rewrite a source with bracket
+// notation gets: its values and files are filed under the dotted key, and a
+// malformed key is an error.
+func Test_BindData_BracketNotation(t *testing.T) {
+	t.Parallel()
+
+	out := &map[string][]string{}
+	data := &bindData{values: make(map[string][]string), mode: bindMap}
+	require.NoError(t, data.bind("query", out, "user[name]", "john", false, true))
+	require.NoError(t, data.bindAll("query", out, "user[tags]", []string{"a", "b"}, false, true))
+	// A source without the notation files the key as it came.
+	require.NoError(t, data.bind("query", out, "user[age]", "7", false, false))
+	require.Equal(t, map[string][]string{"user.name": {"john"}, "user.tags": {"a", "b"}, "user[age]": {"7"}}, data.values)
+
+	files := make(map[string][]*multipart.FileHeader)
+	headers := []*multipart.FileHeader{{Filename: "file1.txt"}, {Filename: "file2.txt"}}
+	require.NoError(t, bindFiles(files, "files", headers))
+	require.NoError(t, bindFiles(files, "user[avatars]", headers[:1]))
+	require.Equal(t, map[string][]*multipart.FileHeader{"files": headers, "user.avatars": headers[:1]}, files)
+
+	require.EqualError(t, data.bind("query", out, "invalid[", "value", false, true), "unmatched brackets")
+	require.EqualError(t, data.bindAll("query", out, "invalid[", []string{"value"}, false, true), "unmatched brackets")
+	require.EqualError(t, bindFiles(files, "invalid[", headers), "unmatched brackets")
 }
 
 func Test_parseToStruct_MismatchedData(t *testing.T) {
@@ -350,50 +329,6 @@ func Test_parseToStruct_MismatchedData(t *testing.T) {
 	err := parseToStruct("query", &User{}, data)
 	require.Error(t, err)
 	require.EqualError(t, err, "schema: error converting value for \"age\"")
-}
-
-func Test_formatBindData_ErrorCases(t *testing.T) {
-	t.Parallel()
-
-	t.Run("unsupported value type int", func(t *testing.T) {
-		t.Parallel()
-
-		out := struct{}{}
-		data := make(map[string][]string)
-		err := formatBindData("query", out, data, "age", 30, false, false) // int is unsupported
-		require.Error(t, err)
-		require.EqualError(t, err, "unsupported value type: int")
-	})
-
-	t.Run("unsupported value type map", func(t *testing.T) {
-		t.Parallel()
-
-		out := struct{}{}
-		data := make(map[string][]string)
-		err := formatBindData("query", out, data, "map", map[string]string{"key": "value"}, false, false) // map is unsupported
-		require.Error(t, err)
-		require.EqualError(t, err, "unsupported value type: map[string]string")
-	})
-
-	t.Run("bracket notation parsing error", func(t *testing.T) {
-		t.Parallel()
-
-		out := struct{}{}
-		data := make(map[string][]string)
-		err := formatBindData("query", out, data, "invalid[", "value", false, true) // malformed bracket notation
-		require.Error(t, err)
-		require.EqualError(t, err, "unmatched brackets")
-	})
-
-	t.Run("type casting error for []string", func(t *testing.T) {
-		t.Parallel()
-
-		out := struct{}{}
-		data := make(map[string][]string)
-		err := formatBindData("query", out, data, "names", 123, false, false) // invalid type for []string
-		require.Error(t, err)
-		require.EqualError(t, err, "unsupported value type: int")
-	})
 }
 
 func Test_decoderBuilder(t *testing.T) {
@@ -765,24 +700,6 @@ func Test_fieldName(t *testing.T) {
 	require.Empty(t, fieldName(nil, "query"))
 }
 
-func Test_formatBindData_BracketNotationSuccess(t *testing.T) {
-	t.Parallel()
-	out := struct{}{}
-	data := make(map[string][]string)
-	err := formatBindData("query", out, data, "user[name]", "john", false, true)
-	require.NoError(t, err)
-	require.Equal(t, "john", data["user.name"][0])
-}
-
-func Test_formatBindData_FileHeaderTypeMismatch(t *testing.T) {
-	t.Parallel()
-	out := struct{}{}
-	data := map[string][]int{}
-	files := []*multipart.FileHeader{{Filename: "file1.txt"}}
-	err := formatBindData("query", out, data, "file", files, false, false)
-	require.EqualError(t, err, "unsupported value type: []*multipart.FileHeader")
-}
-
 func Benchmark_equalFieldType(b *testing.B) {
 	type Nested struct {
 		Name string `query:"name"`
@@ -936,4 +853,199 @@ func Test_CollectPromoted_MutualEmbedding(t *testing.T) {
 	var out MutualOuter
 	require.True(t, equalFieldType(&out, reflect.Slice, "names", "query"))
 	require.False(t, equalFieldType(&out, reflect.Bool, "names", "query"))
+}
+
+// Test_BindData_AlternatingKeys pins that keys whose values alternate cost
+// time and memory linear in the number of pairs. An arena that copied a key's
+// values to its end whenever another key had followed it once grew for a
+// 5,000-pair body of two alternating keys to over four million slots.
+func Test_BindData_AlternatingKeys(t *testing.T) {
+	t.Parallel()
+
+	const pairs = 5000
+	data := &bindData{values: make(map[string][]string), mode: bindMap}
+	want := make(map[string][]string)
+	for i := range pairs {
+		key := "ab"[i%2 : i%2+1]
+		value := strconv.Itoa(i)
+		data.add(key, value)
+		want[key] = append(want[key], value)
+	}
+	require.Equal(t, want, data.values)
+	// Each key's values grow as append grows any slice.
+	for key, values := range data.values {
+		require.LessOrEqual(t, cap(values), 2*len(values), "values of %q", key)
+	}
+}
+
+// Test_Bind_MapOfSlices_OwnsValues pins that a map-of-slices destination,
+// which keeps the value slices it is given, gets slices of its own: a later
+// bind reusing the pool must leave its values as they were bound.
+func Test_Bind_MapOfSlices_OwnsValues(t *testing.T) {
+	t.Parallel()
+
+	require.Equal(t, bindMap, bindModeFor(&map[string][]string{}))
+	require.Equal(t, bindMap, bindModeFor(map[string][]string{}))
+	type named map[string][]string
+	require.Equal(t, bindMap, bindModeFor(&named{}))
+	require.Equal(t, bindMap, bindModeFor(&map[string]any{}))
+	require.Equal(t, bindLast, bindModeFor(&map[string]string{}))
+	require.Equal(t, bindLast, bindModeFor(map[string]string{}))
+	type namedStrings map[string]string
+	require.Equal(t, bindMap, bindModeFor(namedStrings{}))
+	require.Equal(t, bindPairs, bindModeFor(&struct{ A []string }{}))
+	require.Equal(t, bindPairs, bindModeFor(&map[int]string{}), "parse decodes a map without string keys as a struct")
+	require.Equal(t, bindPairs, bindModeFor(nil))
+
+	req := fasthttp.AcquireRequest()
+	t.Cleanup(func() { fasthttp.ReleaseRequest(req) })
+	req.URI().SetQueryString("a=1&b=3&a=2")
+
+	dst := make(map[string][]string)
+	require.NoError(t, (&QueryBinding{}).Bind(req, &dst))
+	require.Equal(t, map[string][]string{"a": {"1", "2"}, "b": {"3"}}, dst)
+
+	// Bind again through the same pools, from another request: the values
+	// are views of their request's buffer, so reusing req would rewrite them.
+	other := fasthttp.AcquireRequest()
+	t.Cleanup(func() { fasthttp.ReleaseRequest(other) })
+	other.URI().SetQueryString("a=overwritten&b=overwritten&a=overwritten")
+	var into struct {
+		B string   `query:"b"`
+		A []string `query:"a"`
+	}
+	require.NoError(t, (&QueryBinding{}).Bind(other, &into))
+	intoMap := make(map[string]string)
+	require.NoError(t, (&QueryBinding{}).Bind(other, &intoMap))
+
+	require.Equal(t, map[string][]string{"a": {"1", "2"}, "b": {"3"}}, dst)
+}
+
+// Test_Bind_StringMap_KeepsLastValue pins that a map[string]string, for which
+// the binders keep only the last value filed under each key, gets from each
+// of them the last value a map of slices gets under that key, unsplit, and
+// that the entries it already held stay unless overwritten.
+func Test_Bind_StringMap_KeepsLastValue(t *testing.T) {
+	t.Parallel()
+
+	pairs := [][2]string{{"a", "1"}, {"b", "2"}, {"a", "3"}, {"c", ""}, {"b", "4,5"}, {"a", "6"}}
+	encoded := make([]string, 0, len(pairs))
+	for _, p := range pairs {
+		encoded = append(encoded, p[0]+"="+p[1])
+	}
+	query := strings.Join(encoded, "&")
+
+	var multipartBody bytes.Buffer
+	mw := multipart.NewWriter(&multipartBody)
+	for _, p := range pairs {
+		require.NoError(t, mw.WriteField(p[0], p[1]))
+	}
+	require.NoError(t, mw.Close())
+
+	binders := []struct {
+		bind func(split bool, out any) error
+		name string
+	}{
+		{name: "query", bind: func(split bool, out any) error {
+			req := fasthttp.AcquireRequest()
+			defer fasthttp.ReleaseRequest(req)
+			req.URI().SetQueryString(query)
+			return (&QueryBinding{EnableSplitting: split}).Bind(req, out)
+		}},
+		{name: "form", bind: func(split bool, out any) error {
+			req := fasthttp.AcquireRequest()
+			defer fasthttp.ReleaseRequest(req)
+			req.Header.SetContentType("application/x-www-form-urlencoded")
+			req.SetBodyString(query)
+			return (&FormBinding{EnableSplitting: split}).Bind(req, out)
+		}},
+		{name: "multipart", bind: func(split bool, out any) error {
+			req := fasthttp.AcquireRequest()
+			defer fasthttp.ReleaseRequest(req)
+			req.Header.SetContentType(mw.FormDataContentType())
+			req.SetBody(multipartBody.Bytes())
+			return (&FormBinding{EnableSplitting: split}).Bind(req, out)
+		}},
+		{name: "header", bind: func(split bool, out any) error {
+			req := fasthttp.AcquireRequest()
+			defer fasthttp.ReleaseRequest(req)
+			for _, p := range pairs {
+				req.Header.Add(p[0], p[1])
+			}
+			return (&HeaderBinding{EnableSplitting: split}).Bind(req, out)
+		}},
+		{name: "resp_header", bind: func(split bool, out any) error {
+			resp := fasthttp.AcquireResponse()
+			defer fasthttp.ReleaseResponse(resp)
+			for _, p := range pairs {
+				resp.Header.Add(p[0], p[1])
+			}
+			return (&RespHeaderBinding{EnableSplitting: split}).Bind(resp, out)
+		}},
+		{name: "cookie", bind: func(split bool, out any) error {
+			req := fasthttp.AcquireRequest()
+			defer fasthttp.ReleaseRequest(req)
+			req.Header.Set(fasthttp.HeaderCookie, strings.ReplaceAll(query, "&", "; "))
+			return (&CookieBinding{EnableSplitting: split}).Bind(req, out)
+		}},
+	}
+	for _, b := range binders {
+		all := make(map[string][]string)
+		require.NoError(t, b.bind(false, &all), b.name)
+		want := map[string]string{"kept": "yes"}
+		for key, values := range all {
+			want[key] = values[len(values)-1]
+		}
+		require.Contains(t, slices.Collect(maps.Values(want)), "4,5", b.name)
+
+		for _, split := range []bool{false, true} {
+			got := map[string]string{"kept": "yes"}
+			require.NoError(t, b.bind(split, &got), "%s split=%v", b.name, split)
+			require.Equal(t, want, got, "%s split=%v", b.name, split)
+		}
+	}
+}
+
+// Test_Bind_StringMap_Destinations pins how a bind into a map[string]string
+// treats its destination, as parseToMap and parse do: a map given by value is
+// filled, a nil one given by value is an error, a pointer to a nil map gets
+// one, and a nil pointer fails as a nil pointer to a map of slices does.
+func Test_Bind_StringMap_Destinations(t *testing.T) {
+	t.Parallel()
+
+	req := fasthttp.AcquireRequest()
+	t.Cleanup(func() { fasthttp.ReleaseRequest(req) })
+	req.URI().SetQueryString("a=1&a=2&b=3")
+	b := &QueryBinding{}
+	want := map[string]string{"a": "2", "b": "3"}
+
+	byValue := map[string]string{}
+	require.NoError(t, b.Bind(req, byValue))
+	require.Equal(t, want, byValue)
+
+	var nilMap map[string]string
+	require.ErrorIs(t, b.Bind(req, nilMap), ErrMapNilDestination)
+
+	var viaPointer map[string]string
+	require.NoError(t, b.Bind(req, &viaPointer))
+	require.Equal(t, want, viaPointer)
+
+	var nilPointer *map[string]string
+	err := b.Bind(req, nilPointer)
+	require.Error(t, err)
+	var nilSlicesPointer *map[string][]string
+	require.EqualError(t, b.Bind(req, nilSlicesPointer), err.Error())
+}
+
+// Test_tagIndex_MatchesTags pins tagIndex's switch to the order of tags, which
+// is how getDecoderPool finds a tag's pool in a decoderPoolSet.
+func Test_tagIndex_MatchesTags(t *testing.T) {
+	t.Parallel()
+
+	for i, tag := range tags {
+		require.Equal(t, i, tagIndex(tag), tag)
+		require.NotNil(t, getDecoderPool(tag), tag)
+	}
+	require.Equal(t, -1, tagIndex("unknown"))
+	require.Panics(t, func() { getDecoderPool("unknown") })
 }

@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math/bits"
 	"net"
 	"os"
 	"path/filepath"
@@ -222,16 +223,19 @@ func appendLowerASCII(dst, src []byte) []byte {
 }
 
 // appendCopyLowerASCII writes src into dst and its ASCII lower-case form into
-// low, reading src once and returning both. It backs the default configuration
-// of configDependentPaths, where the detection path is exactly the case fold of
-// the path: doing it as a copy followed by appendLowerASCII reads every byte
-// twice and pays two capacity checks and two loop set-ups, which for the path
-// lengths routers see is most of the cost. Fusing them measured 19-46% faster
-// across 5- to 70-byte paths.
+// low, reading src once and returning both, together with the number of '/'
+// bytes in src. It backs the default configuration of configDependentPaths,
+// where the detection path is exactly the case fold of the path: doing it as a
+// copy followed by appendLowerASCII reads every byte twice and pays two
+// capacity checks and two loop set-ups, which for the path lengths routers see
+// is most of the cost. Fusing them measured 19-46% faster across 5- to 70-byte
+// paths. The slash count rides along for the same reason: the router needs it
+// for nearly every request, and a separate bytes.Count call cost more than the
+// few instructions it takes per word here.
 //
 // lowerBuf must not alias src. src may alias dstBuf at a higher offset, as it
 // does when Path is overridden with a substring of its current value.
-func appendCopyLowerASCII(dstBuf, lowerBuf []byte, src string) (dst, lower []byte) { //nolint:nonamedreturns // gocritic unnamedResult requires naming the two same-typed slices
+func appendCopyLowerASCII(dstBuf, lowerBuf []byte, src string) (dst, lower []byte, slashes int) { //nolint:nonamedreturns // gocritic unnamedResult requires naming the two same-typed slices
 	n := len(src)
 	// Amortized growth like append: every byte of both slices is overwritten
 	// below, so the grown slices' contents don't matter.
@@ -248,26 +252,31 @@ func appendCopyLowerASCII(dstBuf, lowerBuf []byte, src string) (dst, lower []byt
 		w := swar.Load8(src, i)
 		swar.Store8(dst, i, w)
 		swar.Store8(lower, i, swar.ToLowerWord(w))
+		slashes += bits.OnesCount64(swar.MatchByteMask(w, '/'))
 	}
 	if i == n {
-		return dst, lower
+		return dst, lower, slashes
 	}
 	if n >= swar.WordLen {
 		// Finish with one overlapping word; the overlapped bytes are
-		// rewritten with the same values.
+		// rewritten with the same values, and shifted out of the count.
 		swar.Store8(dst, n-swar.WordLen, tail)
 		swar.Store8(lower, n-swar.WordLen, swar.ToLowerWord(tail))
-		return dst, lower
+		slashes += bits.OnesCount64(swar.MatchByteMask(tail, '/') >> (8 * (i - (n - swar.WordLen))))
+		return dst, lower, slashes
 	}
 	for ; i < n; i++ {
 		c := src[i]
 		dst[i] = c
+		if c == '/' {
+			slashes++
+		}
 		if c-'A' <= 'Z'-'A' {
 			c |= 0x20
 		}
 		lower[i] = c
 	}
-	return dst, lower
+	return dst, lower, slashes
 }
 
 // defaultString returns the value or a default value if it is set
