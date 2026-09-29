@@ -660,7 +660,14 @@ func DomainForward(hostname, addr string, clients ...*fasthttp.Client) fiber.Han
 			return c.Next()
 		}
 		setRealIP(c)
-		return doActionWithPolicy(c, joinUpstreamPath(base, wiretarget.Routed(c)), currentSecurityPolicy(),
+		// A routed path holding a forged escape (see
+		// wiretarget.HasForgedEscape) is refused: an upstream decoding it
+		// again would serve a name no middleware here matched.
+		target := wiretarget.Routed(c)
+		if wiretarget.HasForgedEscape(target) {
+			return fiber.ErrBadRequest
+		}
+		return doActionWithPolicy(c, joinUpstreamPath(base, target), currentSecurityPolicy(),
 			func(cli *fasthttp.Client, req *fasthttp.Request, resp *fasthttp.Response, _ *url.URL) error {
 				return cli.Do(req, resp)
 			}, clients...)
@@ -722,7 +729,14 @@ func BalancerForward(servers []string, clients ...*fasthttp.Client) fiber.Handle
 	return func(c fiber.Ctx) error {
 		base := r.get()
 		setRealIP(c)
-		return doActionWithPolicy(c, joinUpstreamPath(base, wiretarget.Routed(c)), currentSecurityPolicy(),
+		// A routed path holding a forged escape (see
+		// wiretarget.HasForgedEscape) is refused: an upstream decoding it
+		// again would serve a name no middleware here matched.
+		target := wiretarget.Routed(c)
+		if wiretarget.HasForgedEscape(target) {
+			return fiber.ErrBadRequest
+		}
+		return doActionWithPolicy(c, joinUpstreamPath(base, target), currentSecurityPolicy(),
 			func(cli *fasthttp.Client, req *fasthttp.Request, resp *fasthttp.Response, _ *url.URL) error {
 				return cli.Do(req, resp)
 			}, clients...)

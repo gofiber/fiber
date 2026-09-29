@@ -478,14 +478,25 @@ func Test_Proxy_Balancer_OpaqueClientFailsClosed(t *testing.T) {
 	require.Equal(t, "/plain/path?q=%2F", string(resp.Body()))
 }
 
-// Test_Proxy_Balancer_RejectsForgedEscape pins that an escape of an
-// unreserved character forged by a stray "%" never reaches the upstream as
-// something it would decode into a guarded name. What the router hands the
-// proxy depends on how it spells a stray "%": kept as sent,
-// "/static/%%370rivate/secret.txt" is routed as "/static/%70rivate/secret.txt"
-// and refused; written as "%25", it is routed as
-// "/static/%2570rivate/secret.txt", holds no escape of an unreserved
-// character, and is forwarded as that literal name.
+// requireForgedEscapeRefused checks a response to
+// "/static/%%370rivate/secret.txt", an escape of an unreserved character
+// forged by a stray "%", which must never reach the upstream as something it
+// would decode into the guarded name. What the router hands the proxy depends
+// on how it spells a stray "%": kept as sent, the request is routed as
+// "/static/%70rivate/secret.txt" and refused; written as "%25", it is routed
+// as "/static/%2570rivate/secret.txt", holds no escape of an unreserved
+// character, and is forwarded as that literal name, prefix included.
+func requireForgedEscapeRefused(t *testing.T, resp *fasthttp.Response, prefix string) {
+	t.Helper()
+	switch resp.StatusCode() {
+	case fiber.StatusBadRequest:
+	case fiber.StatusOK:
+		require.Equal(t, prefix+"/static/%2570rivate/secret.txt", string(resp.Body()))
+	default:
+		t.Fatalf("unexpected status %d", resp.StatusCode())
+	}
+}
+
 func Test_Proxy_Balancer_RejectsForgedEscape(t *testing.T) {
 	t.Parallel()
 
@@ -494,12 +505,27 @@ func Test_Proxy_Balancer_RejectsForgedEscape(t *testing.T) {
 	app.Use("/static/private", forbid)
 	app.Use(Balancer(Config{Servers: []string{addr}}))
 
-	resp := rawRequest(t, app, "/static/%%370rivate/secret.txt", "example.com")
-	switch resp.StatusCode() {
-	case fiber.StatusBadRequest:
-	case fiber.StatusOK:
-		require.Equal(t, "/static/%2570rivate/secret.txt", string(resp.Body()))
-	default:
-		t.Fatalf("unexpected status %d", resp.StatusCode())
-	}
+	requireForgedEscapeRefused(t, rawRequest(t, app, "/static/%%370rivate/secret.txt", "example.com"), "")
+}
+
+func Test_Proxy_DomainForward_RejectsForgedEscape(t *testing.T) {
+	t.Parallel()
+
+	addr := echoTarget(t)
+	app := fiber.New()
+	app.Use("/static/private", forbid)
+	app.Use(DomainForward("example.com", "http://"+addr+"/api/"))
+
+	requireForgedEscapeRefused(t, rawRequest(t, app, "/static/%%370rivate/secret.txt", "example.com"), "/api")
+}
+
+func Test_Proxy_BalancerForward_RejectsForgedEscape(t *testing.T) {
+	t.Parallel()
+
+	addr := echoTarget(t)
+	app := fiber.New()
+	app.Use("/static/private", forbid)
+	app.Use(BalancerForward([]string{"http://" + addr}))
+
+	requireForgedEscapeRefused(t, rawRequest(t, app, "/static/%%370rivate/secret.txt", "example.com"), "")
 }
