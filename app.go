@@ -334,12 +334,12 @@ type Config struct { //nolint:govet // Aligning the struct fields is not necessa
 	// Increase this buffer if your clients send multi-KB RequestURIs
 	// and/or multi-KB headers (for example, BIG cookies).
 	//
-	// Default: 16384
+	// Default: 8192
 	ReadBufferSize int `json:"read_buffer_size"`
 
 	// Per-connection buffer size for responses' writing.
 	//
-	// Default: 16384
+	// Default: 8192
 	WriteBufferSize int `json:"write_buffer_size"`
 
 	// CompressedFileSuffixes adds suffix to the original file name and
@@ -642,8 +642,8 @@ const (
 	DefaultBodyLimit       = 4 * 1024 * 1024
 	DefaultMaxRanges       = 16
 	DefaultConcurrency     = 256 * 1024
-	DefaultReadBufferSize  = 16384
-	DefaultWriteBufferSize = 16384
+	DefaultReadBufferSize  = 8192
+	DefaultWriteBufferSize = 8192
 )
 
 const (

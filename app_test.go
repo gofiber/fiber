@@ -1430,8 +1430,8 @@ func Test_App_Config(t *testing.T) {
 func Test_App_Config_DefaultBufferSizes(t *testing.T) {
 	t.Parallel()
 	app := New()
-	require.Equal(t, 16384, app.Config().ReadBufferSize)
-	require.Equal(t, 16384, app.Config().WriteBufferSize)
+	require.Equal(t, 8192, app.Config().ReadBufferSize)
+	require.Equal(t, 8192, app.Config().WriteBufferSize)
 	require.Equal(t, DefaultReadBufferSize, app.Config().ReadBufferSize)
 	require.Equal(t, DefaultWriteBufferSize, app.Config().WriteBufferSize)
 }
