@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -325,6 +326,26 @@ func Test_FiberHandler_ConnectAuthorityForm(t *testing.T) {
 	path, host = routed(t, rec)
 	require.Equal(t, "rpc", path)
 	require.Equal(t, "example.com", host)
+}
+
+// Test_requestTarget pins the request line requestTarget reads for each
+// shape net/http hands the adaptor: no URL, a URL with a path, and the
+// authority form of CONNECT, where the target is URL.Opaque, else the Host
+// header, else the URL's host, as net/http writes such a request.
+func Test_requestTarget(t *testing.T) {
+	t.Parallel()
+
+	connect := func(u *url.URL, host string) *http.Request {
+		return &http.Request{Method: http.MethodConnect, URL: u, Host: host}
+	}
+
+	require.Empty(t, requestTarget(&http.Request{Method: http.MethodGet}))
+	require.Equal(t, "/a/b?x=1", requestTarget(&http.Request{Method: http.MethodGet, URL: &url.URL{Path: "/a/b", RawQuery: "x=1"}}))
+	require.Equal(t, "/rpc", requestTarget(connect(&url.URL{Path: "/rpc"}, "backend.internal:443")))
+	require.Equal(t, "backend.internal:443", requestTarget(connect(&url.URL{Host: "backend.internal:443"}, "backend.internal:443")))
+	require.Equal(t, "other.internal:8443", requestTarget(connect(&url.URL{Host: "backend.internal:443"}, "other.internal:8443")))
+	require.Equal(t, "backend.internal:443", requestTarget(connect(&url.URL{Host: "backend.internal:443"}, "")))
+	require.Equal(t, "opaque.internal:443", requestTarget(connect(&url.URL{Opaque: "opaque.internal:443", Host: "backend.internal:443"}, "backend.internal:443")))
 }
 
 // Test_HTTPMiddleware_RejectsAuthorityTarget pins that a routed target
