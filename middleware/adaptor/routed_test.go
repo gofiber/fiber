@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v3"
+	recoverer "github.com/gofiber/fiber/v3/middleware/recover"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
@@ -116,9 +117,14 @@ func Test_HTTPHandler_FileServerStaysInPlace(t *testing.T) {
 		"/admin/secret.txt":               fiber.StatusForbidden,
 		"/public/../admin/secret.txt":     fiber.StatusForbidden,
 		"/public/%2e%2e/admin/secret.txt": fiber.StatusForbidden,
-		"/public/..%2Fadmin/secret.txt":   fiber.StatusNotFound,
-		"/public%2F..%2Fadmin/secret.txt": fiber.StatusNotFound,
-		"//admin/secret.txt":              fiber.StatusNotFound,
+		// A stray "%" forges the escape the router would have decoded:
+		// routed as "/public/%2e%2e/admin/secret.txt" it is not handed on,
+		// and routed as "/public/%252e%252e/admin/secret.txt" it names a
+		// directory that does not exist. URL.Path never reads it as "..".
+		"/public/%%32e%%32e/admin/secret.txt": fiber.StatusNotFound,
+		"/public/..%2Fadmin/secret.txt":       fiber.StatusNotFound,
+		"/public%2F..%2Fadmin/secret.txt":     fiber.StatusNotFound,
+		"//admin/secret.txt":                  fiber.StatusNotFound,
 		// The ".." removes the empty segment before it (RFC 3986 Section
 		// 5.2.4), so this is routed as "/public/admin/secret.txt", a file
 		// that does not exist, and never as "/admin/secret.txt".
@@ -311,4 +317,70 @@ func Test_ConvertRequest_RejectsAuthorityTarget(t *testing.T) {
 	fctx := rawCtx(t, app, "//evil.example/a:/b")
 	require.Equal(t, fiber.StatusOK, fctx.Response.StatusCode())
 	require.Equal(t, "//evil.example/a:/b|example.com", string(fctx.Response.Body()))
+}
+
+// Test_HTTPHandler_PanicRestoresRequestLine pins that the original request
+// line is put back when the adapted handler panics, so the middleware that
+// recovers, and anything logging afterwards, sees the request as it arrived.
+func Test_HTTPHandler_PanicRestoresRequestLine(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	var after string
+	app.Use(func(c fiber.Ctx) error {
+		err := c.Next()
+		after = c.OriginalURL()
+		return err
+	})
+	app.Use(recoverer.New())
+	app.Use(HTTPHandler(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		panic("boom")
+	})))
+
+	fctx := rawCtx(t, app, "/a/../public/%41")
+	require.Equal(t, fiber.StatusInternalServerError, fctx.Response.StatusCode())
+	require.Equal(t, "/a/../public/%41", after)
+}
+
+// forgedEscapeOutcome checks a response to "/public/%%32e%%32e/admin/x", a
+// stray "%" forging the escape the router would have decoded. Routed as
+// "/public/%2e%2e/admin/x" it is refused, since URL.Path would read the
+// segment as ".."; routed as "/public/%252e%252e/admin/x", when the router
+// spells a stray "%" as "%25", it holds no such escape and is handed on as
+// that literal name.
+func forgedEscapeOutcome(t *testing.T, fctx *fasthttp.RequestCtx) {
+	t.Helper()
+	switch fctx.Response.StatusCode() {
+	case fiber.StatusBadRequest:
+	case fiber.StatusOK:
+		require.Contains(t, string(fctx.Response.Body()), "%252e%252e")
+		require.NotContains(t, string(fctx.Response.Body()), "..")
+	default:
+		t.Fatalf("unexpected status %d", fctx.Response.StatusCode())
+	}
+}
+
+func Test_HTTPMiddleware_RejectsForgedEscape(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Use(HTTPMiddleware(func(next http.Handler) http.Handler { return next }))
+	app.Use(func(c fiber.Ctx) error {
+		return c.SendString(c.Path())
+	})
+	forgedEscapeOutcome(t, rawCtx(t, app, "/public/%%32e%%32e/admin/x"))
+}
+
+func Test_ConvertRequest_RejectsForgedEscape(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Get("/*", func(c fiber.Ctx) error {
+		r, err := ConvertRequest(c, true)
+		if err != nil {
+			return err
+		}
+		return c.SendString(r.URL.RawPath + "|" + r.URL.Path)
+	})
+	forgedEscapeOutcome(t, rawCtx(t, app, "/public/%%32e%%32e/admin/x"))
 }

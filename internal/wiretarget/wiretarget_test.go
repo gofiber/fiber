@@ -109,10 +109,12 @@ func Test_Routed(t *testing.T) {
 func Test_SegmentsAsRouted(t *testing.T) {
 	t.Parallel()
 
-	for _, target := range []string{"/", "/a/b", "/a/b?x=%2F&y=//", "/a%252Fb", "/%2E%2E/a", "/a%5Cb", "/a/b/"} {
+	for _, target := range []string{"/", "/a/b", "/a/b?x=%2F&y=//", "/a%252Fb", "/%252E%252E/a", "/a%5Cb", "/a/b/"} {
 		require.True(t, SegmentsAsRouted(target), target)
 	}
-	for _, target := range []string{"//", "//admin", "/a//b", "/a/b//", "/public/..%2Fadmin", "/a%2fb", "/a%2Fb?x=1"} {
+	// "%2E" is an escape the router decodes, so one still in the routed path
+	// was forged and URL.Path would read "%2E%2E" as "..".
+	for _, target := range []string{"//", "//admin", "/a//b", "/a/b//", "/public/..%2Fadmin", "/a%2fb", "/a%2Fb?x=1", "/%2E%2E/a"} {
 		require.False(t, SegmentsAsRouted(target), target)
 	}
 }
@@ -132,4 +134,60 @@ func Test_ParsesAsPath(t *testing.T) {
 	require.False(t, ParsesAsPath("//evil.example/x", nil))
 	require.True(t, ParsesAsPath("/x", nil))
 	require.True(t, ParsesAsPath("/a//b", nil))
+}
+
+// Test_Routed_RootsUnrootedPath pins that a path override without a leading
+// slash, as a rewrite of "/go/*" to "$1" produces, is handed on as a path
+// rather than as the absolute URL a request line would read it as.
+func Test_Routed_RootsUnrootedPath(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Get("/go/*", func(c fiber.Ctx) error {
+		c.Path(c.Params("*"))
+		return c.SendString(Routed(c))
+	})
+	require.Equal(t, "/http://u:pw@evil.example/x", answerFor(t, app, "/go/http://u:pw@evil.example/x"))
+	require.Equal(t, "/evil.example/x?q=1", answerFor(t, app, "/go/evil.example/x?q=1"))
+}
+
+func Test_HasForgedEscape(t *testing.T) {
+	t.Parallel()
+
+	for _, target := range []string{"/public/%2e%2e/admin", "/%2E", "/a%41", "/%7e", "/x%5F?q=%41", "/a%25%41"} {
+		require.True(t, HasForgedEscape(target), target)
+	}
+	for _, target := range []string{"/", "/a/b", "/a%20b", "/a%2Fb", "/a%25b", "/%2541", "/a%3Fb", "/%", "/%2", "/%zz", "/a?q=%41", "/a%25/%2"} {
+		require.False(t, HasForgedEscape(target), target)
+	}
+}
+
+func Test_SegmentsAsRouted_ForgedEscape(t *testing.T) {
+	t.Parallel()
+
+	require.False(t, SegmentsAsRouted("/public/%2e%2e/admin/secret"))
+	require.False(t, SegmentsAsRouted("/public/%70rivate"))
+	require.True(t, SegmentsAsRouted("/public/%2541/a%20b?x=%2e"))
+}
+
+func Test_SurvivesNormalization(t *testing.T) {
+	t.Parallel()
+
+	for _, target := range []string{"/", "/a/b", "/a/b?q=%2F&x=//", "/a.b/c-d_e~f"} {
+		require.True(t, SurvivesNormalization(target), target)
+	}
+	for _, target := range []string{"/a%20b", "/public/..%2Fadmin", "/a//b", "//x", "/%25"} {
+		require.False(t, SurvivesNormalization(target), target)
+	}
+}
+
+func Test_ParsesAsPath_Unrooted(t *testing.T) {
+	t.Parallel()
+
+	host := []byte("example.com")
+	for _, target := range []string{"", "http://u:pw@evil.example/x", "evil.example/x", "*"} {
+		require.False(t, ParsesAsPath(target, host), target)
+	}
+	require.True(t, ParsesAsPath("/http://u:pw@evil.example/x", host))
+	require.True(t, ParsesAsPath("/http://u:pw@evil.example/x", nil))
 }

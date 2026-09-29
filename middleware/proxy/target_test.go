@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/stretchr/testify/require"
@@ -367,5 +368,138 @@ func Test_Proxy_Balancer_RejectsAuthorityTarget(t *testing.T) {
 		resp = rawRequest(t, app, "//evil.example/a:/b", "example.com")
 		require.Equal(t, fiber.StatusOK, resp.StatusCode(), "UnescapePath=%v", unescape)
 		require.Equal(t, "//evil.example/a:/b|backend.internal|Bearer pinned", string(resp.Body()), "UnescapePath=%v", unescape)
+	}
+}
+
+// echoIdentity starts an upstream that answers with the request line it
+// received, the Host it was addressed to and the Authorization it carried,
+// and returns its address.
+func echoIdentity(t *testing.T) string {
+	t.Helper()
+
+	target := fiber.New()
+	target.Use(func(c fiber.Ctx) error {
+		return c.SendString(c.OriginalURL() + "|" + string(c.Request().Header.Host()) + "|" + c.Get(fiber.HeaderAuthorization))
+	})
+
+	ln, err := net.Listen(fiber.NetworkTCP4, "127.0.0.1:0")
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		ln.Close() //nolint:errcheck // It is fine to ignore the error here
+	})
+	startServer(target, ln)
+
+	return ln.Addr().String()
+}
+
+// pinIdentity is a ModifyRequest that sets the Host and Authorization the
+// upstream must see whatever the request carried.
+func pinIdentity(c fiber.Ctx) error {
+	c.Request().Header.SetHost("backend.internal")
+	c.Request().Header.Set(fiber.HeaderAuthorization, "Bearer pinned")
+	return nil
+}
+
+// Test_Proxy_Balancer_RootsUnrootedPath pins that a path override without a
+// leading slash, as a rewrite of "/go/*" to "$1" produces, reaches the
+// upstream as a path and not as the absolute URL a request line reads it as,
+// which would have replaced the pinned Host and credential.
+func Test_Proxy_Balancer_RootsUnrootedPath(t *testing.T) {
+	t.Parallel()
+
+	addr := echoIdentity(t)
+	balancer := Balancer(Config{Servers: []string{addr}, ModifyRequest: pinIdentity})
+	app := fiber.New()
+	app.Get("/go/*", func(c fiber.Ctx) error {
+		c.Path(c.Params("*"))
+		return balancer(c)
+	})
+
+	resp := rawRequest(t, app, "/go/http://u:pw@evil.example/x", "example.com")
+	require.Equal(t, fiber.StatusOK, resp.StatusCode())
+	require.Equal(t, "/http://u:pw@evil.example/x|backend.internal|Bearer pinned", string(resp.Body()))
+}
+
+// Test_Proxy_Balancer_CustomClientKeepsTarget pins that a host client the
+// caller built is told to keep the request line as given: left normalizing it
+// would decode "%2F" into a separator and merge "//" on the way out, and the
+// upstream would see a path no middleware had matched.
+func Test_Proxy_Balancer_CustomClientKeepsTarget(t *testing.T) {
+	t.Parallel()
+
+	addr := echoTarget(t)
+	hc := &fasthttp.HostClient{Addr: addr, NoDefaultUserAgentHeader: true}
+	app := fiber.New()
+	app.Use("/admin", forbid)
+	app.Use(Balancer(Config{Client: &fasthttp.LBClient{Clients: []fasthttp.BalancingClient{hc}, Timeout: time.Second}}))
+
+	require.True(t, hc.DisablePathNormalizing)
+	for _, target := range []string{"/public/..%2Fadmin/secret", "//admin/secret", "/a%20b"} {
+		resp := rawRequest(t, app, target, "example.com")
+		require.Equal(t, fiber.StatusOK, resp.StatusCode(), target)
+		require.Equal(t, target, string(resp.Body()), target)
+	}
+}
+
+// opaqueClient is a BalancingClient the proxy cannot configure. It forwards
+// through a host client left normalizing, as a caller's own implementation
+// might.
+type opaqueClient struct {
+	hc *fasthttp.HostClient
+}
+
+func (o *opaqueClient) DoDeadline(req *fasthttp.Request, resp *fasthttp.Response, deadline time.Time) error {
+	return o.hc.DoDeadline(req, resp, deadline)
+}
+
+func (o *opaqueClient) PendingRequests() int {
+	return o.hc.PendingRequests()
+}
+
+// Test_Proxy_Balancer_OpaqueClientFailsClosed pins that behind a
+// BalancingClient the proxy cannot keep from normalizing, a target that
+// normalization would change is refused rather than sent as another path.
+func Test_Proxy_Balancer_OpaqueClientFailsClosed(t *testing.T) {
+	t.Parallel()
+
+	addr := echoTarget(t)
+	app := fiber.New()
+	app.Use(Balancer(Config{Client: &fasthttp.LBClient{
+		Clients: []fasthttp.BalancingClient{&opaqueClient{hc: &fasthttp.HostClient{Addr: addr}}},
+		Timeout: time.Second,
+	}}))
+
+	for _, target := range []string{"/public/..%2Fadmin/secret", "//admin/secret", "/a%20b"} {
+		resp := rawRequest(t, app, target, "example.com")
+		require.Equal(t, fiber.StatusBadRequest, resp.StatusCode(), target)
+	}
+	resp := rawRequest(t, app, "/plain/path?q=%2F", "example.com")
+	require.Equal(t, fiber.StatusOK, resp.StatusCode())
+	require.Equal(t, "/plain/path?q=%2F", string(resp.Body()))
+}
+
+// Test_Proxy_Balancer_RejectsForgedEscape pins that an escape of an
+// unreserved character forged by a stray "%" never reaches the upstream as
+// something it would decode into a guarded name. What the router hands the
+// proxy depends on how it spells a stray "%": kept as sent,
+// "/static/%%370rivate/secret.txt" is routed as "/static/%70rivate/secret.txt"
+// and refused; written as "%25", it is routed as
+// "/static/%2570rivate/secret.txt", holds no escape of an unreserved
+// character, and is forwarded as that literal name.
+func Test_Proxy_Balancer_RejectsForgedEscape(t *testing.T) {
+	t.Parallel()
+
+	addr := echoTarget(t)
+	app := fiber.New()
+	app.Use("/static/private", forbid)
+	app.Use(Balancer(Config{Servers: []string{addr}}))
+
+	resp := rawRequest(t, app, "/static/%%370rivate/secret.txt", "example.com")
+	switch resp.StatusCode() {
+	case fiber.StatusBadRequest:
+	case fiber.StatusOK:
+		require.Equal(t, "/static/%2570rivate/secret.txt", string(resp.Body()))
+	default:
+		t.Fatalf("unexpected status %d", resp.StatusCode())
 	}
 }

@@ -76,6 +76,19 @@ func Balancer(config ...Config) fiber.Handler {
 		// Set custom client
 		lbc = cfg.Client
 	}
+	// A host client the caller built normalizes the request line on the way
+	// out unless told otherwise, which would decode "%2F" into a separator and
+	// merge "//" and so undo the routed target forwarded below. Any other
+	// BalancingClient cannot be told, so with one present a target its
+	// normalization could change is refused per request.
+	opaqueClient := false
+	for _, bc := range lbc.Clients {
+		if hc, ok := bc.(*fasthttp.HostClient); ok {
+			hc.DisablePathNormalizing = true
+			continue
+		}
+		opaqueClient = true
+	}
 
 	// Return new handler
 	return func(c fiber.Ctx) error {
@@ -111,8 +124,13 @@ func Balancer(config ...Config) fiber.Handler {
 		// (see wiretarget.ParsesAsPath) is refused: set as the request line,
 		// it would hand the upstream a Host, and a Basic credential, taken
 		// from the path rather than from the application.
+		// So is one holding a forged escape (see wiretarget.HasForgedEscape),
+		// which an upstream decoding it again would read as another name,
+		// and, behind a client the proxy cannot keep from normalizing, one
+		// that normalization would change.
 		target := wiretarget.Routed(c)
-		if !wiretarget.ParsesAsPath(target, req.Header.Host()) {
+		if !wiretarget.ParsesAsPath(target, req.Header.Host()) || wiretarget.HasForgedEscape(target) ||
+			(opaqueClient && !wiretarget.SurvivesNormalization(target)) {
 			return fiber.ErrBadRequest
 		}
 		originalURL := utils.CopyString(c.OriginalURL())

@@ -284,13 +284,18 @@ func serveRouted(c fiber.Ctx, handler fasthttp.RequestHandler) error {
 	req := c.Request()
 	original := utils.CopyString(c.OriginalURL())
 	req.SetRequestURI(target)
+	// Buffered, the handler has returned, or panicked, in which case
+	// fasthttpadaptor re-panics here and the recover middleware or error
+	// handler that catches it still has to see the original line. Streaming
+	// or hijacked, the handler is still running with an http.Request whose
+	// URL aliases the request line's storage, so the line is left as the
+	// handler read it.
+	defer func() {
+		if !c.Response().IsBodyStream() && !c.RequestCtx().Hijacked() {
+			req.SetRequestURI(original)
+		}
+	}()
 	handler(c.RequestCtx())
-	// Buffered, the handler has returned. Streaming or hijacked, it is still
-	// running with an http.Request whose URL aliases the request line's
-	// storage, so the line is left as the handler read it.
-	if !c.Response().IsBodyStream() && !c.RequestCtx().Hijacked() {
-		req.SetRequestURI(original)
-	}
 	return nil
 }
 
@@ -313,10 +318,12 @@ func LocalContextFromHTTPRequest(r *http.Request) (context.Context, bool) {
 // so it is left in place. A routed path fasthttp would read as an authority
 // rather than a path (see wiretarget.ParsesAsPath) is answered with
 // fiber.ErrBadRequest instead of being set, since the request's host would
-// then be read out of it.
+// then be read out of it; so is one holding a forged escape (see
+// wiretarget.HasForgedEscape), which URL.Path would decode into a segment the
+// router never matched.
 func ConvertRequest(c fiber.Ctx, forServer bool) (*http.Request, error) {
 	target := wiretarget.Routed(c)
-	if !wiretarget.ParsesAsPath(target, c.Request().Header.Host()) {
+	if !wiretarget.ParsesAsPath(target, c.Request().Header.Host()) || wiretarget.HasForgedEscape(target) {
 		return nil, fiber.ErrBadRequest
 	}
 	c.Request().SetRequestURI(target)
@@ -612,9 +619,11 @@ func HTTPMiddleware(mw func(http.Handler) http.Handler) fiber.Handler {
 		// fasthttp would read as an authority rather than a path (see
 		// wiretarget.ParsesAsPath) is refused: set as the request line, it
 		// would become the host of both the net/http request and the Fiber
-		// request behind the middleware.
+		// request behind the middleware. So is a path holding a forged
+		// escape (see wiretarget.HasForgedEscape), which URL.Path would
+		// decode into a segment the router never matched.
 		target := wiretarget.Routed(c)
-		if !wiretarget.ParsesAsPath(target, c.Request().Header.Host()) {
+		if !wiretarget.ParsesAsPath(target, c.Request().Header.Host()) || wiretarget.HasForgedEscape(target) {
 			return fiber.ErrBadRequest
 		}
 		c.Request().SetRequestURI(target)
