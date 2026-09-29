@@ -1997,6 +1997,8 @@ app.Get("*", static.New("./public/index.html"))
 You have to put `*` to the end of the route if you don't define static route with `app.Use`.
 :::
 
+The static middleware opens the name the router matched and does not percent-decode it a second time. Escapes the router keeps encoded, such as `%20`, stay encoded in the file name unless `UnescapePath` is enabled, and an escape of an unreserved character left in the routed path, which only a stray `%` can produce (`/static/%%370rivate/secret.txt`), is answered with `404` rather than decoded into a different file. On Windows a path segment ending in a dot or a space is `404` as well, since the OS strips both when it opens a file. See [Static](./middleware/static.md).
+
 #### Trusted Proxies
 
 We've renamed `EnableTrustedProxyCheck` to `TrustProxy` and moved `TrustedProxies` to `TrustProxyConfig`.
