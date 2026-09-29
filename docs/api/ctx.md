@@ -336,6 +336,9 @@ URL under any configuration. With `UnescapePath` off (the default) `c.Params`
 returns the value still percent-encoded, so forwarding it straight back encodes
 the `%` a second time. Turn `UnescapePath` on, or decode with
 [`url.PathUnescape`](https://pkg.go.dev/net/url#PathUnescape) first.
+An app with `UnescapePath` enabled decodes `%2F` before route matching, so an
+ordinary parameter holding a `/` cannot round-trip as one segment. Use a greedy
+(`*` or `+`) parameter for values that may contain slashes.
 :::
 
 ### Hijack
