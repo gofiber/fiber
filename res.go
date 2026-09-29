@@ -1219,6 +1219,13 @@ func (r *DefaultRes) SendFile(file string, config ...SendFile) error {
 	// Save the filename, we will need it in the error message if the file isn't found
 	filename := file
 
+	// A control byte is no part of a name a client can ask for. One that
+	// reached fasthttp's URI parser failed it silently, which left the root
+	// path and served the root's index.html instead.
+	if utils.IndexControl(utils.UnsafeBytes(file)) >= 0 {
+		return NewError(StatusNotFound, fmt.Sprintf("sendfile: file %s not found", filename))
+	}
+
 	var cfg SendFile
 	if len(config) > 0 {
 		cfg = config[0]
@@ -1319,8 +1326,14 @@ func (r *DefaultRes) SendFile(file string, config ...SendFile) error {
 	originalURL := utils.CopyString(r.c.OriginalURL())
 	defer request.SetRequestURI(originalURL)
 
-	// Set new URI for fileHandler
-	request.SetRequestURI(file)
+	// The file server reads the request URI, which fasthttp percent-decodes and
+	// splits at "?" and "#" as it parses it, so the name goes in escaped and
+	// comes out of that decode exactly as given: "100%25.txt" is the file of
+	// that name and not "100%.txt", "a?b" is not "a" with a query, and a
+	// "..%2Fsecret.txt" that a route parameter carried into filepath.Join stays
+	// one segment instead of decoding, after the join was cleaned, into a step
+	// out of the caller's directory.
+	request.SetRequestURIBytes(utils.AppendPathSegmentsEscape(nil, file))
 
 	var (
 		sendFileSize    int64
@@ -1353,6 +1366,18 @@ func (r *DefaultRes) SendFile(file string, config ...SendFile) error {
 
 	// Get the status code which is set by fasthttp
 	fsStatus := response.StatusCode()
+
+	// fasthttp answers a directory named without a trailing slash with a
+	// redirect to the name with one, the only redirect its file handler
+	// issues. Here that name is a filesystem path, not a route, so the
+	// redirect could only disclose it: the directory is not found. The
+	// Location carries the name escaped, so it is not compared with the
+	// name. A name with the trailing slash serves the directory's index.html.
+	if fsStatus == StatusFound {
+		response.Header.Del(HeaderLocation)
+		response.SetStatusCode(StatusNotFound)
+		fsStatus = StatusNotFound
+	}
 
 	// Check for error
 	if status != StatusNotFound && fsStatus == StatusNotFound {
