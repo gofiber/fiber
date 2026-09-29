@@ -5,9 +5,11 @@
 package fiber
 
 import (
+	"bytes"
 	"fmt"
 	"math/bits"
 	"slices"
+	"strings"
 	"sync/atomic"
 
 	"github.com/gofiber/fiber/v3/internal/urlnorm"
@@ -104,6 +106,7 @@ type Route struct { // betteralign:ignore - see below
 	root          bool // Path equals '/'
 	autoHead      bool // Automatically generated HEAD route
 	caseSensitive bool // Whether parameter matching is case-sensitive
+	unescapePath  bool // Whether request routing decodes escaped slashes
 
 	routeParser routeParser // Parameter parser
 
@@ -260,6 +263,8 @@ func (t *routeTree) lookup(hash int) (routes []*Route, filter *bucketFilter) {
 // Parameter matching respects the app's CaseSensitive configuration:
 // case-insensitive by default, case-sensitive when CaseSensitive is true.
 // Parameter values are percent-encoded using URL path-segment rules.
+// Dot-containing values that form a dot-only path segment, and slashes that
+// UnescapePath would decode outside a parameter's match, return ErrRouteNotRepresentable.
 //
 // Example:
 //
@@ -310,6 +315,7 @@ func buildRouteURL(route *Route, params Map) (string, error) {
 
 	buf := bytebufferpool.Get()
 	defer bytebufferpool.Put(buf)
+	checkDotSegments := false
 
 	for _, segment := range route.routeParser.segs {
 		if !segment.IsParam {
@@ -352,15 +358,46 @@ func buildRouteURL(route *Route, params Map) (string, error) {
 		}
 
 		if found {
+			value := utils.ToString(val)
+			checkDotSegments = checkDotSegments || strings.Contains(value, ".")
+			// Match the slash-consuming branches of findParamLen, including
+			// adjacent parameters and single-byte non-slash terminators.
+			if route.unescapePath && !segment.IsGreedy && strings.Contains(value, "/") &&
+				(segment.IsLast || (segment.Length != 1 && (len(segment.ComparePart) != 1 || segment.ComparePart[0] == slashDelimiter))) {
+				return "", ErrRouteNotRepresentable
+			}
 			if segment.IsGreedy {
-				buf.B = utils.AppendPathSegmentsEscape(buf.B, utils.ToString(val))
+				buf.B = utils.AppendPathSegmentsEscape(buf.B, value)
 				continue
 			}
-			buf.B = utils.AppendPathEscape(buf.B, utils.ToString(val))
+			buf.B = utils.AppendPathEscape(buf.B, value)
 		}
 	}
 
+	if checkDotSegments && route.urlHasDotSegment(buf.B) {
+		return "", ErrRouteNotRepresentable
+	}
 	return urlnorm.RootedPath(buf.String()), nil
+}
+
+// urlHasDotSegment checks the composed path, since constants can complete or
+// disambiguate a parameter's dots. Decode once, just as request routing does;
+// an escaped slash is a boundary only with UnescapePath enabled.
+func (r *Route) urlHasDotSegment(path []byte) bool {
+	if bytes.IndexByte(path, '%') != -1 {
+		path = slices.Clone(path)
+		if r.unescapePath {
+			path = unescapePath(path)
+		} else {
+			path = unescapeSafePath(path)
+		}
+	}
+	for part := range bytes.SplitSeq(path, []byte{'/'}) {
+		if (len(part) == 1 && part[0] == '.') || (len(part) == 2 && part[0] == '.' && part[1] == '.') {
+			return true
+		}
+	}
+	return false
 }
 
 // preferredGreedyParameters returns the generic greedy fallback lookup order
@@ -1040,6 +1077,7 @@ func (app *App) addPrefixToRoute(prefix string, route *Route, regexHandler any, 
 	route.root = false
 	route.star = false
 	route.caseSensitive = app.config.CaseSensitive
+	route.unescapePath = app.config.UnescapePath
 	// buildTree recomputes this for every route, but this function rewrites the
 	// path and parser a filter is derived from, so refresh it here too rather
 	// than depend on a caller marking the routes refreshed.
@@ -1074,6 +1112,7 @@ func (*App) copyRoute(route *Route) *Route {
 		root:          route.root,
 		autoHead:      route.autoHead,
 		caseSensitive: route.caseSensitive,
+		unescapePath:  route.unescapePath,
 
 		// Path data
 		path:        route.path,
@@ -1262,6 +1301,7 @@ func (app *App) register(methods []string, pathRaw string, group *Group, handler
 			star:          isStar,
 			root:          isRoot,
 			caseSensitive: app.config.CaseSensitive,
+			unescapePath:  app.config.UnescapePath,
 			id:            routeID,
 			latestID:      routeID,
 

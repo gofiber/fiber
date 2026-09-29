@@ -1,0 +1,142 @@
+package fiber
+
+import (
+	"fmt"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
+	"testing"
+
+	"github.com/stretchr/testify/require"
+	"github.com/valyala/fasthttp"
+)
+
+func Test_Route_URL_ParameterRepresentability(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name, pattern, key, value, want string
+		unescape, reject                bool
+	}{
+		{name: "plain dot", pattern: "/user/:value", key: "value", value: ".", reject: true},
+		{name: "plain parent", pattern: "/user/:value", key: "value", value: "..", reject: true},
+		{name: "greedy parent", pattern: "/files/*", key: "*", value: "a/../b", reject: true},
+		{name: "greedy trailing dot", pattern: "/files/*", key: "*", value: "a/.", reject: true},
+		{name: "dot completed by prefix", pattern: "/p/.:value", key: "value", value: ".", reject: true},
+		{name: "dot completed by suffix", pattern: "/p/:value.", key: "value", value: ".", reject: true},
+		{name: "dot with extension", pattern: "/p/:value.txt", key: "value", value: ".", want: "/p/..txt"},
+		{name: "hidden file", pattern: "/files/*", key: "*", value: ".config/name.txt", want: "/files/.config/name.txt"},
+		{name: "three dots", pattern: "/user/:value", key: "value", value: "...", want: "/user/..."},
+		{name: "encoded slash remains data", pattern: "/user/:value", key: "value", value: "a/b", want: "/user/a%2Fb"},
+		{name: "decoded plain slash", pattern: "/user/:value", key: "value", value: "a/b", unescape: true, reject: true},
+		{name: "decoded slash before constant", pattern: "/p/:value/end", key: "value", value: "a/b", unescape: true, reject: true},
+		{name: "decoded greedy slash", pattern: "/files/*", key: "*", value: "a/b", unescape: true, want: "/files/a/b"},
+		{name: "decoded plus slash", pattern: "/files/+", key: "+", value: "a/b", unescape: true, want: "/files/a/b"},
+		{name: "single byte terminator consumes slash", pattern: "/p/:value-", key: "value", value: "a/b", unescape: true, want: "/p/a%2Fb-"},
+		{name: "adjacent parameter consumes slash", pattern: "/p/:value:tail", key: "value", value: "/", unescape: true, want: "/p/%2Fb"},
+		{name: "encoded parent stays in one segment", pattern: "/p/:value-", key: "value", value: "a/../b", want: "/p/a%2F..%2Fb-"},
+		{name: "decoded parent before terminator", pattern: "/p/:value-", key: "value", value: "a/../b", unescape: true, reject: true},
+		{name: "literal percent encoded dot", pattern: "/user/:value", key: "value", value: "%2e", unescape: true, want: "/user/%252e"},
+		{name: "literal percent before real dot", pattern: "/files/*", key: "*", value: "%2e/name.txt", unescape: true, want: "/files/%252e/name.txt"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			app := New(Config{UnescapePath: tc.unescape})
+			app.Get(tc.pattern, func(c Ctx) error { return c.SendString(c.Params(tc.key)) }).Name("target")
+			ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+			defer app.ReleaseCtx(ctx)
+			params := Map{tc.key: tc.value, "tail": "b"}
+			location, routeErr := app.GetRoute("target").URL(params)
+			ctxLocation, ctxErr := ctx.GetRouteURL("target", params)
+			redirectErr := ctx.Redirect().Route("target", RedirectConfig{Params: params})
+			if tc.reject {
+				require.ErrorIs(t, routeErr, ErrRouteNotRepresentable)
+				require.ErrorIs(t, ctxErr, ErrRouteNotRepresentable)
+				require.ErrorIs(t, redirectErr, ErrRouteNotRepresentable)
+				require.Empty(t, location)
+				require.Empty(t, ctxLocation)
+				require.Empty(t, ctx.Response().Header.Peek(HeaderLocation))
+				return
+			}
+			require.NoError(t, routeErr)
+			require.NoError(t, ctxErr)
+			require.NoError(t, redirectErr)
+			require.Equal(t, tc.want, location)
+			require.Equal(t, location, ctxLocation)
+			require.Equal(t, location, string(ctx.Response().Header.Peek(HeaderLocation)))
+			response, err := app.Test(httptest.NewRequest(MethodGet, location, http.NoBody))
+			require.NoError(t, err)
+			defer func() { require.NoError(t, response.Body.Close()) }()
+			require.Equal(t, StatusOK, response.StatusCode)
+			body, err := io.ReadAll(response.Body)
+			require.NoError(t, err)
+			value := string(body)
+			if !tc.unescape {
+				value, err = url.PathUnescape(value)
+				require.NoError(t, err)
+			}
+			require.Equal(t, tc.value, value)
+		})
+	}
+}
+
+func Test_Route_URL_MountedRepresentabilityConfig(t *testing.T) {
+	t.Parallel()
+	for _, parentUnescape := range []bool{false, true} {
+		for _, domain := range []bool{false, true} {
+			t.Run(fmt.Sprintf("unescape=%t/domain=%t", parentUnescape, domain), func(t *testing.T) {
+				t.Parallel()
+				parent := New(Config{UnescapePath: parentUnescape})
+				child := New(Config{UnescapePath: !parentUnescape})
+				child.Get("/user/:value", emptyHandler).Name("target")
+				if domain {
+					parent.Domain("example.com").Use("/api", child)
+				} else {
+					parent.Use("/api", child)
+				}
+				parent.startupProcess()
+				matched := 0
+				for _, route := range parent.GetRoutes() {
+					if route.Name != "target" {
+						continue
+					}
+					matched++
+					location, err := route.URL(Map{"value": "a/b"})
+					if parentUnescape {
+						require.ErrorIs(t, err, ErrRouteNotRepresentable)
+						require.Empty(t, location)
+					} else {
+						require.NoError(t, err)
+						require.Equal(t, "/api/user/a%2Fb", location)
+					}
+				}
+				require.Equal(t, 2, matched, "GET and its automatic HEAD copy must retain the parent config")
+			})
+		}
+	}
+}
+
+func Benchmark_Route_URL_Representability(b *testing.B) {
+	for _, tc := range []struct{ name, pattern, value string }{
+		{"static", "/health", ""},
+		{"plain", "/user/:value", "fiber"},
+		{"escaped", "/user/:value", "a/b?c#d"},
+		{"greedy", "/files/*", "docs/readme"},
+		{"dotted", "/files/*", "docs/readme.md"},
+		{"terminator", "/p/:value-", "fiber"},
+	} {
+		b.Run(tc.name, func(b *testing.B) {
+			app := New()
+			app.Get(tc.pattern, emptyHandler).Name("target")
+			route := app.GetRoute("target")
+			params := Map{"value": tc.value, "*": tc.value}
+			b.ReportAllocs()
+			for b.Loop() {
+				if _, err := route.URL(params); err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
+	}
+}
