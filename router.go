@@ -361,9 +361,11 @@ func buildRouteURL(route *Route, params Map) (string, error) {
 			value := utils.ToString(val)
 			checkDotSegments = checkDotSegments || strings.Contains(value, ".")
 			// Match the slash-consuming branches of findParamLen, including
-			// adjacent parameters and single-byte non-slash terminators.
+			// adjacent parameters (which consume exactly one byte) and
+			// single-byte non-slash terminators.
 			if route.unescapePath && !segment.IsGreedy && strings.Contains(value, "/") &&
-				(segment.IsLast || (segment.Length != 1 && (len(segment.ComparePart) != 1 || segment.ComparePart[0] == slashDelimiter))) {
+				(segment.IsLast || (segment.Length == 1 && len(value) > 1) ||
+					(segment.Length != 1 && (len(segment.ComparePart) != 1 || segment.ComparePart[0] == slashDelimiter))) {
 				return "", ErrRouteNotRepresentable
 			}
 			if segment.IsGreedy {

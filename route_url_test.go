@@ -12,6 +12,8 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
+// Test_Route_URL_ParameterRepresentability checks rejection through all URL
+// entry points and verifies that accepted values round-trip through routing.
 func Test_Route_URL_ParameterRepresentability(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
@@ -34,6 +36,10 @@ func Test_Route_URL_ParameterRepresentability(t *testing.T) {
 		{name: "decoded plus slash", pattern: "/files/+", key: "+", value: "a/b", unescape: true, want: "/files/a/b"},
 		{name: "single byte terminator consumes slash", pattern: "/p/:value-", key: "value", value: "a/b", unescape: true, want: "/p/a%2Fb-"},
 		{name: "adjacent parameter consumes slash", pattern: "/p/:value:tail", key: "value", value: "/", unescape: true, want: "/p/%2Fb"},
+		{name: "adjacent parameter cannot consume middle slash", pattern: "/p/:value:tail", key: "value", value: "a/b", unescape: true, reject: true},
+		{name: "adjacent parameter cannot consume leading slash", pattern: "/p/:value:tail", key: "value", value: "/a", unescape: true, reject: true},
+		{name: "adjacent parameter cannot consume trailing slash", pattern: "/p/:value:tail", key: "value", value: "a/", unescape: true, reject: true},
+		{name: "adjacent parameter cannot consume multibyte slash value", pattern: "/p/:value:tail", key: "value", value: "é/", unescape: true, reject: true},
 		{name: "encoded parent stays in one segment", pattern: "/p/:value-", key: "value", value: "a/../b", want: "/p/a%2F..%2Fb-"},
 		{name: "decoded parent before terminator", pattern: "/p/:value-", key: "value", value: "a/../b", unescape: true, reject: true},
 		{name: "literal percent encoded dot", pattern: "/user/:value", key: "value", value: "%2e", unescape: true, want: "/user/%252e"},
@@ -81,6 +87,8 @@ func Test_Route_URL_ParameterRepresentability(t *testing.T) {
 	}
 }
 
+// Test_Route_URL_MountedRepresentabilityConfig verifies that mounted routes
+// and their automatic HEAD copies validate using the parent's decoding policy.
 func Test_Route_URL_MountedRepresentabilityConfig(t *testing.T) {
 	t.Parallel()
 	for _, parentUnescape := range []bool{false, true} {
@@ -117,6 +125,8 @@ func Test_Route_URL_MountedRepresentabilityConfig(t *testing.T) {
 	}
 }
 
+// Benchmark_Route_URL_Representability measures conditional validation costs
+// for static, ordinary, escaped, greedy, dotted, and terminated route values.
 func Benchmark_Route_URL_Representability(b *testing.B) {
 	for _, tc := range []struct{ name, pattern, value string }{
 		{"static", "/health", ""},
