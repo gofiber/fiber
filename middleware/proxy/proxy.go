@@ -119,17 +119,18 @@ func Balancer(config ...Config) fiber.Handler {
 		}
 
 		// Forward the path the router matched (see wiretarget.Routed), and
-		// put the request line back for the middleware that runs afterwards.
-		// A target fasthttp would read as an authority rather than a path
-		// (see wiretarget.ParsesAsPath) is refused: set as the request line,
-		// it would hand the upstream a Host, and a Basic credential, taken
-		// from the path rather than from the application.
-		// So is one holding a forged escape (see wiretarget.HasForgedEscape),
-		// which an upstream decoding it again would read as another name,
-		// and, behind a client the proxy cannot keep from normalizing, one
-		// that normalization would change.
+		// refuse one the upstream could read as another path. A target
+		// fasthttp would read as an authority (see wiretarget.ParsesAsPath),
+		// set as the request line, would hand the upstream a Host, and
+		// credentials, taken from the path. One holding an escaped slash, an
+		// empty segment or a forged escape (see wiretarget.SegmentsAsRouted)
+		// would be served by an upstream that decodes "%2F", merges "//" or
+		// decodes the forged escape as a path no middleware here matched.
+		// Behind a BalancingClient the proxy cannot configure, one that
+		// normalization would change (see wiretarget.SurvivesNormalization)
+		// is refused too.
 		target := wiretarget.Routed(c)
-		if !wiretarget.ParsesAsPath(target, req.Header.Host()) || wiretarget.HasForgedEscape(target) ||
+		if !wiretarget.ParsesAsPath(target, req.Header.Host()) || !wiretarget.SegmentsAsRouted(target) ||
 			(opaqueClient && !wiretarget.SurvivesNormalization(target)) {
 			return fiber.ErrBadRequest
 		}
@@ -660,11 +661,12 @@ func DomainForward(hostname, addr string, clients ...*fasthttp.Client) fiber.Han
 			return c.Next()
 		}
 		setRealIP(c)
-		// A routed path holding a forged escape (see
-		// wiretarget.HasForgedEscape) is refused: an upstream decoding it
-		// again would serve a name no middleware here matched.
+		// A routed path holding an escaped slash, an empty segment or a
+		// forged escape (see wiretarget.SegmentsAsRouted) is refused: an
+		// upstream that decodes "%2F", merges "//" or decodes the forged
+		// escape would serve a path no middleware here matched.
 		target := wiretarget.Routed(c)
-		if wiretarget.HasForgedEscape(target) {
+		if !wiretarget.SegmentsAsRouted(target) {
 			return fiber.ErrBadRequest
 		}
 		return doActionWithPolicy(c, joinUpstreamPath(base, target), currentSecurityPolicy(),
@@ -729,11 +731,12 @@ func BalancerForward(servers []string, clients ...*fasthttp.Client) fiber.Handle
 	return func(c fiber.Ctx) error {
 		base := r.get()
 		setRealIP(c)
-		// A routed path holding a forged escape (see
-		// wiretarget.HasForgedEscape) is refused: an upstream decoding it
-		// again would serve a name no middleware here matched.
+		// A routed path holding an escaped slash, an empty segment or a
+		// forged escape (see wiretarget.SegmentsAsRouted) is refused: an
+		// upstream that decodes "%2F", merges "//" or decodes the forged
+		// escape would serve a path no middleware here matched.
 		target := wiretarget.Routed(c)
-		if wiretarget.HasForgedEscape(target) {
+		if !wiretarget.SegmentsAsRouted(target) {
 			return fiber.ErrBadRequest
 		}
 		return doActionWithPolicy(c, joinUpstreamPath(base, target), currentSecurityPolicy(),

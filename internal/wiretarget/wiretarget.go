@@ -63,7 +63,10 @@ func Routed(c fiber.Ctx) string {
 // HasForgedEscape): net/http's URL.Path reads "%2F" as a separator and a
 // forged "%2e%2e" as "..", and its handlers clean "//" and ".." away, so
 // "/public/..%2Fadmin", "//admin" and "/public/%2e%2e/admin" would be served
-// as "/admin" by a handler no middleware mounted on "/admin" guarded.
+// as "/admin" by a handler no middleware mounted on "/admin" guarded. A
+// proxied upstream that decodes "%2F" or merges "//" before it matches routes
+// reads a target the same way, so the proxy handlers refuse one for which
+// this is false, as the net/http handler adapters do.
 func SegmentsAsRouted(target string) bool {
 	path := pathOf(target)
 	return !strings.Contains(path, "//") && !strings.Contains(path, "%2F") && !strings.Contains(path, "%2f") && !HasForgedEscape(path)

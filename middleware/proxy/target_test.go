@@ -85,12 +85,9 @@ func Test_Proxy_Balancer_ForwardsRoutedPath(t *testing.T) {
 		app.Use(Balancer(Config{Servers: []string{addr}}))
 
 		for target, want := range map[string]string{
-			"/public/..%2Fadmin/secret": "/public/..%2Fadmin/secret",
-			"/public%2F..%2Fadmin":      "/public%2F..%2Fadmin",
-			"//admin/secret":            "//admin/secret",
-			"/public//x":                "/public//x",
-			"/public/%41?x=%2F&y=1":     "/public/A?x=%2F&y=1",
-			"/public/%zz":               "/public/%25zz",
+			"/public/%41?x=%2F&y=1": "/public/A?x=%2F&y=1",
+			"/public/%zz":           "/public/%25zz",
+			"/public/a%3Ab%20c":     "/public/a%3Ab%20c",
 		} {
 			resp := rawRequest(t, app, target, "example.com")
 			require.Equal(t, fiber.StatusOK, resp.StatusCode(), target)
@@ -99,6 +96,12 @@ func Test_Proxy_Balancer_ForwardsRoutedPath(t *testing.T) {
 		for _, target := range []string{"/admin/secret", "/public/../admin/secret", "/%2e%2e/admin/secret", "/public/%2E./admin/secret"} {
 			resp := rawRequest(t, app, target, "example.com")
 			require.Equal(t, fiber.StatusForbidden, resp.StatusCode(), target)
+		}
+		// Kept as routed, an escaped slash or an empty segment would be read
+		// as another path by an upstream that decodes or merges: refused.
+		for _, target := range []string{"/public/..%2Fadmin/secret", "/public%2F..%2Fadmin", "//admin/secret", "/public//x"} {
+			resp := rawRequest(t, app, target, "example.com")
+			require.Equal(t, fiber.StatusBadRequest, resp.StatusCode(), target)
 		}
 	})
 
@@ -110,7 +113,6 @@ func Test_Proxy_Balancer_ForwardsRoutedPath(t *testing.T) {
 
 		for target, want := range map[string]string{
 			"/public/a%2Fb":         "/public/a/b",
-			"//admin/secret":        "//admin/secret",
 			"/public/%41%20b?x=%2F": "/public/A%20b?x=%2F",
 		} {
 			resp := rawRequest(t, app, target, "example.com")
@@ -121,6 +123,8 @@ func Test_Proxy_Balancer_ForwardsRoutedPath(t *testing.T) {
 			resp := rawRequest(t, app, target, "example.com")
 			require.Equal(t, fiber.StatusForbidden, resp.StatusCode(), target)
 		}
+		// The decoded path keeps an empty segment, which is refused.
+		require.Equal(t, fiber.StatusBadRequest, rawRequest(t, app, "//admin/secret", "example.com").StatusCode())
 	})
 }
 
@@ -230,12 +234,9 @@ func Test_Proxy_DomainForward_ForwardsRoutedPath(t *testing.T) {
 		app.Use(DomainForward("example.com", "http://"+addr+"/api/"))
 
 		for target, want := range map[string]string{
-			"/../internal":              "/api/internal",
-			"/%2e%2e/internal":          "/api/internal",
-			"//internal":                "/api//internal",
-			"/..%2Finternal":            "/api/..%2Finternal",
-			"/x/%41?q=%2F&y=1":          "/api/x/A?q=%2F&y=1",
-			"/public/..%2Fadmin/secret": "/api/public/..%2Fadmin/secret",
+			"/../internal":     "/api/internal",
+			"/%2e%2e/internal": "/api/internal",
+			"/x/%41?q=%2F&y=1": "/api/x/A?q=%2F&y=1",
 		} {
 			resp := rawRequest(t, app, target, "example.com")
 			require.Equal(t, fiber.StatusOK, resp.StatusCode(), target)
@@ -243,6 +244,9 @@ func Test_Proxy_DomainForward_ForwardsRoutedPath(t *testing.T) {
 		}
 		resp := rawRequest(t, app, "/%2e%2e/admin/secret", "example.com")
 		require.Equal(t, fiber.StatusForbidden, resp.StatusCode())
+		for _, target := range []string{"//internal", "/..%2Finternal", "/public/..%2Fadmin/secret"} {
+			require.Equal(t, fiber.StatusBadRequest, rawRequest(t, app, target, "example.com").StatusCode(), target)
+		}
 	})
 
 	t.Run("plain upstream", func(t *testing.T) {
@@ -252,9 +256,8 @@ func Test_Proxy_DomainForward_ForwardsRoutedPath(t *testing.T) {
 		app.Use(DomainForward("example.com", "http://"+addr))
 
 		for target, want := range map[string]string{
-			"//admin/secret":            "//admin/secret",
-			"/public/..%2Fadmin/secret": "/public/..%2Fadmin/secret",
-			"/a/../public/%zz?x=1":      "/public/%25zz?x=1",
+			"/a/../public/%zz?x=1": "/public/%25zz?x=1",
+			"/public/a%3Ab":        "/public/a%3Ab",
 		} {
 			resp := rawRequest(t, app, target, "example.com")
 			require.Equal(t, fiber.StatusOK, resp.StatusCode(), target)
@@ -262,6 +265,9 @@ func Test_Proxy_DomainForward_ForwardsRoutedPath(t *testing.T) {
 		}
 		resp := rawRequest(t, app, "/public/../admin/secret", "example.com")
 		require.Equal(t, fiber.StatusForbidden, resp.StatusCode())
+		for _, target := range []string{"//admin/secret", "/public/..%2Fadmin/secret"} {
+			require.Equal(t, fiber.StatusBadRequest, rawRequest(t, app, target, "example.com").StatusCode(), target)
+		}
 	})
 }
 
@@ -275,9 +281,9 @@ func Test_Proxy_BalancerForward_ForwardsRoutedPath(t *testing.T) {
 	app.Use(BalancerForward([]string{"http://" + addr + "/api/"}))
 
 	for target, want := range map[string]string{
-		"/../internal":              "/api/internal",
-		"//internal":                "/api//internal",
-		"/public/..%2Fadmin/secret": "/api/public/..%2Fadmin/secret",
+		"/../internal":  "/api/internal",
+		"/x/%41?q=%2F":  "/api/x/A?q=%2F",
+		"/public/a%3Ab": "/api/public/a%3Ab",
 	} {
 		resp := rawRequest(t, app, target, "example.com")
 		require.Equal(t, fiber.StatusOK, resp.StatusCode(), target)
@@ -285,6 +291,61 @@ func Test_Proxy_BalancerForward_ForwardsRoutedPath(t *testing.T) {
 	}
 	resp := rawRequest(t, app, "/%2e%2e/admin/secret", "example.com")
 	require.Equal(t, fiber.StatusForbidden, resp.StatusCode())
+	for _, target := range []string{"//internal", "/public/..%2Fadmin/secret"} {
+		require.Equal(t, fiber.StatusBadRequest, rawRequest(t, app, target, "example.com").StatusCode(), target)
+	}
+}
+
+// Test_Proxy_RejectsEncodedSeparator pins that a routed path an upstream could
+// read as another path is refused by every forwarding handler rather than
+// forwarded: an upstream that decodes "%2F" into a separator or merges "//"
+// before it matches routes, as a net/http file server or a fasthttp server
+// does, would serve "/admin/secret.txt" for each refused target although no
+// middleware on "/admin" ran. An escape of another reserved character is
+// forwarded as sent.
+func Test_Proxy_RejectsEncodedSeparator(t *testing.T) {
+	t.Parallel()
+	addr := echoTarget(t)
+
+	handlers := map[string]func() fiber.Handler{
+		"Balancer":        func() fiber.Handler { return Balancer(Config{Servers: []string{addr}}) },
+		"DomainForward":   func() fiber.Handler { return DomainForward("example.com", "http://"+addr) },
+		"BalancerForward": func() fiber.Handler { return BalancerForward([]string{"http://" + addr}) },
+	}
+	for name, handler := range handlers {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			app := fiber.New()
+			app.Use("/admin", forbid)
+			app.Use(handler())
+
+			for _, target := range []string{
+				"/public/..%2Fadmin/secret.txt",
+				"/public/..%2fadmin/secret.txt",
+				"/admin%2Fsecret.txt",
+				"//admin/secret.txt",
+			} {
+				require.Equal(t, fiber.StatusBadRequest, rawRequest(t, app, target, "example.com").StatusCode(), target)
+			}
+
+			// A separator forged by a stray "%": routed as "..%2fadmin" when
+			// the router keeps the stray "%" as sent, and refused; routed as
+			// "..%252fadmin" when it writes the stray "%" as "%25", and
+			// forwarded as that literal name.
+			resp := rawRequest(t, app, "/public/..%%32fadmin/secret.txt", "example.com")
+			switch resp.StatusCode() {
+			case fiber.StatusBadRequest:
+			case fiber.StatusOK:
+				require.Equal(t, "/public/..%252fadmin/secret.txt", string(resp.Body()))
+			default:
+				t.Fatalf("unexpected status %d", resp.StatusCode())
+			}
+
+			resp = rawRequest(t, app, "/files/a%20b%3Fc?x=%2F", "example.com")
+			require.Equal(t, fiber.StatusOK, resp.StatusCode())
+			require.Equal(t, "/files/a%20b%3Fc?x=%2F", string(resp.Body()))
+		})
+	}
 }
 
 // go test -run Test_Proxy_Do_UserClientForwardsTargetAsGiven
@@ -363,11 +424,12 @@ func Test_Proxy_Balancer_RejectsAuthorityTarget(t *testing.T) {
 		require.Equal(t, fiber.StatusBadRequest, resp.StatusCode(), "UnescapePath=%v, no Host", unescape)
 		require.Equal(t, before, hits.Load(), "UnescapePath=%v: the upstream must not see the request", unescape)
 
-		// The same shape without "://" is a path, forwarded as the router
-		// matched it, under the identity the application pinned.
-		resp = rawRequest(t, app, "//evil.example/a:/b", "example.com")
+		// The same characters in a path with no empty segment are forwarded
+		// as the router matched them, under the identity the application
+		// pinned.
+		resp = rawRequest(t, app, "/u:pw@evil.example/a:/b", "example.com")
 		require.Equal(t, fiber.StatusOK, resp.StatusCode(), "UnescapePath=%v", unescape)
-		require.Equal(t, "//evil.example/a:/b|backend.internal|Bearer pinned", string(resp.Body()), "UnescapePath=%v", unescape)
+		require.Equal(t, "/u:pw@evil.example/a:/b|backend.internal|Bearer pinned", string(resp.Body()), "UnescapePath=%v", unescape)
 	}
 }
 
@@ -401,9 +463,11 @@ func pinIdentity(c fiber.Ctx) error {
 }
 
 // Test_Proxy_Balancer_RootsUnrootedPath pins that a path override without a
-// leading slash, as a rewrite of "/go/*" to "$1" produces, reaches the
-// upstream as a path and not as the absolute URL a request line reads it as,
-// which would have replaced the pinned Host and credential.
+// leading slash, as a rewrite of "/go/*" to "$1" produces, is handled as a
+// path and not as the absolute URL a request line reads it as, which would
+// have replaced the pinned Host and credential: rooted, it is forwarded under
+// the pinned identity, or refused when the rooted path holds an empty
+// segment, as "/http://u:pw@evil.example/x" does.
 func Test_Proxy_Balancer_RootsUnrootedPath(t *testing.T) {
 	t.Parallel()
 
@@ -415,9 +479,11 @@ func Test_Proxy_Balancer_RootsUnrootedPath(t *testing.T) {
 		return balancer(c)
 	})
 
-	resp := rawRequest(t, app, "/go/http://u:pw@evil.example/x", "example.com")
+	resp := rawRequest(t, app, "/go/u:pw@evil.example/x", "example.com")
 	require.Equal(t, fiber.StatusOK, resp.StatusCode())
-	require.Equal(t, "/http://u:pw@evil.example/x|backend.internal|Bearer pinned", string(resp.Body()))
+	require.Equal(t, "/u:pw@evil.example/x|backend.internal|Bearer pinned", string(resp.Body()))
+
+	require.Equal(t, fiber.StatusBadRequest, rawRequest(t, app, "/go/http://u:pw@evil.example/x", "example.com").StatusCode())
 }
 
 // Test_Proxy_Balancer_CustomClientKeepsTarget pins that a host client the
@@ -434,10 +500,13 @@ func Test_Proxy_Balancer_CustomClientKeepsTarget(t *testing.T) {
 	app.Use(Balancer(Config{Client: &fasthttp.LBClient{Clients: []fasthttp.BalancingClient{hc}, Timeout: time.Second}}))
 
 	require.True(t, hc.DisablePathNormalizing)
-	for _, target := range []string{"/public/..%2Fadmin/secret", "//admin/secret", "/a%20b"} {
+	for _, target := range []string{"/public/a%3Ab", "/a%20b?q=%2F"} {
 		resp := rawRequest(t, app, target, "example.com")
 		require.Equal(t, fiber.StatusOK, resp.StatusCode(), target)
 		require.Equal(t, target, string(resp.Body()), target)
+	}
+	for _, target := range []string{"/public/..%2Fadmin/secret", "//admin/secret"} {
+		require.Equal(t, fiber.StatusBadRequest, rawRequest(t, app, target, "example.com").StatusCode(), target)
 	}
 }
 
