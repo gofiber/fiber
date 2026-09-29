@@ -1816,6 +1816,8 @@ The new `KeepConnectionHeader` option (default `false`) drops the `Connection` h
 
 `proxy.Balancer` now accepts an optional variadic configuration: call `proxy.Balancer()` to use defaults or continue passing a `proxy.Config` value as before.
 
+`Balancer`, `DomainForward` and `BalancerForward` forward the path the router matched, `c.Path()`, followed by the query, instead of the request line as it arrived. Spellings such as `/public/..%2Fadmin/secret` and `//admin/secret`, which fasthttp's normalization of the raw request line turned into `/admin/secret` on the way to the upstream, now reach it exactly as the router matched them, and a path with dot segments is forwarded resolved. Every entry in `Config.Servers` must be a scheme and host only; an entry with a path, userinfo, query or fragment panics at startup with `ErrUpstreamNotOrigin`. `Balancer` answers a request whose `Host` header carries userinfo with `400 Bad Request`, as it does a routed target fasthttp would read as an authority rather than a path (one that begins with `//` and holds `://`, or one beginning with `//` on a request without a `Host` header), and path normalization is disabled on every host client the proxy dispatches through, including per-call clients. See [Request target](./middleware/proxy.md#request-target).
+
 ### Recover
 
 The Recover middleware allows customizing the error it returns. Set a `PanicHandler` in its `Config` to change the default behavior.

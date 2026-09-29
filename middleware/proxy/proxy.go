@@ -1,6 +1,7 @@
 package proxy
 
 import (
+	"bytes"
 	"errors"
 	"net"
 	"net/url"
@@ -18,6 +19,7 @@ import (
 	"github.com/gofiber/fiber/v3/internal/fieldname"
 	"github.com/gofiber/fiber/v3/internal/headerlookup"
 	"github.com/gofiber/fiber/v3/internal/idnafold"
+	"github.com/gofiber/fiber/v3/internal/wiretarget"
 	utilsstrings "github.com/gofiber/utils/v2/strings"
 	"github.com/valyala/fasthttp"
 )
@@ -95,17 +97,33 @@ func Balancer(config ...Config) fiber.Handler {
 			}
 		}
 
+		// The Host field holds no userinfo (RFC 9112 Section 3.2). fasthttp
+		// reads "svc:pw@backend" as one when it parses the origin-form
+		// target below, and writes it upstream as a Basic Authorization
+		// header, over any the application had pinned.
+		if bytes.IndexByte(req.Header.Host(), '@') >= 0 {
+			return fiber.ErrBadRequest
+		}
+
+		// Forward the path the router matched (see wiretarget.Routed), and
+		// put the request line back for the middleware that runs afterwards.
+		// A target fasthttp would read as an authority rather than a path
+		// (see wiretarget.ParsesAsPath) is refused: set as the request line,
+		// it would hand the upstream a Host, and a Basic credential, taken
+		// from the path rather than from the application.
+		target := wiretarget.Routed(c)
+		if !wiretarget.ParsesAsPath(target, req.Header.Host()) {
+			return fiber.ErrBadRequest
+		}
+		originalURL := utils.CopyString(c.OriginalURL())
+		defer req.SetRequestURI(originalURL)
+		req.SetRequestURI(target)
+
 		// Modify request
 		if cfg.ModifyRequest != nil {
 			if err := cfg.ModifyRequest(c); err != nil {
 				return err
 			}
-		}
-
-		if c.App().Config().Immutable {
-			req.SetRequestURIBytes(req.RequestURI())
-		} else {
-			req.SetRequestURI(utils.UnsafeString(req.RequestURI()))
 		}
 
 		// The upstream connection speaks HTTP/1.1: reset a protocol token
@@ -179,6 +197,10 @@ func (g *guardedConfigureClient) run(hc *fasthttp.HostClient) error {
 		}
 	}
 	installHostClientGuard(hc)
+	// The target the proxy hands the client is the one it matched and
+	// validated; a client left normalizing would decode "%2F" into a
+	// separator and merge "//" on the way out, undoing that.
+	hc.DisablePathNormalizing = true
 	return nil
 }
 
@@ -620,7 +642,7 @@ func DomainForward(hostname, addr string, clients ...*fasthttp.Client) fiber.Han
 			return c.Next()
 		}
 		setRealIP(c)
-		return doActionWithPolicy(c, joinUpstreamPath(base, c.OriginalURL()), currentSecurityPolicy(),
+		return doActionWithPolicy(c, joinUpstreamPath(base, wiretarget.Routed(c)), currentSecurityPolicy(),
 			func(cli *fasthttp.Client, req *fasthttp.Request, resp *fasthttp.Response, _ *url.URL) error {
 				return cli.Do(req, resp)
 			}, clients...)
@@ -682,7 +704,7 @@ func BalancerForward(servers []string, clients ...*fasthttp.Client) fiber.Handle
 	return func(c fiber.Ctx) error {
 		base := r.get()
 		setRealIP(c)
-		return doActionWithPolicy(c, joinUpstreamPath(base, c.OriginalURL()), currentSecurityPolicy(),
+		return doActionWithPolicy(c, joinUpstreamPath(base, wiretarget.Routed(c)), currentSecurityPolicy(),
 			func(cli *fasthttp.Client, req *fasthttp.Request, resp *fasthttp.Response, _ *url.URL) error {
 				return cli.Do(req, resp)
 			}, clients...)
