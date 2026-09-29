@@ -869,7 +869,17 @@ func (c *DefaultCtx) configDependentPaths() {
 // request. Parsing decoded the escapes and removed the dot and empty segments,
 // and each of those shortens the path, so one that kept its length holds no
 // escape and no dot segment, apart from a trailing "/." that fasthttp leaves
-// in place.
+// in place. A stray "%" that begins no escape keeps the length too, since
+// fasthttp copies it as sent, and such a path is matched as sent: it holds
+// nothing that could decode, and scanning every request for one measured a
+// hot-path cost of several percent. normalizeRequestPath encodes a stray "%"
+// as "%25" in a path it normalizes for another reason, the only kind in which
+// one could line up with a decoded character into a new escape.
+//
+// A path without a leading slash, the authority form fasthttp admits for
+// CONNECT, is normalized whatever its length: the slash fasthttp adds in
+// front of its copy is canceled by the one it takes out of a doubled slash,
+// so "admin//secret" keeps its length while holding both.
 //
 // It takes that length rather than the URI so that it stays inlinable in the
 // request hot path. A caller that switched DisablePathNormalizing on has asked
@@ -877,7 +887,7 @@ func (c *DefaultCtx) configDependentPaths() {
 // scans the original with needsPathNormalization instead.
 func pathNeedsNormalization(normalizedLen int, path string) bool {
 	n := len(path)
-	return normalizedLen != n || (n >= 2 && path[n-2] == '/' && path[n-1] == '.')
+	return normalizedLen != n || n == 0 || path[0] != '/' || (n >= 2 && path[n-2] == '/' && path[n-1] == '.')
 }
 
 // Reset is a method to reset context fields by given request when to use server handlers.

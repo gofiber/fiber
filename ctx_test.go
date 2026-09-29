@@ -12056,3 +12056,30 @@ func Test_Ctx_PathSlashCount(t *testing.T) {
 		}
 	}
 }
+
+// Test_PathNeedsNormalization pins the request gate: a path that kept its
+// parsed length has nothing to decode or resolve, except that a target
+// without a leading slash is normalized whatever its length, since the slash
+// fasthttp adds in front can be canceled by the one a doubled slash loses.
+func Test_PathNeedsNormalization(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		path string
+		norm string
+		want bool
+	}{
+		{path: "/a/b", norm: "/a/b", want: false},
+		{path: "/a%41", norm: "/aA", want: true},
+		{path: "/a//b", norm: "/a/b", want: true},
+		{path: "/a/.", norm: "/a/.", want: true},
+		{path: "/a%zzb", norm: "/a%zzb", want: false},
+		{path: "", norm: "/", want: true},
+		{path: "*", norm: "/*", want: true},
+		{path: "admin//secret", norm: "/admin/secret", want: true},
+		{path: "secret//", norm: "/secret/", want: true},
+		{path: "example.com:443", norm: "/example.com:443", want: true},
+	} {
+		require.Equal(t, tc.want, pathNeedsNormalization(len(tc.norm), tc.path), "%q", tc.path)
+	}
+}

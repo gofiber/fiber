@@ -5076,6 +5076,120 @@ func Test_Router_UnescapePath_PlusIsLiteral(t *testing.T) {
 	require.False(t, RoutePatternMatch("/u/john+doe", "/u/john doe", Config{UnescapePath: true}))
 }
 
+// Test_Router_StrayPercent pins what a "%" that begins no escape becomes in
+// c.Path(). fasthttp copies it as sent, so a path holding nothing else to
+// decode or resolve keeps its parsed length, passes pathNeedsNormalization and
+// is matched as sent; it holds no escape at all, so nothing in it can decode.
+// A path normalized for another reason has the stray "%" encoded as "%25", so
+// it cannot line up with a decoded character into a new escape. Either way
+// c.Path() never holds an escape of an unreserved character. httptest rejects
+// these spellings, so the requests go through the raw handler.
+func Test_Router_StrayPercent(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		path string
+		body string
+	}{
+		// nothing to decode or resolve: matched as sent
+		{path: "/a%zzb", body: "/a%zzb"},
+		{path: "/trailing%2", body: "/trailing%2"},
+		{path: "/%", body: "/%"},
+		// normalized for a decoded escape or a dot segment: "%" becomes "%25"
+		{path: "/%2g%41", body: "/%252gA"},
+		{path: "/%%370rivate", body: "/%2570rivate"},
+		{path: "/x%zz/%41", body: "/x%25zz/A"},
+		{path: "/a%zzb/./c", body: "/a%25zzb/c"},
+	}
+	for _, caseSensitive := range []bool{false, true} {
+		app := New(Config{CaseSensitive: caseSensitive})
+		app.Use(func(c Ctx) error {
+			return c.SendString(c.Path())
+		})
+		handler := app.Handler()
+		for _, tc := range testCases {
+			fctx := &fasthttp.RequestCtx{}
+			fctx.Request.Header.SetMethod(MethodGet)
+			fctx.Request.SetRequestURI(tc.path)
+			handler(fctx)
+			require.Equal(t, StatusOK, fctx.Response.StatusCode(), "CaseSensitive=%v GET %s", caseSensitive, tc.path)
+			require.Equal(t, tc.body, string(fctx.Response.Body()), "CaseSensitive=%v GET %s", caseSensitive, tc.path)
+		}
+	}
+}
+
+// Test_Router_UnrootedTargetIsRooted pins that a request target without a
+// leading slash, the absolute form with an empty path or the asterisk form,
+// is routed as the rooted path fasthttp reports for it. Unrooted, it slipped
+// past every root-level Use middleware while a "/*" route still matched it.
+// httptest rejects these targets, so the requests go through the raw handler.
+func Test_Router_UnrootedTargetIsRooted(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		method, target, path string
+	}{
+		{MethodGet, "http://example.com?x=1", "/"},
+		{MethodPost, "http://example.com#f", "/"},
+		{MethodOptions, "*", "/*"},
+		{MethodGet, "http://example.com/a/b", "/a/b"},
+		// the authority form fasthttp admits for CONNECT; with one doubled
+		// slash the parsed copy keeps the original's length, since the slash
+		// fasthttp adds in front is the one it takes out of the pair, so the
+		// length gate alone would not notice the missing slash
+		{MethodConnect, "admin//secret", "/admin//secret"},
+		{MethodConnect, "secret//", "/secret//"},
+		{MethodConnect, "example.com:443", "/example.com:443"},
+	}
+	// with DisablePathNormalizing the scan, not fasthttp's parsed copy, has
+	// to notice the missing slash
+	for _, disable := range []bool{false, true} {
+		for _, tc := range testCases {
+			app := New()
+			guardRan, seen := false, ""
+			app.Use(func(c Ctx) error {
+				guardRan = true
+				return c.Next()
+			})
+			app.All("/*", func(c Ctx) error {
+				seen = c.Path()
+				return c.SendString("catch-all")
+			})
+
+			var req fasthttp.Request
+			req.Header.SetMethod(tc.method)
+			req.SetRequestURI(tc.target)
+			req.Header.SetHost("example.com")
+			var fctx fasthttp.RequestCtx
+			fctx.Init(&req, nil, nil)
+			if disable {
+				fctx.Request.URI().DisablePathNormalizing = true
+			}
+			app.Handler()(&fctx)
+
+			require.Equal(t, StatusOK, fctx.Response.StatusCode(), "disable=%v %s %s", disable, tc.method, tc.target)
+			require.True(t, guardRan, "disable=%v %s %s: root middleware skipped", disable, tc.method, tc.target)
+			require.Equal(t, tc.path, seen, "disable=%v %s %s", disable, tc.method, tc.target)
+		}
+	}
+
+	// an override is rooted the same way
+	app := New()
+	app.Use(func(c Ctx) error {
+		c.Path("rewritten")
+		return c.Next()
+	})
+	app.Get("/rewritten", func(c Ctx) error {
+		return c.SendString(c.Path())
+	})
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/original", http.NoBody))
+	require.NoError(t, err)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, StatusOK, resp.StatusCode)
+	require.Equal(t, "/rewritten", string(body))
+}
+
 func Test_App_Add_MultipleMethods_Name(t *testing.T) {
 	t.Parallel()
 
