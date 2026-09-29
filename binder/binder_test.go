@@ -1,7 +1,6 @@
 package binder
 
 import (
-	"mime/multipart"
 	"reflect"
 	"strconv"
 	"testing"
@@ -120,7 +119,19 @@ func Test_SetParserDecoder_UnknownKeys(t *testing.T) {
 	data := map[string][]string{"name": {"john"}, "foo": {"bar"}}
 	err := parseToStruct("query", &user{}, data)
 	require.Error(t, err)
+
+	// The binders decode a struct from its pairs with DecodeValues, which must
+	// honor the setting as well.
+	req := fasthttp.AcquireRequest()
+	defer fasthttp.ReleaseRequest(req)
+	req.URI().SetQueryString("name=john&foo=bar")
+	require.ErrorContains(t, (&QueryBinding{}).Bind(req, &user{}), "foo")
+	require.ErrorContains(t, parseValuesToStruct("query", &user{}, []string{"name", "foo"}, []string{"john", "bar"}), "foo")
+
 	SetParserDecoder(ParserConfig{IgnoreUnknownKeys: true, ZeroEmpty: true})
+	var u user
+	require.NoError(t, (&QueryBinding{}).Bind(req, &u))
+	require.Equal(t, "john", u.Name)
 }
 
 func Test_SetParserDecoder_CustomConverter(t *testing.T) {
@@ -156,13 +167,4 @@ func Test_SetParserDecoder_AliasTagIgnored(t *testing.T) {
 	err := parse("query", d, map[string][]string{"v": {"hello"}})
 	require.NoError(t, err)
 	require.Equal(t, "hello", d.Greeting)
-}
-
-func Test_formatBindData_typeMismatch(t *testing.T) {
-	t.Parallel()
-	out := struct{}{}
-	files := map[string][]*multipart.FileHeader{}
-	err := formatBindData("query", out, files, "file", 123, false, false)
-	require.Error(t, err)
-	require.Equal(t, "unsupported value type: int", err.Error())
 }

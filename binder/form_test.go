@@ -112,31 +112,71 @@ func Test_FormBinder_Bind_ParseError(t *testing.T) {
 	require.Error(t, err)
 }
 
-func Test_ReleaseDataMap(t *testing.T) {
+func Test_ReleaseBindData(t *testing.T) {
 	t.Parallel()
 
-	small := acquireDataMap()
-	small["name"] = []string{"john"}
-	releaseDataMap(small)
+	small := acquireBindDataMode(bindMap)
+	small.add("name", "john")
+	releaseBindData(small)
 
-	reused := acquireDataMap()
-	require.Empty(t, reused)
-	releaseDataMap(reused)
+	reused := acquireBindDataMode(bindMap)
+	require.Empty(t, reused.values)
+	releaseBindData(reused)
 
-	large := make(map[string][]string, maxPoolableDataMapSize+1)
+	pairs := acquireBindDataMode(bindPairs)
+	pairs.add("name", "john")
+	require.Equal(t, []string{"name"}, pairs.keys)
+	require.Equal(t, []string{"john"}, pairs.pairValues)
+	// Checked on reset rather than after release: once pairs is back in the
+	// pool, a parallel test may take it and write the same array.
+	keys := pairs.keys
+	pairs.reset()
+	require.Empty(t, keys[:1][0], "release must drop the strings the pairs held")
+	releaseBindData(pairs)
+
+	large := &bindData{values: make(map[string][]string, maxPoolableDataMapSize+1), mode: bindMap}
 	for i := range maxPoolableDataMapSize + 1 {
-		large[strings.Repeat("a", i+1)] = []string{"value"}
+		large.add(strings.Repeat("a", i+1), "value")
 	}
 	firstKey := "a"
 
-	require.Len(t, large, maxPoolableDataMapSize+1)
-	require.Equal(t, []string{"value"}, large[firstKey])
+	require.Len(t, large.values, maxPoolableDataMapSize+1)
+	require.Equal(t, []string{"value"}, large.values[firstKey])
 
-	releaseDataMap(large)
+	releaseBindData(large)
+	// An oversized one is dropped rather than cleared for reuse.
+	require.Equal(t, []string{"value"}, large.values[firstKey])
 
-	after := acquireDataMap()
-	require.Empty(t, after)
-	releaseDataMap(after)
+	after := acquireBindDataMode(bindMap)
+	require.Empty(t, after.values)
+	require.Empty(t, after.keys)
+	releaseBindData(after)
+}
+
+// Test_AcquireBindData_ReservesPairs pins that a bind into a struct gets room
+// for its pairs up front, so that a large one does not grow them by appending,
+// and that a bind into a map, which keeps no pairs, gets none.
+func Test_AcquireBindData_ReservesPairs(t *testing.T) {
+	t.Parallel()
+
+	type Demo struct {
+		Name string `form:"name"`
+	}
+	const n = 4 * maxPoolablePairs
+	pairs := acquireBindData(&Demo{}, n)
+	require.Equal(t, bindPairs, pairs.mode)
+	require.GreaterOrEqual(t, cap(pairs.keys), n)
+	require.GreaterOrEqual(t, cap(pairs.pairValues), n)
+	for range n {
+		pairs.add("name", "john")
+	}
+	require.Len(t, pairs.keys, n)
+	releaseBindData(pairs)
+
+	m := acquireBindData(&map[string]string{}, n)
+	require.Equal(t, bindLast, m.mode)
+	require.Less(t, cap(m.keys), n)
+	releaseBindData(m)
 }
 
 func Benchmark_FormBinder_Bind(b *testing.B) {
