@@ -1664,3 +1664,13 @@ func Test_RouteParser_AdoptConstraints_FewerRawSegments(t *testing.T) {
 
 	require.NotPanics(t, func() { pretty.adoptConstraints(&raw) })
 }
+
+// Test_RouteParser_TrailingBackslash confirms that a parameter followed by a
+// trailing escape character does not panic. The backslash is a parameter-end
+// character, so ":id\" leaves an empty constant segment after the parameter;
+// addParameterMetaInfo must not index into that empty Const.
+func Test_RouteParser_TrailingBackslash(t *testing.T) {
+	t.Parallel()
+
+	require.NotPanics(t, func() { parseRoute(`/:id\`, nil) })
+}
