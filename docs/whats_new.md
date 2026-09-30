@@ -365,9 +365,11 @@ The router normalizes every request path before matching, as [RFC 3986 Section 6
 
 ### Generated route URLs
 
-`Route.URL`, `GetRouteURL` and `Redirect().Route` percent-encode each parameter value with URL path-segment rules. A value is data, so the same call composes the same URL under any configuration. Previously the value was written into the path as given: `a/b` under `/user/:name` produced `/user/a/b`, which matched no route; `a?b` produced `/user/a?b`, whose tail became a query and truncated the value; and `100%` produced `/user/100%`, which Go's own URL parser rejects. Greedy parameters (`*` and `+`) keep the `/` of the matched path tail.
+`Route.URL`, `GetRouteURL` and `Redirect().Route` percent-encode each parameter value with URL path-segment rules. A value is data, so a representable value composes the same URL under any configuration. Previously the value was written into the path as given: `a/b` under `/user/:name` produced `/user/a/b`, which matched no route; `a?b` produced `/user/a?b`, whose tail became a query and truncated the value; and `100%` produced `/user/100%`, which Go's own URL parser rejects. Greedy parameters (`*` and `+`) keep the `/` of the matched path tail.
 
 Because the value is data, one that already carries escapes is encoded again. With `UnescapePath` off, which is the default, `c.Params` returns the value as the request spelled it, so forwarding it into a generated URL turns `M%C3%BCller` into `M%25C3%25BCller`. Decode it first, or turn `UnescapePath` on.
+
+A value the router could not match back returns `ErrRouteNotRepresentable` instead of a URL: one that forms a `.` or `..` segment, which clients and the router remove (`/user/:name` with `..`), and, with `UnescapePath` on, a `/` in an ordinary single-segment parameter, which the router decodes before matching. Greedy parameters keep accepting slashes.
 
 ### Handler compatibility
 
