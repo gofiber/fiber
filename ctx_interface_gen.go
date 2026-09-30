@@ -339,7 +339,10 @@ type Ctx interface {
 	// its comma-separated members, on any of its field lines. Repeated field lines
 	// are one list (RFC 9110 Section 5.3) and the member matches under ASCII case
 	// folding, so it fits directive-style headers such as Cache-Control or
-	// Connection. An empty value is never present. Only valid within the handler.
+	// Connection. A comma inside a quoted argument does not end a member, so
+	// `ext="a,no-transform,b"` is one member and does not list no-transform
+	// (RFC 9111 permits quoted directive arguments, escaped quotes included). An
+	// empty value is never present. Only valid within the handler.
 	HasHeaderValue(key, value string) bool
 	// MediaType returns the MIME type from the Content-Type header without parameters.
 	MediaType() string
