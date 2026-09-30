@@ -1215,6 +1215,57 @@ func Test_Proxy_Balancer_Forward_OverwritesXRealIP(t *testing.T) {
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
 }
 
+func Test_Proxy_Balancer_OverwritesXRealIP(t *testing.T) {
+	t.Parallel()
+
+	seen := make(chan []string, 1)
+	_, addr := createProxyTestServerIPv4(t, func(c fiber.Ctx) error {
+		seen <- matchingFieldLines(c, realIPHeader)
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	app := fiber.New()
+	app.Use(Balancer(Config{Servers: []string{addr}}))
+
+	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+	req.Host = addr
+	req.Header.Add("X-Real-IP", "6.6.6.6")
+	req.Header.Add("X-Real-IP", "7.7.7.7")
+
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	// app.Test injects 0.0.0.0 as the remote address.
+	require.Equal(t, []string{"X-Real-Ip=0.0.0.0"}, <-seen)
+}
+
+func Test_Proxy_Balancer_ModifyRequestCanSetXRealIP(t *testing.T) {
+	t.Parallel()
+
+	_, addr := createProxyTestServerIPv4(t, func(c fiber.Ctx) error {
+		return c.SendString(c.Get("X-Real-IP"))
+	})
+
+	app := fiber.New()
+	app.Use(Balancer(Config{
+		Servers: []string{addr},
+		ModifyRequest: func(c fiber.Ctx) error {
+			c.Request().Header.Set("X-Real-IP", "203.0.113.7")
+			return nil
+		},
+	}))
+
+	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+	req.Host = addr
+	req.Header.Set("X-Real-IP", "6.6.6.6")
+
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "203.0.113.7", string(body))
+}
+
 func Test_Proxy_Immutable(t *testing.T) {
 	t.Parallel()
 
