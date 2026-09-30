@@ -81,6 +81,10 @@ func Balancer(config ...Config) fiber.Handler {
 		if cfg.Next != nil && cfg.Next(c) {
 			return c.Next()
 		}
+		// The raw URI: fasthttp re-serializes the decoded path, dot segments already resolved.
+		if hasDotSegment(c.OriginalURL()) {
+			return fiber.ErrBadRequest
+		}
 
 		// Set request and response
 		req := c.Request()
@@ -619,6 +623,9 @@ func DomainForward(hostname, addr string, clients ...*fasthttp.Client) fiber.Han
 		if !utils.EqualFold(host, hostname) && !utils.EqualFold(hostWithoutPort(host), hostname) {
 			return c.Next()
 		}
+		if hasDotSegment(c.OriginalURL()) {
+			return fiber.ErrBadRequest
+		}
 		setRealIP(c)
 		return doActionWithPolicy(c, joinUpstreamPath(base, c.OriginalURL()), currentSecurityPolicy(),
 			func(cli *fasthttp.Client, req *fasthttp.Request, resp *fasthttp.Response, _ *url.URL) error {
@@ -681,6 +688,9 @@ func BalancerForward(servers []string, clients ...*fasthttp.Client) fiber.Handle
 	r := &urlRoundrobin{pool: bases}
 	return func(c fiber.Ctx) error {
 		base := r.get()
+		if hasDotSegment(c.OriginalURL()) {
+			return fiber.ErrBadRequest
+		}
 		setRealIP(c)
 		return doActionWithPolicy(c, joinUpstreamPath(base, c.OriginalURL()), currentSecurityPolicy(),
 			func(cli *fasthttp.Client, req *fasthttp.Request, resp *fasthttp.Response, _ *url.URL) error {

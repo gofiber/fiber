@@ -12,6 +12,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"testing/fstest"
 	"time"
 
 	"github.com/gofiber/fiber/v3"
@@ -388,6 +389,81 @@ func Test_Security_JoinUpstreamPath_PreservesBasePathPrefix(t *testing.T) {
 	baseSlash, err := parseUpstream("http://upstream.example/api/")
 	require.NoError(t, err)
 	require.Equal(t, "http://upstream.example/api/foo", joinUpstreamPath(baseSlash, "/foo"))
+}
+
+func Test_Security_Forward_RejectsDotSegments(t *testing.T) {
+	t.Parallel()
+
+	upstream := httptest.NewServer(http.FileServer(http.FS(fstest.MapFS{
+		"safe/public.txt":  &fstest.MapFile{Data: []byte("PUBLIC")},
+		"admin/secret.txt": &fstest.MapFile{Data: []byte("SECRET")},
+	})))
+	t.Cleanup(upstream.Close)
+
+	const host = "front.example"
+	cases := []struct {
+		handler fiber.Handler
+		name    string
+		mount   string // route prefix; empty when the base path carries "/safe"
+	}{
+		{name: "BalancerForward base path", handler: BalancerForward([]string{upstream.URL + "/safe"})},
+		{name: "DomainForward base path", handler: DomainForward(host, upstream.URL+"/safe/")},
+		{name: "BalancerForward mounted", mount: "/safe", handler: BalancerForward([]string{upstream.URL})},
+		{name: "DomainForward mounted", mount: "/safe", handler: DomainForward(host, upstream.URL)},
+		{name: "Balancer mounted", mount: "/safe", handler: Balancer(Config{Servers: []string{upstream.Listener.Addr().String()}})},
+	}
+	escapes := []string{
+		"/../admin/secret.txt",
+		"/%2e%2e/admin/secret.txt",
+		"/%2E./admin/secret.txt",
+		"/..%2fadmin/secret.txt",
+		"/..%5cadmin/secret.txt",
+		"/..\\admin/secret.txt",
+		"/..;/admin/secret.txt",
+		"/%252e%252e/admin/secret.txt",
+		"/x/./../../admin/secret.txt",
+	}
+
+	for _, tc := range cases {
+		app := fiber.New()
+		if tc.mount == "" {
+			app.Use(tc.handler)
+		} else {
+			app.Use(tc.mount, tc.handler)
+		}
+		do := func(target string) (int, string) {
+			req := httptest.NewRequest(fiber.MethodGet, tc.mount+target, http.NoBody)
+			req.Host = host
+			resp, err := app.Test(req)
+			require.NoError(t, err)
+			body, err := io.ReadAll(resp.Body)
+			require.NoError(t, err)
+			return resp.StatusCode, string(body)
+		}
+
+		status, body := do("/public.txt?next=../admin")
+		require.Equal(t, fiber.StatusOK, status, tc.name)
+		require.Equal(t, "PUBLIC", body, tc.name)
+
+		for _, target := range escapes {
+			status, body := do(target)
+			require.NotContains(t, body, "SECRET", "%s %s", tc.name, target)
+			if tc.mount == "" {
+				require.Equal(t, fiber.StatusBadRequest, status, "%s %s", tc.name, target)
+			}
+		}
+	}
+}
+
+func Test_Security_HasDotSegment(t *testing.T) {
+	t.Parallel()
+
+	for _, uri := range []string{"/..", "/a/.", "/a/%2e/b", "/a/..%2Fb", "/a\\..\\b", "/..;x/b", "/%25252e%25252e/x", "http://h/../x"} {
+		require.True(t, hasDotSegment(uri), uri)
+	}
+	for _, uri := range []string{"", "/", "/a..b/.c/c./x.y", "/100%25/%zz/%2", "/x?path=../..", "/%2e%2e%2e"} {
+		require.False(t, hasDotSegment(uri), uri)
+	}
 }
 
 // Test_Security_FollowRedirects_StripsCredentialsCrossHost verifies that

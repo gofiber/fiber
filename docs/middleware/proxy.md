@@ -123,6 +123,8 @@ h.Add("X-Real-IP", ip)
 
 `DomainForward` and `BalancerForward` previously concatenated the configured upstream with `c.OriginalURL()`. Crafted request paths beginning with `//` could exploit URL parsing to redirect the proxy at a different host (network-path reference injection). The proxy now sanitizes the joined path so the upstream host pinned in configuration is preserved regardless of the inbound request.
 
+`Balancer`, `DomainForward` and `BalancerForward` reject a request whose path holds a `.` or `..` segment with `400 Bad Request`, including percent-encoded (`%2e`, `%252e`), `%2f`- or `\`-separated and `..;param` spellings. An upstream resolving such a segment could serve a resource outside the upstream's base path (`http://upstream/safe`) or outside the route the proxy is mounted on. Browsers resolve dot segments before sending a request, so ordinary clients never hit this.
+
 ## Examples
 
 Import the middleware package:

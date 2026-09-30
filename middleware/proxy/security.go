@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net"
 	"net/url"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -741,6 +742,44 @@ func secureTLSConfig(cfg *tls.Config) *tls.Config {
 		cloned.MinVersion = tls.VersionTLS12
 	}
 	return cloned
+}
+
+// hasDotSegment reports whether the path of requestURI holds a "." or ".."
+// segment the way a lenient upstream reads it: percent-decoded until stable,
+// '\' as a separator and a ";param" suffix ignored. The upstream resolving one
+// can leave the base path, or the route the router matched the request under.
+func hasDotSegment(requestURI string) bool {
+	path, _, _ := strings.Cut(requestURI, "?")
+	for strings.IndexByte(path, '%') >= 0 {
+		decoded := unescapeValid(path)
+		if decoded == path {
+			break
+		}
+		path = decoded
+	}
+	for seg := range strings.FieldsFuncSeq(path, func(r rune) bool { return r == '/' || r == '\\' }) {
+		seg, _, _ = strings.Cut(seg, ";")
+		if seg == "." || seg == ".." {
+			return true
+		}
+	}
+	return false
+}
+
+// unescapeValid decodes every well-formed %XX escape in s and keeps the rest as is.
+func unescapeValid(s string) string {
+	b := make([]byte, 0, len(s))
+	for i := 0; i < len(s); i++ {
+		if s[i] == '%' && i+2 < len(s) {
+			if v, err := strconv.ParseUint(s[i+1:i+3], 16, 8); err == nil {
+				b = append(b, byte(v))
+				i += 2
+				continue
+			}
+		}
+		b = append(b, s[i])
+	}
+	return string(b)
 }
 
 // joinUpstreamPath returns a URL string formed by combining an already
