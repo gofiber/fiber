@@ -34,3 +34,25 @@ func Test_OptionalParam_EmptyMiddleDoesNotStarveRequired(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "|o", string(body2))
 }
+
+func Test_OptionalParam_ConstraintFailureDoesNotBypassAsEmpty(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	app.Use("/api/:id<int>?", func(c Ctx) error {
+		return c.SendString("matched")
+	})
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/api/abc", nil))
+	require.NoError(t, err)
+	require.Equal(t, StatusNotFound, resp.StatusCode)
+
+	respValid, err := app.Test(httptest.NewRequest(MethodGet, "/api/123", nil))
+	require.NoError(t, err)
+	require.Equal(t, StatusOK, respValid.StatusCode)
+
+	respEmpty, err := app.Test(httptest.NewRequest(MethodGet, "/api", nil))
+	require.NoError(t, err)
+	require.Equal(t, StatusOK, respEmpty.StatusCode)
+}
+
