@@ -1106,6 +1106,27 @@ func Test_Compress_Repeated_Cache_Control_Lines_No_Transform(t *testing.T) {
 }
 
 // go test -run Test_Compress_Quoted_Cache_Control_Argument_Is_Not_No_Transform
+func Test_Compress_No_Transform_After_Escaped_Quote(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+
+	app.Use(New())
+
+	app.Get("/", func(c fiber.Ctx) error {
+		c.Set(fiber.HeaderContentType, fiber.MIMETextPlainCharsetUTF8)
+		return c.Send(filedata)
+	})
+
+	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+	req.Header.Set("Accept-Encoding", "gzip")
+	req.Header.Set("Cache-Control", `ext="a\"", no-transform`)
+
+	resp, err := app.Test(req, testConfig)
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, 200, resp.StatusCode, "Status code")
+	require.Empty(t, resp.Header.Get(fiber.HeaderContentEncoding))
+}
+
 func Test_Compress_Quoted_Cache_Control_Argument_Is_Not_No_Transform(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()

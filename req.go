@@ -301,15 +301,15 @@ func (r *DefaultReq) HasHeader(key string) bool {
 // folding, so it fits directive-style headers such as Cache-Control or
 // Connection. A comma inside a quoted argument does not end a member, so
 // `ext="a,no-transform,b"` is one member and does not list no-transform
-// (RFC 9111 permits quoted directive arguments). An empty value is never
-// present. Only valid within the handler.
+// (RFC 9111 permits quoted directive arguments, escaped quotes included). An
+// empty value is never present. Only valid within the handler.
 func (r *DefaultReq) HasHeaderValue(key, value string) bool {
 	if value == "" {
 		return false
 	}
 	app := r.c.app
 	for _, line := range fieldname.Lines(&r.c.fasthttp.Request.Header, key, !app.config.DisableHeaderNormalizing) {
-		for member := range headerlist.AllQuoted(app.toString(line)) {
+		for member := range headerlist.AllQuotedPairs(app.toString(line)) {
 			if utils.EqualFold(member, value) {
 				return true
 			}

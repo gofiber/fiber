@@ -346,6 +346,11 @@ func Test_Ctx_HasHeaderValue(t *testing.T) {
 	require.True(t, c.HasHeaderValue(HeaderCacheControl, "public"))
 	c.Request().Header.Add(HeaderCacheControl, "no-transform")
 	require.True(t, c.HasHeaderValue(HeaderCacheControl, "no-transform"))
+
+	// An escaped quote does not close the argument, so the directive after it is its own member.
+	c.Request().Header.Del(HeaderCacheControl)
+	c.Request().Header.Set(HeaderCacheControl, `ext="a\"", no-transform`)
+	require.True(t, c.HasHeaderValue(HeaderCacheControl, "no-transform"))
 }
 
 // go test -run Test_Ctx_FullURL_DoesNotAliasPooledBuffer
