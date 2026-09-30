@@ -396,10 +396,22 @@ func (r *Route) urlHasDotSegment(path []byte) bool {
 			path = unescapeSafePath(path)
 		}
 	}
-	for part := range bytes.SplitSeq(path, []byte{'/'}) {
-		if (len(part) == 1 && part[0] == '.') || (len(part) == 2 && part[0] == '.' && part[1] == '.') {
-			return true
+	// Jump from dot to dot: a dot segment starts after a '/' and ends at a '/' or the end.
+	for i := bytes.IndexByte(path, '.'); i >= 0; {
+		if i == 0 || path[i-1] == '/' {
+			j := i + 1
+			if j < len(path) && path[j] == '.' {
+				j++
+			}
+			if j == len(path) || path[j] == '/' {
+				return true
+			}
 		}
+		next := bytes.IndexByte(path[i+1:], '.')
+		if next < 0 {
+			break
+		}
+		i += next + 1
 	}
 	return false
 }

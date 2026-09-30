@@ -91,6 +91,19 @@ func Test_Route_URL_ParameterRepresentability(t *testing.T) {
 
 // Test_Route_URL_MountedRepresentabilityConfig verifies that mounted routes
 // and their automatic HEAD copies validate using the parent's decoding policy.
+func Test_Route_urlHasDotSegment(t *testing.T) {
+	t.Parallel()
+	route := &Route{}
+	for path, want := range map[string]bool{
+		"": false, ".": true, "..": true, "...": false, "/.": true, "/..": true, "/...": false,
+		"/a/./b": true, "/a/../b": true, "/a/.../b": false, "./a": true, "../a": true,
+		"/.a": false, "/a.": false, "/a./b": false, "/..a/b": false, "/a/b.c": false,
+		"/a/b/.": true, "/a/b/..": true, "//.": true, "/a//../b": true, "/%2e/": true, "/%2E%2e/x": true,
+	} {
+		require.Equal(t, want, route.urlHasDotSegment([]byte(path)), path)
+	}
+}
+
 func Test_Route_URL_MountedRepresentabilityConfig(t *testing.T) {
 	t.Parallel()
 	for _, parentUnescape := range []bool{false, true} {
