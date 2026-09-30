@@ -190,53 +190,65 @@ type verifierStrength struct {
 	cost      int
 }
 
-// buildVerifiers parses each configured user hash, stores the verifier by user,
-// and selects the strongest configured verifier for the dummy verification path.
-// The dummy verifier is used for unknown-user requests to equalize timing.
-//
-// In mixed-hash deployments (e.g. bcrypt + SHA-256) a user with a weaker hash
-// also runs the dummy, so every attempt costs one strongest-hash check and
-// neither a known user nor its hash family shows in the response time.
+// buildVerifiers returns the verifier per user and the dummy for unknown users. Each runs
+// one check per hash tier (algorithm and bcrypt cost), so every attempt costs the same.
 func buildVerifiers(users map[string]string) (userVerifiers, passwordVerifier, error) {
-	verifiers := make(userVerifiers, len(users))
-	strengths := make(map[string]verifierStrength, len(users))
-	dummyVerify := fallbackDummyVerify
 	keys := make([]string, 0, len(users))
 	for user := range users {
 		keys = append(keys, user)
 	}
 	sort.Strings(keys)
 
-	var dummyStrength verifierStrength
+	own := make(userVerifiers, len(users))
+	userTier := make(map[string]int, len(users))
+	tierIndex := make(map[verifierStrength]int)
+	var tiers []passwordVerifier // one stand-in per tier, in first-seen order
 	for _, user := range keys {
 		hashedPassword := users[user]
 		verify, err := parseHashedPassword(hashedPassword)
 		if err != nil {
 			return nil, nil, err
 		}
-		verifiers[user] = verify
+		own[user] = verify
 
 		strength := verifierStrengthForHash(hashedPassword)
-		strengths[user] = strength
-		if strength.betterThan(dummyStrength) {
-			dummyVerify = verify
-			dummyStrength = strength
+		i, ok := tierIndex[strength]
+		if !ok {
+			i = len(tiers)
+			tierIndex[strength] = i
+			tiers = append(tiers, verify)
 		}
+		userTier[user] = i
+	}
+	if len(tiers) == 0 {
+		return own, fallbackDummyVerify, nil
 	}
 
-	for user, strength := range strengths {
-		if !dummyStrength.betterThan(strength) {
-			continue
-		}
-		verify := verifiers[user]
+	verifiers := make(userVerifiers, len(own))
+	for user, verify := range own {
+		tier := userTier[user]
 		verifiers[user] = func(pass string) bool {
-			ok := verify(pass)
-			dummyVerify(pass)
-			return ok
+			return verifyEveryTier(tiers, tier, verify, pass)
 		}
 	}
-
+	dummyVerify := func(pass string) bool {
+		verifyEveryTier(tiers, -1, nil, pass)
+		return false
+	}
 	return verifiers, dummyVerify, nil
+}
+
+// verifyEveryTier runs own in tier ownTier and the stand-in in every other, reporting own's result.
+func verifyEveryTier(tiers []passwordVerifier, ownTier int, own passwordVerifier, pass string) bool {
+	ok := false
+	for i, verify := range tiers {
+		if i == ownTier {
+			ok = own(pass)
+		} else {
+			verify(pass)
+		}
+	}
+	return ok
 }
 
 // fallbackDummyVerify provides fixed verification work when no users are
@@ -246,8 +258,8 @@ func fallbackDummyVerify(pass string) bool {
 	return subtle.ConstantTimeCompare(sum[:], fallbackDummySHA512[:]) == 1
 }
 
-// verifierStrengthForHash ranks a configured password hash by algorithm family
-// and cost so the middleware can choose the strongest verifier for dummy work.
+// verifierStrengthForHash returns the tier of a configured password hash: its
+// algorithm family and bcrypt cost, which set how long one check takes.
 func verifierStrengthForHash(h string) verifierStrength {
 	switch {
 	case strings.HasPrefix(h, "$2"):
@@ -261,16 +273,6 @@ func verifierStrengthForHash(h string) verifierStrength {
 	default:
 		return verifierStrength{algorithm: verifierStrengthSHA256}
 	}
-}
-
-// betterThan prefers stronger hash families first (bcrypt > SHA-512 > SHA-256)
-// and uses the bcrypt cost as a tiebreaker within the same algorithm family.
-func (s verifierStrength) betterThan(other verifierStrength) bool {
-	if s.algorithm != other.algorithm {
-		return s.algorithm > other.algorithm
-	}
-
-	return s.cost > other.cost
 }
 
 func parseHashedPassword(h string) (passwordVerifier, error) {

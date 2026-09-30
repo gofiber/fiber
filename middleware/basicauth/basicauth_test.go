@@ -655,50 +655,63 @@ func Test_parseHashedPassword(t *testing.T) {
 func Test_buildVerifiers(t *testing.T) {
 	t.Parallel()
 
-	t.Run("selects the strongest configured verifier deterministically", func(t *testing.T) {
+	t.Run("each user accepts only its own password", func(t *testing.T) {
 		t.Parallel()
 
-		strongestPassword := "bcrypt-pass"
-		strongestHash, err := bcrypt.GenerateFromPassword([]byte(strongestPassword), bcrypt.MinCost+1)
+		alphaHash, err := bcrypt.GenerateFromPassword([]byte("alpha-pass"), bcrypt.MinCost+1)
 		require.NoError(t, err)
-
+		gammaHash, err := bcrypt.GenerateFromPassword([]byte("gamma-pass"), bcrypt.MinCost)
+		require.NoError(t, err)
 		verifiers, dummyVerify, err := buildVerifiers(map[string]string{
-			"zeta":  sha256Hash("sha256-pass"),
-			"alpha": string(strongestHash),
-			"beta":  sha512Hash("sha512-pass"),
+			"zeta":  sha256Hash("zeta-pass"),
+			"alpha": string(alphaHash),
+			"beta":  sha512Hash("beta-pass"),
+			"gamma": string(gammaHash),
 		})
 		require.NoError(t, err)
-		require.Len(t, verifiers, 3)
-		require.True(t, dummyVerify(strongestPassword))
-		require.False(t, dummyVerify("sha512-pass"))
-		require.False(t, dummyVerify("sha256-pass"))
+		require.Len(t, verifiers, 4)
+		for user, verify := range verifiers {
+			for other := range verifiers {
+				require.Equal(t, user == other, verify(other+"-pass"), "user %s, password of %s", user, other)
+			}
+		}
+		for user := range verifiers {
+			require.False(t, dummyVerify(user+"-pass"))
+		}
 	})
 
-	t.Run("a weaker hash costs as much as an unknown user", func(t *testing.T) {
+	t.Run("every attempt costs the same across hash tiers", func(t *testing.T) {
 		t.Parallel()
 
-		strongestHash, err := bcrypt.GenerateFromPassword([]byte("bcrypt-pass"), bcrypt.MinCost+2)
+		adminHash, err := bcrypt.GenerateFromPassword([]byte("admin-pass"), bcrypt.MinCost+3)
+		require.NoError(t, err)
+		oldHash, err := bcrypt.GenerateFromPassword([]byte("old-pass"), bcrypt.MinCost+2)
 		require.NoError(t, err)
 		verifiers, dummyVerify, err := buildVerifiers(map[string]string{
-			"admin": string(strongestHash),
-			"john":  sha256Hash("sha256-pass"),
+			"admin": string(adminHash),
+			"old":   string(oldHash),
+			"john":  sha256Hash("john-pass"),
 		})
 		require.NoError(t, err)
-		require.True(t, verifiers["john"]("sha256-pass"))
-		require.False(t, verifiers["john"]("bcrypt-pass"))
 
-		// Fastest of several runs, so scheduler noise cannot fake either side.
-		fastest := func(verify passwordVerifier) time.Duration {
-			best := time.Duration(math.MaxInt64)
-			for range 5 {
+		// Fastest of interleaved runs, so scheduler noise cannot fake either side.
+		names := []string{"admin", "old", "john", "unknown"}
+		attempts := []passwordVerifier{verifiers["admin"], verifiers["old"], verifiers["john"], dummyVerify}
+		best := make([]time.Duration, len(attempts))
+		for i := range best {
+			best[i] = time.Duration(math.MaxInt64)
+		}
+		for range 5 {
+			for i, verify := range attempts {
 				start := time.Now()
 				verify("wrong")
-				best = min(best, time.Since(start))
+				best[i] = min(best[i], time.Since(start))
 			}
-			return best
 		}
-		// An unpadded SHA-256 check is thousands of times faster than bcrypt.
-		require.Greater(t, fastest(verifiers["john"]), fastest(dummyVerify)/4)
+		unknown := best[len(best)-1]
+		for i, took := range best[:len(best)-1] {
+			require.InDelta(t, 1, float64(took)/float64(unknown), 0.2, "%s took %v, unknown %v", names[i], took, unknown)
+		}
 	})
 
 	t.Run("uses a fixed-work fallback when no users are configured", func(t *testing.T) {

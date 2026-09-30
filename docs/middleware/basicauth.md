@@ -78,10 +78,11 @@ match a password, so it is rejected at startup: `New()` panics with
 starting with an account that can never authenticate. The most common cause is
 a truncated copy/paste, or a SHA-256 digest stored under the `{SHA512}` prefix.
 
-Every attempt costs one check of the strongest configured hash, whether the
-user exists or not, so response time reveals neither. In a mixed setup, for
-example while migrating from SHA-256 to bcrypt, a user with the weaker hash
-therefore pays the bcrypt cost as well.
+Every attempt runs one check per configured hash tier, meaning each algorithm
+and each bcrypt cost in `Users`, whether the user exists or not, so response
+time reveals neither. A setup with a single tier pays for one check. A mixed
+one, for example while migrating from SHA-256 to bcrypt or to a higher bcrypt
+cost, pays for one check per tier on every attempt.
 
 #### Generating SHA-256 and SHA-512 passwords
 
