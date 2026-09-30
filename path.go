@@ -1063,6 +1063,90 @@ func (parser *routeParser) getMatch(detectionPath, path string, params *[maxPara
 	}
 
 	originalDetectionPath := detectionPath
+	// offset indexes into the never-resliced path; it only advances by bytes consumed
+	// from detectionPath (never longer than path), so offset+i stays in bounds.
+	var i, paramsIterator, partLen, offset int
+	for _, segment := range parser.segs {
+		partLen = len(detectionPath)
+		// check const segment
+		if !segment.IsParam {
+			i = segment.Length
+			// is optional part or the const part must match with the given string
+			// check if the end of the segment is an optional slash
+			// the unsigned compare proves 0 <= i <= len(detectionPath), keeping detectionPath[:i] bounds-check free
+			// NOTE: computeSlashBounds' minSlashes accounts for this optional-slash drop
+			if segment.HasOptionalSlash && partLen == i-1 && detectionPath == segment.Const[:i-1] {
+				i--
+			} else if uint(i) > uint(len(detectionPath)) || detectionPath[:i] != segment.Const {
+				if parser.hasOptionalParam() {
+					return parser.matchBacktrack(originalDetectionPath, path, params, partialCheck)
+				}
+				return false
+			}
+		} else {
+			// determine parameter length
+			i = findParamLen(detectionPath, segment)
+			if !segment.IsOptional && i == 0 {
+				if parser.hasOptionalParam() {
+					return parser.matchBacktrack(originalDetectionPath, path, params, partialCheck)
+				}
+				return false
+			}
+			// take over the params positions
+			params[paramsIterator] = path[offset : offset+i]
+
+			if !segment.IsOptional || i != 0 {
+				// check constraint
+				for _, c := range segment.Constraints {
+					if matched := c.matchConstraint(params[paramsIterator]); !matched {
+						// Constraint failed on non-empty value: do not backtrack to empty!
+						return false
+					}
+				}
+			}
+
+			paramsIterator++
+		}
+
+		// reduce founded part from the string
+		if partLen > 0 {
+			detectionPath = detectionPath[i:]
+			offset += i
+		}
+	}
+	if detectionPath != "" {
+		if !partialCheck {
+			if parser.hasOptionalParam() {
+				return parser.matchBacktrack(originalDetectionPath, path, params, partialCheck)
+			}
+			return false
+		}
+		consumedLength := len(originalDetectionPath) - len(detectionPath)
+		if !hasPartialMatchBoundary(originalDetectionPath, consumedLength) {
+			if parser.hasOptionalParam() {
+				return parser.matchBacktrack(originalDetectionPath, path, params, partialCheck)
+			}
+			return false
+		}
+	}
+
+	return true
+}
+
+func (parser *routeParser) hasOptionalParam() bool {
+	for _, s := range parser.segs {
+		if s.IsOptional && !s.IsGreedy {
+			return true
+		}
+	}
+	return false
+}
+
+// matchBacktrack is called only when a route containing optional parameters fails
+// its initial greedy match. It allows an optional parameter that consumed characters
+// to be retried as empty so later required segments can match (e.g. /:a:b?:c on /ac).
+func (parser *routeParser) matchBacktrack(detectionPath, path string, params *[maxParams]string, partialCheck bool) bool {
+	originalDetectionPath := detectionPath
 	var i, paramsIterator, partLen, offset int
 	var backtrackSegIdx, backtrackOffset, backtrackParamsIterator int
 	var backtrackDetectionPath string
