@@ -59,6 +59,11 @@ type fileServerKey struct {
 func (s *fileServer) requestPath(dst []byte, p string) []byte {
 	addTrailingSlash := false
 	if len(p) >= s.prefixLen {
+		// a partial wildcard such as /static* also matches /staticx; the rest of
+		// the path must start at a segment boundary
+		if s.prefixLen > 1 && len(p) > s.prefixLen && p[s.prefixLen] != '/' {
+			return append(dst, invalidPathSentinel...)
+		}
 		if s.invalid {
 			return append(dst, invalidPathSentinel...)
 		}
