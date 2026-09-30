@@ -359,7 +359,9 @@ func buildRouteURL(route *Route, params Map) (string, error) {
 
 		if found {
 			value := utils.ToString(val)
-			checkDotSegments = checkDotSegments || strings.Contains(value, ".")
+			// Under UnescapePath a slash in the value can split a constant dot into its own segment.
+			checkDotSegments = checkDotSegments || strings.Contains(value, ".") ||
+				(route.unescapePath && strings.Contains(value, "/"))
 			// Match the slash-consuming branches of findParamLen, including
 			// adjacent parameters (which consume exactly one byte) and
 			// single-byte non-slash terminators.

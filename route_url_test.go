@@ -42,6 +42,8 @@ func Test_Route_URL_ParameterRepresentability(t *testing.T) {
 		{name: "adjacent parameter cannot consume multibyte slash value", pattern: "/p/:value:tail", key: "value", value: "é/", unescape: true, reject: true},
 		{name: "encoded parent stays in one segment", pattern: "/p/:value-", key: "value", value: "a/../b", want: "/p/a%2F..%2Fb-"},
 		{name: "decoded parent before terminator", pattern: "/p/:value-", key: "value", value: "a/../b", unescape: true, reject: true},
+		{name: "decoded slash splits constant dot before", pattern: "/p/.:value-", key: "value", value: "/x", unescape: true, reject: true},
+		{name: "decoded slash splits constant dot after", pattern: "/p/:value.", key: "value", value: "a/", unescape: true, reject: true},
 		{name: "literal percent encoded dot", pattern: "/user/:value", key: "value", value: "%2e", unescape: true, want: "/user/%252e"},
 		{name: "literal percent before real dot", pattern: "/files/*", key: "*", value: "%2e/name.txt", unescape: true, want: "/files/%252e/name.txt"},
 	}
