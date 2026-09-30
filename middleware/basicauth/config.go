@@ -194,12 +194,12 @@ type verifierStrength struct {
 // and selects the strongest configured verifier for the dummy verification path.
 // The dummy verifier is used for unknown-user requests to equalize timing.
 //
-// Note: in mixed-hash deployments (e.g. bcrypt + SHA-256), the dummy matches
-// the strongest configured hash. Users with weaker hashes may still be
-// distinguishable from unknown users by timing. This is an accepted trade-off
-// since running all verifier types per request would be prohibitively expensive.
+// In mixed-hash deployments (e.g. bcrypt + SHA-256) a user with a weaker hash
+// also runs the dummy, so every attempt costs one strongest-hash check and
+// neither a known user nor its hash family shows in the response time.
 func buildVerifiers(users map[string]string) (userVerifiers, passwordVerifier, error) {
 	verifiers := make(userVerifiers, len(users))
+	strengths := make(map[string]verifierStrength, len(users))
 	dummyVerify := fallbackDummyVerify
 	keys := make([]string, 0, len(users))
 	for user := range users {
@@ -217,9 +217,22 @@ func buildVerifiers(users map[string]string) (userVerifiers, passwordVerifier, e
 		verifiers[user] = verify
 
 		strength := verifierStrengthForHash(hashedPassword)
+		strengths[user] = strength
 		if strength.betterThan(dummyStrength) {
 			dummyVerify = verify
 			dummyStrength = strength
+		}
+	}
+
+	for user, strength := range strengths {
+		if !dummyStrength.betterThan(strength) {
+			continue
+		}
+		verify := verifiers[user]
+		verifiers[user] = func(pass string) bool {
+			ok := verify(pass)
+			dummyVerify(pass)
+			return ok
 		}
 	}
 

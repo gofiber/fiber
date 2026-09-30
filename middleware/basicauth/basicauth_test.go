@@ -8,10 +8,12 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/internal/loggertest"
@@ -670,6 +672,33 @@ func Test_buildVerifiers(t *testing.T) {
 		require.True(t, dummyVerify(strongestPassword))
 		require.False(t, dummyVerify("sha512-pass"))
 		require.False(t, dummyVerify("sha256-pass"))
+	})
+
+	t.Run("a weaker hash costs as much as an unknown user", func(t *testing.T) {
+		t.Parallel()
+
+		strongestHash, err := bcrypt.GenerateFromPassword([]byte("bcrypt-pass"), bcrypt.MinCost+2)
+		require.NoError(t, err)
+		verifiers, dummyVerify, err := buildVerifiers(map[string]string{
+			"admin": string(strongestHash),
+			"john":  sha256Hash("sha256-pass"),
+		})
+		require.NoError(t, err)
+		require.True(t, verifiers["john"]("sha256-pass"))
+		require.False(t, verifiers["john"]("bcrypt-pass"))
+
+		// Fastest of several runs, so scheduler noise cannot fake either side.
+		fastest := func(verify passwordVerifier) time.Duration {
+			best := time.Duration(math.MaxInt64)
+			for range 5 {
+				start := time.Now()
+				verify("wrong")
+				best = min(best, time.Since(start))
+			}
+			return best
+		}
+		// An unpadded SHA-256 check is thousands of times faster than bcrypt.
+		require.Greater(t, fastest(verifiers["john"]), fastest(dummyVerify)/4)
 	})
 
 	t.Run("uses a fixed-work fallback when no users are configured", func(t *testing.T) {
