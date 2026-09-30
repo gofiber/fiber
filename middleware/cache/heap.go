@@ -42,6 +42,8 @@ type heapEntry struct {
 // indexedHeap is used for quickly finding entries with the lowest
 // expiration timestamp and deleting arbitrary entries.
 type indexedHeap struct {
+	// One live heap index per cache key.
+	keys map[string]int
 	// Slice the heap is built on
 	entries []heapEntry
 	// Mapping "index" to position in heap slice
@@ -87,18 +89,37 @@ func (h *indexedHeap) Push(x any) {
 // Pop implements heap.Interface and removes the last entry from the heap.
 func (h *indexedHeap) Pop() any {
 	n := len(h.entries)
+	entry := h.entries[n-1]
+	if h.keys[entry.key] == entry.idx {
+		delete(h.keys, entry.key)
+	}
 	h.entries = h.entries[0 : n-1]
-	return h.entries[0:n][n-1]
+	return entry
 }
 
 func (h *indexedHeap) pushInternal(entry heapEntry) {
+	if h.keys == nil {
+		h.keys = make(map[string]int)
+	}
+	h.keys[entry.key] = entry.idx
 	h.indices[entry.idx] = len(h.entries)
 	h.entries = append(h.entries, entry)
 }
 
+// findKey finds the live node for a key without scanning the expiration heap.
+func (h *indexedHeap) findKey(key string) (int, bool) {
+	idx, ok := h.keys[key]
+	return idx, ok
+}
+
 // Returns index to track entry
 func (h *indexedHeap) put(key string, exp uint64, bytes uint) int {
-	gen := h.nextGeneration()
+	return h.putWithGeneration(key, exp, bytes, h.nextGeneration())
+}
+
+// putWithGeneration restores an existing entry without changing its persisted
+// identity. Its heap index may change if another entry reused the old slot.
+func (h *indexedHeap) putWithGeneration(key string, exp uint64, bytes uint, gen uint64) int {
 	idx := 0
 	if len(h.entries) < h.maxidx {
 		// Steal index from previously removed entry
