@@ -1,0 +1,19 @@
+name: Benchmark Comment
+
+# A fork PR's Benchmark run has a read-only token and cannot comment, so it leaves
+# its report behind as an artifact and this run posts it. Nothing from the fork is
+# checked out or executed here.
+
+on:
+  workflow_run:
+    workflows: [Benchmark]
+    types: [completed]
+
+permissions:
+  actions: read
+  contents: read
+  pull-requests: write
+
+jobs:
+  comment:
+    uses: gofiber/.github/.github/workflows/benchmark-comment.yml@main
