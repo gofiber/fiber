@@ -1625,7 +1625,7 @@ app.Get("/", func(c fiber.Ctx) error {
 
 ### HasHeaderValue
 
-Reports whether the request header `key` lists `value` as one of its comma-separated members, on any of its field lines. Repeated field lines are treated as one list ([RFC 9110 Section 5.3](https://www.rfc-editor.org/rfc/rfc9110#section-5.3)) and the member is matched case-insensitively, which fits directive-style headers such as `Cache-Control` or `Connection`. A comma inside a quoted argument does not split a member, so `ext="a,no-transform,b"` does not list `no-transform`. An empty `value` is never present.
+Reports whether the request header `key` lists `value` as one of its comma-separated members, on any of its field lines. Repeated field lines are treated as one list ([RFC 9110 Section 5.3](https://www.rfc-editor.org/rfc/rfc9110#section-5.3)) and the member is matched case-insensitively, which fits directive-style headers such as `Cache-Control` or `Connection`. A comma inside a quoted argument does not split a member, so `ext="a,no-transform,b"` does not list `no-transform`. A backslash inside quotes escapes the next byte ([RFC 9110 Section 5.6.4](https://www.rfc-editor.org/rfc/rfc9110#section-5.6.4)), so `ext="a\"", no-transform` does list it. An empty `value` is never present.
 
 ```go title="Signature"
 func (c fiber.Ctx) HasHeaderValue(key, value string) bool

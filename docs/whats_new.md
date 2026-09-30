@@ -702,6 +702,7 @@ The `TypeConstraint` type, `Constraint.ID`, and `Constraint.RegexCompiler` field
 - **AcceptLanguage**: Returns the `Accept-Language` request header.
 - **AcceptEncoding**: Returns the `Accept-Encoding` request header.
 - **HasHeader**: Reports whether the request includes a header with the given key.
+- **HasHeaderValue**: Reports whether a comma-separated request header such as `Cache-Control` lists a member on any of its field lines, case-insensitively and respecting quoted arguments.
 - **MediaType**: Returns the MIME type from the `Content-Type` header without parameters.
 - **Charset**: Returns the `charset` parameter from the `Content-Type` header.
 - **IsJSON**: Reports whether the `Content-Type` header is JSON.
