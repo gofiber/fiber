@@ -6187,3 +6187,31 @@ func Test_OptionalParam_ConstraintFailureDoesNotBypassAsEmpty(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, StatusOK, respEmpty.StatusCode)
 }
+
+func Test_RouteParser_BacktrackMaxRetriesBound(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	// 17 adjacent optionals exceeding maxBacktrackRetries (16)
+	app.Get("/test/:a?:b?:c?:d?:e?:f?:g?:h?:i?:j?:k?:l?:m?:n?:o?:p?:q?-end", func(c Ctx) error {
+		return c.SendStatus(StatusOK)
+	})
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test/nomatch", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, StatusNotFound, resp.StatusCode)
+}
+
+func Test_RouteParser_GreedyWildcardDoesNotYield(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	// Greedy wildcard * must not yield to plus param +
+	app.Get("/*+:x?", func(c Ctx) error {
+		return c.SendStatus(StatusOK)
+	})
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/-", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, StatusNotFound, resp.StatusCode)
+}
