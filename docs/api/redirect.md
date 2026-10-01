@@ -133,7 +133,7 @@ there is no fallback.
 :::
 
 ```go title="Signature"
-func (r *Redirect) Back(fallback string) error
+func (r *Redirect) Back(fallback ...string) error
 ```
 
 ```go title="Example"
@@ -264,10 +264,10 @@ app.Get("/name", func(c fiber.Ctx) error {
 
 #### With
 
-Send flash messages with `With`.
+Send flash messages with `With`. The optional `level` sets the message's `Level` and defaults to `0`.
 
 ```go title="Signature"
-func (r *Redirect) With(key, value string) *Redirect
+func (r *Redirect) With(key, value string, level ...uint8) *Redirect
 ```
 
 ```go title="Example"
@@ -277,7 +277,7 @@ app.Get("/login", func(c fiber.Ctx) error {
 
 app.Get("/", func(c fiber.Ctx) error {
   // => Logged in successfully
-  return c.SendString(c.Redirect().Message("status"))
+  return c.SendString(c.Redirect().Message("status").Value)
 })
 ```
 
@@ -313,6 +313,6 @@ app.Post("/login", func(c fiber.Ctx) error {
 
 app.Get("/name", func(c fiber.Ctx) error {
   // => John
-  return c.SendString(c.Redirect().OldInput("name"))
+  return c.SendString(c.Redirect().OldInput("name").Value)
 }).Name("name")
 ```
