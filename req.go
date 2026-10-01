@@ -304,7 +304,8 @@ func (r *DefaultReq) HasHeader(key string) bool {
 // (RFC 9111 permits quoted directive arguments, escaped quotes included). An
 // empty value is never present. Only valid within the handler.
 func (r *DefaultReq) HasHeaderValue(key, value string) bool {
-	if value == "" {
+	// One lookup settles the common case of a header that is not there at all.
+	if value == "" || len(r.headerField(key)) == 0 {
 		return false
 	}
 	app := r.c.app

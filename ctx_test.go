@@ -351,6 +351,13 @@ func Test_Ctx_HasHeaderValue(t *testing.T) {
 	c.Request().Header.Del(HeaderCacheControl)
 	c.Request().Header.Set(HeaderCacheControl, `ext="a\"", no-transform`)
 	require.True(t, c.HasHeaderValue(HeaderCacheControl, "no-transform"))
+
+	// An empty first line does not hide the lines after it.
+	c.Request().Header.Del(HeaderCacheControl)
+	c.Request().Header.Add(HeaderCacheControl, "")
+	c.Request().Header.Add(HeaderCacheControl, "no-transform")
+	require.True(t, c.HasHeaderValue(HeaderCacheControl, "no-transform"))
+	require.False(t, c.HasHeaderValue(HeaderCacheControl, "public"))
 }
 
 // go test -run Test_Ctx_FullURL_DoesNotAliasPooledBuffer
