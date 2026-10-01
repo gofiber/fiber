@@ -359,16 +359,21 @@ func buildRouteURL(route *Route, params Map) (string, error) {
 
 		if found {
 			value := utils.ToString(val)
-			// Under UnescapePath a slash in the value can split a constant dot into its own segment.
-			checkDotSegments = checkDotSegments || strings.Contains(value, ".") ||
-				(route.unescapePath && strings.Contains(value, "/"))
-			// Match the slash-consuming branches of findParamLen, including
-			// adjacent parameters (which consume exactly one byte) and
-			// single-byte non-slash terminators.
-			if route.unescapePath && !segment.IsGreedy && strings.Contains(value, "/") &&
-				(segment.IsLast || (segment.Length == 1 && len(value) > 1) ||
-					(segment.Length != 1 && (len(segment.ComparePart) != 1 || segment.ComparePart[0] == slashDelimiter))) {
-				return "", ErrRouteNotRepresentable
+			if !checkDotSegments {
+				if segment.IsGreedy {
+					checkDotSegments = strings.IndexByte(value, '.') >= 0
+				} else {
+					// Its slashes get escaped, so it stays inside one segment and only
+					// "." or ".." can be or complete a dot segment.
+					checkDotSegments = value == "." || value == ".."
+				}
+			}
+			if route.unescapePath && strings.IndexByte(value, '/') >= 0 {
+				if route.slashLeavesParam(segment, value) {
+					return "", ErrRouteNotRepresentable
+				}
+				// A slash in the value can split a constant dot into its own segment.
+				checkDotSegments = true
 			}
 			if segment.IsGreedy {
 				buf.B = utils.AppendPathSegmentsEscape(buf.B, value)
@@ -382,6 +387,15 @@ func buildRouteURL(route *Route, params Map) (string, error) {
 		return "", ErrRouteNotRepresentable
 	}
 	return urlnorm.RootedPath(buf.String()), nil
+}
+
+// slashLeavesParam reports whether a decoded slash in value ends up outside the parameter.
+// It mirrors the slash-consuming branches of findParamLen, including adjacent parameters
+// (which consume exactly one byte) and single-byte non-slash terminators.
+func (*Route) slashLeavesParam(segment *routeSegment, value string) bool {
+	return !segment.IsGreedy &&
+		(segment.IsLast || (segment.Length == 1 && len(value) > 1) ||
+			(segment.Length != 1 && (len(segment.ComparePart) != 1 || segment.ComparePart[0] == slashDelimiter)))
 }
 
 // urlHasDotSegment checks the composed path, since constants can complete or
