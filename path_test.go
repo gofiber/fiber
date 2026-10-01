@@ -1341,7 +1341,7 @@ func Test_RoutePatternMatch_MatchesRouter(t *testing.T) {
 						return nil
 					})
 
-					_, err := app.Test(httptest.NewRequest(MethodGet, path, http.NoBody))
+					_, err := app.Test(httptest.NewRequest(MethodGet, path, http.NoBody), sweepTestConfig)
 					require.NoError(t, err)
 
 					require.Equal(t, matched, RoutePatternMatch(path, pattern, cfg),
