@@ -3909,8 +3909,12 @@ func Test_CacheRespectsUpstreamAgeForFreshness(t *testing.T) {
 	t.Run("expiresAfterRemainingLifetime", func(t *testing.T) {
 		t.Parallel()
 
+		// Manually advanced like the s-maxage tests: with one second of lifetime
+		// left, a tick of the real clock would expire the entry before the hit.
+		clock := newTestClock(time.Now().Truncate(time.Second))
 		app := fiber.New()
 		app.Use(New(Config{
+			clock: clock.Now,
 			KeyGenerator: func(c fiber.Ctx) string {
 				return c.Path() + "|age-remaining"
 			},
@@ -3939,7 +3943,7 @@ func Test_CacheRespectsUpstreamAgeForFreshness(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, "1", string(body))
 
-		time.Sleep(1500 * time.Millisecond)
+		clock.Add(1500 * time.Millisecond)
 
 		resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 		require.NoError(t, err)

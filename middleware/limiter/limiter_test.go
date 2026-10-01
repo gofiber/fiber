@@ -64,6 +64,12 @@ func (e *typedNilLimiterError) Error() string {
 	return e.message
 }
 
+// newInjectedClockStorage keeps entries until they are overwritten: the memory
+// storage expires them by the real clock, which a test's injected clock does not move.
+func newInjectedClockStorage() *failingLimiterStorage {
+	return newFailingLimiterStorage()
+}
+
 func newFailingLimiterStorage() *failingLimiterStorage {
 	return &failingLimiterStorage{
 		data: make(map[string][]byte),
@@ -875,6 +881,7 @@ func Test_Limiter_Fixed_ExpirationFuncOverridesStaticExpiration(t *testing.T) {
 		Expiration:        10 * time.Second,
 		ExpirationFunc:    func(_ fiber.Ctx) time.Duration { return 2 * time.Second },
 		clock:             clock.Now,
+		Storage:           newInjectedClockStorage(),
 		LimiterMiddleware: FixedWindow{},
 	}))
 
@@ -1050,6 +1057,7 @@ func Test_Limiter_SubSecondExpirationIsOneSecondWindow(t *testing.T) {
 			Expiration:        500 * time.Millisecond,
 			LimiterMiddleware: FixedWindow{},
 			clock:             clock.Now,
+			Storage:           newInjectedClockStorage(),
 		}))
 		app.Get("/", func(c fiber.Ctx) error {
 			return c.SendStatus(fiber.StatusOK)
@@ -1529,6 +1537,7 @@ func Test_Limiter_Fixed_Window_SkipSuccessfulRequests_DoesNotCreditNextWindow(t 
 		SkipSuccessfulRequests: true,
 		LimiterMiddleware:      FixedWindow{},
 		clock:                  clock.Now,
+		Storage:                newInjectedClockStorage(),
 	}))
 
 	started := make(chan struct{})

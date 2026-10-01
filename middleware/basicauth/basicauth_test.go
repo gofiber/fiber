@@ -706,23 +706,34 @@ func Test_buildVerifiers_SameCostAcrossTiers(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	// Fastest of interleaved runs, so scheduler noise cannot fake either side.
+	// Fastest of interleaved runs, in CPU time so a busy machine cannot stretch one side.
+	// What noise is left only adds time: measure until the minima agree, a real difference never does.
 	names := []string{"admin", "old", "john", "unknown"}
 	attempts := []passwordVerifier{verifiers["admin"], verifiers["old"], verifiers["john"], dummyVerify}
 	best := make([]time.Duration, len(attempts))
 	for i := range best {
 		best[i] = time.Duration(math.MaxInt64)
 	}
-	for range 5 {
+	const tolerance = 0.2
+	agree := func() bool {
+		unknown := float64(best[len(best)-1])
+		for _, took := range best[:len(best)-1] {
+			if math.Abs(float64(took)/unknown-1) > tolerance {
+				return false
+			}
+		}
+		return true
+	}
+	for round := 0; round < 60 && (round < 5 || !agree()); round++ {
 		for i, verify := range attempts {
-			start := time.Now()
+			start := cpuTime(t)
 			verify("wrong")
-			best[i] = min(best[i], time.Since(start))
+			best[i] = min(best[i], cpuTime(t)-start)
 		}
 	}
 	unknown := best[len(best)-1]
 	for i, took := range best[:len(best)-1] {
-		require.InDelta(t, 1, float64(took)/float64(unknown), 0.2, "%s took %v, unknown %v", names[i], took, unknown)
+		require.InDelta(t, 1, float64(took)/float64(unknown), tolerance, "%s took %v, unknown %v", names[i], took, unknown)
 	}
 }
 
