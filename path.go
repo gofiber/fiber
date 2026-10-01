@@ -1142,41 +1142,52 @@ func (parser *routeParser) hasOptionalParam() bool {
 	return false
 }
 
+type backtrackPoint struct {
+	detectionPath  string
+	segIdx         int
+	offset         int
+	paramsIterator int
+}
+
 // matchBacktrack is called only when a route containing optional parameters fails
 // its initial greedy match. It allows an optional parameter that consumed characters
 // to be retried as empty so later required segments can match (e.g. /:a:b?:c on /ac).
 func (parser *routeParser) matchBacktrack(detectionPath, path string, params *[maxParams]string, partialCheck bool) bool {
 	originalDetectionPath := detectionPath
-	var i, paramsIterator, partLen, offset int
-	var backtrackSegIdx, backtrackOffset, backtrackParamsIterator int
-	var backtrackDetectionPath string
-	hasBacktrack := false
+	var i, paramsIterator, partLen, offset, retries int
+	var backtrackStack [maxParams]backtrackPoint
+	backtrackLen := 0
+	const maxRetries = 16
 
 	segIdx := 0
 	for {
 		if segIdx >= len(parser.segs) {
 			if detectionPath != "" {
 				if !partialCheck {
-					if hasBacktrack {
-						segIdx = backtrackSegIdx + 1
-						detectionPath = backtrackDetectionPath
-						offset = backtrackOffset
-						paramsIterator = backtrackParamsIterator
+					if backtrackLen > 0 && retries < maxRetries {
+						retries++
+						backtrackLen--
+						bp := backtrackStack[backtrackLen]
+						segIdx = bp.segIdx + 1
+						detectionPath = bp.detectionPath
+						offset = bp.offset
+						paramsIterator = bp.paramsIterator
 						params[paramsIterator-1] = ""
-						hasBacktrack = false
 						continue
 					}
 					return false
 				}
 				consumedLength := len(originalDetectionPath) - len(detectionPath)
 				if !hasPartialMatchBoundary(originalDetectionPath, consumedLength) {
-					if hasBacktrack {
-						segIdx = backtrackSegIdx + 1
-						detectionPath = backtrackDetectionPath
-						offset = backtrackOffset
-						paramsIterator = backtrackParamsIterator
+					if backtrackLen > 0 && retries < maxRetries {
+						retries++
+						backtrackLen--
+						bp := backtrackStack[backtrackLen]
+						segIdx = bp.segIdx + 1
+						detectionPath = bp.detectionPath
+						offset = bp.offset
+						paramsIterator = bp.paramsIterator
 						params[paramsIterator-1] = ""
-						hasBacktrack = false
 						continue
 					}
 					return false
@@ -1197,13 +1208,15 @@ func (parser *routeParser) matchBacktrack(detectionPath, path string, params *[m
 			if segment.HasOptionalSlash && partLen == i-1 && detectionPath == segment.Const[:i-1] {
 				i--
 			} else if uint(i) > uint(len(detectionPath)) || detectionPath[:i] != segment.Const {
-				if hasBacktrack {
-					segIdx = backtrackSegIdx + 1
-					detectionPath = backtrackDetectionPath
-					offset = backtrackOffset
-					paramsIterator = backtrackParamsIterator
+				if backtrackLen > 0 && retries < maxRetries {
+					retries++
+					backtrackLen--
+					bp := backtrackStack[backtrackLen]
+					segIdx = bp.segIdx + 1
+					detectionPath = bp.detectionPath
+					offset = bp.offset
+					paramsIterator = bp.paramsIterator
 					params[paramsIterator-1] = ""
-					hasBacktrack = false
 					continue
 				}
 				return false
@@ -1211,13 +1224,15 @@ func (parser *routeParser) matchBacktrack(detectionPath, path string, params *[m
 		} else {
 			i = findParamLen(detectionPath, segment)
 			if !segment.IsOptional && i == 0 {
-				if hasBacktrack {
-					segIdx = backtrackSegIdx + 1
-					detectionPath = backtrackDetectionPath
-					offset = backtrackOffset
-					paramsIterator = backtrackParamsIterator
+				if backtrackLen > 0 && retries < maxRetries {
+					retries++
+					backtrackLen--
+					bp := backtrackStack[backtrackLen]
+					segIdx = bp.segIdx + 1
+					detectionPath = bp.detectionPath
+					offset = bp.offset
+					paramsIterator = bp.paramsIterator
 					params[paramsIterator-1] = ""
-					hasBacktrack = false
 					continue
 				}
 				return false
@@ -1234,12 +1249,14 @@ func (parser *routeParser) matchBacktrack(detectionPath, path string, params *[m
 			}
 
 			// If optional and non-empty, save a backtrack point where this optional param could be empty
-			if segment.IsOptional && i > 0 {
-				backtrackSegIdx = segIdx
-				backtrackDetectionPath = detectionPath
-				backtrackOffset = offset
-				backtrackParamsIterator = paramsIterator + 1
-				hasBacktrack = true
+			if segment.IsOptional && i > 0 && backtrackLen < len(backtrackStack) {
+				backtrackStack[backtrackLen] = backtrackPoint{
+					segIdx:         segIdx,
+					offset:         offset,
+					paramsIterator: paramsIterator + 1,
+					detectionPath:  detectionPath,
+				}
+				backtrackLen++
 			}
 
 			params[paramsIterator] = path[offset : offset+i]

@@ -198,6 +198,13 @@ func init() {
 				},
 			},
 			{
+				pattern: "/:a?:b?:c:d",
+				testCases: []routeTestCase{
+					{url: "/xy", params: []string{"", "", "x", "y"}, match: true},
+					{url: "/wxyz", params: []string{"w", "x", "y", "z"}, match: true},
+				},
+			},
+			{
 				pattern: "/foo:param?bar",
 				testCases: []routeTestCase{
 					{url: "/foofaselbar", params: []string{"fasel"}, match: true},
