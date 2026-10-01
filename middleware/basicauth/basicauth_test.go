@@ -706,8 +706,8 @@ func Test_buildVerifiers_SameCostAcrossTiers(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	// Fastest of interleaved runs: noise only adds time, so the minima close in on the
-	// real cost. Keep measuring until they agree, which a real difference never does.
+	// Fastest of interleaved runs, in CPU time so a busy machine cannot stretch one side.
+	// What noise is left only adds time: measure until the minima agree, a real difference never does.
 	names := []string{"admin", "old", "john", "unknown"}
 	attempts := []passwordVerifier{verifiers["admin"], verifiers["old"], verifiers["john"], dummyVerify}
 	best := make([]time.Duration, len(attempts))
@@ -726,9 +726,9 @@ func Test_buildVerifiers_SameCostAcrossTiers(t *testing.T) {
 	}
 	for round := 0; round < 60 && (round < 5 || !agree()); round++ {
 		for i, verify := range attempts {
-			start := time.Now()
+			start := cpuTime(t)
 			verify("wrong")
-			best[i] = min(best[i], time.Since(start))
+			best[i] = min(best[i], cpuTime(t)-start)
 		}
 	}
 	unknown := best[len(best)-1]
