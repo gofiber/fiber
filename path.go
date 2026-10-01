@@ -1152,42 +1152,42 @@ type backtrackPoint struct {
 // matchBacktrack is called only when a route containing optional parameters fails
 // its initial greedy match. It allows an optional parameter that consumed characters
 // to be retried as empty so later required segments can match (e.g. /:a:b?:c on /ac).
-func (parser *routeParser) matchBacktrack(detectionPath, path string, params *[maxParams]string, partialCheck bool) bool {
+func (parser *routeParser) matchBacktrack(detectionPath, path string, params *[maxParams]string, partialCheck bool) bool { //nolint:revive // mirrors getMatch's signature
 	originalDetectionPath := detectionPath
-	var i, paramsIterator, partLen, offset, retries int
+	var i, paramsIterator, partLen, offset, retries, segIdx int
 	var backtrackStack [maxParams]backtrackPoint
 	backtrackLen := 0
 	const maxRetries = 16
 
-	segIdx := 0
+	restore := func() bool {
+		if backtrackLen > 0 && retries < maxRetries {
+			retries++
+			backtrackLen--
+			if backtrackLen >= 0 && backtrackLen < len(backtrackStack) {
+				bp := backtrackStack[backtrackLen]
+				segIdx = bp.segIdx + 1
+				detectionPath = bp.detectionPath
+				offset = bp.offset
+				paramsIterator = bp.paramsIterator
+				params[paramsIterator-1] = ""
+				return true
+			}
+		}
+		return false
+	}
+
 	for {
 		if segIdx >= len(parser.segs) {
 			if detectionPath != "" {
 				if !partialCheck {
-					if backtrackLen > 0 && retries < maxRetries {
-						retries++
-						backtrackLen--
-						bp := backtrackStack[backtrackLen]
-						segIdx = bp.segIdx + 1
-						detectionPath = bp.detectionPath
-						offset = bp.offset
-						paramsIterator = bp.paramsIterator
-						params[paramsIterator-1] = ""
+					if restore() {
 						continue
 					}
 					return false
 				}
 				consumedLength := len(originalDetectionPath) - len(detectionPath)
 				if !hasPartialMatchBoundary(originalDetectionPath, consumedLength) {
-					if backtrackLen > 0 && retries < maxRetries {
-						retries++
-						backtrackLen--
-						bp := backtrackStack[backtrackLen]
-						segIdx = bp.segIdx + 1
-						detectionPath = bp.detectionPath
-						offset = bp.offset
-						paramsIterator = bp.paramsIterator
-						params[paramsIterator-1] = ""
+					if restore() {
 						continue
 					}
 					return false
@@ -1208,15 +1208,7 @@ func (parser *routeParser) matchBacktrack(detectionPath, path string, params *[m
 			if segment.HasOptionalSlash && partLen == i-1 && detectionPath == segment.Const[:i-1] {
 				i--
 			} else if uint(i) > uint(len(detectionPath)) || detectionPath[:i] != segment.Const {
-				if backtrackLen > 0 && retries < maxRetries {
-					retries++
-					backtrackLen--
-					bp := backtrackStack[backtrackLen]
-					segIdx = bp.segIdx + 1
-					detectionPath = bp.detectionPath
-					offset = bp.offset
-					paramsIterator = bp.paramsIterator
-					params[paramsIterator-1] = ""
+				if restore() {
 					continue
 				}
 				return false
@@ -1224,15 +1216,7 @@ func (parser *routeParser) matchBacktrack(detectionPath, path string, params *[m
 		} else {
 			i = findParamLen(detectionPath, segment)
 			if !segment.IsOptional && i == 0 {
-				if backtrackLen > 0 && retries < maxRetries {
-					retries++
-					backtrackLen--
-					bp := backtrackStack[backtrackLen]
-					segIdx = bp.segIdx + 1
-					detectionPath = bp.detectionPath
-					offset = bp.offset
-					paramsIterator = bp.paramsIterator
-					params[paramsIterator-1] = ""
+				if restore() {
 					continue
 				}
 				return false

@@ -6182,4 +6182,3 @@ func Test_OptionalParam_ConstraintFailureDoesNotBypassAsEmpty(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, StatusOK, respEmpty.StatusCode)
 }
-
