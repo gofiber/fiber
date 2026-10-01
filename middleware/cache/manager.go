@@ -35,6 +35,8 @@ type item struct {
 	private         bool
 	// used for finding the item in an indexed heap
 	heapidx int
+	// distinguishes the item from a later entry reusing the same heap index
+	heapgen uint64
 }
 
 //nolint:revive // msgp requires tags on unexported fields for limit enforcement.
@@ -109,6 +111,7 @@ func (m *manager) release(e *item) {
 	e.shareable = false
 	e.private = false
 	e.heapidx = 0
+	e.heapgen = 0
 	m.pool.Put(e)
 }
 
