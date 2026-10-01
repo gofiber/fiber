@@ -67,9 +67,9 @@ When a redirect crosses to a **different host**, `DoRedirects` strips `Authoriza
 
 ### X-Real-IP spoof prevention
 
-`Forward`, `DomainForward`, and `BalancerForward` automatically overwrite the `X-Real-IP` header with `c.IP()` before forwarding, so clients cannot spoof their address. `DomainForward` only applies the overwrite when the request host matches the configured hostname (matched case-insensitively per RFC 9110 §4.2.3, with or without a port in the `Host` header); non-matching requests are passed on to the next handler unchanged. After any of the forwarding helpers returns, the request carries its original URI and `Host` again, so middleware running after `Next` still sees the request the client sent.
+`Balancer`, `Forward`, `DomainForward`, and `BalancerForward` automatically overwrite the `X-Real-IP` header with `c.IP()` before forwarding, so clients cannot spoof their address. `Balancer` does so before `ModifyRequest` runs, so `ModifyRequest` can still set its own value. `DomainForward` only applies the overwrite when the request host matches the configured hostname (matched case-insensitively per RFC 9110 §4.2.3, with or without a port in the `Host` header); non-matching requests are passed on to the next handler unchanged. After any of the forwarding helpers returns, the request carries its original URI and `Host` again, so middleware running after `Next` still sees the request the client sent.
 
-If you're using `Balancer` with the `Config` struct, you can replicate the protection in `ModifyRequest`. When using `Do`, `DoRedirects`, `DoDeadline`, or `DoTimeout` directly, the `X-Real-IP` header is not set automatically — set it manually if needed:
+When using `Do`, `DoRedirects`, `DoDeadline`, or `DoTimeout` directly, the `X-Real-IP` header is not set automatically — set it manually if needed:
 
 ```go
 ip := c.IP()
@@ -94,7 +94,7 @@ spelling the client sent, and lower case is what HTTP/2 and HTTP/3 put on the
 wire. `Del("X-Real-IP")` then leaves a client-sent `x-real-ip` untouched and the
 `Add` lands beside it, which is the pair the delete exists to prevent.
 
-The middleware's own `Forward`, `DomainForward` and `BalancerForward` handle
+The middleware's own `Balancer`, `Forward`, `DomainForward` and `BalancerForward` handle
 this. Doing it by hand takes one pass to collect the spellings and another to
 remove them, since deleting while iterating the store is not safe:
 

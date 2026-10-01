@@ -138,6 +138,9 @@ func Balancer(config ...Config) fiber.Handler {
 		defer req.SetRequestURI(originalURL)
 		req.SetRequestURI(target)
 
+		// Before ModifyRequest, so the application still has the last word.
+		setRealIP(c)
+
 		// Modify request
 		if cfg.ModifyRequest != nil {
 			if err := cfg.ModifyRequest(c); err != nil {
