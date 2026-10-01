@@ -1752,3 +1752,64 @@ func Test_Static_NonGetMethod_PassesThrough(t *testing.T) {
 	require.NoError(t, err)
 	require.Contains(t, string(served), "Hello, World!")
 }
+
+// Test_Static_PartialWildcard_SegmentBoundary checks that a partial wildcard
+// route serves only what lies below its path segment, so middleware mounted on
+// /static/private cannot be skipped with /staticprivate/secret.txt.
+func Test_Static_PartialWildcard_SegmentBoundary(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(root, "private"), 0o750))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "private", "secret.txt"), []byte("SECRET"), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "x"), []byte("PUBLIC"), 0o600))
+
+	app := fiber.New()
+	app.Use("/static/private", func(c fiber.Ctx) error {
+		return c.SendStatus(fiber.StatusForbidden)
+	})
+	app.Get("/static*", New(root, Config{CacheDuration: -1}))
+
+	for target, want := range map[string]int{
+		"/static/private/secret.txt": fiber.StatusForbidden,
+		"/staticprivate/secret.txt":  fiber.StatusNotFound,
+		"/staticx":                   fiber.StatusNotFound,
+		"/static/x":                  fiber.StatusOK,
+	} {
+		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, target, http.NoBody))
+		require.NoError(t, err, "app.Test(req)")
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		require.Equal(t, want, resp.StatusCode, "target=%s", target)
+		require.NotContains(t, string(body), "SECRET", "target=%s", target)
+	}
+}
+
+// Test_Static_NonMountRoutes_Served checks that the segment boundary applies only
+// to a /prefix* mount: routes with a plus, a parameter or a slash before the
+// wildcard serve what they matched.
+func Test_Static_NonMountRoutes_Served(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(root, "app.js"), []byte("JS"), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "index.html"), []byte("INDEX"), 0o600))
+
+	app := fiber.New()
+	app.Get("/static+", New(root, Config{CacheDuration: -1}))
+	app.Get("/users/:id", New(filepath.Join(root, "app.js"), Config{CacheDuration: -1}))
+	app.Get("/:lang/*", New(filepath.Join(root, "index.html"), Config{CacheDuration: -1}))
+
+	for target, want := range map[string]string{
+		"/static/app.js": "JS",
+		"/en/dashboard":  "INDEX",
+		"/users/1234":    "JS",
+	} {
+		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, target, http.NoBody))
+		require.NoError(t, err, "app.Test(req)")
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		require.Equal(t, fiber.StatusOK, resp.StatusCode, "target=%s", target)
+		require.Equal(t, want, string(body), "target=%s", target)
+	}
+}

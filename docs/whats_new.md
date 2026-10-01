@@ -1994,7 +1994,7 @@ app.Get("*", static.New("./public/index.html"))
 ```
 
 :::caution
-You have to put `*` to the end of the route if you don't define static route with `app.Use`.
+You have to put `*` to the end of the route if you don't define static route with `app.Use`. Under a `/prefix*` route such as `/static*`, only `/static` and paths below `/static/` are served; `/static-v2/app.js` or `/staticapp.js` are no longer served.
 :::
 
 #### Trusted Proxies
