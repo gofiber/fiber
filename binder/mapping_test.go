@@ -942,49 +942,44 @@ func Test_Bind_StringMap_KeepsLastValue(t *testing.T) {
 	}
 	require.NoError(t, mw.Close())
 
+	// Not pooled: the bound strings alias the request and are compared after bind returns.
 	binders := []struct {
 		bind func(split bool, out any) error
 		name string
 	}{
 		{name: "query", bind: func(split bool, out any) error {
-			req := fasthttp.AcquireRequest()
-			defer fasthttp.ReleaseRequest(req)
+			req := &fasthttp.Request{}
 			req.URI().SetQueryString(query)
 			return (&QueryBinding{EnableSplitting: split}).Bind(req, out)
 		}},
 		{name: "form", bind: func(split bool, out any) error {
-			req := fasthttp.AcquireRequest()
-			defer fasthttp.ReleaseRequest(req)
+			req := &fasthttp.Request{}
 			req.Header.SetContentType("application/x-www-form-urlencoded")
 			req.SetBodyString(query)
 			return (&FormBinding{EnableSplitting: split}).Bind(req, out)
 		}},
 		{name: "multipart", bind: func(split bool, out any) error {
-			req := fasthttp.AcquireRequest()
-			defer fasthttp.ReleaseRequest(req)
+			req := &fasthttp.Request{}
 			req.Header.SetContentType(mw.FormDataContentType())
 			req.SetBody(multipartBody.Bytes())
 			return (&FormBinding{EnableSplitting: split}).Bind(req, out)
 		}},
 		{name: "header", bind: func(split bool, out any) error {
-			req := fasthttp.AcquireRequest()
-			defer fasthttp.ReleaseRequest(req)
+			req := &fasthttp.Request{}
 			for _, p := range pairs {
 				req.Header.Add(p[0], p[1])
 			}
 			return (&HeaderBinding{EnableSplitting: split}).Bind(req, out)
 		}},
 		{name: "resp_header", bind: func(split bool, out any) error {
-			resp := fasthttp.AcquireResponse()
-			defer fasthttp.ReleaseResponse(resp)
+			resp := &fasthttp.Response{}
 			for _, p := range pairs {
 				resp.Header.Add(p[0], p[1])
 			}
 			return (&RespHeaderBinding{EnableSplitting: split}).Bind(resp, out)
 		}},
 		{name: "cookie", bind: func(split bool, out any) error {
-			req := fasthttp.AcquireRequest()
-			defer fasthttp.ReleaseRequest(req)
+			req := &fasthttp.Request{}
 			req.Header.Set(fasthttp.HeaderCookie, strings.ReplaceAll(query, "&", "; "))
 			return (&CookieBinding{EnableSplitting: split}).Bind(req, out)
 		}},
