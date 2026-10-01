@@ -6413,7 +6413,7 @@ func Test_Ctx_Endpoint_MatchesTheRouteThatRuns(t *testing.T) {
 		predicted, actual = nil, nil
 
 		req := httptest.NewRequest(tr.Method, tr.Path, http.NoBody)
-		resp, err := app.Test(req)
+		resp, err := app.Test(req, sweepTestConfig)
 		require.NoError(t, err, "%s %s", tr.Method, tr.Path)
 		require.NoError(t, resp.Body.Close())
 
