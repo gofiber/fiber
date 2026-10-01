@@ -814,6 +814,9 @@ func (c *DefaultCtx) Value(key any) any {
 // configDependentPaths set paths for route recognition and prepared paths for the user,
 // here the features for caseSensitive, decoded paths, strict paths are evaluated
 func (c *DefaultCtx) configDependentPaths() {
+	// Routing starts from fasthttp's PathOriginal, not its decoded, normalized
+	// Path. normalizeRequestPath owns request-path decoding according to
+	// UnescapePath; route-pattern preprocessing must not decode it again.
 	// The path is normalized as RFC 3986 Section 6.2.2 describes before any
 	// route sees it (see normalizeRequestPath). The detection path is what a
 	// route is matched against: the case fold of the path unless CaseSensitive

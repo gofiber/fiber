@@ -25,6 +25,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 	"unsafe"
 
 	"github.com/gofiber/utils/v2"
@@ -34,6 +35,10 @@ import (
 )
 
 var routesFixture routeJSON
+
+// sweepTestConfig is for tests that send hundreds of requests through app.Test: each
+// one gets a second by default, which a loaded runner misses once in a few thousand.
+var sweepTestConfig = TestConfig{Timeout: 10 * time.Second, FailOnTimeout: true}
 
 func init() {
 	dat, err := os.ReadFile("./.github/testdata/testRoutes.json")
