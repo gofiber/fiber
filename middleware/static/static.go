@@ -44,6 +44,7 @@ type fileServer struct {
 	prefixLen     int    // length of the route prefix stripped from the path
 	decodeEscapes bool   // off under UnescapePath, which already decoded everything
 	rootIsFile    bool
+	segmentBound  bool // the route is a /prefix* mount, so the rest of the path starts at a /
 	invalid       bool // the fs.FS root cannot be opened, so no path names a file
 }
 
@@ -61,7 +62,7 @@ func (s *fileServer) requestPath(dst []byte, p string) []byte {
 	if len(p) >= s.prefixLen {
 		// a partial wildcard such as /static* also matches /staticx; the rest of
 		// the path must start at a segment boundary
-		if s.prefixLen > 1 && len(p) > s.prefixLen && p[s.prefixLen] != '/' {
+		if s.segmentBound && len(p) > s.prefixLen && p[s.prefixLen] != '/' {
 			return append(dst, invalidPathSentinel...)
 		}
 		if s.invalid {
@@ -257,9 +258,12 @@ func New(root string, cfg ...Config) fiber.Handler {
 	// decodeEscapes is off under UnescapePath, which already decoded everything.
 	newFileServer := func(prefix string, compressedFileSuffixes map[string]string, decodeEscapes bool) *fileServer {
 		// Is prefix a partial wildcard?
+		segmentBound := false
 		if before, _, found := utils.CutByte(prefix, '*'); found {
 			// /john* -> /john
 			prefix = before
+			// only /john* must not match /johnx; /john/* and /* end in a slash
+			segmentBound = before != "" && before[len(before)-1] != '/'
 		}
 
 		prefixLen := len(prefix)
@@ -317,6 +321,7 @@ func New(root string, cfg ...Config) fiber.Handler {
 			root:          root,
 			fsRootPrefix:  fsRootPrefix,
 			prefixLen:     prefixLen,
+			segmentBound:  segmentBound,
 			decodeEscapes: decodeEscapes,
 			rootIsFile:    rootIsFile,
 			invalid:       rootCheckErr != nil && config.FS != nil,

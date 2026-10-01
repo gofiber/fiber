@@ -1784,3 +1784,32 @@ func Test_Static_PartialWildcard_SegmentBoundary(t *testing.T) {
 		require.NotContains(t, string(body), "SECRET", "target=%s", target)
 	}
 }
+
+// Test_Static_NonMountRoutes_Served checks that the segment boundary applies only
+// to a /prefix* mount: routes with a plus, a parameter or a slash before the
+// wildcard serve what they matched.
+func Test_Static_NonMountRoutes_Served(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(root, "app.js"), []byte("JS"), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "index.html"), []byte("INDEX"), 0o600))
+
+	app := fiber.New()
+	app.Get("/static+", New(root, Config{CacheDuration: -1}))
+	app.Get("/users/:id", New(filepath.Join(root, "app.js"), Config{CacheDuration: -1}))
+	app.Get("/:lang/*", New(filepath.Join(root, "index.html"), Config{CacheDuration: -1}))
+
+	for target, want := range map[string]string{
+		"/static/app.js": "JS",
+		"/en/dashboard":  "INDEX",
+		"/users/1234":    "JS",
+	} {
+		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, target, http.NoBody))
+		require.NoError(t, err, "app.Test(req)")
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		require.Equal(t, fiber.StatusOK, resp.StatusCode, "target=%s", target)
+		require.Equal(t, want, string(body), "target=%s", target)
+	}
+}

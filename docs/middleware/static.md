@@ -140,7 +140,7 @@ curl http://localhost:3000/web
 </details>
 
 :::caution
-To define static routes using `Get`, append the wildcard (`*`) operator at the end of the route.
+To define static routes using `Get`, append the wildcard (`*`) operator at the end of the route. Under a `/static*` route the rest of the path must start at a segment boundary, so `/static-v2/app.js` or `/staticapp.js` are no longer served; only `/static` and paths below `/static/` are.
 :::
 
 :::info
