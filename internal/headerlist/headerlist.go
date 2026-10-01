@@ -93,6 +93,47 @@ func AllQuoted(list string) iter.Seq[string] {
 	}
 }
 
+// AllQuotedPairs is [AllQuoted] for quoted strings that may carry a quoted-pair
+// (RFC 9110 Section 5.6.4), such as Cache-Control directive arguments: inside
+// quotes a backslash escapes the next byte, so `ext="a\"", no-transform` has two
+// elements. Entity tags have no quoted-pair and keep using [AllQuoted].
+func AllQuotedPairs(list string) iter.Seq[string] {
+	return func(yield func(string) bool) {
+		start, pos := 0, 0
+		inQuotes := false
+		for {
+			i := utils.IndexAny3(list[pos:], '"', ',', '\\')
+			if i == -1 {
+				break
+			}
+			i += pos
+			pos = i + 1
+
+			switch {
+			case list[i] == '\\':
+				if inQuotes && pos < len(list) {
+					pos++ // the escaped byte ends neither the string nor the element
+				}
+				continue
+			case list[i] == '"':
+				inQuotes = !inQuotes
+				continue
+			case inQuotes:
+				continue
+			}
+			if element := utils.TrimSpace(list[start:i]); element != "" {
+				if !yield(element) {
+					return
+				}
+			}
+			start = i + 1
+		}
+		if element := utils.TrimSpace(list[start:]); element != "" {
+			yield(element)
+		}
+	}
+}
+
 // AllLines yields the elements of every field line in order, so that a header
 // sent as one line and the same header sent as several read alike (RFC 9110
 // Section 5.3).
