@@ -873,11 +873,10 @@ func (c *DefaultCtx) configDependentPaths() {
 // and each of those shortens the path, so one that kept its length holds no
 // escape and no dot segment, apart from a trailing "/." that fasthttp leaves
 // in place. A stray "%" that begins no escape keeps the length too, since
-// fasthttp copies it as sent, and such a path is matched as sent: it holds
-// nothing that could decode, and scanning every request for one measured a
-// hot-path cost of several percent. normalizeRequestPath encodes a stray "%"
-// as "%25" in a path it normalizes for another reason, the only kind in which
-// one could line up with a decoded character into a new escape.
+// fasthttp copies it as sent, and such a path is matched as sent, which is
+// also what normalizeRequestPath makes of it: that writes a stray "%" as "%25"
+// only where an escape decoded after it would complete a new escape with it,
+// and a decoded escape changes the length.
 //
 // A path without a leading slash, the authority form fasthttp admits for
 // CONNECT, is normalized whatever its length: the slash fasthttp adds in

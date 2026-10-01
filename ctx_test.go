@@ -23,6 +23,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -7814,6 +7815,58 @@ func Test_Ctx_SendFile_DirectoryIsNotFound(t *testing.T) {
 		body, err := io.ReadAll(resp.Body)
 		require.NoError(t, err)
 		require.NotContains(t, string(body), "INDEX", name)
+		// the error the default handler writes names neither the directory
+		// nor where it lives
+		require.NotContains(t, string(body), filepath.ToSlash(dir), name)
+		require.NotContains(t, string(body), name, name)
+	}
+}
+
+// Test_Ctx_SendFile_DecodedParamWithRoot pins the recipe the SendFile docs give
+// for a name taken from a route parameter under the default configuration,
+// where c.Params keeps the escapes the router keeps: decode the parameter and
+// serve it through the FS option from an os.Root, which refuses a name that
+// leaves the directory once decoded.
+func Test_Ctx_SendFile_DecodedParamWithRoot(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	files := filepath.Join(dir, "files")
+	require.NoError(t, os.Mkdir(files, 0o750))
+	for _, name := range []string{"my file.txt", "café.txt", "100%.txt"} {
+		require.NoError(t, os.WriteFile(filepath.Join(files, name), []byte("FILE "+name), 0o600))
+	}
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "secret.txt"), []byte("SECRET"), 0o600))
+	root, err := os.OpenRoot(files)
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, root.Close()) })
+
+	app := New()
+	app.Get("/files/:name", func(c Ctx) error {
+		name, err := url.PathUnescape(c.Params("name"))
+		if err != nil {
+			return ErrBadRequest
+		}
+		return c.SendFile(name, SendFile{FS: root.FS()})
+	})
+
+	for target, want := range map[string]string{
+		"/files/my%20file.txt":   "FILE my file.txt",
+		"/files/caf%C3%A9.txt":   "FILE café.txt",
+		"/files/100%25.txt":      "FILE 100%.txt",
+		"/files/..%2Fsecret.txt": "",
+	} {
+		resp, err := app.Test(httptest.NewRequest(MethodGet, target, http.NoBody))
+		require.NoError(t, err, target)
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err, target)
+		if want == "" {
+			require.Equal(t, StatusNotFound, resp.StatusCode, target)
+			require.NotContains(t, string(body), "SECRET", target)
+			continue
+		}
+		require.Equal(t, StatusOK, resp.StatusCode, target)
+		require.Equal(t, want, string(body), target)
 	}
 }
 

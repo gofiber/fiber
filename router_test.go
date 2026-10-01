@@ -5084,11 +5084,12 @@ func Test_Router_UnescapePath_PlusIsLiteral(t *testing.T) {
 // Test_Router_StrayPercent pins what a "%" that begins no escape becomes in
 // c.Path(). fasthttp copies it as sent, so a path holding nothing else to
 // decode or resolve keeps its parsed length, passes pathNeedsNormalization and
-// is matched as sent; it holds no escape at all, so nothing in it can decode.
-// A path normalized for another reason has the stray "%" encoded as "%25", so
-// it cannot line up with a decoded character into a new escape. Either way
-// c.Path() never holds an escape of an unreserved character. httptest rejects
-// these spellings, so the requests go through the raw handler.
+// is matched as sent. A path normalized for another reason keeps it as sent
+// too, unless an escape decoded after it would complete a new escape with it;
+// then it is written as "%25". Either way c.Path() never holds an escape of an
+// unreserved character, and the same name comes out alike whatever else the
+// path holds. httptest rejects these spellings, so the requests go through the
+// raw handler.
 func Test_Router_StrayPercent(t *testing.T) {
 	t.Parallel()
 
@@ -5100,11 +5101,15 @@ func Test_Router_StrayPercent(t *testing.T) {
 		{path: "/a%zzb", body: "/a%zzb"},
 		{path: "/trailing%2", body: "/trailing%2"},
 		{path: "/%", body: "/%"},
-		// normalized for a decoded escape or a dot segment: "%" becomes "%25"
-		{path: "/%2g%41", body: "/%252gA"},
+		// normalized for something else: the stray "%" is kept
+		{path: "/%2g%41", body: "/%2gA"},
+		{path: "/x%zz/%41", body: "/x%zz/A"},
+		{path: "/a%zzb/./c", body: "/a%zzb/c"},
+		{path: "/a//%zzb", body: "/a//%zzb"},
+		{path: "/files/a%2Fb/100%", body: "/files/a%2Fb/100%"},
+		// a decoded escape would complete an escape with it: "%25"
 		{path: "/%%370rivate", body: "/%2570rivate"},
-		{path: "/x%zz/%41", body: "/x%25zz/A"},
-		{path: "/a%zzb/./c", body: "/a%25zzb/c"},
+		{path: "/x/%%32%65git", body: "/x/%252egit"},
 	}
 	for _, caseSensitive := range []bool{false, true} {
 		app := New(Config{CaseSensitive: caseSensitive})
@@ -5119,6 +5124,32 @@ func Test_Router_StrayPercent(t *testing.T) {
 			handler(fctx)
 			require.Equal(t, StatusOK, fctx.Response.StatusCode(), "CaseSensitive=%v GET %s", caseSensitive, tc.path)
 			require.Equal(t, tc.body, string(fctx.Response.Body()), "CaseSensitive=%v GET %s", caseSensitive, tc.path)
+		}
+	}
+}
+
+// Test_Router_StrayPercentParamIsStable pins that a route parameter holding a
+// stray "%" does not depend on the rest of the path: "/files/100%" is matched
+// as sent, "/files/./100%" and "/files/x/../100%" are normalized for their dot
+// segments, and under DisablePathNormalizing every "%" sends the path through
+// normalization. All of them give the parameter "100%".
+func Test_Router_StrayPercentParamIsStable(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	app.Get("/files/:name", func(c Ctx) error {
+		return c.SendString(c.Params("name"))
+	})
+	handler := app.Handler()
+	for _, disable := range []bool{false, true} {
+		for _, target := range []string{"/files/100%", "/files/./100%", "/files/x/../100%", "/files/%2e/100%"} {
+			fctx := &fasthttp.RequestCtx{}
+			fctx.Request.Header.SetMethod(MethodGet)
+			fctx.Request.SetRequestURI(target)
+			fctx.Request.URI().DisablePathNormalizing = disable
+			handler(fctx)
+			require.Equal(t, StatusOK, fctx.Response.StatusCode(), "DisablePathNormalizing=%v GET %s", disable, target)
+			require.Equal(t, "100%", string(fctx.Response.Body()), "DisablePathNormalizing=%v GET %s", disable, target)
 		}
 	}
 }

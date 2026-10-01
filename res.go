@@ -1332,8 +1332,12 @@ func (r *DefaultRes) SendFile(file string, config ...SendFile) error {
 	// that name and not "100%.txt", "a?b" is not "a" with a query, and a
 	// "..%2Fsecret.txt" that a route parameter carried into filepath.Join stays
 	// one segment instead of decoding, after the join was cleaned, into a step
-	// out of the caller's directory.
-	request.SetRequestURIBytes(utils.AppendPathSegmentsEscape(nil, file))
+	// out of the caller's directory. SetRequestURIBytes copies the escaped
+	// name, so a pooled buffer holds it only for the call.
+	uriBuf := bytebufferpool.Get()
+	uriBuf.B = utils.AppendPathSegmentsEscape(uriBuf.B[:0], file)
+	request.SetRequestURIBytes(uriBuf.B)
+	bytebufferpool.Put(uriBuf)
 
 	var (
 		sendFileSize    int64
@@ -1373,9 +1377,14 @@ func (r *DefaultRes) SendFile(file string, config ...SendFile) error {
 	// redirect could only disclose it: the directory is not found. The
 	// Location carries the name escaped, so it is not compared with the
 	// name. A name with the trailing slash serves the directory's index.html.
+	// The error carries no name either, since the default error handler writes
+	// its message to the client.
 	if fsStatus == StatusFound {
 		response.Header.Del(HeaderLocation)
 		response.SetStatusCode(StatusNotFound)
+		if status != StatusNotFound {
+			return ErrNotFound
+		}
 		fsStatus = StatusNotFound
 	}
 
