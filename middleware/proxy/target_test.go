@@ -324,6 +324,14 @@ func Test_Proxy_RejectsEncodedSeparator(t *testing.T) {
 				"/public/..%2fadmin/secret.txt",
 				"/admin%2Fsecret.txt",
 				"//admin/secret.txt",
+				// a separator to WHATWG URL parsers and IIS
+				"/admin\\secret.txt",
+				"/public/..\\admin/secret.txt",
+				"/public/..%5Cadmin/secret.txt",
+				"/public/..%5cadmin/secret.txt",
+				// a dot segment once a servlet container strips its parameters
+				"/public/..;/admin/secret.txt",
+				"/public/.;x/../..;jsessionid=1/admin/secret.txt",
 			} {
 				require.Equal(t, fiber.StatusBadRequest, rawRequest(t, app, target, "example.com").StatusCode(), target)
 			}
@@ -344,6 +352,39 @@ func Test_Proxy_RejectsEncodedSeparator(t *testing.T) {
 			resp = rawRequest(t, app, "/files/a%20b%3Fc?x=%2F", "example.com")
 			require.Equal(t, fiber.StatusOK, resp.StatusCode())
 			require.Equal(t, "/files/a%20b%3Fc?x=%2F", string(resp.Body()))
+		})
+	}
+}
+
+// Test_Proxy_EscapesRawBytes pins that a byte a path may not carry raw (RFC
+// 3986 Section 3.3) reaches the upstream as its escape, as fasthttp's
+// normalizing writer sent it before the proxy forwarded the routed path: an
+// upstream such as Tomcat answers 400 to a raw "|" or "{", and a raw byte of
+// UTF-8 is not a valid request line. The sub-delims, ":" and "@" stay raw.
+func Test_Proxy_EscapesRawBytes(t *testing.T) {
+	t.Parallel()
+	addr := echoTarget(t)
+
+	handlers := map[string]func() fiber.Handler{
+		"Balancer":        func() fiber.Handler { return Balancer(Config{Servers: []string{addr}}) },
+		"DomainForward":   func() fiber.Handler { return DomainForward("example.com", "http://"+addr) },
+		"BalancerForward": func() fiber.Handler { return BalancerForward([]string{"http://" + addr}) },
+	}
+	for name, handler := range handlers {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			app := fiber.New()
+			app.Use(handler())
+			for target, want := range map[string]string{
+				"/a|b{c}d":               "/a%7Cb%7Bc%7Dd",
+				"/q\"^<>`":               "/q%22%5E%3C%3E%60",
+				"/\xc3\xbcber?x=1":       "/%C3%BCber?x=1",
+				"/keep!$&'()*+,;=:@/end": "/keep!$&'()*+,;=:@/end",
+			} {
+				resp := rawRequest(t, app, target, "example.com")
+				require.Equal(t, fiber.StatusOK, resp.StatusCode(), target)
+				require.Equal(t, want, string(resp.Body()), "upstream target for %q", target)
+			}
 		})
 	}
 }
@@ -527,7 +568,9 @@ func (o *opaqueClient) PendingRequests() int {
 
 // Test_Proxy_Balancer_OpaqueClientFailsClosed pins that behind a
 // BalancingClient the proxy cannot keep from normalizing, a target that
-// normalization would change is refused rather than sent as another path.
+// normalization would change is refused rather than sent as another path,
+// while one it leaves alone, including the escapes the proxy writes for raw
+// bytes, is forwarded.
 func Test_Proxy_Balancer_OpaqueClientFailsClosed(t *testing.T) {
 	t.Parallel()
 
@@ -538,13 +581,22 @@ func Test_Proxy_Balancer_OpaqueClientFailsClosed(t *testing.T) {
 		Timeout: time.Second,
 	}}))
 
-	for _, target := range []string{"/public/..%2Fadmin/secret", "//admin/secret", "/a%20b"} {
+	// Normalization would decode "%2F", "%3B" and "%40" into the bytes they
+	// name and merge "//".
+	for _, target := range []string{"/public/..%2Fadmin/secret", "//admin/secret", "/public/..%3B/admin", "/a%40b"} {
 		resp := rawRequest(t, app, target, "example.com")
 		require.Equal(t, fiber.StatusBadRequest, resp.StatusCode(), target)
 	}
-	resp := rawRequest(t, app, "/plain/path?q=%2F", "example.com")
-	require.Equal(t, fiber.StatusOK, resp.StatusCode())
-	require.Equal(t, "/plain/path?q=%2F", string(resp.Body()))
+	for target, want := range map[string]string{
+		"/plain/path?q=%2F": "/plain/path?q=%2F",
+		"/a%20b":            "/a%20b",
+		"/caf\xc3\xa9":      "/caf%C3%A9",
+		"/a|b%25":           "/a%7Cb%25",
+	} {
+		resp := rawRequest(t, app, target, "example.com")
+		require.Equal(t, fiber.StatusOK, resp.StatusCode(), target)
+		require.Equal(t, want, string(resp.Body()), target)
+	}
 }
 
 // requireForgedEscapeRefused checks a response to
@@ -597,4 +649,62 @@ func Test_Proxy_BalancerForward_RejectsForgedEscape(t *testing.T) {
 	app.Use(BalancerForward([]string{"http://" + addr}))
 
 	requireForgedEscapeRefused(t, rawRequest(t, app, "/static/%%370rivate/secret.txt", "example.com"), "")
+}
+
+// Test_Proxy_Balancer_AllowAmbiguousSlashes pins the opt-out: with
+// SecurityPolicy.AllowAmbiguousSlashes, Balancer forwards an escaped slash and
+// an empty segment as routed, for an upstream that keeps them, and still
+// refuses a forged escape, a backslash and a dot segment carrying parameters.
+func Test_Proxy_Balancer_AllowAmbiguousSlashes(t *testing.T) {
+	t.Parallel()
+	addr := echoTarget(t)
+
+	policy := DefaultSecurityPolicy()
+	policy.AllowPrivateIPs = true
+	policy.AllowAmbiguousSlashes = true
+	app := fiber.New()
+	app.Use(Balancer(Config{Servers: []string{addr}, SecurityPolicy: &policy}))
+
+	for _, target := range []string{"/api/projects/group%2Fname", "/bucket/key//with/empty", "/a%2fb"} {
+		resp := rawRequest(t, app, target, "example.com")
+		require.Equal(t, fiber.StatusOK, resp.StatusCode(), target)
+		require.Equal(t, strings.ReplaceAll(target, "%2f", "%2F"), string(resp.Body()), target)
+	}
+	for _, target := range []string{"/x/%%370rivate", "/admin\\secret", "/a/..%5Cb", "/a/..;/b"} {
+		resp := rawRequest(t, app, target, "example.com")
+		if target == "/x/%%370rivate" && resp.StatusCode() == fiber.StatusOK {
+			// a router that writes the stray "%" as "%25" forwards the literal name
+			require.Equal(t, "/x/%2570rivate", string(resp.Body()))
+			continue
+		}
+		require.Equal(t, fiber.StatusBadRequest, resp.StatusCode(), target)
+	}
+}
+
+// Test_Proxy_Forward_AllowAmbiguousSlashes pins the same opt-out for
+// DomainForward and BalancerForward, which follow the global policy.
+func Test_Proxy_Forward_AllowAmbiguousSlashes(t *testing.T) {
+	// Not parallel: installs a global security policy.
+	policy := DefaultSecurityPolicy()
+	policy.AllowPrivateIPs = true
+	policy.AllowAmbiguousSlashes = true
+	withSecurityPolicyForTest(t, policy)
+	addr := echoTarget(t)
+
+	handlers := map[string]fiber.Handler{
+		"DomainForward":   DomainForward("example.com", "http://"+addr),
+		"BalancerForward": BalancerForward([]string{"http://" + addr}),
+	}
+	for name, handler := range handlers {
+		app := fiber.New()
+		app.Use(handler)
+		for _, target := range []string{"/api/projects/group%2Fname", "/bucket/key//with/empty"} {
+			resp := rawRequest(t, app, target, "example.com")
+			require.Equal(t, fiber.StatusOK, resp.StatusCode(), "%s %s", name, target)
+			require.Equal(t, target, string(resp.Body()), "%s %s", name, target)
+		}
+		for _, target := range []string{"/admin\\secret", "/a/..;/b"} {
+			require.Equal(t, fiber.StatusBadRequest, rawRequest(t, app, target, "example.com").StatusCode(), "%s %s", name, target)
+		}
+	}
 }

@@ -2,6 +2,7 @@ package wiretarget
 
 import (
 	"bufio"
+	"encoding/hex"
 	"strings"
 	"testing"
 
@@ -54,6 +55,12 @@ func Test_Routed(t *testing.T) {
 			"/a?x=1#frag":             "/a?x=1",
 			"/sp%20ace/%7Etilde?x=+y": "/sp%20ace/~tilde?x=+y",
 			"/UPPER/%5C?X=1":          "/UPPER/%5C?X=1",
+			// bytes a path may not carry raw are written as their escapes
+			"/a\\b":                 "/a%5Cb",
+			"/a|b{c}":               "/a%7Cb%7Bc%7D",
+			"/q\"^<>`[]":            "/q%22%5E%3C%3E%60%5B%5D",
+			"/\xc3\xbcber":          "/%C3%BCber",
+			"/sub!$&'()*+,;=:@~-._": "/sub!$&'()*+,;=:@~-._",
 		} {
 			require.Equal(t, want, answerFor(t, app, target), target)
 		}
@@ -74,6 +81,18 @@ func Test_Routed(t *testing.T) {
 		} {
 			require.Equal(t, want, answerFor(t, app, target), target)
 		}
+	})
+
+	t.Run("query read by a handler", func(t *testing.T) {
+		t.Parallel()
+		app := fiber.New()
+		app.Use(func(c fiber.Ctx) error {
+			_ = c.Query("a")
+			return c.Next()
+		})
+		app.Get("/*", echoRouted)
+		// parsed arguments would be serialized again as "a=+b&c=%3Bd"
+		require.Equal(t, "/x?a=%20b&c=;d&sig=AbC%2F", answerFor(t, app, "/x?a=%20b&c=;d&sig=AbC%2F"))
 	})
 
 	t.Run("query arguments changed by a handler", func(t *testing.T) {
@@ -109,12 +128,21 @@ func Test_Routed(t *testing.T) {
 func Test_SegmentsAsRouted(t *testing.T) {
 	t.Parallel()
 
-	for _, target := range []string{"/", "/a/b", "/a/b?x=%2F&y=//", "/a%252Fb", "/%252E%252E/a", "/a%5Cb", "/a/b/"} {
+	for _, target := range []string{
+		"/", "/a/b", "/a/b?x=%2F&y=//", "/a%252Fb", "/%252E%252E/a", "/a/b/",
+		"/a;b/c", "/m;x=1;y=2", "/..x;y/a", "/a/.b;c", "/a%255C", "/a?q=\\&r=%5C",
+	} {
 		require.True(t, SegmentsAsRouted(target), target)
 	}
 	// "%2E" is an escape the router decodes, so one still in the routed path
-	// was forged and URL.Path would read "%2E%2E" as "..".
-	for _, target := range []string{"//", "//admin", "/a//b", "/a/b//", "/public/..%2Fadmin", "/a%2fb", "/a%2Fb?x=1", "/%2E%2E/a"} {
+	// was forged and URL.Path would read "%2E%2E" as "..". A backslash is a
+	// separator to WHATWG URL parsers and IIS, and servlet containers resolve
+	// a dot segment once they strip its path parameters.
+	for _, target := range []string{
+		"//", "//admin", "/a//b", "/a/b//", "/public/..%2Fadmin", "/a%2fb", "/a%2Fb?x=1", "/%2E%2E/a",
+		"/admin\\secret", "/public/..\\admin", "/a%5Cb", "/public/..%5cadmin",
+		"/public/..;/admin", "/public/.;/admin", "/public/..;jsessionid=x/admin", "/a/..;", "/a/.;x",
+	} {
 		require.False(t, SegmentsAsRouted(target), target)
 	}
 }
@@ -157,6 +185,12 @@ func Test_HasForgedEscape(t *testing.T) {
 	for _, target := range []string{"/public/%2e%2e/admin", "/%2E", "/a%41", "/%7e", "/x%5F?q=%41", "/a%25%41"} {
 		require.True(t, HasForgedEscape(target), target)
 	}
+	// every unreserved character, digits and "-" included
+	for _, c := range []byte("09azAZ-._~") {
+		target := "/x/%" + strings.ToUpper(hex.EncodeToString([]byte{c}))
+		require.True(t, HasForgedEscape(target), target)
+		require.True(t, HasForgedEscape(strings.ToLower(target)), target)
+	}
 	for _, target := range []string{"/", "/a/b", "/a%20b", "/a%2Fb", "/a%25b", "/%2541", "/a%3Fb", "/%", "/%2", "/%zz", "/a?q=%41", "/a%25/%2"} {
 		require.False(t, HasForgedEscape(target), target)
 	}
@@ -173,10 +207,21 @@ func Test_SegmentsAsRouted_ForgedEscape(t *testing.T) {
 func Test_SurvivesNormalization(t *testing.T) {
 	t.Parallel()
 
-	for _, target := range []string{"/", "/a/b", "/a/b?q=%2F&x=//", "/a.b/c-d_e~f"} {
+	// An escape of a byte fasthttp escapes again when it writes the path
+	// comes out as it went in, whatever the case of its hex digits.
+	for _, target := range []string{
+		"/", "/a/b", "/a/b?q=%2F&x=//", "/a.b/c-d_e~f", "/a%20b", "/%25", "/caf%C3%A9",
+		"/a%7Cb%7bc", "/a%3Fb%23c", "/%21%27%28%29%2A",
+	} {
 		require.True(t, SurvivesNormalization(target), target)
 	}
-	for _, target := range []string{"/a%20b", "/public/..%2Fadmin", "/a//b", "//x", "/%25"} {
+	// An escape of a byte it writes raw is decoded into that byte, as is a
+	// backslash Windows resolves dot segments around, an empty segment is
+	// merged and a "%" that begins no escape is written as "%25".
+	for _, target := range []string{
+		"/public/..%2Fadmin", "/a//b", "//x", "/..%3B/admin", "/a%40b", "/a%2Cb", "/%41", "/%2e%2e/x",
+		"/a%5Cb", "/a%", "/a%2", "/a%zz",
+	} {
 		require.False(t, SurvivesNormalization(target), target)
 	}
 }

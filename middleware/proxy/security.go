@@ -117,6 +117,20 @@ type SecurityPolicy struct {
 	// response. SECURITY: enabling this can enable request smuggling
 	// and proxy-auth credential forwarding. Default: false.
 	KeepHopByHopHeaders bool
+
+	// AllowAmbiguousSlashes lets Balancer, DomainForward and BalancerForward
+	// forward a routed path holding an escaped slash ("%2F") or an empty
+	// segment ("//"), which they otherwise answer with 400 Bad Request. An
+	// upstream that keeps both as sent needs it for names such as a
+	// GitLab-style "group%2Fproject" id or an object key with a doubled
+	// slash. SECURITY: an upstream that decodes "%2F" into a separator or
+	// merges "//" before it matches routes reads such a path as another
+	// one, under a prefix whose middleware the router never ran for it;
+	// enable this only when every upstream keeps them, through a client
+	// that does not normalize paths. A forged escape, a backslash and a
+	// dot segment carrying parameters are refused regardless.
+	// Default: false.
+	AllowAmbiguousSlashes bool
 }
 
 // DefaultSecurityPolicy returns the secure-by-default proxy security
@@ -130,10 +144,11 @@ type SecurityPolicy struct {
 // them.
 func DefaultSecurityPolicy() SecurityPolicy {
 	return SecurityPolicy{
-		AllowedSchemes:      append([]string(nil), defaultAllowedSchemes...),
-		AllowPrivateIPs:     false,
-		AllowHTTPSDowngrade: false,
-		KeepHopByHopHeaders: false,
+		AllowedSchemes:        append([]string(nil), defaultAllowedSchemes...),
+		AllowPrivateIPs:       false,
+		AllowHTTPSDowngrade:   false,
+		KeepHopByHopHeaders:   false,
+		AllowAmbiguousSlashes: false,
 	}
 }
 

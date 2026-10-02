@@ -130,7 +130,7 @@ func Balancer(config ...Config) fiber.Handler {
 		// normalization would change (see wiretarget.SurvivesNormalization)
 		// is refused too.
 		target := wiretarget.Routed(c)
-		if !wiretarget.ParsesAsPath(target, req.Header.Host()) || !wiretarget.SegmentsAsRouted(target) ||
+		if !wiretarget.ParsesAsPath(target, req.Header.Host()) || !segmentsAsRouted(target, policy) ||
 			(opaqueClient && !wiretarget.SurvivesNormalization(target)) {
 			return fiber.ErrBadRequest
 		}
@@ -190,6 +190,16 @@ var (
 	errNilProxyClientOverride = errors.New("proxy: nil client override passed to Do/Forward")
 	errNilGlobalProxyClient   = errors.New("proxy: global client is nil, set a non-nil client with proxy.WithClient")
 )
+
+// segmentsAsRouted reports whether a forwarding handler may hand target on
+// under policy: wiretarget.SegmentsAsRouted, with escaped slashes and empty
+// segments let through when policy.AllowAmbiguousSlashes is set.
+func segmentsAsRouted(target string, policy SecurityPolicy) bool {
+	if policy.AllowAmbiguousSlashes {
+		return wiretarget.SegmentsAsRoutedSlashesAside(target)
+	}
+	return wiretarget.SegmentsAsRouted(target)
+}
 
 // guardedConfigureClient composes a client's optional pre-existing
 // ConfigureClient hook with the dial-time SSRF guard. It is installed on a
@@ -664,15 +674,16 @@ func DomainForward(hostname, addr string, clients ...*fasthttp.Client) fiber.Han
 			return c.Next()
 		}
 		setRealIP(c)
-		// A routed path holding an escaped slash, an empty segment or a
-		// forged escape (see wiretarget.SegmentsAsRouted) is refused: an
-		// upstream that decodes "%2F", merges "//" or decodes the forged
-		// escape would serve a path no middleware here matched.
+		// A routed path an upstream could read as another path (see
+		// wiretarget.SegmentsAsRouted) is refused, unless the active policy
+		// lets escaped slashes and empty segments through
+		// (SecurityPolicy.AllowAmbiguousSlashes).
 		target := wiretarget.Routed(c)
-		if !wiretarget.SegmentsAsRouted(target) {
+		active := currentSecurityPolicy()
+		if !segmentsAsRouted(target, active) {
 			return fiber.ErrBadRequest
 		}
-		return doActionWithPolicy(c, joinUpstreamPath(base, target), currentSecurityPolicy(),
+		return doActionWithPolicy(c, joinUpstreamPath(base, target), active,
 			func(cli *fasthttp.Client, req *fasthttp.Request, resp *fasthttp.Response, _ *url.URL) error {
 				return cli.Do(req, resp)
 			}, clients...)
@@ -734,15 +745,16 @@ func BalancerForward(servers []string, clients ...*fasthttp.Client) fiber.Handle
 	return func(c fiber.Ctx) error {
 		base := r.get()
 		setRealIP(c)
-		// A routed path holding an escaped slash, an empty segment or a
-		// forged escape (see wiretarget.SegmentsAsRouted) is refused: an
-		// upstream that decodes "%2F", merges "//" or decodes the forged
-		// escape would serve a path no middleware here matched.
+		// A routed path an upstream could read as another path (see
+		// wiretarget.SegmentsAsRouted) is refused, unless the active policy
+		// lets escaped slashes and empty segments through
+		// (SecurityPolicy.AllowAmbiguousSlashes).
 		target := wiretarget.Routed(c)
-		if !wiretarget.SegmentsAsRouted(target) {
+		active := currentSecurityPolicy()
+		if !segmentsAsRouted(target, active) {
 			return fiber.ErrBadRequest
 		}
-		return doActionWithPolicy(c, joinUpstreamPath(base, target), currentSecurityPolicy(),
+		return doActionWithPolicy(c, joinUpstreamPath(base, target), active,
 			func(cli *fasthttp.Client, req *fasthttp.Request, resp *fasthttp.Response, _ *url.URL) error {
 				return cli.Do(req, resp)
 			}, clients...)
