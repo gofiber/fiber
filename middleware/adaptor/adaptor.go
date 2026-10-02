@@ -281,9 +281,14 @@ func serveRouted(c fiber.Ctx, handler fasthttp.RequestHandler) error {
 	if !wiretarget.SegmentsAsRouted(target) {
 		return fiber.ErrNotFound
 	}
+	if target == c.OriginalURL() {
+		// the request line already spells the routed path
+		handler(c.RequestCtx())
+		return nil
+	}
 	req := c.Request()
 	original := utils.CopyString(c.OriginalURL())
-	req.SetRequestURI(target)
+	setRoutedTarget(c, target)
 	// Buffered, the handler has returned, or panicked, in which case
 	// fasthttpadaptor re-panics here and the recover middleware or error
 	// handler that catches it still has to see the original line. Streaming
@@ -297,6 +302,24 @@ func serveRouted(c fiber.Ctx, handler fasthttp.RequestHandler) error {
 	}()
 	handler(c.RequestCtx())
 	return nil
+}
+
+// setRoutedTarget sets target, the routed request target, as c's request line.
+// A target that is the line as it arrived is left alone, which spares a second
+// parse of it. Otherwise the host fasthttp parsed is kept: a target that is a
+// path makes fasthttp take the host from the Host header again, while an
+// absolute-form request line names its own, which RFC 9112 Section 3.2.2 says
+// the server uses and which c.Hostname() reported. Kept, the adapted handler
+// sees in r.Host the host Fiber saw.
+func setRoutedTarget(c fiber.Ctx, target string) {
+	if target == c.OriginalURL() {
+		return
+	}
+	req := c.Request()
+	var buf [64]byte
+	host := append(buf[:0], req.URI().Host()...)
+	req.SetRequestURI(target)
+	req.URI().SetHostBytes(host)
 }
 
 // LocalContextFromHTTPRequest extracts the Fiber user context previously stored into r.Context() by the adaptor.
@@ -326,7 +349,7 @@ func ConvertRequest(c fiber.Ctx, forServer bool) (*http.Request, error) {
 	if !wiretarget.ParsesAsPath(target, c.Request().Header.Host()) || wiretarget.HasForgedEscape(target) {
 		return nil, fiber.ErrBadRequest
 	}
-	c.Request().SetRequestURI(target)
+	setRoutedTarget(c, target)
 	var req http.Request
 	if err := fasthttpadaptor.ConvertRequest(c.RequestCtx(), &req, forServer); err != nil {
 		return nil, err //nolint:wrapcheck // This must not be wrapped
@@ -557,6 +580,12 @@ func HTTPMiddleware(mw func(http.Handler) http.Handler) fiber.Handler {
 			pairs := snapshotHeaders(r.Header)
 
 			fhdr.SetMethod(r.Method)
+			// r.Host is a view of the URI's host, which SetRequestURI makes
+			// fasthttp parse again, from the Host header for a target that is
+			// a path: copy it first, or the host written back below is the
+			// header's rather than the one r carried.
+			var hostBuf [64]byte
+			host := append(hostBuf[:0], r.Host...)
 			// A rewrite of r.URL (http.StripPrefix) leaves RequestURI untouched; route the URL.
 			requestURI := r.RequestURI
 			newPath := ""
@@ -568,8 +597,8 @@ func HTTPMiddleware(mw func(http.Handler) http.Handler) fiber.Handler {
 				}
 			}
 			freq.SetRequestURI(requestURI)
-			freq.SetHost(r.Host)
-			fhdr.SetHost(r.Host)
+			freq.URI().SetHostBytes(host)
+			fhdr.SetHostBytes(host)
 			// Only a genuine rewrite re-routes. The decoded path differs from the raw
 			// one for every escaped or non-canonical request, and overriding it there
 			// re-buckets the tree, resuming the chain past middleware that already ran.
@@ -626,7 +655,7 @@ func HTTPMiddleware(mw func(http.Handler) http.Handler) fiber.Handler {
 		if !wiretarget.ParsesAsPath(target, c.Request().Header.Host()) || wiretarget.HasForgedEscape(target) {
 			return fiber.ErrBadRequest
 		}
-		c.Request().SetRequestURI(target)
+		setRoutedTarget(c, target)
 		// Call the fasthttp adaptor directly: HTTPHandler would wrap it in a
 		// second closure that has to be built on every request, and its
 		// error result is always nil.
@@ -766,6 +795,65 @@ func requestTarget(r *http.Request) string {
 	return r.URL.Host
 }
 
+// routedRequestURI returns the request line Fiber routes for r. It is
+// r.RequestURI as net/http received it, so Fiber routes the bytes the client
+// sent, a raw "/über" or "/a|b" included, as it would served directly. Only
+// when r.URL no longer says what that line says, because a handler in front
+// rewrote it as http.StripPrefix does, or when there is no such line, as for a
+// request built in code, is it the line net/http would write for r.URL (see
+// requestTarget). The comparison decodes the received path, since r.URL holds
+// it decoded and re-escapes it its own way.
+func routedRequestURI(r *http.Request) string {
+	if r.URL == nil {
+		return r.RequestURI
+	}
+	if raw := r.RequestURI; raw != "" && raw[0] == '/' {
+		rawPath, rawQuery, _ := strings.Cut(raw, "?")
+		if r.URL.RawQuery == rawQuery && decodesTo(rawPath, r.URL.Path) {
+			return raw
+		}
+		return requestTarget(r)
+	}
+	if fromURL := requestTarget(r); fromURL != "" && fromURL != r.RequestURI {
+		return fromURL
+	}
+	return r.RequestURI
+}
+
+// decodesTo reports whether raw, a path whose escapes are well formed as
+// net/http requires of a request line, percent-decodes to decoded.
+func decodesTo(raw, decoded string) bool {
+	j := 0
+	for i := 0; i < len(raw); i++ {
+		c := raw[i]
+		if c == '%' && i+2 < len(raw) && isHex(raw[i+1]) && isHex(raw[i+2]) {
+			c = fromHex(raw[i+1])<<4 | fromHex(raw[i+2])
+			i += 2
+		}
+		if j >= len(decoded) || decoded[j] != c {
+			return false
+		}
+		j++
+	}
+	return j == len(decoded)
+}
+
+func isHex(c byte) bool {
+	return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')
+}
+
+// fromHex returns the value of the hex digit c.
+func fromHex(c byte) byte {
+	switch {
+	case c >= 'a':
+		return c - 'a' + 10
+	case c >= 'A':
+		return c - 'A' + 10
+	default:
+		return c - '0'
+	}
+}
+
 func handlerFunc(app *fiber.App, h ...fiber.Handler) http.HandlerFunc {
 	// App.Config returns the config by value, so read the body limit once at
 	// construction instead of copying the whole 624-byte struct on every
@@ -844,14 +932,7 @@ func handlerFunc(app *fiber.App, h ...fiber.Handler) http.HandlerFunc {
 			req.Header.SetContentLength(int(n))
 		}
 		req.Header.SetMethod(r.Method)
-		// A rewrite of r.URL (http.StripPrefix) leaves RequestURI as it
-		// arrived, and a request built in code has none at all: route the
-		// request line net/http itself would write for r.
-		requestURI := r.RequestURI
-		if fromURL := requestTarget(r); fromURL != "" && fromURL != requestURI {
-			requestURI = fromURL
-		}
-		req.SetRequestURI(requestURI)
+		req.SetRequestURI(routedRequestURI(r))
 		req.SetHost(r.Host)
 		req.Header.SetHost(r.Host)
 		// Propagate the real protocol version so protocol-dependent behavior

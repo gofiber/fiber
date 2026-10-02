@@ -1952,6 +1952,38 @@ func Benchmark_HTTPMiddleware(b *testing.B) {
 	}
 }
 
+// Benchmark_ConvertRequest measures building a net/http request from a routed
+// Fiber request whose request line is already the routed target, the common
+// case, where the line is not set and parsed a second time.
+func Benchmark_ConvertRequest(b *testing.B) {
+	app := fiber.New()
+	app.Get("/users/:id", func(c fiber.Ctx) error {
+		r, err := ConvertRequest(c, true)
+		if err != nil {
+			return err
+		}
+		if r.URL.Path != "/users/42" {
+			return fiber.ErrInternalServerError
+		}
+		return nil
+	})
+
+	handler := app.Handler()
+	ctx := &fasthttp.RequestCtx{}
+
+	b.ReportAllocs()
+
+	for b.Loop() {
+		ctx.Request.Reset()
+		ctx.Response.Reset()
+		ctx.Request.Header.SetMethod(fiber.MethodGet)
+		ctx.Request.SetRequestURI("/users/42?expand=1")
+		ctx.Request.Header.Set("Foo", "bar")
+
+		handler(ctx)
+	}
+}
+
 // Benchmark_FiberApp exercises the net/http -> Fiber direction the way a real
 // net/http server does: a fresh response writer per request, a routed app, a
 // remote address to resolve and a handful of request and response headers.

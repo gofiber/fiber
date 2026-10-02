@@ -411,18 +411,19 @@ func Test_HTTPHandler_PanicRestoresRequestLine(t *testing.T) {
 }
 
 // forgedEscapeOutcome checks a response to "/public/%%32e%%32e/admin/x", a
-// stray "%" forging the escape the router would have decoded. Routed as
-// "/public/%2e%2e/admin/x" it is refused, since URL.Path would read the
-// segment as ".."; routed as "/public/%252e%252e/admin/x", when the router
-// spells a stray "%" as "%25", it holds no such escape and is handed on as
-// that literal name.
-func forgedEscapeOutcome(t *testing.T, fctx *fasthttp.RequestCtx) {
+// stray "%" forging the escape the router would have decoded. Which of two
+// outcomes it gets depends on how the router spells a stray "%". Kept as sent,
+// the path is routed as "/public/%2e%2e/admin/x" and refused, since URL.Path
+// would read the segment as "..". Written as "%25" where a decoded escape
+// would complete it, the path is routed as "/public/%252e%252e/admin/x", which
+// holds no forged escape and is handed on as the literal name want: the body
+// must then be exactly that, so it never holds a decoded "..".
+func forgedEscapeOutcome(t *testing.T, fctx *fasthttp.RequestCtx, want string) {
 	t.Helper()
 	switch fctx.Response.StatusCode() {
 	case fiber.StatusBadRequest:
 	case fiber.StatusOK:
-		require.Contains(t, string(fctx.Response.Body()), "%252e%252e")
-		require.NotContains(t, string(fctx.Response.Body()), "..")
+		require.Equal(t, want, string(fctx.Response.Body()))
 	default:
 		t.Fatalf("unexpected status %d", fctx.Response.StatusCode())
 	}
@@ -436,7 +437,7 @@ func Test_HTTPMiddleware_RejectsForgedEscape(t *testing.T) {
 	app.Use(func(c fiber.Ctx) error {
 		return c.SendString(c.Path())
 	})
-	forgedEscapeOutcome(t, rawCtx(t, app, "/public/%%32e%%32e/admin/x"))
+	forgedEscapeOutcome(t, rawCtx(t, app, "/public/%%32e%%32e/admin/x"), "/public/%252e%252e/admin/x")
 }
 
 func Test_ConvertRequest_RejectsForgedEscape(t *testing.T) {
@@ -450,5 +451,160 @@ func Test_ConvertRequest_RejectsForgedEscape(t *testing.T) {
 		}
 		return c.SendString(r.URL.RawPath + "|" + r.URL.Path)
 	})
-	forgedEscapeOutcome(t, rawCtx(t, app, "/public/%%32e%%32e/admin/x"))
+	// net/http leaves RawPath empty when it is the escaped form of Path, as it
+	// is for "/public/%252e%252e/admin/x".
+	forgedEscapeOutcome(t, rawCtx(t, app, "/public/%%32e%%32e/admin/x"), "|/public/%2e%2e/admin/x")
+}
+
+// rawLine hands app a whole raw request, request line and headers, and returns
+// the served context.
+func rawLine(t *testing.T, app *fiber.App, raw string) *fasthttp.RequestCtx {
+	t.Helper()
+
+	var req fasthttp.Request
+	require.NoError(t, req.Read(bufio.NewReader(strings.NewReader(raw))))
+
+	fctx := new(fasthttp.RequestCtx)
+	fctx.Init(&req, nil, nil)
+	app.Handler()(fctx)
+	return fctx
+}
+
+// Test_Adaptor_KeepsAbsoluteFormHost pins that an adapted net/http handler sees
+// the host Fiber saw. An absolute-form request line names its own host, which
+// RFC 9112 Section 3.2.2 has the server use over the Host header, and
+// c.Hostname() reports it; setting a routed target that is a path must not
+// make fasthttp take the host from the Host header again.
+func Test_Adaptor_KeepsAbsoluteFormHost(t *testing.T) {
+	t.Parallel()
+
+	const raw = "GET http://public.example/x?q=1 HTTP/1.1\r\nHost: admin.internal\r\n\r\n"
+	echoHost := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, r.Host, "|", r.URL.Path)
+	})
+
+	t.Run("HTTPHandler", func(t *testing.T) {
+		t.Parallel()
+		app := fiber.New()
+		app.Use(func(c fiber.Ctx) error {
+			require.Equal(t, "public.example", c.Hostname())
+			return c.Next()
+		})
+		app.Get("/x", HTTPHandler(echoHost))
+		fctx := rawLine(t, app, raw)
+		require.Equal(t, fiber.StatusOK, fctx.Response.StatusCode())
+		require.Equal(t, "public.example|/x", string(fctx.Response.Body()))
+	})
+
+	t.Run("ConvertRequest", func(t *testing.T) {
+		t.Parallel()
+		app := fiber.New()
+		app.Get("/x", func(c fiber.Ctx) error {
+			r, err := ConvertRequest(c, true)
+			if err != nil {
+				return err
+			}
+			return c.SendString(r.Host + "|" + c.Hostname())
+		})
+		fctx := rawLine(t, app, raw)
+		require.Equal(t, fiber.StatusOK, fctx.Response.StatusCode())
+		require.Equal(t, "public.example|public.example", string(fctx.Response.Body()))
+	})
+
+	t.Run("HTTPMiddleware", func(t *testing.T) {
+		t.Parallel()
+		app := fiber.New()
+		var seen string
+		app.Use(HTTPMiddleware(func(next http.Handler) http.Handler {
+			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				seen = strings.Clone(r.Host) // r is only valid during the call
+				next.ServeHTTP(w, r)
+			})
+		}))
+		app.Get("/x", func(c fiber.Ctx) error {
+			return c.SendString(c.Hostname())
+		})
+		fctx := rawLine(t, app, raw)
+		require.Equal(t, fiber.StatusOK, fctx.Response.StatusCode())
+		require.Equal(t, "public.example", seen)
+		require.Equal(t, "public.example", string(fctx.Response.Body()))
+	})
+}
+
+// Test_HTTPMiddleware_ForwardsQueryAsSent pins that a net/http middleware sees
+// the query the client sent although a Fiber handler before it read the
+// arguments, which fasthttp would otherwise serialize again ("%20" as "+",
+// ";" as "%3B") and so break a signed URL.
+func Test_HTTPMiddleware_ForwardsQueryAsSent(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Use(func(c fiber.Ctx) error {
+		_ = c.Query("a")
+		return c.Next()
+	})
+	var rawQuery string
+	app.Use(HTTPMiddleware(func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			rawQuery = strings.Clone(r.URL.RawQuery) // r is only valid during the call
+			next.ServeHTTP(w, r)
+		})
+	}))
+	app.Get("/x", func(c fiber.Ctx) error {
+		return c.SendStatus(fiber.StatusNoContent)
+	})
+
+	fctx := rawCtx(t, app, "/x?a=%20b&c=;d&sig=AbC%2F")
+	require.Equal(t, fiber.StatusNoContent, fctx.Response.StatusCode())
+	require.Equal(t, "a=%20b&c=;d&sig=AbC%2F", rawQuery)
+}
+
+// Test_FiberHandler_RoutesRawBytes pins that a Fiber handler served from
+// net/http routes the request line the client sent, as Fiber served directly
+// would: r.URL.RequestURI() escapes a raw byte of UTF-8 or a "|", so routing it
+// answered 404 for "/über" and handed parameters back escaped.
+func Test_FiberHandler_RoutesRawBytes(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Get("/über", func(c fiber.Ctx) error {
+		return c.SendString("static|" + c.Path())
+	})
+	app.Get("/p/:name", func(c fiber.Ctx) error {
+		return c.SendString(c.Params("name"))
+	})
+	h := FiberApp(app)
+
+	for target, want := range map[string]string{
+		"/über":   "static|/über",
+		"/p/a|b":  "a|b",
+		"/p/café": "café",
+		"/p/%41":  "A",
+	} {
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, httptest.NewRequest(fiber.MethodGet, target, http.NoBody))
+		require.Equal(t, http.StatusOK, rec.Code, target)
+		require.Equal(t, want, rec.Body.String(), target)
+	}
+}
+
+// Test_HTTPMiddleware_ServesEscapedSlash pins the documented way to serve a
+// name holding "%2F", which HTTPHandler answers with 404: a net/http handler
+// wrapped as a middleware that does not call next reads it, escaped slash
+// included, from URL.EscapedPath().
+func Test_HTTPMiddleware_ServesEscapedSlash(t *testing.T) {
+	t.Parallel()
+
+	repos := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, r.URL.EscapedPath())
+	})
+	app := fiber.New()
+	app.Use("/repos", HTTPMiddleware(func(http.Handler) http.Handler { return repos }))
+	app.Get("/handler/*", HTTPHandler(repos))
+
+	fctx := rawCtx(t, app, "/repos/group%2Fproject")
+	require.Equal(t, fiber.StatusOK, fctx.Response.StatusCode())
+	require.Equal(t, "/repos/group%2Fproject", string(fctx.Response.Body()))
+
+	require.Equal(t, fiber.StatusNotFound, rawCtx(t, app, "/handler/group%2Fproject").Response.StatusCode())
 }
