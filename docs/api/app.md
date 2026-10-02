@@ -574,6 +574,29 @@ func main() {
 
 </details>
 
+:::note
+`Route.URL` automatically percent-encodes parameter values with URL
+path-segment rules. Greedy parameters (`*` and `+`) preserve `/` inside the
+matched path tail; delimiters such as `?` and `#` remain parameter data instead
+of restructuring the generated URL. [`GetRouteURL`](./ctx.md#getrouteurl) and
+[`Redirect().Route`](./redirect.md#route) apply the same encoding.
+
+These take the value as data, not as URL text. Representable values use the same
+encoding under any configuration. With `UnescapePath` off (the default) `c.Params`
+returns the value still percent-encoded, so forwarding it straight back encodes
+the `%` a second time. Turn `UnescapePath` on, or decode with
+[`url.PathUnescape`](https://pkg.go.dev/net/url#PathUnescape) first.
+An app with `UnescapePath` enabled decodes `%2F` before route matching, so an
+ordinary single-segment parameter holding a `/` cannot round-trip and returns
+`ErrRouteNotRepresentable`. Greedy (`*` or `+`), adjacent single-byte parameters
+and parameters with a single-byte non-slash terminator retain their existing
+slash-matching rules.
+Dot-containing values are also rejected when the composed path has a `.` or
+`..` segment that would be removed during normalization. Surrounding route
+constants are considered: `:name.txt` with `name="."` remains representable.
+Pass a different value or use a route that can represent it; do not pre-encode it.
+:::
+
 ### GetRoutes
 
 This method retrieves all routes.

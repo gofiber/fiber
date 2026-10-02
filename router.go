@@ -5,10 +5,12 @@
 package fiber
 
 import (
+	"bytes"
 	"fmt"
 	"math/bits"
 	"reflect"
 	"slices"
+	"strings"
 	"sync/atomic"
 
 	"github.com/gofiber/fiber/v3/internal/urlnorm"
@@ -133,6 +135,7 @@ type Route struct { // betteralign:ignore - see below
 	root          bool // Path equals '/'
 	autoHead      bool // Automatically generated HEAD route
 	caseSensitive bool // Whether parameter matching is case-sensitive
+	unescapePath  bool // Whether request routing decodes escaped slashes
 
 	routeParser routeParser // Parameter parser
 
@@ -308,6 +311,9 @@ func (t *routeTree) lookup(hash int) (routes []*Route, filter *bucketFilter) {
 // This method fills in the route parameters with the provided values.
 // Parameter matching respects the app's CaseSensitive configuration:
 // case-insensitive by default, case-sensitive when CaseSensitive is true.
+// Parameter values are percent-encoded using URL path-segment rules.
+// Dot-containing values that form a dot-only path segment, and slashes that
+// UnescapePath would decode outside a parameter's match, return ErrRouteNotRepresentable.
 //
 // Example:
 //
@@ -326,7 +332,10 @@ func (r Route) URL(params Map) (string, error) {
 
 // buildRouteURL generates a URL from route segments and parameters.
 // This shared helper is used by both Route.URL() and DefaultRes.getLocationFromRoute()
-// to ensure consistent URL generation behavior across APIs.
+// to ensure consistent URL generation behavior across APIs. Substituted values
+// are encoded as path segments before they enter the composed URL. Greedy
+// parameters keep literal slashes because they match path tails rather than one
+// segment.
 //
 // Parameter resolution uses a deterministic three-step lookup:
 //  1. Exact key match on segment.ParamName
@@ -355,6 +364,7 @@ func buildRouteURL(route *Route, params Map) (string, error) {
 
 	buf := bytebufferpool.Get()
 	defer bytebufferpool.Put(buf)
+	checkDotSegments := false
 
 	for _, segment := range route.routeParser.segs {
 		if !segment.IsParam {
@@ -397,14 +407,76 @@ func buildRouteURL(route *Route, params Map) (string, error) {
 		}
 
 		if found {
-			_, err := buf.WriteString(utils.ToString(val))
-			if err != nil {
-				return "", fmt.Errorf("failed to write string: %w", err)
+			value := utils.ToString(val)
+			if !checkDotSegments {
+				if segment.IsGreedy {
+					checkDotSegments = strings.IndexByte(value, '.') >= 0
+				} else {
+					// Its slashes get escaped, so it stays inside one segment and only
+					// "." or ".." can be or complete a dot segment.
+					checkDotSegments = value == "." || value == ".."
+				}
 			}
+			if route.unescapePath && strings.IndexByte(value, '/') >= 0 {
+				if route.slashLeavesParam(segment, value) {
+					return "", ErrRouteNotRepresentable
+				}
+				// A slash in the value can split a constant dot into its own segment.
+				checkDotSegments = true
+			}
+			if segment.IsGreedy {
+				buf.B = utils.AppendPathSegmentsEscape(buf.B, value)
+				continue
+			}
+			buf.B = utils.AppendPathEscape(buf.B, value)
 		}
 	}
 
+	if checkDotSegments && route.urlHasDotSegment(buf.B) {
+		return "", ErrRouteNotRepresentable
+	}
 	return urlnorm.RootedPath(buf.String()), nil
+}
+
+// slashLeavesParam reports whether a decoded slash in value ends up outside the parameter.
+// It mirrors the slash-consuming branches of findParamLen, including adjacent parameters
+// (which consume exactly one byte) and single-byte non-slash terminators.
+func (*Route) slashLeavesParam(segment *routeSegment, value string) bool {
+	return !segment.IsGreedy &&
+		(segment.IsLast || (segment.Length == 1 && len(value) > 1) ||
+			(segment.Length != 1 && (len(segment.ComparePart) != 1 || segment.ComparePart[0] == slashDelimiter)))
+}
+
+// urlHasDotSegment checks the composed path, since constants can complete or
+// disambiguate a parameter's dots. Decode once, just as request routing does;
+// an escaped slash is a boundary only with UnescapePath enabled.
+func (r *Route) urlHasDotSegment(path []byte) bool {
+	if bytes.IndexByte(path, '%') != -1 {
+		path = slices.Clone(path)
+		if r.unescapePath {
+			path = unescapePath(path)
+		} else {
+			path = unescapeSafePath(path)
+		}
+	}
+	// Jump from dot to dot: a dot segment starts after a '/' and ends at a '/' or the end.
+	for i := bytes.IndexByte(path, '.'); i >= 0; {
+		if i == 0 || path[i-1] == '/' {
+			j := i + 1
+			if j < len(path) && path[j] == '.' {
+				j++
+			}
+			if j == len(path) || path[j] == '/' {
+				return true
+			}
+		}
+		next := bytes.IndexByte(path[i+1:], '.')
+		if next < 0 {
+			break
+		}
+		i += next + 1
+	}
+	return false
 }
 
 // preferredGreedyParameters returns the generic greedy fallback lookup order
@@ -1160,19 +1232,10 @@ func (app *App) customRequestHandler(rctx *fasthttp.RequestCtx) {
 }
 
 func (app *App) addPrefixToRoute(prefix string, route *Route, regexHandler any, customConstraints ...CustomConstraint) {
-	prefixedPath := getGroupPath(prefix, route.Path)
-	prettyPath := prefixedPath
-	// Case-sensitive routing, all to lowercase
-	if !app.config.CaseSensitive {
-		prettyPath = utilsstrings.ToLower(prettyPath)
-	}
-	// Strict routing, remove trailing slashes
-	if !app.config.StrictRouting && len(prettyPath) > 1 {
-		prettyPath = utils.TrimRight(prettyPath, '/')
-	}
+	prefixedPath, prettyPath, cleanPath := normalizeRoutePattern(getGroupPath(prefix, route.Path), &app.config)
 
 	route.Path = prefixedPath
-	route.path = RemoveEscapeChar(prettyPath)
+	route.path = cleanPath
 	route.routeParser = parseRoute(prettyPath, regexHandler, customConstraints...)
 	// As in register: the constraints come from the pattern as written.
 	rawParser := parseRoute(prefixedPath, regexHandler, customConstraints...)
@@ -1194,6 +1257,7 @@ func (app *App) addPrefixToRoute(prefix string, route *Route, regexHandler any, 
 	route.root = false
 	route.star = false
 	route.caseSensitive = app.config.CaseSensitive
+	route.unescapePath = app.config.UnescapePath
 	// buildTree recomputes this for every route, but this function rewrites the
 	// path and parser a filter is derived from, so refresh it here too rather
 	// than depend on a caller marking the routes refreshed.
@@ -1500,19 +1564,8 @@ func copyCompositeValue(src any, depth int) any {
 }
 
 func (app *App) normalizePath(path string) string {
-	if path == "" {
-		path = "/"
-	}
-	if path[0] != '/' {
-		path = "/" + path
-	}
-	if !app.config.CaseSensitive {
-		path = utilsstrings.ToLower(path)
-	}
-	if !app.config.StrictRouting && len(path) > 1 {
-		path = utils.TrimRight(path, '/')
-	}
-	return RemoveEscapeChar(path)
+	_, _, clean := normalizeRoutePattern(path, &app.config)
+	return clean
 }
 
 // RemoveRoute is used to remove a route from the stack by path.
@@ -1739,20 +1792,7 @@ func (app *App) register(methods []string, pathRaw string, group *Group, domain 
 	routeID := routeIDs.Add(1)
 
 	// Precompute path normalization ONCE
-	if pathRaw == "" {
-		pathRaw = "/"
-	}
-	if pathRaw[0] != '/' {
-		pathRaw = "/" + pathRaw
-	}
-	pathPretty := pathRaw
-	if !app.config.CaseSensitive {
-		pathPretty = utilsstrings.ToLower(pathPretty)
-	}
-	if !app.config.StrictRouting && len(pathPretty) > 1 {
-		pathPretty = utils.TrimRight(pathPretty, '/')
-	}
-	pathClean := RemoveEscapeChar(pathPretty)
+	pathRaw, pathPretty, pathClean := normalizeRoutePattern(pathRaw, &app.config)
 
 	parsedRaw := parseRoute(pathRaw, app.config.RegexHandler, app.customConstraints...)
 	parsedPretty := parseRoute(pathPretty, app.config.RegexHandler, app.customConstraints...)
@@ -1782,6 +1822,7 @@ func (app *App) register(methods []string, pathRaw string, group *Group, domain 
 			star:          isStar,
 			root:          isRoot,
 			caseSensitive: app.config.CaseSensitive,
+			unescapePath:  app.config.UnescapePath,
 			id:            routeID,
 			domain:        domain,
 

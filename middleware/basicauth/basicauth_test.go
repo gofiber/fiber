@@ -8,10 +8,12 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/internal/loggertest"
@@ -653,23 +655,29 @@ func Test_parseHashedPassword(t *testing.T) {
 func Test_buildVerifiers(t *testing.T) {
 	t.Parallel()
 
-	t.Run("selects the strongest configured verifier deterministically", func(t *testing.T) {
+	t.Run("each user accepts only its own password", func(t *testing.T) {
 		t.Parallel()
 
-		strongestPassword := "bcrypt-pass"
-		strongestHash, err := bcrypt.GenerateFromPassword([]byte(strongestPassword), bcrypt.MinCost+1)
+		alphaHash, err := bcrypt.GenerateFromPassword([]byte("alpha-pass"), bcrypt.MinCost+1)
 		require.NoError(t, err)
-
+		gammaHash, err := bcrypt.GenerateFromPassword([]byte("gamma-pass"), bcrypt.MinCost)
+		require.NoError(t, err)
 		verifiers, dummyVerify, err := buildVerifiers(map[string]string{
-			"zeta":  sha256Hash("sha256-pass"),
-			"alpha": string(strongestHash),
-			"beta":  sha512Hash("sha512-pass"),
+			"zeta":  sha256Hash("zeta-pass"),
+			"alpha": string(alphaHash),
+			"beta":  sha512Hash("beta-pass"),
+			"gamma": string(gammaHash),
 		})
 		require.NoError(t, err)
-		require.Len(t, verifiers, 3)
-		require.True(t, dummyVerify(strongestPassword))
-		require.False(t, dummyVerify("sha512-pass"))
-		require.False(t, dummyVerify("sha256-pass"))
+		require.Len(t, verifiers, 4)
+		for user, verify := range verifiers {
+			for other := range verifiers {
+				require.Equal(t, user == other, verify(other+"-pass"), "user %s, password of %s", user, other)
+			}
+		}
+		for user := range verifiers {
+			require.False(t, dummyVerify(user+"-pass"))
+		}
 	})
 
 	t.Run("uses a fixed-work fallback when no users are configured", func(t *testing.T) {
@@ -682,6 +690,51 @@ func Test_buildVerifiers(t *testing.T) {
 		require.True(t, dummyVerify(fallbackInput))
 		require.False(t, dummyVerify("wrong"))
 	})
+}
+
+// Not parallel: other bcrypt tests would skew the timing, and Go pauses
+// parallel tests while a sequential one runs.
+func Test_buildVerifiers_SameCostAcrossTiers(t *testing.T) {
+	adminHash, err := bcrypt.GenerateFromPassword([]byte("admin-pass"), bcrypt.MinCost+3)
+	require.NoError(t, err)
+	oldHash, err := bcrypt.GenerateFromPassword([]byte("old-pass"), bcrypt.MinCost+2)
+	require.NoError(t, err)
+	verifiers, dummyVerify, err := buildVerifiers(map[string]string{
+		"admin": string(adminHash),
+		"old":   string(oldHash),
+		"john":  sha256Hash("john-pass"),
+	})
+	require.NoError(t, err)
+
+	// Fastest of interleaved runs, in CPU time so a busy machine cannot stretch one side.
+	// What noise is left only adds time: measure until the minima agree, a real difference never does.
+	names := []string{"admin", "old", "john", "unknown"}
+	attempts := []passwordVerifier{verifiers["admin"], verifiers["old"], verifiers["john"], dummyVerify}
+	best := make([]time.Duration, len(attempts))
+	for i := range best {
+		best[i] = time.Duration(math.MaxInt64)
+	}
+	const tolerance = 0.2
+	agree := func() bool {
+		unknown := float64(best[len(best)-1])
+		for _, took := range best[:len(best)-1] {
+			if math.Abs(float64(took)/unknown-1) > tolerance {
+				return false
+			}
+		}
+		return true
+	}
+	for round := 0; round < 60 && (round < 5 || !agree()); round++ {
+		for i, verify := range attempts {
+			start := cpuTime(t)
+			verify("wrong")
+			best[i] = min(best[i], cpuTime(t)-start)
+		}
+	}
+	unknown := best[len(best)-1]
+	for i, took := range best[:len(best)-1] {
+		require.InDelta(t, 1, float64(took)/float64(unknown), tolerance, "%s took %v, unknown %v", names[i], took, unknown)
+	}
 }
 
 func Test_BasicAuth_HashVariants(t *testing.T) {

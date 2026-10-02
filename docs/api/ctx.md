@@ -325,17 +325,26 @@ app.Get("/test", func(c fiber.Ctx) error {
 ```
 
 :::note
-A named route belongs to this application, so what comes back is always a path
-on this origin: a `params` value that would open an authority — `"/evil.com"`
-or `"\evil.com"` under a `/*` route — is kept as the path segment the route
-asked for. [`Route.URL`](./app.md#getroute) and
-[`Redirect().Route`](./redirect.md#route) return the same answer for the same
-input, so it does not matter which one puts it in a `Location` header or an
-`href`.
+Each `params` value is automatically percent-encoded with URL path-segment
+rules. Greedy parameters (`*` and `+`) preserve `/` inside the matched path
+tail; delimiters such as `?` and `#` remain parameter data instead of adding a
+query or fragment. [`Route.URL`](./app.md#getroute) and
+[`Redirect().Route`](./redirect.md#route) apply the same encoding.
 
-The values themselves are still written into the path as given. Where they come
-from the request, escape them with [`url.PathEscape`](https://pkg.go.dev/net/url#PathEscape)
-if the route expects one segment per parameter.
+These take the value as data, not as URL text. Representable values use the same
+encoding under any configuration. With `UnescapePath` off (the default) `c.Params`
+returns the value still percent-encoded, so forwarding it straight back encodes
+the `%` a second time. Turn `UnescapePath` on, or decode with
+[`url.PathUnescape`](https://pkg.go.dev/net/url#PathUnescape) first.
+An app with `UnescapePath` enabled decodes `%2F` before route matching, so an
+ordinary single-segment parameter holding a `/` cannot round-trip and returns
+`ErrRouteNotRepresentable`. Greedy (`*` or `+`), adjacent single-byte parameters
+and parameters with a single-byte non-slash terminator retain their existing
+slash-matching rules.
+Dot-containing values are also rejected when the composed path has a `.` or
+`..` segment that would be removed during normalization. Surrounding route
+constants are considered: `:name.txt` with `name="."` remains representable.
+Pass a different value or use a route that can represent it; do not pre-encode it.
 :::
 
 ### Hijack
@@ -1616,6 +1625,26 @@ func (r fiber.Req) HasHeader(key string) bool
 ```go title="Example"
 app.Get("/", func(c fiber.Ctx) error {
   c.HasHeader("X-Trace-Id")
+  return nil
+})
+```
+
+### HasHeaderValue
+
+Reports whether the request header `key` lists `value` as one of its comma-separated members, on any of its field lines. Repeated field lines are treated as one list ([RFC 9110 Section 5.3](https://www.rfc-editor.org/rfc/rfc9110#section-5.3)) and the member is matched case-insensitively, which fits directive-style headers such as `Cache-Control` or `Connection`. A comma inside a quoted argument does not split a member, so `ext="a,no-transform,b"` does not list `no-transform`. A backslash inside quotes escapes the next byte ([RFC 9110 Section 5.6.4](https://www.rfc-editor.org/rfc/rfc9110#section-5.6.4)), so `ext="a\"", no-transform` does list it. An empty `value` is never present.
+
+```go title="Signature"
+func (c fiber.Ctx) HasHeaderValue(key, value string) bool
+func (r fiber.Req) HasHeaderValue(key, value string) bool
+```
+
+```go title="Example"
+// Cache-Control: public, max-age=60
+// Cache-Control: no-transform
+app.Get("/", func(c fiber.Ctx) error {
+  c.HasHeaderValue(fiber.HeaderCacheControl, "no-transform") // true
+  c.HasHeaderValue(fiber.HeaderCacheControl, "PUBLIC")       // true
+  c.HasHeaderValue(fiber.HeaderCacheControl, "max-age")      // false
   return nil
 })
 ```

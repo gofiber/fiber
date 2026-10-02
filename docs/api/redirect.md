@@ -88,19 +88,27 @@ app.Get("/user/:name", func(c fiber.Ctx) error {
 ```
 
 :::note
-A named route is a route in this application, so the redirect always stays on
-this origin: a `Params` value that would open an authority — `"/evil.com"` or
-`"\evil.com"` under a `/*` route — is kept as the path segment the route asked
-for. [`Route.URL`](./app.md#getroute) and [`GetRouteURL`](./ctx.md#getrouteurl)
-answer the same for the same input.
+Each `Params` value is automatically percent-encoded with URL path-segment
+rules. Greedy parameters (`*` and `+`) preserve `/` inside the matched path
+tail; delimiters such as `?` and `#` remain parameter data instead of adding a
+query or fragment, and cannot absorb or discard `Queries`.
+[`Route.URL`](./app.md#getroute) and [`GetRouteURL`](./ctx.md#getrouteurl) apply
+the same encoding.
 
-`Queries` are merged into whatever query the composed path already holds and
-placed ahead of any fragment, so a `Params` value carrying `?` or `#` cannot
-absorb or discard them.
-
-The values themselves are still written into the path as given. Where they come
-from the request, escape them with [`url.PathEscape`](https://pkg.go.dev/net/url#PathEscape)
-if the route expects one segment per parameter.
+These take the value as data, not as URL text. Representable values use the same
+encoding under any configuration. With `UnescapePath` off (the default) `c.Params`
+returns the value still percent-encoded, so forwarding it straight back encodes
+the `%` a second time. Turn `UnescapePath` on, or decode with
+[`url.PathUnescape`](https://pkg.go.dev/net/url#PathUnescape) first.
+An app with `UnescapePath` enabled decodes `%2F` before route matching, so an
+ordinary single-segment parameter holding a `/` cannot round-trip and returns
+`ErrRouteNotRepresentable`. Greedy (`*` or `+`), adjacent single-byte parameters
+and parameters with a single-byte non-slash terminator retain their existing
+slash-matching rules.
+Dot-containing values are also rejected when the composed path has a `.` or
+`..` segment that would be removed during normalization. Surrounding route
+constants are considered: `:name.txt` with `name="."` remains representable.
+Pass a different value or use a route that can represent it; do not pre-encode it.
 :::
 
 ### Back
@@ -125,7 +133,7 @@ there is no fallback.
 :::
 
 ```go title="Signature"
-func (r *Redirect) Back(fallback string) error
+func (r *Redirect) Back(fallback ...string) error
 ```
 
 ```go title="Example"
@@ -256,10 +264,10 @@ app.Get("/name", func(c fiber.Ctx) error {
 
 #### With
 
-Send flash messages with `With`.
+Send flash messages with `With`. The optional `level` sets the message's `Level` and defaults to `0`.
 
 ```go title="Signature"
-func (r *Redirect) With(key, value string) *Redirect
+func (r *Redirect) With(key, value string, level ...uint8) *Redirect
 ```
 
 ```go title="Example"
@@ -269,7 +277,7 @@ app.Get("/login", func(c fiber.Ctx) error {
 
 app.Get("/", func(c fiber.Ctx) error {
   // => Logged in successfully
-  return c.SendString(c.Redirect().Message("status"))
+  return c.SendString(c.Redirect().Message("status").Value)
 })
 ```
 
@@ -305,6 +313,6 @@ app.Post("/login", func(c fiber.Ctx) error {
 
 app.Get("/name", func(c fiber.Ctx) error {
   // => John
-  return c.SendString(c.Redirect().OldInput("name"))
+  return c.SendString(c.Redirect().OldInput("name").Value)
 }).Name("name")
 ```
