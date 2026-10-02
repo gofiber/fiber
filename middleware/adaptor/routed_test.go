@@ -137,6 +137,36 @@ func Test_HTTPHandler_FileServerStaysInPlace(t *testing.T) {
 	}
 }
 
+// Test_HTTPHandler_RefusesBackslashAndDotParams pins that an adapted handler
+// is not handed a path that a handler passing the request on, such as
+// httputil.ReverseProxy, would forward to an upstream that reads it as another
+// path: one with a backslash, which WHATWG URL parsers and IIS read as a
+// separator, or with a dot segment carrying parameters, which servlet
+// containers resolve once they strip the parameters. A ";" anywhere else is
+// an ordinary path character and is handed on.
+func Test_HTTPHandler_RefusesBackslashAndDotParams(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Use(HTTPHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, r.URL.EscapedPath())
+	})))
+
+	for _, target := range []string{
+		"/admin\\secret", "/public/..\\admin", "/public/..%5Cadmin", "/public/..%5cadmin",
+		"/public/..;/admin", "/public/.;x/admin", "/public/..;jsessionid=1/admin",
+	} {
+		fctx := rawCtx(t, app, target)
+		require.Equal(t, fiber.StatusNotFound, fctx.Response.StatusCode(), target)
+		require.NotContains(t, string(fctx.Response.Body()), "admin", target)
+	}
+	for _, target := range []string{"/a;b/c", "/m;x=1;y=2", "/..x;y/a"} {
+		fctx := rawCtx(t, app, target)
+		require.Equal(t, fiber.StatusOK, fctx.Response.StatusCode(), target)
+		require.Equal(t, target, string(fctx.Response.Body()), target)
+	}
+}
+
 func Test_HTTPHandler_RestoresRequestLine(t *testing.T) {
 	t.Parallel()
 
