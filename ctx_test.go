@@ -23,6 +23,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -7766,6 +7767,185 @@ func Test_Ctx_SendFile_404(t *testing.T) {
 	require.Equal(t, "sendfile: file ctx12.go not found", string(body))
 }
 
+// Test_Ctx_SendFile_NameIsLiteral pins that SendFile opens exactly the name it
+// is given, the way os.Open would. The file server reads the request URI,
+// which fasthttp decodes and splits at "?" and "#", so the name is escaped on
+// its way in: a "%", "?" or "#" is part of the name, and "100%25.txt" is not
+// "100%.txt".
+func Test_Ctx_SendFile_NameIsLiteral(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	names := []string{"100%25.txt", "100%.txt", "hash_sign_#.txt", "sp ace.txt", "café.txt", "plus+sign.txt"}
+	if runtime.GOOS != windowsOS {
+		names = append(names, "question?.txt")
+	}
+	for _, name := range names {
+		require.NoError(t, os.WriteFile(filepath.Join(dir, name), []byte("content of "+name), 0o600))
+	}
+
+	for _, name := range names {
+		app := New()
+		app.Get("/", func(c Ctx) error {
+			return c.SendFile(filepath.Join(dir, name))
+		})
+		resp, err := app.Test(httptest.NewRequest(MethodGet, "/", http.NoBody))
+		require.NoError(t, err, name)
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err, name)
+		require.Equal(t, StatusOK, resp.StatusCode, name)
+		require.Equal(t, "content of "+name, string(body), name)
+	}
+}
+
+// Test_Ctx_SendFile_EncodedSeparatorStaysInDirectory pins that a name built
+// from request input cannot leave the directory the handler joined it to. The
+// router keeps "%2F" encoded, so c.Params("*") of "/files/..%2Fsecret.txt" is
+// one segment that filepath.Join cannot clean; SendFile used to decode it
+// afterwards into "../secret.txt" and serve the file outside the directory.
+// An encoded "?" or "#" likewise stays part of the name.
+func Test_Ctx_SendFile_EncodedSeparatorStaysInDirectory(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	pub := filepath.Join(root, "public")
+	require.NoError(t, os.Mkdir(pub, 0o750))
+	require.NoError(t, os.WriteFile(filepath.Join(pub, "ok.txt"), []byte("OK"), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "secret.txt"), []byte("SECRET"), 0o600))
+
+	for _, unescape := range []bool{false, true} {
+		app := New(Config{UnescapePath: unescape})
+		app.Get("/files/*", func(c Ctx) error {
+			return c.SendFile(filepath.Join(pub, c.Params("*")))
+		})
+
+		resp, err := app.Test(httptest.NewRequest(MethodGet, "/files/ok.txt", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, StatusOK, resp.StatusCode, "unescape=%v", unescape)
+
+		for _, target := range []string{
+			"/files/..%2Fsecret.txt",
+			"/files/%2e%2e%2Fsecret.txt",
+			"/files/..%252Fsecret.txt",
+			"/files/ok.txt%3Fx",
+			"/files/ok.txt%23x",
+		} {
+			resp, err := app.Test(httptest.NewRequest(MethodGet, target, http.NoBody))
+			require.NoError(t, err, target)
+			body, err := io.ReadAll(resp.Body)
+			require.NoError(t, err, target)
+			require.Equal(t, StatusNotFound, resp.StatusCode, "unescape=%v target=%s", unescape, target)
+			require.NotContains(t, string(body), "SECRET", "unescape=%v target=%s", unescape, target)
+		}
+	}
+}
+
+// Test_Ctx_SendFile_DirectoryIsNotFound pins that a directory named without a
+// trailing slash is not found rather than redirected: fasthttp's redirect
+// would carry the directory's filesystem path in Location.
+func Test_Ctx_SendFile_DirectoryIsNotFound(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	// fasthttp escapes the name in the redirect it answers with, so a name it
+	// has to escape (a space, a percent, UTF-8) must be caught all the same.
+	for _, name := range []string{"sub", "sub dir", "100%", "café"} {
+		require.NoError(t, os.Mkdir(filepath.Join(dir, name), 0o750))
+		require.NoError(t, os.WriteFile(filepath.Join(dir, name, "index.html"), []byte("INDEX"), 0o600))
+
+		app := New()
+		app.Get("/", func(c Ctx) error {
+			return c.SendFile(filepath.Join(dir, name))
+		})
+		resp, err := app.Test(httptest.NewRequest(MethodGet, "/", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, StatusNotFound, resp.StatusCode, name)
+		require.Empty(t, resp.Header.Get(HeaderLocation), name)
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		require.NotContains(t, string(body), "INDEX", name)
+		// the error the default handler writes names neither the directory
+		// nor where it lives
+		require.NotContains(t, string(body), filepath.ToSlash(dir), name)
+		require.NotContains(t, string(body), name, name)
+	}
+}
+
+// Test_Ctx_SendFile_DecodedParamWithRoot pins the recipe the SendFile docs give
+// for a name taken from a route parameter under the default configuration,
+// where c.Params keeps the escapes the router keeps: decode the parameter and
+// serve it through the FS option from an os.Root, which refuses a name that
+// leaves the directory once decoded.
+func Test_Ctx_SendFile_DecodedParamWithRoot(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	files := filepath.Join(dir, "files")
+	require.NoError(t, os.Mkdir(files, 0o750))
+	for _, name := range []string{"my file.txt", "café.txt", "100%.txt"} {
+		require.NoError(t, os.WriteFile(filepath.Join(files, name), []byte("FILE "+name), 0o600))
+	}
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "secret.txt"), []byte("SECRET"), 0o600))
+	root, err := os.OpenRoot(files)
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, root.Close()) })
+
+	app := New()
+	app.Get("/files/:name", func(c Ctx) error {
+		name, err := url.PathUnescape(c.Params("name"))
+		if err != nil {
+			return ErrBadRequest
+		}
+		return c.SendFile(name, SendFile{FS: root.FS()})
+	})
+
+	for target, want := range map[string]string{
+		"/files/my%20file.txt":   "FILE my file.txt",
+		"/files/caf%C3%A9.txt":   "FILE café.txt",
+		"/files/100%25.txt":      "FILE 100%.txt",
+		"/files/..%2Fsecret.txt": "",
+	} {
+		resp, err := app.Test(httptest.NewRequest(MethodGet, target, http.NoBody))
+		require.NoError(t, err, target)
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err, target)
+		if want == "" {
+			require.Equal(t, StatusNotFound, resp.StatusCode, target)
+			require.NotContains(t, string(body), "SECRET", target)
+			continue
+		}
+		require.Equal(t, StatusOK, resp.StatusCode, target)
+		require.Equal(t, want, string(body), target)
+	}
+}
+
+// Test_Ctx_SendFile_ControlByteIsNotFound pins that a name holding a control
+// byte is not found. fasthttp's URI parser used to reject it silently, which
+// left the root path, so the root's index.html was served instead.
+func Test_Ctx_SendFile_ControlByteIsNotFound(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "index.html"), []byte("INDEX"), 0o600))
+
+	for _, cfg := range []SendFile{{}, {FS: os.DirFS(dir)}} {
+		app := New()
+		app.Get("/", func(c Ctx) error {
+			name := "nope\x00.txt"
+			if cfg.FS == nil {
+				name = filepath.Join(dir, name)
+			}
+			return c.SendFile(name, cfg)
+		})
+		resp, err := app.Test(httptest.NewRequest(MethodGet, "/", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, StatusNotFound, resp.StatusCode, "fs=%v", cfg.FS != nil)
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		require.NotContains(t, string(body), "INDEX", "fs=%v", cfg.FS != nil)
+	}
+}
+
 func Test_Ctx_SendFile_Multiple(t *testing.T) {
 	t.Parallel()
 
@@ -12114,5 +12294,32 @@ func Test_Ctx_PathSlashCount(t *testing.T) {
 				}
 			}
 		}
+	}
+}
+
+// Test_PathNeedsNormalization pins the request gate: a path that kept its
+// parsed length has nothing to decode or resolve, except that a target
+// without a leading slash is normalized whatever its length, since the slash
+// fasthttp adds in front can be canceled by the one a doubled slash loses.
+func Test_PathNeedsNormalization(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		path string
+		norm string
+		want bool
+	}{
+		{path: "/a/b", norm: "/a/b", want: false},
+		{path: "/a%41", norm: "/aA", want: true},
+		{path: "/a//b", norm: "/a/b", want: true},
+		{path: "/a/.", norm: "/a/.", want: true},
+		{path: "/a%zzb", norm: "/a%zzb", want: false},
+		{path: "", norm: "/", want: true},
+		{path: "*", norm: "/*", want: true},
+		{path: "admin//secret", norm: "/admin/secret", want: true},
+		{path: "secret//", norm: "/secret/", want: true},
+		{path: "example.com:443", norm: "/example.com:443", want: true},
+	} {
+		require.Equal(t, tc.want, pathNeedsNormalization(len(tc.norm), tc.path), "%q", tc.path)
 	}
 }

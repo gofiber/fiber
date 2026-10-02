@@ -2278,7 +2278,7 @@ The generic `Params` function supports returning the following data types based 
 
 ### Path
 
-Contains the path part of the request URL, normalized before routing as [RFC 3986 Section 6.2.2](https://www.rfc-editor.org/rfc/rfc3986#section-6.2.2) describes: percent-encoded unreserved characters are decoded, other escapes keep their encoding with uppercase hex digits, and `.` and `..` segments are removed, so a request for `/users/../users/%6Aohn` reports `/users/john`. An encoded slash stays encoded and empty segments are kept unless [`UnescapePath`](fiber.md#config) decodes every escape. Use [OriginalURL](#originalurl) for the request target as the client sent it. Optionally, you can override the path by passing a string. For internal redirects, you might want to call [RestartRouting](ctx.md#restartrouting) instead of [Next](ctx.md#next).
+Contains the path part of the request URL, normalized before routing as [RFC 3986 Section 6.2.2](https://www.rfc-editor.org/rfc/rfc3986#section-6.2.2) describes: percent-encoded unreserved characters are decoded, other escapes keep their encoding with uppercase hex digits, and `.` and `..` segments are removed, so a request for `/users/../users/%6Aohn` reports `/users/john`. An encoded slash stays encoded and empty segments are kept unless [`UnescapePath`](fiber.md#config) decodes every escape. A stray `%` that begins no escape is kept as sent, except where an escape decoded after it would complete a new escape with it: that `%` is written as `%25`, so `/%%370rivate` reports `/%2570rivate`. The result is not a path to percent-decode again, since an escape it keeps, such as `%2F`, is meant to stay one (see [Routing](../guide/routing.md)). Use [OriginalURL](#originalurl) for the request target as the client sent it. Optionally, you can override the path by passing a string. For internal redirects, you might want to call [RestartRouting](ctx.md#restartrouting) instead of [Next](ctx.md#next).
 
 ```go title="Signature"
 func (c fiber.Ctx) Path(override ...string) string
@@ -3812,14 +3812,29 @@ app.Get("/not-found", func(c fiber.Ctx) error {
 ```
 
 :::info
-If the file contains a URL-specific character, you have to escape it before passing the file path into the `SendFile` function.
+The name is taken as it is, the way `os.Open` takes it: a `%`, `?` or `#` in it is part of the name, so `c.SendFile("hash_sign_#.txt")` serves that file and nothing needs escaping. The exceptions are a name holding an ASCII control byte, which is not found, and a directory named without a trailing slash, which is not found either; with the slash, its `index.html` is served. A name built from request input is served from wherever it points, so confine it yourself. Lexical cleaning such as `filepath.Join(root, filepath.Clean("/"+name))` keeps the name under `root` but does not stop a symbolic link inside `root` from pointing outside it, and neither does `os.DirFS`. To confine the file itself, open the directory with `os.OpenRoot` and serve through the `FS` option with `root.FS()`, which refuses any link that escapes the root. An encoded separator that a route parameter still holds, as in `..%2Fsecret.txt`, stays one name and is not found rather than decoded into a step out of the directory.
 :::
 
-```go title="Example"
-app.Get("/file-with-url-chars", func(c fiber.Ctx) error {
-  return c.SendFile(url.PathEscape("hash_sign_#.txt"))
+:::caution Route parameters keep their escapes
+With [`UnescapePath`](fiber.md#config) off, which is the default, a route parameter keeps every escape the router keeps, and `SendFile` no longer decodes it. For `/files/my%20file.txt`, `c.SendFile(filepath.Join(dir, c.Params("name")))` looks for a file named `my%20file.txt` rather than `my file.txt`, and `/files/100%25.txt` names `100%25.txt` rather than `100%.txt`. Either enable `UnescapePath`, which gives decoded parameters, or decode the parameter yourself and confine the result, since a decoded `..%2F` is a step out of the directory:
+
+```go
+root, err := os.OpenRoot("./files")
+if err != nil {
+  log.Fatal(err)
+}
+
+app.Get("/files/:name", func(c fiber.Ctx) error {
+  name, err := url.PathUnescape(c.Params("name"))
+  if err != nil {
+    return fiber.ErrBadRequest
+  }
+  // root.FS() refuses a name that leaves ./files, such as "../secret.txt"
+  return c.SendFile(name, fiber.SendFile{FS: root.FS()})
 })
 ```
+
+:::
 
 :::info
 You can set the `CacheDuration` config property to `-1` to disable caching.

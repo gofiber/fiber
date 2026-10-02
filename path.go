@@ -179,6 +179,12 @@ var (
 // The optional Config argument can be used to control case sensitivity and
 // strict routing behavior. This helper allows checking potential matches
 // without registering a route.
+//
+// path is a rooted path, as c.Path() returns one. The empty string is read as
+// "/", so RoutePatternMatch("", "/") is true; any other string without a
+// leading slash matches no pattern. Request routing differs in one respect: it
+// roots the request target it is handed before matching, so "OPTIONS *" is
+// routed as "/*", whereas RoutePatternMatch("*", "/*") is false.
 func RoutePatternMatch(path, pattern string, cfg ...Config) bool {
 	// See logic in (*Route).match and (*App).register
 	var ctxParams [maxParams]string
@@ -191,6 +197,11 @@ func RoutePatternMatch(path, pattern string, cfg ...Config) bool {
 
 	if path == "" {
 		path = "/"
+	}
+	// Every pattern starts with a slash, so a path without one matches none.
+	// (A request path is rooted before routing, see normalizeRequestPath.)
+	if path[0] != '/' {
+		return false
 	}
 
 	pattern, patternPretty, patternClean := normalizeRoutePattern(pattern, &config)
@@ -360,8 +371,19 @@ func newPathUnreserved() [256]bool {
 }
 
 // unescapeSafePath normalizes the percent escapes of b in place (RFC 3986
-// Section 6.2.2): an escape of an unreserved character is decoded, any other
-// escape is kept with uppercase hex digits, and a malformed one stays as sent.
+// Section 6.2.2): an escape of an unreserved character is decoded, and any
+// other escape is kept with uppercase hex digits. A stray "%" that begins no
+// escape is kept as sent, unless the two bytes written after it are hex
+// digits, which only a decoded escape can produce: kept, it would read as an
+// escape no one sent, "%%370rivate" becoming "%70rivate", which decodes to
+// "private", a path the router never matched. Such a "%" is written as "%25".
+// The result is a valid path that normalizes to itself and holds no escape of
+// an unreserved character. The escapes the router keeps, such as "%2F", are
+// still meant to stay encoded: the result is not a path to percent-decode.
+// Since a stray "%" changes only next to a decoded escape, it comes out the
+// same in a path matched as sent (see pathNeedsNormalization) as in one
+// normalized for another reason, so "/files/100%" and "/files/./100%" both
+// end in "100%".
 func unescapeSafePath(b []byte) []byte {
 	const upperhex = "0123456789ABCDEF"
 	i := bytes.IndexByte(b, '%')
@@ -371,7 +393,13 @@ func unescapeSafePath(b []byte) []byte {
 	n := len(b)
 	dst := i
 	for i < n {
-		if b[i] == '%' && i+2 < n {
+		if b[i] != '%' {
+			b[dst] = b[i]
+			dst++
+			i++
+			continue
+		}
+		if i+2 < n {
 			if hi, lo := unhex(b[i+1]), unhex(b[i+2]); hi >= 0 && lo >= 0 {
 				if v := byte(hi<<4 | lo); pathUnreserved[v] { //nolint:gosec // G115: both nibbles are 0-15
 					b[dst] = v
@@ -384,11 +412,86 @@ func unescapeSafePath(b []byte) []byte {
 				continue
 			}
 		}
-		b[dst] = b[i]
+		if strayPercentNeedsEscape(b, i+1) {
+			return escapeStrayPercent(b, dst, i)
+		}
+		b[dst] = '%'
 		dst++
 		i++
 	}
 	return b[:dst]
+}
+
+// escapeStrayPercent finishes unescapeSafePath from the stray "%" at b[i] that
+// has to be written as "%25", once the in-place pass has written its result so
+// far to b[:dst]. Writing "%25" there would overwrite the escape after it before
+// the pass has read it, so the rest is written to a new slice. Only a malformed
+// request path pays for the copy, and it is made once: every "%25" is paired
+// with the escape decoded within the two bytes after it, which is three bytes
+// shorter than it was, and no decoded escape completes two of them, so the
+// result is never longer than b.
+func escapeStrayPercent(b []byte, dst, i int) []byte {
+	const upperhex = "0123456789ABCDEF"
+	n := len(b)
+	out := make([]byte, dst, n)
+	copy(out, b[:dst])
+	for i < n {
+		if b[i] != '%' {
+			out = append(out, b[i])
+			i++
+			continue
+		}
+		if i+2 < n {
+			if hi, lo := unhex(b[i+1]), unhex(b[i+2]); hi >= 0 && lo >= 0 {
+				if v := byte(hi<<4 | lo); pathUnreserved[v] { //nolint:gosec // G115: both nibbles are 0-15
+					out = append(out, v)
+				} else {
+					out = append(out, '%', upperhex[hi], upperhex[lo])
+				}
+				i += 3
+				continue
+			}
+		}
+		if strayPercentNeedsEscape(b, i+1) {
+			out = append(out, '%', '2', '5')
+		} else {
+			out = append(out, '%')
+		}
+		i++
+	}
+	return out
+}
+
+// strayPercentNeedsEscape reports whether the stray "%" before b[j] has to be
+// written as "%25", that is whether the next two bytes unescapeSafePath writes
+// after it are hex digits.
+func strayPercentNeedsEscape(b []byte, j int) bool {
+	if first := nextNormalizedByte(b, &j); unhex(first) < 0 {
+		return false
+	}
+	second := nextNormalizedByte(b, &j)
+	return unhex(second) >= 0
+}
+
+// nextNormalizedByte returns the first byte unescapeSafePath writes for b[*j:]
+// and moves *j past the input that byte takes. An escape it keeps and a stray
+// "%" both write a '%' first, and past the end it returns 0; neither is a hex
+// digit.
+func nextNormalizedByte(b []byte, j *int) byte {
+	i := *j
+	if i >= len(b) {
+		return 0
+	}
+	if b[i] == '%' && i+2 < len(b) {
+		if hi, lo := unhex(b[i+1]), unhex(b[i+2]); hi >= 0 && lo >= 0 {
+			if v := byte(hi<<4 | lo); pathUnreserved[v] { //nolint:gosec // G115: both nibbles are 0-15
+				*j = i + 3
+				return v
+			}
+		}
+	}
+	*j = i + 1
+	return b[i]
 }
 
 // cleanPathSegments removes the "." and ".." segments of b in place, as
@@ -453,15 +556,12 @@ func slashDotLanes(w uint64) uint64 {
 }
 
 // needsPathNormalization reports whether normalizeRequestPath could change s:
-// it holds a percent escape or a segment starting with a dot. It scans a word
-// at a time and serves where fasthttp's own normalization cannot answer the
-// question (see DefaultCtx.pathNeedsNormalization).
+// it is unrooted, or holds a percent escape or a segment starting with a dot.
+// It scans a word at a time and serves where fasthttp's own normalization
+// cannot answer the question (see DefaultCtx.pathNeedsNormalization).
 func needsPathNormalization(s string) bool {
 	n := len(s)
-	if n == 0 {
-		return false
-	}
-	if s[0] == '.' {
+	if n == 0 || s[0] != '/' {
 		return true
 	}
 	if n >= swar.WordLen {
@@ -539,13 +639,25 @@ func hasDotSegment(b []byte) bool {
 }
 
 // normalizeRequestPath normalizes a request path in place as RFC 3986
-// Section 6.2.2 describes: percent escapes are normalized, all of them decoded
-// when unescapeAll (UnescapePath) is set and otherwise only those of
-// unreserved characters, and then "." and ".." segments are removed. Decoding
-// runs exactly once, so "%2570rivate" stays a literal name, while
-// "/%70rivate", "/./private" and "/x/../private" all match a route or guard
-// on "/private".
+// Section 6.2.2 describes: an unrooted path is rooted, percent escapes are
+// normalized, all of them decoded when unescapeAll (UnescapePath) is set and
+// otherwise only those of unreserved characters, and then "." and ".."
+// segments are removed. Decoding runs exactly once, so "%2570rivate" stays a
+// literal name, while "/%70rivate", "/./private" and "/x/../private" all
+// match a route or guard on "/private".
+//
+// The rooting covers the absolute-form target with an empty path
+// ("GET http://host?q") and the asterisk-form "OPTIONS *", which carry no
+// leading slash. fasthttp roots its own copy, which is how such a path gets
+// here, and routes and Use prefixes assume a rooted path: unrooted, it slipped
+// past every root-level middleware while a "/*" route still matched it.
+// RFC 9112 Section 3.2 reads the empty path as "/".
 func normalizeRequestPath(b []byte, unescapeAll bool) []byte { //nolint:revive // the flag mirrors Config.UnescapePath
+	if len(b) == 0 || b[0] != '/' {
+		b = append(b, 0)
+		copy(b[1:], b)
+		b[0] = '/'
+	}
 	if unescapeAll {
 		b = unescapePath(b)
 	} else {
