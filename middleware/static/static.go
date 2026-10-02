@@ -116,10 +116,11 @@ func decodeFileName(p []byte, decodeEscapes bool) ([]byte, error) { //nolint:rev
 	if utils.IndexControl(p) >= 0 || bytes.IndexByte(p, '\\') >= 0 {
 		return nil, ErrInvalidPath
 	}
-	if !decodeEscapes {
+	i := bytes.IndexByte(p, '%')
+	if !decodeEscapes || i < 0 {
 		return p, nil
 	}
-	for i := 0; i < len(p); i++ {
+	for ; i < len(p); i++ {
 		if p[i] != '%' {
 			continue
 		}
