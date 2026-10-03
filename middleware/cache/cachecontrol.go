@@ -1,6 +1,7 @@
 package cache
 
 import (
+	"github.com/gofiber/fiber/v3/internal/headerlist"
 	"github.com/gofiber/utils/v2"
 	"github.com/valyala/fasthttp"
 )
@@ -88,50 +89,23 @@ func parseCacheControlDirectives(cc []byte, fn func(key, value []byte)) {
 			}
 			i++
 		}
-		partEnd := i
-		for partEnd > start && (cc[partEnd-1] == ' ' || cc[partEnd-1] == '\t') {
-			partEnd--
-		}
-
-		keyStart := start
-		for keyStart < partEnd && (cc[keyStart] == ' ' || cc[keyStart] == '\t') {
-			keyStart++
-		}
-		if keyStart >= partEnd {
+		part := headerlist.TrimOWS(cc[start:i])
+		if len(part) == 0 {
 			continue
 		}
 
-		keyEnd := keyStart
-		for keyEnd < partEnd && cc[keyEnd] != '=' {
-			keyEnd++
-		}
-		// Trim trailing OWS from key
-		keyEndTrimmed := keyEnd
-		for keyEndTrimmed > keyStart && (cc[keyEndTrimmed-1] == ' ' || cc[keyEndTrimmed-1] == '\t') {
-			keyEndTrimmed--
-		}
-		key := cc[keyStart:keyEndTrimmed]
-
-		var value []byte
-		if keyEnd < partEnd && cc[keyEnd] == '=' {
-			valueStart := keyEnd + 1
-			for valueStart < partEnd && (cc[valueStart] == ' ' || cc[valueStart] == '\t') {
-				valueStart++
-			}
-			valueEnd := partEnd
-			for valueEnd > valueStart && (cc[valueEnd-1] == ' ' || cc[valueEnd-1] == '\t') {
-				valueEnd--
-			}
-			if valueStart <= valueEnd {
-				value = cc[valueStart:valueEnd]
-				// Handle quoted-string values per RFC 9111 Section 5.2
-				if len(value) >= 2 && value[0] == '"' && value[len(value)-1] == '"' {
-					value = unquoteCacheDirective(value)
-				}
+		// A directive without "=" reports a nil value, one with an empty
+		// argument an empty value.
+		key, value, hasValue := utils.CutByte(part, '=')
+		if hasValue {
+			value = headerlist.TrimOWS(value)
+			// Handle quoted-string values per RFC 9111 Section 5.2
+			if len(value) >= 2 && value[0] == '"' && value[len(value)-1] == '"' {
+				value = unquoteCacheDirective(value)
 			}
 		}
 
-		fn(key, value)
+		fn(headerlist.TrimOWS(key), value)
 		i++ // skip comma
 	}
 }

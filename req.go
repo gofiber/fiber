@@ -887,7 +887,7 @@ func (r *DefaultReq) extractIPsFromHeader(header string) []string {
 			i++
 		}
 
-		s := trimOWS(headerValue[i:j])
+		s := headerlist.TrimOWS(headerValue[i:j])
 
 		if r.c.app.config.EnableIPValidation {
 			// Skip validation if IP is clearly not IPv4/IPv6; otherwise, validate without allocations.
@@ -925,7 +925,7 @@ func (r *DefaultReq) extractIPFromHeader(header string) string {
 				end++
 			}
 
-			ipStr := trimOWS(headerValue[start:end])
+			ipStr := headerlist.TrimOWS(headerValue[start:end])
 			if isValidProxyIP(ipStr) {
 				return ipStr
 			}
@@ -944,7 +944,7 @@ func (r *DefaultReq) extractIPFromHeader(header string) string {
 			start--
 		}
 
-		ipStr := trimOWS(headerValue[start:end])
+		ipStr := headerlist.TrimOWS(headerValue[start:end])
 		if isValidProxyIP(ipStr) {
 			leftmostIP = ipStr
 			if !r.isTrustedProxyIP(ipStr) {
@@ -981,21 +981,6 @@ func isValidProxyIP(ipStr string) bool {
 		return utils.IsIPv6(ipStr)
 	}
 	return strings.IndexByte(ipStr, '.') >= 0 && utils.IsIPv4(ipStr)
-}
-
-// trimOWS strips the optional whitespace around a list element, which RFC 9110
-// Section 5.6.3 defines as SP or HTAB. It is narrower than utils.TrimSpace on
-// purpose: CR, LF, VT and FF are not OWS, so they stay part of the element and
-// fail IP validation, as a tab inside an address does.
-func trimOWS(s string) string {
-	start, end := 0, len(s)
-	for start < end && (s[start] == ' ' || s[start] == '\t') {
-		start++
-	}
-	for end > start && (s[end-1] == ' ' || s[end-1] == '\t') {
-		end--
-	}
-	return s[start:end]
 }
 
 // hasTrustedProxyConfig returns true if any trusted proxy configuration is set.

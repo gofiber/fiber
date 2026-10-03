@@ -184,6 +184,52 @@ func Test_All(t *testing.T) {
 	}
 }
 
+func Test_TrimOWS(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{"empty", "", ""},
+		{"nothing to trim", "203.0.113.50", "203.0.113.50"},
+		{"spaces", "  gzip  ", "gzip"},
+		{"tabs", "\tgzip\t", "gzip"},
+		{"mixed", " \t gzip\t \t", "gzip"},
+		{"only OWS", " \t ", ""},
+		{"inner OWS kept", "a \t b", "a \t b"},
+		{"CR and LF are not OWS", "\r\ngzip\r\n", "\r\ngzip\r\n"},
+		{"VT and FF are not OWS", "\vgzip\f", "\vgzip\f"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, tc.want, TrimOWS(tc.in))
+			require.Equal(t, []byte(tc.want), TrimOWS([]byte(tc.in)))
+		})
+	}
+}
+
+func Test_TrimOWS_AliasesInput(t *testing.T) {
+	t.Parallel()
+	in := []byte("\tgzip ")
+	got := TrimOWS(in)
+	require.Equal(t, []byte("gzip"), got)
+	require.Equal(t, &in[1], &got[0], "TrimOWS must return a sub-slice, not a copy")
+}
+
+func Benchmark_TrimOWS(b *testing.B) {
+	inputs := []string{"203.0.113.50", " 203.0.113.50", "\t203.0.113.50\t", " \t2001:db8::1 \t"}
+	var got string
+	b.ReportAllocs()
+	for b.Loop() {
+		for _, in := range inputs {
+			got = TrimOWS(in)
+		}
+	}
+	require.Equal(b, "2001:db8::1", got)
+}
+
 func Test_AllQuotedPairs(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
