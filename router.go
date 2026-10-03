@@ -5,9 +5,11 @@
 package fiber
 
 import (
+	"bytes"
 	"fmt"
 	"math/bits"
 	"slices"
+	"strings"
 	"sync/atomic"
 
 	"github.com/gofiber/fiber/v3/internal/urlnorm"
@@ -104,6 +106,7 @@ type Route struct { // betteralign:ignore - see below
 	root          bool // Path equals '/'
 	autoHead      bool // Automatically generated HEAD route
 	caseSensitive bool // Whether parameter matching is case-sensitive
+	unescapePath  bool // Whether request routing decodes escaped slashes
 
 	routeParser routeParser // Parameter parser
 
@@ -260,6 +263,8 @@ func (t *routeTree) lookup(hash int) (routes []*Route, filter *bucketFilter) {
 // Parameter matching respects the app's CaseSensitive configuration:
 // case-insensitive by default, case-sensitive when CaseSensitive is true.
 // Parameter values are percent-encoded using URL path-segment rules.
+// Dot-containing values that form a dot-only path segment, and slashes that
+// UnescapePath would decode outside a parameter's match, return ErrRouteNotRepresentable.
 //
 // Example:
 //
@@ -310,6 +315,7 @@ func buildRouteURL(route *Route, params Map) (string, error) {
 
 	buf := bytebufferpool.Get()
 	defer bytebufferpool.Put(buf)
+	checkDotSegments := false
 
 	for _, segment := range route.routeParser.segs {
 		if !segment.IsParam {
@@ -352,15 +358,76 @@ func buildRouteURL(route *Route, params Map) (string, error) {
 		}
 
 		if found {
+			value := utils.ToString(val)
+			if !checkDotSegments {
+				if segment.IsGreedy {
+					checkDotSegments = strings.IndexByte(value, '.') >= 0
+				} else {
+					// Its slashes get escaped, so it stays inside one segment and only
+					// "." or ".." can be or complete a dot segment.
+					checkDotSegments = value == "." || value == ".."
+				}
+			}
+			if route.unescapePath && strings.IndexByte(value, '/') >= 0 {
+				if route.slashLeavesParam(segment, value) {
+					return "", ErrRouteNotRepresentable
+				}
+				// A slash in the value can split a constant dot into its own segment.
+				checkDotSegments = true
+			}
 			if segment.IsGreedy {
-				buf.B = utils.AppendPathSegmentsEscape(buf.B, utils.ToString(val))
+				buf.B = utils.AppendPathSegmentsEscape(buf.B, value)
 				continue
 			}
-			buf.B = utils.AppendPathEscape(buf.B, utils.ToString(val))
+			buf.B = utils.AppendPathEscape(buf.B, value)
 		}
 	}
 
+	if checkDotSegments && route.urlHasDotSegment(buf.B) {
+		return "", ErrRouteNotRepresentable
+	}
 	return urlnorm.RootedPath(buf.String()), nil
+}
+
+// slashLeavesParam reports whether a decoded slash in value ends up outside the parameter.
+// It mirrors the slash-consuming branches of findParamLen, including adjacent parameters
+// (which consume exactly one byte) and single-byte non-slash terminators.
+func (*Route) slashLeavesParam(segment *routeSegment, value string) bool {
+	return !segment.IsGreedy &&
+		(segment.IsLast || (segment.Length == 1 && len(value) > 1) ||
+			(segment.Length != 1 && (len(segment.ComparePart) != 1 || segment.ComparePart[0] == slashDelimiter)))
+}
+
+// urlHasDotSegment checks the composed path, since constants can complete or
+// disambiguate a parameter's dots. Decode once, just as request routing does;
+// an escaped slash is a boundary only with UnescapePath enabled.
+func (r *Route) urlHasDotSegment(path []byte) bool {
+	if bytes.IndexByte(path, '%') != -1 {
+		path = slices.Clone(path)
+		if r.unescapePath {
+			path = unescapePath(path)
+		} else {
+			path = unescapeSafePath(path)
+		}
+	}
+	// Jump from dot to dot: a dot segment starts after a '/' and ends at a '/' or the end.
+	for i := bytes.IndexByte(path, '.'); i >= 0; {
+		if i == 0 || path[i-1] == '/' {
+			j := i + 1
+			if j < len(path) && path[j] == '.' {
+				j++
+			}
+			if j == len(path) || path[j] == '/' {
+				return true
+			}
+		}
+		next := bytes.IndexByte(path[i+1:], '.')
+		if next < 0 {
+			break
+		}
+		i += next + 1
+	}
+	return false
 }
 
 // preferredGreedyParameters returns the generic greedy fallback lookup order
@@ -1031,6 +1098,7 @@ func (app *App) addPrefixToRoute(prefix string, route *Route, regexHandler any, 
 	route.root = false
 	route.star = false
 	route.caseSensitive = app.config.CaseSensitive
+	route.unescapePath = app.config.UnescapePath
 	// buildTree recomputes this for every route, but this function rewrites the
 	// path and parser a filter is derived from, so refresh it here too rather
 	// than depend on a caller marking the routes refreshed.
@@ -1065,6 +1133,7 @@ func (*App) copyRoute(route *Route) *Route {
 		root:          route.root,
 		autoHead:      route.autoHead,
 		caseSensitive: route.caseSensitive,
+		unescapePath:  route.unescapePath,
 
 		// Path data
 		path:        route.path,
@@ -1229,6 +1298,7 @@ func (app *App) register(methods []string, pathRaw string, group *Group, handler
 			star:          isStar,
 			root:          isRoot,
 			caseSensitive: app.config.CaseSensitive,
+			unescapePath:  app.config.UnescapePath,
 			id:            routeID,
 			latestID:      routeID,
 
