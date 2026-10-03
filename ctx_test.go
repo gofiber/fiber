@@ -4104,6 +4104,35 @@ func Test_Ctx_IP_ProxyHeader_NoTrustedProxies(t *testing.T) {
 	require.Equal(t, "203.0.113.50", c.extractIPFromHeader(HeaderXForwardedFor))
 }
 
+func Test_Ctx_IP_ProxyHeader_TabOWS(t *testing.T) {
+	t.Parallel()
+	app := New(Config{
+		ProxyHeader:        HeaderXForwardedFor,
+		TrustProxy:         true,
+		EnableIPValidation: true,
+		TrustProxyConfig: TrustProxyConfig{
+			Proxies: []string{"10.0.0.1"},
+		},
+	})
+	fastCtx := &fasthttp.RequestCtx{}
+	fastCtx.SetRemoteAddr(&net.TCPAddr{IP: net.ParseIP("10.0.0.1")})
+	c := app.AcquireCtx(fastCtx)
+	defer app.ReleaseCtx(c)
+	c.Request().Header.Set(HeaderXForwardedFor, "\t203.0.113.50\t,\t10.0.0.1\t")
+
+	require.Equal(t, []string{"203.0.113.50", "10.0.0.1"}, c.IPs())
+	require.Equal(t, "203.0.113.50", c.IP())
+
+	withoutTrustedChain := New(Config{
+		ProxyHeader:        HeaderXForwardedFor,
+		EnableIPValidation: true,
+	})
+	otherCtx := withoutTrustedChain.AcquireCtx(&fasthttp.RequestCtx{})
+	defer withoutTrustedChain.ReleaseCtx(otherCtx)
+	otherCtx.Request().Header.Set(HeaderXForwardedFor, "\t203.0.113.50\t, invalid")
+	require.Equal(t, "203.0.113.50", otherCtx.extractIPFromHeader(HeaderXForwardedFor))
+}
+
 func Test_Ctx_IP_ProxyHeader_RepeatedFieldLines(t *testing.T) {
 	t.Parallel()
 

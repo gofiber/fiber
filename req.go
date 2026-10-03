@@ -887,7 +887,7 @@ func (r *DefaultReq) extractIPsFromHeader(header string) []string {
 			i++
 		}
 
-		s := utils.TrimRight(headerValue[i:j], ' ')
+		s := trimProxyIPOWS(headerValue[i:j])
 
 		if r.c.app.config.EnableIPValidation {
 			// Skip validation if IP is clearly not IPv4/IPv6; otherwise, validate without allocations.
@@ -925,7 +925,7 @@ func (r *DefaultReq) extractIPFromHeader(header string) string {
 				end++
 			}
 
-			ipStr := utils.Trim(headerValue[start:end], ' ')
+			ipStr := trimProxyIPOWS(headerValue[start:end])
 			if isValidProxyIP(ipStr) {
 				return ipStr
 			}
@@ -944,7 +944,7 @@ func (r *DefaultReq) extractIPFromHeader(header string) string {
 			start--
 		}
 
-		ipStr := utils.Trim(headerValue[start:end], ' ')
+		ipStr := trimProxyIPOWS(headerValue[start:end])
 		if isValidProxyIP(ipStr) {
 			leftmostIP = ipStr
 			if !r.isTrustedProxyIP(ipStr) {
@@ -973,6 +973,18 @@ func (r *DefaultReq) extractIPFromHeader(header string) string {
 func proxyHeaderValue(r *DefaultReq, header string) string {
 	value := peekJoinedRequestHeader(&r.c.fasthttp.Request.Header, header)
 	return r.c.app.toString(value)
+}
+
+// RFC 9110 allows only SP and HTAB around a list member.
+func trimProxyIPOWS(ip string) string {
+	start, end := 0, len(ip)
+	for start < end && (ip[start] == ' ' || ip[start] == '\t') {
+		start++
+	}
+	for end > start && (ip[end-1] == ' ' || ip[end-1] == '\t') {
+		end--
+	}
+	return ip[start:end]
 }
 
 func isValidProxyIP(ipStr string) bool {
