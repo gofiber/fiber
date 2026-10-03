@@ -4951,6 +4951,21 @@ func Test_parseCacheControlDirectives_QuotedStrings(t *testing.T) {
 			},
 		},
 		{
+			name:  "tabs around directives and values",
+			input: "\tmax-age\t=\t3600\t,\tcommunity\t=\t\"UCI\"\t",
+			expected: map[string]string{
+				"max-age":   "3600",
+				"community": "UCI",
+			},
+		},
+		{
+			name:  "whitespace other than SP and HTAB is kept",
+			input: "max-age=\v3600",
+			expected: map[string]string{
+				"max-age": "\v3600",
+			},
+		},
+		{
 			name:  "unquoted token value",
 			input: `max-age=3600`,
 			expected: map[string]string{
@@ -6500,6 +6515,27 @@ func Test_CacheInvalidator_SharedEntryNoDataRace(t *testing.T) {
 	require.Zero(t, errCount.Load(), "worker goroutines reported errors")
 	require.Positive(t, invalidations.Load(), "test never issued an invalidating request")
 	require.Greater(t, handlerCalls.Load(), primed, "invalidator never bypassed the cache")
+}
+
+// go test -v -run=^$ -bench=Benchmark_parseCacheControlDirectives -benchmem -count=4
+func Benchmark_parseCacheControlDirectives(b *testing.B) {
+	inputs := [][]byte{
+		[]byte("no-cache"),
+		[]byte("public, max-age=3600"),
+		[]byte("private, no-store, must-revalidate"),
+		[]byte(`max-age=30, s-maxage=90, community="UCI", no-cache`),
+		[]byte("max-age = 60 ,\tno-transform"),
+	}
+	var n int
+	b.ReportAllocs()
+	for b.Loop() {
+		for _, in := range inputs {
+			parseCacheControlDirectives(in, func(key, value []byte) {
+				n += len(key) + len(value)
+			})
+		}
+	}
+	_ = n
 }
 
 // go test -v -run=^$ -bench=Benchmark_hasDirective -benchmem -count=4

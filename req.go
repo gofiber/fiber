@@ -883,11 +883,11 @@ func (r *DefaultReq) extractIPsFromHeader(header string) []string {
 			j++
 		}
 
-		for i < j && (headerValue[i] == ' ' || headerValue[i] == ',') {
+		for i < j && headerValue[i] == ',' {
 			i++
 		}
 
-		s := utils.TrimRight(headerValue[i:j], ' ')
+		s := headerlist.TrimOWS(headerValue[i:j])
 
 		if r.c.app.config.EnableIPValidation {
 			// Skip validation if IP is clearly not IPv4/IPv6; otherwise, validate without allocations.
@@ -925,7 +925,7 @@ func (r *DefaultReq) extractIPFromHeader(header string) string {
 				end++
 			}
 
-			ipStr := utils.Trim(headerValue[start:end], ' ')
+			ipStr := headerlist.TrimOWS(headerValue[start:end])
 			if isValidProxyIP(ipStr) {
 				return ipStr
 			}
@@ -944,7 +944,7 @@ func (r *DefaultReq) extractIPFromHeader(header string) string {
 			start--
 		}
 
-		ipStr := utils.Trim(headerValue[start:end], ' ')
+		ipStr := headerlist.TrimOWS(headerValue[start:end])
 		if isValidProxyIP(ipStr) {
 			leftmostIP = ipStr
 			if !r.isTrustedProxyIP(ipStr) {

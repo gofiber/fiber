@@ -16,6 +16,9 @@
 //     bare tokens wants. [AllQuoted] keeps commas that sit inside a quoted
 //     string, which is what a list of entity tags or media-type parameters
 //     needs, since those may contain one.
+//   - Whitespace. [All] and its siblings trim with utils.TrimSpace, which also
+//     takes CR, LF, VT and FF. [TrimOWS] takes only SP and HTAB, the OWS of
+//     RFC 9110 Section 5.6.3, for a caller that validates what is left.
 //
 // Empty elements are skipped throughout: "a,,b" yields "a" and "b". A list is
 // permitted to carry them (RFC 9110 Section 5.6.1 allows the empty element for
@@ -29,7 +32,7 @@ import (
 )
 
 // All yields each non-empty element of a comma-separated list value, with
-// leading and trailing OWS removed.
+// leading and trailing whitespace removed.
 //
 // Every comma separates. Use [AllQuoted] for a list whose elements may contain
 // a quoted comma.
@@ -149,6 +152,23 @@ func AllLines(lines [][]byte) iter.Seq[string] {
 			}
 		}
 	}
+}
+
+// TrimOWS removes the optional whitespace around a list element or a field
+// value: SP and HTAB, which is all RFC 9110 Section 5.6.3 allows. CR, LF, VT
+// and FF are not OWS, so they stay for a validating caller to reject, as does
+// a tab inside the value.
+//
+// The result aliases s.
+func TrimOWS[S ~string | ~[]byte](s S) S {
+	start, end := 0, len(s)
+	for start < end && (s[start] == ' ' || s[start] == '\t') {
+		start++
+	}
+	for end > start && (s[end-1] == ' ' || s[end-1] == '\t') {
+		end--
+	}
+	return s[start:end]
 }
 
 // Contains reports whether list has an element equal to value, compared byte
