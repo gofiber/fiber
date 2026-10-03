@@ -295,6 +295,30 @@ func (r *DefaultReq) HasHeader(key string) bool {
 	return len(r.headerField(key)) > 0
 }
 
+// HasHeaderValue reports whether the request header key lists value as one of
+// its comma-separated members, on any of its field lines. Repeated field lines
+// are one list (RFC 9110 Section 5.3) and the member matches under ASCII case
+// folding, so it fits directive-style headers such as Cache-Control or
+// Connection. A comma inside a quoted argument does not end a member, so
+// `ext="a,no-transform,b"` is one member and does not list no-transform
+// (RFC 9111 permits quoted directive arguments, escaped quotes included). An
+// empty value is never present. Only valid within the handler.
+func (r *DefaultReq) HasHeaderValue(key, value string) bool {
+	// One lookup settles the common case of a header that is not there at all.
+	if value == "" || len(r.headerField(key)) == 0 {
+		return false
+	}
+	app := r.c.app
+	for _, line := range fieldname.Lines(&r.c.fasthttp.Request.Header, key, !app.config.DisableHeaderNormalizing) {
+		for member := range headerlist.AllQuotedPairs(app.toString(line)) {
+			if utils.EqualFold(member, value) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // ContentType returns the Content-Type request header, parameters included;
 // MediaType strips them and Charset returns just the charset. On Ctx the request
 // wins over Res. Only valid within the handler unless Immutable is set.

@@ -581,14 +581,20 @@ matched path tail; delimiters such as `?` and `#` remain parameter data instead
 of restructuring the generated URL. [`GetRouteURL`](./ctx.md#getrouteurl) and
 [`Redirect().Route`](./redirect.md#route) apply the same encoding.
 
-These take the value as data, not as URL text, so the same call yields the same
-URL under any configuration. With `UnescapePath` off (the default) `c.Params`
+These take the value as data, not as URL text. Representable values use the same
+encoding under any configuration. With `UnescapePath` off (the default) `c.Params`
 returns the value still percent-encoded, so forwarding it straight back encodes
 the `%` a second time. Turn `UnescapePath` on, or decode with
 [`url.PathUnescape`](https://pkg.go.dev/net/url#PathUnescape) first.
 An app with `UnescapePath` enabled decodes `%2F` before route matching, so an
-ordinary parameter holding a `/` cannot round-trip as one segment. Use a greedy
-(`*` or `+`) parameter for values that may contain slashes.
+ordinary single-segment parameter holding a `/` cannot round-trip and returns
+`ErrRouteNotRepresentable`. Greedy (`*` or `+`), adjacent single-byte parameters
+and parameters with a single-byte non-slash terminator retain their existing
+slash-matching rules.
+Dot-containing values are also rejected when the composed path has a `.` or
+`..` segment that would be removed during normalization. Surrounding route
+constants are considered: `:name.txt` with `name="."` remains representable.
+Pass a different value or use a route that can represent it; do not pre-encode it.
 :::
 
 ### GetRoutes

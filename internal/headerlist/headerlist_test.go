@@ -184,6 +184,30 @@ func Test_All(t *testing.T) {
 	}
 }
 
+func Test_AllQuotedPairs(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name string
+		list string
+		want []string
+	}{
+		{"empty", "", nil},
+		{"comma inside quotes is kept", `ext="a,b", no-transform`, []string{`ext="a,b"`, "no-transform"}},
+		{"escaped quote does not close", `ext="a\"", no-transform`, []string{`ext="a\""`, "no-transform"}},
+		{"escaped backslash closes", `ext="a\\", no-transform`, []string{`ext="a\\"`, "no-transform"}},
+		{"escaped comma stays inside", `ext="a\,b", x`, []string{`ext="a\,b"`, "x"}},
+		{"backslash outside quotes is data", `a\b, c`, []string{`a\b`, "c"}},
+		{"trailing backslash inside quotes", `ext="a\`, []string{`ext="a\`}},
+		{"unterminated quote swallows rest", `ext="a, b`, []string{`ext="a, b`}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, tc.want, collect(AllQuotedPairs(tc.list)))
+		})
+	}
+}
+
 func Test_AllQuoted(t *testing.T) {
 	t.Parallel()
 	tests := []struct {

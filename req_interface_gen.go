@@ -80,6 +80,15 @@ type Req interface {
 	// The field name matches case-insensitively (RFC 9110 Section 5.1), so this
 	// agrees with GetAll on whether the field is there.
 	HasHeader(key string) bool
+	// HasHeaderValue reports whether the request header key lists value as one of
+	// its comma-separated members, on any of its field lines. Repeated field lines
+	// are one list (RFC 9110 Section 5.3) and the member matches under ASCII case
+	// folding, so it fits directive-style headers such as Cache-Control or
+	// Connection. A comma inside a quoted argument does not end a member, so
+	// `ext="a,no-transform,b"` is one member and does not list no-transform
+	// (RFC 9111 permits quoted directive arguments, escaped quotes included). An
+	// empty value is never present. Only valid within the handler.
+	HasHeaderValue(key, value string) bool
 	// ContentType returns the Content-Type request header, parameters included;
 	// MediaType strips them and Charset returns just the charset. On Ctx the request
 	// wins over Res. Only valid within the handler unless Immutable is set.
