@@ -31,6 +31,7 @@ import (
 	"github.com/gofiber/fiber/v3/binder"
 	"github.com/gofiber/fiber/v3/internal/contextvalue"
 	etagpkg "github.com/gofiber/fiber/v3/internal/etag"
+	"github.com/gofiber/fiber/v3/internal/headerlist"
 	"github.com/gofiber/fiber/v3/internal/mediatype"
 	"github.com/gofiber/fiber/v3/log"
 
@@ -545,20 +546,7 @@ func (j *joinedHeaderValue) visit(k, v []byte) {
 	if len(k) != len(j.key) || !utils.EqualFold(utils.UnsafeString(k), j.key) {
 		return
 	}
-	switch {
-	case j.combined == nil:
-		j.combined = v
-	case !j.multi:
-		joined := make([]byte, 0, len(j.combined)+1+len(v))
-		joined = append(joined, j.combined...)
-		joined = append(joined, ',')
-		joined = append(joined, v...)
-		j.combined = joined
-		j.multi = true
-	default:
-		j.combined = append(j.combined, ',')
-		j.combined = append(j.combined, v...)
-	}
+	j.combined, j.multi = headerlist.JoinNext(j.combined, v, j.multi)
 }
 
 // peekJoinedRequestHeader returns the combined value of every field line for

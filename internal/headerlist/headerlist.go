@@ -238,11 +238,36 @@ func Join(lines [][]byte) []byte {
 	joined := make([]byte, 0, n)
 	for i, line := range lines {
 		if i > 0 {
-			joined = append(joined, ',')
+			joined = appendJoinedLine(joined, line)
+			continue
 		}
 		joined = append(joined, line...)
 	}
 	return joined
+}
+
+func appendJoinedLine(dst, line []byte) []byte {
+	dst = append(dst, ',')
+	return append(dst, line...)
+}
+
+// JoinNext adds a field line to a value built during a streaming header walk.
+// The first line aliases the caller's storage. On the second line the result
+// takes ownership of a new buffer; later lines reuse it when capacity permits.
+// Use [Join] when all lines are already available so it can size that buffer
+// once. The bool reports whether at least two lines have been joined.
+//
+//nolint:revive // multiple tracks ownership of combined, not a caller-selected mode.
+func JoinNext(combined, line []byte, multiple bool) ([]byte, bool) {
+	if combined == nil {
+		return line, false
+	}
+	if !multiple {
+		joined := make([]byte, 0, len(combined)+1+len(line))
+		joined = append(joined, combined...)
+		return appendJoinedLine(joined, line), true
+	}
+	return appendJoinedLine(combined, line), true
 }
 
 // AppendUnique adds each value that list does not already carry, separated by

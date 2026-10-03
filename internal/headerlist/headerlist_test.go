@@ -154,6 +154,22 @@ func Test_Join(t *testing.T) {
 	require.Equal(t, []byte("a,b"), Join([][]byte{[]byte("a"), []byte("b")}))
 }
 
+func Test_JoinNext(t *testing.T) {
+	t.Parallel()
+	lines := [][]byte{[]byte("a"), []byte(""), []byte("b")}
+	var combined []byte
+	var multiple bool
+	for i, line := range lines {
+		combined, multiple = JoinNext(combined, line, multiple)
+		require.Equal(t, i > 0, multiple)
+		if i == 0 {
+			require.Equal(t, &line[0], &combined[0], "one line must alias the header")
+		}
+	}
+	require.Equal(t, Join(lines), combined)
+	require.Equal(t, []byte("a,,b"), combined, "empty field lines keep their position")
+}
+
 func collect(seq func(func(string) bool)) []string {
 	var got []string
 	for v := range seq {
