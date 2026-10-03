@@ -4131,6 +4131,9 @@ func Test_Ctx_IP_ProxyHeader_TabOWS(t *testing.T) {
 	defer withoutTrustedChain.ReleaseCtx(otherCtx)
 	otherCtx.Request().Header.Set(HeaderXForwardedFor, "\t203.0.113.50\t, invalid")
 	require.Equal(t, "203.0.113.50", otherCtx.extractIPFromHeader(HeaderXForwardedFor))
+	otherCtx.Request().Header.Set(HeaderXForwardedFor, "203.0.\t113.50,\t198.51.100.10\t")
+	require.Equal(t, []string{"198.51.100.10"}, otherCtx.IPs())
+	require.Equal(t, "198.51.100.10", otherCtx.extractIPFromHeader(HeaderXForwardedFor))
 }
 
 func Test_Ctx_IP_ProxyHeader_RepeatedFieldLines(t *testing.T) {
