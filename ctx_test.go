@@ -4062,6 +4062,35 @@ func Test_Ctx_IP_StripTrustedProxies(t *testing.T) {
 			expected: "203.0.113.50",
 		},
 		{
+			// RFC 9110 Section 5.6.3: OWS is SP or HTAB
+			name: "tab whitespace around chain entries",
+			config: Config{
+				ProxyHeader:        HeaderXForwardedFor,
+				TrustProxy:         true,
+				EnableIPValidation: true,
+				TrustProxyConfig: TrustProxyConfig{
+					Proxies: []string{"10.0.0.1"},
+				},
+			},
+			remoteIP: "10.0.0.1",
+			header:   "\t203.0.113.50\t,\t10.0.0.1\t",
+			expected: "203.0.113.50",
+		},
+		{
+			name: "tab inside an address is not whitespace",
+			config: Config{
+				ProxyHeader:        HeaderXForwardedFor,
+				TrustProxy:         true,
+				EnableIPValidation: true,
+				TrustProxyConfig: TrustProxyConfig{
+					Proxies: []string{"10.0.0.1"},
+				},
+			},
+			remoteIP: "10.0.0.1",
+			header:   "203.0.\t113.50, 10.0.0.1",
+			expected: "10.0.0.1",
+		},
+		{
 			name: "trailing empty chain element",
 			config: Config{
 				ProxyHeader:        HeaderXForwardedFor,
@@ -4101,6 +4130,10 @@ func Test_Ctx_IP_ProxyHeader_NoTrustedProxies(t *testing.T) {
 	c := app.AcquireCtx(fastCtx)
 
 	c.Request().Header.Set(HeaderXForwardedFor, "invalid, 203.0.113.50, 10.0.0.1")
+	require.Equal(t, "203.0.113.50", c.extractIPFromHeader(HeaderXForwardedFor))
+
+	// The left-to-right walk trims HTAB as OWS too (RFC 9110 Section 5.6.3)
+	c.Request().Header.Set(HeaderXForwardedFor, "invalid,\t203.0.113.50\t,\t10.0.0.1")
 	require.Equal(t, "203.0.113.50", c.extractIPFromHeader(HeaderXForwardedFor))
 }
 
@@ -4153,6 +4186,35 @@ func Test_Ctx_IP_ProxyHeader_RepeatedFieldLines_Wire(t *testing.T) {
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
 	require.Equal(t, "198.51.100.77", string(body))
+}
+
+// fasthttp trims the OWS at either end of a field value but keeps the OWS
+// around the commas inside it, so a tab there reaches the chain parsers.
+func Test_Ctx_IP_ProxyHeader_TabOWS_Wire(t *testing.T) {
+	t.Parallel()
+
+	app := New(Config{
+		ProxyHeader:        HeaderXForwardedFor,
+		TrustProxy:         true,
+		EnableIPValidation: true,
+		TrustProxyConfig: TrustProxyConfig{
+			Proxies: []string{"0.0.0.0"},
+		},
+	})
+	app.Get("/", func(c Ctx) error {
+		return c.SendString(c.IP() + "|" + strings.Join(c.IPs(), ","))
+	})
+
+	req := httptest.NewRequest(MethodGet, "/", http.NoBody)
+	req.Header.Set(HeaderXForwardedFor, "203.0.113.50\t,\t0.0.0.0")
+
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	defer func() { require.NoError(t, resp.Body.Close()) }()
+
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "203.0.113.50|203.0.113.50,0.0.0.0", string(body))
 }
 
 func Test_Ctx_IP_ProxyHeader_InvalidIPs(t *testing.T) {
@@ -4279,6 +4341,10 @@ func Test_Ctx_IPs(t *testing.T) {
 	c.Request().Header.Set(HeaderXForwardedFor, "127.0.0.1,127.0.0.2  ,127.0.0.3")
 	require.Equal(t, []string{"127.0.0.1", "127.0.0.2", "127.0.0.3"}, c.IPs())
 
+	// tabs are optional whitespace too (RFC 9110 Section 5.6.3)
+	c.Request().Header.Set(HeaderXForwardedFor, "\t127.0.0.1\t,\t127.0.0.2 \t, \t127.0.0.3")
+	require.Equal(t, []string{"127.0.0.1", "127.0.0.2", "127.0.0.3"}, c.IPs())
+
 	// invalid IPs are allowed to be returned
 	c.Request().Header.Set(HeaderXForwardedFor, "invalid, 127.0.0.1, 127.0.0.2")
 	require.Equal(t, []string{"invalid", "127.0.0.1", "127.0.0.2"}, c.IPs())
@@ -4314,6 +4380,14 @@ func Test_Ctx_IPs_With_IP_Validation(t *testing.T) {
 	// inconsistent space formatting
 	c.Request().Header.Set(HeaderXForwardedFor, "127.0.0.1,127.0.0.2  ,127.0.0.3")
 	require.Equal(t, []string{"127.0.0.1", "127.0.0.2", "127.0.0.3"}, c.IPs())
+
+	// tabs are optional whitespace too (RFC 9110 Section 5.6.3)
+	c.Request().Header.Set(HeaderXForwardedFor, "\t127.0.0.1\t,\t127.0.0.2 \t, \t2001:db8::1\t")
+	require.Equal(t, []string{"127.0.0.1", "127.0.0.2", "2001:db8::1"}, c.IPs())
+
+	// but a tab inside an address is not, nor is whitespace other than SP and HTAB
+	c.Request().Header.Set(HeaderXForwardedFor, "127.0.\t0.1, \v127.0.0.2, 127.0.0.3")
+	require.Equal(t, []string{"127.0.0.3"}, c.IPs())
 
 	// invalid IPs are in the header
 	c.Request().Header.Set(HeaderXForwardedFor, "invalid, 127.0.0.1, 127.0.0.2")
