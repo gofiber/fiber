@@ -1073,6 +1073,7 @@ func (parser *routeParser) getMatch(detectionPath, path string, params *[maxPara
 	// offset indexes into the never-resliced path; it only advances by bytes consumed
 	// from detectionPath (never longer than path), so offset+i stays in bounds.
 	var i, paramsIterator, partLen, offset int
+	canRetry := false
 	for _, segment := range parser.segs {
 		partLen = len(detectionPath)
 		// check const segment
@@ -1085,12 +1086,18 @@ func (parser *routeParser) getMatch(detectionPath, path string, params *[maxPara
 			if segment.HasOptionalSlash && partLen == i-1 && detectionPath == segment.Const[:i-1] {
 				i--
 			} else if uint(i) > uint(len(detectionPath)) || detectionPath[:i] != segment.Const {
+				if canRetry {
+					return parser.matchBacktrack(originalDetectionPath, path, params, partialCheck)
+				}
 				return false
 			}
 		} else {
 			// determine parameter length
 			i = findParamLen(detectionPath, segment)
 			if !segment.IsOptional && i == 0 {
+				if canRetry {
+					return parser.matchBacktrack(originalDetectionPath, path, params, partialCheck)
+				}
 				return false
 			}
 			// take over the params positions
@@ -1100,9 +1107,14 @@ func (parser *routeParser) getMatch(detectionPath, path string, params *[maxPara
 				// check constraint
 				for _, c := range segment.Constraints {
 					if matched := c.matchConstraint(params[paramsIterator]); !matched {
+						// Constraint failed on non-empty value: do not backtrack to empty!
 						return false
 					}
 				}
+			}
+
+			if segment.IsOptional && !segment.IsGreedy && i > 0 {
+				canRetry = true
 			}
 
 			paramsIterator++
@@ -1116,15 +1128,138 @@ func (parser *routeParser) getMatch(detectionPath, path string, params *[maxPara
 	}
 	if detectionPath != "" {
 		if !partialCheck {
+			if canRetry {
+				return parser.matchBacktrack(originalDetectionPath, path, params, partialCheck)
+			}
 			return false
 		}
 		consumedLength := len(originalDetectionPath) - len(detectionPath)
 		if !hasPartialMatchBoundary(originalDetectionPath, consumedLength) {
+			if canRetry {
+				return parser.matchBacktrack(originalDetectionPath, path, params, partialCheck)
+			}
 			return false
 		}
 	}
 
 	return true
+}
+
+type backtrackPoint struct {
+	detectionPath  string
+	segIdx         int
+	offset         int
+	paramsIterator int
+}
+
+// maxBacktrackRetries bounds optional-parameter retry attempts to prevent
+// exponential execution times on routes with many adjacent optional parameters.
+const maxBacktrackRetries = 16
+
+// matchBacktrack is called only when an optional parameter consumed characters
+// during the initial match but a subsequent segment failed. It allows previously
+// matched optional parameters to be retried as empty so later required segments
+// can match (e.g. /:a:b?:c on /ac). Backtracking is bounded by maxBacktrackRetries.
+func (parser *routeParser) matchBacktrack(detectionPath, path string, params *[maxParams]string, partialCheck bool) bool { //nolint:revive // mirrors getMatch's signature
+	originalDetectionPath := detectionPath
+	var i, paramsIterator, partLen, offset, retries, segIdx int
+	var backtrackStack [maxParams]backtrackPoint
+	backtrackLen := 0
+
+	restore := func() bool {
+		if backtrackLen > 0 && retries < maxBacktrackRetries {
+			retries++
+			backtrackLen--
+			if backtrackLen >= 0 && backtrackLen < len(backtrackStack) {
+				bp := backtrackStack[backtrackLen]
+				segIdx = bp.segIdx + 1
+				detectionPath = bp.detectionPath
+				offset = bp.offset
+				paramsIterator = bp.paramsIterator
+				params[paramsIterator-1] = ""
+				return true
+			}
+		}
+		return false
+	}
+
+	for {
+		if segIdx >= len(parser.segs) {
+			if detectionPath != "" {
+				if !partialCheck {
+					if restore() {
+						continue
+					}
+					return false
+				}
+				consumedLength := len(originalDetectionPath) - len(detectionPath)
+				if !hasPartialMatchBoundary(originalDetectionPath, consumedLength) {
+					if restore() {
+						continue
+					}
+					return false
+				}
+			}
+			return true
+		}
+
+		segment := parser.segs[segIdx]
+		partLen = len(detectionPath)
+
+		if !segment.IsParam {
+			i = segment.Length
+			// is optional part or the const part must match with the given string
+			// check if the end of the segment is an optional slash
+			// the unsigned compare proves 0 <= i <= len(detectionPath), keeping detectionPath[:i] bounds-check free
+			// NOTE: computeSlashBounds' minSlashes accounts for this optional-slash drop
+			if segment.HasOptionalSlash && partLen == i-1 && detectionPath == segment.Const[:i-1] {
+				i--
+			} else if uint(i) > uint(len(detectionPath)) || detectionPath[:i] != segment.Const {
+				if restore() {
+					continue
+				}
+				return false
+			}
+		} else {
+			i = findParamLen(detectionPath, segment)
+			if !segment.IsOptional && i == 0 {
+				if restore() {
+					continue
+				}
+				return false
+			}
+
+			if !segment.IsOptional || i != 0 {
+				paramValue := path[offset : offset+i]
+				for _, c := range segment.Constraints {
+					if matched := c.matchConstraint(paramValue); !matched {
+						// Constraint failed on non-empty value: do not backtrack to empty!
+						return false
+					}
+				}
+			}
+
+			// If optional, non-greedy, and non-empty, save a backtrack point where this optional param could be empty
+			if segment.IsOptional && !segment.IsGreedy && i > 0 && backtrackLen < len(backtrackStack) {
+				backtrackStack[backtrackLen] = backtrackPoint{
+					segIdx:         segIdx,
+					offset:         offset,
+					paramsIterator: paramsIterator + 1,
+					detectionPath:  detectionPath,
+				}
+				backtrackLen++
+			}
+
+			params[paramsIterator] = path[offset : offset+i]
+			paramsIterator++
+		}
+
+		if partLen > 0 {
+			detectionPath = detectionPath[i:]
+			offset += i
+		}
+		segIdx++
+	}
 }
 
 // matchConstParam is getMatch specialized to the "/const/:param" shape, which

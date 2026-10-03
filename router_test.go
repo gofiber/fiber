@@ -1872,6 +1872,38 @@ func Benchmark_Router_NotFound(b *testing.B) {
 }
 
 // go test -v ./... -run=^$ -bench=Benchmark_Router_Handler -benchmem -count=4
+func Benchmark_Router_OptionalMiss(b *testing.B) {
+	for _, tc := range []struct {
+		name     string
+		prefix   string
+		path     string
+		patterns []string
+	}{
+		{"lang", "/:lang?", "/en/pricing", []string{"/about", "/contact", "/docs", "/blog", "/support"}},
+		{"version", "/api/:version?", "/api/v1/pricing", []string{"/users", "/teams", "/projects", "/settings"}},
+	} {
+		b.Run(tc.name, func(b *testing.B) {
+			app := New()
+			handler := func(c Ctx) error { return c.SendStatus(StatusNoContent) }
+			for _, pattern := range tc.patterns {
+				app.Get(tc.prefix+pattern, handler)
+			}
+			app.Get(tc.path, handler)
+			appHandler := app.Handler()
+			ctx := &fasthttp.RequestCtx{}
+			ctx.Request.Header.SetMethod(MethodGet)
+			ctx.URI().SetPath(tc.path)
+			appHandler(ctx)
+			require.Equal(b, StatusNoContent, ctx.Response.StatusCode())
+			b.ReportAllocs()
+			for b.Loop() {
+				appHandler(ctx)
+			}
+			require.Equal(b, StatusNoContent, ctx.Response.StatusCode())
+		})
+	}
+}
+
 func Benchmark_Router_Handler(b *testing.B) {
 	app := New()
 	registerDummyRoutes(app)
@@ -6165,4 +6197,68 @@ func Test_RouteTree_Heads_NotStale(t *testing.T) {
 	app.RemoveRoute("/api/v1/s0")
 	_ = app.RebuildTree()
 	assertFresh(t, app, "after runtime registration and RebuildTree")
+}
+
+func Test_OptionalParam_ConstraintFailureDoesNotBypassAsEmpty(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	app.Use("/api/:id<int>?", func(c Ctx) error {
+		return c.SendString("matched")
+	})
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/api/abc", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, StatusNotFound, resp.StatusCode)
+
+	respValid, err := app.Test(httptest.NewRequest(MethodGet, "/api/123", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, StatusOK, respValid.StatusCode)
+
+	respEmpty, err := app.Test(httptest.NewRequest(MethodGet, "/api", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, StatusOK, respEmpty.StatusCode)
+}
+
+func Test_RouteParser_BacktrackMaxRetriesBound(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name    string
+		pattern string
+		status  int
+	}{
+		{"within_limit", "/pre:a?:b?:c?:d?-end", StatusOK},
+		{"exceeds_limit", "/pre:a?:b?:c?:d?:e?-end", StatusNotFound},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			app := New()
+			app.Get(tc.pattern, func(c Ctx) error {
+				for _, name := range []string{"a", "b", "c", "d"} {
+					require.Empty(t, c.Params(name))
+				}
+				return c.SendStatus(StatusOK)
+			})
+
+			resp, err := app.Test(httptest.NewRequest(MethodGet, "/pre-end", http.NoBody))
+			require.NoError(t, err)
+			require.Equal(t, tc.status, resp.StatusCode)
+			require.NoError(t, resp.Body.Close())
+		})
+	}
+}
+
+func Test_RouteParser_GreedyWildcardDoesNotYield(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	// Greedy wildcard * must not yield to plus param +
+	app.Get("/*+:x?", func(c Ctx) error {
+		return c.SendStatus(StatusOK)
+	})
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/-", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, StatusNotFound, resp.StatusCode)
 }

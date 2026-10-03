@@ -553,6 +553,33 @@ func Benchmark_Path_matchParams(t *testing.B) {
 	}
 }
 
+func Benchmark_Path_OptionalMiss(b *testing.B) {
+	for _, tc := range []struct {
+		name         string
+		pattern      string
+		path         string
+		partialCheck bool
+	}{
+		{"before_optional", "/api/:version?/users", "/en/pricing", false},
+		{"empty_optional", "/:lang?/users", "/", false},
+		{"missing_literal", "/:lang?/users", "/en/pricing", false},
+		{"api_missing_literal", "/api/:version?/users", "/api/v1/pricing", false},
+		{"partial_boundary", "/:lang?/user", "/en/users", true},
+	} {
+		b.Run(tc.name, func(b *testing.B) {
+			parser := parseRoute(tc.pattern, regexp.MustCompile)
+			var params [maxParams]string
+			require.False(b, parser.getMatch(tc.path, tc.path, &params, tc.partialCheck))
+			b.ReportAllocs()
+			var matched bool
+			for b.Loop() {
+				matched = parser.getMatch(tc.path, tc.path, &params, tc.partialCheck)
+			}
+			require.False(b, matched)
+		})
+	}
+}
+
 // go test -race -run Test_RoutePatternMatch
 func Benchmark_ConstraintExecution(b *testing.B) {
 	var ctxParams [maxParams]string
