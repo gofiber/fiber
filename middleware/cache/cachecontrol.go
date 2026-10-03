@@ -89,10 +89,9 @@ func parseCacheControlDirectives(cc []byte, fn func(key, value []byte)) {
 			}
 			i++
 		}
+		// The skip above left cc[start] as neither OWS nor a comma, and the scan
+		// stepped over it, so part keeps at least that byte.
 		part := headerlist.TrimOWS(cc[start:i])
-		if len(part) == 0 {
-			continue
-		}
 
 		// A directive without "=" reports a nil value, one with an empty
 		// argument an empty value.

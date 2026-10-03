@@ -215,7 +215,7 @@ func Test_TrimOWS_AliasesInput(t *testing.T) {
 	in := []byte("\tgzip ")
 	got := TrimOWS(in)
 	require.Equal(t, []byte("gzip"), got)
-	require.Equal(t, &in[1], &got[0], "TrimOWS must return a sub-slice, not a copy")
+	require.Same(t, &in[1], &got[0], "TrimOWS must return a sub-slice, not a copy")
 }
 
 func Benchmark_TrimOWS(b *testing.B) {
@@ -388,7 +388,7 @@ func Test_AppendUniqueFold(t *testing.T) {
 func Test_Join_AliasesSingleLine(t *testing.T) {
 	t.Parallel()
 	line := []byte("gzip")
-	require.Equal(t, &line[0], &Join([][]byte{line})[0], "a lone line must be returned as it stands")
+	require.Same(t, &line[0], &Join([][]byte{line})[0], "a lone line must be returned as it stands")
 }
 
 func Test_Append_ReusesStorage(t *testing.T) {
@@ -396,6 +396,6 @@ func Test_Append_ReusesStorage(t *testing.T) {
 	dst := make([]string, 0, 4)
 	got := Append(dst, "a, b")
 	require.Equal(t, []string{"a", "b"}, got)
-	require.Equal(t, &dst[:1][0], &got[0], "Append must reuse dst's storage")
+	require.Same(t, &dst[:1][0], &got[0], "Append must reuse dst's storage")
 	require.Nil(t, Append(dst, ""), "an empty list yields nil")
 }
