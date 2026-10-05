@@ -2210,3 +2210,236 @@ func Test_Cache_LegacyAnonymousEntryIsNotRead(t *testing.T) {
 	require.Equal(t, "handler ran", string(body), "the legacy anonymous entry must not be served")
 	require.Equal(t, cacheMiss, resp.Header.Get("X-Cache"))
 }
+
+const (
+	tenantAHost = "tenant-a.example"
+	tenantBHost = "tenant-b.example"
+)
+
+// authorityReply is what one request through an app under test came back with.
+type authorityReply struct {
+	body        string
+	location    string
+	cacheStatus string
+	status      int
+}
+
+// getFromHost sends a GET for target under the given Host through app.
+func getFromHost(t *testing.T, app *fiber.App, host, target string) authorityReply {
+	t.Helper()
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "http://"+host+target, http.NoBody))
+	require.NoError(t, err)
+	raw, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.NoError(t, resp.Body.Close())
+	return authorityReply{
+		body:        string(raw),
+		location:    resp.Header.Get(fiber.HeaderLocation),
+		cacheStatus: resp.Header.Get("X-Cache"),
+		status:      resp.StatusCode,
+	}
+}
+
+// Test_Cache_Security_KeyIncludesAuthority asserts that the default key is
+// partitioned by the request scheme and host. A cache key is composed of the
+// request method and the target URI at a minimum (RFC 9111 §2), and the target
+// URI carries the authority: two requests that differ only in Host must never
+// share an entry. Keyed on the path alone, a page routed with app.Domain
+// answered the other host, and a redirect built from c.BaseURL for one host
+// was served for the other.
+func Test_Cache_Security_KeyIncludesAuthority(t *testing.T) {
+	t.Parallel()
+
+	t.Run("domain routed pages stay with their host", func(t *testing.T) {
+		t.Parallel()
+
+		app := fiber.New()
+		app.Use(New(Config{Expiration: time.Hour}))
+		app.Domain(tenantAHost).Get("/dash", func(c fiber.Ctx) error { return c.SendString("tenant-a") })
+		app.Domain(tenantBHost).Get("/dash", func(c fiber.Ctx) error { return c.SendString("tenant-b") })
+
+		reply := getFromHost(t, app, tenantAHost, "/dash")
+		require.Equal(t, cacheMiss, reply.cacheStatus)
+		require.Equal(t, "tenant-a", reply.body)
+
+		reply = getFromHost(t, app, tenantBHost, "/dash")
+		require.Equal(t, cacheMiss, reply.cacheStatus, "tenant B must not hit tenant A's entry")
+		require.Equal(t, "tenant-b", reply.body)
+
+		// Each host still caches on a key of its own.
+		reply = getFromHost(t, app, tenantAHost, "/dash")
+		require.Equal(t, cacheHit, reply.cacheStatus)
+		require.Equal(t, "tenant-a", reply.body)
+		reply = getFromHost(t, app, tenantBHost, "/dash")
+		require.Equal(t, cacheHit, reply.cacheStatus)
+		require.Equal(t, "tenant-b", reply.body)
+	})
+
+	t.Run("a redirect built from the authority is not served for another host", func(t *testing.T) {
+		t.Parallel()
+
+		app := fiber.New()
+		app.Use(New(Config{Expiration: time.Hour}))
+		app.Get("/canonical", func(c fiber.Ctx) error {
+			return c.Redirect().Status(fiber.StatusMovedPermanently).To(c.BaseURL() + "/landing")
+		})
+
+		reply := getFromHost(t, app, tenantAHost, "/canonical")
+		require.Equal(t, fiber.StatusMovedPermanently, reply.status)
+		require.Equal(t, cacheMiss, reply.cacheStatus)
+		require.Equal(t, "http://"+tenantAHost+"/landing", reply.location)
+
+		reply = getFromHost(t, app, tenantBHost, "/canonical")
+		require.Equal(t, fiber.StatusMovedPermanently, reply.status)
+		require.Equal(t, cacheMiss, reply.cacheStatus, "the second host must not be served the first host's redirect")
+		require.Equal(t, "http://"+tenantBHost+"/landing", reply.location)
+	})
+
+	t.Run("the port is part of the authority", func(t *testing.T) {
+		t.Parallel()
+
+		app := fiber.New()
+		app.Use(New(Config{Expiration: time.Hour}))
+		app.Get("/", func(c fiber.Ctx) error { return c.SendString(c.Host()) })
+
+		reply := getFromHost(t, app, "example.com:8080", "/")
+		require.Equal(t, cacheMiss, reply.cacheStatus)
+		require.Equal(t, "example.com:8080", reply.body)
+
+		reply = getFromHost(t, app, "example.com:9090", "/")
+		require.Equal(t, cacheMiss, reply.cacheStatus, "a different port is a different authority")
+		require.Equal(t, "example.com:9090", reply.body)
+	})
+
+	t.Run("vary manifests are partitioned by host as well", func(t *testing.T) {
+		t.Parallel()
+
+		app := fiber.New()
+		app.Use(New(Config{Expiration: time.Hour}))
+		app.Get("/", func(c fiber.Ctx) error {
+			c.Set(fiber.HeaderVary, "X-Tenant")
+			return c.SendString(c.Host())
+		})
+
+		// The same X-Tenant on both hosts: only the authority keeps them apart,
+		// in the manifest key and in the variant key beneath it.
+		do := func(host string) authorityReply {
+			req := httptest.NewRequest(fiber.MethodGet, "http://"+host+"/", http.NoBody)
+			req.Header.Set("X-Tenant", "acme")
+			resp, err := app.Test(req)
+			require.NoError(t, err)
+			raw, err := io.ReadAll(resp.Body)
+			require.NoError(t, err)
+			require.NoError(t, resp.Body.Close())
+			return authorityReply{body: string(raw), cacheStatus: resp.Header.Get("X-Cache"), status: resp.StatusCode}
+		}
+
+		reply := do(tenantAHost)
+		require.Equal(t, cacheMiss, reply.cacheStatus)
+		require.Equal(t, tenantAHost, reply.body)
+
+		reply = do(tenantBHost)
+		require.Equal(t, cacheMiss, reply.cacheStatus, "the variant stored for tenant A must not answer tenant B")
+		require.Equal(t, tenantBHost, reply.body)
+
+		reply = do(tenantAHost)
+		require.Equal(t, cacheHit, reply.cacheStatus)
+		require.Equal(t, tenantAHost, reply.body)
+		reply = do(tenantBHost)
+		require.Equal(t, cacheHit, reply.cacheStatus)
+		require.Equal(t, tenantBHost, reply.body)
+	})
+
+	t.Run("one cache per domain over a shared store stays isolated", func(t *testing.T) {
+		t.Parallel()
+
+		// Separate middleware instances do not help on their own: over a shared
+		// store, such as one Redis, their keys land in the same namespace, so
+		// the key itself has to carry the host.
+		store := memory.New()
+		app := fiber.New()
+		app.Domain(tenantAHost).Use(New(Config{Storage: store, Expiration: time.Hour}))
+		app.Domain(tenantBHost).Use(New(Config{Storage: store, Expiration: time.Hour}))
+		app.Domain(tenantAHost).Get("/dash", func(c fiber.Ctx) error { return c.SendString("tenant-a") })
+		app.Domain(tenantBHost).Get("/dash", func(c fiber.Ctx) error { return c.SendString("tenant-b") })
+
+		reply := getFromHost(t, app, tenantAHost, "/dash")
+		require.Equal(t, cacheMiss, reply.cacheStatus)
+		require.Equal(t, "tenant-a", reply.body)
+
+		reply = getFromHost(t, app, tenantBHost, "/dash")
+		require.Equal(t, cacheMiss, reply.cacheStatus, "tenant B's instance must not find tenant A's entry in the shared store")
+		require.Equal(t, "tenant-b", reply.body)
+	})
+}
+
+// Test_Cache_Security_KeyAuthorityFollowsTrustedProxy pins the field source of
+// the authority segment: c.Scheme and c.Host, which read X-Forwarded-Proto and
+// X-Forwarded-Host from a trusted proxy. That is the authority app.Domain routes
+// on and c.BaseURL builds from, so the key has to follow it — behind such a
+// proxy every tenant may arrive under the backend's own Host. From an untrusted
+// peer the handlers ignore the same fields, so they do not partition the cache
+// either.
+func Test_Cache_Security_KeyAuthorityFollowsTrustedProxy(t *testing.T) {
+	t.Parallel()
+
+	do := func(t *testing.T, app *fiber.App, forwardedHost, forwardedProto string) authorityReply {
+		t.Helper()
+		req := httptest.NewRequest(fiber.MethodGet, "http://backend.internal/", http.NoBody)
+		req.Header.Set(fiber.HeaderXForwardedHost, forwardedHost)
+		req.Header.Set(fiber.HeaderXForwardedProto, forwardedProto)
+		resp, err := app.Test(req)
+		require.NoError(t, err)
+		raw, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		require.NoError(t, resp.Body.Close())
+		return authorityReply{body: string(raw), cacheStatus: resp.Header.Get("X-Cache"), status: resp.StatusCode}
+	}
+	baseURL := func(c fiber.Ctx) error { return c.SendString(c.BaseURL()) }
+
+	t.Run("trusted proxy", func(t *testing.T) {
+		t.Parallel()
+
+		// app.Test connects from 0.0.0.0, so that is the trusted proxy.
+		app := fiber.New(fiber.Config{
+			TrustProxy:       true,
+			TrustProxyConfig: fiber.TrustProxyConfig{Proxies: []string{"0.0.0.0"}},
+		})
+		app.Use(New(Config{Expiration: time.Hour}))
+		app.Get("/", baseURL)
+
+		reply := do(t, app, tenantAHost, "https")
+		require.Equal(t, cacheMiss, reply.cacheStatus)
+		require.Equal(t, "https://"+tenantAHost, reply.body)
+
+		reply = do(t, app, tenantBHost, "https")
+		require.Equal(t, cacheMiss, reply.cacheStatus, "a different forwarded host must not hit the first entry")
+		require.Equal(t, "https://"+tenantBHost, reply.body)
+
+		reply = do(t, app, tenantAHost, "http")
+		require.Equal(t, cacheMiss, reply.cacheStatus, "a different forwarded scheme must not hit the https entry")
+		require.Equal(t, "http://"+tenantAHost, reply.body)
+
+		reply = do(t, app, tenantAHost, "https")
+		require.Equal(t, cacheHit, reply.cacheStatus)
+		require.Equal(t, "https://"+tenantAHost, reply.body)
+	})
+
+	t.Run("untrusted peer", func(t *testing.T) {
+		t.Parallel()
+
+		app := fiber.New()
+		app.Use(New(Config{Expiration: time.Hour}))
+		app.Get("/", baseURL)
+
+		reply := do(t, app, tenantAHost, "https")
+		require.Equal(t, cacheMiss, reply.cacheStatus)
+		require.Equal(t, "http://backend.internal", reply.body)
+
+		// Not the authority here, so not a partition either: the same entry
+		// answers whatever the untrusted peer claims to forward.
+		reply = do(t, app, tenantBHost, "http")
+		require.Equal(t, cacheHit, reply.cacheStatus)
+		require.Equal(t, "http://backend.internal", reply.body)
+	})
+}

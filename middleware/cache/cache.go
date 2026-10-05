@@ -52,15 +52,18 @@ const (
 // cacheKeyVersion namespaces every key this version writes, so an entry a
 // previous one stored is never read rather than being reinterpreted.
 //
-// Bumped because the rules for what shares a partition changed. An earlier
+// Bumped whenever the rules for what shares a partition change. v2: an earlier
 // version detected Authorization byte-exactly, so under DisableHeaderNormalizing
 // a request bearing a lower-case "authorization" was taken for anonymous and its
 // response cached under the anonymous key. Only lookups that carry the header
 // now move to a partition of their own — so on an external store that survived
 // the upgrade, an anonymous request would still find that entry and be served an
-// authenticated body. Bump this whenever what a key stands for changes; the cost
-// is one cold cache after a deploy.
-const cacheKeyVersion = "v2"
+// authenticated body. v3: the default key gained the request scheme and host.
+// An entry written without them stands for every host at once, so on a store
+// that survived the upgrade a request for one host would still find, and be
+// served, what another host populated. Bump this whenever what a key stands for
+// changes; the cost is one cold cache after a deploy.
+const cacheKeyVersion = "v3"
 
 type expirationSource uint8
 

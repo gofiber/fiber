@@ -111,11 +111,12 @@ Cache keys are masked in logs and error messages by default. Set `DisableValueRe
 By default, cache keys include:
 
 - request method (partitioned internally by the middleware),
+- request scheme and host, as `c.Scheme()` and `c.Host()` report them (so `X-Forwarded-Proto` and `X-Forwarded-Host` apply behind a trusted proxy),
 - request path,
 - canonicalized query string (enabled unless `DisableQueryKeys` is `true`),
 - representation-driving request headers (`accept`, `accept-encoding`, `accept-language`).
 
-This prevents common collisions from path-only keys (for example, `/?id=1` vs `/?id=2`) while keeping fragmentation bounded.
+This prevents common collisions from path-only keys (for example, `/?id=1` vs `/?id=2`, or `/dash` on two hosts routed with `app.Domain()`) while keeping fragmentation bounded. Two requests that differ only in their authority never share an entry, so a page routed by host or a redirect built from `c.BaseURL()` is served only to the host it was generated for. If you supply a custom `KeyGenerator` and your responses depend on the host, include `c.Host()` (and `c.Scheme()`) in the key yourself.
 
 The middleware **does not include request body/form values in the default cache key**, except for `QUERY` requests: per [RFC 10008](https://www.rfc-editor.org/rfc/rfc10008.html), when `QUERY` is enabled via `Methods` the default key generator incorporates the request body so different bodies on the same URL get distinct keys.
 
@@ -223,7 +224,7 @@ and a non-form `Content-Type` is left alone.
 | DisableCacheControl  | `bool`                                          | DisableCacheControl omits the `Cache-Control` header when set to `true`. | `false`                                                         |
 | CacheInvalidator     | `func(fiber.Ctx) bool`                         | CacheInvalidator defines a function that is executed before checking the cache entry. It can be used to invalidate the existing cache manually by returning true. | `nil`                                                            |
 | DisableValueRedaction | `bool`                                        | Turns off cache key redaction in logs and error messages when set to `true`. | `false`                                             |
-| KeyGenerator         | `func(fiber.Ctx) string`                       | KeyGenerator allows you to generate custom keys. The HTTP method and a key-format version are partitioned internally by the middleware. | structured key from path + canonical query + selected headers/cookies |
+| KeyGenerator         | `func(fiber.Ctx) string`                       | KeyGenerator allows you to generate custom keys. The HTTP method and a key-format version are partitioned internally by the middleware. | structured key from scheme + host + path + canonical query + selected headers/cookies |
 | DisableQueryKeys     | `bool`                                         | Disables canonicalized query params in keys. | `false` |
 | KeyHeaders           | `[]string`                                     | Header allow-list used for key partitioning. Names are normalized case-insensitively and sorted. Use `[]string{}` to disable header-based partitioning. | `[]string{"accept","accept-encoding","accept-language"}` |
 | KeyCookies           | `[]string`                                     | Optional cookie allow-list for key partitioning. Explicit opt-in only; names remain case-sensitive. | `nil` |
