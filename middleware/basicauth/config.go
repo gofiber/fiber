@@ -72,7 +72,8 @@ type Config struct {
 	// Optional. Default: nil
 	Unauthorized fiber.Handler
 
-	// BadRequest defines the response body for malformed Authorization headers.
+	// BadRequest defines the response body for malformed Authorization headers,
+	// a request carrying the field on more than one line included.
 	// By default it will return with a 400 Bad Request without the WWW-Authenticate header.
 	//
 	// Optional. Default: nil
