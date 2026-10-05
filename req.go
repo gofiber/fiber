@@ -826,10 +826,17 @@ func (r *DefaultReq) Port() string {
 }
 
 // IP returns the client's IP address. When the request comes from a trusted proxy (see
-// [TrustProxyConfig]), the value is extracted from the configured ProxyHeader by walking the
-// X-Forwarded-For chain right-to-left and skipping all trusted proxy IPs; the first
-// non-trusted IP in the chain is returned. Please use Config.TrustProxy to prevent header
-// spoofing if your app is behind a proxy.
+// [TrustProxyConfig]) and Config.ProxyHeader is set, the value is taken from that header.
+// With Config.EnableIPValidation enabled and proxy IPs or ranges configured (Proxies,
+// Loopback, Private or LinkLocal), the X-Forwarded-For chain is walked right-to-left, every
+// trusted proxy IP is skipped and the first non-trusted IP is returned; with validation
+// enabled but only UnixSocket trusted, the first valid IP from the left is returned. With
+// validation disabled (the default), the raw header value is returned as-is, which for
+// X-Forwarded-For may be the whole comma-separated chain. Enable validation whenever the
+// result is used as a single client identifier and the header can carry a chain, for example
+// by the limiter middleware or an allowlist; a proxy that overwrites the header with one
+// address, or a single-IP header, does not need it. Please use Config.TrustProxy to prevent
+// header spoofing if your app is behind a proxy.
 func (r *DefaultReq) IP() string {
 	app := r.c.app
 	if r.IsProxyTrusted() && app.config.ProxyHeader != "" {
