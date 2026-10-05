@@ -524,7 +524,10 @@ type Config struct { //nolint:govet // Aligning the struct fields is not necessa
 	TrustProxyConfig TrustProxyConfig `json:"trust_proxy_config"`
 
 	// If set to true, c.IP() and c.IPs() will validate IP addresses before returning them.
-	// Also, c.IP() will return only the first valid IP rather than just the raw header
+	// Also, c.IP() will return a single validated IP rather than just the raw header value,
+	// which for X-Forwarded-For may be a comma-separated chain: with TrustProxyConfig set the
+	// chain is walked right-to-left and trusted proxy IPs are skipped, otherwise the first
+	// valid IP is returned. Enable it whenever c.IP() is used as a single client identifier.
 	// WARNING: this has a performance cost associated with it.
 	//
 	// Default: false

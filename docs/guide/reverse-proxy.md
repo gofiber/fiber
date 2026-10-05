@@ -47,11 +47,12 @@ Without `EnableIPValidation`, `c.IP()` returns the raw header value (a comma-sep
 
 ### Configuration
 
-To enable reading the client IP from proxy headers, you must configure **three settings**:
+To get the real client IP from proxy headers, you must configure **four settings**:
 
 1. **`TrustProxy`** - Enable proxy header trust (must be `true`)
 2. **`ProxyHeader`** - Specify which header contains the client IP
 3. **`TrustProxyConfig`** - Define which proxy IPs to trust
+4. **`EnableIPValidation`** - Resolve a single client IP from a chained header such as `X-Forwarded-For`; without it `c.IP()` returns the raw header value
 
 ```go title="Example - App Behind Nginx"
 app := fiber.New(fiber.Config{
@@ -60,6 +61,9 @@ app := fiber.New(fiber.Config{
 
     // Read client IP from X-Forwarded-For header
     ProxyHeader: fiber.HeaderXForwardedFor,
+
+    // Resolve a single client IP from the X-Forwarded-For chain
+    EnableIPValidation: true,
 
     // Trust requests from your Nginx proxy
     TrustProxyConfig: fiber.TrustProxyConfig{

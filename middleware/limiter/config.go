@@ -45,7 +45,10 @@ type Config struct {
 	// utils.Timestamp() is used on the hot path.
 	clock func() time.Time
 
-	// KeyGenerator allows you to generate custom keys, by default c.IP() is used
+	// KeyGenerator allows you to generate custom keys, by default c.IP() is used.
+	// Behind a reverse proxy, c.IP() only identifies a client when TrustProxy,
+	// TrustProxyConfig, ProxyHeader and EnableIPValidation are configured; otherwise
+	// it is the proxy's address or the raw, client-influenced forwarded header.
 	//
 	// Default: func(c fiber.Ctx) string {
 	//   return c.IP()

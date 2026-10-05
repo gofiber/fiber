@@ -70,6 +70,10 @@ app.Use(limiter.New(limiter.Config{
 }))
 ```
 
+:::caution
+The default `KeyGenerator` keys requests by `c.IP()`. Behind a reverse proxy, `c.IP()` only identifies a client if you configure `TrustProxy`, `TrustProxyConfig`, `ProxyHeader` and `EnableIPValidation`. Without them it is either the proxy's address, so every client shares one bucket, or the raw forwarded header, which a client can vary on every request to get a fresh bucket. See the [reverse proxy guide](../guide/reverse-proxy.md#getting-the-real-client-ip-address).
+:::
+
 ## Sliding window
 
 Instead of using the standard fixed window algorithm, you can enable the [sliding window](https://en.wikipedia.org/wiki/Sliding_window_protocol) algorithm.
