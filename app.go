@@ -525,9 +525,12 @@ type Config struct { //nolint:govet // Aligning the struct fields is not necessa
 
 	// If set to true, c.IP() and c.IPs() will validate IP addresses before returning them.
 	// Also, c.IP() will return a single validated IP rather than just the raw header value,
-	// which for X-Forwarded-For may be a comma-separated chain: with TrustProxyConfig set the
-	// chain is walked right-to-left and trusted proxy IPs are skipped, otherwise the first
-	// valid IP is returned. Enable it whenever c.IP() is used as a single client identifier.
+	// which for X-Forwarded-For may be a comma-separated chain: when TrustProxyConfig names
+	// proxy IPs or ranges (Proxies, Loopback, Private or LinkLocal) the chain is walked
+	// right-to-left and those proxies are skipped; otherwise, including when only UnixSocket
+	// is trusted, the first valid IP from the left is returned. Enable it whenever c.IP() is
+	// used as a single client identifier and the header can carry a chain; a proxy that
+	// overwrites the header with one address, or a single-IP header, does not need it.
 	// WARNING: this has a performance cost associated with it.
 	//
 	// Default: false

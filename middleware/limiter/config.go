@@ -47,8 +47,9 @@ type Config struct {
 
 	// KeyGenerator allows you to generate custom keys, by default c.IP() is used.
 	// Behind a reverse proxy, c.IP() only identifies a client when TrustProxy,
-	// TrustProxyConfig, ProxyHeader and EnableIPValidation are configured; otherwise
-	// it is the proxy's address or the raw, client-influenced forwarded header.
+	// TrustProxyConfig and ProxyHeader are configured, plus EnableIPValidation when
+	// the header is a chain the proxy appends to (X-Forwarded-For); otherwise it is
+	// the proxy's address or the raw, client-influenced forwarded header.
 	//
 	// Default: func(c fiber.Ctx) string {
 	//   return c.IP()

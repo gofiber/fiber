@@ -208,12 +208,16 @@ type Req interface {
 	Port() string
 	// IP returns the client's IP address. When the request comes from a trusted proxy (see
 	// [TrustProxyConfig]) and Config.ProxyHeader is set, the value is taken from that header.
-	// With Config.EnableIPValidation enabled, the X-Forwarded-For chain is walked right-to-left,
-	// every trusted proxy IP is skipped and the first non-trusted IP is returned. With it
-	// disabled (the default), the raw header value is returned as-is, which for X-Forwarded-For
-	// may be the whole comma-separated chain. Enable validation whenever the result is used as a
-	// single client identifier, for example by the limiter middleware or an allowlist. Please use
-	// Config.TrustProxy to prevent header spoofing if your app is behind a proxy.
+	// With Config.EnableIPValidation enabled and proxy IPs or ranges configured (Proxies,
+	// Loopback, Private or LinkLocal), the X-Forwarded-For chain is walked right-to-left, every
+	// trusted proxy IP is skipped and the first non-trusted IP is returned; with validation
+	// enabled but only UnixSocket trusted, the first valid IP from the left is returned. With
+	// validation disabled (the default), the raw header value is returned as-is, which for
+	// X-Forwarded-For may be the whole comma-separated chain. Enable validation whenever the
+	// result is used as a single client identifier and the header can carry a chain, for example
+	// by the limiter middleware or an allowlist; a proxy that overwrites the header with one
+	// address, or a single-IP header, does not need it. Please use Config.TrustProxy to prevent
+	// header spoofing if your app is behind a proxy.
 	IP() string
 	// extractIPsFromHeader will return a slice of IPs it found given a header name in the order they appear.
 	// When IP validation is enabled, any invalid IPs will be omitted.
