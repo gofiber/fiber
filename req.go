@@ -1804,7 +1804,9 @@ func (r *DefaultReq) Stale() bool {
 // If Config.TrustProxy false, it returns false.
 // IsProxyTrusted can check remote ip by proxy ranges and ip map.
 func (r *DefaultReq) IsProxyTrusted() bool {
-	config := r.c.app.config
+	// By pointer: Config is over 600 bytes, and copying it to read one bool cost
+	// more than the rest of this function on every IP, Scheme, Host and BaseURL.
+	config := &r.c.app.config
 	if !config.TrustProxy {
 		return false
 	}

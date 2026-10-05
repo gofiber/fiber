@@ -1499,7 +1499,7 @@ Cached responses now include an RFC-compliant Age header, providing a standardiz
 
 Cache keys are now redacted in logs and error messages by default, and a `DisableValueRedaction` boolean (default `false`) lets you opt out when you need the raw value for troubleshooting.
 
-The default cache key strategy was also hardened. Instead of path-only behavior, keys now use structured request dimensions: method partitioning, path, canonical query string, and selected representation headers (`Accept`, `Accept-Encoding`, `Accept-Language`). This avoids collisions such as `/items?id=1` vs `/items?id=2` while keeping key generation deterministic. New config fields were added for explicit control: `DisableQueryKeys`, `KeyHeaders`, `KeyCookies`, and `DisableVaryHeaders`.
+The default cache key strategy was also hardened. Instead of path-only behavior, keys now use structured request dimensions: method partitioning, scheme and host, path, canonical query string, and selected representation headers (`Accept`, `Accept-Encoding`, `Accept-Language`). This avoids collisions such as `/items?id=1` vs `/items?id=2`, or the same path on two hosts served by one app, while keeping key generation deterministic. New config fields were added for explicit control: `DisableQueryKeys`, `KeyHeaders`, `KeyCookies`, and `DisableVaryHeaders`.
 
 As a security/performance default, request body/form values are not part of the default cache key. Cache handling is limited to `GET` and `HEAD` requests by default, configurable via the `Methods` field.
 

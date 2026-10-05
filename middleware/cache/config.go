@@ -29,6 +29,8 @@ type Config struct {
 	// KeyGenerator allows you to generate custom keys.
 	//
 	// When nil, the middleware uses a structured key based on:
+	//   - Request scheme and host, as c.Scheme() and c.Host() report them
+	//     (bounded; two hosts never share an entry)
 	//   - Request path (bounded to 192 bytes, hashed if longer)
 	//   - Canonical query string (sorted parameters, bounded)
 	//   - Selected request headers (from KeyHeaders)
