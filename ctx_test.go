@@ -3283,6 +3283,23 @@ func Test_Ctx_Get(t *testing.T) {
 	require.Equal(t, "default", c.Get("unknown", "default"))
 }
 
+// go test -run Test_Ctx_Get_EmptyFirstLine
+func Test_Ctx_Get_EmptyFirstLine(t *testing.T) {
+	t.Parallel()
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+
+	// Get answers with the first field line that holds a value, so an empty
+	// leading line does not hide the one after it. net/http's Header.Get and
+	// fasthttp's Peek answer with the first line even when it is empty, which
+	// is why the docs for Get and the adaptor say the two readers can disagree.
+	c.Request().Header.Add("X-Token", "")
+	c.Request().Header.Add("X-Token", "secret")
+	require.Equal(t, "secret", c.Get("X-Token"))
+	require.Empty(t, c.Request().Header.Peek("X-Token"))
+	require.Len(t, c.Request().Header.PeekAll("X-Token"), 2)
+}
+
 // go test -run Test_Ctx_GetReqHeader
 func Test_Ctx_GetReqHeader(t *testing.T) {
 	t.Parallel()

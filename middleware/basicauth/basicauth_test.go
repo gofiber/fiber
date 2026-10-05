@@ -18,6 +18,7 @@ import (
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/internal/loggertest"
 	fiberlog "github.com/gofiber/fiber/v3/log"
+	"github.com/gofiber/fiber/v3/middleware/adaptor"
 	"github.com/gofiber/fiber/v3/middleware/logger"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
@@ -329,6 +330,91 @@ func Test_BasicAuth_EmptyAuthorization(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, fiber.StatusUnauthorized, resp.StatusCode)
 	}
+}
+
+// Test_BasicAuth_RepeatedAuthorizationIsRefused covers a message carrying the
+// Authorization field on more than one line, which RFC 9110 Section 5.2 forbids
+// for a single-value field. Reading any one of the lines lets whoever wrote the
+// other decide what the request means: net/http's Header.Get and fasthttp's
+// Peek answer with the first line even when it is empty, so a net/http layer in
+// front of the app that refused a revoked credential by that reading saw none,
+// while a first-non-empty read behind it would have authenticated with the
+// credential on the line after. The message is refused instead, as a malformed
+// header is, and without a challenge: the client did not fail to authenticate,
+// it sent a request with no single meaning.
+func Test_BasicAuth_RepeatedAuthorizationIsRefused(t *testing.T) {
+	t.Parallel()
+
+	creds := "Basic " + base64.StdEncoding.EncodeToString([]byte("john:doe"))
+	newApp := func(config ...fiber.Config) *fiber.App {
+		app := fiber.New(config...)
+		app.Use(New(Config{Users: map[string]string{"john": sha256Hash("doe")}}))
+		app.Get("/", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusTeapot) })
+		return app
+	}
+
+	t.Run("lines under the canonical name", func(t *testing.T) {
+		t.Parallel()
+		app := newApp()
+
+		for _, lines := range [][]string{
+			{"", creds},
+			{creds, ""},
+			{creds, creds},
+		} {
+			req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+			req.Header[fiber.HeaderAuthorization] = lines
+			resp, err := app.Test(req)
+			require.NoError(t, err)
+			require.Equal(t, fiber.StatusBadRequest, resp.StatusCode, "lines %q", lines)
+			require.Empty(t, resp.Header.Get(fiber.HeaderWWWAuthenticate), "a malformed message is not challenged")
+		}
+
+		// One line is still read, so the refusals above cannot pass by refusing
+		// everything.
+		req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+		req.Header.Set(fiber.HeaderAuthorization, creds)
+		resp, err := app.Test(req)
+		require.NoError(t, err)
+		require.Equal(t, fiber.StatusTeapot, resp.StatusCode)
+	})
+
+	t.Run("lines under two spellings", func(t *testing.T) {
+		t.Parallel()
+		// Under DisableHeaderNormalizing the store keeps the spelling the peer
+		// sent, so the lines land under two names and a byte-exact read would
+		// find only one of them.
+		app := newApp(fiber.Config{DisableHeaderNormalizing: true})
+
+		req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+		req.Header[fiber.HeaderAuthorization] = []string{""}
+		req.Header["authorization"] = []string{creds}
+		resp, err := app.Test(req)
+		require.NoError(t, err)
+		require.Equal(t, fiber.StatusBadRequest, resp.StatusCode)
+
+		req = httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+		req.Header["authorization"] = []string{creds}
+		resp, err = app.Test(req)
+		require.NoError(t, err)
+		require.Equal(t, fiber.StatusTeapot, resp.StatusCode)
+	})
+
+	t.Run("behind adaptor.FiberApp", func(t *testing.T) {
+		t.Parallel()
+		// The shape the differential was reported in: a net/http layer in front
+		// reads the field as empty and lets the request through to the Fiber
+		// app, which must not then find a credential on the second line.
+		handler := adaptor.FiberApp(newApp())
+
+		req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+		req.Header[fiber.HeaderAuthorization] = []string{"", creds}
+		require.Empty(t, req.Header.Get(fiber.HeaderAuthorization), "net/http reads the empty first line")
+
+		rec := httptest.NewRecorder()
+		handler(rec, req)
+		require.Equal(t, fiber.StatusBadRequest, rec.Code)
+	})
 }
 
 func Test_BasicAuth_HeaderWhitespace(t *testing.T) {
