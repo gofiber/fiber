@@ -1561,7 +1561,7 @@ app.Get("/", func(c fiber.Ctx) error {
 ```
 
 :::caution Repeated field lines
-When a request carries the same header on several field lines, `Get` returns the first line that holds a value and steps over an empty leading line. `net/http`'s `Header.Get` and fasthttp's `Peek` return the first line even when it is empty, so a `net/http` layer in front of Fiber, such as a server mounting the app through the [adaptor](../middleware/adaptor.md), can read a field as empty that `Get` returns a value for. Use [`GetAll`](#getall) to see every line, and do not authorize on a header read with `Get` unless the layer in front strips or refuses it on every line. The `basicauth`, `keyauth` and `csrf` middleware refuse a request that repeats the single-value fields they read.
+When a request carries the same header on several field lines, `Get` returns the first line that holds a value and steps over an empty leading line. `net/http`'s `Header.Get` and fasthttp's `Peek` return the first line even when it is empty, so a `net/http` layer in front of Fiber, such as a server mounting the app through the [adaptor](../middleware/adaptor.md), can read a field as empty that `Get` returns a value for. Use [`GetAll`](#getall) to see every line, and do not authorize on a header read with `Get` unless the layer in front strips or refuses it on every line. The `basicauth` and `csrf` middleware refuse a request that repeats the single-value fields they read, and so does `keyauth` with its default `Authorization` extractor; a custom `extractors.FromHeader` extractor combines repeated lines into one value instead.
 :::
 
 :::info
