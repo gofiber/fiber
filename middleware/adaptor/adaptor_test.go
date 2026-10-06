@@ -2510,9 +2510,10 @@ func Test_HTTPMiddleware_JoinsRepeatedConnectionValues(t *testing.T) {
 	}{
 		{name: "token list", write: []string{"keep-alive", "X-Internal"}, want: "keep-alive, X-Internal"},
 		// Every observer must see the complete token list so a proxy can remove
-		// each named hop-by-hop field. Setting fasthttp's request flag would hide
-		// all tokens beside "close", so the close instruction is carried on the
-		// response instead.
+		// each named hop-by-hop field. fasthttp raises the request flag for a
+		// close token anywhere in the list and still reports the whole list, but
+		// the server read that flag before the handler ran, so the close
+		// instruction is carried on the response as well.
 		{name: "close first", write: []string{"close", "X-Internal"}, want: "close, X-Internal", wantClose: true},
 		{name: "close last", write: []string{"X-Internal", "close"}, want: "X-Internal, close", wantClose: true},
 		{name: "close cased", write: []string{"X-Internal", "CLOSE"}, want: "X-Internal, CLOSE", wantClose: true},
@@ -2553,7 +2554,7 @@ func Test_HTTPMiddleware_JoinsRepeatedConnectionValues(t *testing.T) {
 			require.Equal(t, tc.want, got)
 			require.Equal(t, tc.wantClose, resp.Close, "close has to reach the wire, not just the fiber context")
 			require.Equal(t, tc.want, afterNext, "the complete Connection field must outlive the downstream chain")
-			require.Equal(t, tc.want == "close", gotClose, "the request flag stands in only for a bare close")
+			require.Equal(t, tc.wantClose, gotClose, "the request flag reports a close token wherever it sits in the list")
 			require.Equal(t, tc.wantClose, finalClose, "the transport close instruction rides on the response")
 		})
 	}
