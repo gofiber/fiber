@@ -556,10 +556,11 @@ func HTTPMiddleware(mw func(http.Handler) http.Handler) fiber.Handler {
 				// RFC 9110 Section 7.6.1 matches connection options
 				// case-insensitively.
 				if headerlist.ContainsFold(joined, "close") {
-					// The close instruction is carried separately rather than
-					// written back here: fasthttp's request flag makes Peek answer
-					// "close" and hides the rest of the list (RFC 9110 §7.6.1),
-					// which is how a proxy downstream learns what to strip.
+					// Set raises fasthttp's request flag for a close token anywhere
+					// in the list and keeps the complete list for Peek, which is how
+					// a proxy downstream learns what to strip. The server read that
+					// flag before calling the handler, though, so the instruction is
+					// carried separately and moved to the response below.
 					connectionClose = true
 				}
 			}
@@ -582,12 +583,10 @@ func HTTPMiddleware(mw func(http.Handler) http.Handler) fiber.Handler {
 		}
 
 		if closeConnection {
-			// The close instruction rides on the response so the request keeps the
-			// complete field for every observer — downstream handlers, middleware
-			// resuming after Next, and the app's ErrorHandler alike. It also has to
-			// go on the response to have any effect: fasthttp stores the request
-			// flag before calling the handler and never reads it again, whereas the
-			// response flag is what the server consults once the handler returns.
+			// The close instruction has to go on the response to have any effect:
+			// fasthttp stores the request flag before calling the handler and never
+			// reads it again, whereas the response flag is what the server consults
+			// once the handler returns.
 			//
 			// Applied on the way out, because a single flag stands for the whole
 			// response and the downstream chain can clear it: a handler resetting
