@@ -335,6 +335,15 @@ type Ctx interface {
 	// The field name matches case-insensitively (RFC 9110 Section 5.1), so this
 	// agrees with GetAll on whether the field is there.
 	HasHeader(key string) bool
+	// HasHeaderValue reports whether the request header key lists value as one of
+	// its comma-separated members, on any of its field lines. Repeated field lines
+	// are one list (RFC 9110 Section 5.3) and the member matches under ASCII case
+	// folding, so it fits directive-style headers such as Cache-Control or
+	// Connection. A comma inside a quoted argument does not end a member, so
+	// `ext="a,no-transform,b"` is one member and does not list no-transform
+	// (RFC 9111 permits quoted directive arguments, escaped quotes included). An
+	// empty value is never present. Only valid within the handler.
+	HasHeaderValue(key, value string) bool
 	// MediaType returns the MIME type from the Content-Type header without parameters.
 	MediaType() string
 	// Charset returns the charset parameter from the Content-Type header.
@@ -430,10 +439,17 @@ type Ctx interface {
 	// Port returns the remote port of the request.
 	Port() string
 	// IP returns the client's IP address. When the request comes from a trusted proxy (see
-	// [TrustProxyConfig]), the value is extracted from the configured ProxyHeader by walking the
-	// X-Forwarded-For chain right-to-left and skipping all trusted proxy IPs; the first
-	// non-trusted IP in the chain is returned. Please use Config.TrustProxy to prevent header
-	// spoofing if your app is behind a proxy.
+	// [TrustProxyConfig]) and Config.ProxyHeader is set, the value is taken from that header.
+	// With Config.EnableIPValidation enabled and proxy IPs or ranges configured (Proxies,
+	// Loopback, Private or LinkLocal), the X-Forwarded-For chain is walked right-to-left, every
+	// trusted proxy IP is skipped and the first non-trusted IP is returned; with validation
+	// enabled but only UnixSocket trusted, the first valid IP from the left is returned. With
+	// validation disabled (the default), the raw header value is returned as-is, which for
+	// X-Forwarded-For may be the whole comma-separated chain. Enable validation whenever the
+	// result is used as a single client identifier and the header can carry a chain, for example
+	// by the limiter middleware or an allowlist; a proxy that overwrites the header with one
+	// address, or a single-IP header, does not need it. Please use Config.TrustProxy to prevent
+	// header spoofing if your app is behind a proxy.
 	IP() string
 	// extractIPsFromHeader will return a slice of IPs it found given a header name in the order they appear.
 	// When IP validation is enabled, any invalid IPs will be omitted.
@@ -577,6 +593,8 @@ type Ctx interface {
 	// If the header is not already set, it creates the header with the specified value.
 	// Empty values are skipped: a sender must not generate empty list elements
 	// (RFC 9110 Section 5.6.1.2).
+	// Members are compared byte-exactly, because some lists (Link, Cache-Control)
+	// are not all field names. For Vary field names, use Vary, which folds case.
 	Append(field string, values ...string)
 	// Add appends the value as a new field line, where Append folds values into one
 	// comma-separated line. The headers fasthttp keeps in a slot of their own are
@@ -725,6 +743,7 @@ type Ctx interface {
 	Type(extension string, charset ...string) Ctx
 	// Vary adds the given header field to the Vary response header.
 	// This will append the header, if not already listed; otherwise, leaves it listed in the current location.
+	// Field names are compared case-insensitively (RFC 9110 Section 5.1); the first spelling is kept.
 	// Per RFC 9110 Section 12.5.5 the wildcard "*" only has meaning as the sole member of the field:
 	// once "*" is added (or already present), the header is collapsed to a single "*".
 	Vary(fields ...string)

@@ -336,7 +336,7 @@ func TestCacheStorageGetError(t *testing.T) {
 	t.Parallel()
 
 	storage := newFailingCacheStorage()
-	storage.errs["get|"+cacheKeyVersion+"|GET|/|q=|h=accept:0|accept-encoding:0|accept-language:0"] = errors.New("boom")
+	storage.errs["get|"+cacheKeyVersion+"|GET|scheme=http|host=example.com|/|q=|h=accept:0|accept-encoding:0|accept-language:0"] = errors.New("boom")
 
 	var captured error
 	app := fiber.New(fiber.Config{
@@ -362,7 +362,7 @@ func TestCacheStorageSetError(t *testing.T) {
 	t.Parallel()
 
 	storage := newFailingCacheStorage()
-	storage.errs["set|"+cacheKeyVersion+"|GET|/|q=|h=accept:0|accept-encoding:0|accept-language:0_body"] = errors.New("boom")
+	storage.errs["set|"+cacheKeyVersion+"|GET|scheme=http|host=example.com|/|q=|h=accept:0|accept-encoding:0|accept-language:0_body"] = errors.New("boom")
 
 	var captured error
 	app := fiber.New(fiber.Config{
@@ -388,14 +388,14 @@ func TestCacheStorageDeleteError(t *testing.T) {
 	t.Parallel()
 
 	storage := newFailingCacheStorage()
-	storage.errs["del|"+cacheKeyVersion+"|GET|/|q=|h=accept:0|accept-encoding:0|accept-language:0"] = errors.New("boom")
+	storage.errs["del|"+cacheKeyVersion+"|GET|scheme=http|host=example.com|/|q=|h=accept:0|accept-encoding:0|accept-language:0"] = errors.New("boom")
 
 	// Use an obviously expired timestamp without relying on time-based conversions
 	expired := &item{exp: 1}
 	raw, err := expired.MarshalMsg(nil)
 	require.NoError(t, err)
 
-	storage.data[cacheKeyVersion+"|GET|/|q=|h=accept:0|accept-encoding:0|accept-language:0"] = raw
+	storage.data[cacheKeyVersion+"|GET|scheme=http|host=example.com|/|q=|h=accept:0|accept-encoding:0|accept-language:0"] = raw
 
 	var captured error
 	app := fiber.New(fiber.Config{
@@ -477,8 +477,8 @@ func TestCacheEvictionPropagatesRequestContextToDelete(t *testing.T) {
 	}
 
 	require.ElementsMatch(t, []string{
-		cacheKeyVersion + "|GET|/first|q=|h=accept:0|accept-encoding:0|accept-language:0",
-		cacheKeyVersion + "|GET|/first|q=|h=accept:0|accept-encoding:0|accept-language:0_body",
+		cacheKeyVersion + "|GET|scheme=http|host=example.com|/first|q=|h=accept:0|accept-encoding:0|accept-language:0",
+		cacheKeyVersion + "|GET|scheme=http|host=example.com|/first|q=|h=accept:0|accept-encoding:0|accept-language:0_body",
 	}, keys)
 }
 
@@ -486,7 +486,7 @@ func TestCacheCleanupPropagatesRequestContextToDelete(t *testing.T) {
 	t.Parallel()
 
 	storage := newContextRecorderStorage()
-	storage.errs["set|"+cacheKeyVersion+"|GET|/|q=|h=accept:0|accept-encoding:0|accept-language:0"] = errors.New("boom")
+	storage.errs["set|"+cacheKeyVersion+"|GET|scheme=http|host=example.com|/|q=|h=accept:0|accept-encoding:0|accept-language:0"] = errors.New("boom")
 
 	var captured error
 	app := fiber.New(fiber.Config{
@@ -515,7 +515,7 @@ func TestCacheCleanupPropagatesRequestContextToDelete(t *testing.T) {
 
 	records := storage.recordedDeletes()
 	require.Len(t, records, 1)
-	require.Equal(t, cacheKeyVersion+"|GET|/|q=|h=accept:0|accept-encoding:0|accept-language:0_body", records[0].key)
+	require.Equal(t, cacheKeyVersion+"|GET|scheme=http|host=example.com|/|q=|h=accept:0|accept-encoding:0|accept-language:0_body", records[0].key)
 	require.Equal(t, "cleanup", records[0].value)
 	require.True(t, records[0].canceled)
 }
@@ -567,8 +567,8 @@ func TestCacheStorageOperationsObserveRequestContext(t *testing.T) {
 	require.Len(t, setRecords, 2)
 	for _, rec := range setRecords {
 		require.Contains(t, []string{
-			cacheKeyVersion + "|GET|/cache|q=|h=accept:0|accept-encoding:0|accept-language:0",
-			cacheKeyVersion + "|GET|/cache|q=|h=accept:0|accept-encoding:0|accept-language:0_body",
+			cacheKeyVersion + "|GET|scheme=http|host=example.com|/cache|q=|h=accept:0|accept-encoding:0|accept-language:0",
+			cacheKeyVersion + "|GET|scheme=http|host=example.com|/cache|q=|h=accept:0|accept-encoding:0|accept-language:0_body",
 		}, rec.key)
 		require.Equal(t, "store", rec.value)
 		require.True(t, rec.canceled)
@@ -583,11 +583,11 @@ func TestCacheStorageOperationsObserveRequestContext(t *testing.T) {
 			continue
 		}
 
-		if rec.key == cacheKeyVersion+"|GET|/cache|q=|h=accept:0|accept-encoding:0|accept-language:0" {
+		if rec.key == cacheKeyVersion+"|GET|scheme=http|host=example.com|/cache|q=|h=accept:0|accept-encoding:0|accept-language:0" {
 			require.True(t, rec.canceled)
 			fetchEntry = true
 		}
-		if rec.key == cacheKeyVersion+"|GET|/cache|q=|h=accept:0|accept-encoding:0|accept-language:0_body" {
+		if rec.key == cacheKeyVersion+"|GET|scheme=http|host=example.com|/cache|q=|h=accept:0|accept-encoding:0|accept-language:0_body" {
 			require.True(t, rec.canceled)
 			fetchBody = true
 		}
@@ -1451,7 +1451,7 @@ func Test_Cache_DefaultKeyDimensions(t *testing.T) {
 		expectedBoundedPath := "sha256:" + hex.EncodeToString(hash[:])
 		require.Len(t, expectedBoundedPath, len("sha256:")+sha256.Size*2)
 
-		expectedPrefix := cacheKeyVersion + "|" + fiber.MethodGet + "|" + expectedBoundedPath
+		expectedPrefix := cacheKeyVersion + "|" + fiber.MethodGet + "|scheme=http|host=example.com|" + expectedBoundedPath
 		foundBoundedKey := false
 		for key := range storage.data {
 			require.NotContains(t, key, oversizedPath)
@@ -2350,7 +2350,7 @@ func Test_Cache_NoCacheRefresh_KeepsAccounting(t *testing.T) {
 func Test_Cache_FailedRefreshKeepsOldEntryTracked(t *testing.T) {
 	t.Parallel()
 
-	const bodyKey = "set|" + cacheKeyVersion + "|GET|/|q=|h=accept:0|accept-encoding:0|accept-language:0_body"
+	const bodyKey = "set|" + cacheKeyVersion + "|GET|scheme=http|host=example.com|/|q=|h=accept:0|accept-encoding:0|accept-language:0_body"
 
 	storage := newFailingCacheStorage()
 	probe := &accountingProbe{}
@@ -2392,7 +2392,7 @@ func Test_Cache_FailedRefreshKeepsOldEntryTracked(t *testing.T) {
 func Test_Cache_FailedRefreshAfterBodyWriteDropsOldEntry(t *testing.T) {
 	t.Parallel()
 
-	const metaKey = "set|" + cacheKeyVersion + "|GET|/|q=|h=accept:0|accept-encoding:0|accept-language:0"
+	const metaKey = "set|" + cacheKeyVersion + "|GET|scheme=http|host=example.com|/|q=|h=accept:0|accept-encoding:0|accept-language:0"
 
 	storage := newFailingCacheStorage()
 	probe := &accountingProbe{}
@@ -6097,6 +6097,21 @@ func Test_parseCacheControlDirectives_QuotedStrings(t *testing.T) {
 			},
 		},
 		{
+			name:  "tabs around directives and values",
+			input: "\tmax-age\t=\t3600\t,\tcommunity\t=\t\"UCI\"\t",
+			expected: map[string]string{
+				"max-age":   "3600",
+				"community": "UCI",
+			},
+		},
+		{
+			name:  "whitespace other than SP and HTAB is kept",
+			input: "max-age=\v3600",
+			expected: map[string]string{
+				"max-age": "\v3600",
+			},
+		},
+		{
 			name:  "unquoted token value",
 			input: `max-age=3600`,
 			expected: map[string]string{
@@ -7648,6 +7663,27 @@ func Test_CacheInvalidator_SharedEntryNoDataRace(t *testing.T) {
 	require.Greater(t, handlerCalls.Load(), primed, "invalidator never bypassed the cache")
 }
 
+// go test -v -run=^$ -bench=Benchmark_parseCacheControlDirectives -benchmem -count=4
+func Benchmark_parseCacheControlDirectives(b *testing.B) {
+	inputs := [][]byte{
+		[]byte("no-cache"),
+		[]byte("public, max-age=3600"),
+		[]byte("private, no-store, must-revalidate"),
+		[]byte(`max-age=30, s-maxage=90, community="UCI", no-cache`),
+		[]byte("max-age = 60 ,\tno-transform"),
+	}
+	var n int
+	b.ReportAllocs()
+	for b.Loop() {
+		for _, in := range inputs {
+			parseCacheControlDirectives(in, func(key, value []byte) {
+				n += len(key) + len(value)
+			})
+		}
+	}
+	_ = n
+}
+
 // go test -v -run=^$ -bench=Benchmark_hasDirective -benchmem -count=4
 func Benchmark_hasDirective(b *testing.B) {
 	inputs := []string{
@@ -7792,7 +7828,7 @@ func Test_Cache_VaryManifestStoreFailureUnreservesSpace(t *testing.T) {
 		return c.SendString(body)
 	})
 
-	manifestKey := cacheKeyVersion + "|GET|/a|q=|h=accept:0|accept-encoding:0|accept-language:0|vary"
+	manifestKey := cacheKeyVersion + "|GET|scheme=http|host=example.com|/a|q=|h=accept:0|accept-encoding:0|accept-language:0|vary"
 	storage.mu.Lock()
 	storage.errs["set|"+manifestKey] = errors.New("boom")
 	storage.mu.Unlock()

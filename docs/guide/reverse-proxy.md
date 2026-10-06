@@ -40,7 +40,7 @@ In addition, your reverse proxy should be configured to **set or overwrite** the
 :::
 
 :::info Chain parsing with `EnableIPValidation`
-`X-Forwarded-For` is a comma-separated chain that each proxy appends to. With `EnableIPValidation` enabled, `c.IP()` walks the chain from **right to left** and strips every IP that matches the configured `TrustProxyConfig`. The first non-trusted IP is returned as the client. This matches the [MDN guidance](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/X-Forwarded-For#selecting_an_ip_address) and the convention used by Nginx (`set_real_ip_from` + `real_ip_recursive`), Apache `mod_remoteip`, Envoy (`xff_num_trusted_hops`), and most CDNs.
+`X-Forwarded-For` is a comma-separated chain that each proxy appends to. With `EnableIPValidation` enabled, `c.IP()` walks the chain from **right to left** and strips every IP that matches the configured `TrustProxyConfig`. The first non-trusted IP is returned as the client. Trust only your proxies: blanket `Private`, `Loopback` or `LinkLocal` trust is unsafe when clients can also connect from those ranges, because such a client's own entry is skipped and the address it supplied is returned instead. This matches the [MDN guidance](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/X-Forwarded-For#selecting_an_ip_address) and the convention used by Nginx (`set_real_ip_from` + `real_ip_recursive`), Apache `mod_remoteip`, Envoy (`xff_num_trusted_hops`), and most CDNs.
 
 Without `EnableIPValidation`, `c.IP()` returns the raw header value (a comma-separated string), which is rarely what middleware like rate limiters or allowlists expect. Enable validation when you rely on `c.IP()` as a single client identifier.
 :::
@@ -53,6 +53,8 @@ To enable reading the client IP from proxy headers, you must configure **three s
 2. **`ProxyHeader`** - Specify which header contains the client IP
 3. **`TrustProxyConfig`** - Define which proxy IPs to trust
 
+When the header is a chain your proxy appends to, such as `X-Forwarded-For`, also enable **`EnableIPValidation`** so that `c.IP()` resolves a single client IP instead of returning the raw chain. A proxy that overwrites the header with one address, or a single-IP header such as `X-Real-IP` or `CF-Connecting-IP`, does not need it.
+
 ```go title="Example - App Behind Nginx"
 app := fiber.New(fiber.Config{
     // Enable proxy support
@@ -61,12 +63,16 @@ app := fiber.New(fiber.Config{
     // Read client IP from X-Forwarded-For header
     ProxyHeader: fiber.HeaderXForwardedFor,
 
+    // Resolve a single client IP from the X-Forwarded-For chain
+    EnableIPValidation: true,
+
     // Trust requests from your Nginx proxy
     TrustProxyConfig: fiber.TrustProxyConfig{
         // Option 1: Trust specific proxy IPs
         Proxies: []string{"10.10.0.58", "192.168.1.0/24"},
 
-        // Option 2: Or trust all private IPs (useful for internal load balancers)
+        // Option 2: Or trust all private IPs (useful for internal load balancers,
+        // but only when clients never connect from private addresses)
         // Private: true,
     },
 })

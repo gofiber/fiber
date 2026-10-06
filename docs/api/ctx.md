@@ -331,14 +331,20 @@ tail; delimiters such as `?` and `#` remain parameter data instead of adding a
 query or fragment. [`Route.URL`](./app.md#getroute) and
 [`Redirect().Route`](./redirect.md#route) apply the same encoding.
 
-These take the value as data, not as URL text, so the same call yields the same
-URL under any configuration. With `UnescapePath` off (the default) `c.Params`
+These take the value as data, not as URL text. Representable values use the same
+encoding under any configuration. With `UnescapePath` off (the default) `c.Params`
 returns the value still percent-encoded, so forwarding it straight back encodes
 the `%` a second time. Turn `UnescapePath` on, or decode with
 [`url.PathUnescape`](https://pkg.go.dev/net/url#PathUnescape) first.
 An app with `UnescapePath` enabled decodes `%2F` before route matching, so an
-ordinary parameter holding a `/` cannot round-trip as one segment. Use a greedy
-(`*` or `+`) parameter for values that may contain slashes.
+ordinary single-segment parameter holding a `/` cannot round-trip and returns
+`ErrRouteNotRepresentable`. Greedy (`*` or `+`), adjacent single-byte parameters
+and parameters with a single-byte non-slash terminator retain their existing
+slash-matching rules.
+Dot-containing values are also rejected when the composed path has a `.` or
+`..` segment that would be removed during normalization. Surrounding route
+constants are considered: `:name.txt` with `name="."` remains representable.
+Pass a different value or use a route that can represent it; do not pre-encode it.
 :::
 
 ### Hijack
@@ -1554,6 +1560,10 @@ app.Get("/", func(c fiber.Ctx) error {
 })
 ```
 
+:::caution Repeated field lines
+When a request carries the same header on several field lines, `Get` returns the first line that holds a value and steps over an empty leading line. `net/http`'s `Header.Get` and fasthttp's `Peek` return the first line even when it is empty, so a `net/http` layer in front of Fiber, such as a server mounting the app through the [adaptor](../middleware/adaptor.md), can read a field as empty that `Get` returns a value for. Use [`GetAll`](#getall) to see every line, and do not authorize on a header read with `Get` unless the layer in front strips or refuses it on every line. The `basicauth` and `csrf` middleware refuse a request that repeats the single-value fields they read, and so does `keyauth` with its default `Authorization` extractor; a custom `extractors.FromHeader` extractor combines repeated lines into one value instead.
+:::
+
 :::info
 The returned value is valid only within the handler. Do not store references.
 Make copies or use the [**`Immutable`**](./fiber.md#immutable) setting instead. [Read more...](../#zero-allocation)
@@ -1619,6 +1629,26 @@ func (r fiber.Req) HasHeader(key string) bool
 ```go title="Example"
 app.Get("/", func(c fiber.Ctx) error {
   c.HasHeader("X-Trace-Id")
+  return nil
+})
+```
+
+### HasHeaderValue
+
+Reports whether the request header `key` lists `value` as one of its comma-separated members, on any of its field lines. Repeated field lines are treated as one list ([RFC 9110 Section 5.3](https://www.rfc-editor.org/rfc/rfc9110#section-5.3)) and the member is matched case-insensitively, which fits directive-style headers such as `Cache-Control` or `Connection`. A comma inside a quoted argument does not split a member, so `ext="a,no-transform,b"` does not list `no-transform`. A backslash inside quotes escapes the next byte ([RFC 9110 Section 5.6.4](https://www.rfc-editor.org/rfc/rfc9110#section-5.6.4)), so `ext="a\"", no-transform` does list it. An empty `value` is never present.
+
+```go title="Signature"
+func (c fiber.Ctx) HasHeaderValue(key, value string) bool
+func (r fiber.Req) HasHeaderValue(key, value string) bool
+```
+
+```go title="Example"
+// Cache-Control: public, max-age=60
+// Cache-Control: no-transform
+app.Get("/", func(c fiber.Ctx) error {
+  c.HasHeaderValue(fiber.HeaderCacheControl, "no-transform") // true
+  c.HasHeaderValue(fiber.HeaderCacheControl, "PUBLIC")       // true
+  c.HasHeaderValue(fiber.HeaderCacheControl, "max-age")      // false
   return nil
 })
 ```
@@ -1745,11 +1775,11 @@ By default, `c.IP()` returns the remote IP address from the TCP connection. When
 
 **Important:** You must enable `TrustProxy` and configure trusted proxy IPs to prevent header spoofing. Simply setting `ProxyHeader` alone will not work.
 
-**Note:** When using a proxy header such as `X-Forwarded-For`, `c.IP()` returns the raw header value unless [`EnableIPValidation`](fiber.md#enableipvalidation) is enabled.
+**Note:** When using a proxy header such as `X-Forwarded-For`, `c.IP()` returns the raw header value unless [`EnableIPValidation`](fiber.md#enableipvalidation) is enabled. Enable it whenever `c.IP()` is used as a single client identifier, for example by the [limiter](../middleware/limiter.md) middleware or an IP allowlist, unless your proxy overwrites the header with a single address: otherwise the raw value can be a comma-separated chain whose leading entries are supplied by the client.
 
 **Chain parsing with `EnableIPValidation`:** For `X-Forwarded-For`, the raw value is a comma-separated chain that grows from left to right as the request passes through each proxy. With validation enabled, `c.IP()` walks the chain from right to left, skipping every IP that matches the configured `TrustProxyConfig` (exact IPs, CIDR ranges, loopback, private or link-local) and returns the first non-trusted IP it finds. This matches the behavior recommended by [MDN](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/X-Forwarded-For#selecting_an_ip_address) and the convention used by Nginx (`set_real_ip_from` + `real_ip_recursive`), Apache `mod_remoteip`, and Envoy (`xff_num_trusted_hops`).
 
-If every IP in the chain matches the trusted set, the leftmost IP is returned as a fallback. If the chain is empty, `c.IP()` falls back to the TCP remote address.
+If every IP in the chain matches the trusted set, the leftmost IP is returned as a fallback. Trust only your proxies: blanket `Private`, `Loopback` or `LinkLocal` trust is unsafe when clients can also connect from those ranges, because such a client's own entry is skipped and the address it supplied is returned instead; prefer exact proxy addresses or ranges that exclude client networks, or have the proxy overwrite the header. When `TrustProxyConfig` trusts only `UnixSocket`, there are no proxy IPs to skip and the first valid IP from the left is returned. If the chain is empty, `c.IP()` falls back to the TCP remote address.
 :::
 
 #### Configuration for apps behind a reverse proxy
@@ -1760,11 +1790,15 @@ app := fiber.New(fiber.Config{
   TrustProxy: true,
   // Specify which header contains the real client IP
   ProxyHeader: fiber.HeaderXForwardedFor,
+  // Resolve a single client IP from the X-Forwarded-For chain
+  EnableIPValidation: true,
   // Configure which proxy IPs to trust
   TrustProxyConfig: fiber.TrustProxyConfig{
-    // Trust private IP ranges (for internal load balancers)
+    // Trust private IP ranges (for internal load balancers). Only safe when
+    // clients never connect from private addresses: a client in a trusted
+    // range can forge the entry before its own, see the note above.
     Private: true,
-    // Or specify exact proxy IPs/ranges
+    // Or, preferably, specify exact proxy IPs/ranges
     // Proxies: []string{"10.10.0.58", "192.168.0.0/24"},
   },
 })
@@ -1774,6 +1808,7 @@ app := fiber.New(fiber.Config{
 app := fiber.New(fiber.Config{
   TrustProxy: true,
   ProxyHeader: fiber.HeaderXForwardedFor,
+  EnableIPValidation: true,
   TrustProxyConfig: fiber.TrustProxyConfig{
     // Trust only specific proxy IP addresses
     Proxies: []string{"10.10.0.58", "192.168.1.0/24"},
@@ -1785,7 +1820,7 @@ See [`TrustProxy`](fiber.md#trustproxy) and [`TrustProxyConfig`](fiber.md#trustp
 
 ### IPs
 
-Returns an array of IP addresses specified in the [X-Forwarded-For](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/X-Forwarded-For) request header. With `EnableIPValidation`, IPv4, IPv6 and IPv4-mapped IPv6 addresses (`::ffff:203.0.113.5`, as dual-stack proxies forward IPv4 clients) are all accepted.
+Returns an array of IP addresses specified in the [X-Forwarded-For](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/X-Forwarded-For) request header, each with the spaces and tabs around it trimmed ([RFC 9110 Section 5.6.3](https://www.rfc-editor.org/rfc/rfc9110#section-5.6.3) allows either as optional whitespace). With `EnableIPValidation`, IPv4, IPv6 and IPv4-mapped IPv6 addresses (`::ffff:203.0.113.5`, as dual-stack proxies forward IPv4 clients) are all accepted; whitespace inside an address makes it invalid.
 
 ```go title="Signature"
 func (c fiber.Ctx) IPs() []string

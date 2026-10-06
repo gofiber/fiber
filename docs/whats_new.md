@@ -365,9 +365,11 @@ The router normalizes every request path before matching, as [RFC 3986 Section 6
 
 ### Generated route URLs
 
-`Route.URL`, `GetRouteURL` and `Redirect().Route` percent-encode each parameter value with URL path-segment rules. A value is data, so the same call composes the same URL under any configuration. Previously the value was written into the path as given: `a/b` under `/user/:name` produced `/user/a/b`, which matched no route; `a?b` produced `/user/a?b`, whose tail became a query and truncated the value; and `100%` produced `/user/100%`, which Go's own URL parser rejects. Greedy parameters (`*` and `+`) keep the `/` of the matched path tail.
+`Route.URL`, `GetRouteURL` and `Redirect().Route` percent-encode each parameter value with URL path-segment rules. A value is data, so a representable value composes the same URL under any configuration. Previously the value was written into the path as given: `a/b` under `/user/:name` produced `/user/a/b`, which matched no route; `a?b` produced `/user/a?b`, whose tail became a query and truncated the value; and `100%` produced `/user/100%`, which Go's own URL parser rejects. Greedy parameters (`*` and `+`) keep the `/` of the matched path tail.
 
 Because the value is data, one that already carries escapes is encoded again. With `UnescapePath` off, which is the default, `c.Params` returns the value as the request spelled it, so forwarding it into a generated URL turns `M%C3%BCller` into `M%25C3%25BCller`. Decode it first, or turn `UnescapePath` on.
+
+A value the router could not match back returns `ErrRouteNotRepresentable` instead of a URL: one that forms a `.` or `..` segment, which clients and the router remove (`/user/:name` with `..`), and, with `UnescapePath` on, a `/` in an ordinary single-segment parameter, which the router decodes before matching. Greedy parameters keep accepting slashes.
 
 ### Handler compatibility
 
@@ -702,6 +704,7 @@ The `TypeConstraint` type, `Constraint.ID`, and `Constraint.RegexCompiler` field
 - **AcceptLanguage**: Returns the `Accept-Language` request header.
 - **AcceptEncoding**: Returns the `Accept-Encoding` request header.
 - **HasHeader**: Reports whether the request includes a header with the given key.
+- **HasHeaderValue**: Reports whether a comma-separated request header such as `Cache-Control` lists a member on any of its field lines, case-insensitively and respecting quoted arguments.
 - **MediaType**: Returns the MIME type from the `Content-Type` header without parameters.
 - **Charset**: Returns the `charset` parameter from the `Content-Type` header.
 - **IsJSON**: Reports whether the `Content-Type` header is JSON.
@@ -1481,7 +1484,7 @@ The adaptor also propagates the request's protocol version, normalized to Fiber'
 
 ### BasicAuth
 
-The BasicAuth middleware now validates the `Authorization` header more rigorously and sets security-focused response headers. Passwords must be provided in **hashed** form (e.g. SHA-256 or bcrypt) rather than plaintext. The default challenge includes the `charset="UTF-8"` parameter and disables caching. Responses also set a `Vary: Authorization` header to prevent caching based on credentials. Passwords are no longer stored in the request context. A `Charset` option controls the value used in the challenge header.
+The BasicAuth middleware now validates the `Authorization` header more rigorously and sets security-focused response headers. Passwords must be provided in **hashed** form (e.g. SHA-256 or bcrypt) rather than plaintext. The default challenge includes the `charset="UTF-8"` parameter and disables caching. Responses also set a `Vary: Authorization` header to prevent caching based on credentials. Passwords are no longer stored in the request context. A `Charset` option controls the value used in the challenge header. A request that carries the `Authorization` field on more than one line is refused with `400 Bad Request`: the field is defined as a single value, and reading either line would let the other decide what the request means.
 A new `HeaderLimit` option restricts the maximum length of the `Authorization` header (default: `8192` bytes).
 The `Authorizer` function now receives the current `fiber.Ctx` as a third argument, allowing credential checks to incorporate request context.
 
@@ -1496,7 +1499,7 @@ Cached responses now include an RFC-compliant Age header, providing a standardiz
 
 Cache keys are now redacted in logs and error messages by default, and a `DisableValueRedaction` boolean (default `false`) lets you opt out when you need the raw value for troubleshooting.
 
-The default cache key strategy was also hardened. Instead of path-only behavior, keys now use structured request dimensions: method partitioning, path, canonical query string, and selected representation headers (`Accept`, `Accept-Encoding`, `Accept-Language`). This avoids collisions such as `/items?id=1` vs `/items?id=2` while keeping key generation deterministic. New config fields were added for explicit control: `DisableQueryKeys`, `KeyHeaders`, `KeyCookies`, and `DisableVaryHeaders`.
+The default cache key strategy was also hardened. Instead of path-only behavior, keys now use structured request dimensions: method partitioning, scheme and host, path, canonical query string, and selected representation headers (`Accept`, `Accept-Encoding`, `Accept-Language`). This avoids collisions such as `/items?id=1` vs `/items?id=2`, or the same path on two hosts served by one app, while keeping key generation deterministic. New config fields were added for explicit control: `DisableQueryKeys`, `KeyHeaders`, `KeyCookies`, and `DisableVaryHeaders`.
 
 As a security/performance default, request body/form values are not part of the default cache key. Cache handling is limited to `GET` and `HEAD` requests by default, configurable via the `Methods` field.
 

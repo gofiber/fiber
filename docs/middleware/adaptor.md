@@ -198,6 +198,10 @@ func main() {
 }
 ```
 
+:::caution Two parsers read one request
+The `net/http` server and the Fiber app behind it each parse the request's headers, and they do not read a repeated header alike. `Header.Get` returns the first field line even when it is empty, while `c.Get` returns the first line that holds a value. A request carrying `X-Internal:` on one line and `X-Internal: true` on the next therefore reads as empty in a `net/http` guard and as `true` in the Fiber handler behind it. A guard that must keep clients from setting a header should strip it with `r.Header.Del(name)` or test `len(r.Header.Values(name)) > 0`, never compare `r.Header.Get(name)` with the empty string. Fiber's `basicauth` and `csrf` middleware refuse a request that repeats the single-value fields they read, and so does `keyauth` with its default `Authorization` extractor, so a credential split across two `Authorization` lines is rejected rather than authenticated; a custom `extractors.FromHeader` extractor combines repeated lines into one value, which the validator then judges.
+:::
+
 ### 6. Converting `fiber.Ctx` to `*http.Request` (`ConvertRequest`)
 
 Create an `*http.Request` from a `fiber.Ctx`. The `forServer` parameter determines how
@@ -349,6 +353,7 @@ func main() {
 
 - A request that `net/http` served over TLS is seen as TLS by Fiber: `c.Scheme()` is `https`, `c.Secure()` is true and `c.RequestCtx().TLSConnectionState()` carries the state from `r.TLS`.
 - `c.StartTime()` (and so `c.Elapsed()`) is not set for requests that reach Fiber through `FiberHandler`, `FiberApp` or `HTTPMiddleware`: fasthttp only records the request time inside its own server loop.
+- Both parsers read the headers: `Header.Get` returns the first field line even when it is empty, `c.Get` the first line that holds a value. A `net/http` guard should strip a header or check every value rather than compare `Header.Get` with the empty string; see the caution in the `FiberApp` section above.
 - `HTTPMiddleware` routes the request the wrapped middleware hands to `next`, including a rewritten `r.URL` such as the one `http.StripPrefix` produces. The middleware must call `next` before it flushes or hijacks the response; after that the response has left Fiber's hands and the call is ignored.
 
 ## Summary
