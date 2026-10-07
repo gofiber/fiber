@@ -6991,3 +6991,52 @@ func Test_varyListsCredential(t *testing.T) {
 		})
 	}
 }
+
+// Test_Cache_VaryLongerThanEntryLimitIsUncacheable pins the cap on a stored
+// Vary to the limit the entry decodes it under. The encoder does not enforce
+// that limit, so a longer value reached an external Storage and every later
+// read of the entry failed on it, and the route answered with that error until
+// the entry expired. Such a response is not stored at all, and a value exactly
+// at the limit still round-trips.
+func Test_Cache_VaryLongerThanEntryLimitIsUncacheable(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name       string
+		wantSecond string
+		varyLen    int
+	}{
+		{name: "at the limit", varyLen: maxVaryLen, wantSecond: cacheHit},
+		{name: "past the limit", varyLen: maxVaryLen + 1, wantSecond: cacheUnreachable},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			// One field name of the given length: fewer names than
+			// maxVaryHeaders, so only the byte length is in play.
+			vary := "X-" + strings.Repeat("a", tc.varyLen-2)
+
+			app := fiber.New()
+			app.Use(New(Config{Storage: memory.New(), Expiration: time.Minute}))
+			app.Get("/", func(c fiber.Ctx) error {
+				c.Set(fiber.HeaderVary, vary)
+				return c.SendString("body")
+			})
+
+			for i, want := range []string{"", tc.wantSecond} {
+				resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+				require.NoError(t, err)
+				require.Equal(t, fiber.StatusOK, resp.StatusCode, "request %d", i+1)
+				if want != "" {
+					require.Equal(t, want, resp.Header.Get("X-Cache"), "request %d", i+1)
+				}
+				body, err := io.ReadAll(resp.Body)
+				require.NoError(t, err)
+				require.Equal(t, "body", string(body), "request %d", i+1)
+				require.Equal(t, []string{vary}, resp.Header.Values(fiber.HeaderVary), "request %d", i+1)
+			}
+		})
+	}
+}
