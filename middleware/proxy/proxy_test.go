@@ -623,6 +623,48 @@ func Test_Proxy_ConnectionCannotRemoveForwardingHeaders(t *testing.T) {
 	}
 }
 
+// Test_Proxy_RealIPOutlivesTheTrailerReturn checks that the address written
+// into X-Real-IP is the one the request carried when the field it was read
+// from is deleted before the write. Removing Trailer returns the received
+// trailer fields to the header section, where fasthttp reuses the buffers of
+// the lines deleted before them, so an address still aliasing such a buffer
+// read as whatever trailer landed on it.
+func Test_Proxy_RealIPOutlivesTheTrailerReturn(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range realIPHandlers() {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			seen := make(chan []string, 1)
+			_, addr := createProxyTestServerIPv4(t, func(c fiber.Ctx) error {
+				seen <- matchingFieldLines(c, realIPHeader)
+				return c.SendString("upstream")
+			})
+
+			app := fiber.New(fiber.Config{
+				TrustProxy:       true,
+				TrustProxyConfig: fiber.TrustProxyConfig{Proxies: []string{"0.0.0.0/0"}},
+				ProxyHeader:      "CF-Connecting-IP",
+			})
+			app.Use(tc.build(addr))
+
+			// The peer names the proxy header in Connection, so that field is
+			// deleted before Trailer is, and sends enough trailer fields for
+			// one of them to land on its buffer. A GET, since that is the
+			// route the upstream serves; a body on it is framed all the same.
+			body := sendRaw(t, app, "GET / HTTP/1.1\r\nHost: example.com\r\n"+
+				"CF-Connecting-IP: 203.0.113.5\r\n"+
+				"Connection: CF-Connecting-IP\r\n"+
+				"Transfer-Encoding: chunked\r\n\r\n"+
+				"5\r\nhello\r\n0\r\n"+
+				"X-A: 192.168.1.1\r\nX-B: 192.168.1.1\r\nX-C: 192.168.1.1\r\n\r\n")
+			require.Equal(t, "upstream", body)
+			require.Equal(t, []string{"X-Real-Ip=203.0.113.5"}, <-seen)
+		})
+	}
+}
+
 // Test_Proxy_Do_ConnectionCannotRemoveRealIP checks that the X-Real-IP written
 // by hand before Do, as the docs show, is not the client's to remove either.
 func Test_Proxy_Do_ConnectionCannotRemoveRealIP(t *testing.T) {
@@ -1658,15 +1700,33 @@ func Test_Proxy_DomainForward_HostMatchPreservesIPv6Brackets(t *testing.T) {
 	require.Equal(t, "proxied", string(body))
 }
 
-// sendRawUnnormalized drives one request whose header names are kept exactly as
-// written, the way a front end translating HTTP/2 down to HTTP/1.1 leaves them,
-// and returns the response body.
+// sendRaw parses raw as the request a client put on the wire and runs app's
+// handler on it, returning the response body. Reading from the wire is what
+// lets a test send a chunked body with a trailer section, which the request
+// setters cannot express.
+func sendRaw(t *testing.T, app *fiber.App, raw string) string {
+	t.Helper()
+
+	req := fasthttp.AcquireRequest()
+	defer fasthttp.ReleaseRequest(req)
+	return sendParsed(t, app, req, raw)
+}
+
+// sendRawUnnormalized is sendRaw with the header names kept exactly as
+// written, the way a front end translating HTTP/2 down to HTTP/1.1 leaves them.
 func sendRawUnnormalized(t *testing.T, app *fiber.App, raw string) string {
 	t.Helper()
 
 	req := fasthttp.AcquireRequest()
 	defer fasthttp.ReleaseRequest(req)
 	req.Header.DisableNormalizing()
+	return sendParsed(t, app, req, raw)
+}
+
+// sendParsed reads raw into req and runs app's handler on the result.
+func sendParsed(t *testing.T, app *fiber.App, req *fasthttp.Request, raw string) string {
+	t.Helper()
+
 	require.NoError(t, req.Read(bufio.NewReader(strings.NewReader(raw))))
 
 	fctx := &fasthttp.RequestCtx{}

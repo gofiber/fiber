@@ -90,7 +90,8 @@ func Balancer(config ...Config) fiber.Handler {
 		// Read before the hop-by-hop fields go: Config.ProxyHeader may name
 		// one the client listed in Connection, and the address is this hop's
 		// view of the request as received.
-		ip := c.IP()
+		var scratch [realIPScratch]byte
+		ip := realIP(c, scratch[:0])
 
 		if !policy.KeepHopByHopHeaders {
 			if cfg.KeepConnectionHeader {
@@ -259,16 +260,32 @@ const realIPHeader = "X-Real-IP"
 // address Fiber derived. Set alone overwrites the first and leaves the rest, so
 // a client sending it twice kept a value of its own on the wire.
 //
-// The caller resolves ip from the request as received, before any field is
-// removed: with ProxyHeader set to "X-Real-IP", c.IP() reads the very header
-// being replaced, and deleting first handed the upstream an empty value; set
-// to another name, it may read one the client listed in Connection.
-func setRealIP(c fiber.Ctx, ip string) {
+// The caller reads ip with realIP, from the request as received and before
+// any field is removed: with ProxyHeader set to "X-Real-IP", c.IP() reads the
+// very header being replaced, and deleting first handed the upstream an empty
+// value; set to another name, it may read one the client listed in Connection.
+func setRealIP(c fiber.Ctx, ip []byte) {
 	// Add, not Set: nothing is left to replace, and Add says what is meant.
 	// fieldname.Del rather than Del so a differently-spelled line does not
 	// survive beside it.
 	fieldname.Del(&c.Request().Header, realIPHeader, headerlookup.Canonical(c))
-	c.Request().Header.Add(realIPHeader, ip)
+	c.Request().Header.AddBytesV(realIPHeader, ip)
+}
+
+// realIPScratch is the stack room for an address copied out of the request:
+// the longest IPv6 text form is 45 bytes, and a zone may follow it. A longer
+// value, such as a whole forwarding chain read without validation, spills to
+// the heap and is still correct.
+const realIPScratch = 64
+
+// realIP copies the peer address Fiber derived into buf, which the caller
+// keeps for as long as the address is needed. A copy rather than the string
+// itself: with ProxyHeader set, c.IP() aliases that header's own buffer, and
+// removing Trailer afterwards returns the received trailer fields to the
+// header section, where fasthttp reuses the buffers of the lines deleted
+// before them in place.
+func realIP(c fiber.Ctx, buf []byte) []byte {
+	return append(buf[:0], c.IP()...)
 }
 
 // forwardWithRealIP is what Forward, DomainForward and BalancerForward share:
@@ -278,7 +295,8 @@ func setRealIP(c fiber.Ctx, ip string) {
 // intermediary: the received message loses the fields it lists, then this hop
 // adds its own.
 func forwardWithRealIP(c fiber.Ctx, addr string, clients ...*fasthttp.Client) error {
-	ip := c.IP()
+	var scratch [realIPScratch]byte
+	ip := realIP(c, scratch[:0])
 	return doAction(c, addr, func(cli *fasthttp.Client, req *fasthttp.Request, resp *fasthttp.Response, _ *url.URL) error {
 		setRealIP(c, ip)
 		return cli.Do(req, resp)
