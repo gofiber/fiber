@@ -221,15 +221,50 @@ var hopByHopHeaders = []string{
 	fiber.HeaderUpgrade,
 }
 
+// forwardedPrefix opens the X-Forwarded-* fields (For, Host, Proto, Port and
+// the rest), which an app behind a trusted proxy reads for the client's
+// address, host and scheme, as Fiber's own Ctx does.
+const forwardedPrefix = "X-Forwarded-"
+
+// isForwardingHeader reports whether name is a field that tells the upstream
+// about the client as this hop saw it: X-Real-IP, which the forwarding
+// helpers write, Forwarded (RFC 7239) and every X-Forwarded-* field.
+//
+// A client listing one of these in Connection does not have it removed. RFC
+// 9110 §7.6.1 has an intermediary take the listed fields out of the message
+// it received and then replace Connection with options of its own; the fields
+// it writes for the next hop are its own, not the client's to name. The
+// helpers write X-Real-IP once the listing has been applied, but X-Forwarded-*
+// set by the application, and the X-Real-IP it sets by hand before Do, are
+// written before it and cannot be told from a line the client sent. Leaving
+// the family alone keeps the upstream's view of the client with this hop. The
+// client gives up nothing: a forwarding field it sends is forwarded whenever
+// Connection does not name it, so the listing could only ever take away a
+// line this hop or the application wrote.
+func isForwardingHeader(name string) bool {
+	return utils.HasPrefixFold(name, forwardedPrefix) ||
+		utils.EqualFold(name, realIPHeader) ||
+		utils.EqualFold(name, fiber.HeaderForwarded)
+}
+
 // stripHopByHopRequestHeaders removes RFC 7230 §6.1 hop-by-hop headers
 // from req. Callers can pass header names in except to preserve specific
 // headers — used by the legacy KeepConnectionHeader option to retain the
 // literal Connection header while still dropping the other hop-by-hop
 // headers.
 func stripHopByHopRequestHeaders(req *fasthttp.Request, normalized bool, except ...string) { //nolint:revive // flag-parameter: normalized is a property of the header store
-	// Headers listed in Connection must be removed first so the
-	// listing is honored before the Connection field itself is dropped.
-	delConnectionListedHeaders(&req.Header, fieldname.Lines(&req.Header, fiber.HeaderConnection, normalized), normalized)
+	// Headers listed in Connection must be removed first so the listing is
+	// honored before the Connection field itself is dropped. A walk of its
+	// own rather than delConnectionListedHeaders, which the response keeps:
+	// the forwarding fields are not the client's to remove (see
+	// isForwardingHeader). The names alias the Connection value buffers,
+	// which is sound for the reason given there.
+	for name := range headerlist.AllLines(fieldname.Lines(&req.Header, fiber.HeaderConnection, normalized)) {
+		if isForwardingHeader(name) {
+			continue
+		}
+		fieldname.Del(&req.Header, name, normalized)
+	}
 	for _, h := range hopByHopHeaders {
 		if fieldname.ContainsFold(except, h) {
 			continue
@@ -267,6 +302,9 @@ func stripHopByHopResponseHeaders(res *fasthttp.Response, except ...string) {
 // because fasthttp's Del only re-slices the header's entry list — it never
 // rewrites other entries' key/value buffers — and Del does not retain the
 // name after returning.
+//
+// This is the response's walk. The request has one of its own in
+// stripHopByHopRequestHeaders, which leaves the forwarding fields alone.
 func delConnectionListedHeaders(h fieldname.Deleter, values [][]byte, normalized bool) { //nolint:revive // flag-parameter: normalized is a property of the header store
 	for name := range headerlist.AllLines(values) {
 		fieldname.Del(h, name, normalized)
