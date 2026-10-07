@@ -111,7 +111,12 @@ type Config struct {
 	// Optional. Default: false
 	DisableValueRedaction bool
 
-	// DisableCacheControl disables client side caching if set to true
+	// DisableCacheControl disables client side caching if set to true.
+	//
+	// When false, a hit whose entry carries no Cache-Control of its own is sent
+	// with "public, max-age=<remaining>", or "private, max-age=<remaining>" when
+	// the entry holds one user's response: the response's Vary lists Cookie or
+	// Authorization, KeyCookies is set, or KeyHeaders names either header.
 	//
 	// Optional. Default: false
 	DisableCacheControl bool

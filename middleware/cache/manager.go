@@ -24,6 +24,7 @@ type item struct {
 	cacheControl    []byte         `msg:",limit=2048"` // Cache-Control directives are bounded.
 	expires         []byte         `msg:",limit=128"`  // Expires is a short HTTP-date string.
 	etag            []byte         `msg:",limit=256"`  // ETags are small tokens/quoted strings.
+	vary            []byte         `msg:",limit=2048"` // Vary lists field names, bounded like Cache-Control.
 	date            uint64
 	status          int
 	age             uint64
@@ -96,6 +97,7 @@ func (m *manager) release(e *item) {
 	e.cacheControl = nil
 	e.expires = nil
 	e.etag = nil
+	e.vary = nil
 	e.ctype = nil
 	e.cencoding = nil
 	e.date = 0

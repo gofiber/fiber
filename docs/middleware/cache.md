@@ -132,9 +132,9 @@ off, since the status means nothing without it.
 
 `Location` joins a set the entry always carries, each in a field of its own
 rather than in the stored header list: `Content-Type`, `Content-Encoding`,
-`Cache-Control`, `Expires`, `ETag`, `Date` and `Age`. Those are what the entry
-needs to be replayed and revalidated at all. `StoreResponseHeaders` is about
-every other response header, none of which is kept without it.
+`Cache-Control`, `Expires`, `ETag`, `Vary`, `Date` and `Age`. Those are what the
+entry needs to be replayed and revalidated at all. `StoreResponseHeaders` is
+about every other response header, none of which is kept without it.
 
 ### Header names
 
@@ -198,9 +198,33 @@ app.Use(cache.New())
 The same applies to any handler wrapper of the form
 `err := c.Next(); c.Cookie(...); return err`. Note also that a response
 personalized from a **request** cookie without setting one is cached and shared
-by design — use `KeyCookies` or `Vary: Cookie` to key those apart.
+by design — use `KeyCookies` or `Vary: Cookie` to key those apart. A hit on an
+entry keyed that way is sent with `Cache-Control: private`, as described below.
 
 :::
+
+### Per-user entries and a cache in front of the app
+
+A hit is sent with the stored response's `Vary`, whether or not
+`StoreResponseHeaders` is set, so a cache in front of the app that honors `Vary`
+keys the hit the way this middleware did.
+
+When the entry carries no `Cache-Control` of its own and `DisableCacheControl`
+is `false`, a hit is sent with `Cache-Control: public, max-age=<remaining>`. An
+entry keyed by a cookie or credential holds one user's response, so such a hit
+is sent with `Cache-Control: private, max-age=<remaining>` instead: a shared
+cache in front of the app does not store it, while the user's own browser still
+may. The entry counts as keyed by a credential when the response's `Vary` lists
+`Cookie` or `Authorization`, when `KeyCookies` is set, or when `KeyHeaders`
+names `Cookie` or `Authorization`. `DisableVaryHeaders` does not change this: a
+response whose `Vary` lists `Cookie` is one user's whether or not this
+middleware partitions on it.
+
+A handler that sends its own `Cache-Control` keeps it on hits. On a per-user
+route that says `max-age` without `private`, add `private` yourself if a cache
+in front of the app ignores `Vary`. A custom `KeyGenerator` that keys on a
+cookie or credential is not visible to this middleware either: send
+`Cache-Control: private` from those handlers, or set `DisableCacheControl`.
 
 ### Vary and `Content-Type`
 
@@ -221,18 +245,18 @@ and a non-form `Content-Type` is left alone.
 | Next                 | `func(fiber.Ctx) bool`                         | Next defines a function that is executed before creating the cache entry and can be used to execute the request without cache creation. If an entry already exists, it will be used. If you want to completely bypass the cache functionality in certain cases, you should use the [skip middleware](skip.md). | `nil`                                                            |
 | Expiration           | `time.Duration`                                | Expiration is the time that a cached response will live. | `5 * time.Minute`                                                |
 | CacheHeader          | `string`                                       | CacheHeader is the header on the response header that indicates the cache status, with the possible return values "hit," "miss," or "unreachable."                                                                                                                                                             | `X-Cache`                                                        |
-| DisableCacheControl  | `bool`                                          | DisableCacheControl omits the `Cache-Control` header when set to `true`. | `false`                                                         |
+| DisableCacheControl  | `bool`                                          | DisableCacheControl omits the `Cache-Control` header when set to `true`. When `false`, a hit whose entry has no `Cache-Control` of its own is sent with `public, max-age=<remaining>`, or `private, max-age=<remaining>` when the entry is keyed by a cookie or credential. | `false`                                                         |
 | CacheInvalidator     | `func(fiber.Ctx) bool`                         | CacheInvalidator defines a function that is executed before checking the cache entry. It can be used to invalidate the existing cache manually by returning true. | `nil`                                                            |
 | DisableValueRedaction | `bool`                                        | Turns off cache key redaction in logs and error messages when set to `true`. | `false`                                             |
 | KeyGenerator         | `func(fiber.Ctx) string`                       | KeyGenerator allows you to generate custom keys. The HTTP method and a key-format version are partitioned internally by the middleware. | structured key from scheme + host + path + canonical query + selected headers/cookies |
 | DisableQueryKeys     | `bool`                                         | Disables canonicalized query params in keys. | `false` |
 | KeyHeaders           | `[]string`                                     | Header allow-list used for key partitioning. Names are normalized case-insensitively and sorted. Use `[]string{}` to disable header-based partitioning. | `[]string{"accept","accept-encoding","accept-language"}` |
-| KeyCookies           | `[]string`                                     | Optional cookie allow-list for key partitioning. Explicit opt-in only; names remain case-sensitive. | `nil` |
+| KeyCookies           | `[]string`                                     | Optional cookie allow-list for key partitioning. Explicit opt-in only; names remain case-sensitive. Hits on entries keyed this way are sent with `Cache-Control: private`. | `nil` |
 | Methods              | `[]string`                                     | HTTP methods eligible for caching. Requests whose method is not in this list bypass the cache. Names are normalized to uppercase. | `[]string{fiber.MethodGet, fiber.MethodHead}` |
 | DisableVaryHeaders   | `bool`                                         | Disables response `Vary` dimensions in cache lookup/storage partitioning. | `false` |
 | ExpirationGenerator  | `func(fiber.Ctx, *cache.Config) time.Duration` | ExpirationGenerator allows you to generate custom expiration keys based on the request.                                                                                                                                                                                                                        | `nil`                                                            |
 | Storage              | `fiber.Storage`                                | Storage is used to store the state of the middleware. Entries are namespaced by a key-format version, so an external store that survives an upgrade starts cold rather than serving entries an older version partitioned by different rules.                                                                                                                                                                                                                                                            | In-memory store                                                  |
-| StoreResponseHeaders | `bool`                                         | StoreResponseHeaders allows you to store additional headers generated by next middlewares & handler. Connection-scoped headers and `Set-Cookie` are never stored, since a cache entry is replayed to every client that matches its key.                                                                          | `false`                                                          |
+| StoreResponseHeaders | `bool`                                         | StoreResponseHeaders allows you to store additional headers generated by next middlewares & handler. Connection-scoped headers and `Set-Cookie` are never stored, since a cache entry is replayed to every client that matches its key. `Vary` is kept with every entry and replayed on hits regardless of this setting. | `false`                                                          |
 | MaxBytes             | `uint`                                         | MaxBytes is the maximum number of bytes of response bodies simultaneously stored in cache. | `1 * 1024 * 1024` (~1 MB)                                                  |
 
 ## Default Config

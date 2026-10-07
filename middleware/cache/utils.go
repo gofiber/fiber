@@ -197,6 +197,18 @@ func isIgnoredHeader(key []byte) bool {
 	return ok
 }
 
+// varyListsCredential is true when a Vary field value names Cookie or
+// Authorization: the entry then holds the response to one client's credential.
+// Walked rather than parsed, so a hit allocates nothing for it.
+func varyListsCredential(vary []byte) bool {
+	for name := range headerlist.All(utils.UnsafeString(vary)) {
+		if utils.EqualFold(name, fiber.HeaderCookie) || utils.EqualFold(name, fiber.HeaderAuthorization) {
+			return true
+		}
+	}
+	return false
+}
+
 // joinedHeader returns every field line for key, comma-joined, since a recipient
 // may combine them into that form (RFC 9110 §5.2). Peek returns only the first,
 // so a second "Vary:" line was cached as if it had never been sent.
