@@ -22,6 +22,23 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
+func Benchmark_PeekJoinedRequestHeader(b *testing.B) {
+	for _, lines := range []int{1, 2, 3} {
+		b.Run(strconv.Itoa(lines), func(b *testing.B) {
+			var h fasthttp.RequestHeader
+			for range lines {
+				h.Add(HeaderAccept, "text/plain")
+			}
+			var joined []byte
+			b.ReportAllocs()
+			for b.Loop() {
+				joined = peekJoinedRequestHeader(&h, HeaderAccept)
+			}
+			require.NotEmpty(b, joined)
+		})
+	}
+}
+
 func Test_Utils_GetOffer(t *testing.T) {
 	t.Parallel()
 	require.Empty(t, getOffer([]byte("hello"), acceptsOffer))
