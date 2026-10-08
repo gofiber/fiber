@@ -26,10 +26,12 @@ import (
 
 // rawResponse is one response read off a test connection.
 type rawResponse struct {
-	header http.Header
-	body   string
-	status int
-	closes bool // the response announced Connection: close
+	header        http.Header
+	body          string
+	contentLength int64 // -1 when the response did not declare one
+	status        int
+	closes        bool // the response announced Connection: close
+	chunked       bool // the body was sent with chunked framing
 }
 
 // What a connection did once the expected responses were read.
@@ -93,10 +95,12 @@ func rawExchange(t *testing.T, ln *fasthttputil.InmemoryListener, raw string, wa
 		require.NoError(t, readErr)
 		require.NoError(t, resp.Body.Close())
 		responses = append(responses, rawResponse{
-			status: resp.StatusCode,
-			header: resp.Header,
-			body:   string(body),
-			closes: resp.Close,
+			status:        resp.StatusCode,
+			header:        resp.Header,
+			body:          string(body),
+			closes:        resp.Close,
+			contentLength: resp.ContentLength,
+			chunked:       len(resp.TransferEncoding) > 0 && resp.TransferEncoding[0] == "chunked",
 		})
 	}
 
@@ -436,4 +440,229 @@ func Benchmark_HasContentLengthField(b *testing.B) {
 			b.Fatal("Content-Length field not found")
 		}
 	}
+}
+
+// closeRecorder is a reader that notes it was closed.
+type closeRecorder struct {
+	io.Reader
+	closed atomic.Bool
+}
+
+func (c *closeRecorder) Close() error {
+	c.closed.Store(true)
+	return nil
+}
+
+// failingReader yields some bytes and then fails.
+type failingReader struct {
+	io.Reader
+}
+
+var errDiskFailed = errors.New("disk failed")
+
+func (failingReader) Read([]byte) (int, error) { return 0, errDiskFailed }
+
+// RFC 9112 Section 6.1: a server must not send Transfer-Encoding to a client that
+// did not send HTTP/1.1. A stream of unknown length can only be framed as chunks,
+// so for an HTTP/1.0 request it is read to its end first and the response carries
+// a Content-Length. HTTP/1.1 keeps streaming.
+func Test_App_SendStream_HTTP10(t *testing.T) {
+	t.Parallel()
+
+	const (
+		part1 = "first part of the stream, "
+		part2 = "second part"
+		body  = part1 + part2
+	)
+
+	app := New()
+	var recorded atomic.Pointer[closeRecorder]
+	app.Get("/stream", func(c Ctx) error {
+		return c.SendStream(strings.NewReader(body))
+	})
+	app.Get("/closer", func(c Ctx) error {
+		rec := &closeRecorder{Reader: strings.NewReader(body)}
+		recorded.Store(rec)
+		return c.SendStream(rec)
+	})
+	app.Get("/negative", func(c Ctx) error {
+		return c.SendStream(strings.NewReader(body), -1)
+	})
+	app.Get("/sized", func(c Ctx) error {
+		return c.SendStream(strings.NewReader(body), len(body))
+	})
+	app.Get("/writer", func(c Ctx) error {
+		return c.SendStreamWriter(func(w *bufio.Writer) {
+			_, _ = w.WriteString(part1) //nolint:errcheck // a bufio.Writer over a buffer
+			_ = w.Flush()               //nolint:errcheck // reported again by the Flush that follows the writer
+			_, _ = w.WriteString(part2) //nolint:errcheck // a bufio.Writer over a buffer
+		})
+	})
+	ln := startRawServer(t, app)
+
+	tests := []struct {
+		name       string
+		request    string
+		path       string
+		chunked    bool // the framing the response is expected to use
+		keepsAlive bool
+	}{
+		{name: "HTTP/1.1 stream is chunked", request: "HTTP/1.1\r\nHost: example.com", path: "/stream", chunked: true},
+		{name: "HTTP/1.1 writer is chunked", request: "HTTP/1.1\r\nHost: example.com", path: "/writer", chunked: true},
+		{name: "HTTP/1.0 stream has a length", request: "HTTP/1.0", path: "/stream"},
+		{name: "HTTP/1.0 stream of size -1 has a length", request: "HTTP/1.0", path: "/negative"},
+		{name: "HTTP/1.0 writer has a length", request: "HTTP/1.0", path: "/writer"},
+		{name: "HTTP/1.0 keep-alive stream has a length", request: "HTTP/1.0\r\nConnection: keep-alive", path: "/stream", keepsAlive: true},
+		{name: "HTTP/1.0 keep-alive writer has a length", request: "HTTP/1.0\r\nConnection: keep-alive", path: "/writer", keepsAlive: true},
+		{name: "HTTP/1.0 sized stream is unchanged", request: "HTTP/1.0", path: "/sized"},
+		{name: "HTTP/1.1 sized stream is unchanged", request: "HTTP/1.1\r\nHost: example.com", path: "/sized"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			responses, after := rawExchange(t, ln, "GET "+tc.path+" "+tc.request+"\r\n\r\n", 1)
+			resp := responses[0]
+
+			require.Equal(t, StatusOK, resp.status)
+			require.Equal(t, body, resp.body)
+			require.Equal(t, tc.chunked, resp.chunked, "chunked framing")
+			if tc.chunked {
+				require.Equal(t, int64(-1), resp.contentLength)
+			} else {
+				require.Equal(t, int64(len(body)), resp.contentLength)
+				require.Empty(t, resp.header.Get(HeaderTransferEncoding))
+			}
+
+			if tc.keepsAlive {
+				require.Equal(t, connOpen, after, "a keep-alive HTTP/1.0 client can reuse the connection")
+			} else if !strings.HasPrefix(tc.request, "HTTP/1.1") {
+				require.Equal(t, connClosed, after)
+			}
+		})
+	}
+
+	// fasthttp closes a stream once it has sent it; a stream read inside
+	// SendStream is closed there.
+	t.Run("HTTP/1.0 closes the stream it read", func(t *testing.T) {
+		t.Parallel()
+
+		responses, _ := rawExchange(t, ln, "GET /closer HTTP/1.0\r\n\r\n", 1)
+		require.Equal(t, body, responses[0].body)
+		rec := recorded.Load()
+		require.NotNil(t, rec)
+		require.True(t, rec.closed.Load(), "the stream is closed")
+	})
+}
+
+// A stream is buffered up to Config.BodyLimit for an HTTP/1.0 client, so a request
+// cannot make the server hold more than it accepts in one. Past it the response is
+// a 505 that says why, and the writer of a stream that never ends sees Flush fail,
+// which is how it learns to stop.
+func Test_App_SendStream_HTTP10_Limit(t *testing.T) {
+	t.Parallel()
+
+	const limit = 1024
+	exact := strings.Repeat("x", limit)
+	over := strings.Repeat("x", limit+1)
+
+	app := New(Config{BodyLimit: limit})
+	var recorded atomic.Pointer[closeRecorder]
+	var neverEndingReturned atomic.Bool
+	app.Get("/exact", func(c Ctx) error { return c.SendStream(strings.NewReader(exact)) })
+	app.Get("/exact-writer", func(c Ctx) error {
+		return c.SendStreamWriter(func(w *bufio.Writer) { _, _ = w.WriteString(exact) }) //nolint:errcheck // a bufio.Writer over a buffer
+	})
+	app.Get("/over", func(c Ctx) error { return c.SendStream(strings.NewReader(over)) })
+	app.Get("/over-closer", func(c Ctx) error {
+		rec := &closeRecorder{Reader: strings.NewReader(over)}
+		recorded.Store(rec)
+		return c.SendStream(rec)
+	})
+	app.Get("/over-writer", func(c Ctx) error {
+		return c.SendStreamWriter(func(w *bufio.Writer) { _, _ = w.WriteString(over) }) //nolint:errcheck // a bufio.Writer over a buffer
+	})
+	app.Get("/never-ending", func(c Ctx) error {
+		return c.SendStreamWriter(func(w *bufio.Writer) {
+			defer neverEndingReturned.Store(true)
+			for {
+				_, _ = w.WriteString("data: tick\n\n") //nolint:errcheck // the Flush below reports it
+				if err := w.Flush(); err != nil {
+					return
+				}
+			}
+		})
+	})
+	ln := startRawServer(t, app)
+
+	t.Run("exactly the limit is sent", func(t *testing.T) {
+		t.Parallel()
+
+		for _, path := range []string{"/exact", "/exact-writer"} {
+			responses, _ := rawExchange(t, ln, "GET "+path+" HTTP/1.0\r\n\r\n", 1)
+			require.Equal(t, StatusOK, responses[0].status, path)
+			require.Equal(t, exact, responses[0].body, path)
+			require.Equal(t, int64(limit), responses[0].contentLength, path)
+		}
+	})
+
+	t.Run("one byte more is refused", func(t *testing.T) {
+		t.Parallel()
+
+		for _, path := range []string{"/over", "/over-closer", "/over-writer", "/never-ending"} {
+			responses, _ := rawExchange(t, ln, "GET "+path+" HTTP/1.0\r\n\r\n", 1)
+			require.Equal(t, StatusHTTPVersionNotSupported, responses[0].status, path)
+			require.Contains(t, responses[0].body, "HTTP/1.1 is needed", path)
+		}
+		rec := recorded.Load()
+		require.NotNil(t, rec)
+		require.True(t, rec.closed.Load(), "the stream that was refused is closed")
+		require.Eventually(t, neverEndingReturned.Load, 5*time.Second, 5*time.Millisecond, "the writer of a stream that never ends must be told to stop")
+	})
+
+	t.Run("HTTP/1.1 streams without the limit", func(t *testing.T) {
+		t.Parallel()
+
+		responses, _ := rawExchange(t, ln, "GET /over HTTP/1.1\r\nHost: example.com\r\nConnection: close\r\n\r\n", 1)
+		require.Equal(t, StatusOK, responses[0].status)
+		require.Equal(t, over, responses[0].body)
+		require.True(t, responses[0].chunked)
+	})
+}
+
+// A stream that fails is an error of the handler, as for any other body, and a
+// writer that panics is contained as before instead of taking the server down.
+func Test_App_SendStream_HTTP10_Failures(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	var recorded atomic.Pointer[closeRecorder]
+	app.Get("/fails", func(c Ctx) error {
+		rec := &closeRecorder{Reader: failingReader{}}
+		recorded.Store(rec)
+		return c.SendStream(rec)
+	})
+	app.Get("/panics", func(c Ctx) error {
+		return c.SendStreamWriter(func(w *bufio.Writer) {
+			_, _ = w.WriteString("partial") //nolint:errcheck // a bufio.Writer over a buffer
+			panic("writer broke")
+		})
+	})
+	app.Get("/ok", func(c Ctx) error { return c.SendString("still serving") })
+	ln := startRawServer(t, app)
+
+	responses, _ := rawExchange(t, ln, "GET /fails HTTP/1.0\r\n\r\n", 1)
+	require.Equal(t, StatusInternalServerError, responses[0].status)
+	require.Equal(t, errDiskFailed.Error(), responses[0].body)
+	rec := recorded.Load()
+	require.NotNil(t, rec)
+	require.True(t, rec.closed.Load(), "a stream that failed is closed")
+
+	responses, _ = rawExchange(t, ln, "GET /panics HTTP/1.0\r\n\r\n", 1)
+	require.Equal(t, StatusInternalServerError, responses[0].status)
+	require.Equal(t, "Internal Server Error", responses[0].body, "the panic value is not sent to the client")
+
+	responses, _ = rawExchange(t, ln, "GET /ok HTTP/1.0\r\n\r\n", 1)
+	require.Equal(t, "still serving", responses[0].body)
 }

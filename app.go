@@ -274,6 +274,8 @@ type Config struct { //nolint:govet // Aligning the struct fields is not necessa
 
 	// Max body size that the server accepts.
 	// Zero or negative values fall back to the default limit.
+	// It also bounds a stream of unknown length that SendStream or
+	// SendStreamWriter buffers for an HTTP/1.0 client.
 	//
 	// Default: 4 * 1024 * 1024
 	BodyLimit int `json:"body_limit"`

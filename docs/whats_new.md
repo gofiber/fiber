@@ -830,6 +830,12 @@ for the response. The response cookies are `c.Res().GetCookies()`, named apart f
   ends with a double quote is accepted and written quoted instead of being dropped as invalid. Values with a semicolon,
   an inner double quote, a backslash, a control character or a non-ASCII character are still refused. Percent-encode a
   value that has to pass through a strict parser.
+- **SendStream() and SendStreamWriter()**: A response of unknown length is chunked, which a server must not send to an
+  HTTP/1.0 client ([RFC 9112, Section 6.1](https://www.rfc-editor.org/rfc/rfc9112#section-6.1)). The framing reached
+  such a client as stray chunk-size lines in the body. For an HTTP/1.0 request the stream (or the writer) now runs to its
+  end before the handler returns, into a buffer bounded by `BodyLimit`, and the response carries a `Content-Length`.
+  A stream longer than the limit is answered with `505 HTTP Version Not Supported`, and the writer of a stream that
+  never ends sees its `Flush` fail. HTTP/1.1 requests, and a `SendStream` call that passes the size, are unchanged.
 - **Context()**: Renamed to `RequestCtx()` to access the underlying `fasthttp.RequestCtx`.
 - **IP()**: When `EnableIPValidation` is `true` and `TrustProxyConfig` is set, `c.IP()` now walks the `X-Forwarded-For` chain from right to left and returns the first non-trusted IP, instead of the leftmost syntactically valid IP. This closes an IP-spoofing vector where an attacker could prepend a fake address and have it returned by `c.IP()`. Apps with `EnableIPValidation = false` (the default) are unaffected. See [`Ctx.IP`](./api/ctx.md#ip) and the [reverse proxy guide](./guide/reverse-proxy.md#getting-the-real-client-ip-address) for details.
 

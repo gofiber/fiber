@@ -3,6 +3,7 @@ package fiber
 import (
 	"bufio"
 	"bytes"
+	"errors"
 	"fmt"
 	"html/template"
 	"io"
@@ -22,6 +23,7 @@ import (
 	"github.com/gofiber/fiber/v3/internal/fieldname"
 	"github.com/gofiber/fiber/v3/internal/headerlist"
 	"github.com/gofiber/fiber/v3/internal/quotedstring"
+	"github.com/gofiber/fiber/v3/log"
 	"github.com/gofiber/utils/v2"
 	"github.com/valyala/bytebufferpool"
 	"github.com/valyala/fasthttp"
@@ -1501,20 +1503,100 @@ func (r *DefaultRes) SendString(body string) error {
 }
 
 // SendStream sets response body stream and optional body size.
+//
+// A stream of unknown size is sent with chunked framing, which a server must not
+// send to an HTTP/1.0 client (RFC 9112 Section 6.1). For an HTTP/1.0 request such
+// a stream is read to its end before the handler returns, so that the response can
+// carry a Content-Length, and one longer than Config.BodyLimit is answered with
+// 505. A stream of known size, or any stream for an HTTP/1.1 request, is sent as
+// it is read after the handler returns.
 func (r *DefaultRes) SendStream(stream io.Reader, size ...int) error {
 	if len(size) > 0 && size[0] >= 0 {
 		r.c.fasthttp.Response.SetBodyStream(stream, size[0])
-	} else {
-		r.c.fasthttp.Response.SetBodyStream(stream, -1)
+		return nil
 	}
 
+	if !r.c.fasthttp.Request.Header.IsHTTP11() {
+		return r.sendBuffered(func(w io.Writer) error {
+			// fasthttp closes a stream once it has sent it; this one is never sent.
+			if closer, ok := stream.(io.Closer); ok {
+				defer closer.Close() //nolint:errcheck // nothing to do about a failed close of a stream already read
+			}
+			_, err := io.Copy(w, stream)
+			return err //nolint:wrapcheck // the read error of the caller's own stream, or the limit
+		})
+	}
+
+	r.c.fasthttp.Response.SetBodyStream(stream, -1)
 	return nil
 }
 
-// SendStreamWriter sets response body stream writer
+// SendStreamWriter sets response body stream writer.
+//
+// The writer runs after the handler returns and is sent with chunked framing,
+// which a server must not send to an HTTP/1.0 client (RFC 9112 Section 6.1). For
+// an HTTP/1.0 request it therefore runs before the handler returns, into a buffer
+// that the response carries with a Content-Length: a writer that produces more
+// than Config.BodyLimit sees its Flush fail, and the response is 505.
 func (r *DefaultRes) SendStreamWriter(streamWriter func(*bufio.Writer)) error {
-	r.c.fasthttp.Response.SetBodyStreamWriter(fasthttp.StreamWriter(streamWriter))
+	if !r.c.fasthttp.Request.Header.IsHTTP11() {
+		return r.sendBuffered(func(w io.Writer) (err error) { //nolint:nonamedreturns // set by the deferred recover
+			// A writer that panics used to be contained by fasthttp, and still is.
+			defer func() {
+				if p := recover(); p != nil {
+					log.Errorf("fiber: stream writer panicked: %v", p)
+					err = ErrInternalServerError
+				}
+			}()
+			buffered := bufio.NewWriter(w)
+			streamWriter(buffered)
+			return buffered.Flush()
+		})
+	}
 
+	r.c.fasthttp.Response.SetBodyStreamWriter(fasthttp.StreamWriter(streamWriter))
+	return nil
+}
+
+// errStreamBufferLimit is what a bufferLimit writer fails with once its limit is
+// passed.
+var errStreamBufferLimit = errors.New("stream exceeds the buffer limit")
+
+// errStreamTooLargeForHTTP10 answers an HTTP/1.0 request whose response is a
+// stream too long to buffer. 505 is the closest status: the response needs a
+// framing that the client's version cannot carry, and the message names the way
+// out.
+var errStreamTooLargeForHTTP10 = NewError(StatusHTTPVersionNotSupported,
+	"The response is a stream of unknown length that is too long to buffer for an HTTP/1.0 client; "+
+		"HTTP/1.1 is needed to stream it")
+
+// bufferLimit collects what is written to it, and fails once that would pass limit.
+type bufferLimit struct {
+	buf   []byte
+	limit int
+}
+
+func (b *bufferLimit) Write(p []byte) (int, error) {
+	if len(b.buf)+len(p) > b.limit {
+		return 0, errStreamBufferLimit
+	}
+	b.buf = append(b.buf, p...)
+	return len(p), nil
+}
+
+// sendBuffered sets what fill writes as the response body, for a client that
+// cannot be sent a stream of unknown length. Config.BodyLimit bounds it, so a
+// request cannot make the server hold more than it would accept in one.
+func (r *DefaultRes) sendBuffered(fill func(w io.Writer) error) error {
+	body := &bufferLimit{limit: r.c.app.config.BodyLimit}
+	if err := fill(body); err != nil {
+		if errors.Is(err, errStreamBufferLimit) {
+			return errStreamTooLargeForHTTP10
+		}
+		return err
+	}
+
+	r.c.fasthttp.Response.SetBodyRaw(body.buf)
 	return nil
 }
 

@@ -3955,6 +3955,10 @@ If the provided stream implements `io.Closer`, it will be automatically closed b
 the response is fully sent or if an error occurs.
 :::
 
+:::caution HTTP/1.0 clients
+A stream of unknown size can only be sent with chunked framing, which a server must not send to an HTTP/1.0 client ([RFC 9112 §6.1](https://www.rfc-editor.org/rfc/rfc9112#section-6.1)). For an HTTP/1.0 request, `SendStream` therefore reads such a stream to its end **before it returns**, closes it if it implements `io.Closer`, and sends it with a `Content-Length`. The stream is held in memory up to [`BodyLimit`](./fiber.md#bodylimit); a longer one is answered with `505 HTTP Version Not Supported`, with a message that says why. Pass the size when you know it: a stream of known size is sent as it is read, whatever the HTTP version. HTTP/1.1 requests are not affected.
+:::
+
 :::caution
 When passing `fiber.Ctx` as a `context.Context` to libraries that spawn goroutines (e.g., for streaming operations),
 those goroutines may attempt to access the context after the handler returns. Since `fiber.Ctx` is recycled and
@@ -4016,6 +4020,10 @@ app.Get("/", func (c fiber.Ctx) error {
 To send data before `streamWriter` returns, you can call `w.Flush()`
 on the provided writer. Otherwise, the buffered stream flushes after
 `streamWriter` returns.
+:::
+
+:::caution HTTP/1.0 clients
+The response is chunked, which a server must not send to an HTTP/1.0 client ([RFC 9112 §6.1](https://www.rfc-editor.org/rfc/rfc9112#section-6.1)). For an HTTP/1.0 request, `streamWriter` runs **before `SendStreamWriter` returns**, into a buffer, and the response carries a `Content-Length`. The buffer is bounded by [`BodyLimit`](./fiber.md#bodylimit): a writer that produces more sees its `Flush` fail, as it does when a client disconnects, and the response is `505 HTTP Version Not Supported`. Nothing is sent before the writer returns, so a stream that has to reach the client as it is produced, such as server-sent events, needs HTTP/1.1. HTTP/1.1 requests are not affected.
 :::
 
 :::note
