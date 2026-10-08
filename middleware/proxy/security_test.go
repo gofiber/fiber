@@ -242,6 +242,32 @@ func Test_Security_HopByHopRequestStripping(t *testing.T) {
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
 }
 
+// Test_Security_IsForwardingHeader pins the family a client cannot have
+// removed by naming it in Connection, whatever its case, and that the prefix
+// rule takes X-Forwarded-* only.
+func Test_Security_IsForwardingHeader(t *testing.T) {
+	t.Parallel()
+
+	for name, want := range map[string]bool{
+		"X-Real-IP":         true,
+		"x-real-ip":         true,
+		"Forwarded":         true,
+		"FORWARDED":         true,
+		"X-Forwarded-For":   true,
+		"x-forwarded-host":  true,
+		"X-FORWARDED-PROTO": true,
+		"X-Forwarded-Port":  true,
+		"X-Forwarded":       false,
+		"X-ForwardedFor":    false,
+		"Via":               false,
+		"X-Custom-Hop":      false,
+		"Keep-Alive":        false,
+		"":                  false,
+	} {
+		require.Equal(t, want, isForwardingHeader(name), name)
+	}
+}
+
 func Test_Security_HopByHopResponseStripping(t *testing.T) {
 	t.Parallel()
 	_, addr := createProxyTestServerIPv4(t, func(c fiber.Ctx) error {
@@ -368,9 +394,54 @@ func Test_Security_JoinUpstreamPath_BlocksNetworkPathInjection(t *testing.T) {
 	base, err := parseUpstream("http://upstream.example")
 	require.NoError(t, err)
 
-	out := joinUpstreamPath(base, "//attacker.example/path")
-	require.True(t, strings.HasPrefix(out, "http://upstream.example/"), "host must not change: %q", out)
-	require.NotContains(t, out, "//attacker.example/")
+	for _, target := range []string{
+		"//attacker.example/path",
+		"////attacker.example/path",
+		"/\\attacker.example",
+		"/?@evil.com",
+		"@evil.com",
+		"https://evil.com/path",
+	} {
+		out := joinUpstreamPath(base, target)
+		parsed, parseErr := url.Parse(out)
+		require.NoError(t, parseErr, target)
+		require.Equal(t, "http", parsed.Scheme, "scheme must not change for %q: %q", target, out)
+		require.Equal(t, "upstream.example", parsed.Host, "host must not change for %q: %q", target, out)
+	}
+
+	// The router keeps empty segments, so "//attacker.example/path" is not
+	// "/attacker.example/path" to it. Forwarding it collapsed would hand the
+	// upstream a path no middleware mounted on "/attacker.example" has seen.
+	parsed, err := url.Parse(joinUpstreamPath(base, "//attacker.example/path"))
+	require.NoError(t, err)
+	require.Equal(t, "//attacker.example/path", parsed.Path)
+
+	withPrefix, err := parseUpstream("http://upstream.example/api")
+	require.NoError(t, err)
+	parsed, err = url.Parse(joinUpstreamPath(withPrefix, "//attacker.example/path"))
+	require.NoError(t, err)
+	require.Equal(t, "upstream.example", parsed.Host)
+	require.Equal(t, "/api//attacker.example/path", parsed.Path)
+}
+
+// Test_Security_JoinUpstreamPath_MalformedFragmentFallsBack covers the
+// fallback for a target that is a fragment alone and does not parse: the
+// opaque path it becomes is rooted, and stays under the base's prefix.
+func Test_Security_JoinUpstreamPath_MalformedFragmentFallsBack(t *testing.T) {
+	t.Parallel()
+	base, err := parseUpstream("http://upstream.example")
+	require.NoError(t, err)
+	parsed, err := url.Parse(joinUpstreamPath(base, "#%zz"))
+	require.NoError(t, err)
+	require.Equal(t, "upstream.example", parsed.Host)
+	require.Equal(t, "/#%zz", parsed.Path)
+
+	withPrefix, err := parseUpstream("http://upstream.example/api")
+	require.NoError(t, err)
+	parsed, err = url.Parse(joinUpstreamPath(withPrefix, "#%zz"))
+	require.NoError(t, err)
+	require.Equal(t, "upstream.example", parsed.Host)
+	require.Equal(t, "/api/#%zz", parsed.Path)
 }
 
 // Test_Security_JoinUpstreamPath_PreservesBasePathPrefix ensures a path

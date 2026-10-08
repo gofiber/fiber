@@ -6,7 +6,7 @@ require (
 	github.com/gofiber/schema v1.8.8
 	github.com/gofiber/utils/v2 v2.6.1
 	github.com/google/uuid v1.6.0
-	github.com/mattn/go-colorable v0.1.15
+	github.com/mattn/go-colorable v0.1.16
 	github.com/mattn/go-isatty v0.0.24
 	github.com/shamaton/msgpack/v3 v3.2.3
 	github.com/stretchr/testify v1.12.1
@@ -22,7 +22,7 @@ require (
 )
 
 require (
-	github.com/fxamacker/cbor/v2 v2.9.4 // direct
+	github.com/fxamacker/cbor/v2 v2.9.6 // direct
 	github.com/klauspost/compress v1.20.1 // indirect
 	github.com/philhofer/fwd v1.2.0 // indirect
 	github.com/x448/float16 v0.8.4 // indirect

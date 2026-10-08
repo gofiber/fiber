@@ -23,6 +23,7 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/internal/storage/memory"
+	"github.com/gofiber/fiber/v3/middleware/compress"
 	"github.com/gofiber/fiber/v3/middleware/etag"
 	"github.com/gofiber/utils/v2"
 	"github.com/stretchr/testify/require"
@@ -1944,7 +1945,9 @@ func Test_StoreResponseHeaders_KeepsRepeatedFieldLines(t *testing.T) {
 	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, cacheHit, resp.Header.Get("X-Cache"))
-	require.Equal(t, []string{"Cookie", "Accept-Encoding"}, resp.Header.Values("Vary"))
+	// Vary is carried by the entry itself rather than by the stored header
+	// list, and comes back on one line with every name (RFC 9110 §5.3).
+	require.Equal(t, []string{"Cookie,Accept-Encoding"}, resp.Header.Values("Vary"))
 	require.Equal(t,
 		[]string{"default-src 'none'", "script-src 'self'"},
 		resp.Header.Values("Content-Security-Policy"),
@@ -7851,5 +7854,335 @@ func Test_Cache_VaryManifestStoreFailureUnreservesSpace(t *testing.T) {
 		resp, testErr := app.Test(httptest.NewRequest(fiber.MethodGet, path, http.NoBody))
 		require.NoError(t, testErr)
 		require.Equal(t, cacheHit, resp.Header.Get("X-Cache"), "path=%q", path)
+	}
+}
+
+// Test_Cache_VaryIsReplayedOnHit asserts a hit carries the stored response's
+// Vary whether or not response headers are stored. Vary used to live only in
+// the StoreResponseHeaders list, so by default a hit went out without it, and a
+// cache in front of the app — keying on the URL alone, as it then must — could
+// serve one variant to every client. Vary now joins the fields the entry always
+// carries, on one line, and the stored header list no longer holds a copy.
+func Test_Cache_VaryIsReplayedOnHit(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		// A prefix of the Cache-Control the hit must carry, or empty when none
+		// may go out.
+		wantCacheControl string
+		cfg              Config
+	}{
+		{name: "default", wantCacheControl: "public, max-age="},
+		{name: "StoreResponseHeaders", cfg: Config{StoreResponseHeaders: true}, wantCacheControl: "public, max-age="},
+		{name: "DisableVaryHeaders", cfg: Config{DisableVaryHeaders: true}, wantCacheControl: "public, max-age="},
+		{name: "DisableCacheControl", cfg: Config{DisableCacheControl: true}},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			app := fiber.New()
+			app.Use(New(tc.cfg))
+			app.Get("/", func(c fiber.Ctx) error {
+				c.Set(fiber.HeaderVary, fiber.HeaderAcceptLanguage)
+				return c.SendString("page-in:" + c.Get(fiber.HeaderAcceptLanguage))
+			})
+
+			get := func(wantStatus string) *http.Response {
+				t.Helper()
+				req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+				req.Header.Set(fiber.HeaderAcceptLanguage, "en")
+				resp, err := app.Test(req)
+				require.NoError(t, err)
+				require.Equal(t, wantStatus, resp.Header.Get("X-Cache"))
+
+				body, err := io.ReadAll(resp.Body)
+				require.NoError(t, err)
+				require.Equal(t, "page-in:en", string(body))
+				// Once, not once per place it is kept: under StoreResponseHeaders
+				// the stored header list must not carry a second copy.
+				require.Equal(t, []string{fiber.HeaderAcceptLanguage}, resp.Header.Values(fiber.HeaderVary), "(%s)", wantStatus)
+				return resp
+			}
+
+			get(cacheMiss)
+			resp := get(cacheHit)
+
+			// A Vary naming no credential keeps the public form.
+			cacheControl := resp.Header.Get(fiber.HeaderCacheControl)
+			if tc.wantCacheControl == "" {
+				require.Empty(t, cacheControl)
+			} else {
+				require.True(t, strings.HasPrefix(cacheControl, tc.wantCacheControl), "Cache-Control %q", cacheControl)
+			}
+		})
+	}
+}
+
+// Test_Cache_CredentialKeyedHitIsPrivate asserts a hit on an entry holding one
+// user's response says so. Such an entry has no Cache-Control of its own in the
+// common case, and the "public, max-age" this middleware then wrote told a
+// shared cache in front of the app it could store the hit and serve it to the
+// next client asking for the URL: keyed on the URL alone, that cache never sees
+// the cookie the entry was selected by. An entry is one user's whenever the
+// response's Vary lists Cookie or Authorization, or the key is partitioned by
+// KeyCookies, or by KeyHeaders naming either header.
+func Test_Cache_CredentialKeyedHitIsPrivate(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		appCfg fiber.Config
+		name   string
+		// A Cache-Control of the handler's own.
+		cacheControl string
+		// What the hit must carry: Vary with its field lines joined, and the
+		// exact Cache-Control, which defaults to the private form.
+		wantVary         string
+		wantCacheControl string
+		// The Vary field lines the handler sends, and the spelling of the field
+		// name it writes them under, "Vary" when empty.
+		vary     []string
+		varyName string
+		cfg      Config
+		// Whether the request carries the session cookie.
+		noCookie bool
+	}{
+		{name: "Vary: Cookie", vary: []string{"Cookie"}, wantVary: "Cookie"},
+		{name: "Vary: cookie in lower case", vary: []string{"cookie"}, wantVary: "cookie"},
+		{name: "Vary: Cookie on a second field line", vary: []string{"Accept-Encoding", "Cookie"}, wantVary: "Accept-Encoding,Cookie"},
+		{name: "Vary: Authorization", vary: []string{"Authorization"}, wantVary: "Authorization"},
+		{name: "KeyCookies", cfg: Config{KeyCookies: []string{"session"}}},
+		{name: "KeyCookies without the cookie on the request", cfg: Config{KeyCookies: []string{"session"}}, noCookie: true},
+		{name: "KeyHeaders naming Cookie", cfg: Config{KeyHeaders: []string{"Cookie"}}},
+		{name: "KeyHeaders naming Authorization", cfg: Config{KeyHeaders: []string{"Authorization"}}},
+		{name: "DisableVaryHeaders", cfg: Config{DisableVaryHeaders: true}, vary: []string{"Cookie"}, wantVary: "Cookie"},
+		{name: "DisableHeaderNormalizing", appCfg: fiber.Config{DisableHeaderNormalizing: true}, vary: []string{"cookie"}, wantVary: "cookie"},
+		{name: "DisableHeaderNormalizing with the field name in lower case", appCfg: fiber.Config{DisableHeaderNormalizing: true}, vary: []string{"Cookie"}, varyName: "vary", wantVary: "Cookie"},
+		{
+			name:             "the handler's own Cache-Control is kept",
+			vary:             []string{"Cookie"},
+			cacheControl:     "max-age=60",
+			wantVary:         "Cookie",
+			wantCacheControl: "max-age=60",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			// A fixed clock, so the delta-seconds written on the hit is the whole
+			// lifetime rather than whatever the wall clock left of it.
+			clock := newTestClock(time.Unix(1_700_000_000, 0))
+			cfg := tc.cfg
+			cfg.Expiration = time.Minute
+			cfg.clock = clock.Now
+			wantCacheControl := tc.wantCacheControl
+			if wantCacheControl == "" {
+				wantCacheControl = "private, max-age=60"
+			}
+
+			app := fiber.New(tc.appCfg)
+			app.Use(New(cfg))
+			varyName := tc.varyName
+			if varyName == "" {
+				varyName = fiber.HeaderVary
+			}
+			app.Get("/me", func(c fiber.Ctx) error {
+				for _, v := range tc.vary {
+					c.Response().Header.Add(varyName, v)
+				}
+				if tc.cacheControl != "" {
+					c.Set(fiber.HeaderCacheControl, tc.cacheControl)
+				}
+				return c.SendString("page-for:" + c.Cookies("session"))
+			})
+
+			wantBody := "page-for:alice"
+			if tc.noCookie {
+				wantBody = "page-for:"
+			}
+			get := func(wantStatus string) *http.Response {
+				t.Helper()
+				req := httptest.NewRequest(fiber.MethodGet, "/me", http.NoBody)
+				if !tc.noCookie {
+					req.Header.Set(fiber.HeaderCookie, "session=alice")
+				}
+				resp, err := app.Test(req)
+				require.NoError(t, err)
+				require.Equal(t, wantStatus, resp.Header.Get("X-Cache"))
+
+				body, err := io.ReadAll(resp.Body)
+				require.NoError(t, err)
+				require.Equal(t, wantBody, string(body))
+				require.Equal(t, tc.wantVary, strings.Join(resp.Header.Values(fiber.HeaderVary), ","), "(%s)", wantStatus)
+				return resp
+			}
+
+			get(cacheMiss)
+			resp := get(cacheHit)
+			require.Equal(t, wantCacheControl, resp.Header.Get(fiber.HeaderCacheControl))
+		})
+	}
+}
+
+// Test_Cache_EntryStoredWithoutVaryIsNotRead covers an entry a previous version
+// stored. It carried no Vary, so it would be replayed without one and, holding
+// no Cache-Control of its own, under "public, max-age" — whatever cookie it was
+// selected by. The key namespace is versioned so no such entry is ever read.
+func Test_Cache_EntryStoredWithoutVaryIsNotRead(t *testing.T) {
+	t.Parallel()
+
+	storage := memory.New()
+	app := fiber.New()
+	app.Use(New(Config{
+		Storage:    storage,
+		Expiration: time.Minute,
+		// A generator of the caller's own, as an application preserving its
+		// key format across the upgrade would have.
+		KeyGenerator: func(c fiber.Ctx) string { return c.Path() },
+	}))
+	app.Get("/me", func(c fiber.Ctx) error { return c.SendString("handler ran") })
+
+	// Seed what the previous version wrote for a "Vary: Cookie" response to
+	// alice: the manifest naming the cookie, and her entry — metadata and body —
+	// under the variant key that manifest produces for her cookie.
+	const legacyBase = "v3|GET|/me"
+	var hdr fasthttp.RequestHeader
+	hdr.Set(fiber.HeaderCookie, "session=alice")
+	legacyKey := varyKey(legacyBase, []string{"cookie"}, &hdr, true)
+
+	legacy := &item{
+		body:   []byte("alice's page"),
+		ctype:  []byte(fiber.MIMETextPlainCharsetUTF8),
+		status: fiber.StatusOK,
+		exp:    uint64(time.Now().Add(time.Minute).Unix()),
+		ttl:    uint64(time.Minute / time.Second),
+	}
+	raw, err := legacy.MarshalMsg(nil)
+	require.NoError(t, err)
+	require.NoError(t, storage.Set(legacyBase+"|vary", []byte("cookie"), time.Minute))
+	require.NoError(t, storage.Set(legacyKey, raw, time.Minute))
+	require.NoError(t, storage.Set(legacyKey+"_body", legacy.body, time.Minute))
+
+	req := httptest.NewRequest(fiber.MethodGet, "/me", http.NoBody)
+	req.Header.Set(fiber.HeaderCookie, "session=alice")
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "handler ran", string(body), "an entry stored without its Vary must not be served")
+	require.Equal(t, cacheMiss, resp.Header.Get("X-Cache"))
+}
+
+// Test_Cache_VaryReplayedWithCompress asserts the pair compress writes comes
+// back together: a hit that replays Content-Encoding without the
+// Vary: Accept-Encoding beside it tells a cache in front of the app the encoded
+// body suits every client.
+func Test_Cache_VaryReplayedWithCompress(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Use(New())
+	app.Use(compress.New())
+	app.Get("/", func(c fiber.Ctx) error {
+		return c.SendString(strings.Repeat("compressible ", 256))
+	})
+
+	for _, want := range []string{cacheMiss, cacheHit} {
+		req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+		req.Header.Set(fiber.HeaderAcceptEncoding, "gzip")
+		resp, err := app.Test(req)
+		require.NoError(t, err)
+		require.Equal(t, want, resp.Header.Get("X-Cache"))
+		require.Equal(t, "gzip", resp.Header.Get(fiber.HeaderContentEncoding), "(%s)", want)
+		require.Equal(t, []string{fiber.HeaderAcceptEncoding}, resp.Header.Values(fiber.HeaderVary), "(%s)", want)
+	}
+}
+
+func Test_varyListsCredential(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		vary string
+		want bool
+	}{
+		{vary: "", want: false},
+		{vary: "Accept", want: false},
+		{vary: "Accept-Encoding, Accept-Language", want: false},
+		{vary: "*", want: false},
+		{vary: "Cookie", want: true},
+		{vary: "cookie", want: true},
+		{vary: "COOKIE", want: true},
+		{vary: " Cookie ", want: true},
+		{vary: "Accept-Encoding, Cookie", want: true},
+		{vary: "Accept-Encoding,Cookie", want: true},
+		{vary: "Authorization", want: true},
+		{vary: "authorization", want: true},
+		// Names that merely contain one of the two are other fields.
+		{vary: "X-Cookie", want: false},
+		{vary: "Cookie2", want: false},
+		{vary: "Set-Cookie", want: false},
+		{vary: "Proxy-Authorization", want: false},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.vary, func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, tc.want, varyListsCredential([]byte(tc.vary)), "Vary: %q", tc.vary)
+		})
+	}
+}
+
+// Test_Cache_VaryLongerThanEntryLimitIsUncacheable pins the cap on a stored
+// Vary to the limit the entry decodes it under. The encoder does not enforce
+// that limit, so a longer value reached an external Storage and every later
+// read of the entry failed on it, and the route answered with that error until
+// the entry expired. Such a response is not stored at all, and a value exactly
+// at the limit still round-trips.
+func Test_Cache_VaryLongerThanEntryLimitIsUncacheable(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name       string
+		wantSecond string
+		varyLen    int
+	}{
+		{name: "at the limit", varyLen: maxVaryLen, wantSecond: cacheHit},
+		{name: "past the limit", varyLen: maxVaryLen + 1, wantSecond: cacheUnreachable},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			// One field name of the given length: fewer names than
+			// maxVaryHeaders, so only the byte length is in play.
+			vary := "X-" + strings.Repeat("a", tc.varyLen-2)
+
+			app := fiber.New()
+			app.Use(New(Config{Storage: memory.New(), Expiration: time.Minute}))
+			app.Get("/", func(c fiber.Ctx) error {
+				c.Set(fiber.HeaderVary, vary)
+				return c.SendString("body")
+			})
+
+			for i, want := range []string{"", tc.wantSecond} {
+				resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+				require.NoError(t, err)
+				require.Equal(t, fiber.StatusOK, resp.StatusCode, "request %d", i+1)
+				if want != "" {
+					require.Equal(t, want, resp.Header.Get("X-Cache"), "request %d", i+1)
+				}
+				body, err := io.ReadAll(resp.Body)
+				require.NoError(t, err)
+				require.Equal(t, "body", string(body), "request %d", i+1)
+				require.Equal(t, []string{vary}, resp.Header.Values(fiber.HeaderVary), "request %d", i+1)
+			}
+		})
 	}
 }
