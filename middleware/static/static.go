@@ -16,6 +16,7 @@ import (
 	"github.com/valyala/fasthttp"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/byterange"
 )
 
 var ErrInvalidPath = errors.New("invalid path")
@@ -400,8 +401,13 @@ func New(root string, cfg ...Config) fiber.Handler {
 		fctx := c.RequestCtx()
 		fctx.SetUserValue(rewriteKey{}, rw)
 
-		// Serve file
-		server.handler(fctx)
+		// Serve file. The file server answers a single range; what else a Range field
+		// asks of the server (RFC 9110 Section 13.1.5, Section 14.2) is applied around it.
+		if config.ByteRange {
+			byterange.Serve(fctx, server.handler)
+		} else {
+			server.handler(fctx)
+		}
 
 		fctx.RemoveUserValue(rewriteKey{})
 		rewritePool.Put(rw)

@@ -3802,7 +3802,11 @@ type SendFile struct {
   // Optional. Default: false
   Compress bool `json:"compress"`
 
-  // When set to true, enables byte range requests.
+  // When set to true, enables byte range requests: a GET request with a Range of
+  // the "bytes" unit is answered with that range, and the response advertises
+  // Accept-Ranges. A request for several ranges, in another unit or with another
+  // method is answered with the whole file, and so is one whose If-Range does not
+  // match the file's Last-Modified (RFC 9110 Section 13.1.5, Section 14.2).
   //
   // Optional. Default: false
   ByteRange bool `json:"byte_range"`
@@ -3867,6 +3871,15 @@ app.Get("/files/:name", func(c fiber.Ctx) error {
 })
 ```
 
+:::
+
+:::info Byte ranges
+With `ByteRange` on, the file server answers one range of a `GET` request: `Range: bytes=0-499`, `bytes=500-` or `bytes=-500`, with `206 Partial Content`, `Content-Range` and `Accept-Ranges: bytes`. [RFC 9110 §13.1.5 and §14.2](https://www.rfc-editor.org/rfc/rfc9110#section-14.2) say what else a server does with the field, and Fiber applies it around that single range:
+
+- The unit is case-insensitive, so `Range: Bytes=0-499` is a range.
+- A request for **several ranges** (`bytes=0-499,1000-1499`), with a **unit the server does not know**, or with a method other than `GET` (`HEAD` included) is answered with the whole file, as if it carried no `Range`. Several ranges used to be refused with `416`, a status that is for ranges that cannot be satisfied.
+- **`If-Range`** makes the range conditional on the file being the one the client holds. The range is served only when the date it carries is exactly the file's `Last-Modified`, and that time is at least a second old; when the file has changed, the whole file is sent instead of a piece that would be spliced onto the client's stale copy. An entity-tag never matches, since the file server sends no `ETag`.
+- A range that cannot be satisfied is answered with `416 Range Not Satisfiable`, and with `Content-Range: bytes */<size>` for `SendFile`.
 :::
 
 :::info

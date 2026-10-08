@@ -8624,6 +8624,95 @@ func Test_SendFile_ByteRange(t *testing.T) {
 	})
 }
 
+// The file server answers one byte range. The rest of what Range and If-Range ask
+// of a server is applied around it (RFC 9110 Section 13.1.5 and Section 14.2): a
+// request for several ranges, a unit the server does not know, a method without
+// range semantics and a validator that no longer matches are all answered with
+// the whole file, and the unit is case-insensitive.
+func Test_SendFile_ByteRange_RFC9110(t *testing.T) {
+	t.Parallel()
+
+	if runtime.GOOS == windowsOS {
+		t.Skip("SendFile byte-range tests are flaky on Windows")
+	}
+
+	const (
+		content      = "0123456789abcdefghij"
+		lastModified = "Thu, 02 Jan 2020 03:04:05 GMT"
+		staleDate    = "Wed, 01 Jan 2020 03:04:05 GMT"
+	)
+	fixture := filepath.Join(t.TempDir(), "fixture.txt")
+	require.NoError(t, os.WriteFile(fixture, []byte(content), 0o600))
+	require.NoError(t, os.Chtimes(fixture, time.Time{}, time.Date(2020, time.January, 2, 3, 4, 5, 0, time.UTC)))
+
+	app := New()
+	serve := func(c Ctx) error {
+		c.Set("X-Request", "kept")
+		return c.SendFile(fixture, SendFile{ByteRange: true})
+	}
+	app.Get("/file", serve)
+	app.Post("/file", serve)
+
+	tests := []struct {
+		fields       map[string]string
+		name         string
+		method       string
+		wantRange    string
+		wantBody     string
+		wantStatus   int
+		wantLastMod  bool
+		wantUnranged bool // a whole representation with its validators
+	}{
+		{name: "a range", method: MethodGet, fields: map[string]string{HeaderRange: "bytes=0-4"}, wantStatus: StatusPartialContent, wantBody: "01234", wantRange: "bytes 0-4/20"},
+		{name: "unit in upper case", method: MethodGet, fields: map[string]string{HeaderRange: "BYTES=0-4"}, wantStatus: StatusPartialContent, wantBody: "01234", wantRange: "bytes 0-4/20"},
+		{name: "several ranges", method: MethodGet, fields: map[string]string{HeaderRange: "bytes=0-1,3-4"}, wantStatus: StatusOK, wantBody: content, wantUnranged: true},
+		{name: "several ranges, one beyond the end", method: MethodGet, fields: map[string]string{HeaderRange: "bytes=0-1,100-200"}, wantStatus: StatusOK, wantBody: content, wantUnranged: true},
+		{name: "unknown unit", method: MethodGet, fields: map[string]string{HeaderRange: "items=0-4"}, wantStatus: StatusOK, wantBody: content, wantUnranged: true},
+		{name: "HEAD has no ranges", method: MethodHead, fields: map[string]string{HeaderRange: "bytes=0-4"}, wantStatus: StatusOK, wantUnranged: true},
+		{name: "POST has no ranges", method: MethodPost, fields: map[string]string{HeaderRange: "bytes=0-4"}, wantStatus: StatusOK, wantBody: content, wantUnranged: true},
+		{name: "unsatisfiable", method: MethodGet, fields: map[string]string{HeaderRange: "bytes=100-200"}, wantStatus: StatusRequestedRangeNotSatisfiable, wantRange: "bytes */20", wantBody: "Range Not Satisfiable"},
+
+		{name: "If-Range matches", method: MethodGet, fields: map[string]string{HeaderRange: "bytes=0-4", HeaderIfRange: lastModified}, wantStatus: StatusPartialContent, wantBody: "01234", wantRange: "bytes 0-4/20"},
+		{name: "If-Range is stale", method: MethodGet, fields: map[string]string{HeaderRange: "bytes=0-4", HeaderIfRange: staleDate}, wantStatus: StatusOK, wantBody: content, wantUnranged: true},
+		{name: "If-Range holds an entity-tag", method: MethodGet, fields: map[string]string{HeaderRange: "bytes=0-4", HeaderIfRange: `"deadbeef"`}, wantStatus: StatusOK, wantBody: content, wantUnranged: true},
+		{name: "If-Range is stale, range unsatisfiable", method: MethodGet, fields: map[string]string{HeaderRange: "bytes=100-200", HeaderIfRange: staleDate}, wantStatus: StatusOK, wantBody: content, wantUnranged: true},
+		{name: "If-Range matches, range unsatisfiable", method: MethodGet, fields: map[string]string{HeaderRange: "bytes=100-200", HeaderIfRange: lastModified}, wantStatus: StatusRequestedRangeNotSatisfiable, wantRange: "bytes */20", wantBody: "Range Not Satisfiable"},
+		{name: "If-Range without Range", method: MethodGet, fields: map[string]string{HeaderIfRange: staleDate}, wantStatus: StatusOK, wantBody: content, wantUnranged: true},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			req := httptest.NewRequest(tc.method, "/file", http.NoBody)
+			for k, v := range tc.fields {
+				req.Header.Set(k, v)
+			}
+			resp, err := app.Test(req)
+			require.NoError(t, err)
+			t.Cleanup(func() { require.NoError(t, resp.Body.Close()) })
+
+			require.Equal(t, tc.wantStatus, resp.StatusCode)
+			require.Equal(t, tc.wantRange, resp.Header.Get(HeaderContentRange))
+			body, err := io.ReadAll(resp.Body)
+			require.NoError(t, err)
+			require.Equal(t, tc.wantBody, string(body))
+
+			if tc.wantUnranged {
+				require.Equal(t, "20", resp.Header.Get(HeaderContentLength))
+				if tc.method != MethodPost {
+					require.Equal(t, lastModified, resp.Header.Get(HeaderLastModified))
+				}
+			}
+			// Headers the handler set before SendFile survive every outcome that
+			// does not discard the response.
+			if tc.wantStatus != StatusRequestedRangeNotSatisfiable {
+				require.Equal(t, "kept", resp.Header.Get("X-Request"))
+			}
+		})
+	}
+}
+
 func Benchmark_Ctx_SendFile(b *testing.B) {
 	app := New()
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})

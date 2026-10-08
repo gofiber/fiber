@@ -19,6 +19,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"github.com/gofiber/fiber/v3/internal/byterange"
 	internalcookie "github.com/gofiber/fiber/v3/internal/cookie"
 	"github.com/gofiber/fiber/v3/internal/fieldname"
 	"github.com/gofiber/fiber/v3/internal/headerlist"
@@ -45,7 +46,11 @@ type SendFile struct {
 	// Optional. Default: false
 	Compress bool `json:"compress"`
 
-	// When set to true, enables byte range requests.
+	// When set to true, enables byte range requests: a GET request with a Range of
+	// the "bytes" unit is answered with that range, and the response advertises
+	// Accept-Ranges. A request for several ranges, in another unit or with another
+	// method is answered with the whole file, and so is one whose If-Range does not
+	// match the file's Last-Modified (RFC 9110 Section 13.1.5, Section 14.2).
 	//
 	// Optional. Default: false
 	ByteRange bool `json:"byte_range"`
@@ -1384,8 +1389,13 @@ func (r *DefaultRes) SendFile(file string, config ...SendFile) error {
 	response := &r.c.fasthttp.Response
 	status := response.StatusCode()
 
-	// Serve file
-	fsHandler(r.c.fasthttp)
+	// Serve file. The file server answers a single range; what else a Range field
+	// asks of the server (RFC 9110 Section 13.1.5, Section 14.2) is applied around it.
+	if cfg.ByteRange {
+		byterange.Serve(r.c.fasthttp, fsHandler)
+	} else {
+		fsHandler(r.c.fasthttp)
+	}
 
 	// Sets the response Content-Disposition header to attachment if the Download option is true
 	if cfg.Download {
