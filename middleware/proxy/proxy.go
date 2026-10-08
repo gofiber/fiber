@@ -1,6 +1,7 @@
 package proxy
 
 import (
+	"bytes"
 	"errors"
 	"net"
 	"net/url"
@@ -18,6 +19,7 @@ import (
 	"github.com/gofiber/fiber/v3/internal/fieldname"
 	"github.com/gofiber/fiber/v3/internal/headerlookup"
 	"github.com/gofiber/fiber/v3/internal/idnafold"
+	"github.com/gofiber/fiber/v3/internal/wiretarget"
 	utilsstrings "github.com/gofiber/utils/v2/strings"
 	"github.com/valyala/fasthttp"
 )
@@ -74,6 +76,19 @@ func Balancer(config ...Config) fiber.Handler {
 		// Set custom client
 		lbc = cfg.Client
 	}
+	// A host client the caller built normalizes the request line on the way
+	// out unless told otherwise, which would decode "%2F" into a separator and
+	// merge "//" and so undo the routed target forwarded below. Any other
+	// BalancingClient cannot be told, so with one present a target its
+	// normalization could change is refused per request.
+	opaqueClient := false
+	for _, bc := range lbc.Clients {
+		if hc, ok := bc.(*fasthttp.HostClient); ok {
+			hc.DisablePathNormalizing = true
+			continue
+		}
+		opaqueClient = true
+	}
 
 	// Return new handler
 	return func(c fiber.Ctx) error {
@@ -101,6 +116,34 @@ func Balancer(config ...Config) fiber.Handler {
 			}
 		}
 
+		// The Host field holds no userinfo (RFC 9112 Section 3.2). fasthttp
+		// reads "svc:pw@backend" as one when it parses the origin-form
+		// target below, and writes it upstream as a Basic Authorization
+		// header, over any the application had pinned.
+		if bytes.IndexByte(req.Header.Host(), '@') >= 0 {
+			return fiber.ErrBadRequest
+		}
+
+		// Forward the path the router matched (see wiretarget.Routed), and
+		// refuse one the upstream could read as another path. A target
+		// fasthttp would read as an authority (see wiretarget.ParsesAsPath),
+		// set as the request line, would hand the upstream a Host, and
+		// credentials, taken from the path. One holding an escaped slash, an
+		// empty segment or a forged escape (see wiretarget.SegmentsAsRouted)
+		// would be served by an upstream that decodes "%2F", merges "//" or
+		// decodes the forged escape as a path no middleware here matched.
+		// Behind a BalancingClient the proxy cannot configure, one that
+		// normalization would change (see wiretarget.SurvivesNormalization)
+		// is refused too.
+		target := wiretarget.Routed(c)
+		if !wiretarget.ParsesAsPath(target, req.Header.Host()) || !segmentsAsRouted(target, policy) ||
+			(opaqueClient && !wiretarget.SurvivesNormalization(target)) {
+			return fiber.ErrBadRequest
+		}
+		originalURL := utils.CopyString(c.OriginalURL())
+		defer req.SetRequestURI(originalURL)
+		req.SetRequestURI(target)
+
 		// After the Connection listing has been applied, so the line is this
 		// hop's and not one the client named there; before ModifyRequest, so
 		// the application still has the last word.
@@ -111,12 +154,6 @@ func Balancer(config ...Config) fiber.Handler {
 			if err := cfg.ModifyRequest(c); err != nil {
 				return err
 			}
-		}
-
-		if c.App().Config().Immutable {
-			req.SetRequestURIBytes(req.RequestURI())
-		} else {
-			req.SetRequestURI(utils.UnsafeString(req.RequestURI()))
 		}
 
 		// The upstream connection speaks HTTP/1.1: reset a protocol token
@@ -162,6 +199,16 @@ var (
 	errNilGlobalProxyClient   = errors.New("proxy: global client is nil, set a non-nil client with proxy.WithClient")
 )
 
+// segmentsAsRouted reports whether a forwarding handler may hand target on
+// under policy: wiretarget.SegmentsAsRouted, with escaped slashes and empty
+// segments let through when policy.AllowAmbiguousSlashes is set.
+func segmentsAsRouted(target string, policy SecurityPolicy) bool {
+	if policy.AllowAmbiguousSlashes {
+		return wiretarget.SegmentsAsRoutedSlashesAside(target)
+	}
+	return wiretarget.SegmentsAsRouted(target)
+}
+
 // guardedConfigureClient composes a client's optional pre-existing
 // ConfigureClient hook with the dial-time SSRF guard. It is installed on a
 // *fasthttp.Client as the bound method value (&guardedConfigureClient{…}).run,
@@ -190,6 +237,10 @@ func (g *guardedConfigureClient) run(hc *fasthttp.HostClient) error {
 		}
 	}
 	installHostClientGuard(hc)
+	// The target the proxy hands the client is the one it matched and
+	// validated; a client left normalizing would decode "%2F" into a
+	// separator and merge "//" on the way out, undoing that.
+	hc.DisablePathNormalizing = true
 	return nil
 }
 
@@ -289,15 +340,16 @@ func realIP(c fiber.Ctx, buf []byte) []byte {
 }
 
 // forwardWithRealIP is what Forward, DomainForward and BalancerForward share:
-// the request goes to addr carrying this hop's X-Real-IP. The address is read
-// from the request as received and written once the client's Connection
-// listing has been applied to it, which is the order RFC 9110 §7.6.1 gives an
-// intermediary: the received message loses the fields it lists, then this hop
-// adds its own.
-func forwardWithRealIP(c fiber.Ctx, addr string, clients ...*fasthttp.Client) error {
+// the request goes to addr under policy, carrying this hop's X-Real-IP. The
+// address is read from the request as received and written once the client's
+// Connection listing has been applied to it, which is the order RFC 9110
+// §7.6.1 gives an intermediary: the received message loses the fields it
+// lists, then this hop adds its own. The policy is the caller's snapshot, so
+// the target it checked and the dispatch are judged by the same one.
+func forwardWithRealIP(c fiber.Ctx, addr string, policy SecurityPolicy, clients ...*fasthttp.Client) error {
 	var scratch [realIPScratch]byte
 	ip := realIP(c, scratch[:0])
-	return doAction(c, addr, func(cli *fasthttp.Client, req *fasthttp.Request, resp *fasthttp.Response, _ *url.URL) error {
+	return doActionWithPolicy(c, addr, policy, func(cli *fasthttp.Client, req *fasthttp.Request, resp *fasthttp.Response, _ *url.URL) error {
 		setRealIP(c, ip)
 		return cli.Do(req, resp)
 	}, clients...)
@@ -313,7 +365,7 @@ func forwardWithRealIP(c fiber.Ctx, addr string, clients ...*fasthttp.Client) er
 // a private one between validation and connection.
 func Forward(addr string, clients ...*fasthttp.Client) fiber.Handler {
 	return func(c fiber.Ctx) error {
-		return forwardWithRealIP(c, addr, clients...)
+		return forwardWithRealIP(c, addr, currentSecurityPolicy(), clients...)
 	}
 }
 
@@ -661,7 +713,16 @@ func DomainForward(hostname, addr string, clients ...*fasthttp.Client) fiber.Han
 		if !utils.EqualFold(host, hostname) && !utils.EqualFold(hostWithoutPort(host), hostname) {
 			return c.Next()
 		}
-		return forwardWithRealIP(c, joinUpstreamPath(base, c.OriginalURL()), clients...)
+		// A routed path an upstream could read as another path (see
+		// wiretarget.SegmentsAsRouted) is refused, unless the active policy
+		// lets escaped slashes and empty segments through
+		// (SecurityPolicy.AllowAmbiguousSlashes).
+		target := wiretarget.Routed(c)
+		active := currentSecurityPolicy()
+		if !segmentsAsRouted(target, active) {
+			return fiber.ErrBadRequest
+		}
+		return forwardWithRealIP(c, joinUpstreamPath(base, target), active, clients...)
 	}
 }
 
@@ -718,6 +779,16 @@ func BalancerForward(servers []string, clients ...*fasthttp.Client) fiber.Handle
 	}
 	r := &urlRoundrobin{pool: bases}
 	return func(c fiber.Ctx) error {
-		return forwardWithRealIP(c, joinUpstreamPath(r.get(), c.OriginalURL()), clients...)
+		base := r.get()
+		// A routed path an upstream could read as another path (see
+		// wiretarget.SegmentsAsRouted) is refused, unless the active policy
+		// lets escaped slashes and empty segments through
+		// (SecurityPolicy.AllowAmbiguousSlashes).
+		target := wiretarget.Routed(c)
+		active := currentSecurityPolicy()
+		if !segmentsAsRouted(target, active) {
+			return fiber.ErrBadRequest
+		}
+		return forwardWithRealIP(c, joinUpstreamPath(base, target), active, clients...)
 	}
 }

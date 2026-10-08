@@ -61,6 +61,12 @@ var (
 	// is false.
 	ErrUpstreamHostBlocked = errors.New("proxy: upstream host resolves to a blocked address")
 
+	// ErrUpstreamNotOrigin is returned when a Balancer server carries more
+	// than a scheme and a host: a path, userinfo, query or fragment. The
+	// balancer dials the host only, so the rest would be dropped silently,
+	// and "http://backend/api" would reach all of the upstream, not "/api".
+	ErrUpstreamNotOrigin = errors.New("proxy: upstream must be a scheme and host only")
+
 	// ErrRedirectDowngrade is returned when DoRedirects encounters a
 	// redirect from an HTTPS upstream to a plaintext HTTP target and
 	// AllowHTTPSDowngrade is false.
@@ -111,6 +117,20 @@ type SecurityPolicy struct {
 	// response. SECURITY: enabling this can enable request smuggling
 	// and proxy-auth credential forwarding. Default: false.
 	KeepHopByHopHeaders bool
+
+	// AllowAmbiguousSlashes lets Balancer, DomainForward and BalancerForward
+	// forward a routed path holding an escaped slash ("%2F") or an empty
+	// segment ("//"), which they otherwise answer with 400 Bad Request. An
+	// upstream that keeps both as sent needs it for names such as a
+	// GitLab-style "group%2Fproject" id or an object key with a doubled
+	// slash. SECURITY: an upstream that decodes "%2F" into a separator or
+	// merges "//" before it matches routes reads such a path as another
+	// one, under a prefix whose middleware the router never ran for it;
+	// enable this only when every upstream keeps them, through a client
+	// that does not normalize paths. A forged escape, a backslash and a
+	// dot segment carrying parameters are refused regardless.
+	// Default: false.
+	AllowAmbiguousSlashes bool
 }
 
 // DefaultSecurityPolicy returns the secure-by-default proxy security
@@ -124,10 +144,11 @@ type SecurityPolicy struct {
 // them.
 func DefaultSecurityPolicy() SecurityPolicy {
 	return SecurityPolicy{
-		AllowedSchemes:      append([]string(nil), defaultAllowedSchemes...),
-		AllowPrivateIPs:     false,
-		AllowHTTPSDowngrade: false,
-		KeepHopByHopHeaders: false,
+		AllowedSchemes:        append([]string(nil), defaultAllowedSchemes...),
+		AllowPrivateIPs:       false,
+		AllowHTTPSDowngrade:   false,
+		KeepHopByHopHeaders:   false,
+		AllowAmbiguousSlashes: false,
 	}
 }
 
@@ -367,16 +388,21 @@ func parseUpstreamScheme(raw string, policy SecurityPolicy) (*url.URL, error) {
 }
 
 // validateUpstreamForBalancer validates a statically configured Balancer
-// upstream. It enforces the scheme allowlist and rejects IP-literal hosts
-// in blocked ranges, but defers hostname resolution to the SSRF-guarded
-// dialer (see newSSRFDialer). Deferring DNS keeps a transient resolver
-// failure at startup from panicking the application (e.g. crash loops in
-// container orchestrators) and re-checks the resolved IP on every dial,
-// which also defeats DNS-rebinding.
+// upstream. It enforces the scheme allowlist, requires the entry to be an
+// origin (the balancer dials the host and forwards the request target as
+// is, so a path, userinfo, query or fragment would be dropped silently) and
+// rejects IP-literal hosts in blocked ranges, but defers hostname resolution
+// to the SSRF-guarded dialer (see newSSRFDialer). Deferring DNS keeps a
+// transient resolver failure at startup from panicking the application
+// (e.g. crash loops in container orchestrators) and re-checks the resolved
+// IP on every dial, which also defeats DNS-rebinding.
 func validateUpstreamForBalancer(raw string, policy SecurityPolicy) (*url.URL, error) {
 	u, err := parseUpstreamScheme(raw, policy)
 	if err != nil {
 		return nil, err
+	}
+	if u.User != nil || (u.Path != "" && u.Path != "/") || u.RawQuery != "" || u.ForceQuery || u.Fragment != "" || u.Opaque != "" {
+		return nil, fmt.Errorf("%w: %q", ErrUpstreamNotOrigin, raw)
 	}
 	if policy.AllowPrivateIPs {
 		return u, nil
@@ -781,11 +807,19 @@ func secureTLSConfig(cfg *tls.Config) *tls.Config {
 	return cloned
 }
 
+// placeholderOrigin is the authority joinUpstreamPath parses a request target
+// behind. Neither its scheme nor its host is what any request is sent to; it
+// only keeps the parser from reading the target's own leading "//" as an
+// authority.
+const placeholderOrigin = "https://h"
+
 // joinUpstreamPath returns a URL string formed by combining an already
-// validated upstream base with a request path supplied by the client.
-// The request path's authority component (if any) is discarded so
-// crafted inputs like "//attacker.example/foo" or "@attacker" cannot
-// change the host the proxy connects to.
+// validated upstream base with the request target the proxy forwards (see
+// wiretarget.Routed). The target can only ever be a path, a query and a
+// fragment: crafted inputs like "//attacker.example/foo" or "@attacker"
+// cannot change the host the proxy connects to, and a leading "//" stays the
+// empty segment the router kept apart from "/foo" rather than being
+// collapsed into a path the router never matched.
 func joinUpstreamPath(base *url.URL, requestPath string) string {
 	if base == nil {
 		return ""
@@ -816,25 +850,28 @@ func joinUpstreamPath(base *url.URL, requestPath string) string {
 	if requestPath == "" {
 		return out.String()
 	}
-	// A leading "//" makes Go's url.Parse treat the value as a
-	// network-path reference and parse a new authority. Collapse it to
-	// a single slash so the host stays pinned to the configured base.
-	for strings.HasPrefix(requestPath, "//") {
-		requestPath = "/" + utils.TrimLeft(requestPath, '/')
-	}
 	if requestPath[0] != '/' && requestPath[0] != '?' && requestPath[0] != '#' {
 		requestPath = "/" + requestPath
 	}
-	parsed, err := url.Parse(requestPath)
-	if err != nil || parsed.Host != "" || parsed.Scheme != "" {
-		// Either the path failed to parse cleanly or it introduced a
-		// new authority. Treat the remainder as an opaque path, but
-		// preserve any path prefix configured on the upstream base so
-		// a malformed request can't silently bypass it (e.g.
-		// "http://upstream/api" + "/%zz" must stay rooted at "/api").
-		fallback := "/" + utils.TrimLeft(requestPath, '/')
+	// Parse behind a placeholder authority, so that the target can only be a
+	// path, a query and a fragment. Parsed on its own, a leading "//" would
+	// be a network-path reference that moves the proxy to another host, and
+	// collapsing it to one slash would forward a path the router never
+	// matched: "//admin" is not "/admin" to the router, which keeps empty
+	// segments, so no middleware mounted on "/admin" has run for it.
+	parsed, err := url.Parse(placeholderOrigin + requestPath)
+	if err != nil {
+		// The target does not parse cleanly (a malformed escape, say).
+		// Treat it as an opaque path, but preserve any path prefix
+		// configured on the upstream base so a malformed request can't
+		// silently bypass it (e.g. "http://upstream/api" + "/%zz" must stay
+		// rooted at "/api").
+		fallback := requestPath
+		if fallback[0] != '/' {
+			fallback = "/" + fallback
+		}
 		if base.Path != "" {
-			fallback = strings.TrimSuffix(base.Path, "/") + "/" + strings.TrimPrefix(fallback, "/")
+			fallback = strings.TrimSuffix(base.Path, "/") + fallback
 		}
 		out.Path = fallback
 		out.RawPath = ""

@@ -29,7 +29,7 @@ func BalancerForward(servers []string, clients ...*fasthttp.Client) fiber.Handle
 
 ## Security
 
-The proxy middleware applies several defenses by default. They can be relaxed via `Config.SecurityPolicy` (for `Balancer`) or `proxy.WithSecurityPolicy` (for the runtime helpers `Do`, `Forward`, `DoRedirects`, `DoTimeout`, `DoDeadline`).
+The proxy middleware applies several defenses by default. They can be relaxed via `Config.SecurityPolicy` (for `Balancer`) or `proxy.WithSecurityPolicy` (for the runtime helpers `Do`, `Forward`, `DoRedirects`, `DoTimeout`, `DoDeadline`, `DomainForward` and `BalancerForward`).
 
 ### SSRF protection
 
@@ -127,9 +127,32 @@ h.Add("X-Real-IP", ip)
 
 :::
 
-### Path concatenation safety
+### Request target
 
-`DomainForward` and `BalancerForward` previously concatenated the configured upstream with `c.OriginalURL()`. Crafted request paths beginning with `//` could exploit URL parsing to redirect the proxy at a different host (network-path reference injection). The proxy now sanitizes the joined path so the upstream host pinned in configuration is preserved regardless of the inbound request.
+`Balancer`, `DomainForward` and `BalancerForward` forward the path the router matched, `c.Path()`, followed by the query. They do not forward the request line as it arrived. The two differ, and the difference is what an attacker uses: fasthttp's normalization of the raw request line decodes `%2F` into a separator and merges repeated slashes, so `/public/..%2Fadmin/secret` and `//admin/secret` used to reach the upstream as `/admin/secret`, a path no middleware mounted on `/admin` had seen. Routed, they stay `/public/..%2Fadmin/secret` and `//admin/secret`, and by default the proxy refuses to forward either, since an upstream that decodes `%2F` or merges `//` would read them as `/admin/secret` as well. Dot segments are resolved before matching, so `/public/../admin/secret` runs the `/admin` middleware and is forwarded as `/admin/secret`. An escape of an unreserved character is decoded (`%41` becomes `A`), every other escape is kept as sent and a stray `%` is forwarded as `%25`. A byte a path may not carry raw ([RFC 3986 Section 3.3](https://www.rfc-editor.org/rfc/rfc3986#section-3.3)), such as `|`, `{`, `"` or a byte of UTF-8, is forwarded as its escape, as fasthttp wrote it before, so `/über` reaches the upstream as `/%C3%BCber`; the sub-delims (`!$&'()*+,;=`), `:` and `@` stay raw. With `UnescapePath` enabled the decoded path is escaped again segment by segment, so a separator that came from `%2F` is forwarded as the separator the router matched it as.
+
+The query is forwarded byte for byte as the client sent it, so a signed URL keeps its signature. Only when a handler changed the arguments through `QueryArgs()` is it the changed arguments, as fasthttp serializes them; reading them, as `c.Query()` does, changes nothing. `Balancer` puts the original request line back once the upstream has answered, so `c.OriginalURL()` in a middleware that runs afterwards is unchanged.
+
+- `Balancer` dials the configured host and forwards the target as is, so every entry in `Servers` must be a scheme and host only. An entry with a path, userinfo, query or fragment panics at startup with `ErrUpstreamNotOrigin` instead of dropping that part silently, which would have left `http://backend/api` reaching all of the upstream. `DomainForward` and `BalancerForward` prepend the path of their upstream URL, and the joined path keeps the upstream host pinned in configuration whatever the request contains: `//attacker.example/path`, `@attacker` and `/foo://hijack.example` all stay paths.
+- `Balancer` answers a request whose `Host` header carries userinfo, such as `svc:pw@backend`, with `400 Bad Request`. fasthttp would read the userinfo as credentials and send them upstream as a `Basic` `Authorization` header, replacing one the application had set.
+- `Balancer` also answers `400 Bad Request` for a routed target fasthttp would read as an authority rather than a path: one that begins with `//` and holds `://`, or any target beginning with `//` on a request without a `Host` header. The router never saw such a target as an authority, and it need not have arrived as one: `..` resolution builds `//u:pw@evil.example/a://b` out of `//u:pw@evil.example/a:/x/..//b`, and under `UnescapePath` a decoded `%3A%2F%2F` spells the `://`. Set as the request line, it would hand the upstream a `Host`, and a `Basic` `Authorization` header, taken from the path rather than from the application.
+- `Balancer`, `DomainForward` and `BalancerForward` answer `400 Bad Request` for a routed path an upstream could read as another path, one under a prefix whose middleware never ran for it. That is a path holding:
+  - an escaped slash (`%2F`) or an empty segment (`//`). An upstream that decodes `%2F` into a separator or merges repeated slashes before it matches routes, as a `net/http` file server or a fasthttp server does, would map `/public/..%2Fadmin/secret`, `/admin%2Fsecret` and `//admin/secret` to `/admin/secret`. An upstream that keeps both as sent can be reached with `SecurityPolicy.AllowAmbiguousSlashes`, described below.
+  - a backslash, raw or escaped as `%5C`. WHATWG URL parsers, as in Node.js, Bun, Deno and Cloudflare Workers, and IIS read it as a separator, so `/admin\secret` and `/public/..%5Cadmin/secret` would reach `/admin`.
+  - a `.` or `..` segment carrying parameters, such as `..;` or `..;jsessionid=x`. Servlet containers such as Tomcat and Jetty strip the parameters before they resolve dot segments, so `/public/..;/admin/secret` would reach `/admin/secret`.
+  - an escape of an unreserved character, such as `%2e` or `%70`. The router decodes every such escape when it normalizes a path, so one still in `c.Path()` can only have been forged by a stray `%`, and an upstream decoding it again would serve a name no middleware matched.
+
+  To forward such a target regardless, build it from `c.Path()` and call `Do`.
+- `SecurityPolicy.AllowAmbiguousSlashes` lets `Balancer`, `DomainForward` and `BalancerForward` forward a path holding `%2F` or `//`, for an upstream that addresses names such as GitLab-style `group%2Fproject` ids or object keys with a doubled slash. Set it on `Config.SecurityPolicy` for `Balancer`, or install it with `proxy.WithSecurityPolicy` for `DomainForward` and `BalancerForward`. Enable it only when every upstream behind the handler keeps `%2F` and `//` as sent; a backslash, a dot segment with parameters and a forged escape are refused regardless.
+- A path override without a leading slash, as a rewrite of `/go/*` to `$1` produces for `/go/http://u:pw@evil.example/x`, is forwarded rooted, as the path `/http://u:pw@evil.example/x`, rather than as the absolute URL a request line would read it as.
+- With a custom `Client`, every `*fasthttp.HostClient` among its `Clients` gets `DisablePathNormalizing` set, since a client left normalizing would decode `%2F` into a separator and merge `//` on the way out. Any other `BalancingClient` cannot be told, so with one present `Balancer` answers `400 Bad Request` for a routed target that normalization would change: one holding an empty segment or an escape it would decode into a byte it then writes raw, such as `%3B` or `%40`. An escape of a byte it writes escaped again, such as `%20` or the `%C3%BC` of `/über`, is forwarded.
+- `Do`, `Forward`, `DomainForward`, `BalancerForward` and their variants switch path normalization off on the default client, on a client registered with `WithClient` and on every host client a per-call `*fasthttp.Client` creates once the proxy has it. fasthttp applies that setting only to the host client it creates for an upstream, so a per-call client that already reached that upstream before it was handed to the proxy keeps the host client it made then, and that one still normalizes: `/public/..%2Fadmin/secret` would leave it as `/admin/secret`. Register such a client with `WithClient` before it serves requests, hand the proxy a client used for nothing else, or create the client with `DisablePathNormalizing: true`.
+
+:::caution Upstream normalization
+The proxy cannot control what the upstream does with the target beyond what it refuses to forward. A target holding `%2F`, `//`, a backslash, a dot segment with parameters or a forged escape is not forwarded by default, so an upstream that decodes, merges or strips parameters cannot be handed a path the router did not match through them. An escape of another reserved character, such as `%3B`, `%3F` or `%23`, is forwarded as sent, and so are a segment's case and a trailing dot or space, any of which an upstream on Windows or a case-insensitive filesystem may treat as another name. Authorize on the upstream as well.
+:::
+
+When you build the target for `Do`, `Forward` or their variants yourself, derive it from `c.Path()` and `c.Request().URI().QueryString()` rather than from `c.OriginalURL()`, which is the request line as it arrived, before the router resolved dot segments.
 
 ## Examples
 
@@ -279,7 +302,7 @@ app.Use(proxy.Balancer(proxy.Config{
 | Property        | Type                                           | Description                                                                                                                                                                                                                        | Default         |
 |:----------------|:-----------------------------------------------|:-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|:----------------|
 | Next            | `func(fiber.Ctx) bool`                        | Next defines a function to skip this middleware when it returns true.                                                                                                                                                                | `nil`           |
-| Servers         | `[]string`                                     | Servers defines a list of `<scheme>://<host>` HTTP servers, which are used in a round-robin manner. i.e.: "[https://foobar.com](https://foobar.com), [http://www.foobar.com](http://www.foobar.com)"                                                        | (Required)      |
+| Servers         | `[]string`                                     | Servers defines a list of `<scheme>://<host>` HTTP servers, which are used in a round-robin manner. Each entry is a scheme and host only; one with a path, userinfo, query or fragment panics at startup with `ErrUpstreamNotOrigin`. i.e.: "[https://foobar.com](https://foobar.com), [http://www.foobar.com](http://www.foobar.com)"                                                        | (Required)      |
 | ModifyRequest   | `fiber.Handler`                                | ModifyRequest allows you to alter the request.                                                                                                                                                                                     | `nil`           |
 | ModifyResponse  | `fiber.Handler`                                | ModifyResponse allows you to alter the response.                                                                                                                                                                                   | `nil`           |
 | Timeout         | `time.Duration`                                | Timeout is the request timeout used when calling the proxy client.                                                                                                                                                                 | 1 second        |
@@ -289,7 +312,7 @@ app.Use(proxy.Balancer(proxy.Config{
 | KeepConnectionHeader | `bool` | Keeps the `Connection` header when set to `true`. By default the header is removed to comply with RFC 7230 §6.1 and avoid proxy loops. Other hop-by-hop headers are still stripped regardless of this setting. | `false` |
 | TLSConfig       | `*tls.Config` | TLS config for the HTTP client. Cloned with `MinVersion: tls.VersionTLS12` when no minimum is set. | `nil`           |
 | DialDualStack   | `bool`                                         | Client will attempt to connect to both IPv4 and IPv6 host addresses if set to true.                                                                                                                                                | `false`         |
-| Client          | `*fasthttp.LBClient`                           | Client is a custom client when client config is complex.                                                                                                                                                                           | `nil`           |
+| Client          | `*fasthttp.LBClient`                           | Client is a custom client when client config is complex. Each `*fasthttp.HostClient` among its `Clients` gets `DisablePathNormalizing` set; see [Request target](#request-target).                                                                                                                                                                           | `nil`           |
 | SecurityPolicy  | `*SecurityPolicy`                              | Overrides the default SSRF, redirect, and hop-by-hop header rules for this balancer. When `nil`, the package-level policy set via `WithSecurityPolicy` is used. See [Security](#security).                                          | `nil`           |
 | MaxResponseBodySize | `int`                                       | Maximum upstream response body size in bytes. `0` keeps fasthttp's unlimited default.                                                                                                                                              | `0`             |
 
@@ -314,10 +337,11 @@ When `Config.SecurityPolicy` is `nil` (and `proxy.WithSecurityPolicy` has not be
 // DefaultSecurityPolicy returns the secure-by-default policy.
 func DefaultSecurityPolicy() proxy.SecurityPolicy {
     return proxy.SecurityPolicy{
-        AllowedSchemes:      []string{"http", "https"},
-        AllowPrivateIPs:     false,
-        AllowHTTPSDowngrade: false,
-        KeepHopByHopHeaders: false,
+        AllowedSchemes:        []string{"http", "https"},
+        AllowPrivateIPs:       false,
+        AllowHTTPSDowngrade:   false,
+        KeepHopByHopHeaders:   false,
+        AllowAmbiguousSlashes: false,
     }
 }
 ```
