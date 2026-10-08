@@ -1894,6 +1894,7 @@ The timeout middleware is now configurable. A new `Config` struct allows customi
 
 **Behavioral changes:**
 
+- **Status**: The default response for a timed-out handler is `503 Service Unavailable`, not `408 Request Timeout`. The request arrived complete and the handler is what is slow, whereas `408` means the server did not receive a complete request in time ([RFC 9110, Section 15.5.9](https://www.rfc-editor.org/rfc/rfc9110#section-15.5.9)) and tells the client it may send the request again, while the timed-out handler can still be running. Return `fiber.ErrRequestTimeout` (or `fiber.ErrGatewayTimeout` for a handler that waits on an upstream) from `OnTimeout` to keep or choose another status.
 - **Immediate return on timeout**: The middleware now returns immediately when a timeout occurs, without waiting for the handler to finish. This is achieved through the new **Abandon mechanism** which marks the context as abandoned so it won't be returned to the pool while the handler is still running.
 - **Context propagation**: The timeout context is properly propagated to the handler. Handlers can detect timeouts by listening on `c.Context().Done()` and return early.
 - **Panic handling**: Panics in the handler are caught and converted to `500 Internal Server Error` responses.
