@@ -975,6 +975,32 @@ func matchNoCacheToken(s string, i int) bool {
 		(b[7]|asciiCaseFold) == 'e'
 }
 
+const contentLengthField = "content-length"
+
+// hasContentLengthField reports whether raw, the header block of a request as
+// fasthttp keeps it (the field lines up to the blank line), holds a
+// Content-Length field line. Once Transfer-Encoding takes over the framing
+// fasthttp drops the Content-Length value, so the block is the only place left
+// to ask. The name is matched case-insensitively at the start of a line, so a
+// longer name that ends in it, a name inside a value and a folded continuation
+// line do not count. Whitespace before the colon is not tolerated: fasthttp
+// rejects such a request, and it never gets this far.
+func hasContentLengthField(raw []byte) bool {
+	for len(raw) > 0 {
+		line := raw
+		if i := bytes.IndexByte(raw, '\n'); i >= 0 {
+			line, raw = raw[:i], raw[i+1:]
+		} else {
+			raw = nil
+		}
+		if len(line) > len(contentLengthField) && line[len(contentLengthField)] == ':' &&
+			utils.EqualFold(utils.UnsafeString(line[:len(contentLengthField)]), contentLengthField) {
+			return true
+		}
+	}
+	return false
+}
+
 var errTestConnClosed = errors.New("testConn is closed")
 
 type testConn struct {

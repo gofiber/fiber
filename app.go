@@ -127,6 +127,8 @@ type App struct {
 	// contains the information if the route stack has been changed to build the optimized tree
 	hasRoutesRefreshed bool
 	connStateHooked    bool
+	// headerReceivedHooked is set once hookHeaderReceived has wrapped the server's callback
+	headerReceivedHooked bool
 	// hasCustomCtx tracks whether app uses a custom context implementation
 	hasCustomCtx bool
 	// hasParamRoutes tracks whether any route consults the per-request slash
@@ -359,7 +361,9 @@ type Config struct { //nolint:govet // Aligning the struct fields is not necessa
 	// GETOnly rejects all non-GET requests if set to true.
 	// This option is useful as anti-DoS protection for servers
 	// accepting only GET requests. The request size is limited
-	// by ReadBufferSize if GETOnly is set.
+	// by ReadBufferSize if GETOnly is set. HEAD requests are let
+	// through, and any other method is answered 405 with
+	// "Allow: GET, HEAD".
 	//
 	// Default: false
 	GETOnly bool `json:"get_only"`
@@ -1714,6 +1718,19 @@ func (app *App) ErrorHandler(ctx Ctx, err error) error {
 	return app.config.ErrorHandler(ctx, err)
 }
 
+const (
+	// getOnlyAllow is the Allow value for the 405 that Config.GETOnly produces.
+	getOnlyAllow = MethodGet + ", " + MethodHead
+
+	// unsupportedTransferCodingMarker is how fasthttp words a request whose
+	// Transfer-Encoding names a coding it cannot decode: the coding follows,
+	// quoted. The ErrUnsupportedTransferEncoding sentinel is deliberately not
+	// matched. fasthttp returns it as well for an HTTP/1.0 message that carries
+	// the field and for a repeated field, which are faulty framing (RFC 9112
+	// Section 6.1, Section 6.3) and stay 400.
+	unsupportedTransferCodingMarker = `unsupported transfer-encoding: "`
+)
+
 // serverErrorHandler is a wrapper around the application's error handler method
 // user for the fasthttp server configuration. It maps a set of fasthttp errors to fiber
 // errors before calling the application's error handler method.
@@ -1749,7 +1766,14 @@ func (app *App) serverErrorHandler(fctx *fasthttp.RequestCtx, err error) {
 		err = ErrRequestEntityTooLarge
 	case errors.Is(err, fasthttp.ErrGetOnly):
 		err = ErrMethodNotAllowed
+		// A 405 MUST list the methods the resource supports in Allow (RFC 9110
+		// Section 15.5.6). In GETOnly mode fasthttp lets GET and HEAD through.
+		c.Set(HeaderAllow, getOnlyAllow)
 	case strings.Contains(errMessage, "unsupported http request method"):
+		err = ErrNotImplemented
+	case strings.Contains(errMessage, unsupportedTransferCodingMarker):
+		// A transfer coding the server does not understand SHOULD be answered
+		// with 501 (RFC 9112 Section 6.1), not 400.
 		err = ErrNotImplemented
 	case strings.Contains(errMessage, "timeout"):
 		err = ErrRequestTimeout
@@ -1792,6 +1816,7 @@ func (app *App) startupProcess() {
 	defer app.mutex.Unlock()
 
 	app.hookConnState()
+	app.hookHeaderReceived()
 	// Collect every mounted app first, nested ones included, so all get their automatic HEAD routes.
 	app.collectSubApps()
 	app.ensureAutoHeadRoutesLocked()
@@ -1836,6 +1861,37 @@ func (app *App) hookConnState() {
 		if user != nil {
 			user(conn, state)
 		}
+	}
+}
+
+// hookHeaderReceived makes the server close the connection after it answers a
+// request that carries both Content-Length and Transfer-Encoding, keeping a user
+// HeaderReceived callback. The server processes such a request by its
+// Transfer-Encoding, as RFC 9112 Section 6.1 allows, but must then close the
+// connection: the two headers are how a request-smuggling message looks, and the
+// bytes that follow it on the connection may belong to a request that another
+// recipient framed differently. Idempotent; the caller holds app.mutex.
+//
+// This is a hook rather than a check in the request handler because the handler
+// runs after the chunked body is decoded, when fasthttp has already replaced the
+// request's length with the decoded one and dropped the Content-Length value.
+// Here the request still reports its chunked framing, so only chunked requests
+// pay for looking at the raw header block.
+func (app *App) hookHeaderReceived() {
+	if app.headerReceivedHooked || app.server == nil {
+		return
+	}
+	app.headerReceivedHooked = true
+	user := app.server.HeaderReceived
+	app.server.HeaderReceived = func(header *fasthttp.RequestHeader) fasthttp.RequestConfig {
+		if header.ContentLength() == -1 && hasContentLengthField(header.RawHeaders()) {
+			header.SetConnectionClose()
+		}
+		if user != nil {
+			return user(header)
+		}
+		// The zero value keeps the server's own limits and timeouts.
+		return fasthttp.RequestConfig{}
 	}
 }
 
