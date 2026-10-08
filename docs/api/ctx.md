@@ -3179,6 +3179,12 @@ app.Get("/", func(c fiber.Ctx) error {
 })
 ```
 
+:::caution Cookie values
+The grammar of [RFC 6265 §4.1.1](https://www.rfc-editor.org/rfc/rfc6265#section-4.1.1) allows visible ASCII in a cookie value, without the double quote, the comma, the semicolon, the backslash and whitespace. A `Value` that holds a character outside the grammar is not altered: the cookie is not set, as with an invalid name or `Domain`. The exceptions are the space and the comma, which many applications use: a value with either is written inside double quotes, as `net/http` does (`Value: "hello world"` is sent as `n="hello world"`), and so is a value that already starts and ends with a double quote. The quotes frame the value and are not part of it, so `GetCookie` and the `Cookies` of the request that carries the cookie back return `hello world`.
+
+Quoted spaces and commas are widely accepted but are not strictly what the grammar allows. A strict parser can drop them, so percent-encode a value that has to travel through one, for example with `url.QueryEscape`, and decode it when you read it.
+:::
+
 :::info
 When setting a cookie with `SameSite=None`, Fiber automatically sets `Secure=true` as required by RFC 6265bis and modern browsers. This ensures compliance with the "None" SameSite policy which mandates that cookies must be sent over secure connections.
 

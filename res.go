@@ -354,11 +354,16 @@ func (r *DefaultRes) Cookie(cookie *Cookie) {
 		c.Secure = true
 	}
 
+	// A value wrapped in double quotes is the quoted form of cookie-value (RFC
+	// 6265 Section 4.1.1); the quotes frame it and are not part of it, which is
+	// also how fasthttp reads it back from a Cookie or Set-Cookie line.
+	value, quoted := unquoteCookieValue(c.Value)
+
 	// Validate before fasthttp's setters can silently replace CR/LF or semicolons;
 	// rejection, rather than mutation, is this API's existing contract.
 	hc := &http.Cookie{ //nolint:gosec // G124: http.Cookie missing or has insecure Secure, HttpOnly, or SameSite attribute
 		Name:        c.Name,
-		Value:       c.Value,
+		Value:       value,
 		Path:        c.Path,
 		Domain:      c.Domain,
 		Expires:     c.Expires,
@@ -377,7 +382,15 @@ func (r *DefaultRes) Cookie(cookie *Cookie) {
 	// create fasthttp cookie
 	fcookie := fasthttp.AcquireCookie()
 	fcookie.SetKey(hc.Name)
-	fcookie.SetValue(hc.Value)
+	// A space or a comma is no cookie-octet (RFC 6265 Section 4.1.1), so a value
+	// that holds one is written in quotes, as net/http does, and so is one that
+	// came in quotes. fasthttp writes the value it is given and drops the quotes
+	// when it reads the line back, so the application sees the value it set.
+	wireValue := hc.Value
+	if quoted || utils.IndexAny2(wireValue, ' ', ',') >= 0 {
+		wireValue = `"` + wireValue + `"`
+	}
+	fcookie.SetValue(wireValue)
 	fcookie.SetPath(hc.Path)
 	fcookie.SetDomain(hc.Domain)
 
@@ -396,6 +409,15 @@ func (r *DefaultRes) Cookie(cookie *Cookie) {
 	// Set resp header
 	r.c.fasthttp.Response.Header.SetCookie(fcookie)
 	fasthttp.ReleaseCookie(fcookie)
+}
+
+// unquoteCookieValue splits a cookie value wrapped in double quotes into what
+// is inside them. A lone quote is no pair and is left for the caller to reject.
+func unquoteCookieValue(value string) (unquoted string, quoted bool) { //nolint:nonamedreturns // the two results are easy to swap without names
+	if len(value) >= 2 && value[0] == '"' && value[len(value)-1] == '"' {
+		return value[1 : len(value)-1], true
+	}
+	return value, false
 }
 
 // GetCookie reads back a cookie this response is set to send, false when the

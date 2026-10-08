@@ -1946,6 +1946,118 @@ func Test_Ctx_Cookie_Invalid(t *testing.T) {
 	}
 }
 
+// RFC 6265 Section 4.1.1: a space or a comma is no cookie-octet, so a value that
+// holds one is written in quotes, as net/http does, and a value that comes in
+// quotes stays quoted. The quotes frame the value and are not part of it: what
+// the response reads back, and what a client sending the line back reads, is the
+// value the application set.
+// go test -run Test_Ctx_Cookie_ValueQuoting
+func Test_Ctx_Cookie_ValueQuoting(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		value string
+		line  string // the Set-Cookie line
+		read  string // the value read back from it
+	}{
+		{name: "plain", value: "abc123", line: "n=abc123; path=/; SameSite=Lax", read: "abc123"},
+		{name: "empty", value: "", line: "n=; path=/; SameSite=Lax", read: ""},
+		{name: "space", value: "hello world", line: `n="hello world"; path=/; SameSite=Lax`, read: "hello world"},
+		{name: "comma", value: "x,y", line: `n="x,y"; path=/; SameSite=Lax`, read: "x,y"},
+		{name: "space and comma", value: "a b, c", line: `n="a b, c"; path=/; SameSite=Lax`, read: "a b, c"},
+		{name: "edge spaces", value: " a ", line: `n=" a "; path=/; SameSite=Lax`, read: " a "},
+		{name: "already quoted", value: `"abc"`, line: `n="abc"; path=/; SameSite=Lax`, read: "abc"},
+		{name: "already quoted with a space", value: `"a b"`, line: `n="a b"; path=/; SameSite=Lax`, read: "a b"},
+		{name: "empty and quoted", value: `""`, line: `n=""; path=/; SameSite=Lax`, read: ""},
+		{name: "visible ASCII", value: "!#$%&'()*+-./:<=>?@[]^_`{|}~", line: "n=!#$%&'()*+-./:<=>?@[]^_`{|}~; path=/; SameSite=Lax", read: "!#$%&'()*+-./:<=>?@[]^_`{|}~"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			app := New()
+			c := app.AcquireCtx(&fasthttp.RequestCtx{})
+			t.Cleanup(func() { app.ReleaseCtx(c) })
+
+			c.Res().Cookie(&Cookie{Name: "n", Value: tc.value})
+			require.Equal(t, tc.line, c.Res().Get(HeaderSetCookie))
+
+			got, ok := c.Res().GetCookie("n")
+			require.True(t, ok)
+			require.Equal(t, tc.read, got.Value)
+
+			// The client sends the pair back as it received it.
+			pair, _, _ := strings.Cut(c.Res().Get(HeaderSetCookie), ";")
+			c.Request().Header.Set(HeaderCookie, pair)
+			require.Equal(t, tc.read, c.Cookies("n"))
+		})
+	}
+}
+
+// A value the grammar cannot carry, even in quotes, is still refused rather than
+// altered: the cookie is not set.
+// go test -run Test_Ctx_Cookie_ValueRejected
+func Test_Ctx_Cookie_ValueRejected(t *testing.T) {
+	t.Parallel()
+
+	for name, value := range map[string]string{
+		"semicolon":                 "a;b",
+		"semicolon in quotes":       `"a;b"`,
+		"double quote":              `a"b`,
+		"double quote inside quote": `"a"b"`,
+		"lone double quote":         `"`,
+		"opening quote only":        `"abc`,
+		"closing quote only":        `abc"`,
+		"backslash":                 `a\b`,
+		"backslash in quotes":       `"a\b"`,
+		"tab":                       "a\tb",
+		"line feed":                 "a\nb",
+		"non-ASCII":                 "café",
+		"DEL":                       "a\x7fb",
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			app := New()
+			c := app.AcquireCtx(&fasthttp.RequestCtx{})
+			t.Cleanup(func() { app.ReleaseCtx(c) })
+
+			c.Res().Cookie(&Cookie{Name: "n", Value: value})
+			require.Empty(t, c.Res().Get(HeaderSetCookie))
+		})
+	}
+}
+
+// An independent parser agrees on the values: net/http reads the lines Cookie
+// writes and finds the values that were set.
+// go test -run Test_Ctx_Cookie_ValueQuoting_NetHTTP
+func Test_Ctx_Cookie_ValueQuoting_NetHTTP(t *testing.T) {
+	t.Parallel()
+
+	values := []string{"plain", "hello world", "x,y", "a b, c", `"abc"`, `"a b"`}
+
+	app := New()
+	app.Get("/", func(c Ctx) error {
+		for i, value := range values {
+			c.Cookie(&Cookie{Name: "c" + strconv.Itoa(i), Value: value})
+		}
+		return nil
+	})
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/", http.NoBody))
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, resp.Body.Close()) })
+
+	cookies := resp.Cookies()
+	require.Len(t, cookies, len(values))
+	for i, cookie := range cookies {
+		require.Equal(t, "c"+strconv.Itoa(i), cookie.Name)
+		require.Equal(t, strings.Trim(values[i], `"`), cookie.Value)
+	}
+}
+
 // go test -run Test_Ctx_Cookie_DefaultPath
 func Test_Ctx_Cookie_DefaultPath(t *testing.T) {
 	t.Parallel()
