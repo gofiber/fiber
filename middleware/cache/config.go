@@ -29,6 +29,8 @@ type Config struct {
 	// KeyGenerator allows you to generate custom keys.
 	//
 	// When nil, the middleware uses a structured key based on:
+	//   - Request scheme and host, as c.Scheme() and c.Host() report them
+	//     (bounded; two hosts never share an entry)
 	//   - Request path (bounded to 192 bytes, hashed if longer)
 	//   - Canonical query string (sorted parameters, bounded)
 	//   - Selected request headers (from KeyHeaders)
@@ -109,7 +111,12 @@ type Config struct {
 	// Optional. Default: false
 	DisableValueRedaction bool
 
-	// DisableCacheControl disables client side caching if set to true
+	// DisableCacheControl disables client side caching if set to true.
+	//
+	// When false, a hit whose entry carries no Cache-Control of its own is sent
+	// with "public, max-age=<remaining>", or "private, max-age=<remaining>" when
+	// the entry holds one user's response: the response's Vary lists Cookie or
+	// Authorization, KeyCookies is set, or KeyHeaders names either header.
 	//
 	// Optional. Default: false
 	DisableCacheControl bool

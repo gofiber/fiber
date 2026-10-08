@@ -18,6 +18,7 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/internal/headerlist"
+	"github.com/gofiber/fiber/v3/internal/wiretarget"
 	"github.com/gofiber/utils/v2"
 	"github.com/valyala/fasthttp"
 	"github.com/valyala/fasthttp/fasthttpadaptor"
@@ -251,8 +252,7 @@ func HTTPHandlerFunc(h http.HandlerFunc) fiber.Handler {
 func HTTPHandler(h http.Handler) fiber.Handler {
 	handler := fasthttpadaptor.NewFastHTTPHandler(h)
 	return func(c fiber.Ctx) error {
-		handler(c.RequestCtx())
-		return nil
+		return serveRouted(c, handler)
 	}
 }
 
@@ -264,9 +264,62 @@ func HTTPHandlerWithContext(h http.Handler) fiber.Handler {
 		// so adapted net/http handlers can retrieve it via adaptor.LocalContextFromHTTPRequest(r)
 		c.RequestCtx().SetUserValue(localContextKey, c.Context())
 
+		return serveRouted(c, handler)
+	}
+}
+
+// serveRouted runs handler, a net/http handler adapted by fasthttpadaptor, on
+// a request line that spells the path the router matched (wiretarget.Routed)
+// rather than the one that arrived, and puts the original back afterwards.
+// The two differ for an escaped or non-canonical request, and net/http reads
+// the raw one its own way: "/public/..%2Fadmin" decodes into a URL.Path that
+// http.FileServer cleans to "/admin", although no middleware mounted on
+// "/admin" has run. A routed path whose segments would not survive that
+// reading, one with an empty segment or an escaped slash, is not handed on.
+func serveRouted(c fiber.Ctx, handler fasthttp.RequestHandler) error {
+	target := wiretarget.Routed(c)
+	if !wiretarget.SegmentsAsRouted(target) {
+		return fiber.ErrNotFound
+	}
+	if target == c.OriginalURL() {
+		// the request line already spells the routed path
 		handler(c.RequestCtx())
 		return nil
 	}
+	req := c.Request()
+	original := utils.CopyString(c.OriginalURL())
+	setRoutedTarget(c, target)
+	// Buffered, the handler has returned, or panicked, in which case
+	// fasthttpadaptor re-panics here and the recover middleware or error
+	// handler that catches it still has to see the original line. Streaming
+	// or hijacked, the handler is still running with an http.Request whose
+	// URL aliases the request line's storage, so the line is left as the
+	// handler read it.
+	defer func() {
+		if !c.Response().IsBodyStream() && !c.RequestCtx().Hijacked() {
+			req.SetRequestURI(original)
+		}
+	}()
+	handler(c.RequestCtx())
+	return nil
+}
+
+// setRoutedTarget sets target, the routed request target, as c's request line.
+// A target that is the line as it arrived is left alone, which spares a second
+// parse of it. Otherwise the host fasthttp parsed is kept: a target that is a
+// path makes fasthttp take the host from the Host header again, while an
+// absolute-form request line names its own, which RFC 9112 Section 3.2.2 says
+// the server uses and which c.Hostname() reported. Kept, the adapted handler
+// sees in r.Host the host Fiber saw.
+func setRoutedTarget(c fiber.Ctx, target string) {
+	if target == c.OriginalURL() {
+		return
+	}
+	req := c.Request()
+	var buf [64]byte
+	host := append(buf[:0], req.URI().Host()...)
+	req.SetRequestURI(target)
+	req.URI().SetHostBytes(host)
 }
 
 // LocalContextFromHTTPRequest extracts the Fiber user context previously stored into r.Context() by the adaptor.
@@ -281,7 +334,22 @@ func LocalContextFromHTTPRequest(r *http.Request) (context.Context, bool) {
 
 // ConvertRequest converts a fiber.Ctx to a http.Request.
 // forServer should be set to true when the http.Request is going to be passed to a http.Handler.
+//
+// The request is built from the path the router matched (see
+// wiretarget.Routed), which the request line is set to; the returned request's
+// URL and RequestURI alias that line's storage, as they do in fasthttpadaptor,
+// so it is left in place. A routed path fasthttp would read as an authority
+// rather than a path (see wiretarget.ParsesAsPath) is answered with
+// fiber.ErrBadRequest instead of being set, since the request's host would
+// then be read out of it; so is one holding a forged escape (see
+// wiretarget.HasForgedEscape), which URL.Path would decode into a segment the
+// router never matched.
 func ConvertRequest(c fiber.Ctx, forServer bool) (*http.Request, error) {
+	target := wiretarget.Routed(c)
+	if !wiretarget.ParsesAsPath(target, c.Request().Header.Host()) || wiretarget.HasForgedEscape(target) {
+		return nil, fiber.ErrBadRequest
+	}
+	setRoutedTarget(c, target)
 	var req http.Request
 	if err := fasthttpadaptor.ConvertRequest(c.RequestCtx(), &req, forServer); err != nil {
 		return nil, err //nolint:wrapcheck // This must not be wrapped
@@ -512,6 +580,12 @@ func HTTPMiddleware(mw func(http.Handler) http.Handler) fiber.Handler {
 			pairs := snapshotHeaders(r.Header)
 
 			fhdr.SetMethod(r.Method)
+			// r.Host is a view of the URI's host, which SetRequestURI makes
+			// fasthttp parse again, from the Host header for a target that is
+			// a path: copy it first, or the host written back below is the
+			// header's rather than the one r carried.
+			var hostBuf [64]byte
+			host := append(hostBuf[:0], r.Host...)
 			// A rewrite of r.URL (http.StripPrefix) leaves RequestURI untouched; route the URL.
 			requestURI := r.RequestURI
 			newPath := ""
@@ -523,8 +597,8 @@ func HTTPMiddleware(mw func(http.Handler) http.Handler) fiber.Handler {
 				}
 			}
 			freq.SetRequestURI(requestURI)
-			freq.SetHost(r.Host)
-			fhdr.SetHost(r.Host)
+			freq.URI().SetHostBytes(host)
+			fhdr.SetHostBytes(host)
 			// Only a genuine rewrite re-routes. The decoded path differs from the raw
 			// one for every escaped or non-canonical request, and overriding it there
 			// re-buckets the tree, resuming the chain past middleware that already ran.
@@ -556,16 +630,33 @@ func HTTPMiddleware(mw func(http.Handler) http.Handler) fiber.Handler {
 				// RFC 9110 Section 7.6.1 matches connection options
 				// case-insensitively.
 				if headerlist.ContainsFold(joined, "close") {
-					// The close instruction is carried separately rather than
-					// written back here: fasthttp's request flag makes Peek answer
-					// "close" and hides the rest of the list (RFC 9110 §7.6.1),
-					// which is how a proxy downstream learns what to strip.
+					// Set raises fasthttp's request flag for a close token anywhere
+					// in the list and keeps the complete list for Peek, which is how
+					// a proxy downstream learns what to strip. The server read that
+					// flag before calling the handler, though, so the instruction is
+					// carried separately and moved to the response below.
 					connectionClose = true
 				}
 			}
 			CopyContextToFiberContext(r.Context(), c.RequestCtx())
 		})
 
+		// The middleware reads the path the router matched (see
+		// wiretarget.Routed), not the request line as it arrived: a guard on
+		// r.URL.Path has to see the "/admin/x" that "/a/../admin/x" was routed
+		// as. Escaped slashes are handed on, in r.URL.RawPath, so a Fiber
+		// route behind the middleware still receives its "%2F". A path
+		// fasthttp would read as an authority rather than a path (see
+		// wiretarget.ParsesAsPath) is refused: set as the request line, it
+		// would become the host of both the net/http request and the Fiber
+		// request behind the middleware. So is a path holding a forged
+		// escape (see wiretarget.HasForgedEscape), which URL.Path would
+		// decode into a segment the router never matched.
+		target := wiretarget.Routed(c)
+		if !wiretarget.ParsesAsPath(target, c.Request().Header.Host()) || wiretarget.HasForgedEscape(target) {
+			return fiber.ErrBadRequest
+		}
+		setRoutedTarget(c, target)
 		// Call the fasthttp adaptor directly: HTTPHandler would wrap it in a
 		// second closure that has to be built on every request, and its
 		// error result is always nil.
@@ -582,12 +673,10 @@ func HTTPMiddleware(mw func(http.Handler) http.Handler) fiber.Handler {
 		}
 
 		if closeConnection {
-			// The close instruction rides on the response so the request keeps the
-			// complete field for every observer — downstream handlers, middleware
-			// resuming after Next, and the app's ErrorHandler alike. It also has to
-			// go on the response to have any effect: fasthttp stores the request
-			// flag before calling the handler and never reads it again, whereas the
-			// response flag is what the server consults once the handler returns.
+			// The close instruction has to go on the response to have any effect:
+			// fasthttp stores the request flag before calling the handler and never
+			// reads it again, whereas the response flag is what the server consults
+			// once the handler returns.
 			//
 			// Applied on the way out, because a single flag stands for the whole
 			// response and the downstream chain can clear it: a handler resetting
@@ -683,6 +772,87 @@ func resolveRemoteAddr(remoteAddr string, localAddr any) (net.Addr, error) {
 	return nil, fmt.Errorf("failed to resolve TCP address: %w", err)
 }
 
+// requestTarget is the request line net/http writes for r, as Request.write
+// spells it: URL.RequestURI(), except for a CONNECT request whose URL has no
+// path. net/http reads and writes such a request in the authority form,
+// keeping the target in URL.Host, and URL.RequestURI() reads "/" for it; the
+// line is then the authority, from URL.Opaque or the host, so a Fiber CONNECT
+// route sees the host the request names rather than "/".
+func requestTarget(r *http.Request) string {
+	if r.URL == nil {
+		return ""
+	}
+	if r.Method != http.MethodConnect || r.URL.Path != "" {
+		return r.URL.RequestURI()
+	}
+	if r.URL.Opaque != "" {
+		return r.URL.Opaque
+	}
+	if r.Host != "" {
+		return r.Host
+	}
+	return r.URL.Host
+}
+
+// routedRequestURI returns the request line Fiber routes for r. It is
+// r.RequestURI as net/http received it, so Fiber routes the bytes the client
+// sent, a raw "/über" or "/a|b" included, as it would served directly. Only
+// when r.URL no longer says what that line says, because a handler in front
+// rewrote it as http.StripPrefix does, or when there is no such line, as for a
+// request built in code, is it the line net/http would write for r.URL (see
+// requestTarget). The comparison decodes the received path, since r.URL holds
+// it decoded and re-escapes it its own way.
+func routedRequestURI(r *http.Request) string {
+	if r.URL == nil {
+		return r.RequestURI
+	}
+	if raw := r.RequestURI; raw != "" && raw[0] == '/' {
+		rawPath, rawQuery, _ := strings.Cut(raw, "?")
+		if r.URL.RawQuery == rawQuery && decodesTo(rawPath, r.URL.Path) {
+			return raw
+		}
+		return requestTarget(r)
+	}
+	if fromURL := requestTarget(r); fromURL != "" && fromURL != r.RequestURI {
+		return fromURL
+	}
+	return r.RequestURI
+}
+
+// decodesTo reports whether raw, a path whose escapes are well formed as
+// net/http requires of a request line, percent-decodes to decoded.
+func decodesTo(raw, decoded string) bool {
+	j := 0
+	for i := 0; i < len(raw); i++ {
+		c := raw[i]
+		if c == '%' && i+2 < len(raw) && isHex(raw[i+1]) && isHex(raw[i+2]) {
+			c = fromHex(raw[i+1])<<4 | fromHex(raw[i+2])
+			i += 2
+		}
+		if j >= len(decoded) || decoded[j] != c {
+			return false
+		}
+		j++
+	}
+	return j == len(decoded)
+}
+
+func isHex(c byte) bool {
+	return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')
+}
+
+// fromHex returns the value of the hex digit c.
+func fromHex(c byte) byte {
+	switch {
+	case c >= 'a':
+		return c - 'a' + 10
+	case c >= 'A':
+		return c - 'A' + 10
+	default:
+		return c - '0'
+	}
+}
+
 func handlerFunc(app *fiber.App, h ...fiber.Handler) http.HandlerFunc {
 	// App.Config returns the config by value, so read the body limit once at
 	// construction instead of copying the whole 624-byte struct on every
@@ -761,7 +931,7 @@ func handlerFunc(app *fiber.App, h ...fiber.Handler) http.HandlerFunc {
 			req.Header.SetContentLength(int(n))
 		}
 		req.Header.SetMethod(r.Method)
-		req.SetRequestURI(r.RequestURI)
+		req.SetRequestURI(routedRequestURI(r))
 		req.SetHost(r.Host)
 		req.Header.SetHost(r.Host)
 		// Propagate the real protocol version so protocol-dependent behavior

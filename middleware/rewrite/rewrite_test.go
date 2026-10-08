@@ -1,10 +1,12 @@
 package rewrite
 
 import (
+	"bufio"
 	"context"
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/gofiber/fiber/v3"
@@ -610,4 +612,70 @@ func Test_Rewrite_TwoDigitCaptures(t *testing.T) {
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
 	require.Equal(t, "k j a", string(body))
+}
+
+// rewrittenRaw hands app a request line exactly as written and reports the
+// path the handler behind the rewrite saw.
+func rewrittenRaw(t *testing.T, app *fiber.App, target string) string {
+	t.Helper()
+
+	var req fasthttp.Request
+	raw := fiber.MethodGet + " " + target + " HTTP/1.1\r\nHost: example.com\r\n\r\n"
+	require.NoError(t, req.Read(bufio.NewReader(strings.NewReader(raw))))
+
+	var fctx fasthttp.RequestCtx
+	fctx.Init(&req, nil, nil)
+	app.Handler()(&fctx)
+	require.Equal(t, fiber.StatusOK, fctx.Response.StatusCode(), target)
+	return string(fctx.Response.Body())
+}
+
+// Test_Rewrite_UnescapePathDecodesOnce pins that a capture is not decoded a
+// second time when the rewritten path is set: with UnescapePath the router
+// decoded "/files/%252e%252e/secret" into "/files/%2e%2e/secret", and the
+// "%2e%2e" carried into "/public/$1" has to stay that name rather than
+// become ".." and resolve out of "/public/".
+func Test_Rewrite_UnescapePathDecodesOnce(t *testing.T) {
+	t.Parallel()
+
+	for _, unescape := range []bool{false, true} {
+		app := fiber.New(fiber.Config{UnescapePath: unescape})
+		app.Use(New(Config{
+			RuleList: []Rule{{From: "/files/*", To: "/public/$1"}},
+		}))
+		app.Use(func(c fiber.Ctx) error {
+			return c.SendString(c.Path())
+		})
+
+		for target, want := range map[string]string{
+			"/files/a/b":                "/public/a/b",
+			"/files/%252e%252e/secret":  "/public/%2e%2e/secret",
+			"/files/..%252Fsecret":      "/public/..%2Fsecret",
+			"/files/%41%20b":            "/public/A b",
+			"/files/a%3Fb%23c":          "/public/a?b#c",
+			"/files/caf%C3%A9":          "/public/café",
+			"/files/%2e%2e/secret":      "/secret",
+			"/files/%252e%252e/secret/": "/public/%2e%2e/secret/",
+		} {
+			if !unescape {
+				// Without UnescapePath the path keeps its escapes, and a capture
+				// is carried as is.
+				switch target {
+				case "/files/%41%20b":
+					want = "/public/A%20b"
+				case "/files/a%3Fb%23c":
+					want = "/public/a%3Fb%23c"
+				case "/files/caf%C3%A9":
+					want = "/public/caf%C3%A9"
+				case "/files/%252e%252e/secret":
+					want = "/public/%252e%252e/secret"
+				case "/files/..%252Fsecret":
+					want = "/public/..%252Fsecret"
+				case "/files/%252e%252e/secret/":
+					want = "/public/%252e%252e/secret/"
+				}
+			}
+			require.Equal(t, want, rewrittenRaw(t, app, target), "UnescapePath=%v %s", unescape, target)
+		}
+	}
 }

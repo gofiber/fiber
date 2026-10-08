@@ -19,6 +19,12 @@ import (
 // maxVaryHeaders caps the number of Vary headers processed to prevent DoS.
 const maxVaryHeaders = 32
 
+// maxVaryLen caps the bytes of a Vary value an entry stores. It is the decode
+// limit on item.vary, the msgp tag in manager.go, which the encoder does not
+// enforce: a longer value would be written to an external Storage and then
+// refused on every read until the entry expired. The two must agree.
+const maxVaryLen = 2048
+
 // defaultVaryNames is the capacity parseVary starts its name slice at, sized to
 // hold what a real Vary field carries without regrowing.
 const defaultVaryNames = 8
@@ -28,6 +34,12 @@ func parseVary(vary string) ([]string, bool) {
 	// would answer the same, after allocating the slice it never fills.
 	if utils.TrimSpace(vary) == "" {
 		return nil, false
+	}
+
+	// Longer than an entry can hold: uncacheable, like a list past
+	// maxVaryHeaders, rather than stored once and unreadable after.
+	if len(vary) > maxVaryLen {
+		return nil, true
 	}
 
 	// Given a capacity up front, because appending into a nil slice regrows the

@@ -8,6 +8,8 @@ import (
 	"strings"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/appconfig"
+	"github.com/gofiber/utils/v2"
 )
 
 type compiledRule struct {
@@ -40,7 +42,7 @@ func New(config ...Config) fiber.Handler {
 		}
 		// Rewrite
 		for _, rule := range compiled {
-			replacer := captureTokens(rule.pattern, c.Path())
+			replacer := captureTokens(rule.pattern, c.Path(), appconfig.Of(c.App()).UnescapePath)
 			if replacer != nil {
 				c.Path(replacer.Replace(rule.to))
 				break
@@ -115,7 +117,12 @@ func pinnedLen(rule string) int {
 }
 
 // https://github.com/labstack/echo/blob/master/middleware/rewrite.go
-func captureTokens(pattern *regexp.Regexp, input string) *strings.Replacer {
+//
+// With UnescapePath the path is matched decoded, and the rewritten path is
+// decoded again when it is set, so a capture goes back escaped: the "%2e%2e"
+// that "/files/%252e%252e/secret" decoded to would otherwise be decoded a
+// second time into "..", and "/public/$1" would resolve out of "/public/".
+func captureTokens(pattern *regexp.Regexp, input string, unescaped bool) *strings.Replacer { //nolint:revive // flag-parameter: unescaped is the app's UnescapePath setting
 	groups := pattern.FindStringSubmatch(input)
 	if groups == nil {
 		return nil
@@ -125,6 +132,9 @@ func captureTokens(pattern *regexp.Regexp, input string) *strings.Replacer {
 	// Highest index first: a Replacer takes the earliest listed key that matches,
 	// so "$1" ahead of "$10" read the tenth capture as the first followed by "0".
 	for i, v := range slices.Backward(values) {
+		if unescaped {
+			v = string(utils.AppendPathSegmentsEscape(nil, v))
+		}
 		replace = append(replace, "$"+strconv.Itoa(i+1), v)
 	}
 	return strings.NewReplacer(replace...)

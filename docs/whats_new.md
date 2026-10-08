@@ -360,7 +360,7 @@ We have slightly adapted our router interface
 
 ### Path normalization
 
-The router normalizes every request path before matching, as [RFC 3986 Section 6.2.2](https://www.rfc-editor.org/rfc/rfc3986#section-6.2.2) describes. Percent-encoded unreserved characters are decoded, so `/%70rivate` is matched as `/private`; every other escape keeps its encoding with uppercase hex digits; and `.` and `..` segments are removed, so `/static/x/../private` and `/static/./private` are both matched as `/static/private`. Middleware mounted on a prefix therefore sees those spellings of a path under it, and the static middleware serves the file that same path names. An encoded slash (`%2F`) still does not split a segment, so `/static%2Fprivate` does not match `/static/private`, and empty segments are kept, so neither does `/static//private`. `UnescapePath` decodes every escape, as before. Decoding happens exactly once, so `/%2570rivate` never becomes `/private`.
+The router normalizes every request path before matching, as [RFC 3986 Section 6.2.2](https://www.rfc-editor.org/rfc/rfc3986#section-6.2.2) describes. Percent-encoded unreserved characters are decoded, so `/%70rivate` is matched as `/private`; every other escape keeps its encoding with uppercase hex digits; and `.` and `..` segments are removed, so `/static/x/../private` and `/static/./private` are both matched as `/static/private`. Middleware mounted on a prefix therefore sees those spellings of a path under it, and the static middleware serves the file that same path names. An encoded slash (`%2F`) still does not split a segment, so `/static%2Fprivate` does not match `/static/private`, and empty segments are kept, so neither does `/static//private`. `UnescapePath` decodes every escape, as before. Decoding happens exactly once, so `/%2570rivate` never becomes `/private`. A stray `%` that begins no escape is kept as sent, unless an escape decoded after it would complete a new escape with it: `/%%370rivate` is matched as `/%2570rivate`, never as `/%70rivate`, while `/files/100%` and `/files/./100%` both give the parameter `100%`. A request target that is not a rooted path, the asterisk form of `OPTIONS *` or an absolute-form URI with an empty path, is routed as the rooted path fasthttp reports for it (`/*` and `/`), so root-level middleware runs for it as for any other request; so is the authority form fasthttp admits for `CONNECT`, whose `admin//secret` is routed as `/admin//secret`. `RoutePatternMatch` takes a path rather than a request target: it reads the empty string as `/` and answers `false` for any other string without a leading slash; before, `RoutePatternMatch("*", "/*")` was `true`.
 
 `c.Path()` returns the normalized path. `c.OriginalURL()` still returns the request target as the client sent it.
 
@@ -785,7 +785,7 @@ for the response. The response cookies are `c.Res().GetCookies()`, named apart f
 - **Bind**: Now used for binding instead of view binding. Use `c.ViewBind()` for view binding.
 - **Format**: Parameter changed from `body any` to `handlers ...ResFmt`.
 - **Redirect**: Use `c.Redirect().To()` instead.
-- **SendFile**: Now supports different configurations using a config parameter.
+- **SendFile**: Now supports different configurations using a config parameter. The file name is taken literally, as `os.Open` takes it: it is no longer percent-decoded, and a `?` or `#` in it is part of the name, so drop any `url.PathEscape` applied to it. An encoded separator carried by a route parameter (`..%2Fsecret.txt`) no longer decodes into a step out of the directory the name was joined to, a directory named without a trailing slash is not found instead of redirected to its filesystem path, and a name holding an ASCII control byte is not found. With `UnescapePath` off, a route parameter keeps its escapes, so a handler that passes one to `SendFile` must decode it first and confine the result, or enable `UnescapePath` (see the [migration guide](#-context-1)). `Download` follows, since it serves through `SendFile`.
 - **Attachment and Download**: Non-ASCII filenames now use `filename*` as
   specified by [RFC 6266](https://www.rfc-editor.org/rfc/rfc6266) and
   [RFC 8187](https://www.rfc-editor.org/rfc/rfc8187). The `filename` parameter
@@ -1463,6 +1463,8 @@ Incoming body sizes now respect the Fiber app's configured `BodyLimit` (falling 
 
 The adaptor also propagates the request's protocol version, normalized to Fiber's convention (`HTTP/2.0` → `HTTP/2`, `HTTP/3.0` → `HTTP/3`), so `c.Protocol()` reports the real version instead of always `HTTP/1.1`. Interim responses such as `SendEarlyHints`' `103` are silently skipped through the adaptor — there is no client connection to write them to — while the `Link` headers still reach the final response.
 
+An adapted `net/http` handler, middleware or `ConvertRequest` request is built from the path the router matched, `c.Path()`, followed by the query as the client sent it, rather than from the request line as it arrived, so a `net/http` guard on `r.URL.Path` sees the `/admin/x` that `/a/../admin/x` was routed as. A byte a path may not carry raw is written as its escape, and the request keeps the host Fiber saw, including the one an absolute-form request line names. `HTTPHandler`, `HTTPHandlerFunc` and `HTTPHandlerWithContext` answer `404 Not Found` for a routed path with an empty segment or an escaped slash, such as `//admin/x` or `/public/..%2Fadmin/x`, which `net/http` would otherwise decode and clean into a path no Fiber middleware ran for, and for one with a backslash or a dot segment carrying parameters (`..;`), which an upstream behind a handler such as `httputil.ReverseProxy` may resolve into another path; a handler that must serve such names can be wrapped with `HTTPMiddleware` instead. `HTTPMiddleware` answers `400 Bad Request`, and `ConvertRequest` returns `fiber.ErrBadRequest`, for a routed path fasthttp would read as an authority rather than a path: one that begins with `//` and holds `://`, or one beginning with `//` on a request without a `Host` header. A routed path holding an escape of an unreserved character, which only a stray `%` can forge, is `404 Not Found` from the handler adapters and `400 Bad Request` from `HTTPMiddleware` and `ConvertRequest`, since `URL.Path` would read a forged `%2e%2e` as `..`. `FiberHandler`, `FiberHandlerFunc` and `FiberApp` route `r.RequestURI` as received, so a raw `/über` is routed as a Fiber server routes it, and when `r.URL` no longer matches that line, the request line `net/http` would write for `r`: a rewritten `r.URL`, as `http.StripPrefix` produces, a request built in code without a `RequestURI`, and the authority of a `CONNECT` request in the authority form. See the adaptor's [notes and limitations](./middleware/adaptor.md#notes-and-limitations).
+
 | Payload Size | Metric         | V2           | V3          | Percent Change |
 | ------------ | -------------- | ------------ | ----------- | -------------- |
 | 100KB        | Execution Time | 1056 ns/op   | 588.6 ns/op | -44.25%        |
@@ -1489,7 +1491,7 @@ The adaptor also propagates the request's protocol version, normalized to Fiber'
 
 ### BasicAuth
 
-The BasicAuth middleware now validates the `Authorization` header more rigorously and sets security-focused response headers. Passwords must be provided in **hashed** form (e.g. SHA-256 or bcrypt) rather than plaintext. The default challenge includes the `charset="UTF-8"` parameter and disables caching. Responses also set a `Vary: Authorization` header to prevent caching based on credentials. Passwords are no longer stored in the request context. A `Charset` option controls the value used in the challenge header.
+The BasicAuth middleware now validates the `Authorization` header more rigorously and sets security-focused response headers. Passwords must be provided in **hashed** form (e.g. SHA-256 or bcrypt) rather than plaintext. The default challenge includes the `charset="UTF-8"` parameter and disables caching. Responses also set a `Vary: Authorization` header to prevent caching based on credentials. Passwords are no longer stored in the request context. A `Charset` option controls the value used in the challenge header. A request that carries the `Authorization` field on more than one line is refused with `400 Bad Request`: the field is defined as a single value, and reading either line would let the other decide what the request means.
 A new `HeaderLimit` option restricts the maximum length of the `Authorization` header (default: `8192` bytes).
 The `Authorizer` function now receives the current `fiber.Ctx` as a third argument, allowing credential checks to incorporate request context.
 
@@ -1499,12 +1501,14 @@ We are excited to introduce a new option in our caching middleware: Cache Invali
 
 The middleware now emits `Cache-Control` headers by default via the new `DisableCacheControl` flag, increases the default `Expiration` from `1 minute` to `5 minutes`, and applies a new `MaxBytes` limit of `1 MB` (previously unlimited).
 
+Cache hits replay the stored `Vary` header even when `StoreResponseHeaders` is off, and a hit on an entry keyed by a cookie or credential (`Vary: Cookie`, `KeyCookies`, or `KeyHeaders` naming `Cookie` or `Authorization`) is sent with `Cache-Control: private` rather than `public`, so a shared cache in front of the app does not store one user's response for the next.
+
 Additionally, the caching middleware has been optimized to avoid caching non-cacheable status codes, as defined by the [HTTP standards](https://datatracker.ietf.org/doc/html/rfc7231#section-6.1). This improvement enhances cache accuracy and reduces unnecessary cache storage usage.
 Cached responses now include an RFC-compliant Age header, providing a standardized indication of how long a response has been stored in cache since it was originally generated. This enhancement improves HTTP compliance and facilitates better client-side caching strategies.
 
 Cache keys are now redacted in logs and error messages by default, and a `DisableValueRedaction` boolean (default `false`) lets you opt out when you need the raw value for troubleshooting.
 
-The default cache key strategy was also hardened. Instead of path-only behavior, keys now use structured request dimensions: method partitioning, path, canonical query string, and selected representation headers (`Accept`, `Accept-Encoding`, `Accept-Language`). This avoids collisions such as `/items?id=1` vs `/items?id=2` while keeping key generation deterministic. New config fields were added for explicit control: `DisableQueryKeys`, `KeyHeaders`, `KeyCookies`, and `DisableVaryHeaders`.
+The default cache key strategy was also hardened. Instead of path-only behavior, keys now use structured request dimensions: method partitioning, scheme and host, path, canonical query string, and selected representation headers (`Accept`, `Accept-Encoding`, `Accept-Language`). This avoids collisions such as `/items?id=1` vs `/items?id=2`, or the same path on two hosts served by one app, while keeping key generation deterministic. New config fields were added for explicit control: `DisableQueryKeys`, `KeyHeaders`, `KeyCookies`, and `DisableVaryHeaders`.
 
 As a security/performance default, request body/form values are not part of the default cache key. Cache handling is limited to `GET` and `HEAD` requests by default, configurable via the `Methods` field.
 
@@ -1828,6 +1832,8 @@ The new `KeepConnectionHeader` option (default `false`) drops the `Connection` h
 
 `proxy.Balancer` now accepts an optional variadic configuration: call `proxy.Balancer()` to use defaults or continue passing a `proxy.Config` value as before.
 
+`Balancer`, `DomainForward` and `BalancerForward` forward the path the router matched, `c.Path()`, followed by the query as the client sent it, instead of the request line as it arrived. Spellings such as `/public/..%2Fadmin/secret` and `//admin/secret`, which fasthttp's normalization of the raw request line turned into `/admin/secret` on the way to the upstream, are answered with `400 Bad Request`, since an upstream that decodes `%2F` or merges `//` before it matches routes would still serve a path no middleware matched; the new `SecurityPolicy.AllowAmbiguousSlashes` forwards them exactly as the router matched them, for an upstream that keeps both. A path holding a backslash, a dot segment carrying parameters (`..;`), which servlet containers resolve, or an escape of an unreserved character, which only a stray `%` can forge, is answered with `400` regardless. A path with dot segments is forwarded resolved, and a byte a path may not carry raw is forwarded as its escape. Every entry in `Config.Servers` must be a scheme and host only; an entry with a path, userinfo, query or fragment panics at startup with `ErrUpstreamNotOrigin`. `Balancer` also answers `400 Bad Request` for a request whose `Host` header carries userinfo and for a routed target fasthttp would read as an authority rather than a path (one that begins with `//` and holds `://`, or one beginning with `//` on a request without a `Host` header). A path override without a leading slash is forwarded rooted. Every `*fasthttp.HostClient` in a custom `Client` gets `DisablePathNormalizing` set, and behind any other `BalancingClient` a target that normalization would change is answered with `400`. Path normalization is also disabled on the default client, on a client registered with `WithClient` and on every host client a per-call client creates once the proxy has it. See [Request target](./middleware/proxy.md#request-target).
+
 ### Recover
 
 The Recover middleware allows customizing the error it returns. Set a `PanicHandler` in its `Config` to change the default behavior.
@@ -2006,8 +2012,10 @@ app.Get("*", static.New("./public/index.html"))
 ```
 
 :::caution
-You have to put `*` to the end of the route if you don't define static route with `app.Use`.
+You have to put `*` to the end of the route if you don't define static route with `app.Use`. Under a `/prefix*` route such as `/static*`, only `/static` and paths below `/static/` are served; `/static-v2/app.js` or `/staticapp.js` are no longer served.
 :::
+
+The static middleware opens the name the router matched and does not percent-decode it a second time. Escapes the router keeps encoded, such as `%20`, stay encoded in the file name unless `UnescapePath` is enabled, and an escape of an unreserved character left in the routed path, which only a stray `%` can forge, is answered with `404` rather than decoded into a different file, so `/static/%%370rivate/secret.txt` never opens `private/secret.txt`. On Windows a path segment ending in a dot or a space is `404` as well, since the OS strips both when it opens a file. See [Static](./middleware/static.md).
 
 #### Trusted Proxies
 
@@ -2220,6 +2228,7 @@ Fiber v3 introduces several new features and changes to the Ctx interface, enhan
 - **QueryFloat**: Use `Query` with generic types.
 - **QueryInt**: Use `Query` with generic types.
 - **Bind**: Now used for binding instead of view binding. Use `c.ViewBind()` for view binding.
+- **SendFile**: The file name is taken literally and is no longer percent-decoded. With `UnescapePath` off, which is the default, a route parameter keeps the escapes the router keeps, so a handler such as `c.SendFile(filepath.Join(dir, c.Params("name")))` that served `my file.txt` for `/files/my%20file.txt`, `über.txt` for `/files/%C3%BCber.txt` or `100%.txt` for `/files/100%25.txt` now looks for the escaped name and answers `404 Not Found`. Enable `UnescapePath`, or decode the parameter with `url.PathUnescape` and serve it through the `FS` option from an `os.OpenRoot` root, which refuses a decoded name that leaves the directory (see [`SendFile`](./api/ctx.md#sendfile)). The same holds for `Download`.
 
 In Fiber v3, the `Ctx` parameter in handlers is now an interface, which means the `*` symbol is no longer used. Here is an example demonstrating this change:
 
@@ -3360,6 +3369,7 @@ app.Get("/gif", proxy.Forward("https://i.imgur.com/IWaBepg.gif"))
 
 #### Rewrite
 
+- **Captures decoded once**: with `UnescapePath` enabled a wildcard capture is escaped again before it is inserted into `To`, so the rewritten path is not decoded a second time. `/files/%252e%252e/secret` rewritten by `/files/*` to `/public/$1` now reaches the handler as `/public/%2e%2e/secret` instead of `/secret`.
 - **Ordered rules**: `Rules map[string]string` is deprecated in favor of `RuleList []Rule`. A map has no order, so which rule answered a path two rules both matched was decided by map iteration, which Go randomizes per run: the same request could be rewritten differently from one call to the next. Rules in an `RuleList` list are tried in the order written and the first match wins, exactly as routes are matched.
 
 ```go

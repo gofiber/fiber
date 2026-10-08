@@ -1560,6 +1560,10 @@ app.Get("/", func(c fiber.Ctx) error {
 })
 ```
 
+:::caution Repeated field lines
+When a request carries the same header on several field lines, `Get` returns the first line that holds a value and steps over an empty leading line. `net/http`'s `Header.Get` and fasthttp's `Peek` return the first line even when it is empty, so a `net/http` layer in front of Fiber, such as a server mounting the app through the [adaptor](../middleware/adaptor.md), can read a field as empty that `Get` returns a value for. Use [`GetAll`](#getall) to see every line, and do not authorize on a header read with `Get` unless the layer in front strips or refuses it on every line. The `basicauth` and `csrf` middleware refuse a request that repeats the single-value fields they read, and so does `keyauth` with its default `Authorization` extractor; a custom `extractors.FromHeader` extractor combines repeated lines into one value instead.
+:::
+
 :::info
 The returned value is valid only within the handler. Do not store references.
 Make copies or use the [**`Immutable`**](./fiber.md#immutable) setting instead. [Read more...](../#zero-allocation)
@@ -1771,11 +1775,11 @@ By default, `c.IP()` returns the remote IP address from the TCP connection. When
 
 **Important:** You must enable `TrustProxy` and configure trusted proxy IPs to prevent header spoofing. Simply setting `ProxyHeader` alone will not work.
 
-**Note:** When using a proxy header such as `X-Forwarded-For`, `c.IP()` returns the raw header value unless [`EnableIPValidation`](fiber.md#enableipvalidation) is enabled.
+**Note:** When using a proxy header such as `X-Forwarded-For`, `c.IP()` returns the raw header value unless [`EnableIPValidation`](fiber.md#enableipvalidation) is enabled. Enable it whenever `c.IP()` is used as a single client identifier, for example by the [limiter](../middleware/limiter.md) middleware or an IP allowlist, unless your proxy overwrites the header with a single address: otherwise the raw value can be a comma-separated chain whose leading entries are supplied by the client.
 
 **Chain parsing with `EnableIPValidation`:** For `X-Forwarded-For`, the raw value is a comma-separated chain that grows from left to right as the request passes through each proxy. With validation enabled, `c.IP()` walks the chain from right to left, skipping every IP that matches the configured `TrustProxyConfig` (exact IPs, CIDR ranges, loopback, private or link-local) and returns the first non-trusted IP it finds. This matches the behavior recommended by [MDN](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/X-Forwarded-For#selecting_an_ip_address) and the convention used by Nginx (`set_real_ip_from` + `real_ip_recursive`), Apache `mod_remoteip`, and Envoy (`xff_num_trusted_hops`).
 
-If every IP in the chain matches the trusted set, the leftmost IP is returned as a fallback. If the chain is empty, `c.IP()` falls back to the TCP remote address.
+If every IP in the chain matches the trusted set, the leftmost IP is returned as a fallback. Trust only your proxies: blanket `Private`, `Loopback` or `LinkLocal` trust is unsafe when clients can also connect from those ranges, because such a client's own entry is skipped and the address it supplied is returned instead; prefer exact proxy addresses or ranges that exclude client networks, or have the proxy overwrite the header. When `TrustProxyConfig` trusts only `UnixSocket`, there are no proxy IPs to skip and the first valid IP from the left is returned. If the chain is empty, `c.IP()` falls back to the TCP remote address.
 :::
 
 #### Configuration for apps behind a reverse proxy
@@ -1786,11 +1790,15 @@ app := fiber.New(fiber.Config{
   TrustProxy: true,
   // Specify which header contains the real client IP
   ProxyHeader: fiber.HeaderXForwardedFor,
+  // Resolve a single client IP from the X-Forwarded-For chain
+  EnableIPValidation: true,
   // Configure which proxy IPs to trust
   TrustProxyConfig: fiber.TrustProxyConfig{
-    // Trust private IP ranges (for internal load balancers)
+    // Trust private IP ranges (for internal load balancers). Only safe when
+    // clients never connect from private addresses: a client in a trusted
+    // range can forge the entry before its own, see the note above.
     Private: true,
-    // Or specify exact proxy IPs/ranges
+    // Or, preferably, specify exact proxy IPs/ranges
     // Proxies: []string{"10.10.0.58", "192.168.0.0/24"},
   },
 })
@@ -1800,6 +1808,7 @@ app := fiber.New(fiber.Config{
 app := fiber.New(fiber.Config{
   TrustProxy: true,
   ProxyHeader: fiber.HeaderXForwardedFor,
+  EnableIPValidation: true,
   TrustProxyConfig: fiber.TrustProxyConfig{
     // Trust only specific proxy IP addresses
     Proxies: []string{"10.10.0.58", "192.168.1.0/24"},
@@ -1811,7 +1820,7 @@ See [`TrustProxy`](fiber.md#trustproxy) and [`TrustProxyConfig`](fiber.md#trustp
 
 ### IPs
 
-Returns an array of IP addresses specified in the [X-Forwarded-For](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/X-Forwarded-For) request header. With `EnableIPValidation`, IPv4, IPv6 and IPv4-mapped IPv6 addresses (`::ffff:203.0.113.5`, as dual-stack proxies forward IPv4 clients) are all accepted.
+Returns an array of IP addresses specified in the [X-Forwarded-For](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/X-Forwarded-For) request header, each with the spaces and tabs around it trimmed ([RFC 9110 Section 5.6.3](https://www.rfc-editor.org/rfc/rfc9110#section-5.6.3) allows either as optional whitespace). With `EnableIPValidation`, IPv4, IPv6 and IPv4-mapped IPv6 addresses (`::ffff:203.0.113.5`, as dual-stack proxies forward IPv4 clients) are all accepted; whitespace inside an address makes it invalid.
 
 ```go title="Signature"
 func (c fiber.Ctx) IPs() []string
@@ -2278,7 +2287,7 @@ The generic `Params` function supports returning the following data types based 
 
 ### Path
 
-Contains the path part of the request URL, normalized before routing as [RFC 3986 Section 6.2.2](https://www.rfc-editor.org/rfc/rfc3986#section-6.2.2) describes: percent-encoded unreserved characters are decoded, other escapes keep their encoding with uppercase hex digits, and `.` and `..` segments are removed, so a request for `/users/../users/%6Aohn` reports `/users/john`. An encoded slash stays encoded and empty segments are kept unless [`UnescapePath`](fiber.md#config) decodes every escape. Use [OriginalURL](#originalurl) for the request target as the client sent it. Optionally, you can override the path by passing a string. For internal redirects, you might want to call [RestartRouting](ctx.md#restartrouting) instead of [Next](ctx.md#next).
+Contains the path part of the request URL, normalized before routing as [RFC 3986 Section 6.2.2](https://www.rfc-editor.org/rfc/rfc3986#section-6.2.2) describes: percent-encoded unreserved characters are decoded, other escapes keep their encoding with uppercase hex digits, and `.` and `..` segments are removed, so a request for `/users/../users/%6Aohn` reports `/users/john`. An encoded slash stays encoded and empty segments are kept unless [`UnescapePath`](fiber.md#config) decodes every escape. A stray `%` that begins no escape is kept as sent, except where an escape decoded after it would complete a new escape with it: that `%` is written as `%25`, so `/%%370rivate` reports `/%2570rivate`. The result is not a path to percent-decode again, since an escape it keeps, such as `%2F`, is meant to stay one (see [Routing](../guide/routing.md)). Use [OriginalURL](#originalurl) for the request target as the client sent it. Optionally, you can override the path by passing a string. For internal redirects, you might want to call [RestartRouting](ctx.md#restartrouting) instead of [Next](ctx.md#next).
 
 ```go title="Signature"
 func (c fiber.Ctx) Path(override ...string) string
@@ -3812,14 +3821,29 @@ app.Get("/not-found", func(c fiber.Ctx) error {
 ```
 
 :::info
-If the file contains a URL-specific character, you have to escape it before passing the file path into the `SendFile` function.
+The name is taken as it is, the way `os.Open` takes it: a `%`, `?` or `#` in it is part of the name, so `c.SendFile("hash_sign_#.txt")` serves that file and nothing needs escaping. The exceptions are a name holding an ASCII control byte, which is not found, and a directory named without a trailing slash, which is not found either; with the slash, its `index.html` is served. A name built from request input is served from wherever it points, so confine it yourself. Lexical cleaning such as `filepath.Join(root, filepath.Clean("/"+name))` keeps the name under `root` but does not stop a symbolic link inside `root` from pointing outside it, and neither does `os.DirFS`. To confine the file itself, open the directory with `os.OpenRoot` and serve through the `FS` option with `root.FS()`, which refuses any link that escapes the root. An encoded separator that a route parameter still holds, as in `..%2Fsecret.txt`, stays one name and is not found rather than decoded into a step out of the directory.
 :::
 
-```go title="Example"
-app.Get("/file-with-url-chars", func(c fiber.Ctx) error {
-  return c.SendFile(url.PathEscape("hash_sign_#.txt"))
+:::caution Route parameters keep their escapes
+With [`UnescapePath`](fiber.md#config) off, which is the default, a route parameter keeps every escape the router keeps, and `SendFile` no longer decodes it. For `/files/my%20file.txt`, `c.SendFile(filepath.Join(dir, c.Params("name")))` looks for a file named `my%20file.txt` rather than `my file.txt`, and `/files/100%25.txt` names `100%25.txt` rather than `100%.txt`. Either enable `UnescapePath`, which gives decoded parameters, or decode the parameter yourself and confine the result, since a decoded `..%2F` is a step out of the directory:
+
+```go
+root, err := os.OpenRoot("./files")
+if err != nil {
+  log.Fatal(err)
+}
+
+app.Get("/files/:name", func(c fiber.Ctx) error {
+  name, err := url.PathUnescape(c.Params("name"))
+  if err != nil {
+    return fiber.ErrBadRequest
+  }
+  // root.FS() refuses a name that leaves ./files, such as "../secret.txt"
+  return c.SendFile(name, fiber.SendFile{FS: root.FS()})
 })
 ```
+
+:::
 
 :::info
 You can set the `CacheDuration` config property to `-1` to disable caching.

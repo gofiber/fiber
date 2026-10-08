@@ -35,9 +35,16 @@ const (
 	maxUintDigits = 20
 )
 
-// publicMaxAge is the Cache-Control this middleware writes on a hit when the
-// entry carries none of its own, less the delta-seconds appended after it.
-const publicMaxAge = "public, max-age="
+// publicMaxAge and privateMaxAge are the Cache-Control this middleware writes
+// on a hit when the entry carries none of its own, less the delta-seconds
+// appended after it. The private form goes out when the entry was selected by
+// a credential — a cookie or Authorization, through Vary, KeyCookies or
+// KeyHeaders — and so holds one user's response: a shared cache downstream that
+// keys on the URL alone would otherwise store it and serve it to the next user.
+const (
+	publicMaxAge  = "public, max-age="
+	privateMaxAge = "private, max-age="
+)
 
 // cache status
 // unreachable: when cache is bypass, or invalid
@@ -52,15 +59,22 @@ const (
 // cacheKeyVersion namespaces every key this version writes, so an entry a
 // previous one stored is never read rather than being reinterpreted.
 //
-// Bumped because the rules for what shares a partition changed. An earlier
+// Bumped whenever the rules for what shares a partition change. v2: an earlier
 // version detected Authorization byte-exactly, so under DisableHeaderNormalizing
 // a request bearing a lower-case "authorization" was taken for anonymous and its
 // response cached under the anonymous key. Only lookups that carry the header
 // now move to a partition of their own — so on an external store that survived
 // the upgrade, an anonymous request would still find that entry and be served an
-// authenticated body. Bump this whenever what a key stands for changes; the cost
-// is one cold cache after a deploy.
-const cacheKeyVersion = "v2"
+// authenticated body. v3: the default key gained the request scheme and host.
+// An entry written without them stands for every host at once, so on a store
+// that survived the upgrade a request for one host would still find, and be
+// served, what another host populated. v4: entries gained the response's Vary.
+// One written without it is replayed with no Vary and, when it carries no
+// Cache-Control of its own, under "public, max-age" — telling a shared cache
+// downstream it may store one user's response for every user of the URL. Bump
+// this whenever what a key stands for, or what its entry carries, changes; the
+// cost is one cold cache after a deploy.
+const cacheKeyVersion = "v4"
 
 type expirationSource uint8
 
@@ -117,6 +131,7 @@ var ignoreHeaders = map[string]struct{}{
 	"Trailer":           {},
 	"Transfer-Encoding": {},
 	"Upgrade":           {},
+	"Vary":              {}, // already stored explicitly by the cache manager
 }
 
 var cacheableStatusCodes = map[int]struct{}{
@@ -146,6 +161,14 @@ func New(config ...Config) fiber.Handler {
 	}
 
 	redactKeys := !cfg.DisableValueRedaction
+
+	// A credential among the key's dimensions makes every entry one user's
+	// response, whatever the response says about itself. KeyHeaders arrive
+	// lower-cased from configDefault. Fixed for the life of the handler, so
+	// decided once rather than on every hit.
+	keysOnCredential := len(cfg.KeyCookies) > 0 ||
+		slices.Contains(cfg.KeyHeaders, "cookie") ||
+		slices.Contains(cfg.KeyHeaders, "authorization")
 
 	maskKey := func(key string) string {
 		if redactKeys {
@@ -553,6 +576,12 @@ func New(config ...Config) fiber.Handler {
 				if len(e.etag) > 0 {
 					setFieldLine(&c.Response().Header, fiber.HeaderETag, e.etag, canonical)
 				}
+				// The stored response's Vary, whether or not headers are stored: a
+				// cache that selected by it has to say so (RFC 9111 §4.1), or the
+				// next cache downstream keys the hit on the URL alone.
+				if len(e.vary) > 0 {
+					setFieldLine(&c.Response().Header, fiber.HeaderVary, e.vary, canonical)
+				}
 				clampedDate := clampDateSeconds(e.date, ts)
 				// Formatted into a local array rather than a fresh slice: the value
 				// is copied into the header store, so nothing outlives this line and
@@ -589,10 +618,17 @@ func New(config ...Config) fiber.Handler {
 					if entryExp > ts {
 						remaining = entryExp - ts
 					}
+					// private for an entry that holds one user's response: public, or
+					// a bare max-age, lets a shared cache downstream store this hit
+					// and serve it to whoever asks for the URL next.
+					directive := publicMaxAge
+					if keysOnCredential || varyListsCredential(e.vary) {
+						directive = privateMaxAge
+					}
 					// Built in a local array: FormatUint and the join were two
 					// allocations, and the header store copies the bytes anyway.
-					var ccBuf [len(publicMaxAge) + maxUintDigits]byte
-					cacheControlValue := utils.AppendUint(append(ccBuf[:0], publicMaxAge...), remaining)
+					var ccBuf [len(privateMaxAge) + maxUintDigits]byte
+					cacheControlValue := utils.AppendUint(append(ccBuf[:0], directive...), remaining)
 					setFieldLine(&c.Response().Header, fiber.HeaderCacheControl, cacheControlValue, canonical)
 				}
 
@@ -777,6 +813,9 @@ func New(config ...Config) fiber.Handler {
 		e.cacheControl = utils.CopyBytes(cacheControlBytes)
 		e.expires = utils.CopyBytes(fieldname.First(&c.Response().Header, fiber.HeaderExpires, respCanonical))
 		e.etag = utils.CopyBytes(fieldname.First(&c.Response().Header, fiber.HeaderETag, respCanonical))
+		// Every field line, joined: the stored response has to be replayed with
+		// the Vary it was selected by, and Peek would drop a second line.
+		e.vary = utils.CopyBytes(joinedHeader(&c.Response().Header, fiber.HeaderVary, respCanonical))
 		e.date = 0
 
 		ageVal := uint64(0)
