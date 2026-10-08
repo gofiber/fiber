@@ -2003,7 +2003,7 @@ app.Get("*", static.New("./public/index.html"))
 ```
 
 :::caution
-You have to put `*` to the end of the route if you don't define static route with `app.Use`.
+You have to put `*` to the end of the route if you don't define static route with `app.Use`. Under a `/prefix*` route such as `/static*`, only `/static` and paths below `/static/` are served; `/static-v2/app.js` or `/staticapp.js` are no longer served.
 :::
 
 The static middleware opens the name the router matched and does not percent-decode it a second time. Escapes the router keeps encoded, such as `%20`, stay encoded in the file name unless `UnescapePath` is enabled, and an escape of an unreserved character left in the routed path, which only a stray `%` can forge, is answered with `404` rather than decoded into a different file, so `/static/%%370rivate/secret.txt` never opens `private/secret.txt`. On Windows a path segment ending in a dot or a space is `404` as well, since the OS strips both when it opens a file. See [Static](./middleware/static.md).
