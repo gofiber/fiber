@@ -46,11 +46,8 @@ type SendFile struct {
 	// Optional. Default: false
 	Compress bool `json:"compress"`
 
-	// When set to true, enables byte range requests: a GET request with a Range of
-	// the "bytes" unit is answered with that range, and the response advertises
-	// Accept-Ranges. A request for several ranges, in another unit or with another
-	// method is answered with the whole file, and so is one whose If-Range does not
-	// match the file's Last-Modified (RFC 9110 Section 13.1.5, Section 14.2).
+	// When set to true, enables byte range requests. A request for several
+	// ranges, or whose If-Range does not match, gets the whole file.
 	//
 	// Optional. Default: false
 	ByteRange bool `json:"byte_range"`
@@ -361,9 +358,7 @@ func (r *DefaultRes) Cookie(cookie *Cookie) {
 		c.Secure = true
 	}
 
-	// A value wrapped in double quotes is the quoted form of cookie-value (RFC
-	// 6265 Section 4.1.1); the quotes frame it and are not part of it, which is
-	// also how fasthttp reads it back from a Cookie or Set-Cookie line.
+	// Surrounding double quotes frame the value (RFC 6265 §4.1.1); they are not part of it.
 	value, quoted := unquoteCookieValue(c.Value)
 
 	// Validate before fasthttp's setters can silently replace CR/LF or semicolons;
@@ -389,10 +384,8 @@ func (r *DefaultRes) Cookie(cookie *Cookie) {
 	// create fasthttp cookie
 	fcookie := fasthttp.AcquireCookie()
 	fcookie.SetKey(hc.Name)
-	// A space or a comma is no cookie-octet (RFC 6265 Section 4.1.1), so a value
-	// that holds one is written in quotes, as net/http does, and so is one that
-	// came in quotes. fasthttp writes the value it is given and drops the quotes
-	// when it reads the line back, so the application sees the value it set.
+	// A space or comma is not a cookie-octet (RFC 6265 §4.1.1), so the value is
+	// quoted on the wire, as net/http does. fasthttp drops the quotes on read.
 	wireValue := hc.Value
 	if quoted || utils.IndexAny2(wireValue, ' ', ',') >= 0 {
 		wireValue = `"` + wireValue + `"`
@@ -418,8 +411,8 @@ func (r *DefaultRes) Cookie(cookie *Cookie) {
 	fasthttp.ReleaseCookie(fcookie)
 }
 
-// unquoteCookieValue splits a cookie value wrapped in double quotes into what
-// is inside them. A lone quote is no pair and is left for the caller to reject.
+// unquoteCookieValue strips one pair of surrounding double quotes. A lone quote
+// is left for validation to reject.
 func unquoteCookieValue(value string) (unquoted string, quoted bool) { //nolint:nonamedreturns // the two results are easy to swap without names
 	if len(value) >= 2 && value[0] == '"' && value[len(value)-1] == '"' {
 		return value[1 : len(value)-1], true
@@ -1389,8 +1382,7 @@ func (r *DefaultRes) SendFile(file string, config ...SendFile) error {
 	response := &r.c.fasthttp.Response
 	status := response.StatusCode()
 
-	// Serve file. The file server answers a single range; what else a Range field
-	// asks of the server (RFC 9110 Section 13.1.5, Section 14.2) is applied around it.
+	// Serve file; byterange adds the Range and If-Range rules fasthttp lacks.
 	if cfg.ByteRange {
 		byterange.Serve(r.c.fasthttp, fsHandler)
 	} else {
@@ -1481,8 +1473,7 @@ func (r *DefaultRes) NoContent() error {
 // SendStatus sets the HTTP status code and if the response body is empty,
 // it sets the correct status message in the body.
 func (r *DefaultRes) SendStatus(status int) error {
-	// Settled first, so the body rules and the status text below go by the
-	// status that is sent.
+	// Settle the status first so the checks below use the one that is sent.
 	status = validStatus(status)
 	r.Status(status)
 
@@ -1514,12 +1505,9 @@ func (r *DefaultRes) SendString(body string) error {
 
 // SendStream sets response body stream and optional body size.
 //
-// A stream of unknown size is sent with chunked framing, which a server must not
-// send to an HTTP/1.0 client (RFC 9112 Section 6.1). For an HTTP/1.0 request such
-// a stream is read to its end before the handler returns, so that the response can
-// carry a Content-Length, and one longer than Config.BodyLimit is answered with
-// 505. A stream of known size, or any stream for an HTTP/1.1 request, is sent as
-// it is read after the handler returns.
+// Chunked framing is not allowed for HTTP/1.0 (RFC 9112 §6.1), so for such a
+// request a stream of unknown size is read before the handler returns and sent
+// with a Content-Length; one over Config.BodyLimit gets a 505.
 func (r *DefaultRes) SendStream(stream io.Reader, size ...int) error {
 	if len(size) > 0 && size[0] >= 0 {
 		r.c.fasthttp.Response.SetBodyStream(stream, size[0])
@@ -1528,12 +1516,12 @@ func (r *DefaultRes) SendStream(stream io.Reader, size ...int) error {
 
 	if !r.c.fasthttp.Request.Header.IsHTTP11() {
 		return r.sendBuffered(func(w io.Writer) error {
-			// fasthttp closes a stream once it has sent it; this one is never sent.
+			// fasthttp closes streams it sends; this one is not sent.
 			if closer, ok := stream.(io.Closer); ok {
-				defer closer.Close() //nolint:errcheck // nothing to do about a failed close of a stream already read
+				defer closer.Close() //nolint:errcheck // nothing to do about it
 			}
 			_, err := io.Copy(w, stream)
-			return err //nolint:wrapcheck // the read error of the caller's own stream, or the limit
+			return err //nolint:wrapcheck // the caller's own error
 		})
 	}
 
@@ -1543,15 +1531,13 @@ func (r *DefaultRes) SendStream(stream io.Reader, size ...int) error {
 
 // SendStreamWriter sets response body stream writer.
 //
-// The writer runs after the handler returns and is sent with chunked framing,
-// which a server must not send to an HTTP/1.0 client (RFC 9112 Section 6.1). For
-// an HTTP/1.0 request it therefore runs before the handler returns, into a buffer
-// that the response carries with a Content-Length: a writer that produces more
-// than Config.BodyLimit sees its Flush fail, and the response is 505.
+// For an HTTP/1.0 request the writer runs before the handler returns, into a
+// buffer sent with a Content-Length (RFC 9112 §6.1). Past Config.BodyLimit its
+// Flush fails and the response is a 505.
 func (r *DefaultRes) SendStreamWriter(streamWriter func(*bufio.Writer)) error {
 	if !r.c.fasthttp.Request.Header.IsHTTP11() {
 		return r.sendBuffered(func(w io.Writer) (err error) { //nolint:nonamedreturns // set by the deferred recover
-			// A writer that panics used to be contained by fasthttp, and still is.
+			// fasthttp contains writer panics; so does this.
 			defer func() {
 				if p := recover(); p != nil {
 					log.Errorf("fiber: stream writer panicked: %v", p)
@@ -1568,19 +1554,15 @@ func (r *DefaultRes) SendStreamWriter(streamWriter func(*bufio.Writer)) error {
 	return nil
 }
 
-// errStreamBufferLimit is what a bufferLimit writer fails with once its limit is
-// passed.
 var errStreamBufferLimit = errors.New("stream exceeds the buffer limit")
 
-// errStreamTooLargeForHTTP10 answers an HTTP/1.0 request whose response is a
-// stream too long to buffer. 505 is the closest status: the response needs a
-// framing that the client's version cannot carry, and the message names the way
-// out.
+// errStreamTooLargeForHTTP10 answers an HTTP/1.0 request for a stream too long to
+// buffer. 505 is the closest status: the response needs framing that version lacks.
 var errStreamTooLargeForHTTP10 = NewError(StatusHTTPVersionNotSupported,
 	"The response is a stream of unknown length that is too long to buffer for an HTTP/1.0 client; "+
 		"HTTP/1.1 is needed to stream it")
 
-// bufferLimit collects what is written to it, and fails once that would pass limit.
+// bufferLimit collects writes and fails past limit.
 type bufferLimit struct {
 	buf   []byte
 	limit int
@@ -1594,9 +1576,7 @@ func (b *bufferLimit) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
-// sendBuffered sets what fill writes as the response body, for a client that
-// cannot be sent a stream of unknown length. Config.BodyLimit bounds it, so a
-// request cannot make the server hold more than it would accept in one.
+// sendBuffered sets what fill writes as the response body, bounded by Config.BodyLimit.
 func (r *DefaultRes) sendBuffered(fill func(w io.Writer) error) error {
 	body := &bufferLimit{limit: r.c.app.config.BodyLimit}
 	if err := fill(body); err != nil {
@@ -1630,8 +1610,7 @@ func (r *DefaultRes) setCanonical(key, val string) {
 // Status sets the HTTP status for the response.
 // This method is chainable.
 //
-// A status that is not three digits (outside 100 to 999) cannot be sent as a
-// status line, so the response gets 500 and the mistake is logged.
+// A status outside 100 to 999 is logged and replaced by 500.
 func (r *DefaultRes) Status(status int) Ctx {
 	r.c.fasthttp.Response.SetStatusCode(validStatus(status))
 	return r.c

@@ -86,11 +86,8 @@ func TestTimeout_Exceeded(t *testing.T) {
 	require.Less(t, elapsed, handlerSleep/2, "handler should return early on context cancelation")
 }
 
-// TestTimeout_DefaultStatus pins the status a timed-out handler is answered with.
-// The request arrived complete and the handler is the slow side, which is not
-// what 408 says (RFC 9110 Section 15.5.9: the server did not receive a complete
-// request in time), and 408 tells the client it may send the request again while
-// the handler is still running. The default is 503 (Section 15.6.4).
+// TestTimeout_DefaultStatus pins the default 503 (RFC 9110 §15.6.4): 408 would
+// invite a retry while the timed-out handler may still be running.
 func TestTimeout_DefaultStatus(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()

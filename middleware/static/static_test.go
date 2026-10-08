@@ -1872,11 +1872,8 @@ func Test_Static_MaxAge_NotOnErrorResponses(t *testing.T) {
 	require.Equal(t, "public, max-age=3600", resp.Header.Get(fiber.HeaderCacheControl))
 }
 
-// With ByteRange on, the rest of what Range and If-Range ask of a server is applied
-// around the file server's single range (RFC 9110 Section 13.1.5 and Section 14.2):
-// a request for several ranges, a unit the server does not know, a method without
-// range semantics and a validator that no longer matches are answered with the
-// whole file, and the unit is case-insensitive.
+// With ByteRange on, the Range and If-Range rules (RFC 9110 §13.1.5, §14.2) are
+// applied around the file server's single range.
 func Test_Static_ByteRange_RFC9110(t *testing.T) {
 	t.Parallel()
 

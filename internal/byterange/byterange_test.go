@@ -34,7 +34,7 @@ func Test_Classify(t *testing.T) {
 		{name: "empty elements around", field: "bytes=, ,0-4, ,", canonical: "bytes=0-4", verdict: rewrite},
 		{name: "space around the spec", field: "bytes=  0-4  ", canonical: "bytes=0-4", verdict: rewrite},
 
-		// A range unit the server does not understand is ignored (Section 14.2).
+		// Unknown units are ignored.
 		{name: "unknown unit", field: "items=0-4", verdict: ignore},
 		{name: "unknown unit with several ranges", field: "items=0-4,6-9", verdict: ignore},
 		{name: "unit that only starts like bytes", field: "bytes2=0-4", verdict: ignore},
@@ -113,8 +113,7 @@ func Test_IfRangeMatches(t *testing.T) {
 		})
 	}
 
-	// A Last-Modified within the last second is a weak validator, even when it
-	// equals the date presented (Section 8.8.2.2).
+	// A Last-Modified from the last second is a weak validator (§8.8.2.2).
 	t.Run("date within the last second is weak", func(t *testing.T) {
 		t.Parallel()
 
@@ -136,10 +135,12 @@ func Test_IfRangeMatches(t *testing.T) {
 const (
 	fileContent  = "0123456789abcdefghij"
 	fileModified = "Thu, 02 Jan 2020 03:04:05 GMT"
+
+	fieldContentRange = "Content-Range"
 )
 
-// newFileServer serves a 20-byte file, last modified long enough ago for its time
-// to be a strong validator, through fasthttp's file server with ranges enabled.
+// newFileServer serves a 20-byte file, old enough for a strong Last-Modified,
+// through fasthttp's file server with ranges enabled.
 func newFileServer(t *testing.T) fasthttp.RequestHandler {
 	t.Helper()
 
@@ -214,7 +215,7 @@ func Test_Serve_RangeRules(t *testing.T) {
 		{name: "suffix range", method: fasthttp.MethodGet, rangeField: "bytes=-5", wantStatus: 206, wantBody: "fghij", wantRange: "bytes 15-19/20", wantLength: "5", wantAccepted: true},
 		{name: "open ended range", method: fasthttp.MethodGet, rangeField: "bytes=15-", wantStatus: 206, wantBody: "fghij", wantRange: "bytes 15-19/20", wantLength: "5", wantAccepted: true},
 
-		// The unit is case-insensitive (Section 14.1); the file server's parser is not.
+		// Units are case-insensitive (§14.1).
 		{name: "unit in upper case", method: fasthttp.MethodGet, rangeField: "BYTES=0-4", wantStatus: 206, wantBody: "01234", wantRange: "bytes 0-4/20", wantLength: "5", wantAccepted: true},
 		{name: "unit in mixed case", method: fasthttp.MethodGet, rangeField: "Bytes=-5", wantStatus: 206, wantBody: "fghij", wantRange: "bytes 15-19/20", wantLength: "5", wantAccepted: true},
 		{name: "space after the equals sign", method: fasthttp.MethodGet, rangeField: "bytes= 0-4", wantStatus: 206, wantBody: "01234", wantRange: "bytes 0-4/20", wantLength: "5", wantAccepted: true},
@@ -264,9 +265,7 @@ func Test_Serve_IfRange(t *testing.T) {
 
 	handler := newFileServer(t)
 
-	const (
-		stale = "Wed, 01 Jan 2020 03:04:05 GMT"
-	)
+	const stale = "Wed, 01 Jan 2020 03:04:05 GMT"
 
 	tests := []struct {
 		name       string
@@ -281,7 +280,7 @@ func Test_Serve_IfRange(t *testing.T) {
 		{name: "matching date, unit in upper case", rangeField: "BYTES=0-4", ifRange: fileModified, wantStatus: 206, wantBody: "01234", wantRange: "bytes 0-4/20"},
 		{name: "matching date, unsatisfiable range", rangeField: "bytes=100-200", ifRange: fileModified, wantStatus: 416, wantBody: "Range Not Satisfiable"},
 
-		// It does not: the whole representation is sent (Section 13.1.5).
+		// It does not: the whole file is sent (§13.1.5).
 		{name: "stale date", rangeField: "bytes=0-4", ifRange: stale, wantStatus: 200, wantBody: fileContent},
 		{name: "stale date, suffix range", rangeField: "bytes=-5", ifRange: stale, wantStatus: 200, wantBody: fileContent},
 		{name: "stale date, unsatisfiable range", rangeField: "bytes=100-200", ifRange: stale, wantStatus: 200, wantBody: fileContent},
@@ -294,7 +293,7 @@ func Test_Serve_IfRange(t *testing.T) {
 		{name: "stale date, several ranges", rangeField: "bytes=0-1,3-4", ifRange: stale, wantStatus: 200, wantBody: fileContent},
 		{name: "stale date, unknown unit", rangeField: "items=0-4", ifRange: stale, wantStatus: 200, wantBody: fileContent},
 
-		// If-Range means nothing without Range (Section 13.1.5).
+		// If-Range means nothing without Range.
 		{name: "no Range", ifRange: stale, wantStatus: 200, wantBody: fileContent},
 	}
 
@@ -323,8 +322,8 @@ func Test_Serve_IfRange(t *testing.T) {
 	}
 }
 
-// A file modified within the last second has a Last-Modified that is not a strong
-// validator, so no If-Range date can match it.
+// A file modified in the last second has no strong validator, so no If-Range date
+// matches.
 func Test_Serve_IfRange_FreshFile(t *testing.T) {
 	t.Parallel()
 
@@ -343,9 +342,8 @@ func Test_Serve_IfRange_FreshFile(t *testing.T) {
 	require.Equal(t, fileContent, got.body)
 }
 
-// Headers a caller set before the file server ran stay on the response whichever
-// way the request is answered, and the headers of a partial response do not
-// outlive it.
+// Headers set before the file server ran survive every outcome; those of a
+// partial response do not.
 func Test_Serve_KeepsCallerHeaders(t *testing.T) {
 	t.Parallel()
 
@@ -358,8 +356,7 @@ func Test_Serve_KeepsCallerHeaders(t *testing.T) {
 		"range served":               {fieldRange: "bytes=0-4"},
 		"range ignored":              {fieldRange: "bytes=0-1,3-4"},
 		"range dropped for If-Range": {fieldRange: "bytes=0-4", fieldIfRange: "Wed, 01 Jan 2020 03:04:05 GMT"},
-		// The refusal of the range wipes the response; the caller's headers are
-		// put back for the whole file that replaces it.
+		// The refusal wipes the response; the caller's headers are put back.
 		"unsatisfiable range dropped for If-Range": {fieldRange: "bytes=100-200", fieldIfRange: "Wed, 01 Jan 2020 03:04:05 GMT"},
 	} {
 		t.Run(name, func(t *testing.T) {

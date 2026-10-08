@@ -401,8 +401,7 @@ func New(root string, cfg ...Config) fiber.Handler {
 		fctx := c.RequestCtx()
 		fctx.SetUserValue(rewriteKey{}, rw)
 
-		// Serve file. The file server answers a single range; what else a Range field
-		// asks of the server (RFC 9110 Section 13.1.5, Section 14.2) is applied around it.
+		// Serve file; byterange adds the Range and If-Range rules fasthttp lacks.
 		if config.ByteRange {
 			byterange.Serve(fctx, server.handler)
 		} else {

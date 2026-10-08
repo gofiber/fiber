@@ -174,8 +174,7 @@ type Ctx interface {
 	// Status sets the HTTP status for the response.
 	// This method is chainable.
 	//
-	// A status that is not three digits (outside 100 to 999) cannot be sent as a
-	// status line, so the response gets 500 and the mistake is logged.
+	// A status outside 100 to 999 is logged and replaced by 500.
 	Status(status int) Ctx
 	// ID returns the connection-unique identifier fasthttp assigned to this request,
 	// unlike RequestID, which reads a header. It is not unique across processes or
@@ -293,12 +292,9 @@ type Ctx interface {
 	AcceptsCharsets(offers ...string) string
 	// AcceptsEncodings checks if the specified encoding is acceptable.
 	//
-	// It follows RFC 9110 Section 12.5.3. A request without an Accept-Encoding
-	// field accepts any coding, so the first offer is returned. One whose field is
-	// present but empty wants no content coding, so only an "identity" offer
-	// matches. "identity" is acceptable even when the field does not list it,
-	// unless the field excludes it with "identity;q=0" or "*;q=0"; an unlisted
-	// identity ranks below every coding the field does list.
+	// Per RFC 9110 §12.5.3, a missing Accept-Encoding accepts any coding (the first
+	// offer wins), an empty one only "identity", and "identity" is acceptable unless
+	// the field excludes it with q=0.
 	AcceptsEncodings(offers ...string) string
 	// AcceptsLanguages checks if the specified language is acceptable using
 	// RFC 4647 Basic Filtering.
@@ -740,24 +736,17 @@ type Ctx interface {
 	SendString(body string) error
 	// SendStream sets response body stream and optional body size.
 	//
-	// A stream of unknown size is sent with chunked framing, which a server must not
-	// send to an HTTP/1.0 client (RFC 9112 Section 6.1). For an HTTP/1.0 request such
-	// a stream is read to its end before the handler returns, so that the response can
-	// carry a Content-Length, and one longer than Config.BodyLimit is answered with
-	// 505. A stream of known size, or any stream for an HTTP/1.1 request, is sent as
-	// it is read after the handler returns.
+	// Chunked framing is not allowed for HTTP/1.0 (RFC 9112 §6.1), so for such a
+	// request a stream of unknown size is read before the handler returns and sent
+	// with a Content-Length; one over Config.BodyLimit gets a 505.
 	SendStream(stream io.Reader, size ...int) error
 	// SendStreamWriter sets response body stream writer.
 	//
-	// The writer runs after the handler returns and is sent with chunked framing,
-	// which a server must not send to an HTTP/1.0 client (RFC 9112 Section 6.1). For
-	// an HTTP/1.0 request it therefore runs before the handler returns, into a buffer
-	// that the response carries with a Content-Length: a writer that produces more
-	// than Config.BodyLimit sees its Flush fail, and the response is 505.
+	// For an HTTP/1.0 request the writer runs before the handler returns, into a
+	// buffer sent with a Content-Length (RFC 9112 §6.1). Past Config.BodyLimit its
+	// Flush fails and the response is a 505.
 	SendStreamWriter(streamWriter func(*bufio.Writer)) error
-	// sendBuffered sets what fill writes as the response body, for a client that
-	// cannot be sent a stream of unknown length. Config.BodyLimit bounds it, so a
-	// request cannot make the server hold more than it would accept in one.
+	// sendBuffered sets what fill writes as the response body, bounded by Config.BodyLimit.
 	sendBuffered(fill func(w io.Writer) error) error
 	// Set sets the response's HTTP header field to the specified key, value.
 	Set(key, val string)

@@ -17,10 +17,9 @@ import (
 // and return early.
 //
 // When a timeout occurs, the middleware returns immediately with fiber.ErrServiceUnavailable
-// (or the result of OnTimeout if configured). A handler that outlives its deadline is a
-// server-side delay, so the status is 503; 408 (RFC 9110 Section 15.5.9) means the server
-// did not receive the request in time, and invites the client to send it again while the
-// timed-out handler may still be running. The handler goroutine can continue
+// (or the result of OnTimeout if configured). The status is 503, not 408: a slow handler
+// is a server-side delay, and 408 (RFC 9110 §15.5.9) invites the client to resend a
+// request whose handler may still be running. The handler goroutine can continue
 // safely, and resources are recycled when it finishes via the Abandon/ForceRelease
 // mechanism.
 func New(h fiber.Handler, config ...Config) fiber.Handler {

@@ -878,30 +878,23 @@ func sortAcceptedTypes(at []acceptedType) {
 	}
 }
 
-// identityCoding is the Accept-Encoding token for a response with no content
-// coding.
 const identityCoding = "identity"
 
-// getEncodingOffer is getOffer for an Accept-Encoding field value, with the rule
-// getOffer has no way to know: a response with no content coding is acceptable
-// by default, unless the field excludes it with "identity;q=0" or "*;q=0"
-// without a more specific entry for "identity" (RFC 9110 Section 12.5.3). An
-// identity offer the field never mentions therefore stays acceptable. It ranks
-// below every coding the field does accept, since the field names no weight for
-// it.
+// getEncodingOffer is getOffer for Accept-Encoding, where "identity" is also
+// acceptable unless the field excludes it (RFC 9110 §12.5.3). An unlisted
+// identity ranks below every coding the field lists.
 func getEncodingOffer(header []byte, offers []string) string {
 	if offer := getOffer(header, acceptsOffer, offers...); offer != "" {
 		return offer
 	}
 	if identityListed(header) {
-		// The field says something about identity, so getOffer weighed it.
+		// getOffer has already weighed it.
 		return ""
 	}
 	return identityOffer(offers)
 }
 
-// identityOffer returns the offer that names no content coding, "" if there is
-// none.
+// identityOffer returns the offer naming no content coding, or "".
 func identityOffer(offers []string) string {
 	for _, offer := range offers {
 		if utils.EqualFold(offer, identityCoding) {
@@ -911,9 +904,7 @@ func identityOffer(offers []string) string {
 	return ""
 }
 
-// identityListed reports whether an Accept-Encoding field value says anything
-// about identity: a range of its own, or the "*" wildcard, which stands for
-// every coding not listed.
+// identityListed reports whether the field mentions identity or the "*" wildcard.
 func identityListed(header []byte) bool {
 	for element := range headerlist.All(utils.UnsafeString(header)) {
 		coding, _, _ := utils.CutByte(element, ';')
@@ -1024,14 +1015,10 @@ func matchNoCacheToken(s string, i int) bool {
 
 const contentLengthField = "content-length"
 
-// hasContentLengthField reports whether raw, the header block of a request as
-// fasthttp keeps it (the field lines up to the blank line), holds a
-// Content-Length field line. Once Transfer-Encoding takes over the framing
-// fasthttp drops the Content-Length value, so the block is the only place left
-// to ask. The name is matched case-insensitively at the start of a line, so a
-// longer name that ends in it, a name inside a value and a folded continuation
-// line do not count. Whitespace before the colon is not tolerated: fasthttp
-// rejects such a request, and it never gets this far.
+// hasContentLengthField reports whether raw, a request's header block, has a
+// Content-Length field line. fasthttp drops the value once Transfer-Encoding takes
+// over, so the block is the only place left to look. Whitespace before the colon
+// is not matched: fasthttp rejects that request.
 func hasContentLengthField(raw []byte) bool {
 	for len(raw) > 0 {
 		line := raw
@@ -1160,20 +1147,15 @@ func (app *App) method(methodInt int) string {
 	return app.config.RequestMethods[methodInt]
 }
 
-// The status codes Status accepts. The status line carries three digits
-// (RFC 9112 Section 4), which is the range net/http and Express enforce as well.
-// RFC 9110 Section 15 defines only 100..599 and calls the rest invalid, but a
-// code from 600 to 999 is still a well-formed status line, and a client treats
-// it as a 5xx, so it is let through.
+// The status line carries three digits (RFC 9112 §4). RFC 9110 §15 only defines
+// 100..599, but 600..999 is still well-formed, so it is let through.
 const (
 	minStatusCode = 100
 	maxStatusCode = 999
 )
 
-// validStatus returns status when it fits a status line and 500 otherwise.
-// fasthttp writes any other number as it is, so 99 and 1000 went out as
-// malformed status lines that clients refuse, and 0 or a negative number went
-// out as 200 OK, which reported a failure as a success.
+// validStatus returns status if it fits a status line, else 500. fasthttp would
+// write 99 or 1000 as a malformed line and 0 as a 200.
 func validStatus(status int) int {
 	if status < minStatusCode || status > maxStatusCode {
 		return invalidStatus(status)
@@ -1181,8 +1163,7 @@ func validStatus(status int) int {
 	return status
 }
 
-// invalidStatus logs a status that cannot be sent and returns the status sent
-// in its place.
+// invalidStatus logs the status and returns the one sent instead.
 func invalidStatus(status int) int {
 	log.Errorf("fiber: status code %d is not a three-digit HTTP status, sending %d instead", status, StatusInternalServerError)
 	return StatusInternalServerError

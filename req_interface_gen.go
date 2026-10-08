@@ -18,12 +18,9 @@ type Req interface {
 	AcceptsCharsets(offers ...string) string
 	// AcceptsEncodings checks if the specified encoding is acceptable.
 	//
-	// It follows RFC 9110 Section 12.5.3. A request without an Accept-Encoding
-	// field accepts any coding, so the first offer is returned. One whose field is
-	// present but empty wants no content coding, so only an "identity" offer
-	// matches. "identity" is acceptable even when the field does not list it,
-	// unless the field excludes it with "identity;q=0" or "*;q=0"; an unlisted
-	// identity ranks below every coding the field does list.
+	// Per RFC 9110 §12.5.3, a missing Accept-Encoding accepts any coding (the first
+	// offer wins), an empty one only "identity", and "identity" is acceptable unless
+	// the field excludes it with q=0.
 	AcceptsEncodings(offers ...string) string
 	// AcceptsLanguages checks if the specified language is acceptable using
 	// RFC 4647 Basic Filtering.

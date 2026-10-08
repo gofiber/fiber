@@ -127,7 +127,7 @@ type App struct {
 	// contains the information if the route stack has been changed to build the optimized tree
 	hasRoutesRefreshed bool
 	connStateHooked    bool
-	// headerReceivedHooked is set once hookHeaderReceived has wrapped the server's callback
+	// headerReceivedHooked marks hookHeaderReceived as done
 	headerReceivedHooked bool
 	// hasCustomCtx tracks whether app uses a custom context implementation
 	hasCustomCtx bool
@@ -274,8 +274,7 @@ type Config struct { //nolint:govet // Aligning the struct fields is not necessa
 
 	// Max body size that the server accepts.
 	// Zero or negative values fall back to the default limit.
-	// It also bounds a stream of unknown length that SendStream or
-	// SendStreamWriter buffers for an HTTP/1.0 client.
+	// It also caps what SendStream and SendStreamWriter buffer for HTTP/1.0 clients.
 	//
 	// Default: 4 * 1024 * 1024
 	BodyLimit int `json:"body_limit"`
@@ -363,8 +362,7 @@ type Config struct { //nolint:govet // Aligning the struct fields is not necessa
 	// GETOnly rejects all non-GET requests if set to true.
 	// This option is useful as anti-DoS protection for servers
 	// accepting only GET requests. The request size is limited
-	// by ReadBufferSize if GETOnly is set. HEAD requests are let
-	// through, and any other method is answered 405 with
+	// by ReadBufferSize if GETOnly is set. Rejected requests get 405 with
 	// "Allow: GET, HEAD".
 	//
 	// Default: false
@@ -1721,15 +1719,12 @@ func (app *App) ErrorHandler(ctx Ctx, err error) error {
 }
 
 const (
-	// getOnlyAllow is the Allow value for the 405 that Config.GETOnly produces.
+	// getOnlyAllow is the Allow value of the 405 that Config.GETOnly produces.
 	getOnlyAllow = MethodGet + ", " + MethodHead
 
-	// unsupportedTransferCodingMarker is how fasthttp words a request whose
-	// Transfer-Encoding names a coding it cannot decode: the coding follows,
-	// quoted. The ErrUnsupportedTransferEncoding sentinel is deliberately not
-	// matched. fasthttp returns it as well for an HTTP/1.0 message that carries
-	// the field and for a repeated field, which are faulty framing (RFC 9112
-	// Section 6.1, Section 6.3) and stay 400.
+	// unsupportedTransferCodingMarker precedes the quoted coding in fasthttp's
+	// error. The ErrUnsupportedTransferEncoding sentinel is not matched: it also
+	// covers HTTP/1.0 and repeated fields, which are framing errors and stay 400.
 	unsupportedTransferCodingMarker = `unsupported transfer-encoding: "`
 )
 
@@ -1768,14 +1763,12 @@ func (app *App) serverErrorHandler(fctx *fasthttp.RequestCtx, err error) {
 		err = ErrRequestEntityTooLarge
 	case errors.Is(err, fasthttp.ErrGetOnly):
 		err = ErrMethodNotAllowed
-		// A 405 MUST list the methods the resource supports in Allow (RFC 9110
-		// Section 15.5.6). In GETOnly mode fasthttp lets GET and HEAD through.
+		// A 405 must carry Allow (RFC 9110 §15.5.6).
 		c.Set(HeaderAllow, getOnlyAllow)
 	case strings.Contains(errMessage, "unsupported http request method"):
 		err = ErrNotImplemented
 	case strings.Contains(errMessage, unsupportedTransferCodingMarker):
-		// A transfer coding the server does not understand SHOULD be answered
-		// with 501 (RFC 9112 Section 6.1), not 400.
+		// An unknown transfer coding is a 501, not a 400 (RFC 9112 §6.1).
 		err = ErrNotImplemented
 	case strings.Contains(errMessage, "timeout"):
 		err = ErrRequestTimeout
@@ -1866,19 +1859,11 @@ func (app *App) hookConnState() {
 	}
 }
 
-// hookHeaderReceived makes the server close the connection after it answers a
-// request that carries both Content-Length and Transfer-Encoding, keeping a user
-// HeaderReceived callback. The server processes such a request by its
-// Transfer-Encoding, as RFC 9112 Section 6.1 allows, but must then close the
-// connection: the two headers are how a request-smuggling message looks, and the
-// bytes that follow it on the connection may belong to a request that another
-// recipient framed differently. Idempotent; the caller holds app.mutex.
-//
-// This is a hook rather than a check in the request handler because the handler
-// runs after the chunked body is decoded, when fasthttp has already replaced the
-// request's length with the decoded one and dropped the Content-Length value.
-// Here the request still reports its chunked framing, so only chunked requests
-// pay for looking at the raw header block.
+// hookHeaderReceived makes the server close the connection after a request that
+// carries both Content-Length and Transfer-Encoding (RFC 9112 §6.1), keeping a
+// user HeaderReceived callback. It must run before the body is decoded: after that
+// fasthttp has replaced the length and dropped the Content-Length value.
+// Idempotent; the caller holds app.mutex.
 func (app *App) hookHeaderReceived() {
 	if app.headerReceivedHooked || app.server == nil {
 		return

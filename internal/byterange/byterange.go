@@ -1,12 +1,7 @@
-// Package byterange applies the rules for the Range and If-Range fields of a
-// request (RFC 9110 Section 13.1.5 and Section 14.2) that fasthttp's file server
-// leaves out. That server answers one byte range and nothing else: it refuses a
-// perfectly satisfiable request for several ranges with 416, takes the unit
-// "bytes" only in lower case, applies Range to HEAD, and has no If-Range, so a
-// resumed download is spliced onto a file that has changed since.
-//
-// It is shared by Ctx.SendFile and the static middleware, which cannot look at
-// the file before the file server does.
+// Package byterange adds the Range and If-Range rules (RFC 9110 §13.1.5, §14.2)
+// that fasthttp's file server lacks: it refuses several ranges with 416, takes
+// only a lower-case "bytes" unit, applies Range to HEAD and ignores If-Range.
+// It is shared by Ctx.SendFile and the static middleware.
 package byterange
 
 import (
@@ -20,17 +15,14 @@ import (
 const (
 	fieldRange        = "Range"
 	fieldIfRange      = "If-Range"
-	fieldContentRange = "Content-Range"
 	fieldETag         = "ETag"
 	fieldLastModified = "Last-Modified"
 
-	// unitBytes is the one range unit the file server understands. The unit is
-	// case-insensitive (RFC 9110 Section 14.1), the file server's parser is not.
+	// unitBytes is the only unit the file server knows. Units are
+	// case-insensitive (RFC 9110 §14.1), its parser is not.
 	unitBytes = "bytes"
 
-	// A Last-Modified time is a strong validator only when the file cannot have
-	// changed twice within the second it names (RFC 9110 Section 8.8.2.2), which
-	// the server can tell once that second is over.
+	// A Last-Modified time is a strong validator once its second is over (§8.8.2.2).
 	strongAfter = time.Second
 )
 
@@ -39,21 +31,13 @@ var (
 	weakPrefix = []byte("W/")
 )
 
-// verdict is what to do with the Range field of a request before the file server
-// sees it.
+// verdict is what to do with a Range field before the file server sees it.
 type verdict int
 
 const (
-	// pass hands the request on as it is. A field the file server cannot parse
-	// is left to refuse it: an invalid ranges-specifier may be ignored or
-	// rejected (Section 14.2).
-	pass verdict = iota
-	// rewrite hands the request on with the field spelled the way the file
-	// server parses it.
-	rewrite
-	// ignore hands the request on without the field, so the whole
-	// representation is sent.
-	ignore
+	pass    verdict = iota // as is; the file server rejects what it cannot parse
+	rewrite                // spelled the way the file server parses it
+	ignore                 // without the field, so the whole file is sent
 )
 
 // classify decides what to do with a Range field. For rewrite it returns the
@@ -64,15 +48,13 @@ func classify(dst, field []byte) (canonical []byte, v verdict) { //nolint:noname
 	if !found || len(unit) == 0 {
 		return nil, pass
 	}
-	// An origin server must ignore a Range field with a unit it does not
-	// understand (Section 14.2).
+	// A Range with an unknown unit must be ignored (§14.2).
 	if !utils.EqualFold(unit, bytesUnit) {
 		return nil, ignore
 	}
 
-	// The file server answers one range. A request for several is ignored, which
-	// is allowed (Section 14.2) and always correct, rather than refused with a 416
-	// that is for ranges that cannot be satisfied (Section 15.5.17).
+	// The file server answers one range. Several are ignored, which §14.2 allows,
+	// rather than refused with a 416.
 	var spec []byte
 	for set != nil {
 		var element []byte
@@ -80,7 +62,7 @@ func classify(dst, field []byte) (canonical []byte, v verdict) { //nolint:noname
 		if !found {
 			set = nil
 		}
-		// Empty list elements are ignored (Section 5.6.1.2).
+		// Empty list elements are ignored (§5.6.1.2).
 		element = utils.TrimSpace(element)
 		if len(element) == 0 {
 			continue
@@ -102,15 +84,10 @@ func classify(dst, field []byte) (canonical []byte, v verdict) { //nolint:noname
 	return canonical, rewrite
 }
 
-// Serve runs handler, a fasthttp file server that accepts byte ranges, for ctx.
-//
-// A Range field is ignored, and the whole representation sent, when the request
-// is not a GET (the only method that has range semantics), when its unit is not
-// "bytes", and when it asks for several ranges. A single range is answered by the
-// file server. When the request also carries If-Range and the validator it holds
-// does not match what the file server sent, the Range field must be ignored too
-// (Section 13.1.5), and the whole representation is sent in place of the partial
-// response.
+// Serve runs handler, a fasthttp file server with byte ranges enabled, for ctx.
+// The Range field is ignored, and the whole file sent, for a non-GET request, a
+// unit other than "bytes", several ranges, or an If-Range that does not match
+// the Last-Modified the file server sent.
 func Serve(ctx *fasthttp.RequestCtx, handler fasthttp.RequestHandler) {
 	header := &ctx.Request.Header
 	field := header.Peek(fieldRange)
@@ -131,12 +108,9 @@ func Serve(ctx *fasthttp.RequestCtx, handler fasthttp.RequestHandler) {
 		return
 	}
 
-	// With If-Range the answer may turn out to be the whole file after the file
-	// server has refused the range, and a refusal wipes the response. The
-	// headers the caller had set are kept, to start the second attempt from the
-	// state the first started from.
-	// The value is copied: it lives in the request header's storage, which
-	// taking the Range field out and putting it back rearranges.
+	// With If-Range the file may have to be served again, and a refusal wipes the
+	// response, so the caller's headers are saved. The value is copied because
+	// removing and restoring Range rearranges the request header's storage.
 	var (
 		callerHeader *fasthttp.ResponseHeader
 		ifRange      []byte
@@ -166,8 +140,8 @@ func Serve(ctx *fasthttp.RequestCtx, handler fasthttp.RequestHandler) {
 		}
 		replaceWithWhole(ctx, handler, callerHeader)
 	case fasthttp.StatusRequestedRangeNotSatisfiable:
-		// The 416 carries no validator. The whole representation does, and it is
-		// the answer if the one in If-Range does not match.
+		// The 416 has no validator. The whole file has, and is the answer when
+		// If-Range does not match.
 		replaceWithWhole(ctx, handler, callerHeader)
 		if ctx.Response.StatusCode() == fasthttp.StatusOK && ifRangeMatches(ifRange, &ctx.Response) {
 			_ = ctx.Response.CloseBodyStream() //nolint:errcheck // a stream never sent
@@ -176,8 +150,8 @@ func Serve(ctx *fasthttp.RequestCtx, handler fasthttp.RequestHandler) {
 	}
 }
 
-// serveWithoutRange runs handler for a request taken to carry no Range field. The
-// field is put back, since the rest of the chain may read it.
+// serveWithoutRange runs handler as if the request had no Range, then restores
+// the field for the rest of the chain.
 func serveWithoutRange(ctx *fasthttp.RequestCtx, handler fasthttp.RequestHandler) {
 	header := &ctx.Request.Header
 	original := utils.CopyBytes(header.Peek(fieldRange))
@@ -186,8 +160,8 @@ func serveWithoutRange(ctx *fasthttp.RequestCtx, handler fasthttp.RequestHandler
 	header.SetBytesV(fieldRange, original)
 }
 
-// replaceWithWhole takes the first response back and has handler send the whole
-// representation instead, from the headers the caller had set.
+// replaceWithWhole discards the response and has handler send the whole file,
+// from the headers the caller had set.
 func replaceWithWhole(ctx *fasthttp.RequestCtx, handler fasthttp.RequestHandler, callerHeader *fasthttp.ResponseHeader) {
 	_ = ctx.Response.CloseBodyStream() //nolint:errcheck // a stream never sent
 	ctx.Response.ResetBody()
@@ -195,11 +169,9 @@ func replaceWithWhole(ctx *fasthttp.RequestCtx, handler fasthttp.RequestHandler,
 	serveWithoutRange(ctx, handler)
 }
 
-// ifRangeMatches evaluates an If-Range field against the response the file server
-// produced (Section 13.1.5). An entity-tag matches the response's ETag under the
-// strong comparison; a date matches only a Last-Modified that is exactly equal and
-// strong. The file server sends no ETag unless it is told to, in which case no
-// entity-tag can match, and a weak tag never does.
+// ifRangeMatches evaluates If-Range against the file server's response (§13.1.5):
+// an entity-tag must equal a strong ETag, a date the exact, strong Last-Modified.
+// The file server sends no ETag of its own, and a weak tag never matches.
 func ifRangeMatches(ifRange []byte, resp *fasthttp.Response) bool {
 	ifRange = utils.TrimSpace(ifRange)
 	if len(ifRange) == 0 {

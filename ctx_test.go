@@ -757,9 +757,7 @@ func Test_Ctx_AcceptsEncodings_MultiHeader(t *testing.T) {
 	require.Equal(t, "gzip", c.AcceptsEncodings("deflate", "gzip"))
 }
 
-// RFC 9110 Section 12.5.3: a response with no content coding ("identity") is
-// acceptable unless the field excludes it, whether or not the field lists it, and
-// a field that is present but empty wants no content coding at all.
+// RFC 9110 §12.5.3: "identity" is acceptable unless the field excludes it.
 // go test -run Test_Ctx_AcceptsEncodings_Identity
 func Test_Ctx_AcceptsEncodings_Identity(t *testing.T) {
 	t.Parallel()
@@ -776,7 +774,7 @@ func Test_Ctx_AcceptsEncodings_Identity(t *testing.T) {
 		{name: "unlisted coding", header: "gzip", offers: []string{"br"}, want: ""},
 		{name: "refused coding", header: "gzip;q=0", offers: []string{"gzip"}, want: ""},
 
-		// An identity offer the field does not mention is acceptable by default.
+		// Unmentioned identity is acceptable.
 		{name: "identity unlisted", header: "gzip", offers: []string{"identity"}, want: "identity"},
 		{name: "identity unlisted among offers", header: "gzip", offers: []string{"br", "identity"}, want: "identity"},
 		{name: "identity after a refused coding", header: "gzip;q=0", offers: []string{"gzip", "identity"}, want: "identity"},
@@ -814,8 +812,7 @@ func Test_Ctx_AcceptsEncodings_Identity(t *testing.T) {
 	}
 }
 
-// A request without the field accepts any coding; one that sends it empty
-// accepts none but identity. The two read the same through Get.
+// An absent field accepts any coding; an empty one only identity.
 // go test -run Test_Ctx_AcceptsEncodings_AbsentAndEmpty
 func Test_Ctx_AcceptsEncodings_AbsentAndEmpty(t *testing.T) {
 	t.Parallel()
@@ -840,16 +837,14 @@ func Test_Ctx_AcceptsEncodings_AbsentAndEmpty(t *testing.T) {
 			require.Empty(t, c.AcceptsEncodings("gzip", "br"))
 			require.Empty(t, c.AcceptsEncodings())
 
-			// An empty line beside a line with a coding is only an empty list
-			// element (RFC 9110 Section 5.6.1.2).
+			// An empty line beside a coding is an empty list element (§5.6.1.2).
 			c.Request().Header.Add(HeaderAcceptEncoding, "gzip")
 			require.Equal(t, "gzip", c.AcceptsEncodings("identity", "gzip"))
 		})
 	}
 }
 
-// The field reaches the helper as it arrives off the wire, an empty line
-// included.
+// The field as it arrives off the wire, an empty line included.
 // go test -run Test_App_AcceptsEncodings_EmptyField_Request
 func Test_App_AcceptsEncodings_EmptyField_Request(t *testing.T) {
 	t.Parallel()
@@ -1946,11 +1941,8 @@ func Test_Ctx_Cookie_Invalid(t *testing.T) {
 	}
 }
 
-// RFC 6265 Section 4.1.1: a space or a comma is no cookie-octet, so a value that
-// holds one is written in quotes, as net/http does, and a value that comes in
-// quotes stays quoted. The quotes frame the value and are not part of it: what
-// the response reads back, and what a client sending the line back reads, is the
-// value the application set.
+// RFC 6265 §4.1.1: a value with a space or comma is written in quotes, as
+// net/http does, and the quotes are not part of the value read back.
 // go test -run Test_Ctx_Cookie_ValueQuoting
 func Test_Ctx_Cookie_ValueQuoting(t *testing.T) {
 	t.Parallel()
@@ -1996,8 +1988,7 @@ func Test_Ctx_Cookie_ValueQuoting(t *testing.T) {
 	}
 }
 
-// A value the grammar cannot carry, even in quotes, is still refused rather than
-// altered: the cookie is not set.
+// Values the grammar cannot carry, even in quotes, are refused, not altered.
 // go test -run Test_Ctx_Cookie_ValueRejected
 func Test_Ctx_Cookie_ValueRejected(t *testing.T) {
 	t.Parallel()
@@ -2030,8 +2021,7 @@ func Test_Ctx_Cookie_ValueRejected(t *testing.T) {
 	}
 }
 
-// An independent parser agrees on the values: net/http reads the lines Cookie
-// writes and finds the values that were set.
+// net/http reads back the values that were set.
 // go test -run Test_Ctx_Cookie_ValueQuoting_NetHTTP
 func Test_Ctx_Cookie_ValueQuoting_NetHTTP(t *testing.T) {
 	t.Parallel()
@@ -8624,11 +8614,8 @@ func Test_SendFile_ByteRange(t *testing.T) {
 	})
 }
 
-// The file server answers one byte range. The rest of what Range and If-Range ask
-// of a server is applied around it (RFC 9110 Section 13.1.5 and Section 14.2): a
-// request for several ranges, a unit the server does not know, a method without
-// range semantics and a validator that no longer matches are all answered with
-// the whole file, and the unit is case-insensitive.
+// SendFile applies the Range and If-Range rules (RFC 9110 §13.1.5, §14.2) around
+// the file server's single range.
 func Test_SendFile_ByteRange_RFC9110(t *testing.T) {
 	t.Parallel()
 
@@ -8704,8 +8691,7 @@ func Test_SendFile_ByteRange_RFC9110(t *testing.T) {
 					require.Equal(t, lastModified, resp.Header.Get(HeaderLastModified))
 				}
 			}
-			// Headers the handler set before SendFile survive every outcome that
-			// does not discard the response.
+			// Headers set before SendFile survive unless the response is discarded.
 			if tc.wantStatus != StatusRequestedRangeNotSatisfiable {
 				require.Equal(t, "kept", resp.Header.Get("X-Request"))
 			}
@@ -10417,8 +10403,7 @@ func Test_Ctx_Status(t *testing.T) {
 	require.Equal(t, "Hello, World", string(c.Response().Body()))
 }
 
-// Every three-digit code fits a status line (RFC 9112 Section 4) and goes out
-// as given, the 600..999 range RFC 9110 Section 15 leaves undefined included.
+// Three-digit codes go out as given, 600..999 included (RFC 9112 §4).
 // go test -run Test_Ctx_Status_ThreeDigits
 func Test_Ctx_Status_ThreeDigits(t *testing.T) {
 	t.Parallel()
@@ -10439,10 +10424,7 @@ func Test_Ctx_Status_ThreeDigits(t *testing.T) {
 	}
 }
 
-// fasthttp writes a number it is handed as it is, so 99 and 1000 went out as
-// malformed status lines that clients refuse and 0 or a negative number went out
-// as 200 OK. None of them fits a status line (RFC 9112 Section 4), and the last
-// two reported a failure as a success.
+// Codes that do not fit a status line are logged and sent as 500.
 // go test -run Test_Ctx_Status_Invalid
 func Test_Ctx_Status_Invalid(t *testing.T) {
 	// Not parallel: redirects the process-wide logger output.
@@ -10473,8 +10455,7 @@ func Test_Ctx_Status_Invalid(t *testing.T) {
 			t.Run(kind+"/"+strconv.Itoa(code), func(t *testing.T) {
 				logged.Reset()
 
-				// app.Test reads the response back with net/http, which refuses a
-				// malformed status line.
+				// app.Test reads the response with net/http, which refuses malformed status lines.
 				resp, err := app.Test(httptest.NewRequest(MethodGet, "/"+kind+"/"+strconv.Itoa(code), http.NoBody))
 				require.NoError(t, err)
 				require.Equal(t, StatusInternalServerError, resp.StatusCode)

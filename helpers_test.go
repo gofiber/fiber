@@ -1909,3 +1909,50 @@ func Benchmark_bindMediaType(b *testing.B) {
 		})
 	}
 }
+
+func Test_hasContentLengthField(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		raw  string
+		want bool
+	}{
+		{name: "empty", raw: "", want: false},
+		{name: "no fields", raw: "\r\n", want: false},
+		{name: "only field", raw: "Content-Length: 4\r\n\r\n", want: true},
+		{name: "among others", raw: "Host: x\r\nContent-Length: 4\r\nTransfer-Encoding: chunked\r\n\r\n", want: true},
+		{name: "last field", raw: "Host: x\r\nContent-Length: 4", want: true},
+		{name: "lower case", raw: "Host: x\r\ncontent-length: 4\r\n\r\n", want: true},
+		{name: "upper case", raw: "Host: x\r\nCONTENT-LENGTH: 4\r\n\r\n", want: true},
+		{name: "bare LF line ends", raw: "Host: x\nContent-Length: 4\n\n", want: true},
+		{name: "no space after the colon", raw: "Host: x\r\nContent-Length:4\r\n\r\n", want: true},
+		{name: "empty value", raw: "Host: x\r\nContent-Length:\r\n\r\n", want: true},
+		{name: "longer name", raw: "Host: x\r\nContent-Length-Extra: 4\r\n\r\n", want: false},
+		{name: "longer name ending in it", raw: "Host: x\r\nX-Content-Length: 4\r\n\r\n", want: false},
+		{name: "shorter name", raw: "Host: x\r\nContent-Lengt: 4\r\n\r\n", want: false},
+		{name: "name inside a value", raw: "Host: x\r\nX-Note: Content-Length: 4\r\n\r\n", want: false},
+		{name: "folded continuation line", raw: "Host: x\r\nX-Note: a\r\n Content-Length: 4\r\n\r\n", want: false},
+		{name: "name without a colon", raw: "Host: x\r\nContent-Length\r\n\r\n", want: false},
+		{name: "name only", raw: "Content-Length", want: false},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			require.Equal(t, tc.want, hasContentLengthField([]byte(tc.raw)))
+		})
+	}
+}
+
+func Benchmark_hasContentLengthField(b *testing.B) {
+	raw := []byte("Host: example.com\r\nUser-Agent: Go-http-client/1.1\r\nAccept: */*\r\nAccept-Encoding: gzip\r\nTransfer-Encoding: chunked\r\nContent-Length: 4\r\n\r\n")
+
+	b.ReportAllocs()
+	for b.Loop() {
+		if !hasContentLengthField(raw) {
+			b.Fatal("Content-Length field not found")
+		}
+	}
+}
