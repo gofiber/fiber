@@ -205,6 +205,14 @@ func init() {
 				},
 			},
 			{
+				pattern: "/:a?:b<int>:c",
+				testCases: []routeTestCase{
+					{url: "/1xy", params: []string{"", "1", "xy"}, match: true},
+					{url: "/x1y", params: []string{"x", "1", "y"}, match: true},
+					{url: "/xyz", params: nil, match: false},
+				},
+			},
+			{
 				pattern: "/foo:param?bar",
 				testCases: []routeTestCase{
 					{url: "/foofaselbar", params: []string{"fasel"}, match: true},

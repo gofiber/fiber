@@ -1172,6 +1172,7 @@ func (parser *routeParser) matchBacktrack(detectionPath, path string, params *[m
 		return false
 	}
 
+segments:
 	for {
 		if segIdx >= len(parser.segs) {
 			if detectionPath != "" {
@@ -1222,7 +1223,10 @@ func (parser *routeParser) matchBacktrack(detectionPath, path string, params *[m
 				paramValue := path[offset : offset+i]
 				for _, c := range segment.Constraints {
 					if matched := c.matchConstraint(paramValue); !matched {
-						// Constraint failed on non-empty value: do not backtrack to empty!
+						// an earlier optional may yield; this value itself is never retried as empty
+						if restore() {
+							continue segments
+						}
 						return false
 					}
 				}
