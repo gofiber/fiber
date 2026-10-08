@@ -242,6 +242,32 @@ func Test_Security_HopByHopRequestStripping(t *testing.T) {
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
 }
 
+// Test_Security_IsForwardingHeader pins the family a client cannot have
+// removed by naming it in Connection, whatever its case, and that the prefix
+// rule takes X-Forwarded-* only.
+func Test_Security_IsForwardingHeader(t *testing.T) {
+	t.Parallel()
+
+	for name, want := range map[string]bool{
+		"X-Real-IP":         true,
+		"x-real-ip":         true,
+		"Forwarded":         true,
+		"FORWARDED":         true,
+		"X-Forwarded-For":   true,
+		"x-forwarded-host":  true,
+		"X-FORWARDED-PROTO": true,
+		"X-Forwarded-Port":  true,
+		"X-Forwarded":       false,
+		"X-ForwardedFor":    false,
+		"Via":               false,
+		"X-Custom-Hop":      false,
+		"Keep-Alive":        false,
+		"":                  false,
+	} {
+		require.Equal(t, want, isForwardingHeader(name), name)
+	}
+}
+
 func Test_Security_HopByHopResponseStripping(t *testing.T) {
 	t.Parallel()
 	_, addr := createProxyTestServerIPv4(t, func(c fiber.Ctx) error {

@@ -57,6 +57,12 @@ When a redirect crosses to a **different host**, `DoRedirects` strips `Authoriza
 
 `Connection`, `Keep-Alive`, `Proxy-Authenticate`, `Proxy-Authorization`, `TE`, `Trailer`, `Transfer-Encoding`, and `Upgrade` are stripped from both the outbound request and the inbound response, along with every header listed in the `Connection` field per RFC 7230 §6.1. This prevents request smuggling (`TE`/`Transfer-Encoding`), proxy-credential forwarding, and protocol-upgrade leaks. The legacy `KeepConnectionHeader` option preserves only the literal `Connection` header for backwards compatibility; the other hop-by-hop headers are still stripped. To preserve every hop-by-hop header (not recommended), set `SecurityPolicy.KeepHopByHopHeaders = true`.
 
+The names a client lists in `Connection` are removed from the request as it was received, with one intentional exception to RFC 9110 §7.6.1: the forwarding headers `X-Real-IP`, `Forwarded`, and every `X-Forwarded-*` header stay. They tell the upstream about the client as this hop saw it, and an upstream that trusts the gateway acts on them, so they are the gateway's to write and not the client's to have removed. `Balancer`, `Forward`, `DomainForward`, and `BalancerForward` write `X-Real-IP` only after the listing has been applied, and the exception also covers a forwarding header your application sets before the proxy runs, including `X-Real-IP` set by hand before `Do`. A client loses nothing by it: a forwarding header it sends is forwarded whenever `Connection` does not name it.
+
+:::caution Headers set before the proxy runs
+Any other header your application adds to the request before the proxy handler runs — in an earlier middleware, or before calling `Do` — is part of the received request as far as the `Connection` listing is concerned, and a client can have it removed by naming it there. Set headers meant for the upstream in `Balancer`'s `ModifyRequest`, which runs after the listing has been applied.
+:::
+
 ### TLS minimum version
 
 `Config.TLSConfig` is cloned with `MinVersion: tls.VersionTLS12` if no minimum is configured, so deprecated TLS versions cannot be negotiated by accident.
@@ -67,7 +73,7 @@ When a redirect crosses to a **different host**, `DoRedirects` strips `Authoriza
 
 ### X-Real-IP spoof prevention
 
-`Balancer`, `Forward`, `DomainForward`, and `BalancerForward` automatically overwrite the `X-Real-IP` header with `c.IP()` before forwarding, so clients cannot spoof their address. `Balancer` does so before `ModifyRequest` runs, so `ModifyRequest` can still set its own value. `DomainForward` only applies the overwrite when the request host matches the configured hostname (matched case-insensitively per RFC 9110 §4.2.3, with or without a port in the `Host` header); non-matching requests are passed on to the next handler unchanged. After any of the forwarding helpers returns, the request carries its original URI and `Host` again, so middleware running after `Next` still sees the request the client sent.
+`Balancer`, `Forward`, `DomainForward`, and `BalancerForward` automatically overwrite the `X-Real-IP` header with `c.IP()` before forwarding, so clients cannot spoof their address. The address is read from the request as received and written after the `Connection` listing has been applied, and `X-Real-IP` is exempt from that listing, so a client cannot have the header removed by naming it there either (see [hop-by-hop header stripping](#rfc-7230-hop-by-hop-header-stripping)). `Balancer` writes it before `ModifyRequest` runs, so `ModifyRequest` can still set its own value. `DomainForward` only applies the overwrite when the request host matches the configured hostname (matched case-insensitively per RFC 9110 §4.2.3, with or without a port in the `Host` header); non-matching requests are passed on to the next handler unchanged. After any of the forwarding helpers returns, the request carries its original URI and `Host` again, so middleware running after `Next` still sees the request the client sent.
 
 When using `Do`, `DoRedirects`, `DoDeadline`, or `DoTimeout` directly, the `X-Real-IP` header is not set automatically — set it manually if needed:
 
@@ -83,7 +89,9 @@ one of its own values on the wire, and the upstream — which may read the last
 line, or join the pair per RFC 9110 §5.2 — attributes the request to an address
 the client chose. Delete first so exactly one line survives. Resolve `c.IP()`
 before the delete as well: with `Config.ProxyHeader` set to `X-Real-IP`, `c.IP()`
-reads the very header being replaced.
+reads the very header being replaced. The line you write survives a client
+listing `X-Real-IP` in `Connection`, as the forwarding headers are exempt from
+that listing.
 
 :::caution With `DisableHeaderNormalizing`, delete every spelling
 
