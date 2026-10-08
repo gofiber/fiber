@@ -33,6 +33,7 @@ type routeParser struct { // betteralign:ignore - see above
 	maxSlashes    int32           // maximum number of '/' a matching detection path can contain; only valid when maxBounded is true
 	maxBounded    bool            // false when a parameter can swallow '/', making the maximum unknowable; false also disables the max check
 	constParam    bool            // route is exactly one const segment + one plain trailing param; see matchConstParam
+	yields        bool            // an optional parameter sits directly before another parameter; see matchBacktrack
 	probe         constProbe      // first constant after a parameter, checked before getMatch; see computeProbe
 	segs          []*routeSegment // the parsed segments of the route
 	params        []string        // that parameter names the parsed route
@@ -60,6 +61,7 @@ type routeSegment struct {
 	IsParam    bool // Truth value that indicates whether it is a parameter or a constant part
 	IsGreedy   bool // indicates whether the parameter is greedy or not, is used with wildcard and plus
 	IsOptional bool // indicates whether the parameter is optional or not
+	CanYield   bool // optional parameter directly before another parameter; only there can an empty retry help
 	// common information
 	IsLast           bool // shows if the segment is the last one for the route
 	HasOptionalSlash bool // segment has the possibility of an optional slash
@@ -700,6 +702,9 @@ func (parser *routeParser) parseRoute(pattern string, regexHandler any, customCo
 		parser.segs[len(parser.segs)-1].IsLast = true
 	}
 	parser.segs = addParameterMetaInfo(parser.segs)
+	for _, s := range parser.segs {
+		parser.yields = parser.yields || s.CanYield
+	}
 	parser.constParam = isConstParamShape(parser.segs)
 }
 
@@ -964,6 +969,7 @@ func addParameterMetaInfo(segs []*routeSegment) []*routeSegment {
 	for i := range segLen {
 		// check how often the compare part is in the following const parts
 		if segs[i].IsParam {
+			segs[i].CanYield = segs[i].IsOptional && !segs[i].IsGreedy && segLen > i+1 && segs[i+1].IsParam
 			// check if parameter segments are directly after each other;
 			// when neither this parameter nor the next parameter are greedy, we only want one character
 			if segLen > i+1 && !segs[i].IsGreedy && segs[i+1].IsParam && !segs[i+1].IsGreedy {
@@ -1180,6 +1186,9 @@ func (parser *routeParser) getMatch(detectionPath, path string, params *[maxPara
 	if parser.constParam {
 		return parser.matchConstParam(detectionPath, path, params, partialCheck)
 	}
+	if parser.yields {
+		return parser.matchBacktrack(detectionPath, path, params, partialCheck)
+	}
 
 	originalDetectionPath := detectionPath
 	// offset indexes into the never-resliced path; it only advances by bytes consumed
@@ -1239,6 +1248,125 @@ func (parser *routeParser) getMatch(detectionPath, path string, params *[maxPara
 	return true
 }
 
+type backtrackPoint struct {
+	detectionPath  string
+	segIdx         int
+	offset         int
+	paramsIterator int
+}
+
+// maxBacktrackRetries bounds optional-parameter retry attempts to prevent
+// exponential execution times on routes with many adjacent optional parameters.
+const maxBacktrackRetries = 16
+
+// matchBacktrack is getMatch for routes with an optional parameter directly before another
+// parameter: it retries that parameter as empty (/:a:b?:c on /ac), up to maxBacktrackRetries.
+func (parser *routeParser) matchBacktrack(detectionPath, path string, params *[maxParams]string, partialCheck bool) bool { //nolint:revive // mirrors getMatch's signature
+	originalDetectionPath := detectionPath
+	var i, paramsIterator, partLen, offset, retries, segIdx int
+	var backtrackStack [maxParams]backtrackPoint
+	backtrackLen := 0
+
+	restore := func() bool {
+		if backtrackLen > 0 && retries < maxBacktrackRetries {
+			retries++
+			backtrackLen--
+			if backtrackLen >= 0 && backtrackLen < len(backtrackStack) {
+				bp := backtrackStack[backtrackLen]
+				segIdx = bp.segIdx + 1
+				detectionPath = bp.detectionPath
+				offset = bp.offset
+				paramsIterator = bp.paramsIterator
+				params[paramsIterator-1] = ""
+				return true
+			}
+		}
+		return false
+	}
+
+segments:
+	for {
+		if segIdx >= len(parser.segs) {
+			if detectionPath != "" {
+				if !partialCheck {
+					if restore() {
+						continue
+					}
+					return false
+				}
+				consumedLength := len(originalDetectionPath) - len(detectionPath)
+				if !hasPartialMatchBoundary(originalDetectionPath, consumedLength) {
+					if restore() {
+						continue
+					}
+					return false
+				}
+			}
+			return true
+		}
+
+		segment := parser.segs[segIdx]
+		partLen = len(detectionPath)
+
+		if !segment.IsParam {
+			i = segment.Length
+			// is optional part or the const part must match with the given string
+			// check if the end of the segment is an optional slash
+			// the unsigned compare proves 0 <= i <= len(detectionPath), keeping detectionPath[:i] bounds-check free
+			// NOTE: computeSlashBounds' minSlashes accounts for this optional-slash drop
+			if segment.HasOptionalSlash && partLen == i-1 && detectionPath == segment.Const[:i-1] {
+				i--
+			} else if uint(i) > uint(len(detectionPath)) || detectionPath[:i] != segment.Const {
+				if restore() {
+					continue
+				}
+				return false
+			}
+		} else {
+			i = findParamLen(detectionPath, segment)
+			if !segment.IsOptional && i == 0 {
+				if restore() {
+					continue
+				}
+				return false
+			}
+
+			if !segment.IsOptional || i != 0 {
+				paramValue := path[offset : offset+i]
+				for _, c := range segment.Constraints {
+					if matched := c.matchConstraint(paramValue); !matched {
+						// an earlier optional may yield; this value itself is never retried as empty
+						if restore() {
+							continue segments
+						}
+						return false
+					}
+				}
+			}
+
+			// retry point: this parameter as empty
+			if segment.CanYield && i > 0 && backtrackLen < len(backtrackStack) {
+				backtrackStack[backtrackLen] = backtrackPoint{
+					segIdx:         segIdx,
+					offset:         offset,
+					paramsIterator: paramsIterator + 1,
+					detectionPath:  detectionPath,
+				}
+				backtrackLen++
+			}
+
+			params[paramsIterator] = path[offset : offset+i]
+			paramsIterator++
+		}
+
+		if partLen > 0 {
+			detectionPath = detectionPath[i:]
+			offset += i
+		}
+		segIdx++
+	}
+}
+
 // matchConstParam is getMatch specialized to the "/const/:param" shape, which
 // is what most REST endpoints look like ("/user/keys/:key_id"). It is a
 // straight-line rewrite of the generic segment walk for that shape, not a
@@ -1291,6 +1419,7 @@ func (parser *routeParser) matchConstParam(detectionPath, path string, params *[
 // '/' (greedy, adjacent Length==1, single-byte ComparePart). When changing how
 // parameters consume '/', update computeSlashBounds or the router's slash-count
 // quick-reject will wrongly filter routes.
+// CanYield relies on a parameter ending at the first occurrence of its ComparePart.
 func findParamLen(s string, segment *routeSegment) int {
 	if segment.IsLast {
 		return findParamLenForLastSegment(s, segment)

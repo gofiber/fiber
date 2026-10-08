@@ -110,11 +110,12 @@ func Test_Path_parseRoute(t *testing.T) {
 	require.Equal(t, routeParser{
 		segs: []*routeSegment{
 			{Const: "/test", Length: 5},
-			{IsParam: true, ParamName: "optional", IsOptional: true, Length: 1},
+			{IsParam: true, ParamName: "optional", IsOptional: true, CanYield: true, Length: 1},
 			{IsParam: true, ParamName: "optional2", IsOptional: true, IsLast: true},
 		},
 		params:     []string{"optional", "optional2"},
 		minSlashes: 1,
+		yields:     true,
 	}, rp)
 
 	rp = parseRoute("/config/+.json", regexp.MustCompile)
@@ -550,6 +551,33 @@ func Benchmark_Path_matchParams(t *testing.B) {
 
 	for _, testCollection := range benchmarkCases {
 		benchCaseFn(testCollection)
+	}
+}
+
+func Benchmark_Path_OptionalMiss(b *testing.B) {
+	for _, tc := range []struct {
+		name         string
+		pattern      string
+		path         string
+		partialCheck bool
+	}{
+		{"before_optional", "/api/:version?/users", "/en/pricing", false},
+		{"empty_optional", "/:lang?/users", "/", false},
+		{"missing_literal", "/:lang?/users", "/en/pricing", false},
+		{"api_missing_literal", "/api/:version?/users", "/api/v1/pricing", false},
+		{"partial_boundary", "/:lang?/user", "/en/users", true},
+	} {
+		b.Run(tc.name, func(b *testing.B) {
+			parser := parseRoute(tc.pattern, regexp.MustCompile)
+			var params [maxParams]string
+			require.False(b, parser.getMatch(tc.path, tc.path, &params, tc.partialCheck))
+			b.ReportAllocs()
+			var matched bool
+			for b.Loop() {
+				matched = parser.getMatch(tc.path, tc.path, &params, tc.partialCheck)
+			}
+			require.False(b, matched)
+		})
 	}
 }
 
