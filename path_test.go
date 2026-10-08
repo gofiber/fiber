@@ -110,11 +110,12 @@ func Test_Path_parseRoute(t *testing.T) {
 	require.Equal(t, routeParser{
 		segs: []*routeSegment{
 			{Const: "/test", Length: 5},
-			{IsParam: true, ParamName: "optional", IsOptional: true, Length: 1},
+			{IsParam: true, ParamName: "optional", IsOptional: true, CanYield: true, Length: 1},
 			{IsParam: true, ParamName: "optional2", IsOptional: true, IsLast: true},
 		},
 		params:     []string{"optional", "optional2"},
 		minSlashes: 1,
+		yields:     true,
 	}, rp)
 
 	rp = parseRoute("/config/+.json", regexp.MustCompile)

@@ -6228,8 +6228,8 @@ func Test_RouteParser_BacktrackMaxRetriesBound(t *testing.T) {
 		pattern string
 		status  int
 	}{
-		{"within_limit", "/pre:a?:b?:c?:d?-end", StatusOK},
-		{"exceeds_limit", "/pre:a?:b?:c?:d?:e?-end", StatusNotFound},
+		{"within_limit", "/pre:a?:b?:c?:d?:e?-end", StatusOK},
+		{"exceeds_limit", "/pre:a?:b?:c?:d?:e?:f?-end", StatusNotFound},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
