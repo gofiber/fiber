@@ -212,6 +212,8 @@ Route parameters are dynamic segments in a path, either named or unnamed, used t
 
 The characters `:`, `+`, and `*` introduce parameters. Append `?` to a named segment to make it optional. `+` is a greedy, required wildcard (it must match at least one character); `*` is a greedy, optional wildcard (it can match nothing).
 
+If a named optional parameter consumes a value but later segments fail to match, Fiber can retry it as empty. Matching allows at most 16 such retries per route to bound the work for adjacent optional parameters. A route that needs more retries does not match, even if a valid assignment exists. Greedy wildcards do not participate in these retries, and a value that fails its constraint is not retried as empty.
+
 <Tabs>
 <TabItem value="named" label="Named, optional, greedy">
 

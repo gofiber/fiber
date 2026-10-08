@@ -176,14 +176,14 @@ func init() {
 				pattern: "/:param1:param2?:param3",
 				testCases: []routeTestCase{
 					{url: "/abbbc", params: []string{"a", "b", "bbc"}, match: true},
-					// {url: "/ac", testCases: []string{"a", "", "c"}, match: true}, // TODO: fix it
+					{url: "/ac", params: []string{"a", "", "c"}, match: true},
 					{url: "/test", params: []string{"t", "e", "st"}, match: true},
 				},
 			},
 			{
 				pattern: "/test:optional?:mandatory",
 				testCases: []routeTestCase{
-					// {url: "/testo", testCases: []string{"", "o"}, match: true}, // TODO: fix it
+					{url: "/testo", params: []string{"", "o"}, match: true},
 					{url: "/testoaaa", params: []string{"o", "aaa"}, match: true},
 					{url: "/test", params: nil, match: false},
 				},
@@ -195,6 +195,21 @@ func init() {
 					{url: "/testoaaa", params: []string{"o", "aaa"}, match: true},
 					{url: "/test", params: []string{"", ""}, match: true},
 					{url: "/tes", params: nil, match: false},
+				},
+			},
+			{
+				pattern: "/:a?:b?:c:d",
+				testCases: []routeTestCase{
+					{url: "/xy", params: []string{"", "", "x", "y"}, match: true},
+					{url: "/wxyz", params: []string{"w", "x", "y", "z"}, match: true},
+				},
+			},
+			{
+				pattern: "/:a?:b<int>:c",
+				testCases: []routeTestCase{
+					{url: "/1xy", params: []string{"", "1", "xy"}, match: true},
+					{url: "/x1y", params: []string{"x", "1", "y"}, match: true},
+					{url: "/xyz", params: nil, match: false},
 				},
 			},
 			{
