@@ -44,6 +44,7 @@ import (
 	"github.com/valyala/fasthttp"
 
 	"github.com/gofiber/fiber/v3/internal/storage/memory"
+	"github.com/gofiber/fiber/v3/log"
 )
 
 const epsilon = 0.001
@@ -10213,6 +10214,105 @@ func Test_Ctx_Status(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 415, c.Response().StatusCode())
 	require.Equal(t, "Hello, World", string(c.Response().Body()))
+}
+
+// Every three-digit code fits a status line (RFC 9112 Section 4) and goes out
+// as given, the 600..999 range RFC 9110 Section 15 leaves undefined included.
+// go test -run Test_Ctx_Status_ThreeDigits
+func Test_Ctx_Status_ThreeDigits(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	for _, code := range []int{100, 101, 200, 204, 304, 404, 499, 500, 599, 600, 601, 799, 999} {
+		t.Run(strconv.Itoa(code), func(t *testing.T) {
+			t.Parallel()
+
+			c := app.AcquireCtx(&fasthttp.RequestCtx{})
+			t.Cleanup(func() { app.ReleaseCtx(c) })
+
+			c.Status(code)
+			require.Equal(t, code, c.Response().StatusCode())
+			c.Res().Status(code)
+			require.Equal(t, code, c.Response().StatusCode())
+		})
+	}
+}
+
+// fasthttp writes a number it is handed as it is, so 99 and 1000 went out as
+// malformed status lines that clients refuse and 0 or a negative number went out
+// as 200 OK. None of them fits a status line (RFC 9112 Section 4), and the last
+// two reported a failure as a success.
+// go test -run Test_Ctx_Status_Invalid
+func Test_Ctx_Status_Invalid(t *testing.T) {
+	// Not parallel: redirects the process-wide logger output.
+	var logged bytes.Buffer
+	log.SetOutput(&logged)
+	t.Cleanup(func() { log.SetOutput(os.Stderr) })
+
+	invalid := []int{0, -1, -5, 1, 99, 1000, 12345, math.MaxInt, math.MinInt}
+
+	app := New()
+	for _, code := range invalid {
+		app.Get("/status/"+strconv.Itoa(code), func(c Ctx) error {
+			return c.Status(code).SendString("body")
+		})
+		app.Get("/send/"+strconv.Itoa(code), func(c Ctx) error {
+			return c.SendStatus(code)
+		})
+		app.Get("/error/"+strconv.Itoa(code), func(_ Ctx) error {
+			return NewError(code, "failed")
+		})
+		app.Get("/redirect/"+strconv.Itoa(code), func(c Ctx) error {
+			return c.Redirect().Status(code).To("/elsewhere")
+		})
+	}
+
+	for _, code := range invalid {
+		for _, kind := range []string{"status", "send", "error", "redirect"} {
+			t.Run(kind+"/"+strconv.Itoa(code), func(t *testing.T) {
+				logged.Reset()
+
+				// app.Test reads the response back with net/http, which refuses a
+				// malformed status line.
+				resp, err := app.Test(httptest.NewRequest(MethodGet, "/"+kind+"/"+strconv.Itoa(code), http.NoBody))
+				require.NoError(t, err)
+				require.Equal(t, StatusInternalServerError, resp.StatusCode)
+				require.NoError(t, resp.Body.Close())
+
+				require.Contains(t, logged.String(), fmt.Sprintf("status code %d is not a three-digit HTTP status, sending 500 instead", code))
+			})
+		}
+	}
+
+	t.Run("SendStatus answers with the status that is sent", func(t *testing.T) {
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		t.Cleanup(func() { app.ReleaseCtx(c) })
+
+		require.NoError(t, c.SendStatus(0))
+		require.Equal(t, StatusInternalServerError, c.Response().StatusCode())
+		require.Equal(t, "Internal Server Error", string(c.Response().Body()))
+	})
+
+	t.Run("a valid status is not logged", func(t *testing.T) {
+		logged.Reset()
+
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		t.Cleanup(func() { app.ReleaseCtx(c) })
+		c.Status(StatusTeapot)
+		require.NoError(t, c.SendStatus(StatusNoContent))
+		require.Empty(t, logged.String())
+	})
+}
+
+func Benchmark_Ctx_Status(b *testing.B) {
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+
+	b.ReportAllocs()
+	for b.Loop() {
+		c.Status(StatusTeapot)
+	}
+	require.Equal(b, StatusTeapot, c.Response().StatusCode())
 }
 
 // go test -run Test_Ctx_Type

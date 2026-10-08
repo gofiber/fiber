@@ -1447,6 +1447,9 @@ func (r *DefaultRes) NoContent() error {
 // SendStatus sets the HTTP status code and if the response body is empty,
 // it sets the correct status message in the body.
 func (r *DefaultRes) SendStatus(status int) error {
+	// Settled first, so the body rules and the status text below go by the
+	// status that is sent.
+	status = validStatus(status)
 	r.Status(status)
 
 	if statusDisallowsBody(status) {
@@ -1512,8 +1515,11 @@ func (r *DefaultRes) setCanonical(key, val string) {
 
 // Status sets the HTTP status for the response.
 // This method is chainable.
+//
+// A status that is not three digits (outside 100 to 999) cannot be sent as a
+// status line, so the response gets 500 and the mistake is logged.
 func (r *DefaultRes) Status(status int) Ctx {
-	r.c.fasthttp.Response.SetStatusCode(status)
+	r.c.fasthttp.Response.SetStatusCode(validStatus(status))
 	return r.c
 }
 

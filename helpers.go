@@ -1160,6 +1160,34 @@ func (app *App) method(methodInt int) string {
 	return app.config.RequestMethods[methodInt]
 }
 
+// The status codes Status accepts. The status line carries three digits
+// (RFC 9112 Section 4), which is the range net/http and Express enforce as well.
+// RFC 9110 Section 15 defines only 100..599 and calls the rest invalid, but a
+// code from 600 to 999 is still a well-formed status line, and a client treats
+// it as a 5xx, so it is let through.
+const (
+	minStatusCode = 100
+	maxStatusCode = 999
+)
+
+// validStatus returns status when it fits a status line and 500 otherwise.
+// fasthttp writes any other number as it is, so 99 and 1000 went out as
+// malformed status lines that clients refuse, and 0 or a negative number went
+// out as 200 OK, which reported a failure as a success.
+func validStatus(status int) int {
+	if status < minStatusCode || status > maxStatusCode {
+		return invalidStatus(status)
+	}
+	return status
+}
+
+// invalidStatus logs a status that cannot be sent and returns the status sent
+// in its place.
+func invalidStatus(status int) int {
+	log.Errorf("fiber: status code %d is not a three-digit HTTP status, sending %d instead", status, StatusInternalServerError)
+	return StatusInternalServerError
+}
+
 // IsMethodSafe reports whether the HTTP method is considered safe.
 // See https://datatracker.ietf.org/doc/html/rfc9110#section-9.2.1
 func IsMethodSafe(m string) bool {

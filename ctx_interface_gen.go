@@ -173,6 +173,9 @@ type Ctx interface {
 	Error(status int, message ...string) error
 	// Status sets the HTTP status for the response.
 	// This method is chainable.
+	//
+	// A status that is not three digits (outside 100 to 999) cannot be sent as a
+	// status line, so the response gets 500 and the mistake is logged.
 	Status(status int) Ctx
 	// ID returns the connection-unique identifier fasthttp assigned to this request,
 	// unlike RequestID, which reads a header. It is not unique across processes or

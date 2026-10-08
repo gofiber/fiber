@@ -202,6 +202,9 @@ type Res interface {
 	setCanonical(key, val string)
 	// Status sets the HTTP status for the response.
 	// This method is chainable.
+	//
+	// A status that is not three digits (outside 100 to 999) cannot be sent as a
+	// status line, so the response gets 500 and the mistake is logged.
 	Status(status int) Ctx
 	// StatusCode returns the status code set on the response, the read side of
 	// Status, and reports 200 until something sets another. After Next it is the

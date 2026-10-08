@@ -4086,6 +4086,10 @@ Sets the HTTP status for the response.
 This method is **chainable**.
 :::
 
+:::caution Status codes outside 100 to 999
+A status line carries three digits ([RFC 9112 §4](https://www.rfc-editor.org/rfc/rfc9112#section-4)), so a code below `100` or above `999` cannot be sent: `99` and `1000` would be malformed status lines that clients refuse, and `0` or a negative number would go out as `200 OK`, reporting a failure as a success. `Status` answers `500 Internal Server Error` for such a code and logs it, which also covers [`SendStatus`](#sendstatus), `Redirect().Status` and an error created with `fiber.NewError`. Codes from `600` to `999` are sent as given, although [RFC 9110 §15](https://www.rfc-editor.org/rfc/rfc9110#section-15) defines only `100` to `599` and clients treat the rest as a `5xx`.
+:::
+
 ```go title="Signature"
 func (c fiber.Ctx) Status(status int) fiber.Ctx
 func (r fiber.Res) Status(status int) fiber.Ctx
