@@ -1458,6 +1458,8 @@ Incoming body sizes now respect the Fiber app's configured `BodyLimit` (falling 
 
 The adaptor also propagates the request's protocol version, normalized to Fiber's convention (`HTTP/2.0` → `HTTP/2`, `HTTP/3.0` → `HTTP/3`), so `c.Protocol()` reports the real version instead of always `HTTP/1.1`. Interim responses such as `SendEarlyHints`' `103` are silently skipped through the adaptor — there is no client connection to write them to — while the `Link` headers still reach the final response.
 
+An adapted `net/http` handler, middleware or `ConvertRequest` request is built from the path the router matched, `c.Path()`, followed by the query as the client sent it, rather than from the request line as it arrived, so a `net/http` guard on `r.URL.Path` sees the `/admin/x` that `/a/../admin/x` was routed as. A byte a path may not carry raw is written as its escape, and the request keeps the host Fiber saw, including the one an absolute-form request line names. `HTTPHandler`, `HTTPHandlerFunc` and `HTTPHandlerWithContext` answer `404 Not Found` for a routed path with an empty segment or an escaped slash, such as `//admin/x` or `/public/..%2Fadmin/x`, which `net/http` would otherwise decode and clean into a path no Fiber middleware ran for, and for one with a backslash or a dot segment carrying parameters (`..;`), which an upstream behind a handler such as `httputil.ReverseProxy` may resolve into another path; a handler that must serve such names can be wrapped with `HTTPMiddleware` instead. `HTTPMiddleware` answers `400 Bad Request`, and `ConvertRequest` returns `fiber.ErrBadRequest`, for a routed path fasthttp would read as an authority rather than a path: one that begins with `//` and holds `://`, or one beginning with `//` on a request without a `Host` header. A routed path holding an escape of an unreserved character, which only a stray `%` can forge, is `404 Not Found` from the handler adapters and `400 Bad Request` from `HTTPMiddleware` and `ConvertRequest`, since `URL.Path` would read a forged `%2e%2e` as `..`. `FiberHandler`, `FiberHandlerFunc` and `FiberApp` route `r.RequestURI` as received, so a raw `/über` is routed as a Fiber server routes it, and when `r.URL` no longer matches that line, the request line `net/http` would write for `r`: a rewritten `r.URL`, as `http.StripPrefix` produces, a request built in code without a `RequestURI`, and the authority of a `CONNECT` request in the authority form. See the adaptor's [notes and limitations](./middleware/adaptor.md#notes-and-limitations).
+
 | Payload Size | Metric         | V2           | V3          | Percent Change |
 | ------------ | -------------- | ------------ | ----------- | -------------- |
 | 100KB        | Execution Time | 1056 ns/op   | 588.6 ns/op | -44.25%        |
@@ -1821,6 +1823,8 @@ The new `KeepConnectionHeader` option (default `false`) drops the `Connection` h
 
 `proxy.Balancer` now accepts an optional variadic configuration: call `proxy.Balancer()` to use defaults or continue passing a `proxy.Config` value as before.
 
+`Balancer`, `DomainForward` and `BalancerForward` forward the path the router matched, `c.Path()`, followed by the query as the client sent it, instead of the request line as it arrived. Spellings such as `/public/..%2Fadmin/secret` and `//admin/secret`, which fasthttp's normalization of the raw request line turned into `/admin/secret` on the way to the upstream, are answered with `400 Bad Request`, since an upstream that decodes `%2F` or merges `//` before it matches routes would still serve a path no middleware matched; the new `SecurityPolicy.AllowAmbiguousSlashes` forwards them exactly as the router matched them, for an upstream that keeps both. A path holding a backslash, a dot segment carrying parameters (`..;`), which servlet containers resolve, or an escape of an unreserved character, which only a stray `%` can forge, is answered with `400` regardless. A path with dot segments is forwarded resolved, and a byte a path may not carry raw is forwarded as its escape. Every entry in `Config.Servers` must be a scheme and host only; an entry with a path, userinfo, query or fragment panics at startup with `ErrUpstreamNotOrigin`. `Balancer` also answers `400 Bad Request` for a request whose `Host` header carries userinfo and for a routed target fasthttp would read as an authority rather than a path (one that begins with `//` and holds `://`, or one beginning with `//` on a request without a `Host` header). A path override without a leading slash is forwarded rooted. Every `*fasthttp.HostClient` in a custom `Client` gets `DisablePathNormalizing` set, and behind any other `BalancingClient` a target that normalization would change is answered with `400`. Path normalization is also disabled on the default client, on a client registered with `WithClient` and on every host client a per-call client creates once the proxy has it. See [Request target](./middleware/proxy.md#request-target).
+
 ### Recover
 
 The Recover middleware allows customizing the error it returns. Set a `PanicHandler` in its `Config` to change the default behavior.
@@ -2001,6 +2005,8 @@ app.Get("*", static.New("./public/index.html"))
 :::caution
 You have to put `*` to the end of the route if you don't define static route with `app.Use`.
 :::
+
+The static middleware opens the name the router matched and does not percent-decode it a second time. Escapes the router keeps encoded, such as `%20`, stay encoded in the file name unless `UnescapePath` is enabled, and an escape of an unreserved character left in the routed path, which only a stray `%` can forge, is answered with `404` rather than decoded into a different file, so `/static/%%370rivate/secret.txt` never opens `private/secret.txt`. On Windows a path segment ending in a dot or a space is `404` as well, since the OS strips both when it opens a file. See [Static](./middleware/static.md).
 
 #### Trusted Proxies
 
@@ -3354,6 +3360,7 @@ app.Get("/gif", proxy.Forward("https://i.imgur.com/IWaBepg.gif"))
 
 #### Rewrite
 
+- **Captures decoded once**: with `UnescapePath` enabled a wildcard capture is escaped again before it is inserted into `To`, so the rewritten path is not decoded a second time. `/files/%252e%252e/secret` rewritten by `/files/*` to `/public/$1` now reaches the handler as `/public/%2e%2e/secret` instead of `/secret`.
 - **Ordered rules**: `Rules map[string]string` is deprecated in favor of `RuleList []Rule`. A map has no order, so which rule answered a path two rules both matched was decided by map iteration, which Go randomizes per run: the same request could be rewritten differently from one call to the next. Rules in an `RuleList` list are tried in the order written and the first match wins, exactly as routes are matched.
 
 ```go
