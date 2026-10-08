@@ -812,6 +812,12 @@ for the response. The response cookies are `c.Res().GetCookies()`, named apart f
   fasthttp emits for a declared length; neither line is sent now. `205 Reset Content` still sends
   `Content-Length: 0`, which [Section 15.3.6](https://www.rfc-editor.org/rfc/rfc9110#section-15.3.6) requires.
   Unlike the two above, this applies under the default configuration.
+- **AcceptsEncodings()**: Follows [RFC 9110, Section 12.5.3](https://www.rfc-editor.org/rfc/rfc9110#section-12.5.3).
+  `identity`, the absence of a coding, is now acceptable when the `Accept-Encoding` header does not list it, unless
+  the header excludes it with `identity;q=0` or `*;q=0`: `c.AcceptsEncodings("br", "identity")` answers `"identity"`
+  for `Accept-Encoding: gzip`, where it answered `""`. An unlisted `identity` ranks below every coding the header does
+  list. A header that is present but empty now accepts only `identity`; it used to read as absent, which accepts the
+  first offer.
 - **Context()**: Renamed to `RequestCtx()` to access the underlying `fasthttp.RequestCtx`.
 - **IP()**: When `EnableIPValidation` is `true` and `TrustProxyConfig` is set, `c.IP()` now walks the `X-Forwarded-For` chain from right to left and returns the first non-trusted IP, instead of the leftmost syntactically valid IP. This closes an IP-spoofing vector where an attacker could prepend a fake address and have it returned by `c.IP()`. Apps with `EnableIPValidation = false` (the default) are unaffected. See [`Ctx.IP`](./api/ctx.md#ip) and the [reverse proxy guide](./guide/reverse-proxy.md#getting-the-real-client-ip-address) for details.
 

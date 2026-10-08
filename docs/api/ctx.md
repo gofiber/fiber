@@ -1075,6 +1075,24 @@ app.Get("/", func(c fiber.Ctx) error {
 })
 ```
 
+For `Accept-Encoding`, [RFC 9110 §12.5.3](https://www.rfc-editor.org/rfc/rfc9110#section-12.5.3) adds three rules to the weights:
+
+- A request without the header accepts any coding, so the first offer is returned.
+- A request whose header is present but empty wants no content coding, so only an `identity` offer matches.
+- `identity` (no coding) is acceptable even when the header does not list it, unless the header excludes it with `identity;q=0`, or with `*;q=0` and no entry of its own for `identity`. An unlisted `identity` ranks below every coding the header does list.
+
+```go title="Example 5"
+// Accept-Encoding: gzip
+c.AcceptsEncodings("gzip", "identity") // "gzip"
+c.AcceptsEncodings("br", "identity")   // "identity": br is not listed, identity is acceptable unless excluded
+
+// Accept-Encoding: gzip, identity;q=0
+c.AcceptsEncodings("br", "identity")   // "": identity is excluded
+
+// Accept-Encoding: (present, empty)
+c.AcceptsEncodings("gzip", "identity") // "identity": the client wants no coding
+```
+
 ### AcceptsEventStream
 
 Returns `true` when the `Accept` header allows `text/event-stream`.

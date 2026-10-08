@@ -756,6 +756,131 @@ func Test_Ctx_AcceptsEncodings_MultiHeader(t *testing.T) {
 	require.Equal(t, "gzip", c.AcceptsEncodings("deflate", "gzip"))
 }
 
+// RFC 9110 Section 12.5.3: a response with no content coding ("identity") is
+// acceptable unless the field excludes it, whether or not the field lists it, and
+// a field that is present but empty wants no content coding at all.
+// go test -run Test_Ctx_AcceptsEncodings_Identity
+func Test_Ctx_AcceptsEncodings_Identity(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		header string
+		want   string
+		offers []string
+	}{
+		// Listed codings keep winning on their weights.
+		{name: "listed coding", header: "gzip", offers: []string{"gzip", "br"}, want: "gzip"},
+		{name: "listed beats unlisted", header: "br;q=0.1", offers: []string{"identity", "br"}, want: "br"},
+		{name: "unlisted coding", header: "gzip", offers: []string{"br"}, want: ""},
+		{name: "refused coding", header: "gzip;q=0", offers: []string{"gzip"}, want: ""},
+
+		// An identity offer the field does not mention is acceptable by default.
+		{name: "identity unlisted", header: "gzip", offers: []string{"identity"}, want: "identity"},
+		{name: "identity unlisted among offers", header: "gzip", offers: []string{"br", "identity"}, want: "identity"},
+		{name: "identity after a refused coding", header: "gzip;q=0", offers: []string{"gzip", "identity"}, want: "identity"},
+		{name: "identity ranks below a listed coding", header: "gzip;q=0.1", offers: []string{"identity", "gzip"}, want: "gzip"},
+		{name: "identity keeps the caller's spelling", header: "gzip", offers: []string{"Identity"}, want: "Identity"},
+
+		// ... unless the field excludes it.
+		{name: "identity refused", header: "identity;q=0", offers: []string{"identity"}, want: ""},
+		{name: "identity refused, other coding unlisted", header: "identity;q=0", offers: []string{"gzip", "identity"}, want: ""},
+		{name: "identity refused, other coding listed", header: "identity;q=0, gzip", offers: []string{"identity", "gzip"}, want: "gzip"},
+		{name: "identity refused in any case", header: "IDENTITY;q=0", offers: []string{"identity"}, want: ""},
+		{name: "everything refused", header: "*;q=0", offers: []string{"gzip", "identity"}, want: ""},
+		{name: "everything but identity refused", header: "*;q=0, identity", offers: []string{"gzip", "identity"}, want: "identity"},
+		{name: "everything but gzip refused", header: "*;q=0, gzip", offers: []string{"identity", "gzip"}, want: "gzip"},
+
+		// An entry for identity is more specific than the wildcard.
+		{name: "wildcard accepts identity", header: "*", offers: []string{"identity"}, want: "identity"},
+		{name: "identity refused despite the wildcard", header: "*;q=0.5, identity;q=0", offers: []string{"identity"}, want: ""},
+		{name: "wildcard still serves another coding", header: "*;q=0.5, identity;q=0", offers: []string{"identity", "gzip"}, want: "gzip"},
+		{name: "identity weighed on its own entry", header: "gzip;q=0.5, identity", offers: []string{"gzip", "identity"}, want: "identity"},
+		{name: "coding outweighs identity", header: "gzip, identity;q=0.5", offers: []string{"identity", "gzip"}, want: "gzip"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			app := New()
+			c := app.AcquireCtx(&fasthttp.RequestCtx{})
+			t.Cleanup(func() { app.ReleaseCtx(c) })
+
+			c.Request().Header.Set(HeaderAcceptEncoding, tc.header)
+			require.Equal(t, tc.want, c.AcceptsEncodings(tc.offers...))
+		})
+	}
+}
+
+// A request without the field accepts any coding; one that sends it empty
+// accepts none but identity. The two read the same through Get.
+// go test -run Test_Ctx_AcceptsEncodings_AbsentAndEmpty
+func Test_Ctx_AcceptsEncodings_AbsentAndEmpty(t *testing.T) {
+	t.Parallel()
+
+	for _, config := range []Config{{}, {DisableHeaderNormalizing: true}} {
+		t.Run(fmt.Sprintf("DisableHeaderNormalizing=%t", config.DisableHeaderNormalizing), func(t *testing.T) {
+			t.Parallel()
+
+			app := New(config)
+			c := app.AcquireCtx(&fasthttp.RequestCtx{})
+			t.Cleanup(func() { app.ReleaseCtx(c) })
+
+			// Absent: the first offer, whatever it is.
+			require.Equal(t, "gzip", c.AcceptsEncodings("gzip", "identity"))
+			require.Equal(t, "br", c.AcceptsEncodings("br"))
+			require.Empty(t, c.AcceptsEncodings())
+
+			// Present and empty: only identity.
+			c.Request().Header.Set(HeaderAcceptEncoding, "")
+			require.Equal(t, "identity", c.AcceptsEncodings("gzip", "identity"))
+			require.Equal(t, "Identity", c.AcceptsEncodings("gzip", "Identity"))
+			require.Empty(t, c.AcceptsEncodings("gzip", "br"))
+			require.Empty(t, c.AcceptsEncodings())
+
+			// An empty line beside a line with a coding is only an empty list
+			// element (RFC 9110 Section 5.6.1.2).
+			c.Request().Header.Add(HeaderAcceptEncoding, "gzip")
+			require.Equal(t, "gzip", c.AcceptsEncodings("identity", "gzip"))
+		})
+	}
+}
+
+// The field reaches the helper as it arrives off the wire, an empty line
+// included.
+// go test -run Test_App_AcceptsEncodings_EmptyField_Request
+func Test_App_AcceptsEncodings_EmptyField_Request(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	app.Get("/", func(c Ctx) error {
+		return c.SendString(c.AcceptsEncodings("br", "gzip", "identity"))
+	})
+	ln := startRawServer(t, app)
+
+	for _, tc := range []struct {
+		name   string
+		field  string
+		answer string
+	}{
+		{name: "absent", field: "", answer: "br"},
+		{name: "empty", field: "Accept-Encoding:\r\n", answer: "identity"},
+		{name: "other coding", field: "Accept-Encoding: deflate\r\n", answer: "identity"},
+		{name: "listed", field: "Accept-Encoding: deflate, gzip\r\n", answer: "gzip"},
+		{name: "identity refused", field: "Accept-Encoding: deflate, identity;q=0\r\n", answer: ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			raw := "GET / HTTP/1.1\r\nHost: example.com\r\n" + tc.field + "Connection: close\r\n\r\n"
+			responses, _ := rawExchange(t, ln, raw, 1)
+			require.Equal(t, StatusOK, responses[0].status)
+			require.Equal(t, tc.answer, responses[0].body)
+		})
+	}
+}
+
 // go test -v -run=^$ -bench=Benchmark_Ctx_AcceptsEncodings -benchmem -count=4
 func Benchmark_Ctx_AcceptsEncodings(b *testing.B) {
 	app := New()

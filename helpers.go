@@ -878,6 +878,53 @@ func sortAcceptedTypes(at []acceptedType) {
 	}
 }
 
+// identityCoding is the Accept-Encoding token for a response with no content
+// coding.
+const identityCoding = "identity"
+
+// getEncodingOffer is getOffer for an Accept-Encoding field value, with the rule
+// getOffer has no way to know: a response with no content coding is acceptable
+// by default, unless the field excludes it with "identity;q=0" or "*;q=0"
+// without a more specific entry for "identity" (RFC 9110 Section 12.5.3). An
+// identity offer the field never mentions therefore stays acceptable. It ranks
+// below every coding the field does accept, since the field names no weight for
+// it.
+func getEncodingOffer(header []byte, offers []string) string {
+	if offer := getOffer(header, acceptsOffer, offers...); offer != "" {
+		return offer
+	}
+	if identityListed(header) {
+		// The field says something about identity, so getOffer weighed it.
+		return ""
+	}
+	return identityOffer(offers)
+}
+
+// identityOffer returns the offer that names no content coding, "" if there is
+// none.
+func identityOffer(offers []string) string {
+	for _, offer := range offers {
+		if utils.EqualFold(offer, identityCoding) {
+			return offer
+		}
+	}
+	return ""
+}
+
+// identityListed reports whether an Accept-Encoding field value says anything
+// about identity: a range of its own, or the "*" wildcard, which stands for
+// every coding not listed.
+func identityListed(header []byte) bool {
+	for element := range headerlist.All(utils.UnsafeString(header)) {
+		coding, _, _ := utils.CutByte(element, ';')
+		coding = utils.TrimSpace(coding)
+		if coding == "*" || utils.EqualFold(coding, identityCoding) {
+			return true
+		}
+	}
+	return false
+}
+
 // isEtagStale reports whether a response with the given ETag would be considered
 // stale when presented with the raw If-None-Match header value. Comparison is
 // weak as defined by RFC 9110 §8.8.3.2.
