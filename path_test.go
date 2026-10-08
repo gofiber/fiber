@@ -822,6 +822,26 @@ func Test_RegexHandler_CustomCompilerUsesSegmentMatcher(t *testing.T) {
 }
 
 // Test_RoutePatternMatch_WithRegex verifies RoutePatternMatch works with regex constraints
+// Test_RoutePatternMatch_UnrootedPath pins the boundary of the path contract:
+// the empty string is read as "/", and any other string without a leading
+// slash matches no pattern, the root wildcard included, even though the router
+// roots such a request target before matching it.
+func Test_RoutePatternMatch_UnrootedPath(t *testing.T) {
+	t.Parallel()
+
+	require.True(t, RoutePatternMatch("", "/"))
+	require.True(t, RoutePatternMatch("", "/*"))
+	require.True(t, RoutePatternMatch("/", "/"))
+	require.True(t, RoutePatternMatch("/*", "/*"))
+
+	for _, path := range []string{"*", "user/john", "a/../b", "admin//secret"} {
+		for _, pattern := range []string{"/*", "/+", "/:name", "/user/:name", "*"} {
+			require.False(t, RoutePatternMatch(path, pattern), "path=%q pattern=%q", path, pattern)
+			require.False(t, RoutePatternMatch(path, pattern, Config{StrictRouting: true, CaseSensitive: true}), "path=%q pattern=%q", path, pattern)
+		}
+	}
+}
+
 func Test_RoutePatternMatch_WithRegex(t *testing.T) {
 	t.Parallel()
 
@@ -1468,19 +1488,92 @@ func Test_UnescapeSafePath(t *testing.T) {
 		{in: "/100%2525", out: "/100%2525"},
 		{in: "/a%5cb", out: "/a%5Cb"},
 		{in: "/%00%1f%7f", out: "/%00%1F%7F"},
-		// Malformed escapes are kept.
+		// A stray "%" that begins no escape is kept as sent, as it is in a
+		// path matched without normalization.
 		{in: "/a%zzb", out: "/a%zzb"},
 		{in: "/trailing%2", out: "/trailing%2"},
 		{in: "/%", out: "/%"},
+		{in: "/100%", out: "/100%"},
 		{in: "/%2g%41", out: "/%2gA"},
+		{in: "/%a%2Fb", out: "/%a%2Fb"},
 		// Decoding runs once: "%25" never becomes a new escape.
 		{in: "/%2570rivate", out: "/%2570rivate"},
 		{in: "/%2E%2E/%70", out: "/../p"},
+		// A stray "%" cannot line up with a decoded hex digit into a fresh
+		// escape that a later decode would read as "private" or ".git": when
+		// the two bytes written after it are hex digits, it is written as
+		// "%25", whether a decoded escape gives one of them or both.
+		{in: "/%%370rivate", out: "/%2570rivate"},
+		{in: "/%7%30rivate", out: "/%2570rivate"},
+		{in: "/%%32%65git", out: "/%252egit"},
+		{in: "/%%34A", out: "/%254A"},
+		{in: "/%%41%2Fb", out: "/%A%2Fb"},
+		// After a stray "%" a kept escape is still kept, with uppercase hex,
+		// and the "%" it starts with is no hex digit.
+		{in: "/%%20", out: "/%%20"},
+		{in: "/%zz%2fb", out: "/%zz%2Fb"},
+		{in: "/%%%%31%32", out: "/%%%2512"},
 	}
 
 	for _, tc := range tests {
-		require.Equal(t, tc.out, string(unescapeSafePath([]byte(tc.in))), "in=%q", tc.in)
+		got := string(unescapeSafePath([]byte(tc.in)))
+		require.Equal(t, tc.out, got, "in=%q", tc.in)
+		// the normalized path normalizes to itself
+		require.Equal(t, tc.out, string(unescapeSafePath([]byte(got))), "in=%q normalized twice", tc.in)
 	}
+}
+
+// Test_UnescapeSafePath_NoForgedEscape checks every short path over an
+// alphabet of escapes and stray percents: the result normalizes to itself, is
+// never longer than the input, and every "%" in it either begins an escape of
+// a reserved character with uppercase hex digits or is a stray "%" that two
+// hex digits do not follow.
+func Test_UnescapeSafePath_NoForgedEscape(t *testing.T) {
+	t.Parallel()
+
+	alphabet := []string{"%", "a", "3", "7", "%37", "%41", "%2F", "%2f", "/"}
+	var walk func(prefix string, depth int)
+	walk = func(prefix string, depth int) {
+		got := string(unescapeSafePath([]byte(prefix)))
+		require.Equal(t, got, string(unescapeSafePath([]byte(got))), "in=%q normalized twice", prefix)
+		require.LessOrEqual(t, len(got), len(prefix), "in=%q out=%q grew", prefix, got)
+		for i := 0; i < len(got); i++ {
+			if got[i] != '%' || i+2 >= len(got) {
+				continue
+			}
+			hi, lo := unhex(got[i+1]), unhex(got[i+2])
+			if hi < 0 || lo < 0 {
+				continue
+			}
+			require.False(t, pathUnreserved[byte(hi<<4|lo)], "in=%q out=%q holds an escape of an unreserved character", prefix, got)
+			require.Equal(t, strings.ToUpper(got[i+1:i+3]), got[i+1:i+3], "in=%q out=%q holds lowercase hex", prefix, got)
+			i += 2
+		}
+		if depth == 0 {
+			return
+		}
+		for _, a := range alphabet {
+			walk(prefix+a, depth-1)
+		}
+	}
+	walk("/", 5)
+}
+
+// Test_UnescapeSafePath_OneCopy pins that a path full of stray percents, some
+// kept and some written as "%25", is copied once rather than regrown for each.
+//
+// It does not call t.Parallel: testing.AllocsPerRun panics in a parallel test.
+func Test_UnescapeSafePath_OneCopy(t *testing.T) { //nolint:paralleltest // AllocsPerRun cannot run in a parallel test
+	path := []byte("/" + strings.Repeat("%zz%%370", 4000))
+	buf := make([]byte, len(path))
+	allocs := testing.AllocsPerRun(10, func() {
+		copy(buf, path)
+		_ = unescapeSafePath(buf)
+	})
+	require.InDelta(t, 1, allocs, 0)
+	got := unescapeSafePath(append([]byte(nil), path...))
+	require.Equal(t, "/"+strings.Repeat("%zz%2570", 4000), string(got))
+	require.LessOrEqual(t, len(got), len(path))
 }
 
 func Test_CleanPathSegments(t *testing.T) {
@@ -1543,6 +1636,12 @@ func Test_NormalizeRequestPath(t *testing.T) {
 		{in: "/%2570rivate", out: "/%2570rivate"},
 		{in: "/%2570rivate", unescape: true, out: "/%70rivate"},
 		{in: "/%252e%252e/x", unescape: true, out: "/%2e%2e/x"},
+		// An unrooted path is rooted first: the empty path of an absolute-form
+		// target, the asterisk form, and a relative path with a dot segment.
+		{in: "", out: "/"},
+		{in: "*", out: "/*"},
+		{in: "a/../b", out: "/b"},
+		{in: "", unescape: true, out: "/"},
 	}
 
 	for _, tc := range tests {
@@ -1580,7 +1679,7 @@ func Test_NeedsPathNormalization_MatchesReference(t *testing.T) {
 	t.Parallel()
 
 	ref := func(s string) bool {
-		if s != "" && s[0] == '.' {
+		if s == "" || s[0] != '/' {
 			return true
 		}
 		return strings.Contains(s, "%") || strings.Contains(s, "/.")
@@ -1627,10 +1726,11 @@ func Benchmark_NeedsPathNormalization(b *testing.B) {
 func Test_NeedsPathNormalization(t *testing.T) {
 	t.Parallel()
 
-	for _, s := range []string{"/a/./b", "/a/../b", "/%41", "/%2F", "/.", "/..", "./x", "../x", "/.well-known/x"} {
+	// an unrooted path needs rooting, so it counts as needing normalization
+	for _, s := range []string{"/a/./b", "/a/../b", "/%41", "/%2F", "/.", "/..", "./x", "../x", "/.well-known/x", "", "*", "a/b"} {
 		require.True(t, needsPathNormalization(s), "path=%q", s)
 	}
-	for _, s := range []string{"", "/", "/a", "/a/b", "/a/b/", "/a//b", "//", "/a.b/c", "/a-b_c~d", "/a/b.", "/a..b", "/user/keys/1337"} {
+	for _, s := range []string{"/", "/a", "/a/b", "/a/b/", "/a//b", "//", "/a.b/c", "/a-b_c~d", "/a/b.", "/a..b", "/user/keys/1337"} {
 		require.False(t, needsPathNormalization(s), "path=%q", s)
 	}
 }
