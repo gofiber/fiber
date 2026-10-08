@@ -163,7 +163,7 @@ func Test_JoinNext(t *testing.T) {
 		combined, multiple = JoinNext(combined, line, multiple)
 		require.Equal(t, i > 0, multiple)
 		if i == 0 {
-			require.Equal(t, &line[0], &combined[0], "one line must alias the header")
+			require.Same(t, &line[0], &combined[0], "one line must alias the header")
 		}
 	}
 	require.Equal(t, Join(lines), combined)
