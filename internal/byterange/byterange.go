@@ -22,8 +22,10 @@ const (
 	// case-insensitive (RFC 9110 §14.1), its parser is not.
 	unitBytes = "bytes"
 
-	// A Last-Modified time is a strong validator once its second is over (§8.8.2.2).
-	strongAfter = time.Second
+	// A Last-Modified time is implicitly weak unless it can be deduced to be strong
+	// (§8.8.2.2). It has whole-second resolution, so one that is two seconds old
+	// belongs to a file last modified more than a second ago.
+	strongAfter = 2 * time.Second
 )
 
 var (
@@ -89,6 +91,11 @@ func classify(dst, field []byte) (canonical []byte, v verdict) { //nolint:noname
 // unit other than "bytes", several ranges, or an If-Range that does not match
 // the Last-Modified the file server sent.
 func Serve(ctx *fasthttp.RequestCtx, handler fasthttp.RequestHandler) {
+	serveAt(ctx, handler, time.Now)
+}
+
+// serveAt is Serve with the clock that ages a Last-Modified given, for the tests.
+func serveAt(ctx *fasthttp.RequestCtx, handler fasthttp.RequestHandler, now func() time.Time) {
 	header := &ctx.Request.Header
 	field := header.Peek(fieldRange)
 	if len(field) == 0 {
@@ -135,7 +142,7 @@ func Serve(ctx *fasthttp.RequestCtx, handler fasthttp.RequestHandler) {
 	}
 	switch ctx.Response.StatusCode() {
 	case fasthttp.StatusPartialContent:
-		if ifRangeMatches(ifRange, &ctx.Response) {
+		if ifRangeMatches(ifRange, &ctx.Response, now()) {
 			return
 		}
 		replaceWithWhole(ctx, handler, callerHeader)
@@ -143,7 +150,7 @@ func Serve(ctx *fasthttp.RequestCtx, handler fasthttp.RequestHandler) {
 		// The 416 has no validator. The whole file has, and is the answer when
 		// If-Range does not match.
 		replaceWithWhole(ctx, handler, callerHeader)
-		if ctx.Response.StatusCode() == fasthttp.StatusOK && ifRangeMatches(ifRange, &ctx.Response) {
+		if ctx.Response.StatusCode() == fasthttp.StatusOK && ifRangeMatches(ifRange, &ctx.Response, now()) {
 			_ = ctx.Response.CloseBodyStream() //nolint:errcheck // a stream never sent
 			ctx.Error("Range Not Satisfiable", fasthttp.StatusRequestedRangeNotSatisfiable)
 		}
@@ -170,9 +177,9 @@ func replaceWithWhole(ctx *fasthttp.RequestCtx, handler fasthttp.RequestHandler,
 }
 
 // ifRangeMatches evaluates If-Range against the file server's response (§13.1.5):
-// an entity-tag must equal a strong ETag, a date the exact, strong Last-Modified.
-// The file server sends no ETag of its own, and a weak tag never matches.
-func ifRangeMatches(ifRange []byte, resp *fasthttp.Response) bool {
+// an entity-tag must equal a strong ETag, a date the exact, strong Last-Modified,
+// judged at now. The file server sends no ETag of its own, and a weak tag never matches.
+func ifRangeMatches(ifRange []byte, resp *fasthttp.Response, now time.Time) bool {
 	ifRange = utils.TrimSpace(ifRange)
 	if len(ifRange) == 0 {
 		return false
@@ -188,5 +195,5 @@ func ifRangeMatches(ifRange []byte, resp *fasthttp.Response) bool {
 		return false
 	}
 	modified, err := fasthttp.ParseHTTPDate(lastModified)
-	return err == nil && time.Since(modified) >= strongAfter
+	return err == nil && now.Sub(modified) >= strongAfter
 }

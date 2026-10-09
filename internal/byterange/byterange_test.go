@@ -69,10 +69,11 @@ func Test_Classify(t *testing.T) {
 	}
 }
 
-func Test_IfRangeMatches(t *testing.T) {
+func Test_ifRangeMatches(t *testing.T) {
 	t.Parallel()
 
 	const modified = "Thu, 02 Jan 2020 03:04:05 GMT"
+	modifiedAt := time.Date(2020, time.January, 2, 3, 4, 5, 0, time.UTC)
 
 	tests := []struct {
 		name         string
@@ -109,26 +110,26 @@ func Test_IfRangeMatches(t *testing.T) {
 			if tc.etag != "" {
 				resp.Header.Set(fieldETag, tc.etag)
 			}
-			require.Equal(t, tc.want, ifRangeMatches([]byte(tc.ifRange), &resp))
+			require.Equal(t, tc.want, ifRangeMatches([]byte(tc.ifRange), &resp, modifiedAt.Add(time.Hour)))
 		})
 	}
 
-	// A Last-Modified from the last second is a weak validator (§8.8.2.2).
-	t.Run("date within the last second is weak", func(t *testing.T) {
+	// A date is a strong validator only when it is old enough (§8.8.2.2).
+	t.Run("a date is strong once strongAfter old", func(t *testing.T) {
 		t.Parallel()
 
 		var resp fasthttp.Response
-		now := string(fasthttp.AppendHTTPDate(nil, time.Now()))
-		resp.Header.Set(fieldLastModified, now)
-		require.False(t, ifRangeMatches([]byte(now), &resp))
-
-		old := string(fasthttp.AppendHTTPDate(nil, time.Now().Add(-2*time.Second)))
-		resp.Header.Set(fieldLastModified, old)
-		require.True(t, ifRangeMatches([]byte(old), &resp))
-
-		future := string(fasthttp.AppendHTTPDate(nil, time.Now().Add(time.Hour)))
-		resp.Header.Set(fieldLastModified, future)
-		require.False(t, ifRangeMatches([]byte(future), &resp), "a date in the future cannot be strong")
+		resp.Header.Set(fieldLastModified, modified)
+		for age, want := range map[time.Duration]bool{
+			-time.Hour:                    false, // a date in the future cannot be strong
+			0:                             false,
+			time.Second:                   false,
+			strongAfter - time.Nanosecond: false,
+			strongAfter:                   true,
+			time.Hour:                     true,
+		} {
+			require.Equal(t, want, ifRangeMatches([]byte(modified), &resp, modifiedAt.Add(age)), age.String())
+		}
 	})
 }
 
@@ -175,6 +176,13 @@ func (r reply) header(k string) string { return string(r.ctx.Response.Header.Pee
 func request(t *testing.T, handler fasthttp.RequestHandler, method string, fields map[string]string, prepare ...func(*fasthttp.RequestCtx)) reply {
 	t.Helper()
 
+	return requestAt(t, time.Now, handler, method, fields, prepare...)
+}
+
+// requestAt is request with the clock that ages Last-Modified given.
+func requestAt(t *testing.T, now func() time.Time, handler fasthttp.RequestHandler, method string, fields map[string]string, prepare ...func(*fasthttp.RequestCtx)) reply {
+	t.Helper()
+
 	var req fasthttp.Request
 	req.Header.SetMethod(method)
 	req.SetRequestURI("/file.txt")
@@ -189,7 +197,7 @@ func request(t *testing.T, handler fasthttp.RequestHandler, method string, field
 		p(ctx)
 	}
 
-	Serve(ctx, handler)
+	serveAt(ctx, handler, now)
 
 	// Reading the body of a stream drains and closes it.
 	return reply{ctx: ctx, body: string(ctx.Response.Body())}
@@ -322,24 +330,29 @@ func Test_Serve_IfRange(t *testing.T) {
 	}
 }
 
-// A file modified in the last second has no strong validator, so no If-Range date
-// matches.
-func Test_Serve_IfRange_FreshFile(t *testing.T) {
+// A file modified less than strongAfter ago has no strong validator, so no
+// If-Range date matches it (§8.8.2.2).
+func Test_Serve_IfRange_Strength(t *testing.T) {
 	t.Parallel()
 
-	dir := t.TempDir()
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "file.txt"), []byte(fileContent), 0o600))
-	server := &fasthttp.FS{Root: dir, AcceptByteRange: true, SkipCache: true}
-	handler := server.NewRequestHandler()
+	handler := newFileServer(t)
+	modifiedAt := time.Date(2020, time.January, 2, 3, 4, 5, 0, time.UTC)
 
-	first := request(t, handler, fasthttp.MethodGet, map[string]string{fieldRange: "bytes=0-4"})
-	require.Equal(t, 206, first.status())
-	lastModified := first.header(fieldLastModified)
-	require.NotEmpty(t, lastModified)
+	for age, wantStatus := range map[time.Duration]int{
+		0:                             200,
+		time.Second:                   200,
+		strongAfter - time.Nanosecond: 200,
+		strongAfter:                   206,
+		time.Hour:                     206,
+	} {
+		t.Run(age.String(), func(t *testing.T) {
+			t.Parallel()
 
-	got := request(t, handler, fasthttp.MethodGet, map[string]string{fieldRange: "bytes=0-4", fieldIfRange: lastModified})
-	require.Equal(t, 200, got.status())
-	require.Equal(t, fileContent, got.body)
+			now := func() time.Time { return modifiedAt.Add(age) }
+			fields := map[string]string{fieldRange: "bytes=0-4", fieldIfRange: fileModified}
+			require.Equal(t, wantStatus, requestAt(t, now, handler, fasthttp.MethodGet, fields).status())
+		})
+	}
 }
 
 // Headers set before the file server ran survive every outcome; those of a
