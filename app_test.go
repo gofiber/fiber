@@ -4313,55 +4313,6 @@ func rawExchange(t *testing.T, ln *fasthttputil.InmemoryListener, raw string, wa
 }
 
 // RFC 9112 §6.1: a transfer coding the server does not understand gets a 501.
-func Test_App_serverErrorHandler_TransferEncoding(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		err    error
-		name   string
-		status int
-	}{
-		{
-			name:   "unknown coding",
-			err:    errors.New(`error when reading request headers: unsupported transfer-encoding: "foo": buffer size=70`),
-			status: StatusNotImplemented,
-		},
-		{
-			name:   "coding list",
-			err:    errors.New(`error when reading request headers: unsupported transfer-encoding: "gzip, chunked": buffer size=70`),
-			status: StatusNotImplemented,
-		},
-		{
-			// The sentinel is also returned for framing faults.
-			name:   "sentinel is a framing error",
-			err:    fmt.Errorf("error when reading request headers: %w: buffer size=70", fasthttp.ErrUnsupportedTransferEncoding),
-			status: StatusBadRequest,
-		},
-		{
-			name:   "repeated field is a framing error",
-			err:    errors.New("error when reading request headers: too many transfer-encoding headers: buffer size=70"),
-			status: StatusBadRequest,
-		},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-
-			app := New()
-			c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck,forcetypeassert // not needed
-			t.Cleanup(func() { app.ReleaseCtx(c) })
-
-			app.serverErrorHandler(c.fasthttp, tc.err)
-			require.Equal(t, tc.status, c.fasthttp.Response.StatusCode())
-			// The body names the status, not the request bytes fasthttp quotes.
-			if tc.status == StatusNotImplemented {
-				require.Equal(t, "Not Implemented", string(c.fasthttp.Response.Body()))
-			}
-		})
-	}
-}
-
 func Test_App_TransferEncoding_Request(t *testing.T) {
 	t.Parallel()
 
@@ -4413,6 +4364,10 @@ func Test_App_TransferEncoding_Request(t *testing.T) {
 
 			responses, after := rawExchange(t, ln, tc.raw, 1)
 			require.Equal(t, tc.status, responses[0].status)
+			if tc.status == StatusNotImplemented {
+				// The body names the status, not the request bytes fasthttp quotes.
+				require.Equal(t, "Not Implemented", responses[0].body)
+			}
 			if tc.status != StatusOK {
 				// An unusable message leaves the connection in an unknown state.
 				require.True(t, responses[0].closes, "Connection: close expected")
@@ -4420,6 +4375,23 @@ func Test_App_TransferEncoding_Request(t *testing.T) {
 			}
 		})
 	}
+}
+
+// With SecureErrorLogMessage fasthttp reports every transfer-encoding fault with
+// the same error, which hides the coding: those requests stay 400.
+func Test_App_TransferEncoding_SecureErrorLogMessage(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	app.Server().SecureErrorLogMessage = true
+	app.Post("/", func(c Ctx) error { return c.SendString("posted") })
+	ln := startRawServer(t, app)
+
+	responses, _ := rawExchange(t, ln, "POST / HTTP/1.1\r\nHost: example.com\r\nTransfer-Encoding: foo\r\n\r\n0\r\n\r\n", 1)
+	require.Equal(t, StatusBadRequest, responses[0].status)
+
+	responses, _ = rawExchange(t, ln, "POST / HTTP/1.1\r\nHost: example.com\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n0\r\n\r\n", 1)
+	require.Equal(t, StatusOK, responses[0].status)
 }
 
 // RFC 9112 §6.1: a request with both Content-Length and Transfer-Encoding is

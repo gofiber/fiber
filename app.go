@@ -1723,7 +1723,9 @@ const (
 
 	// unsupportedTransferCodingMarker precedes the quoted coding in fasthttp's
 	// error. The ErrUnsupportedTransferEncoding sentinel is not matched: it also
-	// covers HTTP/1.0 and repeated fields, which are framing errors and stay 400.
+	// covers HTTP/1.0 and repeated fields, which are framing errors and stay 400,
+	// and with Server.SecureErrorLogMessage it stands for every fault, the
+	// coding included, which then stays 400 as well.
 	unsupportedTransferCodingMarker = `unsupported transfer-encoding: "`
 )
 
