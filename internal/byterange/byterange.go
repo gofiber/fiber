@@ -20,9 +20,10 @@ const (
 
 	weakPrefix = "W/"
 
-	// A Last-Modified time is implicitly weak unless it can be deduced to be strong
-	// (§8.8.2.2). It has whole-second resolution, so one that is two seconds old
-	// belongs to a file last modified more than a second ago.
+	// A Last-Modified time is implicitly weak unless the server knows the file did
+	// not change twice within that second (§8.8.2.2), which it cannot. Two seconds
+	// of age only rules out a file still being written; one rewritten within the
+	// second a client fetched it in still matches that client's date.
 	strongAfter = 2 * time.Second
 )
 
