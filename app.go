@@ -1503,6 +1503,7 @@ func (app *App) Test(req *http.Request, config ...TestConfig) (*http.Response, e
 	}
 	// prepare the server for the start
 	app.startupProcess()
+	app.hookHeaderReceived()
 
 	// Serve conn to server
 	channel := make(chan error, 1)
@@ -1812,7 +1813,6 @@ func (app *App) startupProcess() {
 	defer app.mutex.Unlock()
 
 	app.hookConnState()
-	app.hookHeaderReceived()
 	// Collect every mounted app first, nested ones included, so all get their automatic HEAD routes.
 	app.collectSubApps()
 	app.ensureAutoHeadRoutesLocked()
@@ -1863,9 +1863,13 @@ func (app *App) hookConnState() {
 // hookHeaderReceived makes the server close the connection after a request that
 // carries both Content-Length and Transfer-Encoding (RFC 9112 §6.1), keeping a
 // user HeaderReceived callback. It must run before the body is decoded: after that
-// fasthttp has replaced the length and dropped the Content-Length value.
-// Idempotent; the caller holds app.mutex.
+// fasthttp has replaced the length and dropped the Content-Length value. Call it
+// right before the server serves, so that a callback set up to then, in
+// ListenConfig.BeforeServeFunc too, is kept. Idempotent.
 func (app *App) hookHeaderReceived() {
+	app.mutex.Lock()
+	defer app.mutex.Unlock()
+
 	if app.headerReceivedHooked || app.server == nil {
 		return
 	}

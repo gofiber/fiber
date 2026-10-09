@@ -4236,10 +4236,17 @@ const (
 func startRawServer(t *testing.T, app *App) *fasthttputil.InmemoryListener {
 	t.Helper()
 
+	return startRawServerWith(t, app, nil)
+}
+
+// startRawServerWith is startRawServer with a ListenConfig.BeforeServeFunc.
+func startRawServerWith(t *testing.T, app *App, beforeServe func(*App) error) *fasthttputil.InmemoryListener {
+	t.Helper()
+
 	ln := fasthttputil.NewInmemoryListener()
 	errCh := make(chan error, 1)
 	go func() {
-		errCh <- app.Listener(ln, ListenConfig{DisableStartupMessage: true})
+		errCh <- app.Listener(ln, ListenConfig{DisableStartupMessage: true, BeforeServeFunc: beforeServe})
 	}()
 
 	t.Cleanup(func() {
@@ -4260,12 +4267,28 @@ func startRawServer(t *testing.T, app *App) *fasthttputil.InmemoryListener {
 	return ln
 }
 
+// dialer opens connections to the server under test.
+type dialer interface {
+	Dial() (net.Conn, error)
+}
+
+// tcpDialer dials a TCP address.
+type tcpDialer string
+
+func (d tcpDialer) Dial() (net.Conn, error) {
+	conn, err := net.Dial(NetworkTCP4, string(d))
+	if err != nil {
+		return nil, fmt.Errorf("dial %s: %w", string(d), err)
+	}
+	return conn, nil
+}
+
 // rawExchange writes raw to a new connection, reads want responses and reports
 // what the connection did next.
-func rawExchange(t *testing.T, ln *fasthttputil.InmemoryListener, raw string, want int) (responses []rawResponse, after string) { //nolint:nonamedreturns // gocritic's unnamedResult asks for names
+func rawExchange(t *testing.T, server dialer, raw string, want int) (responses []rawResponse, after string) { //nolint:nonamedreturns // gocritic's unnamedResult asks for names
 	t.Helper()
 
-	conn, err := ln.Dial()
+	conn, err := server.Dial()
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = conn.Close() }) //nolint:errcheck // usually closed by the server already
 
@@ -4479,39 +4502,78 @@ func Test_App_ContentLengthWithTransferEncoding_ClosesConnection(t *testing.T) {
 	})
 }
 
-// The close hook must keep the application's HeaderReceived callback and its limits.
+// The close hook must keep the application's HeaderReceived callback and its limits,
+// whether it is set before the app starts or in ListenConfig.BeforeServeFunc.
 func Test_App_ContentLengthWithTransferEncoding_KeepsUserHeaderReceived(t *testing.T) {
+	t.Parallel()
+
+	for name, inBeforeServe := range map[string]bool{
+		"set before start":     false,
+		"set in BeforeServeFn": true,
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			app := New()
+			app.Post("/", func(c Ctx) error { return c.SendString(strconv.Itoa(len(c.Body()))) })
+
+			var calls atomic.Int32
+			var chunkedSeen atomic.Bool
+			callback := func(header *fasthttp.RequestHeader) fasthttp.RequestConfig {
+				calls.Add(1)
+				if header.ContentLength() == -1 {
+					chunkedSeen.Store(true)
+				}
+				return fasthttp.RequestConfig{MaxRequestBodySize: 8}
+			}
+
+			var beforeServe func(*App) error
+			if inBeforeServe {
+				beforeServe = func(app *App) error {
+					app.Server().HeaderReceived = callback
+					return nil
+				}
+			} else {
+				app.Server().HeaderReceived = callback
+			}
+			ln := startRawServerWith(t, app, beforeServe)
+
+			// Within the limit: served, then closed.
+			responses, after := rawExchange(t, ln,
+				"POST / HTTP/1.1\r\nHost: example.com\r\nContent-Length: 4\r\nTransfer-Encoding: chunked\r\n\r\n5\r\nhello\r\n0\r\n\r\n", 1)
+			require.Equal(t, StatusOK, responses[0].status)
+			require.Equal(t, "5", responses[0].body)
+			require.True(t, responses[0].closes)
+			require.Equal(t, connClosed, after)
+
+			// Over the callback's limit: refused.
+			responses, _ = rawExchange(t, ln,
+				"POST / HTTP/1.1\r\nHost: example.com\r\nContent-Length: 20\r\nConnection: close\r\n\r\n01234567890123456789", 1)
+			require.Equal(t, StatusRequestEntityTooLarge, responses[0].status)
+
+			require.Equal(t, int32(2), calls.Load(), "the application's callback runs for every request")
+			require.True(t, chunkedSeen.Load(), "the callback still sees the chunked framing")
+		})
+	}
+}
+
+// Test serves the connection itself, so it installs the close hook too.
+func Test_App_Test_ClosesAfterContentLengthWithTransferEncoding(t *testing.T) {
 	t.Parallel()
 
 	app := New()
 	app.Post("/", func(c Ctx) error { return c.SendString(strconv.Itoa(len(c.Body()))) })
 
-	var calls atomic.Int32
-	var chunkedSeen atomic.Bool
-	app.Server().HeaderReceived = func(header *fasthttp.RequestHeader) fasthttp.RequestConfig {
-		calls.Add(1)
-		if header.ContentLength() == -1 {
-			chunkedSeen.Store(true)
-		}
-		return fasthttp.RequestConfig{MaxRequestBodySize: 8}
-	}
-	ln := startRawServer(t, app)
+	// The dump of a chunked request keeps the Content-Length header it is given.
+	req := httptest.NewRequest(MethodPost, "/", strings.NewReader("hello"))
+	req.TransferEncoding = []string{"chunked"}
+	req.Header.Set(HeaderContentLength, "4")
 
-	// Within the limit: served, then closed.
-	responses, after := rawExchange(t, ln,
-		"POST / HTTP/1.1\r\nHost: example.com\r\nContent-Length: 4\r\nTransfer-Encoding: chunked\r\n\r\n5\r\nhello\r\n0\r\n\r\n", 1)
-	require.Equal(t, StatusOK, responses[0].status)
-	require.Equal(t, "5", responses[0].body)
-	require.True(t, responses[0].closes)
-	require.Equal(t, connClosed, after)
-
-	// Over the callback's limit: refused.
-	responses, _ = rawExchange(t, ln,
-		"POST / HTTP/1.1\r\nHost: example.com\r\nContent-Length: 20\r\nConnection: close\r\n\r\n01234567890123456789", 1)
-	require.Equal(t, StatusRequestEntityTooLarge, responses[0].status)
-
-	require.Equal(t, int32(2), calls.Load(), "the application's callback runs for every request")
-	require.True(t, chunkedSeen.Load(), "the callback still sees the chunked framing")
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.NoError(t, resp.Body.Close())
+	require.Equal(t, StatusOK, resp.StatusCode)
+	require.True(t, resp.Close, "Connection: close expected")
 }
 
 // closeRecorder notes that it was closed.
