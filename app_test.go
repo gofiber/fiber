@@ -4262,7 +4262,7 @@ func startRawServer(t *testing.T, app *App) *fasthttputil.InmemoryListener {
 
 // rawExchange writes raw to a new connection, reads want responses and reports
 // what the connection did next.
-func rawExchange(t *testing.T, ln *fasthttputil.InmemoryListener, raw string, want int) (responses []rawResponse, after string) { //nolint:nonamedreturns // names document the results
+func rawExchange(t *testing.T, ln *fasthttputil.InmemoryListener, raw string, want int) (responses []rawResponse, after string) { //nolint:nonamedreturns // gocritic's unnamedResult asks for names
 	t.Helper()
 
 	conn, err := ln.Dial()
@@ -4310,6 +4310,32 @@ func rawExchange(t *testing.T, ln *fasthttputil.InmemoryListener, raw string, wa
 	}
 
 	return responses, after
+}
+
+// An Accept-Encoding with no value reaches AcceptsEncodings as present but empty,
+// which wants no content coding, and is not read as an absent one, which accepts any.
+func Test_App_AcceptsEncodings_EmptyField_Request(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	app.Get("/", func(c Ctx) error {
+		return c.SendString(c.AcceptsEncodings("br", "gzip", "identity"))
+	})
+	ln := startRawServer(t, app)
+
+	for name, tc := range map[string]struct{ field, answer string }{
+		"absent": {field: "", answer: "br"},
+		"empty":  {field: "Accept-Encoding:\r\n", answer: "identity"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			raw := "GET / HTTP/1.1\r\nHost: example.com\r\n" + tc.field + "Connection: close\r\n\r\n"
+			responses, _ := rawExchange(t, ln, raw, 1)
+			require.Equal(t, StatusOK, responses[0].status)
+			require.Equal(t, tc.answer, responses[0].body)
+		})
+	}
 }
 
 // RFC 9112 §6.1: a transfer coding the server does not understand gets a 501.

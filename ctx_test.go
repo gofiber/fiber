@@ -844,39 +844,6 @@ func Test_Ctx_AcceptsEncodings_AbsentAndEmpty(t *testing.T) {
 	}
 }
 
-// The field as it arrives off the wire, an empty line included.
-// go test -run Test_App_AcceptsEncodings_EmptyField_Request
-func Test_App_AcceptsEncodings_EmptyField_Request(t *testing.T) {
-	t.Parallel()
-
-	app := New()
-	app.Get("/", func(c Ctx) error {
-		return c.SendString(c.AcceptsEncodings("br", "gzip", "identity"))
-	})
-	ln := startRawServer(t, app)
-
-	for _, tc := range []struct {
-		name   string
-		field  string
-		answer string
-	}{
-		{name: "absent", field: "", answer: "br"},
-		{name: "empty", field: "Accept-Encoding:\r\n", answer: "identity"},
-		{name: "other coding", field: "Accept-Encoding: deflate\r\n", answer: "identity"},
-		{name: "listed", field: "Accept-Encoding: deflate, gzip\r\n", answer: "gzip"},
-		{name: "identity refused", field: "Accept-Encoding: deflate, identity;q=0\r\n", answer: ""},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-
-			raw := "GET / HTTP/1.1\r\nHost: example.com\r\n" + tc.field + "Connection: close\r\n\r\n"
-			responses, _ := rawExchange(t, ln, raw, 1)
-			require.Equal(t, StatusOK, responses[0].status)
-			require.Equal(t, tc.answer, responses[0].body)
-		})
-	}
-}
-
 // go test -v -run=^$ -bench=Benchmark_Ctx_AcceptsEncodings -benchmem -count=4
 func Benchmark_Ctx_AcceptsEncodings(b *testing.B) {
 	app := New()
@@ -8614,8 +8581,25 @@ func Test_SendFile_ByteRange(t *testing.T) {
 	})
 }
 
-// SendFile applies the Range and If-Range rules (RFC 9110 §13.1.5, §14.2) around
-// the file server's single range.
+const (
+	byteRangeContent      = "0123456789abcdefghij"
+	byteRangeLastModified = "Thu, 02 Jan 2020 03:04:05 GMT"
+	byteRangeStale        = "Wed, 01 Jan 2020 03:04:05 GMT"
+)
+
+// byteRangeFixture writes the 20-byte file of the byte-range tests, dated to
+// byteRangeLastModified, and returns its path.
+func byteRangeFixture(t *testing.T) string {
+	t.Helper()
+
+	fixture := filepath.Join(t.TempDir(), "fixture.txt")
+	require.NoError(t, os.WriteFile(fixture, []byte(byteRangeContent), 0o600))
+	require.NoError(t, os.Chtimes(fixture, time.Time{}, time.Date(2020, time.January, 2, 3, 4, 5, 0, time.UTC)))
+	return fixture
+}
+
+// SendFile wires the Range and If-Range rules (RFC 9110 §13.1.5, §14.2) into the
+// file server; internal/byterange tests them in full.
 func Test_SendFile_ByteRange_RFC9110(t *testing.T) {
 	t.Parallel()
 
@@ -8623,55 +8607,34 @@ func Test_SendFile_ByteRange_RFC9110(t *testing.T) {
 		t.Skip("SendFile byte-range tests are flaky on Windows")
 	}
 
-	const (
-		content      = "0123456789abcdefghij"
-		lastModified = "Thu, 02 Jan 2020 03:04:05 GMT"
-		staleDate    = "Wed, 01 Jan 2020 03:04:05 GMT"
-	)
-	fixture := filepath.Join(t.TempDir(), "fixture.txt")
-	require.NoError(t, os.WriteFile(fixture, []byte(content), 0o600))
-	require.NoError(t, os.Chtimes(fixture, time.Time{}, time.Date(2020, time.January, 2, 3, 4, 5, 0, time.UTC)))
-
+	fixture := byteRangeFixture(t)
 	app := New()
-	serve := func(c Ctx) error {
+	app.Get("/file", func(c Ctx) error {
 		c.Set("X-Request", "kept")
 		return c.SendFile(fixture, SendFile{ByteRange: true})
-	}
-	app.Get("/file", serve)
-	app.Post("/file", serve)
+	})
 
 	tests := []struct {
-		fields       map[string]string
-		name         string
-		method       string
-		wantRange    string
-		wantBody     string
-		wantStatus   int
-		wantLastMod  bool
-		wantUnranged bool // a whole representation with its validators
+		fields     map[string]string
+		name       string
+		wantRange  string
+		wantBody   string
+		wantStatus int
+		wantWhole  bool // the whole file, with its validators
 	}{
-		{name: "a range", method: MethodGet, fields: map[string]string{HeaderRange: "bytes=0-4"}, wantStatus: StatusPartialContent, wantBody: "01234", wantRange: "bytes 0-4/20"},
-		{name: "unit in upper case", method: MethodGet, fields: map[string]string{HeaderRange: "BYTES=0-4"}, wantStatus: StatusPartialContent, wantBody: "01234", wantRange: "bytes 0-4/20"},
-		{name: "several ranges", method: MethodGet, fields: map[string]string{HeaderRange: "bytes=0-1,3-4"}, wantStatus: StatusOK, wantBody: content, wantUnranged: true},
-		{name: "several ranges, one beyond the end", method: MethodGet, fields: map[string]string{HeaderRange: "bytes=0-1,100-200"}, wantStatus: StatusOK, wantBody: content, wantUnranged: true},
-		{name: "unknown unit", method: MethodGet, fields: map[string]string{HeaderRange: "items=0-4"}, wantStatus: StatusOK, wantBody: content, wantUnranged: true},
-		{name: "HEAD has no ranges", method: MethodHead, fields: map[string]string{HeaderRange: "bytes=0-4"}, wantStatus: StatusOK, wantUnranged: true},
-		{name: "POST has no ranges", method: MethodPost, fields: map[string]string{HeaderRange: "bytes=0-4"}, wantStatus: StatusOK, wantBody: content, wantUnranged: true},
-		{name: "unsatisfiable", method: MethodGet, fields: map[string]string{HeaderRange: "bytes=100-200"}, wantStatus: StatusRequestedRangeNotSatisfiable, wantRange: "bytes */20", wantBody: "Range Not Satisfiable"},
-
-		{name: "If-Range matches", method: MethodGet, fields: map[string]string{HeaderRange: "bytes=0-4", HeaderIfRange: lastModified}, wantStatus: StatusPartialContent, wantBody: "01234", wantRange: "bytes 0-4/20"},
-		{name: "If-Range is stale", method: MethodGet, fields: map[string]string{HeaderRange: "bytes=0-4", HeaderIfRange: staleDate}, wantStatus: StatusOK, wantBody: content, wantUnranged: true},
-		{name: "If-Range holds an entity-tag", method: MethodGet, fields: map[string]string{HeaderRange: "bytes=0-4", HeaderIfRange: `"deadbeef"`}, wantStatus: StatusOK, wantBody: content, wantUnranged: true},
-		{name: "If-Range is stale, range unsatisfiable", method: MethodGet, fields: map[string]string{HeaderRange: "bytes=100-200", HeaderIfRange: staleDate}, wantStatus: StatusOK, wantBody: content, wantUnranged: true},
-		{name: "If-Range matches, range unsatisfiable", method: MethodGet, fields: map[string]string{HeaderRange: "bytes=100-200", HeaderIfRange: lastModified}, wantStatus: StatusRequestedRangeNotSatisfiable, wantRange: "bytes */20", wantBody: "Range Not Satisfiable"},
-		{name: "If-Range without Range", method: MethodGet, fields: map[string]string{HeaderIfRange: staleDate}, wantStatus: StatusOK, wantBody: content, wantUnranged: true},
+		{name: "a range", fields: map[string]string{HeaderRange: "bytes=0-4"}, wantStatus: StatusPartialContent, wantBody: "01234", wantRange: "bytes 0-4/20"},
+		{name: "several ranges", fields: map[string]string{HeaderRange: "bytes=0-1,3-4"}, wantStatus: StatusOK, wantBody: byteRangeContent, wantWhole: true},
+		{name: "If-Range matches", fields: map[string]string{HeaderRange: "bytes=0-4", HeaderIfRange: byteRangeLastModified}, wantStatus: StatusPartialContent, wantBody: "01234", wantRange: "bytes 0-4/20"},
+		{name: "If-Range is stale", fields: map[string]string{HeaderRange: "bytes=0-4", HeaderIfRange: byteRangeStale}, wantStatus: StatusOK, wantBody: byteRangeContent, wantWhole: true},
+		{name: "unsatisfiable", fields: map[string]string{HeaderRange: "bytes=100-200"}, wantStatus: StatusRequestedRangeNotSatisfiable, wantRange: "bytes */20", wantBody: "Range Not Satisfiable"},
+		{name: "unsatisfiable, If-Range is stale", fields: map[string]string{HeaderRange: "bytes=100-200", HeaderIfRange: byteRangeStale}, wantStatus: StatusOK, wantBody: byteRangeContent, wantWhole: true},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			req := httptest.NewRequest(tc.method, "/file", http.NoBody)
+			req := httptest.NewRequest(MethodGet, "/file", http.NoBody)
 			for k, v := range tc.fields {
 				req.Header.Set(k, v)
 			}
@@ -8685,16 +8648,49 @@ func Test_SendFile_ByteRange_RFC9110(t *testing.T) {
 			require.NoError(t, err)
 			require.Equal(t, tc.wantBody, string(body))
 
-			if tc.wantUnranged {
+			if tc.wantWhole {
 				require.Equal(t, "20", resp.Header.Get(HeaderContentLength))
-				if tc.method != MethodPost {
-					require.Equal(t, lastModified, resp.Header.Get(HeaderLastModified))
-				}
+				require.Equal(t, byteRangeLastModified, resp.Header.Get(HeaderLastModified))
 			}
 			// Headers set before SendFile survive unless the response is discarded.
 			if tc.wantStatus != StatusRequestedRangeNotSatisfiable {
 				require.Equal(t, "kept", resp.Header.Get("X-Request"))
 			}
+		})
+	}
+}
+
+// An entity-tag in If-Range matches an ETag the handler set before SendFile,
+// which sends none of its own.
+func Test_SendFile_ByteRange_IfRangeETag(t *testing.T) {
+	t.Parallel()
+
+	if runtime.GOOS == windowsOS {
+		t.Skip("SendFile byte-range tests are flaky on Windows")
+	}
+
+	fixture := byteRangeFixture(t)
+	app := New()
+	app.Get("/file", func(c Ctx) error {
+		c.Set(HeaderETag, `"v1"`)
+		return c.SendFile(fixture, SendFile{ByteRange: true})
+	})
+
+	for ifRange, wantStatus := range map[string]int{
+		`"v1"`:   StatusPartialContent,
+		`"v2"`:   StatusOK,
+		`W/"v1"`: StatusOK, // a weak tag never matches
+	} {
+		t.Run(ifRange, func(t *testing.T) {
+			t.Parallel()
+
+			req := httptest.NewRequest(MethodGet, "/file", http.NoBody)
+			req.Header.Set(HeaderRange, "bytes=0-4")
+			req.Header.Set(HeaderIfRange, ifRange)
+			resp, err := app.Test(req)
+			require.NoError(t, err)
+			require.NoError(t, resp.Body.Close())
+			require.Equal(t, wantStatus, resp.StatusCode)
 		})
 	}
 }

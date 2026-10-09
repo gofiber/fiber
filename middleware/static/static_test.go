@@ -1873,7 +1873,8 @@ func Test_Static_MaxAge_NotOnErrorResponses(t *testing.T) {
 }
 
 // With ByteRange on, the Range and If-Range rules (RFC 9110 §13.1.5, §14.2) are
-// applied around the file server's single range.
+// applied around the file server's single range; internal/byterange tests them
+// in full.
 func Test_Static_ByteRange_RFC9110(t *testing.T) {
 	t.Parallel()
 
@@ -1895,26 +1896,16 @@ func Test_Static_ByteRange_RFC9110(t *testing.T) {
 		fields      map[string]string
 		name        string
 		path        string
-		method      string
 		wantRange   string
 		wantBody    string
 		wantStatus  int
-		wantWhole   bool // a whole representation with its validators
+		wantWhole   bool // the whole file, with its validators
 		wantAdvised bool // Accept-Ranges is advertised
 	}{
 		{name: "a range", path: "/ranges/file.txt", fields: map[string]string{fiber.HeaderRange: "bytes=0-4"}, wantStatus: fiber.StatusPartialContent, wantBody: "01234", wantRange: "bytes 0-4/20", wantAdvised: true},
-		{name: "unit in upper case", path: "/ranges/file.txt", fields: map[string]string{fiber.HeaderRange: "BYTES=-5"}, wantStatus: fiber.StatusPartialContent, wantBody: "fghij", wantRange: "bytes 15-19/20", wantAdvised: true},
 		{name: "several ranges", path: "/ranges/file.txt", fields: map[string]string{fiber.HeaderRange: "bytes=0-1,3-4"}, wantStatus: fiber.StatusOK, wantBody: content, wantWhole: true, wantAdvised: true},
-		{name: "unknown unit", path: "/ranges/file.txt", fields: map[string]string{fiber.HeaderRange: "items=0-4"}, wantStatus: fiber.StatusOK, wantBody: content, wantWhole: true, wantAdvised: true},
-		{name: "HEAD has no ranges", path: "/ranges/file.txt", method: fiber.MethodHead, fields: map[string]string{fiber.HeaderRange: "bytes=0-4"}, wantStatus: fiber.StatusOK, wantWhole: true, wantAdvised: true},
-		{name: "unsatisfiable", path: "/ranges/file.txt", fields: map[string]string{fiber.HeaderRange: "bytes=100-200"}, wantStatus: fiber.StatusRequestedRangeNotSatisfiable, wantBody: "Range Not Satisfiable"},
-
-		{name: "If-Range matches", path: "/ranges/file.txt", fields: map[string]string{fiber.HeaderRange: "bytes=0-4", fiber.HeaderIfRange: lastModified}, wantStatus: fiber.StatusPartialContent, wantBody: "01234", wantRange: "bytes 0-4/20", wantAdvised: true},
 		{name: "If-Range is stale", path: "/ranges/file.txt", fields: map[string]string{fiber.HeaderRange: "bytes=0-4", fiber.HeaderIfRange: staleDate}, wantStatus: fiber.StatusOK, wantBody: content, wantWhole: true, wantAdvised: true},
-		{name: "If-Range holds an entity-tag", path: "/ranges/file.txt", fields: map[string]string{fiber.HeaderRange: "bytes=0-4", fiber.HeaderIfRange: `"deadbeef"`}, wantStatus: fiber.StatusOK, wantBody: content, wantWhole: true, wantAdvised: true},
-		{name: "If-Range is stale, range unsatisfiable", path: "/ranges/file.txt", fields: map[string]string{fiber.HeaderRange: "bytes=100-200", fiber.HeaderIfRange: staleDate}, wantStatus: fiber.StatusOK, wantBody: content, wantWhole: true, wantAdvised: true},
-		{name: "If-Range matches, range unsatisfiable", path: "/ranges/file.txt", fields: map[string]string{fiber.HeaderRange: "bytes=100-200", fiber.HeaderIfRange: lastModified}, wantStatus: fiber.StatusRequestedRangeNotSatisfiable, wantBody: "Range Not Satisfiable"},
-
+		{name: "unsatisfiable", path: "/ranges/file.txt", fields: map[string]string{fiber.HeaderRange: "bytes=100-200"}, wantStatus: fiber.StatusRequestedRangeNotSatisfiable, wantBody: "Range Not Satisfiable"},
 		// ByteRange off: no ranges are offered and Range is not looked at.
 		{name: "ByteRange off", path: "/plain/file.txt", fields: map[string]string{fiber.HeaderRange: "bytes=0-4"}, wantStatus: fiber.StatusOK, wantBody: content, wantWhole: true},
 	}
@@ -1923,11 +1914,7 @@ func Test_Static_ByteRange_RFC9110(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			method := tc.method
-			if method == "" {
-				method = fiber.MethodGet
-			}
-			req := httptest.NewRequest(method, tc.path, http.NoBody)
+			req := httptest.NewRequest(fiber.MethodGet, tc.path, http.NoBody)
 			for k, v := range tc.fields {
 				req.Header.Set(k, v)
 			}

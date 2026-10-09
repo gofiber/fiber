@@ -58,12 +58,12 @@ func Test_classify(t *testing.T) {
 			t.Parallel()
 
 			var buf [64]byte
-			canonical, got := classify(buf[:0], []byte(tc.field))
-			require.Equal(t, tc.verdict, got)
+			got := classify(buf[:0], []byte(tc.field))
+			require.Equal(t, tc.verdict, got.verdict)
 			if tc.verdict == rewrite {
-				require.Equal(t, tc.canonical, string(canonical))
+				require.Equal(t, tc.canonical, string(got.canonical))
 			} else {
-				require.Nil(t, canonical)
+				require.Nil(t, got.canonical)
 			}
 		})
 	}

@@ -1189,10 +1189,6 @@ func Test_FiberHandler_SendStreamWriter_Streams(t *testing.T) {
 			t.Parallel()
 
 			release := make(chan struct{})
-			var releaseOnce sync.Once
-			unblock := func() { releaseOnce.Do(func() { close(release) }) }
-			t.Cleanup(unblock)
-
 			handler := FiberHandlerFunc(func(c fiber.Ctx) error {
 				return c.SendStreamWriter(func(w *bufio.Writer) {
 					w.WriteString("first") //nolint:errcheck // not needed
@@ -1223,9 +1219,10 @@ func Test_FiberHandler_SendStreamWriter_Streams(t *testing.T) {
 			select {
 			case <-w.firstWrite:
 			case <-time.After(5 * time.Second):
+				close(release) // the handler is waiting for it
 				t.Fatal("the first bytes of the stream were held back")
 			}
-			unblock()
+			close(release)
 			<-done
 			require.Equal(t, "firstsecond", string(w.body))
 		})

@@ -35,17 +35,22 @@ const (
 	ignore                 // without the field, so the whole file is sent
 )
 
-// classify decides what to do with a Range field. For rewrite it returns the
-// field to use, built in dst.
-func classify(dst, field []byte) ([]byte, verdict) {
+// plan is what to do with a Range field; for rewrite, canonical is the field to use.
+type plan struct {
+	canonical []byte
+	verdict   verdict
+}
+
+// classify decides what to do with a Range field, building a rewrite in dst.
+func classify(dst, field []byte) plan {
 	unit, set, found := utils.CutByte(field, '=')
 	unit = utils.TrimSpace(unit)
 	if !found || len(unit) == 0 {
-		return nil, pass
+		return plan{verdict: pass}
 	}
 	// A Range with an unknown unit must be ignored (§14.2).
 	if !utils.EqualFold(utils.UnsafeString(unit), unitBytes) {
-		return nil, ignore
+		return plan{verdict: ignore}
 	}
 
 	// The file server answers one range. Several are ignored, which §14.2 allows,
@@ -63,20 +68,20 @@ func classify(dst, field []byte) ([]byte, verdict) {
 			continue
 		}
 		if spec != nil {
-			return nil, ignore
+			return plan{verdict: ignore}
 		}
 		spec = element
 	}
 	if spec == nil {
-		return nil, pass
+		return plan{verdict: pass}
 	}
 
 	canonical := append(append(dst[:0], unitBytes...), '=')
 	canonical = append(canonical, spec...)
 	if bytes.Equal(canonical, field) {
-		return nil, pass
+		return plan{verdict: pass}
 	}
-	return canonical, rewrite
+	return plan{canonical: canonical, verdict: rewrite}
 }
 
 // Wrap returns handler, a fasthttp file server with byte ranges enabled, with the
@@ -99,31 +104,28 @@ func serveAt(ctx *fasthttp.RequestCtx, handler fasthttp.RequestHandler, now func
 	}
 
 	// Only GET has range semantics (§14.2).
-	var (
-		buf       [64]byte
-		canonical []byte
-		v         = ignore
-	)
+	var buf [64]byte
+	p := plan{verdict: ignore}
 	if ctx.IsGet() {
-		canonical, v = classify(buf[:0], field)
+		p = classify(buf[:0], field)
 	}
 
 	ifRange := header.Peek(fasthttp.HeaderIfRange)
-	if len(ifRange) == 0 || v == ignore {
-		serveRange(ctx, handler, v, canonical)
+	if len(ifRange) == 0 || p.verdict == ignore {
+		p.serve(ctx, handler)
 		return
 	}
 	// The value is copied because serving rearranges the request header's storage.
-	serveConditional(ctx, handler, v, canonical, utils.CopyBytes(ifRange), now)
+	serveConditional(ctx, handler, p, utils.CopyBytes(ifRange), now)
 }
 
-// serveRange runs handler for a Range field that got verdict v.
-func serveRange(ctx *fasthttp.RequestCtx, handler fasthttp.RequestHandler, v verdict, canonical []byte) {
-	switch v {
+// serve runs handler for the Range field as the plan has it.
+func (p plan) serve(ctx *fasthttp.RequestCtx, handler fasthttp.RequestHandler) {
+	switch p.verdict {
 	case pass:
 		handler(ctx)
 	case rewrite:
-		serveWithField(ctx, handler, canonical)
+		serveWithField(ctx, handler, p.canonical)
 	default:
 		serveWithField(ctx, handler, nil)
 	}
@@ -147,13 +149,13 @@ func serveWithField(ctx *fasthttp.RequestCtx, handler fasthttp.RequestHandler, v
 // serveConditional serves a Range that comes with an If-Range. Only the response
 // has the validators to judge it by, so when they do not match, the whole file is
 // served in its place.
-func serveConditional(ctx *fasthttp.RequestCtx, handler fasthttp.RequestHandler, v verdict, canonical, ifRange []byte, now func() time.Time) {
+func serveConditional(ctx *fasthttp.RequestCtx, handler fasthttp.RequestHandler, p plan, ifRange []byte, now func() time.Time) {
 	// A refusal wipes the response, so the headers the caller had set are kept to
 	// start the second attempt from.
 	callerHeader := &fasthttp.ResponseHeader{}
 	ctx.Response.Header.CopyTo(callerHeader)
 
-	serveRange(ctx, handler, v, canonical)
+	p.serve(ctx, handler)
 
 	switch ctx.Response.StatusCode() {
 	case fasthttp.StatusPartialContent:
