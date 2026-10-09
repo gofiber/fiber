@@ -359,10 +359,10 @@ type Config struct { //nolint:govet // Aligning the struct fields is not necessa
 	// Default: ""
 	ProxyHeader string `json:"proxy_header"`
 
-	// GETOnly rejects all non-GET requests if set to true.
+	// GETOnly rejects every method except GET and HEAD if set to true.
 	// This option is useful as anti-DoS protection for servers
 	// accepting only GET requests. The request size is limited
-	// by ReadBufferSize if GETOnly is set. Rejected requests get 405 with
+	// by ReadBufferSize if GETOnly is set. A rejected request gets 405 with
 	// "Allow: GET, HEAD".
 	//
 	// Default: false
