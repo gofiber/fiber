@@ -10,7 +10,7 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
-func Test_Classify(t *testing.T) {
+func Test_classify(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -105,10 +105,10 @@ func Test_ifRangeMatches(t *testing.T) {
 
 			var resp fasthttp.Response
 			if tc.lastModified != "" {
-				resp.Header.Set(fieldLastModified, tc.lastModified)
+				resp.Header.Set(fasthttp.HeaderLastModified, tc.lastModified)
 			}
 			if tc.etag != "" {
-				resp.Header.Set(fieldETag, tc.etag)
+				resp.Header.Set(fasthttp.HeaderETag, tc.etag)
 			}
 			require.Equal(t, tc.want, ifRangeMatches([]byte(tc.ifRange), &resp, modifiedAt.Add(time.Hour)))
 		})
@@ -119,7 +119,7 @@ func Test_ifRangeMatches(t *testing.T) {
 		t.Parallel()
 
 		var resp fasthttp.Response
-		resp.Header.Set(fieldLastModified, modified)
+		resp.Header.Set(fasthttp.HeaderLastModified, modified)
 		for age, want := range map[time.Duration]bool{
 			-time.Hour:                    false, // a date in the future cannot be strong
 			0:                             false,
@@ -136,8 +136,6 @@ func Test_ifRangeMatches(t *testing.T) {
 const (
 	fileContent  = "0123456789abcdefghij"
 	fileModified = "Thu, 02 Jan 2020 03:04:05 GMT"
-
-	fieldContentRange = "Content-Range"
 )
 
 // newFileServer serves a 20-byte file, old enough for a strong Last-Modified,
@@ -203,7 +201,7 @@ func requestAt(t *testing.T, now func() time.Time, handler fasthttp.RequestHandl
 	return reply{ctx: ctx, body: string(ctx.Response.Body())}
 }
 
-func Test_Serve_RangeRules(t *testing.T) {
+func Test_Wrap_RangeRules(t *testing.T) {
 	t.Parallel()
 
 	handler := newFileServer(t)
@@ -248,13 +246,13 @@ func Test_Serve_RangeRules(t *testing.T) {
 
 			fields := map[string]string{}
 			if tc.rangeField != "" {
-				fields[fieldRange] = tc.rangeField
+				fields[fasthttp.HeaderRange] = tc.rangeField
 			}
 			got := request(t, handler, tc.method, fields)
 
 			require.Equal(t, tc.wantStatus, got.status())
 			require.Equal(t, tc.wantBody, got.body)
-			require.Equal(t, tc.wantRange, got.header(fieldContentRange))
+			require.Equal(t, tc.wantRange, got.header(fasthttp.HeaderContentRange))
 			if tc.wantLength != "" {
 				require.Equal(t, tc.wantLength, got.header("Content-Length"))
 			}
@@ -263,12 +261,12 @@ func Test_Serve_RangeRules(t *testing.T) {
 			}
 
 			// The rest of the chain sees the request as it came.
-			require.Equal(t, tc.rangeField, string(got.ctx.Request.Header.Peek(fieldRange)))
+			require.Equal(t, tc.rangeField, string(got.ctx.Request.Header.Peek(fasthttp.HeaderRange)))
 		})
 	}
 }
 
-func Test_Serve_IfRange(t *testing.T) {
+func Test_Wrap_IfRange(t *testing.T) {
 	t.Parallel()
 
 	handler := newFileServer(t)
@@ -309,30 +307,30 @@ func Test_Serve_IfRange(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			fields := map[string]string{fieldIfRange: tc.ifRange}
+			fields := map[string]string{fasthttp.HeaderIfRange: tc.ifRange}
 			if tc.rangeField != "" {
-				fields[fieldRange] = tc.rangeField
+				fields[fasthttp.HeaderRange] = tc.rangeField
 			}
 			got := request(t, handler, fasthttp.MethodGet, fields)
 
 			require.Equal(t, tc.wantStatus, got.status())
 			require.Equal(t, tc.wantBody, got.body)
-			require.Equal(t, tc.wantRange, got.header(fieldContentRange))
+			require.Equal(t, tc.wantRange, got.header(fasthttp.HeaderContentRange))
 			if tc.wantStatus == 200 {
 				// A whole representation, framed as one.
 				require.Equal(t, "20", got.header("Content-Length"))
-				require.Equal(t, fileModified, got.header(fieldLastModified))
+				require.Equal(t, fileModified, got.header(fasthttp.HeaderLastModified))
 				require.Equal(t, "bytes", got.header("Accept-Ranges"))
 			}
-			require.Equal(t, tc.rangeField, string(got.ctx.Request.Header.Peek(fieldRange)))
-			require.Equal(t, tc.ifRange, string(got.ctx.Request.Header.Peek(fieldIfRange)))
+			require.Equal(t, tc.rangeField, string(got.ctx.Request.Header.Peek(fasthttp.HeaderRange)))
+			require.Equal(t, tc.ifRange, string(got.ctx.Request.Header.Peek(fasthttp.HeaderIfRange)))
 		})
 	}
 }
 
 // A file modified less than strongAfter ago has no strong validator, so no
 // If-Range date matches it (§8.8.2.2).
-func Test_Serve_IfRange_Strength(t *testing.T) {
+func Test_Wrap_IfRange_Strength(t *testing.T) {
 	t.Parallel()
 
 	handler := newFileServer(t)
@@ -349,7 +347,7 @@ func Test_Serve_IfRange_Strength(t *testing.T) {
 			t.Parallel()
 
 			now := func() time.Time { return modifiedAt.Add(age) }
-			fields := map[string]string{fieldRange: "bytes=0-4", fieldIfRange: fileModified}
+			fields := map[string]string{fasthttp.HeaderRange: "bytes=0-4", fasthttp.HeaderIfRange: fileModified}
 			require.Equal(t, wantStatus, requestAt(t, now, handler, fasthttp.MethodGet, fields).status())
 		})
 	}
@@ -357,7 +355,7 @@ func Test_Serve_IfRange_Strength(t *testing.T) {
 
 // Headers set before the file server ran survive every outcome; those of a
 // partial response do not.
-func Test_Serve_KeepsCallerHeaders(t *testing.T) {
+func Test_Wrap_KeepsCallerHeaders(t *testing.T) {
 	t.Parallel()
 
 	handler := newFileServer(t)
@@ -366,11 +364,11 @@ func Test_Serve_KeepsCallerHeaders(t *testing.T) {
 	}
 
 	for name, fields := range map[string]map[string]string{
-		"range served":               {fieldRange: "bytes=0-4"},
-		"range ignored":              {fieldRange: "bytes=0-1,3-4"},
-		"range dropped for If-Range": {fieldRange: "bytes=0-4", fieldIfRange: "Wed, 01 Jan 2020 03:04:05 GMT"},
+		"range served":               {fasthttp.HeaderRange: "bytes=0-4"},
+		"range ignored":              {fasthttp.HeaderRange: "bytes=0-1,3-4"},
+		"range dropped for If-Range": {fasthttp.HeaderRange: "bytes=0-4", fasthttp.HeaderIfRange: "Wed, 01 Jan 2020 03:04:05 GMT"},
 		// The refusal wipes the response; the caller's headers are put back.
-		"unsatisfiable range dropped for If-Range": {fieldRange: "bytes=100-200", fieldIfRange: "Wed, 01 Jan 2020 03:04:05 GMT"},
+		"unsatisfiable range dropped for If-Range": {fasthttp.HeaderRange: "bytes=100-200", fasthttp.HeaderIfRange: "Wed, 01 Jan 2020 03:04:05 GMT"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
@@ -378,44 +376,67 @@ func Test_Serve_KeepsCallerHeaders(t *testing.T) {
 			got := request(t, handler, fasthttp.MethodGet, fields, prepare)
 			require.Equal(t, "kept", got.header("X-Request"))
 			if got.status() == 200 {
-				require.Empty(t, got.header(fieldContentRange))
+				require.Empty(t, got.header(fasthttp.HeaderContentRange))
 				require.Equal(t, "20", got.header("Content-Length"))
 			}
 		})
 	}
 }
 
-func Benchmark_Serve_NoRange(b *testing.B) {
+func Benchmark_Wrap_NoRange(b *testing.B) {
 	dir := b.TempDir()
 	require.NoError(b, os.WriteFile(filepath.Join(dir, "file.txt"), []byte(fileContent), 0o600))
 	server := &fasthttp.FS{Root: dir, AcceptByteRange: true}
-	handler := server.NewRequestHandler()
+	handler := Wrap(server.NewRequestHandler())
 
 	ctx := &fasthttp.RequestCtx{}
 	ctx.Request.SetRequestURI("/file.txt")
 
 	b.ReportAllocs()
 	for b.Loop() {
-		Serve(ctx, handler)
-		_ = ctx.Response.CloseBodyStream() //nolint:errcheck // a stream never sent
+		handler(ctx)
 		ctx.Response.Reset()
 	}
 }
 
-func Benchmark_Serve_SingleRange(b *testing.B) {
+func Benchmark_Wrap_SingleRange(b *testing.B) {
 	dir := b.TempDir()
 	require.NoError(b, os.WriteFile(filepath.Join(dir, "file.txt"), []byte(fileContent), 0o600))
 	server := &fasthttp.FS{Root: dir, AcceptByteRange: true}
-	handler := server.NewRequestHandler()
+	handler := Wrap(server.NewRequestHandler())
 
 	ctx := &fasthttp.RequestCtx{}
 	ctx.Request.SetRequestURI("/file.txt")
-	ctx.Request.Header.Set(fieldRange, "bytes=0-4")
+	ctx.Request.Header.Set(fasthttp.HeaderRange, "bytes=0-4")
 
 	b.ReportAllocs()
 	for b.Loop() {
-		Serve(ctx, handler)
-		_ = ctx.Response.CloseBodyStream() //nolint:errcheck // a stream never sent
+		handler(ctx)
 		ctx.Response.Reset()
+	}
+}
+
+// The Range field is put back even when the handler panics.
+func Test_Wrap_RestoresRangeAfterPanic(t *testing.T) {
+	t.Parallel()
+
+	handler := Wrap(func(*fasthttp.RequestCtx) { panic("handler broke") })
+
+	for _, tc := range []struct{ method, field string }{
+		{method: fasthttp.MethodGet, field: "bytes=0-4"},
+		{method: fasthttp.MethodGet, field: "Bytes=0-4"},
+		{method: fasthttp.MethodGet, field: "bytes=0-1,3-4"},
+		{method: fasthttp.MethodGet, field: "items=0-4"},
+		{method: fasthttp.MethodHead, field: "bytes=0-4"},
+	} {
+		var req fasthttp.Request
+		req.Header.SetMethod(tc.method)
+		req.SetRequestURI("/file.txt")
+		req.Header.Set(fasthttp.HeaderRange, tc.field)
+		ctx := &fasthttp.RequestCtx{}
+		ctx.Init(&req, nil, discardLogger{})
+
+		require.Panics(t, func() { handler(ctx) })
+		require.Equal(t, tc.field, string(ctx.Request.Header.Peek(fasthttp.HeaderRange)), tc.method+" "+tc.field)
 	}
 }

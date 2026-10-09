@@ -1941,8 +1941,8 @@ func Test_Ctx_Cookie_Invalid(t *testing.T) {
 	}
 }
 
-// RFC 6265 §4.1.1: a value with a space or comma is written in quotes, as
-// net/http does, and the quotes are not part of the value read back.
+// A value with a space or comma is written in quotes, as net/http does (RFC 6265
+// §4.1.1 allows neither even in quotes), and the quotes are not part of the value read back.
 // go test -run Test_Ctx_Cookie_ValueQuoting
 func Test_Ctx_Cookie_ValueQuoting(t *testing.T) {
 	t.Parallel()

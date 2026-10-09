@@ -6,6 +6,7 @@ package byterange
 
 import (
 	"bytes"
+	"strings"
 	"time"
 
 	"github.com/gofiber/utils/v2"
@@ -13,24 +14,16 @@ import (
 )
 
 const (
-	fieldRange        = "Range"
-	fieldIfRange      = "If-Range"
-	fieldETag         = "ETag"
-	fieldLastModified = "Last-Modified"
-
 	// unitBytes is the only unit the file server knows. Units are
 	// case-insensitive (RFC 9110 §14.1), its parser is not.
 	unitBytes = "bytes"
+
+	weakPrefix = "W/"
 
 	// A Last-Modified time is implicitly weak unless it can be deduced to be strong
 	// (§8.8.2.2). It has whole-second resolution, so one that is two seconds old
 	// belongs to a file last modified more than a second ago.
 	strongAfter = 2 * time.Second
-)
-
-var (
-	bytesUnit  = []byte(unitBytes)
-	weakPrefix = []byte("W/")
 )
 
 // verdict is what to do with a Range field before the file server sees it.
@@ -44,14 +37,14 @@ const (
 
 // classify decides what to do with a Range field. For rewrite it returns the
 // field to use, built in dst.
-func classify(dst, field []byte) (canonical []byte, v verdict) { //nolint:nonamedreturns // the two results are easy to swap without names
+func classify(dst, field []byte) ([]byte, verdict) {
 	unit, set, found := utils.CutByte(field, '=')
 	unit = utils.TrimSpace(unit)
 	if !found || len(unit) == 0 {
 		return nil, pass
 	}
 	// A Range with an unknown unit must be ignored (§14.2).
-	if !utils.EqualFold(unit, bytesUnit) {
+	if !utils.EqualFold(utils.UnsafeString(unit), unitBytes) {
 		return nil, ignore
 	}
 
@@ -78,7 +71,7 @@ func classify(dst, field []byte) (canonical []byte, v verdict) { //nolint:noname
 		return nil, pass
 	}
 
-	canonical = append(append(dst[:0], unitBytes...), '=')
+	canonical := append(append(dst[:0], unitBytes...), '=')
 	canonical = append(canonical, spec...)
 	if bytes.Equal(canonical, field) {
 		return nil, pass
@@ -86,94 +79,103 @@ func classify(dst, field []byte) (canonical []byte, v verdict) { //nolint:noname
 	return canonical, rewrite
 }
 
-// Serve runs handler, a fasthttp file server with byte ranges enabled, for ctx.
-// The Range field is ignored, and the whole file sent, for a non-GET request, a
-// unit other than "bytes", several ranges, or an If-Range that does not match
-// the Last-Modified the file server sent.
-func Serve(ctx *fasthttp.RequestCtx, handler fasthttp.RequestHandler) {
-	serveAt(ctx, handler, time.Now)
+// Wrap returns handler, a fasthttp file server with byte ranges enabled, with the
+// Range field handled as RFC 9110 asks. The field is ignored, and the whole file
+// sent, for a non-GET request, a unit other than "bytes", several ranges, or an
+// If-Range that does not match the Last-Modified the file server sent.
+func Wrap(handler fasthttp.RequestHandler) fasthttp.RequestHandler {
+	return func(ctx *fasthttp.RequestCtx) {
+		serveAt(ctx, handler, time.Now)
+	}
 }
 
-// serveAt is Serve with the clock that ages a Last-Modified given, for the tests.
+// serveAt is the handler Wrap returns, with the clock that ages a Last-Modified given.
 func serveAt(ctx *fasthttp.RequestCtx, handler fasthttp.RequestHandler, now func() time.Time) {
 	header := &ctx.Request.Header
-	field := header.Peek(fieldRange)
+	field := header.Peek(fasthttp.HeaderRange)
 	if len(field) == 0 {
 		handler(ctx)
 		return
 	}
 
-	if !ctx.IsGet() {
-		serveWithoutRange(ctx, handler)
-		return
-	}
-
-	var buf [64]byte
-	canonical, v := classify(buf[:0], field)
-	if v == ignore {
-		serveWithoutRange(ctx, handler)
-		return
-	}
-
-	// With If-Range the file may have to be served again, and a refusal wipes the
-	// response, so the caller's headers are saved. The value is copied because
-	// removing and restoring Range rearranges the request header's storage.
+	// Only GET has range semantics (§14.2).
 	var (
-		callerHeader *fasthttp.ResponseHeader
-		ifRange      []byte
+		buf       [64]byte
+		canonical []byte
+		v         = ignore
 	)
-	if value := header.Peek(fieldIfRange); len(value) > 0 {
-		ifRange = utils.CopyBytes(value)
-		callerHeader = &fasthttp.ResponseHeader{}
-		ctx.Response.Header.CopyTo(callerHeader)
+	if ctx.IsGet() {
+		canonical, v = classify(buf[:0], field)
 	}
 
-	if v == rewrite {
-		original := utils.CopyBytes(field)
-		header.SetBytesV(fieldRange, canonical)
-		handler(ctx)
-		header.SetBytesV(fieldRange, original)
-	} else {
-		handler(ctx)
-	}
-
-	if callerHeader == nil {
+	ifRange := header.Peek(fasthttp.HeaderIfRange)
+	if len(ifRange) == 0 || v == ignore {
+		serveRange(ctx, handler, v, canonical)
 		return
 	}
+	// The value is copied because serving rearranges the request header's storage.
+	serveConditional(ctx, handler, v, canonical, utils.CopyBytes(ifRange), now)
+}
+
+// serveRange runs handler for a Range field that got verdict v.
+func serveRange(ctx *fasthttp.RequestCtx, handler fasthttp.RequestHandler, v verdict, canonical []byte) {
+	switch v {
+	case pass:
+		handler(ctx)
+	case rewrite:
+		serveWithField(ctx, handler, canonical)
+	default:
+		serveWithField(ctx, handler, nil)
+	}
+}
+
+// serveWithField runs handler with the Range field set to value, or removed when
+// value is nil, and puts the original back for the rest of the chain.
+func serveWithField(ctx *fasthttp.RequestCtx, handler fasthttp.RequestHandler, value []byte) {
+	header := &ctx.Request.Header
+	original := utils.CopyBytes(header.Peek(fasthttp.HeaderRange))
+	defer header.SetBytesV(fasthttp.HeaderRange, original)
+
+	if value == nil {
+		header.Del(fasthttp.HeaderRange)
+	} else {
+		header.SetBytesV(fasthttp.HeaderRange, value)
+	}
+	handler(ctx)
+}
+
+// serveConditional serves a Range that comes with an If-Range. Only the response
+// has the validators to judge it by, so when they do not match, the whole file is
+// served in its place.
+func serveConditional(ctx *fasthttp.RequestCtx, handler fasthttp.RequestHandler, v verdict, canonical, ifRange []byte, now func() time.Time) {
+	// A refusal wipes the response, so the headers the caller had set are kept to
+	// start the second attempt from.
+	callerHeader := &fasthttp.ResponseHeader{}
+	ctx.Response.Header.CopyTo(callerHeader)
+
+	serveRange(ctx, handler, v, canonical)
+
 	switch ctx.Response.StatusCode() {
 	case fasthttp.StatusPartialContent:
-		if ifRangeMatches(ifRange, &ctx.Response, now()) {
-			return
+		if !ifRangeMatches(ifRange, &ctx.Response, now()) {
+			serveWhole(ctx, handler, callerHeader)
 		}
-		replaceWithWhole(ctx, handler, callerHeader)
 	case fasthttp.StatusRequestedRangeNotSatisfiable:
-		// The 416 has no validator. The whole file has, and is the answer when
+		// The 416 has no validators. The whole file has, and is the answer when
 		// If-Range does not match.
-		replaceWithWhole(ctx, handler, callerHeader)
+		serveWhole(ctx, handler, callerHeader)
 		if ctx.Response.StatusCode() == fasthttp.StatusOK && ifRangeMatches(ifRange, &ctx.Response, now()) {
-			_ = ctx.Response.CloseBodyStream() //nolint:errcheck // a stream never sent
 			ctx.Error("Range Not Satisfiable", fasthttp.StatusRequestedRangeNotSatisfiable)
 		}
 	}
 }
 
-// serveWithoutRange runs handler as if the request had no Range, then restores
-// the field for the rest of the chain.
-func serveWithoutRange(ctx *fasthttp.RequestCtx, handler fasthttp.RequestHandler) {
-	header := &ctx.Request.Header
-	original := utils.CopyBytes(header.Peek(fieldRange))
-	header.Del(fieldRange)
-	handler(ctx)
-	header.SetBytesV(fieldRange, original)
-}
-
-// replaceWithWhole discards the response and has handler send the whole file,
-// from the headers the caller had set.
-func replaceWithWhole(ctx *fasthttp.RequestCtx, handler fasthttp.RequestHandler, callerHeader *fasthttp.ResponseHeader) {
-	_ = ctx.Response.CloseBodyStream() //nolint:errcheck // a stream never sent
+// serveWhole discards the response and has handler send the whole file, from the
+// headers the caller had set.
+func serveWhole(ctx *fasthttp.RequestCtx, handler fasthttp.RequestHandler, callerHeader *fasthttp.ResponseHeader) {
 	ctx.Response.ResetBody()
 	callerHeader.CopyTo(&ctx.Response.Header)
-	serveWithoutRange(ctx, handler)
+	serveWithField(ctx, handler, nil)
 }
 
 // ifRangeMatches evaluates If-Range against the file server's response (§13.1.5):
@@ -185,12 +187,12 @@ func ifRangeMatches(ifRange []byte, resp *fasthttp.Response, now time.Time) bool
 		return false
 	}
 
-	if ifRange[0] == '"' || bytes.HasPrefix(ifRange, weakPrefix) {
-		etag := resp.Header.Peek(fieldETag)
+	if ifRange[0] == '"' || strings.HasPrefix(utils.UnsafeString(ifRange), weakPrefix) {
+		etag := resp.Header.Peek(fasthttp.HeaderETag)
 		return ifRange[0] == '"' && len(etag) > 0 && etag[0] == '"' && bytes.Equal(etag, ifRange)
 	}
 
-	lastModified := resp.Header.Peek(fieldLastModified)
+	lastModified := resp.Header.Peek(fasthttp.HeaderLastModified)
 	if !bytes.Equal(lastModified, ifRange) {
 		return false
 	}

@@ -384,8 +384,8 @@ func (r *DefaultRes) Cookie(cookie *Cookie) {
 	// create fasthttp cookie
 	fcookie := fasthttp.AcquireCookie()
 	fcookie.SetKey(hc.Name)
-	// A space or comma is not a cookie-octet (RFC 6265 §4.1.1), so the value is
-	// quoted on the wire, as net/http does. fasthttp drops the quotes on read.
+	// net/http quotes a value with a space or comma, and so does this, although
+	// RFC 6265 §4.1.1 allows neither even in quotes. fasthttp drops the quotes on read.
 	wireValue := hc.Value
 	if quoted || utils.IndexAny2(wireValue, ' ', ',') >= 0 {
 		wireValue = `"` + wireValue + `"`
@@ -413,7 +413,7 @@ func (r *DefaultRes) Cookie(cookie *Cookie) {
 
 // unquoteCookieValue strips one pair of surrounding double quotes. A lone quote
 // is left for validation to reject.
-func unquoteCookieValue(value string) (unquoted string, quoted bool) { //nolint:nonamedreturns // the two results are easy to swap without names
+func unquoteCookieValue(value string) (string, bool) {
 	if len(value) >= 2 && value[0] == '"' && value[len(value)-1] == '"' {
 		return value[1 : len(value)-1], true
 	}
@@ -1297,9 +1297,13 @@ func (r *DefaultRes) SendFile(file string, config ...SendFile) error {
 			},
 		}
 
+		handler := fasthttpFS.NewRequestHandler()
+		if cfg.ByteRange {
+			handler = byterange.Wrap(handler)
+		}
 		sf := &sendFileStore{
 			config:  cfg,
-			handler: fasthttpFS.NewRequestHandler(),
+			handler: handler,
 		}
 
 		maxAge := cfg.MaxAge
@@ -1382,12 +1386,8 @@ func (r *DefaultRes) SendFile(file string, config ...SendFile) error {
 	response := &r.c.fasthttp.Response
 	status := response.StatusCode()
 
-	// Serve file; byterange adds the Range and If-Range rules fasthttp lacks.
-	if cfg.ByteRange {
-		byterange.Serve(r.c.fasthttp, fsHandler)
-	} else {
-		fsHandler(r.c.fasthttp)
-	}
+	// Serve file
+	fsHandler(r.c.fasthttp)
 
 	// Sets the response Content-Disposition header to attachment if the Download option is true
 	if cfg.Download {

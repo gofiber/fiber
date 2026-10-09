@@ -1021,8 +1021,6 @@ func matchNoCacheToken(s string, i int) bool {
 		(b[7]|asciiCaseFold) == 'e'
 }
 
-const contentLengthField = "content-length"
-
 // hasContentLengthField reports whether raw, a request's header block, has a
 // Content-Length field line. fasthttp drops the value once Transfer-Encoding takes
 // over, so the block is the only place left to look. Whitespace before the colon
@@ -1035,8 +1033,8 @@ func hasContentLengthField(raw []byte) bool {
 		} else {
 			raw = nil
 		}
-		if len(line) > len(contentLengthField) && line[len(contentLengthField)] == ':' &&
-			utils.EqualFold(utils.UnsafeString(line[:len(contentLengthField)]), contentLengthField) {
+		if len(line) > len(HeaderContentLength) && line[len(HeaderContentLength)] == ':' &&
+			utils.EqualFold(utils.UnsafeString(line[:len(HeaderContentLength)]), HeaderContentLength) {
 			return true
 		}
 	}

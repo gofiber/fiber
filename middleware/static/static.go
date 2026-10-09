@@ -340,8 +340,13 @@ func New(root string, cfg ...Config) fiber.Handler {
 			return []byte(invalidPathSentinel)
 		}
 
+		handler := files.NewRequestHandler()
+		if config.ByteRange {
+			handler = byterange.Wrap(handler)
+		}
+
 		return &fileServer{
-			handler:       files.NewRequestHandler(),
+			handler:       handler,
 			fsys:          config.FS,
 			root:          root,
 			fsRootPrefix:  fsRootPrefix,
@@ -401,12 +406,8 @@ func New(root string, cfg ...Config) fiber.Handler {
 		fctx := c.RequestCtx()
 		fctx.SetUserValue(rewriteKey{}, rw)
 
-		// Serve file; byterange adds the Range and If-Range rules fasthttp lacks.
-		if config.ByteRange {
-			byterange.Serve(fctx, server.handler)
-		} else {
-			server.handler(fctx)
-		}
+		// Serve file
+		server.handler(fctx)
 
 		fctx.RemoveUserValue(rewriteKey{})
 		rewritePool.Put(rw)
