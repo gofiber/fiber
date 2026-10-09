@@ -97,6 +97,9 @@ type App struct {
 	state *State
 	// shared state management (prefork-safe, storage-backed)
 	sharedState *SharedState
+	// headerHook is the HeaderReceived callback hookHeaderReceived installed, kept
+	// to tell it from one set since
+	headerHook func(*fasthttp.RequestHeader) fasthttp.RequestConfig
 	// Route stack divided by HTTP methods
 	stack [][]*Route
 	// customConstraints is a list of external constraints
@@ -116,20 +119,17 @@ type App struct {
 	// pointer so a rebuild publishes each method's tree in one store.
 	treeIndex []*routeTree
 	// Precomputed unmatched-route indexes, rebuilt with the tree (router_skip.go)
-	skip skipRouteIndex
-	// sendfilesMutex is a mutex used for sendfile operations
-	sendfilesMutex   sync.RWMutex
-	mutex            sync.Mutex
+	skip             skipRouteIndex
 	autoHeadRouteID  uint64
 	autoHeadStackLen int
+	// sendfilesMutex is a mutex used for sendfile operations
+	sendfilesMutex sync.RWMutex
+	mutex          sync.Mutex
 	// Amount of registered handlers
 	handlersCount uint32
 	// contains the information if the route stack has been changed to build the optimized tree
 	hasRoutesRefreshed bool
 	connStateHooked    bool
-	// testHeaderHook installs the header hook on the first Test, which runs again
-	// and again on one server
-	testHeaderHook sync.Once
 	// hasCustomCtx tracks whether app uses a custom context implementation
 	hasCustomCtx bool
 	// hasParamRoutes tracks whether any route consults the per-request slash
@@ -1504,7 +1504,7 @@ func (app *App) Test(req *http.Request, config ...TestConfig) (*http.Response, e
 	}
 	// prepare the server for the start
 	app.startupProcess()
-	app.testHeaderHook.Do(app.hookHeaderReceived)
+	app.hookHeaderReceived()
 
 	// Serve conn to server
 	channel := make(chan error, 1)
@@ -1866,16 +1866,18 @@ func (app *App) hookConnState() {
 // user HeaderReceived callback. It must run before the body is decoded: after that
 // fasthttp has replaced the length and dropped the Content-Length value. Call it
 // right before the server serves: it wraps the callback set by then, in
-// ListenConfig.BeforeServeFunc too, and one replaced since an earlier start.
+// ListenConfig.BeforeServeFunc too, and one replaced since an earlier start. Its
+// own hook is left alone: Test and a listener run on one server at the same time,
+// and the connections they serve read the callback.
 func (app *App) hookHeaderReceived() {
 	app.mutex.Lock()
 	defer app.mutex.Unlock()
 
-	if app.server == nil {
+	if app.server == nil || sameFunc(app.server.HeaderReceived, app.headerHook) {
 		return
 	}
 	user := app.server.HeaderReceived
-	app.server.HeaderReceived = func(header *fasthttp.RequestHeader) fasthttp.RequestConfig {
+	app.headerHook = func(header *fasthttp.RequestHeader) fasthttp.RequestConfig {
 		if header.ContentLength() == -1 && hasContentLengthField(header.RawHeaders()) {
 			header.SetConnectionClose()
 		}
@@ -1885,6 +1887,7 @@ func (app *App) hookHeaderReceived() {
 		// The zero value keeps the server's own limits and timeouts.
 		return fasthttp.RequestConfig{}
 	}
+	app.server.HeaderReceived = app.headerHook
 }
 
 // Run onListen hooks. If they return an error, panic.

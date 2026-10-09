@@ -4569,6 +4569,58 @@ func Test_App_ContentLengthWithTransferEncoding_KeepsUserHeaderReceived(t *testi
 	}
 }
 
+// The hook is installed once and a replaced callback is wrapped again.
+func Test_App_HeaderReceivedHook_Reinstalled(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	app.hookHeaderReceived()
+	installed := app.Server().HeaderReceived
+	require.NotNil(t, installed)
+
+	app.hookHeaderReceived()
+	require.True(t, sameFunc(app.Server().HeaderReceived, installed), "the hook is not wrapped again")
+
+	replaced := func(*fasthttp.RequestHeader) fasthttp.RequestConfig { return fasthttp.RequestConfig{} }
+	app.Server().HeaderReceived = replaced
+	app.hookHeaderReceived()
+	require.False(t, sameFunc(app.Server().HeaderReceived, replaced), "a replaced callback is wrapped")
+	require.False(t, sameFunc(app.Server().HeaderReceived, installed))
+}
+
+// Test and a listener run on one server at the same time, and the connections they
+// serve read the callback, so installing the hook must not write it again. Meant
+// for -race.
+func Test_App_HeaderReceivedHook_RaceFreeWithTest(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	app.Get("/", func(c Ctx) error { return c.SendString("ok") })
+
+	stop := make(chan struct{})
+	var wg sync.WaitGroup
+	wg.Go(func() {
+		for {
+			select {
+			case <-stop:
+				return
+			default:
+				app.hookHeaderReceived()
+				runtime.Gosched()
+			}
+		}
+	})
+
+	for range 50 {
+		resp, err := app.Test(httptest.NewRequest(MethodGet, "/", http.NoBody))
+		if assert.NoError(t, err) {
+			assert.NoError(t, resp.Body.Close())
+		}
+	}
+	close(stop)
+	wg.Wait()
+}
+
 // Test serves the connection itself, so it installs the close hook too.
 func Test_App_Test_ClosesAfterContentLengthWithTransferEncoding(t *testing.T) {
 	t.Parallel()

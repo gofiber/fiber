@@ -1910,6 +1910,23 @@ func Benchmark_bindMediaType(b *testing.B) {
 	}
 }
 
+func Test_sameFunc(t *testing.T) {
+	t.Parallel()
+
+	newCallback := func(limit int) func(*fasthttp.RequestHeader) fasthttp.RequestConfig {
+		return func(*fasthttp.RequestHeader) fasthttp.RequestConfig {
+			return fasthttp.RequestConfig{MaxRequestBodySize: limit}
+		}
+	}
+	a, b := newCallback(1), newCallback(1)
+
+	require.True(t, sameFunc(a, a))
+	require.False(t, sameFunc(a, b), "closures of one literal are different values")
+	require.False(t, sameFunc(a, nil))
+	require.False(t, sameFunc(nil, a))
+	require.False(t, sameFunc(nil, nil))
+}
+
 func Test_hasContentLengthField(t *testing.T) {
 	t.Parallel()
 

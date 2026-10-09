@@ -1021,6 +1021,12 @@ func matchNoCacheToken(s string, i int) bool {
 		(b[7]|asciiCaseFold) == 'e'
 }
 
+// sameFunc reports whether a is the non-nil callback b, which == cannot say for
+// funcs: it compares the closure each value points to.
+func sameFunc(a, b func(*fasthttp.RequestHeader) fasthttp.RequestConfig) bool {
+	return a != nil && *(*unsafe.Pointer)(unsafe.Pointer(&a)) == *(*unsafe.Pointer)(unsafe.Pointer(&b)) //nolint:gosec // funcs are only comparable to nil
+}
+
 // hasContentLengthField reports whether raw, a request's header block, has a
 // Content-Length field line. fasthttp drops the value once Transfer-Encoding takes
 // over, so the block is the only place left to look. Whitespace before the colon
