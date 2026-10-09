@@ -1872,6 +1872,75 @@ func Test_Static_MaxAge_NotOnErrorResponses(t *testing.T) {
 	require.Equal(t, "public, max-age=3600", resp.Header.Get(fiber.HeaderCacheControl))
 }
 
+// With ByteRange on, the Range and If-Range rules (RFC 9110 §13.1.5, §14.2) are
+// applied around the file server's single range; internal/byterange tests them
+// in full.
+func Test_Static_ByteRange_RFC9110(t *testing.T) {
+	t.Parallel()
+
+	const (
+		content      = "0123456789abcdefghij"
+		lastModified = "Thu, 02 Jan 2020 03:04:05 GMT"
+		staleDate    = "Wed, 01 Jan 2020 03:04:05 GMT"
+	)
+	dir := t.TempDir()
+	name := filepath.Join(dir, "file.txt")
+	require.NoError(t, os.WriteFile(name, []byte(content), 0o600))
+	require.NoError(t, os.Chtimes(name, time.Time{}, time.Date(2020, time.January, 2, 3, 4, 5, 0, time.UTC)))
+
+	app := fiber.New()
+	app.Get("/ranges/*", New(dir, Config{ByteRange: true}))
+	app.Get("/plain/*", New(dir))
+
+	tests := []struct {
+		fields      map[string]string
+		name        string
+		path        string
+		wantRange   string
+		wantBody    string
+		wantStatus  int
+		wantWhole   bool // the whole file, with its validators
+		wantAdvised bool // Accept-Ranges is advertised
+	}{
+		{name: "a range", path: "/ranges/file.txt", fields: map[string]string{fiber.HeaderRange: "bytes=0-4"}, wantStatus: fiber.StatusPartialContent, wantBody: "01234", wantRange: "bytes 0-4/20", wantAdvised: true},
+		{name: "several ranges", path: "/ranges/file.txt", fields: map[string]string{fiber.HeaderRange: "bytes=0-1,3-4"}, wantStatus: fiber.StatusOK, wantBody: content, wantWhole: true, wantAdvised: true},
+		{name: "If-Range is stale", path: "/ranges/file.txt", fields: map[string]string{fiber.HeaderRange: "bytes=0-4", fiber.HeaderIfRange: staleDate}, wantStatus: fiber.StatusOK, wantBody: content, wantWhole: true, wantAdvised: true},
+		{name: "unsatisfiable", path: "/ranges/file.txt", fields: map[string]string{fiber.HeaderRange: "bytes=100-200"}, wantStatus: fiber.StatusRequestedRangeNotSatisfiable, wantBody: "Range Not Satisfiable"},
+		// ByteRange off: no ranges are offered and Range is not looked at.
+		{name: "ByteRange off", path: "/plain/file.txt", fields: map[string]string{fiber.HeaderRange: "bytes=0-4"}, wantStatus: fiber.StatusOK, wantBody: content, wantWhole: true},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			req := httptest.NewRequest(fiber.MethodGet, tc.path, http.NoBody)
+			for k, v := range tc.fields {
+				req.Header.Set(k, v)
+			}
+			resp, err := app.Test(req)
+			require.NoError(t, err)
+			t.Cleanup(func() { require.NoError(t, resp.Body.Close()) })
+
+			require.Equal(t, tc.wantStatus, resp.StatusCode)
+			require.Equal(t, tc.wantRange, resp.Header.Get(fiber.HeaderContentRange))
+			body, err := io.ReadAll(resp.Body)
+			require.NoError(t, err)
+			require.Equal(t, tc.wantBody, string(body))
+
+			if tc.wantAdvised {
+				require.Equal(t, "bytes", resp.Header.Get(fiber.HeaderAcceptRanges))
+			} else {
+				require.Empty(t, resp.Header.Get(fiber.HeaderAcceptRanges))
+			}
+			if tc.wantWhole {
+				require.Equal(t, "20", resp.Header.Get(fiber.HeaderContentLength))
+				require.Equal(t, lastModified, resp.Header.Get(fiber.HeaderLastModified))
+			}
+		})
+	}
+}
+
 func Test_Static_NonGetMethod_PassesThrough(t *testing.T) {
 	t.Parallel()
 

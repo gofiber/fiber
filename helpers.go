@@ -540,12 +540,14 @@ type joinedHeaderValue struct {
 	key      string
 	combined []byte
 	multi    bool
+	seen     bool
 }
 
 func (j *joinedHeaderValue) visit(k, v []byte) {
 	if len(k) != len(j.key) || !utils.EqualFold(utils.UnsafeString(k), j.key) {
 		return
 	}
+	j.seen = true
 	j.combined, j.multi = headerlist.JoinNext(j.combined, v, j.multi)
 }
 
@@ -554,6 +556,13 @@ func (j *joinedHeaderValue) visit(k, v []byte) {
 // per-call key normalization. Concrete (non-generic) so the visitor stays on
 // the stack.
 func peekJoinedRequestHeader(h *fasthttp.RequestHeader, key string) []byte {
+	value, _ := lookupJoinedRequestHeader(h, key)
+	return value
+}
+
+// lookupJoinedRequestHeader is peekJoinedRequestHeader that also reports whether
+// the request has a field line for key, which an empty value does not tell.
+func lookupJoinedRequestHeader(h *fasthttp.RequestHeader, key string) ([]byte, bool) {
 	j := joinedHeaderValue{key: key}
 	// VisitAll (not the replacement All) keeps this zero-alloc: All returns
 	// an iterator closure that escapes to the heap on every call. The SA1019
@@ -565,7 +574,7 @@ func peekJoinedRequestHeader(h *fasthttp.RequestHeader, key string) []byte {
 	// preserves the relative order of repeated field lines sharing a key,
 	// which is all this helper needs; it only reorders across distinct keys.
 	h.VisitAll(j.visit)
-	return j.combined
+	return j.combined, j.seen
 }
 
 // peekJoinedResponseHeader is peekJoinedRequestHeader for response headers.
@@ -878,6 +887,43 @@ func sortAcceptedTypes(at []acceptedType) {
 	}
 }
 
+// getEncodingOffer is getOffer for Accept-Encoding, where "identity" is also
+// acceptable unless the field excludes it (RFC 9110 §12.5.3). An unlisted
+// identity ranks below every coding the field lists.
+func getEncodingOffer(header []byte, offers []string) string {
+	if offer := getOffer(header, acceptsOffer, offers...); offer != "" {
+		return offer
+	}
+	// getOffer has already weighed an identity the field mentions.
+	if identity := identityOffer(offers); identity != "" && !identityListed(header) {
+		return identity
+	}
+	return ""
+}
+
+// identityOffer returns the offer naming no content coding, or "".
+func identityOffer(offers []string) string {
+	for _, offer := range offers {
+		// The length check first: EqualFold is a call, and most offers are not identity.
+		if len(offer) == len(StrIdentity) && utils.EqualFold(offer, StrIdentity) {
+			return offer
+		}
+	}
+	return ""
+}
+
+// identityListed reports whether the field mentions identity or the "*" wildcard.
+func identityListed(header []byte) bool {
+	for element := range headerlist.All(utils.UnsafeString(header)) {
+		coding, _, _ := utils.CutByte(element, ';')
+		coding = utils.TrimSpace(coding)
+		if coding == "*" || utils.EqualFold(coding, StrIdentity) {
+			return true
+		}
+	}
+	return false
+}
+
 // isEtagStale reports whether a response with the given ETag would be considered
 // stale when presented with the raw If-None-Match header value. Comparison is
 // weak as defined by RFC 9110 §8.8.3.2.
@@ -973,6 +1019,46 @@ func matchNoCacheToken(s string, i int) bool {
 		(b[5]|asciiCaseFold) == 'c' &&
 		(b[6]|asciiCaseFold) == 'h' &&
 		(b[7]|asciiCaseFold) == 'e'
+}
+
+// sameFunc reports whether a is the non-nil callback b, which == cannot say for
+// funcs: it compares the closure each value points to.
+func sameFunc(a, b func(*fasthttp.RequestHeader) fasthttp.RequestConfig) bool {
+	return a != nil && *(*unsafe.Pointer)(unsafe.Pointer(&a)) == *(*unsafe.Pointer)(unsafe.Pointer(&b)) //nolint:gosec // funcs are only comparable to nil
+}
+
+// bothFramingFields reports whether a request carries Content-Length and
+// Transfer-Encoding (RFC 9112 §6.1). fasthttp keeps no trace of the second one in
+// the length it reports: chunked wins and the Content-Length value is dropped, and
+// "identity" is ignored, leaving the Content-Length framing.
+func bothFramingFields(h *fasthttp.RequestHeader) bool {
+	switch length := h.ContentLength(); {
+	case length == -1: // chunked
+		return hasHeaderField(h.RawHeaders(), HeaderContentLength)
+	case length >= 0: // framed by Content-Length
+		return hasHeaderField(h.RawHeaders(), HeaderTransferEncoding)
+	}
+	return false // -2: neither field
+}
+
+// hasHeaderField reports whether raw, a request's header block, has a line for the
+// field name, which is the only place left to look for what fasthttp drops or
+// ignores. Whitespace before the colon is not matched: fasthttp rejects that
+// request.
+func hasHeaderField(raw []byte, name string) bool {
+	for len(raw) > 0 {
+		line := raw
+		if i := bytes.IndexByte(raw, '\n'); i >= 0 {
+			line, raw = raw[:i], raw[i+1:]
+		} else {
+			raw = nil
+		}
+		if len(line) > len(name) && line[len(name)] == ':' &&
+			utils.EqualFold(utils.UnsafeString(line[:len(name)]), name) {
+			return true
+		}
+	}
+	return false
 }
 
 var errTestConnClosed = errors.New("testConn is closed")
@@ -1085,6 +1171,31 @@ func (app *App) method(methodInt int) string {
 		return ""
 	}
 	return app.config.RequestMethods[methodInt]
+}
+
+// The status line carries three digits (RFC 9112 §4). RFC 9110 §15 only defines
+// 100..599, but 600..999 is still well-formed, so it is let through.
+const (
+	minStatusCode = 100
+	maxStatusCode = 999
+)
+
+// validStatus returns status if it fits a status line, else 500. fasthttp would
+// write 99 or 1000 as a malformed line and 0 as a 200.
+func validStatus(status int) int {
+	if status < minStatusCode || status > maxStatusCode {
+		return invalidStatus(status)
+	}
+	return status
+}
+
+// invalidStatus logs the status and returns the one sent instead. It stays out of
+// line so that validStatus, and Status with it, can be inlined.
+//
+//go:noinline
+func invalidStatus(status int) int {
+	log.Errorf("fiber: status code %d is not a three-digit HTTP status, sending %d instead", status, StatusInternalServerError)
+	return StatusInternalServerError
 }
 
 // IsMethodSafe reports whether the HTTP method is considered safe.

@@ -44,6 +44,7 @@ import (
 	"github.com/valyala/fasthttp"
 
 	"github.com/gofiber/fiber/v3/internal/storage/memory"
+	"github.com/gofiber/fiber/v3/log"
 )
 
 const epsilon = 0.001
@@ -754,6 +755,93 @@ func Test_Ctx_AcceptsEncodings_MultiHeader(t *testing.T) {
 	c.Request().Header.Add(HeaderAcceptEncoding, "deflate;q=0.3")
 	c.Request().Header.Add(HeaderAcceptEncoding, "gzip")
 	require.Equal(t, "gzip", c.AcceptsEncodings("deflate", "gzip"))
+}
+
+// RFC 9110 §12.5.3: "identity" is acceptable unless the field excludes it.
+// go test -run Test_Ctx_AcceptsEncodings_Identity
+func Test_Ctx_AcceptsEncodings_Identity(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		header string
+		want   string
+		offers []string
+	}{
+		// Listed codings keep winning on their weights.
+		{name: "listed coding", header: "gzip", offers: []string{"gzip", "br"}, want: "gzip"},
+		{name: "listed beats unlisted", header: "br;q=0.1", offers: []string{"identity", "br"}, want: "br"},
+		{name: "unlisted coding", header: "gzip", offers: []string{"br"}, want: ""},
+		{name: "refused coding", header: "gzip;q=0", offers: []string{"gzip"}, want: ""},
+
+		// Unmentioned identity is acceptable.
+		{name: "identity unlisted", header: "gzip", offers: []string{"identity"}, want: "identity"},
+		{name: "identity unlisted among offers", header: "gzip", offers: []string{"br", "identity"}, want: "identity"},
+		{name: "identity after a refused coding", header: "gzip;q=0", offers: []string{"gzip", "identity"}, want: "identity"},
+		{name: "identity ranks below a listed coding", header: "gzip;q=0.1", offers: []string{"identity", "gzip"}, want: "gzip"},
+		{name: "identity keeps the caller's spelling", header: "gzip", offers: []string{"Identity"}, want: "Identity"},
+
+		// ... unless the field excludes it.
+		{name: "identity refused", header: "identity;q=0", offers: []string{"identity"}, want: ""},
+		{name: "identity refused, other coding unlisted", header: "identity;q=0", offers: []string{"gzip", "identity"}, want: ""},
+		{name: "identity refused, other coding listed", header: "identity;q=0, gzip", offers: []string{"identity", "gzip"}, want: "gzip"},
+		{name: "identity refused in any case", header: "IDENTITY;q=0", offers: []string{"identity"}, want: ""},
+		{name: "everything refused", header: "*;q=0", offers: []string{"gzip", "identity"}, want: ""},
+		{name: "everything but identity refused", header: "*;q=0, identity", offers: []string{"gzip", "identity"}, want: "identity"},
+		{name: "everything but gzip refused", header: "*;q=0, gzip", offers: []string{"identity", "gzip"}, want: "gzip"},
+
+		// An entry for identity is more specific than the wildcard.
+		{name: "wildcard accepts identity", header: "*", offers: []string{"identity"}, want: "identity"},
+		{name: "identity refused despite the wildcard", header: "*;q=0.5, identity;q=0", offers: []string{"identity"}, want: ""},
+		{name: "wildcard still serves another coding", header: "*;q=0.5, identity;q=0", offers: []string{"identity", "gzip"}, want: "gzip"},
+		{name: "identity weighed on its own entry", header: "gzip;q=0.5, identity", offers: []string{"gzip", "identity"}, want: "identity"},
+		{name: "coding outweighs identity", header: "gzip, identity;q=0.5", offers: []string{"identity", "gzip"}, want: "gzip"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			app := New()
+			c := app.AcquireCtx(&fasthttp.RequestCtx{})
+			t.Cleanup(func() { app.ReleaseCtx(c) })
+
+			c.Request().Header.Set(HeaderAcceptEncoding, tc.header)
+			require.Equal(t, tc.want, c.AcceptsEncodings(tc.offers...))
+		})
+	}
+}
+
+// An absent field accepts any coding; an empty one only identity.
+// go test -run Test_Ctx_AcceptsEncodings_AbsentAndEmpty
+func Test_Ctx_AcceptsEncodings_AbsentAndEmpty(t *testing.T) {
+	t.Parallel()
+
+	for _, config := range []Config{{}, {DisableHeaderNormalizing: true}} {
+		t.Run(fmt.Sprintf("DisableHeaderNormalizing=%t", config.DisableHeaderNormalizing), func(t *testing.T) {
+			t.Parallel()
+
+			app := New(config)
+			c := app.AcquireCtx(&fasthttp.RequestCtx{})
+			t.Cleanup(func() { app.ReleaseCtx(c) })
+
+			// Absent: the first offer, whatever it is.
+			require.Equal(t, "gzip", c.AcceptsEncodings("gzip", "identity"))
+			require.Equal(t, "br", c.AcceptsEncodings("br"))
+			require.Empty(t, c.AcceptsEncodings())
+
+			// Present and empty: only identity.
+			c.Request().Header.Set(HeaderAcceptEncoding, "")
+			require.Equal(t, "identity", c.AcceptsEncodings("gzip", "identity"))
+			require.Equal(t, "Identity", c.AcceptsEncodings("gzip", "Identity"))
+			require.Empty(t, c.AcceptsEncodings("gzip", "br"))
+			require.Empty(t, c.AcceptsEncodings())
+
+			// An empty line beside a coding is an empty list element (§5.6.1.2).
+			c.Request().Header.Add(HeaderAcceptEncoding, "gzip")
+			require.Equal(t, "gzip", c.AcceptsEncodings("identity", "gzip"))
+		})
+	}
 }
 
 // go test -v -run=^$ -bench=Benchmark_Ctx_AcceptsEncodings -benchmem -count=4
@@ -1817,6 +1905,113 @@ func Test_Ctx_Cookie_Invalid(t *testing.T) {
 		require.Empty(t, c.Res().Get(HeaderSetCookie))
 		c.Response().Header.Reset()
 		app.ReleaseCtx(c)
+	}
+}
+
+// A value with a space or comma is written in quotes, as net/http does (RFC 6265
+// §4.1.1 allows neither even in quotes), and the quotes are not part of the value read back.
+// go test -run Test_Ctx_Cookie_ValueQuoting
+func Test_Ctx_Cookie_ValueQuoting(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		value string
+		line  string // the Set-Cookie line
+		read  string // the value read back from it
+	}{
+		{name: "plain", value: "abc123", line: "n=abc123; path=/; SameSite=Lax", read: "abc123"},
+		{name: "empty", value: "", line: "n=; path=/; SameSite=Lax", read: ""},
+		{name: "space", value: "hello world", line: `n="hello world"; path=/; SameSite=Lax`, read: "hello world"},
+		{name: "comma", value: "x,y", line: `n="x,y"; path=/; SameSite=Lax`, read: "x,y"},
+		{name: "space and comma", value: "a b, c", line: `n="a b, c"; path=/; SameSite=Lax`, read: "a b, c"},
+		{name: "edge spaces", value: " a ", line: `n=" a "; path=/; SameSite=Lax`, read: " a "},
+		{name: "already quoted", value: `"abc"`, line: `n="abc"; path=/; SameSite=Lax`, read: "abc"},
+		{name: "already quoted with a space", value: `"a b"`, line: `n="a b"; path=/; SameSite=Lax`, read: "a b"},
+		{name: "empty and quoted", value: `""`, line: `n=""; path=/; SameSite=Lax`, read: ""},
+		{name: "visible ASCII", value: "!#$%&'()*+-./:<=>?@[]^_`{|}~", line: "n=!#$%&'()*+-./:<=>?@[]^_`{|}~; path=/; SameSite=Lax", read: "!#$%&'()*+-./:<=>?@[]^_`{|}~"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			app := New()
+			c := app.AcquireCtx(&fasthttp.RequestCtx{})
+			t.Cleanup(func() { app.ReleaseCtx(c) })
+
+			c.Res().Cookie(&Cookie{Name: "n", Value: tc.value})
+			require.Equal(t, tc.line, c.Res().Get(HeaderSetCookie))
+
+			got, ok := c.Res().GetCookie("n")
+			require.True(t, ok)
+			require.Equal(t, tc.read, got.Value)
+
+			// The client sends the pair back as it received it.
+			pair, _, _ := strings.Cut(c.Res().Get(HeaderSetCookie), ";")
+			c.Request().Header.Set(HeaderCookie, pair)
+			require.Equal(t, tc.read, c.Cookies("n"))
+		})
+	}
+}
+
+// Values the grammar cannot carry, even in quotes, are refused, not altered.
+// go test -run Test_Ctx_Cookie_ValueRejected
+func Test_Ctx_Cookie_ValueRejected(t *testing.T) {
+	t.Parallel()
+
+	for name, value := range map[string]string{
+		"semicolon":                 "a;b",
+		"semicolon in quotes":       `"a;b"`,
+		"double quote":              `a"b`,
+		"double quote inside quote": `"a"b"`,
+		"lone double quote":         `"`,
+		"opening quote only":        `"abc`,
+		"closing quote only":        `abc"`,
+		"backslash":                 `a\b`,
+		"backslash in quotes":       `"a\b"`,
+		"tab":                       "a\tb",
+		"line feed":                 "a\nb",
+		"non-ASCII":                 "café",
+		"DEL":                       "a\x7fb",
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			app := New()
+			c := app.AcquireCtx(&fasthttp.RequestCtx{})
+			t.Cleanup(func() { app.ReleaseCtx(c) })
+
+			c.Res().Cookie(&Cookie{Name: "n", Value: value})
+			require.Empty(t, c.Res().Get(HeaderSetCookie))
+		})
+	}
+}
+
+// net/http reads back the values that were set.
+// go test -run Test_Ctx_Cookie_ValueQuoting_NetHTTP
+func Test_Ctx_Cookie_ValueQuoting_NetHTTP(t *testing.T) {
+	t.Parallel()
+
+	values := []string{"plain", "hello world", "x,y", "a b, c", `"abc"`, `"a b"`}
+
+	app := New()
+	app.Get("/", func(c Ctx) error {
+		for i, value := range values {
+			c.Cookie(&Cookie{Name: "c" + strconv.Itoa(i), Value: value})
+		}
+		return nil
+	})
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/", http.NoBody))
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, resp.Body.Close()) })
+
+	cookies := resp.Cookies()
+	require.Len(t, cookies, len(values))
+	for i, cookie := range cookies {
+		require.Equal(t, "c"+strconv.Itoa(i), cookie.Name)
+		require.Equal(t, strings.Trim(values[i], `"`), cookie.Value)
 	}
 }
 
@@ -8386,6 +8581,120 @@ func Test_SendFile_ByteRange(t *testing.T) {
 	})
 }
 
+const (
+	byteRangeContent      = "0123456789abcdefghij"
+	byteRangeLastModified = "Thu, 02 Jan 2020 03:04:05 GMT"
+	byteRangeStale        = "Wed, 01 Jan 2020 03:04:05 GMT"
+)
+
+// byteRangeFixture writes the 20-byte file of the byte-range tests, dated to
+// byteRangeLastModified, and returns its path.
+func byteRangeFixture(t *testing.T) string {
+	t.Helper()
+
+	fixture := filepath.Join(t.TempDir(), "fixture.txt")
+	require.NoError(t, os.WriteFile(fixture, []byte(byteRangeContent), 0o600))
+	require.NoError(t, os.Chtimes(fixture, time.Time{}, time.Date(2020, time.January, 2, 3, 4, 5, 0, time.UTC)))
+	return fixture
+}
+
+// SendFile wires the Range and If-Range rules (RFC 9110 §13.1.5, §14.2) into the
+// file server; internal/byterange tests them in full.
+func Test_SendFile_ByteRange_RFC9110(t *testing.T) {
+	t.Parallel()
+
+	if runtime.GOOS == windowsOS {
+		t.Skip("SendFile byte-range tests are flaky on Windows")
+	}
+
+	fixture := byteRangeFixture(t)
+	app := New()
+	app.Get("/file", func(c Ctx) error {
+		c.Set("X-Request", "kept")
+		return c.SendFile(fixture, SendFile{ByteRange: true})
+	})
+
+	tests := []struct {
+		fields     map[string]string
+		name       string
+		wantRange  string
+		wantBody   string
+		wantStatus int
+		wantWhole  bool // the whole file, with its validators
+	}{
+		{name: "a range", fields: map[string]string{HeaderRange: "bytes=0-4"}, wantStatus: StatusPartialContent, wantBody: "01234", wantRange: "bytes 0-4/20"},
+		{name: "several ranges", fields: map[string]string{HeaderRange: "bytes=0-1,3-4"}, wantStatus: StatusOK, wantBody: byteRangeContent, wantWhole: true},
+		{name: "If-Range matches", fields: map[string]string{HeaderRange: "bytes=0-4", HeaderIfRange: byteRangeLastModified}, wantStatus: StatusPartialContent, wantBody: "01234", wantRange: "bytes 0-4/20"},
+		{name: "If-Range is stale", fields: map[string]string{HeaderRange: "bytes=0-4", HeaderIfRange: byteRangeStale}, wantStatus: StatusOK, wantBody: byteRangeContent, wantWhole: true},
+		{name: "unsatisfiable", fields: map[string]string{HeaderRange: "bytes=100-200"}, wantStatus: StatusRequestedRangeNotSatisfiable, wantRange: "bytes */20", wantBody: "Range Not Satisfiable"},
+		{name: "unsatisfiable, If-Range is stale", fields: map[string]string{HeaderRange: "bytes=100-200", HeaderIfRange: byteRangeStale}, wantStatus: StatusOK, wantBody: byteRangeContent, wantWhole: true},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			req := httptest.NewRequest(MethodGet, "/file", http.NoBody)
+			for k, v := range tc.fields {
+				req.Header.Set(k, v)
+			}
+			resp, err := app.Test(req)
+			require.NoError(t, err)
+			t.Cleanup(func() { require.NoError(t, resp.Body.Close()) })
+
+			require.Equal(t, tc.wantStatus, resp.StatusCode)
+			require.Equal(t, tc.wantRange, resp.Header.Get(HeaderContentRange))
+			body, err := io.ReadAll(resp.Body)
+			require.NoError(t, err)
+			require.Equal(t, tc.wantBody, string(body))
+
+			if tc.wantWhole {
+				require.Equal(t, "20", resp.Header.Get(HeaderContentLength))
+				require.Equal(t, byteRangeLastModified, resp.Header.Get(HeaderLastModified))
+			}
+			// Headers set before SendFile survive unless the response is discarded.
+			if tc.wantStatus != StatusRequestedRangeNotSatisfiable {
+				require.Equal(t, "kept", resp.Header.Get("X-Request"))
+			}
+		})
+	}
+}
+
+// An entity-tag in If-Range matches an ETag the handler set before SendFile,
+// which sends none of its own.
+func Test_SendFile_ByteRange_IfRangeETag(t *testing.T) {
+	t.Parallel()
+
+	if runtime.GOOS == windowsOS {
+		t.Skip("SendFile byte-range tests are flaky on Windows")
+	}
+
+	fixture := byteRangeFixture(t)
+	app := New()
+	app.Get("/file", func(c Ctx) error {
+		c.Set(HeaderETag, `"v1"`)
+		return c.SendFile(fixture, SendFile{ByteRange: true})
+	})
+
+	for ifRange, wantStatus := range map[string]int{
+		`"v1"`:   StatusPartialContent,
+		`"v2"`:   StatusOK,
+		`W/"v1"`: StatusOK, // a weak tag never matches
+	} {
+		t.Run(ifRange, func(t *testing.T) {
+			t.Parallel()
+
+			req := httptest.NewRequest(MethodGet, "/file", http.NoBody)
+			req.Header.Set(HeaderRange, "bytes=0-4")
+			req.Header.Set(HeaderIfRange, ifRange)
+			resp, err := app.Test(req)
+			require.NoError(t, err)
+			require.NoError(t, resp.Body.Close())
+			require.Equal(t, wantStatus, resp.StatusCode)
+		})
+	}
+}
+
 func Benchmark_Ctx_SendFile(b *testing.B) {
 	app := New()
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
@@ -10088,6 +10397,100 @@ func Test_Ctx_Status(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 415, c.Response().StatusCode())
 	require.Equal(t, "Hello, World", string(c.Response().Body()))
+}
+
+// Three-digit codes go out as given, 600..999 included (RFC 9112 §4).
+// go test -run Test_Ctx_Status_ThreeDigits
+func Test_Ctx_Status_ThreeDigits(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	for _, code := range []int{100, 101, 200, 204, 304, 404, 499, 500, 599, 600, 601, 799, 999} {
+		t.Run(strconv.Itoa(code), func(t *testing.T) {
+			t.Parallel()
+
+			c := app.AcquireCtx(&fasthttp.RequestCtx{})
+			t.Cleanup(func() { app.ReleaseCtx(c) })
+
+			c.Status(code)
+			require.Equal(t, code, c.Response().StatusCode())
+			c.Res().Status(code)
+			require.Equal(t, code, c.Response().StatusCode())
+		})
+	}
+}
+
+// Codes that do not fit a status line are logged and sent as 500.
+// go test -run Test_Ctx_Status_Invalid
+func Test_Ctx_Status_Invalid(t *testing.T) {
+	// Not parallel: redirects the process-wide logger output.
+	var logged bytes.Buffer
+	log.SetOutput(&logged)
+	t.Cleanup(func() { log.SetOutput(os.Stderr) })
+
+	invalid := []int{0, -1, -5, 1, 99, 1000, 12345, math.MaxInt, math.MinInt}
+
+	app := New()
+	for _, code := range invalid {
+		app.Get("/status/"+strconv.Itoa(code), func(c Ctx) error {
+			return c.Status(code).SendString("body")
+		})
+		app.Get("/send/"+strconv.Itoa(code), func(c Ctx) error {
+			return c.SendStatus(code)
+		})
+		app.Get("/error/"+strconv.Itoa(code), func(_ Ctx) error {
+			return NewError(code, "failed")
+		})
+		app.Get("/redirect/"+strconv.Itoa(code), func(c Ctx) error {
+			return c.Redirect().Status(code).To("/elsewhere")
+		})
+	}
+
+	for _, code := range invalid {
+		for _, kind := range []string{"status", "send", "error", "redirect"} {
+			t.Run(kind+"/"+strconv.Itoa(code), func(t *testing.T) {
+				logged.Reset()
+
+				// app.Test reads the response with net/http, which refuses malformed status lines.
+				resp, err := app.Test(httptest.NewRequest(MethodGet, "/"+kind+"/"+strconv.Itoa(code), http.NoBody))
+				require.NoError(t, err)
+				require.Equal(t, StatusInternalServerError, resp.StatusCode)
+				require.NoError(t, resp.Body.Close())
+
+				require.Contains(t, logged.String(), fmt.Sprintf("status code %d is not a three-digit HTTP status, sending 500 instead", code))
+			})
+		}
+	}
+
+	t.Run("SendStatus answers with the status that is sent", func(t *testing.T) {
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		t.Cleanup(func() { app.ReleaseCtx(c) })
+
+		require.NoError(t, c.SendStatus(0))
+		require.Equal(t, StatusInternalServerError, c.Response().StatusCode())
+		require.Equal(t, "Internal Server Error", string(c.Response().Body()))
+	})
+
+	t.Run("a valid status is not logged", func(t *testing.T) {
+		logged.Reset()
+
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		t.Cleanup(func() { app.ReleaseCtx(c) })
+		c.Status(StatusTeapot)
+		require.NoError(t, c.SendStatus(StatusNoContent))
+		require.Empty(t, logged.String())
+	})
+}
+
+func Benchmark_Ctx_Status(b *testing.B) {
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+
+	b.ReportAllocs()
+	for b.Loop() {
+		c.Status(StatusTeapot)
+	}
+	require.Equal(b, StatusTeapot, c.Response().StatusCode())
 }
 
 // go test -run Test_Ctx_Type
