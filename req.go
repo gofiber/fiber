@@ -69,11 +69,10 @@ func (r *DefaultReq) AcceptsCharsets(offers ...string) string {
 // offer wins), an empty one only "identity", and "identity" is acceptable unless
 // the field excludes it with q=0.
 func (r *DefaultReq) AcceptsEncodings(offers ...string) string {
-	header := peekJoinedRequestHeader(&r.c.fasthttp.Request.Header, HeaderAcceptEncoding)
+	header, present := lookupJoinedRequestHeader(&r.c.fasthttp.Request.Header, HeaderAcceptEncoding)
 	if len(header) == 0 && len(offers) > 0 {
 		// Nothing to weigh, but an absent field and a present, empty one differ.
-		lines := fieldname.Lines(&r.c.fasthttp.Request.Header, HeaderAcceptEncoding, !r.c.app.config.DisableHeaderNormalizing)
-		if len(lines) == 0 {
+		if !present {
 			return offers[0]
 		}
 		return identityOffer(offers)

@@ -540,12 +540,14 @@ type joinedHeaderValue struct {
 	key      string
 	combined []byte
 	multi    bool
+	seen     bool
 }
 
 func (j *joinedHeaderValue) visit(k, v []byte) {
 	if len(k) != len(j.key) || !utils.EqualFold(utils.UnsafeString(k), j.key) {
 		return
 	}
+	j.seen = true
 	j.combined, j.multi = headerlist.JoinNext(j.combined, v, j.multi)
 }
 
@@ -554,6 +556,13 @@ func (j *joinedHeaderValue) visit(k, v []byte) {
 // per-call key normalization. Concrete (non-generic) so the visitor stays on
 // the stack.
 func peekJoinedRequestHeader(h *fasthttp.RequestHeader, key string) []byte {
+	value, _ := lookupJoinedRequestHeader(h, key)
+	return value
+}
+
+// lookupJoinedRequestHeader is peekJoinedRequestHeader that also reports whether
+// the request has a field line for key, which an empty value does not tell.
+func lookupJoinedRequestHeader(h *fasthttp.RequestHeader, key string) ([]byte, bool) {
 	j := joinedHeaderValue{key: key}
 	// VisitAll (not the replacement All) keeps this zero-alloc: All returns
 	// an iterator closure that escapes to the heap on every call. The SA1019
@@ -565,7 +574,7 @@ func peekJoinedRequestHeader(h *fasthttp.RequestHeader, key string) []byte {
 	// preserves the relative order of repeated field lines sharing a key,
 	// which is all this helper needs; it only reorders across distinct keys.
 	h.VisitAll(j.visit)
-	return j.combined
+	return j.combined, j.seen
 }
 
 // peekJoinedResponseHeader is peekJoinedRequestHeader for response headers.
@@ -878,8 +887,6 @@ func sortAcceptedTypes(at []acceptedType) {
 	}
 }
 
-const identityCoding = "identity"
-
 // getEncodingOffer is getOffer for Accept-Encoding, where "identity" is also
 // acceptable unless the field excludes it (RFC 9110 §12.5.3). An unlisted
 // identity ranks below every coding the field lists.
@@ -887,17 +894,18 @@ func getEncodingOffer(header []byte, offers []string) string {
 	if offer := getOffer(header, acceptsOffer, offers...); offer != "" {
 		return offer
 	}
-	if identityListed(header) {
-		// getOffer has already weighed it.
-		return ""
+	// getOffer has already weighed an identity the field mentions.
+	if identity := identityOffer(offers); identity != "" && !identityListed(header) {
+		return identity
 	}
-	return identityOffer(offers)
+	return ""
 }
 
 // identityOffer returns the offer naming no content coding, or "".
 func identityOffer(offers []string) string {
 	for _, offer := range offers {
-		if utils.EqualFold(offer, identityCoding) {
+		// The length check first: EqualFold is a call, and most offers are not identity.
+		if len(offer) == len(StrIdentity) && utils.EqualFold(offer, StrIdentity) {
 			return offer
 		}
 	}
@@ -909,7 +917,7 @@ func identityListed(header []byte) bool {
 	for element := range headerlist.All(utils.UnsafeString(header)) {
 		coding, _, _ := utils.CutByte(element, ';')
 		coding = utils.TrimSpace(coding)
-		if coding == "*" || utils.EqualFold(coding, identityCoding) {
+		if coding == "*" || utils.EqualFold(coding, StrIdentity) {
 			return true
 		}
 	}
@@ -1174,7 +1182,10 @@ func validStatus(status int) int {
 	return status
 }
 
-// invalidStatus logs the status and returns the one sent instead.
+// invalidStatus logs the status and returns the one sent instead. It stays out of
+// line so that validStatus, and Status with it, can be inlined.
+//
+//go:noinline
 func invalidStatus(status int) int {
 	log.Errorf("fiber: status code %d is not a three-digit HTTP status, sending %d instead", status, StatusInternalServerError)
 	return StatusInternalServerError

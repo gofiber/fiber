@@ -1475,7 +1475,7 @@ func (r *DefaultRes) NoContent() error {
 func (r *DefaultRes) SendStatus(status int) error {
 	// Settle the status first so the checks below use the one that is sent.
 	status = validStatus(status)
-	r.Status(status)
+	r.c.fasthttp.Response.SetStatusCode(status)
 
 	if statusDisallowsBody(status) {
 		resp := &r.c.fasthttp.Response
