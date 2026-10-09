@@ -1930,7 +1930,7 @@ func Test_hasContentLengthField(t *testing.T) {
 		{name: "empty value", raw: "Host: x\r\nContent-Length:\r\n\r\n", want: true},
 		{name: "longer name", raw: "Host: x\r\nContent-Length-Extra: 4\r\n\r\n", want: false},
 		{name: "longer name ending in it", raw: "Host: x\r\nX-Content-Length: 4\r\n\r\n", want: false},
-		{name: "shorter name", raw: "Host: x\r\nContent-Lengt: 4\r\n\r\n", want: false},
+		{name: "shorter name", raw: "Host: x\r\nContent-Len: 4\r\n\r\n", want: false},
 		{name: "name inside a value", raw: "Host: x\r\nX-Note: Content-Length: 4\r\n\r\n", want: false},
 		{name: "folded continuation line", raw: "Host: x\r\nX-Note: a\r\n Content-Length: 4\r\n\r\n", want: false},
 		{name: "name without a colon", raw: "Host: x\r\nContent-Length\r\n\r\n", want: false},
