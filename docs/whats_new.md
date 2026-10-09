@@ -830,12 +830,13 @@ for the response. The response cookies are `c.Res().GetCookies()`, named apart f
   ends with a double quote is accepted and written quoted instead of being dropped as invalid. Values with a semicolon,
   an inner double quote, a backslash, a control character or a non-ASCII character are still refused. Percent-encode a
   value that has to pass through a strict parser.
-- **SendStream() and SendStreamWriter()**: A response of unknown length is chunked, which a server must not send to an
-  HTTP/1.0 client ([RFC 9112, Section 6.1](https://www.rfc-editor.org/rfc/rfc9112#section-6.1)). The framing reached
-  such a client as stray chunk-size lines in the body. For an HTTP/1.0 request the stream (or the writer) now runs to its
-  end before the handler returns, into a buffer bounded by `BodyLimit`, and the response carries a `Content-Length`.
-  A stream longer than the limit is answered with `505 HTTP Version Not Supported`, and the writer of a stream that
-  never ends sees its `Flush` fail. HTTP/1.1 requests, and a `SendStream` call that passes the size, are unchanged.
+- **SendStream() and SendStreamWriter()**: A response of unknown length is chunked, which a server must not send to a
+  request older than HTTP/1.1 ([RFC 9112, Section 6.1](https://www.rfc-editor.org/rfc/rfc9112#section-6.1)). The framing
+  reached such a client as stray chunk-size lines in the body. For such a request the stream (or the writer) now runs to
+  its end before the handler returns, into a buffer of up to 256 KiB, and the response carries a `Content-Length`.
+  A longer stream is answered with `500 Internal Server Error` and a message that says why, and the writer of a stream
+  that never ends sees its `Flush` fail. Requests with HTTP/1.1 or later, and a `SendStream` call that passes the size,
+  are unchanged.
 - **SendFile() and the static middleware, with `ByteRange`**: The file server answered one byte range and nothing
   else. Fiber now applies the rest of [RFC 9110, Section 13.1.5 and Section 14.2](https://www.rfc-editor.org/rfc/rfc9110#section-14.2)
   around it. A request for several ranges used to get `416`; it gets the whole file, as does one with a range unit the

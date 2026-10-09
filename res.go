@@ -1505,17 +1505,21 @@ func (r *DefaultRes) SendString(body string) error {
 
 // SendStream sets response body stream and optional body size.
 //
-// Chunked framing is not allowed for HTTP/1.0 (RFC 9112 §6.1), so for such a
-// request a stream of unknown size is read before the handler returns and sent
-// with a Content-Length; one over Config.BodyLimit gets a 505.
+// Chunked framing is not allowed for a request older than HTTP/1.1 (RFC 9112
+// §6.1), so for one a stream of unknown size is read before the handler returns
+// and sent with a Content-Length. Past 256 KiB that is a 500: pass the size to
+// send the stream unbuffered.
 func (r *DefaultRes) SendStream(stream io.Reader, size ...int) error {
 	if len(size) > 0 && size[0] >= 0 {
 		r.c.fasthttp.Response.SetBodyStream(stream, size[0])
 		return nil
 	}
 
-	if !r.c.fasthttp.Request.Header.IsHTTP11() {
+	if beforeHTTP11(&r.c.fasthttp.Request.Header) {
 		return r.sendBuffered(func(w io.Writer) error {
+			if stream == nil {
+				return nil
+			}
 			// fasthttp closes streams it sends; this one is not sent.
 			if closer, ok := stream.(io.Closer); ok {
 				defer closer.Close() //nolint:errcheck // nothing to do about it
@@ -1531,11 +1535,12 @@ func (r *DefaultRes) SendStream(stream io.Reader, size ...int) error {
 
 // SendStreamWriter sets response body stream writer.
 //
-// For an HTTP/1.0 request the writer runs before the handler returns, into a
-// buffer sent with a Content-Length (RFC 9112 §6.1). Past Config.BodyLimit its
-// Flush fails and the response is a 505.
+// For a request older than HTTP/1.1 the writer runs before the handler returns,
+// into a buffer sent with a Content-Length (RFC 9112 §6.1). Past 256 KiB its
+// Flush fails and the response is a 500. A client that leaves goes unnoticed
+// until then, so a writer that never ends needs HTTP/1.1.
 func (r *DefaultRes) SendStreamWriter(streamWriter func(*bufio.Writer)) error {
-	if !r.c.fasthttp.Request.Header.IsHTTP11() {
+	if beforeHTTP11(&r.c.fasthttp.Request.Header) {
 		return r.sendBuffered(func(w io.Writer) (err error) { //nolint:nonamedreturns // set by the deferred recover
 			// fasthttp contains writer panics; so does this.
 			defer func() {
@@ -1554,11 +1559,17 @@ func (r *DefaultRes) SendStreamWriter(streamWriter func(*bufio.Writer)) error {
 	return nil
 }
 
+// http10StreamLimit is how much of a stream SendStream and SendStreamWriter
+// buffer for a request older than HTTP/1.1. It is kept small because the buffer
+// is held for as long as the stream takes, and docs/api/ctx.md names its size.
+const http10StreamLimit = 256 << 10
+
 var errStreamBufferLimit = errors.New("stream exceeds the buffer limit")
 
-// errStreamTooLargeForHTTP10 answers an HTTP/1.0 request for a stream too long to
-// buffer. 505 is the closest status: the response needs framing that version lacks.
-var errStreamTooLargeForHTTP10 = NewError(StatusHTTPVersionNotSupported,
+// errStreamTooLargeForHTTP10 answers a request older than HTTP/1.1 for a stream
+// too long to buffer. It is a 500 and not a 505, which RFC 9110 §15.6.6 defines
+// for a major version the server refuses: HTTP/1.x is served, the stream is not.
+var errStreamTooLargeForHTTP10 = NewError(StatusInternalServerError,
 	"The response is a stream of unknown length that is too long to buffer for an HTTP/1.0 client; "+
 		"HTTP/1.1 is needed to stream it")
 
@@ -1576,9 +1587,9 @@ func (b *bufferLimit) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
-// sendBuffered sets what fill writes as the response body, bounded by Config.BodyLimit.
+// sendBuffered sets what fill writes as the response body, up to http10StreamLimit.
 func (r *DefaultRes) sendBuffered(fill func(w io.Writer) error) error {
-	body := &bufferLimit{limit: r.c.app.config.BodyLimit}
+	body := &bufferLimit{limit: http10StreamLimit}
 	if err := fill(body); err != nil {
 		if errors.Is(err, errStreamBufferLimit) {
 			return errStreamTooLargeForHTTP10

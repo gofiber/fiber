@@ -3966,7 +3966,7 @@ the response is fully sent or if an error occurs.
 :::
 
 :::caution HTTP/1.0 clients
-A stream of unknown size can only be sent with chunked framing, which a server must not send to an HTTP/1.0 client ([RFC 9112 §6.1](https://www.rfc-editor.org/rfc/rfc9112#section-6.1)). For an HTTP/1.0 request, `SendStream` therefore reads such a stream to its end **before it returns**, closes it if it implements `io.Closer`, and sends it with a `Content-Length`. The stream is held in memory up to [`BodyLimit`](./fiber.md#bodylimit); a longer one is answered with `505 HTTP Version Not Supported`, with a message that says why. Pass the size when you know it: a stream of known size is sent as it is read, whatever the HTTP version. HTTP/1.1 requests are not affected.
+A stream of unknown size can only be sent with chunked framing, which a server must not send to a request older than HTTP/1.1 ([RFC 9112 §6.1](https://www.rfc-editor.org/rfc/rfc9112#section-6.1)). For such a request, `SendStream` therefore reads the stream to its end **before it returns**, closes it if it implements `io.Closer`, and sends it with a `Content-Length`. The stream is held in memory up to 256 KiB, whatever [`BodyLimit`](./fiber.md#bodylimit) says; a longer one is answered with `500 Internal Server Error` and a message that says why. Pass the size when you know it: a stream of known size is sent as it is read, whatever the HTTP version. Requests with HTTP/1.1 or later, HTTP/2 and HTTP/3 behind the net/http adaptor included, are not affected.
 :::
 
 :::caution
@@ -4033,7 +4033,7 @@ on the provided writer. Otherwise, the buffered stream flushes after
 :::
 
 :::caution HTTP/1.0 clients
-The response is chunked, which a server must not send to an HTTP/1.0 client ([RFC 9112 §6.1](https://www.rfc-editor.org/rfc/rfc9112#section-6.1)). For an HTTP/1.0 request, `streamWriter` runs **before `SendStreamWriter` returns**, into a buffer, and the response carries a `Content-Length`. The buffer is bounded by [`BodyLimit`](./fiber.md#bodylimit): a writer that produces more sees its `Flush` fail, as it does when a client disconnects, and the response is `505 HTTP Version Not Supported`. Nothing is sent before the writer returns, so a stream that has to reach the client as it is produced, such as server-sent events, needs HTTP/1.1. HTTP/1.1 requests are not affected.
+The response is chunked, which a server must not send to a request older than HTTP/1.1 ([RFC 9112 §6.1](https://www.rfc-editor.org/rfc/rfc9112#section-6.1)). For such a request, `streamWriter` runs **before `SendStreamWriter` returns**, into a buffer of up to 256 KiB, and the response carries a `Content-Length`. A writer that produces more sees its `Flush` fail and the response is `500 Internal Server Error`. Nothing is sent before the writer returns, and a client that leaves goes unnoticed until then, so a stream that has to reach the client as it is produced, such as server-sent events, needs HTTP/1.1. Requests with HTTP/1.1 or later, HTTP/2 and HTTP/3 behind the net/http adaptor included, are not affected.
 :::
 
 :::note

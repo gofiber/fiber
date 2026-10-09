@@ -17,6 +17,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -1156,6 +1157,79 @@ func Test_FiberHandler_WithSendStreamWriter(t *testing.T) {
 	// Should return the error status
 	require.Equal(t, fiber.StatusTeapot, w.StatusCode())
 	require.Equal(t, "Hello World!", string(w.body))
+}
+
+// firstWriteWriter closes firstWrite when the first body bytes arrive.
+type firstWriteWriter struct {
+	firstWrite chan struct{}
+	netHTTPResponseWriter
+	once sync.Once
+}
+
+func (w *firstWriteWriter) Write(p []byte) (int, error) {
+	w.once.Do(func() { close(w.firstWrite) })
+	return w.netHTTPResponseWriter.Write(p)
+}
+
+// Over HTTP/1.1, HTTP/2 and HTTP/3 a stream reaches net/http as it is produced:
+// only a request older than HTTP/1.1 is buffered (RFC 9112 §6.1).
+func Test_FiberHandler_SendStreamWriter_Streams(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		proto string
+		major int
+		minor int
+	}{
+		{proto: "HTTP/1.1", major: 1, minor: 1},
+		{proto: "HTTP/2.0", major: 2},
+		{proto: "HTTP/3.0", major: 3},
+	} {
+		t.Run(tc.proto, func(t *testing.T) {
+			t.Parallel()
+
+			release := make(chan struct{})
+			var releaseOnce sync.Once
+			unblock := func() { releaseOnce.Do(func() { close(release) }) }
+			t.Cleanup(unblock)
+
+			handler := FiberHandlerFunc(func(c fiber.Ctx) error {
+				return c.SendStreamWriter(func(w *bufio.Writer) {
+					w.WriteString("first") //nolint:errcheck // not needed
+					w.Flush()              //nolint:errcheck // not needed
+					<-release
+					w.WriteString("second") //nolint:errcheck // not needed
+				})
+			})
+			r := &http.Request{
+				Method:     http.MethodGet,
+				RequestURI: "/stream",
+				Header:     make(http.Header),
+				Body:       http.NoBody,
+				Proto:      tc.proto,
+				ProtoMajor: tc.major,
+				ProtoMinor: tc.minor,
+			}
+			w := &firstWriteWriter{firstWrite: make(chan struct{})}
+
+			done := make(chan struct{})
+			go func() {
+				defer close(done)
+				handler.ServeHTTP(w, r)
+			}()
+
+			// The writer waits for release, so the first bytes can only arrive
+			// before the handler finishes if nothing buffers them.
+			select {
+			case <-w.firstWrite:
+			case <-time.After(5 * time.Second):
+				t.Fatal("the first bytes of the stream were held back")
+			}
+			unblock()
+			<-done
+			require.Equal(t, "firstsecond", string(w.body))
+		})
+	}
 }
 
 func Test_FiberHandler_ClosesBodyStream(t *testing.T) {
