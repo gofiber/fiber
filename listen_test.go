@@ -829,6 +829,40 @@ func Test_Listen_BeforeServeFunc(t *testing.T) {
 	require.Zero(t, handlers)
 }
 
+// Listen serves with the close hook installed.
+func Test_Listen_ClosesAfterContentLengthWithTransferEncoding(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	app.Post("/", func(c Ctx) error { return c.SendString("ok") })
+
+	addrCh := make(chan string, 1)
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- app.Listen("127.0.0.1:0", ListenConfig{
+			DisableStartupMessage: true,
+			ListenerNetwork:       NetworkTCP4,
+			ListenerAddrFunc:      func(addr net.Addr) { addrCh <- addr.String() },
+		})
+	}()
+	t.Cleanup(func() {
+		require.NoError(t, app.Shutdown())
+		require.NoError(t, <-errCh)
+	})
+
+	var addr string
+	select {
+	case addr = <-addrCh:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the server did not start")
+	}
+
+	responses, _ := rawExchange(t, tcpDialer(addr),
+		"POST / HTTP/1.1\r\nHost: example.com\r\nContent-Length: 4\r\nTransfer-Encoding: chunked\r\n\r\n5\r\nhello\r\n0\r\n\r\n", 1)
+	require.Equal(t, StatusOK, responses[0].status)
+	require.True(t, responses[0].closes, "Connection: close expected")
+}
+
 // skipIfNoIPv6 skips the test on hosts without IPv6 support (e.g. some CI containers).
 func skipIfNoIPv6(t *testing.T) {
 	t.Helper()

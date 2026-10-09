@@ -101,6 +101,9 @@ type App struct {
 	state *State
 	// shared state management (prefork-safe, storage-backed)
 	sharedState *SharedState
+	// headerHook is the HeaderReceived callback hookHeaderReceived installed, kept
+	// to tell it from one set since
+	headerHook func(*fasthttp.RequestHeader) fasthttp.RequestConfig
 	// Route stack divided by HTTP methods
 	stack [][]*Route
 	// customConstraints is a list of external constraints
@@ -120,14 +123,14 @@ type App struct {
 	// pointer so a rebuild publishes each method's tree in one store.
 	treeIndex []*routeTree
 	// Precomputed unmatched-route indexes, rebuilt with the tree (router_skip.go)
-	skip skipRouteIndex
-	// sendfilesMutex is a mutex used for sendfile operations
-	sendfilesMutex   sync.RWMutex
-	mutex            sync.Mutex
-	latestRegID      uint64
-	routesRevision   atomic.Uint64
+	skip             skipRouteIndex
 	autoHeadRouteID  uint64
 	autoHeadStackLen int
+	// sendfilesMutex is a mutex used for sendfile operations
+	sendfilesMutex sync.RWMutex
+	mutex          sync.Mutex
+	latestRegID    uint64
+	routesRevision atomic.Uint64
 	// Amount of registered handlers
 	handlersCount uint32
 	// contains the information if the route stack has been changed to build the optimized tree
@@ -362,10 +365,11 @@ type Config struct { //nolint:govet // Aligning the struct fields is not necessa
 	// Default: ""
 	ProxyHeader string `json:"proxy_header"`
 
-	// GETOnly rejects all non-GET requests if set to true.
+	// GETOnly rejects every method except GET and HEAD if set to true.
 	// This option is useful as anti-DoS protection for servers
 	// accepting only GET requests. The request size is limited
-	// by ReadBufferSize if GETOnly is set.
+	// by ReadBufferSize if GETOnly is set. A rejected request gets 405 with
+	// "Allow: GET, HEAD".
 	//
 	// Default: false
 	GETOnly bool `json:"get_only"`
@@ -2267,6 +2271,7 @@ func (app *App) Test(req *http.Request, config ...TestConfig) (*http.Response, e
 	}
 	// prepare the server for the start
 	app.startupProcess()
+	app.hookHeaderReceived()
 
 	// Serve conn to server
 	channel := make(chan error, 1)
@@ -2481,6 +2486,18 @@ func (app *App) ErrorHandler(ctx Ctx, err error) error {
 	return app.config.ErrorHandler(ctx, err)
 }
 
+const (
+	// getOnlyAllow is the Allow value of the 405 that Config.GETOnly produces.
+	getOnlyAllow = MethodGet + ", " + MethodHead
+
+	// unsupportedTransferCodingMarker precedes the quoted coding in fasthttp's
+	// error. The ErrUnsupportedTransferEncoding sentinel is not matched: it also
+	// covers HTTP/1.0 and repeated fields, which are framing errors and stay 400,
+	// and with Server.SecureErrorLogMessage it stands for every fault, the
+	// coding included, which then stays 400 as well.
+	unsupportedTransferCodingMarker = `unsupported transfer-encoding: "`
+)
+
 // serverErrorHandler is a wrapper around the application's error handler method
 // user for the fasthttp server configuration. It maps a set of fasthttp errors to fiber
 // errors before calling the application's error handler method.
@@ -2516,7 +2533,12 @@ func (app *App) serverErrorHandler(fctx *fasthttp.RequestCtx, err error) {
 		err = ErrRequestEntityTooLarge
 	case errors.Is(err, fasthttp.ErrGetOnly):
 		err = ErrMethodNotAllowed
+		// A 405 must carry Allow (RFC 9110 §15.5.6).
+		c.Set(HeaderAllow, getOnlyAllow)
 	case strings.Contains(errMessage, "unsupported http request method"):
+		err = ErrNotImplemented
+	case strings.Contains(errMessage, unsupportedTransferCodingMarker):
+		// An unknown transfer coding is a 501, not a 400 (RFC 9112 §6.1).
 		err = ErrNotImplemented
 	case strings.Contains(errMessage, "timeout"):
 		err = ErrRequestTimeout
@@ -2621,6 +2643,35 @@ func (app *App) hookConnState() {
 			user(conn, state)
 		}
 	}
+}
+
+// hookHeaderReceived makes the server close the connection after a request that
+// carries both Content-Length and Transfer-Encoding (RFC 9112 §6.1), keeping a
+// user HeaderReceived callback. It must run before the body is decoded: after that
+// fasthttp has replaced the length and dropped the Content-Length value. Call it
+// right before the server serves: it wraps the callback set by then, in
+// ListenConfig.BeforeServeFunc too, and one replaced since an earlier start. Its
+// own hook is left alone: Test and a listener run on one server at the same time,
+// and the connections they serve read the callback.
+func (app *App) hookHeaderReceived() {
+	app.mutex.Lock()
+	defer app.mutex.Unlock()
+
+	if app.server == nil || sameFunc(app.server.HeaderReceived, app.headerHook) {
+		return
+	}
+	user := app.server.HeaderReceived
+	app.headerHook = func(header *fasthttp.RequestHeader) fasthttp.RequestConfig {
+		if bothFramingFields(header) {
+			header.SetConnectionClose()
+		}
+		if user != nil {
+			return user(header)
+		}
+		// The zero value keeps the server's own limits and timeouts.
+		return fasthttp.RequestConfig{}
+	}
+	app.server.HeaderReceived = app.headerHook
 }
 
 // Run onListen hooks. If they return an error, panic.

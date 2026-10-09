@@ -223,6 +223,14 @@ app.Listen(":444", fiber.ListenConfig{
 
 `MIMEApplicationJavaScript` and `MIMEApplicationJavaScriptCharsetUTF8` are deprecated. Use `MIMETextJavaScript` and `MIMETextJavaScriptCharsetUTF8` instead.
 
+### Protocol error responses
+
+Requests that the server refuses before routing, because of how they are framed or which method they use, are answered as [RFC 9110](https://www.rfc-editor.org/rfc/rfc9110) and [RFC 9112](https://www.rfc-editor.org/rfc/rfc9112) ask:
+
+- **`GETOnly`**: the `405 Method Not Allowed` sent for any other method now carries `Allow: GET, HEAD`, as every 405 must.
+- **Unknown transfer coding**: a request whose `Transfer-Encoding` names a coding the server cannot decode (`gzip, chunked`, say) is answered `501 Not Implemented`; it used to be `400 Bad Request`, and the body no longer repeats the start of the request. A malformed message, such as a repeated `Transfer-Encoding` field or the field on an HTTP/1.0 request, is still `400`, and so is every one of these when `app.Server().SecureErrorLogMessage` is set, because fasthttp then no longer says which coding it saw.
+- **`Content-Length` together with `Transfer-Encoding`**: the request is processed as before, by its `Transfer-Encoding` or, when the field says `identity`, which fasthttp ignores, by its `Content-Length`, and the connection is now closed after the response (`Connection: close`). The two fields are how a request-smuggling message looks, and the bytes behind it on the connection may belong to a request that another recipient framed differently. Fiber installs this check right before the server it starts begins to serve (`Listen`, `Listener`, `Test`), and keeps the `HeaderReceived` callback you set on `app.Server()` up to then, in `ListenConfig.BeforeServeFunc` too. A callback you set again between two starts is wrapped at the next one. A `fasthttp.Server` of your own that serves `app.Handler()` needs the same check in its own `HeaderReceived` callback.
+
 ## 🎣 Hooks
 
 We have made several changes to the Fiber hooks, including:
@@ -809,6 +817,31 @@ for the response. The response cookies are `c.Res().GetCookies()`, named apart f
   fasthttp emits for a declared length; neither line is sent now. `205 Reset Content` still sends
   `Content-Length: 0`, which [Section 15.3.6](https://www.rfc-editor.org/rfc/rfc9110#section-15.3.6) requires.
   Unlike the two above, this applies under the default configuration.
+- **AcceptsEncodings()**: Follows [RFC 9110, Section 12.5.3](https://www.rfc-editor.org/rfc/rfc9110#section-12.5.3).
+  `identity`, the absence of a coding, is now acceptable when the `Accept-Encoding` header does not list it, unless
+  the header excludes it with `identity;q=0` or `*;q=0`: `c.AcceptsEncodings("br", "identity")` answers `"identity"`
+  for `Accept-Encoding: gzip`, where it answered `""`. An unlisted `identity` ranks below every coding the header does
+  list. A header that is present but empty now accepts only `identity`; it used to read as absent, which accepts the
+  first offer.
+- **Status()**: A code outside `100` to `999` cannot be written as a status line
+  ([RFC 9112, Section 4](https://www.rfc-editor.org/rfc/rfc9112#section-4)). `c.Status(99)` and `c.Status(1000)` used to
+  put a malformed line on the wire that clients refuse, and `c.Status(0)` or a negative code put `200 OK` there. They
+  now answer `500 Internal Server Error` and log the code. `SendStatus`, `Redirect().Status` and an error built with
+  `fiber.NewError` go through `Status`, so they follow. Codes from `600` to `999` are still sent as given.
+- **Cookie()**: A value with a space or a comma is now written in double quotes, as `net/http` does, because neither is
+  a `cookie-octet` ([RFC 6265, Section 4.1.1](https://www.rfc-editor.org/rfc/rfc6265#section-4.1.1)).
+  `c.Cookie(&fiber.Cookie{Name: "n", Value: "hello world"})` used to send `n=hello world` and sends `n="hello world"`
+  now; the quotes frame the value, and `Cookies` and `GetCookie` return `hello world`. A value that already starts and
+  ends with a double quote is accepted and written quoted instead of being dropped as invalid. Values with a semicolon,
+  an inner double quote, a backslash, a control character or a non-ASCII character are still refused. Percent-encode a
+  value that has to pass through a strict parser.
+- **SendFile() and the static middleware, with `ByteRange`**: The file server answered one byte range and nothing
+  else. Fiber now applies the rest of [RFC 9110, Section 13.1.5 and Section 14.2](https://www.rfc-editor.org/rfc/rfc9110#section-14.2)
+  around it. A request for several ranges used to get `416`; it gets the whole file, as does one with a range unit the
+  server does not know and one with a method other than `GET` (a `HEAD` or `POST` with a `Range` used to get `206`).
+  The unit is case-insensitive (`Bytes=0-4` used to get `416`). `If-Range` was ignored, so a resumed download was
+  spliced onto a file that had changed; the range is now served only when the date in `If-Range` is exactly the file's
+  `Last-Modified` (and at least two seconds old), and the whole file is sent otherwise.
 - **Context()**: Renamed to `RequestCtx()` to access the underlying `fasthttp.RequestCtx`.
 - **IP()**: When `EnableIPValidation` is `true` and `TrustProxyConfig` is set, `c.IP()` now walks the `X-Forwarded-For` chain from right to left and returns the first non-trusted IP, instead of the leftmost syntactically valid IP. This closes an IP-spoofing vector where an attacker could prepend a fake address and have it returned by `c.IP()`. Apps with `EnableIPValidation = false` (the default) are unaffected. See [`Ctx.IP`](./api/ctx.md#ip) and the [reverse proxy guide](./guide/reverse-proxy.md#getting-the-real-client-ip-address) for details.
 
@@ -1877,6 +1910,7 @@ The timeout middleware is now configurable. A new `Config` struct allows customi
 
 **Behavioral changes:**
 
+- **Status**: The default response for a timed-out handler is `503 Service Unavailable`, not `408 Request Timeout`. The request arrived complete and the handler is what is slow, whereas `408` means the server did not receive a complete request in time ([RFC 9110, Section 15.5.9](https://www.rfc-editor.org/rfc/rfc9110#section-15.5.9)) and tells the client it may send the request again, while the timed-out handler can still be running. Return `fiber.ErrRequestTimeout` (or `fiber.ErrGatewayTimeout` for a handler that waits on an upstream) from `OnTimeout` to keep or choose another status.
 - **Immediate return on timeout**: The middleware now returns immediately when a timeout occurs, without waiting for the handler to finish. This is achieved through the new **Abandon mechanism** which marks the context as abandoned so it won't be returned to the pool while the handler is still running.
 - **Context propagation**: The timeout context is properly propagated to the handler. Handlers can detect timeouts by listening on `c.Context().Done()` and return early.
 - **Panic handling**: Panics in the handler are caught and converted to `500 Internal Server Error` responses.

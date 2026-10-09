@@ -16,6 +16,7 @@ import (
 	"github.com/valyala/fasthttp"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/byterange"
 )
 
 var ErrInvalidPath = errors.New("invalid path")
@@ -339,8 +340,13 @@ func New(root string, cfg ...Config) fiber.Handler {
 			return []byte(invalidPathSentinel)
 		}
 
+		handler := files.NewRequestHandler()
+		if config.ByteRange {
+			handler = byterange.Wrap(handler)
+		}
+
 		return &fileServer{
-			handler:       files.NewRequestHandler(),
+			handler:       handler,
 			fsys:          config.FS,
 			root:          root,
 			fsRootPrefix:  fsRootPrefix,

@@ -18,6 +18,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"github.com/gofiber/fiber/v3/internal/byterange"
 	internalcookie "github.com/gofiber/fiber/v3/internal/cookie"
 	"github.com/gofiber/fiber/v3/internal/fieldname"
 	"github.com/gofiber/fiber/v3/internal/headerlist"
@@ -43,7 +44,8 @@ type SendFile struct {
 	// Optional. Default: false
 	Compress bool `json:"compress"`
 
-	// When set to true, enables byte range requests.
+	// When set to true, enables byte range requests. A request for several
+	// ranges, or whose If-Range does not match, gets the whole file.
 	//
 	// Optional. Default: false
 	ByteRange bool `json:"byte_range"`
@@ -354,11 +356,14 @@ func (r *DefaultRes) Cookie(cookie *Cookie) {
 		c.Secure = true
 	}
 
+	// Surrounding double quotes frame the value (RFC 6265 §4.1.1); they are not part of it.
+	value, quoted := unquoteCookieValue(c.Value)
+
 	// Validate before fasthttp's setters can silently replace CR/LF or semicolons;
 	// rejection, rather than mutation, is this API's existing contract.
 	hc := &http.Cookie{ //nolint:gosec // G124: http.Cookie missing or has insecure Secure, HttpOnly, or SameSite attribute
 		Name:        c.Name,
-		Value:       c.Value,
+		Value:       value,
 		Path:        c.Path,
 		Domain:      c.Domain,
 		Expires:     c.Expires,
@@ -377,7 +382,13 @@ func (r *DefaultRes) Cookie(cookie *Cookie) {
 	// create fasthttp cookie
 	fcookie := fasthttp.AcquireCookie()
 	fcookie.SetKey(hc.Name)
-	fcookie.SetValue(hc.Value)
+	// net/http quotes a value with a space or comma, and so does this, although
+	// RFC 6265 §4.1.1 allows neither even in quotes. fasthttp drops the quotes on read.
+	wireValue := hc.Value
+	if quoted || utils.IndexAny2(wireValue, ' ', ',') >= 0 {
+		wireValue = `"` + wireValue + `"`
+	}
+	fcookie.SetValue(wireValue)
 	fcookie.SetPath(hc.Path)
 	fcookie.SetDomain(hc.Domain)
 
@@ -396,6 +407,15 @@ func (r *DefaultRes) Cookie(cookie *Cookie) {
 	// Set resp header
 	r.c.fasthttp.Response.Header.SetCookie(fcookie)
 	fasthttp.ReleaseCookie(fcookie)
+}
+
+// unquoteCookieValue strips one pair of surrounding double quotes. A lone quote
+// is left for validation to reject.
+func unquoteCookieValue(value string) (string, bool) {
+	if len(value) >= 2 && value[0] == '"' && value[len(value)-1] == '"' {
+		return value[1 : len(value)-1], true
+	}
+	return value, false
 }
 
 // GetCookie reads back a cookie this response is set to send, false when the
@@ -1275,9 +1295,13 @@ func (r *DefaultRes) SendFile(file string, config ...SendFile) error {
 			},
 		}
 
+		handler := fasthttpFS.NewRequestHandler()
+		if cfg.ByteRange {
+			handler = byterange.Wrap(handler)
+		}
 		sf := &sendFileStore{
 			config:  cfg,
-			handler: fasthttpFS.NewRequestHandler(),
+			handler: handler,
 		}
 
 		maxAge := cfg.MaxAge
@@ -1447,7 +1471,9 @@ func (r *DefaultRes) NoContent() error {
 // SendStatus sets the HTTP status code and if the response body is empty,
 // it sets the correct status message in the body.
 func (r *DefaultRes) SendStatus(status int) error {
-	r.Status(status)
+	// Settle the status first so the checks below use the one that is sent.
+	status = validStatus(status)
+	r.c.fasthttp.Response.SetStatusCode(status)
 
 	if statusDisallowsBody(status) {
 		resp := &r.c.fasthttp.Response
@@ -1512,8 +1538,10 @@ func (r *DefaultRes) setCanonical(key, val string) {
 
 // Status sets the HTTP status for the response.
 // This method is chainable.
+//
+// A status outside 100 to 999 is logged and replaced by 500.
 func (r *DefaultRes) Status(status int) Ctx {
-	r.c.fasthttp.Response.SetStatusCode(status)
+	r.c.fasthttp.Response.SetStatusCode(validStatus(status))
 	return r.c
 }
 

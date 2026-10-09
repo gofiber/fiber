@@ -1164,6 +1164,42 @@ func Test_App_GETOnly_ErrorHandler_WithoutStatus(t *testing.T) {
 	require.Equal(t, "Method Not Allowed", string(body), "Body")
 }
 
+// RFC 9110 §15.5.6: a 405 lists the allowed methods, even when a custom
+// ErrorHandler rewrites the response.
+// go test -run Test_App_GETOnly_Allow
+func Test_App_GETOnly_Allow(t *testing.T) {
+	t.Parallel()
+
+	for name, config := range map[string]Config{
+		"default error handler": {GETOnly: true},
+		"custom error handler": {
+			GETOnly:      true,
+			ErrorHandler: func(c Ctx, err error) error { return c.SendString(err.Error()) },
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			app := New(config)
+			app.All("/", func(c Ctx) error { return c.SendString("ok") })
+
+			for _, method := range []string{MethodPost, MethodPut, MethodPatch, MethodDelete, MethodOptions} {
+				resp, err := app.Test(httptest.NewRequest(method, "/", http.NoBody))
+				require.NoError(t, err, method)
+				require.Equal(t, StatusMethodNotAllowed, resp.StatusCode, method)
+				require.Equal(t, "GET, HEAD", resp.Header.Get(HeaderAllow), method)
+			}
+
+			for _, method := range []string{MethodGet, MethodHead} {
+				resp, err := app.Test(httptest.NewRequest(method, "/", http.NoBody))
+				require.NoError(t, err, method)
+				require.Equal(t, StatusOK, resp.StatusCode, method)
+				require.Empty(t, resp.Header.Get(HeaderAllow), method)
+			}
+		})
+	}
+}
+
 func Test_App_Use_Params_Group(t *testing.T) {
 	t.Parallel()
 	app := New()
@@ -4176,5 +4212,505 @@ func Test_Domain_Use_MultiplePrefixes_MountsEachPrefix(t *testing.T) {
 		resp, err := app.Test(req)
 		require.NoError(t, err)
 		require.Equal(t, StatusOK, resp.StatusCode, "%s was not mounted", prefix)
+	}
+}
+
+// rawResponse is a response read off a test connection.
+type rawResponse struct {
+	header        http.Header
+	body          string
+	contentLength int64 // -1 when not declared
+	status        int
+	closes        bool // announced Connection: close
+	chunked       bool
+}
+
+// What a connection did once the expected responses were read.
+const (
+	connClosed = "closed" // the server closed it
+	connOpen   = "open"   // it stayed open and silent
+	connData   = "data"   // it sent more than expected
+)
+
+// startRawServer serves app on an in-memory listener until the test ends.
+func startRawServer(t *testing.T, app *App) *fasthttputil.InmemoryListener {
+	t.Helper()
+
+	return startRawServerWith(t, app, nil)
+}
+
+// startRawServerWith is startRawServer with a ListenConfig.BeforeServeFunc.
+func startRawServerWith(t *testing.T, app *App, beforeServe func(*App) error) *fasthttputil.InmemoryListener {
+	t.Helper()
+
+	ln := fasthttputil.NewInmemoryListener()
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- app.Listener(ln, ListenConfig{DisableStartupMessage: true, BeforeServeFunc: beforeServe})
+	}()
+
+	t.Cleanup(func() {
+		require.NoError(t, app.Shutdown())
+		if err := <-errCh; err != nil && !errors.Is(err, net.ErrClosed) {
+			require.NoError(t, err)
+		}
+	})
+
+	require.Eventually(t, func() bool {
+		conn, err := ln.Dial()
+		if err != nil {
+			return false
+		}
+		return conn.Close() == nil
+	}, time.Second, 5*time.Millisecond)
+
+	return ln
+}
+
+// dialer opens connections to the server under test.
+type dialer interface {
+	Dial() (net.Conn, error)
+}
+
+// tcpDialer dials a TCP address.
+type tcpDialer string
+
+func (d tcpDialer) Dial() (net.Conn, error) {
+	conn, err := net.Dial(NetworkTCP4, string(d))
+	if err != nil {
+		return nil, fmt.Errorf("dial %s: %w", string(d), err)
+	}
+	return conn, nil
+}
+
+// rawExchange writes raw to a new connection, reads want responses and reports
+// what the connection did next.
+func rawExchange(t *testing.T, server dialer, raw string, want int) (responses []rawResponse, after string) { //nolint:nonamedreturns // gocritic's unnamedResult asks for names
+	t.Helper()
+
+	conn, err := server.Dial()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = conn.Close() }) //nolint:errcheck // usually closed by the server already
+
+	require.NoError(t, conn.SetDeadline(time.Now().Add(10*time.Second)))
+	_, err = conn.Write([]byte(raw))
+	require.NoError(t, err)
+
+	// A response to HEAD has no body, so the parser needs the method.
+	method, _, _ := strings.Cut(raw, " ")
+	request := &http.Request{Method: method}
+
+	reader := bufio.NewReader(conn)
+	for range want {
+		resp, readErr := http.ReadResponse(reader, request)
+		require.NoError(t, readErr, "reading response %d of %d", len(responses)+1, want)
+		body, readErr := io.ReadAll(resp.Body)
+		require.NoError(t, readErr)
+		require.NoError(t, resp.Body.Close())
+		responses = append(responses, rawResponse{
+			status:        resp.StatusCode,
+			header:        resp.Header,
+			body:          string(body),
+			closes:        resp.Close,
+			contentLength: resp.ContentLength,
+			chunked:       len(resp.TransferEncoding) > 0 && resp.TransferEncoding[0] == "chunked",
+		})
+	}
+
+	// A closed connection answers at once; an open one stays silent until the deadline.
+	require.NoError(t, conn.SetReadDeadline(time.Now().Add(250*time.Millisecond)))
+	if _, peekErr := reader.Peek(1); peekErr != nil {
+		switch {
+		case errors.Is(peekErr, io.EOF):
+			after = connClosed
+		case errors.Is(peekErr, fasthttputil.ErrTimeout), errors.Is(peekErr, os.ErrDeadlineExceeded):
+			after = connOpen
+		default:
+			require.NoError(t, peekErr)
+		}
+	} else {
+		after = connData
+	}
+
+	return responses, after
+}
+
+// An Accept-Encoding with no value reaches AcceptsEncodings as present but empty,
+// which wants no content coding, and is not read as an absent one, which accepts any.
+func Test_App_AcceptsEncodings_EmptyField_Request(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	app.Get("/", func(c Ctx) error {
+		return c.SendString(c.AcceptsEncodings("br", "gzip", "identity"))
+	})
+	ln := startRawServer(t, app)
+
+	for name, tc := range map[string]struct{ field, answer string }{
+		"absent": {field: "", answer: "br"},
+		"empty":  {field: "Accept-Encoding:\r\n", answer: "identity"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			raw := "GET / HTTP/1.1\r\nHost: example.com\r\n" + tc.field + "Connection: close\r\n\r\n"
+			responses, _ := rawExchange(t, ln, raw, 1)
+			require.Equal(t, StatusOK, responses[0].status)
+			require.Equal(t, tc.answer, responses[0].body)
+		})
+	}
+}
+
+// RFC 9112 §6.1: a transfer coding the server does not understand gets a 501.
+func Test_App_TransferEncoding_Request(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	app.Post("/", func(c Ctx) error { return c.SendString("posted") })
+	ln := startRawServer(t, app)
+
+	tests := []struct {
+		name   string
+		raw    string
+		status int
+	}{
+		{
+			name:   "unknown coding",
+			raw:    "POST / HTTP/1.1\r\nHost: example.com\r\nTransfer-Encoding: foo\r\n\r\n5\r\nhello\r\n0\r\n\r\n",
+			status: StatusNotImplemented,
+		},
+		{
+			name:   "unknown coding before chunked",
+			raw:    "POST / HTTP/1.1\r\nHost: example.com\r\nTransfer-Encoding: gzip, chunked\r\n\r\n5\r\nhello\r\n0\r\n\r\n",
+			status: StatusNotImplemented,
+		},
+		{
+			name:   "unknown coding after chunked",
+			raw:    "POST / HTTP/1.1\r\nHost: example.com\r\nTransfer-Encoding: chunked, gzip\r\n\r\n0\r\n\r\n",
+			status: StatusNotImplemented,
+		},
+		{
+			// HTTP/1.0 has no transfer codings.
+			name:   "HTTP/1.0 message with the field",
+			raw:    "POST / HTTP/1.0\r\nHost: example.com\r\nTransfer-Encoding: chunked\r\n\r\n0\r\n\r\n",
+			status: StatusBadRequest,
+		},
+		{
+			name:   "repeated field",
+			raw:    "POST / HTTP/1.1\r\nHost: example.com\r\nTransfer-Encoding: chunked\r\nTransfer-Encoding: chunked\r\n\r\n0\r\n\r\n",
+			status: StatusBadRequest,
+		},
+		{
+			name:   "chunked is served",
+			raw:    "POST / HTTP/1.1\r\nHost: example.com\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n5\r\nhello\r\n0\r\n\r\n",
+			status: StatusOK,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			responses, after := rawExchange(t, ln, tc.raw, 1)
+			require.Equal(t, tc.status, responses[0].status)
+			if tc.status == StatusNotImplemented {
+				// The body names the status, not the request bytes fasthttp quotes.
+				require.Equal(t, "Not Implemented", responses[0].body)
+			}
+			if tc.status != StatusOK {
+				// An unusable message leaves the connection in an unknown state.
+				require.True(t, responses[0].closes, "Connection: close expected")
+				require.Equal(t, connClosed, after)
+			}
+		})
+	}
+}
+
+// With SecureErrorLogMessage fasthttp reports every transfer-encoding fault with
+// the same error, which hides the coding: those requests stay 400.
+func Test_App_TransferEncoding_SecureErrorLogMessage(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	app.Server().SecureErrorLogMessage = true
+	app.Post("/", func(c Ctx) error { return c.SendString("posted") })
+	ln := startRawServer(t, app)
+
+	responses, _ := rawExchange(t, ln, "POST / HTTP/1.1\r\nHost: example.com\r\nTransfer-Encoding: foo\r\n\r\n0\r\n\r\n", 1)
+	require.Equal(t, StatusBadRequest, responses[0].status)
+
+	responses, _ = rawExchange(t, ln, "POST / HTTP/1.1\r\nHost: example.com\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n0\r\n\r\n", 1)
+	require.Equal(t, StatusOK, responses[0].status)
+}
+
+// RFC 9112 §6.1: a request with both Content-Length and Transfer-Encoding is
+// framed by Transfer-Encoding, and the connection must close after the response.
+func Test_App_ContentLengthWithTransferEncoding_ClosesConnection(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	app.Post("/", func(c Ctx) error { return c.SendString("first") })
+	app.Get("/second", func(c Ctx) error { return c.SendString("second") })
+	ln := startRawServer(t, app)
+
+	const (
+		second  = "GET /second HTTP/1.1\r\nHost: example.com\r\n\r\n"
+		chunked = "\r\n0\r\n\r\n"
+	)
+
+	t.Run("served by Transfer-Encoding then closed", func(t *testing.T) {
+		t.Parallel()
+
+		for name, headers := range map[string]string{
+			"Content-Length first":    "Content-Length: 4\r\nTransfer-Encoding: chunked\r\n",
+			"Transfer-Encoding first": "Transfer-Encoding: chunked\r\nContent-Length: 4\r\n",
+			"lower-case names":        "content-length: 4\r\ntransfer-encoding: chunked\r\n",
+		} {
+			t.Run(name, func(t *testing.T) {
+				t.Parallel()
+
+				raw := "POST / HTTP/1.1\r\nHost: example.com\r\n" + headers + chunked + second
+				responses, after := rawExchange(t, ln, raw, 1)
+
+				require.Equal(t, StatusOK, responses[0].status)
+				require.Equal(t, "first", responses[0].body)
+				require.True(t, responses[0].closes, "Connection: close expected")
+				require.Equal(t, connClosed, after, "the pipelined request must not be answered")
+			})
+		}
+	})
+
+	// fasthttp ignores "identity" and frames the request by its Content-Length, so
+	// the request is served as one without the field, but it still has both.
+	t.Run("identity is ignored and still closes", func(t *testing.T) {
+		t.Parallel()
+
+		for name, headers := range map[string]string{
+			"Content-Length first":    "Content-Length: 4\r\nTransfer-Encoding: identity\r\n\r\nabcd",
+			"Transfer-Encoding first": "Transfer-Encoding: identity\r\nContent-Length: 4\r\n\r\nabcd",
+			"lower-case names":        "content-length: 4\r\ntransfer-encoding: identity\r\n\r\nabcd",
+			"empty body":              "Content-Length: 0\r\nTransfer-Encoding: identity\r\n\r\n",
+		} {
+			t.Run(name, func(t *testing.T) {
+				t.Parallel()
+
+				raw := "POST / HTTP/1.1\r\nHost: example.com\r\n" + headers + second
+				responses, after := rawExchange(t, ln, raw, 1)
+
+				require.Equal(t, StatusOK, responses[0].status)
+				require.Equal(t, "first", responses[0].body)
+				require.True(t, responses[0].closes, "Connection: close expected")
+				require.Equal(t, connClosed, after, "the pipelined request must not be answered")
+			})
+		}
+	})
+
+	// Each header alone is ordinary traffic and keeps the connection alive.
+	t.Run("one header alone keeps the connection", func(t *testing.T) {
+		t.Parallel()
+
+		for name, raw := range map[string]string{
+			"Transfer-Encoding only": "POST / HTTP/1.1\r\nHost: example.com\r\nTransfer-Encoding: chunked\r\n" + chunked + second,
+			"Content-Length only":    "POST / HTTP/1.1\r\nHost: example.com\r\nContent-Length: 0\r\n\r\n" + second,
+		} {
+			t.Run(name, func(t *testing.T) {
+				t.Parallel()
+
+				responses, after := rawExchange(t, ln, raw, 2)
+
+				require.Equal(t, "first", responses[0].body)
+				require.Equal(t, "second", responses[1].body)
+				require.False(t, responses[1].closes, "Connection: close not expected")
+				require.Equal(t, connOpen, after)
+			})
+		}
+	})
+}
+
+// The close hook must keep the application's HeaderReceived callback and its limits,
+// whether it is set before the app starts or in ListenConfig.BeforeServeFunc, and
+// whether or not an earlier Test has already installed the hook.
+func Test_App_ContentLengthWithTransferEncoding_KeepsUserHeaderReceived(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name          string
+		inBeforeServe bool
+		testFirst     bool
+	}{
+		{name: "set before start"},
+		{name: "set in BeforeServeFunc", inBeforeServe: true},
+		{name: "set in BeforeServeFunc after Test", inBeforeServe: true, testFirst: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			app := New()
+			app.Post("/", func(c Ctx) error { return c.SendString(strconv.Itoa(len(c.Body()))) })
+
+			var calls atomic.Int32
+			var chunkedSeen atomic.Bool
+			callback := func(header *fasthttp.RequestHeader) fasthttp.RequestConfig {
+				calls.Add(1)
+				if header.ContentLength() == -1 {
+					chunkedSeen.Store(true)
+				}
+				return fasthttp.RequestConfig{MaxRequestBodySize: 8}
+			}
+
+			if tc.testFirst {
+				resp, err := app.Test(httptest.NewRequest(MethodPost, "/", http.NoBody))
+				require.NoError(t, err)
+				require.NoError(t, resp.Body.Close())
+			}
+
+			var beforeServe func(*App) error
+			if tc.inBeforeServe {
+				beforeServe = func(app *App) error {
+					app.Server().HeaderReceived = callback
+					return nil
+				}
+			} else {
+				app.Server().HeaderReceived = callback
+			}
+			ln := startRawServerWith(t, app, beforeServe)
+
+			// Within the limit: served, then closed.
+			responses, after := rawExchange(t, ln,
+				"POST / HTTP/1.1\r\nHost: example.com\r\nContent-Length: 4\r\nTransfer-Encoding: chunked\r\n\r\n5\r\nhello\r\n0\r\n\r\n", 1)
+			require.Equal(t, StatusOK, responses[0].status)
+			require.Equal(t, "5", responses[0].body)
+			require.True(t, responses[0].closes)
+			require.Equal(t, connClosed, after)
+
+			// Over the callback's limit: refused.
+			responses, _ = rawExchange(t, ln,
+				"POST / HTTP/1.1\r\nHost: example.com\r\nContent-Length: 20\r\nConnection: close\r\n\r\n01234567890123456789", 1)
+			require.Equal(t, StatusRequestEntityTooLarge, responses[0].status)
+
+			require.Equal(t, int32(2), calls.Load(), "the application's callback runs for every request")
+			require.True(t, chunkedSeen.Load(), "the callback still sees the chunked framing")
+		})
+	}
+}
+
+// The hook is installed once and a replaced callback is wrapped again.
+func Test_App_HeaderReceivedHook_Reinstalled(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	app.hookHeaderReceived()
+	installed := app.Server().HeaderReceived
+	require.NotNil(t, installed)
+
+	app.hookHeaderReceived()
+	require.True(t, sameFunc(app.Server().HeaderReceived, installed), "the hook is not wrapped again")
+
+	replaced := func(*fasthttp.RequestHeader) fasthttp.RequestConfig { return fasthttp.RequestConfig{} }
+	app.Server().HeaderReceived = replaced
+	app.hookHeaderReceived()
+	require.False(t, sameFunc(app.Server().HeaderReceived, replaced), "a replaced callback is wrapped")
+	require.False(t, sameFunc(app.Server().HeaderReceived, installed))
+}
+
+// Test and a listener run on one server at the same time, and the connections they
+// serve read the callback, so installing the hook must not write it again. Meant
+// for -race.
+func Test_App_HeaderReceivedHook_RaceFreeWithTest(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	app.Get("/", func(c Ctx) error { return c.SendString("ok") })
+
+	stop := make(chan struct{})
+	var wg sync.WaitGroup
+	wg.Go(func() {
+		for {
+			select {
+			case <-stop:
+				return
+			default:
+				app.hookHeaderReceived()
+				runtime.Gosched()
+			}
+		}
+	})
+
+	for range 50 {
+		resp, err := app.Test(httptest.NewRequest(MethodGet, "/", http.NoBody))
+		if assert.NoError(t, err) {
+			assert.NoError(t, resp.Body.Close())
+		}
+	}
+	close(stop)
+	wg.Wait()
+}
+
+// Test serves the connection itself, so it installs the close hook too.
+func Test_App_Test_ClosesAfterContentLengthWithTransferEncoding(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	app.Post("/", func(c Ctx) error { return c.SendString(strconv.Itoa(len(c.Body()))) })
+
+	// The dump of a chunked request keeps the Content-Length header it is given.
+	req := httptest.NewRequest(MethodPost, "/", strings.NewReader("hello"))
+	req.TransferEncoding = []string{"chunked"}
+	req.Header.Set(HeaderContentLength, "4")
+
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.NoError(t, resp.Body.Close())
+	require.Equal(t, StatusOK, resp.StatusCode)
+	require.True(t, resp.Close, "Connection: close expected")
+}
+
+// A client older than HTTP/1.1 that leaves must free the writer. The response is
+// written as it is produced, so the writer's Flush fails once the client is gone;
+// buffering it instead would hold the handler, and its connection slot, until the
+// writer ended on its own.
+func Test_App_SendStreamWriter_HTTP10_ClientLeaves(t *testing.T) {
+	t.Parallel()
+
+	stop := make(chan struct{})
+	ended := make(chan struct{})
+	app := New()
+	app.Get("/", func(c Ctx) error {
+		return c.SendStreamWriter(func(w *bufio.Writer) {
+			defer close(ended)
+			for {
+				select {
+				case <-stop:
+					return
+				default:
+				}
+				if _, err := w.WriteString(":\n\n"); err != nil {
+					return
+				}
+				if err := w.Flush(); err != nil {
+					return
+				}
+				time.Sleep(time.Millisecond)
+			}
+		})
+	})
+	ln := startRawServer(t, app)
+	t.Cleanup(func() { close(stop) })
+
+	conn, err := ln.Dial()
+	require.NoError(t, err)
+	_, err = conn.Write([]byte("GET / HTTP/1.0\r\n\r\n"))
+	require.NoError(t, err)
+
+	// The first bytes arrive while the writer is still running.
+	require.NoError(t, conn.SetReadDeadline(time.Now().Add(5*time.Second)))
+	_, err = bufio.NewReader(conn).ReadString('\n')
+	require.NoError(t, err)
+	require.NoError(t, conn.Close())
+
+	select {
+	case <-ended:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the writer kept running after the client left")
 	}
 }

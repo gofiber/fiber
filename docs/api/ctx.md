@@ -1075,6 +1075,24 @@ app.Get("/", func(c fiber.Ctx) error {
 })
 ```
 
+For `Accept-Encoding`, [RFC 9110 §12.5.3](https://www.rfc-editor.org/rfc/rfc9110#section-12.5.3) adds three rules to the weights:
+
+- A request without the header accepts any coding, so the first offer is returned.
+- A request whose header is present but empty wants no content coding, so only an `identity` offer matches.
+- `identity` (no coding) is acceptable even when the header does not list it, unless the header excludes it with `identity;q=0`, or with `*;q=0` and no entry of its own for `identity`. An unlisted `identity` ranks below every coding the header does list.
+
+```go title="Example 5"
+// Accept-Encoding: gzip
+c.AcceptsEncodings("gzip", "identity") // "gzip"
+c.AcceptsEncodings("br", "identity")   // "identity": br is not listed, identity is acceptable unless excluded
+
+// Accept-Encoding: gzip, identity;q=0
+c.AcceptsEncodings("br", "identity")   // "": identity is excluded
+
+// Accept-Encoding: (present, empty)
+c.AcceptsEncodings("gzip", "identity") // "identity": the client wants no coding
+```
+
 ### AcceptsEventStream
 
 Returns `true` when the `Accept` header allows `text/event-stream`.
@@ -3161,6 +3179,12 @@ app.Get("/", func(c fiber.Ctx) error {
 })
 ```
 
+:::caution Cookie values
+The grammar of [RFC 6265 §4.1.1](https://www.rfc-editor.org/rfc/rfc6265#section-4.1.1) allows visible ASCII in a cookie value, without the double quote, the comma, the semicolon, the backslash and whitespace. A `Value` that holds a character outside the grammar is not altered: the cookie is not set, as with an invalid name or `Domain`. The exceptions are the space and the comma, which many applications use: a value with either is written inside double quotes, as `net/http` does (`Value: "hello world"` is sent as `n="hello world"`), and so is a value that already starts and ends with a double quote. The quotes frame the value and are not part of it, so `GetCookie` and the `Cookies` of the request that carries the cookie back return `hello world`.
+
+Quoted spaces and commas are widely accepted but are not strictly what the grammar allows. A strict parser can drop them, so percent-encode a value that has to travel through one, for example with `url.QueryEscape`, and decode it when you read it.
+:::
+
 :::info
 When setting a cookie with `SameSite=None`, Fiber automatically sets `Secure=true` as required by RFC 6265bis and modern browsers. This ensures compliance with the "None" SameSite policy which mandates that cookies must be sent over secure connections.
 
@@ -3778,7 +3802,8 @@ type SendFile struct {
   // Optional. Default: false
   Compress bool `json:"compress"`
 
-  // When set to true, enables byte range requests.
+  // When set to true, enables byte range requests. A request for several
+  // ranges, or whose If-Range does not match, gets the whole file.
   //
   // Optional. Default: false
   ByteRange bool `json:"byte_range"`
@@ -3843,6 +3868,15 @@ app.Get("/files/:name", func(c fiber.Ctx) error {
 })
 ```
 
+:::
+
+:::info Byte ranges
+With `ByteRange` on, the file server answers one range of a `GET` request: `Range: bytes=0-499`, `bytes=500-` or `bytes=-500`, with `206 Partial Content`, `Content-Range` and `Accept-Ranges: bytes`. [RFC 9110 §13.1.5 and §14.2](https://www.rfc-editor.org/rfc/rfc9110#section-14.2) say what else a server does with the field, and Fiber applies it around that single range:
+
+- The unit is case-insensitive, so `Range: Bytes=0-499` is a range.
+- A request for **several ranges** (`bytes=0-499,1000-1499`), with a **unit the server does not know**, or with a method other than `GET` (`HEAD` included) is answered with the whole file, as if it carried no `Range`. Several ranges used to be refused with `416`, a status that is for ranges that cannot be satisfied.
+- **`If-Range`** makes the range conditional on the file being the one the client holds. The range is served only when the date it carries is exactly the file's `Last-Modified`, and that time is at least two seconds old (the header has whole-second resolution, and a younger file may still change within the second it names); when the file has changed, the whole file is sent instead of a piece that would be spliced onto the client's stale copy. An entity-tag matches only an `ETag` your handler set before calling `SendFile`: the file server sends none. A date cannot tell apart two versions written within the same second, so a file that is replaced in place while clients resume it should carry a strong `ETag`.
+- A range that cannot be satisfied is answered with `416 Range Not Satisfiable`, and with `Content-Range: bytes */<size>` for `SendFile`.
 :::
 
 :::info
@@ -3931,6 +3965,10 @@ If the provided stream implements `io.Closer`, it will be automatically closed b
 the response is fully sent or if an error occurs.
 :::
 
+:::caution HTTP/1.0 clients
+A stream of unknown size is sent with chunked framing, which a server must not do in response to a request older than HTTP/1.1 ([RFC 9112 §6.1](https://www.rfc-editor.org/rfc/rfc9112#section-6.1)). Fiber does it on purpose: the RFC's alternative, ending the body by closing the connection ([§6.3](https://www.rfc-editor.org/rfc/rfc9112#section-6.3)), is not something fasthttp offers, and reading the stream to its end before replying would hold the handler for as long as the stream lasts, with no way to tell that the client left. Proxies that speak HTTP/1.0 to their upstream, such as nginx before 1.29.7 unless `proxy_http_version 1.1` is set, are the usual source of such requests. Pass the size when you know it: a stream of known size is sent with a `Content-Length` as it is read, whatever the HTTP version.
+:::
+
 :::caution
 When passing `fiber.Ctx` as a `context.Context` to libraries that spawn goroutines (e.g., for streaming operations),
 those goroutines may attempt to access the context after the handler returns. Since `fiber.Ctx` is recycled and
@@ -3992,6 +4030,10 @@ app.Get("/", func (c fiber.Ctx) error {
 To send data before `streamWriter` returns, you can call `w.Flush()`
 on the provided writer. Otherwise, the buffered stream flushes after
 `streamWriter` returns.
+:::
+
+:::caution HTTP/1.0 clients
+The response is chunked, even for a request older than HTTP/1.1, for the reasons given under [`SendStream`](#sendstream). A client that cannot read a chunked response cannot be sent a stream of unknown size.
 :::
 
 :::note
@@ -4066,6 +4108,10 @@ Sets the HTTP status for the response.
 
 :::info
 This method is **chainable**.
+:::
+
+:::caution Status codes outside 100 to 999
+A status line carries three digits ([RFC 9112 §4](https://www.rfc-editor.org/rfc/rfc9112#section-4)), so a code below `100` or above `999` cannot be sent: `99` and `1000` would be malformed status lines that clients refuse, and `0` or a negative number would go out as `200 OK`, reporting a failure as a success. `Status` answers `500 Internal Server Error` for such a code and logs it, which also covers [`SendStatus`](#sendstatus), `Redirect().Status` and an error created with `fiber.NewError`. Codes from `600` to `999` are sent as given, although [RFC 9110 §15](https://www.rfc-editor.org/rfc/rfc9110#section-15) defines only `100` to `599` and clients treat the rest as a `5xx`.
 :::
 
 ```go title="Signature"
