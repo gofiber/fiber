@@ -1516,7 +1516,7 @@ func (r *DefaultRes) SendStream(stream io.Reader, size ...int) error {
 	}
 
 	if beforeHTTP11(&r.c.fasthttp.Request.Header) {
-		return r.sendBuffered(func(w io.Writer) error {
+		return sendBuffered(&r.c.fasthttp.Response, func(w io.Writer) error {
 			if stream == nil {
 				return nil
 			}
@@ -1541,7 +1541,7 @@ func (r *DefaultRes) SendStream(stream io.Reader, size ...int) error {
 // until then, so a writer that never ends needs HTTP/1.1.
 func (r *DefaultRes) SendStreamWriter(streamWriter func(*bufio.Writer)) error {
 	if beforeHTTP11(&r.c.fasthttp.Request.Header) {
-		return r.sendBuffered(func(w io.Writer) (err error) { //nolint:nonamedreturns // set by the deferred recover
+		return sendBuffered(&r.c.fasthttp.Response, func(w io.Writer) (err error) { //nolint:nonamedreturns // set by the deferred recover
 			// fasthttp contains writer panics; so does this.
 			defer func() {
 				if p := recover(); p != nil {
@@ -1573,14 +1573,13 @@ var errStreamTooLargeForHTTP10 = NewError(StatusInternalServerError,
 	"The response is a stream of unknown length that is too long to buffer for an HTTP/1.0 client; "+
 		"HTTP/1.1 is needed to stream it")
 
-// bufferLimit collects writes and fails past limit.
+// bufferLimit collects writes and fails past http10StreamLimit.
 type bufferLimit struct {
-	buf   []byte
-	limit int
+	buf []byte
 }
 
 func (b *bufferLimit) Write(p []byte) (int, error) {
-	if len(b.buf)+len(p) > b.limit {
+	if len(b.buf)+len(p) > http10StreamLimit {
 		return 0, errStreamBufferLimit
 	}
 	b.buf = append(b.buf, p...)
@@ -1588,8 +1587,9 @@ func (b *bufferLimit) Write(p []byte) (int, error) {
 }
 
 // sendBuffered sets what fill writes as the response body, up to http10StreamLimit.
-func (r *DefaultRes) sendBuffered(fill func(w io.Writer) error) error {
-	body := &bufferLimit{limit: http10StreamLimit}
+// It is a function, not a method, to keep it out of the Ctx interface.
+func sendBuffered(resp *fasthttp.Response, fill func(w io.Writer) error) error {
+	body := &bufferLimit{}
 	if err := fill(body); err != nil {
 		if errors.Is(err, errStreamBufferLimit) {
 			return errStreamTooLargeForHTTP10
@@ -1597,7 +1597,7 @@ func (r *DefaultRes) sendBuffered(fill func(w io.Writer) error) error {
 		return err
 	}
 
-	r.c.fasthttp.Response.SetBodyRaw(body.buf)
+	resp.SetBodyRaw(body.buf)
 	return nil
 }
 
