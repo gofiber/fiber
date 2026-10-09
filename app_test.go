@@ -4480,6 +4480,31 @@ func Test_App_ContentLengthWithTransferEncoding_ClosesConnection(t *testing.T) {
 		}
 	})
 
+	// fasthttp ignores "identity" and frames the request by its Content-Length, so
+	// the request is served as one without the field, but it still has both.
+	t.Run("identity is ignored and still closes", func(t *testing.T) {
+		t.Parallel()
+
+		for name, headers := range map[string]string{
+			"Content-Length first":    "Content-Length: 4\r\nTransfer-Encoding: identity\r\n\r\nabcd",
+			"Transfer-Encoding first": "Transfer-Encoding: identity\r\nContent-Length: 4\r\n\r\nabcd",
+			"lower-case names":        "content-length: 4\r\ntransfer-encoding: identity\r\n\r\nabcd",
+			"empty body":              "Content-Length: 0\r\nTransfer-Encoding: identity\r\n\r\n",
+		} {
+			t.Run(name, func(t *testing.T) {
+				t.Parallel()
+
+				raw := "POST / HTTP/1.1\r\nHost: example.com\r\n" + headers + second
+				responses, after := rawExchange(t, ln, raw, 1)
+
+				require.Equal(t, StatusOK, responses[0].status)
+				require.Equal(t, "first", responses[0].body)
+				require.True(t, responses[0].closes, "Connection: close expected")
+				require.Equal(t, connClosed, after, "the pipelined request must not be answered")
+			})
+		}
+	})
+
 	// Each header alone is ordinary traffic and keeps the connection alive.
 	t.Run("one header alone keeps the connection", func(t *testing.T) {
 		t.Parallel()

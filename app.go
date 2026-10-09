@@ -1878,7 +1878,7 @@ func (app *App) hookHeaderReceived() {
 	}
 	user := app.server.HeaderReceived
 	app.headerHook = func(header *fasthttp.RequestHeader) fasthttp.RequestConfig {
-		if header.ContentLength() == -1 && hasContentLengthField(header.RawHeaders()) {
+		if bothFramingFields(header) {
 			header.SetConnectionClose()
 		}
 		if user != nil {

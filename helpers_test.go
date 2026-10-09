@@ -5,6 +5,7 @@
 package fiber
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"crypto/tls"
@@ -1927,13 +1928,14 @@ func Test_sameFunc(t *testing.T) {
 	require.False(t, sameFunc(nil, nil))
 }
 
-func Test_hasContentLengthField(t *testing.T) {
+func Test_hasHeaderField(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name string
-		raw  string
-		want bool
+		name  string
+		raw   string
+		field string // HeaderContentLength when empty
+		want  bool
 	}{
 		{name: "empty", raw: "", want: false},
 		{name: "no fields", raw: "\r\n", want: false},
@@ -1952,24 +1954,86 @@ func Test_hasContentLengthField(t *testing.T) {
 		{name: "folded continuation line", raw: "Host: x\r\nX-Note: a\r\n Content-Length: 4\r\n\r\n", want: false},
 		{name: "name without a colon", raw: "Host: x\r\nContent-Length\r\n\r\n", want: false},
 		{name: "name only", raw: "Content-Length", want: false},
+		{name: "Transfer-Encoding", raw: "Host: x\r\nTransfer-Encoding: identity\r\n\r\n", field: HeaderTransferEncoding, want: true},
+		{name: "Transfer-Encoding lower case", raw: "Host: x\r\ntransfer-encoding: identity\r\n\r\n", field: HeaderTransferEncoding, want: true},
+		{name: "Transfer-Encoding absent", raw: "Host: x\r\nContent-Length: 4\r\n\r\n", field: HeaderTransferEncoding, want: false},
+		{name: "Transfer-Encoding longer name", raw: "Host: x\r\nX-Transfer-Encoding: chunked\r\n\r\n", field: HeaderTransferEncoding, want: false},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			require.Equal(t, tc.want, hasContentLengthField([]byte(tc.raw)))
+			field := tc.field
+			if field == "" {
+				field = HeaderContentLength
+			}
+			require.Equal(t, tc.want, hasHeaderField([]byte(tc.raw), field))
 		})
 	}
 }
 
-func Benchmark_hasContentLengthField(b *testing.B) {
+// fasthttp reports -1 for a chunked request, the Content-Length value for one it
+// frames by Content-Length ("identity" included) and -2 for neither; the field
+// that is not reflected in that is looked up in the header block.
+func Test_bothFramingFields(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		raw  string
+		want bool
+	}{
+		{name: "neither", raw: "GET / HTTP/1.1\r\nHost: x\r\n\r\n", want: false},
+		{name: "Content-Length only", raw: "POST / HTTP/1.1\r\nHost: x\r\nContent-Length: 4\r\n\r\nabcd", want: false},
+		{name: "chunked only", raw: "POST / HTTP/1.1\r\nHost: x\r\nTransfer-Encoding: chunked\r\n\r\n0\r\n\r\n", want: false},
+		{name: "identity only", raw: "POST / HTTP/1.1\r\nHost: x\r\nTransfer-Encoding: identity\r\n\r\n", want: false},
+		{name: "chunked after Content-Length", raw: "POST / HTTP/1.1\r\nHost: x\r\nContent-Length: 4\r\nTransfer-Encoding: chunked\r\n\r\n0\r\n\r\n", want: true},
+		{name: "chunked before Content-Length", raw: "POST / HTTP/1.1\r\nHost: x\r\nTransfer-Encoding: chunked\r\nContent-Length: 4\r\n\r\n0\r\n\r\n", want: true},
+		{name: "identity after Content-Length", raw: "POST / HTTP/1.1\r\nHost: x\r\nContent-Length: 4\r\nTransfer-Encoding: identity\r\n\r\nabcd", want: true},
+		{name: "identity before Content-Length", raw: "POST / HTTP/1.1\r\nHost: x\r\nTransfer-Encoding: identity\r\nContent-Length: 4\r\n\r\nabcd", want: true},
+		{name: "identity with an empty body", raw: "POST / HTTP/1.1\r\nHost: x\r\nContent-Length: 0\r\nTransfer-Encoding: identity\r\n\r\n", want: true},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			var h fasthttp.RequestHeader
+			require.NoError(t, h.Read(bufio.NewReader(strings.NewReader(tc.raw))))
+			require.Equal(t, tc.want, bothFramingFields(&h))
+		})
+	}
+}
+
+func Benchmark_hasHeaderField(b *testing.B) {
 	raw := []byte("Host: example.com\r\nUser-Agent: Go-http-client/1.1\r\nAccept: */*\r\nAccept-Encoding: gzip\r\nTransfer-Encoding: chunked\r\nContent-Length: 4\r\n\r\n")
 
 	b.ReportAllocs()
 	for b.Loop() {
-		if !hasContentLengthField(raw) {
+		if !hasHeaderField(raw, HeaderContentLength) {
 			b.Fatal("Content-Length field not found")
 		}
+	}
+}
+
+func Benchmark_bothFramingFields(b *testing.B) {
+	const fields = "Host: example.com\r\nUser-Agent: Go-http-client/1.1\r\nAccept: */*\r\nAccept-Encoding: gzip\r\n"
+	for _, tc := range []struct{ name, raw string }{
+		{"no body length", "GET / HTTP/1.1\r\n" + fields + "\r\n"},
+		{"Content-Length", "POST / HTTP/1.1\r\n" + fields + "Content-Length: 4\r\n\r\nabcd"},
+		{"chunked", "POST / HTTP/1.1\r\n" + fields + "Transfer-Encoding: chunked\r\n\r\n0\r\n\r\n"},
+	} {
+		b.Run(tc.name, func(b *testing.B) {
+			var h fasthttp.RequestHeader
+			require.NoError(b, h.Read(bufio.NewReader(strings.NewReader(tc.raw))))
+
+			b.ReportAllocs()
+			for b.Loop() {
+				if bothFramingFields(&h) {
+					b.Fatal("a single framing field was taken for both")
+				}
+			}
+		})
 	}
 }

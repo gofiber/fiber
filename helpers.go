@@ -1027,11 +1027,25 @@ func sameFunc(a, b func(*fasthttp.RequestHeader) fasthttp.RequestConfig) bool {
 	return a != nil && *(*unsafe.Pointer)(unsafe.Pointer(&a)) == *(*unsafe.Pointer)(unsafe.Pointer(&b)) //nolint:gosec // funcs are only comparable to nil
 }
 
-// hasContentLengthField reports whether raw, a request's header block, has a
-// Content-Length field line. fasthttp drops the value once Transfer-Encoding takes
-// over, so the block is the only place left to look. Whitespace before the colon
-// is not matched: fasthttp rejects that request.
-func hasContentLengthField(raw []byte) bool {
+// bothFramingFields reports whether a request carries Content-Length and
+// Transfer-Encoding (RFC 9112 §6.1). fasthttp keeps no trace of the second one in
+// the length it reports: chunked wins and the Content-Length value is dropped, and
+// "identity" is ignored, leaving the Content-Length framing.
+func bothFramingFields(h *fasthttp.RequestHeader) bool {
+	switch length := h.ContentLength(); {
+	case length == -1: // chunked
+		return hasHeaderField(h.RawHeaders(), HeaderContentLength)
+	case length >= 0: // framed by Content-Length
+		return hasHeaderField(h.RawHeaders(), HeaderTransferEncoding)
+	}
+	return false // -2: neither field
+}
+
+// hasHeaderField reports whether raw, a request's header block, has a line for the
+// field name, which is the only place left to look for what fasthttp drops or
+// ignores. Whitespace before the colon is not matched: fasthttp rejects that
+// request.
+func hasHeaderField(raw []byte, name string) bool {
 	for len(raw) > 0 {
 		line := raw
 		if i := bytes.IndexByte(raw, '\n'); i >= 0 {
@@ -1039,8 +1053,8 @@ func hasContentLengthField(raw []byte) bool {
 		} else {
 			raw = nil
 		}
-		if len(line) > len(HeaderContentLength) && line[len(HeaderContentLength)] == ':' &&
-			utils.EqualFold(utils.UnsafeString(line[:len(HeaderContentLength)]), HeaderContentLength) {
+		if len(line) > len(name) && line[len(name)] == ':' &&
+			utils.EqualFold(utils.UnsafeString(line[:len(name)]), name) {
 			return true
 		}
 	}
