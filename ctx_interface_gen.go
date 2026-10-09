@@ -735,18 +735,8 @@ type Ctx interface {
 	// This means no type assertion, recommended for faster performance
 	SendString(body string) error
 	// SendStream sets response body stream and optional body size.
-	//
-	// Chunked framing is not allowed for a request older than HTTP/1.1 (RFC 9112
-	// §6.1), so for one a stream of unknown size is read before the handler returns
-	// and sent with a Content-Length. Past 256 KiB that is a 500: pass the size to
-	// send the stream unbuffered.
 	SendStream(stream io.Reader, size ...int) error
-	// SendStreamWriter sets response body stream writer.
-	//
-	// For a request older than HTTP/1.1 the writer runs before the handler returns,
-	// into a buffer sent with a Content-Length (RFC 9112 §6.1). Past 256 KiB its
-	// Flush fails and the response is a 500. A client that leaves goes unnoticed
-	// until then, so a writer that never ends needs HTTP/1.1.
+	// SendStreamWriter sets response body stream writer
 	SendStreamWriter(streamWriter func(*bufio.Writer)) error
 	// Set sets the response's HTTP header field to the specified key, value.
 	Set(key, val string)

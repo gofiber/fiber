@@ -3,7 +3,6 @@ package fiber
 import (
 	"bufio"
 	"bytes"
-	"errors"
 	"fmt"
 	"html/template"
 	"io"
@@ -24,7 +23,6 @@ import (
 	"github.com/gofiber/fiber/v3/internal/fieldname"
 	"github.com/gofiber/fiber/v3/internal/headerlist"
 	"github.com/gofiber/fiber/v3/internal/quotedstring"
-	"github.com/gofiber/fiber/v3/log"
 	"github.com/gofiber/utils/v2"
 	"github.com/valyala/bytebufferpool"
 	"github.com/valyala/fasthttp"
@@ -1504,100 +1502,20 @@ func (r *DefaultRes) SendString(body string) error {
 }
 
 // SendStream sets response body stream and optional body size.
-//
-// Chunked framing is not allowed for a request older than HTTP/1.1 (RFC 9112
-// §6.1), so for one a stream of unknown size is read before the handler returns
-// and sent with a Content-Length. Past 256 KiB that is a 500: pass the size to
-// send the stream unbuffered.
 func (r *DefaultRes) SendStream(stream io.Reader, size ...int) error {
 	if len(size) > 0 && size[0] >= 0 {
 		r.c.fasthttp.Response.SetBodyStream(stream, size[0])
-		return nil
+	} else {
+		r.c.fasthttp.Response.SetBodyStream(stream, -1)
 	}
 
-	if beforeHTTP11(&r.c.fasthttp.Request.Header) {
-		return sendBuffered(&r.c.fasthttp.Response, func(w io.Writer) error {
-			if stream == nil {
-				return nil
-			}
-			// fasthttp closes streams it sends; this one is not sent.
-			if closer, ok := stream.(io.Closer); ok {
-				defer closer.Close() //nolint:errcheck // nothing to do about it
-			}
-			_, err := io.Copy(w, stream)
-			return err //nolint:wrapcheck // the caller's own error
-		})
-	}
-
-	r.c.fasthttp.Response.SetBodyStream(stream, -1)
 	return nil
 }
 
-// SendStreamWriter sets response body stream writer.
-//
-// For a request older than HTTP/1.1 the writer runs before the handler returns,
-// into a buffer sent with a Content-Length (RFC 9112 §6.1). Past 256 KiB its
-// Flush fails and the response is a 500. A client that leaves goes unnoticed
-// until then, so a writer that never ends needs HTTP/1.1.
+// SendStreamWriter sets response body stream writer
 func (r *DefaultRes) SendStreamWriter(streamWriter func(*bufio.Writer)) error {
-	if beforeHTTP11(&r.c.fasthttp.Request.Header) {
-		return sendBuffered(&r.c.fasthttp.Response, func(w io.Writer) (err error) { //nolint:nonamedreturns // set by the deferred recover
-			// fasthttp contains writer panics; so does this.
-			defer func() {
-				if p := recover(); p != nil {
-					log.Errorf("fiber: stream writer panicked: %v", p)
-					err = ErrInternalServerError
-				}
-			}()
-			buffered := bufio.NewWriter(w)
-			streamWriter(buffered)
-			return buffered.Flush()
-		})
-	}
-
 	r.c.fasthttp.Response.SetBodyStreamWriter(fasthttp.StreamWriter(streamWriter))
-	return nil
-}
 
-// http10StreamLimit is how much of a stream SendStream and SendStreamWriter
-// buffer for a request older than HTTP/1.1. It is kept small because the buffer
-// is held for as long as the stream takes, and docs/api/ctx.md names its size.
-const http10StreamLimit = 256 << 10
-
-var errStreamBufferLimit = errors.New("stream exceeds the buffer limit")
-
-// errStreamTooLargeForHTTP10 answers a request older than HTTP/1.1 for a stream
-// too long to buffer. It is a 500 and not a 505, which RFC 9110 §15.6.6 defines
-// for a major version the server refuses: HTTP/1.x is served, the stream is not.
-var errStreamTooLargeForHTTP10 = NewError(StatusInternalServerError,
-	"The response is a stream of unknown length that is too long to buffer for an HTTP/1.0 client; "+
-		"HTTP/1.1 is needed to stream it")
-
-// bufferLimit collects writes and fails past http10StreamLimit.
-type bufferLimit struct {
-	buf []byte
-}
-
-func (b *bufferLimit) Write(p []byte) (int, error) {
-	if len(b.buf)+len(p) > http10StreamLimit {
-		return 0, errStreamBufferLimit
-	}
-	b.buf = append(b.buf, p...)
-	return len(p), nil
-}
-
-// sendBuffered sets what fill writes as the response body, up to http10StreamLimit.
-// It is a function, not a method, to keep it out of the Ctx interface.
-func sendBuffered(resp *fasthttp.Response, fill func(w io.Writer) error) error {
-	body := &bufferLimit{}
-	if err := fill(body); err != nil {
-		if errors.Is(err, errStreamBufferLimit) {
-			return errStreamTooLargeForHTTP10
-		}
-		return err
-	}
-
-	resp.SetBodyRaw(body.buf)
 	return nil
 }
 

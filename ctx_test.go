@@ -10288,41 +10288,6 @@ func Test_Ctx_SendStreamWriter(t *testing.T) {
 	require.Empty(t, c.Response().Body())
 }
 
-// Only a request older than HTTP/1.1 gets its stream buffered (RFC 9112 §6.1).
-// go test -run Test_Ctx_SendStream_Protocols
-func Test_Ctx_SendStream_Protocols(t *testing.T) {
-	t.Parallel()
-
-	for protocol, buffered := range map[string]bool{
-		"HTTP/1.0": true,
-		"HTTP/1.1": false,
-		"HTTP/1.2": false,
-		"HTTP/2":   false,
-		"HTTP/3":   false,
-	} {
-		t.Run(protocol, func(t *testing.T) {
-			t.Parallel()
-
-			app := New()
-			c := app.AcquireCtx(&fasthttp.RequestCtx{})
-			t.Cleanup(func() { app.ReleaseCtx(c) })
-			c.Request().Header.SetProtocol(protocol)
-
-			require.NoError(t, c.SendStream(strings.NewReader("stream")))
-			require.Equal(t, !buffered, c.Response().IsBodyStream())
-
-			c.Response().ResetBody()
-			require.NoError(t, c.SendStreamWriter(func(w *bufio.Writer) { _, _ = w.WriteString("writer") })) //nolint:errcheck // a bufio.Writer over a buffer
-			require.Equal(t, !buffered, c.Response().IsBodyStream())
-
-			// A nil stream is an empty body whichever way it is sent.
-			c.Response().ResetBody()
-			require.NotPanics(t, func() { require.NoError(t, c.SendStream(nil)) })
-			require.Empty(t, c.Response().Body())
-		})
-	}
-}
-
 // go test -run Test_Ctx_SendStreamWriter_Interrupted
 func Test_Ctx_SendStreamWriter_Interrupted(t *testing.T) {
 	t.Parallel()

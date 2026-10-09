@@ -1159,17 +1159,6 @@ func (app *App) method(methodInt int) string {
 	return app.config.RequestMethods[methodInt]
 }
 
-// beforeHTTP11 reports whether the request was made with a version older than
-// HTTP/1.1, which must not be sent Transfer-Encoding (RFC 9112 §6.1). Later ones
-// may stream, including the "HTTP/2" and "HTTP/3" that the net/http adaptor sets.
-func beforeHTTP11(h *fasthttp.RequestHeader) bool {
-	p := h.Protocol() // "HTTP/d.d", "HTTP/1.1" when unset
-	if len(p) != len("HTTP/1.1") || p[6] != '.' {
-		return false
-	}
-	return p[5] < '1' || (p[5] == '1' && p[7] < '1')
-}
-
 // The status line carries three digits (RFC 9112 §4). RFC 9110 §15 only defines
 // 100..599, but 600..999 is still well-formed, so it is let through.
 const (

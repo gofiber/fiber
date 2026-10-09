@@ -3966,7 +3966,7 @@ the response is fully sent or if an error occurs.
 :::
 
 :::caution HTTP/1.0 clients
-A stream of unknown size can only be sent with chunked framing, which a server must not send to a request older than HTTP/1.1 ([RFC 9112 §6.1](https://www.rfc-editor.org/rfc/rfc9112#section-6.1)). For such a request, `SendStream` therefore reads the stream to its end **before it returns**, closes it if it implements `io.Closer`, and sends it with a `Content-Length`. The stream is held in memory up to 256 KiB, whatever [`BodyLimit`](./fiber.md#bodylimit) says; a longer one is answered with `500 Internal Server Error` and a message that says why. Pass the size when you know it: a stream of known size is sent as it is read, whatever the HTTP version. Requests with HTTP/1.1 or later, HTTP/2 and HTTP/3 behind the net/http adaptor included, are not affected.
+A stream of unknown size is sent with chunked framing, which a server must not do in response to a request older than HTTP/1.1 ([RFC 9112 §6.1](https://www.rfc-editor.org/rfc/rfc9112#section-6.1)). Fiber does it on purpose: the RFC's alternative, ending the body by closing the connection ([§6.3](https://www.rfc-editor.org/rfc/rfc9112#section-6.3)), is not something fasthttp offers, and reading the stream to its end before replying would hold the handler for as long as the stream lasts, with no way to tell that the client left. Proxies that speak HTTP/1.0 to their upstream, such as nginx before 1.29.7 unless `proxy_http_version 1.1` is set, are the usual source of such requests. Pass the size when you know it: a stream of known size is sent with a `Content-Length` as it is read, whatever the HTTP version.
 :::
 
 :::caution
@@ -4033,7 +4033,7 @@ on the provided writer. Otherwise, the buffered stream flushes after
 :::
 
 :::caution HTTP/1.0 clients
-The response is chunked, which a server must not send to a request older than HTTP/1.1 ([RFC 9112 §6.1](https://www.rfc-editor.org/rfc/rfc9112#section-6.1)). For such a request, `streamWriter` runs **before `SendStreamWriter` returns**, into a buffer of up to 256 KiB, and the response carries a `Content-Length`. A writer that produces more sees its `Flush` fail and the response is `500 Internal Server Error`. Nothing is sent before the writer returns, and a client that leaves goes unnoticed until then, so a stream that has to reach the client as it is produced, such as server-sent events, needs HTTP/1.1. Requests with HTTP/1.1 or later, HTTP/2 and HTTP/3 behind the net/http adaptor included, are not affected.
+The response is chunked, even for a request older than HTTP/1.1, for the reasons given under [`SendStream`](#sendstream). A client that cannot read a chunked response cannot be sent a stream of unknown size.
 :::
 
 :::note

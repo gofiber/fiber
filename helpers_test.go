@@ -1973,28 +1973,3 @@ func Benchmark_hasContentLengthField(b *testing.B) {
 		}
 	}
 }
-
-func Test_beforeHTTP11(t *testing.T) {
-	t.Parallel()
-
-	for protocol, want := range map[string]bool{
-		"":         false, // unset reads as HTTP/1.1
-		"HTTP/0.9": true,
-		"HTTP/1.0": true,
-		"HTTP/1.1": false,
-		"HTTP/1.2": false,
-		"HTTP/2.0": false,
-		"HTTP/2":   false, // what the net/http adaptor sets
-		"HTTP/3":   false,
-	} {
-		t.Run(protocol, func(t *testing.T) {
-			t.Parallel()
-
-			var h fasthttp.RequestHeader
-			if protocol != "" {
-				h.SetProtocol(protocol)
-			}
-			require.Equal(t, want, beforeHTTP11(&h))
-		})
-	}
-}
