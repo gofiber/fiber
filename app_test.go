@@ -4503,15 +4503,21 @@ func Test_App_ContentLengthWithTransferEncoding_ClosesConnection(t *testing.T) {
 }
 
 // The close hook must keep the application's HeaderReceived callback and its limits,
-// whether it is set before the app starts or in ListenConfig.BeforeServeFunc.
+// whether it is set before the app starts or in ListenConfig.BeforeServeFunc, and
+// whether or not an earlier Test has already installed the hook.
 func Test_App_ContentLengthWithTransferEncoding_KeepsUserHeaderReceived(t *testing.T) {
 	t.Parallel()
 
-	for name, inBeforeServe := range map[string]bool{
-		"set before start":     false,
-		"set in BeforeServeFn": true,
+	for _, tc := range []struct {
+		name          string
+		inBeforeServe bool
+		testFirst     bool
+	}{
+		{name: "set before start"},
+		{name: "set in BeforeServeFunc", inBeforeServe: true},
+		{name: "set in BeforeServeFunc after Test", inBeforeServe: true, testFirst: true},
 	} {
-		t.Run(name, func(t *testing.T) {
+		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
 			app := New()
@@ -4527,8 +4533,14 @@ func Test_App_ContentLengthWithTransferEncoding_KeepsUserHeaderReceived(t *testi
 				return fasthttp.RequestConfig{MaxRequestBodySize: 8}
 			}
 
+			if tc.testFirst {
+				resp, err := app.Test(httptest.NewRequest(MethodPost, "/", http.NoBody))
+				require.NoError(t, err)
+				require.NoError(t, resp.Body.Close())
+			}
+
 			var beforeServe func(*App) error
-			if inBeforeServe {
+			if tc.inBeforeServe {
 				beforeServe = func(app *App) error {
 					app.Server().HeaderReceived = callback
 					return nil

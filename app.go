@@ -127,8 +127,9 @@ type App struct {
 	// contains the information if the route stack has been changed to build the optimized tree
 	hasRoutesRefreshed bool
 	connStateHooked    bool
-	// headerReceivedHooked marks hookHeaderReceived as done
-	headerReceivedHooked bool
+	// testHeaderHook installs the header hook on the first Test, which runs again
+	// and again on one server
+	testHeaderHook sync.Once
 	// hasCustomCtx tracks whether app uses a custom context implementation
 	hasCustomCtx bool
 	// hasParamRoutes tracks whether any route consults the per-request slash
@@ -1503,7 +1504,7 @@ func (app *App) Test(req *http.Request, config ...TestConfig) (*http.Response, e
 	}
 	// prepare the server for the start
 	app.startupProcess()
-	app.hookHeaderReceived()
+	app.testHeaderHook.Do(app.hookHeaderReceived)
 
 	// Serve conn to server
 	channel := make(chan error, 1)
@@ -1864,16 +1865,15 @@ func (app *App) hookConnState() {
 // carries both Content-Length and Transfer-Encoding (RFC 9112 §6.1), keeping a
 // user HeaderReceived callback. It must run before the body is decoded: after that
 // fasthttp has replaced the length and dropped the Content-Length value. Call it
-// right before the server serves, so that a callback set up to then, in
-// ListenConfig.BeforeServeFunc too, is kept. Idempotent.
+// right before the server serves: it wraps the callback set by then, in
+// ListenConfig.BeforeServeFunc too, and one replaced since an earlier start.
 func (app *App) hookHeaderReceived() {
 	app.mutex.Lock()
 	defer app.mutex.Unlock()
 
-	if app.headerReceivedHooked || app.server == nil {
+	if app.server == nil {
 		return
 	}
-	app.headerReceivedHooked = true
 	user := app.server.HeaderReceived
 	app.server.HeaderReceived = func(header *fasthttp.RequestHeader) fasthttp.RequestConfig {
 		if header.ContentLength() == -1 && hasContentLengthField(header.RawHeaders()) {
