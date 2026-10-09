@@ -709,8 +709,10 @@ func (*DefaultCtx) Error(status int, message ...string) error {
 
 // Status sets the HTTP status for the response.
 // This method is chainable.
+//
+// A status outside 100 to 999 is logged and replaced by 500.
 func (c *DefaultCtx) Status(status int) Ctx {
-	c.fasthttp.Response.SetStatusCode(status)
+	c.fasthttp.Response.SetStatusCode(validStatus(status))
 	return c
 }
 

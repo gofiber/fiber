@@ -64,9 +64,20 @@ func (r *DefaultReq) AcceptsCharsets(offers ...string) string {
 }
 
 // AcceptsEncodings checks if the specified encoding is acceptable.
+//
+// Per RFC 9110 §12.5.3, a missing Accept-Encoding accepts any coding (the first
+// offer wins), an empty one only "identity", and "identity" is acceptable unless
+// the field excludes it with q=0.
 func (r *DefaultReq) AcceptsEncodings(offers ...string) string {
-	header := peekJoinedRequestHeader(&r.c.fasthttp.Request.Header, HeaderAcceptEncoding)
-	return getOffer(header, acceptsOffer, offers...)
+	header, present := lookupJoinedRequestHeader(&r.c.fasthttp.Request.Header, HeaderAcceptEncoding)
+	if len(header) == 0 && len(offers) > 0 {
+		// Nothing to weigh, but an absent field and a present, empty one differ.
+		if !present {
+			return offers[0]
+		}
+		return identityOffer(offers)
+	}
+	return getEncodingOffer(header, offers)
 }
 
 // AcceptsLanguages checks if the specified language is acceptable using

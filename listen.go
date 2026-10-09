@@ -322,6 +322,7 @@ func (app *App) Listen(addr string, config ...ListenConfig) error {
 			return err
 		}
 	}
+	app.hookHeaderReceived()
 
 	served = true
 	return app.server.Serve(ln)
@@ -458,6 +459,7 @@ func (app *App) Listener(ln net.Listener, config ...ListenConfig) error {
 	if cfg.EnablePrefork {
 		log.Warn("Prefork isn't supported for custom listeners.")
 	}
+	app.hookHeaderReceived()
 
 	return app.server.Serve(ln)
 }
