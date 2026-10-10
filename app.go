@@ -22,10 +22,12 @@ import (
 	"reflect"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 	"unsafe"
 
 	"github.com/gofiber/utils/v2"
+	utilsstrings "github.com/gofiber/utils/v2/strings"
 	"github.com/valyala/fasthttp"
 
 	"github.com/gofiber/fiber/v3/binder"
@@ -35,6 +37,34 @@ import (
 
 // Version of current fiber package
 const Version = "3.5.0"
+
+const (
+	openapiRefKey     = "$ref"
+	openapiTypeString = "string"
+)
+
+// Parameter locations accepted by the documentation helpers. "querystring" is the
+// whole query string as one value (OpenAPI 3.2).
+const (
+	ParamInPath        ParamLocation = "path"
+	ParamInQuery       ParamLocation = "query"
+	ParamInHeader      ParamLocation = "header"
+	ParamInCookie      ParamLocation = "cookie"
+	ParamInQuerystring ParamLocation = "querystring"
+)
+
+// ParamLocation is where a documented parameter is read from. Use the ParamIn constants.
+type ParamLocation string
+
+// Normalize trims and lower-cases a location, so "Query " reads as "query".
+func (l ParamLocation) Normalize() ParamLocation {
+	return ParamLocation(utilsstrings.ToLower(utils.TrimSpace(string(l))))
+}
+
+const defaultResponseKey = "default"
+
+// smallIndexMax is the name count up to which scanning a slice beats hashing.
+const smallIndexMax = 8
 
 // Handler defines a function to serve HTTP requests.
 type Handler = func(Ctx) error
@@ -85,8 +115,8 @@ type App struct {
 	toString func(b []byte) string
 	// Hooks
 	hooks *Hooks
-	// Latest route & group
-	latestRoute *Route
+	// regEntries maps a registration id to its live stack entries. Guarded by mutex.
+	regEntries map[uint64][]*Route
 	// newCtxFunc
 	newCtxFunc func(app *App) CustomCtx
 	// TLS handler
@@ -100,6 +130,8 @@ type App struct {
 	// headerHook is the HeaderReceived callback hookHeaderReceived installed, kept
 	// to tell it from one set since
 	headerHook func(*fasthttp.RequestHeader) fasthttp.RequestConfig
+	// namedRoutes is the by-name route view, rebuilt when routesRevision moves.
+	namedRoutes atomic.Pointer[namedRouteIndex]
 	// Route stack divided by HTTP methods
 	stack [][]*Route
 	// customConstraints is a list of external constraints
@@ -122,6 +154,8 @@ type App struct {
 	skip             skipRouteIndex
 	autoHeadRouteID  uint64
 	autoHeadStackLen int
+	latestRegID      uint64
+	routesRevision   atomic.Uint64
 	// sendfilesMutex is a mutex used for sendfile operations
 	sendfilesMutex sync.RWMutex
 	mutex          sync.Mutex
@@ -736,7 +770,6 @@ func New(config ...Config) *App {
 		// Create config
 		config:        Config{},
 		toString:      utils.UnsafeString,
-		latestRoute:   &Route{},
 		customBinders: []CustomBinder{},
 		sendfiles:     []*sendFileStore{},
 	}
@@ -1009,66 +1042,50 @@ func (app *App) SetTLSHandler(tlsHandler *TLSHandler) {
 // Name Assign name to specific route.
 func (app *App) Name(name string) Router {
 	app.mutex.Lock()
-	defer app.mutex.Unlock()
+	named := app.nameRegistrationLocked(app.latestRegID, name)
+	app.mutex.Unlock()
 
-	for _, routes := range app.stack {
-		for _, route := range routes {
-			// The shared registration id covers every method of a multi-method
-			// Add, and only those: matching on the method as well would rename
-			// an older route that merely shares the path, and would do it only
-			// when the registration happened to finish on that method. It is
-			// latestID rather than id because a method whose route the
-			// registration merged into keeps the id of the registration that
-			// created it.
-			isMethodValid := route.latestID == app.latestRoute.latestID ||
-				app.latestRoute.use ||
-				(app.latestRoute.Method == MethodGet && route.Method == MethodHead)
-
-			if route.Path == app.latestRoute.Path && isMethodValid {
-				route.Name = name
-				if route.group != nil {
-					route.Name = route.group.name + route.Name
-				}
-			}
-		}
-	}
-
-	if err := app.hooks.executeOnNameHooks(app.latestRoute); err != nil {
-		panic(err)
-	}
-
+	app.fireOnNameHooks(named)
 	return app
 }
 
-// GetRoute Get route by name
-func (app *App) GetRoute(name string) Route {
-	for _, routes := range app.stack {
-		for _, route := range routes {
-			if route.Name == name {
-				return *route
-			}
-		}
-	}
-
-	return Route{}
-}
-
 // GetRoutes Get all routes. When filterUseOption equal to true, it will filter the routes registered by the middleware.
+// The returned routes are copies whose documentation metadata is cloned; Handlers and Params
+// still share their backing arrays with the app and must not be modified.
 func (app *App) GetRoutes(filterUseOption ...bool) []Route {
-	var rs []Route
 	var filterUse bool
 	if len(filterUseOption) != 0 {
 		filterUse = filterUseOption[0]
 	}
+
+	app.mutex.Lock()
+	defer app.mutex.Unlock()
+
+	n := 0
+	for _, routes := range app.stack {
+		n += len(routes)
+	}
+	rs := make([]Route, 0, n)
 	for _, routes := range app.stack {
 		for _, route := range routes {
 			if filterUse && route.use {
 				continue
 			}
-			rs = append(rs, *route)
+			// Filled in place to avoid moving the large Route struct twice.
+			rs = append(rs, Route{})
+			app.copyRouteInto(&rs[len(rs)-1], route)
 		}
 	}
 	return rs
+}
+
+// RoutesRevision returns a counter bumped on every route change, for lock-free staleness checks.
+func (app *App) RoutesRevision() uint64 {
+	return app.routesRevision.Load()
+}
+
+func (app *App) bumpRoutesRevision() {
+	app.routesRevision.Add(1)
 }
 
 // Use registers a middleware route that will match requests
@@ -1126,7 +1143,7 @@ func (app *App) Use(args ...any) Router {
 			continue
 		}
 
-		app.register([]string{methodUse}, prefix, nil, handlers...)
+		app.register([]string{methodUse}, prefix, nil, "", handlers...)
 	}
 
 	return app
@@ -1195,7 +1212,7 @@ func (app *App) Query(path string, handler any, handlers ...any) Router {
 // The provided handlers are executed in order, starting with `handler` and then the variadic `handlers`.
 func (app *App) Add(methods []string, path string, handler any, handlers ...any) Router {
 	converted := collectHandlers("add", append([]any{handler}, handlers...)...)
-	app.register(methods, path, nil, converted...)
+	app.register(methods, path, nil, "", converted...)
 
 	return app
 }
@@ -1213,7 +1230,8 @@ func (app *App) Group(prefix string, handlers ...any) Router {
 	grp := &Group{Prefix: prefix, app: app}
 	if len(handlers) > 0 {
 		converted := collectHandlers("group", handlers...)
-		app.register([]string{methodUse}, prefix, grp, converted...)
+		// The middleware belongs to the group so chained helpers reach it.
+		atomic.StoreUint64(&grp.lastRegID, app.register([]string{methodUse}, prefix, grp, "", converted...))
 	}
 	if err := app.hooks.executeOnGroupHooks(*grp); err != nil {
 		panic(err)
@@ -1396,6 +1414,7 @@ func (app *App) ShutdownWithTimeout(timeout time.Duration) error {
 //
 // ShutdownWithContext does not close keepalive connections so its recommended to set ReadTimeout to something else than 0.
 func (app *App) ShutdownWithContext(ctx context.Context) error {
+	// Do not hold app.mutex across the shutdown wait: in-flight handlers may take it and deadlock.
 	app.mutex.Lock()
 	server := app.server
 	app.mutex.Unlock()
@@ -1404,12 +1423,9 @@ func (app *App) ShutdownWithContext(ctx context.Context) error {
 		return ErrNotRunning
 	}
 
-	// The drain waits for in-flight handlers, so the mutex must not be held
-	// meanwhile: a handler taking it (RebuildTree, Name, ...) would never finish.
-	var err error
-
-	// Execute the Shutdown hook
 	app.hooks.executeOnPreShutdownHooks()
+
+	var err error
 	// Use a closure so the hooks receive the final error; a plain
 	// `defer ...(err)` would capture the nil value at registration time.
 	defer func() { app.hooks.executeOnPostShutdownHooks(err) }()
@@ -1811,22 +1827,37 @@ func (app *App) serverErrorHandler(fctx *fasthttp.RequestCtx, err error) {
 // startupProcess Is the method which executes all the necessary processes just before the start of the server.
 func (app *App) startupProcess() {
 	app.mutex.Lock()
-	defer app.mutex.Unlock()
 
 	app.hookConnState()
 	// Collect every mounted app first, nested ones included, so all get their automatic HEAD routes.
 	app.collectSubApps()
-	app.ensureAutoHeadRoutesLocked()
+	twins := app.ensureAutoHeadRoutesLocked()
+	var subTwins []subAppTwins
 	for prefix, subApp := range app.mountFields.appList {
 		if prefix == "" {
 			continue
 		}
-		subApp.ensureAutoHeadRoutes()
+		if created := subApp.ensureAutoHeadRoutes(); len(created) > 0 {
+			subTwins = append(subTwins, subAppTwins{app: subApp, twins: created})
+		}
 	}
 	app.mountStartupProcess()
 
 	// build route tree stack
 	app.buildTree()
+
+	// Fire hooks after unlocking so they may call locking app methods, sub-apps' included.
+	app.mutex.Unlock()
+	app.fireOnRouteHooks(twins)
+	for _, sub := range subTwins {
+		sub.app.fireOnRouteHooks(sub.twins)
+	}
+}
+
+// subAppTwins pairs a mounted app with the HEAD routes created for it at startup.
+type subAppTwins struct {
+	app   *App
+	twins []*Route
 }
 
 // hookConnState makes the server report new and closed connections to the TLS
