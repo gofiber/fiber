@@ -218,7 +218,7 @@ func Test_OpenAPI_RouteMetadata(t *testing.T) {
 	require.True(t, op.Deprecated)
 	require.Len(t, op.Parameters, 1)
 	require.Equal(t, "trace-id", op.Parameters[0].Name)
-	require.Equal(t, "header", op.Parameters[0].In)
+	require.Equal(t, fiber.ParamInHeader, op.Parameters[0].In)
 	require.Equal(t, "Tracing identifier", op.Parameters[0].Description)
 }
 
@@ -1409,7 +1409,7 @@ func Test_OpenAPI_ParameterEdgeCases(t *testing.T) {
 	op := spec.Paths["/test/{id}"]["get"]
 	require.Len(t, op.Parameters, 1)
 	require.Equal(t, "id", op.Parameters[0].Name)
-	require.Equal(t, "path", op.Parameters[0].In)
+	require.Equal(t, fiber.ParamInPath, op.Parameters[0].In)
 	require.True(t, op.Parameters[0].Required)
 }
 
@@ -3336,8 +3336,8 @@ func Test_mergeRouteParameters_Internal(t *testing.T) {
 		{Name: "h", In: "Header"},
 	}, nil)
 	require.Len(t, out, 2)
-	require.Equal(t, "query", out[0].In)
-	require.Equal(t, "header", out[1].In)
+	require.Equal(t, fiber.ParamInQuery, out[0].In)
+	require.Equal(t, fiber.ParamInHeader, out[1].In)
 }
 
 func Test_remapRouteParameters_DropsUnknownPathParam(t *testing.T) {

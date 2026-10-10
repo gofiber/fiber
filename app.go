@@ -45,12 +45,15 @@ const (
 // Parameter locations accepted by the documentation helpers. "querystring" is the
 // whole query string as one value (OpenAPI 3.2).
 const (
-	ParamInPath        = "path"
-	ParamInQuery       = "query"
-	ParamInHeader      = "header"
-	ParamInCookie      = "cookie"
-	ParamInQuerystring = "querystring"
+	ParamInPath        ParamLocation = "path"
+	ParamInQuery       ParamLocation = "query"
+	ParamInHeader      ParamLocation = "header"
+	ParamInCookie      ParamLocation = "cookie"
+	ParamInQuerystring ParamLocation = "querystring"
 )
+
+// ParamLocation is where a documented parameter is read from. Use the ParamIn constants.
+type ParamLocation string
 
 const defaultResponseKey = "default"
 

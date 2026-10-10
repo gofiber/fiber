@@ -83,12 +83,12 @@ func (grp *Group) RequestBodyWithExample(description string, required bool, sche
 }
 
 // Parameter documents an input parameter for the most recently added route in the group.
-func (grp *Group) Parameter(name, in string, required bool, schema any, description string) Router {
+func (grp *Group) Parameter(name string, in ParamLocation, required bool, schema any, description string) Router {
 	return grp.ParameterWithExample(name, in, required, schema, "", description, nil, nil)
 }
 
 // ParameterWithExample documents an input parameter for the most recently added route in the group with schema references and examples.
-func (grp *Group) ParameterWithExample(name, in string, required bool, schema any, schemaRef, description string, example any, examples map[string]any) Router {
+func (grp *Group) ParameterWithExample(name string, in ParamLocation, required bool, schema any, schemaRef, description string, example any, examples map[string]any) Router {
 	return grp.AddParameter(newRouteParameter(name, in, required, schema, schemaRef, description, example, examples))
 }
 
@@ -138,7 +138,7 @@ func (grp *Group) Returns(status int, model any, mediaTypes ...string) Router {
 }
 
 // Params documents the fields of model as parameters; see App.Params.
-func (grp *Group) Params(in string, model any) Router {
+func (grp *Group) Params(in ParamLocation, model any) Router {
 	return grp.document(docAddParameterModel(in, model))
 }
 

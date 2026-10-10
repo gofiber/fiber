@@ -8,9 +8,19 @@ import (
 
 // dropQuerystringParameters removes parameters in the OpenAPI 3.2-only
 // "querystring" location.
+// normalizeLocation trims and lower-cases a location so "Query " reads as "query".
+func normalizeLocation(in fiber.ParamLocation) fiber.ParamLocation {
+	return fiber.ParamLocation(utilsstrings.ToLower(utils.TrimSpace(string(in))))
+}
+
+// parameterKey identifies a parameter: names are unique per location.
+func parameterKey(in fiber.ParamLocation, name string) string {
+	return string(in) + ":" + name
+}
+
 func dropQuerystringParameters(extras []fiber.RouteParameter) []fiber.RouteParameter {
-	isQuerystring := func(in string) bool {
-		return utils.EqualFold(utils.TrimSpace(in), fiber.ParamInQuerystring)
+	isQuerystring := func(in fiber.ParamLocation) bool {
+		return normalizeLocation(in) == fiber.ParamInQuerystring
 	}
 	for i := range extras {
 		if !isQuerystring(extras[i].In) {
@@ -37,7 +47,7 @@ func mergeRouteParameters(params []parameter, index map[string]int, extras []fib
 		if utils.TrimSpace(extra.Name) == "" {
 			continue
 		}
-		location := utilsstrings.ToLower(utils.TrimSpace(extra.In))
+		location := normalizeLocation(extra.In)
 		if location == "" {
 			location = fiber.ParamInQuery
 		}
@@ -90,7 +100,7 @@ func mergeRouteParameters(params []parameter, index map[string]int, extras []fib
 			param.Required = true
 			// AddParameter injects a default string schema, which must not
 			// replace one derived from the route constraint (":id<int>").
-			if idx, ok := index[param.In+":"+param.Name]; ok && extra.SchemaRef == "" && param.Content == nil && isDefaultStringSchema(extra.Schema) {
+			if idx, ok := index[parameterKey(param.In, param.Name)]; ok && extra.SchemaRef == "" && param.Content == nil && isDefaultStringSchema(extra.Schema) {
 				param.Schema = params[idx].Schema
 			}
 		}
@@ -127,7 +137,7 @@ func appendOrReplaceParameter(params []parameter, index map[string]int, p *param
 	if p == nil || p.Name == "" || p.In == "" {
 		return params
 	}
-	key := p.In + ":" + p.Name
+	key := parameterKey(p.In, p.Name)
 	if idx, ok := index[key]; ok {
 		params[idx] = *p
 		return params

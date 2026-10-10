@@ -48,8 +48,8 @@ func optionalMediaType(typ string) string {
 	return validateMediaType(typ)
 }
 
-func normalizeParamLocation(in string) string {
-	return utilsstrings.ToLower(utils.TrimSpace(in))
+func normalizeParamLocation(in ParamLocation) ParamLocation {
+	return ParamLocation(utilsstrings.ToLower(utils.TrimSpace(string(in))))
 }
 
 func docSetConsumes(typ string) func(route *Route) {
@@ -141,12 +141,12 @@ func (app *App) RequestBodyWithExample(description string, required bool, schema
 }
 
 // Parameter documents an input parameter; the short form of AddParameter.
-func (app *App) Parameter(name, in string, required bool, schema any, description string) Router {
+func (app *App) Parameter(name string, in ParamLocation, required bool, schema any, description string) Router {
 	return app.ParameterWithExample(name, in, required, schema, "", description, nil, nil)
 }
 
 // ParameterWithExample documents an input parameter with schema references and examples.
-func (app *App) ParameterWithExample(name, in string, required bool, schema any, schemaRef, description string, example any, examples map[string]any) Router {
+func (app *App) ParameterWithExample(name string, in ParamLocation, required bool, schema any, schemaRef, description string, example any, examples map[string]any) Router {
 	return app.AddParameter(newRouteParameter(name, in, required, schema, schemaRef, description, example, examples))
 }
 
@@ -509,7 +509,7 @@ func (app *App) ResponseHeader(status int, name, description string, schema any)
 	return app
 }
 
-func newRouteParameter(name, in string, required bool, schema any, schemaRef, description string, example any, examples map[string]any) RouteParameter { //nolint:revive // flag-parameter: required is a Parameter Object field, not control flow
+func newRouteParameter(name string, in ParamLocation, required bool, schema any, schemaRef, description string, example any, examples map[string]any) RouteParameter { //nolint:revive // flag-parameter: required is a Parameter Object field, not control flow
 	return RouteParameter{
 		Name:        name,
 		In:          in,
@@ -552,7 +552,7 @@ func (app *App) Returns(status int, model any, mediaTypes ...string) Router {
 // Params documents the exported fields of a struct model as parameters in the given
 // location ("query", "header", "cookie" or "path"), named by their Bind tags.
 // Fields tagged validate:"required" and all path parameters are required.
-func (app *App) Params(in string, model any) Router {
+func (app *App) Params(in ParamLocation, model any) Router {
 	app.applyToLatest(docAddParameterModel(in, model))
 	return app
 }
@@ -560,7 +560,7 @@ func (app *App) Params(in string, model any) Router {
 // validParamLocation reports whether location, already normalized, is one a parameter may
 // have. "querystring" is the OpenAPI 3.2 location for the whole query string, described by
 // content, and a parameter model cannot use it.
-func validParamLocation(location string, querystring bool) bool {
+func validParamLocation(location ParamLocation, querystring bool) bool {
 	switch location {
 	case ParamInPath, ParamInQuery, ParamInHeader, ParamInCookie:
 		return true
@@ -571,7 +571,7 @@ func validParamLocation(location string, querystring bool) bool {
 	}
 }
 
-func docAddParameterModel(in string, model any) func(route *Route) {
+func docAddParameterModel(in ParamLocation, model any) func(route *Route) {
 	location := normalizeParamLocation(in)
 	if !validParamLocation(location, false) {
 		panic("Params: invalid parameter location: " + in)

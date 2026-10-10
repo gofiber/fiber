@@ -8,7 +8,7 @@ import (
 )
 
 // modelTagByLocation maps a parameter location to the struct tag Bind reads.
-var modelTagByLocation = map[string]string{
+var modelTagByLocation = map[fiber.ParamLocation]string{
 	fiber.ParamInQuery:  fiber.BindSourceQuery,
 	fiber.ParamInHeader: fiber.BindSourceHeader,
 	fiber.ParamInCookie: fiber.BindSourceCookie,
@@ -33,7 +33,7 @@ func expandParameterModels(models []fiber.RouteParameterModel, reg *schemaRegist
 	return params
 }
 
-func appendModelFields(params []fiber.RouteParameter, t reflect.Type, in, tagKey string, reg *schemaRegistry, expanded map[reflect.Type]bool) []fiber.RouteParameter {
+func appendModelFields(params []fiber.RouteParameter, t reflect.Type, in fiber.ParamLocation, tagKey string, reg *schemaRegistry, expanded map[reflect.Type]bool) []fiber.RouteParameter {
 	for i := range t.NumField() {
 		field := t.Field(i)
 		name, _, _ := utils.CutByte(field.Tag.Get(tagKey), ',')

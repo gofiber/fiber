@@ -884,12 +884,12 @@ func (d *domainRouter) RequestBodyWithExample(description string, required bool,
 }
 
 // Parameter documents an input parameter for the most recently added route.
-func (d *domainRouter) Parameter(name, in string, required bool, schema any, description string) Router {
+func (d *domainRouter) Parameter(name string, in ParamLocation, required bool, schema any, description string) Router {
 	return d.ParameterWithExample(name, in, required, schema, "", description, nil, nil)
 }
 
 // ParameterWithExample documents an input parameter for the most recently added route with schema references and examples.
-func (d *domainRouter) ParameterWithExample(name, in string, required bool, schema any, schemaRef, description string, example any, examples map[string]any) Router {
+func (d *domainRouter) ParameterWithExample(name string, in ParamLocation, required bool, schema any, schemaRef, description string, example any, examples map[string]any) Router {
 	return d.AddParameter(newRouteParameter(name, in, required, schema, schemaRef, description, example, examples))
 }
 
@@ -939,7 +939,7 @@ func (d *domainRouter) Returns(status int, model any, mediaTypes ...string) Rout
 }
 
 // Params documents the fields of model as parameters; see App.Params.
-func (d *domainRouter) Params(in string, model any) Router {
+func (d *domainRouter) Params(in ParamLocation, model any) Router {
 	return d.document(docAddParameterModel(in, model))
 }
 

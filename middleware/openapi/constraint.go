@@ -75,7 +75,8 @@ func applyConstraintToSchema(schema map[string]any, name string, args []string) 
 		}
 	case fiber.ConstraintRegex:
 		setSchemaType(schema, schemaTypeString)
-		if len(args) > 0 && args[0] != "" {
+		// A path segment never contains "/", so a pattern that needs one cannot describe it.
+		if len(args) > 0 && args[0] != "" && !strings.Contains(args[0], "/") {
 			setSchemaKey(schema, "pattern", args[0])
 		}
 	case fiber.ConstraintMinLen:

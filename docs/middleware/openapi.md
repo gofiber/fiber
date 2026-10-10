@@ -435,7 +435,7 @@ app.Get("/pages/:n<range(1,10)>", getPage)           // {"type": "integer", "min
 | `alpha` | `{"type": "string"}` |
 | `guid` | `{"type": "string", "format": "uuid"}` |
 | `datetime(layout)` | `{"type": "string"}`, plus `format` for the `date`, `time` and `date-time` layouts |
-| `regex(p)` | `{"type": "string", "pattern": "p"}`, published as written and checked by clients against one path segment |
+| `regex(p)` | `{"type": "string", "pattern": "p"}`, published as written and checked by clients against one path segment; a pattern containing `/` is left out, as no segment can match it |
 | `minLen(n)` / `maxLen(n)` / `len(n)` / `betweenLen(a,b)` | `{"type": "string"}` with `minLength` / `maxLength` |
 | `min(n)` / `max(n)` / `range(a,b)` | `{"type": "integer"}` with `minimum` / `maximum` |
 

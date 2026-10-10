@@ -35,8 +35,8 @@ type Register interface {
 	Produces(typ string) Register
 	RequestBody(description string, required bool, mediaTypes ...string) Register
 	RequestBodyWithExample(description string, required bool, schema any, schemaRef string, example any, examples map[string]any, mediaTypes ...string) Register
-	Parameter(name, in string, required bool, schema any, description string) Register
-	ParameterWithExample(name, in string, required bool, schema any, schemaRef, description string, example any, examples map[string]any) Register
+	Parameter(name string, in ParamLocation, required bool, schema any, description string) Register
+	ParameterWithExample(name string, in ParamLocation, required bool, schema any, schemaRef, description string, example any, examples map[string]any) Register
 	AddParameter(param RouteParameter) Register
 	Response(status int, description string, mediaTypes ...string) Register
 	ResponseWithExample(status int, description string, schema any, schemaRef string, example any, examples map[string]any, mediaTypes ...string) Register
@@ -52,7 +52,7 @@ type Register interface {
 	OperationExtension(fields map[string]any) Register
 	Accepts(model any, mediaTypes ...string) Register
 	Returns(status int, model any, mediaTypes ...string) Register
-	Params(in string, model any) Register
+	Params(in ParamLocation, model any) Register
 }
 
 var _ Register = (*Registering)(nil)
@@ -216,12 +216,12 @@ func (r *Registering) RequestBodyWithExample(description string, required bool, 
 }
 
 // Parameter documents an input parameter for the most recently registered route.
-func (r *Registering) Parameter(name, in string, required bool, schema any, description string) Register {
+func (r *Registering) Parameter(name string, in ParamLocation, required bool, schema any, description string) Register {
 	return r.ParameterWithExample(name, in, required, schema, "", description, nil, nil)
 }
 
 // ParameterWithExample documents an input parameter, including schema references and examples.
-func (r *Registering) ParameterWithExample(name, in string, required bool, schema any, schemaRef, description string, example any, examples map[string]any) Register {
+func (r *Registering) ParameterWithExample(name string, in ParamLocation, required bool, schema any, schemaRef, description string, example any, examples map[string]any) Register {
 	return r.AddParameter(newRouteParameter(name, in, required, schema, schemaRef, description, example, examples))
 }
 
@@ -263,7 +263,7 @@ func (r *Registering) Returns(status int, model any, mediaTypes ...string) Regis
 }
 
 // Params documents the fields of model as parameters; see App.Params.
-func (r *Registering) Params(in string, model any) Register {
+func (r *Registering) Params(in ParamLocation, model any) Register {
 	r.app.applyToRegistration(atomic.LoadUint64(&r.lastRegID), docAddParameterModel(in, model))
 	return r
 }

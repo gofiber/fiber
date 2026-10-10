@@ -4390,7 +4390,7 @@ func Test_Domain_OpenAPI_Helpers_Advanced(t *testing.T) {
 		route := app.stack[app.methodInt(MethodGet)][0]
 		require.Len(t, route.Parameters, 1)
 		require.Equal(t, "limit", route.Parameters[0].Name)
-		require.Equal(t, "query", route.Parameters[0].In)
+		require.Equal(t, ParamInQuery, route.Parameters[0].In)
 	})
 
 	t.Run("OperationExternalDocs", func(t *testing.T) {

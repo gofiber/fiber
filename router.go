@@ -90,8 +90,8 @@ type Router interface {
 	Produces(typ string) Router
 	RequestBody(description string, required bool, mediaTypes ...string) Router
 	RequestBodyWithExample(description string, required bool, schema any, schemaRef string, example any, examples map[string]any, mediaTypes ...string) Router
-	Parameter(name, in string, required bool, schema any, description string) Router
-	ParameterWithExample(name, in string, required bool, schema any, schemaRef, description string, example any, examples map[string]any) Router
+	Parameter(name string, in ParamLocation, required bool, schema any, description string) Router
+	ParameterWithExample(name string, in ParamLocation, required bool, schema any, schemaRef, description string, example any, examples map[string]any) Router
 	Response(status int, description string, mediaTypes ...string) Router
 	ResponseWithExample(status int, description string, schema any, schemaRef string, example any, examples map[string]any, mediaTypes ...string) Router
 	Tags(tags ...string) Router
@@ -107,7 +107,7 @@ type Router interface {
 	OperationExtension(fields map[string]any) Router
 	Accepts(model any, mediaTypes ...string) Router
 	Returns(status int, model any, mediaTypes ...string) Router
-	Params(in string, model any) Router
+	Params(in ParamLocation, model any) Router
 }
 
 // Route is a struct that holds all metadata for each registered handler.
@@ -572,7 +572,7 @@ type RouteParameter struct {
 	Explode         *bool                     `json:"explode,omitempty"`
 	Description     string                    `json:"description"`
 	Name            string                    `json:"name"`
-	In              string                    `json:"in"`
+	In              ParamLocation             `json:"in"`
 	Style           string                    `json:"style,omitempty"`
 	Required        bool                      `json:"required"`
 	Deprecated      bool                      `json:"deprecated,omitempty"`
@@ -582,8 +582,8 @@ type RouteParameter struct {
 
 // RouteParameterModel declares parameters through a Go struct, expanded by the OpenAPI middleware.
 type RouteParameterModel struct {
-	Model any    `json:"model"`
-	In    string `json:"in"`
+	Model any           `json:"model"`
+	In    ParamLocation `json:"in"`
 }
 
 // RouteMediaType describes one media type entry of a body or response.

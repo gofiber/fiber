@@ -726,7 +726,7 @@ func Test_AddParameter_SchemaSelection(t *testing.T) {
 			AddParameter(RouteParameter{Name: "q", In: "querystring"})
 
 		param := routesFor(app, "/qs")[MethodGet].Parameters[0]
-		require.Equal(t, "querystring", param.In)
+		require.Equal(t, ParamInQuerystring, param.In)
 		require.Nil(t, param.Schema)
 	})
 

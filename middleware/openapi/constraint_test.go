@@ -39,6 +39,7 @@ func Test_PathParamSchema(t *testing.T) {
 
 		{map[string]any{"type": "string", "pattern": "^[a-z]+$"}, "regex", "regex(^[a-z]+$)"},
 		{map[string]any{"type": "string"}, "regex without pattern", "regex()"},
+		{map[string]any{"type": "string"}, "regex needing a slash is not a segment pattern", `regex(\d+/x)`},
 		{map[string]any{"type": "string"}, "regex bare", "regex"},
 
 		{map[string]any{"type": "string", "minLength": 3}, "minLen", "minLen(3)"},

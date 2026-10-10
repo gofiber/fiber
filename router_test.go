@@ -2696,14 +2696,14 @@ func Test_App_Parameter(t *testing.T) {
 
 	pathParam := route.Parameters[0]
 	require.Equal(t, "id", pathParam.Name)
-	require.Equal(t, "path", pathParam.In)
+	require.Equal(t, ParamInPath, pathParam.In)
 	require.True(t, pathParam.Required)
 	require.Equal(t, "integer", schemaMap(t, pathParam.Schema)["type"])
 	require.Equal(t, "identifier", pathParam.Description)
 
 	queryParam := route.Parameters[1]
 	require.Equal(t, "filter", queryParam.Name)
-	require.Equal(t, "query", queryParam.In)
+	require.Equal(t, ParamInQuery, queryParam.In)
 	require.True(t, queryParam.Required)
 	require.Equal(t, "string", schemaMap(t, queryParam.Schema)["type"])
 	require.Equal(t, "Filter results", queryParam.Description)
@@ -2720,7 +2720,7 @@ func Test_App_ParameterWithExample(t *testing.T) {
 
 	param := route.Parameters[0]
 	require.Equal(t, "id", param.Name)
-	require.Equal(t, "path", param.In)
+	require.Equal(t, ParamInPath, param.In)
 	require.True(t, param.Required)
 	require.Equal(t, "#/components/schemas/ID", param.SchemaRef)
 	require.Equal(t, map[string]any{"$ref": "#/components/schemas/ID"}, param.Schema)

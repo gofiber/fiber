@@ -168,7 +168,7 @@ type parameter struct {
 	Explode         *bool                     `json:"explode,omitempty"`
 	Description     string                    `json:"description,omitempty"`
 	Name            string                    `json:"name"`
-	In              string                    `json:"in"`
+	In              fiber.ParamLocation       `json:"in"`
 	Style           string                    `json:"style,omitempty"`
 	Required        bool                      `json:"required"`
 	Deprecated      bool                      `json:"deprecated,omitempty"`
@@ -439,7 +439,7 @@ func (b *specBuilder) buildOperation(r *fiber.Route, facts *routeFacts, variant 
 			Schema: pathParamSchema(variant.ParamConstraints[p]),
 		}
 		params = append(params, param)
-		paramIndex[param.In+":"+param.Name] = len(params) - 1
+		paramIndex[parameterKey(param.In, param.Name)] = len(params) - 1
 	}
 	// Middleware and declared models come first so an explicit AddParameter overrides them.
 	extras := remapRouteParameters(append(slices.Clone(facts.declared), r.Parameters...), variant.PathParamAliases, variant.ParamNames)
