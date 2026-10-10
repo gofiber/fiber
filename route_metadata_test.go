@@ -1834,3 +1834,26 @@ func Test_NamedRouteIndex_SmallAndLargeTables(t *testing.T) {
 		require.Nil(t, app.namedRoute("absent"), "count %d", count)
 	}
 }
+
+func Test_MediaTypeSetters_TreatWhitespaceAsEmpty(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	route := app.Get("/x", testHandlerOK).Consumes(MIMEApplicationJSON).Produces(MIMEApplicationJSON)
+	require.NotPanics(t, func() { route.Consumes("  ").Produces("\t") })
+	got := app.GetRoute("")
+	require.Empty(t, got.Consumes)
+	require.Empty(t, got.Produces)
+}
+
+func Test_NamedRouteIndex_SmallScanKeepsRegistrationOrder(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	app.Get("/first", testHandlerOK).Name("dup")
+	app.Get("/second", testHandlerOK).Name("dup")
+	app.Get("/third", testHandlerOK).Name("other")
+	require.Equal(t, "/first", app.GetRoute("dup").Path)
+	index := app.namedRoutes.Load()
+	require.Equal(t, []string{"dup", "other"}, []string{index.small[0].Name, index.small[1].Name})
+}

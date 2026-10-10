@@ -15,6 +15,39 @@ import (
 	utilsstrings "github.com/gofiber/utils/v2/strings"
 )
 
+// openapiDirectiveRe locates each directive's start. A valued directive's
+// value runs from the colon to the next directive, so values may contain
+// commas and colons; a flag directive stands alone.
+var openapiDirectiveRe = regexp.MustCompile(`(?:^|,)\s*(description|example|format|enum):|(?:^|,)\s*(readOnly|readonly|writeOnly|writeonly|deprecated)\s*`)
+
+// validateFormats maps the validator's format rules to the JSON Schema formats
+// that describe the same values.
+var validateFormats = map[string]string{
+	formatEmail:        formatEmail,
+	formatUUID:         formatUUID,
+	"uuid3":            formatUUID,
+	"uuid4":            formatUUID,
+	"uuid5":            formatUUID,
+	"url":              formatURI,
+	formatURI:          formatURI,
+	formatIPv4:         formatIPv4,
+	formatIPv6:         formatIPv6,
+	formatHostname:     formatHostname,
+	"hostname_rfc1123": formatHostname,
+	"fqdn":             formatHostname,
+	"base64":           formatByte,
+}
+
+// boundKeywords lists the schema keywords for each type's lower and upper
+// limit: length for strings, value for numbers, count for arrays and objects.
+var boundKeywords = map[string][2]string{
+	schemaTypeString:  {"minLength", "maxLength"},
+	schemaTypeArray:   {"minItems", "maxItems"},
+	schemaTypeObject:  {"minProperties", "maxProperties"},
+	schemaTypeInteger: {"minimum", "maximum"},
+	schemaTypeNumber:  {"minimum", "maximum"},
+}
+
 // maxPointerDepth bounds pointer dereferencing so a self-referential pointer
 // type cannot spin forever.
 const maxPointerDepth = 32
@@ -489,11 +522,6 @@ func effectiveJSONTagName(name string) string {
 	return ""
 }
 
-// openapiDirectiveRe locates each directive's start. A valued directive's
-// value runs from the colon to the next directive, so values may contain
-// commas and colons; a flag directive stands alone.
-var openapiDirectiveRe = regexp.MustCompile(`(?:^|,)\s*(description|example|format|enum):|(?:^|,)\s*(readOnly|readonly|writeOnly|writeonly|deprecated)\s*`)
-
 func applyOpenAPITag(field *reflect.StructField, schema map[string]any) {
 	tag := field.Tag.Get("openapi")
 	if tag == "" {
@@ -575,24 +603,6 @@ func inferExampleValue(val string, schema map[string]any) any {
 	return val
 }
 
-// validateFormats maps the validator's format rules to the JSON Schema formats
-// that describe the same values.
-var validateFormats = map[string]string{
-	formatEmail:        formatEmail,
-	formatUUID:         formatUUID,
-	"uuid3":            formatUUID,
-	"uuid4":            formatUUID,
-	"uuid5":            formatUUID,
-	"url":              formatURI,
-	formatURI:          formatURI,
-	formatIPv4:         formatIPv4,
-	formatIPv6:         formatIPv6,
-	formatHostname:     formatHostname,
-	"hostname_rfc1123": formatHostname,
-	"fqdn":             formatHostname,
-	"base64":           formatByte,
-}
-
 // applyValidateTag translates the rules of a validate tag into schema
 // constraints, and reports whether the field is required. Rules the schema
 // cannot express, or whose value does not parse, are ignored.
@@ -644,16 +654,6 @@ func setFormat(schema map[string]any, format string) {
 
 // boundSide selects which end of a range a validate rule constrains.
 type boundSide uint8
-
-// boundKeywords lists the schema keywords for each type's lower and upper
-// limit: length for strings, value for numbers, count for arrays and objects.
-var boundKeywords = map[string][2]string{
-	schemaTypeString:  {"minLength", "maxLength"},
-	schemaTypeArray:   {"minItems", "maxItems"},
-	schemaTypeObject:  {"minProperties", "maxProperties"},
-	schemaTypeInteger: {"minimum", "maximum"},
-	schemaTypeNumber:  {"minimum", "maximum"},
-}
 
 // setBound writes a validate rule's limit under the keyword the schema's type
 // uses, or nothing when the type has no such keyword or the value does not

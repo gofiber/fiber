@@ -361,6 +361,19 @@ func cloneSecurityRequirements(src []map[string][]string) []map[string][]string 
 	return cloned
 }
 
+// defaultAsset fills an asset URL left empty with its default. The default
+// integrity hash only describes the default file, so it follows the URL: a
+// custom URL gets none unless the caller supplied one.
+func defaultAsset(url, integrity *string, defaultURL, defaultIntegrity string) {
+	if *url != "" {
+		return
+	}
+	*url = defaultURL
+	if *integrity == "" {
+		*integrity = defaultIntegrity
+	}
+}
+
 func configDefault(config ...Config) Config {
 	if len(config) < 1 {
 		return ConfigDefault
@@ -401,27 +414,9 @@ func configDefault(config ...Config) Config {
 	if cfg.UIPath == "" {
 		cfg.UIPath = ConfigDefault.UIPath
 	}
-	if cfg.SwaggerCSSURL == "" {
-		cfg.SwaggerCSSURL = ConfigDefault.SwaggerCSSURL
-		// The default hash only describes the default file.
-		if cfg.SwaggerCSSIntegrity == "" {
-			cfg.SwaggerCSSIntegrity = ConfigDefault.SwaggerCSSIntegrity
-		}
-	}
-	if cfg.SwaggerBundleURL == "" {
-		cfg.SwaggerBundleURL = ConfigDefault.SwaggerBundleURL
-		// The default hash only describes the default file.
-		if cfg.SwaggerBundleIntegrity == "" {
-			cfg.SwaggerBundleIntegrity = ConfigDefault.SwaggerBundleIntegrity
-		}
-	}
-	if cfg.SwaggerStandalonePresetURL == "" {
-		cfg.SwaggerStandalonePresetURL = ConfigDefault.SwaggerStandalonePresetURL
-		// The default hash only describes the default file.
-		if cfg.SwaggerStandalonePresetIntegrity == "" {
-			cfg.SwaggerStandalonePresetIntegrity = ConfigDefault.SwaggerStandalonePresetIntegrity
-		}
-	}
+	defaultAsset(&cfg.SwaggerCSSURL, &cfg.SwaggerCSSIntegrity, ConfigDefault.SwaggerCSSURL, ConfigDefault.SwaggerCSSIntegrity)
+	defaultAsset(&cfg.SwaggerBundleURL, &cfg.SwaggerBundleIntegrity, ConfigDefault.SwaggerBundleURL, ConfigDefault.SwaggerBundleIntegrity)
+	defaultAsset(&cfg.SwaggerStandalonePresetURL, &cfg.SwaggerStandalonePresetIntegrity, ConfigDefault.SwaggerStandalonePresetURL, ConfigDefault.SwaggerStandalonePresetIntegrity)
 	// Detach every reference-typed field: the handler reads this config while
 	// serving, so anything left aliased races with a caller that mutates it.
 	cfg.SwaggerOptions = deepCopyAnyMap(cfg.SwaggerOptions)

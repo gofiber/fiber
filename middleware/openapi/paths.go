@@ -7,6 +7,8 @@ import (
 	"strings"
 )
 
+const wildcardParamName = "wildcard"
+
 // maxPathVariants bounds the optional-parameter expansion, which is otherwise
 // exponential in the number of optional parameters on one route.
 const maxPathVariants = 64
@@ -22,8 +24,6 @@ type resolvedParamName struct {
 	openAPI string
 	raw     string
 }
-
-const wildcardParamName = "wildcard"
 
 // normalizePathHierarchy blanks template names ("/files/{dir}" → "/files/{}") so
 // paths identical up to parameter names share one key.

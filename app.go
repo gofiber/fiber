@@ -1076,12 +1076,19 @@ func validateMediaType(typ string) string {
 }
 
 // optionalMediaType trims and validates a media type that may be empty, which
-// clears the route's setting.
+// clears the route's setting. A value of only whitespace counts as empty.
 func optionalMediaType(typ string) string {
+	typ = utils.TrimSpace(typ)
 	if typ == "" {
 		return ""
 	}
-	return validateMediaType(utils.TrimSpace(typ))
+	return validateMediaType(typ)
+}
+
+// normalizeParamLocation lower-cases and trims a parameter location so "Query "
+// and "query" name the same one.
+func normalizeParamLocation(in string) string {
+	return utilsstrings.ToLower(utils.TrimSpace(in))
 }
 
 func docSetConsumes(typ string) func(route *Route) {
@@ -1187,7 +1194,7 @@ func docAddParameter(param RouteParameter) func(route *Route) {
 		panic("parameter name is required")
 	}
 
-	location := utilsstrings.ToLower(utils.TrimSpace(param.In))
+	location := normalizeParamLocation(param.In)
 	switch location {
 	// "querystring" is an OpenAPI 3.2 location that treats the whole query
 	// string as a single value (paired with content rather than schema).
@@ -1638,7 +1645,7 @@ func (app *App) Params(in string, model any) Router {
 // docAddParameterModel records a struct whose fields the OpenAPI middleware
 // documents as parameters of the given location.
 func docAddParameterModel(in string, model any) func(route *Route) {
-	location := utilsstrings.ToLower(utils.TrimSpace(in))
+	location := normalizeParamLocation(in)
 	switch location {
 	case paramInQuery, paramInHeader, paramInCookie, paramInPath:
 	default:
@@ -1809,7 +1816,7 @@ func (app *App) nameRoutesLocked(regID uint64, name string) *Route {
 // the empty name.
 type namedRouteIndex struct {
 	routes   map[string]*Route
-	small    []*Route // the same snapshots in order when there are few, to scan instead of hash
+	small    []*Route // the same snapshots in registration order when there are few, to scan instead of hash
 	revision uint64
 }
 
@@ -1849,6 +1856,7 @@ func (app *App) indexNamedRoutes() *namedRouteIndex {
 	}
 
 	index := &namedRouteIndex{revision: revision, routes: make(map[string]*Route)}
+	var inOrder []*Route
 	for _, routes := range app.stack {
 		for _, route := range routes {
 			if _, taken := index.routes[route.Name]; taken {
@@ -1857,12 +1865,13 @@ func (app *App) indexNamedRoutes() *namedRouteIndex {
 			snapshot := new(Route)
 			app.copyRouteInto(snapshot, route)
 			index.routes[route.Name] = snapshot
+			inOrder = append(inOrder, snapshot)
 		}
 	}
-	if len(index.routes) <= smallIndexMax {
-		index.small = make([]*Route, 0, len(index.routes))
-		for _, route := range index.routes {
-			index.small = append(index.small, route)
+	if len(inOrder) <= smallIndexMax {
+		index.small = inOrder
+		if index.small == nil {
+			index.small = []*Route{}
 		}
 	}
 	app.namedRoutes.Store(index)

@@ -12,6 +12,27 @@ import (
 	utilsstrings "github.com/gofiber/utils/v2/strings"
 )
 
+// openAPIOperationMethods is the set of methods a Path Item can express. CONNECT
+// has no OpenAPI operation; `query` is 3.2-only and gated by the caller.
+var openAPIOperationMethods = map[string]struct{}{
+	fiber.MethodGet:     {},
+	fiber.MethodHead:    {},
+	fiber.MethodPost:    {},
+	fiber.MethodPut:     {},
+	fiber.MethodPatch:   {},
+	fiber.MethodDelete:  {},
+	fiber.MethodOptions: {},
+	fiber.MethodTrace:   {},
+	fiber.MethodQuery:   {},
+}
+
+// openAPIVersionRank orders the supported OpenAPI versions for comparison.
+var openAPIVersionRank = map[string]int{
+	versionOpenAPI30: 0,
+	versionOpenAPI31: 1,
+	versionOpenAPI32: 2,
+}
+
 const (
 	paramLocationPath = "path"
 	// paramLocationQuerystring is the OpenAPI 3.2 location that describes the
@@ -170,20 +191,6 @@ type requestBody struct {
 	Required    bool                      `json:"required,omitempty"`
 }
 
-// openAPIOperationMethods is the set of methods a Path Item can express. CONNECT
-// has no OpenAPI operation; `query` is 3.2-only and gated by the caller.
-var openAPIOperationMethods = map[string]struct{}{
-	fiber.MethodGet:     {},
-	fiber.MethodHead:    {},
-	fiber.MethodPost:    {},
-	fiber.MethodPut:     {},
-	fiber.MethodPatch:   {},
-	fiber.MethodDelete:  {},
-	fiber.MethodOptions: {},
-	fiber.MethodTrace:   {},
-	fiber.MethodQuery:   {},
-}
-
 // isOpenAPIOperationMethod reports whether method maps to a Path Item
 // operation key.
 func isOpenAPIOperationMethod(method string) bool {
@@ -230,13 +237,6 @@ func uniqueOperationID(id string, used map[string]struct{}) string {
 		}
 		candidate = fmt.Sprintf("%s_%d", id, i)
 	}
-}
-
-// openAPIVersionRank orders the supported OpenAPI versions for comparison.
-var openAPIVersionRank = map[string]int{
-	versionOpenAPI30: 0,
-	versionOpenAPI31: 1,
-	versionOpenAPI32: 2,
 }
 
 // versionAtLeast reports whether version is greater than or equal to minimum.
