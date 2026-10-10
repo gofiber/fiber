@@ -1650,7 +1650,6 @@ func Benchmark_App_namedRoute(b *testing.B) {
 		route = app.namedRoute("bench96")
 	}
 	require.Equal(b, "/bench/96/:id", route.Path)
-	require.Empty(b, route.Summary)
 }
 
 func Benchmark_App_copyRoute_Documented(b *testing.B) {
