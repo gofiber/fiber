@@ -7,6 +7,10 @@ import (
 	"github.com/gofiber/fiber/v3"
 )
 
+// maxCopyDepth bounds the configuration deep copy: a cyclic value in
+// SwaggerOptions or Components would otherwise overflow the stack in New.
+const maxCopyDepth = 100
+
 // Supported OpenAPI specification versions.
 const (
 	versionOpenAPI30 = "3.0.0"
@@ -254,10 +258,6 @@ var ConfigDefault = Config{
 	},
 	DisableRateLimitHeaders: false,
 }
-
-// maxCopyDepth bounds the configuration deep copy: a cyclic value in
-// SwaggerOptions or Components would otherwise overflow the stack in New.
-const maxCopyDepth = 100
 
 // deepCopyAnyMap copies a raw OpenAPI object so the caller shares no nested
 // container with the handler. Non-container values are copied as-is.

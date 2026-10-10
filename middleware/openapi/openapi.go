@@ -10,6 +10,17 @@ import (
 	"github.com/gofiber/utils/v2"
 )
 
+const (
+	// segmentLiteral matches exactly one path segment, with no parameter in it.
+	segmentLiteral segmentKind = iota
+	// segmentParam is a mixed or whole-segment parameter: one path segment.
+	segmentParam
+	// segmentOptional matches zero or one segment.
+	segmentOptional
+	// segmentGreedy ("*" or "+") matches any number of segments.
+	segmentGreedy
+)
+
 // appEquality is the path comparison an app's CaseSensitive setting selects.
 type appEquality struct {
 	app   *fiber.App
@@ -307,17 +318,6 @@ func resolveDynamicMountPrefix(pattern, requestPath, specPath, uiPath string, eq
 // segmentKind classifies a route pattern segment by its routing tokens only,
 // so a constraint or an escaped character never reads as a parameter.
 type segmentKind uint8
-
-const (
-	// segmentLiteral matches exactly one path segment, with no parameter in it.
-	segmentLiteral segmentKind = iota
-	// segmentParam is a mixed or whole-segment parameter: one path segment.
-	segmentParam
-	// segmentOptional matches zero or one segment.
-	segmentOptional
-	// segmentGreedy ("*" or "+") matches any number of segments.
-	segmentGreedy
-)
 
 // classifySegment returns the kind of a pattern segment and its routing tokens.
 func classifySegment(segment string) (segmentKind, string) { //nolint:gocritic // unnamedResult: named returns conflict with nonamedreturns linter

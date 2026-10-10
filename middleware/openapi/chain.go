@@ -10,6 +10,13 @@ import (
 	"github.com/gofiber/utils/v2"
 )
 
+// Names of the security schemes the document declares for recognized
+// authentication middleware, and of the headers they document.
+const (
+	securitySchemeBearer = "bearerAuth"
+	securitySchemeBasic  = "basicAuth"
+)
+
 // middlewareKind identifies a Fiber middleware the document can describe.
 type middlewareKind uint8
 
@@ -158,13 +165,6 @@ func middlewareOn(covering []coveringMiddleware, route *fiber.Route, equal func(
 	}
 	return set
 }
-
-// Names of the security schemes the document declares for recognized
-// authentication middleware, and of the headers they document.
-const (
-	securitySchemeBearer = "bearerAuth"
-	securitySchemeBasic  = "basicAuth"
-)
 
 // securitySchemes keeps the schemes the recognized middleware asked for while
 // generating, so components.securitySchemes can declare the ones the user

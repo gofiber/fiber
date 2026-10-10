@@ -12,6 +12,26 @@ import (
 	utilsstrings "github.com/gofiber/utils/v2/strings"
 )
 
+const (
+	paramLocationPath = "path"
+	// paramLocationQuerystring is the OpenAPI 3.2 location that describes the
+	// entire query string as one value. It must be paired with "content".
+	paramLocationQuerystring = "querystring"
+	// querystringMediaType is the media type used to wrap a querystring
+	// parameter's schema when the author supplied no explicit content map.
+	querystringMediaType = "application/x-www-form-urlencoded"
+
+	schemaKeyType     = "type"
+	schemaKeyRef      = "$ref"
+	schemaTypeArray   = "array"
+	schemaKeyFormat   = "format"
+	schemaTypeString  = "string"
+	schemaTypeObject  = "object"
+	schemaTypeBoolean = "boolean"
+	schemaTypeInteger = "integer"
+	schemaTypeNumber  = "number"
+)
+
 type openAPISpec struct {
 	Paths             map[string]map[string]operation `json:"paths"`
 	Components        map[string]any                  `json:"components,omitempty"`
@@ -149,26 +169,6 @@ type requestBody struct {
 	Description string                    `json:"description,omitempty"`
 	Required    bool                      `json:"required,omitempty"`
 }
-
-const (
-	paramLocationPath = "path"
-	// paramLocationQuerystring is the OpenAPI 3.2 location that describes the
-	// entire query string as one value. It must be paired with "content".
-	paramLocationQuerystring = "querystring"
-	// querystringMediaType is the media type used to wrap a querystring
-	// parameter's schema when the author supplied no explicit content map.
-	querystringMediaType = "application/x-www-form-urlencoded"
-
-	schemaKeyType     = "type"
-	schemaKeyRef      = "$ref"
-	schemaTypeArray   = "array"
-	schemaKeyFormat   = "format"
-	schemaTypeString  = "string"
-	schemaTypeObject  = "object"
-	schemaTypeBoolean = "boolean"
-	schemaTypeInteger = "integer"
-	schemaTypeNumber  = "number"
-)
 
 // openAPIOperationMethods is the set of methods a Path Item can express. CONNECT
 // has no OpenAPI operation; `query` is 3.2-only and gated by the caller.

@@ -39,6 +39,25 @@ import (
 // Version of current fiber package
 const Version = "3.5.0"
 
+// OpenAPI schema literals reused by the route documentation helpers below.
+const (
+	openapiRefKey = "$ref"
+	// The parameter locations the documentation helpers accept. "path" has no
+	// bind source of its own, as the router fills it from the path pattern.
+	paramInPath        = "path"
+	paramInQuery       = "query"
+	paramInHeader      = "header"
+	paramInCookie      = "cookie"
+	paramInQuerystring = "querystring"
+	openapiTypeString  = "string"
+)
+
+// defaultResponseKey is the OpenAPI key used for the "default" response entry.
+const defaultResponseKey = "default"
+
+// smallIndexMax is how many distinct names a scan of a slice beats hashing for.
+const smallIndexMax = 8
+
 // Handler defines a function to serve HTTP requests.
 type Handler = func(Ctx) error
 
@@ -1024,19 +1043,6 @@ func (app *App) Name(name string) Router {
 	return app
 }
 
-// OpenAPI schema literals reused by the route documentation helpers below.
-const (
-	openapiRefKey = "$ref"
-	// The parameter locations the documentation helpers accept. "path" has no
-	// bind source of its own, as the router fills it from the path pattern.
-	paramInPath        = "path"
-	paramInQuery       = "query"
-	paramInHeader      = "header"
-	paramInCookie      = "cookie"
-	paramInQuerystring = "querystring"
-	openapiTypeString  = "string"
-)
-
 // The doc* factories below build each helper's mutation, validating and copying
 // once so all five routers share one behavior instead of five copies.
 
@@ -1265,9 +1271,6 @@ func (app *App) Response(status int, description string, mediaTypes ...string) R
 func (app *App) ResponseWithExample(status int, description string, schema any, schemaRef string, example any, examples map[string]any, mediaTypes ...string) Router {
 	return app.addResponse(status, description, schema, schemaRef, example, examples, mediaTypes...)
 }
-
-// defaultResponseKey is the OpenAPI key used for the "default" response entry.
-const defaultResponseKey = "default"
 
 // responseKey validates the status code and returns the key of its response
 // entry: the numeric code, or "default" for a status of 0.
@@ -1809,9 +1812,6 @@ type namedRouteIndex struct {
 	small    []*Route // the same snapshots in order when there are few, to scan instead of hash
 	revision uint64
 }
-
-// smallIndexMax is how many distinct names a scan of a slice beats hashing for.
-const smallIndexMax = 8
 
 // namedRoute returns the snapshot of the route called name, or nil. The index is
 // rebuilt under the router lock the first time it is asked for after the table

@@ -21,6 +21,10 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
+// maxCopyDepth bounds the documentation deep copy: users can store cyclic values
+// there, which would otherwise make GetRoutes overflow the stack.
+const maxCopyDepth = 100
+
 const (
 	// filterMinBucket is the number of routes from which a bucket carries a
 	// bucketFilter. The scan reaches the routes of a smaller bucket directly
@@ -1478,10 +1482,6 @@ func cloneRouteResponses(responses map[string]RouteResponse) map[string]RouteRes
 	}
 	return cloned
 }
-
-// maxCopyDepth bounds the documentation deep copy: users can store cyclic values
-// there, which would otherwise make GetRoutes overflow the stack.
-const maxCopyDepth = 100
 
 func copyAnyMap(src map[string]any) map[string]any {
 	// Top-level empties stay nil so unset documentation keeps reading as unset.

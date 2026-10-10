@@ -15,6 +15,26 @@ import (
 	utilsstrings "github.com/gofiber/utils/v2/strings"
 )
 
+// maxPointerDepth bounds pointer dereferencing so a self-referential pointer
+// type cannot spin forever.
+const maxPointerDepth = 32
+
+// JSON Schema formats the validator's rules map onto.
+const (
+	formatEmail    = "email"
+	formatUUID     = "uuid"
+	formatURI      = "uri"
+	formatIPv4     = "ipv4"
+	formatIPv6     = "ipv6"
+	formatHostname = "hostname"
+	formatByte     = "byte"
+)
+
+const (
+	lowerBound boundSide = iota
+	upperBound
+)
+
 // SchemaOf generates an OpenAPI JSON Schema from a Go value using reflection,
 // suitable for the route helpers (ResponseWithExample, RequestBodyWithExample,
 // ParameterWithExample) or for Config.Components.
@@ -79,10 +99,6 @@ var (
 func implementsMarshaler(t, iface reflect.Type) bool {
 	return t.Implements(iface) || reflect.PointerTo(t).Implements(iface)
 }
-
-// maxPointerDepth bounds pointer dereferencing so a self-referential pointer
-// type cannot spin forever.
-const maxPointerDepth = 32
 
 // markVisited records t as being expanded, allocating the set on first use, and
 // returns it so callers can pass it down the recursion.
@@ -559,17 +575,6 @@ func inferExampleValue(val string, schema map[string]any) any {
 	return val
 }
 
-// JSON Schema formats the validator's rules map onto.
-const (
-	formatEmail    = "email"
-	formatUUID     = "uuid"
-	formatURI      = "uri"
-	formatIPv4     = "ipv4"
-	formatIPv6     = "ipv6"
-	formatHostname = "hostname"
-	formatByte     = "byte"
-)
-
 // validateFormats maps the validator's format rules to the JSON Schema formats
 // that describe the same values.
 var validateFormats = map[string]string{
@@ -639,11 +644,6 @@ func setFormat(schema map[string]any, format string) {
 
 // boundSide selects which end of a range a validate rule constrains.
 type boundSide uint8
-
-const (
-	lowerBound boundSide = iota
-	upperBound
-)
 
 // boundKeywords lists the schema keywords for each type's lower and upper
 // limit: length for strings, value for numbers, count for arrays and objects.
