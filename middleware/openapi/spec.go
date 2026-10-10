@@ -42,9 +42,9 @@ var openAPIOperationMethods = map[string]struct{}{
 }
 
 var openAPIVersionRank = map[string]int{
-	versionOpenAPI30: 0,
-	versionOpenAPI31: 1,
-	versionOpenAPI32: 2,
+	"3.0": 0,
+	"3.1": 1,
+	"3.2": 2,
 }
 
 type openAPISpec struct {
@@ -212,6 +212,12 @@ func generateOperationID(method, path string) string {
 	return b.String()
 }
 
+func isASCIIDigit(c byte) bool { return c >= '0' && c <= '9' }
+
+func isASCIIAlphanumeric(c byte) bool {
+	return isASCIIDigit(c) || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
+}
+
 // operationIDFromName makes a route name safe to publish as an operationId, which code
 // generators turn into an identifier: letters, digits, "_", "-" and "." are kept,
 // any other run of characters becomes a single "_", and a leading digit gets an "op_" prefix.
@@ -222,7 +228,7 @@ func operationIDFromName(name string) string {
 	for i := 0; i < len(name); i++ {
 		c := name[i]
 		switch {
-		case (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-' || c == '.':
+		case isASCIIAlphanumeric(c) || c == '-' || c == '.':
 			if pending && b.Len() > 0 {
 				_ = b.WriteByte('_') //nolint:errcheck // strings.Builder.WriteByte never returns an error
 			}
@@ -237,7 +243,7 @@ func operationIDFromName(name string) string {
 	}
 	id := b.String()
 	// An identifier cannot start with a digit.
-	if id != "" && id[0] >= '0' && id[0] <= '9' {
+	if id != "" && isASCIIDigit(id[0]) {
 		return "op_" + id
 	}
 	return id
@@ -258,8 +264,34 @@ func uniqueOperationID(id string, used map[string]struct{}) string {
 	}
 }
 
+// versionRank orders the supported minor versions; 3.0.3 ranks with 3.0.0.
+func versionRank(version string) int {
+	if len(version) < len("3.0") {
+		return 0
+	}
+	return openAPIVersionRank[version[:len("3.0")]]
+}
+
 func versionAtLeast(version, minimum string) bool {
-	return openAPIVersionRank[version] >= openAPIVersionRank[minimum]
+	return versionRank(version) >= versionRank(minimum)
+}
+
+// supportedVersion reports whether version is a 3.0.x, 3.1.x or 3.2.x release.
+func supportedVersion(version string) bool {
+	major, patch, ok := strings.Cut(version, ".")
+	if !ok || major != "3" {
+		return false
+	}
+	minor, patchDigits, ok := strings.Cut(patch, ".")
+	if !ok || (minor != "0" && minor != "1" && minor != "2") || patchDigits == "" {
+		return false
+	}
+	for i := 0; i < len(patchDigits); i++ {
+		if !isASCIIDigit(patchDigits[i]) {
+			return false
+		}
+	}
+	return true
 }
 
 // specEnv carries what generation reads from the app rather than from Config.
@@ -429,7 +461,7 @@ func (b *specBuilder) buildOperation(r *fiber.Route, facts *routeFacts, variant 
 	cfg := b.cfg
 
 	params := make([]parameter, 0, len(variant.ParamNames))
-	paramIndex := make(map[string]int, len(variant.ParamNames))
+	paramIndex := make(map[parameterKey]int, len(variant.ParamNames))
 	for _, p := range variant.ParamNames {
 		param := parameter{
 			Name:     p,
@@ -439,12 +471,14 @@ func (b *specBuilder) buildOperation(r *fiber.Route, facts *routeFacts, variant 
 			Schema: pathParamSchema(variant.ParamConstraints[p]),
 		}
 		params = append(params, param)
-		paramIndex[parameterKey(param.In, param.Name)] = len(params) - 1
+		paramIndex[parameterKey{param.In, param.Name}] = len(params) - 1
 	}
 	// Middleware and declared models come first so an explicit AddParameter overrides them.
 	extras := remapRouteParameters(append(slices.Clone(facts.declared), r.Parameters...), variant.PathParamAliases, variant.ParamNames)
 	// The "querystring" location exists only in 3.2+.
-	if !versionAtLeast(cfg.OpenAPIVersion, versionOpenAPI32) {
+	if versionAtLeast(cfg.OpenAPIVersion, versionOpenAPI32) {
+		extras = dropQueryAlongsideQuerystring(extras)
+	} else {
 		extras = dropQuerystringParameters(extras)
 	}
 	params = mergeRouteParameters(params, paramIndex, extras, b.reg)

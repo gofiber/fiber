@@ -277,3 +277,95 @@ func Test_OpenAPI_DocumentLevelEmptySecurity(t *testing.T) {
 	plain.Get("/x", listUsers)
 	require.NotContains(t, modelSpec(t, plain), "security")
 }
+
+func Test_OpenAPI_StrictRoutingDropsUnreachableVariants(t *testing.T) {
+	t.Parallel()
+
+	for pattern, want := range map[string][]string{
+		"/a/:id?/":    {"/a/{id}/"},
+		"/:x?/:y?/":   {"/{x}/{y}/"},
+		"/a/*/":       {"/a/{wildcard}/"},
+		"/a/:id?":     {"/a", "/a/{id}"},
+		"/plain/":     {"/plain/"},
+		"/plain":      {"/plain"},
+		"/a/:id?/end": {"/a/{id}/end"},
+	} {
+		var got []string
+		for _, variant := range buildOpenAPIPathVariants(pattern, nil, true) {
+			got = append(got, variant.Path)
+		}
+		require.ElementsMatch(t, want, got, pattern)
+	}
+}
+
+func Test_OpenAPI_VersionPatchReleases(t *testing.T) {
+	t.Parallel()
+
+	for version, want := range map[string]string{
+		"3.0.3": "3.0.3", "3.1.1": "3.1.1", "3.2.0": "3.2.0", "3.1.0": "3.1.0",
+		"3.2": "3.1.0", "3.3.0": "3.1.0", "2.0.0": "3.1.0", "3.1.x": "3.1.0", "": "3.1.0",
+	} {
+		app := fiber.New()
+		app.Get("/x", listUsers)
+		require.Equal(t, want, modelSpec(t, app, Config{OpenAPIVersion: version})["openapi"], version)
+	}
+	require.True(t, versionAtLeast("3.2.4", versionOpenAPI32))
+	require.False(t, versionAtLeast("3.0.3", versionOpenAPI31))
+}
+
+func Test_OpenAPI_ReservedHeaderParametersAreIgnored(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Get("/x", listUsers).
+		Parameter("Accept", fiber.ParamInHeader, false, map[string]any{"type": "string"}, "ignored").
+		Parameter("content-type", fiber.ParamInHeader, false, map[string]any{"type": "string"}, "ignored").
+		Parameter("Authorization", fiber.ParamInHeader, false, map[string]any{"type": "string"}, "ignored").
+		Parameter("X-Trace", fiber.ParamInHeader, false, map[string]any{"type": "string"}, "kept").
+		Parameter("Accept", fiber.ParamInQuery, false, map[string]any{"type": "string"}, "a query parameter named Accept stays")
+	params := chainParams(t, modelOperation(t, modelSpec(t, app), "/x", "get"))
+	require.Contains(t, params, "header:X-Trace")
+	require.Contains(t, params, "query:Accept")
+	for _, name := range []string{"header:Accept", "header:content-type", "header:Authorization"} {
+		require.NotContains(t, params, name)
+	}
+}
+
+func Test_OpenAPI_QuerystringExcludesQueryParameters(t *testing.T) {
+	t.Parallel()
+
+	newApp := func() *fiber.App {
+		app := fiber.New()
+		app.Get("/x", listUsers).
+			Parameter("page", fiber.ParamInQuery, false, map[string]any{"type": "integer"}, "p").
+			AddParameter(fiber.RouteParameter{Name: "qs", In: fiber.ParamInQuerystring, Content: map[string]fiber.RouteMediaType{"application/x-www-form-urlencoded": {Schema: map[string]any{"type": "object"}}}}).
+			Parameter("X-Trace", fiber.ParamInHeader, false, map[string]any{"type": "string"}, "h")
+		return app
+	}
+
+	params := chainParams(t, modelOperation(t, modelSpec(t, newApp(), Config{OpenAPIVersion: "3.2.0"}), "/x", "get"))
+	require.Contains(t, params, "querystring:qs")
+	require.Contains(t, params, "header:X-Trace")
+	require.NotContains(t, params, "query:page")
+
+	// Before 3.2 there is no querystring location, so the query parameter stays.
+	older := chainParams(t, modelOperation(t, modelSpec(t, newApp(), Config{OpenAPIVersion: "3.1.0"}), "/x", "get"))
+	require.Contains(t, older, "query:page")
+	require.NotContains(t, older, "querystring:qs")
+}
+
+func Test_OpenAPI_SpecDoesNotAliasRouteSecurity(t *testing.T) {
+	t.Parallel()
+
+	requirements := []map[string][]string{{"oauth": {"read"}}}
+	app := fiber.New()
+	app.Get("/x", listUsers).Security(requirements...)
+	// Changing what the caller passed afterwards must not change the route or the document.
+	requirements[0]["oauth"][0] = "changed"
+	requirements[0]["other"] = []string{"x"}
+
+	scheme := map[string]any{"type": "http", "scheme": "bearer"}
+	security, ok := modelOperation(t, modelSpec(t, app, Config{SecuritySchemes: map[string]any{"oauth": scheme, "other": scheme}}), "/x", "get")["security"].([]any)
+	require.True(t, ok)
+	require.Equal(t, []any{map[string]any{"oauth": []any{"read"}}}, security)
+}

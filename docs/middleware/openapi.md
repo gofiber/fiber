@@ -65,7 +65,7 @@ servers, tags, external docs and reusable components:
 app.Use(openapi.New(openapi.Config{
     Title:          "My API",
     Version:        "1.0.0",
-    OpenAPIVersion: "3.1.0", // or "3.0.0"
+    OpenAPIVersion: "3.1.0", // or "3.0.0", "3.2.0", or a patch release such as "3.1.1"
     Description:    "Example API",
     TermsOfService: "https://example.com/terms",
     Contact:        &openapi.Contact{Name: "API Team", Email: "api@example.com"},
@@ -756,10 +756,18 @@ route's media type.
   also matches no segment, the bare path (`/files`) is documented as well, as for
   an optional parameter; `+` requires a segment and gets no such variant.
 - A trailing slash is dropped from a path (`/a/` is published as `/a`), except under
-  `StrictRouting`, where `/a` and `/a/` are different routes and both are published.
+  `StrictRouting`, where `/a` and `/a/` are different routes and a pattern that ends in
+  `/` keeps it. A variant of such a pattern that drops an optional segment (`/a/:id?/`
+  without `:id`) would end in `//`, which no request reaches, so it is left out.
 - A literal `{` or `}` in a route is published percent-encoded (`%7B`, `%7D`), because
   OpenAPI reads braces as template expressions. Fiber matches such a route only with
   `UnescapePath` enabled, where both forms reach it.
+- A header parameter named `Accept`, `Content-Type` or `Authorization` is left out, as
+  OpenAPI says to ignore those definitions; the headers are described by the media types
+  and security schemes instead. A query parameter with one of those names is kept.
+- In 3.2 a `querystring` parameter describes the whole query string, so the `query`
+  parameters of the same operation are dropped when one is present, as the specification
+  forbids using both. Before 3.2 the `querystring` parameter is dropped instead.
 - Routes with several optional parameters (e.g. `/files/:dir?/:name?`) emit one
   templated path per hierarchy level (`/files`, `/files/{dir}`,
   `/files/{dir}/{name}`): the router always binds the first parameter, and the
@@ -830,7 +838,7 @@ route's media type.
 | SwaggerBundleIntegrity | `string`        | Subresource Integrity value for `SwaggerBundleURL`, defaulting the same way. | the hash of the default bundle |
 | SwaggerStandalonePresetIntegrity | `string` | Subresource Integrity value for `SwaggerStandalonePresetURL`, defaulting the same way. | the hash of the default preset |
 | SwaggerOptions | `map[string]any`        | Additional options merged into the generated `SwaggerUIBundle` call. | `nil` |
-| OpenAPIVersion | `string`                | OpenAPI specification version to generate (`"3.0.0"`, `"3.1.0"` or `"3.2.0"`) | `"3.1.0"`     |
+| OpenAPIVersion | `string`                | OpenAPI specification version to generate: any 3.0.x, 3.1.x or 3.2.x release (`"3.0.3"`, `"3.1.1"`), written to the document as given. Anything else falls back to the default. | `"3.1.0"`     |
 | Components     | `map[string]any`        | Reusable OpenAPI component definitions (schemas, responses, etc.) emitted under `"components"`. | `nil` |
 | SecuritySchemes | `map[string]any`       | Reusable security scheme definitions, emitted under `"components.securitySchemes"`. | `nil` |
 | Security       | `[]map[string][]string` | Document-level (default) security requirements; each map is a requirement (OR semantics across entries). An empty non-nil list is written as `security: []`, stating the API needs no authentication. | `nil` |

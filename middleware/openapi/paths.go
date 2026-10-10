@@ -188,10 +188,12 @@ func buildOpenAPIPathVariants(fiberPath string, params []string, strict bool) []
 
 	seen := make(map[string]struct{}, len(variants))
 	unique := make([]pathVariant, 0, len(variants))
+	keepSlash := strict && strings.HasSuffix(fiberPath, "/")
 	for _, variant := range variants {
 		path := variant.Path
-		// A path of only slashes is the root. Under StrictRouting one trailing slash is part of the route.
-		keepSlash := strict && len(path) > 1 && strings.HasSuffix(path, "/") && !strings.HasSuffix(path, "//")
+		// A path of only slashes is the root. Under StrictRouting a pattern that ends in "/" keeps it,
+		// and a variant that drops an optional segment then ends in "//" and is discarded below, as no
+		// request reaches it. A pattern without a trailing slash is trimmed as usual.
 		if path != "" && !keepSlash {
 			if path = utils.TrimRight(path, '/'); path == "" {
 				path = "/"

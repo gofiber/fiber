@@ -133,7 +133,7 @@ type Config struct {
 	// ServerURL is the server URL used in the generated specification. Optional. Default: ""
 	ServerURL string
 
-	// OpenAPIVersion selects the spec version: "3.0.0", "3.1.0" or "3.2.0". Optional. Default: "3.1.0"
+	// OpenAPIVersion selects the spec version: any 3.0.x, 3.1.x or 3.2.x release ("3.0.3", "3.1.1"), written to the document as given; anything else falls back to the default. Optional. Default: "3.1.0"
 	OpenAPIVersion string
 
 	// SwaggerStandalonePresetURL is the preset script URL; empty selects the default, never omits it. Optional. Default: "https://unpkg.com/swagger-ui-dist@5.32.6/swagger-ui-standalone-preset.js"
@@ -362,10 +362,7 @@ func configDefault(config ...Config) Config {
 	if schema, ok := cfg.ErrorSchema.(map[string]any); ok {
 		cfg.ErrorSchema = deepcopy.Map(schema)
 	}
-	switch cfg.OpenAPIVersion {
-	case versionOpenAPI30, versionOpenAPI31, versionOpenAPI32:
-		// supported
-	default:
+	if !supportedVersion(cfg.OpenAPIVersion) {
 		cfg.OpenAPIVersion = ConfigDefault.OpenAPIVersion
 	}
 	return cfg

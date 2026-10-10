@@ -3216,7 +3216,7 @@ func Test_appendOrReplaceParameter_Guards(t *testing.T) {
 	t.Parallel()
 
 	params := []parameter{{Name: "a", In: "query"}}
-	index := map[string]int{"query:a": 0}
+	index := map[parameterKey]int{{fiber.ParamInQuery, "a"}: 0}
 
 	require.Len(t, appendOrReplaceParameter(params, index, nil), 1)
 	require.Len(t, appendOrReplaceParameter(params, index, &parameter{In: "query"}), 1)
@@ -3329,7 +3329,7 @@ func Test_buildComponents_MergeSecuritySchemes(t *testing.T) {
 func Test_mergeRouteParameters_Internal(t *testing.T) {
 	t.Parallel()
 
-	index := map[string]int{}
+	index := map[parameterKey]int{}
 	out := mergeRouteParameters(nil, index, []fiber.RouteParameter{
 		{Name: "  "},
 		{Name: "q"},

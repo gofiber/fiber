@@ -33,7 +33,7 @@ func validateOpenAPIDocument(t *testing.T, raw []byte) {
 
 	version, ok := doc["openapi"].(string)
 	require.True(t, ok, "openapi version must be a string")
-	require.Contains(t, []string{"3.0.0", "3.1.0", "3.2.0"}, version)
+	require.True(t, supportedVersion(version), "unsupported openapi version %q", version)
 
 	info, ok := doc["info"].(map[string]any)
 	require.True(t, ok, "info must be an object")

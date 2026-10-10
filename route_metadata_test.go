@@ -1876,3 +1876,11 @@ func Test_CopySchema_ClonesNamedMapsAndSlices(t *testing.T) {
 	type model struct{ Name string }
 	require.Equal(t, model{Name: "n"}, copySchema(model{Name: "n"}))
 }
+
+func Test_ParamLocation_Normalize(t *testing.T) {
+	t.Parallel()
+
+	require.Equal(t, ParamInQuery, ParamLocation(" Query ").Normalize())
+	require.Equal(t, ParamInHeader, ParamLocation("HEADER").Normalize())
+	require.Equal(t, ParamLocation(""), ParamLocation("  ").Normalize())
+}

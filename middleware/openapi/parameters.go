@@ -3,24 +3,19 @@ package openapi
 import (
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/utils/v2"
-	utilsstrings "github.com/gofiber/utils/v2/strings"
 )
+
+// parameterKey identifies a parameter: names are unique per location.
+type parameterKey struct {
+	in   fiber.ParamLocation
+	name string
+}
 
 // dropQuerystringParameters removes parameters in the OpenAPI 3.2-only
 // "querystring" location.
-// normalizeLocation trims and lower-cases a location so "Query " reads as "query".
-func normalizeLocation(in fiber.ParamLocation) fiber.ParamLocation {
-	return fiber.ParamLocation(utilsstrings.ToLower(utils.TrimSpace(string(in))))
-}
-
-// parameterKey identifies a parameter: names are unique per location.
-func parameterKey(in fiber.ParamLocation, name string) string {
-	return string(in) + ":" + name
-}
-
 func dropQuerystringParameters(extras []fiber.RouteParameter) []fiber.RouteParameter {
 	isQuerystring := func(in fiber.ParamLocation) bool {
-		return normalizeLocation(in) == fiber.ParamInQuerystring
+		return in.Normalize() == fiber.ParamInQuerystring
 	}
 	for i := range extras {
 		if !isQuerystring(extras[i].In) {
@@ -38,7 +33,37 @@ func dropQuerystringParameters(extras []fiber.RouteParameter) []fiber.RouteParam
 	return extras
 }
 
-func mergeRouteParameters(params []parameter, index map[string]int, extras []fiber.RouteParameter, reg *schemaRegistry) []parameter {
+// isReservedHeader reports whether OpenAPI says to ignore a header parameter of this name.
+func isReservedHeader(name string) bool {
+	name = utils.TrimSpace(name)
+	return utils.EqualFold(name, fiber.HeaderAccept) ||
+		utils.EqualFold(name, fiber.HeaderContentType) ||
+		utils.EqualFold(name, fiber.HeaderAuthorization)
+}
+
+// dropQueryAlongsideQuerystring removes the "query" parameters when a "querystring" one is
+// present: OpenAPI 3.2 forbids using both, and the querystring parameter describes the whole string.
+func dropQueryAlongsideQuerystring(extras []fiber.RouteParameter) []fiber.RouteParameter {
+	hasQuerystring := false
+	for i := range extras {
+		if extras[i].In.Normalize() == fiber.ParamInQuerystring {
+			hasQuerystring = true
+			break
+		}
+	}
+	if !hasQuerystring {
+		return extras
+	}
+	filtered := make([]fiber.RouteParameter, 0, len(extras))
+	for i := range extras {
+		if extras[i].In.Normalize() != fiber.ParamInQuery {
+			filtered = append(filtered, extras[i])
+		}
+	}
+	return filtered
+}
+
+func mergeRouteParameters(params []parameter, index map[parameterKey]int, extras []fiber.RouteParameter, reg *schemaRegistry) []parameter {
 	if len(extras) == 0 {
 		return params
 	}
@@ -47,9 +72,13 @@ func mergeRouteParameters(params []parameter, index map[string]int, extras []fib
 		if utils.TrimSpace(extra.Name) == "" {
 			continue
 		}
-		location := normalizeLocation(extra.In)
+		location := extra.In.Normalize()
 		if location == "" {
 			location = fiber.ParamInQuery
+		}
+		// OpenAPI: a header parameter named Accept, Content-Type or Authorization is ignored.
+		if location == fiber.ParamInHeader && isReservedHeader(extra.Name) {
+			continue
 		}
 		// "example" and "examples" are mutually exclusive; prefer "examples".
 		var paramExample any
@@ -100,7 +129,7 @@ func mergeRouteParameters(params []parameter, index map[string]int, extras []fib
 			param.Required = true
 			// AddParameter injects a default string schema, which must not
 			// replace one derived from the route constraint (":id<int>").
-			if idx, ok := index[parameterKey(param.In, param.Name)]; ok && extra.SchemaRef == "" && param.Content == nil && isDefaultStringSchema(extra.Schema) {
+			if idx, ok := index[parameterKey{param.In, param.Name}]; ok && extra.SchemaRef == "" && param.Content == nil && isDefaultStringSchema(extra.Schema) {
 				param.Schema = params[idx].Schema
 			}
 		}
@@ -133,11 +162,11 @@ func isDefaultStringSchemaMap(schema map[string]any) bool {
 	}
 }
 
-func appendOrReplaceParameter(params []parameter, index map[string]int, p *parameter) []parameter {
+func appendOrReplaceParameter(params []parameter, index map[parameterKey]int, p *parameter) []parameter {
 	if p == nil || p.Name == "" || p.In == "" {
 		return params
 	}
-	key := parameterKey(p.In, p.Name)
+	key := parameterKey{p.In, p.Name}
 	if idx, ok := index[key]; ok {
 		params[idx] = *p
 		return params
@@ -217,7 +246,7 @@ func remapRouteParameters(extras []fiber.RouteParameter, aliases map[string]stri
 	out := make([]fiber.RouteParameter, 0, len(extras))
 	for i := range extras {
 		copyExtra := extras[i]
-		if utils.EqualFold(utils.TrimSpace(copyExtra.In), fiber.ParamInPath) {
+		if copyExtra.In.Normalize() == fiber.ParamInPath {
 			if mapped, ok := aliases[copyExtra.Name]; ok {
 				copyExtra.Name = mapped
 			}

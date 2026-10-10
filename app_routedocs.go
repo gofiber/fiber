@@ -8,7 +8,6 @@ import (
 
 	"github.com/gofiber/fiber/v3/internal/deepcopy"
 	"github.com/gofiber/utils/v2"
-	utilsstrings "github.com/gofiber/utils/v2/strings"
 )
 
 func docSetSummary(sum string) func(route *Route) {
@@ -46,10 +45,6 @@ func optionalMediaType(typ string) string {
 		return ""
 	}
 	return validateMediaType(typ)
-}
-
-func normalizeParamLocation(in ParamLocation) ParamLocation {
-	return ParamLocation(utilsstrings.ToLower(utils.TrimSpace(string(in))))
 }
 
 func docSetConsumes(typ string) func(route *Route) {
@@ -156,7 +151,7 @@ func docAddParameter(param RouteParameter) func(route *Route) {
 		panic("AddParameter: parameter name is required")
 	}
 
-	location := normalizeParamLocation(param.In)
+	location := param.In.Normalize()
 	if !validParamLocation(location, true) {
 		panic("AddParameter: invalid parameter location: " + param.In)
 	}
@@ -572,7 +567,7 @@ func validParamLocation(location ParamLocation, querystring bool) bool {
 }
 
 func docAddParameterModel(in ParamLocation, model any) func(route *Route) {
-	location := normalizeParamLocation(in)
+	location := in.Normalize()
 	if !validParamLocation(location, false) {
 		panic("Params: invalid parameter location: " + in)
 	}
