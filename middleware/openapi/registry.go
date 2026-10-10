@@ -3,7 +3,6 @@ package openapi
 import (
 	"maps"
 	"reflect"
-	"strconv"
 
 	"github.com/gofiber/utils/v2"
 )
@@ -79,7 +78,7 @@ func (reg *schemaRegistry) claimName(t reflect.Type) string {
 		}
 	}
 	for i := 2; ; i++ {
-		candidate := base + "_" + strconv.Itoa(i)
+		candidate := base + "_" + utils.FormatInt(int64(i))
 		if _, exists := reg.taken[candidate]; !exists {
 			reg.taken[candidate] = t
 			return candidate

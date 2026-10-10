@@ -1,15 +1,11 @@
 package openapi
 
 import (
-	"reflect"
 	"slices"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/deepcopy"
 )
-
-// maxCopyDepth bounds the configuration deep copy: a cyclic value in
-// SwaggerOptions or Components would otherwise overflow the stack in New.
-const maxCopyDepth = 100
 
 const (
 	versionOpenAPI30 = "3.0.0"
@@ -257,103 +253,6 @@ var ConfigDefault = Config{
 	DisableRateLimitHeaders: false,
 }
 
-// deepCopyAnyMap copies a raw OpenAPI object so no nested container is shared with the caller.
-func deepCopyAnyMap(src map[string]any) map[string]any {
-	return deepCopyAnyMapDepth(src, 0)
-}
-
-func deepCopyAnyMapDepth(src map[string]any, depth int) map[string]any {
-	if src == nil {
-		return nil
-	}
-	if depth >= maxCopyDepth {
-		// encoding/json reports the cycle when the document is served.
-		return src
-	}
-	dst := make(map[string]any, len(src))
-	for key, value := range src {
-		dst[key] = deepCopyAnyValueDepth(value, depth+1)
-	}
-	return dst
-}
-
-func deepCopyAnyValueDepth(src any, depth int) any {
-	if depth >= maxCopyDepth {
-		return src
-	}
-	switch value := src.(type) {
-	case map[string]any:
-		return deepCopyAnyMapDepth(value, depth)
-	case []any:
-		copied := make([]any, len(value))
-		for i := range value {
-			copied[i] = deepCopyAnyValueDepth(value[i], depth+1)
-		}
-		return copied
-	case []string:
-		return slices.Clone(value)
-	default:
-		return deepCopyReflected(src, depth)
-	}
-}
-
-// deepCopyReflected clones map and slice values of any concrete type.
-func deepCopyReflected(src any, depth int) any {
-	v := reflect.ValueOf(src)
-	switch v.Kind() {
-	case reflect.Map:
-		if v.IsNil() {
-			return src
-		}
-		cloned := reflect.MakeMapWithSize(v.Type(), v.Len())
-		iter := v.MapRange()
-		for iter.Next() {
-			cloned.SetMapIndex(iter.Key(), deepCopyReflectedValue(iter.Value(), depth+1))
-		}
-		return cloned.Interface()
-	case reflect.Slice:
-		if v.IsNil() {
-			return src
-		}
-		cloned := reflect.MakeSlice(v.Type(), v.Len(), v.Len())
-		for i := range v.Len() {
-			cloned.Index(i).Set(deepCopyReflectedValue(v.Index(i), depth+1))
-		}
-		return cloned.Interface()
-	default:
-		return src
-	}
-}
-
-// deepCopyReflectedValue copies one element, recursing through interfaces.
-func deepCopyReflectedValue(v reflect.Value, depth int) reflect.Value {
-	if v.Kind() == reflect.Interface && !v.IsNil() {
-		return reflect.ValueOf(deepCopyAnyValueDepth(v.Interface(), depth))
-	}
-	if v.Kind() == reflect.Map || v.Kind() == reflect.Slice {
-		return reflect.ValueOf(deepCopyReflected(v.Interface(), depth))
-	}
-	return v
-}
-
-// cloneSecurityRequirements copies the requirement maps and their scope slices.
-func cloneSecurityRequirements(src []map[string][]string) []map[string][]string {
-	if src == nil {
-		return nil
-	}
-	cloned := make([]map[string][]string, len(src))
-	for i, requirement := range src {
-		entry := make(map[string][]string, len(requirement))
-		for scheme, scopes := range requirement {
-			copied := make([]string, len(scopes))
-			copy(copied, scopes)
-			entry[scheme] = copied
-		}
-		cloned[i] = entry
-	}
-	return cloned
-}
-
 // defaultAsset defaults an empty URL; the default integrity applies only with the default URL.
 func defaultAsset(url, integrity *string, defaultURL, defaultIntegrity string) {
 	if *url != "" {
@@ -409,10 +308,10 @@ func configDefault(config ...Config) Config {
 	defaultAsset(&cfg.SwaggerBundleURL, &cfg.SwaggerBundleIntegrity, ConfigDefault.SwaggerBundleURL, ConfigDefault.SwaggerBundleIntegrity)
 	defaultAsset(&cfg.SwaggerStandalonePresetURL, &cfg.SwaggerStandalonePresetIntegrity, ConfigDefault.SwaggerStandalonePresetURL, ConfigDefault.SwaggerStandalonePresetIntegrity)
 	// Detach reference-typed fields: the handler reads this config while serving.
-	cfg.SwaggerOptions = deepCopyAnyMap(cfg.SwaggerOptions)
-	cfg.Components = deepCopyAnyMap(cfg.Components)
-	cfg.SecuritySchemes = deepCopyAnyMap(cfg.SecuritySchemes)
-	cfg.Webhooks = deepCopyAnyMap(cfg.Webhooks)
+	cfg.SwaggerOptions = deepcopy.Map(cfg.SwaggerOptions)
+	cfg.Components = deepcopy.Map(cfg.Components)
+	cfg.SecuritySchemes = deepcopy.Map(cfg.SecuritySchemes)
+	cfg.Webhooks = deepcopy.Map(cfg.Webhooks)
 	cfg.Servers = slices.Clone(cfg.Servers)
 	for i := range cfg.Servers {
 		// maps.Clone is shallow; Enum slices must be cloned too.
@@ -432,7 +331,7 @@ func configDefault(config ...Config) Config {
 			cfg.Tags[i].ExternalDocs = &docs
 		}
 	}
-	cfg.Security = cloneSecurityRequirements(cfg.Security)
+	cfg.Security = deepcopy.Security(cfg.Security)
 	if cfg.Contact != nil {
 		contact := *cfg.Contact
 		cfg.Contact = &contact
@@ -461,7 +360,7 @@ func configDefault(config ...Config) Config {
 		}
 	}
 	if schema, ok := cfg.ErrorSchema.(map[string]any); ok {
-		cfg.ErrorSchema = deepCopyAnyMap(schema)
+		cfg.ErrorSchema = deepcopy.Map(schema)
 	}
 	switch cfg.OpenAPIVersion {
 	case versionOpenAPI30, versionOpenAPI31, versionOpenAPI32:

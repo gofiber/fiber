@@ -1,21 +1,17 @@
 package fiber
 
 import (
-	"reflect"
 	"slices"
+
+	"github.com/gofiber/fiber/v3/internal/deepcopy"
 )
 
 // copyRoute clones a route without its group, so the clone does not inherit the
 // source app's group name. A mount placeholder keeps its target app in group.app;
 // cloning it would serve the mounted handlers on every host under a domain mount.
 func (app *App) copyRoute(route *Route) *Route {
-	copied := app.copyRouteValue(route)
-	return &copied
-}
-
-// copyRouteValue is copyRoute without the heap allocation.
-func (app *App) copyRouteValue(route *Route) (copied Route) { //nolint:nonamedreturns // the named result is what keeps this to a single struct copy
-	app.copyRouteInto(&copied, route)
+	copied := new(Route)
+	app.copyRouteInto(copied, route)
 	return copied
 }
 
@@ -26,7 +22,9 @@ func (r *Route) isDocumented() bool {
 		r.ExternalDocs != nil || r.OperationExtensions != nil
 }
 
-// copyRouteInto deep-copies route into dst, writing through a pointer to avoid moving the large Route.
+// copyRouteInto copies route into dst, cloning its documentation metadata. Handlers, Params
+// and the registered handler chain are shared with route. It writes through a pointer to
+// avoid moving the large Route.
 func (app *App) copyRouteInto(dst, route *Route) {
 	*dst = *route
 	dst.group = nil
@@ -76,25 +74,6 @@ func (*App) copyRouteBaseInto(dst, route *Route) {
 	dst.Security = nil
 	dst.ExternalDocs = nil
 	dst.OperationExtensions = nil
-}
-
-func cloneRouteSecurity(requirements []map[string][]string) []map[string][]string {
-	// An empty non-nil list is kept: it means "no authentication", unlike nil.
-	if requirements == nil {
-		return nil
-	}
-	cloned := make([]map[string][]string, len(requirements))
-	for i, requirement := range requirements {
-		entry := make(map[string][]string, len(requirement))
-		for scheme, scopes := range requirement {
-			// Keep an empty scope list non-nil so it marshals as [] rather than null.
-			cloned := make([]string, len(scopes))
-			copy(cloned, scopes)
-			entry[scheme] = cloned
-		}
-		cloned[i] = entry
-	}
-	return cloned
 }
 
 func cloneRouteRequestBody(body *RouteRequestBody) *RouteRequestBody {
@@ -189,95 +168,16 @@ func cloneRouteResponses(responses map[string]RouteResponse) map[string]RouteRes
 	return cloned
 }
 
+// copyAnyMap copies a documentation object; an empty one reads as unset, so it becomes nil.
 func copyAnyMap(src map[string]any) map[string]any {
 	if len(src) == 0 {
 		return nil
 	}
-	return copyAnyMapDepth(src, 0)
+	return deepcopy.Map(src)
 }
 
-func copyAnyMapDepth(src map[string]any, depth int) map[string]any {
-	// An empty nested map is kept so "properties": {} does not become null.
-	if src == nil {
-		return nil
-	}
-	if depth >= maxCopyDepth {
-		// Cyclic or too deep: share the reference; encoding/json reports the cycle.
-		return src
-	}
-	dst := make(map[string]any, len(src))
-	for key, value := range src {
-		dst[key] = copyAnyValueDepth(value, depth+1)
-	}
-	return dst
-}
+func copyAnyValue(src any) any { return deepcopy.Value(src) }
 
-func copyAnyValue(src any) any {
-	return copyAnyValueDepth(src, 0)
-}
-
-func copyAnyValueDepth(src any, depth int) any {
-	if src == nil {
-		return nil
-	}
-	if depth >= maxCopyDepth {
-		return src
-	}
-
-	switch value := src.(type) {
-	case map[string]any:
-		return copyAnyMapDepth(value, depth)
-	case []any:
-		copied := make([]any, len(value))
-		for i := range value {
-			copied[i] = copyAnyValueDepth(value[i], depth+1)
-		}
-		return copied
-	case []map[string]any:
-		copied := make([]map[string]any, len(value))
-		for i := range value {
-			copied[i] = copyAnyMapDepth(value[i], depth+1)
-		}
-		return copied
-	default:
-		return copyCompositeValue(src, depth)
-	}
-}
-
-// copyCompositeValue clones map and slice values of named types; depth carries
-// over so cycles still hit maxCopyDepth.
-func copyCompositeValue(src any, depth int) any {
-	value := reflect.ValueOf(src)
-
-	switch value.Kind() {
-	case reflect.Slice:
-		if value.IsNil() {
-			return src
-		}
-		copied := reflect.MakeSlice(value.Type(), value.Len(), value.Len())
-		for i := range value.Len() {
-			// A nil element is an invalid reflect.Value; keep the zero value.
-			if elem := copyAnyValueDepth(value.Index(i).Interface(), depth+1); elem != nil {
-				copied.Index(i).Set(reflect.ValueOf(elem))
-			}
-		}
-		return copied.Interface()
-	case reflect.Map:
-		if value.IsNil() {
-			return src
-		}
-		copied := reflect.MakeMapWithSize(value.Type(), value.Len())
-		iter := value.MapRange()
-		for iter.Next() {
-			// SetMapIndex with an invalid value deletes the key; use the zero value instead.
-			val := reflect.Zero(value.Type().Elem())
-			if elem := copyAnyValueDepth(iter.Value().Interface(), depth+1); elem != nil {
-				val = reflect.ValueOf(elem)
-			}
-			copied.SetMapIndex(iter.Key(), val)
-		}
-		return copied.Interface()
-	default:
-		return src
-	}
+func cloneRouteSecurity(requirements []map[string][]string) []map[string][]string {
+	return deepcopy.Security(requirements)
 }

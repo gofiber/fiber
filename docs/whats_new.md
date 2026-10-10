@@ -540,6 +540,18 @@ Auto-generated `HEAD` routes appear in tooling such as `app.Stack()` and cover t
 `Name()` (and the documentation helpers) now target only the routes created by the most recent registration. Naming a `GET` route no longer also names an **explicitly registered** `HEAD` route on the same path — name that route in its own registration chain instead.
 :::
 
+:::caution
+Other changes to existing routing behavior, made so routes can be documented safely:
+
+- `Name()` after `app.Use("/prefix", subApp)` is a no-op: the mount is not a route of its own, so there is nothing to name. Name the sub-app's routes in the sub-app.
+- `OnRoute` and `OnName` hooks run after the router lock is released and receive a snapshot of the route, so they may call other `App` methods; changes to the snapshot are not applied.
+- The function passed to `RemoveRouteFunc` receives a copy of each route; writes to it are discarded.
+- Routes registered on different domains for the same method and path are never merged into one route entry and do not share an automatic `HEAD` twin.
+- `GetRoute` and `GetRoutes` return copies whose documentation metadata is cloned; `Handlers` and `Params` still share their backing arrays with the app.
+- `fiber.Register` gained `Name` and the documentation methods. A type of your own that implements `fiber.Register` must add them.
+
+:::
+
 ### QUERY method (RFC 10008)
 
 Fiber now supports the HTTP `QUERY` method ([RFC 10008](https://www.rfc-editor.org/rfc/rfc10008.html)) as a first-class verb. `QUERY` is safe and idempotent like `GET`, but allows a request body for complex queries.

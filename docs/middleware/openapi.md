@@ -45,8 +45,8 @@ the routes themselves and from `Config` — the tag groups, the server list and 
 
 Most of the document exists before a single route is documented: each
 operation's summary is derived from its handler's function name, its tags from
-the enclosing group, and every response carries `application/json` unless the
-route says otherwise. The helpers further down refine those defaults; see
+the enclosing group, and every response that has a body carries `application/json`
+unless the route says otherwise (a `204` has none). The helpers further down refine those defaults; see
 [Behavior and defaults](#behavior-and-defaults) for the exact rules.
 
 The middleware inspects the app's routes and generates the spec on the first
@@ -660,7 +660,9 @@ route's media type.
     `app.Get("/users", listUsers)` documents as `List users`, and a method value
     such as `(*Server).GetUserByID` as `Get user by ID`. A closure has no usable
     name, so its summary falls back to `"METHOD /path"`. `DisableHandlerSummaries`
-    keeps that fallback everywhere.
+    keeps that fallback everywhere. The summary puts the Go function name in the
+    public document, so set `DisableHandlerSummaries` if handler names are
+    internal, or give those routes an explicit `Summary`.
   - Tags come from the enclosing group. A named group contributes the last
     segment of its name, so `app.Group("/u").Name("users.")` tags `users`;
     otherwise the last static segment of the prefix does, skipping parameters
@@ -734,9 +736,12 @@ route's media type.
   to `RequestBody*` and to a `200` `Response*`, but only when `Consumes()` or
   `Produces()` did not set one explicitly.
 - Each operation gets a unique `operationId`: routes documented with `Name` use
-  that name; routes without one get an id generated from the method and path (for
-  example `GET /users/{id}` → `getUsersId`). Collisions get a numeric suffix
-  (`_2`, `_3`, …) so the document stays valid.
+  that name, with anything but letters, digits, `_`, `-` and `.` replaced by `_`
+  (`list all users` → `list_all_users`) because code generators turn the id into
+  an identifier; routes without a usable name get an id generated from the method
+  and path (for example `GET /users/{id}` → `getUsersId`). Collisions get a
+  numeric suffix (`_2`, `_3`, …) so the document stays valid. Renaming a route
+  changes its id.
 - Path parameters whose sanitized names collide are also suffixed (`_2`, `_3`, …)
   so parameter names stay unique per path.
 - Wildcard segments (`*`, `+`) become an ordinary path parameter named
@@ -768,6 +773,9 @@ route's media type.
   recent registration, even when other routes were registered on the app in
   the meantime; before the first registration through such a router its
   helpers are no-ops.
+- The parent copies a sub-app's routes, documentation included, when the mount
+  is expanded at startup. Document the sub-app's routes before the parent starts
+  serving; changes made to them afterwards do not reach the parent's document.
 - Documentation helpers chained onto a sub-app mount
   (`app.Use("/api", subApp).Summary(...)`) are no-ops: mount placeholders are
   replaced by the sub-app's own routes at startup, so document the sub-app's

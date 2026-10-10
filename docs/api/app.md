@@ -526,7 +526,7 @@ This method retrieves a route by its name.
 
 The returned `Route` can be inspected or used to generate a URL directly with `route.URL(params)`.
 
-The `Route` is a deep copy, documentation metadata included, so it is safe to call while routes are being registered and changing the copy never changes the app. Names are looked up in an index that is rebuilt, under the router lock, the first time it is used after the route table changes; every other lookup takes no lock and costs one map read (or a scan of a handful of names) however many routes the app has. Because the copy includes the documentation fields, `GetRoute` returns a larger value than it once did; code that only builds a URL by name should call `c.GetRouteURL` or `c.Redirect().Route`, which read the route without copying it.
+The `Route` is a copy. Its documentation metadata (`Responses`, `Parameters`, `Tags` and the rest) is cloned, so it is safe to call while routes are being registered and changing those fields never changes the app. `Handlers` and `Params` still share their backing arrays with the app, so do not modify them. Names are looked up in an index that is rebuilt, under the router lock, the first time it is used after the route table changes; every other lookup takes no lock and costs one map read (or a scan of a handful of names) however many routes the app has. Because the copy includes the documentation fields, `GetRoute` returns a larger value than it once did; code that only builds a URL by name should call `c.GetRouteURL` or `c.Redirect().Route`, which read the route without copying it.
 
 ```go title="Signature"
 func (app *App) GetRoute(name string) Route

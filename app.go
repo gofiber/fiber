@@ -1041,7 +1041,8 @@ func (app *App) Name(name string) Router {
 }
 
 // GetRoutes Get all routes. When filterUseOption equal to true, it will filter the routes registered by the middleware.
-// The returned routes are deep copies.
+// The returned routes are copies whose documentation metadata is cloned; Handlers and Params
+// still share their backing arrays with the app and must not be modified.
 func (app *App) GetRoutes(filterUseOption ...bool) []Route {
 	var filterUse bool
 	if len(filterUseOption) != 0 {
@@ -1413,8 +1414,6 @@ func (app *App) ShutdownWithContext(ctx context.Context) error {
 		return ErrNotRunning
 	}
 
-	// The drain waits for in-flight handlers, so the mutex must not be held
-	// meanwhile: a handler taking it (RebuildTree, Name, ...) would never finish.
 	app.hooks.executeOnPreShutdownHooks()
 
 	var err error

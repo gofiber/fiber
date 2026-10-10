@@ -1,7 +1,6 @@
 package openapi
 
 import (
-	"strconv"
 	"strings"
 	"time"
 
@@ -154,11 +153,11 @@ func setIntSchemaKey(schema map[string]any, key string, args []string, idx int) 
 	if idx >= len(args) {
 		return
 	}
-	n, err := strconv.Atoi(utils.TrimSpace(args[idx]))
+	n, err := utils.ParseInt(utils.TrimSpace(args[idx]))
 	if err != nil {
 		return
 	}
-	setSchemaKey(schema, key, n)
+	setSchemaKey(schema, key, int(n))
 }
 
 // parsedConstraint is one entry of a "<...>" span.

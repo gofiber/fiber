@@ -40,13 +40,13 @@ var swaggerUITemplate = htemplate.Must(htemplate.New("swagger-ui").Parse(`<!doct
 
     <script
       src="{{ .SwaggerBundleURL }}"{{ if .SwaggerBundleIntegrity }}
-      integrity="{{ .SwaggerBundleIntegrity }}"{{ end }}
-      crossorigin="anonymous"
+      integrity="{{ .SwaggerBundleIntegrity }}"
+      crossorigin="anonymous"{{ end }}
     ></script>
     {{ if .SwaggerStandalonePresetURL }}<script
       src="{{ .SwaggerStandalonePresetURL }}"{{ if .SwaggerStandalonePresetIntegrity }}
-      integrity="{{ .SwaggerStandalonePresetIntegrity }}"{{ end }}
-      crossorigin="anonymous"
+      integrity="{{ .SwaggerStandalonePresetIntegrity }}"
+      crossorigin="anonymous"{{ end }}
     ></script>{{ end }}
     <script>
       window.addEventListener("load", function () {

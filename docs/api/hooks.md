@@ -42,6 +42,10 @@ type OnMountHandler = func(*App) error
 
 Runs after each route is registered. The callback receives the route so you can inspect its properties.
 
+:::note
+The callback runs after the router lock is released and receives a snapshot of the route, so it may call other `App` methods such as `GetRoute` or `Name`. Changes made to the snapshot are not applied to the route.
+:::
+
 ```go title="Signature"
 func (h *Hooks) OnRoute(handler ...OnRouteHandler)
 ```
@@ -49,6 +53,10 @@ func (h *Hooks) OnRoute(handler ...OnRouteHandler)
 ## OnName
 
 Runs when a route is named. The callback receives the route.
+
+:::note
+Like `OnRoute`, it runs after the router lock is released and receives a snapshot of the route.
+:::
 
 :::caution
 `OnName` only works with named routes, not groups.

@@ -10,7 +10,7 @@ import (
 // "querystring" location.
 func dropQuerystringParameters(extras []fiber.RouteParameter) []fiber.RouteParameter {
 	isQuerystring := func(in string) bool {
-		return utils.EqualFold(utils.TrimSpace(in), paramLocationQuerystring)
+		return utils.EqualFold(utils.TrimSpace(in), fiber.ParamInQuerystring)
 	}
 	for i := range extras {
 		if !isQuerystring(extras[i].In) {
@@ -39,7 +39,7 @@ func mergeRouteParameters(params []parameter, index map[string]int, extras []fib
 		}
 		location := utilsstrings.ToLower(utils.TrimSpace(extra.In))
 		if location == "" {
-			location = "query"
+			location = fiber.ParamInQuery
 		}
 		// "example" and "examples" are mutually exclusive; prefer "examples".
 		var paramExample any
@@ -68,7 +68,7 @@ func mergeRouteParameters(params []parameter, index map[string]int, extras []fib
 			// With content, example/examples belong to the media type object.
 			param.Example = nil
 			param.Examples = nil
-		case location == paramLocationQuerystring:
+		case location == fiber.ParamInQuerystring:
 			// The 3.2 "querystring" location must use content.
 			param.Content = map[string]map[string]any{
 				querystringMediaType: contentEntry(fiber.RouteMediaType{
@@ -86,7 +86,7 @@ func mergeRouteParameters(params []parameter, index map[string]int, extras []fib
 			explode := *extra.Explode
 			param.Explode = &explode
 		}
-		if param.In == paramLocationPath {
+		if param.In == fiber.ParamInPath {
 			param.Required = true
 			// AddParameter injects a default string schema, which must not
 			// replace one derived from the route constraint (":id<int>").
@@ -207,7 +207,7 @@ func remapRouteParameters(extras []fiber.RouteParameter, aliases map[string]stri
 	out := make([]fiber.RouteParameter, 0, len(extras))
 	for i := range extras {
 		copyExtra := extras[i]
-		if utils.EqualFold(utils.TrimSpace(copyExtra.In), paramLocationPath) {
+		if utils.EqualFold(utils.TrimSpace(copyExtra.In), fiber.ParamInPath) {
 			if mapped, ok := aliases[copyExtra.Name]; ok {
 				copyExtra.Name = mapped
 			}

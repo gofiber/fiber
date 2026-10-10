@@ -673,6 +673,11 @@ func (d *domainRouter) domainRoutes(dst, src *App, walk domainClone) [][]*Route 
 				dst.addPrefixToRoute(walk.prefix, clonedRoute, src.config.RegexHandler, constraints...)
 			}
 			clonedRoute.docHandlers = clonedRoute.InnerHandlers()
+			// A route of the mounted app answers on this domain, which Route.Domain reports.
+			// One the sub-app already scoped to a domain of its own keeps that one.
+			if clonedRoute.domain == "" {
+				clonedRoute.domain = d.pattern()
+			}
 			clonedRoute.Handlers = d.wrapHandlers(clonedRoute.Handlers)
 
 			// Record the app the route came from, so a request that runs it
@@ -803,8 +808,7 @@ func (d *domainRouter) RouteChain(path string) Register {
 	return &Registering{
 		app:    d.app,
 		group:  d.registerGroup(),
-		wrap:   d.wrapHandlers,
-		domain: d.pattern(),
+		domain: d,
 		path:   d.registerPath(path),
 	}
 }

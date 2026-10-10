@@ -18,8 +18,8 @@ type appEquality struct {
 	equal segmentEqual
 }
 
-// maxCachedSwaggerPages bounds both the per-app UI page cache and the app cache map.
-const maxCachedSwaggerPages = 32
+// maxCachedEntries bounds both the per-app UI page cache and the app cache map.
+const maxCachedEntries = 32
 
 // appCache holds one app's artifacts; UI pages embed the spec URL so they are keyed per target.
 type appCache struct {
@@ -43,7 +43,7 @@ func New(config ...Config) fiber.Handler {
 		cache, ok := caches[app]
 		if !ok {
 			cache = &appCache{uiPages: make(map[string][]byte)}
-			if len(caches) >= maxCachedSwaggerPages {
+			if len(caches) >= maxCachedEntries {
 				for evicted := range caches {
 					delete(caches, evicted)
 					break
@@ -62,13 +62,9 @@ func New(config ...Config) fiber.Handler {
 		cache := cacheFor(app)
 		rev := app.RoutesRevision()
 		if cache.specData == nil || cache.specRev != rev {
-			// GetRoutes deep-copies under the router lock, so generation never races registration.
+			// GetRoutes copies under the router lock, so generation never races registration.
 			appCfg := app.Config()
-			equal := utils.EqualFold[string]
-			if appCfg.CaseSensitive {
-				equal = stringsEqual
-			}
-			spec := generateSpec(app.GetRoutes(false), &cfg, specEnv{validator: appCfg.StructValidator, equal: equal})
+			spec := generateSpec(app.GetRoutes(false), &cfg, specEnv{validator: appCfg.StructValidator, equal: segmentEqualFor(&appCfg)})
 			data, err := appCfg.JSONEncoder(spec)
 			if err != nil {
 				return nil, fmt.Errorf("openapi: marshal spec: %w", err)
@@ -90,7 +86,7 @@ func New(config ...Config) fiber.Handler {
 		if err != nil {
 			return nil, fmt.Errorf("openapi: build swagger ui page: %w", err)
 		}
-		if len(cache.uiPages) >= maxCachedSwaggerPages {
+		if len(cache.uiPages) >= maxCachedEntries {
 			// Keys derive from the request path (attacker-controlled); drop all rather than let junk pin the cache.
 			clear(cache.uiPages)
 		}
@@ -107,10 +103,8 @@ func New(config ...Config) fiber.Handler {
 		if e := lastEquality.Load(); e != nil && e.app == app {
 			return e.equal
 		}
-		equal := utils.EqualFold[string]
-		if app.Config().CaseSensitive {
-			equal = stringsEqual
-		}
+		appCfg := app.Config()
+		equal := segmentEqualFor(&appCfg)
 		lastEquality.Store(&appEquality{app: app, equal: equal})
 		return equal
 	}
@@ -161,6 +155,14 @@ func New(config ...Config) fiber.Handler {
 }
 
 func stringsEqual(a, b string) bool { return a == b }
+
+// segmentEqualFor returns the comparison the router uses for route segments under cfg.
+func segmentEqualFor(cfg *fiber.Config) segmentEqual {
+	if cfg.CaseSensitive {
+		return stringsEqual
+	}
+	return utils.EqualFold[string]
+}
 
 // hasSuffix reports whether s ends with suffix under equal.
 func hasSuffix(s, suffix string, equal segmentEqual) bool {

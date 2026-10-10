@@ -310,7 +310,7 @@ func applyMiddlewareResponses(responses map[string]response, method string, set 
 func csrfParameter(header string) fiber.RouteParameter {
 	return fiber.RouteParameter{
 		Name:        header,
-		In:          "header",
+		In:          fiber.ParamInHeader,
 		Required:    true,
 		Description: "The CSRF token issued to the client",
 		Schema:      map[string]any{schemaKeyType: schemaTypeString},

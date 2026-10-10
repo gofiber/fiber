@@ -62,9 +62,8 @@ var _ Register = (*Registering)(nil)
 type Registering struct {
 	app   *App
 	group *Group
-	// wrap adapts handlers before registration (domain chains filter by host); domain is that host pattern.
-	wrap   func([]Handler) []Handler
-	domain string
+	// domain is the router a domain chain was created from; it filters handlers by host. Nil otherwise.
+	domain *domainRouter
 
 	path string
 
@@ -153,12 +152,14 @@ func (r *Registering) Query(handler any, handlers ...any) Register {
 func (r *Registering) Add(methods []string, handler any, handlers ...any) Register {
 	converted := collectHandlers("register", append([]any{handler}, handlers...)...)
 	inner := converted
-	if r.wrap != nil {
-		converted = r.wrap(converted)
+	pattern := ""
+	if r.domain != nil {
+		converted = r.domain.wrapHandlers(converted)
+		pattern = r.domain.pattern()
 	}
-	regID := r.app.register(methods, r.path, r.group, r.domain, converted...)
+	regID := r.app.register(methods, r.path, r.group, pattern, converted...)
 	atomic.StoreUint64(&r.lastRegID, regID)
-	if r.wrap != nil {
+	if r.domain != nil {
 		r.app.applyToRegistration(regID, docSetInnerHandlers(inner))
 	}
 	return r
@@ -168,7 +169,7 @@ func (r *Registering) Add(methods []string, handler any, handlers ...any) Regist
 // the path in the current instance as its prefix.
 func (r *Registering) RouteChain(path string) Register {
 	// Create new group
-	route := &Registering{app: r.app, group: r.group, wrap: r.wrap, domain: r.domain, path: getGroupPath(r.path, path)}
+	route := &Registering{app: r.app, group: r.group, domain: r.domain, path: getGroupPath(r.path, path)}
 
 	return route
 }

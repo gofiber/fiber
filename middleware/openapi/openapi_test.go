@@ -3201,30 +3201,6 @@ func Test_OpenAPI_TypedConfigContainersDetached(t *testing.T) {
 	require.Contains(t, body, `"array"`)
 }
 
-func Test_DeepCopyReflected(t *testing.T) {
-	t.Parallel()
-
-	require.Equal(t, 42, deepCopyReflected(42, 0))
-
-	var nilMap map[string]int
-	require.Nil(t, deepCopyReflected(nilMap, 0))
-	var nilSlice []int
-	require.Nil(t, deepCopyReflected(nilSlice, 0))
-
-	nested := map[string]any{"inner": map[string]any{"k": "v"}}
-	src := map[string]map[string]any{"outer": nested}
-	cloned, ok := deepCopyReflected(src, 0).(map[string]map[string]any)
-	require.True(t, ok)
-	requireMap(t, nested["inner"])["k"] = "mutated"
-	require.Equal(t, "v", requireMap(t, cloned["outer"]["inner"])["k"])
-
-	rows := [][]int{{1, 2}}
-	clonedRows, ok := deepCopyReflected(rows, 0).([][]int)
-	require.True(t, ok)
-	rows[0][0] = 99
-	require.Equal(t, 1, clonedRows[0][0])
-}
-
 func Test_uniqueOperationID(t *testing.T) {
 	t.Parallel()
 
@@ -3679,6 +3655,8 @@ func Test_OpenAPI_SwaggerUI_SubresourceIntegrity(t *testing.T) {
 		t.Parallel()
 		body := page(t, Config{SwaggerCSSURL: "/css/swagger-ui.css", SwaggerBundleURL: "/js/bundle.js", SwaggerStandalonePresetURL: "/js/preset.js"})
 		require.NotContains(t, body, "integrity=")
+		// Without a hash there is no CORS requirement, so a CDN that sends no CORS headers still works.
+		require.NotContains(t, body, "crossorigin=")
 	})
 
 	t.Run("only the overridden asset loses its hash", func(t *testing.T) {
@@ -3700,8 +3678,8 @@ func Test_OpenAPI_SharedHandlerBeyondCacheBound(t *testing.T) {
 	t.Parallel()
 
 	handler := New()
-	apps := make([]*fiber.App, 0, maxCachedSwaggerPages+8)
-	for i := range maxCachedSwaggerPages + 8 {
+	apps := make([]*fiber.App, 0, maxCachedEntries+8)
+	for i := range maxCachedEntries + 8 {
 		app := fiber.New()
 		app.Get("/app"+strconv.Itoa(i), func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
 		app.Use(handler)

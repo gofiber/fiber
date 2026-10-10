@@ -9,10 +9,10 @@ import (
 
 // modelTagByLocation maps a parameter location to the struct tag Bind reads.
 var modelTagByLocation = map[string]string{
-	"query":  fiber.BindSourceQuery,
-	"header": fiber.BindSourceHeader,
-	"cookie": fiber.BindSourceCookie,
-	"path":   fiber.BindSourceURI,
+	fiber.ParamInQuery:  fiber.BindSourceQuery,
+	fiber.ParamInHeader: fiber.BindSourceHeader,
+	fiber.ParamInCookie: fiber.BindSourceCookie,
+	fiber.ParamInPath:   fiber.BindSourceURI,
 }
 
 // expandParameterModels turns each model into one parameter per exported field,
@@ -67,7 +67,7 @@ func appendModelFields(params []fiber.RouteParameter, t reflect.Type, in, tagKey
 			Name:     name,
 			In:       in,
 			Schema:   schema,
-			Required: required || in == paramLocationPath,
+			Required: required || in == fiber.ParamInPath,
 		}
 		// Description and example belong to the Parameter Object, not its schema.
 		if description, ok := schema["description"].(string); ok {

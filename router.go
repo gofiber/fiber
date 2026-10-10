@@ -27,9 +27,6 @@ const skipSlashFilters = 0
 // routeIDs hands out the ids shared by the per-method copies of a registration.
 var routeIDs atomic.Uint64
 
-// maxCopyDepth bounds the documentation deep copy; cyclic values would otherwise overflow the stack.
-const maxCopyDepth = 100
-
 const (
 	// filterMinBucket is the number of routes from which a bucket carries a
 	// bucketFilter. The scan reaches the routes of a smaller bucket directly
@@ -117,7 +114,7 @@ type Router interface {
 //
 //nolint:govet // fieldalignment: the router's scan dictates this order, see below
 type Route struct { // betteralign:ignore - see below
-	// ### important: always keep in sync with the copy method "app.copyRoute" and all creations of Route struct ###
+	// ### important: a field that holds a slice, map or pointer must be cloned by cloneRouteDocInto (and counted by isDocumented) or the clone aliases the live route; copyRouteBaseInto must clear every documentation field. Test_Route_DocumentationFieldsStayInSync guards this. ###
 	//
 	// Field order is load-bearing. App.next scans a bucket of routes and
 	// discards most of them, so the fields it needs to do that lead the struct
@@ -171,21 +168,34 @@ type Route struct { // betteralign:ignore - see below
 	// docHandlers is the chain as registered, kept when the router wrapped every handler.
 	docHandlers []Handler
 
-	Summary     string `json:"summary,omitempty"`
+	// Summary is the one-line operation summary.
+	Summary string `json:"summary,omitempty"`
+	// Description is the longer operation description.
 	Description string `json:"description,omitempty"`
-	Consumes    string `json:"consumes,omitempty"`
-	Produces    string `json:"produces,omitempty"`
+	// Consumes is the media type of the request body.
+	Consumes string `json:"consumes,omitempty"`
+	// Produces is the media type of the responses.
+	Produces string `json:"produces,omitempty"`
 
-	Responses   map[string]RouteResponse `json:"responses,omitempty"`
-	RequestBody *RouteRequestBody        `json:"requestBody,omitempty"` //nolint:tagliatelle // OpenAPI spec uses camelCase
+	// Responses are the documented responses, keyed by status ("default" for none).
+	Responses map[string]RouteResponse `json:"responses,omitempty"`
+	// RequestBody is the documented request payload.
+	RequestBody *RouteRequestBody `json:"requestBody,omitempty"` //nolint:tagliatelle // OpenAPI spec uses camelCase
 
-	Parameters          []RouteParameter      `json:"parameters,omitempty"`
-	ParameterModels     []RouteParameterModel `json:"parameterModels,omitempty"` //nolint:tagliatelle // OpenAPI spec uses camelCase
-	Tags                []string              `json:"tags,omitempty"`
-	Security            []map[string][]string `json:"security,omitempty"`            // OpenAPI security requirements
-	ExternalDocs        map[string]any        `json:"externalDocs,omitempty"`        //nolint:tagliatelle // OpenAPI operation externalDocs
-	OperationExtensions map[string]any        `json:"operationExtensions,omitempty"` //nolint:tagliatelle // internal route metadata
+	// Parameters are the documented path, query, header and cookie parameters.
+	Parameters []RouteParameter `json:"parameters,omitempty"`
+	// ParameterModels are structs expanded into parameters when the spec is built.
+	ParameterModels []RouteParameterModel `json:"parameterModels,omitempty"` //nolint:tagliatelle // OpenAPI spec uses camelCase
+	// Tags group the operation in the generated documentation.
+	Tags []string `json:"tags,omitempty"`
+	// Security holds the OpenAPI security requirements; a non-nil empty slice means none are needed.
+	Security []map[string][]string `json:"security,omitempty"`
+	// ExternalDocs is the operation's externalDocs object.
+	ExternalDocs map[string]any `json:"externalDocs,omitempty"` //nolint:tagliatelle // OpenAPI operation externalDocs
+	// OperationExtensions are extra operation-object fields, such as "x-" extensions.
+	OperationExtensions map[string]any `json:"operationExtensions,omitempty"` //nolint:tagliatelle // internal route metadata
 
+	// Deprecated marks the operation as deprecated.
 	Deprecated bool `json:"deprecated,omitempty"`
 	hidden     bool // Excluded from the generated OpenAPI specification
 }
@@ -1511,13 +1521,9 @@ func (app *App) register(methods []string, pathRaw string, group *Group, domain 
 			Params:      parsedRaw.params,
 			group:       group,
 
-			Path:        pathRaw,
-			Method:      method,
-			Handlers:    handlers,
-			Summary:     "",
-			Description: "",
-			Consumes:    "",
-			Produces:    "",
+			Path:     pathRaw,
+			Method:   method,
+			Handlers: handlers,
 		}
 		route.buildPrefixFilter()
 

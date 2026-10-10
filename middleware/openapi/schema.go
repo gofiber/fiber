@@ -500,11 +500,10 @@ func applyOpenAPITag(field *reflect.StructField, schema map[string]any) {
 		case "format":
 			schema["format"] = val
 		case "enum":
-			values := strings.Split(val, "|")
-			enumSlice := make([]any, len(values))
-			for j, v := range values {
+			var enumSlice []any
+			for v := range utils.SplitTrimSeq(val, '|') {
 				// Convert to the field's type so no value is unsatisfiable.
-				enumSlice[j] = inferExampleValue(utils.TrimSpace(v), schema)
+				enumSlice = append(enumSlice, inferExampleValue(v, schema))
 			}
 			schema["enum"] = enumSlice
 		default:
@@ -545,8 +544,8 @@ func applyValidateTag(field *reflect.StructField, schema map[string]any) bool {
 		return false
 	}
 	required := false
-	for rule := range strings.SplitSeq(tag, ",") {
-		key, value, _ := utils.CutByte(utils.TrimSpace(rule), '=')
+	for rule := range utils.SplitTrimSeq(tag, ',') {
+		key, value, _ := utils.CutByte(rule, '=')
 		switch key {
 		case "required":
 			required = true

@@ -208,3 +208,42 @@ func Test_RouteLexers_Agree(t *testing.T) {
 		require.Equal(t, want, got, pattern)
 	}
 }
+
+func Test_OpenAPI_DomainMountedSubAppCarriesTheHost(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	sub := fiber.New()
+	sub.Get("/s", listUsers)
+	app.Domain("api.example.com").Use("/dm", sub)
+	app.Get("/open", listUsers)
+	spec := modelSpec(t, app)
+
+	servers, _ := modelOperation(t, spec, "/dm/s", "get")["servers"].([]any) //nolint:errcheck // absent means none
+	require.Len(t, servers, 1)
+	require.Equal(t, "//api.example.com", requireMap(t, servers[0])["url"])
+	require.NotContains(t, modelOperation(t, spec, "/open", "get"), "servers")
+}
+
+func Test_OpenAPI_OperationIDFromName(t *testing.T) {
+	t.Parallel()
+
+	for name, want := range map[string]string{
+		"listUsers":      "listUsers",
+		"users.list":     "users.list",
+		"users_list-v2":  "users_list-v2",
+		"users list":     "users_list",
+		"  list  users ": "list_users",
+		"GET /users/:id": "GET_users_id",
+		"üñï":            "",
+		"":               "",
+	} {
+		require.Equal(t, want, operationIDFromName(name), name)
+	}
+
+	app := fiber.New()
+	app.Get("/users", listUsers).Name("list all users")
+	app.Get("/users/:id", listUsers).Name("")
+	spec := modelSpec(t, app)
+	require.Equal(t, "list_all_users", modelOperation(t, spec, "/users", "get")["operationId"])
+}

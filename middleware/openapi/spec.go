@@ -33,9 +33,6 @@ var openAPIVersionRank = map[string]int{
 }
 
 const (
-	paramLocationPath = "path"
-	// paramLocationQuerystring is the OpenAPI 3.2 location for the whole query string; it requires "content".
-	paramLocationQuerystring = "querystring"
 	// querystringMediaType wraps a querystring parameter's schema when no content map is given.
 	querystringMediaType = "application/x-www-form-urlencoded"
 
@@ -210,6 +207,31 @@ func generateOperationID(method, path string) string {
 			_ = b.WriteByte(c) //nolint:errcheck // strings.Builder.WriteByte never returns an error
 		default:
 			capNext = true
+		}
+	}
+	return b.String()
+}
+
+// operationIDFromName makes a route name safe to publish as an operationId, which code
+// generators turn into an identifier: letters, digits, "_", "-" and "." are kept and
+// any other run of characters becomes a single "_". A name with none left yields "".
+func operationIDFromName(name string) string {
+	var b strings.Builder
+	pending := false
+	for i := 0; i < len(name); i++ {
+		c := name[i]
+		switch {
+		case (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-' || c == '.':
+			if pending && b.Len() > 0 {
+				_ = b.WriteByte('_') //nolint:errcheck // strings.Builder.WriteByte never returns an error
+			}
+			pending = false
+			_ = b.WriteByte(c) //nolint:errcheck // strings.Builder.WriteByte never returns an error
+		case c == '_':
+			pending = false
+			_ = b.WriteByte(c) //nolint:errcheck // strings.Builder.WriteByte never returns an error
+		default:
+			pending = true
 		}
 	}
 	return b.String()
@@ -403,7 +425,7 @@ func (b *specBuilder) buildOperation(r *fiber.Route, facts *routeFacts, variant 
 	for _, p := range variant.ParamNames {
 		param := parameter{
 			Name:     p,
-			In:       paramLocationPath,
+			In:       fiber.ParamInPath,
 			Required: true,
 			// A "<...>" constraint narrows the schema beyond string.
 			Schema: pathParamSchema(variant.ParamConstraints[p]),
@@ -423,7 +445,7 @@ func (b *specBuilder) buildOperation(r *fiber.Route, facts *routeFacts, variant 
 	if summary == "" {
 		summary = r.Method + " " + variant.Path
 	}
-	operationID := r.Name
+	operationID := operationIDFromName(r.Name)
 	if operationID == "" {
 		operationID = generateOperationID(r.Method, variant.Path)
 	}

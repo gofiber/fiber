@@ -1584,6 +1584,23 @@ func Test_Route_DocumentationFieldsStayInSync(t *testing.T) {
 		}
 		require.Truef(t, probe.isDocumented(), "isDocumented ignores %q; add it there and to cloneRouteDocInto", field.Name)
 	}
+
+	// A populated container field must come back as a new container, not an alias.
+	var copied Route
+	app.copyRouteInto(&copied, populated)
+	for i := range typ.NumField() {
+		field := typ.Field(i)
+		kind := field.Type.Kind()
+		if !field.IsExported() || routing[field.Name] || (kind != reflect.Pointer && kind != reflect.Slice && kind != reflect.Map) {
+			continue
+		}
+		original := reflect.ValueOf(*populated).Field(i)
+		if original.IsZero() || (kind != reflect.Pointer && original.Len() == 0) {
+			continue
+		}
+		require.NotEqualf(t, original.Pointer(), reflect.ValueOf(copied).Field(i).Pointer(),
+			"copyRouteInto shares %q with the source; clone it in cloneRouteDocInto", field.Name)
+	}
 }
 
 const benchRouteCount = 100
