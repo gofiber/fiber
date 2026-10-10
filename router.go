@@ -20,6 +20,16 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
+// skipSlashFilters is the slash count to pass match for it to skip its quick
+// rejects on the route's slash bounds and probe, which is what 0 means to it:
+// a real detection path holds at least one '/'. pathSlashCount returns it when
+// no route consults the count, and a filtered bucket's scan passes it for a
+// route whose scan head already applied both filters.
+const skipSlashFilters = 0
+
+// routeIDs hands out the ids shared by the per-method copies of a registration.
+var routeIDs atomic.Uint64
+
 // maxCopyDepth bounds the documentation deep copy: users can store cyclic values
 // there, which would otherwise make GetRoutes overflow the stack.
 const maxCopyDepth = 100
@@ -790,13 +800,6 @@ func (r *Route) match(detectionPath, path string, params *[maxParams]string, pat
 	return false
 }
 
-// skipSlashFilters is the slash count to pass match for it to skip its quick
-// rejects on the route's slash bounds and probe, which is what 0 means to it:
-// a real detection path holds at least one '/'. pathSlashCount returns it when
-// no route consults the count, and a filtered bucket's scan passes it for a
-// route whose scan head already applied both filters.
-const skipSlashFilters = 0
-
 // matchParams is the parametric branch of match, kept out of line so match
 // stays small on the middleware and static-endpoint paths every request takes.
 func (r *Route) matchParams(detectionPath, path string, params *[maxParams]string, pathSlashes int) bool {
@@ -1488,9 +1491,6 @@ func (app *App) autoHeadTwinLocked(headIndex int, key autoHeadKey) (int, *Route)
 	}
 	return -1, nil
 }
-
-// routeIDs hands out the ids shared by the per-method copies of a registration.
-var routeIDs atomic.Uint64
 
 // register creates one stack entry per method and returns the ID stamped on each,
 // so scoped helpers can target this registration. domain is app.Domain()'s host.
