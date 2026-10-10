@@ -4,29 +4,18 @@ import (
 	"strings"
 )
 
-// Route patterns are read in two places. This file classifies a pattern one
-// segment at a time and keeps only its routing tokens, which is all that
-// deciding what a mount or a middleware prefix covers needs. paths.go reads
-// the same grammar character by character, because turning a pattern into
-// OpenAPI path templates also needs each parameter's name and constraint. The
-// router does not expose its parsed segments, so both stay here, and
-// Test_RouteLexers_Agree keeps them from drifting apart.
+// Patterns are lexed twice: here per segment for routing tokens only (mount and prefix coverage), and
+// in paths.go per character for names and constraints. The router does not expose its parsed segments;
+// Test_RouteLexers_Agree keeps the two from drifting.
 
 const (
-	// segmentLiteral matches exactly one path segment, with no parameter in it.
 	segmentLiteral segmentKind = iota
-	// segmentParam is a mixed or whole-segment parameter: one path segment.
 	segmentParam
-	// segmentOptional matches zero or one segment.
 	segmentOptional
-	// segmentGreedy ("*" or "+") matches any number of segments.
 	segmentGreedy
 )
 
-// routeTokens returns a segment's routing-relevant characters, dropping escapes
-// and <constraint> spans so neither is mistaken for a routing token.
-//
-// See the note at the top of this file on why patterns are lexed twice.
+// routeTokens returns a segment's routing characters, dropping escapes and <constraint> spans.
 func routeTokens(seg string) string {
 	var b strings.Builder
 	inConstraint := false
@@ -47,20 +36,16 @@ func routeTokens(seg string) string {
 	return b.String()
 }
 
-// resolveDynamicMountPrefix picks the mount prefix when the pattern has optional
-// or greedy segments. Every split the segment bounds allow is tried, shortest
-// first, and the one whose remainder is a target wins.
+// resolveDynamicMountPrefix picks the mount prefix of an optional/greedy pattern: the shortest split whose remainder is a target.
 func resolveDynamicMountPrefix(pattern, requestPath, specPath, uiPath string, equal segmentEqual) (string, bool) {
 	minSegments, maxSegments, dynamic := prefixSegmentBounds(pattern)
 	if !dynamic {
-		// A static mount is its own prefix, and its escaped form still needs
-		// unescaping, which routePrefix handles.
+		// A static mount is its own prefix; routePrefix handles unescaping.
 		return "", false
 	}
 
 	if maxSegments < 0 || maxSegments > countPathSegments(requestPath) {
-		// A greedy segment is unbounded; no split can consume more segments
-		// than the request has.
+		// A greedy segment is unbounded; cap splits at the request's segment count.
 		maxSegments = countPathSegments(requestPath)
 	}
 
@@ -79,11 +64,8 @@ func resolveDynamicMountPrefix(pattern, requestPath, specPath, uiPath string, eq
 	return "", false
 }
 
-// segmentKind classifies a route pattern segment by its routing tokens only,
-// so a constraint or an escaped character never reads as a parameter.
 type segmentKind uint8
 
-// classifySegment returns the kind of a pattern segment and its routing tokens.
 func classifySegment(segment string) (segmentKind, string) { //nolint:gocritic // unnamedResult: named returns conflict with nonamedreturns linter
 	tokens := routeTokens(segment)
 	switch {

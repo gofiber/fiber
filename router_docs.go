@@ -5,38 +5,28 @@ import (
 	"slices"
 )
 
-// copyRoute clones a route, deliberately leaving group behind: a clone belongs
-// to whichever app it is being placed in, and Name() would otherwise prefix it
-// with the group name of the app it came from. Callers that do want the group —
-// ensureAutoHeadRoutesLocked, which copies a route in place — assign it back.
-//
-// The omission is load-bearing for a mount placeholder, whose target app lives
-// in group.app: carrying it over would let a clone of the placeholder expand
-// the mounted app's handlers verbatim, which for a domain mount means serving
-// them on every host. domainRouter.cloneRoutesForDomain expands the mount
-// instead, so no placeholder is ever cloned.
+// copyRoute clones a route without its group, so the clone does not inherit the
+// source app's group name. A mount placeholder keeps its target app in group.app;
+// cloning it would serve the mounted handlers on every host under a domain mount.
 func (app *App) copyRoute(route *Route) *Route {
 	copied := app.copyRouteValue(route)
 	return &copied
 }
 
-// copyRouteValue is copyRoute without the heap allocation, for callers that
-// return the clone by value (GetRoute, GetRoutes).
+// copyRouteValue is copyRoute without the heap allocation.
 func (app *App) copyRouteValue(route *Route) (copied Route) { //nolint:nonamedreturns // the named result is what keeps this to a single struct copy
 	app.copyRouteInto(&copied, route)
 	return copied
 }
 
 // isDocumented reports whether the route carries metadata a copy must clone.
-// Small enough to inline, so the common case never calls out of line.
 func (r *Route) isDocumented() bool {
 	return r.RequestBody != nil || r.Parameters != nil || r.ParameterModels != nil ||
 		r.Responses != nil || r.Tags != nil || r.Security != nil ||
 		r.ExternalDocs != nil || r.OperationExtensions != nil
 }
 
-// copyRouteInto deep-copies route into dst. It writes through a pointer so the
-// caller's slot is filled once: Route is large and every hop costs a full move.
+// copyRouteInto deep-copies route into dst, writing through a pointer to avoid moving the large Route.
 func (app *App) copyRouteInto(dst, route *Route) {
 	*dst = *route
 	dst.group = nil
@@ -48,8 +38,7 @@ func (app *App) copyRouteInto(dst, route *Route) {
 	app.cloneRouteDocInto(dst, route)
 }
 
-// cloneRouteDocInto deep-clones the documentation containers of route into dst.
-// Kept out of line so the undocumented fast path stays small.
+// cloneRouteDocInto deep-clones the documentation containers; out of line to keep the fast path small.
 func (*App) cloneRouteDocInto(dst, route *Route) {
 	dst.RequestBody = cloneRouteRequestBody(route.RequestBody)
 	dst.Parameters = cloneRouteParameters(route.Parameters)
@@ -61,18 +50,15 @@ func (*App) cloneRouteDocInto(dst, route *Route) {
 	dst.OperationExtensions = copyAnyMap(route.OperationExtensions)
 }
 
-// copyRouteBase copies routing data but skips the documentation clone, which
-// auto-HEAD twins never need: their metadata is never read.
+// copyRouteBase copies routing data without the documentation clone (auto-HEAD twins never read it).
 func (app *App) copyRouteBase(route *Route) *Route {
 	copied := new(Route)
 	app.copyRouteBaseInto(copied, route)
 	return copied
 }
 
-// copyRouteBaseInto is copyRouteBase filling the caller's slot. Copying
-// wholesale then clearing beats two dozen field writes on a struct this large,
-// and writing through a pointer keeps it to one move: Route is large and every
-// hop costs a full copy.
+// copyRouteBaseInto is copyRouteBase filling the caller's slot; a wholesale copy
+// then clear beats many field writes on a struct this large.
 func (*App) copyRouteBaseInto(dst, route *Route) {
 	*dst = *route
 
@@ -93,8 +79,7 @@ func (*App) copyRouteBaseInto(dst, route *Route) {
 }
 
 func cloneRouteSecurity(requirements []map[string][]string) []map[string][]string {
-	// An empty but non-nil list is kept: it documents a route that needs no
-	// authentication, which differs from one that says nothing.
+	// An empty non-nil list is kept: it means "no authentication", unlike nil.
 	if requirements == nil {
 		return nil
 	}
@@ -102,8 +87,7 @@ func cloneRouteSecurity(requirements []map[string][]string) []map[string][]strin
 	for i, requirement := range requirements {
 		entry := make(map[string][]string, len(requirement))
 		for scheme, scopes := range requirement {
-			// make+copy keeps an empty scope list non-nil so it marshals as
-			// the spec-required [] rather than null.
+			// Keep an empty scope list non-nil so it marshals as [] rather than null.
 			cloned := make([]string, len(scopes))
 			copy(cloned, scopes)
 			entry[scheme] = cloned
@@ -206,7 +190,6 @@ func cloneRouteResponses(responses map[string]RouteResponse) map[string]RouteRes
 }
 
 func copyAnyMap(src map[string]any) map[string]any {
-	// Top-level empties stay nil so unset documentation keeps reading as unset.
 	if len(src) == 0 {
 		return nil
 	}
@@ -214,13 +197,12 @@ func copyAnyMap(src map[string]any) map[string]any {
 }
 
 func copyAnyMapDepth(src map[string]any, depth int) map[string]any {
-	// An empty nested map is kept, so "properties": {} does not turn into null.
+	// An empty nested map is kept so "properties": {} does not become null.
 	if src == nil {
 		return nil
 	}
 	if depth >= maxCopyDepth {
-		// Cyclic or pathologically deep metadata: sharing the reference is the
-		// lesser evil, and encoding/json reports the cycle itself.
+		// Cyclic or too deep: share the reference; encoding/json reports the cycle.
 		return src
 	}
 	dst := make(map[string]any, len(src))
@@ -262,9 +244,8 @@ func copyAnyValueDepth(src any, depth int) any {
 	}
 }
 
-// copyCompositeValue clones map and slice values of any named type, which the
-// typed switch above cannot name. depth continues the caller's count so a cycle
-// inside a named type still hits maxCopyDepth.
+// copyCompositeValue clones map and slice values of named types; depth carries
+// over so cycles still hit maxCopyDepth.
 func copyCompositeValue(src any, depth int) any {
 	value := reflect.ValueOf(src)
 
@@ -275,8 +256,7 @@ func copyCompositeValue(src any, depth int) any {
 		}
 		copied := reflect.MakeSlice(value.Type(), value.Len(), value.Len())
 		for i := range value.Len() {
-			// A nil element yields an invalid reflect.Value; leave the zero
-			// value in place instead of panicking in Set.
+			// A nil element is an invalid reflect.Value; keep the zero value.
 			if elem := copyAnyValueDepth(value.Index(i).Interface(), depth+1); elem != nil {
 				copied.Index(i).Set(reflect.ValueOf(elem))
 			}
@@ -289,8 +269,7 @@ func copyCompositeValue(src any, depth int) any {
 		copied := reflect.MakeMapWithSize(value.Type(), value.Len())
 		iter := value.MapRange()
 		for iter.Next() {
-			// SetMapIndex with an invalid value deletes the key, so map a nil
-			// element to the element type's zero value to preserve it.
+			// SetMapIndex with an invalid value deletes the key; use the zero value instead.
 			val := reflect.Zero(value.Type().Elem())
 			if elem := copyAnyValueDepth(iter.Value().Interface(), depth+1); elem != nil {
 				val = reflect.ValueOf(elem)

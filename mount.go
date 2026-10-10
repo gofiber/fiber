@@ -223,8 +223,7 @@ func (grp *Group) mount(prefix string, subApp *App) Router {
 
 	// register mounted group
 	mountGroup := &Group{Prefix: groupPath, app: subApp}
-	// Advance the group's cursor onto the mount, matching App.Use. Leaving it
-	// behind would retarget a chained helper at the route registered before it.
+	// Move the cursor onto the mount, as App.Use does, so chained helpers do not hit the previous route.
 	atomic.StoreUint64(&grp.lastRegID, grp.app.register([]string{methodUse}, groupPath, mountGroup, ""))
 
 	// Execute onMount hooks
@@ -797,10 +796,8 @@ func (app *App) processSubAppsRoutes() {
 
 			subApp := route.group.app
 
-			// Snapshot under the sub-app's lock, then leave it: only clones
-			// cross the boundary, so the re-parsing below never holds two
-			// apps' locks. Read by method, not stack index: an app may
-			// configure its own RequestMethods, so the tables need not line up.
+			// Snapshot under the sub-app's lock so re-parsing never holds two apps' locks.
+			// Read by method: the sub-app may configure its own RequestMethods.
 			type sourceRoute struct {
 				clone        *Route
 				owner        *App
@@ -820,8 +817,7 @@ func (app *App) processSubAppsRoutes() {
 			for j, subAppRoute := range subAppRoutes {
 				clone := app.copyRoute(subAppRoute)
 
-				// Carry over the app each route came from: for a domain mount
-				// the sub-app is a wrapper, and the apps behind it own the config.
+				// For a domain mount the sub-app is a wrapper; the apps behind it own the config.
 				owner := subApp.routeOwner(subAppRoute)
 				if owner == nil {
 					owner = subApp
@@ -836,8 +832,7 @@ func (app *App) processSubAppsRoutes() {
 			}
 			subApp.mutex.Unlock()
 
-			// The sub-app's routes are about to be re-parsed against this app,
-			// so its constraints have to be resolvable here too.
+			// The re-parsed routes need the sub-app's constraints resolvable here.
 			app.customConstraints = mergeCustomConstraints(app.customConstraints, subConstraints)
 
 			// Create a slice to hold the sub-app's routes

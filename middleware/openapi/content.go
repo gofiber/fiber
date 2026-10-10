@@ -13,8 +13,7 @@ func contentEntry(mt fiber.RouteMediaType, reg *schemaRegistry) map[string]any {
 	} else if resolved := reg.resolve(mt.Schema); len(resolved) > 0 {
 		entry["schema"] = resolved
 	}
-	// OpenAPI spec: "example" and "examples" are mutually exclusive.
-	// Prefer "examples" when both are provided.
+	// "example" and "examples" are mutually exclusive in OpenAPI; prefer "examples".
 	if ex := maps.Clone(mt.Examples); len(ex) > 0 {
 		entry["examples"] = ex
 	} else if mt.Example != nil {
@@ -23,8 +22,7 @@ func contentEntry(mt fiber.RouteMediaType, reg *schemaRegistry) map[string]any {
 	return entry
 }
 
-// routeMediaTypeContent builds an OpenAPI content map from per-media-type
-// entries, allowing a different schema/example/encoding per content type.
+// routeMediaTypeContent builds a content map with a schema, example and encoding per media type.
 func routeMediaTypeContent(content map[string]fiber.RouteMediaType, reg *schemaRegistry) map[string]map[string]any {
 	if len(content) == 0 {
 		return nil
@@ -60,16 +58,14 @@ func convertRouteResponses(routeResponses map[string]fiber.RouteResponse, fallba
 			if len(mediaTypes) == 0 {
 				switch {
 				case resp.Schema != nil || resp.SchemaRef != "" || resp.Example != nil || len(resp.Examples) > 0:
-					// A schema or example with no media type would be discarded,
-					// so fall back to Produces, then to JSON.
+					// Without a media type the schema or example would be dropped.
 					if fallbackMediaType != "" {
 						mediaTypes = []string{fallbackMediaType}
 					} else {
 						mediaTypes = []string{fiber.MIMEApplicationJSON}
 					}
 				case fallbackMediaType != "" && !statusHasNoBody(code):
-					// A response declared with a description alone still has a
-					// body on the wire, so it documents the app-wide media type.
+					// A description-only response still has a body on the wire.
 					mediaTypes = []string{fallbackMediaType}
 				}
 			}
@@ -111,8 +107,7 @@ func buildRequestBody(routeBody *fiber.RouteRequestBody, defaultMediaType string
 	content := routeMediaTypeContent(routeBody.Content, reg)
 	if content == nil {
 		mediaTypes := routeBody.MediaTypes
-		// A body declared without a media type is still a body on the wire,
-		// so it documents the app-wide request media type.
+		// A body without a media type still has one on the wire.
 		if len(mediaTypes) == 0 && defaultMediaType != "" {
 			mediaTypes = []string{defaultMediaType}
 		}
@@ -125,16 +120,14 @@ func buildRequestBody(routeBody *fiber.RouteRequestBody, defaultMediaType string
 		Required:    routeBody.Required,
 		Content:     content,
 	}
-	// Omit requestBody entirely when content could not be built, as the
-	// OpenAPI specification requires at least one media type in content.
+	// OpenAPI requires at least one media type in content.
 	if len(merged.Content) == 0 {
 		return nil
 	}
 	return merged
 }
 
-// defaultResponseForMethod is the response an undocumented route gets. HEAD
-// mirrors GET, since RFC 9110 has it answer as GET would minus the content.
+// defaultResponseForMethod is the response an undocumented route gets.
 func defaultResponseForMethod(method, mediaType string) (string, response) {
 	status := "200"
 	description := "OK"
@@ -154,8 +147,7 @@ func defaultResponseForMethod(method, mediaType string) (string, response) {
 	return status, resp
 }
 
-// resolveHeaderSchemas reflects any Go value used as a header's schema, leaving
-// every other header field as documented.
+// resolveHeaderSchemas reflects any Go value used as a header's schema.
 func resolveHeaderSchemas(headers map[string]any, reg *schemaRegistry) map[string]any {
 	if len(headers) == 0 {
 		return headers

@@ -37,16 +37,13 @@ import (
 // Version of current fiber package
 const Version = "3.5.0"
 
-// OpenAPI schema literals reused by the route documentation helpers below.
 const (
 	openapiRefKey     = "$ref"
 	openapiTypeString = "string"
 )
 
-// The parameter locations the documentation helpers accept for their "in"
-// argument. "path" has no bind source of its own, as the router fills it from
-// the path pattern, and "querystring" describes the whole query string as one
-// value (OpenAPI 3.2).
+// Parameter locations accepted by the documentation helpers. "querystring" is the
+// whole query string as one value (OpenAPI 3.2).
 const (
 	ParamInPath        = "path"
 	ParamInQuery       = "query"
@@ -55,10 +52,9 @@ const (
 	ParamInQuerystring = "querystring"
 )
 
-// defaultResponseKey is the OpenAPI key used for the "default" response entry.
 const defaultResponseKey = "default"
 
-// smallIndexMax is how many distinct names a scan of a slice beats hashing for.
+// smallIndexMax is the name count up to which scanning a slice beats hashing.
 const smallIndexMax = 8
 
 // Handler defines a function to serve HTTP requests.
@@ -110,8 +106,7 @@ type App struct {
 	toString func(b []byte) string
 	// Hooks
 	hooks *Hooks
-	// regEntries maps a registration id to its live stack entries, a shared
-	// entry sitting under every registration it belongs to. Guarded by mutex.
+	// regEntries maps a registration id to its live stack entries. Guarded by mutex.
 	regEntries map[uint64][]*Route
 	// newCtxFunc
 	newCtxFunc func(app *App) CustomCtx
@@ -126,8 +121,7 @@ type App struct {
 	// headerHook is the HeaderReceived callback hookHeaderReceived installed, kept
 	// to tell it from one set since
 	headerHook func(*fasthttp.RequestHeader) fasthttp.RequestConfig
-	// namedRoutes is the by-name view of the route table, rebuilt lazily when
-	// routesRevision has moved past the revision it was taken at.
+	// namedRoutes is the by-name route view, rebuilt when routesRevision moves.
 	namedRoutes atomic.Pointer[namedRouteIndex]
 	// Route stack divided by HTTP methods
 	stack [][]*Route
@@ -1047,7 +1041,7 @@ func (app *App) Name(name string) Router {
 }
 
 // GetRoutes Get all routes. When filterUseOption equal to true, it will filter the routes registered by the middleware.
-// The returned routes are deep copies taken under the router lock.
+// The returned routes are deep copies.
 func (app *App) GetRoutes(filterUseOption ...bool) []Route {
 	var filterUse bool
 	if len(filterUseOption) != 0 {
@@ -1067,8 +1061,7 @@ func (app *App) GetRoutes(filterUseOption ...bool) []Route {
 			if filterUse && route.use {
 				continue
 			}
-			// Filled in place: Route is large, and a value-returning helper
-			// would move the whole struct an extra time per entry.
+			// Filled in place to avoid moving the large Route struct twice.
 			rs = append(rs, Route{})
 			app.copyRouteInto(&rs[len(rs)-1], route)
 		}
@@ -1076,13 +1069,11 @@ func (app *App) GetRoutes(filterUseOption ...bool) []Route {
 	return rs
 }
 
-// RoutesRevision returns a counter incremented whenever a route is added, removed
-// or documented, so consumers can detect staleness without locking.
+// RoutesRevision returns a counter bumped on every route change, for lock-free staleness checks.
 func (app *App) RoutesRevision() uint64 {
 	return app.routesRevision.Load()
 }
 
-// bumpRoutesRevision marks the route table (or its metadata) as changed.
 func (app *App) bumpRoutesRevision() {
 	app.routesRevision.Add(1)
 }
@@ -1229,8 +1220,7 @@ func (app *App) Group(prefix string, handlers ...any) Router {
 	grp := &Group{Prefix: prefix, app: app}
 	if len(handlers) > 0 {
 		converted := collectHandlers("group", handlers...)
-		// The middleware belongs to the group, so helpers chained onto the
-		// group reach it, as they do for a group created from a group.
+		// The middleware belongs to the group so chained helpers reach it.
 		atomic.StoreUint64(&grp.lastRegID, app.register([]string{methodUse}, prefix, grp, "", converted...))
 	}
 	if err := app.hooks.executeOnGroupHooks(*grp); err != nil {
@@ -1414,8 +1404,7 @@ func (app *App) ShutdownWithTimeout(timeout time.Duration) error {
 //
 // ShutdownWithContext does not close keepalive connections so its recommended to set ReadTimeout to something else than 0.
 func (app *App) ShutdownWithContext(ctx context.Context) error {
-	// Do NOT hold app.mutex across the shutdown wait: in-flight handlers may call
-	// locking methods, and waiting on them under the mutex would deadlock.
+	// Do not hold app.mutex across the shutdown wait: in-flight handlers may take it and deadlock.
 	app.mutex.Lock()
 	server := app.server
 	app.mutex.Unlock()
@@ -1849,8 +1838,7 @@ func (app *App) startupProcess() {
 	// build route tree stack
 	app.buildTree()
 
-	// Fire hooks after releasing the lock so they may call locking app methods.
-	// A sub-app's hooks wait too: they may reach into this app.
+	// Fire hooks after unlocking so they may call locking app methods, sub-apps' included.
 	app.mutex.Unlock()
 	app.fireOnRouteHooks(twins)
 	for _, sub := range subTwins {
@@ -1858,8 +1846,7 @@ func (app *App) startupProcess() {
 	}
 }
 
-// subAppTwins pairs a mounted app with the automatic HEAD routes it created
-// during the parent's startup, so their hooks can fire once the parent unlocks.
+// subAppTwins pairs a mounted app with the HEAD routes created for it at startup.
 type subAppTwins struct {
 	app   *App
 	twins []*Route

@@ -11,8 +11,7 @@ import (
 
 const wildcardParamName = "wildcard"
 
-// maxPathVariants bounds the optional-parameter expansion, which is otherwise
-// exponential in the number of optional parameters on one route.
+// maxPathVariants bounds the exponential optional-parameter expansion.
 const maxPathVariants = 64
 
 type pathVariant struct {
@@ -27,8 +26,7 @@ type resolvedParamName struct {
 	raw     string
 }
 
-// normalizePathHierarchy blanks template names ("/files/{dir}" → "/files/{}") so
-// paths identical up to parameter names share one key.
+// normalizePathHierarchy blanks template names so paths identical up to parameter names share a key.
 func normalizePathHierarchy(path string) string {
 	var b strings.Builder
 	b.Grow(len(path))
@@ -49,15 +47,11 @@ func normalizePathHierarchy(path string) string {
 	return b.String()
 }
 
-// canonicalPathItem is the path template already published for a hierarchy,
-// together with the parameter names it declares.
 type canonicalPathItem struct {
 	path   string
 	params []string
 }
 
-// pathState carries the in-progress OpenAPI path while walking a Fiber route
-// pattern; optional parameters fork the walk into include/exclude branches.
 type pathState struct {
 	aliases     map[string]string
 	constraints map[string]string // Parameter name -> raw "<...>" constraint text
@@ -66,7 +60,6 @@ type pathState struct {
 	paramIdx    int
 }
 
-// addParam appends the resolved parameter to the state in place.
 func (s *pathState) addParam(resolved resolvedParamName, tokenName, rawConstraints string) {
 	name := uniquePathParamName(resolved.openAPI, s.params)
 	s.path += "{" + name + "}"
@@ -114,8 +107,7 @@ func buildOpenAPIPathVariants(fiberPath string, params []string) []pathVariant {
 				i = tokenStart
 				for i < length {
 					c := fiberPath[i]
-					// '<' opens a constraint; the rest mirrors path.go's
-					// parameterEndChars, ':' and '\\' included.
+					// Mirrors path.go's parameterEndChars; '<' opens a constraint.
 					if c == '<' || c == '?' || c == '/' || c == '-' || c == '.' || c == ':' || c == '\\' {
 						break
 					}
@@ -134,25 +126,21 @@ func buildOpenAPIPathVariants(fiberPath string, params []string) []pathVariant {
 				resolved = resolveOpenAPIPathParamName(current.paramIdx, tokenName, params)
 
 			case '*', '+':
-				// "*" also matches no segment at all, so the route serves the
-				// path without it; "+" needs at least one.
+				// "*" may match no segment; "+" needs one.
 				isOptional = fiberPath[i] == '*'
 				resolved = resolveOpenAPIWildcardParamName(current.paramIdx, params)
 				i++
 
 			case '\\':
-				// The route grammar escapes the next character, matching it
-				// literally (see path.go escapeChar).
+				// Escaped characters match literally (path.go escapeChar).
 				if i+1 < length {
-					// Slice the byte; string(byte) would re-encode it as a
-					// code point and corrupt multi-byte UTF-8.
+					// Slice the byte; string(byte) would corrupt multi-byte UTF-8.
 					current.path += fiberPath[i+1 : i+2]
 				}
 				i += 2
 				continue
 
 			default:
-				// Append the whole literal run rather than one byte at a time.
 				runStart := i
 				for i < length {
 					c := fiberPath[i]
@@ -165,16 +153,12 @@ func buildOpenAPIPathVariants(fiberPath string, params []string) []pathVariant {
 				continue
 			}
 
-			// Each walk owns its state, so a parameter is appended in place; only
-			// an optional one forks, and the exclude branch is copied off before
-			// the include branch is written.
 			if isOptional {
 				exclude := current.clone()
 				exclude.paramIdx++
 				current.addParam(resolved, tokenName, rawConstraints)
 				walk(i, current)
-				// Each optional parameter doubles the walk, so forking stops
-				// at the cap; the fully-populated variant is always emitted.
+				// Each optional parameter doubles the walk; stop forking at the cap but always emit the full variant.
 				if len(variants) < maxPathVariants {
 					walk(i, exclude)
 				}
@@ -207,13 +191,11 @@ func buildOpenAPIPathVariants(fiberPath string, params []string) []pathVariant {
 	for _, variant := range variants {
 		path := variant.Path
 		if path != "" {
-			// A path of only slashes is the root.
 			if path = utils.TrimRight(path, '/'); path == "" {
 				path = "/"
 			}
 		}
-		// An interior empty segment only matches a literal "//" request, so
-		// publishing either form would document a nonexistent endpoint.
+		// An interior empty segment only matches a literal "//" request; documenting it would invent an endpoint.
 		if strings.Contains(path, "//") {
 			continue
 		}
@@ -230,8 +212,7 @@ func buildOpenAPIPathVariants(fiberPath string, params []string) []pathVariant {
 	return unique
 }
 
-// encodeLiteralBraces percent-encodes braces coming from the route's literal
-// text, which OpenAPI would otherwise read as an undeclared template expression.
+// encodeLiteralBraces percent-encodes literal braces, which OpenAPI would read as template expressions.
 func encodeLiteralBraces(literal string) string {
 	if !strings.ContainsAny(literal, "{}") {
 		return literal
@@ -240,8 +221,7 @@ func encodeLiteralBraces(literal string) string {
 	return strings.ReplaceAll(replaced, "}", "%7D")
 }
 
-// uniquePathParamName suffixes a name already used in this variant: templates
-// must not repeat names, but distinct Fiber parameters can sanitize alike.
+// uniquePathParamName suffixes a repeated name; templates forbid repeats but distinct Fiber parameters can sanitize alike.
 func uniquePathParamName(name string, used []string) string {
 	candidate := name
 	for i := 2; slices.Contains(used, candidate); i++ {
@@ -272,8 +252,7 @@ func resolveOpenAPIWildcardParamName(paramIdx int, params []string) resolvedPara
 	}
 }
 
-// trimWildcardMarkers drops the leading "*" or "+" of a wildcard's name,
-// falling back when nothing else is left.
+// trimWildcardMarkers drops a wildcard name's leading "*" or "+", falling back when nothing is left.
 func trimWildcardMarkers(name, fallback string) string {
 	if trimmed := strings.TrimLeft(name, "*+"); trimmed != "" {
 		return trimmed
@@ -301,8 +280,7 @@ func sanitizeOpenAPIParamName(name string, idx int) string {
 	return sanitized
 }
 
-// keyName replaces every character outside [a-zA-Z0-9._-], one underscore per
-// character, which is what a component key and a path parameter name allow.
+// keyName replaces each character outside [a-zA-Z0-9._-] with an underscore.
 func keyName(name string) string {
 	var builder strings.Builder
 	builder.Grow(len(name))

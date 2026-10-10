@@ -19,7 +19,7 @@ type Group struct {
 
 	Prefix string
 
-	lastRegID uint64 // Most recent registration, targeted by the doc helpers. Accessed atomically.
+	lastRegID uint64 // Latest registration; atomic
 
 	hasAnyRoute bool
 }
@@ -44,8 +44,7 @@ func (grp *Group) Name(name string) Router {
 	snapshot := *grp
 	grp.app.mutex.Unlock()
 
-	// Fire hooks after releasing the lock so they may safely call locking app
-	// methods (GetRoutes, documentation helpers, RemoveRoute, ...).
+	// Hooks fire unlocked so they may call locking app methods.
 	if err := grp.app.hooks.executeOnGroupNameHooks(snapshot); err != nil {
 		panic(err)
 	}
@@ -113,20 +112,17 @@ func (grp *Group) Deprecated() Router {
 	return grp.document(docSetDeprecated())
 }
 
-// Security sets the OpenAPI security requirements for the most recently added
-// route in the group.
+// Security sets the OpenAPI security requirements for the group's latest route.
 func (grp *Group) Security(requirements ...map[string][]string) Router {
 	return grp.document(docSetSecurity(requirements...))
 }
 
-// Hidden excludes the most recently added route in the group from the generated
-// OpenAPI specification.
+// Hidden excludes the group's latest route from the generated OpenAPI specification.
 func (grp *Group) Hidden() Router {
 	return grp.document(docSetHidden())
 }
 
-// ResponseHeader documents a response header for the most recently added route
-// in the group.
+// ResponseHeader documents a response header for the group's latest route.
 func (grp *Group) ResponseHeader(status int, name, description string, schema any) Router {
 	return grp.document(docResponseHeader(status, name, description, schema))
 }
@@ -146,40 +142,34 @@ func (grp *Group) Params(in string, model any) Router {
 	return grp.document(docAddParameterModel(in, model))
 }
 
-// AddParameter documents an input parameter on the most recently added route in
-// the group using the full RouteParameter.
+// AddParameter documents an input parameter using the full RouteParameter.
 //
 //nolint:gocritic // hugeParam: by-value keeps the chainable route-helper API ergonomic.
 func (grp *Group) AddParameter(param RouteParameter) Router {
 	return grp.document(docAddParameter(param))
 }
 
-// OperationExternalDocs sets the externalDocs of the most recently added route in
-// the group.
+// OperationExternalDocs sets the externalDocs of the group's latest route.
 func (grp *Group) OperationExternalDocs(description, url string) Router {
 	return grp.document(docOperationExternalDocs(description, url))
 }
 
-// RequestBodyContent documents a per-media-type request body on the most recently
-// added route in the group.
+// RequestBodyContent documents a per-media-type request body.
 func (grp *Group) RequestBodyContent(description string, required bool, content map[string]RouteMediaType) Router {
 	return grp.document(docRequestBodyContent(description, required, content))
 }
 
-// ResponseContent documents a per-media-type response on the most recently added
-// route in the group.
+// ResponseContent documents a per-media-type response.
 func (grp *Group) ResponseContent(status int, description string, content map[string]RouteMediaType) Router {
 	return grp.document(docResponseContent(status, description, content))
 }
 
-// ResponseLink documents a response link on the most recently added route in the
-// group.
+// ResponseLink documents a response link.
 func (grp *Group) ResponseLink(status int, name string, link map[string]any) Router {
 	return grp.document(docResponseLink(status, name, link))
 }
 
-// OperationExtension merges arbitrary operation-object fields on the most recently
-// added route in the group.
+// OperationExtension merges arbitrary operation-object fields.
 func (grp *Group) OperationExtension(fields map[string]any) Router {
 	return grp.document(docOperationExtension(fields))
 }
@@ -336,8 +326,7 @@ func (grp *Group) Group(prefix string, handlers ...any) Router {
 	newGrp := &Group{Prefix: prefix, app: grp.app, parentGroup: grp}
 	if len(handlers) > 0 {
 		converted := collectHandlers("group", handlers...)
-		// The middleware belongs to the sub-group; writing it to the parent
-		// would retarget the parent's later doc helpers at this Use route.
+		// Record on the sub-group; the parent's doc helpers must not retarget this Use route.
 		atomic.StoreUint64(&newGrp.lastRegID, grp.app.register([]string{methodUse}, prefix, grp, "", converted...))
 	}
 	if err := grp.app.hooks.executeOnGroupHooks(*newGrp); err != nil {
@@ -395,7 +384,6 @@ func (grp *Group) Route(prefix string, fn func(router Router), name ...string) R
 	return group
 }
 
-// document applies a documentation change to the route this group registered last.
 func (grp *Group) document(apply func(route *Route)) Router {
 	grp.app.applyToRegistration(atomic.LoadUint64(&grp.lastRegID), apply)
 	return grp

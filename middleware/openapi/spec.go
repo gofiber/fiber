@@ -26,7 +26,6 @@ var openAPIOperationMethods = map[string]struct{}{
 	fiber.MethodQuery:   {},
 }
 
-// openAPIVersionRank orders the supported OpenAPI versions for comparison.
 var openAPIVersionRank = map[string]int{
 	versionOpenAPI30: 0,
 	versionOpenAPI31: 1,
@@ -35,11 +34,9 @@ var openAPIVersionRank = map[string]int{
 
 const (
 	paramLocationPath = "path"
-	// paramLocationQuerystring is the OpenAPI 3.2 location that describes the
-	// entire query string as one value. It must be paired with "content".
+	// paramLocationQuerystring is the OpenAPI 3.2 location for the whole query string; it requires "content".
 	paramLocationQuerystring = "querystring"
-	// querystringMediaType is the media type used to wrap a querystring
-	// parameter's schema when the author supplied no explicit content map.
+	// querystringMediaType wraps a querystring parameter's schema when no content map is given.
 	querystringMediaType = "application/x-www-form-urlencoded"
 
 	schemaKeyType     = "type"
@@ -83,8 +80,7 @@ type operation struct {
 	ExternalDocs map[string]any      `json:"externalDocs,omitempty"` //nolint:tagliatelle // OpenAPI spec uses camelCase
 	extensions   map[string]any      // Arbitrary operation-object fields, merged at marshal time
 
-	// A pointer, so an empty list (a route that needs no authentication) is
-	// written as [] while nil is left out.
+	// A pointer so an empty list (no authentication) is written as [] while nil is omitted.
 	Security *[]map[string][]string `json:"security,omitempty"`
 
 	OperationID string `json:"operationId,omitempty"` //nolint:tagliatelle // OpenAPI spec uses camelCase
@@ -99,8 +95,7 @@ type operation struct {
 	Deprecated bool `json:"deprecated,omitempty"`
 }
 
-// MarshalJSON merges operation extensions into the operation object without
-// clobbering generated keys.
+// MarshalJSON merges operation extensions without clobbering generated keys.
 //
 //nolint:gocritic // hugeParam: a value receiver is required so map values (which are not addressable) are marshaled through this method
 func (o operation) MarshalJSON() ([]byte, error) {
@@ -112,8 +107,7 @@ func (o operation) MarshalJSON() ([]byte, error) {
 	if len(o.extensions) == 0 {
 		return base, nil
 	}
-	// Spliced into the encoded object rather than round-tripped through
-	// map[string]any, which would turn every number into a float64.
+	// Spliced in rather than round-tripped through map[string]any, which turns numbers into float64.
 	var existing map[string]json.RawMessage
 	if err = json.Unmarshal(base, &existing); err != nil {
 		return nil, fmt.Errorf("openapi: merge operation extensions: %w", err)
@@ -129,11 +123,9 @@ func (o operation) MarshalJSON() ([]byte, error) {
 	if len(keys) == 0 {
 		return base, nil
 	}
-	// Sorted so the generated document is byte-stable across runs.
+	// Sorted for byte-stable output.
 	slices.Sort(keys)
 
-	// Encode first and size the buffer by summing the parts, so the capacity is
-	// exact and the computation cannot overflow.
 	type extensionPair struct{ key, value []byte }
 	pairs := make([]extensionPair, 0, len(keys))
 	size := len(base)
@@ -193,15 +185,13 @@ type requestBody struct {
 	Required    bool                      `json:"required,omitempty"`
 }
 
-// isOpenAPIOperationMethod reports whether method maps to a Path Item
-// operation key.
+// isOpenAPIOperationMethod reports whether method maps to a Path Item operation key.
 func isOpenAPIOperationMethod(method string) bool {
 	_, ok := openAPIOperationMethods[method]
 	return ok
 }
 
-// generateOperationID derives a stable operationId from a method and path, e.g.
-// ("GET", "/users/{id}") -> "getUsersId", for routes with no explicit Name.
+// generateOperationID derives an operationId such as "getUsersId" from a method and path.
 func generateOperationID(method, path string) string {
 	var b strings.Builder
 	_, _ = b.WriteString(utilsstrings.ToLower(method)) //nolint:errcheck // strings.Builder.WriteString never returns an error
@@ -225,8 +215,7 @@ func generateOperationID(method, path string) string {
 	return b.String()
 }
 
-// uniqueOperationID returns id, or id with a numeric suffix until unique, so the
-// document never repeats an operationId.
+// uniqueOperationID returns id with a numeric suffix until it is unique.
 func uniqueOperationID(id string, used map[string]struct{}) string {
 	if id == "" {
 		id = "operation"
@@ -241,13 +230,10 @@ func uniqueOperationID(id string, used map[string]struct{}) string {
 	}
 }
 
-// versionAtLeast reports whether version is greater than or equal to minimum.
 func versionAtLeast(version, minimum string) bool {
 	return openAPIVersionRank[version] >= openAPIVersionRank[minimum]
 }
 
-// generateSpec builds the OpenAPI document from a snapshot of routes (deep
-// copies from App.GetRoutes, safe to read without further locking).
 // specEnv carries what generation reads from the app rather than from Config.
 type specEnv struct {
 	validator fiber.StructValidator
@@ -255,8 +241,7 @@ type specEnv struct {
 	equal segmentEqual
 }
 
-// routeFacts is what the document says about a route before its path is
-// expanded: its own metadata with the inferences filled in.
+// routeFacts is a route's metadata with inferences filled in, before its path is expanded.
 type routeFacts struct {
 	security       *[]map[string][]string
 	summary        string
@@ -268,21 +253,17 @@ type routeFacts struct {
 	documentsInput bool
 }
 
-// specBuilder accumulates the paths of one document.
 type specBuilder struct {
 	cfg     *Config
 	env     specEnv
 	reg     *schemaRegistry
 	schemes *securitySchemes
 	paths   map[string]map[string]operation
-	// usedOperationIDs guarantees operationId uniqueness across the document,
-	// which the OpenAPI specification requires.
+	// usedOperationIDs keeps operationIds unique, as OpenAPI requires.
 	usedOperationIDs map[string]struct{}
-	// hierarchyPaths maps a name-blanked template to the path already published
-	// for it: the spec forbids two paths differing only in parameter names.
+	// hierarchyPaths maps a name-blanked template to its published path; OpenAPI forbids paths differing only in parameter names.
 	hierarchyPaths map[string]canonicalPathItem
-	// validates is set when a 400 is the route's own outcome: only a validator
-	// can reject what a route binds.
+	// validates is set when a validator can reject what a route binds, making 400 documentable.
 	validates bool
 }
 
@@ -301,11 +282,8 @@ func generateSpec(routes []fiber.Route, cfg *Config, env specEnv) openAPISpec {
 	return b.document()
 }
 
-// addRoutes documents every route the document can represent.
 func (b *specBuilder) addRoutes(routes []fiber.Route) {
-	// Use routes sit in every method's stack ahead of the routes they cover,
-	// so the ones seen so far in a method's stack are the ones a request to a
-	// later route passes through.
+	// Use routes precede the routes they cover in each method's stack.
 	var (
 		coveredMethod string
 		covering      []coveringMiddleware
@@ -334,24 +312,19 @@ func (b *specBuilder) addRoutes(routes []fiber.Route) {
 	}
 }
 
-// documents reports whether a route has an operation in the document.
 func (b *specBuilder) documents(r *fiber.Route) bool {
-	// A Path Item has a fixed set of operation keys, so a custom method has no
-	// valid representation and is skipped. CONNECT has none either.
+	// A Path Item has fixed operation keys; custom methods and CONNECT cannot be represented.
 	if !isOpenAPIOperationMethod(r.Method) {
 		return false
 	}
-	// The OpenAPI `query` operation key exists only in 3.2+; skip QUERY routes
-	// for earlier versions, where it cannot be represented.
+	// The `query` operation key exists only in 3.2+.
 	if r.Method == fiber.MethodQuery && !versionAtLeast(b.cfg.OpenAPIVersion, versionOpenAPI32) {
 		return false
 	}
 	return !r.IsAutoHead() && !r.IsHidden()
 }
 
-// inferRoute fills what a route does not say from what the router knows: the
-// handler's name, the enclosing group, the app-wide media types and the
-// recognized middleware on its path. Anything the route sets itself wins.
+// inferRoute fills unset route metadata from handler names, groups, app-wide media types and recognized middleware.
 func (b *specBuilder) inferRoute(r *fiber.Route, covering []coveringMiddleware) routeFacts {
 	cfg := b.cfg
 	facts := routeFacts{
@@ -378,8 +351,7 @@ func (b *specBuilder) inferRoute(r *fiber.Route, covering []coveringMiddleware) 
 	}
 
 	if r.Security != nil {
-		// The author documented the route's authentication, so none is
-		// inferred from the middleware: neither its requirement nor its 401.
+		// Documented authentication suppresses inference of both the requirement and the 401.
 		facts.chain &^= authMiddleware
 		security := r.Security
 		facts.security = &security
@@ -395,26 +367,21 @@ func (b *specBuilder) inferRoute(r *fiber.Route, covering []coveringMiddleware) 
 	return facts
 }
 
-// addVariant places a route's operation under one of its path templates.
 func (b *specBuilder) addVariant(r *fiber.Route, facts *routeFacts, variant *pathVariant) {
 	methodLower := utilsstrings.ToLower(r.Method)
-	// The router dispatches to the first match, so on a path+method collision
-	// the earlier registration describes the behavior.
+	// The router dispatches to the first match, so the earlier registration wins.
 	if _, exists := b.paths[variant.Path][methodLower]; exists {
 		return
 	}
-	// Templates identical up to parameter names MUST NOT coexist, and the
-	// router would never dispatch to the later one: first wins.
+	// Templates identical up to parameter names MUST NOT coexist in OpenAPI; first wins.
 	hierarchy := normalizePathHierarchy(variant.Path)
 	if canonical, exists := b.hierarchyPaths[hierarchy]; exists {
-		// Already published under a different parameter name: join that path
-		// item, or drop the operation if its method is taken.
+		// Join the already published path item, or drop the operation if its method is taken.
 		if canonical.path != variant.Path {
 			if _, taken := b.paths[canonical.path][methodLower]; taken {
 				return
 			}
-			// Parameters move with the operation: declaring "name" under a
-			// path reading "{id}" makes the document invalid.
+			// Parameters must be renamed too, or the document is invalid.
 			adoptCanonicalParamNames(variant, canonical.params)
 			variant.Path = canonical.path
 		}
@@ -428,7 +395,6 @@ func (b *specBuilder) addVariant(r *fiber.Route, facts *routeFacts, variant *pat
 	b.paths[variant.Path][methodLower] = b.buildOperation(r, facts, variant)
 }
 
-// buildOperation assembles the operation a route has at one path template.
 func (b *specBuilder) buildOperation(r *fiber.Route, facts *routeFacts, variant *pathVariant) operation {
 	cfg := b.cfg
 
@@ -439,18 +405,15 @@ func (b *specBuilder) buildOperation(r *fiber.Route, facts *routeFacts, variant 
 			Name:     p,
 			In:       paramLocationPath,
 			Required: true,
-			// A "<...>" constraint narrows what the router accepts, so the
-			// schema reflects it instead of always using string.
+			// A "<...>" constraint narrows the schema beyond string.
 			Schema: pathParamSchema(variant.ParamConstraints[p]),
 		}
 		params = append(params, param)
 		paramIndex[param.In+":"+param.Name] = len(params) - 1
 	}
-	// Middleware and declared models come first so an explicit AddParameter for
-	// the same name still overrides what they say.
+	// Middleware and declared models come first so an explicit AddParameter overrides them.
 	extras := remapRouteParameters(append(slices.Clone(facts.declared), r.Parameters...), variant.PathParamAliases, variant.ParamNames)
-	// The "querystring" location exists only in 3.2+; emitting it earlier would
-	// make the document invalid.
+	// The "querystring" location exists only in 3.2+.
 	if !versionAtLeast(cfg.OpenAPIVersion, versionOpenAPI32) {
 		extras = dropQuerystringParameters(extras)
 	}
@@ -480,8 +443,6 @@ func (b *specBuilder) buildOperation(r *fiber.Route, facts *routeFacts, variant 
 		}
 	}
 
-	// A body declared without a media type takes the route's Consumes, then
-	// the app-wide default.
 	bodyType := facts.consumes
 	if bodyType == "" {
 		bodyType = cfg.DefaultConsumes
@@ -490,8 +451,7 @@ func (b *specBuilder) buildOperation(r *fiber.Route, facts *routeFacts, variant 
 	if reqBody == nil && facts.consumes != "" {
 		reqBody = &requestBody{Content: map[string]map[string]any{facts.consumes: {}}}
 	}
-	// GET and HEAD operations never carry a request body, and a TRACE request
-	// MUST NOT include content (RFC 9110).
+	// RFC 9110: TRACE MUST NOT include content; GET and HEAD bodies are never documented.
 	if r.Method == fiber.MethodGet || r.Method == fiber.MethodHead || r.Method == fiber.MethodTrace {
 		reqBody = nil
 	}
@@ -512,14 +472,10 @@ func (b *specBuilder) buildOperation(r *fiber.Route, facts *routeFacts, variant 
 	}
 }
 
-// domainServers describes the host a route registered through app.Domain
-// answers on, as an operation-level server, or nil for a route that answers on
-// every host. The URL is scheme-relative, so it resolves against how the
-// document was fetched, and each ":param" label becomes a server variable
-// whose default is the parameter's name, as the pattern holds no sample host.
-// OpenAPI allows one operation per path and method, so routes that share both
-// across hosts still collapse to the first registered; that operation is at
-// least labeled with the host it describes.
+// domainServers describes the host of an app.Domain route as an operation-level
+// server, or nil for any host. Each ":param" label becomes a server variable
+// defaulting to its name. Routes sharing path and method across hosts still
+// collapse to the first, as OpenAPI allows one operation per path and method.
 func domainServers(pattern string) []Server {
 	if pattern == "" {
 		return nil
@@ -540,7 +496,6 @@ func domainServers(pattern string) []Server {
 	return []Server{{URL: "//" + strings.Join(labels, "."), Variables: variables}}
 }
 
-// document assembles the document around the collected paths.
 func (b *specBuilder) document() openAPISpec {
 	cfg := b.cfg
 	paths := b.paths
@@ -576,12 +531,11 @@ func (b *specBuilder) document() openAPISpec {
 		}
 	}
 
-	// The License Object allows identifier or url, never both, and the SPDX
-	// identifier itself requires 3.1+. Narrow a copy so the caller's is untouched.
+	// The License Object allows identifier or url, never both, and identifier requires 3.1+.
 	if cfg.License != nil && cfg.License.Identifier != "" {
 		licenseCopy := *cfg.License
 		if versionAtLeast(cfg.OpenAPIVersion, versionOpenAPI31) {
-			// identifier wins: it is the more precise of the two.
+			// identifier is the more precise of the two.
 			licenseCopy.URL = ""
 		} else {
 			licenseCopy.Identifier = ""
@@ -606,8 +560,7 @@ func (b *specBuilder) document() openAPISpec {
 	return spec
 }
 
-// buildServers resolves the server list, preferring Config.Servers and falling
-// back to the single Config.ServerURL for backward compatibility.
+// buildServers prefers Config.Servers and falls back to Config.ServerURL.
 func buildServers(cfg *Config) []Server {
 	// Server.name is an OpenAPI 3.2+ field.
 	allowName := versionAtLeast(cfg.OpenAPIVersion, versionOpenAPI32)
@@ -632,8 +585,7 @@ func buildServers(cfg *Config) []Server {
 	return nil
 }
 
-// buildComponents merges the user-provided Components with the configured
-// SecuritySchemes without mutating either input.
+// buildComponents merges Components, SecuritySchemes and inferred entries without mutating the inputs.
 func buildComponents(cfg *Config, reg *schemaRegistry, schemes *securitySchemes) map[string]any {
 	registered := reg.componentSchemas()
 	inferred := schemes.declarations()
@@ -645,8 +597,7 @@ func buildComponents(cfg *Config, reg *schemaRegistry, schemes *securitySchemes)
 	maps.Copy(components, cfg.Components)
 
 	if len(registered) > 0 {
-		// The types met while generating join the user's schemas, which keep
-		// their names: the registry never claims one of them.
+		// The registry never claims a name the user's schemas hold.
 		schemas := make(map[string]any, len(registered))
 		maps.Copy(schemas, registered)
 		maps.Copy(schemas, stringKeyedEntries(components["schemas"]))
@@ -654,9 +605,7 @@ func buildComponents(cfg *Config, reg *schemaRegistry, schemes *securitySchemes)
 	}
 
 	if len(cfg.SecuritySchemes) > 0 || len(inferred) > 0 {
-		// The schemes the recognized middleware asked for go in first, so a
-		// scheme the user placed in Components or SecuritySchemes under the
-		// same name replaces them rather than the other way round.
+		// Inferred schemes go first so user-supplied ones with the same name replace them.
 		merged := make(map[string]any, len(cfg.SecuritySchemes)+len(inferred))
 		maps.Copy(merged, inferred)
 		maps.Copy(merged, stringKeyedEntries(components["securitySchemes"]))
@@ -667,9 +616,8 @@ func buildComponents(cfg *Config, reg *schemaRegistry, schemes *securitySchemes)
 	return components
 }
 
-// stringKeyedEntries reads any string-keyed map as map[string]any. A typed map
-// such as map[string]MyScheme fails a plain type assertion, and treating that as
-// "absent" would drop the caller's schemes instead of merging them.
+// stringKeyedEntries reads any string-keyed map as map[string]any, since a typed
+// map such as map[string]MyScheme fails a plain assertion and would be dropped.
 func stringKeyedEntries(src any) map[string]any {
 	if src == nil {
 		return nil

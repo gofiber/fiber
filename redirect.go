@@ -350,8 +350,8 @@ func (r *Redirect) Route(name string, config ...RedirectConfig) error {
 	}
 
 	// Get location from route name. buildRouteURL already holds the composed
-	// path to this origin, so only the query is left to place. The route is the
-	// index's shared snapshot, read but never modified, so nothing is copied.
+	// path to this origin, so only the query is left to place. The route is a
+	// shared snapshot: read only, so no copy is needed.
 	location, err := r.c.getLocationFromRoute(r.c.App().namedRoute(name), cfg.Params)
 	if err != nil {
 		return err

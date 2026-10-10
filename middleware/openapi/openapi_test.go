@@ -3722,9 +3722,7 @@ func Test_OpenAPI_SharedHandlerBeyondCacheBound(t *testing.T) {
 func Test_Config_SwaggerAssetsShareOnePinnedVersion(t *testing.T) {
 	t.Parallel()
 
-	// The default hashes describe swagger-ui-dist at the version in the URLs, so
-	// the three URLs must name the same release; bump the URLs and the hashes
-	// together.
+	// The default hashes match swagger-ui-dist at the URLs' version; the URLs must share one release.
 	versions := make(map[string]struct{})
 	for _, url := range []string{ConfigDefault.SwaggerCSSURL, ConfigDefault.SwaggerBundleURL, ConfigDefault.SwaggerStandalonePresetURL} {
 		_, rest, ok := strings.Cut(url, "swagger-ui-dist@")

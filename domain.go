@@ -271,8 +271,7 @@ type domainRouter struct {
 	lastRegID uint64 // Most recent registration, targeted by the doc helpers. Accessed atomically.
 }
 
-// pattern returns the canonical domain form, which identifies the domain on
-// routes so same-path routes on different domains are never merged.
+// pattern returns the canonical domain form; it keeps same-path routes on different domains from merging.
 func (d *domainRouter) pattern() string {
 	return d.matcher.pattern
 }
@@ -280,8 +279,7 @@ func (d *domainRouter) pattern() string {
 // Verify domainRouter implements Router at compile time.
 var _ Router = (*domainRouter)(nil)
 
-// registerWrapped registers handlers behind the host check and keeps them as
-// given on the route, so documentation can still tell what they are.
+// registerWrapped registers handlers behind the host check, keeping the originals on the route for documentation.
 func (d *domainRouter) registerWrapped(methods []string, path string, group *Group, handlers []Handler) uint64 {
 	regID := d.app.register(methods, path, group, d.pattern(), d.wrapHandlers(handlers)...)
 	d.app.applyToRegistration(regID, docSetInnerHandlers(handlers))
@@ -779,8 +777,7 @@ func (d *domainRouter) All(path string, handler any, handlers ...any) Router {
 func (d *domainRouter) Group(prefix string, handlers ...any) Router {
 	fullPrefix := d.registerPath(prefix)
 
-	// The middleware belongs to the new router; writing it to this one would
-	// retarget its later doc helpers at the Use route.
+	// Record on the new router; this one's doc helpers must not retarget the Use route.
 	var regID uint64
 	if len(handlers) > 0 {
 		converted := collectHandlers("domain", handlers...)
@@ -833,8 +830,7 @@ func (d *domainRouter) Route(prefix string, fn func(router Router), name ...stri
 // When the domain router was created from a Group, this delegates to the
 // group's Name method so that group name prefixes are applied correctly.
 func (d *domainRouter) Name(name string) Router {
-	// Before the first route this sets the group's name prefix; afterwards it
-	// names this router's own latest registration, like the other helpers.
+	// Before the first route this sets the name prefix; afterwards it names the latest registration.
 	if d.group != nil && !d.group.hasAnyRoute {
 		d.group.Name(name)
 		return d
@@ -975,7 +971,6 @@ func (d *domainRouter) OperationExtension(fields map[string]any) Router {
 	return d.document(docOperationExtension(fields))
 }
 
-// document applies a documentation change to the route this router registered last.
 func (d *domainRouter) document(apply func(route *Route)) Router {
 	d.app.applyToRegistration(atomic.LoadUint64(&d.lastRegID), apply)
 	return d

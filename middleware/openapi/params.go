@@ -7,8 +7,7 @@ import (
 	"github.com/gofiber/utils/v2"
 )
 
-// modelTagByLocation maps a parameter location to the struct tag Bind reads
-// for it, so a model documents the names the binder actually uses.
+// modelTagByLocation maps a parameter location to the struct tag Bind reads.
 var modelTagByLocation = map[string]string{
 	"query":  fiber.BindSourceQuery,
 	"header": fiber.BindSourceHeader,
@@ -16,8 +15,8 @@ var modelTagByLocation = map[string]string{
 	"path":   fiber.BindSourceURI,
 }
 
-// expandParameterModels turns each declared model into one parameter per
-// exported field. Embedded structs are flattened as the binder flattens them.
+// expandParameterModels turns each model into one parameter per exported field,
+// flattening embedded structs as the binder does.
 func expandParameterModels(models []fiber.RouteParameterModel, reg *schemaRegistry) []fiber.RouteParameter {
 	var params []fiber.RouteParameter
 	for i := range models {
@@ -70,8 +69,7 @@ func appendModelFields(params []fiber.RouteParameter, t reflect.Type, in, tagKey
 			Schema:   schema,
 			Required: required || in == paramLocationPath,
 		}
-		// A description and an example belong to the Parameter Object, not
-		// to its schema.
+		// Description and example belong to the Parameter Object, not its schema.
 		if description, ok := schema["description"].(string); ok {
 			param.Description = description
 			delete(schema, "description")

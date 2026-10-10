@@ -6,8 +6,8 @@ import (
 	utilsstrings "github.com/gofiber/utils/v2/strings"
 )
 
-// dropQuerystringParameters filters out parameters using the OpenAPI 3.2-only
-// "querystring" location, returning the input slice unchanged when none match.
+// dropQuerystringParameters removes parameters in the OpenAPI 3.2-only
+// "querystring" location.
 func dropQuerystringParameters(extras []fiber.RouteParameter) []fiber.RouteParameter {
 	isQuerystring := func(in string) bool {
 		return utils.EqualFold(utils.TrimSpace(in), paramLocationQuerystring)
@@ -41,8 +41,7 @@ func mergeRouteParameters(params []parameter, index map[string]int, extras []fib
 		if location == "" {
 			location = "query"
 		}
-		// OpenAPI spec: "example" and "examples" are mutually exclusive.
-		// Prefer "examples" when both are provided.
+		// "example" and "examples" are mutually exclusive; prefer "examples".
 		var paramExample any
 		var paramExamples map[string]any
 		if len(extra.Examples) > 0 {
@@ -62,18 +61,15 @@ func mergeRouteParameters(params []parameter, index map[string]int, extras []fib
 			AllowEmptyValue: extra.AllowEmptyValue,
 			AllowReserved:   extra.AllowReserved,
 		}
-		// A Parameter Object describes its value either with "schema" or with
-		// "content", never both and never neither.
+		// A Parameter Object needs exactly one of "schema" or "content".
 		switch content := routeMediaTypeContent(extra.Content, reg); {
 		case content != nil:
 			param.Content = content
-			// "example"/"examples" belong to the media type object when content
-			// is used, so they are not repeated at the parameter level.
+			// With content, example/examples belong to the media type object.
 			param.Example = nil
 			param.Examples = nil
 		case location == paramLocationQuerystring:
-			// The 3.2 "querystring" location must use content, so any supplied
-			// schema is wrapped rather than emitting neither key.
+			// The 3.2 "querystring" location must use content.
 			param.Content = map[string]map[string]any{
 				querystringMediaType: contentEntry(fiber.RouteMediaType{
 					Schema:   schemaFrom(extra.Schema, extra.SchemaRef, schemaTypeString, reg),
@@ -92,9 +88,8 @@ func mergeRouteParameters(params []parameter, index map[string]int, extras []fib
 		}
 		if param.In == paramLocationPath {
 			param.Required = true
-			// AddParameter injects {"type": "string"} when no schema is given, so
-			// a description-only call would otherwise drop the schema the route
-			// constraint derived (":id<int>" documented as a string).
+			// AddParameter injects a default string schema, which must not
+			// replace one derived from the route constraint (":id<int>").
 			if idx, ok := index[param.In+":"+param.Name]; ok && extra.SchemaRef == "" && param.Content == nil && isDefaultStringSchema(extra.Schema) {
 				param.Schema = params[idx].Schema
 			}
@@ -104,8 +99,7 @@ func mergeRouteParameters(params []parameter, index map[string]int, extras []fib
 	return params
 }
 
-// isDefaultStringSchema reports whether a schema says nothing beyond the string
-// default the route helpers inject.
+// isDefaultStringSchema reports whether schema is only the injected string default.
 func isDefaultStringSchema(schema any) bool {
 	if schema == nil {
 		return true
@@ -151,8 +145,7 @@ func schemaFrom(schema any, schemaRef, defaultType string, reg *schemaRegistry) 
 	if copied == nil {
 		copied = map[string]any{}
 	}
-	// A reference describes its type elsewhere; only a bare schema takes the
-	// default.
+	// A reference describes its type elsewhere.
 	if _, isRef := copied[schemaKeyRef]; !isRef {
 		if _, ok := copied[schemaKeyType]; !ok && defaultType != "" {
 			copied[schemaKeyType] = defaultType
@@ -165,11 +158,10 @@ func schemaFrom(schema any, schemaRef, defaultType string, reg *schemaRegistry) 
 }
 
 // adoptCanonicalParamNames renames a variant's path parameters to the canonical
-// template's. Sharing a hierarchy, they correspond position by position.
+// template's, position by position.
 func adoptCanonicalParamNames(variant *pathVariant, canonical []string) {
 	if len(canonical) != len(variant.ParamNames) {
-		// Defensive: a hierarchy match implies equal counts. Renaming on a
-		// mismatch would be worse than leaving the names alone.
+		// Defensive: a hierarchy match implies equal counts.
 		return
 	}
 
@@ -189,8 +181,7 @@ func adoptCanonicalParamNames(variant *pathVariant, canonical []string) {
 		variant.ParamConstraints = constraints
 	}
 
-	// Aliases map pattern names onto emitted ones, so they must follow the move
-	// for AddParameter(in: "path") to keep matching.
+	// Aliases must follow the rename for AddParameter(in: "path") to match.
 	if len(variant.PathParamAliases) > 0 {
 		aliases := make(map[string]string, len(variant.PathParamAliases))
 		for raw, emitted := range variant.PathParamAliases {

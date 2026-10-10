@@ -18,7 +18,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// The default header names the middleware document, as the middleware set them.
 const (
 	headerRateLimitLimit  = "X-RateLimit-Limit"
 	headerRateLimitRemain = "X-RateLimit-Remaining"
@@ -299,8 +298,6 @@ func Test_coversRoute(t *testing.T) {
 func Test_middlewareInFile(t *testing.T) {
 	t.Parallel()
 
-	// Fiber's own middleware is matched under the directory the fiber module was
-	// built from, whatever that is: a checkout, the module cache or -trimpath.
 	root := fiberRoot()
 	require.NotEmpty(t, root)
 	for file, want := range map[string]middlewareKind{
@@ -325,7 +322,7 @@ func Test_middlewareInFile(t *testing.T) {
 		"/root/go/pkg/mod/github.com/gofiber/contrib/jwt@v1.1.2/jwt.go",
 		root + "/middleware/keyauthx/keyauth.go",
 		root + "/middleware/openapi/chain.go",
-		// A package that merely shares a directory name with a Fiber one.
+		// Shares a directory name with a Fiber package but is not Fiber's.
 		"/home/u/app/middleware/keyauth/keyauth.go",
 		"/src/other/middleware/csrf/csrf.go",
 		"/src/acme/contrib/v3/jwt/jwt.go",
@@ -662,8 +659,7 @@ func Test_OpenAPI_MiddlewareHeaderNames(t *testing.T) {
 func Test_OpenAPI_UserPackageNamedLikeFiberMiddleware(t *testing.T) {
 	t.Parallel()
 
-	// This test file lives in middleware/openapi, not middleware/keyauth, so a
-	// handler compiled here must not read as any recognized middleware.
+	// A handler compiled outside middleware/keyauth must not read as recognized middleware.
 	app := fiber.New()
 	app.Get("/x", listUsers)
 	spec := modelSpec(t, app)

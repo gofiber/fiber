@@ -73,8 +73,7 @@ var swaggerUITemplate = htemplate.Must(htemplate.New("swagger-ui").Parse(`<!doct
 </html>
 `))
 
-// buildSwaggerUIPage renders the UI page for a spec URL. Options use the app's
-// JSON encoder, and html/template escapes the result whichever encoder ran.
+// buildSwaggerUIPage renders the UI page; html/template escapes the options whichever encoder ran.
 func buildSwaggerUIPage(openAPIURL string, cfg *Config, encode utils.JSONMarshal) ([]byte, error) {
 	if encode == nil {
 		encode = json.Marshal

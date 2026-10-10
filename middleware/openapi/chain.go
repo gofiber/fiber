@@ -11,11 +11,9 @@ import (
 	"github.com/gofiber/utils/v2"
 )
 
-// authMiddleware is the set of middleware that demand credentials.
 const authMiddleware middlewareSet = 1<<kindKeyAuth | 1<<kindBasicAuth | 1<<kindJWT
 
-// fiberMiddlewareDirs names the directories, under Fiber's module root, of the
-// middleware the document can describe.
+// fiberMiddlewareDirs lists the Fiber middleware directories the document can describe.
 var fiberMiddlewareDirs = [...]struct {
 	dir  string
 	kind middlewareKind
@@ -29,12 +27,9 @@ var fiberMiddlewareDirs = [...]struct {
 	{"cache", kindCache},
 }
 
-// contribMiddleware lists a fragment of the source path of a middleware that
-// lives in gofiber/contrib. gofiber/contrib/v3/jwt is the module Fiber v3 uses;
-// the unversioned contrib/jwt belongs to v2 and returns a v2 handler. The
-// fragment names the gofiber organization, so a package of the same name
-// elsewhere does not match, and it ends where the package directory does so a
-// versioned module cache ("@v1.2.3") and a checkout match alike.
+// contribMiddleware matches gofiber/contrib middleware by source path fragment. Fiber v3 uses
+// gofiber/contrib/v3/jwt; the unversioned contrib/jwt is v2 and returns a v2 handler. Fragments end at
+// the package directory so a versioned module cache ("@v1.2.3") and a checkout both match.
 var contribMiddleware = [...]struct {
 	dir  string
 	kind middlewareKind
@@ -43,11 +38,8 @@ var contribMiddleware = [...]struct {
 	{"/gofiber/contrib/v3/jwt/", kindJWT},
 }
 
-// fiberRoot is the directory the fiber module's own source lives in, found
-// from where fiber.New is compiled. It is a checkout, a module cache entry
-// ("fiber/v3@v3.0.0"), a vendor directory or a -trimpath path, whichever this
-// binary was built from, so middleware is matched against Fiber's own files
-// rather than any directory that happens to be called "middleware/keyauth".
+// fiberRoot is the directory of Fiber's own source (checkout, module cache, vendor or -trimpath),
+// so middleware is matched against Fiber's files and not any "middleware/keyauth" directory.
 var fiberRoot = sync.OnceValue(func() string {
 	fn := runtime.FuncForPC(reflect.ValueOf(fiber.New).Pointer())
 	if fn == nil {
@@ -58,14 +50,11 @@ var fiberRoot = sync.OnceValue(func() string {
 	return file[:max(strings.LastIndexByte(file, '/'), 0)]
 })
 
-// Names of the security schemes the document declares for recognized
-// authentication middleware, and of the headers they document.
 const (
 	securitySchemeBearer = "bearerAuth"
 	securitySchemeBasic  = "basicAuth"
 )
 
-// middlewareKind identifies a Fiber middleware the document can describe.
 type middlewareKind uint8
 
 const (
@@ -79,17 +68,14 @@ const (
 	kindCache
 )
 
-// middlewareSet is the set of recognized middleware on a request's path.
 type middlewareSet uint16
 
 func (s middlewareSet) has(kind middlewareKind) bool { return s&(1<<kind) != 0 }
 
 func (s *middlewareSet) add(kind middlewareKind) { *s |= 1 << kind }
 
-// middlewareInFile reports which recognized middleware a source file belongs to.
-// The handler is a closure returned by New, so it is matched by the file it
-// lives in rather than by name: when New is small enough to inline, the runtime
-// names its closure after the caller's package.
+// middlewareInFile reports which recognized middleware a source file belongs to. Matching is by
+// file because an inlined New names its closure after the caller's package.
 func middlewareInFile(file string) middlewareSet {
 	var set middlewareSet
 	file = filepath.ToSlash(file)
@@ -108,7 +94,6 @@ func middlewareInFile(file string) middlewareSet {
 	return set
 }
 
-// handlerMiddleware reports which recognized middleware the handlers are.
 func handlerMiddleware(handlers []fiber.Handler) middlewareSet {
 	var set middlewareSet
 	for _, handler := range handlers {
@@ -125,23 +110,15 @@ func handlerMiddleware(handlers []fiber.Handler) middlewareSet {
 	return set
 }
 
-// coveringMiddleware is a Use route registered ahead of the routes of one
-// method, remembered by the prefix and host it applies to.
 type coveringMiddleware struct {
 	prefix string
 	domain string
 	set    middlewareSet
 }
 
-// coversRoute reports whether every request a route can answer passes through
-// a Use route with the given prefix, so the middleware can be documented on
-// it. The prefix matches up to a segment boundary, and segments compare as the
-// router compares them (equal reflects its case rule). A prefix parameter
-// matches whatever the route has in that position, a greedy one the rest of
-// the path, and a literal prefix segment only the same literal: where the route
-// has a parameter instead, some requests would miss the middleware, so it is
-// not claimed. An optional prefix segment may consume nothing and is never
-// claimed either.
+// coversRoute reports whether every request the route can answer passes through a Use route with
+// the given prefix. Literal prefix segments only cover the same literal and optional ones may consume
+// nothing, so neither is claimed where the route has a parameter or the prefix may vanish.
 func coversRoute(prefix, path string, equal segmentEqual) bool {
 	prefix = utils.TrimRight(prefix, '/')
 	if prefix == "" {
@@ -149,15 +126,12 @@ func coversRoute(prefix, path string, equal segmentEqual) bool {
 	}
 	prefixRest := strings.TrimPrefix(prefix, "/")
 	pathRest := strings.TrimPrefix(utils.TrimRight(path, '/'), "/")
-	// pathDone is set once the route's last segment has been consumed, so a
-	// prefix segment found after it has nothing to match.
 	pathDone := false
 	for {
 		segment, nextPrefix, more := utils.CutByte(prefixRest, '/')
 		kind, tokens := classifySegment(segment)
 		switch {
 		case kind == segmentGreedy:
-			// A greedy segment covers whatever is left; "+" needs one segment.
 			return !pathDone || !strings.Contains(tokens, "+")
 		case kind == segmentOptional, pathDone:
 			return false
@@ -167,8 +141,6 @@ func coversRoute(prefix, path string, equal segmentEqual) bool {
 		var found bool
 		pathSegment, pathRest, found = utils.CutByte(pathRest, '/')
 		pathDone = !found
-		// A literal, possibly with a parameter inside it, covers only the same
-		// text; a whole-segment parameter covers whatever the route has there.
 		if !strings.HasPrefix(tokens, ":") &&
 			(routeTokens(pathSegment) != pathSegment || !equal(fiber.RemoveEscapeChar(segment), fiber.RemoveEscapeChar(pathSegment))) {
 			return false
@@ -180,9 +152,6 @@ func coversRoute(prefix, path string, equal segmentEqual) bool {
 	}
 }
 
-// middlewareOn is the recognized middleware a request to route passes
-// through: the Use routes registered ahead of it whose prefix and host cover
-// it, then the route's own handlers.
 func middlewareOn(covering []coveringMiddleware, route *fiber.Route, equal segmentEqual) middlewareSet {
 	set := handlerMiddleware(route.InnerHandlers())
 	for i := range covering {
@@ -197,14 +166,12 @@ func middlewareOn(covering []coveringMiddleware, route *fiber.Route, equal segme
 	return set
 }
 
-// securitySchemes keeps the schemes the recognized middleware asked for while
-// generating, so components.securitySchemes can declare the ones the user
-// did not.
+// securitySchemes collects the schemes recognized middleware asked for, so components.securitySchemes
+// can declare the ones the user did not.
 type securitySchemes struct {
 	bearer bool
 	basic  bool
-	// jwtOnly stays true while every bearer scheme came from the JWT
-	// middleware, in which case the document can name the token format.
+	// jwtOnly stays true while every bearer scheme came from the JWT middleware (the token format is then nameable).
 	jwtOnly bool
 }
 
@@ -212,8 +179,7 @@ func newSecuritySchemes() *securitySchemes {
 	return &securitySchemes{jwtOnly: true}
 }
 
-// requirement returns the security requirement the middleware imposes: all
-// of them at once, since a chained middleware each has to pass.
+// requirement returns the requirement for all middleware at once, since each chained one must pass.
 func (s *securitySchemes) requirement(set middlewareSet) map[string][]string {
 	requirement := map[string][]string{}
 	if set.has(kindKeyAuth) || set.has(kindJWT) {
@@ -233,7 +199,6 @@ func (s *securitySchemes) requirement(set middlewareSet) map[string][]string {
 	return requirement
 }
 
-// declarations returns the scheme objects for the schemes in use.
 func (s *securitySchemes) declarations() map[string]any {
 	if s == nil {
 		return nil
@@ -255,8 +220,7 @@ func (s *securitySchemes) declarations() map[string]any {
 	return schemes
 }
 
-// isSafeMethod reports whether the CSRF middleware lets a method through
-// without a token: the methods RFC 9110 defines as safe, and QUERY.
+// isSafeMethod reports whether CSRF lets the method through without a token (RFC 9110 safe methods and QUERY).
 func isSafeMethod(method string) bool {
 	switch method {
 	case fiber.MethodGet, fiber.MethodHead, fiber.MethodOptions, fiber.MethodTrace, fiber.MethodQuery:
@@ -266,7 +230,6 @@ func isSafeMethod(method string) bool {
 	}
 }
 
-// headerObject builds a Header Object with a schema of the given type.
 func headerObject(description, schemaType string) map[string]any {
 	header := map[string]any{"schema": map[string]any{schemaKeyType: schemaType}}
 	if description != "" {
@@ -275,7 +238,6 @@ func headerObject(description, schemaType string) map[string]any {
 	return header
 }
 
-// addHeader documents a header on a response unless it already has one.
 func addHeader(resp *response, name string, header map[string]any) {
 	if _, ok := resp.Headers[name]; ok {
 		return
@@ -286,7 +248,6 @@ func addHeader(resp *response, name string, header map[string]any) {
 	resp.Headers[name] = header
 }
 
-// errorResponse describes a response the app's error handler writes.
 func errorResponse(description string, cfg *Config, reg *schemaRegistry) response {
 	resp := response{Description: description}
 	if cfg.ErrorProduces != "" {
@@ -297,10 +258,8 @@ func errorResponse(description string, cfg *Config, reg *schemaRegistry) respons
 	return resp
 }
 
-// applyMiddlewareResponses adds what the recognized middleware on a route
-// writes: the responses it sends on its own and the headers it sets on every
-// response. A response the route already declares keeps its description and
-// content, gaining only headers it lacks.
+// applyMiddlewareResponses adds the responses and headers recognized middleware writes. Responses the
+// route already declares keep their description and content and only gain missing headers.
 func applyMiddlewareResponses(responses map[string]response, method string, set middlewareSet, cfg *Config, reg *schemaRegistry) {
 	readsOnly := method == fiber.MethodGet || method == fiber.MethodHead
 	addError := func(status, description string) {
@@ -348,8 +307,6 @@ func applyMiddlewareResponses(responses map[string]response, method string, set 
 	}
 }
 
-// csrfParameter is the header parameter the CSRF middleware requires on an
-// unsafe request.
 func csrfParameter(header string) fiber.RouteParameter {
 	return fiber.RouteParameter{
 		Name:        header,

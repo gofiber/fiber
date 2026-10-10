@@ -26,8 +26,7 @@ type Register interface {
 
 	RouteChain(path string) Register
 
-	// Route documentation helpers. They target the most recently
-	// registered route; see the App methods of the same name.
+	// Route documentation helpers; they target the most recently registered route.
 
 	Name(name string) Register
 	Summary(sum string) Register
@@ -63,8 +62,7 @@ var _ Register = (*Registering)(nil)
 type Registering struct {
 	app   *App
 	group *Group
-	// wrap adapts the handlers before registration; a domain chain uses it to
-	// filter them by host. domain is that chain's host pattern, else empty.
+	// wrap adapts handlers before registration (domain chains filter by host); domain is that host pattern.
 	wrap   func([]Handler) []Handler
 	domain string
 

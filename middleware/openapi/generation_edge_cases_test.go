@@ -180,9 +180,7 @@ func Test_OpenAPI_DomainRoutesCarryTheirHost(t *testing.T) {
 func Test_RouteLexers_Agree(t *testing.T) {
 	t.Parallel()
 
-	// segments.go and paths.go read the route grammar separately; the number of
-	// parameters one finds must be the number the other emits, whatever the
-	// pattern escapes, constrains or makes optional.
+	// segments.go and paths.go lex the route grammar separately; both must find the same parameter count.
 	for _, pattern := range []string{
 		"/users",
 		"/users/:id",
@@ -203,7 +201,6 @@ func Test_RouteLexers_Agree(t *testing.T) {
 			want += strings.Count(tokens, ":") + strings.Count(tokens, "*") + strings.Count(tokens, "+")
 		}
 
-		// The fully-populated variant is the one with the most parameters.
 		got := 0
 		for _, variant := range buildOpenAPIPathVariants(pattern, nil) {
 			got = max(got, len(variant.ParamNames))

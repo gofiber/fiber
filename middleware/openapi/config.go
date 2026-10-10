@@ -11,7 +11,6 @@ import (
 // SwaggerOptions or Components would otherwise overflow the stack in New.
 const maxCopyDepth = 100
 
-// Supported OpenAPI specification versions.
 const (
 	versionOpenAPI30 = "3.0.0"
 	versionOpenAPI31 = "3.1.0"
@@ -120,7 +119,7 @@ type Config struct {
 	// License holds license information for the exposed API. Optional. Default: nil
 	License *License
 
-	// RateLimitHeaders names the headers the limiter middleware sets on every response of a route it covers: the limit, the remainder and the reset. Set it when you rename them; leave a field empty to keep its default. Optional. Default: X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Reset
+	// RateLimitHeaders names the headers the limiter middleware sets; an empty field keeps its default. Optional. Default: X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Reset
 	RateLimitHeaders RateLimitHeaders
 
 	// TermsOfService is a URL to the Terms of Service for the API. Optional. Default: ""
@@ -165,7 +164,7 @@ type Config struct {
 	// SwaggerCSSURL is the stylesheet URL used by the generated Swagger UI page. Optional. Default: "https://unpkg.com/swagger-ui-dist@5.32.6/swagger-ui.css"
 	SwaggerCSSURL string
 
-	// SwaggerCSSIntegrity is the Subresource Integrity value (for example "sha384-...") the browser checks SwaggerCSSURL against. It defaults to the hash of the default stylesheet only while SwaggerCSSURL is left at its default; a custom URL has none unless set here. Optional. Default: the hash of the default stylesheet
+	// SwaggerCSSIntegrity is the Subresource Integrity value (for example "sha384-...") the browser checks SwaggerCSSURL against. The default applies only while SwaggerCSSURL is the default; a custom URL has none unless set here. Optional. Default: the hash of the default stylesheet
 	SwaggerCSSIntegrity string
 
 	// SwaggerBundleIntegrity is the Subresource Integrity value the browser checks SwaggerBundleURL against, defaulting as SwaggerCSSIntegrity does. Optional. Default: the hash of the default bundle
@@ -233,8 +232,7 @@ var ConfigDefault = Config{
 	SwaggerBundleURL:           "https://unpkg.com/swagger-ui-dist@5.32.6/swagger-ui-bundle.js",
 	SwaggerStandalonePresetURL: "https://unpkg.com/swagger-ui-dist@5.32.6/swagger-ui-standalone-preset.js",
 
-	// Hashes of the three files above, computed from the swagger-ui-dist@5.32.6
-	// package. Update them together with the URLs.
+	// Hashes of the three files above; update them together with the URLs.
 	SwaggerCSSIntegrity:              "sha384-9Q2fpS+xeS4ffJy6CagnwoUl+4ldAYhOs9pgZuEKxypVModhmZFzeMlvVsAjf7uT",
 	SwaggerBundleIntegrity:           "sha384-EYdOaiRwn44zNjrw+Tfs06qYz9BGQVo2f4/pLY5i7VorbjnZNhdplAbTBk8FXHUJ",
 	SwaggerStandalonePresetIntegrity: "sha384-49fpFaVrAWI/qdgl9Vv5E/4NXxRUiJX5vGuLws1NUpTWGtEqzWEx8gHTw2UTehFK",
@@ -259,8 +257,7 @@ var ConfigDefault = Config{
 	DisableRateLimitHeaders: false,
 }
 
-// deepCopyAnyMap copies a raw OpenAPI object so the caller shares no nested
-// container with the handler. Non-container values are copied as-is.
+// deepCopyAnyMap copies a raw OpenAPI object so no nested container is shared with the caller.
 func deepCopyAnyMap(src map[string]any) map[string]any {
 	return deepCopyAnyMapDepth(src, 0)
 }
@@ -270,8 +267,7 @@ func deepCopyAnyMapDepth(src map[string]any, depth int) map[string]any {
 		return nil
 	}
 	if depth >= maxCopyDepth {
-		// Sharing the reference is the lesser evil; encoding/json reports the
-		// cycle itself when the document is served.
+		// encoding/json reports the cycle when the document is served.
 		return src
 	}
 	dst := make(map[string]any, len(src))
@@ -301,8 +297,7 @@ func deepCopyAnyValueDepth(src any, depth int) any {
 	}
 }
 
-// deepCopyReflected clones map and slice values of any concrete type, which the
-// typed switch above cannot name. Anything else is returned as-is.
+// deepCopyReflected clones map and slice values of any concrete type.
 func deepCopyReflected(src any, depth int) any {
 	v := reflect.ValueOf(src)
 	switch v.Kind() {
@@ -330,8 +325,7 @@ func deepCopyReflected(src any, depth int) any {
 	}
 }
 
-// deepCopyReflectedValue copies one element, recursing through interfaces so a
-// nested container inside an `any` is cloned rather than shared.
+// deepCopyReflectedValue copies one element, recursing through interfaces.
 func deepCopyReflectedValue(v reflect.Value, depth int) reflect.Value {
 	if v.Kind() == reflect.Interface && !v.IsNil() {
 		return reflect.ValueOf(deepCopyAnyValueDepth(v.Interface(), depth))
@@ -342,8 +336,7 @@ func deepCopyReflectedValue(v reflect.Value, depth int) reflect.Value {
 	return v
 }
 
-// cloneSecurityRequirements copies the requirement maps and their scope slices
-// so the served document never references the caller's live maps.
+// cloneSecurityRequirements copies the requirement maps and their scope slices.
 func cloneSecurityRequirements(src []map[string][]string) []map[string][]string {
 	if src == nil {
 		return nil
@@ -361,9 +354,7 @@ func cloneSecurityRequirements(src []map[string][]string) []map[string][]string 
 	return cloned
 }
 
-// defaultAsset fills an asset URL left empty with its default. The default
-// integrity hash only describes the default file, so it follows the URL: a
-// custom URL gets none unless the caller supplied one.
+// defaultAsset defaults an empty URL; the default integrity applies only with the default URL.
 func defaultAsset(url, integrity *string, defaultURL, defaultIntegrity string) {
 	if *url != "" {
 		return
@@ -417,16 +408,14 @@ func configDefault(config ...Config) Config {
 	defaultAsset(&cfg.SwaggerCSSURL, &cfg.SwaggerCSSIntegrity, ConfigDefault.SwaggerCSSURL, ConfigDefault.SwaggerCSSIntegrity)
 	defaultAsset(&cfg.SwaggerBundleURL, &cfg.SwaggerBundleIntegrity, ConfigDefault.SwaggerBundleURL, ConfigDefault.SwaggerBundleIntegrity)
 	defaultAsset(&cfg.SwaggerStandalonePresetURL, &cfg.SwaggerStandalonePresetIntegrity, ConfigDefault.SwaggerStandalonePresetURL, ConfigDefault.SwaggerStandalonePresetIntegrity)
-	// Detach every reference-typed field: the handler reads this config while
-	// serving, so anything left aliased races with a caller that mutates it.
+	// Detach reference-typed fields: the handler reads this config while serving.
 	cfg.SwaggerOptions = deepCopyAnyMap(cfg.SwaggerOptions)
 	cfg.Components = deepCopyAnyMap(cfg.Components)
 	cfg.SecuritySchemes = deepCopyAnyMap(cfg.SecuritySchemes)
 	cfg.Webhooks = deepCopyAnyMap(cfg.Webhooks)
 	cfg.Servers = slices.Clone(cfg.Servers)
 	for i := range cfg.Servers {
-		// maps.Clone is shallow and every ServerVariable carries an Enum slice,
-		// so the values are rebuilt to detach them too.
+		// maps.Clone is shallow; Enum slices must be cloned too.
 		if variables := cfg.Servers[i].Variables; variables != nil {
 			cloned := make(map[string]ServerVariable, len(variables))
 			for name, variable := range variables {
@@ -459,8 +448,7 @@ func configDefault(config ...Config) Config {
 	if cfg.OpenAPIVersion == "" {
 		cfg.OpenAPIVersion = ConfigDefault.OpenAPIVersion
 	}
-	// With the defaults disabled the media types stay as given, empty when
-	// unset, and nothing downstream documents a type nobody declared.
+	// With defaults disabled, unset media types stay empty.
 	if !cfg.DisableDefaultMediaTypes {
 		if cfg.DefaultProduces == "" {
 			cfg.DefaultProduces = ConfigDefault.DefaultProduces

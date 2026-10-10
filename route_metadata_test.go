@@ -1545,7 +1545,6 @@ func Test_Security_NoArgumentsDocumentsNoAuth(t *testing.T) {
 	require.Len(t, findRoute(t, app, MethodGet, "/some").Security, 1)
 	require.Nil(t, findRoute(t, app, MethodGet, "/silent").Security)
 
-	// A copy keeps the distinction, since the document depends on it.
 	clone := app.copyRoute(&none)
 	require.NotNil(t, clone.Security)
 }
@@ -1553,7 +1552,6 @@ func Test_Security_NoArgumentsDocumentsNoAuth(t *testing.T) {
 func Test_Route_DocumentationFieldsStayInSync(t *testing.T) {
 	t.Parallel()
 
-	// The fields that describe the route's routing identity, not its docs.
 	routing := map[string]bool{"Method": true, "Name": true, "Path": true, "Params": true, "Handlers": true}
 	app := New()
 	populated := fullyPopulatedRoute()
@@ -1569,8 +1567,7 @@ func Test_Route_DocumentationFieldsStayInSync(t *testing.T) {
 		require.Truef(t, reflect.ValueOf(base).Field(i).IsZero(),
 			"copyRouteBaseValue keeps %q; clear it there, or list it as routing if it is not documentation", field.Name)
 
-		// Every container field must make isDocumented true, or a copy skips
-		// cloning it and shares it with the original.
+		// A container field that leaves isDocumented false would be shared, not cloned.
 		kind := field.Type.Kind()
 		if kind != reflect.Pointer && kind != reflect.Slice && kind != reflect.Map {
 			continue
@@ -1589,11 +1586,8 @@ func Test_Route_DocumentationFieldsStayInSync(t *testing.T) {
 	}
 }
 
-// benchRouteCount is how many routes the copy benchmarks register.
 const benchRouteCount = 100
 
-// benchRoutes registers benchRouteCount named routes, every fourth one
-// documented, so a copy benchmark sees the mix a real app has.
 func benchRoutes() *App {
 	app := New()
 	for i := range benchRouteCount {
@@ -1682,8 +1676,7 @@ func Benchmark_Route_Domain_Dispatch(b *testing.B) {
 	require.Equal(b, StatusNoContent, fctx.Response.StatusCode())
 }
 
-// scanNamedRoute is the reference the name index must agree with: the first
-// route called name in stack order, found under the router lock.
+// scanNamedRoute is the linear-scan reference the name index must agree with.
 func scanNamedRoute(app *App, name string) (Route, bool) {
 	app.mutex.Lock()
 	defer app.mutex.Unlock()
@@ -1733,7 +1726,6 @@ func Test_NamedRouteIndex_TracksTableChanges(t *testing.T) {
 	app.Post("/b2", h).Name("b")
 	requireNamedRoutesMatchScan(t, app, names)
 
-	// Rename and documentation changes after the index was built.
 	app.Get("/c", h).Name("c")
 	require.Equal(t, "/c", app.GetRoute("c").Path)
 	app.Name("renamed")
@@ -1744,13 +1736,11 @@ func Test_NamedRouteIndex_TracksTableChanges(t *testing.T) {
 	requireNamedRoutesMatchScan(t, app, append(names, "a2"))
 	require.Equal(t, "doc after index", app.GetRoute("a2").Summary)
 
-	// Groups.
 	g := app.Group("/g").Name("grouped.")
 	g.Get("/x", h).Name("x")
 	requireNamedRoutesMatchScan(t, app, names)
 	require.Equal(t, "/g/x", app.GetRoute("grouped.x").Path)
 
-	// Removal.
 	app.RemoveRouteByName("b", MethodGet)
 	requireNamedRoutesMatchScan(t, app, names)
 	app.RemoveRoute("/a", MethodGet)
@@ -1759,7 +1749,6 @@ func Test_NamedRouteIndex_TracksTableChanges(t *testing.T) {
 	requireNamedRoutesMatchScan(t, app, names)
 	require.Empty(t, app.GetRoute("c").Path)
 
-	// Registration after the app started serving still shows up.
 	_, err := app.Test(httptest.NewRequest(MethodGet, "/g/x", http.NoBody))
 	require.NoError(t, err)
 	app.Get("/late", h).Name("late")
@@ -1804,8 +1793,6 @@ func Test_NamedRouteIndex_ConcurrentWithRegistration(t *testing.T) {
 	}
 }
 
-// Benchmark_Ctx_GetRouteURL measures what a handler pays to build a URL by
-// name: the lookup plus the composition, with no Route copied.
 func Benchmark_Ctx_GetRouteURL(b *testing.B) {
 	app := New()
 	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck,forcetypeassert // not needed

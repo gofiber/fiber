@@ -11,9 +11,8 @@ import (
 // componentsSchemasRef prefixes every reference the registry hands out.
 const componentsSchemasRef = "#/components/schemas/"
 
-// schemaRegistry collects the named struct types met while generating one
-// document, so each is emitted once under components.schemas and referenced
-// everywhere it appears, the way a hand-written document would.
+// schemaRegistry collects named struct types so each is emitted once under
+// components.schemas and referenced elsewhere.
 type schemaRegistry struct {
 	schemas map[string]map[string]any
 	names   map[reflect.Type]string
@@ -22,8 +21,7 @@ type schemaRegistry struct {
 	taken map[string]reflect.Type
 }
 
-// newSchemaRegistry starts a registry that leaves the names in the configured
-// Components.schemas to the user.
+// newSchemaRegistry starts a registry that never reuses names in Components.schemas.
 func newSchemaRegistry(cfg *Config) *schemaRegistry {
 	reg := &schemaRegistry{
 		schemas: make(map[string]map[string]any),
@@ -36,9 +34,7 @@ func newSchemaRegistry(cfg *Config) *schemaRegistry {
 	return reg
 }
 
-// resolve turns a schema argument into a schema map: a map is cloned, a Go
-// value is reflected with named types registered, and nil stays nil. A nil
-// registry reflects inline, as SchemaOf does.
+// resolve turns a schema argument into a schema map; a nil registry reflects inline.
 func (reg *schemaRegistry) resolve(schema any) map[string]any {
 	switch value := schema.(type) {
 	case nil:
@@ -53,9 +49,8 @@ func (reg *schemaRegistry) resolve(schema any) map[string]any {
 	}
 }
 
-// ref registers a named struct type on first sight and returns a reference to
-// it. The name is claimed before the schema is built, so a type that refers
-// back to itself resolves to the same reference instead of recursing.
+// ref registers a named struct type and returns a reference to it. The name is
+// claimed before the schema is built so self-referencing types do not recurse.
 func (reg *schemaRegistry) ref(t reflect.Type, visited map[reflect.Type]bool) map[string]any {
 	name, ok := reg.names[t]
 	if !ok {
@@ -67,8 +62,7 @@ func (reg *schemaRegistry) ref(t reflect.Type, visited map[reflect.Type]bool) ma
 	return map[string]any{schemaKeyRef: componentsSchemasRef + name}
 }
 
-// claimName picks the component name for t: its type name, qualified by its
-// package when another type already holds that name, and numbered past that.
+// claimName picks a unique component name: the type name, then package-qualified, then numbered.
 func (reg *schemaRegistry) claimName(t reflect.Type) string {
 	base := componentName(t.Name())
 	candidates := []string{base}
@@ -93,9 +87,7 @@ func (reg *schemaRegistry) claimName(t reflect.Type) string {
 	}
 }
 
-// componentName restricts a name to the characters a component key may use,
-// ^[a-zA-Z0-9.\-_]+$, so a generic instantiation such as Page[pkg.User] still
-// yields a valid key.
+// componentName restricts a name to ^[a-zA-Z0-9.\-_]+$, so generics like Page[pkg.User] stay valid keys.
 func componentName(name string) string {
 	if key := keyName(name); key != "" {
 		return key
