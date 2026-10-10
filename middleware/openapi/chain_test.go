@@ -18,6 +18,15 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// The default header names the middleware document, as the middleware set them.
+const (
+	headerRateLimitLimit  = "X-RateLimit-Limit"
+	headerRateLimitRemain = "X-RateLimit-Remaining"
+	headerRateLimitReset  = "X-RateLimit-Reset"
+	headerCSRFToken       = "X-Csrf-Token"
+	headerCacheStatus     = "X-Cache"
+)
+
 func chainKeyAuth() fiber.Handler {
 	return keyauth.New(keyauth.Config{Validator: func(fiber.Ctx, string) (bool, error) { return true, nil }})
 }
@@ -592,4 +601,52 @@ func Test_keyName(t *testing.T) {
 	require.Empty(t, keyName(""))
 	require.Equal(t, "___", keyName("日本語"))
 	require.Equal(t, "_", componentName(""))
+}
+
+func Test_OpenAPI_MiddlewareHeaderNames(t *testing.T) {
+	t.Parallel()
+
+	newApp := func() *fiber.App {
+		app := fiber.New()
+		app.Use(
+			requestid.New(requestid.Config{Header: "X-Trace-ID"}),
+			limiter.New(),
+			cache.New(cache.Config{CacheHeader: "X-Edge"}),
+			csrf.New(),
+		)
+		app.Get("/x", listUsers)
+		app.Post("/x", listUsers)
+		return app
+	}
+
+	t.Run("renamed", func(t *testing.T) {
+		t.Parallel()
+		spec := modelSpec(t, newApp(), Config{
+			RequestIDHeader:  "X-Trace-ID",
+			CacheHeader:      "X-Edge",
+			CSRFHeader:       "X-XSRF",
+			RateLimitHeaders: RateLimitHeaders{Limit: "RateLimit-Limit", Reset: "RateLimit-Reset"},
+		})
+		headers := chainHeaders(t, chainResponses(t, modelOperation(t, spec, "/x", "get"))["200"])
+		for _, name := range []string{"X-Trace-ID", "X-Edge", "RateLimit-Limit", "RateLimit-Reset", headerRateLimitRemain} {
+			require.Contains(t, headers, name)
+		}
+		for _, name := range []string{fiber.HeaderXRequestID, headerCacheStatus, headerRateLimitLimit, headerRateLimitReset} {
+			require.NotContains(t, headers, name)
+		}
+		params := chainParams(t, modelOperation(t, spec, "/x", "post"))
+		require.Contains(t, params, "header:X-XSRF")
+		require.NotContains(t, params, "header:"+headerCSRFToken)
+	})
+
+	t.Run("rate limit headers disabled", func(t *testing.T) {
+		t.Parallel()
+		spec := modelSpec(t, newApp(), Config{DisableRateLimitHeaders: true})
+		responses := chainResponses(t, modelOperation(t, spec, "/x", "get"))
+		headers := chainHeaders(t, responses["200"])
+		for _, name := range []string{headerRateLimitLimit, headerRateLimitRemain, headerRateLimitReset} {
+			require.NotContains(t, headers, name)
+		}
+		require.Contains(t, chainHeaders(t, responses["429"]), fiber.HeaderRetryAfter)
+	})
 }

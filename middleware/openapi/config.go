@@ -76,6 +76,16 @@ type ExternalDocs struct {
 	URL string `json:"url"`
 }
 
+// RateLimitHeaders names the headers the limiter middleware sets on a response.
+type RateLimitHeaders struct {
+	// Limit is the header carrying the requests allowed per window.
+	Limit string
+	// Remaining is the header carrying the requests left in the window.
+	Remaining string
+	// Reset is the header carrying the seconds until the window resets.
+	Reset string
+}
+
 // Config defines the config for middleware. It controls top-level document
 // metadata only; operation metadata comes from the route helpers.
 type Config struct {
@@ -105,6 +115,9 @@ type Config struct {
 
 	// License holds license information for the exposed API. Optional. Default: nil
 	License *License
+
+	// RateLimitHeaders names the headers the limiter middleware sets on every response of a route it covers: the limit, the remainder and the reset. Set it when you rename them; leave a field empty to keep its default. Optional. Default: X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Reset
+	RateLimitHeaders RateLimitHeaders
 
 	// TermsOfService is a URL to the Terms of Service for the API. Optional. Default: ""
 	TermsOfService string
@@ -157,6 +170,15 @@ type Config struct {
 	// ErrorProduces is the media type documented for the responses the app's error handler writes. Optional. Default: "text/plain; charset=utf-8"
 	ErrorProduces string
 
+	// RequestIDHeader is the header the requestid middleware sets, as documented on every response of a route it covers. Set it to the requestid middleware's Header when that is not the default. Optional. Default: "X-Request-ID"
+	RequestIDHeader string
+
+	// CacheHeader is the header the cache middleware sets, as documented on every response of a route it covers. Set it to the cache middleware's CacheHeader when that is not the default. Optional. Default: "X-Cache"
+	CacheHeader string
+
+	// CSRFHeader is the header the csrf middleware reads its token from, as documented on an unsafe operation it covers. Set it to the header your csrf Extractor reads when that is not the default. Optional. Default: "X-Csrf-Token"
+	CSRFHeader string
+
 	// Tags lists top-level tag definitions (with descriptions) used by operations. Optional. Default: nil
 	Tags []Tag
 
@@ -174,6 +196,9 @@ type Config struct {
 
 	// DisableValidationResponses stops documenting the 400 response a configured StructValidator makes possible on routes with a body or parameters. Optional. Default: false
 	DisableValidationResponses bool
+
+	// DisableRateLimitHeaders stops documenting the headers a limiter sets on every response, for a limiter configured with DisableHeaders. Its 429 and Retry-After header are still documented. Optional. Default: false
+	DisableRateLimitHeaders bool
 
 	// DisableGroupTags stops tagging an untagged route with its group's name or last static prefix segment. Optional. Default: false
 	DisableGroupTags bool
@@ -204,6 +229,15 @@ var ConfigDefault = Config{
 	DisableDefaultMediaTypes:   false,
 	DisableMiddlewareInference: false,
 	DisableValidationResponses: false,
+	RequestIDHeader:            fiber.HeaderXRequestID,
+	CacheHeader:                "X-Cache",
+	CSRFHeader:                 "X-Csrf-Token",
+	RateLimitHeaders: RateLimitHeaders{
+		Limit:     "X-RateLimit-Limit",
+		Remaining: "X-RateLimit-Remaining",
+		Reset:     "X-RateLimit-Reset",
+	},
+	DisableRateLimitHeaders: false,
 }
 
 // maxCopyDepth bounds the configuration deep copy: a cyclic value in
@@ -330,6 +364,24 @@ func configDefault(config ...Config) Config {
 	}
 	if cfg.Path == "" {
 		cfg.Path = ConfigDefault.Path
+	}
+	if cfg.RequestIDHeader == "" {
+		cfg.RequestIDHeader = ConfigDefault.RequestIDHeader
+	}
+	if cfg.CacheHeader == "" {
+		cfg.CacheHeader = ConfigDefault.CacheHeader
+	}
+	if cfg.CSRFHeader == "" {
+		cfg.CSRFHeader = ConfigDefault.CSRFHeader
+	}
+	if cfg.RateLimitHeaders.Limit == "" {
+		cfg.RateLimitHeaders.Limit = ConfigDefault.RateLimitHeaders.Limit
+	}
+	if cfg.RateLimitHeaders.Remaining == "" {
+		cfg.RateLimitHeaders.Remaining = ConfigDefault.RateLimitHeaders.Remaining
+	}
+	if cfg.RateLimitHeaders.Reset == "" {
+		cfg.RateLimitHeaders.Reset = ConfigDefault.RateLimitHeaders.Reset
 	}
 	if cfg.UIPath == "" {
 		cfg.UIPath = ConfigDefault.UIPath

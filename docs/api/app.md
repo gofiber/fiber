@@ -526,7 +526,7 @@ This method retrieves a route by its name.
 
 The returned `Route` can be inspected or used to generate a URL directly with `route.URL(params)`.
 
-The `Route` is a copy taken under the router lock, documentation metadata included, so it is safe to call while routes are being registered and changing the copy never changes the app.
+The `Route` is a deep copy, documentation metadata included, so it is safe to call while routes are being registered and changing the copy never changes the app. Names are looked up in an index rebuilt after the route table changes, so a lookup takes no lock and costs one map read however many routes the app has.
 
 ```go title="Signature"
 func (app *App) GetRoute(name string) Route

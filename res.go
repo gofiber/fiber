@@ -1037,8 +1037,7 @@ func (r *DefaultRes) getLocationFromRoute(route *Route, params Map) (string, err
 
 // GetRouteURL generates URLs to named routes, with parameters. URLs are relative, for example: "/user/1831"
 func (r *DefaultRes) GetRouteURL(routeName string, params Map) (string, error) {
-	route := r.c.app.routeForURL(routeName)
-	return r.getLocationFromRoute(&route, params)
+	return r.getLocationFromRoute(r.c.app.namedRoute(routeName), params)
 }
 
 // Render a template with data and sends a text/html response.

@@ -388,7 +388,7 @@ func (b *specBuilder) inferRoute(r *fiber.Route, covering []coveringMiddleware) 
 
 	facts.declared = expandParameterModels(r.ParameterModels, b.reg)
 	if facts.chain.has(kindCSRF) && !isSafeMethod(r.Method) {
-		facts.declared = append([]fiber.RouteParameter{csrfParameter()}, facts.declared...)
+		facts.declared = append([]fiber.RouteParameter{csrfParameter(cfg.CSRFHeader)}, facts.declared...)
 	}
 	return facts
 }

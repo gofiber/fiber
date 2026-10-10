@@ -1173,17 +1173,17 @@ func Test_ResponseExample_NotSharedAcrossBatch(t *testing.T) {
 	require.Equal(t, "v", examples[1]["k"])
 }
 
-func Test_RouteForURL_SkipsDocumentation(t *testing.T) {
+func Test_NamedRoute_SharesSnapshotForURLs(t *testing.T) {
 	t.Parallel()
 
 	app := New()
 	app.Get("/users/:id", testHandlerOK).Name("user").
 		ResponseWithExample(StatusOK, "ok", map[string]any{"type": "object"}, "", map[string]any{"k": "v"}, nil, MIMEApplicationJSON)
 
-	route := app.routeForURL("user")
+	route := app.namedRoute("user")
+	require.NotNil(t, route)
 	require.Equal(t, "/users/:id", route.Path)
-	require.Nil(t, route.Responses)
-	require.Empty(t, app.routeForURL("missing").Path)
+	require.Nil(t, app.namedRoute("missing"))
 
 	app.Get("/go", func(c Ctx) error { return c.Redirect().Route("user", RedirectConfig{Params: Map{"id": "7"}}) })
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/go", http.NoBody))
@@ -1641,13 +1641,13 @@ func Benchmark_App_GetRoutes(b *testing.B) {
 	require.NotEmpty(b, routes)
 }
 
-func Benchmark_App_routeForURL(b *testing.B) {
+func Benchmark_App_namedRoute(b *testing.B) {
 	app := benchRoutes()
 	b.ReportAllocs()
 
-	var route Route
+	var route *Route
 	for b.Loop() {
-		route = app.routeForURL("bench96")
+		route = app.namedRoute("bench96")
 	}
 	require.Equal(b, "/bench/96/:id", route.Path)
 	require.Empty(b, route.Summary)
@@ -1681,4 +1681,126 @@ func Benchmark_Route_Domain_Dispatch(b *testing.B) {
 		h(fctx)
 	}
 	require.Equal(b, StatusNoContent, fctx.Response.StatusCode())
+}
+
+// scanNamedRoute is the reference the name index must agree with: the first
+// route called name in stack order, found under the router lock.
+func scanNamedRoute(app *App, name string) (Route, bool) {
+	app.mutex.Lock()
+	defer app.mutex.Unlock()
+	for _, routes := range app.stack {
+		for _, route := range routes {
+			if route.Name == name {
+				var found Route
+				app.copyRouteInto(&found, route)
+				return found, true
+			}
+		}
+	}
+	return Route{}, false
+}
+
+func requireNamedRoutesMatchScan(t *testing.T, app *App, names []string) {
+	t.Helper()
+	for _, name := range names {
+		want, ok := scanNamedRoute(app, name)
+		got := app.GetRoute(name)
+		require.Equal(t, want.Path, got.Path, "name %q", name)
+		require.Equal(t, want.Method, got.Method, "name %q", name)
+		require.Equal(t, want.Name, got.Name, "name %q", name)
+		require.Equal(t, want.Summary, got.Summary, "name %q", name)
+		if !ok {
+			require.Empty(t, got.Path, "name %q", name)
+		}
+		if ok {
+			require.Equal(t, want.Path, app.namedRoute(name).Path, "name %q", name)
+		} else {
+			require.Nil(t, app.namedRoute(name), "name %q", name)
+		}
+	}
+}
+
+func Test_NamedRouteIndex_TracksTableChanges(t *testing.T) {
+	t.Parallel()
+	app := New()
+	names := []string{"", "a", "b", "c", "renamed", "grouped.x", "missing"}
+	h := func(c Ctx) error { return c.SendStatus(StatusOK) }
+
+	app.Get("/a", h).Name("a")
+	app.Get("/b", h).Name("b").Summary("first b")
+	requireNamedRoutesMatchScan(t, app, names)
+
+	// Same name twice: the earlier route in stack order wins.
+	app.Post("/b2", h).Name("b")
+	requireNamedRoutesMatchScan(t, app, names)
+
+	// Rename and documentation changes after the index was built.
+	app.Get("/c", h).Name("c")
+	require.Equal(t, "/c", app.GetRoute("c").Path)
+	app.Name("renamed")
+	requireNamedRoutesMatchScan(t, app, names)
+	documented := app.Get("/a2", h).Name("a2")
+	require.Empty(t, app.GetRoute("a2").Summary)
+	documented.Summary("doc after index")
+	requireNamedRoutesMatchScan(t, app, append(names, "a2"))
+	require.Equal(t, "doc after index", app.GetRoute("a2").Summary)
+
+	// Groups.
+	g := app.Group("/g").Name("grouped.")
+	g.Get("/x", h).Name("x")
+	requireNamedRoutesMatchScan(t, app, names)
+	require.Equal(t, "/g/x", app.GetRoute("grouped.x").Path)
+
+	// Removal.
+	app.RemoveRouteByName("b", MethodGet)
+	requireNamedRoutesMatchScan(t, app, names)
+	app.RemoveRoute("/a", MethodGet)
+	requireNamedRoutesMatchScan(t, app, names)
+	app.RemoveRouteFunc(func(r *Route) bool { return r.Name == "c" })
+	requireNamedRoutesMatchScan(t, app, names)
+	require.Empty(t, app.GetRoute("c").Path)
+
+	// Registration after the app started serving still shows up.
+	_, err := app.Test(httptest.NewRequest(MethodGet, "/g/x", http.NoBody))
+	require.NoError(t, err)
+	app.Get("/late", h).Name("late")
+	require.Equal(t, "/late", app.GetRoute("late").Path)
+}
+
+func Test_NamedRouteIndex_ReturnsIndependentCopies(t *testing.T) {
+	t.Parallel()
+	app := New()
+	app.Get("/a", func(Ctx) error { return nil }).Name("a").Summary("s")
+
+	got := app.GetRoute("a")
+	got.Summary = "changed"
+	got.Path = "/changed"
+	require.Equal(t, "s", app.GetRoute("a").Summary)
+	require.Equal(t, "/a", app.GetRoute("a").Path)
+}
+
+func Test_NamedRouteIndex_ConcurrentWithRegistration(t *testing.T) {
+	t.Parallel()
+	app := New()
+	h := func(Ctx) error { return nil }
+	app.Get("/base", h).Name("base")
+
+	var wg sync.WaitGroup
+	for range 4 {
+		wg.Go(func() {
+			for range 200 {
+				if app.GetRoute("base").Path != "/base" || app.namedRoute("base").Path != "/base" {
+					t.Error("base route lost")
+					return
+				}
+			}
+		})
+	}
+	for i := range 50 {
+		app.Get("/r"+strconv.Itoa(i), h).Name("r" + strconv.Itoa(i)).Summary("x")
+	}
+	wg.Wait()
+	for i := range 50 {
+		require.Equal(t, "/r"+strconv.Itoa(i), app.GetRoute("r"+strconv.Itoa(i)).Path)
+	}
 }

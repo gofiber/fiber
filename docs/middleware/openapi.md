@@ -701,11 +701,12 @@ route's media type.
     middleware acts on, and `cache` the `X-Cache` header on every method.
     Headers and responses a route already documents are kept.
   - The headers and parameter above are documented under their default names.
-    A middleware configured with another name (`requestid.Config.Header`,
-    `cache.Config.CacheHeader`, a custom `csrf` extractor, or
-    `limiter.Config.DisableHeaders`) cannot be read from its handler, so
-    document those routes with `ResponseHeader`/`AddParameter`, or turn the
-    inference off with `DisableMiddlewareInference`.
+    A middleware configured with another name cannot be read from its handler,
+    so say so in the config: `RequestIDHeader` (`requestid.Config.Header`),
+    `CacheHeader` (`cache.Config.CacheHeader`), `CSRFHeader` (the header a
+    custom `csrf` extractor reads) and `RateLimitHeaders`. A limiter with
+    `DisableHeaders` is matched by `DisableRateLimitHeaders`, which keeps its
+    `429` and `Retry-After`. `DisableMiddlewareInference` turns it all off.
   - Middleware registered through a domain router is recognized, and covers the
     routes of the same host pattern; middleware registered on the app covers
     every host.
@@ -808,6 +809,11 @@ route's media type.
 | DisableDefaultMediaTypes | `bool`        | Stops documenting `DefaultProduces`, `DefaultConsumes` and `ErrorProduces`, leaving a response or body that declares no media type without content. | `false` |
 | DisableMiddlewareInference | `bool`      | Stops documenting the security, headers, parameters and responses of recognized middleware on a route's path. | `false` |
 | DisableValidationResponses | `bool`      | Stops documenting the `400` response a configured `StructValidator` makes possible on routes with a body or parameters. | `false` |
+| RequestIDHeader | `string`               | Header the `requestid` middleware sets, documented on every response of a route it covers. | `"X-Request-ID"` |
+| CacheHeader    | `string`                | Header the `cache` middleware sets, documented on every response of a route it covers. | `"X-Cache"` |
+| CSRFHeader     | `string`                | Header the `csrf` middleware reads its token from, documented as a required parameter on unsafe operations. | `"X-Csrf-Token"` |
+| RateLimitHeaders | `RateLimitHeaders`    | Headers the `limiter` middleware sets (`Limit`, `Remaining`, `Reset`); an empty field keeps its default. | `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset` |
+| DisableRateLimitHeaders | `bool`         | Stops documenting the headers a limiter sets on every response; its `429` and `Retry-After` stay. | `false` |
 | DisableGroupTags | `bool`                | Stops tagging an untagged route with its group's name or last static prefix segment. | `false` |
 | DisableHandlerSummaries | `bool`         | Stops deriving a missing summary from the handler function's name. | `false` |
 
@@ -862,6 +868,15 @@ var ConfigDefault = Config{
     DisableDefaultMediaTypes:   false,
     DisableMiddlewareInference: false,
     DisableValidationResponses: false,
+    RequestIDHeader:            "X-Request-ID",
+    CacheHeader:                "X-Cache",
+    CSRFHeader:                 "X-Csrf-Token",
+    RateLimitHeaders: openapi.RateLimitHeaders{
+        Limit:     "X-RateLimit-Limit",
+        Remaining: "X-RateLimit-Remaining",
+        Reset:     "X-RateLimit-Reset",
+    },
+    DisableRateLimitHeaders: false,
 }
 ```
 

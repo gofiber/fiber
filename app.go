@@ -104,6 +104,9 @@ type App struct {
 	// headerHook is the HeaderReceived callback hookHeaderReceived installed, kept
 	// to tell it from one set since
 	headerHook func(*fasthttp.RequestHeader) fasthttp.RequestConfig
+	// namedRoutes is the by-name view of the route table, rebuilt lazily when
+	// routesRevision has moved past the revision it was taken at.
+	namedRoutes atomic.Pointer[namedRouteIndex]
 	// Route stack divided by HTTP methods
 	stack [][]*Route
 	// customConstraints is a list of external constraints
@@ -126,11 +129,11 @@ type App struct {
 	skip             skipRouteIndex
 	autoHeadRouteID  uint64
 	autoHeadStackLen int
+	latestRegID      uint64
+	routesRevision   atomic.Uint64
 	// sendfilesMutex is a mutex used for sendfile operations
 	sendfilesMutex sync.RWMutex
 	mutex          sync.Mutex
-	latestRegID    uint64
-	routesRevision atomic.Uint64
 	// Amount of registered handlers
 	handlersCount uint32
 	// contains the information if the route stack has been changed to build the optimized tree
@@ -1797,44 +1800,65 @@ func (app *App) nameRoutesLocked(regID uint64, name string) *Route {
 	return named
 }
 
-// routeForURL finds a named route for URL composition, copying only the routing
-// fields so a redirect does not pay for a documentation deep copy.
-func (app *App) routeForURL(name string) (found Route) { //nolint:nonamedreturns // the named result is what keeps this to a single struct move
-	app.mutex.Lock()
-	defer app.mutex.Unlock()
-
-	for _, routes := range app.stack {
-		for _, route := range routes {
-			if route.Name == name {
-				app.copyRouteBaseInto(&found, route)
-				return found
-			}
-		}
-	}
-
-	return found
+// namedRouteIndex is an immutable view of the app's routes by name, taken at one
+// revision of the route table. It holds the first route with each name in stack
+// order, which is the one a scan would find, and the first unnamed route under
+// the empty name.
+type namedRouteIndex struct {
+	routes   map[string]*Route
+	revision uint64
 }
 
-// GetRoute Get route by name. The returned route is a deep copy taken under the
-// router lock, so it stays safe while other goroutines register or document.
-func (app *App) GetRoute(name string) Route {
-	var copied Route
+// namedRoute returns the snapshot of the route called name, or nil. The index is
+// rebuilt under the router lock the first time it is asked for after the table
+// changed, then read without any lock: nothing reaches a snapshot once it is
+// published, so a lookup never races registration or the documentation helpers,
+// and it costs one map read however many routes the app has. The result is
+// shared and must not be modified.
+func (app *App) namedRoute(name string) *Route {
+	index := app.namedRoutes.Load()
+	if index == nil || index.revision != app.routesRevision.Load() {
+		index = app.indexNamedRoutes()
+	}
+	return index.routes[name]
+}
 
+// indexNamedRoutes rebuilds the index unless another goroutine already has for
+// the current revision. Every change to the route table bumps the revision
+// while holding the lock, so a build under it pairs the table with the right
+// revision.
+func (app *App) indexNamedRoutes() *namedRouteIndex {
 	app.mutex.Lock()
 	defer app.mutex.Unlock()
 
-	for _, routes := range app.stack {
-		for _, route := range routes {
-			if route.Name == name {
-				// Filled in place: Route is large, and a value-returning helper
-				// would move the whole struct an extra time per lookup.
-				app.copyRouteInto(&copied, route)
-				return copied
-			}
-		}
+	revision := app.routesRevision.Load()
+	if index := app.namedRoutes.Load(); index != nil && index.revision == revision {
+		return index
 	}
 
-	return copied
+	index := &namedRouteIndex{revision: revision, routes: make(map[string]*Route)}
+	for _, routes := range app.stack {
+		for _, route := range routes {
+			if _, taken := index.routes[route.Name]; taken {
+				continue
+			}
+			snapshot := new(Route)
+			app.copyRouteInto(snapshot, route)
+			index.routes[route.Name] = snapshot
+		}
+	}
+	app.namedRoutes.Store(index)
+	return index
+}
+
+// GetRoute Get route by name. The returned route is a deep copy, so it stays
+// safe while other goroutines register or document, and changing it never
+// changes the app.
+func (app *App) GetRoute(name string) (found Route) { //nolint:nonamedreturns // the named result is what keeps this to a single struct move
+	if snapshot := app.namedRoute(name); snapshot != nil {
+		app.copyRouteInto(&found, snapshot)
+	}
+	return found
 }
 
 // GetRoutes Get all routes. When filterUseOption equal to true, it will filter the routes registered by the middleware.

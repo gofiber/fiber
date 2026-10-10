@@ -164,12 +164,6 @@ func middlewareOn(covering []coveringMiddleware, route *fiber.Route, equal func(
 const (
 	securitySchemeBearer = "bearerAuth"
 	securitySchemeBasic  = "basicAuth"
-
-	headerRateLimitLimit  = "X-RateLimit-Limit"
-	headerRateLimitRemain = "X-RateLimit-Remaining"
-	headerRateLimitReset  = "X-RateLimit-Reset"
-	headerCSRFToken       = "X-Csrf-Token" //nolint:gosec // G101: a header name, not a credential
-	headerCacheStatus     = "X-Cache"
 )
 
 // securitySchemes keeps the schemes the recognized middleware asked for while
@@ -306,18 +300,18 @@ func applyMiddlewareResponses(responses map[string]response, method string, set 
 
 	for status, resp := range responses {
 		if set.has(kindRequestID) {
-			addHeader(&resp, fiber.HeaderXRequestID, headerObject("The request identifier", schemaTypeString))
+			addHeader(&resp, cfg.RequestIDHeader, headerObject("The request identifier", schemaTypeString))
 		}
-		if set.has(kindLimiter) {
-			addHeader(&resp, headerRateLimitLimit, headerObject("Requests allowed per window", schemaTypeInteger))
-			addHeader(&resp, headerRateLimitRemain, headerObject("Requests left in the window", schemaTypeInteger))
-			addHeader(&resp, headerRateLimitReset, headerObject("Seconds until the window resets", schemaTypeInteger))
+		if set.has(kindLimiter) && !cfg.DisableRateLimitHeaders {
+			addHeader(&resp, cfg.RateLimitHeaders.Limit, headerObject("Requests allowed per window", schemaTypeInteger))
+			addHeader(&resp, cfg.RateLimitHeaders.Remaining, headerObject("Requests left in the window", schemaTypeInteger))
+			addHeader(&resp, cfg.RateLimitHeaders.Reset, headerObject("Seconds until the window resets", schemaTypeInteger))
 		}
 		if set.has(kindETag) && readsOnly && len(status) == 3 && status[0] == '2' {
 			addHeader(&resp, fiber.HeaderETag, headerObject("The entity tag of the response", schemaTypeString))
 		}
 		if set.has(kindCache) {
-			addHeader(&resp, headerCacheStatus, headerObject("Whether the response was served from cache", schemaTypeString))
+			addHeader(&resp, cfg.CacheHeader, headerObject("Whether the response was served from cache", schemaTypeString))
 		}
 		responses[status] = resp
 	}
@@ -325,9 +319,9 @@ func applyMiddlewareResponses(responses map[string]response, method string, set 
 
 // csrfParameter is the header parameter the CSRF middleware requires on an
 // unsafe request.
-func csrfParameter() fiber.RouteParameter {
+func csrfParameter(header string) fiber.RouteParameter {
 	return fiber.RouteParameter{
-		Name:        headerCSRFToken,
+		Name:        header,
 		In:          "header",
 		Required:    true,
 		Description: "The CSRF token issued to the client",
