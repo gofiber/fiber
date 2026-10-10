@@ -161,6 +161,11 @@ type Route struct { // betteralign:ignore - see below
 	groupPrefix string
 	groupName   string
 
+	// docHandlers is the chain as the caller registered it, kept when the
+	// router wrapped every handler (a domain router adds a host check), so a
+	// documentation reader can still see what each handler is.
+	docHandlers []Handler
+
 	// OpenAPI documentation metadata
 	Summary     string `json:"summary,omitempty"`
 	Description string `json:"description,omitempty"`
@@ -534,6 +539,16 @@ func (r *Route) GroupPrefix() string {
 // or "" when the route has no group or the group was not named.
 func (r *Route) GroupName() string {
 	return r.groupName
+}
+
+// InnerHandlers returns the handlers as they were registered, before the router
+// wrapped them. A domain router wraps each handler in a host check, which hides
+// what the handler is; everywhere else this is the same chain as Handlers.
+func (r *Route) InnerHandlers() []Handler {
+	if len(r.docHandlers) > 0 {
+		return r.docHandlers
+	}
+	return r.Handlers
 }
 
 // Domain returns the host pattern the route was registered under through
@@ -1323,35 +1338,38 @@ func (*App) cloneRouteDocInto(dst, route *Route) {
 // copyRouteBase copies routing data but skips the documentation clone, which
 // auto-HEAD twins never need: their metadata is never read.
 func (app *App) copyRouteBase(route *Route) *Route {
-	copied := app.copyRouteBaseValue(route)
-	return &copied
-}
-
-// copyRouteBaseValue is copyRouteBase without the heap allocation. Copying
-// wholesale then clearing beats two dozen field writes on a struct this large.
-func (*App) copyRouteBaseValue(route *Route) Route {
-	copied := *route
-
-	copied.group = nil
-	copied.Summary = ""
-	copied.Description = ""
-	copied.Consumes = ""
-	copied.Produces = ""
-	copied.Deprecated = false
-	copied.RequestBody = nil
-	copied.Parameters = nil
-	copied.ParameterModels = nil
-	copied.Responses = nil
-	copied.Tags = nil
-	copied.Security = nil
-	copied.ExternalDocs = nil
-	copied.OperationExtensions = nil
-
+	copied := new(Route)
+	app.copyRouteBaseInto(copied, route)
 	return copied
 }
 
+// copyRouteBaseInto is copyRouteBase filling the caller's slot. Copying
+// wholesale then clearing beats two dozen field writes on a struct this large,
+// and writing through a pointer keeps it to one move: Route is large and every
+// hop costs a full copy.
+func (*App) copyRouteBaseInto(dst, route *Route) {
+	*dst = *route
+
+	dst.group = nil
+	dst.Summary = ""
+	dst.Description = ""
+	dst.Consumes = ""
+	dst.Produces = ""
+	dst.Deprecated = false
+	dst.RequestBody = nil
+	dst.Parameters = nil
+	dst.ParameterModels = nil
+	dst.Responses = nil
+	dst.Tags = nil
+	dst.Security = nil
+	dst.ExternalDocs = nil
+	dst.OperationExtensions = nil
+}
+
 func cloneRouteSecurity(requirements []map[string][]string) []map[string][]string {
-	if len(requirements) == 0 {
+	// An empty but non-nil list is kept: it documents a route that needs no
+	// authentication, which differs from one that says nothing.
+	if requirements == nil {
 		return nil
 	}
 	cloned := make([]map[string][]string, len(requirements))

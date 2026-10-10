@@ -3,6 +3,7 @@ package openapi
 import (
 	"crypto/sha256"
 	"encoding/base64"
+	"encoding/json"
 	"testing"
 
 	"github.com/gofiber/fiber/v3"
@@ -13,6 +14,7 @@ import (
 	"github.com/gofiber/fiber/v3/middleware/keyauth"
 	"github.com/gofiber/fiber/v3/middleware/limiter"
 	"github.com/gofiber/fiber/v3/middleware/requestid"
+	"github.com/gofiber/utils/v2"
 	"github.com/stretchr/testify/require"
 )
 
@@ -73,7 +75,7 @@ func Test_OpenAPI_MiddlewareSecurity(t *testing.T) {
 		unauthorized := requireMap(t, chainResponses(t, admin)["401"])
 		require.Equal(t, "Unauthorized", unauthorized["description"])
 		require.Contains(t, requireMap(t, unauthorized["content"]), fiber.MIMETextPlainCharsetUTF8)
-		require.Contains(t, chainHeaders(t, unauthorized), headerWWWAuthenticate)
+		require.Contains(t, chainHeaders(t, unauthorized), fiber.HeaderWWWAuthenticate)
 
 		for _, path := range []string{"/y", "/administrators/x"} {
 			op := modelOperation(t, spec, path, "get")
@@ -157,7 +159,7 @@ func Test_OpenAPI_MiddlewareHeadersAndResponses(t *testing.T) {
 
 	tooMany := requireMap(t, responses["429"])
 	require.Equal(t, "Too Many Requests", tooMany["description"])
-	require.Contains(t, chainHeaders(t, tooMany), headerRetryAfter)
+	require.Contains(t, chainHeaders(t, tooMany), fiber.HeaderRetryAfter)
 	require.Contains(t, requireMap(t, tooMany["content"]), fiber.MIMETextPlainCharsetUTF8)
 
 	notModified := requireMap(t, responses["304"])
@@ -246,16 +248,73 @@ func Test_handlerMiddleware(t *testing.T) {
 	require.Zero(t, handlerMiddleware([]fiber.Handler{nil, listUsers, func(c fiber.Ctx) error { return c.Next() }}))
 }
 
-func Test_coversPath(t *testing.T) {
+func Test_coversRoute(t *testing.T) {
 	t.Parallel()
 
-	require.True(t, coversPath("/", "/anything"))
-	require.True(t, coversPath("", "/anything"))
-	require.True(t, coversPath("/admin", "/admin"))
-	require.True(t, coversPath("/admin/", "/admin/x"))
-	require.True(t, coversPath("/admin", "/admin/x/y"))
-	require.False(t, coversPath("/admin", "/administrators"))
-	require.False(t, coversPath("/admin", "/other/admin"))
+	fold := utils.EqualFold[string]
+	for _, tc := range []struct {
+		prefix, path string
+		want         bool
+	}{
+		{"/", "/anything", true},
+		{"", "/anything", true},
+		{"/admin", "/admin", true},
+		{"/admin/", "/admin/x", true},
+		{"/admin", "/admin/x/y", true},
+		{"/admin", "/administrators", false},
+		{"/admin", "/other/admin", false},
+		{"/admin", "/", false},
+		{"/Admin", "/admin/x", true},
+		{"/users/:id", "/users/7/posts", true},
+		{"/users/:id", "/users/:id/posts", true},
+		{"/users/:id<int>", "/users/7", true},
+		{"/users/:id", "/users", false},
+		{"/users/:id", "/accounts/7", false},
+		{"/users/admin", "/users/:id", false},
+		{"/users/admin", "/users/admin/x", true},
+		{"/files/*", "/files/a/b", true},
+		{"/files/*", "/files", true},
+		{"/files/+", "/files", false},
+		{"/files/+", "/files/a", true},
+		{"/:tenant?", "/x", false},
+		{"/a/:b?/c", "/a/c", false},
+		{"/v-:n", "/v-1", false},
+		{"/v-:n", "/v-:n", true},
+	} {
+		require.Equal(t, tc.want, coversRoute(tc.prefix, tc.path, fold), "%q covers %q", tc.prefix, tc.path)
+	}
+	require.False(t, coversRoute("/Admin", "/admin", stringsEqual))
+	require.True(t, coversRoute("/admin", "/admin/x", stringsEqual))
+}
+
+func Test_middlewareInFile(t *testing.T) {
+	t.Parallel()
+
+	for file, want := range map[string]middlewareKind{
+		"/home/u/fiber/middleware/keyauth/keyauth.go":                      kindKeyAuth,
+		"github.com/gofiber/fiber/v3/middleware/basicauth/basicauth.go":    kindBasicAuth,
+		"/root/go/pkg/mod/github.com/gofiber/contrib/v3/jwt@v1.2.5/jwt.go": kindJWT,
+		"github.com/gofiber/contrib/v3/jwt@v1.2.5/jwt.go":                  kindJWT,
+		"/app/vendor/github.com/gofiber/contrib/v3/jwt/jwt.go":             kindJWT,
+		"/go/src/github.com/gofiber/fiber/v3/middleware/csrf/csrf.go":      kindCSRF,
+		"C:/src/fiber/middleware/limiter/limiter_fixed.go":                 kindLimiter,
+		"/home/u/fiber/middleware/requestid/requestid.go":                  kindRequestID,
+		"/home/u/fiber/middleware/etag/etag.go":                            kindETag,
+		"/home/u/fiber/middleware/cache/cache.go":                          kindCache,
+	} {
+		var wantSet middlewareSet
+		wantSet.add(want)
+		require.Equal(t, wantSet, middlewareInFile(file), file)
+	}
+	for _, file := range []string{
+		"",
+		"/home/u/app/main.go",
+		"/root/go/pkg/mod/github.com/gofiber/contrib/jwt@v1.1.2/jwt.go",
+		"/home/u/fiber/middleware/keyauthx/keyauth.go",
+		"/home/u/fiber/middleware/openapi/chain.go",
+	} {
+		require.Zero(t, middlewareInFile(file), file)
+	}
 }
 
 func Test_middlewareOn_Domain(t *testing.T) {
@@ -266,8 +325,9 @@ func Test_middlewareOn_Domain(t *testing.T) {
 	route := app.GetRoutes(true)[0]
 	var set middlewareSet
 	set.add(kindRequestID)
-	require.Zero(t, middlewareOn([]coveringMiddleware{{prefix: "/", domain: "api.example", set: set}}, &route))
-	require.Equal(t, set, middlewareOn([]coveringMiddleware{{prefix: "/", set: set}}, &route))
+	fold := utils.EqualFold[string]
+	require.Zero(t, middlewareOn([]coveringMiddleware{{prefix: "/", domain: "api.example", set: set}}, &route, fold))
+	require.Equal(t, set, middlewareOn([]coveringMiddleware{{prefix: "/", set: set}}, &route, fold))
 }
 
 func Test_securitySchemes_Declarations(t *testing.T) {
@@ -318,4 +378,218 @@ func Test_OpenAPI_FlagTagsAndExamples(t *testing.T) {
 	spec := modelSpec(t, app)
 	user := requireMap(t, modelSchemas(t, spec)["flaggedUser"])
 	require.Equal(t, map[string]any{"id": float64(7), "home": map[string]any{"city": "Berlin"}}, user["example"])
+}
+
+func Test_OpenAPI_ConsumesDecidesBodyMediaType(t *testing.T) {
+	t.Parallel()
+
+	bodyContent := func(t *testing.T, app *fiber.App, path string, cfg ...Config) map[string]any {
+		t.Helper()
+		body := requireMap(t, modelOperation(t, modelSpec(t, app, cfg...), path, "post")["requestBody"])
+		return requireMap(t, body["content"])
+	}
+
+	t.Run("Consumes with Accepts", func(t *testing.T) {
+		t.Parallel()
+		app := fiber.New()
+		app.Post("/x", listUsers).Consumes(fiber.MIMEApplicationXML).Accepts(modelAddress{})
+		content := bodyContent(t, app, "/x")
+		require.Len(t, content, 1)
+		require.Contains(t, content, fiber.MIMEApplicationXML)
+	})
+
+	t.Run("Consumes with RequestBody", func(t *testing.T) {
+		t.Parallel()
+		app := fiber.New()
+		app.Post("/x", listUsers).Consumes(fiber.MIMEApplicationXML).RequestBody("payload", true)
+		require.Contains(t, bodyContent(t, app, "/x"), fiber.MIMEApplicationXML)
+	})
+
+	t.Run("a declared media type beats Consumes", func(t *testing.T) {
+		t.Parallel()
+		app := fiber.New()
+		app.Post("/x", listUsers).Consumes(fiber.MIMEApplicationXML).Accepts(modelAddress{}, fiber.MIMEApplicationJSON)
+		content := bodyContent(t, app, "/x")
+		require.Len(t, content, 1)
+		require.Contains(t, content, fiber.MIMEApplicationJSON)
+	})
+
+	t.Run("Consumes alone still documents a body", func(t *testing.T) {
+		t.Parallel()
+		app := fiber.New()
+		app.Post("/x", listUsers).Consumes(fiber.MIMEApplicationXML)
+		require.Contains(t, bodyContent(t, app, "/x"), fiber.MIMEApplicationXML)
+	})
+
+	t.Run("no Consumes uses the default", func(t *testing.T) {
+		t.Parallel()
+		app := fiber.New()
+		app.Post("/x", listUsers).Accepts(modelAddress{})
+		require.Contains(t, bodyContent(t, app, "/x"), fiber.MIMEApplicationJSON)
+	})
+}
+
+func Test_OpenAPI_ExplicitSecurityWinsOverMiddleware(t *testing.T) {
+	t.Parallel()
+
+	t.Run("Security() documents no authentication", func(t *testing.T) {
+		t.Parallel()
+		app := fiber.New()
+		app.Get("/public", chainKeyAuth(), listUsers).Security()
+		app.Get("/private", chainKeyAuth(), listUsers)
+		spec := modelSpec(t, app, Config{
+			Security:        []map[string][]string{{"docLevel": {}}},
+			SecuritySchemes: map[string]any{"docLevel": map[string]any{"type": "http", "scheme": "basic"}},
+		})
+
+		public := modelOperation(t, spec, "/public", "get")
+		require.Equal(t, []any{}, public["security"])
+		require.NotContains(t, chainResponses(t, public), "401")
+		require.Contains(t, modelOperation(t, spec, "/private", "get"), "security")
+
+		raw, err := json.Marshal(public)
+		require.NoError(t, err)
+		require.Contains(t, string(raw), `"security":[]`)
+	})
+
+	t.Run("a stated requirement replaces inference entirely", func(t *testing.T) {
+		t.Parallel()
+		app := fiber.New()
+		app.Get("/x", chainKeyAuth(), listUsers).Security(map[string][]string{"oauth": {"read"}})
+		spec := modelSpec(t, app, Config{SecuritySchemes: map[string]any{"oauth": map[string]any{"type": "oauth2"}}})
+		op := modelOperation(t, spec, "/x", "get")
+		require.Equal(t, []any{map[string]any{"oauth": []any{"read"}}}, op["security"])
+		require.NotContains(t, chainResponses(t, op), "401")
+		require.NotContains(t, requireMap(t, requireMap(t, spec["components"])["securitySchemes"]), securitySchemeBearer)
+	})
+
+	t.Run("other middleware is still documented", func(t *testing.T) {
+		t.Parallel()
+		app := fiber.New()
+		app.Use(requestid.New())
+		app.Get("/x", chainKeyAuth(), listUsers).Security()
+		op := modelOperation(t, modelSpec(t, app), "/x", "get")
+		require.Contains(t, chainHeaders(t, chainResponses(t, op)["200"]), fiber.HeaderXRequestID)
+	})
+}
+
+func Test_OpenAPI_DisableDefaultMediaTypes(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New(fiber.Config{StructValidator: stubValidator{}})
+	app.Get("/x", listUsers)
+	app.Post("/y", listUsers).RequestBody("payload", true)
+	app.Get("/z", chainKeyAuth(), listUsers)
+	app.Get("/w", listUsers).Produces(fiber.MIMEApplicationXML)
+	spec := modelSpec(t, app, Config{DisableDefaultMediaTypes: true})
+
+	require.NotContains(t, requireMap(t, chainResponses(t, modelOperation(t, spec, "/x", "get"))["200"]), "content")
+	require.NotContains(t, modelOperation(t, spec, "/y", "post"), "requestBody")
+	unauthorized := requireMap(t, chainResponses(t, modelOperation(t, spec, "/z", "get"))["401"])
+	require.NotContains(t, unauthorized, "content")
+	bad := requireMap(t, chainResponses(t, modelOperation(t, spec, "/y", "post"))["400"])
+	require.NotContains(t, bad, "content")
+	require.Contains(t, requireMap(t, requireMap(t, chainResponses(t, modelOperation(t, spec, "/w", "get"))["200"])["content"]), fiber.MIMEApplicationXML)
+
+	cfg := configDefault(Config{DisableDefaultMediaTypes: true, DefaultProduces: fiber.MIMETextPlain})
+	require.Equal(t, fiber.MIMETextPlain, cfg.DefaultProduces)
+	require.Empty(t, cfg.DefaultConsumes)
+	require.Empty(t, cfg.ErrorProduces)
+}
+
+func Test_OpenAPI_MiddlewareCoverage(t *testing.T) {
+	t.Parallel()
+
+	t.Run("a parametric Use prefix covers the routes under it", func(t *testing.T) {
+		t.Parallel()
+		app := fiber.New()
+		app.Group("/users/:id", chainKeyAuth()).Get("/posts", listUsers)
+		app.Get("/accounts/:id/posts", listUsers)
+		spec := modelSpec(t, app)
+		require.Contains(t, modelOperation(t, spec, "/users/{id}/posts", "get"), "security")
+		require.NotContains(t, modelOperation(t, spec, "/accounts/{id}/posts", "get"), "security")
+	})
+
+	t.Run("the app's case rule applies", func(t *testing.T) {
+		t.Parallel()
+		insensitive := fiber.New()
+		insensitive.Use("/Admin", chainKeyAuth())
+		insensitive.Get("/admin/x", listUsers)
+		require.Contains(t, modelOperation(t, modelSpec(t, insensitive), "/admin/x", "get"), "security")
+
+		sensitive := fiber.New(fiber.Config{CaseSensitive: true})
+		sensitive.Use("/Admin", chainKeyAuth())
+		sensitive.Get("/admin/x", listUsers)
+		require.NotContains(t, modelOperation(t, modelSpec(t, sensitive), "/admin/x", "get"), "security")
+	})
+
+	t.Run("domain routes", func(t *testing.T) {
+		t.Parallel()
+		app := fiber.New()
+		api := app.Domain("api.example")
+		api.Get("/own", chainKeyAuth(), listUsers)
+		api.Use(chainBasicAuth())
+		api.Get("/covered", listUsers)
+		app.Domain("other.example").Get("/elsewhere", listUsers)
+		spec := modelSpec(t, app)
+
+		own := modelOperation(t, spec, "/own", "get")
+		require.Equal(t, []any{map[string]any{securitySchemeBearer: []any{}}}, own["security"])
+		require.Equal(t, "List users", own["summary"])
+		require.Equal(t, []any{map[string]any{securitySchemeBasic: []any{}}}, modelOperation(t, spec, "/covered", "get")["security"])
+		require.NotContains(t, modelOperation(t, spec, "/elsewhere", "get"), "security")
+	})
+
+	t.Run("a domain route chain", func(t *testing.T) {
+		t.Parallel()
+		app := fiber.New()
+		app.Domain("api.example").RouteChain("/chain").Get(chainKeyAuth(), listUsers)
+		op := modelOperation(t, modelSpec(t, app), "/chain", "get")
+		require.Contains(t, op, "security")
+		require.Equal(t, "List users", op["summary"])
+	})
+}
+
+func Test_OpenAPI_ETagHeaderOnReadsOnly(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Use(etag.New())
+	app.Get("/x", listUsers)
+	app.Post("/x", listUsers)
+	spec := modelSpec(t, app)
+	require.Contains(t, chainHeaders(t, chainResponses(t, modelOperation(t, spec, "/x", "get"))["200"]), fiber.HeaderETag)
+	require.NotContains(t, chainHeaders(t, chainResponses(t, modelOperation(t, spec, "/x", "post"))["200"]), fiber.HeaderETag)
+	require.NotContains(t, chainResponses(t, modelOperation(t, spec, "/x", "post")), "304")
+}
+
+func Test_classifySegment(t *testing.T) {
+	t.Parallel()
+
+	for segment, want := range map[string]segmentKind{
+		"users":          segmentLiteral,
+		"":               segmentLiteral,
+		":id":            segmentParam,
+		":id<int>":       segmentParam,
+		"v-:n":           segmentParam,
+		":id?":           segmentOptional,
+		"*":              segmentGreedy,
+		"+":              segmentGreedy,
+		"a\\:b":          segmentLiteral,
+		":id<regex(a+)>": segmentParam,
+	} {
+		kind, _ := classifySegment(segment)
+		require.Equal(t, want, kind, segment)
+	}
+}
+
+func Test_keyName(t *testing.T) {
+	t.Parallel()
+
+	require.Equal(t, "Page_pkg.User_", keyName("Page[pkg.User]"))
+	require.Equal(t, "a-b_c.d", keyName("a-b_c.d"))
+	require.Equal(t, "_", keyName("é"))
+	require.Empty(t, keyName(""))
+	require.Equal(t, "___", keyName("日本語"))
+	require.Equal(t, "_", componentName(""))
 }

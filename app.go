@@ -1024,10 +1024,14 @@ func (app *App) Name(name string) Router {
 // OpenAPI schema literals reused by the route documentation helpers below.
 const (
 	openapiRefKey = "$ref"
-	// openapiLocationPath is the parameter location the router fills from the
-	// path pattern; it has no bind source of its own.
-	openapiLocationPath = "path"
-	openapiTypeString   = "string"
+	// The parameter locations the documentation helpers accept. "path" has no
+	// bind source of its own, as the router fills it from the path pattern.
+	paramInPath        = "path"
+	paramInQuery       = "query"
+	paramInHeader      = "header"
+	paramInCookie      = "cookie"
+	paramInQuerystring = "querystring"
+	openapiTypeString  = "string"
 )
 
 // The doc* factories below build each helper's mutation, validating and copying
@@ -1062,17 +1066,22 @@ func validateMediaType(typ string) string {
 	return typ
 }
 
-func docSetConsumes(typ string) func(route *Route) {
-	if typ != "" {
-		typ = validateMediaType(utils.TrimSpace(typ))
+// optionalMediaType trims and validates a media type that may be empty, which
+// clears the route's setting.
+func optionalMediaType(typ string) string {
+	if typ == "" {
+		return ""
 	}
+	return validateMediaType(utils.TrimSpace(typ))
+}
+
+func docSetConsumes(typ string) func(route *Route) {
+	typ = optionalMediaType(typ)
 	return func(route *Route) { route.Consumes = typ }
 }
 
 func docSetProduces(typ string) func(route *Route) {
-	if typ != "" {
-		typ = validateMediaType(utils.TrimSpace(typ))
-	}
+	typ = optionalMediaType(typ)
 	return func(route *Route) { route.Produces = typ }
 }
 
@@ -1155,21 +1164,12 @@ func (app *App) RequestBodyWithExample(description string, required bool, schema
 
 // Parameter documents an input parameter for the most recently added route.
 func (app *App) Parameter(name, in string, required bool, schema any, description string) Router {
-	return app.AddParameter(RouteParameter{Name: name, In: in, Required: required, Schema: schema, Description: description})
+	return app.ParameterWithExample(name, in, required, schema, "", description, nil, nil)
 }
 
 // ParameterWithExample documents an input parameter, including schema references and examples.
 func (app *App) ParameterWithExample(name, in string, required bool, schema any, schemaRef, description string, example any, examples map[string]any) Router {
-	return app.AddParameter(RouteParameter{
-		Name:        name,
-		In:          in,
-		Required:    required,
-		Schema:      schema,
-		SchemaRef:   schemaRef,
-		Description: description,
-		Example:     example,
-		Examples:    examples,
-	})
+	return app.AddParameter(newRouteParameter(name, in, required, schema, schemaRef, description, example, examples))
 }
 
 //nolint:gocritic // hugeParam: by-value keeps the chainable route-helper API ergonomic.
@@ -1182,7 +1182,7 @@ func docAddParameter(param RouteParameter) func(route *Route) {
 	switch location {
 	// "querystring" is an OpenAPI 3.2 location that treats the whole query
 	// string as a single value (paired with content rather than schema).
-	case openapiLocationPath, "query", "header", "cookie", "querystring":
+	case paramInPath, paramInQuery, paramInHeader, paramInCookie, paramInQuerystring:
 	default:
 		panic("invalid parameter location: " + param.In)
 	}
@@ -1203,14 +1203,14 @@ func docAddParameter(param RouteParameter) func(route *Route) {
 		param.SchemaRef = ""
 	case param.SchemaRef != "":
 		param.Schema = map[string]any{openapiRefKey: param.SchemaRef}
-	case location == "querystring":
+	case location == paramInQuerystring:
 		// 3.2 querystring parameters use content, so no default schema is
 		// injected; the middleware wraps whatever was supplied.
 	default:
 		injectType = true
 	}
 
-	if location == openapiLocationPath {
+	if location == paramInPath {
 		param.Required = true
 	}
 
@@ -1387,6 +1387,12 @@ func docSetDeprecated() func(route *Route) {
 
 func docSetSecurity(requirements ...map[string][]string) func(route *Route) {
 	return func(route *Route) {
+		if len(requirements) == 0 {
+			// Security() with no requirement documents a route that needs no
+			// authentication, which is not the same as one that says nothing.
+			route.Security = []map[string][]string{}
+			return
+		}
 		route.Security = cloneRouteSecurity(requirements)
 	}
 }
@@ -1408,7 +1414,10 @@ func (app *App) Deprecated() Router {
 }
 
 // Security sets the requirements for the most recently added route, combined
-// with OR semantics. An empty requirement documents "no auth".
+// with OR semantics. With no requirement it documents a route that needs no
+// authentication, and an empty requirement makes authentication optional. A
+// route that sets its own security is not given any inferred from its
+// middleware.
 func (app *App) Security(requirements ...map[string][]string) Router {
 	app.applyToLatest(docSetSecurity(requirements...))
 	return app
@@ -1559,12 +1568,45 @@ func (app *App) ResponseHeader(status int, name, description string, schema any)
 	return app
 }
 
+// newRouteParameter builds the parameter the Parameter and ParameterWithExample
+// helpers describe, so each router type states the field list once.
+func newRouteParameter(name, in string, required bool, schema any, schemaRef, description string, example any, examples map[string]any) RouteParameter { //nolint:revive // flag-parameter: required is a Parameter Object field, not control flow
+	return RouteParameter{
+		Name:        name,
+		In:          in,
+		Required:    required,
+		Schema:      schema,
+		SchemaRef:   schemaRef,
+		Description: description,
+		Example:     example,
+		Examples:    examples,
+	}
+}
+
+// docAccepts documents a required request body whose schema is model's type.
+func docAccepts(model any, mediaTypes ...string) func(route *Route) {
+	return docRequestBodyWithExample("", true, model, "", nil, nil, mediaTypes...)
+}
+
+// docReturns documents a response whose schema is model's type, described by
+// the status text.
+func docReturns(status int, model any, mediaTypes ...string) func(route *Route) {
+	return docAddResponse(status, "", model, "", nil, nil, mediaTypes...)
+}
+
+// docSetInnerHandlers records the handlers as registered on a route whose
+// chain the router wrapped. A merge appends to both chains, so they stay
+// aligned.
+func docSetInnerHandlers(inner []Handler) func(route *Route) {
+	return func(route *Route) { route.docHandlers = append(route.docHandlers, inner...) }
+}
+
 // Accepts documents the request body of the most recently added route as the
 // schema of model, a Go value the OpenAPI middleware reflects, under the given
 // media types or the middleware's DefaultConsumes when none is given. The body
 // is documented as required.
 func (app *App) Accepts(model any, mediaTypes ...string) Router {
-	app.applyToLatest(docRequestBodyWithExample("", true, model, "", nil, nil, mediaTypes...))
+	app.applyToLatest(docAccepts(model, mediaTypes...))
 	return app
 }
 
@@ -1573,7 +1615,7 @@ func (app *App) Accepts(model any, mediaTypes ...string) Router {
 // types or the middleware's DefaultProduces when none is given. The description
 // is the status text, and a nil model documents the status alone.
 func (app *App) Returns(status int, model any, mediaTypes ...string) Router {
-	app.applyToLatest(docAddResponse(status, "", model, "", nil, nil, mediaTypes...))
+	app.applyToLatest(docReturns(status, model, mediaTypes...))
 	return app
 }
 
@@ -1592,7 +1634,7 @@ func (app *App) Params(in string, model any) Router {
 func docAddParameterModel(in string, model any) func(route *Route) {
 	location := utilsstrings.ToLower(utils.TrimSpace(in))
 	switch location {
-	case BindSourceQuery, BindSourceHeader, BindSourceCookie, openapiLocationPath:
+	case paramInQuery, paramInHeader, paramInCookie, paramInPath:
 	default:
 		panic("invalid parameter location: " + in)
 	}
@@ -1757,19 +1799,20 @@ func (app *App) nameRoutesLocked(regID uint64, name string) *Route {
 
 // routeForURL finds a named route for URL composition, copying only the routing
 // fields so a redirect does not pay for a documentation deep copy.
-func (app *App) routeForURL(name string) Route {
+func (app *App) routeForURL(name string) (found Route) { //nolint:nonamedreturns // the named result is what keeps this to a single struct move
 	app.mutex.Lock()
 	defer app.mutex.Unlock()
 
 	for _, routes := range app.stack {
 		for _, route := range routes {
 			if route.Name == name {
-				return app.copyRouteBaseValue(route)
+				app.copyRouteBaseInto(&found, route)
+				return found
 			}
 		}
 	}
 
-	return Route{}
+	return found
 }
 
 // GetRoute Get route by name. The returned route is a deep copy taken under the

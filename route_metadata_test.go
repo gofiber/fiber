@@ -13,6 +13,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/valyala/fasthttp"
 	"github.com/valyala/fasthttp/fasthttputil"
 )
 
@@ -1444,4 +1445,240 @@ func Test_Route_Domain(t *testing.T) {
 	scoped := findRoute(t, app, MethodGet, "/scoped")
 	require.Empty(t, plain.Domain())
 	require.Equal(t, "api.example", scoped.Domain())
+}
+
+func handlerPointer(h Handler) uintptr { return reflect.ValueOf(h).Pointer() }
+
+func Test_Route_InnerHandlers(t *testing.T) {
+	t.Parallel()
+
+	other := func(c Ctx) error { return c.Next() }
+
+	t.Run("a plain route has one chain", func(t *testing.T) {
+		t.Parallel()
+		app := New()
+		app.Get("/plain", testHandlerOK)
+		route := findRoute(t, app, MethodGet, "/plain")
+		require.Len(t, route.InnerHandlers(), len(route.Handlers))
+		require.Equal(t, handlerPointer(testHandlerOK), handlerPointer(route.InnerHandlers()[0]))
+	})
+
+	t.Run("a domain route keeps the registered handlers", func(t *testing.T) {
+		t.Parallel()
+		app := New()
+		app.Domain("api.example").Get("/x", other, testHandlerOK)
+		route := findRoute(t, app, MethodGet, "/x")
+		require.Len(t, route.Handlers, 2)
+		inner := route.InnerHandlers()
+		require.Len(t, inner, 2)
+		require.Equal(t, handlerPointer(other), handlerPointer(inner[0]))
+		require.Equal(t, handlerPointer(testHandlerOK), handlerPointer(inner[1]))
+		require.NotEqual(t, handlerPointer(testHandlerOK), handlerPointer(route.Handlers[1]))
+	})
+
+	t.Run("a route chain, middleware and a group on a domain", func(t *testing.T) {
+		t.Parallel()
+		app := New()
+		api := app.Domain("api.example")
+		api.RouteChain("/chain").Get(testHandlerOK)
+		api.Use("/mw", other)
+		api.Group("/g", other)
+
+		chain := findRoute(t, app, MethodGet, "/chain")
+		require.Equal(t, handlerPointer(testHandlerOK), handlerPointer(chain.InnerHandlers()[0]))
+		var use, group int
+		for _, route := range app.GetRoutes() {
+			if route.Method != MethodGet || !route.IsMiddleware() {
+				continue
+			}
+			switch route.Path {
+			case "/mw":
+				use++
+				require.Equal(t, handlerPointer(other), handlerPointer(route.InnerHandlers()[0]))
+			case "/g":
+				group++
+				require.Equal(t, handlerPointer(other), handlerPointer(route.InnerHandlers()[0]))
+			}
+		}
+		require.Equal(t, 1, use)
+		require.Equal(t, 1, group)
+	})
+
+	t.Run("merged registrations append to both chains", func(t *testing.T) {
+		t.Parallel()
+		app := New()
+		api := app.Domain("api.example")
+		api.Get("/m", other)
+		api.Get("/m", testHandlerOK)
+		route := findRoute(t, app, MethodGet, "/m")
+		require.Len(t, route.Handlers, 2)
+		require.Len(t, route.InnerHandlers(), 2)
+		require.Equal(t, handlerPointer(other), handlerPointer(route.InnerHandlers()[0]))
+		require.Equal(t, handlerPointer(testHandlerOK), handlerPointer(route.InnerHandlers()[1]))
+	})
+
+	t.Run("a mounted sub app keeps its own handlers", func(t *testing.T) {
+		t.Parallel()
+		sub := New()
+		sub.Get("/leaf", testHandlerOK)
+		app := New()
+		app.Domain("api.example").Use("/api", sub)
+		_, err := app.Test(httptest.NewRequest(MethodGet, "/api/leaf", http.NoBody))
+		require.NoError(t, err)
+		route := findRoute(t, app, MethodGet, "/api/leaf")
+		require.Equal(t, handlerPointer(testHandlerOK), handlerPointer(route.InnerHandlers()[0]))
+		require.NotEqual(t, handlerPointer(testHandlerOK), handlerPointer(route.Handlers[0]))
+	})
+}
+
+func Test_Security_NoArgumentsDocumentsNoAuth(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	app.Get("/none", testHandlerOK).Security()
+	app.Get("/some", testHandlerOK).Security(map[string][]string{"a": {"s"}})
+	app.Get("/silent", testHandlerOK)
+
+	none := findRoute(t, app, MethodGet, "/none")
+	require.NotNil(t, none.Security)
+	require.Empty(t, none.Security)
+	require.Len(t, findRoute(t, app, MethodGet, "/some").Security, 1)
+	require.Nil(t, findRoute(t, app, MethodGet, "/silent").Security)
+
+	// A copy keeps the distinction, since the document depends on it.
+	clone := app.copyRoute(&none)
+	require.NotNil(t, clone.Security)
+}
+
+func Test_Route_DocumentationFieldsStayInSync(t *testing.T) {
+	t.Parallel()
+
+	// The fields that describe the route's routing identity, not its docs.
+	routing := map[string]bool{"Method": true, "Name": true, "Path": true, "Params": true, "Handlers": true}
+	app := New()
+	populated := fullyPopulatedRoute()
+	var base Route
+	app.copyRouteBaseInto(&base, populated)
+
+	typ := reflect.TypeFor[Route]()
+	for i := range typ.NumField() {
+		field := typ.Field(i)
+		if !field.IsExported() || routing[field.Name] {
+			continue
+		}
+		require.Truef(t, reflect.ValueOf(base).Field(i).IsZero(),
+			"copyRouteBaseValue keeps %q; clear it there, or list it as routing if it is not documentation", field.Name)
+
+		// Every container field must make isDocumented true, or a copy skips
+		// cloning it and shares it with the original.
+		kind := field.Type.Kind()
+		if kind != reflect.Pointer && kind != reflect.Slice && kind != reflect.Map {
+			continue
+		}
+		probe := Route{}
+		value := reflect.ValueOf(&probe).Elem().Field(i)
+		switch kind {
+		case reflect.Pointer:
+			value.Set(reflect.New(field.Type.Elem()))
+		case reflect.Slice:
+			value.Set(reflect.MakeSlice(field.Type, 0, 0))
+		default:
+			value.Set(reflect.MakeMap(field.Type))
+		}
+		require.Truef(t, probe.isDocumented(), "isDocumented ignores %q; add it there and to cloneRouteDocInto", field.Name)
+	}
+}
+
+// benchRouteCount is how many routes the copy benchmarks register.
+const benchRouteCount = 100
+
+// benchRoutes registers benchRouteCount named routes, every fourth one
+// documented, so a copy benchmark sees the mix a real app has.
+func benchRoutes() *App {
+	app := New()
+	for i := range benchRouteCount {
+		path := "/bench/" + strconv.Itoa(i) + "/:id"
+		route := app.Get(path, testHandlerOK).Name("bench" + strconv.Itoa(i))
+		if i%4 == 0 {
+			route.Summary("summary").Tags("tag").
+				Parameter("q", "query", false, nil, "query").
+				Response(StatusOK, "ok", MIMEApplicationJSON)
+		}
+	}
+	return app
+}
+
+func Benchmark_App_GetRoute_Undocumented(b *testing.B) {
+	app := benchRoutes()
+	b.ReportAllocs()
+
+	var route Route
+	for b.Loop() {
+		route = app.GetRoute("bench99")
+	}
+	require.Equal(b, "/bench/99/:id", route.Path)
+}
+
+func Benchmark_App_GetRoute_Documented(b *testing.B) {
+	app := benchRoutes()
+	b.ReportAllocs()
+
+	var route Route
+	for b.Loop() {
+		route = app.GetRoute("bench96")
+	}
+	require.Equal(b, "summary", route.Summary)
+}
+
+func Benchmark_App_GetRoutes(b *testing.B) {
+	app := benchRoutes()
+	b.ReportAllocs()
+
+	var routes []Route
+	for b.Loop() {
+		routes = app.GetRoutes(true)
+	}
+	require.NotEmpty(b, routes)
+}
+
+func Benchmark_App_routeForURL(b *testing.B) {
+	app := benchRoutes()
+	b.ReportAllocs()
+
+	var route Route
+	for b.Loop() {
+		route = app.routeForURL("bench96")
+	}
+	require.Equal(b, "/bench/96/:id", route.Path)
+	require.Empty(b, route.Summary)
+}
+
+func Benchmark_App_copyRoute_Documented(b *testing.B) {
+	app := New()
+	original := fullyPopulatedRoute()
+	b.ReportAllocs()
+
+	var copied Route
+	for b.Loop() {
+		app.copyRouteInto(&copied, original)
+	}
+	require.Equal(b, original.Summary, copied.Summary)
+}
+
+func Benchmark_Route_Domain_Dispatch(b *testing.B) {
+	app := New()
+	app.Domain("api.example").Get("/x", func(c Ctx) error { return c.SendStatus(StatusNoContent) })
+	app.startupProcess()
+	h := app.Handler()
+	b.ReportAllocs()
+
+	fctx := &fasthttp.RequestCtx{}
+	fctx.Request.Header.SetMethod(MethodGet)
+	fctx.Request.SetRequestURI("/x")
+	fctx.Request.Header.SetHost("api.example")
+
+	for b.Loop() {
+		h(fctx)
+	}
+	require.Equal(b, StatusNoContent, fctx.Response.StatusCode())
 }

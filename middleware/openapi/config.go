@@ -166,6 +166,9 @@ type Config struct {
 	// Servers lists the servers hosting the API; it takes precedence over ServerURL. Optional. Default: nil
 	Servers []Server
 
+	// DisableDefaultMediaTypes stops documenting DefaultProduces, DefaultConsumes and ErrorProduces, leaving a response or body that declares no media type without content. Optional. Default: false
+	DisableDefaultMediaTypes bool
+
 	// DisableMiddlewareInference stops documenting the security, headers, parameters and responses of recognized middleware on a route's path. Optional. Default: false
 	DisableMiddlewareInference bool
 
@@ -198,6 +201,9 @@ var ConfigDefault = Config{
 	ErrorProduces:              fiber.MIMETextPlainCharsetUTF8,
 	DisableGroupTags:           false,
 	DisableHandlerSummaries:    false,
+	DisableDefaultMediaTypes:   false,
+	DisableMiddlewareInference: false,
+	DisableValidationResponses: false,
 }
 
 // maxCopyDepth bounds the configuration deep copy: a cyclic value in
@@ -379,14 +385,18 @@ func configDefault(config ...Config) Config {
 	if cfg.OpenAPIVersion == "" {
 		cfg.OpenAPIVersion = ConfigDefault.OpenAPIVersion
 	}
-	if cfg.DefaultProduces == "" {
-		cfg.DefaultProduces = ConfigDefault.DefaultProduces
-	}
-	if cfg.DefaultConsumes == "" {
-		cfg.DefaultConsumes = ConfigDefault.DefaultConsumes
-	}
-	if cfg.ErrorProduces == "" {
-		cfg.ErrorProduces = ConfigDefault.ErrorProduces
+	// With the defaults disabled the media types stay as given, empty when
+	// unset, and nothing downstream documents a type nobody declared.
+	if !cfg.DisableDefaultMediaTypes {
+		if cfg.DefaultProduces == "" {
+			cfg.DefaultProduces = ConfigDefault.DefaultProduces
+		}
+		if cfg.DefaultConsumes == "" {
+			cfg.DefaultConsumes = ConfigDefault.DefaultConsumes
+		}
+		if cfg.ErrorProduces == "" {
+			cfg.ErrorProduces = ConfigDefault.ErrorProduces
+		}
 	}
 	if schema, ok := cfg.ErrorSchema.(map[string]any); ok {
 		cfg.ErrorSchema = deepCopyAnyMap(schema)

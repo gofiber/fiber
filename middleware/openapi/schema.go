@@ -401,7 +401,7 @@ func parseJSONTag(field *reflect.StructField) jsonTagInfo {
 	if tag == "-" {
 		return jsonTagInfo{skip: true}
 	}
-	name, opts, _ := strings.Cut(tag, ",")
+	name, opts, _ := utils.CutByte(tag, ',')
 	// An unusual name is resolved against the running encoding/json rather than
 	// assumed, so the schema matches the wire format on every toolchain.
 	if !isPlainJSONTagName(name) {
@@ -410,7 +410,7 @@ func parseJSONTag(field *reflect.StructField) jsonTagInfo {
 	info := jsonTagInfo{name: name}
 	for opts != "" {
 		var opt string
-		opt, opts, _ = strings.Cut(opts, ",")
+		opt, opts, _ = utils.CutByte(opts, ',')
 		switch opt {
 		case "omitempty", "omitzero":
 			info.omit = true
@@ -598,7 +598,7 @@ func applyValidateTag(field *reflect.StructField, schema map[string]any) bool {
 	}
 	required := false
 	for rule := range strings.SplitSeq(tag, ",") {
-		key, value, _ := strings.Cut(utils.TrimSpace(rule), "=")
+		key, value, _ := utils.CutByte(utils.TrimSpace(rule), '=')
 		switch key {
 		case "required":
 			required = true
@@ -613,7 +613,7 @@ func applyValidateTag(field *reflect.StructField, schema map[string]any) bool {
 			values := strings.Fields(value)
 			enum := make([]any, len(values))
 			for i, v := range values {
-				enum[i] = inferExampleValue(strings.Trim(v, "'"), schema)
+				enum[i] = inferExampleValue(utils.Trim(v, '\''), schema)
 			}
 			if len(enum) > 0 {
 				schema["enum"] = enum

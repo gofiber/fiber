@@ -7,6 +7,7 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/utils/v2"
+	utilsstrings "github.com/gofiber/utils/v2/strings"
 )
 
 // groupTag derives an operation tag from the group a route was registered
@@ -17,8 +18,8 @@ import (
 func groupTag(route *fiber.Route) string {
 	if name := route.GroupName(); name != "" {
 		name = utils.TrimRight(name, '.')
-		if i := strings.LastIndexByte(name, '.'); i >= 0 {
-			name = name[i+1:]
+		if _, after, found := utils.LastCutByte(name, '.'); found {
+			name = after
 		}
 		if name != "" {
 			return name
@@ -28,8 +29,8 @@ func groupTag(route *fiber.Route) string {
 	prefix := route.GroupPrefix()
 	for prefix != "" {
 		segment := prefix
-		if i := strings.LastIndexByte(prefix, '/'); i >= 0 {
-			segment, prefix = prefix[i+1:], prefix[:i]
+		if before, after, found := utils.LastCutByte(prefix, '/'); found {
+			segment, prefix = after, before
 		} else {
 			prefix = ""
 		}
@@ -67,8 +68,9 @@ func isVersionSegment(segment string) bool {
 }
 
 // handlerSummary derives an operation summary from the name of the route's
-// final handler, so listUsers documents as "List users". A closure or a method
-// value carries no usable name and yields "".
+// final handler, so listUsers documents as "List users" and the method value
+// (*Server).GetUserByID as "Get user by ID". A function literal has no name of
+// its own and yields "".
 func handlerSummary(handlers []fiber.Handler) string {
 	if len(handlers) == 0 {
 		return ""
@@ -89,12 +91,10 @@ func handlerSummary(handlers []fiber.Handler) string {
 // generic instantiation's type list are stripped, and the identifier is split
 // into words. Anonymous functions ("func1", "1") produce "".
 func summaryFromFuncName(name string) string {
-	if i := strings.IndexByte(name, '['); i >= 0 {
-		name = name[:i]
-	}
+	name, _, _ = utils.CutByte(name, '[')
 	name = strings.TrimSuffix(name, "-fm")
-	if i := strings.LastIndexByte(name, '.'); i >= 0 {
-		name = name[i+1:]
+	if _, after, found := utils.LastCutByte(name, '.'); found {
+		name = after
 	}
 	if name == "" || isAnonymousFuncName(name) {
 		return ""
@@ -115,10 +115,10 @@ func summaryFromFuncName(name string) string {
 		case isAcronym(word):
 			_, _ = b.WriteString(word) //nolint:errcheck // strings.Builder.WriteString never returns an error
 		case i == 0:
-			_ = b.WriteByte(word[0] &^ 0x20)                //nolint:errcheck // strings.Builder.WriteByte never returns an error
-			_, _ = b.WriteString(strings.ToLower(word[1:])) //nolint:errcheck // strings.Builder.WriteString never returns an error
+			_ = b.WriteByte(word[0] &^ 0x20)                     //nolint:errcheck // strings.Builder.WriteByte never returns an error
+			_, _ = b.WriteString(utilsstrings.ToLower(word[1:])) //nolint:errcheck // strings.Builder.WriteString never returns an error
 		default:
-			_, _ = b.WriteString(strings.ToLower(word)) //nolint:errcheck // strings.Builder.WriteString never returns an error
+			_, _ = b.WriteString(utilsstrings.ToLower(word)) //nolint:errcheck // strings.Builder.WriteString never returns an error
 		}
 	}
 	return b.String()

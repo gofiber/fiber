@@ -154,10 +154,15 @@ func (r *Registering) Query(handler any, handlers ...any) Register {
 // The provided handlers are executed in order, starting with `handler` and then the variadic `handlers`.
 func (r *Registering) Add(methods []string, handler any, handlers ...any) Register {
 	converted := collectHandlers("register", append([]any{handler}, handlers...)...)
+	inner := converted
 	if r.wrap != nil {
 		converted = r.wrap(converted)
 	}
-	atomic.StoreUint64(&r.lastRegID, r.app.register(methods, r.path, r.group, r.domain, converted...))
+	regID := r.app.register(methods, r.path, r.group, r.domain, converted...)
+	atomic.StoreUint64(&r.lastRegID, regID)
+	if r.wrap != nil {
+		r.app.applyToRegistration(regID, docSetInnerHandlers(inner))
+	}
 	return r
 }
 
@@ -213,21 +218,12 @@ func (r *Registering) RequestBodyWithExample(description string, required bool, 
 
 // Parameter documents an input parameter for the most recently registered route.
 func (r *Registering) Parameter(name, in string, required bool, schema any, description string) Register {
-	return r.AddParameter(RouteParameter{Name: name, In: in, Required: required, Schema: schema, Description: description})
+	return r.ParameterWithExample(name, in, required, schema, "", description, nil, nil)
 }
 
 // ParameterWithExample documents an input parameter, including schema references and examples.
 func (r *Registering) ParameterWithExample(name, in string, required bool, schema any, schemaRef, description string, example any, examples map[string]any) Register {
-	return r.AddParameter(RouteParameter{
-		Name:        name,
-		In:          in,
-		Required:    required,
-		Schema:      schema,
-		SchemaRef:   schemaRef,
-		Description: description,
-		Example:     example,
-		Examples:    examples,
-	})
+	return r.AddParameter(newRouteParameter(name, in, required, schema, schemaRef, description, example, examples))
 }
 
 // AddParameter documents an input parameter using the full RouteParameter.
@@ -257,13 +253,13 @@ func (r *Registering) ResponseHeader(status int, name, description string, schem
 
 // Accepts documents the request body as the schema of model; see App.Accepts.
 func (r *Registering) Accepts(model any, mediaTypes ...string) Register {
-	r.app.applyToRegistration(atomic.LoadUint64(&r.lastRegID), docRequestBodyWithExample("", true, model, "", nil, nil, mediaTypes...))
+	r.app.applyToRegistration(atomic.LoadUint64(&r.lastRegID), docAccepts(model, mediaTypes...))
 	return r
 }
 
 // Returns documents a response as the schema of model; see App.Returns.
 func (r *Registering) Returns(status int, model any, mediaTypes ...string) Register {
-	r.app.applyToRegistration(atomic.LoadUint64(&r.lastRegID), docAddResponse(status, "", model, "", nil, nil, mediaTypes...))
+	r.app.applyToRegistration(atomic.LoadUint64(&r.lastRegID), docReturns(status, model, mediaTypes...))
 	return r
 }
 

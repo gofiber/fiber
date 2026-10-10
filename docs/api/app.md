@@ -526,6 +526,8 @@ This method retrieves a route by its name.
 
 The returned `Route` can be inspected or used to generate a URL directly with `route.URL(params)`.
 
+The `Route` is a copy taken under the router lock, documentation metadata included, so it is safe to call while routes are being registered and changing the copy never changes the app.
+
 ```go title="Signature"
 func (app *App) GetRoute(name string) Route
 ```
@@ -607,6 +609,8 @@ func (app *App) GetRoutes(filterUseOption ...bool) []Route
 
 When `filterUseOption` is set to `true`, it filters out routes registered by middleware.
 
+Like [`GetRoute`](#getroute), every returned `Route` is a copy taken under the router lock.
+
 ```go title="Example"
 package main
 
@@ -649,6 +653,48 @@ func main() {
 ```
 
 </details>
+
+### Route documentation
+
+A route can describe itself for tools that read the route table, such as the [OpenAPI middleware](../middleware/openapi.md). Each helper documents the route registered most recently on the router it is called on — the `App`, a `Group`, a `RouteChain` or a `Domain` — and chains like `Name`.
+
+| Helper | Documents |
+|:-------|:----------|
+| `Summary`, `Description`, `Tags`, `Deprecated`, `Hidden` | The operation's text, grouping, deprecation, and exclusion from generated documents |
+| `Consumes`, `Produces` | The route's request and response media types |
+| `RequestBody`, `RequestBodyWithExample`, `RequestBodyContent`, `Accepts` | The request body |
+| `Response`, `ResponseWithExample`, `ResponseContent`, `ResponseHeader`, `ResponseLink`, `Returns` | A response by status, with headers and links |
+| `Parameter`, `ParameterWithExample`, `AddParameter`, `Params` | Parameters, one at a time or from the fields of a struct |
+| `Security` | The authentication the route needs |
+| `OperationExternalDocs`, `OperationExtension` | External documentation and `x-` extensions |
+
+Any helper that takes a schema accepts either a `map[string]any` or a Go value, which the OpenAPI middleware reflects into a schema. `Security` called with no argument documents a route that needs no authentication, which overrides both the document-level default and what the middleware chain would imply; with requirements it documents those instead. Both stop the OpenAPI middleware inferring authentication for the route.
+
+```go title="Example"
+app.Post("/users", createUser).
+    Summary("Create a user").
+    Accepts(CreateUser{}).
+    Returns(fiber.StatusCreated, User{})
+```
+
+A `Route` exposes what these helpers recorded, along with where it came from:
+
+| Method | Returns |
+|:-------|:--------|
+| `IsMiddleware()` | `true` for a route registered with `Use` |
+| `IsAutoHead()` | `true` for a `HEAD` route Fiber derived from a `GET` route |
+| `IsHidden()` | `true` when `Hidden` excluded the route from generated documents |
+| `GroupPrefix()`, `GroupName()` | The prefix and name of the group the route was registered through, or `""` |
+| `Domain()` | The host pattern from [`Domain`](#domain), or `""` for a route that answers on every host |
+| `InnerHandlers()` | The handlers as registered. A domain router wraps each handler in a host check, which `Handlers` then holds; everywhere else both are the same chain |
+
+### RoutesRevision
+
+`RoutesRevision` returns a counter that increases whenever a route is added, removed, named or documented. A consumer that derives something from the route table, as the OpenAPI middleware does with its cached document, compares it to the value it last saw instead of locking and scanning the table.
+
+```go title="Signature"
+func (app *App) RoutesRevision() uint64
+```
 
 ## Config
 

@@ -4,7 +4,8 @@ import (
 	"maps"
 	"reflect"
 	"strconv"
-	"strings"
+
+	"github.com/gofiber/utils/v2"
 )
 
 // componentsSchemasRef prefixes every reference the registry hands out.
@@ -72,8 +73,8 @@ func (reg *schemaRegistry) claimName(t reflect.Type) string {
 	base := componentName(t.Name())
 	candidates := []string{base}
 	if pkg := t.PkgPath(); pkg != "" {
-		if i := strings.LastIndexByte(pkg, '/'); i >= 0 {
-			pkg = pkg[i+1:]
+		if _, after, found := utils.LastCutByte(pkg, '/'); found {
+			pkg = after
 		}
 		candidates = append(candidates, componentName(pkg+"."+t.Name()))
 	}
@@ -96,21 +97,10 @@ func (reg *schemaRegistry) claimName(t reflect.Type) string {
 // ^[a-zA-Z0-9.\-_]+$, so a generic instantiation such as Page[pkg.User] still
 // yields a valid key.
 func componentName(name string) string {
-	var b strings.Builder
-	b.Grow(len(name))
-	for i := range len(name) {
-		c := name[i]
-		switch {
-		case c >= 'a' && c <= 'z', c >= 'A' && c <= 'Z', c >= '0' && c <= '9', c == '.', c == '-', c == '_':
-			_ = b.WriteByte(c) //nolint:errcheck // strings.Builder.WriteByte never returns an error
-		default:
-			_ = b.WriteByte('_') //nolint:errcheck // strings.Builder.WriteByte never returns an error
-		}
+	if key := keyName(name); key != "" {
+		return key
 	}
-	if b.Len() == 0 {
-		return "_"
-	}
-	return b.String()
+	return "_"
 }
 
 // componentSchemas returns the registered schemas keyed for components.schemas.

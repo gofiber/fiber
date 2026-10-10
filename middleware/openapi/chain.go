@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/utils/v2"
 )
 
 // middlewareKind identifies a Fiber middleware the document can describe.
@@ -30,22 +31,43 @@ func (s middlewareSet) has(kind middlewareKind) bool { return s&(1<<kind) != 0 }
 
 func (s *middlewareSet) add(kind middlewareKind) { *s |= 1 << kind }
 
-// knownMiddleware lists the source directory each recognized middleware's
-// handler is compiled from. The handler is a closure returned by New, so it
-// is matched by the file it lives in rather than by name: when New is small
-// enough to inline, the runtime names its closure after the caller's package.
+// authMiddleware is the set of middleware that demand credentials.
+const authMiddleware middlewareSet = 1<<kindKeyAuth | 1<<kindBasicAuth | 1<<kindJWT
+
+// knownMiddleware lists a fragment of the source path each recognized
+// middleware's handler is compiled from. The handler is a closure returned by
+// New, so it is matched by the file it lives in rather than by name: when New
+// is small enough to inline, the runtime names its closure after the caller's
+// package. A fragment starts at a directory boundary and ends where the
+// package directory does, so it matches a checkout, the module cache (where a
+// version follows the module as "@v1.2.3"), a vendor directory and a build
+// made with -trimpath alike. gofiber/contrib/v3/jwt is the module Fiber v3
+// uses; the unversioned contrib/jwt belongs to v2 and returns a v2 handler.
 var knownMiddleware = [...]struct {
 	dir  string
 	kind middlewareKind
 }{
 	{"/middleware/keyauth/", kindKeyAuth},
 	{"/middleware/basicauth/", kindBasicAuth},
-	{"/contrib/jwt/", kindJWT},
+	{"/contrib/v3/jwt@", kindJWT},
+	{"/contrib/v3/jwt/", kindJWT},
 	{"/middleware/csrf/", kindCSRF},
 	{"/middleware/requestid/", kindRequestID},
 	{"/middleware/limiter/", kindLimiter},
 	{"/middleware/etag/", kindETag},
 	{"/middleware/cache/", kindCache},
+}
+
+// middlewareInFile reports which recognized middleware a source file belongs to.
+func middlewareInFile(file string) middlewareSet {
+	var set middlewareSet
+	file = filepath.ToSlash(file)
+	for i := range knownMiddleware {
+		if strings.Contains(file, knownMiddleware[i].dir) {
+			set.add(knownMiddleware[i].kind)
+		}
+	}
+	return set
 }
 
 // handlerMiddleware reports which recognized middleware the handlers are.
@@ -60,12 +82,7 @@ func handlerMiddleware(handlers []fiber.Handler) middlewareSet {
 			continue
 		}
 		file, _ := fn.FileLine(fn.Entry())
-		file = filepath.ToSlash(file)
-		for i := range knownMiddleware {
-			if strings.Contains(file, knownMiddleware[i].dir) {
-				set.add(knownMiddleware[i].kind)
-			}
-		}
+		set |= middlewareInFile(file)
 	}
 	return set
 }
@@ -78,30 +95,64 @@ type coveringMiddleware struct {
 	set    middlewareSet
 }
 
-// coversPath reports whether a Use route's prefix matches path the way the
-// router matches it: entirely, or up to a segment boundary.
-func coversPath(prefix, path string) bool {
-	if prefix == "" || prefix == "/" {
+// coversRoute reports whether every request a route can answer passes through
+// a Use route with the given prefix, so the middleware can be documented on
+// it. The prefix matches up to a segment boundary, and segments compare as the
+// router compares them (equal reflects its case rule). A prefix parameter
+// matches whatever the route has in that position, a greedy one the rest of
+// the path, and a literal prefix segment only the same literal: where the route
+// has a parameter instead, some requests would miss the middleware, so it is
+// not claimed. An optional prefix segment may consume nothing and is never
+// claimed either.
+func coversRoute(prefix, path string, equal func(a, b string) bool) bool {
+	prefix = utils.TrimRight(prefix, '/')
+	if prefix == "" {
 		return true
 	}
-	prefix = strings.TrimSuffix(prefix, "/")
-	if !strings.HasPrefix(path, prefix) {
-		return false
+	prefixRest := strings.TrimPrefix(prefix, "/")
+	pathRest := strings.TrimPrefix(utils.TrimRight(path, '/'), "/")
+	// pathDone is set once the route's last segment has been consumed, so a
+	// prefix segment found after it has nothing to match.
+	pathDone := false
+	for {
+		segment, nextPrefix, more := utils.CutByte(prefixRest, '/')
+		kind, tokens := classifySegment(segment)
+		switch {
+		case kind == segmentGreedy:
+			// A greedy segment covers whatever is left; "+" needs one segment.
+			return !pathDone || !strings.Contains(tokens, "+")
+		case kind == segmentOptional, pathDone:
+			return false
+		}
+
+		var pathSegment string
+		var found bool
+		pathSegment, pathRest, found = utils.CutByte(pathRest, '/')
+		pathDone = !found
+		// A literal, possibly with a parameter inside it, covers only the same
+		// text; a whole-segment parameter covers whatever the route has there.
+		if !strings.HasPrefix(tokens, ":") &&
+			(routeTokens(pathSegment) != pathSegment || !equal(fiber.RemoveEscapeChar(segment), fiber.RemoveEscapeChar(pathSegment))) {
+			return false
+		}
+		if !more {
+			return true
+		}
+		prefixRest = nextPrefix
 	}
-	return len(path) == len(prefix) || path[len(prefix)] == '/'
 }
 
 // middlewareOn is the recognized middleware a request to route passes
 // through: the Use routes registered ahead of it whose prefix and host cover
 // it, then the route's own handlers.
-func middlewareOn(covering []coveringMiddleware, route *fiber.Route) middlewareSet {
-	set := handlerMiddleware(route.Handlers)
+func middlewareOn(covering []coveringMiddleware, route *fiber.Route, equal func(a, b string) bool) middlewareSet {
+	set := handlerMiddleware(route.InnerHandlers())
 	for i := range covering {
 		cover := &covering[i]
 		if cover.domain != "" && cover.domain != route.Domain() {
 			continue
 		}
-		if coversPath(cover.prefix, route.Path) {
+		if coversRoute(cover.prefix, route.Path, equal) {
 			set |= cover.set
 		}
 	}
@@ -114,8 +165,6 @@ const (
 	securitySchemeBearer = "bearerAuth"
 	securitySchemeBasic  = "basicAuth"
 
-	headerWWWAuthenticate = "WWW-Authenticate"
-	headerRetryAfter      = "Retry-After"
 	headerRateLimitLimit  = "X-RateLimit-Limit"
 	headerRateLimitRemain = "X-RateLimit-Remaining"
 	headerRateLimitReset  = "X-RateLimit-Reset"
@@ -217,7 +266,7 @@ func errorResponse(description string, cfg *Config, reg *schemaRegistry) respons
 	resp := response{Description: description}
 	if cfg.ErrorProduces != "" {
 		resp.Content = map[string]map[string]any{
-			cfg.ErrorProduces: contentEntry(cfg.ErrorSchema, "", nil, nil, reg),
+			cfg.ErrorProduces: contentEntry(fiber.RouteMediaType{Schema: cfg.ErrorSchema}, reg),
 		}
 	}
 	return resp
@@ -228,6 +277,7 @@ func errorResponse(description string, cfg *Config, reg *schemaRegistry) respons
 // response. A response the route already declares keeps its description and
 // content, gaining only headers it lacks.
 func applyMiddlewareResponses(responses map[string]response, method string, set middlewareSet, cfg *Config, reg *schemaRegistry) {
+	readsOnly := method == fiber.MethodGet || method == fiber.MethodHead
 	addError := func(status, description string) {
 		if _, ok := responses[status]; !ok {
 			responses[status] = errorResponse(description, cfg, reg)
@@ -236,7 +286,7 @@ func applyMiddlewareResponses(responses map[string]response, method string, set 
 	if set.has(kindKeyAuth) || set.has(kindBasicAuth) || set.has(kindJWT) {
 		addError("401", "Unauthorized")
 		resp := responses["401"]
-		addHeader(&resp, headerWWWAuthenticate, headerObject("The authentication challenge", schemaTypeString))
+		addHeader(&resp, fiber.HeaderWWWAuthenticate, headerObject("The authentication challenge", schemaTypeString))
 		responses["401"] = resp
 	}
 	if set.has(kindCSRF) && !isSafeMethod(method) {
@@ -245,10 +295,10 @@ func applyMiddlewareResponses(responses map[string]response, method string, set 
 	if set.has(kindLimiter) {
 		addError("429", "Too Many Requests")
 		resp := responses["429"]
-		addHeader(&resp, headerRetryAfter, headerObject("Seconds until the limit resets", schemaTypeInteger))
+		addHeader(&resp, fiber.HeaderRetryAfter, headerObject("Seconds until the limit resets", schemaTypeInteger))
 		responses["429"] = resp
 	}
-	if set.has(kindETag) && (method == fiber.MethodGet || method == fiber.MethodHead) {
+	if set.has(kindETag) && readsOnly {
 		if _, ok := responses["304"]; !ok {
 			responses["304"] = response{Description: "Not Modified"}
 		}
@@ -263,7 +313,7 @@ func applyMiddlewareResponses(responses map[string]response, method string, set 
 			addHeader(&resp, headerRateLimitRemain, headerObject("Requests left in the window", schemaTypeInteger))
 			addHeader(&resp, headerRateLimitReset, headerObject("Seconds until the window resets", schemaTypeInteger))
 		}
-		if set.has(kindETag) && len(status) == 3 && status[0] == '2' {
+		if set.has(kindETag) && readsOnly && len(status) == 3 && status[0] == '2' {
 			addHeader(&resp, fiber.HeaderETag, headerObject("The entity tag of the response", schemaTypeString))
 		}
 		if set.has(kindCache) {

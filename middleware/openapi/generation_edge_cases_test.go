@@ -22,7 +22,7 @@ func specBodyOf(t *testing.T, app *fiber.App, path string) (int, string) {
 	return resp.StatusCode, string(b)
 }
 
-func Test_OpenAPI_ReviewRegressions(t *testing.T) {
+func Test_OpenAPI_GenerationEdgeCases(t *testing.T) {
 	t.Parallel()
 
 	t.Run("UIMountServesSpecUnderMount", func(t *testing.T) {

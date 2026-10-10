@@ -337,3 +337,45 @@ func Test_schemaRegistry_NilResolvesInline(t *testing.T) {
 	require.Equal(t, "object", reg.resolve(modelAddress{})["type"])
 	require.Nil(t, reg.componentSchemas())
 }
+
+func Test_expandParameterModels_SkipsWhatIsNotAStruct(t *testing.T) {
+	t.Parallel()
+
+	require.Empty(t, expandParameterModels([]fiber.RouteParameterModel{
+		{In: "query", Model: nil},
+		{In: "query", Model: 42},
+		{In: "query", Model: "text"},
+	}, nil))
+
+	params := expandParameterModels([]fiber.RouteParameterModel{{In: "query", Model: &modelPaging{}}}, nil)
+	require.Len(t, params, 2)
+}
+
+func Test_isDefaultStringSchema(t *testing.T) {
+	t.Parallel()
+
+	require.True(t, isDefaultStringSchema(nil))
+	require.True(t, isDefaultStringSchema(map[string]any{"type": "string"}))
+	require.False(t, isDefaultStringSchema(map[string]any{"type": "integer"}))
+	require.False(t, isDefaultStringSchema(modelAddress{}))
+}
+
+func Test_resolveHeaderSchemas(t *testing.T) {
+	t.Parallel()
+
+	require.Nil(t, resolveHeaderSchemas(nil, nil))
+	headers := map[string]any{
+		"plain":  "not an object",
+		"mapped": map[string]any{"schema": map[string]any{"type": "string"}},
+		"model":  map[string]any{"description": "d", "schema": modelAddress{}},
+	}
+	resolved := resolveHeaderSchemas(headers, nil)
+	require.Equal(t, "not an object", resolved["plain"])
+	require.Equal(t, headers["mapped"], resolved["mapped"])
+	model, ok := resolved["model"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "d", model["description"])
+	require.Equal(t, "object", requireMap(t, model["schema"])["type"])
+	// The caller's map still holds the Go value.
+	require.Equal(t, modelAddress{}, headers["model"].(map[string]any)["schema"]) //nolint:forcetypeassert,errcheck // test fixture shape
+}

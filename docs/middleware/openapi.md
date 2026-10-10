@@ -364,12 +364,24 @@ table beneath it:
 ### Per-operation security
 
 Attach security requirements to a single operation. Multiple requirements are
-combined with OR; pass an empty requirement (`map[string][]string{}`) to document
-"no auth" and override the document-level default:
+combined with OR, and a route that sets its own requirements is not given any
+inferred from the middleware on its path:
 
 ```go
 app.Get("/users", listUsers).
     Security(map[string][]string{"bearerAuth": {}})
+```
+
+Two spellings document a route that is open to everyone, and they differ.
+`Security()` with no argument writes `security: []`: the route needs no
+authentication, whatever the document-level default or the middleware chain
+suggests. An empty requirement, `Security(map[string][]string{})`, writes
+`security: [{}]`, which makes authentication optional: a caller may or may not
+present credentials.
+
+```go
+// Behind a keyauth middleware that skips this route, and public.
+app.Get("/health", health).Security()
 ```
 
 ### Advanced parameters
@@ -653,33 +665,50 @@ route's media type.
     `application/json` unless configured; `Produces` and the `Response*` media
     types override it per route, and a status that carries no body (`1xx`,
     `204`, `205`, `304`) never gets one. A request body declared without a
-    media type documents `DefaultConsumes` the same way. No request body is
-    invented: it appears only when `Consumes`/`Accepts`/`RequestBody*` is set
-    explicitly, since documenting one would claim the handler reads it.
+    media type documents the route's `Consumes`, then `DefaultConsumes`. No
+    request body is invented: it appears only when `Consumes`/`Accepts`/
+    `RequestBody*` is set explicitly, since documenting one would claim the
+    handler reads it. `DisableDefaultMediaTypes` turns the defaults off, so a
+    response or body that names no media type is documented without content.
 - Operations without metadata have no `description` key at all and are not
   deprecated.
 - The middleware a request passes through documents itself. A route's own
   handlers and the `Use` routes registered ahead of it whose prefix covers its
   path (so `app.Group("/admin", keyauth.New(...))` covers `/admin/x` but not
   `/administrators`) are recognized by the source file their handler was
-  compiled from, which survives inlining and forks:
-  - `keyauth` and `gofiber/contrib/jwt` add a `bearerAuth` requirement and an
+  compiled from, which survives inlining, forks, the module cache, vendoring and
+  `-trimpath` builds. A `Use` prefix covers a route when every request the route
+  can answer passes it: a parameter in the prefix (`/users/:id`) covers whatever
+  the route has there, a literal covers only the same text under the app's case
+  rule, and an optional segment is never claimed:
+  - `keyauth` and `gofiber/contrib/v3/jwt` add a `bearerAuth` requirement and an
     `http`/`bearer` scheme (with `bearerFormat: JWT` when only the JWT
     middleware uses it); `basicauth` adds `basicAuth` with `http`/`basic`. A
     chained pair becomes one requirement naming both. Each adds a `401`
     response carrying `WWW-Authenticate`. `keyauth` is documented as a bearer
     token because that is its default extractor; with another `KeyLookup`,
     define `bearerAuth` yourself under `SecuritySchemes` and it replaces the
-    inferred scheme. An explicit `Security()` on the route always wins.
+    inferred scheme. An explicit `Security(...)` on the route always wins and
+    replaces every inferred authentication detail, the `401` included;
+    `Security()` with no argument documents a route that needs no authentication
+    and is written as `security: []`, overriding the document-level default.
   - `csrf` adds a required `X-Csrf-Token` header parameter and a `403` on the
     methods it protects (everything but `GET`, `HEAD`, `OPTIONS`, `TRACE` and
     `QUERY`).
   - `requestid` adds the `X-Request-ID` header, `limiter` the `X-RateLimit-*`
     headers plus a `429` with `Retry-After`, `etag` an `ETag` header on `2xx`
-    responses plus a `304` on `GET` and `HEAD`, and `cache` the `X-Cache`
-    header. Headers and responses a route already documents are kept.
-  - Middleware registered through a domain router is wrapped per host and
-    therefore not recognized.
+    responses plus a `304`, both only on `GET` and `HEAD` as that is all the
+    middleware acts on, and `cache` the `X-Cache` header on every method.
+    Headers and responses a route already documents are kept.
+  - The headers and parameter above are documented under their default names.
+    A middleware configured with another name (`requestid.Config.Header`,
+    `cache.Config.CacheHeader`, a custom `csrf` extractor, or
+    `limiter.Config.DisableHeaders`) cannot be read from its handler, so
+    document those routes with `ResponseHeader`/`AddParameter`, or turn the
+    inference off with `DisableMiddlewareInference`.
+  - Middleware registered through a domain router is recognized, and covers the
+    routes of the same host pattern; middleware registered on the app covers
+    every host.
   - With a `StructValidator` configured, a route that declares a body or
     parameters gets a `400` response, since binding can reject the request.
   Error responses use `ErrorProduces` and `ErrorSchema`, matching the app's
@@ -776,6 +805,7 @@ route's media type.
 | DefaultConsumes | `string`               | Request media type documented for a request body that declares none; `Consumes` and the `RequestBody*` media types override it per route. | `"application/json"` |
 | ErrorProduces  | `string`                | Media type documented for the responses the app's error handler writes (`400`, `401`, `403`, `429`). | `"text/plain; charset=utf-8"` |
 | ErrorSchema    | `any`                   | Schema, or a Go value reflected into one, documented for those error responses. | `nil` |
+| DisableDefaultMediaTypes | `bool`        | Stops documenting `DefaultProduces`, `DefaultConsumes` and `ErrorProduces`, leaving a response or body that declares no media type without content. | `false` |
 | DisableMiddlewareInference | `bool`      | Stops documenting the security, headers, parameters and responses of recognized middleware on a route's path. | `false` |
 | DisableValidationResponses | `bool`      | Stops documenting the `400` response a configured `StructValidator` makes possible on routes with a body or parameters. | `false` |
 | DisableGroupTags | `bool`                | Stops tagging an untagged route with its group's name or last static prefix segment. | `false` |
@@ -829,6 +859,7 @@ var ConfigDefault = Config{
     DisableHandlerSummaries:    false,
     ErrorProduces:              "text/plain; charset=utf-8",
     ErrorSchema:                nil,
+    DisableDefaultMediaTypes:   false,
     DisableMiddlewareInference: false,
     DisableValidationResponses: false,
 }

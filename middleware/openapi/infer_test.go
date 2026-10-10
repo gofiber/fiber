@@ -273,3 +273,23 @@ func Test_statusHasNoBody(t *testing.T) {
 		require.Equal(t, want, statusHasNoBody(code), code)
 	}
 }
+
+func Test_handlerSummary_Guards(t *testing.T) {
+	t.Parallel()
+
+	require.Empty(t, handlerSummary(nil))
+	require.Empty(t, handlerSummary([]fiber.Handler{}))
+	require.Empty(t, handlerSummary([]fiber.Handler{listUsers, nil}))
+	require.Equal(t, "List users", handlerSummary([]fiber.Handler{passThrough, listUsers}))
+}
+
+func Test_isVersionSegment(t *testing.T) {
+	t.Parallel()
+
+	for segment, want := range map[string]bool{
+		"v1": true, "V2": true, "v2.1": true, "v10": true,
+		"v": false, "": false, "va1": false, "1": false, "version": false, "v1beta": false,
+	} {
+		require.Equal(t, want, isVersionSegment(segment), segment)
+	}
+}

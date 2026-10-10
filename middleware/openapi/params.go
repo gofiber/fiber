@@ -2,9 +2,9 @@ package openapi
 
 import (
 	"reflect"
-	"strings"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/utils/v2"
 )
 
 // modelTagByLocation maps a parameter location to the struct tag Bind reads
@@ -37,7 +37,7 @@ func expandParameterModels(models []fiber.RouteParameterModel, reg *schemaRegist
 func appendModelFields(params []fiber.RouteParameter, t reflect.Type, in, tagKey string, reg *schemaRegistry, expanded map[reflect.Type]bool) []fiber.RouteParameter {
 	for i := range t.NumField() {
 		field := t.Field(i)
-		name, _, _ := strings.Cut(field.Tag.Get(tagKey), ",")
+		name, _, _ := utils.CutByte(field.Tag.Get(tagKey), ',')
 		if name == "-" {
 			continue
 		}

@@ -90,21 +90,12 @@ func (grp *Group) RequestBodyWithExample(description string, required bool, sche
 
 // Parameter documents an input parameter for the most recently added route in the group.
 func (grp *Group) Parameter(name, in string, required bool, schema any, description string) Router {
-	return grp.AddParameter(RouteParameter{Name: name, In: in, Required: required, Schema: schema, Description: description})
+	return grp.ParameterWithExample(name, in, required, schema, "", description, nil, nil)
 }
 
 // ParameterWithExample documents an input parameter for the most recently added route in the group with schema references and examples.
 func (grp *Group) ParameterWithExample(name, in string, required bool, schema any, schemaRef, description string, example any, examples map[string]any) Router {
-	return grp.AddParameter(RouteParameter{
-		Name:        name,
-		In:          in,
-		Required:    required,
-		Schema:      schema,
-		SchemaRef:   schemaRef,
-		Description: description,
-		Example:     example,
-		Examples:    examples,
-	})
+	return grp.AddParameter(newRouteParameter(name, in, required, schema, schemaRef, description, example, examples))
 }
 
 // Response documents an HTTP response for the most recently added route in the group.
@@ -153,13 +144,13 @@ func (grp *Group) ResponseHeader(status int, name, description string, schema an
 
 // Accepts documents the request body as the schema of model; see App.Accepts.
 func (grp *Group) Accepts(model any, mediaTypes ...string) Router {
-	grp.app.applyToRegistration(atomic.LoadUint64(&grp.lastRegID), docRequestBodyWithExample("", true, model, "", nil, nil, mediaTypes...))
+	grp.app.applyToRegistration(atomic.LoadUint64(&grp.lastRegID), docAccepts(model, mediaTypes...))
 	return grp
 }
 
 // Returns documents a response as the schema of model; see App.Returns.
 func (grp *Group) Returns(status int, model any, mediaTypes ...string) Router {
-	grp.app.applyToRegistration(atomic.LoadUint64(&grp.lastRegID), docAddResponse(status, "", model, "", nil, nil, mediaTypes...))
+	grp.app.applyToRegistration(atomic.LoadUint64(&grp.lastRegID), docReturns(status, model, mediaTypes...))
 	return grp
 }
 

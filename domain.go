@@ -280,6 +280,14 @@ func (d *domainRouter) pattern() string {
 // Verify domainRouter implements Router at compile time.
 var _ Router = (*domainRouter)(nil)
 
+// registerWrapped registers handlers behind the host check and keeps them as
+// given on the route, so documentation can still tell what they are.
+func (d *domainRouter) registerWrapped(methods []string, path string, group *Group, handlers []Handler) uint64 {
+	regID := d.app.register(methods, path, group, d.pattern(), d.wrapHandlers(handlers)...)
+	d.app.applyToRegistration(regID, docSetInnerHandlers(handlers))
+	return regID
+}
+
 // wrapHandlers wraps every handler in the slice with domain checking.
 // The hostname match is computed once per request per domain-router and cached
 // so that subsequent handlers in the same route avoid redundant parsing.
@@ -392,8 +400,7 @@ func (d *domainRouter) Use(args ...any) Router {
 			continue
 		}
 
-		wrapped := d.wrapHandlers(handlers)
-		atomic.StoreUint64(&d.lastRegID, d.app.register([]string{methodUse}, d.registerPath(prefix), d.registerGroup(), d.pattern(), wrapped...))
+		atomic.StoreUint64(&d.lastRegID, d.registerWrapped([]string{methodUse}, d.registerPath(prefix), d.registerGroup(), handlers))
 	}
 
 	// Mark the underlying group so Name() can distinguish between
@@ -667,6 +674,7 @@ func (d *domainRouter) domainRoutes(dst, src *App, walk domainClone) [][]*Route 
 			if walk.prefix != "" {
 				dst.addPrefixToRoute(walk.prefix, clonedRoute, src.config.RegexHandler, constraints...)
 			}
+			clonedRoute.docHandlers = clonedRoute.InnerHandlers()
 			clonedRoute.Handlers = d.wrapHandlers(clonedRoute.Handlers)
 
 			// Record the app the route came from, so a request that runs it
@@ -749,8 +757,7 @@ func (d *domainRouter) Query(path string, handler any, handlers ...any) Router {
 // The handler only executes when the request hostname matches the domain pattern.
 func (d *domainRouter) Add(methods []string, path string, handler any, handlers ...any) Router {
 	converted := collectHandlers("domain", append([]any{handler}, handlers...)...)
-	wrapped := d.wrapHandlers(converted)
-	atomic.StoreUint64(&d.lastRegID, d.app.register(methods, d.registerPath(path), d.registerGroup(), d.pattern(), wrapped...))
+	atomic.StoreUint64(&d.lastRegID, d.registerWrapped(methods, d.registerPath(path), d.registerGroup(), converted))
 
 	// Mark the underlying group so Name() can distinguish between
 	// group-name-prefix calls (before routes) and route-name calls (after routes).
@@ -777,8 +784,7 @@ func (d *domainRouter) Group(prefix string, handlers ...any) Router {
 	var regID uint64
 	if len(handlers) > 0 {
 		converted := collectHandlers("domain", handlers...)
-		wrapped := d.wrapHandlers(converted)
-		regID = d.app.register([]string{methodUse}, fullPrefix, d.registerGroup(), d.pattern(), wrapped...)
+		regID = d.registerWrapped([]string{methodUse}, fullPrefix, d.registerGroup(), converted)
 	}
 
 	// Create a new group on the app
@@ -884,21 +890,12 @@ func (d *domainRouter) RequestBodyWithExample(description string, required bool,
 
 // Parameter documents an input parameter for the most recently added route.
 func (d *domainRouter) Parameter(name, in string, required bool, schema any, description string) Router {
-	return d.AddParameter(RouteParameter{Name: name, In: in, Required: required, Schema: schema, Description: description})
+	return d.ParameterWithExample(name, in, required, schema, "", description, nil, nil)
 }
 
 // ParameterWithExample documents an input parameter for the most recently added route with schema references and examples.
 func (d *domainRouter) ParameterWithExample(name, in string, required bool, schema any, schemaRef, description string, example any, examples map[string]any) Router {
-	return d.AddParameter(RouteParameter{
-		Name:        name,
-		In:          in,
-		Required:    required,
-		Schema:      schema,
-		SchemaRef:   schemaRef,
-		Description: description,
-		Example:     example,
-		Examples:    examples,
-	})
+	return d.AddParameter(newRouteParameter(name, in, required, schema, schemaRef, description, example, examples))
 }
 
 // Response documents an HTTP response for the most recently added route.
@@ -944,13 +941,13 @@ func (d *domainRouter) ResponseHeader(status int, name, description string, sche
 
 // Accepts documents the request body as the schema of model; see App.Accepts.
 func (d *domainRouter) Accepts(model any, mediaTypes ...string) Router {
-	d.app.applyToRegistration(atomic.LoadUint64(&d.lastRegID), docRequestBodyWithExample("", true, model, "", nil, nil, mediaTypes...))
+	d.app.applyToRegistration(atomic.LoadUint64(&d.lastRegID), docAccepts(model, mediaTypes...))
 	return d
 }
 
 // Returns documents a response as the schema of model; see App.Returns.
 func (d *domainRouter) Returns(status int, model any, mediaTypes ...string) Router {
-	d.app.applyToRegistration(atomic.LoadUint64(&d.lastRegID), docAddResponse(status, "", model, "", nil, nil, mediaTypes...))
+	d.app.applyToRegistration(atomic.LoadUint64(&d.lastRegID), docReturns(status, model, mediaTypes...))
 	return d
 }
 
