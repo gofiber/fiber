@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"reflect"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -3693,4 +3694,27 @@ func Test_OpenAPI_SwaggerUI_SubresourceIntegrity(t *testing.T) {
 		body := page(t, Config{SwaggerBundleURL: "/js/bundle.js", SwaggerBundleIntegrity: "sha384-custom+hash/="})
 		require.Contains(t, body, `integrity="`+attr("sha384-custom+hash/=")+`"`)
 	})
+}
+
+func Test_OpenAPI_SharedHandlerBeyondCacheBound(t *testing.T) {
+	t.Parallel()
+
+	handler := New()
+	apps := make([]*fiber.App, 0, maxCachedSwaggerPages+8)
+	for i := range maxCachedSwaggerPages + 8 {
+		app := fiber.New()
+		app.Get("/app"+strconv.Itoa(i), func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
+		app.Use(handler)
+		apps = append(apps, app)
+	}
+
+	for range 2 {
+		for i, app := range apps {
+			resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/openapi.json", http.NoBody))
+			require.NoError(t, err)
+			body, err := io.ReadAll(resp.Body)
+			require.NoError(t, err)
+			require.Contains(t, string(body), `"/app`+strconv.Itoa(i)+`"`)
+		}
+	}
 }

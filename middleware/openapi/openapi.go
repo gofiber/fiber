@@ -28,7 +28,7 @@ type appEquality struct {
 }
 
 // maxCachedSwaggerPages bounds the UI page cache so a parameterized mount cannot
-// grow it without limit. The same bound applies to the per-app cache map.
+// grow it without limit. The same bound applies to the per-app cache map, which evicts when full.
 const maxCachedSwaggerPages = 32
 
 // appCache holds one app's artifacts. The spec bytes do not depend on the target
@@ -51,14 +51,20 @@ func New(config ...Config) fiber.Handler {
 	)
 
 	// cacheFor returns the app's cache entry, creating it on first use. Past the
-	// bound it is returned but not retained. The caller must hold cacheMu.
+	// bound an arbitrary other entry is evicted, so a handler serving more apps
+	// than the bound keeps caching instead of rebuilding on every request. The
+	// caller must hold cacheMu.
 	cacheFor := func(app *fiber.App) *appCache {
 		cache, ok := caches[app]
 		if !ok {
 			cache = &appCache{uiPages: make(map[string][]byte)}
-			if len(caches) < maxCachedSwaggerPages {
-				caches[app] = cache
+			if len(caches) >= maxCachedSwaggerPages {
+				for evicted := range caches {
+					delete(caches, evicted)
+					break
+				}
 			}
+			caches[app] = cache
 		}
 		return cache
 	}
