@@ -270,6 +270,7 @@ func (s *restoreMutationStorage) DeleteWithContext(ctx context.Context, key stri
 	defer s.mu.Unlock()
 	if s.mutation == "missing" {
 		delete(s.data, key)
+		delete(s.data, key+"_body")
 	} else {
 		var entry item
 		if _, err := entry.UnmarshalMsg(s.data[key]); err != nil {

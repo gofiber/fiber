@@ -73,7 +73,9 @@ const (
 // Cache-Control of its own, under "public, max-age" — telling a shared cache
 // downstream it may store one user's response for every user of the URL. Bump
 // this whenever what a key stands for, or what its entry carries, changes; the
-// cost is one cold cache after a deploy.
+// cost is one cold cache after a deploy. Additive bookkeeping fields such as
+// heapgen need no bump: old entries decode with generation zero, and older
+// readers skip the new field without changing the response or key semantics.
 const cacheKeyVersion = "v4"
 
 type expirationSource uint8
@@ -251,6 +253,17 @@ func New(config ...Config) fiber.Handler {
 		entry, err := manager.get(ctx, candidate.key)
 		if err != nil {
 			if errors.Is(err, errCacheMiss) {
+				if cfg.Storage != nil {
+					// Metadata may have been deleted before the body deletion failed.
+					// Keep its reservation so a later eviction can retry the body.
+					_, bodyErr := manager.getRaw(ctx, candidate.key+"_body")
+					if bodyErr == nil {
+						return nil
+					}
+					if !errors.Is(bodyErr, errCacheMiss) {
+						return fmt.Errorf("cache: failed to verify body for key %q after eviction failure: %w", maskKey(candidate.key), bodyErr)
+					}
+				}
 				mux.Lock()
 				removeHeapEntry(candidate.key, idx, candidate.oldGen)
 				mux.Unlock()
@@ -752,24 +765,21 @@ func New(config ...Config) fiber.Handler {
 		// RFC 9111 forbids storing no-store responses and responses with Vary: *.
 		// The latter remains true when response-driven Vary partitioning is disabled.
 		if respCacheControl.hasNoStore || hasPrivate || hasNoCache || varyHasStar {
-			if e != nil || revalidate {
+			cleanupEntry := e != nil || revalidate
+			if cleanupEntry {
 				heapIdx := oldHeapIdx
 				heapGen := oldHeapGen
 				if e != nil {
 					heapIdx = e.heapidx
 					heapGen = e.heapgen
 				}
+				removeStaleHeap := true
 				if cfg.Storage == nil {
-					// A revalidation releases its local entry before calling the origin.
-					// Delete it only if no concurrent request has replaced it.
 					expected := e
 					if expected == nil {
 						expected = staleMemoryEntry
 					}
-					if expected == nil || !manager.memory.DeleteIf(key, func(current any) bool {
-						entry, ok := current.(*item)
-						return ok && entry == expected
-					}) {
+					if manager.delIf(key, expected) == memoryEntryReplaced {
 						mux.Lock()
 						removeHeapEntry(key, heapIdx, heapGen)
 						mux.Unlock()
@@ -777,43 +787,41 @@ func New(config ...Config) fiber.Handler {
 						return nil
 					}
 				} else {
-					// A different request may have stored a replacement while the
-					// origin ran. Storage has no conditional delete, so this check
-					// narrows the remaining race to the read/delete interval.
+					// Storage has no conditional delete. Preserve completed
+					// replacements; the read/delete race remains intentional.
 					current, err := manager.get(reqCtx, key)
-					if errors.Is(err, errCacheMiss) {
-						mux.Lock()
-						removeHeapEntry(key, heapIdx, heapGen)
-						mux.Unlock()
-						markUnreachable()
-						return nil
-					}
-					if err != nil {
+					switch {
+					case errors.Is(err, errCacheMiss):
+						// No entry remains, but its Vary manifest still needs cleanup.
+					case err != nil:
 						log.Warnf("cache: failed to verify cached response for key %q: %v", maskKey(key), err)
-						markUnreachable()
-						return nil
-					}
-					isStaleEntry := current.heapidx == heapIdx && current.heapgen == heapGen
-					manager.release(current)
-					if !isStaleEntry {
-						mux.Lock()
-						removeHeapEntry(key, heapIdx, heapGen)
-						mux.Unlock()
-						markUnreachable()
-						return nil
-					}
-					if err := deleteKey(reqCtx, key); err != nil {
-						log.Warnf("cache: failed to delete cached response for key %q: %v", maskKey(key), err)
-						markUnreachable()
-						return nil
+						removeStaleHeap = false
+					default:
+						isStaleEntry := current.heapidx == heapIdx && current.heapgen == heapGen
+						manager.release(current)
+						if !isStaleEntry {
+							mux.Lock()
+							removeHeapEntry(key, heapIdx, heapGen)
+							mux.Unlock()
+							markUnreachable()
+							return nil
+						}
+						if err := deleteKey(reqCtx, key); err != nil {
+							log.Warnf("cache: failed to delete cached response for key %q: %v", maskKey(key), err)
+							removeStaleHeap = false
+						}
 					}
 				}
-				mux.Lock()
-				removeHeapEntry(key, heapIdx, heapGen)
-				mux.Unlock()
+				if removeStaleHeap {
+					mux.Lock()
+					removeHeapEntry(key, heapIdx, heapGen)
+					mux.Unlock()
+				}
 			}
 
-			if !cfg.DisableVaryHeaders && hasVaryManifest {
+			// A plain no-store miss has no stale entry to invalidate. Preserve
+			// the shared manifest so sibling variants remain reachable.
+			if !cfg.DisableVaryHeaders && hasVaryManifest && (!respCacheControl.hasNoStore || cleanupEntry) {
 				if err := manager.del(reqCtx, manifestKey); err != nil {
 					log.Warnf("cache: failed to delete stale vary manifest %q: %v", maskKey(manifestKey), err)
 				}
