@@ -175,6 +175,13 @@ pointing at the CDN, and the page still makes one outbound request. Set every
 field you do not want fetched from `unpkg.com`.
 :::
 
+The default URLs carry a [Subresource Integrity](https://developer.mozilla.org/docs/Web/Security/Subresource_Integrity)
+hash (`integrity` with `crossorigin="anonymous"`), so a browser refuses a file
+the CDN changed or a compromised mirror served. The hash describes only the
+default file: a URL you override gets none unless you also set
+`SwaggerCSSIntegrity`, `SwaggerBundleIntegrity` or
+`SwaggerStandalonePresetIntegrity` (a value such as `sha384-...`) for it.
+
 #### 1. Vendor the assets
 
 Pin the same version the middleware defaults to, so the UI you test is the UI you
@@ -787,6 +794,9 @@ route's media type.
 | SwaggerCSSURL  | `string`                | Stylesheet URL used by the generated Swagger UI page.           | `"https://unpkg.com/swagger-ui-dist@5.32.6/swagger-ui.css"` |
 | SwaggerBundleURL | `string`              | Script URL used by the generated Swagger UI page.               | `"https://unpkg.com/swagger-ui-dist@5.32.6/swagger-ui-bundle.js"` |
 | SwaggerStandalonePresetURL | `string`    | Standalone preset script URL, giving the UI its `StandaloneLayout` (top bar with the Authorize button). Always loaded — an empty value selects the default rather than omitting the script. | `"https://unpkg.com/swagger-ui-dist@5.32.6/swagger-ui-standalone-preset.js"` |
+| SwaggerCSSIntegrity | `string`           | Subresource Integrity value the browser checks `SwaggerCSSURL` against. Defaults to the default stylesheet's hash only while the URL is left at its default. | the hash of the default stylesheet |
+| SwaggerBundleIntegrity | `string`        | Subresource Integrity value for `SwaggerBundleURL`, defaulting the same way. | the hash of the default bundle |
+| SwaggerStandalonePresetIntegrity | `string` | Subresource Integrity value for `SwaggerStandalonePresetURL`, defaulting the same way. | the hash of the default preset |
 | SwaggerOptions | `map[string]any`        | Additional options merged into the generated `SwaggerUIBundle` call. | `nil` |
 | OpenAPIVersion | `string`                | OpenAPI specification version to generate (`"3.0.0"`, `"3.1.0"` or `"3.2.0"`) | `"3.1.0"`     |
 | Components     | `map[string]any`        | Reusable OpenAPI component definitions (schemas, responses, etc.) emitted under `"components"`. | `nil` |
@@ -857,6 +867,9 @@ var ConfigDefault = Config{
     SwaggerCSSURL:              "https://unpkg.com/swagger-ui-dist@5.32.6/swagger-ui.css",
     SwaggerBundleURL:           "https://unpkg.com/swagger-ui-dist@5.32.6/swagger-ui-bundle.js",
     SwaggerStandalonePresetURL: "https://unpkg.com/swagger-ui-dist@5.32.6/swagger-ui-standalone-preset.js",
+    SwaggerCSSIntegrity:        "sha384-9Q2fpS+xeS4ffJy6CagnwoUl+4ldAYhOs9pgZuEKxypVModhmZFzeMlvVsAjf7uT",
+    SwaggerBundleIntegrity:     "sha384-EYdOaiRwn44zNjrw+Tfs06qYz9BGQVo2f4/pLY5i7VorbjnZNhdplAbTBk8FXHUJ",
+    SwaggerStandalonePresetIntegrity: "sha384-49fpFaVrAWI/qdgl9Vv5E/4NXxRUiJX5vGuLws1NUpTWGtEqzWEx8gHTw2UTehFK",
     SwaggerOptions:             nil,
     OpenAPIVersion:             "3.1.0",
     DefaultProduces:            "application/json",

@@ -3645,3 +3645,52 @@ func Test_OpenAPI_SharedHandlerResolvesCaseRulePerApp(t *testing.T) {
 	require.Equal(t, fiber.StatusOK, get(folding))
 	require.Equal(t, fiber.StatusNotFound, get(strict))
 }
+
+func Test_OpenAPI_SwaggerUI_SubresourceIntegrity(t *testing.T) {
+	t.Parallel()
+
+	// html/template escapes "+" in an attribute, and the browser decodes it back.
+	attr := func(value string) string { return strings.ReplaceAll(value, "+", "&#43;") }
+
+	page := func(t *testing.T, cfg Config) string {
+		t.Helper()
+		app := fiber.New()
+		app.Get("/users", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
+		app.Use(New(cfg))
+		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/swagger", http.NoBody))
+		require.NoError(t, err)
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		return string(body)
+	}
+
+	t.Run("defaults carry the pinned hashes", func(t *testing.T) {
+		t.Parallel()
+		body := page(t, Config{})
+		for _, hash := range []string{ConfigDefault.SwaggerCSSIntegrity, ConfigDefault.SwaggerBundleIntegrity, ConfigDefault.SwaggerStandalonePresetIntegrity} {
+			require.True(t, strings.HasPrefix(hash, "sha384-"), hash)
+			require.Contains(t, body, `integrity="`+attr(hash)+`"`)
+		}
+		require.Equal(t, 3, strings.Count(body, `crossorigin="anonymous"`))
+	})
+
+	t.Run("a custom URL does not inherit the default hash", func(t *testing.T) {
+		t.Parallel()
+		body := page(t, Config{SwaggerCSSURL: "/css/swagger-ui.css", SwaggerBundleURL: "/js/bundle.js", SwaggerStandalonePresetURL: "/js/preset.js"})
+		require.NotContains(t, body, "integrity=")
+	})
+
+	t.Run("only the overridden asset loses its hash", func(t *testing.T) {
+		t.Parallel()
+		body := page(t, Config{SwaggerBundleURL: "/js/bundle.js"})
+		require.NotContains(t, body, attr(ConfigDefault.SwaggerBundleIntegrity))
+		require.Contains(t, body, attr(ConfigDefault.SwaggerCSSIntegrity))
+		require.Contains(t, body, attr(ConfigDefault.SwaggerStandalonePresetIntegrity))
+	})
+
+	t.Run("a custom URL takes the hash given for it", func(t *testing.T) {
+		t.Parallel()
+		body := page(t, Config{SwaggerBundleURL: "/js/bundle.js", SwaggerBundleIntegrity: "sha384-custom+hash/="})
+		require.Contains(t, body, `integrity="`+attr("sha384-custom+hash/=")+`"`)
+	})
+}

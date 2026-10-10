@@ -16,6 +16,10 @@ type swaggerUITemplateData struct {
 	SwaggerCSSURL              string
 	SwaggerBundleURL           string
 	SwaggerStandalonePresetURL string
+
+	SwaggerCSSIntegrity              string
+	SwaggerBundleIntegrity           string
+	SwaggerStandalonePresetIntegrity string
 }
 
 var swaggerUITemplate = htemplate.Must(htemplate.New("swagger-ui").Parse(`<!doctype html>
@@ -26,18 +30,22 @@ var swaggerUITemplate = htemplate.Must(htemplate.New("swagger-ui").Parse(`<!doct
     <title>{{ .Title }} - Swagger UI</title>
     <link
       rel="stylesheet"
-      href="{{ .SwaggerCSSURL }}"
+      href="{{ .SwaggerCSSURL }}"{{ if .SwaggerCSSIntegrity }}
+      integrity="{{ .SwaggerCSSIntegrity }}"
+      crossorigin="anonymous"{{ end }}
     />
   </head>
   <body>
     <div id="swagger-ui" data-swagger-options='{{ .SwaggerOptionsJSON }}'></div>
 
     <script
-      src="{{ .SwaggerBundleURL }}"
+      src="{{ .SwaggerBundleURL }}"{{ if .SwaggerBundleIntegrity }}
+      integrity="{{ .SwaggerBundleIntegrity }}"{{ end }}
       crossorigin="anonymous"
     ></script>
     {{ if .SwaggerStandalonePresetURL }}<script
-      src="{{ .SwaggerStandalonePresetURL }}"
+      src="{{ .SwaggerStandalonePresetURL }}"{{ if .SwaggerStandalonePresetIntegrity }}
+      integrity="{{ .SwaggerStandalonePresetIntegrity }}"{{ end }}
       crossorigin="anonymous"
     ></script>{{ end }}
     <script>
@@ -85,7 +93,11 @@ func buildSwaggerUIPage(openAPIURL string, cfg *Config, encode utils.JSONMarshal
 		SwaggerCSSURL:              cfg.SwaggerCSSURL,
 		SwaggerBundleURL:           cfg.SwaggerBundleURL,
 		SwaggerStandalonePresetURL: cfg.SwaggerStandalonePresetURL,
-		SwaggerOptionsJSON:         string(swaggerOptionsJSON),
+
+		SwaggerCSSIntegrity:              cfg.SwaggerCSSIntegrity,
+		SwaggerBundleIntegrity:           cfg.SwaggerBundleIntegrity,
+		SwaggerStandalonePresetIntegrity: cfg.SwaggerStandalonePresetIntegrity,
+		SwaggerOptionsJSON:               string(swaggerOptionsJSON),
 	}
 
 	var builder strings.Builder

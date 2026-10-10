@@ -161,6 +161,15 @@ type Config struct {
 	// SwaggerCSSURL is the stylesheet URL used by the generated Swagger UI page. Optional. Default: "https://unpkg.com/swagger-ui-dist@5.32.6/swagger-ui.css"
 	SwaggerCSSURL string
 
+	// SwaggerCSSIntegrity is the Subresource Integrity value (for example "sha384-...") the browser checks SwaggerCSSURL against. It defaults to the hash of the default stylesheet only while SwaggerCSSURL is left at its default; a custom URL has none unless set here. Optional. Default: the hash of the default stylesheet
+	SwaggerCSSIntegrity string
+
+	// SwaggerBundleIntegrity is the Subresource Integrity value the browser checks SwaggerBundleURL against, defaulting as SwaggerCSSIntegrity does. Optional. Default: the hash of the default bundle
+	SwaggerBundleIntegrity string
+
+	// SwaggerStandalonePresetIntegrity is the Subresource Integrity value the browser checks SwaggerStandalonePresetURL against, defaulting as SwaggerCSSIntegrity does. Optional. Default: the hash of the default preset
+	SwaggerStandalonePresetIntegrity string
+
 	// DefaultProduces is the response media type documented for a response that declares none. Optional. Default: "application/json"
 	DefaultProduces string
 
@@ -219,19 +228,25 @@ var ConfigDefault = Config{
 	SwaggerCSSURL:              "https://unpkg.com/swagger-ui-dist@5.32.6/swagger-ui.css",
 	SwaggerBundleURL:           "https://unpkg.com/swagger-ui-dist@5.32.6/swagger-ui-bundle.js",
 	SwaggerStandalonePresetURL: "https://unpkg.com/swagger-ui-dist@5.32.6/swagger-ui-standalone-preset.js",
-	SwaggerOptions:             nil,
-	OpenAPIVersion:             versionOpenAPI31,
-	DefaultProduces:            fiber.MIMEApplicationJSON,
-	DefaultConsumes:            fiber.MIMEApplicationJSON,
-	ErrorProduces:              fiber.MIMETextPlainCharsetUTF8,
-	DisableGroupTags:           false,
-	DisableHandlerSummaries:    false,
-	DisableDefaultMediaTypes:   false,
-	DisableMiddlewareInference: false,
-	DisableValidationResponses: false,
-	RequestIDHeader:            fiber.HeaderXRequestID,
-	CacheHeader:                "X-Cache",
-	CSRFHeader:                 "X-Csrf-Token",
+
+	// Hashes of the three files above, computed from the swagger-ui-dist@5.32.6
+	// package. Update them together with the URLs.
+	SwaggerCSSIntegrity:              "sha384-9Q2fpS+xeS4ffJy6CagnwoUl+4ldAYhOs9pgZuEKxypVModhmZFzeMlvVsAjf7uT",
+	SwaggerBundleIntegrity:           "sha384-EYdOaiRwn44zNjrw+Tfs06qYz9BGQVo2f4/pLY5i7VorbjnZNhdplAbTBk8FXHUJ",
+	SwaggerStandalonePresetIntegrity: "sha384-49fpFaVrAWI/qdgl9Vv5E/4NXxRUiJX5vGuLws1NUpTWGtEqzWEx8gHTw2UTehFK",
+	SwaggerOptions:                   nil,
+	OpenAPIVersion:                   versionOpenAPI31,
+	DefaultProduces:                  fiber.MIMEApplicationJSON,
+	DefaultConsumes:                  fiber.MIMEApplicationJSON,
+	ErrorProduces:                    fiber.MIMETextPlainCharsetUTF8,
+	DisableGroupTags:                 false,
+	DisableHandlerSummaries:          false,
+	DisableDefaultMediaTypes:         false,
+	DisableMiddlewareInference:       false,
+	DisableValidationResponses:       false,
+	RequestIDHeader:                  fiber.HeaderXRequestID,
+	CacheHeader:                      "X-Cache",
+	CSRFHeader:                       "X-Csrf-Token",
 	RateLimitHeaders: RateLimitHeaders{
 		Limit:     "X-RateLimit-Limit",
 		Remaining: "X-RateLimit-Remaining",
@@ -388,12 +403,24 @@ func configDefault(config ...Config) Config {
 	}
 	if cfg.SwaggerCSSURL == "" {
 		cfg.SwaggerCSSURL = ConfigDefault.SwaggerCSSURL
+		// The default hash only describes the default file.
+		if cfg.SwaggerCSSIntegrity == "" {
+			cfg.SwaggerCSSIntegrity = ConfigDefault.SwaggerCSSIntegrity
+		}
 	}
 	if cfg.SwaggerBundleURL == "" {
 		cfg.SwaggerBundleURL = ConfigDefault.SwaggerBundleURL
+		// The default hash only describes the default file.
+		if cfg.SwaggerBundleIntegrity == "" {
+			cfg.SwaggerBundleIntegrity = ConfigDefault.SwaggerBundleIntegrity
+		}
 	}
 	if cfg.SwaggerStandalonePresetURL == "" {
 		cfg.SwaggerStandalonePresetURL = ConfigDefault.SwaggerStandalonePresetURL
+		// The default hash only describes the default file.
+		if cfg.SwaggerStandalonePresetIntegrity == "" {
+			cfg.SwaggerStandalonePresetIntegrity = ConfigDefault.SwaggerStandalonePresetIntegrity
+		}
 	}
 	// Detach every reference-typed field: the handler reads this config while
 	// serving, so anything left aliased races with a caller that mutates it.
