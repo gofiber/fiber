@@ -1855,8 +1855,14 @@ func (app *App) indexNamedRoutes() *namedRouteIndex {
 // safe while other goroutines register or document, and changing it never
 // changes the app.
 func (app *App) GetRoute(name string) (found Route) { //nolint:nonamedreturns // the named result is what keeps this to a single struct move
-	if snapshot := app.namedRoute(name); snapshot != nil {
-		app.copyRouteInto(&found, snapshot)
+	snapshot := app.namedRoute(name)
+	if snapshot == nil {
+		return found
+	}
+	found = *snapshot
+	found.group = nil
+	if snapshot.isDocumented() {
+		app.cloneRouteDocInto(&found, snapshot)
 	}
 	return found
 }
