@@ -1806,8 +1806,12 @@ func (app *App) nameRoutesLocked(regID uint64, name string) *Route {
 // the empty name.
 type namedRouteIndex struct {
 	routes   map[string]*Route
+	small    []*Route // the same snapshots in order when there are few, to scan instead of hash
 	revision uint64
 }
+
+// smallIndexMax is how many distinct names a scan of a slice beats hashing for.
+const smallIndexMax = 8
 
 // namedRoute returns the snapshot of the route called name, or nil. The index is
 // rebuilt under the router lock the first time it is asked for after the table
@@ -1819,6 +1823,14 @@ func (app *App) namedRoute(name string) *Route {
 	index := app.namedRoutes.Load()
 	if index == nil || index.revision != app.routesRevision.Load() {
 		index = app.indexNamedRoutes()
+	}
+	if index.small != nil {
+		for _, route := range index.small {
+			if route.Name == name {
+				return route
+			}
+		}
+		return nil
 	}
 	return index.routes[name]
 }
@@ -1845,6 +1857,12 @@ func (app *App) indexNamedRoutes() *namedRouteIndex {
 			snapshot := new(Route)
 			app.copyRouteInto(snapshot, route)
 			index.routes[route.Name] = snapshot
+		}
+	}
+	if len(index.routes) <= smallIndexMax {
+		index.small = make([]*Route, 0, len(index.routes))
+		for _, route := range index.routes {
+			index.small = append(index.small, route)
 		}
 	}
 	app.namedRoutes.Store(index)

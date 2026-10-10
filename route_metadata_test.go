@@ -1803,3 +1803,34 @@ func Test_NamedRouteIndex_ConcurrentWithRegistration(t *testing.T) {
 		require.Equal(t, "/r"+strconv.Itoa(i), app.GetRoute("r"+strconv.Itoa(i)).Path)
 	}
 }
+
+// Benchmark_Ctx_GetRouteURL measures what a handler pays to build a URL by
+// name: the lookup plus the composition, with no Route copied.
+func Benchmark_Ctx_GetRouteURL(b *testing.B) {
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck,forcetypeassert // not needed
+	app.Get("/user/:name", testHandlerOK).Name("User")
+	b.ReportAllocs()
+
+	var location string
+	var err error
+	for b.Loop() {
+		location, err = c.GetRouteURL("User", Map{"name": "fiber"})
+	}
+	require.NoError(b, err)
+	require.Equal(b, "/user/fiber", location)
+}
+
+func Test_NamedRouteIndex_SmallAndLargeTables(t *testing.T) {
+	t.Parallel()
+	for _, count := range []int{1, smallIndexMax, smallIndexMax + 1, 40} {
+		app := New()
+		for i := range count {
+			app.Get("/r"+strconv.Itoa(i), testHandlerOK).Name("n" + strconv.Itoa(i))
+		}
+		for i := range count {
+			require.Equal(t, "/r"+strconv.Itoa(i), app.namedRoute("n"+strconv.Itoa(i)).Path, "count %d", count)
+		}
+		require.Nil(t, app.namedRoute("absent"), "count %d", count)
+	}
+}
