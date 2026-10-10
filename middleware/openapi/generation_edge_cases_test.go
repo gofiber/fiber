@@ -202,7 +202,7 @@ func Test_RouteLexers_Agree(t *testing.T) {
 		}
 
 		got := 0
-		for _, variant := range buildOpenAPIPathVariants(pattern, nil) {
+		for _, variant := range buildOpenAPIPathVariants(pattern, nil, false) {
 			got = max(got, len(variant.ParamNames))
 		}
 		require.Equal(t, want, got, pattern)
@@ -246,4 +246,34 @@ func Test_OpenAPI_OperationIDFromName(t *testing.T) {
 	app.Get("/users/:id", listUsers).Name("")
 	spec := modelSpec(t, app)
 	require.Equal(t, "list_all_users", modelOperation(t, spec, "/users", "get")["operationId"])
+}
+
+func Test_OpenAPI_StrictRoutingKeepsTrailingSlash(t *testing.T) {
+	t.Parallel()
+
+	strict := fiber.New(fiber.Config{StrictRouting: true})
+	strict.Get("/a", listUsers)
+	strict.Get("/a/", listUsers)
+	paths := requireMap(t, modelSpec(t, strict)["paths"])
+	require.Contains(t, paths, "/a")
+	require.Contains(t, paths, "/a/")
+
+	loose := fiber.New()
+	loose.Get("/a/", listUsers)
+	require.Contains(t, requireMap(t, modelSpec(t, loose)["paths"]), "/a")
+}
+
+func Test_OpenAPI_DocumentLevelEmptySecurity(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Get("/x", listUsers)
+
+	spec := modelSpec(t, app, Config{Security: []map[string][]string{}})
+	require.Equal(t, []any{}, spec["security"])
+
+	// Each spec needs its own app: the first middleware registered answers.
+	plain := fiber.New()
+	plain.Get("/x", listUsers)
+	require.NotContains(t, modelSpec(t, plain), "security")
 }

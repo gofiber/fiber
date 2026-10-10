@@ -8,10 +8,10 @@ import (
 	"slices"
 )
 
-// MaxDepth bounds the copy: a cyclic value would otherwise overflow the stack.
+// maxDepth bounds the copy: a cyclic value would otherwise overflow the stack.
 // Past it a value is shared rather than copied, and encoding/json reports the
 // cycle when the document is encoded.
-const MaxDepth = 100
+const maxDepth = 100
 
 // Map copies a raw OpenAPI object. A nil map stays nil and an empty one stays
 // empty, so "properties": {} does not become null.
@@ -46,7 +46,7 @@ func mapDepth(src map[string]any, depth int) map[string]any {
 	if src == nil {
 		return nil
 	}
-	if depth >= MaxDepth {
+	if depth >= maxDepth {
 		return src
 	}
 	dst := make(map[string]any, len(src))
@@ -57,7 +57,7 @@ func mapDepth(src map[string]any, depth int) map[string]any {
 }
 
 func valueDepth(src any, depth int) any {
-	if src == nil || depth >= MaxDepth {
+	if src == nil || depth >= maxDepth {
 		return src
 	}
 	switch value := src.(type) {
@@ -82,38 +82,67 @@ func valueDepth(src any, depth int) any {
 	}
 }
 
-// reflected clones map and slice values of any other concrete type.
+// reflected clones any other value: maps, slices, arrays, pointers and the exported
+// fields of structs, recursively. Unexported struct fields are copied as they are.
 func reflected(src any, depth int) any {
-	v := reflect.ValueOf(src)
+	return copyValue(reflect.ValueOf(src), depth).Interface()
+}
+
+func copyValue(v reflect.Value, depth int) reflect.Value {
+	if !v.IsValid() || depth >= maxDepth {
+		return v
+	}
 	switch v.Kind() {
-	case reflect.Slice:
+	case reflect.Interface:
 		if v.IsNil() {
-			return src
+			return v
 		}
-		copied := reflect.MakeSlice(v.Type(), v.Len(), v.Len())
-		for i := range v.Len() {
-			// A nil element is an invalid reflect.Value; keep the zero value.
-			if elem := valueDepth(v.Index(i).Interface(), depth+1); elem != nil {
-				copied.Index(i).Set(reflect.ValueOf(elem))
-			}
+		out := reflect.New(v.Type()).Elem()
+		out.Set(copyValue(v.Elem(), depth+1))
+		return out
+	case reflect.Pointer:
+		if v.IsNil() {
+			return v
 		}
-		return copied.Interface()
+		out := reflect.New(v.Type().Elem())
+		out.Elem().Set(copyValue(v.Elem(), depth+1))
+		return out
 	case reflect.Map:
 		if v.IsNil() {
-			return src
+			return v
 		}
-		copied := reflect.MakeMapWithSize(v.Type(), v.Len())
+		out := reflect.MakeMapWithSize(v.Type(), v.Len())
 		iter := v.MapRange()
 		for iter.Next() {
-			// SetMapIndex with an invalid value deletes the key; use the zero value instead.
-			val := reflect.Zero(v.Type().Elem())
-			if elem := valueDepth(iter.Value().Interface(), depth+1); elem != nil {
-				val = reflect.ValueOf(elem)
-			}
-			copied.SetMapIndex(iter.Key(), val)
+			out.SetMapIndex(iter.Key(), copyValue(iter.Value(), depth+1))
 		}
-		return copied.Interface()
+		return out
+	case reflect.Slice:
+		if v.IsNil() {
+			return v
+		}
+		out := reflect.MakeSlice(v.Type(), v.Len(), v.Len())
+		for i := range v.Len() {
+			out.Index(i).Set(copyValue(v.Index(i), depth+1))
+		}
+		return out
+	case reflect.Array:
+		out := reflect.New(v.Type()).Elem()
+		out.Set(v)
+		for i := range v.Len() {
+			out.Index(i).Set(copyValue(v.Index(i), depth+1))
+		}
+		return out
+	case reflect.Struct:
+		out := reflect.New(v.Type()).Elem()
+		out.Set(v)
+		for i := range v.NumField() {
+			if v.Type().Field(i).IsExported() {
+				out.Field(i).Set(copyValue(v.Field(i), depth+1))
+			}
+		}
+		return out
 	default:
-		return src
+		return v
 	}
 }

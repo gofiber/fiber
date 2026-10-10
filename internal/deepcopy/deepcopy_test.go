@@ -69,3 +69,40 @@ func Test_ValueStopsAtMaxDepth(t *testing.T) {
 	cyclicList[0] = cyclicList
 	require.NotPanics(t, func() { _ = Value(cyclicList) })
 }
+
+func Test_ValueClonesStructsPointersAndArrays(t *testing.T) {
+	t.Parallel()
+
+	type inner struct{ Tags []string }
+	type model struct {
+		Meta   map[string]any
+		Ptr    *inner
+		Arr    [2]map[string]int
+		hidden map[string]int
+	}
+	src := model{
+		Meta:   map[string]any{"k": []any{"v"}},
+		Ptr:    &inner{Tags: []string{"a"}},
+		Arr:    [2]map[string]int{{"x": 1}, nil},
+		hidden: map[string]int{"h": 1},
+	}
+
+	got, ok := Value(src).(model)
+	require.True(t, ok)
+
+	src.Meta["k"].([]any)[0] = "changed" //nolint:errcheck,forcetypeassert // built just above
+	src.Ptr.Tags[0] = "changed"
+	src.Arr[0]["x"] = 99
+	require.Equal(t, []any{"v"}, got.Meta["k"])
+	require.Equal(t, []string{"a"}, got.Ptr.Tags)
+	require.Equal(t, 1, got.Arr[0]["x"])
+	require.Nil(t, got.Arr[1])
+	require.Equal(t, map[string]int{"h": 1}, got.hidden, "unexported fields are copied as they are")
+
+	var nilPtr *inner
+	require.Nil(t, Value(nilPtr))
+
+	cyclic := &struct{ Self any }{}
+	cyclic.Self = cyclic
+	require.NotPanics(t, func() { _ = Value(cyclic) })
+}

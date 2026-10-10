@@ -319,6 +319,12 @@ app.Get("/users", listUsers).
     Returns(fiber.StatusOK, []User{})
 ```
 
+A `map[string]any` passed where a schema is expected is taken as a raw schema
+object, not reflected: `Returns(201, map[string]any{"id": 1})` publishes
+`{"id": 1}` as the schema, which is not a valid one. Pass a struct, or a real
+schema map, to describe a response; use the example helpers for sample values.
+An empty schema map reads as no schema.
+
 A named struct is emitted once under `components.schemas` and referenced with
 `$ref` wherever it appears, nested structs included, so the **Schemas** panel in
 Swagger UI lists your models; an anonymous struct is inlined. `validate` tags
@@ -429,7 +435,7 @@ app.Get("/pages/:n<range(1,10)>", getPage)           // {"type": "integer", "min
 | `alpha` | `{"type": "string"}` |
 | `guid` | `{"type": "string", "format": "uuid"}` |
 | `datetime(layout)` | `{"type": "string"}`, plus `format` for the `date`, `time` and `date-time` layouts |
-| `regex(p)` | `{"type": "string", "pattern": "p"}` |
+| `regex(p)` | `{"type": "string", "pattern": "p"}`, published as written and checked by clients against one path segment |
 | `minLen(n)` / `maxLen(n)` / `len(n)` / `betweenLen(a,b)` | `{"type": "string"}` with `minLength` / `maxLength` |
 | `min(n)` / `max(n)` / `range(a,b)` | `{"type": "integer"}` with `minimum` / `maximum` |
 
@@ -737,8 +743,8 @@ route's media type.
   `Produces()` did not set one explicitly.
 - Each operation gets a unique `operationId`: routes documented with `Name` use
   that name, with anything but letters, digits, `_`, `-` and `.` replaced by `_`
-  (`list all users` → `list_all_users`) because code generators turn the id into
-  an identifier; routes without a usable name get an id generated from the method
+  (`list all users` → `list_all_users`, `2fa.verify` → `op_2fa.verify`) because code
+  generators turn the id into an identifier; routes without a usable name get an id generated from the method
   and path (for example `GET /users/{id}` → `getUsersId`). Collisions get a
   numeric suffix (`_2`, `_3`, …) so the document stays valid. Renaming a route
   changes its id.
@@ -749,6 +755,11 @@ route's media type.
   `AddParameter` (`In: "path"`) to give it a description or a schema. Since `*`
   also matches no segment, the bare path (`/files`) is documented as well, as for
   an optional parameter; `+` requires a segment and gets no such variant.
+- A trailing slash is dropped from a path (`/a/` is published as `/a`), except under
+  `StrictRouting`, where `/a` and `/a/` are different routes and both are published.
+- A literal `{` or `}` in a route is published percent-encoded (`%7B`, `%7D`), because
+  OpenAPI reads braces as template expressions. Fiber matches such a route only with
+  `UnescapePath` enabled, where both forms reach it.
 - Routes with several optional parameters (e.g. `/files/:dir?/:name?`) emit one
   templated path per hierarchy level (`/files`, `/files/{dir}`,
   `/files/{dir}/{name}`): the router always binds the first parameter, and the
@@ -788,7 +799,9 @@ route's media type.
   URL such as `//api.example.com`, with each `:param` label as a server variable
   defaulting to its name). OpenAPI allows one operation per path and method, so
   when two domains share both, the document describes the first-registered one
-  and labels it with its host.
+  and labels it with its host. The server URL has no scheme, so it resolves
+  against how the document was fetched, and an operation-level server replaces
+  the document-level `ServerURL`, base path included.
 - The specification always describes the whole application the middleware runs
   in. When the middleware is registered inside a mounted sub-app, the routes are
   expanded into the parent application at startup, so the generated document
@@ -820,7 +833,7 @@ route's media type.
 | OpenAPIVersion | `string`                | OpenAPI specification version to generate (`"3.0.0"`, `"3.1.0"` or `"3.2.0"`) | `"3.1.0"`     |
 | Components     | `map[string]any`        | Reusable OpenAPI component definitions (schemas, responses, etc.) emitted under `"components"`. | `nil` |
 | SecuritySchemes | `map[string]any`       | Reusable security scheme definitions, emitted under `"components.securitySchemes"`. | `nil` |
-| Security       | `[]map[string][]string` | Document-level (default) security requirements; each map is a requirement (OR semantics across entries). | `nil` |
+| Security       | `[]map[string][]string` | Document-level (default) security requirements; each map is a requirement (OR semantics across entries). An empty non-nil list is written as `security: []`, stating the API needs no authentication. | `nil` |
 | Contact        | `*Contact`              | Contact information for the API (`info.contact`).               | `nil` |
 | License        | `*License`              | License information for the API (`info.license`).               | `nil` |
 | TermsOfService | `string`                | Terms of Service URL (`info.termsOfService`).                   | `""` |

@@ -64,7 +64,7 @@ func New(config ...Config) fiber.Handler {
 		if cache.specData == nil || cache.specRev != rev {
 			// GetRoutes copies under the router lock, so generation never races registration.
 			appCfg := app.Config()
-			spec := generateSpec(app.GetRoutes(false), &cfg, specEnv{validator: appCfg.StructValidator, equal: segmentEqualFor(&appCfg)})
+			spec := generateSpec(app.GetRoutes(false), &cfg, specEnv{validator: appCfg.StructValidator, equal: segmentEqualFor(&appCfg), strict: appCfg.StrictRouting})
 			data, err := appCfg.JSONEncoder(spec)
 			if err != nil {
 				return nil, fmt.Errorf("openapi: marshal spec: %w", err)

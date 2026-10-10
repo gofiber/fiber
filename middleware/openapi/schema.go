@@ -15,6 +15,24 @@ import (
 	utilsstrings "github.com/gofiber/utils/v2/strings"
 )
 
+// maxPointerDepth stops a self-referential pointer type from looping forever.
+const maxPointerDepth = 32
+
+const (
+	formatEmail    = "email"
+	formatUUID     = "uuid"
+	formatURI      = "uri"
+	formatIPv4     = "ipv4"
+	formatIPv6     = "ipv6"
+	formatHostname = "hostname"
+	formatByte     = "byte"
+)
+
+const (
+	lowerBound boundSide = iota
+	upperBound
+)
+
 var (
 	timeType          = reflect.TypeFor[time.Time]()
 	jsonNumberType    = reflect.TypeFor[json.Number]()
@@ -51,24 +69,6 @@ var boundKeywords = map[string][2]string{
 	schemaTypeInteger: {"minimum", "maximum"},
 	schemaTypeNumber:  {"minimum", "maximum"},
 }
-
-// maxPointerDepth stops a self-referential pointer type from looping forever.
-const maxPointerDepth = 32
-
-const (
-	formatEmail    = "email"
-	formatUUID     = "uuid"
-	formatURI      = "uri"
-	formatIPv4     = "ipv4"
-	formatIPv6     = "ipv6"
-	formatHostname = "hostname"
-	formatByte     = "byte"
-)
-
-const (
-	lowerBound boundSide = iota
-	upperBound
-)
 
 // SchemaOf generates an OpenAPI JSON Schema from a Go value by reflection.
 // Embedded structs are flattened as encoding/json does, and fields with no

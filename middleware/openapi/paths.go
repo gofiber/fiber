@@ -87,7 +87,7 @@ func (s pathState) clone() pathState {
 	}
 }
 
-func buildOpenAPIPathVariants(fiberPath string, params []string) []pathVariant {
+func buildOpenAPIPathVariants(fiberPath string, params []string, strict bool) []pathVariant {
 	var (
 		length   = len(fiberPath)
 		variants []pathVariant
@@ -190,7 +190,9 @@ func buildOpenAPIPathVariants(fiberPath string, params []string) []pathVariant {
 	unique := make([]pathVariant, 0, len(variants))
 	for _, variant := range variants {
 		path := variant.Path
-		if path != "" {
+		// A path of only slashes is the root. Under StrictRouting one trailing slash is part of the route.
+		keepSlash := strict && len(path) > 1 && strings.HasSuffix(path, "/") && !strings.HasSuffix(path, "//")
+		if path != "" && !keepSlash {
 			if path = utils.TrimRight(path, '/'); path == "" {
 				path = "/"
 			}

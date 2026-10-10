@@ -12,6 +12,21 @@ import (
 	utilsstrings "github.com/gofiber/utils/v2/strings"
 )
 
+const (
+	// querystringMediaType wraps a querystring parameter's schema when no content map is given.
+	querystringMediaType = "application/x-www-form-urlencoded"
+
+	schemaKeyType     = "type"
+	schemaKeyRef      = "$ref"
+	schemaTypeArray   = "array"
+	schemaKeyFormat   = "format"
+	schemaTypeString  = "string"
+	schemaTypeObject  = "object"
+	schemaTypeBoolean = "boolean"
+	schemaTypeInteger = "integer"
+	schemaTypeNumber  = "number"
+)
+
 // openAPIOperationMethods is the set of methods a Path Item can express. CONNECT
 // has no OpenAPI operation; `query` is 3.2-only and gated by the caller.
 var openAPIOperationMethods = map[string]struct{}{
@@ -32,21 +47,6 @@ var openAPIVersionRank = map[string]int{
 	versionOpenAPI32: 2,
 }
 
-const (
-	// querystringMediaType wraps a querystring parameter's schema when no content map is given.
-	querystringMediaType = "application/x-www-form-urlencoded"
-
-	schemaKeyType     = "type"
-	schemaKeyRef      = "$ref"
-	schemaTypeArray   = "array"
-	schemaKeyFormat   = "format"
-	schemaTypeString  = "string"
-	schemaTypeObject  = "object"
-	schemaTypeBoolean = "boolean"
-	schemaTypeInteger = "integer"
-	schemaTypeNumber  = "number"
-)
-
 type openAPISpec struct {
 	Paths             map[string]map[string]operation `json:"paths"`
 	Components        map[string]any                  `json:"components,omitempty"`
@@ -57,7 +57,7 @@ type openAPISpec struct {
 	Self              string                          `json:"$self,omitempty"`
 	JSONSchemaDialect string                          `json:"jsonSchemaDialect,omitempty"` //nolint:tagliatelle // OpenAPI spec uses camelCase
 	Servers           []Server                        `json:"servers,omitempty"`
-	Security          []map[string][]string           `json:"security,omitempty"`
+	Security          *[]map[string][]string          `json:"security,omitempty"`
 	Tags              []Tag                           `json:"tags,omitempty"`
 }
 
@@ -213,8 +213,9 @@ func generateOperationID(method, path string) string {
 }
 
 // operationIDFromName makes a route name safe to publish as an operationId, which code
-// generators turn into an identifier: letters, digits, "_", "-" and "." are kept and
-// any other run of characters becomes a single "_". A name with none left yields "".
+// generators turn into an identifier: letters, digits, "_", "-" and "." are kept,
+// any other run of characters becomes a single "_", and a leading digit gets an "op_" prefix.
+// A name with nothing usable yields "".
 func operationIDFromName(name string) string {
 	var b strings.Builder
 	pending := false
@@ -234,7 +235,12 @@ func operationIDFromName(name string) string {
 			pending = true
 		}
 	}
-	return b.String()
+	id := b.String()
+	// An identifier cannot start with a digit.
+	if id != "" && id[0] >= '0' && id[0] <= '9' {
+		return "op_" + id
+	}
+	return id
 }
 
 // uniqueOperationID returns id with a numeric suffix until it is unique.
@@ -261,6 +267,8 @@ type specEnv struct {
 	validator fiber.StructValidator
 	// equal compares route text the way the app's router does.
 	equal segmentEqual
+	// strict keeps a trailing slash, as StrictRouting makes "/a" and "/a/" different routes.
+	strict bool
 }
 
 // routeFacts is a route's metadata with inferences filled in, before its path is expanded.
@@ -277,7 +285,6 @@ type routeFacts struct {
 
 type specBuilder struct {
 	cfg     *Config
-	env     specEnv
 	reg     *schemaRegistry
 	schemes *securitySchemes
 	paths   map[string]map[string]operation
@@ -285,6 +292,7 @@ type specBuilder struct {
 	usedOperationIDs map[string]struct{}
 	// hierarchyPaths maps a name-blanked template to its published path; OpenAPI forbids paths differing only in parameter names.
 	hierarchyPaths map[string]canonicalPathItem
+	env            specEnv
 	// validates is set when a validator can reject what a route binds, making 400 documentable.
 	validates bool
 }
@@ -328,7 +336,7 @@ func (b *specBuilder) addRoutes(routes []fiber.Route) {
 			continue
 		}
 		facts := b.inferRoute(r, covering)
-		for _, variant := range buildOpenAPIPathVariants(r.Path, r.Params) {
+		for _, variant := range buildOpenAPIPathVariants(r.Path, r.Params, b.env.strict) {
 			b.addVariant(r, &facts, &variant)
 		}
 	}
@@ -538,8 +546,10 @@ func (b *specBuilder) document() openAPISpec {
 
 	spec.Servers = buildServers(cfg)
 
-	if len(cfg.Security) > 0 {
-		spec.Security = cfg.Security
+	// An empty list is kept: it states the API as a whole needs no authentication.
+	if cfg.Security != nil {
+		security := cfg.Security
+		spec.Security = &security
 	}
 
 	if len(cfg.Tags) > 0 {

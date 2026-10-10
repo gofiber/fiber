@@ -1861,3 +1861,18 @@ func Test_NamedRouteIndex_SmallScanKeepsRegistrationOrder(t *testing.T) {
 	index := app.namedRoutes.Load()
 	require.Equal(t, []string{"dup", "other"}, []string{index.small[0].Name, index.small[1].Name})
 }
+
+func Test_CopySchema_ClonesNamedMapsAndSlices(t *testing.T) {
+	t.Parallel()
+
+	type rawSchema map[string]any
+	named := rawSchema{"type": "object", "properties": map[string]any{"a": "x"}}
+	copied, ok := copySchema(named).(rawSchema)
+	require.True(t, ok)
+	named["properties"].(map[string]any)["a"] = "changed"             //nolint:errcheck,forcetypeassert // built just above
+	require.Equal(t, "x", copied["properties"].(map[string]any)["a"]) //nolint:errcheck,forcetypeassert // built just above
+
+	require.Nil(t, copySchema(map[string]any{}), "an empty schema map reads as no schema")
+	type model struct{ Name string }
+	require.Equal(t, model{Name: "n"}, copySchema(model{Name: "n"}))
+}

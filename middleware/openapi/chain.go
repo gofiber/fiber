@@ -11,6 +11,22 @@ import (
 	"github.com/gofiber/utils/v2"
 )
 
+const (
+	securitySchemeBearer = "bearerAuth"
+	securitySchemeBasic  = "basicAuth"
+)
+
+const (
+	kindKeyAuth middlewareKind = iota
+	kindBasicAuth
+	kindJWT
+	kindCSRF
+	kindRequestID
+	kindLimiter
+	kindETag
+	kindCache
+)
+
 const authMiddleware middlewareSet = 1<<kindKeyAuth | 1<<kindBasicAuth | 1<<kindJWT
 
 // fiberMiddlewareDirs lists the Fiber middleware directories the document can describe.
@@ -50,23 +66,7 @@ var fiberRoot = sync.OnceValue(func() string {
 	return file[:max(strings.LastIndexByte(file, '/'), 0)]
 })
 
-const (
-	securitySchemeBearer = "bearerAuth"
-	securitySchemeBasic  = "basicAuth"
-)
-
 type middlewareKind uint8
-
-const (
-	kindKeyAuth middlewareKind = iota
-	kindBasicAuth
-	kindJWT
-	kindCSRF
-	kindRequestID
-	kindLimiter
-	kindETag
-	kindCache
-)
 
 type middlewareSet uint16
 

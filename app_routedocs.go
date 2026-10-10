@@ -6,6 +6,7 @@ import (
 	"reflect"
 	"strings"
 
+	"github.com/gofiber/fiber/v3/internal/deepcopy"
 	"github.com/gofiber/utils/v2"
 	utilsstrings "github.com/gofiber/utils/v2/strings"
 )
@@ -89,7 +90,8 @@ func hasSchema(schema any) bool {
 	}
 }
 
-// copySchema detaches a schema map from its caller; Go model values are kept as is since only their type is read.
+// copySchema detaches a schema from its caller. An empty map reads as no schema, and a Go model
+// struct is kept as it is because only its type is read; any other map or slice is cloned.
 func copySchema(schema any) any {
 	if value, ok := schema.(map[string]any); ok {
 		if len(value) == 0 {
@@ -97,7 +99,12 @@ func copySchema(schema any) any {
 		}
 		return copyAnyMap(value)
 	}
-	return schema
+	switch reflect.ValueOf(schema).Kind() {
+	case reflect.Map, reflect.Slice:
+		return deepcopy.Value(schema)
+	default:
+		return schema
+	}
 }
 
 func docRequestBodyWithExample(description string, required bool, schema any, schemaRef string, example any, examples map[string]any, mediaTypes ...string) func(route *Route) {
@@ -146,12 +153,12 @@ func (app *App) ParameterWithExample(name, in string, required bool, schema any,
 //nolint:gocritic // hugeParam: by-value keeps the chainable route-helper API ergonomic.
 func docAddParameter(param RouteParameter) func(route *Route) {
 	if utils.TrimSpace(param.Name) == "" {
-		panic("parameter name is required")
+		panic("AddParameter: parameter name is required")
 	}
 
 	location := normalizeParamLocation(param.In)
 	if !validParamLocation(location, true) {
-		panic("invalid parameter location: " + param.In)
+		panic("AddParameter: invalid parameter location: " + param.In)
 	}
 	param.In = location
 
@@ -160,7 +167,7 @@ func docAddParameter(param RouteParameter) func(route *Route) {
 	case len(param.Content) > 0:
 		// A Parameter Object has a schema or exactly one content entry, never both.
 		if len(param.Content) > 1 {
-			panic("parameter content must contain exactly one media type: " + param.Name)
+			panic("AddParameter: parameter content must contain exactly one media type: " + param.Name)
 		}
 		param.Content = sanitizeContentMediaTypes(param.Content)
 		param.Schema = nil
@@ -228,7 +235,7 @@ func responseKey(status int) string {
 		return defaultResponseKey
 	}
 	if status < 100 || status > 599 {
-		panic("invalid status code")
+		panic("invalid status code: " + utils.FormatInt(int64(status)))
 	}
 	return utils.FormatInt(int64(status))
 }
@@ -378,7 +385,7 @@ func (app *App) Hidden() Router {
 
 func docResponseHeader(status int, name, description string, schema any) func(route *Route) {
 	if utils.TrimSpace(name) == "" {
-		panic("response header name is required")
+		panic("ResponseHeader: header name is required")
 	}
 
 	header := map[string]any{}
@@ -474,7 +481,7 @@ func docResponseContent(status int, description string, content map[string]Route
 
 func docResponseLink(status int, name string, link map[string]any) func(route *Route) {
 	if utils.TrimSpace(name) == "" {
-		panic("response link name is required")
+		panic("ResponseLink: link name is required")
 	}
 	return docSetResponseEntry(status, name, link, func(resp *RouteResponse) *map[string]any { return &resp.Links })
 }
@@ -567,14 +574,14 @@ func validParamLocation(location string, querystring bool) bool {
 func docAddParameterModel(in string, model any) func(route *Route) {
 	location := normalizeParamLocation(in)
 	if !validParamLocation(location, false) {
-		panic("invalid parameter location: " + in)
+		panic("Params: invalid parameter location: " + in)
 	}
 	t := reflect.TypeOf(model)
 	for t != nil && t.Kind() == reflect.Pointer {
 		t = t.Elem()
 	}
 	if t == nil || t.Kind() != reflect.Struct {
-		panic("parameter model must be a struct: " + fmt.Sprint(model))
+		panic(fmt.Sprintf("Params: parameter model must be a struct, got %T", model))
 	}
 	return func(route *Route) {
 		route.ParameterModels = append(route.ParameterModels, RouteParameterModel{In: location, Model: model})

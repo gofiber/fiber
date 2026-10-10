@@ -1211,7 +1211,7 @@ func Test_ConvertToOpenAPIPath(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			variants := buildOpenAPIPathVariants(tt.fiberPath, tt.params)
+			variants := buildOpenAPIPathVariants(tt.fiberPath, tt.params, false)
 			require.NotEmpty(t, variants)
 			require.Equal(t, tt.expectPath, variants[0].Path)
 		})
@@ -1223,7 +1223,7 @@ func Test_BuildOpenAPIPathVariants(t *testing.T) {
 
 	t.Run("optional parameter emits both variants", func(t *testing.T) {
 		t.Parallel()
-		variants := buildOpenAPIPathVariants("/items/:id?", []string{"id"})
+		variants := buildOpenAPIPathVariants("/items/:id?", []string{"id"}, false)
 		require.Len(t, variants, 2)
 		require.Equal(t, "/items/{id}", variants[0].Path)
 		require.Equal(t, []string{"id"}, variants[0].ParamNames)
@@ -1233,7 +1233,7 @@ func Test_BuildOpenAPIPathVariants(t *testing.T) {
 
 	t.Run("wildcard uses openapi-compatible parameter name", func(t *testing.T) {
 		t.Parallel()
-		variants := buildOpenAPIPathVariants("/files/*", []string{"*1"})
+		variants := buildOpenAPIPathVariants("/files/*", []string{"*1"}, false)
 		require.Len(t, variants, 2)
 		require.Equal(t, "/files/{wildcard1}", variants[0].Path)
 		require.Equal(t, []string{"wildcard1"}, variants[0].ParamNames)
@@ -1244,7 +1244,7 @@ func Test_BuildOpenAPIPathVariants(t *testing.T) {
 
 	t.Run("plus wildcard needs a segment", func(t *testing.T) {
 		t.Parallel()
-		variants := buildOpenAPIPathVariants("/files/+", []string{"+1"})
+		variants := buildOpenAPIPathVariants("/files/+", []string{"+1"}, false)
 		require.Len(t, variants, 1)
 		require.Equal(t, "/files/{wildcard1}", variants[0].Path)
 	})
@@ -2280,7 +2280,7 @@ func Test_OpenAPI_OptionalVariantDoesNotOverwrite(t *testing.T) {
 func Test_OpenAPI_EscapedRoutePath(t *testing.T) {
 	t.Parallel()
 
-	variants := buildOpenAPIPathVariants(`/foo\:bar`, nil)
+	variants := buildOpenAPIPathVariants(`/foo\:bar`, nil, false)
 	require.Len(t, variants, 1)
 	require.Equal(t, "/foo:bar", variants[0].Path)
 	require.Empty(t, variants[0].ParamNames)
@@ -2399,7 +2399,7 @@ func Test_OpenAPI_ExactRouteUnderParameterizedMount(t *testing.T) {
 func Test_OpenAPI_DuplicateSanitizedParamNames(t *testing.T) {
 	t.Parallel()
 
-	variants := buildOpenAPIPathVariants("/x/:na_ve/:naïve", nil)
+	variants := buildOpenAPIPathVariants("/x/:na_ve/:naïve", nil, false)
 	require.Len(t, variants, 1)
 	require.Equal(t, "/x/{na_ve}/{na_ve_2}", variants[0].Path)
 	require.Equal(t, []string{"na_ve", "na_ve_2"}, variants[0].ParamNames)
@@ -3386,16 +3386,16 @@ func Test_resolveParamNames(t *testing.T) {
 func Test_buildOpenAPIPathVariants_Edge(t *testing.T) {
 	t.Parallel()
 
-	variants := buildOpenAPIPathVariants("", nil)
+	variants := buildOpenAPIPathVariants("", nil, false)
 	require.Len(t, variants, 1)
 	require.Equal(t, "/", variants[0].Path)
 
-	variants = buildOpenAPIPathVariants("/:id<range(1<2)>", nil)
+	variants = buildOpenAPIPathVariants("/:id<range(1<2)>", nil, false)
 	require.Equal(t, "/{id}", variants[0].Path)
 
-	require.Equal(t, "/{id}", buildOpenAPIPathVariants("/:id", nil)[0].Path)
+	require.Equal(t, "/{id}", buildOpenAPIPathVariants("/:id", nil, false)[0].Path)
 
-	dup := buildOpenAPIPathVariants("/:a?/:a?", nil)
+	dup := buildOpenAPIPathVariants("/:a?/:a?", nil, false)
 	seen := map[string]struct{}{}
 	for _, v := range dup {
 		key := v.Path + "|" + strings.Join(v.ParamNames, ",")

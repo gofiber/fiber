@@ -190,7 +190,7 @@ type Config struct {
 	// Tags lists top-level tag definitions (with descriptions) used by operations. Optional. Default: nil
 	Tags []Tag
 
-	// Security lists document-level requirements, combined with OR semantics. Optional. Default: nil
+	// Security lists document-level requirements, combined with OR semantics; an empty non-nil list is written as `security: []`. Optional. Default: nil
 	Security []map[string][]string
 
 	// Servers lists the servers hosting the API; it takes precedence over ServerURL. Optional. Default: nil
