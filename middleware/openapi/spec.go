@@ -93,6 +93,8 @@ type operation struct {
 
 	Parameters []parameter `json:"parameters,omitempty"`
 	Tags       []string    `json:"tags,omitempty"`
+	// Servers narrows an operation registered under app.Domain to its host.
+	Servers []Server `json:"servers,omitempty"`
 
 	Deprecated bool `json:"deprecated,omitempty"`
 }
@@ -505,8 +507,37 @@ func (b *specBuilder) buildOperation(r *fiber.Route, facts *routeFacts, variant 
 		Responses:    responses,
 		Security:     facts.security,
 		ExternalDocs: r.ExternalDocs,
+		Servers:      domainServers(r.Domain()),
 		extensions:   r.OperationExtensions,
 	}
+}
+
+// domainServers describes the host a route registered through app.Domain
+// answers on, as an operation-level server, or nil for a route that answers on
+// every host. The URL is scheme-relative, so it resolves against how the
+// document was fetched, and each ":param" label becomes a server variable
+// whose default is the parameter's name, as the pattern holds no sample host.
+// OpenAPI allows one operation per path and method, so routes that share both
+// across hosts still collapse to the first registered; that operation is at
+// least labeled with the host it describes.
+func domainServers(pattern string) []Server {
+	if pattern == "" {
+		return nil
+	}
+	labels := strings.Split(pattern, ".")
+	var variables map[string]ServerVariable
+	for i, label := range labels {
+		name, isParam := strings.CutPrefix(label, ":")
+		if !isParam {
+			continue
+		}
+		if variables == nil {
+			variables = make(map[string]ServerVariable)
+		}
+		variables[name] = ServerVariable{Default: name}
+		labels[i] = "{" + name + "}"
+	}
+	return []Server{{URL: "//" + strings.Join(labels, "."), Variables: variables}}
 }
 
 // document assembles the document around the collected paths.

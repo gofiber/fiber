@@ -775,9 +775,12 @@ route's media type.
 - Registering the same method and path twice in a row merges the handlers into
   one route entry; its documentation (including `Name`) belongs to the latest
   registration. Routes registered on different domains never merge — each
-  keeps its own handlers and documentation, and when two domains share a path
-  the generated document (which has no host dimension) describes the
-  first-registered one.
+  keeps its own handlers and documentation. An operation on a domain route
+  carries an operation-level `servers` entry naming its host (a scheme-relative
+  URL such as `//api.example.com`, with each `:param` label as a server variable
+  defaulting to its name). OpenAPI allows one operation per path and method, so
+  when two domains share both, the document describes the first-registered one
+  and labels it with its host.
 - The specification always describes the whole application the middleware runs
   in. When the middleware is registered inside a mounted sub-app, the routes are
   expanded into the parent application at startup, so the generated document

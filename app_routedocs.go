@@ -81,6 +81,8 @@ func (app *App) Produces(typ string) Router {
 }
 
 // RequestBody documents the request payload for the most recently added route.
+// It is the short form of RequestBodyWithExample; use RequestBodyContent when the
+// schema or example differs per media type.
 func (app *App) RequestBody(description string, required bool, mediaTypes ...string) Router {
 	return app.RequestBodyWithExample(description, required, nil, "", nil, nil, mediaTypes...)
 }
@@ -139,18 +141,21 @@ func docRequestBodyWithExample(description string, required bool, schema any, sc
 	}
 }
 
-// RequestBodyWithExample documents the request payload with schema references and examples.
+// RequestBodyWithExample documents the request payload with schema references
+// and examples, one schema for every media type given.
 func (app *App) RequestBodyWithExample(description string, required bool, schema any, schemaRef string, example any, examples map[string]any, mediaTypes ...string) Router {
 	app.applyToLatest(docRequestBodyWithExample(description, required, schema, schemaRef, example, examples, mediaTypes...))
 	return app
 }
 
-// Parameter documents an input parameter for the most recently added route.
+// Parameter documents an input parameter for the most recently added route. It
+// is the short form of AddParameter, and in is one of the ParamIn constants.
 func (app *App) Parameter(name, in string, required bool, schema any, description string) Router {
 	return app.ParameterWithExample(name, in, required, schema, "", description, nil, nil)
 }
 
-// ParameterWithExample documents an input parameter, including schema references and examples.
+// ParameterWithExample documents an input parameter, including schema
+// references and examples. It is the short form of AddParameter.
 func (app *App) ParameterWithExample(name, in string, required bool, schema any, schemaRef, description string, example any, examples map[string]any) Router {
 	return app.AddParameter(newRouteParameter(name, in, required, schema, schemaRef, description, example, examples))
 }
@@ -165,7 +170,7 @@ func docAddParameter(param RouteParameter) func(route *Route) {
 	switch location {
 	// "querystring" is an OpenAPI 3.2 location that treats the whole query
 	// string as a single value (paired with content rather than schema).
-	case paramInPath, paramInQuery, paramInHeader, paramInCookie, paramInQuerystring:
+	case ParamInPath, ParamInQuery, ParamInHeader, ParamInCookie, ParamInQuerystring:
 	default:
 		panic("invalid parameter location: " + param.In)
 	}
@@ -186,14 +191,14 @@ func docAddParameter(param RouteParameter) func(route *Route) {
 		param.SchemaRef = ""
 	case param.SchemaRef != "":
 		param.Schema = map[string]any{openapiRefKey: param.SchemaRef}
-	case location == paramInQuerystring:
+	case location == ParamInQuerystring:
 		// 3.2 querystring parameters use content, so no default schema is
 		// injected; the middleware wraps whatever was supplied.
 	default:
 		injectType = true
 	}
 
-	if location == paramInPath {
+	if location == ParamInPath {
 		param.Required = true
 	}
 
@@ -236,12 +241,15 @@ func (app *App) AddParameter(param RouteParameter) Router {
 	return app
 }
 
-// Response documents an HTTP response for the most recently added route.
+// Response documents an HTTP response for the most recently added route. It is
+// the short form of ResponseWithExample; use ResponseContent when the schema or
+// example differs per media type.
 func (app *App) Response(status int, description string, mediaTypes ...string) Router {
 	return app.addResponse(status, description, nil, "", nil, nil, mediaTypes...)
 }
 
-// ResponseWithExample documents an HTTP response with schema references and examples.
+// ResponseWithExample documents an HTTP response with schema references and
+// examples, one schema for every media type given.
 func (app *App) ResponseWithExample(status int, description string, schema any, schemaRef string, example any, examples map[string]any, mediaTypes ...string) Router {
 	return app.addResponse(status, description, schema, schemaRef, example, examples, mediaTypes...)
 }
@@ -614,7 +622,7 @@ func (app *App) Params(in string, model any) Router {
 func docAddParameterModel(in string, model any) func(route *Route) {
 	location := normalizeParamLocation(in)
 	switch location {
-	case paramInQuery, paramInHeader, paramInCookie, paramInPath:
+	case ParamInQuery, ParamInHeader, ParamInCookie, ParamInPath:
 	default:
 		panic("invalid parameter location: " + in)
 	}

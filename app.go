@@ -39,15 +39,20 @@ const Version = "3.5.0"
 
 // OpenAPI schema literals reused by the route documentation helpers below.
 const (
-	openapiRefKey = "$ref"
-	// The parameter locations the documentation helpers accept. "path" has no
-	// bind source of its own, as the router fills it from the path pattern.
-	paramInPath        = "path"
-	paramInQuery       = "query"
-	paramInHeader      = "header"
-	paramInCookie      = "cookie"
-	paramInQuerystring = "querystring"
-	openapiTypeString  = "string"
+	openapiRefKey     = "$ref"
+	openapiTypeString = "string"
+)
+
+// The parameter locations the documentation helpers accept for their "in"
+// argument. "path" has no bind source of its own, as the router fills it from
+// the path pattern, and "querystring" describes the whole query string as one
+// value (OpenAPI 3.2).
+const (
+	ParamInPath        = "path"
+	ParamInQuery       = "query"
+	ParamInHeader      = "header"
+	ParamInCookie      = "cookie"
+	ParamInQuerystring = "querystring"
 )
 
 // defaultResponseKey is the OpenAPI key used for the "default" response entry.

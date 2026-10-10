@@ -10,17 +10,6 @@ import (
 	"github.com/gofiber/utils/v2"
 )
 
-const (
-	// segmentLiteral matches exactly one path segment, with no parameter in it.
-	segmentLiteral segmentKind = iota
-	// segmentParam is a mixed or whole-segment parameter: one path segment.
-	segmentParam
-	// segmentOptional matches zero or one segment.
-	segmentOptional
-	// segmentGreedy ("*" or "+") matches any number of segments.
-	segmentGreedy
-)
-
 // segmentEqual reports whether two route segments are equal under the app's
 // routing rules: it is case-insensitive unless the app is case-sensitive.
 type segmentEqual = func(a, b string) bool
@@ -265,81 +254,6 @@ func normalizedPath(cfgPath string) string {
 		return "/" + cfgPath
 	}
 	return cfgPath
-}
-
-// routeTokens returns a segment's routing-relevant characters, dropping escapes
-// and <constraint> spans so neither is mistaken for a routing token.
-//
-// TODO: replace this re-lexing with the router's parsed segments once exposed.
-func routeTokens(seg string) string {
-	var b strings.Builder
-	inConstraint := false
-	for i := 0; i < len(seg); i++ {
-		switch ch := seg[i]; {
-		case ch == '\\':
-			i++ // the escaped character is a literal
-		case inConstraint:
-			if ch == '>' {
-				inConstraint = false
-			}
-		case ch == '<':
-			inConstraint = true
-		default:
-			_ = b.WriteByte(ch) //nolint:errcheck // strings.Builder.WriteByte never returns an error
-		}
-	}
-	return b.String()
-}
-
-// resolveDynamicMountPrefix picks the mount prefix when the pattern has optional
-// or greedy segments. Every split the segment bounds allow is tried, shortest
-// first, and the one whose remainder is a target wins.
-func resolveDynamicMountPrefix(pattern, requestPath, specPath, uiPath string, equal segmentEqual) (string, bool) {
-	minSegments, maxSegments, dynamic := prefixSegmentBounds(pattern)
-	if !dynamic {
-		// A static mount is its own prefix, and its escaped form still needs
-		// unescaping, which routePrefix handles.
-		return "", false
-	}
-
-	if maxSegments < 0 || maxSegments > countPathSegments(requestPath) {
-		// A greedy segment is unbounded; no split can consume more segments
-		// than the request has.
-		maxSegments = countPathSegments(requestPath)
-	}
-
-	for n := minSegments; n <= maxSegments; n++ {
-		candidate, ok := pathPrefixSegments(requestPath, n)
-		if !ok {
-			break
-		}
-		if specPath != "" && equal(candidate+specPath, requestPath) {
-			return candidate, true
-		}
-		if uiPath != "" && equal(candidate+uiPath, requestPath) {
-			return candidate, true
-		}
-	}
-	return "", false
-}
-
-// segmentKind classifies a route pattern segment by its routing tokens only,
-// so a constraint or an escaped character never reads as a parameter.
-type segmentKind uint8
-
-// classifySegment returns the kind of a pattern segment and its routing tokens.
-func classifySegment(segment string) (segmentKind, string) { //nolint:gocritic // unnamedResult: named returns conflict with nonamedreturns linter
-	tokens := routeTokens(segment)
-	switch {
-	case strings.ContainsAny(tokens, "*+"):
-		return segmentGreedy, tokens
-	case strings.HasSuffix(tokens, "?"):
-		return segmentOptional, tokens
-	case strings.Contains(tokens, ":"):
-		return segmentParam, tokens
-	default:
-		return segmentLiteral, tokens
-	}
 }
 
 // prefixSegmentBounds reports how many leading segments the mount can consume and

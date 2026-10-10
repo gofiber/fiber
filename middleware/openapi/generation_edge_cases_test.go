@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/gofiber/fiber/v3"
@@ -145,4 +146,68 @@ func Test_OpenAPI_GenerationEdgeCases(t *testing.T) {
 		require.Contains(t, ops["head"].Responses, "200")
 		require.NotContains(t, ops["head"].Responses, "204")
 	})
+}
+
+func Test_OpenAPI_DomainRoutesCarryTheirHost(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Domain("api.example.com").Get("/pets", listUsers)
+	app.Domain(":tenant.example.com").Get("/orgs", listUsers)
+	app.Get("/open", listUsers)
+	spec := modelSpec(t, app)
+
+	servers := func(path string) []any {
+		op := modelOperation(t, spec, path, "get")
+		list, _ := op["servers"].([]any) //nolint:errcheck // absent means none
+		return list
+	}
+
+	pets := servers("/pets")
+	require.Len(t, pets, 1)
+	require.Equal(t, "//api.example.com", requireMap(t, pets[0])["url"])
+	require.NotContains(t, requireMap(t, pets[0]), "variables")
+
+	orgs := servers("/orgs")
+	require.Len(t, orgs, 1)
+	org := requireMap(t, orgs[0])
+	require.Equal(t, "//{tenant}.example.com", org["url"])
+	require.Equal(t, "tenant", requireMap(t, requireMap(t, org["variables"])["tenant"])["default"])
+
+	require.Empty(t, servers("/open"))
+}
+
+func Test_RouteLexers_Agree(t *testing.T) {
+	t.Parallel()
+
+	// segments.go and paths.go read the route grammar separately; the number of
+	// parameters one finds must be the number the other emits, whatever the
+	// pattern escapes, constrains or makes optional.
+	for _, pattern := range []string{
+		"/users",
+		"/users/:id",
+		"/users/:id<int>/posts/:post?",
+		"/files/*",
+		"/files/+",
+		"/a/:x-:y/b",
+		`/lit\:eral/:id`,
+		`/esc\*aped/*`,
+		"/:lang<regex(en|de)>?/docs",
+		"/:a?/:b?/:c",
+		"/v:ver/api",
+		"/p/:id<range(1,10)>",
+	} {
+		want := 0
+		for seg := range strings.SplitSeq(strings.TrimPrefix(pattern, "/"), "/") {
+			_, tokens := classifySegment(seg)
+			want += strings.Count(tokens, ":") + strings.Count(tokens, "*") + strings.Count(tokens, "+")
+		}
+
+		// The fully-populated variant is the one with the most parameters.
+		got := 0
+		for _, variant := range buildOpenAPIPathVariants(pattern, nil) {
+			got = max(got, len(variant.ParamNames))
+		}
+		require.Equal(t, want, got, pattern)
+	}
 }

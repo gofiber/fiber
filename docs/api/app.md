@@ -662,9 +662,9 @@ A route can describe itself for tools that read the route table, such as the [Op
 |:-------|:----------|
 | `Summary`, `Description`, `Tags`, `Deprecated`, `Hidden` | The operation's text, grouping, deprecation, and exclusion from generated documents |
 | `Consumes`, `Produces` | The route's request and response media types |
-| `RequestBody`, `RequestBodyWithExample`, `RequestBodyContent`, `Accepts` | The request body |
-| `Response`, `ResponseWithExample`, `ResponseContent`, `ResponseHeader`, `ResponseLink`, `Returns` | A response by status, with headers and links |
-| `Parameter`, `ParameterWithExample`, `AddParameter`, `Params` | Parameters, one at a time or from the fields of a struct |
+| `RequestBody`, `RequestBodyWithExample`, `RequestBodyContent`, `Accepts` | The request body. `RequestBody` and `RequestBodyWithExample` use one schema for every media type; `RequestBodyContent` gives each its own |
+| `Response`, `ResponseWithExample`, `ResponseContent`, `ResponseHeader`, `ResponseLink`, `Returns` | A response by status, with headers and links. `Response` and `ResponseWithExample` use one schema for every media type; `ResponseContent` gives each its own |
+| `Parameter`, `ParameterWithExample`, `AddParameter`, `Params` | Parameters, one at a time or from the fields of a struct. `Parameter` and `ParameterWithExample` are short forms of `AddParameter`; the location argument is one of `fiber.ParamInPath`, `ParamInQuery`, `ParamInHeader`, `ParamInCookie` or `ParamInQuerystring` |
 | `Security` | The authentication the route needs |
 | `OperationExternalDocs`, `OperationExtension` | External documentation and `x-` extensions |
 

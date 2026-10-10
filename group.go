@@ -55,26 +55,22 @@ func (grp *Group) Name(name string) Router {
 
 // Summary assigns a short summary to the most recently added route in the group.
 func (grp *Group) Summary(sum string) Router {
-	grp.app.applyToRegistration(atomic.LoadUint64(&grp.lastRegID), docSetSummary(sum))
-	return grp
+	return grp.document(docSetSummary(sum))
 }
 
 // Description assigns a description to the most recently added route in the group.
 func (grp *Group) Description(desc string) Router {
-	grp.app.applyToRegistration(atomic.LoadUint64(&grp.lastRegID), docSetDescription(desc))
-	return grp
+	return grp.document(docSetDescription(desc))
 }
 
 // Consumes assigns a request media type to the most recently added route in the group.
 func (grp *Group) Consumes(typ string) Router {
-	grp.app.applyToRegistration(atomic.LoadUint64(&grp.lastRegID), docSetConsumes(typ))
-	return grp
+	return grp.document(docSetConsumes(typ))
 }
 
 // Produces assigns a response media type to the most recently added route in the group.
 func (grp *Group) Produces(typ string) Router {
-	grp.app.applyToRegistration(atomic.LoadUint64(&grp.lastRegID), docSetProduces(typ))
-	return grp
+	return grp.document(docSetProduces(typ))
 }
 
 // RequestBody documents the request payload for the most recently added route in the group.
@@ -84,8 +80,7 @@ func (grp *Group) RequestBody(description string, required bool, mediaTypes ...s
 
 // RequestBodyWithExample documents the request payload for the most recently added route in the group with schema references and examples.
 func (grp *Group) RequestBodyWithExample(description string, required bool, schema any, schemaRef string, example any, examples map[string]any, mediaTypes ...string) Router {
-	grp.app.applyToRegistration(atomic.LoadUint64(&grp.lastRegID), docRequestBodyWithExample(description, required, schema, schemaRef, example, examples, mediaTypes...))
-	return grp
+	return grp.document(docRequestBodyWithExample(description, required, schema, schemaRef, example, examples, mediaTypes...))
 }
 
 // Parameter documents an input parameter for the most recently added route in the group.
@@ -105,59 +100,50 @@ func (grp *Group) Response(status int, description string, mediaTypes ...string)
 
 // ResponseWithExample documents an HTTP response for the most recently added route in the group with schema references and examples.
 func (grp *Group) ResponseWithExample(status int, description string, schema any, schemaRef string, example any, examples map[string]any, mediaTypes ...string) Router {
-	grp.app.applyToRegistration(atomic.LoadUint64(&grp.lastRegID), docAddResponse(status, description, schema, schemaRef, example, examples, mediaTypes...))
-	return grp
+	return grp.document(docAddResponse(status, description, schema, schemaRef, example, examples, mediaTypes...))
 }
 
 // Tags assigns tags to the most recently added route in the group.
 func (grp *Group) Tags(tags ...string) Router {
-	grp.app.applyToRegistration(atomic.LoadUint64(&grp.lastRegID), docSetTags(tags...))
-	return grp
+	return grp.document(docSetTags(tags...))
 }
 
 // Deprecated marks the most recently added route in the group as deprecated.
 func (grp *Group) Deprecated() Router {
-	grp.app.applyToRegistration(atomic.LoadUint64(&grp.lastRegID), docSetDeprecated())
-	return grp
+	return grp.document(docSetDeprecated())
 }
 
 // Security sets the OpenAPI security requirements for the most recently added
 // route in the group.
 func (grp *Group) Security(requirements ...map[string][]string) Router {
-	grp.app.applyToRegistration(atomic.LoadUint64(&grp.lastRegID), docSetSecurity(requirements...))
-	return grp
+	return grp.document(docSetSecurity(requirements...))
 }
 
 // Hidden excludes the most recently added route in the group from the generated
 // OpenAPI specification.
 func (grp *Group) Hidden() Router {
-	grp.app.applyToRegistration(atomic.LoadUint64(&grp.lastRegID), docSetHidden())
-	return grp
+	return grp.document(docSetHidden())
 }
 
 // ResponseHeader documents a response header for the most recently added route
 // in the group.
 func (grp *Group) ResponseHeader(status int, name, description string, schema any) Router {
-	grp.app.applyToRegistration(atomic.LoadUint64(&grp.lastRegID), docResponseHeader(status, name, description, schema))
-	return grp
+	return grp.document(docResponseHeader(status, name, description, schema))
 }
 
 // Accepts documents the request body as the schema of model; see App.Accepts.
 func (grp *Group) Accepts(model any, mediaTypes ...string) Router {
-	grp.app.applyToRegistration(atomic.LoadUint64(&grp.lastRegID), docAccepts(model, mediaTypes...))
-	return grp
+	return grp.document(docAccepts(model, mediaTypes...))
 }
 
 // Returns documents a response as the schema of model; see App.Returns.
 func (grp *Group) Returns(status int, model any, mediaTypes ...string) Router {
-	grp.app.applyToRegistration(atomic.LoadUint64(&grp.lastRegID), docReturns(status, model, mediaTypes...))
-	return grp
+	return grp.document(docReturns(status, model, mediaTypes...))
 }
 
 // Params documents the fields of model as parameters; see App.Params.
 func (grp *Group) Params(in string, model any) Router {
-	grp.app.applyToRegistration(atomic.LoadUint64(&grp.lastRegID), docAddParameterModel(in, model))
-	return grp
+	return grp.document(docAddParameterModel(in, model))
 }
 
 // AddParameter documents an input parameter on the most recently added route in
@@ -165,43 +151,37 @@ func (grp *Group) Params(in string, model any) Router {
 //
 //nolint:gocritic // hugeParam: by-value keeps the chainable route-helper API ergonomic.
 func (grp *Group) AddParameter(param RouteParameter) Router {
-	grp.app.applyToRegistration(atomic.LoadUint64(&grp.lastRegID), docAddParameter(param))
-	return grp
+	return grp.document(docAddParameter(param))
 }
 
 // OperationExternalDocs sets the externalDocs of the most recently added route in
 // the group.
 func (grp *Group) OperationExternalDocs(description, url string) Router {
-	grp.app.applyToRegistration(atomic.LoadUint64(&grp.lastRegID), docOperationExternalDocs(description, url))
-	return grp
+	return grp.document(docOperationExternalDocs(description, url))
 }
 
 // RequestBodyContent documents a per-media-type request body on the most recently
 // added route in the group.
 func (grp *Group) RequestBodyContent(description string, required bool, content map[string]RouteMediaType) Router {
-	grp.app.applyToRegistration(atomic.LoadUint64(&grp.lastRegID), docRequestBodyContent(description, required, content))
-	return grp
+	return grp.document(docRequestBodyContent(description, required, content))
 }
 
 // ResponseContent documents a per-media-type response on the most recently added
 // route in the group.
 func (grp *Group) ResponseContent(status int, description string, content map[string]RouteMediaType) Router {
-	grp.app.applyToRegistration(atomic.LoadUint64(&grp.lastRegID), docResponseContent(status, description, content))
-	return grp
+	return grp.document(docResponseContent(status, description, content))
 }
 
 // ResponseLink documents a response link on the most recently added route in the
 // group.
 func (grp *Group) ResponseLink(status int, name string, link map[string]any) Router {
-	grp.app.applyToRegistration(atomic.LoadUint64(&grp.lastRegID), docResponseLink(status, name, link))
-	return grp
+	return grp.document(docResponseLink(status, name, link))
 }
 
 // OperationExtension merges arbitrary operation-object fields on the most recently
 // added route in the group.
 func (grp *Group) OperationExtension(fields map[string]any) Router {
-	grp.app.applyToRegistration(atomic.LoadUint64(&grp.lastRegID), docOperationExtension(fields))
-	return grp
+	return grp.document(docOperationExtension(fields))
 }
 
 // Use registers a middleware route that will match requests
@@ -413,4 +393,10 @@ func (grp *Group) Route(prefix string, fn func(router Router), name ...string) R
 	fn(group)
 
 	return group
+}
+
+// document applies a documentation change to the route this group registered last.
+func (grp *Group) document(apply func(route *Route)) Router {
+	grp.app.applyToRegistration(atomic.LoadUint64(&grp.lastRegID), apply)
+	return grp
 }
