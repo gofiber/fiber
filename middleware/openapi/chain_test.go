@@ -299,17 +299,21 @@ func Test_coversRoute(t *testing.T) {
 func Test_middlewareInFile(t *testing.T) {
 	t.Parallel()
 
+	// Fiber's own middleware is matched under the directory the fiber module was
+	// built from, whatever that is: a checkout, the module cache or -trimpath.
+	root := fiberRoot()
+	require.NotEmpty(t, root)
 	for file, want := range map[string]middlewareKind{
-		"/home/u/fiber/middleware/keyauth/keyauth.go":                      kindKeyAuth,
-		"github.com/gofiber/fiber/v3/middleware/basicauth/basicauth.go":    kindBasicAuth,
+		root + "/middleware/keyauth/keyauth.go":                            kindKeyAuth,
+		root + "/middleware/basicauth/basicauth.go":                        kindBasicAuth,
+		root + "/middleware/csrf/csrf.go":                                  kindCSRF,
+		root + "/middleware/limiter/limiter_fixed.go":                      kindLimiter,
+		root + "/middleware/requestid/requestid.go":                        kindRequestID,
+		root + "/middleware/etag/etag.go":                                  kindETag,
+		root + "/middleware/cache/cache.go":                                kindCache,
 		"/root/go/pkg/mod/github.com/gofiber/contrib/v3/jwt@v1.2.5/jwt.go": kindJWT,
 		"github.com/gofiber/contrib/v3/jwt@v1.2.5/jwt.go":                  kindJWT,
 		"/app/vendor/github.com/gofiber/contrib/v3/jwt/jwt.go":             kindJWT,
-		"/go/src/github.com/gofiber/fiber/v3/middleware/csrf/csrf.go":      kindCSRF,
-		"C:/src/fiber/middleware/limiter/limiter_fixed.go":                 kindLimiter,
-		"/home/u/fiber/middleware/requestid/requestid.go":                  kindRequestID,
-		"/home/u/fiber/middleware/etag/etag.go":                            kindETag,
-		"/home/u/fiber/middleware/cache/cache.go":                          kindCache,
 	} {
 		var wantSet middlewareSet
 		wantSet.add(want)
@@ -319,8 +323,12 @@ func Test_middlewareInFile(t *testing.T) {
 		"",
 		"/home/u/app/main.go",
 		"/root/go/pkg/mod/github.com/gofiber/contrib/jwt@v1.1.2/jwt.go",
-		"/home/u/fiber/middleware/keyauthx/keyauth.go",
-		"/home/u/fiber/middleware/openapi/chain.go",
+		root + "/middleware/keyauthx/keyauth.go",
+		root + "/middleware/openapi/chain.go",
+		// A package that merely shares a directory name with a Fiber one.
+		"/home/u/app/middleware/keyauth/keyauth.go",
+		"/src/other/middleware/csrf/csrf.go",
+		"/src/acme/contrib/v3/jwt/jwt.go",
 	} {
 		require.Zero(t, middlewareInFile(file), file)
 	}
@@ -649,4 +657,17 @@ func Test_OpenAPI_MiddlewareHeaderNames(t *testing.T) {
 		}
 		require.Contains(t, chainHeaders(t, responses["429"]), fiber.HeaderRetryAfter)
 	})
+}
+
+func Test_OpenAPI_UserPackageNamedLikeFiberMiddleware(t *testing.T) {
+	t.Parallel()
+
+	// This test file lives in middleware/openapi, not middleware/keyauth, so a
+	// handler compiled here must not read as any recognized middleware.
+	app := fiber.New()
+	app.Get("/x", listUsers)
+	spec := modelSpec(t, app)
+	op := modelOperation(t, spec, "/x", "get")
+	require.NotContains(t, op, "security")
+	require.NotContains(t, chainResponses(t, op), "401")
 }

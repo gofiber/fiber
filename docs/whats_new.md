@@ -1866,6 +1866,10 @@ Introduces an `openapi` middleware that inspects registered routes and serves a 
 
 `Route.GroupPrefix()`, `GroupName()`, `Domain()` and `InnerHandlers()` and `App.RoutesRevision()` are documented in the [`App` API](./api/app.md#route-documentation).
 
+:::caution
+The `fiber.Router` interface gained the route documentation methods (`Summary`, `Description`, `Tags`, `Consumes`, `Produces`, `Deprecated`, `Hidden`, `Security`, `RequestBody`, `RequestBodyWithExample`, `RequestBodyContent`, `Parameter`, `ParameterWithExample`, `AddParameter`, `Params`, `Accepts`, `Returns`, `Response`, `ResponseWithExample`, `ResponseContent`, `ResponseHeader`, `ResponseLink`, `OperationExternalDocs` and `OperationExtension`). `App`, `Group` and the domain router implement them; a type of your own that implements `fiber.Router` must add them, or embed one of those.
+:::
+
 ### Proxy
 
 The proxy middleware has been updated to improve consistency with Go naming conventions. The `TlsConfig` field in the configuration struct has been renamed to `TLSConfig`. Additionally, the `WithTlsConfig` method has been removed; you should now configure TLS directly via the `TLSConfig` property within the `Config` struct.

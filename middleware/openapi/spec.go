@@ -250,7 +250,7 @@ func versionAtLeast(version, minimum string) bool {
 type specEnv struct {
 	validator fiber.StructValidator
 	// equal compares route text the way the app's router does.
-	equal func(a, b string) bool
+	equal segmentEqual
 }
 
 // routeFacts is what the document says about a route before its path is

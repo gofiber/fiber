@@ -5,6 +5,8 @@ import (
 	"maps"
 	"slices"
 	"strings"
+
+	"github.com/gofiber/utils/v2"
 )
 
 const wildcardParamName = "wildcard"
@@ -204,8 +206,11 @@ func buildOpenAPIPathVariants(fiberPath string, params []string) []pathVariant {
 	unique := make([]pathVariant, 0, len(variants))
 	for _, variant := range variants {
 		path := variant.Path
-		for len(path) > 1 && strings.HasSuffix(path, "/") {
-			path = path[:len(path)-1]
+		if path != "" {
+			// A path of only slashes is the root.
+			if path = utils.TrimRight(path, '/'); path == "" {
+				path = "/"
+			}
 		}
 		// An interior empty segment only matches a literal "//" request, so
 		// publishing either form would document a nonexistent endpoint.
@@ -267,11 +272,17 @@ func resolveOpenAPIWildcardParamName(paramIdx int, params []string) resolvedPara
 	}
 }
 
-func sanitizeOpenAPIWildcardParamName(name string, idx int) string {
-	trimmed := strings.TrimLeft(name, "*+")
-	if trimmed == "" {
-		trimmed = wildcardParamName
+// trimWildcardMarkers drops the leading "*" or "+" of a wildcard's name,
+// falling back when nothing else is left.
+func trimWildcardMarkers(name, fallback string) string {
+	if trimmed := strings.TrimLeft(name, "*+"); trimmed != "" {
+		return trimmed
 	}
+	return fallback
+}
+
+func sanitizeOpenAPIWildcardParamName(name string, idx int) string {
+	trimmed := trimWildcardMarkers(name, wildcardParamName)
 	trimmed = strings.TrimLeft(trimmed, "_.-")
 	if trimmed == "" {
 		trimmed = wildcardParamName
@@ -283,12 +294,7 @@ func sanitizeOpenAPIWildcardParamName(name string, idx int) string {
 }
 
 func sanitizeOpenAPIParamName(name string, idx int) string {
-	trimmed := strings.TrimLeft(name, "*+")
-	if trimmed == "" {
-		trimmed = name
-	}
-
-	sanitized := keyName(trimmed)
+	sanitized := keyName(trimWildcardMarkers(name, name))
 	if sanitized == "" {
 		return fmt.Sprintf("param%d", idx)
 	}

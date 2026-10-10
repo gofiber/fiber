@@ -5,10 +5,58 @@ import (
 	"reflect"
 	"runtime"
 	"strings"
+	"sync"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/utils/v2"
 )
+
+// authMiddleware is the set of middleware that demand credentials.
+const authMiddleware middlewareSet = 1<<kindKeyAuth | 1<<kindBasicAuth | 1<<kindJWT
+
+// fiberMiddlewareDirs names the directories, under Fiber's module root, of the
+// middleware the document can describe.
+var fiberMiddlewareDirs = [...]struct {
+	dir  string
+	kind middlewareKind
+}{
+	{"keyauth", kindKeyAuth},
+	{"basicauth", kindBasicAuth},
+	{"csrf", kindCSRF},
+	{"requestid", kindRequestID},
+	{"limiter", kindLimiter},
+	{"etag", kindETag},
+	{"cache", kindCache},
+}
+
+// contribMiddleware lists a fragment of the source path of a middleware that
+// lives in gofiber/contrib. gofiber/contrib/v3/jwt is the module Fiber v3 uses;
+// the unversioned contrib/jwt belongs to v2 and returns a v2 handler. The
+// fragment names the gofiber organization, so a package of the same name
+// elsewhere does not match, and it ends where the package directory does so a
+// versioned module cache ("@v1.2.3") and a checkout match alike.
+var contribMiddleware = [...]struct {
+	dir  string
+	kind middlewareKind
+}{
+	{"/gofiber/contrib/v3/jwt@", kindJWT},
+	{"/gofiber/contrib/v3/jwt/", kindJWT},
+}
+
+// fiberRoot is the directory the fiber module's own source lives in, found
+// from where fiber.New is compiled. It is a checkout, a module cache entry
+// ("fiber/v3@v3.0.0"), a vendor directory or a -trimpath path, whichever this
+// binary was built from, so middleware is matched against Fiber's own files
+// rather than any directory that happens to be called "middleware/keyauth".
+var fiberRoot = sync.OnceValue(func() string {
+	fn := runtime.FuncForPC(reflect.ValueOf(fiber.New).Pointer())
+	if fn == nil {
+		return ""
+	}
+	file, _ := fn.FileLine(fn.Entry())
+	file = filepath.ToSlash(file)
+	return file[:max(strings.LastIndexByte(file, '/'), 0)]
+})
 
 // Names of the security schemes the document declares for recognized
 // authentication middleware, and of the headers they document.
@@ -38,40 +86,23 @@ func (s middlewareSet) has(kind middlewareKind) bool { return s&(1<<kind) != 0 }
 
 func (s *middlewareSet) add(kind middlewareKind) { *s |= 1 << kind }
 
-// authMiddleware is the set of middleware that demand credentials.
-const authMiddleware middlewareSet = 1<<kindKeyAuth | 1<<kindBasicAuth | 1<<kindJWT
-
-// knownMiddleware lists a fragment of the source path each recognized
-// middleware's handler is compiled from. The handler is a closure returned by
-// New, so it is matched by the file it lives in rather than by name: when New
-// is small enough to inline, the runtime names its closure after the caller's
-// package. A fragment starts at a directory boundary and ends where the
-// package directory does, so it matches a checkout, the module cache (where a
-// version follows the module as "@v1.2.3"), a vendor directory and a build
-// made with -trimpath alike. gofiber/contrib/v3/jwt is the module Fiber v3
-// uses; the unversioned contrib/jwt belongs to v2 and returns a v2 handler.
-var knownMiddleware = [...]struct {
-	dir  string
-	kind middlewareKind
-}{
-	{"/middleware/keyauth/", kindKeyAuth},
-	{"/middleware/basicauth/", kindBasicAuth},
-	{"/contrib/v3/jwt@", kindJWT},
-	{"/contrib/v3/jwt/", kindJWT},
-	{"/middleware/csrf/", kindCSRF},
-	{"/middleware/requestid/", kindRequestID},
-	{"/middleware/limiter/", kindLimiter},
-	{"/middleware/etag/", kindETag},
-	{"/middleware/cache/", kindCache},
-}
-
 // middlewareInFile reports which recognized middleware a source file belongs to.
+// The handler is a closure returned by New, so it is matched by the file it
+// lives in rather than by name: when New is small enough to inline, the runtime
+// names its closure after the caller's package.
 func middlewareInFile(file string) middlewareSet {
 	var set middlewareSet
 	file = filepath.ToSlash(file)
-	for i := range knownMiddleware {
-		if strings.Contains(file, knownMiddleware[i].dir) {
-			set.add(knownMiddleware[i].kind)
+	if root := fiberRoot(); root != "" {
+		for i := range fiberMiddlewareDirs {
+			if strings.HasPrefix(file, root+"/middleware/"+fiberMiddlewareDirs[i].dir+"/") {
+				set.add(fiberMiddlewareDirs[i].kind)
+			}
+		}
+	}
+	for i := range contribMiddleware {
+		if strings.Contains(file, contribMiddleware[i].dir) {
+			set.add(contribMiddleware[i].kind)
 		}
 	}
 	return set
@@ -111,7 +142,7 @@ type coveringMiddleware struct {
 // has a parameter instead, some requests would miss the middleware, so it is
 // not claimed. An optional prefix segment may consume nothing and is never
 // claimed either.
-func coversRoute(prefix, path string, equal func(a, b string) bool) bool {
+func coversRoute(prefix, path string, equal segmentEqual) bool {
 	prefix = utils.TrimRight(prefix, '/')
 	if prefix == "" {
 		return true
@@ -152,7 +183,7 @@ func coversRoute(prefix, path string, equal func(a, b string) bool) bool {
 // middlewareOn is the recognized middleware a request to route passes
 // through: the Use routes registered ahead of it whose prefix and host cover
 // it, then the route's own handlers.
-func middlewareOn(covering []coveringMiddleware, route *fiber.Route, equal func(a, b string) bool) middlewareSet {
+func middlewareOn(covering []coveringMiddleware, route *fiber.Route, equal segmentEqual) middlewareSet {
 	set := handlerMiddleware(route.InnerHandlers())
 	for i := range covering {
 		cover := &covering[i]

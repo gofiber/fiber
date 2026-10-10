@@ -683,11 +683,19 @@ route's media type.
   handlers and the `Use` routes registered ahead of it whose prefix covers its
   path (so `app.Group("/admin", keyauth.New(...))` covers `/admin/x` but not
   `/administrators`) are recognized by the source file their handler was
-  compiled from, which survives inlining, forks, the module cache, vendoring and
-  `-trimpath` builds. A `Use` prefix covers a route when every request the route
+  compiled from, which survives inlining, the module cache, vendoring and
+  `-trimpath` builds. Fiber's own middleware is matched against the directory the
+  `fiber` module itself was built from, so a package of your own called
+  `middleware/keyauth` is never mistaken for it; a fork of the module is a
+  different directory and is not recognized, and neither is a middleware you
+  wrote yourself, so document those routes with `Security(...)` and friends. A `Use` prefix covers a route when every request the route
   can answer passes it: a parameter in the prefix (`/users/:id`) covers whatever
   the route has there, a literal covers only the same text under the app's case
   rule, and an optional segment is never claimed:
+  - Inference cannot see a `Next` function that skips a middleware for some
+    requests, so a recognized middleware is documented as always applying; give a
+    route it does not protect an explicit `Security()` or attach the middleware
+    to the routes it guards only.
   - `keyauth` and `gofiber/contrib/v3/jwt` add a `bearerAuth` requirement and an
     `http`/`bearer` scheme (with `bearerFormat: JWT` when only the JWT
     middleware uses it); `basicauth` adds `basicAuth` with `http`/`basic`. A
@@ -743,10 +751,10 @@ route's media type.
   names. The expansion is capped at 64 variants per route, since it is otherwise
   exponential in the number of optional parameters; the fully-populated variant
   is always emitted.
-- Only the `GET` and `HEAD` routes the application registers itself are
-  documented. The `HEAD` route Fiber derives automatically from every `GET` is
-  omitted, so a plain `app.Get(...)` produces a single `get` operation; register
-  `app.Head(...)` explicitly to document one.
+- Every method the application registers itself is documented, so `app.All`
+  yields one operation per method. The `HEAD` route Fiber derives automatically
+  from every `GET` is omitted, so a plain `app.Get(...)` produces a single `get`
+  operation; register `app.Head(...)` explicitly to document one.
 - The middleware itself answers only `GET` and `HEAD` requests; any other method
   on the spec or UI path falls through to the next handler.
 - `GET` and `HEAD` operations never emit a `requestBody`, even if `Consumes` or

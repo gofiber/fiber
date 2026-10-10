@@ -3718,3 +3718,24 @@ func Test_OpenAPI_SharedHandlerBeyondCacheBound(t *testing.T) {
 		}
 	}
 }
+
+func Test_Config_SwaggerAssetsShareOnePinnedVersion(t *testing.T) {
+	t.Parallel()
+
+	// The default hashes describe swagger-ui-dist at the version in the URLs, so
+	// the three URLs must name the same release; bump the URLs and the hashes
+	// together.
+	versions := make(map[string]struct{})
+	for _, url := range []string{ConfigDefault.SwaggerCSSURL, ConfigDefault.SwaggerBundleURL, ConfigDefault.SwaggerStandalonePresetURL} {
+		_, rest, ok := strings.Cut(url, "swagger-ui-dist@")
+		require.True(t, ok, url)
+		version, _, ok := strings.Cut(rest, "/")
+		require.True(t, ok, url)
+		require.NotEmpty(t, version, url)
+		versions[version] = struct{}{}
+	}
+	require.Len(t, versions, 1)
+	for _, hash := range []string{ConfigDefault.SwaggerCSSIntegrity, ConfigDefault.SwaggerBundleIntegrity, ConfigDefault.SwaggerStandalonePresetIntegrity} {
+		require.True(t, strings.HasPrefix(hash, "sha384-"), hash)
+	}
+}

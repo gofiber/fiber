@@ -15,6 +15,13 @@ import (
 	utilsstrings "github.com/gofiber/utils/v2/strings"
 )
 
+var (
+	timeType          = reflect.TypeFor[time.Time]()
+	jsonNumberType    = reflect.TypeFor[json.Number]()
+	jsonMarshalerType = reflect.TypeFor[json.Marshaler]()
+	textMarshalerType = reflect.TypeFor[encoding.TextMarshaler]()
+)
+
 // openapiDirectiveRe locates each directive's start. A valued directive's
 // value runs from the colon to the next directive, so values may contain
 // commas and colons; a flag directive stands alone.
@@ -119,13 +126,6 @@ func SchemaOf(v any) map[string]any {
 	}
 	return typeSchema(t, nil, nil)
 }
-
-var (
-	timeType          = reflect.TypeFor[time.Time]()
-	jsonNumberType    = reflect.TypeFor[json.Number]()
-	jsonMarshalerType = reflect.TypeFor[json.Marshaler]()
-	textMarshalerType = reflect.TypeFor[encoding.TextMarshaler]()
-)
 
 // implementsMarshaler reports whether t (or *t) implements the interface, in
 // which case encoding/json bypasses ordinary field reflection.

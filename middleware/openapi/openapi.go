@@ -21,10 +21,14 @@ const (
 	segmentGreedy
 )
 
+// segmentEqual reports whether two route segments are equal under the app's
+// routing rules: it is case-insensitive unless the app is case-sensitive.
+type segmentEqual = func(a, b string) bool
+
 // appEquality is the path comparison an app's CaseSensitive setting selects.
 type appEquality struct {
 	app   *fiber.App
-	equal func(a, b string) bool
+	equal segmentEqual
 }
 
 // maxCachedSwaggerPages bounds the UI page cache so a parameterized mount cannot
@@ -188,7 +192,7 @@ func stringsEqual(a, b string) bool { return a == b }
 
 // hasSuffix reports whether s ends with suffix under the given equality
 // function (exact or case-folding).
-func hasSuffix(s, suffix string, equal func(a, b string) bool) bool {
+func hasSuffix(s, suffix string, equal segmentEqual) bool {
 	return len(s) >= len(suffix) && equal(s[len(s)-len(suffix):], suffix)
 }
 
@@ -204,7 +208,7 @@ type specTargets struct {
 // resolveTargets derives the spec and UI target paths for this request from the
 // route the handler runs on. Prefix middleware serves them under its mount; an
 // exact method route is itself the target, its suffix deciding which one.
-func resolveTargets(c fiber.Ctx, specPath, uiPath string, equal func(a, b string) bool) specTargets {
+func resolveTargets(c fiber.Ctx, specPath, uiPath string, equal segmentEqual) specTargets {
 	route := c.Route()
 	if route == nil {
 		return specTargets{spec: specPath, ui: uiPath, specOK: true, uiOK: true}
@@ -290,7 +294,7 @@ func routeTokens(seg string) string {
 // resolveDynamicMountPrefix picks the mount prefix when the pattern has optional
 // or greedy segments. Every split the segment bounds allow is tried, shortest
 // first, and the one whose remainder is a target wins.
-func resolveDynamicMountPrefix(pattern, requestPath, specPath, uiPath string, equal func(a, b string) bool) (string, bool) {
+func resolveDynamicMountPrefix(pattern, requestPath, specPath, uiPath string, equal segmentEqual) (string, bool) {
 	minSegments, maxSegments, dynamic := prefixSegmentBounds(pattern)
 	if !dynamic {
 		// A static mount is its own prefix, and its escaped form still needs
@@ -319,8 +323,6 @@ func resolveDynamicMountPrefix(pattern, requestPath, specPath, uiPath string, eq
 	return "", false
 }
 
-// prefixSegmentBounds reports how many leading segments the mount can consume and
-// whether it is dynamic. A greedy segment makes the maximum unbounded (-1).
 // segmentKind classifies a route pattern segment by its routing tokens only,
 // so a constraint or an escaped character never reads as a parameter.
 type segmentKind uint8
@@ -340,6 +342,8 @@ func classifySegment(segment string) (segmentKind, string) { //nolint:gocritic /
 	}
 }
 
+// prefixSegmentBounds reports how many leading segments the mount can consume and
+// whether it is dynamic. A greedy segment makes the maximum unbounded (-1).
 func prefixSegmentBounds(pattern string) (minSegments, maxSegments int, dynamic bool) { //nolint:nonamedreturns // three ints and a bool read better named
 	pattern = utils.TrimRight(pattern, '/')
 	if pattern == "" {
