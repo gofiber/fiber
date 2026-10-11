@@ -4,7 +4,7 @@ id: csrf
 
 # CSRF
 
-The CSRF middleware protects against [Cross-Site Request Forgery](https://en.wikipedia.org/wiki/Cross-Site_Request_Forgery) attacks by validating tokens on unsafe HTTP methods such as POST, PUT, and DELETE. It responds with 403 Forbidden when validation fails. Safe methods (`GET`, `HEAD`, `OPTIONS`, `TRACE`, `QUERY`) are not validated; note that `QUERY` is classified as safe per RFC 10008, so do not perform state changes in `QUERY` handlers. With `CrossOriginProtectionOnly`, token validation and token-related state are disabled; requests are protected by cross-origin checks instead.
+The CSRF middleware protects against [Cross-Site Request Forgery](https://en.wikipedia.org/wiki/Cross-site_request_forgery) attacks by validating tokens on unsafe HTTP methods such as POST, PUT, and DELETE. It responds with 403 Forbidden when validation fails. Safe methods (`GET`, `HEAD`, `OPTIONS`, `TRACE`, `QUERY`) are not validated; note that `QUERY` is classified as safe per RFC 10008, so do not perform state changes in `QUERY` handlers. For protection without tokens, see [Cross-Origin Protection Without Tokens](#cross-origin-protection-without-tokens).
 
 ## Table of Contents
 
@@ -58,11 +58,11 @@ app.Use(csrf.New(csrf.Config{
 :::
 
 1. **Always use HTTPS** in production
-2. **Use sessions** for authenticated applications when token-based CSRF protection is enabled
+2. **Use sessions** for authenticated applications
 3. **Set `CookieSecure: true`** and appropriate SameSite values
 4. **Implement XSS protection** alongside CSRF
 5. **Regenerate tokens** after auth changes
-6. **Use `__Host-` cookie prefix** when possible for token-based protection
+6. **Use `__Host-` cookie prefix** when possible
 
 :::warning BREACH Protection
 To mitigate BREACH attacks, ensure your pages are served over HTTPS, disable HTTP compression, and implement rate limiting for requests. The CSRF token is sent as a header on every request, so if you include the token in a page that is vulnerable to BREACH, an attacker may be able to extract the token.
@@ -104,19 +104,50 @@ SPAs require `CookieHTTPOnly: false` to access tokens via JavaScript. This sligh
 
 ### Cross-Origin Protection Without Tokens
 
-For APIs that do not use browser-readable CSRF tokens, enable `CrossOriginProtectionOnly`. This mode follows the request decision matrix of Go's [`net/http.CrossOriginProtection.Check`](https://pkg.go.dev/net/http#CrossOriginProtection.Check) for safe methods, Fetch Metadata, origin-host matching, and exact trusted origins. `Sec-Fetch-Site` values are case-sensitive; mixed-case or otherwise malformed nonempty values are rejected unless the request origin is trusted. Fiber's configuration API, wildcard trusted origins, and returned error are Fiber-specific. Unlike token-based configurations, this mode does not validate CSRF tokens or use the token-mode `Referer` fallback checks.
+`csrf.NewCrossOriginProtection` is a separate, tokenless middleware. It rejects unsafe cross-origin browser requests by their [`Sec-Fetch-Site`](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Sec-Fetch-Site) and `Origin` headers, following Go's [`net/http.CrossOriginProtection`](https://pkg.go.dev/net/http#CrossOriginProtection). It sets no cookie, creates no token, and needs no storage or session, so the client has nothing to send back.
 
 ```go
-app.Use(csrf.New(csrf.Config{
-    CrossOriginProtectionOnly: true,
-    TrustedOrigins: []string{
-        "https://admin.example.com",
-        "https://*.internal.example.com",
+app.Use(csrf.NewCrossOriginProtection(csrf.CrossOriginConfig{
+    TrustedOrigins: []string{"https://admin.example.com"},
+    // Exempt a route that must accept cross-origin posts, such as an SSO callback
+    Next: func(c fiber.Ctx) bool {
+        return c.Path() == "/sso/callback"
     },
 }))
 ```
 
-This mode does not create cookies, tokens, session entries, or storage entries. Requests without both `Sec-Fetch-Site` and `Origin` are treated as non-browser requests and allowed, so authentication and authorization remain required. Do not perform state changes in handlers for `GET`, `HEAD`, or `OPTIONS`.
+A request is allowed when one of these holds:
+
+1. The method is `GET`, `HEAD`, or `OPTIONS`.
+2. `Sec-Fetch-Site` is `same-origin` or `none`.
+3. `Sec-Fetch-Site` and `Origin` are both absent. Such a request is same-origin or does not come from a browser.
+4. `Sec-Fetch-Site` is absent and the host of `Origin` equals the `Host` header.
+5. `Origin` is listed in `TrustedOrigins`.
+
+Every other request is passed to `ErrorHandler` with `ErrCrossOriginRequest`, which answers `403 Forbidden` by default.
+
+:::caution
+Requests that carry neither header are allowed, so this middleware does not replace authentication or authorization. Do not perform state changes in `GET`, `HEAD`, or `OPTIONS` handlers.
+:::
+
+:::warning Trusted origins are trusted completely
+With `csrf.New`, a request from a trusted origin still needs a valid token. Here a match is the entire check. A wildcard such as `https://*.example.com` extends it to every subdomain, including one that serves user content or one an attacker takes over through a dangling DNS record. Prefer exact origins.
+:::
+
+Differences from `net/http.CrossOriginProtection`:
+
+- `TrustedOrigins` takes the same values as in `csrf.Config`: entries are normalized (case, trailing slash), subdomain wildcards are supported, and only `http` and `https` origins are accepted. An entry such as `capacitor://localhost` panics at startup.
+- There is no `AddInsecureBypassPattern`. Use `Next` to exempt routes.
+- A request that repeats the `Sec-Fetch-Site` header, or the `Origin` header where the decision depends on it, is denied.
+- Rule 4 never applies to a request without a `Host`.
+
+Shared with `net/http`, but different from `csrf.New`:
+
+- `TRACE` and `QUERY` are checked like any other unsafe method.
+- `Sec-Fetch-Site` and `Origin` are compared as sent. Browsers send both in lower case, so `Same-Origin` or `https://EXAMPLE.com` is denied.
+- Rule 4 compares hosts only. It ignores the scheme and does not fold default ports, so `Origin: http://example.com` passes on an HTTPS request to `example.com`. Current browsers send `Sec-Fetch-Site` on HTTPS requests and never get to rule 4 there; for older ones, enable HSTS, for example with the [Helmet](./helmet.md) middleware.
+- Rule 4 reads the `Host` header as sent. `X-Forwarded-Host` is not consulted, even behind a trusted proxy. If your proxy rewrites `Host`, add your public origin to `TrustedOrigins`.
+- The `Referer` header is not consulted.
 
 ## Recipes for Common Use Cases
 
@@ -399,6 +430,9 @@ session.Destroy()
 // Create middleware
 func New(config ...csrf.Config) fiber.Handler
 
+// Create tokenless middleware
+func NewCrossOriginProtection(config ...csrf.CrossOriginConfig) fiber.Handler
+
 // Get token from context
 func TokenFromContext(ctx any) string
 
@@ -432,7 +466,14 @@ func (h *csrf.Handler) DeleteToken(c fiber.Ctx) error
 | Storage           | `fiber.Storage`                    | Token storage (overridden by Session)                                                                                         | `nil`                        |
 | TrustedOrigins    | `[]string`                         | Trusted origins for cross-origin requests                                                                                     | `[]`                         |
 | SingleUseToken    | `bool`                             | Generate new token after each use                                                                                             | `false`                      |
-| CrossOriginProtectionOnly | `bool`                    | Reject unsafe cross-origin browser requests without creating or validating tokens                                            | `false`                      |
+
+### CrossOriginConfig Properties
+
+| Property       | Type                   | Description                                          | Default               |
+|:---------------|:-----------------------|:-----------------------------------------------------|:----------------------|
+| Next           | `func(fiber.Ctx) bool` | Skip middleware when returns true                    | `nil`                 |
+| ErrorHandler   | `fiber.ErrorHandler`   | Custom error handler                                 | `defaultErrorHandler` |
+| TrustedOrigins | `[]string`             | Origins allowed to send unsafe cross-origin requests | `[]`                  |
 
 ## Error Types
 
@@ -445,8 +486,10 @@ var (
     ErrRefererNoMatch  = errors.New("csrf: referer does not match host or trusted origins")
     ErrOriginInvalid   = errors.New("csrf: origin header invalid")
     ErrOriginNoMatch   = errors.New("csrf: origin does not match host or trusted origins")
-    ErrCrossOriginRequest = errors.New("csrf: cross-origin request denied")
 )
+
+// Returned by NewCrossOriginProtection
+var ErrCrossOriginRequest = errors.New("csrf: cross-origin request denied")
 ```
 
 ## Constants

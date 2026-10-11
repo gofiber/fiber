@@ -44,17 +44,16 @@ func vary(c fiber.Ctx, fields []string) {
 const csrfSchemes = originpkg.WebSchemesOnly
 
 var (
-	ErrTokenNotFound      = errors.New("csrf: token not found")
-	ErrTokenInvalid       = errors.New("csrf: token invalid")
-	ErrFetchSiteInvalid   = errors.New("csrf: sec-fetch-site header invalid")
-	ErrRefererNotFound    = errors.New("csrf: referer header missing")
-	ErrRefererInvalid     = errors.New("csrf: referer header invalid")
-	ErrRefererNoMatch     = errors.New("csrf: referer does not match host or trusted origins")
-	ErrOriginInvalid      = errors.New("csrf: origin header invalid")
-	ErrOriginNoMatch      = errors.New("csrf: origin does not match host or trusted origins")
-	ErrCrossOriginRequest = errors.New("csrf: cross-origin request denied")
-	errOriginNotFound     = errors.New("origin not supplied or is null") // internal error, will not be returned to the user
-	dummyValue            = []byte{'+'}                                  // dummyValue is a placeholder value stored in token storage. The actual token validation relies on the key, not this value.
+	ErrTokenNotFound    = errors.New("csrf: token not found")
+	ErrTokenInvalid     = errors.New("csrf: token invalid")
+	ErrFetchSiteInvalid = errors.New("csrf: sec-fetch-site header invalid")
+	ErrRefererNotFound  = errors.New("csrf: referer header missing")
+	ErrRefererInvalid   = errors.New("csrf: referer header invalid")
+	ErrRefererNoMatch   = errors.New("csrf: referer does not match host or trusted origins")
+	ErrOriginInvalid    = errors.New("csrf: origin header invalid")
+	ErrOriginNoMatch    = errors.New("csrf: origin does not match host or trusted origins")
+	errOriginNotFound   = errors.New("origin not supplied or is null") // internal error, will not be returned to the user
+	dummyValue          = []byte{'+'}                                  // dummyValue is a placeholder value stored in token storage. The actual token validation relies on the key, not this value.
 
 )
 
@@ -93,37 +92,6 @@ func New(config ...Config) fiber.Handler {
 		return value
 	}
 
-	// Pre-parse trusted origins
-	trustedOrigins := []string{}
-	crossOriginTrustedOrigins := []string{}
-	trustedSubOrigins := []originpkg.Subdomain{}
-
-	for _, origin := range cfg.TrustedOrigins {
-		trimmedOrigin := utils.TrimSpace(origin)
-		pattern, ok := originpkg.ParsePattern(trimmedOrigin, csrfSchemes)
-		if !ok {
-			panic("[CSRF] Invalid origin format in configuration:" + maskValue(origin))
-		}
-		if pattern.Wildcard {
-			trustedSubOrigins = append(trustedSubOrigins, pattern.Subdomain)
-		} else {
-			trustedOrigins = append(trustedOrigins, pattern.Origin)
-			crossOriginTrustedOrigins = append(crossOriginTrustedOrigins, pattern.Origin)
-		}
-	}
-
-	if cfg.CrossOriginProtectionOnly {
-		return func(c fiber.Ctx) error {
-			if cfg.Next != nil && cfg.Next(c) {
-				return c.Next()
-			}
-			if err := validateCrossOriginProtection(c, crossOriginTrustedOrigins, trustedSubOrigins); err != nil {
-				return cfg.ErrorHandler(c, err)
-			}
-			return c.Next()
-		}
-	}
-
 	// Create manager to simplify storage operations ( see *_manager.go )
 	var sessionManager *sessionManager
 	var storageManager *storageManager
@@ -132,6 +100,8 @@ func New(config ...Config) fiber.Handler {
 	} else {
 		storageManager = newStorageManager(cfg.Storage, redactKeys)
 	}
+
+	trusted := parseTrustedOrigins(cfg.TrustedOrigins, maskValue)
 
 	// Create the handler outside of the returned function
 	handler := &Handler{
@@ -178,12 +148,12 @@ func New(config ...Config) fiber.Handler {
 			}
 
 			// Enforce an origin check for unsafe requests.
-			err := originMatchesHost(c, trustedOrigins, trustedSubOrigins)
+			err := originMatchesHost(c, trusted)
 
 			// If there's no origin, enforce a referer check for HTTPS connections.
 			if errors.Is(err, errOriginNotFound) {
 				if c.Scheme() == schemeHTTPS {
-					err = refererMatchesHost(c, trustedOrigins, trustedSubOrigins)
+					err = refererMatchesHost(c, trusted)
 				} else {
 					// If it's not HTTPS, clear the error to allow the request to proceed.
 					err = nil
@@ -403,49 +373,38 @@ func validateSecFetchSite(c fiber.Ctx) error {
 	}
 }
 
-func validateCrossOriginProtection(c fiber.Ctx, trustedOrigins []string, trustedSubOrigins []originpkg.Subdomain) error {
-	switch c.Method() {
-	case fiber.MethodGet, fiber.MethodHead, fiber.MethodOptions:
-		return nil
-	}
-
-	origin := c.Get(fiber.HeaderOrigin)
-	switch c.Get(fiber.HeaderSecFetchSite) {
-	case "":
-	case "same-origin", "none":
-		return nil
-	default:
-		if isCrossOriginTrusted(origin, trustedOrigins, trustedSubOrigins) {
-			return nil
-		}
-		return ErrCrossOriginRequest
-	}
-
-	if origin == "" {
-		return nil
-	}
-	if host := c.Host(); host != "" {
-		if originURL, err := url.Parse(origin); err == nil && originURL.Host == host {
-			return nil
-		}
-	}
-	if isCrossOriginTrusted(origin, trustedOrigins, trustedSubOrigins) {
-		return nil
-	}
-	return ErrCrossOriginRequest
+// trustedOrigins is a parsed TrustedOrigins list.
+type trustedOrigins struct {
+	exact      []string
+	subdomains []originpkg.Subdomain
 }
 
-func isCrossOriginTrusted(origin string, trustedOrigins []string, trustedSubOrigins []originpkg.Subdomain) bool {
-	if origin == "" {
-		return false
+// parseTrustedOrigins panics on an entry that is not a valid origin.
+func parseTrustedOrigins(origins []string, mask func(string) string) trustedOrigins {
+	var trusted trustedOrigins
+	for _, origin := range origins {
+		pattern, ok := originpkg.ParsePattern(utils.TrimSpace(origin), csrfSchemes)
+		if !ok {
+			panic("[CSRF] Invalid origin format in configuration:" + mask(origin))
+		}
+		if pattern.Wildcard {
+			trusted.subdomains = append(trusted.subdomains, pattern.Subdomain)
+		} else {
+			trusted.exact = append(trusted.exact, pattern.Origin)
+		}
 	}
-	return slices.Contains(trustedOrigins, origin) || originpkg.MatchAny(trustedSubOrigins, utilsstrings.ToLower(origin), csrfSchemes)
+	return trusted
+}
+
+// contains expects origin in normalized form, as the parsed entries are.
+func (t trustedOrigins) contains(origin string) bool {
+	return slices.Contains(t.exact, origin) || originpkg.MatchAny(t.subdomains, origin, csrfSchemes)
 }
 
 // originMatchesHost checks that the origin header matches the host header
 // returns an error if the origin header is not present or is invalid
 // returns nil if the origin header is valid
-func originMatchesHost(c fiber.Ctx, trustedOrigins []string, trustedSubOrigins []originpkg.Subdomain) error {
+func originMatchesHost(c fiber.Ctx, trusted trustedOrigins) error {
 	origin, ok := headerlookup.Value(c, fiber.HeaderOrigin)
 	if !ok {
 		// Not errOriginNotFound: an absent Origin is skipped on a plaintext
@@ -469,12 +428,7 @@ func originMatchesHost(c fiber.Ctx, trustedOrigins []string, trustedSubOrigins [
 	}
 
 	// The trusted-origin fallbacks compare against pre-lowered config values.
-	origin = utilsstrings.ToLower(origin)
-	if slices.Contains(trustedOrigins, origin) {
-		return nil
-	}
-
-	if originpkg.MatchAny(trustedSubOrigins, origin, csrfSchemes) {
+	if trusted.contains(utilsstrings.ToLower(origin)) {
 		return nil
 	}
 
@@ -484,7 +438,7 @@ func originMatchesHost(c fiber.Ctx, trustedOrigins []string, trustedSubOrigins [
 // refererMatchesHost checks that the referer header matches the host header
 // returns an error if the referer header is not present or is invalid
 // returns nil if the referer header is valid
-func refererMatchesHost(c fiber.Ctx, trustedOrigins []string, trustedSubOrigins []originpkg.Subdomain) error {
+func refererMatchesHost(c fiber.Ctx, trusted trustedOrigins) error {
 	referer, ok := headerlookup.Value(c, fiber.HeaderReferer)
 	if !ok {
 		return ErrRefererInvalid
@@ -509,11 +463,7 @@ func refererMatchesHost(c fiber.Ctx, trustedOrigins []string, trustedSubOrigins 
 	// url.Parse already lowercases the scheme; the host may need it.
 	refererOrigin := refererURL.Scheme + "://" + utilsstrings.ToLower(refererURL.Host)
 
-	if slices.Contains(trustedOrigins, refererOrigin) {
-		return nil
-	}
-
-	if originpkg.MatchAny(trustedSubOrigins, refererOrigin, csrfSchemes) {
+	if trusted.contains(refererOrigin) {
 		return nil
 	}
 
