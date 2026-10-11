@@ -104,7 +104,7 @@ SPAs require `CookieHTTPOnly: false` to access tokens via JavaScript. This sligh
 
 ### Cross-Origin Protection Without Tokens
 
-`csrf.NewCrossOriginProtection` is a separate, tokenless middleware. It rejects unsafe cross-origin browser requests by their [`Sec-Fetch-Site`](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Sec-Fetch-Site) and `Origin` headers, following Go's [`net/http.CrossOriginProtection`](https://pkg.go.dev/net/http#CrossOriginProtection). It sets no cookie, creates no token, and needs no storage or session, so the client has nothing to send back.
+`csrf.NewCrossOriginProtection` is a separate, tokenless middleware. It rejects unsafe cross-origin browser requests by their [`Sec-Fetch-Site`](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Sec-Fetch-Site) and `Origin` headers, following Go's [`net/http.CrossOriginProtection`](https://pkg.go.dev/net/http#CrossOriginProtection). It sets no cookie, creates no token, and needs no storage or session, so the client has nothing to send back. `csrf.TokenFromContext` returns an empty string and `csrf.HandlerFromContext` returns `nil`, since this middleware creates neither.
 
 ```go
 app.Use(csrf.NewCrossOriginProtection(csrf.CrossOriginConfig{
@@ -216,7 +216,7 @@ async function makeRequest(url, data) {
 
 ## Security Model
 
-The middleware employs a robust, defense-in-depth strategy to protect against CSRF attacks. The primary defense is token-based validation, which operates in one of two modes depending on your configuration. This is supplemented by a mandatory secondary check on the request's origin.
+The middleware employs a robust, defense-in-depth strategy to protect against CSRF attacks. The primary defense is token-based validation, which operates in one of two modes depending on your configuration. This is supplemented by a mandatory secondary check on the request's origin. This section describes `csrf.New`; `csrf.NewCrossOriginProtection` validates neither tokens nor the `Referer` header, see [Cross-Origin Protection Without Tokens](#cross-origin-protection-without-tokens).
 
 ### Fetch Metadata Guardrails
 
