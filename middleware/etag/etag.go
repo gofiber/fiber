@@ -17,7 +17,9 @@ import (
 
 var (
 	weakPrefix = []byte("W/")
-	crc32q     = crc32.MakeTable(0xD5828281)
+	// hash/crc32 runs CRC-32C on a hardware instruction (~23 GB/s); other
+	// polynomials take a table lookup per byte (~0.4 GB/s).
+	crc32c = crc32.MakeTable(crc32.Castagnoli)
 )
 
 // Generate returns a strong ETag for body.
@@ -31,7 +33,7 @@ func Generate(body []byte) []byte {
 	b = append(b, '"')
 	b = appendUint(b, uint32(len(body))) // #nosec G115 -- length checked above
 	b = append(b, '-')
-	b = appendUint(b, crc32.Checksum(body, crc32q))
+	b = appendUint(b, crc32.Checksum(body, crc32c))
 	b = append(b, '"')
 	return slices.Clone(b)
 }

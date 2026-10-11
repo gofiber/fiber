@@ -6,6 +6,8 @@ id: etag
 
 ETag middleware for [Fiber](https://github.com/gofiber/fiber) that helps caches validate responses and saves bandwidth by avoiding full retransmits when content is unchanged.
 
+A tag is the body length and its CRC-32C checksum in decimal, such as `"13-1297420392"`. Treat tags as opaque: the checksum can change between releases, and clients then revalidate once after the upgrade.
+
 ## Signatures
 
 ```go
@@ -29,7 +31,7 @@ Once your Fiber app is initialized, use the middleware like this:
 // Initialize default config
 app.Use(etag.New())
 
-// GET / -> ETag: "13-1831710635"
+// GET / -> ETag: "13-1297420392"
 app.Get("/", func(c fiber.Ctx) error {
     return c.SendString("Hello, World!")
 })
@@ -39,7 +41,7 @@ app.Use(etag.New(etag.Config{
     Weak: true,
 }))
 
-// GET / -> ETag: W/"13-1831710635"
+// GET / -> ETag: W/"13-1297420392"
 app.Get("/", func(c fiber.Ctx) error {
     return c.SendString("Hello, World!")
 })

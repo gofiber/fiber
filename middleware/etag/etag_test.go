@@ -14,6 +14,13 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
+// The tags Generate produces for the 13-byte body "Hello, World!".
+const (
+	helloTag      = "13-1297420392"
+	helloETag     = `"` + helloTag + `"`
+	helloWeakETag = "W/" + helloETag
+)
+
 // go test -run Test_ETag_Next
 func Test_ETag_Next(t *testing.T) {
 	t.Parallel()
@@ -147,7 +154,7 @@ func Test_ETag_NewEtag(t *testing.T) {
 	})
 	t.Run("with HeaderIfNoneMatch and matched", func(t *testing.T) {
 		t.Parallel()
-		testETagNewEtag(t, `"13-1831710635"`, fiber.StatusNotModified)
+		testETagNewEtag(t, helloETag, fiber.StatusNotModified)
 	})
 }
 
@@ -172,7 +179,7 @@ func testETagNewEtag(t *testing.T, headerIfNoneMatch string, expectedStatus int)
 
 	if expectedStatus == fiber.StatusOK {
 		require.Equal(t, fiber.StatusOK, resp.StatusCode)
-		require.Equal(t, `"13-1831710635"`, resp.Header.Get(fiber.HeaderETag))
+		require.Equal(t, helloETag, resp.Header.Get(fiber.HeaderETag))
 		return
 	}
 
@@ -195,7 +202,7 @@ func Test_ETag_WeakEtag(t *testing.T) {
 	})
 	t.Run("with HeaderIfNoneMatch and matched", func(t *testing.T) {
 		t.Parallel()
-		testETagWeakEtag(t, `W/"13-1831710635"`, fiber.StatusNotModified)
+		testETagWeakEtag(t, helloWeakETag, fiber.StatusNotModified)
 	})
 }
 
@@ -220,7 +227,7 @@ func testETagWeakEtag(t *testing.T, headerIfNoneMatch string, expectedStatus int
 
 	if expectedStatus == fiber.StatusOK {
 		require.Equal(t, fiber.StatusOK, resp.StatusCode)
-		require.Equal(t, `W/"13-1831710635"`, resp.Header.Get(fiber.HeaderETag))
+		require.Equal(t, helloWeakETag, resp.Header.Get(fiber.HeaderETag))
 		return
 	}
 
@@ -327,7 +334,23 @@ func Benchmark_Etag(b *testing.B) {
 	}
 
 	require.Equal(b, 200, fctx.Response.Header.StatusCode())
-	require.Equal(b, `"13-1831710635"`, string(fctx.Response.Header.Peek(fiber.HeaderETag)))
+	require.Equal(b, helloETag, string(fctx.Response.Header.Peek(fiber.HeaderETag)))
+}
+
+// go test -v -run=^$ -bench=Benchmark_Generate -benchmem -count=4
+//
+// Generate hashes the whole body, so its cost grows with the body size.
+func Benchmark_Generate(b *testing.B) {
+	for _, size := range []int{13, 100, 1 << 10, 10 << 10, 100 << 10} {
+		body := bytes.Repeat([]byte("0123456789abcdef"), size/16+1)[:size]
+		b.Run(utils.FormatInt(int64(size))+"B", func(b *testing.B) {
+			b.SetBytes(int64(size))
+			b.ReportAllocs()
+			for b.Loop() {
+				_ = Generate(body)
+			}
+		})
+	}
 }
 
 // go test -run Test_ETag_WeakComparison
@@ -340,13 +363,13 @@ func Test_ETag_WeakComparison(t *testing.T) {
 		weak           bool
 		expectedStatus int
 	}{
-		{name: "weak client tag matches strong server tag", ifNoneMatch: `W/"13-1831710635"`, weak: false, expectedStatus: fiber.StatusNotModified},
-		{name: "strong client tag matches weak server tag", ifNoneMatch: `"13-1831710635"`, weak: true, expectedStatus: fiber.StatusNotModified},
-		{name: "match in list after weak tag", ifNoneMatch: `W/"non-match", "13-1831710635"`, weak: false, expectedStatus: fiber.StatusNotModified},
-		{name: "weak match in list", ifNoneMatch: `"non-match", W/"13-1831710635"`, weak: false, expectedStatus: fiber.StatusNotModified},
+		{name: "weak client tag matches strong server tag", ifNoneMatch: helloWeakETag, weak: false, expectedStatus: fiber.StatusNotModified},
+		{name: "strong client tag matches weak server tag", ifNoneMatch: helloETag, weak: true, expectedStatus: fiber.StatusNotModified},
+		{name: "match in list after weak tag", ifNoneMatch: `W/"non-match", ` + helloETag, weak: false, expectedStatus: fiber.StatusNotModified},
+		{name: "weak match in list", ifNoneMatch: `"non-match", ` + helloWeakETag, weak: false, expectedStatus: fiber.StatusNotModified},
 		{name: "wildcard", ifNoneMatch: `*`, weak: false, expectedStatus: fiber.StatusNotModified},
 		{name: "no match in list", ifNoneMatch: `W/"non-match", "other"`, weak: false, expectedStatus: fiber.StatusOK},
-		{name: "unquoted tag never matches", ifNoneMatch: `13-1831710635`, weak: false, expectedStatus: fiber.StatusOK},
+		{name: "unquoted tag never matches", ifNoneMatch: helloTag, weak: false, expectedStatus: fiber.StatusOK},
 	}
 
 	for _, tc := range testCases {
@@ -366,9 +389,9 @@ func Test_ETag_WeakComparison(t *testing.T) {
 			require.NoError(t, err)
 			require.Equal(t, tc.expectedStatus, resp.StatusCode)
 
-			expectedTag := `"13-1831710635"`
+			expectedTag := helloETag
 			if tc.weak {
-				expectedTag = `W/"13-1831710635"`
+				expectedTag = helloWeakETag
 			}
 			require.Equal(t, expectedTag, resp.Header.Get(fiber.HeaderETag))
 
@@ -408,11 +431,11 @@ func Test_ETag_IfNoneMatchOnlyForGetHead(t *testing.T) {
 			})
 
 			req := httptest.NewRequest(tc.method, "/", http.NoBody)
-			req.Header.Set(fiber.HeaderIfNoneMatch, `"13-1831710635"`)
+			req.Header.Set(fiber.HeaderIfNoneMatch, helloETag)
 			resp, err := app.Test(req)
 			require.NoError(t, err)
 			require.Equal(t, tc.expectedStatus, resp.StatusCode)
-			require.Equal(t, `"13-1831710635"`, resp.Header.Get(fiber.HeaderETag))
+			require.Equal(t, helloETag, resp.Header.Get(fiber.HeaderETag))
 
 			body, err := io.ReadAll(resp.Body)
 			require.NoError(t, err)
