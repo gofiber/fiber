@@ -56,6 +56,7 @@ func populatedItem() item {
 		cacheControl:    []byte("max-age=60"),
 		expires:         []byte("Wed, 21 Oct 2026 07:28:00 GMT"),
 		etag:            []byte(`"abc123"`),
+		vary:            []byte("Accept-Encoding"),
 		date:            1,
 		status:          200,
 		age:             2,

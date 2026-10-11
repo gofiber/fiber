@@ -7,6 +7,10 @@ description: >-
 sidebar_position: 2
 ---
 
+## Fiber v2 vs v3
+
+The [benchmarks repository](https://github.com/gofiber/benchmarks) compares Fiber v2 and v3 on the same request scenarios, each written against the version's own API. CI runs both versions side by side and publishes time, memory and allocations per request for every run on the [results page](https://gofiber.github.io/benchmarks/).
+
 ## TechEmpower
 
 [TechEmpower](https://www.techempower.com/benchmarks/#section=test&runid=1d5bfc8a-5c4a-4fb2-a792-ad967f1eb138) provides a performance comparison of many web application frameworks that execute fundamental tasks such as JSON serialization, database access, and server-side template rendering.

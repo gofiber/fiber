@@ -5,9 +5,7 @@ import (
 	"bytes"
 	"cmp"
 	"math"
-	"net"
 	"slices"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -145,15 +143,11 @@ func (cj *CookieJar) getByHostAndPath(host, path []byte, secure bool) []*fasthtt
 		return nil
 	}
 
-	var (
-		err     error
-		hostStr = utils.UnsafeString(host)
-	)
+	hostStr := utils.UnsafeString(host)
 
 	// port must not be included.
-	hostStr, _, err = net.SplitHostPort(hostStr)
-	if err != nil {
-		hostStr = utils.UnsafeString(host)
+	if h, _, ok := utils.SplitHostPort(hostStr); ok {
+		hostStr = h
 	}
 	return cj.cookiesForRequest(hostStr, path, secure)
 }
@@ -308,7 +302,7 @@ func (cj *CookieJar) SetByHost(host []byte, cookies ...*fasthttp.Cookie) {
 // that carry no usable Path attribute; a nil requestPath yields "/".
 func (cj *CookieJar) setByHostAndPath(host, requestPath []byte, cookies ...*fasthttp.Cookie) {
 	hostStr := utils.UnsafeString(host)
-	if h, _, err := net.SplitHostPort(hostStr); err == nil {
+	if h, _, ok := utils.SplitHostPort(hostStr); ok {
 		hostStr = h
 	}
 	hostStr = utilsstrings.ToLower(hostStr)
@@ -523,7 +517,7 @@ func escapePercent(p []byte) []byte {
 // parseCookiesFromResp parses the cookies from the response and stores them for the specified host and path.
 func (cj *CookieJar) parseCookiesFromResp(host, path []byte, resp *fasthttp.Response) {
 	hostStr := utils.UnsafeString(host)
-	if h, _, err := net.SplitHostPort(hostStr); err == nil {
+	if h, _, ok := utils.SplitHostPort(hostStr); ok {
 		hostStr = h
 	}
 	hostStr = utilsstrings.ToLower(hostStr)
@@ -844,7 +838,7 @@ func isPublicSuffixDomain(domain string) bool {
 // The raw value has to be read because fasthttp cannot answer this — it parses
 // MaxAge as 0 whether the attribute is absent, zero or negative.
 func lastMaxAge(value []byte) (int64, bool) {
-	_, rest, found := bytes.Cut(value, []byte{';'})
+	_, rest, found := utils.CutByte(value, ';')
 	if !found {
 		return 0, false
 	}
@@ -855,12 +849,12 @@ func lastMaxAge(value []byte) (int64, bool) {
 	seconds, ok := int64(0), false
 	for len(rest) > 0 {
 		var part []byte
-		part, rest, _ = bytes.Cut(rest, []byte{';'})
-		name, raw, hasValue := bytes.Cut(part, []byte{'='})
+		part, rest, _ = utils.CutByte(rest, ';')
+		name, raw, hasValue := utils.CutByte(part, '=')
 		if !hasValue || !utils.EqualFold(utils.UnsafeString(utils.TrimSpace(name)), "max-age") {
 			continue
 		}
-		if n, err := strconv.ParseInt(utils.UnsafeString(utils.TrimSpace(raw)), 10, 64); err == nil {
+		if n, err := utils.ParseInt(utils.TrimSpace(raw)); err == nil {
 			seconds, ok = n, true
 		}
 	}

@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/ctxlocal"
 	"github.com/gofiber/fiber/v3/internal/redact"
 	"github.com/gofiber/fiber/v3/middleware/logger"
 )
@@ -151,8 +152,8 @@ func storeMiddlewareContext(c fiber.Ctx, session *Session, m *Middleware) {
 // clearMiddlewareContext clears both Fiber locals and the request context
 // because session middleware stores these values in both layers.
 func clearMiddlewareContext(c fiber.Ctx) {
-	c.Locals(sessionIDContextKey, "")
-	c.Locals(middlewareContextKey, nil)
+	ctxlocal.Set(c, sessionIDContextKey, "")
+	ctxlocal.Set(c, middlewareContextKey, nil)
 	ctx := context.WithValue(c.Context(), sessionIDContextKey, "")
 	c.SetContext(context.WithValue(ctx, middlewareContextKey, (*Middleware)(nil)))
 }

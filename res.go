@@ -18,6 +18,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"github.com/gofiber/fiber/v3/internal/byterange"
 	internalcookie "github.com/gofiber/fiber/v3/internal/cookie"
 	"github.com/gofiber/fiber/v3/internal/fieldname"
 	"github.com/gofiber/fiber/v3/internal/headerlist"
@@ -43,7 +44,8 @@ type SendFile struct {
 	// Optional. Default: false
 	Compress bool `json:"compress"`
 
-	// When set to true, enables byte range requests.
+	// When set to true, enables byte range requests. A request for several
+	// ranges, or whose If-Range does not match, gets the whole file.
 	//
 	// Optional. Default: false
 	ByteRange bool `json:"byte_range"`
@@ -194,7 +196,26 @@ func (r *DefaultRes) Append(field string, values ...string) {
 	r.Set(field, updated)
 }
 
+// varyAccept is the field list Format and AutoFormat add to Vary. It is
+// hoisted because a fresh "..." argument list is a slice the compiler has to
+// heap-allocate — Vary's result reaches the header store, so escape analysis
+// marks the elements as leaking even though fasthttp copies the bytes — while
+// passing an existing slice hands over its backing array. Both callers are
+// methods on *DefaultRes, so the Vary they reach is the one below and not
+// something a custom Res could substitute; it only reads the field list, which
+// makes sharing one array across every request safe.
+var varyAccept = []string{HeaderAccept}
+
 func sanitizeFilename(filename string) string {
+	// unicode.IsControl matches C0, DEL and the C1 range. The first two are
+	// single bytes utils.IndexControl finds word-at-a-time, and C1 can only
+	// appear in non-ASCII input, so an all-ASCII name that clears both scans
+	// is clean without decoding a rune. That pair measures 24-58% faster than
+	// the rune loop across 13- to 90-byte names.
+	if utils.IndexControl(filename) == -1 && utils.IsASCII(filename) {
+		return utils.TrimSpace(filename)
+	}
+
 	for _, r := range filename {
 		if unicode.IsControl(r) {
 			b := make([]byte, 0, len(filename))
@@ -335,11 +356,14 @@ func (r *DefaultRes) Cookie(cookie *Cookie) {
 		c.Secure = true
 	}
 
+	// Surrounding double quotes frame the value (RFC 6265 §4.1.1); they are not part of it.
+	value, quoted := unquoteCookieValue(c.Value)
+
 	// Validate before fasthttp's setters can silently replace CR/LF or semicolons;
 	// rejection, rather than mutation, is this API's existing contract.
 	hc := &http.Cookie{ //nolint:gosec // G124: http.Cookie missing or has insecure Secure, HttpOnly, or SameSite attribute
 		Name:        c.Name,
-		Value:       c.Value,
+		Value:       value,
 		Path:        c.Path,
 		Domain:      c.Domain,
 		Expires:     c.Expires,
@@ -358,7 +382,13 @@ func (r *DefaultRes) Cookie(cookie *Cookie) {
 	// create fasthttp cookie
 	fcookie := fasthttp.AcquireCookie()
 	fcookie.SetKey(hc.Name)
-	fcookie.SetValue(hc.Value)
+	// net/http quotes a value with a space or comma, and so does this, although
+	// RFC 6265 §4.1.1 allows neither even in quotes. fasthttp drops the quotes on read.
+	wireValue := hc.Value
+	if quoted || utils.IndexAny2(wireValue, ' ', ',') >= 0 {
+		wireValue = `"` + wireValue + `"`
+	}
+	fcookie.SetValue(wireValue)
 	fcookie.SetPath(hc.Path)
 	fcookie.SetDomain(hc.Domain)
 
@@ -377,6 +407,15 @@ func (r *DefaultRes) Cookie(cookie *Cookie) {
 	// Set resp header
 	r.c.fasthttp.Response.Header.SetCookie(fcookie)
 	fasthttp.ReleaseCookie(fcookie)
+}
+
+// unquoteCookieValue strips one pair of surrounding double quotes. A lone quote
+// is left for validation to reject.
+func unquoteCookieValue(value string) (string, bool) {
+	if len(value) >= 2 && value[0] == '"' && value[len(value)-1] == '"' {
+		return value[1 : len(value)-1], true
+	}
+	return value, false
 }
 
 // GetCookie reads back a cookie this response is set to send, false when the
@@ -435,7 +474,7 @@ func (r *DefaultRes) GetCookies() []*Cookie {
 // attribute. RFC 6265 Section 4.1.1 excludes ";" from cookie-value, so splitting
 // on it is safe; the first element is the name=value pair and is skipped.
 func cookieAttrPresent(value []byte, attr string) bool {
-	_, rest, found := bytes.Cut(value, []byte{';'})
+	_, rest, found := utils.CutByte(value, ';')
 	if !found {
 		return false
 	}
@@ -447,7 +486,7 @@ func cookieAttrPresent(value []byte, attr string) bool {
 		} else {
 			rest = nil
 		}
-		name, _, _ := bytes.Cut(part, []byte{'='})
+		name, _, _ := utils.CutByte(part, '=')
 		if utils.EqualFold(utils.UnsafeString(utils.TrimSpace(name)), attr) {
 			return true
 		}
@@ -528,7 +567,7 @@ func (r *DefaultRes) Format(handlers ...ResFmt) error {
 	// Handlers must see the custom context when the app uses one, as Next does.
 	handlerCtx := r.c.ctxForHandlers()
 
-	r.Vary(HeaderAccept)
+	r.Vary(varyAccept...)
 
 	// Absent means the combined Accept view (RFC 9110 Section 5.2) is empty:
 	// no field line, or only empty ones. The joined read matches the field name
@@ -590,7 +629,7 @@ func (r *DefaultRes) Format(handlers ...ResFmt) error {
 func (r *DefaultRes) AutoFormat(body any) error {
 	// The response is selected based on the Accept header, so let caches know
 	// (RFC 9110 Section 12.5.5).
-	r.Vary(HeaderAccept)
+	r.Vary(varyAccept...)
 
 	// Get accepted content type; text/plain when nothing matches.
 	accept := "txt"
@@ -664,7 +703,7 @@ func (r *DefaultRes) Del(key string) {
 // Returned value is only valid within the handler. Do not store any references.
 // Make copies or use the Immutable setting instead.
 func (r *DefaultRes) Get(key string, defaultValue ...string) string {
-	return defaultString(r.c.app.toString(r.c.fasthttp.Response.Header.Peek(key)), defaultValue)
+	return defaultString(r.c.app.toString(fieldname.Peek(&r.c.fasthttp.Response.Header, key)), defaultValue)
 }
 
 // GetHeaders (a.k.a GetRespHeaders) returns the HTTP response headers.
@@ -1200,6 +1239,13 @@ func (r *DefaultRes) SendFile(file string, config ...SendFile) error {
 	// Save the filename, we will need it in the error message if the file isn't found
 	filename := file
 
+	// A control byte is no part of a name a client can ask for. One that
+	// reached fasthttp's URI parser failed it silently, which left the root
+	// path and served the root's index.html instead.
+	if utils.IndexControl(utils.UnsafeBytes(file)) >= 0 {
+		return NewError(StatusNotFound, fmt.Sprintf("sendfile: file %s not found", filename))
+	}
+
 	var cfg SendFile
 	if len(config) > 0 {
 		cfg = config[0]
@@ -1249,9 +1295,13 @@ func (r *DefaultRes) SendFile(file string, config ...SendFile) error {
 			},
 		}
 
+		handler := fasthttpFS.NewRequestHandler()
+		if cfg.ByteRange {
+			handler = byterange.Wrap(handler)
+		}
 		sf := &sendFileStore{
 			config:  cfg,
-			handler: fasthttpFS.NewRequestHandler(),
+			handler: handler,
 		}
 
 		maxAge := cfg.MaxAge
@@ -1300,8 +1350,18 @@ func (r *DefaultRes) SendFile(file string, config ...SendFile) error {
 	originalURL := utils.CopyString(r.c.OriginalURL())
 	defer request.SetRequestURI(originalURL)
 
-	// Set new URI for fileHandler
-	request.SetRequestURI(file)
+	// The file server reads the request URI, which fasthttp percent-decodes and
+	// splits at "?" and "#" as it parses it, so the name goes in escaped and
+	// comes out of that decode exactly as given: "100%25.txt" is the file of
+	// that name and not "100%.txt", "a?b" is not "a" with a query, and a
+	// "..%2Fsecret.txt" that a route parameter carried into filepath.Join stays
+	// one segment instead of decoding, after the join was cleaned, into a step
+	// out of the caller's directory. SetRequestURIBytes copies the escaped
+	// name, so a pooled buffer holds it only for the call.
+	uriBuf := bytebufferpool.Get()
+	uriBuf.B = utils.AppendPathSegmentsEscape(uriBuf.B[:0], file)
+	request.SetRequestURIBytes(uriBuf.B)
+	bytebufferpool.Put(uriBuf)
 
 	var (
 		sendFileSize    int64
@@ -1334,6 +1394,23 @@ func (r *DefaultRes) SendFile(file string, config ...SendFile) error {
 
 	// Get the status code which is set by fasthttp
 	fsStatus := response.StatusCode()
+
+	// fasthttp answers a directory named without a trailing slash with a
+	// redirect to the name with one, the only redirect its file handler
+	// issues. Here that name is a filesystem path, not a route, so the
+	// redirect could only disclose it: the directory is not found. The
+	// Location carries the name escaped, so it is not compared with the
+	// name. A name with the trailing slash serves the directory's index.html.
+	// The error carries no name either, since the default error handler writes
+	// its message to the client.
+	if fsStatus == StatusFound {
+		response.Header.Del(HeaderLocation)
+		response.SetStatusCode(StatusNotFound)
+		if status != StatusNotFound {
+			return ErrNotFound
+		}
+		fsStatus = StatusNotFound
+	}
 
 	// Check for error
 	if status != StatusNotFound && fsStatus == StatusNotFound {
@@ -1394,7 +1471,9 @@ func (r *DefaultRes) NoContent() error {
 // SendStatus sets the HTTP status code and if the response body is empty,
 // it sets the correct status message in the body.
 func (r *DefaultRes) SendStatus(status int) error {
-	r.Status(status)
+	// Settle the status first so the checks below use the one that is sent.
+	status = validStatus(status)
+	r.c.fasthttp.Response.SetStatusCode(status)
 
 	if statusDisallowsBody(status) {
 		resp := &r.c.fasthttp.Response
@@ -1442,6 +1521,14 @@ func (r *DefaultRes) SendStreamWriter(streamWriter func(*bufio.Writer)) error {
 
 // Set sets the response's HTTP header field to the specified key, value.
 func (r *DefaultRes) Set(key, val string) {
+	// A key already in canonical form skips the normalization fasthttp's Set
+	// runs only to arrive at the same bytes, and the second copy of the value
+	// it makes on the way; the line stored is the same in either store mode.
+	// Test_Res_Set_MatchesHeaderSet keeps the two paths storing it alike.
+	if fieldname.IsCanonical(key) {
+		r.setCanonical(key, val)
+		return
+	}
 	r.c.fasthttp.Response.Header.Set(key, val)
 }
 
@@ -1451,8 +1538,10 @@ func (r *DefaultRes) setCanonical(key, val string) {
 
 // Status sets the HTTP status for the response.
 // This method is chainable.
+//
+// A status outside 100 to 999 is logged and replaced by 500.
 func (r *DefaultRes) Status(status int) Ctx {
-	r.c.fasthttp.Response.SetStatusCode(status)
+	r.c.fasthttp.Response.SetStatusCode(validStatus(status))
 	return r.c
 }
 

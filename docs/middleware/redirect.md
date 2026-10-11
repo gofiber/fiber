@@ -77,7 +77,7 @@ matches `/fa`. Only `*` is a documented placeholder; write a rule out of path
 text and `*` and it behaves as it reads.
 
 Setting both `RuleList` and `Rules` panics: the two disagree about what decides
-precedence, so there is no sensible way to honour them together.
+precedence, so there is no sensible way to honor them together.
 
 ## Rule order
 

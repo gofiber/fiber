@@ -61,6 +61,12 @@ var (
 	// is false.
 	ErrUpstreamHostBlocked = errors.New("proxy: upstream host resolves to a blocked address")
 
+	// ErrUpstreamNotOrigin is returned when a Balancer server carries more
+	// than a scheme and a host: a path, userinfo, query or fragment. The
+	// balancer dials the host only, so the rest would be dropped silently,
+	// and "http://backend/api" would reach all of the upstream, not "/api".
+	ErrUpstreamNotOrigin = errors.New("proxy: upstream must be a scheme and host only")
+
 	// ErrRedirectDowngrade is returned when DoRedirects encounters a
 	// redirect from an HTTPS upstream to a plaintext HTTP target and
 	// AllowHTTPSDowngrade is false.
@@ -111,6 +117,20 @@ type SecurityPolicy struct {
 	// response. SECURITY: enabling this can enable request smuggling
 	// and proxy-auth credential forwarding. Default: false.
 	KeepHopByHopHeaders bool
+
+	// AllowAmbiguousSlashes lets Balancer, DomainForward and BalancerForward
+	// forward a routed path holding an escaped slash ("%2F") or an empty
+	// segment ("//"), which they otherwise answer with 400 Bad Request. An
+	// upstream that keeps both as sent needs it for names such as a
+	// GitLab-style "group%2Fproject" id or an object key with a doubled
+	// slash. SECURITY: an upstream that decodes "%2F" into a separator or
+	// merges "//" before it matches routes reads such a path as another
+	// one, under a prefix whose middleware the router never ran for it;
+	// enable this only when every upstream keeps them, through a client
+	// that does not normalize paths. A forged escape, a backslash and a
+	// dot segment carrying parameters are refused regardless.
+	// Default: false.
+	AllowAmbiguousSlashes bool
 }
 
 // DefaultSecurityPolicy returns the secure-by-default proxy security
@@ -124,10 +144,11 @@ type SecurityPolicy struct {
 // them.
 func DefaultSecurityPolicy() SecurityPolicy {
 	return SecurityPolicy{
-		AllowedSchemes:      append([]string(nil), defaultAllowedSchemes...),
-		AllowPrivateIPs:     false,
-		AllowHTTPSDowngrade: false,
-		KeepHopByHopHeaders: false,
+		AllowedSchemes:        append([]string(nil), defaultAllowedSchemes...),
+		AllowPrivateIPs:       false,
+		AllowHTTPSDowngrade:   false,
+		KeepHopByHopHeaders:   false,
+		AllowAmbiguousSlashes: false,
 	}
 }
 
@@ -221,15 +242,50 @@ var hopByHopHeaders = []string{
 	fiber.HeaderUpgrade,
 }
 
+// forwardedPrefix opens the X-Forwarded-* fields (For, Host, Proto, Port and
+// the rest), which an app behind a trusted proxy reads for the client's
+// address, host and scheme, as Fiber's own Ctx does.
+const forwardedPrefix = "X-Forwarded-"
+
+// isForwardingHeader reports whether name is a field that tells the upstream
+// about the client as this hop saw it: X-Real-IP, which the forwarding
+// helpers write, Forwarded (RFC 7239) and every X-Forwarded-* field.
+//
+// A client listing one of these in Connection does not have it removed. RFC
+// 9110 §7.6.1 has an intermediary take the listed fields out of the message
+// it received and then replace Connection with options of its own; the fields
+// it writes for the next hop are its own, not the client's to name. The
+// helpers write X-Real-IP once the listing has been applied, but X-Forwarded-*
+// set by the application, and the X-Real-IP it sets by hand before Do, are
+// written before it and cannot be told from a line the client sent. Leaving
+// the family alone keeps the upstream's view of the client with this hop. The
+// client gives up nothing: a forwarding field it sends is forwarded whenever
+// Connection does not name it, so the listing could only ever take away a
+// line this hop or the application wrote.
+func isForwardingHeader(name string) bool {
+	return utils.HasPrefixFold(name, forwardedPrefix) ||
+		utils.EqualFold(name, realIPHeader) ||
+		utils.EqualFold(name, fiber.HeaderForwarded)
+}
+
 // stripHopByHopRequestHeaders removes RFC 7230 §6.1 hop-by-hop headers
 // from req. Callers can pass header names in except to preserve specific
 // headers — used by the legacy KeepConnectionHeader option to retain the
 // literal Connection header while still dropping the other hop-by-hop
 // headers.
 func stripHopByHopRequestHeaders(req *fasthttp.Request, normalized bool, except ...string) { //nolint:revive // flag-parameter: normalized is a property of the header store
-	// Headers listed in Connection must be removed first so the
-	// listing is honored before the Connection field itself is dropped.
-	delConnectionListedHeaders(&req.Header, fieldname.Lines(&req.Header, fiber.HeaderConnection, normalized), normalized)
+	// Headers listed in Connection must be removed first so the listing is
+	// honored before the Connection field itself is dropped. A walk of its
+	// own rather than delConnectionListedHeaders, which the response keeps:
+	// the forwarding fields are not the client's to remove (see
+	// isForwardingHeader). The names alias the Connection value buffers,
+	// which is sound for the reason given there.
+	for name := range headerlist.AllLines(fieldname.Lines(&req.Header, fiber.HeaderConnection, normalized)) {
+		if isForwardingHeader(name) {
+			continue
+		}
+		fieldname.Del(&req.Header, name, normalized)
+	}
 	for _, h := range hopByHopHeaders {
 		if fieldname.ContainsFold(except, h) {
 			continue
@@ -267,6 +323,9 @@ func stripHopByHopResponseHeaders(res *fasthttp.Response, except ...string) {
 // because fasthttp's Del only re-slices the header's entry list — it never
 // rewrites other entries' key/value buffers — and Del does not retain the
 // name after returning.
+//
+// This is the response's walk. The request has one of its own in
+// stripHopByHopRequestHeaders, which leaves the forwarding fields alone.
 func delConnectionListedHeaders(h fieldname.Deleter, values [][]byte, normalized bool) { //nolint:revive // flag-parameter: normalized is a property of the header store
 	for name := range headerlist.AllLines(values) {
 		fieldname.Del(h, name, normalized)
@@ -329,16 +388,21 @@ func parseUpstreamScheme(raw string, policy SecurityPolicy) (*url.URL, error) {
 }
 
 // validateUpstreamForBalancer validates a statically configured Balancer
-// upstream. It enforces the scheme allowlist and rejects IP-literal hosts
-// in blocked ranges, but defers hostname resolution to the SSRF-guarded
-// dialer (see newSSRFDialer). Deferring DNS keeps a transient resolver
-// failure at startup from panicking the application (e.g. crash loops in
-// container orchestrators) and re-checks the resolved IP on every dial,
-// which also defeats DNS-rebinding.
+// upstream. It enforces the scheme allowlist, requires the entry to be an
+// origin (the balancer dials the host and forwards the request target as
+// is, so a path, userinfo, query or fragment would be dropped silently) and
+// rejects IP-literal hosts in blocked ranges, but defers hostname resolution
+// to the SSRF-guarded dialer (see newSSRFDialer). Deferring DNS keeps a
+// transient resolver failure at startup from panicking the application
+// (e.g. crash loops in container orchestrators) and re-checks the resolved
+// IP on every dial, which also defeats DNS-rebinding.
 func validateUpstreamForBalancer(raw string, policy SecurityPolicy) (*url.URL, error) {
 	u, err := parseUpstreamScheme(raw, policy)
 	if err != nil {
 		return nil, err
+	}
+	if u.User != nil || (u.Path != "" && u.Path != "/") || u.RawQuery != "" || u.ForceQuery || u.Fragment != "" || u.Opaque != "" {
+		return nil, fmt.Errorf("%w: %q", ErrUpstreamNotOrigin, raw)
 	}
 	if policy.AllowPrivateIPs {
 		return u, nil
@@ -743,11 +807,19 @@ func secureTLSConfig(cfg *tls.Config) *tls.Config {
 	return cloned
 }
 
+// placeholderOrigin is the authority joinUpstreamPath parses a request target
+// behind. Neither its scheme nor its host is what any request is sent to; it
+// only keeps the parser from reading the target's own leading "//" as an
+// authority.
+const placeholderOrigin = "https://h"
+
 // joinUpstreamPath returns a URL string formed by combining an already
-// validated upstream base with a request path supplied by the client.
-// The request path's authority component (if any) is discarded so
-// crafted inputs like "//attacker.example/foo" or "@attacker" cannot
-// change the host the proxy connects to.
+// validated upstream base with the request target the proxy forwards (see
+// wiretarget.Routed). The target can only ever be a path, a query and a
+// fragment: crafted inputs like "//attacker.example/foo" or "@attacker"
+// cannot change the host the proxy connects to, and a leading "//" stays the
+// empty segment the router kept apart from "/foo" rather than being
+// collapsed into a path the router never matched.
 func joinUpstreamPath(base *url.URL, requestPath string) string {
 	if base == nil {
 		return ""
@@ -778,25 +850,28 @@ func joinUpstreamPath(base *url.URL, requestPath string) string {
 	if requestPath == "" {
 		return out.String()
 	}
-	// A leading "//" makes Go's url.Parse treat the value as a
-	// network-path reference and parse a new authority. Collapse it to
-	// a single slash so the host stays pinned to the configured base.
-	for strings.HasPrefix(requestPath, "//") {
-		requestPath = "/" + utils.TrimLeft(requestPath, '/')
-	}
 	if requestPath[0] != '/' && requestPath[0] != '?' && requestPath[0] != '#' {
 		requestPath = "/" + requestPath
 	}
-	parsed, err := url.Parse(requestPath)
-	if err != nil || parsed.Host != "" || parsed.Scheme != "" {
-		// Either the path failed to parse cleanly or it introduced a
-		// new authority. Treat the remainder as an opaque path, but
-		// preserve any path prefix configured on the upstream base so
-		// a malformed request can't silently bypass it (e.g.
-		// "http://upstream/api" + "/%zz" must stay rooted at "/api").
-		fallback := "/" + utils.TrimLeft(requestPath, '/')
+	// Parse behind a placeholder authority, so that the target can only be a
+	// path, a query and a fragment. Parsed on its own, a leading "//" would
+	// be a network-path reference that moves the proxy to another host, and
+	// collapsing it to one slash would forward a path the router never
+	// matched: "//admin" is not "/admin" to the router, which keeps empty
+	// segments, so no middleware mounted on "/admin" has run for it.
+	parsed, err := url.Parse(placeholderOrigin + requestPath)
+	if err != nil {
+		// The target does not parse cleanly (a malformed escape, say).
+		// Treat it as an opaque path, but preserve any path prefix
+		// configured on the upstream base so a malformed request can't
+		// silently bypass it (e.g. "http://upstream/api" + "/%zz" must stay
+		// rooted at "/api").
+		fallback := requestPath
+		if fallback[0] != '/' {
+			fallback = "/" + fallback
+		}
 		if base.Path != "" {
-			fallback = strings.TrimSuffix(base.Path, "/") + "/" + strings.TrimPrefix(fallback, "/")
+			fallback = strings.TrimSuffix(base.Path, "/") + fallback
 		}
 		out.Path = fallback
 		out.RawPath = ""

@@ -1,6 +1,7 @@
 package cors
 
 import (
+	"slices"
 	"strconv"
 	"strings"
 
@@ -18,6 +19,60 @@ import (
 const corsSchemes = originpkg.AnyScheme
 
 const redactedValue = "[redacted]"
+
+// headerLists holds the comma-joined forms of the list-valued CORS response
+// headers. Their sources are fixed when New returns, so each is built once
+// there instead of being re-joined on every request that emits it.
+type headerLists struct {
+	allowMethods  string
+	allowHeaders  string
+	exposeHeaders string
+
+	// Whether each list was configured at all, which is not the same question
+	// as whether its joined form is empty: AllowHeaders: []string{""} is a
+	// configured list that joins to "". For Access-Control-Allow-Headers the
+	// difference decides the response — an empty value authorizes no headers,
+	// while an absent list falls back to echoing whatever the request asked
+	// for in Access-Control-Request-Headers.
+	hasAllowMethods  bool
+	hasAllowHeaders  bool
+	hasExposeHeaders bool
+}
+
+// Vary takes its field names variadically, and a fresh "..." argument list is
+// a slice the compiler has to heap-allocate: Vary's result reaches the header
+// store, so escape analysis marks the elements as leaking even though fasthttp
+// copies the bytes. Passing a package-level slice with "..." hands the callee
+// the existing backing array instead, which removed the only allocation on the
+// simple-request path and three of the four on preflight. They are only ever
+// passed through vary below, which keeps the shared arrays away from a Ctx
+// that might write to them.
+var (
+	varyOrigin           = []string{fiber.HeaderOrigin}
+	varyPreflight        = []string{fiber.HeaderAccessControlRequestMethod, fiber.HeaderAccessControlRequestHeaders, fiber.HeaderOrigin}
+	varyPreflightPrivate = []string{
+		fiber.HeaderAccessControlRequestMethod,
+		fiber.HeaderAccessControlRequestHeaders,
+		fiber.HeaderAccessControlRequestPrivateNetwork,
+		fiber.HeaderOrigin,
+	}
+)
+
+// vary adds fields to the Vary response header.
+//
+// The lists above are shared by every request this middleware serves, so they
+// must not reach an implementation that could write to them: a custom Ctx is
+// free to sort or otherwise rewrite its variadic argument, and doing that to a
+// package-level array would corrupt the field names of later responses and
+// race with the requests running alongside. DefaultCtx only reads what Vary is
+// given, so it gets the shared slice; anything else gets a copy of its own.
+func vary(c fiber.Ctx, fields []string) {
+	if dc, ok := c.(*fiber.DefaultCtx); ok {
+		dc.Vary(fields...)
+		return
+	}
+	c.Vary(slices.Clone(fields)...)
+}
 
 // isOriginSerializedOrNull checks if the origin is a serialized origin or the literal "null".
 // It returns two booleans: (isSerialized, isNull).
@@ -97,6 +152,25 @@ func New(config ...Config) fiber.Handler {
 	// Convert int to string
 	maxAge := strconv.Itoa(cfg.MaxAge)
 
+	// The list-valued response headers are built from configuration that
+	// cannot change once New returns, so they are joined here rather than on
+	// every request. strings.Join was the only remaining allocation on the
+	// preflight path.
+	lists := headerLists{
+		hasAllowMethods:  len(cfg.AllowMethods) > 0,
+		hasAllowHeaders:  len(cfg.AllowHeaders) > 0,
+		hasExposeHeaders: len(cfg.ExposeHeaders) > 0,
+	}
+	if lists.hasAllowMethods {
+		lists.allowMethods = strings.Join(cfg.AllowMethods, ", ")
+	}
+	if lists.hasAllowHeaders {
+		lists.allowHeaders = strings.Join(cfg.AllowHeaders, ", ")
+	}
+	if lists.hasExposeHeaders {
+		lists.exposeHeaders = strings.Join(cfg.ExposeHeaders, ", ")
+	}
+
 	// Return new handler
 	return func(c fiber.Ctx) error {
 		// Don't execute middleware if Next returns true
@@ -116,7 +190,7 @@ func New(config ...Config) fiber.Handler {
 			// See https://fetch.spec.whatwg.org/#cors-protocol-and-http-caches
 			// Unless all origins are allowed, we include the Vary header to cache the response correctly
 			if !allowAllOrigins {
-				c.Vary(fiber.HeaderOrigin)
+				vary(c, varyOrigin)
 			}
 
 			return c.Next()
@@ -133,7 +207,7 @@ func New(config ...Config) fiber.Handler {
 			// some caching can be configured to cache such responses.
 			// To Avoid poisoning the cache, we include the Vary header
 			// for non-CORS OPTIONS requests:
-			c.Vary(fiber.HeaderOrigin)
+			vary(c, varyOrigin)
 			return c.Next()
 		}
 
@@ -170,9 +244,9 @@ func New(config ...Config) fiber.Handler {
 		if c.Method() != fiber.MethodOptions {
 			if !allowAllOrigins {
 				// See https://fetch.spec.whatwg.org/#cors-protocol-and-http-caches
-				c.Vary(fiber.HeaderOrigin)
+				vary(c, varyOrigin)
 			}
-			setSimpleHeaders(c, allowOrigin, &cfg)
+			setSimpleHeaders(c, allowOrigin, &cfg, &lists)
 			return c.Next()
 		}
 
@@ -191,20 +265,20 @@ func New(config ...Config) fiber.Handler {
 			privateNetworkRequested = privateNetwork == "true"
 		}
 		if privateNetworkRequested {
-			c.Vary(fiber.HeaderAccessControlRequestMethod, fiber.HeaderAccessControlRequestHeaders, fiber.HeaderAccessControlRequestPrivateNetwork, fiber.HeaderOrigin)
+			vary(c, varyPreflightPrivate)
 			c.Set(fiber.HeaderAccessControlAllowPrivateNetwork, "true")
 		} else {
-			c.Vary(fiber.HeaderAccessControlRequestMethod, fiber.HeaderAccessControlRequestHeaders, fiber.HeaderOrigin)
+			vary(c, varyPreflight)
 		}
 
-		setPreflightHeaders(c, allowOrigin, maxAge, &cfg)
+		setPreflightHeaders(c, allowOrigin, maxAge, &cfg, &lists)
 
 		// Set Preflight headers
-		if len(cfg.AllowMethods) > 0 {
-			c.Set(fiber.HeaderAccessControlAllowMethods, strings.Join(cfg.AllowMethods, ", "))
+		if lists.hasAllowMethods {
+			c.Set(fiber.HeaderAccessControlAllowMethods, lists.allowMethods)
 		}
-		if len(cfg.AllowHeaders) > 0 {
-			c.Set(fiber.HeaderAccessControlAllowHeaders, strings.Join(cfg.AllowHeaders, ", "))
+		if lists.hasAllowHeaders {
+			c.Set(fiber.HeaderAccessControlAllowHeaders, lists.allowHeaders)
 		} else {
 			// Combined, not Value: this one is a list field, so a peer may
 			// legally split it over two lines and both name headers to allow.
@@ -220,7 +294,7 @@ func New(config ...Config) fiber.Handler {
 }
 
 // Function to set Simple CORS headers
-func setSimpleHeaders(c fiber.Ctx, allowOrigin string, cfg *Config) {
+func setSimpleHeaders(c fiber.Ctx, allowOrigin string, cfg *Config, lists *headerLists) {
 	if cfg == nil {
 		return
 	}
@@ -239,15 +313,16 @@ func setSimpleHeaders(c fiber.Ctx, allowOrigin string, cfg *Config) {
 		c.Set(fiber.HeaderAccessControlAllowOrigin, allowOrigin)
 	}
 
-	// Set Expose-Headers if not empty
-	if len(cfg.ExposeHeaders) > 0 {
-		c.Set(fiber.HeaderAccessControlExposeHeaders, strings.Join(cfg.ExposeHeaders, ", "))
+	// Set Expose-Headers if not empty. lists is nil-tolerant for the same
+	// reason cfg is: the helper is called directly by tests.
+	if lists != nil && lists.hasExposeHeaders {
+		c.Set(fiber.HeaderAccessControlExposeHeaders, lists.exposeHeaders)
 	}
 }
 
 // Function to set Preflight CORS headers
-func setPreflightHeaders(c fiber.Ctx, allowOrigin, maxAge string, cfg *Config) {
-	setSimpleHeaders(c, allowOrigin, cfg)
+func setPreflightHeaders(c fiber.Ctx, allowOrigin, maxAge string, cfg *Config, lists *headerLists) {
+	setSimpleHeaders(c, allowOrigin, cfg, lists)
 
 	// Set MaxAge if set
 	if cfg != nil && cfg.MaxAge > 0 {

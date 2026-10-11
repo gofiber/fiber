@@ -1,7 +1,10 @@
 package session
 
 import (
+	"reflect"
 	"sync"
+	"sync/atomic"
+	"time"
 )
 
 // msgp -file="data.go" -o="data_msgp.go" -tests=true -unexported
@@ -12,6 +15,34 @@ import (
 type data struct {
 	Data         map[any]any // Session key counts are expected to be bounded.
 	sync.RWMutex `msg:"-"`
+
+	// Stored before each mutation, so false means Data is unchanged since the decode.
+	// Only a decode clears it; clearing after an encode would drop later in-place edits.
+	dirty atomic.Bool
+}
+
+// valueMayAlias reports whether the caller could mutate the session through v
+// without calling Set. Scalars are copies; anything else may share memory with Data.
+func valueMayAlias(v any) bool {
+	if _, ok := v.(time.Time); ok {
+		// A copy, and its *Location is a shared immutable. Excluded because the
+		// absolute-timeout bookkeeping reads one on every session load.
+		return false
+	}
+	t := reflect.TypeOf(v)
+	if t == nil {
+		return false
+	}
+	switch t.Kind() {
+	case reflect.Bool, reflect.String,
+		reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
+		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr,
+		reflect.Float32, reflect.Float64, reflect.Complex64, reflect.Complex128:
+		// Matched on Kind so named scalars (type UserID int) are covered too.
+		return false
+	default:
+		return true
+	}
 }
 
 var dataPool = sync.Pool{
@@ -59,6 +90,7 @@ func releaseData(d *data) {
 func (d *data) Reset() {
 	d.Lock()
 	defer d.Unlock()
+	d.dirty.Store(true)
 	clear(d.Data)
 }
 
@@ -76,7 +108,12 @@ func (d *data) Reset() {
 func (d *data) Get(key any) any {
 	d.RLock()
 	defer d.RUnlock()
-	return d.Data[key]
+	v := d.Data[key]
+	if valueMayAlias(v) {
+		// The caller can now mutate the session through v without calling Set.
+		d.dirty.Store(true)
+	}
+	return v
 }
 
 // Set updates or creates a new key-value pair in the data map.
@@ -91,6 +128,7 @@ func (d *data) Get(key any) any {
 func (d *data) Set(key, value any) {
 	d.Lock()
 	defer d.Unlock()
+	d.dirty.Store(true)
 	d.Data[key] = value
 }
 
@@ -105,6 +143,7 @@ func (d *data) Set(key, value any) {
 func (d *data) Delete(key any) {
 	d.Lock()
 	defer d.Unlock()
+	d.dirty.Store(true)
 	delete(d.Data, key)
 }
 
@@ -121,6 +160,10 @@ func (d *data) Keys() []any {
 	defer d.RUnlock()
 	keys := make([]any, 0, len(d.Data))
 	for k := range d.Data {
+		if valueMayAlias(k) {
+			// gob flattens pointer keys, so mutating a pointee changes the payload.
+			d.dirty.Store(true)
+		}
 		keys = append(keys, k)
 	}
 	return keys

@@ -5,10 +5,10 @@ import (
 	"maps"
 	"regexp"
 	"slices"
-	"strconv"
 	"strings"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/rulematch"
 	"github.com/gofiber/fiber/v3/internal/urlnorm"
 	"github.com/gofiber/fiber/v3/log"
 	"github.com/gofiber/utils/v2"
@@ -229,7 +229,7 @@ func New(config ...Config) fiber.Handler {
 		}
 		// Rewrite
 		for _, rule := range compiled {
-			replacer := captureTokens(rule.pattern, path)
+			replacer := rulematch.CaptureTokens(rule.pattern, path, false)
 			if replacer == nil {
 				continue
 			}
@@ -390,7 +390,9 @@ func isSlash(c byte) bool {
 // one every other special scheme takes.
 func isFileScheme(target string) bool {
 	i := schemeEnd(target)
-	return i > 0 && strings.EqualFold(target[:i], "file")
+	// schemeEnd only ever returns a span of ASCII scheme characters, so the
+	// ASCII-only fold agrees with strings.EqualFold on every input it sees.
+	return i > 0 && utils.EqualFold(target[:i], "file")
 }
 
 // isSpecialScheme reports whether scheme is one of them. A scheme is
@@ -446,22 +448,4 @@ func keepSameOrigin(location string) string {
 	// Collapse to the single slash the target asked for. Backslashes count as
 	// slashes: the parser folds them in this position.
 	return "/" + location[n:]
-}
-
-// https://github.com/labstack/echo/blob/master/middleware/rewrite.go
-func captureTokens(pattern *regexp.Regexp, input string) *strings.Replacer {
-	// One match or none: the pattern is anchored at both ends, so a match spans
-	// the whole input and there is never a second one to look for.
-	groups := pattern.FindStringSubmatch(input)
-	if groups == nil {
-		return nil
-	}
-	values := groups[1:]
-	replace := make([]string, 2*len(values))
-	for i, v := range values {
-		j := 2 * i
-		replace[j] = "$" + strconv.Itoa(i+1)
-		replace[j+1] = v
-	}
-	return strings.NewReplacer(replace...)
 }

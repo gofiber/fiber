@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math/bits"
 	"net"
 	"os"
 	"path/filepath"
@@ -30,6 +31,7 @@ import (
 	"github.com/gofiber/fiber/v3/binder"
 	"github.com/gofiber/fiber/v3/internal/contextvalue"
 	etagpkg "github.com/gofiber/fiber/v3/internal/etag"
+	"github.com/gofiber/fiber/v3/internal/headerlist"
 	"github.com/gofiber/fiber/v3/internal/mediatype"
 	"github.com/gofiber/fiber/v3/log"
 
@@ -74,11 +76,31 @@ func ValueFromContext[T any](ctx, key any) (T, bool) {
 // This is useful when values need to be available via both c.Locals() and
 // context.Context lookups throughout middleware and handlers.
 func StoreInContext(c Ctx, key, value any) {
-	c.Locals(key, value)
+	setLocal(c, key, value)
 
 	if c.App().config.PassLocalsToContext {
 		c.SetContext(context.WithValue(c.Context(), key, value))
 	}
+}
+
+// setLocal stores key/value on c, preferring the concrete context, and
+// returns what Locals returned so callers keep its result.
+//
+// Locals takes its value variadically, and reached through the Ctx interface
+// the compiler cannot see that it only reads that argument, so the
+// one-element "..." slice is heap-allocated on every call. Calling the
+// concrete method lets it inline and keeps the slice in the frame: 50ns with
+// an allocation becomes 11ns without, on every request that stores a request
+// ID, a session, a CSRF token or an authenticated user.
+//
+// A custom Ctx fails the assertion and keeps the interface call, so an
+// overridden Locals is still the one that runs. internal/ctxlocal.Set is the
+// same function for the packages that cannot reach this one.
+func setLocal(c Ctx, key, value any) any {
+	if dc, ok := c.(*DefaultCtx); ok {
+		return dc.Locals(key, value)
+	}
+	return c.Locals(key, value)
 }
 
 // getTLSConfig returns a net listener's tls config
@@ -199,6 +221,63 @@ func appendLowerASCII(dst, src []byte) []byte {
 		dst[i] = c
 	}
 	return dst
+}
+
+// appendCopyLowerASCII writes src into dst and its ASCII lower-case form into
+// low, reading src once and returning both, together with the number of '/'
+// bytes in src. It backs the default configuration of configDependentPaths,
+// where the detection path is exactly the case fold of the path: doing it as a
+// copy followed by appendLowerASCII reads every byte twice and pays two
+// capacity checks and two loop set-ups, which for the path lengths routers see
+// is most of the cost. Fusing them measured 19-46% faster across 5- to 70-byte
+// paths. The slash count rides along for the same reason: the router needs it
+// for nearly every request, and a separate bytes.Count call cost more than the
+// few instructions it takes per word here.
+//
+// lowerBuf must not alias src. src may alias dstBuf at a higher offset, as it
+// does when Path is overridden with a substring of its current value.
+func appendCopyLowerASCII(dstBuf, lowerBuf []byte, src string) (dst, lower []byte, slashes int) { //nolint:nonamedreturns // gocritic unnamedResult requires naming the two same-typed slices
+	n := len(src)
+	// Amortized growth like append: every byte of both slices is overwritten
+	// below, so the grown slices' contents don't matter.
+	dst = slices.Grow(dstBuf[:0], n)[:n]
+	lower = slices.Grow(lowerBuf[:0], n)[:n]
+	// Load the overlapping tail before writing dst. If src is a substring of
+	// dstBuf, an earlier store may otherwise overwrite bytes in this word.
+	var tail uint64
+	if n >= swar.WordLen && n%swar.WordLen != 0 {
+		tail = swar.Load8(src, n-swar.WordLen)
+	}
+	i := 0
+	for ; i+swar.WordLen <= n; i += swar.WordLen {
+		w := swar.Load8(src, i)
+		swar.Store8(dst, i, w)
+		swar.Store8(lower, i, swar.ToLowerWord(w))
+		slashes += bits.OnesCount64(swar.MatchByteMask(w, '/'))
+	}
+	if i == n {
+		return dst, lower, slashes
+	}
+	if n >= swar.WordLen {
+		// Finish with one overlapping word; the overlapped bytes are
+		// rewritten with the same values, and shifted out of the count.
+		swar.Store8(dst, n-swar.WordLen, tail)
+		swar.Store8(lower, n-swar.WordLen, swar.ToLowerWord(tail))
+		slashes += bits.OnesCount64(swar.MatchByteMask(tail, '/') >> (8 * (i - (n - swar.WordLen))))
+		return dst, lower, slashes
+	}
+	for ; i < n; i++ {
+		c := src[i]
+		dst[i] = c
+		if c == '/' {
+			slashes++
+		}
+		if c-'A' <= 'Z'-'A' {
+			c |= 0x20
+		}
+		lower[i] = c
+	}
+	return dst, lower, slashes
 }
 
 // defaultString returns the value or a default value if it is set
@@ -461,26 +540,15 @@ type joinedHeaderValue struct {
 	key      string
 	combined []byte
 	multi    bool
+	seen     bool
 }
 
 func (j *joinedHeaderValue) visit(k, v []byte) {
 	if len(k) != len(j.key) || !utils.EqualFold(utils.UnsafeString(k), j.key) {
 		return
 	}
-	switch {
-	case j.combined == nil:
-		j.combined = v
-	case !j.multi:
-		joined := make([]byte, 0, len(j.combined)+1+len(v))
-		joined = append(joined, j.combined...)
-		joined = append(joined, ',')
-		joined = append(joined, v...)
-		j.combined = joined
-		j.multi = true
-	default:
-		j.combined = append(j.combined, ',')
-		j.combined = append(j.combined, v...)
-	}
+	j.seen = true
+	j.combined, j.multi = headerlist.JoinNext(j.combined, v, j.multi)
 }
 
 // peekJoinedRequestHeader returns the combined value of every field line for
@@ -488,6 +556,13 @@ func (j *joinedHeaderValue) visit(k, v []byte) {
 // per-call key normalization. Concrete (non-generic) so the visitor stays on
 // the stack.
 func peekJoinedRequestHeader(h *fasthttp.RequestHeader, key string) []byte {
+	value, _ := lookupJoinedRequestHeader(h, key)
+	return value
+}
+
+// lookupJoinedRequestHeader is peekJoinedRequestHeader that also reports whether
+// the request has a field line for key, which an empty value does not tell.
+func lookupJoinedRequestHeader(h *fasthttp.RequestHeader, key string) ([]byte, bool) {
 	j := joinedHeaderValue{key: key}
 	// VisitAll (not the replacement All) keeps this zero-alloc: All returns
 	// an iterator closure that escapes to the heap on every call. The SA1019
@@ -499,7 +574,7 @@ func peekJoinedRequestHeader(h *fasthttp.RequestHeader, key string) []byte {
 	// preserves the relative order of repeated field lines sharing a key,
 	// which is all this helper needs; it only reorders across distinct keys.
 	h.VisitAll(j.visit)
-	return j.combined
+	return j.combined, j.seen
 }
 
 // peekJoinedResponseHeader is peekJoinedRequestHeader for response headers.
@@ -812,6 +887,43 @@ func sortAcceptedTypes(at []acceptedType) {
 	}
 }
 
+// getEncodingOffer is getOffer for Accept-Encoding, where "identity" is also
+// acceptable unless the field excludes it (RFC 9110 §12.5.3). An unlisted
+// identity ranks below every coding the field lists.
+func getEncodingOffer(header []byte, offers []string) string {
+	if offer := getOffer(header, acceptsOffer, offers...); offer != "" {
+		return offer
+	}
+	// getOffer has already weighed an identity the field mentions.
+	if identity := identityOffer(offers); identity != "" && !identityListed(header) {
+		return identity
+	}
+	return ""
+}
+
+// identityOffer returns the offer naming no content coding, or "".
+func identityOffer(offers []string) string {
+	for _, offer := range offers {
+		// The length check first: EqualFold is a call, and most offers are not identity.
+		if len(offer) == len(StrIdentity) && utils.EqualFold(offer, StrIdentity) {
+			return offer
+		}
+	}
+	return ""
+}
+
+// identityListed reports whether the field mentions identity or the "*" wildcard.
+func identityListed(header []byte) bool {
+	for element := range headerlist.All(utils.UnsafeString(header)) {
+		coding, _, _ := utils.CutByte(element, ';')
+		coding = utils.TrimSpace(coding)
+		if coding == "*" || utils.EqualFold(coding, StrIdentity) {
+			return true
+		}
+	}
+	return false
+}
+
 // isEtagStale reports whether a response with the given ETag would be considered
 // stale when presented with the raw If-None-Match header value. Comparison is
 // weak as defined by RFC 9110 §8.8.3.2.
@@ -907,6 +1019,46 @@ func matchNoCacheToken(s string, i int) bool {
 		(b[5]|asciiCaseFold) == 'c' &&
 		(b[6]|asciiCaseFold) == 'h' &&
 		(b[7]|asciiCaseFold) == 'e'
+}
+
+// sameFunc reports whether a is the non-nil callback b, which == cannot say for
+// funcs: it compares the closure each value points to.
+func sameFunc(a, b func(*fasthttp.RequestHeader) fasthttp.RequestConfig) bool {
+	return a != nil && *(*unsafe.Pointer)(unsafe.Pointer(&a)) == *(*unsafe.Pointer)(unsafe.Pointer(&b)) //nolint:gosec // funcs are only comparable to nil
+}
+
+// bothFramingFields reports whether a request carries Content-Length and
+// Transfer-Encoding (RFC 9112 §6.1). fasthttp keeps no trace of the second one in
+// the length it reports: chunked wins and the Content-Length value is dropped, and
+// "identity" is ignored, leaving the Content-Length framing.
+func bothFramingFields(h *fasthttp.RequestHeader) bool {
+	switch length := h.ContentLength(); {
+	case length == -1: // chunked
+		return hasHeaderField(h.RawHeaders(), HeaderContentLength)
+	case length >= 0: // framed by Content-Length
+		return hasHeaderField(h.RawHeaders(), HeaderTransferEncoding)
+	}
+	return false // -2: neither field
+}
+
+// hasHeaderField reports whether raw, a request's header block, has a line for the
+// field name, which is the only place left to look for what fasthttp drops or
+// ignores. Whitespace before the colon is not matched: fasthttp rejects that
+// request.
+func hasHeaderField(raw []byte, name string) bool {
+	for len(raw) > 0 {
+		line := raw
+		if i := bytes.IndexByte(raw, '\n'); i >= 0 {
+			line, raw = raw[:i], raw[i+1:]
+		} else {
+			raw = nil
+		}
+		if len(line) > len(name) && line[len(name)] == ':' &&
+			utils.EqualFold(utils.UnsafeString(line[:len(name)]), name) {
+			return true
+		}
+	}
+	return false
 }
 
 var errTestConnClosed = errors.New("testConn is closed")
@@ -1019,6 +1171,31 @@ func (app *App) method(methodInt int) string {
 		return ""
 	}
 	return app.config.RequestMethods[methodInt]
+}
+
+// The status line carries three digits (RFC 9112 §4). RFC 9110 §15 only defines
+// 100..599, but 600..999 is still well-formed, so it is let through.
+const (
+	minStatusCode = 100
+	maxStatusCode = 999
+)
+
+// validStatus returns status if it fits a status line, else 500. fasthttp would
+// write 99 or 1000 as a malformed line and 0 as a 200.
+func validStatus(status int) int {
+	if status < minStatusCode || status > maxStatusCode {
+		return invalidStatus(status)
+	}
+	return status
+}
+
+// invalidStatus logs the status and returns the one sent instead. It stays out of
+// line so that validStatus, and Status with it, can be inlined.
+//
+//go:noinline
+func invalidStatus(status int) int {
+	log.Errorf("fiber: status code %d is not a three-digit HTTP status, sending %d instead", status, StatusInternalServerError)
+	return StatusInternalServerError
 }
 
 // IsMethodSafe reports whether the HTTP method is considered safe.
@@ -1198,17 +1375,39 @@ type GenericTypeFloat interface {
 	float32 | float64
 }
 
+// hasMediaType reports whether ct names mime in its canonical spelling, alone
+// or followed by parameters, which is what the folding below would produce.
+func hasMediaType(ct []byte, mime string) bool {
+	if len(ct) < len(mime) || string(ct[:len(mime)]) != mime {
+		return false
+	}
+	return len(ct) == len(mime) || ct[len(mime)] == ';' || ct[len(mime)] == ' '
+}
+
 // bindMediaType returns the request's media type, lowered for comparison against
 // the MIME constants. The request's own bytes are folded only for a form, the
 // one case needing it in place; anything else is compared on a copy.
 func bindMediaType(h *fasthttp.RequestHeader) string {
-	if mediatype.IsForm(h.ContentType()) {
+	ct := h.ContentType()
+
+	// The canonical spellings need no folding or parsing, so they answer before
+	// the case-insensitive walk below; every other spelling still takes it. The
+	// form type is matched bare because its parameters are folded in place for
+	// fasthttp's own parser, which the walk keeps doing.
+	if hasMediaType(ct, MIMEApplicationJSON) {
+		return MIMEApplicationJSON
+	}
+	if string(ct) == MIMEApplicationForm {
+		return MIMEApplicationForm
+	}
+
+	if mediatype.IsForm(ct) {
 		raw := utils.UnsafeString(mediatype.NormalizeRequestContentType(h))
 		return binder.FilterFlags(utils.ParseVendorSpecificContentType(raw))
 	}
 
 	// ToLower returns its input unchanged when there is nothing to fold, so the
 	// common path costs no allocation.
-	lowered := utilsstrings.ToLower(utils.UnsafeString(h.ContentType()))
+	lowered := utilsstrings.ToLower(utils.UnsafeString(ct))
 	return binder.FilterFlags(utils.ParseVendorSpecificContentType(lowered))
 }

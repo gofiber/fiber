@@ -13,9 +13,9 @@ type Config struct {
 	Next func(c fiber.Ctx) bool
 
 	// OnTimeout is executed when a timeout occurs. It may write the response or
-	// return a *fiber.Error that shapes it; otherwise the default 408 is sent.
+	// return a *fiber.Error that shapes it; otherwise the default 503 is sent.
 	// The timed-out handler may still be running and must stop using the context.
-	// Optional. Default: nil (return fiber.ErrRequestTimeout)
+	// Optional. Default: nil (return fiber.ErrServiceUnavailable)
 	OnTimeout fiber.Handler
 
 	// Errors defines custom errors that are treated as timeouts.

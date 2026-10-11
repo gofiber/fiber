@@ -51,6 +51,9 @@ func Test_App_Prefork_Child_Process(t *testing.T) {
 
 	cfg = listenConfigDefault()
 	require.NoError(t, app.prefork("127.0.0.1:", config, &cfg))
+
+	// The child installs the Content-Length/Transfer-Encoding close hook before it serves.
+	require.NotNil(t, app.Server().HeaderReceived)
 }
 
 func Test_App_Prefork_Master_Process(t *testing.T) {

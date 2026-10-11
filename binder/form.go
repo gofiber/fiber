@@ -12,9 +12,9 @@ import (
 const MIMEMultipartForm string = "multipart/form-data"
 
 var (
-	dataMapPool = sync.Pool{
+	bindDataPool = sync.Pool{
 		New: func() any {
-			return make(map[string][]string, 8)
+			return &bindData{values: make(map[string][]string, 8)}
 		},
 	}
 	formFileMapPool = sync.Pool{
@@ -24,9 +24,12 @@ var (
 	}
 )
 
-// Keep oversized maps out of the pool so a rare large bind doesn't get retained
-// and reused across subsequent requests.
-const maxPoolableDataMapSize = 256
+// Keep oversized maps and pair slices out of the pool so a rare large bind
+// doesn't get retained and reused across subsequent requests.
+const (
+	maxPoolableDataMapSize = 256
+	maxPoolablePairs       = 1024
+)
 
 // FormBinding is the form binder for form request body.
 type FormBinding struct {
@@ -54,18 +57,19 @@ func (b *FormBinding) Bind(req *fasthttp.Request, out any) error {
 		return b.bindMultipart(req, out)
 	}
 
-	data := acquireDataMap()
-	defer releaseDataMap(data)
+	args := req.PostArgs()
+	data := acquireBindData(out, args.Len())
+	defer releaseBindData(data)
 
-	for key, val := range req.PostArgs().All() {
+	for key, val := range args.All() {
 		k := utils.UnsafeString(key)
 		v := utils.UnsafeString(val)
-		if err := formatBindData(b.Name(), out, data, k, v, b.EnableSplitting, true); err != nil {
+		if err := data.bind(b.Name(), out, k, v, b.EnableSplitting, true); err != nil {
 			return err
 		}
 	}
 
-	return parse(b.Name(), out, data)
+	return data.parse(b.Name(), out)
 }
 
 // bindMultipart parses the request body and returns the result.
@@ -75,11 +79,17 @@ func (b *FormBinding) bindMultipart(req *fasthttp.Request, out any) error {
 		return err
 	}
 
-	data := acquireDataMap()
-	defer releaseDataMap(data)
+	// The files are merged into the decoder's view of the source map, so a
+	// multipart form is always filed into one.
+	mode := bindModeFor(out)
+	if mode == bindPairs {
+		mode = bindMap
+	}
+	data := acquireBindDataMode(mode)
+	defer releaseBindData(data)
 
 	for key, values := range multipartForm.Value {
-		err = formatBindData(b.Name(), out, data, key, values, b.EnableSplitting, true)
+		err = data.bindAll(b.Name(), out, key, values, b.EnableSplitting, true)
 		if err != nil {
 			return err
 		}
@@ -88,14 +98,17 @@ func (b *FormBinding) bindMultipart(req *fasthttp.Request, out any) error {
 	files := acquireFileHeaderMap()
 	defer releaseFileHeaderMap(files)
 
-	for key, values := range multipartForm.File {
-		err = formatBindData(b.Name(), out, files, key, values, b.EnableSplitting, true)
-		if err != nil {
+	for key, headers := range multipartForm.File {
+		if err := bindFiles(files, key, headers); err != nil {
 			return err
 		}
 	}
 
-	return parse(b.Name(), out, data, files)
+	if data.mode == bindLast {
+		// A map[string]string keeps no files: parseToMap ignores them too.
+		return data.parse(b.Name(), out)
+	}
+	return parse(b.Name(), out, data.values, files)
 }
 
 // Reset resets the FormBinding binder.
@@ -104,21 +117,56 @@ func (b *FormBinding) Reset() {
 	b.MaxBodySize = 0
 }
 
-func acquireDataMap() map[string][]string {
-	m, ok := dataMapPool.Get().(map[string][]string)
-	if !ok {
-		m = make(map[string][]string, 8)
+// acquireBindData returns a pooled bindData for a bind into out of n pairs,
+// 0 when the count is not known up front. A bind into a struct keeps its
+// pairs in two slices, which get room for n here, so that a large bind
+// allocates them once rather than growing them by appending: splitting can
+// file more pairs than n, and append makes room for those.
+func acquireBindData(out any, n int) *bindData {
+	d := acquireBindDataMode(bindModeFor(out))
+	if d.mode == bindPairs && n > cap(d.keys) {
+		d.keys = make([]string, 0, n)
+		d.pairValues = make([]string, 0, n)
 	}
-	return m
+	return d
 }
 
-func releaseDataMap(m map[string][]string) {
-	if len(m) > maxPoolableDataMapSize {
+// acquireBindDataMode returns a pooled bindData that keeps its values as mode
+// says.
+func acquireBindDataMode(mode bindMode) *bindData {
+	d, ok := bindDataPool.Get().(*bindData)
+	if !ok {
+		d = &bindData{values: make(map[string][]string, 8)}
+	}
+	if mode == bindLast && d.last == nil {
+		d.last = make(map[string]string, 8)
+	}
+	d.mode = mode
+	return d
+}
+
+func releaseBindData(d *bindData) {
+	if len(d.values) > maxPoolableDataMapSize || len(d.last) > maxPoolableDataMapSize ||
+		cap(d.keys) > maxPoolablePairs {
 		return
 	}
 
-	clearDataMap(m)
-	dataMapPool.Put(m)
+	d.reset()
+	bindDataPool.Put(d)
+}
+
+// reset empties d for another bind, dropping the strings it held so they do
+// not keep request memory alive while d sits in the pool.
+func (d *bindData) reset() {
+	clearDataMap(d.values)
+	// A map in use for another mode is empty, and clear would still call
+	// into the runtime for it.
+	if len(d.last) > 0 {
+		clear(d.last)
+	}
+	clear(d.keys)
+	clear(d.pairValues)
+	d.keys, d.pairValues = d.keys[:0], d.pairValues[:0]
 }
 
 func acquireFileHeaderMap() map[string][]*multipart.FileHeader {

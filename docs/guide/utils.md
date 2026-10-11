@@ -124,11 +124,17 @@ patterns without registering them. Patterns may contain parameters, wildcards
 and optional segments. An optional `Config` allows control over case sensitivity
 and strict routing.
 
-The path is normalized exactly the way the router normalizes an incoming
-request before matching, so the answer agrees with what the app would actually
-do. In particular, with the default `StrictRouting: false` a trailing slash on
-the path is ignored, so `RoutePatternMatch("/a/", "/a")` reports `true`. Set
+The path is normalized the way the router normalizes a request path before
+matching, so the answer agrees with what the app would actually do. In
+particular, with the default `StrictRouting: false` a trailing slash on the
+path is ignored, so `RoutePatternMatch("/a/", "/a")` reports `true`. Set
 `StrictRouting: true` if you need the two forms to be distinguished.
+
+It takes a path, not a request target. The empty string is read as `/`, and any
+other string without a leading slash matches no pattern, so
+`RoutePatternMatch("*", "/*")` reports `false`. The router instead roots a
+request target that has no leading slash before matching, so it routes
+`OPTIONS *` as `/*`.
 
 ```go title="Signature"
 func RoutePatternMatch(path, pattern string, cfg ...Config) bool

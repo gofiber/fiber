@@ -6,7 +6,6 @@ import (
 	"encoding/hex"
 	"net/url"
 	"sort"
-	"strconv"
 	"strings"
 	"sync"
 
@@ -76,6 +75,28 @@ func defaultKeyGenerator(c fiber.Ctx, cfg *Config) string {
 
 // appendDefaultKey appends the default generator's key to dst.
 func appendDefaultKey(dst []byte, c fiber.Ctx, cfg *Config) []byte {
+	// The target URI, not only its path: a cache key is composed of the request
+	// method and the target URI at a minimum (RFC 9111 §2), and the target URI
+	// carries the scheme and the authority. Keyed on the path alone, two hosts
+	// served by one app shared an entry: a page routed with app.Domain answered
+	// the other host, and a Location built from c.BaseURL for one host was
+	// served for the other.
+	//
+	// Read through c.Scheme and c.Host, which honor the X-Forwarded-* fields of
+	// a trusted proxy. That is the authority app.Domain routes on and c.BaseURL
+	// builds from, so the key splits along the dimension the response was built
+	// on, and behind such a proxy every tenant may arrive under the backend's
+	// own Host. Not normalized here: fasthttp lowercases the Host it parses, and
+	// a case variant arriving through X-Forwarded-Host can only fragment the
+	// cache, never merge two origins. Escaped and bounded like every other
+	// segment, so a crafted Host cannot inject key structure or grow the key
+	// without limit.
+	dst = append(dst, "scheme="...)
+	dst = appendEscapedBoundKeySegment(dst, c.Scheme())
+	dst = append(dst, "|host="...)
+	dst = appendEscapedBoundKeySegment(dst, c.Host())
+	dst = append(dst, '|')
+
 	// Escape delimiters in path to prevent crafted paths from injecting key structure
 	dst = appendEscapedBoundKeySegment(dst, c.Path())
 
@@ -211,7 +232,7 @@ func appendCanonicalHeaderSubset(dst []byte, header *fasthttp.RequestHeader, nam
 		// The count keeps the framing injective: without it an absent header and
 		// an empty one both emit nothing, and a list could not be told from a
 		// single value containing the separator.
-		dst = strconv.AppendInt(dst, int64(len(values)), 10)
+		dst = utils.AppendInt(dst, int64(len(values)))
 
 		// Each value is bounded, but not how many there are, and a few hundred field
 		// lines build a multi-kilobyte map key. Hash past the bound; the hash covers

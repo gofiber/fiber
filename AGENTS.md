@@ -6,7 +6,7 @@
 
 ### General coding practices
 
-- When adding Go tests, always invoke `t.Parallel()` at the start of each test and subtest to maximize concurrency.
+- When adding Go tests, always invoke `t.Parallel()` at the start of each test and subtest to maximize concurrency. The one exception is a test that calls `testing.AllocsPerRun`, which panics with `AllocsPerRun called during parallel test`: leave those sequential and say why in a comment, as `Test_Chain_NoAllocations` and `Test_Combined_DoesNotAllocate` do.
 - Prefer `github.com/gofiber/utils/v2` helpers (for example, `utils.Trim`) when performing common operations such as string manipulation, whenever it is practical and appropriate for the surrounding code.
 - Keep all protocol behavior RFC-compliant (e.g., HTTP/1.1 requirements) and document any intentional deviations.
 - Protect hot paths from regressions: profile changes.
@@ -72,7 +72,9 @@ Use `make help` to list all available commands. Common targets include:
 - **longtest**: run the test suite 15 times with shuffling enabled.
 - **tidy**: clean and tidy dependencies.
 - **betteralign**: optimize struct field alignment.
-- **generate**: run `go generate` after installing msgp and ifacemaker.
+- **generate**: run `go generate` after installing msgp and ifacemaker. On a pull request a maintainer
+  can get the same result without a local toolchain by commenting `/generate`, which runs the target
+  and pushes the regenerated files onto the branch.
 
 These targets can be invoked via `make <target>` as needed during development and testing.
 

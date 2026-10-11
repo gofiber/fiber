@@ -5,6 +5,7 @@
 package fiber
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"crypto/tls"
@@ -12,6 +13,7 @@ import (
 	"net"
 	"os"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 	"unsafe"
@@ -20,6 +22,23 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
 )
+
+func Benchmark_PeekJoinedRequestHeader(b *testing.B) {
+	for _, lines := range []int{1, 2, 3} {
+		b.Run(strconv.Itoa(lines), func(b *testing.B) {
+			var h fasthttp.RequestHeader
+			for range lines {
+				h.Add(HeaderAccept, "text/plain")
+			}
+			var joined []byte
+			b.ReportAllocs()
+			for b.Loop() {
+				joined = peekJoinedRequestHeader(&h, HeaderAccept)
+			}
+			require.NotEmpty(b, joined)
+		})
+	}
+}
 
 func Test_Utils_GetOffer(t *testing.T) {
 	t.Parallel()
@@ -1690,6 +1709,116 @@ func Test_IsMethodIdempotent(t *testing.T) {
 	}
 }
 
+// localsRecordingCtx is a custom context whose Locals is observable, so the
+// interface fallback in setLocal can be told apart from the concrete fast path.
+type localsRecordingCtx struct {
+	DefaultCtx
+	calls int
+}
+
+// Locals counts each call before forwarding it, so a test can tell whether
+// the override ran or the concrete fast path bypassed it.
+func (c *localsRecordingCtx) Locals(key any, value ...any) any {
+	c.calls++
+	return c.DefaultCtx.Locals(key, value...)
+}
+
+// Test_setLocal_UsesCustomCtxLocals pins the fallback in setLocal. The concrete
+// *DefaultCtx path exists only to keep the variadic slice off the heap; it must
+// never take precedence over a custom context's own Locals, which a type
+// embedding DefaultCtx is entitled to override.
+func Test_setLocal_UsesCustomCtxLocals(t *testing.T) {
+	t.Parallel()
+
+	app := NewWithCustomCtx(func(app *App) CustomCtx {
+		return &localsRecordingCtx{DefaultCtx: *NewDefaultCtx(app)}
+	})
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+
+	custom, ok := c.(*localsRecordingCtx)
+	require.True(t, ok, "the app must hand out the custom context")
+
+	require.Equal(t, "v", setLocal(c, "k", "v"), "setLocal returns what Locals returned")
+	require.Equal(t, 1, custom.calls, "the overridden Locals must be the one that ran")
+	require.Equal(t, "v", c.Locals("k"), "and the value must actually be stored")
+}
+
+// Test_setLocal_UsesDefaultCtxDirectly is the other half: the default context
+// takes the concrete path, and the value is stored and returned unchanged.
+func Test_setLocal_UsesDefaultCtxDirectly(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+
+	_, isDefault := c.(*DefaultCtx)
+	require.True(t, isDefault, "the default app must hand out *DefaultCtx")
+
+	require.Equal(t, 42, setLocal(c, "n", 42))
+	require.Equal(t, 42, c.Locals("n"))
+}
+
+// Test_appendCopyLowerASCII pins appendCopyLowerASCII against the copy, the
+// fold and the slash count it fuses, at every length across the SWAR word
+// boundaries, on fresh and on reused destinations.
+func Test_appendCopyLowerASCII(t *testing.T) {
+	t.Parallel()
+
+	cases := []string{
+		"", "/", "A", "/abc", "/AbC", "/ABCDEFG", "/ABCDEFGH/XYZ",
+		"/API/V1/UsersAndGroups", "/a1-B2_c3{~}", "/CAF\xC3\xA9/\xC3\x89",
+		"/repos/GoFiber/Fiber/issues/4662/comments", "////////", "/////////",
+	}
+	// Every length across the word boundaries, so the main loop, the
+	// overlapping tail word and the byte-wise path are all covered, with the
+	// slashes at every offset of the tail word.
+	for n := range 40 {
+		cases = append(cases, strings.Repeat("aB/", n), "/"+strings.Repeat("aB/", n), "/x"+strings.Repeat("aB/", n))
+	}
+
+	for _, in := range cases {
+		t.Run(strconv.Itoa(len(in)), func(t *testing.T) {
+			t.Parallel()
+			// It must agree with the two operations it replaces.
+			wantPath := append([]byte(nil), in...)
+			wantLower := appendLowerASCII(nil, wantPath)
+
+			// Fresh destinations (forces growth) and reused oversized ones
+			// (exercises the cap(dst) >= n path).
+			wantSlashes := strings.Count(in, "/")
+			gotPath, gotLower, gotSlashes := appendCopyLowerASCII(nil, nil, in)
+			require.Equal(t, string(wantPath), string(gotPath))
+			require.Equal(t, string(wantLower), string(gotLower))
+			require.Equal(t, wantSlashes, gotSlashes)
+
+			reusedPath := make([]byte, 0, 128)
+			reusedLower := make([]byte, 0, 128)
+			gotPath, gotLower, gotSlashes = appendCopyLowerASCII(reusedPath, reusedLower, in)
+			require.Equal(t, string(wantPath), string(gotPath))
+			require.Equal(t, string(wantLower), string(gotLower))
+			require.Equal(t, wantSlashes, gotSlashes)
+			if in != "" {
+				require.Equal(t, 128, cap(gotPath), "reused buffer must not be reallocated")
+				require.Equal(t, 128, cap(gotLower), "reused buffer must not be reallocated")
+			}
+		})
+	}
+}
+
+func Test_appendCopyLowerASCII_AliasedSubstring(t *testing.T) {
+	t.Parallel()
+
+	path := []byte("/api/bar/fooX")
+	src := utils.UnsafeString(path[4:])
+	gotPath, gotLower, gotSlashes := appendCopyLowerASCII(path[:0], nil, src)
+
+	require.Equal(t, "/bar/fooX", string(gotPath))
+	require.Equal(t, "/bar/foox", string(gotLower))
+	require.Equal(t, 2, gotSlashes)
+}
+
 func Test_appendLowerASCII(t *testing.T) {
 	t.Parallel()
 
@@ -1719,6 +1848,191 @@ func Test_appendLowerASCII(t *testing.T) {
 			require.Equal(t, tc.out, string(got))
 			if tc.in != "" {
 				require.Equal(t, 128, cap(got), "reused buffer must not be reallocated")
+			}
+		})
+	}
+}
+
+// Test_bindMediaType pins the media type Bind dispatches on: the canonical
+// spellings answer directly, every other spelling is folded, vendor suffixes
+// resolve, and parameters are dropped, with and without the fast path.
+func Test_bindMediaType(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		ct, want string
+	}{
+		{ct: "application/json", want: MIMEApplicationJSON},
+		{ct: "application/json; charset=utf-8", want: MIMEApplicationJSON},
+		{ct: "application/json;charset=utf-8", want: MIMEApplicationJSON},
+		{ct: "application/json ", want: MIMEApplicationJSON},
+		{ct: "Application/JSON", want: MIMEApplicationJSON},
+		{ct: "APPLICATION/JSON; CHARSET=UTF-8", want: MIMEApplicationJSON},
+		{ct: "application/vnd.api+json", want: MIMEApplicationJSON},
+		{ct: "application/jsonx", want: "application/jsonx"},
+		{ct: "application/x-www-form-urlencoded", want: MIMEApplicationForm},
+		{ct: "application/x-www-form-urlencoded; charset=UTF-8", want: MIMEApplicationForm},
+		{ct: "Application/X-WWW-Form-Urlencoded", want: MIMEApplicationForm},
+		{ct: "multipart/form-data; boundary=X", want: MIMEMultipartForm},
+		{ct: "text/xml", want: MIMETextXML},
+		{ct: "", want: ""},
+	} {
+		h := &fasthttp.RequestHeader{}
+		h.SetContentType(tc.ct)
+		require.Equal(t, tc.want, bindMediaType(h), "content type %q", tc.ct)
+	}
+
+	// A parameterized form type still takes the folding walk, which lowercases
+	// the parameter names in place for fasthttp's own parser.
+	h := &fasthttp.RequestHeader{}
+	h.SetContentType("application/x-www-form-urlencoded; Charset=UTF-8")
+	require.Equal(t, MIMEApplicationForm, bindMediaType(h))
+	require.Equal(t, "application/x-www-form-urlencoded; charset=UTF-8", string(h.ContentType()))
+}
+
+// go test -v -run=^$ -bench=Benchmark_bindMediaType -benchmem -count=4
+func Benchmark_bindMediaType(b *testing.B) {
+	for _, ct := range []string{
+		"application/json",
+		"application/json; charset=utf-8",
+		"Application/JSON",
+		"application/x-www-form-urlencoded",
+	} {
+		b.Run(ct, func(b *testing.B) {
+			h := &fasthttp.RequestHeader{}
+			h.SetContentType(ct)
+			b.ReportAllocs()
+			var got string
+			for b.Loop() {
+				got = bindMediaType(h)
+			}
+			require.NotEmpty(b, got)
+		})
+	}
+}
+
+func Test_sameFunc(t *testing.T) {
+	t.Parallel()
+
+	newCallback := func(limit int) func(*fasthttp.RequestHeader) fasthttp.RequestConfig {
+		return func(*fasthttp.RequestHeader) fasthttp.RequestConfig {
+			return fasthttp.RequestConfig{MaxRequestBodySize: limit}
+		}
+	}
+	a, b := newCallback(1), newCallback(1)
+
+	require.True(t, sameFunc(a, a))
+	require.False(t, sameFunc(a, b), "closures of one literal are different values")
+	require.False(t, sameFunc(a, nil))
+	require.False(t, sameFunc(nil, a))
+	require.False(t, sameFunc(nil, nil))
+}
+
+func Test_hasHeaderField(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		raw   string
+		field string // HeaderContentLength when empty
+		want  bool
+	}{
+		{name: "empty", raw: "", want: false},
+		{name: "no fields", raw: "\r\n", want: false},
+		{name: "only field", raw: "Content-Length: 4\r\n\r\n", want: true},
+		{name: "among others", raw: "Host: x\r\nContent-Length: 4\r\nTransfer-Encoding: chunked\r\n\r\n", want: true},
+		{name: "last field", raw: "Host: x\r\nContent-Length: 4", want: true},
+		{name: "lower case", raw: "Host: x\r\ncontent-length: 4\r\n\r\n", want: true},
+		{name: "upper case", raw: "Host: x\r\nCONTENT-LENGTH: 4\r\n\r\n", want: true},
+		{name: "bare LF line ends", raw: "Host: x\nContent-Length: 4\n\n", want: true},
+		{name: "no space after the colon", raw: "Host: x\r\nContent-Length:4\r\n\r\n", want: true},
+		{name: "empty value", raw: "Host: x\r\nContent-Length:\r\n\r\n", want: true},
+		{name: "longer name", raw: "Host: x\r\nContent-Length-Extra: 4\r\n\r\n", want: false},
+		{name: "longer name ending in it", raw: "Host: x\r\nX-Content-Length: 4\r\n\r\n", want: false},
+		{name: "shorter name", raw: "Host: x\r\nContent-Len: 4\r\n\r\n", want: false},
+		{name: "name inside a value", raw: "Host: x\r\nX-Note: Content-Length: 4\r\n\r\n", want: false},
+		{name: "folded continuation line", raw: "Host: x\r\nX-Note: a\r\n Content-Length: 4\r\n\r\n", want: false},
+		{name: "name without a colon", raw: "Host: x\r\nContent-Length\r\n\r\n", want: false},
+		{name: "name only", raw: "Content-Length", want: false},
+		{name: "Transfer-Encoding", raw: "Host: x\r\nTransfer-Encoding: identity\r\n\r\n", field: HeaderTransferEncoding, want: true},
+		{name: "Transfer-Encoding lower case", raw: "Host: x\r\ntransfer-encoding: identity\r\n\r\n", field: HeaderTransferEncoding, want: true},
+		{name: "Transfer-Encoding absent", raw: "Host: x\r\nContent-Length: 4\r\n\r\n", field: HeaderTransferEncoding, want: false},
+		{name: "Transfer-Encoding longer name", raw: "Host: x\r\nX-Transfer-Encoding: chunked\r\n\r\n", field: HeaderTransferEncoding, want: false},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			field := tc.field
+			if field == "" {
+				field = HeaderContentLength
+			}
+			require.Equal(t, tc.want, hasHeaderField([]byte(tc.raw), field))
+		})
+	}
+}
+
+// fasthttp reports -1 for a chunked request, the Content-Length value for one it
+// frames by Content-Length ("identity" included) and -2 for neither; the field
+// that is not reflected in that is looked up in the header block.
+func Test_bothFramingFields(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		raw  string
+		want bool
+	}{
+		{name: "neither", raw: "GET / HTTP/1.1\r\nHost: x\r\n\r\n", want: false},
+		{name: "Content-Length only", raw: "POST / HTTP/1.1\r\nHost: x\r\nContent-Length: 4\r\n\r\nabcd", want: false},
+		{name: "chunked only", raw: "POST / HTTP/1.1\r\nHost: x\r\nTransfer-Encoding: chunked\r\n\r\n0\r\n\r\n", want: false},
+		{name: "identity only", raw: "POST / HTTP/1.1\r\nHost: x\r\nTransfer-Encoding: identity\r\n\r\n", want: false},
+		{name: "chunked after Content-Length", raw: "POST / HTTP/1.1\r\nHost: x\r\nContent-Length: 4\r\nTransfer-Encoding: chunked\r\n\r\n0\r\n\r\n", want: true},
+		{name: "chunked before Content-Length", raw: "POST / HTTP/1.1\r\nHost: x\r\nTransfer-Encoding: chunked\r\nContent-Length: 4\r\n\r\n0\r\n\r\n", want: true},
+		{name: "identity after Content-Length", raw: "POST / HTTP/1.1\r\nHost: x\r\nContent-Length: 4\r\nTransfer-Encoding: identity\r\n\r\nabcd", want: true},
+		{name: "identity before Content-Length", raw: "POST / HTTP/1.1\r\nHost: x\r\nTransfer-Encoding: identity\r\nContent-Length: 4\r\n\r\nabcd", want: true},
+		{name: "identity with an empty body", raw: "POST / HTTP/1.1\r\nHost: x\r\nContent-Length: 0\r\nTransfer-Encoding: identity\r\n\r\n", want: true},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			var h fasthttp.RequestHeader
+			require.NoError(t, h.Read(bufio.NewReader(strings.NewReader(tc.raw))))
+			require.Equal(t, tc.want, bothFramingFields(&h))
+		})
+	}
+}
+
+func Benchmark_hasHeaderField(b *testing.B) {
+	raw := []byte("Host: example.com\r\nUser-Agent: Go-http-client/1.1\r\nAccept: */*\r\nAccept-Encoding: gzip\r\nTransfer-Encoding: chunked\r\nContent-Length: 4\r\n\r\n")
+
+	b.ReportAllocs()
+	for b.Loop() {
+		if !hasHeaderField(raw, HeaderContentLength) {
+			b.Fatal("Content-Length field not found")
+		}
+	}
+}
+
+func Benchmark_bothFramingFields(b *testing.B) {
+	const fields = "Host: example.com\r\nUser-Agent: Go-http-client/1.1\r\nAccept: */*\r\nAccept-Encoding: gzip\r\n"
+	for _, tc := range []struct{ name, raw string }{
+		{"no body length", "GET / HTTP/1.1\r\n" + fields + "\r\n"},
+		{"Content-Length", "POST / HTTP/1.1\r\n" + fields + "Content-Length: 4\r\n\r\nabcd"},
+		{"chunked", "POST / HTTP/1.1\r\n" + fields + "Transfer-Encoding: chunked\r\n\r\n0\r\n\r\n"},
+	} {
+		b.Run(tc.name, func(b *testing.B) {
+			var h fasthttp.RequestHeader
+			require.NoError(b, h.Read(bufio.NewReader(strings.NewReader(tc.raw))))
+
+			b.ReportAllocs()
+			for b.Loop() {
+				if bothFramingFields(&h) {
+					b.Fatal("a single framing field was taken for both")
+				}
 			}
 		})
 	}

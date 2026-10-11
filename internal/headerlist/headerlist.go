@@ -16,6 +16,9 @@
 //     bare tokens wants. [AllQuoted] keeps commas that sit inside a quoted
 //     string, which is what a list of entity tags or media-type parameters
 //     needs, since those may contain one.
+//   - Whitespace. [All] and its siblings trim with utils.TrimSpace, which also
+//     takes CR, LF, VT and FF. [TrimOWS] takes only SP and HTAB, the OWS of
+//     RFC 9110 Section 5.6.3, for a caller that validates what is left.
 //
 // Empty elements are skipped throughout: "a,,b" yields "a" and "b". A list is
 // permitted to carry them (RFC 9110 Section 5.6.1 allows the empty element for
@@ -29,7 +32,7 @@ import (
 )
 
 // All yields each non-empty element of a comma-separated list value, with
-// leading and trailing OWS removed.
+// leading and trailing whitespace removed.
 //
 // Every comma separates. Use [AllQuoted] for a list whose elements may contain
 // a quoted comma.
@@ -93,6 +96,47 @@ func AllQuoted(list string) iter.Seq[string] {
 	}
 }
 
+// AllQuotedPairs is [AllQuoted] for quoted strings that may carry a quoted-pair
+// (RFC 9110 Section 5.6.4), such as Cache-Control directive arguments: inside
+// quotes a backslash escapes the next byte, so `ext="a\"", no-transform` has two
+// elements. Entity tags have no quoted-pair and keep using [AllQuoted].
+func AllQuotedPairs(list string) iter.Seq[string] {
+	return func(yield func(string) bool) {
+		start, pos := 0, 0
+		inQuotes := false
+		for {
+			i := utils.IndexAny3(list[pos:], '"', ',', '\\')
+			if i == -1 {
+				break
+			}
+			i += pos
+			pos = i + 1
+
+			switch {
+			case list[i] == '\\':
+				if inQuotes && pos < len(list) {
+					pos++ // the escaped byte ends neither the string nor the element
+				}
+				continue
+			case list[i] == '"':
+				inQuotes = !inQuotes
+				continue
+			case inQuotes:
+				continue
+			}
+			if element := utils.TrimSpace(list[start:i]); element != "" {
+				if !yield(element) {
+					return
+				}
+			}
+			start = i + 1
+		}
+		if element := utils.TrimSpace(list[start:]); element != "" {
+			yield(element)
+		}
+	}
+}
+
 // AllLines yields the elements of every field line in order, so that a header
 // sent as one line and the same header sent as several read alike (RFC 9110
 // Section 5.3).
@@ -108,6 +152,23 @@ func AllLines(lines [][]byte) iter.Seq[string] {
 			}
 		}
 	}
+}
+
+// TrimOWS removes the optional whitespace around a list element or a field
+// value: SP and HTAB, which is all RFC 9110 Section 5.6.3 allows. CR, LF, VT
+// and FF are not OWS, so they stay for a validating caller to reject, as does
+// a tab inside the value.
+//
+// The result aliases s.
+func TrimOWS[S ~string | ~[]byte](s S) S {
+	start, end := 0, len(s)
+	for start < end && (s[start] == ' ' || s[start] == '\t') {
+		start++
+	}
+	for end > start && (s[end-1] == ' ' || s[end-1] == '\t') {
+		end--
+	}
+	return s[start:end]
 }
 
 // Contains reports whether list has an element equal to value, compared byte
@@ -197,11 +258,36 @@ func Join(lines [][]byte) []byte {
 	joined := make([]byte, 0, n)
 	for i, line := range lines {
 		if i > 0 {
-			joined = append(joined, ',')
+			joined = appendJoinedLine(joined, line)
+			continue
 		}
 		joined = append(joined, line...)
 	}
 	return joined
+}
+
+func appendJoinedLine(dst, line []byte) []byte {
+	dst = append(dst, ',')
+	return append(dst, line...)
+}
+
+// JoinNext adds a field line to a value built during a streaming header walk.
+// The first line aliases the caller's storage. On the second line the result
+// takes ownership of a new buffer; later lines reuse it when capacity permits.
+// Use [Join] when all lines are already available so it can size that buffer
+// once. The bool reports whether at least two lines have been joined.
+//
+//nolint:revive // multiple tracks ownership of combined, not a caller-selected mode.
+func JoinNext(combined, line []byte, multiple bool) ([]byte, bool) {
+	if combined == nil {
+		return line, false
+	}
+	if !multiple {
+		joined := make([]byte, 0, len(combined)+1+len(line))
+		joined = append(joined, combined...)
+		return appendJoinedLine(joined, line), true
+	}
+	return appendJoinedLine(combined, line), true
 }
 
 // AppendUnique adds each value that list does not already carry, separated by

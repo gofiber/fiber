@@ -20,7 +20,6 @@ import (
 	"net/http/httputil"
 	"os"
 	"reflect"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -98,6 +97,9 @@ type App struct {
 	state *State
 	// shared state management (prefork-safe, storage-backed)
 	sharedState *SharedState
+	// headerHook is the HeaderReceived callback hookHeaderReceived installed, kept
+	// to tell it from one set since
+	headerHook func(*fasthttp.RequestHeader) fasthttp.RequestConfig
 	// Route stack divided by HTTP methods
 	stack [][]*Route
 	// customConstraints is a list of external constraints
@@ -117,12 +119,12 @@ type App struct {
 	// pointer so a rebuild publishes each method's tree in one store.
 	treeIndex []*routeTree
 	// Precomputed unmatched-route indexes, rebuilt with the tree (router_skip.go)
-	skip skipRouteIndex
-	// sendfilesMutex is a mutex used for sendfile operations
-	sendfilesMutex   sync.RWMutex
-	mutex            sync.Mutex
+	skip             skipRouteIndex
 	autoHeadRouteID  uint64
 	autoHeadStackLen int
+	// sendfilesMutex is a mutex used for sendfile operations
+	sendfilesMutex sync.RWMutex
+	mutex          sync.Mutex
 	// Amount of registered handlers
 	handlersCount uint32
 	// contains the information if the route stack has been changed to build the optimized tree
@@ -261,10 +263,12 @@ type Config struct { //nolint:govet // Aligning the struct fields is not necessa
 	// Default: false
 	Immutable bool `json:"immutable"`
 
-	// When set to true, converts all encoded characters in the route back
-	// before setting the path for the context, so that the routing,
-	// the returning of the current url from the context `ctx.Path()`
-	// and the parameters `ctx.Params(%key%)` with decoded characters will work
+	// The router always normalizes the request path before matching (RFC 3986
+	// Section 6.2.2): escapes of unreserved characters are decoded, other
+	// escapes keep their encoding with uppercase hex digits, and "." and ".."
+	// segments are removed. When set to true, every escape is decoded, so the
+	// routing, `ctx.Path()` and `ctx.Params(%key%)` see the fully decoded
+	// path.
 	//
 	// Default: false
 	UnescapePath bool `json:"unescape_path"`
@@ -333,12 +337,12 @@ type Config struct { //nolint:govet // Aligning the struct fields is not necessa
 	// Increase this buffer if your clients send multi-KB RequestURIs
 	// and/or multi-KB headers (for example, BIG cookies).
 	//
-	// Default: 4096
+	// Default: 8192
 	ReadBufferSize int `json:"read_buffer_size"`
 
 	// Per-connection buffer size for responses' writing.
 	//
-	// Default: 4096
+	// Default: 8192
 	WriteBufferSize int `json:"write_buffer_size"`
 
 	// CompressedFileSuffixes adds suffix to the original file name and
@@ -355,10 +359,11 @@ type Config struct { //nolint:govet // Aligning the struct fields is not necessa
 	// Default: ""
 	ProxyHeader string `json:"proxy_header"`
 
-	// GETOnly rejects all non-GET requests if set to true.
+	// GETOnly rejects every method except GET and HEAD if set to true.
 	// This option is useful as anti-DoS protection for servers
 	// accepting only GET requests. The request size is limited
-	// by ReadBufferSize if GETOnly is set.
+	// by ReadBufferSize if GETOnly is set. A rejected request gets 405 with
+	// "Allow: GET, HEAD".
 	//
 	// Default: false
 	GETOnly bool `json:"get_only"`
@@ -523,7 +528,13 @@ type Config struct { //nolint:govet // Aligning the struct fields is not necessa
 	TrustProxyConfig TrustProxyConfig `json:"trust_proxy_config"`
 
 	// If set to true, c.IP() and c.IPs() will validate IP addresses before returning them.
-	// Also, c.IP() will return only the first valid IP rather than just the raw header
+	// Also, c.IP() will return a single validated IP rather than just the raw header value,
+	// which for X-Forwarded-For may be a comma-separated chain: when TrustProxyConfig names
+	// proxy IPs or ranges (Proxies, Loopback, Private or LinkLocal) the chain is walked
+	// right-to-left and those proxies are skipped; otherwise, including when only UnixSocket
+	// is trusted, the first valid IP from the left is returned. Enable it whenever c.IP() is
+	// used as a single client identifier and the header can carry a chain; a proxy that
+	// overwrites the header with one address, or a single-IP header, does not need it.
 	// WARNING: this has a performance cost associated with it.
 	//
 	// Default: false
@@ -641,8 +652,8 @@ const (
 	DefaultBodyLimit       = 4 * 1024 * 1024
 	DefaultMaxRanges       = 16
 	DefaultConcurrency     = 256 * 1024
-	DefaultReadBufferSize  = 4096
-	DefaultWriteBufferSize = 4096
+	DefaultReadBufferSize  = 8192
+	DefaultWriteBufferSize = 8192
 )
 
 const (
@@ -1366,8 +1377,8 @@ func (app *App) Shutdown() error {
 	return app.ShutdownWithContext(context.Background())
 }
 
-// ShutdownWithTimeout gracefully shuts down the server without interrupting any active connections. However, if the timeout is exceeded,
-// ShutdownWithTimeout will forcefully close any active connections.
+// ShutdownWithTimeout gracefully shuts down the server without interrupting any active connections. If the timeout is exceeded,
+// it stops waiting and returns context.DeadlineExceeded; connections still active are not closed.
 // ShutdownWithTimeout works by first closing all open listeners and then waiting for all connections to return to idle before shutting down.
 //
 // Make sure the program doesn't exit and waits instead for ShutdownWithTimeout to return.
@@ -1379,7 +1390,7 @@ func (app *App) ShutdownWithTimeout(timeout time.Duration) error {
 	return app.ShutdownWithContext(ctx)
 }
 
-// ShutdownWithContext shuts down the server including by force if the context's deadline is exceeded.
+// ShutdownWithContext shuts down the server and stops waiting once ctx is done; connections still active are not closed.
 //
 // Make sure the program doesn't exit and waits instead for ShutdownWithTimeout to return.
 //
@@ -1462,7 +1473,7 @@ func (app *App) Test(req *http.Request, config ...TestConfig) (*http.Response, e
 
 	// Add Content-Length if not provided with body
 	if req.Body != http.NoBody && req.Header.Get(HeaderContentLength) == "" {
-		req.Header.Add(HeaderContentLength, strconv.FormatInt(req.ContentLength, 10))
+		req.Header.Add(HeaderContentLength, utils.FormatInt(req.ContentLength))
 	}
 
 	// Ensure Host header is present in the dump (required by fasthttp)
@@ -1493,6 +1504,7 @@ func (app *App) Test(req *http.Request, config ...TestConfig) (*http.Response, e
 	}
 	// prepare the server for the start
 	app.startupProcess()
+	app.hookHeaderReceived()
 
 	// Serve conn to server
 	channel := make(chan error, 1)
@@ -1707,6 +1719,18 @@ func (app *App) ErrorHandler(ctx Ctx, err error) error {
 	return app.config.ErrorHandler(ctx, err)
 }
 
+const (
+	// getOnlyAllow is the Allow value of the 405 that Config.GETOnly produces.
+	getOnlyAllow = MethodGet + ", " + MethodHead
+
+	// unsupportedTransferCodingMarker precedes the quoted coding in fasthttp's
+	// error. The ErrUnsupportedTransferEncoding sentinel is not matched: it also
+	// covers HTTP/1.0 and repeated fields, which are framing errors and stay 400,
+	// and with Server.SecureErrorLogMessage it stands for every fault, the
+	// coding included, which then stays 400 as well.
+	unsupportedTransferCodingMarker = `unsupported transfer-encoding: "`
+)
+
 // serverErrorHandler is a wrapper around the application's error handler method
 // user for the fasthttp server configuration. It maps a set of fasthttp errors to fiber
 // errors before calling the application's error handler method.
@@ -1742,7 +1766,12 @@ func (app *App) serverErrorHandler(fctx *fasthttp.RequestCtx, err error) {
 		err = ErrRequestEntityTooLarge
 	case errors.Is(err, fasthttp.ErrGetOnly):
 		err = ErrMethodNotAllowed
+		// A 405 must carry Allow (RFC 9110 §15.5.6).
+		c.Set(HeaderAllow, getOnlyAllow)
 	case strings.Contains(errMessage, "unsupported http request method"):
+		err = ErrNotImplemented
+	case strings.Contains(errMessage, unsupportedTransferCodingMarker):
+		// An unknown transfer coding is a 501, not a 400 (RFC 9112 §6.1).
 		err = ErrNotImplemented
 	case strings.Contains(errMessage, "timeout"):
 		err = ErrRequestTimeout
@@ -1830,6 +1859,35 @@ func (app *App) hookConnState() {
 			user(conn, state)
 		}
 	}
+}
+
+// hookHeaderReceived makes the server close the connection after a request that
+// carries both Content-Length and Transfer-Encoding (RFC 9112 §6.1), keeping a
+// user HeaderReceived callback. It must run before the body is decoded: after that
+// fasthttp has replaced the length and dropped the Content-Length value. Call it
+// right before the server serves: it wraps the callback set by then, in
+// ListenConfig.BeforeServeFunc too, and one replaced since an earlier start. Its
+// own hook is left alone: Test and a listener run on one server at the same time,
+// and the connections they serve read the callback.
+func (app *App) hookHeaderReceived() {
+	app.mutex.Lock()
+	defer app.mutex.Unlock()
+
+	if app.server == nil || sameFunc(app.server.HeaderReceived, app.headerHook) {
+		return
+	}
+	user := app.server.HeaderReceived
+	app.headerHook = func(header *fasthttp.RequestHeader) fasthttp.RequestConfig {
+		if bothFramingFields(header) {
+			header.SetConnectionClose()
+		}
+		if user != nil {
+			return user(header)
+		}
+		// The zero value keeps the server's own limits and timeouts.
+		return fasthttp.RequestConfig{}
+	}
+	app.server.HeaderReceived = app.headerHook
 }
 
 // Run onListen hooks. If they return an error, panic.

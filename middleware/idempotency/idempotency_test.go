@@ -393,6 +393,43 @@ func Test_New_StoreRetrieve_FilterHeadersCaseInsensitiveSnapshot(t *testing.T) {
 	require.Equal(t, 1, count)
 }
 
+// Test_New_StoreRetrieve_HeadersWithCommas pins that a replayed response
+// carries each header value exactly as the handler set it, even when the app
+// enables EnableSplittingOnParsers, which only concerns request parsing.
+func Test_New_StoreRetrieve_HeadersWithCommas(t *testing.T) {
+	t.Parallel()
+	app := fiber.New(fiber.Config{EnableSplittingOnParsers: true})
+	app.Use(New(Config{
+		Storage: &stubStorage{},
+		Lock:    &stubLock{},
+	}))
+
+	var count int
+	app.Post("/", func(c fiber.Ctx) error {
+		count++
+		c.Set(fiber.HeaderContentDisposition, `attachment; filename="a,b.txt"`)
+		c.Cookie(&fiber.Cookie{
+			Name:    "session",
+			Value:   "abc",
+			Expires: time.Date(2030, time.October, 21, 7, 28, 0, 0, time.UTC),
+		})
+		return c.SendString(fmt.Sprintf("resp%d", count))
+	})
+
+	req := httptest.NewRequest(http.MethodPost, "/", http.NoBody)
+	req.Header.Set(ConfigDefault.KeyHeader, validKey)
+	resp, body := do(app, req)
+	require.Equal(t, "resp1", body)
+
+	req2 := httptest.NewRequest(http.MethodPost, "/", http.NoBody)
+	req2.Header.Set(ConfigDefault.KeyHeader, validKey)
+	resp2, body2 := do(app, req2)
+	require.Equal(t, "resp1", body2)
+	require.Equal(t, 1, count)
+	require.Equal(t, resp.Header.Values(fiber.HeaderContentDisposition), resp2.Header.Values(fiber.HeaderContentDisposition))
+	require.Equal(t, resp.Header.Values(fiber.HeaderSetCookie), resp2.Header.Values(fiber.HeaderSetCookie))
+}
+
 func Test_New_Cache_WhenBodyTooLarge(t *testing.T) {
 	t.Parallel()
 	bodyLimit := 8

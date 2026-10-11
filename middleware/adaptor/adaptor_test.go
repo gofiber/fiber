@@ -1952,6 +1952,38 @@ func Benchmark_HTTPMiddleware(b *testing.B) {
 	}
 }
 
+// Benchmark_ConvertRequest measures building a net/http request from a routed
+// Fiber request whose request line is already the routed target, the common
+// case, where the line is not set and parsed a second time.
+func Benchmark_ConvertRequest(b *testing.B) {
+	app := fiber.New()
+	app.Get("/users/:id", func(c fiber.Ctx) error {
+		r, err := ConvertRequest(c, true)
+		if err != nil {
+			return err
+		}
+		if r.URL.Path != "/users/42" {
+			return fiber.ErrInternalServerError
+		}
+		return nil
+	})
+
+	handler := app.Handler()
+	ctx := &fasthttp.RequestCtx{}
+
+	b.ReportAllocs()
+
+	for b.Loop() {
+		ctx.Request.Reset()
+		ctx.Response.Reset()
+		ctx.Request.Header.SetMethod(fiber.MethodGet)
+		ctx.Request.SetRequestURI("/users/42?expand=1")
+		ctx.Request.Header.Set("Foo", "bar")
+
+		handler(ctx)
+	}
+}
+
 // Benchmark_FiberApp exercises the net/http -> Fiber direction the way a real
 // net/http server does: a fresh response writer per request, a routed app, a
 // remote address to resolve and a handful of request and response headers.
@@ -2510,9 +2542,10 @@ func Test_HTTPMiddleware_JoinsRepeatedConnectionValues(t *testing.T) {
 	}{
 		{name: "token list", write: []string{"keep-alive", "X-Internal"}, want: "keep-alive, X-Internal"},
 		// Every observer must see the complete token list so a proxy can remove
-		// each named hop-by-hop field. Setting fasthttp's request flag would hide
-		// all tokens beside "close", so the close instruction is carried on the
-		// response instead.
+		// each named hop-by-hop field. fasthttp raises the request flag for a
+		// close token anywhere in the list and still reports the whole list, but
+		// the server read that flag before the handler ran, so the close
+		// instruction is carried on the response as well.
 		{name: "close first", write: []string{"close", "X-Internal"}, want: "close, X-Internal", wantClose: true},
 		{name: "close last", write: []string{"X-Internal", "close"}, want: "X-Internal, close", wantClose: true},
 		{name: "close cased", write: []string{"X-Internal", "CLOSE"}, want: "X-Internal, CLOSE", wantClose: true},
@@ -2553,7 +2586,7 @@ func Test_HTTPMiddleware_JoinsRepeatedConnectionValues(t *testing.T) {
 			require.Equal(t, tc.want, got)
 			require.Equal(t, tc.wantClose, resp.Close, "close has to reach the wire, not just the fiber context")
 			require.Equal(t, tc.want, afterNext, "the complete Connection field must outlive the downstream chain")
-			require.Equal(t, tc.want == "close", gotClose, "the request flag stands in only for a bare close")
+			require.Equal(t, tc.wantClose, gotClose, "the request flag reports a close token wherever it sits in the list")
 			require.Equal(t, tc.wantClose, finalClose, "the transport close instruction rides on the response")
 		})
 	}

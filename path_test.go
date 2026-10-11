@@ -6,6 +6,7 @@ package fiber
 
 import (
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
@@ -109,11 +110,12 @@ func Test_Path_parseRoute(t *testing.T) {
 	require.Equal(t, routeParser{
 		segs: []*routeSegment{
 			{Const: "/test", Length: 5},
-			{IsParam: true, ParamName: "optional", IsOptional: true, Length: 1},
+			{IsParam: true, ParamName: "optional", IsOptional: true, CanYield: true, Length: 1},
 			{IsParam: true, ParamName: "optional2", IsOptional: true, IsLast: true},
 		},
 		params:     []string{"optional", "optional2"},
 		minSlashes: 1,
+		yields:     true,
 	}, rp)
 
 	rp = parseRoute("/config/+.json", regexp.MustCompile)
@@ -552,6 +554,33 @@ func Benchmark_Path_matchParams(t *testing.B) {
 	}
 }
 
+func Benchmark_Path_OptionalMiss(b *testing.B) {
+	for _, tc := range []struct {
+		name         string
+		pattern      string
+		path         string
+		partialCheck bool
+	}{
+		{"before_optional", "/api/:version?/users", "/en/pricing", false},
+		{"empty_optional", "/:lang?/users", "/", false},
+		{"missing_literal", "/:lang?/users", "/en/pricing", false},
+		{"api_missing_literal", "/api/:version?/users", "/api/v1/pricing", false},
+		{"partial_boundary", "/:lang?/user", "/en/users", true},
+	} {
+		b.Run(tc.name, func(b *testing.B) {
+			parser := parseRoute(tc.pattern, regexp.MustCompile)
+			var params [maxParams]string
+			require.False(b, parser.getMatch(tc.path, tc.path, &params, tc.partialCheck))
+			b.ReportAllocs()
+			var matched bool
+			for b.Loop() {
+				matched = parser.getMatch(tc.path, tc.path, &params, tc.partialCheck)
+			}
+			require.False(b, matched)
+		})
+	}
+}
+
 // go test -race -run Test_RoutePatternMatch
 func Benchmark_ConstraintExecution(b *testing.B) {
 	var ctxParams [maxParams]string
@@ -821,6 +850,26 @@ func Test_RegexHandler_CustomCompilerUsesSegmentMatcher(t *testing.T) {
 }
 
 // Test_RoutePatternMatch_WithRegex verifies RoutePatternMatch works with regex constraints
+// Test_RoutePatternMatch_UnrootedPath pins the boundary of the path contract:
+// the empty string is read as "/", and any other string without a leading
+// slash matches no pattern, the root wildcard included, even though the router
+// roots such a request target before matching it.
+func Test_RoutePatternMatch_UnrootedPath(t *testing.T) {
+	t.Parallel()
+
+	require.True(t, RoutePatternMatch("", "/"))
+	require.True(t, RoutePatternMatch("", "/*"))
+	require.True(t, RoutePatternMatch("/", "/"))
+	require.True(t, RoutePatternMatch("/*", "/*"))
+
+	for _, path := range []string{"*", "user/john", "a/../b", "admin//secret"} {
+		for _, pattern := range []string{"/*", "/+", "/:name", "/user/:name", "*"} {
+			require.False(t, RoutePatternMatch(path, pattern), "path=%q pattern=%q", path, pattern)
+			require.False(t, RoutePatternMatch(path, pattern, Config{StrictRouting: true, CaseSensitive: true}), "path=%q pattern=%q", path, pattern)
+		}
+	}
+}
+
 func Test_RoutePatternMatch_WithRegex(t *testing.T) {
 	t.Parallel()
 
@@ -1115,6 +1164,61 @@ func Test_ConstProbe_Rejects(t *testing.T) {
 	}
 }
 
+// Test_ProbeMemo_MatchesProbe pins that sharing locate among the probes of a
+// scan changes no answer: a memo carried across the scan heads of probes at
+// different slashes, in any order and back again, must reject exactly what
+// each probe rejects on its own. Probes that share their from but not their
+// skip, as "/:a/x" and "/:a/:b/x" do, read different slashes, so the memo
+// must tell them apart.
+// go test -race -run Test_ProbeMemo_MatchesProbe
+func Test_ProbeMemo_MatchesProbe(t *testing.T) {
+	t.Parallel()
+
+	var probes []constProbe
+	var heads []scanHead
+	for _, pattern := range []string{
+		"/repos/:owner/:repo/issues", "/repos/:owner/:repo/pulls/:number",
+		"/repos/:owner/:repo/issues/:number", "/repos/:owner/pulls",
+		"/:p/fixed", "/:a/:b/:c/fixed", "/api/:a/b/:c/dd/:e", "/api/:v/collaborators/:user",
+		"/user/:name/keys/", "/v1/some/resource/:name/x", "/:a/x", "/:a/:b/x",
+	} {
+		probe := parseRoute(pattern, regexp.MustCompile).probe
+		require.NotZero(t, probe.mask, "pattern %q must carry a probe", pattern)
+		var head scanHead
+		head.setProbe(probe)
+		require.NotZero(t, head.probeLen, "pattern %q's probe must fit a scan head", pattern)
+		probes = append(probes, probe)
+		heads = append(heads, head)
+	}
+	paths := []string{
+		"", "/", "/repos", "/repos/a/b", "/repos/a/b/issues", "/repos/a/b/issues/1",
+		"/repos/a/b/pulls/2", "/repos/abcdefghijklmnop/qrstuvwxyz/issues/", "/repos/a/pulls",
+		"/p/fixed", "/a/b/c/fixed", "/api/1/b/2/dd/3", "/api/v1/collaborators/octocat",
+		"/user/bob/keys", "/user/bob/keys/", "/v1/some/resource/n/x", "/a/x", "/a/b/x", "/a/b/y",
+	}
+
+	for _, path := range paths {
+		// Forward, backward and interleaved, so the memo is both hit and
+		// replaced between probes that do and do not share a slash.
+		order := make([]int, 0, 3*len(probes))
+		for i := range probes {
+			order = append(order, i)
+		}
+		for i := range probes {
+			order = append(order, len(probes)-1-i)
+		}
+		for i := range probes {
+			order = append(order, (i*5)%len(probes))
+		}
+
+		var memo probeMemo
+		for _, i := range order {
+			require.Equal(t, probes[i].rejects(path), memo.headRejects(&heads[i], path),
+				"probe %d (from %d, skip %d) on %q", i, probes[i].from, probes[i].skip, path)
+		}
+	}
+}
+
 // Test_wordAt checks every offset of a few strings against a byte loop.
 // go test -race -run Test_wordAt
 func Test_wordAt(t *testing.T) {
@@ -1258,6 +1362,8 @@ func Test_RoutePatternMatch_MatchesRouter(t *testing.T) {
 		"/a-b", "/a.b", "/b", "/api/v1/9/x", "/a/x/b", "/abc", "/ab",
 		"/a/b/c/d", "//", "/a//b", "/ab/", "/A", "/A/",
 		"/ABC", "/Abc", "/user/John", "/a%2Fb", "/a%20b", "/a%41b",
+		// Spellings the router normalizes before matching.
+		"/a/./b", "/a/../b", "/./a", "/a/b/..", "/%61", "/a/%2e%2e/b", "/a%2e/b", "/%2561",
 	}
 	configs := []Config{
 		{},
@@ -1283,12 +1389,85 @@ func Test_RoutePatternMatch_MatchesRouter(t *testing.T) {
 						return nil
 					})
 
-					_, err := app.Test(httptest.NewRequest(MethodGet, path, http.NoBody))
+					_, err := app.Test(httptest.NewRequest(MethodGet, path, http.NoBody), sweepTestConfig)
 					require.NoError(t, err)
 
 					require.Equal(t, matched, RoutePatternMatch(path, pattern, cfg),
 						"pattern=%q path=%q", pattern, path)
 				}
+			}
+		})
+	}
+}
+
+// Registration, mounting, removal and the standalone matcher must agree on
+// patterns while preserving the case of parameter names and regex arguments.
+func Test_RoutePatternNormalization_RegistrationMountAndRemoval(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		pattern string
+		path    string
+		param   string
+	}{
+		{pattern: "Users/", path: "/Users/"},
+		{pattern: "/Users/:UserID<regex(^[A-Z]+$)>/", path: "/Users/ABC/", param: "ABC"},
+		{pattern: `/Literal/\*/`, path: "/Literal/*/"},
+		{pattern: `/Literal/\:id/`, path: "/Literal/:id/"},
+		{pattern: "/File%20Name/", path: "/File%20Name/"},
+	}
+	configs := []Config{
+		{},
+		{CaseSensitive: true},
+		{StrictRouting: true},
+		{CaseSensitive: true, StrictRouting: true},
+	}
+	for _, cfg := range configs {
+		t.Run(fmt.Sprintf("case=%v/strict=%v", cfg.CaseSensitive, cfg.StrictRouting), func(t *testing.T) {
+			t.Parallel()
+			for _, tc := range tests {
+				t.Run(tc.pattern, func(t *testing.T) {
+					t.Parallel()
+					for _, prefix := range []string{"", "/API"} {
+						t.Run("prefix="+prefix, func(t *testing.T) {
+							t.Parallel()
+							app := New(cfg)
+							target := app
+							if prefix != "" {
+								target = New(cfg)
+								app.Use(prefix, target)
+							}
+							target.Get(tc.pattern, func(c Ctx) error {
+								return c.SendString(c.Params("UserID", "literal"))
+							})
+
+							pattern := tc.pattern
+							if prefix != "" {
+								pattern = prefix + "/" + strings.TrimPrefix(pattern, "/")
+							}
+							path := prefix + tc.path
+							require.True(t, RoutePatternMatch(path, pattern, cfg))
+							resp, err := app.Test(httptest.NewRequest(MethodGet, path, http.NoBody))
+							require.NoError(t, err)
+							require.Equal(t, StatusOK, resp.StatusCode)
+							body, err := io.ReadAll(resp.Body)
+							require.NoError(t, err)
+							require.NoError(t, resp.Body.Close())
+							want := tc.param
+							if want == "" {
+								want = "literal"
+							}
+							require.Equal(t, want, string(body))
+
+							app.RemoveRoute(pattern, MethodGet)
+							app.RebuildTree()
+							resp, err = app.Test(httptest.NewRequest(MethodGet, path, http.NoBody))
+							require.NoError(t, err)
+							require.Equal(t, StatusNotFound, resp.StatusCode)
+							require.NoError(t, resp.Body.Close())
+						})
+					}
+				})
 			}
 		})
 	}
@@ -1313,6 +1492,274 @@ func Test_UnescapePath_MalformedEscape(t *testing.T) {
 
 	for _, tc := range tests {
 		require.Equal(t, tc.out, string(unescapePath([]byte(tc.in))), "in=%q", tc.in)
+	}
+}
+
+func Test_UnescapeSafePath(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		in, out string
+	}{
+		{in: "/no-escape", out: "/no-escape"},
+		// escapes of unreserved characters are decoded (RFC 3986 Section 6.2.2.2)
+		{in: "/%41%62%63", out: "/Abc"},
+		{in: "/%7e/%2D%2e%5f", out: "/~/-._"},
+		{in: "/%30%39", out: "/09"},
+		// every other escape is kept with uppercase hex digits (Section 6.2.2.1)
+		{in: "/cr%C3%A9er", out: "/cr%C3%A9er"},
+		{in: "/cr%c3%a9er", out: "/cr%C3%A9er"},
+		{in: "/a%20b", out: "/a%20b"},
+		{in: "/%7B%7d%22", out: "/%7B%7D%22"},
+		{in: "/a%2Fb%2fc", out: "/a%2Fb%2Fc"},
+		{in: "/a%3Fb%23c%40d%2Be", out: "/a%3Fb%23c%40d%2Be"},
+		{in: "/100%2525", out: "/100%2525"},
+		{in: "/a%5cb", out: "/a%5Cb"},
+		{in: "/%00%1f%7f", out: "/%00%1F%7F"},
+		// A stray "%" that begins no escape is kept as sent, as it is in a
+		// path matched without normalization.
+		{in: "/a%zzb", out: "/a%zzb"},
+		{in: "/trailing%2", out: "/trailing%2"},
+		{in: "/%", out: "/%"},
+		{in: "/100%", out: "/100%"},
+		{in: "/%2g%41", out: "/%2gA"},
+		{in: "/%a%2Fb", out: "/%a%2Fb"},
+		// Decoding runs once: "%25" never becomes a new escape.
+		{in: "/%2570rivate", out: "/%2570rivate"},
+		{in: "/%2E%2E/%70", out: "/../p"},
+		// A stray "%" cannot line up with a decoded hex digit into a fresh
+		// escape that a later decode would read as "private" or ".git": when
+		// the two bytes written after it are hex digits, it is written as
+		// "%25", whether a decoded escape gives one of them or both.
+		{in: "/%%370rivate", out: "/%2570rivate"},
+		{in: "/%7%30rivate", out: "/%2570rivate"},
+		{in: "/%%32%65git", out: "/%252egit"},
+		{in: "/%%34A", out: "/%254A"},
+		{in: "/%%41%2Fb", out: "/%A%2Fb"},
+		// After a stray "%" a kept escape is still kept, with uppercase hex,
+		// and the "%" it starts with is no hex digit.
+		{in: "/%%20", out: "/%%20"},
+		{in: "/%zz%2fb", out: "/%zz%2Fb"},
+		{in: "/%%%%31%32", out: "/%%%2512"},
+	}
+
+	for _, tc := range tests {
+		got := string(unescapeSafePath([]byte(tc.in)))
+		require.Equal(t, tc.out, got, "in=%q", tc.in)
+		// the normalized path normalizes to itself
+		require.Equal(t, tc.out, string(unescapeSafePath([]byte(got))), "in=%q normalized twice", tc.in)
+	}
+}
+
+// Test_UnescapeSafePath_NoForgedEscape checks every short path over an
+// alphabet of escapes and stray percents: the result normalizes to itself, is
+// never longer than the input, and every "%" in it either begins an escape of
+// a reserved character with uppercase hex digits or is a stray "%" that two
+// hex digits do not follow.
+func Test_UnescapeSafePath_NoForgedEscape(t *testing.T) {
+	t.Parallel()
+
+	alphabet := []string{"%", "a", "3", "7", "%37", "%41", "%2F", "%2f", "/"}
+	var walk func(prefix string, depth int)
+	walk = func(prefix string, depth int) {
+		got := string(unescapeSafePath([]byte(prefix)))
+		require.Equal(t, got, string(unescapeSafePath([]byte(got))), "in=%q normalized twice", prefix)
+		require.LessOrEqual(t, len(got), len(prefix), "in=%q out=%q grew", prefix, got)
+		for i := 0; i < len(got); i++ {
+			if got[i] != '%' || i+2 >= len(got) {
+				continue
+			}
+			hi, lo := unhex(got[i+1]), unhex(got[i+2])
+			if hi < 0 || lo < 0 {
+				continue
+			}
+			require.False(t, pathUnreserved[byte(hi<<4|lo)], "in=%q out=%q holds an escape of an unreserved character", prefix, got)
+			require.Equal(t, strings.ToUpper(got[i+1:i+3]), got[i+1:i+3], "in=%q out=%q holds lowercase hex", prefix, got)
+			i += 2
+		}
+		if depth == 0 {
+			return
+		}
+		for _, a := range alphabet {
+			walk(prefix+a, depth-1)
+		}
+	}
+	walk("/", 5)
+}
+
+// Test_UnescapeSafePath_OneCopy pins that a path full of stray percents, some
+// kept and some written as "%25", is copied once rather than regrown for each.
+//
+// It does not call t.Parallel: testing.AllocsPerRun panics in a parallel test.
+func Test_UnescapeSafePath_OneCopy(t *testing.T) { //nolint:paralleltest // AllocsPerRun cannot run in a parallel test
+	path := []byte("/" + strings.Repeat("%zz%%370", 4000))
+	buf := make([]byte, len(path))
+	allocs := testing.AllocsPerRun(10, func() {
+		copy(buf, path)
+		_ = unescapeSafePath(buf)
+	})
+	require.InDelta(t, 1, allocs, 0)
+	got := unescapeSafePath(append([]byte(nil), path...))
+	require.Equal(t, "/"+strings.Repeat("%zz%2570", 4000), string(got))
+	require.LessOrEqual(t, len(got), len(path))
+}
+
+func Test_CleanPathSegments(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		in, out string
+	}{
+		{in: "", out: ""},
+		{in: "/", out: "/"},
+		{in: "/a", out: "/a"},
+		{in: "/a/", out: "/a/"},
+		{in: "/a/b/c/./../../g", out: "/a/g"},
+		{in: "mid/content=5/../6", out: "mid/6"},
+		{in: "/./a", out: "/a"},
+		{in: "/../a", out: "/a"},
+		{in: "/.", out: "/"},
+		{in: "/..", out: "/"},
+		{in: "/a/..", out: "/"},
+		{in: "/a/b/..", out: "/a/"},
+		{in: "/a/b/.", out: "/a/b/"},
+		{in: "/a/../..", out: "/"},
+		{in: "/a/../../b", out: "/b"},
+		// empty segments are not dot segments and stay (Section 5.2.4)
+		{in: "//", out: "//"},
+		{in: "//a", out: "//a"},
+		{in: "/a//b", out: "/a//b"},
+		{in: "/a//", out: "/a//"},
+		{in: "/a/.//b", out: "/a//b"},
+		{in: "/a//..", out: "/a/"},
+		{in: "/a/b//../c", out: "/a/b/c"},
+		{in: "/..//..//etc", out: "//etc"},
+		{in: "/..a/.b/c..", out: "/..a/.b/c.."},
+		{in: "/a/.../b", out: "/a/.../b"},
+		{in: "a/./b", out: "a/b"},
+	}
+
+	for _, tc := range tests {
+		require.Equal(t, tc.out, string(cleanPathSegments([]byte(tc.in))), "in=%q", tc.in)
+	}
+}
+
+func Test_NormalizeRequestPath(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		in, out  string
+		unescape bool
+	}{
+		{in: "/static/%2E%2E/x", out: "/x"},
+		{in: "/static/%2e/x", out: "/static/x"},
+		{in: "/static/%70rivate//x/./y/../z", out: "/static/private//x/z"},
+		// Only unreserved characters are decoded unless UnescapePath is set.
+		{in: "/cr%c3%a9er/a%20b", out: "/cr%C3%A9er/a%20b"},
+		{in: "/cr%c3%a9er/a%20b", unescape: true, out: "/créer/a b"},
+		// An encoded slash is not a separator unless UnescapePath decodes it.
+		{in: "/a%2F..%2Fb", out: "/a%2F..%2Fb"},
+		{in: "/a%2F..%2Fb", unescape: true, out: "/b"},
+		// Decoding runs once, so "%25" never turns into a new escape.
+		{in: "/%2570rivate", out: "/%2570rivate"},
+		{in: "/%2570rivate", unescape: true, out: "/%70rivate"},
+		{in: "/%252e%252e/x", unescape: true, out: "/%2e%2e/x"},
+		// An unrooted path is rooted first: the empty path of an absolute-form
+		// target, the asterisk form, and a relative path with a dot segment.
+		{in: "", out: "/"},
+		{in: "*", out: "/*"},
+		{in: "a/../b", out: "/b"},
+		{in: "", unescape: true, out: "/"},
+	}
+
+	for _, tc := range tests {
+		got := string(normalizeRequestPath([]byte(tc.in), tc.unescape))
+		require.Equal(t, tc.out, got, "in=%q unescape=%v", tc.in, tc.unescape)
+	}
+}
+
+// forEachPathSample calls fn with every string of length 0 to 9 over "/.%a"
+// and a few longer ones that cross word boundaries.
+func forEachPathSample(fn func(string)) {
+	const alphabet = "/.%a"
+	var walk func(prefix string, depth int)
+	walk = func(prefix string, depth int) {
+		fn(prefix)
+		if depth == 0 {
+			return
+		}
+		for i := range len(alphabet) {
+			walk(prefix+alphabet[i:i+1], depth-1)
+		}
+	}
+	walk("", 9)
+	for _, s := range []string{
+		"/user/keys/1337", "/aaaaaaa//", "/aaaaaa/.", "/aaaaaaa/./b", "/aaaaaaaa%", "%aaaaaaaaaaaaaa",
+		"/aaaaaaa/aaaaaaa/aaaaaaa/../b", "/aaaaaaa/aaaaaaa/aaaaaaa/aaaaaaa", "/aaaaaaa/aaaaaaa/aaaaaaa//",
+	} {
+		fn(s)
+	}
+}
+
+// Test_NeedsPathNormalization_MatchesReference checks the word-at-a-time scan
+// against a byte-at-a-time definition of what it must find.
+func Test_NeedsPathNormalization_MatchesReference(t *testing.T) {
+	t.Parallel()
+
+	ref := func(s string) bool {
+		if s == "" || s[0] != '/' {
+			return true
+		}
+		return strings.Contains(s, "%") || strings.Contains(s, "/.")
+	}
+	count := 0
+	forEachPathSample(func(s string) {
+		count++
+		require.Equal(t, ref(s), needsPathNormalization(s), "path=%q", s)
+	})
+	require.Greater(t, count, 300000)
+}
+
+// Test_HasDotSegment_MatchesReference does the same for the scan that gates
+// cleanPathSegments.
+func Test_HasDotSegment_MatchesReference(t *testing.T) {
+	t.Parallel()
+
+	ref := func(s string) bool {
+		if s != "" && s[0] == '.' {
+			return true
+		}
+		return strings.Contains(s, "/.")
+	}
+	forEachPathSample(func(s string) {
+		require.Equal(t, ref(s), hasDotSegment([]byte(s)), "path=%q", s)
+	})
+}
+
+func Benchmark_NeedsPathNormalization(b *testing.B) {
+	for _, s := range []string{"/", "/user/keys/1337", "/api/v1/entity/1", "/aaaaaaa/bbbbbbb/ccccccc/ddddddd/e"} {
+		b.Run(s, func(b *testing.B) {
+			b.ReportAllocs()
+			var r bool
+			for b.Loop() {
+				r = needsPathNormalization(s)
+			}
+			if r {
+				b.Fatal("unexpected normalization")
+			}
+		})
+	}
+}
+
+func Test_NeedsPathNormalization(t *testing.T) {
+	t.Parallel()
+
+	// an unrooted path needs rooting, so it counts as needing normalization
+	for _, s := range []string{"/a/./b", "/a/../b", "/%41", "/%2F", "/.", "/..", "./x", "../x", "/.well-known/x", "", "*", "a/b"} {
+		require.True(t, needsPathNormalization(s), "path=%q", s)
+	}
+	for _, s := range []string{"/", "/a", "/a/b", "/a/b/", "/a//b", "//", "/a.b/c", "/a-b_c~d", "/a/b.", "/a..b", "/user/keys/1337"} {
+		require.False(t, needsPathNormalization(s), "path=%q", s)
 	}
 }
 
@@ -1344,4 +1791,14 @@ func Test_RouteParser_AdoptConstraints_FewerRawSegments(t *testing.T) {
 	raw.params = append(raw.params, "name")
 
 	require.NotPanics(t, func() { pretty.adoptConstraints(&raw) })
+}
+
+// Test_RouteParser_TrailingBackslash confirms that a parameter followed by a
+// trailing escape character does not panic. The backslash is a parameter-end
+// character, so ":id\" leaves an empty constant segment after the parameter;
+// addParameterMetaInfo must not index into that empty Const.
+func Test_RouteParser_TrailingBackslash(t *testing.T) {
+	t.Parallel()
+
+	require.NotPanics(t, func() { parseRoute(`/:id\`, nil) })
 }

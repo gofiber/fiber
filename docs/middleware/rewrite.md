@@ -28,6 +28,13 @@ and not `/preis-1X000-euro`. There is no escape for a literal `*`.
 
 Setting both `RuleList` and `Rules` panics.
 
+Rules match `c.Path()`, the path as the router normalized it, and the rewritten
+path goes through the same normalization. With `UnescapePath` that path is the
+decoded one, so a capture is escaped again before it is inserted: the `%2e%2e`
+that `/files/%252e%252e/secret` decoded to stays that name in `/public/$1`
+rather than being decoded a second time into `..` and resolving out of
+`/public/`.
+
 ## Rule order
 
 Rules are tried in the order you write them and the first one whose `From`

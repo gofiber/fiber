@@ -464,7 +464,7 @@ func trustedRedirectTarget(host, initialHostname string) bool {
 	// The same bail-out net/http's isDomainOrSubdomain makes: a ':' or '%' means
 	// this is no hostname, and the suffix test would match inside an IPv6 zone
 	// identifier — "[::1%.example.com]" would come back a subdomain of it.
-	if strings.ContainsAny(target, ":%") {
+	if utils.IndexAny2(target, ':', '%') != -1 {
 		return false
 	}
 	return len(target) > len(initialHostname) &&
@@ -494,10 +494,11 @@ func parsesAsURI(full []byte) error {
 }
 
 func composeRedirectURL(base string, location []byte, disablePathNormalizing bool) (redirectURL, host string, err error) { //nolint:nonamedreturns // names document the two string results
-	for _, b := range location {
-		if b < 0x20 || b == 0x7f {
-			return "", "", fasthttp.ErrorInvalidURI
-		}
+	// Control bytes (C0 including HTAB, plus DEL) in a Location value are a
+	// header-injection vector; utils.IndexControl scans for exactly that set
+	// two words per branch instead of one byte at a time.
+	if utils.IndexControl(location) != -1 {
+		return "", "", fasthttp.ErrorInvalidURI
 	}
 
 	uri := fasthttp.AcquireURI()

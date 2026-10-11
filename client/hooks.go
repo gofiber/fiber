@@ -1,7 +1,6 @@
 package client
 
 import (
-	"bytes"
 	"crypto/rand"
 	"fmt"
 	"io"
@@ -74,7 +73,7 @@ func unsafeRandString(n int) (string, error) {
 // It merges the baseURL with the request URI if needed and applies query and path parameters.
 func parserRequestURL(c *Client, req *Request) error {
 	// Split URL into path and query parts using Cut (avoids allocation)
-	uri, queryPart, _ := strings.Cut(req.url, "?")
+	uri, queryPart, _ := utils.CutByte(req.url, '?')
 
 	// If the URL doesn't start with http/https, prepend the baseURL.
 	if !protocolCheck.MatchString(uri) {
@@ -101,7 +100,7 @@ func parserRequestURL(c *Client, req *Request) error {
 	}
 
 	// Merge query parameters (split query from fragment using Cut).
-	queryOnly, hashPart, _ := strings.Cut(queryPart, "#")
+	queryOnly, hashPart, _ := utils.CutByte(queryPart, '#')
 	args := fasthttp.AcquireArgs()
 	defer fasthttp.ReleaseArgs(args)
 
@@ -209,7 +208,7 @@ func substitutePathParams(uri string, disablePathNormalizing bool, sources ...Pa
 // the segment entirely. Only the raw bytes matter: a "%2F" typed by the caller
 // is written as "%252F" and decodes to a literal "%2F", not to a separator.
 func isSingleSegment(val string) bool {
-	return val != "" && val != "." && val != ".." && !strings.ContainsAny(val, `/\`)
+	return val != "" && val != "." && val != ".." && utils.IndexAny2(val, '/', '\\') == -1
 }
 
 // isHostSafe reports whether val may be substituted into a URI authority
@@ -587,7 +586,7 @@ func parserResponseCookie(c *Client, resp *Response, req *Request) error {
 // keeping the fallback's work linear in the header length. Only a name/value
 // pair that will not parse fails the cookie.
 func parseCookieIgnoringBadAttrs(cookie *fasthttp.Cookie, value []byte) error {
-	pair, rest, _ := bytes.Cut(value, []byte{';'})
+	pair, rest, _ := utils.CutByte(value, ';')
 	kept := make([]byte, len(pair), len(value))
 	copy(kept, pair)
 
@@ -604,7 +603,7 @@ func parseCookieIgnoringBadAttrs(cookie *fasthttp.Cookie, value []byte) error {
 	copy(probe, probePair)
 	for len(rest) > 0 {
 		var attr []byte
-		attr, rest, _ = bytes.Cut(rest, []byte{';'})
+		attr, rest, _ = utils.CutByte(rest, ';')
 		probe = append(probe[:len(probePair)], attr...)
 		if err := trial.ParseBytes(probe); err == nil {
 			kept = append(kept, ';')

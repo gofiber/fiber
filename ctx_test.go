@@ -23,6 +23,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -43,6 +44,7 @@ import (
 	"github.com/valyala/fasthttp"
 
 	"github.com/gofiber/fiber/v3/internal/storage/memory"
+	"github.com/gofiber/fiber/v3/log"
 )
 
 const epsilon = 0.001
@@ -309,6 +311,55 @@ func Test_Ctx_HeaderHelpers(t *testing.T) {
 
 	c.Request().Header.Del("X-Trace-Id")
 	require.False(t, c.HasHeader("X-Trace-Id"))
+}
+
+// go test -run Test_Ctx_HasHeaderValue
+func Test_Ctx_HasHeaderValue(t *testing.T) {
+	t.Parallel()
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	t.Cleanup(func() { app.ReleaseCtx(c) })
+
+	c.Request().Header.Set(HeaderCacheControl, "public, max-age=60")
+	require.True(t, c.HasHeaderValue(HeaderCacheControl, "public"))
+	require.True(t, c.HasHeaderValue("cache-control", "PUBLIC"))
+	require.True(t, c.HasHeaderValue(HeaderCacheControl, "max-age=60"))
+	require.False(t, c.HasHeaderValue(HeaderCacheControl, "no-transform"))
+	require.False(t, c.HasHeaderValue(HeaderCacheControl, "max-age"))
+	require.False(t, c.HasHeaderValue(HeaderCacheControl, ""))
+	require.False(t, c.HasHeaderValue(HeaderConnection, "close"))
+
+	// A member on a later field line counts: repeated lines are one list
+	// (RFC 9110 Section 5.3).
+	c.Request().Header.Add(HeaderCacheControl, "no-transform")
+	require.True(t, c.HasHeaderValue(HeaderCacheControl, "no-transform"))
+	require.True(t, c.Req().HasHeaderValue(HeaderCacheControl, "public"))
+
+	c.Request().Header.Del(HeaderCacheControl)
+	require.False(t, c.HasHeaderValue(HeaderCacheControl, "public"))
+
+	// A comma inside a quoted directive argument is part of that member, not
+	// a separator (RFC 9111 allows quoted arguments), so no-transform is not
+	// listed here even though the bytes appear in the value.
+	c.Request().Header.Set(HeaderCacheControl, "public")
+	c.Request().Header.Add(HeaderCacheControl, `ext="x,no-transform,y"`)
+	require.False(t, c.HasHeaderValue(HeaderCacheControl, "no-transform"))
+	require.True(t, c.HasHeaderValue(HeaderCacheControl, `ext="x,no-transform,y"`))
+	require.True(t, c.HasHeaderValue(HeaderCacheControl, "public"))
+	c.Request().Header.Add(HeaderCacheControl, "no-transform")
+	require.True(t, c.HasHeaderValue(HeaderCacheControl, "no-transform"))
+
+	// An escaped quote does not close the argument, so the directive after it is its own member.
+	c.Request().Header.Del(HeaderCacheControl)
+	c.Request().Header.Set(HeaderCacheControl, `ext="a\"", no-transform`)
+	require.True(t, c.HasHeaderValue(HeaderCacheControl, "no-transform"))
+
+	// An empty first line does not hide the lines after it.
+	c.Request().Header.Del(HeaderCacheControl)
+	c.Request().Header.Add(HeaderCacheControl, "")
+	c.Request().Header.Add(HeaderCacheControl, "no-transform")
+	require.True(t, c.HasHeaderValue(HeaderCacheControl, "no-transform"))
+	require.False(t, c.HasHeaderValue(HeaderCacheControl, "public"))
 }
 
 // go test -run Test_Ctx_FullURL_DoesNotAliasPooledBuffer
@@ -704,6 +755,93 @@ func Test_Ctx_AcceptsEncodings_MultiHeader(t *testing.T) {
 	c.Request().Header.Add(HeaderAcceptEncoding, "deflate;q=0.3")
 	c.Request().Header.Add(HeaderAcceptEncoding, "gzip")
 	require.Equal(t, "gzip", c.AcceptsEncodings("deflate", "gzip"))
+}
+
+// RFC 9110 §12.5.3: "identity" is acceptable unless the field excludes it.
+// go test -run Test_Ctx_AcceptsEncodings_Identity
+func Test_Ctx_AcceptsEncodings_Identity(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		header string
+		want   string
+		offers []string
+	}{
+		// Listed codings keep winning on their weights.
+		{name: "listed coding", header: "gzip", offers: []string{"gzip", "br"}, want: "gzip"},
+		{name: "listed beats unlisted", header: "br;q=0.1", offers: []string{"identity", "br"}, want: "br"},
+		{name: "unlisted coding", header: "gzip", offers: []string{"br"}, want: ""},
+		{name: "refused coding", header: "gzip;q=0", offers: []string{"gzip"}, want: ""},
+
+		// Unmentioned identity is acceptable.
+		{name: "identity unlisted", header: "gzip", offers: []string{"identity"}, want: "identity"},
+		{name: "identity unlisted among offers", header: "gzip", offers: []string{"br", "identity"}, want: "identity"},
+		{name: "identity after a refused coding", header: "gzip;q=0", offers: []string{"gzip", "identity"}, want: "identity"},
+		{name: "identity ranks below a listed coding", header: "gzip;q=0.1", offers: []string{"identity", "gzip"}, want: "gzip"},
+		{name: "identity keeps the caller's spelling", header: "gzip", offers: []string{"Identity"}, want: "Identity"},
+
+		// ... unless the field excludes it.
+		{name: "identity refused", header: "identity;q=0", offers: []string{"identity"}, want: ""},
+		{name: "identity refused, other coding unlisted", header: "identity;q=0", offers: []string{"gzip", "identity"}, want: ""},
+		{name: "identity refused, other coding listed", header: "identity;q=0, gzip", offers: []string{"identity", "gzip"}, want: "gzip"},
+		{name: "identity refused in any case", header: "IDENTITY;q=0", offers: []string{"identity"}, want: ""},
+		{name: "everything refused", header: "*;q=0", offers: []string{"gzip", "identity"}, want: ""},
+		{name: "everything but identity refused", header: "*;q=0, identity", offers: []string{"gzip", "identity"}, want: "identity"},
+		{name: "everything but gzip refused", header: "*;q=0, gzip", offers: []string{"identity", "gzip"}, want: "gzip"},
+
+		// An entry for identity is more specific than the wildcard.
+		{name: "wildcard accepts identity", header: "*", offers: []string{"identity"}, want: "identity"},
+		{name: "identity refused despite the wildcard", header: "*;q=0.5, identity;q=0", offers: []string{"identity"}, want: ""},
+		{name: "wildcard still serves another coding", header: "*;q=0.5, identity;q=0", offers: []string{"identity", "gzip"}, want: "gzip"},
+		{name: "identity weighed on its own entry", header: "gzip;q=0.5, identity", offers: []string{"gzip", "identity"}, want: "identity"},
+		{name: "coding outweighs identity", header: "gzip, identity;q=0.5", offers: []string{"identity", "gzip"}, want: "gzip"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			app := New()
+			c := app.AcquireCtx(&fasthttp.RequestCtx{})
+			t.Cleanup(func() { app.ReleaseCtx(c) })
+
+			c.Request().Header.Set(HeaderAcceptEncoding, tc.header)
+			require.Equal(t, tc.want, c.AcceptsEncodings(tc.offers...))
+		})
+	}
+}
+
+// An absent field accepts any coding; an empty one only identity.
+// go test -run Test_Ctx_AcceptsEncodings_AbsentAndEmpty
+func Test_Ctx_AcceptsEncodings_AbsentAndEmpty(t *testing.T) {
+	t.Parallel()
+
+	for _, config := range []Config{{}, {DisableHeaderNormalizing: true}} {
+		t.Run(fmt.Sprintf("DisableHeaderNormalizing=%t", config.DisableHeaderNormalizing), func(t *testing.T) {
+			t.Parallel()
+
+			app := New(config)
+			c := app.AcquireCtx(&fasthttp.RequestCtx{})
+			t.Cleanup(func() { app.ReleaseCtx(c) })
+
+			// Absent: the first offer, whatever it is.
+			require.Equal(t, "gzip", c.AcceptsEncodings("gzip", "identity"))
+			require.Equal(t, "br", c.AcceptsEncodings("br"))
+			require.Empty(t, c.AcceptsEncodings())
+
+			// Present and empty: only identity.
+			c.Request().Header.Set(HeaderAcceptEncoding, "")
+			require.Equal(t, "identity", c.AcceptsEncodings("gzip", "identity"))
+			require.Equal(t, "Identity", c.AcceptsEncodings("gzip", "Identity"))
+			require.Empty(t, c.AcceptsEncodings("gzip", "br"))
+			require.Empty(t, c.AcceptsEncodings())
+
+			// An empty line beside a coding is an empty list element (§5.6.1.2).
+			c.Request().Header.Add(HeaderAcceptEncoding, "gzip")
+			require.Equal(t, "gzip", c.AcceptsEncodings("identity", "gzip"))
+		})
+	}
 }
 
 // go test -v -run=^$ -bench=Benchmark_Ctx_AcceptsEncodings -benchmem -count=4
@@ -1767,6 +1905,113 @@ func Test_Ctx_Cookie_Invalid(t *testing.T) {
 		require.Empty(t, c.Res().Get(HeaderSetCookie))
 		c.Response().Header.Reset()
 		app.ReleaseCtx(c)
+	}
+}
+
+// A value with a space or comma is written in quotes, as net/http does (RFC 6265
+// §4.1.1 allows neither even in quotes), and the quotes are not part of the value read back.
+// go test -run Test_Ctx_Cookie_ValueQuoting
+func Test_Ctx_Cookie_ValueQuoting(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		value string
+		line  string // the Set-Cookie line
+		read  string // the value read back from it
+	}{
+		{name: "plain", value: "abc123", line: "n=abc123; path=/; SameSite=Lax", read: "abc123"},
+		{name: "empty", value: "", line: "n=; path=/; SameSite=Lax", read: ""},
+		{name: "space", value: "hello world", line: `n="hello world"; path=/; SameSite=Lax`, read: "hello world"},
+		{name: "comma", value: "x,y", line: `n="x,y"; path=/; SameSite=Lax`, read: "x,y"},
+		{name: "space and comma", value: "a b, c", line: `n="a b, c"; path=/; SameSite=Lax`, read: "a b, c"},
+		{name: "edge spaces", value: " a ", line: `n=" a "; path=/; SameSite=Lax`, read: " a "},
+		{name: "already quoted", value: `"abc"`, line: `n="abc"; path=/; SameSite=Lax`, read: "abc"},
+		{name: "already quoted with a space", value: `"a b"`, line: `n="a b"; path=/; SameSite=Lax`, read: "a b"},
+		{name: "empty and quoted", value: `""`, line: `n=""; path=/; SameSite=Lax`, read: ""},
+		{name: "visible ASCII", value: "!#$%&'()*+-./:<=>?@[]^_`{|}~", line: "n=!#$%&'()*+-./:<=>?@[]^_`{|}~; path=/; SameSite=Lax", read: "!#$%&'()*+-./:<=>?@[]^_`{|}~"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			app := New()
+			c := app.AcquireCtx(&fasthttp.RequestCtx{})
+			t.Cleanup(func() { app.ReleaseCtx(c) })
+
+			c.Res().Cookie(&Cookie{Name: "n", Value: tc.value})
+			require.Equal(t, tc.line, c.Res().Get(HeaderSetCookie))
+
+			got, ok := c.Res().GetCookie("n")
+			require.True(t, ok)
+			require.Equal(t, tc.read, got.Value)
+
+			// The client sends the pair back as it received it.
+			pair, _, _ := strings.Cut(c.Res().Get(HeaderSetCookie), ";")
+			c.Request().Header.Set(HeaderCookie, pair)
+			require.Equal(t, tc.read, c.Cookies("n"))
+		})
+	}
+}
+
+// Values the grammar cannot carry, even in quotes, are refused, not altered.
+// go test -run Test_Ctx_Cookie_ValueRejected
+func Test_Ctx_Cookie_ValueRejected(t *testing.T) {
+	t.Parallel()
+
+	for name, value := range map[string]string{
+		"semicolon":                 "a;b",
+		"semicolon in quotes":       `"a;b"`,
+		"double quote":              `a"b`,
+		"double quote inside quote": `"a"b"`,
+		"lone double quote":         `"`,
+		"opening quote only":        `"abc`,
+		"closing quote only":        `abc"`,
+		"backslash":                 `a\b`,
+		"backslash in quotes":       `"a\b"`,
+		"tab":                       "a\tb",
+		"line feed":                 "a\nb",
+		"non-ASCII":                 "café",
+		"DEL":                       "a\x7fb",
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			app := New()
+			c := app.AcquireCtx(&fasthttp.RequestCtx{})
+			t.Cleanup(func() { app.ReleaseCtx(c) })
+
+			c.Res().Cookie(&Cookie{Name: "n", Value: value})
+			require.Empty(t, c.Res().Get(HeaderSetCookie))
+		})
+	}
+}
+
+// net/http reads back the values that were set.
+// go test -run Test_Ctx_Cookie_ValueQuoting_NetHTTP
+func Test_Ctx_Cookie_ValueQuoting_NetHTTP(t *testing.T) {
+	t.Parallel()
+
+	values := []string{"plain", "hello world", "x,y", "a b, c", `"abc"`, `"a b"`}
+
+	app := New()
+	app.Get("/", func(c Ctx) error {
+		for i, value := range values {
+			c.Cookie(&Cookie{Name: "c" + strconv.Itoa(i), Value: value})
+		}
+		return nil
+	})
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/", http.NoBody))
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, resp.Body.Close()) })
+
+	cookies := resp.Cookies()
+	require.Len(t, cookies, len(values))
+	for i, cookie := range cookies {
+		require.Equal(t, "c"+strconv.Itoa(i), cookie.Name)
+		require.Equal(t, strings.Trim(values[i], `"`), cookie.Value)
 	}
 }
 
@@ -3234,6 +3479,23 @@ func Test_Ctx_Get(t *testing.T) {
 	require.Equal(t, "default", c.Get("unknown", "default"))
 }
 
+// go test -run Test_Ctx_Get_EmptyFirstLine
+func Test_Ctx_Get_EmptyFirstLine(t *testing.T) {
+	t.Parallel()
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+
+	// Get answers with the first field line that holds a value, so an empty
+	// leading line does not hide the one after it. net/http's Header.Get and
+	// fasthttp's Peek answer with the first line even when it is empty, which
+	// is why the docs for Get and the adaptor say the two readers can disagree.
+	c.Request().Header.Add("X-Token", "")
+	c.Request().Header.Add("X-Token", "secret")
+	require.Equal(t, "secret", c.Get("X-Token"))
+	require.Empty(t, c.Request().Header.Peek("X-Token"))
+	require.Len(t, c.Request().Header.PeekAll("X-Token"), 2)
+}
+
 // go test -run Test_Ctx_GetReqHeader
 func Test_Ctx_GetReqHeader(t *testing.T) {
 	t.Parallel()
@@ -4013,6 +4275,35 @@ func Test_Ctx_IP_StripTrustedProxies(t *testing.T) {
 			expected: "203.0.113.50",
 		},
 		{
+			// RFC 9110 Section 5.6.3: OWS is SP or HTAB
+			name: "tab whitespace around chain entries",
+			config: Config{
+				ProxyHeader:        HeaderXForwardedFor,
+				TrustProxy:         true,
+				EnableIPValidation: true,
+				TrustProxyConfig: TrustProxyConfig{
+					Proxies: []string{"10.0.0.1"},
+				},
+			},
+			remoteIP: "10.0.0.1",
+			header:   "\t203.0.113.50\t,\t10.0.0.1\t",
+			expected: "203.0.113.50",
+		},
+		{
+			name: "tab inside an address is not whitespace",
+			config: Config{
+				ProxyHeader:        HeaderXForwardedFor,
+				TrustProxy:         true,
+				EnableIPValidation: true,
+				TrustProxyConfig: TrustProxyConfig{
+					Proxies: []string{"10.0.0.1"},
+				},
+			},
+			remoteIP: "10.0.0.1",
+			header:   "203.0.\t113.50, 10.0.0.1",
+			expected: "10.0.0.1",
+		},
+		{
 			name: "trailing empty chain element",
 			config: Config{
 				ProxyHeader:        HeaderXForwardedFor,
@@ -4052,6 +4343,10 @@ func Test_Ctx_IP_ProxyHeader_NoTrustedProxies(t *testing.T) {
 	c := app.AcquireCtx(fastCtx)
 
 	c.Request().Header.Set(HeaderXForwardedFor, "invalid, 203.0.113.50, 10.0.0.1")
+	require.Equal(t, "203.0.113.50", c.extractIPFromHeader(HeaderXForwardedFor))
+
+	// The left-to-right walk trims HTAB as OWS too (RFC 9110 Section 5.6.3)
+	c.Request().Header.Set(HeaderXForwardedFor, "invalid,\t203.0.113.50\t,\t10.0.0.1")
 	require.Equal(t, "203.0.113.50", c.extractIPFromHeader(HeaderXForwardedFor))
 }
 
@@ -4104,6 +4399,35 @@ func Test_Ctx_IP_ProxyHeader_RepeatedFieldLines_Wire(t *testing.T) {
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
 	require.Equal(t, "198.51.100.77", string(body))
+}
+
+// fasthttp trims the OWS at either end of a field value but keeps the OWS
+// around the commas inside it, so a tab there reaches the chain parsers.
+func Test_Ctx_IP_ProxyHeader_TabOWS_Wire(t *testing.T) {
+	t.Parallel()
+
+	app := New(Config{
+		ProxyHeader:        HeaderXForwardedFor,
+		TrustProxy:         true,
+		EnableIPValidation: true,
+		TrustProxyConfig: TrustProxyConfig{
+			Proxies: []string{"0.0.0.0"},
+		},
+	})
+	app.Get("/", func(c Ctx) error {
+		return c.SendString(c.IP() + "|" + strings.Join(c.IPs(), ","))
+	})
+
+	req := httptest.NewRequest(MethodGet, "/", http.NoBody)
+	req.Header.Set(HeaderXForwardedFor, "203.0.113.50\t,\t0.0.0.0")
+
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	defer func() { require.NoError(t, resp.Body.Close()) }()
+
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "203.0.113.50|203.0.113.50,0.0.0.0", string(body))
 }
 
 func Test_Ctx_IP_ProxyHeader_InvalidIPs(t *testing.T) {
@@ -4230,6 +4554,10 @@ func Test_Ctx_IPs(t *testing.T) {
 	c.Request().Header.Set(HeaderXForwardedFor, "127.0.0.1,127.0.0.2  ,127.0.0.3")
 	require.Equal(t, []string{"127.0.0.1", "127.0.0.2", "127.0.0.3"}, c.IPs())
 
+	// tabs are optional whitespace too (RFC 9110 Section 5.6.3)
+	c.Request().Header.Set(HeaderXForwardedFor, "\t127.0.0.1\t,\t127.0.0.2 \t, \t127.0.0.3")
+	require.Equal(t, []string{"127.0.0.1", "127.0.0.2", "127.0.0.3"}, c.IPs())
+
 	// invalid IPs are allowed to be returned
 	c.Request().Header.Set(HeaderXForwardedFor, "invalid, 127.0.0.1, 127.0.0.2")
 	require.Equal(t, []string{"invalid", "127.0.0.1", "127.0.0.2"}, c.IPs())
@@ -4265,6 +4593,14 @@ func Test_Ctx_IPs_With_IP_Validation(t *testing.T) {
 	// inconsistent space formatting
 	c.Request().Header.Set(HeaderXForwardedFor, "127.0.0.1,127.0.0.2  ,127.0.0.3")
 	require.Equal(t, []string{"127.0.0.1", "127.0.0.2", "127.0.0.3"}, c.IPs())
+
+	// tabs are optional whitespace too (RFC 9110 Section 5.6.3)
+	c.Request().Header.Set(HeaderXForwardedFor, "\t127.0.0.1\t,\t127.0.0.2 \t, \t2001:db8::1\t")
+	require.Equal(t, []string{"127.0.0.1", "127.0.0.2", "2001:db8::1"}, c.IPs())
+
+	// but a tab inside an address is not, nor is whitespace other than SP and HTAB
+	c.Request().Header.Set(HeaderXForwardedFor, "127.0.\t0.1, \v127.0.0.2, 127.0.0.3")
+	require.Equal(t, []string{"127.0.0.3"}, c.IPs())
 
 	// invalid IPs are in the header
 	c.Request().Header.Set(HeaderXForwardedFor, "invalid, 127.0.0.1, 127.0.0.2")
@@ -4621,6 +4957,107 @@ func Test_Ctx_Locals_AfterRelease(t *testing.T) {
 	require.NotPanics(t, func() {
 		require.Equal(t, "fallback", ctx.Locals("test", "fallback"))
 	})
+}
+
+// go test -run Test_Ctx_SetLocal
+func Test_Ctx_SetLocal(t *testing.T) {
+	t.Parallel()
+	app := New()
+	app.Use(func(c Ctx) error {
+		c.SetLocal("john", "doe")
+		c.SetLocal("age", 18)
+		c.SetLocal("age", 19) // an existing key is overwritten, as with Locals
+		return c.Next()
+	})
+	app.Get("/test", func(c Ctx) error {
+		require.Equal(t, "doe", c.Locals("john"))
+		require.Equal(t, "doe", c.Value("john"))
+		require.Equal(t, 19, c.Locals("age"))
+		require.Equal(t, 19, Locals[int](c, "age"))
+		return nil
+	})
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test", http.NoBody))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
+}
+
+// go test -run Test_Ctx_SetLocal_AfterRelease
+func Test_Ctx_SetLocal_AfterRelease(t *testing.T) {
+	t.Parallel()
+	app := New()
+	var ctx Ctx
+	app.Get("/test", func(c Ctx) error {
+		ctx = c
+		return nil
+	})
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test", http.NoBody))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
+
+	require.NotPanics(t, func() {
+		ctx.SetLocal("test", "value")
+		require.Nil(t, ctx.Locals("test"), "a released context stores nothing")
+	})
+}
+
+// Test_Ctx_SetLocal_NoAllocations pins what SetLocal exists for: storing a
+// local through the Ctx interface without the heap-allocated one-element
+// slice that the variadic Locals(key, value) costs on the same call.
+//
+// Not parallel: AllocsPerRun counts allocations process-wide, and Go pauses
+// parallel tests while a sequential one runs.
+func Test_Ctx_SetLocal_NoAllocations(t *testing.T) {
+	app := New()
+	var c Ctx = app.AcquireCtx(&fasthttp.RequestCtx{})
+	t.Cleanup(func() { app.ReleaseCtx(c) })
+
+	// boxing a constant costs nothing, so the slice is all a Locals call allocates
+	c.SetLocal("user", "alice")
+	require.Zero(t, testing.AllocsPerRun(100, func() { c.SetLocal("user", "alice") }))
+	require.Equal(t, "alice", c.Locals("user"))
+}
+
+// Test_Ctx_SetLocal_UsesCustomCtxLocals is the counterpart to
+// Test_setLocal_UsesCustomCtxLocals: the direct store exists only to keep the
+// variadic slice off the heap, so it must never take precedence over a custom
+// context's own Locals, which a type embedding DefaultCtx is entitled to
+// override.
+func Test_Ctx_SetLocal_UsesCustomCtxLocals(t *testing.T) {
+	t.Parallel()
+
+	app := NewWithCustomCtx(func(app *App) CustomCtx {
+		return &localsRecordingCtx{DefaultCtx: *NewDefaultCtx(app)}
+	})
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+
+	custom, ok := c.(*localsRecordingCtx)
+	require.True(t, ok, "the app must hand out the custom context")
+
+	c.SetLocal("k", "v")
+	require.Equal(t, 1, custom.calls, "the overridden Locals must be the one that ran")
+	require.Equal(t, "v", c.Locals("k"), "and the value must actually be stored")
+}
+
+// go test -v -run=^$ -bench=Benchmark_Ctx_SetLocal -benchmem -count=4
+func Benchmark_Ctx_SetLocal(b *testing.B) {
+	app := New()
+	var c Ctx = app.AcquireCtx(&fasthttp.RequestCtx{})
+	b.Cleanup(func() { app.ReleaseCtx(c) })
+
+	b.Run("Locals", func(b *testing.B) {
+		b.ReportAllocs()
+		for b.Loop() {
+			c.Locals("user", "alice")
+		}
+	})
+	b.Run("SetLocal", func(b *testing.B) {
+		b.ReportAllocs()
+		for b.Loop() {
+			c.SetLocal("user", "alice")
+		}
+	})
+	require.Equal(b, "alice", c.Locals("user"))
 }
 
 // go test -run Test_Ctx_Value_InGoroutine
@@ -5354,6 +5791,34 @@ func Test_Ctx_Path(t *testing.T) {
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/specialChars/cr%C3%A9er", http.NoBody))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
+}
+
+// Test_Ctx_Path_OverrideNormalizes pins that an overridden path is normalized
+// from what the override says, not from what the request arrived with. Reset
+// records whether the request path needs normalizing, so an override has to
+// record it again in both directions: a plain request overridden with a dot
+// segment or an escape, and an escaped request overridden with a plain path.
+func Test_Ctx_Path_OverrideNormalizes(t *testing.T) {
+	t.Parallel()
+	app := New()
+	app.Get("/plain", func(c Ctx) error {
+		require.Equal(t, "/a/b", c.Path("/a/./b"))
+		require.Equal(t, "/x/y", c.Path("/%78/y"))
+		require.Equal(t, "/a/b", c.Path("/a/c/../b"))
+		return c.SendString("ok")
+	})
+	app.Get("/x", func(c Ctx) error {
+		require.Equal(t, "/x", c.Path())
+		require.Equal(t, "/plain", c.Path("/plain"))
+		require.Equal(t, "/plain", string(c.Request().URI().Path()))
+		return c.SendString("ok")
+	})
+
+	for _, target := range []string{"/plain", "/%78"} {
+		resp, err := app.Test(httptest.NewRequest(MethodGet, target, http.NoBody))
+		require.NoError(t, err, target)
+		require.Equal(t, StatusOK, resp.StatusCode, target)
+	}
 }
 
 // go test -run Test_Ctx_Protocol
@@ -6242,7 +6707,7 @@ func Test_Ctx_Endpoint_MatchesTheRouteThatRuns(t *testing.T) {
 		predicted, actual = nil, nil
 
 		req := httptest.NewRequest(tr.Method, tr.Path, http.NoBody)
-		resp, err := app.Test(req)
+		resp, err := app.Test(req, sweepTestConfig)
 		require.NoError(t, err, "%s %s", tr.Method, tr.Path)
 		require.NoError(t, resp.Body.Close())
 
@@ -6344,6 +6809,59 @@ func Test_Ctx_Endpoint_SkipUnmatchedRoutes(t *testing.T) {
 
 	require.Equal(t, StatusOK, resp.StatusCode)
 	require.Equal(t, "/items/:id", path)
+}
+
+// Test_Ctx_Reset_DisablePathNormalizing covers the branch Reset takes when the
+// request URI has DisablePathNormalizing set: the caller asked for the path to
+// be treated as sent, so Reset scans the original instead of trusting the
+// parsed copy. fasthttp parses with the flag cleared and only honors it when
+// it writes a request line back out, so the two agree today; the scan is what
+// keeps that an implementation detail of fasthttp rather than a dependency.
+func Test_Ctx_Reset_DisablePathNormalizing(t *testing.T) {
+	t.Parallel()
+	app := New()
+
+	fctx := &fasthttp.RequestCtx{}
+	fctx.Request.Header.SetMethod(MethodGet)
+	fctx.Request.SetRequestURI("/a/./b")
+
+	// Parsing clears the flag, so set it afterwards, as a handler would.
+	fctx.Request.URI().DisablePathNormalizing = true
+
+	c := app.AcquireCtx(fctx)
+	defer app.ReleaseCtx(c)
+
+	require.Equal(t, "/a/./b", c.OriginalURL(), "the target is untouched")
+	require.Equal(t, "/a/b", c.Path(), "the router still sees the normalized path")
+}
+
+// Test_Ctx_Path_DisablePathNormalizing pins that a Path override is normalized
+// before routing even with fasthttp's normalization switched off on the URI.
+func Test_Ctx_Path_DisablePathNormalizing(t *testing.T) {
+	t.Parallel()
+	app := New()
+	app.Get("/a/b", func(c Ctx) error {
+		return c.SendString(c.Path())
+	})
+	for _, tc := range []struct{ mount, override string }{
+		{mount: "/dotted", override: "/a/./b"},
+		{mount: "/plain", override: "/a/b"},
+	} {
+		app.Use(tc.mount, func(c Ctx) error {
+			c.Request().URI().DisablePathNormalizing = true
+			c.Path(tc.override)
+			return c.RestartRouting()
+		})
+	}
+
+	for _, target := range []string{"/dotted", "/plain"} {
+		resp, err := app.Test(httptest.NewRequest(MethodGet, target, http.NoBody))
+		require.NoError(t, err, "app.Test(req)")
+		require.Equal(t, StatusOK, resp.StatusCode, "Status code for %s", target)
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		require.Equal(t, "/a/b", string(body), "path for %s", target)
+	}
 }
 
 // go test -run Test_Ctx_RouteNormalized
@@ -7535,6 +8053,185 @@ func Test_Ctx_SendFile_404(t *testing.T) {
 	require.Equal(t, "sendfile: file ctx12.go not found", string(body))
 }
 
+// Test_Ctx_SendFile_NameIsLiteral pins that SendFile opens exactly the name it
+// is given, the way os.Open would. The file server reads the request URI,
+// which fasthttp decodes and splits at "?" and "#", so the name is escaped on
+// its way in: a "%", "?" or "#" is part of the name, and "100%25.txt" is not
+// "100%.txt".
+func Test_Ctx_SendFile_NameIsLiteral(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	names := []string{"100%25.txt", "100%.txt", "hash_sign_#.txt", "sp ace.txt", "café.txt", "plus+sign.txt"}
+	if runtime.GOOS != windowsOS {
+		names = append(names, "question?.txt")
+	}
+	for _, name := range names {
+		require.NoError(t, os.WriteFile(filepath.Join(dir, name), []byte("content of "+name), 0o600))
+	}
+
+	for _, name := range names {
+		app := New()
+		app.Get("/", func(c Ctx) error {
+			return c.SendFile(filepath.Join(dir, name))
+		})
+		resp, err := app.Test(httptest.NewRequest(MethodGet, "/", http.NoBody))
+		require.NoError(t, err, name)
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err, name)
+		require.Equal(t, StatusOK, resp.StatusCode, name)
+		require.Equal(t, "content of "+name, string(body), name)
+	}
+}
+
+// Test_Ctx_SendFile_EncodedSeparatorStaysInDirectory pins that a name built
+// from request input cannot leave the directory the handler joined it to. The
+// router keeps "%2F" encoded, so c.Params("*") of "/files/..%2Fsecret.txt" is
+// one segment that filepath.Join cannot clean; SendFile used to decode it
+// afterwards into "../secret.txt" and serve the file outside the directory.
+// An encoded "?" or "#" likewise stays part of the name.
+func Test_Ctx_SendFile_EncodedSeparatorStaysInDirectory(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	pub := filepath.Join(root, "public")
+	require.NoError(t, os.Mkdir(pub, 0o750))
+	require.NoError(t, os.WriteFile(filepath.Join(pub, "ok.txt"), []byte("OK"), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "secret.txt"), []byte("SECRET"), 0o600))
+
+	for _, unescape := range []bool{false, true} {
+		app := New(Config{UnescapePath: unescape})
+		app.Get("/files/*", func(c Ctx) error {
+			return c.SendFile(filepath.Join(pub, c.Params("*")))
+		})
+
+		resp, err := app.Test(httptest.NewRequest(MethodGet, "/files/ok.txt", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, StatusOK, resp.StatusCode, "unescape=%v", unescape)
+
+		for _, target := range []string{
+			"/files/..%2Fsecret.txt",
+			"/files/%2e%2e%2Fsecret.txt",
+			"/files/..%252Fsecret.txt",
+			"/files/ok.txt%3Fx",
+			"/files/ok.txt%23x",
+		} {
+			resp, err := app.Test(httptest.NewRequest(MethodGet, target, http.NoBody))
+			require.NoError(t, err, target)
+			body, err := io.ReadAll(resp.Body)
+			require.NoError(t, err, target)
+			require.Equal(t, StatusNotFound, resp.StatusCode, "unescape=%v target=%s", unescape, target)
+			require.NotContains(t, string(body), "SECRET", "unescape=%v target=%s", unescape, target)
+		}
+	}
+}
+
+// Test_Ctx_SendFile_DirectoryIsNotFound pins that a directory named without a
+// trailing slash is not found rather than redirected: fasthttp's redirect
+// would carry the directory's filesystem path in Location.
+func Test_Ctx_SendFile_DirectoryIsNotFound(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	// fasthttp escapes the name in the redirect it answers with, so a name it
+	// has to escape (a space, a percent, UTF-8) must be caught all the same.
+	for _, name := range []string{"sub", "sub dir", "100%", "café"} {
+		require.NoError(t, os.Mkdir(filepath.Join(dir, name), 0o750))
+		require.NoError(t, os.WriteFile(filepath.Join(dir, name, "index.html"), []byte("INDEX"), 0o600))
+
+		app := New()
+		app.Get("/", func(c Ctx) error {
+			return c.SendFile(filepath.Join(dir, name))
+		})
+		resp, err := app.Test(httptest.NewRequest(MethodGet, "/", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, StatusNotFound, resp.StatusCode, name)
+		require.Empty(t, resp.Header.Get(HeaderLocation), name)
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		require.NotContains(t, string(body), "INDEX", name)
+		// the error the default handler writes names neither the directory
+		// nor where it lives
+		require.NotContains(t, string(body), filepath.ToSlash(dir), name)
+		require.NotContains(t, string(body), name, name)
+	}
+}
+
+// Test_Ctx_SendFile_DecodedParamWithRoot pins the recipe the SendFile docs give
+// for a name taken from a route parameter under the default configuration,
+// where c.Params keeps the escapes the router keeps: decode the parameter and
+// serve it through the FS option from an os.Root, which refuses a name that
+// leaves the directory once decoded.
+func Test_Ctx_SendFile_DecodedParamWithRoot(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	files := filepath.Join(dir, "files")
+	require.NoError(t, os.Mkdir(files, 0o750))
+	for _, name := range []string{"my file.txt", "café.txt", "100%.txt"} {
+		require.NoError(t, os.WriteFile(filepath.Join(files, name), []byte("FILE "+name), 0o600))
+	}
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "secret.txt"), []byte("SECRET"), 0o600))
+	root, err := os.OpenRoot(files)
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, root.Close()) })
+
+	app := New()
+	app.Get("/files/:name", func(c Ctx) error {
+		name, err := url.PathUnescape(c.Params("name"))
+		if err != nil {
+			return ErrBadRequest
+		}
+		return c.SendFile(name, SendFile{FS: root.FS()})
+	})
+
+	for target, want := range map[string]string{
+		"/files/my%20file.txt":   "FILE my file.txt",
+		"/files/caf%C3%A9.txt":   "FILE café.txt",
+		"/files/100%25.txt":      "FILE 100%.txt",
+		"/files/..%2Fsecret.txt": "",
+	} {
+		resp, err := app.Test(httptest.NewRequest(MethodGet, target, http.NoBody))
+		require.NoError(t, err, target)
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err, target)
+		if want == "" {
+			require.Equal(t, StatusNotFound, resp.StatusCode, target)
+			require.NotContains(t, string(body), "SECRET", target)
+			continue
+		}
+		require.Equal(t, StatusOK, resp.StatusCode, target)
+		require.Equal(t, want, string(body), target)
+	}
+}
+
+// Test_Ctx_SendFile_ControlByteIsNotFound pins that a name holding a control
+// byte is not found. fasthttp's URI parser used to reject it silently, which
+// left the root path, so the root's index.html was served instead.
+func Test_Ctx_SendFile_ControlByteIsNotFound(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "index.html"), []byte("INDEX"), 0o600))
+
+	for _, cfg := range []SendFile{{}, {FS: os.DirFS(dir)}} {
+		app := New()
+		app.Get("/", func(c Ctx) error {
+			name := "nope\x00.txt"
+			if cfg.FS == nil {
+				name = filepath.Join(dir, name)
+			}
+			return c.SendFile(name, cfg)
+		})
+		resp, err := app.Test(httptest.NewRequest(MethodGet, "/", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, StatusNotFound, resp.StatusCode, "fs=%v", cfg.FS != nil)
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		require.NotContains(t, string(body), "INDEX", "fs=%v", cfg.FS != nil)
+	}
+}
+
 func Test_Ctx_SendFile_Multiple(t *testing.T) {
 	t.Parallel()
 
@@ -7882,6 +8579,120 @@ func Test_SendFile_ByteRange(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, content, body)
 	})
+}
+
+const (
+	byteRangeContent      = "0123456789abcdefghij"
+	byteRangeLastModified = "Thu, 02 Jan 2020 03:04:05 GMT"
+	byteRangeStale        = "Wed, 01 Jan 2020 03:04:05 GMT"
+)
+
+// byteRangeFixture writes the 20-byte file of the byte-range tests, dated to
+// byteRangeLastModified, and returns its path.
+func byteRangeFixture(t *testing.T) string {
+	t.Helper()
+
+	fixture := filepath.Join(t.TempDir(), "fixture.txt")
+	require.NoError(t, os.WriteFile(fixture, []byte(byteRangeContent), 0o600))
+	require.NoError(t, os.Chtimes(fixture, time.Time{}, time.Date(2020, time.January, 2, 3, 4, 5, 0, time.UTC)))
+	return fixture
+}
+
+// SendFile wires the Range and If-Range rules (RFC 9110 §13.1.5, §14.2) into the
+// file server; internal/byterange tests them in full.
+func Test_SendFile_ByteRange_RFC9110(t *testing.T) {
+	t.Parallel()
+
+	if runtime.GOOS == windowsOS {
+		t.Skip("SendFile byte-range tests are flaky on Windows")
+	}
+
+	fixture := byteRangeFixture(t)
+	app := New()
+	app.Get("/file", func(c Ctx) error {
+		c.Set("X-Request", "kept")
+		return c.SendFile(fixture, SendFile{ByteRange: true})
+	})
+
+	tests := []struct {
+		fields     map[string]string
+		name       string
+		wantRange  string
+		wantBody   string
+		wantStatus int
+		wantWhole  bool // the whole file, with its validators
+	}{
+		{name: "a range", fields: map[string]string{HeaderRange: "bytes=0-4"}, wantStatus: StatusPartialContent, wantBody: "01234", wantRange: "bytes 0-4/20"},
+		{name: "several ranges", fields: map[string]string{HeaderRange: "bytes=0-1,3-4"}, wantStatus: StatusOK, wantBody: byteRangeContent, wantWhole: true},
+		{name: "If-Range matches", fields: map[string]string{HeaderRange: "bytes=0-4", HeaderIfRange: byteRangeLastModified}, wantStatus: StatusPartialContent, wantBody: "01234", wantRange: "bytes 0-4/20"},
+		{name: "If-Range is stale", fields: map[string]string{HeaderRange: "bytes=0-4", HeaderIfRange: byteRangeStale}, wantStatus: StatusOK, wantBody: byteRangeContent, wantWhole: true},
+		{name: "unsatisfiable", fields: map[string]string{HeaderRange: "bytes=100-200"}, wantStatus: StatusRequestedRangeNotSatisfiable, wantRange: "bytes */20", wantBody: "Range Not Satisfiable"},
+		{name: "unsatisfiable, If-Range is stale", fields: map[string]string{HeaderRange: "bytes=100-200", HeaderIfRange: byteRangeStale}, wantStatus: StatusOK, wantBody: byteRangeContent, wantWhole: true},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			req := httptest.NewRequest(MethodGet, "/file", http.NoBody)
+			for k, v := range tc.fields {
+				req.Header.Set(k, v)
+			}
+			resp, err := app.Test(req)
+			require.NoError(t, err)
+			t.Cleanup(func() { require.NoError(t, resp.Body.Close()) })
+
+			require.Equal(t, tc.wantStatus, resp.StatusCode)
+			require.Equal(t, tc.wantRange, resp.Header.Get(HeaderContentRange))
+			body, err := io.ReadAll(resp.Body)
+			require.NoError(t, err)
+			require.Equal(t, tc.wantBody, string(body))
+
+			if tc.wantWhole {
+				require.Equal(t, "20", resp.Header.Get(HeaderContentLength))
+				require.Equal(t, byteRangeLastModified, resp.Header.Get(HeaderLastModified))
+			}
+			// Headers set before SendFile survive unless the response is discarded.
+			if tc.wantStatus != StatusRequestedRangeNotSatisfiable {
+				require.Equal(t, "kept", resp.Header.Get("X-Request"))
+			}
+		})
+	}
+}
+
+// An entity-tag in If-Range matches an ETag the handler set before SendFile,
+// which sends none of its own.
+func Test_SendFile_ByteRange_IfRangeETag(t *testing.T) {
+	t.Parallel()
+
+	if runtime.GOOS == windowsOS {
+		t.Skip("SendFile byte-range tests are flaky on Windows")
+	}
+
+	fixture := byteRangeFixture(t)
+	app := New()
+	app.Get("/file", func(c Ctx) error {
+		c.Set(HeaderETag, `"v1"`)
+		return c.SendFile(fixture, SendFile{ByteRange: true})
+	})
+
+	for ifRange, wantStatus := range map[string]int{
+		`"v1"`:   StatusPartialContent,
+		`"v2"`:   StatusOK,
+		`W/"v1"`: StatusOK, // a weak tag never matches
+	} {
+		t.Run(ifRange, func(t *testing.T) {
+			t.Parallel()
+
+			req := httptest.NewRequest(MethodGet, "/file", http.NoBody)
+			req.Header.Set(HeaderRange, "bytes=0-4")
+			req.Header.Set(HeaderIfRange, ifRange)
+			resp, err := app.Test(req)
+			require.NoError(t, err)
+			require.NoError(t, resp.Body.Close())
+			require.Equal(t, wantStatus, resp.StatusCode)
+		})
+	}
 }
 
 func Benchmark_Ctx_SendFile(b *testing.B) {
@@ -9560,6 +10371,20 @@ func Benchmark_Ctx_Set(b *testing.B) {
 	}
 }
 
+// go test -v -run=^$ -bench=Benchmark_Ctx_Set_Canonical -benchmem -count=4
+func Benchmark_Ctx_Set_Canonical(b *testing.B) {
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+
+	// A key already in canonical form, which is what the constants are; the
+	// one above is not, fasthttp stores it as X-Request-Id.
+	val := "https://example.com"
+	b.ReportAllocs()
+	for b.Loop() {
+		c.Set(HeaderAccessControlAllowOrigin, val)
+	}
+}
+
 // go test -run Test_Ctx_Status
 func Test_Ctx_Status(t *testing.T) {
 	t.Parallel()
@@ -9572,6 +10397,100 @@ func Test_Ctx_Status(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 415, c.Response().StatusCode())
 	require.Equal(t, "Hello, World", string(c.Response().Body()))
+}
+
+// Three-digit codes go out as given, 600..999 included (RFC 9112 §4).
+// go test -run Test_Ctx_Status_ThreeDigits
+func Test_Ctx_Status_ThreeDigits(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	for _, code := range []int{100, 101, 200, 204, 304, 404, 499, 500, 599, 600, 601, 799, 999} {
+		t.Run(strconv.Itoa(code), func(t *testing.T) {
+			t.Parallel()
+
+			c := app.AcquireCtx(&fasthttp.RequestCtx{})
+			t.Cleanup(func() { app.ReleaseCtx(c) })
+
+			c.Status(code)
+			require.Equal(t, code, c.Response().StatusCode())
+			c.Res().Status(code)
+			require.Equal(t, code, c.Response().StatusCode())
+		})
+	}
+}
+
+// Codes that do not fit a status line are logged and sent as 500.
+// go test -run Test_Ctx_Status_Invalid
+func Test_Ctx_Status_Invalid(t *testing.T) {
+	// Not parallel: redirects the process-wide logger output.
+	var logged bytes.Buffer
+	log.SetOutput(&logged)
+	t.Cleanup(func() { log.SetOutput(os.Stderr) })
+
+	invalid := []int{0, -1, -5, 1, 99, 1000, 12345, math.MaxInt, math.MinInt}
+
+	app := New()
+	for _, code := range invalid {
+		app.Get("/status/"+strconv.Itoa(code), func(c Ctx) error {
+			return c.Status(code).SendString("body")
+		})
+		app.Get("/send/"+strconv.Itoa(code), func(c Ctx) error {
+			return c.SendStatus(code)
+		})
+		app.Get("/error/"+strconv.Itoa(code), func(_ Ctx) error {
+			return NewError(code, "failed")
+		})
+		app.Get("/redirect/"+strconv.Itoa(code), func(c Ctx) error {
+			return c.Redirect().Status(code).To("/elsewhere")
+		})
+	}
+
+	for _, code := range invalid {
+		for _, kind := range []string{"status", "send", "error", "redirect"} {
+			t.Run(kind+"/"+strconv.Itoa(code), func(t *testing.T) {
+				logged.Reset()
+
+				// app.Test reads the response with net/http, which refuses malformed status lines.
+				resp, err := app.Test(httptest.NewRequest(MethodGet, "/"+kind+"/"+strconv.Itoa(code), http.NoBody))
+				require.NoError(t, err)
+				require.Equal(t, StatusInternalServerError, resp.StatusCode)
+				require.NoError(t, resp.Body.Close())
+
+				require.Contains(t, logged.String(), fmt.Sprintf("status code %d is not a three-digit HTTP status, sending 500 instead", code))
+			})
+		}
+	}
+
+	t.Run("SendStatus answers with the status that is sent", func(t *testing.T) {
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		t.Cleanup(func() { app.ReleaseCtx(c) })
+
+		require.NoError(t, c.SendStatus(0))
+		require.Equal(t, StatusInternalServerError, c.Response().StatusCode())
+		require.Equal(t, "Internal Server Error", string(c.Response().Body()))
+	})
+
+	t.Run("a valid status is not logged", func(t *testing.T) {
+		logged.Reset()
+
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		t.Cleanup(func() { app.ReleaseCtx(c) })
+		c.Status(StatusTeapot)
+		require.NoError(t, c.SendStatus(StatusNoContent))
+		require.Empty(t, logged.String())
+	})
+}
+
+func Benchmark_Ctx_Status(b *testing.B) {
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+
+	b.ReportAllocs()
+	for b.Loop() {
+		c.Status(StatusTeapot)
+	}
+	require.Equal(b, StatusTeapot, c.Response().StatusCode())
 }
 
 // go test -run Test_Ctx_Type
@@ -9945,6 +10864,19 @@ func Benchmark_Ctx_Get_Header(b *testing.B) {
 	})
 }
 
+// go test -v -run=^$ -bench=Benchmark_Ctx_Get_Header_Canonical -benchmem -count=4
+func Benchmark_Ctx_Get_Header_Canonical(b *testing.B) {
+	// A key already in canonical form, unlike X-Request-ID above.
+	benchHeaderReadModes(b, func(b *testing.B, c Ctx) {
+		b.Helper()
+		var v string
+		for b.Loop() {
+			v = c.Get(HeaderCacheControl)
+		}
+		require.Equal(b, "max-age=0", v)
+	})
+}
+
 // go test -v -run=^$ -bench=Benchmark_Ctx_Get_HeaderAbsent -benchmem -count=4
 func Benchmark_Ctx_Get_HeaderAbsent(b *testing.B) {
 	benchHeaderReadModes(b, func(b *testing.B, c Ctx) {
@@ -9957,7 +10889,18 @@ func Benchmark_Ctx_Get_HeaderAbsent(b *testing.B) {
 	})
 }
 
-// go test -v -run=^$ -bench=Benchmark_Ctx_HasHeader -benchmem -count=4
+// go test -v -run=^$ -bench=Benchmark_Ctx_HasHeaderValue -benchmem -count=4
+func Benchmark_Ctx_HasHeaderValue(b *testing.B) {
+	benchHeaderReadModes(b, func(b *testing.B, c Ctx) {
+		b.Helper()
+		var ok bool
+		for b.Loop() {
+			ok = c.HasHeaderValue(HeaderConnection, "keep-alive")
+		}
+		require.True(b, ok)
+	})
+}
+
 func Benchmark_Ctx_HasHeader(b *testing.B) {
 	benchHeaderReadModes(b, func(b *testing.B, c Ctx) {
 		b.Helper()
@@ -11724,4 +12667,153 @@ func Test_SameFS_SliceLength(t *testing.T) {
 	backing := sliceFS{"a", "b", "c"}
 	require.False(t, sameFS(backing[:1], backing[:2]))
 	require.True(t, sameFS(backing[:2], backing[:2]))
+}
+
+// Test_Res_Set_MatchesHeaderSet is the contract behind the canonical fast path
+// in Set: whatever the key or value, the field line it stores is byte for byte
+// the one fasthttp's own Set stores, with header normalization on and off.
+func Test_Res_Set_MatchesHeaderSet(t *testing.T) {
+	t.Parallel()
+
+	keys := []string{
+		"X-Request-Id", "x-request-id", "X-REQUEST-ID", "Content-Type", "content-type", "Content-Length",
+		"Server", "Connection", "Date", "Set-Cookie", "Transfer-Encoding", "Content-Encoding", "Trailer",
+		"Bad Key", "X-Key\r\nInjected", "Or\u00edgin", "", "etag", "X-REQUEST-ID", "x-upstream-id", strings.Repeat("Ab-", 21) + "C", // cspell:disable-line
+	}
+	values := []string{"v", "", "a\r\nb", "with space", "42", "text/html; charset=utf-8", "k=v; Path=/"}
+	// storeNormalizes false with a normalizing app is the state a proxied
+	// response leaves behind when a caller-supplied client parsed it with
+	// header normalization off: the store keeps names as sent, so Set must
+	// still replace a lower-case field spelled exactly the same.
+	for _, normalizing := range []bool{true, false} {
+		for _, storeNormalizes := range []bool{true, false} {
+			app := New(Config{DisableHeaderNormalizing: !normalizing})
+			for _, key := range keys {
+				for _, val := range values {
+					c := app.AcquireCtx(&fasthttp.RequestCtx{})
+					if !storeNormalizes {
+						c.Response().Header.DisableNormalizing()
+					}
+					c.Response().Header.Set("x-upstream-id", "stale")
+					var want fasthttp.ResponseHeader
+					c.Response().Header.CopyTo(&want)
+					want.Set(key, val)
+					c.Set(key, val)
+					require.Equal(t, want.String(), c.Response().Header.String(),
+						"normalizing=%v storeNormalizes=%v key=%q val=%q", normalizing, storeNormalizes, key, val)
+					app.ReleaseCtx(c)
+				}
+			}
+		}
+	}
+}
+
+// Test_Res_Get_MatchesHeaderPeek is the read-side contract: Get answers what
+// fasthttp's Peek answers for every spelling, whether or not the store
+// normalizes.
+func Test_Res_Get_MatchesHeaderPeek(t *testing.T) {
+	t.Parallel()
+
+	names := []string{"X-Request-Id", "x-request-id", "X-REQUEST-ID", "x-lower", "X-Lower", "Content-Type", "Missing", "", "Bad Key"}
+	for _, storeNormalizes := range []bool{true, false} {
+		app := New()
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		h := &c.Response().Header
+		if !storeNormalizes {
+			h.DisableNormalizing()
+		}
+		h.Set("X-Request-Id", "a")
+		h.Set("x-lower", "b")
+		h.Set("Content-Type", "text/plain")
+		for _, name := range names {
+			require.Equal(t, string(h.Peek(name)), c.Res().Get(name), "storeNormalizes=%v %q", storeNormalizes, name)
+		}
+		require.Equal(t, "fallback", c.Res().Get("Missing", "fallback"))
+		app.ReleaseCtx(c)
+	}
+}
+
+// Test_Res_Set_CopiesArguments pins that the fast path lends fasthttp the key and
+// value only for the call: the stored line must not follow the caller's bytes.
+func Test_Res_Set_CopiesArguments(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+
+	keyBytes := []byte("X-Request-Id")
+	valBytes := []byte("first")
+	c.Set(utils.UnsafeString(keyBytes), utils.UnsafeString(valBytes))
+	copy(keyBytes, "X-Rewritten!")
+	copy(valBytes, "wrong")
+
+	require.Equal(t, "first", c.Res().Get("X-Request-Id"))
+	require.Empty(t, c.Res().Get("X-Rewritten!"))
+}
+
+// Test_Ctx_PathSlashCount pins the slash count routing filters on: whether the
+// path's single pass counted it or pathSlashCount counts it later, it must be
+// the number of '/' in the detection path, under every configuration that
+// shapes that path and after trailing slashes are trimmed from it.
+// go test -race -run Test_Ctx_PathSlashCount
+func Test_Ctx_PathSlashCount(t *testing.T) {
+	t.Parallel()
+
+	paths := []string{
+		"/", "//", "///", "/a", "/a/", "/a//", "/A/B/c", "/a/b/c/", "/a/b/c///",
+		"/ab/cd/ef/gh/ij", "/abcdefgh/ijklmnop/", "/x%2Fy/", "/x%41/", "/./a/../b/", "/a/./b//",
+	}
+	for _, caseSensitive := range []bool{false, true} {
+		for _, strictRouting := range []bool{false, true} {
+			for _, unescape := range []bool{false, true} {
+				app := New(Config{CaseSensitive: caseSensitive, StrictRouting: strictRouting, UnescapePath: unescape})
+				// A parametric route is what makes pathSlashCount count at all.
+				app.Get("/:p", func(c Ctx) error { return c.Next() })
+				app.startupProcess()
+
+				for _, path := range paths {
+					fctx := &fasthttp.RequestCtx{}
+					fctx.Request.Header.SetMethod(MethodGet)
+					fctx.Request.SetRequestURI(path)
+					c, ok := app.AcquireCtx(fctx).(*DefaultCtx)
+					require.True(t, ok)
+
+					want := strings.Count(string(c.detectionPath), "/")
+					name := fmt.Sprintf("cs=%v/sr=%v/unescape=%v %q (detection %q)",
+						caseSensitive, strictRouting, unescape, path, c.detectionPath)
+					require.Contains(t, []int{0, want}, c.pathSlashes, "cached count: %s", name)
+					require.Equal(t, want, c.pathSlashCount(app), "count: %s", name)
+					app.ReleaseCtx(c)
+				}
+			}
+		}
+	}
+}
+
+// Test_PathNeedsNormalization pins the request gate: a path that kept its
+// parsed length has nothing to decode or resolve, except that a target
+// without a leading slash is normalized whatever its length, since the slash
+// fasthttp adds in front can be canceled by the one a doubled slash loses.
+func Test_PathNeedsNormalization(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		path string
+		norm string
+		want bool
+	}{
+		{path: "/a/b", norm: "/a/b", want: false},
+		{path: "/a%41", norm: "/aA", want: true},
+		{path: "/a//b", norm: "/a/b", want: true},
+		{path: "/a/.", norm: "/a/.", want: true},
+		{path: "/a%zzb", norm: "/a%zzb", want: false},
+		{path: "", norm: "/", want: true},
+		{path: "*", norm: "/*", want: true},
+		{path: "admin//secret", norm: "/admin/secret", want: true},
+		{path: "secret//", norm: "/secret/", want: true},
+		{path: "example.com:443", norm: "/example.com:443", want: true},
+	} {
+		require.Equal(t, tc.want, pathNeedsNormalization(len(tc.norm), tc.path), "%q", tc.path)
+	}
 }

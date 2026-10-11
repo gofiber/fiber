@@ -109,6 +109,39 @@ func writeSanitizedString(output Buffer, s string) (int, error) {
 	return logtemplate.WriteSanitizedString(output, s)
 }
 
+// writeColored writes value between the two color escapes. Both the sequences
+// and value are written verbatim: it backs the tags whose uncolored branch
+// also writes value unscrubbed, so wrapping it in color must not change what
+// reaches the log.
+func writeColored(output Buffer, color, value, reset string) (int, error) {
+	n, err := output.WriteString(color)
+	if err != nil {
+		return n, err
+	}
+	m, err := output.WriteString(value)
+	n += m
+	if err != nil {
+		return n, err
+	}
+	m, err = output.WriteString(reset)
+	return n + m, err
+}
+
+// writeColoredInt is writeColored for a decimal right-aligned to width.
+func writeColoredInt(output Buffer, color string, v, width int, reset string) (int, error) {
+	n, err := output.WriteString(color)
+	if err != nil {
+		return n, err
+	}
+	m, err := appendIntTag(output, v, width)
+	n += m
+	if err != nil {
+		return n, err
+	}
+	m, err = output.WriteString(reset)
+	return n + m, err
+}
+
 // writeSanitizedColored writes value between the two color escapes, scrubbing
 // only value. The color sequences are library-controlled and must reach the
 // output verbatim.

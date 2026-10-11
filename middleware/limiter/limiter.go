@@ -2,6 +2,8 @@ package limiter
 
 import (
 	"errors"
+	"hash/maphash"
+	"sync"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/internal/nilerror"
@@ -13,6 +15,25 @@ const (
 	xRateLimitRemaining = "X-RateLimit-Remaining"
 	xRateLimitReset     = "X-RateLimit-Reset"
 )
+
+// lockShards is a power of two so the shard index is a mask. A fixed array stays
+// allocation-free and, unlike a per-key map, cannot be grown with fresh keys.
+const lockShards = 64
+
+// keySeed randomizes the shard mapping per process, so a client cannot pick
+// keys (by default its IP) that all land on one shard.
+var keySeed = maphash.MakeSeed()
+
+// keyedMutex serializes the read-modify-write per key, so one client's storage
+// round-trip no longer blocks every other client.
+type keyedMutex [lockShards]sync.Mutex
+
+// lock acquires the shard owning key and returns it for unlocking.
+func (k *keyedMutex) lock(key string) *sync.Mutex {
+	mu := &k[maphash.String(keySeed, key)&(lockShards-1)]
+	mu.Lock()
+	return mu
+}
 
 // Handler defines a rate-limiting strategy that can produce a middleware
 // handler using the provided configuration.

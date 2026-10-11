@@ -19,14 +19,15 @@ import (
 // Session serializes access to its internal state with mutexes, but it is
 // request-scoped and must not be used after the request lifecycle ends.
 type Session struct {
-	ctx         fiber.Ctx            // fiber context
-	config      *Store               // store configuration
-	data        *data                // key value data
-	id          string               // session id
-	extractor   extractors.Extractor // extractor that supplied the session ID
-	idleTimeout time.Duration        // idleTimeout of this session
-	mu          sync.RWMutex         // Mutex to protect non-data fields
-	isFresh     bool                 // if new session
+	ctx         fiber.Ctx         // fiber context
+	config      *Store            // store configuration
+	data        *data             // key value data
+	rawData     []byte            // snapshot from the last decode, reused by Save while the data is unchanged
+	id          string            // session id
+	extractor   extractors.Result // provenance of the extractor that supplied the session ID
+	idleTimeout time.Duration     // idleTimeout of this session
+	mu          sync.RWMutex      // Mutex to protect non-data fields
+	isFresh     bool              // if new session
 }
 
 type absExpirationKeyType int
@@ -96,7 +97,8 @@ func releaseSession(s *Session) {
 	s.idleTimeout = 0
 	s.ctx = nil
 	s.config = nil
-	s.extractor = extractors.Extractor{}
+	s.extractor = extractors.Result{}
+	s.rawData = nil
 	if s.data != nil {
 		s.data.Reset()
 	}
@@ -139,6 +141,10 @@ func (s *Session) ID() string {
 //
 // Returns:
 //   - any: The value associated with the key.
+//
+// Note: returning a value that can alias the session (map, slice, array,
+// pointer, struct) makes every later Save re-encode, since the caller may
+// mutate it in place without calling Set.
 //
 // Usage:
 //
@@ -223,6 +229,7 @@ func (s *Session) DestroyWithContext(ctx context.Context) error {
 	// Reset local data only after the storage delete succeeded, so a
 	// canceled/failed delete leaves the session data intact.
 	s.data.Reset()
+	s.rawData = nil
 
 	// Expire session
 	s.delSession()
@@ -309,6 +316,7 @@ func (s *Session) ResetWithContext(ctx context.Context) error {
 	// canceled/failed delete leaves the session data intact.
 	if s.data != nil {
 		s.data.Reset()
+		s.rawData = nil
 		// Reset wiped the absolute expiration, so the rotated session must be armed again.
 		if s.config != nil && s.config.AbsoluteTimeout > 0 {
 			s.setAbsExpiration(time.Now().Add(s.config.AbsoluteTimeout))
@@ -396,6 +404,12 @@ func (s *Session) saveSessionWithContext(ctx context.Context) error {
 	// Update client cookie
 	s.setSession()
 
+	// Unchanged since the decode: write the snapshot back so the idle timeout still
+	// slides. Lock-free is enough; dirty is set before the mutation it reports.
+	if s.rawData != nil && !s.data.dirty.Load() {
+		return s.config.Storage.SetWithContext(ctx, s.id, s.rawData, s.idleTimeout)
+	}
+
 	// Encode session data
 	s.data.RLock()
 	encodedBytes, err := s.encodeSessionData()
@@ -412,6 +426,8 @@ func (s *Session) saveSessionWithContext(ctx context.Context) error {
 //
 // Returns:
 //   - []any: A slice of all keys in the session.
+//
+// Note: a key that can alias the session has the same effect as in Get.
 //
 // Usage:
 //
@@ -444,39 +460,51 @@ func (s *Session) getExtractorInfo() []extractors.Extractor {
 	}
 
 	// Prefer the extractor that actually supplied the incoming session ID.
-	if s.extractor.Key != "" {
-		switch s.extractor.Source {
-		case extractors.SourceCookie, extractors.SourceHeader:
-			// The ID came from a writable sink; write it back to the same place.
-			return []extractors.Extractor{s.extractor}
-		default:
-			// The ID came from a read-only source (query/form/param/custom).
-			// For an existing session this would be an attacker-controlled ID,
-			// so it must not be promoted into cookies/headers (session fixation).
-			// Fresh sessions carry a freshly generated ID, so they may still fall
-			// through to the configured cookie/header sinks below.
-			if !s.isFresh {
-				return nil
+	//
+	// Gated on Value, not Key: Key is the sink's name, and a keyless extractor
+	// — a hand-rolled child, or FromCustom("") — would otherwise skip this
+	// guard entirely and let a read-only ID reach the sinks below.
+	if s.extractor.Value != "" {
+		// Only observed provenance names a sink. A chain whose own Extract
+		// answered without a child winning reports its first child's declared
+		// metadata, which says nothing about where the value came from.
+		// Key must name a sink for it to be writable at all.
+		if s.extractor.Resolved && s.extractor.Key != "" {
+			switch s.extractor.Source {
+			case extractors.SourceCookie, extractors.SourceHeader:
+				// The ID came from a writable sink; write it back to the same place.
+				return []extractors.Extractor{{Key: s.extractor.Key, Source: s.extractor.Source}}
+			case extractors.SourceAuthHeader, extractors.SourceForm,
+				extractors.SourceQuery, extractors.SourceParam, extractors.SourceCustom:
+				// Read-only: fall through to the refusal below.
 			}
+		}
+		// Read-only, or an origin we cannot attribute. For an existing session
+		// either would be an attacker-controlled ID, so it must not be promoted
+		// into cookies/headers (session fixation). A fresh session's ID is
+		// server-generated, so it may still fall through to the sinks below.
+		if !s.isFresh {
+			return nil
 		}
 	}
 
-	extractor := s.config.Extractor
-	if len(extractor.Chain) > 0 {
-		relevantExtractors := make([]extractors.Extractor, 0, len(extractor.Chain))
-		for _, chainExtractor := range extractor.Chain {
-			if chainExtractor.Source == extractors.SourceCookie || chainExtractor.Source == extractors.SourceHeader {
-				relevantExtractors = append(relevantExtractors, chainExtractor)
-			}
+	// Walked rather than ranged over Chain: a nested chain reports its first
+	// child's metadata, so direct children alone hide every sink inside it, and
+	// a cookie one level down would never be written.
+	var sinks []extractors.Extractor
+	s.config.Extractor.Walk(func(candidate extractors.Extractor) bool {
+		// Only a leaf names a place to write, and a keyless one would name a
+		// cookie or header with no name at all.
+		if len(candidate.Chain) > 0 || candidate.Key == "" {
+			return true
 		}
-		return relevantExtractors
-	}
+		if candidate.Source == extractors.SourceCookie || candidate.Source == extractors.SourceHeader {
+			sinks = append(sinks, candidate)
+		}
+		return true
+	})
 
-	if extractor.Source == extractors.SourceCookie || extractor.Source == extractors.SourceHeader {
-		return []extractors.Extractor{extractor}
-	}
-
-	return nil
+	return sinks
 }
 
 func (s *Session) setSession() {
@@ -573,14 +601,19 @@ func (s *Session) setCookieAttributes(fcookie *fasthttp.Cookie) {
 //
 //	err := s.decodeSessionData(rawData)
 func (s *Session) decodeSessionData(rawData []byte) error {
+	// Copied before decoding: the storage owns rawData and may reuse it after Get
+	// returns, so the decode and the snapshot Save writes back read the same bytes.
+	raw := utils.CopyBytes(rawData)
 	byteBuffer := byteBufferPool.Get().(*bytes.Buffer) //nolint:forcetypeassert,errcheck // We store nothing else in the pool
 	defer byteBufferPool.Put(byteBuffer)
 	defer byteBuffer.Reset()
-	_, _ = byteBuffer.Write(rawData)
+	_, _ = byteBuffer.Write(raw)
 	decCache := gob.NewDecoder(byteBuffer)
 	if err := decCache.Decode(&s.data.Data); err != nil {
 		return fmt.Errorf("failed to decode session data: %w", err)
 	}
+	s.rawData = raw
+	s.data.dirty.Store(false)
 	return nil
 }
 

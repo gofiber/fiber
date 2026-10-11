@@ -303,6 +303,15 @@ func (z *item) DecodeMsg(dc *msgp.Reader) (err error) {
 				err = msgp.WrapError(err, "etag")
 				return
 			}
+		case "vary":
+			z.vary, err = dc.ReadBytesLimit(z.vary, 2048)
+			if err == nil && z.vary == nil {
+				z.vary = []byte{}
+			}
+			if err != nil {
+				err = msgp.WrapError(err, "vary")
+				return
+			}
 		case "date":
 			z.date, err = dc.ReadUint64()
 			if err != nil {
@@ -376,9 +385,9 @@ func (z *item) DecodeMsg(dc *msgp.Reader) (err error) {
 
 // EncodeMsg implements msgp.Encodable
 func (z *item) EncodeMsg(en *msgp.Writer) (err error) {
-	// map header, size 17
+	// map header, size 18
 	// write "headers"
-	err = en.Append(0xde, 0x0, 0x11, 0xa7, 0x68, 0x65, 0x61, 0x64, 0x65, 0x72, 0x73)
+	err = en.Append(0xde, 0x0, 0x12, 0xa7, 0x68, 0x65, 0x61, 0x64, 0x65, 0x72, 0x73)
 	if err != nil {
 		return
 	}
@@ -468,6 +477,16 @@ func (z *item) EncodeMsg(en *msgp.Writer) (err error) {
 	err = en.WriteBytes(z.etag)
 	if err != nil {
 		err = msgp.WrapError(err, "etag")
+		return
+	}
+	// write "vary"
+	err = en.Append(0xa4, 0x76, 0x61, 0x72, 0x79)
+	if err != nil {
+		return
+	}
+	err = en.WriteBytes(z.vary)
+	if err != nil {
+		err = msgp.WrapError(err, "vary")
 		return
 	}
 	// write "date"
@@ -576,9 +595,9 @@ func (z *item) EncodeMsg(en *msgp.Writer) (err error) {
 // MarshalMsg implements msgp.Marshaler
 func (z *item) MarshalMsg(b []byte) (o []byte, err error) {
 	o = msgp.Require(b, z.Msgsize())
-	// map header, size 17
+	// map header, size 18
 	// string "headers"
-	o = append(o, 0xde, 0x0, 0x11, 0xa7, 0x68, 0x65, 0x61, 0x64, 0x65, 0x72, 0x73)
+	o = append(o, 0xde, 0x0, 0x12, 0xa7, 0x68, 0x65, 0x61, 0x64, 0x65, 0x72, 0x73)
 	o = msgp.AppendArrayHeader(o, uint32(len(z.headers)))
 	for za0001 := range z.headers {
 		// map header, size 2
@@ -607,6 +626,9 @@ func (z *item) MarshalMsg(b []byte) (o []byte, err error) {
 	// string "etag"
 	o = append(o, 0xa4, 0x65, 0x74, 0x61, 0x67)
 	o = msgp.AppendBytes(o, z.etag)
+	// string "vary"
+	o = append(o, 0xa4, 0x76, 0x61, 0x72, 0x79)
+	o = msgp.AppendBytes(o, z.vary)
 	// string "date"
 	o = append(o, 0xa4, 0x64, 0x61, 0x74, 0x65)
 	o = msgp.AppendUint64(o, z.date)
@@ -862,6 +884,28 @@ func (z *item) UnmarshalMsg(bts []byte) (o []byte, err error) {
 			}
 			copy(z.etag, bts[:zb0010])
 			bts = bts[zb0010:]
+		case "vary":
+			var zb0011 uint32
+			zb0011, bts, err = msgp.ReadBytesHeader(bts)
+			if err != nil {
+				err = msgp.WrapError(err, "vary")
+				return
+			}
+			if zb0011 > 2048 {
+				err = msgp.ErrLimitExceeded
+				return
+			}
+			if z.vary == nil || uint32(cap(z.vary)) < zb0011 {
+				z.vary = make([]byte, zb0011)
+			} else {
+				z.vary = z.vary[:zb0011]
+			}
+			if uint32(len(bts)) < zb0011 {
+				err = msgp.ErrShortBytes
+				return
+			}
+			copy(z.vary, bts[:zb0011])
+			bts = bts[zb0011:]
 		case "date":
 			z.date, bts, err = msgp.ReadUint64Bytes(bts)
 			if err != nil {
@@ -940,6 +984,6 @@ func (z *item) Msgsize() (s int) {
 	for za0001 := range z.headers {
 		s += 1 + 4 + msgp.BytesPrefixSize + len(z.headers[za0001].key) + 6 + msgp.BytesPrefixSize + len(z.headers[za0001].value)
 	}
-	s += 5 + msgp.BytesPrefixSize + len(z.body) + 6 + msgp.BytesPrefixSize + len(z.ctype) + 10 + msgp.BytesPrefixSize + len(z.cencoding) + 13 + msgp.BytesPrefixSize + len(z.cacheControl) + 8 + msgp.BytesPrefixSize + len(z.expires) + 5 + msgp.BytesPrefixSize + len(z.etag) + 5 + msgp.Uint64Size + 7 + msgp.IntSize + 4 + msgp.Uint64Size + 4 + msgp.Uint64Size + 4 + msgp.Uint64Size + 16 + msgp.BoolSize + 11 + msgp.BoolSize + 10 + msgp.BoolSize + 8 + msgp.BoolSize + 8 + msgp.IntSize
+	s += 5 + msgp.BytesPrefixSize + len(z.body) + 6 + msgp.BytesPrefixSize + len(z.ctype) + 10 + msgp.BytesPrefixSize + len(z.cencoding) + 13 + msgp.BytesPrefixSize + len(z.cacheControl) + 8 + msgp.BytesPrefixSize + len(z.expires) + 5 + msgp.BytesPrefixSize + len(z.etag) + 5 + msgp.BytesPrefixSize + len(z.vary) + 5 + msgp.Uint64Size + 7 + msgp.IntSize + 4 + msgp.Uint64Size + 4 + msgp.Uint64Size + 4 + msgp.Uint64Size + 16 + msgp.BoolSize + 11 + msgp.BoolSize + 10 + msgp.BoolSize + 8 + msgp.BoolSize + 8 + msgp.IntSize
 	return
 }

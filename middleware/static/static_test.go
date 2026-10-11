@@ -1280,20 +1280,23 @@ func Test_Static_PathTraversal_WindowsOnly(t *testing.T) {
 }
 
 func Benchmark_SanitizePath(b *testing.B) {
-	bench := func(name string, filesystem fs.FS, path []byte) {
+	bench := func(name string, filesystem fs.FS, path string) {
 		b.Run(name, func(b *testing.B) {
 			b.ReportAllocs()
+			// the handler copies the routed path into a buffer that is sanitized in place
+			buf := make([]byte, 0, 64)
 			for b.Loop() {
-				if _, err := sanitizePath(path, filesystem); err != nil {
+				buf = append(buf[:0], path...)
+				if _, err := sanitizePath(buf, filesystem, true); err != nil {
 					b.Fatal(err)
 				}
 			}
 		})
 	}
 
-	bench("nilFS - urlencoded chars", nil, []byte("/foo%2Fbar/../baz%20qux/index.html"))
-	bench("dirFS - urlencoded chars", os.DirFS("."), []byte("/foo%2Fbar/../baz%20qux/index.html"))
-	bench("nilFS - slashes", nil, []byte("\\foo%2Fbar\\baz%20qux\\index.html"))
+	bench("nilFS - decoded chars", nil, "/foo/bar/baz qux/index.html")
+	bench("dirFS - decoded chars", os.DirFS("."), "/foo/bar/baz qux/index.html")
+	bench("nilFS - escapes", nil, "/foo/bar/baz%20qux/photo%402x.png")
 }
 
 func Test_SanitizePath(t *testing.T) {
@@ -1308,34 +1311,54 @@ func Test_SanitizePath(t *testing.T) {
 
 	testCases := []testCase{
 		{name: "simple path", input: []byte("/foo/bar.txt"), expectPath: "/foo/bar.txt"},
-		{name: "traversal attempt", input: []byte("/foo/../../bar.txt"), expectPath: "/bar.txt"},
-		{name: "encoded traversal", input: []byte("/foo/%2e%2e/bar.txt"), expectPath: "/bar.txt"},
-		{name: "double encoded traversal", input: []byte("/%252e%252e/bar.txt"), expectPath: "/bar.txt"},
-		{name: "current dir reference", input: []byte("/foo/./bar.txt"), expectPath: "/foo/bar.txt"},
-		{name: "encoded slash", input: []byte("/foo%2Fbar.txt"), expectPath: "/foo/bar.txt"},
-		{name: "empty path", input: []byte(""), expectPath: "/"},
-		{name: "dot segments", input: []byte("/foo/./bar/../baz.txt"), expectPath: "/foo/baz.txt"},
-		{name: "leading dot segment", input: []byte("/./foo/bar.txt"), expectPath: "/foo/bar.txt"},
-		{name: "encoded space", input: []byte("/foo%20bar/baz.txt"), expectPath: "/foo bar/baz.txt"},
-		{name: "encoded plus literal", input: []byte("/foo+bar/baz.txt"), expectPath: "/foo+bar/baz.txt"},
-		// windows-specific paths
-		{name: "backslash path", input: []byte("\\foo\\bar.txt"), expectPath: "/foo/bar.txt"},
-		{name: "backslash traversal", input: []byte("\\foo\\..\\..\\bar.txt"), expectPath: "/bar.txt"},
-		{name: "mixed slashes", input: []byte("/foo\\bar.txt"), expectPath: "/foo/bar.txt"},
+		{name: "root", input: []byte("/"), expectPath: "/"},
+		{name: "decoded space", input: []byte("/foo bar/baz.txt"), expectPath: "/foo bar/baz.txt"},
+		{name: "plus literal", input: []byte("/foo+bar/baz.txt"), expectPath: "/foo+bar/baz.txt"},
+		{name: "dots in names", input: []byte("/.well-known/..x/y..z/a.b"), expectPath: "/.well-known/..x/y..z/a.b"},
+		// escapes the router left encoded stay encoded for consistent authorization
+		{name: "encoded space", input: []byte("/foo%20bar/baz.txt"), expectPath: "/foo%20bar/baz.txt"},
+		{name: "encoded reserved character", input: []byte("/photo%402x.png"), expectPath: "/photo%402x.png"},
+		{name: "lowercase hex digits", input: []byte("/a%7bb%7d.txt"), expectPath: "/a%7bb%7d.txt"},
+		{name: "encoded percent sign", input: []byte("/100%25.txt"), expectPath: "/100%25.txt"},
+		{name: "percent sign stays encoded", input: []byte("/%2570rivate/secret.txt"), expectPath: "/%2570rivate/secret.txt"},
+		{name: "double encoded traversal stays a name", input: []byte("/%252e%252e/bar.txt"), expectPath: "/%252e%252e/bar.txt"},
 		{name: "trailing slash preserved", input: []byte("/foo/bar/"), expectPath: "/foo/bar/"},
-		{name: "encoded trailing slash", input: []byte("/foo/bar%2F"), expectPath: "/foo/bar"},
-		{filesystem: os.DirFS("."), name: "filesystem empty path", input: []byte(""), expectPath: "/"},
+		{name: "trailing slash after an escape", input: []byte("/foo%20bar/"), expectPath: "/foo%20bar/"},
+		{filesystem: os.DirFS("."), name: "filesystem root", input: []byte("/"), expectPath: "/"},
+		{filesystem: os.DirFS("."), name: "filesystem encoded space", input: []byte("/foo%20bar/baz.txt"), expectPath: "/foo%20bar/baz.txt"},
 		{filesystem: os.DirFS("."), name: "filesystem trailing slash", input: []byte("/foo/"), expectPath: "/foo/"},
-		{filesystem: os.DirFS("."), name: "filesystem traversal clean", input: []byte("/foo/../bar.txt"), expectPath: "/bar.txt"},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			got, err := sanitizePath(tc.input, tc.filesystem)
+			got, err := sanitizePath(tc.input, tc.filesystem, true)
 			require.NoError(t, err)
 			require.Equal(t, tc.expectPath, string(got))
 		})
+	}
+}
+
+// Test_SanitizePath_NoDecode covers UnescapePath, where a "%" left in the
+// routed path is literal and must not be decoded again.
+func Test_SanitizePath_NoDecode(t *testing.T) {
+	t.Parallel()
+
+	for input, want := range map[string]string{
+		"/%70rivate/secret.txt": "/%70rivate/secret.txt",
+		"/100%.txt":             "/100%.txt",
+		"/a%zzb.txt":            "/a%zzb.txt",
+		"/foo%2Fbar.txt":        "/foo%2Fbar.txt",
+		"/foo bar/baz.txt":      "/foo bar/baz.txt",
+	} {
+		got, err := sanitizePath([]byte(input), nil, false)
+		require.NoError(t, err, "input=%q", input)
+		require.Equal(t, want, string(got), "input=%q", input)
+	}
+
+	for _, input := range []string{"/foo\\bar.txt", "/foo/bar.txt\x00", "/foo\x1fbar.txt", "/foo//bar.txt", "/foo/../bar.txt"} {
+		_, err := sanitizePath([]byte(input), nil, false)
+		require.ErrorIs(t, err, ErrInvalidPath, "input=%q", input)
 	}
 }
 
@@ -1349,31 +1372,423 @@ func Test_SanitizePath_Error(t *testing.T) {
 	}
 
 	testCases := []testCase{
-		{name: "null byte", input: []byte("/foo/bar.txt%00")},
-		{name: "encoded backslash traversal", input: []byte("/foo%5C..%5Cbar.txt")},
-		{name: "double encoded backslash traversal", input: []byte("/%255C..%255C..%255CWindows%255Cwin.ini")},
-		{name: "encoded backslash absolute", input: []byte("/%5CWindows%5CSystem32%5Cdrivers%5Cetc%5Chosts")},
-		{name: "double encoded backslash absolute", input: []byte("/%255CWindows%255CSystem32%255Cdrivers%255Cetc%255Chosts")},
-		{name: "encoded backslash mixed slashes", input: []byte("/..%5C..%5Cetc%5Cpasswd")},
-		{name: "encoded backslash mixed encoding", input: []byte("/%2e%2e%5c%2e%2e%5cetc%5cpasswd")},
-		{name: "encoded backslash with encoded slash", input: []byte("/%2e%2e%2f%2e%2e%5cetc%5cpasswd")},
-		{name: "encoded backslash unc path", input: []byte("//server%5Cshare%5Csecret.txt")},
-		{name: "encoded backslash drive letter", input: []byte("/C:%5CWindows%5CSystem32%5Ccmd.exe")},
+		// the router removes dot segments and keeps empty ones, so neither names a matched file
+		{name: "parent segment", input: []byte("/foo/../bar.txt")},
+		{name: "leading parent segment", input: []byte("/../bar.txt")},
+		{name: "current segment", input: []byte("/foo/./bar.txt")},
+		{name: "trailing parent segment", input: []byte("/foo/..")},
+		{name: "encoded parent segment", input: []byte("/foo/%2e%2e/bar.txt")},
+		{name: "empty segment", input: []byte("/foo//bar.txt")},
+		{name: "empty segment before the trailing slash", input: []byte("/foo//")},
+		{filesystem: os.DirFS("."), name: "filesystem parent segment", input: []byte("/foo/../bar.txt")},
+		{filesystem: os.DirFS("."), name: "filesystem empty segment", input: []byte("/foo//bar.txt")},
+		// a malformed escape is not a valid spelling of any name
+		{name: "malformed escape", input: []byte("/a%zzb.txt")},
+		{name: "truncated escape", input: []byte("/foo%2")},
+		{name: "trailing percent", input: []byte("/foo%")},
+		// the router decodes every escape of an unreserved character, so one that
+		// reaches here was forged from a stray '%' and must not be decoded again
+		{name: "forged unreserved escape", input: []byte("/%70rivate/secret.txt")},
+		{name: "forged unreserved tilde", input: []byte("/%7Efile.txt")},
+		{name: "forged dot escape", input: []byte("/%2egit/config")},
+		// a decoded slash, a backslash or a control character cannot be part of a name
+		{name: "null byte", input: []byte("/foo/bar.txt\x00")},
+		{name: "encoded null byte", input: []byte("/foo/bar.txt%00")},
+		{name: "control character", input: []byte("/foo\x1fbar.txt")},
+		{name: "encoded control character", input: []byte("/foo%0Abar.txt")},
+		{name: "encoded slash", input: []byte("/foo%2Fbar.txt")},
+		{name: "encoded trailing slash", input: []byte("/foo/bar%2F")},
+		{name: "encoded backslash", input: []byte("/foo%5C..%5Cbar.txt")},
+		{name: "backslash beside an escape", input: []byte("/foo%20bar\\baz.txt")},
+		{name: "control character beside an escape", input: []byte("/foo%20bar\x00")},
+		{name: "backslash", input: []byte("/foo\\bar.txt")},
+		{name: "backslash traversal", input: []byte("/..\\private/secret.txt")},
+		{name: "backslash path", input: []byte("\\foo\\bar.txt")},
+		{name: "backslash absolute", input: []byte("/\\Windows\\System32\\drivers\\etc\\hosts")},
+		{name: "backslash unc path", input: []byte("\\\\server\\share\\secret.txt")},
+		{name: "backslash drive letter", input: []byte("/C:\\Windows\\System32\\cmd.exe")},
 		{name: "double slash path", input: []byte("//foo//bar.txt")},
+		{name: "triple slash path", input: []byte("///server/share/secret.txt")},
 		{name: "drive letter", input: []byte("C:/Windows/System32/cmd.exe")},
 		{name: "drive letter with leading slash", input: []byte("/C:/Windows/System32/cmd.exe")},
-		{name: "encoded drive letter", input: []byte("/%43:%5CWindows%5CSystem32%5Ccmd.exe")},
 		{name: "unc path", input: []byte("//server/share/secret.txt")},
-		{name: "encoded unc path", input: []byte("/%2F%2Fserver%2Fshare%2Fsecret.txt")},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			_, err := sanitizePath(tc.input, tc.filesystem)
+			_, err := sanitizePath(tc.input, tc.filesystem, true)
 			require.ErrorIs(t, err, ErrInvalidPath, "Expected ErrInvalidPath for input: %s", tc.input)
 		})
 	}
+}
+
+func Test_HasUnsafeSegment(t *testing.T) {
+	t.Parallel()
+
+	for _, p := range []string{"/../x", "/a/../x", "/a/..", "/./x", "/a/.", "/a//b", "//", "/a//", "//a", "..", "."} {
+		require.True(t, hasUnsafeSegment([]byte(p)), "path=%q", p)
+	}
+	for _, p := range []string{"", "/", "/a", "/a/", "/a/b", "/.a/..b/c./d..", "/.../a", "/%2e%2e/a", "a/b"} {
+		require.False(t, hasUnsafeSegment([]byte(p)), "path=%q", p)
+	}
+}
+
+func Test_HasTrailingDotOrSpaceSegment(t *testing.T) {
+	t.Parallel()
+
+	for input, want := range map[string]bool{
+		"/":              false,
+		"/foo/bar.txt":   false,
+		"/.well-known/x": false,
+		"/..x/y":         false,
+		"/a.b/c":         false,
+		"/foo/":          false,
+		"/foo./bar":      true,
+		"/foo /bar":      true,
+		"/foo.":          true,
+		"/foo ":          true,
+		"/foo./":         true,
+		"/foo/bar. ":     true,
+	} {
+		require.Equal(t, want, hasTrailingDotOrSpaceSegment([]byte(input)), "input=%q", input)
+	}
+}
+
+// Test_SanitizePath_TrailingDotOrSpace pins that a segment ending in a dot or
+// a space names an ordinary file everywhere except Windows, which strips both
+// when it opens a file and would turn "private." into the guarded "private".
+func Test_SanitizePath_TrailingDotOrSpace(t *testing.T) {
+	t.Parallel()
+
+	for _, input := range []string{"/private./secret.txt", "/private /secret.txt", "/y.../z.", "/foo. /"} {
+		got, err := sanitizePath([]byte(input), nil, true)
+		if runtime.GOOS == winOS {
+			require.ErrorIs(t, err, ErrInvalidPath, "input=%q", input)
+			continue
+		}
+		require.NoError(t, err, "input=%q", input)
+		require.Equal(t, input, string(got), "input=%q", input)
+	}
+}
+
+// Test_Static_ServesRoutedPath pins that the file server resolves the path
+// the router matched, so a guard on "/static/private" covers the spellings the
+// router normalizes, that what the router leaves encoded remains encoded, and
+// that a spelling the router keeps apart from the guarded path names no file.
+func Test_Static_ServesRoutedPath(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	require.NoError(t, os.Mkdir(filepath.Join(root, "private"), 0o750))
+	require.NoError(t, os.Mkdir(filepath.Join(root, "private area"), 0o750))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "private", "secret.txt"), []byte("SECRET"), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "private area", "secret.txt"), []byte("SPACED SECRET"), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "public.txt"), []byte("PUBLIC"), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "hello world.txt"), []byte("HELLO"), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "100%.txt"), []byte("PERCENT"), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "photo@2x.png"), []byte("PHOTO"), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "a{b}.txt"), []byte("BRACES"), 0o600))
+
+	// the file cache is off so the served files are closed when the temp dir is removed
+	mounts := []struct {
+		mount func(app *fiber.App)
+		name  string
+	}{
+		{name: "get wildcard", mount: func(app *fiber.App) { app.Get("/static/*", New(root, Config{CacheDuration: -1})) }},
+		{name: "use prefix", mount: func(app *fiber.App) { app.Use("/static", New(root, Config{CacheDuration: -1})) }},
+		{name: "fs root", mount: func(app *fiber.App) {
+			app.Get("/static/*", New("", Config{FS: os.DirFS(root), CacheDuration: -1}))
+		}},
+		{name: "fs subdirectory root", mount: func(app *fiber.App) {
+			app.Get("/static/*", New(filepath.Base(root), Config{FS: os.DirFS(filepath.Dir(root)), CacheDuration: -1}))
+		}},
+	}
+
+	requests := []struct {
+		name       string
+		target     string
+		wantBody   string
+		wantStatus int
+		unescape   bool
+	}{
+		{name: "public file", target: "/static/public.txt", wantStatus: fiber.StatusOK, wantBody: "PUBLIC"},
+		{name: "guarded file", target: "/static/private/secret.txt", wantStatus: fiber.StatusForbidden, wantBody: "Forbidden"},
+		{name: "encoded space stays a distinct name", target: "/static/hello%20world.txt", wantStatus: fiber.StatusNotFound},
+		{name: "encoded percent stays a distinct name", target: "/static/100%25.txt", wantStatus: fiber.StatusNotFound},
+		{name: "reserved character stays encoded", target: "/static/photo%402x.png", wantStatus: fiber.StatusNotFound},
+		{name: "uppercase reserved escapes stay encoded", target: "/static/a%7Bb%7D.txt", wantStatus: fiber.StatusNotFound},
+		{name: "lowercase reserved escapes stay encoded", target: "/static/a%7bb%7d.txt", wantStatus: fiber.StatusNotFound},
+		{name: "encoded protected space cannot bypass guard", target: "/static/private%20area/secret.txt", wantStatus: fiber.StatusNotFound},
+		{name: "double encoding is not decoded again", target: "/static/hello%2520world.txt", wantStatus: fiber.StatusNotFound},
+		{name: "encoded guarded segment", target: "/static/%70rivate/secret.txt", wantStatus: fiber.StatusForbidden, wantBody: "Forbidden"},
+		{name: "encoded slash into the guarded directory", target: "/static/private%2Fsecret.txt", wantStatus: fiber.StatusNotFound},
+		{name: "parent segment into the guarded directory", target: "/static/x/../private/secret.txt", wantStatus: fiber.StatusForbidden, wantBody: "Forbidden"},
+		{name: "current segment into the guarded directory", target: "/static/./private/secret.txt", wantStatus: fiber.StatusForbidden, wantBody: "Forbidden"},
+		{name: "empty segment is not a directory", target: "/static//private/secret.txt", wantStatus: fiber.StatusNotFound},
+		{name: "empty segment before the file", target: "/static/private//secret.txt", wantStatus: fiber.StatusForbidden, wantBody: "Forbidden"},
+		{name: "encoded backslash traversal into the guarded directory", target: "/static/..%5Cprivate/secret.txt", wantStatus: fiber.StatusNotFound},
+		{name: "double encoded guarded segment", target: "/static/%2570rivate/secret.txt", wantStatus: fiber.StatusNotFound},
+		{name: "triple encoded guarded segment", target: "/static/%252570rivate/secret.txt", wantStatus: fiber.StatusNotFound},
+		{name: "unescaped routing encoded guarded segment", target: "/static/%70rivate/secret.txt", unescape: true, wantStatus: fiber.StatusForbidden, wantBody: "Forbidden"},
+		{name: "unescaped routing encoded slash into the guarded directory", target: "/static/private%2Fsecret.txt", unescape: true, wantStatus: fiber.StatusForbidden, wantBody: "Forbidden"},
+		{name: "unescaped routing parent segment into the guarded directory", target: "/static/x/../private/secret.txt", unescape: true, wantStatus: fiber.StatusForbidden, wantBody: "Forbidden"},
+		{name: "unescaped routing encoded backslash traversal", target: "/static/..%5Cprivate/secret.txt", unescape: true, wantStatus: fiber.StatusNotFound},
+		{name: "unescaped routing double encoded guarded segment", target: "/static/%2570rivate/secret.txt", unescape: true, wantStatus: fiber.StatusNotFound},
+		{name: "unescaped routing reserved character in the name", target: "/static/photo%402x.png", unescape: true, wantStatus: fiber.StatusOK, wantBody: "PHOTO"},
+		{name: "unescaped routing lowercase hex digits", target: "/static/a%7bb%7d.txt", unescape: true, wantStatus: fiber.StatusOK, wantBody: "BRACES"},
+		{name: "unescaped routing empty segment is not a directory", target: "/static//private/secret.txt", unescape: true, wantStatus: fiber.StatusNotFound},
+	}
+
+	for _, m := range mounts {
+		for _, tc := range requests {
+			t.Run(m.name+"/"+tc.name, func(t *testing.T) {
+				t.Parallel()
+
+				app := fiber.New(fiber.Config{UnescapePath: tc.unescape})
+				app.Use("/static/private", func(c fiber.Ctx) error {
+					return c.SendStatus(fiber.StatusForbidden)
+				})
+				app.Use("/static/private area", func(c fiber.Ctx) error {
+					return c.SendStatus(fiber.StatusForbidden)
+				})
+				m.mount(app)
+
+				resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, tc.target, http.NoBody))
+				require.NoError(t, err, "app.Test(req)")
+				require.Equal(t, tc.wantStatus, resp.StatusCode, "Status code")
+
+				body, err := io.ReadAll(resp.Body)
+				require.NoError(t, err)
+				if tc.wantBody != "" {
+					require.Equal(t, tc.wantBody, string(body))
+				}
+				if tc.wantStatus != fiber.StatusOK {
+					require.NotContains(t, string(body), "SECRET")
+					require.NotContains(t, string(body), "HELLO")
+					require.NotContains(t, string(body), "PERCENT")
+					require.NotContains(t, string(body), "PHOTO")
+					require.NotContains(t, string(body), "BRACES")
+				}
+			})
+		}
+	}
+}
+
+// Test_Static_RawBackslashIsNotASeparator pins that a raw backslash, an
+// ordinary character to the router, never becomes a separator for the file
+// server either. httptest would encode it, so the request line is set by hand.
+func Test_Static_RawBackslashIsNotASeparator(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	require.NoError(t, os.Mkdir(filepath.Join(root, "private"), 0o750))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "private", "secret.txt"), []byte("SECRET"), 0o600))
+
+	// app.Test writes the URL's opaque form verbatim
+	rawRequest := func(target string) *http.Request {
+		req := httptest.NewRequest(fiber.MethodGet, "/static/", http.NoBody)
+		req.URL.Opaque = target
+		return req
+	}
+
+	for _, unescape := range []bool{false, true} {
+		app := fiber.New(fiber.Config{UnescapePath: unescape})
+		app.Use("/static/private", func(c fiber.Ctx) error {
+			return c.SendStatus(fiber.StatusForbidden)
+		})
+		app.Get("/static/*", New(root))
+
+		for _, target := range []string{
+			`/static/..\private/secret.txt`,
+			`/static/x\..\private/secret.txt`,
+			`/static/private\secret.txt`,
+			`/static/..\..\etc\passwd`,
+		} {
+			resp, err := app.Test(rawRequest(target))
+			require.NoError(t, err, "app.Test(req)")
+			body, err := io.ReadAll(resp.Body)
+			require.NoError(t, err)
+			require.Equal(t, fiber.StatusNotFound, resp.StatusCode, "unescape=%v target=%s", unescape, target)
+			require.NotContains(t, string(body), "SECRET", "unescape=%v target=%s", unescape, target)
+		}
+
+		resp, err := app.Test(rawRequest("/static/private/secret.txt"))
+		require.NoError(t, err, "app.Test(req)")
+		require.Equal(t, fiber.StatusForbidden, resp.StatusCode, "unescape=%v", unescape)
+	}
+}
+
+// Test_Static_ForgedEscapeCannotBypassGuard pins that a stray "%" the router
+// keeps literally cannot line up with the following bytes into an escape the
+// file server decodes a second time, reaching a guarded file the router never
+// matched. "%%370rivate" and "%7%30rivate" both normalize to "%70rivate", which
+// the guard on "/static/private" does not cover, so the file server must not
+// decode either to "private". Under UnescapePath the router decodes nothing
+// past its single pass, so the same spellings stay literal too. httptest
+// rejects these spellings, so the request line is set by hand.
+func Test_Static_ForgedEscapeCannotBypassGuard(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	require.NoError(t, os.Mkdir(filepath.Join(root, "private"), 0o750))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "private", "secret.txt"), []byte("SECRET"), 0o600))
+
+	// app.Test writes the URL's opaque form verbatim
+	rawRequest := func(target string) *http.Request {
+		req := httptest.NewRequest(fiber.MethodGet, "/static/", http.NoBody)
+		req.URL.Opaque = target
+		return req
+	}
+	serve := func(app *fiber.App, target string) (int, string) {
+		resp, err := app.Test(rawRequest(target))
+		require.NoError(t, err, "app.Test(req)")
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		return resp.StatusCode, string(body)
+	}
+
+	// both spellings normalize to "/static/%70rivate/secret.txt"
+	forged := []string{
+		"/static/%%370rivate/secret.txt",
+		"/static/%7%30rivate/secret.txt",
+	}
+
+	for _, unescape := range []bool{false, true} {
+		for _, mount := range []string{"wildcard", "prefix"} {
+			app := fiber.New(fiber.Config{UnescapePath: unescape})
+			app.Use("/static/private", func(c fiber.Ctx) error {
+				return c.SendStatus(fiber.StatusForbidden)
+			})
+			if mount == "wildcard" {
+				app.Get("/static/*", New(root, Config{CacheDuration: -1}))
+			} else {
+				app.Use("/static", New(root, Config{CacheDuration: -1}))
+			}
+
+			// the spelling the router does match the guard on still returns 403
+			status, _ := serve(app, "/static/private/secret.txt")
+			require.Equal(t, fiber.StatusForbidden, status, "unescape=%v mount=%s", unescape, mount)
+
+			for _, target := range forged {
+				status, body := serve(app, target)
+				require.Equal(t, fiber.StatusNotFound, status, "unescape=%v mount=%s target=%s", unescape, mount, target)
+				require.NotContains(t, body, "SECRET", "unescape=%v mount=%s target=%s", unescape, mount, target)
+			}
+		}
+	}
+}
+
+// Test_Static_TrailingDotOrSpaceCannotBypassGuard pins that "private." and
+// "private " never open the guarded "private": Windows strips a trailing dot or
+// space from a path component, so the file server rejects such a segment there,
+// and everywhere else no such directory exists. Both answer 404 while the
+// spelling the guard covers stays 403.
+func Test_Static_TrailingDotOrSpaceCannotBypassGuard(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	require.NoError(t, os.Mkdir(filepath.Join(root, "private"), 0o750))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "private", "secret.txt"), []byte("SECRET"), 0o600))
+
+	for _, unescape := range []bool{false, true} {
+		app := fiber.New(fiber.Config{UnescapePath: unescape})
+		app.Use("/static/private", func(c fiber.Ctx) error {
+			return c.SendStatus(fiber.StatusForbidden)
+		})
+		app.Get("/static/*", New(root, Config{CacheDuration: -1}))
+
+		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/static/private/secret.txt", http.NoBody))
+		require.NoError(t, err)
+		require.Equal(t, fiber.StatusForbidden, resp.StatusCode, "unescape=%v", unescape)
+
+		for _, target := range []string{
+			"/static/private./secret.txt",
+			"/static/private.../secret.txt",
+			"/static/private%20/secret.txt",
+			"/static/private%20./secret.txt",
+		} {
+			resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, target, http.NoBody))
+			require.NoError(t, err, "app.Test(req)")
+			body, err := io.ReadAll(resp.Body)
+			require.NoError(t, err)
+			require.Equal(t, fiber.StatusNotFound, resp.StatusCode, "unescape=%v target=%s", unescape, target)
+			require.NotContains(t, string(body), "SECRET", "unescape=%v target=%s", unescape, target)
+		}
+	}
+}
+
+// Test_Static_MalformedEscapeIsNotAName pins that a file whose name holds a
+// percent sign has one spelling: "%zz" is not an escape, so the router keeps
+// it apart from "%25zz" and the file server does not open the file it would
+// name literally. Under UnescapePath both spellings route to the same path,
+// which the file server takes as it is. httptest rejects the spelling, so the
+// request line is set by hand.
+func Test_Static_MalformedEscapeIsNotAName(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(root, "100%zz.txt"), []byte("PERCENT"), 0o600))
+
+	rawRequest := func(target string) *http.Request {
+		req := httptest.NewRequest(fiber.MethodGet, "/static/", http.NoBody)
+		req.URL.Opaque = target
+		return req
+	}
+	serve := func(app *fiber.App, target string) (int, string) {
+		resp, err := app.Test(rawRequest(target))
+		require.NoError(t, err, "app.Test(req)")
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		return resp.StatusCode, string(body)
+	}
+
+	app := fiber.New()
+	app.Get("/static/*", New(root, Config{CacheDuration: -1}))
+	status, body := serve(app, "/static/100%25zz.txt")
+	require.Equal(t, fiber.StatusNotFound, status)
+	require.NotContains(t, body, "PERCENT")
+	status, body = serve(app, "/static/100%zz.txt")
+	require.Equal(t, fiber.StatusNotFound, status)
+	require.NotContains(t, body, "PERCENT")
+
+	app = fiber.New(fiber.Config{UnescapePath: true})
+	app.Get("/static/*", New(root, Config{CacheDuration: -1}))
+	for _, target := range []string{"/static/100%25zz.txt", "/static/100%zz.txt"} {
+		status, body = serve(app, target)
+		require.Equal(t, fiber.StatusOK, status, "target=%s", target)
+		require.Equal(t, "PERCENT", body, "target=%s", target)
+	}
+}
+
+// Test_Static_SharedHandlerAcrossApps pins that one handler value mounted in
+// two apps decodes as each app's UnescapePath says, whichever app served
+// first: under the flag the router already decoded "%2561" to "%61", and the
+// file server must not decode it again into "a.txt".
+func Test_Static_SharedHandlerAcrossApps(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(root, "a.txt"), []byte("A"), 0o600))
+	handler := New(root, Config{CacheDuration: -1})
+
+	plain := fiber.New()
+	plain.Get("/static/*", handler)
+	unescaped := fiber.New(fiber.Config{UnescapePath: true})
+	unescaped.Get("/static/*", handler)
+
+	serve := func(app *fiber.App, target string) int {
+		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, target, http.NoBody))
+		require.NoError(t, err, "app.Test(req)")
+		require.NoError(t, resp.Body.Close())
+		return resp.StatusCode
+	}
+
+	// the app that serves first must not fix the decoding mode of the other
+	require.Equal(t, fiber.StatusNotFound, serve(plain, "/static/%2561.txt"))
+	require.Equal(t, fiber.StatusOK, serve(plain, "/static/%61.txt"))
+	require.Equal(t, fiber.StatusNotFound, serve(unescaped, "/static/%2561.txt"))
+	require.Equal(t, fiber.StatusOK, serve(unescaped, "/static/%61.txt"))
 }
 
 func Test_Static_Download_NotFoundLeavesNoAttachment(t *testing.T) {
@@ -1457,6 +1872,75 @@ func Test_Static_MaxAge_NotOnErrorResponses(t *testing.T) {
 	require.Equal(t, "public, max-age=3600", resp.Header.Get(fiber.HeaderCacheControl))
 }
 
+// With ByteRange on, the Range and If-Range rules (RFC 9110 §13.1.5, §14.2) are
+// applied around the file server's single range; internal/byterange tests them
+// in full.
+func Test_Static_ByteRange_RFC9110(t *testing.T) {
+	t.Parallel()
+
+	const (
+		content      = "0123456789abcdefghij"
+		lastModified = "Thu, 02 Jan 2020 03:04:05 GMT"
+		staleDate    = "Wed, 01 Jan 2020 03:04:05 GMT"
+	)
+	dir := t.TempDir()
+	name := filepath.Join(dir, "file.txt")
+	require.NoError(t, os.WriteFile(name, []byte(content), 0o600))
+	require.NoError(t, os.Chtimes(name, time.Time{}, time.Date(2020, time.January, 2, 3, 4, 5, 0, time.UTC)))
+
+	app := fiber.New()
+	app.Get("/ranges/*", New(dir, Config{ByteRange: true}))
+	app.Get("/plain/*", New(dir))
+
+	tests := []struct {
+		fields      map[string]string
+		name        string
+		path        string
+		wantRange   string
+		wantBody    string
+		wantStatus  int
+		wantWhole   bool // the whole file, with its validators
+		wantAdvised bool // Accept-Ranges is advertised
+	}{
+		{name: "a range", path: "/ranges/file.txt", fields: map[string]string{fiber.HeaderRange: "bytes=0-4"}, wantStatus: fiber.StatusPartialContent, wantBody: "01234", wantRange: "bytes 0-4/20", wantAdvised: true},
+		{name: "several ranges", path: "/ranges/file.txt", fields: map[string]string{fiber.HeaderRange: "bytes=0-1,3-4"}, wantStatus: fiber.StatusOK, wantBody: content, wantWhole: true, wantAdvised: true},
+		{name: "If-Range is stale", path: "/ranges/file.txt", fields: map[string]string{fiber.HeaderRange: "bytes=0-4", fiber.HeaderIfRange: staleDate}, wantStatus: fiber.StatusOK, wantBody: content, wantWhole: true, wantAdvised: true},
+		{name: "unsatisfiable", path: "/ranges/file.txt", fields: map[string]string{fiber.HeaderRange: "bytes=100-200"}, wantStatus: fiber.StatusRequestedRangeNotSatisfiable, wantBody: "Range Not Satisfiable"},
+		// ByteRange off: no ranges are offered and Range is not looked at.
+		{name: "ByteRange off", path: "/plain/file.txt", fields: map[string]string{fiber.HeaderRange: "bytes=0-4"}, wantStatus: fiber.StatusOK, wantBody: content, wantWhole: true},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			req := httptest.NewRequest(fiber.MethodGet, tc.path, http.NoBody)
+			for k, v := range tc.fields {
+				req.Header.Set(k, v)
+			}
+			resp, err := app.Test(req)
+			require.NoError(t, err)
+			t.Cleanup(func() { require.NoError(t, resp.Body.Close()) })
+
+			require.Equal(t, tc.wantStatus, resp.StatusCode)
+			require.Equal(t, tc.wantRange, resp.Header.Get(fiber.HeaderContentRange))
+			body, err := io.ReadAll(resp.Body)
+			require.NoError(t, err)
+			require.Equal(t, tc.wantBody, string(body))
+
+			if tc.wantAdvised {
+				require.Equal(t, "bytes", resp.Header.Get(fiber.HeaderAcceptRanges))
+			} else {
+				require.Empty(t, resp.Header.Get(fiber.HeaderAcceptRanges))
+			}
+			if tc.wantWhole {
+				require.Equal(t, "20", resp.Header.Get(fiber.HeaderContentLength))
+				require.Equal(t, lastModified, resp.Header.Get(fiber.HeaderLastModified))
+			}
+		})
+	}
+}
+
 func Test_Static_NonGetMethod_PassesThrough(t *testing.T) {
 	t.Parallel()
 
@@ -1477,4 +1961,65 @@ func Test_Static_NonGetMethod_PassesThrough(t *testing.T) {
 	served, err := io.ReadAll(get.Body)
 	require.NoError(t, err)
 	require.Contains(t, string(served), "Hello, World!")
+}
+
+// Test_Static_PartialWildcard_SegmentBoundary checks that a partial wildcard
+// route serves only what lies below its path segment, so middleware mounted on
+// /static/private cannot be skipped with /staticprivate/secret.txt.
+func Test_Static_PartialWildcard_SegmentBoundary(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(root, "private"), 0o750))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "private", "secret.txt"), []byte("SECRET"), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "x"), []byte("PUBLIC"), 0o600))
+
+	app := fiber.New()
+	app.Use("/static/private", func(c fiber.Ctx) error {
+		return c.SendStatus(fiber.StatusForbidden)
+	})
+	app.Get("/static*", New(root, Config{CacheDuration: -1}))
+
+	for target, want := range map[string]int{
+		"/static/private/secret.txt": fiber.StatusForbidden,
+		"/staticprivate/secret.txt":  fiber.StatusNotFound,
+		"/staticx":                   fiber.StatusNotFound,
+		"/static/x":                  fiber.StatusOK,
+	} {
+		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, target, http.NoBody))
+		require.NoError(t, err, "app.Test(req)")
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		require.Equal(t, want, resp.StatusCode, "target=%s", target)
+		require.NotContains(t, string(body), "SECRET", "target=%s", target)
+	}
+}
+
+// Test_Static_NonMountRoutes_Served checks that the segment boundary applies only
+// to a /prefix* mount: routes with a plus, a parameter or a slash before the
+// wildcard serve what they matched.
+func Test_Static_NonMountRoutes_Served(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(root, "app.js"), []byte("JS"), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "index.html"), []byte("INDEX"), 0o600))
+
+	app := fiber.New()
+	app.Get("/static+", New(root, Config{CacheDuration: -1}))
+	app.Get("/users/:id", New(filepath.Join(root, "app.js"), Config{CacheDuration: -1}))
+	app.Get("/:lang/*", New(filepath.Join(root, "index.html"), Config{CacheDuration: -1}))
+
+	for target, want := range map[string]string{
+		"/static/app.js": "JS",
+		"/en/dashboard":  "INDEX",
+		"/users/1234":    "JS",
+	} {
+		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, target, http.NoBody))
+		require.NoError(t, err, "app.Test(req)")
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		require.Equal(t, fiber.StatusOK, resp.StatusCode, "target=%s", target)
+		require.Equal(t, want, string(body), "target=%s", target)
+	}
 }

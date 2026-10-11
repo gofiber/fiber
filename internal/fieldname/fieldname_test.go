@@ -3,6 +3,7 @@ package fieldname
 import (
 	"bufio"
 	"bytes"
+	"strings"
 	"testing"
 	"time"
 
@@ -165,4 +166,61 @@ func Test_Del_RemovesEverySpelling(t *testing.T) {
 
 	require.Empty(t, Lines(h, "X-Trace", false))
 	require.Equal(t, "k", string(First(h, "X-Keep", false)))
+}
+
+// Test_IsCanonical_MatchesFasthttp checks the form against fasthttp itself: a
+// token name is canonical exactly when Set stores it unchanged, and any other
+// name is not, because fasthttp stores such a key as sent.
+func Test_IsCanonical_MatchesFasthttp(t *testing.T) {
+	t.Parallel()
+
+	for _, name := range []string{
+		"Origin", "Content-Type", "X-Request-Id", "Sec-Websocket-Key", "A", "X-1", "Etag",
+		"Www-Authenticate", "X-_a", "X--Y", "-", "X_Under.Score", "origin", "ORIGIN", "content-type",
+		"Content-type", "content-Type", "X-Request-ID", "ETag", "WWW-Authenticate", "Sec-WebSocket-Key",
+		"x-request-id", "X-REQUEST-ID", "cONTENT-tYPE", "x--y", "a-b-c-d-e-f", "1-a", "*-a", "X-Real-IP",
+		"Content-MD5", "DNT", "TE", "X-A", "X-a", "Ab", "aB", strings.Repeat("Ab-", 21) + "C",
+	} {
+		h := &fasthttp.ResponseHeader{}
+		h.Set(name, "v")
+		stored := ""
+		for k, v := range h.All() {
+			if string(v) == "v" {
+				stored = string(k)
+			}
+		}
+		require.Equal(t, stored == name, IsCanonical(name), "IsCanonical(%q); fasthttp stores it as %q", name, stored)
+	}
+
+	for _, name := range []string{"", "Origin:", "Origin ", " Origin", "Ori gin", "Origin\r\nX", "Or\u00edgin", "Origin\x00", "X/Y", "(A)"} {
+		require.False(t, IsCanonical(name), "IsCanonical(%q)", name)
+	}
+}
+
+// Test_Peek_MatchesFasthttp is the contract behind the canonical fast path:
+// Peek must answer exactly what fasthttp's Peek answers, for every spelling of
+// the name, in a normalizing store and in one that keeps the wire spelling.
+func Test_Peek_MatchesFasthttp(t *testing.T) {
+	t.Parallel()
+
+	const raw = "GET / HTTP/1.1\r\nHost: h\r\nX-Request-Id: a\r\nx-lower: b\r\nContent-Type: text/plain\r\nEmpty:\r\n\r\n"
+	names := []string{
+		"X-Request-Id", "x-request-id", "X-REQUEST-ID", "x-lower", "X-Lower", "Content-Type", "content-type",
+		"Host", "Empty", "empty", "Missing", "", "Bad Key", "X-Request-Id\r\n", "X-Request-Id:",
+		strings.Repeat("x-lower", 10),
+	}
+	for _, canonical := range []bool{true, false} {
+		req := readRequestHeader(t, raw, canonical)
+		res := &fasthttp.ResponseHeader{}
+		if !canonical {
+			res.DisableNormalizing()
+		}
+		res.Set("X-Request-Id", "a")
+		res.Set("x-lower", "b")
+		res.Set("Empty", "")
+		for _, name := range names {
+			require.Equal(t, req.Peek(name), Peek(req, name), "request, canonical=%v, %q", canonical, name)
+			require.Equal(t, res.Peek(name), Peek(res, name), "response, canonical=%v, %q", canonical, name)
+		}
+	}
 }

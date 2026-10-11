@@ -28,10 +28,14 @@ package extractors
 import (
 	"errors"
 	"net/url"
+	"slices"
 	"strings"
+	"sync"
 	"unsafe"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/appconfig"
+	"github.com/gofiber/fiber/v3/internal/ctxlocal"
 	"github.com/gofiber/fiber/v3/internal/headerlookup"
 	"github.com/gofiber/utils/v2"
 )
@@ -78,202 +82,301 @@ type Extractor struct {
 	Source     Source      // The type of source being extracted from
 }
 
-// ExtractWithSource returns the extracted value together with its source.
+// Result is a resolved extraction: the value, and the provenance of the
+// extractor that supplied it.
 //
-// Prefer this over Extract when the caller needs the source that actually
-// supplied a value. Source on Extractor is declared/static metadata (for a
-// chain, the first child); SourceHeader is the zero value, so a hand-rolled
-// Extract without an explicit Source reports SourceHeader. No extra struct
-// field is required, so existing unkeyed Extractor literals keep compiling.
-//
-// Behavior:
-//   - Extract set (leaf or chain): call Extract so legacy overrides /
-//     decoration (validation, normalization) are honored. For built-in
-//     Chain, the winning Source is pushed on a request-local stack during
-//     that Extract (no second child walk; survives public Chain reassignment).
-//     If Extract succeeds without a capture (custom replacement, or leaf),
-//     the declared e.Source is returned — e.Chain is not re-walked.
-//   - Chain with nil Extract: walk children (same success rules as Chain.Extract),
-//     skip nil Extract, return the winning child's Source.
-//   - Neither: ErrNotFound.
-//
-// The returned Source is meaningful for security decisions only when err is nil.
-// On failure it may be static or last-child fallback metadata and must not be
-// treated as the origin of a value. Extract is not deprecated in this release.
-func ExtractWithSource(e Extractor, c fiber.Ctx) (string, Source, error) {
-	// Mark this request frame so Chain.Extract only pushes winner captures when
-	// a source-aware caller is active. Bare chain.Extract must not leave stack
-	// entries that a later ExtractWithSource on an unrelated leaf would consume.
-	enterChainWinCapture(c)
-	defer leaveChainWinCapture(c)
+// It carries metadata only, so a chain's defensive copy of its children is
+// never reachable through it.
+type Result struct {
+	// Value is the extracted value, non-empty only when err was nil.
+	Value string
 
+	// Key is the parameter, header or cookie name the winning extractor read.
+	Key string
+
+	// Source is the kind of source the winning extractor read from.
+	Source Source
+
+	// Resolved reports whether Key and Source name the extractor that actually
+	// produced Value. It is false when a chain's own Extract answered without a
+	// child winning: Key and Source are then the chain's declared metadata (its
+	// first child) and say nothing about the value's origin, so a caller
+	// deciding where a value may be written back must refuse. Always false on
+	// error.
+	Resolved bool
+}
+
+// Resolve extracts a value and reports which extractor supplied it.
+//
+// Prefer this over Extract when the caller needs a value's provenance — its Key
+// as well as its Source — such as to write the value back where it was read
+// from. It adds no field to Extractor, so unkeyed literals keep compiling.
+//
+// Extract runs when set, so overrides and decoration are honored. A built-in
+// Chain records its winning child as it runs, and only a record made by the
+// chain being resolved counts, so a value is never credited to a chain some
+// unrelated helper ran. Without such a record the declared metadata is reported
+// with Resolved false rather than re-walking e.Chain to guess. An extractor with
+// no Extract walks its own Chain instead, nested ones included; a built-in chain
+// still runs only the children it can run. An extractor with neither returns
+// ErrNotFound.
+//
+// Key and Source are meaningful for security decisions only when err is nil and
+// Resolved is true.
+func Resolve(e Extractor, c fiber.Ctx) (Result, error) {
+	return resolveOne(&e, c, nil)
+}
+
+// resolveOne is Resolve by pointer, carrying the request's chain state so a walk
+// looks it up once rather than once per child. A nil st is resolved on first
+// need.
+func resolveOne(e *Extractor, c fiber.Ctx, st *chainState) (Result, error) {
 	if e.Extract != nil {
+		if st == nil {
+			st = chainStateFor(c)
+		}
+		// Marks the frame, so Chain.Extract records only while a source-aware
+		// caller is active.
+		defer st.leaveCapture(st.enterCapture())
+
 		v, err := e.Extract(c)
-		// Prefer source captured during Extract. Built-in Chain pushes on
-		// success while capture is active, even if e.Chain was cleared.
-		if src, ok := popChainWinningSource(c); ok {
-			if err != nil {
-				return "", e.Source, err
-			}
-			if v == "" {
-				return "", e.Source, ErrNotFound
-			}
-			return v, src, nil
+		// Read before the deferred restore runs.
+		win := st.capturedFor(e.Chain)
+		switch {
+		case err != nil:
+			return e.declared(), err
+		case v == "":
+			return e.declared(), ErrNotFound
+		case win != nil:
+			return Result{Value: v, Key: win.Key, Source: win.Source, Resolved: true}, nil
 		}
-		// No capture: use declared Source. Do not re-walk e.Chain after a
-		// successful custom/replaced Extract — that would attribute the
-		// replacement's value to whichever child happens to succeed on peek.
-		if err != nil {
-			return "", e.Source, err
-		}
-		if v == "" {
-			return "", e.Source, ErrNotFound
-		}
-		return v, e.Source, nil
+		// Only a leaf that ran no chain at all is its own origin. Anything else
+		// cannot say where the value came from, so its declared metadata is
+		// reported as unresolved rather than passed off as provenance.
+		resolved := len(e.Chain) == 0 && st.rec.win == nil
+		return Result{Value: v, Key: e.Key, Source: e.Source, Resolved: resolved}, nil
 	}
 	if len(e.Chain) > 0 {
-		return extractChainWithSource(e, c)
+		if st == nil {
+			st = chainStateFor(c)
+		}
+		return resolveChain(e, c, st)
 	}
-	return "", e.Source, ErrNotFound
+	return e.declared(), ErrNotFound
 }
 
-// chainGuardFor returns a Locals key shared by Chain.Extract and
-// extractChainWithSource for the public Chain backing array.
-func chainGuardFor(chain []Extractor) (chainGuardKey, bool) {
-	if len(chain) == 0 {
-		return chainGuardKey{}, false
+// declared is the extractor's own metadata: what Resolve reports when no winning
+// child was observed. Value and Resolved are deliberately left zero.
+func (e *Extractor) declared() Result {
+	return Result{Key: e.Key, Source: e.Source}
+}
+
+// chainGuard returns the cycle-guard identity of a chain: the address of the
+// first element of its public Chain array, which survives the value copies an
+// Extractor makes. chain must not be empty.
+func chainGuard(chain []Extractor) *byte {
+	return (*byte)(unsafe.Pointer(&chain[0])) //nolint:gosec // G103: identity for the cycle guard only, never dereferenced
+}
+
+// chainState is what every chain on one request shares. Holding it in a single
+// request-local entry costs a chain one Locals lookup rather than one per
+// guard, depth and winner operation, and makes recording a winner a field
+// write rather than a re-allocated []Source.
+type chainState struct {
+	rec    record  // the winning child and the chain that recorded it
+	active []*byte // guards of the chains executing right now, innermost last
+	depth  int     // open Resolve frames; winners are recorded while > 0
+}
+
+// record is a chain's winning child together with the identity of the chain
+// that recorded it. The two travel as one value: a winner means nothing without
+// the chain it came from.
+type record struct {
+	win   *Extractor
+	guard *byte
+}
+
+// chainStateKey is the Locals key of the request's chainState.
+type chainStateKey struct{}
+
+var chainStatePool = sync.Pool{
+	New: func() any { return &chainState{active: make([]*byte, 0, 4)} },
+}
+
+// chainStateFor returns the request's chainState, creating it on first use.
+// Being a Locals value, it comes back through Close when fasthttp resets the
+// request, so a request running any number of chains allocates for none.
+func chainStateFor(c fiber.Ctx) *chainState {
+	if st, ok := c.Locals(chainStateKey{}).(*chainState); ok && st != nil {
+		return st
 	}
-	// Address of the first element is stable for the shared backing array.
-	return chainGuardKey{id: (*byte)(unsafe.Pointer(&chain[0]))}, true //nolint:gosec // G103: identity key for Locals cycle guard only
-}
-
-// chainWinStackKey is a request-local stack of Sources recorded by Chain.Extract.
-// A stack (not a key derived from e.Chain) is required so nested chains can
-// propagate the true winning child Source outward, and so clearing/reassigning
-// the public Chain field cannot orphan or retarget the capture.
-type chainWinStackKey struct{}
-
-// chainWinDepthKey counts nested ExtractWithSource frames. Chain.Extract only
-// pushes winners while depth > 0 so legacy Extract-only calls leave no stale
-// entries for a later source-aware call on the same Ctx.
-type chainWinDepthKey struct{}
-
-func chainWinDepth(c fiber.Ctx) int {
-	depth, ok := c.Locals(chainWinDepthKey{}).(int)
-	if !ok {
-		return 0
+	st, ok := chainStatePool.Get().(*chainState)
+	if !ok || st == nil {
+		st = &chainState{active: make([]*byte, 0, 4)}
 	}
-	return depth
+	ctxlocal.Set(c, chainStateKey{}, st)
+	return st
 }
 
-func enterChainWinCapture(c fiber.Ctx) {
-	c.Locals(chainWinDepthKey{}, chainWinDepth(c)+1)
+// Close returns the state to the pool. fasthttp calls it on every
+// request-local io.Closer when it resets the request; callers should not.
+func (s *chainState) Close() error {
+	s.reset()
+	chainStatePool.Put(s)
+	return nil
 }
 
-func leaveChainWinCapture(c fiber.Ctx) {
-	depth := chainWinDepth(c)
-	if depth <= 1 {
-		c.Locals(chainWinDepthKey{}, nil)
-		return
+// reset returns the state to the shape a fresh one has. Split from Close so it
+// can be tested without handing the state to the pool, where another request
+// may already own it.
+func (s *chainState) reset() {
+	// Cleared to the buffer's capacity, not its length: leave() reslices, so
+	// entries past the end still hold guards, and a retained one keeps a
+	// chain's Extractor array and whatever its closures captured alive for as
+	// long as the pool holds this state.
+	clear(s.active[:cap(s.active)])
+	// Whole-struct, so a field added later cannot leak one request's state
+	// into the next. The buffer survives: the literal is evaluated first.
+	*s = chainState{active: s.active[:0]}
+}
+
+// enter marks a chain as executing, or reports false if it already is: a
+// cycle.
+func (s *chainState) enter(guard *byte) bool {
+	if slices.Contains(s.active, guard) {
+		return false
 	}
-	c.Locals(chainWinDepthKey{}, depth-1)
+	s.active = append(s.active, guard)
+	return true
 }
 
-func chainWinCaptureActive(c fiber.Ctx) bool {
-	return chainWinDepth(c) > 0
-}
-
-func chainWinStack(c fiber.Ctx) []Source {
-	prev, ok := c.Locals(chainWinStackKey{}).([]Source)
-	if !ok {
-		return nil
+// leave unmarks the innermost executing chain.
+func (s *chainState) leave() {
+	if n := len(s.active); n > 0 {
+		s.active = s.active[:n-1]
 	}
+}
+
+// enterCapture opens a Resolve frame and returns the record the enclosing one
+// held, hidden so a leaf is not attributed to it. Pass both back to
+// leaveCapture.
+func (s *chainState) enterCapture() record {
+	s.depth++
+	prev := s.rec
+	s.rec = record{}
 	return prev
 }
 
-func chainWinStackLen(c fiber.Ctx) int {
-	return len(chainWinStack(c))
+// capturedFor returns the child recorded by the chain whose children are chain,
+// or nil when the record belongs to another chain, or none was made. Tying a
+// record to its chain is what stops a value being credited to a chain that
+// merely ran inside the same frame.
+func (s *chainState) capturedFor(chain []Extractor) *Extractor {
+	if s.rec.win == nil || len(chain) == 0 || s.rec.guard != chainGuard(chain) {
+		return nil
+	}
+	return s.rec.win
 }
 
-func truncateChainWinStack(c fiber.Ctx, n int) {
-	prev := chainWinStack(c)
-	if len(prev) == 0 {
-		return
-	}
-	if n <= 0 {
-		c.Locals(chainWinStackKey{}, nil)
-		return
-	}
-	if len(prev) > n {
-		c.Locals(chainWinStackKey{}, prev[:n])
-	}
+// leaveCapture closes a Resolve frame, restoring the enclosing frame's record:
+// a decorator may make another source-aware call after its base, and the base's
+// record has to survive that.
+func (s *chainState) leaveCapture(prev record) {
+	s.depth--
+	s.rec = prev
 }
 
-func pushChainWinningSource(c fiber.Ctx, src Source) {
-	stack := append(append([]Source(nil), chainWinStack(c)...), src)
-	c.Locals(chainWinStackKey{}, stack)
-}
-
-func popChainWinningSource(c fiber.Ctx) (Source, bool) {
-	prev := chainWinStack(c)
-	if len(prev) == 0 {
-		return 0, false
+// resolveChain walks e.Chain in order and returns the first non-empty value
+// with the extractor that produced it. A chain that re-enters itself fails with
+// ErrChainCycle. If nothing matched, the last error seen wins over ErrNotFound, so
+// the caller learns why the chain failed rather than only that it did.
+func resolveChain(e *Extractor, c fiber.Ctx, st *chainState) (Result, error) {
+	// Snapshotted so a child's Extract reassigning the public slice mid-walk
+	// cannot move the ground under the loop.
+	chain := e.Chain
+	if !st.enter(chainGuard(chain)) {
+		return e.declared(), ErrChainCycle
 	}
-	src := prev[len(prev)-1]
-	prev = prev[:len(prev)-1]
-	if len(prev) == 0 {
-		c.Locals(chainWinStackKey{}, nil)
-	} else {
-		c.Locals(chainWinStackKey{}, prev)
-	}
-	return src, true
-}
-
-func extractChainWithSource(e Extractor, c fiber.Ctx) (string, Source, error) {
-	guard, ok := chainGuardFor(e.Chain)
-	if !ok {
-		return "", SourceCustom, ErrNotFound
-	}
-	if active, ok := c.Locals(guard).(bool); ok && active {
-		return "", e.Source, ErrChainCycle
-	}
-	c.Locals(guard, true)
-	defer c.Locals(guard, false)
+	defer st.leave()
 
 	var lastErr error
-	lastSource := e.Source
-	for _, extractor := range e.Chain {
-		if extractor.Extract == nil && len(extractor.Chain) == 0 {
+	lastRes := e.declared()
+	for i := range chain {
+		child := &chain[i]
+		if child.Extract == nil && len(child.Chain) == 0 {
 			continue
 		}
-		// Nested chains and leaves both go through ExtractWithSource.
-		if extractor.Extract == nil && len(extractor.Chain) > 0 {
-			v, src, err := ExtractWithSource(extractor, c)
-			if err == nil && v != "" {
-				return v, src, nil
-			}
-			if err != nil {
-				lastErr = err
-				lastSource = src
-			}
-			continue
-		}
-		if extractor.Extract == nil {
-			continue
-		}
-		v, src, err := ExtractWithSource(extractor, c)
-		if err == nil && v != "" {
-			return v, src, nil
+		// Nested chains and leaves both go through the same walk.
+		res, err := resolveOne(child, c, st)
+		if err == nil && res.Value != "" {
+			return res, nil
 		}
 		if err != nil {
 			lastErr = err
-			lastSource = src
+			// Every error result already carries a zero Value and Resolved.
+			lastRes = res
 		}
 	}
 	if lastErr != nil {
-		return "", lastSource, lastErr
+		return lastRes, lastErr
 	}
-	return "", e.Source, ErrNotFound
+	return e.declared(), ErrNotFound
+}
+
+// Walk visits this extractor and every extractor nested in its Chain, depth
+// first and in chain order, stopping early when fn returns false. A chain that
+// re-enters itself is visited once. If fn is nil, Walk does nothing.
+//
+// Prefer this to ranging over Chain, which sees only direct children and judges
+// a nested chain by its declared metadata rather than by what is inside it.
+func (e Extractor) Walk(fn func(Extractor) bool) {
+	if fn == nil {
+		return
+	}
+	// The receiver is a copy nothing can point at, so it needs no guard entry —
+	// and never taking its address is what keeps it off the heap.
+	if !fn(e) {
+		return
+	}
+
+	// A cycle has to pass through a child that has children of its own, so when
+	// no direct child does, the walk is one level deep and needs no guard.
+	var seen map[*Extractor]struct{}
+	for i := range e.Chain {
+		if len(e.Chain[i].Chain) > 0 {
+			seen = make(map[*Extractor]struct{}, len(e.Chain))
+			break
+		}
+	}
+
+	for i := range e.Chain {
+		if !walkExtractor(&e.Chain[i], fn, seen) {
+			return
+		}
+	}
+}
+
+// walkExtractor is Walk's recursion. A nil seen means no nesting was found, so
+// no cycle is possible and nothing needs recording.
+func walkExtractor(e *Extractor, fn func(Extractor) bool, seen map[*Extractor]struct{}) bool {
+	if seen != nil {
+		if _, visited := seen[e]; visited {
+			return true
+		}
+		seen[e] = struct{}{}
+	}
+
+	if !fn(*e) {
+		return false
+	}
+
+	for i := range e.Chain {
+		if !walkExtractor(&e.Chain[i], fn, seen) {
+			return false
+		}
+	}
+
+	return true
 }
 
 // Contains reports whether this extractor, or any extractor in its chain, matches pred.
@@ -284,33 +387,16 @@ func (e Extractor) Contains(pred func(Extractor) bool) bool {
 		return false
 	}
 
-	stack := make([]*Extractor, 0, len(e.Chain)+1)
-	stack = append(stack, &e)
-	visited := make(map[*Extractor]struct{}, len(e.Chain)+1)
-
-	for len(stack) > 0 {
-		last := len(stack) - 1
-		curr := stack[last]
-		stack = stack[:last]
-		if _, ok := visited[curr]; ok {
-			continue
+	found := false
+	e.Walk(func(candidate Extractor) bool {
+		if pred(candidate) {
+			found = true
+			return false
 		}
-		visited[curr] = struct{}{}
+		return true
+	})
 
-		if pred(*curr) {
-			return true
-		}
-
-		for i := range curr.Chain {
-			stack = append(stack, &curr.Chain[i])
-		}
-	}
-
-	return false
-}
-
-type chainGuardKey struct {
-	id *byte
+	return found
 }
 
 // FromAuthHeader extracts a value from the Authorization header with an optional prefix.
@@ -481,7 +567,7 @@ func FromParam(param string) Extractor {
 		// literal "%20" sent as "%2520" would arrive as a space. Decode
 		// only when the router left the value raw, which keeps the number
 		// of decodes at one whatever the config says.
-		if c.App().Config().UnescapePath {
+		if appconfig.Of(c.App()).UnescapePath {
 			return value, nil
 		}
 		unescapedValue, err := url.PathUnescape(value)
@@ -697,7 +783,7 @@ func FromCustom(key string, fn func(fiber.Ctx) (string, error)) Extractor {
 //   - Skips children with a nil Extract function
 //   - Returns the last error encountered if all extractors fail
 //   - Returns ErrNotFound if no extractors are provided or all return empty values
-//   - ExtractWithSource on a chain walks the same children and reports the winning Source
+//   - Resolve on a chain walks the same children and reports the winning extractor
 //
 // Parameters:
 //   - extractors: A variadic list of Extractor instances to try in sequence.
@@ -707,16 +793,16 @@ func FromCustom(key string, fn func(fiber.Ctx) (string, error)) Extractor {
 //
 //	An Extractor that attempts each provided extractor in order.
 //	The returned extractor uses the Source and Key from the first extractor for
-//	static metadata. ExtractWithSource reports the winning child's Source.
+//	static metadata. Resolve reports the winning child.
 //
 // Behavior:
 //   - Success: Returns the first non-empty value with no error
 //   - Partial failure: Continues to next extractor if current returns error or empty value
 //   - Total failure: Returns last error encountered, or ErrNotFound if no errors
 //   - Empty chain: Always returns ErrNotFound
-//   - Extract and ExtractWithSource share one cycle guard so a child that
+//   - Extract and Resolve share one cycle guard so a child that
 //     re-enters the same chain still returns ErrChainCycle. The guard is cleared
-//     on return, so sequential Extract then ExtractWithSource is fine.
+//     on return, so sequential Extract then Resolve is fine.
 //
 // Examples:
 //
@@ -752,60 +838,68 @@ func Chain(extractors ...Extractor) Extractor {
 		}
 	}
 
-	// Private execution list captured by Extract. Public Chain is a separate
-	// defensive copy so callers can inspect/rewrite metadata without changing
-	// which children Extract actually runs.
+	// Extract runs kids; Chain exposes pub, a separate copy, so rewriting
+	// metadata cannot change which children run.
 	kids := append([]Extractor(nil), extractors...)
 	pub := append([]Extractor(nil), kids...)
 	primarySource := kids[0].Source
 	primaryKey := kids[0].Key
+	// Keyed on pub, so Resolve shares the cycle identity.
+	guard := chainGuard(pub)
 
 	return Extractor{
 		Extract: func(c fiber.Ctx) (string, error) {
-			// Guard on the public Chain array so ExtractWithSource / peek share
-			// the same cycle identity (private kids stay execution-only).
-			guard, ok := chainGuardFor(pub)
-			if !ok {
-				return "", ErrNotFound
-			}
-			if active, ok := c.Locals(guard).(bool); ok && active {
+			st := chainStateFor(c)
+			if !st.enter(guard) {
 				return "", ErrChainCycle
 			}
-
-			c.Locals(guard, true)
-			defer c.Locals(guard, false)
+			defer st.leave()
 
 			var lastErr error // last error encountered (including ErrNotFound)
 
-			capture := chainWinCaptureActive(c)
-			for _, extractor := range kids {
-				if extractor.Extract == nil {
+			// Only inside a Resolve frame, so a bare Extract pays
+			// for nothing but the guard.
+			capture := st.depth > 0
+			// Every iteration that does not return restores what it found, so
+			// the record is the same at the top of each: save it once. Read only
+			// under capture, so a bare Extract pays nothing for bookkeeping it
+			// never reads.
+			var prev record
+			if capture {
+				prev = st.rec
+			}
+			for i := range kids {
+				kid := &kids[i]
+				if kid.Extract == nil {
 					continue
 				}
-				// Snapshot stack only in source-aware frames so legacy
-				// Chain.Extract hot paths skip Locals bookkeeping.
-				stackBefore := 0
-				if capture {
-					stackBefore = chainWinStackLen(c)
-				}
-				v, err := extractor.Extract(c)
+				v, err := kid.Extract(c)
 				if err == nil && v != "" {
 					if capture {
-						// Prefer a Source pushed by a nested Chain.Extract;
-						// otherwise the child's declared Source (leaves).
-						src := extractor.Source
-						if nested, ok := popChainWinningSource(c); ok {
-							src = nested
+						// A record only carries over when kid's own chain made
+						// it. Anything else in the frame belongs to a chain kid
+						// merely ran, and crediting that would report an origin
+						// the value never came from.
+						switch {
+						case len(kid.Chain) == 0 && st.rec == prev:
+							// A leaf that recorded nothing is the origin.
+							st.rec = record{win: kid, guard: guard}
+						case len(kid.Chain) > 0 && st.rec.guard == chainGuard(kid.Chain):
+							// kid's own chain named its innermost child; keep
+							// it, retagged so only our caller accepts it.
+							st.rec.guard = guard
+						default:
+							// A foreign chain's record, or a chain that answered
+							// without one: no origin we can vouch for.
+							st.rec = record{guard: guard}
 						}
-						// Drop any extra leftover pushes from this child.
-						truncateChainWinStack(c, stackBefore)
-						pushChainWinningSource(c, src)
 					}
 					return v, nil
 				}
 				if capture {
-					// Child pushed then failed/rejected — discard its capture.
-					truncateChainWinStack(c, stackBefore)
+					// A child that did not answer records nothing, and must not
+					// erase a sibling chain's record.
+					st.rec = prev
 				}
 				if err != nil {
 					lastErr = err
@@ -822,32 +916,38 @@ func Chain(extractors ...Extractor) Extractor {
 	}
 }
 
-// isValidToken68 checks if a string is a valid token68 per RFC 7235/9110.
-// NOTE: a swar.MatchRangeMask-based rewrite of this scan benchmarked 16%
-// slower than this scalar loop (the six-mask character class costs more per
-// word than the compiler's optimized switch costs per byte), so it stays.
+// token68Chars marks the bytes token68 allows before padding: ALPHA, DIGIT and
+// "-._~+/" (RFC 7235 Section 2.1). "=" is only valid as trailing padding, which
+// the scan handles separately.
+var token68Chars = [256]bool{
+	'-': true, '.': true, '_': true, '~': true, '+': true, '/': true,
+	'0': true, '1': true, '2': true, '3': true, '4': true, '5': true, '6': true, '7': true, '8': true, '9': true,
+	'A': true, 'B': true, 'C': true, 'D': true, 'E': true, 'F': true, 'G': true, 'H': true, 'I': true, 'J': true,
+	'K': true, 'L': true, 'M': true, 'N': true, 'O': true, 'P': true, 'Q': true, 'R': true, 'S': true, 'T': true,
+	'U': true, 'V': true, 'W': true, 'X': true, 'Y': true, 'Z': true,
+	'a': true, 'b': true, 'c': true, 'd': true, 'e': true, 'f': true, 'g': true, 'h': true, 'i': true, 'j': true,
+	'k': true, 'l': true, 'm': true, 'n': true, 'o': true, 'p': true, 'q': true, 'r': true, 's': true, 't': true,
+	'u': true, 'v': true, 'w': true, 'x': true, 'y': true, 'z': true,
+}
+
+// isValidToken68 checks if a string is a valid token68 per RFC 7235/9110: one
+// or more token68 characters, then optional "=" padding, and nothing after it.
+//
+// NOTE: a swar.MatchRangeMask rewrite benchmarked 16% slower than a scalar
+// loop. The table is the other direction and does pay, halving the scan on a
+// JWT-sized credential against the range-compare switch it replaced.
 func isValidToken68(token string) bool {
-	if token == "" {
-		return false
+	if token == "" || token[0] == '=' {
+		return false // Empty, or starting with padding
 	}
-	paddingStarted := false
-	for i := 0; i < len(token); i++ {
-		c := token[i]
-		switch {
-		case (c >= 'A' && c <= 'Z') ||
-			(c >= 'a' && c <= 'z') ||
-			(c >= '0' && c <= '9') ||
-			c == '-' || c == '.' || c == '_' || c == '~' || c == '+' || c == '/':
-			if paddingStarted {
-				return false // No characters allowed after padding starts
-			}
-		case c == '=':
-			if i == 0 {
-				return false // Cannot start with padding
-			}
-			paddingStarted = true
-		default:
-			return false // Invalid character
+	i := 0
+	for i < len(token) && token68Chars[token[i]] {
+		i++
+	}
+	// Whatever stopped the scan must be padding, and so must the rest.
+	for ; i < len(token); i++ {
+		if token[i] != '=' {
+			return false
 		}
 	}
 	return true

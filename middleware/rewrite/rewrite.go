@@ -4,10 +4,11 @@ import (
 	"cmp"
 	"regexp"
 	"slices"
-	"strconv"
 	"strings"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/appconfig"
+	"github.com/gofiber/fiber/v3/internal/rulematch"
 )
 
 type compiledRule struct {
@@ -40,7 +41,7 @@ func New(config ...Config) fiber.Handler {
 		}
 		// Rewrite
 		for _, rule := range compiled {
-			replacer := captureTokens(rule.pattern, c.Path())
+			replacer := rulematch.CaptureTokens(rule.pattern, c.Path(), appconfig.Of(c.App()).UnescapePath)
 			if replacer != nil {
 				c.Path(replacer.Replace(rule.to))
 				break
@@ -112,20 +113,4 @@ func pinnedPrefixLen(rule string) int {
 // separates two rules whose wildcards start together: "/cdn/*" and "/cdn/*x".
 func pinnedLen(rule string) int {
 	return len(rule) - strings.Count(rule, "*")
-}
-
-// https://github.com/labstack/echo/blob/master/middleware/rewrite.go
-func captureTokens(pattern *regexp.Regexp, input string) *strings.Replacer {
-	groups := pattern.FindStringSubmatch(input)
-	if groups == nil {
-		return nil
-	}
-	values := groups[1:]
-	replace := make([]string, 2*len(values))
-	for i, v := range values {
-		j := 2 * i
-		replace[j] = "$" + strconv.Itoa(i+1)
-		replace[j+1] = v
-	}
-	return strings.NewReplacer(replace...)
 }

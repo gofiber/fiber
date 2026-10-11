@@ -16,8 +16,10 @@ import (
 // c.Context(). Handlers can detect the timeout by listening on c.Context().Done()
 // and return early.
 //
-// When a timeout occurs, the middleware returns immediately with fiber.ErrRequestTimeout
-// (or the result of OnTimeout if configured). The handler goroutine can continue
+// When a timeout occurs, the middleware returns immediately with fiber.ErrServiceUnavailable
+// (or the result of OnTimeout if configured). The status is 503, not 408: a slow handler
+// is a server-side delay, and 408 (RFC 9110 §15.5.9) invites the client to resend a
+// request whose handler may still be running. The handler goroutine can continue
 // safely, and resources are recycled when it finishes via the Abandon/ForceRelease
 // mechanism.
 func New(h fiber.Handler, config ...Config) fiber.Handler {
@@ -114,8 +116,8 @@ func handleTimeout(
 		// application data there, so reusing it could disclose partial output.
 		// TimeoutErrorWithCode constructs a fresh fasthttp.Response internally, so
 		// the active RequestCtx response is never read.
-		ctx.RequestCtx().TimeoutErrorWithCode(fiber.ErrRequestTimeout.Message, fiber.StatusRequestTimeout)
-		timeoutErr = fiber.ErrRequestTimeout
+		ctx.RequestCtx().TimeoutErrorWithCode(fiber.ErrServiceUnavailable.Message, fiber.StatusServiceUnavailable)
+		timeoutErr = fiber.ErrServiceUnavailable
 	} else {
 		// Prepare the timeout response before marking the RequestCtx as timed out so
 		// custom OnTimeout handlers can shape the response body.
@@ -129,7 +131,7 @@ func handleTimeout(
 		if resp.StatusCode() == fiber.StatusOK && timeoutResponseUnwritten(resp) {
 			resp.ResetBody()
 			// An error OnTimeout returned is the response the client will see.
-			status, message := fiber.StatusRequestTimeout, fiber.ErrRequestTimeout.Message
+			status, message := fiber.StatusServiceUnavailable, fiber.ErrServiceUnavailable.Message
 			var fiberErr *fiber.Error
 			if errors.As(timeoutErr, &fiberErr) && fiberErr != nil {
 				status, message = fiberErr.Code, fiberErr.Message
@@ -188,7 +190,7 @@ func invokeOnTimeout(ctx fiber.Ctx, cfg Config) error {
 	if cfg.OnTimeout != nil {
 		return cfg.OnTimeout(ctx)
 	}
-	return fiber.ErrRequestTimeout
+	return fiber.ErrServiceUnavailable
 }
 
 // isTimeoutError checks if err is a timeout-like error (context.DeadlineExceeded

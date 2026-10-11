@@ -5,10 +5,12 @@ import (
 	"encoding/gob"
 	"errors"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/extractors"
+	"github.com/gofiber/fiber/v3/internal/ctxlocal"
 	"github.com/gofiber/fiber/v3/internal/storage/memory"
 	"github.com/gofiber/fiber/v3/log"
 )
@@ -29,6 +31,41 @@ const (
 	// sessionExtractorContextKey stores the extractor that provided the session ID.
 	sessionExtractorContextKey
 )
+
+// provenanceBox carries the resolved provenance through request locals behind a
+// pointer: storing the Result by value would box it onto the heap on every
+// request carrying a session ID. fasthttp hands it back through Close on
+// request reset, as it does the extractors package's chain state.
+type provenanceBox struct {
+	res extractors.Result
+}
+
+// A pointer so a test can swap in a pool of its own; nothing else reassigns it.
+var provenancePool = &sync.Pool{New: func() any { return new(provenanceBox) }}
+
+// storeProvenance records res in the request, reusing the box already there.
+// Overwriting the local with a fresh box would strand the old one outside the
+// pool: fasthttp only reclaims the box the local currently holds.
+func storeProvenance(c fiber.Ctx, res extractors.Result) {
+	if b, ok := c.Locals(sessionExtractorContextKey).(*provenanceBox); ok && b != nil {
+		b.res = res
+		return
+	}
+	b, ok := provenancePool.Get().(*provenanceBox)
+	if !ok || b == nil {
+		b = new(provenanceBox)
+	}
+	b.res = res
+	ctxlocal.Set(c, sessionExtractorContextKey, b)
+}
+
+// Close returns the box to the pool. fasthttp calls it on every request-local
+// io.Closer when it resets the request; callers should not.
+func (b *provenanceBox) Close() error {
+	b.res = extractors.Result{}
+	provenancePool.Put(b)
+	return nil
+}
 
 // Store manages session data using the configured storage backend.
 type Store struct {
@@ -126,14 +163,22 @@ func (s *Store) getSession(c fiber.Ctx) (*Session, error) {
 	var rawData []byte
 	var err error
 
+	var selectedExtractor extractors.Result
 	id, ok := c.Locals(sessionIDContextKey).(string)
 	if !ok {
-		id = s.getSessionID(c)
-	}
-
-	selectedExtractor, hasExtractor := c.Locals(sessionExtractorContextKey).(extractors.Extractor)
-	if !hasExtractor {
-		selectedExtractor = extractors.Extractor{}
+		var resolveErr error
+		selectedExtractor, resolveErr = s.getSessionID(c)
+		if resolveErr != nil {
+			return nil, resolveErr
+		}
+		id = selectedExtractor.Value
+		if id != "" {
+			// Kept for a second getSession on the same request, which takes the
+			// cached-ID path above and would otherwise lose the provenance.
+			storeProvenance(c, selectedExtractor)
+		}
+	} else if stored, found := c.Locals(sessionExtractorContextKey).(*provenanceBox); found && stored != nil {
+		selectedExtractor = stored.res
 	}
 
 	isFresh := false // Session is not fresh initially; only set to true if we generate a new ID
@@ -154,7 +199,7 @@ func (s *Store) getSession(c fiber.Ctx) (*Session, error) {
 	if id == "" {
 		isFresh = true // The session is fresh if a new ID is generated
 		id = s.KeyGenerator()
-		c.Locals(sessionIDContextKey, id)
+		ctxlocal.Set(c, sessionIDContextKey, id)
 	}
 
 	// Create session object
@@ -194,40 +239,43 @@ func (s *Store) getSession(c fiber.Ctx) (*Session, error) {
 	return sess, nil
 }
 
-// getSessionID returns the session ID using the configured extractor.
-// The extractor is provided by the shared extractors package.
+// getSessionID returns the session ID using the configured extractor, together
+// with the provenance of the extractor that supplied it.
 //
 // Parameters:
 //   - c: The Fiber context.
 //
 // Returns:
-//   - string: The session ID.
+//   - extractors.Result: the ID in Value with the provenance that supplied it,
+//     zero when nothing was extracted.
+//   - error: why extraction failed, nil when nothing was supplied at all.
 //
 // Usage:
 //
-//	id := store.getSessionID(c)
-func (s *Store) getSessionID(c fiber.Ctx) string {
-	extractor := s.Extractor
-	if len(extractor.Chain) > 0 {
-		for _, chainExtractor := range extractor.Chain {
-			sessionID, err := chainExtractor.Extract(c)
-			if err == nil && sessionID != "" {
-				c.Locals(sessionExtractorContextKey, chainExtractor)
-				return sessionID
-			}
-		}
-		return ""
+//	from, err := store.getSessionID(c)
+func (s *Store) getSessionID(c fiber.Ctx) (extractors.Result, error) {
+	// Resolved through the extractors package rather than walked here: walking
+	// Extractor.Chain directly would skip a chain-level Extract, and Resolve
+	// also reports which extractor won, which setSession needs to write the ID
+	// back to the sink it came from.
+	//
+	// That Extract must be value-preserving — validate or refuse, do not
+	// rewrite. The ID is written back untransformed, so a decorator that
+	// rewrote it on read would never match its own stored session.
+	res, err := extractors.Resolve(s.Extractor, c)
+	switch {
+	case err == nil:
+		return res, nil
+	case errors.Is(err, extractors.ErrNotFound):
+		// The ordinary first-visit case, not a failure: an empty ID generates a
+		// fresh session.
+		return extractors.Result{}, nil
+	default:
+		// A validator refusing a forged ID, a cycle, or a custom extractor's own
+		// error. Reported rather than collapsed into "no ID present", which
+		// would be indistinguishable from a first-time visitor.
+		return extractors.Result{}, err
 	}
-
-	sessionID, err := extractor.Extract(c)
-	if err != nil {
-		// If extraction fails, return empty string to generate a new session
-		return ""
-	}
-	if sessionID != "" {
-		c.Locals(sessionExtractorContextKey, extractor)
-	}
-	return sessionID
 }
 
 // Reset deletes all sessions from the storage.

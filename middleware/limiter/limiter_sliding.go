@@ -3,7 +3,6 @@ package limiter
 import (
 	"fmt"
 	"math"
-	"sync"
 	"time"
 
 	"github.com/gofiber/fiber/v3"
@@ -21,7 +20,7 @@ func (SlidingWindow) New(cfg *Config) fiber.Handler {
 	}
 
 	// Limiter variables
-	mux := &sync.RWMutex{}
+	locks := new(keyedMutex)
 
 	// Create manager to simplify storage operations ( see manager.go )
 	manager := newManager(cfg.Storage, !cfg.DisableValueRedaction)
@@ -46,14 +45,14 @@ func (SlidingWindow) New(cfg *Config) fiber.Handler {
 		key := cfg.KeyGenerator(c)
 
 		// Lock entry
-		mux.Lock()
+		mu := locks.lock(key)
 
 		reqCtx := c.Context()
 
 		// Get entry from pool and release when finished
 		e, err := manager.get(reqCtx, key)
 		if err != nil {
-			mux.Unlock()
+			mu.Unlock()
 			return err
 		}
 
@@ -89,12 +88,12 @@ func (SlidingWindow) New(cfg *Config) fiber.Handler {
 		// Otherwise, after the end of "sample window", attackers could launch
 		// a new request with the full window length.
 		if setErr := manager.set(reqCtx, key, e, ttlDuration(resetInSec, expiration)); setErr != nil {
-			mux.Unlock()
+			mu.Unlock()
 			return fmt.Errorf("limiter: failed to persist state: %w", setErr)
 		}
 
 		// Unlock entry
-		mux.Unlock()
+		mu.Unlock()
 
 		// Check if hits exceed the allowed maximum for this request
 		if remaining < 0 {
@@ -120,10 +119,10 @@ func (SlidingWindow) New(cfg *Config) fiber.Handler {
 
 		if skipHit || !cfg.DisableHeaders {
 			// Lock entry
-			mux.Lock()
+			mu = locks.lock(key) // rehash: c.Next() may have rewritten an unsafe key
 			entry, getErr := manager.get(reqCtx, key)
 			if getErr != nil {
-				mux.Unlock()
+				mu.Unlock()
 				return getErr
 			}
 			e = entry
@@ -141,11 +140,11 @@ func (SlidingWindow) New(cfg *Config) fiber.Handler {
 			rate = int(math.Ceil(float64(e.prevHits)*weight)) + e.currHits
 			remaining = maxRequests - rate
 			if setErr := manager.set(reqCtx, key, e, ttlDuration(resetInSec, expiration)); setErr != nil {
-				mux.Unlock()
+				mu.Unlock()
 				return fmt.Errorf("limiter: failed to persist state: %w", setErr)
 			}
 			// Unlock entry
-			mux.Unlock()
+			mu.Unlock()
 
 			// rate can exceed maxRequests (blocked requests persist their
 			// increment), so clamp remaining to keep the header >= 0.

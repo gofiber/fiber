@@ -6,7 +6,7 @@ id: timeout
 
 The timeout middleware enforces a deadline on handler execution. It wraps handlers with
 `context.WithTimeout`, exposes the derived context through `c.Context()`, and
-returns `408 Request Timeout` when the deadline is exceeded.
+returns `503 Service Unavailable` when the deadline is exceeded.
 
 ## How It Works
 
@@ -14,7 +14,7 @@ When a timeout occurs, the middleware **returns immediately** without waiting fo
 handler to finish. This is achieved through Fiber's **Abandon mechanism**:
 
 1. The handler runs in a goroutine with a timeout context
-2. On timeout, the middleware marks the context as "abandoned" and returns `408` immediately
+2. On timeout, the middleware marks the context as "abandoned" and returns `503` immediately
 3. The handler goroutine can continue safely (e.g., for cleanup) without blocking the response
 4. A background cleanup goroutine waits for the handler to finish and performs context cleanup
 
@@ -23,9 +23,22 @@ This is the recommended pattern for cooperative cancellation.
 
 If a handler panics, the middleware catches it and returns `500 Internal Server Error`.
 
+## Why 503
+
+A handler that outlives its deadline is slow on the server's side: the request arrived complete. `408 Request Timeout` means the server did not receive a complete request in time ([RFC 9110 §15.5.9](https://www.rfc-editor.org/rfc/rfc9110#section-15.5.9)), and it tells the client that it may send the request again, while the timed-out handler can still be running and may finish its work. The default is therefore `503 Service Unavailable` ([§15.6.4](https://www.rfc-editor.org/rfc/rfc9110#section-15.6.4)). Use `504 Gateway Timeout` ([§15.6.5](https://www.rfc-editor.org/rfc/rfc9110#section-15.6.5)) when the handler stands in front of an upstream that did not answer in time, and return it from `OnTimeout`:
+
+```go
+timeout.Config{
+    Timeout: 5 * time.Second,
+    OnTimeout: func(c fiber.Ctx) error {
+        return fiber.ErrGatewayTimeout
+    },
+}
+```
+
 ## Known limitations
 
-- The timed-out handler keeps running in its own goroutine while the middleware returns `fiber.ErrRequestTimeout` (or runs `OnTimeout`). A handler must stop using the context once `c.Context()` is done: one that keeps writing the response races with `OnTimeout`.
+- The timed-out handler keeps running in its own goroutine while the middleware returns `fiber.ErrServiceUnavailable` (or runs `OnTimeout`). A handler must stop using the context once `c.Context()` is done: one that keeps writing the response races with `OnTimeout`.
 
 - The error is returned to the outer middleware, but the app's `ErrorHandler` is not run for a timed-out request: fasthttp already holds the response it will send, so the handler could not change it, and the timed-out handler may still be writing to the context.
 
@@ -102,7 +115,7 @@ Use these requests to see the middleware in action:
 
 ```bash
 curl -i http://localhost:3000/sleep/1000   # finishes within the timeout
-curl -i http://localhost:3000/sleep/3000   # returns 408 Request Timeout
+curl -i http://localhost:3000/sleep/3000   # returns 503 Service Unavailable
 ```
 
 ## Config
@@ -111,7 +124,7 @@ curl -i http://localhost:3000/sleep/3000   # returns 408 Request Timeout
 |:------------|:-------------------|:---------------------------------------------------------------------|:-------|
 | Next        | `func(fiber.Ctx) bool` | Function to skip this middleware when it returns `true`.            | `nil`  |
 | Timeout     | `time.Duration`    | Timeout duration for requests. `0` or a negative value disables the timeout. | `0`    |
-| OnTimeout   | `fiber.Handler`    | Handler executed when a timeout occurs. It may write the response itself or return a `*fiber.Error`, whose status and message then form the response; otherwise the default 408 is sent. Defaults to returning `fiber.ErrRequestTimeout`. | `nil`  |
+| OnTimeout   | `fiber.Handler`    | Handler executed when a timeout occurs. It may write the response itself or return a `*fiber.Error`, whose status and message then form the response; otherwise the default 503 is sent. Defaults to returning `fiber.ErrServiceUnavailable`. | `nil`  |
 | Errors      | `[]error`          | Custom errors treated as timeout errors.                            | `nil`  |
 
 ### Use with a custom error

@@ -2,13 +2,12 @@ package hostauthorization
 
 import (
 	"fmt"
-	"net"
 	"strings"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/idnafold"
 	"github.com/gofiber/utils/v2"
 	utilsstrings "github.com/gofiber/utils/v2/strings"
-	"golang.org/x/net/idna"
 )
 
 // RFC 1035 length limits.
@@ -84,14 +83,14 @@ func validateHostLength(host string) {
 // normalizeHost strips port, trailing dot, and IPv6 brackets, lowercases,
 // and converts IDN labels to Punycode (matching what browsers send).
 func normalizeHost(host string) string {
-	// Fast path for plain hostnames — avoids net.SplitHostPort's error allocation.
+	// Fast path for plain hostnames — skips the split and the bracket trims.
 	if host != "" && host[0] != '[' && strings.IndexByte(host, ':') < 0 {
 		host = trimOneTrailingDot(host)
 		host = utilsstrings.ToLower(host)
-		return toPunycode(host)
+		return idnafold.ToASCII(host)
 	}
 
-	if h, _, err := net.SplitHostPort(host); err == nil {
+	if h, _, ok := utils.SplitHostPort(host); ok {
 		host = h
 	} else {
 		host = utils.TrimLeft(host, '[')
@@ -100,7 +99,7 @@ func normalizeHost(host string) string {
 
 	host = trimOneTrailingDot(host)
 	host = utilsstrings.ToLower(host)
-	return toPunycode(host)
+	return idnafold.ToASCII(host)
 }
 
 func trimOneTrailingDot(host string) string {
@@ -108,18 +107,6 @@ func trimOneTrailingDot(host string) string {
 		return host[:len(host)-1]
 	}
 
-	return host
-}
-
-func toPunycode(host string) string {
-	if host == "" || strings.IndexByte(host, ':') >= 0 || utils.IsASCII(host) {
-		return host
-	}
-	if ascii, err := idna.Lookup.ToASCII(host); err == nil {
-		return ascii
-	}
-	// Non-convertible input falls through; it won't match any Punycode entry,
-	// which is the correct security default.
 	return host
 }
 

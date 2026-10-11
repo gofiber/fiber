@@ -22,6 +22,7 @@ type keygenCase struct {
 	headers  map[string]string
 	name     string
 	uri      string
+	host     string
 	method   string
 	body     string
 	cookie   string
@@ -32,23 +33,29 @@ type keygenCase struct {
 
 func keygenCorpus() []keygenCase {
 	return []keygenCase{
-		{name: "noquery", uri: "/demo", want: "/|q=|h=accept:0|accept-encoding:0|accept-language:0"},
-		{name: "single", uri: "/demo?foo=bar", want: "/|q=foo=bar|h=accept:0|accept-encoding:0|accept-language:0"},
-		{name: "multi_dup", uri: "/demo?b=2&a=1&a=3", want: "/|q=a=1&a=3&b=2|h=accept:0|accept-encoding:0|accept-language:0"},
-		{name: "path_delims", uri: "/a|b:c\\d?x=1", want: "/|q=x=1|h=accept:0|accept-encoding:0|accept-language:0"},
-		{name: "query_escape", uri: "/p?k=a b&z=%2F&k=z", want: "/|q=k=a+b&k=z&z=%2F|h=accept:0|accept-encoding:0|accept-language:0"},
-		{name: "with_headers", uri: "/p?foo=bar", headers: map[string]string{"Accept": "text/html", "Accept-Encoding": "gzip"}, want: "/|q=foo=bar|h=accept:1|text/html|accept-encoding:1|gzip|accept-language:0"},
-		{name: "with_cookie", uri: "/p?foo=bar", cookie: "sid=abc123", keyCooks: []string{"sid"}, want: "/|q=foo=bar|h=accept:0|accept-encoding:0|accept-language:0|c=sid:abc123"},
-		{name: "long_query", uri: "/p?q=" + strings.Repeat("x", 300), want: "/|q=sha256:4d86f7dbfc8b3bfe229da7e27f4ac8f6cf8114e24e5cb6b5af1d09cb4cc3d982|h=accept:0|accept-encoding:0|accept-language:0"},
-		{name: "long_path", uri: "/" + strings.Repeat("p", 300) + "?a=1", want: "/|q=a=1|h=accept:0|accept-encoding:0|accept-language:0"},
-		{name: "disable_query", uri: "/p?foo=bar", noQuery: true, want: "/|h=accept:0|accept-encoding:0|accept-language:0"},
-		{name: "header_val_delims", uri: "/p", headers: map[string]string{"Accept": "a|b:c"}, want: "/|q=|h=accept:1|a\\pb\\cc|accept-encoding:0|accept-language:0"},
-		{name: "empty_query", uri: "/p?", want: "/|q=|h=accept:0|accept-encoding:0|accept-language:0"},
-		{name: "many_params", uri: "/p?" + strings.Repeat("k=v&", 200) + "z=1", want: "/|q=sha256:f8f7166c8aec35092b4c6f66a895ec9f302746c6310aa0dbfde45cbd30aa1829|h=accept:0|accept-encoding:0|accept-language:0"},
-		{name: "query_empty_body", uri: "/q", method: fiber.MethodQuery, want: "/|q=|h=accept:0|accept-encoding:0|accept-language:0|b="},
-		{name: "query_body", uri: "/q", method: fiber.MethodQuery, body: "foo=bar", want: "/|q=|h=accept:0|accept-encoding:0|accept-language:0|b=foo=bar"},
-		{name: "query_body_delims", uri: "/q", method: fiber.MethodQuery, body: "a|b:c", want: "/|q=|h=accept:0|accept-encoding:0|accept-language:0|b=a\\pb\\cc"},
-		{name: "query_with_querystring", uri: "/q?x=1", method: fiber.MethodQuery, body: "foo=bar", want: "/|q=x=1|h=accept:0|accept-encoding:0|accept-language:0|b=foo=bar"},
+		{name: "noquery", uri: "/demo", want: "scheme=http|host=example.com|/|q=|h=accept:0|accept-encoding:0|accept-language:0"},
+		{name: "single", uri: "/demo?foo=bar", want: "scheme=http|host=example.com|/|q=foo=bar|h=accept:0|accept-encoding:0|accept-language:0"},
+		{name: "multi_dup", uri: "/demo?b=2&a=1&a=3", want: "scheme=http|host=example.com|/|q=a=1&a=3&b=2|h=accept:0|accept-encoding:0|accept-language:0"},
+		{name: "path_delims", uri: "/a|b:c\\d?x=1", want: "scheme=http|host=example.com|/|q=x=1|h=accept:0|accept-encoding:0|accept-language:0"},
+		{name: "query_escape", uri: "/p?k=a b&z=%2F&k=z", want: "scheme=http|host=example.com|/|q=k=a+b&k=z&z=%2F|h=accept:0|accept-encoding:0|accept-language:0"},
+		{name: "with_headers", uri: "/p?foo=bar", headers: map[string]string{"Accept": "text/html", "Accept-Encoding": "gzip"}, want: "scheme=http|host=example.com|/|q=foo=bar|h=accept:1|text/html|accept-encoding:1|gzip|accept-language:0"},
+		{name: "with_cookie", uri: "/p?foo=bar", cookie: "sid=abc123", keyCooks: []string{"sid"}, want: "scheme=http|host=example.com|/|q=foo=bar|h=accept:0|accept-encoding:0|accept-language:0|c=sid:abc123"},
+		{name: "long_query", uri: "/p?q=" + strings.Repeat("x", 300), want: "scheme=http|host=example.com|/|q=sha256:4d86f7dbfc8b3bfe229da7e27f4ac8f6cf8114e24e5cb6b5af1d09cb4cc3d982|h=accept:0|accept-encoding:0|accept-language:0"},
+		{name: "long_path", uri: "/" + strings.Repeat("p", 300) + "?a=1", want: "scheme=http|host=example.com|/|q=a=1|h=accept:0|accept-encoding:0|accept-language:0"},
+		{name: "disable_query", uri: "/p?foo=bar", noQuery: true, want: "scheme=http|host=example.com|/|h=accept:0|accept-encoding:0|accept-language:0"},
+		{name: "header_val_delims", uri: "/p", headers: map[string]string{"Accept": "a|b:c"}, want: "scheme=http|host=example.com|/|q=|h=accept:1|a\\pb\\cc|accept-encoding:0|accept-language:0"},
+		{name: "empty_query", uri: "/p?", want: "scheme=http|host=example.com|/|q=|h=accept:0|accept-encoding:0|accept-language:0"},
+		{name: "many_params", uri: "/p?" + strings.Repeat("k=v&", 200) + "z=1", want: "scheme=http|host=example.com|/|q=sha256:f8f7166c8aec35092b4c6f66a895ec9f302746c6310aa0dbfde45cbd30aa1829|h=accept:0|accept-encoding:0|accept-language:0"},
+		{name: "query_empty_body", uri: "/q", method: fiber.MethodQuery, want: "scheme=http|host=example.com|/|q=|h=accept:0|accept-encoding:0|accept-language:0|b="},
+		{name: "query_body", uri: "/q", method: fiber.MethodQuery, body: "foo=bar", want: "scheme=http|host=example.com|/|q=|h=accept:0|accept-encoding:0|accept-language:0|b=foo=bar"},
+		{name: "query_body_delims", uri: "/q", method: fiber.MethodQuery, body: "a|b:c", want: "scheme=http|host=example.com|/|q=|h=accept:0|accept-encoding:0|accept-language:0|b=a\\pb\\cc"},
+		{name: "query_with_querystring", uri: "/q?x=1", method: fiber.MethodQuery, body: "foo=bar", want: "scheme=http|host=example.com|/|q=x=1|h=accept:0|accept-encoding:0|accept-language:0|b=foo=bar"},
+		// The authority: the port is part of it, its delimiters are escaped like
+		// every other segment's, and past the bound it is hashed rather than
+		// allowed to grow the key.
+		{name: "host_port", uri: "/p", host: "example.com:8443", want: "scheme=http|host=example.com\\c8443|/|q=|h=accept:0|accept-encoding:0|accept-language:0"},
+		{name: "host_delims", uri: "/p", host: "a|b:c\\d", want: "scheme=http|host=a\\pb\\cc\\\\d|/|q=|h=accept:0|accept-encoding:0|accept-language:0"},
+		{name: "long_host", uri: "/p", host: strings.Repeat("h", 300), want: "scheme=http|host=" + boundKeySegment(strings.Repeat("h", 300)) + "|/|q=|h=accept:0|accept-encoding:0|accept-language:0"},
 	}
 }
 
@@ -64,6 +71,13 @@ func buildKeygenCtx(tc *keygenCase) (fiber.Ctx, *Config) {
 	fctx.Request.Header.SetMethod(method)
 	c := app.AcquireCtx(fctx)
 	c.Request().SetRequestURI(tc.uri)
+	// The authority is read live as well; a request without one is not what
+	// the key is built for, so the fixtures carry the host httptest would set.
+	host := tc.host
+	if host == "" {
+		host = "example.com"
+	}
+	c.Request().SetHost(host)
 	if tc.body != "" {
 		c.Request().SetBody([]byte(tc.body))
 	}
@@ -185,17 +199,17 @@ func Test_Cache_KeyFormatIsStable(t *testing.T) {
 	}{
 		{
 			name: "anonymous",
-			want: []string{"v2|GET|/demo|vary", "v2|GET|/demo"},
+			want: []string{"v4|GET|/demo|vary", "v4|GET|/demo"},
 		},
 		{
 			name: "authenticated",
 			auth: "Bearer token",
-			want: []string{"v2|GET|/demo|auth=" + authHash + "|vary", "v2|GET|/demo|auth=" + authHash},
+			want: []string{"v4|GET|/demo|auth=" + authHash + "|vary", "v4|GET|/demo|auth=" + authHash},
 		},
 		{
 			name:        "vary disabled",
 			disableVary: true,
-			want:        []string{"v2|GET|/demo"},
+			want:        []string{"v4|GET|/demo"},
 		},
 	}
 

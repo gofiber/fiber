@@ -120,13 +120,16 @@ func FuzzJoinUpstreamPath(f *testing.F) {
 
 // FuzzConnectionListedHeaders ensures the RFC 7230 Connection-header
 // parser tolerates pathological inputs (excess whitespace, embedded
-// commas, control bytes) without panicking.
+// commas, control bytes) without panicking, on the request's walk and the
+// response's alike, and that no listing takes X-Real-IP with it.
 func FuzzConnectionListedHeaders(f *testing.F) {
 	seeds := []string{
 		"keep-alive",
 		"close",
 		"upgrade, keep-alive",
 		"  X-Foo  ,  X-Bar  ",
+		"X-Real-IP",
+		"x-real-ip, X-Foo",
 		",,,,",
 		"x-custom\x00",
 		strings.Repeat("X-A,", 200),
@@ -136,15 +139,22 @@ func FuzzConnectionListedHeaders(f *testing.F) {
 		f.Add(s)
 	}
 	f.Fuzz(func(t *testing.T, v string) {
-		// Exercise the parser against a real header so deletions during
+		// Exercise the parser against real headers so deletions during
 		// iteration are covered too, mirroring production use.
 		var req fasthttp.Request
 		req.Header.Set(fiber.HeaderConnection, v)
 		req.Header.Set("X-Foo", "1")
 		req.Header.Set("X-Bar", "2")
-		delConnectionListedHeaders(&req.Header, req.Header.PeekAll(fiber.HeaderConnection), true)
-		if t.Failed() {
-			t.Logf("input: %q", v)
+		req.Header.Set(realIPHeader, "203.0.113.9")
+		stripHopByHopRequestHeaders(&req, true)
+		if got := string(req.Header.Peek(realIPHeader)); got != "203.0.113.9" {
+			t.Fatalf("Connection %q took X-Real-IP with it: got %q", v, got)
 		}
+
+		var res fasthttp.Response
+		res.Header.Set(fiber.HeaderConnection, v)
+		res.Header.Set("X-Foo", "1")
+		res.Header.Set("X-Bar", "2")
+		delConnectionListedHeaders(&res.Header, res.Header.PeekAll(fiber.HeaderConnection), true)
 	})
 }

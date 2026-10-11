@@ -53,7 +53,8 @@ type Config struct {
 	// Optional. Default: false
 	Compress bool `json:"compress"`
 
-	// When set to true, enables byte range requests.
+	// When set to true, enables byte range requests. A request for several
+	// ranges, or whose If-Range does not match, gets the whole file.
 	//
 	// Optional. Default: false
 	ByteRange bool `json:"byte_range"`
