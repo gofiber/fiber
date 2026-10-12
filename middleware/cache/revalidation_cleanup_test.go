@@ -157,6 +157,94 @@ func Test_Cache_UncacheableVaryCleanup(t *testing.T) {
 	}
 }
 
+// A reload that lands on an error page must not purge the entry or the
+// manifest its sibling variants hang on; a cacheable status still does.
+func Test_Cache_UncacheableStatusKeepsEntryAndManifest(t *testing.T) {
+	t.Parallel()
+
+	answers := []struct {
+		name      string
+		directive string
+		status    int
+		purged    bool
+	}{
+		{name: "503", status: fiber.StatusServiceUnavailable},
+		{name: "503 no-store", status: fiber.StatusServiceUnavailable, directive: "no-store"},
+		{name: "503 private", status: fiber.StatusServiceUnavailable, directive: "private"},
+		{name: "503 no-cache", status: fiber.StatusServiceUnavailable, directive: "no-cache"},
+		{name: "503 VaryStar", status: fiber.StatusServiceUnavailable, directive: "VaryStar"},
+		{name: "401 private", status: fiber.StatusUnauthorized, directive: "private"},
+		{name: "404 no-store", status: fiber.StatusNotFound, directive: "no-store", purged: true},
+	}
+
+	for _, external := range []bool{false, true} {
+		for _, reload := range []string{"max-age=0", "no-cache"} {
+			for _, answer := range answers {
+				name := "memory/" + reload + "/" + answer.name
+				if external {
+					name = "external/" + reload + "/" + answer.name
+				}
+				t.Run(name, func(t *testing.T) {
+					t.Parallel()
+
+					cfg := Config{}
+					if external {
+						cfg.Storage = newFailingCacheStorage()
+					}
+					app := fiber.New()
+					app.Use(New(cfg))
+					app.Get("/cached", func(c fiber.Ctx) error {
+						if c.Get(fiber.HeaderCacheControl) == "" {
+							c.Set(fiber.HeaderVary, "X-Variant")
+							c.Set(fiber.HeaderCacheControl, "public, max-age=60")
+							return c.SendString("fresh")
+						}
+						switch answer.directive {
+						case "":
+						case "VaryStar":
+							c.Set(fiber.HeaderVary, "*")
+						default:
+							c.Set(fiber.HeaderCacheControl, answer.directive)
+						}
+						return c.SendStatus(answer.status)
+					})
+
+					request := func(variant, cacheControl string) (int, string) {
+						t.Helper()
+						req := httptest.NewRequest(fiber.MethodGet, "/cached", http.NoBody)
+						req.Header.Set("X-Variant", variant)
+						if cacheControl != "" {
+							req.Header.Set(fiber.HeaderCacheControl, cacheControl)
+						}
+						response, err := app.Test(req)
+						require.NoError(t, err)
+						require.NoError(t, response.Body.Close())
+						return response.StatusCode, response.Header.Get("X-Cache")
+					}
+
+					for _, variant := range []string{"a", "b"} {
+						_, cacheStatus := request(variant, "")
+						require.Equal(t, cacheMiss, cacheStatus)
+					}
+					status, cacheStatus := request("a", reload)
+					require.Equal(t, answer.status, status)
+					require.Equal(t, cacheUnreachable, cacheStatus)
+
+					want := cacheHit
+					if answer.purged {
+						want = cacheMiss
+					}
+					// Sibling first: a miss on a would store the manifest again.
+					for _, variant := range []string{"b", "a"} {
+						_, cacheStatus = request(variant, "")
+						require.Equal(t, want, cacheStatus)
+					}
+				})
+			}
+		}
+	}
+}
+
 func Test_CacheStorage_PartialEvictionRetainsBodyRetry(t *testing.T) {
 	t.Parallel()
 

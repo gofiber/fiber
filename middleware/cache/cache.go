@@ -749,6 +749,13 @@ func New(config ...Config) fiber.Handler {
 			c.Set(cfg.CacheHeader, cacheUnreachable)
 		}
 
+		// A status that is never stored is no verdict on the entry or its Vary
+		// manifest: an error page carrying no-store must not purge a healthy one.
+		if _, ok := cacheableStatusCodes[c.Res().StatusCode()]; !ok {
+			markUnreachable()
+			return nil
+		}
+
 		// The response's own spelling, not the app's: a proxy hands c.Response()
 		// to an outbound fasthttp.Client, which stamps its own normalizing setting
 		// on it. Reading a lower-case "cache-control: private" as absent cached
@@ -860,12 +867,6 @@ func New(config ...Config) fiber.Handler {
 		}
 
 		sharedCacheMode := !hasAuthorization || isSharedCacheAllowed
-
-		// Don't cache response if status code is not cacheable
-		if _, ok := cacheableStatusCodes[c.Res().StatusCode()]; !ok {
-			markUnreachable()
-			return nil
-		}
 
 		// Don't cache response if Next returns true
 		if cfg.Next != nil && cfg.Next(c) {

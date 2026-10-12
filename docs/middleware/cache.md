@@ -164,7 +164,7 @@ that identifies a single client is not stored at all:
 
 When revalidation returns `private`, `no-cache`, `no-store`, or `Vary: *`, the middleware removes the previous cached entry and its Vary manifest. A concurrently replaced entry keeps its manifest. Cleanup errors are logged and the origin response is still returned; if storage fails during cleanup, the old entry can still be served until it expires, and it keeps counting toward `MaxBytes` until a later eviction retries the delete. A plain miss answered with `no-store` preserves the shared Vary manifest, so existing sibling variants remain reachable.
 
-This cleanup applies to those four directives, including when an error response carries them. The separate storage rules for `Set-Cookie` and requests carrying `Authorization` still apply.
+This cleanup applies to those four directives on a response with a [cacheable status code](#cacheable-status-codes). Any other status, such as `503`, `429`, `401`, or `403`, leaves the stored entry and its Vary manifest in place whether or not it carries one of them, so an error page does not evict a healthy entry. The separate storage rules for `Set-Cookie` and requests carrying `Authorization` still apply.
 
 A route that genuinely wants both a cookie and a shared entry can say so with
 `Cache-Control: public` or an `s-maxage` — directives only a shared cache acts
