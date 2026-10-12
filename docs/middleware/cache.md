@@ -162,9 +162,9 @@ that identifies a single client is not stored at all:
   [RFC 9111 §3.5](https://www.rfc-editor.org/rfc/rfc9111.html#section-3.5).
 - **`Cache-Control: no-store`, `private`, `no-cache`, or `Vary: *`.**
 
-When revalidation returns `private`, `no-cache`, `no-store`, or `Vary: *`, the middleware removes the previous cached entry and its Vary manifest. A concurrently replaced entry keeps its manifest. Cleanup errors are logged and the origin response is still returned; failed storage deletion retains heap accounting for a later eviction retry. A plain miss answered with `no-store` preserves the shared Vary manifest, so existing sibling variants remain reachable.
+When revalidation returns `private`, `no-cache`, `no-store`, or `Vary: *`, the middleware removes the previous cached entry and its Vary manifest. A concurrently replaced entry keeps its manifest. Cleanup errors are logged and the origin response is still returned; if storage fails during cleanup, the old entry can still be served until it expires, and it keeps counting toward `MaxBytes` until a later eviction retries the delete. A plain miss answered with `no-store` preserves the shared Vary manifest, so existing sibling variants remain reachable.
 
-This cleanup applies to those four directives. Revalidation policy for `Set-Cookie`, `Authorization`, and non-cacheable status codes is unchanged.
+This cleanup applies to those four directives, including when an error response carries them. The separate storage rules for `Set-Cookie` and requests carrying `Authorization` still apply.
 
 A route that genuinely wants both a cookie and a shared entry can say so with
 `Cache-Control: public` or an `s-maxage` — directives only a shared cache acts
