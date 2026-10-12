@@ -256,6 +256,11 @@ func Test_Ctx_Charset(t *testing.T) {
 			expected:    "",
 		},
 		{
+			name:        "quoted_value_ending_in_backslash",
+			contentType: `text/plain; charset="utf-8\"`,
+			expected:    "",
+		},
+		{
 			// A bare-token value containing a DQUOTE is invalid; the
 			// parameter is skipped so the later well-formed charset wins.
 			name:        "bare_value_with_quote_then_valid_charset",
