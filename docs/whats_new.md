@@ -1587,6 +1587,8 @@ CSRF now redacts tokens and storage keys by default and exposes a `DisableValueR
 
 The CSRF middleware now validates the [`Sec-Fetch-Site`](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Sec-Fetch-Site) header for unsafe HTTP methods. When present, requests with invalid `Sec-Fetch-Site` values (not one of "same-origin", "none", "same-site", or "cross-site") are rejected with `ErrFetchSiteInvalid`. Valid or absent headers proceed to standard origin and token validation checks, providing an early gate to catch malformed requests while maintaining compatibility with legitimate cross-site traffic.
 
+`csrf.NewCrossOriginProtection` adds a tokenless alternative that follows Go's [`net/http.CrossOriginProtection`](https://pkg.go.dev/net/http#CrossOriginProtection). It rejects unsafe cross-origin browser requests by their `Sec-Fetch-Site` and `Origin` headers and needs no cookie, token, or storage. See [Cross-Origin Protection Without Tokens](./middleware/csrf.md#cross-origin-protection-without-tokens) for the rules and the differences from `net/http`.
+
 ### Idempotency
 
 Idempotency middleware now redacts keys by default and offers a `DisableValueRedaction` configuration flag (default `false`) to expose them when debugging.
