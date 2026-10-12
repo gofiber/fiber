@@ -1476,29 +1476,6 @@ func Benchmark_GenericParseTypeBoolean(b *testing.B) {
 	}
 }
 
-func Test_UnescapeHeaderValue(t *testing.T) {
-	t.Parallel()
-	cases := []struct {
-		in  string
-		out []byte
-		ok  bool
-	}{
-		{in: "abc", out: []byte("abc"), ok: true},
-		{in: "a\\\"b", out: []byte("a\"b"), ok: true},
-		{in: "c\\\\d", out: []byte("c\\d"), ok: true},
-		{in: "bad\\", ok: false},
-	}
-	for _, tc := range cases {
-		out, err := unescapeHeaderValue([]byte(tc.in))
-		if tc.ok {
-			require.NoError(t, err, tc.in)
-			require.Equal(t, tc.out, out, tc.in)
-		} else {
-			require.Error(t, err, tc.in)
-		}
-	}
-}
-
 func Test_ParamsMatch_InvalidEscape(t *testing.T) {
 	t.Parallel()
 	match := paramsMatch(headerParams{"foo": []byte("bar")}, `;foo="bar\\`)

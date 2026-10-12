@@ -2,6 +2,7 @@ package cache
 
 import (
 	"github.com/gofiber/fiber/v3/internal/headerlist"
+	"github.com/gofiber/fiber/v3/internal/mediatype"
 	"github.com/gofiber/utils/v2"
 	"github.com/valyala/fasthttp"
 )
@@ -100,52 +101,13 @@ func parseCacheControlDirectives(cc []byte, fn func(key, value []byte)) {
 			value = headerlist.TrimOWS(value)
 			// Handle quoted-string values per RFC 9111 Section 5.2
 			if len(value) >= 2 && value[0] == '"' && value[len(value)-1] == '"' {
-				value = unquoteCacheDirective(value)
+				value, _ = mediatype.Unescape(value[1 : len(value)-1])
 			}
 		}
 
 		fn(headerlist.TrimOWS(key), value)
 		i++ // skip comma
 	}
-}
-
-// unquoteCacheDirective removes quotes and handles escaped characters in quoted-string values.
-// Per RFC 9111 Section 5.2, quoted-string values follow RFC 9110 Section 5.6.4.
-func unquoteCacheDirective(quoted []byte) []byte {
-	if len(quoted) < 2 {
-		return quoted
-	}
-
-	// Remove surrounding quotes
-	inner := quoted[1 : len(quoted)-1]
-
-	// Check if there are any escaped characters (backslash followed by another character)
-	hasEscapes := false
-	for i := 0; i < len(inner)-1; i++ {
-		if inner[i] == '\\' {
-			hasEscapes = true
-			break
-		}
-	}
-
-	// If no escapes, return the inner content directly
-	if !hasEscapes {
-		return inner
-	}
-
-	// Process escaped characters
-	result := make([]byte, 0, len(inner))
-	for i := 0; i < len(inner); i++ {
-		if inner[i] == '\\' && i+1 < len(inner) {
-			// Skip the backslash and take the next character
-			i++
-			result = append(result, inner[i])
-		} else {
-			result = append(result, inner[i])
-		}
-	}
-
-	return result
 }
 
 type responseCacheControl struct {

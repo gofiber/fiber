@@ -515,8 +515,8 @@ func paramsMatch(specParamStr headerParams, offerParams string) bool {
 		fasthttp.VisitHeaderParams(utils.UnsafeBytes(offerParams), func(key, value []byte) bool {
 			if utils.EqualFold(specParam, utils.UnsafeString(key)) {
 				foundParam = true
-				unescaped, err := unescapeHeaderValue(value)
-				if err != nil {
+				unescaped, ok := mediatype.Unescape(value)
+				if !ok {
 					allSpecParamsMatch = false
 					return false
 				}
@@ -585,34 +585,6 @@ func peekJoinedResponseHeader(h *fasthttp.ResponseHeader, key string) ([]byte, b
 	// deprecation is suppressed for helpers.go in .golangci.yml.
 	h.VisitAll(j.visit)
 	return j.combined, j.multi
-}
-
-func unescapeHeaderValue(v []byte) ([]byte, error) {
-	if bytes.IndexByte(v, '\\') == -1 {
-		return v, nil
-	}
-	res := make([]byte, 0, len(v))
-	escaping := false
-	for i, c := range v {
-		if escaping {
-			res = append(res, c)
-			escaping = false
-			continue
-		}
-		if c == '\\' {
-			// invalid escape at end of string
-			if i == len(v)-1 {
-				return nil, errInvalidEscapeSequence
-			}
-			escaping = true
-			continue
-		}
-		res = append(res, c)
-	}
-	if escaping {
-		return nil, errInvalidEscapeSequence
-	}
-	return res, nil
 }
 
 // forEachMediaRange parses an Accept or Content-Type header, calling functor
@@ -730,8 +702,8 @@ func getOffer(header []byte, isAccepted func(spec, offer string, specParams head
 						return false
 					}
 					lowerKey := utils.UnsafeString(utilsbytes.UnsafeToLower(key))
-					val, err := unescapeHeaderValue(value)
-					if err != nil {
+					val, ok := mediatype.Unescape(value)
+					if !ok {
 						return true
 					}
 					params[lowerKey] = val

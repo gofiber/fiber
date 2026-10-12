@@ -5000,66 +5000,6 @@ func Test_parseCacheControlDirectives_QuotedStrings(t *testing.T) {
 	}
 }
 
-// Test_unquoteCacheDirective tests the unquoting logic for quoted-string values
-func Test_unquoteCacheDirective(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name     string
-		input    []byte
-		expected []byte
-	}{
-		{
-			name:     "simple quoted string",
-			input:    []byte(`"value"`),
-			expected: []byte("value"),
-		},
-		{
-			name:     "empty quoted string",
-			input:    []byte(`""`),
-			expected: []byte(""),
-		},
-		{
-			name:     "quoted string with spaces",
-			input:    []byte(`"value with spaces"`),
-			expected: []byte("value with spaces"),
-		},
-		{
-			name:     "quoted string with escaped quote",
-			input:    []byte(`"value with \"quote\""`),
-			expected: []byte(`value with "quote"`),
-		},
-		{
-			name:     "quoted string with escaped backslash",
-			input:    []byte(`"value with \\ backslash"`),
-			expected: []byte(`value with \ backslash`),
-		},
-		{
-			name:     "quoted string with multiple escapes",
-			input:    []byte(`"a\"b\\c\"d"`),
-			expected: []byte(`a"b\c"d`),
-		},
-		{
-			name:     "too short input",
-			input:    []byte(`"`),
-			expected: []byte(`"`),
-		},
-		{
-			name:     "empty input",
-			input:    []byte(``),
-			expected: []byte(``),
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			result := unquoteCacheDirective(tt.input)
-			require.Equal(t, tt.expected, result)
-		})
-	}
-}
-
 // Test_Cache_MaxBytes_InsufficientSpace tests the "insufficient space" error path
 // when an entry is larger than MaxBytes, ensuring such entries are treated as unreachable
 func Test_Cache_MaxBytes_InsufficientSpace(t *testing.T) {
