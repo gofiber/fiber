@@ -169,3 +169,30 @@ func Test_Memory_MaxTTLDoesNotWrap(t *testing.T) {
 	require.Equal(t, "v", store.Get("max"))
 	require.Equal(t, uint32(math.MaxUint32), expiryOf(store, "max"))
 }
+
+func Test_Memory_DeleteIf(t *testing.T) {
+	t.Parallel()
+
+	for _, scenario := range []string{"match", "mismatch", "missing"} {
+		t.Run(scenario, func(t *testing.T) {
+			t.Parallel()
+			store := New()
+			if scenario != "missing" {
+				store.Set("key", "value", 0)
+			}
+			called := false
+			deleted := store.DeleteIf("key", func(value any) bool {
+				called = true
+				require.Equal(t, "value", value)
+				return scenario == "match"
+			})
+			require.Equal(t, scenario != "missing", called)
+			require.Equal(t, scenario == "match", deleted)
+			if scenario == "mismatch" {
+				require.Equal(t, "value", store.Get("key"))
+			} else {
+				require.Nil(t, store.Get("key"))
+			}
+		})
+	}
+}
