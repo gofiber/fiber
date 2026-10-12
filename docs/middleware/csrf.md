@@ -124,7 +124,7 @@ A request is allowed when one of these holds:
 4. `Sec-Fetch-Site` is absent and the host of `Origin` equals the `Host` header.
 5. `Origin` is listed in `TrustedOrigins`.
 
-Every other request is passed to `ErrorHandler` with `ErrCrossOriginRequest`, which answers `403 Forbidden` by default.
+Every other request is passed to `ErrorHandler` with `ErrCrossOriginRequest`, which answers `403 Forbidden` by default. That includes `Sec-Fetch-Site: same-site`: a page on a sibling subdomain, such as `app.example.com` calling `api.example.com`, is cross-origin here, so list its origin in `TrustedOrigins`.
 
 :::caution
 Requests that carry neither header are allowed, so this middleware does not replace authentication or authorization. Do not perform state changes in `GET`, `HEAD`, or `OPTIONS` handlers.

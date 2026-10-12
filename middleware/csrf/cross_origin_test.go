@@ -222,6 +222,52 @@ func Test_CSRF_CrossOriginProtection_EmptyHost(t *testing.T) {
 	require.Equal(t, fiber.StatusForbidden, ctx.Response.StatusCode())
 }
 
+// c.Host() honors X-Forwarded-Host behind a trusted proxy; rule 4 must not.
+func Test_CSRF_CrossOriginProtection_IgnoresForwardedHost(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name          string
+		host          string
+		forwardedHost string
+		origin        string
+		status        int
+	}{
+		{name: "forwarded host cannot vouch for a foreign origin", host: "example.com", forwardedHost: "evil.example", origin: "https://evil.example", status: fiber.StatusForbidden},
+		{name: "forwarded host does not replace a rewritten host", host: "internal:3000", forwardedHost: "example.com", origin: "https://example.com", status: fiber.StatusForbidden},
+		{name: "host header still matches", host: "example.com", forwardedHost: "evil.example", origin: "https://example.com", status: fiber.StatusNoContent},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			app := newTrustedApp()
+			// Without this the test passes vacuously when proxy trust is off.
+			var seenHost string
+			app.Use(func(c fiber.Ctx) error {
+				seenHost = c.Host()
+				return c.Next()
+			})
+			app.Use(NewCrossOriginProtection())
+			app.Post("/", func(c fiber.Ctx) error {
+				return c.SendStatus(fiber.StatusNoContent)
+			})
+
+			ctx := &fasthttp.RequestCtx{}
+			ctx.Request.Header.SetMethod(fiber.MethodPost)
+			ctx.Request.SetRequestURI("/")
+			ctx.Request.Header.SetHost(test.host)
+			ctx.Request.Header.Set(fiber.HeaderXForwardedHost, test.forwardedHost)
+			ctx.Request.Header.Set(fiber.HeaderOrigin, test.origin)
+			app.Handler()(ctx)
+
+			require.Equal(t, test.forwardedHost, seenHost)
+			require.Equal(t, test.status, ctx.Response.StatusCode())
+		})
+	}
+}
+
 func Test_CSRF_CrossOriginProtection_InvalidTrustedOrigin(t *testing.T) {
 	t.Parallel()
 
