@@ -2124,28 +2124,27 @@ func Test_Chain_Concurrent(t *testing.T) {
 
 	const workers = 64
 	var wg sync.WaitGroup
-	wg.Add(workers)
 	for range workers {
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			for range 50 {
 				fctx := &fasthttp.RequestCtx{}
 				fctx.Request.SetRequestURI("/?token=from-query")
 				c := app.AcquireCtx(fctx)
 
 				v, src, err := resolveSource(chain, c)
-				assert.NoError(t, err)
-				assert.Equal(t, "from-query", v)
-				assert.Equal(t, SourceQuery, src)
+				if assert.NoError(t, err) {
+					assert.Equal(t, "from-query", v)
+					assert.Equal(t, SourceQuery, src)
+				}
 
 				_, err = cyclic.Extract(c)
-				assert.ErrorIs(t, err, ErrChainCycle)
+				assert.ErrorIs(t, err, ErrChainCycle) //nolint:testifylint // we can't use require in goroutines
 
 				app.ReleaseCtx(c)
 				// What the server does between requests.
 				fctx.Request.Reset()
 			}
-		}()
+		})
 	}
 	wg.Wait()
 }

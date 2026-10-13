@@ -291,14 +291,12 @@ func Test_Cache_Security_Concurrent_QueryParamDoS(t *testing.T) {
 	// Run concurrent requests
 	const numRequests = 100
 	var wg sync.WaitGroup
-	wg.Add(numRequests)
 
 	// Track errors in goroutines
 	var errCount atomic.Int32
 
 	for range numRequests {
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, url, http.NoBody))
 			if err != nil {
 				errCount.Add(1)
@@ -307,7 +305,7 @@ func Test_Cache_Security_Concurrent_QueryParamDoS(t *testing.T) {
 			if resp.StatusCode != fiber.StatusOK {
 				errCount.Add(1)
 			}
-		}()
+		})
 	}
 
 	wg.Wait()

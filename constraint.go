@@ -40,7 +40,7 @@ func isNilRegexMatcher(matcher regexMatcher) bool {
 
 func compileRegex(handler any, pattern string) regexMatcher {
 	result := reflect.ValueOf(handler).Call([]reflect.Value{reflect.ValueOf(pattern)})
-	matcher, ok := result[0].Interface().(regexMatcher)
+	matcher, ok := reflect.TypeAssert[regexMatcher](result[0])
 	if !ok {
 		panic("fiber: Config.RegexHandler return type must support MatchString(string) bool")
 	}

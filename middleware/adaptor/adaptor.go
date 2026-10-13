@@ -455,7 +455,7 @@ func contextOf(v reflect.Value) (context.Context, bool) {
 		if v.IsNil() {
 			return nil, false
 		}
-		if ctx, ok := v.Interface().(context.Context); ok {
+		if ctx, ok := reflect.TypeAssert[context.Context](v); ok {
 			return ctx, true
 		}
 	case reflect.Struct:
@@ -466,7 +466,7 @@ func contextOf(v reflect.Value) (context.Context, bool) {
 		if v.CanAddr() {
 			val = v.Addr()
 		}
-		if ctx, ok := val.Interface().(context.Context); ok {
+		if ctx, ok := reflect.TypeAssert[context.Context](val); ok {
 			return ctx, true
 		}
 	default:

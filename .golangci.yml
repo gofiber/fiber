@@ -83,6 +83,7 @@ linters:
       check-type-assertions: true
       check-blank: true
       exclude-functions:
+        - errors.AsType
         - (*bytes.Buffer).Write
         - (*github.com/valyala/bytebufferpool.ByteBuffer).Write
         - (*github.com/valyala/bytebufferpool.ByteBuffer).WriteByte
@@ -184,6 +185,8 @@ linters:
           disabled: true
         - name: modifies-parameter
           disabled: true
+        - name: multiline-if-init
+          disabled: true
         - name: nested-structs
           disabled: true
         - name: package-comments
@@ -248,6 +251,7 @@ linters:
       - path: _test\.go
         linters:
           - bodyclose
+          - dupword
           - err113
           - goconst # disabling goconst in test files only
           - gosec
@@ -302,7 +306,8 @@ formatters:
       custom-order: true
     gofumpt:
       module-path: github.com/gofiber/fiber
-      extra-rules: true
+      extra:
+        group-params: false
   exclusions:
     generated: lax
     paths:

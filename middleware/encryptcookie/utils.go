@@ -54,7 +54,7 @@ func EncryptCookie(name, value, key string) (string, error) {
 		return "", fmt.Errorf("failed to create GCM mode: %w", err)
 	}
 
-	ciphertext := gcm.Seal(nil, nil, []byte(value), []byte(name))
+	ciphertext := gcm.Seal(nil, nil, []byte(value), []byte(name)) //nolint:gosec // G407: the nil nonce is mandated by NewGCMWithRandomNonce, which picks a random nonce itself
 	return base64.StdEncoding.EncodeToString(ciphertext), nil
 }
 

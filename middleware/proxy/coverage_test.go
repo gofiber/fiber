@@ -166,8 +166,7 @@ func Test_Coverage_NewSSRFDialer_PassesGuardThenDials(t *testing.T) {
 func Test_Coverage_ValidateHostForSSRF_PublicHostname(t *testing.T) {
 	t.Parallel()
 	err := validateHostForSSRF("one.one.one.one")
-	var dnsErr *net.DNSError
-	if errors.As(err, &dnsErr) {
+	if _, ok := errors.AsType[*net.DNSError](err); ok {
 		t.Skipf("offline DNS, skipping: %v", err)
 	}
 	require.NoError(t, err)

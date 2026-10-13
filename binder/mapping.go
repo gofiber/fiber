@@ -214,7 +214,7 @@ func parseToMap(target reflect.Value, data map[string][]string) error {
 
 	switch target.Type().Elem().Kind() {
 	case reflect.Slice:
-		newMap, ok := target.Interface().(map[string][]string)
+		newMap, ok := reflect.TypeAssert[map[string][]string](target)
 		if !ok {
 			return ErrMapNotConvertible
 		}
@@ -224,7 +224,7 @@ func parseToMap(target reflect.Value, data map[string][]string) error {
 		// release (see bindData).
 		maps.Copy(newMap, data)
 	case reflect.String:
-		newMap, ok := target.Interface().(map[string]string)
+		newMap, ok := reflect.TypeAssert[map[string]string](target)
 		if !ok {
 			return ErrMapNotConvertible
 		}
