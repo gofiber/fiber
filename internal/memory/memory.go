@@ -101,6 +101,21 @@ func (s *Storage) Delete(key string) {
 	s.mu.Unlock()
 }
 
+// DeleteIf removes key only when matches accepts its current value. The
+// predicate runs under the storage lock and must not call back into Storage.
+func (s *Storage) DeleteIf(key string, matches func(any) bool) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	entry, ok := s.data[key]
+	if !ok || !matches(entry.v) {
+		return false
+	}
+
+	delete(s.data, key)
+	return true
+}
+
 // Reset clears the storage by dropping every stored key.
 func (s *Storage) Reset() {
 	nd := make(map[string]item)

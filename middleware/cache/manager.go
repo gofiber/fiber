@@ -36,6 +36,8 @@ type item struct {
 	private         bool
 	// used for finding the item in an indexed heap
 	heapidx int
+	// distinguishes the item from a later entry reusing the same heap index
+	heapgen uint64
 }
 
 //nolint:revive // msgp requires tags on unexported fields for limit enforcement.
@@ -111,6 +113,7 @@ func (m *manager) release(e *item) {
 	e.shareable = false
 	e.private = false
 	e.heapidx = 0
+	e.heapgen = 0
 	m.pool.Put(e)
 }
 
@@ -220,4 +223,33 @@ func (m *manager) logKey(key string) string {
 		return redactedKey
 	}
 	return key
+}
+
+//msgp:ignore memoryDeletion
+
+// memoryDeletion distinguishes an absent entry from a concurrent replacement.
+type memoryDeletion uint8
+
+const (
+	memoryEntryAbsent memoryDeletion = iota
+	memoryEntryDeleted
+	memoryEntryReplaced
+)
+
+// delIf atomically checks and removes the expected in-memory entry. Recording
+// predicate execution distinguishes absence from replacement under one lock.
+func (m *manager) delIf(key string, expected *item) memoryDeletion {
+	present := false
+	deleted := m.memory.DeleteIf(key, func(current any) bool {
+		present = true
+		entry, ok := current.(*item)
+		return ok && entry == expected
+	})
+	if deleted {
+		return memoryEntryDeleted
+	}
+	if present {
+		return memoryEntryReplaced
+	}
+	return memoryEntryAbsent
 }
