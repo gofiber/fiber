@@ -1015,8 +1015,8 @@ func (r *DefaultReq) Is(extension string) bool {
 		return false
 	}
 
-	ct := mediatype.StripParams(r.c.app.toString(r.c.fasthttp.Request.Header.ContentType()))
-	return utils.EqualFold(ct, extensionHeader)
+	ct := mediatype.StripParams(r.c.fasthttp.Request.Header.ContentType())
+	return utils.EqualFold(utils.UnsafeString(ct), extensionHeader)
 }
 
 // HasBody returns true if the request declares a body via Content-Length, Transfer-Encoding, or already buffered payload data.

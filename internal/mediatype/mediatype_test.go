@@ -176,7 +176,6 @@ func Test_StripParams(t *testing.T) {
 		{"; charset=utf-8", ""},
 		{"   ", ""},
 	} {
-		require.Equal(t, tc.want, StripParams(tc.in), "input %q", tc.in)
 		require.Equal(t, []byte(tc.want), StripParams([]byte(tc.in)), "input %q", tc.in)
 	}
 }
@@ -264,13 +263,15 @@ func Test_Unescape_AliasesWithoutEscapes(t *testing.T) {
 
 // go test -v -run=^$ -bench=Benchmark_StripParams -benchmem -count=4
 func Benchmark_StripParams(b *testing.B) {
-	var got string
+	json := []byte("application/json")
+	html := []byte("text/html ; charset=utf-8")
+	var got []byte
 	b.ReportAllocs()
 	for b.Loop() {
-		_ = StripParams("application/json")
-		got = StripParams("text/html ; charset=utf-8")
+		_ = StripParams(json)
+		got = StripParams(html)
 	}
-	require.Equal(b, "text/html", got)
+	require.Equal(b, []byte("text/html"), got)
 }
 
 // go test -v -run=^$ -bench=Benchmark_Params -benchmem -count=4

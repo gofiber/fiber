@@ -132,7 +132,8 @@ func New(config ...Config) fiber.Handler {
 // Such responses must be passed through untouched: buffering the body to hash
 // it would break real-time delivery.
 func isEventStream(c fiber.Ctx) bool {
-	return utils.EqualFold(mediatype.StripParams(c.GetRespHeader(fiber.HeaderContentType)), fiber.MIMETextEventStream)
+	ct := mediatype.StripParams(utils.UnsafeBytes(c.GetRespHeader(fiber.HeaderContentType)))
+	return utils.EqualFold(utils.UnsafeString(ct), fiber.MIMETextEventStream)
 }
 
 // appendUint appends n to dst and returns the extended dst.

@@ -106,9 +106,11 @@ func hasUpper(b []byte) bool {
 }
 
 // StripParams returns ct without its parameters and surrounding whitespace.
-func StripParams[S ~string | ~[]byte](ct S) S {
-	mediaType, _, _ := utils.CutByte(ct, ';')
-	return utils.TrimSpace(mediaType)
+func StripParams(ct []byte) []byte {
+	if i := bytes.IndexByte(ct, ';'); i >= 0 {
+		ct = ct[:i]
+	}
+	return utils.TrimSpace(ct)
 }
 
 // Params yields the trimmed name and value of each parameter in ct that has an "=".
