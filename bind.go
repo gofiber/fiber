@@ -74,26 +74,21 @@ func (e *BindError) Unwrap() error {
 }
 
 func extractFieldFromError(err error) string {
-	var convErr schema.ConversionError
-	if errors.As(err, &convErr) {
+	if convErr, ok := errors.AsType[schema.ConversionError](err); ok {
 		return convErr.Key
 	}
-	var unknownKey schema.UnknownKeyError
-	if errors.As(err, &unknownKey) {
+	if unknownKey, ok := errors.AsType[schema.UnknownKeyError](err); ok {
 		return unknownKey.Key
 	}
-	var emptyField schema.EmptyFieldError
-	if errors.As(err, &emptyField) {
+	if emptyField, ok := errors.AsType[schema.EmptyFieldError](err); ok {
 		return emptyField.Key
 	}
-	var multiErr schema.MultiError
-	if errors.As(err, &multiErr) {
+	if multiErr, ok := errors.AsType[schema.MultiError](err); ok {
 		for k := range multiErr {
 			return k
 		}
 	}
-	var unmarshalErr *json.UnmarshalTypeError
-	if errors.As(err, &unmarshalErr) {
+	if unmarshalErr, ok := errors.AsType[*json.UnmarshalTypeError](err); ok {
 		return unmarshalErr.Field
 	}
 	return ""

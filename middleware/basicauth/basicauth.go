@@ -36,8 +36,6 @@ func New(config ...Config) fiber.Handler {
 	// Set default config
 	cfg := configDefault(config...)
 
-	var cerr base64.CorruptInputError
-
 	// Return new handler
 	return func(c fiber.Ctx) error {
 		// Don't execute middleware if Next returns true
@@ -86,7 +84,7 @@ func New(config ...Config) fiber.Handler {
 		// Decode the header contents
 		raw, err := base64.StdEncoding.DecodeString(rest)
 		if err != nil {
-			if errors.As(err, &cerr) {
+			if _, ok := errors.AsType[base64.CorruptInputError](err); ok {
 				raw, err = base64.RawStdEncoding.DecodeString(rest)
 			}
 			if err != nil {

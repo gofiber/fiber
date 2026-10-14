@@ -362,12 +362,10 @@ func Test_SSE_StreamConcurrentWrites(t *testing.T) {
 	const writers = 16
 	errs := make(chan error, writers)
 	var wg sync.WaitGroup
-	wg.Add(writers)
 	for i := range writers {
-		go func(data int) {
-			defer wg.Done()
-			errs <- stream.Event(Event{Name: "message", Data: data})
-		}(i)
+		wg.Go(func() {
+			errs <- stream.Event(Event{Name: "message", Data: i})
+		})
 	}
 	wg.Wait()
 	close(errs)

@@ -149,7 +149,7 @@ func getTLSConfig(ln net.Listener) *tls.Config {
 	}
 
 	if field.CanInterface() {
-		if cfg, ok := field.Interface().(*tls.Config); ok {
+		if cfg, ok := reflect.TypeAssert[*tls.Config](field); ok {
 			return cfg
 		}
 		return nil
@@ -164,7 +164,7 @@ func getTLSConfig(ln net.Listener) *tls.Config {
 		return nil
 	}
 
-	cfg, ok := value.Interface().(*tls.Config)
+	cfg, ok := reflect.TypeAssert[*tls.Config](value)
 	if !ok {
 		return nil
 	}

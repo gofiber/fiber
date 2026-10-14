@@ -37,8 +37,7 @@ func (*UnknownTagError) Unwrap() error {
 // translateBuildError converts an internal logtemplate build error into the
 // public middleware/logger error surface. Returns nil for non-template errors.
 func translateBuildError(err error) error {
-	var tagErr *logtemplate.UnknownTagError
-	if errors.As(err, &tagErr) {
+	if tagErr, ok := errors.AsType[*logtemplate.UnknownTagError](err); ok {
 		return &UnknownTagError{Tag: tagErr.Tag, Param: tagErr.Param, Hint: tagErr.Hint}
 	}
 	return nil
