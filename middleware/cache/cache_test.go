@@ -3126,6 +3126,73 @@ func Test_CacheOnlyIfCachedStaleNotServed(t *testing.T) {
 	require.Equal(t, 1, count)
 }
 
+// Test_CacheOnlyIfCachedWithNoCache covers a request that asks for a stored
+// response and refuses to have it served unvalidated. RFC 9111 Section 5.2.1.7
+// has a cache that cannot satisfy only-if-cached without contacting the origin
+// answer 504, and validating a stored response is contacting the origin. The
+// fresh entry used to fall through to the handler instead.
+func Test_CacheOnlyIfCachedWithNoCache(t *testing.T) {
+	t.Parallel()
+
+	requests := []struct {
+		header map[string]string
+		name   string
+	}{
+		{name: "no-cache beside only-if-cached", header: map[string]string{fiber.HeaderCacheControl: "no-cache, only-if-cached"}},
+		{name: "only-if-cached before no-cache", header: map[string]string{fiber.HeaderCacheControl: "only-if-cached, no-cache"}},
+		{name: "Pragma no-cache", header: map[string]string{fiber.HeaderCacheControl: "only-if-cached", fiber.HeaderPragma: "no-cache"}},
+		{name: "max-age=0 behaves the same way", header: map[string]string{fiber.HeaderCacheControl: "max-age=0, only-if-cached"}},
+	}
+
+	for _, storageName := range []string{"in-memory", "storage"} {
+		for _, tc := range requests {
+			t.Run(storageName+"/"+tc.name, func(t *testing.T) {
+				t.Parallel()
+
+				cfg := Config{}
+				if storageName == "storage" {
+					cfg.Storage = memory.New()
+				}
+
+				app := fiber.New()
+				app.Use(New(cfg))
+
+				var calls atomic.Int32
+				app.Get("/", func(c fiber.Ctx) error {
+					c.Set(fiber.HeaderCacheControl, "public, max-age=60")
+					return c.SendString("origin-" + strconv.Itoa(int(calls.Add(1))))
+				})
+
+				// A fresh entry, stored by an ordinary request.
+				resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+				require.NoError(t, err)
+				require.Equal(t, cacheMiss, resp.Header.Get("X-Cache"))
+				require.Equal(t, int32(1), calls.Load())
+
+				req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+				for k, v := range tc.header {
+					req.Header.Set(k, v)
+				}
+				resp, err = app.Test(req)
+				require.NoError(t, err)
+				require.Equal(t, fiber.StatusGatewayTimeout, resp.StatusCode)
+				require.Equal(t, cacheUnreachable, resp.Header.Get("X-Cache"))
+				require.Equal(t, int32(1), calls.Load(), "only-if-cached must not reach the handler")
+
+				// The refusal leaves the stored response alone.
+				resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+				require.NoError(t, err)
+				require.Equal(t, fiber.StatusOK, resp.StatusCode)
+				require.Equal(t, cacheHit, resp.Header.Get("X-Cache"))
+				body, err := io.ReadAll(resp.Body)
+				require.NoError(t, err)
+				require.Equal(t, "origin-1", string(body))
+				require.Equal(t, int32(1), calls.Load())
+			})
+		}
+	}
+}
+
 func Test_CacheMaxStaleServesStaleResponse(t *testing.T) {
 	t.Parallel()
 

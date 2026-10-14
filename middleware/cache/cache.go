@@ -717,6 +717,19 @@ func New(config ...Config) fiber.Handler {
 			return c.SendStatus(fiber.StatusGatewayTimeout)
 		}
 
+		// An entry is still held here, so the switch found it unusable for this
+		// request: the request said no-cache, which forbids serving a stored
+		// response unvalidated, or the entry carries no expiry. Validating or
+		// refreshing it means calling the handler, and only-if-cached forbids that
+		// (RFC 9111 Section 5.2.1.7), so the answer is the same 504 as for a miss.
+		// The entry stays stored for the requests that can use it.
+		if e != nil && reqDirectives.onlyIfCached {
+			manager.release(e)
+			unlock()
+			c.Set(cfg.CacheHeader, cacheUnreachable)
+			return c.SendStatus(fiber.StatusGatewayTimeout)
+		}
+
 		// Remember the superseded entry's heap node so the replacement takes over its accounting.
 		if e != nil {
 			oldHeapIdx = e.heapidx

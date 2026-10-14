@@ -74,7 +74,9 @@ type ListenConfig struct {
 	// Default: nil
 	TLSConfig *tls.Config `json:"tls_config"`
 
-	// ListenerFunc allows accessing and customizing net.Listener.
+	// ListenerAddrFunc is called with the net.Addr of the listener that Listen creates,
+	// for example to read the port the OS picked for ":0". It cannot change the listener.
+	// With prefork it runs once in each child process, and Listener does not call it.
 	//
 	// Default: nil
 	ListenerAddrFunc func(addr net.Addr) `json:"listener_addr_func"`

@@ -198,7 +198,7 @@ func (c *DefaultCtx) App() *App {
 	return c.app
 }
 
-// BaseURL returns (protocol + host + base path).
+// BaseURL returns (protocol + host), such as "https://example.com". It carries no path.
 func (c *DefaultCtx) BaseURL() string {
 	// TODO: Could be improved: 53.8 ns/op  32 B/op  1 allocs/op
 	// Should work like https://codeigniter.com/user_guide/helpers/url_helper.html

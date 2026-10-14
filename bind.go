@@ -144,7 +144,9 @@ func (b *Bind) WithAutoHandling() *Bind {
 	return b
 }
 
-// SkipValidation enables or disables struct validation for the current bind chain.
+// SkipValidation enables or disables struct validation. The setting stays on the
+// Bind that c.Bind() returns, so it applies to every later bind of the request
+// until SkipValidation is called again, and ends with the request.
 func (b *Bind) SkipValidation(skip bool) *Bind {
 	b.shouldSkipValidation = skip
 

@@ -221,6 +221,121 @@ func Test_BasicAuth_AuthorizerCtx(t *testing.T) {
 	require.True(t, called)
 }
 
+// Test_BasicAuth_NoConfig covers New() called without a Config. It used to hand
+// back the package default untouched, whose Authorizer, Unauthorized and
+// BadRequest are nil, so the first request called a nil function. With no users
+// and no Authorizer every request has to be refused, never served or crashed on.
+func Test_BasicAuth_NoConfig(t *testing.T) {
+	t.Parallel()
+
+	for name, handler := range map[string]fiber.Handler{
+		"New()":         New(),
+		"New(Config{})": New(Config{}),
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			app := fiber.New()
+			app.Use(handler)
+			app.Get("/", func(c fiber.Ctx) error {
+				return c.SendStatus(fiber.StatusTeapot)
+			})
+
+			tests := []struct {
+				name          string
+				authorization string
+				want          int
+			}{
+				{name: "no credentials", want: fiber.StatusUnauthorized},
+				{name: "credentials for a user nobody configured", authorization: "Basic " + base64.StdEncoding.EncodeToString([]byte("john:doe")), want: fiber.StatusUnauthorized},
+				{name: "empty username and password", authorization: "Basic " + base64.StdEncoding.EncodeToString([]byte(":")), want: fiber.StatusUnauthorized},
+				{name: "another scheme", authorization: "Bearer token", want: fiber.StatusUnauthorized},
+				{name: "malformed credentials", authorization: "Basic notbase64", want: fiber.StatusBadRequest},
+			}
+			for _, tc := range tests {
+				t.Run(tc.name, func(t *testing.T) {
+					t.Parallel()
+
+					req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+					if tc.authorization != "" {
+						req.Header.Set(fiber.HeaderAuthorization, tc.authorization)
+					}
+
+					resp, err := app.Test(req)
+					require.NoError(t, err)
+					require.Equal(t, tc.want, resp.StatusCode)
+					if tc.want == fiber.StatusUnauthorized {
+						require.Equal(t, `Basic realm="Restricted", charset="UTF-8"`, resp.Header.Get(fiber.HeaderWWWAuthenticate))
+					}
+				})
+			}
+		})
+	}
+}
+
+// Test_BasicAuth_ConfigDefault_NoConfig pins that the no-config path runs the same
+// defaulting as the config path, so no handler is left nil.
+func Test_BasicAuth_ConfigDefault_NoConfig(t *testing.T) {
+	t.Parallel()
+
+	cfg := configDefault()
+	require.NotNil(t, cfg.Authorizer)
+	require.NotNil(t, cfg.Unauthorized)
+	require.NotNil(t, cfg.BadRequest)
+	require.Equal(t, ConfigDefault.Realm, cfg.Realm)
+	require.Equal(t, ConfigDefault.Charset, cfg.Charset)
+	require.Equal(t, ConfigDefault.HeaderLimit, cfg.HeaderLimit)
+	require.False(t, cfg.Authorizer("john", "doe", nil), "nobody is configured")
+
+	// The package default itself stays what it documents.
+	require.Nil(t, ConfigDefault.Authorizer)
+	require.Nil(t, ConfigDefault.Unauthorized)
+	require.Nil(t, ConfigDefault.BadRequest)
+}
+
+// Test_BasicAuth_Unauthorized_KeepsVary covers the default 401 handler, which
+// replaced a Vary an earlier middleware had set (Origin from CORS, for one)
+// instead of adding Authorization to it.
+func Test_BasicAuth_Unauthorized_KeepsVary(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Use(func(c fiber.Ctx) error {
+		if earlier := c.Get("X-Earlier-Vary"); earlier != "" {
+			c.Set(fiber.HeaderVary, earlier)
+		}
+		return c.Next()
+	})
+	app.Use(New(Config{Users: map[string]string{"john": sha256Hash("doe")}}))
+
+	tests := []struct {
+		name    string
+		earlier string
+		want    string
+	}{
+		{name: "no earlier Vary", want: "Authorization"},
+		{name: "an earlier field is kept", earlier: "Origin", want: "Origin, Authorization"},
+		{name: "several earlier fields are kept", earlier: "Origin, Accept-Encoding", want: "Origin, Accept-Encoding, Authorization"},
+		{name: "a field already listed is not repeated", earlier: "Origin, authorization", want: "Origin, authorization"},
+		{name: "a wildcard stays the only member", earlier: "*", want: "*"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+			if tc.earlier != "" {
+				req.Header.Set("X-Earlier-Vary", tc.earlier)
+			}
+
+			resp, err := app.Test(req)
+			require.NoError(t, err)
+			require.Equal(t, fiber.StatusUnauthorized, resp.StatusCode)
+			require.Equal(t, []string{tc.want}, resp.Header.Values(fiber.HeaderVary))
+		})
+	}
+}
+
 func Test_BasicAuth_WWWAuthenticateHeader(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()

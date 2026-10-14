@@ -54,7 +54,7 @@ Fiber’s request processing is designed for performance and minimal overhead. W
 ```mermaid
 flowchart LR
     R["HTTP Request (fasthttp)"]
-    A["App.RequestHandler<br/>(default or custom)"]
+    A["App.Handler()<br/>(default or custom request handler)"]
     C["Acquire Context<br/>(from Pool)"]
     X["Reset Context<br/>(DefaultCtx.Reset())"]
     N["Route Matching<br/>(next() \/ nextCustom())"]
@@ -113,7 +113,7 @@ flowchart TD
 
 When a request is processed, Fiber uses its pre‑computed route tree (the treeStack) to efficiently match the incoming URL against registered routes.
 
-1. Normalization: The URL is normalized (converted to lowercase, trailing slashes trimmed) to create a “detection path.”
+1. Normalization: The request path is normalized as [RFC 3986 Section 6.2.2](https://www.rfc-editor.org/rfc/rfc3986#section-6.2.2) describes (percent-encoded unreserved characters are decoded and dot segments are removed). The “detection path” that routes are matched against is that path in lowercase unless `CaseSensitive` is set, with trailing slashes trimmed unless `StrictRouting` is set.
 2. Tree Traversal: The route tree, grouped by common prefixes, is traversed based on the HTTP method.
 3. Candidate Filtering: Before a route's segments are walked, cheap precomputed checks discard most candidates: the leading bytes of the path are compared against the route's first constant, the number of `/` bytes in the path is checked against the bounds the pattern allows, and for parametric routes the first constant segment that follows a parameter is compared at the `/` it has to start at.
 4. Matching: Constant segments are compared exactly, while parameter segments extract dynamic values.
@@ -122,7 +122,7 @@ When a request is processed, Fiber uses its pre‑computed route tree (the treeS
 ```mermaid
 flowchart TD
     A["Incoming Request URL<br/>(e.g., '/api/john')"]
-    B["Normalize URL<br/>(lowercase, trim trailing slashes)"]
+    B["Normalize Path<br/>(RFC 3986, case fold, trim trailing slashes)"]
     C["Detection Path"]
     D["Traverse Route Tree<br/>(treeStack based on method)"]
     D2["Filter Candidates<br/>(leading bytes, slash count, probe constant)"]
@@ -214,7 +214,7 @@ Fiber builds a route tree (the treeStack) to optimize route matching. This invol
 1. Iterating Over the Router Stack: Each registered route is examined.
 2. Computing the Tree Key: A key is computed from the route’s normalized path (e.g. the first 3 characters).
 3. Grouping Routes: Routes are added to the appropriate branch of the tree.
-4. Sorting: Within each group, routes are sorted based on their registration order (or position) to ensure the correct match is found.
+4. Ordering: Within each group, routes keep their registration order (routes without a prefix key are added to every group at their original position), so the first registered route that matches wins.
 
 ```mermaid
 flowchart TD
@@ -222,7 +222,7 @@ flowchart TD
     B["Compute Tree Key<br/>(e.g. first 3 characters)"]
     C["Group Routes by Key<br/>(treeStack)"]
     D["Merge Global Routes<br/>(key \'\' for global matches)"]
-    E[Sort Routes within Groups]
+    E[Keep Registration Order within Groups]
     F[Optimized Route Tree]
 
     A --> B
@@ -403,7 +403,10 @@ Fiber provides a comprehensive hook system that allows you to run custom functio
 - OnRoute: Called when a route is registered.
 - OnName: Invoked when a route is assigned a name.
 - OnGroup: Triggered when a group is created.
+- OnGroupName: Invoked when a group is assigned a name.
 - OnListen: Runs when the server starts listening.
+- OnPreStartupMessage: Runs before the startup message is printed and can customize it.
+- OnPostStartupMessage: Runs after the startup message is printed or skipped.
 - OnPreShutdown: Runs before the application shuts down.
 - OnPostShutdown: Runs after shutdown and receives the shutdown result.
 - OnFork: Invoked when a child process is forked.
@@ -415,7 +418,10 @@ flowchart TD
     OR[OnRoute]
     ON[OnName]
     OG[OnGroup]
+    OGN[OnGroupName]
     OL[OnListen]
+    PreStartup[OnPreStartupMessage]
+    PostStartup[OnPostStartupMessage]
     OPRS[OnPreShutdown]
     OPOS[OnPostShutdown]
     OF[OnFork]
@@ -424,7 +430,10 @@ flowchart TD
     H --> OR
     H --> ON
     H --> OG
+    H --> OGN
     H --> OL
+    H --> PreStartup
+    H --> PostStartup
     H --> OPRS
     H --> OPOS
     H --> OF
@@ -442,7 +451,7 @@ Fiber’s DefaultCtx (or CustomCtx) represents the per‑request context. The li
 
 - Acquire: A Context is obtained from the pool at the beginning of a request.
 - Processing: The context is passed along to the route handlers and middleware.
-- Error Handling: If an error occurs (e.g., route not found, method not allowed, or a panic in the handler), Fiber calls the registered error handler. Errors such as ErrMethodNotAllowed or StatusNotFound are generated as needed.
+- Error Handling: If an error occurs (e.g., route not found, method not allowed, or a panic that the [Recover](../middleware/recover.md) middleware turned into an error), Fiber calls the registered error handler. Errors such as ErrMethodNotAllowed or ErrNotFound are generated as needed.
 - Release: Once the request is processed, the Context is released back into the pool for reuse.
 
 ```mermaid

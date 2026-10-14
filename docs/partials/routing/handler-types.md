@@ -3,7 +3,7 @@ id: handler-types
 title: Handler types
 ---
 
-Fiber's adapter converts a variety of handler shapes into native `func(fiber.Ctx) error` callbacks. The 17 supported shapes are grouped below; any other signature is rejected when the route is registered. This lets you mix Fiber-style handlers with Express-style callbacks and even reuse `net/http` or `fasthttp` functions.
+Fiber's adapter converts a variety of handler shapes into native `func(fiber.Ctx) error` callbacks. The 17 supported shapes are grouped below; any other signature, and a `nil` handler, makes registering the route panic. This lets you mix Fiber-style handlers with Express-style callbacks and even reuse `net/http` or `fasthttp` functions.
 
 ### Fiber-native handlers (cases 1-2)
 
@@ -41,7 +41,7 @@ Fiber adapts these handlers through `fasthttpadaptor`. They do not receive `fibe
 
 ### fasthttp handlers (cases 16-17)
 
-- **Case 16.** `fasthttp.RequestHandler`
+- **Case 16.** `fasthttp.RequestHandler` - the named fasthttp type; a plain `func(*fasthttp.RequestCtx)` has to be converted to it first.
 - **Case 17.** `func(*fasthttp.RequestCtx) error`
 
 fasthttp handlers run with full access to the underlying `fasthttp.RequestCtx`. They are expected to manage the response directly. Fiber will propagate any error returned by the `func(*fasthttp.RequestCtx) error` variant but otherwise does not inspect the context state.
@@ -67,10 +67,13 @@ app.Get("/express", func(req fiber.Req, res fiber.Res) error {
     return res.SendString("Hello from Express-style handlers!")
 })
 
-// Mount a fasthttp.RequestHandler directly (case 16)
-app.Get("/bar", func(ctx *fasthttp.RequestCtx) {
+// Mount a fasthttp.RequestHandler directly (case 16). A bare function
+// literal is not a fasthttp.RequestHandler, so Fiber rejects it: declare the
+// variable with that type, or convert the literal.
+var bar fasthttp.RequestHandler = func(ctx *fasthttp.RequestCtx) {
     ctx.SetStatusCode(fiber.StatusAccepted)
-})
+}
+app.Get("/bar", bar)
 
 // ...or the error-returning variant (case 17)
 app.Get("/baz", func(ctx *fasthttp.RequestCtx) error {

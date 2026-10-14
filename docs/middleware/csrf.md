@@ -136,7 +136,7 @@ With `csrf.New`, a request from a trusted origin still needs a valid token. Here
 
 Differences from `net/http.CrossOriginProtection`:
 
-- `TrustedOrigins` takes the same values as in `csrf.Config`: entries are normalized (case, trailing slash), subdomain wildcards are supported, and only `http` and `https` origins are accepted. An entry such as `capacitor://localhost` panics at startup.
+- `TrustedOrigins` takes the same values as in `csrf.Config`: entries are normalized (case, trailing slash) but a default port is kept as written and matched exactly, subdomain wildcards are supported, and only `http` and `https` origins are accepted. An entry such as `capacitor://localhost` panics at startup.
 - There is no `AddInsecureBypassPattern`. Use `Next` to exempt routes.
 - A request that repeats the `Sec-Fetch-Site` header, or the `Origin` header where the decision depends on it, is denied.
 - Rule 4 never applies to a request without a `Host`.
@@ -220,7 +220,7 @@ The middleware employs a robust, defense-in-depth strategy to protect against CS
 
 ### Fetch Metadata Guardrails
 
-- **Sec-Fetch-Site**: For unsafe methods, the middleware inspects the [`Sec-Fetch-Site`](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Sec-Fetch-Site) header when present. If the header value is not one of "same-origin", "none", "same-site", or "cross-site", the request is rejected with `ErrFetchSiteInvalid`. If the header is valid or absent, the request proceeds to the standard origin and token validation checks. This provides an early check to block requests with invalid `Sec-Fetch-Site` values, while allowing legitimate same-site and cross-site requests to be validated by the existing mechanisms.
+- **Sec-Fetch-Site**: For unsafe methods, the middleware inspects the [`Sec-Fetch-Site`](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Sec-Fetch-Site) header when present. If the header value (compared case-insensitively, ignoring surrounding spaces) is not one of "same-origin", "none", "same-site", or "cross-site", the request is rejected with `ErrFetchSiteInvalid`. If the header is valid or absent, the request proceeds to the standard origin and token validation checks. This provides an early check to block requests with invalid `Sec-Fetch-Site` values, while allowing legitimate same-site and cross-site requests to be validated by the existing mechanisms.
 
 ### 1. Token Validation Patterns
 
@@ -261,9 +261,12 @@ app.Use(csrf.New(csrf.Config{
 
 ### 2. Origin & Referer Validation
 
-As a crucial second layer of defense, the middleware **always** performs `Origin` and `Referer` header checks for unsafe requests (when the connection is HTTPS).
+As a crucial second layer of defense, the middleware checks the origin of every unsafe request before it looks at the token.
 
-- The request's `Origin` (for cross-origin requests) or `Referer` (for same-origin requests) header **must** match the application's `Host` header or be explicitly allowed in the `TrustedOrigins` list.
+- If the request has an `Origin` header other than `null`, its scheme and host **must** match the scheme and host of the request or be explicitly allowed in the `TrustedOrigins` list. Default ports are treated as equal only in the comparison with the request (`example.com` and `example.com:443` match on HTTPS). A `TrustedOrigins` entry is matched as written: `https://a.example` does not match `Origin: https://a.example:443`, and `https://a.example:443` does not match an `Origin` without the port. Browsers send `Origin` without a default port, so write entries without one. This applies to HTTP and HTTPS requests alike.
+- If `Origin` is absent or `null` and the connection is HTTPS, the `Referer` header takes its place: it **must** be present and match in the same way. Over plain HTTP, a request with no `Origin` (or `Origin: null`) has nothing to compare and goes on to token validation.
+- A repeated `Origin` or `Sec-Fetch-Site` header, and a repeated `Referer` header when it is consulted, is rejected instead of being resolved to one of its lines.
+- The scheme and host of the request come from `c.Scheme()` and `c.Host()`. Behind a reverse proxy, `X-Forwarded-Proto` and `X-Forwarded-Host` are used only for requests from a proxy that `TrustProxy` and `TrustProxyConfig` trust.
 - This check is performed *in addition* to token validation and provides strong protection because these headers are reliably set by browsers and cannot be programmatically controlled by an attacker from a malicious site.
 
 ## Token Extractors
@@ -278,7 +281,7 @@ Extractor source constants (such as `SourceHeader`, `SourceForm`, etc.) are defi
 For CSRF protection, prefer secure extraction methods:
 
 - **Headers** (`extractors.FromHeader("X-Csrf-Token")`) – Most secure, not logged in URLs
-- **Form data** (`extractors.FromForm("_csrf")`) – Secure for form submissions
+- **Form data** (`extractors.FromForm("_csrf")`) – Secure for form submissions. It also accepts a value in the query string (see [Extractor Behavior](../guide/extractors#extractor-behavior)), so submit the token in the form body
 - **Avoid URL parameters** – Query/param extractors expose tokens in logs and browser history
 
 :::note What about cookies?
@@ -291,7 +294,7 @@ In rare cases, you may securely extract a CSRF token from a cookie if:
 - You use multiple cookies for custom validation
 - You implement custom logic across different cookie sources
 
-If you do this, set the extractor’s `Source` to `SourceCookie` and allow the middleware to check that the cookie name is different from your CSRF cookie. It will panic if this is the case.
+If you do this, set the extractor’s `Source` to `SourceCookie` and use a cookie name that differs from your CSRF cookie. The middleware accepts a different cookie and panics only when an extractor with `Source` set to `SourceCookie` has a `Key` equal to the CSRF cookie name. A name that differs only in letter case is accepted too, with a logged warning.
 
 **Warning:**
 Cookie-based extraction is strongly discouraged, as it is easy to misconfigure and creates security risks. Prefer extracting tokens from headers or form fields for robust CSRF protection. See the [Extractors Guide](../guide/extractors#security-considerations) for more details.
@@ -324,11 +327,11 @@ For specialized CSRF token extraction needs, you can create custom extractors. S
 
 ```go
 // ❌ NEVER DO THIS - Completely defeats CSRF protection
-badExtractor := csrf.Extractor{
+badExtractor := extractors.Extractor{
     Extract: func(c fiber.Ctx) (string, error) {
         return c.Cookies("csrf_"), nil  // Always passes validation!
     },
-    Source: csrf.SourceCustom, // See extractors.SourceCustom in shared package
+    Source: extractors.SourceCustom,
     Key:    "csrf_",
 }
 
@@ -340,6 +343,8 @@ app.Use(csrf.New(csrf.Config{
 ```
 
 The middleware uses the **Double Submit Cookie** pattern – it compares the extracted token against the cookie value. If you configure an extractor that reads from the same cookie, it will panic because they will always match and provide zero CSRF protection.
+
+The panic is based on the extractor's declared `Source` and `Key`, so it only catches an extractor with `Source` set to `extractors.SourceCookie` and `Key` equal to the CSRF cookie name, such as `extractors.FromCookie("csrf_")`, also when it is nested in a `Chain`. The middleware cannot look inside a custom `Extract` function, so `badExtractor` above is accepted without a panic and offers no protection.
 :::
 
 #### Bearer Token Embedding & Custom Extractors
@@ -421,7 +426,11 @@ if handler != nil {
 
 // With session middleware
 // Destroying the session will also remove the CSRF token if using session-based CSRF.
-session.Destroy()
+if s := session.FromContext(c); s != nil {
+    if err := s.Destroy(); err != nil {
+        // handle error, e.g. log it
+    }
+}
 ```
 
 ## API Reference
@@ -463,9 +472,25 @@ func (h *csrf.Handler) DeleteToken(c fiber.Ctx) error
 | Extractor         | `extractors.Extractor`             | Token extraction method with metadata                                                                                         | `extractors.FromHeader("X-Csrf-Token")` |
 | DisableValueRedaction | `bool`                         | Disables redaction of tokens and storage keys in logs and error messages. | `false`                      |
 | Session           | `*session.Store`                   | Session store (**recommended for production**)                                                                                | `nil`                        |
-| Storage           | `fiber.Storage`                    | Token storage (overridden by Session)                                                                                         | `nil`                        |
-| TrustedOrigins    | `[]string`                         | Trusted origins for cross-origin requests                                                                                     | `[]`                         |
+| Storage           | `fiber.Storage`                    | Token storage (ignored if Session is set)                                                                                     | In-memory store              |
+| TrustedOrigins    | `[]string`                         | Trusted origins for cross-origin requests. Entries must be `http` or `https` origins without a path, such as `https://app.example.com`. `https://*.example.com` matches subdomains at any depth, but not `example.com` itself. An entry is matched as written, so a default port (`https://app.example.com:443`) matches only an `Origin` that carries it. An invalid entry panics at startup. | `[]`                         |
 | SingleUseToken    | `bool`                             | Generate new token after each use                                                                                             | `false`                      |
+
+### Default Config
+
+```go
+var ConfigDefault = Config{
+    CookieName:            "csrf_",
+    CookieSameSite:        "Lax",
+    IdleTimeout:           30 * time.Minute,
+    KeyGenerator:          utils.SecureToken,
+    ErrorHandler:          defaultErrorHandler, // returns fiber.ErrForbidden
+    Extractor:             extractors.FromHeader(HeaderName),
+    DisableValueRedaction: false,
+}
+```
+
+When you pass a `Config`, empty or zero values for `CookieName`, `CookieSameSite`, `IdleTimeout`, `KeyGenerator`, `ErrorHandler`, and `Extractor` are replaced with these defaults.
 
 ### CrossOriginConfig Properties
 
@@ -479,13 +504,14 @@ func (h *csrf.Handler) DeleteToken(c fiber.Ctx) error
 
 ```go
 var (
-    ErrTokenNotFound   = errors.New("csrf: token not found")
-    ErrTokenInvalid    = errors.New("csrf: token invalid")
-    ErrRefererNotFound = errors.New("csrf: referer header missing")
-    ErrRefererInvalid  = errors.New("csrf: referer header invalid")
-    ErrRefererNoMatch  = errors.New("csrf: referer does not match host or trusted origins")
-    ErrOriginInvalid   = errors.New("csrf: origin header invalid")
-    ErrOriginNoMatch   = errors.New("csrf: origin does not match host or trusted origins")
+    ErrTokenNotFound    = errors.New("csrf: token not found")
+    ErrTokenInvalid     = errors.New("csrf: token invalid")
+    ErrFetchSiteInvalid = errors.New("csrf: sec-fetch-site header invalid")
+    ErrRefererNotFound  = errors.New("csrf: referer header missing")
+    ErrRefererInvalid   = errors.New("csrf: referer header invalid")
+    ErrRefererNoMatch   = errors.New("csrf: referer does not match host or trusted origins")
+    ErrOriginInvalid    = errors.New("csrf: origin header invalid")
+    ErrOriginNoMatch    = errors.New("csrf: origin does not match host or trusted origins")
 )
 
 // Returned by NewCrossOriginProtection

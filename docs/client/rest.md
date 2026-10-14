@@ -53,6 +53,10 @@ func main() {
 
 See [examples](examples.md) for more detailed usage.
 
+:::note
+A client can send requests from many goroutines at once after its configuration is complete. Changing the configuration while requests are in flight needs your own synchronization.
+:::
+
 ```go
 type Client struct {
     logger    log.CommonLogger
@@ -77,6 +81,7 @@ type Client struct {
     referer              string
     userRequestHooks     []RequestHook
     builtinRequestHooks  []RequestHook
+    finalRequestHooks    []RequestHook
     userResponseHooks    []ResponseHook
     builtinResponseHooks []ResponseHook
 
@@ -97,15 +102,35 @@ func New() *Client
 
 ### NewWithClient
 
-**NewWithClient** creates and returns a new Client object from an existing `fasthttp.Client`.
+**NewWithClient** creates and returns a new Client object from an existing `fasthttp.Client`. It panics if `c` is `nil`.
+
+Fiber cannot tell whether that client has served a host already. Unless it was created with `DisablePathNormalizing: true`, [SetDisablePathNormalizing](#setdisablepathnormalizing) changes what is sent to hosts it has not served yet, but the check that keeps a path parameter value inside its segment stays on.
 
 ```go title="Signature"
 func NewWithClient(c *fasthttp.Client) *Client
 ```
 
+### NewWithHostClient
+
+**NewWithHostClient** creates and returns a new Client object from an existing `fasthttp.HostClient`. A `HostClient` connects to its own `Addr` whatever host the request URL names; that host only becomes the `Host` header. It panics if `c` is `nil`.
+
+```go title="Signature"
+func NewWithHostClient(c *fasthttp.HostClient) *Client
+```
+
+### NewWithLBClient
+
+**NewWithLBClient** creates and returns a new Client object from an existing `fasthttp.LBClient`. TLS, dialer, proxy and response streaming settings are applied to every host client behind the load balancer. Requests go through `LBClient.Do`, so they fail with `fasthttp.ErrTimeout` after `LBClient.Timeout`, which is one second when left unset, even if the client timeout is longer. It panics if `c` is `nil`.
+
+```go title="Signature"
+func NewWithLBClient(c *fasthttp.LBClient) *Client
+```
+
+See [Reusing fasthttp transports](./examples.md#reusing-fasthttp-transports) for examples, and [Underlying Transport](#underlying-transport) for the methods that give access to the wrapped client.
+
 ## REST Methods
 
-These helpers mirror axios-style method names and send HTTP requests using the configured client. Each helper acquires its own `Request`, which `Response.Close` releases together with the response:
+These helpers mirror axios-style method names and send HTTP requests using the configured client. Each helper acquires its own `Request`, which `Response.Close` releases together with the response. When a helper returns an error there is no `Response` to close: the helper has already released its `Request`.
 
 ### Get
 
@@ -198,8 +223,9 @@ type Config struct {
     Cookie    map[string]string
     PathParam map[string]string
 
-    Timeout      time.Duration
-    MaxRedirects int
+    Timeout                time.Duration
+    MaxRedirects           int
+    DisablePathNormalizing bool
 
     Body     any
     FormData map[string]string
@@ -207,7 +233,11 @@ type Config struct {
 }
 ```
 
-`MaxRedirects` is honored for `GET`, `HEAD` and `QUERY` requests only; other methods receive the redirect response as-is.
+The REST helpers accept an optional `Config` and use only the first one passed. A `string` or `[]byte` `Body` is sent as is; any other value is encoded as JSON.
+
+`MaxRedirects` is honored for `GET`, `HEAD` and `QUERY` requests only; other methods receive the redirect response as-is. The default is `0`, which follows no redirects. See [SetMaxRedirects](./request.md#setmaxredirects) for how redirects are followed.
+
+`DisablePathNormalizing: true` turns path normalizing off for the request, like [SetDisablePathNormalizing](./request.md#setdisablepathnormalizing) on the request, which also says when the path is really sent as written; `false` leaves the client's setting in place.
 
 ## R
 
@@ -377,6 +407,12 @@ func (c *Client) SetCBORUnmarshal(f utils.CBORUnmarshal) *Client
 
 ## TLS
 
+:::note
+Set the TLS configuration before the first request. fasthttp copies it for a host the first time the client connects there, so a later `SetTLSConfig` or `SetCertificates` call does not reach a host the client already uses. On a client built with `New` or `NewWithClient` the copy lives as long as fasthttp keeps its entry for that host. The entry goes at the first pass of fasthttp's cleaner after the host has no open connection and no request waiting for one, and the passes come every second, or as far apart as `MaxIdleConnDuration`, up to 10 seconds, when that is longer. A failed first handshake leaves no open connection either, so a retry within that second still runs with the old settings. A client built with `NewWithHostClient` or `NewWithLBClient` keeps the copy for as long as the host client lives.
+
+Certificates that [SetRootCertificate](#setrootcertificate) or [SetRootCertificateFromString](#setrootcertificatefromstring) add to a `RootCAs` pool that already existed when the host was first used are the exception: the copy shares the pool, so they reach the host at once. The first call on a client without a pool creates the pool, and a copy made before that does not see it.
+:::
+
 ### TLSConfig
 
 Returns the client's TLS configuration. If none is set, it initializes a new
@@ -404,7 +440,7 @@ func (c *Client) SetCertificates(certs ...tls.Certificate) *Client
 
 ### SetRootCertificate
 
-Adds one or more root certificates to the client's trust store.
+Adds one or more root certificates from a PEM file to the `RootCAs` pool of the client's TLS configuration. A new client has no pool (`RootCAs` is `nil`, which means the system roots), so the first call creates one that holds only the given certificates: they replace the system roots instead of being added to them, and later calls add to that pool. If the configuration already has a `RootCAs` pool, for example one built from `x509.SystemCertPool()` and set with [SetTLSConfig](#settlsconfig), the certificates are appended to that pool, and they reach a host the client already uses; the call that creates the pool does not, see the note under [TLS](#tls). To keep trusting the system roots, build the pool that way, as in the [TLS example](./examples.md#tls). It panics if the file cannot be read or holds no valid PEM certificate.
 
 ```go title="Signature"
 func (c *Client) SetRootCertificate(path string) *Client
@@ -412,7 +448,7 @@ func (c *Client) SetRootCertificate(path string) *Client
 
 ### SetRootCertificateFromString
 
-Adds one or more root certificates from a string.
+Adds one or more root certificates from a PEM string to the `RootCAs` pool of the client's TLS configuration, with the same rules as [SetRootCertificate](#setrootcertificate): the first call on a client without a pool replaces the system roots. It panics if the string holds no valid PEM certificate.
 
 ```go title="Signature"
 func (c *Client) SetRootCertificateFromString(pem string) *Client
@@ -420,7 +456,7 @@ func (c *Client) SetRootCertificateFromString(pem string) *Client
 
 ## SetProxyURL
 
-Sets a proxy URL for the client. All subsequent requests will use this proxy.
+Sets a proxy URL for the client. All subsequent requests will use this proxy. It returns an error when the URL has a host and its scheme is not `http`, `socks5` or `socks5h`, for example `ftp://proxy:1080`. Other malformed URLs are not rejected here. If `net/url` cannot parse the URL, even with `http://` put in front of it, for example because of a trailing newline, a leading space, `%zz` in the port, or a non-numeric port on an address without a scheme such as `127.0.0.1:abc`, the URL is dropped without an error and requests go to their origin directly, without a proxy. An empty string is dropped the same way, and a dropped URL also replaces a proxy set earlier. A URL that parses, or that parses once `http://` is put in front of it, but names no usable address makes each request fail when it dials. That covers `http://127.0.0.1:abc` with its scheme, `http://` or `ftp://` with nothing after it, and a trailing `/` or a path. The proxy is installed as the client's dial function, so a later [SetDial](#setdial) replaces it and the other way around. Call it before the first request: on a client built with `New` or `NewWithClient`, a host the client already uses keeps its previous dial function until fasthttp drops its entry for that host, see the note under [TLS](#tls) for when. A client built with `NewWithHostClient` or `NewWithLBClient` uses the new function for every new connection.
 
 ```go title="Signature"
 func (c *Client) SetProxyURL(proxyURL string) error
@@ -507,7 +543,7 @@ for {
 
 ## RetryConfig
 
-Returns the retry configuration of the client.
+Returns a copy of the retry configuration of the client, or `nil` when none is set.
 
 ```go title="Signature"
 func (c *Client) RetryConfig() *RetryConfig
@@ -515,7 +551,7 @@ func (c *Client) RetryConfig() *RetryConfig
 
 ## SetRetryConfig
 
-Sets the retry configuration for the client.
+Sets the retry configuration for the client. `RetryConfig` is an alias of `retry.Config` from the [Retry addon](../addon/retry.md), which describes its fields and defaults. Without a retry configuration, which is the default, Fiber does not retry failed requests. With one, a request that fails to send is retried with exponential backoff; an HTTP error status such as `500` is a response rather than a failure, so it is not retried.
 
 ```go title="Signature"
 func (c *Client) SetRetryConfig(config *RetryConfig) *Client
@@ -533,7 +569,7 @@ func (c *Client) BaseURL() string
 
 ### SetBaseURL
 
-Sets a base URL prefix for all requests made by the client. A request URL that already carries an `http://` or `https://` scheme, in any letter case, is used as-is; any other URL is appended to the base URL.
+Sets a base URL prefix for all requests made by the client. A request URL that already carries an `http://` or `https://` scheme, in any letter case, is used as-is; any other URL is appended to the base URL. If the result still has no `http://` or `https://` scheme, the request fails with `ErrURLFormat`.
 
 ```go title="Signature"
 func (c *Client) SetBaseURL(url string) *Client
@@ -611,6 +647,8 @@ func (c *Client) SetHeaders(h map[string]string) *Client
 
 ## Query Parameters
 
+Query parameters set on the client are added to the ones on each request and to those already in the URL. A request does not replace a client parameter of the same name, so the server receives every value.
+
 ### Param
 
 Returns the values for a given query parameter key.
@@ -653,7 +691,7 @@ func (c *Client) SetParams(m map[string]string) *Client
 
 ### SetParamsWithStruct
 
-Sets multiple query parameters from a struct. Nested structs are not currently supported.
+Sets multiple query parameters from a struct. Each field is named by its `param` struct tag, or by the field name when it has none. Nested structs are not currently supported. See [SetValWithStruct](./request.md#setvalwithstruct) for the supported field types.
 
 ```go title="Signature"
 func (c *Client) SetParamsWithStruct(v any) *Client
@@ -668,6 +706,8 @@ func (c *Client) DelParams(key ...string) *Client
 ```
 
 ## UserAgent & Referer
+
+Requests are sent with `User-Agent: fiber` unless a user agent is set on the client or on the request, and the request's value wins. They are sent without a `Referer` header unless a referer is set the same way. Use these methods, or `Config.UserAgent` and `Config.Referer`, for these two headers: a `User-Agent` or `Referer` set through `SetHeader`, `AddHeader` or `Config.Header` is replaced when the request is sent, and a `Referer` is removed when no referer is set.
 
 ### SetUserAgent
 
@@ -686,6 +726,8 @@ func (c *Client) SetReferer(r string) *Client
 ```
 
 ## Path Parameters
+
+Path parameters fill the `:name` placeholders in a request URL, including one in the base URL, as in `/users/:id`. A path parameter set on a request overrides a client-level one with the same name. See [SetPathParam](./request.md#setpathparam) for how placeholders are matched and which values are accepted.
 
 ### PathParam
 
@@ -713,7 +755,7 @@ func (c *Client) SetPathParams(m map[string]string) *Client
 
 ### SetPathParamsWithStruct
 
-Sets multiple path parameters from a struct.
+Sets multiple path parameters from a struct. Each field is named by its `path` struct tag, or by the field name when it has none.
 
 ```go title="Signature"
 func (c *Client) SetPathParamsWithStruct(v any) *Client
@@ -727,7 +769,27 @@ Deletes one or more path parameters.
 func (c *Client) DelPathParams(key ...string) *Client
 ```
 
+## Path Normalizing
+
+### DisablePathNormalizing
+
+Reports whether path normalizing was disabled with [SetDisablePathNormalizing](#setdisablepathnormalizing). It does not read the setting of a fasthttp client that was created with `DisablePathNormalizing: true`.
+
+```go title="Signature"
+func (c *Client) DisablePathNormalizing() bool
+```
+
+### SetDisablePathNormalizing
+
+Turns path normalizing off or on for every request of the client. It is on by default: the request path is normalized before it is sent, which decodes percent-escapes, collapses `//` and resolves `.` and `..` segments, so `/a//b/./c%2Fd` goes out as `/a/b/c/d`. With normalizing off, the path is sent as written. fasthttp normalizes the path when it writes the request, according to the client that sends it, so the setting is applied to the `DisablePathNormalizing` field of the wrapped fasthttp client, and of every host client behind a load balancer: a client created with [NewWithClient](#newwithclient), [NewWithHostClient](#newwithhostclient) or [NewWithLBClient](#newwithlbclient) changes the fasthttp client it wraps, for everyone who shares it. Call it before the first request, because a `fasthttp.Client` copies the setting into each host client when it first creates it, and a host it already serves keeps normalizing until fasthttp drops its entry, see the note under [TLS](#tls) for when. Fiber keeps rejecting path parameter values that would leave their segment unless it knows that the path is sent as built. It knows for a client from `New`, until a request has gone out through it while it normalized; for a client from `NewWithHostClient`, which reads the field on every request; for a client from `NewWithLBClient` whose host clients all have the field on; and for a `fasthttp.Client` given to `NewWithClient` that was created with `DisablePathNormalizing: true`. A `fasthttp.Client` given to `NewWithClient` without it may have served hosts already, so Fiber cannot tell and keeps the check on, although hosts it has not served yet get the setting. A balancer that holds a client that is neither a `*fasthttp.HostClient` nor a wrapper exposing a nested balancer through `LBClient()` cannot be told either and counts as normalizing. A request skips Fiber's normalizing when either the client or the request disables it; see [SetDisablePathNormalizing](./request.md#setdisablepathnormalizing) for the request-level setting.
+
+```go title="Signature"
+func (c *Client) SetDisablePathNormalizing(disable bool) *Client
+```
+
 ## Cookies
+
+A cookie set on a request replaces a client cookie with the same name, and a client cookie replaces one from the [cookie jar](#cookie-jar).
 
 ### Cookie
 
@@ -782,7 +844,7 @@ func (c *Client) SetCookies(m map[string]string) *Client
 
 ### SetCookiesWithStruct
 
-Sets multiple cookies from a struct.
+Sets multiple cookies from a struct. Each field is named by its `cookie` struct tag, or by the field name when it has none.
 
 ```go title="Signature"
 func (c *Client) SetCookiesWithStruct(v any) *Client
@@ -800,7 +862,7 @@ func (c *Client) DelCookies(key ...string) *Client
 
 ### SetTimeout
 
-Sets a default timeout for all requests, which can be overridden per request.
+Sets a default timeout for all requests, which can be overridden per request. A new client has no timeout. When the timeout elapses, or the request's context is canceled, the request fails with `ErrTimeoutOrCancel`.
 
 ```go title="Signature"
 func (c *Client) SetTimeout(t time.Duration) *Client
@@ -810,7 +872,7 @@ func (c *Client) SetTimeout(t time.Duration) *Client
 
 ### Debug
 
-Enables debug-level logging output. With debug enabled, the raw request and response are logged through the client's logger after each response. When either body is a stream, only its headers are logged so the stream stays readable for the caller. Nothing is logged when the client has no logger.
+Enables debug-level logging output. With debug enabled, the raw request and response are logged through the client's logger after each response, as they are: the `Authorization` and `Cookie` headers and the bodies are in the log, so keep debug logging off wherever people who should not see them can read it. When either body is a stream, only its headers are logged so the stream stays readable for the caller. A new client logs through Fiber's default logger, the one the `log` package writes to. Nothing is logged when the logger was set to `nil`. Use [SetLogger](#setlogger) to choose the logger.
 
 ```go title="Signature"
 func (c *Client) Debug() *Client
@@ -828,17 +890,83 @@ func (c *Client) DisableDebug() *Client
 
 ### SetCookieJar
 
-Assigns a cookie jar to the client to store and manage cookies across requests. A cookie received with a `Max-Age` attribute expires that many seconds after it was received, taking precedence over `Expires`; a `Max-Age` of zero or less expires it immediately (RFC 6265). Cookies for the same host and path are stored under the origin that answered, so a redirect cannot plant cookies for another host.
+Assigns a cookie jar to the client to store and manage cookies across requests. A cookie received with a `Max-Age` attribute expires that many seconds after it was received, taking precedence over `Expires`; a `Max-Age` of zero or less expires it immediately (RFC 6265). A `Max-Age` that is not an integer is ignored on its own, as is any other attribute the parser cannot read, such as an `Expires` in an unrecognized format (RFC 6265 Section 5.2): the cookie keeps its name, its value and every other attribute, `Path`, `Domain` and `Secure` included. When the attribute repeats, the last integer value counts. A `Set-Cookie` whose name and value cannot be parsed is dropped. Cookies for the same host and path are stored under the origin that answered, so a redirect cannot plant cookies for another host. See [Cookie jar](./examples.md#cookie-jar) for how the jar scopes, orders and limits cookies.
 
 ```go title="Signature"
 func (c *Client) SetCookieJar(cookieJar *CookieJar) *Client
+```
+
+A `CookieJar` is safe for concurrent use, except for `Release`, which must not run at the same time as any other method.
+
+### AcquireCookieJar
+
+**AcquireCookieJar** returns an empty `CookieJar` from the pool.
+
+```go title="Signature"
+func AcquireCookieJar() *CookieJar
+```
+
+### ReleaseCookieJar
+
+**ReleaseCookieJar** empties the jar and returns it to the pool. Do not use the jar afterward.
+
+```go title="Signature"
+func ReleaseCookieJar(c *CookieJar)
+```
+
+### CookieJar.Get
+
+**Get** returns the cookies that apply to a URI: the host and path match, `Secure` cookies are returned only for an `https` URI, and expired cookies are dropped. It returns `nil` when no cookie applies or the URI is `nil`. The jar keeps its own copies, so the returned cookies may be released with `fasthttp.ReleaseCookie`.
+
+```go title="Signature"
+func (cj *CookieJar) Get(uri *fasthttp.URI) []*fasthttp.Cookie
+```
+
+### CookieJar.Set
+
+**Set** stores copies of the cookies for the host of a URI, ignoring the port. A cookie without a usable `Path` is scoped to the default path of the URI (RFC 6265), so cookies set against `/a/b` apply to `/a` and below; set `Path` on the cookie to widen it. A cookie whose `Domain` the host may not set, such as an unrelated domain or a public suffix, is skipped.
+
+```go title="Signature"
+func (cj *CookieJar) Set(uri *fasthttp.URI, cookies ...*fasthttp.Cookie)
+```
+
+### CookieJar.SetByHost
+
+**SetByHost** stores copies of the cookies for a host. There is no request path to derive a default from, so a cookie without a usable `Path` is scoped to `/`.
+
+```go title="Signature"
+func (cj *CookieJar) SetByHost(host []byte, cookies ...*fasthttp.Cookie)
+```
+
+### CookieJar.SetKeyValue
+
+**SetKeyValue** stores a cookie with the given key and value for a host, scoped to `/`.
+
+```go title="Signature"
+func (cj *CookieJar) SetKeyValue(host, key, value string)
+```
+
+### CookieJar.SetKeyValueBytes
+
+**SetKeyValueBytes** is like `SetKeyValue` but takes the key and value as byte slices.
+
+```go title="Signature"
+func (cj *CookieJar) SetKeyValueBytes(host string, key, value []byte)
+```
+
+### CookieJar.Release
+
+**Release** removes every stored cookie. The jar must not be used afterward, and `ReleaseCookieJar` calls it for you.
+
+```go title="Signature"
+func (cj *CookieJar) Release()
 ```
 
 ## Dial & Logger
 
 ### SetDial
 
-Sets a custom dial function.
+Sets a custom dial function. Call it before the first request: [SetProxyURL](#setproxyurl) says when a new one reaches a host the client already uses.
 
 ```go title="Signature"
 func (c *Client) SetDial(dial fasthttp.DialFunc) *Client
@@ -846,7 +974,7 @@ func (c *Client) SetDial(dial fasthttp.DialFunc) *Client
 
 ### SetLogger
 
-Sets the logger instance used by the client.
+Sets the logger instance used by the client. A new client starts with Fiber's default logger. `nil` turns client logging off; [SetRootCertificate](#setrootcertificate) and [SetRootCertificateFromString](#setrootcertificatefromstring) still panic on invalid input, only without a log line.
 
 ```go title="Signature"
 func (c *Client) SetLogger(logger log.CommonLogger) *Client
@@ -860,12 +988,88 @@ Returns the current logger instance.
 func (c *Client) Logger() log.CommonLogger
 ```
 
+## Underlying Transport
+
+A client wraps one fasthttp client: the `fasthttp.Client` that `New` creates, or the one passed to `NewWithClient`, `NewWithHostClient` or `NewWithLBClient`. These methods give access to it.
+
+### FasthttpClient
+
+Returns the underlying `*fasthttp.Client`, or `nil` if the client was created from a `HostClient` or an `LBClient`.
+
+```go title="Signature"
+func (c *Client) FasthttpClient() *fasthttp.Client
+```
+
+### HostClient
+
+Returns the underlying `*fasthttp.HostClient`, or `nil` if the client was not created with `NewWithHostClient`.
+
+```go title="Signature"
+func (c *Client) HostClient() *fasthttp.HostClient
+```
+
+### LBClient
+
+Returns the underlying `*fasthttp.LBClient`, or `nil` if the client was not created with `NewWithLBClient`.
+
+```go title="Signature"
+func (c *Client) LBClient() *fasthttp.LBClient
+```
+
+### Do
+
+Sends a raw `fasthttp` request through the underlying client, as the `Do` method of the wrapped `fasthttp.Client`, `HostClient` or `LBClient` does. It does not follow redirects.
+
+`Do`, `DoTimeout`, `DoDeadline` and `DoRedirects` work directly on `fasthttp` requests and responses and bypass Fiber's request pipeline: the base URL, default headers, query and path parameters, cookies, cookie jar, hooks, client timeout and retry configuration are not applied. Settings of the transport itself, such as the TLS configuration, the dial function or proxy, and response streaming, are.
+
+```go title="Signature"
+func (c *Client) Do(req *fasthttp.Request, resp *fasthttp.Response) error
+```
+
+### DoTimeout
+
+Like `Do`, but fails with `fasthttp.ErrTimeout` if no response arrives within `timeout`.
+
+```go title="Signature"
+func (c *Client) DoTimeout(req *fasthttp.Request, resp *fasthttp.Response, timeout time.Duration) error
+```
+
+### DoDeadline
+
+Like `Do`, but fails with `fasthttp.ErrTimeout` if no response arrives before `deadline`.
+
+```go title="Signature"
+func (c *Client) DoDeadline(req *fasthttp.Request, resp *fasthttp.Response, deadline time.Time) error
+```
+
+### DoRedirects
+
+Like `Do`, but follows up to `maxRedirects` redirects, on every kind of client, with the rules described under [SetMaxRedirects](./request.md#setmaxredirects). A chain of more than `maxRedirects` redirects fails with `fasthttp.ErrTooManyRedirects`, so `0` fails on the first redirect, and a negative value allows 16. Unlike the `Request` methods, it follows redirects for any request method.
+
+```go title="Signature"
+func (c *Client) DoRedirects(req *fasthttp.Request, resp *fasthttp.Response, maxRedirects int) error
+```
+
+### CloseIdleConnections
+
+Closes the idle keep-alive connections of the underlying client, or of every host client behind a load balancer. Connections that are in use are not interrupted.
+
+```go title="Signature"
+func (c *Client) CloseIdleConnections()
+```
+
 ## Reset
 
 ### Reset
 
-Clears and resets the client to its default state and reinstates the default
-`fasthttp.Client` transport.
+Resets the client's configuration: it clears the base URL, timeout, user agent,
+referer, retry configuration, debug flag, path-normalizing setting, headers,
+query and path parameters and cookies, and it empties and detaches the cookie
+jar. It also replaces the transport with a new default `fasthttp.Client`, which
+drops a `HostClient` or `LBClient` the client wrapped together with any custom
+dial function, proxy, TLS configuration and response streaming setting. Request
+and response hooks, the JSON, XML and CBOR marshal and unmarshal functions and
+the logger are kept.
 
 ```go title="Signature"
 func (c *Client) Reset()

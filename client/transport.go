@@ -7,6 +7,7 @@ import (
 	"crypto/tls"
 	"fmt"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/gofiber/fiber/v3/internal/crosshost"
@@ -40,25 +41,84 @@ type httpClientTransport interface {
 	SetStreamResponseBody(enable bool)
 }
 
+// pathNormalizingTransport is implemented by the transports whose wrapped client
+// has a path normalizing setting that can be read and written. It is kept apart
+// from httpClientTransport so that a transport without one still satisfies that
+// interface; such a transport counts as one that normalizes.
+//
+// The setting that reaches the wire is the wrapped client's own field, which
+// fasthttp stamps on every request just before it writes it, whatever the URI
+// of the request said.
+type pathNormalizingTransport interface {
+	// DisablePathNormalizing reports whether the wrapped client writes the
+	// request path as built. A balancer that holds a client this cannot inspect,
+	// or none at all, reports false, and so does a fasthttp.Client handed over
+	// normalizing, which may have served hosts already.
+	DisablePathNormalizing() bool
+	// SetDisablePathNormalizing sets that field on the wrapped client, and on
+	// every host client behind a balancer.
+	SetDisablePathNormalizing(disable bool)
+}
+
+var (
+	_ pathNormalizingTransport = (*standardClientTransport)(nil)
+	_ pathNormalizingTransport = (*hostClientTransport)(nil)
+	_ pathNormalizingTransport = (*lbClientTransport)(nil)
+)
+
 // standardClientTransport adapts fasthttp.Client to the httpClientTransport
 // interface used by Fiber's client helpers.
 type standardClientTransport struct {
 	client *fasthttp.Client
+	// sentNormalized is set once a request has gone out while the client
+	// normalized paths. A fasthttp.Client gives each host the setting it has when
+	// that host's client is first created and never updates it, so after that
+	// turning normalizing off no longer reaches the hosts already served: the
+	// path would still be normalized for them.
+	sentNormalized atomic.Bool
+	// settingKnown is set when the transport can account for every host client
+	// the wrapped client has made: it is a client the Fiber client created
+	// itself, so no host client exists before this transport's first request, or
+	// it was handed over with the setting already on, so each host client took
+	// that value. A client handed over normalizing may have served hosts through
+	// someone else, and their host clients keep normalizing whatever its field
+	// says later; nothing public tells a fresh client from such a one.
+	settingKnown bool
 }
 
+// newStandardClientTransport wraps a fasthttp.Client the caller supplied. Its
+// path normalizing field counts only when the caller created it with the
+// setting on.
 func newStandardClientTransport(client *fasthttp.Client) *standardClientTransport {
-	return &standardClientTransport{client: client}
+	return &standardClientTransport{client: client, settingKnown: client.DisablePathNormalizing}
+}
+
+// newOwnedStandardClientTransport wraps a new fasthttp.Client that nothing else
+// holds yet.
+func newOwnedStandardClientTransport() *standardClientTransport {
+	return &standardClientTransport{client: &fasthttp.Client{}, settingKnown: true}
+}
+
+// noteSend records a request about to be sent through a client that normalizes.
+// It stores once, so the common case of a client left as it is costs one load.
+func (s *standardClientTransport) noteSend() {
+	if !s.client.DisablePathNormalizing && !s.sentNormalized.Load() {
+		s.sentNormalized.Store(true)
+	}
 }
 
 func (s *standardClientTransport) Do(req *fasthttp.Request, resp *fasthttp.Response) error {
+	s.noteSend()
 	return s.client.Do(req, resp)
 }
 
 func (s *standardClientTransport) DoTimeout(req *fasthttp.Request, resp *fasthttp.Response, timeout time.Duration) error {
+	s.noteSend()
 	return s.client.DoTimeout(req, resp, timeout)
 }
 
 func (s *standardClientTransport) DoDeadline(req *fasthttp.Request, resp *fasthttp.Response, deadline time.Time) error {
+	s.noteSend()
 	return s.client.DoDeadline(req, resp, deadline)
 }
 
@@ -66,6 +126,7 @@ func (s *standardClientTransport) DoDeadline(req *fasthttp.Request, resp *fastht
 // fasthttp's own loop, so every transport applies the same target validation.
 // fasthttp's loop takes an HTTPS-to-HTTP hop; this one refuses it.
 func (s *standardClientTransport) DoRedirects(req *fasthttp.Request, resp *fasthttp.Response, maxRedirects int) error {
+	s.noteSend()
 	// Before the loop serializes the URI, as fasthttp's own DoRedirects does:
 	// the setting has to reach req.URI() first or "/a//b" is normalized away on
 	// the very request the transport was configured to leave alone.
@@ -101,6 +162,19 @@ func (s *standardClientTransport) StreamResponseBody() bool {
 
 func (s *standardClientTransport) SetStreamResponseBody(enable bool) {
 	s.client.StreamResponseBody = enable
+}
+
+// DisablePathNormalizing is false once a request has gone out while the client
+// normalized, because the host clients fasthttp created for it then keep doing
+// so whatever the field says now, and it is false for a client the transport
+// cannot vouch for, see settingKnown. Reporting true would let a path parameter
+// change the path for those hosts.
+func (s *standardClientTransport) DisablePathNormalizing() bool {
+	return s.settingKnown && s.client.DisablePathNormalizing && !s.sentNormalized.Load()
+}
+
+func (s *standardClientTransport) SetDisablePathNormalizing(disable bool) {
+	s.client.DisablePathNormalizing = disable
 }
 
 // hostClientTransport adapts fasthttp.HostClient to the httpClientTransport
@@ -161,6 +235,14 @@ func (h *hostClientTransport) StreamResponseBody() bool {
 
 func (h *hostClientTransport) SetStreamResponseBody(enable bool) {
 	h.client.StreamResponseBody = enable
+}
+
+func (h *hostClientTransport) DisablePathNormalizing() bool {
+	return h.client.DisablePathNormalizing
+}
+
+func (h *hostClientTransport) SetDisablePathNormalizing(disable bool) {
+	h.client.DisablePathNormalizing = disable
 }
 
 // lbClientTransport adapts fasthttp.LBClient to the httpClientTransport
@@ -242,6 +324,47 @@ func (l *lbClientTransport) SetStreamResponseBody(enable bool) {
 	forEachHostClient(l.client, func(hc *fasthttp.HostClient) {
 		hc.StreamResponseBody = enable
 	})
+}
+
+func (l *lbClientTransport) DisablePathNormalizing() bool {
+	return balancerLeavesPathAlone(l.client.Clients)
+}
+
+func (l *lbClientTransport) SetDisablePathNormalizing(disable bool) {
+	forEachHostClient(l.client, func(hc *fasthttp.HostClient) {
+		hc.DisablePathNormalizing = disable
+	})
+}
+
+// balancerLeavesPathAlone reports whether every client in clients is a host
+// client that writes the path as built, looking through nested balancers. One
+// that normalizes decides for the whole balancer, since any request may be
+// routed to it, and so does a client of a kind that cannot be inspected.
+func balancerLeavesPathAlone(clients []fasthttp.BalancingClient) bool {
+	if len(clients) == 0 {
+		return false
+	}
+	for _, c := range clients {
+		if !balancingClientLeavesPathAlone(c) {
+			return false
+		}
+	}
+	return true
+}
+
+// balancingClientLeavesPathAlone is balancerLeavesPathAlone for one client: a
+// host client, or a wrapper that exposes a nested balancer through LBClient,
+// the two kinds walkBalancingClientWithBreak looks through as well.
+func balancingClientLeavesPathAlone(client fasthttp.BalancingClient) bool {
+	switch c := client.(type) {
+	case *fasthttp.HostClient:
+		return c.DisablePathNormalizing
+	case interface{ LBClient() *fasthttp.LBClient }:
+		nested := c.LBClient()
+		return nested != nil && balancerLeavesPathAlone(nested.Clients)
+	default:
+		return false
+	}
 }
 
 // forEachHostClient applies fn to every host client reachable from the provided

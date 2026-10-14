@@ -88,7 +88,8 @@ func classify(dst, field []byte) plan {
 // Wrap returns handler, a fasthttp file server with byte ranges enabled, with the
 // Range field handled as RFC 9110 asks. The field is ignored, and the whole file
 // sent, for a non-GET request, a unit other than "bytes", several ranges, or an
-// If-Range that does not match the Last-Modified the file server sent.
+// If-Range that does not match the response's ETag (when the caller set one) or
+// its Last-Modified.
 func Wrap(handler fasthttp.RequestHandler) fasthttp.RequestHandler {
 	return func(ctx *fasthttp.RequestCtx) {
 		serveAt(ctx, handler, time.Now)

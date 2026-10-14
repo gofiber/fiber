@@ -14,26 +14,30 @@ type Config struct {
 	// AllowOriginsFunc defines a function that will set the 'Access-Control-Allow-Origin'
 	// response header to the 'origin' request header when returned true. This allows for
 	// dynamic evaluation of allowed origins. Note if AllowCredentials is true, wildcard origins
-	// will be not have the 'Access-Control-Allow-Credentials' header set to 'true'.
+	// will not have the 'Access-Control-Allow-Credentials' header set to 'true'.
 	//
-	// The function receives serialized origins (scheme + host) or the literal "null" string.
+	// The function is called with the Origin request header exactly as the client sent it, and only
+	// when that origin did not already match AllowOrigins. A true result takes effect only when the
+	// value is a serialized origin (scheme + host) or the literal "null" string.
 	// According to the CORS specification (https://developer.mozilla.org/en-US/docs/Web/HTTP/Guides/CORS#origin),
 	// browsers send "null" for privacy-sensitive contexts like sandboxed iframes or file:// URLs.
 	//
-	// Origins with userinfo, paths, queries, fragments, or wildcards are rejected and will not
-	// be passed to this function.
+	// Origins with userinfo, paths, queries, fragments, or wildcards are still passed to this
+	// function, but a true result for them is discarded and no 'Access-Control-Allow-Origin'
+	// header is set.
 	//
 	// Optional. Default: nil
 	AllowOriginsFunc func(origin string) bool
 
-	// AllowOrigin defines a list of origins that may access the resource.
+	// AllowOrigins defines a list of origins that may access the resource.
 	//
 	// This supports wildcard matching for subdomains by prefixing the domain with a `*.`
-	// e.g. "http://.domain.com". This will allow all level of subdomains of domain.com to access the resource.
+	// e.g. "http://*.domain.com". This will allow all level of subdomains of domain.com to access the resource.
 	//
 	// If the special wildcard `"*"` is present in the list, all origins will be allowed.
+	// An empty list also allows all origins, unless AllowOriginsFunc is set.
 	//
-	// Optional. Default value []string{}
+	// Optional. Default value []string{"*"}
 	AllowOrigins []string
 
 	// AllowMethods defines a list methods allowed when accessing the resource.

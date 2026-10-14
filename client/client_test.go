@@ -6,11 +6,14 @@ import (
 	"crypto/tls"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"io"
+	stdlog "log" //nolint:depguard // log.DefaultLogger is keyed by the standard library logger type the default logger exposes.
 	"net"
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -216,6 +219,94 @@ func TestClientLoggerAccessors(t *testing.T) {
 	contextual := log.WithContext(context.Background())
 	client.SetLogger(contextual)
 	require.Equal(t, contextual, client.Logger())
+}
+
+// Test_Client_DefaultLogger covers the logger a client starts with. It used to
+// ask for the default logger with Fiber's Logger interface as the type
+// argument instead of the standard library's *log.Logger, which no logger
+// implements, so every client began without one: Debug printed nothing and the
+// error paths of SetRootCertificate dereferenced it.
+func Test_Client_DefaultLogger(t *testing.T) {
+	t.Parallel()
+
+	clients := map[string]*Client{
+		"New":               New(),
+		"NewWithClient":     NewWithClient(&fasthttp.Client{}),
+		"NewWithHostClient": NewWithHostClient(&fasthttp.HostClient{}),
+		"NewWithLBClient":   NewWithLBClient(&fasthttp.LBClient{}),
+	}
+	for name, c := range clients {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			require.NotNil(t, c.Logger())
+			require.Equal(t, log.DefaultLogger[*stdlog.Logger](), c.Logger())
+		})
+	}
+}
+
+// recoverValue runs fn and returns what it panicked with, nil when it did not.
+func recoverValue(fn func()) any {
+	var recovered any
+	func() {
+		defer func() { recovered = recover() }()
+		fn()
+	}()
+	return recovered
+}
+
+// Test_Client_SetRootCertificate_InvalidInput pins the documented panic for a
+// certificate that cannot be loaded. The panic has to say why: a client with no
+// logger turned it into a nil pointer dereference that named nothing.
+func Test_Client_SetRootCertificate_InvalidInput(t *testing.T) {
+	t.Parallel()
+
+	noCertificate := filepath.Join(t.TempDir(), "invalid.pem")
+	require.NoError(t, os.WriteFile(noCertificate, []byte("not a pem"), 0o600))
+	missing := filepath.Join(t.TempDir(), "missing.pem")
+
+	tests := []struct {
+		call func(c *Client)
+		name string
+		want string
+	}{
+		{name: "string without a certificate", want: ErrFailedToAppendCert.Error(), call: func(c *Client) {
+			c.SetRootCertificateFromString("not a pem")
+		}},
+		{name: "empty string", want: ErrFailedToAppendCert.Error(), call: func(c *Client) {
+			c.SetRootCertificateFromString("")
+		}},
+		{name: "file without a certificate", want: ErrFailedToAppendCert.Error(), call: func(c *Client) {
+			c.SetRootCertificate(noCertificate)
+		}},
+		{name: "missing file", want: "client: open " + missing, call: func(c *Client) {
+			c.SetRootCertificate(missing)
+		}},
+	}
+
+	for _, tc := range tests {
+		for loggerName, setup := range map[string]func(*Client){
+			"default logger": func(*Client) {},
+			"no logger":      func(c *Client) { c.SetLogger(nil) },
+		} {
+			t.Run(tc.name+"/"+loggerName, func(t *testing.T) {
+				t.Parallel()
+
+				c := New()
+				setup(c)
+
+				recovered := recoverValue(func() { tc.call(c) })
+				require.NotNil(t, recovered, "an unusable certificate must not be ignored")
+
+				var runtimeErr runtime.Error
+				if err, ok := recovered.(error); ok {
+					require.NotErrorAs(t, err, &runtimeErr, "got a runtime panic")
+				}
+				require.Contains(t, fmt.Sprint(recovered), "client: ")
+				require.Contains(t, fmt.Sprint(recovered), tc.want)
+			})
+		}
+	}
 }
 
 func TestClientResetClearsState(t *testing.T) {
@@ -2779,6 +2870,122 @@ func Test_CookieJar_MaxAgePrecedence(t *testing.T) {
 			require.Equal(t, "x", string(cookies[0].Value()))
 		})
 	}
+}
+
+// Test_CookieJar_UnparsableAttributeKeepsTheOthers covers a Set-Cookie header
+// with one attribute fasthttp cannot parse. RFC 6265 Section 5.2 has such an
+// attribute ignored, but fasthttp stops at the first one, so everything after
+// it was lost: "Max-Age=abc; Secure; Path=/" stored a cookie that was neither
+// Secure nor on "/", which the jar then sent over plain HTTP, and only to the
+// directory that set it.
+func Test_CookieJar_UnparsableAttributeKeepsTheOthers(t *testing.T) {
+	t.Parallel()
+
+	const (
+		receivedPath = "/dir/x" // the request that received the cookie: default path "/dir"
+		otherPath    = "/other" // outside the default path
+	)
+
+	tests := []struct {
+		check     func(t *testing.T, jar *CookieJar)
+		name      string
+		setCookie string
+	}{
+		{
+			name:      "Secure and Path after a non-integer Max-Age",
+			setCookie: "s=1; Max-Age=abc; Secure; Path=/",
+			check: func(t *testing.T, jar *CookieJar) {
+				t.Helper()
+				require.Empty(t, jarGet(t, jar, "http://example.com"+otherPath), "a Secure cookie must not go over plain HTTP")
+				got := jarGet(t, jar, "https://example.com"+otherPath)
+				require.Len(t, got, 1, "Path=/ must be kept")
+				require.True(t, got[0].Secure())
+				require.Equal(t, "/", string(got[0].Path()))
+			},
+		},
+		{
+			name:      "Path after a fractional Max-Age",
+			setCookie: "s=1; Max-Age=1.5; Path=/",
+			check: func(t *testing.T, jar *CookieJar) {
+				t.Helper()
+				require.Len(t, jarGet(t, jar, "http://example.com"+otherPath), 1)
+			},
+		},
+		{
+			name:      "attributes after an empty Max-Age",
+			setCookie: "s=1; Max-Age=; HttpOnly; Path=/; SameSite=Lax",
+			check: func(t *testing.T, jar *CookieJar) {
+				t.Helper()
+				got := jarGet(t, jar, "http://example.com"+otherPath)
+				require.Len(t, got, 1)
+				require.True(t, got[0].HTTPOnly())
+				require.Equal(t, fasthttp.CookieSameSiteLaxMode, got[0].SameSite())
+			},
+		},
+		{
+			name:      "attributes after an unparsable Expires",
+			setCookie: "s=1; Expires=bogus; Secure; Path=/",
+			check: func(t *testing.T, jar *CookieJar) {
+				t.Helper()
+				require.Empty(t, jarGet(t, jar, "http://example.com"+otherPath))
+				require.Len(t, jarGet(t, jar, "https://example.com"+otherPath), 1)
+			},
+		},
+		{
+			name:      "Domain after a non-integer Max-Age",
+			setCookie: "s=1; Max-Age=abc; Domain=example.com; Path=/",
+			check: func(t *testing.T, jar *CookieJar) {
+				t.Helper()
+				require.Len(t, jarGet(t, jar, "http://sub.example.com"+otherPath), 1, "a Domain cookie reaches the subdomains")
+			},
+		},
+		{
+			name:      "the last integer Max-Age counts and the attributes survive",
+			setCookie: "s=1; Max-Age=3600; Max-Age=abc; Secure; Path=/",
+			check: func(t *testing.T, jar *CookieJar) {
+				t.Helper()
+				got := jarGet(t, jar, "https://example.com"+otherPath)
+				require.Len(t, got, 1)
+				require.WithinDuration(t, time.Now().Add(time.Hour), got[0].Expire(), time.Minute)
+			},
+		},
+		{
+			name:      "an unusable name and value pair is dropped with its attributes",
+			setCookie: `s=a"b; Path=/`,
+			check: func(t *testing.T, jar *CookieJar) {
+				t.Helper()
+				require.Empty(t, jar.hostCookies, "nothing may be stored, not even an empty cookie")
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			jar := AcquireCookieJar()
+			t.Cleanup(jar.Release)
+
+			resp := fasthttp.AcquireResponse()
+			t.Cleanup(func() { fasthttp.ReleaseResponse(resp) })
+			resp.Header.Add("Set-Cookie", tc.setCookie)
+
+			jar.parseCookiesFromResp([]byte("example.com"), []byte(receivedPath), resp)
+
+			tc.check(t, jar)
+		})
+	}
+}
+
+// jarGet returns the cookies jar would send to rawURL.
+func jarGet(t *testing.T, jar *CookieJar, rawURL string) []*fasthttp.Cookie {
+	t.Helper()
+
+	uri := fasthttp.AcquireURI()
+	t.Cleanup(func() { fasthttp.ReleaseURI(uri) })
+	require.NoError(t, uri.Parse(nil, []byte(rawURL)))
+
+	return jar.Get(uri)
 }
 
 func Test_Request_CancelledContext_NoRace(t *testing.T) {

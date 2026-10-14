@@ -30,7 +30,7 @@ scenarios, but prefer Fiber handlers when performance or Fiber-specific APIs mat
 
 :::note Body size limits when running Fiber from net/http
 When Fiber is executed from a `net/http` server through `FiberHandler`, `FiberHandlerFunc`,
-or `FiberApp`, the adaptor enforces the app's configured `BodyLimit`. The app's `BodyLimit` defaults to **4 MiB** if a non-positive value is provided during configuration. Requests exceeding the active limit receive `413 Request Entity Too Large`.
+or `FiberApp`, the adaptor enforces the app's configured `BodyLimit`. The app's `BodyLimit` defaults to **4 MiB** if a non-positive value is provided during configuration. `FiberHandler` and `FiberHandlerFunc` run the handler on a fresh app with the default configuration, so they always apply the 4 MiB default; pass your own app to `FiberApp` to use a different `BodyLimit`. Requests exceeding the active limit receive `413 Request Entity Too Large`.
 :::
 
 ## API Reference
@@ -46,7 +46,7 @@ or `FiberApp`, the adaptor enforces the app's configured `BodyLimit`. The app's 
 | `FiberApp`                    | `FiberApp(app *fiber.App) http.HandlerFunc`                                   | Converts an entire Fiber app to a `http.HandlerFunc`                          |
 | `ConvertRequest`              | `ConvertRequest(c fiber.Ctx, forServer bool) (*http.Request, error)`          | Converts `fiber.Ctx` into a `http.Request`                                    |
 | `LocalContextFromHTTPRequest` | `LocalContextFromHTTPRequest(r *http.Request) (context.Context, bool)`        | Extracts the propagated `context.Context` from an adapted `http.Request`      |
-| `CopyContextToFiberContext`   | `CopyContextToFiberContext(context any, requestContext *fasthttp.RequestCtx)` | Copies `context.Context` to `fasthttp.RequestCtx`                             |
+| `CopyContextToFiberContext`   | `CopyContextToFiberContext(src any, requestContext *fasthttp.RequestCtx)`     | Copies `context.Context` to `fasthttp.RequestCtx`                             |
 
 ---
 
@@ -204,13 +204,13 @@ The `net/http` server and the Fiber app behind it each parse the request's heade
 
 ### 6. Converting `fiber.Ctx` to `*http.Request` (`ConvertRequest`)
 
-Create an `*http.Request` from a `fiber.Ctx`. The `forServer` parameter determines how
-server-oriented fields are populated:
+Create an `*http.Request` from a `fiber.Ctx`. The `forServer` parameter decides whether
+the request carries a `RequestURI`; `RemoteAddr` and `TLS` are filled in either way:
 
 - Use `forServer = true` when the converted request will be passed into a `net/http` handler
-  (sets `RequestURI`, `RemoteAddr`, and `TLS` fields for server-side handling)
+  (sets `RequestURI`, which a server-side request carries)
 - Use `forServer = false` when creating a request for client-side use (e.g., making an
-  outbound HTTP request with `http.Client`)
+  outbound HTTP request with `http.Client`, which refuses a request that has `RequestURI` set)
 
 ```go
 package main
@@ -302,17 +302,17 @@ reflection and unsafe operations—prefer explicit parameter passing when possib
 When you do need it, call it immediately after you add values to the `net/http`
 context so Fiber can read them via `c.Locals()`. Values are copied from the
 chain of derived contexts (`WithValue`, `WithCancel`, `WithTimeout`,
-`WithDeadline`, `WithoutCancel`), the innermost value winning for a key set
-twice. The walk follows the chain to its end and stops only where it would
-repeat itself, so a deep middleware stack keeps its outermost values and a
-context pointing back at itself still terminates:
+`WithDeadline`, `WithoutCancel`), the most recently derived context winning for
+a key set twice, as `Value` reports it. The walk follows the chain to its end
+and stops only where it would repeat itself, so a deep middleware stack keeps
+its outermost values and a context pointing back at itself still terminates:
 
 ```go
 package main
 
 import (
     "context"
-    "net/http"
+
     "github.com/gofiber/fiber/v3"
     "github.com/gofiber/fiber/v3/middleware/adaptor"
 )
@@ -358,10 +358,12 @@ func main() {
 - A routed path holding an escape of an unreserved character, such as `%2e` or `%41`, is answered with `404 Not Found` by `HTTPHandler`, `HTTPHandlerFunc` and `HTTPHandlerWithContext` and with `400 Bad Request` by `HTTPMiddleware` and `ConvertRequest`. The router decodes every such escape when it normalizes a path, so one still in `c.Path()` can only have been forged by a stray `%`, and `URL.Path` would read a forged `%2e%2e` as the `..` segment an `http.FileServer` cleans away.
 - `HTTPHandler`, `HTTPHandlerFunc` and `HTTPHandlerWithContext` put the original request line back once a buffered handler has returned, or panicked, so `c.OriginalURL()` in a middleware that runs afterwards is unchanged. A handler that flushed or hijacked is still running with a request whose URL aliases the request line, so the line is then left as the handler read it; `HTTPMiddleware` and `ConvertRequest` leave it as well.
 - A request that `net/http` served over TLS is seen as TLS by Fiber: `c.Scheme()` is `https`, `c.Secure()` is true and `c.RequestCtx().TLSConnectionState()` carries the state from `r.TLS`.
-- `c.StartTime()` (and so `c.Elapsed()`) is not set for requests that reach Fiber through `FiberHandler`, `FiberApp` or `HTTPMiddleware`: fasthttp only records the request time inside its own server loop.
+- For a request that reaches Fiber through `FiberHandler`, `FiberHandlerFunc` or `FiberApp`, `c.StartTime()` marks the moment the adaptor took the request over, not the moment the `net/http` server began reading it, so `c.Elapsed()` leaves out the time spent before the handler was called.
 - Both parsers read the headers: `Header.Get` returns the first field line even when it is empty, `c.Get` the first line that holds a value. A `net/http` guard should strip a header or check every value rather than compare `Header.Get` with the empty string; see the caution in the `FiberApp` section above.
 - `HTTPMiddleware` routes the request the wrapped middleware hands to `next`, including a rewritten `r.URL` such as the one `http.StripPrefix` produces. The middleware must call `next` before it flushes or hijacks the response; after that the response has left Fiber's hands and the call is ignored.
+- `HTTPMiddleware` copies `r.Method`, `r.Host` and `r.Header`, as the wrapped middleware hands them to `next`, back onto the Fiber request, so a header it replaces or deletes (`r.Header.Set`, `r.Header.Del`) is replaced or gone for the handlers behind it, `c.IPs()` included. A changed `r.Method` reaches only the raw request (`c.Request().Header.Method()`): `c.Method()` and the route that is running keep the method the request was routed with, so a rewrite does not move it to another method's handlers. `Content-Length` and `Transfer-Encoding` are not copied back, so the body framing stays as received. A `Connection` field written as several entries is joined with commas, and a `close` token anywhere in it closes the connection once the response is sent.
 - `FiberHandler`, `FiberHandlerFunc` and `FiberApp` route `r.RequestURI`, the request line as `net/http` received it, so a raw `/über` or `/a|b` is routed and its params are read as a Fiber server would read them. When `r.URL` no longer says what that line says, or there is no such line, they route the request line `net/http` would write for `r.URL` instead: the path an `http.StripPrefix` in front of them rewrote, the URL of a request built in code, which has no `RequestURI` at all, and, for a `CONNECT` request in the authority form, the authority rather than the `/` that `r.URL.RequestURI()` reads for it: `r.URL.Opaque` when set, else `r.Host`, else `r.URL.Host`, the order in which `net/http` itself writes such a request.
+- `FiberHandler`, `FiberHandlerFunc` and `FiberApp` pass repeated lines of a header such as `X-Forwarded-For` on as repeated lines, and `c.Protocol()` reports the version the request arrived with (`HTTP/1.0`, `HTTP/1.1`, `HTTP/2` or `HTTP/3`). The client address comes from `r.RemoteAddr`: a host without a port gets port `80`, and behind a Unix socket listener it is the listener's own address, which holds no client IP. An address that is empty or cannot be resolved does not fail the request; `c.IP()` is then an empty string. `c.SendEarlyHints` does not panic, but its `103` interim response is discarded because there is no client connection to write it to; the `Link` headers still reach the final response.
 
 ## Summary
 

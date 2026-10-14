@@ -30,9 +30,15 @@ app := fiber.New(fiber.Config{
 })
 ```
 
-If `SharedStatePrefix` is empty, Fiber derives a default namespace and includes `AppName` (when set) to reduce collisions between apps/services.
+`SharedStorage` accepts any implementation of the `fiber.Storage` interface, such as the drivers in the [storage](https://github.com/gofiber/storage) package. See [Storage Interface](#storage-interface) for the methods it must provide.
 
-MsgPack and CBOR helpers require the corresponding `Config` encoders/decoders to be configured. If they are unavailable, the helper methods return an error instead of panicking.
+If `SharedStatePrefix` is empty, Fiber derives a default namespace and includes `AppName` (when set) to reduce collisions between apps/services. The default is `gofiber-shared-state-`, followed by the `AppName` and a dash when `AppName` is set (for example `gofiber-shared-state-billing-api-`). Fiber stores each key in the backend as the prefix followed by the hex encoding of the key you pass.
+
+Without `SharedStorage`, `app.SharedState()` still returns a value, but every method returns `fiber.ErrSharedStorageNotConfigured`.
+
+The JSON and XML helpers use `Config.JSONEncoder`/`JSONDecoder` and `Config.XMLEncoder`/`XMLDecoder`, which default to `encoding/json` and `encoding/xml`. MsgPack and CBOR helpers require the corresponding `Config` encoders/decoders to be configured. If they are unavailable, the helper methods return an error instead of panicking.
+
+An empty key is ignored: the setters and `Delete` do nothing and return `nil`, the getters report the key as not found, and `Has` returns `false`. A `ttl` of `0` stores the value without an expiration.
 
 :::warning Memory storage caveat
 `SharedState` is only cross-worker / cross-process when the configured `SharedStorage` backend is shared.
@@ -86,6 +92,10 @@ func (s *SharedState) ResetWithContext(ctx context.Context) error
 func (s *SharedState) Close() error
 ```
 
+:::caution
+`Reset` resets the whole configured storage, not only the keys written through `SharedState`, and `Close` closes it. Fiber also calls `Close` when the application shuts down, after it has terminated the [services](./services.md), so everything else that uses the same storage instance loses it at that point.
+:::
+
 ### SharedState Example
 
 ```go
@@ -135,6 +145,34 @@ err := app.SharedState().SetJSONWithContext(ctx, "job:42", fiber.Map{
 }, 2*time.Minute)
 if err != nil {
     // timeout, cancellation, storage error, or JSON serialization error
+}
+```
+
+### Storage Interface
+
+`SharedStorage` takes a `fiber.Storage`. A missing key is reported as `nil, nil` rather than as an error, and an expiration of `0` means no expiration.
+
+```go title="Definition"
+type Storage interface {
+    // Get returns the value for the given key, or nil, nil when the key does not exist.
+    Get(key string) ([]byte, error)
+    GetWithContext(ctx context.Context, key string) ([]byte, error)
+
+    // Set stores the value for the given key with an expiration, where 0 means no expiration.
+    // An empty key or value is ignored without an error.
+    Set(key string, val []byte, exp time.Duration) error
+    SetWithContext(ctx context.Context, key string, val []byte, exp time.Duration) error
+
+    // Delete removes the given key. It returns no error when the key does not exist.
+    Delete(key string) error
+    DeleteWithContext(ctx context.Context, key string) error
+
+    // Reset deletes all keys.
+    Reset() error
+    ResetWithContext(ctx context.Context) error
+
+    // Close closes the storage and stops any running garbage collector and open connection.
+    Close() error
 }
 ```
 
@@ -233,7 +271,7 @@ app.State().Delete("obsoleteKey")
 
 ### Reset
 
-Reset removes all keys from the State, including those related to Services.
+Reset removes all keys from the State, including those related to Services. `GetService` no longer finds the services afterwards, but they are not stopped: Fiber still terminates them at shutdown.
 
 ```go title="Signature"
 func (s *State) Reset()
@@ -247,7 +285,7 @@ app.State().Reset()
 
 ### Keys
 
-Keys returns a slice containing all keys present in the State.
+Keys returns a slice containing all keys present in the State. Services that Fiber started are stored under internal keys, which are included.
 
 ```go title="Signature"
 func (s *State) Keys() []string
@@ -262,7 +300,7 @@ fmt.Println("State Keys:", keys)
 
 ### Len
 
-Len returns the number of keys in the State.
+Len returns the number of keys in the State, including the entries of the services that Fiber started.
 
 ```go
 // Len returns the number of keys in the State.
@@ -273,6 +311,36 @@ func (s *State) Len() int
 
 ```go
 fmt.Printf("Total State Entries: %d\n", app.State().Len())
+```
+
+### Services
+
+Services returns a map with the [services](./services.md) that Fiber started and registered in the State. The map keys are internal identifiers, not the names that the services return from `String`; use [GetService](#getservice) to look one up by name. The map is a copy, so changing it does not affect the State.
+
+```go title="Signature"
+func (s *State) Services() map[string]Service
+```
+
+**Usage Example:**
+
+```go
+for _, srv := range app.State().Services() {
+    fmt.Println("Service:", srv.String())
+}
+```
+
+### ServicesLen
+
+ServicesLen returns the number of services registered in the State. [Len](#len) counts them too.
+
+```go title="Signature"
+func (s *State) ServicesLen() int
+```
+
+**Usage Example:**
+
+```go
+fmt.Printf("Registered services: %d\n", app.State().ServicesLen())
 ```
 
 ### GetString
@@ -312,7 +380,7 @@ if count, ok := app.State().GetInt("userCount"); ok {
 GetBool retrieves a boolean value from the State. It returns the bool and a boolean indicating a successful type assertion.
 
 ```go title="Signature"
-func (s *State) GetBool(key string) (value, bool)
+func (s *State) GetBool(key string) (value, ok bool)
 ```
 
 **Usage Example:**
@@ -333,7 +401,7 @@ func (s *State) GetFloat64(key string) (float64, bool)
 
 **Usage Example:**
 
-```go title="Signature"
+```go
 if ratio, ok := app.State().GetFloat64("scalingFactor"); ok {
     fmt.Printf("Scaling Factor: %f\n", ratio)
 }
@@ -563,7 +631,7 @@ func GetState[T any](s *State, key string) (T, bool)
 
 ```go
 // Retrieve an integer value safely.
-userCount, ok := GetState[int](app.State(), "userCount")
+userCount, ok := fiber.GetState[int](app.State(), "userCount")
 if ok {
     fmt.Printf("User Count: %d\n", userCount)
 }
@@ -581,13 +649,13 @@ func MustGetState[T any](s *State, key string) T
 
 ```go
 // Retrieve the value or panic if it is not present.
-config := MustGetState[string](app.State(), "configFile")
+config := fiber.MustGetState[string](app.State(), "configFile")
 fmt.Println("Config File:", config)
 ```
 
 ### GetStateWithDefault
 
-GetStateWithDefault retrieves a value from the State, casting it to the desired type. If the key is not present, it returns the provided default value.
+GetStateWithDefault retrieves a value from the State, casting it to the desired type. If the key is not present, or the stored value is not of that type, it returns the provided default value.
 
 ```go title="Signature"
 func GetStateWithDefault[T any](s *State, key string, defaultVal T) T
@@ -597,29 +665,29 @@ func GetStateWithDefault[T any](s *State, key string, defaultVal T) T
 
 ```go
 // Retrieve a value with a fallback.
-requestCount := GetStateWithDefault[int](app.State(), "requestCount", 0)
+requestCount := fiber.GetStateWithDefault[int](app.State(), "requestCount", 0)
 fmt.Printf("Request Count: %d\n", requestCount)
 ```
 
 ### GetService
 
-GetService retrieves a Service from the State and casts it to the desired type. It returns the cast value and a boolean indicating if the cast was successful.
+GetService retrieves a started Service from the State by the name its `String` method returns and casts it to the desired type. It returns the cast value and a boolean that is `false` when no service has that name or the service is not of that type.
 
 ```go title="Signature"
-func GetService[T Service](s *State, key string) (T, bool) {
+func GetService[T Service](s *State, key string) (T, bool)
 ```
 
 **Usage Example:**
 
 ```go
-if srv, ok := fiber.GetService[*redisService](app.State(), "someService")
+if srv, ok := fiber.GetService[*redisService](app.State(), "someService"); ok {
     fmt.Printf("Some Service: %s\n", srv.String())
 }
 ```
 
 ### MustGetService
 
-MustGetService retrieves a Service from the State and casts it to the desired type. It panics if the key is not found or if the type assertion fails.
+MustGetService retrieves a started Service from the State by name and casts it to the desired type. It panics if no service has that name or if the type assertion fails.
 
 ```go title="Signature"
 func MustGetService[T Service](s *State, key string) T

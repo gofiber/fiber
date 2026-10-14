@@ -46,6 +46,7 @@ type Request struct {
     bodyType bodyType
 
     isPathNormalizingDisabled bool
+    clientOwned               bool
 }
 ```
 
@@ -169,7 +170,7 @@ func (r *Request) URL() string
 
 ## SetURL
 
-**SetURL** sets the URL for the `Request` object.
+**SetURL** sets the URL for the `Request` object. When the request is sent, the URL must start with `http://` or `https://`, after the client's base URL is prepended to one that does not; otherwise the request fails with `ErrURLFormat`.
 
 ```go title="Signature"
 func (r *Request) SetURL(url string) *Request
@@ -185,7 +186,7 @@ func (r *Request) Client() *Client
 
 ## SetClient
 
-**SetClient** assigns a `Client` to the `Request`. If the provided client is `nil`, it will panic.
+**SetClient** assigns a `Client` to the `Request`. If the provided client is `nil`, it will panic with `ErrClientNil`.
 
 ```go title="Signature"
 func (r *Request) SetClient(c *Client) *Request
@@ -304,7 +305,6 @@ fmt.Println(resp.String())
   "headers": {
     "Golang": "Fiber", 
     "Host": "httpbin.org", 
-    "Referer": "", 
     "Test": "123456,654321", 
     "User-Agent": "fiber", 
     "X-Amzn-Trace-Id": "Root=1-664105d2-033cf7173457adb56d9e7193"
@@ -345,7 +345,6 @@ fmt.Println(resp.String())
   "headers": {
     "Golang": "Fiber", 
     "Host": "httpbin.org", 
-    "Referer": "", 
     "Test": "654321", 
     "User-Agent": "fiber", 
     "X-Amzn-Trace-Id": "Root=1-664105e5-5d676ba348450cdb62847f04"
@@ -454,7 +453,7 @@ func (r *Request) SetParams(m map[string]string) *Request
 
 ### SetParamsWithStruct
 
-**SetParamsWithStruct** sets multiple query parameters from a struct. Nested structs are not supported.
+**SetParamsWithStruct** sets multiple query parameters from a struct. Each exported field becomes a parameter named by its `param` struct tag, or by the field name when it has no tag. Nested structs are not supported; see [SetValWithStruct](#setvalwithstruct) for the field types that are used.
 
 ```go title="Signature"
 func (r *Request) SetParamsWithStruct(v any) *Request
@@ -468,8 +467,8 @@ req := client.AcquireRequest()
 defer client.ReleaseRequest(req)
 
 req.SetParamsWithStruct(struct {
-    Name    string   `json:"name"`
-    Hobbies []string `json:"hobbies"`
+    Name    string   `param:"name"`
+    Hobbies []string `param:"hobbies"`
 }{
     Name: "John Doe",
     Hobbies: []string{
@@ -490,11 +489,11 @@ fmt.Println(string(resp.Body()))
 {
   "Content-Length": "147", 
   "Content-Type": "application/json", 
-  "Hobbies": [
+  "hobbies": [
     "Football", 
     "Basketball"
   ], 
-  "Name": "John Doe"
+  "name": "John Doe"
 }
 ```
 
@@ -518,7 +517,7 @@ func (r *Request) UserAgent() string
 
 ## SetUserAgent
 
-**SetUserAgent** sets the user agent header for the request, overriding the one set at the client level if any.
+**SetUserAgent** sets the user agent header for the request, overriding the one set at the client level if any. Without either, `User-Agent: fiber` is sent. A `User-Agent` set with `SetHeader` or `AddHeader` is replaced when the request is sent, so use this method for it.
 
 ```go title="Signature"
 func (r *Request) SetUserAgent(ua string) *Request
@@ -534,7 +533,7 @@ func (r *Request) Boundary() string
 
 ## SetBoundary
 
-**SetBoundary** sets the multipart boundary for file uploads.
+**SetBoundary** sets the multipart boundary for file uploads. Without one, a boundary made of `FiberFormBoundary` and 16 random characters is generated when a request with files is sent.
 
 ```go title="Signature"
 func (r *Request) SetBoundary(b string) *Request
@@ -550,7 +549,7 @@ func (r *Request) Referer() string
 
 ## SetReferer
 
-**SetReferer** sets the Referer header for the request, overriding the one set at the client level if any.
+**SetReferer** sets the Referer header for the request, overriding the one set at the client level if any. When neither is set, no `Referer` header is sent. A `Referer` set with `SetHeader` or `AddHeader` is replaced when the request is sent, or removed when no referer is set, so use this method for it.
 
 ```go title="Signature"
 func (r *Request) SetReferer(referer string) *Request
@@ -611,7 +610,8 @@ fmt.Println(string(resp.Body()))
 ```json
 {
   "cookies": {
-    "test": "123"
+    "cookie1": "value1",
+    "cookie2": "value2"
   }
 }
 ```
@@ -620,7 +620,7 @@ fmt.Println(string(resp.Body()))
 
 ### SetCookiesWithStruct
 
-**SetCookiesWithStruct** sets multiple cookies from a struct.
+**SetCookiesWithStruct** sets multiple cookies from a struct. Each field is named by its `cookie` struct tag, or by the field name when it has no tag.
 
 ```go title="Signature"
 func (r *Request) SetCookiesWithStruct(v any) *Request
@@ -654,13 +654,13 @@ func (r *Request) PathParams() iter.Seq2[string, string]
 
 **SetPathParam** sets a single path parameter key-value pair, overriding previously set values.
 
-Placeholders are matched as `:name`, and where several registered names fit, the longest one wins, so a name holding a `-`, `.` or `:` resolves as itself. A name otherwise ends at a path-segment boundary (`/`, `-`, `.`, `:`, `\`, `?` or `#`), so `:id` does not also match the start of `:idx`. Values are percent-encoded with path-segment rules, and each placeholder is resolved once — a substituted value is never scanned for further placeholders.
+Placeholders are matched as `:name`, and where several registered names fit, the longest one wins, so a name holding a `-`, `.` or `:` resolves as itself. A name otherwise ends at a path-segment boundary (`/`, `-`, `.`, `:`, `\`, `?` or `#`), so `:id` does not also match the start of `:idx`. Values are percent-encoded with path-segment rules, and each placeholder is resolved once — a substituted value is never scanned for further placeholders. A placeholder with no value set is sent as written.
 
 A value stays inside the one path segment its placeholder occupies. Path normalizing percent-decodes the path before it collapses `.` and `..`, so escaping a separator is not enough on its own: a value containing `/` or `\`, a value that is exactly `.` or `..`, or an empty value — which leaves a `//` that collapses and drops the segment — fails the request with `ErrPathParamInPath` rather than changing the path the template set. A `%2F` you write yourself is not a separator — it is escaped to `%252F` and decodes back to the literal text `%2F`.
 
 The host can be templated too (`https://:tenant.example.com/api`). A placeholder in the authority whose name is only digits is treated as the port and is left unchanged, and the colons inside an IPv6 literal such as `http://[2001:db8::1]/api` are part of the address rather than placeholders. A value substituted into the authority is **not** escaped — a `%XX` below `0x80` inside a host makes the URL parser discard the rest of the URL — so it must already be a valid host: unreserved characters, `$`, `&`, `+`, `=` and valid UTF-8 for an IDN label. Malformed UTF-8 is rejected too — the bytes reach the `Host` header verbatim, and an overlong sequence such as `%C0%AF` is a `/` to a lenient decoder. Anything else, including a `:` or `@` that would add a port or a userinfo section and send the request to another host, fails the request with `ErrPathParamInHost`. A port can still be templated by giving the placeholder a name that is not all digits, as in `https://example.com::port/api`.
 
-`SetDisablePathNormalizing(true)` on the client or request turns that check off: nothing decodes the path afterwards, so a `/` in a value is emitted as `%2F` and the value is sent as one segment. Whether it stays one segment is then up to the server — one that unescapes paths, including a Fiber server configured with `UnescapePath`, decodes it again while routing. A `?` or `#` in a value is always contained; normalizing does not decode those.
+`SetDisablePathNormalizing(true)` on the client or request turns that check off for `/` and `\`, but only for a client that Fiber knows sends the path as built: one whose wrapped fasthttp client has path normalizing turned off and has not served a host while it was on. [SetDisablePathNormalizing](./rest.md#setdisablepathnormalizing) on the client does that for a client from `New`, `NewWithHostClient` or `NewWithLBClient`. A `fasthttp.Client` given to [NewWithClient](./rest.md#newwithclient) may have served hosts already and Fiber cannot tell, so it counts only when it was created with `DisablePathNormalizing: true`. Nothing decodes the path afterwards then, a `/` in a value is emitted as `%2F` and the value is sent as one segment. Whether it stays one segment is up to the server — one that unescapes paths, including a Fiber server configured with `UnescapePath`, decodes it again while routing. On any other client the check stays on, whatever the client or the request asks for, so a value such as `x/../../admin` is rejected rather than changing the path that is sent. The values the setting never lets through are `.` and `..`, which would go out as dot segments that the receiving server resolves, and an empty value, which leaves a `//` that a server merging slashes drops: no escape keeps them in place. A `?` or `#` in a value is always contained; normalizing does not decode those.
 
 ```go title="Signature"
 func (r *Request) SetPathParam(key, val string) *Request
@@ -699,7 +699,7 @@ func (r *Request) SetPathParams(m map[string]string) *Request
 
 ### SetPathParamsWithStruct
 
-**SetPathParamsWithStruct** sets multiple path parameters from a struct.
+**SetPathParamsWithStruct** sets multiple path parameters from a struct. Each field is named by its `path` struct tag, or by the field name when it has no tag.
 
 ```go title="Signature"
 func (r *Request) SetPathParamsWithStruct(v any) *Request
@@ -873,7 +873,7 @@ func (r *Request) SetFormDataWithMap(m map[string]string) *Request
 
 ### SetFormDataWithStruct
 
-**SetFormDataWithStruct** sets multiple form data fields from a struct.
+**SetFormDataWithStruct** sets multiple form data fields from a struct. Each field is named by its `form` struct tag, or by the field name when it has no tag.
 
 ```go title="Signature"
 func (r *Request) SetFormDataWithStruct(v any) *Request
@@ -889,7 +889,7 @@ func (r *Request) DelFormData(key ...string) *Request
 
 ## File
 
-**File** returns a file from the request by its name. If no name was provided, it attempts to match by path.
+**File** returns a file from the request by its name. A file added without a name is matched by the base name of its path.
 
 ```go title="Signature"
 func (r *Request) File(name string) *File
@@ -1008,7 +1008,7 @@ func (r *Request) Timeout() time.Duration
 
 ## SetTimeout
 
-**SetTimeout** sets a timeout for the request, overriding any timeout set at the client level.
+**SetTimeout** sets a timeout for the request, overriding any timeout set at the client level. When the timeout elapses, or the request's context is canceled, the request fails with `ErrTimeoutOrCancel`.
 
 ```go title="Signature"
 func (r *Request) SetTimeout(t time.Duration) *Request
@@ -1073,7 +1073,7 @@ exit status 2
 
 ## MaxRedirects
 
-**MaxRedirects** returns the maximum number of redirects allowed for the request.
+**MaxRedirects** returns the maximum number of redirects allowed for the request. The default is `0`.
 
 ```go title="Signature"
 func (r *Request) MaxRedirects() int
@@ -1081,7 +1081,7 @@ func (r *Request) MaxRedirects() int
 
 ## SetMaxRedirects
 
-**SetMaxRedirects** sets the maximum number of redirects for the request, overriding the client's setting.
+**SetMaxRedirects** sets the maximum number of redirects to follow for the request. The default is `0`, which follows none: the redirect response is returned as-is. The client has no redirect limit of its own, so set one on each request or with `Config.MaxRedirects`.
 
 ```go title="Signature"
 func (r *Request) SetMaxRedirects(count int) *Request
@@ -1091,9 +1091,32 @@ func (r *Request) SetMaxRedirects(count int) *Request
 Redirects are followed only for `GET`, `HEAD` and `QUERY` requests. Other methods receive the redirect response as-is, whatever the limit.
 :::
 
+While redirects are followed:
+
+- After a `301`, `302` or `303` the request is repeated as a `GET` without its body; a `HEAD` stays a `HEAD`. A `307` or `308` keeps the method and the body.
+- When the target is on another host, the `Authorization`, `Proxy-Authorization`, `Proxy-Authenticate`, `WWW-Authenticate`, `Cookie` and `Cookie2` headers are dropped. The same host on any port, and its subdomains, keep them.
+- A redirect from `https` to `http` fails with `ErrRedirectDowngrade`. Leave the limit at `0` to take such a hop yourself.
+- A redirect without a `Location` fails with `fasthttp.ErrMissingLocation`. A `Location` that cannot be parsed or names a `scheme://` other than `http` or `https` fails with `fasthttp.ErrorInvalidURI` without being requested, as does a request URL that cannot be parsed. A chain longer than the limit fails with `fasthttp.ErrTooManyRedirects`.
+
+## DisablePathNormalizing
+
+**DisablePathNormalizing** reports whether path normalizing is disabled for this request. It does not reflect the client's setting; Fiber builds the URL without normalizing it when either one disables it, see [SetDisablePathNormalizing](#setdisablepathnormalizing) for what reaches the wire.
+
+```go title="Signature"
+func (r *Request) DisablePathNormalizing() bool
+```
+
+## SetDisablePathNormalizing
+
+**SetDisablePathNormalizing** turns path normalizing off or on for the request. It is on by default: the request path is normalized before it is sent, which decodes percent-escapes, collapses `//` and resolves `.` and `..` segments, so `/a//b/./c%2Fd` goes out as `/a/b/c/d`. With normalizing off, Fiber builds the URL without normalizing it. Whether the path is normalized again when the request is written is up to the wrapped fasthttp client, which a single request cannot change: the path goes out as written only when the client has normalizing turned off, with [SetDisablePathNormalizing](./rest.md#setdisablepathnormalizing) on the client or with a fasthttp client created with `DisablePathNormalizing: true` (see [NewWithClient](./rest.md#newwithclient)). On any other client this setting changes neither what is sent nor the path parameter check. Path parameter values are checked differently while normalizing is off, as described under [SetPathParam](#setpathparam).
+
+```go title="Signature"
+func (r *Request) SetDisablePathNormalizing(disable bool) *Request
+```
+
 ## Send
 
-**Send** executes the HTTP request and returns a `Response`.
+**Send** executes the HTTP request and returns a `Response`. A request without a client, such as one from `AcquireRequest`, is sent with the default client returned by `client.C()`.
 
 ```go title="Signature"
 func (r *Request) Send() (*Response, error)
@@ -1177,7 +1200,7 @@ func (p *QueryParam) SetParams(r map[string]string)
 
 ### SetParamsWithStruct
 
-**SetParamsWithStruct** sets multiple query parameters from a struct. Nested structs are not supported.
+**SetParamsWithStruct** sets multiple query parameters from a struct, naming each field by its `param` struct tag. Nested structs are not supported.
 
 ```go title="Signature"
 func (p *QueryParam) SetParamsWithStruct(v any)
@@ -1225,7 +1248,7 @@ func (c Cookie) SetCookies(m map[string]string)
 
 ### SetCookiesWithStruct
 
-**SetCookiesWithStruct** sets multiple cookies from a struct.
+**SetCookiesWithStruct** sets multiple cookies from a struct, naming each field by its `cookie` struct tag.
 
 ```go title="Signature"
 func (c Cookie) SetCookiesWithStruct(v any)
@@ -1298,7 +1321,7 @@ func (p PathParam) SetParams(m map[string]string)
 
 ### SetParamsWithStruct
 
-**SetParamsWithStruct** sets multiple path parameters from a struct.
+**SetParamsWithStruct** sets multiple path parameters from a struct, naming each field by its `path` struct tag.
 
 ```go title="Signature"
 func (p PathParam) SetParamsWithStruct(v any)
@@ -1381,7 +1404,7 @@ func (f *FormData) SetWithMap(m map[string]string)
 
 ### SetWithStruct
 
-**SetWithStruct** sets multiple form fields from a struct.
+**SetWithStruct** sets multiple form fields from a struct, naming each field by its `form` struct tag.
 
 ```go title="Signature"
 func (f *FormData) SetWithStruct(v any)
@@ -1416,9 +1439,11 @@ type File struct {
 }
 ```
 
+When the request is sent, a file with a path but no name takes the base name of the path as its file name, and a file without a field name is sent in the field `file1`, `file2`, and so on, by its position. A file with neither a name nor a path makes the request fail with `ErrFileNoName`.
+
 ### AcquireFile
 
-**AcquireFile** returns a `File` from the pool and applies any provided `SetFileFunc` functions to it. Release it with `ReleaseFile` when done.
+**AcquireFile** returns a `File` from the pool and applies any provided `SetFileFunc` functions to it. Release it with `ReleaseFile` when done. A file that you add to a request is released together with the request, so do not release it yourself in that case.
 
 ```go title="Signature"
 func AcquireFile(setter ...SetFileFunc) *File
@@ -1431,6 +1456,46 @@ func AcquireFile(setter ...SetFileFunc) *File
 ```go title="Signature"
 func ReleaseFile(f *File)
 ```
+
+### SetFileFunc
+
+**SetFileFunc** is a function that modifies a `File`, the option type that `AcquireFile` accepts. These helpers create the common ones:
+
+- **SetFileName** sets the file name that is sent in the multipart form.
+- **SetFileFieldName** sets the name of the form field that carries the file.
+- **SetFilePath** sets the path the file is read from.
+- **SetFileReader** sets the `io.ReadCloser` the file is read from. It is closed automatically when the request body is built.
+
+```go title="Signature"
+type SetFileFunc func(f *File)
+
+func SetFileName(n string) SetFileFunc
+func SetFileFieldName(p string) SetFileFunc
+func SetFilePath(p string) SetFileFunc
+func SetFileReader(r io.ReadCloser) SetFileFunc
+```
+
+<details>
+<summary>Example</summary>
+
+```go title="Example"
+req := client.AcquireRequest()
+defer client.ReleaseRequest(req)
+
+req.AddFiles(client.AcquireFile(
+    client.SetFilePath("./avatar.png"),
+    client.SetFileFieldName("avatar"),
+))
+
+resp, err := req.Post("https://httpbin.org/post")
+if err != nil {
+    panic(err)
+}
+
+fmt.Println(string(resp.Body()))
+```
+
+</details>
 
 ### SetName
 
@@ -1471,3 +1536,49 @@ func (f *File) SetReader(r io.ReadCloser)
 ```go title="Signature"
 func (f *File) Reset()
 ```
+
+## SetValWithStruct
+
+**SetValWithStruct** fills a `WithStruct` from the fields of a struct. The struct setters of the request and the client, such as `SetParamsWithStruct`, use it with the struct tags `param`, `cookie`, `path` and `form`. Call it yourself to fill a collection of your own that implements `WithStruct`.
+
+`v` must be a struct or a non-nil pointer to a struct. `nil` panics, and so does a nil pointer to a struct that has exported fields. Any other value is ignored, including a nil map, a nil slice, a nil pointer to a type that is not a struct, and a pointer to a pointer. Each exported field is added under the name in its `tagName` struct tag, or under the field name when the tag is missing or empty. Fields of type string, integer, float, complex or bool are written as text, and a slice or array of those adds one value per element under the same name. Fields of other types, such as nested structs, maps and pointers, are skipped. A name that is already present is deleted first, even when the field itself is skipped, so the struct's values replace the earlier ones. A cookie or path parameter holds one value per name, so for a slice only the last element remains.
+
+```go title="Signature"
+type WithStruct interface {
+    Add(name, obj string)
+    Del(name string)
+}
+
+func SetValWithStruct(p WithStruct, tagName string, v any)
+```
+
+<details>
+<summary>Example</summary>
+
+```go title="Example"
+type filter struct {
+    Query string   `param:"q"`
+    Tags  []string `param:"tag"`
+    Page  int
+    skip  string
+}
+
+args := fasthttp.AcquireArgs()
+defer fasthttp.ReleaseArgs(args)
+
+// *fasthttp.Args has the Add and Del methods that WithStruct needs.
+client.SetValWithStruct(args, "param", filter{
+    Query: "fiber",
+    Tags:  []string{"go", "http"},
+    Page:  2,
+    skip:  "ignored",
+})
+
+fmt.Println(args.String())
+```
+
+```text
+q=fiber&tag=go&tag=http&Page=2
+```
+
+</details>

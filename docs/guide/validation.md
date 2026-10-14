@@ -64,7 +64,15 @@ app.Post("/", func(c fiber.Ctx) error {
 })
 ```
 
-Returned as-is, a validation error surfaces through Fiber's [error handling](./error-handling.md), so you can also shape it globally in a custom error handler.
+Returned as-is, a validation error surfaces through Fiber's [error handling](./error-handling.md), so you can also shape it globally in a custom error handler. It is not wrapped in a [`fiber.BindError`](../api/bind.md#binderror), which is reserved for binding failures, and a plain `error` carries no status, so the default error handler answers it with `500 Internal Server Error`. Step 4 shows how to answer with a client error instead.
+
+:::note
+Validation runs only after binding succeeds, on the value you passed to the bind method. When parsing fails, the validator is not called. `Bind().All` validates once, on the struct merged from all sources.
+
+To bypass the validator for part of a request, use [`SkipValidation`](../api/bind.md#skipvalidation). The setting stays in effect for the rest of the request until you turn validation back on with `SkipValidation(false)`.
+
+[`WithAutoHandling`](../api/bind.md#withautohandling) converts a validation error into `400 Bad Request` only for `Bind().All`. The other bind methods return the validator's error unchanged.
+:::
 
 ### Step 4: Shape the error response
 

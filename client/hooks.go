@@ -87,7 +87,15 @@ func parserRequestURL(c *Client, req *Request) error {
 	// looked up first, so they keep overriding the client's for the same name.
 	disablePathNormalizing := c.isPathNormalizingDisabled || req.DisablePathNormalizing()
 
-	uri, err := substitutePathParams(uri, disablePathNormalizing, req.path, *c.path)
+	// The Fiber setting only says how this URL is built. Whether the path is
+	// normalized when it is written is up to the wrapped fasthttp client, which
+	// stamps its own setting on the request just before that, so the check that
+	// keeps a value inside its segment may be lifted only for a client that
+	// really leaves the path alone. Anything else would let "x/../../admin"
+	// change the path that is sent.
+	pathSentAsBuilt := disablePathNormalizing && c.writesPathAsBuilt()
+
+	uri, err := substitutePathParams(uri, pathSentAsBuilt, req.path, *c.path)
 	if err != nil {
 		return err
 	}
@@ -138,9 +146,12 @@ var pathParamEndChars = func() [256]bool {
 //
 // With path normalizing left on, escaping alone cannot hold a value inside its
 // segment — normalizing decodes the path before it collapses "." and ".." — so
-// a value that would break out is rejected with ErrPathParamInPath. A
-// placeholder in the authority is filled verbatim and checked against
-// isHostSafe, returning ErrPathParamInHost.
+// a value that would break out is rejected with ErrPathParamInPath.
+// disablePathNormalizing must therefore be true only when nothing normalizes the
+// path after this point; parserRequestURL passes it that way. An empty value, "."
+// and ".." are rejected either way, see cannotFillSegment. A placeholder in the
+// authority is filled verbatim and checked against isHostSafe, returning
+// ErrPathParamInHost.
 //
 //nolint:revive // flag-parameter: disablePathNormalizing is the request setting, as in composeRedirectURL
 func substitutePathParams(uri string, disablePathNormalizing bool, sources ...PathParam) (string, error) {
@@ -184,7 +195,7 @@ func substitutePathParams(uri string, disablePathNormalizing bool, sources ...Pa
 			}
 			buf = append(buf, ph.value...)
 		} else {
-			if !disablePathNormalizing && !isSingleSegment(ph.value) {
+			if cannotFillSegment(ph.value) || (!disablePathNormalizing && hasSeparator(ph.value)) {
 				return "", fmt.Errorf("%w: %q", ErrPathParamInPath, ph.name)
 			}
 			buf = utils.AppendPathEscape(buf, ph.value)
@@ -200,15 +211,23 @@ func substitutePathParams(uri string, disablePathNormalizing bool, sources ...Pa
 	return string(append(buf, uri[last:]...)), nil
 }
 
-// isSingleSegment reports whether val still occupies exactly one path segment
-// after fasthttp has normalized the path. Normalizing percent-decodes the path
-// before it collapses "//", "/./" and "/x/../", so an escaped "/" turns back
-// into a real separator and a value of "../../admin" walks out of the path the
-// template set, while an empty value leaves a "//" that collapses and drops
-// the segment entirely. Only the raw bytes matter: a "%2F" typed by the caller
-// is written as "%252F" and decodes to a literal "%2F", not to a separator.
-func isSingleSegment(val string) bool {
-	return val != "" && val != "." && val != ".." && utils.IndexAny2(val, '/', '\\') == -1
+// cannotFillSegment reports whether val cannot stand for a path segment however
+// the path is sent. An empty value leaves a "//" that normalizing collapses and
+// that a server merging slashes drops even from a path sent as written, so the
+// segment is gone. "." and ".." are dot segments: whoever receives one removes
+// it or resolves it against the segment before, and no escape hides it.
+func cannotFillSegment(val string) bool {
+	return val == "" || val == "." || val == ".."
+}
+
+// hasSeparator reports whether val holds a byte that ends its segment once
+// fasthttp has normalized the path. Normalizing percent-decodes the path before
+// it collapses "//", "/./" and "/x/../", so an escaped "/" turns back into a
+// real separator and a value of "../../admin" walks out of the path the template
+// set. Only the raw bytes matter: a "%2F" typed by the caller is written as
+// "%252F" and decodes to a literal "%2F", not to a separator.
+func hasSeparator(val string) bool {
+	return utils.IndexAny2(val, '/', '\\') != -1
 }
 
 // isHostSafe reports whether val may be substituted into a URI authority
@@ -396,10 +415,17 @@ func parserRequestHeader(c *Client, req *Request) error {
 		req.RawRequest.Header.SetUserAgent(req.userAgent)
 	}
 
-	// Set Referer header.
-	req.RawRequest.Header.SetReferer(c.referer)
+	// Set Referer header. It comes from SetReferer alone, the request's value
+	// first, and without one the header is removed: it used to be set to an
+	// empty value, which put a "Referer:" line on every request.
+	referer := c.referer
 	if req.referer != "" {
-		req.RawRequest.Header.SetReferer(req.referer)
+		referer = req.referer
+	}
+	if referer != "" {
+		req.RawRequest.Header.SetReferer(referer)
+	} else {
+		req.RawRequest.Header.Del(fasthttp.HeaderReferer)
 	}
 
 	// Set cookies from the cookie jar if available.
@@ -557,11 +583,9 @@ func addFormFile(mw *multipart.Writer, f *File, fileBuf *[]byte) error {
 func parserResponseCookie(c *Client, resp *Response, req *Request) error {
 	for key, value := range resp.RawResponse.Header.Cookies() {
 		cookie := fasthttp.AcquireCookie()
-		if err := cookie.ParseBytes(value); err != nil {
-			if err := parseCookieIgnoringBadAttrs(cookie, value); err != nil {
-				fasthttp.ReleaseCookie(cookie)
-				continue
-			}
+		if err := parseSetCookie(cookie, value); err != nil {
+			fasthttp.ReleaseCookie(cookie)
+			continue
 		}
 		cookie.SetKeyBytes(key)
 		resp.cookie = append(resp.cookie, cookie)
@@ -576,6 +600,18 @@ func parserResponseCookie(c *Client, resp *Response, req *Request) error {
 	}
 
 	return nil
+}
+
+// parseSetCookie parses a Set-Cookie value into cookie. A value fasthttp parses
+// cleanly costs one pass; otherwise parseCookieIgnoringBadAttrs drops just the
+// attributes fasthttp rejects instead of everything from the first one on. An
+// error means the name/value pair itself is unusable and the cookie has to be
+// discarded.
+func parseSetCookie(cookie *fasthttp.Cookie, value []byte) error {
+	if err := cookie.ParseBytes(value); err == nil {
+		return nil
+	}
+	return parseCookieIgnoringBadAttrs(cookie, value)
 }
 
 // parseCookieIgnoringBadAttrs parses a Set-Cookie value, dropping only the

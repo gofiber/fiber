@@ -1,7 +1,7 @@
 ---
 id: constants
 title: 📋 Constants
-description: Core HTTP constants used throughout Fiber.
+description: Core HTTP constants and related names used throughout Fiber.
 sidebar_position: 10
 ---
 
@@ -299,5 +299,73 @@ const (
     HeaderXUACompatible                      = "X-UA-Compatible"
     HeaderAccessControlAllowPrivateNetwork   = "Access-Control-Allow-Private-Network"
     HeaderAccessControlRequestPrivateNetwork = "Access-Control-Request-Private-Network"
+)
+```
+
+### Network types
+
+Network names for [`ListenConfig.ListenerNetwork`](./fiber.md#listenernetwork).
+
+```go
+const (
+    NetworkTCP  = "tcp"
+    NetworkTCP4 = "tcp4"
+    NetworkTCP6 = "tcp6"
+    NetworkUnix = "unix"
+)
+```
+
+### Content coding names
+
+Content coding names, as they appear in `Content-Encoding` and `Accept-Encoding` header values. Fiber reads them when it decodes a request body and when it negotiates an encoding.
+
+```go
+const (
+    StrGzip     = "gzip"
+    StrCompress = "compress"
+    StrIdentity = "identity"
+    StrBr       = "br"
+    StrDeflate  = "deflate"
+    StrBrotli   = "brotli"
+    StrZstd     = "zstd"
+)
+```
+
+### Cookie SameSite modes
+
+Values for the `SameSite` field of [`fiber.Cookie`](./ctx.md#cookie) and for the `CookieSameSite` option of the [CSRF](../middleware/csrf.md) and [session](../middleware/session.md) middleware. They are matched case-insensitively.
+
+```go
+const (
+    CookieSameSiteDisabled   = "disabled" // not in RFC, just control "SameSite" attribute will not be set.
+    CookieSameSiteLaxMode    = "Lax"
+    CookieSameSiteStrictMode = "Strict"
+    CookieSameSiteNoneMode   = "None"
+)
+```
+
+### Route constraint names
+
+Names of the built-in route [constraints](../guide/routing.md#constraints), as written in a route pattern such as `/user/:id<int>`. Built-in constraint names match case-insensitively, so `ConstraintMinLen` and `ConstraintMinLenLower` name the same constraint.
+
+```go
+const (
+    ConstraintInt             = "int"
+    ConstraintBool            = "bool"
+    ConstraintFloat           = "float"
+    ConstraintAlpha           = "alpha"
+    ConstraintGUID            = "guid"
+    ConstraintMinLen          = "minLen"
+    ConstraintMaxLen          = "maxLen"
+    ConstraintLen             = "len"
+    ConstraintBetweenLen      = "betweenLen"
+    ConstraintMinLenLower     = "minlen"
+    ConstraintMaxLenLower     = "maxlen"
+    ConstraintBetweenLenLower = "betweenlen"
+    ConstraintMin             = "min"
+    ConstraintMax             = "max"
+    ConstraintRange           = "range"
+    ConstraintDatetime        = "datetime"
+    ConstraintRegex           = "regex"
 )
 ```

@@ -13,7 +13,7 @@ func New(config ...Config) fiber.Handler
 func TokenFromContext(ctx any) string
 ```
 
-`TokenFromContext` accepts a `fiber.CustomCtx`, `fiber.Ctx`, a `*fasthttp.RequestCtx`, or a `context.Context`.
+`TokenFromContext` accepts a `fiber.CustomCtx`, `fiber.Ctx`, a `*fasthttp.RequestCtx`, or a `context.Context`. The token points into the request's buffer unless [`Immutable`](../api/fiber.md#immutable) is set: copy it with `strings.Clone` before a goroutine keeps it.
 
 ## Examples
 
@@ -66,17 +66,17 @@ func main() {
 **Test:**
 
 ```bash
-# No API key specified -> 401 Missing or invalid API Key
+# No API key specified -> 401 missing or invalid API Key
 curl http://localhost:3000
-#> Missing or invalid API Key
+#> missing or invalid API Key
 
 # Correct API key -> 200 OK
 curl --cookie "access_token=correct horse battery staple" http://localhost:3000
 #> Successfully authenticated!
 
-# Incorrect API key -> 401 Missing or invalid API Key
+# Incorrect API key -> 401 missing or invalid API Key
 curl --cookie "access_token=Clearly A Wrong Key" http://localhost:3000
-#> Missing or invalid API Key
+#> missing or invalid API Key
 ```
 
 For a more detailed example, see the [`fiber-envoy-extauthz`](https://github.com/gofiber/recipes/tree/master/fiber-envoy-extauthz) recipe in the `gofiber/recipes` repository.
@@ -266,8 +266,12 @@ For custom logic, use `extractors.FromCustom`:
 
 ```go
 app.Use(keyauth.New(keyauth.Config{
-    Extractor: extractors.FromCustom(func(c fiber.Ctx) (string, error) {
-        return c.Get("X-My-API-Key"), nil
+    Extractor: extractors.FromCustom("X-My-API-Key", func(c fiber.Ctx) (string, error) {
+        key := c.Get("X-My-API-Key")
+        if key == "" {
+            return "", extractors.ErrNotFound
+        }
+        return key, nil
     }),
     Validator: validateAPIKey,
 }))
@@ -281,15 +285,17 @@ Refer to the [Extractors Guide](../guide/extractors) for details, security notes
 |:----------------|:-----------------------------------------|:-------------------------------------------------------------------------------------------------------|:------------------------------|
 | Next            | `func(fiber.Ctx) bool`                   | Next defines a function to skip this middleware when it returns true.                                    | `nil`                         |
 | SuccessHandler  | `fiber.Handler`                          | SuccessHandler defines a function which is executed for a valid key.                                   | `c.Next()`                         |
-| ErrorHandler    | `fiber.ErrorHandler`                     | ErrorHandler defines a function which is executed for an invalid key. By default a 401 response with a `WWW-Authenticate` challenge is sent. The challenge is also added when a custom handler returns a `*fiber.Error` instead of writing the response itself: as `WWW-Authenticate` for status 401, and as `Proxy-Authenticate` for status 407. | Default error handler  |
+| ErrorHandler    | `fiber.ErrorHandler`                     | ErrorHandler defines a function which is executed for an invalid key. It receives the extraction or validation error, which is `nil` when the `Validator` returned `false` without an error. By default a 401 response with the body `missing or invalid API Key` (`keyauth.ErrMissingOrMalformedAPIKey`) and a `WWW-Authenticate` challenge is sent. The challenge is also added when a custom handler returns a `*fiber.Error` instead of writing the response itself: as `WWW-Authenticate` for status 401, and as `Proxy-Authenticate` for status 407. | Default error handler  |
 | Validator       | `func(fiber.Ctx, string) (bool, error)`  | **Required.** Validator is a function to validate the key.                                                           | `nil` (panic) |
 | Extractor       | `extractors.Extractor`                 | Extractor defines how to retrieve the key from the request. Use helper functions from the shared extractors package, e.g. `extractors.FromAuthHeader("Bearer")` or `extractors.FromCookie("access_token")`. | `extractors.FromAuthHeader("Bearer")` |
 | Realm           | `string`                                 | Realm specifies the protected area name used in the `WWW-Authenticate` header. | `"Restricted"` |
 | Challenge       | `string`                                 | Value of the `WWW-Authenticate` header when no `Authorization` scheme is present. | `ApiKey realm="Restricted"` |
-| Error           | `string`                                 | Error code appended as the `error` parameter in Bearer challenges. Must be `invalid_request`, `invalid_token`, or `insufficient_scope`. | `""` |
+| Error           | `string`                                 | Error code appended as the `error` parameter in Bearer challenges. Must be `invalid_request`, `invalid_token`, or `insufficient_scope`, available as the constants `keyauth.ErrorInvalidRequest`, `keyauth.ErrorInvalidToken`, and `keyauth.ErrorInsufficientScope`. Any other value panics. | `""` |
 | ErrorDescription| `string`                                 | Human-readable text for the `error_description` parameter in Bearer challenges. Requires `Error`. | `""` |
 | ErrorURI        | `string`                                 | URI identifying a human-readable web page with information about the `error` in Bearer challenges. Requires `Error` and must be an absolute URI. | `""` |
-| Scope           | `string`                                 | Space-delimited list of scopes for the `scope` parameter in Bearer challenges. Each token must conform to the RFC 6750 `scope-token` syntax and requires `Error` set to `insufficient_scope`. | `""` |
+| Scope           | `string`                                 | Space-delimited list of scopes for the `scope` parameter in Bearer challenges. Each token must conform to the RFC 6750 `scope-token` syntax. Only valid with `Error` set to `insufficient_scope`, which in turn requires `Scope`. | `""` |
+
+When the extractor reads the `Authorization` header with `extractors.FromAuthHeader` and a non-empty scheme, alone or inside a `Chain`, the challenge is generated as `<scheme> realm="<Realm>"` for each scheme, for example `Bearer realm="Restricted"`, and `Challenge` is not used. `FromAuthHeader("")` names no scheme, so `Challenge` applies, which is `ApiKey realm="<Realm>"` unless you set it.
 
 Generated challenge parameter values are escaped as RFC 9110 HTTP quoted
 strings. A custom `Challenge` value is emitted verbatim.

@@ -286,8 +286,10 @@ func contentDispositionAttachment(fname string) string {
 
 // Add appends the value as a new field line, where Append folds values into one
 // comma-separated line. The headers fasthttp keeps in a slot of their own are
-// the exception: Content-Type, Server and the rest are replaced and Date and TE
-// ignored, though Set-Cookie is slotted and does append. Use Cookie for that.
+// the exception: Content-Type, Content-Encoding, Content-Length, Connection and
+// Server are replaced, and Transfer-Encoding and Date are ignored because fasthttp
+// writes them itself. Set-Cookie is slotted too but does append, though Cookie
+// builds that field value for you. Trailer accumulates, extending the announced set.
 func (r *DefaultRes) Add(key, val string) {
 	r.c.fasthttp.Response.Header.Add(key, val)
 }
@@ -1479,8 +1481,9 @@ func (r *DefaultRes) SendStatus(status int) error {
 		resp := &r.c.fasthttp.Response
 		resp.ResetBody()
 		// ResetBody drops the body but keeps a Content-Length the handler
-		// declared, which RFC 9110 Section 8.6 forbids here and which leaves a
-		// keep-alive peer waiting for bytes that never come.
+		// declared. RFC 9110 Section 8.6 forbids that field in a 1xx or 204
+		// response only; Fiber drops it for a 205 and a 304 as well, because the
+		// length of the body just discarded describes nothing that follows.
 		resp.Header.Del(HeaderContentLength)
 		return nil
 	}

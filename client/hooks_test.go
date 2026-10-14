@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/url"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -207,9 +208,21 @@ func Test_Parser_Request_URL(t *testing.T) {
 		require.Equal(t, "http://example.com/api/a%3Fb", req.RawRequest.URI().String())
 	})
 
-	t.Run("path param value keeps its escaped separator when normalizing is off", func(t *testing.T) {
+	t.Run("path param value keeps its escaped separator when the client does not normalize", func(t *testing.T) {
 		t.Parallel()
-		client := New()
+		client := New().SetDisablePathNormalizing(true)
+		req := AcquireRequest().
+			SetURL("http://example.com/api/:id").
+			SetPathParam("id", "a/b")
+
+		err := parserRequestURL(client, req)
+		require.NoError(t, err)
+		require.Equal(t, "http://example.com/api/a%2Fb", req.RawRequest.URI().String())
+	})
+
+	t.Run("a request can ask for its escaped separator from a client that does not normalize", func(t *testing.T) {
+		t.Parallel()
+		client := NewWithClient(&fasthttp.Client{DisablePathNormalizing: true})
 		req := AcquireRequest().
 			SetURL("http://example.com/api/:id").
 			SetPathParam("id", "a/b").
@@ -218,6 +231,31 @@ func Test_Parser_Request_URL(t *testing.T) {
 		err := parserRequestURL(client, req)
 		require.NoError(t, err)
 		require.Equal(t, "http://example.com/api/a%2Fb", req.RawRequest.URI().String())
+	})
+
+	// The wrapped client rewrites the path whatever the request says, so the
+	// request alone cannot make a separator in a value safe.
+	t.Run("a separator in a value is rejected when only the request disables normalizing", func(t *testing.T) {
+		t.Parallel()
+		client := New()
+		req := AcquireRequest().
+			SetURL("http://example.com/api/:id").
+			SetPathParam("id", "a/b").
+			SetDisablePathNormalizing(true)
+
+		err := parserRequestURL(client, req)
+		require.ErrorIs(t, err, ErrPathParamInPath)
+	})
+
+	t.Run("a separator in a value is rejected when only the fasthttp client does not normalize", func(t *testing.T) {
+		t.Parallel()
+		client := NewWithClient(&fasthttp.Client{DisablePathNormalizing: true})
+		req := AcquireRequest().
+			SetURL("http://example.com/api/:id").
+			SetPathParam("id", "a/b")
+
+		err := parserRequestURL(client, req)
+		require.ErrorIs(t, err, ErrPathParamInPath)
 	})
 
 	t.Run("a separator in a value is rejected when normalizing will decode it", func(t *testing.T) {
@@ -518,6 +556,42 @@ func Test_Parser_Request_Header(t *testing.T) {
 		err := parserRequestHeader(client, req)
 		require.NoError(t, err)
 		require.Equal(t, []byte("https://example.com"), req.RawRequest.Header.Referer())
+	})
+
+	// An empty "Referer:" says nothing that a missing header does not, and it
+	// went out on every request that never asked for one.
+	t.Run("no referer sends no Referer header", func(t *testing.T) {
+		t.Parallel()
+		client := New()
+		req := AcquireRequest()
+
+		err := parserRequestHeader(client, req)
+		require.NoError(t, err)
+		require.False(t, hasRefererHeader(&req.RawRequest.Header))
+	})
+
+	t.Run("a Referer set through the headers is replaced, not kept empty", func(t *testing.T) {
+		t.Parallel()
+		client := New()
+		req := AcquireRequest().SetHeader(fiber.HeaderReferer, "https://header.example")
+
+		err := parserRequestHeader(client, req)
+		require.NoError(t, err)
+		require.False(t, hasRefererHeader(&req.RawRequest.Header))
+	})
+
+	t.Run("a referer that is no longer set does not linger on a resend", func(t *testing.T) {
+		t.Parallel()
+		client := New()
+		req := AcquireRequest().SetReferer("https://example.com")
+
+		require.NoError(t, parserRequestHeader(client, req))
+		require.Equal(t, []byte("https://example.com"), req.RawRequest.Header.Referer())
+
+		// Clearing the request value leaves the client's, which is unset.
+		req.SetReferer("")
+		require.NoError(t, parserRequestHeader(client, req))
+		require.False(t, hasRefererHeader(&req.RawRequest.Header))
 	})
 
 	t.Run("client cookie should be set", func(t *testing.T) {
@@ -1098,4 +1172,41 @@ func Test_Client_ResponseCookie_UnparsableAttribute(t *testing.T) {
 	require.True(t, got.HTTPOnly())
 	require.Equal(t, "/api", string(got.Path()))
 	require.True(t, got.Expire().IsZero() || got.Expire().Equal(fasthttp.CookieExpireUnlimited))
+}
+
+// hasRefererHeader reports whether h carries a Referer header, an empty one
+// included: Referer answers with an empty value for a missing header and for an
+// empty one alike.
+func hasRefererHeader(h *fasthttp.RequestHeader) bool {
+	for name := range h.All() {
+		if strings.EqualFold(string(name), fiber.HeaderReferer) {
+			return true
+		}
+	}
+	return false
+}
+
+// Test_Client_NoRefererByDefault checks the request a server receives: a client
+// with no referer configured must not send the header at all.
+func Test_Client_NoRefererByDefault(t *testing.T) {
+	t.Parallel()
+
+	server := startTestServer(t, func(app *fiber.App) {
+		app.Get("/", func(c fiber.Ctx) error {
+			return c.SendString(strconv.FormatBool(hasRefererHeader(&c.Request().Header)))
+		})
+	})
+	defer server.stop()
+
+	client := New().SetDial(server.dial())
+
+	resp, err := client.Get("http://example.com/")
+	require.NoError(t, err)
+	require.Equal(t, "false", resp.String())
+	resp.Close()
+
+	resp, err = client.Get("http://example.com/", Config{Referer: "https://example.org/"})
+	require.NoError(t, err)
+	require.Equal(t, "true", resp.String())
+	resp.Close()
 }

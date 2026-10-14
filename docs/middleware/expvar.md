@@ -9,7 +9,7 @@ The ExpVar middleware exposes runtime variables over HTTP in JSON. Using it (e.g
 ## Signatures
 
 ```go
-func New() fiber.Handler
+func New(config ...Config) fiber.Handler
 ```
 
 ## Examples
@@ -18,6 +18,9 @@ Import the middleware package:
 
 ```go
 import (
+    "expvar"
+    "fmt"
+
     "github.com/gofiber/fiber/v3"
     expvarmw "github.com/gofiber/fiber/v3/middleware/expvar"
 )
@@ -36,7 +39,7 @@ app.Get("/", func(c fiber.Ctx) error {
 })
 ```
 
-Visit `/debug/vars` to see all variables, and append `?r=key` to filter the output.
+Visit `/debug/vars` to see all variables, and append `?r=<regexp>` to keep only the variables whose names match the regular expression; an invalid expression is answered with `400 Bad Request`. Any path beneath `/debug/vars/` is redirected to `/debug/vars` with `303 See Other`, and every other path continues down the handler chain.
 
 ```bash
 curl 127.0.0.1:3000

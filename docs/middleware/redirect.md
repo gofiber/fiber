@@ -74,7 +74,11 @@ type Rule struct {
 `From` reaches the compiled pattern as a regular expression, so the other regexp
 metacharacters keep their meaning: `/a.b` also matches `/aXb`, and `/faq?` also
 matches `/fa`. Only `*` is a documented placeholder; write a rule out of path
-text and `*` and it behaves as it reads.
+text and `*` and it behaves as it reads. A `From` that is not a valid regular
+expression, such as `/old(`, makes `New` panic. A rule matches the whole path,
+letter case included: `/old` answers `/old`, but not `/OLD`, `/old/x` or `/very/old`.
+
+In `To`, `$10` is the tenth capture in a rule with ten or more captures, which counts every group of the regular expression and not only the asterisks; in a rule with fewer it reads as `$1` followed by `0`.
 
 Setting both `RuleList` and `Rules` panics: the two disagree about what decides
 precedence, so there is no sensible way to honor them together.

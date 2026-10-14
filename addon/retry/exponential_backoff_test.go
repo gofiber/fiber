@@ -61,6 +61,141 @@ func Test_ExponentialBackoff_Retry(t *testing.T) {
 	}
 }
 
+// Test_ExponentialBackoff_Retry_ZeroValue covers an ExponentialBackoff that was
+// not built by NewExponentialBackoff. MaxRetryCount is the number of attempts, so
+// a zero one made Retry return nil without calling f: success reported for work
+// that never ran. Every field left at zero takes the default instead.
+func Test_ExponentialBackoff_Retry_ZeroValue(t *testing.T) {
+	t.Parallel()
+
+	t.Run("the zero value calls f", func(t *testing.T) {
+		t.Parallel()
+
+		var backoff ExponentialBackoff
+		calls := 0
+		require.NoError(t, backoff.Retry(func() error {
+			calls++
+			return nil
+		}))
+		require.Equal(t, 1, calls)
+		require.Equal(t, ExponentialBackoff{}, backoff, "Retry must leave a shared value alone")
+	})
+
+	t.Run("the zero value reports a failure instead of success", func(t *testing.T) {
+		t.Parallel()
+
+		// Fast intervals so the default ten attempts do not wait out the default
+		// one to thirty-two seconds; MaxRetryCount stays unset.
+		backoff := &ExponentialBackoff{InitialInterval: time.Microsecond, MaxBackoffTime: time.Millisecond}
+		boom := errors.New("boom")
+		calls := 0
+		require.ErrorIs(t, backoff.Retry(func() error {
+			calls++
+			return boom
+		}), boom)
+		require.Equal(t, DefaultConfig.MaxRetryCount, calls)
+	})
+
+	t.Run("a negative attempt count is unset too", func(t *testing.T) {
+		t.Parallel()
+
+		backoff := &ExponentialBackoff{
+			InitialInterval: time.Microsecond,
+			MaxBackoffTime:  time.Millisecond,
+			Multiplier:      2,
+			MaxRetryCount:   -3,
+		}
+		calls := 0
+		require.Error(t, backoff.Retry(func() error {
+			calls++
+			return errors.New("again")
+		}))
+		require.Equal(t, DefaultConfig.MaxRetryCount, calls)
+	})
+
+	t.Run("a zero max backoff does not turn the retries into a busy loop", func(t *testing.T) {
+		t.Parallel()
+
+		backoff := &ExponentialBackoff{InitialInterval: 10 * time.Millisecond, MaxRetryCount: 3}
+		start := time.Now()
+		calls := 0
+		require.Error(t, backoff.Retry(func() error {
+			calls++
+			return errors.New("again")
+		}))
+		require.Equal(t, 3, calls)
+		// Two waits of at least the initial interval, which a zero cap used to
+		// shrink to nothing.
+		require.GreaterOrEqual(t, time.Since(start), 20*time.Millisecond)
+	})
+}
+
+func Test_ExponentialBackoff_withDefaults(t *testing.T) {
+	t.Parallel()
+
+	defaults := ExponentialBackoff{
+		InitialInterval: DefaultConfig.InitialInterval,
+		MaxBackoffTime:  DefaultConfig.MaxBackoffTime,
+		Multiplier:      DefaultConfig.Multiplier,
+		MaxRetryCount:   DefaultConfig.MaxRetryCount,
+	}
+
+	tests := []struct {
+		name string
+		in   ExponentialBackoff
+		want ExponentialBackoff
+	}{
+		{name: "zero value", want: defaults},
+		{
+			name: "negative numbers count as unset",
+			in:   ExponentialBackoff{InitialInterval: -1, MaxBackoffTime: -1, Multiplier: -1, MaxRetryCount: -1},
+			want: ExponentialBackoff{
+				InitialInterval: defaults.InitialInterval,
+				MaxBackoffTime:  defaults.MaxBackoffTime,
+				Multiplier:      defaults.Multiplier,
+				MaxRetryCount:   defaults.MaxRetryCount,
+			},
+		},
+		{
+			name: "values that are set are kept",
+			in:   ExponentialBackoff{InitialInterval: time.Second * 3, MaxBackoffTime: time.Minute, Multiplier: 1.5, MaxRetryCount: 4},
+			want: ExponentialBackoff{InitialInterval: time.Second * 3, MaxBackoffTime: time.Minute, Multiplier: 1.5, MaxRetryCount: 4},
+		},
+		{
+			name: "an unset initial interval starts from the current one",
+			in:   ExponentialBackoff{currentInterval: 7 * time.Second},
+			want: ExponentialBackoff{
+				InitialInterval: 7 * time.Second,
+				MaxBackoffTime:  defaults.MaxBackoffTime,
+				Multiplier:      defaults.Multiplier,
+				MaxRetryCount:   defaults.MaxRetryCount,
+				currentInterval: 7 * time.Second,
+			},
+		},
+		{
+			name: "one built by NewExponentialBackoff is unchanged",
+			in:   *NewExponentialBackoff(Config{InitialInterval: 2 * time.Second, MaxRetryCount: 6}),
+			want: ExponentialBackoff{
+				InitialInterval: 2 * time.Second,
+				MaxBackoffTime:  defaults.MaxBackoffTime,
+				Multiplier:      defaults.Multiplier,
+				MaxRetryCount:   6,
+				currentInterval: 2 * time.Second,
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			in := tc.in
+			require.Equal(t, tc.want, in.withDefaults())
+			require.Equal(t, tc.in, in, "the receiver must not change")
+		})
+	}
+}
+
 func Test_ExponentialBackoff_Retry_NoSleepAfterLastAttempt(t *testing.T) {
 	t.Parallel()
 

@@ -91,6 +91,10 @@ func main() {
 ### Notes
 
 - `RegexHandler` only affects `regex()` parameter constraints
+- `RegexHandler` must be a non-nil function of the form `func(string) T`, where
+  `T` has a `MatchString(string) bool` method; `fiber.New` panics for any other
+  shape, so `regexp.Compile`, which also returns an error, does not fit, and
+  registering a route panics when the handler returns a nil matcher
 - invalid patterns still panic during route registration because Fiber uses
   `MustCompile`-style semantics
 - Fiber may invoke `RegexHandler` more than once per route while parsing raw and

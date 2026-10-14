@@ -79,8 +79,9 @@ var (
 )
 
 var (
-	// ErrContextTagInvalid is returned by RegisterContextTag and SetContextTemplate
-	// when the supplied tag name or renderer is empty.
+	// ErrContextTagInvalid is returned by RegisterContextTag when the supplied tag
+	// name is empty or the renderer is nil. SetContextTemplate does not validate
+	// ContextConfig.CustomTags and never returns it.
 	ErrContextTagInvalid = errors.New("log: context tag name and function are required")
 	// ErrContextTagReserved is returned by RegisterContextTag and SetContextTemplate
 	// when the caller attempts to override the reserved TagContextValue ("value:") tag.

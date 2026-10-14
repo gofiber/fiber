@@ -22,11 +22,11 @@ app.Get("/id/:id", func(c fiber.Ctx) error {
     fiber.Convert(c.Params("id"), uuid.Parse)                   // UUID(bb70ab33-d455-4a03-8d78-d3c1dacae9ff), nil
 })
 
-// GET http://example.com/search?id=65f6f54221fb90e6a6b76db7
+// GET http://example.com/search?page=3&id=not-a-uuid
 app.Get("/search", func(c fiber.Ctx) error {
-    fiber.Convert(c.Query("id"), mongo.ParseObjectID)           // objectid(65f6f54221fb90e6a6b76db7), nil
-    fiber.Convert(c.Query("id"), uuid.Parse)                    // uuid.Nil, error(cannot parse given uuid)
-    fiber.Convert(c.Query("id"), uuid.Parse, mongo.NewObjectID) // new object id generated and return nil as error.
+    fiber.Convert(c.Query("page"), strconv.Atoi)          // 3, nil
+    fiber.Convert(c.Query("id"), uuid.Parse)              // uuid.Nil, error(failed to convert: ...)
+    fiber.Convert(c.Query("id"), uuid.Parse, uuid.Nil)    // uuid.Nil, nil: the default replaces the error
     return nil
 })
 
@@ -56,11 +56,10 @@ app.Get("/search", func(c fiber.Ctx) error {
 Reads or writes local values in the request context using generics.
 
 ```go title="Signature"
-// Set a value
 func Locals[V any](c Ctx, key any, value ...V) V
-// Get a value
-func Locals[V any](c Ctx, key any) V
 ```
+
+Pass a value to store it for the rest of the request, or omit it to read the stored value back. A missing key, or a value of another type, gives the zero value of `V`.
 
 ```go title="Example"
 app.Use("/user/:user/:id", func(c fiber.Ctx) error {
@@ -122,7 +121,9 @@ app.Get("/search", func(c fiber.Ctx) error {
 Checks whether a given path matches a Fiber route pattern. Useful for testing
 patterns without registering them. Patterns may contain parameters, wildcards
 and optional segments. An optional `Config` allows control over case sensitivity
-and strict routing.
+and strict routing; only `CaseSensitive`, `StrictRouting`, `UnescapePath` and
+`RegexHandler` are read from it. It knows no app, so a pattern that names a
+custom constraint is matched without that constraint.
 
 The path is normalized the way the router normalizes a request path before
 matching, so the answer agrees with what the app would actually do. In
@@ -148,4 +149,37 @@ fiber.RoutePatternMatch(
     "/user/:name",
     fiber.Config{CaseSensitive: true},
 ) // false
+```
+
+## HTTP Methods
+
+### IsMethodSafe
+
+Reports whether an HTTP method is safe in the sense of [RFC 9110 Section 9.2.1](https://www.rfc-editor.org/rfc/rfc9110#section-9.2.1) (`GET`, `HEAD`, `OPTIONS` and `TRACE`) and [RFC 10008](https://www.rfc-editor.org/rfc/rfc10008.html) (`QUERY`). Methods are compared exactly, so pass them in upper case, as `c.Method()` returns them.
+
+```go title="Signature"
+func IsMethodSafe(m string) bool
+```
+
+### IsMethodIdempotent
+
+Reports whether an HTTP method is idempotent in the sense of [RFC 9110 Section 9.2.2](https://www.rfc-editor.org/rfc/rfc9110#section-9.2.2): every safe method, plus `PUT` and `DELETE`.
+
+```go title="Signature"
+func IsMethodIdempotent(m string) bool
+```
+
+```go title="Example"
+fiber.IsMethodSafe(fiber.MethodGet)       // true
+fiber.IsMethodSafe(fiber.MethodPost)      // false
+fiber.IsMethodIdempotent(fiber.MethodPut) // true
+fiber.IsMethodIdempotent("put")           // false: names are compared exactly
+
+// Log only the requests that may change state
+app.Use(func(c fiber.Ctx) error {
+    if !fiber.IsMethodSafe(c.Method()) {
+        log.Printf("%s %s", c.Method(), c.Path())
+    }
+    return c.Next()
+})
 ```

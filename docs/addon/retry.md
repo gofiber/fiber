@@ -22,7 +22,12 @@ addon returns an error.
 
 ```go
 func NewExponentialBackoff(config ...retry.Config) *retry.ExponentialBackoff
+func (e *retry.ExponentialBackoff) Retry(f func() error) error
 ```
+
+`Retry` calls `f` up to `MaxRetryCount` times in total and returns `nil` as soon as `f` returns `nil`. If every attempt fails, it returns the error of the last attempt. Each call to `Retry` starts from `InitialInterval` with its own state, so one `ExponentialBackoff` can be shared.
+
+A field left at zero or below takes its default from the [Default Config](#default-config-example), also on a `retry.ExponentialBackoff` you build as a struct literal instead of with `NewExponentialBackoff`. Even `retry.ExponentialBackoff{}` therefore calls `f` at least once, and up to 10 times when it keeps failing, waiting between the attempts as the default does: about 160 seconds in all. A literal that sets only some fields waits as well, so `retry.ExponentialBackoff{MaxRetryCount: 2}` no longer retries at once. To retry without waiting, set `MaxBackoffTime` to a short duration such as `time.Nanosecond`.
 
 ## Examples
 

@@ -168,7 +168,7 @@ app.Get("/users/:id",
 | `All`          | every method    | exact                                      | one path, any verb            |
 | `Use`          | every method    | prefix (slash boundary); all paths if none given | middleware, mounting sub-apps |
 
-A path that exists only for a different method returns **405 Method Not Allowed**; a path that matches no route at all (including one rejected by a [constraint](#constraints)) returns **404 Not Found**.
+A path that exists only for a different method returns **405 Method Not Allowed** with an `Allow` header that lists the methods it does answer; a path that matches no route at all (including one rejected by a [constraint](#constraints)) returns **404 Not Found**. Middleware registered with `Use` runs for these requests too, unless [`SkipUnmatchedRoutes`](../api/fiber.md#skipunmatchedroutes) is enabled, which answers them before the middleware chain runs, except for CORS preflight requests, which still go through it.
 
 ## Paths
 
@@ -197,6 +197,8 @@ The order in which you declare routes matters: like Express.js, routes are match
 Place routes with variable parameters after fixed paths to avoid unintended matches.
 :::
 
+By default the router ignores letter case and a trailing slash, so a route registered as `/about` also answers `/About` and `/about/`, and parameter values keep the case the client sent. Set [`CaseSensitive`](../api/fiber.md#casesensitive) and [`StrictRouting`](../api/fiber.md#strictrouting) in `fiber.Config` to tell these spellings apart.
+
 ### Path normalization
 
 Before a request is matched, Fiber normalizes its path as [RFC 3986 Section 6.2.2](https://www.rfc-editor.org/rfc/rfc3986#section-6.2.2) describes:
@@ -210,9 +212,11 @@ Middleware mounted on a prefix therefore sees these spellings of a path under it
 
 Route parameters are dynamic segments in a path, either named or unnamed, used to capture values from the URL. Retrieve them with the [Params](../api/ctx.md#params) function using the parameter name or, for unnamed parameters, the wildcard (`*`) or plus (`+`) symbol with an index.
 
-The characters `:`, `+`, and `*` introduce parameters. Append `?` to a named segment to make it optional. `+` is a greedy, required wildcard (it must match at least one character); `*` is a greedy, optional wildcard (it can match nothing).
+The characters `:`, `+`, and `*` introduce parameters. Append `?` to a named parameter to make it optional. `+` is a greedy, required wildcard (it must match at least one character); `*` is a greedy, optional wildcard (it can match nothing).
 
-If a named optional parameter consumes a value but later segments fail to match, Fiber can retry it as empty. Matching allows at most 16 such retries per route to bound the work for adjacent optional parameters. A route that needs more retries does not match, even if a valid assignment exists. Greedy wildcards do not participate in these retries, and a value that fails its constraint is not retried as empty.
+An optional parameter makes only its value optional, never the text around it: literal characters after it must still be present. `/user/:name?/books` matches `/user/john/books` and `/user//books`, but not `/user/books`, so register a second route for the shorter form. At the end of a path the slash before the parameter can be left out as well: `/user/:name?` matches `/user`, `/user/` and `/user/john`.
+
+If an optional parameter sits directly before another parameter and the value it consumed makes the rest of the pattern fail, Fiber retries it as empty: `/:a?:b` matches `/x` with `a` empty and `b` set to `x`. Matching allows at most 16 such retries per route to bound the work for adjacent optional parameters. A route that needs more retries does not match, even if a valid assignment exists. Greedy wildcards do not participate in these retries, and a value that fails its constraint is not retried as empty.
 
 <Tabs>
 <TabItem value="named" label="Named, optional, greedy">
@@ -332,20 +336,27 @@ Constraints are matching rules, not input validation: if a value fails a constra
 | Constraint        | Example                          | Example matches                                                                             |
 | ----------------- | -------------------------------- | ------------------------------------------------------------------------------------------- |
 | int               | `:id<int>`                       | 123456789, -123456789                                                                       |
-| bool              | `:active<bool>`                  | true,false                                                                                  |
+| bool              | `:active<bool>`                  | true, false (and the other values `strconv.ParseBool` reads, such as 1 and 0)               |
 | guid              | `:id<guid>`                      | CD2C1638-1638-72D5-1638-DEADBEEF1638                                                        |
 | float             | `:weight<float>`                 | 1.234, -1001.01e8, 3.14                                                                     |
-| minLen(value)     | `:username<minLen(4)>`           | Test (must be at least 4 characters)                                                        |
-| maxLen(value)     | `:filename<maxLen(8)>`           | MyFile (must be no more than 8 characters)                                                  |
-| len(length)       | `:filename<len(12)>`             | somefile.txt (exactly 12 characters)                                                        |
+| minLen(value)     | `:username<minLen(4)>`           | Test (must be at least 4 bytes)                                                             |
+| maxLen(value)     | `:filename<maxLen(8)>`           | MyFile (must be no more than 8 bytes)                                                       |
+| len(length)       | `:filename<len(12)>`             | somefile.txt (exactly 12 bytes)                                                             |
+| betweenLen(min,max) | `:name<betweenLen(3,8)>`       | MyFile (must be at least 3 and no more than 8 bytes)                                        |
 | min(value)        | `:age<min(18)>`                  | 19 (Integer value must be at least 18)                                                      |
 | max(value)        | `:age<max(120)>`                 | 91 (Integer value must be no more than 120)                                                 |
 | range(min,max)    | `:age<range(18,120)>`            | 91 (Integer value must be at least 18 but no more than 120)                                 |
-| alpha             | `:name<alpha>`                   | Rick (String must consist of one or more alphabetical characters, a-z and case-insensitive) |
+| alpha             | `:name<alpha>`                   | Rick (String must consist of one or more letters: a-z in either case, and other Unicode letters when the path reaches the router as UTF-8, which a percent-encoded path does only with [`UnescapePath`](../api/fiber.md#unescapepath) enabled) |
 | datetime          | `:dob<datetime(2006\\-01\\-02)>` | 2005-11-01                                                                                  |
 | regex(expression) | `:date<regex(\d{4}-\d{2}-\d{2})>` | 2022-08-27 (Must match regular expression)                                                  |
 
-Constraint names and arguments are always taken from the pattern as written, even with the default case-insensitive routing: `:code<regex([A-Z]{2})>` keeps matching uppercase codes only, a `datetime` layout keeps its `T` and `Z`, and a custom constraint registered under a mixed-case name is found.
+The length constraints (`minLen`, `maxLen`, `len` and `betweenLen`) count bytes, not characters, of the value the router matched: a non-ASCII character counts as its UTF-8 bytes, or as its longer `%XX` form while the path keeps it percent-encoded, which is the default (see [`UnescapePath`](../api/fiber.md#unescapepath)).
+
+Constraint names and arguments are always taken from the pattern as written, even with the default case-insensitive routing: `:code<regex([A-Z]{2})>` keeps matching uppercase codes only, a `datetime` layout keeps its `T` and `Z`, and a custom constraint registered under a mixed-case name is found. A built-in name matches in any letter case (`minLen(4)` and `MinLen(4)` are the same constraint), while a custom constraint name must match exactly.
+
+:::note
+A constraint with a missing or malformed argument (`:id<min>` or `:id<min(abc)>`) never matches, so the route answers **404** for every request. A name that is neither built in nor a registered [custom constraint](#custom-constraint) is ignored and leaves the parameter unconstrained, so a misspelled constraint does not reject anything. Only `regex(...)` expressions are checked when the route is registered: an invalid one panics.
+:::
 
 #### Examples
 
@@ -387,7 +398,7 @@ app.Get("/:test<min(100);maxLen(5)>", func(c fiber.Ctx) error {
 </TabItem>
 <TabItem value="regex-constraint" label="Regex Constraint">
 
-Fiber precompiles the regex when registering routes, so the pattern is matched (not recompiled) on each request.
+Fiber precompiles the regex when registering routes, so the pattern is matched (not recompiled) on each request. To compile patterns with another regex engine, set [`RegexHandler`](../api/fiber.md#regexhandler); see [Make Fiber Faster](./faster-fiber.md#alternative-regex-engines-for-regex-constraints).
 
 ```go
 app.Get(`/:date<regex(\d{4}-\d{2}-\d{2})>`, func(c fiber.Ctx) error {
@@ -432,10 +443,12 @@ app.Get("/:test<int>?", func(c fiber.Ctx) error {
 Custom constraints can be added to Fiber using the `app.RegisterCustomConstraint` method. Your constraints have to be compatible with the `CustomConstraint` interface.
 
 :::caution
-Attention, custom constraints can now override built-in constraints. If a custom constraint has the same name as a built-in constraint, the custom constraint will be used instead. This allows for more flexibility in defining route parameter constraints.
+Attention, custom constraints can now override built-in constraints. If a custom constraint has the same name as a built-in constraint, the custom constraint will be used instead. This allows for more flexibility in defining route parameter constraints. The built-in names are available as constants, for example `fiber.ConstraintInt`, `fiber.ConstraintMinLen` and `fiber.ConstraintRegex`.
 :::
 
 Add external constraints when you need stricter rules, such as verifying that a parameter is a valid ULID.
+
+Register a custom constraint before the routes that use it: a route is parsed when it is registered, so a route registered earlier is left without the constraint. Custom constraints registered on a sub-app keep applying to its routes once the sub-app is mounted, and the app that mounts it can use its own constraints in the mount prefix. A parameter in the prefix of a plain mount routes as usual, but the sub-app's own `ErrorHandler` and `Views` are found only under a literal prefix (see [Mounting](../api/app.md#mounting)).
 
 ```go
 // CustomConstraint is an interface for custom constraints
@@ -485,7 +498,7 @@ func main() {
 
 #### ConstraintHandler Interface
 
-In addition to the `CustomConstraint` interface, Fiber v3 provides a more powerful `ConstraintHandler` interface that supports precomputation at route registration time. All built-in constraints implement this interface.
+Behind the scenes, Fiber evaluates every constraint through the `ConstraintHandler` interface, which separates the work done once at route registration from the check made on each request. All built-in constraints implement it.
 
 ```go
 // ConstraintHandler is the interface that all constraints must implement.
@@ -499,7 +512,7 @@ type ConstraintHandler interface {
 }
 ```
 
-Optionally, a constraint can implement `ConstraintAnalyzer` to preprocess data at registration time, avoiding repeated parsing on every request:
+Built-in constraints that take arguments (`min`, `range`, `datetime`, `regex` and so on) also implement `ConstraintAnalyzer`, which parses the arguments once at registration time and avoids repeated parsing on every request:
 
 ```go
 // ConstraintAnalyzer is an optional interface for registration-time precomputation.
@@ -511,7 +524,7 @@ type ConstraintAnalyzer interface {
 ```
 
 :::note
-Existing `CustomConstraint` implementations continue to work unchanged. They are automatically wrapped to satisfy `ConstraintHandler`. Custom constraints that also implement `ConstraintAnalyzer` will have their `Analyze` method called at registration time.
+`app.RegisterCustomConstraint` accepts `CustomConstraint` values only, so a `ConstraintHandler` cannot be registered directly. Fiber wraps each `CustomConstraint` in a `ConstraintHandler` and passes the arguments from the pattern to its `Execute` method as strings, split on unescaped commas. If your custom constraint also implements `ConstraintAnalyzer`, Fiber calls its `Analyze` method with those arguments when the route is registered, but the values it returns are not handed to `Execute`.
 :::
 
 :::tip Try it live
@@ -589,7 +602,7 @@ app.Route("/api/v1", func(r fiber.Router) {
 
 ### RouteChain
 
-When several HTTP methods share the **same path**, [`RouteChain`](../api/app.md#routechain) lets you declare the path once and chain the verb handlers. An `All` in the chain runs before the verb handlers on that path, acting as route-specific middleware.
+When several HTTP methods share the **same path**, [`RouteChain`](../api/app.md#routechain) lets you declare the path once and chain the verb handlers. Handlers run in the order you declare them, so an `All` declared before the verb handlers runs ahead of them on that path, acting as route-specific middleware.
 
 ```go
 app.RouteChain("/events").
@@ -602,7 +615,7 @@ app.RouteChain("/events").
 Within a chain, `All` registers prefix-matched middleware (like [`Use`](#use)), not the exact-path `App.All`, so it also runs for sub-paths of the chain path.
 :::
 
-Pick the helper that fits: a single endpoint uses `Get`/`Post`/…; a fixed set of methods on one path uses [`Add`](#route-handlers); one path with many methods (fluently) uses `RouteChain`; many paths under a shared prefix use [`Group`](#grouping) or `Route`.
+Pick the helper that fits: a single endpoint uses `Get`/`Post`/…; a fixed set of methods on one path uses [`Add`](#route-handlers); one path with many methods (fluently) uses `RouteChain`; many paths under a shared prefix use [`Group`](#grouping) or `Route`; routes that must answer only for certain hostnames use [`Domain`](../api/app.md#domain).
 
 ## Automatic HEAD routes
 
@@ -638,6 +651,8 @@ handler := func(c fiber.Ctx) error {
 app := fiber.New(fiber.Config{DisableHeadAutoRegister: true})
 app.Get("/users/:id", handler) // HEAD /users/:id now returns 405 unless you add it manually.
 ```
+
+Each app decides for its own routes. A mounted sub-app that sets `DisableHeadAutoRegister`, or that leaves `HEAD` out of its `RequestMethods`, gets no automatic `HEAD` routes when it is mounted, so a `HEAD` request for its routes answers **405** even though the app it is mounted in registers them for its own routes. A sub-app that does not serve `HEAD` registers its middleware only for the methods it serves, so a synthesized `HEAD` route would run its handlers without that middleware. A sub-app mounted on a [`Domain`](../api/app.md#domain) follows the same rule.
 
 Auto-generated `HEAD` routes participate in every router scope, including `Group` hierarchies, mounted sub-apps, parameterized and wildcard paths, and static file helpers. They also appear in route listings such as `app.Stack()` so tooling sees both the `GET` and `HEAD` entries.
 

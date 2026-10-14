@@ -23,12 +23,13 @@ Fiber provides several default binders out of the box:
 - [JSON](json.go)
 - [XML](xml.go)
 - [CBOR](cbor.go)
+- [MsgPack](msgpack.go)
 
 ## Guides
 
 ### Binding into a Struct
 
-Fiber supports binding request data directly into a struct using [gofiber/schema](https://github.com/gofiber/schema). Here's an example:
+Fiber supports binding request data directly into a struct using [gofiber/schema](https://github.com/gofiber/schema). `Body` picks the decoder from the request's `Content-Type` header and returns `fiber.ErrUnprocessableEntity` (422) when none matches. Here's an example:
 
 ```go
 // Field names must start with an uppercase letter
@@ -63,10 +64,9 @@ curl -X POST -H "Content-Type: application/x-www-form-urlencoded" --data "name=j
 
 // Multipart Form
 curl -X POST -F name=john -F pass=doe http://localhost:3000
-
-// Query Parameters
-curl -X POST "http://localhost:3000/?name=john&pass=doe"
 ```
+
+`Body` does not read the query string. Bind query parameters with `c.Bind().Query(p)` and tags such as `query:"name"` instead.
 
 ### Binding into a Map
 
@@ -95,23 +95,25 @@ curl "http://localhost:3000/?name=john&pass=doe&products=shoe&products=hat"
 
 ### Automatic Error Handling with `WithAutoHandling`
 
-By default, Fiber returns binder errors directly. To handle errors automatically and return a `400 Bad Request` status, use the `WithAutoHandling()` method.
+By default, Fiber returns binder errors directly. To have a binding failure set a `400 Bad Request` status and come back as a `*fiber.Error` with the message `Bad request: ...`, use the `WithAutoHandling()` method. You must still return the error.
+
+The `required` option belongs to the tags of the form, query, header, cookie, response header and URI binders. The JSON, XML, CBOR and MsgPack decoders do not check it.
 
 **Example:**
 
 ```go
 // Field names must start with an uppercase letter
 type Person struct {
-    Name string `json:"name,required"`
-    Pass string `json:"pass"`
+    Name string `query:"name,required"`
+    Pass string `query:"pass"`
 }
 
 app.Get("/", func(c fiber.Ctx) error {
     p := new(Person)
 
-    if err := c.Bind().WithAutoHandling().JSON(p); err != nil {
+    if err := c.Bind().WithAutoHandling().Query(p); err != nil {
         return err 
-        // Automatically returns status code 400
+        // Automatically sets status code 400
         // Response: Bad request: name is empty
     }
 
@@ -121,8 +123,10 @@ app.Get("/", func(c fiber.Ctx) error {
 
 // Run tests with the following curl command:
 
-curl -X GET -H "Content-Type: application/json" --data "{\"pass\":\"doe\"}" localhost:3000
+curl "http://localhost:3000/?pass=doe"
 ```
+
+`c.Bind()` returns the same `Bind` for the whole request, so `WithAutoHandling()` stays in effect for every later bind of that request until you call `WithoutAutoHandling()`.
 
 ### Defining a Custom Binder
 
@@ -177,7 +181,7 @@ pass = 'test'" localhost:3000
 
 ### Defining a Custom Validator
 
-All Fiber binders support struct validation if a validator is defined in the configuration. You can create your own validator or use existing ones like [go-playground/validator](https://github.com/go-playground/validator) or [go-ozzo/ozzo-validation](https://github.com/go-ozzo/ozzo-validation). Here's an example of a simple custom validator:
+All Fiber binders support struct validation if a validator is defined in the configuration. The validator implements `fiber.StructValidator`, a single method: `Validate(out any) error`. It runs after a bind succeeds, for destinations that are structs (or pointers to structs). You can create your own validator or use existing ones like [go-playground/validator](https://github.com/go-playground/validator) or [go-ozzo/ozzo-validation](https://github.com/go-ozzo/ozzo-validation). Here's an example of a simple custom validator:
 
 ```go
 type Query struct {
@@ -186,13 +190,11 @@ type Query struct {
 
 type structValidator struct{}
 
-func (v *structValidator) Engine() any {
-    return nil // Implement if using an external validation engine
-}
-
-func (v *structValidator) ValidateStruct(out any) error {
-    data := reflect.ValueOf(out).Elem().Interface()
-    query := data.(Query)
+func (v *structValidator) Validate(out any) error {
+    query, ok := out.(*Query)
+    if !ok {
+        return nil
+    }
 
     if query.Name != "john" {
         return errors.New("you should have entered the correct name!")
@@ -221,3 +223,5 @@ func main() {
 
 curl "http://localhost:3000/?name=efe"
 ```
+
+The validator's error is returned as is, so the default error handler answers it with `500 Internal Server Error`. Return a `*fiber.Error` such as `fiber.NewError(fiber.StatusBadRequest, "...")` from `Validate` when the request is at fault. `SkipValidation(true)` bypasses the validator for the rest of the request.

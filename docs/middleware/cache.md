@@ -6,24 +6,32 @@ id: cache
 
 Cache middleware for [Fiber](https://github.com/gofiber/fiber) that intercepts responses and stores the body, `Content-Type`, and status code under a deterministic key derived from request dimensions. Special thanks to [@codemicro](https://github.com/codemicro/fiber-cache) for contributing this middleware to Fiber core.
 
-By default, cached responses expire after five minutes and the middleware stores up to 1 MB of response bodies.
+By default, cached responses expire after five minutes and the middleware stores up to 1 MB of response bodies. That size limit is the default of `cache.New()` called without a `Config`: a `Config` that leaves `MaxBytes` unset stores bodies without a limit.
 
 ## Request directives
 
-- `Cache-Control: no-cache` returns the latest response while still caching it, so the status is always `miss`.
+- `Cache-Control: no-cache` (or `Pragma: no-cache`) returns the latest response while still caching it, so the status is `miss` unless the new response cannot be stored.
 - `Cache-Control: no-store` skips caching and always forwards a fresh response.
+- `Cache-Control: max-age=<seconds>` serves the cached response only if it is no older than that, and `min-fresh=<seconds>` only if it stays fresh for at least that much longer. Otherwise the middleware revalidates: the handler runs and its response replaces the entry. `max-age=0` always revalidates.
+- `Cache-Control: max-stale` accepts an expired entry, and `max-stale=<seconds>` one that expired no more than that long ago. The hit carries `Warning: 110 - "Response is stale"`. An entry stored from a response with `must-revalidate` or `proxy-revalidate` is never served stale. The storage keeps an entry for the longer of its own lifetime and `Expiration`, counted from when it is stored, and `max-stale` can only reach an entry while the storage still holds it after it has stopped being fresh. That leaves a window when the lifetime is shorter than `Expiration`, and also when an upstream `Age` or an earlier `Date` has used up part of a lifetime that is `Expiration` or longer, because the entry stops being fresh that much before the storage drops it. A lifetime taken from `Expires` is not shortened by `Age` or `Date`, so it leaves a window only when it is shorter than `Expiration`.
+- `Cache-Control: only-if-cached` answers `504 Gateway Timeout`, with the `unreachable` status, instead of calling the handler when there is no entry to serve. That includes a request that also sends `no-cache` (or `Pragma: no-cache`) or `max-age=0`: a stored response cannot be served to it without validating it, which means calling the handler. The stored entry is kept for the requests that can use it.
 
-If the response includes a `Cache-Control: max-age` directive, its value sets the cache entry's expiration.
+## Entry lifetime
+
+The response decides how long its entry lives: `Cache-Control: s-maxage`, then `max-age`, then `Expires` set the expiration, and `Expiration` applies when the response says nothing. `ExpirationGenerator` overrides all of them. Time the response already spent in an upstream cache, reported by `Age` or implied by an earlier `Date` on the upstream response, counts against that lifetime, except a lifetime taken from `Expires`: that date is absolute, so it is not shortened. A response with no lifetime left is not stored and reports `unreachable`, for example one with `max-age=0`, an `Expires` in the past, or an `Age` as large as its lifetime.
+
+A hit carries `X-Cache: hit` and an `Age` header with the entry's age in seconds. Its `Date` is the server's current date, not the stored one: fasthttp writes `Date` itself and ignores the value the middleware sets (`DisableDefaultDate` leaves the header out), so the stored `Date` only decides the entry's age. A hit also carries a `Warning` header when it is served stale (`110`) or when an entry older than 24 hours has no `max-age`, `s-maxage` or `Expires` of its own (`113 - "Heuristic expiration"`).
 
 ## Cacheable status codes
 
-The middleware caches these RFC 7231 status codes:
+The middleware caches these status codes:
 
 - `200: OK`
 - `203: Non-Authoritative Information`
 - `204: No Content`
 - `300: Multiple Choices`
 - `301: Moved Permanently`
+- `308: Permanent Redirect`
 - `404: Not Found`
 - `405: Method Not Allowed`
 - `410: Gone`
@@ -50,6 +58,9 @@ Import the middleware package:
 
 ```go
 import (
+    "strconv"
+    "time"
+
     "github.com/gofiber/fiber/v3"
     "github.com/gofiber/fiber/v3/middleware/cache"
     "github.com/gofiber/utils/v2"
@@ -114,7 +125,8 @@ By default, cache keys include:
 - request scheme and host, as `c.Scheme()` and `c.Host()` report them (so `X-Forwarded-Proto` and `X-Forwarded-Host` apply behind a trusted proxy),
 - request path,
 - canonicalized query string (enabled unless `DisableQueryKeys` is `true`),
-- representation-driving request headers (`accept`, `accept-encoding`, `accept-language`).
+- representation-driving request headers (`accept`, `accept-encoding`, `accept-language`),
+- a digest of the `Authorization` header, when the request carries one. The middleware adds it to every key, a custom `KeyGenerator`'s included, so a response stored for one credential is never served to another.
 
 This prevents common collisions from path-only keys (for example, `/?id=1` vs `/?id=2`, or `/dash` on two hosts routed with `app.Domain()`) while keeping fragmentation bounded. Two requests that differ only in their authority never share an entry, so a page routed by host or a redirect built from `c.BaseURL()` is served only to the host it was generated for. If you supply a custom `KeyGenerator` and your responses depend on the host, include `c.Host()` (and `c.Scheme()`) in the key yourself.
 
@@ -122,17 +134,18 @@ The middleware **does not include request body/form values in the default cache 
 
 Cache lookup/storage is applied only for `GET` and `HEAD` requests by default. Other HTTP methods bypass the cache middleware. You can change this via the `Methods` config field (for example, adding `fiber.MethodQuery`). If you supply a custom `KeyGenerator` and enable a body-bearing method such as `QUERY`, make sure it incorporates `c.Request().Body()`, otherwise requests with the same URL but different bodies will collide.
 
-If a response sets `Vary`, request lookup/storage is also partitioned by those header values unless `DisableVaryHeaders` is `true`. Responses with `Vary: *` remain uncacheable.
+If a response sets `Vary`, request lookup/storage is also partitioned by those header values unless `DisableVaryHeaders` is `true`. Responses with `Vary: *` remain uncacheable, and so does a response whose `Vary` names more than 32 fields or is longer than 2048 bytes. That holds when `DisableVaryHeaders` is `true` as well.
 
 ### Cached redirects
 
-`300` and `301` are cacheable statuses, so a redirect can be served from the
-cache. Its `Location` is kept with the entry even when `StoreResponseHeaders` is
+`300`, `301` and `308` are cacheable statuses, so a redirect can be served from
+the cache. Its `Location` is kept with the entry even when `StoreResponseHeaders` is
 off, since the status means nothing without it.
 
 `Location` joins a set the entry always carries, each in a field of its own
 rather than in the stored header list: `Content-Type`, `Content-Encoding`,
-`Cache-Control`, `Expires`, `ETag`, `Vary`, `Date` and `Age`. Those are what the
+`Cache-Control`, `Expires`, `ETag` and `Vary`, which a hit sends back, and
+`Date` and `Age`, which only decide the `Age` a hit reports. Those are what the
 entry needs to be replayed and revalidated at all. `StoreResponseHeaders` is
 about every other response header, none of which is kept without it.
 
@@ -144,8 +157,9 @@ requires, so a handler is free to write `cache-control` or `expires` in lower
 case under
 [`DisableHeaderNormalizing`](../api/fiber.md#config). Those values decide what
 they would decide either way, and the fields this middleware writes itself —
-`Cache-Control`, `Age`, `Date`, `ETag`, `Expires` — replace whatever spelling
-the response already carries rather than being added beside it.
+`Cache-Control`, `Age`, `Date`, `ETag`, `Expires`, `Vary` — replace whatever
+spelling the response already carries rather than being added beside it. For
+`Date`, fasthttp writes one header line with the server's current date.
 
 ### Responses that are never stored
 
@@ -172,8 +186,8 @@ on, so neither is written by accident. `must-revalidate` and `proxy-revalidate`
 do **not** lift the cookie restriction, even though RFC 9111 §3.5 accepts
 `must-revalidate` for the `Authorization` case: that allowance holds because a
 revalidating cache returns to the origin and the origin re-checks the
-credential, and this middleware never revalidates — it serves the stored body
-for the whole configured `Expiration`.
+credential, and this middleware does not check back with the origin while an
+entry is fresh — it serves the stored body until the entry expires.
 
 Applications that refresh a session cookie on every response will find that most
 routes stop being cached — that is the point, since those responses are
@@ -247,21 +261,21 @@ and a non-form `Content-Type` is left alone.
 | Property             | Type                                           | Description                                                                                                                                                                                                                                                                                                    | Default                                                          |
 | :------------------- | :--------------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :--------------------------------------------------------------- |
 | Next                 | `func(fiber.Ctx) bool`                         | Next defines a function that is executed before creating the cache entry and can be used to execute the request without cache creation. If an entry already exists, it will be used. If you want to completely bypass the cache functionality in certain cases, you should use the [skip middleware](skip.md). | `nil`                                                            |
-| Expiration           | `time.Duration`                                | Expiration is the time that a cached response will live. | `5 * time.Minute`                                                |
+| Expiration           | `time.Duration`                                | Expiration is the time that a cached response will live when neither the response nor `ExpirationGenerator` sets a lifetime. A value shorter than one second in magnitude, zero included, selects the default, and `-1 * time.Second` or lower turns the middleware into a pass-through. | `5 * time.Minute`                                                |
 | CacheHeader          | `string`                                       | CacheHeader is the header on the response header that indicates the cache status, with the possible return values "hit," "miss," or "unreachable."                                                                                                                                                             | `X-Cache`                                                        |
 | DisableCacheControl  | `bool`                                          | DisableCacheControl omits the `Cache-Control` header when set to `true`. When `false`, a hit whose entry has no `Cache-Control` of its own is sent with `public, max-age=<remaining>`, or `private, max-age=<remaining>` when the entry is keyed by a cookie or credential. | `false`                                                         |
 | CacheInvalidator     | `func(fiber.Ctx) bool`                         | CacheInvalidator defines a function that is executed before checking the cache entry. It can be used to invalidate the existing cache manually by returning true. | `nil`                                                            |
 | DisableValueRedaction | `bool`                                        | Turns off cache key redaction in logs and error messages when set to `true`. | `false`                                             |
-| KeyGenerator         | `func(fiber.Ctx) string`                       | KeyGenerator allows you to generate custom keys. The HTTP method and a key-format version are partitioned internally by the middleware. | structured key from scheme + host + path + canonical query + selected headers/cookies |
+| KeyGenerator         | `func(fiber.Ctx) string`                       | KeyGenerator allows you to generate custom keys. The HTTP method, a key-format version and, when the request carries `Authorization`, a digest of that header are partitioned internally by the middleware. | structured key from scheme + host + path + canonical query + selected headers/cookies |
 | DisableQueryKeys     | `bool`                                         | Disables canonicalized query params in keys. | `false` |
 | KeyHeaders           | `[]string`                                     | Header allow-list used for key partitioning. Names are normalized case-insensitively and sorted. Use `[]string{}` to disable header-based partitioning. | `[]string{"accept","accept-encoding","accept-language"}` |
 | KeyCookies           | `[]string`                                     | Optional cookie allow-list for key partitioning. Explicit opt-in only; names remain case-sensitive. Hits on entries keyed this way are sent with `Cache-Control: private`. | `nil` |
-| Methods              | `[]string`                                     | HTTP methods eligible for caching. Requests whose method is not in this list bypass the cache. Names are normalized to uppercase. | `[]string{fiber.MethodGet, fiber.MethodHead}` |
+| Methods              | `[]string`                                     | HTTP methods eligible for caching. Requests whose method is not in this list bypass the cache and are answered with `unreachable` in the cache header. Names are normalized to uppercase. `nil` selects the default, and an empty slice disables caching for every method. | `[]string{fiber.MethodGet, fiber.MethodHead}` |
 | DisableVaryHeaders   | `bool`                                         | Disables response `Vary` dimensions in cache lookup/storage partitioning. | `false` |
-| ExpirationGenerator  | `func(fiber.Ctx, *cache.Config) time.Duration` | ExpirationGenerator allows you to generate custom expiration keys based on the request.                                                                                                                                                                                                                        | `nil`                                                            |
+| ExpirationGenerator  | `func(fiber.Ctx, *cache.Config) time.Duration` | ExpirationGenerator allows you to generate a custom expiration per request. It overrides `Expiration` and any lifetime the response sets with `Cache-Control` or `Expires`, Lifetimes are counted in whole seconds: a duration of zero or less leaves the response uncached, and one under a second never produces a hit.                                                                                                                                                                                                                        | `nil`                                                            |
 | Storage              | `fiber.Storage`                                | Storage is used to store the state of the middleware. Entries are namespaced by a key-format version, so an external store that survives an upgrade starts cold rather than serving entries an older version partitioned by different rules.                                                                                                                                                                                                                                                            | In-memory store                                                  |
 | StoreResponseHeaders | `bool`                                         | StoreResponseHeaders allows you to store additional headers generated by next middlewares & handler. Connection-scoped headers and `Set-Cookie` are never stored, since a cache entry is replayed to every client that matches its key. `Vary` is kept with every entry and replayed on hits regardless of this setting. | `false`                                                          |
-| MaxBytes             | `uint`                                         | MaxBytes is the maximum number of bytes of response bodies simultaneously stored in cache. | `1 * 1024 * 1024` (~1 MB)                                                  |
+| MaxBytes             | `uint`                                         | MaxBytes is the maximum number of bytes of response bodies simultaneously stored in cache. When the limit is reached, the entries closest to expiring are evicted to make room, and a response body larger than the limit is never stored. `0` means no limit. | `1 * 1024 * 1024` (~1 MB) when `New` receives no `Config`, `0` when a `Config` leaves it unset |
 
 ## Default Config
 
@@ -286,6 +300,6 @@ var ConfigDefault = Config{
     ExpirationGenerator:  nil,
     StoreResponseHeaders: false,
     Storage:              nil,
-    MaxBytes:             1 * 1024 * 1024,
+    MaxBytes:             1 * 1024 * 1024, // 0 (no limit) once you pass your own Config and leave it unset
 }
 ```

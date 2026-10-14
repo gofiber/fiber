@@ -901,6 +901,247 @@ func Test_httpClientTransport_Interface(t *testing.T) {
 	}
 }
 
+// Test_Transport_PathNormalizing covers the setting that decides what reaches the
+// wire: the wrapped client's own field, read and written through every kind of
+// transport.
+func Test_Transport_PathNormalizing(t *testing.T) {
+	t.Parallel()
+
+	t.Run("fasthttp.Client the Fiber client made", func(t *testing.T) {
+		t.Parallel()
+
+		tr := newOwnedStandardClientTransport()
+		fc := tr.client
+		require.False(t, tr.DisablePathNormalizing())
+
+		tr.SetDisablePathNormalizing(true)
+		require.True(t, tr.DisablePathNormalizing())
+		require.True(t, fc.DisablePathNormalizing)
+
+		tr.SetDisablePathNormalizing(false)
+		require.False(t, tr.DisablePathNormalizing())
+		require.False(t, fc.DisablePathNormalizing)
+	})
+
+	t.Run("fasthttp.Client handed over normalizing", func(t *testing.T) {
+		t.Parallel()
+
+		fc := &fasthttp.Client{}
+		tr := newStandardClientTransport(fc)
+		require.False(t, tr.DisablePathNormalizing())
+
+		// The field is written, so hosts not served yet get it, but the
+		// transport cannot say the hosts served already follow.
+		tr.SetDisablePathNormalizing(true)
+		require.True(t, fc.DisablePathNormalizing)
+		require.False(t, tr.DisablePathNormalizing())
+
+		tr.SetDisablePathNormalizing(false)
+		require.False(t, fc.DisablePathNormalizing)
+		require.False(t, tr.DisablePathNormalizing())
+	})
+
+	t.Run("fasthttp.Client handed over with the setting on", func(t *testing.T) {
+		t.Parallel()
+
+		fc := &fasthttp.Client{DisablePathNormalizing: true}
+		tr := newStandardClientTransport(fc)
+		require.True(t, tr.DisablePathNormalizing())
+
+		tr.SetDisablePathNormalizing(false)
+		require.False(t, tr.DisablePathNormalizing())
+		require.False(t, fc.DisablePathNormalizing)
+
+		// Still known: no request has gone out in between.
+		tr.SetDisablePathNormalizing(true)
+		require.True(t, tr.DisablePathNormalizing())
+	})
+
+	t.Run("fasthttp.HostClient", func(t *testing.T) {
+		t.Parallel()
+
+		hc := &fasthttp.HostClient{}
+		tr := newHostClientTransport(hc)
+		require.False(t, tr.DisablePathNormalizing())
+
+		tr.SetDisablePathNormalizing(true)
+		require.True(t, tr.DisablePathNormalizing())
+		require.True(t, hc.DisablePathNormalizing)
+
+		tr.SetDisablePathNormalizing(false)
+		require.False(t, hc.DisablePathNormalizing)
+	})
+
+	t.Run("fasthttp.LBClient writes every host client, nested ones included", func(t *testing.T) {
+		t.Parallel()
+
+		direct := &fasthttp.HostClient{Addr: "a.example:80"}
+		inner := &fasthttp.HostClient{Addr: "b.example:80"}
+		deeper := &fasthttp.HostClient{Addr: "c.example:80"}
+		tr := newLBClientTransport(&fasthttp.LBClient{Clients: []fasthttp.BalancingClient{
+			direct,
+			&lbBalancingClient{client: &fasthttp.LBClient{Clients: []fasthttp.BalancingClient{
+				inner,
+				&lbBalancingClient{client: &fasthttp.LBClient{Clients: []fasthttp.BalancingClient{deeper}}},
+			}}},
+		}})
+		require.False(t, tr.DisablePathNormalizing())
+
+		tr.SetDisablePathNormalizing(true)
+		require.True(t, tr.DisablePathNormalizing())
+		for _, hc := range []*fasthttp.HostClient{direct, inner, deeper} {
+			require.True(t, hc.DisablePathNormalizing, hc.Addr)
+		}
+
+		tr.SetDisablePathNormalizing(false)
+		for _, hc := range []*fasthttp.HostClient{direct, inner, deeper} {
+			require.False(t, hc.DisablePathNormalizing, hc.Addr)
+		}
+	})
+
+	t.Run("fasthttp.LBClient reports false while any client normalizes", func(t *testing.T) {
+		t.Parallel()
+
+		quiet := &fasthttp.HostClient{Addr: "a.example:80", DisablePathNormalizing: true}
+		normalizing := &fasthttp.HostClient{Addr: "b.example:80"}
+
+		tests := []struct {
+			name    string
+			clients []fasthttp.BalancingClient
+			want    bool
+		}{
+			{name: "all leave the path alone", clients: []fasthttp.BalancingClient{quiet, quiet}, want: true},
+			{name: "one normalizes", clients: []fasthttp.BalancingClient{quiet, normalizing}},
+			{name: "a nested balancer holds one that normalizes", clients: []fasthttp.BalancingClient{
+				quiet, &lbBalancingClient{client: &fasthttp.LBClient{Clients: []fasthttp.BalancingClient{quiet, normalizing}}},
+			}},
+			{name: "a nested balancer where all leave it alone", clients: []fasthttp.BalancingClient{
+				quiet, &lbBalancingClient{client: &fasthttp.LBClient{Clients: []fasthttp.BalancingClient{quiet}}},
+			}, want: true},
+			{name: "a nested balancer with no clients", clients: []fasthttp.BalancingClient{
+				quiet, &lbBalancingClient{client: &fasthttp.LBClient{}},
+			}},
+			{name: "a client that cannot be inspected", clients: []fasthttp.BalancingClient{quiet, stubBalancingClient{}}},
+			{name: "a wrapper exposing no balancer", clients: []fasthttp.BalancingClient{quiet, &lbBalancingClient{}}},
+			{name: "no clients", clients: nil},
+		}
+		for _, tc := range tests {
+			t.Run(tc.name, func(t *testing.T) {
+				t.Parallel()
+				tr := newLBClientTransport(&fasthttp.LBClient{Clients: tc.clients})
+				require.Equal(t, tc.want, tr.DisablePathNormalizing())
+			})
+		}
+	})
+
+	t.Run("setting an empty balancer is harmless", func(t *testing.T) {
+		t.Parallel()
+
+		tr := newLBClientTransport(&fasthttp.LBClient{})
+		tr.SetDisablePathNormalizing(true)
+		require.False(t, tr.DisablePathNormalizing(), "nothing behind it can be told")
+	})
+}
+
+// Test_Client_SetDisablePathNormalizing_AppliesToTheWrappedClient checks the
+// setter reaches the fasthttp client each constructor wraps, and that Reset
+// returns to a default client that normalizes.
+func Test_Client_SetDisablePathNormalizing_AppliesToTheWrappedClient(t *testing.T) {
+	t.Parallel()
+
+	host := &fasthttp.HostClient{Addr: "example.com:80"}
+	lbHost := &fasthttp.HostClient{Addr: "example.com:80"}
+	std := &fasthttp.Client{}
+
+	tests := []struct {
+		client *Client
+		field  func() bool
+		name   string
+		// lifts is whether the setter alone makes the client send paths as built
+		// as far as Fiber can tell. A fasthttp.Client handed to NewWithClient may
+		// have served hosts already, so it does not.
+		lifts bool
+	}{
+		{name: "New", client: New(), lifts: true},
+		{name: "NewWithClient", client: NewWithClient(std), field: func() bool { return std.DisablePathNormalizing }},
+		{name: "NewWithHostClient", client: NewWithHostClient(host), field: func() bool { return host.DisablePathNormalizing }, lifts: true},
+		{
+			name:   "NewWithLBClient",
+			client: NewWithLBClient(&fasthttp.LBClient{Clients: []fasthttp.BalancingClient{lbHost}}),
+			field:  func() bool { return lbHost.DisablePathNormalizing },
+			lifts:  true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			c := tc.client
+			field := tc.field
+			if field == nil { // New: the client creates its own fasthttp client
+				field = func() bool { return c.FasthttpClient().DisablePathNormalizing }
+			}
+			require.False(t, c.writesPathAsBuilt())
+
+			c.SetDisablePathNormalizing(true)
+			require.True(t, c.DisablePathNormalizing())
+			require.True(t, field())
+			require.Equal(t, tc.lifts, c.writesPathAsBuilt())
+
+			c.SetDisablePathNormalizing(false)
+			require.False(t, c.DisablePathNormalizing())
+			require.False(t, field())
+			require.False(t, c.writesPathAsBuilt())
+		})
+	}
+
+	t.Run("NewWithClient created with the setting on", func(t *testing.T) {
+		t.Parallel()
+
+		std := &fasthttp.Client{DisablePathNormalizing: true}
+		c := NewWithClient(std)
+		require.True(t, c.writesPathAsBuilt())
+		require.False(t, c.DisablePathNormalizing(), "the Fiber setting is not what turned it on")
+
+		c.SetDisablePathNormalizing(false)
+		require.False(t, std.DisablePathNormalizing)
+		require.False(t, c.writesPathAsBuilt())
+	})
+
+	t.Run("Reset", func(t *testing.T) {
+		t.Parallel()
+
+		c := New().SetDisablePathNormalizing(true)
+		require.True(t, c.writesPathAsBuilt())
+
+		c.Reset()
+		require.False(t, c.DisablePathNormalizing())
+		require.False(t, c.writesPathAsBuilt())
+		require.False(t, c.FasthttpClient().DisablePathNormalizing)
+	})
+}
+
+// Test_Client_PathNormalizing_UnknownTransport covers a transport that has no
+// path normalizing setting to read: it counts as one that normalizes, so setting
+// the flag does nothing to it and the path parameter check stays on.
+func Test_Client_PathNormalizing_UnknownTransport(t *testing.T) {
+	t.Parallel()
+
+	c := newClient(newBlockingErrTransport(nil))
+	require.NotPanics(t, func() { c.SetDisablePathNormalizing(true) })
+	require.True(t, c.DisablePathNormalizing())
+	require.False(t, c.writesPathAsBuilt())
+
+	req := AcquireRequest().
+		SetURL("http://example.com/api/:id").
+		SetPathParam("id", "x/../../admin").
+		SetDisablePathNormalizing(true)
+	t.Cleanup(func() { ReleaseRequest(req) })
+
+	require.ErrorIs(t, parserRequestURL(c, req), ErrPathParamInPath)
+}
+
 // Test_Transport_DoRedirects_KeepsPathNormalizingDisabled covers a transport
 // wrapping a client that asked for the path to be left alone.
 //

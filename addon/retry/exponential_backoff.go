@@ -37,25 +37,51 @@ func NewExponentialBackoff(config ...Config) *ExponentialBackoff {
 	}
 }
 
+// withDefaults returns a copy of e in which every field left unset takes the value
+// NewExponentialBackoff gives it, so that a zero ExponentialBackoff, or a struct
+// literal that names only some of the fields, retries like the default instead
+// of never calling f. A zero or negative number counts as unset. e itself is not
+// changed, since one ExponentialBackoff can be shared.
+func (e *ExponentialBackoff) withDefaults() ExponentialBackoff {
+	eff := *e
+	if eff.InitialInterval <= 0 {
+		eff.InitialInterval = eff.currentInterval
+	}
+	if eff.InitialInterval <= 0 {
+		eff.InitialInterval = DefaultConfig.InitialInterval
+	}
+	if eff.MaxBackoffTime <= 0 {
+		eff.MaxBackoffTime = DefaultConfig.MaxBackoffTime
+	}
+	if eff.Multiplier <= 0 {
+		eff.Multiplier = DefaultConfig.Multiplier
+	}
+	if eff.MaxRetryCount <= 0 {
+		eff.MaxRetryCount = DefaultConfig.MaxRetryCount
+	}
+	return eff
+}
+
 // Retry is the core logic of the retry mechanism. If the calling function returns
 // nil as an error, then the Retry method is terminated with returning nil. Otherwise,
 // if all function calls are returned error, then the method returns this error.
 //
+// f is called at least once: a field left at its zero value takes its default, so
+// even a zero ExponentialBackoff makes up to DefaultConfig.MaxRetryCount attempts.
+//
 // Each call starts from InitialInterval with its own state, so one ExponentialBackoff can be shared.
 func (e *ExponentialBackoff) Retry(f func() error) error {
-	interval := e.InitialInterval
-	if interval <= 0 {
-		interval = e.currentInterval
-	}
+	eff := e.withDefaults()
+	interval := eff.InitialInterval
 	var err error
-	for i := 0; i < e.MaxRetryCount; i++ {
+	for i := 0; i < eff.MaxRetryCount; i++ {
 		err = f()
 		if err == nil {
 			return nil
 		}
-		if i < e.MaxRetryCount-1 {
+		if i < eff.MaxRetryCount-1 {
 			var sleep time.Duration
-			sleep, interval = e.next(interval)
+			sleep, interval = eff.next(interval)
 			time.Sleep(sleep)
 		}
 	}

@@ -20,7 +20,13 @@ func New(config ...Config) fiber.Handler
 // The length of the key determines the AES encryption algorithm used:
 // 16 bytes for AES-128, 24 bytes for AES-192, and 32 bytes for AES-256-GCM.
 func GenerateKey(length int) string
+
+// EncryptCookie and DecryptCookie are the default Encryptor and Decryptor.
+func EncryptCookie(name, value, key string) (string, error)
+func DecryptCookie(name, value, key string) (string, error)
 ```
+
+`GenerateKey` returns the base64 encoding of `length` random bytes, which is the form `Config.Key` expects, and panics with `ErrInvalidKeyLength` for any other length. `New` panics when `Key` is empty, is not valid standard base64 (padding included), or does not decode to 16, 24, or 32 bytes (`ErrInvalidKeyLength`). It checks the key even when you supply your own `Encryptor` and `Decryptor`.
 
 ## Examples
 
@@ -28,6 +34,8 @@ Import the middleware package:
 
 ```go
 import (
+    "os"
+
     "github.com/gofiber/fiber/v3"
     "github.com/gofiber/fiber/v3/middleware/encryptcookie"
 )
@@ -38,7 +46,8 @@ Once your Fiber app is initialized, register the middleware:
 ```go
 // Provide a minimal configuration
 app.Use(encryptcookie.New(encryptcookie.Config{
-    Key: "secret-32-character-string",
+    // A base64-encoded key of 16, 24, or 32 bytes, for example from `openssl rand -base64 32`
+    Key: os.Getenv("COOKIE_KEY"),
 }))
 
 // Retrieve the encrypted cookie value
@@ -66,7 +75,7 @@ Use an encoded key of 16, 24, or 32 bytes to select AES‑128, AES‑192, or AES
 |:----------|:----------------------------------------------------|:------------------------------------------------------------------------------------------------------|:-----------------------------|
 | Next      | `func(fiber.Ctx) bool`                             | A function to skip this middleware when it returns true.                                                | `nil`                        |
 | Except    | `[]string`                                          | Array of cookie keys that should not be encrypted.                                                    | `[]`                         |
-| Key       | `string`                                            | A base64-encoded unique key to encode & decode cookies. Required. Key length should be 16, 24, or 32 bytes. | (No default, required field) |
+| Key       | `string`                                            | A base64-encoded unique key to encode & decode cookies. Required. The decoded key must be 16, 24, or 32 bytes long; `New` panics otherwise. | (No default, required field) |
 | Encryptor | `func(name, decryptedString, key string) (string, error)` | A custom function to encrypt cookies.                                                                 | `EncryptCookie`              |
 | Decryptor | `func(name, encryptedString, key string) (string, error)` | A custom function to decrypt cookies.                                                                 | `DecryptCookie`              |
 
@@ -77,6 +86,8 @@ Custom encryptor and decryptor functions receive three arguments:
 - `name`: The cookie name. The default helpers bind this value as additional authenticated data (AAD) so encrypted values can only be decrypted for the same cookie.
 - `string`: The cookie payload. `EncryptCookie` accepts the decrypted value and returns ciphertext, while `DecryptCookie` receives ciphertext and must return the decrypted value.
 - `key`: The base64-encoded key pulled from the middleware configuration. Use it to derive or validate any encryption keys your implementation requires.
+
+A request cookie for which the `Decryptor` returns an error, such as a tampered value, a cookie that was never encrypted, or one sealed with another key, is removed from the request, so handlers see it as absent. When the `Encryptor` returns an error for a response cookie, the middleware removes every response cookie that is not listed in `Except` and returns that error, joined with any error from the rest of the chain. The default helpers return `ErrInvalidEncryptedValue` for a payload too short to hold the nonce and authentication tag, and `ErrInvalidKeyLength` for a key that does not decode to 16, 24, or 32 bytes.
 
 ## Default Config
 
@@ -97,12 +108,20 @@ Place `encryptcookie` before middleware that reads or writes cookies. If you use
 Exclude cookies from encryption by listing them in `Except`. If a frontend framework such as Angular reads the CSRF token from a cookie, add that name to the `Except` array:
 
 ```go
+import (
+    "os"
+
+    "github.com/gofiber/fiber/v3/extractors"
+    "github.com/gofiber/fiber/v3/middleware/csrf"
+    "github.com/gofiber/fiber/v3/middleware/encryptcookie"
+)
+
 app.Use(encryptcookie.New(encryptcookie.Config{
-    Key:    "secret-thirty-2-character-string",
+    Key:    os.Getenv("COOKIE_KEY"),
     Except: []string{csrf.ConfigDefault.CookieName}, // exclude CSRF cookie
 }))
 app.Use(csrf.New(csrf.Config{
-    Extractor:      csrf.FromHeader(csrf.HeaderName),
+    Extractor:      extractors.FromHeader(csrf.HeaderName),
     CookieSameSite: "Lax",
     CookieSecure:   true,
     CookieHTTPOnly: false,

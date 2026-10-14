@@ -29,7 +29,7 @@ app.Get("/coffee", func(c fiber.Ctx) error {
 })
 
 app.Get("/teapot", func(c fiber.Ctx) error {
-  return c.Status(fiber.StatusTeapot).Send("🍵 short and stout 🍵")
+  return c.Status(fiber.StatusTeapot).SendString("🍵 short and stout 🍵")
 })
 ```
 
@@ -41,7 +41,7 @@ app.Get("/", func(c fiber.Ctx) error {
   return c.Redirect().To("../login")
   // => HTTP - GET 303 http://example.com
   return c.Redirect().To("http://example.com")
-  // => HTTP - GET 301 https://example.com
+  // => HTTP - GET 301 http://example.com
   return c.Redirect().Status(301).To("http://example.com")
 })
 ```
@@ -87,6 +87,8 @@ app.Get("/user/:name", func(c fiber.Ctx) error {
 }).Name("user")
 ```
 
+`Route` returns `fiber.ErrNotFound` when no route has the given name. Values in `Queries` are percent-encoded and keys are written as given. The order of the query parameters is not specified.
+
 :::note
 Each `Params` value is automatically percent-encoded with URL path-segment
 rules. Greedy parameters (`*` and `+`) preserve `/` inside the matched path
@@ -127,8 +129,8 @@ The check reads the referer the way a browser does — folding backslashes,
 dropping ASCII tab, CR and LF, and collapsing a leading run of slashes — so a
 value like `/\evil.com`, which a browser resolves to `//evil.com`, is not
 mistaken for a local path. A referer that is missing, cross-origin, or
-unparsable falls back to the provided URL, and `Back` returns an error if
-there is no fallback.
+unparsable falls back to the provided URL. If there is no fallback either,
+`Back` returns `fiber.ErrRedirectBackNoFallback`, an error with status 500.
 
 :::
 
@@ -198,13 +200,30 @@ Similar to [Laravel](https://laravel.com/docs/11.x/redirects#redirecting-with-fl
 
 :::note
 
-Flash messages travel in the `fiber_flash` cookie, so only a client that keeps cookies across the redirect (a browser, typically) receives them, and every request is scanned for the cookie. Deployments whose clients keep no cookies can turn the feature off with `fiber.Config{DisableFlashMessages: true}`: `With` and `WithInput` then set no cookie, `Messages` and `OldInput` report nothing, and the scan is skipped.
+Flash messages travel in the `fiber_flash` cookie (`fiber.FlashCookieName`), so only a client that keeps cookies across the redirect (a browser, typically) receives them, and every request is scanned for the cookie. Deployments whose clients keep no cookies can turn the feature off with `fiber.Config{DisableFlashMessages: true}`: `With` and `WithInput` then set no cookie, `Messages` and `OldInput` report nothing, and the scan is skipped.
 
 :::
 
+The next request that carries the cookie can read the data, and Fiber expires the cookie on that request, so it is delivered once. The accessors return these types:
+
+```go title="Definition"
+// FlashMessage is returned by Messages and Message.
+type FlashMessage struct {
+  Key   string
+  Value string
+  Level uint8
+}
+
+// OldInputData is returned by OldInputs and OldInput.
+type OldInputData struct {
+  Key   string
+  Value string
+}
+```
+
 #### Messages
 
-Retrieve all flash messages. See [With](#with) for details.
+Retrieve all flash messages. Reading removes them from the request, so a second call returns none. See [With](#with) for details.
 
 ```go title="Signature"
 func (r *Redirect) Messages() []FlashMessage
@@ -219,7 +238,7 @@ app.Get("/", func(c fiber.Ctx) error {
 
 #### Message
 
-Get a flash message by key; see [With](#with).
+Get a flash message by key; see [With](#with). It returns an empty `FlashMessage` when the key is not found and, like `Messages`, removes the message it returns.
 
 ```go title="Signature"
 func (r *Redirect) Message(key string) FlashMessage
@@ -249,7 +268,7 @@ app.Get("/", func(c fiber.Ctx) error {
 
 #### OldInput
 
-Get stored input data by key; see [WithInput](#withinput).
+Get stored input data by key; see [WithInput](#withinput). It returns an empty `OldInputData` when the key is not found.
 
 ```go title="Signature"
 func (r *Redirect) OldInput(key string) OldInputData
@@ -264,7 +283,7 @@ app.Get("/name", func(c fiber.Ctx) error {
 
 #### With
 
-Send flash messages with `With`. The optional `level` sets the message's `Level` and defaults to `0`.
+Send flash messages with `With`. The optional `level` sets the message's `Level` and defaults to `0`. Calling `With` again with the same key replaces the earlier message.
 
 ```go title="Signature"
 func (r *Redirect) With(key, value string, level ...uint8) *Redirect
@@ -298,6 +317,10 @@ need to carry across the redirect.
 The cookie is `HttpOnly`, and `Secure` when the request that produced it arrived
 over TLS — so script cannot read it and it is not replayed in the clear. Neither
 attribute protects the payload from whoever is at the browser.
+
+Browsers typically drop a cookie larger than about 4 KB, and Fiber sets no flash
+cookie at all when a redirect carries more than 256 entries (messages plus input
+fields), so a large form does not make the round trip.
 
 :::
 

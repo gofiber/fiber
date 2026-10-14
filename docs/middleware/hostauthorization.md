@@ -185,7 +185,7 @@ The first match wins. If nothing matches, `ErrorHandler` is called.
 
 ## Host Normalization
 
-Before matching, both incoming hosts and `AllowedHosts` entries are normalized at startup:
+Before matching, the host of each request is normalized, and the `AllowedHosts` entries are normalized once at startup:
 
 - Port is stripped (`example.com:8080` → `example.com`)
 - Trailing dot removed (`example.com.` → `example.com`)
@@ -194,13 +194,21 @@ Before matching, both incoming hosts and `AllowedHosts` entries are normalized a
 - IDN labels converted to ASCII/Punycode (`münchen.example.com` → `xn--mnchen-3ya.example.com`)
 - RFC 1035 length limits enforced at startup: ≤253 chars total, ≤63 chars per label (panic on violation)
 
+An entry in the leading-dot form some other tools use (`.myapp.com`) also panics at startup; write `*.myapp.com` instead.
+
+A request host that is not a well-formed authority is rejected with `ErrorHandler` before matching, so `AllowedHostsFunc` never sees it. That covers an empty or missing `Host`, userinfo in `X-Forwarded-Host` (`allowed.com:443@attacker.example`), a port that is empty, not numeric or above 65535, malformed IPv6 brackets or an IPv6 literal without brackets, a zoned IPv6 address (`fe80::1%eth0`), and a hostname with an empty label (`a..b`), a label that starts or ends with a hyphen or is longer than 63 characters, or any character besides letters, digits, hyphens and dots (underscores included).
+
+fasthttp answers some of these requests itself, before routing: an HTTP/1.1 request with a missing or empty `Host`, and any request whose `Host` it cannot parse (for example a space or `/` in the name, a port that is not numeric, unbalanced IPv6 brackets, an IPv6 literal without brackets, an invalid IPv6 address or a zone not written as `%25`), gets `400 Bad Request`. Fiber still runs the `Use` middleware for such a request, so `ErrorHandler` is called, but the app's `ErrorHandler` then writes the final response over it: with the default one the client receives the `400`. The `ErrorHandler` response reaches the client for an HTTP/1.0 request without `Host`, for a `Host` that fasthttp accepts and the middleware rejects (`a..b`, an empty port, a port above 65535, an underscore) and for a malformed `X-Forwarded-Host`.
+
+fasthttp removes userinfo from the `Host` header itself, everything up to the last `@`, before the middleware reads it. For that header the middleware matches only what follows the `@`: `Host: allowed.com:443@attacker.example` is checked as `attacker.example`, and `Host: attacker.example@allowed.com` as `allowed.com`.
+
 ## Filtering by Client IP
 
-This middleware filters by the `Host` *header*, not by the client's source IP. To restrict access by client IP, use Fiber's [`TrustProxy` / `TrustProxyConfig`](https://docs.gofiber.io/whats_new#trusted-proxies) configuration — those are the correct knobs for IP allowlisting and CIDR ranges of trusted proxies.
+This middleware filters by the `Host` *header*, not by the client's source IP. [`TrustProxy` / `TrustProxyConfig`](https://docs.gofiber.io/whats_new#trusted-proxies) do not filter clients either: they only decide which peers may supply forwarded headers such as `X-Forwarded-For` and `X-Forwarded-Host`. To restrict access by client IP, check `c.IP()` in your own middleware or filter in the proxy or firewall.
 
 ## Proxy Support
 
-The middleware uses Fiber's `c.Hostname()`, which respects `X-Forwarded-Host` when [`TrustProxy`](https://docs.gofiber.io/api/fiber#config) is enabled. When `TrustProxy` is disabled (the default), `X-Forwarded-Host` is ignored and the raw `Host` header is used.
+The middleware reads the host with `c.Host()`, which uses the first value of `X-Forwarded-Host` when [`TrustProxy`](https://docs.gofiber.io/api/fiber#trustproxy) is enabled and the request comes from a proxy listed in `TrustProxyConfig`. When `TrustProxy` is disabled (the default), `X-Forwarded-Host` is ignored and the raw `Host` header is used. Either value goes through the same validation, so a malformed `X-Forwarded-Host` is rejected too.
 
 fasthttp itself is HTTP/1.x only. HTTP/2 support requires an external library (e.g. `fasthttp2`) plugged in via `Server.NextProto`. Those libraries are responsible for mapping the HTTP/2 `:authority` pseudo-header to a Host value before the request reaches Fiber handlers, so the middleware should work transparently once H2 is wired up — but this is the H2 library's responsibility, not fasthttp's or this middleware's.
 
@@ -208,9 +216,9 @@ fasthttp itself is HTTP/1.x only. HTTP/2 support requires an external library (e
 
 - **RFC 9110 Section 7.2** — Host and port are separate components; port is stripped before matching
 - **RFC 9110 Section 17.1** — Origin servers should reject misdirected requests
-- **RFC 9112 Section 3.2** — Requests with missing Host headers should be rejected
+- **RFC 9112 Section 3.2** — An HTTP/1.1 request without a Host header is answered with `400 Bad Request`; fasthttp does this before the middleware's response is sent
 - **RFC 1035** — `AllowedHosts` entries are validated against the 253-char total / 63-char per-label limits
-- Returns **403 Forbidden** (not 400) because the request is syntactically valid but semantically unauthorized
+- Returns **403 Forbidden** (not 400) for a host that is not allowed, because the request is syntactically valid but semantically unauthorized. The same `403` is the default for an HTTP/1.0 request without `Host` and for a malformed host that fasthttp accepts. An HTTP/1.1 request with a missing or empty `Host`, or with a `Host` fasthttp cannot parse, gets `400 Bad Request` from fasthttp before routing, which is what RFC 9112 Section 3.2 asks for. The middleware's `ErrorHandler` runs for it, but the app's `ErrorHandler` decides the final response (see [Host Normalization](#host-normalization))
 
 :::note
 **RFC 9110 §15.5.20** defines **421 Misdirected Request** as a semantically closer response for host mismatches ("the request was directed at a server unable or unwilling to produce an authoritative response for the target URI"). CDNs like Cloudflare and Fastly use 421 for this case. To use 421 instead of 403, set a custom `ErrorHandler`:

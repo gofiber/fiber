@@ -10,7 +10,7 @@ sidebar_position: 10
 
 Fiber lets you use MessagePack for efficient binary serialization. Use one of the popular Go libraries below to encode and decode data in handlers.
 
-- Fiber can bind requests with the `application/vnd.msgpack` content type out of the box. See the [Binding documentation](../api/bind.md#msgpack) for details.
+- Fiber recognizes the `application/vnd.msgpack` content type when binding, but it bundles no MsgPack implementation. Until you set `MsgPackEncoder` and `MsgPackDecoder`, `Bind().MsgPack()`, `Ctx.MsgPack()` and `Ctx.AutoFormat()` for a MsgPack `Accept` header return an error. See the [Binding documentation](../api/bind.md#msgpack) for details.
 - Use `Bind().MsgPack()` to bind data to structs, similar to JSON. `Ctx.AutoFormat()` responds with MsgPack when the `Accept` header is `application/vnd.msgpack`. See the [AutoFormat documentation](../api/ctx.md#autoformat) for more.
 
 ### Recommended Libraries
@@ -45,7 +45,7 @@ type User struct {
 
 func main() {
     app := fiber.New(fiber.Config{
-        // Optional: Set custom MsgPack encoder/decoder
+        // Required for MsgPack: Fiber ships no default encoder/decoder
         MsgPackEncoder: msgpack.Marshal,
         MsgPackDecoder: msgpack.Unmarshal,
     })
@@ -65,7 +65,7 @@ func main() {
 
 ## CBOR
 
-Fiber doesn't ship with a CBOR implementation. Use a library such as [fxamacker/cbor](https://github.com/fxamacker/cbor) to add encoding and decoding.
+Fiber doesn't ship with a CBOR implementation. Use a library such as [fxamacker/cbor](https://github.com/fxamacker/cbor) to add encoding and decoding. Until you set `CBOREncoder` and `CBORDecoder`, `Bind().CBOR()`, `Ctx.CBOR()` and `Ctx.AutoFormat()` for a CBOR `Accept` header return an error.
 
 - Use `Bind().CBOR()` to bind CBOR to structs. `Ctx.AutoFormat()` replies with CBOR when the `Accept` header is `application/cbor`. See the [AutoFormat documentation](../api/ctx.md#autoformat) for details.
 

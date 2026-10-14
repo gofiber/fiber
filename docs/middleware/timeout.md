@@ -51,9 +51,10 @@ timeout.Config{
   (including Fiber internals) will touch the context anymore.
 
 :::caution
-`timeout.New` wraps your final handler and can't be added with `app.Use` or
-used in a middleware chain. Register it per route and avoid calling
-`c.Next()` inside the wrapped handler—doing so will panic.
+`timeout.New` wraps your final handler, so register it per route rather than
+with `app.Use`. The handler runs in its own goroutine: if it calls `c.Next()`,
+the rest of the chain runs in that goroutine too and keeps running after the
+timeout response has been sent.
 :::
 
 ## Signatures
@@ -125,7 +126,7 @@ curl -i http://localhost:3000/sleep/3000   # returns 503 Service Unavailable
 | Next        | `func(fiber.Ctx) bool` | Function to skip this middleware when it returns `true`.            | `nil`  |
 | Timeout     | `time.Duration`    | Timeout duration for requests. `0` or a negative value disables the timeout. | `0`    |
 | OnTimeout   | `fiber.Handler`    | Handler executed when a timeout occurs. It may write the response itself or return a `*fiber.Error`, whose status and message then form the response; otherwise the default 503 is sent. Defaults to returning `fiber.ErrServiceUnavailable`. | `nil`  |
-| Errors      | `[]error`          | Custom errors treated as timeout errors.                            | `nil`  |
+| Errors      | `[]error`          | Custom errors treated as timeout errors, in addition to `context.DeadlineExceeded`. A handler that returns one of them (checked with `errors.Is`) gets the timeout response. | `nil`  |
 
 ### Use with a custom error
 
@@ -183,5 +184,18 @@ func main() {
 
     app.Get("/foo", timeout.New(handler, timeout.Config{Timeout: 10 * time.Second}))
     log.Fatal(app.Listen(":3000"))
+}
+```
+
+## Default Config
+
+With the default config, `Timeout` is `0`, so the wrapped handler runs without a deadline until you set one.
+
+```go
+var ConfigDefault = Config{
+    Next:      nil,
+    Timeout:   0,
+    OnTimeout: nil,
+    Errors:    nil,
 }
 ```

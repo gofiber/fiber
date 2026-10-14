@@ -32,6 +32,8 @@ Import the middleware package:
 
 ```go
 import (
+    "time"
+
     "github.com/gofiber/fiber/v3"
     "github.com/gofiber/fiber/v3/middleware/limiter"
 )
@@ -91,20 +93,22 @@ app.Use(limiter.New(limiter.Config{
 Each new window also considers the previous one (if any). The rate is calculated as:
 
 ```text
-weightOfPreviousWindow = previousWindowRequests * (elapsedInCurrentWindow / Expiration)
-rate = weightOfPreviousWindow + currentWindowRequests
+weightOfPreviousWindow = previousWindowRequests * (timeLeftInCurrentWindow / Expiration)
+rate = ceil(weightOfPreviousWindow) + currentWindowRequests
 ```
+
+The previous window therefore counts in full at the start of a window and fades out as the window runs.
 
 ## Dynamic limit
 
-You can also calculate the limit dynamically using the `MaxFunc` parameter. It receives the request context and allows you to compute a different limit for each request.
+You can also calculate the limit dynamically using the `MaxFunc` parameter. It receives the request context and allows you to compute a different limit for each request. Returning `0` skips the limiter for that request.
 
 Example:
 
 ```go
-app.Use(limiter.New(limiter.Config{
+app.Use("/users/:id", limiter.New(limiter.Config{
     MaxFunc:  func(c fiber.Ctx) int {
-      return getUserLimit(ctx.Param("id"))
+      return getUserLimit(c.Params("id"))
     },
     Expiration:     30 * time.Second,
 }))
@@ -114,7 +118,7 @@ app.Use(limiter.New(limiter.Config{
 
 You can also calculate the expiration dynamically using the `ExpirationFunc` parameter. It receives the request context and allows you to set a different expiration window for each request.
 
-Window accounting is whole-second, so a positive duration below one second is treated as a one-second window. A zero or negative duration falls back to the default expiration.
+Window accounting is whole-second, so a positive duration below one second is treated as a one-second window. A zero or negative duration falls back to the configured `Expiration`, which is one minute unless you set another.
 
 Example:
 
@@ -132,21 +136,21 @@ app.Use(limiter.New(limiter.Config{
 | Property               | Type                      | Description                                                                                 | Default                                  |
 |:-----------------------|:--------------------------|:--------------------------------------------------------------------------------------------|:-----------------------------------------|
 | Next                   | `func(fiber.Ctx) bool`   | Next defines a function to skip this middleware when it returns true.                         | `nil`                                    |
-| Max                    | `int`                     | Maximum number of recent connections within `Expiration` seconds before sending a 429 response. | 5                                        |
+| Max                    | `int`                     | Maximum number of recent connections within `Expiration` seconds before sending a 429 response. A value of `0` or less selects the default. | 5                                        |
 | MaxFunc                | `func(fiber.Ctx) int`     | Function that calculates the maximum number of recent connections within `Expiration` seconds before sending a 429 response. | A function that returns `cfg.Max`    |
-| KeyGenerator           | `func(fiber.Ctx) string` | Function to generate custom keys; uses `c.IP()` by default.                 | A function using `c.IP()` as the default   |
-| Expiration             | `time.Duration`           | Duration to keep request records in memory.                   | 1 * time.Minute                          |
-| ExpirationFunc         | `func(fiber.Ctx) time.Duration` | Function that calculates the expiration duration dynamically. Positive values below one second are floored to one second; non-positive values fall back to the default expiration. | A function that returns `cfg.Expiration` |
+| KeyGenerator           | `func(fiber.Ctx) string` | Function to generate custom keys; uses `c.IP()` by default. A key longer than 192 bytes, or starting with `sha256:`, is replaced by its SHA-256 digest (`sha256:<hex>`) before it reaches the storage, so oversized keys are still limited per client. | A function using `c.IP()` as the default   |
+| Expiration             | `time.Duration`           | Duration to keep request records in memory, which is also the length of the window. It is counted in whole seconds: a positive value below one second is floored to one second, and zero or a negative value selects the default. | 1 * time.Minute                          |
+| ExpirationFunc         | `func(fiber.Ctx) time.Duration` | Function that calculates the expiration duration dynamically. Positive values below one second are floored to one second; non-positive values fall back to `Expiration`. | A function that returns `cfg.Expiration` |
 | LimitReached           | `fiber.Handler`           | Called when a request exceeds the limit.                                       | A function sending a 429 response          |
 | SkipFailedRequests     | `bool`                    | When set to `true`, requests with status code ≥ 400 aren't counted.                         | false                                    |
 | SkipSuccessfulRequests | `bool`                    | When set to `true`, requests with status code < 400 aren't counted.                          | false                                    |
-| DisableHeaders         | `bool`                    | When set to `true`, the middleware omits rate limit headers (`X-RateLimit-*` and `Retry-After`). | false                                    |
+| DisableHeaders         | `bool`                    | When set to `true`, the middleware omits rate limit headers (`X-RateLimit-*` and `Retry-After`). Otherwise a request that passes carries `X-RateLimit-Limit`, `X-RateLimit-Remaining` and `X-RateLimit-Reset` (seconds until the window ends), and a rejected one carries `Retry-After` (seconds). | false                                    |
 | DisableValueRedaction  | `bool`                    | Disables redaction of limiter keys in error messages and logs.                                 | false                                    |
 | Storage                | `fiber.Storage`           | Persists middleware state.                                         | An in-memory store for this process only |
 | LimiterMiddleware      | `limiter.Handler`         | Selects the algorithm implementation. Implementations now receive a pointer to the active config when their `New` method is invoked. | A new Fixed Window Rate Limiter          |
 
 :::note
-A custom store can be used if it implements the `Storage` interface - more details and an example can be found in `store.go`.
+A custom store can be used if it implements the `fiber.Storage` interface, which is declared in [`storage_interface.go`](https://github.com/gofiber/fiber/blob/main/storage_interface.go).
 :::
 
 ## Default Config

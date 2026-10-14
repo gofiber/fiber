@@ -28,7 +28,11 @@ It is reused for subsequent requests, so avoid storing `c` or using it in
 goroutines that outlive the handler. For asynchronous work, call
 `c.Context()` inside the handler to obtain a `context.Context` that can safely
 be used after the handler returns. By default, this returns `context.Background()`
-unless a custom context was provided with `c.SetContext`.
+unless a custom context was provided with `c.SetContext`. The context outlives
+the handler, but a string you read from the request does not unless
+[`Immutable`](../api/fiber.md#immutable) is set: copy such a value inside the
+handler before you start the goroutine, as [Context Helpers](#context-helpers)
+shows.
 :::
 
 ```go title="Example"
@@ -83,12 +87,11 @@ app.Get("/", func(c fiber.Ctx) error {
 })
 ```
 
-## Working with `RequestCtx` and `fasthttpctx`
+## Working with `RequestCtx`
 
 The underlying [`fasthttp.RequestCtx`](https://pkg.go.dev/github.com/valyala/fasthttp#RequestCtx)
 can be accessed via `c.RequestCtx()`.
-This exposes low-level APIs and the extra context support provided by
-`fasthttpctx`.
+This exposes low-level APIs and a `context.Context` implementation of its own.
 
 ```go title="Accessing RequestCtx"
 app.Get("/raw", func(c fiber.Ctx) error {
@@ -99,7 +102,7 @@ app.Get("/raw", func(c fiber.Ctx) error {
 })
 ```
 
-`fasthttpctx` enables `fasthttp` to satisfy the `context.Context` interface.
+`fasthttp.RequestCtx` satisfies the `context.Context` interface itself.
 `Deadline` always reports no deadline. `Done` closes only when the server
 shuts down, and `Err` then returns `context.Canceled`. Note that this is the
 `fasthttp.RequestCtx`, not Fiber's `Ctx`, whose `Done` is always `nil`.
@@ -114,6 +117,49 @@ long-running handler at a deadline, wrap `c.Context()` with
 
 Fiber and its middleware expose a number of helper functions that
 retrieve request-scoped values from the context.
+
+Middleware stores these values with `fiber.StoreInContext`, and the helpers
+read them back with `fiber.ValueFromContext`. The helpers accept a `fiber.Ctx`
+as well as a plain `context.Context`.
+
+`StoreInContext` always writes to `c.Locals()`. It also copies the value into
+the context returned by `c.Context()` when
+[`PassLocalsToContext`](../api/fiber.md#passlocalstocontext) is enabled, which
+it is not by default. Reading from `c` itself therefore always works, but a
+helper called with `c.Context()`, as you would in code that only receives a
+`context.Context`, finds the value only when that setting is on:
+
+```go
+app := fiber.New(fiber.Config{PassLocalsToContext: true})
+app.Use(requestid.New())
+
+app.Get("/job", func(c fiber.Ctx) error {
+    ctx := c.Context() // take it inside the handler
+    // empty unless PassLocalsToContext is true; copy it, see the caution below
+    id := strings.Clone(requestid.FromContext(ctx))
+    go func() {
+        _ = id
+    }()
+    return c.SendStatus(fiber.StatusAccepted)
+})
+```
+
+:::caution
+Read what you need from the context inside the handler and hand the goroutine a copy. A retained context keeps working after the handler returns, but what it holds may not stay valid:
+
+- A string that comes from the request, such as the request ID when the client sent one or the key that `keyauth` extracted, points into a buffer that fasthttp reuses for the next request on the connection. Unless [`Immutable`](../api/fiber.md#immutable) is set, a goroutine that reads it later can see another request's ID or token. Copy it with `strings.Clone` before you hand it over; see [Zero Allocation](../intro.md#zero-allocation).
+- A context you keep stops resolving a session when its request ends: `session.FromContext` returns `nil` for it from then on, so a goroutine that outlives the handler cannot reach the session, and never another user's. The `*session.Middleware` it returned while the request was running is only valid until the handler returns, so do not hand that pointer to a goroutine that may outlive the handler either. Read what you need inside the handler, for example the session ID, and hand that to the goroutine; see the [Store Pattern](../middleware/session.md#store-pattern-advanced) for background work on a session.
+
+:::
+
+Use the same pair for your own values:
+
+```go
+type userKey struct{}
+
+fiber.StoreInContext(c, userKey{}, "john")
+name, ok := fiber.ValueFromContext[string](c, userKey{})
+```
 
 ### Request ID
 
@@ -188,10 +234,16 @@ app.Get("/", func(c fiber.Ctx) error {
 ### Key Authentication
 
 For API key authentication, the extracted token is stored in the
-context and accessible via `keyauth.TokenFromContext`.
+context and accessible via `keyauth.TokenFromContext`. The middleware requires
+a `Validator`, and reads the key from the `Authorization: Bearer <key>` header
+unless you set another `Extractor`.
 
 ```go
-app.Use(keyauth.New())
+app.Use(keyauth.New(keyauth.Config{
+    Validator: func(c fiber.Ctx, key string) (bool, error) {
+        return subtle.ConstantTimeCompare([]byte(key), []byte("secret")) == 1, nil
+    },
+}))
 app.Get("/", func(c fiber.Ctx) error {
     token := keyauth.TokenFromContext(c)
     return c.SendString(token)
@@ -270,12 +322,15 @@ This approach provides safe cancellation semantics for goroutine-based work whil
   methods are currently no-ops.
 - `RequestCtx` exposes the raw `fasthttp` context. Its `Done` channel
   closes only on server shutdown, not on client disconnect.
-- Use `fiber.StoreInContext(c, key, value)` to store request-scoped values in both
-  `c.Locals()` and `c.Context()` when values must be available through either API.
+- Use `fiber.StoreInContext(c, key, value)` to store request-scoped values in
+  `c.Locals()` and, when `fiber.Config.PassLocalsToContext` is enabled, in
+  `c.Context()` as well, so they are available through either API.
 - Middleware helpers like `requestid.FromContext` or `session.FromContext`
-  make it easy to retrieve request-scoped data.
-- Standard helpers such as `context.WithTimeout` can wrap `fiber.Ctx` to create
-  fully featured derived contexts inside handlers.
+  make it easy to retrieve request-scoped data. Copy a string that comes from
+  the request, or set `Immutable`, before a goroutine keeps it.
+- Standard helpers such as `context.WithTimeout` should wrap `c.Context()`,
+  not `fiber.Ctx`, to create derived contexts that honor deadlines and can
+  outlive the handler.
 - `fiber.Config.PassLocalsToContext` controls whether Fiber context helpers
   also propagate values into the request `context.Context` for Fiber-backed
   contexts when using `StoreInContext`. It defaults to `false` for backward

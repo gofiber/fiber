@@ -10,7 +10,11 @@ ETag middleware for [Fiber](https://github.com/gofiber/fiber) that helps caches 
 
 ```go
 func New(config ...Config) fiber.Handler
+func Generate(body []byte) []byte
+func GenerateWeak(body []byte) []byte
 ```
+
+`Generate` and `GenerateWeak` build the validator the middleware sets, quotes included (`"13-1831710635"` and `W/"13-1831710635"` for `Hello, World!`), from the body length and a CRC-32 checksum of the body, so a handler can compute one itself. Both return `nil` for a body longer than `math.MaxUint32` bytes.
 
 ## Examples
 
@@ -44,6 +48,8 @@ app.Get("/", func(c fiber.Ctx) error {
     return c.SendString("Hello, World!")
 })
 ```
+
+The middleware sets an `ETag` only on a `200` response with a non-empty body. It skips the response, without comparing `If-None-Match`, when the handler already set an `ETag` (in any letter case) and for Server-Sent Events (`text/event-stream`) responses, whose body it would otherwise have to buffer.
 
 A matching `If-None-Match` yields `304 Not Modified` only for `GET` and `HEAD` requests, the methods RFC 9110 defines it for. Other methods pass through unchanged, with the `ETag` header still set. They are not answered with `412 Precondition Failed`: the middleware runs after the handler, over the response it produced, so the method has already been applied and the status whose purpose is to prevent that would misreport what happened.
 

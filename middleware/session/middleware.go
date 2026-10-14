@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"sync"
+	"sync/atomic"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/internal/ctxlocal"
@@ -17,11 +18,17 @@ import (
 // Middleware serializes access to its internal state with a mutex, but it is
 // request-scoped and must not be used after the request lifecycle ends.
 type Middleware struct {
-	Session     *Session
-	ctx         fiber.Ctx
-	config      Config
-	mu          sync.RWMutex
+	Session *Session
+	ctx     fiber.Ctx
+	config  Config
+	mu      sync.RWMutex
+	// released is set when the request is over and the middleware was published
+	// to the request context, so FromContext stops returning it.
+	released    atomic.Bool
 	isDestroyed bool
+	// escaped marks a middleware the request context holds, which releaseMiddleware
+	// must not recycle.
+	escaped bool
 }
 
 // Context key for session middleware lookup.
@@ -144,9 +151,17 @@ func registerLogContextTags() {
 	})
 }
 
-func storeMiddlewareContext(c fiber.Ctx, session *Session, m *Middleware) {
+// storeMiddlewareContext publishes the session ID and the middleware to the
+// Fiber locals and, with PassLocalsToContext, to the request context. It
+// reports whether the request context now holds m. Unlike the locals, which are
+// cleared when the request ends, that context can be kept by a goroutine, so a
+// middleware it holds must never go back to the pool.
+func storeMiddlewareContext(c fiber.Ctx, session *Session, m *Middleware) bool {
 	fiber.StoreInContext(c, sessionIDContextKey, session.ID())
 	fiber.StoreInContext(c, middlewareContextKey, m)
+
+	held, ok := c.Context().Value(middlewareContextKey).(*Middleware)
+	return ok && held == m
 }
 
 // clearMiddlewareContext clears both Fiber locals and the request context
@@ -174,7 +189,7 @@ func (m *Middleware) initialize(c fiber.Ctx, cfg *Config) error {
 	m.Session = session
 	m.ctx = c
 
-	storeMiddlewareContext(c, session, m)
+	m.escaped = storeMiddlewareContext(c, session, m)
 	return nil
 }
 
@@ -210,7 +225,13 @@ func acquireMiddleware() *Middleware {
 	return m
 }
 
-// releaseMiddleware resets and returns middleware to the pool.
+// releaseMiddleware resets the middleware and returns it to the pool.
+//
+// A middleware the request context holds is reset and marked released but not
+// pooled. A goroutine can keep that context, and with it the pointer, past the
+// end of the request; if the object were reused, the next request's session
+// would be reachable through the old context. Dropping it leaves the old
+// pointer pointing at a finished, empty middleware that nothing else uses.
 //
 // Parameters:
 //   - m: The middleware object to release.
@@ -220,6 +241,12 @@ func acquireMiddleware() *Middleware {
 //	releaseMiddleware(m)
 func releaseMiddleware(m *Middleware) {
 	m.mu.Lock()
+	escaped := m.escaped
+	if escaped {
+		// First, so a lookup that races the release finds a middleware that is
+		// visibly gone instead of one that is half reset.
+		m.released.Store(true)
+	}
 	if m.ctx != nil {
 		clearMiddlewareContext(m.ctx)
 	}
@@ -228,27 +255,36 @@ func releaseMiddleware(m *Middleware) {
 	m.ctx = nil
 	m.isDestroyed = false
 	m.mu.Unlock()
-	middlewarePool.Put(m)
+
+	if !escaped {
+		middlewarePool.Put(m)
+	}
 }
 
 // FromContext returns the Middleware from the Fiber context.
 // It accepts fiber.CustomCtx, fiber.Ctx, *fasthttp.RequestCtx, and context.Context.
 //
+// A context kept from c.Context() (with PassLocalsToContext enabled) stops
+// resolving when the request ends: FromContext returns nil for it afterwards,
+// never another request's session.
+//
 // Parameters:
 //   - c: The Fiber context.
 //
 // Returns:
-//   - *Middleware: The middleware object if found; otherwise, nil.
+//   - *Middleware: The middleware object if found and its request is still being
+//     handled; otherwise, nil.
 //
 // Usage:
 //
 //	m := session.FromContext(c)
 func FromContext(ctx any) *Middleware {
-	if m, ok := fiber.ValueFromContext[*Middleware](ctx, middlewareContextKey); ok {
-		return m
+	m, ok := fiber.ValueFromContext[*Middleware](ctx, middlewareContextKey)
+	if !ok || m == nil || m.released.Load() {
+		return nil
 	}
 
-	return nil
+	return m
 }
 
 // Set sets a key-value pair in the session.
