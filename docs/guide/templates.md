@@ -19,7 +19,7 @@ app := fiber.New(fiber.Config{
     // Provide a template engine
     Views: engine,
 
-    // Default path for views, overridden when calling Render()
+    // Default layout for views, overridden by the layouts passed to Render()
     ViewsLayout: "layouts/main",
 
     // Enables/Disables access to `ctx.Locals()` entries in rendered views
@@ -48,7 +48,8 @@ Custom engines implement the `Views` interface to work with Fiber.
 
 ```go title="Views interface"
 type Views interface {
-    // Fiber executes Load() on app initialization to load/parse the templates
+    // Fiber executes Load() in fiber.New() to load/parse the templates;
+    // an error is logged as a warning, not returned
     Load() error
 
     // Outputs a template to the provided buffer using the provided template,
@@ -66,12 +67,14 @@ The `Render` method powers [**ctx.Render\(\)**](../api/ctx.md#render), which acc
 After configuring an engine, handlers call [**ctx.Render\(\)**](../api/ctx.md#render) with a template name and data to send the rendered output.
 
 ```go title="Signature"
-func (c Ctx) Render(name string, bind Map, layouts ...string) error
+func (c fiber.Ctx) Render(name string, bind any, layouts ...string) error
 ```
 
 :::info
-By default, [**ctx.Render\(\)**](../api/ctx.md#render) searches for the template in the `ViewsLayout` path. Pass alternate paths in the `layouts` argument to override this behavior.
+By default, [**ctx.Render\(\)**](../api/ctx.md#render) wraps the template in the layout named by `ViewsLayout`. Pass layout names in the `layouts` argument to use another layout for that call.
 :::
+
+Without a `Views` engine, or with a nil engine pointer, `Render` reads the file at `name` and parses it with Go's `html/template`.
 
 <Tabs>
 <TabItem value="example" label="Example">
@@ -106,6 +109,16 @@ app.Get("/", func(c fiber.Ctx) error {
 When `PassLocalsToViews` is enabled, all values set using `ctx.Locals(key, value)` are passed to the template. Use unique keys to avoid collisions.
 :::
 
+Locals, and the values you add with [`c.ViewBind`](../api/ctx.md#viewbind), are merged into the data only when you pass a `fiber.Map` or `nil` to `Render`. A key in the map you pass wins over a local or a `ViewBind` value with the same name.
+
+### Rendering Without a Request
+
+[`app.Render`](../api/app.md#render) writes a template through the configured engine to any `io.Writer`, applying `ViewsLayout` when you pass no layout. [`app.ReloadViews`](../api/app.md#reloadviews) runs `Load` again on the engine of the app and of every mounted sub-app, for example after a template changed on disk, and returns `fiber.ErrNoViewEngineConfigured` only when none of them has an engine. `app.Render` returns it when the app itself has none. A nil engine pointer counts as none for both.
+
+### Mounted Apps
+
+A sub-app mounted with [`app.Use`](../api/app.md#mounting) renders its templates with its own `Views` for requests under its mount path. A sub-app without an engine falls back to the nearest app above it that has one. The default layout is the `ViewsLayout` of the innermost app that sets one, and the search stops at the app whose engine renders the template. This needs a literal mount path, taken from the top-level app down: under a parameter, as in `app.Use("/t/:tenant", tenantApp)`, the routes still match and run but the `Views` and `ViewsLayout` of the sub-app, and of the apps mounted inside it, are not used. The nearest enclosing mount with a literal path supplies them, or the top-level app when there is none, and without an engine anywhere `Render` reads `name` as a file path. A sub-app mounted through [`Domain`](../api/app.md#domain) matches a parameterized mount path as a pattern and keeps its own `Views`. `PassLocalsToViews` is read from the top-level app, whatever the sub-app sets.
+
 ## Advanced Templating
 
 ### Custom Functions
@@ -128,7 +141,7 @@ func (e *Engine) AddFunc(name string, fn any) IEngineCore
 engine := html.New("./views", ".html")
 engine.AddFunc("ToUpper", func(s string) string {
     return strings.ToUpper(s)
-}
+})
 
 // Initialize Fiber App
 app := fiber.New(fiber.Config{
@@ -137,7 +150,7 @@ app := fiber.New(fiber.Config{
 
 app.Get("/", func (c fiber.Ctx) error {
     return c.Render("index", fiber.Map{
-        "Content": "hello, World!"
+        "Content": "hello, World!",
     })
 })
 ```
@@ -185,7 +198,7 @@ app := fiber.New(fiber.Config{
 
 app.Get("/", func (c fiber.Ctx) error {
     return c.Render("index", fiber.Map{
-        "Content": "hello, world!"
+        "Content": "hello, world!",
     })
 })
 ```

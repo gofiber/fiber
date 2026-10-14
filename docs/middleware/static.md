@@ -4,7 +4,7 @@ id: static
 
 # Static
 
-The Static middleware serves assets such as **images**, **CSS**, and **JavaScript**.
+The Static middleware serves assets such as **images**, **CSS**, and **JavaScript**. It answers `GET` and `HEAD` requests and passes every other method to the next handler.
 
 :::info
 By default, it serves `index.html` when a directory is requested. Customize this behavior in the [Config](#config) options.
@@ -100,11 +100,13 @@ curl http://localhost:3000/files/index.html
 //go:embed path/to/files
 var myfiles embed.FS
 
-app.Get("/files*", static.New("", static.Config{
+app.Get("/files*", static.New("path/to/files", static.Config{
     FS:     myfiles,
     Browse: true,
 }))
 ```
+
+With `FS` set, the first argument names the directory inside the file system to serve, and `""` serves its root. An `embed.FS` keeps the path it embedded, so pass that path.
 
 <details>
 <summary>Test</summary>
@@ -146,7 +148,7 @@ To define static routes using `Get`, append the wildcard (`*`) operator at the e
 :::info
 The file server resolves the path the router matched. Fiber normalizes request paths before routing (see [Path normalization](../guide/routing.md#path-normalization)), so middleware mounted on `/static/private` also guards `/static/%70rivate/secret.txt` and `/static/x/../private/secret.txt`.
 
-Escapes the router leaves encoded, such as `%20`, `%40` or `%25`, also remain encoded for file lookup. This keeps routing, including path-scoped authorization middleware, and static-file resolution on the same resource name. Consequently, `/static/hello%20world.txt` does not serve `hello world.txt`; enable [`UnescapePath`](../api/fiber.md#config) when encoded spellings should resolve to decoded file names. A path that cannot name a file inside the root is answered with `404 Not Found`: an escape that represents a slash, a backslash or a control character, a malformed escape such as `%zz`, an escape of an unreserved character, and an empty, `.` or `..` segment. So `/static/private%2Fsecret.txt` never reaches `private/secret.txt` unless `UnescapePath` decodes it for the router as well, and `/static//private/secret.txt` is not found. A stray `%` cannot forge an escape the file server would then decode: the router decodes every escape of an unreserved character when it normalizes a path, so one still in the routed path can only have been forged, and it is rejected rather than decoded a second time. `/static/%%370rivate/secret.txt` therefore never opens `private/secret.txt`. With `UnescapePath` enabled the router has already decoded every escape, so a malformed escape is an ordinary part of the name: `/static/100%zz.txt` names `100%zz.txt`.
+Escapes the router leaves encoded, such as `%20`, `%40` or `%25`, also remain encoded for file lookup. This keeps routing, including path-scoped authorization middleware, and static-file resolution on the same resource name. Consequently, `/static/hello%20world.txt` does not serve `hello world.txt`; enable [`UnescapePath`](../api/fiber.md#config) when encoded spellings should resolve to decoded file names. A path that cannot name a file inside the root is answered with `404 Not Found`: an escape that represents a slash, a backslash or a control character, a malformed escape such as `%zz`, an escape of an unreserved character, an empty, `.` or `..` segment and, for a root on the operating system's file system, a first segment that starts with a drive letter such as `C:`. So `/static/private%2Fsecret.txt` never reaches `private/secret.txt` unless `UnescapePath` decodes it for the router as well, and `/static//private/secret.txt` is not found. A stray `%` cannot forge an escape the file server would then decode: the router decodes every escape of an unreserved character when it normalizes a path, so one still in the routed path can only have been forged, and it is rejected rather than decoded a second time. `/static/%%370rivate/secret.txt` therefore never opens `private/secret.txt`. With `UnescapePath` enabled the router has already decoded every escape, so a malformed escape is an ordinary part of the name: `/static/100%zz.txt` names `100%zz.txt`.
 :::
 
 :::caution
@@ -158,7 +160,7 @@ The file server opens the name the router matched, so it is only as strict as th
 | Property   | Type                    | Description                                                                                                                | Default                |
 |:-----------|:------------------------|:---------------------------------------------------------------------------------------------------------------------------|:-----------------------|
 | Next       | `func(fiber.Ctx) bool` | Next defines a function to skip this middleware when it returns true.                                                                              | `nil`                  |
-| FS       | `fs.FS` | FS is the file system to serve the static files from.<br /><br />You can use interfaces compatible with fs.FS like embed.FS, os.DirFS etc.                                                 | `nil`                  |
+| FS       | `fs.FS` | FS is the file system to serve the static files from.<br /><br />You can use interfaces compatible with fs.FS like embed.FS, os.DirFS etc. With `FS` set, the `root` argument of `New` names a directory inside it, and `""` serves its root.                                                 | `nil`                  |
 | Compress       | `bool` | When set to true, the server tries minimizing CPU usage by caching compressed files. The middleware will compress the response using `gzip`, `brotli`, or `zstd` compression depending on the [Accept-Encoding](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Accept-Encoding) header. <br /><br />This works differently than the github.com/gofiber/compression middleware.                                                                              | `false`                  |
 | ByteRange       | `bool` | When set to true, enables byte range requests. A request for several ranges, or whose `If-Range` does not match, gets the whole file. | `false`                  |
 | Browse       | `bool` | When set to true, enables directory browsing.                                                                             | `false`                  |

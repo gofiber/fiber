@@ -11,7 +11,7 @@ The default unauthorized response includes the header `WWW-Authenticate: Basic r
 ## Signatures
 
 ```go
-func New(config Config) fiber.Handler
+func New(config ...Config) fiber.Handler
 func UsernameFromContext(ctx any) string
 ```
 
@@ -50,12 +50,17 @@ app.Use(basicauth.New(basicauth.Config{
         "admin": "$2a$10$gTYwCN66/tBRoCr3.TXa1.v1iyvwIF7GRBqxzv7G.AHLMt/owXrp.",
     },
     Realm: "Forbidden",
-    Authorizer: func(user, pass string, c fiber.Ctx) bool {
-        // custom validation logic
-        return (user == "john" || user == "admin")
-    },
     Unauthorized: func(c fiber.Ctx) error {
         return c.SendFile("./unauthorized.html")
+    },
+}))
+
+// Or check the credentials yourself. Users is not consulted when Authorizer is set,
+// so Authorizer has to verify the password as well.
+app.Use(basicauth.New(basicauth.Config{
+    Authorizer: func(user, pass string, c fiber.Ctx) bool {
+        // custom validation logic, for example a lookup of a stored hash
+        return checkCredentials(user, pass)
     },
 }))
 ```
@@ -70,6 +75,11 @@ hashing algorithm from a prefix:
 
 If no prefix is present, the value is interpreted as a SHA-256 digest encoded in
 hex or base64. Plaintext passwords are rejected.
+
+The middleware decodes the credentials as UTF-8 and normalizes them to Unicode
+NFC before it compares them, so hash a password that contains non-ASCII
+characters in its NFC form. Credentials that are not valid UTF-8, or that
+contain control characters, are answered with `400 Bad Request`.
 
 The decoded digest must be exactly the size of the named algorithm — 32 bytes
 for SHA-256, 64 bytes for SHA-512. A digest of any other length could never
@@ -115,7 +125,7 @@ Users: map[string]string{
 | Realm           | `string`                    | Realm is a string to define the realm attribute of BasicAuth. The realm identifies the system to authenticate against and can be used by clients to save credentials. | `"Restricted"`        |
 | Charset         | `string`                    | Charset sent in the `WWW-Authenticate` header. Only `"UTF-8"` is supported (case-insensitive). | `"UTF-8"` |
 | HeaderLimit     | `int`                       | Maximum allowed length of the `Authorization` header. Requests exceeding this limit are rejected. | `8192` |
-| Authorizer      | `func(string, string, fiber.Ctx) bool` | Authorizer defines a function to check the credentials. It will be called with a username, password, and the current context and is expected to return true or false to indicate approval.  | `nil`                 |
+| Authorizer      | `func(string, string, fiber.Ctx) bool` | Authorizer defines a function to check the credentials. It will be called with a username, password, and the current context and is expected to return true or false to indicate approval. When set, it replaces the check against `Users`, which is then neither consulted nor validated.  | `nil`                 |
 | Unauthorized    | `fiber.Handler`             | Unauthorized defines the response body for unauthorized responses.                                                                                                    | `nil`                 |
 | BadRequest      | `fiber.Handler`             | BadRequest defines the response for malformed `Authorization` headers, a request carrying the field on more than one line included.                        | `nil`                 |
 

@@ -41,6 +41,8 @@ app.Use("/expose/envvars", envvar.New(
 Mount the middleware on a path; it cannot be used without one.
 :::
 
+Only `GET` and `HEAD` requests are served. Any other method receives `405 Method Not Allowed` with an `Allow: GET, HEAD` header.
+
 ## Response
 
 Sample response:
@@ -59,11 +61,13 @@ Sample response:
 
 | Property    | Type                | Description                                                                  | Default |
 |:------------|:--------------------|:-----------------------------------------------------------------------------|:--------|
-| ExportVars  | `map[string]string` | ExportVars lists the environment variables to expose. | `nil` |
+| ExportVars  | `map[string]string` | ExportVars lists the environment variables to expose. Each key is a variable name and each value is the default reported when that variable is not set. | `map[string]string{}` |
 
 ## Default Config
 
 ```go
-Config{}
+var ConfigDefault = Config{
+    ExportVars: map[string]string{},
+}
 // Exports no environment variables
 ```

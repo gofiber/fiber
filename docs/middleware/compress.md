@@ -12,8 +12,8 @@ Bodies smaller than 200 bytes remain uncompressed because compression would like
 
 ## Behavior
 
-- Skips compression for responses that already define `Content-Encoding`, for range requests, `206` responses, status codes without bodies, or when either side sends `Cache-Control: no-transform`.
-- The encoding is negotiated from the `Accept-Encoding` header with its weights, wildcard and list syntax honored (RFC 9110 §12.5.3): the coding the client weighs highest wins, and among equal weights the middleware prefers `br`, then `zstd`, `gzip` and `deflate`. An element with no `q` parameter, or an unparsable one, carries the default weight of `1`. A request without the header, or one that gives every supported coding a weight of `0`, is not compressed. The client's header is left untouched for later handlers.
+- Skips compression for responses that already define `Content-Encoding`, for range requests, `206` responses, status codes without bodies, or when either side sends `Cache-Control: no-transform`. A request that repeats `Cache-Control` on several lines is read as one list (RFC 9110 §5.3), so the directive counts on any of them.
+- The encoding is negotiated from the `Accept-Encoding` header with its weights, wildcard and list syntax honored (RFC 9110 §12.5.3): the coding the client weighs highest wins, and among equal weights the middleware prefers `br`, then `zstd`, `gzip` and `deflate`. An element with no `q` parameter, or an unparsable one, carries the default weight of `1`. A request that repeats `Accept-Encoding` on several lines is read as one comma-separated list (RFC 9110 §5.3). A request without the header, or one that gives every supported coding a weight of `0`, is not compressed. The client's header is left untouched for later handlers.
 - `HEAD` requests are not compressed; only `Accept-Encoding` is merged into `Vary`.
 - When compression runs, strong `ETag` values are recomputed from the compressed bytes; a streamed body cannot be hashed without buffering it, so its strong `ETag` becomes a weak one (`W/`). When compression is skipped, `Accept-Encoding` is still merged into `Vary` unless the header is `*` or already present.
 - Request-body decompression is still handled by Fiber's request APIs (for example `c.Body()`), and those decoders enforce the app `BodyLimit` for compressed payloads.
@@ -83,9 +83,9 @@ var ConfigDefault = Config{
 ```go
 // Compression levels
 const (
-    LevelDisabled        = -1
-    LevelDefault         = 0
-    LevelBestSpeed       = 1
-    LevelBestCompression = 2
+    LevelDisabled        Level = -1
+    LevelDefault         Level = 0
+    LevelBestSpeed       Level = 1
+    LevelBestCompression Level = 2
 )
 ```

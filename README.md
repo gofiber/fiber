@@ -302,12 +302,12 @@ func main() {
     fmt.Println(string(data))
     // Prints:
     // {
-    //    "method": "GET",
-    //    "name": "api",
-    //    "path": "/api/*",
-    //    "params": [
-    //      "*1"
-    //    ]
+    //   "params": [
+    //     "*1"
+    //   ],
+    //   "method": "GET",
+    //   "name": "api",
+    //   "path": "/api/*"
     // }
 
     log.Fatal(app.Listen(":3000"))

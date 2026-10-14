@@ -21,7 +21,25 @@ Refer to [IETF RFC 7231 §4.2.2](https://tools.ietf.org/html/rfc7231#section-4.2
 func New(config ...Config) fiber.Handler
 func IsFromCache(c fiber.Ctx) bool
 func WasPutToCache(c fiber.Ctx) bool
+func NewMemoryLock() *MemoryLock
+
+type Locker interface {
+    Lock(key string) error
+    Unlock(key string) error
+}
 ```
+
+`IsFromCache` reports whether the middleware replayed a stored response for the current request, and `WasPutToCache` whether it stored the response of the current request. Both are set as the middleware returns, so read them from a middleware registered before it, after `c.Next()`.
+
+`NewMemoryLock` returns the in-memory `Locker` the middleware uses by default. It only locks within the current process; implement `Locker` yourself to coordinate several instances. The middleware calls `Lock` before it runs the handler and `Unlock` once the request is done, so `Lock` has to block until the caller holds the key.
+
+## Behavior
+
+* A request passes through untouched when `Next` returns `true` or when it has no `KeyHeader` value. The header is optional: nothing rejects a request that omits it.
+* The first request with a key runs the handler. If the handler returns without an error, its status, body and headers are stored under the key for `Lifetime`, whatever the status code. A handler that returns an error is not stored, so the next request with that key runs the handler again.
+* Later requests with the same key receive the stored response and the handler does not run. A request that arrives while the first is still running waits for `Lock` and then receives the stored response.
+* The key alone identifies a request. The method, path and body are not compared, so a retry with the same key but a different payload, or on another route, gets the original response.
+* A key that fails `KeyHeaderValidate` is returned as an error to the error handler, which answers `500` unless the validator returns a `*fiber.Error`.
 
 ## Examples
 
@@ -29,6 +47,8 @@ Import the middleware package:
 
 ```go
 import (
+    "time"
+
     "github.com/gofiber/fiber/v3"
     "github.com/gofiber/fiber/v3/middleware/idempotency"
 )
@@ -75,11 +95,11 @@ Idempotency keys are hidden in logs and error messages by default. Set `DisableV
 | Next                | `func(fiber.Ctx) bool` | Function to skip this middleware when it returns `true`; use `IsMethodSafe` or `IsMethodIdempotent`. | `func(c fiber.Ctx) bool { return fiber.IsMethodSafe(c.Method()) }` |
 | Lifetime            | `time.Duration`        | Maximum lifetime of an idempotency key.                                                                                                 | `30 * time.Minute`                                                 |
 | KeyHeader           | `string`               | Header name containing the idempotency key.                                                                                             | `"X-Idempotency-Key"`                                              |
-| KeyHeaderValidate   | `func(string) error`   | Function to validate idempotency header syntax (e.g., UUID).                                                                            | UUID length check (`36` characters)                                |
-| KeepResponseHeaders | `[]string`             | List of headers to preserve from original response.                                                                                     | `nil` (keep all headers)                                           |
+| KeyHeaderValidate   | `func(string) error`   | Function to validate idempotency header syntax (e.g., UUID). The error it returns is passed to the error handler as is; the default one wraps `ErrInvalidIdempotencyKey`. | UUID length check (`36` characters)                                |
+| KeepResponseHeaders | `[]string`             | List of headers to preserve from original response, matched case-insensitively. An empty list keeps all headers, like `nil`.            | `nil` (keep all headers)                                           |
 | DisableValueRedaction | `bool`                | Disables idempotency key redaction in logs and error messages. | `false`                                              |
-| Lock                | `Locker`               | Locks an idempotency key to prevent race conditions.                                                                                    | In-memory locker                                                   |
-| Storage             | `fiber.Storage`        | Stores response data by idempotency key.                                                                                                | In-memory storage                                                  |
+| Lock                | `Locker`               | Locks an idempotency key to prevent race conditions. The default only locks within this process. | `NewMemoryLock()` (in-memory locker)                               |
+| Storage             | `fiber.Storage`        | Stores response data by idempotency key. The default store is private to this process.                                                  | In-memory storage                                                  |
 
 ## Default Config Values
 

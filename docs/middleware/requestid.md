@@ -13,7 +13,7 @@ func New(config ...Config) fiber.Handler
 func FromContext(ctx any) string
 ```
 
-`FromContext` accepts a `fiber.CustomCtx`, `fiber.Ctx`, a `*fasthttp.RequestCtx`, or a `context.Context`.
+`FromContext` accepts a `fiber.CustomCtx`, `fiber.Ctx`, a `*fasthttp.RequestCtx`, or a `context.Context`. It returns an empty string when no request ID is stored, for example when `Next` skipped the middleware. When the client sent a valid request ID, the string is that header value, which points into the request's buffer unless [`Immutable`](../api/fiber.md#immutable) is set: copy it with `strings.Clone` before a goroutine keeps it.
 
 ## Examples
 
@@ -47,6 +47,8 @@ will regenerate the value using up to three attempts from the configured generat
 custom generator fails to produce a valid ID, the middleware falls back to SecureToken to keep headers RFC-compliant
 across transports.
 
+The middleware also registers the `${requestid}` and `${request-id}` tags, so the [logger](./logger.md) middleware and [`log.WithContext`](../api/log.md#context-tags) can print the ID. Call `requestid.New()` before `logger.New()`: a logger only sees the tags registered when it is built, and one built earlier prints an empty string for `${requestid}`. `log.WithContext` has no such order requirement.
+
 Retrieve the request ID
 
 ```go
@@ -62,7 +64,7 @@ func handler(c fiber.Ctx) error {
 | Property  | Type                 | Description                              | Default        |
 |:----------|:---------------------|:-----------------------------------------|:---------------|
 | Next      | `func(fiber.Ctx) bool` | Skip when the function returns `true`.    | `nil`          |
-| Header    | `string`             | Header key used to store the request ID. | "X-Request-ID" |
+| Header    | `string`             | Header key used to read an incoming request ID and to store the ID on the response. | "X-Request-ID" |
 | Generator | `func() string`      | Function that generates the identifier.  | utils.SecureToken |
 
 ## Default Config

@@ -20,7 +20,7 @@ Reverse proxies can handle:
 - **Caching & compression**
 - **Security features** (rate limiting, WAF, DDoS mitigation)
 
-Some Fiber features (like [`SendEarlyHints`](../api/ctx.md#sendearlyhints)) require **HTTP/2 or newer**, which is easiest to enable using a reverse proxy.
+Some Fiber features (like [`SendEarlyHints`](../api/ctx.md#sendearlyhints)) work best with **HTTP/2 or newer**, which is easiest to enable using a reverse proxy.
 
 ### Popular Reverse Proxies
 
@@ -42,6 +42,8 @@ In addition, your reverse proxy should be configured to **set or overwrite** the
 :::info Chain parsing with `EnableIPValidation`
 `X-Forwarded-For` is a comma-separated chain that each proxy appends to. With `EnableIPValidation` enabled, `c.IP()` walks the chain from **right to left** and strips every IP that matches the configured `TrustProxyConfig`. The first non-trusted IP is returned as the client. Trust only your proxies: blanket `Private`, `Loopback` or `LinkLocal` trust is unsafe when clients can also connect from those ranges, because such a client's own entry is skipped and the address it supplied is returned instead. This matches the [MDN guidance](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/X-Forwarded-For#selecting_an_ip_address) and the convention used by Nginx (`set_real_ip_from` + `real_ip_recursive`), Apache `mod_remoteip`, Envoy (`xff_num_trusted_hops`), and most CDNs.
 
+If `TrustProxyConfig` names no proxy IPs or ranges (`Proxies`, `Loopback`, `Private` and `LinkLocal` are all unset), for example when only `UnixSocket` is set, there is nothing to skip: `c.IP()` returns the first valid IP from the left, which is the entry a client can supply itself unless your proxy overwrites the header.
+
 Without `EnableIPValidation`, `c.IP()` returns the raw header value (a comma-separated string), which is rarely what middleware like rate limiters or allowlists expect. Enable validation when you rely on `c.IP()` as a single client identifier.
 :::
 
@@ -54,6 +56,8 @@ To enable reading the client IP from proxy headers, you must configure **three s
 3. **`TrustProxyConfig`** - Define which proxy IPs to trust
 
 When the header is a chain your proxy appends to, such as `X-Forwarded-For`, also enable **`EnableIPValidation`** so that `c.IP()` resolves a single client IP instead of returning the raw chain. A proxy that overwrites the header with one address, or a single-IP header such as `X-Real-IP` or `CF-Connecting-IP`, does not need it.
+
+`TrustProxyConfig` defaults to an empty value (`fiber.DefaultTrustProxyConfig`), which trusts no peer. With `TrustProxy` enabled but no proxy listed, Fiber ignores every proxy header and `c.IP()` returns the address of the connecting proxy.
 
 ```go title="Example - App Behind Nginx"
 app := fiber.New(fiber.Config{
@@ -163,6 +167,16 @@ func main() {
     log.Fatal(app.Listen(":3000"))
 }
 ```
+
+### Scheme and Host Behind a Proxy
+
+The same trust check guards the other values a proxy forwards. When the connecting peer is trusted:
+
+- `c.Scheme()` follows `X-Forwarded-Proto`, `X-Forwarded-Protocol`, `X-Forwarded-Ssl: on` or `X-Url-Scheme`, and accepts only `http` or `https`.
+- `c.Host()` and `c.Hostname()` use the first value of `X-Forwarded-Host`, and the `Host` header when it is absent.
+- `c.BaseURL()` is built from those two.
+
+For an untrusted peer Fiber ignores these headers and uses the connection itself, and a TLS connection always reports `https`. `c.Protocol()` never comes from a header: it reports the HTTP version spoken between the proxy and Fiber, usually `HTTP/1.1`, not the one the client used.
 
 ### Testing Your Configuration
 

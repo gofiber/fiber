@@ -86,6 +86,8 @@ app.Get(healthcheck.ReadinessEndpoint, healthcheck.New(healthcheck.Config{
 // Response: <healthResponse><status>OK</status></healthResponse>
 ```
 
+When the probe returns `false`, the status code is `503` and the body says `Service Unavailable` instead of `OK` in the chosen format, for example `{"status":"Service Unavailable"}` for JSON or the plain text `Service Unavailable`.
+
 **Note:** MessagePack and CBOR formats require configuring the appropriate encoders in your Fiber app:
 
 ```go

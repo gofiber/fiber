@@ -4,9 +4,9 @@ title: 🧩 Services
 sidebar_position: 9
 ---
 
-Services wrap external dependencies. Register them in the application's state, and Fiber starts and stops them automatically—useful during development and testing.
+Services wrap external dependencies. List them in the application's configuration, and Fiber starts and stops them automatically—useful during development and testing.
 
-After adding a service to the app configuration, Fiber starts it on launch and stops it during shutdown. Retrieve a service from state with `GetService` or `MustGetService` (see [State Management](./state)).
+Fiber starts the configured services while `fiber.New` runs and stops them during shutdown. Retrieve a started service from state with `GetService` or `MustGetService`, using the name its `String` method returns (see [State Management](./state)).
 
 ## Service Interface
 
@@ -35,7 +35,7 @@ type Service interface {
 
 ### Start
 
-Starts the service. Fiber calls this when the application starts.
+Starts the service. Fiber calls this while `fiber.New` runs, with the context returned by `ServicesStartupContextProvider`. See [Startup](#startup) for what happens when it returns an error.
 
 ```go
 func (s *SomeService) Start(ctx context.Context) error
@@ -51,7 +51,7 @@ func (s *SomeService) String() string
 
 ### State
 
-Reports the current state of the service for the startup message.
+Reports the current state of the service for the startup message. Fiber calls it with the startup context when it prints the message, which shows the returned value in upper case, or `ERROR` when the call returns an error.
 
 ```go
 func (s *SomeService) State(ctx context.Context) (string, error)
@@ -59,11 +59,47 @@ func (s *SomeService) State(ctx context.Context) (string, error)
 
 ### Terminate
 
-Stops the service after the application shuts down using a post-shutdown hook. Services are terminated in reverse start order, so a service can rely on the ones started before it still being available while it shuts down.
+Stops the service after the application shuts down using a post-shutdown hook, with the context returned by `ServicesShutdownContextProvider`. Services are terminated in reverse start order, so a service can rely on the ones started before it still being available while it shuts down. See [Shutdown](#shutdown) for what happens when it returns an error.
 
 ```go
 func (s *SomeService) Terminate(ctx context.Context) error
 ```
+
+## Configuration
+
+Services are configured with these `fiber.Config` fields:
+
+| Property | Type | Description | Default |
+| --- | --- | --- | --- |
+| `Services` | `[]fiber.Service` | Services that `fiber.New` starts and that Fiber terminates on shutdown. | `nil` |
+| `ServicesStartupContextProvider` | `func() context.Context` | Returns the context passed to `Start`. Fiber also passes it to `State` when it prints the startup message. | `context.Background()` |
+| `ServicesShutdownContextProvider` | `func() context.Context` | Returns the context passed to `Terminate`. | `context.Background()` |
+
+Fiber calls a provider each time it needs a context, so build a context that carries a deadline inside the provider. A context created ahead of time may already be expired when the application shuts down, and `Terminate` would then never run.
+
+## Lifecycle
+
+### Startup
+
+`fiber.New` starts the services one after the other, in the order of `Config.Services`, and registers each started service in the application's [state](./state). It panics in these cases:
+
+- The slice holds a `nil` entry or two services whose `String` method returns the same name. Nothing is started.
+- A `Start` call returns an error. Fiber still tries the remaining services, then panics with all the collected errors, unless the error wraps `context.Canceled` or `context.DeadlineExceeded`: then startup stops at once and the panic carries only that error.
+- The startup context is canceled or reaches its deadline. Startup stops at once and the panic carries the context error.
+
+:::warning
+With `ListenConfig.EnablePrefork`, the master process and every child process run your `main` function, and with it `fiber.New`, so each process starts its own copy of every service.
+:::
+
+### Shutdown
+
+Fiber registers a post-shutdown hook while `fiber.New` runs, so `Shutdown`, `ShutdownWithTimeout`, `ShutdownWithContext`, and a graceful shutdown started through `ListenConfig.GracefulContext` all terminate the services. The hook runs before any `OnPostShutdown` hook you register afterwards. When `Config.SharedStorage` is set, the hook closes it once the services are done (see [SharedState](./state#sharedstate-prefork-safe)).
+
+Services are terminated in reverse start order, and a terminated service is removed from the state. Termination is best effort:
+
+- If `Terminate` returns an error, Fiber logs it (`Shutdown` does not return it) and goes on with the remaining services. The failed service stays registered, so a later shutdown retries it.
+- Once the shutdown context is done, the remaining services are not terminated, and the logged error carries the context error for each of them.
+- Each started service is terminated once, even when shutdown calls overlap.
 
 ## Comprehensive Examples
 
@@ -118,7 +154,8 @@ func (s *redisService) State(ctx context.Context) (string, error) {
         return "", fmt.Errorf("container state: %w", err)
     }
 
-    return state.Status, nil
+    // Status is a named string type (container.ContainerState) since testcontainers-go v0.42.0.
+    return string(state.Status), nil
 }
 
 // Terminate stops and removes the service. It implements the [fiber.Service] interface.
@@ -135,19 +172,24 @@ func main() {
 
     // Define a context provider for the services startup.
     // This is useful to cancel the startup of the services if the context is canceled.
+    // Fiber calls the provider to start the services and again when it prints the startup
+    // message, so create the context inside it to give each call a fresh timeout.
     // Default is context.Background().
-    startupCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-    defer cancel()
     cfg.ServicesStartupContextProvider = func() context.Context {
+        startupCtx, cancelStartup := context.WithTimeout(context.Background(), 10*time.Second)
+        context.AfterFunc(startupCtx, cancelStartup) // the deadline releases the timer; this also keeps go vet from reporting the unused cancel function
         return startupCtx
     }
 
     // Define a context provider for the services shutdown.
     // This is useful to cancel the shutdown of the services if the context is canceled.
+    // Fiber calls the provider from the post-shutdown hook, once the server has stopped, so
+    // create the context inside it: a context created here would already be expired if the
+    // app ran longer than the timeout.
     // Default is context.Background().
-    shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-    defer cancel()
     cfg.ServicesShutdownContextProvider = func() context.Context {
+        shutdownCtx, cancelShutdown := context.WithTimeout(context.Background(), 10*time.Second)
+        context.AfterFunc(shutdownCtx, cancelShutdown) // the deadline releases the timer; this also keeps go vet from reporting the unused cancel function
         return shutdownCtx
     }
 
@@ -206,7 +248,6 @@ import (
     "github.com/gofiber/fiber/v3"
     "github.com/gofiber/fiber/v3/middleware/logger"
     redisStore "github.com/gofiber/storage/redis/v3"
-    "github.com/redis/go-redis/v9"
     tcredis "github.com/testcontainers/testcontainers-go/modules/redis"
 )
 
@@ -251,7 +292,8 @@ func (s *redisService) State(ctx context.Context) (string, error) {
         return "", fmt.Errorf("container state: %w", err)
     }
 
-    return state.Status, nil
+    // Status is a named string type (container.ContainerState) since testcontainers-go v0.42.0.
+    return string(state.Status), nil
 }
 
 // Terminate stops and removes the service. It implements the [fiber.Service] interface.
@@ -268,19 +310,24 @@ func main() {
 
     // Define a context provider for the services startup.
     // This is useful to cancel the startup of the services if the context is canceled.
+    // Fiber calls the provider to start the services and again when it prints the startup
+    // message, so create the context inside it to give each call a fresh timeout.
     // Default is context.Background().
-    startupCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-    defer cancel()
     cfg.ServicesStartupContextProvider = func() context.Context {
+        startupCtx, cancelStartup := context.WithTimeout(context.Background(), 10*time.Second)
+        context.AfterFunc(startupCtx, cancelStartup) // the deadline releases the timer; this also keeps go vet from reporting the unused cancel function
         return startupCtx
     }
 
     // Define a context provider for the services shutdown.
     // This is useful to cancel the shutdown of the services if the context is canceled.
+    // Fiber calls the provider from the post-shutdown hook, once the server has stopped, so
+    // create the context inside it: a context created here would already be expired if the
+    // app ran longer than the timeout.
     // Default is context.Background().
-    shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-    defer cancel()
     cfg.ServicesShutdownContextProvider = func() context.Context {
+        shutdownCtx, cancelShutdown := context.WithTimeout(context.Background(), 10*time.Second)
+        context.AfterFunc(shutdownCtx, cancelShutdown) // the deadline releases the timer; this also keeps go vet from reporting the unused cancel function
         return shutdownCtx
     }
 
@@ -334,10 +381,13 @@ func main() {
         id := c.Params("id")
 
         user, err := store.Get(id)
-        if err == redis.Nil {
-            return c.Status(fiber.StatusNotFound).SendString("User not found")
-        } else if err != nil {
+        if err != nil {
             return c.Status(fiber.StatusInternalServerError).SendString(err.Error())
+        }
+
+        // The storage returns nil, nil when the key does not exist.
+        if user == nil {
+            return c.Status(fiber.StatusNotFound).SendString("User not found")
         }
 
         return c.JSON(string(user))

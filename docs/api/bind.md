@@ -6,7 +6,7 @@ sidebar_position: 4
 toc_max_heading_level: 4
 ---
 
-Bindings parse request and response bodies, query parameters, cookies, and more into structs.
+Bindings parse request bodies, query parameters, cookies, headers, path parameters, and response headers into structs or [maps](#binding-into-maps).
 
 :::info
 Bound string values alias the request buffers, so they are valid only within the handler:
@@ -46,6 +46,10 @@ The binding sources have the following precedence:
 :::info
 The request body is only included as a binding source when the request has both a non-empty body **and** a non-empty `Content-Type` header.
 :::
+
+Each source fills only the top-level fields of `out` that are still at their zero value, so the first source in the order that provides a non-zero value for a field wins. A non-zero value you set on `out` before the call is never overwritten. A zero one counts as unset, so a source can fill it, and a zero value from an earlier source (`0`, `""`, `false`) does not stop a later source from filling the field. A nested struct, slice or map that an earlier source set, even partly, is kept as a whole, so a later source cannot fill its remaining zero fields. A configured [`StructValidator`](#validation) runs once, on the merged struct.
+
+`out` must be a non-nil pointer to a struct. Anything else, such as a map, returns `fiber.ErrUnprocessableEntity`. If a source fails to bind, `All` stops and returns that error without trying the remaining sources.
 
 ```go title="Signature"
 func (b *Bind) All(out any) error
@@ -99,8 +103,9 @@ app.Post("/users", func(c fiber.Ctx) error {
 For maximum performance, Fiber caches the precedence resolution per `reflect.Type` to reduce repeated parsing overhead.
 Additionally, the `binding_source` tag must be placed on a **top-level** field of the struct (tags inside embedded structs are ignored), and a struct may only contain **one** `binding_source` tag.
 
+- **Source Names**: The valid names are `uri`, `body`, `query`, `header`, and `cookie`. They are case-sensitive, surrounding spaces are ignored, and a name listed twice counts once, at its first position.
 - **Partial Lists**: If you omit sources from the tag (e.g., `binding_source:"query"`), the omitted sources (body, header, etc.) will **not** be bound at all.
-- **Unrecognized Sources**: If an invalid source name is provided in the tag (e.g., `binding_source:"invalid"`), Fiber will return an error during binding.
+- **Unrecognized Sources**: If an invalid source name is provided in the tag (e.g., `binding_source:"invalid"`), or the struct carries more than one `binding_source` tag, `All` returns a plain error. It is not a `*BindError`: the mistake is in your struct, not in the request, so the default error handler answers with 500, even when `WithAutoHandling` is on.
 
 :::
 
@@ -118,6 +123,9 @@ Use tags that match the content type. For example, to parse a JSON body with a `
 | `application/xml`                   | `xml`      |
 | `text/xml`                          | `xml`      |
 | `application/vnd.msgpack`           | `msgpack`  |
+| `application/cbor`                  | `cbor`     |
+
+The decoder is chosen from the `Content-Type` header. The media type is matched case-insensitively and its parameters, such as `charset`, are ignored. A structured syntax suffix selects the matching format, so `application/vnd.api+json` binds as JSON, `application/problem+xml` as XML and `application/foo+cbor` as CBOR. MsgPack matches only `application/vnd.msgpack`, not a `+msgpack` suffix. [Custom binders](#mimetypes-and-body) are consulted first. If no decoder matches, or the header is empty, `Body` returns `fiber.ErrUnprocessableEntity` (422). MsgPack and CBOR bodies also need a decoder in the app config, see [MsgPack](#msgpack) and [CBOR](#cbor).
 
 ```go title="Signature"
 func (b *Bind) Body(out any) error
@@ -164,7 +172,7 @@ curl -X POST -F name=john -F pass=doe http://localhost:3000
 
 ### CBOR
 
-> **Note:** Before using any CBOR-related features, make sure to follow the [CBOR setup instructions](../guide/advance-format.md#cbor).
+> **Note:** Before using any CBOR-related features, make sure to follow the [CBOR setup instructions](../guide/advance-format.md#cbor). Fiber does not ship a CBOR implementation: until `CBORDecoder` is set in the app config, binding fails with `binder.ErrUnimplementedCBOR`.
 
 Binds the request CBOR body to a struct.
 
@@ -195,10 +203,10 @@ app.Post("/", func(c fiber.Ctx) error {
 })
 ```
 
-Test the defaults with this `curl` command:
+Test it with this `curl` command, once `CBORDecoder` is set:
 
 ```bash
-curl -X POST -H "Content-Type: application/cbor" --data "\xa2dnamedjohndpasscdoe" localhost:3000
+curl -X POST -H "Content-Type: application/cbor" --data-binary $'\xa2dnamedjohndpasscdoe' localhost:3000
 ```
 
 ### Form
@@ -273,6 +281,12 @@ Run tests with the following `curl` command:
 curl -X POST -H "Content-Type: multipart/form-data" -F "name=john" -F "pass=doe" -F 'avatar=@filename' localhost:3000
 ```
 
+:::info
+`Form` reads only the request body, never the query string. A `multipart/form-data` body is read with the app's [`BodyLimit`](fiber.md#bodylimit) as its size limit, which also bounds the size of a `Content-Encoding: gzip` body after decompression. A larger body fails with an error that wraps `fasthttp.ErrBodyTooLarge`.
+
+On a form request, `Form` and `Body` also lowercase the case-insensitive parts of the request's own `Content-Type` (the media type and the parameter names, never the `boundary` value), so copy a value you read earlier from `Get(HeaderContentType)` if you need it to outlive the call, see [FormValue](./ctx.md#formvalue). Other body types leave the header untouched.
+:::
+
 #### Nested and Array Form Fields
 
 A form body is a flat list of key/value pairs, so structure lives in the field name. The notations below work for both `application/x-www-form-urlencoded` and `multipart/form-data`, and identically for [query parameters](#query).
@@ -324,6 +338,8 @@ Order{
 
 :::caution
 An index only ever addresses a struct field. `colors[0]=red` and `colors.0=red` do **not** fill a `[]string`. With the default decoder the value is dropped and no error is returned; after `SetParserDecoder(ParserConfig{IgnoreUnknownKeys: false})` the same input fails with `schema: invalid path "colors.0"`. Use a repeated key or `colors[]` for slices of scalars.
+
+Indexes above 1000 are rejected: `items.1001.sku=A1` fails with `schema: index exceeds parser limit`.
 :::
 
 :::note
@@ -374,7 +390,7 @@ Binds the request MsgPack body to a struct.
 
 It is important to specify the correct struct tag based on the content type to be parsed. For example, if you want to parse a Msgpack body with a field called `Pass`, you would use a struct field with `msgpack:"pass"`.
 
-> Our library uses [shamaton-msgpack](https://github.com/shamaton/msgpack) which uses `msgpack` struct tags by default. If you want to use other libraries, you may need to update the struct tags accordingly.
+> Fiber does not bundle a MsgPack implementation. Set `MsgPackDecoder` in the app config to the `Unmarshal` function of the library you picked; until then, binding fails with `binder.ErrMsgPackNotConfigured`. Libraries such as [shamaton-msgpack](https://github.com/shamaton/msgpack) read `msgpack` struct tags. If you use another library, you may need to update the struct tags accordingly.
 
 ```go title="Signature"
 func (b *Bind) MsgPack(out any) error
@@ -400,7 +416,7 @@ app.Post("/", func(c fiber.Ctx) error {
 })
 ```
 
-Run tests with the following `curl` command:
+Run tests with the following `curl` command, once `MsgPackDecoder` is set:
 
 ```bash
 curl -X POST -H "Content-Type: application/vnd.msgpack" --data-binary $'\x82\xa4name\xa4john\xa4pass\xa3doe'  localhost:3000
@@ -503,7 +519,10 @@ app.Get("/", func(c fiber.Ctx) error {
 
     log.Println(p.Name)     // john
     log.Println(p.Pass)     // doe
-    log.Println(p.Products) // [shoe hat]
+    // Depending on fiber.Config{EnableSplittingOnParsers: false} - default
+    log.Println(p.Products) // ["shoe,hat"]
+    // With fiber.Config{EnableSplittingOnParsers: true}
+    // log.Println(p.Products) // ["shoe", "hat"]
 
     // ...
 })
@@ -514,6 +533,8 @@ Run tests with the following `curl` command:
 ```bash
 curl "http://localhost:3000/" -H "name: john" -H "pass: doe" -H "products: shoe,hat"
 ```
+
+Header names are matched case-insensitively. A header sent on several lines, such as `-H "products: shoe" -H "products: hat"`, fills a slice with one element per line, with or without `EnableSplittingOnParsers`.
 
 ### Query
 
@@ -556,7 +577,7 @@ curl "http://localhost:3000/?name=john&pass=doe&products=shoe,hat"
 ```
 
 :::info
-For more parser settings, please refer to [Config](fiber.md#enablesplittingonparsers)
+`EnableSplittingOnParsers` applies to the Cookie, Form, Header, Query, and RespHeader binders. For more parser settings, please refer to [Config](fiber.md#enablesplittingonparsers)
 :::
 
 #### Array Query Parameters
@@ -590,6 +611,8 @@ type Filter struct {
 ```bash title="curl"
 curl "http://localhost:3000/api?colors=red&colors=blue&colors=green"
 ```
+
+A repeated key bound into a field that is not a slice keeps its **last** value, so `?name=a&name=b` gives `b`.
 
 ##### Bracket Notation
 
@@ -636,7 +659,7 @@ app := fiber.New(fiber.Config{
 // Result: Colors = ["red", "blue", "green"]
 ```
 
-Without `EnableSplittingOnParsers`, the entire string `"red,blue,green"` is treated as a **single** element.
+Without `EnableSplittingOnParsers`, the entire string `"red,blue,green"` is treated as a **single** element. With it, only slice fields are split: a `string` field keeps its commas.
 
 ```go title="Default behavior (EnableSplittingOnParsers: false)"
 // GET /api?colors=red,blue,green
@@ -744,6 +767,8 @@ Query and form binding share the same decoder, so the full notation reference in
 This method is similar to [Body Binding](#body), but for response headers.
 It is important to use the struct tag `respHeader`. For example, if you want to parse a response header with a field called `Pass`, you would use a struct field with `respHeader:"pass"`.
 
+It reads the headers of the response being built, such as those set by earlier handlers or middleware, not the request headers.
+
 ```go title="Signature"
 func (b *Bind) RespHeader(out any) error
 ```
@@ -756,6 +781,11 @@ type Person struct {
 }
 
 app.Get("/", func(c fiber.Ctx) error {
+    // Response headers, set here for the example
+    c.Set("name", "john")
+    c.Set("pass", "doe")
+    c.Set("products", "shoe,hat")
+
     p := new(Person)
 
     if err := c.Bind().RespHeader(p); err != nil {
@@ -764,16 +794,14 @@ app.Get("/", func(c fiber.Ctx) error {
 
     log.Println(p.Name)     // john
     log.Println(p.Pass)     // doe
-    log.Println(p.Products) // [shoe hat]
+    // Depending on fiber.Config{EnableSplittingOnParsers: false} - default
+    log.Println(p.Products) // ["shoe,hat"]
+    // With fiber.Config{EnableSplittingOnParsers: true}
+    // log.Println(p.Products) // ["shoe", "hat"]
 
     // ...
+    return nil
 })
-```
-
-Run tests with the following `curl` command:
-
-```bash
-curl "http://localhost:3000/" -H "name: john" -H "pass: doe" -H "products: shoe,hat"
 ```
 
 ### URI
@@ -801,15 +829,50 @@ app.Get("/user/:id", func(c fiber.Ctx) error {
 })
 ```
 
+:::note
+`URI` binds the values as `c.Params` returns them. With [`UnescapePath`](fiber.md#unescapepath) off (the default) they are still percent-encoded, so `/user/a%20b` binds `a%20b`.
+:::
+
+## Binding into Maps
+
+The Cookie, Form, Header, Query, RespHeader, and URI binders can fill a `map[string]string` or a `map[string][]string` instead of a struct. Pass the map or a pointer to it. The keys are the names found in the request, so no struct tags are needed. `Body` does the same for form content types; JSON, XML, CBOR, and MsgPack bodies are decoded by their own library.
+
+```go title="Example"
+// GET /?color=red&color=blue&size=m
+app.Get("/", func(c fiber.Ctx) error {
+    all := make(map[string][]string)
+    if err := c.Bind().Query(&all); err != nil {
+        return err
+    }
+    log.Println(all["color"]) // [red blue]
+
+    last := make(map[string]string)
+    if err := c.Bind().Query(&last); err != nil {
+        return err
+    }
+    log.Println(last["color"]) // blue
+
+    return nil
+})
+```
+
+- `map[string]string` keeps only the **last** value of a repeated key and never splits values on commas. `map[string][]string` keeps every value and, with [`EnableSplittingOnParsers`](fiber.md#enablesplittingonparsers), splits comma-separated ones.
+- Bound keys are added to the map and replace entries of the same name. Other entries stay in place.
+- A nil map passed by value fails with `binder.ErrMapNilDestination`. Pass a pointer, such as `&m`, and Fiber allocates the map. A nil pointer to a map fails as well.
+- Only `map[string]string` and `map[string][]string` themselves are filled. A map with string or slice elements of any other type, such as `map[string][]int` or a named type like `type Headers map[string]string`, fails with `binder.ErrMapNotConvertible`. Maps with other element kinds, for example `map[string]int` or `map[string]any`, are left untouched and no error is returned.
+- `Query` and `Form` rewrite bracket notation to dots, so the key `filter[name]` is stored as `filter.name` and `ids[]` as `ids`.
+- File fields of a multipart form are not added to a map.
+- [`All`](#all) needs a pointer to a struct, and the [struct validator](#validation) is skipped for maps.
+
 ## BindError
 
-When a bind method fails to parse (e.g. invalid JSON, bad type conversion), the behavior depends on the error-handling mode. In **manual handling** (the default), the binder returns a `*BindError` wrapping the underlying error — use `errors.As` to extract it and branch on the binding source or field. In **automatic handling** (enabled via `WithAutoHandling`), parse failures are instead converted to a `*fiber.Error` with HTTP status 400; `*BindError` is never surfaced to the caller in that mode. If you are using `WithAutoHandling`, check for `*fiber.Error` or an HTTP 400 response rather than using `errors.As` for `*BindError`.
+When a bind method fails to parse (e.g. invalid JSON, bad type conversion), the behavior depends on the error-handling mode. In **manual handling** (the default), the binder returns a `*BindError` wrapping the underlying error — use `errors.As` to extract it and branch on the binding source or field. An error that is, or wraps, a `*fiber.Error`, such as one returned by a custom binder's `Parse` or by a custom `JSONDecoder`, is returned as that `*fiber.Error` instead. In **automatic handling** (enabled via `WithAutoHandling`), parse failures are instead converted to a `*fiber.Error` with HTTP status 400; `*BindError` is never surfaced to the caller in that mode. If you are using `WithAutoHandling`, check for `*fiber.Error` or an HTTP 400 response rather than using `errors.As` for `*BindError`. The default error handler answers a `*BindError` with `500 Internal Server Error`, so return a client error yourself, as in the example below, when the request is at fault.
 
 ```go
 type BindError struct {
-    Source string // "uri", "query", "body", "header", "cookie", or "respHeader"
-    Field  string // struct field or tag key that failed (best-effort, may be empty)
     Err    error  // underlying error; use errors.As to inspect
+    Source string // "uri", "query", "body", "header", "cookie", or "respHeader"; the binder's name for Custom
+    Field  string // struct field or tag key that failed (best-effort, may be empty)
 }
 ```
 
@@ -832,6 +895,37 @@ if err := c.Bind().All(&req); err != nil {
         return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "not found"})
     }
     return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid request"})
+}
+```
+
+### Inspecting the underlying error
+
+`BindError` unwraps to the error of the decoder, so `errors.As` and `errors.Is` see through it. Fiber re-exports the types you are most likely to look for:
+
+- The Cookie, Form, Header, Query, RespHeader, and URI binders (and `Body` for form content) fail with a `fiber.MultiError`, a `map[string]error` keyed by the request key that failed. Its entries are a `fiber.ConversionError` when a value cannot be converted to the field type, a `fiber.EmptyFieldError` when a [`required`](#required-fields) key is missing or empty, and a `fiber.UnknownKeyError` for a key that names no field (only reported when `IgnoreUnknownKeys` is `false`, see [SetParserDecoder](#setparserdecoder)). Not every failure is a `MultiError`: a key with unmatched square brackets, such as `?a[=1`, is refused earlier with a plain `binder.ErrUnmatchedBrackets`, so keep a fallback for other errors.
+- With the default `JSONDecoder`, a JSON body fails with the errors of `encoding/json`: `*fiber.UnmarshalTypeError` for a value of the wrong JSON type, `*fiber.SyntaxError` for malformed JSON, and `*fiber.InvalidUnmarshalError` for a destination that is not a non-nil pointer.
+
+`Field` is taken from a `ConversionError`, `UnknownKeyError`, `EmptyFieldError`, `MultiError` (one of its keys, so any of them when several fields failed), or `UnmarshalTypeError`. For any other error it stays empty.
+
+```go title="Example"
+var req struct {
+    Age int `query:"age,required"`
+}
+if err := c.Bind().Query(&req); err != nil {
+    var fields fiber.MultiError
+    if errors.As(err, &fields) {
+        problems := make(map[string]string, len(fields))
+        for key, fieldErr := range fields {
+            var empty fiber.EmptyFieldError
+            if errors.As(fieldErr, &empty) {
+                problems[key] = "required"
+            } else {
+                problems[key] = "invalid"
+            }
+        }
+        return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"errors": problems})
+    }
+    return err
 }
 ```
 
@@ -886,6 +980,8 @@ app.Post("/custom", func(c fiber.Ctx) error {
 })
 ```
 
+`Custom` returns `fiber.ErrCustomBinderNotFound` when no binder is registered under `name`. With manual handling, an error returned by `Parse` comes back as a `*BindError` whose `Source` is the binder's name (when the binder is reached through `Body`, the `Source` is `BindSourceBody`). An error that is, or wraps, a `*fiber.Error` is the exception: that `*fiber.Error` comes back as it is, without a `*BindError` around it, and the error that wrapped it is dropped. Return `fiber.NewError(...)` from `Parse` to choose the status of the response. With `WithAutoHandling`, every error from `Parse`, a `*fiber.Error` included, comes back as a `*fiber.Error` with status `400` and the message `Bad request: ...`. The [struct validator](#validation) runs on `dest` after a successful `Parse`.
+
 ### MIMETypes and Body
 
 [`Body`](#body) consults the registered custom binders before its own content-type
@@ -899,6 +995,12 @@ switch, so `MIMETypes` decides how a binder can be reached:
 
 Returning `nil` makes a binder opt-in: it is reachable only by name, and the
 built-in decoders keep handling `Body`.
+
+`Body` compares each entry of `MIMETypes()` with the media type normalized as
+described under [Body](#body): lower case, without parameters, and with a
+structured syntax suffix resolved. List the entries in that form.
+`Application/YAML` and `application/toml; charset=utf-8` never match, and neither
+does `application/vnd.api+json`, which a request reaches as `application/json`.
 
 ### Overriding a built-in format
 
@@ -940,15 +1042,21 @@ app.Post("/strict", func(c fiber.Ctx) error {
 
 For more control over error handling, you can use the following methods.
 
+:::note
+`c.Bind()` returns the same `Bind` for the whole request, so a setting made with one of these methods stays in effect for every later bind of that request, in a handler or in middleware, until you change it back.
+:::
+
 ### WithAutoHandling
 
 If you want to handle binder errors automatically, you can use `WithAutoHandling`.
-If there's an error, it will return the error and set HTTP status to `400 Bad Request`.
+If binding fails, it will return a `*fiber.Error` with the message `Bad request: ...` and set HTTP status to `400 Bad Request`.
 This function does NOT panic therefore you must still return on error explicitly
 
 ```go title="Signature"
 func (b *Bind) WithAutoHandling() *Bind
 ```
+
+Auto handling covers failures to bind the request data. A validation error is converted to `400 Bad Request` only by [`All`](#all); the other bind methods return the validator's error as is, which the default error handler answers with 500. Errors that point at a mistake in your code, such as `ErrCustomBinderNotFound` or an invalid `binding_source` tag, are returned unchanged as well.
 
 ### WithoutAutoHandling
 
@@ -961,8 +1069,9 @@ func (b *Bind) WithoutAutoHandling() *Bind
 
 ### SkipValidation
 
-To enable or disable validation for the current bind chain, use `SkipValidation`.
+To enable or disable validation, use `SkipValidation`.
 By default, validation is enabled (`skip = false`).
+The setting is not limited to one call: it applies to every later bind of the request until you call `SkipValidation` again.
 
 ```go title="Signature"
 func (b *Bind) SkipValidation(skip bool) *Bind
@@ -970,11 +1079,13 @@ func (b *Bind) SkipValidation(skip bool) *Bind
 
 ## SetParserDecoder
 
-Allows you to configure the BodyParser/QueryParser decoder based on schema options, providing the possibility to add custom types for parsing.
+Allows you to configure the decoder behind the Cookie, Form, Header, Query, RespHeader, and URI binders (and `Body` for form content) based on schema options, providing the possibility to add custom types for parsing. JSON, XML, CBOR, and MsgPack bodies are not affected. The function lives in the `github.com/gofiber/fiber/v3/binder` package.
 
 ```go title="Signature"
 func SetParserDecoder(parserConfig binder.ParserConfig)
 ```
+
+The call is global and replaces the whole configuration. Fields you leave out are not kept at Fiber's defaults, they fall back to their zero values. Fiber starts with `IgnoreUnknownKeys: true` and `ZeroEmpty: true`, so set both explicitly when you only want to add a converter.
 
 `binder.ParserConfig` has the following fields:
 
@@ -991,6 +1102,10 @@ type ParserType struct {
     Converter  func(string) reflect.Value
 }
 ```
+
+- `IgnoreUnknownKeys`: when `false`, a request key that names no field fails the bind with `schema: invalid path "<key>"`. Fiber's default is `true`.
+- `ParserType`: registers a `Converter` for the type of `CustomType`. The converter returns `reflect.Value{}` to reject a value, which fails the bind with a `fiber.ConversionError`.
+- `ZeroEmpty`: when `true`, an empty value sets the field to its zero value, which for a slice field is one zero element and for a pointer field a non-nil pointer to the zero value. When `false`, an empty value leaves a plain field unchanged and a slice field empty, while a pointer field still gets a non-nil pointer to the zero value. Fiber's default is `true`.
 
 ```go title="Example"
 
@@ -1047,9 +1162,11 @@ app.Get("/query", func(c fiber.Ctx) error {
     fmt.Println("d.Date:", d.Date.String())
     return c.JSON(d)
 })
+```
 
-// Run tests with the following curl commands:
+Run tests with the following `curl` commands:
 
+```bash
 # Body Binding
 curl -X POST -F title=title -F body=body -F date=2021-10-20 http://localhost:3000/body
 
@@ -1094,6 +1211,8 @@ app := fiber.New(fiber.Config{
 Fiber only runs `StructValidator` for struct destinations (or pointers to structs).
 Binding into maps and other non-struct types skips the validator step.
 
+Validation runs after a bind succeeds, on the value you passed in. If binding fails, the validator is not called. [`All`](#all) validates once, on the merged struct. The validator's error is returned as is: it is not wrapped in a [`BindError`](#validation-vs-binding-errors), and the default error handler answers it with `500 Internal Server Error` (only [`All`](#all) under [`WithAutoHandling`](#withautohandling) converts it to a `400 Bad Request`), so return a client error yourself when the request is at fault, as shown in the [Validation guide](../guide/validation.md). To bypass the validator, use [`SkipValidation`](#skipvalidation).
+
 ### Usage of Validation in Binding Methods
 
 ```go title="Example"
@@ -1108,12 +1227,14 @@ app.Post("/", func(c fiber.Ctx) error {
     if err := c.Bind().JSON(p); err != nil { // Receives validation errors
         return err
     }
+
+    return c.JSON(p)
 })
 ```
 
 ## Default Fields
 
-You can set default values for fields in the struct by using the `default` struct tag. Supported types:
+You can set default values for fields in the struct with the `default:` option of the field's tag, as in `query:"name,default:john"`. A separate `default` struct tag is not read. Supported types:
 
 - `bool`
 - Float variants (`float32`, `float64`)
@@ -1122,6 +1243,8 @@ You can set default values for fields in the struct by using the `default` struc
 - `string`
 - A slice of the above types. Use `|` to separate slice items.
 - A pointer to one of the above types (**pointers to slices and slices of pointers are not supported**).
+
+Defaults are applied by the decoder behind the `query`, `form`, `header`, `cookie`, `respHeader`, and `uri` tags. They have no effect on JSON, XML, CBOR, or MsgPack bodies. A default applies when the key is absent from the source. A key that is present but empty, such as `?name=`, does not get it: with Fiber's default `ZeroEmpty` a plain field gets its zero value, a slice field gets one zero element (`?ids=` gives `[0]` for an `[]int`) and a pointer field gets a non-nil pointer to the zero value. The `uri` tag is the exception: the binder supplies every parameter of the matched route, an optional one the request omitted as an empty string, so a default never applies to a route parameter. It applies only to a `uri` name that the route does not declare.
 
 ```go title="Example"
 type Person struct {
@@ -1150,3 +1273,15 @@ Run tests with the following `curl` command:
 ```bash
 curl "http://localhost:3000/?pass=doe"
 ```
+
+## Required Fields
+
+Add the `required` option to a tag to make the bind fail when the key is missing or empty. It works with the `query`, `form`, `header`, `cookie`, `respHeader`, and `uri` tags. On a `uri` tag, a route parameter that the request omitted, such as an optional `:id?`, counts as empty. A field cannot have both `required` and `default`.
+
+```go title="Example"
+type Search struct {
+    Term string `query:"term,required"`
+}
+```
+
+A missing `term` fails with a [`*BindError`](#binderror) that wraps a `fiber.MultiError` holding a `fiber.EmptyFieldError` (message `term is empty`). With `WithAutoHandling`, the response is `400 Bad Request` with the message `Bad request: term is empty`.

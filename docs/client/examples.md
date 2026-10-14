@@ -320,7 +320,7 @@ func main() {
 <summary>Click here to see the result</summary>
 
 ```plaintext
-[john=doe; path=/]
+[john=doe; domain=httpbin.org; path=/]
 ```
 
 </details>

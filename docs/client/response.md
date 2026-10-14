@@ -19,10 +19,15 @@ It makes it easy to inspect and handle data returned by the server.
 
 ```go
 type Response struct {
-    client      *Client
-    request     *Request
-    cookie      []*fasthttp.Cookie
+    client  *Client
+    request *Request
+
     RawResponse *fasthttp.Response
+    cookie      []*fasthttp.Cookie
+
+    respondedHost []byte
+    respondedPath []byte
+    requestOwned  bool
 }
 ```
 
@@ -64,7 +69,7 @@ func (r *Response) StatusCode() int
 
 ## Protocol
 
-**Protocol** returns the HTTP protocol used (e.g., `HTTP/1.1`, `HTTP/2`) for the response.
+**Protocol** returns the HTTP protocol used (e.g., `HTTP/1.1`) for the response. The client is built on fasthttp, which speaks HTTP/1.x only.
 
 ```go title="Signature"
 func (r *Response) Protocol() string
@@ -282,7 +287,7 @@ func (r *Response) String() string
 
 ## JSON
 
-**JSON** unmarshal the response body into the provided variable `v` using JSON. `v` should be a pointer to a struct or a type compatible with JSON unmarshal.
+**JSON** unmarshal the response body into the provided variable `v` using JSON. `v` should be a pointer to a struct or a type compatible with JSON unmarshal. It uses the client's JSON unmarshaler, `encoding/json` unless replaced with [SetJSONUnmarshal](./rest.md#setjsonunmarshal), and returns `ErrClientNil` for a response that has no client, such as one from `AcquireResponse`. `XML` and `CBOR` behave the same way.
 
 ```go title="Signature"
 func (r *Response) JSON(v any) error
@@ -323,7 +328,7 @@ fmt.Printf("%+v\n", out)
 
 ## XML
 
-**XML** unmarshal the response body into the provided variable `v` using XML decoding.
+**XML** unmarshal the response body into the provided variable `v` using XML decoding, with the client's XML unmarshaler ([SetXMLUnmarshal](./rest.md#setxmlunmarshal)).
 
 ```go title="Signature"
 func (r *Response) XML(v any) error
@@ -331,7 +336,7 @@ func (r *Response) XML(v any) error
 
 ## CBOR
 
-**CBOR** unmarshal the response body into `v` using CBOR decoding.
+**CBOR** unmarshal the response body into `v` using CBOR decoding, with the client's CBOR unmarshaler ([SetCBORUnmarshal](./rest.md#setcborunmarshal)).
 
 ```go title="Signature"
 func (r *Response) CBOR(v any) error
@@ -339,7 +344,7 @@ func (r *Response) CBOR(v any) error
 
 ## Save
 
-**Save** writes the response body to a file or an `io.Writer`. If `v` is a string, it interprets it as a file path, creates the file (and directories if needed), and writes the response to it. If `v` is an `io.Writer`, it writes directly to it.
+**Save** writes the response body to a file or an `io.Writer`. If `v` is a string, it interprets it as a file path, creates the file (and directories if needed), and writes the response to it. If `v` is an `io.Writer`, it writes directly to it and, when the copy succeeds, closes it if it also implements `io.Closer`, as an `*os.File` does. Any other type of `v` returns `ErrNotSupportSaveMethod`. With response streaming enabled, the body is copied from the stream, so it cannot be read again afterward.
 
 ```go title="Signature"
 func (r *Response) Save(v any) error

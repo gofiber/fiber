@@ -6,7 +6,7 @@ id: favicon
 
 Favicon middleware for [Fiber](https://github.com/gofiber/fiber) that drops repeated `/favicon.ico` requests or serves a cached icon from memory. Mount it before your logger to suppress noisy requests and avoid disk reads.
 
-It handles only `GET`, `HEAD`, and `OPTIONS` to the configured URL; other methods return `405 Method Not Allowed`.
+It handles only `GET`, `HEAD`, and `OPTIONS` to the configured URL; other methods return `405 Method Not Allowed`. A configured icon is always served as `image/x-icon` with the configured `Cache-Control`; without `File` or `Data`, requests for the URL are answered with `204 No Content`.
 
 :::note
 This middleware only serves the default `/favicon.ico` (or a [custom URL](#config)). For multiple icons, use the Static middleware.
@@ -48,11 +48,11 @@ app.Use(favicon.New(favicon.Config{
 |:-------------|:------------------------|:---------------------------------------------------------------------------------|:---------------------------|
 | Next         | `func(fiber.Ctx) bool` | Next defines a function to skip this middleware when it returns true.              | `nil`                      |
 | Data         | `[]byte`                | Raw data of the favicon file. This can be used instead of `File`.                | `nil`                      |
-| File         | `string`                | File holds the path to an actual favicon that will be cached.                    | ""                         |
+| File         | `string`                | File holds the path to an actual favicon that will be cached. `New` panics if the file cannot be read. | ""                         |
 | URL          | `string`                | URL for favicon handler.                                                         | "/favicon.ico"             |
 | FileSystem   | `fs.FS`                 | FileSystem is an optional alternate filesystem from which to load the favicon file (e.g. using `os.DirFS` or an `embed.FS`). | `nil`                      |
 | CacheControl | `string`                | CacheControl defines how the Cache-Control header in the response should be set. | "public, max-age=31536000" |
-| MaxBytes     | `int64`                 | MaxBytes limits the maximum size of the cached favicon asset.                    | `1048576`                  |
+| MaxBytes     | `int64`                 | MaxBytes limits the maximum size of the cached favicon asset. `New` panics if the file at `File` is larger; the limit does not apply to `Data`. | `1048576`                  |
 
 ## Default Config
 

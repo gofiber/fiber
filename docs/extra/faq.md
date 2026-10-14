@@ -19,9 +19,9 @@ Routes and other application logic can live in any files or directories. For ins
 
 ## How do I handle custom 404 responses?
 
-If you're using v2.32.0 or later, implement a custom error handler as shown below or read more at [Error Handling](../guide/error-handling.md#custom-error-handler).
+A request that matches no route reaches your `ErrorHandler` as a `*fiber.Error` with status `404` (`fiber.ErrNotFound`), so a custom error handler can render the response. See [How do I set up an error handler?](#how-do-i-set-up-an-error-handler) below or read more at [Error Handling](../guide/error-handling.md#custom-error-handler).
 
-If you're using v2.31.0 or earlier, the error handler will not capture 404 errors. Instead, add a middleware function at the very bottom of the stack \(below all other functions\) to handle a 404 response:
+You can also add a middleware function at the very bottom of the stack \(below all other functions\) to handle a 404 response:
 
 ```go title="Example"
 app.Use(func(c fiber.Ctx) error {
@@ -100,7 +100,7 @@ If you have questions or just want to chat, join us via this [invite link](https
 
 ## Does Fiber support subdomain routing?
 
-Yes, we do. Here are some examples:
+Yes. The simplest way is [`app.Domain`](../api/app.md#domain), which scopes routes to a hostname pattern. You can also dispatch by hostname yourself by keeping one app per host, as in this example:
 
 <details>
 <summary>Example</summary>
@@ -159,11 +159,11 @@ func main() {
     // Server
     app := fiber.New()
     app.Use(func(c fiber.Ctx) error {
-        host := hosts[c.Hostname()]
+        host := hosts[c.Host()]
         if host == nil {
             return c.SendStatus(fiber.StatusNotFound)
         } else {
-            host.Fiber.Handler()(c.Context())
+            host.Fiber.Handler()(c.RequestCtx())
             return nil
         }
     })

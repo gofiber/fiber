@@ -11,9 +11,13 @@ Pagination middleware for [Fiber](https://github.com/gofiber/fiber) that extract
 ```go
 func New(config ...Config) fiber.Handler
 func FromContext(ctx any) (*PageInfo, bool)
+func NewPageInfo(page, limit, offset int, sort []SortField) *PageInfo
+func SortOrderFromString(s string) SortOrder
 ```
 
-`FromContext` accepts `fiber.CustomCtx`, `fiber.Ctx`, `*fasthttp.RequestCtx`, or `context.Context`.
+`FromContext` accepts `fiber.CustomCtx`, `fiber.Ctx`, `*fasthttp.RequestCtx`, or `context.Context`. It returns `nil, false` when the middleware did not run for the request, for example because `Next` skipped it.
+
+`NewPageInfo` builds a `PageInfo` from the given values without running the middleware, which helps when you create fixtures for tests or paginate outside a request. It keeps its arguments as given and does not clamp them, so `NewPageInfo(-1, 10000, -5, nil)` holds all three invalid values. `SortOrderFromString` converts `"asc"` or `"desc"` (case-insensitive) into a `SortOrder`; any other value gives `ASC`.
 
 ## Examples
 
@@ -98,6 +102,8 @@ app.Get("/feed", func(c fiber.Ctx) error {
 // Next request:   GET /feed?cursor=<token>&limit=20
 ```
 
+A request with a non-empty cursor is handled as cursor pagination: the page and offset parameters are ignored, so `Page` and `Offset` are `0` and `Start()` returns `0`. An empty cursor falls back to page-based pagination.
+
 ### Custom Configuration
 
 ```go
@@ -122,14 +128,14 @@ app.Use(paginate.New(paginate.Config{
 | PageKey      | `string`                 | Query string key for page number.                                  | `"page"`   |
 | DefaultPage  | `int`                    | Default page number.                                               | `1`        |
 | LimitKey     | `string`                 | Query string key for limit.                                        | `"limit"`  |
-| DefaultLimit | `int`                    | Default items per page.                                            | `10`       |
-| SortKey      | `string`                 | Query string key for sort.                                         | `""`       |
-| DefaultSort  | `string`                 | Default sort field.                                                | `"id"`     |
+| DefaultLimit | `int`                    | Default items per page. It is capped at `MaxLimit`, and a limit below 1 in the request also falls back to it. | `10`       |
+| SortKey      | `string`                 | Query string key for sort. While it is empty, the query string cannot change the sort order. | `""`       |
+| DefaultSort  | `string`                 | Default sort field, applied in ascending order when the request names no allowed sort field. | `"id"`     |
 | AllowedSorts | `[]string`               | Whitelist of allowed sort fields. If nil or empty, request sort fields are ignored and the default sort is used.  | `nil`      |
 | OffsetKey    | `string`                 | Query string key for offset.                                       | `"offset"` |
 | CursorKey    | `string`                 | Query string key for cursor-based pagination.                      | `"cursor"` |
 | CursorParam  | `string`                 | Optional alias for the cursor query key.                           | `""`       |
-| MaxLimit     | `int`                    | Maximum items per page.                                            | `100`      |
+| MaxLimit     | `int`                    | Maximum items per page. A value below 1 selects the default.       | `100` (`paginate.DefaultMaxLimit`) |
 
 ## Default Config
 
@@ -149,7 +155,21 @@ var ConfigDefault = Config{
 
 ## PageInfo
 
-The `PageInfo` struct is stored in the request context and provides:
+The `PageInfo` struct is stored in the request context. Its fields, with the JSON keys they serialize to, are listed below. The bounds in the descriptions hold for the value the middleware stores, not for one built with `NewPageInfo`:
+
+| Field        | JSON key      | Description                                                                                      |
+|:-------------|:--------------|:-------------------------------------------------------------------------------------------------|
+| `Page`       | `page`        | Current page, never below 1. It is `0` on a cursor request.                                      |
+| `Limit`      | `limit`       | Items per page, never above `MaxLimit`.                                                          |
+| `Offset`     | `offset`      | Offset taken from `OffsetKey`, never negative. When above 0, `Start()` returns it.               |
+| `Sort`       | `sort`        | Parsed sort fields as `[]SortField`. It holds the default sort, ascending, when the request names no allowed field. |
+| `Cursor`     | `cursor`      | Cursor token of the request. Omitted from the JSON when empty.                                   |
+| `NextCursor` | `next_cursor` | Token for the next page, set by `SetNextCursor`. Omitted from the JSON when empty.               |
+| `HasMore`    | `has_more`    | Set to `true` by `SetNextCursor`. Omitted from the JSON when `false`.                            |
+
+Each `SortField` has a `Field` name and an `Order`, serialized as `field` and `order`. `Order` is a `SortOrder` string, either `paginate.ASC` (`"asc"`) or `paginate.DESC` (`"desc"`).
+
+`PageInfo` provides these methods:
 
 | Method                                          | Description                                                    |
 |:------------------------------------------------|:---------------------------------------------------------------|
@@ -161,8 +181,8 @@ The `PageInfo` struct is stored in the request context and provides:
 | `PreviousPageURLWithKeys(baseURL, pageKey, limitKey)` | Generates previous page URL with custom query keys       |
 | `NextCursorURL(baseURL)`                        | Generates next cursor URL (empty if no more)                   |
 | `NextCursorURLWithKeys(baseURL, cursorKey, limitKey)` | Generates next cursor URL with custom query keys         |
-| `CursorValues()`                                | Decodes cursor token into key-value map                        |
-| `SetNextCursor(values)`                         | Encodes values into cursor token, sets HasMore; returns error  |
+| `CursorValues()`                                | Decodes cursor token into key-value map (`nil` for an empty or invalid token); numbers decode as `float64` with the default JSON decoder |
+| `SetNextCursor(values)`                         | Encodes values into cursor token, sets `NextCursor` and `HasMore`; returns an error wrapping `paginate.ErrCursorEncode` |
 
 ## Safety
 

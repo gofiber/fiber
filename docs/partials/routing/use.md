@@ -13,6 +13,7 @@ func (app *App) Use(args ...any) Router
 // - app.Use(path string, handler, handlers ...any)
 // - app.Use(paths []string, handler, handlers ...any)
 // - app.Use(path string, subApp *App)
+// - app.Use(paths []string, subApp *App)
 ```
 
 Each handler argument can independently be a Fiber handler (with or without an `error` return), an Express-style callback, a `net/http` handler, or any other supported shape including fasthttp callbacks that return errors.

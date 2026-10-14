@@ -26,6 +26,10 @@ A rule's `From` is path text: `*` matches a run of any bytes but a newline, and
 every other byte stands for itself, so `/preis-1.000-euro` rewrites that path
 and not `/preis-1X000-euro`. There is no escape for a literal `*`.
 
+A rule matches the whole path, trailing slash and letter case included: `/old` rewrites `/old`, but not `/old/`, `/OLD`, `/old/x` or `/very/old`.
+
+In `To`, `$1`, `$2` and so on stand for what the asterisks of `From` captured, in order. `$10` is the tenth capture in a rule with ten or more asterisks; in a rule with fewer it reads as `$1` followed by `0`.
+
 Setting both `RuleList` and `Rules` panics.
 
 Rules match `c.Path()`, the path as the router normalized it, and the rewritten

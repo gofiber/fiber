@@ -4,7 +4,9 @@ id: pprof
 
 # Pprof
 
-Pprof middleware exposes runtime profiling data for analysis with the Go `pprof` tool. Importing it registers handlers under `/debug/pprof/`.
+Pprof middleware exposes runtime profiling data for analysis with the Go `pprof` tool. Once you add it with `app.Use`, it serves the profiles under `/debug/pprof/`.
+
+The middleware claims a request only when the path is the prefix plus `/debug/pprof` itself or continues it at a segment boundary, so an application route such as `/debug/pprof-old` still reaches its own handler. Within its paths, `303 See Other` redirects settle the spelling: `/debug/pprof` goes to `/debug/pprof/`, a trailing slash after a profile name (`/debug/pprof/heap/`) is dropped, and a name that is not a profile (`/debug/pprof/nope`) goes to the index.
 
 ## Signatures
 
@@ -48,6 +50,7 @@ app.Use(pprof.New(pprof.Config{Prefix: "/endpoint-prefix"}))
 
 ```go
 var ConfigDefault = Config{
-    Next: nil,
+    Next:   nil,
+    Prefix: "",
 }
 ```

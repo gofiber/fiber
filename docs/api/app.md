@@ -57,14 +57,20 @@ func main() {
 ```
 
 :::caution
-Unlike Express, Fiber does not strip the mount prefix. Inside the mounted app, `c.Path()` still returns the full request path (`/john/doe`, not `/doe`); there is no `req.baseUrl` equivalent.
+Unlike Express, Fiber does not strip the mount prefix. Inside the mounted app, `c.Path()` still returns the full request path (`/john/doe`, not `/doe`). The counterpart of `req.baseUrl` is [`c.MountPath()`](./ctx.md#mountpath), which returns the prefix the running route's sub-app was mounted under (`/john`).
 :::
 
 Passing a slice of prefixes mounts the sub-app under each of them (`app.Use([]string{"/john", "/jane"}, micro)`). Mounting an app onto itself panics.
 
+:::note
+The routes of a mounted app are matched under the settings of the top-level app, at every nesting depth: its [`CaseSensitive`](./fiber.md#casesensitive), [`StrictRouting`](./fiber.md#strictrouting) and [`UnescapePath`](./fiber.md#unescapepath) apply, not the sub-app's own and not those of the app it is mounted on. A sub-app that relies on one of them for its routes needs the top-level app to set it too. The settings that handlers read at request time, such as `JSONEncoder`, `StructValidator` and `PassLocalsToViews`, and those of the server itself, such as `BodyLimit`, come from the top-level app as well.
+
+A sub-app's own [`ErrorHandler`](#errorhandler), `Views` and `ViewsLayout` still apply to the requests under its mount path, but only when the whole mount path, from the top-level app down, is literal. Under a parameter, as in `app.Use("/t/:tenant", tenantApp)`, the routes match and run while the nearest enclosing mount with a literal path, or the top-level app, supplies the error handler and the view engine. A [`Domain`](#domain) mount matches a parameterized path as a pattern, so its sub-app keeps its own. The [`RegexHandler`](./fiber.md#regexhandler) of a sub-app mounted on the top-level app compiles the `regex()` constraints in the full path of every route below it, the mount prefix included, so an app mounted deeper does not use its own.
+:::
+
 ### MountPath
 
-The `MountPath` property contains one or more path patterns on which a sub-app was mounted.
+`MountPath` returns the path pattern on which a sub-app was mounted, or an empty string for an app that is not mounted. An app mounted under several prefixes reports the last one.
 
 ```go title="Signature"
 func (app *App) MountPath() string
@@ -241,7 +247,9 @@ Creates a router scoped to a specific hostname pattern. Routes registered throug
 
 When `TrustProxy` is enabled and the proxy is trusted, the hostname may be derived from the `X-Forwarded-Host` header instead of the `Host` header. To prevent header spoofing, you must both enable `TrustProxy` and configure [`TrustProxyConfig`](https://docs.gofiber.io/api/fiber#trustproxyconfig) with the IPs or ranges of your trusted proxies. See the [TrustProxy documentation](https://docs.gofiber.io/api/fiber#trustproxy) for details.
 
-The pattern can contain parameters prefixed with `:`. Use [`DomainParam`](#domainparam) to retrieve them inside handlers.
+The pattern can contain parameters prefixed with `:`. Use [`DomainParam`](#domainparam) to retrieve them inside handlers. `Domain` panics when the pattern is empty, has an empty label, has more than 16 labels or 253 characters, has a constant label of more than 63 characters, or has a label with a character other than an ASCII letter, a digit or `-` (a parameter name may also contain `_`). A request hostname that breaks the same limits never matches.
+
+Groups offer `Domain` too: `api.Domain("api.example.com")` keeps the group prefix and adds the host filter.
 
 Domain routing has **zero performance impact** on routes that don't use it — the hostname check is applied as a handler wrapper, not a change to the core router.
 
@@ -254,7 +262,7 @@ When mounting sub-applications via `Domain(...).Use(*fiber.App)`, routes are clo
 
 Apps that the sub-app has mounted itself are cloned along with it, so nested routes are domain-filtered as well. The same "register before mounting" rule applies to them.
 
-A domain-mounted sub-app's `ErrorHandler` and `Views` are host-scoped like its routes: they apply to requests whose hostname matches the pattern, and requests on other hosts fall back to the parent's. Two sub-apps mounted at the same path on different domains therefore keep their own configuration.
+A domain-mounted sub-app's `ErrorHandler` and `Views` are host-scoped like its routes: they apply to requests whose hostname matches the pattern, and requests on other hosts fall back to the parent's. Two sub-apps mounted at the same path on different domains therefore keep their own configuration. A sub-app that sets none of its own inherits them from the app it is mounted inside, as with a plain mount; a separately mounted app that merely covers the same paths and hosts is not inherited from.
 :::
 
 ```go title="Signature"
@@ -340,7 +348,7 @@ func (app *App) HandlersCount() uint32
 
 ### Stack
 
-Returns the underlying router stack.
+Returns the underlying router stack: one slice of routes for each entry of [`RequestMethods`](./fiber.md#requestmethods), in that order, and `nil` for a method that has no routes. The `HEAD` routes Fiber generates for `GET` routes only appear once the app has started or [`RebuildTree`](#rebuildtree) has run.
 
 ```go title="Signature"
 func (app *App) Stack() [][]*Route
@@ -365,6 +373,10 @@ func main() {
     app.Get("/john/:age", handler)
     app.Post("/register", handler)
 
+    // Listen generates the HEAD routes when it starts the app.
+    // RebuildTree generates them now, so the stack below shows them.
+    app.RebuildTree()
+
     data, _ := json.MarshalIndent(app.Stack(), "", "  ")
     fmt.Println(string(data))
 
@@ -379,29 +391,39 @@ func main() {
 [
   [
     {
+      "params": [
+        "age"
+      ],
       "method": "GET",
-      "path": "/john/:age",
-      "params": [
-        "age"
-      ]
+      "name": "",
+      "path": "/john/:age"
     }
   ],
   [
     {
+      "params": [
+        "age"
+      ],
       "method": "HEAD",
-      "path": "/john/:age",
-      "params": [
-        "age"
-      ]
+      "name": "",
+      "path": "/john/:age"
     }
   ],
   [
     {
+      "params": null,
       "method": "POST",
-      "path": "/register",
-      "params": null
+      "name": "",
+      "path": "/register"
     }
-  ]
+  ],
+  null,
+  null,
+  null,
+  null,
+  null,
+  null,
+  null
 ]
 ```
 
@@ -409,7 +431,7 @@ func main() {
 
 ### Name
 
-This method assigns the name to the latest created route. When the latest call registered several methods at once, as `Add` or `All` do, every one of those routes receives the name.
+This method assigns the name to the latest created route. When the latest call registered several methods at once, as `Add` or `All` do, every one of those routes receives the name. The `HEAD` route that Fiber generates for a named `GET` route carries the same name.
 
 ```go title="Signature"
 func (app *App) Name(name string) Router
@@ -442,6 +464,9 @@ func main() {
 
     a.Get("/test", handler).Name("test")
 
+    // Generate the HEAD routes now, as Listen does when it starts the app.
+    app.RebuildTree()
+
     data, _ := json.MarshalIndent(app.Stack(), "", "  ")
     fmt.Println(string(data))
 
@@ -456,64 +481,65 @@ func main() {
 [
   [
     {
+      "params": null,
       "method": "GET",
       "name": "index",
-      "path": "/",
-      "params": null
+      "path": "/"
     },
     {
+      "params": null,
       "method": "GET",
       "name": "home",
-      "path": "/doe",
-      "params": null
+      "path": "/doe"
     },
     {
+      "params": null,
       "method": "GET",
       "name": "fd.test",
-      "path": "/a/test",
-      "params": null
+      "path": "/a/test"
     }
   ],
   [
     {
+      "params": null,
       "method": "HEAD",
-      "name": "",
-      "path": "/",
-      "params": null
+      "name": "index",
+      "path": "/"
     },
     {
+      "params": null,
       "method": "HEAD",
-      "name": "",
-      "path": "/doe",
-      "params": null
+      "name": "home",
+      "path": "/doe"
     },
     {
+      "params": null,
       "method": "HEAD",
-      "name": "",
-      "path": "/a/test",
-      "params": null
+      "name": "fd.test",
+      "path": "/a/test"
     }
   ],
   null,
   null,
   [
     {
+      "params": null,
       "method": "DELETE",
       "name": "delete",
-      "path": "/delete",
-      "params": null
+      "path": "/delete"
     }
   ],
   null,
   null,
   [
     {
+      "params": null,
       "method": "TRACE",
       "name": "tracert",
-      "path": "/tracer",
-      "params": null
+      "path": "/tracer"
     }
   ],
+  null,
   null
 ]
 ```
@@ -524,7 +550,7 @@ func main() {
 
 This method retrieves a route by its name.
 
-The returned `Route` can be inspected or used to generate a URL directly with `route.URL(params)`.
+The returned `Route` can be inspected or used to generate a URL directly with `route.URL(params)`. When no route has that name, `GetRoute` returns the zero `Route`, and its `URL` method returns `ErrNotFound`.
 
 ```go title="Signature"
 func (app *App) GetRoute(name string) Route
@@ -540,6 +566,8 @@ import (
 
     "github.com/gofiber/fiber/v3"
 )
+
+var handler = func(c fiber.Ctx) error { return nil }
 
 func main() {
     app := fiber.New()
@@ -565,10 +593,10 @@ func main() {
 
 ```json
 {
+  "params": null,
   "method": "GET",
   "name": "index",
-  "path": "/",
-  "params": null
+  "path": "/"
 }
 ```
 
@@ -639,12 +667,12 @@ func main() {
 
 ```json
 [
-    {
-        "method": "POST",
-        "name": "index",
-        "path": "/",
-        "params": null
-    }
+  {
+    "params": null,
+    "method": "POST",
+    "name": "index",
+    "path": "/"
+  }
 ]
 ```
 
@@ -666,6 +694,32 @@ func (app *App) Config() Config
 func (app *App) Handler() fasthttp.RequestHandler
 ```
 
+:::caution
+When Fiber starts its own server, it closes the connection after the response to a request that carries both `Content-Length` and `Transfer-Encoding`, using a `HeaderReceived` callback it installs on that server. A `fasthttp.Server` of your own that serves `Handler()` does not get that callback and needs the same check in its own `HeaderReceived`. See [Protocol error responses](../whats_new.md#protocol-error-responses).
+:::
+
+## AcquireCtx / ReleaseCtx
+
+`AcquireCtx` takes a context from the app's pool and binds it to a [`*fasthttp.RequestCtx`](https://pkg.go.dev/github.com/valyala/fasthttp#RequestCtx); `ReleaseCtx` puts it back. Use them when you run a handler yourself instead of going through [`Handler`](#handler), as the [adaptor middleware](../middleware/adaptor.md) does.
+
+```go title="Signature"
+func (app *App) AcquireCtx(ctx *fasthttp.RequestCtx) CustomCtx
+func (app *App) ReleaseCtx(c CustomCtx)
+```
+
+```go title="Example"
+func serve(app *fiber.App, ctx *fasthttp.RequestCtx, handler fiber.Handler) {
+    c := app.AcquireCtx(ctx)
+    defer app.ReleaseCtx(c)
+
+    if err := handler(c); err != nil {
+        _ = app.ErrorHandler(c, err)
+    }
+}
+```
+
+Release every context you acquire, and don't use it afterwards: the next request reuses it. `ReleaseCtx` does not return an abandoned context (see [`Abandon`](./ctx.md#abandon)) to the pool, which is how the [timeout middleware](../middleware/timeout.md) keeps a context away from the pool while its handler is still running. When [`ScheduleReclaim`](./ctx.md#abandon) armed the context, the call only tells the reclaimer that the request handler is done, and the reclaimer pools it once the other goroutine finishes too.
+
 ## ErrorHandler
 
 `ErrorHandler` executes the process defined for the application in case of errors. This is used in some cases in middlewares.
@@ -673,6 +727,10 @@ func (app *App) Handler() fasthttp.RequestHandler
 ```go title="Signature"
 func (app *App) ErrorHandler(ctx Ctx, err error) error
 ```
+
+When the request path falls under a mounted sub-app that sets its own `ErrorHandler`, that handler runs instead of the parent's. The deepest mount covering the path wins, and a sub-app that sets none inherits the handler of the nearest mount around it. The mount path, taken from the top-level app down, is compared with the request path as literal text, so a sub-app mounted under a parameter such as `/t/:tenant` is never found, nor is an app mounted inside it: their routes run, but the nearest enclosing mount with a literal path, or the top-level app, supplies the handler. A sub-app mounted through [`Domain`](#domain) matches a parameterized path as a pattern, and contributes its handler only for requests whose hostname matches the pattern.
+
+`ErrorHandler` also runs for a request that the HTTP server refuses while reading it, with a `*fiber.Error` carrying the status Fiber chose, such as `413` for a body over `BodyLimit` or `431` for headers over `ReadBufferSize`. See [Errors Before a Handler Runs](../guide/error-handling.md#errors-before-a-handler-runs) for the full list. When the request method is a known one, middleware registered with `Use` still runs for such a request and sees that status.
 
 A request whose response fasthttp already holds as a timeout response, as after the [timeout middleware](../middleware/timeout.md) has answered it, is left alone: `ErrorHandler` returns `nil` without running the configured handler, since anything written now would be ignored and the handler that timed out may still be using the context. The error still reaches the outer middleware.
 
@@ -851,6 +909,36 @@ Use `SetTLSHandler` to set [`ClientHelloInfo`](https://datatracker.ietf.org/doc/
 func (app *App) SetTLSHandler(tlsHandler *TLSHandler)
 ```
 
+`Listen` sets a handler up itself when it serves `CertFile` and `CertKeyFile`. With `Listener`, register a `TLSHandler` and use its `GetClientInfo` method as the `GetCertificate` callback of the `tls.Config` the listener runs with. [`Ctx.ClientHelloInfo`](./ctx.md#clienthelloinfo) then returns the hello message of the connection a request arrived on. It returns `nil` where `crypto/tls` does not call `GetCertificate`: for a resumed TLS 1.3 connection, whatever the configuration, and, with `Certificates` set, as in the example below and in the config `Listen` builds, for a client that sends no server name (SNI).
+
+```go title="Example"
+cert, err := tls.LoadX509KeyPair("server.crt", "server.key")
+if err != nil {
+    log.Fatal(err)
+}
+
+handler := &fiber.TLSHandler{}
+app.SetTLSHandler(handler)
+
+ln, err := tls.Listen("tcp", ":443", &tls.Config{
+    MinVersion:     tls.VersionTLS12,
+    Certificates:   []tls.Certificate{cert},
+    GetCertificate: handler.GetClientInfo, // records the ClientHelloInfo of each connection
+})
+if err != nil {
+    log.Fatal(err)
+}
+
+app.Get("/", func(c fiber.Ctx) error {
+    if info := c.ClientHelloInfo(); info != nil {
+        return c.SendString(info.ServerName)
+    }
+    return c.SendStatus(fiber.StatusNoContent)
+})
+
+log.Fatal(app.Listener(ln))
+```
+
 ## State / SharedState
 
 `State()` returns in-process state (local to the current process).  
@@ -877,8 +965,6 @@ package main
 import (
     "fmt"
     "io"
-    "log"
-    "net/http"
     "net/http/httptest"
 
     "github.com/gofiber/fiber/v3"
@@ -917,6 +1003,8 @@ config := fiber.TestConfig{
   FailOnTimeout: true,
 }
 ```
+
+When the handler has not answered within `Timeout`, `Test` returns `os.ErrDeadlineExceeded` if `FailOnTimeout` is `true`. If it is `false`, `Test` waits up to one more second and then reads whatever the handler has written by then. When the handler sends no response at all, for example after `c.Drop()`, `Test` returns `fiber.ErrTestGotEmptyResponse`.
 
 :::caution
 
@@ -1046,7 +1134,7 @@ func (app *App) RemoveRouteByName(name string, methods ...string)
 
 ### RemoveRouteFunc
 
-This method removes a route by function having `*Route` parameter.
+This method removes a route by function having `*Route` parameter. The `Path` field the function sees is the path as it was registered, not the normalized one.
 If no methods are specified, the route will be removed for all HTTP methods defined in the app. To limit removal to specific methods, provide them as additional arguments.
 
 ```go title="Signature"
@@ -1073,7 +1161,7 @@ func (app *App) GetBytes(b []byte) []byte
 
 ### ReloadViews
 
-Reloads the configured view engine on demand by calling its `Load` method. Use this helper in development workflows (e.g., file watchers or debug-only routes) to pick up template changes without restarting the server. Returns an error if no view engine is configured or reloading fails.
+Reloads the configured view engine on demand by calling its `Load` method. The engines of mounted sub-apps are reloaded too. Use this helper in development workflows (e.g., file watchers or debug-only routes) to pick up template changes without restarting the server. Returns an error if reloading fails, and `ErrNoViewEngineConfigured` if neither the app nor a mounted sub-app has a view engine (a typed nil `Views` counts as none).
 
 ```go title="Signature"
 func (app *App) ReloadViews() error
@@ -1094,7 +1182,8 @@ app.Get("/dev/reload", func(c fiber.Ctx) error {
 
 `Render` writes a template through the configured view engine without creating
 an HTTP response. It applies `ViewsLayout` when no layout is supplied and is
-safe to use concurrently with `ReloadViews`.
+safe to use concurrently with `ReloadViews`. It returns `ErrNoViewEngineConfigured`
+when the app has no view engine, a typed nil `Views` included.
 
 ```go title="Signature"
 func (app *App) Render(out io.Writer, name string, binding any, layouts ...string) error

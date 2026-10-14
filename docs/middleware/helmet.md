@@ -66,6 +66,10 @@ curl -I http://localhost:3000
 | XDownloadOptions          | `string`                | Value for the `X-Download-Options` header.             | "noopen"         |
 | XPermittedCrossDomain     | `string`                | Value for the `X-Permitted-Cross-Domain-Policies` header. | "none"        |
 
+`Strict-Transport-Security` is set only when `HSTSMaxAge` is greater than `0` and the request is secure (`c.Secure()`): a TLS connection, or a request from a trusted proxy that reports `https` in `X-Forwarded-Proto`, `X-Forwarded-Protocol`, `X-Forwarded-Ssl: on` or `X-Url-Scheme`. Any other request gets no header. Behind a TLS-terminating proxy, enable Fiber's `TrustProxy` and list the proxy in `TrustProxyConfig` (`Proxies`, `Loopback`, `Private`, `LinkLocal` or `UnixSocket`): `TrustProxy` alone trusts no peer, so the forwarded scheme is ignored and no header is sent. The value carries `includeSubDomains` unless `HSTSExcludeSubdomains` is `true`. `New` panics when `HSTSMaxAge` is negative, or when `HSTSPreloadEnabled` is combined with `HSTSExcludeSubdomains`.
+
+A header option left empty falls back to its default, so a header with a non-empty default cannot be switched off by clearing its value. Use `Next` to skip the middleware for a request.
+
 ## Default Config
 
 ```go

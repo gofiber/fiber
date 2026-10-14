@@ -18,6 +18,8 @@ Import the package:
 
 ```go
 import (
+    "log"
+
     "github.com/gofiber/fiber/v3"
     "github.com/gofiber/fiber/v3/middleware/skip"
 )
@@ -25,7 +27,8 @@ import (
 
 `skip.New` accepts the handler to wrap and a predicate function. The predicate
 runs for every request, and returning `true` skips the wrapped handler and
-executes the next middleware in the chain.
+executes the next middleware in the chain. If the predicate is `nil`, `skip.New`
+returns the handler unchanged, so it runs for every request.
 
 After you initialize your Fiber app, use `skip.New` like this:
 

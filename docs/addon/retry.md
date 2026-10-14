@@ -22,7 +22,10 @@ addon returns an error.
 
 ```go
 func NewExponentialBackoff(config ...retry.Config) *retry.ExponentialBackoff
+func (e *retry.ExponentialBackoff) Retry(f func() error) error
 ```
+
+`Retry` calls `f` up to `MaxRetryCount` times in total and returns `nil` as soon as `f` returns `nil`. If every attempt fails, it returns the error of the last attempt. Each call to `Retry` starts from `InitialInterval` with its own state, so one `ExponentialBackoff` can be shared.
 
 ## Examples
 
