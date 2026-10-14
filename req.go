@@ -339,73 +339,15 @@ func (r *DefaultReq) ContentType() string {
 
 // MediaType returns the MIME type from the Content-Type header without parameters.
 func (r *DefaultReq) MediaType() string {
-	contentType := utils.TrimSpace(r.c.fasthttp.Request.Header.ContentType())
-	if len(contentType) == 0 {
-		return ""
-	}
-	if idx := bytes.IndexByte(contentType, ';'); idx != -1 {
-		contentType = contentType[:idx]
-	}
-	contentType = utils.TrimSpace(contentType)
-	return r.c.app.toString(contentType)
+	return r.c.app.toString(mediatype.StripParams(r.c.fasthttp.Request.Header.ContentType()))
 }
 
 // Charset returns the charset parameter from the Content-Type header.
 func (r *DefaultReq) Charset() string {
-	contentType := r.c.fasthttp.Request.Header.ContentType()
-	_, params, ok := utils.CutByte(contentType, ';')
-	if !ok {
-		return ""
-	}
-	for len(params) > 0 {
-		// Slice off the next parameter at the next ";" that sits outside a
-		// quoted-string: parameter values may be quoted and contain ";"
-		// (RFC 9110 Section 5.6.6). A DQUOTE only opens a quoted-string at
-		// the start of a value (after an "=" plus optional whitespace), so a
-		// stray quote later in an unquoted value cannot swallow the rest of
-		// the header.
-		param := params
-		end := -1
-		inQuotes := false
-		escaped := false
-		expectValue := false
-	scan:
-		for i := 0; i < len(params); i++ {
-			ch := params[i]
-			switch {
-			case escaped:
-				escaped = false
-			case inQuotes:
-				switch ch {
-				case '\\':
-					escaped = true
-				case '"':
-					inQuotes = false
-				}
-			case ch == '=':
-				expectValue = true
-			case ch == '"' && expectValue:
-				inQuotes = true
-				expectValue = false
-			case ch == ';':
-				end = i
-				break scan
-			case ch != ' ' && ch != '\t':
-				expectValue = false
-			}
-		}
-		if end >= 0 {
-			param = params[:end]
-			params = params[end+1:]
-		} else {
-			params = nil
-		}
-
-		name, value, ok := utils.CutByte(param, '=')
-		if !ok || !utils.EqualFold(utils.TrimSpace(name), []byte("charset")) {
+	for name, v := range mediatype.Params(r.c.fasthttp.Request.Header.ContentType()) {
+		if !utils.EqualFold(name, []byte("charset")) {
 			continue
 		}
-		v := utils.TrimSpace(value)
 		if len(v) > 0 && v[0] == '"' {
 			// A quoted value must be a complete quoted-string, and its
 			// quoted-pairs must be replaced with the escaped octet
@@ -413,8 +355,8 @@ func (r *DefaultReq) Charset() string {
 			if len(v) < 2 || v[len(v)-1] != '"' {
 				return ""
 			}
-			unescaped, err := unescapeHeaderValue(v[1 : len(v)-1])
-			if err != nil {
+			unescaped, ok := mediatype.Unescape(v[1 : len(v)-1])
+			if !ok {
 				return ""
 			}
 			v = unescaped
@@ -1073,12 +1015,8 @@ func (r *DefaultReq) Is(extension string) bool {
 		return false
 	}
 
-	ct := r.c.app.toString(r.c.fasthttp.Request.Header.ContentType())
-	if i := strings.IndexByte(ct, ';'); i != -1 {
-		ct = ct[:i]
-	}
-	ct = utils.TrimSpace(ct)
-	return utils.EqualFold(ct, extensionHeader)
+	ct := mediatype.StripParams(r.c.fasthttp.Request.Header.ContentType())
+	return utils.EqualFold(utils.UnsafeString(ct), extensionHeader)
 }
 
 // HasBody returns true if the request declares a body via Content-Length, Transfer-Encoding, or already buffered payload data.

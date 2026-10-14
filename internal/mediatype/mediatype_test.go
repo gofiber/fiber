@@ -159,3 +159,150 @@ func Test_NormalizeRequestContentType_DecoyBoundaryLosesToReal(t *testing.T) {
 	NormalizeRequestContentType(&h)
 	require.Equal(t, "Real", string(h.MultipartFormBoundary()))
 }
+
+func Test_StripParams(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		in   string
+		want string
+	}{
+		{"", ""},
+		{"text/html", "text/html"},
+		{"text/html; charset=utf-8", "text/html"},
+		{"text/html ; charset=utf-8", "text/html"},
+		{" \ttext/html\t;charset=utf-8", "text/html"},
+		{"Text/HTML;", "Text/HTML"},
+		{"; charset=utf-8", ""},
+		{"   ", ""},
+	} {
+		require.Equal(t, []byte(tc.want), StripParams([]byte(tc.in)), "input %q", tc.in)
+	}
+}
+
+func Test_Params(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name string
+		in   string
+		want []string
+	}{
+		{name: "no parameters", in: "text/plain"},
+		{name: "trailing semicolon", in: "text/plain;"},
+		{name: "one parameter", in: "text/plain; charset=utf-8", want: []string{"charset", "utf-8"}},
+		{name: "spaces around equals", in: "text/plain; charset = utf-8", want: []string{"charset", "utf-8"}},
+		{name: "empty value", in: "text/plain; charset=", want: []string{"charset", ""}},
+		{name: "missing equals skipped", in: "text/plain; flag; ; a=1", want: []string{"a", "1"}},
+		{name: "several parameters", in: "text/plain;a=1;\tb=2 ; c=3", want: []string{"a", "1", "b", "2", "c", "3"}},
+		{name: "quoted semicolon", in: `text/plain; title="x;charset=bad"; charset=utf-8`, want: []string{"title", `"x;charset=bad"`, "charset", "utf-8"}},
+		{name: "quoted escaped quote", in: `text/plain; title="a\";c=bad"; c=ok`, want: []string{"title", `"a\";c=bad"`, "c", "ok"}},
+		{name: "quote after whitespace opens", in: `text/plain; a= "x;y"; b=2`, want: []string{"a", `"x;y"`, "b", "2"}},
+		{name: "stray quote in bare value", in: `text/plain; a=b"; c=bad"; d=1`, want: []string{"a", `b"`, "c", `bad"`, "d", "1"}},
+		{name: "unterminated quote", in: `text/plain; a="x; b=2`, want: []string{"a", `"x; b=2`}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			var got []string
+			for name, value := range Params([]byte(tc.in)) {
+				got = append(got, string(name), string(value))
+			}
+			require.Equal(t, tc.want, got)
+		})
+	}
+}
+
+func Test_Params_Break(t *testing.T) {
+	t.Parallel()
+
+	var names []string
+	for name := range Params([]byte("text/plain; a=1; b=2")) {
+		names = append(names, string(name))
+		break
+	}
+	require.Equal(t, []string{"a"}, names)
+}
+
+func Test_Unescape(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		in   string
+		want string
+		ok   bool
+	}{
+		{in: "", want: "", ok: true},
+		{in: "abc", want: "abc", ok: true},
+		{in: `a\"b`, want: `a"b`, ok: true},
+		{in: `c\\d`, want: `c\d`, ok: true},
+		{in: `a\"b\\c\"d`, want: `a"b\c"d`, ok: true},
+		{in: `value with \"quote\"`, want: `value with "quote"`, ok: true},
+		{in: `utf\-8`, want: "utf-8", ok: true},
+		{in: `\\`, want: `\`, ok: true},
+		{in: `bad\`, want: `bad\`, ok: false},
+		{in: `\`, want: `\`, ok: false},
+		{in: `a\"b\`, want: `a"b\`, ok: false},
+		{in: `a\\\`, want: `a\\`, ok: false},
+	} {
+		got, ok := Unescape([]byte(tc.in))
+		require.Equal(t, tc.ok, ok, "input %q", tc.in)
+		require.Equal(t, tc.want, string(got), "input %q", tc.in)
+	}
+}
+
+func Test_Unescape_AliasesWithoutEscapes(t *testing.T) {
+	t.Parallel()
+
+	for _, in := range []string{"abc", `ab\`} {
+		v := []byte(in)
+		got, _ := Unescape(v)
+		require.Same(t, &v[0], &got[0], "input %q", in)
+	}
+}
+
+// go test -v -run=^$ -bench=Benchmark_StripParams -benchmem -count=4
+func Benchmark_StripParams(b *testing.B) {
+	json := []byte("application/json")
+	html := []byte("text/html ; charset=utf-8")
+	var got []byte
+	b.ReportAllocs()
+	for b.Loop() {
+		_ = StripParams(json)
+		got = StripParams(html)
+	}
+	require.Equal(b, []byte("text/html"), got)
+}
+
+// go test -v -run=^$ -bench=Benchmark_Params -benchmem -count=4
+func Benchmark_Params(b *testing.B) {
+	ct := []byte(`multipart/form-data; boundary="a;b"; charset=utf-8`)
+	var n int
+	b.ReportAllocs()
+	for b.Loop() {
+		for name, value := range Params(ct) {
+			n += len(name) + len(value)
+		}
+	}
+	require.Positive(b, n)
+}
+
+// go test -v -run=^$ -bench=Benchmark_Unescape -benchmem -count=4
+func Benchmark_Unescape(b *testing.B) {
+	for _, bench := range []struct {
+		name string
+		in   []byte
+	}{
+		{name: "plain", in: []byte("value with spaces")},
+		{name: "quoted_pair", in: []byte(`value with \"quotes\"`)},
+	} {
+		b.Run(bench.name, func(b *testing.B) {
+			var got []byte
+			b.ReportAllocs()
+			for b.Loop() {
+				got, _ = Unescape(bench.in)
+			}
+			require.NotEmpty(b, got)
+		})
+	}
+}

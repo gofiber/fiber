@@ -256,6 +256,11 @@ func Test_Ctx_Charset(t *testing.T) {
 			expected:    "",
 		},
 		{
+			name:        "quoted_value_ending_in_backslash",
+			contentType: `text/plain; charset="utf-8\"`,
+			expected:    "",
+		},
+		{
 			// A bare-token value containing a DQUOTE is invalid; the
 			// parameter is skipped so the later well-formed charset wins.
 			name:        "bare_value_with_quote_then_valid_charset",
@@ -274,6 +279,44 @@ func Test_Ctx_Charset(t *testing.T) {
 			require.Equal(t, testCase.expected, c.Charset())
 		})
 	}
+}
+
+// go test -v -run=^$ -bench=Benchmark_Ctx_Charset -benchmem -count=4
+func Benchmark_Ctx_Charset(b *testing.B) {
+	for _, bench := range []struct {
+		name        string
+		contentType string
+	}{
+		{name: "no_parameters", contentType: MIMEApplicationJSON},
+		{name: "charset", contentType: MIMEApplicationJSONCharsetUTF8},
+		{name: "charset_last", contentType: `multipart/form-data; boundary="a;b"; charset=utf-8`},
+		{name: "quoted_pair", contentType: `text/plain; charset="utf\-8"`},
+	} {
+		b.Run(bench.name, func(b *testing.B) {
+			app := New()
+			c := app.AcquireCtx(&fasthttp.RequestCtx{})
+			c.Request().Header.Set(HeaderContentType, bench.contentType)
+			var charset string
+			b.ReportAllocs()
+			for b.Loop() {
+				charset = c.Charset()
+			}
+			_ = charset
+		})
+	}
+}
+
+// go test -v -run=^$ -bench=Benchmark_Ctx_MediaType -benchmem -count=4
+func Benchmark_Ctx_MediaType(b *testing.B) {
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	c.Request().Header.Set(HeaderContentType, "text/html ; charset=utf-8")
+	var mediaType string
+	b.ReportAllocs()
+	for b.Loop() {
+		mediaType = c.MediaType()
+	}
+	require.Equal(b, MIMETextHTML, mediaType)
 }
 
 // go test -run Test_Ctx_HeaderHelpers

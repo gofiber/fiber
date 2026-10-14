@@ -4,13 +4,13 @@ import (
 	"hash/crc32"
 	"math"
 	"slices"
-	"strings"
 
 	"github.com/gofiber/fiber/v3"
 	internaletag "github.com/gofiber/fiber/v3/internal/etag"
 	"github.com/gofiber/fiber/v3/internal/fieldname"
 	"github.com/gofiber/fiber/v3/internal/headerlist"
 	"github.com/gofiber/fiber/v3/internal/headerlookup"
+	"github.com/gofiber/fiber/v3/internal/mediatype"
 	"github.com/gofiber/utils/v2"
 	"github.com/valyala/bytebufferpool"
 )
@@ -132,11 +132,8 @@ func New(config ...Config) fiber.Handler {
 // Such responses must be passed through untouched: buffering the body to hash
 // it would break real-time delivery.
 func isEventStream(c fiber.Ctx) bool {
-	ct := c.GetRespHeader(fiber.HeaderContentType)
-	if i := strings.IndexByte(ct, ';'); i >= 0 {
-		ct = ct[:i]
-	}
-	return utils.EqualFold(utils.TrimSpace(ct), fiber.MIMETextEventStream)
+	ct := mediatype.StripParams(utils.UnsafeBytes(c.GetRespHeader(fiber.HeaderContentType)))
+	return utils.EqualFold(utils.UnsafeString(ct), fiber.MIMETextEventStream)
 }
 
 // appendUint appends n to dst and returns the extended dst.
