@@ -104,6 +104,8 @@ func New() *Client
 
 **NewWithClient** creates and returns a new Client object from an existing `fasthttp.Client`. It panics if `c` is `nil`.
 
+Fiber cannot tell whether that client has served a host already. Unless it was created with `DisablePathNormalizing: true`, [SetDisablePathNormalizing](#setdisablepathnormalizing) changes what is sent to hosts it has not served yet, but the check that keeps a path parameter value inside its segment stays on.
+
 ```go title="Signature"
 func NewWithClient(c *fasthttp.Client) *Client
 ```
@@ -705,7 +707,7 @@ func (c *Client) DelParams(key ...string) *Client
 
 ## UserAgent & Referer
 
-Requests are sent with `User-Agent: fiber` unless a user agent is set on the client or on the request, and the request's value wins. Use these methods, or `Config.UserAgent` and `Config.Referer`, for these two headers: a `User-Agent` or `Referer` set through `SetHeader`, `AddHeader` or `Config.Header` is replaced when the request is sent.
+Requests are sent with `User-Agent: fiber` unless a user agent is set on the client or on the request, and the request's value wins. They are sent without a `Referer` header unless a referer is set the same way. Use these methods, or `Config.UserAgent` and `Config.Referer`, for these two headers: a `User-Agent` or `Referer` set through `SetHeader`, `AddHeader` or `Config.Header` is replaced when the request is sent, and a `Referer` is removed when no referer is set.
 
 ### SetUserAgent
 
@@ -771,7 +773,7 @@ func (c *Client) DelPathParams(key ...string) *Client
 
 ### DisablePathNormalizing
 
-Reports whether path normalizing is disabled for the client.
+Reports whether path normalizing was disabled with [SetDisablePathNormalizing](#setdisablepathnormalizing). It does not read the setting of a fasthttp client that was created with `DisablePathNormalizing: true`.
 
 ```go title="Signature"
 func (c *Client) DisablePathNormalizing() bool
@@ -779,7 +781,7 @@ func (c *Client) DisablePathNormalizing() bool
 
 ### SetDisablePathNormalizing
 
-Turns path normalizing off or on for every request of the client. It is on by default: the request path is normalized before it is sent, which decodes percent-escapes, collapses `//` and resolves `.` and `..` segments, so `/a//b/./c%2Fd` goes out as `/a/b/c/d`. With normalizing off, Fiber builds the URL without normalizing it, but the wrapped fasthttp client normalizes the path again when it writes the request unless it was created with `DisablePathNormalizing: true` (see [NewWithClient](#newwithclient)); only then is the path sent as written. A request skips Fiber's normalizing when either the client or the request disables it; see [SetDisablePathNormalizing](./request.md#setdisablepathnormalizing) for the request-level setting.
+Turns path normalizing off or on for every request of the client. It is on by default: the request path is normalized before it is sent, which decodes percent-escapes, collapses `//` and resolves `.` and `..` segments, so `/a//b/./c%2Fd` goes out as `/a/b/c/d`. With normalizing off, the path is sent as written. fasthttp normalizes the path when it writes the request, according to the client that sends it, so the setting is applied to the `DisablePathNormalizing` field of the wrapped fasthttp client, and of every host client behind a load balancer: a client created with [NewWithClient](#newwithclient), [NewWithHostClient](#newwithhostclient) or [NewWithLBClient](#newwithlbclient) changes the fasthttp client it wraps, for everyone who shares it. Call it before the first request, because a `fasthttp.Client` copies the setting into each host client when it first creates it, and a host it already serves keeps normalizing until fasthttp drops its entry, see the note under [TLS](#tls) for when. Fiber keeps rejecting path parameter values that would leave their segment unless it knows that the path is sent as built. It knows for a client from `New`, until a request has gone out through it while it normalized; for a client from `NewWithHostClient`, which reads the field on every request; for a client from `NewWithLBClient` whose host clients all have the field on; and for a `fasthttp.Client` given to `NewWithClient` that was created with `DisablePathNormalizing: true`. A `fasthttp.Client` given to `NewWithClient` without it may have served hosts already, so Fiber cannot tell and keeps the check on, although hosts it has not served yet get the setting. A balancer that holds a client that is neither a `*fasthttp.HostClient` nor a wrapper exposing a nested balancer through `LBClient()` cannot be told either and counts as normalizing. A request skips Fiber's normalizing when either the client or the request disables it; see [SetDisablePathNormalizing](./request.md#setdisablepathnormalizing) for the request-level setting.
 
 ```go title="Signature"
 func (c *Client) SetDisablePathNormalizing(disable bool) *Client
@@ -870,7 +872,7 @@ func (c *Client) SetTimeout(t time.Duration) *Client
 
 ### Debug
 
-Enables debug-level logging output. With debug enabled, the raw request and response are logged through the client's logger after each response. When either body is a stream, only its headers are logged so the stream stays readable for the caller. Nothing is logged when the client has no logger. Use [SetLogger](#setlogger) to choose the logger.
+Enables debug-level logging output. With debug enabled, the raw request and response are logged through the client's logger after each response, as they are: the `Authorization` and `Cookie` headers and the bodies are in the log, so keep debug logging off wherever people who should not see them can read it. When either body is a stream, only its headers are logged so the stream stays readable for the caller. A new client logs through Fiber's default logger, the one the `log` package writes to. Nothing is logged when the logger was set to `nil`. Use [SetLogger](#setlogger) to choose the logger.
 
 ```go title="Signature"
 func (c *Client) Debug() *Client
@@ -888,7 +890,7 @@ func (c *Client) DisableDebug() *Client
 
 ### SetCookieJar
 
-Assigns a cookie jar to the client to store and manage cookies across requests. A cookie received with a `Max-Age` attribute expires that many seconds after it was received, taking precedence over `Expires`; a `Max-Age` of zero or less expires it immediately (RFC 6265). A `Max-Age` that is not an integer is ignored, but the jar also loses the attributes after it in the same `Set-Cookie` header (`Path`, `Domain`, `Secure` and so on). When the attribute repeats, the last integer value counts. Cookies for the same host and path are stored under the origin that answered, so a redirect cannot plant cookies for another host. See [Cookie jar](./examples.md#cookie-jar) for how the jar scopes, orders and limits cookies.
+Assigns a cookie jar to the client to store and manage cookies across requests. A cookie received with a `Max-Age` attribute expires that many seconds after it was received, taking precedence over `Expires`; a `Max-Age` of zero or less expires it immediately (RFC 6265). A `Max-Age` that is not an integer is ignored on its own, as is any other attribute the parser cannot read, such as an `Expires` in an unrecognized format (RFC 6265 Section 5.2): the cookie keeps its name, its value and every other attribute, `Path`, `Domain` and `Secure` included. When the attribute repeats, the last integer value counts. A `Set-Cookie` whose name and value cannot be parsed is dropped. Cookies for the same host and path are stored under the origin that answered, so a redirect cannot plant cookies for another host. See [Cookie jar](./examples.md#cookie-jar) for how the jar scopes, orders and limits cookies.
 
 ```go title="Signature"
 func (c *Client) SetCookieJar(cookieJar *CookieJar) *Client
@@ -972,7 +974,7 @@ func (c *Client) SetDial(dial fasthttp.DialFunc) *Client
 
 ### SetLogger
 
-Sets the logger instance used by the client.
+Sets the logger instance used by the client. A new client starts with Fiber's default logger. `nil` turns client logging off; [SetRootCertificate](#setrootcertificate) and [SetRootCertificateFromString](#setrootcertificatefromstring) still panic on invalid input, only without a log line.
 
 ```go title="Signature"
 func (c *Client) SetLogger(logger log.CommonLogger) *Client

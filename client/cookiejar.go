@@ -534,7 +534,14 @@ func (cj *CookieJar) parseCookiesFromResp(host, path []byte, resp *fasthttp.Resp
 	defaultPath := defaultCookiePathFor(path)
 	for _, value := range resp.Header.Cookies() {
 		tmp := fasthttp.AcquireCookie()
-		_ = tmp.ParseBytes(value) //nolint:errcheck // ignore error
+		// An attribute fasthttp cannot parse is ignored (RFC 6265 Section 5.2),
+		// and so is nothing else: a plain ParseBytes stops at it and loses every
+		// attribute after it, Secure and Path included. A name and value that
+		// will not parse leave nothing worth storing.
+		if err := parseSetCookie(tmp, value); err != nil {
+			fasthttp.ReleaseCookie(tmp)
+			continue
+		}
 		applyMaxAge(tmp, now, value)
 
 		// A Set-Cookie whose Path attribute is missing — or does not begin

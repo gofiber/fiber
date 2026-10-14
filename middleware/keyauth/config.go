@@ -30,7 +30,7 @@ type Config struct {
 	// ErrorHandler defines a function which is executed for an invalid key.
 	// It may be used to define a custom error.
 	//
-	// Optional. Default: 401 Missing or invalid API Key
+	// Optional. Default: 401 with the body "missing or invalid API Key" (ErrMissingOrMalformedAPIKey)
 	ErrorHandler fiber.ErrorHandler
 
 	// Validator is a function to validate the key.

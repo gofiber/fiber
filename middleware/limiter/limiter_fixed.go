@@ -38,7 +38,7 @@ func (FixedWindow) New(cfg *Config) fiber.Handler {
 
 		// Generate expiration from generator. The storage TTL is derived from the
 		// window so a sub-second value cannot expire the entry mid-window.
-		expiration := windowSeconds(cfg.ExpirationFunc(c))
+		expiration := windowSeconds(cfg.ExpirationFunc(c), cfg.Expiration)
 		expirationDuration, _ := secondsToDuration(expiration)
 
 		// Get key from request

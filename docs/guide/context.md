@@ -148,7 +148,7 @@ app.Get("/job", func(c fiber.Ctx) error {
 Read what you need from the context inside the handler and hand the goroutine a copy. A retained context keeps working after the handler returns, but what it holds may not stay valid:
 
 - A string that comes from the request, such as the request ID when the client sent one or the key that `keyauth` extracted, points into a buffer that fasthttp reuses for the next request on the connection. Unless [`Immutable`](../api/fiber.md#immutable) is set, a goroutine that reads it later can see another request's ID or token. Copy it with `strings.Clone` before you hand it over; see [Zero Allocation](../intro.md#zero-allocation).
-- The `*session.Middleware` that `session.FromContext` returns goes back to a pool when the request ends and then serves another request, so a goroutine that outlives the handler and calls `session.FromContext` on a retained context can read or change another user's session. Read what you need inside the handler, for example the session ID, and hand that to the goroutine; see the [Store Pattern](../middleware/session.md#store-pattern-advanced) for background work on a session.
+- A context you keep stops resolving a session when its request ends: `session.FromContext` returns `nil` for it from then on, so a goroutine that outlives the handler cannot reach the session, and never another user's. The `*session.Middleware` it returned while the request was running is only valid until the handler returns, so do not hand that pointer to a goroutine that may outlive the handler either. Read what you need inside the handler, for example the session ID, and hand that to the goroutine; see the [Store Pattern](../middleware/session.md#store-pattern-advanced) for background work on a session.
 
 :::
 

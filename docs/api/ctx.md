@@ -2945,6 +2945,8 @@ app.Get("/", func(c fiber.Ctx) error {
 })
 ```
 
+With a filename, the `Content-Type` is set from its extension the way [`Type`](#type) does it, charset included.
+
 The `filename` parameter is emitted as an RFC 9110 quoted-string: spaces and
 punctuation stay literal, and quotes/backslashes are escaped with a backslash
 (no URL encoding). Non-ASCII filenames additionally carry the `filename*`
@@ -4249,6 +4251,8 @@ app.Use(func(c fiber.Ctx) error {
 Sets the [Content-Type](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Type) HTTP header to the MIME type listed [in the Nginx MIME types configuration](https://github.com/nginx/nginx/blob/master/conf/mime.types) specified by the file **extension**.
 
 A text type gets `; charset=utf-8` unless you pass another `charset`: every `text/*` type, `application/json`, `application/javascript`, `application/xml` and any `+json` or `+xml` type. Other types, such as `image/png`, get none.
+
+An extension missing from that list is looked up in the standard library's MIME tables, and the parameters of its answer are dropped: `csv` gives `text/csv`, which takes `charset=utf-8` by the rule above. The header never holds two charsets. Pass `charset` to send another one.
 
 :::info
 This method is **chainable**.

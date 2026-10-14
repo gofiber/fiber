@@ -1111,12 +1111,12 @@ cc := client.New().
     SetBaseURL("https://api.service.local").
     AddHeader("Authorization", "Bearer <token>").
     SetTimeout(5 * time.Second).
-    SetPathParam("tenant", "acme")
+    SetPathParam("tenant", "acme").
+    SetDisablePathNormalizing(true)
 
 resp, err := cc.Get("/users/:tenant/:id", client.Config{
-    PathParam:              map[string]string{"id": "42"},
-    Param:                  map[string]string{"include": "profile"},
-    DisablePathNormalizing: true,
+    PathParam: map[string]string{"id": "42"},
+    Param:     map[string]string{"include": "profile"},
 })
 if err != nil {
     panic(err)
@@ -1131,8 +1131,21 @@ or `\`, a value that is exactly `.` or `..`, and an empty value are rejected
 with `ErrPathParamInPath`; a value substituted into the host must already be a
 valid host or the request fails with `ErrPathParamInHost`. Previously such a
 value was pasted in unchanged, so `SetPathParam("id", "../../admin")` on
-`/api/:id` quietly sent the request to `/admin`. Set
-`SetDisablePathNormalizing(true)` to send a multi-segment value on purpose.
+`/api/:id` quietly sent the request to `/admin`. Call
+`SetDisablePathNormalizing(true)` on the client to send a multi-segment value on
+purpose (for a client from `NewWithClient`, create the fasthttp client with
+`DisablePathNormalizing: true` as well); the setting on a single request only
+counts for a client that already sends paths as written. `.`, `..` and an empty
+value stay rejected either way, because a server resolves a dot segment and may
+merge slashes.
+:::
+
+:::note
+`Debug()` logs the raw request and response after each response through the
+client's logger, which is Fiber's default logger unless `SetLogger` chose
+another one. The text is logged as it is, `Authorization` and `Cookie` headers
+and bodies included. A request with no referer set carries no `Referer` header;
+it used to carry an empty one.
 :::
 
 ### Fasthttp transport integration
@@ -1947,6 +1960,8 @@ In v3, Fiber introduced Addons. Addons are additional useful packages that can b
 The Retry addon is a new addon that implements a retry mechanism for unsuccessful network operations. It uses an exponential backoff algorithm with jitter.
 It calls the function multiple times and tries to make it successful. If all calls are failed, then, it returns an error.
 It adds a jitter at each retry step because adding a jitter is a way to break synchronization across the client and avoid collision.
+
+A field of `retry.ExponentialBackoff` left at zero takes its default, also on a struct literal, so even the zero value calls the function and waits between the attempts as the default config does. A literal that sets only `MaxRetryCount` used to retry at once; it now waits too.
 
 <details>
 <summary>Example</summary>

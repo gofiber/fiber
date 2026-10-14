@@ -19,6 +19,7 @@ import (
 	"io"
 	"io/fs"
 	"math"
+	"mime"
 	"mime/multipart"
 	"net"
 	"net/http"
@@ -29,6 +30,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"testing/fstest"
@@ -10577,6 +10579,104 @@ func Test_Ctx_Type(t *testing.T) {
 	// Test custom charset override
 	c.Type("html", "iso-8859-1")
 	require.Equal(t, "text/html; charset=iso-8859-1", string(c.Response().Header.Peek("Content-Type")))
+}
+
+// registerTestMIMETypes adds extensions the standard library answers with
+// parameters of its own, which is what utils.GetMIME falls back to for an
+// extension outside its table (csv and mjs among them). They are registered here
+// so the tests do not depend on the MIME database of the machine that runs them.
+var registerTestMIMETypes = sync.OnceFunc(func() {
+	for ext, mimeType := range map[string]string{
+		".fibertestcsv":     "text/x-fibercsv; charset=utf-8",
+		".fibertestlatin":   "text/x-fiberlatin; charset=iso-8859-1",
+		".fibertestparam":   "application/x-fiberparam; version=2",
+		".fibertestboth":    "application/x-fiberboth; version=2; charset=utf-8",
+		".fibertestcaps":    "text/x-fibercaps; Charset=UTF-8",
+		".fibertestspacing": "text/x-fiberspacing ;  charset=utf-8 ; version=3",
+	} {
+		if err := mime.AddExtensionType(ext, mimeType); err != nil {
+			panic(err)
+		}
+	}
+})
+
+// go test -run Test_Ctx_Type_NeverTwoCharsets
+//
+// Whatever the machine's MIME database holds, no extension may produce two
+// charsets, with or without an explicit one. utils.GetMIME hands back the bare
+// type for an extension outside its table (utils v2.6.2 and later); with the
+// parameters of the standard library's answer left on, "text/csv; charset=utf-8"
+// plus the charset Type appends sent two.
+func Test_Ctx_Type_NeverTwoCharsets(t *testing.T) {
+	t.Parallel()
+	registerTestMIMETypes()
+
+	extensions := []string{
+		"csv", "mjs", "md", "markdown", "ics", "vcf", "tsv", "go", "log", "vtt", "py", "c", "h", "java", "yaml", "toml",
+		"html", "htm", "css", "js", "json", "xml", "txt", "svg", "wasm", "pdf", "png", "unknownext",
+		"fibertestcsv", "fibertestlatin", "fibertestparam", "fibertestboth", "fibertestcaps", "fibertestspacing",
+	}
+
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+
+	for _, ext := range extensions {
+		for _, charset := range [][]string{nil, {"utf-8"}, {"iso-8859-1"}} {
+			c.Type(ext, charset...)
+			contentType := string(c.Response().Header.Peek(HeaderContentType))
+			require.LessOrEqual(t, strings.Count(strings.ToLower(contentType), "charset="), 1,
+				"Type(%q, %v) sent %q", ext, charset, contentType)
+			if len(charset) > 0 {
+				require.Contains(t, contentType, "charset="+charset[0], "Type(%q, %v) sent %q", ext, charset, contentType)
+			}
+		}
+	}
+}
+
+// go test -run Test_Ctx_Attachment_Charset
+func Test_Ctx_Attachment_Charset(t *testing.T) {
+	t.Parallel()
+	registerTestMIMETypes()
+
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+
+	c.Attachment("report.fibertestcsv")
+	require.Equal(t, "text/x-fibercsv; charset=utf-8", string(c.Response().Header.Peek(HeaderContentType)))
+	require.Equal(t, `attachment; filename="report.fibertestcsv"`, string(c.Response().Header.Peek(HeaderContentDisposition)))
+
+	c.Attachment("notes.txt")
+	require.Equal(t, "text/plain; charset=utf-8", string(c.Response().Header.Peek(HeaderContentType)))
+
+	c.Attachment("image.png")
+	require.Equal(t, "image/png", string(c.Response().Header.Peek(HeaderContentType)))
+}
+
+// go test -run Test_Ctx_Is_And_Accepts_ExtensionWithCharset
+//
+// Is and Accepts compare the type itself, so they match an extension only while
+// utils.GetMIME answers it without parameters: "text/x-fibercsv; charset=utf-8"
+// is not the "text/x-fibercsv" a request names.
+func Test_Ctx_Is_And_Accepts_ExtensionWithCharset(t *testing.T) {
+	t.Parallel()
+	registerTestMIMETypes()
+
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+
+	c.Request().Header.SetContentType("text/x-fibercsv; charset=utf-8")
+	require.True(t, c.Is("fibertestcsv"))
+	require.False(t, c.Is("fibertestlatin"))
+
+	c.Request().Header.Set(HeaderAccept, "text/x-fibercsv")
+	require.Equal(t, "fibertestcsv", c.Accepts("fibertestcsv"))
+	require.Empty(t, c.Accepts("fibertestlatin"))
+
+	c.Request().Header.Set(HeaderAccept, "text/*")
+	require.Equal(t, "fibertestcsv", c.Accepts("fibertestcsv"))
 }
 
 // go test -run Test_shouldIncludeCharset

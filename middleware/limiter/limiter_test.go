@@ -1041,6 +1041,99 @@ func Test_Limiter_Sliding_ExpirationFunc_FallbackOnNegativeDuration(t *testing.T
 	require.Equal(t, fiber.StatusTooManyRequests, resp.StatusCode)
 }
 
+// Test_Limiter_ExpirationFunc_NonPositiveUsesConfiguredExpiration covers an
+// ExpirationFunc that returns zero or less: the window is the configured
+// Expiration, not the package default of one minute. Only the existing tests
+// for this fallback checked that the limiter still limits, so a configured
+// ten-second window was a minute long for those requests, and Retry-After and
+// X-RateLimit-Reset said so.
+func Test_Limiter_ExpirationFunc_NonPositiveUsesConfiguredExpiration(t *testing.T) {
+	t.Parallel()
+
+	const expiration = 10 * time.Second
+
+	strategies := []struct {
+		handler Handler
+		// storage returns the store the strategy is tested with: the fixed window
+		// keeps its entry in storage, whose own expiry would otherwise run on
+		// real time while the test moves a fake clock.
+		storage func() fiber.Storage
+		name    string
+	}{
+		{name: "fixed", handler: FixedWindow{}, storage: func() fiber.Storage { return newInjectedClockStorage() }},
+		{name: "sliding", handler: SlidingWindow{}, storage: func() fiber.Storage { return nil }},
+	}
+
+	for _, strategy := range strategies {
+		for _, returned := range []time.Duration{0, -time.Second} {
+			t.Run(strategy.name+"/"+returned.String(), func(t *testing.T) {
+				t.Parallel()
+
+				clock := newTestClock(time.Now().Truncate(time.Second))
+				app := fiber.New()
+				app.Use(New(Config{
+					Max:               1,
+					Expiration:        expiration,
+					ExpirationFunc:    func(fiber.Ctx) time.Duration { return returned },
+					LimiterMiddleware: strategy.handler,
+					clock:             clock.Now,
+					Storage:           strategy.storage(),
+				}))
+				app.Get("/", func(c fiber.Ctx) error {
+					return c.SendStatus(fiber.StatusOK)
+				})
+
+				resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+				require.NoError(t, err)
+				require.Equal(t, fiber.StatusOK, resp.StatusCode)
+				require.Equal(t, "10", resp.Header.Get(xRateLimitReset), "the window is the configured Expiration")
+
+				resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+				require.NoError(t, err)
+				require.Equal(t, fiber.StatusTooManyRequests, resp.StatusCode)
+				require.Equal(t, "10", resp.Header.Get(fiber.HeaderRetryAfter))
+
+				// Just over the configured window, the client is admitted again. Two
+				// whole windows are needed for the sliding one to forget the last.
+				clock.Add(2*expiration + time.Second)
+
+				resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+				require.NoError(t, err)
+				require.Equal(t, fiber.StatusOK, resp.StatusCode)
+			})
+		}
+	}
+}
+
+// Test_Limiter_ExpirationFunc_PositiveStillWins checks the other side of the
+// fallback: a positive value from ExpirationFunc keeps overriding Expiration.
+func Test_Limiter_ExpirationFunc_PositiveStillWins(t *testing.T) {
+	t.Parallel()
+
+	for name, handler := range map[string]Handler{"fixed": FixedWindow{}, "sliding": SlidingWindow{}} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			clock := newTestClock(time.Now().Truncate(time.Second))
+			app := fiber.New()
+			app.Use(New(Config{
+				Max:               5,
+				Expiration:        time.Minute,
+				ExpirationFunc:    func(fiber.Ctx) time.Duration { return 3 * time.Second },
+				LimiterMiddleware: handler,
+				clock:             clock.Now,
+			}))
+			app.Get("/", func(c fiber.Ctx) error {
+				return c.SendStatus(fiber.StatusOK)
+			})
+
+			resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+			require.NoError(t, err)
+			require.Equal(t, "3", resp.Header.Get(xRateLimitReset))
+		})
+	}
+}
+
 func Test_Limiter_SubSecondExpirationIsOneSecondWindow(t *testing.T) {
 	t.Parallel()
 

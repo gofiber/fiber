@@ -17,9 +17,10 @@ type Config struct {
 	// Optional. Default: memory.New()
 	Storage fiber.Storage
 
-	// Store defines the session store.
+	// Store defines a pre-built session store, for example one shared with
+	// other handlers or one that has custom types registered.
 	//
-	// Required.
+	// Optional. Default: nil, which creates a store from this Config.
 	Store *Store
 
 	// Next defines a function to skip this middleware when it returns true.

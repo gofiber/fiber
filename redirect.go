@@ -159,7 +159,8 @@ func (r *Redirect) Status(code int) *Redirect {
 // With You can send flash messages by using With().
 // They will be sent as a cookie.
 // You can get them by using: Redirect().Messages(), Redirect().Message()
-// Note: You must use escape char before using ',' and ':' chars to avoid wrong parsing.
+// The cookie payload is MessagePack encoded, so keys and values need no escaping.
+// Calling With again with the same key replaces the earlier message.
 // No cookie is set when Config.DisableFlashMessages is on.
 func (r *Redirect) With(key, value string, level ...uint8) *Redirect {
 	// Get level

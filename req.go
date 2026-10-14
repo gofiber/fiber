@@ -99,7 +99,7 @@ func (r *DefaultReq) App() *App {
 	return r.c.app
 }
 
-// BaseURL returns (protocol + host + base path).
+// BaseURL returns (protocol + host), such as "https://example.com". It carries no path.
 func (r *DefaultReq) BaseURL() string {
 	return r.c.BaseURL()
 }

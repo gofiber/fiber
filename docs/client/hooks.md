@@ -97,7 +97,7 @@ Full Name: gofiber/fiber
 Fiber includes built-in request hooks:
 
 - **parserRequestURL**: Normalizes and customizes the URL based on path and query parameters. Required for `PathParam` and `QueryParam` methods.
-- **parserRequestHeader**: Sets request headers, cookies, content type, referer, and user agent based on client and request properties. Client headers are applied first and request headers with the same key replace them. The user agent defaults to `fiber`, and the user agent and referer come from `SetUserAgent` and `SetReferer`, so a `User-Agent` or `Referer` header set any other way is replaced.
+- **parserRequestHeader**: Sets request headers, cookies, content type, referer, and user agent based on client and request properties. Client headers are applied first and request headers with the same key replace them. The user agent defaults to `fiber`, and the user agent and referer come from `SetUserAgent` and `SetReferer`, so a `User-Agent` or `Referer` header set any other way is replaced. No `Referer` header is sent unless a referer is set.
 - **parserRequestBody**: Automatically serializes the request body (JSON, XML, form, file uploads, etc.).
 
 :::info
@@ -242,7 +242,7 @@ X-Cache: HIT
 
 Fiber includes built-in response hooks:
 
-- **parserResponseCookie**: Parses cookies from the response and stores them in the response object and cookie jar if available. A cookie with an attribute that cannot be parsed keeps its name and value.
+- **parserResponseCookie**: Parses cookies from the response and stores them in the response object and cookie jar if available. An attribute that cannot be parsed is ignored on its own, in the response and in the jar alike; the cookie keeps its name, its value and its other attributes.
 - **logger**: Logs information about the raw request and response. It uses the `log.CommonLogger` interface. Only the headers are logged for a streamed body, and nothing is logged when the client has no logger.
 
 :::info

@@ -6,7 +6,9 @@ id: basicauth
 
 Basic Authentication middleware for [Fiber](https://github.com/gofiber/fiber) that provides HTTP basic auth. It calls the next handler for valid credentials and returns [`401 Unauthorized`](https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/401) for missing or invalid credentials, [`400 Bad Request`](https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400) for malformed `Authorization` headers, among them a request that carries the field on more than one line, or [`431 Request Header Fields Too Large`](https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/431) when the header exceeds size limits. Credentials may omit Base64 padding as permitted by RFC 7235's `token68` syntax.
 
-The default unauthorized response includes the header `WWW-Authenticate: Basic realm="Restricted", charset="UTF-8"`, sets `Cache-Control: no-store`, and adds a `Vary: Authorization` header. Only the `UTF-8` charset is supported; any other value will panic. Generated realm and charset values are escaped as RFC 9110 HTTP quoted strings.
+The default unauthorized response includes the header `WWW-Authenticate: Basic realm="Restricted", charset="UTF-8"`, sets `Cache-Control: no-store`, and adds `Authorization` to the `Vary` header, keeping the fields an earlier middleware put there. Only the `UTF-8` charset is supported; any other value will panic. Generated realm and charset values are escaped as RFC 9110 HTTP quoted strings.
+
+With no `Users` and no `Authorizer`, which is what `New()` called without a config gives, no credentials are valid and no request is let through: well-formed credentials, or none, are answered `401 Unauthorized`, and a malformed `Authorization` header still gets `400 Bad Request`.
 
 ## Signatures
 

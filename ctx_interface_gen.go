@@ -19,7 +19,7 @@ import (
 type Ctx interface {
 	// App returns the *App reference to the instance of the Fiber application
 	App() *App
-	// BaseURL returns (protocol + host + base path).
+	// BaseURL returns (protocol + host), such as "https://example.com". It carries no path.
 	BaseURL() string
 	// RequestCtx returns *fasthttp.RequestCtx that carries a deadline
 	// a cancellation signal, and other values across API boundaries.
@@ -604,8 +604,10 @@ type Ctx interface {
 	Append(field string, values ...string)
 	// Add appends the value as a new field line, where Append folds values into one
 	// comma-separated line. The headers fasthttp keeps in a slot of their own are
-	// the exception: Content-Type, Server and the rest are replaced and Date and TE
-	// ignored, though Set-Cookie is slotted and does append. Use Cookie for that.
+	// the exception: Content-Type, Content-Encoding, Content-Length, Connection and
+	// Server are replaced, and Transfer-Encoding and Date are ignored because fasthttp
+	// writes them itself. Set-Cookie is slotted too but does append, though Cookie
+	// builds that field value for you. Trailer accumulates, extending the announced set.
 	Add(key, val string)
 	// Attachment sets the HTTP response Content-Disposition header field to attachment.
 	Attachment(filename ...string)

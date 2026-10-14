@@ -34,7 +34,7 @@ type Config struct {
 
 	// A function to dynamically calculate the expiration time for rate limiter entries.
 	// Window accounting is whole-second, so a positive value below one second is floored to
-	// one second. A zero or negative value falls back to the default expiration.
+	// one second. A zero or negative value falls back to the configured Expiration.
 	//
 	// Default: A function that returns the static `Expiration` value from the config.
 	ExpirationFunc func(c fiber.Ctx) time.Duration
@@ -159,10 +159,16 @@ func configDefault(config ...Config) Config {
 }
 
 // windowSeconds turns a per-request expiration into the whole-second window used
-// for accounting. A positive sub-second value floors to 1s instead of truncating
-// to a 0-second window (NaN rate in sliding, no limiting at all in fixed).
-func windowSeconds(d time.Duration) uint64 {
+// for accounting. A zero or negative value falls back to configured, the
+// Expiration the limiter was set up with. A positive sub-second value floors
+// to 1s instead of truncating to a 0-second window (NaN rate in sliding, no
+// limiting at all in fixed).
+func windowSeconds(d, configured time.Duration) uint64 {
 	if d <= 0 {
+		d = configured
+	}
+	if d <= 0 {
+		// A Config that did not go through configDefault carries no Expiration.
 		d = ConfigDefault.Expiration
 	}
 	if sec := uint64(d.Seconds()); sec > 0 {

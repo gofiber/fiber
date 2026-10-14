@@ -669,7 +669,7 @@ sess.Store() *session.Store
 
 `FromContext` accepts a `fiber.CustomCtx`, `fiber.Ctx`, a `*fasthttp.RequestCtx`, or a `context.Context`.
 
-The returned `*session.Middleware` is only valid while the request is being handled. When the request ends it goes back to a pool and serves another request, even though a context you kept from `c.Context()` still holds it (with `PassLocalsToContext` enabled). Do not call `FromContext` on a retained context from a goroutine that outlives the handler: it can reach another request's session. Pass the session ID to that goroutine and use the [Store Pattern](#store-pattern-advanced) instead.
+The returned `*session.Middleware` is only valid while the request is being handled. A context you kept from `c.Context()` (with `PassLocalsToContext` enabled) stops resolving it when the request ends: `FromContext` returns `nil` for that context from then on, so a goroutine that outlives the handler cannot reach the session, and never another request's. Do not hand the pointer itself to such a goroutine. Pass it the session ID and use the [Store Pattern](#store-pattern-advanced) instead.
 
 A session that was only read is written back to storage without being re-encoded. `Get` and `Keys` give that up when the value or key they return could share memory with the session (a map, slice, array, pointer or struct; scalars and `time.Time` are safe), because the caller could then change it in place without calling `Set`.
 

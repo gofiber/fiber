@@ -8,9 +8,12 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"runtime"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -21,6 +24,7 @@ import (
 	fiberlog "github.com/gofiber/fiber/v3/log"
 	"github.com/gofiber/fiber/v3/middleware/logger"
 	"github.com/gofiber/utils/v2"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
 )
@@ -943,4 +947,251 @@ func Test_Session_Save_After_Handler_Cancel(t *testing.T) {
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
 	require.Equal(t, "world", string(body))
+}
+
+// Test_Session_FromContext_RetainedContext covers a context kept past the end of
+// its request, which PassLocalsToContext exists to allow: a goroutine started by
+// the handler holds c.Context() and looks the session up later. The lookup used
+// to return the pooled *Middleware that request had released, and once another
+// request acquired it that goroutine read and wrote the other request's session.
+func Test_Session_FromContext_RetainedContext(t *testing.T) {
+	t.Parallel()
+
+	for _, pass := range []bool{true, false} {
+		name := "default"
+		if pass {
+			name = "PassLocalsToContext"
+		}
+
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			app := fiber.New(fiber.Config{PassLocalsToContext: pass})
+			app.Use(New())
+
+			// app.Test finishes a request before it returns, so these are written by
+			// one handler and read by the next without overlapping.
+			var (
+				retained context.Context
+				stale    *Middleware
+				current  *Middleware
+				staleID  string
+			)
+			app.Get("/a", func(c fiber.Ctx) error {
+				FromContext(c).Set("user", "alice")
+				retained = c.Context()
+				return c.SendString("a")
+			})
+			app.Get("/b", func(c fiber.Ctx) error {
+				current = FromContext(c)
+				current.Set("user", "bob")
+
+				// What a goroutine that outlived request /a does.
+				stale = FromContext(retained)
+				if stale != nil {
+					staleID = stale.ID()
+					stale.Set("user", "mallory")
+				}
+				return c.SendString("b")
+			})
+
+			// Under -race a pool drops one Put in four, so a reused object is only
+			// seen on some rounds; repeating makes the old behavior certain to show.
+			for range 40 {
+				stale, current, staleID = nil, nil, ""
+
+				resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/a", http.NoBody))
+				require.NoError(t, err)
+				require.Equal(t, fiber.StatusOK, resp.StatusCode)
+
+				// The request is over: its context no longer leads to a session.
+				require.Nil(t, FromContext(retained), "the released middleware is still reachable")
+
+				resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/b", http.NoBody))
+				require.NoError(t, err)
+				require.Equal(t, fiber.StatusOK, resp.StatusCode)
+
+				require.Nil(t, stale, "a retained context reached request /b's session")
+				require.Empty(t, staleID)
+				require.NotNil(t, current)
+			}
+		})
+	}
+}
+
+// Test_Session_FromContext_RetainedContext_AfterHandler looks the session up
+// from a goroutine that is still running when the handler returns, which is the
+// race the pooled pointer made dangerous: it has to see nil once the middleware
+// is released, and never a half-reset object.
+func Test_Session_FromContext_RetainedContext_AfterHandler(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New(fiber.Config{PassLocalsToContext: true})
+	app.Use(New())
+
+	var (
+		wg      sync.WaitGroup
+		inside  *Middleware
+		release = make(chan struct{})
+		seen    = make(chan *Middleware, 1)
+	)
+	app.Get("/", func(c fiber.Ctx) error {
+		ctx := c.Context()
+		inside = FromContext(ctx)
+
+		wg.Go(func() {
+			<-release
+			seen <- FromContext(ctx)
+		})
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	require.NotNil(t, inside, "the context must resolve while the request runs")
+
+	close(release)
+	wg.Wait()
+	require.Nil(t, <-seen)
+}
+
+// Test_Session_FromContext_RetainedContext_Concurrent runs many overlapping
+// requests, each leaving a goroutine behind that keeps looking its session up
+// through the context it kept. Whatever the interleaving, the lookup has to give
+// that request's own middleware while it runs and nil once it is over. Comparing
+// pointers alone cannot show the old fault, since the pooled object kept its
+// address and only changed owner.
+func Test_Session_FromContext_RetainedContext_Concurrent(t *testing.T) {
+	t.Parallel()
+
+	const (
+		requests = 64
+		lookups  = 400
+	)
+
+	app := fiber.New(fiber.Config{PassLocalsToContext: true})
+	app.Use(New())
+
+	var (
+		wg       sync.WaitGroup
+		finished [requests]atomic.Bool
+		stale    atomic.Int64
+		foreign  atomic.Int64
+	)
+	app.Get("/", func(c fiber.Ctx) error {
+		n, err := strconv.Atoi(c.Get("X-Request"))
+		if err != nil {
+			return fmt.Errorf("bad X-Request header: %w", err)
+		}
+		over := &finished[n]
+		own := FromContext(c)
+		ctx := c.Context()
+
+		wg.Go(func() {
+			for range lookups {
+				// Read before the lookup: a flag already set means the request had
+				// ended before the lookup began, so it has to find nothing.
+				ended := over.Load()
+				switch got := FromContext(ctx); {
+				case got == nil:
+				case ended:
+					stale.Add(1)
+				case got != own:
+					foreign.Add(1)
+				}
+				runtime.Gosched()
+			}
+		})
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	var clients sync.WaitGroup
+	for n := range requests {
+		clients.Go(func() {
+			req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+			req.Header.Set("X-Request", strconv.Itoa(n))
+			resp, err := app.Test(req)
+			if assert.NoError(t, err) {
+				assert.Equal(t, fiber.StatusOK, resp.StatusCode)
+			}
+			// app.Test returns after the middleware has released its object.
+			finished[n].Store(true)
+		})
+	}
+	clients.Wait()
+	wg.Wait()
+
+	require.Zero(t, stale.Load(), "a retained context still resolved a session after its request ended")
+	require.Zero(t, foreign.Load(), "a retained context reached another request's middleware")
+}
+
+// Test_Session_ReleaseMiddleware_DoesNotRecycleAPublishedOne pins the other half:
+// a middleware the request context holds is dropped, not pooled, so a pointer
+// that was looked up while the request ran can never be handed to another one.
+func Test_Session_ReleaseMiddleware_DoesNotRecycleAPublishedOne(t *testing.T) {
+	t.Parallel()
+
+	published := acquireMiddleware()
+	published.escaped = true
+	releaseMiddleware(published)
+	require.True(t, published.released.Load())
+
+	local := acquireMiddleware()
+	releaseMiddleware(local)
+	require.False(t, local.released.Load(), "a middleware only the locals reach goes back to the pool unmarked")
+
+	// sync.Pool gives no promise about what comes back, but it can only return
+	// what was put in, so the published one must never appear.
+	for range 1000 {
+		got := acquireMiddleware()
+		require.NotSame(t, published, got)
+		releaseMiddleware(got)
+	}
+}
+
+// Benchmark_Middleware drives the whole handler, which the store benchmarks do
+// not: it is where the middleware object is acquired, published to the request
+// context and released again.
+//
+// go test -v -run=^$ -bench=Benchmark_Middleware -benchmem -count=4
+func Benchmark_Middleware(b *testing.B) {
+	for _, tc := range []struct {
+		name string
+		pass bool
+	}{
+		{name: "default"},
+		{name: "PassLocalsToContext", pass: true},
+	} {
+		b.Run(tc.name, func(b *testing.B) {
+			app := fiber.New(fiber.Config{PassLocalsToContext: tc.pass})
+			app.Use(New())
+			app.Get("/", func(c fiber.Ctx) error {
+				FromContext(c).Set("john", "doe")
+				return nil
+			})
+			handler := app.Handler()
+
+			fctx := &fasthttp.RequestCtx{}
+			fctx.Request.Header.SetMethod(fiber.MethodGet)
+			fctx.Request.SetRequestURI("/")
+
+			// The first request creates the session and the rest load it, so the
+			// store does not grow while the benchmark runs.
+			handler(fctx)
+			setCookie := fasthttp.AcquireCookie()
+			defer fasthttp.ReleaseCookie(setCookie)
+			require.NoError(b, setCookie.ParseBytes(fctx.Response.Header.Peek(fiber.HeaderSetCookie)))
+			sessionID := string(setCookie.Value())
+
+			b.ReportAllocs()
+			for b.Loop() {
+				fctx.ResetUserValues()
+				fctx.Response.Reset()
+				fctx.Request.Header.SetCookie("session_id", sessionID)
+				handler(fctx)
+			}
+			require.Equal(b, fiber.StatusOK, fctx.Response.StatusCode())
+		})
+	}
 }

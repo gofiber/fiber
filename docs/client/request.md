@@ -305,7 +305,6 @@ fmt.Println(resp.String())
   "headers": {
     "Golang": "Fiber", 
     "Host": "httpbin.org", 
-    "Referer": "", 
     "Test": "123456,654321", 
     "User-Agent": "fiber", 
     "X-Amzn-Trace-Id": "Root=1-664105d2-033cf7173457adb56d9e7193"
@@ -346,7 +345,6 @@ fmt.Println(resp.String())
   "headers": {
     "Golang": "Fiber", 
     "Host": "httpbin.org", 
-    "Referer": "", 
     "Test": "654321", 
     "User-Agent": "fiber", 
     "X-Amzn-Trace-Id": "Root=1-664105e5-5d676ba348450cdb62847f04"
@@ -551,7 +549,7 @@ func (r *Request) Referer() string
 
 ## SetReferer
 
-**SetReferer** sets the Referer header for the request, overriding the one set at the client level if any. A `Referer` set with `SetHeader` or `AddHeader` is replaced when the request is sent, so use this method for it.
+**SetReferer** sets the Referer header for the request, overriding the one set at the client level if any. When neither is set, no `Referer` header is sent. A `Referer` set with `SetHeader` or `AddHeader` is replaced when the request is sent, or removed when no referer is set, so use this method for it.
 
 ```go title="Signature"
 func (r *Request) SetReferer(referer string) *Request
@@ -662,7 +660,7 @@ A value stays inside the one path segment its placeholder occupies. Path normali
 
 The host can be templated too (`https://:tenant.example.com/api`). A placeholder in the authority whose name is only digits is treated as the port and is left unchanged, and the colons inside an IPv6 literal such as `http://[2001:db8::1]/api` are part of the address rather than placeholders. A value substituted into the authority is **not** escaped — a `%XX` below `0x80` inside a host makes the URL parser discard the rest of the URL — so it must already be a valid host: unreserved characters, `$`, `&`, `+`, `=` and valid UTF-8 for an IDN label. Malformed UTF-8 is rejected too — the bytes reach the `Host` header verbatim, and an overlong sequence such as `%C0%AF` is a `/` to a lenient decoder. Anything else, including a `:` or `@` that would add a port or a userinfo section and send the request to another host, fails the request with `ErrPathParamInHost`. A port can still be templated by giving the placeholder a name that is not all digits, as in `https://example.com::port/api`.
 
-`SetDisablePathNormalizing(true)` on the client or request turns that check off. It is only safe together with a wrapped fasthttp client created with `DisablePathNormalizing: true`, see [NewWithClient](./rest.md#newwithclient): such a client sends the path as built, so nothing decodes it afterwards, a `/` in a value is emitted as `%2F` and the value is sent as one segment. Whether it stays one segment is then up to the server — one that unescapes paths, including a Fiber server configured with `UnescapePath`, decodes it again while routing. With the default client the Fiber setting alone only lifts the check: fasthttp still normalizes the path when it writes the request, so a value such as `x/../../admin` is no longer rejected and changes the path that is sent. A `?` or `#` in a value is always contained; normalizing does not decode those.
+`SetDisablePathNormalizing(true)` on the client or request turns that check off for `/` and `\`, but only for a client that Fiber knows sends the path as built: one whose wrapped fasthttp client has path normalizing turned off and has not served a host while it was on. [SetDisablePathNormalizing](./rest.md#setdisablepathnormalizing) on the client does that for a client from `New`, `NewWithHostClient` or `NewWithLBClient`. A `fasthttp.Client` given to [NewWithClient](./rest.md#newwithclient) may have served hosts already and Fiber cannot tell, so it counts only when it was created with `DisablePathNormalizing: true`. Nothing decodes the path afterwards then, a `/` in a value is emitted as `%2F` and the value is sent as one segment. Whether it stays one segment is up to the server — one that unescapes paths, including a Fiber server configured with `UnescapePath`, decodes it again while routing. On any other client the check stays on, whatever the client or the request asks for, so a value such as `x/../../admin` is rejected rather than changing the path that is sent. The values the setting never lets through are `.` and `..`, which would go out as dot segments that the receiving server resolves, and an empty value, which leaves a `//` that a server merging slashes drops: no escape keeps them in place. A `?` or `#` in a value is always contained; normalizing does not decode those.
 
 ```go title="Signature"
 func (r *Request) SetPathParam(key, val string) *Request
@@ -1110,7 +1108,7 @@ func (r *Request) DisablePathNormalizing() bool
 
 ## SetDisablePathNormalizing
 
-**SetDisablePathNormalizing** turns path normalizing off or on for the request. It is on by default: the request path is normalized before it is sent, which decodes percent-escapes, collapses `//` and resolves `.` and `..` segments, so `/a//b/./c%2Fd` goes out as `/a/b/c/d`. With normalizing off, Fiber builds the URL without normalizing it, but the wrapped fasthttp client normalizes the path again when it writes the request unless it was created with `DisablePathNormalizing: true` (see [NewWithClient](./rest.md#newwithclient)); only then is the path sent as written. The setting of the client, [SetDisablePathNormalizing](./rest.md#setdisablepathnormalizing), applies to every request it sends. Path parameter values are checked differently while normalizing is off, as described under [SetPathParam](#setpathparam).
+**SetDisablePathNormalizing** turns path normalizing off or on for the request. It is on by default: the request path is normalized before it is sent, which decodes percent-escapes, collapses `//` and resolves `.` and `..` segments, so `/a//b/./c%2Fd` goes out as `/a/b/c/d`. With normalizing off, Fiber builds the URL without normalizing it. Whether the path is normalized again when the request is written is up to the wrapped fasthttp client, which a single request cannot change: the path goes out as written only when the client has normalizing turned off, with [SetDisablePathNormalizing](./rest.md#setdisablepathnormalizing) on the client or with a fasthttp client created with `DisablePathNormalizing: true` (see [NewWithClient](./rest.md#newwithclient)). On any other client this setting changes neither what is sent nor the path parameter check. Path parameter values are checked differently while normalizing is off, as described under [SetPathParam](#setpathparam).
 
 ```go title="Signature"
 func (r *Request) SetDisablePathNormalizing(disable bool) *Request

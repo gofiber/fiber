@@ -14,6 +14,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	stdlog "log" //nolint:depguard // log.DefaultLogger is keyed by the standard library logger type the default logger exposes.
 	"os"
 	"path/filepath"
 	"slices"
@@ -335,22 +336,34 @@ func (c *Client) SetCertificates(certs ...tls.Certificate) *Client {
 	return c
 }
 
+// panicf logs the message through the client's logger and panics with it. It
+// panics without a log line when the logger was set to nil, and also when the
+// logger's Panicf returns, so a setting that could not be applied is never
+// reported as applied.
+func (c *Client) panicf(format string, args ...any) {
+	if logger := c.Logger(); logger != nil {
+		logger.Panicf(format, args...)
+	}
+	panic(fmt.Sprintf(format, args...))
+}
+
 // SetRootCertificate adds one or more root certificates to the client's TLS configuration.
+// It panics when the file cannot be read or holds no valid PEM certificate.
 func (c *Client) SetRootCertificate(path string) *Client {
 	cleanPath := filepath.Clean(path)
 	file, err := os.Open(cleanPath)
 	if err != nil {
-		c.logger.Panicf("client: %v", err)
+		c.panicf("client: %v", err)
 	}
 	defer func() {
 		if closeErr := file.Close(); closeErr != nil {
-			c.logger.Panicf("client: failed to close file: %v", closeErr)
+			c.panicf("client: failed to close file: %v", closeErr)
 		}
 	}()
 
 	pem, err := io.ReadAll(file)
 	if err != nil {
-		c.logger.Panicf("client: %v", err)
+		c.panicf("client: %v", err)
 	}
 
 	config := c.TLSConfig()
@@ -359,13 +372,14 @@ func (c *Client) SetRootCertificate(path string) *Client {
 	}
 
 	if !config.RootCAs.AppendCertsFromPEM(pem) {
-		c.logger.Panicf("client: %v", ErrFailedToAppendCert)
+		c.panicf("client: %v", ErrFailedToAppendCert)
 	}
 
 	return c
 }
 
 // SetRootCertificateFromString adds one or more root certificates from a string to the client's TLS configuration.
+// It panics when the string holds no valid PEM certificate.
 func (c *Client) SetRootCertificateFromString(pem string) *Client {
 	config := c.TLSConfig()
 
@@ -374,7 +388,7 @@ func (c *Client) SetRootCertificateFromString(pem string) *Client {
 	}
 
 	if !config.RootCAs.AppendCertsFromPEM([]byte(pem)) {
-		c.logger.Panicf("client: %v", ErrFailedToAppendCert)
+		c.panicf("client: %v", ErrFailedToAppendCert)
 	}
 
 	return c
@@ -581,12 +595,36 @@ func (c *Client) DisablePathNormalizing() bool {
 }
 
 // SetDisablePathNormalizing configures the client to disable or enable path normalizing.
+//
+// fasthttp normalizes the path of a request when it writes it, according to the
+// client that sends it, so the setting is applied to the wrapped fasthttp client
+// (every host client behind a load balancer): a client created with
+// NewWithClient, NewWithHostClient or NewWithLBClient changes the one it wraps,
+// for everyone who shares it. Call it before the first request, because a
+// fasthttp.Client copies the setting into the host clients it has already
+// created only when it creates them.
+//
+// The check that keeps a path parameter value inside its segment is lifted only
+// when the wrapped client is known to send the path as built: a client from New,
+// a fasthttp.Client handed to NewWithClient with the setting already on, or a
+// host client or balancer whose host clients all have it on. Once a request has
+// gone out through a fasthttp.Client that normalized, it stays on.
 func (c *Client) SetDisablePathNormalizing(disable bool) *Client {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
 	c.isPathNormalizingDisabled = disable
+	if t, ok := c.transport.(pathNormalizingTransport); ok {
+		t.SetDisablePathNormalizing(disable)
+	}
 	return c
+}
+
+// writesPathAsBuilt reports whether the wrapped fasthttp client sends the request
+// path exactly as built, so nothing normalizes it after Fiber has put it together.
+func (c *Client) writesPathAsBuilt() bool {
+	t, ok := c.transport.(pathNormalizingTransport)
+	return ok && t.DisablePathNormalizing()
 }
 
 // PathParam returns the value of the specified path parameter. Returns an empty string if it does not exist.
@@ -692,7 +730,8 @@ func (c *Client) SetTimeout(t time.Duration) *Client {
 	return c
 }
 
-// Debug enables debug-level logging output.
+// Debug enables debug-level logging output: after each response, the raw request and
+// response, headers and bodies included, are logged through the client's logger.
 func (c *Client) Debug() *Client {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -829,7 +868,7 @@ func (c *Client) Reset() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	c.transport = newStandardClientTransport(&fasthttp.Client{})
+	c.transport = newOwnedStandardClientTransport()
 	c.baseURL = ""
 	c.timeout = 0
 	c.userAgent = ""
@@ -953,10 +992,17 @@ func New() *Client {
 	// Follow-up performance optimizations:
 	// Try to use a pool to reduce the memory allocation cost for the Fiber client and the fasthttp client.
 	// If possible, also consider pooling other structs (e.g., request headers, cookies, query parameters, path parameters).
-	return NewWithClient(&fasthttp.Client{})
+	return newClient(newOwnedStandardClientTransport())
 }
 
 // NewWithClient creates and returns a new Client object from an existing fasthttp.Client.
+//
+// Fiber cannot tell whether that client has served a host already, and a
+// fasthttp.Client gives each host the path normalizing setting it had when it
+// first served that host. So unless the client was created with
+// DisablePathNormalizing set, SetDisablePathNormalizing changes what is sent to
+// hosts not yet served, but the check that keeps a path parameter value inside
+// its segment stays on.
 func NewWithClient(c *fasthttp.Client) *Client {
 	if c == nil {
 		panic("fasthttp.Client must not be nil")
@@ -1003,7 +1049,7 @@ func newClient(transport httpClientTransport) *Client {
 		cborMarshal:          cbor.Marshal,
 		cborUnmarshal:        cbor.Unmarshal,
 		xmlUnmarshal:         xml.Unmarshal,
-		logger:               log.DefaultLogger[*log.Logger](),
+		logger:               log.DefaultLogger[*stdlog.Logger](),
 	}
 }
 

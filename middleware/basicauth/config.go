@@ -116,13 +116,13 @@ var ConfigDefault = Config{
 
 // Helper function to set default values
 func configDefault(config ...Config) Config {
-	// Return default config if nothing provided
-	if len(config) < 1 {
-		return ConfigDefault
+	// Start from the default config, and override it when one is provided. The
+	// default has to go through the defaulting below as well: it leaves
+	// Authorizer, Unauthorized and BadRequest nil, which are built from the rest.
+	cfg := ConfigDefault
+	if len(config) > 0 {
+		cfg = config[0]
 	}
-
-	// Override default config
-	cfg := config[0]
 
 	// Set default values
 	if cfg.Next == nil {
@@ -173,7 +173,8 @@ func configDefault(config ...Config) Config {
 			}
 			c.Set(fiber.HeaderWWWAuthenticate, header)
 			c.Set(fiber.HeaderCacheControl, "no-store")
-			c.Set(fiber.HeaderVary, fiber.HeaderAuthorization)
+			// Added to the Vary an earlier middleware may have set, not replacing it.
+			c.Vary(fiber.HeaderAuthorization)
 			return c.SendStatus(fiber.StatusUnauthorized)
 		}
 	}

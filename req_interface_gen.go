@@ -30,7 +30,7 @@ type Req interface {
 	AcceptsLanguagesExtended(offers ...string) string
 	// App returns the *App reference to the instance of the Fiber application
 	App() *App
-	// BaseURL returns (protocol + host + base path).
+	// BaseURL returns (protocol + host), such as "https://example.com". It carries no path.
 	BaseURL() string
 	// BodyRaw contains the raw body submitted in a POST request.
 	// Returned value is only valid within the handler. Do not store any references.
