@@ -123,6 +123,8 @@ Window accounting is whole-second, so a positive duration below one second is tr
 
 Requests that share a key share one window, and a window keeps the length given by the request that opened it. With the default `KeyGenerator`, which keys by client IP, a request that arrives while a window opened by another route is running joins that window: its `X-RateLimit-Reset` is what remains of it, whatever `ExpirationFunc` returns for the request. A route that needs a window of its own needs a key of its own.
 
+The sliding window weighs the previous window's hits by the time left in the open window divided by the length the current request asks for, capped at 1. That is exact only while every request for a key asks for the same length: a longer one counts fewer of the previous hits.
+
 Example:
 
 ```go
