@@ -1,6 +1,8 @@
 package limiter
 
 import (
+	"time"
+
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/utils/v2"
 )
@@ -32,10 +34,8 @@ func (FixedWindow) New(cfg *Config) fiber.Handler {
 			return c.Next()
 		}
 
-		// Generate the window from the generator. The storage TTL is derived from
-		// it so a sub-second value cannot expire the entry mid-window.
+		// Generate the window from the generator
 		windowSec := windowSeconds(cfg.ExpirationFunc(c), cfg.Expiration)
-		ttl, _ := secondsToDuration(windowSec)
 
 		// Get key from request, copied since it is read again after the handler,
 		// which may overwrite the request memory an unsafe key points to
@@ -73,7 +73,7 @@ func (FixedWindow) New(cfg *Config) fiber.Handler {
 		remaining := maxRequests - e.currHits
 
 		// Update storage
-		if setErr := manager.set(reqCtx, key, e, ttl); setErr != nil {
+		if setErr := manager.set(reqCtx, key, e, e.ttl(ts)); setErr != nil {
 			mu.Unlock()
 			return errPersist(setErr)
 		}
@@ -106,7 +106,7 @@ func (FixedWindow) New(cfg *Config) fiber.Handler {
 				e.currHits--
 			}
 			remaining = maxRequests - e.currHits
-			if setErr := manager.set(reqCtx, key, e, ttl); setErr != nil {
+			if setErr := manager.set(reqCtx, key, e, e.ttl(cfg.currentSecond())); setErr != nil {
 				mu.Unlock()
 				return errPersist(setErr)
 			}
@@ -129,4 +129,11 @@ func (e *item) rotateFixed(ts, windowSec uint64) {
 		e.currHits = 0
 		e.exp = ts + windowSec
 	}
+}
+
+// ttl is how long the storage keeps the entry: until its window ends, whichever
+// request asked for that window, and at least a second.
+func (e *item) ttl(ts uint64) time.Duration {
+	d, _ := secondsToDuration(max(e.exp, ts+1) - ts)
+	return d
 }

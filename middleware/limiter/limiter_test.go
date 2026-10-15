@@ -229,6 +229,26 @@ func (*fakeLimiterStorage) Reset() error { return nil }
 
 func (*fakeLimiterStorage) Close() error { return nil }
 
+// expiringStorage drops entries once their TTL has passed on the test clock.
+type expiringStorage struct {
+	*fakeLimiterStorage
+	clock   *testClock
+	expires map[string]time.Time
+}
+
+func (s *expiringStorage) GetWithContext(ctx context.Context, key string) ([]byte, error) {
+	if exp, ok := s.expires[key]; ok && !s.clock.Now().Before(exp) {
+		delete(s.data, key)
+		delete(s.expires, key)
+	}
+	return s.fakeLimiterStorage.GetWithContext(ctx, key)
+}
+
+func (s *expiringStorage) SetWithContext(ctx context.Context, key string, val []byte, exp time.Duration) error {
+	s.expires[key] = s.clock.Now().Add(exp)
+	return s.fakeLimiterStorage.SetWithContext(ctx, key, val, exp)
+}
+
 type contextKey string
 
 const markerKey contextKey = "marker"
@@ -1593,6 +1613,81 @@ func Test_Limiter_ExpirationFunc_SharedKeyKeepsOpeningWindow(t *testing.T) {
 			// The next window takes the length its first request asks for.
 			clock.Add(30 * time.Second)
 			require.Equal(t, "60", reset("/login"))
+		})
+	}
+}
+
+// A request with a shorter window joining an open one must not shorten the entry's
+// life, or the client gets a fresh allowance before the open window ends.
+func Test_Limiter_Fixed_ShorterWindowDoesNotShortenTheEntry(t *testing.T) {
+	t.Parallel()
+
+	type step struct {
+		path string
+		at   time.Duration
+		want int
+	}
+	tests := []struct {
+		name        string
+		steps       []step
+		cfg         Config
+		shortStatus int // what "/" answers
+	}{
+		{
+			name:        "counted",
+			shortStatus: fiber.StatusOK,
+			steps: []step{
+				{"/login", 0, fiber.StatusOK},
+				{"/", time.Second, fiber.StatusOK},
+				{"/login", 35 * time.Second, fiber.StatusTooManyRequests},
+			},
+		},
+		{
+			name:        "credited_back",
+			cfg:         Config{SkipFailedRequests: true},
+			shortStatus: fiber.StatusInternalServerError,
+			steps: []step{
+				{"/login", 0, fiber.StatusOK},
+				{"/", time.Second, fiber.StatusInternalServerError},
+				{"/login", 35 * time.Second, fiber.StatusOK},
+				{"/login", 36 * time.Second, fiber.StatusTooManyRequests},
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			start := time.Now().Truncate(time.Second)
+			clock := newTestClock(start)
+			cfg := tc.cfg
+			cfg.Max = 2
+			cfg.ExpirationFunc = func(c fiber.Ctx) time.Duration {
+				if c.Path() == "/login" {
+					return time.Minute
+				}
+				return 30 * time.Second
+			}
+			cfg.LimiterMiddleware = FixedWindow{}
+			cfg.clock = clock.Now
+			cfg.Storage = &expiringStorage{fakeLimiterStorage: newFakeLimiterStorage(), clock: clock, expires: map[string]time.Time{}}
+
+			app := fiber.New()
+			app.Use(New(cfg))
+			app.Get("/login", func(c fiber.Ctx) error {
+				return c.SendStatus(fiber.StatusOK)
+			})
+			app.Get("/", func(c fiber.Ctx) error {
+				return c.SendStatus(tc.shortStatus)
+			})
+
+			for _, s := range tc.steps {
+				clock.Add(start.Add(s.at).Sub(clock.Now()))
+				resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, s.path, http.NoBody))
+				require.NoError(t, err)
+				require.Equal(t, s.want, resp.StatusCode, "%s at +%s", s.path, s.at)
+			}
 		})
 	}
 }

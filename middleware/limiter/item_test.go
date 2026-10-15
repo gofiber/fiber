@@ -2,6 +2,7 @@ package limiter
 
 import (
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -79,4 +80,15 @@ func Test_item_rate(t *testing.T) {
 
 	// More time left than the window cannot weigh more than the whole previous window.
 	require.Equal(t, 6, e.rate(45, 10))
+}
+
+func Test_item_ttl(t *testing.T) {
+	t.Parallel()
+
+	// Until the window ends, however long the current request's own window is...
+	require.Equal(t, 59*time.Second, (&item{exp: 60}).ttl(1))
+
+	// ...and at least a second once it has ended.
+	require.Equal(t, time.Second, (&item{exp: 60}).ttl(60))
+	require.Equal(t, time.Second, (&item{exp: 60}).ttl(100))
 }
