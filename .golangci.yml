@@ -307,7 +307,7 @@ formatters:
     gofumpt:
       module-path: github.com/gofiber/fiber
       extra:
-        group-params: false
+        group-params: true
   exclusions:
     generated: lax
     paths:
