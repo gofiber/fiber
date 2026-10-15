@@ -42,6 +42,7 @@ jobs:
     uses: gofiber/.github/.github/workflows/after-release.yml@main
     with:
       skip-wait: ${{ github.event_name == 'workflow_dispatch' }}
+      release-tag: ${{ github.event.release.tag_name }}
       repos: |
         - gofiber/contrib
         - gofiber/storage
