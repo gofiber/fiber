@@ -21,21 +21,27 @@ type Config struct {
 	//
 	// Default: a new Fixed Window Rate Limiter
 	LimiterMiddleware Handler
-	// Next defines a function to skip this middleware when returned true.
+	// Next defines a function to skip this middleware when returned true. It is
+	// called before MaxFunc, so a request it skips never reaches MaxFunc.
 	//
 	// Optional. Default: nil
 	Next func(c fiber.Ctx) bool
 
-	// A function to dynamically calculate the max requests supported by the rate limiter middleware
+	// A function to dynamically calculate the max requests supported by the rate limiter middleware.
+	// Returning 0 skips the limiter for the request; a negative value rejects every request.
 	//
 	// Default: func(c fiber.Ctx) int {
-	//   return c.Max
+	//   return cfg.Max
 	// }
 	MaxFunc func(c fiber.Ctx) int
 
 	// A function to dynamically calculate the expiration time for rate limiter entries.
 	// Window accounting is whole-second, so a positive value below one second is floored to
 	// one second. A zero or negative value falls back to the configured Expiration.
+	//
+	// The window of a key keeps the length given by the request that opened it, so requests
+	// that share a key (by default the client IP) share one window whatever their own
+	// ExpirationFunc says. A route that needs its own window needs its own key.
 	//
 	// Default: A function that returns the static `Expiration` value from the config.
 	ExpirationFunc func(c fiber.Ctx) time.Duration
@@ -75,11 +81,15 @@ type Config struct {
 	Expiration time.Duration
 
 	// When set to true, requests with StatusCode >= 400 won't be counted.
+	// A handler that returns an error other than a *fiber.Error counts as a 500 unless it
+	// already set an error status, which is the response the default error handler gives it.
 	//
 	// Default: false
 	SkipFailedRequests bool
 
 	// When set to true, requests with StatusCode < 400 won't be counted.
+	// A handler that returns an error other than a *fiber.Error counts as a 500 unless it
+	// already set an error status, which is the response the default error handler gives it.
 	//
 	// Default: false
 	SkipSuccessfulRequests bool
@@ -90,6 +100,8 @@ type Config struct {
 	DisableHeaders bool
 
 	// DisableValueRedaction turns off masking limiter keys in logs and error messages when set to true.
+	// The key shown is the one the storage sees, so a key longer than 192 bytes appears as its
+	// SHA-256 digest.
 	//
 	// Default: false
 	DisableValueRedaction bool
@@ -99,11 +111,9 @@ type Config struct {
 var ConfigDefault = Config{
 	Max:        defaultLimiterMax,
 	Expiration: 1 * time.Minute,
-	MaxFunc: func(_ fiber.Ctx) int {
-		return defaultLimiterMax
-	},
-	// Note: ExpirationFunc is intentionally nil here so that configDefault()
-	// can create a proper closure that references the configured Expiration value.
+	// Note: MaxFunc and ExpirationFunc are intentionally nil here so that configDefault()
+	// can create proper closures that reference the configured Max and Expiration values,
+	// also when a caller starts from a copy of ConfigDefault and changes them.
 	KeyGenerator: func(c fiber.Ctx) string {
 		return c.IP()
 	},

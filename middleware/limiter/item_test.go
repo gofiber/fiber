@@ -78,4 +78,8 @@ func Test_item_rate(t *testing.T) {
 	require.Equal(t, 3, e.rate(1, 10))
 	// ...and no longer counts once the window is over.
 	require.Equal(t, 2, e.rate(0, 10))
+
+	// More time left than the window asked for (the open window was opened by a
+	// longer one) cannot weigh more than the whole previous window.
+	require.Equal(t, 6, e.rate(45, 10))
 }

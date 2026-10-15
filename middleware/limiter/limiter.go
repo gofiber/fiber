@@ -66,13 +66,14 @@ func New(config ...Config) fiber.Handler {
 
 // limit returns the maximum number of requests the limiter allows for c. It
 // reports false when the limiter stands aside for this request: Next returned
-// true, or MaxFunc returned 0.
+// true, or MaxFunc returned 0. Next runs first, so a request it skips never
+// reaches MaxFunc.
 func (cfg *Config) limit(c fiber.Ctx) (int, bool) {
-	maxRequests := cfg.MaxFunc(c)
-	if (cfg.Next != nil && cfg.Next(c)) || maxRequests == 0 {
+	if cfg.Next != nil && cfg.Next(c) {
 		return 0, false
 	}
-	return maxRequests, true
+	maxRequests := cfg.MaxFunc(c)
+	return maxRequests, maxRequests != 0
 }
 
 // skipsHit reports whether a request that ended with statusCode must not count
@@ -111,7 +112,14 @@ func errPersist(err error) error {
 	return fmt.Errorf("limiter: failed to persist state: %w", err)
 }
 
-// getEffectiveStatusCode returns the actual status code, considering both the error and response status
+// getEffectiveStatusCode returns the status a request ends with, which is what
+// SkipSuccessfulRequests and SkipFailedRequests judge it by.
+//
+// A returned error only becomes a response after the middleware chain handed it
+// back, so the response still holds whatever status was last written to it,
+// usually the default 200. A *fiber.Error carries its own code. Any other error
+// is answered with a 500 by the default error handler, so it counts as one
+// unless the handler already set an error status.
 func getEffectiveStatusCode(c fiber.Ctx, err error) int {
 	if nilerror.IsNil(err) {
 		return c.Res().StatusCode()
@@ -123,6 +131,9 @@ func getEffectiveStatusCode(c fiber.Ctx, err error) int {
 		return fiberErr.Code
 	}
 
-	// Otherwise, use the response status code
-	return c.Res().StatusCode()
+	// Any other error is an internal error unless the handler said otherwise
+	if status := c.Res().StatusCode(); status >= fiber.StatusBadRequest {
+		return status
+	}
+	return fiber.StatusInternalServerError
 }

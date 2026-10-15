@@ -28,8 +28,8 @@ func (SlidingWindow) New(cfg *Config) fiber.Handler {
 
 	// Return new handler
 	return func(c fiber.Ctx) error {
-		// Generate maxRequests from generator, if no generator was provided the default value returned is 5
-		// Don't execute middleware if Next returns true or if the max is 0
+		// Don't execute middleware if Next returns true or if MaxFunc, which returns Max
+		// unless configured otherwise, returns 0
 		maxRequests, ok := cfg.limit(c)
 		if !ok {
 			return c.Next()
@@ -38,8 +38,14 @@ func (SlidingWindow) New(cfg *Config) fiber.Handler {
 		// Generate the window from the generator
 		windowSec := windowSeconds(cfg.ExpirationFunc(c), cfg.Expiration)
 
-		// Get key from request
+		// Get key from request. The entry is read again after the handler ran, to
+		// credit a skipped hit and to report fresh headers, and a handler can
+		// overwrite the request memory an unsafe key string points to, so the key is
+		// copied when it is needed again.
 		key := cfg.KeyGenerator(c)
+		if cfg.SkipSuccessfulRequests || cfg.SkipFailedRequests || !cfg.DisableHeaders {
+			key = utils.CopyString(key)
+		}
 
 		// Lock entry
 		mu := locks.lock(key)
@@ -99,8 +105,8 @@ func (SlidingWindow) New(cfg *Config) fiber.Handler {
 		skipHit := cfg.skipsHit(getEffectiveStatusCode(c, err))
 
 		if skipHit || !cfg.DisableHeaders {
-			// Lock entry
-			mu = locks.lock(key) // rehash: c.Next() may have rewritten an unsafe key
+			// Lock entry again, the shard of the same key
+			mu.Lock()
 			entry, getErr := manager.get(reqCtx, key)
 			if getErr != nil {
 				mu.Unlock()
@@ -162,8 +168,11 @@ func (e *item) rotateSliding(ts, windowSec uint64) uint64 {
 // now: the previous window's hits weighted by the share of it that still lies
 // inside that window, plus the hits of the current window.
 func (e *item) rate(resetInSec, windowSec uint64) int {
-	// weight = time until current window reset / total window length
-	weight := float64(resetInSec) / float64(windowSec)
+	// weight = time until current window reset / total window length. The window
+	// the entry is in may have been opened by a request whose ExpirationFunc gave
+	// it a longer window than this one, which would push the share past the whole
+	// previous window, so it is capped there.
+	weight := min(float64(resetInSec)/float64(windowSec), 1)
 
 	// rate = request count in previous window * weight + request count in current window
 	return int(math.Ceil(float64(e.prevHits)*weight)) + e.currHits

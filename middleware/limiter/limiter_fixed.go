@@ -26,8 +26,8 @@ func (FixedWindow) New(cfg *Config) fiber.Handler {
 
 	// Return new handler
 	return func(c fiber.Ctx) error {
-		// Generate maxRequests from generator, if no generator was provided the default value returned is 5
-		// Don't execute middleware if Next returns true or if the max is 0
+		// Don't execute middleware if Next returns true or if MaxFunc, which returns Max
+		// unless configured otherwise, returns 0
 		maxRequests, ok := cfg.limit(c)
 		if !ok {
 			return c.Next()
@@ -38,8 +38,13 @@ func (FixedWindow) New(cfg *Config) fiber.Handler {
 		windowSec := windowSeconds(cfg.ExpirationFunc(c), cfg.Expiration)
 		ttl, _ := secondsToDuration(windowSec)
 
-		// Get key from request
+		// Get key from request. A skipped hit is credited back after the handler ran,
+		// and a handler can overwrite the request memory an unsafe key string points
+		// to, so the key is copied when it is needed again.
 		key := cfg.KeyGenerator(c)
+		if cfg.SkipSuccessfulRequests || cfg.SkipFailedRequests {
+			key = utils.CopyString(key)
+		}
 
 		// Lock entry
 		mu := locks.lock(key)
@@ -89,8 +94,8 @@ func (FixedWindow) New(cfg *Config) fiber.Handler {
 
 		// Check for SkipFailedRequests and SkipSuccessfulRequests
 		if cfg.skipsHit(getEffectiveStatusCode(c, err)) {
-			// Lock entry
-			mu = locks.lock(key) // rehash: c.Next() may have rewritten an unsafe key
+			// Lock entry again, the shard of the same key
+			mu.Lock()
 			entry, getErr := manager.get(reqCtx, key)
 			if getErr != nil {
 				mu.Unlock()
