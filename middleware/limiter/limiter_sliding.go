@@ -1,9 +1,7 @@
 package limiter
 
 import (
-	"fmt"
 	"math"
-	"time"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/utils/v2"
@@ -31,15 +29,14 @@ func (SlidingWindow) New(cfg *Config) fiber.Handler {
 	// Return new handler
 	return func(c fiber.Ctx) error {
 		// Generate maxRequests from generator, if no generator was provided the default value returned is 5
-		maxRequests := cfg.MaxFunc(c)
-
 		// Don't execute middleware if Next returns true or if the max is 0
-		if (cfg.Next != nil && cfg.Next(c)) || maxRequests == 0 {
+		maxRequests, ok := cfg.limit(c)
+		if !ok {
 			return c.Next()
 		}
 
-		// Generate expiration from generator
-		expiration := windowSeconds(cfg.ExpirationFunc(c), cfg.Expiration)
+		// Generate the window from the generator
+		windowSec := windowSeconds(cfg.ExpirationFunc(c), cfg.Expiration)
 
 		// Get key from request
 		key := cfg.KeyGenerator(c)
@@ -60,36 +57,30 @@ func (SlidingWindow) New(cfg *Config) fiber.Handler {
 		ts := cfg.currentSecond()
 
 		// Rotate window
-		resetInSec := rotateWindow(e, ts, expiration)
+		resetInSec := e.rotateSliding(ts, windowSec)
 		windowExpiresAt := e.exp
 
 		// Increment hits
 		e.currHits++
 
-		// weight = time until current window reset / total window length
-		weight := float64(resetInSec) / float64(expiration)
-
-		// rate = request count in previous window - weight + request count in current window
-		rate := int(math.Ceil(float64(e.prevHits)*weight)) + e.currHits
-
 		// Calculate how many hits can be made based on the current rate
-		remaining := maxRequests - rate
+		remaining := maxRequests - e.rate(resetInSec, windowSec)
 
 		// Update storage. Garbage collect when the next window ends.
 		// |--------------------------|--------------------------|
 		//               ^            ^               ^          ^
 		//              ts         e.exp   End sample window   End next window
 		//               <------------>
-		// 				   Reset In Sec
+		//                Reset In Sec
 		// resetInSec = e.exp - ts - time until end of current window.
-		// duration + expiration = end of next window.
+		// resetInSec + windowSec = end of next window.
 		// Because we don't want to garbage collect in the middle of a window
-		// we add the expiration to the duration.
+		// we add the window length to the time left.
 		// Otherwise, after the end of "sample window", attackers could launch
 		// a new request with the full window length.
-		if setErr := manager.set(reqCtx, key, e, ttlDuration(resetInSec, expiration)); setErr != nil {
+		if setErr := manager.set(reqCtx, key, e, ttlDuration(resetInSec, windowSec)); setErr != nil {
 			mu.Unlock()
-			return fmt.Errorf("limiter: failed to persist state: %w", setErr)
+			return errPersist(setErr)
 		}
 
 		// Unlock entry
@@ -97,25 +88,15 @@ func (SlidingWindow) New(cfg *Config) fiber.Handler {
 
 		// Check if hits exceed the allowed maximum for this request
 		if remaining < 0 {
-			// Return response with Retry-After header
-			// https://tools.ietf.org/html/rfc6584
-			if !cfg.DisableHeaders {
-				c.Set(fiber.HeaderRetryAfter, utils.FormatUint(resetInSec))
-			}
-
-			// Call LimitReached handler
-			return cfg.LimitReached(c)
+			return cfg.reject(c, resetInSec)
 		}
 
 		// Continue stack for reaching c.Res().StatusCode()
 		// Store err for returning
 		err = c.Next()
 
-		// Get the effective status code from either the error or response
-		statusCode := getEffectiveStatusCode(c, err)
-
-		skipHit := (cfg.SkipSuccessfulRequests && statusCode < fiber.StatusBadRequest) ||
-			(cfg.SkipFailedRequests && statusCode >= fiber.StatusBadRequest)
+		// Check for SkipFailedRequests and SkipSuccessfulRequests
+		skipHit := cfg.skipsHit(getEffectiveStatusCode(c, err))
 
 		if skipHit || !cfg.DisableHeaders {
 			// Lock entry
@@ -128,58 +109,48 @@ func (SlidingWindow) New(cfg *Config) fiber.Handler {
 			e = entry
 
 			ts = cfg.currentSecond()
-			resetInSec = rotateWindow(e, ts, expiration)
-			weight = float64(resetInSec) / float64(expiration)
+			resetInSec = e.rotateSliding(ts, windowSec)
 
 			if skipHit {
-				if counter := bucketForOriginalHit(e, windowExpiresAt, ts, expiration); counter != nil && *counter > 0 {
+				if counter := e.hitBucket(windowExpiresAt, ts, windowSec); counter != nil && *counter > 0 {
 					*counter--
 				}
 			}
 
-			rate = int(math.Ceil(float64(e.prevHits)*weight)) + e.currHits
-			remaining = maxRequests - rate
-			if setErr := manager.set(reqCtx, key, e, ttlDuration(resetInSec, expiration)); setErr != nil {
+			remaining = maxRequests - e.rate(resetInSec, windowSec)
+			if setErr := manager.set(reqCtx, key, e, ttlDuration(resetInSec, windowSec)); setErr != nil {
 				mu.Unlock()
-				return fmt.Errorf("limiter: failed to persist state: %w", setErr)
+				return errPersist(setErr)
 			}
 			// Unlock entry
 			mu.Unlock()
 
-			// rate can exceed maxRequests (blocked requests persist their
-			// increment), so clamp remaining to keep the header >= 0.
-			if remaining < 0 {
-				remaining = 0
-			}
-
 			// We can continue, update RateLimit headers
-			if !cfg.DisableHeaders {
-				c.Set(xRateLimitLimit, utils.FormatInt(int64(maxRequests)))
-				c.Set(xRateLimitRemaining, utils.FormatInt(int64(remaining)))
-				c.Set(xRateLimitReset, utils.FormatUint(resetInSec))
-			}
+			cfg.setRateLimitHeaders(c, maxRequests, remaining, resetInSec)
 		}
 
 		return err
 	}
 }
 
-func rotateWindow(e *item, ts, expiration uint64) uint64 {
+// rotateSliding moves the entry's windows forward to ts and returns the seconds
+// left in the current one.
+func (e *item) rotateSliding(ts, windowSec uint64) uint64 {
 	// Set expiration if entry does not exist
 	if e.exp == 0 {
-		e.exp = ts + expiration
+		e.exp = ts + windowSec
 	} else if ts >= e.exp {
 		// The entry has expired, handle the expiration.
 		// Reset the current hits to 0.
 		elapsed := ts - e.exp
-		if elapsed >= expiration {
+		if elapsed >= windowSec {
 			e.prevHits = 0
 			e.currHits = 0
-			e.exp = ts + expiration
+			e.exp = ts + windowSec
 		} else {
 			e.prevHits = e.currHits
 			e.currHits = 0
-			e.exp += expiration
+			e.exp += windowSec
 		}
 	}
 
@@ -187,42 +158,28 @@ func rotateWindow(e *item, ts, expiration uint64) uint64 {
 	return e.exp - ts
 }
 
-func bucketForOriginalHit(e *item, requestExpiration, ts, expiration uint64) *int {
-	if ts < requestExpiration {
+// rate estimates the requests made within one window ending resetInSec from
+// now: the previous window's hits weighted by the share of it that still lies
+// inside that window, plus the hits of the current window.
+func (e *item) rate(resetInSec, windowSec uint64) int {
+	// weight = time until current window reset / total window length
+	weight := float64(resetInSec) / float64(windowSec)
+
+	// rate = request count in previous window * weight + request count in current window
+	return int(math.Ceil(float64(e.prevHits)*weight)) + e.currHits
+}
+
+// hitBucket returns the counter that holds a hit made while the window ending
+// at hitWindowEnd was current, or nil once that hit has aged out of the sliding
+// window.
+func (e *item) hitBucket(hitWindowEnd, ts, windowSec uint64) *int {
+	if ts < hitWindowEnd {
 		return &e.currHits
 	}
 
-	if ts-requestExpiration < expiration {
+	if ts-hitWindowEnd < windowSec {
 		return &e.prevHits
 	}
 
 	return nil
-}
-
-func ttlDuration(resetInSec, expiration uint64) time.Duration {
-	resetDuration, ok := secondsToDuration(resetInSec)
-	if !ok {
-		return time.Duration(math.MaxInt64)
-	}
-
-	expirationDuration, ok := secondsToDuration(expiration)
-	if !ok {
-		return time.Duration(math.MaxInt64)
-	}
-
-	if resetDuration > time.Duration(math.MaxInt64)-expirationDuration {
-		return time.Duration(math.MaxInt64)
-	}
-
-	return resetDuration + expirationDuration
-}
-
-func secondsToDuration(seconds uint64) (time.Duration, bool) {
-	const maxSeconds = math.MaxInt64 / int64(time.Second)
-
-	if seconds > uint64(maxSeconds) {
-		return time.Duration(math.MaxInt64), false
-	}
-
-	return time.Duration(seconds) * time.Second, true
 }

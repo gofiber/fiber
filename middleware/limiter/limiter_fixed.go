@@ -1,8 +1,6 @@
 package limiter
 
 import (
-	"fmt"
-
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/utils/v2"
 )
@@ -29,17 +27,16 @@ func (FixedWindow) New(cfg *Config) fiber.Handler {
 	// Return new handler
 	return func(c fiber.Ctx) error {
 		// Generate maxRequests from generator, if no generator was provided the default value returned is 5
-		maxRequests := cfg.MaxFunc(c)
-
 		// Don't execute middleware if Next returns true or if the max is 0
-		if (cfg.Next != nil && cfg.Next(c)) || maxRequests == 0 {
+		maxRequests, ok := cfg.limit(c)
+		if !ok {
 			return c.Next()
 		}
 
-		// Generate expiration from generator. The storage TTL is derived from the
-		// window so a sub-second value cannot expire the entry mid-window.
-		expiration := windowSeconds(cfg.ExpirationFunc(c), cfg.Expiration)
-		expirationDuration, _ := secondsToDuration(expiration)
+		// Generate the window from the generator. The storage TTL is derived from
+		// it so a sub-second value cannot expire the entry mid-window.
+		windowSec := windowSeconds(cfg.ExpirationFunc(c), cfg.Expiration)
+		ttl, _ := secondsToDuration(windowSec)
 
 		// Get key from request
 		key := cfg.KeyGenerator(c)
@@ -59,14 +56,8 @@ func (FixedWindow) New(cfg *Config) fiber.Handler {
 		// Get timestamp
 		ts := cfg.currentSecond()
 
-		// Set expiration if entry does not exist
-		if e.exp == 0 {
-			e.exp = ts + expiration
-		} else if ts >= e.exp {
-			// Check if entry is expired
-			e.currHits = 0
-			e.exp = ts + expiration
-		}
+		// Open the window if the entry is new, or a fresh one if it has ended
+		e.rotateFixed(ts, windowSec)
 
 		// Increment hits
 		e.currHits++
@@ -79,9 +70,9 @@ func (FixedWindow) New(cfg *Config) fiber.Handler {
 		remaining := maxRequests - e.currHits
 
 		// Update storage
-		if setErr := manager.set(reqCtx, key, e, expirationDuration); setErr != nil {
+		if setErr := manager.set(reqCtx, key, e, ttl); setErr != nil {
 			mu.Unlock()
-			return fmt.Errorf("limiter: failed to persist state: %w", setErr)
+			return errPersist(setErr)
 		}
 
 		// Unlock entry
@@ -89,26 +80,15 @@ func (FixedWindow) New(cfg *Config) fiber.Handler {
 
 		// Check if hits exceed the max
 		if remaining < 0 {
-			// Return response with Retry-After header
-			// https://tools.ietf.org/html/rfc6584
-			if !cfg.DisableHeaders {
-				c.Set(fiber.HeaderRetryAfter, utils.FormatUint(resetInSec))
-			}
-
-			// Call LimitReached handler
-			return cfg.LimitReached(c)
+			return cfg.reject(c, resetInSec)
 		}
 
 		// Continue stack for reaching c.Res().StatusCode()
 		// Store err for returning
 		err = c.Next()
 
-		// Get the effective status code from either the error or response
-		statusCode := getEffectiveStatusCode(c, err)
-
 		// Check for SkipFailedRequests and SkipSuccessfulRequests
-		if (cfg.SkipSuccessfulRequests && statusCode < fiber.StatusBadRequest) ||
-			(cfg.SkipFailedRequests && statusCode >= fiber.StatusBadRequest) {
+		if cfg.skipsHit(getEffectiveStatusCode(c, err)) {
 			// Lock entry
 			mu = locks.lock(key) // rehash: c.Next() may have rewritten an unsafe key
 			entry, getErr := manager.get(reqCtx, key)
@@ -123,27 +103,28 @@ func (FixedWindow) New(cfg *Config) fiber.Handler {
 				e.currHits--
 			}
 			remaining = maxRequests - e.currHits
-			if setErr := manager.set(reqCtx, key, e, expirationDuration); setErr != nil {
+			if setErr := manager.set(reqCtx, key, e, ttl); setErr != nil {
 				mu.Unlock()
-				return fmt.Errorf("limiter: failed to persist state: %w", setErr)
+				return errPersist(setErr)
 			}
 			// Unlock entry
 			mu.Unlock()
 		}
 
-		// On the skip path currHits can exceed maxRequests (blocked requests
-		// persist their increment), so clamp remaining to keep the header >= 0.
-		if remaining < 0 {
-			remaining = 0
-		}
-
 		// We can continue, update RateLimit headers
-		if !cfg.DisableHeaders {
-			c.Set(xRateLimitLimit, utils.FormatInt(int64(maxRequests)))
-			c.Set(xRateLimitRemaining, utils.FormatInt(int64(remaining)))
-			c.Set(xRateLimitReset, utils.FormatUint(resetInSec))
-		}
+		cfg.setRateLimitHeaders(c, maxRequests, remaining, resetInSec)
 
 		return err
+	}
+}
+
+// rotateFixed opens a window for an entry that has none and starts a fresh one
+// once the current window has ended.
+func (e *item) rotateFixed(ts, windowSec uint64) {
+	if e.exp == 0 {
+		e.exp = ts + windowSec
+	} else if ts >= e.exp {
+		e.currHits = 0
+		e.exp = ts + windowSec
 	}
 }

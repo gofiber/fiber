@@ -1,6 +1,7 @@
 package limiter
 
 import (
+	"math"
 	"time"
 
 	"github.com/gofiber/fiber/v3"
@@ -11,7 +12,7 @@ const defaultLimiterMax = 5
 
 // Config defines the config for middleware.
 type Config struct {
-	// Store is used to store the state of the middleware
+	// Storage is used to store the state of the middleware
 	//
 	// Default: an in memory store for this process only
 	Storage fiber.Storage
@@ -192,4 +193,37 @@ func (cfg *Config) currentSecond() uint64 {
 		return uint64(sec)
 	}
 	return uint64(utils.Timestamp())
+}
+
+// secondsToDuration converts whole seconds to a Duration. It saturates at the
+// largest Duration and reports false when seconds does not fit.
+func secondsToDuration(seconds uint64) (time.Duration, bool) {
+	const maxSeconds = math.MaxInt64 / int64(time.Second)
+
+	if seconds > uint64(maxSeconds) {
+		return time.Duration(math.MaxInt64), false
+	}
+
+	return time.Duration(seconds) * time.Second, true
+}
+
+// ttlDuration returns how long a sliding-window entry must be kept: the time
+// left in the current window plus one whole window, so it outlives the window
+// that still weighs on the next one. It saturates instead of overflowing.
+func ttlDuration(resetSec, windowSec uint64) time.Duration {
+	resetDuration, ok := secondsToDuration(resetSec)
+	if !ok {
+		return time.Duration(math.MaxInt64)
+	}
+
+	windowDuration, ok := secondsToDuration(windowSec)
+	if !ok {
+		return time.Duration(math.MaxInt64)
+	}
+
+	if resetDuration > time.Duration(math.MaxInt64)-windowDuration {
+		return time.Duration(math.MaxInt64)
+	}
+
+	return resetDuration + windowDuration
 }

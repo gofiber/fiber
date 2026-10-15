@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"hash/maphash"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -22,6 +21,7 @@ import (
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/internal/clocktest"
 	"github.com/gofiber/fiber/v3/internal/storage/memory"
+	"github.com/gofiber/utils/v2"
 )
 
 // testClock is a manually advanced clock that makes window-expiry tests
@@ -1312,9 +1312,8 @@ func (s *stallingStorage) GetWithContext(ctx context.Context, key string) ([]byt
 func Test_Limiter_Concurrency_UnrelatedKeys(t *testing.T) {
 	t.Parallel()
 
-	shard := func(key string) uint64 { return maphash.String(keySeed, key) & (lockShards - 1) }
 	fast := "fast"
-	for i := 0; shard(fast) == shard("slow"); i++ {
+	for i := 0; shardIndex(fast) == shardIndex("slow"); i++ {
 		fast = "fast" + strconv.Itoa(i)
 	}
 
@@ -2218,7 +2217,7 @@ func Benchmark_Limiter_Parallel_Keys(b *testing.B) {
 		fctx := &fasthttp.RequestCtx{}
 		fctx.Request.Header.SetMethod(fiber.MethodGet)
 		fctx.Request.SetRequestURI("/")
-		fctx.Request.Header.Set("X-Client", strconv.FormatUint(clients.Add(1), 10))
+		fctx.Request.Header.Set("X-Client", utils.FormatUint(clients.Add(1)))
 
 		for pb.Next() {
 			h(fctx)
