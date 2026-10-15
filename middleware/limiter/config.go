@@ -21,8 +21,7 @@ type Config struct {
 	//
 	// Default: a new Fixed Window Rate Limiter
 	LimiterMiddleware Handler
-	// Next defines a function to skip this middleware when returned true. It is
-	// called before MaxFunc, so a request it skips never reaches MaxFunc.
+	// Next defines a function to skip this middleware when returned true. It runs before MaxFunc.
 	//
 	// Optional. Default: nil
 	Next func(c fiber.Ctx) bool
@@ -39,9 +38,8 @@ type Config struct {
 	// Window accounting is whole-second, so a positive value below one second is floored to
 	// one second. A zero or negative value falls back to the configured Expiration.
 	//
-	// The window of a key keeps the length given by the request that opened it, so requests
-	// that share a key (by default the client IP) share one window whatever their own
-	// ExpirationFunc says. A route that needs its own window needs its own key.
+	// The window of a key keeps the length given by the request that opened it: a route
+	// that needs its own window needs its own key.
 	//
 	// Default: A function that returns the static `Expiration` value from the config.
 	ExpirationFunc func(c fiber.Ctx) time.Duration
@@ -81,15 +79,13 @@ type Config struct {
 	Expiration time.Duration
 
 	// When set to true, requests with StatusCode >= 400 won't be counted.
-	// A handler that returns an error other than a *fiber.Error counts as a 500 unless it
-	// already set an error status, which is the response the default error handler gives it.
+	// A handler error that is not a *fiber.Error counts as a 500 unless it set an error status.
 	//
 	// Default: false
 	SkipFailedRequests bool
 
 	// When set to true, requests with StatusCode < 400 won't be counted.
-	// A handler that returns an error other than a *fiber.Error counts as a 500 unless it
-	// already set an error status, which is the response the default error handler gives it.
+	// A handler error that is not a *fiber.Error counts as a 500 unless it set an error status.
 	//
 	// Default: false
 	SkipSuccessfulRequests bool
@@ -100,8 +96,7 @@ type Config struct {
 	DisableHeaders bool
 
 	// DisableValueRedaction turns off masking limiter keys in logs and error messages when set to true.
-	// The key shown is the one the storage sees, so a key longer than 192 bytes appears as its
-	// SHA-256 digest.
+	// A key longer than 192 bytes is shown as its SHA-256 digest.
 	//
 	// Default: false
 	DisableValueRedaction bool
@@ -112,8 +107,7 @@ var ConfigDefault = Config{
 	Max:        defaultLimiterMax,
 	Expiration: 1 * time.Minute,
 	// Note: MaxFunc and ExpirationFunc are intentionally nil here so that configDefault()
-	// can create proper closures that reference the configured Max and Expiration values,
-	// also when a caller starts from a copy of ConfigDefault and changes them.
+	// can create closures over the configured Max and Expiration values.
 	KeyGenerator: func(c fiber.Ctx) string {
 		return c.IP()
 	},
@@ -205,8 +199,7 @@ func (cfg *Config) currentSecond() uint64 {
 	return uint64(utils.Timestamp())
 }
 
-// secondsToDuration converts whole seconds to a Duration. It saturates at the
-// largest Duration and reports false when seconds does not fit.
+// secondsToDuration converts seconds to a Duration, saturating and reporting false on overflow.
 func secondsToDuration(seconds uint64) (time.Duration, bool) {
 	const maxSeconds = math.MaxInt64 / int64(time.Second)
 
@@ -217,9 +210,8 @@ func secondsToDuration(seconds uint64) (time.Duration, bool) {
 	return time.Duration(seconds) * time.Second, true
 }
 
-// ttlDuration returns how long a sliding-window entry must be kept: the time
-// left in the current window plus one whole window, so it outlives the window
-// that still weighs on the next one. It saturates instead of overflowing.
+// ttlDuration is how long a sliding-window entry is kept: the time left in the current
+// window plus one whole window. It saturates instead of overflowing.
 func ttlDuration(resetSec, windowSec uint64) time.Duration {
 	resetDuration, ok := secondsToDuration(resetSec)
 	if !ok {

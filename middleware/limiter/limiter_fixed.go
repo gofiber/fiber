@@ -26,8 +26,7 @@ func (FixedWindow) New(cfg *Config) fiber.Handler {
 
 	// Return new handler
 	return func(c fiber.Ctx) error {
-		// Don't execute middleware if Next returns true or if MaxFunc, which returns Max
-		// unless configured otherwise, returns 0
+		// Don't execute middleware if Next returns true or if MaxFunc returns 0
 		maxRequests, ok := cfg.limit(c)
 		if !ok {
 			return c.Next()
@@ -38,9 +37,8 @@ func (FixedWindow) New(cfg *Config) fiber.Handler {
 		windowSec := windowSeconds(cfg.ExpirationFunc(c), cfg.Expiration)
 		ttl, _ := secondsToDuration(windowSec)
 
-		// Get key from request. A skipped hit is credited back after the handler ran,
-		// and a handler can overwrite the request memory an unsafe key string points
-		// to, so the key is copied when it is needed again.
+		// Get key from request, copied since it is read again after the handler,
+		// which may overwrite the request memory an unsafe key points to
 		key := cfg.KeyGenerator(c)
 		if cfg.SkipSuccessfulRequests || cfg.SkipFailedRequests {
 			key = utils.CopyString(key)
@@ -61,7 +59,7 @@ func (FixedWindow) New(cfg *Config) fiber.Handler {
 		// Get timestamp
 		ts := cfg.currentSecond()
 
-		// Open the window if the entry is new, or a fresh one if it has ended
+		// Rotate window
 		e.rotateFixed(ts, windowSec)
 
 		// Increment hits
@@ -94,7 +92,7 @@ func (FixedWindow) New(cfg *Config) fiber.Handler {
 
 		// Check for SkipFailedRequests and SkipSuccessfulRequests
 		if cfg.skipsHit(getEffectiveStatusCode(c, err)) {
-			// Lock entry again, the shard of the same key
+			// Lock entry
 			mu.Lock()
 			entry, getErr := manager.get(reqCtx, key)
 			if getErr != nil {
@@ -123,8 +121,7 @@ func (FixedWindow) New(cfg *Config) fiber.Handler {
 	}
 }
 
-// rotateFixed opens a window for an entry that has none and starts a fresh one
-// once the current window has ended.
+// rotateFixed opens a window for a new entry and starts a fresh one once it has ended.
 func (e *item) rotateFixed(ts, windowSec uint64) {
 	if e.exp == 0 {
 		e.exp = ts + windowSec

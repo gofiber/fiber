@@ -28,8 +28,7 @@ func (SlidingWindow) New(cfg *Config) fiber.Handler {
 
 	// Return new handler
 	return func(c fiber.Ctx) error {
-		// Don't execute middleware if Next returns true or if MaxFunc, which returns Max
-		// unless configured otherwise, returns 0
+		// Don't execute middleware if Next returns true or if MaxFunc returns 0
 		maxRequests, ok := cfg.limit(c)
 		if !ok {
 			return c.Next()
@@ -38,10 +37,8 @@ func (SlidingWindow) New(cfg *Config) fiber.Handler {
 		// Generate the window from the generator
 		windowSec := windowSeconds(cfg.ExpirationFunc(c), cfg.Expiration)
 
-		// Get key from request. The entry is read again after the handler ran, to
-		// credit a skipped hit and to report fresh headers, and a handler can
-		// overwrite the request memory an unsafe key string points to, so the key is
-		// copied when it is needed again.
+		// Get key from request, copied since it is read again after the handler,
+		// which may overwrite the request memory an unsafe key points to
 		key := cfg.KeyGenerator(c)
 		if cfg.SkipSuccessfulRequests || cfg.SkipFailedRequests || !cfg.DisableHeaders {
 			key = utils.CopyString(key)
@@ -77,11 +74,11 @@ func (SlidingWindow) New(cfg *Config) fiber.Handler {
 		//               ^            ^               ^          ^
 		//              ts         e.exp   End sample window   End next window
 		//               <------------>
-		//                Reset In Sec
+		// 				   Reset In Sec
 		// resetInSec = e.exp - ts - time until end of current window.
-		// resetInSec + windowSec = end of next window.
+		// duration + expiration = end of next window.
 		// Because we don't want to garbage collect in the middle of a window
-		// we add the window length to the time left.
+		// we add the expiration to the duration.
 		// Otherwise, after the end of "sample window", attackers could launch
 		// a new request with the full window length.
 		if setErr := manager.set(reqCtx, key, e, ttlDuration(resetInSec, windowSec)); setErr != nil {
@@ -105,7 +102,7 @@ func (SlidingWindow) New(cfg *Config) fiber.Handler {
 		skipHit := cfg.skipsHit(getEffectiveStatusCode(c, err))
 
 		if skipHit || !cfg.DisableHeaders {
-			// Lock entry again, the shard of the same key
+			// Lock entry
 			mu.Lock()
 			entry, getErr := manager.get(reqCtx, key)
 			if getErr != nil {
@@ -139,8 +136,7 @@ func (SlidingWindow) New(cfg *Config) fiber.Handler {
 	}
 }
 
-// rotateSliding moves the entry's windows forward to ts and returns the seconds
-// left in the current one.
+// rotateSliding moves the windows forward to ts and returns the seconds left in the current one.
 func (e *item) rotateSliding(ts, windowSec uint64) uint64 {
 	// Set expiration if entry does not exist
 	if e.exp == 0 {
@@ -164,23 +160,18 @@ func (e *item) rotateSliding(ts, windowSec uint64) uint64 {
 	return e.exp - ts
 }
 
-// rate estimates the requests made within one window ending resetInSec from
-// now: the previous window's hits weighted by the share of it that still lies
-// inside that window, plus the hits of the current window.
+// rate estimates the requests in the window ending resetInSec from now: the previous
+// window's hits, weighted by the share of it still inside the window, plus the current's.
 func (e *item) rate(resetInSec, windowSec uint64) int {
-	// weight = time until current window reset / total window length. The window
-	// the entry is in may have been opened by a request whose ExpirationFunc gave
-	// it a longer window than this one, which would push the share past the whole
-	// previous window, so it is capped there.
+	// weight = time until current window reset / total window length, capped at 1: the open
+	// window may come from a longer ExpirationFunc window than this request's.
 	weight := min(float64(resetInSec)/float64(windowSec), 1)
 
-	// rate = request count in previous window * weight + request count in current window
 	return int(math.Ceil(float64(e.prevHits)*weight)) + e.currHits
 }
 
-// hitBucket returns the counter that holds a hit made while the window ending
-// at hitWindowEnd was current, or nil once that hit has aged out of the sliding
-// window.
+// hitBucket returns the counter holding a hit made while the window ending at
+// hitWindowEnd was current, or nil once it has aged out.
 func (e *item) hitBucket(hitWindowEnd, ts, windowSec uint64) *int {
 	if ts < hitWindowEnd {
 		return &e.currHits

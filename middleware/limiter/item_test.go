@@ -11,13 +11,13 @@ func Test_item_hitBucket(t *testing.T) {
 
 	e := &item{currHits: 3, prevHits: 7}
 
-	// ts before the end of the hit's window -> current bucket.
+	// ts before the recorded window expiry -> current bucket.
 	require.Equal(t, &e.currHits, e.hitBucket(100, 50, 60))
 
-	// ts within one window after the hit's window ended -> previous bucket.
+	// ts within one expiration after the window expiry -> previous bucket.
 	require.Equal(t, &e.prevHits, e.hitBucket(100, 130, 60))
 
-	// ts more than one window past the end of the hit's window -> nil.
+	// ts more than one expiration past the window expiry -> nil.
 	require.Nil(t, e.hitBucket(100, 200, 60))
 }
 
@@ -59,7 +59,7 @@ func Test_item_rotateFixed(t *testing.T) {
 	require.Equal(t, 4, e.currHits)
 	require.Equal(t, uint64(110), e.exp)
 
-	// Once the window ended a fresh one starts and the hits are forgotten.
+	// After the window a fresh one starts.
 	e = &item{currHits: 4, exp: 110}
 	e.rotateFixed(110, 10)
 	require.Equal(t, 0, e.currHits)
@@ -71,15 +71,12 @@ func Test_item_rate(t *testing.T) {
 
 	e := &item{prevHits: 4, currHits: 2}
 
-	// The previous window counts in full at the start of a window...
+	// The 4 previous hits weigh in full, by half, by a tenth (rounded up) and not at all.
 	require.Equal(t, 6, e.rate(10, 10))
-	// ...fades out as the window runs, rounded up...
 	require.Equal(t, 4, e.rate(5, 10))
 	require.Equal(t, 3, e.rate(1, 10))
-	// ...and no longer counts once the window is over.
 	require.Equal(t, 2, e.rate(0, 10))
 
-	// More time left than the window asked for (the open window was opened by a
-	// longer one) cannot weigh more than the whole previous window.
+	// More time left than the window cannot weigh more than the whole previous window.
 	require.Equal(t, 6, e.rate(45, 10))
 }

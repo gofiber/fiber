@@ -50,10 +50,8 @@ func (c *testClock) Add(d time.Duration) {
 	c.now = c.now.Add(d)
 }
 
-// fakeLimiterStorage keeps what it is given in a map for as long as the test
-// runs and ignores the TTL: the memory storage expires entries by the real
-// clock, which a test's injected clock does not move. An operation fails when
-// errs holds an error under "get|<key>" or "set|<key>".
+// fakeLimiterStorage keeps entries in a map and ignores TTLs, which the memory storage
+// applies by the real clock. An operation fails when errs has "get|<key>" or "set|<key>".
 type fakeLimiterStorage struct {
 	data map[string][]byte
 	errs map[string]error
@@ -61,7 +59,6 @@ type fakeLimiterStorage struct {
 
 const testLimiterClientKey = "client-key"
 
-// windowStrategies are the two algorithms every strategy-independent test runs.
 var windowStrategies = []struct {
 	handler Handler
 	name    string
@@ -278,8 +275,7 @@ func Test_getEffectiveStatusCode_FiberError(t *testing.T) {
 	c.Response().SetStatusCode(fiber.StatusBadGateway)
 	require.Equal(t, fiber.StatusBadGateway, getEffectiveStatusCode(c, errors.New("generic")))
 
-	// Otherwise it is an internal error, which is what the default error handler
-	// answers it with, however the response looks while the error is on its way up.
+	// Otherwise it counts as the 500 the default error handler gives it.
 	for _, status := range []int{fiber.StatusOK, fiber.StatusFound} {
 		c.Response().SetStatusCode(status)
 		require.Equal(t, fiber.StatusInternalServerError, getEffectiveStatusCode(c, errors.New("generic")), "status %d", status)
@@ -316,9 +312,6 @@ func Test_getEffectiveStatusCode_TypedNilCustomError(t *testing.T) {
 	})
 }
 
-// Test_Limiter_StorageErrorMessages checks the error a failing storage call
-// surfaces from either strategy: it names the failed step and, unless
-// DisableValueRedaction is set, hides the key.
 func Test_Limiter_StorageErrorMessages(t *testing.T) {
 	t.Parallel()
 
@@ -379,8 +372,6 @@ func Test_Limiter_StorageErrorMessages(t *testing.T) {
 	}
 }
 
-// requireContextRecords checks that the two storage calls made for key carried
-// the request context the test set: its marker, canceled or not.
 func requireContextRecords(t *testing.T, records []contextRecord, key, wantValue string, wantCanceled bool) {
 	t.Helper()
 
@@ -585,26 +576,19 @@ func Test_Limiter_StorageErrorsReleaseShard(t *testing.T) {
 	}
 }
 
-// skipStep is one request of a scenario: the path it asks for and the status it
-// must get back.
 type skipStep struct {
 	path string
 	want int
 }
 
-// Test_Limiter_Skip_Choices drives the same request sequences through both
-// window strategies, with the default store and with a custom one. The window
-// is two seconds, and a scenario ends on a 429 that only waiting out the window
-// can lift.
-//
 // go test -run Test_Limiter_Skip_Choices -v
 func Test_Limiter_Skip_Choices(t *testing.T) {
 	t.Parallel()
 
 	scenarios := []struct {
 		name  string
-		steps []skipStep // run back to back
-		after skipStep   // asked once the window has passed; no path means no wait
+		steps []skipStep
+		after skipStep // asked after the window; no path means no wait
 		cfg   Config
 	}{
 		{
@@ -634,9 +618,8 @@ func Test_Limiter_Skip_Choices(t *testing.T) {
 
 	strategies := []struct {
 		handler Handler
-		// wait lets the window pass after the last response, which carries the Retry-After.
-		wait func(t *testing.T, resp *http.Response)
-		name string
+		wait    func(t *testing.T, resp *http.Response)
+		name    string
 	}{
 		{name: "fixed", handler: FixedWindow{}, wait: func(*testing.T, *http.Response) { time.Sleep(3 * time.Second) }},
 		{name: "sliding", handler: SlidingWindow{}, wait: sleepForRetryAfter},
@@ -817,9 +800,7 @@ func Test_Limiter_ExpirationFuncOverridesStaticExpiration(t *testing.T) {
 				require.Equal(t, want, resp.StatusCode)
 			}
 
-			// Two whole windows of the 2s ExpirationFunc, plus a second, are enough
-			// for either strategy to forget the hits and still fall well short of
-			// the 10s Expiration it overrides.
+			// Past two 2s windows both strategies forget the hits, well before the 10s Expiration.
 			clock.Add(5 * time.Second)
 
 			resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
@@ -994,9 +975,7 @@ func Test_Limiter_SubSecondExpirationIsOneSecondWindow(t *testing.T) {
 	})
 }
 
-// requireBurstLimited sends n concurrent requests that all fit under the limit,
-// checks that the next one is limited, and that traffic flows again once the
-// window has passed.
+// requireBurstLimited sends n concurrent requests under the limit, expects a 429, then a 200 after the window.
 func requireBurstLimited(t *testing.T, app *fiber.App, n int) {
 	t.Helper()
 
@@ -1321,9 +1300,7 @@ func Benchmark_Limiter_Custom_Store(b *testing.B) {
 	}
 }
 
-// Test_Limiter_Bug_NewErrorf_SkipSuccessfulRequests covers a handler that fails
-// with a *fiber.Error: its code, not the 200 the response still carries at that
-// point, says the request failed, so it still counts under SkipSuccessfulRequests.
+// A returned *fiber.Error counts as failed, whatever status the response still carries.
 func Test_Limiter_Bug_NewErrorf_SkipSuccessfulRequests(t *testing.T) {
 	t.Parallel()
 
@@ -1346,12 +1323,11 @@ func Test_Limiter_Bug_NewErrorf_SkipSuccessfulRequests(t *testing.T) {
 				return fiber.NewErrorf(fiber.StatusInternalServerError, "Error")
 			})
 
-			// The first request fails and, being a failure, is counted.
 			resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 			require.NoError(t, err)
 			require.Equal(t, fiber.StatusInternalServerError, resp.StatusCode)
 
-			// So the second one is rate limited.
+			// The failed first request is counted, so the second is limited.
 			resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 			require.NoError(t, err)
 			require.Equal(t, fiber.StatusTooManyRequests, resp.StatusCode, "Second request should be rate limited")
@@ -1359,8 +1335,6 @@ func Test_Limiter_Bug_NewErrorf_SkipSuccessfulRequests(t *testing.T) {
 	}
 }
 
-// Test_Limiter_NilConfigUsesDefaults covers a strategy used on its own: New(nil)
-// falls back to the default config.
 func Test_Limiter_NilConfigUsesDefaults(t *testing.T) {
 	t.Parallel()
 
@@ -1387,10 +1361,7 @@ func Test_Limiter_NilConfigUsesDefaults(t *testing.T) {
 	}
 }
 
-// Test_Limiter_RemainingHeaderIsNeverNegative covers requests that are rejected
-// while another one is still running: the rejected ones keep their hit, so by
-// the time the running request gives its own hit back the stored count is
-// still above Max. X-RateLimit-Remaining must read 0, not a negative number.
+// Rejected requests keep their hit, so the stored count can exceed Max; Remaining must still read 0.
 func Test_Limiter_RemainingHeaderIsNeverNegative(t *testing.T) {
 	t.Parallel()
 
@@ -1434,7 +1405,7 @@ func Test_Limiter_RemainingHeaderIsNeverNegative(t *testing.T) {
 				slowCh <- respErr{resp: resp, err: err}
 			}()
 
-			// Two more requests arrive while the slow one holds the only slot.
+			// Two requests are rejected while the slow one runs.
 			<-started
 			for range 2 {
 				resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/fast", http.NoBody))
@@ -1452,21 +1423,16 @@ func Test_Limiter_RemainingHeaderIsNeverNegative(t *testing.T) {
 	}
 }
 
-// Test_Limiter_PlainErrorCountsAsInternalError covers a handler that returns an
-// error that is no *fiber.Error. The default error handler answers it with a
-// 500, so the Skip* options must see the failure it ends up as and not the 200
-// the response still carries while the error is on its way up.
+// A plain error is answered with a 500 by the default error handler, so Skip* must count it as one.
 func Test_Limiter_PlainErrorCountsAsInternalError(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
 		name string
-		want []int // three identical requests, with Max being 1
+		want []int // statuses of three requests, Max being 1
 		cfg  Config
 	}{
-		// failures are not counted, so none is ever limited
 		{name: "skip_failed", cfg: Config{SkipFailedRequests: true}, want: []int{500, 500, 500}},
-		// failures are counted, so only the first request gets through
 		{name: "skip_successful", cfg: Config{SkipSuccessfulRequests: true}, want: []int{500, 429, 429}},
 	}
 
@@ -1499,8 +1465,6 @@ func Test_Limiter_PlainErrorCountsAsInternalError(t *testing.T) {
 	}
 }
 
-// Test_Limiter_ConfigDefaultCopyKeepsMax covers a config built by copying
-// ConfigDefault and changing Max: the default MaxFunc has to follow it.
 func Test_Limiter_ConfigDefaultCopyKeepsMax(t *testing.T) {
 	t.Parallel()
 
@@ -1523,8 +1487,6 @@ func Test_Limiter_ConfigDefaultCopyKeepsMax(t *testing.T) {
 	}
 }
 
-// Test_Limiter_Next_BeforeMaxFunc covers MaxFunc being left alone for a request
-// that Next skips.
 func Test_Limiter_Next_BeforeMaxFunc(t *testing.T) {
 	t.Parallel()
 
@@ -1561,8 +1523,6 @@ func Test_Limiter_Next_BeforeMaxFunc(t *testing.T) {
 	}
 }
 
-// Test_Limiter_NegativeMaxFuncRejectsEveryRequest pins the documented meaning
-// of a negative limit: nothing fits under it, not even the first request.
 func Test_Limiter_NegativeMaxFuncRejectsEveryRequest(t *testing.T) {
 	t.Parallel()
 
@@ -1586,10 +1546,7 @@ func Test_Limiter_NegativeMaxFuncRejectsEveryRequest(t *testing.T) {
 	}
 }
 
-// Test_Limiter_ExpirationFunc_SharedKeyKeepsOpeningWindow covers requests that
-// share a key but get different windows from ExpirationFunc, as in the docs'
-// /login example with the default per-client key: the request that opens a
-// window decides its length, and the others share it.
+// Requests sharing a key share the window of the one that opened it (the docs' /login example).
 func Test_Limiter_ExpirationFunc_SharedKeyKeepsOpeningWindow(t *testing.T) {
 	t.Parallel()
 
@@ -1625,7 +1582,7 @@ func Test_Limiter_ExpirationFunc_SharedKeyKeepsOpeningWindow(t *testing.T) {
 
 			require.Equal(t, "30", reset("/"))
 
-			// The window is open: /login shares it instead of starting a 60s one.
+			// /login joins the open window instead of starting a 60s one.
 			clock.Add(time.Second)
 			require.Equal(t, "29", reset("/login"))
 
@@ -1633,18 +1590,14 @@ func Test_Limiter_ExpirationFunc_SharedKeyKeepsOpeningWindow(t *testing.T) {
 				return
 			}
 
-			// Once it has ended, the next window takes the length its first request asks for.
+			// The next window takes the length its first request asks for.
 			clock.Add(30 * time.Second)
 			require.Equal(t, "60", reset("/login"))
 		})
 	}
 }
 
-// Test_Limiter_Sliding_MixedWindowsDoNotInflateThePreviousWindow covers a
-// request that asks for a shorter window while a longer one is open. The time
-// left in the open window must not be measured against the shorter one, or the
-// previous window would count several times over and a client well inside its
-// limit would be rejected.
+// A shorter window asked for while a longer one is open must not inflate the previous window's weight.
 func Test_Limiter_Sliding_MixedWindowsDoNotInflateThePreviousWindow(t *testing.T) {
 	t.Parallel()
 
@@ -1674,24 +1627,20 @@ func Test_Limiter_Sliding_MixedWindowsDoNotInflateThePreviousWindow(t *testing.T
 	}
 
 	get("/")
-	clock.Add(10 * time.Second) // the first window has ended and becomes the previous one
+	clock.Add(10 * time.Second) // the first window becomes the previous one
 
 	resp := get("/")
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
 	require.Equal(t, "3", resp.Header.Get(xRateLimitRemaining))
 
-	// Nine of the ten seconds are left, so the previous window's hit weighs
-	// ceil(0.9) = 1 and the rate is 1 + 2 hits, leaving 2 of 5.
+	// 9 of 10s are left: the previous hit weighs ceil(0.9) = 1, the rate is 1 + 2, leaving 2 of 5.
 	clock.Add(time.Second)
 	resp = get("/short")
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
 	require.Equal(t, "2", resp.Header.Get(xRateLimitRemaining))
 }
 
-// Test_Limiter_KeyOverwrittenByHandler covers a handler that rewrites, in
-// place, the request memory the key string points to (c.Get does not copy it).
-// The hit a request earned must still be credited to the entry it was counted
-// in, and not to whatever the overwritten key names by then.
+// A handler overwriting the memory behind the key (c.Get does not copy) must not misdirect the credit.
 func Test_Limiter_KeyOverwrittenByHandler(t *testing.T) {
 	t.Parallel()
 
@@ -1709,12 +1658,12 @@ func Test_Limiter_KeyOverwrittenByHandler(t *testing.T) {
 				KeyGenerator:           func(c fiber.Ctx) string { return c.Get("X-Client") },
 			}))
 			app.Get("/", func(c fiber.Ctx) error {
-				// Same length, so fasthttp overwrites the bytes the key points to.
+				// Same length, so fasthttp overwrites the key's bytes in place.
 				c.Request().Header.Set("X-Client", "BBBB")
 				return c.SendStatus(fiber.StatusOK)
 			})
 
-			// Every request succeeds and is credited back, so none may be limited.
+			// Each hit is credited back, so none is limited.
 			for i := range 3 {
 				req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 				req.Header.Set("X-Client", "AAAA")
@@ -1726,9 +1675,6 @@ func Test_Limiter_KeyOverwrittenByHandler(t *testing.T) {
 	}
 }
 
-// Test_Limiter_DisableValueRedaction_ShowsBoundedKey covers what an error shows
-// with redaction off: the key the storage saw, so a key past the bound appears
-// as its digest and never in full.
 func Test_Limiter_DisableValueRedaction_ShowsBoundedKey(t *testing.T) {
 	t.Parallel()
 
@@ -1758,11 +1704,7 @@ func Test_Limiter_DisableValueRedaction_ShowsBoundedKey(t *testing.T) {
 	require.NotContains(t, captured.Error(), oversizedKey)
 }
 
-// Test_Limiter_StorageRoundTrips pins how often a request that passes goes to
-// the storage, as the docs describe. The fixed window reads and writes once. A
-// second read and write, after the handler, is made when a Skip* option may
-// give the hit back and, for the sliding window, whenever headers are on, so
-// that they report the state at the end of the request.
+// Test_Limiter_StorageRoundTrips pins the storage reads and writes of a passing request, as the docs describe.
 func Test_Limiter_StorageRoundTrips(t *testing.T) {
 	t.Parallel()
 
@@ -1947,12 +1889,8 @@ func Benchmark_Limiter_Parallel_Keys(b *testing.B) {
 	})
 }
 
-// Benchmark_Limiter_Admit measures requests that pass the limiter. Max is far
-// above what the loop reaches, so no iteration takes the 429 path, unlike
-// Benchmark_Limiter, which runs into its Max of 100 after the first hundred.
-// It covers what the other benchmarks leave out: the sliding window, the second
-// storage round-trip that SkipSuccessfulRequests adds, and oversized keys,
-// which boundKey hashes on every get and set.
+// Benchmark_Limiter_Admit measures requests that pass: Max is high enough that none takes the
+// 429 path, which Benchmark_Limiter reaches after its first hundred.
 //
 // go test -v -run=^$ -bench=Benchmark_Limiter_Admit -benchmem -count=4
 func Benchmark_Limiter_Admit(b *testing.B) {
@@ -2053,15 +1991,8 @@ func Test_Sliding_Window(t *testing.T) {
 	}
 }
 
-// Test_Limiter_SubSecondExpirationFunc drives a limiter whose ExpirationFunc
-// returns less than a second. The 0-second window this used to give made the
-// sliding weight a division by zero, so the rate was garbage and requests
-// within Max were rejected, and it made the fixed window rotate on every
-// request, so its counter kept resetting and it admitted unlimited traffic.
-//
-// The reset header pins the floored window length, which is what fails on every
-// architecture: an unfloored window turns the rate into int(NaN), and that
-// saturates to 0 on arm64 but wraps to MinInt64 on amd64.
+// Test_Limiter_SubSecondExpirationFunc checks that an ExpirationFunc below one second floors to a
+// 1s window: a 0s one made the sliding rate NaN and the fixed window reset on every request.
 //
 // go test -run Test_Limiter_SubSecondExpirationFunc -race -v
 func Test_Limiter_SubSecondExpirationFunc(t *testing.T) {
@@ -2077,11 +2008,8 @@ func Test_Limiter_SubSecondExpirationFunc(t *testing.T) {
 				Max:            5,
 				ExpirationFunc: func(fiber.Ctx) time.Duration { return 500 * time.Millisecond },
 				clock:          clock.Now,
-				// clock freezes the limiter's own window, but the default store expires
-				// entries on real time, so a slow runner could drop the counter between
-				// requests and let the 6th open a fresh window. This storage keeps what
-				// it is given (it only fails when errs says so), leaving the flooring
-				// itself as the only thing under test.
+				// the default store expires entries by the real clock, which a slow runner
+				// could outrun between requests
 				Storage:           newFakeLimiterStorage(),
 				LimiterMiddleware: strategy.handler,
 			}))
