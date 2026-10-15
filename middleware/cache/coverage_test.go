@@ -4,6 +4,9 @@ import (
 	"bytes"
 	"container/heap"
 	"context"
+	"crypto/sha256"
+	"encoding/binary"
+	"encoding/hex"
 	"errors"
 	"math"
 	"strings"
@@ -368,24 +371,87 @@ func Test_secondsConversions_Overflow(t *testing.T) {
 	require.Equal(t, 5*time.Second, secondsToDuration(5))
 }
 
+// authDigest is what appendAuthHash makes of the lines.
+func authDigest(lines ...string) string {
+	framed := make([][]byte, len(lines))
+	for i, line := range lines {
+		framed[i] = []byte(line)
+	}
+	return string(appendAuthHash(nil, framed))
+}
+
 func Test_appendAuthHash(t *testing.T) {
 	t.Parallel()
 
-	fn := func(lines [][]byte) string {
-		return string(appendAuthHash(nil, lines))
-	}
-	got := fn([][]byte{[]byte("Bearer token")})
+	got := authDigest("Bearer token")
 	require.Len(t, got, hexLen)
 	// Stable for the same input, and reuses the pooled framing buffer on the
 	// second call.
-	require.Equal(t, got, fn([][]byte{[]byte("Bearer token")}))
+	require.Equal(t, got, authDigest("Bearer token"))
 
 	// Appended to whatever the caller is already building, not returned alone.
 	require.Equal(t, "key|auth="+got, string(appendAuthHash([]byte("key|auth="), [][]byte{[]byte("Bearer token")})))
 
 	// Length-prefixed, so a split that concatenates to the same bytes does not
 	// land on the same digest.
-	require.NotEqual(t, fn([][]byte{[]byte("ab")}), fn([][]byte{[]byte("a"), []byte("b")}))
+	require.NotEqual(t, authDigest("ab"), authDigest("a", "b"))
+	require.NotEqual(t, authDigest("a", "bc"), authDigest("ab", "c"))
+	require.NotEqual(t, authDigest(""), authDigest(), "absent and present-empty are different")
+	require.NotEqual(t, authDigest("", ""), authDigest(""))
+	// A line that spells its own framing cannot fake a boundary.
+	require.NotEqual(t, authDigest("\x01a\x01b"), authDigest("a", "b"))
+	// The framing itself: a uvarint length before each line.
+	sum := sha256.Sum256([]byte("\x01a\x01b"))
+	require.Equal(t, hex.EncodeToString(sum[:]), authDigest("a", "b"))
+}
+
+// The framing is hashed from the stack when it fits and from the pooled buffer when it does not;
+// the digest is the same either way.
+func Test_appendAuthHash_FramingSizes(t *testing.T) {
+	t.Parallel()
+
+	reference := func(lines ...string) string {
+		var framed []byte
+		for _, line := range lines {
+			framed = binary.AppendUvarint(framed, uint64(len(line)))
+			framed = append(framed, line...)
+		}
+		sum := sha256.Sum256(framed)
+		return hex.EncodeToString(sum[:])
+	}
+
+	// One line of 254 bytes frames to the 256 the stack holds, and one of 255 to a byte more.
+	for _, n := range []int{0, 1, 127, 128, 200, 253, 254, 255, 256, 1000, maxAuthScratch + 1} {
+		line := strings.Repeat("x", n)
+		require.Equal(t, reference(line), authDigest(line), "one line of %d bytes", n)
+	}
+	for _, n := range []int{120, 125, 126, 127, 128, 200} {
+		lines := []string{strings.Repeat("a", n), strings.Repeat("b", 126)}
+		require.Equal(t, reference(lines...), authDigest(lines...), "two lines, the first of %d bytes", n)
+	}
+}
+
+func Test_framedLen(t *testing.T) {
+	t.Parallel()
+
+	// Each length is a uvarint: a byte more at 128, at 16384, and so on.
+	for _, n := range []int{0, 1, 126, 127, 128, 254, 255, 16383, 16384} {
+		line := make([]byte, n)
+		require.Equal(t, len(binary.AppendUvarint(nil, uint64(n)))+n, framedLen([][]byte{line}), "one line of %d bytes", n)
+	}
+	require.Equal(t, (1+1)+(2+300), framedLen([][]byte{make([]byte, 1), make([]byte, 300)}))
+	require.Zero(t, framedLen(nil))
+}
+
+// A credential whose framing fits the stack is hashed without an allocation, whatever the pool holds.
+// Sequential: testing.AllocsPerRun panics during a parallel test.
+func Test_appendAuthHash_DoesNotAllocate(t *testing.T) {
+	// 254 bytes is the longest line that fits.
+	for _, n := range []int{71, 254} {
+		lines := [][]byte{[]byte(strings.Repeat("t", n))}
+		dst := make([]byte, 0, 128)
+		require.Zero(t, testing.AllocsPerRun(100, func() { dst = appendAuthHash(dst[:0], lines) }), "one line of %d bytes", n)
+	}
 }
 
 func Test_manager_get_StorageErrors(t *testing.T) {

@@ -158,7 +158,8 @@ func Test_Cache_UncacheableVaryCleanup(t *testing.T) {
 }
 
 // A reload that lands on an error page must not purge the entry or the
-// manifest its sibling variants hang on; a cacheable status still does.
+// manifest its sibling variants hang on; a cacheable status still does. A 401, 403 or 407 is
+// no verdict on an entry no credential selected, whatever it says about keeping the response.
 func Test_Cache_UncacheableStatusKeepsEntryAndManifest(t *testing.T) {
 	t.Parallel()
 
@@ -166,14 +167,20 @@ func Test_Cache_UncacheableStatusKeepsEntryAndManifest(t *testing.T) {
 		name      string
 		directive string
 		status    int
-		purged    bool
+		purged    bool // the entry and the manifest go, so no variant is a hit afterwards
 	}{
 		{name: "503", status: fiber.StatusServiceUnavailable},
 		{name: "503 no-store", status: fiber.StatusServiceUnavailable, directive: "no-store"},
 		{name: "503 private", status: fiber.StatusServiceUnavailable, directive: "private"},
 		{name: "503 no-cache", status: fiber.StatusServiceUnavailable, directive: "no-cache"},
 		{name: "503 VaryStar", status: fiber.StatusServiceUnavailable, directive: "VaryStar"},
+		{name: "429 no-store", status: fiber.StatusTooManyRequests, directive: "no-store"},
+		{name: "401", status: fiber.StatusUnauthorized},
+		{name: "403", status: fiber.StatusForbidden},
+		{name: "407", status: fiber.StatusProxyAuthRequired},
 		{name: "401 private", status: fiber.StatusUnauthorized, directive: "private"},
+		{name: "403 no-store", status: fiber.StatusForbidden, directive: "no-store"},
+		{name: "407 VaryStar", status: fiber.StatusProxyAuthRequired, directive: "VaryStar"},
 		{name: "404 no-store", status: fiber.StatusNotFound, directive: "no-store", purged: true},
 	}
 

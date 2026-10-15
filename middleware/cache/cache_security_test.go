@@ -1218,32 +1218,6 @@ func Test_SetCookie2ResponseIsNotStored(t *testing.T) {
 	require.Equal(t, int32(2), calls.Load())
 }
 
-// Test_joinKeyHeaderValues_Framing asserts the length prefixes keep the join
-// injective. It is what stops two different field-line splits of the same bytes
-// from digesting alike once a dimension is too long to store verbatim, and a
-// plain concatenation would collide on the first pair below.
-func Test_joinKeyHeaderValues_Framing(t *testing.T) {
-	t.Parallel()
-
-	join := func(values ...string) string {
-		b := make([][]byte, len(values))
-		for i, v := range values {
-			b[i] = []byte(v)
-		}
-		return string(joinKeyHeaderValues(b))
-	}
-
-	require.NotEqual(t, join("ab"), join("a", "b"))
-	require.NotEqual(t, join("a", "bc"), join("ab", "c"))
-	require.NotEqual(t, join(""), join(), "absent and present-empty are different")
-	require.NotEqual(t, join("", ""), join(""))
-	// A value that spells its own framing cannot forge a boundary.
-	require.NotEqual(t, join("\x01a\x01b"), join("a", "b"))
-	// The encoding itself: a uvarint length before each value, which is what
-	// makes the boundaries readable and so the join injective.
-	require.Equal(t, "\x01a\x01b", join("a", "b"))
-}
-
 // Test_VaryContentType_KeyIsStableAcrossTheFormFold pins that a Vary'd
 // Content-Type keys the same before and after the handler runs.
 //
