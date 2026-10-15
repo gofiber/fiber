@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -49,12 +50,25 @@ func (c *testClock) Add(d time.Duration) {
 	c.now = c.now.Add(d)
 }
 
-type failingLimiterStorage struct {
+// fakeLimiterStorage keeps what it is given in a map for as long as the test
+// runs and ignores the TTL: the memory storage expires entries by the real
+// clock, which a test's injected clock does not move. An operation fails when
+// errs holds an error under "get|<key>" or "set|<key>".
+type fakeLimiterStorage struct {
 	data map[string][]byte
 	errs map[string]error
 }
 
 const testLimiterClientKey = "client-key"
+
+// windowStrategies are the two algorithms every strategy-independent test runs.
+var windowStrategies = []struct {
+	handler Handler
+	name    string
+}{
+	{name: "fixed", handler: FixedWindow{}},
+	{name: "sliding", handler: SlidingWindow{}},
+}
 
 type typedNilLimiterError struct {
 	message string
@@ -64,14 +78,8 @@ func (e *typedNilLimiterError) Error() string {
 	return e.message
 }
 
-// newInjectedClockStorage keeps entries until they are overwritten: the memory
-// storage expires them by the real clock, which a test's injected clock does not move.
-func newInjectedClockStorage() *failingLimiterStorage {
-	return newFailingLimiterStorage()
-}
-
-func newFailingLimiterStorage() *failingLimiterStorage {
-	return &failingLimiterStorage{
+func newFakeLimiterStorage() *fakeLimiterStorage {
+	return &fakeLimiterStorage{
 		data: make(map[string][]byte),
 		errs: make(map[string]error),
 	}
@@ -80,7 +88,7 @@ func newFailingLimiterStorage() *failingLimiterStorage {
 // countingFailStorage fails set operations, and optionally get operations,
 // after a specified number of successful calls
 type countingFailStorage struct {
-	*failingLimiterStorage
+	*fakeLimiterStorage
 	setFailErr    error
 	getFailErr    error
 	setCount      int
@@ -91,9 +99,9 @@ type countingFailStorage struct {
 
 func newCountingFailStorage(failAfterN int, err error) *countingFailStorage {
 	return &countingFailStorage{
-		failingLimiterStorage: newFailingLimiterStorage(),
-		failAfterN:            failAfterN,
-		setFailErr:            err,
+		fakeLimiterStorage: newFakeLimiterStorage(),
+		failAfterN:         failAfterN,
+		setFailErr:         err,
 	}
 }
 
@@ -102,7 +110,7 @@ func (s *countingFailStorage) GetWithContext(ctx context.Context, key string) ([
 	if s.getFailErr != nil && s.getCount > s.getFailAfterN {
 		return nil, s.getFailErr
 	}
-	return s.failingLimiterStorage.GetWithContext(ctx, key)
+	return s.fakeLimiterStorage.GetWithContext(ctx, key)
 }
 
 func (s *countingFailStorage) SetWithContext(ctx context.Context, key string, val []byte, exp time.Duration) error {
@@ -110,7 +118,7 @@ func (s *countingFailStorage) SetWithContext(ctx context.Context, key string, va
 	if s.setCount > s.failAfterN {
 		return s.setFailErr
 	}
-	return s.failingLimiterStorage.SetWithContext(ctx, key, val, exp)
+	return s.fakeLimiterStorage.SetWithContext(ctx, key, val, exp)
 }
 
 type contextRecord struct {
@@ -120,7 +128,7 @@ type contextRecord struct {
 }
 
 type contextRecorderLimiterStorage struct {
-	*failingLimiterStorage
+	*fakeLimiterStorage
 	gets []contextRecord
 	sets []contextRecord
 }
@@ -152,7 +160,7 @@ func sleepForRetryAfter(t *testing.T, resp *http.Response) {
 }
 
 func newContextRecorderLimiterStorage() *contextRecorderLimiterStorage {
-	return &contextRecorderLimiterStorage{failingLimiterStorage: newFailingLimiterStorage()}
+	return &contextRecorderLimiterStorage{fakeLimiterStorage: newFakeLimiterStorage()}
 }
 
 func contextRecordFrom(ctx context.Context, key string) contextRecord {
@@ -168,12 +176,12 @@ func contextRecordFrom(ctx context.Context, key string) contextRecord {
 
 func (s *contextRecorderLimiterStorage) GetWithContext(ctx context.Context, key string) ([]byte, error) {
 	s.gets = append(s.gets, contextRecordFrom(ctx, key))
-	return s.failingLimiterStorage.GetWithContext(ctx, key)
+	return s.fakeLimiterStorage.GetWithContext(ctx, key)
 }
 
 func (s *contextRecorderLimiterStorage) SetWithContext(ctx context.Context, key string, val []byte, exp time.Duration) error {
 	s.sets = append(s.sets, contextRecordFrom(ctx, key))
-	return s.failingLimiterStorage.SetWithContext(ctx, key, val, exp)
+	return s.fakeLimiterStorage.SetWithContext(ctx, key, val, exp)
 }
 
 func (s *contextRecorderLimiterStorage) recordedGets() []contextRecord {
@@ -188,7 +196,7 @@ func (s *contextRecorderLimiterStorage) recordedSets() []contextRecord {
 	return out
 }
 
-func (s *failingLimiterStorage) GetWithContext(_ context.Context, key string) ([]byte, error) {
+func (s *fakeLimiterStorage) GetWithContext(_ context.Context, key string) ([]byte, error) {
 	if err, ok := s.errs["get|"+key]; ok && err != nil {
 		return nil, err
 	}
@@ -198,11 +206,11 @@ func (s *failingLimiterStorage) GetWithContext(_ context.Context, key string) ([
 	return nil, nil
 }
 
-func (s *failingLimiterStorage) Get(key string) ([]byte, error) {
+func (s *fakeLimiterStorage) Get(key string) ([]byte, error) {
 	return s.GetWithContext(context.Background(), key)
 }
 
-func (s *failingLimiterStorage) SetWithContext(_ context.Context, key string, val []byte, _ time.Duration) error {
+func (s *fakeLimiterStorage) SetWithContext(_ context.Context, key string, val []byte, _ time.Duration) error {
 	if err, ok := s.errs["set|"+key]; ok && err != nil {
 		return err
 	}
@@ -210,19 +218,19 @@ func (s *failingLimiterStorage) SetWithContext(_ context.Context, key string, va
 	return nil
 }
 
-func (s *failingLimiterStorage) Set(key string, val []byte, exp time.Duration) error {
+func (s *fakeLimiterStorage) Set(key string, val []byte, exp time.Duration) error {
 	return s.SetWithContext(context.Background(), key, val, exp)
 }
 
-func (*failingLimiterStorage) DeleteWithContext(context.Context, string) error { return nil }
+func (*fakeLimiterStorage) DeleteWithContext(context.Context, string) error { return nil }
 
-func (*failingLimiterStorage) Delete(string) error { return nil }
+func (*fakeLimiterStorage) Delete(string) error { return nil }
 
-func (*failingLimiterStorage) ResetWithContext(context.Context) error { return nil }
+func (*fakeLimiterStorage) ResetWithContext(context.Context) error { return nil }
 
-func (*failingLimiterStorage) Reset() error { return nil }
+func (*fakeLimiterStorage) Reset() error { return nil }
 
-func (*failingLimiterStorage) Close() error { return nil }
+func (*fakeLimiterStorage) Close() error { return nil }
 
 type contextKey string
 
@@ -238,7 +246,7 @@ func canceledContextWithMarker(label string) context.Context {
 	return ctx
 }
 
-func TestLimiterDefaultConfigNoPanic(t *testing.T) {
+func Test_Limiter_DefaultConfigNoPanic(t *testing.T) {
 	t.Parallel()
 
 	app := fiber.New()
@@ -254,7 +262,24 @@ func TestLimiterDefaultConfigNoPanic(t *testing.T) {
 	})
 }
 
-func TestGetEffectiveStatusCodeTypedNilFiberError(t *testing.T) {
+func Test_getEffectiveStatusCode_FiberError(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	t.Cleanup(func() { app.ReleaseCtx(c) })
+
+	c.Response().SetStatusCode(fiber.StatusOK)
+
+	// A real *fiber.Error returns its code.
+	require.Equal(t, fiber.StatusTeapot, getEffectiveStatusCode(c, fiber.NewError(fiber.StatusTeapot, "teapot")))
+
+	// A generic error falls back to the response status code.
+	c.Response().SetStatusCode(fiber.StatusBadGateway)
+	require.Equal(t, fiber.StatusBadGateway, getEffectiveStatusCode(c, errors.New("generic")))
+}
+
+func Test_getEffectiveStatusCode_TypedNilFiberError(t *testing.T) {
 	t.Parallel()
 
 	app := fiber.New()
@@ -269,7 +294,7 @@ func TestGetEffectiveStatusCodeTypedNilFiberError(t *testing.T) {
 	})
 }
 
-func TestGetEffectiveStatusCodeTypedNilCustomError(t *testing.T) {
+func Test_getEffectiveStatusCode_TypedNilCustomError(t *testing.T) {
 	t.Parallel()
 
 	app := fiber.New()
@@ -284,184 +309,147 @@ func TestGetEffectiveStatusCodeTypedNilCustomError(t *testing.T) {
 	})
 }
 
-func TestLimiterFixedStorageGetError(t *testing.T) {
+// Test_Limiter_StorageErrorMessages checks the error a failing storage call
+// surfaces from either strategy: it names the failed step and, unless
+// DisableValueRedaction is set, hides the key.
+func Test_Limiter_StorageErrorMessages(t *testing.T) {
 	t.Parallel()
 
-	storage := newFailingLimiterStorage()
-	storage.errs["get|"+testLimiterClientKey] = errors.New("boom")
-
-	var captured error
-	app := fiber.New(fiber.Config{
-		ErrorHandler: func(c fiber.Ctx, err error) error {
-			captured = err
-			return c.Status(fiber.StatusInternalServerError).SendString("storage failure")
-		},
-	})
-
-	app.Use(New(Config{Storage: storage, Max: 1, Expiration: time.Second, KeyGenerator: func(fiber.Ctx) string { return testLimiterClientKey }}))
-	app.Get("/", func(c fiber.Ctx) error {
-		return c.SendString("ok")
-	})
-
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusInternalServerError, resp.StatusCode)
-	require.Error(t, captured)
-	require.ErrorContains(t, captured, "limiter: failed to get key")
-	require.ErrorContains(t, captured, "[redacted]")
-}
-
-func TestLimiterFixedStorageSetError(t *testing.T) {
-	t.Parallel()
-
-	storage := newFailingLimiterStorage()
-	storage.errs["set|"+testLimiterClientKey] = errors.New("boom")
-
-	var captured error
-	app := fiber.New(fiber.Config{
-		ErrorHandler: func(c fiber.Ctx, err error) error {
-			captured = err
-			return c.Status(fiber.StatusInternalServerError).SendString("storage failure")
-		},
-	})
-
-	app.Use(New(Config{Storage: storage, Max: 1, Expiration: time.Second, KeyGenerator: func(fiber.Ctx) string { return testLimiterClientKey }}))
-	app.Get("/", func(c fiber.Ctx) error {
-		return c.SendString("ok")
-	})
-
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusInternalServerError, resp.StatusCode)
-	require.Error(t, captured)
-	require.ErrorContains(t, captured, "limiter: failed to persist state")
-	require.ErrorContains(t, captured, "limiter: failed to store key")
-	require.ErrorContains(t, captured, "[redacted]")
-}
-
-func TestLimiterFixedPropagatesRequestContextToStorage(t *testing.T) {
-	t.Parallel()
-
-	storage := newContextRecorderLimiterStorage()
-
-	app := fiber.New()
-
-	app.Use(func(c fiber.Ctx) error {
-		path := c.Path()
-		if path == "/normal" {
-			c.SetContext(contextWithMarker("fixed-normal"))
-		}
-		if path == "/rollback" {
-			c.SetContext(canceledContextWithMarker("fixed-rollback"))
-		}
-		return c.Next()
-	})
-
-	app.Use(New(Config{
-		Storage:                storage,
-		Max:                    1,
-		Expiration:             time.Minute,
-		SkipSuccessfulRequests: true,
-		KeyGenerator: func(c fiber.Ctx) string {
-			return c.Path()
-		},
-		LimiterMiddleware: FixedWindow{},
-	}))
-
-	app.Get("/:mode", func(c fiber.Ctx) error {
-		return c.SendString("ok")
-	})
-
-	for _, path := range []string{"/normal", "/rollback"} {
-		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, path, http.NoBody))
-		require.NoError(t, err)
-		require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	steps := []struct {
+		name string // the storage operation that fails
+		want []string
+	}{
+		{name: "get", want: []string{"limiter: failed to get key"}},
+		{name: "set", want: []string{"limiter: failed to persist state", "limiter: failed to store key"}},
 	}
 
-	gets := storage.recordedGets()
-	require.Len(t, gets, 4)
+	for _, strategy := range windowStrategies {
+		for _, step := range steps {
+			for _, disableRedaction := range []bool{false, true} {
+				t.Run(fmt.Sprintf("%s/%s/DisableValueRedaction=%t", strategy.name, step.name, disableRedaction), func(t *testing.T) {
+					t.Parallel()
 
-	sets := storage.recordedSets()
-	require.Len(t, sets, 4)
+					storage := newFakeLimiterStorage()
+					storage.errs[step.name+"|"+testLimiterClientKey] = errors.New("boom")
 
-	verifyRecords := func(t *testing.T, records []contextRecord, key, wantValue string, wantCanceled bool) {
-		t.Helper()
-		var matched []contextRecord
-		for _, rec := range records {
-			if rec.key == key {
-				matched = append(matched, rec)
+					var captured error
+					app := fiber.New(fiber.Config{
+						ErrorHandler: func(c fiber.Ctx, err error) error {
+							captured = err
+							return c.Status(fiber.StatusInternalServerError).SendString("storage failure")
+						},
+					})
+
+					app.Use(New(Config{
+						DisableValueRedaction: disableRedaction,
+						LimiterMiddleware:     strategy.handler,
+						Storage:               storage,
+						Max:                   1,
+						Expiration:            time.Second,
+						KeyGenerator:          func(fiber.Ctx) string { return testLimiterClientKey },
+					}))
+					app.Get("/", func(c fiber.Ctx) error {
+						return c.SendString("ok")
+					})
+
+					resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+					require.NoError(t, err)
+					require.Equal(t, fiber.StatusInternalServerError, resp.StatusCode)
+					require.Error(t, captured)
+					for _, want := range step.want {
+						require.ErrorContains(t, captured, want)
+					}
+					if disableRedaction {
+						require.ErrorContains(t, captured, testLimiterClientKey)
+						require.NotContains(t, captured.Error(), redactedKey)
+					} else {
+						require.ErrorContains(t, captured, redactedKey)
+						require.NotContains(t, captured.Error(), testLimiterClientKey)
+					}
+				})
 			}
 		}
-		require.Len(t, matched, 2)
-		for _, rec := range matched {
-			require.Equal(t, wantValue, rec.value)
-			require.Equal(t, wantCanceled, rec.canceled)
+	}
+}
+
+// requireContextRecords checks that the two storage calls made for key carried
+// the request context the test set: its marker, canceled or not.
+func requireContextRecords(t *testing.T, records []contextRecord, key, wantValue string, wantCanceled bool) {
+	t.Helper()
+
+	var matched []contextRecord
+	for _, rec := range records {
+		if rec.key == key {
+			matched = append(matched, rec)
 		}
 	}
-
-	verifyRecords(t, gets, "/normal", "fixed-normal", false)
-	verifyRecords(t, gets, "/rollback", "fixed-rollback", true)
-	verifyRecords(t, sets, "/normal", "fixed-normal", false)
-	verifyRecords(t, sets, "/rollback", "fixed-rollback", true)
+	require.Len(t, matched, 2)
+	for _, rec := range matched {
+		require.Equal(t, wantValue, rec.value)
+		require.Equal(t, wantCanceled, rec.canceled)
+	}
 }
 
-func TestLimiterFixedStorageGetErrorDisableRedaction(t *testing.T) {
+func Test_Limiter_PropagatesRequestContextToStorage(t *testing.T) {
 	t.Parallel()
 
-	storage := newFailingLimiterStorage()
-	storage.errs["get|"+testLimiterClientKey] = errors.New("boom")
+	for _, strategy := range windowStrategies {
+		t.Run(strategy.name, func(t *testing.T) {
+			t.Parallel()
 
-	var captured error
-	app := fiber.New(fiber.Config{
-		ErrorHandler: func(c fiber.Ctx, err error) error {
-			captured = err
-			return c.Status(fiber.StatusInternalServerError).SendString("storage failure")
-		},
-	})
+			storage := newContextRecorderLimiterStorage()
 
-	app.Use(New(Config{DisableValueRedaction: true, Storage: storage, Max: 1, Expiration: time.Second, KeyGenerator: func(fiber.Ctx) string { return testLimiterClientKey }}))
-	app.Get("/", func(c fiber.Ctx) error {
-		return c.SendString("ok")
-	})
+			app := fiber.New()
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusInternalServerError, resp.StatusCode)
-	require.Error(t, captured)
-	require.ErrorContains(t, captured, testLimiterClientKey)
-	require.NotContains(t, captured.Error(), "[redacted]")
-}
+			app.Use(func(c fiber.Ctx) error {
+				path := c.Path()
+				if path == "/normal" {
+					c.SetContext(contextWithMarker(strategy.name + "-normal"))
+				}
+				if path == "/rollback" {
+					c.SetContext(canceledContextWithMarker(strategy.name + "-rollback"))
+				}
+				return c.Next()
+			})
 
-func TestLimiterFixedStorageSetErrorDisableRedaction(t *testing.T) {
-	t.Parallel()
+			app.Use(New(Config{
+				Storage:                storage,
+				Max:                    1,
+				Expiration:             time.Minute,
+				SkipSuccessfulRequests: true,
+				KeyGenerator: func(c fiber.Ctx) string {
+					return c.Path()
+				},
+				LimiterMiddleware: strategy.handler,
+			}))
 
-	storage := newFailingLimiterStorage()
-	storage.errs["set|"+testLimiterClientKey] = errors.New("boom")
+			app.Get("/:mode", func(c fiber.Ctx) error {
+				return c.SendString("ok")
+			})
 
-	var captured error
-	app := fiber.New(fiber.Config{
-		ErrorHandler: func(c fiber.Ctx, err error) error {
-			captured = err
-			return c.Status(fiber.StatusInternalServerError).SendString("storage failure")
-		},
-	})
+			for _, path := range []string{"/normal", "/rollback"} {
+				resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, path, http.NoBody))
+				require.NoError(t, err)
+				require.Equal(t, fiber.StatusOK, resp.StatusCode)
+			}
 
-	app.Use(New(Config{DisableValueRedaction: true, Storage: storage, Max: 1, Expiration: time.Second, KeyGenerator: func(fiber.Ctx) string { return testLimiterClientKey }}))
-	app.Get("/", func(c fiber.Ctx) error {
-		return c.SendString("ok")
-	})
+			gets := storage.recordedGets()
+			require.Len(t, gets, 4)
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusInternalServerError, resp.StatusCode)
-	require.Error(t, captured)
-	require.ErrorContains(t, captured, testLimiterClientKey)
-	require.NotContains(t, captured.Error(), "[redacted]")
+			sets := storage.recordedSets()
+			require.Len(t, sets, 4)
+
+			requireContextRecords(t, gets, "/normal", strategy.name+"-normal", false)
+			requireContextRecords(t, gets, "/rollback", strategy.name+"-rollback", true)
+			requireContextRecords(t, sets, "/normal", strategy.name+"-normal", false)
+			requireContextRecords(t, sets, "/rollback", strategy.name+"-rollback", true)
+		})
+	}
 }
 
 // Every storage error path must release the key's shard, or the next request
 // for that key hangs.
-func TestLimiterStorageErrorsReleaseShard(t *testing.T) {
+func Test_Limiter_StorageErrorsReleaseShard(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -475,7 +463,7 @@ func TestLimiterStorageErrorsReleaseShard(t *testing.T) {
 			name:       "sliding first get",
 			middleware: SlidingWindow{},
 			newStorage: func() fiber.Storage {
-				st := newFailingLimiterStorage()
+				st := newFakeLimiterStorage()
 				st.errs["get|"+testLimiterClientKey] = errors.New("boom")
 				return st
 			},
@@ -485,7 +473,7 @@ func TestLimiterStorageErrorsReleaseShard(t *testing.T) {
 			name:       "sliding first set",
 			middleware: SlidingWindow{},
 			newStorage: func() fiber.Storage {
-				st := newFailingLimiterStorage()
+				st := newFakeLimiterStorage()
 				st.errs["set|"+testLimiterClientKey] = errors.New("boom")
 				return st
 			},
@@ -514,7 +502,7 @@ func TestLimiterStorageErrorsReleaseShard(t *testing.T) {
 			name:       "fixed first get",
 			middleware: FixedWindow{},
 			newStorage: func() fiber.Storage {
-				st := newFailingLimiterStorage()
+				st := newFakeLimiterStorage()
 				st.errs["get|"+testLimiterClientKey] = errors.New("boom")
 				return st
 			},
@@ -524,7 +512,7 @@ func TestLimiterStorageErrorsReleaseShard(t *testing.T) {
 			name:       "fixed first set",
 			middleware: FixedWindow{},
 			newStorage: func() fiber.Storage {
-				st := newFailingLimiterStorage()
+				st := newFakeLimiterStorage()
 				st.errs["set|"+testLimiterClientKey] = errors.New("boom")
 				return st
 			},
@@ -590,104 +578,7 @@ func TestLimiterStorageErrorsReleaseShard(t *testing.T) {
 	}
 }
 
-func TestLimiterFixedStorageSetErrorOnSkipSuccessfulRequests(t *testing.T) {
-	t.Parallel()
-
-	storage := newCountingFailStorage(1, errors.New("second set failed"))
-
-	var captured error
-	app := fiber.New(fiber.Config{
-		ErrorHandler: func(c fiber.Ctx, err error) error {
-			captured = err
-			return c.Status(fiber.StatusInternalServerError).SendString("storage failure")
-		},
-	})
-
-	app.Use(New(Config{
-		Storage:                storage,
-		Max:                    10,
-		Expiration:             time.Second,
-		SkipSuccessfulRequests: true,
-		KeyGenerator:           func(fiber.Ctx) string { return testLimiterClientKey },
-	}))
-	app.Get("/", func(c fiber.Ctx) error {
-		return c.SendStatus(fiber.StatusOK)
-	})
-
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusInternalServerError, resp.StatusCode)
-	require.Error(t, captured)
-	require.ErrorContains(t, captured, "limiter: failed to persist state")
-}
-
-func TestLimiterSlidingPropagatesRequestContextToStorage(t *testing.T) {
-	t.Parallel()
-
-	storage := newContextRecorderLimiterStorage()
-
-	app := fiber.New()
-
-	app.Use(func(c fiber.Ctx) error {
-		path := c.Path()
-		if path == "/normal" {
-			c.SetContext(contextWithMarker("sliding-normal"))
-		}
-		if path == "/rollback" {
-			c.SetContext(canceledContextWithMarker("sliding-rollback"))
-		}
-		return c.Next()
-	})
-
-	app.Use(New(Config{
-		Storage:                storage,
-		Max:                    1,
-		Expiration:             time.Minute,
-		SkipSuccessfulRequests: true,
-		KeyGenerator: func(c fiber.Ctx) string {
-			return c.Path()
-		},
-		LimiterMiddleware: SlidingWindow{},
-	}))
-
-	app.Get("/:mode", func(c fiber.Ctx) error {
-		return c.SendString("ok")
-	})
-
-	for _, path := range []string{"/normal", "/rollback"} {
-		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, path, http.NoBody))
-		require.NoError(t, err)
-		require.Equal(t, fiber.StatusOK, resp.StatusCode)
-	}
-
-	gets := storage.recordedGets()
-	require.Len(t, gets, 4)
-
-	sets := storage.recordedSets()
-	require.Len(t, sets, 4)
-
-	verifyRecords := func(t *testing.T, records []contextRecord, key, wantValue string, wantCanceled bool) {
-		t.Helper()
-		var matched []contextRecord
-		for _, rec := range records {
-			if rec.key == key {
-				matched = append(matched, rec)
-			}
-		}
-		require.Len(t, matched, 2)
-		for _, rec := range matched {
-			require.Equal(t, wantValue, rec.value)
-			require.Equal(t, wantCanceled, rec.canceled)
-		}
-	}
-
-	verifyRecords(t, gets, "/normal", "sliding-normal", false)
-	verifyRecords(t, gets, "/rollback", "sliding-rollback", true)
-	verifyRecords(t, sets, "/normal", "sliding-normal", false)
-	verifyRecords(t, sets, "/rollback", "sliding-rollback", true)
-}
-
-func TestLimiterSlidingSkipsPostUpdateWhenHeadersDisabled(t *testing.T) {
+func Test_Limiter_Sliding_SkipsPostUpdateWhenHeadersDisabled(t *testing.T) {
 	t.Parallel()
 
 	storage := newContextRecorderLimiterStorage()
@@ -713,43 +604,112 @@ func TestLimiterSlidingSkipsPostUpdateWhenHeadersDisabled(t *testing.T) {
 	require.Len(t, storage.recordedSets(), 1)
 }
 
-// go test -run Test_Limiter_With_Max_Func_With_Zero -race -v
-func Test_Limiter_With_Max_Func_With_Zero_And_Limiter_Sliding(t *testing.T) {
+// skipStep is one request of a scenario: the path it asks for and the status it
+// must get back.
+type skipStep struct {
+	path string
+	want int
+}
+
+// Test_Limiter_Skip_Choices drives the same request sequences through both
+// window strategies, with the default store and with a custom one. The window
+// is two seconds, and a scenario ends on a 429 that only waiting out the window
+// can lift.
+//
+// go test -run Test_Limiter_Skip_Choices -v
+func Test_Limiter_Skip_Choices(t *testing.T) {
 	t.Parallel()
-	app := fiber.New()
 
-	app.Use(New(Config{
-		MaxFunc:                func(_ fiber.Ctx) int { return 0 },
-		Expiration:             2 * time.Second,
-		SkipFailedRequests:     false,
-		SkipSuccessfulRequests: false,
-		LimiterMiddleware:      SlidingWindow{},
-	}))
+	scenarios := []struct {
+		name  string
+		steps []skipStep // run back to back
+		after skipStep   // asked once the window has passed; no path means no wait
+		cfg   Config
+	}{
+		{
+			name:  "no_skip",
+			cfg:   Config{Max: 2},
+			steps: []skipStep{{"/fail", fiber.StatusBadRequest}, {"/success", fiber.StatusOK}, {"/success", fiber.StatusTooManyRequests}},
+			after: skipStep{"/success", fiber.StatusOK},
+		},
+		{
+			name:  "skip_failed",
+			cfg:   Config{Max: 1, SkipFailedRequests: true},
+			steps: []skipStep{{"/fail", fiber.StatusBadRequest}, {"/success", fiber.StatusOK}, {"/success", fiber.StatusTooManyRequests}},
+			after: skipStep{"/success", fiber.StatusOK},
+		},
+		{
+			name:  "skip_successful",
+			cfg:   Config{Max: 1, SkipSuccessfulRequests: true},
+			steps: []skipStep{{"/success", fiber.StatusOK}, {"/fail", fiber.StatusBadRequest}, {"/fail", fiber.StatusTooManyRequests}},
+			after: skipStep{"/fail", fiber.StatusBadRequest},
+		},
+		{
+			name:  "max_func_zero",
+			cfg:   Config{MaxFunc: func(fiber.Ctx) int { return 0 }},
+			steps: []skipStep{{"/fail", fiber.StatusBadRequest}, {"/success", fiber.StatusOK}, {"/success", fiber.StatusOK}},
+		},
+	}
 
-	app.Get("/:status", func(c fiber.Ctx) error {
-		if c.Params("status") == "fail" {
-			return c.SendStatus(400)
+	strategies := []struct {
+		handler Handler
+		// wait lets the window pass after the last response, which carries the Retry-After.
+		wait func(t *testing.T, resp *http.Response)
+		name string
+	}{
+		{name: "fixed", handler: FixedWindow{}, wait: func(*testing.T, *http.Response) { time.Sleep(3 * time.Second) }},
+		{name: "sliding", handler: SlidingWindow{}, wait: sleepForRetryAfter},
+	}
+
+	stores := []struct {
+		storage func() fiber.Storage
+		name    string
+	}{
+		{name: "default_store", storage: func() fiber.Storage { return nil }},
+		{name: "custom_store", storage: func() fiber.Storage { return memory.New() }},
+	}
+
+	for _, scenario := range scenarios {
+		for _, strategy := range strategies {
+			for _, store := range stores {
+				t.Run(scenario.name+"/"+strategy.name+"/"+store.name, func(t *testing.T) {
+					t.Parallel()
+
+					cfg := scenario.cfg
+					cfg.Expiration = 2 * time.Second
+					cfg.LimiterMiddleware = strategy.handler
+					cfg.Storage = store.storage()
+
+					app := fiber.New()
+					app.Use(New(cfg))
+					app.Get("/:status", func(c fiber.Ctx) error {
+						if c.Params("status") == "fail" {
+							return c.SendStatus(fiber.StatusBadRequest)
+						}
+						return c.SendStatus(fiber.StatusOK)
+					})
+
+					var resp *http.Response
+					for _, step := range scenario.steps {
+						var err error
+						resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, step.path, http.NoBody))
+						require.NoError(t, err)
+						require.Equal(t, step.want, resp.StatusCode, step.path)
+					}
+
+					if scenario.after.path == "" {
+						return
+					}
+
+					strategy.wait(t, resp)
+
+					resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, scenario.after.path, http.NoBody))
+					require.NoError(t, err)
+					require.Equal(t, scenario.after.want, resp.StatusCode)
+				})
+			}
 		}
-		return c.SendStatus(200)
-	})
-
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/fail", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, 400, resp.StatusCode)
-
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/success", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, 200, resp.StatusCode)
-
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/success", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, 200, resp.StatusCode)
-
-	time.Sleep(4*time.Second + 500*time.Millisecond)
-
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/success", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, 200, resp.StatusCode)
+	}
 }
 
 func Test_Limiter_Sliding_MaxFuncOverridesStaticMax(t *testing.T) {
@@ -829,7 +789,7 @@ func Test_Limiter_With_Max_Func_With_Zero(t *testing.T) {
 func Test_Limiter_With_Max_Func(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
-	maxRequests := 10
+	const maxRequests = 10
 
 	app.Use(New(Config{
 		MaxFunc: func(_ fiber.Ctx) int {
@@ -843,202 +803,49 @@ func Test_Limiter_With_Max_Func(t *testing.T) {
 		return c.SendString("Hello tester!")
 	})
 
-	var wg sync.WaitGroup
+	requireBurstLimited(t, app, maxRequests)
+}
 
-	for i := 0; i <= maxRequests-1; i++ {
-		wg.Go(func() {
+// go test -run Test_Limiter_ExpirationFuncOverridesStaticExpiration -race -v
+func Test_Limiter_ExpirationFuncOverridesStaticExpiration(t *testing.T) {
+	t.Parallel()
+
+	for _, strategy := range windowStrategies {
+		t.Run(strategy.name, func(t *testing.T) {
+			t.Parallel()
+
+			clock := newTestClock(time.Now().Truncate(time.Second))
+			app := fiber.New()
+
+			app.Use(New(Config{
+				Max:               2,
+				Expiration:        10 * time.Second,
+				ExpirationFunc:    func(_ fiber.Ctx) time.Duration { return 2 * time.Second },
+				clock:             clock.Now,
+				Storage:           newFakeLimiterStorage(),
+				LimiterMiddleware: strategy.handler,
+			}))
+
+			app.Get("/", func(c fiber.Ctx) error {
+				return c.SendStatus(fiber.StatusOK)
+			})
+
+			for _, want := range []int{fiber.StatusOK, fiber.StatusOK, fiber.StatusTooManyRequests} {
+				resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+				require.NoError(t, err)
+				require.Equal(t, want, resp.StatusCode)
+			}
+
+			// Two whole windows of the 2s ExpirationFunc, plus a second, are enough
+			// for either strategy to forget the hits and still fall well short of
+			// the 10s Expiration it overrides.
+			clock.Add(5 * time.Second)
+
 			resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 			require.NoError(t, err)
-			assert.Equal(t, fiber.StatusOK, resp.StatusCode)
-
-			body, err := io.ReadAll(resp.Body)
-			require.NoError(t, err)
-			assert.Equal(t, "Hello tester!", string(body))
+			require.Equal(t, fiber.StatusOK, resp.StatusCode)
 		})
 	}
-
-	wg.Wait()
-
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, 429, resp.StatusCode)
-
-	time.Sleep(3 * time.Second)
-
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, 200, resp.StatusCode)
-}
-
-// go test -run Test_Limiter_Fixed_ExpirationFuncOverridesStaticExpiration -race -v
-func Test_Limiter_Fixed_ExpirationFuncOverridesStaticExpiration(t *testing.T) {
-	t.Parallel()
-	clock := newTestClock(time.Now().Truncate(time.Second))
-	app := fiber.New()
-
-	app.Use(New(Config{
-		Max:               2,
-		Expiration:        10 * time.Second,
-		ExpirationFunc:    func(_ fiber.Ctx) time.Duration { return 2 * time.Second },
-		clock:             clock.Now,
-		Storage:           newInjectedClockStorage(),
-		LimiterMiddleware: FixedWindow{},
-	}))
-
-	app.Get("/", func(c fiber.Ctx) error {
-		return c.SendStatus(fiber.StatusOK)
-	})
-
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
-
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
-
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusTooManyRequests, resp.StatusCode)
-
-	// Advance past the 2s ExpirationFunc window so the fixed window resets.
-	clock.Add(3 * time.Second)
-
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
-}
-
-// go test -run Test_Limiter_Sliding_ExpirationFuncOverridesStaticExpiration -race -v
-func Test_Limiter_Sliding_ExpirationFuncOverridesStaticExpiration(t *testing.T) {
-	t.Parallel()
-	app := fiber.New()
-
-	app.Use(New(Config{
-		Max:               2,
-		Expiration:        10 * time.Second,
-		ExpirationFunc:    func(_ fiber.Ctx) time.Duration { return 2 * time.Second },
-		LimiterMiddleware: SlidingWindow{},
-	}))
-
-	app.Get("/", func(c fiber.Ctx) error {
-		return c.SendStatus(fiber.StatusOK)
-	})
-
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
-
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
-
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusTooManyRequests, resp.StatusCode)
-
-	// Sliding window needs ~2x expiration to fully reset (considers previous window)
-	sleepForRetryAfter(t, resp)
-
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
-}
-
-// go test -run Test_Limiter_Fixed_ExpirationFunc_FallbackOnZeroDuration -race -v
-func Test_Limiter_Fixed_ExpirationFunc_FallbackOnZeroDuration(t *testing.T) {
-	t.Parallel()
-	app := fiber.New()
-
-	app.Use(New(Config{
-		Max:               1,
-		ExpirationFunc:    func(_ fiber.Ctx) time.Duration { return 0 },
-		LimiterMiddleware: FixedWindow{},
-	}))
-
-	app.Get("/", func(c fiber.Ctx) error {
-		return c.SendStatus(fiber.StatusOK)
-	})
-
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
-
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusTooManyRequests, resp.StatusCode)
-}
-
-// go test -run Test_Limiter_Fixed_ExpirationFunc_FallbackOnNegativeDuration -race -v
-func Test_Limiter_Fixed_ExpirationFunc_FallbackOnNegativeDuration(t *testing.T) {
-	t.Parallel()
-	app := fiber.New()
-
-	app.Use(New(Config{
-		Max:               1,
-		ExpirationFunc:    func(_ fiber.Ctx) time.Duration { return -1 * time.Second },
-		LimiterMiddleware: FixedWindow{},
-	}))
-
-	app.Get("/", func(c fiber.Ctx) error {
-		return c.SendStatus(fiber.StatusOK)
-	})
-
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
-
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusTooManyRequests, resp.StatusCode)
-}
-
-// go test -run Test_Limiter_Sliding_ExpirationFunc_FallbackOnZeroDuration -race -v
-func Test_Limiter_Sliding_ExpirationFunc_FallbackOnZeroDuration(t *testing.T) {
-	t.Parallel()
-	app := fiber.New()
-
-	app.Use(New(Config{
-		Max:               1,
-		ExpirationFunc:    func(_ fiber.Ctx) time.Duration { return 0 },
-		LimiterMiddleware: SlidingWindow{},
-	}))
-
-	app.Get("/", func(c fiber.Ctx) error {
-		return c.SendStatus(fiber.StatusOK)
-	})
-
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
-
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusTooManyRequests, resp.StatusCode)
-}
-
-// go test -run Test_Limiter_Sliding_ExpirationFunc_FallbackOnNegativeDuration -race -v
-func Test_Limiter_Sliding_ExpirationFunc_FallbackOnNegativeDuration(t *testing.T) {
-	t.Parallel()
-	app := fiber.New()
-
-	app.Use(New(Config{
-		Max:               1,
-		ExpirationFunc:    func(_ fiber.Ctx) time.Duration { return -1 * time.Second },
-		LimiterMiddleware: SlidingWindow{},
-	}))
-
-	app.Get("/", func(c fiber.Ctx) error {
-		return c.SendStatus(fiber.StatusOK)
-	})
-
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
-
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusTooManyRequests, resp.StatusCode)
 }
 
 // Test_Limiter_ExpirationFunc_NonPositiveUsesConfiguredExpiration covers an
@@ -1060,7 +867,7 @@ func Test_Limiter_ExpirationFunc_NonPositiveUsesConfiguredExpiration(t *testing.
 		storage func() fiber.Storage
 		name    string
 	}{
-		{name: "fixed", handler: FixedWindow{}, storage: func() fiber.Storage { return newInjectedClockStorage() }},
+		{name: "fixed", handler: FixedWindow{}, storage: func() fiber.Storage { return newFakeLimiterStorage() }},
 		{name: "sliding", handler: SlidingWindow{}, storage: func() fiber.Storage { return nil }},
 	}
 
@@ -1150,7 +957,7 @@ func Test_Limiter_SubSecondExpirationIsOneSecondWindow(t *testing.T) {
 			Expiration:        500 * time.Millisecond,
 			LimiterMiddleware: FixedWindow{},
 			clock:             clock.Now,
-			Storage:           newInjectedClockStorage(),
+			Storage:           newFakeLimiterStorage(),
 		}))
 		app.Get("/", func(c fiber.Ctx) error {
 			return c.SendStatus(fiber.StatusOK)
@@ -1206,24 +1013,15 @@ func Test_Limiter_SubSecondExpirationIsOneSecondWindow(t *testing.T) {
 	})
 }
 
-// go test -run Test_Limiter_Concurrency_Store -race -v
-func Test_Limiter_Concurrency_Store(t *testing.T) {
-	t.Parallel()
-	app := fiber.New()
-
-	app.Use(New(Config{
-		Max:        50,
-		Expiration: 2 * time.Second,
-		Storage:    memory.New(),
-	}))
-
-	app.Get("/", func(c fiber.Ctx) error {
-		return c.SendString("Hello tester!")
-	})
+// requireBurstLimited sends n concurrent requests that all fit under the limit,
+// checks that the next one is limited, and that traffic flows again once the
+// window has passed.
+func requireBurstLimited(t *testing.T, app *fiber.App, n int) {
+	t.Helper()
 
 	var wg sync.WaitGroup
 
-	for i := 0; i <= 49; i++ {
+	for range n {
 		wg.Go(func() {
 			resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 			require.NoError(t, err)
@@ -1239,54 +1037,42 @@ func Test_Limiter_Concurrency_Store(t *testing.T) {
 
 	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	require.NoError(t, err)
-	require.Equal(t, 429, resp.StatusCode)
+	require.Equal(t, fiber.StatusTooManyRequests, resp.StatusCode)
 
 	time.Sleep(3 * time.Second)
 
 	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	require.NoError(t, err)
-	require.Equal(t, 200, resp.StatusCode)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
 }
 
 // go test -run Test_Limiter_Concurrency -race -v
 func Test_Limiter_Concurrency(t *testing.T) {
 	t.Parallel()
-	app := fiber.New()
 
-	app.Use(New(Config{
-		Max:        50,
-		Expiration: 2 * time.Second,
-	}))
+	for _, tc := range []struct {
+		storage func() fiber.Storage
+		name    string
+	}{
+		{name: "default_store", storage: func() fiber.Storage { return nil }},
+		{name: "custom_store", storage: func() fiber.Storage { return memory.New() }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 
-	app.Get("/", func(c fiber.Ctx) error {
-		return c.SendString("Hello tester!")
-	})
+			app := fiber.New()
+			app.Use(New(Config{
+				Max:        50,
+				Expiration: 2 * time.Second,
+				Storage:    tc.storage(),
+			}))
+			app.Get("/", func(c fiber.Ctx) error {
+				return c.SendString("Hello tester!")
+			})
 
-	var wg sync.WaitGroup
-
-	for i := 0; i <= 49; i++ {
-		wg.Go(func() {
-			resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-			require.NoError(t, err)
-			assert.Equal(t, fiber.StatusOK, resp.StatusCode)
-
-			body, err := io.ReadAll(resp.Body)
-			require.NoError(t, err)
-			assert.Equal(t, "Hello tester!", string(body))
+			requireBurstLimited(t, app, 50)
 		})
 	}
-
-	wg.Wait()
-
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, 429, resp.StatusCode)
-
-	time.Sleep(3 * time.Second)
-
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, 200, resp.StatusCode)
 }
 
 // stallingStorage parks Get for stallKey until release is closed.
@@ -1352,164 +1138,6 @@ func Test_Limiter_Concurrency_UnrelatedKeys(t *testing.T) {
 		require.Equal(t, fiber.StatusOK, resp.StatusCode)
 		require.NoError(t, <-done)
 	}
-}
-
-// go test -run Test_Limiter_Fixed_Window_No_Skip_Choices -v
-func Test_Limiter_Fixed_Window_No_Skip_Choices(t *testing.T) {
-	t.Parallel()
-	app := fiber.New()
-
-	app.Use(New(Config{
-		Max:                    2,
-		Expiration:             2 * time.Second,
-		SkipFailedRequests:     false,
-		SkipSuccessfulRequests: false,
-		LimiterMiddleware:      FixedWindow{},
-	}))
-
-	app.Get("/:status", func(c fiber.Ctx) error {
-		if c.Params("status") == "fail" {
-			return c.SendStatus(400)
-		}
-		return c.SendStatus(200)
-	})
-
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/fail", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, 400, resp.StatusCode)
-
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/success", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, 200, resp.StatusCode)
-
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/success", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, 429, resp.StatusCode)
-
-	time.Sleep(3 * time.Second)
-
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/success", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, 200, resp.StatusCode)
-}
-
-// go test -run Test_Limiter_Fixed_Window_Custom_Storage_No_Skip_Choices -v
-func Test_Limiter_Fixed_Window_Custom_Storage_No_Skip_Choices(t *testing.T) {
-	t.Parallel()
-	app := fiber.New()
-
-	app.Use(New(Config{
-		Max:                    2,
-		Expiration:             2 * time.Second,
-		SkipFailedRequests:     false,
-		SkipSuccessfulRequests: false,
-		Storage:                memory.New(),
-		LimiterMiddleware:      FixedWindow{},
-	}))
-
-	app.Get("/:status", func(c fiber.Ctx) error {
-		if c.Params("status") == "fail" {
-			return c.SendStatus(400)
-		}
-		return c.SendStatus(200)
-	})
-
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/fail", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, 400, resp.StatusCode)
-
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/success", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, 200, resp.StatusCode)
-
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/success", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, 429, resp.StatusCode)
-
-	time.Sleep(3 * time.Second)
-
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/success", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, 200, resp.StatusCode)
-}
-
-// go test -run Test_Limiter_Sliding_Window_No_Skip_Choices -v
-func Test_Limiter_Sliding_Window_No_Skip_Choices(t *testing.T) {
-	t.Parallel()
-	app := fiber.New()
-
-	app.Use(New(Config{
-		Max:                    2,
-		Expiration:             2 * time.Second,
-		SkipFailedRequests:     false,
-		SkipSuccessfulRequests: false,
-		LimiterMiddleware:      SlidingWindow{},
-	}))
-
-	app.Get("/:status", func(c fiber.Ctx) error {
-		if c.Params("status") == "fail" {
-			return c.SendStatus(400)
-		}
-		return c.SendStatus(200)
-	})
-
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/fail", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, 400, resp.StatusCode)
-
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/success", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, 200, resp.StatusCode)
-
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/success", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, 429, resp.StatusCode)
-
-	sleepForRetryAfter(t, resp)
-
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/success", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, 200, resp.StatusCode)
-}
-
-// go test -run Test_Limiter_Sliding_Window_Custom_Storage_No_Skip_Choices -v
-func Test_Limiter_Sliding_Window_Custom_Storage_No_Skip_Choices(t *testing.T) {
-	t.Parallel()
-	app := fiber.New()
-
-	app.Use(New(Config{
-		Max:                    2,
-		Expiration:             2 * time.Second,
-		SkipFailedRequests:     false,
-		SkipSuccessfulRequests: false,
-		Storage:                memory.New(),
-		LimiterMiddleware:      SlidingWindow{},
-	}))
-
-	app.Get("/:status", func(c fiber.Ctx) error {
-		if c.Params("status") == "fail" {
-			return c.SendStatus(400)
-		}
-		return c.SendStatus(200)
-	})
-
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/fail", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, 400, resp.StatusCode)
-
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/success", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, 200, resp.StatusCode)
-
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/success", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, 429, resp.StatusCode)
-
-	sleepForRetryAfter(t, resp)
-
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/success", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, 200, resp.StatusCode)
 }
 
 func Test_Limiter_Sliding_Window_RecalculatesAfterHandlerDelay(t *testing.T) {
@@ -1629,7 +1257,7 @@ func Test_Limiter_Fixed_Window_SkipSuccessfulRequests_DoesNotCreditNextWindow(t 
 		SkipSuccessfulRequests: true,
 		LimiterMiddleware:      FixedWindow{},
 		clock:                  clock.Now,
-		Storage:                newInjectedClockStorage(),
+		Storage:                newFakeLimiterStorage(),
 	}))
 
 	started := make(chan struct{})
@@ -1687,314 +1315,6 @@ func Test_Limiter_Fixed_Window_SkipSuccessfulRequests_DoesNotCreditNextWindow(t 
 	assert.NotEmpty(t, result.resp.Header.Get(xRateLimitReset))
 }
 
-// go test -run Test_Limiter_Fixed_Window_Skip_Failed_Requests -v
-func Test_Limiter_Fixed_Window_Skip_Failed_Requests(t *testing.T) {
-	t.Parallel()
-	app := fiber.New()
-
-	app.Use(New(Config{
-		Max:                1,
-		Expiration:         2 * time.Second,
-		SkipFailedRequests: true,
-		LimiterMiddleware:  FixedWindow{},
-	}))
-
-	app.Get("/:status", func(c fiber.Ctx) error {
-		if c.Params("status") == "fail" {
-			return c.SendStatus(400)
-		}
-		return c.SendStatus(200)
-	})
-
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/fail", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, 400, resp.StatusCode)
-
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/success", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, 200, resp.StatusCode)
-
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/success", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, 429, resp.StatusCode)
-
-	time.Sleep(3 * time.Second)
-
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/success", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, 200, resp.StatusCode)
-}
-
-// go test -run Test_Limiter_Fixed_Window_Custom_Storage_Skip_Failed_Requests -v
-func Test_Limiter_Fixed_Window_Custom_Storage_Skip_Failed_Requests(t *testing.T) {
-	t.Parallel()
-	app := fiber.New()
-
-	app.Use(New(Config{
-		Max:                1,
-		Expiration:         2 * time.Second,
-		Storage:            memory.New(),
-		SkipFailedRequests: true,
-		LimiterMiddleware:  FixedWindow{},
-	}))
-
-	app.Get("/:status", func(c fiber.Ctx) error {
-		if c.Params("status") == "fail" {
-			return c.SendStatus(400)
-		}
-		return c.SendStatus(200)
-	})
-
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/fail", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, 400, resp.StatusCode)
-
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/success", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, 200, resp.StatusCode)
-
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/success", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, 429, resp.StatusCode)
-
-	time.Sleep(3 * time.Second)
-
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/success", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, 200, resp.StatusCode)
-}
-
-// go test -run Test_Limiter_Sliding_Window_Skip_Failed_Requests -v
-func Test_Limiter_Sliding_Window_Skip_Failed_Requests(t *testing.T) {
-	t.Parallel()
-	app := fiber.New()
-
-	app.Use(New(Config{
-		Max:                1,
-		Expiration:         2 * time.Second,
-		SkipFailedRequests: true,
-		LimiterMiddleware:  SlidingWindow{},
-	}))
-
-	app.Get("/:status", func(c fiber.Ctx) error {
-		if c.Params("status") == "fail" {
-			return c.SendStatus(400)
-		}
-		return c.SendStatus(200)
-	})
-
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/fail", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, 400, resp.StatusCode)
-
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/success", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, 200, resp.StatusCode)
-
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/success", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, 429, resp.StatusCode)
-
-	sleepForRetryAfter(t, resp)
-
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/success", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, 200, resp.StatusCode)
-}
-
-// go test -run Test_Limiter_Sliding_Window_Custom_Storage_Skip_Failed_Requests -v
-func Test_Limiter_Sliding_Window_Custom_Storage_Skip_Failed_Requests(t *testing.T) {
-	t.Parallel()
-	app := fiber.New()
-
-	app.Use(New(Config{
-		Max:                1,
-		Expiration:         2 * time.Second,
-		Storage:            memory.New(),
-		SkipFailedRequests: true,
-		LimiterMiddleware:  SlidingWindow{},
-	}))
-
-	app.Get("/:status", func(c fiber.Ctx) error {
-		if c.Params("status") == "fail" {
-			return c.SendStatus(400)
-		}
-		return c.SendStatus(200)
-	})
-
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/fail", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, 400, resp.StatusCode)
-
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/success", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, 200, resp.StatusCode)
-
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/success", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, 429, resp.StatusCode)
-
-	sleepForRetryAfter(t, resp)
-
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/success", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, 200, resp.StatusCode)
-}
-
-// go test -run Test_Limiter_Fixed_Window_Skip_Successful_Requests -v
-func Test_Limiter_Fixed_Window_Skip_Successful_Requests(t *testing.T) {
-	t.Parallel()
-	app := fiber.New()
-
-	app.Use(New(Config{
-		Max:                    1,
-		Expiration:             2 * time.Second,
-		SkipSuccessfulRequests: true,
-		LimiterMiddleware:      FixedWindow{},
-	}))
-
-	app.Get("/:status", func(c fiber.Ctx) error {
-		if c.Params("status") == "fail" {
-			return c.SendStatus(400)
-		}
-		return c.SendStatus(200)
-	})
-
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/success", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, 200, resp.StatusCode)
-
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/fail", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, 400, resp.StatusCode)
-
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/fail", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, 429, resp.StatusCode)
-
-	time.Sleep(3 * time.Second)
-
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/fail", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, 400, resp.StatusCode)
-}
-
-// go test -run Test_Limiter_Fixed_Window_Custom_Storage_Skip_Successful_Requests -v
-func Test_Limiter_Fixed_Window_Custom_Storage_Skip_Successful_Requests(t *testing.T) {
-	t.Parallel()
-	app := fiber.New()
-
-	app.Use(New(Config{
-		Max:                    1,
-		Expiration:             2 * time.Second,
-		Storage:                memory.New(),
-		SkipSuccessfulRequests: true,
-		LimiterMiddleware:      FixedWindow{},
-	}))
-
-	app.Get("/:status", func(c fiber.Ctx) error {
-		if c.Params("status") == "fail" {
-			return c.SendStatus(400)
-		}
-		return c.SendStatus(200)
-	})
-
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/success", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, 200, resp.StatusCode)
-
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/fail", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, 400, resp.StatusCode)
-
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/fail", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, 429, resp.StatusCode)
-
-	time.Sleep(3 * time.Second)
-
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/fail", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, 400, resp.StatusCode)
-}
-
-// go test -run Test_Limiter_Sliding_Window_Skip_Successful_Requests -v
-func Test_Limiter_Sliding_Window_Skip_Successful_Requests(t *testing.T) {
-	t.Parallel()
-	app := fiber.New()
-
-	app.Use(New(Config{
-		Max:                    1,
-		Expiration:             2 * time.Second,
-		SkipSuccessfulRequests: true,
-		LimiterMiddleware:      SlidingWindow{},
-	}))
-
-	app.Get("/:status", func(c fiber.Ctx) error {
-		if c.Params("status") == "fail" {
-			return c.SendStatus(400)
-		}
-		return c.SendStatus(200)
-	})
-
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/success", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, 200, resp.StatusCode)
-
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/fail", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, 400, resp.StatusCode)
-
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/fail", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, 429, resp.StatusCode)
-
-	sleepForRetryAfter(t, resp)
-
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/fail", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, 400, resp.StatusCode)
-}
-
-// go test -run Test_Limiter_Sliding_Window_Custom_Storage_Skip_Successful_Requests -v
-func Test_Limiter_Sliding_Window_Custom_Storage_Skip_Successful_Requests(t *testing.T) {
-	t.Parallel()
-	app := fiber.New()
-
-	app.Use(New(Config{
-		Max:                    1,
-		Expiration:             2 * time.Second,
-		Storage:                memory.New(),
-		SkipSuccessfulRequests: true,
-		LimiterMiddleware:      SlidingWindow{},
-	}))
-
-	app.Get("/:status", func(c fiber.Ctx) error {
-		if c.Params("status") == "fail" {
-			return c.SendStatus(400)
-		}
-		return c.SendStatus(200)
-	})
-
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/success", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, 200, resp.StatusCode)
-
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/fail", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, 400, resp.StatusCode)
-
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/fail", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, 429, resp.StatusCode)
-
-	sleepForRetryAfter(t, resp)
-
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/fail", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, 400, resp.StatusCode)
-}
-
 // go test -v -run=^$ -bench=Benchmark_Limiter_Custom_Store -benchmem -count=4
 func Benchmark_Limiter_Custom_Store(b *testing.B) {
 	app := fiber.New()
@@ -2020,70 +1340,135 @@ func Benchmark_Limiter_Custom_Store(b *testing.B) {
 	}
 }
 
-// Test to reproduce the bug where fiber.NewErrorf responses are not counted as failed requests
-func Test_Limiter_Bug_NewErrorf_SkipSuccessfulRequests_SlidingWindow(t *testing.T) {
+// Test_Limiter_Bug_NewErrorf_SkipSuccessfulRequests covers a handler that fails
+// with a *fiber.Error: its code, not the 200 the response still carries at that
+// point, says the request failed, so it still counts under SkipSuccessfulRequests.
+func Test_Limiter_Bug_NewErrorf_SkipSuccessfulRequests(t *testing.T) {
 	t.Parallel()
 
-	app := fiber.New()
+	for _, strategy := range windowStrategies {
+		t.Run(strategy.name, func(t *testing.T) {
+			t.Parallel()
 
-	app.Use(New(Config{
-		Max:                    1,
-		Expiration:             60 * time.Second,
-		LimiterMiddleware:      SlidingWindow{},
-		SkipSuccessfulRequests: true,
-		SkipFailedRequests:     false,
-		DisableHeaders:         true,
-	}))
+			app := fiber.New()
 
-	app.Get("/", func(_ fiber.Ctx) error {
-		return fiber.NewErrorf(fiber.StatusInternalServerError, "Error")
-	})
+			app.Use(New(Config{
+				Max:                    1,
+				Expiration:             60 * time.Second,
+				LimiterMiddleware:      strategy.handler,
+				SkipSuccessfulRequests: true,
+				SkipFailedRequests:     false,
+				DisableHeaders:         true,
+			}))
 
-	// First request should succeed (and be counted because it's a failed request)
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusInternalServerError, resp.StatusCode)
+			app.Get("/", func(_ fiber.Ctx) error {
+				return fiber.NewErrorf(fiber.StatusInternalServerError, "Error")
+			})
 
-	// Second request should be rate limited because the first failed request was counted
-	// But currently this is not happening due to the bug
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
+			// The first request fails and, being a failure, is counted.
+			resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+			require.NoError(t, err)
+			require.Equal(t, fiber.StatusInternalServerError, resp.StatusCode)
 
-	// This should be 429 (rate limited) but currently returns 500 due to the bug
-	require.Equal(t, fiber.StatusTooManyRequests, resp.StatusCode, "Second request should be rate limited")
+			// So the second one is rate limited.
+			resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+			require.NoError(t, err)
+			require.Equal(t, fiber.StatusTooManyRequests, resp.StatusCode, "Second request should be rate limited")
+		})
+	}
 }
 
-// Test to reproduce the bug where fiber.NewErrorf responses are not counted as failed requests (FixedWindow)
-func Test_Limiter_Bug_NewErrorf_SkipSuccessfulRequests_FixedWindow(t *testing.T) {
+// Test_Limiter_NilConfigUsesDefaults covers a strategy used on its own: New(nil)
+// falls back to the default config.
+func Test_Limiter_NilConfigUsesDefaults(t *testing.T) {
 	t.Parallel()
 
-	app := fiber.New()
+	for _, strategy := range windowStrategies {
+		t.Run(strategy.name, func(t *testing.T) {
+			t.Parallel()
 
-	app.Use(New(Config{
-		Max:                    1,
-		Expiration:             60 * time.Second,
-		LimiterMiddleware:      FixedWindow{},
-		SkipSuccessfulRequests: true,
-		SkipFailedRequests:     false,
-		DisableHeaders:         true,
-	}))
+			app := fiber.New()
+			app.Use(strategy.handler.New(nil))
+			app.Get("/", func(c fiber.Ctx) error {
+				return c.SendStatus(fiber.StatusOK)
+			})
 
-	app.Get("/", func(_ fiber.Ctx) error {
-		return fiber.NewErrorf(fiber.StatusInternalServerError, "Error")
-	})
+			for range defaultLimiterMax {
+				resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+				require.NoError(t, err)
+				require.Equal(t, fiber.StatusOK, resp.StatusCode)
+			}
 
-	// First request should succeed (and be counted because it's a failed request)
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusInternalServerError, resp.StatusCode)
+			resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+			require.NoError(t, err)
+			require.Equal(t, fiber.StatusTooManyRequests, resp.StatusCode)
+		})
+	}
+}
 
-	// Second request should be rate limited because the first failed request was counted
-	// But currently this is not happening due to the bug
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
+// Test_Limiter_RemainingHeaderIsNeverNegative covers requests that are rejected
+// while another one is still running: the rejected ones keep their hit, so by
+// the time the running request gives its own hit back the stored count is
+// still above Max. X-RateLimit-Remaining must read 0, not a negative number.
+func Test_Limiter_RemainingHeaderIsNeverNegative(t *testing.T) {
+	t.Parallel()
 
-	// This should be 429 (rate limited) but currently returns 500 due to the bug
-	require.Equal(t, fiber.StatusTooManyRequests, resp.StatusCode, "Second request should be rate limited")
+	for _, strategy := range windowStrategies {
+		t.Run(strategy.name, func(t *testing.T) {
+			t.Parallel()
+
+			clock := newTestClock(time.Now().Truncate(time.Second))
+			app := fiber.New()
+
+			app.Use(New(Config{
+				Max:                    1,
+				Expiration:             time.Minute,
+				SkipSuccessfulRequests: true,
+				LimiterMiddleware:      strategy.handler,
+				clock:                  clock.Now,
+				Storage:                newFakeLimiterStorage(),
+			}))
+
+			started := make(chan struct{})
+			release := make(chan struct{})
+			app.Get("/:mode", func(c fiber.Ctx) error {
+				if c.Params("mode") == "slow" {
+					close(started)
+					<-release
+				}
+				return c.SendStatus(fiber.StatusOK)
+			})
+
+			type respErr struct {
+				resp *http.Response
+				err  error
+			}
+			slowCh := make(chan respErr, 1)
+
+			go func() {
+				resp, err := app.Test(
+					httptest.NewRequest(fiber.MethodGet, "/slow", http.NoBody),
+					fiber.TestConfig{Timeout: 5 * time.Second},
+				)
+				slowCh <- respErr{resp: resp, err: err}
+			}()
+
+			// Two more requests arrive while the slow one holds the only slot.
+			<-started
+			for range 2 {
+				resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/fast", http.NoBody))
+				require.NoError(t, err)
+				require.Equal(t, fiber.StatusTooManyRequests, resp.StatusCode)
+			}
+			close(release)
+
+			result := <-slowCh
+			require.NoError(t, result.err)
+			require.Equal(t, fiber.StatusOK, result.resp.StatusCode)
+			require.Equal(t, "1", result.resp.Header.Get(xRateLimitLimit))
+			require.Equal(t, "0", result.resp.Header.Get(xRateLimitRemaining))
+		})
+	}
 }
 
 // go test -run Test_Limiter_Next
@@ -2225,6 +1610,58 @@ func Benchmark_Limiter_Parallel_Keys(b *testing.B) {
 	})
 }
 
+// Benchmark_Limiter_Admit measures requests that pass the limiter. Max is far
+// above what the loop reaches, so no iteration takes the 429 path, unlike
+// Benchmark_Limiter, which runs into its Max of 100 after the first hundred.
+// It covers what the other benchmarks leave out: the sliding window, the second
+// storage round-trip that SkipSuccessfulRequests adds, and oversized keys,
+// which boundKey hashes on every get and set.
+//
+// go test -v -run=^$ -bench=Benchmark_Limiter_Admit -benchmem -count=4
+func Benchmark_Limiter_Admit(b *testing.B) {
+	oversizedKey := strings.Repeat("x", maxKeyLength*4)
+	oversized := func(fiber.Ctx) string { return oversizedKey }
+
+	benchmarks := []struct {
+		name string
+		cfg  Config
+	}{
+		{name: "fixed", cfg: Config{LimiterMiddleware: FixedWindow{}}},
+		{name: "fixed_skip_successful", cfg: Config{LimiterMiddleware: FixedWindow{}, SkipSuccessfulRequests: true}},
+		{name: "fixed_oversized_key", cfg: Config{LimiterMiddleware: FixedWindow{}, KeyGenerator: oversized}},
+		{name: "sliding", cfg: Config{LimiterMiddleware: SlidingWindow{}}},
+		{name: "sliding_disable_headers", cfg: Config{LimiterMiddleware: SlidingWindow{}, DisableHeaders: true}},
+		{name: "sliding_skip_successful", cfg: Config{LimiterMiddleware: SlidingWindow{}, SkipSuccessfulRequests: true}},
+		{name: "sliding_oversized_key", cfg: Config{LimiterMiddleware: SlidingWindow{}, KeyGenerator: oversized}},
+	}
+
+	for _, bm := range benchmarks {
+		b.Run(bm.name, func(b *testing.B) {
+			cfg := bm.cfg
+			cfg.Max = math.MaxInt32
+			cfg.Expiration = time.Hour
+
+			app := fiber.New()
+			app.Use(New(cfg))
+			app.Get("/", func(c fiber.Ctx) error {
+				return c.SendString("Hello, World!")
+			})
+
+			h := app.Handler()
+
+			fctx := &fasthttp.RequestCtx{}
+			fctx.Request.Header.SetMethod(fiber.MethodGet)
+			fctx.Request.SetRequestURI("/")
+
+			b.ReportAllocs()
+
+			for b.Loop() {
+				h(fctx)
+			}
+		})
+	}
+}
+
 // go test -run Test_Sliding_Window -race -v
 func Test_Sliding_Window(t *testing.T) {
 	t.Parallel()
@@ -2279,69 +1716,53 @@ func Test_Sliding_Window(t *testing.T) {
 	}
 }
 
-// Test_Config_currentSecond_NegativeClock verifies that an injected pre-epoch
-// (negative Unix) timestamp is clamped to 0 instead of wrapping to a huge
-// uint64, while a non-negative timestamp is converted unchanged.
-func Test_Config_currentSecond_NegativeClock(t *testing.T) {
+// Test_Limiter_SubSecondExpirationFunc drives a limiter whose ExpirationFunc
+// returns less than a second. The 0-second window this used to give made the
+// sliding weight a division by zero, so the rate was garbage and requests
+// within Max were rejected, and it made the fixed window rotate on every
+// request, so its counter kept resetting and it admitted unlimited traffic.
+//
+// The reset header pins the floored window length, which is what fails on every
+// architecture: an unfloored window turns the rate into int(NaN), and that
+// saturates to 0 on arm64 but wraps to MinInt64 on amd64.
+//
+// go test -run Test_Limiter_SubSecondExpirationFunc -race -v
+func Test_Limiter_SubSecondExpirationFunc(t *testing.T) {
 	t.Parallel()
 
-	cfg := &Config{clock: func() time.Time { return time.Unix(-100, 0) }}
-	require.Equal(t, uint64(0), cfg.currentSecond())
+	for _, strategy := range windowStrategies {
+		t.Run(strategy.name, func(t *testing.T) {
+			t.Parallel()
 
-	cfg.clock = func() time.Time { return time.Unix(42, 0) }
-	require.Equal(t, uint64(42), cfg.currentSecond())
-}
+			clock := newTestClock(time.Now().Truncate(time.Second))
+			app := fiber.New()
+			app.Use(New(Config{
+				Max:            5,
+				ExpirationFunc: func(fiber.Ctx) time.Duration { return 500 * time.Millisecond },
+				clock:          clock.Now,
+				// clock freezes the limiter's own window, but the default store expires
+				// entries on real time, so a slow runner could drop the counter between
+				// requests and let the 6th open a fresh window. This storage keeps what
+				// it is given (it only fails when errs says so), leaving the flooring
+				// itself as the only thing under test.
+				Storage:           newFakeLimiterStorage(),
+				LimiterMiddleware: strategy.handler,
+			}))
+			app.Get("/", func(c fiber.Ctx) error { return c.SendString("Hello tester!") })
 
-// go test -run TestLimiterSlidingSubSecondExpiration -race -v
-func TestLimiterSlidingSubSecondExpiration(t *testing.T) {
-	t.Parallel()
-	// The 0-second window made the sliding weight a division by zero, so the
-	// rate was garbage and requests within Max were rejected.
-	assertSubSecondWindowIsFloored(t, SlidingWindow{})
-}
+			for i := 1; i <= 5; i++ {
+				resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+				require.NoError(t, err)
+				require.Equal(t, fiber.StatusOK, resp.StatusCode, "request %d", i)
+				require.Equal(t, "1", resp.Header.Get(xRateLimitReset), "request %d", i)
+			}
 
-// go test -run TestLimiterFixedSubSecondExpiration -race -v
-func TestLimiterFixedSubSecondExpiration(t *testing.T) {
-	t.Parallel()
-	// The same 0-second window rotated on every request, so the fixed window
-	// kept resetting its counter and admitted unlimited traffic.
-	assertSubSecondWindowIsFloored(t, FixedWindow{})
-}
-
-// assertSubSecondWindowIsFloored drives a limiter whose ExpirationFunc returns
-// less than a second. The reset header pins the floored window length, which is
-// what fails on every architecture: an unfloored window turns the rate into
-// int(NaN), and that saturates to 0 on arm64 but wraps to MinInt64 on amd64.
-func assertSubSecondWindowIsFloored(t *testing.T, strategy Handler) {
-	t.Helper()
-
-	clock := newTestClock(time.Now().Truncate(time.Second))
-	app := fiber.New()
-	app.Use(New(Config{
-		Max:            5,
-		ExpirationFunc: func(fiber.Ctx) time.Duration { return 500 * time.Millisecond },
-		clock:          clock.Now,
-		// clock freezes the limiter's own window, but the default store expires
-		// entries on real time, so a slow runner could drop the counter between
-		// requests and let the 6th open a fresh window. This storage keeps what
-		// it is given (it only fails when errs says so), leaving the flooring
-		// itself as the only thing under test.
-		Storage:           newFailingLimiterStorage(),
-		LimiterMiddleware: strategy,
-	}))
-	app.Get("/", func(c fiber.Ctx) error { return c.SendString("Hello tester!") })
-
-	for i := 1; i <= 5; i++ {
-		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-		require.NoError(t, err)
-		require.Equal(t, fiber.StatusOK, resp.StatusCode, "request %d", i)
-		require.Equal(t, "1", resp.Header.Get(xRateLimitReset), "request %d", i)
+			resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+			require.NoError(t, err)
+			require.Equal(t, fiber.StatusTooManyRequests, resp.StatusCode)
+			require.Equal(t, "1", resp.Header.Get(fiber.HeaderRetryAfter))
+		})
 	}
-
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusTooManyRequests, resp.StatusCode)
-	require.Equal(t, "1", resp.Header.Get(fiber.HeaderRetryAfter))
 }
 
 // Test_Limiter_OversizedKeyGeneratorIsBounded proves the property manager's
@@ -2357,7 +1778,7 @@ func Test_Limiter_OversizedKeyGeneratorIsBounded(t *testing.T) {
 			t.Parallel()
 
 			oversizedKey := strings.Repeat("x", maxKeyLength*4)
-			storage := newFailingLimiterStorage()
+			storage := newFakeLimiterStorage()
 			app := fiber.New()
 			app.Use(New(Config{
 				Storage:           storage,
