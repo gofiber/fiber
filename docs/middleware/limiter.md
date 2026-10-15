@@ -140,7 +140,7 @@ app.Use(limiter.New(limiter.Config{
 
 ## Concurrency and storage access
 
-The limiter reads an entry, updates it and writes it back while holding a lock, so concurrent requests for one key never read the same count. Keys are spread over 64 locks, which lets requests for different keys run in parallel. A lock is held for the storage round trips of its request: with a slow external storage, keys that share a lock wait for each other, and requests for one key are handled one at a time. That is the price of exact counts within a process, because `fiber.Storage` offers no atomic increment to rely on. The lock is per process, so processes that share a storage can still admit a few extra requests when they handle the same key at the same moment.
+The limiter reads an entry, updates it and writes it back while holding a lock, so concurrent requests for one key through the same limiter never read the same count. Keys are spread over 64 locks, which lets requests for different keys run in parallel. A lock is held for the storage round trips of its request: with a slow external storage, keys that share a lock wait for each other, and requests for one key are handled one at a time. That is the price of exact counts within one limiter, because `fiber.Storage` offers no atomic increment to rely on. The locks are not shared between limiters, so two limiters, in one process or several, that use the same storage and key can still admit a few extra requests when they handle that key at the same moment.
 
 A request that passes costs one storage read and one write. A second read and write follows the handler when:
 

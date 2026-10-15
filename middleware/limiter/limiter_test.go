@@ -1547,22 +1547,24 @@ func Test_Limiter_NegativeMaxFuncRejectsEveryRequest(t *testing.T) {
 	t.Parallel()
 
 	for _, strategy := range windowStrategies {
-		t.Run(strategy.name, func(t *testing.T) {
-			t.Parallel()
+		for _, limit := range []int{-1, math.MinInt} {
+			t.Run(fmt.Sprintf("%s/%d", strategy.name, limit), func(t *testing.T) {
+				t.Parallel()
 
-			app := fiber.New()
-			app.Use(New(Config{
-				MaxFunc:           func(fiber.Ctx) int { return -1 },
-				LimiterMiddleware: strategy.handler,
-			}))
-			app.Get("/", func(c fiber.Ctx) error {
-				return c.SendStatus(fiber.StatusOK)
+				app := fiber.New()
+				app.Use(New(Config{
+					MaxFunc:           func(fiber.Ctx) int { return limit },
+					LimiterMiddleware: strategy.handler,
+				}))
+				app.Get("/", func(c fiber.Ctx) error {
+					return c.SendStatus(fiber.StatusOK)
+				})
+
+				resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+				require.NoError(t, err)
+				require.Equal(t, fiber.StatusTooManyRequests, resp.StatusCode)
 			})
-
-			resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
-			require.NoError(t, err)
-			require.Equal(t, fiber.StatusTooManyRequests, resp.StatusCode)
-		})
+		}
 	}
 }
 

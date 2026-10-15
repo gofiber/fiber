@@ -60,13 +60,14 @@ func New(config ...Config) fiber.Handler {
 }
 
 // limit returns the limit for c, or false when Next or a zero MaxFunc skips it.
-// Next runs first, so a skipped request never reaches MaxFunc.
+// Next runs first, so a skipped request never reaches MaxFunc. Every negative
+// limit becomes -1, which rejects everything and cannot wrap when hits are subtracted.
 func (cfg *Config) limit(c fiber.Ctx) (int, bool) {
 	if cfg.Next != nil && cfg.Next(c) {
 		return 0, false
 	}
 	maxRequests := cfg.MaxFunc(c)
-	return maxRequests, maxRequests != 0
+	return max(maxRequests, -1), maxRequests != 0
 }
 
 // skipsHit reports whether a request that ended with statusCode is left uncounted.
