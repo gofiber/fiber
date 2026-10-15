@@ -197,18 +197,6 @@ func isIgnoredHeader(key []byte) bool {
 	return ok
 }
 
-// varyListsCredential is true when a Vary field value names Cookie or
-// Authorization: the entry then holds the response to one client's credential.
-// Walked rather than parsed, so a hit allocates nothing for it.
-func varyListsCredential(vary []byte) bool {
-	for name := range headerlist.All(utils.UnsafeString(vary)) {
-		if utils.EqualFold(name, fiber.HeaderCookie) || utils.EqualFold(name, fiber.HeaderAuthorization) {
-			return true
-		}
-	}
-	return false
-}
-
 // joinedHeader returns every field line for key, comma-joined, since a recipient
 // may combine them into that form (RFC 9110 §5.2). Peek returns only the first,
 // so a second "Vary:" line was cached as if it had never been sent.
@@ -283,8 +271,9 @@ var authScratchPool = sync.Pool{
 	},
 }
 
-// appendAuthHash appends the hex digest of a request's Authorization field
-// lines, each length-prefixed so that ["ab"] and ["a","b"] do not collide.
+// appendAuthHash appends the hex digest of the field lines of a request's
+// Authorization, or of another credential header in the key, each length-prefixed
+// so that ["ab"] and ["a","b"] do not collide.
 //
 // Written into the caller's buffer rather than returned as a string: the digest
 // only ever becomes part of a cache key, and handing one back cost an

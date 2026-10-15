@@ -2,9 +2,9 @@ package cache
 
 import (
 	"crypto/sha256"
-	"encoding/binary"
 	"encoding/hex"
 	"net/url"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -107,7 +107,7 @@ func appendDefaultKey(dst []byte, c fiber.Ctx, cfg *Config) []byte {
 
 	if len(cfg.KeyHeaders) > 0 {
 		dst = append(dst, '|', 'h', '=')
-		dst = appendCanonicalHeaderSubset(dst, &c.Request().Header, cfg.KeyHeaders, headerlookup.Canonical(c))
+		dst = appendCanonicalHeaderSubset(dst, &c.Request().Header, cfg.KeyHeaders, cfg.credentialKeyHeaders, headerlookup.Canonical(c))
 	}
 
 	if len(cfg.KeyCookies) > 0 {
@@ -215,7 +215,9 @@ func appendCanonicalQueryString(dst []byte, uri *fasthttp.URI) []byte {
 	return dst
 }
 
-func appendCanonicalHeaderSubset(dst []byte, header *fasthttp.RequestHeader, names []string, normalized bool) []byte {
+// appendCanonicalHeaderSubset appends the values of the named request headers,
+// hashing those of credentials so an external Storage's key listing hides them.
+func appendCanonicalHeaderSubset(dst []byte, header *fasthttp.RequestHeader, names, credentials []string, normalized bool) []byte {
 	for idx, name := range names {
 		if idx > 0 {
 			dst = append(dst, '|')
@@ -236,13 +238,15 @@ func appendCanonicalHeaderSubset(dst []byte, header *fasthttp.RequestHeader, nam
 
 		// Each value is bounded, but not how many there are, and a few hundred field
 		// lines build a multi-kilobyte map key. Hash past the bound; the hash covers
-		// raw lines, which the verbatim form never is, so the two cannot collide.
+		// raw lines, which the verbatim form never is, so the two cannot collide. A
+		// credential is hashed whatever its size.
 		total := 0
 		for _, value := range values {
 			total += len(value) + 1
 		}
-		if total > maxKeyDimensionSegmentLength {
-			dst = appendHashedKeySegment(dst, joinKeyHeaderValues(values))
+		if total > maxKeyDimensionSegmentLength || (len(values) > 0 && slices.Contains(credentials, name)) {
+			dst = append(dst, hashPrefix...)
+			dst = appendAuthHash(dst, values)
 			continue
 		}
 
@@ -254,22 +258,6 @@ func appendCanonicalHeaderSubset(dst []byte, header *fasthttp.RequestHeader, nam
 	}
 
 	return dst
-}
-
-// joinKeyHeaderValues concatenates field lines with a length prefix each, so
-// the digest taken over the result distinguishes value lists that a plain
-// concatenation would not (["ab"] from ["a","b"]).
-func joinKeyHeaderValues(values [][]byte) []byte {
-	n := 0
-	for _, v := range values {
-		n += len(v) + binary.MaxVarintLen64
-	}
-	joined := make([]byte, 0, n)
-	for _, v := range values {
-		joined = binary.AppendUvarint(joined, uint64(len(v)))
-		joined = append(joined, v...)
-	}
-	return joined
 }
 
 func appendCanonicalCookieSubset(dst []byte, c fiber.Ctx, names []string) []byte {

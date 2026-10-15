@@ -71,12 +71,16 @@ const (
 // served, what another host populated. v4: entries gained the response's Vary.
 // One written without it is replayed with no Vary and, when it carries no
 // Cache-Control of its own, under "public, max-age" — telling a shared cache
-// downstream it may store one user's response for every user of the URL. Bump
-// this whenever what a key stands for, or what its entry carries, changes; the
-// cost is one cold cache after a deploy. Additive bookkeeping fields such as
+// downstream it may store one user's response for every user of the URL. v5: a
+// refusal now ends the entry of the credential it refused, and credential
+// headers named in KeyHeaders are hashed in the key. An entry cached for a
+// credential the app has since ended was never ended, so on a store that
+// survived the upgrade it would still be found, and served, until it expired.
+// Bump this whenever what a key stands for, or what its entry carries, changes;
+// the cost is one cold cache after a deploy. Additive bookkeeping fields such as
 // heapgen need no bump: old entries decode with generation zero, and older
 // readers skip the new field without changing the response or key semantics.
-const cacheKeyVersion = "v4"
+const cacheKeyVersion = "v5"
 
 type expirationSource uint8
 
@@ -163,14 +167,6 @@ func New(config ...Config) fiber.Handler {
 	}
 
 	redactKeys := !cfg.DisableValueRedaction
-
-	// A credential among the key's dimensions makes every entry one user's
-	// response, whatever the response says about itself. KeyHeaders arrive
-	// lower-cased from configDefault. Fixed for the life of the handler, so
-	// decided once rather than on every hit.
-	keysOnCredential := len(cfg.KeyCookies) > 0 ||
-		slices.Contains(cfg.KeyHeaders, "cookie") ||
-		slices.Contains(cfg.KeyHeaders, "authorization")
 
 	maskKey := func(key string) string {
 		if redactKeys {
@@ -390,21 +386,43 @@ func New(config ...Config) fiber.Handler {
 		var oldHeapGen uint64
 		var staleMemoryEntry *item
 
+		// foundExp is when the entry found stops being fresh, kept for the refusal record.
+		var foundExp uint64
+		if e != nil {
+			foundExp = e.exp
+		}
+
+		// setAside parks the entry found for revalidation, keeping its heap node so
+		// the replacement takes over its accounting.
+		setAside := func() {
+			revalidate = true
+			oldHeapIdx = e.heapidx
+			oldHeapGen = e.heapgen
+			if cfg.Storage != nil {
+				manager.release(e)
+			} else {
+				staleMemoryEntry = e
+			}
+			e = nil
+		}
+
 		handleMinFresh := func(now uint64) {
 			if e == nil || !reqDirectives.minFreshSet {
 				return
 			}
 			remainingFreshness := remainingFreshness(e, now)
 			if remainingFreshness < reqDirectives.minFresh {
-				revalidate = true
-				oldHeapIdx = e.heapidx
-				oldHeapGen = e.heapgen
-				if cfg.Storage != nil {
-					manager.release(e)
-				} else {
-					staleMemoryEntry = e
-				}
-				e = nil
+				setAside()
+			}
+		}
+
+		// A credential the origin refused is revalidated, not served. Its refusal is
+		// recorded under one key for all its variants, built before the handler runs.
+		var refusal string
+		if e != nil && cfg.varyCarriesCredential(varyNames) {
+			refusal = cfg.refusalKey(c, baseKey, varyNames)
+			if refusedBefore(reqCtx, manager, refusal) {
+				setAside()
 			}
 		}
 
@@ -429,30 +447,14 @@ func New(config ...Config) fiber.Handler {
 		if e != nil {
 			entryAge = cachedResponseAge(e, ts)
 			if reqDirectives.maxAgeSet && (reqDirectives.maxAge == 0 || entryAge > reqDirectives.maxAge) {
-				revalidate = true
-				oldHeapIdx = e.heapidx
-				oldHeapGen = e.heapgen
-				if cfg.Storage != nil {
-					manager.release(e)
-				} else {
-					staleMemoryEntry = e
-				}
-				e = nil
+				setAside()
 			}
 
 			handleMinFresh(ts)
 		}
 
 		if e != nil && e.ttl == 0 && e.forceRevalidate {
-			revalidate = true
-			oldHeapIdx = e.heapidx
-			oldHeapGen = e.heapgen
-			if cfg.Storage != nil {
-				manager.release(e)
-			} else {
-				staleMemoryEntry = e
-			}
-			e = nil
+			setAside()
 		}
 
 		if e != nil && e.ttl == 0 && e.exp != 0 && ts >= e.exp {
@@ -489,9 +491,18 @@ func New(config ...Config) fiber.Handler {
 			}
 			requestNoCache := reqDirectives.noCache
 
+			// The invalidator is app code, so it runs without the lock: a slow call
+			// would stall every request and a panic would leave the lock held.
+			invalidated := false
+			if cfg.CacheInvalidator != nil {
+				unlock()
+				invalidated = cfg.CacheInvalidator(c)
+				relock()
+			}
+
 			// Invalidate on a local copy: the in-memory item is shared with concurrent hits.
 			entryExp := e.exp
-			if cfg.CacheInvalidator != nil && cfg.CacheInvalidator(c) {
+			if invalidated {
 				entryExp = ts - 1
 			}
 
@@ -501,18 +512,14 @@ func New(config ...Config) fiber.Handler {
 			if entryExpired {
 				staleness = ts - entryExp
 			}
-			allowStale := entryExpired && (reqDirectives.maxStaleAny || (reqDirectives.maxStaleSet && staleness <= reqDirectives.maxStale))
+			// max-stale does not revive an invalidated entry, nor one holding a
+			// credential's response, which the storage keeps past its lifetime.
+			allowStale := !invalidated && entryExpired &&
+				(reqDirectives.maxStaleAny || (reqDirectives.maxStaleSet && staleness <= reqDirectives.maxStale)) &&
+				!hasAuthorization && !cfg.holdsCredentialResponse(e.vary)
 
 			if entryExpired && e.revalidate {
-				revalidate = true
-				oldHeapIdx = e.heapidx
-				oldHeapGen = e.heapgen
-				if cfg.Storage != nil {
-					manager.release(e)
-				} else {
-					staleMemoryEntry = e
-				}
-				e = nil
+				setAside()
 			}
 
 			handleMinFresh(ts)
@@ -670,7 +677,7 @@ func New(config ...Config) fiber.Handler {
 					// a bare max-age, lets a shared cache downstream store this hit
 					// and serve it to whoever asks for the URL next.
 					directive := publicMaxAge
-					if keysOnCredential || varyListsCredential(e.vary) {
+					if cfg.holdsCredentialResponse(e.vary) {
 						directive = privateMaxAge
 					}
 					// Built in a local array: FormatUint and the join were two
@@ -740,8 +747,104 @@ func New(config ...Config) fiber.Handler {
 		unlock()
 
 	continueRequest:
+		// Whether the request found an entry that the origin's answer may now leave stale.
+		entryFound := e != nil || revalidate
+
+		// What a refusal reaches, read before the handler can clear the credential.
+		var scope credentialScope
+		if entryFound {
+			scope = cfg.scopeOf(c, hasAuthorization, refusal)
+		}
+
+		// dropUnlessReplaced removes the entry the request found and its heap node. It
+		// reports whether a concurrent request replaced it first, which then stays.
+		dropUnlessReplaced := func() bool {
+			heapIdx, heapGen := oldHeapIdx, oldHeapGen
+			if e != nil {
+				heapIdx, heapGen = e.heapidx, e.heapgen
+			}
+			removeStaleHeap := true
+			if cfg.Storage == nil {
+				expected := e
+				if expected == nil {
+					expected = staleMemoryEntry
+				}
+				if manager.delIf(key, expected) == memoryEntryReplaced {
+					mux.Lock()
+					removeHeapEntry(key, heapIdx, heapGen)
+					mux.Unlock()
+					return true
+				}
+			} else {
+				// Storage has no conditional delete. Preserve completed
+				// replacements; the read/delete race remains intentional.
+				current, err := manager.get(reqCtx, key)
+				switch {
+				case errors.Is(err, errCacheMiss):
+					// No entry remains, but its Vary manifest still needs cleanup.
+				case err != nil:
+					log.Warnf("cache: failed to verify cached response for key %q: %v", maskKey(key), err)
+					removeStaleHeap = false
+				default:
+					isStaleEntry := current.heapidx == heapIdx && current.heapgen == heapGen
+					manager.release(current)
+					if !isStaleEntry {
+						mux.Lock()
+						removeHeapEntry(key, heapIdx, heapGen)
+						mux.Unlock()
+						return true
+					}
+					if err := deleteKey(reqCtx, key); err != nil {
+						log.Warnf("cache: failed to delete cached response for key %q: %v", maskKey(key), err)
+						removeStaleHeap = false
+					}
+				}
+			}
+			if removeStaleHeap {
+				mux.Lock()
+				removeHeapEntry(key, heapIdx, heapGen)
+				mux.Unlock()
+			}
+			return false
+		}
+
+		dropManifest := func() {
+			if err := manager.del(reqCtx, manifestKey); err != nil {
+				log.Warnf("cache: failed to delete stale vary manifest %q: %v", maskKey(manifestKey), err)
+			}
+		}
+
+		// manager.release is a no-op for in-memory storage, so no guard.
+		releaseEntry := func() {
+			if e != nil {
+				manager.release(e)
+				e = nil
+			}
+		}
+
+		// dropRefused ends the refused entry, and the Vary manifest when the key holds
+		// the credential. A manifest several credentials share stays; the refusal is
+		// recorded instead.
+		dropRefused := func() {
+			replaced := dropUnlessReplaced()
+			if replaced {
+				return
+			}
+			if hasVaryManifest && scope.keyed {
+				dropManifest()
+			}
+			if scope.record != "" {
+				cfg.recordRefusal(reqCtx, manager, scope.record, foundExp)
+			}
+		}
+
 		// Continue stack, return err to Fiber if exist
 		if err := c.Next(); err != nil {
+			// A handler that returns the refusal (fiber.ErrUnauthorized) writes no status.
+			if scope.entry && errorRefusesCredential(err) {
+				dropRefused()
+				releaseEntry()
+			}
 			return err
 		}
 
@@ -754,17 +857,16 @@ func New(config ...Config) fiber.Handler {
 		}
 
 		markUnreachable := func() {
-			// manager.release is a no-op for in-memory storage, so no guard.
-			if e != nil {
-				manager.release(e)
-				e = nil
-			}
+			releaseEntry()
 			c.Set(cfg.CacheHeader, cacheUnreachable)
 		}
 
 		// A status that is never stored is no verdict on the entry or its Vary
 		// manifest: an error page carrying no-store must not purge a healthy one.
-		if _, ok := cacheableStatusCodes[c.Res().StatusCode()]; !ok {
+		// The exception is a refusal, when the request found an entry.
+		status := c.Res().StatusCode()
+		refused := entryFound && refusesCredential(status)
+		if _, cacheable := cacheableStatusCodes[status]; !cacheable && !refused {
 			markUnreachable()
 			return nil
 		}
@@ -781,70 +883,29 @@ func New(config ...Config) fiber.Handler {
 		hasPrivate := respCacheControl.hasPrivate
 		hasNoCache := respCacheControl.hasNoCache
 		varyNames, varyHasStar := parseVary(varyHeader)
+		hasCleanupDirective := respCacheControl.hasNoStore || hasPrivate || hasNoCache || varyHasStar
+
+		// A refusal ends the entry it found when that is the credential's own or the
+		// refusal says not to keep one; left in place, the next request with that
+		// credential would be served it unasked.
+		if refused {
+			if scope.entry || hasCleanupDirective {
+				dropRefused()
+			}
+			markUnreachable()
+			return nil
+		}
 
 		// RFC 9111 forbids storing no-store responses and responses with Vary: *.
 		// The latter remains true when response-driven Vary partitioning is disabled.
-		if respCacheControl.hasNoStore || hasPrivate || hasNoCache || varyHasStar {
-			cleanupEntry := e != nil || revalidate
-			if cleanupEntry {
-				heapIdx := oldHeapIdx
-				heapGen := oldHeapGen
-				if e != nil {
-					heapIdx = e.heapidx
-					heapGen = e.heapgen
-				}
-				removeStaleHeap := true
-				if cfg.Storage == nil {
-					expected := e
-					if expected == nil {
-						expected = staleMemoryEntry
-					}
-					if manager.delIf(key, expected) == memoryEntryReplaced {
-						mux.Lock()
-						removeHeapEntry(key, heapIdx, heapGen)
-						mux.Unlock()
-						markUnreachable()
-						return nil
-					}
-				} else {
-					// Storage has no conditional delete. Preserve completed
-					// replacements; the read/delete race remains intentional.
-					current, err := manager.get(reqCtx, key)
-					switch {
-					case errors.Is(err, errCacheMiss):
-						// No entry remains, but its Vary manifest still needs cleanup.
-					case err != nil:
-						log.Warnf("cache: failed to verify cached response for key %q: %v", maskKey(key), err)
-						removeStaleHeap = false
-					default:
-						isStaleEntry := current.heapidx == heapIdx && current.heapgen == heapGen
-						manager.release(current)
-						if !isStaleEntry {
-							mux.Lock()
-							removeHeapEntry(key, heapIdx, heapGen)
-							mux.Unlock()
-							markUnreachable()
-							return nil
-						}
-						if err := deleteKey(reqCtx, key); err != nil {
-							log.Warnf("cache: failed to delete cached response for key %q: %v", maskKey(key), err)
-							removeStaleHeap = false
-						}
-					}
-				}
-				if removeStaleHeap {
-					mux.Lock()
-					removeHeapEntry(key, heapIdx, heapGen)
-					mux.Unlock()
-				}
-			}
+		if hasCleanupDirective {
+			replaced := entryFound && dropUnlessReplaced()
 
-			// A plain no-store miss has no stale entry to invalidate. Preserve
-			// the shared manifest so sibling variants remain reachable.
-			if !cfg.DisableVaryHeaders && hasVaryManifest && (!respCacheControl.hasNoStore || cleanupEntry) {
-				if err := manager.del(reqCtx, manifestKey); err != nil {
-					log.Warnf("cache: failed to delete stale vary manifest %q: %v", maskKey(manifestKey), err)
-				}
+			// A concurrent request that replaced the entry keeps its manifest too. A
+			// plain no-store miss has no stale entry to invalidate: preserve the shared
+			// manifest so sibling variants remain reachable.
+			if !replaced && !cfg.DisableVaryHeaders && hasVaryManifest && (!respCacheControl.hasNoStore || entryFound) {
+				dropManifest()
 			}
 
 			markUnreachable()
@@ -903,7 +964,7 @@ func New(config ...Config) fiber.Handler {
 		e = manager.acquire()
 		// Cache response
 		e.body = utils.CopyBytes(c.Response().Body())
-		e.status = c.Res().StatusCode()
+		e.status = status
 		e.ctype = utils.CopyBytes(c.Response().Header.ContentType())
 		e.cencoding = utils.CopyBytes(c.Response().Header.Peek(fiber.HeaderContentEncoding))
 		e.private = false

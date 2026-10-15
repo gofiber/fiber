@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"container/heap"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"math"
 	"strings"
@@ -384,8 +386,24 @@ func Test_appendAuthHash(t *testing.T) {
 	require.Equal(t, "key|auth="+got, string(appendAuthHash([]byte("key|auth="), [][]byte{[]byte("Bearer token")})))
 
 	// Length-prefixed, so a split that concatenates to the same bytes does not
-	// land on the same digest.
-	require.NotEqual(t, fn([][]byte{[]byte("ab")}), fn([][]byte{[]byte("a"), []byte("b")}))
+	// land on the same digest: what keeps an Authorization, a credential header or
+	// a key dimension too long to store verbatim from sharing a key with another.
+	digest := func(values ...string) string {
+		lines := make([][]byte, len(values))
+		for i, v := range values {
+			lines[i] = []byte(v)
+		}
+		return fn(lines)
+	}
+	require.NotEqual(t, digest("ab"), digest("a", "b"))
+	require.NotEqual(t, digest("a", "bc"), digest("ab", "c"))
+	require.NotEqual(t, digest(""), digest(), "absent and present-empty are different")
+	require.NotEqual(t, digest("", ""), digest(""))
+	// A line that spells its own framing cannot forge a boundary.
+	require.NotEqual(t, digest("\x01a\x01b"), digest("a", "b"))
+	// The framing itself: a uvarint length before each line.
+	sum := sha256.Sum256([]byte("\x01a\x01b"))
+	require.Equal(t, hex.EncodeToString(sum[:]), digest("a", "b"))
 }
 
 func Test_manager_get_StorageErrors(t *testing.T) {

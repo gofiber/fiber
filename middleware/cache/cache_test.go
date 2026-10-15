@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -25,6 +26,7 @@ import (
 	"github.com/gofiber/fiber/v3/internal/storage/memory"
 	"github.com/gofiber/fiber/v3/middleware/compress"
 	"github.com/gofiber/fiber/v3/middleware/etag"
+	recoverer "github.com/gofiber/fiber/v3/middleware/recover"
 	"github.com/gofiber/utils/v2"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
@@ -2182,6 +2184,122 @@ func Test_CacheInvalidation_removeFromHeap(t *testing.T) {
 		bodyInvalidate, err := io.ReadAll(respInvalidate.Body)
 		require.NoError(t, err)
 		require.NotEqual(t, body, bodyInvalidate)
+	})
+}
+
+// A client's max-stale is its leniency about freshness. It must not bring back
+// an entry the app invalidated, which the app has just said must go.
+func Test_CacheInvalidation_IgnoresMaxStale(t *testing.T) {
+	t.Parallel()
+
+	for _, storage := range storageKinds {
+		for _, maxStale := range []string{"max-stale", "max-stale=3600"} {
+			t.Run(storage+"/"+maxStale, func(t *testing.T) {
+				t.Parallel()
+
+				cfg := Config{
+					MaxBytes: 1 << 20,
+					CacheInvalidator: func(c fiber.Ctx) bool {
+						return c.Get("X-Session-Ended") == "1"
+					},
+				}
+				if storage == "external" {
+					cfg.Storage = memory.New()
+				}
+				var calls atomic.Int32
+				app := fiber.New()
+				app.Use(New(cfg))
+				app.Get("/", func(c fiber.Ctx) error {
+					return c.SendString("response " + strconv.Itoa(int(calls.Add(1))))
+				})
+
+				got := getRoot(t, app, nil)
+				require.Equal(t, "response 1", got.body)
+				require.Equal(t, cacheMiss, got.cache)
+				got = getRoot(t, app, nil)
+				require.Equal(t, "response 1", got.body)
+				require.Equal(t, cacheHit, got.cache)
+
+				got = getRoot(t, app, map[string]string{"X-Session-Ended": "1", fiber.HeaderCacheControl: maxStale})
+				require.Equal(t, "response 2", got.body, "an invalidated entry was served to a request that accepts stale ones")
+				require.NotEqual(t, cacheHit, got.cache)
+				require.Equal(t, int32(2), calls.Load())
+
+				// The fresh response took the entry's place.
+				got = getRoot(t, app, nil)
+				require.Equal(t, "response 2", got.body)
+				require.Equal(t, cacheHit, got.cache)
+			})
+		}
+	}
+}
+
+// CacheInvalidator is app code and must not run under the middleware's lock: a
+// slow call would stall every request and a panic would leave it held.
+func Test_CacheInvalidation_RunsWithoutTheLock(t *testing.T) {
+	t.Parallel()
+
+	t.Run("a panic does not wedge the cache", func(t *testing.T) {
+		t.Parallel()
+
+		app := fiber.New()
+		app.Use(recoverer.New())
+		app.Use(New(Config{
+			CacheInvalidator: func(c fiber.Ctx) bool {
+				if c.Get("X-Panic") == "1" {
+					panic("session store unreachable")
+				}
+				return false
+			},
+		}))
+		app.Get("/", func(c fiber.Ctx) error { return c.SendString("ok") })
+
+		require.Equal(t, cacheMiss, getRoot(t, app, nil).cache)
+		require.Equal(t, fiber.StatusInternalServerError, getRoot(t, app, map[string]string{"X-Panic": "1"}).status)
+		// The next request must not wait on a lock the panic left held.
+		require.Equal(t, cacheHit, getRoot(t, app, nil).cache)
+	})
+
+	t.Run("a slow one does not stall other requests", func(t *testing.T) {
+		t.Parallel()
+
+		entered := make(chan struct{})
+		release := make(chan struct{})
+		var releaseOnce sync.Once
+		releaseSlow := func() { releaseOnce.Do(func() { close(release) }) }
+		t.Cleanup(releaseSlow)
+
+		app := fiber.New()
+		app.Use(New(Config{
+			CacheInvalidator: func(c fiber.Ctx) bool {
+				if c.Get("X-Slow") == "1" {
+					close(entered)
+					<-release
+				}
+				return false
+			},
+		}))
+		app.Get("/", func(c fiber.Ctx) error { return c.SendString("ok") })
+		require.Equal(t, cacheMiss, getRoot(t, app, nil).cache)
+
+		// The slow lookup runs in a request of its own, off this goroutine.
+		slowErr := make(chan error, 1)
+		go func() {
+			req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+			req.Header.Set("X-Slow", "1")
+			resp, err := app.Test(req, fiber.TestConfig{Timeout: 10 * time.Second})
+			if err == nil {
+				err = resp.Body.Close()
+			}
+			slowErr <- err
+		}()
+		<-entered
+
+		// Served while the lookup is still running.
+		require.Equal(t, cacheHit, getRoot(t, app, nil).cache)
+
+		releaseSlow()
+		require.NoError(t, <-slowErr)
 	})
 }
 
@@ -5718,6 +5836,56 @@ func Benchmark_Cache(b *testing.B) {
 	require.Greater(b, len(fctx.Response.Body()), 30000)
 }
 
+// Benchmark_Cache_HitConfigs measures a hit under the settings that add work to it: a
+// Vary, an invalidator, and keys built from a credential. The credential is as long as
+// a real token, so what hashing it costs is not hidden by a value that fits the stack.
+func Benchmark_Cache_HitConfigs(b *testing.B) {
+	cases := []struct {
+		name string
+		vary string
+		cfg  Config
+	}{
+		{name: "default"},
+		{name: "vary", vary: "Accept-Encoding, Accept-Language"},
+		{name: "vary Cookie", vary: "Cookie"},
+		{name: "invalidator", cfg: Config{CacheInvalidator: func(fiber.Ctx) bool { return false }}},
+		{name: "KeyCookies", cfg: Config{KeyCookies: []string{"session"}}},
+		{name: "KeyHeaders X-API-Key", cfg: Config{KeyHeaders: []string{"X-API-Key"}}},
+	}
+
+	for i := range cases {
+		bc := &cases[i]
+		b.Run(bc.name, func(b *testing.B) {
+			app := fiber.New()
+			app.Use(New(bc.cfg))
+			app.Get("/demo", func(c fiber.Ctx) error {
+				if bc.vary != "" {
+					c.Set(fiber.HeaderVary, bc.vary)
+				}
+				return c.SendString("body")
+			})
+
+			h := app.Handler()
+			fctx := &fasthttp.RequestCtx{}
+			fctx.Request.Header.SetMethod(fiber.MethodGet)
+			fctx.Request.SetRequestURI("/demo")
+			fctx.Request.Header.Set("X-API-Key", "tok_0123456789abcdefghijklmnopqrstuvwxyz")
+			fctx.Request.Header.SetCookie("session", "abc")
+
+			// One untimed request to populate the entry, so every measured iteration is a hit.
+			h(fctx)
+
+			b.ReportAllocs()
+
+			for b.Loop() {
+				h(fctx)
+			}
+
+			require.Equal(b, cacheHit, string(fctx.Response.Header.Peek("X-Cache")))
+		})
+	}
+}
+
 func Benchmark_Cache_Miss(b *testing.B) {
 	app := fiber.New()
 
@@ -7935,8 +8103,9 @@ func Test_Cache_VaryIsReplayedOnHit(t *testing.T) {
 // shared cache in front of the app it could store the hit and serve it to the
 // next client asking for the URL: keyed on the URL alone, that cache never sees
 // the cookie the entry was selected by. An entry is one user's whenever the
-// response's Vary lists Cookie or Authorization, or the key is partitioned by
-// KeyCookies, or by KeyHeaders naming either header.
+// response's Vary lists a header that carries a credential, or the key is
+// partitioned by KeyCookies, KeyCredentialHeaders, or a KeyHeaders entry that
+// carries one.
 func Test_Cache_CredentialKeyedHitIsPrivate(t *testing.T) {
 	t.Parallel()
 
@@ -7961,10 +8130,17 @@ func Test_Cache_CredentialKeyedHitIsPrivate(t *testing.T) {
 		{name: "Vary: cookie in lower case", vary: []string{"cookie"}, wantVary: "cookie"},
 		{name: "Vary: Cookie on a second field line", vary: []string{"Accept-Encoding", "Cookie"}, wantVary: "Accept-Encoding,Cookie"},
 		{name: "Vary: Authorization", vary: []string{"Authorization"}, wantVary: "Authorization"},
+		{name: "Vary: Proxy-Authorization", vary: []string{"Proxy-Authorization"}, wantVary: "Proxy-Authorization"},
+		{name: "Vary: X-API-Key", vary: []string{"X-API-Key"}, wantVary: "X-API-Key"},
 		{name: "KeyCookies", cfg: Config{KeyCookies: []string{"session"}}},
 		{name: "KeyCookies without the cookie on the request", cfg: Config{KeyCookies: []string{"session"}}, noCookie: true},
 		{name: "KeyHeaders naming Cookie", cfg: Config{KeyHeaders: []string{"Cookie"}}},
 		{name: "KeyHeaders naming Authorization", cfg: Config{KeyHeaders: []string{"Authorization"}}},
+		{name: "KeyCredentialHeaders", cfg: Config{KeyCredentialHeaders: []string{"X-Company-Token"}}},
+		{name: "KeyHeaders naming Proxy-Authorization", cfg: Config{KeyHeaders: []string{"Proxy-Authorization"}}},
+		{name: "KeyHeaders naming X-API-Key", cfg: Config{KeyHeaders: []string{"X-API-Key"}}},
+		{name: "KeyHeaders naming X-Auth-Token", cfg: Config{KeyHeaders: []string{"X-Auth-Token"}}},
+		{name: "KeyHeaders naming X-Access-Token", cfg: Config{KeyHeaders: []string{"X-Access-Token"}}},
 		{name: "DisableVaryHeaders", cfg: Config{DisableVaryHeaders: true}, vary: []string{"Cookie"}, wantVary: "Cookie"},
 		{name: "DisableHeaderNormalizing", appCfg: fiber.Config{DisableHeaderNormalizing: true}, vary: []string{"cookie"}, wantVary: "cookie"},
 		{name: "DisableHeaderNormalizing with the field name in lower case", appCfg: fiber.Config{DisableHeaderNormalizing: true}, vary: []string{"Cookie"}, varyName: "vary", wantVary: "Cookie"},
@@ -8112,40 +8288,6 @@ func Test_Cache_VaryReplayedWithCompress(t *testing.T) {
 	}
 }
 
-func Test_varyListsCredential(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		vary string
-		want bool
-	}{
-		{vary: "", want: false},
-		{vary: "Accept", want: false},
-		{vary: "Accept-Encoding, Accept-Language", want: false},
-		{vary: "*", want: false},
-		{vary: "Cookie", want: true},
-		{vary: "cookie", want: true},
-		{vary: "COOKIE", want: true},
-		{vary: " Cookie ", want: true},
-		{vary: "Accept-Encoding, Cookie", want: true},
-		{vary: "Accept-Encoding,Cookie", want: true},
-		{vary: "Authorization", want: true},
-		{vary: "authorization", want: true},
-		// Names that merely contain one of the two are other fields.
-		{vary: "X-Cookie", want: false},
-		{vary: "Cookie2", want: false},
-		{vary: "Set-Cookie", want: false},
-		{vary: "Proxy-Authorization", want: false},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.vary, func(t *testing.T) {
-			t.Parallel()
-			require.Equal(t, tc.want, varyListsCredential([]byte(tc.vary)), "Vary: %q", tc.vary)
-		})
-	}
-}
-
 // Test_Cache_VaryLongerThanEntryLimitIsUncacheable pins the cap on a stored
 // Vary to the limit the entry decodes it under. The encoder does not enforce
 // that limit, so a longer value reached an external Storage and every later
@@ -8191,6 +8333,180 @@ func Test_Cache_VaryLongerThanEntryLimitIsUncacheable(t *testing.T) {
 				require.Equal(t, "body", string(body), "request %d", i+1)
 				require.Equal(t, []string{vary}, resp.Header.Values(fiber.HeaderVary), "request %d", i+1)
 			}
+		})
+	}
+}
+
+// A credential in a header must not appear in the cache key, which an external
+// Storage exposes in its key listing.
+func Test_Cache_CredentialHeadersAreHashedInTheKey(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		header string
+		cfg    Config
+	}{
+		{name: "declared in KeyCredentialHeaders", header: "X-Company-Token", cfg: Config{KeyCredentialHeaders: []string{"X-Company-Token"}}},
+		{name: "recognized in KeyHeaders", header: "X-API-Key", cfg: Config{KeyHeaders: []string{"X-API-Key"}}},
+	}
+
+	const token = "first-company-token"
+	const otherToken = "second-company-token"
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			storage := newFailingCacheStorage()
+			cfg := tc.cfg
+			cfg.Storage = storage
+			app := fiber.New()
+			app.Use(New(cfg))
+			app.Get("/", func(c fiber.Ctx) error { return c.SendString("for " + c.Get(tc.header)) })
+
+			get := func(value string) string {
+				t.Helper()
+				return getRoot(t, app, map[string]string{tc.header: value}).cache
+			}
+
+			// The credential still tells entries apart.
+			require.Equal(t, cacheMiss, get(token))
+			require.Equal(t, cacheHit, get(token))
+			require.Equal(t, cacheMiss, get(otherToken))
+
+			storage.mu.RLock()
+			defer storage.mu.RUnlock()
+			require.NotEmpty(t, storage.data)
+			for key := range storage.data {
+				require.NotContains(t, key, token)
+				require.NotContains(t, key, otherToken)
+			}
+		})
+	}
+}
+
+// With a custom KeyGenerator, KeyCredentialHeaders takes no part in the key, but
+// the entries still count as one client's: hits are private and never served stale.
+func Test_Cache_KeyCredentialHeadersWithCustomKeyGenerator(t *testing.T) {
+	t.Parallel()
+
+	for _, declared := range []bool{true, false} {
+		name := "declared"
+		if !declared {
+			name = "not declared, so the entry is shared"
+		}
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			clock := newTestClock(time.Unix(1_700_000_000, 0))
+			cfg := Config{
+				Expiration:   time.Minute,
+				clock:        clock.Now,
+				KeyGenerator: func(c fiber.Ctx) string { return c.Path() },
+			}
+			if declared {
+				cfg.KeyCredentialHeaders = []string{"X-Company-Token"}
+			}
+			var calls atomic.Int32
+			app := fiber.New()
+			app.Use(New(cfg))
+			app.Get("/", func(c fiber.Ctx) error {
+				calls.Add(1)
+				return c.SendString("body")
+			})
+
+			require.Equal(t, cacheMiss, getRoot(t, app, nil).cache)
+
+			hit := getRoot(t, app, nil)
+			require.Equal(t, cacheHit, hit.cache)
+			wantCacheControl := "public, max-age=60"
+			if declared {
+				wantCacheControl = "private, max-age=60"
+			}
+			require.Equal(t, wantCacheControl, hit.header.Get(fiber.HeaderCacheControl))
+
+			// Past the entry's lifetime, well inside what the storage keeps.
+			clock.Add(2 * time.Minute)
+			got := getRoot(t, app, map[string]string{fiber.HeaderCacheControl: "max-stale"})
+			if declared {
+				require.Equal(t, int32(2), calls.Load(), "an entry holding a credential's response was served stale")
+				return
+			}
+			require.Equal(t, cacheHit, got.cache)
+			require.Equal(t, int32(1), calls.Load())
+		})
+	}
+}
+
+func Test_configDefault_KeyCredentialHeaders(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name            string
+		wantKeyHeaders  []string
+		wantCredentials []string
+		wantCarrying    []string // the KeyHeaders that carry a credential
+		cfg             Config
+	}{
+		{
+			name:           "unset",
+			wantKeyHeaders: []string{"accept", "accept-encoding", "accept-language"},
+		},
+		{
+			name:            "joins the default key headers",
+			cfg:             Config{KeyCredentialHeaders: []string{"X-Company-Token"}},
+			wantKeyHeaders:  []string{"accept", "accept-encoding", "accept-language", "x-company-token"},
+			wantCredentials: []string{"x-company-token"},
+			wantCarrying:    []string{"x-company-token"},
+		},
+		{
+			name: "normalized, trimmed, deduplicated and merged with KeyHeaders",
+			cfg: Config{
+				KeyHeaders:           []string{"X-Company-Token", "Accept"},
+				KeyCredentialHeaders: []string{" X-Company-Token ", "x-company-token", "", "X-Other"},
+			},
+			wantKeyHeaders:  []string{"accept", "x-company-token", "x-other"},
+			wantCredentials: []string{"x-company-token", "x-other"},
+			wantCarrying:    []string{"x-company-token", "x-other"},
+		},
+		{
+			name: "with header partitioning otherwise disabled",
+			cfg: Config{
+				KeyHeaders:           []string{},
+				KeyCredentialHeaders: []string{"X-Company-Token"},
+			},
+			wantKeyHeaders:  []string{"x-company-token"},
+			wantCredentials: []string{"x-company-token"},
+			wantCarrying:    []string{"x-company-token"},
+		},
+		{
+			name:           "recognized headers named in KeyHeaders carry a credential, others do not",
+			cfg:            Config{KeyHeaders: []string{"X-Tenant", "x-api-key", "Accept", "Authorization"}},
+			wantKeyHeaders: []string{"accept", "authorization", "x-api-key", "x-tenant"},
+			wantCarrying:   []string{"authorization", "x-api-key"},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			// The caller's slices are theirs: normalizing must not rewrite them.
+			var keyHeaders, credentials []string
+			if tc.cfg.KeyHeaders != nil {
+				keyHeaders = slices.Clone(tc.cfg.KeyHeaders)
+			}
+			if tc.cfg.KeyCredentialHeaders != nil {
+				credentials = slices.Clone(tc.cfg.KeyCredentialHeaders)
+			}
+
+			cfg := configDefault(tc.cfg)
+			require.Equal(t, tc.wantKeyHeaders, cfg.KeyHeaders)
+			require.Equal(t, tc.wantCredentials, cfg.KeyCredentialHeaders)
+			require.Equal(t, tc.wantCarrying, cfg.credentialKeyHeaders)
+			require.Equal(t, keyHeaders, tc.cfg.KeyHeaders)
+			require.Equal(t, credentials, tc.cfg.KeyCredentialHeaders)
 		})
 	}
 }

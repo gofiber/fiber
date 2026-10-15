@@ -1558,7 +1558,7 @@ The middleware now emits `Cache-Control` headers by default via the new `Disable
 
 The middleware also caches `308 Permanent Redirect` responses and honors the request directives `max-age`, `min-fresh`, `max-stale` and `only-if-cached`, as well as `Pragma: no-cache`. A hit served stale carries a `Warning` header. See [Request directives](./middleware/cache.md#request-directives).
 
-Cache hits replay the stored `Vary` header even when `StoreResponseHeaders` is off, and a hit on an entry keyed by a cookie or credential (`Vary: Cookie`, `KeyCookies`, or `KeyHeaders` naming `Cookie` or `Authorization`) is sent with `Cache-Control: private` rather than `public`, so a shared cache in front of the app does not store one user's response for the next.
+Cache hits replay the stored `Vary` header even when `StoreResponseHeaders` is off, and a hit on an entry keyed by a cookie or credential (`Vary: Cookie`, `KeyCookies`, `KeyCredentialHeaders`, or `KeyHeaders` naming `Cookie`, `Authorization` or another header that carries a credential) is sent with `Cache-Control: private` rather than `public`, so a shared cache in front of the app does not store one user's response for the next.
 
 Additionally, the caching middleware has been optimized to avoid caching non-cacheable status codes, as defined by the [HTTP standards](https://datatracker.ietf.org/doc/html/rfc7231#section-6.1). This improvement enhances cache accuracy and reduces unnecessary cache storage usage.
 Cached responses now include an RFC-compliant Age header, providing a standardized indication of how long a response has been stored in cache since it was originally generated. This enhancement improves HTTP compliance and facilitates better client-side caching strategies.
@@ -3168,6 +3168,7 @@ Additional v3 cache key options:
 - `DisableQueryKeys`: disable canonicalized query args in keys (default `false`)
 - `KeyHeaders`: request header allow-list for key partitioning
 - `KeyCookies`: explicit cookie allow-list for key partitioning
+- `KeyCredentialHeaders`: request headers that carry a client's credential; they partition entries like `KeyHeaders`, and hits on them are sent with `Cache-Control: private`
 - `DisableVaryHeaders`: disable response `Vary` dimensions in lookup/storage partitioning (default `false`)
 
 #### CORS
