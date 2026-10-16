@@ -90,6 +90,9 @@ func redirectRequest(req *fasthttp.Request, status int) {
 	// Not ResetBody: with ReduceMemoryUsage it hands the body buffer back to
 	// fasthttp's pool while the handler may still hold c.Body().
 	req.SetBody(nil)
+	// A form the handler already read lives on in the post args, which fasthttp
+	// writes as the body when the body is empty.
+	req.PostArgs().Reset()
 	req.Header.Del(fasthttp.HeaderContentType)
 	req.Header.Del(fasthttp.HeaderContentLength)
 	req.Header.Del(fasthttp.HeaderTransferEncoding)

@@ -1,6 +1,7 @@
 package proxy
 
 import (
+	"bufio"
 	"crypto/tls"
 	"errors"
 	"io"
@@ -1253,6 +1254,62 @@ func Test_Security_RedirectRequest_KeepsBodyBuffer(t *testing.T) {
 	other.SetBodyString("payload-of-request-B")
 
 	require.Equal(t, "payload-of-request-A", string(held))
+}
+
+// Test_Security_RedirectRequest_DropsParsedForm pins that a form the handler
+// already read goes with the body: fasthttp writes the parsed fields as the body
+// when the body is empty.
+func Test_Security_RedirectRequest_DropsParsedForm(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name   string
+		method string
+		status int
+	}{
+		{name: "302 POST", method: fasthttp.MethodPost, status: fasthttp.StatusFound},
+		{name: "303 PUT", method: fasthttp.MethodPut, status: fasthttp.StatusSeeOther},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			req := fasthttp.AcquireRequest()
+			defer fasthttp.ReleaseRequest(req)
+			req.SetRequestURI("http://example.com/start")
+			req.Header.SetMethod(tc.method)
+			req.Header.SetContentType(fiber.MIMEApplicationForm)
+			req.SetBodyString("token=secret&b=2")
+			require.Equal(t, "secret", string(req.PostArgs().Peek("token")), "the handler read the form")
+
+			redirectRequest(req, tc.status)
+
+			wire := req.String()
+			require.Equal(t, "GET /start HTTP/1.1", strings.SplitN(wire, "\r\n", 2)[0])
+			require.NotContains(t, wire, "token=secret")
+			require.NotContains(t, wire, "Content-")
+		})
+	}
+}
+
+// Test_Security_RedirectRequest_DropsFraming pins that the framing of a dropped
+// chunked body goes with it: the next hop gets no Transfer-Encoding or Trailer.
+func Test_Security_RedirectRequest_DropsFraming(t *testing.T) {
+	t.Parallel()
+
+	const raw = "POST /start HTTP/1.1\r\nHost: example.com\r\nTransfer-Encoding: chunked\r\nTrailer: X-Sum\r\n\r\n" +
+		"3\r\nabc\r\n0\r\nX-Sum: 1\r\n\r\n"
+	req := fasthttp.AcquireRequest()
+	defer fasthttp.ReleaseRequest(req)
+	require.NoError(t, req.Read(bufio.NewReader(strings.NewReader(raw))))
+	require.Equal(t, -1, req.Header.ContentLength(), "the request is chunked")
+
+	redirectRequest(req, fasthttp.StatusSeeOther)
+
+	wire := req.String()
+	require.Equal(t, "GET /start HTTP/1.1", strings.SplitN(wire, "\r\n", 2)[0])
+	require.NotContains(t, wire, "Transfer-Encoding")
+	require.NotContains(t, wire, "Trailer")
+	require.NotContains(t, wire, "abc")
 }
 
 // Test_Security_FollowRedirects_MethodPerStatus drives redirectRequest through
