@@ -28,7 +28,8 @@ type Config struct {
 	// tls config for the http client.
 	TLSConfig *tls.Config
 
-	// Client is custom client when client config is complex.
+	// Client is custom client when client config is complex. Each
+	// *fasthttp.HostClient among its Clients gets DisablePathNormalizing set.
 	// Note that Servers, Timeout, MaxConnsPerHost, ReadBufferSize,
 	// WriteBufferSize, MaxResponseBodySize, TLSConfig and DialDualStack will
 	// not be used if the client is set, and its dialers get no SSRF guard.
@@ -47,7 +48,8 @@ type Config struct {
 	// i.e.: "https://foobar.com, http://www.foobar.com"
 	//
 	// An entry with a path, userinfo, query or fragment panics with
-	// ErrUpstreamNotOrigin; "host:port" is read as http://host:port.
+	// ErrUpstreamNotOrigin; "host:port" is read as http://host:port and a
+	// lone trailing slash is ignored.
 	//
 	// Required unless Client is set
 	Servers []string
@@ -62,19 +64,20 @@ type Config struct {
 	// Optional. Default: 1024
 	MaxConnsPerHost int
 
-	// Per-connection buffer size for requests' reading.
-	// This also limits the maximum header size.
-	// Increase this buffer if your clients send multi-KB RequestURIs
-	// and/or multi-KB headers (for example, BIG cookies).
+	// Per-connection buffer size for reading upstream responses. This also
+	// limits the maximum response header size: raise it if an upstream sends
+	// multi-KB headers. The headers of client requests are limited by
+	// fiber.Config.ReadBufferSize instead.
 	ReadBufferSize int
 
-	// Per-connection buffer size for responses' writing.
+	// Per-connection buffer size for writing requests to the upstream.
 	WriteBufferSize int
 
 	// MaxResponseBodySize bounds the size (in bytes) of upstream
 	// responses accepted by the proxy. Responses larger than this are
 	// rejected to protect the proxy from memory exhaustion. Zero
-	// preserves fasthttp's default unlimited behavior.
+	// preserves fasthttp's default unlimited behavior, so set it when an
+	// upstream is not trusted to answer with a small body.
 	//
 	// Optional. Default: 0
 	MaxResponseBodySize int

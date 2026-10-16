@@ -1375,24 +1375,26 @@ func Test_Security_FollowRedirects_MethodPerStatus(t *testing.T) {
 }
 
 // Test_Security_FollowRedirects_StripsCredentialsOnPortChange pins that an
-// origin is a host and a port: another port of the same host loses the
-// credentials.
+// origin is a host and a port, compared as written: another port of the same
+// host, or the default port spelled out, loses the credentials.
 func Test_Security_FollowRedirects_StripsCredentialsOnPortChange(t *testing.T) {
 	t.Parallel()
 
 	for name, tc := range map[string]struct {
+		start    string
 		location string
 		wantAuth string
 	}{
-		"same host and port":    {location: "http://same.example:8080/next", wantAuth: "Bearer secret"},
-		"same host, other port": {location: "http://same.example:9090/next"},
+		"same host and port":       {start: "http://same.example:8080/", location: "http://same.example:8080/next", wantAuth: "Bearer secret"},
+		"same host, other port":    {start: "http://same.example:8080/", location: "http://same.example:9090/next"},
+		"default port spelled out": {start: "http://same.example/", location: "http://same.example:80/next"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
 			var sawAuth, sawCookie string
-			followRecording(t, "http://same.example:8080/", map[string]redirectStep{
-				"http://same.example:8080/": {status: fasthttp.StatusFound, location: tc.location},
+			followRecording(t, tc.start, map[string]redirectStep{
+				tc.start: {status: fasthttp.StatusFound, location: tc.location},
 			}, withCredentials, func(req *fasthttp.Request) {
 				if string(req.URI().Path()) == "/next" {
 					sawAuth = string(req.Header.Peek(fiber.HeaderAuthorization))
