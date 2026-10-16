@@ -9,7 +9,7 @@ The Proxy middleware forwards requests to one or more upstream servers.
 ## Signatures
 
 ```go
-// Balancer creates a load balancer among multiple upstream servers.
+// Balancer creates a load balancer among multiple upstream servers. Servers (or Client) is required: without it Balancer panics at startup.
 func Balancer(config ...Config) fiber.Handler
 // Forward performs the given http request and fills the given http response.
 func Forward(addr string, clients ...*fasthttp.Client) fiber.Handler
@@ -53,19 +53,27 @@ Dial-time re-validation protects every path but one. `Balancer` builds its own `
 
 Set `SecurityPolicy.AllowPrivateIPs = true` to opt out — required when proxying to internal services on the same network.
 
+### When the policy is read
+
+`Balancer` settles on its policy once, when it is built: `Config.SecurityPolicy` if set, otherwise the one installed with `proxy.WithSecurityPolicy` at that moment. `Do`, `DoRedirects`, `DoTimeout`, `DoDeadline`, `Forward`, `DomainForward` and `BalancerForward` read the installed policy on every request, and the dial-time guard on the clients they dispatch through reads it on every dial. `DomainForward` and `BalancerForward` also check their upstreams against it when they are built, but that check is no snapshot: relaxing the policy to build them and then restoring the default leaves them refusing every request with `ErrUpstreamHostBlocked`, while a `Balancer` built under the same relaxed policy keeps working. Install the policy before building these handlers and keep it installed for as long as they serve. A `defer proxy.WithSecurityPolicy(prev)` in `main` is fine, since it runs when the program ends; restoring the policy when a setup function returns is not.
+
 ### Scheme allowlist
 
-Only `http` and `https` upstream schemes are accepted by default; `file://`, `gopher://`, `ftp://`, and other schemes are rejected with `ErrUpstreamSchemeNotAllowed`. An empty address, or one without a host, is rejected with `ErrUpstreamHostInvalid`. Override the schemes via `SecurityPolicy.AllowedSchemes`.
+Only `http` and `https` upstream schemes are accepted by default; `file://`, `gopher://`, `ftp://`, and other schemes are rejected with `ErrUpstreamSchemeNotAllowed`. An empty address, one without a host, or one that cannot be parsed is rejected with `ErrUpstreamHostInvalid`; for an address that cannot be parsed, the `*url.Error` from `net/url` is wrapped beside it, so `errors.As` still finds it. Override the schemes via `SecurityPolicy.AllowedSchemes`.
 
 ### HTTPS-to-HTTP redirect downgrades
 
 `DoRedirects` rejects redirects from HTTPS origins to plaintext HTTP targets with `ErrRedirectDowngrade`. Following such a redirect would leak any cookies or `Authorization` headers established under TLS. Set `SecurityPolicy.AllowHTTPSDowngrade = true` to override.
 
-When a redirect crosses to a **different host**, `DoRedirects` strips `Authorization`, `Proxy-Authorization`, `Proxy-Authenticate`, `WWW-Authenticate`, `Cookie` and the obsolete `Cookie2`, so credentials bound to the original origin are not forwarded to a third-party upstream. This is `net/http`'s own set. Same-host redirects retain these headers.
+When a redirect crosses to a **different origin**, that is another host or the same hostname on another port (the scheme is not compared), `DoRedirects` strips `Authorization`, `Proxy-Authorization`, `Proxy-Authenticate`, `WWW-Authenticate`, `Cookie` and the obsolete `Cookie2`, so credentials bound to the original origin are not forwarded to a third-party upstream. This is `net/http`'s own set. A redirect to the same host and port retains these headers.
 
-### RFC 7230 hop-by-hop header stripping
+### Redirect method and body
 
-`Connection`, `Keep-Alive`, `Proxy-Authenticate`, `Proxy-Authorization`, `TE`, `Trailer`, `Transfer-Encoding`, and `Upgrade` are stripped from both the outbound request and the inbound response, along with every header listed in the `Connection` field per RFC 7230 §6.1. This prevents request smuggling (`TE`/`Transfer-Encoding`), proxy-credential forwarding, and protocol-upgrade leaks. The legacy `KeepConnectionHeader` option preserves only the literal `Connection` header for backwards compatibility; the other hop-by-hop headers are still stripped. To preserve every hop-by-hop header (not recommended), set `SecurityPolicy.KeepHopByHopHeaders = true`.
+`DoRedirects` rewrites the request for each hop according to the status that sent it there ([RFC 9110 §15.4](https://www.rfc-editor.org/rfc/rfc9110#section-15.4)). A `303 See Other` turns every method except `GET` and `HEAD` into `GET`. A `301 Moved Permanently` or `302 Found` turns `POST` into `GET`, as browsers and fasthttp do, and leaves any other method alone. A `307 Temporary Redirect` or `308 Permanent Redirect` repeats the request as it was. When the method changes, the body is dropped, together with `Content-Type`, `Content-Length`, `Transfer-Encoding` and `Trailer`.
+
+### RFC 9110 hop-by-hop header stripping
+
+`Connection`, `Keep-Alive`, `Proxy-Authenticate`, `Proxy-Authorization`, `TE`, `Trailer`, `Transfer-Encoding`, and `Upgrade` are stripped from both the outbound request and the inbound response, along with every header listed in the `Connection` field per RFC 9110 §7.6.1. This prevents request smuggling (`TE`/`Transfer-Encoding`), proxy-credential forwarding, and protocol-upgrade leaks. The legacy `KeepConnectionHeader` option preserves only the literal `Connection` header for backwards compatibility; the other hop-by-hop headers are still stripped. To preserve every hop-by-hop header (not recommended), set `SecurityPolicy.KeepHopByHopHeaders = true`.
 
 The names a client lists in `Connection` are removed from the request as it was received, with one intentional exception to RFC 9110 §7.6.1: the forwarding headers `X-Real-IP`, `Forwarded`, and every `X-Forwarded-*` header stay. They tell the upstream about the client as this hop saw it, and an upstream that trusts the gateway acts on them, so they are the gateway's to write and not the client's to have removed. `Balancer`, `Forward`, `DomainForward`, and `BalancerForward` write `X-Real-IP` only after the listing has been applied, and the exception also covers a forwarding header your application sets before the proxy runs, including `X-Real-IP` set by hand before `Do`. A client loses nothing by it: a forwarding header it sends is forwarded whenever `Connection` does not name it.
 
@@ -73,17 +81,51 @@ The names a client lists in `Connection` are removed from the request as it was 
 Any other header your application adds to the request before the proxy handler runs — in an earlier middleware, or before calling `Do` — is part of the received request as far as the `Connection` listing is concerned, and a client can have it removed by naming it there. Set headers meant for the upstream in `Balancer`'s `ModifyRequest`, which runs after the listing has been applied.
 :::
 
+### Via header
+
+[RFC 9110 §7.6.3](https://www.rfc-editor.org/rfc/rfc9110#section-7.6.3) asks a proxy to add a `Via` header field to the messages it forwards. The proxy middleware does not: this is a deviation from the RFC. A `Via` field a message already carries is forwarded unchanged. To add one, set it in `ModifyRequest` and `ModifyResponse`:
+
+```go
+app.Use(proxy.Balancer(proxy.Config{
+    Servers: []string{"http://localhost:3001"},
+    ModifyRequest: func(c fiber.Ctx) error {
+        c.Request().Header.Add(fiber.HeaderVia, "1.1 gateway")
+        return nil
+    },
+    ModifyResponse: func(c fiber.Ctx) error {
+        c.Response().Header.Add(fiber.HeaderVia, "1.1 gateway")
+        return nil
+    },
+}))
+```
+
 ### TLS minimum version
 
 `Config.TLSConfig` is cloned with `MinVersion: tls.VersionTLS12` if no minimum is configured, so deprecated TLS versions cannot be negotiated by accident.
 
-### Response body size and connection caps
+### Upstream protocol
 
-`Config.MaxResponseBodySize` bounds upstream response bodies to protect against memory exhaustion. `Config.MaxConnsPerHost` (default `1024`) caps concurrent connections per upstream to limit fan-out from a single hot host.
+The request reaches the upstream as HTTP/1.1, whatever protocol the inbound request used. A protocol token inherited from it, such as `HTTP/2` behind the `net/http` adaptor, is reset so that the request line stays valid.
+
+### Response body size, timeouts and connection caps
+
+`Config.MaxResponseBodySize` bounds upstream response bodies to protect against memory exhaustion. `Config.MaxConnsPerHost` (default `1024`) caps concurrent connections per upstream to limit fan-out from a single hot host. `Balancer` also bounds each request with `Config.Timeout` (default one second).
+
+The runtime helpers (`Do`, `DoRedirects`, `Forward`, `DomainForward` and `BalancerForward`) dispatch through a client that leaves fasthttp's zero values in place: no read or write timeout and no cap on the size of a response. A slow or oversized upstream is therefore not cut short unless you bound it. Use `DoTimeout` or `DoDeadline` for a single request, or hand the proxy a client with `ReadTimeout`, `WriteTimeout` and `MaxResponseBodySize` set, registered with `proxy.WithClient` or passed per call:
+
+```go
+proxy.WithClient(&fasthttp.Client{
+    NoDefaultUserAgentHeader: true,
+    DisablePathNormalizing:   true,
+    ReadTimeout:              30 * time.Second,
+    WriteTimeout:             10 * time.Second,
+    MaxResponseBodySize:      10 << 20, // 10 MiB
+})
+```
 
 ### X-Real-IP spoof prevention
 
-`Balancer`, `Forward`, `DomainForward`, and `BalancerForward` automatically overwrite the `X-Real-IP` header with `c.IP()` before forwarding, so clients cannot spoof their address. The address is read from the request as received and written after the `Connection` listing has been applied, and `X-Real-IP` is exempt from that listing, so a client cannot have the header removed by naming it there either (see [hop-by-hop header stripping](#rfc-7230-hop-by-hop-header-stripping)). `Balancer` writes it before `ModifyRequest` runs, so `ModifyRequest` can still set its own value. `DomainForward` only applies the overwrite when the request host matches the configured hostname (matched case-insensitively per RFC 9110 §4.2.3, with or without a port in the `Host` header); non-matching requests are passed on to the next handler unchanged. A configured hostname without a port matches any port. One with a port, such as `example.com:8080` or `[::1]:8080` for an IPv6 literal, matches only that port. A hostname written with non-ASCII letters is converted to Punycode (`xn--` labels) once when the handler is built, because clients send that form in `Host`. After any of the forwarding helpers returns, the request carries its original URI and `Host` again, so middleware running after `Next` still sees the request the client sent.
+`Balancer`, `Forward`, `DomainForward`, and `BalancerForward` automatically overwrite the `X-Real-IP` header with `c.IP()` before forwarding, so clients cannot spoof their address. The address is read from the request as received and written after the `Connection` listing has been applied, and `X-Real-IP` is exempt from that listing, so a client cannot have the header removed by naming it there either (see [hop-by-hop header stripping](#rfc-9110-hop-by-hop-header-stripping)). `Balancer` writes it before `ModifyRequest` runs, so `ModifyRequest` can still set its own value. `DomainForward` only applies the overwrite when the request host matches the configured hostname (matched case-insensitively per RFC 9110 §4.2.3, with or without a port in the `Host` header); non-matching requests are passed on to the next handler unchanged. A configured hostname without a port matches any port. One with a port, such as `example.com:8080` or `[::1]:8080` for an IPv6 literal, matches only that port. A hostname written with non-ASCII letters is converted to Punycode (`xn--` labels) once when the handler is built, because clients send that form in `Host`. After any of the forwarding helpers returns, the request carries its original URI and `Host` again, so middleware running after `Next` still sees the request the client sent.
 
 When using `Do`, `DoRedirects`, `DoDeadline`, or `DoTimeout` directly, the `X-Real-IP` header is not set automatically — set it manually if needed:
 
@@ -143,7 +185,7 @@ h.Add("X-Real-IP", ip)
 
 The query is forwarded byte for byte as the client sent it, so a signed URL keeps its signature. Only when a handler changed the arguments through `QueryArgs()` is it the changed arguments, as fasthttp serializes them; reading them, as `c.Query()` does, changes nothing. `Balancer` puts the original request line back once the upstream has answered, so `c.OriginalURL()` in a middleware that runs afterwards is unchanged.
 
-- `Balancer` dials the configured host and forwards the target as is, so every entry in `Servers` must be a scheme and host only. An entry with a path, userinfo, query or fragment panics at startup with `ErrUpstreamNotOrigin` instead of dropping that part silently, which would have left `http://backend/api` reaching all of the upstream. `DomainForward` and `BalancerForward` prepend the path of their upstream URL, and the joined path keeps the upstream host pinned in configuration whatever the request contains: `//attacker.example/path`, `@attacker` and `/foo://hijack.example` all stay paths.
+- `Balancer` dials the configured host and forwards the target as is, so every entry in `Servers` must be a scheme and host only. An entry with a path, userinfo, query or fragment panics at startup with `ErrUpstreamNotOrigin` instead of dropping that part silently, which would have left `http://backend/api` reaching all of the upstream. An entry without a scheme, such as `backend:8080`, is read as `http://backend:8080`, as it always was, and a lone trailing slash (`http://backend/`) is ignored. `DomainForward` and `BalancerForward` prepend the path of their upstream URL, and the joined path keeps the upstream host pinned in configuration whatever the request contains: `//attacker.example/path`, `@attacker` and `/foo://hijack.example` all stay paths.
 - `Balancer` answers a request whose `Host` header carries userinfo, such as `svc:pw@backend`, with `400 Bad Request`. fasthttp would read the userinfo as credentials and send them upstream as a `Basic` `Authorization` header, replacing one the application had set.
 - `Balancer` also answers `400 Bad Request` for a routed target fasthttp would read as an authority rather than a path: one that begins with `//` and holds `://`, or any target beginning with `//` on a request without a `Host` header. The router never saw such a target as an authority, and it need not have arrived as one: `..` resolution builds `//u:pw@evil.example/a://b` out of `//u:pw@evil.example/a:/x/..//b`, and under `UnescapePath` a decoded `%3A%2F%2F` spells the `://`. Set as the request line, it would hand the upstream a `Host`, and a `Basic` `Authorization` header, taken from the path rather than from the application.
 - `Balancer`, `DomainForward` and `BalancerForward` answer `400 Bad Request` for a routed path an upstream could read as another path, one under a prefix whose middleware never ran for it. That is a path holding:
@@ -196,6 +238,10 @@ proxy.WithClient(&fasthttp.Client{
 // SECURITY: in production, leave AllowPrivateIPs false (the default) and
 // list explicit upstream hosts so the proxy cannot be coerced into
 // reaching internal services or cloud-metadata endpoints.
+// Forward, DomainForward and BalancerForward read this policy on every
+// request, so keep it installed while the app serves: the defer below runs
+// when the enclosing function returns, so do this in main, not in a helper
+// that returns before the app starts.
 prev := proxy.WithSecurityPolicy(proxy.SecurityPolicy{
     AllowedSchemes:  []string{"http", "https"},
     AllowPrivateIPs: true,
@@ -278,7 +324,8 @@ app.Use(proxy.Balancer(proxy.Config{
     },
     MaxConnsPerHost: 2048,
     ModifyRequest: func(c fiber.Ctx) error {
-        c.Request().Header.Set("X-Real-IP", c.IP())
+        // Balancer has already written X-Real-IP; add what else the upstream needs.
+        c.Request().Header.Set("X-Gateway", "edge")
         return nil
     },
     ModifyResponse: func(c fiber.Ctx) error {
@@ -312,19 +359,19 @@ app.Use(proxy.Balancer(proxy.Config{
 | Property        | Type                                           | Description                                                                                                                                                                                                                        | Default         |
 |:----------------|:-----------------------------------------------|:-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|:----------------|
 | Next            | `func(fiber.Ctx) bool`                        | Next defines a function to skip this middleware when it returns true.                                                                                                                                                                | `nil`           |
-| Servers         | `[]string`                                     | Servers defines a list of `<scheme>://<host>` HTTP servers, which are used in a round-robin manner. Each entry is a scheme and host only; one with a path, userinfo, query or fragment panics at startup with `ErrUpstreamNotOrigin`. i.e.: "[https://foobar.com](https://foobar.com), [http://www.foobar.com](http://www.foobar.com)"                                                        | (Required unless `Client` is set) |
+| Servers         | `[]string`                                     | Servers defines a list of `<scheme>://<host>` HTTP servers, which are used in a round-robin manner. Each entry is a scheme and host only; one with a path, userinfo, query or fragment panics at startup with `ErrUpstreamNotOrigin`. An entry without a scheme (`host:port`) is read as `http://host:port`, and a lone trailing slash is ignored. i.e.: "[https://foobar.com](https://foobar.com), [http://www.foobar.com](http://www.foobar.com)"                                                        | (Required unless `Client` is set) |
 | ModifyRequest   | `fiber.Handler`                                | ModifyRequest allows you to alter the request.                                                                                                                                                                                     | `nil`           |
 | ModifyResponse  | `fiber.Handler`                                | ModifyResponse allows you to alter the response.                                                                                                                                                                                   | `nil`           |
 | Timeout         | `time.Duration`                                | Timeout is the request timeout used when calling the proxy client.                                                                                                                                                                 | 1 second        |
 | MaxConnsPerHost | `int`                                          | Maximum number of connections per upstream host. The default proxy client and balancer host clients use this limit unless you override it with `WithClient`, a per-handler client, or `proxy.Config`.                         | `1024`          |
 | ReadBufferSize  | `int`                                          | Per-connection buffer size for requests' reading. This also limits the maximum header size. Increase this buffer if your clients send multi-KB RequestURIs and/or multi-KB headers (for example, BIG cookies).                     | (Not specified) |
 | WriteBufferSize | `int`                                          | Per-connection buffer size for responses' writing.                                                                                                                                                                                 | (Not specified) |
-| KeepConnectionHeader | `bool` | Keeps the `Connection` header when set to `true`. By default the header is removed to comply with RFC 7230 §6.1 and avoid proxy loops. Other hop-by-hop headers are still stripped regardless of this setting. | `false` |
+| KeepConnectionHeader | `bool` | Keeps the `Connection` header when set to `true`. By default the header is removed to comply with RFC 9110 §7.6.1 and avoid proxy loops. Other hop-by-hop headers are still stripped regardless of this setting. | `false` |
 | TLSConfig       | `*tls.Config` | TLS config for the HTTP client. Cloned with `MinVersion: tls.VersionTLS12` when no minimum is set. | `nil`           |
 | DialDualStack   | `bool`                                         | Client will attempt to connect to both IPv4 and IPv6 host addresses if set to true.                                                                                                                                                | `false`         |
 | Client          | `*fasthttp.LBClient`                           | Client is a custom client when client config is complex. Each `*fasthttp.HostClient` among its `Clients` gets `DisablePathNormalizing` set; see [Request target](#request-target). When it is set, `Servers`, `Timeout`, `MaxConnsPerHost`, `ReadBufferSize`, `WriteBufferSize`, `MaxResponseBodySize`, `TLSConfig` and `DialDualStack` are not used, and its dialers get no SSRF guard (see [SSRF protection](#ssrf-protection)).                                                                                                                                                                           | `nil`           |
-| SecurityPolicy  | `*SecurityPolicy`                              | Overrides the default SSRF, redirect, and hop-by-hop header rules for this balancer. When `nil`, the package-level policy set via `WithSecurityPolicy` is used. See [Security](#security).                                          | `nil`           |
-| MaxResponseBodySize | `int`                                       | Maximum upstream response body size in bytes. `0` keeps fasthttp's unlimited default.                                                                                                                                              | `0`             |
+| SecurityPolicy  | `*SecurityPolicy`                              | Overrides the default SSRF, redirect, and hop-by-hop header rules for this balancer. When `nil`, the package-level policy set via `WithSecurityPolicy` is used. Either way it is settled once, when the balancer is built. See [Security](#security).                                          | `nil`           |
+| MaxResponseBodySize | `int`                                       | Maximum upstream response body size in bytes. `0` keeps fasthttp's unlimited default, so set it when an upstream is not trusted to answer with a small body.                                                                                                                                              | `0`             |
 
 ## Default Config
 
@@ -338,6 +385,8 @@ var ConfigDefault = Config{
     KeepConnectionHeader: false,
 }
 ```
+
+`Servers` (or `Client`) has no default. `proxy.Balancer()` without a `Config` panics at startup, as `proxy.Balancer(proxy.Config{})` does, rather than failing on its first request.
 
 ## Default SecurityPolicy
 
