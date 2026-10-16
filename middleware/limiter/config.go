@@ -38,8 +38,7 @@ type Config struct {
 	// Window accounting is whole-second, so a positive value below one second is floored to
 	// one second. A zero or negative value falls back to the configured Expiration.
 	//
-	// The window of a key keeps the length given by the request that opened it: a route
-	// that needs its own window needs its own key.
+	// A key's window keeps the length given by the request that opened it.
 	//
 	// Default: A function that returns the static `Expiration` value from the config.
 	ExpirationFunc func(c fiber.Ctx) time.Duration
@@ -199,7 +198,6 @@ func (cfg *Config) currentSecond() uint64 {
 	return uint64(utils.Timestamp())
 }
 
-// secondsToDuration converts seconds to a Duration, saturating and reporting false on overflow.
 func secondsToDuration(seconds uint64) (time.Duration, bool) {
 	const maxSeconds = math.MaxInt64 / int64(time.Second)
 
@@ -210,8 +208,6 @@ func secondsToDuration(seconds uint64) (time.Duration, bool) {
 	return time.Duration(seconds) * time.Second, true
 }
 
-// ttlDuration is how long a sliding-window entry is kept: the time left in the current
-// window plus one whole window. It saturates instead of overflowing.
 func ttlDuration(resetSec, windowSec uint64) time.Duration {
 	resetDuration, ok := secondsToDuration(resetSec)
 	if !ok {

@@ -26,15 +26,13 @@ const lockShards = 64
 // keys (by default its IP) that all land on one shard.
 var keySeed = maphash.MakeSeed()
 
-// shardIndex returns the index of the lock shard that guards key.
 func shardIndex(key string) uint64 {
 	return maphash.String(keySeed, key) & (lockShards - 1)
 }
 
 // keyedMutex serializes the read-modify-write per key, so one client's storage
-// round-trip no longer blocks every other client. A shard stays locked across the
-// storage calls (issue #4358 asked for none) because fiber.Storage has no atomic
-// increment: keys sharing a shard wait for each other's round-trips.
+// round-trip no longer blocks every other client. A shard stays locked across
+// storage calls because fiber.Storage has no atomic increment.
 type keyedMutex [lockShards]sync.Mutex
 
 // lock acquires the shard owning key and returns it for unlocking.
@@ -60,8 +58,7 @@ func New(config ...Config) fiber.Handler {
 }
 
 // limit returns the limit for c, or false when Next or a zero MaxFunc skips it.
-// Next runs first, so a skipped request never reaches MaxFunc. Every negative
-// limit becomes -1, which rejects everything and cannot wrap when hits are subtracted.
+// Negative limits become -1 so subtracting hits cannot wrap.
 func (cfg *Config) limit(c fiber.Ctx) (int, bool) {
 	if cfg.Next != nil && cfg.Next(c) {
 		return 0, false
@@ -70,14 +67,12 @@ func (cfg *Config) limit(c fiber.Ctx) (int, bool) {
 	return max(maxRequests, -1), maxRequests != 0
 }
 
-// skipsHit reports whether a request that ended with statusCode is left uncounted.
 func (cfg *Config) skipsHit(statusCode int) bool {
 	return (cfg.SkipSuccessfulRequests && statusCode < fiber.StatusBadRequest) ||
 		(cfg.SkipFailedRequests && statusCode >= fiber.StatusBadRequest)
 }
 
-// reject answers a request over the limit: Retry-After (RFC 9110 section 10.2.3,
-// RFC 6585 section 4) unless headers are disabled, then LimitReached.
+// reject sets Retry-After (RFC 9110 section 10.2.3, RFC 6585 section 4), then calls LimitReached.
 func (cfg *Config) reject(c fiber.Ctx, resetInSec uint64) error {
 	if !cfg.DisableHeaders {
 		c.Set(fiber.HeaderRetryAfter, utils.FormatUint(resetInSec))
@@ -85,8 +80,7 @@ func (cfg *Config) reject(c fiber.Ctx, resetInSec uint64) error {
 	return cfg.LimitReached(c)
 }
 
-// setRateLimitHeaders reports the state of a passing request. Blocked requests
-// keep their hit, so remaining may be negative and is clamped.
+// setRateLimitHeaders clamps remaining: blocked requests keep their hit, so it can go negative.
 func (cfg *Config) setRateLimitHeaders(c fiber.Ctx, maxRequests, remaining int, resetInSec uint64) {
 	if cfg.DisableHeaders {
 		return
@@ -96,15 +90,12 @@ func (cfg *Config) setRateLimitHeaders(c fiber.Ctx, maxRequests, remaining int, 
 	c.Set(xRateLimitReset, utils.FormatUint(resetInSec))
 }
 
-// errPersist wraps the failure to store an updated entry.
 func errPersist(err error) error {
 	return fmt.Errorf("limiter: failed to persist state: %w", err)
 }
 
-// getEffectiveStatusCode returns the status a request ends with, as the Skip*
-// options judge it. A *fiber.Error carries its code; any other error is not yet
-// a response, so it counts as the 500 the default error handler gives it unless
-// an error status is already set.
+// getEffectiveStatusCode returns the status the Skip* options judge: a plain error
+// counts as a 500 unless an error status is already set.
 func getEffectiveStatusCode(c fiber.Ctx, err error) int {
 	if nilerror.IsNil(err) {
 		return c.Res().StatusCode()

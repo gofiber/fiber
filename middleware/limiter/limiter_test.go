@@ -50,8 +50,7 @@ func (c *testClock) Add(d time.Duration) {
 	c.now = c.now.Add(d)
 }
 
-// fakeLimiterStorage keeps entries in a map and ignores TTLs, which the memory storage
-// applies by the real clock. An operation fails when errs has "get|<key>" or "set|<key>".
+// fakeLimiterStorage ignores TTLs. An operation fails when errs has "get|<key>" or "set|<key>".
 type fakeLimiterStorage struct {
 	data map[string][]byte
 	errs map[string]error
@@ -288,14 +287,14 @@ func Test_getEffectiveStatusCode_FiberError(t *testing.T) {
 
 	c.Response().SetStatusCode(fiber.StatusOK)
 
-	// A real *fiber.Error returns its code.
+	// *fiber.Error: its code.
 	require.Equal(t, fiber.StatusTeapot, getEffectiveStatusCode(c, fiber.NewError(fiber.StatusTeapot, "teapot")))
 
-	// A generic error keeps an error status the handler already set on the response.
+	// Plain error: an error status already set stays.
 	c.Response().SetStatusCode(fiber.StatusBadGateway)
 	require.Equal(t, fiber.StatusBadGateway, getEffectiveStatusCode(c, errors.New("generic")))
 
-	// Otherwise it counts as the 500 the default error handler gives it.
+	// Plain error: 500.
 	for _, status := range []int{fiber.StatusOK, fiber.StatusFound} {
 		c.Response().SetStatusCode(status)
 		require.Equal(t, fiber.StatusInternalServerError, getEffectiveStatusCode(c, errors.New("generic")), "status %d", status)
@@ -336,7 +335,7 @@ func Test_Limiter_StorageErrorMessages(t *testing.T) {
 	t.Parallel()
 
 	steps := []struct {
-		name string // the storage operation that fails
+		name string
 		want []string
 	}{
 		{name: "get", want: []string{"limiter: failed to get key"}},
@@ -820,7 +819,7 @@ func Test_Limiter_ExpirationFuncOverridesStaticExpiration(t *testing.T) {
 				require.Equal(t, want, resp.StatusCode)
 			}
 
-			// Past two 2s windows both strategies forget the hits, well before the 10s Expiration.
+			// Two 2s windows, far short of the 10s Expiration.
 			clock.Add(5 * time.Second)
 
 			resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
@@ -995,7 +994,7 @@ func Test_Limiter_SubSecondExpirationIsOneSecondWindow(t *testing.T) {
 	})
 }
 
-// requireBurstLimited sends n concurrent requests under the limit, expects a 429, then a 200 after the window.
+// requireBurstLimited sends n concurrent requests, expects a 429, then a 200 after the window.
 func requireBurstLimited(t *testing.T, app *fiber.App, n int) {
 	t.Helper()
 
@@ -1171,7 +1170,7 @@ func Test_Limiter_Sliding_Window_ExpiresStalePrevHits(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
 
-	// Advance two full windows so the previous-window hits age out completely.
+	// Two full windows: the previous hits age out.
 	clock.Add(2500 * time.Millisecond)
 
 	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
@@ -1381,7 +1380,7 @@ func Test_Limiter_NilConfigUsesDefaults(t *testing.T) {
 	}
 }
 
-// Rejected requests keep their hit, so the stored count can exceed Max; Remaining must still read 0.
+// Remaining reads 0 although rejected requests keep their hit.
 func Test_Limiter_RemainingHeaderIsNeverNegative(t *testing.T) {
 	t.Parallel()
 
@@ -1425,7 +1424,6 @@ func Test_Limiter_RemainingHeaderIsNeverNegative(t *testing.T) {
 				slowCh <- respErr{resp: resp, err: err}
 			}()
 
-			// Two requests are rejected while the slow one runs.
 			<-started
 			for range 2 {
 				resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/fast", http.NoBody))
@@ -1443,7 +1441,7 @@ func Test_Limiter_RemainingHeaderIsNeverNegative(t *testing.T) {
 	}
 }
 
-// A plain error is answered with a 500 by the default error handler, so Skip* must count it as one.
+// Skip* counts a plain error as the 500 it is answered with.
 func Test_Limiter_PlainErrorCountsAsInternalError(t *testing.T) {
 	t.Parallel()
 
@@ -1604,7 +1602,7 @@ func Test_Limiter_ExpirationFunc_SharedKeyKeepsOpeningWindow(t *testing.T) {
 
 			require.Equal(t, "30", reset("/"))
 
-			// /login joins the open window instead of starting a 60s one.
+			// /login joins the open window.
 			clock.Add(time.Second)
 			require.Equal(t, "29", reset("/login"))
 
@@ -1612,15 +1610,14 @@ func Test_Limiter_ExpirationFunc_SharedKeyKeepsOpeningWindow(t *testing.T) {
 				return
 			}
 
-			// The next window takes the length its first request asks for.
+			// The next window follows its first request.
 			clock.Add(30 * time.Second)
 			require.Equal(t, "60", reset("/login"))
 		})
 	}
 }
 
-// A request with a shorter window joining an open one must not shorten the entry's
-// life, or the client gets a fresh allowance before the open window ends.
+// A shorter window joining an open one must not shorten the entry's life.
 func Test_Limiter_Fixed_ShorterWindowDoesNotShortenTheEntry(t *testing.T) {
 	t.Parallel()
 
@@ -1694,7 +1691,7 @@ func Test_Limiter_Fixed_ShorterWindowDoesNotShortenTheEntry(t *testing.T) {
 	}
 }
 
-// A shorter window asked for while a longer one is open must not inflate the previous window's weight.
+// A shorter window joining a longer open one must not inflate the previous weight.
 func Test_Limiter_Sliding_MixedWindowsDoNotInflateThePreviousWindow(t *testing.T) {
 	t.Parallel()
 
@@ -1760,7 +1757,6 @@ func Test_Limiter_KeyOverwrittenByHandler(t *testing.T) {
 				return c.SendStatus(fiber.StatusOK)
 			})
 
-			// Each hit is credited back, so none is limited.
 			for i := range 3 {
 				req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 				req.Header.Set("X-Client", "AAAA")
@@ -1986,8 +1982,7 @@ func Benchmark_Limiter_Parallel_Keys(b *testing.B) {
 	})
 }
 
-// Benchmark_Limiter_Admit measures requests that pass: Max is high enough that none takes the
-// 429 path, which Benchmark_Limiter reaches after its first hundred.
+// Benchmark_Limiter_Admit measures requests that pass: Max is too high to reach the 429 path.
 //
 // go test -v -run=^$ -bench=Benchmark_Limiter_Admit -benchmem -count=4
 func Benchmark_Limiter_Admit(b *testing.B) {
@@ -2088,8 +2083,7 @@ func Test_Sliding_Window(t *testing.T) {
 	}
 }
 
-// Test_Limiter_SubSecondExpirationFunc checks that an ExpirationFunc below one second floors to a
-// 1s window: a 0s one made the sliding rate NaN and the fixed window reset on every request.
+// A sub-second ExpirationFunc floors to a 1s window: a 0s one made the sliding rate NaN.
 //
 // go test -run Test_Limiter_SubSecondExpirationFunc -race -v
 func Test_Limiter_SubSecondExpirationFunc(t *testing.T) {
@@ -2105,8 +2099,7 @@ func Test_Limiter_SubSecondExpirationFunc(t *testing.T) {
 				Max:            5,
 				ExpirationFunc: func(fiber.Ctx) time.Duration { return 500 * time.Millisecond },
 				clock:          clock.Now,
-				// the default store expires entries by the real clock, which a slow runner
-				// could outrun between requests
+				// the memory store expires by the real clock, which a slow runner could outrun
 				Storage:           newFakeLimiterStorage(),
 				LimiterMiddleware: strategy.handler,
 			}))

@@ -60,8 +60,7 @@ func Test_BoundKey_ReservedPrefixCannotBeForged(t *testing.T) {
 	require.True(t, strings.HasPrefix(got, hashPrefix))
 }
 
-// limiterErrWriter is an io.Writer that accepts up to n bytes total and then
-// fails, used to exercise the error-handling branches of EncodeMsg.
+// limiterErrWriter accepts up to n bytes in total, then fails.
 type limiterErrWriter struct {
 	n int
 }
@@ -123,8 +122,6 @@ func Test_manager_get_MemoryUnexpectedType(t *testing.T) {
 	require.ErrorContains(t, err, "unexpected entry type")
 }
 
-// Test_item_Decode_Truncated exercises the per-read error branches of the
-// generated item decoders by feeding every truncated prefix.
 func Test_item_Decode_Truncated(t *testing.T) {
 	t.Parallel()
 
@@ -143,8 +140,6 @@ func Test_item_Decode_Truncated(t *testing.T) {
 	}
 }
 
-// Test_item_Decode_UnknownField covers the default/skip branch of the item
-// decoders.
 func Test_item_Decode_UnknownField(t *testing.T) {
 	t.Parallel()
 
@@ -165,16 +160,13 @@ func Test_item_Decode_UnknownField(t *testing.T) {
 	require.Equal(t, uint64(7), dec.exp)
 }
 
-// Test_item_EncodeMsg_WriterErrors drives the error branches of EncodeMsg by
-// failing the underlying writer at every byte offset.
 func Test_item_EncodeMsg_WriterErrors(t *testing.T) {
 	t.Parallel()
 
 	full, err := item{currHits: 3, prevHits: 5, exp: 99}.MarshalMsg(nil)
 	require.NoError(t, err)
 
-	// A writer that accepts fewer than the full encoding's bytes must always
-	// surface an error (either mid-encode or on Flush), so assert per budget.
+	// A shorter budget must always error, mid-encode or on Flush.
 	for budget := range len(full) {
 		w := msgp.NewWriterSize(&limiterErrWriter{n: budget}, 8)
 		encErr := item{currHits: 3, prevHits: 5, exp: 99}.EncodeMsg(w)

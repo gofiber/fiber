@@ -12,32 +12,32 @@ func Test_item_hitBucket(t *testing.T) {
 
 	e := &item{currHits: 3, prevHits: 7}
 
-	// ts before the recorded window expiry -> current bucket.
+	// Current window.
 	require.Equal(t, &e.currHits, e.hitBucket(100, 50, 60))
 
-	// ts within one expiration after the window expiry -> previous bucket.
+	// Previous window.
 	require.Equal(t, &e.prevHits, e.hitBucket(100, 130, 60))
 
-	// ts more than one expiration past the window expiry -> nil.
+	// Aged out.
 	require.Nil(t, e.hitBucket(100, 200, 60))
 }
 
 func Test_item_rotateSliding(t *testing.T) {
 	t.Parallel()
 
-	// Fresh entry sets expiration.
+	// Fresh entry.
 	e := &item{}
 	require.Equal(t, uint64(10), e.rotateSliding(100, 10))
 	require.Equal(t, uint64(110), e.exp)
 
-	// Entry expired within one window -> previous hits carry over.
+	// Ended within a window: hits carry over.
 	e = &item{currHits: 4, exp: 100}
 	e.rotateSliding(105, 10)
 	require.Equal(t, 4, e.prevHits)
 	require.Equal(t, 0, e.currHits)
 	require.Equal(t, uint64(110), e.exp)
 
-	// Entry expired beyond a full window -> everything resets.
+	// Ended a window ago: reset.
 	e = &item{currHits: 4, prevHits: 9, exp: 100}
 	e.rotateSliding(200, 10)
 	require.Equal(t, 0, e.prevHits)
@@ -48,19 +48,19 @@ func Test_item_rotateSliding(t *testing.T) {
 func Test_item_rotateFixed(t *testing.T) {
 	t.Parallel()
 
-	// Fresh entry opens a window.
+	// Fresh entry.
 	e := &item{}
 	e.rotateFixed(100, 10)
 	require.Equal(t, uint64(110), e.exp)
 	require.Equal(t, 0, e.currHits)
 
-	// Inside the window nothing moves.
+	// Open window.
 	e = &item{currHits: 4, exp: 110}
 	e.rotateFixed(109, 10)
 	require.Equal(t, 4, e.currHits)
 	require.Equal(t, uint64(110), e.exp)
 
-	// After the window a fresh one starts.
+	// Ended window.
 	e = &item{currHits: 4, exp: 110}
 	e.rotateFixed(110, 10)
 	require.Equal(t, 0, e.currHits)
@@ -72,23 +72,23 @@ func Test_item_rate(t *testing.T) {
 
 	e := &item{prevHits: 4, currHits: 2}
 
-	// The 4 previous hits weigh in full, by half, by a tenth (rounded up) and not at all.
+	// Weights 1, 1/2, 1/10 (rounded up) and 0.
 	require.Equal(t, 6, e.rate(10, 10))
 	require.Equal(t, 4, e.rate(5, 10))
 	require.Equal(t, 3, e.rate(1, 10))
 	require.Equal(t, 2, e.rate(0, 10))
 
-	// More time left than the window cannot weigh more than the whole previous window.
+	// Capped at the whole previous window.
 	require.Equal(t, 6, e.rate(45, 10))
 }
 
 func Test_item_ttl(t *testing.T) {
 	t.Parallel()
 
-	// Until the window ends, however long the current request's own window is...
+	// Until the window ends.
 	require.Equal(t, 59*time.Second, (&item{exp: 60}).ttl(1))
 
-	// ...and at least a second once it has ended.
+	// At least a second.
 	require.Equal(t, time.Second, (&item{exp: 60}).ttl(60))
 	require.Equal(t, time.Second, (&item{exp: 60}).ttl(100))
 }

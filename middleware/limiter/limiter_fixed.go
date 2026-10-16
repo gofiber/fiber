@@ -28,17 +28,16 @@ func (FixedWindow) New(cfg *Config) fiber.Handler {
 
 	// Return new handler
 	return func(c fiber.Ctx) error {
-		// Don't execute middleware if Next returns true or if MaxFunc returns 0
+		// Don't execute middleware if Next returns true or if the max is 0
 		maxRequests, ok := cfg.limit(c)
 		if !ok {
 			return c.Next()
 		}
 
-		// Generate the window from the generator
+		// Generate expiration from generator
 		windowSec := windowSeconds(cfg.ExpirationFunc(c), cfg.Expiration)
 
-		// Get key from request, copied since it is read again after the handler,
-		// which may overwrite the request memory an unsafe key points to
+		// Get key from request, copied since c.Next may rewrite the memory it points to
 		key := cfg.KeyGenerator(c)
 		if cfg.SkipSuccessfulRequests || cfg.SkipFailedRequests {
 			key = utils.CopyString(key)
@@ -121,7 +120,6 @@ func (FixedWindow) New(cfg *Config) fiber.Handler {
 	}
 }
 
-// rotateFixed opens a window for a new entry and starts a fresh one once it has ended.
 func (e *item) rotateFixed(ts, windowSec uint64) {
 	if e.exp == 0 {
 		e.exp = ts + windowSec
@@ -131,8 +129,7 @@ func (e *item) rotateFixed(ts, windowSec uint64) {
 	}
 }
 
-// ttl is how long the storage keeps the entry: until its window ends, whichever
-// request asked for that window, and at least a second.
+// ttl keeps the entry until its window ends, whichever request opened it, for at least a second.
 func (e *item) ttl(ts uint64) time.Duration {
 	d, _ := secondsToDuration(max(e.exp, ts+1) - ts)
 	return d
