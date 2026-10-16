@@ -1233,6 +1233,28 @@ func Test_Security_RedirectRequest(t *testing.T) {
 	}
 }
 
+// Test_Security_RedirectRequest_KeepsBodyBuffer pins that dropping the body
+// leaves its buffer with the request: a handler may still hold c.Body(), and a
+// buffer returned to fasthttp's pool would go to the next request.
+func Test_Security_RedirectRequest_KeepsBodyBuffer(t *testing.T) {
+	t.Parallel()
+
+	req := fasthttp.AcquireRequest()
+	defer fasthttp.ReleaseRequest(req)
+	req.Header.SetMethod(fasthttp.MethodPut)
+	req.SetBodyString("payload-of-request-A")
+	held := req.Body()
+
+	redirectRequest(req, fasthttp.StatusSeeOther)
+
+	// Another request takes a pooled body buffer, as another connection would.
+	other := fasthttp.AcquireRequest()
+	defer fasthttp.ReleaseRequest(other)
+	other.SetBodyString("payload-of-request-B")
+
+	require.Equal(t, "payload-of-request-A", string(held))
+}
+
 // Test_Security_FollowRedirects_MethodPerStatus drives redirectRequest through
 // the redirect loop: what the second hop receives.
 func Test_Security_FollowRedirects_MethodPerStatus(t *testing.T) {

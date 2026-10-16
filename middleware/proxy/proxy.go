@@ -494,7 +494,9 @@ func redirectRequest(req *fasthttp.Request, status int) {
 		return
 	}
 	req.Header.SetMethod(fasthttp.MethodGet)
-	req.ResetBody()
+	// Not ResetBody: with ReduceMemoryUsage it hands the body buffer back to
+	// fasthttp's pool while the handler may still hold c.Body().
+	req.SetBody(nil)
 	req.Header.Del(fasthttp.HeaderContentType)
 	req.Header.Del(fasthttp.HeaderContentLength)
 	req.Header.Del(fasthttp.HeaderTransferEncoding)
