@@ -145,6 +145,9 @@ func Test_Security_ValidateUpstream_RejectsEmpty(t *testing.T) {
 }
 
 func Test_Security_Forward_BlocksPrivateByDefault(t *testing.T) {
+	// Intentionally not parallel: it installs the strict default policy for the
+	// whole process (TestMain relaxes it for the rest of the suite), so it must
+	// run alone for Forward to be judged by that policy.
 	withSecurityPolicyForTest(t, DefaultSecurityPolicy())
 
 	_, addr := createProxyTestServerIPv4(t, func(c fiber.Ctx) error {
@@ -198,7 +201,7 @@ func Test_Security_Balancer_AllowsPrivateOptIn(t *testing.T) {
 }
 
 // Test_Security_HopByHopRequestStripping verifies hop-by-hop headers
-// (RFC 7230 §6.1) are dropped from the outbound request.
+// (RFC 9110 §7.6.1) are dropped from the outbound request.
 func Test_Security_HopByHopRequestStripping(t *testing.T) {
 	t.Parallel()
 
@@ -333,8 +336,9 @@ func Test_Security_Do_BlocksFileScheme(t *testing.T) {
 }
 
 func Test_Security_DoRedirects_BlocksDowngrade(t *testing.T) {
-	// No t.Parallel: this test mutates the global SecurityPolicy and would
-	// otherwise race with other proxy tests that read it at runtime.
+	// Intentionally not parallel: it installs a process-wide security policy,
+	// which other proxy tests read on every request, so it must run alone to
+	// test the downgrade protection with exactly the policy it sets.
 	// Allow private IPs for the loopback test servers while keeping the
 	// downgrade protection enabled.
 	policy := DefaultSecurityPolicy()
@@ -492,7 +496,7 @@ func Test_Security_FollowRedirects_StripsCredentialsCrossHost(t *testing.T) {
 		req.Header.Set(fiber.HeaderAuthorization, "Bearer secret")
 		req.Header.Set(fiber.HeaderCookie, "session=abc")
 
-		require.NoError(t, followRedirects(client.client, req, resp, 3, mustParseTestURL(t, "http://first.example/"), policy, true))
+		require.NoError(t, followRedirects(client.client, req, resp, 3, mustParseTestURL(t, "http://first.example/"), policy))
 		require.Empty(t, sawAuth, "Authorization must be stripped cross-host")
 		require.Empty(t, sawCookie, "Cookie must be stripped cross-host")
 	})
@@ -517,7 +521,7 @@ func Test_Security_FollowRedirects_StripsCredentialsCrossHost(t *testing.T) {
 		req.Header.SetMethod(fasthttp.MethodGet)
 		req.Header.Set(fiber.HeaderAuthorization, "Bearer secret")
 
-		require.NoError(t, followRedirects(client.client, req, resp, 3, mustParseTestURL(t, "http://same.example/"), policy, true))
+		require.NoError(t, followRedirects(client.client, req, resp, 3, mustParseTestURL(t, "http://same.example/"), policy))
 		require.Equal(t, "Bearer secret", sawAuth, "Authorization must survive same-host redirect")
 	})
 }
@@ -550,7 +554,7 @@ func Test_Security_FollowRedirects_ReappliesSchemePerHop(t *testing.T) {
 	req.SetRequestURI("http://origin.example/")
 	req.Header.SetMethod(fasthttp.MethodGet)
 
-	require.NoError(t, followRedirects(client.client, req, resp, 3, mustParseTestURL(t, "http://origin.example/"), policy, true))
+	require.NoError(t, followRedirects(client.client, req, resp, 3, mustParseTestURL(t, "http://origin.example/"), policy))
 	require.Equal(t, "https", secondHopScheme, "scheme upgrade must carry through to the next hop")
 }
 
@@ -590,7 +594,9 @@ func Test_Security_SecureTLSConfig_DefaultMinVersion(t *testing.T) {
 }
 
 func Test_Security_WithSecurityPolicy_RestoresDefaults(t *testing.T) {
-	// No t.Parallel: mutates the global SecurityPolicy.
+	// Intentionally not parallel: it swaps the process-wide security policy and
+	// asserts on what WithSecurityPolicy hands back, which a policy installed
+	// by another test would change.
 	custom := DefaultSecurityPolicy()
 	custom.AllowPrivateIPs = true
 	prev := WithSecurityPolicy(custom)
@@ -694,6 +700,8 @@ func Test_Security_JoinUpstreamPath_QueryOnly(t *testing.T) {
 // covers the branch in WithSecurityPolicy that fills in the default
 // scheme allowlist when the caller leaves it empty.
 func Test_Security_WithSecurityPolicy_EmptyAllowedSchemesGetsDefault(t *testing.T) {
+	// Intentionally not parallel: it installs a process-wide security policy
+	// and reads it back, so no other test may swap it in between.
 	prev := WithSecurityPolicy(SecurityPolicy{})
 	t.Cleanup(func() { WithSecurityPolicy(prev) })
 	got := currentSecurityPolicy()
@@ -812,7 +820,7 @@ func Test_Security_FollowRedirects_NegativeMaxBecomesZero(t *testing.T) {
 
 	policy := DefaultSecurityPolicy()
 	policy.AllowPrivateIPs = true
-	err := followRedirects(client.client, req, resp, -1, mustParseTestURL(t, "http://example.com/start"), policy, true)
+	err := followRedirects(client.client, req, resp, -1, mustParseTestURL(t, "http://example.com/start"), policy)
 	require.ErrorIs(t, err, fasthttp.ErrTooManyRedirects)
 	require.Equal(t, 1, *hits)
 }
@@ -836,7 +844,7 @@ func Test_Security_FollowRedirects_MissingLocation(t *testing.T) {
 
 	policy := DefaultSecurityPolicy()
 	policy.AllowPrivateIPs = true
-	err := followRedirects(client.client, req, resp, 3, mustParseTestURL(t, "http://example.com/start"), policy, true)
+	err := followRedirects(client.client, req, resp, 3, mustParseTestURL(t, "http://example.com/start"), policy)
 	require.ErrorIs(t, err, fasthttp.ErrMissingLocation)
 }
 
@@ -862,7 +870,7 @@ func Test_Security_FollowRedirects_PostBecomesGetOn303(t *testing.T) {
 
 	policy := DefaultSecurityPolicy()
 	policy.AllowPrivateIPs = true
-	require.NoError(t, followRedirects(client.client, req, resp, 3, mustParseTestURL(t, "http://example.com/start"), policy, true))
+	require.NoError(t, followRedirects(client.client, req, resp, 3, mustParseTestURL(t, "http://example.com/start"), policy))
 	require.Equal(t, fasthttp.MethodGet, string(req.Header.Method()))
 	require.Empty(t, req.Body())
 	require.Empty(t, req.Header.ContentType())
@@ -885,7 +893,7 @@ func Test_Security_FollowRedirects_PropagatesClientError(t *testing.T) {
 	req.SetRequestURI("http://example.com/")
 	req.Header.SetMethod(fasthttp.MethodGet)
 
-	err := followRedirects(cli, req, resp, 1, mustParseTestURL(t, "http://example.com/"), DefaultSecurityPolicy(), true)
+	err := followRedirects(cli, req, resp, 1, mustParseTestURL(t, "http://example.com/"), DefaultSecurityPolicy())
 	require.ErrorIs(t, err, sentinel)
 }
 
@@ -1068,7 +1076,7 @@ func Test_Security_Balancer_BuildsHTTPSHostClient(t *testing.T) {
 // connection is made — this is what defeats DNS rebinding.
 func Test_Security_NewSSRFDialer_BlocksLoopback(t *testing.T) {
 	t.Parallel()
-	dial := newSSRFDialer(false)
+	dial := newDialGuard(false).strictDialer()
 
 	_, err := dial("127.0.0.1:80")
 	require.ErrorIs(t, err, ErrUpstreamHostBlocked)
@@ -1081,7 +1089,7 @@ func Test_Security_NewSSRFDialer_BlocksLoopback(t *testing.T) {
 // SplitHostPort error branch.
 func Test_Security_NewSSRFDialer_RejectsMalformedAddr(t *testing.T) {
 	t.Parallel()
-	dial := newSSRFDialer(false)
+	dial := newDialGuard(false).strictDialer()
 	_, err := dial("no-port-here")
 	require.Error(t, err)
 	require.NotErrorIs(t, err, ErrUpstreamHostBlocked)
@@ -1176,4 +1184,284 @@ func mustParseTestURL(t *testing.T, raw string) *url.URL {
 	u, err := url.Parse(raw)
 	require.NoError(t, err)
 	return u
+}
+
+// Test_Security_RedirectRequest pins the request a redirect leaves for the next
+// hop. RFC 9110 §15.4.4 turns every method but GET and HEAD into GET on a 303,
+// §15.4.2 and §15.4.3 let a 301 or 302 turn POST into GET, and a 307 or 308
+// repeats the request as it was. A method that changes loses its body.
+func Test_Security_RedirectRequest(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name       string
+		method     string
+		wantMethod string
+		status     int
+		wantBody   bool
+	}{
+		{name: "301 POST", method: fasthttp.MethodPost, status: fasthttp.StatusMovedPermanently, wantMethod: fasthttp.MethodGet},
+		{name: "302 POST", method: fasthttp.MethodPost, status: fasthttp.StatusFound, wantMethod: fasthttp.MethodGet},
+		{name: "301 PUT", method: fasthttp.MethodPut, status: fasthttp.StatusMovedPermanently, wantMethod: fasthttp.MethodPut, wantBody: true},
+		{name: "302 PATCH", method: fasthttp.MethodPatch, status: fasthttp.StatusFound, wantMethod: fasthttp.MethodPatch, wantBody: true},
+		{name: "302 DELETE", method: fasthttp.MethodDelete, status: fasthttp.StatusFound, wantMethod: fasthttp.MethodDelete, wantBody: true},
+		{name: "303 POST", method: fasthttp.MethodPost, status: fasthttp.StatusSeeOther, wantMethod: fasthttp.MethodGet},
+		{name: "303 PUT", method: fasthttp.MethodPut, status: fasthttp.StatusSeeOther, wantMethod: fasthttp.MethodGet},
+		{name: "303 PATCH", method: fasthttp.MethodPatch, status: fasthttp.StatusSeeOther, wantMethod: fasthttp.MethodGet},
+		{name: "303 DELETE", method: fasthttp.MethodDelete, status: fasthttp.StatusSeeOther, wantMethod: fasthttp.MethodGet},
+		{name: "303 GET", method: fasthttp.MethodGet, status: fasthttp.StatusSeeOther, wantMethod: fasthttp.MethodGet, wantBody: true},
+		{name: "303 HEAD", method: fasthttp.MethodHead, status: fasthttp.StatusSeeOther, wantMethod: fasthttp.MethodHead, wantBody: true},
+		{name: "307 POST", method: fasthttp.MethodPost, status: fasthttp.StatusTemporaryRedirect, wantMethod: fasthttp.MethodPost, wantBody: true},
+		{name: "308 PUT", method: fasthttp.MethodPut, status: fasthttp.StatusPermanentRedirect, wantMethod: fasthttp.MethodPut, wantBody: true},
+		{name: "200 is no redirect", method: fasthttp.MethodPost, status: fasthttp.StatusOK, wantMethod: fasthttp.MethodPost, wantBody: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			req := fasthttp.AcquireRequest()
+			defer fasthttp.ReleaseRequest(req)
+			req.Header.SetMethod(tc.method)
+			req.Header.SetContentType("text/plain")
+			req.SetBodyString("payload")
+			req.Header.SetContentLength(len("payload"))
+
+			redirectRequest(req, tc.status)
+
+			require.Equal(t, tc.wantMethod, string(req.Header.Method()))
+			if tc.wantBody {
+				require.Equal(t, "payload", string(req.Body()))
+				require.Equal(t, "text/plain", string(req.Header.ContentType()))
+				require.Equal(t, len("payload"), req.Header.ContentLength())
+				return
+			}
+			require.Empty(t, req.Body())
+			require.Empty(t, req.Header.ContentType())
+			require.Zero(t, req.Header.ContentLength())
+		})
+	}
+}
+
+// Test_Security_FollowRedirects_MethodPerStatus drives the rules of
+// redirectRequest through the redirect loop: what the second hop receives.
+func Test_Security_FollowRedirects_MethodPerStatus(t *testing.T) {
+	t.Parallel()
+
+	policy := DefaultSecurityPolicy()
+	policy.AllowPrivateIPs = true
+
+	for _, tc := range []struct {
+		name       string
+		method     string
+		wantSecond string
+		status     int
+	}{
+		{name: "301 keeps PUT and its body", method: fasthttp.MethodPut, status: fasthttp.StatusMovedPermanently, wantSecond: "PUT payload"},
+		{name: "302 turns POST into GET", method: fasthttp.MethodPost, status: fasthttp.StatusFound, wantSecond: "GET "},
+		{name: "303 turns PUT into GET", method: fasthttp.MethodPut, status: fasthttp.StatusSeeOther, wantSecond: "GET "},
+		{name: "303 turns PATCH into GET", method: fasthttp.MethodPatch, status: fasthttp.StatusSeeOther, wantSecond: "GET "},
+		{name: "303 turns DELETE into GET", method: fasthttp.MethodDelete, status: fasthttp.StatusSeeOther, wantSecond: "GET "},
+		{name: "307 repeats POST", method: fasthttp.MethodPost, status: fasthttp.StatusTemporaryRedirect, wantSecond: "POST payload"},
+		{name: "308 repeats DELETE", method: fasthttp.MethodDelete, status: fasthttp.StatusPermanentRedirect, wantSecond: "DELETE payload"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			var hops []string
+			client, _ := newCountingRedirectClient(map[string]redirectStep{
+				"http://example.com/start": {status: tc.status, location: "http://example.com/after"},
+			})
+			client.onRequest = func(req *fasthttp.Request) {
+				hops = append(hops, string(req.Header.Method())+" "+string(req.Body()))
+			}
+
+			req := fasthttp.AcquireRequest()
+			resp := fasthttp.AcquireResponse()
+			defer fasthttp.ReleaseRequest(req)
+			defer fasthttp.ReleaseResponse(resp)
+			req.SetRequestURI("http://example.com/start")
+			req.Header.SetMethod(tc.method)
+			req.SetBodyString("payload")
+
+			require.NoError(t, followRedirects(client.client, req, resp, 3, mustParseTestURL(t, "http://example.com/start"), policy))
+			require.Equal(t, []string{tc.method + " payload", tc.wantSecond}, hops)
+		})
+	}
+}
+
+// Test_Security_FollowRedirects_StripsCredentialsOnPortChange pins that an
+// origin is a host and a port: the same hostname on another port is another
+// service, so the credentials bound to the first one stay behind.
+func Test_Security_FollowRedirects_StripsCredentialsOnPortChange(t *testing.T) {
+	t.Parallel()
+
+	policy := DefaultSecurityPolicy()
+	policy.AllowPrivateIPs = true
+
+	for name, tc := range map[string]struct {
+		location string
+		wantAuth string
+	}{
+		"same host and port":    {location: "http://same.example:8080/next", wantAuth: "Bearer secret"},
+		"same host, other port": {location: "http://same.example:9090/next"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			var sawAuth, sawCookie string
+			client, _ := newCountingRedirectClient(map[string]redirectStep{
+				"http://same.example:8080/": {status: fasthttp.StatusFound, location: tc.location},
+			})
+			client.onRequest = func(req *fasthttp.Request) {
+				if string(req.URI().Path()) == "/next" {
+					sawAuth = string(req.Header.Peek(fiber.HeaderAuthorization))
+					sawCookie = string(req.Header.Peek(fiber.HeaderCookie))
+				}
+			}
+
+			req := fasthttp.AcquireRequest()
+			resp := fasthttp.AcquireResponse()
+			defer fasthttp.ReleaseRequest(req)
+			defer fasthttp.ReleaseResponse(resp)
+			req.SetRequestURI("http://same.example:8080/")
+			req.Header.SetMethod(fasthttp.MethodGet)
+			req.Header.Set(fiber.HeaderAuthorization, "Bearer secret")
+			req.Header.Set(fiber.HeaderCookie, "session=abc")
+
+			require.NoError(t, followRedirects(client.client, req, resp, 3, mustParseTestURL(t, "http://same.example:8080/"), policy))
+			require.Equal(t, tc.wantAuth, sawAuth)
+			if tc.wantAuth == "" {
+				require.Empty(t, sawCookie)
+			} else {
+				require.Equal(t, "session=abc", sawCookie)
+			}
+		})
+	}
+}
+
+// Test_Security_KeepHopByHopHeaders_Balancer pins the opt-out for a Balancer
+// that carries its own policy: the hop-by-hop fields cross in both directions
+// when it is set, and none does when it is not.
+func Test_Security_KeepHopByHopHeaders_Balancer(t *testing.T) {
+	t.Parallel()
+
+	for name, keep := range map[string]bool{"stripped by default": false, "kept with the opt-out": true} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			seen := make(chan [2]string, 1)
+			_, addr := createProxyTestServerIPv4(t, func(c fiber.Ctx) error {
+				seen <- [2]string{c.Get(fiber.HeaderProxyAuthorization), c.Get(fiber.HeaderKeepAlive)}
+				c.Set(fiber.HeaderProxyAuthenticate, "Basic")
+				c.Set(fiber.HeaderKeepAlive, "timeout=7")
+				return c.SendString("ok")
+			})
+
+			policy := DefaultSecurityPolicy()
+			policy.AllowPrivateIPs = true
+			policy.KeepHopByHopHeaders = keep
+			app := fiber.New()
+			app.Use(Balancer(Config{Servers: []string{addr}, SecurityPolicy: &policy}))
+
+			req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+			req.Header.Set(fiber.HeaderProxyAuthorization, "Basic dXNlcjpwYXNz")
+			req.Header.Set(fiber.HeaderKeepAlive, "timeout=5")
+			resp, err := app.Test(req)
+			require.NoError(t, err)
+			require.Equal(t, fiber.StatusOK, resp.StatusCode)
+
+			got := <-seen
+			if keep {
+				require.Equal(t, "Basic dXNlcjpwYXNz", got[0])
+				require.Equal(t, "timeout=5", got[1])
+				require.Equal(t, "Basic", resp.Header.Get(fiber.HeaderProxyAuthenticate))
+				require.Equal(t, "timeout=7", resp.Header.Get(fiber.HeaderKeepAlive))
+				return
+			}
+			require.Empty(t, got[0])
+			require.Empty(t, got[1])
+			require.Empty(t, resp.Header.Get(fiber.HeaderProxyAuthenticate))
+			require.Empty(t, resp.Header.Get(fiber.HeaderKeepAlive))
+		})
+	}
+}
+
+// Test_Security_KeepHopByHopHeaders_Do is the same opt-out for the runtime
+// helpers, which take their policy from the process.
+func Test_Security_KeepHopByHopHeaders_Do(t *testing.T) {
+	// Intentionally not parallel: it installs a process-wide security policy, so
+	// it must run alone for Do to be judged by exactly that policy.
+	policy := DefaultSecurityPolicy()
+	policy.AllowPrivateIPs = true
+	policy.KeepHopByHopHeaders = true
+	withSecurityPolicyForTest(t, policy)
+
+	seen := make(chan string, 1)
+	_, addr := createProxyTestServerIPv4(t, func(c fiber.Ctx) error {
+		seen <- c.Get(fiber.HeaderProxyAuthorization)
+		c.Set(fiber.HeaderProxyAuthenticate, "Basic")
+		return c.SendString("ok")
+	})
+
+	app := fiber.New()
+	app.Get("/", func(c fiber.Ctx) error { return Do(c, "http://"+addr) })
+
+	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+	req.Header.Set(fiber.HeaderProxyAuthorization, "Basic dXNlcjpwYXNz")
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	require.Equal(t, "Basic dXNlcjpwYXNz", <-seen)
+	require.Equal(t, "Basic", resp.Header.Get(fiber.HeaderProxyAuthenticate))
+}
+
+// Test_Security_ValidateUpstream_UnparseableIsHostInvalid pins that an address
+// net/url cannot parse is ErrUpstreamHostInvalid, as the empty and hostless ones
+// are, and that the *url.Error stays reachable beside it.
+func Test_Security_ValidateUpstream_UnparseableIsHostInvalid(t *testing.T) {
+	t.Parallel()
+
+	for _, raw := range []string{"http://[::1", "http://exa mple.com", "http://%zz.com/", "http://a:b:c/"} {
+		_, err := validateUpstream(raw, DefaultSecurityPolicy())
+		require.ErrorIs(t, err, ErrUpstreamHostInvalid, raw)
+		_, ok := errors.AsType[*url.Error](err)
+		require.True(t, ok, "the net/url error must stay reachable: %q", raw)
+	}
+
+	for _, raw := range []string{"", "   ", "http://", "http://:8080", "http:///path"} {
+		_, err := validateUpstream(raw, DefaultSecurityPolicy())
+		require.ErrorIs(t, err, ErrUpstreamHostInvalid, raw)
+	}
+}
+
+// Test_Security_ValidateUpstreamForBalancer_Forms pins what a Balancer server
+// may look like: a scheme and host, with the scheme optional and a lone trailing
+// slash tolerated, and nothing else.
+func Test_Security_ValidateUpstreamForBalancer_Forms(t *testing.T) {
+	t.Parallel()
+
+	policy := DefaultSecurityPolicy()
+	policy.AllowPrivateIPs = true
+
+	for raw, wantScheme := range map[string]string{
+		"203.0.113.5:8080":          schemeHTTP,
+		"http://203.0.113.5:8080":   schemeHTTP,
+		"http://203.0.113.5:8080/":  schemeHTTP,
+		"https://upstream.example":  schemeHTTPS,
+		"http://[2001:db8::1]:8080": schemeHTTP,
+	} {
+		u, err := validateUpstreamForBalancer(raw, policy)
+		require.NoError(t, err, raw)
+		require.Equal(t, wantScheme, u.Scheme, raw)
+	}
+
+	for _, raw := range []string{
+		"http://upstream.example/api",
+		"http://user:pw@upstream.example",
+		"http://upstream.example?x=1",
+		"http://upstream.example?",
+		"http://upstream.example#frag",
+	} {
+		_, err := validateUpstreamForBalancer(raw, policy)
+		require.ErrorIs(t, err, ErrUpstreamNotOrigin, raw)
+	}
 }

@@ -28,24 +28,33 @@ type Config struct {
 	// tls config for the http client.
 	TLSConfig *tls.Config
 
-	// Client is custom client when client config is complex.
-	// Note that Servers, Timeout, WriteBufferSize, ReadBufferSize, TLSConfig
-	// and DialDualStack will not be used if the client are set.
+	// Client is custom client when client config is complex. Each
+	// *fasthttp.HostClient among its Clients gets DisablePathNormalizing set.
+	// When it is set, Servers, Timeout, MaxConnsPerHost, ReadBufferSize,
+	// WriteBufferSize, MaxResponseBodySize, TLSConfig and DialDualStack are not
+	// used, and its dialers get no SSRF guard: validate the resolved IP in them.
+	//
+	// Optional. Default: nil
 	Client *fasthttp.LBClient
 
 	// SecurityPolicy overrides the default SSRF, redirect, and
 	// hop-by-hop header rules for this balancer. When nil, the
-	// package-level policy set via WithSecurityPolicy is used.
+	// package-level policy set via WithSecurityPolicy is used. Either way
+	// the policy is settled once, when the balancer is built.
 	//
 	// Optional. Default: nil
 	SecurityPolicy *SecurityPolicy
 
 	// Servers defines a list of <scheme>://<host> HTTP servers,
-	//
 	// which are used in a round-robin manner.
 	// i.e.: "https://foobar.com, http://www.foobar.com"
 	//
-	// Required
+	// Each entry is a scheme and host only: one with a path, userinfo, query or
+	// fragment panics at startup with ErrUpstreamNotOrigin. An entry without a
+	// scheme ("host:port") is read as http://host:port, and a lone trailing
+	// slash is ignored.
+	//
+	// Required unless Client is set
 	Servers []string
 
 	// Timeout is the request timeout used when calling the proxy client
@@ -70,14 +79,15 @@ type Config struct {
 	// MaxResponseBodySize bounds the size (in bytes) of upstream
 	// responses accepted by the proxy. Responses larger than this are
 	// rejected to protect the proxy from memory exhaustion. Zero
-	// preserves fasthttp's default unlimited behavior.
+	// preserves fasthttp's default unlimited behavior, so set it when an
+	// upstream is not trusted to answer with a small body.
 	//
 	// Optional. Default: 0
 	MaxResponseBodySize int
 
 	// KeepConnectionHeader keeps the "Connection" header when set to true.
 	//
-	// Note: even when KeepConnectionHeader is true, other RFC 7230 §6.1
+	// Note: even when KeepConnectionHeader is true, other RFC 9110 §7.6.1
 	// hop-by-hop headers (Keep-Alive, Proxy-Authenticate,
 	// Proxy-Authorization, TE, Trailer, Transfer-Encoding, Upgrade) are
 	// still stripped. To preserve every hop-by-hop header, set
@@ -109,13 +119,11 @@ var ConfigDefault = Config{
 
 // configDefault function to set default values
 func configDefault(config ...Config) Config {
-	// Return default config if nothing provided
-	if len(config) < 1 {
-		return ConfigDefault
+	// Start from the defaults; a Config passed in overrides them
+	cfg := ConfigDefault
+	if len(config) > 0 {
+		cfg = config[0]
 	}
-
-	// Override default config
-	cfg := config[0]
 
 	// Set default values
 	if cfg.Timeout <= 0 {
@@ -126,7 +134,9 @@ func configDefault(config ...Config) Config {
 		cfg.MaxConnsPerHost = ConfigDefault.MaxConnsPerHost
 	}
 
-	// Set default values
+	// No upstream makes a sensible default, so Servers (or a Client) is
+	// required whether or not a Config was passed: Balancer() stops at startup
+	// just as Balancer(Config{}) does, instead of failing on its first request.
 	if len(cfg.Servers) == 0 && cfg.Client == nil {
 		panic("Servers cannot be empty")
 	}

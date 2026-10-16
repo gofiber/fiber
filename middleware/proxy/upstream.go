@@ -11,7 +11,9 @@ import (
 
 // parseUpstream returns the parsed url.URL for raw. Hosts without an
 // explicit scheme default to http:// to match the historical Balancer
-// behavior where bare "host:port" entries were accepted.
+// behavior where bare "host:port" entries were accepted. An address that
+// does not parse is ErrUpstreamHostInvalid too, with the *url.Error from
+// net/url wrapped beside it.
 func parseUpstream(raw string) (*url.URL, error) {
 	raw = utils.TrimSpace(raw)
 	if raw == "" {
@@ -22,7 +24,7 @@ func parseUpstream(raw string) (*url.URL, error) {
 	}
 	u, err := url.Parse(raw)
 	if err != nil {
-		return nil, fmt.Errorf("proxy: parse upstream %q: %w", raw, err)
+		return nil, fmt.Errorf("%w: %w", ErrUpstreamHostInvalid, err)
 	}
 	return u, nil
 }
@@ -33,7 +35,7 @@ func parseUpstream(raw string) (*url.URL, error) {
 // single blocked answer mitigates DNS rebinding attempts in which the
 // resolver returns a mix of public and private IPs.
 func validateUpstream(raw string, policy SecurityPolicy) (*url.URL, error) {
-	u, err := parseUpstreamScheme(raw, policy)
+	u, err := parseAllowedUpstream(raw, policy)
 	if err != nil {
 		return nil, err
 	}
@@ -46,11 +48,11 @@ func validateUpstream(raw string, policy SecurityPolicy) (*url.URL, error) {
 	return u, nil
 }
 
-// parseUpstreamScheme parses raw and enforces the scheme allowlist and
-// host presence without performing any DNS resolution. url.Parse can
-// leave Host set while Hostname() is empty (e.g. "http://:8080"), so the
+// parseAllowedUpstream parses raw and requires what every upstream needs: a
+// scheme on the policy's allowlist and a host. It resolves nothing. url.Parse
+// can leave Host set while Hostname() is empty (e.g. "http://:8080"), so the
 // presence check uses Hostname.
-func parseUpstreamScheme(raw string, policy SecurityPolicy) (*url.URL, error) {
+func parseAllowedUpstream(raw string, policy SecurityPolicy) (*url.URL, error) {
 	u, err := parseUpstream(raw)
 	if err != nil {
 		return nil, err
@@ -69,12 +71,14 @@ func parseUpstreamScheme(raw string, policy SecurityPolicy) (*url.URL, error) {
 // origin (the balancer dials the host and forwards the request target as
 // is, so a path, userinfo, query or fragment would be dropped silently) and
 // rejects IP-literal hosts in blocked ranges, but defers hostname resolution
-// to the SSRF-guarded dialer (see newSSRFDialer). Deferring DNS keeps a
-// transient resolver failure at startup from panicking the application
+// to the SSRF-guarded dialer (see dialGuard.strictDialer). Deferring DNS keeps
+// a transient resolver failure at startup from panicking the application
 // (e.g. crash loops in container orchestrators) and re-checks the resolved
-// IP on every dial, which also defeats DNS-rebinding.
+// IP on every dial, which also defeats DNS-rebinding. A lone trailing slash
+// names no path and is accepted, as is an entry without a scheme (see
+// parseUpstream).
 func validateUpstreamForBalancer(raw string, policy SecurityPolicy) (*url.URL, error) {
-	u, err := parseUpstreamScheme(raw, policy)
+	u, err := parseAllowedUpstream(raw, policy)
 	if err != nil {
 		return nil, err
 	}

@@ -10,7 +10,7 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
-// hopByHopHeaders are the RFC 7230 §6.1 connection-level headers that
+// hopByHopHeaders are the RFC 9110 §7.6.1 connection-level headers that
 // intermediaries must not forward. Stripping these prevents request
 // smuggling (Transfer-Encoding/TE), proxy-credential forwarding
 // (Proxy-Authorization), and protocol-upgrade leaks.
@@ -51,7 +51,7 @@ func isForwardingHeader(name string) bool {
 		utils.EqualFold(name, fiber.HeaderForwarded)
 }
 
-// stripHopByHopRequestHeaders removes RFC 7230 §6.1 hop-by-hop headers
+// stripHopByHopRequestHeaders removes RFC 9110 §7.6.1 hop-by-hop headers
 // from req. Callers can pass header names in except to preserve specific
 // headers — used by the legacy KeepConnectionHeader option to retain the
 // literal Connection header while still dropping the other hop-by-hop
@@ -85,7 +85,7 @@ func stripHopByHopRequestHeaders(req *fasthttp.Request, normalized bool, except 
 func stripHopByHopResponseHeaders(res *fasthttp.Response, except ...string) {
 	// Headers listed in Connection must be removed first so the listing is
 	// honored before the Connection field itself is dropped.
-	delConnectionListedHeaders(&res.Header, fieldname.Lines(&res.Header, fiber.HeaderConnection, false), false)
+	delConnectionListedHeaders(&res.Header, fieldname.Lines(&res.Header, fiber.HeaderConnection, false))
 
 	names := hopByHopHeaders
 	if len(except) > 0 {
@@ -100,24 +100,29 @@ func stripHopByHopResponseHeaders(res *fasthttp.Response, except ...string) {
 }
 
 // delConnectionListedHeaders deletes every comma-separated header name
-// listed inside one or more Connection header fields, per RFC 7230 §6.1,
+// listed inside one or more Connection header fields, per RFC 9110 §7.6.1,
 // without copying the values or collecting the names into a slice. The
 // names handed to Del alias the Connection value buffers; that is sound
 // because fasthttp's Del only re-slices the header's entry list — it never
 // rewrites other entries' key/value buffers — and Del does not retain the
 // name after returning.
 //
-// This is the response's walk. The request has one of its own in
+// This is the response's walk, so every spelling of a name goes: a proxied
+// response is parsed by an outbound client whose normalizing setting is
+// independent of the app's. The request has one of its own in
 // stripHopByHopRequestHeaders, which leaves the forwarding fields alone.
-func delConnectionListedHeaders(h fieldname.Deleter, values [][]byte, normalized bool) { //nolint:revive // flag-parameter: normalized is a property of the header store
+func delConnectionListedHeaders(h fieldname.Deleter, values [][]byte) {
 	for name := range headerlist.AllLines(values) {
-		fieldname.Del(h, name, normalized)
+		fieldname.Del(h, name, false)
 	}
 }
 
-func stripCrossHostHeaders(req *fasthttp.Request, normalized bool) { //nolint:revive // flag-parameter: normalized is a property of the header store
+func stripCrossHostHeaders(req *fasthttp.Request) {
 	for _, h := range crosshost.SensitiveHeaders {
-		fieldname.Del(&req.Header, h, normalized)
+		// Every spelling goes, whether or not the header store normalizes names.
+		// A redirect that leaves the origin is rare, so the extra scan costs
+		// nothing worth a flag.
+		fieldname.Del(&req.Header, h, false)
 	}
 }
 

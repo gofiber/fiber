@@ -61,9 +61,9 @@ func Test_Coverage_ResolveAndValidateHost_LookupFails(t *testing.T) {
 func Test_Coverage_DialValidatedIPs_SuccessOnIPv4(t *testing.T) {
 	t.Parallel()
 	called := atomic.Bool{}
-	conn, err := dialValidatedIPs(
+	conn, err := dialGuard{}.dialValidatedIPs(
 		[]net.IP{net.ParseIP("203.0.113.1")},
-		"example.test", "80", false,
+		"example.test", "80",
 		func(network, addr string) (net.Conn, error) {
 			called.Store(true)
 			require.Equal(t, "tcp", network)
@@ -83,9 +83,9 @@ func Test_Coverage_DialValidatedIPs_SuccessOnIPv4(t *testing.T) {
 func Test_Coverage_DialValidatedIPs_SkipsV6_WhenNoDualStack(t *testing.T) {
 	t.Parallel()
 	called := atomic.Bool{}
-	_, err := dialValidatedIPs(
+	_, err := dialGuard{}.dialValidatedIPs(
 		[]net.IP{net.ParseIP("2606:4700:4700::1111")},
-		"example.test", "80", false,
+		"example.test", "80",
 		func(string, string) (net.Conn, error) {
 			called.Store(true)
 			return nil, errors.New("should not dial")
@@ -103,9 +103,9 @@ func Test_Coverage_DialValidatedIPs_FallsBackOnError(t *testing.T) {
 	t.Parallel()
 	sentinel := errors.New("dial-refused")
 	var attempts atomic.Int32
-	_, err := dialValidatedIPs(
+	_, err := dialGuard{}.dialValidatedIPs(
 		[]net.IP{net.ParseIP("203.0.113.1"), net.ParseIP("203.0.113.2")},
-		"example.test", "80", false,
+		"example.test", "80",
 		func(string, string) (net.Conn, error) {
 			attempts.Add(1)
 			return nil, sentinel
@@ -121,9 +121,9 @@ func Test_Coverage_DialValidatedIPs_FallsBackOnError(t *testing.T) {
 func Test_Coverage_DialValidatedIPs_DualStackTriesV6(t *testing.T) {
 	t.Parallel()
 	var addr string
-	_, err := dialValidatedIPs(
+	_, err := dialGuard{dualStack: true}.dialValidatedIPs(
 		[]net.IP{net.ParseIP("2606:4700:4700::1111")},
-		"example.test", "443", true,
+		"example.test", "443",
 		func(_, a string) (net.Conn, error) {
 			addr = a
 			return stubConn{addr: a}, nil
@@ -137,21 +137,21 @@ func Test_Coverage_DialValidatedIPs_DualStackTriesV6(t *testing.T) {
 // SplitHostPort → resolveAndValidateHost → blocked-IP rejection branch.
 func Test_Coverage_NewSSRFDialer_RejectsLoopbackHostname(t *testing.T) {
 	t.Parallel()
-	dial := newSSRFDialer(false)
+	dial := newDialGuard(false).strictDialer()
 	_, err := dial("localhost:65535")
 	require.Error(t, err)
 	require.ErrorIs(t, err, ErrUpstreamHostBlocked)
 }
 
 // Test_Coverage_NewSSRFDialer_PassesGuardThenDials covers the post-guard
-// dial dispatch (the final return inside newSSRFDialer). TEST-NET-1
+// dial dispatch (the final return inside dialGuard.strictDialer). TEST-NET-1
 // (192.0.2.0/24, RFC 5737) is reserved for documentation and not in the
 // blocked ranges, so it survives the SSRF check; the dial itself fails
 // fast because the kernel has no route. We only assert that an error
 // surfaced — the *type* of error depends on the host's networking stack.
 func Test_Coverage_NewSSRFDialer_PassesGuardThenDials(t *testing.T) {
 	t.Parallel()
-	dial := newSSRFDialer(true) // dualStack so the dial loop is reached
+	dial := newDialGuard(true).strictDialer() // dualStack so the dial loop is reached
 	_, err := dial("192.0.2.1:1")
 	require.Error(t, err)
 }
@@ -241,13 +241,32 @@ func Test_Coverage_ConfigDefault_PanicsOnEmptyServersAndNoClient(t *testing.T) {
 	})
 }
 
-// Test_Coverage_ConfigDefault_NoArgsReturnsDefault covers the
-// variadic-empty branch where configDefault is called with no args.
-func Test_Coverage_ConfigDefault_NoArgsReturnsDefault(t *testing.T) {
+// Test_Coverage_ConfigDefault_NoArgsPanicsLikeEmptyConfig covers the
+// variadic-empty branch where configDefault is called with no args: there is no
+// default upstream, so it stops at startup exactly as configDefault(Config{})
+// does, instead of handing back a config that fails on its first request.
+func Test_Coverage_ConfigDefault_NoArgsPanicsLikeEmptyConfig(t *testing.T) {
 	t.Parallel()
-	cfg := configDefault()
-	require.Equal(t, ConfigDefault.Timeout, cfg.Timeout)
-	require.Equal(t, ConfigDefault.MaxConnsPerHost, cfg.MaxConnsPerHost)
+	require.PanicsWithValue(t, "Servers cannot be empty", func() {
+		configDefault()
+	})
+}
+
+// Test_Coverage_ConfigDefault_FillsDefaults checks the defaults a Config with
+// an upstream, or with a custom Client in place of one, gets.
+func Test_Coverage_ConfigDefault_FillsDefaults(t *testing.T) {
+	t.Parallel()
+	for name, in := range map[string]Config{
+		"servers": {Servers: []string{"http://upstream.example"}},
+		"client":  {Client: &fasthttp.LBClient{}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			cfg := configDefault(in)
+			require.Equal(t, ConfigDefault.Timeout, cfg.Timeout)
+			require.Equal(t, ConfigDefault.MaxConnsPerHost, cfg.MaxConnsPerHost)
+		})
+	}
 }
 
 // Test_Coverage_DialValidatedIPs_SkipsV6ThenDialsV4 verifies the
@@ -256,9 +275,9 @@ func Test_Coverage_ConfigDefault_NoArgsReturnsDefault(t *testing.T) {
 func Test_Coverage_DialValidatedIPs_SkipsV6ThenDialsV4(t *testing.T) {
 	t.Parallel()
 	var dialed string
-	conn, err := dialValidatedIPs(
+	conn, err := dialGuard{}.dialValidatedIPs(
 		[]net.IP{net.ParseIP("2001:db8::1"), net.ParseIP("203.0.113.5")},
-		"example.test", "443", false,
+		"example.test", "443",
 		func(_, addr string) (net.Conn, error) {
 			dialed = addr
 			return stubConn{addr: addr}, nil
@@ -301,4 +320,21 @@ func Test_Coverage_DomainForward_HostMismatch_DoesNotProxy(t *testing.T) {
 	// downstream handler; the important assertion is that we did NOT get
 	// a 5xx from dialing 127.0.0.1:1.
 	require.NotEqual(t, fiber.StatusInternalServerError, resp.StatusCode)
+}
+
+// Test_Coverage_CanFastJoinPath_RepeatedSeparator covers a second '?' or '#' in
+// a target: the splice refuses it and leaves it to the url.Parse path, which
+// reads the first as the end of the path and the rest as query and fragment.
+func Test_Coverage_CanFastJoinPath_RepeatedSeparator(t *testing.T) {
+	t.Parallel()
+
+	for _, target := range []string{"/a?b?c", "/a?b#c", "/a#b?c", "/a#b#c"} {
+		require.False(t, canFastJoinPath(target), target)
+	}
+	require.True(t, canFastJoinPath("/a?b"))
+
+	base, err := url.Parse("http://upstream.example")
+	require.NoError(t, err)
+	require.Equal(t, "http://upstream.example/a?b?c", joinUpstreamPath(base, "/a?b?c"))
+	require.Equal(t, "http://upstream.example/a?b#c", joinUpstreamPath(base, "/a?b#c"))
 }

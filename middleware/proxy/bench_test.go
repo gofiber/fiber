@@ -8,15 +8,15 @@ import (
 	"net/url"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/valyala/fasthttp"
 )
 
-// These benchmarks are the baseline that the PR description's
-// performance table compares against. Each one targets a specific hot
-// path identified during the perf survey so subsequent changes can
-// produce a benchstat-grade before/after.
+// These benchmarks are the performance baseline for the proxy. Each one
+// targets a specific hot path, so a later change can show a
+// benchstat-grade before/after.
 //
 // All benchmarks call b.ReportAllocs() so allocation regressions are
 // caught even when ns/op is noise. They use the testing.B.Loop form
@@ -90,16 +90,16 @@ func BenchmarkResolveRedirect_HTTPSDowngradeBlocked(b *testing.B) {
 	policy := DefaultSecurityPolicy()
 	policy.AllowPrivateIPs = true
 	location := []byte("http://example.com/landing")
-	// Anchor: assert once that we're actually measuring the blocked
-	// downgrade path. Without this, a regression that started allowing
-	// the redirect would leave the benchmark green while measuring a
-	// different path.
-	if _, err := resolveRedirect("https://example.com/", location, policy); !errors.Is(err, ErrRedirectDowngrade) {
-		b.Fatalf("expected ErrRedirectDowngrade, got %v", err)
-	}
 	b.ReportAllocs()
+	var err error
 	for b.Loop() {
-		_, _ = resolveRedirect("https://example.com/", location, policy) //nolint:errcheck // bench
+		_, err = resolveRedirect("https://example.com/", location, policy)
+	}
+	// Anchor: assert that the loop measured the blocked downgrade path.
+	// Without this, a regression that started allowing the redirect would
+	// leave the benchmark green while measuring a different path.
+	if !errors.Is(err, ErrRedirectDowngrade) {
+		b.Fatalf("expected ErrRedirectDowngrade, got %v", err)
 	}
 }
 
@@ -194,9 +194,9 @@ func BenchmarkIsBlockedIP_PublicV4(b *testing.B) {
 
 // BenchmarkFollowRedirects_NoRedirect isolates the followRedirects entry
 // cost — initial URL handling, request setup, and one cli.Do call that
-// returns 204 (no Location). The bench measures the work that P6
-// targets: the validateUpstream call that used to run on the initial
-// URL inside followRedirects.
+// returns 204 (no Location). followRedirects is handed the initial URL
+// already validated, so this measures the entry without a second
+// validateUpstream (a url.Parse and a DNS lookup) on it.
 func BenchmarkFollowRedirects_NoRedirect(b *testing.B) {
 	policy := DefaultSecurityPolicy()
 	policy.AllowPrivateIPs = true
@@ -222,7 +222,7 @@ func BenchmarkFollowRedirects_NoRedirect(b *testing.B) {
 		req.Reset()
 		req.SetRequestURI(initialURL.String())
 		req.Header.SetMethod(fasthttp.MethodGet)
-		if err := followRedirects(cli, req, resp, 3, initialURL, policy, true); err != nil {
+		if err := followRedirects(cli, req, resp, 3, initialURL, policy); err != nil {
 			b.Fatal(err)
 		}
 	}
@@ -233,25 +233,10 @@ func BenchmarkFollowRedirects_NoRedirect(b *testing.B) {
 // closure executes from its first statement through the call into
 // doActionWithPolicy. The action callback short-circuits so the
 // downstream action work (cli.Do) is not measured — this isolates the
-// constructor-vs-per-request split that P2 targets.
+// per-request work from what DomainForward already did once at
+// construction (validating the upstream and folding the hostname).
 func BenchmarkDomainForward_HostMatchPath(b *testing.B) {
-	// Construction-time validation requires a passing upstream.
-	policy := DefaultSecurityPolicy()
-	policy.AllowPrivateIPs = true
-	prev := WithSecurityPolicy(policy)
-	b.Cleanup(func() { WithSecurityPolicy(prev) })
-
-	// Stash & restore the global proxy client so the benchmark uses a
-	// no-op transport instead of dialing.
-	noopClient := &fasthttp.Client{
-		Transport: noopRoundTripper{},
-	}
-	prevClient := client.Swap(noopClient)
-	b.Cleanup(func() {
-		if prevClient != nil {
-			client.Store(prevClient)
-		}
-	})
+	benchNoopUpstream(b)
 
 	app := fiber.New()
 	app.Use(DomainForward("api.example", "http://203.0.113.5:8080"))
@@ -272,6 +257,84 @@ func BenchmarkDomainForward_HostMatchPath(b *testing.B) {
 		}
 		b.StartTimer()
 	}
+}
+
+// benchNoopUpstream points the runtime helpers at an upstream that answers 204
+// without touching the network. The relaxed policy lets the construction-time
+// validation of the TEST-NET-3 literal through whatever the host resolver
+// does, and the shared client gets a transport that never dials. Both are
+// restored when the benchmark ends.
+func benchNoopUpstream(b *testing.B) {
+	b.Helper()
+	policy := DefaultSecurityPolicy()
+	policy.AllowPrivateIPs = true
+	prev := WithSecurityPolicy(policy)
+	b.Cleanup(func() { WithSecurityPolicy(prev) })
+
+	prevClient := sharedClient.Swap(&fasthttp.Client{Transport: noopRoundTripper{}})
+	b.Cleanup(func() {
+		if prevClient != nil {
+			sharedClient.Store(prevClient)
+		}
+	})
+}
+
+// benchProxyPath sends one GET through app per iteration on a bare fasthttp
+// context, so the net/http conversion of app.Test stays out of the numbers.
+// The upstream must answer 204.
+func benchProxyPath(b *testing.B, app *fiber.App, host, target string) {
+	b.Helper()
+	var req fasthttp.Request
+	req.SetRequestURI(target)
+	req.Header.SetHost(host)
+	handler := app.Handler()
+	remote := &net.TCPAddr{IP: net.IPv4(203, 0, 113, 9), Port: 40000}
+
+	var fctx fasthttp.RequestCtx
+	b.ReportAllocs()
+	for b.Loop() {
+		fctx.Init(&req, remote, nil)
+		handler(&fctx)
+		if got := fctx.Response.StatusCode(); got != fasthttp.StatusNoContent {
+			b.Fatalf("status = %d, want %d", got, fasthttp.StatusNoContent)
+		}
+	}
+}
+
+// BenchmarkBalancer_ProxyPath measures a request through Balancer: header
+// stripping, the routed-target checks, X-Real-IP and the dispatch through the
+// load-balanced client to an upstream that never dials.
+func BenchmarkBalancer_ProxyPath(b *testing.B) {
+	lbc := &fasthttp.LBClient{
+		Timeout: time.Second,
+		Clients: []fasthttp.BalancingClient{
+			&fasthttp.HostClient{Addr: "203.0.113.5:8080", Transport: noopRoundTripper{}},
+		},
+	}
+	app := fiber.New()
+	app.Use(Balancer(Config{Client: lbc}))
+	benchProxyPath(b, app, "api.example", "/v1/widgets?q=1")
+}
+
+// BenchmarkForward_ProxyPath measures a request through Forward to a fixed
+// upstream: policy snapshot, upstream validation and the shared client.
+func BenchmarkForward_ProxyPath(b *testing.B) {
+	benchNoopUpstream(b)
+
+	app := fiber.New()
+	app.Use(Forward("http://203.0.113.5:8080/v1/widgets"))
+	benchProxyPath(b, app, "api.example", "/anything")
+}
+
+// BenchmarkBalancerForward_ProxyPath measures a request through
+// BalancerForward: the round-robin pick, the routed-target check, the path
+// join and the shared client.
+func BenchmarkBalancerForward_ProxyPath(b *testing.B) {
+	benchNoopUpstream(b)
+
+	app := fiber.New()
+	app.Use(BalancerForward([]string{"http://203.0.113.5:8080", "http://203.0.113.6:8080"}))
+	benchProxyPath(b, app, "api.example", "/v1/widgets?q=1")
 }
 
 func BenchmarkURLRoundrobinGet(b *testing.B) {

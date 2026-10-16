@@ -35,8 +35,9 @@ var (
 	// scheme outside the configured allowlist (default: http, https).
 	ErrUpstreamSchemeNotAllowed = errors.New("proxy: upstream scheme is not allowed")
 
-	// ErrUpstreamHostInvalid is returned when the proxied URL is missing a
-	// host or cannot be parsed.
+	// ErrUpstreamHostInvalid is returned when the proxied URL is empty,
+	// missing a host or cannot be parsed. For a URL that cannot be parsed the
+	// error also wraps the *url.Error from net/url, which errors.As finds.
 	ErrUpstreamHostInvalid = errors.New("proxy: upstream host is empty or invalid")
 
 	// ErrUpstreamHostBlocked is returned when the proxied URL resolves to
@@ -58,9 +59,16 @@ var (
 )
 
 // SecurityPolicy controls runtime security restrictions applied to the
-// proxy.Do, proxy.Forward, proxy.DoRedirects, proxy.DoTimeout, and
-// proxy.DoDeadline runtime helpers as well as Balancer instances that
-// do not supply their own policy via Config.SecurityPolicy.
+// proxy.Do, proxy.Forward, proxy.DoRedirects, proxy.DoTimeout,
+// proxy.DoDeadline, proxy.DomainForward and proxy.BalancerForward runtime
+// helpers as well as Balancer instances that do not supply their own policy
+// via Config.SecurityPolicy.
+//
+// When the policy is read differs. Balancer settles on one when it is built.
+// The runtime helpers, DomainForward and BalancerForward included, read the
+// policy installed with WithSecurityPolicy on every request and on every dial,
+// so that policy has to stay installed for as long as they serve: restoring the
+// default after building them puts their upstreams back under it.
 type SecurityPolicy struct {
 	// AllowedSchemes restricts the URL schemes accepted as upstream
 	// targets. Empty defaults to []string{schemeHTTP, schemeHTTPS}.
@@ -96,7 +104,7 @@ type SecurityPolicy struct {
 	// Default: false.
 	AllowHTTPSDowngrade bool
 
-	// KeepHopByHopHeaders disables the RFC 7230 §6.1 hop-by-hop header
+	// KeepHopByHopHeaders disables the RFC 9110 §7.6.1 hop-by-hop header
 	// stripping applied to both the outbound request and the inbound
 	// response. SECURITY: enabling this can enable request smuggling
 	// and proxy-auth credential forwarding. Default: false.
@@ -162,18 +170,16 @@ func normalizePolicy(policy SecurityPolicy) SecurityPolicy {
 }
 
 // WithSecurityPolicy installs policy as the global default consulted by
-// proxy.Do, proxy.Forward, proxy.DoRedirects, proxy.DoTimeout, and
-// proxy.DoDeadline (and by Balancer instances that do not set
-// Config.SecurityPolicy). It returns the previously installed policy so
-// callers can restore it — useful in tests that need to relax
-// the policy for a single scope.
+// proxy.Do, proxy.Forward, proxy.DoRedirects, proxy.DoTimeout,
+// proxy.DoDeadline, proxy.DomainForward and proxy.BalancerForward on every
+// request (and by Balancer instances that do not set Config.SecurityPolicy,
+// when they are built). Keep it installed while those handlers serve. It
+// returns the previously installed policy so callers can restore it — useful in
+// tests that need to relax the policy for a single scope.
 func WithSecurityPolicy(policy SecurityPolicy) SecurityPolicy {
 	normalized := normalizePolicy(policy)
-	prev := activePolicy.Swap(&normalized)
-	if prev == nil {
-		return DefaultSecurityPolicy()
-	}
-	return *prev
+	// init installs the default policy, so there is always one to hand back.
+	return *activePolicy.Swap(&normalized)
 }
 
 // currentSecurityPolicy returns a snapshot of the active global policy.
