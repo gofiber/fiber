@@ -151,7 +151,7 @@ func withRebindingResolver(t *testing.T, dnsAddr string) {
 // is reached. Covered for both the shared default client and a per-call
 // custom client (proving auto-guarding covers user-supplied clients).
 func Test_Security_Do_BlocksDNSRebinding(t *testing.T) {
-	// Intentionally not parallel: it swaps the process-wide DNS resolver and security policy.
+	// Not parallel: mutates the global resolver and security policy.
 	withSecurityPolicyForTest(t, DefaultSecurityPolicy()) // AllowPrivateIPs == false
 
 	// dispatch names the client path under test. Each subtest gets a fresh
@@ -226,10 +226,10 @@ func Test_Security_Do_BlocksDNSRebinding(t *testing.T) {
 	}
 }
 
-// Test_Security_NewGuardedClientDialer_BlocksWhenPrivateDisallowed verifies
+// Test_Security_ClientDialer_BlocksWhenPrivateDisallowed verifies
 // the composable client guard rejects loopback targets — literal and
 // hostname — when the active policy forbids private IPs.
-func Test_Security_NewGuardedClientDialer_BlocksWhenPrivateDisallowed(t *testing.T) {
+func Test_Security_ClientDialer_BlocksWhenPrivateDisallowed(t *testing.T) {
 	// Intentionally not parallel: it sets the strict security policy process-wide.
 	withSecurityPolicyForTest(t, DefaultSecurityPolicy()) // AllowPrivateIPs == false
 
@@ -242,10 +242,10 @@ func Test_Security_NewGuardedClientDialer_BlocksWhenPrivateDisallowed(t *testing
 	require.ErrorIs(t, err, ErrUpstreamHostBlocked)
 }
 
-// Test_Security_NewGuardedClientDialer_ComposesWithOrig verifies that, for
+// Test_Security_ClientDialer_ComposesWithOrig verifies that, for
 // an allowed (public) target, the guard dials the validated address through
 // the caller-supplied dialer instead of establishing its own connection.
-func Test_Security_NewGuardedClientDialer_ComposesWithOrig(t *testing.T) {
+func Test_Security_ClientDialer_ComposesWithOrig(t *testing.T) {
 	// Intentionally not parallel: it sets the strict security policy process-wide.
 	withSecurityPolicyForTest(t, DefaultSecurityPolicy()) // AllowPrivateIPs == false
 
@@ -262,14 +262,14 @@ func Test_Security_NewGuardedClientDialer_ComposesWithOrig(t *testing.T) {
 	require.Equal(t, "203.0.113.5:80", got)
 }
 
-// Test_Security_NewGuardedClientDialer_AllowsValidatedHostname is the
+// Test_Security_ClientDialer_AllowsValidatedHostname is the
 // positive-path counterpart to the rebinding test: under the strict policy, a
 // hostname that resolves to a public (non-blocked) address must resolve,
 // validate, and dial through to that exact IP — proving the guard does not
 // over-block legitimate upstreams. Every end-to-end suite test runs with
 // AllowPrivateIPs=true (the delegate branch), so this is the only coverage of
 // the resolve→validate→dial success path.
-func Test_Security_NewGuardedClientDialer_AllowsValidatedHostname(t *testing.T) {
+func Test_Security_ClientDialer_AllowsValidatedHostname(t *testing.T) {
 	// Intentionally not parallel: it swaps the process-wide policy and DNS resolver.
 	withSecurityPolicyForTest(t, DefaultSecurityPolicy()) // AllowPrivateIPs == false
 
@@ -339,22 +339,30 @@ func Test_Security_EnsureClientGuarded_ComposesAndIsIdempotent(t *testing.T) {
 }
 
 // Test_Security_EnsureClientGuarded_ConcurrentIsSafe pins that guarding the
-// same client from many goroutines is race-free (run under -race) and
-// idempotent, for both the nil-ConfigureClient and pre-existing-hook paths.
-// Regression guard for the serializing mutex in ensureClientGuarded.
+// same client from many goroutines is race-free (run under -race) and leaves
+// one working hook: the guard is installed and a pre-existing hook still runs
+// once per HostClient. Regression guard for the serializing mutex in
+// ensureClientGuarded. What the installed guard blocks is pinned by
+// Test_Security_EnsureClientGuarded_ComposesAndIsIdempotent, which needs the
+// strict policy installed.
 func Test_Security_EnsureClientGuarded_ConcurrentIsSafe(t *testing.T) {
-	// Intentionally not parallel: it sets the strict security policy process-wide.
-	withSecurityPolicyForTest(t, DefaultSecurityPolicy()) // AllowPrivateIPs == false
+	t.Parallel()
 
-	cases := map[string]func(*fasthttp.HostClient) error{
-		"nil ConfigureClient":          nil,
-		"pre-existing ConfigureClient": func(_ *fasthttp.HostClient) error { return nil },
-	}
-
-	for name, hook := range cases {
+	for name, withHook := range map[string]bool{
+		"nil ConfigureClient":          false,
+		"pre-existing ConfigureClient": true,
+	} {
 		t.Run(name, func(t *testing.T) {
-			// Intentionally not parallel: each case's goroutines are the contention under test.
-			cli := &fasthttp.Client{ConfigureClient: hook}
+			t.Parallel()
+
+			var hookCalls atomic.Int32
+			cli := &fasthttp.Client{}
+			if withHook {
+				cli.ConfigureClient = func(*fasthttp.HostClient) error {
+					hookCalls.Add(1)
+					return nil
+				}
+			}
 
 			var wg sync.WaitGroup
 			for range 32 {
@@ -366,9 +374,11 @@ func Test_Security_EnsureClientGuarded_ConcurrentIsSafe(t *testing.T) {
 
 			hc := &fasthttp.HostClient{}
 			require.NoError(t, cli.ConfigureClient(hc))
-			require.NotNil(t, hc.Dial)
-			_, err := hc.Dial("127.0.0.1:80")
-			require.ErrorIs(t, err, ErrUpstreamHostBlocked)
+			require.NotNil(t, hc.Dial, "the guard installs a dial-time Dial")
+			require.True(t, hc.DisablePathNormalizing, "the guard hook ran")
+			if withHook {
+				require.Equal(t, int32(1), hookCalls.Load(), "the existing hook runs once per HostClient")
+			}
 		})
 	}
 }
@@ -393,10 +403,10 @@ func Test_Security_InstallHostClientGuard_GuardsDialTimeout(t *testing.T) {
 	require.ErrorIs(t, err, ErrUpstreamHostBlocked)
 }
 
-// Test_Security_NewGuardedClientDialer_DelegatesWhenPrivateAllowed verifies
+// Test_Security_ClientDialer_DelegatesWhenPrivateAllowed verifies
 // that when the operator opts into private targets the guard delegates to a
 // normal dial, so loopback connections still succeed.
-func Test_Security_NewGuardedClientDialer_DelegatesWhenPrivateAllowed(t *testing.T) {
+func Test_Security_ClientDialer_DelegatesWhenPrivateAllowed(t *testing.T) {
 	// Intentionally not parallel: it sets a process-wide security policy.
 	policy := DefaultSecurityPolicy()
 	policy.AllowPrivateIPs = true
@@ -412,10 +422,10 @@ func Test_Security_NewGuardedClientDialer_DelegatesWhenPrivateAllowed(t *testing
 	require.NoError(t, conn.Close())
 }
 
-// Test_Security_NewGuardedClientDialer_DelegatesDualStack covers the
+// Test_Security_ClientDialer_DelegatesDualStack covers the
 // AllowPrivateIPs delegate branch with DialDualStack enabled (fasthttp's
 // DialDualStack fallback).
-func Test_Security_NewGuardedClientDialer_DelegatesDualStack(t *testing.T) {
+func Test_Security_ClientDialer_DelegatesDualStack(t *testing.T) {
 	// Intentionally not parallel: it sets a process-wide security policy.
 	policy := DefaultSecurityPolicy()
 	policy.AllowPrivateIPs = true
@@ -430,9 +440,9 @@ func Test_Security_NewGuardedClientDialer_DelegatesDualStack(t *testing.T) {
 	require.NoError(t, conn.Close())
 }
 
-// Test_Security_NewGuardedClientDialer_RejectsMalformedAddr covers the
+// Test_Security_ClientDialer_RejectsMalformedAddr covers the
 // SplitHostPort error branch of dialGuard.dialChecked.
-func Test_Security_NewGuardedClientDialer_RejectsMalformedAddr(t *testing.T) {
+func Test_Security_ClientDialer_RejectsMalformedAddr(t *testing.T) {
 	// Intentionally not parallel: it sets the strict security policy process-wide.
 	withSecurityPolicyForTest(t, DefaultSecurityPolicy()) // AllowPrivateIPs == false
 
@@ -441,10 +451,10 @@ func Test_Security_NewGuardedClientDialer_RejectsMalformedAddr(t *testing.T) {
 	require.NotErrorIs(t, err, ErrUpstreamHostBlocked)
 }
 
-// Test_Security_NewGuardedClientDialerWithTimeout_Delegates covers the
+// Test_Security_ClientDialerWithTimeout_Delegates covers the
 // DialFuncWithTimeout guard's delegate branch: when private IPs are allowed
 // it forwards the raw addr and timeout to the caller's dialer.
-func Test_Security_NewGuardedClientDialerWithTimeout_Delegates(t *testing.T) {
+func Test_Security_ClientDialerWithTimeout_Delegates(t *testing.T) {
 	// Intentionally not parallel: it sets a process-wide security policy.
 	policy := DefaultSecurityPolicy()
 	policy.AllowPrivateIPs = true
@@ -461,11 +471,11 @@ func Test_Security_NewGuardedClientDialerWithTimeout_Delegates(t *testing.T) {
 	require.Equal(t, "10.0.0.1:80", got)
 }
 
-// Test_Security_NewGuardedClientDialerWithTimeout_ValidatedDialsThrough covers
+// Test_Security_ClientDialerWithTimeout_ValidatedDialsThrough covers
 // the strict-policy path of the DialFuncWithTimeout guard: a hostname that
 // resolves to a public IP is validated and dialed through the caller's
 // timeout dialer at the exact resolved IP.
-func Test_Security_NewGuardedClientDialerWithTimeout_ValidatedDialsThrough(t *testing.T) {
+func Test_Security_ClientDialerWithTimeout_ValidatedDialsThrough(t *testing.T) {
 	// Intentionally not parallel: it swaps the process-wide policy and DNS resolver.
 	withSecurityPolicyForTest(t, DefaultSecurityPolicy()) // AllowPrivateIPs == false
 
@@ -486,8 +496,7 @@ func Test_Security_NewGuardedClientDialerWithTimeout_ValidatedDialsThrough(t *te
 // Test_Security_EnsureClientGuarded_ComposePropagatesError verifies the
 // composed hook surfaces an error from the user's existing ConfigureClient.
 func Test_Security_EnsureClientGuarded_ComposePropagatesError(t *testing.T) {
-	// Intentionally not parallel: it sets the strict security policy process-wide.
-	withSecurityPolicyForTest(t, DefaultSecurityPolicy()) // AllowPrivateIPs == false
+	t.Parallel()
 
 	wantErr := errors.New("configure boom")
 	cli := &fasthttp.Client{
@@ -499,10 +508,10 @@ func Test_Security_EnsureClientGuarded_ComposePropagatesError(t *testing.T) {
 	require.ErrorIs(t, err, wantErr)
 }
 
-// Test_Security_NewGuardedClientDialer_DialsValidatedIPWithGuardDialer covers
+// Test_Security_ClientDialer_DialsValidatedIPWithGuardDialer covers
 // the strict-policy path for a client with no dialer of its own: the validated
 // IP is dialed through the guard's dialer.
-func Test_Security_NewGuardedClientDialer_DialsValidatedIPWithGuardDialer(t *testing.T) {
+func Test_Security_ClientDialer_DialsValidatedIPWithGuardDialer(t *testing.T) {
 	// Intentionally not parallel: it sets the strict security policy process-wide.
 	withSecurityPolicyForTest(t, DefaultSecurityPolicy()) // AllowPrivateIPs == false
 

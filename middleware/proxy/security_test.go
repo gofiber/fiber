@@ -335,7 +335,8 @@ func Test_Security_Do_BlocksFileScheme(t *testing.T) {
 }
 
 func Test_Security_DoRedirects_BlocksDowngrade(t *testing.T) {
-	// Intentionally not parallel: it sets a process-wide security policy.
+	// No t.Parallel: this test mutates the global SecurityPolicy and would
+	// otherwise race with other proxy tests that read it at runtime.
 	// Allow private IPs for the loopback test servers while keeping the
 	// downgrade protection enabled.
 	policy := DefaultSecurityPolicy()
@@ -468,32 +469,18 @@ func Test_Security_JoinUpstreamPath_PreservesBasePathPrefix(t *testing.T) {
 func Test_Security_FollowRedirects_StripsCredentialsCrossHost(t *testing.T) {
 	t.Parallel()
 
-	policy := DefaultSecurityPolicy()
-	policy.AllowPrivateIPs = true
-
 	t.Run("cross-host strips", func(t *testing.T) {
 		t.Parallel()
 		var sawAuth, sawCookie string
-		client, _ := newCountingRedirectClient(map[string]redirectStep{
+		followRecording(t, "http://first.example/", map[string]redirectStep{
 			"http://first.example/": {status: fasthttp.StatusFound, location: "http://second.example/next"},
-		})
-		client.onRequest = func(req *fasthttp.Request) {
+		}, withCredentials, func(req *fasthttp.Request) {
 			if string(req.URI().Host()) == "second.example" {
 				sawAuth = string(req.Header.Peek(fiber.HeaderAuthorization))
 				sawCookie = string(req.Header.Peek(fiber.HeaderCookie))
 			}
-		}
+		})
 
-		req := fasthttp.AcquireRequest()
-		resp := fasthttp.AcquireResponse()
-		defer fasthttp.ReleaseRequest(req)
-		defer fasthttp.ReleaseResponse(resp)
-		req.SetRequestURI("http://first.example/")
-		req.Header.SetMethod(fasthttp.MethodGet)
-		req.Header.Set(fiber.HeaderAuthorization, "Bearer secret")
-		req.Header.Set(fiber.HeaderCookie, "session=abc")
-
-		require.NoError(t, followRedirects(client.client, req, resp, 3, mustParseTestURL(t, "http://first.example/"), policy))
 		require.Empty(t, sawAuth, "Authorization must be stripped cross-host")
 		require.Empty(t, sawCookie, "Cookie must be stripped cross-host")
 	})
@@ -501,24 +488,14 @@ func Test_Security_FollowRedirects_StripsCredentialsCrossHost(t *testing.T) {
 	t.Run("same-host preserves", func(t *testing.T) {
 		t.Parallel()
 		var sawAuth string
-		client, _ := newCountingRedirectClient(map[string]redirectStep{
+		followRecording(t, "http://same.example/", map[string]redirectStep{
 			"http://same.example/": {status: fasthttp.StatusFound, location: "http://same.example/next"},
-		})
-		client.onRequest = func(req *fasthttp.Request) {
+		}, withCredentials, func(req *fasthttp.Request) {
 			if string(req.URI().RequestURI()) == "/next" {
 				sawAuth = string(req.Header.Peek(fiber.HeaderAuthorization))
 			}
-		}
+		})
 
-		req := fasthttp.AcquireRequest()
-		resp := fasthttp.AcquireResponse()
-		defer fasthttp.ReleaseRequest(req)
-		defer fasthttp.ReleaseResponse(resp)
-		req.SetRequestURI("http://same.example/")
-		req.Header.SetMethod(fasthttp.MethodGet)
-		req.Header.Set(fiber.HeaderAuthorization, "Bearer secret")
-
-		require.NoError(t, followRedirects(client.client, req, resp, 3, mustParseTestURL(t, "http://same.example/"), policy))
 		require.Equal(t, "Bearer secret", sawAuth, "Authorization must survive same-host redirect")
 	})
 }
@@ -531,27 +508,15 @@ func Test_Security_FollowRedirects_StripsCredentialsCrossHost(t *testing.T) {
 func Test_Security_FollowRedirects_ReappliesSchemePerHop(t *testing.T) {
 	t.Parallel()
 
-	policy := DefaultSecurityPolicy()
-	policy.AllowPrivateIPs = true
-
 	var secondHopScheme string
-	client, _ := newCountingRedirectClient(map[string]redirectStep{
+	followRecording(t, "http://origin.example/", map[string]redirectStep{
 		"http://origin.example/": {status: fasthttp.StatusFound, location: "https://origin.example/secure"},
-	})
-	client.onRequest = func(req *fasthttp.Request) {
+	}, nil, func(req *fasthttp.Request) {
 		if string(req.URI().Path()) == "/secure" {
 			secondHopScheme = string(req.URI().Scheme())
 		}
-	}
+	})
 
-	req := fasthttp.AcquireRequest()
-	resp := fasthttp.AcquireResponse()
-	defer fasthttp.ReleaseRequest(req)
-	defer fasthttp.ReleaseResponse(resp)
-	req.SetRequestURI("http://origin.example/")
-	req.Header.SetMethod(fasthttp.MethodGet)
-
-	require.NoError(t, followRedirects(client.client, req, resp, 3, mustParseTestURL(t, "http://origin.example/"), policy))
 	require.Equal(t, "https", secondHopScheme, "scheme upgrade must carry through to the next hop")
 }
 
@@ -591,7 +556,7 @@ func Test_Security_SecureTLSConfig_DefaultMinVersion(t *testing.T) {
 }
 
 func Test_Security_WithSecurityPolicy_RestoresDefaults(t *testing.T) {
-	// Intentionally not parallel: it swaps the process-wide security policy.
+	// No t.Parallel: mutates the global SecurityPolicy.
 	custom := DefaultSecurityPolicy()
 	custom.AllowPrivateIPs = true
 	prev := WithSecurityPolicy(custom)
@@ -1098,10 +1063,10 @@ func Test_Security_Balancer_BuildsHTTPSHostClient(t *testing.T) {
 	require.NotNil(t, h)
 }
 
-// Test_Security_NewSSRFDialer_BlocksLoopback verifies the dial-time SSRF
+// Test_Security_StrictDialer_BlocksLoopback verifies the dial-time SSRF
 // guard rejects both literal and hostname loopback targets before any
 // connection is made — this is what defeats DNS rebinding.
-func Test_Security_NewSSRFDialer_BlocksLoopback(t *testing.T) {
+func Test_Security_StrictDialer_BlocksLoopback(t *testing.T) {
 	t.Parallel()
 	dial := newDialGuard(false).strictDialer()
 
@@ -1112,9 +1077,9 @@ func Test_Security_NewSSRFDialer_BlocksLoopback(t *testing.T) {
 	require.ErrorIs(t, err, ErrUpstreamHostBlocked)
 }
 
-// Test_Security_NewSSRFDialer_RejectsMalformedAddr covers the
+// Test_Security_StrictDialer_RejectsMalformedAddr covers the
 // SplitHostPort error branch.
-func Test_Security_NewSSRFDialer_RejectsMalformedAddr(t *testing.T) {
+func Test_Security_StrictDialer_RejectsMalformedAddr(t *testing.T) {
 	t.Parallel()
 	dial := newDialGuard(false).strictDialer()
 	_, err := dial("no-port-here")
@@ -1213,34 +1178,67 @@ func mustParseTestURL(t *testing.T, raw string) *url.URL {
 	return u
 }
 
+// followRecording follows start through steps with a GET request that setup, if
+// set, reshapes, and hands record each request as it reaches the transport.
+func followRecording(t *testing.T, start string, steps map[string]redirectStep, setup, record func(req *fasthttp.Request)) {
+	t.Helper()
+
+	policy := DefaultSecurityPolicy()
+	policy.AllowPrivateIPs = true
+	client, _ := newCountingRedirectClient(steps)
+	client.onRequest = record
+
+	req := fasthttp.AcquireRequest()
+	resp := fasthttp.AcquireResponse()
+	defer fasthttp.ReleaseRequest(req)
+	defer fasthttp.ReleaseResponse(resp)
+	req.SetRequestURI(start)
+	req.Header.SetMethod(fasthttp.MethodGet)
+	if setup != nil {
+		setup(req)
+	}
+
+	require.NoError(t, followRedirects(client.client, req, resp, 3, mustParseTestURL(t, start), policy))
+}
+
+// withCredentials gives req what a redirect to another origin must not carry.
+func withCredentials(req *fasthttp.Request) {
+	req.Header.Set(fiber.HeaderAuthorization, "Bearer secret")
+	req.Header.Set(fiber.HeaderCookie, "session=abc")
+}
+
+// redirectRewriteCases is what a redirect leaves of a request, by method and
+// status: the method it goes on with and whether the body goes along.
+var redirectRewriteCases = []struct {
+	name       string
+	method     string
+	wantMethod string
+	status     int
+	wantBody   bool
+}{
+	{name: "301 POST", method: fasthttp.MethodPost, status: fasthttp.StatusMovedPermanently, wantMethod: fasthttp.MethodGet},
+	{name: "302 POST", method: fasthttp.MethodPost, status: fasthttp.StatusFound, wantMethod: fasthttp.MethodGet},
+	{name: "301 PUT", method: fasthttp.MethodPut, status: fasthttp.StatusMovedPermanently, wantMethod: fasthttp.MethodPut, wantBody: true},
+	{name: "302 PATCH", method: fasthttp.MethodPatch, status: fasthttp.StatusFound, wantMethod: fasthttp.MethodPatch, wantBody: true},
+	{name: "302 DELETE", method: fasthttp.MethodDelete, status: fasthttp.StatusFound, wantMethod: fasthttp.MethodDelete, wantBody: true},
+	{name: "303 POST", method: fasthttp.MethodPost, status: fasthttp.StatusSeeOther, wantMethod: fasthttp.MethodGet},
+	{name: "303 PUT", method: fasthttp.MethodPut, status: fasthttp.StatusSeeOther, wantMethod: fasthttp.MethodGet},
+	{name: "303 PATCH", method: fasthttp.MethodPatch, status: fasthttp.StatusSeeOther, wantMethod: fasthttp.MethodGet},
+	{name: "303 DELETE", method: fasthttp.MethodDelete, status: fasthttp.StatusSeeOther, wantMethod: fasthttp.MethodGet},
+	{name: "303 GET", method: fasthttp.MethodGet, status: fasthttp.StatusSeeOther, wantMethod: fasthttp.MethodGet, wantBody: true},
+	{name: "303 HEAD", method: fasthttp.MethodHead, status: fasthttp.StatusSeeOther, wantMethod: fasthttp.MethodHead, wantBody: true},
+	{name: "307 POST", method: fasthttp.MethodPost, status: fasthttp.StatusTemporaryRedirect, wantMethod: fasthttp.MethodPost, wantBody: true},
+	{name: "308 PUT", method: fasthttp.MethodPut, status: fasthttp.StatusPermanentRedirect, wantMethod: fasthttp.MethodPut, wantBody: true},
+	{name: "200 is no redirect", method: fasthttp.MethodPost, status: fasthttp.StatusOK, wantMethod: fasthttp.MethodPost, wantBody: true},
+}
+
 // Test_Security_RedirectRequest pins the request a redirect leaves for the next
 // hop: a 303 turns every method but GET and HEAD into GET, a 301 or 302 turns
 // POST into GET, and a 307 or 308 repeats the request.
 func Test_Security_RedirectRequest(t *testing.T) {
 	t.Parallel()
 
-	for _, tc := range []struct {
-		name       string
-		method     string
-		wantMethod string
-		status     int
-		wantBody   bool
-	}{
-		{name: "301 POST", method: fasthttp.MethodPost, status: fasthttp.StatusMovedPermanently, wantMethod: fasthttp.MethodGet},
-		{name: "302 POST", method: fasthttp.MethodPost, status: fasthttp.StatusFound, wantMethod: fasthttp.MethodGet},
-		{name: "301 PUT", method: fasthttp.MethodPut, status: fasthttp.StatusMovedPermanently, wantMethod: fasthttp.MethodPut, wantBody: true},
-		{name: "302 PATCH", method: fasthttp.MethodPatch, status: fasthttp.StatusFound, wantMethod: fasthttp.MethodPatch, wantBody: true},
-		{name: "302 DELETE", method: fasthttp.MethodDelete, status: fasthttp.StatusFound, wantMethod: fasthttp.MethodDelete, wantBody: true},
-		{name: "303 POST", method: fasthttp.MethodPost, status: fasthttp.StatusSeeOther, wantMethod: fasthttp.MethodGet},
-		{name: "303 PUT", method: fasthttp.MethodPut, status: fasthttp.StatusSeeOther, wantMethod: fasthttp.MethodGet},
-		{name: "303 PATCH", method: fasthttp.MethodPatch, status: fasthttp.StatusSeeOther, wantMethod: fasthttp.MethodGet},
-		{name: "303 DELETE", method: fasthttp.MethodDelete, status: fasthttp.StatusSeeOther, wantMethod: fasthttp.MethodGet},
-		{name: "303 GET", method: fasthttp.MethodGet, status: fasthttp.StatusSeeOther, wantMethod: fasthttp.MethodGet, wantBody: true},
-		{name: "303 HEAD", method: fasthttp.MethodHead, status: fasthttp.StatusSeeOther, wantMethod: fasthttp.MethodHead, wantBody: true},
-		{name: "307 POST", method: fasthttp.MethodPost, status: fasthttp.StatusTemporaryRedirect, wantMethod: fasthttp.MethodPost, wantBody: true},
-		{name: "308 PUT", method: fasthttp.MethodPut, status: fasthttp.StatusPermanentRedirect, wantMethod: fasthttp.MethodPut, wantBody: true},
-		{name: "200 is no redirect", method: fasthttp.MethodPost, status: fasthttp.StatusOK, wantMethod: fasthttp.MethodPost, wantBody: true},
-	} {
+	for _, tc := range redirectRewriteCases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -1345,49 +1343,33 @@ func Test_Security_RedirectRequest_DropsFraming(t *testing.T) {
 	require.NotContains(t, wire, "abc")
 }
 
-// Test_Security_FollowRedirects_MethodPerStatus drives redirectRequest through
+// Test_Security_FollowRedirects_MethodPerStatus drives the same cases through
 // the redirect loop: what the second hop receives.
 func Test_Security_FollowRedirects_MethodPerStatus(t *testing.T) {
 	t.Parallel()
 
-	policy := DefaultSecurityPolicy()
-	policy.AllowPrivateIPs = true
-
-	for _, tc := range []struct {
-		name       string
-		method     string
-		wantSecond string
-		status     int
-	}{
-		{name: "301 keeps PUT and its body", method: fasthttp.MethodPut, status: fasthttp.StatusMovedPermanently, wantSecond: "PUT payload"},
-		{name: "302 turns POST into GET", method: fasthttp.MethodPost, status: fasthttp.StatusFound, wantSecond: "GET "},
-		{name: "303 turns PUT into GET", method: fasthttp.MethodPut, status: fasthttp.StatusSeeOther, wantSecond: "GET "},
-		{name: "303 turns PATCH into GET", method: fasthttp.MethodPatch, status: fasthttp.StatusSeeOther, wantSecond: "GET "},
-		{name: "303 turns DELETE into GET", method: fasthttp.MethodDelete, status: fasthttp.StatusSeeOther, wantSecond: "GET "},
-		{name: "307 repeats POST", method: fasthttp.MethodPost, status: fasthttp.StatusTemporaryRedirect, wantSecond: "POST payload"},
-		{name: "308 repeats DELETE", method: fasthttp.MethodDelete, status: fasthttp.StatusPermanentRedirect, wantSecond: "DELETE payload"},
-	} {
+	for _, tc := range redirectRewriteCases {
+		if !fasthttp.StatusCodeIsRedirect(tc.status) {
+			continue
+		}
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
 			var hops []string
-			client, _ := newCountingRedirectClient(map[string]redirectStep{
+			followRecording(t, "http://example.com/start", map[string]redirectStep{
 				"http://example.com/start": {status: tc.status, location: "http://example.com/after"},
-			})
-			client.onRequest = func(req *fasthttp.Request) {
+			}, func(req *fasthttp.Request) {
+				req.Header.SetMethod(tc.method)
+				req.SetBodyString("payload")
+			}, func(req *fasthttp.Request) {
 				hops = append(hops, string(req.Header.Method())+" "+string(req.Body()))
+			})
+
+			second := tc.wantMethod + " "
+			if tc.wantBody {
+				second += "payload"
 			}
-
-			req := fasthttp.AcquireRequest()
-			resp := fasthttp.AcquireResponse()
-			defer fasthttp.ReleaseRequest(req)
-			defer fasthttp.ReleaseResponse(resp)
-			req.SetRequestURI("http://example.com/start")
-			req.Header.SetMethod(tc.method)
-			req.SetBodyString("payload")
-
-			require.NoError(t, followRedirects(client.client, req, resp, 3, mustParseTestURL(t, "http://example.com/start"), policy))
-			require.Equal(t, []string{tc.method + " payload", tc.wantSecond}, hops)
+			require.Equal(t, []string{tc.method + " payload", second}, hops)
 		})
 	}
 }
@@ -1397,9 +1379,6 @@ func Test_Security_FollowRedirects_MethodPerStatus(t *testing.T) {
 // credentials.
 func Test_Security_FollowRedirects_StripsCredentialsOnPortChange(t *testing.T) {
 	t.Parallel()
-
-	policy := DefaultSecurityPolicy()
-	policy.AllowPrivateIPs = true
 
 	for name, tc := range map[string]struct {
 		location string
@@ -1412,26 +1391,15 @@ func Test_Security_FollowRedirects_StripsCredentialsOnPortChange(t *testing.T) {
 			t.Parallel()
 
 			var sawAuth, sawCookie string
-			client, _ := newCountingRedirectClient(map[string]redirectStep{
+			followRecording(t, "http://same.example:8080/", map[string]redirectStep{
 				"http://same.example:8080/": {status: fasthttp.StatusFound, location: tc.location},
-			})
-			client.onRequest = func(req *fasthttp.Request) {
+			}, withCredentials, func(req *fasthttp.Request) {
 				if string(req.URI().Path()) == "/next" {
 					sawAuth = string(req.Header.Peek(fiber.HeaderAuthorization))
 					sawCookie = string(req.Header.Peek(fiber.HeaderCookie))
 				}
-			}
+			})
 
-			req := fasthttp.AcquireRequest()
-			resp := fasthttp.AcquireResponse()
-			defer fasthttp.ReleaseRequest(req)
-			defer fasthttp.ReleaseResponse(resp)
-			req.SetRequestURI("http://same.example:8080/")
-			req.Header.SetMethod(fasthttp.MethodGet)
-			req.Header.Set(fiber.HeaderAuthorization, "Bearer secret")
-			req.Header.Set(fiber.HeaderCookie, "session=abc")
-
-			require.NoError(t, followRedirects(client.client, req, resp, 3, mustParseTestURL(t, "http://same.example:8080/"), policy))
 			require.Equal(t, tc.wantAuth, sawAuth)
 			if tc.wantAuth == "" {
 				require.Empty(t, sawCookie)

@@ -684,7 +684,7 @@ func Test_Proxy_Balancer_AllowAmbiguousSlashes(t *testing.T) {
 // Test_Proxy_Forward_AllowAmbiguousSlashes pins the same opt-out for
 // DomainForward and BalancerForward, which follow the global policy.
 func Test_Proxy_Forward_AllowAmbiguousSlashes(t *testing.T) {
-	// Intentionally not parallel: it sets a process-wide security policy.
+	// Not parallel: installs a global security policy.
 	policy := DefaultSecurityPolicy()
 	policy.AllowPrivateIPs = true
 	policy.AllowAmbiguousSlashes = true

@@ -113,7 +113,7 @@ func restoreGlobalProxyClient(t *testing.T) {
 
 // go test -run Test_Proxy_DefaultClient_MaxConnsPerHost
 func Test_Proxy_DefaultClient_MaxConnsPerHost(t *testing.T) {
-	// Intentionally not parallel: it reads the shared client that WithClient tests replace.
+	t.Parallel()
 	require.Equal(t, defaultMaxConnsPerHost, sharedClient.Load().MaxConnsPerHost)
 }
 

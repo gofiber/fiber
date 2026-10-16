@@ -121,9 +121,9 @@ func Test_Coverage_DialValidatedIPs_DualStackTriesV6(t *testing.T) {
 	require.Equal(t, "[2606:4700:4700::1111]:443", addr)
 }
 
-// Test_Coverage_NewSSRFDialer_RejectsLoopbackHostname drives the
+// Test_Coverage_StrictDialer_RejectsLoopbackHostname drives the
 // SplitHostPort → resolveAndValidateHost → blocked-IP rejection branch.
-func Test_Coverage_NewSSRFDialer_RejectsLoopbackHostname(t *testing.T) {
+func Test_Coverage_StrictDialer_RejectsLoopbackHostname(t *testing.T) {
 	t.Parallel()
 	dial := newDialGuard(false).strictDialer()
 	_, err := dial("localhost:65535")
@@ -131,13 +131,13 @@ func Test_Coverage_NewSSRFDialer_RejectsLoopbackHostname(t *testing.T) {
 	require.ErrorIs(t, err, ErrUpstreamHostBlocked)
 }
 
-// Test_Coverage_NewSSRFDialer_PassesGuardThenDials covers the post-guard
+// Test_Coverage_StrictDialer_PassesGuardThenDials covers the post-guard
 // dial dispatch (the final return inside dialGuard.strictDialer). TEST-NET-1
 // (192.0.2.0/24, RFC 5737) is reserved for documentation and not in the
 // blocked ranges, so it survives the SSRF check; the dial itself fails
 // fast because the kernel has no route. We only assert that an error
 // surfaced — the *type* of error depends on the host's networking stack.
-func Test_Coverage_NewSSRFDialer_PassesGuardThenDials(t *testing.T) {
+func Test_Coverage_StrictDialer_PassesGuardThenDials(t *testing.T) {
 	t.Parallel()
 	dial := newDialGuard(true).strictDialer() // dualStack so the dial loop is reached
 	_, err := dial("192.0.2.1:1")
