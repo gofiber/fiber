@@ -655,6 +655,39 @@ func Test_Security_ValidateHostForSSRF_LookupFailure(t *testing.T) {
 	require.ErrorIs(t, err, ErrUpstreamHostBlocked)
 }
 
+// Test_Security_ValidateHostForSSRF_IPLiteralAllocs pins the check that runs on
+// every request for an upstream given as an IP literal: parsing the address is
+// all it allocates for.
+func Test_Security_ValidateHostForSSRF_IPLiteralAllocs(t *testing.T) {
+	// Intentionally not parallel: AllocsPerRun counts allocations process-wide and panics in a parallel test.
+	var err error
+	allocs := testing.AllocsPerRun(100, func() { err = validateHostForSSRF("203.0.113.5") })
+	require.NoError(t, err)
+	require.LessOrEqual(t, allocs, 1.0)
+}
+
+// Test_Security_ValidateResolved pins what a lookup may answer: one or more
+// addresses, none of them blocked.
+func Test_Security_ValidateResolved(t *testing.T) {
+	t.Parallel()
+
+	public := net.IPAddr{IP: net.ParseIP("198.51.100.7")}
+	private := net.IPAddr{IP: net.ParseIP("10.0.0.1")}
+
+	_, err := validateResolved("empty.test", nil)
+	require.ErrorIs(t, err, ErrUpstreamHostBlocked)
+	require.ErrorContains(t, err, "empty.test has no addresses")
+
+	_, err = validateResolved("mixed.test", []net.IPAddr{public, private})
+	require.ErrorIs(t, err, ErrUpstreamHostBlocked)
+	require.ErrorContains(t, err, "mixed.test -> 10.0.0.1")
+
+	ips, err := validateResolved("ok.test", []net.IPAddr{public})
+	require.NoError(t, err)
+	require.Len(t, ips, 1)
+	require.True(t, ips[0].Equal(public.IP))
+}
+
 // Test_Security_ValidateUpstream_EmptyHostAfterScheme covers the post-
 // scheme-check "host empty" guard. "http:///path" parses with scheme
 // "http" and no host.

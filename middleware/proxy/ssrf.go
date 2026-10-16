@@ -39,7 +39,16 @@ func validateHostForSSRF(host string) error {
 	}
 	// strip brackets from IPv6 literals (url.Hostname already does this
 	// in most cases, but keep the guard for defensive callers).
-	_, err := resolveAndValidateHost(trimBrackets(host))
+	host = trimBrackets(host)
+	// Checked here rather than by resolveAndValidateHost: this runs on every
+	// request and has no use for the slice that returns.
+	if ip := net.ParseIP(host); ip != nil {
+		if isBlockedIP(ip) {
+			return fmt.Errorf("%w: %s", ErrUpstreamHostBlocked, ip)
+		}
+		return nil
+	}
+	_, err := resolveAndValidateHost(host)
 	return err
 }
 
@@ -49,10 +58,7 @@ func validateHostForSSRF(host string) error {
 // reply cannot slip past the guard.
 func resolveAndValidateHost(host string) ([]net.IP, error) {
 	if ip := net.ParseIP(host); ip != nil {
-		if isBlockedIP(ip) {
-			return nil, fmt.Errorf("%w: %s", ErrUpstreamHostBlocked, ip)
-		}
-		return []net.IP{ip}, nil
+		return validateResolved(host, []net.IPAddr{{IP: ip}})
 	}
 	// Bound the lookup so a slow resolver cannot stall the caller.
 	ctx, cancel := context.WithTimeout(context.Background(), dnsLookupTimeout)
@@ -60,6 +66,15 @@ func resolveAndValidateHost(host string) ([]net.IP, error) {
 	addrs, err := dnsResolver.Load().LookupIPAddr(ctx, host)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %s lookup failed: %w", ErrUpstreamHostBlocked, host, err)
+	}
+	return validateResolved(host, addrs)
+}
+
+// validateResolved applies the blocklist to every address host resolved to and
+// returns them. An empty answer is refused: it leaves nothing to dial.
+func validateResolved(host string, addrs []net.IPAddr) ([]net.IP, error) {
+	if len(addrs) == 0 {
+		return nil, fmt.Errorf("%w: %s has no addresses", ErrUpstreamHostBlocked, host)
 	}
 	ips := make([]net.IP, len(addrs))
 	for i, addr := range addrs {
