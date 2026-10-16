@@ -132,3 +132,17 @@ func configDefault(config ...Config) Config {
 	}
 	return cfg
 }
+
+// secureTLSConfig returns a clone of cfg with a TLS 1.2 floor. The
+// caller's tls.Config is never mutated so per-host clients can share an
+// immutable template without surprise.
+func secureTLSConfig(cfg *tls.Config) *tls.Config {
+	if cfg == nil {
+		return &tls.Config{MinVersion: tls.VersionTLS12}
+	}
+	cloned := cfg.Clone()
+	if cloned.MinVersion == 0 {
+		cloned.MinVersion = tls.VersionTLS12
+	}
+	return cloned
+}

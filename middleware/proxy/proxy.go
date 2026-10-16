@@ -5,18 +5,14 @@ import (
 	"errors"
 	"net"
 	"net/url"
-	"reflect"
 	"strings"
-	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/gofiber/utils/v2"
 
 	"github.com/gofiber/fiber/v3"
-	"github.com/gofiber/fiber/v3/internal/crosshost"
 
-	"github.com/gofiber/fiber/v3/internal/fieldname"
 	"github.com/gofiber/fiber/v3/internal/headerlookup"
 	"github.com/gofiber/fiber/v3/internal/idnafold"
 	"github.com/gofiber/fiber/v3/internal/wiretarget"
@@ -209,79 +205,6 @@ func segmentsAsRouted(target string, policy SecurityPolicy) bool {
 	return wiretarget.SegmentsAsRouted(target)
 }
 
-// guardedConfigureClient composes a client's optional pre-existing
-// ConfigureClient hook with the dial-time SSRF guard. It is installed on a
-// *fasthttp.Client as the bound method value (&guardedConfigureClient{…}).run,
-// which fasthttp calls once per HostClient it creates — so the guard is
-// present before the first dial to each host and covers both the Dial and
-// DialTimeout code paths.
-//
-// The bound method's code pointer is stable across receivers (unlike a
-// closure's), so ensureClientGuarded recognizes an already-guarded client by
-// identity — no package-level map keyed by the client, which would pin the
-// client and its connection pool for the process lifetime. The struct is
-// referenced only from the client's own ConfigureClient field, so it is
-// collected together with the client.
-type guardedConfigureClient struct {
-	// orig is the caller's ConfigureClient hook, or nil. It runs before the
-	// guard so the guard wraps whatever Dial/DialTimeout it finally sets —
-	// running it after would let a hook that assigns hc.Dial overwrite the
-	// guard and reopen the SSRF hole.
-	orig func(hc *fasthttp.HostClient) error
-}
-
-func (g *guardedConfigureClient) run(hc *fasthttp.HostClient) error {
-	if g.orig != nil {
-		if err := g.orig(hc); err != nil {
-			return err
-		}
-	}
-	installHostClientGuard(hc)
-	// The target the proxy hands the client is the one it matched and
-	// validated; a client left normalizing would decode "%2F" into a
-	// separator and merge "//" on the way out, undoing that.
-	hc.DisablePathNormalizing = true
-	return nil
-}
-
-// guardHookPtr is the code pointer shared by every guardedConfigureClient.run
-// method value, used to detect whether a client is already guarded.
-var guardHookPtr = reflect.ValueOf((&guardedConfigureClient{}).run).Pointer()
-
-// guardMu serializes the read-modify-write of a client's ConfigureClient in
-// ensureClientGuarded, so a concurrent guarder cannot write the field mid
-// update or observe it half-installed.
-var guardMu sync.Mutex
-
-// ensureClientGuarded installs the SSRF guard on cli via its ConfigureClient
-// hook, exactly once (idempotent: a client already carrying the guard method
-// is left untouched). It composes with any hook the client already has,
-// without retaining a reference to the client. It is invoked at registration
-// for the default client (init) and WithClient clients — before either is
-// used — and on the dispatch path only for a per-call variadic client (the
-// global client is already guarded), so the common no-variadic request path
-// never reaches this lock. A handler built with a fixed variadic client (e.g.
-// Forward(addr, cli)) does take guardMu once per request; that is a deliberate
-// correctness-over-throughput choice (an unlocked fast path would race a
-// first-time writer).
-//
-// Guarantee scope: the default client and WithClient clients are fully
-// protected. A client supplied as a per-call variadic argument is guarded on
-// first use — but a host it had already dialed keeps its cached, pre-hook
-// HostClient, and mutating a client shared with concurrent non-proxy use is
-// inherently racy. For a full guarantee with a custom client, register it
-// via WithClient before first use, or hand the proxy a dedicated client.
-func ensureClientGuarded(cli *fasthttp.Client) {
-	guardMu.Lock()
-	defer guardMu.Unlock()
-
-	existing := cli.ConfigureClient
-	if existing != nil && reflect.ValueOf(existing).Pointer() == guardHookPtr {
-		return // already guarded (directly or composed with a user hook)
-	}
-	cli.ConfigureClient = (&guardedConfigureClient{orig: existing}).run
-}
-
 func init() {
 	ensureClientGuarded(defaultClient)
 	client.Store(defaultClient)
@@ -300,43 +223,6 @@ func WithClient(cli *fasthttp.Client) {
 
 	ensureClientGuarded(cli)
 	client.Store(cli)
-}
-
-// realIPHeader is the field the proxy overwrites with the peer address Fiber
-// derived, so an upstream reading it sees this hop's view rather than the
-// client's claim.
-const realIPHeader = "X-Real-IP"
-
-// setRealIP replaces every inbound X-Real-IP field line with ip, the peer
-// address Fiber derived. Set alone overwrites the first and leaves the rest, so
-// a client sending it twice kept a value of its own on the wire.
-//
-// The caller reads ip with realIP, from the request as received and before
-// any field is removed: with ProxyHeader set to "X-Real-IP", c.IP() reads the
-// very header being replaced, and deleting first handed the upstream an empty
-// value; set to another name, it may read one the client listed in Connection.
-func setRealIP(c fiber.Ctx, ip []byte) {
-	// Add, not Set: nothing is left to replace, and Add says what is meant.
-	// fieldname.Del rather than Del so a differently-spelled line does not
-	// survive beside it.
-	fieldname.Del(&c.Request().Header, realIPHeader, headerlookup.Canonical(c))
-	c.Request().Header.AddBytesV(realIPHeader, ip)
-}
-
-// realIPScratch is the stack room for an address copied out of the request:
-// the longest IPv6 text form is 45 bytes, and a zone may follow it. A longer
-// value, such as a whole forwarding chain read without validation, spills to
-// the heap and is still correct.
-const realIPScratch = 64
-
-// realIP copies the peer address Fiber derived into buf, which the caller
-// keeps for as long as the address is needed. A copy rather than the string
-// itself: with ProxyHeader set, c.IP() aliases that header's own buffer, and
-// removing Trailer afterwards returns the received trailer fields to the
-// header section, where fasthttp reuses the buffers of the lines deleted
-// before them in place.
-func realIP(c fiber.Ctx, buf []byte) []byte {
-	return append(buf[:0], c.IP()...)
 }
 
 // forwardWithRealIP is what Forward, DomainForward and BalancerForward share:
@@ -584,12 +470,6 @@ func followRedirects(cli *fasthttp.Client, req *fasthttp.Request, resp *fasthttp
 			currentHost = nextURL.Host
 		}
 		currentURL = nextURL
-	}
-}
-
-func stripCrossHostHeaders(req *fasthttp.Request, normalized bool) { //nolint:revive // flag-parameter: normalized is a property of the header store
-	for _, h := range crosshost.SensitiveHeaders {
-		fieldname.Del(&req.Header, h, normalized)
 	}
 }
 
