@@ -61,16 +61,13 @@ func Test_Coverage_ResolveAndValidateHost_LookupFails(t *testing.T) {
 func Test_Coverage_DialValidatedIPs_SuccessOnIPv4(t *testing.T) {
 	t.Parallel()
 	called := atomic.Bool{}
-	conn, err := dialGuard{}.dialValidatedIPs(
-		[]net.IP{net.ParseIP("203.0.113.1")},
-		"example.test", "80",
-		func(network, addr string) (net.Conn, error) {
-			called.Store(true)
-			require.Equal(t, "tcp", network)
-			require.Equal(t, "203.0.113.1:80", addr)
-			return stubConn{addr: addr}, nil
-		},
-	)
+	guard := dialGuard{dial: func(network, addr string) (net.Conn, error) {
+		called.Store(true)
+		require.Equal(t, "tcp", network)
+		require.Equal(t, "203.0.113.1:80", addr)
+		return stubConn{addr: addr}, nil
+	}}
+	conn, err := guard.dialValidatedIPs([]net.IP{net.ParseIP("203.0.113.1")}, "example.test", "80")
 	require.NoError(t, err)
 	require.NotNil(t, conn)
 	require.True(t, called.Load())
@@ -83,14 +80,11 @@ func Test_Coverage_DialValidatedIPs_SuccessOnIPv4(t *testing.T) {
 func Test_Coverage_DialValidatedIPs_SkipsV6_WhenNoDualStack(t *testing.T) {
 	t.Parallel()
 	called := atomic.Bool{}
-	_, err := dialGuard{}.dialValidatedIPs(
-		[]net.IP{net.ParseIP("2606:4700:4700::1111")},
-		"example.test", "80",
-		func(string, string) (net.Conn, error) {
-			called.Store(true)
-			return nil, errors.New("should not dial")
-		},
-	)
+	guard := dialGuard{dial: func(string, string) (net.Conn, error) {
+		called.Store(true)
+		return nil, errors.New("should not dial")
+	}}
+	_, err := guard.dialValidatedIPs([]net.IP{net.ParseIP("2606:4700:4700::1111")}, "example.test", "80")
 	require.ErrorIs(t, err, ErrUpstreamHostBlocked)
 	require.Contains(t, err.Error(), "no usable address")
 	require.False(t, called.Load(), "IPv6 candidate must be skipped without dialing")
@@ -103,14 +97,11 @@ func Test_Coverage_DialValidatedIPs_FallsBackOnError(t *testing.T) {
 	t.Parallel()
 	sentinel := errors.New("dial-refused")
 	var attempts atomic.Int32
-	_, err := dialGuard{}.dialValidatedIPs(
-		[]net.IP{net.ParseIP("203.0.113.1"), net.ParseIP("203.0.113.2")},
-		"example.test", "80",
-		func(string, string) (net.Conn, error) {
-			attempts.Add(1)
-			return nil, sentinel
-		},
-	)
+	guard := dialGuard{dial: func(string, string) (net.Conn, error) {
+		attempts.Add(1)
+		return nil, sentinel
+	}}
+	_, err := guard.dialValidatedIPs([]net.IP{net.ParseIP("203.0.113.1"), net.ParseIP("203.0.113.2")}, "example.test", "80")
 	require.ErrorIs(t, err, sentinel)
 	require.Equal(t, int32(2), attempts.Load())
 }
@@ -121,14 +112,11 @@ func Test_Coverage_DialValidatedIPs_FallsBackOnError(t *testing.T) {
 func Test_Coverage_DialValidatedIPs_DualStackTriesV6(t *testing.T) {
 	t.Parallel()
 	var addr string
-	_, err := dialGuard{dualStack: true}.dialValidatedIPs(
-		[]net.IP{net.ParseIP("2606:4700:4700::1111")},
-		"example.test", "443",
-		func(_, a string) (net.Conn, error) {
-			addr = a
-			return stubConn{addr: a}, nil
-		},
-	)
+	guard := dialGuard{dualStack: true, dial: func(_, a string) (net.Conn, error) {
+		addr = a
+		return stubConn{addr: a}, nil
+	}}
+	_, err := guard.dialValidatedIPs([]net.IP{net.ParseIP("2606:4700:4700::1111")}, "example.test", "443")
 	require.NoError(t, err)
 	require.Equal(t, "[2606:4700:4700::1111]:443", addr)
 }
@@ -274,14 +262,11 @@ func Test_Coverage_ConfigDefault_FillsDefaults(t *testing.T) {
 func Test_Coverage_DialValidatedIPs_SkipsV6ThenDialsV4(t *testing.T) {
 	t.Parallel()
 	var dialed string
-	conn, err := dialGuard{}.dialValidatedIPs(
-		[]net.IP{net.ParseIP("2001:db8::1"), net.ParseIP("203.0.113.5")},
-		"example.test", "443",
-		func(_, addr string) (net.Conn, error) {
-			dialed = addr
-			return stubConn{addr: addr}, nil
-		},
-	)
+	guard := dialGuard{dial: func(_, addr string) (net.Conn, error) {
+		dialed = addr
+		return stubConn{addr: addr}, nil
+	}}
+	conn, err := guard.dialValidatedIPs([]net.IP{net.ParseIP("2001:db8::1"), net.ParseIP("203.0.113.5")}, "example.test", "443")
 	require.NoError(t, err)
 	require.NotNil(t, conn)
 	require.Equal(t, "203.0.113.5:443", dialed)
