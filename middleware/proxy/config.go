@@ -28,19 +28,16 @@ type Config struct {
 	// tls config for the http client.
 	TLSConfig *tls.Config
 
-	// Client is custom client when client config is complex. Each
-	// *fasthttp.HostClient among its Clients gets DisablePathNormalizing set.
-	// When it is set, Servers, Timeout, MaxConnsPerHost, ReadBufferSize,
-	// WriteBufferSize, MaxResponseBodySize, TLSConfig and DialDualStack are not
-	// used, and its dialers get no SSRF guard: validate the resolved IP in them.
-	//
-	// Optional. Default: nil
+	// Client is custom client when client config is complex.
+	// Note that Servers, Timeout, MaxConnsPerHost, ReadBufferSize,
+	// WriteBufferSize, MaxResponseBodySize, TLSConfig and DialDualStack will
+	// not be used if the client is set, and its dialers get no SSRF guard.
 	Client *fasthttp.LBClient
 
 	// SecurityPolicy overrides the default SSRF, redirect, and
 	// hop-by-hop header rules for this balancer. When nil, the
-	// package-level policy set via WithSecurityPolicy is used. Either way
-	// the policy is settled once, when the balancer is built.
+	// package-level policy set via WithSecurityPolicy is used. It is read once,
+	// when the balancer is built.
 	//
 	// Optional. Default: nil
 	SecurityPolicy *SecurityPolicy
@@ -49,10 +46,8 @@ type Config struct {
 	// which are used in a round-robin manner.
 	// i.e.: "https://foobar.com, http://www.foobar.com"
 	//
-	// Each entry is a scheme and host only: one with a path, userinfo, query or
-	// fragment panics at startup with ErrUpstreamNotOrigin. An entry without a
-	// scheme ("host:port") is read as http://host:port, and a lone trailing
-	// slash is ignored.
+	// An entry with a path, userinfo, query or fragment panics with
+	// ErrUpstreamNotOrigin; "host:port" is read as http://host:port.
 	//
 	// Required unless Client is set
 	Servers []string
@@ -79,8 +74,7 @@ type Config struct {
 	// MaxResponseBodySize bounds the size (in bytes) of upstream
 	// responses accepted by the proxy. Responses larger than this are
 	// rejected to protect the proxy from memory exhaustion. Zero
-	// preserves fasthttp's default unlimited behavior, so set it when an
-	// upstream is not trusted to answer with a small body.
+	// preserves fasthttp's default unlimited behavior.
 	//
 	// Optional. Default: 0
 	MaxResponseBodySize int
@@ -134,9 +128,7 @@ func configDefault(config ...Config) Config {
 		cfg.MaxConnsPerHost = ConfigDefault.MaxConnsPerHost
 	}
 
-	// No upstream makes a sensible default, so Servers (or a Client) is
-	// required whether or not a Config was passed: Balancer() stops at startup
-	// just as Balancer(Config{}) does, instead of failing on its first request.
+	// Servers (or a Client) is required even when no Config was passed
 	if len(cfg.Servers) == 0 && cfg.Client == nil {
 		panic("Servers cannot be empty")
 	}

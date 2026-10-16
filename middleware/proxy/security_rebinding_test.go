@@ -151,9 +151,7 @@ func withRebindingResolver(t *testing.T, dnsAddr string) {
 // is reached. Covered for both the shared default client and a per-call
 // custom client (proving auto-guarding covers user-supplied clients).
 func Test_Security_Do_BlocksDNSRebinding(t *testing.T) {
-	// Intentionally not parallel: it swaps the process-wide DNS resolver and
-	// security policy, so it must run alone for the dial-time guard to see the
-	// rebinding this test sets up.
+	// Intentionally not parallel: it swaps the process-wide DNS resolver and security policy.
 	withSecurityPolicyForTest(t, DefaultSecurityPolicy()) // AllowPrivateIPs == false
 
 	// dispatch names the client path under test. Each subtest gets a fresh
@@ -184,8 +182,8 @@ func Test_Security_Do_BlocksDNSRebinding(t *testing.T) {
 
 	for name, do := range dispatch {
 		t.Run(name, func(t *testing.T) {
-			// Intentionally not parallel: each case swaps the process-wide DNS
-			// resolver for its own fake server, so the cases run one at a time.
+			// Intentionally not parallel: each case swaps the process-wide DNS resolver.
+
 			// The "internal" service the attacker wants to reach.
 			_, internalAddr := createProxyTestServerIPv4(t, func(c fiber.Ctx) error {
 				return c.SendString("SECRET_INTERNAL_DATA")
@@ -232,9 +230,7 @@ func Test_Security_Do_BlocksDNSRebinding(t *testing.T) {
 // the composable client guard rejects loopback targets — literal and
 // hostname — when the active policy forbids private IPs.
 func Test_Security_NewGuardedClientDialer_BlocksWhenPrivateDisallowed(t *testing.T) {
-	// Intentionally not parallel: it installs the strict security policy for
-	// the whole process, so it must run alone for the guard to be tested
-	// against exactly that policy.
+	// Intentionally not parallel: it sets the strict security policy process-wide.
 	withSecurityPolicyForTest(t, DefaultSecurityPolicy()) // AllowPrivateIPs == false
 
 	dial := newDialGuard(false).clientDialer(nil)
@@ -250,9 +246,7 @@ func Test_Security_NewGuardedClientDialer_BlocksWhenPrivateDisallowed(t *testing
 // an allowed (public) target, the guard dials the validated address through
 // the caller-supplied dialer instead of establishing its own connection.
 func Test_Security_NewGuardedClientDialer_ComposesWithOrig(t *testing.T) {
-	// Intentionally not parallel: it installs the strict security policy for
-	// the whole process, so it must run alone for the guard to be tested
-	// against exactly that policy.
+	// Intentionally not parallel: it sets the strict security policy process-wide.
 	withSecurityPolicyForTest(t, DefaultSecurityPolicy()) // AllowPrivateIPs == false
 
 	var got string
@@ -276,9 +270,7 @@ func Test_Security_NewGuardedClientDialer_ComposesWithOrig(t *testing.T) {
 // AllowPrivateIPs=true (the delegate branch), so this is the only coverage of
 // the resolve→validate→dial success path.
 func Test_Security_NewGuardedClientDialer_AllowsValidatedHostname(t *testing.T) {
-	// Intentionally not parallel: it installs the strict security policy and
-	// swaps the process-wide DNS resolver, so it must run alone for the guard
-	// to see the lookups this test sets up.
+	// Intentionally not parallel: it swaps the process-wide policy and DNS resolver.
 	withSecurityPolicyForTest(t, DefaultSecurityPolicy()) // AllowPrivateIPs == false
 
 	// Resolver maps the name to a public IP on every answer (no rebinding).
@@ -307,9 +299,7 @@ func Test_Security_NewGuardedClientDialer_AllowsValidatedHostname(t *testing.T) 
 // let the user's dialer overwrite the guard and reopen the SSRF hole, so this
 // test is the regression guard for that ordering.
 func Test_Security_EnsureClientGuarded_ComposesAndIsIdempotent(t *testing.T) {
-	// Intentionally not parallel: it installs the strict security policy for
-	// the whole process, so it must run alone for the guard to be tested
-	// against exactly that policy.
+	// Intentionally not parallel: it sets the strict security policy process-wide.
 	withSecurityPolicyForTest(t, DefaultSecurityPolicy()) // AllowPrivateIPs == false
 
 	called := 0
@@ -353,9 +343,7 @@ func Test_Security_EnsureClientGuarded_ComposesAndIsIdempotent(t *testing.T) {
 // idempotent, for both the nil-ConfigureClient and pre-existing-hook paths.
 // Regression guard for the serializing mutex in ensureClientGuarded.
 func Test_Security_EnsureClientGuarded_ConcurrentIsSafe(t *testing.T) {
-	// Intentionally not parallel: it installs the strict security policy for
-	// the whole process, so it must run alone for the guard to be tested
-	// against exactly that policy.
+	// Intentionally not parallel: it sets the strict security policy process-wide.
 	withSecurityPolicyForTest(t, DefaultSecurityPolicy()) // AllowPrivateIPs == false
 
 	cases := map[string]func(*fasthttp.HostClient) error{
@@ -365,9 +353,7 @@ func Test_Security_EnsureClientGuarded_ConcurrentIsSafe(t *testing.T) {
 
 	for name, hook := range cases {
 		t.Run(name, func(t *testing.T) {
-			// Intentionally not parallel: the goroutines below are the
-			// contention under test, and each case must finish guarding before
-			// the next starts.
+			// Intentionally not parallel: each case's goroutines are the contention under test.
 			cli := &fasthttp.Client{ConfigureClient: hook}
 
 			var wg sync.WaitGroup
@@ -392,9 +378,7 @@ func Test_Security_EnsureClientGuarded_ConcurrentIsSafe(t *testing.T) {
 // wrapped (fasthttp prefers DialTimeout over Dial), and the wrapped func
 // blocks a loopback target under the strict policy.
 func Test_Security_InstallHostClientGuard_GuardsDialTimeout(t *testing.T) {
-	// Intentionally not parallel: it installs the strict security policy for
-	// the whole process, so it must run alone for the guard to be tested
-	// against exactly that policy.
+	// Intentionally not parallel: it sets the strict security policy process-wide.
 	withSecurityPolicyForTest(t, DefaultSecurityPolicy()) // AllowPrivateIPs == false
 
 	hc := &fasthttp.HostClient{DialTimeout: fasthttp.DialTimeout}
@@ -413,9 +397,7 @@ func Test_Security_InstallHostClientGuard_GuardsDialTimeout(t *testing.T) {
 // that when the operator opts into private targets the guard delegates to a
 // normal dial, so loopback connections still succeed.
 func Test_Security_NewGuardedClientDialer_DelegatesWhenPrivateAllowed(t *testing.T) {
-	// Intentionally not parallel: it installs a process-wide security policy
-	// that allows private IPs, so it must run alone for the guard to take the
-	// delegate path this test checks.
+	// Intentionally not parallel: it sets a process-wide security policy.
 	policy := DefaultSecurityPolicy()
 	policy.AllowPrivateIPs = true
 	withSecurityPolicyForTest(t, policy)
@@ -434,9 +416,7 @@ func Test_Security_NewGuardedClientDialer_DelegatesWhenPrivateAllowed(t *testing
 // AllowPrivateIPs delegate branch with DialDualStack enabled (fasthttp's
 // DialDualStack fallback).
 func Test_Security_NewGuardedClientDialer_DelegatesDualStack(t *testing.T) {
-	// Intentionally not parallel: it installs a process-wide security policy
-	// that allows private IPs, so it must run alone for the guard to take the
-	// delegate path this test checks.
+	// Intentionally not parallel: it sets a process-wide security policy.
 	policy := DefaultSecurityPolicy()
 	policy.AllowPrivateIPs = true
 	withSecurityPolicyForTest(t, policy)
@@ -453,9 +433,7 @@ func Test_Security_NewGuardedClientDialer_DelegatesDualStack(t *testing.T) {
 // Test_Security_NewGuardedClientDialer_RejectsMalformedAddr covers the
 // SplitHostPort error branch of dialGuard.dialChecked.
 func Test_Security_NewGuardedClientDialer_RejectsMalformedAddr(t *testing.T) {
-	// Intentionally not parallel: it installs the strict security policy for
-	// the whole process, so it must run alone for the guard to be tested
-	// against exactly that policy.
+	// Intentionally not parallel: it sets the strict security policy process-wide.
 	withSecurityPolicyForTest(t, DefaultSecurityPolicy()) // AllowPrivateIPs == false
 
 	_, err := newDialGuard(false).clientDialer(nil)("no-port-here")
@@ -467,9 +445,7 @@ func Test_Security_NewGuardedClientDialer_RejectsMalformedAddr(t *testing.T) {
 // DialFuncWithTimeout guard's delegate branch: when private IPs are allowed
 // it forwards the raw addr and timeout to the caller's dialer.
 func Test_Security_NewGuardedClientDialerWithTimeout_Delegates(t *testing.T) {
-	// Intentionally not parallel: it installs a process-wide security policy
-	// that allows private IPs, so it must run alone for the guard to take the
-	// delegate path this test checks.
+	// Intentionally not parallel: it sets a process-wide security policy.
 	policy := DefaultSecurityPolicy()
 	policy.AllowPrivateIPs = true
 	withSecurityPolicyForTest(t, policy)
@@ -490,9 +466,7 @@ func Test_Security_NewGuardedClientDialerWithTimeout_Delegates(t *testing.T) {
 // resolves to a public IP is validated and dialed through the caller's
 // timeout dialer at the exact resolved IP.
 func Test_Security_NewGuardedClientDialerWithTimeout_ValidatedDialsThrough(t *testing.T) {
-	// Intentionally not parallel: it installs the strict security policy and
-	// swaps the process-wide DNS resolver, so it must run alone for the guard
-	// to see the lookups this test sets up.
+	// Intentionally not parallel: it swaps the process-wide policy and DNS resolver.
 	withSecurityPolicyForTest(t, DefaultSecurityPolicy()) // AllowPrivateIPs == false
 
 	dnsAddr, _ := startRebindingDNS(t, net.IPv4(198, 51, 100, 7), net.IPv4(198, 51, 100, 7))
@@ -512,9 +486,7 @@ func Test_Security_NewGuardedClientDialerWithTimeout_ValidatedDialsThrough(t *te
 // Test_Security_EnsureClientGuarded_ComposePropagatesError verifies the
 // composed hook surfaces an error from the user's existing ConfigureClient.
 func Test_Security_EnsureClientGuarded_ComposePropagatesError(t *testing.T) {
-	// Intentionally not parallel: it installs the strict security policy for
-	// the whole process, so it must run alone for the guard to be tested
-	// against exactly that policy.
+	// Intentionally not parallel: it sets the strict security policy process-wide.
 	withSecurityPolicyForTest(t, DefaultSecurityPolicy()) // AllowPrivateIPs == false
 
 	wantErr := errors.New("configure boom")
@@ -528,12 +500,10 @@ func Test_Security_EnsureClientGuarded_ComposePropagatesError(t *testing.T) {
 }
 
 // Test_Security_NewGuardedClientDialer_DialsValidatedIPWithGuardDialer covers
-// the strict-policy path for a client with no dialer of its own: the address
-// that passed the blocklist is dialed through the guard's own dialer.
+// the strict-policy path for a client with no dialer of its own: the validated
+// IP is dialed through the guard's dialer.
 func Test_Security_NewGuardedClientDialer_DialsValidatedIPWithGuardDialer(t *testing.T) {
-	// Intentionally not parallel: it installs the strict security policy for the
-	// whole process, so it must run alone for the guard to be tested against
-	// exactly that policy.
+	// Intentionally not parallel: it sets the strict security policy process-wide.
 	withSecurityPolicyForTest(t, DefaultSecurityPolicy()) // AllowPrivateIPs == false
 
 	var network, address string

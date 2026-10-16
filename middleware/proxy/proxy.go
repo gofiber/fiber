@@ -19,11 +19,7 @@ import (
 )
 
 // Balancer creates a load balancer among multiple upstream servers.
-//
-// Servers (or a custom Client) is required, with or without a Config: without
-// one Balancer panics at startup. The upstreams are validated and their clients
-// built here, once, so a bad entry stops the application when the handler is
-// built and not on a request.
+// Servers (or a Client) is required: without one Balancer panics at startup.
 func Balancer(config ...Config) fiber.Handler {
 	// Set default config
 	cfg := configDefault(config...)
@@ -31,9 +27,8 @@ func Balancer(config ...Config) fiber.Handler {
 
 	// Load balanced client
 	lbc := &fasthttp.LBClient{}
-	// Note that Servers, Timeout, MaxConnsPerHost, ReadBufferSize,
-	// WriteBufferSize, MaxResponseBodySize, TLSConfig and DialDualStack
-	// will not be used if the client is set.
+	// Note that Servers and the per-host options are not used if the client
+	// is set (see Config.Client).
 	if cfg.Client == nil {
 		// Set timeout
 		lbc.Timeout = cfg.Timeout
@@ -65,8 +60,7 @@ func Balancer(config ...Config) fiber.Handler {
 		opaqueClient = true
 	}
 
-	// The Connection header is the one hop-by-hop field the legacy
-	// KeepConnectionHeader option lets through.
+	// KeepConnectionHeader exempts Connection from the hop-by-hop strip.
 	var keepHeaders []string
 	if cfg.KeepConnectionHeader {
 		keepHeaders = []string{fiber.HeaderConnection}
@@ -187,20 +181,15 @@ func newHostClient(u *url.URL, cfg *Config, policy SecurityPolicy) *fasthttp.Hos
 	return hc
 }
 
-// defaultClient is what Do, Forward and the other runtime helpers dispatch
-// through until WithClient replaces it. It leaves fasthttp's zero values for
-// the read and write timeouts and for the response size cap, so a slow or
-// oversized upstream is not cut short: bound them with a client registered
-// through WithClient or passed per call, or use DoTimeout and DoDeadline for
-// one request.
+// defaultClient sets no read or write timeout and no response size cap: bound
+// them with WithClient, a per-call client, or DoTimeout and DoDeadline.
 var defaultClient = &fasthttp.Client{
 	NoDefaultUserAgentHeader: true,
 	DisablePathNormalizing:   true,
 	MaxConnsPerHost:          defaultMaxConnsPerHost,
 }
 
-// sharedClient is the client the runtime helpers use when none is passed per
-// call: defaultClient, or the one WithClient registered last.
+// sharedClient is the client used when none is passed per call.
 var sharedClient atomic.Pointer[fasthttp.Client]
 
 var (
@@ -261,14 +250,10 @@ func forwardWithRealIP(c fiber.Ctx, addr string, policy SecurityPolicy, clients 
 // SecurityPolicy up front and, when AllowPrivateIPs is false, re-validates
 // the resolved IP at dial time via the guard installed on the dispatching
 // client, so a rebinding-capable resolver cannot swap a public answer for
-// a private one between validation and connection. The active policy is read
-// on every request, so keep the one installed with WithSecurityPolicy in place
-// while the handler serves.
+// a private one between validation and connection. The policy is read on
+// every request, so keep it installed while the handler serves.
 //
-// Limits: the default client applies no timeout and no cap on the size of a
-// response. Pass a client with ReadTimeout, WriteTimeout and
-// MaxResponseBodySize set, or register one with WithClient, when an upstream
-// cannot be trusted to answer promptly and in small bodies.
+// The default client sets no timeout and no response size cap.
 func Forward(addr string, clients ...*fasthttp.Client) fiber.Handler {
 	return func(c fiber.Ctx) error {
 		return forwardWithRealIP(c, addr, currentSecurityPolicy(), clients...)
@@ -293,9 +278,8 @@ func Forward(addr string, clients ...*fasthttp.Client) fiber.Handler {
 // with a custom client, register it via WithClient (or pass a dedicated,
 // unused client) before first use.
 //
-// The request reaches the upstream as HTTP/1.1, whatever protocol the inbound
-// request used. As with Forward, the default client sets no timeout and no cap
-// on the size of a response: use DoTimeout or DoDeadline to bound one request.
+// The request reaches the upstream as HTTP/1.1. As with Forward, there is no
+// timeout or size cap; see DoTimeout and DoDeadline.
 func Do(c fiber.Ctx, addr string, clients ...*fasthttp.Client) error {
 	return doAction(c, addr, func(cli *fasthttp.Client, req *fasthttp.Request, resp *fasthttp.Response, _ *url.URL) error {
 		return cli.Do(req, resp)
@@ -443,9 +427,8 @@ func doActionWithPolicy(
 // validateUpstream output — the property CodeQL's go/request-forgery
 // query needs to see.
 //
-// Each hop is rewritten by redirectRequest for the status that sent it there.
-// A redirect that leaves the current host or port also drops the credentials
-// bound to the original origin (see stripCrossHostHeaders).
+// Each hop goes through redirectRequest; a redirect to another host or port
+// also drops credentials (see stripCrossHostHeaders).
 func followRedirects(cli *fasthttp.Client, req *fasthttp.Request, resp *fasthttp.Response, maxRedirects int, initialURL *url.URL, policy SecurityPolicy) error {
 	if maxRedirects < 0 {
 		maxRedirects = 0
@@ -483,11 +466,9 @@ func followRedirects(cli *fasthttp.Client, req *fasthttp.Request, resp *fasthttp
 			return err
 		}
 		redirectRequest(req, status)
-		// Strip credentials when the redirect crosses to a different origin —
-		// another host or another port of the same host; the scheme is not
-		// compared — so secrets bound to the original origin are not leaked to
-		// a third party (RFC 9110 §15.4 advisory; matches browser behavior).
-		// URL.Host carries the port, which is what makes the port count.
+		// Strip credentials when the redirect crosses to a different host or
+		// port so secrets bound to the original origin are not leaked to a
+		// third party (RFC 9110 §15.4 advisory; matches browser behavior).
 		if !utils.EqualFold(nextURL.Host, currentHost) {
 			stripCrossHostHeaders(req)
 			currentHost = nextURL.Host
@@ -496,12 +477,9 @@ func followRedirects(cli *fasthttp.Client, req *fasthttp.Request, resp *fasthttp
 	}
 }
 
-// redirectRequest turns req into the request the next hop of a redirect
-// carries, given the status of the response that sent it there. RFC 9110
-// §15.4.4 has a 303 (See Other) turn every method but GET and HEAD into GET,
-// and §15.4.2 and §15.4.3 let a 301 or 302 turn POST into GET, as browsers and
-// fasthttp do. A 307 or 308 repeats the request as it was. When the method
-// changes the body goes with it, along with the fields that frame it.
+// redirectRequest rewrites req for the next hop (RFC 9110 §15.4): a 303 turns
+// every method but GET and HEAD into GET, a 301 or 302 turns POST into GET, and
+// a 307 or 308 repeats the request. A changed method drops the body.
 func redirectRequest(req *fasthttp.Request, status int) {
 	switch status {
 	case fasthttp.StatusSeeOther:
@@ -530,10 +508,8 @@ func redirectRequest(req *fasthttp.Request, status int) {
 // pass it straight into network sinks without re-parsing user-controlled
 // strings.
 func resolveRedirect(currentURL string, location []byte, policy SecurityPolicy) (*url.URL, error) {
-	// A control byte must not appear in a Location value: anything < 0x20
-	// (including HTAB) or DEL. Bytes >= 0x80 never match; they are handled by
-	// URI parsing, not header-injection checks. That is exactly the set
-	// utils.IndexControl reports.
+	// Control bytes (< 0x20, DEL) are rejected; bytes >= 0x80 are left to URI
+	// parsing.
 	if utils.IndexControl(location) != -1 {
 		return nil, fasthttp.ErrorInvalidURI
 	}
@@ -641,11 +617,9 @@ func DomainForward(hostname, addr string, clients ...*fasthttp.Client) fiber.Han
 	}
 }
 
-// forwardRouted sends the request on to base, carrying the path the router
-// matched, for DomainForward and BalancerForward. A routed path an upstream
-// could read as another path (see wiretarget.SegmentsAsRouted) is refused with
-// 400 Bad Request, unless the active policy lets escaped slashes and empty
-// segments through (SecurityPolicy.AllowAmbiguousSlashes).
+// forwardRouted forwards the routed path to base for DomainForward and
+// BalancerForward. A path an upstream could read as another one (see
+// wiretarget.SegmentsAsRouted) gets a 400 unless AllowAmbiguousSlashes is set.
 func forwardRouted(c fiber.Ctx, base *url.URL, clients ...*fasthttp.Client) error {
 	target := wiretarget.Routed(c)
 	active := currentSecurityPolicy()

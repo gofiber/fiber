@@ -145,9 +145,7 @@ func Test_Security_ValidateUpstream_RejectsEmpty(t *testing.T) {
 }
 
 func Test_Security_Forward_BlocksPrivateByDefault(t *testing.T) {
-	// Intentionally not parallel: it installs the strict default policy for the
-	// whole process (TestMain relaxes it for the rest of the suite), so it must
-	// run alone for Forward to be judged by that policy.
+	// Intentionally not parallel: it sets the strict default policy process-wide.
 	withSecurityPolicyForTest(t, DefaultSecurityPolicy())
 
 	_, addr := createProxyTestServerIPv4(t, func(c fiber.Ctx) error {
@@ -336,9 +334,7 @@ func Test_Security_Do_BlocksFileScheme(t *testing.T) {
 }
 
 func Test_Security_DoRedirects_BlocksDowngrade(t *testing.T) {
-	// Intentionally not parallel: it installs a process-wide security policy,
-	// which other proxy tests read on every request, so it must run alone to
-	// test the downgrade protection with exactly the policy it sets.
+	// Intentionally not parallel: it sets a process-wide security policy.
 	// Allow private IPs for the loopback test servers while keeping the
 	// downgrade protection enabled.
 	policy := DefaultSecurityPolicy()
@@ -594,9 +590,7 @@ func Test_Security_SecureTLSConfig_DefaultMinVersion(t *testing.T) {
 }
 
 func Test_Security_WithSecurityPolicy_RestoresDefaults(t *testing.T) {
-	// Intentionally not parallel: it swaps the process-wide security policy and
-	// asserts on what WithSecurityPolicy hands back, which a policy installed
-	// by another test would change.
+	// Intentionally not parallel: it swaps the process-wide security policy.
 	custom := DefaultSecurityPolicy()
 	custom.AllowPrivateIPs = true
 	prev := WithSecurityPolicy(custom)
@@ -700,8 +694,7 @@ func Test_Security_JoinUpstreamPath_QueryOnly(t *testing.T) {
 // covers the branch in WithSecurityPolicy that fills in the default
 // scheme allowlist when the caller leaves it empty.
 func Test_Security_WithSecurityPolicy_EmptyAllowedSchemesGetsDefault(t *testing.T) {
-	// Intentionally not parallel: it installs a process-wide security policy
-	// and reads it back, so no other test may swap it in between.
+	// Intentionally not parallel: it sets a process-wide security policy and reads it back.
 	prev := WithSecurityPolicy(SecurityPolicy{})
 	t.Cleanup(func() { WithSecurityPolicy(prev) })
 	got := currentSecurityPolicy()
@@ -1187,9 +1180,8 @@ func mustParseTestURL(t *testing.T, raw string) *url.URL {
 }
 
 // Test_Security_RedirectRequest pins the request a redirect leaves for the next
-// hop. RFC 9110 §15.4.4 turns every method but GET and HEAD into GET on a 303,
-// §15.4.2 and §15.4.3 let a 301 or 302 turn POST into GET, and a 307 or 308
-// repeats the request as it was. A method that changes loses its body.
+// hop: a 303 turns every method but GET and HEAD into GET, a 301 or 302 turns
+// POST into GET, and a 307 or 308 repeats the request.
 func Test_Security_RedirectRequest(t *testing.T) {
 	t.Parallel()
 
@@ -1241,8 +1233,8 @@ func Test_Security_RedirectRequest(t *testing.T) {
 	}
 }
 
-// Test_Security_FollowRedirects_MethodPerStatus drives the rules of
-// redirectRequest through the redirect loop: what the second hop receives.
+// Test_Security_FollowRedirects_MethodPerStatus drives redirectRequest through
+// the redirect loop: what the second hop receives.
 func Test_Security_FollowRedirects_MethodPerStatus(t *testing.T) {
 	t.Parallel()
 
@@ -1289,8 +1281,8 @@ func Test_Security_FollowRedirects_MethodPerStatus(t *testing.T) {
 }
 
 // Test_Security_FollowRedirects_StripsCredentialsOnPortChange pins that an
-// origin is a host and a port: the same hostname on another port is another
-// service, so the credentials bound to the first one stay behind.
+// origin is a host and a port: another port of the same host loses the
+// credentials.
 func Test_Security_FollowRedirects_StripsCredentialsOnPortChange(t *testing.T) {
 	t.Parallel()
 
@@ -1339,8 +1331,7 @@ func Test_Security_FollowRedirects_StripsCredentialsOnPortChange(t *testing.T) {
 }
 
 // Test_Security_KeepHopByHopHeaders_Balancer pins the opt-out for a Balancer
-// that carries its own policy: the hop-by-hop fields cross in both directions
-// when it is set, and none does when it is not.
+// with its own policy: hop-by-hop fields cross in both directions when set.
 func Test_Security_KeepHopByHopHeaders_Balancer(t *testing.T) {
 	t.Parallel()
 
@@ -1386,10 +1377,9 @@ func Test_Security_KeepHopByHopHeaders_Balancer(t *testing.T) {
 }
 
 // Test_Security_KeepHopByHopHeaders_Do is the same opt-out for the runtime
-// helpers, which take their policy from the process.
+// helpers, which use the process-wide policy.
 func Test_Security_KeepHopByHopHeaders_Do(t *testing.T) {
-	// Intentionally not parallel: it installs a process-wide security policy, so
-	// it must run alone for Do to be judged by exactly that policy.
+	// Intentionally not parallel: it sets a process-wide security policy.
 	policy := DefaultSecurityPolicy()
 	policy.AllowPrivateIPs = true
 	policy.KeepHopByHopHeaders = true
@@ -1415,8 +1405,8 @@ func Test_Security_KeepHopByHopHeaders_Do(t *testing.T) {
 }
 
 // Test_Security_ValidateUpstream_UnparseableIsHostInvalid pins that an address
-// net/url cannot parse is ErrUpstreamHostInvalid, as the empty and hostless ones
-// are, and that the *url.Error stays reachable beside it.
+// net/url cannot parse is ErrUpstreamHostInvalid, with the *url.Error still
+// reachable.
 func Test_Security_ValidateUpstream_UnparseableIsHostInvalid(t *testing.T) {
 	t.Parallel()
 
@@ -1434,8 +1424,8 @@ func Test_Security_ValidateUpstream_UnparseableIsHostInvalid(t *testing.T) {
 }
 
 // Test_Security_ValidateUpstreamForBalancer_Forms pins what a Balancer server
-// may look like: a scheme and host, with the scheme optional and a lone trailing
-// slash tolerated, and nothing else.
+// may look like: a scheme and host (scheme optional, a lone trailing slash
+// tolerated) and nothing else.
 func Test_Security_ValidateUpstreamForBalancer_Forms(t *testing.T) {
 	t.Parallel()
 

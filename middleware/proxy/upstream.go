@@ -11,9 +11,8 @@ import (
 
 // parseUpstream returns the parsed url.URL for raw. Hosts without an
 // explicit scheme default to http:// to match the historical Balancer
-// behavior where bare "host:port" entries were accepted. An address that
-// does not parse is ErrUpstreamHostInvalid too, with the *url.Error from
-// net/url wrapped beside it.
+// behavior where bare "host:port" entries were accepted. A parse failure is
+// ErrUpstreamHostInvalid wrapping the *url.Error.
 func parseUpstream(raw string) (*url.URL, error) {
 	raw = utils.TrimSpace(raw)
 	if raw == "" {
@@ -48,9 +47,9 @@ func validateUpstream(raw string, policy SecurityPolicy) (*url.URL, error) {
 	return u, nil
 }
 
-// parseAllowedUpstream parses raw and requires what every upstream needs: a
-// scheme on the policy's allowlist and a host. It resolves nothing. url.Parse
-// can leave Host set while Hostname() is empty (e.g. "http://:8080"), so the
+// parseAllowedUpstream parses raw and enforces the scheme allowlist and
+// host presence without performing any DNS resolution. url.Parse can
+// leave Host set while Hostname() is empty (e.g. "http://:8080"), so the
 // presence check uses Hostname.
 func parseAllowedUpstream(raw string, policy SecurityPolicy) (*url.URL, error) {
 	u, err := parseUpstream(raw)
@@ -74,9 +73,8 @@ func parseAllowedUpstream(raw string, policy SecurityPolicy) (*url.URL, error) {
 // to the SSRF-guarded dialer (see dialGuard.strictDialer). Deferring DNS keeps
 // a transient resolver failure at startup from panicking the application
 // (e.g. crash loops in container orchestrators) and re-checks the resolved
-// IP on every dial, which also defeats DNS-rebinding. A lone trailing slash
-// names no path and is accepted, as is an entry without a scheme (see
-// parseUpstream).
+// IP on every dial, which also defeats DNS-rebinding. A lone trailing slash is
+// accepted.
 func validateUpstreamForBalancer(raw string, policy SecurityPolicy) (*url.URL, error) {
 	u, err := parseAllowedUpstream(raw, policy)
 	if err != nil {

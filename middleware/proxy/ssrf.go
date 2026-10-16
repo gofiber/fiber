@@ -76,32 +76,25 @@ func resolveAndValidateHost(host string) ([]net.IP, error) {
 // directly, and lets tests inject a deterministic stub.
 type ssrfDialFunc func(network, address string) (net.Conn, error)
 
-// dialGuard is the SSRF guard in front of a client's dialer. It resolves the
-// address about to be dialed, rejects it if any resolved address falls in a
-// blocked range, and only then dials an address that passed. Checking at dial
-// time — rather than only up front — defeats DNS-rebinding attacks (the
-// check/use gap) where a resolver returns a public address during validation
-// and a private one at connect time.
+// dialGuard is the SSRF guard in front of a client's dialer: it resolves the
+// address, rejects it if any resolved IP is blocked, and only then dials.
+// Checking at dial time defeats DNS rebinding (the check/use gap).
 type dialGuard struct {
-	// dial connects to an address that passed the blocklist, for a guarded
-	// client with no dialer of its own.
+	// dial connects to a validated address when the client has no dialer of its own.
 	dial ssrfDialFunc
 
-	// dualStack mirrors fasthttp's DialDualStack on the guarded client: IPv6
-	// addresses are dialed only when it is set.
+	// dualStack mirrors fasthttp's DialDualStack: IPv6 is dialed only when set.
 	dualStack bool
 }
 
-// newDialGuard returns the guard for a client with the given DialDualStack.
-// It dials validated addresses with a net.Dialer bounded by dnsLookupTimeout.
+// newDialGuard returns a guard whose validated dials are bounded by dnsLookupTimeout.
 func newDialGuard(dualStack bool) dialGuard {
 	dialer := &net.Dialer{Timeout: dnsLookupTimeout}
 	return dialGuard{dial: dialer.Dial, dualStack: dualStack}
 }
 
-// strictDialer returns a fasthttp DialFunc that applies the blocklist to every
-// dial. Balancer installs it only when its policy disallows private IPs, so it
-// never consults the policy itself.
+// strictDialer returns a DialFunc that always applies the blocklist; Balancer
+// installs it only when its policy forbids private IPs.
 func (g dialGuard) strictDialer() fasthttp.DialFunc {
 	return func(addr string) (net.Conn, error) {
 		return g.dialChecked(addr, g.dial)
@@ -177,8 +170,7 @@ func (g dialGuard) guardedDial(
 	return g.dialChecked(addr, dialValidated)
 }
 
-// dialChecked resolves addr, rejects it if any address it names falls in a
-// blocked range, and otherwise dials one that passed with dial.
+// dialChecked dials addr with dial unless an IP it resolves to is blocked.
 func (g dialGuard) dialChecked(addr string, dial ssrfDialFunc) (net.Conn, error) {
 	host, port, ok := utils.SplitHostPort(addr)
 	if !ok {

@@ -113,9 +113,7 @@ func restoreGlobalProxyClient(t *testing.T) {
 
 // go test -run Test_Proxy_DefaultClient_MaxConnsPerHost
 func Test_Proxy_DefaultClient_MaxConnsPerHost(t *testing.T) {
-	// Intentionally not parallel: it reads the process-wide shared client,
-	// which the tests that call WithClient replace, so it must run apart from
-	// them to check the default client and not one of theirs.
+	// Intentionally not parallel: it reads the shared client that WithClient tests replace.
 	require.Equal(t, defaultMaxConnsPerHost, sharedClient.Load().MaxConnsPerHost)
 }
 
@@ -700,9 +698,7 @@ func Test_Proxy_Do_ConnectionCannotRemoveRealIP(t *testing.T) {
 
 // go test -run Test_Proxy_Forward_WithClient_TLSConfig
 func Test_Proxy_Forward_WithClient_TLSConfig(t *testing.T) {
-	// Intentionally not parallel: it installs its own client with WithClient,
-	// which replaces the process-wide shared client, so it must run alone for
-	// the request to go through the client under test.
+	// Intentionally not parallel: WithClient replaces the process-wide shared client.
 	restoreGlobalProxyClient(t)
 
 	serverTLSConf, _, err := tlstest.GetTLSConfigs()
@@ -943,15 +939,10 @@ func Test_Proxy_Do_WithRedirect(t *testing.T) {
 
 // go test -race -run Test_Proxy_DoRedirects_RestoreOriginalURL
 // Test_Proxy_DoRedirects_AliasedAddr is a regression test for an addr that
-// aliases the request buffer: the addr string is derived from
-// c.OriginalURL() and therefore aliases the fasthttp request's internal
-// requestURI buffer. The *url.URL returned by validateUpstream is passed
-// into followRedirects, which reads u.Host on the cross-host strip check
-// and u.String() to feed SetRequestURI. If u's field slices were ever
-// aliased back to the request buffer, SetRequestURI's overwrite would
-// corrupt them mid-loop and the redirect target would be garbled.
-// doActionWithPolicy prevents that by cloning addr once at the parse
-// boundary.
+// aliases the request buffer: it is derived from c.OriginalURL(), and
+// SetRequestURI's overwrite would corrupt a *url.URL still pointing into it
+// mid-redirect. doActionWithPolicy prevents that by cloning addr once at the
+// parse boundary.
 func Test_Proxy_DoRedirects_AliasedAddr(t *testing.T) {
 	t.Parallel()
 
@@ -1045,9 +1036,7 @@ func Test_Proxy_DoTimeout_RestoreOriginalURL(t *testing.T) {
 
 // go test -race -run Test_Proxy_DoTimeout_Timeout
 func Test_Proxy_DoTimeout_Timeout(t *testing.T) {
-	// Intentionally not parallel: it measures a one-second timeout against an
-	// upstream that sleeps, so it must not compete for CPU with other tests or
-	// the timing it checks would not be reliable.
+	// Intentionally not parallel: it measures a timeout, so it must not compete for CPU.
 	_, addr := createProxyTestServerIPv4(t, func(c fiber.Ctx) error {
 		time.Sleep(time.Second * 5)
 		return c.SendString("proxied")
@@ -1095,9 +1084,7 @@ func Test_Proxy_DoDeadline_RestoreOriginalURL(t *testing.T) {
 
 // go test -race -run Test_Proxy_DoDeadline_PastDeadline
 func Test_Proxy_DoDeadline_PastDeadline(t *testing.T) {
-	// Intentionally not parallel: it measures a deadline against an upstream
-	// that sleeps, so it must not compete for CPU with other tests or the
-	// timing it checks would not be reliable.
+	// Intentionally not parallel: it measures a deadline, so it must not compete for CPU.
 	_, addr := createProxyTestServerIPv4(t, func(c fiber.Ctx) error {
 		time.Sleep(time.Second * 5)
 		return c.SendString("proxied")
@@ -1145,9 +1132,7 @@ func Test_Proxy_Do_HTTP_Prefix_URL(t *testing.T) {
 
 // go test -race -run Test_Proxy_Forward_Global_Client
 func Test_Proxy_Forward_Global_Client(t *testing.T) {
-	// Intentionally not parallel: it installs its own client with WithClient,
-	// which replaces the process-wide shared client, so it must run alone for
-	// the request to go through the client under test.
+	// Intentionally not parallel: WithClient replaces the process-wide shared client.
 	restoreGlobalProxyClient(t)
 	ln, err := net.Listen(fiber.NetworkTCP4, "127.0.0.1:0")
 	require.NoError(t, err)
@@ -2038,8 +2023,7 @@ func Test_Proxy_HostWithoutPort(t *testing.T) {
 func Test_Proxy_Balancer_NoArgsPanicsAtStartup(t *testing.T) {
 	t.Parallel()
 
-	// There is no default upstream, so Balancer() stops when it is built, as
-	// Balancer(Config{}) does, and not on the first request it would serve.
+	// No default upstream exists, so Balancer() stops at startup.
 	require.PanicsWithValue(t, "Servers cannot be empty", func() { Balancer() })
 	require.PanicsWithValue(t, "Servers cannot be empty", func() { Balancer(Config{}) })
 }
@@ -2137,8 +2121,7 @@ func Test_Proxy_Balancer_MaxResponseBodySize(t *testing.T) {
 
 // go test -run Test_Proxy_Balancer_WriteBufferSize
 //
-// WriteBufferSize sizes the buffer a request is written through, so headers
-// that outgrow it have to arrive whole, in several writes.
+// Headers larger than WriteBufferSize must still arrive whole.
 func Test_Proxy_Balancer_WriteBufferSize(t *testing.T) {
 	t.Parallel()
 

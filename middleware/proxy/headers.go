@@ -107,9 +107,7 @@ func stripHopByHopResponseHeaders(res *fasthttp.Response, except ...string) {
 // rewrites other entries' key/value buffers — and Del does not retain the
 // name after returning.
 //
-// This is the response's walk, so every spelling of a name goes: a proxied
-// response is parsed by an outbound client whose normalizing setting is
-// independent of the app's. The request has one of its own in
+// This is the response's walk. The request has one of its own in
 // stripHopByHopRequestHeaders, which leaves the forwarding fields alone.
 func delConnectionListedHeaders(h fieldname.Deleter, values [][]byte) {
 	for name := range headerlist.AllLines(values) {
@@ -119,9 +117,7 @@ func delConnectionListedHeaders(h fieldname.Deleter, values [][]byte) {
 
 func stripCrossHostHeaders(req *fasthttp.Request) {
 	for _, h := range crosshost.SensitiveHeaders {
-		// Every spelling goes, whether or not the header store normalizes names.
-		// A redirect that leaves the origin is rare, so the extra scan costs
-		// nothing worth a flag.
+		// Every spelling goes; the extra scan is cheap on this rare path.
 		fieldname.Del(&req.Header, h, false)
 	}
 }

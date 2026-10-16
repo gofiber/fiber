@@ -242,9 +242,8 @@ func Test_Coverage_ConfigDefault_PanicsOnEmptyServersAndNoClient(t *testing.T) {
 }
 
 // Test_Coverage_ConfigDefault_NoArgsPanicsLikeEmptyConfig covers the
-// variadic-empty branch where configDefault is called with no args: there is no
-// default upstream, so it stops at startup exactly as configDefault(Config{})
-// does, instead of handing back a config that fails on its first request.
+// variadic-empty branch: with no upstream, configDefault() panics like
+// configDefault(Config{}).
 func Test_Coverage_ConfigDefault_NoArgsPanicsLikeEmptyConfig(t *testing.T) {
 	t.Parallel()
 	require.PanicsWithValue(t, "Servers cannot be empty", func() {
@@ -252,8 +251,8 @@ func Test_Coverage_ConfigDefault_NoArgsPanicsLikeEmptyConfig(t *testing.T) {
 	})
 }
 
-// Test_Coverage_ConfigDefault_FillsDefaults checks the defaults a Config with
-// an upstream, or with a custom Client in place of one, gets.
+// Test_Coverage_ConfigDefault_FillsDefaults checks the defaults for a Config
+// with Servers or a Client.
 func Test_Coverage_ConfigDefault_FillsDefaults(t *testing.T) {
 	t.Parallel()
 	for name, in := range map[string]Config{
@@ -323,8 +322,7 @@ func Test_Coverage_DomainForward_HostMismatch_DoesNotProxy(t *testing.T) {
 }
 
 // Test_Coverage_CanFastJoinPath_RepeatedSeparator covers a second '?' or '#' in
-// a target: the splice refuses it and leaves it to the url.Parse path, which
-// reads the first as the end of the path and the rest as query and fragment.
+// a target, which the fast splice leaves to the url.Parse path.
 func Test_Coverage_CanFastJoinPath_RepeatedSeparator(t *testing.T) {
 	t.Parallel()
 
