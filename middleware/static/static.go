@@ -21,6 +21,9 @@ import (
 
 var ErrInvalidPath = errors.New("invalid path")
 
+// invalidPathSentinel is the path PathRewrite falls back to when the handler
+// gave it none. The handler never opens a refused path, so it only matters if
+// the file server runs outside it.
 const invalidPathSentinel = "/__fiber_invalid__"
 
 // windowsOS is runtime.GOOS on Windows, where a path component loses its
@@ -47,7 +50,7 @@ type fileServer struct {
 	handler       fasthttp.RequestHandler
 	root          string
 	fsRootPrefix  []byte // the fs.FS subdirectory served, put before every path
-	prefixLen     int    // length of the route prefix stripped from the path
+	prefixLen     int    // length of the route prefix stripped from the path, without its trailing slash
 	decodeEscapes bool   // off under UnescapePath, which already decoded everything
 	rootIsFile    bool
 	segmentBound  bool // the route is a /prefix* mount, so the rest of the path starts at a /
@@ -62,19 +65,29 @@ type fileServerKey struct {
 }
 
 // requestPath appends to dst the path the file server opens for the routed
-// path p, or invalidPathSentinel when p names nothing inside the root.
-func (s *fileServer) requestPath(dst []byte, p string) []byte {
+// path p. It reports false when p names nothing inside the root, and then there
+// is nothing to open: a file of any name could stand in for that answer.
+func (s *fileServer) requestPath(dst []byte, p string) ([]byte, bool) {
 	addTrailingSlash := false
 	if len(p) >= s.prefixLen {
 		// a partial wildcard such as /static* also matches /staticx; the rest of
 		// the path must start at a segment boundary
 		if s.segmentBound && len(p) > s.prefixLen && p[s.prefixLen] != '/' {
-			return append(dst, invalidPathSentinel...)
+			return dst, false
 		}
 		if s.invalid {
-			return append(dst, invalidPathSentinel...)
+			return dst, false
 		}
-		// If the root is a file, we need to reset the path to "/" always.
+		// If the root is a file, we need to reset the path to "/" always. What the
+		// request path says below the prefix is dropped, so no spelling of it can
+		// select another file, and an empty segment inside it, as in
+		// /web/https://example.com, is part of an opaque name. A root mount refuses
+		// a path that starts with "//" whatever it serves, as a directory root does
+		// in sanitizePath; on a prefix, even one that starts with "//" itself, that
+		// segment is the route's own.
+		if s.rootIsFile && s.prefixLen == 0 && len(p) > 1 && p[0] == '/' && p[1] == '/' {
+			return dst, false
+		}
 		switch {
 		case s.rootIsFile && s.fsys == nil:
 			p = "/"
@@ -99,10 +112,9 @@ func (s *fileServer) requestPath(dst []byte, p string) []byte {
 
 	sanitized, err := sanitizePath(dst[start:], s.fsys, s.decodeEscapes)
 	if err != nil {
-		// return a guaranteed-missing path so fs responds with 404
-		return append(dst[:0], invalidPathSentinel...)
+		return dst[:0], false
 	}
-	return dst[:start+len(sanitized)]
+	return dst[:start+len(sanitized)], true
 }
 
 // decodeFileName validates the escapes the router left in p and returns p
@@ -292,8 +304,9 @@ func New(root string, cfg ...Config) fiber.Handler {
 		}
 
 		prefixLen := len(prefix)
-		if prefixLen > 1 && prefix[prefixLen-1:] == "/" {
-			// /john/ -> /john
+		if prefixLen > 0 && prefix[prefixLen-1] == '/' {
+			// /john/ -> /john and / -> "", so "//john" keeps the empty segment
+			// that sanitizePath refuses
 			prefixLen--
 		}
 
@@ -402,14 +415,21 @@ func New(root string, cfg ...Config) fiber.Handler {
 		if !ok {
 			rw = &rewrite{}
 		}
-		rw.path = server.requestPath(rw.path[:0], c.Path())
+		var valid bool
+		rw.path, valid = server.requestPath(rw.path[:0], c.Path())
 		fctx := c.RequestCtx()
-		fctx.SetUserValue(rewriteKey{}, rw)
 
-		// Serve file
-		server.handler(fctx)
+		if valid {
+			fctx.SetUserValue(rewriteKey{}, rw)
 
-		fctx.RemoveUserValue(rewriteKey{})
+			// Serve file
+			server.handler(fctx)
+
+			fctx.RemoveUserValue(rewriteKey{})
+		} else {
+			// A refused path is a miss as fasthttp reports one, without a lookup
+			fctx.Response.SetStatusCode(fiber.StatusNotFound)
+		}
 		rewritePool.Put(rw)
 
 		// Return request if found and not forbidden
