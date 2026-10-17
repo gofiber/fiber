@@ -10,12 +10,9 @@ import (
 // FixedWindow implements a fixed-window rate limiting strategy.
 type FixedWindow struct{}
 
-// New creates a new fixed window middleware handler
+// New creates a new fixed window middleware handler. Unset fields of cfg take their defaults.
 func (FixedWindow) New(cfg *Config) fiber.Handler {
-	if cfg == nil {
-		defaultCfg := configDefault()
-		cfg = &defaultCfg
-	}
+	cfg = withDefaults(cfg)
 
 	// Limiter variables
 	locks := new(keyedMutex)
@@ -37,9 +34,13 @@ func (FixedWindow) New(cfg *Config) fiber.Handler {
 		// Generate expiration from generator
 		windowSec := windowSeconds(cfg.ExpirationFunc(c), cfg.Expiration)
 
-		// Get key from request, copied since c.Next may rewrite the memory it points to
+		// Get key from request
 		key := cfg.KeyGenerator(c)
-		if cfg.SkipSuccessfulRequests || cfg.SkipFailedRequests {
+
+		// The key is copied for the read after c.Next, which may rewrite its memory: up front when a
+		// Storage may keep it, after the limit check for the built-in store, which copies its own.
+		rereads := cfg.SkipSuccessfulRequests || cfg.SkipFailedRequests
+		if rereads && !manager.copiesKeys() {
 			key = utils.CopyString(key)
 		}
 
@@ -83,6 +84,10 @@ func (FixedWindow) New(cfg *Config) fiber.Handler {
 		// Check if hits exceed the max
 		if remaining < 0 {
 			return cfg.reject(c, resetInSec)
+		}
+
+		if rereads && manager.copiesKeys() {
+			key = utils.CopyString(key)
 		}
 
 		// Continue stack for reaching c.Res().StatusCode()

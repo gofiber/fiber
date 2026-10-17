@@ -165,7 +165,7 @@ A request that passes costs one storage read and one write. A second read and wr
 | DisableHeaders         | `bool`                    | When set to `true`, the middleware omits rate limit headers (`X-RateLimit-*` and `Retry-After`). Otherwise a request that passes carries `X-RateLimit-Limit`, `X-RateLimit-Remaining` and `X-RateLimit-Reset` (seconds until the window ends), and a rejected one carries `Retry-After` (seconds). | false                                    |
 | DisableValueRedaction  | `bool`                    | Disables redaction of limiter keys in error messages and logs. A key longer than 192 bytes is shown as its SHA-256 digest. | false                                    |
 | Storage                | `fiber.Storage`           | Persists middleware state.                                         | An in-memory store for this process only |
-| LimiterMiddleware      | `limiter.Handler`         | Selects the algorithm implementation. Implementations now receive a pointer to the active config when their `New` method is invoked. | A new Fixed Window Rate Limiter          |
+| LimiterMiddleware      | `limiter.Handler`         | Selects the algorithm implementation. Implementations now receive a pointer to the active config when their `New` method is invoked. `FixedWindow` and `SlidingWindow` give a field that config leaves unset its default, so calling their `New` directly with a partial config works. | A new Fixed Window Rate Limiter          |
 
 :::note
 A custom store can be used if it implements the `fiber.Storage` interface, which is declared in [`storage_interface.go`](https://github.com/gofiber/fiber/blob/main/storage_interface.go).

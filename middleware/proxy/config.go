@@ -28,24 +28,30 @@ type Config struct {
 	// tls config for the http client.
 	TLSConfig *tls.Config
 
-	// Client is custom client when client config is complex.
-	// Note that Servers, Timeout, WriteBufferSize, ReadBufferSize, TLSConfig
-	// and DialDualStack will not be used if the client are set.
+	// Client is custom client when client config is complex. Each *fasthttp.HostClient
+	// among its Clients gets DisablePathNormalizing set when the balancer is built; set it
+	// first on a client already in use, which is then left alone.
+	// Note that Servers, Timeout, MaxConnsPerHost, ReadBufferSize, WriteBufferSize,
+	// MaxResponseBodySize, TLSConfig and DialDualStack will not be used if the client is
+	// set, and its dialers get no SSRF guard.
 	Client *fasthttp.LBClient
 
 	// SecurityPolicy overrides the default SSRF, redirect, and
 	// hop-by-hop header rules for this balancer. When nil, the
-	// package-level policy set via WithSecurityPolicy is used.
+	// package-level policy set via WithSecurityPolicy is used. It is read once,
+	// when the balancer is built.
 	//
 	// Optional. Default: nil
 	SecurityPolicy *SecurityPolicy
 
 	// Servers defines a list of <scheme>://<host> HTTP servers,
-	//
 	// which are used in a round-robin manner.
 	// i.e.: "https://foobar.com, http://www.foobar.com"
 	//
-	// Required
+	// An entry with a path, userinfo, query or fragment panics with ErrUpstreamNotOrigin;
+	// "host:port" is read as http://host:port.
+	//
+	// Required unless Client is set
 	Servers []string
 
 	// Timeout is the request timeout used when calling the proxy client
@@ -58,26 +64,24 @@ type Config struct {
 	// Optional. Default: 1024
 	MaxConnsPerHost int
 
-	// Per-connection buffer size for requests' reading.
-	// This also limits the maximum header size.
-	// Increase this buffer if your clients send multi-KB RequestURIs
-	// and/or multi-KB headers (for example, BIG cookies).
+	// Per-connection buffer size for reading upstream responses. This also limits the
+	// response header size: raise it for upstreams that send multi-KB headers.
 	ReadBufferSize int
 
-	// Per-connection buffer size for responses' writing.
+	// Per-connection buffer size for writing requests to the upstream.
 	WriteBufferSize int
 
 	// MaxResponseBodySize bounds the size (in bytes) of upstream
 	// responses accepted by the proxy. Responses larger than this are
 	// rejected to protect the proxy from memory exhaustion. Zero
-	// preserves fasthttp's default unlimited behavior.
+	// preserves fasthttp's default unlimited behavior, so set it for untrusted upstreams.
 	//
 	// Optional. Default: 0
 	MaxResponseBodySize int
 
 	// KeepConnectionHeader keeps the "Connection" header when set to true.
 	//
-	// Note: even when KeepConnectionHeader is true, other RFC 7230 §6.1
+	// Note: even when KeepConnectionHeader is true, other RFC 9110 §7.6.1
 	// hop-by-hop headers (Keep-Alive, Proxy-Authenticate,
 	// Proxy-Authorization, TE, Trailer, Transfer-Encoding, Upgrade) are
 	// still stripped. To preserve every hop-by-hop header, set
@@ -109,13 +113,11 @@ var ConfigDefault = Config{
 
 // configDefault function to set default values
 func configDefault(config ...Config) Config {
-	// Return default config if nothing provided
-	if len(config) < 1 {
-		return ConfigDefault
+	// Start from the defaults; a Config passed in overrides them
+	cfg := ConfigDefault
+	if len(config) > 0 {
+		cfg = config[0]
 	}
-
-	// Override default config
-	cfg := config[0]
 
 	// Set default values
 	if cfg.Timeout <= 0 {
@@ -126,9 +128,23 @@ func configDefault(config ...Config) Config {
 		cfg.MaxConnsPerHost = ConfigDefault.MaxConnsPerHost
 	}
 
-	// Set default values
+	// Servers (or a Client) is required even when no Config was passed
 	if len(cfg.Servers) == 0 && cfg.Client == nil {
 		panic("Servers cannot be empty")
 	}
 	return cfg
+}
+
+// secureTLSConfig returns a clone of cfg with a TLS 1.2 floor. The
+// caller's tls.Config is never mutated so per-host clients can share an
+// immutable template without surprise.
+func secureTLSConfig(cfg *tls.Config) *tls.Config {
+	if cfg == nil {
+		return &tls.Config{MinVersion: tls.VersionTLS12}
+	}
+	cloned := cfg.Clone()
+	if cloned.MinVersion == 0 {
+		cloned.MinVersion = tls.VersionTLS12
+	}
+	return cloned
 }

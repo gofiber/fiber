@@ -1380,6 +1380,71 @@ func Test_Limiter_NilConfigUsesDefaults(t *testing.T) {
 	}
 }
 
+// A Config given straight to a strategy gets the defaults New would give it.
+func Test_Limiter_RawConfigUsesDefaults(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		cfg   *Config
+		name  string
+		limit int
+	}{
+		{name: "ConfigDefault", cfg: &ConfigDefault, limit: defaultLimiterMax},
+		{name: "zero value", cfg: &Config{}, limit: defaultLimiterMax},
+		{name: "only Max", cfg: &Config{Max: 2}, limit: 2},
+		{name: "MaxFunc wins over Max", cfg: &Config{Max: 9, MaxFunc: func(fiber.Ctx) int { return 3 }}, limit: 3},
+		{name: "only ExpirationFunc", cfg: &Config{ExpirationFunc: func(fiber.Ctx) time.Duration { return time.Hour }}, limit: defaultLimiterMax},
+	}
+
+	for _, strategy := range windowStrategies {
+		for _, tc := range tests {
+			t.Run(strategy.name+"/"+tc.name, func(t *testing.T) {
+				t.Parallel()
+
+				app := fiber.New()
+				app.Use(strategy.handler.New(tc.cfg))
+				app.Get("/", func(c fiber.Ctx) error {
+					return c.SendStatus(fiber.StatusOK)
+				})
+
+				for i := range tc.limit {
+					resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+					require.NoError(t, err)
+					require.Equal(t, fiber.StatusOK, resp.StatusCode, "request %d", i+1)
+					require.Equal(t, strconv.Itoa(tc.limit), resp.Header.Get(xRateLimitLimit), "request %d", i+1)
+				}
+
+				resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+				require.NoError(t, err)
+				require.Equal(t, fiber.StatusTooManyRequests, resp.StatusCode)
+			})
+		}
+	}
+}
+
+// A strategy leaves the Config it is given alone: ConfigDefault is shared.
+func Test_Limiter_RawConfigIsNotModified(t *testing.T) {
+	t.Parallel()
+
+	for _, strategy := range windowStrategies {
+		t.Run(strategy.name, func(t *testing.T) {
+			t.Parallel()
+
+			for _, cfg := range []*Config{{Max: 2}, &ConfigDefault} {
+				before := *cfg
+				strategy.handler.New(cfg)
+
+				require.Nil(t, cfg.MaxFunc)
+				require.Nil(t, cfg.ExpirationFunc)
+				require.Equal(t, before.Max, cfg.Max)
+				require.Equal(t, before.Expiration, cfg.Expiration)
+				require.Equal(t, before.KeyGenerator == nil, cfg.KeyGenerator == nil)
+				require.Equal(t, before.LimitReached == nil, cfg.LimitReached == nil)
+			}
+		})
+	}
+}
+
 // Remaining reads 0 although rejected requests keep their hit.
 func Test_Limiter_RemainingHeaderIsNeverNegative(t *testing.T) {
 	t.Parallel()
@@ -1734,35 +1799,124 @@ func Test_Limiter_Sliding_MixedWindowsDoNotInflateThePreviousWindow(t *testing.T
 	require.Equal(t, "2", resp.Header.Get(xRateLimitRemaining))
 }
 
+// limiterStores are the built-in store, which copies keys, and a Storage that keeps the string it is given.
+var limiterStores = []struct {
+	storage func() fiber.Storage
+	name    string
+}{
+	{name: "builtin", storage: func() fiber.Storage { return nil }},
+	{name: "keeps_key", storage: func() fiber.Storage { return newFakeLimiterStorage() }},
+}
+
 // A handler overwriting the memory behind the key (c.Get does not copy) must not misdirect the credit.
 func Test_Limiter_KeyOverwrittenByHandler(t *testing.T) {
 	t.Parallel()
 
 	for _, strategy := range windowStrategies {
-		t.Run(strategy.name, func(t *testing.T) {
+		for _, store := range limiterStores {
+			t.Run(strategy.name+"/"+store.name, func(t *testing.T) {
+				t.Parallel()
+
+				app := fiber.New()
+				app.Use(New(Config{
+					Max:                    1,
+					Expiration:             time.Minute,
+					SkipSuccessfulRequests: true,
+					LimiterMiddleware:      strategy.handler,
+					Storage:                store.storage(),
+					KeyGenerator:           func(c fiber.Ctx) string { return c.Get("X-Client") },
+				}))
+				app.Get("/", func(c fiber.Ctx) error {
+					// Same length, so fasthttp overwrites the key's bytes in place.
+					c.Request().Header.Set("X-Client", "BBBB")
+					return c.SendStatus(fiber.StatusOK)
+				})
+
+				for i := range 3 {
+					req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+					req.Header.Set("X-Client", "AAAA")
+					resp, err := app.Test(req)
+					require.NoError(t, err)
+					require.Equal(t, fiber.StatusOK, resp.StatusCode, "request %d", i+1)
+				}
+			})
+		}
+	}
+}
+
+// A handler overwriting the key must not misdirect the sliding window's header refresh.
+func Test_Limiter_KeyOverwrittenByHandler_Headers(t *testing.T) {
+	t.Parallel()
+
+	for _, store := range limiterStores {
+		t.Run(store.name, func(t *testing.T) {
 			t.Parallel()
 
 			app := fiber.New()
 			app.Use(New(Config{
-				Max:                    1,
-				Expiration:             time.Minute,
-				SkipSuccessfulRequests: true,
-				LimiterMiddleware:      strategy.handler,
-				Storage:                newFakeLimiterStorage(),
-				KeyGenerator:           func(c fiber.Ctx) string { return c.Get("X-Client") },
+				Max:               5,
+				Expiration:        time.Minute,
+				LimiterMiddleware: SlidingWindow{},
+				Storage:           store.storage(),
+				KeyGenerator:      func(c fiber.Ctx) string { return c.Get("X-Client") },
 			}))
 			app.Get("/", func(c fiber.Ctx) error {
-				// Same length, so fasthttp overwrites the key's bytes in place.
 				c.Request().Header.Set("X-Client", "BBBB")
 				return c.SendStatus(fiber.StatusOK)
 			})
 
-			for i := range 3 {
+			for i, remaining := range []string{"4", "3", "2"} {
 				req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 				req.Header.Set("X-Client", "AAAA")
 				resp, err := app.Test(req)
 				require.NoError(t, err)
 				require.Equal(t, fiber.StatusOK, resp.StatusCode, "request %d", i+1)
+				require.Equal(t, remaining, resp.Header.Get(xRateLimitRemaining), "request %d", i+1)
+			}
+		})
+	}
+}
+
+// A rejected request never reaches the handler, so it skips the key copy made for the read after it.
+//
+// Intentionally not parallel: testing.AllocsPerRun panics when called from a parallel test.
+func Test_Limiter_RejectDoesNotCopyKey(t *testing.T) {
+	rejectAllocs := func(t *testing.T, cfg Config) float64 {
+		t.Helper()
+
+		cfg.Max = 1
+		cfg.Expiration = time.Minute // a Retry-After under 100 formats without allocating
+		cfg.KeyGenerator = func(fiber.Ctx) string { return testLimiterClientKey }
+
+		app := fiber.New()
+		app.Use(New(cfg))
+		app.Get("/", func(c fiber.Ctx) error {
+			return c.SendStatus(fiber.StatusOK)
+		})
+
+		h := app.Handler()
+		fctx := &fasthttp.RequestCtx{}
+		fctx.Request.Header.SetMethod(fiber.MethodGet)
+		fctx.Request.SetRequestURI("/")
+
+		h(fctx) // the one request Max lets through
+		h(fctx)
+		require.Equal(t, fiber.StatusTooManyRequests, fctx.Response.StatusCode())
+
+		return testing.AllocsPerRun(100, func() { h(fctx) })
+	}
+
+	for _, strategy := range windowStrategies {
+		t.Run(strategy.name, func(t *testing.T) {
+			bare := rejectAllocs(t, Config{LimiterMiddleware: strategy.handler, DisableHeaders: true})
+			// SkipSuccessfulRequests refunds every hit here, so nothing would be rejected.
+			rereading := rejectAllocs(t, Config{LimiterMiddleware: strategy.handler, DisableHeaders: true, SkipFailedRequests: true})
+			require.InDelta(t, bare, rereading, 0, "the Skip options must not add to a rejected request")
+
+			// Sliding also re-reads the entry for the headers.
+			if strategy.name == "sliding" {
+				headers := rejectAllocs(t, Config{LimiterMiddleware: strategy.handler})
+				require.InDelta(t, bare, headers, 0, "the header refresh must not add to a rejected request")
 			}
 		})
 	}
@@ -2019,6 +2173,50 @@ func Benchmark_Limiter_Admit(b *testing.B) {
 			fctx := &fasthttp.RequestCtx{}
 			fctx.Request.Header.SetMethod(fiber.MethodGet)
 			fctx.Request.SetRequestURI("/")
+
+			b.ReportAllocs()
+
+			for b.Loop() {
+				h(fctx)
+			}
+		})
+	}
+}
+
+// Benchmark_Limiter_Reject measures requests the limit rejects: the handler never runs.
+//
+// go test -v -run=^$ -bench=Benchmark_Limiter_Reject -benchmem -count=4
+func Benchmark_Limiter_Reject(b *testing.B) {
+	benchmarks := []struct {
+		name string
+		cfg  Config
+	}{
+		{name: "fixed", cfg: Config{LimiterMiddleware: FixedWindow{}}},
+		{name: "fixed_skip_failed", cfg: Config{LimiterMiddleware: FixedWindow{}, SkipFailedRequests: true}},
+		{name: "sliding", cfg: Config{LimiterMiddleware: SlidingWindow{}}},
+		{name: "sliding_disable_headers", cfg: Config{LimiterMiddleware: SlidingWindow{}, DisableHeaders: true}},
+	}
+
+	for _, bm := range benchmarks {
+		b.Run(bm.name, func(b *testing.B) {
+			cfg := bm.cfg
+			cfg.Max = 1
+			cfg.Expiration = time.Hour
+			cfg.KeyGenerator = func(fiber.Ctx) string { return testLimiterClientKey }
+
+			app := fiber.New()
+			app.Use(New(cfg))
+			app.Get("/", func(c fiber.Ctx) error {
+				return c.SendString("Hello, World!")
+			})
+
+			h := app.Handler()
+
+			fctx := &fasthttp.RequestCtx{}
+			fctx.Request.Header.SetMethod(fiber.MethodGet)
+			fctx.Request.SetRequestURI("/")
+
+			h(fctx) // the one request Max lets through
 
 			b.ReportAllocs()
 
