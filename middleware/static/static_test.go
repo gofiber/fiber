@@ -1903,9 +1903,11 @@ func Test_Static_RootMount_EmptyFirstSegment_NotFoundHandler(t *testing.T) {
 
 // Test_Static_RootFile_ServesTheFileForAnyPath pins what the root mount rule
 // does not cover. A root that is a file serves that file for every path the
-// route matches, an empty first segment included, because nothing is looked up
-// by the path: no spelling of it can select another file. Middleware mounted on
-// a prefix still answers the paths it matches.
+// route matches, because nothing is looked up by the path: none of the path
+// rules applies to it, so an empty first segment, a backslash, a malformed
+// escape or a NUL byte gets the file like any other path, and no spelling of a
+// path can select another file. Middleware mounted on a prefix still answers
+// the paths it matches.
 func Test_Static_RootFile_ServesTheFileForAnyPath(t *testing.T) {
 	t.Parallel()
 
@@ -1935,6 +1937,10 @@ func Test_Static_RootFile_ServesTheFileForAnyPath(t *testing.T) {
 		{target: "//anything", wantStatus: fiber.StatusOK, wantBody: "SHELL"},
 		{target: "/%2Fanything", wantStatus: fiber.StatusOK, wantBody: "SHELL"},
 		{target: "//admin/secret.txt", wantStatus: fiber.StatusOK, wantBody: "SHELL"},
+		{target: `/a\b`, wantStatus: fiber.StatusOK, wantBody: "SHELL"},
+		{target: "/%5Cb", wantStatus: fiber.StatusOK, wantBody: "SHELL"},
+		{target: "/%zz", wantStatus: fiber.StatusOK, wantBody: "SHELL"},
+		{target: "/%00", wantStatus: fiber.StatusOK, wantBody: "SHELL"},
 		{target: "/admin/secret.txt", wantStatus: fiber.StatusForbidden, wantBody: "Forbidden"},
 	}
 

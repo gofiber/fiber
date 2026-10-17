@@ -160,7 +160,7 @@ A path that cannot name a file inside the root is answered with `404 Not Found`:
 
 With `UnescapePath` enabled the router has already decoded every escape, so a malformed escape is an ordinary part of the name: `/static/100%zz.txt` names `100%zz.txt`.
 
-The empty segment rule holds for a root mount too. The router keeps the empty first segment of `//private/secret.txt` apart from `/private/secret.txt`, so a root mount answers it with `404 Not Found` and does not open `private/secret.txt` without passing middleware mounted on `/private`. The spellings the router turns into such a path get the same answer, `/.//private/secret.txt`, `/x/..//private/secret.txt` and `/%2e%2e//private/secret.txt` among them. So does `/%2Fprivate/secret.txt`: it is refused as an escape of a slash, or decoded into an empty segment when `UnescapePath` is enabled. A root that is a single file serves that file for every path, so no spelling of a path can select another file.
+The empty segment rule holds for a root mount too. The router keeps the empty first segment of `//private/secret.txt` apart from `/private/secret.txt`, so a root mount answers it with `404 Not Found` and does not open `private/secret.txt` without passing middleware mounted on `/private`. The spellings the router turns into such a path get the same answer, `/.//private/secret.txt`, `/x/..//private/secret.txt` and `/%2e%2e//private/secret.txt` among them. So does `/%2Fprivate/secret.txt`: it is refused as an escape of a slash, or decoded into an empty segment when `UnescapePath` is enabled. A root that is a single file serves that file for every path the route matches, whatever its spelling, so no spelling of a path can select another file.
 :::
 
 :::tip

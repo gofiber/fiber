@@ -74,7 +74,9 @@ func (s *fileServer) requestPath(dst []byte, p string) []byte {
 		if s.invalid {
 			return append(dst, invalidPathSentinel...)
 		}
-		// If the root is a file, we need to reset the path to "/" always.
+		// If the root is a file, we need to reset the path to "/" always. What the
+		// request path says below the prefix is dropped, so no spelling of it can
+		// select another file and none of the rules on it apply.
 		switch {
 		case s.rootIsFile && s.fsys == nil:
 			p = "/"
