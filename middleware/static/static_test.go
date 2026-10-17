@@ -2023,3 +2023,41 @@ func Test_Static_NonMountRoutes_Served(t *testing.T) {
 		require.Equal(t, want, string(body), "target=%s", target)
 	}
 }
+
+// Test_Static_LeadingDoubleSlash_GuardNotBypassed is a regression test for a
+// path-prefix authorization bypass: a request target beginning with "//" was
+// routed as "//admin/..." (empty segment preserved), so a middleware route
+// registered as Use("/admin") did not match, while the root-mounted static
+// server stripped one leading slash and served the guarded file.
+//
+// The file server must now fail closed for any routed path beginning with "//".
+func Test_Static_LeadingDoubleSlash_GuardNotBypassed(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(root, "admin"), 0o750))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "admin", "secret.txt"), []byte("SECRET"), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "index.html"), []byte("INDEX"), 0o600))
+
+	app := fiber.New()
+	// Path-prefix guard: only /admin/... reaches it.
+	app.Use("/admin", func(c fiber.Ctx) error {
+		return c.SendStatus(fiber.StatusForbidden)
+	})
+	app.Use(New(root, Config{CacheDuration: -1}))
+
+	// The single-slash spelling is still guarded.
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/admin/secret.txt", http.NoBody))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, fiber.StatusForbidden, resp.StatusCode, "guarded single slash")
+
+	// The double-slash spelling must not slip past the guard and serve the file.
+	for _, target := range []string{"//admin/secret.txt", "///admin/secret.txt"} {
+		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, target, http.NoBody))
+		require.NoError(t, err, "app.Test(req) target=%s", target)
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		require.NotContains(t, string(body), "SECRET", "target=%s must not disclose guarded file", target)
+		require.Equal(t, fiber.StatusNotFound, resp.StatusCode, "target=%s must fail closed", target)
+	}
+}
