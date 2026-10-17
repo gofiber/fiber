@@ -162,9 +162,12 @@ func (r *Request) Headers() iter.Seq2[string, []string] {
 		peekKeys := r.header.PeekKeys()
 
 		// Copy keys to immutable strings to decouple from fasthttp's internal buffers.
-		keys := make([]string, len(peekKeys))
-		for i, key := range peekKeys {
-			keys[i] = utils.UnsafeString(key)
+		// PeekKeys lists a key once per header line; keep the first occurrence only.
+		keys := make([]string, 0, len(peekKeys))
+		for _, key := range peekKeys {
+			if k := utils.UnsafeString(key); !slices.Contains(keys, k) {
+				keys = append(keys, k)
+			}
 		}
 
 		for _, key := range keys {

@@ -9,6 +9,7 @@ import (
 	"iter"
 	"os"
 	"path/filepath"
+	"slices"
 	"sync"
 
 	"github.com/gofiber/utils/v2"
@@ -112,9 +113,12 @@ func (r *Response) Headers() iter.Seq2[string, []string] {
 		peekKeys := r.RawResponse.Header.PeekKeys()
 
 		// PeekAll reuses the slice PeekKeys returns, so copy the keys out first.
-		keys := make([]string, len(peekKeys))
-		for i, key := range peekKeys {
-			keys[i] = utils.UnsafeString(key)
+		// PeekKeys lists a key once per header line; keep the first occurrence only.
+		keys := make([]string, 0, len(peekKeys))
+		for _, key := range peekKeys {
+			if k := utils.UnsafeString(key); !slices.Contains(keys, k) {
+				keys = append(keys, k)
+			}
 		}
 
 		for _, key := range keys {

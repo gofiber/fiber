@@ -249,9 +249,8 @@ func Test_Response_Headers(t *testing.T) {
 
 	require.Equal(t, "hello world", resp.String())
 
-	require.Contains(t, headers["Foo"], "bar")
-	require.Contains(t, headers["Foo"], "bar2")
-	require.Contains(t, headers["Foo2"], "bar")
+	require.Equal(t, []string{"bar", "bar2"}, headers["Foo"])
+	require.Equal(t, []string{"bar"}, headers["Foo2"])
 
 	require.Len(t, headers, 5) // Foo + Foo2 + Date + Content-Length + Content-Type
 
