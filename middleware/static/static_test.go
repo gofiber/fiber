@@ -1901,14 +1901,15 @@ func Test_Static_RootMount_EmptyFirstSegment_NotFoundHandler(t *testing.T) {
 	}
 }
 
-// Test_Static_RootFile_ServesTheFileForAnyPath pins what the root mount rule
-// does not cover. A root that is a file serves that file for every path the
-// route matches, because nothing is looked up by the path: none of the path
-// rules applies to it, so an empty first segment, a backslash, a malformed
-// escape or a NUL byte gets the file like any other path, and no spelling of a
-// path can select another file. Middleware mounted on a prefix still answers
-// the paths it matches.
-func Test_Static_RootFile_ServesTheFileForAnyPath(t *testing.T) {
+// Test_Static_RootFile_EmptyFirstSegment pins how a root that is a file treats
+// a path. Like a root that is a directory, a root mount answers a path with an
+// empty first segment with 404: the router keeps "//x" apart from "/x", so
+// middleware mounted on "/x" does not run for it, and what the mount serves
+// does not change that. Every other spelling gets the file, because nothing is
+// looked up by the path: a backslash, a malformed escape or a NUL byte is served
+// like any other path, and no spelling of a path can select another file.
+// Middleware mounted on a prefix still answers the paths it matches.
+func Test_Static_RootFile_EmptyFirstSegment(t *testing.T) {
 	t.Parallel()
 
 	root := t.TempDir()
@@ -1921,27 +1922,35 @@ func Test_Static_RootFile_ServesTheFileForAnyPath(t *testing.T) {
 		mount func(app *fiber.App)
 		name  string
 	}{
-		{name: "file", mount: func(app *fiber.App) { app.Get("/*", New(file, Config{CacheDuration: -1})) }},
+		{name: "file", mount: func(app *fiber.App) { app.Get("/*", New(file, Config{CacheDuration: -1, Next: reached})) }},
 		{name: "fs file", mount: func(app *fiber.App) {
-			app.Get("/*", New("shell.html", Config{FS: os.DirFS(root), CacheDuration: -1}))
+			app.Get("/*", New("shell.html", Config{FS: os.DirFS(root), CacheDuration: -1, Next: reached}))
 		}},
 	}
 
+	const (
+		ok      = fiber.StatusOK
+		guarded = fiber.StatusForbidden
+		missing = fiber.StatusNotFound
+	)
+
 	requests := []struct {
-		target     string
-		wantBody   string
-		wantStatus int
+		target        string
+		wantStatus    int
+		wantUnescaped int // the status under UnescapePath, when it is not wantStatus
 	}{
-		{target: "/", wantStatus: fiber.StatusOK, wantBody: "SHELL"},
-		{target: "/anything", wantStatus: fiber.StatusOK, wantBody: "SHELL"},
-		{target: "//anything", wantStatus: fiber.StatusOK, wantBody: "SHELL"},
-		{target: "/%2Fanything", wantStatus: fiber.StatusOK, wantBody: "SHELL"},
-		{target: "//admin/secret.txt", wantStatus: fiber.StatusOK, wantBody: "SHELL"},
-		{target: `/a\b`, wantStatus: fiber.StatusOK, wantBody: "SHELL"},
-		{target: "/%5Cb", wantStatus: fiber.StatusOK, wantBody: "SHELL"},
-		{target: "/%zz", wantStatus: fiber.StatusOK, wantBody: "SHELL"},
-		{target: "/%00", wantStatus: fiber.StatusOK, wantBody: "SHELL"},
-		{target: "/admin/secret.txt", wantStatus: fiber.StatusForbidden, wantBody: "Forbidden"},
+		{target: "/", wantStatus: ok},
+		{target: "/anything", wantStatus: ok},
+		{target: "//anything", wantStatus: missing},
+		{target: "///anything", wantStatus: missing},
+		{target: "//admin/secret.txt", wantStatus: missing},
+		{target: "/.//anything", wantStatus: missing},
+		{target: "/%2Fanything", wantStatus: ok, wantUnescaped: missing},
+		{target: `/a\b`, wantStatus: ok},
+		{target: "/%5Cb", wantStatus: ok},
+		{target: "/%zz", wantStatus: ok},
+		{target: "/%00", wantStatus: ok},
+		{target: "/admin/secret.txt", wantStatus: guarded},
 	}
 
 	for _, m := range mounts {
@@ -1954,9 +1963,25 @@ func Test_Static_RootFile_ServesTheFileForAnyPath(t *testing.T) {
 			handler := app.Handler()
 
 			for _, tc := range requests {
+				want := tc.wantStatus
+				if unescape && tc.wantUnescaped != 0 {
+					want = tc.wantUnescaped
+				}
+
 				resp := serveRaw(handler, fiber.MethodGet, tc.target)
-				require.Equal(t, tc.wantStatus, resp.StatusCode(), "%s unescape=%v target=%s", m.name, unescape, tc.target)
-				require.Equal(t, tc.wantBody, string(resp.Body()), "%s unescape=%v target=%s", m.name, unescape, tc.target)
+				body := string(resp.Body())
+				require.Equal(t, want, resp.StatusCode(), "%s unescape=%v target=%s", m.name, unescape, tc.target)
+				require.Equal(t, want != guarded, len(resp.Header.Peek(headerReached)) > 0,
+					"%s unescape=%v target=%s: reached the file server", m.name, unescape, tc.target)
+				switch want {
+				case ok:
+					require.Equal(t, "SHELL", body, "%s unescape=%v target=%s", m.name, unescape, tc.target)
+				case guarded:
+					require.Equal(t, "Forbidden", body, "%s unescape=%v target=%s", m.name, unescape, tc.target)
+				default:
+					require.NotContains(t, body, "SHELL", "%s unescape=%v target=%s", m.name, unescape, tc.target)
+					require.NotContains(t, body, "SECRET", "%s unescape=%v target=%s", m.name, unescape, tc.target)
+				}
 			}
 		}
 	}

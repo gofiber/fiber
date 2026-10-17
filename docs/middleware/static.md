@@ -160,11 +160,11 @@ A path that cannot name a file inside the root is answered with `404 Not Found`:
 
 With `UnescapePath` enabled the router has already decoded every escape, so a malformed escape is an ordinary part of the name: `/static/100%zz.txt` names `100%zz.txt`.
 
-The empty segment rule holds for a root mount too. The router keeps the empty first segment of `//private/secret.txt` apart from `/private/secret.txt`, so a root mount answers it with `404 Not Found` and does not open `private/secret.txt` without passing middleware mounted on `/private`. The spellings the router turns into such a path get the same answer, `/.//private/secret.txt`, `/x/..//private/secret.txt` and `/%2e%2e//private/secret.txt` among them. So does `/%2Fprivate/secret.txt`: it is refused as an escape of a slash, or decoded into an empty segment when `UnescapePath` is enabled. A root that is a single file serves that file for every path the route matches, whatever its spelling, so no spelling of a path can select another file.
+The empty segment rule holds for a root mount too, whether it serves a directory or a single file. The router keeps the empty first segment of `//private/secret.txt` apart from `/private/secret.txt`, so a root mount answers it with `404 Not Found` instead of serving anything for a path that middleware mounted on `/private` never saw. The spellings the router turns into such a path get the same answer, `/.//private/secret.txt`, `/x/..//private/secret.txt` and `/%2e%2e//private/secret.txt` among them. So does `/%2Fprivate/secret.txt`: it is refused as an escape of a slash, or decoded into an empty segment when `UnescapePath` is enabled. A root that is a single file serves that file for every other path the route matches, whatever its spelling, so no spelling of a path can select another file.
 :::
 
 :::tip
-A client that puts a doubled slash in front of a path, such as a base URL that ends in `/` joined to a path that starts with `/`, gets `404 Not Found` from a root mount that serves a directory. To keep serving it, collapse the slash with the [Rewrite](./rewrite.md) middleware before any middleware that matches a path prefix runs. The middleware registered after it, one guarding `/private` included, then sees `/private/secret.txt`:
+A client that puts a doubled slash in front of a path, such as a base URL that ends in `/` joined to a path that starts with `/`, gets `404 Not Found` from a root mount. To keep serving it, collapse the slash with the [Rewrite](./rewrite.md) middleware before any middleware that matches a path prefix runs. The middleware registered after it, one guarding `/private` included, then sees `/private/secret.txt`:
 
 ```go
 app.Use(rewrite.New(rewrite.Config{
