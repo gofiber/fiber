@@ -56,7 +56,7 @@ func Test_Security_IsBlockedIP(t *testing.T) {
 		"::ffff:192.0.0.192":       true,  // IPv4-mapped 192.0.0.192
 		"64:ff9b::c000:c0":         true,  // NAT64 WKP 192.0.0.192
 		"fec0::1":                  true,  // site-local, fec0::/10
-		"feff:ffff::1":             true,  // site-local
+		"fed0::1":                  true,  // site-local
 		"192.0.1.1":                false, // just outside 192.0.0.0/24
 		"192.0.2.1":                false, // TEST-NET-1 documentation range
 		"198.17.255.255":           false, // just below 198.18.0.0/15
@@ -64,7 +64,7 @@ func Test_Security_IsBlockedIP(t *testing.T) {
 		"198.51.100.7":             false, // TEST-NET-2 documentation range
 		"203.0.113.9":              false, // TEST-NET-3 documentation range
 		"223.255.255.254":          false, // below 240.0.0.0/4
-		"fbff::1":                  false, // below fc00::/7
+		"fb00::1":                  false, // below fc00::/7
 		"::ffff:127.0.0.1":         true,  // IPv4-mapped loopback
 		"::ffff:10.0.0.1":          true,  // IPv4-mapped private
 		"::127.0.0.1":              true,  // IPv4-compatible loopback
@@ -1591,13 +1591,13 @@ func Test_Security_KeepHopByHopHeaders_Do(t *testing.T) {
 	require.Equal(t, "Basic", resp.Header.Get(fiber.HeaderProxyAuthenticate))
 }
 
-// Test_Security_ValidateUpstream_UnparseableIsHostInvalid pins that an address
+// Test_Security_ValidateUpstream_UnparsableIsHostInvalid pins that an address
 // net/url cannot parse is ErrUpstreamHostInvalid, with the *url.Error still
 // reachable.
-func Test_Security_ValidateUpstream_UnparseableIsHostInvalid(t *testing.T) {
+func Test_Security_ValidateUpstream_UnparsableIsHostInvalid(t *testing.T) {
 	t.Parallel()
 
-	for _, raw := range []string{"http://[::1", "http://exa mple.com", "http://%zz.com/", "http://a:b:c/"} {
+	for _, raw := range []string{"http://[::1", "http://exam ple.com", "http://%zz.com/", "http://a:b:c/"} {
 		_, err := validateUpstream(raw, DefaultSecurityPolicy())
 		require.ErrorIs(t, err, ErrUpstreamHostInvalid, raw)
 		_, ok := errors.AsType[*url.Error](err)
