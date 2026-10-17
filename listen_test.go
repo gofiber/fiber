@@ -26,6 +26,110 @@ import (
 	"golang.org/x/crypto/acme/autocert"
 )
 
+// shutdownProbe counts the shutdown hooks of an app and keeps the error OnPostShutdown got.
+type shutdownProbe struct {
+	postErr error
+	posted  chan struct{} // closed when OnPostShutdown first runs
+	once    sync.Once
+	pre     atomic.Int32
+	post    atomic.Int32
+}
+
+// gracefulFixture is an app with the probe of its shutdown hooks and a GracefulContext the test cancels.
+type gracefulFixture struct {
+	ln     *fasthttputil.InmemoryListener // what Listener serves
+	app    *App
+	probe  *shutdownProbe
+	cancel context.CancelFunc
+	cfg    ListenConfig
+}
+
+// gracefulEntry is a way to start a server whose GracefulContext the tests cancel.
+type gracefulEntry struct {
+	run  func(f *gracefulFixture) error
+	name string
+	// closeVisible tells whether a test can see that the entry closed its listener: only
+	// Listener serves one that the test holds.
+	closeVisible bool
+}
+
+var (
+	listenEntry = gracefulEntry{
+		name: "Listen",
+		run:  func(f *gracefulFixture) error { return f.app.Listen("127.0.0.1:0", f.cfg) },
+	}
+	listenerEntry = gracefulEntry{
+		name:         "Listener",
+		run:          func(f *gracefulFixture) error { return f.app.Listener(f.ln, f.cfg) },
+		closeVisible: true,
+	}
+	gracefulEntries = []gracefulEntry{listenEntry, listenerEntry}
+)
+
+// gracefulPoint is a place of the startup where a test acts. wire registers run there.
+type gracefulPoint struct {
+	wire func(f *gracefulFixture, run func())
+	name string
+}
+
+var (
+	onListenPoint = gracefulPoint{
+		name: "OnListen",
+		wire: func(f *gracefulFixture, run func()) {
+			f.app.Hooks().OnListen(func(ListenData) error {
+				run()
+				return nil
+			})
+		},
+	}
+	beforeServePoint = gracefulPoint{
+		name: "BeforeServeFunc",
+		wire: func(f *gracefulFixture, run func()) {
+			f.cfg.BeforeServeFunc = func(*App) error {
+				run()
+				return nil
+			}
+		},
+	}
+	gracefulPoints = []gracefulPoint{onListenPoint, beforeServePoint}
+)
+
+// gracefulContextStates are the two states a GracefulContext can be in when a test calls Listen: not
+// done, or done already (prepare cancels it). A test that reaches a point of the startup cancels the
+// context there as well, which does nothing once it is done, and keeps the startup at the point until
+// the shutdown has finished: that is what puts the shutdown before Serve without relying on timing.
+var gracefulContextStates = []struct {
+	prepare func(f *gracefulFixture)
+	name    string
+}{
+	{name: "not done before the call", prepare: func(*gracefulFixture) {}},
+	{name: "done before the call", prepare: func(f *gracefulFixture) { f.cancel() }},
+}
+
+// closeSignalListener reports the first Close of the listener it wraps.
+type closeSignalListener struct {
+	net.Listener
+	closed chan struct{}
+	once   sync.Once
+}
+
+// stubListener counts what a gracefulListener forwards to the listener it wraps. It never hands out
+// a connection: without an acceptErr its Accept reports a closed listener, so a Serve that is given
+// it by mistake returns instead of calling Accept in a loop for ever.
+type stubListener struct {
+	acceptErr error
+	closeErr  error
+	accepts   atomic.Int32
+	closes    atomic.Int32
+}
+
+type benchConn struct{ net.Conn }
+
+// benchListener accepts the same connection at once, so a benchmark sees only what its wrapper adds.
+type benchListener struct{ conn net.Conn }
+
+var benchSinkConn net.Conn
+
 // go test -run Test_Listen
 func Test_Listen(t *testing.T) {
 	app := New()
@@ -1727,15 +1831,6 @@ func receiveOrTimeout[T any](ch <-chan T) (T, bool) {
 	}
 }
 
-// shutdownProbe counts the shutdown hooks of an app and keeps the error OnPostShutdown got.
-type shutdownProbe struct {
-	postErr error
-	posted  chan struct{} // closed when OnPostShutdown first runs
-	once    sync.Once
-	pre     atomic.Int32
-	post    atomic.Int32
-}
-
 func newShutdownProbe(app *App) *shutdownProbe {
 	p := &shutdownProbe{posted: make(chan struct{})}
 	app.Hooks().OnPreShutdown(func() error {
@@ -1816,15 +1911,6 @@ func waitUntilServing(t *testing.T, ln *fasthttputil.InmemoryListener) {
 	}, 2*time.Second, 10*time.Millisecond, "server failed to become ready")
 }
 
-// gracefulFixture is an app with the probe of its shutdown hooks and a GracefulContext the test cancels.
-type gracefulFixture struct {
-	ln     *fasthttputil.InmemoryListener // what Listener serves
-	app    *App
-	probe  *shutdownProbe
-	cancel context.CancelFunc
-	cfg    ListenConfig
-}
-
 func newGracefulFixture(t *testing.T) *gracefulFixture {
 	t.Helper()
 
@@ -1865,15 +1951,6 @@ func (f *gracefulFixture) requireStopped(t *testing.T, errs <-chan error) {
 	f.probe.requireCleanShutdown(t)
 }
 
-// gracefulEntry is a way to start a server whose GracefulContext the tests cancel.
-type gracefulEntry struct {
-	run  func(f *gracefulFixture) error
-	name string
-	// closeVisible tells whether a test can see that the entry closed its listener: only
-	// Listener serves one that the test holds.
-	closeVisible bool
-}
-
 // requireClosed expects the listener of the entry to be closed, as a shutdown closes the one of
 // a running server. A second Close reports the first one; a Dial would wait for an Accept on a
 // listener that is still open, and hang the test instead of failing it.
@@ -1884,59 +1961,6 @@ func (e gracefulEntry) requireClosed(t *testing.T, f *gracefulFixture) {
 		return
 	}
 	require.ErrorIs(t, f.ln.Close(), fasthttputil.ErrInmemoryListenerClosed)
-}
-
-var (
-	listenEntry = gracefulEntry{
-		name: "Listen",
-		run:  func(f *gracefulFixture) error { return f.app.Listen("127.0.0.1:0", f.cfg) },
-	}
-	listenerEntry = gracefulEntry{
-		name:         "Listener",
-		run:          func(f *gracefulFixture) error { return f.app.Listener(f.ln, f.cfg) },
-		closeVisible: true,
-	}
-	gracefulEntries = []gracefulEntry{listenEntry, listenerEntry}
-)
-
-// gracefulPoint is a place of the startup where a test acts. wire registers run there.
-type gracefulPoint struct {
-	wire func(f *gracefulFixture, run func())
-	name string
-}
-
-var (
-	onListenPoint = gracefulPoint{
-		name: "OnListen",
-		wire: func(f *gracefulFixture, run func()) {
-			f.app.Hooks().OnListen(func(ListenData) error {
-				run()
-				return nil
-			})
-		},
-	}
-	beforeServePoint = gracefulPoint{
-		name: "BeforeServeFunc",
-		wire: func(f *gracefulFixture, run func()) {
-			f.cfg.BeforeServeFunc = func(*App) error {
-				run()
-				return nil
-			}
-		},
-	}
-	gracefulPoints = []gracefulPoint{onListenPoint, beforeServePoint}
-)
-
-// gracefulContextStates are the two states a GracefulContext can be in when a test calls Listen: not
-// done, or done already (prepare cancels it). A test that reaches a point of the startup cancels the
-// context there as well, which does nothing once it is done, and keeps the startup at the point until
-// the shutdown has finished: that is what puts the shutdown before Serve without relying on timing.
-var gracefulContextStates = []struct {
-	prepare func(f *gracefulFixture)
-	name    string
-}{
-	{name: "not done before the call", prepare: func(*gracefulFixture) {}},
-	{name: "done before the call", prepare: func(f *gracefulFixture) { f.cancel() }},
 }
 
 // Issue #4763: a GracefulContext done before the server serves left Listen and Listener serving, as
@@ -2000,13 +2024,6 @@ func Test_Listen_GracefulContext_ClosesListener(t *testing.T) {
 	// Closing a unix listener removes its socket file, which makes the file proof of the close.
 	_, err = os.Stat(sock)
 	require.ErrorIs(t, err, os.ErrNotExist)
-}
-
-// closeSignalListener reports the first Close of the listener it wraps.
-type closeSignalListener struct {
-	net.Listener
-	closed chan struct{}
-	once   sync.Once
 }
 
 func (l *closeSignalListener) Close() error {
@@ -2124,16 +2141,6 @@ func Test_GracefulContext_ServesDuringOnPreShutdown(t *testing.T) {
 	}
 }
 
-// stubListener counts what a gracefulListener forwards to the listener it wraps. It never hands out
-// a connection: without an acceptErr its Accept reports a closed listener, so a Serve that is given
-// it by mistake returns instead of calling Accept in a loop for ever.
-type stubListener struct {
-	acceptErr error
-	closeErr  error
-	accepts   atomic.Int32
-	closes    atomic.Int32
-}
-
 func (s *stubListener) Accept() (net.Conn, error) {
 	s.accepts.Add(1)
 	if s.acceptErr == nil {
@@ -2244,16 +2251,9 @@ func Test_gracefulRun(t *testing.T) {
 	})
 }
 
-type benchConn struct{ net.Conn }
-
-// benchListener accepts the same connection at once, so a benchmark sees only what its wrapper adds.
-type benchListener struct{ conn net.Conn }
-
 func (l benchListener) Accept() (net.Conn, error) { return l.conn, nil }
 func (benchListener) Close() error                { return nil }
 func (benchListener) Addr() net.Addr              { return nil }
-
-var benchSinkConn net.Conn
 
 // Benchmark_gracefulListener_Accept is what the wrapper adds per accepted connection when a
 // GracefulContext is set: Serve calls Accept once per connection, and nothing else of the wrapper

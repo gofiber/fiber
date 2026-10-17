@@ -19,6 +19,10 @@ import (
 	"github.com/valyala/fasthttp/prefork"
 )
 
+// preforkChildHelperEnv makes Test_Prefork_Child_GracefulContext_Helper run as the prefork child that
+// Test_Prefork_Child_GracefulContext_WatchedOnce starts. In an ordinary test run the helper does nothing.
+const preforkChildHelperEnv = "FIBER_TEST_PREFORK_CHILD_HELPER"
+
 func Test_App_Prefork_Child_Process(t *testing.T) {
 	skipIfNoIPv6(t)
 
@@ -148,10 +152,6 @@ func Test_preforkServe_GracefulContext_DoneBeforeServe(t *testing.T) {
 		})
 	}
 }
-
-// preforkChildHelperEnv makes Test_Prefork_Child_GracefulContext_Helper run as the prefork child that
-// Test_Prefork_Child_GracefulContext_WatchedOnce starts. In an ordinary test run the helper does nothing.
-const preforkChildHelperEnv = "FIBER_TEST_PREFORK_CHILD_HELPER"
 
 // A prefork child watches its GracefulContext once, in preforkServe, and prefork() watches only for the
 // master: a child that watched in both would run its shutdown hooks twice. The child path needs the
