@@ -1990,7 +1990,8 @@ func Test_Static_RootFile_EmptyFirstSegment(t *testing.T) {
 // prefix reads nothing from the path below it. The empty first segment that a
 // root mount refuses cannot occur there, since the router sends the file server
 // only paths that start with the prefix, and an empty segment below the prefix
-// is part of a name like any other.
+// is part of a name like any other. A prefix that starts with one itself is
+// covered by Test_Static_RootFile_OnAPrefixWithEmptyFirstSegment.
 func Test_Static_RootFile_OnAPrefix(t *testing.T) {
 	t.Parallel()
 
@@ -2018,6 +2019,59 @@ func Test_Static_RootFile_OnAPrefix(t *testing.T) {
 		{target: "/static/web/https://example.com", wantStatus: fiber.StatusOK, wantReached: true},
 		// the router does not send this to the file server at all
 		{target: "//static/x", wantStatus: fiber.StatusNotFound},
+	}
+
+	for _, m := range mounts {
+		for _, unescape := range []bool{false, true} {
+			app := fiber.New(fiber.Config{UnescapePath: unescape})
+			m.mount(app)
+			handler := app.Handler()
+
+			for _, tc := range requests {
+				resp := serveRaw(handler, fiber.MethodGet, tc.target)
+				require.Equal(t, tc.wantStatus, resp.StatusCode(), "%s unescape=%v target=%s", m.name, unescape, tc.target)
+				require.Equal(t, tc.wantReached, len(resp.Header.Peek(headerReached)) > 0,
+					"%s unescape=%v target=%s: reached the file server", m.name, unescape, tc.target)
+				if tc.wantStatus == fiber.StatusOK {
+					require.Equal(t, "SHELL", string(resp.Body()), "%s unescape=%v target=%s", m.name, unescape, tc.target)
+				}
+			}
+		}
+	}
+}
+
+// Test_Static_RootFile_OnAPrefixWithEmptyFirstSegment pins that refusing a path
+// that starts with "//" belongs to a root mount. A route can start with an empty
+// segment itself, as in "//assets/*", and then every path it matches does too,
+// so a root that is a file serves its file there as a directory serves its files.
+func Test_Static_RootFile_OnAPrefixWithEmptyFirstSegment(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	file := filepath.Join(root, "shell.html")
+	require.NoError(t, os.WriteFile(file, []byte("SHELL"), 0o600))
+
+	mounts := []struct {
+		mount func(app *fiber.App)
+		name  string
+	}{
+		{name: "file", mount: func(app *fiber.App) { app.Get("//assets/*", New(file, Config{CacheDuration: -1, Next: reached})) }},
+		{name: "file with Use", mount: func(app *fiber.App) { app.Use("//assets", New(file, Config{CacheDuration: -1, Next: reached})) }},
+		{name: "fs file", mount: func(app *fiber.App) {
+			app.Get("//assets/*", New("shell.html", Config{FS: os.DirFS(root), CacheDuration: -1, Next: reached}))
+		}},
+	}
+
+	requests := []struct {
+		target      string
+		wantStatus  int
+		wantReached bool
+	}{
+		{target: "//assets/x", wantStatus: fiber.StatusOK, wantReached: true},
+		{target: "//assets//x", wantStatus: fiber.StatusOK, wantReached: true},
+		// the router does not send these to the file server at all
+		{target: "/assets/x", wantStatus: fiber.StatusNotFound},
+		{target: "///assets/x", wantStatus: fiber.StatusNotFound},
 	}
 
 	for _, m := range mounts {

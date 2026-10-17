@@ -77,10 +77,11 @@ func (s *fileServer) requestPath(dst []byte, p string) []byte {
 		// If the root is a file, we need to reset the path to "/" always. What the
 		// request path says below the prefix is dropped, so no spelling of it can
 		// select another file, and an empty segment inside it, as in
-		// /web/https://example.com, is part of an opaque name. Only a root mount can
-		// be sent a path that starts with "//", and it refuses it whatever it
-		// serves, as a directory root does in sanitizePath.
-		if s.rootIsFile && len(p) > 1 && p[0] == '/' && p[1] == '/' {
+		// /web/https://example.com, is part of an opaque name. A root mount refuses
+		// a path that starts with "//" whatever it serves, as a directory root does
+		// in sanitizePath; on a prefix, even one that starts with "//" itself, that
+		// segment is the route's own.
+		if s.rootIsFile && s.prefixLen == 0 && len(p) > 1 && p[0] == '/' && p[1] == '/' {
 			return append(dst, invalidPathSentinel...)
 		}
 		switch {
