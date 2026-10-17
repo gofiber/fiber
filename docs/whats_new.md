@@ -1869,6 +1869,8 @@ The limiter middleware uses a new Fixed Window Rate Limiter implementation.
 
 Custom limiter algorithms should now implement the updated `limiter.Handler` interface, whose `New` method receives a pointer to the active config: `New(cfg *limiter.Config) fiber.Handler`.
 
+`limiter.FixedWindow` and `limiter.SlidingWindow` give a field their config leaves unset the default `limiter.New` would, when you call their `New` method yourself: `MaxFunc` and `ExpirationFunc` return `Max` and `Expiration`, and a `nil` config selects the default config.
+
 Limiter now redacts request keys in error paths by default. A new `DisableValueRedaction` boolean (default `false`) lets you reveal the limiter key, as the storage sees it, if diagnostics require it.
 
 :::note

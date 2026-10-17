@@ -10,12 +10,10 @@ import (
 // FixedWindow implements a fixed-window rate limiting strategy.
 type FixedWindow struct{}
 
-// New creates a new fixed window middleware handler
+// New creates a new fixed window middleware handler. Fields cfg leaves unset take the
+// defaults limiter.New would give them, and a nil cfg gives the default config.
 func (FixedWindow) New(cfg *Config) fiber.Handler {
-	if cfg == nil {
-		defaultCfg := configDefault()
-		cfg = &defaultCfg
-	}
+	cfg = withDefaults(cfg)
 
 	// Limiter variables
 	locks := new(keyedMutex)

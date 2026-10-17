@@ -1380,6 +1380,71 @@ func Test_Limiter_NilConfigUsesDefaults(t *testing.T) {
 	}
 }
 
+// A Config handed straight to a strategy, not through New, gets the defaults New would give it.
+func Test_Limiter_RawConfigUsesDefaults(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		cfg   *Config
+		name  string
+		limit int
+	}{
+		{name: "ConfigDefault", cfg: &ConfigDefault, limit: defaultLimiterMax},
+		{name: "zero value", cfg: &Config{}, limit: defaultLimiterMax},
+		{name: "only Max", cfg: &Config{Max: 2}, limit: 2},
+		{name: "MaxFunc wins over Max", cfg: &Config{Max: 9, MaxFunc: func(fiber.Ctx) int { return 3 }}, limit: 3},
+		{name: "only ExpirationFunc", cfg: &Config{ExpirationFunc: func(fiber.Ctx) time.Duration { return time.Hour }}, limit: defaultLimiterMax},
+	}
+
+	for _, strategy := range windowStrategies {
+		for _, tc := range tests {
+			t.Run(strategy.name+"/"+tc.name, func(t *testing.T) {
+				t.Parallel()
+
+				app := fiber.New()
+				app.Use(strategy.handler.New(tc.cfg))
+				app.Get("/", func(c fiber.Ctx) error {
+					return c.SendStatus(fiber.StatusOK)
+				})
+
+				for i := range tc.limit {
+					resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+					require.NoError(t, err)
+					require.Equal(t, fiber.StatusOK, resp.StatusCode, "request %d", i+1)
+					require.Equal(t, strconv.Itoa(tc.limit), resp.Header.Get(xRateLimitLimit), "request %d", i+1)
+				}
+
+				resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+				require.NoError(t, err)
+				require.Equal(t, fiber.StatusTooManyRequests, resp.StatusCode)
+			})
+		}
+	}
+}
+
+// ConfigDefault is shared, so a strategy fills in a copy and leaves the Config it was given alone.
+func Test_Limiter_RawConfigIsNotModified(t *testing.T) {
+	t.Parallel()
+
+	for _, strategy := range windowStrategies {
+		t.Run(strategy.name, func(t *testing.T) {
+			t.Parallel()
+
+			for _, cfg := range []*Config{{Max: 2}, &ConfigDefault} {
+				before := *cfg
+				strategy.handler.New(cfg)
+
+				require.Nil(t, cfg.MaxFunc)
+				require.Nil(t, cfg.ExpirationFunc)
+				require.Equal(t, before.Max, cfg.Max)
+				require.Equal(t, before.Expiration, cfg.Expiration)
+				require.Equal(t, before.KeyGenerator == nil, cfg.KeyGenerator == nil)
+				require.Equal(t, before.LimitReached == nil, cfg.LimitReached == nil)
+			}
+		})
+	}
+}
+
 // Remaining reads 0 although rejected requests keep their hit.
 func Test_Limiter_RemainingHeaderIsNeverNegative(t *testing.T) {
 	t.Parallel()

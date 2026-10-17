@@ -10,12 +10,10 @@ import (
 // SlidingWindow implements the sliding-window rate limiting strategy.
 type SlidingWindow struct{}
 
-// New creates a new sliding window middleware handler
+// New creates a new sliding window middleware handler. Fields cfg leaves unset take the
+// defaults limiter.New would give them, and a nil cfg gives the default config.
 func (SlidingWindow) New(cfg *Config) fiber.Handler {
-	if cfg == nil {
-		defaultCfg := configDefault()
-		cfg = &defaultCfg
-	}
+	cfg = withDefaults(cfg)
 
 	// Limiter variables
 	locks := new(keyedMutex)
