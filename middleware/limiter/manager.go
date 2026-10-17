@@ -94,6 +94,12 @@ func newManager(storage fiber.Storage, shouldRedactKeys bool) *manager {
 	return manager
 }
 
+// copiesKeys reports whether the manager copies every key it stores, as the
+// in-memory fallback does. A Storage from the caller may keep the string it is given.
+func (m *manager) copiesKeys() bool {
+	return m.storage == nil
+}
+
 // acquire returns an *item from the sync.Pool
 func (m *manager) acquire() *item {
 	return m.pool.Get().(*item) //nolint:forcetypeassert,errcheck // We store nothing else in the pool

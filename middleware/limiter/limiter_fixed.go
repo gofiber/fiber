@@ -37,9 +37,15 @@ func (FixedWindow) New(cfg *Config) fiber.Handler {
 		// Generate expiration from generator
 		windowSec := windowSeconds(cfg.ExpirationFunc(c), cfg.Expiration)
 
-		// Get key from request, copied since c.Next may rewrite the memory it points to
+		// Get key from request
 		key := cfg.KeyGenerator(c)
-		if cfg.SkipSuccessfulRequests || cfg.SkipFailedRequests {
+
+		// The entry is read again after c.Next, which may rewrite the memory the key
+		// points to, so the key is copied for that read. A Storage may keep the string
+		// it is given and gets the copy first; the in-memory store copies for itself,
+		// so there the copy waits until the request is known to reach c.Next.
+		rereads := cfg.SkipSuccessfulRequests || cfg.SkipFailedRequests
+		if rereads && !manager.copiesKeys() {
 			key = utils.CopyString(key)
 		}
 
@@ -83,6 +89,10 @@ func (FixedWindow) New(cfg *Config) fiber.Handler {
 		// Check if hits exceed the max
 		if remaining < 0 {
 			return cfg.reject(c, resetInSec)
+		}
+
+		if rereads && manager.copiesKeys() {
+			key = utils.CopyString(key)
 		}
 
 		// Continue stack for reaching c.Res().StatusCode()
