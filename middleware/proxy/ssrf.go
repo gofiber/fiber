@@ -116,70 +116,65 @@ func (g dialGuard) strictDialer() fasthttp.DialFunc {
 	return g.dialChecked
 }
 
-// clientDialer wraps orig with the guard. Unlike strictDialer — whose blocking
-// is unconditional because Balancer only installs it when the policy forbids
-// private IPs — this dialer is consulted by clients that outlive a single
-// policy snapshot, so it re-reads the active global policy on every dial. When
-// the caller supplied their own dialer it is run in both paths so custom
-// transport is preserved while a blocked-policy connection still targets the
-// validated address.
+// clientDialer wraps orig with the guard. Unlike strictDialer, whose blocking is
+// unconditional because Balancer installs it only when the policy forbids
+// private IPs, this dialer serves clients that outlive any one policy
+// snapshot, so it re-reads the active policy on every dial. A dialer the caller
+// supplied is used on both paths, which keeps their transport while a
+// connection under a blocking policy still targets the validated address.
 //
-// When orig is nil the two paths differ, matching strictDialer: the delegate
-// (private-IPs-allowed) path hands the raw address to fasthttp's default dialer
-// (Dial/DialDualStack), while the validated (blocked-policy) path connects to
-// the already-checked IP with g.dial — fasthttp.Dial is not reused there
-// because the target is a literal IP that needs no re-resolution and the
-// explicit timeout bounds the connect.
+// Without one the paths differ: the policy-allows path hands the raw address to
+// fasthttp's default dialer (Dial or DialDualStack), while the blocking path
+// dials the already-checked IP with g.dial, which needs no second resolution
+// and bounds the connect with an explicit timeout.
 func (g dialGuard) clientDialer(orig fasthttp.DialFunc) fasthttp.DialFunc {
-	delegate := func(addr string) (net.Conn, error) {
-		if orig != nil {
+	delegate := func(addr string, _ time.Duration) (net.Conn, error) {
+		switch {
+		case orig != nil:
 			return orig(addr)
-		}
-		if g.dualStack {
+		case g.dualStack:
 			return fasthttp.DialDualStack(addr)
-		}
-		return fasthttp.Dial(addr)
-	}
-	validated := g
-	if orig != nil {
-		validated.dial = func(_, address string) (net.Conn, error) {
-			return orig(address)
+		default:
+			return fasthttp.Dial(addr)
 		}
 	}
+	validated := delegate
+	if orig == nil {
+		validated = func(address string, _ time.Duration) (net.Conn, error) {
+			return g.dial("tcp", address)
+		}
+	}
+	dial := g.guarded(delegate, validated)
 	return func(addr string) (net.Conn, error) {
-		return guardedDial(addr, delegate, validated)
+		return dial(addr, 0)
 	}
 }
 
 // clientDialerWithTimeout is the DialFuncWithTimeout counterpart of
-// clientDialer. orig is always non-nil here (installed only when the HostClient
-// already carries a DialTimeout), and the per-request timeout is threaded
-// through both the delegate and the validated dial so the caller's timeout
-// semantics survive the guard.
+// clientDialer. orig is always non-nil here (it is installed only when the
+// HostClient already carries a DialTimeout), and the caller's per-request
+// timeout reaches it on both paths.
 func (g dialGuard) clientDialerWithTimeout(orig fasthttp.DialFuncWithTimeout) fasthttp.DialFuncWithTimeout {
-	return func(addr string, timeout time.Duration) (net.Conn, error) {
-		delegate := func(a string) (net.Conn, error) {
-			return orig(a, timeout)
-		}
-		validated := g
-		validated.dial = func(_, address string) (net.Conn, error) {
-			return orig(address, timeout)
-		}
-		return guardedDial(addr, delegate, validated)
-	}
+	return g.guarded(orig, orig)
 }
 
-// guardedDial is the shared core of both client dialers. When the active
-// policy allows private IPs the caller has opted into internal targets, so it
-// delegates unchanged. Otherwise it dials through validated, closing the
-// DNS-rebinding check/use window the up-front validateUpstream lookup leaves
-// open. The policy is read fresh on every dial because a shared client
-// outlives any single policy snapshot.
-func guardedDial(addr string, delegate fasthttp.DialFunc, validated dialGuard) (net.Conn, error) {
-	if currentSecurityPolicy().AllowPrivateIPs {
-		return delegate(addr)
+// guarded is the core both client dialers are built on. When the active policy
+// allows private IPs the caller opted into internal targets, so delegate runs
+// unchanged. Otherwise the address is resolved and checked, and validated dials
+// the IP that passed, which closes the DNS-rebinding window the up-front
+// validateUpstream lookup leaves open. The policy is read on every dial because
+// a shared client outlives any one policy snapshot.
+func (g dialGuard) guarded(delegate, validated fasthttp.DialFuncWithTimeout) fasthttp.DialFuncWithTimeout {
+	return func(addr string, timeout time.Duration) (net.Conn, error) {
+		if currentSecurityPolicy().AllowPrivateIPs {
+			return delegate(addr, timeout)
+		}
+		checked := g
+		checked.dial = func(_, address string) (net.Conn, error) {
+			return validated(address, timeout)
+		}
+		return checked.dialChecked(addr)
 	}
-	return validated.dialChecked(addr)
 }
 
 // dialChecked dials addr unless an IP it resolves to is blocked.
