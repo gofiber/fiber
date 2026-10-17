@@ -25,8 +25,8 @@ coverage:
 	go tool cover -html=/tmp/coverage.out
 
 ## format: 🎨 Fix code format issues
-# group_params is the one extra rule .golangci.yml turns on (group-params), and the
-# one golangci-lint's gocritic already enforces in lint; a bare -extra enables more.
+# group_params is the one extra rule .golangci.yml turns on (group-params) and the one
+# `make lint` already enforces (paramTypeCombine); a bare -extra enables more.
 .PHONY: format
 format:
 	GOTOOLCHAIN=$(GOVERSION) go run mvdan.cc/gofumpt@latest -extra=group_params -w -l .
