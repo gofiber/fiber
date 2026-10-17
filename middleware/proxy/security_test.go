@@ -45,6 +45,26 @@ func Test_Security_IsBlockedIP(t *testing.T) {
 		"169.254.169.254":          true,  // AWS metadata
 		"100.64.0.1":               true,  // CGNAT
 		"224.0.0.1":                true,  // multicast
+		"0.1.2.3":                  true,  // 0.0.0.0/8
+		"0.255.255.255":            true,  // 0.0.0.0/8
+		"192.0.0.192":              true,  // Oracle Cloud legacy metadata, 192.0.0.0/24
+		"192.0.0.1":                true,  // 192.0.0.0/24
+		"198.18.0.1":               true,  // benchmarking, 198.18.0.0/15
+		"198.19.255.254":           true,  // benchmarking
+		"240.0.0.1":                true,  // reserved, 240.0.0.0/4
+		"255.255.255.255":          true,  // limited broadcast
+		"::ffff:192.0.0.192":       true,  // IPv4-mapped 192.0.0.192
+		"64:ff9b::c000:c0":         true,  // NAT64 WKP 192.0.0.192
+		"fec0::1":                  true,  // site-local, fec0::/10
+		"feff:ffff::1":             true,  // site-local
+		"192.0.1.1":                false, // just outside 192.0.0.0/24
+		"192.0.2.1":                false, // TEST-NET-1 documentation range
+		"198.17.255.255":           false, // just below 198.18.0.0/15
+		"198.20.0.0":               false, // just above 198.18.0.0/15
+		"198.51.100.7":             false, // TEST-NET-2 documentation range
+		"203.0.113.9":              false, // TEST-NET-3 documentation range
+		"223.255.255.254":          false, // below 240.0.0.0/4
+		"fbff::1":                  false, // below fc00::/7
 		"::ffff:127.0.0.1":         true,  // IPv4-mapped loopback
 		"::ffff:10.0.0.1":          true,  // IPv4-mapped private
 		"::127.0.0.1":              true,  // IPv4-compatible loopback

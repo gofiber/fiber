@@ -7,7 +7,9 @@ import (
 // isBlockedIP reports whether ip falls inside a range that proxy
 // upstreams must not reach by default. Loopback, unspecified, RFC 1918
 // private, link-local (including the 169.254.169.254 cloud-metadata
-// address), multicast, and RFC 6598 CGNAT ranges are blocked.
+// address), multicast, and RFC 6598 CGNAT ranges are blocked, and so are the
+// special-use ranges net.IP does not classify (see isBlockedIPv4Range) and the
+// deprecated IPv6 site-local range fec0::/10 (RFC 3879).
 //
 // IPv6 transition addresses are handled in two ways so a blocked IPv4 cannot
 // be smuggled past as an IPv6 literal. Deprecated tunneling and local-use
@@ -23,10 +25,11 @@ func isBlockedIP(ip net.IP) bool {
 	}
 	if ip.IsLoopback() || ip.IsUnspecified() || ip.IsPrivate() ||
 		ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() ||
-		ip.IsMulticast() || ip.IsInterfaceLocalMulticast() {
+		ip.IsMulticast() || ip.IsInterfaceLocalMulticast() ||
+		isIPv6SiteLocal(ip) {
 		return true
 	}
-	if v4 := ip.To4(); v4 != nil && v4[0] == 100 && v4[1] >= 64 && v4[1] <= 127 {
+	if v4 := ip.To4(); v4 != nil && isBlockedIPv4Range(v4) {
 		return true
 	}
 	// Block deprecated / local-use IPv6 transition ranges wholesale (see the
@@ -44,6 +47,42 @@ func isBlockedIP(ip net.IP) bool {
 		return true
 	}
 	return false
+}
+
+// isBlockedIPv4Range reports whether v4 is in a special-use IPv4 range that
+// net.IP does not classify and that is not meant to be reached over the
+// public Internet:
+//
+//   - 0.0.0.0/8       "this network" (RFC 1122)
+//   - 100.64.0.0/10   shared address space, CGNAT (RFC 6598)
+//   - 192.0.0.0/24    IETF protocol assignments (RFC 6890), which holds
+//     192.0.0.192, Oracle Cloud's legacy metadata address
+//   - 198.18.0.0/15   benchmarking (RFC 2544)
+//   - 240.0.0.0/4     reserved for future use (RFC 1112), which holds the
+//     limited broadcast address 255.255.255.255
+//
+// The documentation ranges (192.0.2.0/24, 198.51.100.0/24, 203.0.113.0/24)
+// are left alone: they route nowhere, and tests use them as public addresses.
+func isBlockedIPv4Range(v4 net.IP) bool {
+	switch {
+	case v4[0] == 0:
+		return true
+	case v4[0] == 100 && v4[1] >= 64 && v4[1] <= 127:
+		return true
+	case v4[0] == 192 && v4[1] == 0 && v4[2] == 0:
+		return true
+	case v4[0] == 198 && (v4[1] == 18 || v4[1] == 19):
+		return true
+	default:
+		return v4[0] >= 240
+	}
+}
+
+// isIPv6SiteLocal reports whether ip is in fec0::/10, the site-local range
+// RFC 3879 deprecated: some networks still route it to internal hosts.
+func isIPv6SiteLocal(ip net.IP) bool {
+	ip16 := ip.To16()
+	return ip16 != nil && ip.To4() == nil && ip16[0] == 0xfe && ip16[1]&0xc0 == 0xc0
 }
 
 // isBlockedIPv6TransitionRange reports whether ip belongs to an IPv6
