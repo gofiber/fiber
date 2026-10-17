@@ -47,7 +47,7 @@ type fileServer struct {
 	handler       fasthttp.RequestHandler
 	root          string
 	fsRootPrefix  []byte // the fs.FS subdirectory served, put before every path
-	prefixLen     int    // length of the route prefix stripped from the path
+	prefixLen     int    // length of the route prefix stripped from the path, without its trailing slash
 	decodeEscapes bool   // off under UnescapePath, which already decoded everything
 	rootIsFile    bool
 	segmentBound  bool // the route is a /prefix* mount, so the rest of the path starts at a /
@@ -292,8 +292,10 @@ func New(root string, cfg ...Config) fiber.Handler {
 		}
 
 		prefixLen := len(prefix)
-		if prefixLen > 1 && prefix[prefixLen-1:] == "/" {
-			// /john/ -> /john
+		if prefixLen > 0 && prefix[prefixLen-1:] == "/" {
+			// /john/ -> /john and / -> "": the rest of the path keeps its leading
+			// slash, so the empty first segment of "//john" is left for
+			// sanitizePath to refuse instead of being stripped with the prefix
 			prefixLen--
 		}
 
