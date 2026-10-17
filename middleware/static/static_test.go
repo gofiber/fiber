@@ -1859,8 +1859,8 @@ func Test_Static_RootMount_EmptyFirstSegment_Browse(t *testing.T) {
 
 // Test_Static_RootMount_EmptyFirstSegment_NotFoundHandler pins that a path with
 // an empty first segment is a miss like any other for the NotFoundHandler,
-// whether it is written plainly, with an encoded slash or with dot segments,
-// while the same name without it is served.
+// whether it is written plainly, with an encoded slash or as an absolute-form
+// target, while the same name without it is served.
 func Test_Static_RootMount_EmptyFirstSegment_NotFoundHandler(t *testing.T) {
 	t.Parallel()
 
@@ -1896,15 +1896,16 @@ func Test_Static_RootMount_EmptyFirstSegment_NotFoundHandler(t *testing.T) {
 }
 
 // Test_Static_RootFile_EmptyFirstSegment pins how a root that is a file treats
-// a path. Like a root that is a directory, a root mount answers a path with an
-// empty first segment with 404: the router keeps "//x" apart from "/x", so
-// middleware mounted on "/x" does not run for it, and what the mount serves
-// does not change that. Every other spelling gets the file, because nothing is
-// looked up by the path: a backslash, a malformed escape or a NUL byte is served
-// like any other path, and no spelling of a path can select another file. An
-// empty segment further in is served too, since it is part of an opaque name, as
-// in "/web/https://example.com", a route a single-page app can take. Middleware
-// mounted on a prefix still answers the paths it matches.
+// a path. A root mount answers a path with an empty first segment with 404
+// whatever it serves, so a file root answers "//x" as a directory root does. For
+// a file root that is parity and not protection: the router keeps "//x" apart
+// from "/x", so middleware mounted on "/x" does not run for it, but the same
+// file is served at every other path. Every other spelling gets the file,
+// because nothing is looked up by the path: a backslash, a malformed escape or a
+// NUL byte is served like any other path, and no spelling of a path can select
+// another file. An empty segment further in is served too, since it is part of
+// an opaque name, as in "/web/https://example.com", a route a single-page app
+// can take. Middleware mounted on a prefix still answers the paths it matches.
 func Test_Static_RootFile_EmptyFirstSegment(t *testing.T) {
 	t.Parallel()
 
