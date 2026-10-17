@@ -49,7 +49,7 @@ func validateHostForSSRF(host string) error {
 		}
 		return nil
 	}
-	addrs, err := lookupHost(host)
+	addrs, err := lookupHost(host, upfrontLookups)
 	if err != nil {
 		return err
 	}
@@ -59,26 +59,37 @@ func validateHostForSSRF(host string) error {
 // resolveAndValidateHost looks up host (or treats it as an IP literal),
 // then enforces the SSRF blocklist on every returned address. A single
 // blocked answer fails the whole resolution so a mixed public/private
-// reply cannot slip past the guard.
+// reply cannot slip past the guard. The dial guard calls it, so it always
+// looks up afresh.
 func resolveAndValidateHost(host string) ([]net.IP, error) {
 	if ip := net.ParseIP(host); ip != nil {
 		return validateResolved(host, []net.IPAddr{{IP: ip}})
 	}
-	addrs, err := lookupHost(host)
+	addrs, err := lookupHost(host, nil)
 	if err != nil {
 		return nil, err
 	}
 	return validateResolved(host, addrs)
 }
 
-// lookupHost resolves host.
-func lookupHost(host string) ([]net.IPAddr, error) {
+// lookupHost resolves host. An answer cache holds stands in for the lookup, and
+// a successful lookup is remembered in it.
+func lookupHost(host string, cache *lookupCache) ([]net.IPAddr, error) {
+	resolver := dnsResolver.Load()
+	if cache != nil {
+		if addrs, ok := cache.get(host, resolver); ok {
+			return addrs, nil
+		}
+	}
 	// Bound the lookup so a slow resolver cannot stall the caller.
 	ctx, cancel := context.WithTimeout(context.Background(), dnsLookupTimeout)
 	defer cancel()
-	addrs, err := dnsResolver.Load().LookupIPAddr(ctx, host)
+	addrs, err := resolver.LookupIPAddr(ctx, host)
 	if err != nil {
 		return nil, &unresolvableError{host: host, cause: err}
+	}
+	if cache != nil && len(addrs) > 0 {
+		cache.put(host, resolver, addrs)
 	}
 	return addrs, nil
 }
