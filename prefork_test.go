@@ -5,9 +5,12 @@
 package fiber
 
 import (
+	"context"
 	"crypto/tls"
 	"io"
+	"net"
 	"os"
+	"os/exec"
 	"testing"
 	"time"
 
@@ -15,6 +18,10 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp/prefork"
 )
+
+// preforkChildHelperEnv makes Test_Prefork_Child_GracefulContext_Helper run as the prefork child that
+// Test_Prefork_Child_GracefulContext_WatchedOnce starts. In an ordinary test run the helper does nothing.
+const preforkChildHelperEnv = "FIBER_TEST_PREFORK_CHILD_HELPER"
 
 func Test_App_Prefork_Child_Process(t *testing.T) {
 	skipIfNoIPv6(t)
@@ -122,6 +129,68 @@ func Test_Prefork_Logger(t *testing.T) {
 	l := preforkLogger{}
 	// Should not panic
 	l.Printf("test %s", "message")
+}
+
+// The function a prefork child serves the listener it bound with has to stop on a GracefulContext
+// done before it serves, as Listen does: canceled right before it serves, or done before the child
+// ran it. It starts to watch the context itself, so this covers the real arming. The fixture and
+// the table come from listen_test.go.
+func Test_preforkServe_GracefulContext_DoneBeforeServe(t *testing.T) {
+	t.Parallel()
+
+	for _, state := range gracefulContextStates {
+		t.Run(state.name, func(t *testing.T) {
+			t.Parallel()
+
+			f := newGracefulFixture(t)
+			// The child calls this right before it serves.
+			f.cfg.ListenerAddrFunc = func(net.Addr) { f.cancelAndAwait() }
+			state.prepare(f)
+
+			f.requireStopped(t, f.start(func(f *gracefulFixture) error { return f.app.preforkServe(nil, &f.cfg)(f.ln) }))
+			listenerEntry.requireClosed(t, f)
+		})
+	}
+}
+
+// A prefork child watches its GracefulContext once, in preforkServe, and prefork() watches only for the
+// master: a child that watched in both would run its shutdown hooks twice. The child path needs the
+// FASTHTTP_PREFORK_CHILD variable, which t.Setenv cannot set in a parallel test, so the child is a
+// subprocess of this test binary that reports how often its shutdown hooks ran.
+func Test_Prefork_Child_GracefulContext_WatchedOnce(t *testing.T) {
+	t.Parallel()
+
+	exe, err := os.Executable()
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, exe, "-test.v=true", "-test.run=^Test_Prefork_Child_GracefulContext_Helper$")
+	cmd.Env = append(os.Environ(), "FASTHTTP_PREFORK_CHILD=1", preforkChildHelperEnv+"=1")
+
+	out, err := cmd.CombinedOutput()
+	output := string(out)
+	require.NoError(t, err, output)
+	require.Contains(t, output, "child result: err=<nil> pre=1 post=1", output)
+}
+
+// Test_Prefork_Child_GracefulContext_Helper is the prefork child of the test above: it cancels its
+// context right before it serves, as the table of Test_preforkServe_GracefulContext_DoneBeforeServe does.
+func Test_Prefork_Child_GracefulContext_Helper(t *testing.T) {
+	t.Parallel()
+
+	if os.Getenv(preforkChildHelperEnv) != "1" {
+		return
+	}
+
+	f := newGracefulFixture(t)
+	f.cfg.EnablePrefork = true
+	// The child calls this right before it serves.
+	f.cfg.ListenerAddrFunc = func(net.Addr) { f.cancelAndAwait() }
+
+	err := f.app.Listen("127.0.0.1:0", f.cfg)
+	t.Logf("child result: err=%v pre=%d post=%d", err, f.probe.pre.Load(), f.probe.post.Load())
 }
 
 func setupIsChild(t *testing.T) {

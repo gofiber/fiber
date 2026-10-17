@@ -1396,6 +1396,15 @@ func (app *App) ShutdownWithTimeout(timeout time.Duration) error {
 //
 // ShutdownWithContext does not close keepalive connections so its recommended to set ReadTimeout to something else than 0.
 func (app *App) ShutdownWithContext(ctx context.Context) error {
+	return app.runShutdown(ctx, nil)
+}
+
+// runShutdown is the body of ShutdownWithContext, which passes a nil afterPreHooks. The graceful
+// shutdown of a GracefulContext passes a function that tells its run the server is about to
+// stop accepting, and runShutdown calls it once the OnPreShutdown hooks are done, right before
+// the server is told to stop. A Serve that has not registered its listener by then closes
+// nothing in that shutdown, and the listener of the run finds the news instead.
+func (app *App) runShutdown(ctx context.Context, afterPreHooks func()) error {
 	app.mutex.Lock()
 	server := app.server
 	app.mutex.Unlock()
@@ -1413,6 +1422,10 @@ func (app *App) ShutdownWithContext(ctx context.Context) error {
 	// Use a closure so the hooks receive the final error; a plain
 	// `defer ...(err)` would capture the nil value at registration time.
 	defer func() { app.hooks.executeOnPostShutdownHooks(err) }()
+
+	if afterPreHooks != nil {
+		afterPreHooks()
+	}
 
 	err = server.ShutdownWithContext(ctx)
 	return err

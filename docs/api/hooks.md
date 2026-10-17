@@ -21,7 +21,7 @@ Fiber lets you run custom callbacks at specific points in the routing lifecycle.
 - [OnPostShutdown](#onpostshutdown)
 - [OnMount](#onmount)
 
-Hooks of one kind run in the order you registered them. At startup, `OnListen` runs first, then `OnPreStartupMessage`, the banner and `OnPostStartupMessage`. At shutdown, `OnPreShutdown` runs before the server drains its connections and `OnPostShutdown` after. What a returned error does depends on the hook; see [Errors returned by hooks](#errors-returned-by-hooks).
+Hooks of one kind run in the order you registered them. At startup, `OnListen` runs first, then `OnPreStartupMessage`, the banner and `OnPostStartupMessage`. At shutdown, `OnPreShutdown` runs before the server drains its connections and `OnPostShutdown` after. A `GracefulContext` that is done while the app is still starting up starts the shutdown as soon as the app has its listener, so the two sequences can overlap: the shutdown hooks can run while the startup hooks are still running, also for a context that was already done when `Listen` was called (see [Server Shutdown](./fiber.md#server-shutdown)). What a returned error does depends on the hook; see [Errors returned by hooks](#errors-returned-by-hooks).
 
 ## Constants
 
