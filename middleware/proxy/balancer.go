@@ -47,7 +47,11 @@ func Balancer(config ...Config) fiber.Handler {
 	opaqueClient := false
 	for _, bc := range lbc.Clients {
 		if hc, ok := bc.(*fasthttp.HostClient); ok {
-			hc.DisablePathNormalizing = true
+			// Written only when it changes something, so a client that has it
+			// set already, and may be in use, is not touched.
+			if !hc.DisablePathNormalizing {
+				hc.DisablePathNormalizing = true
+			}
 			continue
 		}
 		opaqueClient = true

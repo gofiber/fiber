@@ -8,8 +8,10 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"runtime"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -115,6 +117,38 @@ func restoreGlobalProxyClient(t *testing.T) {
 func Test_Proxy_DefaultClient_MaxConnsPerHost(t *testing.T) {
 	t.Parallel()
 	require.Equal(t, defaultMaxConnsPerHost, sharedClient.Load().MaxConnsPerHost)
+}
+
+// Test_Proxy_Balancer_LeavesConfiguredClientAlone pins that Balancer does not
+// write to a host client that has DisablePathNormalizing set already: another
+// goroutine may be reading it, and the race detector fails the test if the write
+// comes back.
+func Test_Proxy_Balancer_LeavesConfiguredClientAlone(t *testing.T) {
+	t.Parallel()
+
+	hc := &fasthttp.HostClient{Addr: "127.0.0.1:1", DisablePathNormalizing: true}
+	var reads atomic.Int64
+	var stop atomic.Bool
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for !stop.Load() {
+			if hc.DisablePathNormalizing {
+				reads.Add(1)
+			}
+		}
+	}()
+	for reads.Load() == 0 {
+		runtime.Gosched() // the reader is running before the build
+	}
+
+	Balancer(Config{Client: &fasthttp.LBClient{Clients: []fasthttp.BalancingClient{hc}}})
+
+	for seen := reads.Load(); reads.Load() < seen+1000; {
+		runtime.Gosched() // and is still reading after it
+	}
+	stop.Store(true)
+	<-done
 }
 
 // go test -run Test_Proxy_ConfigDefault_MaxConnsPerHost

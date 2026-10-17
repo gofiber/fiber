@@ -29,7 +29,9 @@ type Config struct {
 	TLSConfig *tls.Config
 
 	// Client is custom client when client config is complex. Each
-	// *fasthttp.HostClient among its Clients gets DisablePathNormalizing set.
+	// *fasthttp.HostClient among its Clients gets DisablePathNormalizing set
+	// when the balancer is built; set it first on a client that already serves
+	// other traffic, and it is left alone.
 	// Note that Servers, Timeout, MaxConnsPerHost, ReadBufferSize,
 	// WriteBufferSize, MaxResponseBodySize, TLSConfig and DialDualStack will
 	// not be used if the client is set, and its dialers get no SSRF guard.
