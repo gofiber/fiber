@@ -160,7 +160,9 @@ A path that cannot name a file inside the root is answered with `404 Not Found`:
 
 With `UnescapePath` enabled the router has already decoded every escape, so a malformed escape is an ordinary part of the name: `/static/100%zz.txt` names `100%zz.txt`.
 
-The empty segment rule holds for a root mount too, whether it serves a directory or a single file. The router keeps the empty first segment of `//private/secret.txt` apart from `/private/secret.txt`, so a root mount answers it with `404 Not Found` instead of serving anything for a path that middleware mounted on `/private` never saw. The spellings the router turns into such a path get the same answer, `/.//private/secret.txt`, `/x/..//private/secret.txt` and `/%2e%2e//private/secret.txt` among them. So does `/%2Fprivate/secret.txt`: it is refused as an escape of a slash, or decoded into an empty segment when `UnescapePath` is enabled. A root that is a single file serves that file for every other path the route matches, whatever its spelling, so no spelling of a path can select another file.
+A root mount refuses a path whose first segment is empty too, whether it serves a directory or a single file. The router keeps the empty first segment of `//private/secret.txt` apart from `/private/secret.txt`, so a root mount answers it with `404 Not Found` instead of serving anything for a path that middleware mounted on `/private` never saw. That includes any spelling the router turns into such a path, such as `/.//private/secret.txt` or, with `UnescapePath` enabled, `/%2Fprivate/secret.txt`.
+
+A root that is a single file looks nothing up by the path, so it serves its file for every other path the route matches, whatever its spelling, and no spelling of a path can select another file. An empty segment further in is an ordinary part of a name there, as in `/web/https://example.com`.
 :::
 
 :::tip
