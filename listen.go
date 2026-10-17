@@ -788,9 +788,11 @@ func (app *App) watchGracefulContext(cfg *ListenConfig) gracefulWatch {
 // set, is done.
 func (app *App) newGracefulRun(cfg *ListenConfig) *gracefulRun {
 	g := &gracefulRun{app: app, done: make(chan struct{})}
+	// The closure keeps the timeout, not the whole config.
+	timeout := cfg.ShutdownTimeout
 	g.stop = context.AfterFunc(cfg.GracefulContext, func() {
 		defer close(g.done)
-		g.shutdown(cfg.ShutdownTimeout)
+		g.shutdown(timeout)
 	})
 
 	return g
@@ -846,7 +848,17 @@ type gracefulListener struct {
 // hooks run while the server still serves.
 func (l *gracefulListener) Accept() (net.Conn, error) {
 	if l.draining.Load() {
-		_ = l.Close() //nolint:errcheck // best effort: Close keeps its first result for any later Close, Shutdown's included
+		// Close keeps its first result for a later Close, such as the one Shutdown makes when it
+		// finds the listener. When it does not, because Serve started after the shutdown, nothing
+		// else reports a failure, so the close that Accept makes logs one, once.
+		l.once.Do(func() {
+			l.closeListener()
+
+			if l.closeErr != nil {
+				log.Errorf("failed to close the listener: %v", l.closeErr)
+			}
+		})
+
 		return nil, net.ErrClosed
 	}
 
@@ -856,7 +868,11 @@ func (l *gracefulListener) Accept() (net.Conn, error) {
 // Close closes the listener once, so that Shutdown closing it after Accept did still
 // succeed instead of passing a closed-listener error to OnPostShutdown.
 func (l *gracefulListener) Close() error {
-	l.once.Do(func() { l.closeErr = l.Listener.Close() })
+	l.once.Do(l.closeListener)
 
 	return l.closeErr
+}
+
+func (l *gracefulListener) closeListener() {
+	l.closeErr = l.Listener.Close()
 }

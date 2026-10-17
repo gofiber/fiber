@@ -170,7 +170,7 @@ On Linux, prefork typically relies on the `SO_REUSEPORT` socket option for kerne
 
 ##### Shutdown
 
-Each prefork process handles shutdown on its own. A `GracefulContext` canceled in a child, even while that child is still starting up, drains that child's connections, honoring `ShutdownTimeout`. Canceled in the master, it only runs the master's shutdown hooks: the master never serves requests itself and keeps supervising the children until it exits, and a child whose master is gone exits immediately, without draining. To stop a prefork deployment gracefully, deliver the signal to every process, for example to the whole process group as `systemd` does by default, so that each child's `GracefulContext` observes it. Explicit `Shutdown*` calls behave the same way: they only affect the process they run in.
+Each prefork process handles shutdown on its own. A `GracefulContext` canceled in a child, even while that child is still starting up, drains that child's connections, honoring `ShutdownTimeout`. Canceled in the master, it only runs the master's shutdown hooks: the master never serves requests itself and keeps supervising the children until it exits, and a child whose master is gone exits immediately, without draining. The master binds no listener, so for a context that is already done it runs those hooks at once, even if starting the children then fails. To stop a prefork deployment gracefully, deliver the signal to every process, for example to the whole process group as `systemd` does by default, so that each child's `GracefulContext` observes it. Explicit `Shutdown*` calls behave the same way: they only affect the process they run in.
 
 ##### Security Considerations
 
