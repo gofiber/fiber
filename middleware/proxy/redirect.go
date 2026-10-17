@@ -14,33 +14,29 @@ import (
 // reapply SSRF checks to caller-controlled Location headers.
 //
 // initialURL is the validated *url.URL produced by doActionWithPolicy's
-// validateUpstream call. Passing it in lets the loop skip a redundant
-// re-validation (one url.Parse + one DNS lookup) on entry while still
-// guaranteeing every SetRequestURI is fed a string from a
-// validateUpstream output — the property CodeQL's go/request-forgery
+// validateUpstream call; doActionWithPolicy has already set it on req. Passing
+// it in lets the loop skip a redundant re-validation (one url.Parse + one DNS
+// lookup) on entry while still guaranteeing every SetRequestURI is fed a string
+// from a validateUpstream output — the property CodeQL's go/request-forgery
 // query needs to see.
 //
-// Each hop goes through redirectRequest; a redirect to another host or port
-// also drops credentials (see stripCrossHostHeaders).
+// A hop that must differ from the request the caller sent, with another method
+// and no body or without credentials, goes out as a private copy. req keeps its
+// method, body and credentials for the rest of the handler chain.
 func followRedirects(cli *fasthttp.Client, req *fasthttp.Request, resp *fasthttp.Response, maxRedirects int, initialURL *url.URL, policy SecurityPolicy) error {
 	if maxRedirects < 0 {
 		maxRedirects = 0
 	}
+	hop := req
+	defer func() {
+		if hop != req {
+			fasthttp.ReleaseRequest(hop)
+		}
+	}()
 	currentURL := initialURL
-	currentHost := currentURL.Host
+	currentURLStr := "" // rendered when a redirect needs it as the base of Location
 	for redirects := 0; ; redirects++ {
-		// Rendered once per hop: SetRequestURI copies the bytes and
-		// resolveRedirect below needs the same string, so sharing it saves
-		// a URL.String() allocation on every redirect.
-		currentURLStr := currentURL.String()
-		req.SetRequestURI(currentURLStr)
-		// Re-apply the scheme each hop: SetRequestURI keeps the previous
-		// scheme when req.isTLS is set, so a redirect that changes scheme
-		// (HTTP→HTTPS upgrade, or HTTPS→HTTP when AllowHTTPSDowngrade is
-		// enabled) would otherwise be dispatched with the wrong scheme.
-		// See https://github.com/gofiber/fiber/issues/1762.
-		req.URI().SetScheme(currentURL.Scheme)
-		if err := cli.Do(req, resp); err != nil {
+		if err := cli.Do(hop, resp); err != nil {
 			return err
 		}
 		status := resp.Header.StatusCode()
@@ -54,36 +50,77 @@ func followRedirects(cli *fasthttp.Client, req *fasthttp.Request, resp *fasthttp
 		if len(location) == 0 {
 			return fasthttp.ErrMissingLocation
 		}
+		if currentURLStr == "" {
+			currentURLStr = currentURL.String()
+		}
 		nextURL, err := resolveRedirect(currentURLStr, location, policy)
 		if err != nil {
 			return err
 		}
-		redirectRequest(req, status)
-		// Strip credentials when the redirect crosses to a different host or
-		// port so secrets bound to the original origin are not leaked to a
-		// third party (RFC 9110 §15.4 advisory; matches browser behavior).
-		if !utils.EqualFold(nextURL.Host, currentHost) {
-			stripCrossHostHeaders(req)
-			currentHost = nextURL.Host
+		// Strip credentials when the redirect crosses to another origin so
+		// secrets bound to the original origin are not leaked to a third
+		// party (RFC 9110 §15.4 advisory; matches browser behavior).
+		crossOrigin := !sameOrigin(currentURL, nextURL)
+		if crossOrigin || redirectChangesMethod(hop, status) {
+			if hop == req {
+				hop = fasthttp.AcquireRequest()
+				req.CopyTo(hop)
+			}
+			redirectRequest(hop, status)
+			if crossOrigin {
+				stripCrossHostHeaders(hop)
+			}
 		}
 		currentURL = nextURL
+		// Rendered once per hop: SetRequestURI copies the bytes and the next
+		// resolveRedirect needs the same string as its base.
+		currentURLStr = nextURL.String()
+		hop.SetRequestURI(currentURLStr)
+		// Re-apply the scheme each hop: SetRequestURI keeps the previous
+		// scheme when req.isTLS is set, so a redirect that changes scheme
+		// (HTTP→HTTPS upgrade, or HTTPS→HTTP when AllowHTTPSDowngrade is
+		// enabled) would otherwise be dispatched with the wrong scheme.
+		// See https://github.com/gofiber/fiber/issues/1762.
+		hop.URI().SetScheme(currentURL.Scheme)
 	}
 }
 
-// redirectRequest rewrites req for the next hop (RFC 9110 §15.4): a 303 turns
-// every method but GET and HEAD into GET, a 301 or 302 turns POST into GET, and
-// a 307 or 308 repeats the request. A changed method drops the body.
-func redirectRequest(req *fasthttp.Request, status int) {
+// sameOrigin reports whether a and b share scheme, host and port (RFC 6454).
+// A default port counts as the port of a URL that leaves it out.
+func sameOrigin(a, b *url.URL) bool {
+	return utils.EqualFold(a.Scheme, b.Scheme) &&
+		utils.EqualFold(a.Hostname(), b.Hostname()) &&
+		originPort(a) == originPort(b)
+}
+
+func originPort(u *url.URL) string {
+	if port := u.Port(); port != "" {
+		return port
+	}
+	if utils.EqualFold(u.Scheme, schemeHTTPS) {
+		return "443"
+	}
+	return "80"
+}
+
+// redirectChangesMethod reports whether a redirect with this status turns req
+// into a GET (RFC 9110 §15.4): a 303 does so for every method but GET and HEAD,
+// a 301 or 302 for POST, and a 307 or 308 never.
+func redirectChangesMethod(req *fasthttp.Request, status int) bool {
 	switch status {
 	case fasthttp.StatusSeeOther:
-		if req.Header.IsGet() || req.Header.IsHead() {
-			return
-		}
+		return !req.Header.IsGet() && !req.Header.IsHead()
 	case fasthttp.StatusMovedPermanently, fasthttp.StatusFound:
-		if !req.Header.IsPost() {
-			return
-		}
+		return req.Header.IsPost()
 	default:
+		return false
+	}
+}
+
+// redirectRequest rewrites req for the next hop when the method changes: it
+// becomes a GET without the body and the fields that framed it.
+func redirectRequest(req *fasthttp.Request, status int) {
+	if !redirectChangesMethod(req, status) {
 		return
 	}
 	req.Header.SetMethod(fasthttp.MethodGet)

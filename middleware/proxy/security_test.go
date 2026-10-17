@@ -2,9 +2,11 @@ package proxy
 
 import (
 	"bufio"
+	"bytes"
 	"crypto/tls"
 	"errors"
 	"io"
+	"mime/multipart"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -840,32 +842,74 @@ func Test_Security_FollowRedirects_MissingLocation(t *testing.T) {
 	require.ErrorIs(t, err, fasthttp.ErrMissingLocation)
 }
 
-// Test_Security_FollowRedirects_PostBecomesGetOn303 covers the POST→GET
-// rewrite branch on 303 See Other, including body and content-type
-// clearing.
-func Test_Security_FollowRedirects_PostBecomesGetOn303(t *testing.T) {
+// Test_Security_FollowRedirects_LeavesCallerRequestIntact pins that what a
+// redirect takes from a hop (the method, the body, the credentials) it takes from
+// a copy: the request the handler holds keeps what the client sent.
+func Test_Security_FollowRedirects_LeavesCallerRequestIntact(t *testing.T) {
 	t.Parallel()
 
-	client, _ := newCountingRedirectClient(map[string]redirectStep{
-		"http://example.com/start": {status: fasthttp.StatusSeeOther, location: "http://example.com/after"},
-		"http://example.com/after": {status: fasthttp.StatusOK},
+	type seen struct{ method, body, contentType, auth, cookie string }
+	var hops []seen
+	req := followRecording(t, "http://first.example/start", map[string]redirectStep{
+		"http://first.example/start": {status: fasthttp.StatusSeeOther, location: "http://second.example/after"},
+	}, func(req *fasthttp.Request) {
+		req.Header.SetMethod(fasthttp.MethodPost)
+		req.Header.SetContentType(fiber.MIMEApplicationForm)
+		req.SetBodyString("token=secret&b=2")
+		withCredentials(req)
+		require.Equal(t, "secret", string(req.PostArgs().Peek("token")), "the handler read the form")
+	}, func(req *fasthttp.Request) {
+		hops = append(hops, seen{
+			method:      string(req.Header.Method()),
+			body:        string(req.Body()),
+			contentType: string(req.Header.ContentType()),
+			auth:        string(req.Header.Peek(fiber.HeaderAuthorization)),
+			cookie:      string(req.Header.Peek(fiber.HeaderCookie)),
+		})
 	})
 
-	req := fasthttp.AcquireRequest()
-	resp := fasthttp.AcquireResponse()
-	defer fasthttp.ReleaseRequest(req)
-	defer fasthttp.ReleaseResponse(resp)
-	req.SetRequestURI("http://example.com/start")
-	req.Header.SetMethod(fasthttp.MethodPost)
-	req.Header.SetContentType("application/json")
-	req.SetBodyString(`{"x":1}`)
+	require.Equal(t, []seen{
+		{method: fasthttp.MethodPost, body: "token=secret&b=2", contentType: fiber.MIMEApplicationForm, auth: "Bearer secret", cookie: "session=abc"},
+		{method: fasthttp.MethodGet},
+	}, hops)
 
-	policy := DefaultSecurityPolicy()
-	policy.AllowPrivateIPs = true
-	require.NoError(t, followRedirects(client.client, req, resp, 3, mustParseTestURL(t, "http://example.com/start"), policy))
-	require.Equal(t, fasthttp.MethodGet, string(req.Header.Method()))
-	require.Empty(t, req.Body())
-	require.Empty(t, req.Header.ContentType())
+	require.Equal(t, fasthttp.MethodPost, string(req.Header.Method()))
+	require.Equal(t, "token=secret&b=2", string(req.Body()))
+	require.Equal(t, fiber.MIMEApplicationForm, string(req.Header.ContentType()))
+	require.Equal(t, "Bearer secret", string(req.Header.Peek(fiber.HeaderAuthorization)))
+	require.Equal(t, "session=abc", string(req.Header.Peek(fiber.HeaderCookie)))
+	require.Equal(t, "secret", string(req.PostArgs().Peek("token")))
+}
+
+// Test_Security_FollowRedirects_KeepsMultipartForm pins that a multipart form
+// the handler already parsed is still there after a redirect drops the body of
+// the hop: dropping it from the handler's request would delete its temp files.
+func Test_Security_FollowRedirects_KeepsMultipartForm(t *testing.T) {
+	t.Parallel()
+
+	var body bytes.Buffer
+	mw := multipart.NewWriter(&body)
+	require.NoError(t, mw.WriteField("a", "1"))
+	fw, err := mw.CreateFormFile("f", "f.txt")
+	require.NoError(t, err)
+	_, err = fw.Write([]byte("file-bytes"))
+	require.NoError(t, err)
+	require.NoError(t, mw.Close())
+
+	req := followRecording(t, "http://example.com/start", map[string]redirectStep{
+		"http://example.com/start": {status: fasthttp.StatusSeeOther, location: "http://example.com/after"},
+	}, func(req *fasthttp.Request) {
+		req.Header.SetMethod(fasthttp.MethodPost)
+		req.Header.SetMultipartFormBoundary(mw.Boundary())
+		req.SetBody(body.Bytes())
+		_, formErr := req.MultipartForm()
+		require.NoError(t, formErr)
+	}, nil)
+
+	form, err := req.MultipartForm()
+	require.NoError(t, err)
+	require.Equal(t, []string{"1"}, form.Value["a"])
+	require.Len(t, form.File["f"], 1)
 }
 
 // Test_Security_FollowRedirects_PropagatesClientError covers the
@@ -1179,19 +1223,23 @@ func mustParseTestURL(t *testing.T, raw string) *url.URL {
 }
 
 // followRecording follows start through steps with a GET request that setup, if
-// set, reshapes, and hands record each request as it reaches the transport.
-func followRecording(t *testing.T, start string, steps map[string]redirectStep, setup, record func(req *fasthttp.Request)) {
+// set, reshapes, and hands record each request as it reaches the transport. It
+// returns the request the caller sent, valid until the test ends.
+func followRecording(t *testing.T, start string, steps map[string]redirectStep, setup, record func(req *fasthttp.Request)) *fasthttp.Request {
 	t.Helper()
 
 	policy := DefaultSecurityPolicy()
 	policy.AllowPrivateIPs = true
+	policy.AllowHTTPSDowngrade = true
 	client, _ := newCountingRedirectClient(steps)
 	client.onRequest = record
 
 	req := fasthttp.AcquireRequest()
 	resp := fasthttp.AcquireResponse()
-	defer fasthttp.ReleaseRequest(req)
-	defer fasthttp.ReleaseResponse(resp)
+	t.Cleanup(func() {
+		fasthttp.ReleaseRequest(req)
+		fasthttp.ReleaseResponse(resp)
+	})
 	req.SetRequestURI(start)
 	req.Header.SetMethod(fasthttp.MethodGet)
 	if setup != nil {
@@ -1199,6 +1247,7 @@ func followRecording(t *testing.T, start string, steps map[string]redirectStep, 
 	}
 
 	require.NoError(t, followRedirects(client.client, req, resp, 3, mustParseTestURL(t, start), policy))
+	return req
 }
 
 // withCredentials gives req what a redirect to another origin must not carry.
@@ -1374,10 +1423,11 @@ func Test_Security_FollowRedirects_MethodPerStatus(t *testing.T) {
 	}
 }
 
-// Test_Security_FollowRedirects_StripsCredentialsOnPortChange pins that an
-// origin is a host and a port, compared as written: another port of the same
-// host, or the default port spelled out, loses the credentials.
-func Test_Security_FollowRedirects_StripsCredentialsOnPortChange(t *testing.T) {
+// Test_Security_FollowRedirects_StripsCredentialsOnOriginChange pins that an
+// origin is a scheme, a host and a port (RFC 6454), a default port counting as
+// the port of a URL that leaves it out: another scheme or port loses the
+// credentials, and spelling the default port out does not.
+func Test_Security_FollowRedirects_StripsCredentialsOnOriginChange(t *testing.T) {
 	t.Parallel()
 
 	for name, tc := range map[string]struct {
@@ -1385,9 +1435,13 @@ func Test_Security_FollowRedirects_StripsCredentialsOnPortChange(t *testing.T) {
 		location string
 		wantAuth string
 	}{
-		"same host and port":       {start: "http://same.example:8080/", location: "http://same.example:8080/next", wantAuth: "Bearer secret"},
-		"same host, other port":    {start: "http://same.example:8080/", location: "http://same.example:9090/next"},
-		"default port spelled out": {start: "http://same.example/", location: "http://same.example:80/next"},
+		"same scheme, host and port": {start: "http://same.example:8080/", location: "http://same.example:8080/next", wantAuth: "Bearer secret"},
+		"default http port spelled":  {start: "http://same.example/", location: "http://same.example:80/next", wantAuth: "Bearer secret"},
+		"default https port spelled": {start: "https://same.example/", location: "https://same.example:443/next", wantAuth: "Bearer secret"},
+		"other port":                 {start: "http://same.example:8080/", location: "http://same.example:9090/next"},
+		"http to https":              {start: "http://same.example/", location: "https://same.example/next"},
+		"https to http":              {start: "https://same.example/", location: "http://same.example/next"},
+		"https with the http port":   {start: "https://same.example/", location: "https://same.example:80/next"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
@@ -1409,6 +1463,29 @@ func Test_Security_FollowRedirects_StripsCredentialsOnPortChange(t *testing.T) {
 				require.Equal(t, "session=abc", sawCookie)
 			}
 		})
+	}
+}
+
+// Test_Security_SameOrigin pins the comparison on its own.
+func Test_Security_SameOrigin(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		a, b string
+		want bool
+	}{
+		{a: "http://a.example/", b: "http://a.example/x?y=1", want: true},
+		{a: "http://a.example/", b: "http://a.example:80/", want: true},
+		{a: "https://a.example/", b: "https://a.example:443/", want: true},
+		{a: "HTTP://A.EXAMPLE/", b: "http://a.example/", want: true},
+		{a: "http://[::1]/", b: "http://[::1]:80/", want: true},
+		{a: "http://a.example/", b: "http://a.example:8080/", want: false},
+		{a: "http://a.example/", b: "https://a.example/", want: false},
+		{a: "https://a.example/", b: "https://a.example:80/", want: false},
+		{a: "http://a.example/", b: "http://b.example/", want: false},
+		{a: "http://[::1]:81/", b: "http://[::1]:80/", want: false},
+	} {
+		require.Equal(t, tc.want, sameOrigin(mustParseTestURL(t, tc.a), mustParseTestURL(t, tc.b)), "%s vs %s", tc.a, tc.b)
 	}
 }
 
