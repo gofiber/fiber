@@ -129,15 +129,12 @@ func joinUpstreamPath(base *url.URL, requestPath string) string {
 	// the slow path; the FuzzJoinUpstreamPath suite guards the
 	// boundary.
 	if baseIsPlainOrigin(base) && canFastJoinPath(requestPath) {
-		var sb strings.Builder
-		sb.Grow(len(base.Scheme) + len("://") + len(base.Host) + len(requestPath))
-		// strings.Builder.WriteString always returns nil per the
-		// documented contract; the errors are unused on purpose.
-		sb.WriteString(base.Scheme) //nolint:errcheck // strings.Builder cannot fail
-		sb.WriteString("://")       //nolint:errcheck // strings.Builder cannot fail
-		sb.WriteString(base.Host)   //nolint:errcheck // strings.Builder cannot fail
-		sb.WriteString(requestPath) //nolint:errcheck // strings.Builder cannot fail
-		return sb.String()
+		b := make([]byte, 0, len(base.Scheme)+len("://")+len(base.Host)+len(requestPath))
+		b = append(b, base.Scheme...)
+		b = append(b, "://"...)
+		b = append(b, base.Host...)
+		b = append(b, requestPath...)
+		return utils.UnsafeString(b)
 	}
 	out := *base
 	if requestPath == "" {
