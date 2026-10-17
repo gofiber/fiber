@@ -41,9 +41,18 @@ var (
 
 	// ErrUpstreamHostBlocked is returned when the proxied URL resolves to
 	// an address inside a blocked range (loopback, RFC 1918 private,
-	// link-local, multicast, unspecified, or CGNAT) and AllowPrivateIPs
-	// is false.
+	// link-local, multicast, unspecified, CGNAT or another special-use range)
+	// and AllowPrivateIPs is false. A host that cannot be resolved is refused
+	// with it too, because the check fails closed; ErrUpstreamHostUnresolvable
+	// tells the two apart.
 	ErrUpstreamHostBlocked = errors.New("proxy: upstream host resolves to a blocked address")
+
+	// ErrUpstreamHostUnresolvable is returned, together with
+	// ErrUpstreamHostBlocked, when a lookup fails or answers with no address.
+	// No address was judged, so a caller can answer 502, or retry, instead of
+	// reporting a policy block. errors.As finds the *net.DNSError of a failed
+	// lookup.
+	ErrUpstreamHostUnresolvable = errors.New("proxy: upstream host could not be resolved")
 
 	// ErrUpstreamNotOrigin is returned when a Balancer server carries more
 	// than a scheme and a host: a path, userinfo, query or fragment. The

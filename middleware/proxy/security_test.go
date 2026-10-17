@@ -639,7 +639,13 @@ func Test_Security_ValidateHostForSSRF_LookupFailure(t *testing.T) {
 	t.Parallel()
 	err := validateHostForSSRF("does-not-exist.invalid")
 	require.Error(t, err)
+	// Refused like a blocked host, but told apart from one: a caller may answer
+	// 502 or retry, and finds the resolver's own error.
 	require.ErrorIs(t, err, ErrUpstreamHostBlocked)
+	require.ErrorIs(t, err, ErrUpstreamHostUnresolvable)
+	var dnsErr *net.DNSError
+	require.ErrorAs(t, err, &dnsErr)
+	require.NotContains(t, err.Error(), "blocked address")
 }
 
 // Test_Security_ValidateHostForSSRF_IPLiteralAllocs pins the check that runs on
@@ -663,10 +669,12 @@ func Test_Security_ValidateResolved(t *testing.T) {
 
 	_, err := validateResolved("empty.test", nil)
 	require.ErrorIs(t, err, ErrUpstreamHostBlocked)
-	require.ErrorContains(t, err, "empty.test has no addresses")
+	require.ErrorIs(t, err, ErrUpstreamHostUnresolvable)
+	require.ErrorContains(t, err, "empty.test could not be resolved: no addresses")
 
 	_, err = validateResolved("mixed.test", []net.IPAddr{public, private})
 	require.ErrorIs(t, err, ErrUpstreamHostBlocked)
+	require.NotErrorIs(t, err, ErrUpstreamHostUnresolvable)
 	require.ErrorContains(t, err, "mixed.test -> 10.0.0.1")
 
 	ips, err := validateResolved("ok.test", []net.IPAddr{public})

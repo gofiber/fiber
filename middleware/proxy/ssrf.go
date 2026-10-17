@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"reflect"
@@ -48,8 +49,11 @@ func validateHostForSSRF(host string) error {
 		}
 		return nil
 	}
-	_, err := resolveAndValidateHost(host)
-	return err
+	addrs, err := lookupHost(host)
+	if err != nil {
+		return err
+	}
+	return checkResolved(host, addrs)
 }
 
 // resolveAndValidateHost looks up host (or treats it as an IP literal),
@@ -60,30 +64,68 @@ func resolveAndValidateHost(host string) ([]net.IP, error) {
 	if ip := net.ParseIP(host); ip != nil {
 		return validateResolved(host, []net.IPAddr{{IP: ip}})
 	}
+	addrs, err := lookupHost(host)
+	if err != nil {
+		return nil, err
+	}
+	return validateResolved(host, addrs)
+}
+
+// lookupHost resolves host.
+func lookupHost(host string) ([]net.IPAddr, error) {
 	// Bound the lookup so a slow resolver cannot stall the caller.
 	ctx, cancel := context.WithTimeout(context.Background(), dnsLookupTimeout)
 	defer cancel()
 	addrs, err := dnsResolver.Load().LookupIPAddr(ctx, host)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %s lookup failed: %w", ErrUpstreamHostBlocked, host, err)
+		return nil, &unresolvableError{host: host, cause: err}
 	}
-	return validateResolved(host, addrs)
+	return addrs, nil
 }
 
-// validateResolved applies the blocklist to every address host resolved to and
-// returns them. An empty answer is refused: it leaves nothing to dial.
-func validateResolved(host string, addrs []net.IPAddr) ([]net.IP, error) {
+// checkResolved applies the blocklist to every address host resolved to. An
+// empty answer is refused: it leaves nothing to dial.
+func checkResolved(host string, addrs []net.IPAddr) error {
 	if len(addrs) == 0 {
-		return nil, fmt.Errorf("%w: %s has no addresses", ErrUpstreamHostBlocked, host)
+		return &unresolvableError{host: host, cause: errNoAddresses}
+	}
+	for _, addr := range addrs {
+		if isBlockedIP(addr.IP) {
+			return fmt.Errorf("%w: %s -> %s", ErrUpstreamHostBlocked, host, addr.IP)
+		}
+	}
+	return nil
+}
+
+// validateResolved is checkResolved that also returns the addresses.
+func validateResolved(host string, addrs []net.IPAddr) ([]net.IP, error) {
+	if err := checkResolved(host, addrs); err != nil {
+		return nil, err
 	}
 	ips := make([]net.IP, len(addrs))
 	for i, addr := range addrs {
-		if isBlockedIP(addr.IP) {
-			return nil, fmt.Errorf("%w: %s -> %s", ErrUpstreamHostBlocked, host, addr.IP)
-		}
 		ips[i] = addr.IP
 	}
 	return ips, nil
+}
+
+var errNoAddresses = errors.New("no addresses")
+
+// unresolvableError is the error for a host whose lookup failed or came back
+// empty. It matches ErrUpstreamHostBlocked, because the check fails closed, and
+// ErrUpstreamHostUnresolvable, because no address was judged, and wraps the
+// lookup's own error.
+type unresolvableError struct {
+	cause error
+	host  string
+}
+
+func (e *unresolvableError) Error() string {
+	return "proxy: upstream host " + e.host + " could not be resolved: " + e.cause.Error()
+}
+
+func (e *unresolvableError) Unwrap() []error {
+	return []error{ErrUpstreamHostBlocked, ErrUpstreamHostUnresolvable, e.cause}
 }
 
 // ssrfDialFunc is the (network, address) -> conn signature consumed by
