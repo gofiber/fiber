@@ -30,6 +30,7 @@ var (
 	xForwardedSslBytes      = []byte(HeaderXForwardedSsl)
 	xURLSchemeBytes         = []byte(HeaderXUrlScheme)
 	onBytes                 = []byte("on")
+	charsetBytes            = []byte("charset")
 )
 
 // Range represents the parsed HTTP Range header extracted by DefaultReq.Range.
@@ -344,31 +345,19 @@ func (r *DefaultReq) MediaType() string {
 
 // Charset returns the charset parameter from the Content-Type header.
 func (r *DefaultReq) Charset() string {
-	for name, v := range mediatype.Params(r.c.fasthttp.Request.Header.ContentType()) {
-		if !utils.EqualFold(name, []byte("charset")) {
-			continue
+	var charset string
+	fasthttp.VisitHeaderParams(r.c.fasthttp.Request.Header.ContentType(), func(key, value []byte) bool {
+		if !utils.EqualFold(key, charsetBytes) {
+			return true
 		}
-		if len(v) > 0 && v[0] == '"' {
-			// A quoted value must be a complete quoted-string, and its
-			// quoted-pairs must be replaced with the escaped octet
-			// (RFC 9110 Section 5.6.4).
-			if len(v) < 2 || v[len(v)-1] != '"' {
-				return ""
-			}
-			unescaped, ok := mediatype.Unescape(v[1 : len(v)-1])
-			if !ok {
-				return ""
-			}
-			v = unescaped
-		} else if bytes.IndexByte(v, '"') >= 0 {
-			// A bare token must not contain DQUOTE; skip the invalid
-			// parameter instead of surfacing garbage, so a well-formed
-			// charset parameter later in the header can still be found.
-			continue
+		unescaped, ok := mediatype.Unescape(value)
+		if !ok {
+			return false
 		}
-		return r.c.app.toString(v)
-	}
-	return ""
+		charset = r.c.app.toString(unescaped)
+		return false
+	})
+	return charset
 }
 
 // IsJSON reports whether the Content-Type header is JSON.
