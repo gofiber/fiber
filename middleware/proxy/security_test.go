@@ -1027,6 +1027,67 @@ func Test_Security_RoundRobin_WrapsAround(t *testing.T) {
 	})
 }
 
+// Test_Security_RoundRobin_StrictAcrossTheFold pins that folding the counter back
+// moves no ticket to another place in the pool: from any start, below, at or far
+// beyond the fold point, every pick follows the previous one.
+func Test_Security_RoundRobin_StrictAcrossTheFold(t *testing.T) {
+	t.Parallel()
+
+	pool := []*url.URL{{Host: "a"}, {Host: "b"}, {Host: "c"}, {Host: "d"}, {Host: "e"}}
+	position := func(u *url.URL) int {
+		for i, candidate := range pool {
+			if candidate == u {
+				return i
+			}
+		}
+		return -1
+	}
+
+	for _, start := range []uint64{0, roundRobinFold - 7, roundRobinFold - 1, roundRobinFold, roundRobinFold + 3, 3 * roundRobinFold, ^uint64(0) - 20} {
+		r := &urlRoundrobin{pool: pool}
+		r.next.Store(start)
+
+		previous := position(r.get())
+		require.Equal(t, int(start%uint64(len(pool))), previous, "start %d", start)
+		for range 40 {
+			current := position(r.get())
+			require.Equal(t, (previous+1)%len(pool), current, "start %d", start)
+			previous = current
+		}
+		require.Less(t, r.next.Load(), uint64(roundRobinFold), "start %d: the counter was folded back", start)
+	}
+}
+
+// Test_Security_RoundRobin_ConcurrentAcrossTheFold runs the fold under
+// contention: 300 consecutive tickets that cross it still pick each of three
+// upstreams exactly 100 times.
+func Test_Security_RoundRobin_ConcurrentAcrossTheFold(t *testing.T) {
+	t.Parallel()
+
+	pool := []*url.URL{{Host: "a"}, {Host: "b"}, {Host: "c"}}
+	r := &urlRoundrobin{pool: pool}
+	r.next.Store(roundRobinFold - 150)
+
+	var counts [3]atomic.Int32
+	var wg sync.WaitGroup
+	for range 300 {
+		wg.Go(func() {
+			selected := r.get()
+			for i, candidate := range pool {
+				if selected == candidate {
+					counts[i].Add(1)
+					return
+				}
+			}
+		})
+	}
+	wg.Wait()
+
+	for i := range counts {
+		require.Equal(t, int32(100), counts[i].Load())
+	}
+}
+
 func Test_Security_RoundRobin_ConcurrentSelection(t *testing.T) {
 	t.Parallel()
 	pool := []*url.URL{

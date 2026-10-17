@@ -231,23 +231,30 @@ type urlRoundrobin struct {
 	next atomic.Uint64
 }
 
-// Compare-and-swap rather than a bare Add, so the counter holds the next index
-// already reduced into the pool and the sequence stays a strict round-robin
-// across a wrap. The modulo also reduces a counter this loop did not produce.
-// A bare Add is about 80 ns cheaper per call with every core doing nothing else
-// but selecting, which a proxied request does not feel.
+// roundRobinFold is the counter value from which get folds the counter back.
+const roundRobinFold = 1 << 62
+
+// get picks the next upstream with one Add. A bare Add would repeat an index
+// when the uint64 counter wraps, so the counter is folded back by a multiple of
+// the pool size long before it can: every ticket keeps its place in the pool,
+// and the sequence stays a strict round-robin however long it runs. A counter
+// set far beyond the fold, as a test does, is folded on the next call.
 func (r *urlRoundrobin) get() *url.URL {
-	poolSize := uint64(len(r.pool))
-	for {
-		next := r.next.Load()
-		index := next % poolSize
-		following := index + 1
-		if following == poolSize {
-			following = 0
-		}
-		if r.next.CompareAndSwap(next, following) {
-			return r.pool[index]
-		}
+	size := uint64(len(r.pool))
+	ticket := r.next.Add(1) - 1
+	if ticket >= roundRobinFold {
+		r.fold(size)
+	}
+	return r.pool[ticket%size]
+}
+
+// fold takes the largest multiple of size that fits in roundRobinFold off the
+// counter until it is below roundRobinFold. A multiple, so no later ticket moves
+// to another place in the pool.
+func (r *urlRoundrobin) fold(size uint64) {
+	step := roundRobinFold / size * size
+	for cur := r.next.Load(); cur >= roundRobinFold; cur = r.next.Load() {
+		r.next.CompareAndSwap(cur, cur-step)
 	}
 }
 
