@@ -1720,9 +1720,9 @@ func Test_Static_RootMount_EmptyFirstSegment(t *testing.T) {
 
 		// an unreserved character written as an escape, which the router decodes before it matches
 		{name: "encoded name behind an empty segment", target: "//%61dmin/secret.txt", wantStatus: missing},
-		{name: "encoded file behind an empty segment", target: "//admin/%73ecret.txt", wantStatus: missing},
+		{name: "encoded file behind an empty segment", target: "//admin/se%63ret.txt", wantStatus: missing},
 		{name: "encoded name", target: "/%61dmin/secret.txt", wantStatus: guarded},
-		{name: "encoded file", target: "/admin/%73ecret.txt", wantStatus: guarded},
+		{name: "encoded file", target: "/admin/se%63ret.txt", wantStatus: guarded},
 
 		// a request target in absolute form
 		{name: "absolute form with an empty first segment", target: "http://example.com//admin/secret.txt", wantStatus: missing},
