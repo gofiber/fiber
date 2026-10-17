@@ -17,6 +17,7 @@ import (
 	"testing"
 	"time"
 
+	fiberlog "github.com/gofiber/fiber/v3/log"
 	"github.com/gofiber/utils/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -2202,6 +2203,61 @@ func Test_gracefulListener(t *testing.T) {
 		}
 		require.Equal(t, int32(1), stub.closes.Load())
 	})
+}
+
+// A failed close of a draining listener is logged once, by the Accept that made it. When Shutdown
+// closed the listener first, the error is already on its way to OnPostShutdown and Accept logs nothing.
+func Test_gracefulListener_LogsAFailedCloseOnce(t *testing.T) {
+	// Not parallel: redirects the process-wide logger output.
+	closeErr := errors.New("close failed")
+	message := []byte("failed to close the listener: close failed")
+
+	// logged returns what fn logs. The output goes back to stderr before the buffer is read, which
+	// waits for a write in progress, so a goroutine of another test cannot race the read.
+	t.Cleanup(func() { fiberlog.SetOutput(os.Stderr) })
+	logged := func(fn func()) []byte {
+		var buf bytes.Buffer
+		fiberlog.SetOutput(&buf)
+		fn()
+		fiberlog.SetOutput(os.Stderr)
+
+		return buf.Bytes()
+	}
+
+	// Accept closes the draining listener first: the failure is logged once, however often Accept is
+	// called, and a later Close still gets it without logging again.
+	draining := new(atomic.Bool)
+	draining.Store(true)
+	stub := &stubListener{closeErr: closeErr}
+	ln := &gracefulListener{Listener: stub, draining: draining}
+
+	out := logged(func() {
+		for range 3 {
+			conn, err := ln.Accept()
+			require.Nil(t, conn)
+			require.ErrorIs(t, err, net.ErrClosed)
+		}
+	})
+	require.Equal(t, 1, bytes.Count(out, message), "logged: %q", out)
+	require.Equal(t, int32(1), stub.closes.Load())
+
+	out = logged(func() { require.ErrorIs(t, ln.Close(), closeErr) })
+	require.Empty(t, string(out))
+
+	// Shutdown closes the listener first: the error is its to report, and Accept has nothing to log.
+	draining = new(atomic.Bool)
+	stub = &stubListener{closeErr: closeErr}
+	ln = &gracefulListener{Listener: stub, draining: draining}
+
+	out = logged(func() {
+		require.ErrorIs(t, ln.Close(), closeErr)
+		draining.Store(true)
+
+		_, err := ln.Accept()
+		require.ErrorIs(t, err, net.ErrClosed)
+	})
+	require.Empty(t, string(out))
+	require.Equal(t, int32(1), stub.closes.Load())
 }
 
 func Test_gracefulRun(t *testing.T) {
