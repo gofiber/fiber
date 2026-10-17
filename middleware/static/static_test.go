@@ -2093,6 +2093,100 @@ func Test_Static_RootFile_OnAPrefixWithEmptyFirstSegment(t *testing.T) {
 	}
 }
 
+// Test_Static_RefusedPathIsNotLookedUp pins that a path the file server refuses
+// is answered as missing without a file lookup. It used to be looked up under a
+// reserved name, so a file of that name in the root was served for a malformed
+// path or for "/staticx" on a "/static*" route, and a root that is a single file
+// on an fs.FS served that file instead of its own for a leading "//". The name
+// is an ordinary one when asked for.
+func Test_Static_RefusedPathIsNotLookedUp(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	for name, data := range map[string]string{
+		"shell.html":        "SHELL",
+		"a.txt":             "A",
+		"__fiber_invalid__": "RESERVED",
+	} {
+		require.NoError(t, os.WriteFile(filepath.Join(root, name), []byte(data), 0o600))
+	}
+
+	type request struct {
+		target     string
+		wantBody   string
+		wantStatus int
+	}
+	directory := []request{
+		{target: "/a.txt", wantStatus: fiber.StatusOK, wantBody: "A"},
+		{target: "/__fiber_invalid__", wantStatus: fiber.StatusOK, wantBody: "RESERVED"},
+		{target: "//a.txt", wantStatus: fiber.StatusNotFound},
+		{target: "/x//y", wantStatus: fiber.StatusNotFound},
+	}
+	mounts := []struct {
+		mount    func(app *fiber.App)
+		name     string
+		requests []request
+	}{
+		{
+			name:     "directory",
+			mount:    func(app *fiber.App) { app.Get("/*", New(root, Config{CacheDuration: -1, Next: reached})) },
+			requests: directory,
+		},
+		{
+			name: "fs directory",
+			mount: func(app *fiber.App) {
+				app.Get("/*", New(".", Config{FS: os.DirFS(root), CacheDuration: -1, Next: reached}))
+			},
+			requests: directory,
+		},
+		{
+			name: "fs file",
+			mount: func(app *fiber.App) {
+				app.Get("/*", New("shell.html", Config{FS: os.DirFS(root), CacheDuration: -1, Next: reached}))
+			},
+			requests: []request{
+				{target: "/x", wantStatus: fiber.StatusOK, wantBody: "SHELL"},
+				{target: "//probe", wantStatus: fiber.StatusNotFound},
+			},
+		},
+		{
+			name: "fs file on a partial wildcard",
+			mount: func(app *fiber.App) {
+				app.Get("/static*", New("shell.html", Config{FS: os.DirFS(root), CacheDuration: -1, Next: reached}))
+			},
+			requests: []request{
+				{target: "/static/x", wantStatus: fiber.StatusOK, wantBody: "SHELL"},
+				{target: "/staticx", wantStatus: fiber.StatusNotFound},
+			},
+		},
+	}
+
+	for _, m := range mounts {
+		for _, unescape := range []bool{false, true} {
+			app := fiber.New(fiber.Config{UnescapePath: unescape})
+			m.mount(app)
+			handler := app.Handler()
+
+			for _, method := range []string{fiber.MethodGet, fiber.MethodHead} {
+				for _, tc := range m.requests {
+					resp := serveRaw(handler, method, tc.target)
+					require.Equal(t, tc.wantStatus, resp.StatusCode(), "%s unescape=%v %s %s", m.name, unescape, method, tc.target)
+					require.NotEmpty(t, resp.Header.Peek(headerReached),
+						"%s unescape=%v %s %s: reached the file server", m.name, unescape, method, tc.target)
+					if method != fiber.MethodGet {
+						continue // a HEAD answer has no body to check
+					}
+					if tc.wantStatus == fiber.StatusOK {
+						require.Equal(t, tc.wantBody, string(resp.Body()), "%s unescape=%v %s", m.name, unescape, tc.target)
+					} else {
+						require.NotContains(t, string(resp.Body()), "RESERVED", "%s unescape=%v %s", m.name, unescape, tc.target)
+					}
+				}
+			}
+		}
+	}
+}
+
 // Test_Static_RawBackslashIsNotASeparator pins that a raw backslash, an
 // ordinary character to the router, never becomes a separator for the file
 // server either. httptest would encode it, so the request line is set by hand.
