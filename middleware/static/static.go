@@ -74,6 +74,15 @@ func (s *fileServer) requestPath(dst []byte, p string) []byte {
 		if s.invalid {
 			return append(dst, invalidPathSentinel...)
 		}
+		// The router keeps empty path segments, so a request target that begins
+		// with "//" is routed as "//admin/..." and never matches a path-prefix
+		// middleware such as Use("/admin"). Stripping one leading slash here
+		// would then open the very file the guard was meant to protect. Refuse
+		// the routed path before the prefix is stripped so any number of leading
+		// slashes fails closed instead of slipping past the guard.
+		if len(p) >= 2 && p[0] == '/' && p[1] == '/' {
+			return append(dst, invalidPathSentinel...)
+		}
 		// If the root is a file, we need to reset the path to "/" always.
 		switch {
 		case s.rootIsFile && s.fsys == nil:
