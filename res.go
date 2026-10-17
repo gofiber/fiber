@@ -9,6 +9,7 @@ import (
 	"io/fs"
 	"net/http"
 	"os"
+	pathpkg "path"
 	"path/filepath"
 	"reflect"
 	"slices"
@@ -1233,6 +1234,9 @@ func (r *DefaultRes) SendEarlyHints(hints []string) error {
 	return r.c.fasthttp.EarlyHints()
 }
 
+// sendFileIndexName is the file SendFile serves for a directory.
+const sendFileIndexName = "index.html"
+
 // SendFile transfers the file from the specified path.
 // By default, the file is not compressed. To enable compression, set SendFile.Compress to true.
 // The Content-Type response HTTP header field is set based on the file's extension.
@@ -1291,7 +1295,7 @@ func (r *DefaultRes) SendFile(file string, config ...SendFile) error {
 			CompressedFileSuffixes: app.config.CompressedFileSuffixes,
 			CacheDuration:          cfg.CacheDuration,
 			SkipCache:              cfg.CacheDuration < 0 || !cacheHandler,
-			IndexNames:             []string{"index.html"},
+			IndexNames:             []string{sendFileIndexName},
 			PathNotFound: func(ctx *fasthttp.RequestCtx) {
 				ctx.Response.SetStatusCode(StatusNotFound)
 			},
@@ -1442,20 +1446,33 @@ func (r *DefaultRes) SendFile(file string, config ...SendFile) error {
 
 // sendFileContentLength stats the file the file handler opens for path: in
 // both branches the name is cleaned as fasthttp's Path() normalization cleans
-// the request URI that carries it.
+// the request URI that carries it. A directory is served by its index file,
+// so that is the file stated.
 func sendFileContentLength(path string, cfg SendFile) (int64, error) {
 	if cfg.FS != nil {
 		name := fspath.FSName(path)
+		if name == "" {
+			name = "."
+		}
 		info, err := fs.Stat(cfg.FS, name)
+		if err == nil && info.IsDir() {
+			name = pathpkg.Join(name, sendFileIndexName)
+			info, err = fs.Stat(cfg.FS, name)
+		}
 		if err != nil {
 			return 0, fmt.Errorf("stat %q: %w", name, err)
 		}
 		return info.Size(), nil
 	}
 
-	info, err := os.Stat(fspath.OSName(path))
+	name := fspath.OSName(path)
+	info, err := os.Stat(name)
+	if err == nil && info.IsDir() {
+		name = filepath.Join(name, sendFileIndexName)
+		info, err = os.Stat(name)
+	}
 	if err != nil {
-		return 0, fmt.Errorf("stat %q: %w", path, err)
+		return 0, fmt.Errorf("stat %q: %w", name, err)
 	}
 
 	return info.Size(), nil

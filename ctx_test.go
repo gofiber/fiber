@@ -8745,6 +8745,59 @@ func Test_SendFile_ByteRange_DotSegments(t *testing.T) {
 	}
 }
 
+// A directory is served by its index.html, so a 416 carries that file's size
+// and not the directory's.
+func Test_SendFile_ByteRange_DirectoryIndex(t *testing.T) {
+	t.Parallel()
+
+	if runtime.GOOS == windowsOS {
+		t.Skip("SendFile byte-range tests are flaky on Windows")
+	}
+
+	root := t.TempDir()
+	require.NoError(t, os.Mkdir(filepath.Join(root, "dir"), 0o750))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "dir", "index.html"), []byte(byteRangeContent), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "index.html"), []byte("0123"), 0o600))
+
+	app := New()
+	app.Get("/os", func(c Ctx) error {
+		return c.SendFile(root+"/missing/../dir/", SendFile{ByteRange: true})
+	})
+	app.Get("/fs", func(c Ctx) error {
+		return c.SendFile("a/../../dir/", SendFile{ByteRange: true, FS: os.DirFS(root)})
+	})
+	app.Get("/fs-root", func(c Ctx) error {
+		return c.SendFile("dir/..", SendFile{ByteRange: true, FS: os.DirFS(root)})
+	})
+	app.Get("/os-missing", func(c Ctx) error {
+		return c.SendFile(root+"/missing.txt", SendFile{ByteRange: true})
+	})
+	app.Get("/fs-missing", func(c Ctx) error {
+		return c.SendFile("missing.txt", SendFile{ByteRange: true, FS: os.DirFS(root)})
+	})
+
+	for target, want := range map[string]string{"/os": "bytes */20", "/fs": "bytes */20", "/fs-root": "bytes */4"} {
+		req := httptest.NewRequest(MethodGet, target, http.NoBody)
+		req.Header.Set(HeaderRange, "bytes=100-200")
+		resp, err := app.Test(req)
+		require.NoError(t, err)
+		require.Equal(t, StatusRequestedRangeNotSatisfiable, resp.StatusCode, target)
+		require.Equal(t, want, resp.Header.Get(HeaderContentRange), target)
+		require.NoError(t, resp.Body.Close())
+	}
+
+	// nothing to stat, so no size to state
+	for _, target := range []string{"/os-missing", "/fs-missing"} {
+		req := httptest.NewRequest(MethodGet, target, http.NoBody)
+		req.Header.Set(HeaderRange, "bytes=100-200")
+		resp, err := app.Test(req)
+		require.NoError(t, err)
+		require.Equal(t, StatusNotFound, resp.StatusCode, target)
+		require.Empty(t, resp.Header.Get(HeaderContentRange), target)
+		require.NoError(t, resp.Body.Close())
+	}
+}
+
 // An entity-tag in If-Range matches an ETag the handler set before SendFile,
 // which sends none of its own.
 func Test_SendFile_ByteRange_IfRangeETag(t *testing.T) {
