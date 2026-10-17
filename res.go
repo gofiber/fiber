@@ -9,7 +9,6 @@ import (
 	"io/fs"
 	"net/http"
 	"os"
-	pathpkg "path"
 	"path/filepath"
 	"reflect"
 	"slices"
@@ -21,6 +20,7 @@ import (
 	"github.com/gofiber/fiber/v3/internal/byterange"
 	internalcookie "github.com/gofiber/fiber/v3/internal/cookie"
 	"github.com/gofiber/fiber/v3/internal/fieldname"
+	"github.com/gofiber/fiber/v3/internal/fspath"
 	"github.com/gofiber/fiber/v3/internal/headerlist"
 	"github.com/gofiber/fiber/v3/internal/quotedstring"
 	"github.com/gofiber/utils/v2"
@@ -1440,20 +1440,20 @@ func (r *DefaultRes) SendFile(file string, config ...SendFile) error {
 	return nil
 }
 
+// sendFileContentLength stats the file the file handler opens for path: in
+// both branches the name is cleaned as fasthttp's Path() normalization cleans
+// the request URI that carries it.
 func sendFileContentLength(path string, cfg SendFile) (int64, error) {
 	if cfg.FS != nil {
-		cleanPath := pathpkg.Clean(utils.TrimLeft(path, '/'))
-		if cleanPath == "." {
-			cleanPath = ""
-		}
-		info, err := fs.Stat(cfg.FS, cleanPath)
+		name := fspath.FSName(path)
+		info, err := fs.Stat(cfg.FS, name)
 		if err != nil {
-			return 0, fmt.Errorf("stat %q: %w", cleanPath, err)
+			return 0, fmt.Errorf("stat %q: %w", name, err)
 		}
 		return info.Size(), nil
 	}
 
-	info, err := os.Stat(filepath.FromSlash(path))
+	info, err := os.Stat(fspath.OSName(path))
 	if err != nil {
 		return 0, fmt.Errorf("stat %q: %w", path, err)
 	}

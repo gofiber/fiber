@@ -8705,6 +8705,46 @@ func Test_SendFile_ByteRange_RFC9110(t *testing.T) {
 	}
 }
 
+// A 416 carries the size of the file the file server opened, also when the
+// name holds dot segments that fasthttp's path normalization resolved.
+func Test_SendFile_ByteRange_DotSegments(t *testing.T) {
+	t.Parallel()
+
+	if runtime.GOOS == windowsOS {
+		t.Skip("SendFile byte-range tests are flaky on Windows")
+	}
+
+	fixture := byteRangeFixture(t)
+	dir := filepath.Dir(fixture)
+	app := New()
+	app.Get("/os", func(c Ctx) error {
+		return c.SendFile(dir+"/missing/../fixture.txt", SendFile{ByteRange: true})
+	})
+	app.Get("/fs", func(c Ctx) error {
+		return c.SendFile("a/../../fixture.txt", SendFile{ByteRange: true, FS: os.DirFS(dir)})
+	})
+
+	for _, target := range []string{"/os", "/fs"} {
+		req := httptest.NewRequest(MethodGet, target, http.NoBody)
+		req.Header.Set(HeaderRange, "bytes=100-200")
+		resp, err := app.Test(req)
+		require.NoError(t, err)
+		require.Equal(t, StatusRequestedRangeNotSatisfiable, resp.StatusCode, target)
+		require.Equal(t, "bytes */20", resp.Header.Get(HeaderContentRange), target)
+		require.NoError(t, resp.Body.Close())
+
+		req = httptest.NewRequest(MethodGet, target, http.NoBody)
+		req.Header.Set(HeaderRange, "bytes=0-4")
+		resp, err = app.Test(req)
+		require.NoError(t, err)
+		require.Equal(t, StatusPartialContent, resp.StatusCode, target)
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		require.Equal(t, "01234", string(body), target)
+		require.NoError(t, resp.Body.Close())
+	}
+}
+
 // An entity-tag in If-Range matches an ETag the handler set before SendFile,
 // which sends none of its own.
 func Test_SendFile_ByteRange_IfRangeETag(t *testing.T) {
