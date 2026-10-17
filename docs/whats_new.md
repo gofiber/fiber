@@ -1871,6 +1871,8 @@ Custom limiter algorithms should now implement the updated `limiter.Handler` int
 
 `limiter.FixedWindow` and `limiter.SlidingWindow` give a field their config leaves unset the default `limiter.New` would, when you call their `New` method yourself: `MaxFunc` and `ExpirationFunc` return `Max` and `Expiration`, and a `nil` config selects the default config.
 
+`SkipFailedRequests` and `SkipSuccessfulRequests` judge the status a request ends with, errors included: a handler that returns a `*fiber.Error` counts with that error's status code, and one that returns any other error counts as a `500` unless it already set an error status. In v2 both options read only the response status, which is still `200` when a handler returns an error, so a failed request counted as a successful one.
+
 Limiter now redacts request keys in error paths by default. A new `DisableValueRedaction` boolean (default `false`) lets you reveal the limiter key, as the storage sees it, if diagnostics require it.
 
 :::note
