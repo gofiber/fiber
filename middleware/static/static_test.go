@@ -29,6 +29,12 @@ var testConfig = fiber.TestConfig{
 	FailOnTimeout: true,
 }
 
+// discardLogger drops what the file server of fasthttp logs for every path it
+// cannot open; the server of Fiber discards it as well.
+type discardLogger struct{}
+
+func (discardLogger) Printf(string, ...any) {}
+
 // go test -run Test_Static_Index_Default
 func Test_Static_Index_Default(t *testing.T) {
 	t.Parallel()
@@ -1575,12 +1581,6 @@ func Test_Static_ServesRoutedPath(t *testing.T) {
 		}
 	}
 }
-
-// discardLogger drops what the file server of fasthttp logs for every path it
-// cannot open; the server of Fiber discards it as well.
-type discardLogger struct{}
-
-func (discardLogger) Printf(string, ...any) {}
 
 // serveRaw sends target to the app exactly as written and returns the status
 // and body of the answer. app.Test builds the request line from a url.URL,
