@@ -109,15 +109,22 @@ func (r *Response) Header(key string) string {
 // Do not store references to returned values; make copies instead.
 func (r *Response) Headers() iter.Seq2[string, []string] {
 	return func(yield func(string, []string) bool) {
-		keys := r.RawResponse.Header.PeekKeys()
+		peekKeys := r.RawResponse.Header.PeekKeys()
+
+		// PeekAll reuses the slice PeekKeys returns, so copy the keys out first.
+		keys := make([]string, len(peekKeys))
+		for i, key := range peekKeys {
+			keys[i] = utils.UnsafeString(key)
+		}
+
 		for _, key := range keys {
-			vals := r.RawResponse.Header.PeekAll(utils.UnsafeString(key))
+			vals := r.RawResponse.Header.PeekAll(key)
 			valsStr := make([]string, len(vals))
 			for i, v := range vals {
 				valsStr[i] = utils.UnsafeString(v)
 			}
 
-			if !yield(utils.UnsafeString(key), valsStr) {
+			if !yield(key, valsStr) {
 				return
 			}
 		}

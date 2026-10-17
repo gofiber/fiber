@@ -6,6 +6,7 @@ import (
 	"encoding/xml"
 	"errors"
 	"io"
+	"maps"
 	"net"
 	"os"
 	"path/filepath"
@@ -255,6 +256,34 @@ func Test_Response_Headers(t *testing.T) {
 	require.Len(t, headers, 5) // Foo + Foo2 + Date + Content-Length + Content-Type
 
 	resp.Close()
+}
+
+func Test_Response_Headers_RepeatedKey(t *testing.T) {
+	t.Parallel()
+
+	values := []string{"1", "2", "3", "4", "5", "6", "7", "8"}
+	server := startTestServer(t, func(app *fiber.App) {
+		app.Get("/", func(c fiber.Ctx) error {
+			for _, v := range values {
+				c.Response().Header.Add("X-Multi", v)
+			}
+			return c.SendString("hello world")
+		})
+	})
+	defer server.stop()
+
+	client := New().SetDial(server.dial())
+
+	resp, err := AcquireRequest().
+		SetClient(client).
+		Get("http://example.com")
+	require.NoError(t, err)
+	defer resp.Close()
+
+	headers := maps.Collect(resp.Headers())
+
+	require.Equal(t, values, headers["X-Multi"])
+	require.Len(t, headers, 4) // X-Multi + Date + Content-Length + Content-Type
 }
 
 func Benchmark_Headers(b *testing.B) {
