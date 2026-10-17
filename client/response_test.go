@@ -284,6 +284,15 @@ func Test_Response_Headers_RepeatedKey(t *testing.T) {
 
 	require.Equal(t, values, headers["X-Multi"])
 	require.Len(t, headers, 4) // X-Multi + Date + Content-Length + Content-Type
+
+	seen := 0
+	for range resp.Headers() {
+		seen++
+		if seen == 1 {
+			break
+		}
+	}
+	require.Equal(t, 1, seen)
 }
 
 func Benchmark_Headers(b *testing.B) {
