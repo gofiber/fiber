@@ -292,10 +292,9 @@ func New(root string, cfg ...Config) fiber.Handler {
 		}
 
 		prefixLen := len(prefix)
-		if prefixLen > 0 && prefix[prefixLen-1:] == "/" {
-			// /john/ -> /john and / -> "": the rest of the path keeps its leading
-			// slash, so the empty first segment of "//john" is left for
-			// sanitizePath to refuse instead of being stripped with the prefix
+		if prefixLen > 0 && prefix[prefixLen-1] == '/' {
+			// /john/ -> /john and / -> "", so "//john" keeps the empty segment
+			// that sanitizePath refuses
 			prefixLen--
 		}
 
