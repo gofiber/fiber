@@ -25,9 +25,11 @@ coverage:
 	go tool cover -html=/tmp/coverage.out
 
 ## format: 🎨 Fix code format issues
+# group_params is the one extra rule .golangci.yml turns on (group-params), and the
+# one golangci-lint's gocritic already enforces in lint; a bare -extra enables more.
 .PHONY: format
 format:
-	GOTOOLCHAIN=$(GOVERSION) go run mvdan.cc/gofumpt@latest -w -l .
+	GOTOOLCHAIN=$(GOVERSION) go run mvdan.cc/gofumpt@latest -extra=group_params -w -l .
 
 ## markdown: 🎨 Find markdown format issues (Requires markdownlint-cli2)
 .PHONY: markdown
