@@ -148,7 +148,30 @@ To define static routes using `Get`, append the wildcard (`*`) operator at the e
 :::info
 The file server resolves the path the router matched. Fiber normalizes request paths before routing (see [Path normalization](../guide/routing.md#path-normalization)), so middleware mounted on `/static/private` also guards `/static/%70rivate/secret.txt` and `/static/x/../private/secret.txt`.
 
-Escapes the router leaves encoded, such as `%20`, `%40` or `%25`, also remain encoded for file lookup. This keeps routing, including path-scoped authorization middleware, and static-file resolution on the same resource name. Consequently, `/static/hello%20world.txt` does not serve `hello world.txt`; enable [`UnescapePath`](../api/fiber.md#config) when encoded spellings should resolve to decoded file names. A path that cannot name a file inside the root is answered with `404 Not Found`: an escape that represents a slash, a backslash or a control character, a malformed escape such as `%zz`, an escape of an unreserved character, an empty, `.` or `..` segment and, for a root on the operating system's file system, a first segment that starts with a drive letter such as `C:`. So `/static/private%2Fsecret.txt` never reaches `private/secret.txt` unless `UnescapePath` decodes it for the router as well, and `/static//private/secret.txt` is not found. A root mount follows the same rule: the router keeps `//private/secret.txt` apart from `/private/secret.txt`, so the file server answers it with `404 Not Found` instead of opening `private/secret.txt` without passing middleware mounted on `/private`. The spellings the router turns into such a path get the same answer: `/.//private/secret.txt`, `/x/..//private/secret.txt`, `/%2e%2e//private/secret.txt` and, with `UnescapePath` enabled, `/%2Fprivate/secret.txt`. A stray `%` cannot forge an escape the file server would then decode: the router decodes every escape of an unreserved character when it normalizes a path, so one still in the routed path can only have been forged, and it is rejected rather than decoded a second time. `/static/%%370rivate/secret.txt` therefore never opens `private/secret.txt`. With `UnescapePath` enabled the router has already decoded every escape, so a malformed escape is an ordinary part of the name: `/static/100%zz.txt` names `100%zz.txt`.
+Escapes the router leaves encoded, such as `%20`, `%40` or `%25`, also remain encoded for file lookup. This keeps routing, including path-scoped authorization middleware, and static-file resolution on the same resource name. Consequently, `/static/hello%20world.txt` does not serve `hello world.txt`; enable [`UnescapePath`](../api/fiber.md#config) when encoded spellings should resolve to decoded file names.
+
+A path that cannot name a file inside the root is answered with `404 Not Found`:
+
+- an escape that represents a slash, a backslash or a control character, so `/static/private%2Fsecret.txt` never reaches `private/secret.txt` unless `UnescapePath` decodes it for the router as well;
+- a malformed escape such as `%zz`;
+- an escape of an unreserved character. The router decodes every one of those when it normalizes a path, so one still in the routed path can only have been forged by a stray `%`, and it is rejected rather than decoded a second time: `/static/%%370rivate/secret.txt` never opens `private/secret.txt`;
+- an empty, `.` or `..` segment, so `/static//private/secret.txt` is not found;
+- for a root on the operating system's file system, a first segment that starts with a drive letter such as `C:`.
+
+With `UnescapePath` enabled the router has already decoded every escape, so a malformed escape is an ordinary part of the name: `/static/100%zz.txt` names `100%zz.txt`.
+
+The empty segment rule holds for a root mount too. The router keeps the empty first segment of `//private/secret.txt` apart from `/private/secret.txt`, so a root mount answers it with `404 Not Found` and does not open `private/secret.txt` without passing middleware mounted on `/private`. The spellings the router turns into such a path get the same answer, `/.//private/secret.txt`, `/x/..//private/secret.txt` and `/%2e%2e//private/secret.txt` among them. So does `/%2Fprivate/secret.txt`: it is refused as an escape of a slash, or decoded into an empty segment when `UnescapePath` is enabled. A root that is a single file serves that file for every path, so no spelling of a path can select another file.
+:::
+
+:::tip
+A client that puts a doubled slash in front of a path, such as a base URL that ends in `/` joined to a path that starts with `/`, gets `404 Not Found` from a root mount that serves a directory. To keep serving it, collapse the slash with the [Rewrite](./rewrite.md) middleware before any middleware that matches a path prefix runs. The middleware registered after it, one guarding `/private` included, then sees `/private/secret.txt`:
+
+```go
+app.Use(rewrite.New(rewrite.Config{
+    RuleList: []rewrite.Rule{{From: "//*", To: "/$1"}},
+}))
+```
+
 :::
 
 :::caution
