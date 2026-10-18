@@ -167,11 +167,13 @@ func Test_Request_Headers(t *testing.T) {
 		"bar": {"foo"},
 	})
 
-	headers := maps.Collect(req.Headers())
+	headers := make(map[string][]string)
+	for k, v := range req.Headers() {
+		headers[k] = append(headers[k], v...)
+	}
 
-	require.Contains(t, headers["Foo"], "fiber")
-	require.Contains(t, headers["Foo"], "bar")
-	require.Contains(t, headers["Bar"], "foo")
+	require.Equal(t, []string{"bar", "fiber"}, headers["Foo"])
+	require.Equal(t, []string{"foo"}, headers["Bar"])
 
 	require.Len(t, headers, 2)
 }
