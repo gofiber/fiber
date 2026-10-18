@@ -1,6 +1,7 @@
 package encryptcookie
 
 import (
+	"bytes"
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
@@ -112,4 +113,9 @@ func GenerateKey(length int) string {
 // Check given cookie key is disabled for encryption or not
 func isDisabled(key string, except []string) bool {
 	return slices.Contains(except, key)
+}
+
+// containsBytes reports whether keys holds an entry equal to key.
+func containsBytes(keys [][]byte, key []byte) bool {
+	return slices.ContainsFunc(keys, func(k []byte) bool { return bytes.Equal(k, key) })
 }
