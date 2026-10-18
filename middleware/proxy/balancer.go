@@ -20,6 +20,7 @@ func Balancer(config ...Config) fiber.Handler {
 
 	// Load balanced client
 	lbc := &fasthttp.LBClient{}
+	opaqueClient := false
 	// Servers and the per-host options are not used when Client is set.
 	if cfg.Client == nil {
 		// Set timeout
@@ -37,22 +38,21 @@ func Balancer(config ...Config) fiber.Handler {
 	} else {
 		// Set custom client
 		lbc = cfg.Client
-	}
-	// A host client the caller built normalizes the request line on the way
-	// out unless told otherwise, which would decode "%2F" into a separator and
-	// merge "//" and so undo the routed target forwarded below. Any other
-	// BalancingClient cannot be told, so with one present a target its
-	// normalization could change is refused per request.
-	opaqueClient := false
-	for _, bc := range lbc.Clients {
-		if hc, ok := bc.(*fasthttp.HostClient); ok {
-			// Only written when unset, so a client already in use is not touched.
-			if !hc.DisablePathNormalizing {
-				hc.DisablePathNormalizing = true
+		// A host client the caller built normalizes the request line on the way
+		// out unless told otherwise, which would decode "%2F" into a separator and
+		// merge "//" and so undo the routed target forwarded below. Any other
+		// BalancingClient cannot be told, so with one present a target its
+		// normalization could change is refused per request.
+		for _, bc := range lbc.Clients {
+			if hc, ok := bc.(*fasthttp.HostClient); ok {
+				// Only written when unset, so a client already in use is not touched.
+				if !hc.DisablePathNormalizing {
+					hc.DisablePathNormalizing = true
+				}
+				continue
 			}
-			continue
+			opaqueClient = true
 		}
-		opaqueClient = true
 	}
 
 	// KeepConnectionHeader exempts Connection from the hop-by-hop strip.
@@ -169,7 +169,7 @@ func newHostClient(u *url.URL, cfg *Config, policy SecurityPolicy) *fasthttp.Hos
 	}
 	// Validate the resolved IP at dial time so DNS rebinding cannot swap in a private address.
 	if !policy.AllowPrivateIPs {
-		hc.Dial = newDialGuard(cfg.DialDualStack).strictDialer()
+		hc.Dial = newDialGuard(cfg.DialDualStack).dialChecked
 	}
 	return hc
 }

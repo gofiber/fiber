@@ -5,10 +5,10 @@ import (
 )
 
 // isBlockedIP reports whether ip falls inside a range that proxy
-// upstreams must not reach by default. Loopback, unspecified, RFC 1918
-// private, link-local (including the 169.254.169.254 cloud-metadata
-// address), multicast, and RFC 6598 CGNAT ranges are blocked, as are the ones
-// isBlockedIPv4Range lists and the site-local fec0::/10 (RFC 3879).
+// upstreams must not reach by default. An IPv4 address, or an IPv4-mapped one,
+// is judged by isBlockedIPv4. For IPv6, loopback, unspecified, unique-local,
+// link-local, multicast and the deprecated site-local fec0::/10 (RFC 3879)
+// ranges are blocked.
 //
 // IPv6 transition addresses are handled in two ways so a blocked IPv4 cannot
 // be smuggled past as an IPv6 literal. Deprecated tunneling and local-use
@@ -22,13 +22,13 @@ func isBlockedIP(ip net.IP) bool {
 	if ip == nil {
 		return true
 	}
+	if v4 := ip.To4(); v4 != nil {
+		return isBlockedIPv4(v4)
+	}
 	if ip.IsLoopback() || ip.IsUnspecified() || ip.IsPrivate() ||
 		ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() ||
 		ip.IsMulticast() || ip.IsInterfaceLocalMulticast() ||
 		isIPv6SiteLocal(ip) {
-		return true
-	}
-	if v4 := ip.To4(); v4 != nil && isBlockedIPv4Range(v4) {
 		return true
 	}
 	// Block deprecated / local-use IPv6 transition ranges wholesale (see the
@@ -48,28 +48,36 @@ func isBlockedIP(ip net.IP) bool {
 	return false
 }
 
-// isBlockedIPv4Range reports whether v4 is in a special-use range net.IP does not classify:
+// isBlockedIPv4 reports whether the four bytes of v4 are an address proxy upstreams must not
+// reach by default:
 //
-//   - 0.0.0.0/8       "this network" (RFC 1122)
-//   - 100.64.0.0/10   shared address space, CGNAT (RFC 6598)
-//   - 192.0.0.0/24    IETF protocol assignments (RFC 6890), incl. Oracle Cloud's 192.0.0.192
-//   - 198.18.0.0/15   benchmarking (RFC 2544)
-//   - 240.0.0.0/4     reserved (RFC 1112), incl. the limited broadcast 255.255.255.255
+//   - 0.0.0.0/8                                   "this network" (RFC 1122)
+//   - 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16   private (RFC 1918)
+//   - 100.64.0.0/10                               shared address space, CGNAT (RFC 6598)
+//   - 127.0.0.0/8                                 loopback
+//   - 169.254.0.0/16                              link-local, incl. the cloud-metadata 169.254.169.254
+//   - 192.0.0.0/24                                IETF protocol assignments (RFC 6890), incl. Oracle Cloud's 192.0.0.192
+//   - 198.18.0.0/15                               benchmarking (RFC 2544)
+//   - 224.0.0.0/3                                 multicast and reserved (RFC 1112), incl. 255.255.255.255
 //
 // The documentation ranges (192.0.2.0/24, 198.51.100.0/24, 203.0.113.0/24)
 // are left alone: they route nowhere, and tests use them as public addresses.
-func isBlockedIPv4Range(v4 net.IP) bool {
-	switch {
-	case v4[0] == 0:
+func isBlockedIPv4(v4 net.IP) bool {
+	switch v4[0] {
+	case 0, 10, 127:
 		return true
-	case v4[0] == 100 && v4[1] >= 64 && v4[1] <= 127:
-		return true
-	case v4[0] == 192 && v4[1] == 0 && v4[2] == 0:
-		return true
-	case v4[0] == 198 && (v4[1] == 18 || v4[1] == 19):
-		return true
+	case 100:
+		return v4[1]&0xc0 == 64
+	case 169:
+		return v4[1] == 254
+	case 172:
+		return v4[1]&0xf0 == 16
+	case 192:
+		return v4[1] == 168 || (v4[1] == 0 && v4[2] == 0)
+	case 198:
+		return v4[1]&0xfe == 18
 	default:
-		return v4[0] >= 240
+		return v4[0] >= 224
 	}
 }
 

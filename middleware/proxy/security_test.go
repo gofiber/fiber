@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -64,6 +65,21 @@ func Test_Security_IsBlockedIP(t *testing.T) {
 		"198.51.100.7":             false, // TEST-NET-2 documentation range
 		"203.0.113.9":              false, // TEST-NET-3 documentation range
 		"223.255.255.254":          false, // below 240.0.0.0/4
+		"239.255.255.255":          true,  // top of multicast
+		"9.255.255.255":            false, // just below 10.0.0.0/8
+		"11.0.0.0":                 false, // just above 10.0.0.0/8
+		"100.63.255.255":           false, // just below CGNAT, 100.64.0.0/10
+		"100.127.255.255":          true,  // top of CGNAT
+		"100.128.0.0":              false, // just above CGNAT
+		"126.255.255.255":          false, // just below 127.0.0.0/8
+		"128.0.0.0":                false, // just above 127.0.0.0/8
+		"169.253.255.255":          false, // just below link-local, 169.254.0.0/16
+		"169.255.0.0":              false, // just above link-local
+		"172.15.255.255":           false, // just below 172.16.0.0/12
+		"172.31.255.255":           true,  // top of 172.16.0.0/12
+		"172.32.0.0":               false, // just above 172.16.0.0/12
+		"192.167.255.255":          false, // just below 192.168.0.0/16
+		"192.169.0.0":              false, // just above 192.168.0.0/16
 		"fb00::1":                  false, // below fc00::/7
 		"::ffff:127.0.0.1":         true,  // IPv4-mapped loopback
 		"::ffff:10.0.0.1":          true,  // IPv4-mapped private
@@ -618,6 +634,17 @@ func Test_Security_IsBlockedIP_NilReturnsTrue(t *testing.T) {
 	require.True(t, isBlockedIP(nil))
 }
 
+// Test_Security_IPv6Helpers_DeclineOtherAddresses pins that the IPv6 transition helpers decline
+// what is not an IPv6 address: isBlockedIP judges IPv4 itself and never hands them one.
+func Test_Security_IPv6Helpers_DeclineOtherAddresses(t *testing.T) {
+	t.Parallel()
+
+	for _, ip := range []net.IP{net.ParseIP("203.0.113.5"), {203, 0, 113, 5}, {1, 2, 3}} {
+		require.False(t, isBlockedIPv6TransitionRange(ip), "%v", []byte(ip))
+		require.Nil(t, embeddedIPv4(ip), "%v", []byte(ip))
+	}
+}
+
 // Test_Security_ValidateHostForSSRF_EmptyHost verifies the explicit
 // empty-host short-circuit (the host == "" branch).
 func Test_Security_ValidateHostForSSRF_EmptyHost(t *testing.T) {
@@ -647,13 +674,17 @@ func Test_Security_ValidateHostForSSRF_LookupFailure(t *testing.T) {
 	require.NotContains(t, err.Error(), "blocked address")
 }
 
-// Test_Security_ValidateHostForSSRF_IPLiteralAllocs pins that an IP literal costs only its parse.
+// Test_Security_ValidateHostForSSRF_IPLiteralAllocs pins that an IP literal costs only its parse and
+// is never looked up: a lookup would be served from the cache and show no allocations either.
 func Test_Security_ValidateHostForSSRF_IPLiteralAllocs(t *testing.T) {
 	// Intentionally not parallel: AllocsPerRun counts allocations process-wide and panics in a parallel test.
 	var err error
 	allocs := testing.AllocsPerRun(100, func() { err = validateHostForSSRF("203.0.113.5") })
 	require.NoError(t, err)
 	require.LessOrEqual(t, allocs, 1.0)
+
+	_, remembered := upfrontLookups.get("203.0.113.5", dnsResolver.Load())
+	require.False(t, remembered, "a literal is judged where it stands")
 }
 
 // Test_Security_ValidateResolved pins what a lookup may answer: one or more addresses, none blocked.
@@ -1026,23 +1057,15 @@ func Test_Security_RoundRobin_StrictAcrossTheFold(t *testing.T) {
 	t.Parallel()
 
 	pool := []*url.URL{{Host: "a"}, {Host: "b"}, {Host: "c"}, {Host: "d"}, {Host: "e"}}
-	position := func(u *url.URL) int {
-		for i, candidate := range pool {
-			if candidate == u {
-				return i
-			}
-		}
-		return -1
-	}
 
 	for _, start := range []uint64{0, roundRobinFold - 7, roundRobinFold - 1, roundRobinFold, roundRobinFold + 3, 3 * roundRobinFold, ^uint64(0) - 20} {
 		r := &urlRoundrobin{pool: pool}
 		r.next.Store(start)
 
-		previous := position(r.get())
+		previous := slices.Index(pool, r.get())
 		require.Equal(t, int(start%uint64(len(pool))), previous, "start %d", start)
 		for range 40 {
-			current := position(r.get())
+			current := slices.Index(pool, r.get())
 			require.Equal(t, (previous+1)%len(pool), current, "start %d", start)
 			previous = current
 		}
@@ -1050,61 +1073,42 @@ func Test_Security_RoundRobin_StrictAcrossTheFold(t *testing.T) {
 	}
 }
 
-// Test_Security_RoundRobin_ConcurrentAcrossTheFold crosses the fold under contention: 300 tickets
-// still pick each of three upstreams 100 times.
-func Test_Security_RoundRobin_ConcurrentAcrossTheFold(t *testing.T) {
-	t.Parallel()
-
-	pool := []*url.URL{{Host: "a"}, {Host: "b"}, {Host: "c"}}
-	r := &urlRoundrobin{pool: pool}
-	r.next.Store(roundRobinFold - 150)
-
-	var counts [3]atomic.Int32
-	var wg sync.WaitGroup
-	for range 300 {
-		wg.Go(func() {
-			selected := r.get()
-			for i, candidate := range pool {
-				if selected == candidate {
-					counts[i].Add(1)
-					return
-				}
-			}
-		})
-	}
-	wg.Wait()
-
-	for i := range counts {
-		require.Equal(t, int32(100), counts[i].Load())
-	}
-}
-
 func Test_Security_RoundRobin_ConcurrentSelection(t *testing.T) {
 	t.Parallel()
+
 	pool := []*url.URL{
 		{Scheme: schemeHTTP, Host: "a"},
 		{Scheme: schemeHTTP, Host: "b"},
 		{Scheme: schemeHTTP, Host: "c"},
 	}
-	r := &urlRoundrobin{pool: pool}
 
-	var counts [3]atomic.Int32
-	var wg sync.WaitGroup
-	for range 300 {
-		wg.Go(func() {
-			selected := r.get()
-			for i, candidate := range pool {
-				if selected == candidate {
-					counts[i].Add(1)
-					return
-				}
+	// The second start puts the fold in the middle of the 300 picks.
+	for _, tc := range []struct {
+		name  string
+		start uint64
+	}{
+		{name: "from zero", start: 0},
+		{name: "across the fold", start: roundRobinFold - 150},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			r := &urlRoundrobin{pool: pool}
+			r.next.Store(tc.start)
+
+			var counts [3]atomic.Int32
+			var wg sync.WaitGroup
+			for range 300 {
+				wg.Go(func() {
+					counts[slices.Index(pool, r.get())].Add(1)
+				})
+			}
+			wg.Wait()
+
+			for i := range counts {
+				require.Equal(t, int32(100), counts[i].Load())
 			}
 		})
-	}
-	wg.Wait()
-
-	for i := range counts {
-		require.Equal(t, int32(100), counts[i].Load())
 	}
 }
 
@@ -1192,7 +1196,7 @@ func Test_Security_Balancer_BuildsHTTPSHostClient(t *testing.T) {
 // connection is made — this is what defeats DNS rebinding.
 func Test_Security_StrictDialer_BlocksLoopback(t *testing.T) {
 	t.Parallel()
-	dial := newDialGuard(false).strictDialer()
+	dial := newDialGuard(false).dialChecked
 
 	_, err := dial("127.0.0.1:80")
 	require.ErrorIs(t, err, ErrUpstreamHostBlocked)
@@ -1205,7 +1209,7 @@ func Test_Security_StrictDialer_BlocksLoopback(t *testing.T) {
 // SplitHostPort error branch.
 func Test_Security_StrictDialer_RejectsMalformedAddr(t *testing.T) {
 	t.Parallel()
-	dial := newDialGuard(false).strictDialer()
+	dial := newDialGuard(false).dialChecked
 	_, err := dial("no-port-here")
 	require.Error(t, err)
 	require.NotErrorIs(t, err, ErrUpstreamHostBlocked)
@@ -1374,7 +1378,11 @@ func Test_Security_RedirectRequest(t *testing.T) {
 			req.SetBodyString("payload")
 			req.Header.SetContentLength(len("payload"))
 
-			redirectRequest(req, tc.status)
+			changes := redirectChangesMethod(req, tc.status)
+			require.Equal(t, !tc.wantBody, changes)
+			if changes {
+				redirectRequest(req)
+			}
 
 			require.Equal(t, tc.wantMethod, string(req.Header.Method()))
 			if tc.wantBody {
@@ -1400,7 +1408,7 @@ func Test_Security_RedirectRequest_KeepsBodyBuffer(t *testing.T) {
 	req.SetBodyString("payload-of-request-A")
 	held := req.Body()
 
-	redirectRequest(req, fasthttp.StatusSeeOther)
+	redirectRequest(req)
 
 	// Another request takes a pooled body buffer, as another connection would.
 	other := fasthttp.AcquireRequest()
@@ -1414,26 +1422,19 @@ func Test_Security_RedirectRequest_KeepsBodyBuffer(t *testing.T) {
 func Test_Security_RedirectRequest_DropsParsedForm(t *testing.T) {
 	t.Parallel()
 
-	for _, tc := range []struct {
-		name   string
-		method string
-		status int
-	}{
-		{name: "302 POST", method: fasthttp.MethodPost, status: fasthttp.StatusFound},
-		{name: "303 PUT", method: fasthttp.MethodPut, status: fasthttp.StatusSeeOther},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
+	for _, method := range []string{fasthttp.MethodPost, fasthttp.MethodPut} {
+		t.Run(method, func(t *testing.T) {
 			t.Parallel()
 
 			req := fasthttp.AcquireRequest()
 			defer fasthttp.ReleaseRequest(req)
 			req.SetRequestURI("http://example.com/start")
-			req.Header.SetMethod(tc.method)
+			req.Header.SetMethod(method)
 			req.Header.SetContentType(fiber.MIMEApplicationForm)
 			req.SetBodyString("token=secret&b=2")
 			require.Equal(t, "secret", string(req.PostArgs().Peek("token")), "the handler read the form")
 
-			redirectRequest(req, tc.status)
+			redirectRequest(req)
 
 			wire := req.String()
 			require.Equal(t, "GET /start HTTP/1.1", strings.SplitN(wire, "\r\n", 2)[0])
@@ -1455,7 +1456,7 @@ func Test_Security_RedirectRequest_DropsFraming(t *testing.T) {
 	require.NoError(t, req.Read(bufio.NewReader(strings.NewReader(raw))))
 	require.Equal(t, -1, req.Header.ContentLength(), "the request is chunked")
 
-	redirectRequest(req, fasthttp.StatusSeeOther)
+	redirectRequest(req)
 
 	wire := req.String()
 	require.Equal(t, "GET /start HTTP/1.1", strings.SplitN(wire, "\r\n", 2)[0])
@@ -1532,29 +1533,6 @@ func Test_Security_FollowRedirects_StripsCredentialsOnOriginChange(t *testing.T)
 				require.Equal(t, "session=abc", sawCookie)
 			}
 		})
-	}
-}
-
-// Test_Security_SameOrigin pins the comparison on its own.
-func Test_Security_SameOrigin(t *testing.T) {
-	t.Parallel()
-
-	for _, tc := range []struct {
-		a, b string
-		want bool
-	}{
-		{a: "http://a.example/", b: "http://a.example/x?y=1", want: true},
-		{a: "http://a.example/", b: "http://a.example:80/", want: true},
-		{a: "https://a.example/", b: "https://a.example:443/", want: true},
-		{a: "HTTP://A.EXAMPLE/", b: "http://a.example/", want: true},
-		{a: "http://[::1]/", b: "http://[::1]:80/", want: true},
-		{a: "http://a.example/", b: "http://a.example:8080/", want: false},
-		{a: "http://a.example/", b: "https://a.example/", want: false},
-		{a: "https://a.example/", b: "https://a.example:80/", want: false},
-		{a: "http://a.example/", b: "http://b.example/", want: false},
-		{a: "http://[::1]:81/", b: "http://[::1]:80/", want: false},
-	} {
-		require.Equal(t, tc.want, sameOrigin(mustParseTestURL(t, tc.a), mustParseTestURL(t, tc.b)), "%s vs %s", tc.a, tc.b)
 	}
 }
 
@@ -1644,15 +1622,16 @@ func Test_Security_ValidateUpstream_UnparsableIsHostInvalid(t *testing.T) {
 		require.True(t, ok, "the net/url error must stay reachable: %q", raw)
 	}
 
-	for _, raw := range []string{"", "   ", "http://", "http://:8080", "http:///path"} {
+	// "" and "http:///path" are pinned by RejectsEmpty and EmptyHostAfterScheme.
+	for _, raw := range []string{"   ", "http://", "http://:8080"} {
 		_, err := validateUpstream(raw, DefaultSecurityPolicy())
 		require.ErrorIs(t, err, ErrUpstreamHostInvalid, raw)
 	}
 }
 
-// Test_Security_ValidateUpstreamForBalancer_Forms pins what a Balancer server may look like: a scheme
-// and host (scheme optional, a lone trailing slash tolerated) and nothing else.
-func Test_Security_ValidateUpstreamForBalancer_Forms(t *testing.T) {
+// Test_Security_ValidateUpstreamForBalancer_Schemes pins the scheme of each accepted Balancer server
+// form; Test_Proxy_Balancer_RejectsNonOriginServer pins what is refused.
+func Test_Security_ValidateUpstreamForBalancer_Schemes(t *testing.T) {
 	t.Parallel()
 
 	policy := DefaultSecurityPolicy()
@@ -1668,16 +1647,5 @@ func Test_Security_ValidateUpstreamForBalancer_Forms(t *testing.T) {
 		u, err := validateUpstreamForBalancer(raw, policy)
 		require.NoError(t, err, raw)
 		require.Equal(t, wantScheme, u.Scheme, raw)
-	}
-
-	for _, raw := range []string{
-		"http://upstream.example/api",
-		"http://user:pw@upstream.example",
-		"http://upstream.example?x=1",
-		"http://upstream.example?",
-		"http://upstream.example#frag",
-	} {
-		_, err := validateUpstreamForBalancer(raw, policy)
-		require.ErrorIs(t, err, ErrUpstreamNotOrigin, raw)
 	}
 }

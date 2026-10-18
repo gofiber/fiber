@@ -125,21 +125,21 @@ func Test_Coverage_DialValidatedIPs_DualStackTriesV6(t *testing.T) {
 // SplitHostPort → resolveAndValidateHost → blocked-IP rejection branch.
 func Test_Coverage_StrictDialer_RejectsLoopbackHostname(t *testing.T) {
 	t.Parallel()
-	dial := newDialGuard(false).strictDialer()
+	dial := newDialGuard(false).dialChecked
 	_, err := dial("localhost:65535")
 	require.Error(t, err)
 	require.ErrorIs(t, err, ErrUpstreamHostBlocked)
 }
 
 // Test_Coverage_StrictDialer_PassesGuardThenDials covers the post-guard
-// dial dispatch (the final return inside dialGuard.strictDialer). TEST-NET-1
+// dial dispatch (the final return inside dialGuard.dialChecked). TEST-NET-1
 // (192.0.2.0/24, RFC 5737) is reserved for documentation and not in the
 // blocked ranges, so it survives the SSRF check; the dial itself fails
 // fast because the kernel has no route. We only assert that an error
 // surfaced — the *type* of error depends on the host's networking stack.
 func Test_Coverage_StrictDialer_PassesGuardThenDials(t *testing.T) {
 	t.Parallel()
-	dial := newDialGuard(true).strictDialer() // dualStack so the dial loop is reached
+	dial := newDialGuard(true).dialChecked // dualStack so the dial loop is reached
 	_, err := dial("192.0.2.1:1")
 	require.Error(t, err)
 }
@@ -312,8 +312,7 @@ func Test_Coverage_CanFastJoinPath_RepeatedSeparator(t *testing.T) {
 	}
 	require.True(t, canFastJoinPath("/a?b"))
 
-	base, err := url.Parse("http://upstream.example")
-	require.NoError(t, err)
+	base := mustParseTestURL(t, "http://upstream.example")
 	require.Equal(t, "http://upstream.example/a?b?c", joinUpstreamPath(base, "/a?b?c"))
 	require.Equal(t, "http://upstream.example/a?b#c", joinUpstreamPath(base, "/a?b#c"))
 }

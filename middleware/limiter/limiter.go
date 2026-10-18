@@ -59,12 +59,11 @@ func New(config ...Config) fiber.Handler {
 
 // withDefaults returns a copy of cfg with the defaults New applies; nil gives the default config.
 func withDefaults(cfg *Config) *Config {
-	var filled Config
-	if cfg == nil {
-		filled = configDefault()
-	} else {
-		filled = configDefault(*cfg)
+	var given Config
+	if cfg != nil {
+		given = *cfg
 	}
+	filled := configDefault(given)
 	return &filled
 }
 

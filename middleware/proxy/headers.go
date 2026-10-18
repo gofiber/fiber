@@ -115,11 +115,9 @@ func delConnectionListedHeaders(h fieldname.Deleter, values [][]byte) {
 	}
 }
 
+// stripCrossHostHeaders removes the credential headers, whatever case they are stored under.
 func stripCrossHostHeaders(req *fasthttp.Request) {
-	for _, h := range crosshost.SensitiveHeaders {
-		// Every spelling goes; the extra scan is cheap on this rare path.
-		fieldname.Del(&req.Header, h, false)
-	}
+	fieldname.DelSet(&req.Header, crosshost.SensitiveHeaders)
 }
 
 // realIPHeader is the field the proxy overwrites with the peer address Fiber

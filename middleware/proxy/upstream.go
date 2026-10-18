@@ -70,7 +70,7 @@ func parseAllowedUpstream(raw string, policy SecurityPolicy) (*url.URL, error) {
 // origin (the balancer dials the host and forwards the request target as
 // is, so a path, userinfo, query or fragment would be dropped silently) and
 // rejects IP-literal hosts in blocked ranges, but defers hostname resolution
-// to the SSRF-guarded dialer (see dialGuard.strictDialer). Deferring DNS keeps
+// to the SSRF-guarded dialer (see dialGuard.dialChecked). Deferring DNS keeps
 // a transient resolver failure at startup from panicking the application
 // (e.g. crash loops in container orchestrators) and re-checks the resolved
 // IP on every dial, which also defeats DNS-rebinding. A lone trailing slash is

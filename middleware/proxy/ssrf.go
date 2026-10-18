@@ -41,9 +41,10 @@ func validateHostForSSRF(host string) error {
 	// strip brackets from IPv6 literals (url.Hostname already does this
 	// in most cases, but keep the guard for defensive callers).
 	host = trimBrackets(host)
-	// Not via resolveAndValidateHost: this runs on every request and needs no slice back.
-	if ip := net.ParseIP(host); ip != nil {
-		if isBlockedIP(ip) {
+	// Not via resolveAndValidateHost: this runs on every request and needs no slice back. The
+	// check ahead of ParseIP spares a hostname the allocations of a parse that fails.
+	if utils.IsIPv4(host) || utils.IsIPv6(host) {
+		if ip := net.ParseIP(host); isBlockedIP(ip) {
 			return fmt.Errorf("%w: %s", ErrUpstreamHostBlocked, ip)
 		}
 		return nil
@@ -158,14 +159,9 @@ func newDialGuard(dualStack bool) dialGuard {
 	return dialGuard{dial: dialer.Dial, dualStack: dualStack}
 }
 
-// strictDialer returns a DialFunc that always applies the blocklist; Balancer
-// installs it only when its policy forbids private IPs.
-func (g dialGuard) strictDialer() fasthttp.DialFunc {
-	return g.dialChecked
-}
-
-// clientDialer wraps orig with the guard. Unlike strictDialer, it serves clients that outlive any
-// one policy snapshot, so it re-reads the active policy on every dial. A caller's own dialer is
+// clientDialer wraps orig with the guard. Unlike dialChecked, which always applies the blocklist
+// and which Balancer installs only when its policy forbids private IPs, it serves clients that
+// outlive any one policy snapshot, so it re-reads the active policy on every dial. A caller's own dialer is
 // used on both paths; without one, the policy-allows path hands the raw address to fasthttp's
 // default dialer, and the blocking path dials the checked IP with g.dial under an explicit timeout.
 func (g dialGuard) clientDialer(orig fasthttp.DialFunc) fasthttp.DialFunc {

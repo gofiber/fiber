@@ -4,6 +4,7 @@ import (
 	"net/url"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/schemehost"
 	"github.com/gofiber/utils/v2"
 	"github.com/valyala/fasthttp"
 )
@@ -59,13 +60,16 @@ func followRedirects(cli *fasthttp.Client, req *fasthttp.Request, resp *fasthttp
 		// Strip credentials when the redirect crosses to another origin so
 		// secrets bound to the original origin are not leaked to a third
 		// party (RFC 9110 §15.4 advisory; matches browser behavior).
-		crossOrigin := !sameOrigin(currentURL, nextURL)
-		if crossOrigin || redirectChangesMethod(hop, status) {
+		crossOrigin := !schemehost.Match(currentURL.Scheme, currentURL.Host, nextURL.Scheme, nextURL.Host)
+		changesMethod := redirectChangesMethod(hop, status)
+		if crossOrigin || changesMethod {
 			if hop == req {
 				hop = fasthttp.AcquireRequest()
 				req.CopyTo(hop)
 			}
-			redirectRequest(hop, status)
+			if changesMethod {
+				redirectRequest(hop)
+			}
 			if crossOrigin {
 				stripCrossHostHeaders(hop)
 			}
@@ -83,24 +87,6 @@ func followRedirects(cli *fasthttp.Client, req *fasthttp.Request, resp *fasthttp
 	}
 }
 
-// sameOrigin reports whether a and b share scheme, host and port (RFC 6454).
-// A default port counts as the port of a URL that leaves it out.
-func sameOrigin(a, b *url.URL) bool {
-	return utils.EqualFold(a.Scheme, b.Scheme) &&
-		utils.EqualFold(a.Hostname(), b.Hostname()) &&
-		originPort(a) == originPort(b)
-}
-
-func originPort(u *url.URL) string {
-	if port := u.Port(); port != "" {
-		return port
-	}
-	if utils.EqualFold(u.Scheme, schemeHTTPS) {
-		return "443"
-	}
-	return "80"
-}
-
 // redirectChangesMethod reports whether a redirect with this status makes req a GET (RFC 9110
 // §15.4): a 303 for every method but GET and HEAD, a 301 or 302 for POST, a 307 or 308 never.
 func redirectChangesMethod(req *fasthttp.Request, status int) bool {
@@ -114,12 +100,8 @@ func redirectChangesMethod(req *fasthttp.Request, status int) bool {
 	}
 }
 
-// redirectRequest rewrites req for the next hop when the method changes: it
-// becomes a GET without the body and the fields that framed it.
-func redirectRequest(req *fasthttp.Request, status int) {
-	if !redirectChangesMethod(req, status) {
-		return
-	}
+// redirectRequest rewrites req as a GET without the body and the fields that framed it.
+func redirectRequest(req *fasthttp.Request) {
 	req.Header.SetMethod(fasthttp.MethodGet)
 	// Not ResetBody: with ReduceMemoryUsage it hands the body buffer back to
 	// fasthttp's pool while the handler may still hold c.Body().

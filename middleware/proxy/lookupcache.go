@@ -14,8 +14,9 @@ const (
 	// guard never reads the cache, so a rebound answer is still caught at dial time.
 	lookupCacheTTL = time.Second
 
-	// lookupCacheSlots fixes the memory the cache can take.
-	lookupCacheSlots = 128
+	// lookupCacheSlots fixes the memory the cache can take. Two hostnames sharing a slot evict each
+	// other and pay a real lookup per request, so it is sized for the hostnames a proxy serves at once.
+	lookupCacheSlots = 1024
 )
 
 // upfrontLookups serves validateHostForSSRF, which runs on every request.
