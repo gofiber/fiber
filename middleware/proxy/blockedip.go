@@ -26,9 +26,7 @@ func isBlockedIP(ip net.IP) bool {
 		return isBlockedIPv4(v4)
 	}
 	if ip.IsLoopback() || ip.IsUnspecified() || ip.IsPrivate() ||
-		ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() ||
-		ip.IsMulticast() || ip.IsInterfaceLocalMulticast() ||
-		isIPv6SiteLocal(ip) {
+		ip.IsLinkLocalUnicast() || ip.IsMulticast() || isIPv6SiteLocal(ip) {
 		return true
 	}
 	// Block deprecated / local-use IPv6 transition ranges wholesale (see the
@@ -42,10 +40,8 @@ func isBlockedIP(ip net.IP) bool {
 	// private target could otherwise be reached via such a literal (the
 	// IPv4-mapped ::ffff:a.b.c.d form is already handled above because
 	// net.IP.To4 exposes it).
-	if embedded := embeddedIPv4(ip); embedded != nil && isBlockedIP(embedded) {
-		return true
-	}
-	return false
+	embedded := embeddedIPv4(ip)
+	return embedded != nil && isBlockedIPv4(embedded)
 }
 
 // isBlockedIPv4 reports whether the four bytes of v4 are an address proxy upstreams must not
@@ -85,7 +81,7 @@ func isBlockedIPv4(v4 net.IP) bool {
 // RFC 3879 deprecated: some networks still route it to internal hosts.
 func isIPv6SiteLocal(ip net.IP) bool {
 	ip16 := ip.To16()
-	return ip16 != nil && ip.To4() == nil && ip16[0] == 0xfe && ip16[1]&0xc0 == 0xc0
+	return ip16 != nil && ip16[0] == 0xfe && ip16[1]&0xc0 == 0xc0
 }
 
 // isBlockedIPv6TransitionRange reports whether ip belongs to an IPv6
@@ -105,7 +101,7 @@ func isIPv6SiteLocal(ip net.IP) bool {
 // and Coder's SSRF guards.
 func isBlockedIPv6TransitionRange(ip net.IP) bool {
 	ip16 := ip.To16()
-	if ip16 == nil || ip.To4() != nil {
+	if ip16 == nil {
 		return false
 	}
 	switch {
@@ -121,8 +117,9 @@ func isBlockedIPv6TransitionRange(ip net.IP) bool {
 }
 
 // embeddedIPv4 returns the IPv4 address embedded in an IPv6 transition
-// address, or nil for anything else. It only handles wrappers whose embedded
-// IPv4 has a fixed, unambiguous offset and can legitimately be a public host:
+// address, as the last four bytes of ip itself, or nil for anything else. It
+// only handles wrappers whose embedded IPv4 has a fixed, unambiguous offset
+// and can legitimately be a public host:
 //
 //   - NAT64 well-known prefix 64:ff9b::/96 (RFC 6052) — defined only at /96,
 //     so the embedded IPv4 is always the trailing 32 bits and is commonly used
@@ -141,20 +138,20 @@ func isBlockedIPv6TransitionRange(ip net.IP) bool {
 // net.IP.To4 already surfaces its IPv4, so isBlockedIP checks it directly.
 func embeddedIPv4(ip net.IP) net.IP {
 	ip16 := ip.To16()
-	if ip16 == nil || ip.To4() != nil {
+	if ip16 == nil {
 		return nil
 	}
 	// NAT64 well-known prefix 64:ff9b::/96 (RFC 6052).
 	if ip16[0] == 0x00 && ip16[1] == 0x64 && ip16[2] == 0xff && ip16[3] == 0x9b &&
 		allZero(ip16[4:12]) {
-		return net.IPv4(ip16[12], ip16[13], ip16[14], ip16[15])
+		return ip16[12:]
 	}
 	// ISATAP (RFC 5214): interface identifier ::0:5efe:a.b.c.d or
 	// ::200:5efe:a.b.c.d — the 5e:fe marker (with the IANA OUI and the
 	// universal/local bit in ip16[8]) precedes the embedded IPv4.
 	if ip16[9] == 0x00 && ip16[10] == 0x5e && ip16[11] == 0xfe &&
 		(ip16[8] == 0x00 || ip16[8] == 0x02) {
-		return net.IPv4(ip16[12], ip16[13], ip16[14], ip16[15])
+		return ip16[12:]
 	}
 	// SIIT IPv4-translated ::ffff:0:a.b.c.d (RFC 2765, prefix ::ffff:0:0/96):
 	// the 0xffff marker sits in bytes [8:10] with [10:12] zero, and the
@@ -163,13 +160,13 @@ func embeddedIPv4(ip net.IP) net.IP {
 	// net.IP.To4 already exposes, so it is unwrapped here.
 	if allZero(ip16[:8]) && ip16[8] == 0xff && ip16[9] == 0xff &&
 		ip16[10] == 0x00 && ip16[11] == 0x00 {
-		return net.IPv4(ip16[12], ip16[13], ip16[14], ip16[15])
+		return ip16[12:]
 	}
 	// IPv4-compatible ::a.b.c.d (first 12 bytes zero). :: and ::1 have already
 	// been classified above, so treat any remaining all-zero-prefix address as
 	// a wrapper around its trailing IPv4.
 	if allZero(ip16[:12]) {
-		return net.IPv4(ip16[12], ip16[13], ip16[14], ip16[15])
+		return ip16[12:]
 	}
 	return nil
 }

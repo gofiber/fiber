@@ -257,15 +257,10 @@ func benchNoopUpstream(b *testing.B) {
 	b.Helper()
 	policy := DefaultSecurityPolicy()
 	policy.AllowPrivateIPs = true
-	prev := WithSecurityPolicy(policy)
-	b.Cleanup(func() { WithSecurityPolicy(prev) })
+	withSecurityPolicyForTest(b, policy)
 
-	prevClient := sharedClient.Swap(&fasthttp.Client{Transport: noopRoundTripper{}})
-	b.Cleanup(func() {
-		if prevClient != nil {
-			sharedClient.Store(prevClient)
-		}
-	})
+	restoreGlobalProxyClient(b)
+	sharedClient.Store(&fasthttp.Client{Transport: noopRoundTripper{}})
 }
 
 // benchProxyPath sends a GET through app per iteration on a bare fasthttp context; the upstream must answer 204.

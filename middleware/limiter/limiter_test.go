@@ -1886,7 +1886,14 @@ func Test_Limiter_RejectDoesNotCopyKey(t *testing.T) {
 		h(fctx)
 		require.Equal(t, fiber.StatusTooManyRequests, fctx.Response.StatusCode())
 
-		return testing.AllocsPerRun(100, func() { h(fctx) })
+		// The fewest of many single runs, not an average: under -race sync.Pool drops a quarter of
+		// what it is handed at random, so an average lands on either of two counts from one test run
+		// to the next, while some single run always allocates only what the handler itself does.
+		fewest := math.MaxFloat64
+		for range 200 {
+			fewest = min(fewest, testing.AllocsPerRun(1, func() { h(fctx) }))
+		}
+		return fewest
 	}
 
 	for _, strategy := range windowStrategies {

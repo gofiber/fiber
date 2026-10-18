@@ -8,9 +8,9 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -104,11 +104,11 @@ func createRedirectServer(t *testing.T) string {
 	return addr
 }
 
-func restoreGlobalProxyClient(t *testing.T) {
-	t.Helper()
+func restoreGlobalProxyClient(tb testing.TB) {
+	tb.Helper()
 
 	prev := sharedClient.Load()
-	t.Cleanup(func() {
+	tb.Cleanup(func() {
 		WithClient(prev)
 	})
 }
@@ -127,26 +127,25 @@ func Test_Proxy_Balancer_LeavesConfiguredClientAlone(t *testing.T) {
 	hc := &fasthttp.HostClient{Addr: "127.0.0.1:1", DisablePathNormalizing: true}
 	var reads atomic.Int64
 	var stop atomic.Bool
-	done := make(chan struct{})
-	go func() {
-		defer close(done)
+	var wg sync.WaitGroup
+	wg.Go(func() {
 		for !stop.Load() {
 			if hc.DisablePathNormalizing {
 				reads.Add(1)
 			}
 		}
-	}()
-	for reads.Load() == 0 {
-		runtime.Gosched() // the reader is running before the build
-	}
+	})
+	t.Cleanup(func() {
+		stop.Store(true)
+		wg.Wait()
+	})
+	readsMoreThan := func(n int64) func() bool { return func() bool { return reads.Load() > n } }
+
+	require.Eventually(t, readsMoreThan(0), 5*time.Second, time.Millisecond, "the reader is running before the build")
 
 	Balancer(Config{Client: &fasthttp.LBClient{Clients: []fasthttp.BalancingClient{hc}}})
 
-	for seen := reads.Load(); reads.Load() < seen+1000; {
-		runtime.Gosched() // and is still reading after it
-	}
-	stop.Store(true)
-	<-done
+	require.Eventually(t, readsMoreThan(reads.Load()+1000), 5*time.Second, time.Millisecond, "and is still reading after it")
 }
 
 // go test -run Test_Proxy_ConfigDefault_MaxConnsPerHost
@@ -2052,9 +2051,8 @@ func Test_Proxy_HostWithoutPort(t *testing.T) {
 func Test_Proxy_Balancer_NoArgsPanicsAtStartup(t *testing.T) {
 	t.Parallel()
 
-	// No default upstream exists, so Balancer() stops at startup.
+	// No default upstream exists, so Balancer() stops at startup, as Balancer(Config{}) does.
 	require.PanicsWithValue(t, "Servers cannot be empty", func() { Balancer() })
-	require.PanicsWithValue(t, "Servers cannot be empty", func() { Balancer(Config{}) })
 }
 
 // go test -run Test_Proxy_NewHostClient

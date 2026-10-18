@@ -24,13 +24,13 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
-// withSecurityPolicyForTest installs policy for the duration of t and
-// restores the previous policy via t.Cleanup. Tests that need to
+// withSecurityPolicyForTest installs policy for the duration of tb and
+// restores the previous policy via tb.Cleanup. Tests that need to
 // exercise the strict defaults call this with an explicit policy.
-func withSecurityPolicyForTest(t *testing.T, policy SecurityPolicy) {
-	t.Helper()
+func withSecurityPolicyForTest(tb testing.TB, policy SecurityPolicy) {
+	tb.Helper()
 	prev := WithSecurityPolicy(policy)
-	t.Cleanup(func() { WithSecurityPolicy(prev) })
+	tb.Cleanup(func() { WithSecurityPolicy(prev) })
 }
 
 func Test_Security_IsBlockedIP(t *testing.T) {
@@ -501,43 +501,6 @@ func Test_Security_JoinUpstreamPath_PreservesBasePathPrefix(t *testing.T) {
 	require.Equal(t, "http://upstream.example/api/foo", joinUpstreamPath(baseSlash, "/foo"))
 }
 
-// Test_Security_FollowRedirects_StripsCredentialsCrossHost verifies that
-// Authorization/Cookie/Proxy-Authorization are dropped when a redirect
-// crosses to a different host, but preserved on same-host redirects.
-func Test_Security_FollowRedirects_StripsCredentialsCrossHost(t *testing.T) {
-	t.Parallel()
-
-	t.Run("cross-host strips", func(t *testing.T) {
-		t.Parallel()
-		var sawAuth, sawCookie string
-		followRecording(t, "http://first.example/", map[string]redirectStep{
-			"http://first.example/": {status: fasthttp.StatusFound, location: "http://second.example/next"},
-		}, withCredentials, func(req *fasthttp.Request) {
-			if string(req.URI().Host()) == "second.example" {
-				sawAuth = string(req.Header.Peek(fiber.HeaderAuthorization))
-				sawCookie = string(req.Header.Peek(fiber.HeaderCookie))
-			}
-		})
-
-		require.Empty(t, sawAuth, "Authorization must be stripped cross-host")
-		require.Empty(t, sawCookie, "Cookie must be stripped cross-host")
-	})
-
-	t.Run("same-host preserves", func(t *testing.T) {
-		t.Parallel()
-		var sawAuth string
-		followRecording(t, "http://same.example/", map[string]redirectStep{
-			"http://same.example/": {status: fasthttp.StatusFound, location: "http://same.example/next"},
-		}, withCredentials, func(req *fasthttp.Request) {
-			if string(req.URI().RequestURI()) == "/next" {
-				sawAuth = string(req.Header.Peek(fiber.HeaderAuthorization))
-			}
-		})
-
-		require.Equal(t, "Bearer secret", sawAuth, "Authorization must survive same-host redirect")
-	})
-}
-
 // Test_Security_FollowRedirects_ReappliesSchemePerHop verifies that a
 // redirect which changes the scheme is dispatched with the new scheme.
 // followRedirects re-applies currentURL.Scheme after each SetRequestURI
@@ -634,15 +597,14 @@ func Test_Security_IsBlockedIP_NilReturnsTrue(t *testing.T) {
 	require.True(t, isBlockedIP(nil))
 }
 
-// Test_Security_IPv6Helpers_DeclineOtherAddresses pins that the IPv6 transition helpers decline
-// what is not an IPv6 address: isBlockedIP judges IPv4 itself and never hands them one.
-func Test_Security_IPv6Helpers_DeclineOtherAddresses(t *testing.T) {
+// Test_Security_IPv6Helpers_DeclineMalformedAddress pins that the IPv6 transition helpers decline a
+// slice that is neither 4 nor 16 bytes long.
+func Test_Security_IPv6Helpers_DeclineMalformedAddress(t *testing.T) {
 	t.Parallel()
 
-	for _, ip := range []net.IP{net.ParseIP("203.0.113.5"), {203, 0, 113, 5}, {1, 2, 3}} {
-		require.False(t, isBlockedIPv6TransitionRange(ip), "%v", []byte(ip))
-		require.Nil(t, embeddedIPv4(ip), "%v", []byte(ip))
-	}
+	ip := net.IP{1, 2, 3}
+	require.False(t, isBlockedIPv6TransitionRange(ip))
+	require.Nil(t, embeddedIPv4(ip))
 }
 
 // Test_Security_ValidateHostForSSRF_EmptyHost verifies the explicit
@@ -674,17 +636,29 @@ func Test_Security_ValidateHostForSSRF_LookupFailure(t *testing.T) {
 	require.NotContains(t, err.Error(), "blocked address")
 }
 
-// Test_Security_ValidateHostForSSRF_IPLiteralAllocs pins that an IP literal costs only its parse and
+// Test_Security_ValidateHostForSSRF_IPLiteralAllocs pins that an IP literal costs no allocation and
 // is never looked up: a lookup would be served from the cache and show no allocations either.
 func Test_Security_ValidateHostForSSRF_IPLiteralAllocs(t *testing.T) {
 	// Intentionally not parallel: AllocsPerRun counts allocations process-wide and panics in a parallel test.
-	var err error
-	allocs := testing.AllocsPerRun(100, func() { err = validateHostForSSRF("203.0.113.5") })
-	require.NoError(t, err)
-	require.LessOrEqual(t, allocs, 1.0)
+	for _, host := range []string{"203.0.113.5", "2606:4700:4700::1111", "::ffff:203.0.113.5"} {
+		var err error
+		require.Zero(t, testing.AllocsPerRun(100, func() { err = validateHostForSSRF(host) }), host)
+		require.NoError(t, err, host)
 
-	_, remembered := upfrontLookups.get("203.0.113.5", dnsResolver.Load())
-	require.False(t, remembered, "a literal is judged where it stands")
+		_, remembered := upfrontLookups.get(host, dnsResolver.Load())
+		require.False(t, remembered, "a literal is judged where it stands: %s", host)
+	}
+}
+
+// Test_Security_ValidateHostForSSRF_ZonedLiteral pins that a zoned literal, which net.ParseIP does
+// not take, is judged through the lookup and by its address alone.
+func Test_Security_ValidateHostForSSRF_ZonedLiteral(t *testing.T) {
+	t.Parallel()
+
+	err := validateHostForSSRF("fe80::1%eth0")
+	require.ErrorIs(t, err, ErrUpstreamHostBlocked)
+	require.ErrorContains(t, err, "fe80::1%eth0 -> fe80::1")
+	require.NoError(t, validateHostForSSRF("2606:4700:4700::1111%eth0"))
 }
 
 // Test_Security_ValidateResolved pins what a lookup may answer: one or more addresses, none blocked.
@@ -1191,10 +1165,10 @@ func Test_Security_Balancer_BuildsHTTPSHostClient(t *testing.T) {
 	require.NotNil(t, h)
 }
 
-// Test_Security_StrictDialer_BlocksLoopback verifies the dial-time SSRF
+// Test_Security_DialChecked_BlocksLoopback verifies the dial-time SSRF
 // guard rejects both literal and hostname loopback targets before any
 // connection is made — this is what defeats DNS rebinding.
-func Test_Security_StrictDialer_BlocksLoopback(t *testing.T) {
+func Test_Security_DialChecked_BlocksLoopback(t *testing.T) {
 	t.Parallel()
 	dial := newDialGuard(false).dialChecked
 
@@ -1205,9 +1179,9 @@ func Test_Security_StrictDialer_BlocksLoopback(t *testing.T) {
 	require.ErrorIs(t, err, ErrUpstreamHostBlocked)
 }
 
-// Test_Security_StrictDialer_RejectsMalformedAddr covers the
+// Test_Security_DialChecked_RejectsMalformedAddr covers the
 // SplitHostPort error branch.
-func Test_Security_StrictDialer_RejectsMalformedAddr(t *testing.T) {
+func Test_Security_DialChecked_RejectsMalformedAddr(t *testing.T) {
 	t.Parallel()
 	dial := newDialGuard(false).dialChecked
 	_, err := dial("no-port-here")
@@ -1437,7 +1411,8 @@ func Test_Security_RedirectRequest_DropsParsedForm(t *testing.T) {
 			redirectRequest(req)
 
 			wire := req.String()
-			require.Equal(t, "GET /start HTTP/1.1", strings.SplitN(wire, "\r\n", 2)[0])
+			requestLine, _, _ := strings.Cut(wire, "\r\n")
+			require.Equal(t, "GET /start HTTP/1.1", requestLine)
 			require.NotContains(t, wire, "token=secret")
 			require.NotContains(t, wire, "Content-")
 		})
@@ -1459,7 +1434,8 @@ func Test_Security_RedirectRequest_DropsFraming(t *testing.T) {
 	redirectRequest(req)
 
 	wire := req.String()
-	require.Equal(t, "GET /start HTTP/1.1", strings.SplitN(wire, "\r\n", 2)[0])
+	requestLine, _, _ := strings.Cut(wire, "\r\n")
+	require.Equal(t, "GET /start HTTP/1.1", requestLine)
 	require.NotContains(t, wire, "Transfer-Encoding")
 	require.NotContains(t, wire, "Trailer")
 	require.NotContains(t, wire, "abc")
@@ -1496,7 +1472,7 @@ func Test_Security_FollowRedirects_MethodPerStatus(t *testing.T) {
 }
 
 // Test_Security_FollowRedirects_StripsCredentialsOnOriginChange pins that an origin is scheme, host
-// and port (RFC 6454): another scheme or port loses the credentials, a spelled-out default port does not.
+// and port (RFC 6454): another host, scheme or port loses the credentials, a spelled-out default port does not.
 func Test_Security_FollowRedirects_StripsCredentialsOnOriginChange(t *testing.T) {
 	t.Parallel()
 
@@ -1508,6 +1484,7 @@ func Test_Security_FollowRedirects_StripsCredentialsOnOriginChange(t *testing.T)
 		"same scheme, host and port": {start: "http://same.example:8080/", location: "http://same.example:8080/next", wantAuth: "Bearer secret"},
 		"default http port spelled":  {start: "http://same.example/", location: "http://same.example:80/next", wantAuth: "Bearer secret"},
 		"default https port spelled": {start: "https://same.example/", location: "https://same.example:443/next", wantAuth: "Bearer secret"},
+		"other host":                 {start: "http://first.example/", location: "http://second.example/next"},
 		"other port":                 {start: "http://same.example:8080/", location: "http://same.example:9090/next"},
 		"http to https":              {start: "http://same.example/", location: "https://same.example/next"},
 		"https to http":              {start: "https://same.example/", location: "http://same.example/next"},

@@ -436,17 +436,6 @@ func Test_Security_ClientDialer_DelegatesDualStack(t *testing.T) {
 	require.NoError(t, conn.Close())
 }
 
-// Test_Security_ClientDialer_RejectsMalformedAddr covers the
-// SplitHostPort error branch of dialGuard.dialChecked.
-func Test_Security_ClientDialer_RejectsMalformedAddr(t *testing.T) {
-	// Intentionally not parallel: it sets the strict security policy process-wide.
-	withSecurityPolicyForTest(t, DefaultSecurityPolicy()) // AllowPrivateIPs == false
-
-	_, err := newDialGuard(false).clientDialer(nil)("no-port-here")
-	require.Error(t, err)
-	require.NotErrorIs(t, err, ErrUpstreamHostBlocked)
-}
-
 // Test_Security_ClientDialerWithTimeout_Delegates covers the
 // DialFuncWithTimeout guard's delegate branch: when private IPs are allowed
 // it forwards the raw addr and timeout to the caller's dialer.
@@ -457,14 +446,16 @@ func Test_Security_ClientDialerWithTimeout_Delegates(t *testing.T) {
 	withSecurityPolicyForTest(t, policy)
 
 	var got string
-	orig := func(addr string, _ time.Duration) (net.Conn, error) {
-		got = addr
+	var gotTimeout time.Duration
+	orig := func(addr string, timeout time.Duration) (net.Conn, error) {
+		got, gotTimeout = addr, timeout
 		return stubConn{addr: addr}, nil
 	}
 	conn, err := newDialGuard(false).clientDialerWithTimeout(orig)("10.0.0.1:80", time.Second)
 	require.NoError(t, err)
 	require.NotNil(t, conn)
 	require.Equal(t, "10.0.0.1:80", got)
+	require.Equal(t, time.Second, gotTimeout)
 }
 
 // Test_Security_ClientDialerWithTimeout_ValidatedDialsThrough covers
@@ -479,14 +470,16 @@ func Test_Security_ClientDialerWithTimeout_ValidatedDialsThrough(t *testing.T) {
 	withRebindingResolver(t, dnsAddr)
 
 	var got string
-	orig := func(addr string, _ time.Duration) (net.Conn, error) {
-		got = addr
+	var gotTimeout time.Duration
+	orig := func(addr string, timeout time.Duration) (net.Conn, error) {
+		got, gotTimeout = addr, timeout
 		return stubConn{addr: addr}, nil
 	}
 	conn, err := newDialGuard(false).clientDialerWithTimeout(orig)("public.test:80", time.Second)
 	require.NoError(t, err)
 	require.NotNil(t, conn)
 	require.Equal(t, "198.51.100.7:80", got, "must dial the validated resolved IP")
+	require.Equal(t, time.Second, gotTimeout)
 }
 
 // Test_Security_EnsureClientGuarded_ComposePropagatesError verifies the

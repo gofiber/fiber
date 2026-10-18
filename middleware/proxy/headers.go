@@ -115,8 +115,8 @@ func delConnectionListedHeaders(h fieldname.Deleter, values [][]byte) {
 	}
 }
 
-// stripCrossHostHeaders removes the credential headers, whatever case they are stored under.
-func stripCrossHostHeaders(req *fasthttp.Request) {
+// stripCrossOriginHeaders removes the credential headers, whatever case they are stored under.
+func stripCrossOriginHeaders(req *fasthttp.Request) {
 	fieldname.DelSet(&req.Header, crosshost.SensitiveHeaders)
 }
 

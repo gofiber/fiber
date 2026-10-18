@@ -5,7 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"net/netip"
 	"reflect"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -41,11 +43,12 @@ func validateHostForSSRF(host string) error {
 	// strip brackets from IPv6 literals (url.Hostname already does this
 	// in most cases, but keep the guard for defensive callers).
 	host = trimBrackets(host)
-	// Not via resolveAndValidateHost: this runs on every request and needs no slice back. The
-	// check ahead of ParseIP spares a hostname the allocations of a parse that fails.
-	if utils.IsIPv4(host) || utils.IsIPv6(host) {
-		if ip := net.ParseIP(host); isBlockedIP(ip) {
-			return fmt.Errorf("%w: %s", ErrUpstreamHostBlocked, ip)
+	// Not via resolveAndValidateHost: this runs on every request and needs no slice back.
+	if addr, literal := ipLiteral(host); literal {
+		ip := addr.As16()
+		if isBlockedIP(ip[:]) {
+			// A string, not ip[:]: Errorf would move ip to the heap on every call.
+			return fmt.Errorf("%w: %s", ErrUpstreamHostBlocked, net.IP(ip[:]).String())
 		}
 		return nil
 	}
@@ -54,6 +57,17 @@ func validateHostForSSRF(host string) error {
 		return err
 	}
 	return checkResolved(host, addrs)
+}
+
+// ipLiteral returns the address host spells out, or false when host is a name. It takes what
+// net.ParseIP takes, so not a zoned literal: the lookup judges those. It parses once and allocates
+// nothing, and a name fails it early: an IPv4 literal has no colon and an IPv6 literal has.
+func ipLiteral(host string) (netip.Addr, bool) {
+	if strings.IndexByte(host, ':') < 0 {
+		return utils.ParseIPv4(host)
+	}
+	addr, ok := utils.ParseIPv6(host)
+	return addr, ok && addr.Zone() == ""
 }
 
 // resolveAndValidateHost looks up host (or treats it as an IP literal),
@@ -165,46 +179,31 @@ func newDialGuard(dualStack bool) dialGuard {
 // used on both paths; without one, the policy-allows path hands the raw address to fasthttp's
 // default dialer, and the blocking path dials the checked IP with g.dial under an explicit timeout.
 func (g dialGuard) clientDialer(orig fasthttp.DialFunc) fasthttp.DialFunc {
-	delegate := func(addr string, _ time.Duration) (net.Conn, error) {
-		switch {
-		case orig != nil:
-			return orig(addr)
-		case g.dualStack:
-			return fasthttp.DialDualStack(addr)
-		default:
-			return fasthttp.Dial(addr)
-		}
+	delegate, checked := fasthttp.Dial, g
+	switch {
+	case orig != nil:
+		delegate = orig
+		checked.dial = func(_, address string) (net.Conn, error) { return orig(address) }
+	case g.dualStack:
+		delegate = fasthttp.DialDualStack
 	}
-	validated := delegate
-	if orig == nil {
-		validated = func(address string, _ time.Duration) (net.Conn, error) {
-			return g.dial("tcp", address)
-		}
-	}
-	dial := g.guarded(delegate, validated)
 	return func(addr string) (net.Conn, error) {
-		return dial(addr, 0)
+		if currentSecurityPolicy().AllowPrivateIPs {
+			return delegate(addr)
+		}
+		return checked.dialChecked(addr)
 	}
 }
 
 // clientDialerWithTimeout is clientDialer for a DialFuncWithTimeout. orig is non-nil here (it is
 // installed only when the HostClient already has a DialTimeout) and gets the caller's timeout.
 func (g dialGuard) clientDialerWithTimeout(orig fasthttp.DialFuncWithTimeout) fasthttp.DialFuncWithTimeout {
-	return g.guarded(orig, orig)
-}
-
-// guarded is the core both client dialers share. When the active policy allows private IPs,
-// delegate runs unchanged; otherwise the address is resolved and checked and validated dials
-// the IP that passed, closing the rebinding window the up-front lookup leaves open.
-func (g dialGuard) guarded(delegate, validated fasthttp.DialFuncWithTimeout) fasthttp.DialFuncWithTimeout {
 	return func(addr string, timeout time.Duration) (net.Conn, error) {
 		if currentSecurityPolicy().AllowPrivateIPs {
-			return delegate(addr, timeout)
+			return orig(addr, timeout)
 		}
 		checked := g
-		checked.dial = func(_, address string) (net.Conn, error) {
-			return validated(address, timeout)
-		}
+		checked.dial = func(_, address string) (net.Conn, error) { return orig(address, timeout) }
 		return checked.dialChecked(addr)
 	}
 }
