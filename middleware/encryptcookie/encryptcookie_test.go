@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -955,6 +956,38 @@ func Test_Middleware_Duplicate_Cookie_Names(t *testing.T) {
 		body, cookies := request(t, app, "a="+encrypt(t, "a", "1")+"; junk=invalid; test="+encrypt(t, "test", "first")+"; b="+encrypt(t, "b", "2")+"; test=junk")
 		require.Equal(t, "value=first", body)
 		require.Equal(t, []string{"a=1", "test=first", "b=2"}, cookies)
+	})
+
+	t.Run("excepted values survive a rebuild unchanged", func(t *testing.T) {
+		t.Parallel()
+		// A quoted value, or one an earlier handler set, is not expressible
+		// through the wire parser; the rebuild must store it as it was.
+		app := fiber.New()
+		app.Use(func(c fiber.Ctx) error {
+			c.Request().Header.SetCookie("set", `a"b\c`)
+			return c.Next()
+		})
+		app.Use(New(Config{
+			Key:    testKey,
+			Except: []string{"set", "quoted"},
+		}))
+		app.Get("/", func(c fiber.Ctx) error {
+			return c.SendString(c.Cookies("set") + "|" + c.Cookies("quoted"))
+		})
+
+		run := func(cookieHeader string) string {
+			ctx := &fasthttp.RequestCtx{}
+			ctx.Request.Header.SetMethod(fiber.MethodGet)
+			ctx.Request.Header.Set(fiber.HeaderCookie, cookieHeader)
+			app.Handler()(ctx)
+			require.Equal(t, fiber.StatusOK, ctx.Response.StatusCode())
+			return string(ctx.Response.Body())
+		}
+
+		inPlace := run(`quoted=" a "`)
+		require.True(t, strings.HasPrefix(inPlace, `a"b\c|`), inPlace)
+		require.Equal(t, inPlace, run(`quoted=" a "; junk=invalid`))
+		require.Equal(t, inPlace, run(`junk=invalid; quoted=" a "`))
 	})
 
 	t.Run("excepted duplicates are left alone", func(t *testing.T) {

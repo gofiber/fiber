@@ -127,11 +127,14 @@ func decryptRequestCookies(c fiber.Ctx, cfg *Config) {
 		switch {
 		case !ck.keep:
 			continue
-		case ck.except:
-			// Add appends a Cookie entry and keeps the existing ones, so a
-			// repeated excepted name survives as it arrived.
+		case ck.except && hasExceptedName(cookies[:i], ck.name):
+			// SetCookie would overwrite the entry already written for this
+			// name. Add appends a Cookie entry and keeps the existing ones, so
+			// a repeated excepted name survives as it arrived.
 			header.Add(fiber.HeaderCookie, ck.name+"="+ck.value)
 		default:
+			// The name is absent after DelAllCookies, so SetCookie appends the
+			// entry in order and stores the value verbatim.
 			header.SetCookie(ck.name, ck.value)
 		}
 	}
@@ -141,6 +144,16 @@ func decryptRequestCookies(c fiber.Ctx, cfg *Config) {
 func hasCookieName(cookies []requestCookie, name string) bool {
 	for i := range cookies {
 		if !cookies[i].except && cookies[i].name == name {
+			return true
+		}
+	}
+	return false
+}
+
+// hasExceptedName reports whether cookies holds an excepted entry named name.
+func hasExceptedName(cookies []requestCookie, name string) bool {
+	for i := range cookies {
+		if cookies[i].except && cookies[i].name == name {
 			return true
 		}
 	}
