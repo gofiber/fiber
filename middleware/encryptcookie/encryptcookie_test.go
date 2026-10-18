@@ -852,25 +852,25 @@ func Test_Middleware_Mixed_Valid_Invalid_Cookies(t *testing.T) {
 }
 
 // Test_Middleware_Duplicate_Cookie_Names covers a Cookie header that carries
-// the same name twice (RFC 6265 Section 5.4). Header.Cookie, and so
-// c.Cookies, returns the first entry, which the middleware must keep: the
-// first value is decrypted and handed to the handler, and a later duplicate
-// neither replaces it nor gets it deleted.
+// the same name more than once (RFC 6265 Section 5.4). The handler must see
+// one entry per name holding the first value that decrypts, which is what
+// c.Cookies returns for plaintext cookies, whatever else the header carries.
 func Test_Middleware_Duplicate_Cookie_Names(t *testing.T) {
 	t.Parallel()
 	testKey := GenerateKey(32)
 
-	encrypt := func(t *testing.T, value string) string {
+	encrypt := func(t *testing.T, name, value string) string {
 		t.Helper()
-		encrypted, err := EncryptCookie("test", value, testKey)
+		encrypted, err := EncryptCookie(name, value, testKey)
 		require.NoError(t, err)
 		return encrypted
 	}
 
-	newApp := func() *fiber.App {
+	newApp := func(except ...string) *fiber.App {
 		app := fiber.New()
 		app.Use(New(Config{
-			Key: testKey,
+			Key:    testKey,
+			Except: except,
 		}))
 		app.Get("/", func(c fiber.Ctx) error {
 			return c.SendString("value=" + c.Cookies("test"))
@@ -878,14 +878,20 @@ func Test_Middleware_Duplicate_Cookie_Names(t *testing.T) {
 		return app
 	}
 
-	request := func(t *testing.T, app *fiber.App, cookieHeader string) (*fasthttp.RequestCtx, string) {
+	// request runs cookieHeader through app and returns the body and the
+	// request cookies as the handler saw them, in header order.
+	request := func(t *testing.T, app *fiber.App, cookieHeader string) (string, []string) {
 		t.Helper()
 		ctx := &fasthttp.RequestCtx{}
 		ctx.Request.Header.SetMethod(fiber.MethodGet)
 		ctx.Request.Header.Set(fiber.HeaderCookie, cookieHeader)
 		app.Handler()(ctx)
 		require.Equal(t, fiber.StatusOK, ctx.Response.StatusCode())
-		return ctx, string(ctx.Response.Body())
+		cookies := make([]string, 0, 4)
+		for key, value := range ctx.Request.Header.Cookies() {
+			cookies = append(cookies, string(key)+"="+string(value))
+		}
+		return string(ctx.Response.Body()), cookies
 	}
 
 	t.Run("without middleware the first cookie wins", func(t *testing.T) {
@@ -894,92 +900,71 @@ func Test_Middleware_Duplicate_Cookie_Names(t *testing.T) {
 		app.Get("/", func(c fiber.Ctx) error {
 			return c.SendString("value=" + c.Cookies("test"))
 		})
-		_, body := request(t, app, "test=first; test=second")
+		body, _ := request(t, app, "test=first; test=second")
 		require.Equal(t, "value=first", body)
 	})
 
-	t.Run("both decrypt: first wins", func(t *testing.T) {
+	t.Run("both decrypt: first wins, one entry remains", func(t *testing.T) {
 		t.Parallel()
-		second := encrypt(t, "second")
-		ctx, body := request(t, newApp(), "test="+encrypt(t, "first")+"; test="+second)
+		body, cookies := request(t, newApp(), "test="+encrypt(t, "test", "first")+"; test="+encrypt(t, "test", "second"))
 		require.Equal(t, "value=first", body)
-		require.Equal(t, "first", string(ctx.Request.Header.Cookie("test")))
-
-		// The duplicate is left as it arrived: neither decrypted nor removed.
-		values := make([]string, 0, 2)
-		for _, value := range ctx.Request.Header.Cookies() {
-			values = append(values, string(value))
-		}
-		require.Equal(t, []string{"first", second}, values)
+		require.Equal(t, []string{"test=first"}, cookies)
 	})
 
-	t.Run("three duplicates: first decrypts", func(t *testing.T) {
+	t.Run("first decrypts, second does not", func(t *testing.T) {
 		t.Parallel()
-		ctx, body := request(t, newApp(), "test="+encrypt(t, "first")+"; test=junk; test=more-junk")
-		require.Equal(t, "value=first", body)
-		require.Equal(t, "first", string(ctx.Request.Header.Cookie("test")))
-	})
-
-	t.Run("three duplicates: first does not decrypt", func(t *testing.T) {
-		t.Parallel()
-		ctx, body := request(t, newApp(), "test=junk; test="+encrypt(t, "second")+"; test="+encrypt(t, "third"))
-		require.Equal(t, "value=", body)
-		require.Empty(t, ctx.Request.Header.Cookie("test"))
-		for key := range ctx.Request.Header.Cookies() {
-			require.NotEqual(t, "test", string(key))
-		}
-	})
-
-	t.Run("duplicates of an excepted name are left alone", func(t *testing.T) {
-		t.Parallel()
-		app := fiber.New()
-		app.Use(New(Config{
-			Key:    testKey,
-			Except: []string{"test"},
-		}))
-		app.Get("/", func(c fiber.Ctx) error {
-			return c.SendString("value=" + c.Cookies("test"))
-		})
-		ctx, body := request(t, app, "test=first; test=second")
-		require.Equal(t, "value=first", body)
-
-		values := make([]string, 0, 2)
-		for _, value := range ctx.Request.Header.Cookies() {
-			values = append(values, string(value))
-		}
-		require.Equal(t, []string{"first", "second"}, values)
-	})
-
-	t.Run("first decrypts, second does not: first survives", func(t *testing.T) {
-		t.Parallel()
-		ctx, body := request(t, newApp(), "test="+encrypt(t, "SomeThing")+"; test=not-encrypted")
+		body, cookies := request(t, newApp(), "test="+encrypt(t, "test", "SomeThing")+"; test=not-encrypted")
 		require.Equal(t, "value=SomeThing", body)
-		require.Equal(t, "SomeThing", string(ctx.Request.Header.Cookie("test")))
+		require.Equal(t, []string{"test=SomeThing"}, cookies)
 	})
 
-	t.Run("first does not decrypt: the name is removed", func(t *testing.T) {
+	t.Run("first does not decrypt: next one that does wins", func(t *testing.T) {
 		t.Parallel()
-		ctx, body := request(t, newApp(), "test=not-encrypted; test="+encrypt(t, "second"))
-		require.Equal(t, "value=", body)
-		require.Empty(t, ctx.Request.Header.Cookie("test"))
+		body, cookies := request(t, newApp(), "test=not-encrypted; test="+encrypt(t, "test", "second"))
+		require.Equal(t, "value=second", body)
+		require.Equal(t, []string{"test=second"}, cookies)
 	})
 
-	t.Run("other names are still handled", func(t *testing.T) {
+	t.Run("none decrypt: the name is removed", func(t *testing.T) {
+		t.Parallel()
+		body, cookies := request(t, newApp(), "test=junk; test=more-junk")
+		require.Equal(t, "value=", body)
+		require.Empty(t, cookies)
+	})
+
+	t.Run("deleting another name keeps the first value", func(t *testing.T) {
+		t.Parallel()
+		// DelCookie swaps the last entry into the hole, so a failed cookie of
+		// another name used to move an unprocessed duplicate to the front.
+		valid := encrypt(t, "test", "victim")
+		for _, header := range []string{
+			"junk=invalid; test=" + valid + "; test=attacker",
+			"test=" + valid + "; junk=invalid; test=attacker",
+			"junk=invalid; other=invalid; test=" + valid + "; test=attacker; test=more",
+		} {
+			body, cookies := request(t, newApp(), header)
+			require.Equal(t, "value=victim", body, header)
+			require.Equal(t, []string{"test=victim"}, cookies, header)
+		}
+	})
+
+	t.Run("order of other names is preserved", func(t *testing.T) {
 		t.Parallel()
 		app := newApp()
-		app.Get("/other", func(c fiber.Ctx) error {
-			return c.SendString("test=" + c.Cookies("test") + ",other=" + c.Cookies("other"))
-		})
-		otherValue, err := EncryptCookie("other", "value", testKey)
-		require.NoError(t, err)
+		body, cookies := request(t, app, "a="+encrypt(t, "a", "1")+"; junk=invalid; test="+encrypt(t, "test", "first")+"; b="+encrypt(t, "b", "2")+"; test=junk")
+		require.Equal(t, "value=first", body)
+		require.Equal(t, []string{"a=1", "test=first", "b=2"}, cookies)
+	})
 
-		ctx := &fasthttp.RequestCtx{}
-		ctx.Request.Header.SetMethod(fiber.MethodGet)
-		ctx.Request.SetRequestURI("/other")
-		ctx.Request.Header.Set(fiber.HeaderCookie, "test="+encrypt(t, "first")+"; other="+otherValue+"; test=not-encrypted")
-		app.Handler()(ctx)
+	t.Run("excepted duplicates are left alone", func(t *testing.T) {
+		t.Parallel()
+		body, cookies := request(t, newApp("test"), "test=first; test=second")
+		require.Equal(t, "value=first", body)
+		require.Equal(t, []string{"test=first", "test=second"}, cookies)
 
-		require.Equal(t, fiber.StatusOK, ctx.Response.StatusCode())
-		require.Equal(t, "test=first,other=value", string(ctx.Response.Body()))
+		// Also when another cookie forces the header to be rebuilt.
+		body, cookies = request(t, newApp("test"), "test=first; junk=invalid; test=second")
+		require.Equal(t, "value=first", body)
+		require.Equal(t, []string{"test=first", "test=second"}, cookies)
 	})
 }
