@@ -408,6 +408,8 @@ func (b *specBuilder) addVariant(r *fiber.Route, facts *routeFacts, variant *pat
 		b.hierarchyPaths[hierarchy] = canonicalPathItem{path: variant.Path, params: variant.ParamNames}
 	}
 
+	// Only a route that stays in the document declares the schemes it uses.
+	b.schemes.use(facts.chain)
 	if b.paths[variant.Path] == nil {
 		b.paths[variant.Path] = make(map[string]operation)
 	}

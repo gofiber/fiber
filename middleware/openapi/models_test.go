@@ -658,3 +658,58 @@ func Test_OpenAPI_EmptyResponseDescriptionFallsBack(t *testing.T) {
 		require.NotEmpty(t, resp.Description, code)
 	}
 }
+
+func Test_OpenAPI_ParameterSchemaKeepsItsOwnType(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Get("/p", listUsers).
+		AddParameter(fiber.RouteParameter{Name: "either", In: fiber.ParamInQuery, Schema: map[string]any{
+			"oneOf": []any{map[string]any{"type": "integer"}, map[string]any{"type": "string"}},
+		}}).
+		AddParameter(fiber.RouteParameter{Name: "ints", In: fiber.ParamInQuery, Schema: map[string]any{"enum": []int{1, 2}}})
+	spec := modelSpec(t, app)
+
+	op := modelOperation(t, spec, "/p", "get")
+	params, ok := op["parameters"].([]any)
+	require.True(t, ok)
+	byName := map[string]map[string]any{}
+	for _, p := range params {
+		param := requireMap(t, p)
+		name, isString := param["name"].(string)
+		require.True(t, isString)
+		byName[name] = requireMap(t, param["schema"])
+	}
+	require.NotContains(t, byName["either"], "type")
+	require.Equal(t, "integer", byName["ints"]["type"])
+}
+
+type refParamAddress struct {
+	City string `json:"city"`
+}
+
+type refParamModel struct {
+	Home refParamAddress `query:"home" openapi:"format:custom"`
+}
+
+func Test_OpenAPI_ParamsModelRefSiblings(t *testing.T) {
+	t.Parallel()
+
+	for version, wrapped := range map[string]bool{"3.0.3": true, "3.1.0": false} {
+		app := fiber.New()
+		app.Get("/p", listUsers).Params(fiber.ParamInQuery, refParamModel{})
+		spec := modelSpec(t, app, Config{OpenAPIVersion: version})
+
+		params, ok := modelOperation(t, spec, "/p", "get")["parameters"].([]any)
+		require.True(t, ok, version)
+		require.Len(t, params, 1, version)
+		schema := requireMap(t, requireMap(t, params[0])["schema"])
+		if wrapped {
+			require.NotContains(t, schema, "$ref", version)
+			require.Contains(t, schema, "allOf", version)
+		} else {
+			require.Contains(t, schema, "$ref", version)
+		}
+		require.Equal(t, "custom", schema["format"], version)
+	}
+}

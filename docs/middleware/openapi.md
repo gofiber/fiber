@@ -518,11 +518,14 @@ app.Get("/users", listUsers).
     ResponseHeader(0, "X-Request-Id", "Correlation id", map[string]any{"type": "string"})
 ```
 
-`Response`/`ResponseWithExample` replace an empty description with the status
-text (`"OK"`, `"Not Found"`, …, or `"Default response"` for `0`), and preserve
-any headers, links and content already documented for the same status.
-`ResponseContent` instead leaves the description untouched when given an empty
-one, so it can add content to an entry another call described.
+`Response`, `ResponseWithExample` and `Returns` given an empty description keep
+the one an earlier call set for the status, and otherwise use the status text
+(`"OK"`, `"Not Found"`, …, or `"Default response"` for `0`). They preserve any
+headers and links already documented for the status, and keep its content unless
+the call documents a body itself (a schema, example or media type), which then
+replaces it. `ResponseContent` likewise leaves the description untouched when
+given an empty one, so it can add content to an entry another call described.
+`RequestBody` and `Accepts` keep an earlier body description the same way.
 
 ### Per-media-type content
 

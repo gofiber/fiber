@@ -2,6 +2,7 @@ package openapi
 
 import (
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/schemautil"
 	"github.com/gofiber/utils/v2"
 )
 
@@ -180,10 +181,13 @@ func schemaFrom(schema any, schemaRef, defaultType string, reg *schemaRegistry) 
 	if copied == nil {
 		copied = map[string]any{}
 	}
-	// A reference describes its type elsewhere.
-	if _, isRef := copied[schemaKeyRef]; !isRef {
-		if _, ok := copied[schemaKeyType]; !ok && defaultType != "" {
-			copied[schemaKeyType] = defaultType
+	// A reference, composition or const describes its type elsewhere, and an enum takes its values' type.
+	if defaultType != "" {
+		if typ, ok := schemautil.DefaultType(copied); ok {
+			if typ == schemaTypeString {
+				typ = defaultType
+			}
+			copied[schemaKeyType] = typ
 		}
 	}
 	if len(copied) == 0 {

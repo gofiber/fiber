@@ -4279,7 +4279,7 @@ func Test_Domain_UseMountNestedCycle(t *testing.T) {
 	second.Use("/first", first)
 
 	app := New()
-	d := &domainRouter{app: app, matcher: parseDomainPattern("api.example.com")}
+	d := newDomainRouter(app, nil, parseDomainPattern("api.example.com"), 0)
 	wrapper := New()
 	d.cloneRoutesForDomain(wrapper, first)
 

@@ -92,6 +92,8 @@ func appendModelFields(params []fiber.RouteParameter, t reflect.Type, in fiber.P
 			param.Example = example
 			delete(schema, "example")
 		}
+		// Under 3.0 a $ref may not have siblings, so the reference moves into allOf beside them.
+		param.Schema = reg.withRefSiblings(schema)
 		params = append(params, param)
 	}
 	return params

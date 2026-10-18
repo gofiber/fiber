@@ -1233,7 +1233,7 @@ func (app *App) All(path string, handler any, handlers ...any) Router {
 //	api := app.Group("/api")
 //	api.Get("/users", handler)
 func (app *App) Group(prefix string, handlers ...any) Router {
-	grp := &Group{Prefix: prefix, app: app}
+	grp := newGroup(app, prefix, nil)
 	if len(handlers) > 0 {
 		converted := collectHandlers("group", handlers...)
 		// The middleware belongs to the group so chained helpers reach it.
@@ -1269,10 +1269,7 @@ func (app *App) Group(prefix string, handlers ...any) Router {
 //	    return c.SendString("Hello, " + user)
 //	})
 func (app *App) Domain(host string) Router {
-	return &domainRouter{
-		app:     app,
-		matcher: parseDomainPattern(host),
-	}
+	return newDomainRouter(app, nil, parseDomainPattern(host), 0)
 }
 
 // RouteChain creates a Registering instance that lets you declare a stack of
@@ -1280,7 +1277,7 @@ func (app *App) Domain(host string) Router {
 // scoped to the provided path.
 func (app *App) RouteChain(path string) Register {
 	// Create new route
-	route := &Registering{app: app, path: path}
+	route := newRegistering(app, nil, nil, path)
 
 	return route
 }

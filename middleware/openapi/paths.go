@@ -135,7 +135,7 @@ func buildOpenAPIPathVariants(fiberPath string, params []string, strict bool) []
 				// Escaped characters match literally (path.go escapeChar).
 				if i+1 < length {
 					// Slice the byte; string(byte) would corrupt multi-byte UTF-8.
-					current.path += fiberPath[i+1 : i+2]
+					current.path += encodeLiteralBraces(fiberPath[i+1 : i+2])
 				}
 				i += 2
 				continue

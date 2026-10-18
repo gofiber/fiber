@@ -10,6 +10,7 @@ import (
 	"sync"
 	"testing"
 	"time"
+	"unsafe"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -1909,4 +1910,73 @@ func Test_LockIsFreeAfterStartupAndRebuild(t *testing.T) {
 	app.RebuildTree()
 
 	runBounded(t, "GetRoutes after startup and rebuild", func() { _ = app.GetRoutes() })
+}
+
+func Test_OperationExtension_NilIsNoOp(t *testing.T) {
+	t.Parallel()
+	app := New()
+	app.Get("/a", testHandlerOK)
+
+	require.NotPanics(t, func() { app.OperationExtension(nil) })
+	require.NotPanics(t, func() { app.OperationExtension(map[string]any{}) })
+	runBounded(t, "GetRoutes after a nil mutation", func() { _ = app.GetRoutes() })
+}
+
+func Test_RegistrationCursors_AreAligned(t *testing.T) {
+	t.Parallel()
+
+	// 64-bit atomics need an 8-byte aligned word on 32-bit platforms; the first field of an allocation is.
+	require.Zero(t, unsafe.Offsetof(Group{}.docTarget))
+	require.Zero(t, unsafe.Offsetof(domainRouter{}.docTarget))
+	require.Zero(t, unsafe.Offsetof(Registering{}.docTarget))
+	require.Zero(t, unsafe.Offsetof(docTarget[Router]{}.lastRegID))
+}
+
+func Test_Returns_KeepsEarlierDescriptionAndReplacesContent(t *testing.T) {
+	t.Parallel()
+	app := New()
+	app.Get("/u", testHandlerOK).
+		ResponseContent(StatusOK, "List of users", map[string]RouteMediaType{MIMEApplicationJSON: {Schema: map[string]any{"type": "string"}}}).
+		Returns(StatusOK, []string{}, MIMEApplicationXML)
+
+	resp := routesFor(app, "/u")[MethodGet].Responses["200"]
+	require.Equal(t, "List of users", resp.Description)
+	require.Empty(t, resp.Content, "a body documented later replaces the earlier content map")
+	require.Equal(t, []string{MIMEApplicationXML}, resp.MediaTypes)
+
+	app.Get("/v", testHandlerOK).Response(StatusOK, "Explicit", MIMEApplicationJSON).Response(StatusOK, "", MIMEApplicationXML)
+	require.Equal(t, "Explicit", routesFor(app, "/v")[MethodGet].Responses["200"].Description)
+}
+
+func Test_Accepts_KeepsEarlierBodyDescription(t *testing.T) {
+	t.Parallel()
+	app := New()
+	app.Post("/u", testHandlerOK).RequestBody("The user to create", true).Accepts(struct{ Name string }{})
+
+	body := routesFor(app, "/u")[MethodPost].RequestBody
+	require.NotNil(t, body)
+	require.Equal(t, "The user to create", body.Description)
+}
+
+func Test_Parameter_DefaultTypeFollowsSchema(t *testing.T) {
+	t.Parallel()
+	app := New()
+	app.Get("/p", testHandlerOK).
+		Parameter("plain", ParamInQuery, false, map[string]any{}, "").
+		Parameter("ints", ParamInQuery, false, map[string]any{"enum": []int{1, 2}}, "").
+		Parameter("either", ParamInQuery, false, map[string]any{"oneOf": []any{map[string]any{"type": "integer"}, map[string]any{"type": "string"}}}, "").
+		Parameter("linked", ParamInQuery, false, map[string]any{"$ref": "#/components/schemas/X"}, "")
+
+	types := map[string]any{}
+	schemas := map[string]map[string]any{}
+	for _, param := range routesFor(app, "/p")[MethodGet].Parameters {
+		schema, ok := param.Schema.(map[string]any)
+		require.True(t, ok, param.Name)
+		schemas[param.Name] = schema
+		types[param.Name] = schema["type"]
+	}
+	require.Equal(t, "string", types["plain"])
+	require.Equal(t, "integer", types["ints"])
+	require.NotContains(t, schemas["either"], "type")
+	require.NotContains(t, schemas["linked"], "type")
 }

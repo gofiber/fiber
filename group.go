@@ -12,14 +12,13 @@ import (
 
 // Group represents a collection of routes that share middleware and a common
 // path prefix.
-type Group struct {
-	app         *App
+type Group struct { // betteralign:ignore - docTarget must stay first, as its 64-bit atomic needs an 8-byte aligned word on 32-bit platforms
+	docTarget[Router]
+
 	parentGroup *Group
 	name        string
 
 	Prefix string
-
-	lastRegID uint64 // Latest registration; atomic
 
 	hasAnyRoute bool
 }
@@ -50,128 +49,6 @@ func (grp *Group) Name(name string) Router {
 	}
 
 	return grp
-}
-
-// Summary assigns a short summary to the most recently added route in the group.
-func (grp *Group) Summary(sum string) Router {
-	return grp.document(docSetSummary(sum))
-}
-
-// Description assigns a description to the most recently added route in the group.
-func (grp *Group) Description(desc string) Router {
-	return grp.document(docSetDescription(desc))
-}
-
-// Consumes assigns a request media type to the most recently added route in the group.
-func (grp *Group) Consumes(typ string) Router {
-	return grp.document(docSetConsumes(typ))
-}
-
-// Produces assigns a response media type to the most recently added route in the group.
-func (grp *Group) Produces(typ string) Router {
-	return grp.document(docSetProduces(typ))
-}
-
-// RequestBody documents the request payload for the most recently added route in the group.
-func (grp *Group) RequestBody(description string, required bool, mediaTypes ...string) Router {
-	return grp.RequestBodyWithExample(description, required, nil, "", nil, nil, mediaTypes...)
-}
-
-// RequestBodyWithExample documents the request payload for the most recently added route in the group with schema references and examples.
-func (grp *Group) RequestBodyWithExample(description string, required bool, schema any, schemaRef string, example any, examples map[string]any, mediaTypes ...string) Router {
-	return grp.document(docRequestBodyWithExample(description, required, schema, schemaRef, example, examples, mediaTypes...))
-}
-
-// Parameter documents an input parameter for the most recently added route in the group.
-func (grp *Group) Parameter(name string, in ParamLocation, required bool, schema any, description string) Router {
-	return grp.ParameterWithExample(name, in, required, schema, "", description, nil, nil)
-}
-
-// ParameterWithExample documents an input parameter for the most recently added route in the group with schema references and examples.
-func (grp *Group) ParameterWithExample(name string, in ParamLocation, required bool, schema any, schemaRef, description string, example any, examples map[string]any) Router {
-	return grp.AddParameter(newRouteParameter(name, in, required, schema, schemaRef, description, example, examples))
-}
-
-// Response documents an HTTP response for the most recently added route in the group.
-func (grp *Group) Response(status int, description string, mediaTypes ...string) Router {
-	return grp.ResponseWithExample(status, description, nil, "", nil, nil, mediaTypes...)
-}
-
-// ResponseWithExample documents an HTTP response for the most recently added route in the group with schema references and examples.
-func (grp *Group) ResponseWithExample(status int, description string, schema any, schemaRef string, example any, examples map[string]any, mediaTypes ...string) Router {
-	return grp.document(docAddResponse(status, description, schema, schemaRef, example, examples, mediaTypes...))
-}
-
-// Tags assigns tags to the most recently added route in the group.
-func (grp *Group) Tags(tags ...string) Router {
-	return grp.document(docSetTags(tags...))
-}
-
-// Deprecated marks the most recently added route in the group as deprecated.
-func (grp *Group) Deprecated() Router {
-	return grp.document(docSetDeprecated())
-}
-
-// Security sets the OpenAPI security requirements for the group's latest route.
-func (grp *Group) Security(requirements ...map[string][]string) Router {
-	return grp.document(docSetSecurity(requirements...))
-}
-
-// Hidden excludes the group's latest route from the generated OpenAPI specification.
-func (grp *Group) Hidden() Router {
-	return grp.document(docSetHidden())
-}
-
-// ResponseHeader documents a response header for the group's latest route.
-func (grp *Group) ResponseHeader(status int, name, description string, schema any) Router {
-	return grp.document(docResponseHeader(status, name, description, schema))
-}
-
-// Accepts documents the request body as the schema of model; see App.Accepts.
-func (grp *Group) Accepts(model any, mediaTypes ...string) Router {
-	return grp.document(docAccepts(model, mediaTypes...))
-}
-
-// Returns documents a response as the schema of model; see App.Returns.
-func (grp *Group) Returns(status int, model any, mediaTypes ...string) Router {
-	return grp.document(docReturns(status, model, mediaTypes...))
-}
-
-// Params documents the fields of model as parameters; see App.Params.
-func (grp *Group) Params(in ParamLocation, model any) Router {
-	return grp.document(docAddParameterModel(in, model))
-}
-
-// AddParameter documents an input parameter using the full RouteParameter.
-//
-//nolint:gocritic // hugeParam: by-value keeps the chainable route-helper API ergonomic.
-func (grp *Group) AddParameter(param RouteParameter) Router {
-	return grp.document(docAddParameter(param))
-}
-
-// OperationExternalDocs sets the externalDocs of the group's latest route.
-func (grp *Group) OperationExternalDocs(description, url string) Router {
-	return grp.document(docOperationExternalDocs(description, url))
-}
-
-// RequestBodyContent documents a per-media-type request body.
-func (grp *Group) RequestBodyContent(description string, required bool, content map[string]RouteMediaType) Router {
-	return grp.document(docRequestBodyContent(description, required, content))
-}
-
-// ResponseContent documents a per-media-type response.
-func (grp *Group) ResponseContent(status int, description string, content map[string]RouteMediaType) Router {
-	return grp.document(docResponseContent(status, description, content))
-}
-
-// ResponseLink documents a response link.
-func (grp *Group) ResponseLink(status int, name string, link map[string]any) Router {
-	return grp.document(docResponseLink(status, name, link))
-}
-
-// OperationExtension merges arbitrary operation-object fields.
-func (grp *Group) OperationExtension(fields map[string]any) Router {
-	return grp.document(docOperationExtension(fields))
 }
 
 // Use registers a middleware route that will match requests
@@ -323,7 +200,7 @@ func (grp *Group) Group(prefix string, handlers ...any) Router {
 	prefix = getGroupPath(grp.Prefix, prefix)
 
 	// Create new group
-	newGrp := &Group{Prefix: prefix, app: grp.app, parentGroup: grp}
+	newGrp := newGroup(grp.app, prefix, grp)
 	if len(handlers) > 0 {
 		converted := collectHandlers("group", handlers...)
 		// Record on the sub-group; the parent's doc helpers must not retarget this Use route.
@@ -349,18 +226,14 @@ func (grp *Group) Group(prefix string, handlers ...any) Router {
 //	api := app.Group("/api")
 //	api.Domain("api.example.com").Get("/users", listUsers)
 func (grp *Group) Domain(host string) Router {
-	return &domainRouter{
-		app:     grp.app,
-		group:   grp,
-		matcher: parseDomainPattern(host),
-	}
+	return newDomainRouter(grp.app, grp, parseDomainPattern(host), 0)
 }
 
 // RouteChain creates a Registering instance scoped to the group's prefix,
 // allowing chained route declarations for the same path.
 func (grp *Group) RouteChain(path string) Register {
 	// Create new group
-	register := &Registering{app: grp.app, group: grp, path: getGroupPath(grp.Prefix, path)}
+	register := newRegistering(grp.app, grp, nil, getGroupPath(grp.Prefix, path))
 
 	return register
 }
@@ -382,9 +255,4 @@ func (grp *Group) Route(prefix string, fn func(router Router), name ...string) R
 	fn(group)
 
 	return group
-}
-
-func (grp *Group) document(apply func(route *Route)) Router {
-	grp.app.applyToRegistration(atomic.LoadUint64(&grp.lastRegID), apply)
-	return grp
 }

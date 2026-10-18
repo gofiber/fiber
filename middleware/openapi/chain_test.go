@@ -357,11 +357,13 @@ func Test_securitySchemes_Declarations(t *testing.T) {
 	var jwt middlewareSet
 	jwt.add(kindJWT)
 	require.Equal(t, map[string][]string{securitySchemeBearer: {}}, schemes.requirement(jwt))
+	require.Nil(t, schemes.declarations(), "asking for a requirement declares nothing")
+	schemes.use(jwt)
 	require.Equal(t, "JWT", requireMap(t, schemes.declarations()[securitySchemeBearer])["bearerFormat"])
 
 	var key middlewareSet
 	key.add(kindKeyAuth)
-	schemes.requirement(key)
+	schemes.use(key)
 	require.NotContains(t, requireMap(t, schemes.declarations()[securitySchemeBearer]), "bearerFormat")
 }
 
@@ -711,4 +713,18 @@ func Test_OpenAPI_MiddlewareHeadersOnlyOnResponsesThatCarryThem(t *testing.T) {
 	for status := range responses {
 		require.Contains(t, headersOf(status), fiber.HeaderXRequestID, status)
 	}
+}
+
+func Test_OpenAPI_DroppedDuplicateRouteDeclaresNoScheme(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Get("/a/:id", chainBasicAuth(), listUsers)
+	// The same template up to parameter names: the first registration wins, so this one is not documented.
+	app.Get("/a/:name", chainKeyAuth(), listUsers)
+	spec := modelSpec(t, app)
+
+	schemes := requireMap(t, requireMap(t, spec["components"])["securitySchemes"])
+	require.Contains(t, schemes, securitySchemeBasic)
+	require.NotContains(t, schemes, securitySchemeBearer)
 }

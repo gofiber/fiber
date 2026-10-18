@@ -2,11 +2,14 @@ package fiber
 
 // applyToLatest applies a documentation change to the route the latest registration produced.
 func (app *App) applyToLatest(apply func(route *Route)) {
+	if apply == nil {
+		return
+	}
 	app.mutex.Lock()
+	defer app.mutex.Unlock()
 	if app.applyToRegIDLocked(app.latestRegID, apply) {
 		app.bumpRoutesRevision()
 	}
-	app.mutex.Unlock()
 }
 
 // applyNameToRegistration names the routes registration regID produced and fires the OnName hooks.
@@ -53,10 +56,10 @@ func (app *App) applyToRegistration(regID uint64, apply func(route *Route)) {
 		return
 	}
 	app.mutex.Lock()
+	defer app.mutex.Unlock()
 	if app.applyToRegIDLocked(regID, apply) {
 		app.bumpRoutesRevision()
 	}
-	app.mutex.Unlock()
 }
 
 // applyToRegIDLocked applies a mutation to every entry of regID except mount

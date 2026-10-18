@@ -180,23 +180,32 @@ func newSecuritySchemes() *securitySchemes {
 }
 
 // requirement returns the requirement for all middleware at once, since each chained one must pass.
-func (s *securitySchemes) requirement(set middlewareSet) map[string][]string {
+func (*securitySchemes) requirement(set middlewareSet) map[string][]string {
 	requirement := map[string][]string{}
 	if set.has(kindKeyAuth) || set.has(kindJWT) {
 		requirement[securitySchemeBearer] = []string{}
+	}
+	if set.has(kindBasicAuth) {
+		requirement[securitySchemeBasic] = []string{}
+	}
+	if len(requirement) == 0 {
+		return nil
+	}
+	return requirement
+}
+
+// use records the schemes an operation that made it into the document refers to, so a route dropped as a
+// duplicate declares none.
+func (s *securitySchemes) use(set middlewareSet) {
+	if set.has(kindKeyAuth) || set.has(kindJWT) {
 		s.bearer = true
 		if set.has(kindKeyAuth) {
 			s.jwtOnly = false
 		}
 	}
 	if set.has(kindBasicAuth) {
-		requirement[securitySchemeBasic] = []string{}
 		s.basic = true
 	}
-	if len(requirement) == 0 {
-		return nil
-	}
-	return requirement
 }
 
 func (s *securitySchemes) declarations() map[string]any {

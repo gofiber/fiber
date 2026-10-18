@@ -549,3 +549,11 @@ func Test_OpenAPI_LicenseIsNotShared(t *testing.T) {
 	_ = fetchSpec(t, app)
 	require.Equal(t, License{Name: "MIT", URL: "https://x"}, *license)
 }
+
+func Test_buildOpenAPIPathVariants_EscapedBracesAreEncoded(t *testing.T) {
+	t.Parallel()
+
+	variants := buildOpenAPIPathVariants(`/e/a\{b\}`, nil, false)
+	require.Len(t, variants, 1)
+	require.Equal(t, "/e/a%7Bb%7D", variants[0].Path)
+}

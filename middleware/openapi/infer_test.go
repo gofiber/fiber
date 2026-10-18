@@ -2,6 +2,7 @@ package openapi
 
 import (
 	"testing"
+	"unicode/utf8"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/stretchr/testify/require"
@@ -286,5 +287,19 @@ func Test_isVersionSegment(t *testing.T) {
 		"v": false, "": false, "va1": false, "1": false, "version": false, "v1beta": false,
 	} {
 		require.Equal(t, want, isVersionSegment(segment), segment)
+	}
+}
+
+func Test_summaryFromFuncName_NonASCIIAndDigits(t *testing.T) {
+	t.Parallel()
+
+	for name, want := range map[string]string{
+		"pkg.日本語Handler": "日本語 handler",
+		"pkg._2fa":       "2fa",
+		"pkg.élanCheck":  "Élan check",
+	} {
+		got := summaryFromFuncName(name)
+		require.True(t, utf8.ValidString(got), name)
+		require.Equal(t, want, got, name)
 	}
 }

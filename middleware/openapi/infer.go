@@ -4,6 +4,8 @@ import (
 	"reflect"
 	"runtime"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/utils/v2"
@@ -125,8 +127,9 @@ func summaryFromFuncName(name string) string {
 		case isAcronym(word):
 			_, _ = b.WriteString(word) //nolint:errcheck // strings.Builder.WriteString never returns an error
 		case i == 0:
-			_ = b.WriteByte(word[0] &^ 0x20)                     //nolint:errcheck // strings.Builder.WriteByte never returns an error
-			_, _ = b.WriteString(utilsstrings.ToLower(word[1:])) //nolint:errcheck // strings.Builder.WriteString never returns an error
+			first, size := utf8.DecodeRuneInString(word)
+			_, _ = b.WriteRune(unicode.ToUpper(first))              //nolint:errcheck // strings.Builder.WriteRune never returns an error
+			_, _ = b.WriteString(utilsstrings.ToLower(word[size:])) //nolint:errcheck // strings.Builder.WriteString never returns an error
 		default:
 			_, _ = b.WriteString(utilsstrings.ToLower(word)) //nolint:errcheck // strings.Builder.WriteString never returns an error
 		}

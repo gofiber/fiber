@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/gofiber/fiber/v3/internal/deepcopy"
+	"github.com/gofiber/fiber/v3/internal/schemautil"
 	"github.com/gofiber/utils/v2"
 )
 
@@ -121,7 +122,12 @@ func docRequestBodyWithExample(description string, required bool, schema any, sc
 	}
 
 	return func(route *Route) {
+		// An empty description keeps what an earlier call set.
+		previous := route.RequestBody
 		route.RequestBody = cloneRouteRequestBody(body)
+		if description == "" && previous != nil {
+			route.RequestBody.Description = previous.Description
+		}
 		// Adopt the body's media type only when Consumes() set none.
 		if len(sanitized) > 0 && route.Consumes == "" {
 			route.Consumes = sanitized[0]
@@ -189,8 +195,8 @@ func docAddParameter(param RouteParameter) func(route *Route) {
 				schema, ok = map[string]any{}, true
 			}
 			if ok {
-				if _, has := schema["type"]; !has {
-					schema["type"] = openapiTypeString
+				if typ, ok := schemautil.DefaultType(schema); ok {
+					schema["type"] = typ
 				}
 				paramCopy.Schema = schema
 			}
@@ -260,7 +266,9 @@ func getOrCreateResponse(route *Route, key string, status int) RouteResponse {
 func docAddResponse(status int, description string, schema any, schemaRef string, example any, examples map[string]any, mediaTypes ...string) func(route *Route) {
 	sanitized := sanitizeMediaTypes(mediaTypes)
 
-	if description == "" {
+	// An empty description keeps what an earlier call set, as ResponseContent does.
+	explicitDescription := description != ""
+	if !explicitDescription {
 		description = defaultResponseDescription(status)
 	}
 
@@ -274,6 +282,9 @@ func docAddResponse(status int, description string, schema any, schemaRef string
 		resp.Schema = schema
 	}
 
+	// A body documented here replaces any content map an earlier call set, which would otherwise win.
+	definesBody := resp.Schema != nil || len(sanitized) > 0 || example != nil || len(examples) > 0
+
 	return func(route *Route) {
 		if route.Responses == nil {
 			route.Responses = make(map[string]RouteResponse)
@@ -283,11 +294,16 @@ func docAddResponse(status int, description string, schema any, schemaRef string
 		copyResp.Schema = copySchema(resp.Schema)
 		copyResp.Example = copyAnyValue(resp.Example)
 		copyResp.Examples = copyAnyMap(resp.Examples)
-		// Keep headers, links and content documented earlier.
+		// Keep headers, links, the description and, unless this call documents a body, the content set earlier.
 		if existing, ok := route.Responses[key]; ok {
 			copyResp.Headers = existing.Headers
 			copyResp.Links = existing.Links
-			copyResp.Content = existing.Content
+			if !explicitDescription && existing.Description != "" {
+				copyResp.Description = existing.Description
+			}
+			if !definesBody {
+				copyResp.Content = existing.Content
+			}
 		}
 		route.Responses[key] = copyResp
 		// Adopt the response media type only when Produces() set none.
