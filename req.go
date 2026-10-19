@@ -360,10 +360,10 @@ func (r *DefaultReq) Charset() string {
 				return ""
 			}
 			v = unescaped
-		} else if bytes.IndexByte(v, '"') >= 0 {
-			// A bare token must not contain DQUOTE; skip the invalid
-			// parameter instead of surfacing garbage, so a well-formed
-			// charset parameter later in the header can still be found.
+		} else if !mediatype.IsToken(v) {
+			// A bare value must be a token; skip the invalid parameter
+			// instead of surfacing garbage, so a well-formed charset
+			// parameter later in the header can still be found.
 			continue
 		}
 		return r.c.app.toString(v)

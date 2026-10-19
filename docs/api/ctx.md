@@ -1381,7 +1381,7 @@ app.Post("/upload", func(c fiber.Ctx) error {
 
 ### Charset
 
-Returns the `charset` parameter from the `Content-Type` header.
+Returns the `charset` parameter from the `Content-Type` header. An unquoted value that is not a token is skipped in favor of a later `charset` parameter, and a malformed quoted value gives an empty result.
 
 ```go title="Signature"
 func (c fiber.Ctx) Charset() string

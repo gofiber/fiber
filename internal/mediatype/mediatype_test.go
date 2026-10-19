@@ -306,3 +306,27 @@ func Benchmark_Unescape(b *testing.B) {
 		})
 	}
 }
+
+func Test_IsToken(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		in   string
+		want bool
+	}{
+		{"utf-8", true},
+		{"Shift_JIS", true},
+		{"!#$%&'*+-.^_`|~09azAZ", true},
+		{"", false},
+		{"utf-8,latin1", false},
+		{`utf\-8`, false},
+		{`utf-8"`, false},
+		{"utf 8", false},
+		{"[x]", false},
+		{"utf-8;", false},
+		{"\x7f", false},
+		{"\xc3\xbc", false},
+	} {
+		require.Equal(t, tc.want, IsToken([]byte(tc.in)), "%q", tc.in)
+	}
+}

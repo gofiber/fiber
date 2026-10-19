@@ -269,6 +269,42 @@ func Test_Ctx_Charset(t *testing.T) {
 			contentType: `text/plain; a=b"; charset=bad"; charset=utf-8`,
 			expected:    "utf-8",
 		},
+		{
+			name:        "bare_value_with_trailing_quote",
+			contentType: `text/plain; charset=utf-8"`,
+			expected:    "",
+		},
+		{
+			name:        "bare_value_with_comma",
+			contentType: "text/plain; charset=utf-8,latin1",
+			expected:    "",
+		},
+		{
+			name:        "bare_value_with_backslash",
+			contentType: `text/plain; charset=utf\-8`,
+			expected:    "",
+		},
+		{
+			name:        "invalid_bare_value_then_valid_charset",
+			contentType: "text/plain; charset=utf-8,latin1; charset=iso-8859-1",
+			expected:    "iso-8859-1",
+		},
+		{
+			name:        "empty_charset_value_then_valid_charset",
+			contentType: "text/plain; charset=; charset=utf-8",
+			expected:    "utf-8",
+		},
+		{
+			// A malformed parameter before charset does not hide it.
+			name:        "parameter_without_value_before_charset",
+			contentType: "text/plain; foo; charset=utf-8",
+			expected:    "utf-8",
+		},
+		{
+			name:        "invalid_parameter_value_before_charset",
+			contentType: "text/plain; foo=[x]; charset=utf-8",
+			expected:    "utf-8",
+		},
 	}
 
 	for _, testCase := range testCases {

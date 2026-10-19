@@ -113,6 +113,31 @@ func StripParams(ct []byte) []byte {
 	return utils.TrimSpace(ct)
 }
 
+// IsToken reports whether b is a token (RFC 9110 Section 5.6.2): one or more tchar.
+func IsToken(b []byte) bool {
+	if len(b) == 0 {
+		return false
+	}
+	for _, c := range b {
+		if !tokenTable[c] {
+			return false
+		}
+	}
+	return true
+}
+
+var tokenTable = func() [256]bool {
+	var t [256]bool
+	for _, c := range []byte("!#$%&'*+-.^_`|~0123456789") {
+		t[c] = true
+	}
+	for c := byte('a'); c <= 'z'; c++ {
+		t[c] = true
+		t[c-'a'+'A'] = true
+	}
+	return t
+}()
+
 // Params yields the trimmed name and value of each parameter in ct that has an "=".
 func Params(ct []byte) iter.Seq2[[]byte, []byte] {
 	return func(yield func(name, value []byte) bool) {
