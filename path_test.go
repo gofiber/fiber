@@ -178,6 +178,22 @@ func Test_Path_matchParams(t *testing.T) {
 	}
 }
 
+// go test -run Test_Route_OptionalParamDoesNotSwallowSlash
+func Test_Route_OptionalParamDoesNotSwallowSlash(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	app.Get("/api/:day-:month?-:year?", func(c Ctx) error {
+		return c.SendString("day=" + c.Params("day") + " month=" + c.Params("month"))
+	})
+
+	req, err := http.NewRequest(MethodGet, "/api/1-/-", nil)
+	require.NoError(t, err)
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, StatusNotFound, resp.StatusCode)
+}
+
 // Test_Path_ParameterEndChars_MatchesRouteGrammar pins the shared set against
 // the delimiter constants it is built from but no longer names, so widening the
 // route grammar has to reach the client's copy too (#4635).
