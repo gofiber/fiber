@@ -329,11 +329,10 @@ func Test_QueryParam_Keys(t *testing.T) {
 	p.Add("foo", "1")
 	p.Add("foo", "2")
 	p.Add("bar", "3")
+	p.Add("foo", "4")
 
 	keys := p.Keys()
-	require.Len(t, keys, 2)
-	require.Contains(t, keys, "foo")
-	require.Contains(t, keys, "bar")
+	require.Equal(t, []string{"foo", "bar"}, keys)
 }
 
 func Test_FormData_Keys(t *testing.T) {
@@ -345,11 +344,10 @@ func Test_FormData_Keys(t *testing.T) {
 	f.Add("foo", "1")
 	f.Add("foo", "2")
 	f.Add("bar", "3")
+	f.Add("foo", "4")
 
 	keys := f.Keys()
-	require.Len(t, keys, 2)
-	require.Contains(t, keys, "foo")
-	require.Contains(t, keys, "bar")
+	require.Equal(t, []string{"foo", "bar"}, keys)
 }
 
 func Test_Request_Params(t *testing.T) {

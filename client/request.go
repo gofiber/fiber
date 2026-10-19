@@ -757,9 +757,11 @@ type QueryParam struct {
 func (p *QueryParam) Keys() []string {
 	keys := make([]string, 0, p.Len())
 	for key := range p.All() {
-		keys = append(keys, utils.UnsafeString(key))
+		if k := utils.UnsafeString(key); !slices.Contains(keys, k) {
+			keys = append(keys, k)
+		}
 	}
-	return slices.Compact(keys)
+	return keys
 }
 
 // AddParams adds multiple parameters from a map.
@@ -889,9 +891,11 @@ type FormData struct {
 func (f *FormData) Keys() []string {
 	keys := make([]string, 0, f.Len())
 	for key := range f.All() {
-		keys = append(keys, utils.UnsafeString(key))
+		if k := utils.UnsafeString(key); !slices.Contains(keys, k) {
+			keys = append(keys, k)
+		}
 	}
-	return slices.Compact(keys)
+	return keys
 }
 
 // Add adds a single form field.
