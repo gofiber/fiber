@@ -67,7 +67,8 @@ type requestCookie struct {
 	// except marks a name listed in Config.Except: value is the raw cookie
 	// and is written back unchanged.
 	except bool
-	// keep is false when the Decryptor rejected the value.
+	// keep is false for an entry that is dropped: one the Decryptor rejected,
+	// or a later duplicate of a name that already decrypted.
 	keep bool
 }
 
@@ -82,9 +83,8 @@ type requestCookie struct {
 // and mutated only afterwards. When nothing failed and no name repeats, each
 // value is written back in place. Otherwise the cookies are cleared and the
 // survivors re-added in their original order, which keeps at most one entry
-// per name: the first one, decrypted, matching what c.Cookies returns for
-// plaintext cookies, or none when that first one does not decrypt. Names in
-// Except keep every entry as it arrived.
+// per name: the first value that decrypts, as c.Cookies returns the first
+// plaintext cookie of a name. Names in Except keep every entry as it arrived.
 func decryptRequestCookies(c fiber.Ctx, cfg *Config) {
 	header := &c.Request().Header
 	cookies := make([]requestCookie, 0, 8)
@@ -97,8 +97,8 @@ func decryptRequestCookies(c fiber.Ctx, cfg *Config) {
 			continue
 		}
 		if hasCookieName(cookies, name) {
-			// A later duplicate is dropped whatever it holds: the first entry
-			// decides the name.
+			// The name already has its value; a later duplicate is dropped
+			// without decrypting it.
 			rebuild = true
 			cookies = append(cookies, requestCookie{name: name})
 			continue
@@ -140,10 +140,10 @@ func decryptRequestCookies(c fiber.Ctx, cfg *Config) {
 	}
 }
 
-// hasCookieName reports whether cookies already holds a non-excepted entry named name.
+// hasCookieName reports whether cookies holds a kept, non-excepted entry named name.
 func hasCookieName(cookies []requestCookie, name string) bool {
 	for i := range cookies {
-		if !cookies[i].except && cookies[i].name == name {
+		if cookies[i].keep && !cookies[i].except && cookies[i].name == name {
 			return true
 		}
 	}

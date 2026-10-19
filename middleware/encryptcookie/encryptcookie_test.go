@@ -853,9 +853,9 @@ func Test_Middleware_Mixed_Valid_Invalid_Cookies(t *testing.T) {
 }
 
 // Test_Middleware_Duplicate_Cookie_Names covers a Cookie header that carries
-// the same name more than once (RFC 6265 Section 5.4). The first entry decides
-// the name, as c.Cookies does for plaintext cookies: the handler sees it
-// decrypted, or nothing when it does not decrypt, whatever else the header
+// the same name more than once (RFC 6265 Section 5.4). The handler must see
+// one entry per name holding the first value that decrypts, as c.Cookies
+// returns the first plaintext cookie of a name, whatever else the header
 // carries.
 func Test_Middleware_Duplicate_Cookie_Names(t *testing.T) {
 	t.Parallel()
@@ -920,11 +920,18 @@ func Test_Middleware_Duplicate_Cookie_Names(t *testing.T) {
 		require.Equal(t, []string{"test=SomeThing"}, cookies)
 	})
 
-	t.Run("first does not decrypt: the name is removed", func(t *testing.T) {
+	t.Run("first does not decrypt: next one that does wins", func(t *testing.T) {
 		t.Parallel()
-		body, cookies := request(t, newApp(), "test=not-encrypted; test="+encrypt(t, "test", "second"))
-		require.Equal(t, "value=", body)
-		require.Empty(t, cookies)
+		body, cookies := request(t, newApp(), "test=garbage; test="+encrypt(t, "test", "second"))
+		require.Equal(t, "value=second", body)
+		require.Equal(t, []string{"test=second"}, cookies)
+	})
+
+	t.Run("first does not decrypt: the next one wins over a third", func(t *testing.T) {
+		t.Parallel()
+		body, cookies := request(t, newApp(), "test=garbage; test="+encrypt(t, "test", "second")+"; test="+encrypt(t, "test", "third"))
+		require.Equal(t, "value=second", body)
+		require.Equal(t, []string{"test=second"}, cookies)
 	})
 
 	t.Run("none decrypt: the name is removed", func(t *testing.T) {
