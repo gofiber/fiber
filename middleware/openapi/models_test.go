@@ -551,7 +551,7 @@ func Test_OpenAPI_PointerFieldsAreNullable(t *testing.T) {
 		require.Equal(t, []any{componentRef("nullableInner"), map[string]any{"type": "null"}}, inner["anyOf"], version)
 		require.Equal(t, "the inner", inner["description"], version)
 		require.Equal(t, "integer", requireMap(t, got["plain"])["type"], version, "a non-pointer is never null")
-		require.Equal(t, "string", requireMap(t, got["quoted"])["type"], version, "a quoted number is written as a string")
+		require.Equal(t, []any{"string", "null"}, requireMap(t, got["quoted"])["type"], version, "a quoted number is written as a string, null when nil")
 		require.Equal(t, "array", requireMap(t, got["items"])["type"], version, "a slice is not made nullable")
 	}
 
@@ -559,6 +559,8 @@ func Test_OpenAPI_PointerFieldsAreNullable(t *testing.T) {
 		got := props(version)
 		require.Equal(t, "integer", requireMap(t, got["count"])["type"], version)
 		require.Equal(t, true, requireMap(t, got["count"])["nullable"], version)
+		require.Equal(t, "string", requireMap(t, got["quoted"])["type"], version)
+		require.Equal(t, true, requireMap(t, got["quoted"])["nullable"], version)
 		require.Equal(t, []any{"a", "b", nil}, requireMap(t, got["kind"])["enum"], version)
 		inner := requireMap(t, got["inner"])
 		require.Equal(t, []any{componentRef("nullableInner")}, inner["allOf"], version)
@@ -712,4 +714,25 @@ func Test_OpenAPI_ParamsModelRefSiblings(t *testing.T) {
 		}
 		require.Equal(t, "custom", schema["format"], version)
 	}
+}
+
+func Test_OpenAPI_DefinedMapTypesAreRawSchemas(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Get("/x", listUsers).
+		Returns(fiber.StatusOK, fiber.Map{"type": "object", "properties": fiber.Map{"id": fiber.Map{"type": "integer"}}}).
+		Parameter("q", fiber.ParamInQuery, false, fiber.Map{"type": "integer"}, "")
+	spec := modelSpec(t, app, Config{ErrorSchema: fiber.Map{"type": "object", "properties": fiber.Map{"error": fiber.Map{"type": "string"}}}})
+
+	op := modelOperation(t, spec, "/x", "get")
+	ok := requireMap(t, requireMap(t, chainResponses(t, op)["200"])["content"])
+	schema := requireMap(t, requireMap(t, ok[fiber.MIMEApplicationJSON])["schema"])
+	require.Equal(t, "object", schema["type"])
+	require.NotContains(t, schema, "additionalProperties", "the map's Go type must not be reflected")
+	require.Contains(t, requireMap(t, schema["properties"]), "id")
+
+	params, isList := op["parameters"].([]any)
+	require.True(t, isList)
+	require.Equal(t, "integer", requireMap(t, requireMap(t, params[0])["schema"])["type"])
 }

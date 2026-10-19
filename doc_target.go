@@ -100,7 +100,8 @@ func (t *docTarget[R]) ResponseHeader(status int, name, description string, sche
 	return t.document(docResponseHeader(status, name, description, schema))
 }
 
-// Accepts documents the request body as the schema of model; see App.Accepts.
+// Accepts documents a required request body whose schema is reflected from model, under the given media
+// types or the middleware's DefaultConsumes.
 func (t *docTarget[R]) Accepts(model any, mediaTypes ...string) R {
 	return t.document(docAccepts(model, mediaTypes...))
 }

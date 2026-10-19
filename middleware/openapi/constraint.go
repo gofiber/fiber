@@ -4,6 +4,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/gofiber/fiber/v3/internal/paramdelim"
+
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/utils/v2"
 	utilsstrings "github.com/gofiber/utils/v2/strings"
@@ -21,18 +23,30 @@ const (
 	constraintEscapeChar    = '\\'
 )
 
-// scanConstraintSpan reads the "<...>" span at open, returning its inner text
-// and the index past it. As in path.go it closes at the first unescaped '>'.
+// parameterEnd marks the bytes that end a ":name" placeholder once its constraint has closed.
+var parameterEnd = paramdelim.PathEndChars()
+
+// scanConstraintSpan reads the "<...>" span at open, returning its inner text and the index past it. As in
+// path.go the span closes at the last unescaped '>' before a byte that ends the parameter, so a pattern
+// such as "<regex(^[^>]+$)>" keeps its inner '>'.
 //
 //nolint:nonamedreturns // gocritic requires names to tell the two results apart
 func scanConstraintSpan(pattern string, open int) (raw string, next int) {
 	start := open + 1
+	closed := -1
 	for i := start; i < len(pattern); i++ {
 		if pattern[i] == constraintSpanEnd && pattern[i-1] != constraintEscapeChar {
-			return pattern[start:i], i + 1
+			closed = i
+			continue
+		}
+		if closed >= 0 && parameterEnd[pattern[i]] {
+			break
 		}
 	}
-	return pattern[start:], len(pattern)
+	if closed < 0 {
+		return pattern[start:], len(pattern)
+	}
+	return pattern[start:closed], closed + 1
 }
 
 // pathParamSchema derives a parameter schema from a constraint span, defaulting

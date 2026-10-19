@@ -47,20 +47,19 @@ func docSetProduces(typ string) func(route *Route) {
 }
 
 func hasSchema(schema any) bool {
-	switch value := schema.(type) {
-	case nil:
+	if schema == nil {
 		return false
-	case map[string]any:
-		return len(value) > 0
-	default:
-		return true
 	}
+	if value, ok := schemautil.AsMap(schema); ok {
+		return len(value) > 0
+	}
+	return true
 }
 
 // copySchema detaches a schema from its caller. An empty map reads as no schema, and a Go model
 // struct is kept as it is because only its type is read; any other map or slice is cloned.
 func copySchema(schema any) any {
-	if value, ok := schema.(map[string]any); ok {
+	if value, ok := schemautil.AsMap(schema); ok {
 		if len(value) == 0 {
 			return nil
 		}
@@ -92,12 +91,20 @@ func docRequestBodyWithExample(description string, required bool, schema any, sc
 		body.Schema = schema
 	}
 
+	// A schema or example documented here replaces the body an earlier call set; a description, the required
+	// flag or media types alone keep it, as the response helpers do.
+	definesBody := body.Schema != nil || example != nil || len(examples) > 0
+
 	return func(route *Route) {
-		// An empty description keeps what an earlier call set.
 		previous := route.RequestBody
 		route.RequestBody = cloneRouteRequestBody(body)
-		if description == "" && previous != nil {
-			route.RequestBody.Description = previous.Description
+		if previous != nil {
+			if description == "" {
+				route.RequestBody.Description = previous.Description
+			}
+			if !definesBody {
+				carryEarlierRequestBody(route.RequestBody, previous)
+			}
 		}
 		// Adopt the body's media type only when Consumes() set none.
 		if len(sanitized) > 0 && route.Consumes == "" {
@@ -385,7 +392,23 @@ func docRequestBodyContent(description string, required bool, content map[string
 		Content:     content,
 	}
 	return func(route *Route) {
+		previous := route.RequestBody
 		route.RequestBody = cloneRouteRequestBody(body)
+		if previous != nil && description == "" {
+			route.RequestBody.Description = previous.Description
+		}
+	}
+}
+
+// carryEarlierRequestBody gives body the schema, examples, content and media types of the body that came before
+// it, for a call that documented none of its own.
+func carryEarlierRequestBody(body, previous *RouteRequestBody) {
+	earlier := cloneRouteRequestBody(previous)
+	body.Schema, body.SchemaRef = earlier.Schema, earlier.SchemaRef
+	body.Example, body.Examples = earlier.Example, earlier.Examples
+	body.Content = earlier.Content
+	if len(body.MediaTypes) == 0 {
+		body.MediaTypes = earlier.MediaTypes
 	}
 }
 

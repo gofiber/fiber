@@ -293,10 +293,12 @@ The command should print nothing. Any URL it does print is still being fetched
 from the internet.
 
 :::note Cross-origin assets
-The generated `<script>` tags carry `crossorigin="anonymous"`. Assets served from
-the same origin as the app — as above — are unaffected. If you host them on a
-separate origin (an internal CDN, a different port), that origin must send
-`Access-Control-Allow-Origin`, or the browser will refuse the scripts.
+The default URLs carry an `integrity` hash, and a tag with an `integrity` attribute
+also carries `crossorigin="anonymous"`. Assets served from the same origin as the
+app — as above — are unaffected. If you host them on a separate origin (an
+internal CDN, a different port) and set an `integrity` value for them, that origin
+must send `Access-Control-Allow-Origin`, or the browser will refuse the scripts;
+URLs you set without an `integrity` value get no `crossorigin` attribute.
 :::
 
 ### Document a route
@@ -386,6 +388,11 @@ app.Post("/users", createUser).
     Tags("users", "admin").
     Produces(fiber.MIMEApplicationJSON)
 ```
+
+Every entry of an `examples` map must be an Example Object in the document. An
+entry that already is one (`summary`, `description`, `value`, `externalValue` or a
+`$ref`) is used as it is; any other value, such as `"xyz-789"` or
+`{"name": "bob"}` above, is wrapped as the `value` of one.
 
 Expanding that operation in the UI shows where each helper lands: `Description`
 under the summary, `RequestBodyWithExample` as the **Example Value**,
@@ -667,7 +674,6 @@ than a malformed spec served in production:
 | Helper | Panics when |
 |:-------|:------------|
 | `Consumes`, `Produces`, `RequestBody*`, `Response*`, `RequestBodyContent`, `ResponseContent` | a media type is not a parseable `type/subtype` |
-| `RequestBody`, `RequestBodyWithExample` | no usable media type is given |
 | `Parameter*`, `AddParameter` | the name is empty, `In` is not `path`/`query`/`header`/`cookie`/`querystring`, or `Content` holds more than one media type |
 | `Response*`, `ResponseHeader`, `ResponseLink`, `ResponseContent` | the status is outside 100–599 (`0` is allowed and means `default`) |
 | `ResponseHeader`, `ResponseLink` | the header or link name is empty |
@@ -679,9 +685,10 @@ route's media type.
 
 - If a route declares no responses, a sensible default is added: `200 OK` for most
   methods and `204 No Content` for `DELETE`, one of the statuses RFC 9110 names
-  for a successful delete. `HEAD` mirrors `GET` (`200 OK`, plus the `GET`'s media
-  type) because RFC 9110 has a `HEAD` response carry the same header fields as
-  the `GET` would, minus the content. Declaring any response via the helpers
+  for a successful delete. A `HEAD` route documents `200 OK` with its own media type
+  (`DefaultProduces` unless `Produces` is set on it), so give an explicit `HEAD`
+  route the `GET`'s `Produces`: RFC 9110 has a `HEAD` response carry the same
+  header fields as the `GET` would, minus the content. Declaring any response via the helpers
   disables the automatic default.
 - What a route does not say is filled from what the router already knows, and
   anything set explicitly always wins:
@@ -706,8 +713,9 @@ route's media type.
     media type documents the route's `Consumes`, then `DefaultConsumes`. No
     request body is invented: it appears only when `Consumes`/`Accepts`/
     `RequestBody*` is set explicitly, since documenting one would claim the
-    handler reads it. `DisableDefaultMediaTypes` turns the defaults off, so a
-    response or body that names no media type is documented without content.
+    handler reads it. `DisableDefaultMediaTypes` stops the built-in defaults from being filled in, so
+    a response or body that names no media type is documented without content
+    unless you set `DefaultProduces`, `DefaultConsumes` or `ErrorProduces`.
 - Operations without metadata have no `description` key at all and are not
   deprecated.
 - The middleware a request passes through documents itself. A route's own
@@ -720,9 +728,12 @@ route's media type.
   `middleware/keyauth` is never mistaken for it; a fork of the module is a
   different directory and is not recognized, and neither is a middleware you
   wrote yourself, so document those routes with `Security(...)` and friends. A `Use` prefix covers a route when every request the route
-  can answer passes it: a parameter in the prefix (`/users/:id`) covers whatever
-  the route has there, a literal covers only the same text under the app's case
-  rule, and an optional segment is never claimed:
+  can answer passes it: a parameter in the prefix (`/users/:id`) covers a route
+  segment that always has a value there (a literal or a required parameter, not
+  an optional or greedy one, and not a missing segment), a constrained parameter
+  (`:id<int>`) covers only a parameter with the same constraint or a literal
+  that satisfies `int`, `alpha` or `bool`, a literal covers only the same text
+  under the app's case rule, and an optional segment is never claimed:
   - Inference cannot see a `Next` function that skips a middleware for some
     requests, so a recognized middleware is documented as always applying; give a
     route it does not protect an explicit `Security()` or attach the middleware
@@ -742,17 +753,20 @@ route's media type.
     methods it protects (everything but `GET`, `HEAD`, `OPTIONS`, `TRACE` and
     `QUERY`).
   - `requestid` adds the `X-Request-ID` header, `limiter` the `X-RateLimit-*`
-    headers plus a `429` with `Retry-After`, `etag` an `ETag` header on `2xx`
-    responses plus a `304`, both only on `GET` and `HEAD` as that is all the
-    middleware acts on, and `cache` the `X-Cache` header on every method.
+    headers on the `2xx` responses it lets through plus a `429` with
+    `Retry-After`, `etag` an `ETag` header on the `200` response (any method)
+    plus a `304` on `GET` and `HEAD`, which is all the middleware answers that
+    way, and `cache` the `X-Cache` header on every response the handler
+    produces, errors included, but not on a `401`, `403` or `429` an earlier
+    middleware sent.
     Headers and responses a route already documents are kept.
   - The headers and parameter above are documented under their default names.
     A middleware configured with another name cannot be read from its handler,
     so say so in the config: `RequestIDHeader` (`requestid.Config.Header`),
     `CacheHeader` (`cache.Config.CacheHeader`), `CSRFHeader` (the header a
     custom `csrf` extractor reads) and `RateLimitHeaders`. A limiter with
-    `DisableHeaders` is matched by `DisableRateLimitHeaders`, which keeps its
-    `429` and `Retry-After`. `DisableMiddlewareInference` turns it all off.
+    `DisableHeaders` is matched by `DisableRateLimitHeaders`, which drops the
+    `X-RateLimit-*` headers and `Retry-After` and keeps the `429`. `DisableMiddlewareInference` turns it all off.
   - Middleware registered through a domain router is recognized, and covers the
     routes of the same host pattern; middleware registered on the app covers
     every host.
@@ -834,6 +848,8 @@ route's media type.
 - The parent copies a sub-app's routes, documentation included, when the mount
   is expanded at startup. Document the sub-app's routes before the parent starts
   serving; changes made to them afterwards do not reach the parent's document.
+  A sub-app mounted through `Domain(...).Use` is copied when `Use` is called
+  instead, so document its routes before mounting it.
 - Documentation helpers chained onto a sub-app mount
   (`app.Use("/api", subApp).Summary(...)`) are no-ops: mount placeholders are
   replaced by the sub-app's own routes at startup, so document the sub-app's
@@ -895,7 +911,7 @@ route's media type.
 | DefaultConsumes | `string`               | Request media type documented for a request body that declares none; `Consumes` and the `RequestBody*` media types override it per route. | `"application/json"` |
 | ErrorProduces  | `string`                | Media type documented for the responses the app's error handler writes (`400`, `401`, `403`, `429`). | `"text/plain; charset=utf-8"`, or `"application/json"` when `ErrorSchema` is set |
 | ErrorSchema    | `any`                   | Schema, or a Go value reflected into one, documented for those error responses. | `nil` |
-| DisableDefaultMediaTypes | `bool`        | Stops documenting `DefaultProduces`, `DefaultConsumes` and `ErrorProduces`, leaving a response or body that declares no media type without content. | `false` |
+| DisableDefaultMediaTypes | `bool`        | Stops filling in `DefaultProduces`, `DefaultConsumes` and `ErrorProduces` when they are unset, leaving a response or body that declares no media type without content; values you set still apply. | `false` |
 | DisableMiddlewareInference | `bool`      | Stops documenting the security, headers, parameters and responses of recognized middleware on a route's path. | `false` |
 | DisableValidationResponses | `bool`      | Stops documenting the `400` response a configured `StructValidator` makes possible on routes with a body or parameters. | `false` |
 | RequestIDHeader | `string`               | Header the `requestid` middleware sets, documented on every response of a route it covers. | `"X-Request-ID"` |
@@ -984,9 +1000,10 @@ Schema references (`SchemaRef`) are emitted as `$ref` entries in the generated J
 A Go value passed to `Accepts`, `Returns`, `Params` or any helper that takes a
 schema is reflected into an OpenAPI JSON Schema when the document is generated.
 The `SchemaOf` helper exposes the same reflection for a schema you want to build
-or inspect yourself, the one difference being that `SchemaOf` inlines nested
+or inspect yourself, the differences being that `SchemaOf` inlines nested
 structs while the route helpers register named types under `components.schemas`
-and reference them. Given a struct:
+and reference them, and that it leaves pointer fields non-nullable, as it has no
+document version to spell `null` for. Given a struct:
 
 ```go
 type User struct {
@@ -1075,11 +1092,21 @@ has no JSON representation (channels, functions, etc.) are skipped.
   constraints: `required` marks the property required even with `omitempty`;
   `min`, `max`, `len`, `gte` and `lte` become `minimum`/`maximum` for numbers,
   `minLength`/`maxLength` for strings, `minItems`/`maxItems` for arrays and
-  `minProperties`/`maxProperties` for objects; `gt` and `lt` do the same one step
-  inside the limit, except on floats; `oneof=a b` becomes `enum`; and
+  `minProperties`/`maxProperties` for objects (a `[]byte`, written as base64,
+  gets the matching character counts, and a number quoted with `json:",string"`
+  gets no bounds); `gt` and `lt` do the same one step inside the limit, except on
+  floats; `oneof=a b` becomes `enum`, with `'two words'` kept as one value; and
   `email`, `uuid`, `url`, `uri`, `ipv4`, `ipv6`, `hostname`, `base64` and an
   RFC 3339 `datetime` set `format` unless the `openapi` tag already did. Rules
-  the schema cannot express, such as `dive`, or `gt` and `lt` on a float, are ignored
+  the schema cannot express, such as `gt` and `lt` on a float, are ignored. The
+  structure of the tag is followed: rules after `dive` constrain the elements
+  (`items`, or `additionalProperties` for a map) and never make the field
+  required, rules between `keys` and `endkeys` are skipped, and after
+  `omitempty` the rules an empty value would break (`min`, `gte`, `gt`, `len`,
+  `oneof`) are left out while upper bounds stay; a pointer is still validated
+  when it is not nil, so its rules stay. Fields of type `*multipart.FileHeader`
+  (and slices of it) are documented as `type: string, format: binary`, which
+  Swagger UI shows as a file picker.
 
 Multiple `openapi` directives can be combined with commas:
 

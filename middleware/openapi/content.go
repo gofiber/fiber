@@ -4,6 +4,8 @@ import (
 	"maps"
 	"strconv"
 
+	"github.com/gofiber/fiber/v3/internal/schemautil"
+
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/utils/v2"
 )
@@ -16,12 +18,44 @@ func contentEntry(mt fiber.RouteMediaType, reg *schemaRegistry) map[string]any {
 		entry["schema"] = resolved
 	}
 	// "example" and "examples" are mutually exclusive in OpenAPI; prefer "examples".
-	if ex := maps.Clone(mt.Examples); len(ex) > 0 {
+	if ex := exampleObjects(mt.Examples); len(ex) > 0 {
 		entry["examples"] = ex
 	} else if mt.Example != nil {
 		entry["example"] = mt.Example
 	}
 	return entry
+}
+
+// exampleObjects makes every entry of an examples map an Example Object, as OpenAPI requires. An entry that
+// already is one (only summary, description, value, externalValue or $ref keys, and a value, an external value
+// or a reference) is kept; any other value becomes the value of a new Example Object.
+func exampleObjects(examples map[string]any) map[string]any {
+	if len(examples) == 0 {
+		return nil
+	}
+	out := make(map[string]any, len(examples))
+	for name, example := range examples {
+		if object, ok := schemautil.AsMap(example); ok && isExampleObject(object) {
+			out[name] = maps.Clone(object)
+			continue
+		}
+		out[name] = map[string]any{"value": example}
+	}
+	return out
+}
+
+func isExampleObject(object map[string]any) bool {
+	hasContent := false
+	for key := range object {
+		switch key {
+		case "value", "externalValue", schemaKeyRef:
+			hasContent = true
+		case "summary", "description":
+		default:
+			return false
+		}
+	}
+	return hasContent
 }
 
 // routeMediaTypeContent builds a content map with a schema, example and encoding per media type.
@@ -175,13 +209,13 @@ func resolveHeaderSchemas(headers map[string]any, reg *schemaRegistry) map[strin
 	}
 	resolved := make(map[string]any, len(headers))
 	for name, raw := range headers {
-		header, ok := raw.(map[string]any)
+		header, ok := schemautil.AsMap(raw)
 		if !ok {
 			resolved[name] = raw
 			continue
 		}
 		if schema, ok := header["schema"]; ok {
-			if _, isMap := schema.(map[string]any); !isMap {
+			if _, isMap := schemautil.AsMap(schema); !isMap {
 				header = maps.Clone(header)
 				header["schema"] = reg.resolve(schema)
 			}

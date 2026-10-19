@@ -149,6 +149,15 @@ func buildOpenAPIPathVariants(fiberPath string, params []string, strict bool) []
 					}
 					i++
 				}
+				// As in path.go, a run of parameter starters ("::", ":*") begins the parameter at its last byte,
+				// so the others are literal text.
+				if i < length && fiberPath[i] != '\\' && fiberPath[i] != '*' {
+					end := i + 1
+					for end < length && (fiberPath[end] == ':' || fiberPath[end] == '*' || fiberPath[end] == '+') {
+						end++
+					}
+					i = end - 1
+				}
 				current.path += encodeLiteralBraces(fiberPath[runStart:i])
 				continue
 			}

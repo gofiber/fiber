@@ -18,17 +18,13 @@ const (
 // routeTokens returns a segment's routing characters, dropping escapes and <constraint> spans.
 func routeTokens(seg string) string {
 	var b strings.Builder
-	inConstraint := false
 	for i := 0; i < len(seg); i++ {
-		switch ch := seg[i]; {
-		case ch == '\\':
+		switch ch := seg[i]; ch {
+		case '\\':
 			i++ // the escaped character is a literal
-		case inConstraint:
-			if ch == '>' {
-				inConstraint = false
-			}
-		case ch == '<':
-			inConstraint = true
+		case '<':
+			_, next := scanConstraintSpan(seg, i)
+			i = next - 1
 		default:
 			_ = b.WriteByte(ch) //nolint:errcheck // strings.Builder.WriteByte never returns an error
 		}
@@ -44,24 +40,24 @@ func resolveDynamicMountPrefix(pattern, requestPath, specPath, uiPath string, eq
 		return "", false
 	}
 
-	if maxSegments < 0 || maxSegments > countPathSegments(requestPath) {
-		// A greedy segment is unbounded; cap splits at the request's segment count.
-		maxSegments = countPathSegments(requestPath)
+	// Each target fixes its own split: the request path must end with it, and what is left in front is the
+	// mount prefix, whose segment count is its number of slashes. The shortest valid prefix wins, the spec
+	// target on a tie.
+	best, found := "", false
+	for _, target := range [...]string{specPath, uiPath} {
+		if target == "" || !hasSuffix(requestPath, target, equal) {
+			continue
+		}
+		candidate := requestPath[:len(requestPath)-len(target)]
+		n := strings.Count(candidate, "/")
+		if n < minSegments || (maxSegments >= 0 && n > maxSegments) {
+			continue
+		}
+		if !found || len(candidate) < len(best) {
+			best, found = candidate, true
+		}
 	}
-
-	for n := minSegments; n <= maxSegments; n++ {
-		candidate, ok := pathPrefixSegments(requestPath, n)
-		if !ok {
-			break
-		}
-		if specPath != "" && equal(candidate+specPath, requestPath) {
-			return candidate, true
-		}
-		if uiPath != "" && equal(candidate+uiPath, requestPath) {
-			return candidate, true
-		}
-	}
-	return "", false
+	return best, found
 }
 
 type segmentKind uint8

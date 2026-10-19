@@ -173,7 +173,7 @@ func Test_OpenAPI_MiddlewareHeadersAndResponses(t *testing.T) {
 	notModified := requireMap(t, responses["304"])
 	require.NotContains(t, notModified, "content")
 	require.Contains(t, chainHeaders(t, notModified), fiber.HeaderXRequestID)
-	require.NotContains(t, chainHeaders(t, notModified), fiber.HeaderETag)
+	require.Contains(t, chainHeaders(t, notModified), fiber.HeaderETag, "the 304 repeats the tag")
 
 	require.NotContains(t, chainParams(t, get), "header:"+headerCSRFToken)
 	require.NotContains(t, responses, "403")
@@ -276,6 +276,16 @@ func Test_coversRoute(t *testing.T) {
 		{"/users/:id", "/users/7/posts", true},
 		{"/users/:id", "/users/:id/posts", true},
 		{"/users/:id<int>", "/users/7", true},
+		{"/users/:id<int>", "/users/me", false},
+		{"/users/:id<int>", "/users/:id<int>", true},
+		{"/users/:id<int>", "/users/:id", false},
+		{"/users/:id<min(1)>", "/users/7", false},
+		{"/:tenant", "/", false},
+		{"/:tenant", "/:id?", false},
+		{"/:tenant", "/*", false},
+		{"/api/:tenant", "/api/:id?", false},
+		{"/api/:v<int>", "/api/health", false},
+		{"/api/:v<alpha>", "/api/health", true},
 		{"/users/:id", "/users", false},
 		{"/users/:id", "/accounts/7", false},
 		{"/users/admin", "/users/:id", false},
@@ -566,7 +576,7 @@ func Test_OpenAPI_MiddlewareCoverage(t *testing.T) {
 	})
 }
 
-func Test_OpenAPI_ETagHeaderOnReadsOnly(t *testing.T) {
+func Test_OpenAPI_ETagHeaderOn200AndReadOnly304(t *testing.T) {
 	t.Parallel()
 
 	app := fiber.New()
@@ -575,8 +585,8 @@ func Test_OpenAPI_ETagHeaderOnReadsOnly(t *testing.T) {
 	app.Post("/x", listUsers)
 	spec := modelSpec(t, app)
 	require.Contains(t, chainHeaders(t, chainResponses(t, modelOperation(t, spec, "/x", "get"))["200"]), fiber.HeaderETag)
-	require.NotContains(t, chainHeaders(t, chainResponses(t, modelOperation(t, spec, "/x", "post"))["200"]), fiber.HeaderETag)
-	require.NotContains(t, chainResponses(t, modelOperation(t, spec, "/x", "post")), "304")
+	require.Contains(t, chainHeaders(t, chainResponses(t, modelOperation(t, spec, "/x", "post"))["200"]), fiber.HeaderETag, "a POST 200 carries a tag too")
+	require.NotContains(t, chainResponses(t, modelOperation(t, spec, "/x", "post")), "304", "a 304 answers GET and HEAD only")
 }
 
 func Test_classifySegment(t *testing.T) {
@@ -654,7 +664,7 @@ func Test_OpenAPI_MiddlewareHeaderNames(t *testing.T) {
 		for _, name := range []string{headerRateLimitLimit, headerRateLimitRemain, headerRateLimitReset} {
 			require.NotContains(t, headers, name)
 		}
-		require.Contains(t, chainHeaders(t, responses["429"]), fiber.HeaderRetryAfter)
+		require.NotContains(t, chainHeaders(t, responses["429"]), fiber.HeaderRetryAfter, "the limiter drops Retry-After with its other headers")
 	})
 }
 
@@ -705,8 +715,8 @@ func Test_OpenAPI_MiddlewareHeadersOnlyOnResponsesThatCarryThem(t *testing.T) {
 	require.NotContains(t, headersOf("401"), headerCacheStatus)
 	require.Contains(t, headersOf("401"), fiber.HeaderWWWAuthenticate)
 
-	// The limiter's own 429 reports its window, but is not a cached response.
-	require.Contains(t, headersOf("429"), headerRateLimitLimit)
+	// The limiter's own 429 carries Retry-After; the window headers are set only after the handler ran.
+	require.NotContains(t, headersOf("429"), headerRateLimitLimit)
 	require.Contains(t, headersOf("429"), fiber.HeaderRetryAfter)
 	require.NotContains(t, headersOf("429"), headerCacheStatus)
 
@@ -740,4 +750,15 @@ func Test_OpenAPI_ExplicitSecurityDeclaresNoInferredScheme(t *testing.T) {
 	if ok {
 		require.NotContains(t, components, "securitySchemes")
 	}
+}
+
+func Test_OpenAPI_CacheStatusHeaderOnHandlerErrors(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Get("/x", chainKeyAuth(), cache.New(), listUsers).Response(fiber.StatusNotFound, "Missing")
+	responses := chainResponses(t, modelOperation(t, modelSpec(t, app), "/x", "get"))
+
+	require.Contains(t, chainHeaders(t, responses["404"]), headerCacheStatus, "the cache sets it on the handler's errors too")
+	require.NotContains(t, chainHeaders(t, responses["401"]), headerCacheStatus)
 }

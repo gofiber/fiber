@@ -71,3 +71,24 @@ func enumType(values any) (string, bool) {
 	}
 	return shared, shared != ""
 }
+
+// AsMap returns v as a map[string]any when it is one, or a defined map type with string keys and any values
+// such as fiber.Map, copied into a plain map. A nil map of such a type reads as an empty one.
+func AsMap(v any) (map[string]any, bool) {
+	if plain, ok := v.(map[string]any); ok {
+		return plain, true
+	}
+	value := reflect.ValueOf(v)
+	if !value.IsValid() || value.Kind() != reflect.Map {
+		return nil, false
+	}
+	typ := value.Type()
+	if typ.Key().Kind() != reflect.String || typ.Elem().Kind() != reflect.Interface || typ.Elem().NumMethod() != 0 {
+		return nil, false
+	}
+	out := make(map[string]any, value.Len())
+	for iter := value.MapRange(); iter.Next(); {
+		out[iter.Key().String()] = iter.Value().Interface()
+	}
+	return out, true
+}

@@ -81,7 +81,7 @@ func mergeRouteParameters(params []parameter, index map[parameterKey]int, extras
 		var paramExample any
 		var paramExamples map[string]any
 		if len(extra.Examples) > 0 {
-			paramExamples = extra.Examples
+			paramExamples = exampleObjects(extra.Examples)
 		} else {
 			paramExample = extra.Example
 		}
@@ -140,7 +140,7 @@ func isDefaultStringSchema(schema any) bool {
 	if schema == nil {
 		return true
 	}
-	values, ok := schema.(map[string]any)
+	values, ok := schemautil.AsMap(schema)
 	if !ok {
 		return false
 	}

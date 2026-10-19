@@ -175,6 +175,33 @@ type Register interface {
     Add(methods []string, handler any, handlers ...any) Register
 
     RouteChain(path string) Register
+
+    // Route documentation helpers; they target the most recently registered route.
+    Name(name string) Register
+    Summary(sum string) Register
+    Description(desc string) Register
+    Consumes(typ string) Register
+    Produces(typ string) Register
+    RequestBody(description string, required bool, mediaTypes ...string) Register
+    RequestBodyWithExample(description string, required bool, schema any, schemaRef string, example any, examples map[string]any, mediaTypes ...string) Register
+    Parameter(name string, in ParamLocation, required bool, schema any, description string) Register
+    ParameterWithExample(name string, in ParamLocation, required bool, schema any, schemaRef, description string, example any, examples map[string]any) Register
+    AddParameter(param RouteParameter) Register
+    Response(status int, description string, mediaTypes ...string) Register
+    ResponseWithExample(status int, description string, schema any, schemaRef string, example any, examples map[string]any, mediaTypes ...string) Register
+    ResponseHeader(status int, name, description string, schema any) Register
+    ResponseContent(status int, description string, content map[string]RouteMediaType) Register
+    ResponseLink(status int, name string, link map[string]any) Register
+    RequestBodyContent(description string, required bool, content map[string]RouteMediaType) Register
+    Tags(tags ...string) Register
+    Deprecated() Register
+    Security(requirements ...map[string][]string) Register
+    Hidden() Register
+    OperationExternalDocs(description, url string) Register
+    OperationExtension(fields map[string]any) Register
+    Accepts(model any, mediaTypes ...string) Register
+    Returns(status int, model any, mediaTypes ...string) Register
+    Params(in ParamLocation, model any) Register
 }
 ```
 

@@ -1469,6 +1469,26 @@ func (app *App) autoHeadTwinLocked(headIndex int, key autoHeadKey) (int, *Route)
 	return -1, nil
 }
 
+// explicitHeadPositionLocked returns where route goes in the stack of method index m: the end, except for an
+// explicit HEAD route, which goes before the first generated HEAD twin of the same path left by another
+// domain, as that twin sits earlier in the stack and would answer first. The caller must hold app.mutex.
+func (app *App) explicitHeadPositionLocked(m int, route *Route) int {
+	if route.Method != MethodHead || route.mount || route.use {
+		return len(app.stack[m])
+	}
+	key := app.autoHeadKey(route)
+	for i, head := range app.stack[m] {
+		if !head.autoHead || head.path != key.path {
+			continue
+		}
+		if app.mountFields.hostScopedRoutes && app.routeOwner(head) != key.owner {
+			continue
+		}
+		return i
+	}
+	return len(app.stack[m])
+}
+
 // register creates one stack entry per method and returns the registration ID.
 func (app *App) register(methods []string, pathRaw string, group *Group, domain string, handlers ...Handler) uint64 {
 	// A regular route requires at least one ctx handler
@@ -1488,8 +1508,13 @@ func (app *App) register(methods []string, pathRaw string, group *Group, domain 
 	// Precompute path normalization ONCE
 	pathRaw, pathPretty, pathClean := normalizeRoutePattern(pathRaw, &app.config)
 
-	parsedRaw := parseRoute(pathRaw, app.config.RegexHandler, app.customConstraints...)
-	parsedPretty := parseRoute(pathPretty, app.config.RegexHandler, app.customConstraints...)
+	// Startup adds the constraints of mounted apps under the router lock, so the list is read under it too.
+	app.mutex.Lock()
+	constraints := app.customConstraints
+	app.mutex.Unlock()
+
+	parsedRaw := parseRoute(pathRaw, app.config.RegexHandler, constraints...)
+	parsedPretty := parseRoute(pathPretty, app.config.RegexHandler, constraints...)
 	// The pretty pattern is matched against, but its constraints must come
 	// from the raw one (see routeParser.adoptConstraints).
 	parsedPretty.adoptConstraints(&parsedRaw)
@@ -1591,8 +1616,8 @@ func (app *App) insertRoute(method string, route *Route) *Route {
 		liveRoute = preRoute
 	} else {
 		route.Method = method
-		// Add route to the stack
-		app.stack[m] = append(app.stack[m], route)
+		// Add route to the stack; an explicit HEAD goes ahead of a generated twin of another domain, which would shadow it.
+		app.stack[m] = slices.Insert(app.stack[m], app.explicitHeadPositionLocked(m, route), route)
 		app.hasRoutesRefreshed = true
 	}
 

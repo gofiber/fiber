@@ -1846,13 +1846,13 @@ func Test_NamedRouteIndex_SmallScanKeepsRegistrationOrder(t *testing.T) {
 	require.Equal(t, []string{"dup", "other"}, []string{index.small[0].Name, index.small[1].Name})
 }
 
-func Test_CopySchema_ClonesNamedMapsAndSlices(t *testing.T) {
+func Test_CopySchema_ClonesNamedMapsAsRawSchemasAndSlices(t *testing.T) {
 	t.Parallel()
 
 	type rawSchema map[string]any
 	named := rawSchema{"type": "object", "properties": map[string]any{"a": "x"}}
-	copied, ok := copySchema(named).(rawSchema)
-	require.True(t, ok)
+	copied, ok := copySchema(named).(map[string]any)
+	require.True(t, ok, "a defined map type with string keys is a raw schema and is stored as a plain map")
 	named["properties"].(map[string]any)["a"] = "changed"             //nolint:errcheck,forcetypeassert // built just above
 	require.Equal(t, "x", copied["properties"].(map[string]any)["a"]) //nolint:errcheck,forcetypeassert // built just above
 
@@ -2021,4 +2021,143 @@ func Test_Response_LaterCallsKeepTheBodyUnlessTheyDocumentOne(t *testing.T) {
 		ResponseContent(StatusOK, "", map[string]RouteMediaType{MIMEApplicationJSON: {Schema: map[string]any{"type": "string"}}}).
 		Response(StatusOK, "", MIMEApplicationJSON)
 	require.NotEmpty(t, routesFor(app, "/c")[MethodGet].Responses["200"].Content, "media types alone keep the content map")
+}
+
+func Test_Name_ReachesRoutesRegisteredThroughRouteChain(t *testing.T) {
+	t.Parallel()
+
+	t.Run("group", func(t *testing.T) {
+		t.Parallel()
+		app := New()
+		api := app.Group("/api")
+		api.Get("/a", testHandlerOK)
+		api.RouteChain("/b").Get(testHandlerOK)
+		api.Name("x").Summary("S")
+
+		route := app.GetRoute("x")
+		require.Equal(t, "/api/b", route.Path)
+		require.Equal(t, "S", route.Summary)
+	})
+
+	t.Run("domain router", func(t *testing.T) {
+		t.Parallel()
+		app := New()
+		d := app.Domain("x.example.com")
+		d.RouteChain("/b").Get(testHandlerOK)
+		d.Name("x")
+
+		require.Equal(t, "/b", app.GetRoute("x").Path)
+	})
+
+	t.Run("group with middleware", func(t *testing.T) {
+		t.Parallel()
+		app := New()
+		g := app.Group("/g")
+		g.Use(testHandlerOK)
+		g.RouteChain("/b").Get(testHandlerOK)
+		g.Name("x")
+
+		require.Equal(t, "/g/b", app.GetRoute("x").Path)
+	})
+}
+
+func Test_ExplicitHead_WinsOverTwinOfAnotherDomain(t *testing.T) {
+	t.Parallel()
+
+	head := func(t *testing.T, app *App, host string) string {
+		t.Helper()
+		req := httptest.NewRequest(MethodHead, "/a", http.NoBody)
+		req.Host = host
+		resp, err := app.Test(req)
+		require.NoError(t, err)
+		return resp.Header.Get("X-Handler")
+	}
+	handler := func(name string) Handler {
+		return func(c Ctx) error {
+			c.Set("X-Handler", name)
+			return c.SendStatus(StatusOK)
+		}
+	}
+
+	t.Run("domain HEAD registered after a host-agnostic twin exists", func(t *testing.T) {
+		t.Parallel()
+		app := New()
+		app.Get("/a", handler("get"))
+		app.RebuildTree()
+		app.Domain("x.com").Head("/a", handler("explicit"))
+
+		require.Equal(t, "explicit", head(t, app, "x.com"))
+		require.Equal(t, "get", head(t, app, "other.com"), "other hosts keep the generated twin")
+	})
+
+	t.Run("host-agnostic HEAD registered after a domain twin exists", func(t *testing.T) {
+		t.Parallel()
+		app := New()
+		app.Domain("x.com").Get("/a", handler("get"))
+		app.RebuildTree()
+		app.Head("/a", handler("explicit"))
+
+		require.Equal(t, "explicit", head(t, app, "x.com"))
+		require.Equal(t, "explicit", head(t, app, "other.com"))
+	})
+}
+
+func Test_RequestBody_LaterCallsKeepWhatTheyDoNotDocument(t *testing.T) {
+	t.Parallel()
+
+	model := struct{ Name string }{}
+
+	app := New()
+	app.Post("/a", testHandlerOK).Accepts(model).RequestBody("User to create", true)
+	body := routesFor(app, "/a")[MethodPost].RequestBody
+	require.NotNil(t, body)
+	require.NotNil(t, body.Schema, "a description alone keeps the model Accepts documented")
+	require.Equal(t, "User to create", body.Description)
+
+	app.Post("/b", testHandlerOK).RequestBody("Widget payload", true, MIMEApplicationJSON).RequestBodyContent("", true, map[string]RouteMediaType{MIMEApplicationJSON: {Schema: map[string]any{"type": "string"}}})
+	require.Equal(t, "Widget payload", routesFor(app, "/b")[MethodPost].RequestBody.Description)
+
+	app.Post("/c", testHandlerOK).RequestBodyContent("D", true, map[string]RouteMediaType{MIMEApplicationJSON: {Schema: map[string]any{"type": "string"}}}).RequestBody("", true)
+	got := routesFor(app, "/c")[MethodPost].RequestBody
+	require.Equal(t, "D", got.Description)
+	require.NotEmpty(t, got.Content)
+
+	app.Post("/d", testHandlerOK).Accepts(model).Accepts(struct{ ID int }{})
+	require.NotNil(t, routesFor(app, "/d")[MethodPost].RequestBody.Schema, "a new schema replaces the earlier one")
+}
+
+func Test_Mount_StartupConcurrentWithNestedSubApp(t *testing.T) {
+	t.Parallel()
+
+	inner := New()
+	inner.Get("/leaf", testHandlerOK)
+	sub := New()
+	sub.Get("/x", testHandlerOK)
+	sub.Use("/inner", inner)
+
+	app := New()
+	app.Use("/api", sub)
+
+	stop := make(chan struct{})
+	var wg sync.WaitGroup
+	wg.Go(func() {
+		for i := 0; ; i++ {
+			select {
+			case <-stop:
+				return
+			default:
+			}
+			sub.Get(fmt.Sprintf("/y%d", i), testHandlerOK).Response(StatusOK, "ok", MIMEApplicationJSON)
+			_ = sub.GetRoutes()
+		}
+	})
+
+	runBounded(t, "startup with a nested mount", func() {
+		resp, err := app.Test(httptest.NewRequest(MethodGet, "/api/inner/leaf", http.NoBody))
+		if assert.NoError(t, err) {
+			assert.Equal(t, StatusOK, resp.StatusCode)
+		}
+	})
+	close(stop)
+	wg.Wait()
 }

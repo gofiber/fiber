@@ -4,6 +4,8 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/gofiber/fiber/v3/internal/schemautil"
+
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/internal/deepcopy"
 	"github.com/gofiber/utils/v2"
@@ -198,7 +200,7 @@ type Config struct {
 	// Servers lists the servers hosting the API; it takes precedence over ServerURL. Optional. Default: nil
 	Servers []Server
 
-	// DisableDefaultMediaTypes stops documenting DefaultProduces, DefaultConsumes and ErrorProduces, leaving a response or body that declares no media type without content. Optional. Default: false
+	// DisableDefaultMediaTypes stops filling in DefaultProduces, DefaultConsumes and ErrorProduces when they are unset, leaving a response or body that declares no media type without content; values you set still apply. Optional. Default: false
 	DisableDefaultMediaTypes bool
 
 	// DisableMiddlewareInference stops documenting the security, headers, parameters and responses of recognized middleware on a route's path. Optional. Default: false
@@ -365,7 +367,7 @@ func configDefault(config ...Config) Config {
 			}
 		}
 	}
-	if schema, ok := cfg.ErrorSchema.(map[string]any); ok {
+	if schema, ok := schemautil.AsMap(cfg.ErrorSchema); ok {
 		cfg.ErrorSchema = deepcopy.Map(schema)
 	}
 	if _, ok := parseVersion(cfg.OpenAPIVersion); !ok {

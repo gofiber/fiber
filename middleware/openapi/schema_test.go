@@ -2,10 +2,12 @@ package openapi
 
 import (
 	"encoding/json"
+	"mime/multipart"
 	"reflect"
 	"testing"
 	"time"
 
+	"github.com/gofiber/fiber/v3"
 	"github.com/stretchr/testify/require"
 )
 
@@ -738,4 +740,113 @@ func Test_SchemaOf_JSONNumberAndPtrTextMarshaler(t *testing.T) {
 	props := requireProps(t, SchemaOf(Payload{}))
 	require.Equal(t, map[string]any{schemaKeyType: schemaTypeNumber}, requireProp(t, props, "n"))
 	require.Empty(t, requireProp(t, props, "p"))
+}
+
+type validateStructure struct {
+	Scores  map[string]int    `json:"scores" validate:"dive,keys,min=2,endkeys,gte=1"`
+	Pointer *string           `json:"pointer" validate:"omitempty,min=3"`
+	Extra   map[string]string `json:"extra"`
+	Nick    string            `json:"nick,omitempty" validate:"omitempty,min=3,max=9"`
+	Status  string            `json:"status" validate:"oneof='in progress' done"`
+	Tags    []string          `json:"tags" validate:"required,min=1,dive,min=3,max=10"`
+	Levels  []int             `json:"levels" validate:"dive,lte=100"`
+	Roles   []string          `json:"roles" validate:"dive,oneof=a b"`
+	Needed  []string          `json:"needed,omitempty" validate:"dive,required"`
+	Hash    []byte            `json:"hash" validate:"required,len=32"`
+	Blob    []byte            `json:"blob" validate:"min=1,max=16"`
+	Age     int               `json:"age,string" validate:"gte=18,lte=120"`
+	Price   float64           `json:"price" openapi:"example:19.99,enum:0.3|1.1" validate:"min=0.7"`
+}
+
+func Test_SchemaOf_ValidateStructure(t *testing.T) {
+	t.Parallel()
+
+	schema := SchemaOf(validateStructure{})
+	props := requireProps(t, schema)
+
+	tags := requireProp(t, props, "tags")
+	require.EqualValues(t, 1, tags["minItems"], "rules before dive constrain the slice")
+	require.NotContains(t, tags, "maxItems")
+	items := requireMap(t, tags["items"])
+	require.EqualValues(t, 3, items["minLength"], "rules after dive constrain the elements")
+	require.EqualValues(t, 10, items["maxLength"])
+
+	require.EqualValues(t, 100, requireMap(t, requireProp(t, props, "levels")["items"])["maximum"])
+	require.NotContains(t, requireProp(t, props, "levels"), "maxItems")
+	require.Equal(t, []any{"a", "b"}, requireMap(t, requireProp(t, props, "roles")["items"])["enum"])
+	require.NotContains(t, requireProp(t, props, "roles"), "enum")
+
+	required, isList := schema["required"].([]string)
+	require.True(t, isList)
+	require.NotContains(t, required, "needed", "required after dive is about the elements")
+	require.Contains(t, required, "tags")
+
+	scores := requireMap(t, requireProp(t, props, "scores")["additionalProperties"])
+	require.EqualValues(t, 1, scores["minimum"], "key rules are skipped, value rules apply")
+
+	nick := requireProp(t, props, "nick")
+	require.NotContains(t, nick, "minLength", "an empty value skips the rules after omitempty")
+	require.EqualValues(t, 9, nick["maxLength"], "an upper bound holds for an empty value")
+	require.EqualValues(t, 3, requireProp(t, props, "pointer")["minLength"], "a non-nil pointer is validated")
+}
+
+func Test_SchemaOf_ValidateTypeAwareBounds(t *testing.T) {
+	t.Parallel()
+
+	props := requireProps(t, SchemaOf(validateStructure{}))
+
+	age := requireProp(t, props, "age")
+	require.Equal(t, "string", age["type"])
+	require.NotContains(t, age, "minLength", "a quoted number is compared as a number, not a length")
+	require.NotContains(t, age, "maxLength")
+
+	hash := requireProp(t, props, "hash")
+	require.EqualValues(t, 44, hash["minLength"], "32 bytes are 44 base64 characters")
+	require.EqualValues(t, 44, hash["maxLength"])
+	blob := requireProp(t, props, "blob")
+	require.EqualValues(t, 4, blob["minLength"])
+	require.EqualValues(t, 24, blob["maxLength"])
+
+	require.Equal(t, []any{"in progress", "done"}, requireProp(t, props, "status")["enum"])
+
+	price := requireProp(t, props, "price")
+	require.InDelta(t, 0.7, price["minimum"], 0)
+	require.InDelta(t, 19.99, price["example"], 0)
+	require.Equal(t, []any{0.3, 1.1}, price["enum"])
+}
+
+func Test_splitRuleParams(t *testing.T) {
+	t.Parallel()
+
+	require.Equal(t, []string{"a", "b"}, splitRuleParams("a b"))
+	require.Equal(t, []string{"red green", "blue yellow"}, splitRuleParams("'red green' 'blue yellow'"))
+	require.Equal(t, []string{"in progress", "done"}, splitRuleParams("'in progress'  done"))
+	require.Equal(t, []string{"ab"}, splitRuleParams("a'b'"))
+	require.Empty(t, splitRuleParams("  "))
+}
+
+type fileUploadForm struct {
+	File  *multipart.FileHeader    `form:"file"`
+	Many  *[]*multipart.FileHeader `form:"many"`
+	Title string                   `form:"title"`
+	Files []*multipart.FileHeader  `form:"files"`
+}
+
+func Test_SchemaOf_MultipartFileHeaderIsBinary(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Post("/up", listUsers).Accepts(fileUploadForm{}, fiber.MIMEMultipartForm)
+	spec := modelSpec(t, app)
+
+	schemas := modelSchemas(t, spec)
+	require.NotContains(t, schemas, "FileHeader_form", "no component for the file header")
+	props := requireMap(t, requireMap(t, schemas["fileUploadForm_form"])["properties"])
+
+	binary := map[string]any{"type": "string", "format": "binary"}
+	require.Equal(t, binary, requireMap(t, props["file"]))
+	files := requireMap(t, props["files"])
+	require.Equal(t, "array", files["type"])
+	require.Equal(t, binary, requireMap(t, files["items"]))
+	require.Equal(t, "array", requireMap(t, props["many"])["type"])
 }

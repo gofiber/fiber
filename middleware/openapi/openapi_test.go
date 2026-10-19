@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"io"
+	"math/rand"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -17,6 +18,7 @@ import (
 	"weak"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/utils/v2"
 	"github.com/stretchr/testify/require"
 )
 
@@ -301,7 +303,7 @@ func Test_OpenAPI_SchemaRefsAndExamples(t *testing.T) {
 	param := requireMap(t, params[0])
 	require.Equal(t, "search query", param["description"])
 	require.Nil(t, param["example"])
-	require.Equal(t, map[string]any{"sample": "abc"}, requireMap(t, param["examples"]))
+	require.Equal(t, map[string]any{"sample": map[string]any{"value": "abc"}}, requireMap(t, param["examples"]))
 	paramSchema := requireMap(t, param["schema"])
 	require.Equal(t, "#/components/schemas/Query", paramSchema["$ref"])
 
@@ -311,7 +313,7 @@ func Test_OpenAPI_SchemaRefsAndExamples(t *testing.T) {
 	bodySchema := requireMap(t, jsonContent["schema"])
 	require.Equal(t, "#/components/schemas/User", bodySchema["$ref"])
 	require.Nil(t, jsonContent["example"])
-	require.Equal(t, map[string]any{"sample": map[string]any{"name": "doe"}}, requireMap(t, jsonContent["examples"]))
+	require.Equal(t, map[string]any{"sample": map[string]any{"value": map[string]any{"name": "doe"}}}, requireMap(t, jsonContent["examples"]))
 
 	resp := requireMap(t, requireMap(t, op["responses"])["201"])
 	respContent := requireMap(t, resp["content"])
@@ -319,7 +321,7 @@ func Test_OpenAPI_SchemaRefsAndExamples(t *testing.T) {
 	respSchema := requireMap(t, respJSON["schema"])
 	require.Equal(t, "#/components/schemas/UserResponse", respSchema["$ref"])
 	require.Nil(t, respJSON["example"])
-	require.Equal(t, map[string]any{"sample": map[string]any{"id": float64(2)}}, requireMap(t, respJSON["examples"]))
+	require.Equal(t, map[string]any{"sample": map[string]any{"value": map[string]any{"id": float64(2)}}}, requireMap(t, respJSON["examples"]))
 }
 
 // fetchSpec decodes the spec of an app that already mounts the middleware into the typed document.
@@ -3691,4 +3693,103 @@ func Test_OpenAPI_CacheDoesNotKeepAppsAlive(t *testing.T) {
 		return ref.Value() == nil
 	}, 5*time.Second, 10*time.Millisecond, "the handler's cache kept the app reachable")
 	runtime.KeepAlive(handler)
+}
+
+// legacyResolveDynamicMountPrefix is the original split-by-split search, kept to check the linear version.
+func legacyResolveDynamicMountPrefix(pattern, requestPath, specPath, uiPath string, equal segmentEqual) (string, bool) {
+	minSegments, maxSegments, dynamic := prefixSegmentBounds(pattern)
+	if !dynamic {
+		return "", false
+	}
+	if maxSegments < 0 || maxSegments > countPathSegments(requestPath) {
+		maxSegments = countPathSegments(requestPath)
+	}
+	for n := minSegments; n <= maxSegments; n++ {
+		candidate, ok := pathPrefixSegments(requestPath, n)
+		if !ok {
+			break
+		}
+		if specPath != "" && equal(candidate+specPath, requestPath) {
+			return candidate, true
+		}
+		if uiPath != "" && equal(candidate+uiPath, requestPath) {
+			return candidate, true
+		}
+	}
+	return "", false
+}
+
+func Test_resolveDynamicMountPrefix_MatchesSplitBySplitSearch(t *testing.T) {
+	t.Parallel()
+
+	patterns := []string{"/*", "/+", "/:a?", "/:a?/:b?", "/files/*", "/:a/*", "/api/:v?/*", "/:a/:b", "/x", "/*/y"}
+	targets := [][2]string{{"/openapi.json", "/swagger"}, {"/openapi.json", ""}, {"", "/swagger"}, {"/a/openapi.json", "/swagger"}}
+	segments := []string{"a", "files", "api", "v1", "openapi.json", "OPENAPI.JSON", "swagger", "Swagger"}
+	rng := rand.New(rand.NewSource(1))
+
+	for range 20000 {
+		parts := make([]string, rng.Intn(6))
+		for i := range parts {
+			parts[i] = segments[rng.Intn(len(segments))]
+		}
+		request := ""
+		if len(parts) > 0 {
+			request = "/" + strings.Join(parts, "/")
+		}
+		pattern := patterns[rng.Intn(len(patterns))]
+		pair := targets[rng.Intn(len(targets))]
+		for _, equal := range []segmentEqual{stringsEqual, utils.EqualFold[string]} {
+			wantPrefix, wantOK := legacyResolveDynamicMountPrefix(pattern, request, pair[0], pair[1], equal)
+			gotPrefix, gotOK := resolveDynamicMountPrefix(pattern, request, pair[0], pair[1], equal)
+			require.Equal(t, wantOK, gotOK, "pattern %q request %q targets %v", pattern, request, pair)
+			require.Equal(t, wantPrefix, gotPrefix, "pattern %q request %q targets %v", pattern, request, pair)
+		}
+	}
+}
+
+func Test_UIPageNeverUsesNetworkPathSpecURL(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Use("/*", New())
+
+	status, body := specBodyOf(t, app, "//evil.com/swagger")
+	require.Equal(t, fiber.StatusOK, status)
+	require.NotContains(t, body, `data-url="//`)
+	require.Contains(t, body, `data-url="/evil.com/openapi.json"`)
+}
+
+func Test_resolveDynamicMountPrefix_LongPathStaysLinear(t *testing.T) {
+	t.Parallel()
+
+	// A quadratic search takes minutes on this path; a linear one takes microseconds.
+	request := strings.Repeat("/a", 100_000) + "/openapi.json"
+	runBounded(t, "resolving a mount prefix on a long path", func() {
+		prefix, ok := resolveDynamicMountPrefix("/*", request, "/openapi.json", "/swagger", stringsEqual)
+		require.True(t, ok)
+		require.Len(t, prefix, len(request)-len("/openapi.json"))
+	})
+}
+
+func Test_exampleObjects(t *testing.T) {
+	t.Parallel()
+
+	require.Nil(t, exampleObjects(nil))
+
+	got := exampleObjects(map[string]any{
+		"bare":     "xyz-789",
+		"object":   map[string]any{"name": "bob"},
+		"explicit": map[string]any{"summary": "s", "value": map[string]any{"name": "bob"}},
+		"external": map[string]any{"externalValue": "https://example.com/e.json"},
+		"ref":      map[string]any{"$ref": "#/components/examples/E"},
+		"summary":  map[string]any{"summary": "only a summary"},
+		"fiber":    fiber.Map{"description": "d", "value": 1},
+	})
+	require.Equal(t, map[string]any{"value": "xyz-789"}, got["bare"])
+	require.Equal(t, map[string]any{"value": map[string]any{"name": "bob"}}, got["object"])
+	require.Equal(t, map[string]any{"summary": "s", "value": map[string]any{"name": "bob"}}, got["explicit"])
+	require.Equal(t, map[string]any{"externalValue": "https://example.com/e.json"}, got["external"])
+	require.Equal(t, map[string]any{"$ref": "#/components/examples/E"}, got["ref"])
+	require.Equal(t, map[string]any{"value": map[string]any{"summary": "only a summary"}}, got["summary"])
+	require.Equal(t, map[string]any{"description": "d", "value": 1}, got["fiber"])
 }

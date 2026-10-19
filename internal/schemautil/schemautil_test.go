@@ -45,3 +45,29 @@ func Test_DefaultType(t *testing.T) {
 		})
 	}
 }
+
+type namedMap map[string]any
+
+type otherMap map[string]string
+
+func Test_AsMap(t *testing.T) {
+	t.Parallel()
+
+	plain := map[string]any{"a": 1}
+	got, ok := AsMap(plain)
+	require.True(t, ok)
+	require.Equal(t, plain, got)
+
+	got, ok = AsMap(namedMap{"type": "object"})
+	require.True(t, ok)
+	require.Equal(t, map[string]any{"type": "object"}, got)
+
+	got, ok = AsMap(namedMap(nil))
+	require.True(t, ok)
+	require.Empty(t, got)
+
+	for _, v := range []any{nil, "x", 1, otherMap{"a": "b"}, map[int]any{1: 1}, []string{}, struct{}{}} {
+		_, ok = AsMap(v)
+		require.False(t, ok, "%T", v)
+	}
+}

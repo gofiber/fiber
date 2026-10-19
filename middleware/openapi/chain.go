@@ -141,14 +141,64 @@ func coversRoute(prefix, path string, equal segmentEqual) bool {
 		var found bool
 		pathSegment, pathRest, found = utils.CutByte(pathRest, '/')
 		pathDone = !found
-		if !strings.HasPrefix(tokens, ":") &&
-			(routeTokens(pathSegment) != pathSegment || !equal(fiber.RemoveEscapeChar(segment), fiber.RemoveEscapeChar(pathSegment))) {
+		if strings.HasPrefix(tokens, ":") {
+			if !paramSegmentCovers(segment, pathSegment) {
+				return false
+			}
+		} else if routeTokens(pathSegment) != pathSegment || !equal(fiber.RemoveEscapeChar(segment), fiber.RemoveEscapeChar(pathSegment)) {
 			return false
 		}
 		if !more {
 			return true
 		}
 		prefixRest = nextPrefix
+	}
+}
+
+// paramSegmentCovers reports whether a prefix segment that is a parameter is passed by every request the route
+// segment answers. A parameter needs a non-empty value, so the route must have a segment there that is
+// neither optional nor greedy. A constraint narrows the values, so one is covered only by a parameter with
+// the same constraint; a literal might not satisfy it.
+func paramSegmentCovers(prefixSegment, routeSegment string) bool {
+	if routeSegment == "" {
+		return false
+	}
+	if kind, _ := classifySegment(routeSegment); kind == segmentOptional || kind == segmentGreedy {
+		return false
+	}
+	constraint := func(segment string) string {
+		if i := strings.IndexByte(segment, '<'); i >= 0 {
+			return segment[i:]
+		}
+		return ""
+	}
+	want := constraint(prefixSegment)
+	if want == "" {
+		return true
+	}
+	kind, _ := classifySegment(routeSegment)
+	if kind == segmentParam {
+		return constraint(routeSegment) == want
+	}
+	return literalSatisfies(want, routeSegment)
+}
+
+// literalSatisfies reports whether a literal route segment is accepted by one of the simple constraints it
+// can be checked against; any other constraint is assumed not to accept it.
+func literalSatisfies(constraint, literal string) bool {
+	if literal == "" {
+		return false
+	}
+	switch constraint {
+	case "<int>":
+		digits := strings.TrimPrefix(strings.TrimPrefix(literal, "-"), "+")
+		return digits != "" && strings.Trim(digits, "0123456789") == ""
+	case "<alpha>":
+		return strings.Trim(literal, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ") == ""
+	case "<bool>":
+		return literal == "true" || literal == "false"
+	default:
+		return false
 	}
 }
 
@@ -287,9 +337,12 @@ func applyMiddlewareResponses(responses map[string]response, method string, set 
 	}
 	if set.has(kindLimiter) {
 		addError("429", "Too Many Requests")
-		resp := responses["429"]
-		addHeader(&resp, fiber.HeaderRetryAfter, headerObject("Seconds until the limit resets", schemaTypeInteger))
-		responses["429"] = resp
+		// The limiter drops Retry-After along with the rate limit headers when its headers are disabled.
+		if !cfg.DisableRateLimitHeaders {
+			resp := responses["429"]
+			addHeader(&resp, fiber.HeaderRetryAfter, headerObject("Seconds until the limit resets", schemaTypeInteger))
+			responses["429"] = resp
+		}
 	}
 	if set.has(kindETag) && readsOnly {
 		if _, ok := responses["304"]; !ok {
@@ -302,17 +355,20 @@ func applyMiddlewareResponses(responses map[string]response, method string, set 
 			addHeader(&resp, cfg.RequestIDHeader, headerObject("The request identifier", schemaTypeString))
 		}
 		success := len(status) == 3 && status[0] == '2'
-		// The limiter reports its window on the responses it lets through and on its own 429; a response
-		// an earlier middleware sent (a 401, a 403) never reached it.
-		if set.has(kindLimiter) && !cfg.DisableRateLimitHeaders && (success || status == "429") {
+		// The limiter reports its window after the handler ran, so only on the responses it lets through; its
+		// own 429 carries Retry-After instead, and a response an earlier middleware sent never reached it.
+		if set.has(kindLimiter) && !cfg.DisableRateLimitHeaders && success {
 			addHeader(&resp, cfg.RateLimitHeaders.Limit, headerObject("Requests allowed per window", schemaTypeInteger))
 			addHeader(&resp, cfg.RateLimitHeaders.Remaining, headerObject("Requests left in the window", schemaTypeInteger))
 			addHeader(&resp, cfg.RateLimitHeaders.Reset, headerObject("Seconds until the window resets", schemaTypeInteger))
 		}
-		if set.has(kindETag) && readsOnly && success {
+		// ETag is generated for a 200 with a body, whatever the method, and repeated on the 304 it answers.
+		if set.has(kindETag) && (status == "200" || (status == "304" && readsOnly)) {
 			addHeader(&resp, fiber.HeaderETag, headerObject("The entity tag of the response", schemaTypeString))
 		}
-		if set.has(kindCache) && success {
+		// The cache reports its status on every response the handler produced, errors included, but not on
+		// the ones an earlier middleware sent (a 401, a 403) or the limiter's 429.
+		if set.has(kindCache) && status != "401" && status != "403" && status != "429" {
 			addHeader(&resp, cfg.CacheHeader, headerObject("Whether the response was served from cache", schemaTypeString))
 		}
 		responses[status] = resp

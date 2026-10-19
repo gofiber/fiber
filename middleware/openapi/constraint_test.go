@@ -88,7 +88,9 @@ func Test_ScanConstraintSpan(t *testing.T) {
 	}{
 		{"simple", "<int>rest", "int", 0, 5},
 		{"empty span", "<>", "", 0, 2},
-		{"inner angle bracket closes at first '>'", "<regex(^<a>$)>", "regex(^<a", 0, 11},
+		{"inner angle bracket stays in the span", "<regex(^<a>$)>", "regex(^<a>$)", 0, 14},
+		{"a terminator after the first close ends it", "<int>/rest>", "int", 0, 5},
+		{"a class with '>' before the real close", "<regex(^[^>]+$)>?", "regex(^[^>]+$)", 0, 16},
 		{"escaped close", `<regex(a\>b)>`, `regex(a\>b)`, 0, 13},
 		{"unterminated runs to end", "<int", "int", 0, 4},
 		{"offset start", "x<bool>", "bool", 1, 7},

@@ -557,3 +557,52 @@ func Test_buildOpenAPIPathVariants_EscapedBracesAreEncoded(t *testing.T) {
 	require.Len(t, variants, 1)
 	require.Equal(t, "/e/a%7Bb%7D", variants[0].Path)
 }
+
+func Test_PathLexer_AgreesWithTheRouter(t *testing.T) {
+	t.Parallel()
+
+	for _, pattern := range []string{
+		"/users/:id",
+		"/users/:id<int>/posts/:post",
+		"/x/:date<regex([^>]+)>",
+		"/api/v1/:param<regex(^[^>]+$)>",
+		"/shop/product/color::color/size::size",
+		"/a:b/c",
+		"/files/*",
+		"/files/+/x",
+		"/a/:x-:y/b",
+		`/lit\:eral/:id`,
+	} {
+		app := fiber.New()
+		app.Get(pattern, listUsers)
+		var params []string
+		for _, route := range app.GetRoutes(true) {
+			if route.Path == pattern || route.Method == fiber.MethodGet {
+				params = route.Params
+				break
+			}
+		}
+
+		var got []string
+		for _, variant := range buildOpenAPIPathVariants(pattern, params, false) {
+			if len(variant.ParamNames) > len(got) {
+				got = variant.ParamNames
+			}
+		}
+		require.Len(t, got, len(params), "%s: router params %v, lexer params %v", pattern, params, got)
+	}
+}
+
+func Test_OpenAPI_PathsMatchServedRoutes(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Get("/x/:date<regex([^>]+)>", listUsers)
+	app.Get("/shop/product/color::color/size::size", listUsers)
+	spec := modelSpec(t, app)
+
+	paths := requireMap(t, spec["paths"])
+	require.Contains(t, paths, "/x/{date}")
+	require.NotContains(t, paths, "/x/{date}]{wildcard})>")
+	require.Contains(t, paths, "/shop/product/color:{color}/size:{size}")
+}

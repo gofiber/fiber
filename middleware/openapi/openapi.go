@@ -9,6 +9,8 @@ import (
 	"sync/atomic"
 	"weak"
 
+	"github.com/gofiber/fiber/v3/internal/urlnorm"
+
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/utils/v2"
 )
@@ -139,7 +141,7 @@ func New(config ...Config) fiber.Handler {
 	// Config() copies the whole struct; resolve the case rule once per app.
 	var lastEquality atomic.Pointer[appEquality]
 	equalityFor := func(app *fiber.App) func(a, b string) bool {
-		if e := lastEquality.Load(); e != nil && e.app == weak.Make(app) {
+		if e := lastEquality.Load(); e != nil && e.app.Value() == app {
 			return e.equal
 		}
 		appCfg := app.Config()
@@ -157,13 +159,17 @@ func New(config ...Config) fiber.Handler {
 			return c.Next()
 		}
 
-		equal := equalityFor(c.App())
-
 		request := utils.TrimRight(c.Path(), '/')
 		route := c.Route()
 		isMiddleware := route != nil && route.IsMiddleware()
 
-		// Fast path: most prefix-mounted requests match neither target.
+		// Fast path: most prefix-mounted requests match neither target, which a last-byte check shows
+		// before the app's case rule is looked up.
+		if isMiddleware && !mayEndWith(request, specPath) && !mayEndWith(request, uiPath) {
+			return c.Next()
+		}
+
+		equal := equalityFor(c.App())
 		if isMiddleware && !hasSuffix(request, specPath, equal) && !hasSuffix(request, uiPath, equal) {
 			return c.Next()
 		}
@@ -178,11 +184,9 @@ func New(config ...Config) fiber.Handler {
 			}
 			return body.send(c, fiber.MIMEApplicationJSONCharsetUTF8)
 		case targets.uiOK && equal(request, targets.ui):
-			// A spec served at the root trims to "", which would leave the page with no URL.
-			specURL := targets.spec
-			if specURL == "" {
-				specURL = "/"
-			}
+			// The spec URL may be built from the request path, so it is kept a rooted path: "//host/..." would be a
+			// network-path reference, and a spec served at the root trims to "" and would leave the page with no URL.
+			specURL := urlnorm.RootedPath(targets.spec)
 			body, err := uiBytes(c.App(), specURL)
 			if err != nil {
 				return err
@@ -202,6 +206,19 @@ func segmentEqualFor(cfg *fiber.Config) segmentEqual {
 		return stringsEqual
 	}
 	return utils.EqualFold[string]
+}
+
+// mayEndWith is a cheap necessary condition for hasSuffix under any case rule: s is long enough and its last
+// byte matches suffix's, ignoring ASCII case.
+func mayEndWith(s, suffix string) bool {
+	if len(s) < len(suffix) {
+		return false
+	}
+	if suffix == "" {
+		return true
+	}
+	last, want := s[len(s)-1], suffix[len(suffix)-1]
+	return last == want || last|0x20 == want|0x20
 }
 
 // hasSuffix reports whether s ends with suffix under equal.

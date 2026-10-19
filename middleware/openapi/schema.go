@@ -3,6 +3,8 @@ package openapi
 import (
 	"encoding"
 	"encoding/json"
+	"math"
+	"mime/multipart"
 	"reflect"
 	"regexp"
 	"slices"
@@ -35,6 +37,7 @@ const (
 
 var (
 	timeType          = reflect.TypeFor[time.Time]()
+	fileHeaderType    = reflect.TypeFor[multipart.FileHeader]()
 	jsonNumberType    = reflect.TypeFor[json.Number]()
 	jsonMarshalerType = reflect.TypeFor[json.Marshaler]()
 	textMarshalerType = reflect.TypeFor[encoding.TextMarshaler]()
@@ -126,6 +129,11 @@ func typeSchema(t reflect.Type, visited map[reflect.Type]bool, reg *schemaRegist
 
 	if t == timeType {
 		return map[string]any{schemaKeyType: schemaTypeString, schemaKeyFormat: "date-time"}
+	}
+
+	// An uploaded file part is a binary string, which Swagger UI shows as a file picker.
+	if t == fileHeaderType {
+		return map[string]any{schemaKeyType: schemaTypeString, schemaKeyFormat: "binary"}
 	}
 
 	// json.Number is a string kind but marshals as a JSON number.
@@ -294,7 +302,8 @@ func structSchema(t reflect.Type, visited map[reflect.Type]bool, reg *schemaRegi
 				// A validate rule outranks omitempty.
 				mustValidate := applyValidateTag(&field, fieldSchema)
 				// A pointer is written as null when nil, which the schema has to allow.
-				if field.Type.Kind() == reflect.Pointer && !tagInfo.asString {
+				// An uploaded file is a part of a form and is never null.
+				if field.Type.Kind() == reflect.Pointer && !holdsFileHeaders(field.Type) {
 					fieldSchema = reg.nullable(fieldSchema)
 				}
 				fieldSchema = reg.withRefSiblings(fieldSchema)
@@ -546,7 +555,7 @@ func inferExampleValue(val string, schema map[string]any) any {
 			return n
 		}
 	case schemaTypeNumber:
-		if f, err := utils.ParseFloat64(val); err == nil {
+		if f, err := parseFloat(val); err == nil {
 			return f
 		}
 	case schemaTypeBoolean:
@@ -562,48 +571,244 @@ func inferExampleValue(val string, schema map[string]any) any {
 // applyValidateTag translates validate rules into schema constraints and reports
 // whether the field is required. Rules it cannot express are ignored, among them gt and lt on a
 // float, whose exclusive bound is spelled differently in each OpenAPI version.
+//
+// The validator's structure is followed: rules after "dive" constrain the elements, so they go to the
+// items (or additionalProperties) schema and never make the field required; rules between "keys" and
+// "endkeys" constrain map keys and are skipped; and after "omitempty" the rules that an empty value
+// would break (lower bounds, len, oneof) are skipped, as the validator does not run them then.
 func applyValidateTag(field *reflect.StructField, schema map[string]any) bool {
 	tag := field.Tag.Get("validate")
 	if tag == "" {
 		return false
 	}
+
+	rules := validateTarget{
+		schema: schema,
+		top:    true,
+		// A []byte is a base64 string, so its byte counts become character counts.
+		bytes: isByteSlice(field.Type),
+		// A quoted number is a string in the document while the validator still compares the number.
+		numeric: quotedNumber(field),
+		// A pointer is validated whenever it is not nil, empty or not.
+		pointer: field.Type.Kind() == reflect.Pointer,
+	}
 	required := false
+	inKeys := false
 	for rule := range utils.SplitTrimSeq(tag, ',') {
 		key, value, _ := utils.CutByte(rule, '=')
 		switch key {
-		case "required":
-			required = true
-		case "min", "gte":
-			setBound(schema, value, lowerBound)
-		case "max", "lte":
-			setBound(schema, value, upperBound)
-		case "gt":
-			setExclusiveBound(schema, value, lowerBound)
-		case "lt":
-			setExclusiveBound(schema, value, upperBound)
-		case "len":
-			setBound(schema, value, lowerBound)
-			setBound(schema, value, upperBound)
-		case "oneof":
-			values := strings.Fields(value)
-			enum := make([]any, len(values))
-			for i, v := range values {
-				enum[i] = inferExampleValue(utils.Trim(v, '\''), schema)
-			}
-			if len(enum) > 0 {
-				schema["enum"] = enum
-			}
-		case "datetime":
-			if value == time.RFC3339 {
-				setFormat(schema, "date-time")
-			}
-		default:
-			if format, ok := validateFormats[key]; ok {
-				setFormat(schema, format)
-			}
+		case "keys":
+			inKeys = true
+			continue
+		case "endkeys":
+			inKeys = false
+			continue
 		}
+		if inKeys {
+			continue
+		}
+		if key == "dive" {
+			rules = rules.dive()
+			continue
+		}
+		if rules.schema == nil {
+			continue
+		}
+		if key == "required" {
+			required = required || rules.top
+			continue
+		}
+		rules.apply(key, value)
 	}
 	return required
+}
+
+// validateTarget is the schema a run of validate rules constrains, and what is known about its Go type.
+type validateTarget struct {
+	schema map[string]any
+	// bytes is set for a []byte field, numeric for a quoted number, pointer for a pointer field.
+	bytes, numeric, pointer bool
+	// omitted is set once "omitempty" has been seen at this level.
+	omitted bool
+	// top is set while the target is the field itself and not one of its elements.
+	top bool
+}
+
+// dive moves to the schema of the elements, or to nothing when there is none a rule could be added to.
+func (t validateTarget) dive() validateTarget {
+	next := validateTarget{}
+	for _, keyword := range [...]string{"items", "additionalProperties"} {
+		child, ok := t.schema[keyword].(map[string]any)
+		if !ok {
+			continue
+		}
+		// A reference takes no sibling keys under 3.0, so its constraints are left out.
+		if _, isRef := child[schemaKeyRef]; !isRef {
+			next.schema = child
+		}
+		break
+	}
+	return next
+}
+
+// apply writes one rule onto the target.
+func (t *validateTarget) apply(key, value string) {
+	if key == "omitempty" {
+		t.omitted = !t.pointer
+		return
+	}
+	// An empty value is allowed after omitempty, so a rule that needs a non-empty one cannot be documented.
+	if t.omitted {
+		switch key {
+		case "min", "gte", "gt", "len", "oneof":
+			return
+		}
+	}
+	switch key {
+	case "min", "gte":
+		t.bound(value, lowerBound)
+	case "max", "lte":
+		t.bound(value, upperBound)
+	case "gt":
+		t.exclusiveBound(value, lowerBound)
+	case "lt":
+		t.exclusiveBound(value, upperBound)
+	case "len":
+		t.bound(value, lowerBound)
+		t.bound(value, upperBound)
+	case "oneof":
+		values := splitRuleParams(value)
+		enum := make([]any, len(values))
+		for i, v := range values {
+			enum[i] = inferExampleValue(v, t.schema)
+		}
+		if len(enum) > 0 {
+			t.schema["enum"] = enum
+		}
+	case "datetime":
+		if value == time.RFC3339 {
+			setFormat(t.schema, "date-time")
+		}
+	default:
+		if format, ok := validateFormats[key]; ok {
+			setFormat(t.schema, format)
+		}
+	}
+}
+
+// bound writes a limit under the keyword for the schema's type.
+func (t *validateTarget) bound(value string, side boundSide) {
+	switch {
+	case t.numeric:
+	case t.bytes:
+		if n, ok := byteCount(value, 0); ok {
+			setBound(t.schema, strconv.FormatInt(encodedLength(n), 10), side)
+		}
+	default:
+		setBound(t.schema, value, side)
+	}
+}
+
+// exclusiveBound writes a gt or lt limit one step inside the value.
+func (t *validateTarget) exclusiveBound(value string, side boundSide) {
+	switch {
+	case t.numeric:
+	case t.bytes:
+		step := int64(-1)
+		if side == lowerBound {
+			step = 1
+		}
+		if n, ok := byteCount(value, step); ok {
+			setBound(t.schema, strconv.FormatInt(encodedLength(n), 10), side)
+		}
+	default:
+		setExclusiveBound(t.schema, value, side)
+	}
+}
+
+// byteCount reads a byte count moved by step, or false when it is not a count.
+func byteCount(value string, step int64) (int64, bool) {
+	n, err := utils.ParseInt(value)
+	n += step
+	return n, err == nil && n >= 0
+}
+
+// encodedLength is the length of n bytes as padded base64.
+func encodedLength(n int64) int64 {
+	return 4 * ((n + 2) / 3)
+}
+
+// splitRuleParams splits a rule's parameter the way the validator does: on whitespace, except inside single
+// quotes, which are dropped.
+func splitRuleParams(value string) []string {
+	var params []string
+	isSpace := func(c byte) bool { return c == ' ' || c == '\t' || c == '\n' }
+	for i := 0; i < len(value); {
+		if isSpace(value[i]) {
+			i++
+			continue
+		}
+		if value[i] == '\'' {
+			if end := strings.IndexByte(value[i+1:], '\''); end >= 0 {
+				params = append(params, value[i+1:i+1+end])
+				i += end + 2
+				continue
+			}
+		}
+		end := i
+		for end < len(value) && !isSpace(value[end]) {
+			end++
+		}
+		params = append(params, strings.ReplaceAll(value[i:end], "'", ""))
+		i = end
+	}
+	return params
+}
+
+// holdsFileHeaders reports whether t is, or is a pointer to or slice of, a multipart file header.
+func holdsFileHeaders(t reflect.Type) bool {
+	t = derefType(t)
+	if t.Kind() == reflect.Slice || t.Kind() == reflect.Array {
+		t = derefType(t.Elem())
+	}
+	return t == fileHeaderType
+}
+
+// isByteSlice reports whether t is a slice of bytes, which JSON writes as a base64 string.
+func isByteSlice(t reflect.Type) bool {
+	t = derefType(t)
+	return t.Kind() == reflect.Slice && t.Elem().Kind() == reflect.Uint8
+}
+
+// quotedNumber reports whether the field is a number or boolean written as a JSON string by the ",string" option.
+func quotedNumber(field *reflect.StructField) bool {
+	_, options, _ := utils.CutByte(field.Tag.Get("json"), ',')
+	for option := range utils.SplitTrimSeq(options, ',') {
+		if option != "string" {
+			continue
+		}
+		switch derefType(field.Type).Kind() {
+		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
+			reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64,
+			reflect.Float32, reflect.Float64, reflect.Bool:
+			return true
+		default:
+			return false
+		}
+	}
+	return false
+}
+
+// parseFloat reads a finite float, as a document cannot carry NaN or infinity.
+func parseFloat(value string) (float64, error) {
+	f, err := strconv.ParseFloat(value, 64)
+	if err != nil {
+		return 0, err //nolint:wrapcheck // the caller only tests for failure
+	}
+	if math.IsNaN(f) || math.IsInf(f, 0) {
+		return 0, strconv.ErrRange
+	}
+	return f, nil
 }
 
 func setFormat(schema map[string]any, format string) {
@@ -654,7 +859,7 @@ func setBound(schema map[string]any, value string, side boundSide) {
 		}
 		bound = n
 	case schemaTypeNumber:
-		f, err := utils.ParseFloat64(value)
+		f, err := parseFloat(value)
 		if err != nil {
 			return
 		}

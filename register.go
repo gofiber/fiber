@@ -154,6 +154,13 @@ func (r *Registering) Add(methods []string, handler any, handlers ...any) Regist
 	}
 	regID := r.app.register(methods, r.path, r.group, pattern, converted...)
 	r.cursor.Store(regID)
+	// The router the chain came from names and documents its latest registration too.
+	switch {
+	case r.domain != nil:
+		r.domain.remember(regID)
+	case r.group != nil:
+		r.group.cursor.Store(regID)
+	}
 	if r.domain != nil {
 		r.app.applyToRegistration(regID, docSetInnerHandlers(inner))
 	}

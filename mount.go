@@ -783,6 +783,9 @@ func (app *App) processSubAppsRoutes() {
 		// process the inner routes
 		if subApp.hasMountedApps() {
 			subApp.mountFields.subAppsRoutesAdded.Do(func() {
+				// The sub-app rewrites its own stack here, so it needs its own lock, taken under the parent's.
+				subApp.mutex.Lock()
+				defer subApp.mutex.Unlock()
 				subApp.processSubAppsRoutes()
 			})
 		}

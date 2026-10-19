@@ -5,6 +5,8 @@ import (
 	"reflect"
 	"strings"
 
+	"github.com/gofiber/fiber/v3/internal/schemautil"
+
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/utils/v2"
 )
@@ -54,17 +56,16 @@ func newSchemaRegistry(cfg *Config, d dialect) *schemaRegistry {
 
 // resolve turns a schema argument into a schema map; a nil registry reflects inline.
 func (reg *schemaRegistry) resolve(schema any) map[string]any {
-	switch value := schema.(type) {
-	case nil:
+	if schema == nil {
 		return nil
-	case map[string]any:
+	}
+	if value, ok := schemautil.AsMap(schema); ok {
 		if len(value) == 0 {
 			return nil
 		}
 		return maps.Clone(value)
-	default:
-		return typeSchema(reflect.TypeOf(schema), nil, reg)
 	}
+	return typeSchema(reflect.TypeOf(schema), nil, reg)
 }
 
 // ref registers a named struct type and returns a reference to it. The name is

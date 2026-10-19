@@ -972,7 +972,9 @@ func (app *App) setCtxFunc(function func(app *App) CustomCtx) {
 
 // RegisterCustomConstraint allows to register custom constraint.
 func (app *App) RegisterCustomConstraint(constraint CustomConstraint) {
+	app.mutex.Lock()
 	app.customConstraints = append(app.customConstraints, constraint)
+	app.mutex.Unlock()
 }
 
 // RegisterCustomBinder Allows to register custom binders to use as Bind().Custom("name").
