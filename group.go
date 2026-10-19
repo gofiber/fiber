@@ -7,12 +7,11 @@ package fiber
 import (
 	"fmt"
 	"reflect"
-	"sync/atomic"
 )
 
 // Group represents a collection of routes that share middleware and a common
 // path prefix.
-type Group struct { // betteralign:ignore - docTarget must stay first, as its 64-bit atomic needs an 8-byte aligned word on 32-bit platforms
+type Group struct {
 	docTarget[Router]
 
 	parentGroup *Group
@@ -29,7 +28,7 @@ type Group struct { // betteralign:ignore - docTarget must stay first, as its 64
 // Otherwise, it'll set route name and OnName hook will be used.
 func (grp *Group) Name(name string) Router {
 	if grp.hasAnyRoute {
-		grp.app.applyNameToRegistration(atomic.LoadUint64(&grp.lastRegID), name)
+		grp.app.applyNameToRegistration(grp.cursor.Load(), name)
 
 		return grp
 	}
@@ -105,7 +104,7 @@ func (grp *Group) Use(args ...any) Router {
 			continue
 		}
 
-		atomic.StoreUint64(&grp.lastRegID, grp.app.register([]string{methodUse}, getGroupPath(grp.Prefix, prefix), grp, allHosts, handlers...))
+		grp.cursor.Store(grp.app.register([]string{methodUse}, getGroupPath(grp.Prefix, prefix), grp, allHosts, handlers...))
 	}
 
 	if !grp.hasAnyRoute {
@@ -178,7 +177,7 @@ func (grp *Group) Query(path string, handler any, handlers ...any) Router {
 // The provided handlers are executed in order, starting with `handler` and then the variadic `handlers`.
 func (grp *Group) Add(methods []string, path string, handler any, handlers ...any) Router {
 	converted := collectHandlers("group", append([]any{handler}, handlers...)...)
-	atomic.StoreUint64(&grp.lastRegID, grp.app.register(methods, getGroupPath(grp.Prefix, path), grp, allHosts, converted...))
+	grp.cursor.Store(grp.app.register(methods, getGroupPath(grp.Prefix, path), grp, allHosts, converted...))
 	if !grp.hasAnyRoute {
 		grp.hasAnyRoute = true
 	}
@@ -204,7 +203,7 @@ func (grp *Group) Group(prefix string, handlers ...any) Router {
 	if len(handlers) > 0 {
 		converted := collectHandlers("group", handlers...)
 		// Record on the sub-group; the parent's doc helpers must not retarget this Use route.
-		atomic.StoreUint64(&newGrp.lastRegID, grp.app.register([]string{methodUse}, prefix, grp, allHosts, converted...))
+		newGrp.cursor.Store(grp.app.register([]string{methodUse}, prefix, grp, allHosts, converted...))
 	}
 	if err := grp.app.hooks.executeOnGroupHooks(*newGrp); err != nil {
 		panic(err)

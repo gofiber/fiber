@@ -7,7 +7,13 @@ func (app *App) applyToLatest(apply func(route *Route)) {
 	}
 	app.mutex.Lock()
 	defer app.mutex.Unlock()
-	if app.applyToRegIDLocked(app.latestRegID, apply) {
+	app.applyAndBumpLocked(app.latestRegID, apply)
+}
+
+// applyAndBumpLocked applies a mutation to the entries of regID and bumps the routes revision when any was
+// touched. The caller must hold app.mutex.
+func (app *App) applyAndBumpLocked(regID uint64, apply func(route *Route)) {
+	if app.applyToRegIDLocked(regID, apply) {
 		app.bumpRoutesRevision()
 	}
 }
@@ -57,9 +63,7 @@ func (app *App) applyToRegistration(regID uint64, apply func(route *Route)) {
 	}
 	app.mutex.Lock()
 	defer app.mutex.Unlock()
-	if app.applyToRegIDLocked(regID, apply) {
-		app.bumpRoutesRevision()
-	}
+	app.applyAndBumpLocked(regID, apply)
 }
 
 // applyToRegIDLocked applies a mutation to every entry of regID except mount

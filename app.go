@@ -106,6 +106,9 @@ type Error struct {
 // App is safe for concurrent use, except for route mutation methods that
 // explicitly document otherwise.
 type App struct {
+	// docTarget provides the route-documentation helpers, applied to the latest registration.
+	docTarget[Router]
+
 	// App config
 	config Config
 	// Indicates if the value was explicitly configured
@@ -779,6 +782,7 @@ func New(config ...Config) *App {
 		customBinders: []CustomBinder{},
 		sendfiles:     []*sendFileStore{},
 	}
+	app.docTarget = docTarget[Router]{app: app, self: app}
 
 	// Create Ctx pool
 	app.pool = sync.Pool{
@@ -1237,7 +1241,7 @@ func (app *App) Group(prefix string, handlers ...any) Router {
 	if len(handlers) > 0 {
 		converted := collectHandlers("group", handlers...)
 		// The middleware belongs to the group so chained helpers reach it.
-		atomic.StoreUint64(&grp.lastRegID, app.register([]string{methodUse}, prefix, grp, allHosts, converted...))
+		grp.cursor.Store(app.register([]string{methodUse}, prefix, grp, allHosts, converted...))
 	}
 	if err := app.hooks.executeOnGroupHooks(*grp); err != nil {
 		panic(err)

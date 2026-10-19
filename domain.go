@@ -9,7 +9,6 @@ import (
 	"reflect"
 	"slices"
 	"strings"
-	"sync/atomic"
 
 	"github.com/gofiber/utils/v2"
 	utilsstrings "github.com/gofiber/utils/v2/strings"
@@ -263,11 +262,20 @@ func DomainParam(c Ctx, key string, defaultValue ...string) string {
 // host does not match the domain pattern. Fixing this would require core
 // router changes; for now callers should be aware that 405 responses may
 // include methods from domain-scoped routes whose host did not match.
-type domainRouter struct { // betteralign:ignore - docTarget must stay first, as its 64-bit atomic needs an 8-byte aligned word on 32-bit platforms
+type domainRouter struct {
 	docTarget[Router]
 
 	group   *Group // non-nil when created from a Group
 	matcher domainMatcher
+}
+
+// remember records regID as the registration the helpers target, on the router and on its group, so a
+// name given through the group afterwards reaches it.
+func (d *domainRouter) remember(regID uint64) {
+	d.cursor.Store(regID)
+	if d.group != nil {
+		d.group.cursor.Store(regID)
+	}
 }
 
 // pattern returns the canonical domain form; it keeps same-path routes on different domains from merging.
@@ -397,7 +405,7 @@ func (d *domainRouter) Use(args ...any) Router {
 			continue
 		}
 
-		atomic.StoreUint64(&d.lastRegID, d.registerWrapped([]string{methodUse}, d.registerPath(prefix), d.registerGroup(), handlers))
+		d.remember(d.registerWrapped([]string{methodUse}, d.registerPath(prefix), d.registerGroup(), handlers))
 	}
 
 	// Mark the underlying group so Name() can distinguish between
@@ -515,7 +523,7 @@ func (d *domainRouter) mount(prefix string, subApp *App) Router {
 	mountGroup := newGroup(wrapperApp, mountPath, nil)
 
 	// Register the mount point - the routes will be expanded during startup
-	atomic.StoreUint64(&d.lastRegID, d.app.register([]string{methodUse}, mountPath, mountGroup, d.pattern()))
+	d.remember(d.app.register([]string{methodUse}, mountPath, mountGroup, d.pattern()))
 
 	// Execute onMount hooks
 	if err := subApp.hooks.executeOnMountHooks(d.app); err != nil {
@@ -759,7 +767,7 @@ func (d *domainRouter) Query(path string, handler any, handlers ...any) Router {
 // The handler only executes when the request hostname matches the domain pattern.
 func (d *domainRouter) Add(methods []string, path string, handler any, handlers ...any) Router {
 	converted := collectHandlers("domain", append([]any{handler}, handlers...)...)
-	atomic.StoreUint64(&d.lastRegID, d.registerWrapped(methods, d.registerPath(path), d.registerGroup(), converted))
+	d.remember(d.registerWrapped(methods, d.registerPath(path), d.registerGroup(), converted))
 
 	// Mark the underlying group so Name() can distinguish between
 	// group-name-prefix calls (before routes) and route-name calls (after routes).
@@ -828,7 +836,12 @@ func (d *domainRouter) Name(name string) Router {
 		d.group.Name(name)
 		return d
 	}
-	d.app.applyNameToRegistration(atomic.LoadUint64(&d.lastRegID), name)
+	regID := d.cursor.Load()
+	if regID == 0 && d.group != nil {
+		// A router made from a group that already has routes names the group's latest registration.
+		regID = d.group.cursor.Load()
+	}
+	d.app.applyNameToRegistration(regID, name)
 	return d
 }
 

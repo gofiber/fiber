@@ -10,7 +10,6 @@ import (
 	"sync"
 	"testing"
 	"time"
-	"unsafe"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -1922,14 +1921,18 @@ func Test_OperationExtension_NilIsNoOp(t *testing.T) {
 	runBounded(t, "GetRoutes after a nil mutation", func() { _ = app.GetRoutes() })
 }
 
-func Test_RegistrationCursors_AreAligned(t *testing.T) {
+func Test_RegistrationCursors_AreAtomicValues(t *testing.T) {
 	t.Parallel()
 
-	// 64-bit atomics need an 8-byte aligned word on 32-bit platforms; the first field of an allocation is.
-	require.Zero(t, unsafe.Offsetof(Group{}.docTarget))
-	require.Zero(t, unsafe.Offsetof(domainRouter{}.docTarget))
-	require.Zero(t, unsafe.Offsetof(Registering{}.docTarget))
-	require.Zero(t, unsafe.Offsetof(docTarget[Router]{}.lastRegID))
+	// The cursor is an atomic.Uint64 behind a pointer, which every platform aligns; a copy of a Group, as
+	// hooks receive, shares it.
+	app := New()
+	grp, ok := app.Group("/g").(*Group)
+	require.True(t, ok)
+	grp.Get("/a", testHandlerOK)
+	cp := *grp
+	require.Equal(t, grp.cursor.Load(), cp.cursor.Load())
+	require.NotZero(t, grp.cursor.Load())
 }
 
 func Test_Returns_KeepsEarlierDescriptionAndReplacesContent(t *testing.T) {
@@ -1979,4 +1982,43 @@ func Test_Parameter_DefaultTypeFollowsSchema(t *testing.T) {
 	require.Equal(t, "integer", types["ints"])
 	require.NotContains(t, schemas["either"], "type")
 	require.NotContains(t, schemas["linked"], "type")
+}
+
+func Test_Name_ReachesRoutesRegisteredThroughDomainRouters(t *testing.T) {
+	t.Parallel()
+
+	t.Run("group name after a domain route", func(t *testing.T) {
+		t.Parallel()
+		app := New()
+		api := app.Group("/api")
+		api.Domain("a.example.com").Get("/x", testHandlerOK)
+		api.Name("foo")
+
+		require.Equal(t, "/api/x", app.GetRoute("foo").Path)
+	})
+
+	t.Run("domain name from a group that has routes", func(t *testing.T) {
+		t.Parallel()
+		app := New()
+		api := app.Group("/api")
+		api.Get("/y", testHandlerOK)
+		api.Domain("b.example.com").Name("bar")
+
+		require.Equal(t, "/api/y", app.GetRoute("bar").Path)
+	})
+}
+
+func Test_Response_LaterCallsKeepTheBodyUnlessTheyDocumentOne(t *testing.T) {
+	t.Parallel()
+	app := New()
+	app.Get("/u", testHandlerOK).Returns(StatusOK, struct{ A int }{}).Response(StatusOK, "ok")
+
+	resp := routesFor(app, "/u")[MethodGet].Responses["200"]
+	require.NotNil(t, resp.Schema, "a description alone keeps the model Returns documented")
+	require.Equal(t, "ok", resp.Description)
+
+	app.Get("/c", testHandlerOK).
+		ResponseContent(StatusOK, "", map[string]RouteMediaType{MIMEApplicationJSON: {Schema: map[string]any{"type": "string"}}}).
+		Response(StatusOK, "", MIMEApplicationJSON)
+	require.NotEmpty(t, routesFor(app, "/c")[MethodGet].Responses["200"].Content, "media types alone keep the content map")
 }

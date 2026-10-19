@@ -728,3 +728,16 @@ func Test_OpenAPI_DroppedDuplicateRouteDeclaresNoScheme(t *testing.T) {
 	require.Contains(t, schemes, securitySchemeBasic)
 	require.NotContains(t, schemes, securitySchemeBearer)
 }
+
+func Test_OpenAPI_ExplicitSecurityDeclaresNoInferredScheme(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Get("/public", chainBasicAuth(), listUsers).Security()
+	spec := modelSpec(t, app)
+
+	components, ok := spec["components"].(map[string]any)
+	if ok {
+		require.NotContains(t, components, "securitySchemes")
+	}
+}

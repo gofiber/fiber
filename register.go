@@ -4,10 +4,6 @@
 
 package fiber
 
-import (
-	"sync/atomic"
-)
-
 // Register defines all router handle interface generate by RouteChain().
 type Register interface {
 	All(handler any, handlers ...any) Register
@@ -59,7 +55,7 @@ var _ Register = (*Registering)(nil)
 
 // Registering provides route registration helpers for a specific path on the
 // application instance.
-type Registering struct { // betteralign:ignore - docTarget must stay first, as its 64-bit atomic needs an 8-byte aligned word on 32-bit platforms
+type Registering struct {
 	docTarget[Register]
 
 	group *Group
@@ -157,7 +153,7 @@ func (r *Registering) Add(methods []string, handler any, handlers ...any) Regist
 		pattern = r.domain.pattern()
 	}
 	regID := r.app.register(methods, r.path, r.group, pattern, converted...)
-	atomic.StoreUint64(&r.lastRegID, regID)
+	r.cursor.Store(regID)
 	if r.domain != nil {
 		r.app.applyToRegistration(regID, docSetInnerHandlers(inner))
 	}
@@ -175,6 +171,6 @@ func (r *Registering) RouteChain(path string) Register {
 
 // Name assigns a name to the most recently registered route.
 func (r *Registering) Name(name string) Register {
-	r.app.applyNameToRegistration(atomic.LoadUint64(&r.lastRegID), name)
+	r.app.applyNameToRegistration(r.cursor.Load(), name)
 	return r
 }

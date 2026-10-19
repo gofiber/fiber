@@ -7,6 +7,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"weak"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/utils/v2"
@@ -16,7 +17,8 @@ import (
 type segmentEqual = func(a, b string) bool
 
 type appEquality struct {
-	app   *fiber.App
+	// app is weak so remembering the last app never keeps it alive.
+	app   weak.Pointer[fiber.App]
 	equal segmentEqual
 }
 
@@ -61,21 +63,31 @@ func New(config ...Config) fiber.Handler {
 	// Scoped per app: one app's revision counter must not validate another's bytes.
 	var (
 		cacheMu sync.Mutex
-		caches  = make(map[*fiber.App]*appCache)
+		// Keyed weakly, so a cache never keeps an app that is otherwise unreachable alive.
+		caches = make(map[weak.Pointer[fiber.App]]*appCache)
 	)
 
-	// cacheFor evicts an arbitrary entry past the bound so many apps keep caching. Caller holds cacheMu.
+	// cacheFor drops the caches of collected apps and, past the bound, an arbitrary entry, so many apps keep
+	// caching. Caller holds cacheMu.
 	cacheFor := func(app *fiber.App) *appCache {
-		cache, ok := caches[app]
+		key := weak.Make(app)
+		cache, ok := caches[key]
 		if !ok {
 			cache = &appCache{uiPages: make(map[string]cachedBody)}
+			if len(caches) >= maxCachedEntries {
+				for stale := range caches {
+					if stale.Value() == nil {
+						delete(caches, stale)
+					}
+				}
+			}
 			if len(caches) >= maxCachedEntries {
 				for evicted := range caches {
 					delete(caches, evicted)
 					break
 				}
 			}
-			caches[app] = cache
+			caches[key] = cache
 		}
 		return cache
 	}
@@ -127,12 +139,12 @@ func New(config ...Config) fiber.Handler {
 	// Config() copies the whole struct; resolve the case rule once per app.
 	var lastEquality atomic.Pointer[appEquality]
 	equalityFor := func(app *fiber.App) func(a, b string) bool {
-		if e := lastEquality.Load(); e != nil && e.app == app {
+		if e := lastEquality.Load(); e != nil && e.app == weak.Make(app) {
 			return e.equal
 		}
 		appCfg := app.Config()
 		equal := segmentEqualFor(&appCfg)
-		lastEquality.Store(&appEquality{app: app, equal: equal})
+		lastEquality.Store(&appEquality{app: weak.Make(app), equal: equal})
 		return equal
 	}
 
@@ -166,7 +178,12 @@ func New(config ...Config) fiber.Handler {
 			}
 			return body.send(c, fiber.MIMEApplicationJSONCharsetUTF8)
 		case targets.uiOK && equal(request, targets.ui):
-			body, err := uiBytes(c.App(), targets.spec)
+			// A spec served at the root trims to "", which would leave the page with no URL.
+			specURL := targets.spec
+			if specURL == "" {
+				specURL = "/"
+			}
+			body, err := uiBytes(c.App(), specURL)
 			if err != nil {
 				return err
 			}

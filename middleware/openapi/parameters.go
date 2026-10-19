@@ -183,10 +183,7 @@ func schemaFrom(schema any, schemaRef, defaultType string, reg *schemaRegistry) 
 	}
 	// A reference, composition or const describes its type elsewhere, and an enum takes its values' type.
 	if defaultType != "" {
-		if typ, ok := schemautil.DefaultType(copied); ok {
-			if typ == schemaTypeString {
-				typ = defaultType
-			}
+		if typ, ok := schemautil.DefaultType(copied, defaultType); ok {
 			copied[schemaKeyType] = typ
 		}
 	}

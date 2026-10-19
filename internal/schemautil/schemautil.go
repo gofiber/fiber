@@ -2,13 +2,14 @@
 package schemautil
 
 import (
+	"encoding/json"
 	"reflect"
 )
 
 // DefaultType reports the type to add to a parameter schema that names none. A schema that already
-// says what it is through a type, a $ref, a composition or a const gets nothing, and an enum
-// takes the type its values share.
-func DefaultType(schema map[string]any) (string, bool) {
+// says what it is through a type, a $ref, a composition or a const gets nothing, an enum takes the
+// type its values share, and any other schema gets fallback.
+func DefaultType(schema map[string]any, fallback string) (string, bool) {
 	for _, keyword := range [...]string{"type", "$ref", "allOf", "anyOf", "oneOf", "not", "const"} {
 		if _, has := schema[keyword]; has {
 			return "", false
@@ -16,15 +17,23 @@ func DefaultType(schema map[string]any) (string, bool) {
 	}
 	values, hasEnum := schema["enum"]
 	if !hasEnum {
-		return "string", true
+		return fallback, fallback != ""
 	}
 	return enumType(values)
 }
 
-// enumType names the JSON Schema type all the enum's values share.
+const (
+	typeInteger = "integer"
+	typeNumber  = "number"
+)
+
+var jsonNumberType = reflect.TypeFor[json.Number]()
+
+// enumType names the JSON Schema type all the enum's values share. A null is ignored, as it only makes
+// the schema nullable, and integers and numbers together make "number".
 func enumType(values any) (string, bool) {
 	list := reflect.ValueOf(values)
-	if list.Kind() != reflect.Slice || list.Len() == 0 {
+	if list.Kind() != reflect.Slice {
 		return "", false
 	}
 	shared := ""
@@ -33,24 +42,32 @@ func enumType(values any) (string, bool) {
 		if item.Kind() == reflect.Interface {
 			item = item.Elem()
 		}
+		if !item.IsValid() {
+			continue
+		}
 		var typ string
-		switch item.Kind() {
-		case reflect.String:
+		switch {
+		case item.Type() == jsonNumberType:
+			typ = typeNumber
+		case item.Kind() == reflect.String:
 			typ = "string"
-		case reflect.Bool:
+		case item.Kind() == reflect.Bool:
 			typ = "boolean"
-		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
-			reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
-			typ = "integer"
-		case reflect.Float32, reflect.Float64:
-			typ = "number"
+		case item.CanInt() || item.CanUint():
+			typ = typeInteger
+		case item.CanFloat():
+			typ = typeNumber
 		default:
 			return "", false
 		}
-		if shared != "" && shared != typ {
+		switch {
+		case shared == "" || shared == typ:
+			shared = typ
+		case (shared == typeInteger && typ == typeNumber) || (shared == typeNumber && typ == typeInteger):
+			shared = typeNumber
+		default:
 			return "", false
 		}
-		shared = typ
 	}
-	return shared, true
+	return shared, shared != ""
 }

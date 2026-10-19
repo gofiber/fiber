@@ -9,9 +9,12 @@ import (
 	"net/http/httptest"
 	"os"
 	"reflect"
+	"runtime"
 	"strconv"
 	"strings"
 	"testing"
+	"time"
+	"weak"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/stretchr/testify/require"
@@ -3656,4 +3659,36 @@ func Test_OpenAPI_ETagChangesWithTheRoutes(t *testing.T) {
 	require.Equal(t, before, tag(), "an unchanged document keeps its tag")
 	app.Get("/more", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
 	require.NotEqual(t, before, tag())
+}
+
+func Test_OpenAPI_UIPageForSpecAtRoot(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Get("/x", listUsers)
+	app.Use(New(Config{Path: "/", UIPath: "/swagger"}))
+
+	status, body := specBodyOf(t, app, "/swagger")
+	require.Equal(t, fiber.StatusOK, status)
+	require.Contains(t, body, `data-url="/"`)
+}
+
+func Test_OpenAPI_CacheDoesNotKeepAppsAlive(t *testing.T) {
+	t.Parallel()
+
+	handler := New()
+	probe := func() weak.Pointer[fiber.App] {
+		app := fiber.New()
+		app.Get("/x", listUsers)
+		app.Get("/openapi.json", handler)
+		_ = fetchSpecBody(t, app)
+		return weak.Make(app)
+	}
+	ref := probe()
+
+	require.Eventually(t, func() bool {
+		runtime.GC()
+		return ref.Value() == nil
+	}, 5*time.Second, 10*time.Millisecond, "the handler's cache kept the app reachable")
+	runtime.KeepAlive(handler)
 }

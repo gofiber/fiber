@@ -1914,7 +1914,7 @@ Introduces an `openapi` middleware that inspects registered routes and serves a 
 `Route.GroupPrefix()`, `GroupName()`, `Domain()` and `InnerHandlers()` and `App.RoutesRevision()` are documented in the [`App` API](./api/app.md#route-documentation).
 
 :::caution
-The `fiber.Router` interface gained the route documentation methods (`Summary`, `Description`, `Tags`, `Consumes`, `Produces`, `Deprecated`, `Hidden`, `Security`, `RequestBody`, `RequestBodyWithExample`, `RequestBodyContent`, `Parameter`, `ParameterWithExample`, `AddParameter`, `Params`, `Accepts`, `Returns`, `Response`, `ResponseWithExample`, `ResponseContent`, `ResponseHeader`, `ResponseLink`, `OperationExternalDocs` and `OperationExtension`). `App`, `Group` and the domain router implement them; a type of your own that implements `fiber.Router` must add them, or embed one of those.
+The `fiber.Router` and `fiber.Register` interfaces gained the route documentation methods (`Summary`, `Description`, `Tags`, `Consumes`, `Produces`, `Deprecated`, `Hidden`, `Security`, `RequestBody`, `RequestBodyWithExample`, `RequestBodyContent`, `Parameter`, `ParameterWithExample`, `AddParameter`, `Params`, `Accepts`, `Returns`, `Response`, `ResponseWithExample`, `ResponseContent`, `ResponseHeader`, `ResponseLink`, `OperationExternalDocs` and `OperationExtension`). `App`, `Group`, the domain router and `RouteChain` implement them; a type of your own that implements `fiber.Router` or `fiber.Register` must add them, or embed one of those.
 :::
 
 ### Proxy

@@ -232,7 +232,7 @@ func (grp *Group) mount(prefix string, subApp *App) Router {
 	// register mounted group
 	mountGroup := newGroup(subApp, groupPath, nil)
 	// Move the cursor onto the mount, as App.Use does, so chained helpers do not hit the previous route.
-	atomic.StoreUint64(&grp.lastRegID, grp.app.register([]string{methodUse}, groupPath, mountGroup, allHosts))
+	grp.cursor.Store(grp.app.register([]string{methodUse}, groupPath, mountGroup, allHosts))
 
 	// Execute onMount hooks
 	if err := subApp.hooks.executeOnMountHooks(grp.app); err != nil {
@@ -804,7 +804,7 @@ func (app *App) processSubAppsRoutes() {
 
 			subApp := route.group.app
 
-			// Snapshot under the sub-app's lock. The parent's lock is already held, so locks are taken parent first,
+			// Snapshot under the sub-app's lock. prepareStartup holds the parent's lock around this, so locks are taken parent first,
 			// then sub-app, and the sub-app's lock is released before its routes are re-parsed.
 			// Read by method: the sub-app may configure its own RequestMethods.
 			subApp.mutex.Lock()
