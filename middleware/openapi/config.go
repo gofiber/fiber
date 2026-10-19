@@ -2,6 +2,7 @@ package openapi
 
 import (
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/gofiber/fiber/v3/internal/schemautil"
@@ -137,7 +138,7 @@ type Config struct {
 	// ServerURL is the server URL used in the generated specification. Optional. Default: ""
 	ServerURL string
 
-	// OpenAPIVersion selects the spec version: any 3.0.x, 3.1.x or 3.2.x release ("3.0.3", "3.1.1"), written to the document as given; anything else falls back to the default. Optional. Default: "3.1.0"
+	// OpenAPIVersion selects the spec version: any 3.0.x, 3.1.x or 3.2.x release ("3.0.3", "3.1.1"), written to the document as given; New panics on anything else. Optional. Default: "3.1.0"
 	OpenAPIVersion string
 
 	// SwaggerStandalonePresetURL is the preset script URL; empty selects the default, never omits it. Optional. Default: "https://unpkg.com/swagger-ui-dist@5.32.6/swagger-ui-standalone-preset.js"
@@ -371,7 +372,7 @@ func configDefault(config ...Config) Config {
 		cfg.ErrorSchema = deepcopy.Map(schema)
 	}
 	if _, ok := parseVersion(cfg.OpenAPIVersion); !ok {
-		cfg.OpenAPIVersion = ConfigDefault.OpenAPIVersion
+		panic("openapi: OpenAPIVersion must be a 3.0.x, 3.1.x or 3.2.x release, got " + strconv.Quote(cfg.OpenAPIVersion))
 	}
 	validateServers(cfg.Servers)
 	if utils.EqualFold(utils.TrimRight(normalizedPath(cfg.Path), '/'), utils.TrimRight(normalizedPath(cfg.UIPath), '/')) {

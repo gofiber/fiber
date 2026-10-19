@@ -79,43 +79,49 @@ func (d dialect) license(license License) License {
 	return license
 }
 
-// nullable returns a copy of a property schema that also accepts null, the way the dialect spells it:
-// a nullable keyword in 3.0, and a "null" type in 3.1 and later, alone or in an anyOf beside a $ref or a
-// composition. A schema with none of type, $ref, allOf, anyOf or oneOf already accepts anything. Under 3.0 the
-// keyword sits beside whatever the schema holds, an allOf wrapper around a reference included: the
-// specification only gives it meaning next to a type, but that is the form code generators and Swagger UI read.
+// nullable returns a copy of a property schema that also accepts null, the way the dialect spells it: a
+// nullable keyword next to the type in 3.0, and a "null" type in 3.1 and later. A schema with no type, which is a
+// $ref or a composition, takes an anyOf with a branch that holds only null: 3.0 defines nullable only next to a
+// type, so that branch is {type: object, nullable: true, enum: [null]}, and in 3.1 it is {type: null}. A schema
+// with none of type, $ref, allOf, anyOf or oneOf already accepts anything.
 func (d dialect) nullable(schema map[string]any) map[string]any {
 	schema = maps.Clone(schema)
 	if enum, ok := enumValues(schema["enum"]); ok && !slices.Contains(enum, nil) {
 		schema["enum"] = append(enum, nil)
 	}
-	if !d.hasJSONSchemaDialect() {
+	if d.hasJSONSchemaDialect() {
+		switch typ := schema[schemaKeyType].(type) {
+		case string:
+			schema[schemaKeyType] = []any{typ, schemaTypeNull}
+			return schema
+		case []string:
+			types := make([]any, 0, len(typ)+1)
+			for _, name := range typ {
+				types = append(types, name)
+			}
+			schema[schemaKeyType] = appendNullType(types)
+			return schema
+		case []any:
+			schema[schemaKeyType] = appendNullType(slices.Clone(typ))
+			return schema
+		}
+	} else if _, typed := schema[schemaKeyType]; typed {
 		schema["nullable"] = true
 		return schema
 	}
-	switch typ := schema[schemaKeyType].(type) {
-	case string:
-		schema[schemaKeyType] = []any{typ, schemaTypeNull}
-		return schema
-	case []string:
-		types := make([]any, 0, len(typ)+1)
-		for _, name := range typ {
-			types = append(types, name)
-		}
-		schema[schemaKeyType] = appendNullType(types)
-		return schema
-	case []any:
-		schema[schemaKeyType] = appendNullType(slices.Clone(typ))
-		return schema
+
+	null := map[string]any{schemaKeyType: schemaTypeNull}
+	if !d.hasJSONSchemaDialect() {
+		null = map[string]any{schemaKeyType: schemaTypeObject, "nullable": true, "enum": []any{nil}}
 	}
 	if target, isRef := schema[schemaKeyRef].(string); isRef {
 		delete(schema, schemaKeyRef)
-		schema["anyOf"] = []any{map[string]any{schemaKeyRef: target}, map[string]any{schemaKeyType: schemaTypeNull}}
+		schema["anyOf"] = []any{map[string]any{schemaKeyRef: target}, null}
 		return schema
 	}
 	for _, keyword := range [...]string{"allOf", "anyOf", "oneOf"} {
 		if _, composed := schema[keyword]; composed {
-			return map[string]any{"anyOf": []any{schema, map[string]any{schemaKeyType: schemaTypeNull}}}
+			return map[string]any{"anyOf": []any{schema, null}}
 		}
 	}
 	return schema

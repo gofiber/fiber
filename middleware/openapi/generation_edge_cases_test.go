@@ -303,11 +303,17 @@ func Test_OpenAPI_VersionPatchReleases(t *testing.T) {
 
 	for version, want := range map[string]string{
 		"3.0.3": "3.0.3", "3.1.1": "3.1.1", "3.2.0": "3.2.0", "3.1.0": "3.1.0",
-		"3.2": "3.1.0", "3.3.0": "3.1.0", "2.0.0": "3.1.0", "3.1.x": "3.1.0", "": "3.1.0",
+		"": "3.1.0",
 	} {
 		app := fiber.New()
 		app.Get("/x", listUsers)
 		require.Equal(t, want, modelSpec(t, app, Config{OpenAPIVersion: version})["openapi"], version)
+	}
+
+	for _, version := range []string{"3.2", "3.3.0", "2.0.0", "3.1.x", "garbage", " 3.1.0"} {
+		require.PanicsWithValue(t, `openapi: OpenAPIVersion must be a 3.0.x, 3.1.x or 3.2.x release, got "`+version+`"`, func() {
+			New(Config{OpenAPIVersion: version})
+		}, version)
 	}
 }
 
@@ -447,7 +453,8 @@ func Test_Dialect_Nullable(t *testing.T) {
 	got := old.nullable(typed())
 	require.Equal(t, true, got["nullable"])
 	require.Equal(t, []any{"a", nil}, got["enum"])
-	require.Equal(t, true, old.nullable(ref())["nullable"])
+	nullOnly := map[string]any{"type": "object", "nullable": true, "enum": []any{nil}}
+	require.Equal(t, []any{map[string]any{"$ref": "#/components/schemas/A"}, nullOnly}, old.nullable(ref())["anyOf"])
 
 	modern := newDialect("3.1.0")
 	got = modern.nullable(typed())
@@ -522,8 +529,9 @@ func Test_Dialect_Nullable_Composition(t *testing.T) {
 	got := newDialect("3.1.0").nullable(composed())
 	require.Equal(t, []any{composed(), map[string]any{"type": "null"}}, got["anyOf"])
 
-	// 3.0 ignores nullable beside a composition with no type, so the schema is left as it is.
-	require.NotContains(t, newDialect("3.0.3").nullable(composed()), "anyOf")
+	// 3.0 defines nullable only next to a type, so the composition gets a branch that holds only null.
+	oldGot := newDialect("3.0.3").nullable(composed())
+	require.Equal(t, []any{composed(), map[string]any{"type": "object", "nullable": true, "enum": []any{nil}}}, oldGot["anyOf"])
 
 	// A schema with no type, $ref or composition already accepts anything.
 	require.Empty(t, newDialect("3.1.0").nullable(map[string]any{}))

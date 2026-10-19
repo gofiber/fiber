@@ -563,8 +563,9 @@ func Test_OpenAPI_PointerFieldsAreNullable(t *testing.T) {
 		require.Equal(t, true, requireMap(t, got["quoted"])["nullable"], version)
 		require.Equal(t, []any{"a", "b", nil}, requireMap(t, got["kind"])["enum"], version)
 		inner := requireMap(t, got["inner"])
-		require.Equal(t, []any{componentRef("nullableInner")}, inner["allOf"], version)
-		require.Equal(t, true, inner["nullable"], version)
+		require.Equal(t, []any{componentRef("nullableInner"), map[string]any{"type": "object", "nullable": true, "enum": []any{nil}}}, inner["anyOf"], version)
+		require.NotContains(t, inner, "nullable", version, "3.0 defines nullable only next to a type")
+		require.Equal(t, "the inner", inner["description"], version)
 		require.NotContains(t, requireMap(t, got["plain"]), "nullable", version)
 	}
 }

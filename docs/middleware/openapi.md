@@ -6,7 +6,7 @@ id: openapi
 
 OpenAPI middleware for [Fiber](https://github.com/gofiber/fiber) that generates an OpenAPI specification based on the routes registered in your application.
 
-This middleware supports the OpenAPI 3.0.x, 3.1.x and 3.2.x specifications. Set `OpenAPIVersion` to a release such as `"3.0.3"`, `"3.1.0"` (the default) or `"3.2.0"`; it is written to the document as given. A value that is not a 3.0.x, 3.1.x or 3.2.x release is replaced by the default without a warning, so check the `openapi` field of the document after a change.
+This middleware supports the OpenAPI 3.0.x, 3.1.x and 3.2.x specifications. Set `OpenAPIVersion` to a release such as `"3.0.3"`, `"3.1.0"` (the default) or `"3.2.0"`; it is written to the document as given. `New` panics on a value that is not a 3.0.x, 3.1.x or 3.2.x release, so a typo fails at startup; leave it empty for the default.
 
 ## Signatures
 
@@ -351,8 +351,12 @@ same name overrides what the model says.
 
 A few details follow the model closely. Form media types read `form` tags
 (JSON ones read `json`), and a struct used for both is registered twice, the
-form one with a `_form` suffix. Pointer fields are nullable (`nullable: true`
-before 3.1, a `null` type from 3.1 on; a schema built from `allOf`, `anyOf` or `oneOf` gets an `anyOf` with `null` from 3.1 on and is left as it is in 3.0, where `nullable` needs a `type`). `Params` skips fields tagged for another
+form one with a `_form` suffix. Pointer fields are nullable: `nullable: true` next to the type before 3.1 and a
+`null` type from 3.1 on. A pointer to a struct, or a schema built from `allOf`,
+`anyOf` or `oneOf`, has no type, so it becomes an `anyOf` with a branch that
+accepts only null (`{"type": "null"}` from 3.1, and
+`{"type": "object", "nullable": true, "enum": [null]}` before it, as 3.0 defines
+`nullable` only next to a type). `Params` skips fields tagged for another
 location. Generic types get readable component names, statuses that carry no
 body (such as 204 and 304) drop their `content`, and tags used by operations
 are declared at the top level automatically.
@@ -893,7 +897,7 @@ route's media type.
 | SwaggerBundleIntegrity | `string`        | Subresource Integrity value for `SwaggerBundleURL`, defaulting the same way. | the hash of the default bundle |
 | SwaggerStandalonePresetIntegrity | `string` | Subresource Integrity value for `SwaggerStandalonePresetURL`, defaulting the same way. | the hash of the default preset |
 | SwaggerOptions | `map[string]any`        | Additional options merged into the generated `SwaggerUIBundle` call. | `nil` |
-| OpenAPIVersion | `string`                | OpenAPI specification version to generate: any 3.0.x, 3.1.x or 3.2.x release (`"3.0.3"`, `"3.1.1"`), written to the document as given. Anything else falls back to the default. | `"3.1.0"`     |
+| OpenAPIVersion | `string`                | OpenAPI specification version to generate: any 3.0.x, 3.1.x or 3.2.x release (`"3.0.3"`, `"3.1.1"`), written to the document as given. `New` panics on anything else. | `"3.1.0"`     |
 | Components     | `map[string]any`        | Reusable OpenAPI component definitions (schemas, responses, etc.) emitted under `"components"`. | `nil` |
 | SecuritySchemes | `map[string]any`       | Reusable security scheme definitions, emitted under `"components.securitySchemes"`. | `nil` |
 | Security       | `[]map[string][]string` | Document-level (default) security requirements; each map is a requirement (OR semantics across entries). An empty non-nil list is written as `security: []`, stating the API needs no authentication. | `nil` |
@@ -925,7 +929,7 @@ route's media type.
 `Summary`, `Webhooks` and `JSONSchemaDialect` require OpenAPI 3.1+; `Self`,
 `Server.Name` and `License.Identifier` are emitted only for the versions that
 support them (3.2, 3.2 and 3.1+ respectively). Setting an unsupported
-`OpenAPIVersion` falls back to the default.
+`OpenAPIVersion` makes `New` panic.
 
 The License Object allows `identifier` or `url`, never both. Setting both keeps
 `identifier` and drops `url` on 3.1+, and does the reverse on 3.0.0 where

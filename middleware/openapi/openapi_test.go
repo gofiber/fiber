@@ -702,17 +702,8 @@ func Test_OpenAPI_VersionDefault(t *testing.T) {
 
 func Test_OpenAPI_VersionInvalid(t *testing.T) {
 	t.Parallel()
-	app := fiber.New()
 
-	app.Get("/test", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
-
-	cfg := Config{
-		OpenAPIVersion: "2.0.0",
-	}
-	app.Use(New(cfg))
-
-	spec := fetchSpec(t, app)
-	require.Equal(t, "3.1.0", spec.OpenAPI)
+	require.Panics(t, func() { New(Config{OpenAPIVersion: "2.0.0"}) })
 }
 
 func Test_OpenAPI_Next(t *testing.T) {
@@ -1976,8 +1967,7 @@ func Test_OpenAPI_Version32Accepted(t *testing.T) {
 	spec := fetchSpecWithConfig(t, Config{OpenAPIVersion: "3.2.0"}, register)
 	require.Equal(t, "3.2.0", spec["openapi"])
 
-	fallback := fetchSpecWithConfig(t, Config{OpenAPIVersion: "9.9.9"}, register)
-	require.Equal(t, "3.1.0", fallback["openapi"])
+	require.Panics(t, func() { New(Config{OpenAPIVersion: "9.9.9"}) })
 }
 
 func Test_OpenAPI_32Fields_Gated(t *testing.T) {
