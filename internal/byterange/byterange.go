@@ -1,6 +1,6 @@
 // Package byterange adds the Range and If-Range rules (RFC 9110 §13.1.5, §14.2)
-// that fasthttp's file server lacks: it refuses several ranges with 416, takes
-// only a lower-case "bytes" unit, applies Range to HEAD and ignores If-Range.
+// that fasthttp's file server lacks: it takes only a lower-case "bytes" unit,
+// applies Range to HEAD and matches If-Range by date alone.
 // It is shared by Ctx.SendFile and the static middleware.
 package byterange
 
@@ -156,6 +156,10 @@ func serveConditional(ctx *fasthttp.RequestCtx, handler fasthttp.RequestHandler,
 	// start the second attempt from.
 	callerHeader := &fasthttp.ResponseHeader{}
 	ctx.Response.Header.CopyTo(callerHeader)
+
+	// fasthttp only matches an If-Range date, so it must not see the field.
+	ctx.Request.Header.Del(fasthttp.HeaderIfRange)
+	defer ctx.Request.Header.SetBytesV(fasthttp.HeaderIfRange, ifRange)
 
 	p.serve(ctx, handler)
 

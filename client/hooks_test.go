@@ -1130,7 +1130,7 @@ func Test_ParseCookieIgnoringBadAttrs_ManyAttributes(t *testing.T) {
 
 func Benchmark_ParseCookieIgnoringBadAttrs(b *testing.B) {
 	value := make([]byte, 0, 16*1024)
-	value = append(value, "a=1; Expires=bogus"...)
+	value = append(value, "a=1; Max-Age=bogus"...)
 	for range 4_000 {
 		value = append(value, "; x"...)
 	}
