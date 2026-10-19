@@ -1615,6 +1615,10 @@ The favicon middleware now caps cached favicon assets with a configurable `MaxBy
 
 The `ExcludeVars` field has been removed from the EnvVar middleware configuration. When upgrading, remove any references to this field and explicitly list the variables you wish to expose using `ExportVars`.
 
+### ETag
+
+A tag is now the body length and its CRC-32C checksum, such as `"13-1297420392"`. CRC-32C runs on a hardware instruction on common platforms, so tagging a large body is much cheaper than before (see `Benchmark_Generate`). The values differ from Fiber v2, so clients revalidate once after an upgrade, and instances running different versions disagree on tags while a deployment rolls out.
+
 ### Filesystem
 
 The filesystem middleware was removed to reduce confusion with the static middleware.
@@ -3298,6 +3302,10 @@ app.Use(static.New("", static.Config{
 
 The `ExcludeVars` option has been removed. Remove any references to it and use
 `ExportVars` to explicitly list environment variables that should be exposed.
+
+#### ETag
+
+The checksum behind a tag changed, so every tag differs from the one Fiber v2 produced for the same body. A client holding a v2 tag gets one full `200` response and revalidates normally after that. Treat tags as opaque: if anything outside the app stores or compares them (a cache key, a test pinned to a tag), regenerate those values.
 
 #### Healthcheck
 

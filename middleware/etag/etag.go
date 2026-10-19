@@ -17,8 +17,9 @@ import (
 
 var (
 	weakPrefix = []byte("W/")
-	// hash/crc32 runs CRC-32C on a hardware instruction (~23 GB/s); other
-	// polynomials take a table lookup per byte (~0.4 GB/s).
+	// CRC-32C is the polynomial hash/crc32 runs on a hardware instruction on common
+	// platforms; any other takes a table lookup per byte. Benchmark_Generate shows
+	// the gap on the machine at hand.
 	crc32c = crc32.MakeTable(crc32.Castagnoli)
 )
 
