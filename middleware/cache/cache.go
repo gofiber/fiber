@@ -445,17 +445,11 @@ func New(config ...Config) fiber.Handler {
 		guard := newCacheLockGuard(mux)
 		ts := safeUnixSeconds(cfg.now())
 
-		// The lookup phase below has several exit paths: a cache hit returns the
-		// stored response directly, a few paths return an error or an already-written
-		// status without falling through to the handler, and the rest fall through to
-		// call the wrapped handler. handled reports which of those happened so the
-		// caller can tell a path that already produced a response (possibly nil error)
-		// apart from one that still needs c.Next() and the post-handler store logic.
-		// Every exit below unlocks explicitly before returning, matching the
-		// original goto-based flow exactly; there is deliberately no deferred
-		// unlock here so this closure holds the lock across a panic exactly as
-		// the code it replaces did.
+		// handled reports that the lookup phase already wrote the response.
 		handled, lookupErr := func() (bool, error) {
+			// Frees the lock if a CacheInvalidator panics; a no-op after the explicit unlocks below.
+			defer guard.Unlock()
+
 			// Cache Entry found
 			if e != nil {
 				entryAge = cachedResponseAge(e, ts)

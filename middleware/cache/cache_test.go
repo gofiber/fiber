@@ -25,6 +25,7 @@ import (
 	"github.com/gofiber/fiber/v3/internal/storage/memory"
 	"github.com/gofiber/fiber/v3/middleware/compress"
 	"github.com/gofiber/fiber/v3/middleware/etag"
+	"github.com/gofiber/fiber/v3/middleware/recover"
 	"github.com/gofiber/utils/v2"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
@@ -2145,6 +2146,39 @@ func Test_CacheInvalidation_noCacheEntry(t *testing.T) {
 		require.NoError(t, err)
 		require.False(t, cacheInvalidatorExecuted)
 	})
+}
+
+func Test_CacheInvalidator_PanicReleasesLock(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Use(recover.New())
+	var panicked atomic.Bool
+	app.Use(New(Config{
+		CacheInvalidator: func(fiber.Ctx) bool {
+			if panicked.CompareAndSwap(false, true) {
+				panic("invalidator")
+			}
+			return false
+		},
+	}))
+	app.Get("/", func(c fiber.Ctx) error {
+		return c.SendString("ok")
+	})
+
+	cfg := fiber.TestConfig{Timeout: 2 * time.Second, FailOnTimeout: true}
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody), cfg)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody), cfg)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusInternalServerError, resp.StatusCode)
+
+	// A lock held across that panic hangs this request.
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody), cfg)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
 }
 
 func Test_CacheInvalidation_removeFromHeap(t *testing.T) {
