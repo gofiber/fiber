@@ -70,10 +70,10 @@ func Benchmark_OpenAPI_coversRoute(b *testing.B) {
 // Benchmark_OpenAPI_PassThrough measures a request the middleware lets through, the cost every route pays when
 // it is registered with Use.
 func Benchmark_OpenAPI_PassThrough(b *testing.B) {
-	for name, cfg := range map[string]Config{"prefixed": {}, "rootPath": {Path: "/", UIPath: "/swagger"}} {
+	for name, cfg := range map[string]*Config{"prefixed": {}, "rootPath": {Path: "/", UIPath: "/swagger"}} {
 		b.Run(name, func(b *testing.B) {
 			app := fiber.New()
-			app.Use(New(cfg))
+			app.Use(New(*cfg))
 			app.Get("/users", listUsers)
 			handler := app.Handler()
 			fctx := &fasthttp.RequestCtx{}
