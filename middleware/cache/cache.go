@@ -150,22 +150,17 @@ var cacheableStatusCodes = map[int]struct{}{
 	fiber.StatusNotImplemented:              {},
 }
 
-// cacheLockGuard tracks whether its mutex is currently held so Unlock and
-// Relock can be called repeatedly along a handler's exit paths without
-// double-unlocking a held lock or redundantly re-acquiring one already held.
+// cacheLockGuard remembers whether mux is held, so Unlock and Relock are idempotent.
 type cacheLockGuard struct {
 	mux    *sync.Mutex
 	locked bool
 }
 
-// newCacheLockGuard locks mux and returns a guard that owns its lock state.
 func newCacheLockGuard(mux *sync.Mutex) *cacheLockGuard {
 	mux.Lock()
 	return &cacheLockGuard{mux: mux, locked: true}
 }
 
-// Unlock releases the guarded mutex if the guard currently holds it. Safe to
-// call when the mutex is already unlocked.
 func (g *cacheLockGuard) Unlock() {
 	if g.locked {
 		g.mux.Unlock()
@@ -173,8 +168,6 @@ func (g *cacheLockGuard) Unlock() {
 	}
 }
 
-// Relock re-acquires the guarded mutex if the guard does not currently hold
-// it. Safe to call when the mutex is already locked.
 func (g *cacheLockGuard) Relock() {
 	if !g.locked {
 		g.mux.Lock()
@@ -765,12 +758,6 @@ func New(config ...Config) fiber.Handler {
 			guard.Unlock()
 			return false, nil
 		}()
-		// handled means the lookup phase already produced the response (a cache
-		// hit, or a status written via c.Next()/SendStatus on a path that bypasses
-		// the post-handler store logic below); lookupErr set without handled means
-		// the lookup phase failed outright. Either way, there is nothing left for
-		// this request but to return. Otherwise fall through to call the wrapped
-		// handler and run the store/eviction logic that follows.
 		if handled || lookupErr != nil {
 			return lookupErr
 		}
