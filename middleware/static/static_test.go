@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+	"github.com/valyala/fasthttp"
 
 	"github.com/gofiber/fiber/v3"
 )
@@ -27,6 +28,12 @@ var testConfig = fiber.TestConfig{
 	Timeout:       10 * time.Second,
 	FailOnTimeout: true,
 }
+
+// discardLogger drops what the file server of fasthttp logs for every path it
+// cannot open; the server of Fiber discards it as well.
+type discardLogger struct{}
+
+func (discardLogger) Printf(string, ...any) {}
 
 // go test -run Test_Static_Index_Default
 func Test_Static_Index_Default(t *testing.T) {
@@ -1571,6 +1578,611 @@ func Test_Static_ServesRoutedPath(t *testing.T) {
 					require.NotContains(t, string(body), "BRACES")
 				}
 			})
+		}
+	}
+}
+
+// headerReached is set on the response of a request that went through the
+// file server of a root mount test.
+const headerReached = "X-Static-Reached"
+
+// reached is the Next of the root mount tests. It never skips the file server;
+// it records that a request got there, which tells a path the file server
+// refused from one that never reached it.
+func reached(c fiber.Ctx) bool {
+	c.Set(headerReached, "true")
+	return false
+}
+
+// serveRaw sends target to the handler exactly as written and returns the
+// answer. app.Test builds the request line from a url.URL, which encodes a raw
+// backslash and turns an absolute-form target into an origin-form one, and
+// httptest refuses a malformed escape. Take the handler from app.Handler()
+// once: each call prepares the app for its start again.
+func serveRaw(handler fasthttp.RequestHandler, method, target string) *fasthttp.Response {
+	var req fasthttp.Request
+	req.Header.SetMethod(method)
+	req.SetRequestURI(target)
+	req.Header.SetHost("example.com")
+
+	fctx := new(fasthttp.RequestCtx)
+	fctx.Init(&req, nil, discardLogger{})
+	handler(fctx)
+	return &fctx.Response
+}
+
+// Test_Static_RootMount_EmptyFirstSegment pins that a root mount serves what
+// the router matched to it and nothing it merely resembles. The router keeps
+// the empty first segment of "//admin/secret.txt", so it is not the path
+// "/admin/secret.txt" and middleware mounted on "/admin" does not run for it;
+// stripping the mount's "/" must not hide that segment from the file server,
+// which would open the file the middleware was mounted to guard.
+//
+// The rows cover the other ways to write such a path: an encoded slash, which
+// the router decodes under UnescapePath, dot segments that leave the empty
+// segment in place, an absolute-form target, a query, a backslash and an escape
+// that was encoded twice. Each row runs with and without UnescapePath, for GET
+// and HEAD, and the targets are sent as written. A row the guard does not
+// answer must also have reached the file server, so it is the file server that
+// refused it and not the router that never sent it there.
+func Test_Static_RootMount_EmptyFirstSegment(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	require.NoError(t, os.Mkdir(filepath.Join(root, "admin"), 0o750))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "admin", "secret.txt"), []byte("SECRET"), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "admin", "index.html"), []byte("ADMININDEX"), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "public.txt"), []byte("PUBLIC"), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "index.html"), []byte("INDEX"), 0o600))
+
+	// the file cache is off so the served files are closed when the temp dir is removed
+	config := func(fsys fs.FS) Config {
+		return Config{FS: fsys, CacheDuration: -1, Next: reached}
+	}
+
+	// each of these mounts has the root as its prefix
+	mounts := []struct {
+		mount func(app *fiber.App)
+		name  string
+	}{
+		{name: "use without a path", mount: func(app *fiber.App) { app.Use(New(root, config(nil))) }},
+		{name: "use root", mount: func(app *fiber.App) { app.Use("/", New(root, config(nil))) }},
+		{name: "use wildcard", mount: func(app *fiber.App) { app.Use("/*", New(root, config(nil))) }},
+		{name: "get wildcard", mount: func(app *fiber.App) { app.Get("/*", New(root, config(nil))) }},
+		{name: "get bare wildcard", mount: func(app *fiber.App) { app.Get("*", New(root, config(nil))) }},
+		{name: "group root", mount: func(app *fiber.App) { app.Group("/").Use(New(root, config(nil))) }},
+		{name: "fs root", mount: func(app *fiber.App) {
+			app.Use(New("", config(os.DirFS(root))))
+		}},
+		{name: "fs subdirectory root", mount: func(app *fiber.App) {
+			app.Get("/*", New(filepath.Base(root), config(os.DirFS(filepath.Dir(root)))))
+		}},
+	}
+
+	const (
+		ok      = fiber.StatusOK
+		guarded = fiber.StatusForbidden // the answer of the middleware mounted on "/admin"
+		missing = fiber.StatusNotFound
+	)
+
+	requests := []struct {
+		name          string
+		target        string
+		wantBody      string
+		wantStatus    int
+		wantUnescaped int // the status under UnescapePath, when it is not wantStatus
+	}{
+		// the guard and the files it covers
+		{name: "guarded file", target: "/admin/secret.txt", wantStatus: guarded},
+		{name: "guarded directory", target: "/admin/", wantStatus: guarded},
+		{name: "guarded directory name", target: "/admin", wantStatus: guarded},
+		{name: "public file", target: "/public.txt", wantStatus: ok, wantBody: "PUBLIC"},
+		{name: "directory index", target: "/", wantStatus: ok, wantBody: "INDEX"},
+
+		// an empty first segment
+		{name: "empty first segment before the guarded file", target: "//admin/secret.txt", wantStatus: missing},
+		{name: "empty first segment before a public file", target: "//public.txt", wantStatus: missing},
+		{name: "empty first segment before the guarded directory", target: "//admin/", wantStatus: missing},
+		{name: "empty first segment before the guarded directory name", target: "//admin", wantStatus: missing},
+		{name: "two empty segments before the guarded file", target: "///admin/secret.txt", wantStatus: missing},
+		{name: "empty first segment and a query", target: "//admin/secret.txt?x=1", wantStatus: missing},
+		{name: "empty first segment and a query holding a scheme separator", target: "//admin/secret.txt?next=http://example.com", wantStatus: missing},
+		{name: "guarded file and a query", target: "/admin/secret.txt?x=1", wantStatus: guarded},
+
+		// an encoded slash: refused as it is, and decoded into an empty segment under UnescapePath
+		{name: "encoded slash before the guarded file", target: "/%2Fadmin/secret.txt", wantStatus: missing},
+		{name: "lowercase encoded slash before the guarded file", target: "/%2fadmin/secret.txt", wantStatus: missing},
+		{name: "encoded slash before the guarded directory", target: "/%2Fadmin/", wantStatus: missing},
+		{name: "encoded slash before a public file", target: "/%2Fpublic.txt", wantStatus: missing},
+		{name: "two encoded slashes before the guarded file", target: "/%2F%2Fadmin/secret.txt", wantStatus: missing},
+		{name: "encoded slash without a leading slash", target: "%2Fadmin/secret.txt", wantStatus: missing},
+		{name: "encoded slash before an encoded name", target: "/%2F%61dmin/secret.txt", wantStatus: missing},
+		{name: "encoded slash after the guarded directory name", target: "/admin%2Fsecret.txt", wantStatus: missing, wantUnescaped: guarded},
+
+		// Dot segments that leave the empty first segment in place. The router has
+		// turned each into "//admin/secret.txt" before the file server sees it, so
+		// there is a row for each kind of normalization (a current segment, a
+		// parent segment at the root and after a name, an encoded one) and not for
+		// each spelling; the router's own tests cover those.
+		{name: "current segment and an empty segment", target: "/.//admin/secret.txt", wantStatus: missing},
+		{name: "parent segment and an empty segment", target: "/..//admin/secret.txt", wantStatus: missing},
+		{name: "segment, parent segment and an empty segment", target: "/x/..//admin/secret.txt", wantStatus: missing},
+		{name: "encoded parent segment and an empty segment", target: "/%2e%2e//admin/secret.txt", wantStatus: missing},
+
+		// dot segments that leave no empty segment, so the guard sees the path it covers
+		{name: "current segment before the guarded file", target: "/./admin/secret.txt", wantStatus: guarded},
+		{name: "parent segment before the guarded file", target: "/../admin/secret.txt", wantStatus: guarded},
+		{name: "segment and parent segment before the guarded file", target: "/x/../admin/secret.txt", wantStatus: guarded},
+		{name: "empty segment and parent segment before the guarded file", target: "//../admin/secret.txt", wantStatus: guarded},
+		{name: "encoded parent segment before the guarded file", target: "/%2e%2e/admin/secret.txt", wantStatus: guarded},
+		{name: "encoded parent segment and encoded slash before the guarded file", target: "/%2e%2e%2fadmin/secret.txt", wantStatus: missing, wantUnescaped: guarded},
+		{name: "parent segment and encoded slash before the guarded file", target: "/..%2fadmin/secret.txt", wantStatus: missing, wantUnescaped: guarded},
+
+		// an unreserved character written as an escape, which the router decodes before it matches
+		{name: "encoded name behind an empty segment", target: "//%61dmin/secret.txt", wantStatus: missing},
+		{name: "encoded file behind an empty segment", target: "//admin/se%63ret.txt", wantStatus: missing},
+		{name: "encoded name", target: "/%61dmin/secret.txt", wantStatus: guarded},
+		{name: "encoded file", target: "/admin/se%63ret.txt", wantStatus: guarded},
+
+		// a request target in absolute form
+		{name: "absolute form with an empty first segment", target: "http://example.com//admin/secret.txt", wantStatus: missing},
+		{name: "absolute form with an encoded slash", target: "http://example.com/%2Fadmin/secret.txt", wantStatus: missing},
+		{name: "absolute form", target: "http://example.com/admin/secret.txt", wantStatus: guarded},
+
+		// a backslash, raw or escaped, is neither a separator nor an empty segment
+		{name: "backslash before the guarded file", target: `/\admin/secret.txt`, wantStatus: missing},
+		{name: "backslash and a slash before the guarded file", target: `/\/admin/secret.txt`, wantStatus: missing},
+		{name: "slash and a backslash before the guarded file", target: `//\admin/secret.txt`, wantStatus: missing},
+		{name: "backslash without a leading slash", target: `\admin/secret.txt`, wantStatus: missing},
+		{name: "encoded backslash before the guarded file", target: "/%5Cadmin/secret.txt", wantStatus: missing},
+		{name: "lowercase encoded backslash before the guarded file", target: "/%5cadmin/secret.txt", wantStatus: missing},
+
+		// an escape that was encoded twice stays part of a name
+		{name: "double encoded slash before the guarded file", target: "/%252Fadmin/secret.txt", wantStatus: missing},
+		{name: "double encoded backslash before the guarded file", target: "/%255Cadmin/secret.txt", wantStatus: missing},
+
+		// other ways to write a separator, or nothing
+		{name: "unicode escape of a slash before the guarded file", target: "/%u002fadmin/secret.txt", wantStatus: missing},
+		{name: "overlong slash before the guarded file", target: "/%C0%AFadmin/secret.txt", wantStatus: missing},
+		{name: "full-width solidus before the guarded file", target: "/%EF%BC%8Fadmin/secret.txt", wantStatus: missing},
+		{name: "null byte before the guarded file", target: "/%00admin/secret.txt", wantStatus: missing},
+		{name: "path parameter before the guarded file", target: "/;/admin/secret.txt", wantStatus: missing},
+	}
+
+	// One app per mount and value of UnescapePath, built once: the rows share
+	// its handler.
+	modes := []bool{false, true}
+	handlers := make([][]fasthttp.RequestHandler, len(mounts))
+	for i, m := range mounts {
+		for _, unescape := range modes {
+			app := fiber.New(fiber.Config{UnescapePath: unescape})
+			app.Use("/admin", func(c fiber.Ctx) error {
+				return c.SendStatus(fiber.StatusForbidden)
+			})
+			m.mount(app)
+			handlers[i] = append(handlers[i], app.Handler())
+		}
+	}
+
+	for i, m := range mounts {
+		for _, tc := range requests {
+			t.Run(m.name+"/"+tc.name, func(t *testing.T) {
+				t.Parallel()
+
+				for j, unescape := range modes {
+					want := tc.wantStatus
+					if unescape && tc.wantUnescaped != 0 {
+						want = tc.wantUnescaped
+					}
+
+					// HEAD must not reveal a file GET does not serve
+					for _, method := range []string{fiber.MethodGet, fiber.MethodHead} {
+						resp := serveRaw(handlers[i][j], method, tc.target)
+						require.Equal(t, want, resp.StatusCode(), "%s %s unescape=%v", method, tc.target, unescape)
+						// the guard answers before the file server; every other row has to get there
+						require.Equal(t, want != guarded, len(resp.Header.Peek(headerReached)) > 0,
+							"%s %s unescape=%v: reached the file server", method, tc.target, unescape)
+						if method != fiber.MethodGet {
+							continue // a HEAD answer has no body to check
+						}
+
+						body := string(resp.Body())
+						switch want {
+						case ok:
+							require.Equal(t, tc.wantBody, body, "%s %s unescape=%v", method, tc.target, unescape)
+						case guarded:
+							require.Equal(t, "Forbidden", body, "%s %s unescape=%v", method, tc.target, unescape)
+						default:
+							for _, served := range []string{"SECRET", "ADMININDEX", "PUBLIC"} {
+								require.NotContains(t, body, served, "%s %s unescape=%v", method, tc.target, unescape)
+							}
+						}
+					}
+				}
+			})
+		}
+	}
+}
+
+// Test_Static_RootMount_EmptyFirstSegment_Browse pins that directory browsing
+// does not list a directory through a path with an empty first segment, however
+// it is written: the router keeps "//admin/" apart from "/admin/", which the
+// guard answers. "//" and "/%2F" are here and not in the table above because
+// only a wildcard route sends them to the file server.
+func Test_Static_RootMount_EmptyFirstSegment_Browse(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	require.NoError(t, os.Mkdir(filepath.Join(root, "admin"), 0o750))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "admin", "secret.txt"), []byte("SECRET"), 0o600))
+
+	const (
+		ok      = fiber.StatusOK
+		guarded = fiber.StatusForbidden
+		missing = fiber.StatusNotFound
+	)
+
+	requests := []struct {
+		target     string
+		wantStatus int
+	}{
+		{target: "/", wantStatus: ok},
+		{target: "/admin/", wantStatus: guarded},
+		{target: "//admin/", wantStatus: missing},
+		{target: "//", wantStatus: missing},
+		{target: "/%2Fadmin/", wantStatus: missing},
+		{target: "/%2F", wantStatus: missing},
+		{target: "/%252Fadmin/", wantStatus: missing},
+		{target: "/.//admin/", wantStatus: missing},
+		{target: `/\admin/`, wantStatus: missing},
+	}
+
+	for _, unescape := range []bool{false, true} {
+		app := fiber.New(fiber.Config{UnescapePath: unescape})
+		app.Use("/admin", func(c fiber.Ctx) error {
+			return c.SendStatus(fiber.StatusForbidden)
+		})
+		app.Get("/*", New(root, Config{Browse: true, CacheDuration: -1, Next: reached}))
+		handler := app.Handler()
+
+		for _, tc := range requests {
+			resp := serveRaw(handler, fiber.MethodGet, tc.target)
+			body := string(resp.Body())
+			require.Equal(t, tc.wantStatus, resp.StatusCode(), "unescape=%v target=%s", unescape, tc.target)
+			require.Equal(t, tc.wantStatus != guarded, len(resp.Header.Peek(headerReached)) > 0,
+				"unescape=%v target=%s: reached the file server", unescape, tc.target)
+			require.NotContains(t, body, "secret.txt", "unescape=%v target=%s", unescape, tc.target)
+			require.NotContains(t, body, "SECRET", "unescape=%v target=%s", unescape, tc.target)
+		}
+	}
+}
+
+// Test_Static_RootMount_EmptyFirstSegment_NotFoundHandler pins that a path with
+// an empty first segment is a miss like any other for the NotFoundHandler,
+// whether it is written plainly, with an encoded slash or as an absolute-form
+// target, while the same name without it is served.
+func Test_Static_RootMount_EmptyFirstSegment_NotFoundHandler(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(root, "public.txt"), []byte("PUBLIC"), 0o600))
+
+	for _, unescape := range []bool{false, true} {
+		app := fiber.New(fiber.Config{UnescapePath: unescape})
+		app.Get("/*", New(root, Config{
+			CacheDuration: -1,
+			NotFoundHandler: func(c fiber.Ctx) error {
+				return c.Status(fiber.StatusTeapot).SendString("missing " + c.Path())
+			},
+		}))
+		handler := app.Handler()
+
+		resp := serveRaw(handler, fiber.MethodGet, "/public.txt")
+		require.Equal(t, fiber.StatusOK, resp.StatusCode(), "unescape=%v", unescape)
+		require.Equal(t, "PUBLIC", string(resp.Body()), "unescape=%v", unescape)
+
+		for _, target := range []string{
+			"//public.txt",
+			"/%2Fpublic.txt",
+			"http://example.com//public.txt",
+		} {
+			resp = serveRaw(handler, fiber.MethodGet, target)
+			body := string(resp.Body())
+			require.Equal(t, fiber.StatusTeapot, resp.StatusCode(), "unescape=%v target=%s", unescape, target)
+			require.True(t, strings.HasPrefix(body, "missing /"), "unescape=%v target=%s body=%q", unescape, target, body)
+			require.NotContains(t, body, "PUBLIC", "unescape=%v target=%s", unescape, target)
+		}
+	}
+}
+
+// Test_Static_RootFile_EmptyFirstSegment pins how a root that is a file treats
+// a path. A root mount answers a path with an empty first segment with 404
+// whatever it serves, so a file root answers "//x" as a directory root does. For
+// a file root that is parity and not protection: the router keeps "//x" apart
+// from "/x", so middleware mounted on "/x" does not run for it, but the same
+// file is served at every other path. Every other spelling gets the file,
+// because nothing is looked up by the path: a backslash, a malformed escape or a
+// NUL byte is served like any other path, and no spelling of a path can select
+// another file. An empty segment further in is served too, since it is part of
+// an opaque name, as in "/web/https://example.com", a route a single-page app
+// can take. Middleware mounted on a prefix still answers the paths it matches.
+func Test_Static_RootFile_EmptyFirstSegment(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	require.NoError(t, os.Mkdir(filepath.Join(root, "admin"), 0o750))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "admin", "secret.txt"), []byte("SECRET"), 0o600))
+	file := filepath.Join(root, "shell.html")
+	require.NoError(t, os.WriteFile(file, []byte("SHELL"), 0o600))
+
+	mounts := []struct {
+		mount func(app *fiber.App)
+		name  string
+	}{
+		{name: "file", mount: func(app *fiber.App) { app.Get("/*", New(file, Config{CacheDuration: -1, Next: reached})) }},
+		{name: "fs file", mount: func(app *fiber.App) {
+			app.Get("/*", New("shell.html", Config{FS: os.DirFS(root), CacheDuration: -1, Next: reached}))
+		}},
+	}
+
+	const (
+		ok      = fiber.StatusOK
+		guarded = fiber.StatusForbidden
+		missing = fiber.StatusNotFound
+	)
+
+	requests := []struct {
+		target        string
+		wantStatus    int
+		wantUnescaped int // the status under UnescapePath, when it is not wantStatus
+	}{
+		{target: "/", wantStatus: ok},
+		{target: "/anything", wantStatus: ok},
+		{target: "//anything", wantStatus: missing},
+		{target: "///anything", wantStatus: missing},
+		{target: "//admin/secret.txt", wantStatus: missing},
+		{target: "/.//anything", wantStatus: missing},
+		{target: "/a//b", wantStatus: ok},
+		{target: "/web/https://example.com/x", wantStatus: ok},
+		{target: "/%2Fanything", wantStatus: ok, wantUnescaped: missing},
+		{target: `/a\b`, wantStatus: ok},
+		{target: "/%5Cb", wantStatus: ok},
+		{target: "/%zz", wantStatus: ok},
+		{target: "/%00", wantStatus: ok},
+		{target: "/admin/secret.txt", wantStatus: guarded},
+	}
+
+	for _, m := range mounts {
+		for _, unescape := range []bool{false, true} {
+			app := fiber.New(fiber.Config{UnescapePath: unescape})
+			app.Use("/admin", func(c fiber.Ctx) error {
+				return c.SendStatus(fiber.StatusForbidden)
+			})
+			m.mount(app)
+			handler := app.Handler()
+
+			for _, tc := range requests {
+				want := tc.wantStatus
+				if unescape && tc.wantUnescaped != 0 {
+					want = tc.wantUnescaped
+				}
+
+				resp := serveRaw(handler, fiber.MethodGet, tc.target)
+				body := string(resp.Body())
+				require.Equal(t, want, resp.StatusCode(), "%s unescape=%v target=%s", m.name, unescape, tc.target)
+				require.Equal(t, want != guarded, len(resp.Header.Peek(headerReached)) > 0,
+					"%s unescape=%v target=%s: reached the file server", m.name, unescape, tc.target)
+				switch want {
+				case ok:
+					require.Equal(t, "SHELL", body, "%s unescape=%v target=%s", m.name, unescape, tc.target)
+				case guarded:
+					require.Equal(t, "Forbidden", body, "%s unescape=%v target=%s", m.name, unescape, tc.target)
+				default:
+					require.NotContains(t, body, "SHELL", "%s unescape=%v target=%s", m.name, unescape, tc.target)
+					require.NotContains(t, body, "SECRET", "%s unescape=%v target=%s", m.name, unescape, tc.target)
+				}
+			}
+		}
+	}
+}
+
+// Test_Static_RootFile_OnAPrefix pins that a root that is a file mounted on a
+// prefix reads nothing from the path below it. The empty first segment that a
+// root mount refuses cannot occur there, since the router sends the file server
+// only paths that start with the prefix, and an empty segment below the prefix
+// is part of a name like any other. A prefix that starts with one itself is
+// covered by Test_Static_RootFile_OnAPrefixWithEmptyFirstSegment.
+func Test_Static_RootFile_OnAPrefix(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	file := filepath.Join(root, "shell.html")
+	require.NoError(t, os.WriteFile(file, []byte("SHELL"), 0o600))
+
+	mounts := []struct {
+		mount func(app *fiber.App)
+		name  string
+	}{
+		{name: "file", mount: func(app *fiber.App) { app.Get("/static/*", New(file, Config{CacheDuration: -1, Next: reached})) }},
+		{name: "fs file", mount: func(app *fiber.App) {
+			app.Get("/static/*", New("shell.html", Config{FS: os.DirFS(root), CacheDuration: -1, Next: reached}))
+		}},
+	}
+
+	requests := []struct {
+		target      string
+		wantStatus  int
+		wantReached bool
+	}{
+		{target: "/static/x", wantStatus: fiber.StatusOK, wantReached: true},
+		{target: "/static//x", wantStatus: fiber.StatusOK, wantReached: true},
+		{target: "/static/web/https://example.com", wantStatus: fiber.StatusOK, wantReached: true},
+		// the router does not send this to the file server at all
+		{target: "//static/x", wantStatus: fiber.StatusNotFound},
+	}
+
+	for _, m := range mounts {
+		for _, unescape := range []bool{false, true} {
+			app := fiber.New(fiber.Config{UnescapePath: unescape})
+			m.mount(app)
+			handler := app.Handler()
+
+			for _, tc := range requests {
+				resp := serveRaw(handler, fiber.MethodGet, tc.target)
+				require.Equal(t, tc.wantStatus, resp.StatusCode(), "%s unescape=%v target=%s", m.name, unescape, tc.target)
+				require.Equal(t, tc.wantReached, len(resp.Header.Peek(headerReached)) > 0,
+					"%s unescape=%v target=%s: reached the file server", m.name, unescape, tc.target)
+				if tc.wantStatus == fiber.StatusOK {
+					require.Equal(t, "SHELL", string(resp.Body()), "%s unescape=%v target=%s", m.name, unescape, tc.target)
+				}
+			}
+		}
+	}
+}
+
+// Test_Static_RootFile_OnAPrefixWithEmptyFirstSegment pins that refusing a path
+// that starts with "//" belongs to a root mount. A route can start with an empty
+// segment itself, as in "//assets/*", and then every path it matches does too,
+// so a root that is a file serves its file there as a directory serves its files.
+func Test_Static_RootFile_OnAPrefixWithEmptyFirstSegment(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	file := filepath.Join(root, "shell.html")
+	require.NoError(t, os.WriteFile(file, []byte("SHELL"), 0o600))
+
+	mounts := []struct {
+		mount func(app *fiber.App)
+		name  string
+	}{
+		{name: "file", mount: func(app *fiber.App) { app.Get("//assets/*", New(file, Config{CacheDuration: -1, Next: reached})) }},
+		{name: "file with Use", mount: func(app *fiber.App) { app.Use("//assets", New(file, Config{CacheDuration: -1, Next: reached})) }},
+		{name: "fs file", mount: func(app *fiber.App) {
+			app.Get("//assets/*", New("shell.html", Config{FS: os.DirFS(root), CacheDuration: -1, Next: reached}))
+		}},
+	}
+
+	requests := []struct {
+		target      string
+		wantStatus  int
+		wantReached bool
+	}{
+		{target: "//assets/x", wantStatus: fiber.StatusOK, wantReached: true},
+		{target: "//assets//x", wantStatus: fiber.StatusOK, wantReached: true},
+		// the router does not send these to the file server at all
+		{target: "/assets/x", wantStatus: fiber.StatusNotFound},
+		{target: "///assets/x", wantStatus: fiber.StatusNotFound},
+	}
+
+	for _, m := range mounts {
+		for _, unescape := range []bool{false, true} {
+			app := fiber.New(fiber.Config{UnescapePath: unescape})
+			m.mount(app)
+			handler := app.Handler()
+
+			for _, tc := range requests {
+				resp := serveRaw(handler, fiber.MethodGet, tc.target)
+				require.Equal(t, tc.wantStatus, resp.StatusCode(), "%s unescape=%v target=%s", m.name, unescape, tc.target)
+				require.Equal(t, tc.wantReached, len(resp.Header.Peek(headerReached)) > 0,
+					"%s unescape=%v target=%s: reached the file server", m.name, unescape, tc.target)
+				if tc.wantStatus == fiber.StatusOK {
+					require.Equal(t, "SHELL", string(resp.Body()), "%s unescape=%v target=%s", m.name, unescape, tc.target)
+				}
+			}
+		}
+	}
+}
+
+// Test_Static_RefusedPathIsNotLookedUp pins that a path the file server refuses
+// is answered as missing without a file lookup. It used to be looked up under a
+// reserved name, so a file of that name in the root was served for a malformed
+// path or for "/staticx" on a "/static*" route, and a root that is a single file
+// on an fs.FS served that file instead of its own for a leading "//". The name
+// is an ordinary one when asked for.
+func Test_Static_RefusedPathIsNotLookedUp(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	for name, data := range map[string]string{
+		"shell.html":        "SHELL",
+		"a.txt":             "A",
+		"__fiber_invalid__": "RESERVED",
+	} {
+		require.NoError(t, os.WriteFile(filepath.Join(root, name), []byte(data), 0o600))
+	}
+
+	type request struct {
+		target     string
+		wantBody   string
+		wantStatus int
+	}
+	directory := []request{
+		{target: "/a.txt", wantStatus: fiber.StatusOK, wantBody: "A"},
+		{target: "/__fiber_invalid__", wantStatus: fiber.StatusOK, wantBody: "RESERVED"},
+		{target: "//a.txt", wantStatus: fiber.StatusNotFound},
+		{target: "/x//y", wantStatus: fiber.StatusNotFound},
+	}
+	mounts := []struct {
+		mount    func(app *fiber.App)
+		name     string
+		requests []request
+	}{
+		{
+			name:     "directory",
+			mount:    func(app *fiber.App) { app.Get("/*", New(root, Config{CacheDuration: -1, Next: reached})) },
+			requests: directory,
+		},
+		{
+			name: "fs directory",
+			mount: func(app *fiber.App) {
+				app.Get("/*", New(".", Config{FS: os.DirFS(root), CacheDuration: -1, Next: reached}))
+			},
+			requests: directory,
+		},
+		{
+			name: "fs file",
+			mount: func(app *fiber.App) {
+				app.Get("/*", New("shell.html", Config{FS: os.DirFS(root), CacheDuration: -1, Next: reached}))
+			},
+			requests: []request{
+				{target: "/x", wantStatus: fiber.StatusOK, wantBody: "SHELL"},
+				{target: "//probe", wantStatus: fiber.StatusNotFound},
+			},
+		},
+		{
+			name: "fs file on a partial wildcard",
+			mount: func(app *fiber.App) {
+				app.Get("/static*", New("shell.html", Config{FS: os.DirFS(root), CacheDuration: -1, Next: reached}))
+			},
+			requests: []request{
+				{target: "/static/x", wantStatus: fiber.StatusOK, wantBody: "SHELL"},
+				{target: "/staticx", wantStatus: fiber.StatusNotFound},
+			},
+		},
+	}
+
+	for _, m := range mounts {
+		for _, unescape := range []bool{false, true} {
+			app := fiber.New(fiber.Config{UnescapePath: unescape})
+			m.mount(app)
+			handler := app.Handler()
+
+			for _, method := range []string{fiber.MethodGet, fiber.MethodHead} {
+				for _, tc := range m.requests {
+					resp := serveRaw(handler, method, tc.target)
+					require.Equal(t, tc.wantStatus, resp.StatusCode(), "%s unescape=%v %s %s", m.name, unescape, method, tc.target)
+					require.NotEmpty(t, resp.Header.Peek(headerReached),
+						"%s unescape=%v %s %s: reached the file server", m.name, unescape, method, tc.target)
+					if method != fiber.MethodGet {
+						continue // a HEAD answer has no body to check
+					}
+					if tc.wantStatus == fiber.StatusOK {
+						require.Equal(t, tc.wantBody, string(resp.Body()), "%s unescape=%v %s", m.name, unescape, tc.target)
+					} else {
+						require.NotContains(t, string(resp.Body()), "RESERVED", "%s unescape=%v %s", m.name, unescape, tc.target)
+					}
+				}
+			}
 		}
 	}
 }
