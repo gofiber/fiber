@@ -78,7 +78,7 @@ func (s *fileServer) requestPath(dst []byte, p string) ([]byte, bool) {
 		// select another file, and an empty segment inside it, as in
 		// /web/https://example.com, is part of an opaque name. A root mount refuses
 		// a path that starts with "//" whatever it serves, as a directory root does
-		// in sanitizePath; on a prefix, even one that starts with "//" itself, that
+		// in fspath.Valid; on a prefix, even one that starts with "//" itself, that
 		// segment is the route's own.
 		if s.rootIsFile && s.prefixLen == 0 && len(p) > 1 && p[0] == '/' && p[1] == '/' {
 			return dst, false
@@ -159,7 +159,7 @@ func New(root string, cfg ...Config) fiber.Handler {
 		prefixLen := len(prefix)
 		if prefixLen > 0 && prefix[prefixLen-1] == '/' {
 			// /john/ -> /john and / -> "", so "//john" keeps the empty segment
-			// that sanitizePath refuses
+			// that fspath.Valid refuses
 			prefixLen--
 		}
 
