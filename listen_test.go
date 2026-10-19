@@ -17,6 +17,7 @@ import (
 	"testing"
 	"time"
 
+	fiberlog "github.com/gofiber/fiber/v3/log"
 	"github.com/gofiber/utils/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -25,6 +26,110 @@ import (
 	"github.com/valyala/fasthttp/prefork"
 	"golang.org/x/crypto/acme/autocert"
 )
+
+// shutdownProbe counts the shutdown hooks of an app and keeps the error OnPostShutdown got.
+type shutdownProbe struct {
+	postErr error
+	posted  chan struct{} // closed when OnPostShutdown first runs
+	once    sync.Once
+	pre     atomic.Int32
+	post    atomic.Int32
+}
+
+// gracefulFixture is an app with the probe of its shutdown hooks and a GracefulContext the test cancels.
+type gracefulFixture struct {
+	ln     *fasthttputil.InmemoryListener // what Listener serves
+	app    *App
+	probe  *shutdownProbe
+	cancel context.CancelFunc
+	cfg    ListenConfig
+}
+
+// gracefulEntry is a way to start a server whose GracefulContext the tests cancel.
+type gracefulEntry struct {
+	run  func(f *gracefulFixture) error
+	name string
+	// closeVisible tells whether a test can see that the entry closed its listener: only
+	// Listener serves one that the test holds.
+	closeVisible bool
+}
+
+var (
+	listenEntry = gracefulEntry{
+		name: "Listen",
+		run:  func(f *gracefulFixture) error { return f.app.Listen("127.0.0.1:0", f.cfg) },
+	}
+	listenerEntry = gracefulEntry{
+		name:         "Listener",
+		run:          func(f *gracefulFixture) error { return f.app.Listener(f.ln, f.cfg) },
+		closeVisible: true,
+	}
+	gracefulEntries = []gracefulEntry{listenEntry, listenerEntry}
+)
+
+// gracefulPoint is a place of the startup where a test acts. wire registers run there.
+type gracefulPoint struct {
+	wire func(f *gracefulFixture, run func())
+	name string
+}
+
+var (
+	onListenPoint = gracefulPoint{
+		name: "OnListen",
+		wire: func(f *gracefulFixture, run func()) {
+			f.app.Hooks().OnListen(func(ListenData) error {
+				run()
+				return nil
+			})
+		},
+	}
+	beforeServePoint = gracefulPoint{
+		name: "BeforeServeFunc",
+		wire: func(f *gracefulFixture, run func()) {
+			f.cfg.BeforeServeFunc = func(*App) error {
+				run()
+				return nil
+			}
+		},
+	}
+	gracefulPoints = []gracefulPoint{onListenPoint, beforeServePoint}
+)
+
+// gracefulContextStates are the two states a GracefulContext can be in when a test calls Listen: not
+// done, or done already (prepare cancels it). A test that reaches a point of the startup cancels the
+// context there as well, which does nothing once it is done, and keeps the startup at the point until
+// the shutdown has finished: that is what puts the shutdown before Serve without relying on timing.
+var gracefulContextStates = []struct {
+	prepare func(f *gracefulFixture)
+	name    string
+}{
+	{name: "not done before the call", prepare: func(*gracefulFixture) {}},
+	{name: "done before the call", prepare: func(f *gracefulFixture) { f.cancel() }},
+}
+
+// closeSignalListener reports the first Close of the listener it wraps.
+type closeSignalListener struct {
+	net.Listener
+	closed chan struct{}
+	once   sync.Once
+}
+
+// stubListener counts what a gracefulListener forwards to the listener it wraps. It never hands out
+// a connection: without an acceptErr its Accept reports a closed listener, so a Serve that is given
+// it by mistake returns instead of calling Accept in a loop for ever.
+type stubListener struct {
+	acceptErr error
+	closeErr  error
+	accepts   atomic.Int32
+	closes    atomic.Int32
+}
+
+type benchConn struct{ net.Conn }
+
+// benchListener accepts the same connection at once, so a benchmark sees only what its wrapper adds.
+type benchListener struct{ conn net.Conn }
+
+var benchSinkConn net.Conn
 
 // go test -run Test_Listen
 func Test_Listen(t *testing.T) {
@@ -1713,6 +1818,521 @@ func Test_GracefulShutdown_NegativeTimeoutWaitsIndefinitely(t *testing.T) {
 		t.Fatal("OnPostShutdown was not called")
 	}
 	require.NoError(t, <-errs)
+}
+
+// receiveOrTimeout returns what ch delivers, or false after five seconds. A hang is what these tests
+// catch, so the bound only has to outlast a slow machine.
+func receiveOrTimeout[T any](ch <-chan T) (T, bool) {
+	select {
+	case v := <-ch:
+		return v, true
+	case <-time.After(5 * time.Second):
+		var zero T
+		return zero, false
+	}
+}
+
+func newShutdownProbe(app *App) *shutdownProbe {
+	p := &shutdownProbe{posted: make(chan struct{})}
+	app.Hooks().OnPreShutdown(func() error {
+		p.pre.Add(1)
+		return nil
+	})
+	app.Hooks().OnPostShutdown(func(err error) error {
+		p.post.Add(1)
+		p.once.Do(func() {
+			p.postErr = err
+			close(p.posted)
+		})
+		return nil
+	})
+
+	return p
+}
+
+// await returns once the shutdown has finished, or when receiveOrTimeout gives up. Called from the
+// startup, it puts the whole shutdown ahead of Serve without relying on timing. It reports nothing,
+// on purpose: when the shutdown does not come, Serve never returns and awaitServe fails the test
+// from the test goroutine, whereas a report from here could land after the test has completed,
+// which panics the whole test binary.
+func (p *shutdownProbe) await() {
+	_, _ = receiveOrTimeout(p.posted)
+}
+
+// requireCleanShutdown expects one shutdown that finished without an error.
+func (p *shutdownProbe) requireCleanShutdown(t *testing.T) {
+	t.Helper()
+
+	select {
+	case <-p.posted:
+	default:
+		t.Fatal("OnPostShutdown did not run before the server returned")
+	}
+	require.Equal(t, int32(1), p.pre.Load(), "OnPreShutdown must fire exactly once")
+	require.Equal(t, int32(1), p.post.Load(), "OnPostShutdown must fire exactly once")
+	require.NoError(t, p.postErr)
+}
+
+// awaitServe returns what Listen, Listener or Serve returned. Not returning is the bug of
+// issue #4763: the server keeps serving after the shutdown that should have stopped it.
+func awaitServe(t *testing.T, errs <-chan error) error {
+	t.Helper()
+
+	err, ok := receiveOrTimeout(errs)
+	if !ok {
+		t.Fatal("the server kept serving: it did not return")
+	}
+
+	return err
+}
+
+// getOnNewConn makes one request over a new connection of ln, so that it needs an Accept.
+func getOnNewConn(ln *fasthttputil.InmemoryListener) (int, error) {
+	client := fasthttp.HostClient{
+		Dial:        func(string) (net.Conn, error) { return ln.Dial() },
+		ReadTimeout: 2 * time.Second,
+	}
+	req, resp := fasthttp.AcquireRequest(), fasthttp.AcquireResponse()
+	defer fasthttp.ReleaseRequest(req)
+	defer fasthttp.ReleaseResponse(resp)
+	req.SetRequestURI("http://example.com/")
+	req.Header.SetConnectionClose()
+
+	err := client.Do(req, resp)
+	return resp.StatusCode(), err
+}
+
+// waitUntilServing returns once ln answers requests.
+func waitUntilServing(t *testing.T, ln *fasthttputil.InmemoryListener) {
+	t.Helper()
+
+	require.Eventually(t, func() bool {
+		code, err := getOnNewConn(ln)
+		return err == nil && code == StatusOK
+	}, 2*time.Second, 10*time.Millisecond, "server failed to become ready")
+}
+
+func newGracefulFixture(t *testing.T) *gracefulFixture {
+	t.Helper()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	app := New()
+	app.Get("/", func(c Ctx) error { return c.SendString("ok") })
+
+	return &gracefulFixture{
+		ln:     fasthttputil.NewInmemoryListener(),
+		app:    app,
+		probe:  newShutdownProbe(app),
+		cancel: cancel,
+		cfg:    ListenConfig{DisableStartupMessage: true, GracefulContext: ctx},
+	}
+}
+
+// start runs an entry point on its own goroutine, as main would, and returns what it returns.
+func (f *gracefulFixture) start(run func(f *gracefulFixture) error) <-chan error {
+	errs := make(chan error, 1)
+	go func() { errs <- run(f) }()
+
+	return errs
+}
+
+// cancelAndAwait cancels the context, which does nothing to one that is done already, and returns
+// once the shutdown has finished.
+func (f *gracefulFixture) cancelAndAwait() {
+	f.cancel()
+	f.probe.await()
+}
+
+// requireStopped expects the server to have returned nil after exactly one clean shutdown.
+func (f *gracefulFixture) requireStopped(t *testing.T, errs <-chan error) {
+	t.Helper()
+
+	require.NoError(t, awaitServe(t, errs))
+	f.probe.requireCleanShutdown(t)
+}
+
+// requireClosed expects the listener of the entry to be closed, as a shutdown closes the one of
+// a running server. A second Close reports the first one; a Dial would wait for an Accept on a
+// listener that is still open, and hang the test instead of failing it.
+func (e gracefulEntry) requireClosed(t *testing.T, f *gracefulFixture) {
+	t.Helper()
+
+	if !e.closeVisible {
+		return
+	}
+	require.ErrorIs(t, f.ln.Close(), fasthttputil.ErrInmemoryListenerClosed)
+}
+
+// Issue #4763: a GracefulContext done before the server serves left Listen and Listener serving, as
+// fasthttp's Shutdown closes nothing before Serve has registered the listener. Every case runs the
+// whole shutdown before Serve, so none of them relies on timing.
+func Test_GracefulContext_DoneBeforeServe(t *testing.T) {
+	t.Parallel()
+
+	for _, entry := range gracefulEntries {
+		for _, point := range gracefulPoints {
+			for _, state := range gracefulContextStates {
+				t.Run(entry.name+"/"+point.name+"/"+state.name, func(t *testing.T) {
+					t.Parallel()
+
+					f := newGracefulFixture(t)
+					point.wire(f, func() { f.cancelAndAwait() })
+					state.prepare(f)
+
+					f.requireStopped(t, f.start(entry.run))
+					entry.requireClosed(t, f)
+				})
+			}
+		}
+	}
+}
+
+// A bind that fails never started a server, so no shutdown hook runs, even for a context that is
+// already done. The docs promise "not at all when Listen fails before serving".
+func Test_Listen_GracefulContext_BindFailureRunsNoHooks(t *testing.T) {
+	t.Parallel()
+
+	for _, state := range gracefulContextStates {
+		t.Run(state.name, func(t *testing.T) {
+			t.Parallel()
+
+			f := newGracefulFixture(t)
+			state.prepare(f)
+
+			require.Error(t, f.app.Listen(":99999", f.cfg))
+			require.Zero(t, f.probe.pre.Load(), "OnPreShutdown must not run for a server that never started")
+			require.Zero(t, f.probe.post.Load(), "OnPostShutdown must not run for a server that never started")
+		})
+	}
+}
+
+// The listener Listen created is closed, not left bound after Listen returned.
+func Test_Listen_GracefulContext_ClosesListener(t *testing.T) {
+	t.Parallel()
+
+	dir, err := os.MkdirTemp("", "fiber-test")
+	require.NoError(t, err)
+	t.Cleanup(func() { assert.NoError(t, os.RemoveAll(dir)) })
+	sock := filepath.Join(dir, "fiber-test.sock")
+
+	f := newGracefulFixture(t)
+	f.cfg.ListenerNetwork = NetworkUnix
+	onListenPoint.wire(f, func() { f.cancelAndAwait() })
+
+	f.requireStopped(t, f.start(func(f *gracefulFixture) error { return f.app.Listen(sock, f.cfg) }))
+
+	// Closing a unix listener removes its socket file, which makes the file proof of the close.
+	_, err = os.Stat(sock)
+	require.ErrorIs(t, err, os.ErrNotExist)
+}
+
+func (l *closeSignalListener) Close() error {
+	err := l.Listener.Close()
+	l.once.Do(func() { close(l.closed) })
+
+	return err //nolint:wrapcheck // a test double, passing on what the wrapped listener returned
+}
+
+// Accept can see the drain before fasthttp's Shutdown gets to close the listener. The listener is
+// then closed twice, and the second close, by Shutdown, must not hand OnPostShutdown an error.
+func Test_gracefulRun_Draining_ClosesListenerOnce(t *testing.T) {
+	t.Parallel()
+
+	f := newGracefulFixture(t)
+	ln := &closeSignalListener{Listener: f.ln, closed: make(chan struct{})}
+
+	f.app.startupProcess()
+	graceful := f.app.newGracefulRun(&f.cfg)
+	served := f.start(func(*gracefulFixture) error { return f.app.serve(graceful, ln) })
+	waitUntilServing(t, f.ln)
+
+	// Drain as shutdown does once the OnPreShutdown hooks are done, but close nothing yet. The
+	// next connection makes Serve call Accept again, which sees the drain.
+	graceful.beginDraining()
+	code, err := getOnNewConn(f.ln)
+	require.NoError(t, err)
+	require.Equal(t, StatusOK, code)
+	if _, ok := receiveOrTimeout(ln.closed); !ok {
+		t.Fatal("Accept did not see the drain")
+	}
+	require.NoError(t, awaitServe(t, served))
+	graceful.stopAndWait()
+
+	// fasthttp still holds the listener Accept closed, and its Shutdown closes it once more.
+	require.NoError(t, f.app.runShutdown(context.Background(), nil))
+	f.probe.requireCleanShutdown(t)
+}
+
+// A Shutdown after the early cancel succeeds, although fasthttp still holds the listener Serve refused.
+func Test_GracefulContext_ShutdownAfterEarlyCancel(t *testing.T) {
+	t.Parallel()
+
+	f := newGracefulFixture(t)
+	onListenPoint.wire(f, func() { f.cancelAndAwait() })
+
+	require.NoError(t, awaitServe(t, f.start(listenerEntry.run)))
+	require.NoError(t, f.app.Shutdown())
+}
+
+// OnPreShutdown runs before the server stops accepting, so the server keeps serving while a hook
+// holds the shutdown, whether the cancel came while it served or while it started up.
+func Test_GracefulContext_ServesDuringOnPreShutdown(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		prepare func(f *gracefulFixture)
+		trigger func(t *testing.T, f *gracefulFixture)
+		name    string
+	}{
+		{
+			name: "canceled while serving",
+			trigger: func(t *testing.T, f *gracefulFixture) {
+				t.Helper()
+
+				waitUntilServing(t, f.ln)
+				f.cancel()
+			},
+		},
+		{
+			// Serve only starts after the shutdown began, with the hook still holding it.
+			name: "canceled during startup",
+			prepare: func(f *gracefulFixture) {
+				f.app.Hooks().OnListen(func(ListenData) error {
+					f.cancel()
+					return nil
+				})
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			f := newGracefulFixture(t)
+			inHook := make(chan struct{})
+			release := make(chan struct{})
+			f.app.Hooks().OnPreShutdown(func() error {
+				close(inHook)
+				<-release
+				return nil
+			})
+
+			if tc.prepare != nil {
+				tc.prepare(f)
+			}
+			errs := f.start(listenerEntry.run)
+			if tc.trigger != nil {
+				tc.trigger(t, f)
+			}
+
+			if _, ok := receiveOrTimeout(inHook); !ok {
+				t.Fatal("OnPreShutdown did not run")
+			}
+			for i := range 3 {
+				code, err := getOnNewConn(f.ln)
+				require.NoError(t, err, "request %d while OnPreShutdown holds the shutdown", i)
+				require.Equal(t, StatusOK, code)
+			}
+
+			close(release)
+			f.requireStopped(t, errs)
+		})
+	}
+}
+
+func (s *stubListener) Accept() (net.Conn, error) {
+	s.accepts.Add(1)
+	if s.acceptErr == nil {
+		return nil, net.ErrClosed
+	}
+
+	return nil, s.acceptErr
+}
+
+func (s *stubListener) Close() error {
+	s.closes.Add(1)
+	return s.closeErr
+}
+
+func (*stubListener) Addr() net.Addr { return &net.TCPAddr{} }
+
+func Test_gracefulListener(t *testing.T) {
+	t.Parallel()
+
+	t.Run("forwards Accept until the shutdown is draining", func(t *testing.T) {
+		t.Parallel()
+
+		acceptErr := errors.New("accept failed")
+		stub := &stubListener{acceptErr: acceptErr}
+		ln := &gracefulListener{Listener: stub, draining: new(atomic.Bool)}
+
+		_, err := ln.Accept()
+		require.ErrorIs(t, err, acceptErr)
+		require.Equal(t, int32(1), stub.accepts.Load())
+		require.Zero(t, stub.closes.Load())
+	})
+
+	t.Run("refuses and closes once the shutdown is draining", func(t *testing.T) {
+		t.Parallel()
+
+		draining := new(atomic.Bool)
+		draining.Store(true)
+		stub := &stubListener{}
+		ln := &gracefulListener{Listener: stub, draining: draining}
+
+		for range 3 {
+			conn, err := ln.Accept()
+			require.Nil(t, conn)
+			require.ErrorIs(t, err, net.ErrClosed)
+		}
+		require.Zero(t, stub.accepts.Load(), "a draining server must not reach the wrapped Accept")
+		require.Equal(t, int32(1), stub.closes.Load())
+	})
+
+	t.Run("closes the wrapped listener once and repeats its result", func(t *testing.T) {
+		t.Parallel()
+
+		closeErr := errors.New("close failed")
+		stub := &stubListener{closeErr: closeErr}
+		ln := &gracefulListener{Listener: stub, draining: new(atomic.Bool)}
+
+		for range 3 {
+			require.ErrorIs(t, ln.Close(), closeErr)
+		}
+		require.Equal(t, int32(1), stub.closes.Load())
+	})
+}
+
+// A failed close of a draining listener is logged once, by the Accept that made it. When Shutdown
+// closed the listener first, the error is already on its way to OnPostShutdown and Accept logs nothing.
+func Test_gracefulListener_LogsAFailedCloseOnce(t *testing.T) {
+	// Not parallel: redirects the process-wide logger output.
+	closeErr := errors.New("close failed")
+	message := []byte("failed to close the listener: close failed")
+
+	// logged returns what fn logs. The output goes back to stderr before the buffer is read, which
+	// waits for a write in progress, so a goroutine of another test cannot race the read.
+	t.Cleanup(func() { fiberlog.SetOutput(os.Stderr) })
+	logged := func(fn func()) []byte {
+		var buf bytes.Buffer
+		fiberlog.SetOutput(&buf)
+		fn()
+		fiberlog.SetOutput(os.Stderr)
+
+		return buf.Bytes()
+	}
+
+	// Accept closes the draining listener first: the failure is logged once, however often Accept is
+	// called, and a later Close still gets it without logging again.
+	draining := new(atomic.Bool)
+	draining.Store(true)
+	stub := &stubListener{closeErr: closeErr}
+	ln := &gracefulListener{Listener: stub, draining: draining}
+
+	out := logged(func() {
+		for range 3 {
+			conn, err := ln.Accept()
+			require.Nil(t, conn)
+			require.ErrorIs(t, err, net.ErrClosed)
+		}
+	})
+	require.Equal(t, 1, bytes.Count(out, message), "logged: %q", out)
+	require.Equal(t, int32(1), stub.closes.Load())
+
+	out = logged(func() { require.ErrorIs(t, ln.Close(), closeErr) })
+	require.Empty(t, string(out))
+
+	// Shutdown closes the listener first: the error is its to report, and Accept has nothing to log.
+	draining = new(atomic.Bool)
+	stub = &stubListener{closeErr: closeErr}
+	ln = &gracefulListener{Listener: stub, draining: draining}
+
+	out = logged(func() {
+		require.ErrorIs(t, ln.Close(), closeErr)
+		draining.Store(true)
+
+		_, err := ln.Accept()
+		require.ErrorIs(t, err, net.ErrClosed)
+	})
+	require.Empty(t, string(out))
+	require.Equal(t, int32(1), stub.closes.Load())
+}
+
+func Test_gracefulRun(t *testing.T) {
+	t.Parallel()
+
+	t.Run("without a GracefulContext the watch is inert and hands the listener back as it is", func(t *testing.T) {
+		t.Parallel()
+
+		watch := New().watchGracefulContext(&ListenConfig{})
+		plain := &stubListener{}
+
+		require.IsType(t, inertWatch{}, watch)
+		require.Same(t, plain, watch.wrap(plain))
+		watch.stopAndWait()
+	})
+
+	t.Run("with a GracefulContext the watch is a run, which wraps the listener and follows its own flag", func(t *testing.T) {
+		t.Parallel()
+
+		watch := New().watchGracefulContext(&ListenConfig{GracefulContext: t.Context()})
+		run, ok := watch.(*gracefulRun)
+		require.True(t, ok, "a context needs a run that watches it")
+		inner := &stubListener{}
+
+		wrapped := watch.wrap(inner)
+		require.IsType(t, &gracefulListener{}, wrapped)
+
+		run.beginDraining()
+		_, err := wrapped.Accept()
+		require.ErrorIs(t, err, net.ErrClosed)
+		require.Zero(t, inner.accepts.Load(), "a draining run must not reach the wrapped Accept")
+		watch.stopAndWait()
+	})
+
+	t.Run("runs on one app do not share their drain", func(t *testing.T) {
+		t.Parallel()
+
+		app := New()
+		first := app.newGracefulRun(&ListenConfig{GracefulContext: t.Context()})
+		second := app.newGracefulRun(&ListenConfig{GracefulContext: t.Context()})
+
+		first.beginDraining()
+		require.True(t, first.draining.Load())
+		require.False(t, second.draining.Load())
+		first.stopAndWait()
+		second.stopAndWait()
+	})
+}
+
+func (l benchListener) Accept() (net.Conn, error) { return l.conn, nil }
+func (benchListener) Close() error                { return nil }
+func (benchListener) Addr() net.Addr              { return nil }
+
+// Benchmark_gracefulListener_Accept is what the wrapper adds per accepted connection when a
+// GracefulContext is set: Serve calls Accept once per connection, and nothing else of the wrapper
+// is on the hot path.
+func Benchmark_gracefulListener_Accept(b *testing.B) {
+	raw := net.Listener(benchListener{conn: benchConn{}})
+	graceful := net.Listener(&gracefulListener{Listener: raw, draining: new(atomic.Bool)})
+
+	for _, bm := range []struct {
+		ln   net.Listener
+		name string
+	}{{raw, "raw"}, {graceful, "graceful"}} {
+		b.Run(bm.name, func(b *testing.B) {
+			b.ReportAllocs()
+			for b.Loop() {
+				conn, err := bm.ln.Accept()
+				if err != nil {
+					b.Fatal(err)
+				}
+				benchSinkConn = conn
+			}
+		})
+	}
 }
 
 func Test_Listen_TLS_PartialCertConfig(t *testing.T) {

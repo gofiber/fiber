@@ -8,14 +8,12 @@ Please note: we have a [code of conduct](https://github.com/gofiber/fiber/blob/m
 
 Titles always we must use prefix according to below:
 
-> 🔥 Feature, ♻️ Refactor, 🩹 Fix, 🚨 Test, 📚 Doc, 🎨 Style
+> 🐛 bug:, 🔥 feat:, 📒 docs:, 🧹 chore:
 
-- 🔥 Feature: Add flow to add person
-- ♻️ Refactor: Rename file X to Y
-- 🩹 Fix: Improve flow
-- 🚨 Test: Validate to add a new person
-- 📚 Doc: Translate to Portuguese middleware redirect
-- 🎨 Style: Respected pattern Golint
+- 🐛 bug: Improve flow
+- 🔥 feat: Add flow to add person
+- 📒 docs: Translate to Portuguese middleware redirect
+- 🧹 chore: Rename file X to Y
 
 All pull requests that contain a feature or fix are mandatory to have unit tests. Your PR is only to be merged if you respect this flow.
 
