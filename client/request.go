@@ -755,11 +755,21 @@ type QueryParam struct {
 
 // Keys returns all keys from the query parameters.
 func (p *QueryParam) Keys() []string {
-	keys := make([]string, 0, p.Len())
-	for key := range p.All() {
-		keys = append(keys, utils.UnsafeString(key))
+	return uniqueKeys(p.All(), p.Len())
+}
+
+// uniqueKeys returns each key once, in order of first appearance.
+func uniqueKeys(all iter.Seq2[[]byte, []byte], n int) []string {
+	keys := make([]string, 0, n)
+	seen := make(map[string]struct{}, n)
+	for key := range all {
+		k := utils.UnsafeString(key)
+		if _, ok := seen[k]; !ok {
+			seen[k] = struct{}{}
+			keys = append(keys, k)
+		}
 	}
-	return slices.Compact(keys)
+	return keys
 }
 
 // AddParams adds multiple parameters from a map.
@@ -887,11 +897,7 @@ type FormData struct {
 
 // Keys returns all keys from the form data.
 func (f *FormData) Keys() []string {
-	keys := make([]string, 0, f.Len())
-	for key := range f.All() {
-		keys = append(keys, utils.UnsafeString(key))
-	}
-	return slices.Compact(keys)
+	return uniqueKeys(f.All(), f.Len())
 }
 
 // Add adds a single form field.

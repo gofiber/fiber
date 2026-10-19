@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -320,36 +321,70 @@ func Test_Request_QueryParam(t *testing.T) {
 	})
 }
 
+var keysTestCases = []struct {
+	name string
+	del  string
+	add  []string
+	want []string
+}{
+	{name: "empty", want: []string{}},
+	{name: "repeated key", add: []string{"foo", "foo", "bar", "foo"}, want: []string{"foo", "bar"}},
+	{name: "interleaved keys", add: []string{"a", "b", "a", "c", "b"}, want: []string{"a", "b", "c"}},
+	{name: "after Del", add: []string{"a", "b", "a", "c"}, del: "a", want: []string{"b", "c"}},
+}
+
 func Test_QueryParam_Keys(t *testing.T) {
 	t.Parallel()
 
-	p := &QueryParam{Args: fasthttp.AcquireArgs()}
-	defer fasthttp.ReleaseArgs(p.Args)
+	for _, tc := range keysTestCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 
-	p.Add("foo", "1")
-	p.Add("foo", "2")
-	p.Add("bar", "3")
-
-	keys := p.Keys()
-	require.Len(t, keys, 2)
-	require.Contains(t, keys, "foo")
-	require.Contains(t, keys, "bar")
+			p := &QueryParam{Args: fasthttp.AcquireArgs()}
+			defer fasthttp.ReleaseArgs(p.Args)
+			for _, k := range tc.add {
+				p.Add(k, "v")
+			}
+			if tc.del != "" {
+				p.Del(tc.del)
+			}
+			require.Equal(t, tc.want, p.Keys())
+		})
+	}
 }
 
 func Test_FormData_Keys(t *testing.T) {
 	t.Parallel()
 
-	f := &FormData{Args: fasthttp.AcquireArgs()}
-	defer fasthttp.ReleaseArgs(f.Args)
+	for _, tc := range keysTestCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 
-	f.Add("foo", "1")
-	f.Add("foo", "2")
-	f.Add("bar", "3")
+			f := &FormData{Args: fasthttp.AcquireArgs()}
+			defer fasthttp.ReleaseArgs(f.Args)
+			for _, k := range tc.add {
+				f.Add(k, "v")
+			}
+			if tc.del != "" {
+				f.Del(tc.del)
+			}
+			require.Equal(t, tc.want, f.Keys())
+		})
+	}
+}
 
-	keys := f.Keys()
-	require.Len(t, keys, 2)
-	require.Contains(t, keys, "foo")
-	require.Contains(t, keys, "bar")
+func Benchmark_QueryParam_Keys(b *testing.B) {
+	p := &QueryParam{Args: fasthttp.AcquireArgs()}
+	defer fasthttp.ReleaseArgs(p.Args)
+	for i := range 1000 {
+		p.Add("k"+strconv.Itoa(i), "v")
+	}
+
+	b.ReportAllocs()
+
+	for b.Loop() {
+		_ = p.Keys()
+	}
 }
 
 func Test_Request_Params(t *testing.T) {
