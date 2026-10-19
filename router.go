@@ -391,10 +391,13 @@ func buildRouteURL(route *Route, params Map) (string, error) {
 
 // slashLeavesParam reports whether a decoded slash in value ends up outside the parameter.
 // It mirrors the slash-consuming branches of findParamLen, including adjacent parameters
-// (which consume exactly one byte) and single-byte non-slash terminators.
+// (which consume exactly one byte) and single-byte non-slash terminators. An optional
+// parameter does not consume a slash before a single-byte terminator, so a decoded slash in
+// its value always leaves the parameter and the route cannot be expressed as a URL.
 func (*Route) slashLeavesParam(segment *routeSegment, value string) bool {
 	return !segment.IsGreedy &&
-		(segment.IsLast || (segment.Length == 1 && len(value) > 1) ||
+		(segment.IsLast || (segment.IsOptional && len(segment.ComparePart) == 1) ||
+			(segment.Length == 1 && len(value) > 1) ||
 			(segment.Length != 1 && (len(segment.ComparePart) != 1 || segment.ComparePart[0] == slashDelimiter)))
 }
 

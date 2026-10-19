@@ -373,6 +373,10 @@ The router normalizes every request path before matching, as [RFC 3986 Section 6
 
 `c.Path()` returns the normalized path. `c.OriginalURL()` still returns the request target as the client sent it.
 
+### Optional parameters
+
+An optional parameter that ends at a single-character constant, such as `:month?-` or `:name?.`, no longer matches across a `/`. Before, `/api/:day-:month?-:year?` matched `/api/1-/-` with `month` set to `/`, and `/file/:name?.:ext` matched `/file/a/b.txt` with `name` set to `a/b`; both now return 404. A required parameter keeps its behavior: `/file/:name.:ext` still matches `/file/a/b.txt`. With `UnescapePath` on, `Route.URL`, `GetRouteURL` and `Redirect().Route` return `ErrRouteNotRepresentable` for a `/` in the value of such an optional parameter.
+
 ### Generated route URLs
 
 `Route.URL`, `GetRouteURL` and `Redirect().Route` percent-encode each parameter value with URL path-segment rules. A value is data, so a representable value composes the same URL under any configuration. Previously the value was written into the path as given: `a/b` under `/user/:name` produced `/user/a/b`, which matched no route; `a?b` produced `/user/a?b`, whose tail became a query and truncated the value; and `100%` produced `/user/100%`, which Go's own URL parser rejects. Greedy parameters (`*` and `+`) keep the `/` of the matched path tail.
