@@ -67,7 +67,7 @@ func BenchmarkValidateUpstream_IPLiteral(b *testing.B) {
 	const addr = "http://203.0.113.5:8080/api/v1/widgets"
 	b.ReportAllocs()
 	for b.Loop() {
-		if _, err := validateUpstream(addr, policy); err != nil {
+		if _, err := validateUpstream(addr, policy, nil); err != nil {
 			b.Fatal(err)
 		}
 	}
@@ -91,7 +91,7 @@ func BenchmarkResolveRedirect_HTTPSDowngradeBlocked(b *testing.B) {
 	b.ReportAllocs()
 	var err error
 	for b.Loop() {
-		_, err = resolveRedirect("https://example.com/", location, policy)
+		_, err = resolveRedirect("https://example.com/", location, policy, nil)
 	}
 	// Anchor: the loop must have measured the blocked downgrade path.
 	if !errors.Is(err, ErrRedirectDowngrade) {
@@ -105,7 +105,7 @@ func BenchmarkResolveRedirect_AllowedAcrossOrigin(b *testing.B) {
 	location := []byte("https://other.example/landing")
 	b.ReportAllocs()
 	for b.Loop() {
-		if _, err := resolveRedirect("https://example.com/", location, policy); err != nil {
+		if _, err := resolveRedirect("https://example.com/", location, policy, nil); err != nil {
 			b.Fatal(err)
 		}
 	}

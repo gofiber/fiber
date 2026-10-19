@@ -75,10 +75,13 @@ type SecurityPolicy struct {
 	AllowedSchemes []string
 
 	// AllowPrivateIPs allows upstream hosts to resolve to loopback,
-	// private (RFC 1918), link-local, multicast, unspecified, or CGNAT
-	// (RFC 6598) addresses. SECURITY: enabling this exposes the proxy
-	// to SSRF attacks against internal services such as cloud
-	// metadata endpoints. Default: false.
+	// private (RFC 1918), link-local, multicast, unspecified, CGNAT
+	// (RFC 6598) or other special-use addresses: 0.0.0.0/8, 192.0.0.0/24
+	// (which holds Oracle Cloud's metadata address 192.0.0.192),
+	// 198.18.0.0/15, 240.0.0.0/4 (the limited broadcast address included)
+	// and the deprecated IPv6 site-local range fec0::/10. SECURITY:
+	// enabling this exposes the proxy to SSRF attacks against internal
+	// services such as cloud metadata endpoints. Default: false.
 	//
 	// DNS-rebinding scope: when false, the resolved IP is re-validated at
 	// dial time, not only up front, so a malicious resolver cannot swap a
@@ -95,7 +98,13 @@ type SecurityPolicy struct {
 	// client via WithClient (or hand the proxy a dedicated, unused client)
 	// for the full guarantee. The only path with no guard at all is a custom
 	// Balancer Config.Client (*fasthttp.LBClient): its underlying dialers
-	// are the caller's responsibility.
+	// are the caller's responsibility, as are those of a *fasthttp.Client
+	// with a Transport, which dials by itself.
+	//
+	// The up-front lookup of a hostname is remembered for a second, which
+	// the dial-time check makes safe, so it is remembered for the shared
+	// client only: a request through a client passed per call, or one with a
+	// Transport, is judged by a lookup of its own.
 	AllowPrivateIPs bool
 
 	// AllowHTTPSDowngrade permits proxy.DoRedirects to follow redirects

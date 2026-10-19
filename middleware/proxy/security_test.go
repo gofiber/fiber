@@ -12,6 +12,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -148,7 +149,7 @@ func Test_Security_ValidateUpstream_BlocksPrivateIPs(t *testing.T) {
 	for _, raw := range bad {
 		t.Run(raw, func(t *testing.T) {
 			t.Parallel()
-			_, err := validateUpstream(raw, policy)
+			_, err := validateUpstream(raw, policy, nil)
 			require.ErrorIs(t, err, ErrUpstreamHostBlocked, "expected block for %q", raw)
 		})
 	}
@@ -158,7 +159,7 @@ func Test_Security_ValidateUpstream_AllowsPrivateOptIn(t *testing.T) {
 	t.Parallel()
 	policy := DefaultSecurityPolicy()
 	policy.AllowPrivateIPs = true
-	u, err := validateUpstream("http://127.0.0.1:8080", policy)
+	u, err := validateUpstream("http://127.0.0.1:8080", policy, nil)
 	require.NoError(t, err)
 	require.Equal(t, "127.0.0.1:8080", u.Host)
 }
@@ -171,7 +172,7 @@ func Test_Security_ValidateUpstream_RejectsSchemes(t *testing.T) {
 	for _, raw := range bad {
 		t.Run(raw, func(t *testing.T) {
 			t.Parallel()
-			_, err := validateUpstream(raw, policy)
+			_, err := validateUpstream(raw, policy, nil)
 			require.ErrorIs(t, err, ErrUpstreamSchemeNotAllowed)
 		})
 	}
@@ -179,7 +180,7 @@ func Test_Security_ValidateUpstream_RejectsSchemes(t *testing.T) {
 
 func Test_Security_ValidateUpstream_RejectsEmpty(t *testing.T) {
 	t.Parallel()
-	_, err := validateUpstream("", DefaultSecurityPolicy())
+	_, err := validateUpstream("", DefaultSecurityPolicy(), nil)
 	require.ErrorIs(t, err, ErrUpstreamHostInvalid)
 }
 
@@ -505,7 +506,9 @@ func Test_Security_JoinUpstreamPath_PreservesBasePathPrefix(t *testing.T) {
 // redirect which changes the scheme is dispatched with the new scheme.
 // followRedirects re-applies currentURL.Scheme after each SetRequestURI
 // because fasthttp keeps the previous scheme when req.isTLS is set — see
-// https://github.com/gofiber/fiber/issues/1762.
+// https://github.com/gofiber/fiber/issues/1762. This request is not marked
+// TLS, so it gets the scheme from its URL either way; the re-application is
+// pinned by Test_Proxy_DoRedirects_AppliesSchemePerHopBehindTLS.
 func Test_Security_FollowRedirects_ReappliesSchemePerHop(t *testing.T) {
 	t.Parallel()
 
@@ -611,14 +614,14 @@ func Test_Security_IPv6Helpers_DeclineMalformedAddress(t *testing.T) {
 // empty-host short-circuit (the host == "" branch).
 func Test_Security_ValidateHostForSSRF_EmptyHost(t *testing.T) {
 	t.Parallel()
-	require.ErrorIs(t, validateHostForSSRF(""), ErrUpstreamHostInvalid)
+	require.ErrorIs(t, validateHostForSSRF("", nil), ErrUpstreamHostInvalid)
 }
 
 // Test_Security_ValidateHostForSSRF_PublicIPLiteral exercises the
 // ParseIP success path with a public address.
 func Test_Security_ValidateHostForSSRF_PublicIPLiteral(t *testing.T) {
 	t.Parallel()
-	require.NoError(t, validateHostForSSRF("8.8.8.8"))
+	require.NoError(t, validateHostForSSRF("8.8.8.8", nil))
 }
 
 // Test_Security_ValidateHostForSSRF_LookupFailure covers the
@@ -626,7 +629,7 @@ func Test_Security_ValidateHostForSSRF_PublicIPLiteral(t *testing.T) {
 // resolves, so the test does not depend on outbound DNS.
 func Test_Security_ValidateHostForSSRF_LookupFailure(t *testing.T) {
 	t.Parallel()
-	err := validateHostForSSRF("does-not-exist.invalid")
+	err := validateHostForSSRF("does-not-exist.invalid", nil)
 	require.Error(t, err)
 	// Refused like a blocked host, but told apart so a caller can answer 502 or retry.
 	require.ErrorIs(t, err, ErrUpstreamHostBlocked)
@@ -642,7 +645,7 @@ func Test_Security_ValidateHostForSSRF_IPLiteralAllocs(t *testing.T) {
 	// Intentionally not parallel: AllocsPerRun counts allocations process-wide and panics in a parallel test.
 	for _, host := range []string{"203.0.113.5", "2606:4700:4700::1111", "::ffff:203.0.113.5"} {
 		var err error
-		require.Zero(t, testing.AllocsPerRun(100, func() { err = validateHostForSSRF(host) }), host)
+		require.Zero(t, testing.AllocsPerRun(100, func() { err = validateHostForSSRF(host, upfrontLookups) }), host)
 		require.NoError(t, err, host)
 
 		_, remembered := upfrontLookups.get(host, dnsResolver.Load())
@@ -655,10 +658,10 @@ func Test_Security_ValidateHostForSSRF_IPLiteralAllocs(t *testing.T) {
 func Test_Security_ValidateHostForSSRF_ZonedLiteral(t *testing.T) {
 	t.Parallel()
 
-	err := validateHostForSSRF("fe80::1%eth0")
+	err := validateHostForSSRF("fe80::1%eth0", nil)
 	require.ErrorIs(t, err, ErrUpstreamHostBlocked)
 	require.ErrorContains(t, err, "fe80::1%eth0 -> fe80::1")
-	require.NoError(t, validateHostForSSRF("2606:4700:4700::1111%eth0"))
+	require.NoError(t, validateHostForSSRF("2606:4700:4700::1111%eth0", nil))
 }
 
 // Test_Security_ValidateResolved pins what a lookup may answer: one or more addresses, none blocked.
@@ -689,7 +692,7 @@ func Test_Security_ValidateResolved(t *testing.T) {
 // "http" and no host.
 func Test_Security_ValidateUpstream_EmptyHostAfterScheme(t *testing.T) {
 	t.Parallel()
-	_, err := validateUpstream("http:///path", DefaultSecurityPolicy())
+	_, err := validateUpstream("http:///path", DefaultSecurityPolicy(), nil)
 	require.ErrorIs(t, err, ErrUpstreamHostInvalid)
 }
 
@@ -786,7 +789,7 @@ func Test_Security_ResolvePolicy_OverrideEmptySchemes(t *testing.T) {
 // control-byte rejection at the top of resolveRedirect.
 func Test_Security_ResolveRedirect_RejectsControlChars(t *testing.T) {
 	t.Parallel()
-	_, err := resolveRedirect("https://example.com", []byte("https://example.com/\r\nX-Inject: 1"), DefaultSecurityPolicy())
+	_, err := resolveRedirect("https://example.com", []byte("https://example.com/\r\nX-Inject: 1"), DefaultSecurityPolicy(), nil)
 	require.ErrorIs(t, err, fasthttp.ErrorInvalidURI)
 }
 
@@ -797,7 +800,7 @@ func Test_Security_ResolveRedirect_RejectsDisallowedScheme(t *testing.T) {
 	t.Parallel()
 	policy := DefaultSecurityPolicy()
 	policy.AllowPrivateIPs = true
-	_, err := resolveRedirect("https://example.com", []byte("gopher://example.com/x"), policy)
+	_, err := resolveRedirect("https://example.com", []byte("gopher://example.com/x"), policy, nil)
 	require.ErrorIs(t, err, ErrUpstreamSchemeNotAllowed)
 }
 
@@ -808,7 +811,7 @@ func Test_Security_ResolveRedirect_AllowsDowngradeWhenOptIn(t *testing.T) {
 	policy := DefaultSecurityPolicy()
 	policy.AllowPrivateIPs = true
 	policy.AllowHTTPSDowngrade = true
-	out, err := resolveRedirect("https://example.com", []byte("http://example.com/x"), policy)
+	out, err := resolveRedirect("https://example.com", []byte("http://example.com/x"), policy, nil)
 	require.NoError(t, err)
 	require.NotNil(t, out)
 	require.Equal(t, "http://example.com/x", out.String())
@@ -820,7 +823,7 @@ func Test_Security_ResolveRedirect_HTTPSDowngradeBlocked(t *testing.T) {
 	t.Parallel()
 	policy := DefaultSecurityPolicy()
 	policy.AllowPrivateIPs = true
-	_, err := resolveRedirect("https://example.com", []byte("http://example.com/x"), policy)
+	_, err := resolveRedirect("https://example.com", []byte("http://example.com/x"), policy, nil)
 	require.ErrorIs(t, err, ErrRedirectDowngrade)
 }
 
@@ -1099,7 +1102,7 @@ func Test_Security_Balancer_PanicsOnInvalidUpstream(t *testing.T) {
 // validateUpstream "no private IP, lookup succeeds" success path.
 func Test_Security_ValidateUpstream_PublicIPLiteral(t *testing.T) {
 	t.Parallel()
-	u, err := validateUpstream("http://8.8.8.8", DefaultSecurityPolicy())
+	u, err := validateUpstream("http://8.8.8.8", DefaultSecurityPolicy(), nil)
 	require.NoError(t, err)
 	require.Equal(t, "8.8.8.8", u.Host)
 }
@@ -1180,13 +1183,22 @@ func Test_Security_DialChecked_BlocksLoopback(t *testing.T) {
 }
 
 // Test_Security_DialChecked_RejectsMalformedAddr covers the
-// SplitHostPort error branch.
+// SplitHostPort error branch, which keeps the reason the address was refused.
 func Test_Security_DialChecked_RejectsMalformedAddr(t *testing.T) {
 	t.Parallel()
 	dial := newDialGuard(false).dialChecked
-	_, err := dial("no-port-here")
-	require.Error(t, err)
-	require.NotErrorIs(t, err, ErrUpstreamHostBlocked)
+	for addr, reason := range map[string]string{
+		"no-port-here": "missing port in address",
+		"a:b:c":        "too many colons in address",
+		"[::1":         "missing ']' in address",
+	} {
+		_, err := dial(addr)
+		require.Error(t, err, addr)
+		require.NotErrorIs(t, err, ErrUpstreamHostBlocked, addr)
+		var addrErr *net.AddrError
+		require.ErrorAs(t, err, &addrErr, addr)
+		require.ErrorContains(t, err, reason, addr)
+	}
 }
 
 // Test_Security_Balancer_HostnameDefersToDial verifies that a hostname
@@ -1285,6 +1297,15 @@ func mustParseTestURL(t *testing.T, raw string) *url.URL {
 func followRecording(t *testing.T, start string, steps map[string]redirectStep, setup, record func(req *fasthttp.Request)) *fasthttp.Request {
 	t.Helper()
 
+	req, err := followRecordingErr(t, start, steps, setup, record)
+	require.NoError(t, err)
+	return req
+}
+
+// followRecordingErr is followRecording that returns the error followRedirects ends with.
+func followRecordingErr(t *testing.T, start string, steps map[string]redirectStep, setup, record func(req *fasthttp.Request)) (*fasthttp.Request, error) {
+	t.Helper()
+
 	policy := DefaultSecurityPolicy()
 	policy.AllowPrivateIPs = true
 	policy.AllowHTTPSDowngrade = true
@@ -1303,8 +1324,7 @@ func followRecording(t *testing.T, start string, steps map[string]redirectStep, 
 		setup(req)
 	}
 
-	require.NoError(t, followRedirects(client.client, req, resp, 3, mustParseTestURL(t, start), policy))
-	return req
+	return req, followRedirects(client.client, req, resp, 3, mustParseTestURL(t, start), policy)
 }
 
 // withCredentials gives req what a redirect to another origin must not carry.
@@ -1513,6 +1533,261 @@ func Test_Security_FollowRedirects_StripsCredentialsOnOriginChange(t *testing.T)
 	}
 }
 
+// Test_Security_FollowRedirects_CopiedHopKeepsPreParsedMultipart pins that a hop sent as a copy keeps
+// the body of a multipart form the server parsed ahead of the handler: CopyTo leaves such a form out,
+// and the hop would go out with no content.
+func Test_Security_FollowRedirects_CopiedHopKeepsPreParsedMultipart(t *testing.T) {
+	t.Parallel()
+
+	var form bytes.Buffer
+	mw := multipart.NewWriter(&form)
+	require.NoError(t, mw.WriteField("field", "value"))
+	fw, err := mw.CreateFormFile("file", "f.txt")
+	require.NoError(t, err)
+	_, err = fw.Write([]byte("file-bytes"))
+	require.NoError(t, err)
+	require.NoError(t, mw.Close())
+	raw := "POST http://first.example/start HTTP/1.1\r\nHost: first.example\r\n" +
+		"Content-Type: multipart/form-data; boundary=" + mw.Boundary() + "\r\n" +
+		"Content-Length: " + strconv.Itoa(form.Len()) + "\r\n\r\n" + form.String()
+
+	var bodies []string
+	req := followRecording(t, "http://first.example/start", map[string]redirectStep{
+		"http://first.example/start": {status: fasthttp.StatusTemporaryRedirect, location: "http://second.example/next"},
+	}, func(req *fasthttp.Request) {
+		require.NoError(t, req.Read(bufio.NewReader(strings.NewReader(raw))))
+	}, func(req *fasthttp.Request) {
+		bodies = append(bodies, string(req.Body()))
+	})
+
+	require.Len(t, bodies, 2)
+	for hop, body := range bodies {
+		require.Contains(t, body, "value", "hop %d", hop)
+		require.Contains(t, body, "file-bytes", "hop %d", hop)
+	}
+
+	// The caller's request still holds its form.
+	parsed, err := req.MultipartForm()
+	require.NoError(t, err)
+	require.Equal(t, []string{"value"}, parsed.Value["field"])
+	require.Len(t, parsed.File["file"], 1)
+}
+
+// Test_Security_FollowRedirects_CopiedHopKeepsBody pins that a hop sent as a copy because it leaves the
+// origin, and keeps its method, sends the body of the request again.
+func Test_Security_FollowRedirects_CopiedHopKeepsBody(t *testing.T) {
+	t.Parallel()
+
+	for name, tc := range map[string]struct {
+		method string
+		body   string
+		status int
+	}{
+		"307 POST":       {method: fasthttp.MethodPost, status: fasthttp.StatusTemporaryRedirect, body: "payload"},
+		"308 PUT":        {method: fasthttp.MethodPut, status: fasthttp.StatusPermanentRedirect, body: "payload"},
+		"302 PUT":        {method: fasthttp.MethodPut, status: fasthttp.StatusFound, body: "payload"},
+		"307 without":    {method: fasthttp.MethodPost, status: fasthttp.StatusTemporaryRedirect},
+		"307 GET (none)": {method: fasthttp.MethodGet, status: fasthttp.StatusTemporaryRedirect},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			var hops []string
+			followRecording(t, "http://first.example/start", map[string]redirectStep{
+				"http://first.example/start": {status: tc.status, location: "http://second.example/next"},
+			}, func(req *fasthttp.Request) {
+				req.Header.SetMethod(tc.method)
+				req.SetBodyString(tc.body)
+			}, func(req *fasthttp.Request) {
+				hops = append(hops, string(req.Header.Method())+" "+string(req.Body()))
+			})
+
+			want := tc.method + " " + tc.body
+			require.Equal(t, []string{want, want}, hops)
+		})
+	}
+}
+
+// closeCounter counts the Close calls fasthttp makes on user values it releases.
+type closeCounter struct{ closed atomic.Int32 }
+
+func (c *closeCounter) Close() error {
+	c.closed.Add(1)
+	return nil
+}
+
+// Test_Security_FollowRedirects_CopiedHopKeepsTimeoutAndUserValues pins that a hop sent as a copy
+// carries what CopyTo leaves out, the request timeout and the user values, and that the copy does not
+// Close the values it shares with the caller's request.
+func Test_Security_FollowRedirects_CopiedHopKeepsTimeoutAndUserValues(t *testing.T) {
+	t.Parallel()
+
+	type hopState struct {
+		trace   any
+		timeout time.Duration
+	}
+	for name, tc := range map[string]struct {
+		method   string
+		location string
+		status   int
+	}{
+		"another origin": {method: fasthttp.MethodGet, status: fasthttp.StatusTemporaryRedirect, location: "http://second.example/next"},
+		"another method": {method: fasthttp.MethodPost, status: fasthttp.StatusFound, location: "http://first.example/next"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			closer := &closeCounter{}
+			var hops []hopState
+			followRecording(t, "http://first.example/", map[string]redirectStep{
+				"http://first.example/": {status: tc.status, location: tc.location},
+			}, func(req *fasthttp.Request) {
+				req.Header.SetMethod(tc.method)
+				req.SetTimeout(750 * time.Millisecond)
+				req.SetUserValue("trace", "abc")
+				req.SetUserValue("closer", closer)
+			}, func(req *fasthttp.Request) {
+				hops = append(hops, hopState{trace: req.UserValue("trace"), timeout: req.GetTimeOut()})
+			})
+
+			require.Len(t, hops, 2)
+			for hop, state := range hops {
+				require.Equal(t, "abc", state.trace, "hop %d", hop)
+				// The client hands the transport what is left of the timeout.
+				require.InDelta(t, float64(750*time.Millisecond), float64(state.timeout), float64(100*time.Millisecond), "hop %d", hop)
+			}
+			require.Zero(t, closer.closed.Load(), "the copy must not Close the caller's values")
+		})
+	}
+}
+
+// Test_Security_FollowRedirects_StreamedBody pins that a redirect keeping the body of a streamed
+// request fails, as fasthttp's own loop does, rather than replay what the first hop left of the
+// stream, and that a redirect dropping the body goes on.
+func Test_Security_FollowRedirects_StreamedBody(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range redirectRewriteCases {
+		if !fasthttp.StatusCodeIsRedirect(tc.status) {
+			continue
+		}
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			var methods []string
+			_, err := followRecordingErr(t, "http://example.com/start", map[string]redirectStep{
+				"http://example.com/start": {status: tc.status, location: "http://example.com/after"},
+			}, func(req *fasthttp.Request) {
+				req.Header.SetMethod(tc.method)
+				req.SetBodyStream(strings.NewReader("payload"), len("payload"))
+			}, func(req *fasthttp.Request) {
+				methods = append(methods, string(req.Header.Method()))
+				if req.IsBodyStream() { // sending the request consumes the stream
+					body, readErr := io.ReadAll(req.BodyStream())
+					require.NoError(t, readErr)
+					require.Equal(t, "payload", string(body))
+					require.NoError(t, req.CloseBodyStream())
+				}
+			})
+
+			if tc.wantBody {
+				require.ErrorIs(t, err, fasthttp.ErrRedirectBodyStream)
+				require.Equal(t, []string{tc.method}, methods, "nothing is replayed")
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, []string{tc.method, fasthttp.MethodGet}, methods)
+		})
+	}
+}
+
+// contentFieldNames are the fields a request without content must not carry (RFC 9110 §8, §10.1.1).
+var contentFieldNames = []string{
+	fiber.HeaderContentEncoding, fiber.HeaderContentLanguage, fiber.HeaderContentLocation,
+	fiber.HeaderExpect, "Digest", "Content-MD5",
+}
+
+// Test_Security_RedirectRequest_DropsContentFields pins that the fields describing or expecting
+// content go with it, whatever case they are stored under.
+func Test_Security_RedirectRequest_DropsContentFields(t *testing.T) {
+	t.Parallel()
+
+	for name, canonical := range map[string]bool{"canonical names": true, "names as sent": false} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			req := fasthttp.AcquireRequest()
+			defer fasthttp.ReleaseRequest(req)
+			if !canonical {
+				req.Header.DisableNormalizing()
+			}
+			req.SetRequestURI("http://example.com/")
+			req.Header.SetMethod(fasthttp.MethodPost)
+			for _, field := range contentFieldNames {
+				if !canonical {
+					field = strings.ToLower(field)
+				}
+				req.Header.Set(field, "x")
+			}
+			req.Header.Set("X-Kept", "kept")
+			req.SetBodyString("payload")
+
+			redirectRequest(req)
+
+			wire := strings.ToLower(req.String())
+			for _, field := range contentFieldNames {
+				require.NotContains(t, wire, strings.ToLower(field)+":", field)
+			}
+			require.Contains(t, wire, "x-kept: kept")
+		})
+	}
+}
+
+// Test_Security_FollowRedirects_ContentFieldsFollowTheBody pins that the fields describing or
+// expecting content leave with a body a redirect drops, and stay with one it repeats.
+func Test_Security_FollowRedirects_ContentFieldsFollowTheBody(t *testing.T) {
+	t.Parallel()
+
+	for name, tc := range map[string]struct {
+		status int
+		kept   bool
+	}{
+		"302 drops the body": {status: fasthttp.StatusFound},
+		"307 repeats it":     {status: fasthttp.StatusTemporaryRedirect, kept: true},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			var hops [][]string
+			followRecording(t, "http://example.com/start", map[string]redirectStep{
+				"http://example.com/start": {status: tc.status, location: "http://example.com/after"},
+			}, func(req *fasthttp.Request) {
+				req.Header.SetMethod(fasthttp.MethodPost)
+				req.SetBodyString("payload")
+				for _, field := range contentFieldNames {
+					req.Header.Set(field, "x")
+				}
+			}, func(req *fasthttp.Request) {
+				var present []string
+				for _, field := range contentFieldNames {
+					if len(req.Header.Peek(field)) > 0 {
+						present = append(present, field)
+					}
+				}
+				hops = append(hops, present)
+			})
+
+			require.Len(t, hops, 2)
+			require.Equal(t, contentFieldNames, hops[0])
+			if tc.kept {
+				require.Equal(t, contentFieldNames, hops[1])
+			} else {
+				require.Empty(t, hops[1])
+			}
+		})
+	}
+}
+
 // Test_Security_KeepHopByHopHeaders_Balancer pins the opt-out for a Balancer
 // with its own policy: hop-by-hop fields cross in both directions when set.
 func Test_Security_KeepHopByHopHeaders_Balancer(t *testing.T) {
@@ -1593,7 +1868,7 @@ func Test_Security_ValidateUpstream_UnparsableIsHostInvalid(t *testing.T) {
 	t.Parallel()
 
 	for _, raw := range []string{"http://[::1", "http://exam ple.com", "http://%zz.com/", "http://a:b:c/"} {
-		_, err := validateUpstream(raw, DefaultSecurityPolicy())
+		_, err := validateUpstream(raw, DefaultSecurityPolicy(), nil)
 		require.ErrorIs(t, err, ErrUpstreamHostInvalid, raw)
 		_, ok := errors.AsType[*url.Error](err)
 		require.True(t, ok, "the net/url error must stay reachable: %q", raw)
@@ -1601,7 +1876,7 @@ func Test_Security_ValidateUpstream_UnparsableIsHostInvalid(t *testing.T) {
 
 	// "" and "http:///path" are pinned by RejectsEmpty and EmptyHostAfterScheme.
 	for _, raw := range []string{"   ", "http://", "http://:8080"} {
-		_, err := validateUpstream(raw, DefaultSecurityPolicy())
+		_, err := validateUpstream(raw, DefaultSecurityPolicy(), nil)
 		require.ErrorIs(t, err, ErrUpstreamHostInvalid, raw)
 	}
 }

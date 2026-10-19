@@ -126,6 +126,58 @@ func buildDNSResponse(id uint16, q *dnsmessage.Question, ip net.IP) ([]byte, err
 	return out, nil
 }
 
+// startManyAnswersDNS starts a loopback UDP DNS server that answers every A query with n distinct
+// public addresses and every AAAA query with an empty NODATA response. It returns its "host:port".
+func startManyAnswersDNS(t *testing.T, n int) string {
+	t.Helper()
+
+	pc, err := net.ListenPacket("udp", "127.0.0.1:0")
+	require.NoError(t, err)
+	t.Cleanup(func() { pc.Close() }) //nolint:errcheck // best-effort close in cleanup
+
+	go func() {
+		buf := make([]byte, 512)
+		for {
+			size, addr, rerr := pc.ReadFrom(buf)
+			if rerr != nil {
+				return // listener closed
+			}
+			var p dnsmessage.Parser
+			hdr, perr := p.Start(buf[:size])
+			if perr != nil {
+				continue
+			}
+			q, perr := p.Question()
+			if perr != nil {
+				continue
+			}
+
+			b := dnsmessage.NewBuilder(nil, dnsmessage.Header{ID: hdr.ID, Response: true, Authoritative: true})
+			b.EnableCompression()
+			if b.StartQuestions() != nil || b.Question(q) != nil || b.StartAnswers() != nil {
+				continue
+			}
+			if q.Type == dnsmessage.TypeA {
+				for i := range n {
+					rerr := b.AResource(dnsmessage.ResourceHeader{
+						Name: q.Name, Type: dnsmessage.TypeA, Class: dnsmessage.ClassINET,
+					}, dnsmessage.AResource{A: [4]byte{198, 51, 100, byte(i + 1)}})
+					if rerr != nil {
+						break
+					}
+				}
+			}
+			resp, ferr := b.Finish()
+			if ferr != nil {
+				continue
+			}
+			pc.WriteTo(resp, addr) //nolint:errcheck // best-effort UDP reply
+		}
+	}()
+
+	return pc.LocalAddr().String()
+}
+
 // withRebindingResolver points the proxy's SSRF-validation resolver at the
 // fake DNS server at dnsAddr for the duration of t, restoring the previous
 // resolver via t.Cleanup. It swaps the package's atomic dnsResolver seam
@@ -436,6 +488,80 @@ func Test_Security_ClientDialer_DelegatesDualStack(t *testing.T) {
 	require.NoError(t, conn.Close())
 }
 
+// Test_Security_InstallHostClientGuard_DialTimeout pins which HostClients get a guarded DialTimeout:
+// fasthttp hands the timeout a request leaves for the connect only to one.
+func Test_Security_InstallHostClientGuard_DialTimeout(t *testing.T) {
+	t.Parallel()
+
+	t.Run("no dialer of its own", func(t *testing.T) {
+		t.Parallel()
+
+		hc := &fasthttp.HostClient{}
+		installHostClientGuard(hc)
+		require.NotNil(t, hc.DialTimeout)
+		require.NotNil(t, hc.Dial)
+	})
+
+	t.Run("a Dial of its own is kept alone", func(t *testing.T) {
+		t.Parallel()
+
+		// A DialTimeout would take precedence over it, and the dialer it stands for cannot take a timeout.
+		hc := &fasthttp.HostClient{Dial: func(string) (net.Conn, error) { return nil, errors.New("unused") }}
+		installHostClientGuard(hc)
+		require.Nil(t, hc.DialTimeout)
+		require.NotNil(t, hc.Dial)
+	})
+}
+
+// Test_Security_DefaultDialTimeout pins the dialer a HostClient with none is given: it connects with
+// the timeout the request leaves, and with fasthttp's default when it leaves none, where DialTimeout
+// would fail a zero timeout at once.
+func Test_Security_DefaultDialTimeout(t *testing.T) {
+	t.Parallel()
+
+	ln, err := net.Listen(fiber.NetworkTCP4, "127.0.0.1:0")
+	require.NoError(t, err)
+	t.Cleanup(func() { ln.Close() }) //nolint:errcheck // best-effort close in cleanup
+
+	for _, dualStack := range []bool{false, true} {
+		for _, timeout := range []time.Duration{0, time.Second} {
+			conn, dialErr := defaultDialTimeout(dualStack)(ln.Addr().String(), timeout)
+			require.NoError(t, dialErr, "dual stack %v, timeout %v", dualStack, timeout)
+			require.NoError(t, conn.Close())
+		}
+	}
+}
+
+// Test_Security_DialWithin_SharesTheTimeout pins that a dial gives its lookup and its connects the time
+// the request leaves between them, not a fresh allowance each.
+func Test_Security_DialWithin_SharesTheTimeout(t *testing.T) {
+	t.Parallel()
+
+	guard := newDialGuard(false)
+	var got time.Duration
+	var dialed int
+	dial := func(addr string, timeout time.Duration) (net.Conn, error) {
+		got = timeout
+		dialed++
+		return stubConn{addr: addr}, nil
+	}
+
+	_, err := guard.dialWithin("198.51.100.7:80", time.Second, dial)
+	require.NoError(t, err)
+	require.Greater(t, got, 500*time.Millisecond, "a connect gets what is left")
+	require.Less(t, got, time.Second)
+
+	got = time.Hour
+	_, err = guard.dialWithin("198.51.100.7:80", 0, dial)
+	require.NoError(t, err)
+	require.Zero(t, got, "no timeout, none handed on")
+
+	dialed = 0
+	_, err = guard.dialWithin("198.51.100.7:80", time.Nanosecond, dial)
+	require.ErrorIs(t, err, fasthttp.ErrDialTimeout, "a spent budget ends the connect")
+	require.Zero(t, dialed)
+}
+
 // Test_Security_ClientDialerWithTimeout_Delegates covers the
 // DialFuncWithTimeout guard's delegate branch: when private IPs are allowed
 // it forwards the raw addr and timeout to the caller's dialer.
@@ -479,7 +605,9 @@ func Test_Security_ClientDialerWithTimeout_ValidatedDialsThrough(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, conn)
 	require.Equal(t, "198.51.100.7:80", got, "must dial the validated resolved IP")
-	require.Equal(t, time.Second, gotTimeout)
+	// What the lookup left of the second, not the second again.
+	require.Greater(t, gotTimeout, 500*time.Millisecond)
+	require.Less(t, gotTimeout, time.Second)
 }
 
 // Test_Security_EnsureClientGuarded_ComposePropagatesError verifies the

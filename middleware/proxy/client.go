@@ -42,6 +42,18 @@ func WithClient(cli *fasthttp.Client) {
 	sharedClient.Store(cli)
 }
 
+// lookupsFor returns the cache the up-front check may use for requests dispatched through cli.
+// The check judges an answer remembered for a moment, which only a client that checks the address
+// again where it connects can accept. That is the shared client, guarded before it is used. A client
+// with a Transport dials by itself, and a client passed per call may have dialed a host before the
+// guard reached it, so neither gets the cache: each request is judged by a lookup of its own.
+func lookupsFor(cli *fasthttp.Client) *lookupCache {
+	if cli.Transport == nil && cli == sharedClient.Load() {
+		return upfrontLookups
+	}
+	return nil
+}
+
 func selectClient(globalClient *fasthttp.Client, clients ...*fasthttp.Client) (*fasthttp.Client, error) {
 	if len(clients) != 0 {
 		if clients[0] == nil {

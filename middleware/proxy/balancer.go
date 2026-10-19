@@ -3,6 +3,7 @@ package proxy
 import (
 	"bytes"
 	"net/url"
+	"time"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/internal/headerlookup"
@@ -12,7 +13,7 @@ import (
 )
 
 // Balancer creates a load balancer among multiple upstream servers.
-// Servers (or a Client) is required: without one Balancer panics at startup.
+// Servers (or a Client with Clients) is required: without one Balancer panics at startup.
 func Balancer(config ...Config) fiber.Handler {
 	// Set default config
 	cfg := configDefault(config...)
@@ -33,11 +34,15 @@ func Balancer(config ...Config) fiber.Handler {
 				panic(err)
 			}
 
-			lbc.Clients = append(lbc.Clients, newHostClient(u, &cfg, policy))
+			lbc.Clients = append(lbc.Clients, schemeClient{newHostClient(u, &cfg, policy)})
 		}
 	} else {
 		// Set custom client
 		lbc = cfg.Client
+		// fasthttp panics on the first request of an LBClient with no clients.
+		if len(lbc.Clients) == 0 {
+			panic("Client.Clients cannot be empty")
+		}
 		// A host client the caller built normalizes the request line on the way
 		// out unless told otherwise, which would decode "%2F" into a separator and
 		// merge "//" and so undo the routed target forwarded below. Any other
@@ -149,13 +154,33 @@ func Balancer(config ...Config) fiber.Handler {
 	}
 }
 
+// schemeClient sends every request with the scheme its HostClient speaks. A HostClient refuses a
+// request whose URI scheme is not its own, and the scheme of the request Balancer forwards is
+// that of the connection it arrived on.
+type schemeClient struct {
+	*fasthttp.HostClient
+}
+
+func (c schemeClient) DoDeadline(req *fasthttp.Request, resp *fasthttp.Response, deadline time.Time) error {
+	if c.IsTLS {
+		req.URI().SetScheme(schemeHTTPS)
+	} else {
+		req.URI().SetScheme(schemeHTTP)
+	}
+	return c.HostClient.DoDeadline(req, resp, deadline)
+}
+
 // newHostClient builds the client Balancer dials one validated upstream with.
 func newHostClient(u *url.URL, cfg *Config, policy SecurityPolicy) *fasthttp.HostClient {
+	isTLS := u.Scheme == schemeHTTPS
+	// With the port the scheme defaults to when the URL has none: only fasthttp's own dialer adds
+	// it, and the guard's does not.
+	addr := fasthttp.AddMissingPort(u.Host, isTLS)
 	hc := &fasthttp.HostClient{
 		NoDefaultUserAgentHeader: true,
 		DisablePathNormalizing:   true,
-		Addr:                     u.Host,
-		IsTLS:                    u.Scheme == schemeHTTPS,
+		Addr:                     addr,
+		IsTLS:                    isTLS,
 		MaxConns:                 cfg.MaxConnsPerHost,
 
 		ReadBufferSize:  cfg.ReadBufferSize,
@@ -168,8 +193,11 @@ func newHostClient(u *url.URL, cfg *Config, policy SecurityPolicy) *fasthttp.Hos
 		MaxResponseBodySize: cfg.MaxResponseBodySize,
 	}
 	// Validate the resolved IP at dial time so DNS rebinding cannot swap in a private address.
+	// fasthttp hands the timeout a request leaves for the connect only to a DialTimeout.
 	if !policy.AllowPrivateIPs {
-		hc.Dial = newDialGuard(cfg.DialDualStack).dialChecked
+		g := newDialGuard(cfg.DialDualStack)
+		hc.Dial = g.dialChecked
+		hc.DialTimeout = g.dialCheckedTimeout
 	}
 	return hc
 }

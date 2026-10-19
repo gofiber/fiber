@@ -1832,6 +1832,49 @@ func Test_Limiter_KeyOverwrittenByHandler(t *testing.T) {
 	}
 }
 
+// A Storage that keeps the key it is given must not be handed memory the request owns, whether or
+// not anything reads the entry again after the handler: the next request on the connection rewrites
+// that memory, and the same client arriving on another connection then finds nothing.
+func Test_Limiter_KeyOverwrittenByHandler_NothingRereads(t *testing.T) {
+	t.Parallel()
+
+	for _, strategy := range windowStrategies {
+		for _, store := range limiterStores {
+			t.Run(strategy.name+"/"+store.name, func(t *testing.T) {
+				t.Parallel()
+
+				// The key aliases memory of the request, as c.Get does. The handler rewrites it, as the next
+				// request would, and the client comes back in memory of its own.
+				first, second := []byte("AAAA"), []byte("AAAA")
+				current := first
+				app := fiber.New()
+				app.Use(New(Config{
+					Max:               1,
+					Expiration:        time.Minute,
+					DisableHeaders:    true,
+					KeyGenerator:      func(fiber.Ctx) string { return utils.UnsafeString(current) },
+					LimiterMiddleware: strategy.handler,
+					Storage:           store.storage(),
+				}))
+				app.Get("/", func(c fiber.Ctx) error {
+					copy(current, "BBBB")
+					return c.SendStatus(fiber.StatusOK)
+				})
+
+				status := func() int {
+					resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+					require.NoError(t, err)
+					require.NoError(t, resp.Body.Close())
+					return resp.StatusCode
+				}
+				require.Equal(t, fiber.StatusOK, status(), "first request")
+				current = second
+				require.Equal(t, fiber.StatusTooManyRequests, status(), "the same client, again")
+			})
+		}
+	}
+}
+
 // A handler overwriting the key must not misdirect the sliding window's header refresh.
 func Test_Limiter_KeyOverwrittenByHandler_Headers(t *testing.T) {
 	t.Parallel()

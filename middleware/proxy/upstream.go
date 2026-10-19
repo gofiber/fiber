@@ -32,8 +32,9 @@ func parseUpstream(raw string) (*url.URL, error) {
 // the policy permits private addresses, resolves the hostname and
 // rejects responses that include any blocked address. Rejecting on a
 // single blocked answer mitigates DNS rebinding attempts in which the
-// resolver returns a mix of public and private IPs.
-func validateUpstream(raw string, policy SecurityPolicy) (*url.URL, error) {
+// resolver returns a mix of public and private IPs. A non-nil lookups may answer for the
+// hostname from a recent lookup; see validateHostForSSRF.
+func validateUpstream(raw string, policy SecurityPolicy, lookups *lookupCache) (*url.URL, error) {
 	u, err := parseAllowedUpstream(raw, policy)
 	if err != nil {
 		return nil, err
@@ -41,7 +42,7 @@ func validateUpstream(raw string, policy SecurityPolicy) (*url.URL, error) {
 	if policy.AllowPrivateIPs {
 		return u, nil
 	}
-	if err := validateHostForSSRF(u.Hostname()); err != nil {
+	if err := validateHostForSSRF(u.Hostname(), lookups); err != nil {
 		return nil, err
 	}
 	return u, nil

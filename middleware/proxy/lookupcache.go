@@ -17,6 +17,12 @@ const (
 	// lookupCacheSlots fixes the memory the cache can take. Two hostnames sharing a slot evict each
 	// other and pay a real lookup per request, so it is sized for the hostnames a proxy serves at once.
 	lookupCacheSlots = 1024
+
+	// lookupCacheMaxAddrs is the most addresses an answer may hold to be remembered. A name whose
+	// owner chooses the answer can make it large, and every slot holds one: the cap keeps the
+	// memory the cache can take to its slots times this, and a name with more addresses pays a
+	// lookup per request, as it would without a cache.
+	lookupCacheMaxAddrs = 32
 )
 
 // upfrontLookups serves validateHostForSSRF, which runs on every request.

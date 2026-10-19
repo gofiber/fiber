@@ -241,6 +241,9 @@ func Test_Proxy(t *testing.T) {
 }
 
 // go test -run Test_Proxy_Balancer_WithTlsConfig
+//
+// The balancer in front of the TLS upstream does not speak TLS itself: the request it forwards
+// arrives on a plain connection and must still reach the upstream as https.
 func Test_Proxy_Balancer_WithTlsConfig(t *testing.T) {
 	t.Parallel()
 
@@ -252,31 +255,111 @@ func Test_Proxy_Balancer_WithTlsConfig(t *testing.T) {
 
 	ln = tls.NewListener(ln, serverTLSConf)
 
-	app := fiber.New()
-
-	app.Get("/tlsbalancer", func(c fiber.Ctx) error {
+	upstream := fiber.New()
+	upstream.Get("/tlsbalancer", func(c fiber.Ctx) error {
 		return c.SendString("tls balancer")
 	})
+	startServer(upstream, ln)
 
-	addr := ln.Addr().String()
-	clientTLSConf := &tls.Config{InsecureSkipVerify: true}
-
+	app := fiber.New()
 	// disable certificate verification in Balancer
 	app.Use(Balancer(Config{
-		Servers:   []string{addr},
-		TLSConfig: clientTLSConf,
+		Servers:   []string{"https://" + ln.Addr().String()},
+		TLSConfig: &tls.Config{InsecureSkipVerify: true},
 	}))
 
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/tlsbalancer", http.NoBody), fiber.TestConfig{
+		Timeout:       5 * time.Second,
+		FailOnTimeout: true,
+	})
+	require.NoError(t, err)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.NoError(t, resp.Body.Close())
+	require.Equal(t, fiber.StatusOK, resp.StatusCode, string(body))
+	require.Equal(t, "tls balancer", string(body))
+}
+
+// go test -run Test_Proxy_Balancer_PlainUpstreamBehindTLS
+//
+// The other way round: the balancer sits behind a TLS listener and its upstream is plain HTTP.
+func Test_Proxy_Balancer_PlainUpstreamBehindTLS(t *testing.T) {
+	t.Parallel()
+
+	_, upstreamAddr := createProxyTestServerIPv4(t, func(c fiber.Ctx) error {
+		return c.SendString("plain upstream")
+	})
+
+	gatewayTLSConf, _, err := tlstest.GetTLSConfigs()
+	require.NoError(t, err)
+	ln, err := net.Listen(fiber.NetworkTCP4, "127.0.0.1:0")
+	require.NoError(t, err)
+	ln = tls.NewListener(ln, gatewayTLSConf)
+	gatewayAddr := ln.Addr().String()
+
+	app := fiber.New()
+	app.Use(Balancer(Config{Servers: []string{"http://" + upstreamAddr}}))
 	startServer(app, ln)
 
 	client := clientpkg.New()
-	client.SetTLSConfig(clientTLSConf)
+	client.SetTimeout(5 * time.Second)
+	client.TLSConfig().InsecureSkipVerify = true
 
-	resp, err := client.Get("https://" + addr + "/tlsbalancer")
+	resp, err := client.Get("https://" + gatewayAddr)
 	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode())
-	require.Equal(t, "tls balancer", string(resp.Body()))
+	require.Equal(t, fiber.StatusOK, resp.StatusCode(), string(resp.Body()))
+	require.Equal(t, "plain upstream", string(resp.Body()))
 	resp.Close()
+}
+
+// go test -run Test_Proxy_Balancer_MixedSchemes
+//
+// Each upstream of a mixed list is reached with its own scheme, whichever one the request arrived on.
+func Test_Proxy_Balancer_MixedSchemes(t *testing.T) {
+	t.Parallel()
+
+	_, plainAddr := createProxyTestServerIPv4(t, func(c fiber.Ctx) error {
+		return c.SendString("plain")
+	})
+	serverTLSConf, _, err := tlstest.GetTLSConfigs()
+	require.NoError(t, err)
+	ln, err := net.Listen(fiber.NetworkTCP4, "127.0.0.1:0")
+	require.NoError(t, err)
+	ln = tls.NewListener(ln, serverTLSConf)
+	secure := fiber.New()
+	secure.Get("/", func(c fiber.Ctx) error { return c.SendString("secure") })
+	startServer(secure, ln)
+
+	app := fiber.New()
+	app.Use(Balancer(Config{
+		Servers:   []string{"http://" + plainAddr, "https://" + ln.Addr().String()},
+		TLSConfig: &tls.Config{InsecureSkipVerify: true},
+	}))
+
+	seen := map[string]int{}
+	for range 6 {
+		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody), fiber.TestConfig{
+			Timeout:       5 * time.Second,
+			FailOnTimeout: true,
+		})
+		require.NoError(t, err)
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		require.NoError(t, resp.Body.Close())
+		require.Equal(t, fiber.StatusOK, resp.StatusCode, string(body))
+		seen[string(body)]++
+	}
+	require.Equal(t, map[string]int{"plain": 3, "secure": 3}, seen)
+}
+
+// go test -run Test_Proxy_Balancer_EmptyClientPanicsAtStartup
+func Test_Proxy_Balancer_EmptyClientPanicsAtStartup(t *testing.T) {
+	t.Parallel()
+
+	// fasthttp would panic on the first request, and nothing above the handler recovers it.
+	require.PanicsWithValue(t, "Client.Clients cannot be empty", func() {
+		Balancer(Config{Client: &fasthttp.LBClient{}})
+	})
 }
 
 // go test -run Test_Proxy_Balancer_IPv6_Upstream
@@ -392,6 +475,44 @@ func Test_Proxy_Forward_WithTlsConfig_To_Http(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusOK, resp.StatusCode())
 	require.Equal(t, "hello from target", string(resp.Body()))
+	resp.Close()
+}
+
+// Test_Proxy_DoRedirects_AppliesSchemePerHopBehindTLS pins that every hop of DoRedirects is sent with
+// the scheme of its own URL. The request a TLS gateway hands the handler is marked TLS, and a copied hop
+// would keep that mark and speak TLS to the plain-HTTP server a redirect points it at.
+func Test_Proxy_DoRedirects_AppliesSchemePerHopBehindTLS(t *testing.T) {
+	t.Parallel()
+
+	_, finalAddr := createProxyTestServerIPv4(t, func(c fiber.Ctx) error {
+		return c.SendString("final")
+	})
+	_, redirectAddr := createProxyTestServerIPv4(t, func(c fiber.Ctx) error {
+		c.Location("http://" + finalAddr + "/")
+		return c.Status(fiber.StatusFound).SendString("redirect")
+	})
+
+	gatewayTLSConf, _, err := tlstest.GetTLSConfigs()
+	require.NoError(t, err)
+	ln, err := net.Listen(fiber.NetworkTCP4, "127.0.0.1:0")
+	require.NoError(t, err)
+	ln = tls.NewListener(ln, gatewayTLSConf)
+	gatewayAddr := ln.Addr().String()
+
+	app := fiber.New()
+	app.Get("/", func(c fiber.Ctx) error {
+		return DoRedirects(c, "http://"+redirectAddr+"/", 3)
+	})
+	startServer(app, ln)
+
+	client := clientpkg.New()
+	client.SetTimeout(5 * time.Second)
+	client.TLSConfig().InsecureSkipVerify = true
+
+	resp, err := client.Get("https://" + gatewayAddr)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode())
+	require.Equal(t, "final", string(resp.Body()))
 	resp.Close()
 }
 
@@ -2104,6 +2225,44 @@ func Test_Proxy_NewHostClient(t *testing.T) {
 
 		open := newHostClient(mustParseTestURL(t, "http://upstream.example"), &cfg, relaxed)
 		require.Nil(t, open.Dial)
+		require.Nil(t, open.DialTimeout)
+	})
+
+	// fasthttp hands the timeout a request leaves for the connect only to a DialTimeout.
+	t.Run("guards the dial timeout too", func(t *testing.T) {
+		t.Parallel()
+
+		guarded := newHostClient(mustParseTestURL(t, "http://upstream.example"), &cfg, strict)
+		require.NotNil(t, guarded.DialTimeout)
+		for _, timeout := range []time.Duration{0, time.Second} {
+			_, err := guarded.DialTimeout("127.0.0.1:80", timeout)
+			require.ErrorIs(t, err, ErrUpstreamHostBlocked, "timeout %v", timeout)
+		}
+	})
+
+	// Only fasthttp's own dialer adds the port, and the guard's does not.
+	t.Run("adds the port its scheme defaults to", func(t *testing.T) {
+		t.Parallel()
+
+		for raw, want := range map[string]string{
+			"http://upstream.example":           "upstream.example:80",
+			"https://upstream.example":          "upstream.example:443",
+			"http://upstream.example:8080":      "upstream.example:8080",
+			"https://upstream.example:8443":     "upstream.example:8443",
+			"http://[2001:db8::1]":              "[2001:db8::1]:80",
+			"https://[2001:db8::1]":             "[2001:db8::1]:443",
+			"http://[2001:db8::1]:8080":         "[2001:db8::1]:8080",
+			"http://203.0.113.5":                "203.0.113.5:80",
+			"https://upstream.example:443":      "upstream.example:443",
+			"http://upstream.example:80":        "upstream.example:80",
+			"https://[2001:db8::1]:8443":        "[2001:db8::1]:8443",
+			"http://upstream.example.:8080":     "upstream.example.:8080",
+			"http://xn--bcher-kva.example/":     "xn--bcher-kva.example:80",
+			"https://xn--bcher-kva.example:444": "xn--bcher-kva.example:444",
+		} {
+			hc := newHostClient(mustParseTestURL(t, raw), &cfg, strict)
+			require.Equal(t, want, hc.Addr, raw)
+		}
 	})
 }
 

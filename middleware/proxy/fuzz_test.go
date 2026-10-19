@@ -44,7 +44,7 @@ func FuzzValidateUpstream(f *testing.F) {
 	policy.AllowPrivateIPs = true // focus on scheme/host parsing, not SSRF here
 
 	f.Fuzz(func(t *testing.T, raw string) {
-		u, err := validateUpstream(raw, policy)
+		u, err := validateUpstream(raw, policy, nil)
 		if err != nil {
 			return
 		}

@@ -170,7 +170,7 @@ func doActionWithPolicy(
 	// callback in followRedirects, which inspects u.Host after the
 	// SetRequestURI write.
 	addrCopy := utils.CopyString(addr)
-	u, err := validateUpstream(addrCopy, policy)
+	u, err := validateUpstream(addrCopy, policy, lookupsFor(cli))
 	if err != nil {
 		return err
 	}
@@ -270,7 +270,7 @@ func BalancerForward(servers []string, clients ...*fasthttp.Client) fiber.Handle
 	policy := currentSecurityPolicy()
 	bases := make([]*url.URL, len(servers))
 	for i, s := range servers {
-		base, err := validateUpstream(s, policy)
+		base, err := validateUpstream(s, policy, nil)
 		if err != nil {
 			panic(err)
 		}

@@ -144,6 +144,8 @@ app.Use(limiter.New(limiter.Config{
 
 The limiter reads an entry, updates it and writes it back while holding a lock, so concurrent requests for one key through the same limiter never read the same count. Keys are spread over 64 locks, which lets requests for different keys run in parallel. A lock is held for the storage round trips of its request: with a slow external storage, keys that share a lock wait for each other, and requests for one key are handled one at a time. That is the price of exact counts within one limiter, because `fiber.Storage` offers no atomic increment to rely on. The locks are not shared between limiters, so two limiters, in one process or several, that use the same storage and key can still admit a few extra requests when they handle that key at the same moment.
 
+The key a `KeyGenerator` returns can point into the memory of the request, as the result of `c.Get` does, which fasthttp reuses for the next request on the connection. The built-in store copies the keys it keeps. A custom `Storage` may keep the key it is given, so the limiter hands it a copy: one allocation per request, taken before the storage is read.
+
 A request that passes costs one storage read and one write. A second read and write follows the handler when:
 
 - `SkipSuccessfulRequests` applies to the response (status below 400) or `SkipFailedRequests` does (status 400 or above), to give the hit back.

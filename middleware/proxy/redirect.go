@@ -4,6 +4,7 @@ import (
 	"net/url"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/fieldname"
 	"github.com/gofiber/fiber/v3/internal/schemehost"
 	"github.com/gofiber/utils/v2"
 	"github.com/valyala/fasthttp"
@@ -23,16 +24,17 @@ import (
 //
 // A hop that needs another method and no body, or no credentials, goes out as a private
 // copy: req keeps its method, body and credentials for the rest of the handler chain.
+//
+// A redirect that keeps the body of a streamed request fails with fasthttp.ErrRedirectBodyStream,
+// as fasthttp's own loop does: the first hop consumed the stream, so it cannot be sent again.
 func followRedirects(cli *fasthttp.Client, req *fasthttp.Request, resp *fasthttp.Response, maxRedirects int, initialURL *url.URL, policy SecurityPolicy) error {
 	if maxRedirects < 0 {
 		maxRedirects = 0
 	}
 	hop := req
-	defer func() {
-		if hop != req {
-			fasthttp.ReleaseRequest(hop)
-		}
-	}()
+	// Asked before the first hop: sending the request consumes the stream.
+	streamed := req.IsBodyStream()
+	lookups := lookupsFor(cli)
 	currentURL := initialURL
 	currentURLStr := "" // rendered when a redirect needs it as the base of Location
 	for redirects := 0; ; redirects++ {
@@ -53,7 +55,7 @@ func followRedirects(cli *fasthttp.Client, req *fasthttp.Request, resp *fasthttp
 		if currentURLStr == "" {
 			currentURLStr = currentURL.String()
 		}
-		nextURL, err := resolveRedirect(currentURLStr, location, policy)
+		nextURL, err := resolveRedirect(currentURLStr, location, policy, lookups)
 		if err != nil {
 			return err
 		}
@@ -62,10 +64,19 @@ func followRedirects(cli *fasthttp.Client, req *fasthttp.Request, resp *fasthttp
 		// party (RFC 9110 §15.4 advisory; matches browser behavior).
 		crossOrigin := !schemehost.Match(currentURL.Scheme, currentURL.Host, nextURL.Scheme, nextURL.Host)
 		changesMethod := redirectChangesMethod(hop, status)
+		if streamed {
+			if !changesMethod {
+				return fasthttp.ErrRedirectBodyStream
+			}
+			// The body is gone for the rest of the chain.
+			streamed = false
+		}
 		if crossOrigin || changesMethod {
 			if hop == req {
-				hop = fasthttp.AcquireRequest()
-				req.CopyTo(hop)
+				hop = copyRequest(req)
+				if !changesMethod {
+					carryFormBody(hop, req)
+				}
 			}
 			if changesMethod {
 				redirectRequest(hop)
@@ -100,7 +111,45 @@ func redirectChangesMethod(req *fasthttp.Request, status int) bool {
 	}
 }
 
-// redirectRequest rewrites req as a GET without the body and the fields that framed it.
+// copyRequest returns a request of its own that holds what req holds, for a hop that is to differ
+// from it. CopyTo leaves out the request timeout and the user values, and the copy takes them
+// along. It is not taken from the pool: releasing it would Close the user values it shares with req.
+func copyRequest(req *fasthttp.Request) *fasthttp.Request {
+	hop := new(fasthttp.Request)
+	req.CopyTo(hop)
+	hop.SetTimeout(req.GetTimeOut())
+	req.VisitUserValuesAll(hop.SetUserValue)
+	return hop
+}
+
+// carryFormBody gives hop the body CopyTo left out of it: a multipart form the server parsed ahead
+// of the handler is held as a form rather than as a body, and Body marshals it again. Only a hop
+// that keeps the body of req needs it, and it can be as large as an upload.
+func carryFormBody(hop, req *fasthttp.Request) {
+	if len(hop.Body()) > 0 {
+		return
+	}
+	if body := req.Body(); len(body) > 0 {
+		hop.SetBody(body)
+	}
+}
+
+// contentFields describe the content a request carried, or expect it. A request without content
+// has none of them: a 100-continue expectation may not be generated without content (RFC 9110
+// §10.1.1), and a target that decodes by Content-Encoding chokes on the empty body it is left.
+// The fields that frame a body are dropped one by one in redirectRequest, as fasthttp keeps them
+// in slots of their own.
+var contentFields = []string{
+	fasthttp.HeaderContentEncoding,
+	fasthttp.HeaderContentLanguage,
+	fasthttp.HeaderContentLocation,
+	fasthttp.HeaderExpect,
+	// fasthttp has no constants for these two.
+	"Digest",
+	"Content-MD5",
+}
+
+// redirectRequest rewrites req as a GET without the body and the fields that framed or described it.
 func redirectRequest(req *fasthttp.Request) {
 	req.Header.SetMethod(fasthttp.MethodGet)
 	// Not ResetBody: with ReduceMemoryUsage it hands the body buffer back to
@@ -113,6 +162,7 @@ func redirectRequest(req *fasthttp.Request) {
 	req.Header.Del(fasthttp.HeaderContentLength)
 	req.Header.Del(fasthttp.HeaderTransferEncoding)
 	req.Header.Del(fasthttp.HeaderTrailer)
+	fieldname.DelSet(&req.Header, contentFields)
 }
 
 // resolveRedirect parses a redirect target relative to the current URL
@@ -121,7 +171,7 @@ func redirectRequest(req *fasthttp.Request) {
 // is the validated *url.URL produced by validateUpstream, so callers
 // pass it straight into network sinks without re-parsing user-controlled
 // strings.
-func resolveRedirect(currentURL string, location []byte, policy SecurityPolicy) (*url.URL, error) {
+func resolveRedirect(currentURL string, location []byte, policy SecurityPolicy, lookups *lookupCache) (*url.URL, error) {
 	// Control bytes (< 0x20, DEL) are rejected; bytes >= 0x80 are left to URI
 	// parsing.
 	if utils.IndexControl(location) != -1 {
@@ -140,7 +190,7 @@ func resolveRedirect(currentURL string, location []byte, policy SecurityPolicy) 
 	if len(uri.Host()) == 0 {
 		return nil, fasthttp.ErrorInvalidURI
 	}
-	target, err := validateUpstream(uri.String(), policy)
+	target, err := validateUpstream(uri.String(), policy, lookups)
 	if err != nil {
 		return nil, err
 	}

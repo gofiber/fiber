@@ -33,7 +33,7 @@ func (stubConn) SetWriteDeadline(time.Time) error { return nil }
 // fast path that skips DNS entirely.
 func Test_Coverage_ResolveAndValidateHost_IPLiteralOK(t *testing.T) {
 	t.Parallel()
-	ips, err := resolveAndValidateHost("8.8.8.8")
+	ips, err := resolveAndValidateHost("8.8.8.8", time.Time{})
 	require.NoError(t, err)
 	require.Len(t, ips, 1)
 	require.True(t, ips[0].Equal(net.ParseIP("8.8.8.8")))
@@ -43,7 +43,7 @@ func Test_Coverage_ResolveAndValidateHost_IPLiteralOK(t *testing.T) {
 // post-resolution loop that rejects a blocked IP literal.
 func Test_Coverage_ResolveAndValidateHost_BlocksIPLiteral(t *testing.T) {
 	t.Parallel()
-	_, err := resolveAndValidateHost("127.0.0.1")
+	_, err := resolveAndValidateHost("127.0.0.1", time.Time{})
 	require.ErrorIs(t, err, ErrUpstreamHostBlocked)
 }
 
@@ -52,7 +52,7 @@ func Test_Coverage_ResolveAndValidateHost_BlocksIPLiteral(t *testing.T) {
 // never resolves and therefore never depends on outbound DNS.
 func Test_Coverage_ResolveAndValidateHost_LookupFails(t *testing.T) {
 	t.Parallel()
-	_, err := resolveAndValidateHost("definitely-not-a-real-host.invalid")
+	_, err := resolveAndValidateHost("definitely-not-a-real-host.invalid", time.Time{})
 	require.ErrorIs(t, err, ErrUpstreamHostBlocked)
 }
 
@@ -75,8 +75,9 @@ func Test_Coverage_DialValidatedIPs_SuccessOnIPv4(t *testing.T) {
 
 // Test_Coverage_DialValidatedIPs_SkipsV6_WhenNoDualStack covers the
 // IPv4-only branch: an IPv6 candidate is skipped before any dial is
-// attempted, leaving the loop with no candidates and producing the
-// "no usable address" sentinel error.
+// attempted, leaving the loop with no candidates. Nothing was blocked, so
+// the error says the address was not dialed and does not match
+// ErrUpstreamHostBlocked, which a caller reads as a policy decision.
 func Test_Coverage_DialValidatedIPs_SkipsV6_WhenNoDualStack(t *testing.T) {
 	t.Parallel()
 	called := atomic.Bool{}
@@ -85,8 +86,10 @@ func Test_Coverage_DialValidatedIPs_SkipsV6_WhenNoDualStack(t *testing.T) {
 		return nil, errors.New("should not dial")
 	}}
 	_, err := guard.dialValidatedIPs([]net.IP{net.ParseIP("2606:4700:4700::1111")}, "example.test", "80")
-	require.ErrorIs(t, err, ErrUpstreamHostBlocked)
-	require.Contains(t, err.Error(), "no usable address")
+	require.ErrorIs(t, err, errIPv6Only)
+	require.NotErrorIs(t, err, ErrUpstreamHostBlocked)
+	require.NotErrorIs(t, err, ErrUpstreamHostUnresolvable)
+	require.ErrorContains(t, err, "example.test has only IPv6 addresses, and DialDualStack is off")
 	require.False(t, called.Load(), "IPv6 candidate must be skipped without dialing")
 }
 
@@ -153,7 +156,7 @@ func Test_Coverage_DialChecked_PassesGuardThenDials(t *testing.T) {
 // could disagree with the second lookup in restricted CI.
 func Test_Coverage_ValidateHostForSSRF_PublicHostname(t *testing.T) {
 	t.Parallel()
-	err := validateHostForSSRF("one.one.one.one")
+	err := validateHostForSSRF("one.one.one.one", nil)
 	if _, ok := errors.AsType[*net.DNSError](err); ok {
 		t.Skipf("offline DNS, skipping: %v", err)
 	}
@@ -167,7 +170,7 @@ func Test_Coverage_ResolveRedirect_RejectsHostlessTarget(t *testing.T) {
 	t.Parallel()
 	policy := DefaultSecurityPolicy()
 	policy.AllowPrivateIPs = true
-	_, err := resolveRedirect("https://example.com", []byte("http://"), policy)
+	_, err := resolveRedirect("https://example.com", []byte("http://"), policy, nil)
 	require.ErrorIs(t, err, fasthttp.ErrorInvalidURI)
 }
 

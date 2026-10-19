@@ -52,7 +52,7 @@ func hostWithoutPort(host string) string {
 // re-validates the resolved IP at connect time — so a rebinding-capable
 // resolver cannot reach a private address through this handler.
 func DomainForward(hostname, addr string, clients ...*fasthttp.Client) fiber.Handler {
-	base, err := validateUpstream(addr, currentSecurityPolicy())
+	base, err := validateUpstream(addr, currentSecurityPolicy(), nil)
 	if err != nil {
 		panic(err)
 	}
