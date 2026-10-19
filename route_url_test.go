@@ -38,6 +38,8 @@ func Test_Route_URL_ParameterRepresentability(t *testing.T) {
 		{name: "decoded greedy slash", pattern: "/files/*", key: "*", value: "a/b", unescape: true, want: "/files/a/b"},
 		{name: "decoded plus slash", pattern: "/files/+", key: "+", value: "a/b", unescape: true, want: "/files/a/b"},
 		{name: "single byte terminator consumes slash", pattern: "/p/:value-", key: "value", value: "a/b", unescape: true, want: "/p/a%2Fb-"},
+		{name: "encoded slash stays in optional terminator", pattern: "/p/:value?-", key: "value", value: "a/b", want: "/p/a%2Fb-"},
+		{name: "decoded slash leaves optional terminator", pattern: "/p/:value?-", key: "value", value: "a/b", unescape: true, reject: true},
 		{name: "adjacent parameter consumes slash", pattern: "/p/:value:tail", key: "value", value: "/", unescape: true, want: "/p/%2Fb"},
 		{name: "adjacent parameter cannot consume middle slash", pattern: "/p/:value:tail", key: "value", value: "a/b", unescape: true, reject: true},
 		{name: "adjacent parameter cannot consume leading slash", pattern: "/p/:value:tail", key: "value", value: "/a", unescape: true, reject: true},

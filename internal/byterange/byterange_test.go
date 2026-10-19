@@ -232,12 +232,12 @@ func Test_Wrap_RangeRules(t *testing.T) {
 		{name: "several ranges, one of them unsatisfiable", method: fasthttp.MethodGet, rangeField: "bytes=0-1,100-200", wantStatus: 200, wantBody: fileContent, wantLength: "20", wantAccepted: true},
 		{name: "unknown unit", method: fasthttp.MethodGet, rangeField: "items=0-4", wantStatus: 200, wantBody: fileContent, wantLength: "20", wantAccepted: true},
 		{name: "only GET has ranges: HEAD", method: fasthttp.MethodHead, rangeField: "bytes=0-4", wantStatus: 200, wantLength: "20", wantAccepted: true},
+		{name: "garbage", method: fasthttp.MethodGet, rangeField: "garbage", wantStatus: 200, wantBody: fileContent, wantLength: "20", wantAccepted: true},
 
 		// Refused by the file server, as before.
 		{name: "start past the end", method: fasthttp.MethodGet, rangeField: "bytes=100-200", wantStatus: 416, wantBody: "Range Not Satisfiable"},
 		{name: "reversed range", method: fasthttp.MethodGet, rangeField: "bytes=5-1", wantStatus: 416, wantBody: "Range Not Satisfiable"},
 		{name: "no range set", method: fasthttp.MethodGet, rangeField: "bytes=", wantStatus: 416, wantBody: "Range Not Satisfiable"},
-		{name: "garbage", method: fasthttp.MethodGet, rangeField: "garbage", wantStatus: 416, wantBody: "Range Not Satisfiable"},
 	}
 
 	for _, tc := range tests {
