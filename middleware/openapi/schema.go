@@ -424,8 +424,8 @@ func parseJSONTag(field *reflect.StructField, key string) jsonTagInfo {
 		return jsonTagInfo{skip: true}
 	}
 	name, opts, _ := utils.CutByte(tag, ',')
-	// Unusual JSON names are resolved against the running encoding/json.
-	if key == tagJSON && !isPlainJSONTagName(name) {
+	// Unusual JSON names are resolved against the running encoding/json; an empty one (`json:",omitempty"`) keeps the Go name.
+	if key == tagJSON && name != "" && !isPlainJSONTagName(name) {
 		name = effectiveJSONTagName(name)
 	}
 	info := jsonTagInfo{name: name}

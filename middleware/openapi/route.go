@@ -49,6 +49,8 @@ type routeFacts struct {
 	chain middlewareSet
 	// documentsInput is set when the route declares a body or parameters.
 	documentsInput bool
+	// parametersDeclared is set once declared holds the parameters of the route's models and middleware.
+	parametersDeclared bool
 	// badRequest is set when a 400 should be documented: a validator may reject what the route binds.
 	badRequest bool
 }

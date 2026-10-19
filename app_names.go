@@ -97,6 +97,21 @@ func (app *App) nameRoutesLocked(regID uint64, name string) *Route {
 		}
 		named = route
 	})
+	// Naming a middleware registration names every middleware route at its path, as Name always has: the same prefix is
+	// often registered more than once, and they are one middleware to the person naming it.
+	if named != nil && named.use {
+		for _, routes := range app.stack {
+			for _, route := range routes {
+				if route.mount || !route.use || route.Path != named.Path || route == named {
+					continue
+				}
+				route.Name = name
+				if route.group != nil {
+					route.Name = route.group.name + route.Name
+				}
+			}
+		}
+	}
 	if len(gets) == 0 {
 		return named
 	}

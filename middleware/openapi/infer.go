@@ -13,15 +13,18 @@ import (
 )
 
 // groupTag derives an operation tag from the route's group: the last segment of its name, else the
-// last static prefix segment, skipping parameters and version markers like "v1".
+// last static prefix segment, skipping parameters and version markers like "v1" in both.
 func groupTag(route *fiber.Route) string {
-	if name := route.GroupName(); name != "" {
-		name = utils.TrimRight(name, '.')
-		if _, after, found := utils.LastCutByte(name, '.'); found {
-			name = after
+	name := utils.TrimRight(route.GroupName(), '.')
+	for name != "" {
+		segment := name
+		if before, after, found := utils.LastCutByte(name, '.'); found {
+			segment, name = after, before
+		} else {
+			name = ""
 		}
-		if name != "" {
-			return name
+		if segment != "" && !isVersionSegment(segment) {
+			return segment
 		}
 	}
 

@@ -736,3 +736,26 @@ func Test_OpenAPI_DefinedMapTypesAreRawSchemas(t *testing.T) {
 	require.True(t, isList)
 	require.Equal(t, "integer", requireMap(t, requireMap(t, params[0])["schema"])["type"])
 }
+
+type orphanInner struct {
+	V string `json:"v"`
+}
+
+type orphanFilter struct {
+	Inner orphanInner `query:"inner"`
+}
+
+func Test_OpenAPI_DroppedDuplicateRouteRegistersNoComponents(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Get("/a/:id", listUsers)
+	// The same template up to parameter names: the first registration wins, so this one is dropped.
+	app.Get("/a/:name", listUsers).Params(fiber.ParamInQuery, orphanFilter{})
+	spec := modelSpec(t, app)
+
+	components, ok := spec["components"].(map[string]any)
+	if ok {
+		require.NotContains(t, components, "schemas")
+	}
+}

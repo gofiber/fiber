@@ -606,3 +606,42 @@ func Test_OpenAPI_PathsMatchServedRoutes(t *testing.T) {
 	require.NotContains(t, paths, "/x/{date}]{wildcard})>")
 	require.Contains(t, paths, "/shop/product/color:{color}/size:{size}")
 }
+
+func Test_Dialect_Nullable_ListTypesAndTypedEnums(t *testing.T) {
+	t.Parallel()
+
+	modern := newDialect("3.1.0")
+	got := modern.nullable(map[string]any{"type": []string{"string", "integer"}, "enum": []string{"a"}})
+	require.Equal(t, []any{"string", "integer", "null"}, got["type"])
+	require.Equal(t, []any{"a", nil}, got["enum"])
+
+	got = modern.nullable(map[string]any{"type": []any{"string", "null"}})
+	require.Equal(t, []any{"string", "null"}, got["type"], "null is not added twice")
+
+	in := map[string]any{"type": []any{"string"}, "enum": []int{1}}
+	_ = modern.nullable(in)
+	require.Equal(t, []any{"string"}, in["type"], "the input is left alone")
+	require.Equal(t, []int{1}, in["enum"])
+
+	old := newDialect("3.0.3").nullable(map[string]any{"type": "integer", "enum": []int{1, 2}})
+	require.Equal(t, []any{1, 2, nil}, old["enum"])
+	require.Equal(t, true, old["nullable"])
+}
+
+func Test_OpenAPI_GroupTagSkipsVersionMarkersInNamesToo(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	api, ok := app.Group("/api").Name("api.").(*fiber.Group)
+	require.True(t, ok)
+	v1, ok := api.Group("/v1").Name("v1.").(*fiber.Group)
+	require.True(t, ok)
+	v1.Get("/users", listUsers)
+
+	plain := app.Group("/api")
+	plain.Group("/v1").Get("/items", listUsers)
+
+	spec := modelSpec(t, app)
+	require.Equal(t, []any{"api"}, modelOperation(t, spec, "/api/v1/users", "get")["tags"])
+	require.Equal(t, []any{"api"}, modelOperation(t, spec, "/api/v1/items", "get")["tags"])
+}

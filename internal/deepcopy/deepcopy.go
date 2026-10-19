@@ -87,8 +87,12 @@ func (c *copier) enter(v, copied reflect.Value) {
 	if c.memo != nil {
 		c.memo[key] = copied
 	} else if c.nodes > memoAfter {
-		c.memo = make(map[visit]reflect.Value)
-		c.memo[key] = copied
+		// The copies still under way go in too, so a cycle back to an ancestor entered before this point
+		// is still found.
+		c.memo = make(map[visit]reflect.Value, len(c.path))
+		for _, f := range c.path {
+			c.memo[f.key] = f.copied
+		}
 	}
 }
 

@@ -2,6 +2,7 @@ package openapi
 
 import (
 	"maps"
+	"reflect"
 	"slices"
 	"strings"
 )
@@ -80,19 +81,31 @@ func (d dialect) license(license License) License {
 
 // nullable returns a copy of a property schema that also accepts null, the way the dialect spells it:
 // a nullable keyword in 3.0, and a "null" type in 3.1 and later, alone or in an anyOf beside a $ref or a
-// composition. A schema with none of type, $ref, allOf, anyOf or oneOf already accepts anything. Under 3.0 a
-// composition with no type stays as it is, as nullable has no effect without a type there.
+// composition. A schema with none of type, $ref, allOf, anyOf or oneOf already accepts anything. Under 3.0 the
+// keyword sits beside whatever the schema holds, an allOf wrapper around a reference included: the
+// specification only gives it meaning next to a type, but that is the form code generators and Swagger UI read.
 func (d dialect) nullable(schema map[string]any) map[string]any {
 	schema = maps.Clone(schema)
-	if enum, ok := schema["enum"].([]any); ok {
-		schema["enum"] = append(slices.Clone(enum), nil)
+	if enum, ok := enumValues(schema["enum"]); ok && !slices.Contains(enum, nil) {
+		schema["enum"] = append(enum, nil)
 	}
 	if !d.hasJSONSchemaDialect() {
 		schema["nullable"] = true
 		return schema
 	}
-	if typ, isType := schema[schemaKeyType].(string); isType {
+	switch typ := schema[schemaKeyType].(type) {
+	case string:
 		schema[schemaKeyType] = []any{typ, schemaTypeNull}
+		return schema
+	case []string:
+		types := make([]any, 0, len(typ)+1)
+		for _, name := range typ {
+			types = append(types, name)
+		}
+		schema[schemaKeyType] = appendNullType(types)
+		return schema
+	case []any:
+		schema[schemaKeyType] = appendNullType(slices.Clone(typ))
 		return schema
 	}
 	if target, isRef := schema[schemaKeyRef].(string); isRef {
@@ -106,4 +119,28 @@ func (d dialect) nullable(schema map[string]any) map[string]any {
 		}
 	}
 	return schema
+}
+
+// appendNullType adds "null" to a list of types that does not name it.
+func appendNullType(types []any) []any {
+	if slices.Contains(types, any(schemaTypeNull)) {
+		return types
+	}
+	return append(types, schemaTypeNull)
+}
+
+// enumValues returns the values of an enum of any slice type as a fresh []any.
+func enumValues(enum any) ([]any, bool) {
+	if values, ok := enum.([]any); ok {
+		return slices.Clone(values), true
+	}
+	list := reflect.ValueOf(enum)
+	if !list.IsValid() || list.Kind() != reflect.Slice {
+		return nil, false
+	}
+	values := make([]any, list.Len())
+	for i := range values {
+		values[i] = list.Index(i).Interface()
+	}
+	return values, true
 }

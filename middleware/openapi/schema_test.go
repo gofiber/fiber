@@ -850,3 +850,15 @@ func Test_SchemaOf_MultipartFileHeaderIsBinary(t *testing.T) {
 	require.Equal(t, binary, requireMap(t, files["items"]))
 	require.Equal(t, "array", requireMap(t, props["many"])["type"])
 }
+
+// Test_parseJSONTag_EmptyNameSkipsTheProbe is sequential on purpose: testing.AllocsPerRun panics in a parallel test.
+func Test_parseJSONTag_EmptyNameSkipsTheProbe(t *testing.T) {
+	field := reflect.TypeFor[struct {
+		V string `json:",omitempty"` //nolint:tagliatelle // the empty name is what this test is about
+	}]().Field(0)
+
+	info := parseJSONTag(&field, tagJSON)
+	require.Empty(t, info.name)
+	require.True(t, info.omit)
+	require.InDelta(t, 0, testing.AllocsPerRun(50, func() { _ = parseJSONTag(&field, tagJSON) }), 0, "the encoding/json probe allocates")
+}

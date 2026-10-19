@@ -218,3 +218,22 @@ func Test_ValueKeepsSharingOnceMemoizing(t *testing.T) {
 	require.Equal(t, "v", first["k"])
 	require.Equal(t, "v", last["k"])
 }
+
+func Test_ValueFindsACycleToAnAncestorEnteredBeforeMemoizing(t *testing.T) {
+	t.Parallel()
+
+	// The long chain is copied first, so memoizing starts while the root is still under way.
+	var chain any = map[string]any{}
+	for range memoAfter * 2 {
+		chain = map[string]any{"next": chain}
+	}
+	root := make([]any, 2)
+	root[0] = chain
+	root[1] = root
+
+	copied, ok := Value(root).([]any)
+	require.True(t, ok)
+	back, ok := copied[1].([]any)
+	require.True(t, ok)
+	require.Same(t, &copied[0], &back[0], "the cycle points back to the copy, not to a second copy of the root")
+}

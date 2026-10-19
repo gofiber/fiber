@@ -2161,3 +2161,46 @@ func Test_Mount_StartupConcurrentWithNestedSubApp(t *testing.T) {
 	close(stop)
 	wg.Wait()
 }
+
+func Test_Name_AfterRepeatedUseNamesEveryRouteAtThePath(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	g := app.Group("/api", testHandlerOK)
+	g.Name("api.")
+	g.Get("/x", testHandlerOK)
+	g.Use(testHandlerOK)
+	g.Name("mw")
+
+	named := 0
+	for _, route := range app.GetRoutes() {
+		if route.Path == "/api" && route.Method == MethodGet {
+			require.Equal(t, "api.mw", route.Name)
+			named++
+		}
+	}
+	require.Equal(t, 2, named, "both Use routes at the path carry the name")
+	require.Empty(t, routesFor(app, "/api/x")[MethodGet].Name, "a route at another path is not renamed")
+}
+
+func Test_AutoHeadTwin_IsNeverHiddenWhenTheGetWasHiddenFirst(t *testing.T) {
+	t.Parallel()
+
+	for name, hideBeforeTwin := range map[string]bool{"hidden before the twin exists": true, "hidden after": false} {
+		app := New()
+		route := app.Get("/h", testHandlerOK)
+		if hideBeforeTwin {
+			route.Hidden()
+		}
+		app.RebuildTree()
+		if !hideBeforeTwin {
+			route.Hidden()
+		}
+
+		for _, r := range app.GetRoutes() {
+			if r.IsAutoHead() {
+				require.False(t, r.IsHidden(), name)
+			}
+		}
+	}
+}

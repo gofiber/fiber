@@ -6,7 +6,7 @@ id: openapi
 
 OpenAPI middleware for [Fiber](https://github.com/gofiber/fiber) that generates an OpenAPI specification based on the routes registered in your application.
 
-This middleware supports the OpenAPI 3.0.0, 3.1.0 and 3.2.0 specifications.
+This middleware supports the OpenAPI 3.0.x, 3.1.x and 3.2.x specifications. Set `OpenAPIVersion` to a release such as `"3.0.3"`, `"3.1.0"` (the default) or `"3.2.0"`; it is written to the document as given. A value that is not a 3.0.x, 3.1.x or 3.2.x release is replaced by the default without a warning, so check the `openapi` field of the document after a change.
 
 ## Signatures
 

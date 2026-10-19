@@ -369,8 +369,7 @@ func (b *specBuilder) documents(r *fiber.Route) bool {
 	return !r.IsAutoHead() && !r.IsHidden()
 }
 
-// inferRoute resolves a route's facts, then registers what they imply: the security requirement
-// middleware adds, and the parameter models and CSRF header the route declares.
+// inferRoute resolves a route's facts, then adds the security requirement recognized middleware implies.
 func (b *specBuilder) inferRoute(r *fiber.Route, covering []coveringMiddleware) routeFacts {
 	facts := resolveRoute(r, covering, b.policy)
 	if facts.security == nil {
@@ -379,11 +378,20 @@ func (b *specBuilder) inferRoute(r *fiber.Route, covering []coveringMiddleware) 
 			facts.security = &security
 		}
 	}
+	return facts
+}
+
+// declareParameters adds the parameters the route's models and recognized middleware declare. Expanding a
+// model registers its schemas in the document, so it waits until an operation of the route is kept.
+func (b *specBuilder) declareParameters(r *fiber.Route, facts *routeFacts) {
+	if facts.parametersDeclared {
+		return
+	}
+	facts.parametersDeclared = true
 	facts.declared = expandParameterModels(r.ParameterModels, b.reg)
 	if facts.chain.has(kindCSRF) && !isSafeMethod(r.Method) {
 		facts.declared = append([]fiber.RouteParameter{csrfParameter(b.cfg.CSRFHeader)}, facts.declared...)
 	}
-	return facts
 }
 
 func (b *specBuilder) addVariant(r *fiber.Route, facts *routeFacts, variant *pathVariant) {
@@ -408,8 +416,9 @@ func (b *specBuilder) addVariant(r *fiber.Route, facts *routeFacts, variant *pat
 		b.hierarchyPaths[hierarchy] = canonicalPathItem{path: variant.Path, params: variant.ParamNames}
 	}
 
-	// Only a route that stays in the document declares the schemes it uses.
+	// Only a route that stays in the document declares the schemes and schemas it uses.
 	b.schemes.use(facts.chain)
+	b.declareParameters(r, facts)
 	if b.paths[variant.Path] == nil {
 		b.paths[variant.Path] = make(map[string]operation)
 	}
