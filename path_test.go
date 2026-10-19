@@ -187,7 +187,7 @@ func Test_Route_OptionalParamDoesNotSwallowSlash(t *testing.T) {
 		return c.SendString("day=" + c.Params("day") + " month=" + c.Params("month"))
 	})
 
-	req, err := http.NewRequest(MethodGet, "/api/1-/-", nil)
+	req, err := http.NewRequest(MethodGet, "/api/1-/-", http.NoBody)
 	require.NoError(t, err)
 	resp, err := app.Test(req)
 	require.NoError(t, err)
