@@ -1438,6 +1438,12 @@ func findParamLen(s string, segment *routeSegment) int {
 
 	if len(segment.ComparePart) == 1 {
 		if constPosition := strings.IndexByte(s, segment.ComparePart[0]); constPosition != -1 {
+			// An optional parameter that swallowed a '/' would make the route
+			// match a path with more segments than the pattern has, so the
+			// compare part must sit in the same path segment.
+			if segment.IsOptional && !segment.IsGreedy && strings.IndexByte(s[:constPosition], slashDelimiter) != -1 {
+				return 0
+			}
 			return constPosition
 		}
 	} else if len(segment.ComparePart) > 1 && !segment.IsGreedy && segment.ComparePart[0] == slashDelimiter {

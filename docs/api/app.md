@@ -617,8 +617,9 @@ the `%` a second time. Turn `UnescapePath` on, or decode with
 An app with `UnescapePath` enabled decodes `%2F` before route matching, so an
 ordinary single-segment parameter holding a `/` cannot round-trip and returns
 `ErrRouteNotRepresentable`. Greedy (`*` or `+`), adjacent single-byte parameters
-and parameters with a single-byte non-slash terminator retain their existing
-slash-matching rules.
+and required parameters with a single-byte non-slash terminator retain their
+existing slash-matching rules. An optional parameter with such a terminator does
+not match a `/`, so a decoded `/` in its value returns `ErrRouteNotRepresentable`.
 Dot-containing values are also rejected when the composed path has a `.` or
 `..` segment that would be removed during normalization. Surrounding route
 constants are considered: `:name.txt` with `name="."` remains representable.

@@ -69,24 +69,16 @@ func (app *App) prefork(addr string, tlsConfig *tls.Config, cfg *ListenConfig) e
 		}
 	}
 
-	// Child process: serve function wraps TLS, starts up process, etc.
-	p.ServeFunc = func(ln net.Listener) error {
-		// wrap a tls config around the listener if provided
-		if tlsConfig != nil {
-			ln = tls.NewListener(ln, tlsConfig)
-		}
-
-		// prepare the server for the start
-		app.startupProcess()
-		app.hookHeaderReceived()
-
-		if cfg.ListenerAddrFunc != nil {
-			cfg.ListenerAddrFunc(ln.Addr())
-		}
-
-		// listen for incoming connections
-		return app.server.Serve(ln)
+	// Each process watches GracefulContext on its own. The master never serves: it watches from
+	// the start, and canceling the context there only runs the master's shutdown hooks. A child
+	// starts to watch in preforkServe, once it has its listener.
+	if !IsChild() {
+		graceful := app.watchGracefulContext(cfg)
+		defer graceful.stopAndWait()
 	}
+
+	// Child process: serve function wraps TLS, starts up process, etc.
+	p.ServeFunc = app.preforkServe(tlsConfig, cfg)
 
 	// Master callback: child spawned → execute OnFork hooks
 	p.OnChildSpawn = func(pid int) error {
@@ -118,6 +110,33 @@ func (app *App) prefork(addr string, tlsConfig *tls.Config, cfg *ListenConfig) e
 	}
 
 	return nil
+}
+
+// preforkServe returns what a prefork child runs on the listener it has bound: it starts to
+// watch GracefulContext, wraps TLS around the listener, starts up the process and serves.
+func (app *App) preforkServe(tlsConfig *tls.Config, cfg *ListenConfig) func(ln net.Listener) error {
+	return func(ln net.Listener) error {
+		// Watch the context only once the child has its listener, so that a bind that failed
+		// never ran the shutdown hooks, and wait out the shutdown before returning.
+		graceful := app.watchGracefulContext(cfg)
+		defer graceful.stopAndWait()
+
+		// wrap a tls config around the listener if provided
+		if tlsConfig != nil {
+			ln = tls.NewListener(ln, tlsConfig)
+		}
+
+		// prepare the server for the start
+		app.startupProcess()
+		app.hookHeaderReceived()
+
+		if cfg.ListenerAddrFunc != nil {
+			cfg.ListenerAddrFunc(ln.Addr())
+		}
+
+		// listen for incoming connections
+		return app.serve(graceful, ln)
+	}
 }
 
 // dummyCmd is for internal prefork testing

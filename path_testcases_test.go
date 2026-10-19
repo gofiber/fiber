@@ -332,7 +332,7 @@ func init() {
 					{url: "/api/1-", params: nil, match: false},
 					{url: "/api/1--", params: []string{"1", "", ""}, match: true},
 					{url: "/api/1-/", params: nil, match: false},
-					// {url: "/api/1-/-", testCases: nil, match: false}, // TODO: fix this part
+					{url: "/api/1-/-", params: nil, match: false},
 					{url: "/api/1-2", params: nil, match: false},
 					{url: "/api/1-2-", params: []string{"1", "2", ""}, match: true},
 					{url: "/api/1-2-3", params: []string{"1", "2", "3"}, match: true},
