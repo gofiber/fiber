@@ -1,13 +1,11 @@
 package static
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -17,6 +15,7 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/internal/byterange"
+	"github.com/gofiber/fiber/v3/internal/fspath"
 )
 
 var ErrInvalidPath = errors.New("invalid path")
@@ -25,10 +24,6 @@ var ErrInvalidPath = errors.New("invalid path")
 // gave it none. The handler never opens a refused path, so it only matters if
 // the file server runs outside it.
 const invalidPathSentinel = "/__fiber_invalid__"
-
-// windowsOS is runtime.GOOS on Windows, where a path component loses its
-// trailing dots and spaces when a file is opened.
-const windowsOS = "windows"
 
 // rewrite carries the path the file server opens for one request. The handler
 // builds it before it calls fasthttp, so PathRewrite only has to read it.
@@ -83,7 +78,7 @@ func (s *fileServer) requestPath(dst []byte, p string) ([]byte, bool) {
 		// select another file, and an empty segment inside it, as in
 		// /web/https://example.com, is part of an opaque name. A root mount refuses
 		// a path that starts with "//" whatever it serves, as a directory root does
-		// in sanitizePath; on a prefix, even one that starts with "//" itself, that
+		// in fspath.Valid; on a prefix, even one that starts with "//" itself, that
 		// segment is the route's own.
 		if s.rootIsFile && s.prefixLen == 0 && len(p) > 1 && p[0] == '/' && p[1] == '/' {
 			return dst, false
@@ -110,154 +105,12 @@ func (s *fileServer) requestPath(dst []byte, p string) ([]byte, bool) {
 		dst = append(dst, '/')
 	}
 
-	sanitized, err := sanitizePath(dst[start:], s.fsys, s.decodeEscapes)
-	if err != nil {
+	// PathRewrite skips fasthttp's Path() normalization; fspath lists what
+	// each check covers instead.
+	if !fspath.Valid(dst[start:], s.fsys, s.decodeEscapes) {
 		return dst[:0], false
 	}
-	return dst[:start+len(sanitized)], true
-}
-
-// decodeFileName validates the escapes the router left in p and returns p
-// unchanged. The router already produced the canonical resource name (it decoded
-// every escape of an unreserved character and kept the rest encoded; see
-// unescapeSafePath), so file lookup opens exactly the bytes the route and any
-// path-scoped middleware matched. It refuses what cannot name such a file: a
-// backslash or control character, a malformed or truncated escape, an escape of
-// a separator or control character, and an escape of an unreserved character.
-// That last one cannot survive the router's own decoding, so its only source is
-// a stray '%' the router kept literally that lines up with the following bytes
-// into a fresh escape ("%%370rivate" and "%7%30rivate" both normalize to
-// "%70rivate"); decoding it a second time here would reach a name ("private")
-// the router never matched and the middleware never guarded, so it is rejected.
-// When decodeEscapes is off, UnescapePath already decoded everything and no
-// escape remains to validate.
-func decodeFileName(p []byte, decodeEscapes bool) ([]byte, error) { //nolint:revive // the flag mirrors UnescapePath; see sanitizePath
-	if utils.IndexControl(p) >= 0 || bytes.IndexByte(p, '\\') >= 0 {
-		return nil, ErrInvalidPath
-	}
-	i := bytes.IndexByte(p, '%')
-	if !decodeEscapes || i < 0 {
-		return p, nil
-	}
-	for ; i < len(p); i++ {
-		if p[i] != '%' {
-			continue
-		}
-		if i+2 >= len(p) {
-			return nil, ErrInvalidPath
-		}
-		hi, lo := unhex(p[i+1]), unhex(p[i+2])
-		if hi < 0 || lo < 0 {
-			return nil, ErrInvalidPath
-		}
-		c := byte(hi<<4 | lo) //nolint:gosec // G115: both nibbles are 0-15
-		if c == '/' || c == '\\' || c < 0x20 || c == 0x7f || isUnreserved(c) {
-			return nil, ErrInvalidPath
-		}
-		i += 2
-	}
-	return p, nil
-}
-
-func isUnreserved(c byte) bool {
-	return c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' ||
-		c == '-' || c == '.' || c == '_' || c == '~'
-}
-
-// unhex returns the value of a hexadecimal digit, or -1 for any other byte.
-func unhex(c byte) int {
-	switch {
-	case c >= '0' && c <= '9':
-		return int(c - '0')
-	case c >= 'a' && c <= 'f':
-		return int(c-'a') + 10
-	case c >= 'A' && c <= 'F':
-		return int(c-'A') + 10
-	default:
-		return -1
-	}
-}
-
-// hasUnsafeSegment reports whether p holds a "." or ".." segment, or an empty
-// one other than the root's leading and a directory's trailing slash. The
-// router removes dot segments and keeps empty ones as sent, so none of them
-// is part of a path it matched to a file.
-func hasUnsafeSegment(p []byte) bool {
-	start := 0
-	for i := 0; i <= len(p); i++ {
-		if i < len(p) && p[i] != '/' {
-			continue
-		}
-		switch n := i - start; {
-		case n == 0:
-			if start > 0 && i < len(p) {
-				return true
-			}
-		case n == 1 && p[start] == '.', n == 2 && p[start] == '.' && p[start+1] == '.':
-			return true
-		}
-		start = i + 1
-	}
-	return false
-}
-
-// hasDriveLetter reports whether name starts with a Windows drive letter and a colon.
-func hasDriveLetter(name string) bool {
-	if len(name) < 2 || name[1] != ':' {
-		return false
-	}
-	drive := name[0]
-	return (drive >= 'a' && drive <= 'z') || (drive >= 'A' && drive <= 'Z')
-}
-
-// hasTrailingDotOrSpaceSegment reports whether a segment of p ends in a dot or
-// a space. Windows drops both from a path component when it opens a file, so
-// "private./secret.txt" and "private /secret.txt" would open
-// "private/secret.txt": a path the router kept apart from "private", and one
-// that middleware guarding "private" never saw. Elsewhere such a name is an
-// ordinary file, so sanitizePath applies this only on Windows, and there to
-// every root: an fs.FS may be OS-backed (os.DirFS) and cannot be told apart
-// from a virtual one such as embed.FS, so a virtual name ending in a dot or a
-// space is refused on Windows rather than leave the alias open for the rest.
-func hasTrailingDotOrSpaceSegment(p []byte) bool {
-	for i, c := range p {
-		if (c == '.' || c == ' ') && (i+1 == len(p) || p[i+1] == '/') {
-			return true
-		}
-	}
-	return false
-}
-
-// sanitizePath validates the routed path p, with the route's prefix stripped,
-// and returns the path the file server opens, which is p unchanged. It fails
-// with ErrInvalidPath when p cannot name a file inside the root: an escape of a
-// slash ("private%2Fsecret.txt" never reaches the "private/secret.txt" the
-// router did not match), an escape of an unreserved character (a stray '%' the
-// router kept that would otherwise double-decode past the route and middleware),
-// a malformed escape, a backslash, a control character, a ".", ".." or empty
-// segment, a drive letter and, on Windows, a segment ending in a dot or a space
-// that the OS would strip. Escapes the router kept remain encoded, keeping file
-// lookup aligned with route and middleware matching.
-func sanitizePath(p []byte, filesystem fs.FS, decodeEscapes bool) ([]byte, error) { //nolint:revive // the flag mirrors UnescapePath
-	p, err := decodeFileName(p, decodeEscapes)
-	if err != nil {
-		return nil, err
-	}
-	if hasUnsafeSegment(p) || (runtime.GOOS == windowsOS && hasTrailingDotOrSpaceSegment(p)) {
-		return nil, ErrInvalidPath
-	}
-
-	name := strings.TrimPrefix(utils.UnsafeString(p), "/")
-	if filesystem != nil {
-		if name = strings.TrimSuffix(name, "/"); name != "" && !fs.ValidPath(name) {
-			return nil, ErrInvalidPath
-		}
-		return p, nil
-	}
-	if filepath.VolumeName(name) != "" || hasDriveLetter(name) {
-		return nil, ErrInvalidPath
-	}
-	return p, nil
+	return dst, true
 }
 
 // New creates a new middleware handler.
@@ -306,7 +159,7 @@ func New(root string, cfg ...Config) fiber.Handler {
 		prefixLen := len(prefix)
 		if prefixLen > 0 && prefix[prefixLen-1] == '/' {
 			// /john/ -> /john and / -> "", so "//john" keeps the empty segment
-			// that sanitizePath refuses
+			// that fspath.Valid refuses
 			prefixLen--
 		}
 
